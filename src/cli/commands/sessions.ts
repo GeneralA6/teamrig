@@ -4,8 +4,10 @@ import { KIT_NAME } from '../../core/home.ts';
 import { measureSessions, runningPlaces, type SessionPlace } from '../../sessions/measure.ts';
 import { SessionRecordStore } from '../../sessions/record.ts';
 import { UsageError, type ParsedArgs } from '../args.ts';
-import { openTeamKit, requireConfig, rosterOf } from '../kit.ts';
+import { idlePassOf, passLineOf, passTotalOf } from '../idle-pass.ts';
+import { findTeam, openKit, openTeamKit, requireConfig, rosterOf, teamZone } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
+import { teamProjectOf } from './setup.ts';
 
 /** One session's line: `<id> <name>: ` and where it is. */
 function placeLine(roster: Roster, place: SessionPlace): string {
@@ -50,14 +52,39 @@ function hostLine(freeMb: number, commit: CommitCharge | undefined): string {
 }
 
 /**
+ * `sessions --pass [--project <dir>]`: what one idle pass would do with each session (T1100): close a running one
+ * `teamrig close` would close, reopen one teamrig closed that the wake check would wake (one a pass, with room on
+ * the host), and why it keeps or leaves the others. It only reads; `--project` is the folder the sessions' Claude
+ * Code runs in, as for `close`.
+ */
+async function pass(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+  const found = await findTeam(runtime);
+  const kit = await openKit(runtime, found.team);
+  const config = requireConfig(kit, runtime, 'read');
+  const roster = await rosterOf(runtime, kit, config);
+  const project = await teamProjectOf(runtime, args.flags.get('project'), found.from);
+  const steps = await idlePassOf(runtime, kit, config, roster, project);
+  const zone = teamZone(config, runtime);
+  steps.forEach((step) => runtime.out.stdout(passLineOf(step, roster, zone)));
+  runtime.out.stdout(passTotalOf(steps));
+  return EXIT.ok;
+}
+
+/**
  * `sessions`: each session, running (with the MB its Claude Code's process tree holds: helpers, shells, MCP
  * servers, and what it has committed where the host says), closed or never recorded, then the host's free memory
- * and commit charge. It only reads.
+ * and commit charge; with `--pass`, what an idle pass would close and reopen. It only reads.
  */
 export async function sessions(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const [extra] = args.positionals;
   if (extra !== undefined) {
     throw new UsageError(`unexpected "${extra}"`);
+  }
+  if (args.switches.has('pass')) {
+    return pass(args, runtime);
+  }
+  if (args.flags.has('project')) {
+    throw new UsageError('--project goes with --pass');
   }
   const kit = await openTeamKit(runtime);
   const roster = await rosterOf(runtime, kit, requireConfig(kit, runtime, 'read'));

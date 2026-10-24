@@ -1,12 +1,21 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import { projectTranscriptPath } from '../budget/discover.ts';
+import { SessionLog } from '../sessions/log.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
-import { CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
+import { FakePathProbe } from '../testing/fake-processes.ts';
+import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
+import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
+import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 
 const MB = 2 ** 20;
+const MINUTE_MS = 60_000;
+/** The harness clock's now. */
+const NOW = Date.parse('2030-01-08T10:00:00.000Z');
 const SESSIONS = join(TEAM_HOME, 'state', 'sessions');
+const LOG = join(TEAM_HOME, 'state', 'session-log.jsonl');
 
 /** A team whose lead last started in Claude Code 6900 (still running, with a shell) and alpha in 7100 (ended). */
 async function recordedTeam(): Promise<CliHarness> {
@@ -62,9 +71,100 @@ describe('teamrig sessions', () => {
     ]);
   });
 
-  it('refuses an argument', async () => {
+  it('refuses an argument, and --project without --pass', async () => {
     const result = await (await recordedTeam()).run(['sessions', 'alpha']);
     assert.notEqual(result.code, 0);
     assert.match(result.stderr.join('\n'), /unexpected "alpha"/);
+    const project = await (await recordedTeam()).run(['sessions', '--project', APP]);
+    assert.notEqual(project.code, 0);
+    assert.match(project.stderr.join('\n'), /--project goes with --pass/);
+  });
+});
+
+const TRANSCRIPT = projectTranscriptPath(join(USER_HOME, '.claude', 'projects'), APP, CLAUDE_SESSION);
+const ALPHA_TAB = { pid: 8000, parentPid: 7900, name: 'powershell.exe', commandLine: `powershell -NoExit -Command claude --resume ${CLAUDE_SESSION}` };
+const ALPHA_CLAUDE = { pid: 8100, parentPid: ALPHA_TAB.pid, name: 'claude.exe', commandLine: `claude --resume ${CLAUDE_SESSION}` };
+/** Alpha's last reply, 40k tokens of context: small enough to resume. */
+const REPLY = `${JSON.stringify({ type: 'assistant', isSidechain: false, message: { role: 'assistant', usage: { input_tokens: 2, cache_read_input_tokens: 39_998, output_tokens: 50 } } })}\n`;
+
+/** A pass over a team whose lead runs in Claude Code 6900 and alpha in 8100, quiet 75 min; bravo never started. */
+async function runningTeam(): Promise<{ readonly kit: CliHarness; readonly processes: FakeSessionProcesses; readonly options: RunOptions }> {
+  const kit = await recordedTeam();
+  await new SessionRecordStore(kit.files, { sessions: SESSIONS }).write('alpha', { claudePid: ALPHA_CLAUDE.pid, claudeSession: CLAUDE_SESSION, at: '2030-01-08T08:00:00.000Z' });
+  await kit.files.write(TRANSCRIPT, REPLY);
+  const processes = new FakeSessionProcesses().add(ALPHA_TAB).add(ALPHA_CLAUDE);
+  const rows = [
+    { pid: 6900, parent: 1, bytes: 700 * MB, committed: 1600 * MB },
+    { pid: ALPHA_CLAUDE.pid, parent: ALPHA_TAB.pid, bytes: 1100 * MB, committed: 1500 * MB },
+    { pid: 8101, parent: ALPHA_CLAUDE.pid, bytes: 200 * MB, committed: 300 * MB },
+  ];
+  const options: RunOptions = {
+    platform: 'win32',
+    probe: new FakePathProbe({ folders: [APP] }),
+    memory: new FakeHostMemory().lists(rows),
+    sessionProcesses: processes,
+    transcripts: new MemoryTranscripts({ [TRANSCRIPT]: REPLY }, NOW - 75 * MINUTE_MS),
+  };
+  return { kit, processes, options };
+}
+
+/** A team none of whose sessions runs, alpha and bravo closed by the lead at 09:00 UTC. */
+async function closedTeam(): Promise<CliHarness> {
+  const kit = new CliHarness(TEAM);
+  const log = new SessionLog(kit.files, LOG);
+  for (const session of ['alpha', 'bravo']) {
+    await log.append({ kind: 'close', session, by: 'lead', at: '2030-01-08T09:00:00.000Z', claudeSession: `claude-${session}`, idleMinutes: 75, freedMb: 1300 });
+  }
+  return kit;
+}
+
+async function hand(kit: CliHarness, owner: string, priority: string): Promise<void> {
+  const added = await kit.run(['add', '--title', `Ship ${owner}'s part`, '--description', 'what and why', '--priority', priority, '--owner', owner, '--session', 'lead']);
+  assert.equal(added.code, 0, added.stderr.join('\n'));
+}
+
+function assertOk(result: CliResult): void {
+  assert.equal(result.code, 0, [...result.stdout, ...result.stderr].join('\n'));
+}
+
+describe('teamrig sessions --pass', () => {
+  it('closes an idle session, keeps the lead and leaves one teamrig did not close, changing nothing', async () => {
+    const team = await runningTeam();
+    const result = await team.kit.run(['sessions', '--pass'], team.options);
+    assertOk(result);
+    assert.deepEqual(result.stdout, [
+      'KEEP app-lead (session lead) holds the lead role: teamrig never closes it',
+      'CLOSE app-alpha (session alpha): quiet 75 min, its Claude Code holds 1300 MB, 1800 MB committed',
+      'AWAY app-bravo (session bravo): not running, and teamrig did not close it',
+      'PASS 3 session(s): 1 to close, 0 to reopen, 0 to reopen later, 1 kept open, 0 closed, 1 away; nothing changed',
+    ]);
+    assert.deepEqual(team.processes.ends, [], 'the pass ends nothing');
+    assert.equal(team.kit.files.get(LOG), undefined, 'and logs nothing');
+  });
+
+  it('reopens one closed session a pass, the most urgent first, for work handed to it since its close', async () => {
+    const kit = await closedTeam();
+    await hand(kit, 'alpha', 'p1');
+    await hand(kit, 'bravo', 'p1');
+    const result = await kit.run(['sessions', '--pass'], { probe: new FakePathProbe({ folders: [APP] }), memory: new FakeHostMemory().lists([]) });
+    assertOk(result);
+    assert.deepEqual(result.stdout, [
+      'AWAY app-lead (session lead): not running, and teamrig did not close it',
+      'REOPEN app-alpha (session alpha): work handed to it since its close: T1',
+      'LATER app-bravo (session bravo): work handed to it since its close: T2; app-alpha reopens first, one a pass',
+      'PASS 3 session(s): 0 to close, 1 to reopen, 1 to reopen later, 0 kept open, 0 closed, 1 away; nothing changed',
+    ]);
+  });
+
+  it('leaves a reopen for later when the host has no room, and a session closed with work under the wake priority', async () => {
+    const kit = await closedTeam();
+    await hand(kit, 'alpha', 'p1');
+    await hand(kit, 'bravo', 'p2');
+    const memory = new FakeHostMemory().lists([]);
+    memory.free = 500;
+    const result = await kit.run(['sessions', '--pass'], { probe: new FakePathProbe({ folders: [APP] }), memory });
+    assertOk(result);
+    assert.match(result.stdout[1] ?? '', /^LATER app-alpha \(session alpha\): work handed to it since its close: T1; no room on the host to reopen app-alpha, counted at /);
+    assert.equal(result.stdout[2], 'CLOSED app-bravo (session bravo): nothing it can start');
   });
 });
