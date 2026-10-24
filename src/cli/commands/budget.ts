@@ -15,7 +15,7 @@ import { calibrationOf } from '../../budget/calibration.ts';
 import { claudeProjectsDir, type TranscriptSource } from '../../budget/discover.ts';
 import { ExtraLog, type ExtraEntry } from '../../budget/extra.ts';
 import { formatPct, formatUsd } from '../../budget/format.ts';
-import { activeLift, decideLift, LiftLog, liftText, parentBudgetText, type Lift, type LiftNames } from '../../budget/lift.ts';
+import { activeGroupLift, activeLift, decideLift, LiftLog, liftText, parentBudgetText, type Lift, type LiftNames } from '../../budget/lift.ts';
 import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID, type Measured } from '../../budget/measure.ts';
 import { budgetSplitOf, dailyBudgetOf, groupPartsOf, liftPlaceOf, teamPartOf, type BudgetSplit } from '../../budget/parts.ts';
 import { nextPeriod, sightOf, type Period } from '../../budget/period.ts';
@@ -31,6 +31,7 @@ import {
   taskLines,
   todayLines,
   weekLine,
+  type GroupToday,
   type SessionToday,
 } from '../../budget/report.ts';
 import {
@@ -184,12 +185,23 @@ function sessionsToday(reading: Reading, roster: Roster, budget: BudgetConfig, s
   });
 }
 
-/** Session `id`'s lift by name: the leader that gave it and the sub-lead whose group's daily budget it is a part of (`split`'s tree). */
+/** Each sub-lead's group today: its part of the day (`groupPartsOf`) and its group lift by name. */
+function groupsToday(reading: Reading, roster: Roster, split: BudgetSplit, others: readonly BudgetSplit[]): GroupToday[] {
+  return groupPartsOf(reading.week.allowancePct, split, others).map((group) => {
+    const lift = activeGroupLift(reading.lifts, group.id, reading.now, reading.week.usedPct);
+    return { id: group.id, name: roster.nameOf(group.id) ?? group.id, sessions: group.sessions, budgetPct: group.budgetPct, lift, ...liftNamesOf(split, roster, group.id, lift) };
+  });
+}
+
+/**
+ * The lift of session `id`, or of the group sub-lead `id` leads, by name: the leader that gave it and the sub-lead
+ * whose group's daily budget it is a part of (`split`'s tree).
+ */
 export function liftNamesOf(split: BudgetSplit, roster: Roster, id: string, lift: Lift | undefined): LiftNames {
   if (lift === undefined) {
     return { liftBy: undefined, liftParent: undefined };
   }
-  const parent = liftPlaceOf(split, id, false)?.parent;
+  const parent = liftPlaceOf(split, id, lift.group)?.parent;
   return { liftBy: roster.nameOf(lift.by) ?? lift.by, liftParent: parent === undefined ? undefined : (roster.nameOf(parent) ?? parent) };
 }
 
@@ -296,7 +308,7 @@ export async function budget(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     const outsideToday = measured.outside.byDay[today];
     const outside = { w: wSince([measured.outside], week.todayFrom, now), calls: outsideToday?.calls ?? 0, sessions: measured.outsideSessions, titles: measured.outsideTitles };
     const behind = measured.behind.map((each) => (each === OUTSIDE_ID ? 'outside the team' : (roster.nameOf(each) ?? each)));
-    lines = recountDay === undefined ? todayLines({ week, teamPct, sessions, outside, behind, all, zone }) : recountLines(today, { week, sessions, outside, all });
+    lines = recountDay === undefined ? todayLines({ week, teamPct, sessions, groups: groupsToday(reading, roster, split, others), outside, behind, all, zone }) : recountLines(today, { week, sessions, outside, all });
   }
   for (const line of lines) {
     runtime.out.stdout(line);
