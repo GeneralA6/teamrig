@@ -1,3 +1,4 @@
+import { claudeProjectsDir, projectTranscriptPath } from '../budget/discover.ts';
 import type { Roster } from '../config/roster.ts';
 import type { KitConfig } from '../config/types.ts';
 import { KIT_NAME } from '../core/home.ts';
@@ -12,7 +13,7 @@ import { measureSessions, type SessionPlace } from '../sessions/measure.ts';
 import { SessionRecordStore, type SessionRecord } from '../sessions/record.ts';
 import { REPLY_TAIL_BYTES } from '../turn-log/reply.ts';
 import { startableTasks } from '../wake/day-start.ts';
-import { lastSessionOf } from './commands/rehire.ts';
+import { measureTranscript } from './commands/rehire.ts';
 import { teamZone, type Kit } from './kit.ts';
 import { RefusedError, type CliRuntime } from './runtime.ts';
 import { teamRegister } from './team-register.ts';
@@ -48,7 +49,10 @@ export interface IdleFacts {
   readonly zone: TimeZone;
 }
 
-/** How a verdict weighs work: the least urgent priority that keeps a session open, and the folder it resumes in. */
+/**
+ * How a verdict weighs work: the least urgent priority that keeps a session open, and the folder it resumes in,
+ * where a session whose record names no transcript has it.
+ */
 export interface IdleOptions {
   readonly maxPriority: number;
   readonly project: string;
@@ -102,9 +106,10 @@ export async function idleVerdictOf(runtime: CliRuntime, config: KitConfig, rost
   if (soon !== undefined) {
     return keep(`waits until ${zone.clock(new Date(soon.at))} on ${soon.task.id}, under ${TIME_WAIT_GUARD_MINUTES} min away`);
   }
-  const last = await lastSessionOf(runtime, record.claudeSession, options.project);
+  const transcript = record.transcript ?? projectTranscriptPath(claudeProjectsDir(runtime.env, runtime.userHome), options.project, record.claudeSession);
+  const last = await measureTranscript(runtime, transcript);
   if (last.changedAt === undefined) {
-    return keep(`has no transcript of Claude Code session ${record.claudeSession} in ${options.project}, so its idle time is unknown`);
+    return keep(`has no transcript of Claude Code session ${record.claudeSession} at ${transcript}, so its idle time is unknown`);
   }
   const idleMinutes = Math.floor((now - last.changedAt) / MINUTE_MS);
   const needed = config.open.headroom.closeIdleMinutes;

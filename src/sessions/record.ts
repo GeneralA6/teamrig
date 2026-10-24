@@ -18,6 +18,12 @@ export interface SessionRecord {
   readonly claudeSession: string;
   /** When the hook recorded it, an ISO time (a record whose time does not parse is damaged). */
   readonly at: string;
+  /**
+   * That Claude Code session's transcript, as the start's payload named it: it sits under the folder the tab runs
+   * in, which need not be the team's project. Absent when the payload named none, and in a record written before
+   * the hook kept it (the session's next start adds it).
+   */
+  readonly transcript?: string;
 }
 
 /** A record file's content; undefined when it is damaged or from another format. */
@@ -32,7 +38,11 @@ export function parseSessionRecord(text: string): SessionRecord | undefined {
   if (!isNonNegativeInteger(claudePid) || claudePid === 0 || claudeSession === undefined || at === undefined || Number.isNaN(Date.parse(at))) {
     return undefined;
   }
-  return { claudePid, claudeSession, at };
+  if (!('transcript' in record)) {
+    return { claudePid, claudeSession, at };
+  }
+  const transcript = stringField(record, 'transcript');
+  return transcript === undefined || transcript === '' ? undefined : { claudePid, claudeSession, at, transcript };
 }
 
 export function formatSessionRecord(record: SessionRecord): string {

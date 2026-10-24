@@ -38,7 +38,7 @@ function unmeasured(error: unknown): ResumeVerdict {
   return { kind: 'fresh', detail: `its last Claude Code session could not be measured: ${errorMessage(error)}` };
 }
 
-/** A Claude Code session's transcript in a project folder, when it last changed and the context at its last turn. */
+/** A Claude Code session's transcript, when it last changed and the context at its last turn. */
 export interface LastSession {
   readonly transcript: string;
   /** Epoch ms; undefined when the transcript is not there. */
@@ -48,8 +48,12 @@ export interface LastSession {
 }
 
 /** Measures Claude Code session `claudeSession` in `project`: `<projects>/<project slug>/<session>.jsonl`. It throws when a read fails. */
-export async function lastSessionOf(runtime: CliRuntime, claudeSession: string, project: string): Promise<LastSession> {
-  const transcript = projectTranscriptPath(claudeProjectsDir(runtime.env, runtime.userHome), project, claudeSession);
+export function lastSessionOf(runtime: CliRuntime, claudeSession: string, project: string): Promise<LastSession> {
+  return measureTranscript(runtime, projectTranscriptPath(claudeProjectsDir(runtime.env, runtime.userHome), project, claudeSession));
+}
+
+/** Measures the Claude Code transcript at `transcript`, in whatever folder it sits. It throws when a read fails. */
+export async function measureTranscript(runtime: CliRuntime, transcript: string): Promise<LastSession> {
   const changedAt = await runtime.transcripts.changedAt(transcript);
   const tokens = changedAt === undefined ? undefined : await readContextTokens(runtime.files, transcript);
   return { transcript, changedAt, tokens };
