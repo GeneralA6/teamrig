@@ -1839,7 +1839,8 @@ It prints `CLEARED shop-web: its tab ran /clear` when the mod cleared the tab,
 Context refresh. The lead asks a session for one (`teamrig refresh <id|name>`): after that session's next
 `set ... --status done` it writes a handover, and the user types `/clear` for the fresh start once done with its
 screen (with `refresh.autoRestart` on, teamrig starts it fresh once it is idle). A session whose handover is
-written runs `teamrig refresh --ready`. With the automatic restart, the Stop hook runs `teamrig restart` hidden
+written runs `teamrig refresh --ready`, which refuses a handover over `refresh.handoverMaxBytes` (20,000 bytes;
+0: no cap), since the fresh start reads all of it. With the automatic restart, the Stop hook runs `teamrig restart` hidden
 for the fresh start; you never run it. See
 [workflows.md](workflows.md#handover-at-high-context).
 

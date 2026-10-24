@@ -1129,6 +1129,8 @@ const HOLD_AFTER_ACTIVITY_MINUTES = { min: 0, max: 60 } as const;
 const COUNTDOWN_SECONDS = { min: 0, max: 120 } as const;
 /** 0 turns the stop of Claude Code's compaction off. */
 const COMPACT_CEILING_TOKENS = { min: 0, max: 10_000_000 } as const;
+/** 0 turns the cap off; a megabyte is far past any context window. */
+const HANDOVER_MAX_BYTES = { min: 0, max: 1_000_000 } as const;
 /** A program and its arguments. */
 const END_COMMAND_MAX_ITEMS = 16;
 
@@ -1147,6 +1149,7 @@ function parseRefresh(read: ConfigReader, raw: JsonRecord): RefreshConfig {
     holdAfterActivityMinutes: read.integer(raw, 'holdAfterActivityMinutes', path, defaults.holdAfterActivityMinutes, HOLD_AFTER_ACTIVITY_MINUTES),
     countdownSeconds: read.integer(raw, 'countdownSeconds', path, defaults.countdownSeconds, COUNTDOWN_SECONDS),
     compactCeilingTokens: read.integer(raw, 'compactCeilingTokens', path, defaults.compactCeilingTokens, COMPACT_CEILING_TOKENS),
+    handoverMaxBytes: read.integer(raw, 'handoverMaxBytes', path, defaults.handoverMaxBytes, HANDOVER_MAX_BYTES),
     endCommand: read.stringList(raw, 'endCommand', path, defaults.endCommand, undefined, END_COMMAND_MAX_ITEMS),
     ...(handoverDir === undefined ? {} : { handoverDir }),
   };

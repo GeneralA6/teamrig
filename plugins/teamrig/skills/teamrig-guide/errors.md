@@ -113,6 +113,7 @@ or take it to the lead.
 | `REFUSED no refresh was asked of you: ...` | Nothing to do: carry on. |
 | `REFUSED write your handover to <path> first` | Write the handover, then run `refresh --ready` again. |
 | `REFUSED <path> is the handover from before; write this refresh's handover there` | Rewrite the file with the current state. |
+| `REFUSED <path> is <n> bytes, over refresh.handoverMaxBytes (<max>): ...` | Rewrite the whole file short, with only what the next session needs, then run `refresh --ready` again. |
 | `REFUSED context refresh is off for this team (refresh.enabled in the team config)` | The team turned refresh off; carry on. |
 | Inbox: `the automatic restart did not happen: <why>; type /clear for a fresh start` | Ask the user to type `/clear`; your handover still waits for the fresh start. |
 | Inbox: `you were restarted, but refresh.endCommand was not found` (or `failed (...)`) | The SessionEnd hooks the hard end skipped did not run: tell the lead, whose team config names that program. |
