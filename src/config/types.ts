@@ -845,9 +845,28 @@ export interface HeadroomConfig {
   readonly closeIdleMinutes: number;
 }
 
+/**
+ * What the idle pass does with a session it would close or reopen (src/cli/idle-pass.ts): `off` runs no pass,
+ * `dry-run` logs each step it would take and takes none.
+ */
+export const IDLE_MODES = ['off', 'dry-run'] as const;
+export type IdleMode = (typeof IDLE_MODES)[number];
+
+export function isIdleMode(value: unknown): value is IdleMode {
+  return IDLE_MODES.some((mode) => mode === value);
+}
+
+/** The idle pass: it closes a session the wake check would not wake once it is quiet, and reopens it when work arrives. */
+export interface IdleConfig {
+  readonly mode: IdleMode;
+  /** Sessions never closed for being quiet (by the pass or `teamrig close`), on top of the lead and the coordinator owner. */
+  readonly keepOpen: readonly string[];
+}
+
 export interface OpenConfig {
   readonly terminal: TerminalChoice;
   readonly headroom: HeadroomConfig;
+  readonly idle: IdleConfig;
 }
 
 /** What `teamrig statusline` shows beside the model and the plan's use of the week. */

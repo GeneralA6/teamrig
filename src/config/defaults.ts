@@ -11,6 +11,7 @@ import type {
   DecisionsConfig,
   GithubConfig,
   HeadroomConfig,
+  IdleConfig,
   ExecConfig,
   HiringConfig,
   LaunchConfig,
@@ -263,7 +264,10 @@ export const DEFAULT_REFRESH: RefreshConfig = {
  */
 export const DEFAULT_HEADROOM: HeadroomConfig = { sessionMb: 1200, commitMaxPct: 92, closeIdleMinutes: 60 };
 
-export const DEFAULT_OPEN: OpenConfig = { terminal: 'auto', headroom: DEFAULT_HEADROOM };
+/** No idle pass runs until the team turns it on, and then it keeps open only the sessions its roles name. */
+export const DEFAULT_IDLE: IdleConfig = { mode: 'off', keepOpen: [] };
+
+export const DEFAULT_OPEN: OpenConfig = { terminal: 'auto', headroom: DEFAULT_HEADROOM, idle: DEFAULT_IDLE };
 
 /** The status line shows the session's folder, its branch and the command that resumes it, unless the team turns them off. */
 export const DEFAULT_STATUS_LINE: StatusLineConfig = { folder: true, branch: true, resume: true };

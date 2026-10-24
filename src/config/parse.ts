@@ -27,6 +27,7 @@ import {
   DEFAULT_LOOPS,
   DEFAULT_MESSAGES,
   DEFAULT_HEADROOM,
+  DEFAULT_IDLE,
   DEFAULT_OPEN,
   DEFAULT_OWNER_GATES,
   DEFAULT_COMMIT_GUARD,
@@ -67,6 +68,7 @@ import {
   isHiringPolicy,
   isOverAction,
   isHookAsks,
+  isIdleMode,
   isPushToProtected,
   isSecretReads,
   isSkipHooks,
@@ -74,6 +76,7 @@ import {
   isVerifyGate,
   isWeekday,
   HOOK_ASKS,
+  IDLE_MODES,
   OVER_ACTIONS,
   PUSH_TO_PROTECTED,
   SECRET_READS,
@@ -101,6 +104,7 @@ import {
   type KitConfig,
   type LaunchConfig,
   type HeadroomConfig,
+  type IdleConfig,
   type OpenConfig,
   type PathsConfig,
   type PermissionsConfig,
@@ -432,7 +436,7 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
     refresh: parseRefresh(read, read.section(raw, 'refresh', '')),
     hiring: parseHiring(read, read.section(raw, 'hiring', '')),
     burst: parseBurst(read, read.section(raw, 'burst', '')),
-    open: parseOpen(read, read.section(raw, 'open', '')),
+    open: parseOpen(read, read.section(raw, 'open', ''), sessions),
     statusLine: parseStatusLine(read, read.section(raw, 'statusLine', '')),
     launch,
     paths: parsePaths(read, read.section(raw, 'paths', '')),
@@ -1015,11 +1019,30 @@ function parseSkills(read: ConfigReader, raw: JsonRecord): SkillsConfig {
   };
 }
 
-function parseOpen(read: ConfigReader, raw: JsonRecord): OpenConfig {
+function parseOpen(read: ConfigReader, raw: JsonRecord, sessions: readonly string[]): OpenConfig {
   const terminal = read.string(raw, 'terminal', 'open', DEFAULT_OPEN.terminal, (value) =>
     isTerminalChoice(value) ? undefined : `expected one of ${TERMINALS.join(', ')}`,
   );
-  return { terminal: isTerminalChoice(terminal) ? terminal : DEFAULT_OPEN.terminal, headroom: parseHeadroom(read, read.section(raw, 'headroom', 'open')) };
+  return {
+    terminal: isTerminalChoice(terminal) ? terminal : DEFAULT_OPEN.terminal,
+    headroom: parseHeadroom(read, read.section(raw, 'headroom', 'open')),
+    idle: parseIdle(read, read.section(raw, 'idle', 'open'), sessions),
+  };
+}
+
+/** `open.idle`: whether the idle pass runs, and the sessions it keeps open; one not on the team is reported and left out. */
+function parseIdle(read: ConfigReader, raw: JsonRecord, sessions: readonly string[]): IdleConfig {
+  const path = 'open.idle';
+  const mode = read.string(raw, 'mode', path, DEFAULT_IDLE.mode, (value) => (isIdleMode(value) ? undefined : `expected one of ${IDLE_MODES.join(', ')}`));
+  const keepOpen = read.list(raw, 'keepOpen', path, DEFAULT_IDLE.keepOpen, (value, itemPath) => {
+    const id = read.stringItem(value, itemPath, isSessionName);
+    if (id !== undefined && sessions.length > 0 && !sessions.includes(id)) {
+      read.report(itemPath, `${describe(id)} is not one of the sessions`);
+      return undefined;
+    }
+    return id;
+  });
+  return { mode: isIdleMode(mode) ? mode : DEFAULT_IDLE.mode, keepOpen };
 }
 
 /** `open.headroom`: the room a new session needs on the host. */

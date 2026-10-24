@@ -1159,6 +1159,24 @@
             "commitMaxPct": { "description": "The most of the host's commit limit, in %, its commit charge may reach with the new session counted (Windows and Linux; elsewhere free memory alone is checked).", "type": "integer", "minimum": 50, "maximum": 100, "default": 92 },
             "closeIdleMinutes": { "description": "How long, in minutes, a session stays quiet before teamrig close may end it to free the host; teamrig open resumes it.", "type": "integer", "minimum": 15, "maximum": 10080, "default": 60 }
           }
+        },
+        "idle": {
+          "description": "The idle pass: it would close a session the wake check would not wake once it has been quiet open.headroom.closeIdleMinutes, and reopen it when the wake check would wake it. The lead and the coordinator owner are never closed.",
+          "type": "object",
+          "properties": {
+            "mode": {
+              "description": "off runs no pass; dry-run runs it and logs each close or reopen it would make, with its reason, and makes none.",
+              "type": "string",
+              "enum": ["off", "dry-run"],
+              "default": "off"
+            },
+            "keepOpen": {
+              "description": "Sessions the idle pass and teamrig close never close for being quiet, on top of the lead and the coordinator owner.",
+              "type": "array",
+              "items": { "$ref": "#/$defs/sessionName" },
+              "default": []
+            }
+          }
         }
       }
     },
