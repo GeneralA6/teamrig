@@ -197,6 +197,21 @@ describe('teamrig idle-open', () => {
     assert.equal(actsOf(printing)[0]?.['outcome'], 'failed');
   });
 
+  it('keeps it closed, unmeasured, while the teamrig install lacks a file its hooks run', async () => {
+    const copying = await closedAlpha(40_000);
+    await handWork(copying);
+    const plugins = join(USER_HOME, '.claude', 'plugins');
+    const install = join(plugins, 'cache', 'teamrig', 'teamrig', '0.167.0');
+    await copying.kit.files.write(join(plugins, 'installed_plugins.json'), JSON.stringify({ version: 2, plugins: { 'teamrig@teamrig': [{ scope: 'user', installPath: install, version: '0.167.0' }] } }));
+    await copying.kit.files.write(join(install, 'hooks', 'hooks.json'), JSON.stringify({ hooks: {} }));
+    const kept = await idleOpen(copying);
+    assert.equal(kept.result.code, 0, kept.result.stderr.join('\n'));
+    assert.deepEqual(kept.result.stdout, ['KEPT app-alpha (session alpha) closed: teamrig 0.167.0 lacks dist/cli/main.js, so the reopen waits for a settled install']);
+    assert.deepEqual(kept.argv, []);
+    assert.deepEqual(await logOf(copying), [CLOSED]);
+    assert.deepEqual(actsOf(copying), [{ v: 1, kind: 'act', mode: 'off', act: 'reopen', id: 'alpha', outcome: 'kept', line: kept.result.stdout[0] }]);
+  });
+
   it('quotes the urgent lines posted while it was closed ahead of its first prompt, and takes them once its tab opened', async () => {
     const alpha = await closedAlpha(40_000);
     const asks = await urgentLine(alpha);
