@@ -104,6 +104,17 @@ export class WakeAsks {
   }
 }
 
+/** The asks read, without the damaged ones and those from another format. */
+export function validAsksOf(stored: readonly StoredWakeAsk[]): readonly WakeAsk[] {
+  return stored.flatMap((each) => (each.ask === undefined ? [] : [each.ask]));
+}
+
+/** `an urgent line from <sender>`, or `<n> urgent lines from <senders>`, each sender once. */
+export function urgentLinesText(asks: readonly WakeAsk[]): string {
+  const senders = [...new Set(asks.map((ask) => ask.from))].join(', ');
+  return `${asks.length === 1 ? 'an urgent line' : `${asks.length} urgent lines`} from ${senders}`;
+}
+
 /** Whether the asks wake the session now, at a later time, or not (none, or only damaged ones). */
 export type AskVerdict = { readonly kind: 'none' } | { readonly kind: 'later'; readonly at: number } | { readonly kind: 'wake'; readonly asks: readonly WakeAsk[] };
 
@@ -113,7 +124,7 @@ export type AskVerdict = { readonly kind: 'none' } | { readonly kind: 'later'; r
  * urgent by its sender's choice.
  */
 export function askVerdictOf(stored: readonly StoredWakeAsk[], now: number, batchMs: number): AskVerdict {
-  const asks = stored.flatMap((each) => (each.ask === undefined ? [] : [each.ask]));
+  const asks = validAsksOf(stored);
   if (asks.length === 0) {
     return { kind: 'none' };
   }
@@ -136,8 +147,7 @@ export function handedToast(tasks: readonly Task[], asks: readonly WakeAsk[], co
   if (asks.length === 0) {
     return wakeToast(tasks, cost);
   }
-  const senders = [...new Set(asks.map((ask) => ask.from))].join(', ');
-  const lines = `${asks.length === 1 ? 'an urgent line' : `${asks.length} urgent lines`} from ${senders}`;
+  const lines = urgentLinesText(asks);
   // The tasks first, so the senders' list ends the sentence and no id reads as a sender.
   const what = tasks.length === 0 ? lines : `${idsText(tasks)} and ${lines}`;
   return `${KIT_NAME} woke this tab for ${what} (${costText(cost)})`;
