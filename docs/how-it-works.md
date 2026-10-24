@@ -119,7 +119,8 @@ The lead hires a temporary member for one job with `teamrig hire`, within the te
   (7), once it finished `minDone` (3); its dated work is its active tasks of the top `topPriorities` (2) priorities
   with a due, their own or that of a task that needs them. The flag names the slice to move (the latest open tasks no
   started work needs) and its cost, a new hire's part of the team's daily budget today, a day until the slice's last
-  due or the week's pace end; the areas furthest behind are paid first, out of the week's projected spare, and none
+  due or the week's pace end; the areas furthest behind are paid first, out of the team's part of the week's projected
+  spare (as for a surplus burst, below), and none
   once it cannot pay or the team's daily budget is unknown. Its action moves the slice to an idle hire, else hires
   within `maxSessions`, else brings the owner a card to raise it (a child team's lead asks its parent team's lead to). The hire retires as RETIRE-DUE once its slice is
   done.
@@ -369,8 +370,12 @@ fast gives less a day and one that spends slowly gives more. The floor at its st
   the week is a budget call), `lead`, or `off`. No value starts a burst by itself; the lead's hook only suggests
   one, once a week, when the surplus is worth it.
 - A surplus burst covers the whole team (or `--sessions`) from `burst.surplusHours` (48) before the reset until the
-  pace end, once `burst.minSparePct` (5%) of the week is projected unused: the use so far plus the week's mean
-  rate so far, nights included, until the pace end, against `budget.targetPct`.
+  pace end, once the team's part of the week projected unused is at least `burst.minSparePct` (5%). The account's
+  spare is the use so far plus the week's mean rate so far, nights included, until the pace end, against
+  `budget.targetPct`; teams sharing the Claude account split it by weight as they split the daily budget (each
+  session's share times its queued work, summed per team, lifts included), so a lift inside one team moves no spare
+  between teams. A burst's daily floor is not split: it is a share of what the account has left to the stop %,
+  which the other teams' use already lowers.
 - A deadline burst covers the owners of its `--task` tasks (or `--sessions`) until `--by`, at the latest the reset,
   and needs a `--stop-pct`.
 - Its bounds: the stop % is at most `budget.targetPct`, so a burst never spends the incident reserve; it ends at its

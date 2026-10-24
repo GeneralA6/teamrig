@@ -626,7 +626,7 @@ Bursts with teamrig burst: a time-boxed scale-out onto helpers and hired session
 | --- | --- | --- | --- |
 | `policy` | one of `"off"`, `"owner"`, `"lead"` | `"owner"` | off: no bursts. owner: the lead starts one once the owner approved (--approved-by, kept with the burst). lead: the lead starts one within the caps. |
 | `surplusHours` | integer (1 to 167) | `48` | A surplus burst starts at the earliest this many hours before the week's reset. |
-| `minSparePct` | number (0.1 to 100) | `5` | The least share of the week, in %, projected unused at the pace end (at the week's mean rate so far) for a surplus burst. |
+| `minSparePct` | number (0.1 to 100) | `5` | The least share of the week, in %, projected unused at the pace end (at the week's mean rate so far) for a surplus burst; with other teams on the Claude account, the team's part of it (split by weight, as the daily budget is). |
 | `maxHelpers` | integer (0 to 20) | `3` | The most helpers each burst session runs at once; the burst's model line states it. |
 | `maxHires` | integer (0 to 20) | `2` | The most sessions one burst may hire (teamrig hire --burst); the hiring caps apply as well. |
 

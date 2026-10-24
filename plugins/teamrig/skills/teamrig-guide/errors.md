@@ -152,7 +152,7 @@ From `teamrig burst start`, `teamrig burst end` ([commands.md](commands.md#teamr
 | `REFUSED burst.policy is owner: a burst spends more of the week, so the owner approves each one; ...` | Ask the owner, then run it again with `--approved-by "<who>"`. |
 | `REFUSED a surplus burst runs until ...; end it first: teamrig burst end --reason "<why>"` | One burst at a time: end the one in force first, or work within it. |
 | `REFUSED a surplus burst starts only from <time> (burst.surplusHours 48 before the reset) until the pace end` | Wait for the window, or start a deadline burst for work due sooner. |
-| `REFUSED only 3.1% of the week is projected unused at the pace end, below burst.minSparePct (5.0%): ...` | There is no surplus to spend: no burst. `teamrig burst` shows the projection. |
+| `REFUSED only 3.1% of the week is projected unused at the pace end, below burst.minSparePct (5.0%): ...` (with other teams on the account: `only 3.1% of the week, this team's part of the account's 6.2%, is projected unused ...`) | There is no surplus for the team to spend: no burst. `teamrig burst` shows the projection. |
 | `REFUSED a deadline burst needs --stop-pct <n>: ...` (or `--by <time>`, `--task <ids>`) | Add the flag the line names. |
 | `REFUSED --stop-pct 99.7 is above budget.targetPct (99.5): a burst never spends the reserve` | Use a stop % up to `budget.targetPct`. |
 | `REFUSED --helpers 5 is above burst.maxHelpers (3)` (or `--hires`, `burst.maxHires`) | Ask for fewer, or ask the owner to raise the cap. |

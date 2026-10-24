@@ -1345,7 +1345,7 @@
         },
         "surplusHours": { "description": "A surplus burst starts at the earliest this many hours before the week's reset.", "type": "integer", "minimum": 1, "maximum": 167, "default": 48 },
         "minSparePct": {
-          "description": "The least share of the week, in %, projected unused at the pace end (at the week's mean rate so far) for a surplus burst.",
+          "description": "The least share of the week, in %, projected unused at the pace end (at the week's mean rate so far) for a surplus burst; with other teams on the Claude account, the team's part of it (split by weight, as the daily budget is).",
           "type": "number",
           "minimum": 0.1,
           "maximum": 100,
