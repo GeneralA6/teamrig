@@ -111,6 +111,11 @@ describe('startableTasks', () => {
       startableTasks(tasks, 'alpha', NOW, TimeZone.UTC).map((task) => task.id),
       ['T2', 'T7', 'T1'],
     );
+    assert.deepEqual(
+      startableTasks(tasks, 'alpha', NOW, TimeZone.UTC, 2).map((task) => task.id),
+      ['T2', 'T7'],
+      'a max priority leaves out less urgent work',
+    );
     assert.deepEqual(startableTasks(tasks, 'charlie', NOW, TimeZone.UTC), []);
   });
 
