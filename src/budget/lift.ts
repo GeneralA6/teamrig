@@ -7,27 +7,33 @@ import type { TimeZone } from '../core/zone.ts';
 import { formatEndTime, formatPct } from './format.ts';
 
 /**
- * The lead's lift of one session's daily budget, for today only: a part of the team's daily budget, which is
- * recomputed at every reading, so the lifted budget moves with it. The lifts in force never give more than the
- * whole of it. Every lift carries a stop %, the week's use at which it ends, and ends at the stop %, its `--until`
- * or the end of the day, whichever comes first. The reserve release (`--reserve`) is the one lift above
- * `lift.maxStopPct`: only in the last hour before the reset, up to `lift.reserveStopPct`, and always over 15
- * minutes before the reset. A lift also exempts its session from quiet hours, which the live warning reads.
+ * A leader's lift, for today only, of one session's daily budget or of a sub-lead's group's: a part of its parent's
+ * daily budget (the team's, or the group's that holds it), which is recomputed at every reading, so the lifted
+ * budget moves with it. The lifts in force under one parent never give more than the whole of it. Every lift
+ * carries a stop %, the week's use at which it ends, and ends at the stop %, its `--until` or the end of the day,
+ * whichever comes first. The reserve release (`--reserve`) is the one lift above `lift.maxStopPct`: only in the last
+ * hour before the reset, up to `lift.reserveStopPct`, and always over 15 minutes before the reset. A session's lift
+ * also exempts it from quiet hours, which the live warning reads; a group's lift is a share, so it does not.
  */
 
 /**
  * The format of the lift log's records; any other is skipped on read, and a newer one refuses a write. Format 1
- * lifts gave a fixed % of the week; they lasted a day at most, so none is still in force.
+ * lifts gave a fixed % of the week; they lasted a day at most, so none is still in force. Format 3 adds `group`.
  */
-export const LIFT_FORMAT = 2;
+export const LIFT_FORMAT = 3;
+/** Format 2 records, written before group lifts, read as session lifts. */
+const SESSION_LIFT_FORMAT = 2;
 /** A reserve release is given only this long before the reset. */
 export const RESERVE_OPENS_BEFORE_RESET_MS = MS_PER_HOUR;
 /** A reserve release always ends this long before the reset. */
 export const RESERVE_ENDS_BEFORE_RESET_MS = 15 * 60_000;
 
 export interface Lift {
+  /** The lifted session, or for a group lift the sub-lead whose group it lifts. */
   readonly session: string;
-  /** The session's part of the team's daily budget while the lift lasts, in percent of that budget. */
+  /** Whether it lifts the sub-lead's whole group rather than the session alone. */
+  readonly group: boolean;
+  /** The session's or group's part of its parent's daily budget while the lift lasts, in percent of that budget. */
   readonly partPct: number;
   /** The week's use, in percent, at which the lift ends. */
   readonly stopPct: number;
@@ -37,13 +43,14 @@ export interface Lift {
   /** The live warning's quiet hours do not apply to the session while the lift lasts. */
   readonly quietHoursExempt: boolean;
   readonly reason: string;
-  /** The lead that gave it. */
+  /** The leader that gave it. */
   readonly by: string;
   readonly at: number;
 }
 
 export interface LiftRequest {
   readonly session: string;
+  readonly group: boolean;
   readonly partPct: number;
   /** Undefined when the command line left it out, which is refused. */
   readonly stopPct: number | undefined;
@@ -59,10 +66,19 @@ export interface LiftContext {
   readonly usedPct: number | undefined;
   readonly reset: number | undefined;
   readonly limits: BudgetLiftConfig;
-  /** The parts the other sessions' lifts in force give, in percent of the team's daily budget, summed. */
+  /** The parts the other lifts in force under the same parent give, in percent of the parent's daily budget, summed. */
   readonly liftedPct: number;
+  /** The parent's daily budget in words (`parentBudgetText`), which a refusal names. */
+  readonly parent: string;
+  /** What to do when the parent is too small, appended to that refusal; undefined when the parent is the team's. */
+  readonly beyondParent: string | undefined;
   /** The team's zone, which a refusal prints its times in. */
   readonly zone: TimeZone;
+}
+
+/** The daily budget a lift is a part of: the team's, or the group's of the sub-lead that holds the lifted node. */
+export function parentBudgetText(subLeadName: string | undefined): string {
+  return subLeadName === undefined ? "the team's daily budget" : `${subLeadName}'s group's daily budget`;
 }
 
 export type LiftDecision = { readonly kind: 'lift'; readonly lift: Lift } | { readonly kind: 'refused'; readonly reason: string };
@@ -79,9 +95,10 @@ export function decideLift(request: LiftRequest, context: LiftContext): LiftDeci
     return refused('a lift needs --stop-pct <n>: the share of the week, in %, at which it ends');
   }
   if (request.partPct + context.liftedPct > 100) {
+    const beyond = context.beyondParent === undefined ? '' : `. ${context.beyondParent}`;
     return refused(
-      `the other lifts in force give ${formatPct(context.liftedPct)} of the team's daily budget, so --part ${request.partPct} ` +
-        `would give more than all of it; the most this lift may give is ${formatPct(Math.max(0, 100 - context.liftedPct))}`,
+      `the other lifts in force give ${formatPct(context.liftedPct)} of ${context.parent}, so --part ${request.partPct} ` +
+        `would give more than all of it; the most this lift may give is ${formatPct(Math.max(0, 100 - context.liftedPct))}${beyond}`,
     );
   }
   if (stopPct > limits.reserveStopPct) {
@@ -118,11 +135,12 @@ export function decideLift(request: LiftRequest, context: LiftContext): LiftDeci
     kind: 'lift',
     lift: {
       session: request.session,
+      group: request.group,
       partPct: request.partPct,
       stopPct,
       endsAt,
       reserve,
-      quietHoursExempt: true,
+      quietHoursExempt: !request.group,
       reason: request.reason,
       by: request.by,
       at: now,
@@ -131,22 +149,37 @@ export function decideLift(request: LiftRequest, context: LiftContext): LiftDeci
 }
 
 /**
- * The session's lift in force at `now`: its newest lift, given by now and not yet ended by its time
- * or, when the week's use is known, by its stop %. A newer lift replaces an older one.
+ * The newest lift of `session` of the kind `group`, given by now and not yet ended by its time or, when the week's
+ * use is known, by its stop %. A newer lift replaces an older one of the same kind.
  */
-export function activeLift(lifts: readonly Lift[], session: string, now: number, usedPct: number | undefined): Lift | undefined {
-  const newest = lifts.filter((lift) => lift.session === session && lift.at <= now).at(-1);
+function newestInForce(lifts: readonly Lift[], session: string, group: boolean, now: number, usedPct: number | undefined): Lift | undefined {
+  const newest = lifts.filter((lift) => lift.session === session && lift.group === group && lift.at <= now).at(-1);
   if (newest === undefined || now >= newest.endsAt || (usedPct !== undefined && usedPct >= newest.stopPct)) {
     return undefined;
   }
   return newest;
 }
 
-/** What a lift gives, after "lifted", on the team's clock: `teamrig to 40% of the team's daily budget today until 18:00 IDT or 97.0% of the week, ...`. */
-export function liftText(lift: Lift, name: string, zone: TimeZone): string {
+/** The session's own lift in force at `now`; a lift of the group it leads is not one. */
+export function activeLift(lifts: readonly Lift[], session: string, now: number, usedPct: number | undefined): Lift | undefined {
+  return newestInForce(lifts, session, false, now, usedPct);
+}
+
+/** The lift in force at `now` of the group `subLead` leads. */
+export function activeGroupLift(lifts: readonly Lift[], subLead: string, now: number, usedPct: number | undefined): Lift | undefined {
+  return newestInForce(lifts, subLead, true, now, usedPct);
+}
+
+/**
+ * What a lift gives, after "lifted", on the team's clock, `parent` from `parentBudgetText`:
+ * `teamrig to 40% of the team's daily budget today until 18:00 IDT or 97.0% of the week, ...`.
+ */
+export function liftText(lift: Lift, name: string, parent: string, zone: TimeZone): string {
+  const who = lift.group ? `${name}'s group` : name;
+  const quiet = lift.quietHoursExempt ? '; quiet hours do not apply to it' : '';
   return (
-    `${name} to ${formatPct(lift.partPct)} of the team's daily budget today${lift.reserve ? ' from the reserve' : ''} until ` +
-    `${formatEndTime(lift.endsAt, zone)} or ${formatPct(lift.stopPct)} of the week, whichever comes first; quiet hours do not apply to it.`
+    `${who} to ${formatPct(lift.partPct)} of ${parent} today${lift.reserve ? ' from the reserve' : ''} until ` +
+    `${formatEndTime(lift.endsAt, zone)} or ${formatPct(lift.stopPct)} of the week, whichever comes first${quiet}.`
   );
 }
 
@@ -154,6 +187,7 @@ function liftRecord(lift: Lift): JsonRecord {
   return {
     [VERSION_FIELD]: LIFT_FORMAT,
     session: lift.session,
+    group: lift.group,
     partPct: lift.partPct,
     stopPct: lift.stopPct,
     endsAt: new Date(lift.endsAt).toISOString(),
@@ -175,9 +209,10 @@ function instantOf(record: JsonRecord, key: string): number | undefined {
   return Number.isNaN(at) ? undefined : at;
 }
 
-/** One record as a lift; undefined when it is damaged. */
-export function parseLift(record: JsonRecord): Lift | undefined {
-  const { partPct, stopPct, reserve, quietHoursExempt } = record;
+/** One record of format `version` (2 or 3) as a lift; undefined when it is damaged. */
+export function parseLift(record: JsonRecord, version: number): Lift | undefined {
+  const { partPct, stopPct, reserve, quietHoursExempt, group: written } = record;
+  const group = version === SESSION_LIFT_FORMAT ? false : written;
   const session = stringField(record, 'session');
   const reason = stringField(record, 'reason');
   const by = stringField(record, 'by');
@@ -191,12 +226,13 @@ export function parseLift(record: JsonRecord): Lift | undefined {
     at === undefined ||
     !finitePct(partPct) ||
     !finitePct(stopPct) ||
+    typeof group !== 'boolean' ||
     typeof reserve !== 'boolean' ||
     typeof quietHoursExempt !== 'boolean'
   ) {
     return undefined;
   }
-  return { session, partPct, stopPct, endsAt, reserve, quietHoursExempt, reason, by, at };
+  return { session, group, partPct, stopPct, endsAt, reserve, quietHoursExempt, reason, by, at };
 }
 
 export interface LiftLogRead {
@@ -219,7 +255,7 @@ export class LiftLog {
     const parse = parseJsonl((await this.files.read(this.path)) ?? '');
     const lifts: Lift[] = [];
     for (const { record, version } of parse.records) {
-      const lift = version === LIFT_FORMAT ? parseLift(record) : undefined;
+      const lift = version === LIFT_FORMAT || version === SESSION_LIFT_FORMAT ? parseLift(record, version) : undefined;
       if (lift !== undefined) {
         lifts.push(lift);
       }

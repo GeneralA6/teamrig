@@ -4,7 +4,7 @@ import type { InBurst } from './burst.ts';
 import { budgetMarkOf, burstText, MORE_BURST } from './burst-lines.ts';
 import type { ExtraPool } from './extra.ts';
 import { formatCount, formatPct, formatUsd, formatW, isBudgetDayEnd, noRoomText } from './format.ts';
-import { liftText, type Lift } from './lift.ts';
+import { liftText, parentBudgetText, type Lift } from './lift.ts';
 import { TURN_TRIGGERS } from './line.ts';
 import { hasRoom } from './pace.ts';
 import { emptyPatterns, PATTERN_FIELDS, type PatternField } from './patterns.ts';
@@ -320,7 +320,7 @@ export function sessionLines(session: SessionToday, state: UsageState, week: Wee
     lines.push(`Its daily budget today is ${formatPct(session.budgetPct)} of the week${budgetMarkOf(session.lift, session.inBurst !== undefined)}.`);
   }
   if (session.lift !== undefined) {
-    lines.push(`Budget: the lead lifted ${liftText(session.lift, session.name, zone)}`);
+    lines.push(`Budget: the lead lifted ${liftText(session.lift, session.name, parentBudgetText(undefined), zone)}`);
   }
   if (session.inBurst !== undefined) {
     lines.push(`Budget: the lead started ${burstText(session.inBurst.burst, [session.name], zone, session.inBurst.floorPct)} ${MORE_BURST}`);

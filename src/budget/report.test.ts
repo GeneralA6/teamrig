@@ -78,6 +78,7 @@ const LIFT: Lift = {
   stopPct: 97,
   endsAt: Date.parse('2026-10-16T00:00:00Z'),
   reserve: false,
+  group: false,
   quietHoursExempt: true,
   reason: 'release',
   by: 'lead',

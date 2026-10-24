@@ -259,7 +259,7 @@ describe('wakeRestOf', () => {
   it("reads the hold and quiet hours from the session's facts, and its lift's exemption", () => {
     assert.deepEqual(wakeRestOf(facts(), undefined, NOW), { held: false, quiet: false });
     assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 1.5 }), QUIET_HOURS, NOW), { held: true, quiet: true });
-    const lift = { session: 'alpha', partPct: 40, stopPct: 97, endsAt: NOW + 60 * MINUTE, reserve: false, quietHoursExempt: true, reason: 'incident', by: 'lead', at: NOW - MINUTE };
+    const lift = { session: 'alpha', group: false, partPct: 40, stopPct: 97, endsAt: NOW + 60 * MINUTE, reserve: false, quietHoursExempt: true, reason: 'incident', by: 'lead', at: NOW - MINUTE };
     assert.deepEqual(wakeRestOf(facts({ lift }), QUIET_HOURS, NOW), { held: false, quiet: false });
   });
 

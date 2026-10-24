@@ -19,7 +19,7 @@ function otherTeam(team: string, ids: readonly string[], extra: Partial<BudgetSp
 }
 
 function lift(overrides: Partial<Lift> = {}): Lift {
-  return { session: 'alpha', partPct: 50, stopPct: 97, endsAt: NOW + 60 * MINUTE, reserve: false, quietHoursExempt: true, reason: 'release', by: 'lead', at: NOW - MINUTE, ...overrides };
+  return { session: 'alpha', group: false, partPct: 50, stopPct: 97, endsAt: NOW + 60 * MINUTE, reserve: false, quietHoursExempt: true, reason: 'release', by: 'lead', at: NOW - MINUTE, ...overrides };
 }
 
 /** The flat split `dailyBudgetOf` replaced (teamrig 0.152.0 `sessionBudgetPct`), kept to pin the tree to it. */

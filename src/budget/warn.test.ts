@@ -61,6 +61,7 @@ function lift(overrides: Partial<Lift> = {}): Lift {
     stopPct: 97,
     endsAt: Date.parse('2026-10-15T23:59:00Z'),
     reserve: false,
+    group: false,
     quietHoursExempt: true,
     reason: 'incident',
     by: 'lead',
