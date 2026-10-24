@@ -1,10 +1,11 @@
 import { LeadTree } from "../../config/lead-tree.js";
-import { formatAddress, splitAddress } from "../../core/address.js";
+import { formatAddress } from "../../core/address.js";
 import { ENV } from "../../core/home.js";
 import { NAME_RULE } from "../../core/ids.js";
 import { PlainLogFile } from "../../core/log-file.js";
 import { SecretScanner } from "../../core/secrets.js";
-import { formatRead, formatStatus, inboxStatus, lineOnClock, postLine, readInbox } from "../../inbox/inbox.js";
+import { groupIds, parseTo } from "../../inbox/groups.js";
+import { formatRead, formatStatus, inboxStatus, lineOnClock, postLines, readInbox } from "../../inbox/inbox.js";
 import { CLAUDE_SESSION_ID } from "../../inbox/marks.js";
 import { reachOf } from "../../inbox/reach.js";
 import { InboxDir, JsonlMarkLog } from "../../inbox/store.js";
@@ -65,15 +66,15 @@ export async function status(args, runtime) {
     statuses.forEach((item) => runtime.out.stdout(formatStatus(item, zone)));
     return EXIT.ok;
 }
-function ownTeamRecipient(paths, config, id) {
-    return { paths, config, id, label: id };
+function ownTeamRecipient(own, id) {
+    return { paths: own.paths, config: own.config, id, label: id, sender: own.from.id, crossing: false };
 }
 /**
  * A session of another team of the sender's tree, when the sender may write to it: a member only to
  * its own team, a lead also to its parent team's lead and its child teams' leads.
  */
-async function recipientInTree(runtime, from, team, session) {
-    const { tree, teams } = await loadTree(runtime);
+async function recipientInTree(runtime, loaded, from, team, session) {
+    const { tree, teams } = loaded;
     const target = teams.get(team);
     if (target === undefined) {
         throw new RefusedError(`no team ${team} with a config in this kit home`);
@@ -85,38 +86,78 @@ async function recipientInTree(runtime, from, team, session) {
         throw new RefusedError(reach.problem);
     }
     const kit = await openKit(runtime, team);
-    return { paths: kit.paths, config: requireConfig(kit, runtime, 'write'), id: to.id, label: formatAddress(to) };
+    return { paths: kit.paths, config: requireConfig(kit, runtime, 'write'), id: to.id, label: formatAddress(to), sender: formatAddress(from), crossing: true };
 }
+/** The recipients one `--to` item names: a group of the sender's team, or one session of its tree. */
+async function recipientsOfItem(runtime, own, item, tree) {
+    if (item.kind === 'session') {
+        const { team, session } = item.address;
+        return [team === undefined || team === own.from.team
+                ? ownTeamRecipient(own, sessionIdOf(own.roster, session))
+                : await recipientInTree(runtime, await tree(), own.from, team, session)];
+    }
+    const group = item.kind === 'group' ? { kind: item.kind, leader: sessionIdOf(own.roster, item.leader) } : item;
+    const ids = groupIds(own.config, group, own.from.id);
+    if (!ids.ok) {
+        throw new RefusedError(ids.problem);
+    }
+    return ids.ids.map((id) => ownTeamRecipient(own, id));
+}
+/** Every recipient the `--to` items name, each once, in the order first named; refused when none is left. */
+async function recipientsOf(runtime, own, items, to) {
+    let loaded;
+    const tree = () => (loaded ??= loadTree(runtime));
+    const byLabel = new Map();
+    for (const item of items) {
+        for (const recipient of await recipientsOfItem(runtime, own, item, tree)) {
+            if (!byLabel.has(recipient.label)) {
+                byLabel.set(recipient.label, recipient);
+            }
+        }
+    }
+    if (byLabel.size === 0) {
+        throw new RefusedError(`--to ${to} names no session but the sender ${own.from.id}`);
+    }
+    return [...byLabel.values()];
+}
+function postedLine(recipients) {
+    const [only] = recipients;
+    if (recipients.length === 1 && only !== undefined) {
+        return `POSTED to ${only.label}; ${only.label} is reminded at its next prompt`;
+    }
+    return `POSTED to ${recipients.length} sessions (${recipients.map((recipient) => recipient.label).join(', ')}); each is reminded at its next prompt`;
+}
+const TO_FORMS = 'a session id or name, <team>/<id>, all, leads, group:<leader>, or a comma-separated list of them';
 /**
- * `inbox add --to <id|name|team/id> --text "<line>"`: appends one dated line to a session's inbox. A
- * bare id or name is on the sender's team; `<team>/<id>` reaches another team of its tree, as far as
- * the sender's place allows, and the line names the sender `<team>/<id>`.
+ * `inbox add --to <to> --text "<line>"`: appends one dated line to each receiver's inbox, all of them or, when one is
+ * refused, none. A bare id or name is on the sender's team; `<team>/<id>` reaches another team of its tree, as far as
+ * the sender's place allows, and that line names the sender `<team>/<id>`. `all`, `leads` and `group:<leader>` are
+ * groups of the sender's team that leave the sender out; a comma-separated list names each receiver once.
  */
 export async function add(args, runtime) {
     noPositionals(args);
     const caller = callerOf(args.flags, runtime.env);
-    const address = splitAddress(requiredFlag(args.flags, 'to'));
-    if (address === undefined) {
-        throw new UsageError(`--to "${args.flags.get('to') ?? ''}" is not a session id or name, or <team>/<id> (${NAME_RULE})`);
+    const to = requiredFlag(args.flags, 'to');
+    const items = parseTo(to);
+    if (items === undefined) {
+        throw new UsageError(`--to "${to}" is not ${TO_FORMS} (${NAME_RULE})`);
     }
     const text = requiredFlag(args.flags, 'text');
     const { team } = await findTeam(runtime);
     const kit = await openKit(runtime, team);
     const config = requireConfig(kit, runtime, 'write');
     const roster = await rosterOf(runtime, kit, config);
-    const from = sessionIdOf(roster, caller);
-    const crossing = address.team !== undefined && address.team !== team;
-    const recipient = crossing
-        ? await recipientInTree(runtime, { team, id: from }, address.team, address.session)
-        : ownTeamRecipient(kit.paths, config, sessionIdOf(roster, address.session));
-    const { inboxes } = inboxDepsOf(runtime, recipient.paths);
-    const now = new Date(runtime.clock.now());
-    const secrets = new SecretScanner([...config.register.secretPatterns, ...(crossing ? recipient.config.register.secretPatterns : [])]);
-    const sender = crossing ? formatAddress({ team, id: from }) : from;
-    const problem = await postLine(inboxes, secrets, { to: recipient.id, from: sender, text, now });
+    const own = { from: { team, id: sessionIdOf(roster, caller) }, paths: kit.paths, config, roster };
+    const recipients = await recipientsOf(runtime, own, items, to);
+    const secrets = new SecretScanner([
+        ...config.register.secretPatterns,
+        ...recipients.filter((recipient) => recipient.crossing).flatMap((recipient) => recipient.config.register.secretPatterns),
+    ]);
+    const targets = recipients.map((recipient) => ({ inboxes: inboxDepsOf(runtime, recipient.paths).inboxes, to: recipient.id, from: recipient.sender }));
+    const problem = await postLines(targets, secrets, { text, now: new Date(runtime.clock.now()) });
     if (problem !== undefined) {
         throw new RefusedError(problem);
     }
-    runtime.out.stdout(`POSTED to ${recipient.label}; ${recipient.label} is reminded at its next prompt`);
+    runtime.out.stdout(postedLine(recipients));
     return EXIT.ok;
 }
