@@ -33,6 +33,8 @@ export interface BudgetFacts {
   /** Its daily budget in % of the week: its lift's while lifted, at least its burst's while in a burst. */
   readonly budgetPct: number;
   readonly lift: Lift | undefined;
+  /** The sub-lead whose group's daily budget its lift is a part of, by name; undefined for the team's. */
+  readonly liftParent: string | undefined;
   /** The burst in force, when the session is in it. */
   readonly burst: Burst | undefined;
   /** For the lead only, with no burst in force: a surplus worth one. */
@@ -313,7 +315,7 @@ export function stopWarning(facts: BudgetFacts, budget: WarnBudget, previous: Wa
   const standing = standingOf(facts, budget);
   const lines: string[] = [];
   if (facts.lift !== undefined && facts.lift.at !== state.liftAt) {
-    lines.push(`Budget: the lead lifted ${liftText(facts.lift, facts.name, parentBudgetText(undefined), facts.zone)}`);
+    lines.push(`Budget: the lead lifted ${liftText(facts.lift, facts.name, parentBudgetText(facts.liftParent), facts.zone)}`);
   } else if (facts.lift === undefined && state.liftAt !== undefined) {
     lines.push(`Budget: ${facts.name}'s lift has ended; its daily budget is ${formatPct(facts.budgetPct)} again.`);
   }

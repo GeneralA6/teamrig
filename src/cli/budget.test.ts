@@ -270,6 +270,14 @@ describe('teamrig budget lift', () => {
     ]);
   });
 
+  it("lifts a sub-lead's member to a part of its group's daily budget, which budget names", async () => {
+    const { run } = await world({ ...LIMITED, leads: { bravo: ['alpha'] } });
+    const LIFTED =
+      "app-alpha to 50.0% of app-bravo's group's daily budget today until 00:00 UTC (the end of the budget day) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.";
+    assert.deepEqual(ok(await run([...LIFT, '--session', 'lead'])), [`LIFTED ${LIFTED}`]);
+    assert.ok(ok(await run(['budget', 'alpha'])).includes(`Budget: the lead lifted ${LIFTED}`));
+  });
+
   it("refuses lifts that would give more than the team's daily budget, the session's own older lift aside", async () => {
     const { run } = await world();
     ok(await run([...LIFT, '--session', 'lead']));

@@ -239,6 +239,7 @@ describe('wakeRestOf', () => {
     usedTodayPct: 0.5,
     budgetPct: 1,
     lift: undefined,
+    liftParent: undefined,
     burst: undefined,
     surplus: undefined,
     weekUsedPct: 10,
