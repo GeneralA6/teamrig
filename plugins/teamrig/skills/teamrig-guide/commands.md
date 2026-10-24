@@ -404,8 +404,10 @@ done or dropped task they still name, flags an area that cannot finish its dated
 pays for help (SCALE-OUT), and flags hired sessions to retire (RETIRE-DUE) or to review (REVIEW-DUE).
 Warnings no session owns print under UNOWNED, addressed to the lead: doctor's context-size and context-lists
 findings while the CLAUDE.md files, memory index, skill listing or the newest session's lists run over their
-`contextFiles` budgets (every session on the machine re-reads that text, so it is no one area's), and the flags of a
-skill whose `Owner:` line is missing or names no session on the team. Each row names the check it came from; the
+`contextFiles` budgets (every session on the machine re-reads that text, so it is no one area's), the flags of a
+skill whose `Owner:` line is missing or names no session on the team, and FLEET-STALE: while `open.idle.mode` is not
+`off`, the [idle pass](hooks.md#the-idle-pass) has not run for 15 minutes (or never ran) or its last run failed, so it
+closes and reopens no one. Each row names the check it came from; the
 lead fixes it, hands it on (`teamrig add --owner <session>`) or settles the check. The lead's `start` shows them
 too, and any session's `start` posts the lead one inbox line per warning it was not told of yet, at most 5 per
 start; `state/unowned-notices.json` remembers which and when a start last saw each, so a warning is told again only
@@ -958,6 +960,11 @@ closed that the wake check would now wake (work handed to it since its close, or
 start), `LATER` such a session this pass leaves for the next (one reopen a pass, the most urgent top task first, and
 only with room on the host), `CLOSED` one teamrig closed with nothing it can start, and `AWAY` one not running that
 teamrig did not close; then a `PASS` total.
+
+With `open.idle.mode: dry-run` the wake check runs this pass itself, once a minute across the team
+([the idle pass](hooks.md#the-idle-pass)), and appends to `state/idle-pass.jsonl` each step whose kind changed since
+the last pass, with the host's commit charge, and each new failure; it closes and reopens no one. `off`, the default,
+runs none. The lead reviews a day of that log before any mode that acts.
 
 Flags:
 
@@ -3740,7 +3747,8 @@ since the session last touched it. Tasks handed within `wake.batchSeconds` wake 
 that day, and a burst it is in wakes it once when it starts; quiet hours or a spent daily budget only delay these.
 They are logged with `moments`. No session is woken while its automatic restart may still act (`refresh.autoRestart`),
 since the wake's prompt would cancel it as a typed one does: the check looks again each minute, and the work handed
-meanwhile wakes the fresh session.
+meanwhile wakes the fresh session. Unless `open.idle.mode` is `off`, it also runs the team's
+[idle pass](hooks.md#the-idle-pass), once a minute across the team.
 Stdin: `{"session_id", "cwd"}`.
 
 Flags: none.

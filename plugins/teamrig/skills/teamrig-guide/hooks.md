@@ -22,7 +22,7 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | `PostToolUse` and `PostToolUseFailure` on `Bash` and `PowerShell`, in a team or not | `hook missing-cli` | After a shell call that did not find the bare `teamrig` command, hands the model [the CLI's path to run instead](#after-a-shell-call-the-cli-by-its-path) |
 | `PostToolUse` on reads, edits and shell calls | `hook loop-nudge` | Asks the model once to batch when a turn makes [single-step calls in a row](#after-a-tool-call-the-loop-nudge) |
 | `PreToolUse` on `Agent` and `Task` | `hook helper-gate` | Restates rule 8's helper default at each helper launch; asks before or refuses one while its budget holds it or in quiet hours, [as the team set](#the-daily-budget-warnings-and-the-helper-gate) |
-| The mod, while a tab is idle | `hook wake-check`, `hook wake-dropped` | Wakes the tab's session when unblocked urgent work is handed to it, [batched, with its cost shown](#the-mod-the-wake-on-urgent-work) |
+| The mod, while a tab is idle | `hook wake-check`, `hook wake-dropped` | Wakes the tab's session when unblocked urgent work is handed to it, [batched, with its cost shown](#the-mod-the-wake-on-urgent-work), and runs the team's [idle pass](#the-idle-pass) once a minute |
 | `Stop` (end of each turn) | `hook stop` | Sends the session back once to [a skill edit it dropped](#end-of-a-turn-or-a-helper-a-dropped-skill-edit), and after a task is set waiting, once to [its other work](#end-of-a-turn-keep-working-while-a-task-waits); asks for a handover when a context refresh is due, then starts the automatic restart; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines; names a verifying task whose verify-by day has come; once per `github.everyMinutes` for the whole team, starts `gh sync --auto` hidden in the background; every 10 minutes for the whole team, tells the lead of [a tab that runs without its hooks](#end-of-a-turn-hookless-tabs); with tab status on, sets the tab's ready circle, or the decision circle after a turn that asks the user to decide |
 | `SessionStart`, `UserPromptSubmit`, `Stop`, `StopFailure` and `SessionEnd`, in a team or not | `hook restore-track` | Records each Claude Code session on the machine, where it started and what it was doing, for the restore after a reboot ([the restore tracker](#every-session-the-restore-tracker)) |
 | Every event but `Stop` and a tool call's end: session start and end, each prompt, `PreToolUse` on `AskUserQuestion` and `ExitPlanMode`, `PermissionRequest`, `Elicitation` and its result, a helper's start, `StopFailure`, `PreCompact`, `PostCompact` | `hook tab-status` | With `tabStatus.enabled`, puts a colored circle before the tab's title for what the session is doing ([tab status](#every-event-tab-status)) |
@@ -727,6 +727,18 @@ work it can start, of any priority, and no turn since that time gets one wake th
 its sessions once when the lead starts it. A session that had a turn since is left alone; quiet hours, a hold by
 its budget or nothing it can start delay the wake until they end. The prompt names the moment, the work and the
 cost; the wake log marks it with `moments`.
+
+### The idle pass
+
+With `open.idle.mode` not `off` (`dry-run` is the only other mode today), `hook wake-check` also runs the team's
+idle pass, right after it finds the tab's session and before the meeting's and the restart's holds, since the pass is
+the team's and not this tab's wake; it needs `wake.enabled`. It runs at most once a minute across the team: the
+check that claims `state/idle-pass.lock` runs it, and no check waits for that lock. It works out what
+[`teamrig sessions --pass`](commands.md#teamrig-sessions) prints, keeps the pass's time and each session's step kind in
+`state/idle-pass.json`, and appends to `state/idle-pass.jsonl` the steps whose kind changed, with the host's commit
+charge, and a failure once until its error changes. In `dry-run` it closes and reopens no one. A failure of the pass
+never costs the tab its wake answer; a pass 15 minutes old, never run or failed shows in `teamrig check` as
+FLEET-STALE, a warning for the lead.
 
 ## The mod: the /teamrig command
 
