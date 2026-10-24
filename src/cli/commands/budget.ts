@@ -16,7 +16,7 @@ import { ExtraLog, type ExtraEntry } from '../../budget/extra.ts';
 import { formatUsd } from '../../budget/format.ts';
 import { activeLift, decideLift, LiftLog, liftText, parentBudgetText, type Lift } from '../../budget/lift.ts';
 import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID, type Measured } from '../../budget/measure.ts';
-import { dailyBudgetOf, liftedParts, teamPartOf, type BudgetSplit } from '../../budget/parts.ts';
+import { budgetSplitOf, dailyBudgetOf, liftPlaceOf, teamPartOf, type BudgetSplit } from '../../budget/parts.ts';
 import { nextPeriod, sightOf, type Period } from '../../budget/period.ts';
 import {
   burnLines,
@@ -162,9 +162,9 @@ export async function weekLineOf(runtime: CliRuntime, kit: Kit, config: KitConfi
   return weekLine((await usageReadingOf(runtime, kit, config, roster)).week, teamZone(config, runtime));
 }
 
-/** How the team's part of the day is split among its sessions: by their queued work (`work`) and the lifts in force. */
-function splitOf(reading: Reading, team: string, roster: Roster, budget: BudgetConfig, work: ReadonlyMap<string, number>): BudgetSplit {
-  return { team, ids: roster.ids, sessions: budget.sessions, work, lifted: liftedParts(reading.lifts, roster.ids, reading.now, reading.week.usedPct) };
+/** How the team's part of the day is split among its sessions: down its lead tree, by their queued work (`work`) and the lifts in force. */
+function splitOf(reading: Reading, team: string, roster: Roster, config: Pick<KitConfig, 'budget' | 'leads'>, work: ReadonlyMap<string, number>): BudgetSplit {
+  return budgetSplitOf({ team, ids: roster.ids, sessions: config.budget.sessions, leads: config.leads, work, lifts: reading.lifts, now: reading.now, usedPct: reading.week.usedPct });
 }
 
 /** Each session today: its use, and its part (`split`) of the team's part of the account's daily budget beside the `others` on it, its lift and the burst. */
@@ -260,7 +260,7 @@ export async function budget(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     return EXIT.ok;
   }
   const work = recountDay === undefined ? await readWork(runtime.files, kit.paths.events, config.register.priorities) : new Map<string, number>();
-  const split = splitOf(reading, kit.paths.team, roster, config.budget, work);
+  const split = splitOf(reading, kit.paths.team, roster, config, work);
   // A recount shows no budgets, so it reads no other team.
   const others = recountDay === undefined ? await otherTeamsOnAccount(runtime, { team: kit.paths.team, config, usageDir: kit.paths.usage }, reading.now, reading.week.usedPct) : [];
   const sessions = sessionsToday(reading, roster, config.budget, split, others);
@@ -345,17 +345,24 @@ export async function lift(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
     throw new RefusedError(`only the lead${lead === undefined ? '' : ` (${roster.nameOf(lead) ?? lead})`} lifts a session's budget`);
   }
   const id = sessionIdOf(roster, target);
-  const { week, lifts } = await readBudget(runtime, kit, config, roster, { recountDay: undefined });
-  const others = liftedParts(lifts, roster.ids.filter((each) => each !== id), now, week.usedPct);
+  const name = roster.nameOf(id) ?? id;
+  const reading = await readBudget(runtime, kit, config, roster, { recountDay: undefined });
+  const { week } = reading;
+  const work = await readWork(runtime.files, kit.paths.events, config.register.priorities);
+  const place = liftPlaceOf(splitOf(reading, kit.paths.team, roster, config, work), id, false);
+  if (place === undefined) {
+    throw new RefusedError(`${name} has no daily budget to lift: \`leads\` lists it in a loop of sub-leads no leader above reaches`);
+  }
+  const parent = parentBudgetText(place.parent === undefined ? undefined : (roster.nameOf(place.parent) ?? place.parent));
   const decision = decideLift(
     { session: id, group: false, partPct, stopPct, until, reserve: args.switches.has('reserve'), reason, by, now },
-    { usedPct: week.usedPct, reset: week.reset, limits: config.budget.lift, liftedPct: [...others.values()].reduce((sum, part) => sum + part, 0), parent: parentBudgetText(undefined), beyondParent: undefined, zone },
+    { usedPct: week.usedPct, reset: week.reset, limits: config.budget.lift, liftedPct: place.liftedPct, parent, beyondParent: undefined, zone },
   );
   if (decision.kind === 'refused') {
     throw new RefusedError(decision.reason);
   }
   await new LiftLog(runtime.files, kit.paths.lifts).append(decision.lift);
-  runtime.out.stdout(`LIFTED ${liftText(decision.lift, roster.nameOf(id) ?? id, parentBudgetText(undefined), zone)}`);
+  runtime.out.stdout(`LIFTED ${liftText(decision.lift, name, parent, zone)}`);
   return EXIT.ok;
 }
 

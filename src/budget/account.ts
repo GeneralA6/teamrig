@@ -3,7 +3,7 @@ import type { BudgetConfig, KitConfig } from '../config/types.ts';
 import type { Files } from '../core/files.ts';
 import type { TeamPaths } from '../core/home.ts';
 import { LiftLog, type Lift } from './lift.ts';
-import { liftedParts, type BudgetSplit } from './parts.ts';
+import { budgetSplitOf, type BudgetSplit } from './parts.ts';
 import { cachedWork } from './work.ts';
 
 /** The Claude account a team's week is on: its `budget.account`, else the Claude config dir, which signs in one account. */
@@ -50,8 +50,7 @@ export async function accountTeamsOf(files: Files, teams: ReadonlyMap<string, Ac
     }
     const lifts = await liftsOf(files, kit.paths.lifts);
     const work = await cachedWork(files, kit.paths.events, join(scope.usageDir, workCacheFileOf(team)), config.register.priorities);
-    const lifted = liftedParts(lifts, roster.ids, scope.now, scope.usedPct);
-    others.push({ team, ids: roster.ids, sessions: config.budget.sessions, work, lifted });
+    others.push(budgetSplitOf({ team, ids: roster.ids, sessions: config.budget.sessions, leads: config.leads, work, lifts, now: scope.now, usedPct: scope.usedPct }));
   }
   return others;
 }

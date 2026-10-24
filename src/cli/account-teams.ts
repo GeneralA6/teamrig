@@ -1,15 +1,15 @@
 import { accountOf, accountTeamsOf } from '../budget/account.ts';
 import { LiftLog } from '../budget/lift.ts';
-import { liftedParts, type BudgetSplit, type TeamsOnAccount } from '../budget/parts.ts';
+import { budgetSplitOf, type BudgetSplit, type TeamsOnAccount } from '../budget/parts.ts';
 import type { KitConfig } from '../config/types.ts';
 import { claudeConfigDir } from '../core/home.ts';
 import type { CliRuntime } from './runtime.ts';
 import { loadTree } from './tree.ts';
 
-/** The team that asks: its id, its config's budget and its usage folder, which keeps the other teams' work caches. */
+/** The team that asks: its id, its config's budget and lead tree, and its usage folder, which keeps the other teams' work caches. */
 export interface AskingTeam {
   readonly team: string;
-  readonly config: Pick<KitConfig, 'budget'>;
+  readonly config: Pick<KitConfig, 'budget' | 'leads'>;
   readonly usageDir: string;
 }
 
@@ -44,6 +44,6 @@ export interface AskingRoster extends AskingTeam {
  */
 export async function teamsOnAccountOf(runtime: CliRuntime, asking: AskingRoster, now: number, usedPct: number | undefined): Promise<TeamsOnAccount> {
   const { lifts } = await new LiftLog(runtime.files, asking.liftsPath).read();
-  const split: BudgetSplit = { team: asking.team, ids: asking.ids, sessions: asking.config.budget.sessions, work: asking.work, lifted: liftedParts(lifts, asking.ids, now, usedPct) };
+  const split = budgetSplitOf({ team: asking.team, ids: asking.ids, sessions: asking.config.budget.sessions, leads: asking.config.leads, work: asking.work, lifts, now, usedPct });
   return { split, others: await otherTeamsOnAccount(runtime, asking, now, usedPct) };
 }
