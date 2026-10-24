@@ -114,8 +114,8 @@ export class WakeStore {
 }
 
 /**
- * One line of the wake log: a wake submitted, for work handed to the session or, with `moments`, for the day's
- * moments (src/wake/day-start.ts); or one Claude Code dropped.
+ * One line of the wake log: a wake submitted, for work handed to the session, with `asks` for that many urgent lines
+ * (src/wake/asks.ts), or with `moments` for the day's moments (src/wake/day-start.ts); or one Claude Code dropped.
  */
 export type WakeRecord =
   | {
@@ -125,6 +125,7 @@ export type WakeRecord =
       readonly tab: string;
       readonly ids: readonly string[];
       readonly cost: WakeCost;
+      readonly asks?: number;
       readonly moments?: readonly DayMomentKind[];
     }
   | { readonly kind: 'dropped'; readonly at: number; readonly session: string; readonly tab: string; readonly reason: string };
@@ -145,6 +146,7 @@ export function formatWakeRecord(record: WakeRecord): string {
     w: cost.w,
     cold: cost.cold,
     ...(cost.weekPct === undefined ? {} : { weekPct: cost.weekPct }),
+    ...(record.asks === undefined ? {} : { asks: record.asks }),
     ...(record.moments === undefined ? {} : { moments: [...record.moments] }),
   });
 }
