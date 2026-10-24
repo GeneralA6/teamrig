@@ -627,7 +627,7 @@ export interface RollConfig {
   /** Asked in order before the host lock and again under it; the first that does not pass holds the roll. */
   readonly gates: readonly RollGateConfig[];
   /**
-   * Installs a pulled range's dependency change (package-lock.json, or package.json beyond its scripts), such as
+   * Installs a pulled range's dependency change (package-lock.json, or package.json fields an install reads), such as
    * `npm ci --ignore-scripts`: run after the pull and the `dependencyCheck`, before `afterPull`. A failed install
    * moves the main checkout back and runs again to restore its dependencies. With `dependencyGate`, a dependency
    * change rolls only when this and `dependencyCheck` are set.

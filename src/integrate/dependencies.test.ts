@@ -10,12 +10,12 @@ import { BASELINE_LOCK_ENV, rangeInstallTouches, runDependencyCheck, type Depend
 const manifest = (dependencies: Readonly<Record<string, string>>, scripts: Readonly<Record<string, string>> = {}): string => JSON.stringify({ name: 'app', scripts, dependencies });
 
 describe('rangeInstallTouches', () => {
-  it('names the lockfile and a package.json change beyond its scripts, read at both ends of the range', async () => {
+  it('names the lockfile and a package.json change an install reads, read at both ends of the range', async () => {
     const git = new FakeIntegrateGit();
     git.paths = ['package.json', 'package-lock.json', 'src/app.ts'];
     git.files.set('base:package.json', manifest({ left: '1.0.0' }));
     git.files.set('next:package.json', manifest({ left: '1.0.1' }));
-    assert.deepEqual(await rangeInstallTouches(git, MAIN_CHECKOUT, 'base', 'next'), ['package-lock.json', 'package.json beyond scripts']);
+    assert.deepEqual(await rangeInstallTouches(git, MAIN_CHECKOUT, 'base', 'next'), ['package-lock.json', 'package.json fields an install reads']);
   });
 
   it('passes a range that changes only package.json scripts or no package file', async () => {

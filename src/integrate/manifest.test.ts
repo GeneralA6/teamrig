@@ -12,7 +12,7 @@ describe('classifyManifestChange', () => {
     assert.equal(classifyManifestChange(undefined, undefined), 'none');
   });
 
-  it('needs an install for any field beyond scripts', () => {
+  it('needs an install for a field an install reads', () => {
     assert.equal(classifyManifestChange(manifest(), manifest({ dependencies: { zod: '3.23.9' } })), 'install');
     assert.equal(classifyManifestChange(manifest(), manifest({ overrides: { zod: '3.23.8' } })), 'install');
     assert.equal(classifyManifestChange(manifest({ engines: { node: '>=22' } }), manifest()), 'install');
@@ -25,19 +25,32 @@ describe('classifyManifestChange', () => {
     assert.equal(classifyManifestChange('[]', manifest()), 'install');
   });
 
-  it('calls a change to scripts no install hook reaches scripts-only', () => {
+  it('needs no install for a change to scripts no install hook reaches', () => {
     const before = manifest({}, { test: 'node --test', prepare: 'husky' });
-    assert.equal(classifyManifestChange(before, manifest({}, { test: 'node --test src', prepare: 'husky' })), 'scripts-only');
-    assert.equal(classifyManifestChange(before, manifest({}, { test: 'node --test', prepare: 'husky', lint: 'eslint .' })), 'scripts-only');
+    assert.equal(classifyManifestChange(before, manifest({}, { test: 'node --test src', prepare: 'husky' })), 'no-install');
+    assert.equal(classifyManifestChange(before, manifest({}, { test: 'node --test', prepare: 'husky', lint: 'eslint .' })), 'no-install');
     const noScripts = JSON.stringify({ name: 'app', version: '1.0.0', dependencies: { zod: '3.23.8' }, scripts: 'none' });
-    assert.equal(classifyManifestChange(noScripts, manifest()), 'scripts-only');
+    assert.equal(classifyManifestChange(noScripts, manifest()), 'no-install');
+  });
+
+  it('needs no install for a change to a tool\'s settings or the package description, with such scripts too', () => {
+    const jest = { preset: 'ts-jest' };
+    assert.equal(classifyManifestChange(manifest({ jest }), manifest({ jest: { ...jest, transform: { '^.+\\.ts$': ['ts-jest', { useESM: true }] } } })), 'no-install');
+    assert.equal(classifyManifestChange(manifest(), manifest({ 'lint-staged': { '*.ts': 'eslint' }, description: 'The app' })), 'no-install');
+    assert.equal(classifyManifestChange(manifest({ prettier: { semi: true } }), manifest({}, { test: 'node --test src' })), 'no-install');
+  });
+
+  it('still needs an install when a tool setting changes beside a field an install reads, a hook, or a field it does not know', () => {
+    assert.equal(classifyManifestChange(manifest(), manifest({ jest: { preset: 'ts-jest' }, dependencies: { zod: '3.23.9' } })), 'install');
+    assert.equal(classifyManifestChange(manifest(), manifest({ jest: { preset: 'ts-jest' } }, { test: 'node --test', postinstall: 'node setup.js' })), 'install');
+    assert.equal(classifyManifestChange(manifest(), manifest({ someTool: { on: true } })), 'install');
   });
 
   it('needs an install for a changed hook or a script a hook reaches, through other scripts too', () => {
     const before = manifest({}, { prepare: 'npm run build', build: 'npm run gen', gen: 'node gen.js', 'gen:docs': 'node docs.js' });
     assert.equal(classifyManifestChange(before, manifest({}, { prepare: 'husky', build: 'npm run gen', gen: 'node gen.js', 'gen:docs': 'node docs.js' })), 'install');
     assert.equal(classifyManifestChange(before, manifest({}, { prepare: 'npm run build', build: 'npm run gen', gen: 'node gen2.js', 'gen:docs': 'node docs.js' })), 'install');
-    assert.equal(classifyManifestChange(before, manifest({}, { prepare: 'npm run build', build: 'npm run gen', gen: 'node gen.js', 'gen:docs': 'node docs2.js' })), 'scripts-only');
+    assert.equal(classifyManifestChange(before, manifest({}, { prepare: 'npm run build', build: 'npm run gen', gen: 'node gen.js', 'gen:docs': 'node docs2.js' })), 'no-install');
   });
 
   it('needs an install when a new hook appears', () => {
@@ -72,11 +85,11 @@ describe('packageFilesChange', () => {
 });
 
 describe('needsInstall and installTouches', () => {
-  it('need the install for a lockfile change or a manifest change beyond scripts, and name each', () => {
-    assert.equal(needsInstall({ lockfile: false, manifest: 'scripts-only' }), false);
-    assert.deepEqual(installTouches({ lockfile: false, manifest: 'scripts-only' }), []);
+  it('need the install for a lockfile change or a manifest change an install reads, and name each', () => {
+    assert.equal(needsInstall({ lockfile: false, manifest: 'no-install' }), false);
+    assert.deepEqual(installTouches({ lockfile: false, manifest: 'no-install' }), []);
     assert.equal(needsInstall({ lockfile: true, manifest: 'none' }), true);
     assert.equal(needsInstall({ lockfile: false, manifest: 'install' }), true);
-    assert.deepEqual(installTouches({ lockfile: true, manifest: 'install' }), ['package-lock.json', 'package.json beyond scripts']);
+    assert.deepEqual(installTouches({ lockfile: true, manifest: 'install' }), ['package-lock.json', 'package.json fields an install reads']);
   });
 });
