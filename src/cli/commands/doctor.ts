@@ -1,10 +1,11 @@
 import { claudeProjectsDir } from '../../budget/discover.ts';
 import { launchOf } from '../../config/launch.ts';
 import { Roster } from '../../config/roster.ts';
-import type { ContextFilesConfig } from '../../config/types.ts';
+import type { ContextFilesConfig, KitConfig } from '../../config/types.ts';
 import { claudeConfigDir, KIT_NAME } from '../../core/home.ts';
+import type { PathProbe } from '../../core/path-probe.ts';
 import { readContextFiles } from '../../doctor/context-files.ts';
-import { doctorFindings, formatFinding, type ContextInput } from '../../doctor/doctor.ts';
+import { doctorFindings, formatFinding, type ConfiguredProject, type ContextInput } from '../../doctor/doctor.ts';
 import { readSessionLists } from '../../doctor/session-lists.ts';
 import { claudeSettingsFiles, readSettingsEnv } from '../../doctor/settings-env.ts';
 import { HiringLog, retiredSessions } from '../../hiring/log.ts';
@@ -30,6 +31,19 @@ export async function readContextInput(runtime: CliRuntime, project: string, ski
   };
 }
 
+/** The project folders the config names, `team.project` first, then each session's `launch.<id>.project`, and what is at each. */
+async function configuredProjects(probe: PathProbe, config: KitConfig, ids: readonly string[]): Promise<ConfiguredProject[]> {
+  const team = config.team?.project;
+  const named: readonly Omit<ConfiguredProject, 'kind'>[] = [
+    ...(team === undefined ? [] : [{ session: undefined, path: team }]),
+    ...ids.flatMap((id) => {
+      const path = launchOf(config, id).project;
+      return path === undefined ? [] : [{ session: id, path }];
+    }),
+  ];
+  return Promise.all(named.map(async (entry) => ({ ...entry, kind: await probe.kind(entry.path) })));
+}
+
 /**
  * `doctor`: what teamrig lacks on this machine (git, Claude Code, Node.js), then the team's health checks
  * (names, the rename log, inboxes, rules.md, its tree of teams and session names shared with other teams,
@@ -38,8 +52,9 @@ export async function readContextInput(runtime: CliRuntime, project: string, ski
  * MCP server instructions the project's newest session transcript announced) against the team's `contextFiles` budgets. Last, what
  * silently overrides the model or effort a session or helper is given: `CLAUDE_CODE_EFFORT_LEVEL` or
  * `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` in doctor's own environment or in the `env` block of the user's or the
- * project's Claude Code settings, and a session whose `launch` names a model but no effort; and the local allow rules
- * off `permissions.keepAllow` that approve a whole tool or program (src/cli/allow-scope.ts). It reads only and
+ * project's Claude Code settings, a session whose `launch` names a model but no effort, and a `team.project` or
+ * `launch.<id>.project` that is no folder on this machine; and the local allow rules off `permissions.keepAllow` that
+ * approve a whole tool or program (src/cli/allow-scope.ts). It reads only and
  * exits 0 like `check`: a finding is advice, and each line says the fix. `check` prints the context and allow findings too.
  */
 export async function doctor(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
@@ -68,6 +83,7 @@ export async function doctor(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     settingsEnv: await readSettingsEnv(runtime.files, claudeSettingsFiles(claudeDir, project)),
     wideAllow: await readWideAllow(runtime, { paths, config, project }),
     launches: roster.ids.map((id) => ({ id, launch: launchOf(config, id) })),
+    projects: await configuredProjects(runtime.probe, config, roster.ids),
     now: new Date(runtime.clock.now()),
     zone: teamZone(config, runtime),
     command: KIT_NAME,

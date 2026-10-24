@@ -38,6 +38,7 @@ function input(overrides: Partial<DoctorInput> & { readonly names?: Record<strin
     settingsEnv: [],
     wideAllow: { files: 0, counts: [] },
     launches: [],
+    projects: [],
     now: NOW,
     zone: TimeZone.UTC,
     command: 'teamrig',
@@ -289,5 +290,25 @@ describe('doctorFindings of launch entries', () => {
     const launches = launchesOf({ lead: { model: 'sonnet' } });
     assert.deepEqual(launches.find(({ id }) => id === 'lead')?.launch, { model: 'sonnet', effort: DEFAULT_LEAD_LAUNCH.effort });
     assert.deepEqual(lines(input({ launches })), []);
+  });
+});
+
+describe('doctorFindings of configured project folders', () => {
+  it("flags a team.project or launch.<id>.project that is missing or a file, naming the session by its current name", () => {
+    const renames = [renameOf('alpha', 'app-alpha', 'scout')];
+    const projects: DoctorInput['projects'] = [
+      { session: undefined, path: '/srv/gone', kind: 'none' },
+      { session: 'alpha', path: '/srv/notes.txt', kind: 'file' },
+      { session: 'bravo', path: '/srv/web', kind: 'folder' },
+    ];
+    assert.deepEqual(lines(input({ renames, projects })), [
+      'WARN project-missing team.project names /srv/gone, which is missing on this machine, so a tab teamrig open starts for a session without its own folder refuses to launch: create the folder or fix team.project in the team config',
+      'WARN project-missing launch.alpha.project names /srv/notes.txt, which is a file on this machine, so a tab teamrig open starts for scout (session alpha) refuses to launch: create the folder or fix launch.alpha.project in the team config',
+    ]);
+  });
+
+  it('is quiet when every configured project is a folder, or none is configured', () => {
+    assert.deepEqual(lines(input({ projects: [{ session: 'alpha', path: '/srv/app', kind: 'folder' }] })), []);
+    assert.deepEqual(lines(input()), []);
   });
 });
