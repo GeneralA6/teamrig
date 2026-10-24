@@ -643,7 +643,7 @@ export async function checkReport(args: ParsedArgs, runtime: CliRuntime): Promis
   const tree = args.switches.has('tree');
   const read = await readRegisters(args, runtime);
   const skillFiles = await new SkillDir(runtime.files, read.own.paths.skills).readAll();
-  const project = await projectFolder(runtime);
+  const project = await projectFolder(runtime, read.own.config);
   const tags = [
     ...(await readStopgapTags(runtime.files, project, read.own.config.register.check.stopgapFiles)),
     ...skillFiles.flatMap((skill) => stopgapTags(`${skill.name}/${SKILL_FILE}`, skill.text)),

@@ -25,7 +25,7 @@ export async function trim(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   const kit = await openTeamKit(runtime);
   const config = requireConfig(kit, runtime, 'read');
   const mode: TrimMode = args.switches.has('all') ? 'all' : 'wide';
-  const scope = await teamSettingsScope(runtime, { paths: kit.paths, config, project: await projectFolder(runtime) });
+  const scope = await teamSettingsScope(runtime, { paths: kit.paths, config, project: await projectFolder(runtime, config) });
   const plans = await planScope(runtime.files, scope, new KeepList(config.permissions.keepAllow), mode);
   const lines = plans.flatMap((plan) => planLine(plan) ?? []);
   const what = mode === 'all' ? 'every allow rule' : 'the allow rules that approve a whole tool or program';

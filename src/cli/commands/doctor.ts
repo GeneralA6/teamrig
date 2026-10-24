@@ -51,7 +51,7 @@ export async function doctor(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   const rules = await runtime.files.read(paths.teamRules);
   const { tree } = await loadTree(runtime);
   const claudeDir = claudeConfigDir(runtime.env, runtime.userHome);
-  const project = await projectFolder(runtime);
+  const project = await projectFolder(runtime, config);
   const roster = new Roster(config, paths.team, renameLog.renames);
   const { records } = await new HiringLog(runtime.files, paths.hires).read();
   const findings = doctorFindings({

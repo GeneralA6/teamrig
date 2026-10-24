@@ -114,7 +114,7 @@ interface ScanView {
 }
 
 async function scanView(runtime: CliRuntime, kit: Kit, config: KitConfig, kind: PlaceKind | undefined, all: boolean): Promise<ScanView> {
-  const project = await projectFolder(runtime);
+  const project = await projectFolder(runtime, config);
   const found = await scanRules(
     runtime.files,
     runtime.probe,
