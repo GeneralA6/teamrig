@@ -118,6 +118,7 @@ describe('teamrig close', () => {
     assertRefused(await close(helping, ['alpha', '--yes', '--session', 'lead']), /still runs background work its transcript shows/);
     for (const kept of [busy, helping]) {
       assert.deepEqual(kept.processes.ends, []);
+      assert.deepEqual(kept.processes.described, [], 'a session the cheap checks keep costs no look at its process');
     }
   });
 

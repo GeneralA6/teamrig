@@ -73,23 +73,25 @@ export async function idleFactsOf(runtime: CliRuntime, kit: Kit, config: KitConf
 }
 
 /**
- * Whether `id` closes, with the checks in the order they cost: a role that keeps it, not running, work it can start
- * within `maxPriority`, a time wait of its own ending soon, quiet too briefly, a turn not ended (under way, at a tool
- * call, or a decision put to the person), work running in the background, a last session too big or old to resume
- * (v1 has no handover for a close), or shells an end would cut off. The first that holds keeps it open.
+ * Whether `id` closes, with the checks in the order they cost: a role that keeps it, not running in the host's
+ * process list, work it can start within `maxPriority`, a time wait of its own ending soon, quiet too briefly, a turn
+ * not ended (under way, at a tool call, or a decision put to the person), work running in the background, a last
+ * session too big or old to resume (v1 has no handover for a close), its process no longer a Claude Code, or shells
+ * an end would cut off. The first that holds keeps it open. The last two look at the host's processes one by one
+ * (about a second each on Windows), so only a session every other check would close pays for them.
  */
 export async function idleVerdictOf(runtime: CliRuntime, config: KitConfig, roster: Roster, facts: IdleFacts, id: string, options: IdleOptions): Promise<IdleVerdict> {
   const label = `${roster.nameOf(id) ?? id} (session ${id})`;
   const keep = (why: string): IdleVerdict => ({ kind: 'keep', why: `${label} ${why}` });
+  const notRunning = 'is not running: nothing to close';
   const kept = roster.rolesOf(id).filter((role) => role === 'lead' || role === 'coordinatorOwner');
   if (kept.length > 0) {
     return keep(`holds the ${kept.join(' and ')} role: ${KIT_NAME} never closes it`);
   }
   const record = facts.records.get(id);
   const place = facts.places.find((each) => each.id === id);
-  const claude = record === undefined ? undefined : await runtime.sessionProcesses.describe(record.claudePid);
-  if (record === undefined || place?.state !== 'running' || claude === undefined || !isClaudeProcess(claude)) {
-    return keep('is not running: nothing to close');
+  if (record === undefined || place?.state !== 'running') {
+    return keep(notRunning);
   }
   const { now, zone, tasks } = facts;
   const startable = startableTasks(tasks, id, now, zone, options.maxPriority);
@@ -120,6 +122,10 @@ export async function idleVerdictOf(runtime: CliRuntime, config: KitConfig, rost
   const resume = resumeVerdict({ claudeSession: record.claudeSession, changedAt: last.changedAt, tokens: last.tokens }, config.hiring, now);
   if (resume.kind === 'fresh') {
     return keep(`could not be resumed once closed (${resume.detail}); retire it with its handover instead`);
+  }
+  const claude = await runtime.sessionProcesses.describe(record.claudePid);
+  if (claude === undefined || !isClaudeProcess(claude)) {
+    return keep(notRunning);
   }
   const cutOff = await workCutOffBy(enderOf(runtime), claude);
   if (cutOff !== undefined) {
