@@ -4,7 +4,7 @@ import type { InBurst } from './burst.ts';
 import { budgetMarkOf, burstText, MORE_BURST } from './burst-lines.ts';
 import type { ExtraPool } from './extra.ts';
 import { formatCount, formatPct, formatUsd, formatW, isBudgetDayEnd, noRoomText } from './format.ts';
-import { liftText, parentBudgetText, type Lift } from './lift.ts';
+import { liftedLine, type Lift, type LiftNames } from './lift.ts';
 import { TURN_TRIGGERS } from './line.ts';
 import { hasRoom } from './pace.ts';
 import { emptyPatterns, PATTERN_FIELDS, type PatternField } from './patterns.ts';
@@ -21,12 +21,12 @@ export const OUTSIDE_TITLES_SHOWN = 5;
 
 /** What a session past its daily budget does: never skip a test or check (G-B1 wording). */
 export const OVER_BUDGET_ADVICE =
-  'Finish the step in hand and start no new work items or helpers. Never skip a test or check to save budget. The lead can lift it.';
+  "Finish the step in hand and start no new work items or helpers. Never skip a test or check to save budget. A session's leader can lift its budget.";
 
 export const W_EXPLAINED = 'W = weighted tokens: input 1, cache writes 1.25 to 2, cache reads 0.1, output 5.';
 
 /** One session's use today and its budget. */
-export interface SessionToday {
+export interface SessionToday extends LiftNames {
   readonly id: string;
   readonly name: string;
   /** Its W since the week's `todayFrom`. */
@@ -36,8 +36,6 @@ export interface SessionToday {
   /** Its daily budget in percent of the week: its part of the team's while lifted, at least its burst's floor while in a burst; undefined when unknown. */
   readonly budgetPct: number | undefined;
   readonly lift: Lift | undefined;
-  /** The sub-lead whose group's daily budget its lift is a part of, by name; undefined for the team's. */
-  readonly liftParent: string | undefined;
   /** The burst in force and its floor now, when the session is in it. */
   readonly inBurst: InBurst | undefined;
 }
@@ -322,7 +320,7 @@ export function sessionLines(session: SessionToday, state: UsageState, week: Wee
     lines.push(`Its daily budget today is ${formatPct(session.budgetPct)} of the week${budgetMarkOf(session.lift, session.inBurst !== undefined)}.`);
   }
   if (session.lift !== undefined) {
-    lines.push(`Budget: the lead lifted ${liftText(session.lift, session.name, parentBudgetText(session.liftParent), zone)}`);
+    lines.push(liftedLine(session.lift, session.name, session, zone));
   }
   if (session.inBurst !== undefined) {
     lines.push(`Budget: the lead started ${burstText(session.inBurst.burst, [session.name], zone, session.inBurst.floorPct)} ${MORE_BURST}`);

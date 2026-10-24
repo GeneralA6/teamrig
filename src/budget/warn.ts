@@ -5,12 +5,12 @@ import type { TimeZone } from '../core/zone.ts';
 import type { Burst } from './burst.ts';
 import { budgetMarkOf, burstPromptLines, burstStopLines, type BurstMarks, type SurplusHint } from './burst-lines.ts';
 import { formatPct, noRoomText } from './format.ts';
-import { liftText, parentBudgetText, type Lift } from './lift.ts';
+import { liftedLine, type Lift, type LiftNames } from './lift.ts';
 import { hasRoom, type PaceReading, type TeamDay } from './pace.ts';
 
 /**
  * The live budget warning, pure: from a session's use today and the team's pace, which line its
- * person sees at a turn's end, which line the model gets with the next prompt, whether the lead gets
+ * person sees at a turn's end, which line the model gets with the next prompt, whether its leader gets
  * an inbox line, and whether a helper launch goes ahead, asks the person or is refused. Lines come
  * only at crossings, each once, so a session sees a few a day and none on most turns. A burst's lines
  * (`burst-lines.ts`) come the same way: at its start and end, and the lead's surplus line once a week.
@@ -24,7 +24,7 @@ const BUDGET_COMMAND = `${KIT_NAME} budget`;
 export const MORE = `More: ${BUDGET_COMMAND}`;
 
 /** What the hooks know of one session's budget at one moment. */
-export interface BudgetFacts {
+export interface BudgetFacts extends LiftNames {
   readonly now: number;
   readonly id: string;
   readonly name: string;
@@ -33,8 +33,6 @@ export interface BudgetFacts {
   /** Its daily budget in % of the week: its lift's while lifted, at least its burst's while in a burst. */
   readonly budgetPct: number;
   readonly lift: Lift | undefined;
-  /** The sub-lead whose group's daily budget its lift is a part of, by name; undefined for the team's. */
-  readonly liftParent: string | undefined;
   /** The burst in force, when the session is in it. */
   readonly burst: Burst | undefined;
   /** For the lead only, with no burst in force: a surplus worth one. */
@@ -56,7 +54,7 @@ export interface BudgetFacts {
 export interface BudgetLeader {
   readonly id: string;
   readonly name: string;
-  /** The leader is the team's lead, who lifts budgets; a sub-lead passes the ask up to the lead. */
+  /** The leader is the team's lead, which the lines call "the lead"; a sub-lead they name. Either lifts the session's budget. */
   readonly isLead: boolean;
 }
 
@@ -253,9 +251,14 @@ function escalatedText(facts: BudgetFacts, budget: WarnBudget): string {
   return helpers === undefined ? `${capitalized(told)}.` : `${capitalized(helpers)}; ${told}.`;
 }
 
+/** The session's leader in its lines: `the lead`, or for a sub-lead's member `its leader <name>` (`your leader <name>` to the model). */
+function leaderText(leader: BudgetLeader | undefined, whose: 'its' | 'your'): string {
+  return leader === undefined || leader.isLead ? 'the lead' : `${whose} leader ${leader.name}`;
+}
+
 /** `the lead has an inbox line`, or for a sub-lead's member `its leader <name> has an inbox line`. */
 function toldText(leader: BudgetLeader | undefined): string {
-  return leader === undefined || leader.isLead ? 'the lead has an inbox line' : `its leader ${leader.name} has an inbox line`;
+  return `${leaderText(leader, 'its')} has an inbox line`;
 }
 
 function joined(parts: readonly string[]): string {
@@ -293,21 +296,23 @@ export interface StopWarning {
   readonly state: WarnState;
 }
 
-/** The leader's line: the lead lifts the budget itself; a sub-lead, which cannot, asks the lead when it should. */
+/**
+ * The leader's line, with the lift it can give: the lead's or a sub-lead's alike, as `budget lift` itself refuses a part
+ * past the parent's budget and names the `--group` lift that would make room.
+ */
 function leadLineOf(facts: BudgetFacts, standing: Standing): string {
   const command = `teamrig budget lift ${facts.id} --part <pct> --stop-pct <pct> --reason "<why>"`;
-  const lift = facts.leader === undefined || facts.leader.isLead ? `lift it only with a stop %: ${command}` : `only the lead lifts it, with a stop %, so ask the lead when it should: ${command}`;
   return (
     `${facts.name} is past its daily budget: ${formatPct(facts.usedTodayPct)} of the week today against ${formatPct(facts.budgetPct)}, ` +
     `and ${heldClause(facts, standing)}. ` +
-    `It finishes the step in hand; ${lift}.`
+    `It finishes the step in hand; lift it only with a stop %: ${command}.`
   );
 }
 
 /**
  * The person's lines at a turn's end: a lift or a burst starting or ending, the quiet hours starting, a new
  * warning level, or the session escalating with no new level (the team's room for the day running out, or the
- * team moving ahead of its pace line, while the session is past budget). The lead gets one inbox line a day per
+ * team moving ahead of its pace line, while the session is past budget). Its leader gets one inbox line a day per
  * session once it escalates, unless the action is only `warn`.
  */
 export function stopWarning(facts: BudgetFacts, budget: WarnBudget, previous: WarnState | undefined): StopWarning {
@@ -315,7 +320,7 @@ export function stopWarning(facts: BudgetFacts, budget: WarnBudget, previous: Wa
   const standing = standingOf(facts, budget);
   const lines: string[] = [];
   if (facts.lift !== undefined && facts.lift.at !== state.liftAt) {
-    lines.push(`Budget: the lead lifted ${liftText(facts.lift, facts.name, parentBudgetText(facts.liftParent), facts.zone)}`);
+    lines.push(liftedLine(facts.lift, facts.name, facts, facts.zone));
   } else if (facts.lift === undefined && state.liftAt !== undefined) {
     lines.push(`Budget: ${facts.name}'s lift has ended; its daily budget is ${formatPct(facts.budgetPct)} again.`);
   }
@@ -363,7 +368,7 @@ function escalationLine(facts: BudgetFacts, standing: Standing, state: WarnState
     return undefined;
   }
   const team = standing.ahead ? ', and it is ahead of its pace line' : '';
-  const lift = facts.isLead ? 'As the lead, lift it only with a stop %.' : 'The lead can lift it.';
+  const lift = facts.isLead ? 'As the lead, lift it only with a stop %.' : `${capitalized(leaderText(facts.leader, 'your'))} can lift it.`;
   return (
     `${BUDGET_COMMAND}: you are past today's budget and the team has no room left today${team}. Finish the step in hand and start no new work items or helpers. ` +
     `Never skip a test or check to save budget. ${lift}`
@@ -422,7 +427,7 @@ export function helperGate(facts: BudgetFacts, budget: WarnBudget): HelperGate {
   if (strongest === 0) {
     return { kind: 'allow' };
   }
-  const reason = `${BUDGET_COMMAND}: ${reasons.map((each) => each.text).join(' ')} ${strongest === 2 ? 'New helpers are refused' : 'New helpers ask first'}; the lead can lift it. ${MORE}`;
+  const reason = `${BUDGET_COMMAND}: ${reasons.map((each) => each.text).join(' ')} ${strongest === 2 ? 'New helpers are refused' : 'New helpers ask first'}; ${leaderText(facts.leader, 'its')} can lift it. ${MORE}`;
   return { kind: strongest === 2 ? 'deny' : 'ask', reason };
 }
 

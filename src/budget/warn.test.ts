@@ -38,6 +38,7 @@ function facts(usedTodayPct: number, weekUsedPct: number, now = DAY, extra: Part
     usedTodayPct,
     budgetPct: 1,
     lift: undefined,
+    liftBy: undefined,
     liftParent: undefined,
     burst: undefined,
     surplus: undefined,
@@ -226,11 +227,11 @@ describe('stopWarning', () => {
     assert.equal(later.lines.length, 1);
   });
 
-  it("names a sub-lead's member's own leader, and its line asks the lead to lift", () => {
+  it("names a sub-lead's member's own leader, whose line has it lift the session itself", () => {
     const result = stopWarning(facts(1.1, AHEAD, DAY, { leader: SUB_LEAD }), BUDGET, undefined);
     assert.match(result.lines[0] ?? '', /Its leader app-bravo has an inbox line\./);
     assert.ok(!(result.lines[0] ?? '').includes('the lead has'), result.lines[0]);
-    assert.match(result.leadLine ?? '', /It finishes the step in hand; only the lead lifts it, with a stop %, so ask the lead when it should: teamrig budget lift alpha --part <pct>/);
+    assert.match(result.leadLine ?? '', /It finishes the step in hand; lift it only with a stop %: teamrig budget lift alpha --part <pct> --stop-pct <pct> --reason "<why>"\.$/);
   });
 
   it('never tells the lead about itself', () => {
@@ -267,17 +268,17 @@ describe('stopWarning', () => {
   });
 
   it('shows a lift starting and ending', () => {
-    const lifted = stopWarning(facts(0.5, AHEAD, DAY, { lift: lift(), budgetPct: 2 }), BUDGET, undefined);
-    assert.match(lifted.lines[0] ?? '', /^Budget: the lead lifted alpha to 40\.0% of the team's daily budget today until .* or 97\.0% of the week/);
+    const lifted = stopWarning(facts(0.5, AHEAD, DAY, { lift: lift(), liftBy: 'commander', budgetPct: 2 }), BUDGET, undefined);
+    assert.match(lifted.lines[0] ?? '', /^Budget: commander lifted alpha to 40\.0% of the team's daily budget today until .* or 97\.0% of the week/);
     assert.equal(lifted.state.liftAt, lift().at);
     const ended = stopWarning(facts(0.5, AHEAD), BUDGET, lifted.state);
     assert.deepEqual(ended.lines, ["Budget: alpha's lift has ended; its daily budget is 1.0% again."]);
     assert.equal(ended.state.liftAt, undefined);
   });
 
-  it("names the sub-lead's group whose daily budget the lift is a part of", () => {
-    const lifted = stopWarning(facts(0.5, AHEAD, DAY, { lift: lift(), liftParent: 'app-bravo', budgetPct: 2 }), BUDGET, undefined);
-    assert.match(lifted.lines[0] ?? '', /^Budget: the lead lifted alpha to 40\.0% of app-bravo's group's daily budget today /);
+  it("names the sub-lead that lifted the session and whose group's daily budget the lift is a part of", () => {
+    const lifted = stopWarning(facts(0.5, AHEAD, DAY, { lift: lift({ by: 'bravo' }), liftBy: 'app-bravo', liftParent: 'app-bravo', budgetPct: 2, leader: SUB_LEAD }), BUDGET, undefined);
+    assert.match(lifted.lines[0] ?? '', /^Budget: app-bravo lifted alpha to 40\.0% of app-bravo's group's daily budget today /);
   });
 
   it('shows a burst starting and ending, and marks the budget it sets', () => {
@@ -314,6 +315,10 @@ describe('promptWarning', () => {
     );
     assert.equal(promptWarning(facts(1.2, AHEAD), BUDGET, first.state).line, undefined);
     assert.ok(promptWarning(facts(1.3, AHEAD), BUDGET, first.state).line !== undefined);
+  });
+
+  it("tells a sub-lead's member that its own leader can lift it", () => {
+    assert.match(promptWarning(facts(1.1, AHEAD, DAY, { leader: SUB_LEAD }), BUDGET, undefined).line ?? '', /Never skip a test or check to save budget\. Your leader app-bravo can lift it\.$/);
   });
 
   it('says nothing under budget, while the team is not ahead or while it has room today', () => {
@@ -382,6 +387,11 @@ describe('helperGate', () => {
       gate.reason,
       /^teamrig budget: alpha is past its daily budget \(1\.5% of the week today against 1\.0%\), and the team has used 5\.0% of the week today, at or past its in-day pace of 5\.0%, and the team is 12\.6 points ahead of its pace line\. It is quiet hours \(22:00-06:00 UTC\)\. New helpers ask first; the lead can lift it\. More: teamrig budget$/,
     );
+  });
+
+  it("names a sub-lead's member's own leader as the one who can lift it", () => {
+    const gate = helperGate(facts(1.5, AHEAD, DAY, { leader: SUB_LEAD }), { ...BUDGET, overAction: 'block' });
+    assert.match(gate.kind === 'deny' ? gate.reason : gate.kind, /New helpers are refused; its leader app-bravo can lift it\. More: teamrig budget$/);
   });
 
   it('lets a session past its budget launch helpers while the team has room today', () => {

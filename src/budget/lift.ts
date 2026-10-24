@@ -183,6 +183,19 @@ export function liftText(lift: Lift, name: string, parent: string, zone: TimeZon
   );
 }
 
+/** A session's lift in force, by name for its lines; both undefined while it is not lifted. */
+export interface LiftNames {
+  /** The leader that gave the lift ({@link Lift.by}). */
+  readonly liftBy: string | undefined;
+  /** The sub-lead whose group's daily budget the lift is a part of; undefined for the team's. */
+  readonly liftParent: string | undefined;
+}
+
+/** `Budget: <leader> lifted <session> to ...`, the line that shows a session's lift in force. */
+export function liftedLine(lift: Lift, name: string, names: LiftNames, zone: TimeZone): string {
+  return `Budget: ${names.liftBy ?? lift.by} lifted ${liftText(lift, name, parentBudgetText(names.liftParent), zone)}`;
+}
+
 function liftRecord(lift: Lift): JsonRecord {
   return {
     [VERSION_FIELD]: LIFT_FORMAT,

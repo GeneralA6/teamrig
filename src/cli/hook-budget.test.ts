@@ -114,13 +114,13 @@ describe('the budget in the hooks', () => {
     assert.doesNotMatch(await leadInbox(kit), /past its daily budget/);
   });
 
-  it("tells a sub-lead's member's own leader, not the lead, and the line asks the lead to lift", async () => {
+  it("tells a sub-lead's member's own leader, not the lead, whose line has it lift the session itself", async () => {
     const team = await world({}, 10_000_000, 30, { leads: { bravo: ['alpha'] } });
     const { kit, hook } = team;
     await meterLead(team);
     assert.match(messageOf(await hook('stop', ALPHA_TAB)), /Its leader app-bravo has an inbox line\./);
     const bravo = (await kit.run(['inbox', 'read', '--session', 'bravo'], { env: { CLAUDE_CODE_SESSION_ID: BRAVO_TAB } })).stdout.join('\n');
-    assert.match(bravo, /alpha: app-alpha is past its daily budget: 1\.1% of the week today against 0\.59%,.* only the lead lifts it/);
+    assert.match(bravo, /alpha: app-alpha is past its daily budget: 1\.1% of the week today against 0\.59%,.* lift it only with a stop %: teamrig budget lift alpha /);
     assert.doesNotMatch(await leadInbox(kit), /past its daily budget/);
   });
 
@@ -128,7 +128,7 @@ describe('the budget in the hooks', () => {
     const { kit, hook } = await world({}, 10_000_000, 30, { leads: { bravo: ['alpha'] } });
     const lifted = await kit.run(['budget', 'lift', 'alpha', '--part', '50', '--stop-pct', '97', '--reason', 'release', '--session', 'lead']);
     assert.equal(lifted.code, EXIT.ok, lifted.stderr.join('\n'));
-    assert.match(messageOf(await hook('stop', ALPHA_TAB)), /^Budget: the lead lifted app-alpha to 50\.0% of app-bravo's group's daily budget today /);
+    assert.match(messageOf(await hook('stop', ALPHA_TAB)), /^Budget: app-lead lifted app-alpha to 50\.0% of app-bravo's group's daily budget today /);
   });
 
   it("counts the subagent's W at budget.subagentWeight", async () => {
