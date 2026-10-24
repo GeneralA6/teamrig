@@ -1063,8 +1063,9 @@ NOTE shop-web still finds web in every teamrig command; teamrig never edits perm
 
 ### teamrig hire
 
-Adds a temporary session to the team for one job (`teamrig hire <id> --scope "<its job>" --reason "<why>"`), the
-lead only, within the team's `hiring` policy and `hiring.maxSessions`. Without `--yes` it shows the hire and writes
+Adds a temporary session to the team for one job (`teamrig hire <id> --scope "<its job>" --reason "<why>"`), by a
+lead only: the team's lead, or a sub-lead, whose hire joins its own group (`leads`, the preview says "led by"), within
+the team's `hiring` policy and `hiring.maxSessions`. Without `--yes` it shows the hire and writes
 nothing. With it, the hire goes into the hire log (`state/hires.jsonl`), the old config into the backups folder, and
 the session into the config: `sessions`, `names` with `--name` and `launch` (its model and effort, the lead's own
 unless given); no daily budget, as its part of the team's follows its share and queued work. Its name is
@@ -1132,7 +1133,8 @@ a resumed session re-reads its whole old context on every call.
 
 ### teamrig retire
 
-Takes a session off the team once its job is done (`teamrig retire <id|name>`): the lead, or a hired session
+Takes a session off the team once its job is done (`teamrig retire <id|name>`): a lead over it (the lead, or a
+sub-lead it is under, who hands its tasks only to itself or a session it leads), or a hired session
 itself under `hiring.policy` `automatic` once its tasks are all closed. Without `--yes` it shows the retire and
 writes nothing. With it, the session's open tasks go to the heir (`--to`), who gets one inbox line; the old
 config goes into the backups folder; the session leaves `sessions`, `names`, `launch`, `budget.sessions` and

@@ -102,7 +102,8 @@ talk to one lead: the root team's.
   `teamrig doctor` names one, along with a broken link in the tree.
 - `teamrig team tree` prints the tree with each team's lead and sessions.
 
-The lead hires a temporary member for one job with `teamrig hire`, within the team config's `hiring` block:
+The lead hires a temporary member for one job with `teamrig hire`, within the team config's `hiring` block; a
+sub-lead hires the same way into its own group, and retires only the sessions it leads:
 
 - `policy`: `off` (no hires by command), `owner` (the default: each hire names who approved it), `lead`, or
   `automatic` (the lead decides, and a hired session whose last open task closes is asked at its next turn end to

@@ -87,14 +87,16 @@ or take it to the lead.
 | `REFUSED <project> is already tied to team X by <pointer>; give another --project, or remove that pointer first` | The folder belongs to another team: use another folder, or ask the user. |
 | `REFUSED team X already exists at <path> with sessions ...; choose another team name, or change that config by hand` | Pick another team id, or add sessions to the existing team with the user. |
 | `REFUSED the session name N is already used by ..., and Claude Code session names are machine-wide; choose another team id, or rename ... with teamrig rename` | Choose another team id. |
+| `REFUSED only a lead hires sessions: the lead (<id>), or a sub-lead into its own group` | Ask your leader to hire the session. |
 | `REFUSED hiring.policy is off: the team takes no hires by command` | Ask the owner whether to allow hires; the lead then sets `hiring.policy` in the team config. |
-| `REFUSED hiring.policy is owner: the owner approves each hire; ask the owner, then pass --approved-by "<who>"` | Ask the owner (in a child team the refusal names the parent team's lead, who takes it to the owner), then run the hire again with `--approved-by`. |
+| `REFUSED hiring.policy is owner: the owner approves each hire; ask the owner, then pass --approved-by "<who>"` | Ask the owner (in a child team the refusal names the parent team's lead, and for a sub-lead its own leader, who takes it to the owner), then run the hire again with `--approved-by`. |
 | `REFUSED the team already has N hired session(s), the most hiring.maxSessions allows` | Retire a hired session whose job is done (`teamrig retire`), or ask the owner to raise `hiring.maxSessions`. |
 | `REFUSED <id> owns open task(s) T1: pass --to <heir> to hand them over, or close them first` | Retire it with `--to <heir>`, or let it close its tasks first. |
 | `REFUSED no handover at <path>: write it (open work, next steps, branches, traps) or pass --no-handover "<why>"` | Ask the session to write its handover there, or retire it with `--no-handover "<why>"`. |
 | `REFUSED <id> holds roles.<role>: give the role to another session first` | Set the role to another session in the team config, then retire it. |
 | `REFUSED github.owners names <id> for <login>: point it at another session first` | Point that login (or the repository in `github.sessions`) at another session, then retire it. |
-| `REFUSED only the lead retires <id>: a session retires itself only when hired, under hiring.policy automatic` | Ask the lead to retire it. |
+| `REFUSED only a lead over <id> retires it: a session retires itself only when hired, under hiring.policy automatic` (or `only a lead over the session retires it ...`) | Ask the session's leader (its sub-lead, else the lead) to retire it. |
+| `REFUSED <sub-lead> hands work only within its group: the heir <id> is not led by <sub-lead>; the lead (<id>) moves work between groups` | Pass an heir in your group (or yourself), or ask the lead to retire it. |
 | `REFUSED <id> was not hired back after a retire: --resume resumes only a rehired session's last Claude Code session` | Open it without `--resume`. |
 | `REFUSED not resumed: <why>; open it fresh on its handover: teamrig open <id>` | Its last Claude Code session is gone, too big or too long idle: open it fresh with the command shown. |
 | `--resume "<value>" is not a Claude Code session id` (exit 2) | `launch` was given something other than a session id; open the session again with `teamrig open <id>`. |
