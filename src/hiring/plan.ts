@@ -1,4 +1,5 @@
 import { isDefaultModel, isModel, launchOf } from '../config/launch.ts';
+import { LeadTree } from '../config/lead-tree.ts';
 import { ownerAsk } from '../config/tree.ts';
 import type { EffortLevel, HiringConfig, KitConfig } from '../config/types.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
@@ -31,7 +32,7 @@ export interface HireRequest {
   readonly reviewBy?: string;
   /** The `at` of the burst it is hired for, checked by `burstHireOf` (src/hiring/burst-hire.ts). */
   readonly burst?: number;
-  /** The session hiring it. */
+  /** The session hiring it: the lead, or a sub-lead hiring into its own group. */
   readonly by: string;
   readonly now: number;
 }
@@ -42,6 +43,8 @@ export interface HirePlan {
   readonly hire: HireRecord;
   /** The hired sessions on the team with this one. */
   readonly hired: number;
+  /** Who leads the new session: the session that hired it, so a sub-lead's hire joins its group (T509). */
+  readonly leader: string;
 }
 
 function recordAt(record: JsonRecord, key: string): JsonRecord {
@@ -76,6 +79,20 @@ function reviewDayOf(request: HireRequest, config: KitConfig): Checked<string> {
   return { ok: true, value: formatUtcDay(day) };
 }
 
+/**
+ * Why `by` may not hire, or undefined when it may: a lead hires, the team's lead or a sub-lead (T781), and a
+ * sub-lead's hire joins its own group, so work it hires for never leaves the group (T509).
+ */
+export function hirerProblem(config: Pick<KitConfig, 'sessions' | 'roles' | 'leads'>, by: string): string | undefined {
+  return new LeadTree(config).isLeader(by) ? undefined : `only a lead hires sessions: the lead (${config.roles.lead}), or a sub-lead into its own group`;
+}
+
+/** Whom the hirer asks for the owner's approval: a sub-lead its own leader, who takes it up; the lead {@link ownerAsk}. */
+function approvalAsk(config: KitConfig, by: string): string {
+  const leader = new LeadTree(config).leaderOf(by);
+  return by === config.roles.lead || leader === undefined ? ownerAsk(config) : `${leader}, your leader, who takes it to the owner`;
+}
+
 /** The refusal under `hiring.policy`, or undefined when it allows this hire. */
 function policyProblem(config: KitConfig, request: HireRequest): string | undefined {
   switch (config.hiring.policy) {
@@ -83,7 +100,7 @@ function policyProblem(config: KitConfig, request: HireRequest): string | undefi
       return 'hiring.policy is off: the team takes no hires by command';
     case 'owner':
       return request.approvedBy === undefined || request.approvedBy.trim() === ''
-        ? `hiring.policy is owner: the owner approves each hire; ask ${ownerAsk(config)}, then pass --approved-by "<who>"`
+        ? `hiring.policy is owner: the owner approves each hire; ask ${approvalAsk(config, request.by)}, then pass --approved-by "<who>"`
         : undefined;
     case 'lead':
     case 'automatic':
@@ -92,11 +109,13 @@ function policyProblem(config: KitConfig, request: HireRequest): string | undefi
 }
 
 /**
- * The new session written into `sessions`, `names` and `launch`, and its hire record; or why not. It gets no fixed daily
- * budget: like any session, its part of the team's daily budget follows its share and its queued work (src/budget/parts.ts).
+ * The new session written into `sessions`, `names` and `launch`, and its hire record; or why not. A sub-lead's hire is
+ * also listed under it in `leads`. It launches on the lead's own model and effort unless told otherwise, whoever hires
+ * it, so a burst hire stays on the lead's (src/hiring/burst-hire.ts). It gets no fixed daily budget: like any session,
+ * its part of the team's daily budget follows its share and its queued work (src/budget/parts.ts).
  */
 export function planHire(file: JsonRecord, config: KitConfig, active: readonly HireRecord[], request: HireRequest): Checked<HirePlan> {
-  const refusal = policyProblem(config, request);
+  const refusal = hirerProblem(config, request.by) ?? policyProblem(config, request);
   if (refusal !== undefined) {
     return { ok: false, problem: refusal };
   }
@@ -131,11 +150,13 @@ export function planHire(file: JsonRecord, config: KitConfig, active: readonly H
   const model = request.model ?? leads.model;
   const effort = request.effort ?? leads.effort;
   const launch = { ...(isDefaultModel(model) ? {} : { model }), ...(effort === undefined ? {} : { effort }) };
+  const subLead = request.by === lead ? undefined : request.by;
   const next: JsonRecord = {
     ...file,
     sessions: [...sessions, request.id],
     ...(request.name === undefined ? {} : { names: { ...recordAt(file, 'names'), [request.id]: request.name } }),
     launch: { ...recordAt(file, 'launch'), [request.id]: launch },
+    ...(subLead === undefined ? {} : { leads: { ...recordAt(file, 'leads'), [subLead]: [...(config.leads[subLead] ?? []), request.id] } }),
   };
   const hire: HireRecord = {
     kind: 'hire',
@@ -149,5 +170,5 @@ export function planHire(file: JsonRecord, config: KitConfig, active: readonly H
     by: request.by,
     at: request.now,
   };
-  return { ok: true, value: { config: next, hire, hired: hired + 1 } };
+  return { ok: true, value: { config: next, hire, hired: hired + 1, leader: request.by } };
 }

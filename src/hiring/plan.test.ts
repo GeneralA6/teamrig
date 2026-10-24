@@ -64,6 +64,19 @@ describe('planHire', () => {
     assert.equal(result.hire.model, undefined);
   });
 
+  it("lets a sub-lead hire into its own group, on the lead's launch, and no one else but the lead (T509)", () => {
+    const tree = { ...FILE, sessions: ['lead', 'alpha', 'bravo'], leads: { alpha: ['bravo'] }, launch: { lead: { model: 'opus', effort: 'high' }, alpha: { model: 'sonnet' } } };
+    const result = planned(tree, { by: 'alpha' });
+    assert.deepEqual(result.config['leads'], { alpha: ['bravo', 'helper'] });
+    assert.deepEqual(result.config['sessions'], ['lead', 'alpha', 'bravo', 'helper']);
+    assert.deepEqual(result.hire, { kind: 'hire', session: 'helper', scope: 'port the importer', reason: 'release week', model: 'opus', effort: 'high', reviewBy: '2030-01-15', by: 'alpha', at: NOW });
+    assert.equal(result.leader, 'alpha');
+    assert.equal(planned(tree).leader, 'lead');
+    assert.deepEqual(planned(tree).config['leads'], { alpha: ['bravo'] }, "the lead's hire joins no sub-lead's group");
+    assert.equal(problem(tree, { by: 'bravo' }), 'only a lead hires sessions: the lead (lead), or a sub-lead into its own group');
+    assert.match(problem({ ...tree, hiring: { policy: 'owner' } }, { by: 'alpha' }), /the owner approves each hire; ask lead, your leader, who takes it to the owner, then pass --approved-by/);
+  });
+
   it('ties the hire to the burst it is for', () => {
     assert.equal(planned(FILE, { burst: NOW - 1000 }).hire.burst, NOW - 1000);
     assert.equal('burst' in planned(FILE).hire, false);
@@ -80,7 +93,8 @@ describe('planHire', () => {
     assert.equal(planned({ ...FILE, hiring: { policy: 'automatic' } }).hire.session, 'helper');
   });
 
-  it('refuses a missing job or reason, a bad or taken id, and a bad model', () => {
+  it('refuses a hirer that leads no one, a missing job or reason, a bad or taken id, and a bad model', () => {
+    assert.match(problem(FILE, { by: 'alpha' }), /^only a lead hires sessions/);
     assert.match(problem(FILE, { scope: ' ' }), /--scope/);
     assert.match(problem(FILE, { reason: '' }), /--reason/);
     assert.match(problem(FILE, { id: 'Helper' }), /not a session id/);

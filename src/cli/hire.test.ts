@@ -86,9 +86,20 @@ describe('hire', () => {
     assert.match(refusal(await hire(kit, 'second', ...JOB)), /already has 1 hired session\(s\), the most hiring\.maxSessions allows/);
   });
 
-  it('is for the lead only, and follows hiring.policy', async () => {
+  it("lets a sub-lead hire into its own group, on the lead's launch", async () => {
+    const kit = new CliHarness({ ...LEAD_TEAM, sessions: ['lead', 'alpha', 'beta'], leads: { alpha: ['beta'] } });
+    const result = await kit.run(['hire', 'helper', ...JOB, '--session', 'alpha', '--yes']);
+    assert.equal(result.code, EXIT.ok, result.stdout.join('\n'));
+    assert.match(result.stdout[0] ?? '', /^HIRED helper \(name app-helper\) for "port the importer", led by app-alpha: model opus at high effort, /);
+    const config = configOf(kit);
+    assert.deepEqual(config['leads'], { alpha: ['beta', 'helper'] });
+    assert.deepEqual(config['sessions'], ['lead', 'alpha', 'beta', 'helper']);
+    assert.match(refusal(await kit.run(['hire', 'second', ...JOB, '--session', 'beta'])), /only a lead hires sessions/);
+  });
+
+  it('is for a lead only, and follows hiring.policy', async () => {
     const kit = new CliHarness(LEAD_TEAM);
-    assert.match(refusal(await kit.run(['hire', 'helper', ...JOB, '--session', 'alpha'])), /only the lead .*hires sessions/);
+    assert.match(refusal(await kit.run(['hire', 'helper', ...JOB, '--session', 'alpha'])), /only a lead hires sessions: the lead \(lead\), or a sub-lead into its own group/);
     const owner = new CliHarness({ ...LEAD_TEAM, hiring: { policy: 'owner' } });
     assert.match(refusal(await hire(owner, 'helper', ...JOB)), /--approved-by/);
     assert.equal((await hire(owner, 'helper', ...JOB, '--approved-by', 'the owner')).code, EXIT.ok);
