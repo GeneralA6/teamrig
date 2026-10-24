@@ -178,9 +178,29 @@ export interface PostInput {
 
 /** Appends one dated line, `- YYYY-MM-DD HH:MM <from>: <text>`, to an area's inbox. */
 export async function postLine(inboxes: Inboxes, secrets: SecretScanner, input: PostInput): Promise<string | undefined> {
+  return postLines([{ inboxes, to: input.to, from: input.from }], secrets, input);
+}
+
+/** One receiver of a posted line: its team's inboxes, its id, and how its line names the sender. */
+export interface PostTarget {
+  readonly inboxes: Inboxes;
+  readonly to: string;
+  readonly from: string;
+}
+
+/**
+ * Appends the same text, stamped with the same minute, to each target's inbox; when the text or any target is
+ * refused, to none of them.
+ */
+export async function postLines(
+  targets: readonly PostTarget[],
+  secrets: SecretScanner,
+  input: Pick<PostInput, 'text' | 'now'>,
+): Promise<string | undefined> {
   const text = input.text.trim();
-  if (!SESSION_NAME.test(input.to)) {
-    return `${input.to} is not a session id`;
+  const stranger = targets.find((target) => !SESSION_NAME.test(target.to));
+  if (stranger !== undefined) {
+    return `${stranger.to} is not a session id`;
   }
   if (text === '' || /[\r\n]/.test(text)) {
     return 'an inbox item is one non-empty line';
@@ -189,7 +209,10 @@ export async function postLine(inboxes: Inboxes, secrets: SecretScanner, input: 
   if (secret !== undefined) {
     return secret;
   }
-  await inboxes.append(input.to, `- ${formatUtcMinute(input.now)} ${input.from}: ${text}`);
+  const stamp = formatUtcMinute(input.now);
+  for (const target of targets) {
+    await target.inboxes.append(target.to, `- ${stamp} ${target.from}: ${text}`);
+  }
   return undefined;
 }
 
