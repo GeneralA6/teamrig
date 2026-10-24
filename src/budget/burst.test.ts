@@ -295,7 +295,7 @@ describe('burstFloorOf', () => {
   /** No quiet hours: every hour is active. */
   const AWAKE: Pick<BudgetConfig, 'quietHours'> = {};
   /** 1% of the week is 1,000 W. */
-  const WEEK = { window: WINDOW, usedPct: 60, wPerPct: 1_000, todayFrom: Date.parse('2030-01-08T00:00:00Z') };
+  const WEEK = { window: WINDOW, usedPct: 60, todayWPerPct: 1_000, todayFrom: Date.parse('2030-01-08T00:00:00Z') };
 
   function used(w: number): UsageState {
     return { byDay: { [DAY]: { w, calls: 1, patterns: emptyPatterns() } }, byHour: {}, byTask: {}, cursors: {}, recentKeys: [] };
@@ -315,7 +315,7 @@ describe('burstFloorOf', () => {
 
   it('keeps its start reading while the week cannot be read', () => {
     const started = burst({ dailyPct: 7 });
-    assert.equal(burstFloorOf(started, { ...WEEK, wPerPct: undefined }, new Map(), AWAKE, NOW), 7);
+    assert.equal(burstFloorOf(started, { ...WEEK, todayWPerPct: undefined }, new Map(), AWAKE, NOW), 7);
     assert.equal(burstFloorOf(started, { ...WEEK, usedPct: undefined }, new Map(), AWAKE, NOW), 7);
     assert.equal(burstFloorOf(started, { ...WEEK, window: undefined }, new Map(), AWAKE, NOW), 7);
   });

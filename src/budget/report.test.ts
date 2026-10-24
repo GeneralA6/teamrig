@@ -150,6 +150,21 @@ describe('todayLines', () => {
     ]);
   });
 
+  it("prices today's W at today's rate from the status line, and other days' at the week's", () => {
+    // Today's 38.7M W read 2.58 points from the status line: 15M W per percent, twice the week's 7.5M.
+    const week: WeekReading = { ...WEEK, todayWPerPct: 15_000_000, teamDay: { ...ROOM, usedPct: 2.58 } };
+    const lines = todayLines({ ...REPORT, week });
+    // team-lead's 7.5M W reads 0.50%, two decimals below 1%, which widens the column.
+    assert.deepEqual(lines.slice(3, 6), [
+      '  the team    2.5%   10.3%  37.50M  1,310',
+      '  alpha       2.0%    3.4%  30.00M  1,000',
+      '  team-lead  0.50%    3.4%   7.50M    310',
+    ]);
+    assert.equal(lines.find((line) => line.startsWith('Past')), undefined);
+    const stored = state({ '2026-10-15': usage(7_500_000, 1) });
+    assert.equal(sessionLines(session('bravo', 7_500_000, 1), stored, week, TimeZone.UTC)[1], '  2026-10-15  7.50M W in 1 call, 1.0% of the week');
+  });
+
   it('gives a hold no in-day pace when the team has none', () => {
     const lines = todayLines({ ...REPORT, week: { ...WEEK, teamDay: undefined } });
     assert.equal(lines.find((line) => line.startsWith('Past')), `Past the daily budget: alpha. ${OVER_BUDGET_ADVICE}`);
