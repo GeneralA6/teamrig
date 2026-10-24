@@ -3,15 +3,15 @@ import { KIT_NAME, resolveKitHome } from "../../core/home.js";
 import { FileLock } from "../../core/lock.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { postLine } from "../../inbox/inbox.js";
-import { checkedState, formatHooklessState, HOOKLESS_TAIL_BYTES, hooklessLine, hooklessNews, hooklessReader, hooklessTabs, isCheckDue, parseHooklessState, staleEntries, tabActivity, workedPastHook, } from "../../restore/hookless.js";
+import { checkedState, formatHooklessState, HOOKLESS_TAIL_BYTES, hooklessLine, hooklessNews, hooklessReader, hooklessTabs, isCheckDue, lastReplyAt, parseHooklessState, staleEntries, workedPastHook, } from "../../restore/hookless.js";
 import { RestoreRegistry, restoreSessionsDir } from "../../restore/registry.js";
 import { teamZone } from "../kit.js";
 import { inboxDepsOf } from "./inbox.js";
 async function readState(runtime, kit) {
     return parseHooklessState((await runtime.files.read(kit.paths.hookless)) ?? '');
 }
-/** The last reply and reload in the end of a transcript (`HOOKLESS_TAIL_BYTES`); undefined when it has no file. */
-async function activityAtEnd(runtime, path) {
+/** The main thread's last reply in the end of a transcript (`HOOKLESS_TAIL_BYTES`); undefined with no file or no reply there. */
+async function replyAtEnd(runtime, path) {
     const size = await runtime.transcripts.size(path);
     if (size === undefined) {
         return undefined;
@@ -19,25 +19,26 @@ async function activityAtEnd(runtime, path) {
     const offset = Math.max(0, size - HOOKLESS_TAIL_BYTES);
     const { lines } = await readLines(runtime.transcripts, path, offset, size, HOOKLESS_TAIL_BYTES);
     // A read from inside the file starts mid-line.
-    return tabActivity(offset === 0 ? lines : lines.slice(1));
+    return lastReplyAt(offset === 0 ? lines : lines.slice(1));
 }
 /**
- * The team's tabs that run without their hooks now: its stale restore entries whose transcript ends in a turn long
- * past the last hook. A file's change time only picks the transcripts worth reading: an idle tab's moves too.
+ * The team's tabs that run without their hooks now: the stale restore entries of its sessions whose transcript
+ * ends in a turn long past the last hook. A file's change time only picks the transcripts worth reading: an idle
+ * tab's moves too.
  */
-async function findHooklessTabs(runtime, kit, now) {
+async function findHooklessTabs(runtime, kit, config, now) {
     const registry = new RestoreRegistry(runtime.files, restoreSessionsDir(resolveKitHome(runtime.env, runtime.userHome)));
-    const stale = staleEntries(await registry.list(), kit.paths.team, now);
-    const activity = new Map();
+    const stale = staleEntries(await registry.list(), kit.paths.team, config.sessions, now);
+    const replies = new Map();
     for (const entry of stale) {
         const path = entry.transcriptPath;
         const changed = path === undefined ? undefined : await runtime.transcripts.changedAt(path);
-        const found = path === undefined || changed === undefined || !workedPastHook(entry.updatedAt, changed, now) ? undefined : await activityAtEnd(runtime, path);
+        const found = path === undefined || changed === undefined || !workedPastHook(entry.updatedAt, changed, now) ? undefined : await replyAtEnd(runtime, path);
         if (found !== undefined) {
-            activity.set(entry.claudeSession, found);
+            replies.set(entry.claudeSession, found);
         }
     }
-    return hooklessTabs(stale, activity, now);
+    return hooklessTabs(stale, replies, now);
 }
 /**
  * The Stop hook's hookless-tab check: once every `HOOKLESS_CHECK_MS` across the team, claimed under a lock no
@@ -60,7 +61,7 @@ export async function checkHooklessTabs(runtime, kit, config) {
         if (!isCheckDue(state, now)) {
             return [];
         }
-        const tabs = await findHooklessTabs(runtime, kit, now);
+        const tabs = await findHooklessTabs(runtime, kit, config, now);
         await runtime.files.write(kit.paths.hookless, formatHooklessState(checkedState(now, tabs)));
         return hooklessNews(state, tabs);
     });
@@ -70,7 +71,7 @@ export async function checkHooklessTabs(runtime, kit, config) {
     const refused = [];
     for (const tab of news) {
         const to = hooklessReader(tab, config.roles.lead, config.roles.coordinatorOwner);
-        const problem = await postLine(inboxes, secrets, { to, from: KIT_NAME, text: hooklessLine(tab, (at) => zone.clock(at)), now: new Date(now) });
+        const problem = await postLine(inboxes, secrets, { to, from: KIT_NAME, text: hooklessLine(tab, zone, now), now: new Date(now) });
         if (problem !== undefined) {
             refused.push(`INBOX ${to}: not posted: ${problem}`);
         }
