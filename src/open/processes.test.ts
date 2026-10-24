@@ -1,6 +1,7 @@
 import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { EventEmitter } from 'node:events';
+import { spawn, spawnSync } from 'node:child_process';
+import { EventEmitter, once } from 'node:events';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -13,6 +14,45 @@ const MISSING = 'teamrig-no-such-program';
 const TEMP = tmpdir();
 
 after(() => rmSync(DIR, { recursive: true, force: true }));
+
+/** Waits up to 5 s for a file a background program writes. */
+async function waitForFile(path: string): Promise<void> {
+  for (let tries = 0; tries < 100 && !existsSync(path); tries += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
+
+/** The process ids under `pid` in a `ps -A -o pid= -o ppid=` listing, children before their own children. */
+function descendantsOf(pid: number, listing: string): number[] {
+  const children = new Map<number, number[]>();
+  for (const line of listing.split('\n')) {
+    const [child, parent] = line.trim().split(/\s+/).map(Number);
+    if (child !== undefined && parent !== undefined) {
+      children.set(parent, [...(children.get(parent) ?? []), child]);
+    }
+  }
+  const found: number[] = [];
+  for (let next = [pid]; next.length > 0; next = next.flatMap((each) => children.get(each) ?? [])) {
+    found.push(...next.flatMap((each) => children.get(each) ?? []));
+  }
+  return found;
+}
+
+/** Kills a process with every process it started, as Claude Code ends a hook past its timeout. */
+function killTree(pid: number): void {
+  if (process.platform === 'win32') {
+    spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true });
+    return;
+  }
+  const listing = spawnSync('ps', ['-A', '-o', 'pid=', '-o', 'ppid='], { encoding: 'utf8' }).stdout;
+  for (const each of [pid, ...descendantsOf(pid, listing)]) {
+    try {
+      process.kill(each, 'SIGKILL');
+    } catch {
+      // Ended meanwhile.
+    }
+  }
+}
 
 /** Real child processes, each a short node script: nothing opens a terminal. */
 describe('nodeProcesses', () => {
@@ -40,10 +80,37 @@ describe('nodeProcesses', () => {
     const script = `const fs = require("node:fs"); fs.writeFileSync(${JSON.stringify(part)}, process.env.TEAMRIG_TEAM ?? ""); fs.renameSync(${JSON.stringify(part)}, ${JSON.stringify(marker)})`;
     const outcome = await processes.startHidden({ command: NODE, args: ['-e', script], cwd: TEMP, env: { ...process.env, TEAMRIG_TEAM: 'app' } });
     assert.deepEqual(outcome, { kind: 'started' });
-    for (let tries = 0; tries < 100 && !existsSync(marker); tries += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
+    await waitForFile(marker);
     assert.equal(readFileSync(marker, 'utf8'), 'app');
+  });
+
+  it('starts a hidden program that outlives a kill of its starter with every process the starter started', async () => {
+    const marker = join(DIR, 'outlived.txt');
+    // Written a second after the start, long after the starter and its whole tree are killed.
+    const program = `setTimeout(() => require("node:fs").writeFileSync(${JSON.stringify(marker)}, "alive"), 1000)`;
+    const request = `{ command: process.execPath, args: ["-e", ${JSON.stringify(program)}], cwd: ${JSON.stringify(TEMP)}, env: process.env }`;
+    // A hook that starts the program and keeps running, as the Stop hook does until Claude Code's timeout ends it.
+    const starter = `import(${JSON.stringify(new URL('./processes.ts', import.meta.url).href)}).then(async ({ nodeProcesses }) => {
+      console.log((await nodeProcesses().startHidden(${request})).kind);
+      setInterval(() => undefined, 1000);
+    })`;
+    const hook = spawn(NODE, ['-e', starter], { stdio: ['ignore', 'pipe', 'inherit'], windowsHide: true });
+    // An empty line when the starter ends without a word, so a broken starter fails here instead of hanging.
+    const [first] = await Promise.race([once(hook.stdout, 'data'), once(hook, 'exit').then(() => [''])]);
+    assert.equal(String(first).trim(), 'started');
+    assert.ok(hook.pid !== undefined);
+    killTree(hook.pid);
+    await waitForFile(marker);
+    assert.equal(readFileSync(marker, 'utf8'), 'alive');
+  });
+
+  it('reports a hidden program that cannot start for another reason than a missing program as failed', async () => {
+    const notProgram = join(DIR, 'not-a-program.txt');
+    writeFileSync(notProgram, 'text');
+    const outcome = await processes.startHidden({ command: notProgram, args: [], cwd: TEMP, env: process.env });
+    assert.equal(outcome.kind, 'failed');
+    // Windows says `spawn EFTYPE`, POSIX `spawn <path> EACCES`.
+    assert.match(outcome.kind === 'failed' ? outcome.error : '', /^exited with code 1: spawn .*\bE[A-Z]+$/);
   });
 
   it('reports a program that is not installed as missing', async () => {
@@ -84,6 +151,14 @@ describe('exitText', () => {
     assert.equal(exitText(2, ''), 'exited with code 2');
     assert.equal(exitText(null, '\n  boom\nmore'), 'ended by a signal: boom');
     assert.equal(exitText(1, 'x'.repeat(400)), `exited with code 1: ${'x'.repeat(300)}`);
+  });
+});
+
+describe('descendantsOf', () => {
+  it('finds every process under one, through its children, and none of its parents or neighbours', () => {
+    const listing = ['  1     0', ' 10     1', ' 11    10', ' 12    11', ' 13    10', ' 20     1', ''].join('\n');
+    assert.deepEqual(descendantsOf(10, listing), [11, 13, 12]);
+    assert.deepEqual(descendantsOf(20, listing), []);
   });
 });
 
