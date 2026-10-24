@@ -951,12 +951,25 @@ Claude Code it last started in has ended) or with no start recorded. The Session
 records that process at each start (`state/sessions/<id>.json`); a process id the host gave to a later process
 does not count. Then the host's free memory and commit charge (Windows and Linux). It only reads.
 
-Flags: none.
+With `--pass` it prints, in the roster's order, what an idle pass would do, and changes nothing: `CLOSE` a running
+session [teamrig close](#teamrig-close) would close (quiet `open.headroom.closeIdleMinutes` or more, nothing it can
+start under the wake priority its budget leaves it), `KEEP` one it keeps open and why, `REOPEN` a session teamrig
+closed that the wake check would now wake (work handed to it since its close, or the day's start with work it can
+start), `LATER` such a session this pass leaves for the next (one reopen a pass, the most urgent top task first, and
+only with room on the host), `CLOSED` one teamrig closed with nothing it can start, and `AWAY` one not running that
+teamrig did not close; then a `PASS` total.
+
+Flags:
+
+- `--pass`: show what an idle pass would close and reopen, and why it keeps or leaves each other session.
+- `--project <dir>`: with `--pass`, the project folder a close's checks read (its transcripts); default the folder
+  holding the team's pointer.
 
 Example:
 
 ```sh
 teamrig sessions
+teamrig sessions --pass
 ```
 
 Output:
@@ -967,6 +980,13 @@ api shop-api: closed: the Claude Code it last started in has ended
 web shop-site: no start recorded
 1 running hold 850 MB, 1900 MB committed; 1 closed; 1 with no start recorded
 host: 21400 MB free; commit 85300 of 100700 MB (85%)
+```
+
+```text
+KEEP shop-lead (session lead) holds the lead role: teamrig never closes it
+REOPEN shop-api (session api): work handed to it since its close: T12
+AWAY shop-site (session web): not running, and teamrig did not close it
+PASS 3 session(s): 0 to close, 1 to reopen, 0 to reopen later, 1 kept open, 0 closed, 1 away; nothing changed
 ```
 
 ### teamrig close
