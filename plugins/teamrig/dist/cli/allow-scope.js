@@ -1,5 +1,6 @@
 import { teamPlace } from "../coordinator/places.js";
 import { claudeConfigDir } from "../core/home.js";
+import { SecretScanner } from "../core/secrets.js";
 import { KeepList } from "../permissions/allow-rules.js";
 import { settingsScope } from "../permissions/settings-scope.js";
 import { planScope, wideAllowOf } from "../permissions/trim.js";
@@ -12,8 +13,9 @@ export async function teamSettingsScope(runtime, { paths, config, project }) {
     const repos = Object.values(config.coordinator.repos).map((repo) => teamPlace(paths, repo.mainCheckout));
     return settingsScope(runtime.files, claudeConfigDir(runtime.env, runtime.userHome), [project, ...repos], runtime.platform);
 }
-/** The rules off the team's keep-list that approve a whole tool or program, in every file of its scope. */
+/** The rules off the team's keep-list that approve a whole tool or program or hold a credential, in every file of its scope. */
 export async function readWideAllow(runtime, input) {
-    const plans = await planScope(runtime.files, await teamSettingsScope(runtime, input), new KeepList(input.config.permissions.keepAllow), 'wide');
+    const { config } = input;
+    const plans = await planScope(runtime.files, await teamSettingsScope(runtime, input), new KeepList(config.permissions.keepAllow), 'wide', new SecretScanner(config.register.secretPatterns));
     return wideAllowOf(plans);
 }

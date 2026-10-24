@@ -244,7 +244,7 @@ function projectFindings({ projects, roster, command }) {
  * The team's health checks: names that find the wrong session or none, a damaged rename log,
  * inboxes nobody reads, rules too long to show, text every call re-reads over its budget (files, and the lists the newest
  * session holds), a broken tree of teams or a session name two teams use, a variable that overrides every model or effort
- * choice, a launch with a model but no effort, local allow rules that approve a whole tool or program, and a
+ * choice, a launch with a model but no effort, local allow rules that approve a whole tool or program or hold a credential, and a
  * configured project folder that is no folder here.
  * It reads only; every fix is the user's.
  */
