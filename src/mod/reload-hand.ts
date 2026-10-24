@@ -8,10 +8,12 @@
  * either (an install still being copied), it runs /reload-plugins the way the person would. It runs at most one
  * reload per RELOAD_GAP_MS, waits as long after a refused one, and never runs two for the same installs.
  *
- * The mod runs inside Claude Code without Node, so this file imports nothing from Node, only the plugin list's reader
- * (`core/installed-plugins.ts`), which imports none either: they compile to modules the mod imports as they are.
+ * The mod runs inside Claude Code without Node, so this file imports nothing from Node, only the plugin list's and
+ * the store's readers (`core/installed-plugins.ts`, `core/plugin-store.ts`), which import none either: they compile to
+ * modules the mod imports as they are.
  */
-import { appliesTo, INSTALLED_PLUGINS_FILE, installsOf, type ListedInstall } from '../core/installed-plugins.ts';
+import { appliesTo, installsOf, type ListedInstall } from '../core/installed-plugins.ts';
+import { newestNear, storeTimesOf, type StoreFolders } from '../core/plugin-store.ts';
 
 /** How often the hand reads installed_plugins.json. */
 export const CHECK_MS = 15_000;
@@ -24,10 +26,6 @@ export const SETTLE_MS = 10_000;
 export const RELOAD_GAP_MS = 5 * 60_000;
 /** The command the hand runs: Claude Code's own `/reload-plugins`. */
 export const RELOAD_COMMAND = 'reload-plugins';
-/** The marketplace list, beside installed_plugins.json, which a marketplace update rewrites as it ends. */
-export const KNOWN_MARKETPLACES_FILE = 'known_marketplaces.json';
-/** The most folders of the installs one look at the store reads, so a large install keeps the look bounded. */
-export const STORE_FOLDERS_MAX = 500;
 
 /** What the hand keeps in the session about its last reload, so the mod a reload loads still keeps the gap. */
 export interface ReloadRecord {
@@ -37,19 +35,12 @@ export interface ReloadRecord {
   readonly at: number;
 }
 
-/** What the mod gives the hand: Claude Code's own calls, so the hand itself is plain code. */
-export interface ReloadHandHost {
+/** What the mod gives the hand: Claude Code's own calls, so the hand itself is plain code; it dates the plugin store too. */
+export interface ReloadHandHost extends StoreFolders {
   /** Claude Code's `plugins` folder, which holds installed_plugins.json, known_marketplaces.json and the cache. */
   readonly pluginsFolder: string;
   /** The text of installed_plugins.json; rejects when it is missing or unreadable. */
   readInstalled(): Promise<string>;
-  /**
-   * When a file or folder last changed, in milliseconds since the epoch (a folder changes as an entry is added to it,
-   * removed from it or renamed in it); undefined when it is missing.
-   */
-  changedAt(path: string): Promise<number | undefined>;
-  /** The paths of the folders directly in a folder, links left out; none when it is missing. */
-  foldersIn(path: string): Promise<readonly string[]>;
   /** The session's project root now, which project- and local-scope installs are for. */
   projectRoot(): Promise<string>;
   /** Runs /reload-plugins in the tab as if the person typed it, resolving to what it printed. */
@@ -120,26 +111,10 @@ export function installedFingerprint(text: string, projectRoot: string): string 
   return installs === undefined ? undefined : fingerprintOf(installs);
 }
 
-/** The folder that holds a path: what comes before its last `/` or `\`. */
-export function parentOf(path: string): string {
-  const trimmed = path.replace(/[\\/]+$/, '');
-  const cut = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'));
-  return cut <= 0 ? trimmed : trimmed.slice(0, cut);
-}
-
 /** What one read of installed_plugins.json found: the installs that apply to the tab and their fingerprint. */
 interface Look {
   readonly fingerprint: string;
   readonly installs: readonly ListedInstall[];
-}
-
-/**
- * The newest of `times` less than SETTLE_MS from `now` either way: a time a little ahead of the clock is a change
- * now, while one far ahead (the clock set back since) never holds reloads for good. Undefined when none is.
- */
-export function newestNear(times: readonly number[], now: number): number | undefined {
-  const near = times.filter((time) => Math.abs(now - time) < SETTLE_MS);
-  return near.length === 0 ? undefined : Math.max(...near);
 }
 
 function messageOf(error: unknown): string {
@@ -223,37 +198,12 @@ export class ReloadHand {
     if (this.heldFrom !== undefined && now < this.heldFrom + RELOAD_GAP_MS) {
       return { kind: 'held', until: this.heldFrom + RELOAD_GAP_MS };
     }
-    const changedAt = newestNear(await this.storeTimes(look.installs), now);
+    // The store is read only when a reload is otherwise due.
+    const changedAt = newestNear(await storeTimesOf(this.host, this.host.pluginsFolder, look.installs), now, SETTLE_MS);
     if (changedAt !== undefined) {
       return { kind: 'installing', changedAt };
     }
     return this.reloadFor(fingerprint, now);
-  }
-
-  /**
-   * When each part of the store an install writes last changed, in milliseconds since the epoch: the plugin list,
-   * the marketplace list, and for each install that applies to the tab its plugin's folder (a version added or
-   * removed) and every folder of the install, breadth first, up to STORE_FOLDERS_MAX; a missing one is left out (its
-   * plugin's folder dates a removal). `claude plugin update` creates the new version's folder, copies the plugin into
-   * it and names it in the plugin list before the copy ends, and a copied file keeps its source's time, so only the
-   * folders date the copy. A reload while it runs loads part of the plugin: on 10-19 one ran 0.4 s into teamrig's
-   * copy and left a tab without teamrig's hooks for 15 hours (T561). Read only when a reload is otherwise due.
-   */
-  private async storeTimes(installs: readonly ListedInstall[]): Promise<readonly number[]> {
-    const { pluginsFolder } = this.host;
-    const files = [`${pluginsFolder}/${INSTALLED_PLUGINS_FILE}`, `${pluginsFolder}/${KNOWN_MARKETPLACES_FILE}`];
-    const folders = installs.map(({ install }) => parentOf(install.installPath));
-    let level: readonly string[] = installs.map(({ install }) => install.installPath);
-    let budget = STORE_FOLDERS_MAX;
-    while (level.length > 0 && budget > 0) {
-      const taken = level.slice(0, budget);
-      budget -= taken.length;
-      folders.push(...taken);
-      level = budget > 0 ? (await Promise.all(taken.map((folder) => this.host.foldersIn(folder)))).flat() : [];
-    }
-    const paths = [...new Set([...files, ...folders])];
-    const times = await Promise.all(paths.map((path) => this.host.changedAt(path)));
-    return times.filter((time): time is number => time !== undefined);
   }
 
   /**

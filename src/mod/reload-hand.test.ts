@@ -1,15 +1,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { STORE_FOLDERS_MAX } from '../core/plugin-store.ts';
 import {
   CHECK_MS,
   installedFingerprint,
   isReloadRecord,
-  newestNear,
-  parentOf,
   RELOAD_GAP_MS,
   ReloadHand,
   SETTLE_MS,
-  STORE_FOLDERS_MAX,
   type CheckResult,
   type ReloadHandHost,
   type ReloadRecord,
@@ -513,30 +511,6 @@ describe('installedFingerprint', () => {
       AT_42,
     ]) {
       assert.notEqual(fingerprintOf(changed), base);
-    }
-  });
-});
-
-describe('newestNear', () => {
-  it('takes the newest time less than SETTLE_MS from now either way', () => {
-    const now = 1_000_000;
-    assert.equal(newestNear([now - SETTLE_MS, now - 1, now + 5, now + SETTLE_MS], now), now + 5);
-    assert.equal(newestNear([now - SETTLE_MS + 1, now + RELOAD_GAP_MS], now), now - SETTLE_MS + 1, 'one far ahead of the clock left out');
-    assert.equal(newestNear([now - SETTLE_MS, now + SETTLE_MS], now), undefined);
-    assert.equal(newestNear([], now), undefined);
-  });
-});
-
-describe('parentOf', () => {
-  it('cuts the last part of a path at either slash, a trailing one first', () => {
-    assert.equal(parentOf(`${TEAMRIG_FOLDER}\\0.42.0`), TEAMRIG_FOLDER);
-    assert.equal(parentOf('/home/me/.claude/plugins/cache/m/p/1.0.0/'), '/home/me/.claude/plugins/cache/m/p');
-    assert.equal(parentOf('C:/Users/me\\plugins'), 'C:/Users/me');
-  });
-
-  it('keeps a path with no folder above it as it is', () => {
-    for (const path of ['plugins', '/plugins', '']) {
-      assert.equal(parentOf(path), path, path);
     }
   });
 });
