@@ -172,6 +172,8 @@ export interface TeamPaths {
   readonly idlePassLog: string;
   /** What the wake check kept for each session (src/wake/), `<id>.json` each, and its lock, `<id>.lock`. */
   readonly wake: string;
+  /** The lines waiting to wake each session at its next wake check (src/wake/asks.ts), `<id>/<at>-<n>.json` each. */
+  readonly wakeAsks: string;
   /** Every wake and every wake Claude Code dropped, with its cost, an append-only log. */
   readonly wakeLog: string;
   /** Each permission prompt the prompt refusal answered and how (hooks/prompt-refuse.ts), an append-only log. */
@@ -254,6 +256,7 @@ export function teamPaths(kitHome: string, team: string, userHome: string, overr
     idlePassLock: join(state, 'idle-pass.lock'),
     idlePassLog: join(state, 'idle-pass.jsonl'),
     wake: join(state, 'wake'),
+    wakeAsks: join(state, 'wake-asks'),
     wakeLog: join(state, 'wakes.jsonl'),
     promptAnswers: join(state, 'prompt-answers.jsonl'),
     turnLog: join(state, 'turn-log'),

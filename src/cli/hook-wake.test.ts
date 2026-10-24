@@ -17,6 +17,7 @@ import { RefreshStore } from '../refresh/store.ts';
 import { APP, CliHarness, EVENTS_PATH, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
+import { WakeAsks } from '../wake/asks.ts';
 
 const ALPHA_TAB = '0123abcd-0000-4000-8000-0000000000a1';
 const OTHER_TAB = '0123abcd-0000-4000-8000-0000000000b9';
@@ -24,6 +25,7 @@ const SECOND = 1000;
 const MINUTE = 60 * SECOND;
 const WAKE_LOG = join(TEAM_HOME, 'state', 'wakes.jsonl');
 const ALPHA_LOCK = join(TEAM_HOME, 'state', 'wake', 'alpha.lock');
+const ASKS = join(TEAM_HOME, 'state', 'wake-asks');
 
 function payload(extra: JsonRecord = {}, tab = ALPHA_TAB): string {
   return JSON.stringify({ session_id: tab, cwd: APP, ...extra });
@@ -172,6 +174,51 @@ describe('hook wake-check', () => {
     await store.setRestart('alpha', { phase: 'pending', at: left, pid: 4100, claudeSession: ALPHA_TAB, transcript: null, cwd: null, supervised: false });
     await hand(kit, 'Fix the login', 'p1');
     assert.equal((await check(kit)).stdout[0]?.includes('"kind":"wake","ids":["T1"]'), true);
+  });
+
+  it('wakes for an urgent line once it is a batch old, then logs and removes it', async () => {
+    const kit = await teamWithAlphaTab();
+    const asks = new WakeAsks(kit.files, ASKS);
+    await check(kit);
+    await asks.post('alpha', { from: 'teamrig', text: 'The idle pass closed bravo.', at: kit.clock.now() });
+    assert.deepEqual(answerOf(await check(kit)), { kind: 'wait', watch: EVENTS_PATH, recheckAt: kit.clock.now() + 120 * SECOND });
+    kit.clock.advance(120 * SECOND);
+    const woke = answerOf(await check(kit));
+    assert.ok(typeof woke === 'object' && woke !== null && 'text' in woke && 'toast' in woke && 'ids' in woke);
+    assert.deepEqual(woke.ids, []);
+    assert.match(String(woke.text), /^Urgent lines were posted for you while this tab was idle; act on each now:\n- \d\d:\d\d \w+ teamrig: The idle pass closed bravo\.\nThis wake costs about 210k W, cold\.$/);
+    assert.equal(woke.toast, 'teamrig woke this tab for an urgent line from teamrig (about 210k W, cold)');
+    assert.deepEqual(await logLines(kit), [{ v: 1, at: new Date(kit.clock.now()).toISOString(), kind: 'wake', session: 'alpha', tab: ALPHA_TAB, ids: [], w: 210_000, cold: true, asks: 1 }]);
+    assert.deepEqual(await asks.read('alpha'), []);
+    assert.deepEqual(answerOf(await check(kit)), { kind: 'wait', watch: EVENTS_PATH, recheckAt: null }, 'never twice for one line');
+  });
+
+  it('wakes for an urgent line and the work handed with it in one wake, and for the next line with no gap since', async () => {
+    const kit = await teamWithAlphaTab({ ...TEAM, wake: { batchSeconds: 0 } });
+    await check(kit);
+    await hand(kit, 'Fix the login', 'p1');
+    await new WakeAsks(kit.files, ASKS).post('alpha', { from: 'teamrig', text: 'The idle pass closed bravo.', at: kit.clock.now() });
+    const woke = answerOf(await check(kit));
+    assert.ok(typeof woke === 'object' && woke !== null && 'text' in woke && 'toast' in woke && 'ids' in woke);
+    assert.deepEqual(woke.ids, ['T1']);
+    assert.match(String(woke.text), /teamrig: The idle pass closed bravo\.\nNew work was handed to you while this tab was idle: T1 "Fix the login" \(p1\)\./);
+    assert.equal(woke.toast, 'teamrig woke this tab for T1 and an urgent line from teamrig (about 210k W, cold)');
+    await new WakeAsks(kit.files, ASKS).post('alpha', { from: 'bravo', text: 'Bravo has a reply waiting.', at: kit.clock.now() });
+    assert.equal((await check(kit)).stdout[0]?.includes('"toast":"teamrig woke this tab for an urgent line from bravo'), true, 'wake.minGapMinutes holds no line');
+  });
+
+  it("keeps an urgent line for the lead while the owner's daily meeting is open, and removes a damaged one", async () => {
+    const kit = new CliHarness({ ...TEAM, wake: { batchSeconds: 0 } });
+    await kit.run(['inbox', 'read', '--session', 'lead'], { env: { CLAUDE_CODE_SESSION_ID: ALPHA_TAB } });
+    const asks = new WakeAsks(kit.files, ASKS);
+    await asks.post('lead', { from: 'teamrig', text: 'The idle pass closed bravo.', at: kit.clock.now() });
+    assert.equal((await kit.run(['meeting', 'start', '--session', 'lead'])).code, EXIT.ok);
+    assert.deepEqual(answerOf(await kit.run(['hook', 'wake-check'], { stdin: payload() })), { kind: 'wait', watch: EVENTS_PATH, recheckAt: null });
+    assert.equal((await asks.read('lead')).length, 1);
+    await kit.files.write(join(ASKS, 'lead', '1-0.json'), '{"v":1,"from":"teamrig"');
+    assert.equal((await kit.run(['meeting', 'end', '--session', 'lead'])).code, EXIT.ok);
+    assert.equal((await kit.run(['hook', 'wake-check'], { stdin: payload() })).stdout[0]?.includes('"toast":"teamrig woke this tab for an urgent line from teamrig'), true);
+    assert.deepEqual(await asks.read('lead'), [], 'the damaged one goes with the ones the wake took');
   });
 
   it('answers a recheck now while another tab of the session holds its lock', async () => {
