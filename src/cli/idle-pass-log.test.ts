@@ -43,6 +43,16 @@ describe('the idle pass state', () => {
     assert.equal(formatIdlePassState(passedState(AT, STEPS, {})).includes('pending'), false);
   });
 
+  it('reads back the hookless reopens told of, keeps them through a failed pass, and writes none while none is hookless', () => {
+    const told = { bravo: AT - 6 * 60_000 };
+    const passed = passedState(AT, STEPS, {}, told);
+    assert.deepEqual(passed, { at: AT, kinds: { lead: 'keep', alpha: 'closed', bravo: 'away' }, told });
+    assert.deepEqual(parseIdlePassState(formatIdlePassState(passed)), passed);
+    assert.deepEqual(failedState(passed, AT + 1, 'EACCES').told, told);
+    assert.equal(formatIdlePassState(passedState(AT, STEPS, {}, {})).includes('told'), false);
+    assert.deepEqual(parseIdlePassState('{"v":1,"at":1,"kinds":{}}'), { at: 1, kinds: {} }, 'a file from before the marks');
+  });
+
   it('reads a damaged file, another format, an unknown step kind or a damaged pending act as no pass yet', () => {
     const damaged = [
       '',
@@ -54,6 +64,8 @@ describe('the idle pass state', () => {
       '{"v":1,"at":1,"kinds":{},"pending":[]}',
       '{"v":1,"at":1,"kinds":{},"pending":{"alpha":{"act":"end","at":1}}}',
       '{"v":1,"at":1,"kinds":{},"pending":{"alpha":{"act":"close"}}}',
+      '{"v":1,"at":1,"kinds":{},"told":[]}',
+      '{"v":1,"at":1,"kinds":{},"told":{"bravo":"10:00"}}',
     ];
     for (const text of damaged) {
       assert.equal(parseIdlePassState(text), undefined, text);
@@ -169,5 +181,12 @@ describe('formatIdlePassRecord', () => {
     const after = { usedMb: 84_000, limitMb: 100_700 };
     assert.deepEqual(JSON.parse(formatIdlePassRecord({ ...act, outcome: 'done', before, after })), { v: 1, at: '2030-01-08T10:00:00.000Z', kind: 'act', mode: 'dry-run', act: 'close', id: 'alpha', outcome: 'done', line: act.line, before, after });
     assert.deepEqual(JSON.parse(formatIdlePassRecord({ ...act, outcome: 'kept', before: undefined, after: undefined })), { v: 1, at: '2030-01-08T10:00:00.000Z', kind: 'act', mode: 'dry-run', act: 'close', id: 'alpha', outcome: 'kept', line: act.line });
+  });
+
+  it('logs a hookless reopen with its line, and why the line was not posted where it was not', () => {
+    const hookless = { kind: 'hookless', at: AT, mode: 'on', id: 'bravo', line: 'HOOKLESS app-bravo (session bravo): reopened 01-08 09:54 UTC' } as const;
+    const base = { v: 1, at: '2030-01-08T10:00:00.000Z', kind: 'hookless', mode: 'on', id: 'bravo', line: hookless.line };
+    assert.deepEqual(JSON.parse(formatIdlePassRecord({ ...hookless, problem: undefined })), base);
+    assert.deepEqual(JSON.parse(formatIdlePassRecord({ ...hookless, problem: 'not posted: EACCES' })), { ...base, problem: 'not posted: EACCES' });
   });
 });

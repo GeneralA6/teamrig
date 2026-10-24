@@ -7,6 +7,7 @@ import { MeterLog } from '../budget/calibration.ts';
 import type { Files } from '../core/files.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { SessionLog } from '../sessions/log.ts';
+import { SessionRecordStore } from '../sessions/record.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
 import { EXIT } from './runtime.ts';
@@ -443,6 +444,30 @@ describe('hook wake-check runs the idle pass', () => {
     kit.clock.advance(MINUTE);
     await passCheck(kit);
     assert.deepEqual(await logLines(kit, PASS_LOG), [failed, pass(kit.clock.now(), [AWAY_LEAD, AWAY_ALPHA, CLOSED_BRAVO])]);
+  });
+
+  it('names once a reopened tab no teamrig hook started in, to the lead with a wake in mode on, and drops the mark once a hook started', async () => {
+    for (const mode of ['dry-run', 'on'] as const) {
+      const kit = await idleTeam(mode === 'on' ? ON : DRY_RUN);
+      await new SessionLog(kit.files, SESSION_LOG).append({ kind: 'reopen', session: 'bravo', at: new Date(kit.clock.now()).toISOString(), resumed: 'claude-bravo' });
+      kit.clock.advance(5 * MINUTE);
+      await passCheck(kit);
+      const line = 'HOOKLESS app-bravo (session bravo): reopened 01-08 10:00 UTC, and no teamrig hook has started in its tab in the 5 min since, so it gets no inbox, guards or tab status: /exit that tab and run claude --resume claude-bravo in its terminal';
+      const hookless = { v: 1, at: new Date(kit.clock.now()).toISOString(), kind: 'hookless', mode, id: 'bravo', line };
+      const hooklessLines = async (): Promise<unknown[]> => (await logLines(kit, PASS_LOG)).filter((record) => JSON.stringify(record).includes('"kind":"hookless"'));
+      assert.deepEqual(await hooklessLines(), [hookless], mode);
+      const asks = (await new WakeAsks(kit.files, ASKS).read('lead')).map((stored) => stored.ask?.text);
+      assert.deepEqual(asks, mode === 'on' ? [line] : [], `${mode}: only mode on wakes the lead`);
+      kit.clock.advance(MINUTE);
+      await passCheck(kit);
+      assert.deepEqual(await hooklessLines(), [hookless], `${mode}: told once a reopen`);
+      await new SessionRecordStore(kit.files, { sessions: join(STATE, 'sessions') }).write('bravo', { claudePid: 8200, claudeSession: 'claude-bravo', at: new Date(kit.clock.now()).toISOString() });
+      kit.clock.advance(MINUTE);
+      await passCheck(kit);
+      assert.deepEqual(await hooklessLines(), [hookless], `${mode}: a hook started`);
+      const state: unknown = JSON.parse(kit.files.get(PASS_STATE) ?? '');
+      assert.equal(JSON.stringify(state).includes('told'), false, `${mode}: its mark dropped`);
+    }
   });
 
   it("skips the pass while another tab's check holds its lock, and reads nothing with open.idle.mode off", async () => {
