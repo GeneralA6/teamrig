@@ -2,17 +2,21 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { PassStep } from './idle-pass.ts';
 import {
+  actOf,
   changedSteps,
   failedState,
   formatIdlePassRecord,
   formatIdlePassState,
   formatIdlePassTrouble,
+  heldActs,
+  IDLE_ACT_HOLD_MS,
   IDLE_PASS_EVERY_MS,
   IDLE_PASS_STALE_MS,
   idlePassTrouble,
   isPassDue,
   parseIdlePassState,
   passedState,
+  stepsToAct,
 } from './idle-pass-log.ts';
 
 const AT = Date.parse('2030-01-08T10:00:00.000Z');
@@ -30,8 +34,28 @@ describe('the idle pass state', () => {
     assert.deepEqual(failedState(undefined, AT, 'EACCES'), { at: AT, kinds: {}, failed: 'EACCES' });
   });
 
-  it('reads a damaged file, another format or an unknown step kind as no pass yet', () => {
-    for (const text of ['', '{', '{"v":2,"at":1,"kinds":{}}', '{"v":1,"at":"x","kinds":{}}', '{"v":1,"at":1,"kinds":{"alpha":"gone"}}', '{"v":1,"at":1,"kinds":{},"failed":7}']) {
+  it('reads back the pending acts, and writes none while nothing is pending', () => {
+    const pending = { alpha: { act: 'close', at: AT }, bravo: { act: 'reopen', at: AT - 1 } } as const;
+    const passed = passedState(AT, STEPS, pending);
+    assert.deepEqual(passed, { at: AT, kinds: { lead: 'keep', alpha: 'closed', bravo: 'away' }, pending });
+    assert.deepEqual(parseIdlePassState(formatIdlePassState(passed)), passed);
+    assert.deepEqual(failedState(passed, AT + 1, 'EACCES').pending, pending, 'a failed pass lets none go');
+    assert.equal(formatIdlePassState(passedState(AT, STEPS, {})).includes('pending'), false);
+  });
+
+  it('reads a damaged file, another format, an unknown step kind or a damaged pending act as no pass yet', () => {
+    const damaged = [
+      '',
+      '{',
+      '{"v":2,"at":1,"kinds":{}}',
+      '{"v":1,"at":"x","kinds":{}}',
+      '{"v":1,"at":1,"kinds":{"alpha":"gone"}}',
+      '{"v":1,"at":1,"kinds":{},"failed":7}',
+      '{"v":1,"at":1,"kinds":{},"pending":[]}',
+      '{"v":1,"at":1,"kinds":{},"pending":{"alpha":{"act":"end","at":1}}}',
+      '{"v":1,"at":1,"kinds":{},"pending":{"alpha":{"act":"close"}}}',
+    ];
+    for (const text of damaged) {
       assert.equal(parseIdlePassState(text), undefined, text);
     }
   });
@@ -48,6 +72,41 @@ describe('the idle pass state', () => {
     assert.deepEqual(changedSteps(undefined, STEPS), STEPS);
     const reopen: PassStep = { kind: 'reopen', id: 'alpha', reopening: { kind: 'handed', tasks: [] } };
     assert.deepEqual(changedSteps(passedState(AT, STEPS), [KEEP_LEAD, reopen, { kind: 'away', id: 'bravo' }]), [reopen]);
+  });
+});
+
+describe('the idle pass acts', () => {
+  const CLOSABLE = {
+    record: { claudePid: 8100, claudeSession: 'c1', at: '2030-01-08T08:00:00.000Z' },
+    claude: { pid: 8100, parentPid: 8000, name: 'claude.exe', commandLine: 'claude --resume c1' },
+    heldMb: 1300,
+    committedMb: undefined,
+    idleMinutes: 75,
+  };
+  const CLOSE_ALPHA: PassStep = { kind: 'close', id: 'alpha', closable: CLOSABLE };
+  const REOPEN_BRAVO: PassStep = { kind: 'reopen', id: 'bravo', reopening: { kind: 'handed', tasks: [] } };
+
+  it('starts the close and the reopen the steps ask for, but none on a session with one pending', () => {
+    assert.deepEqual(stepsToAct([KEEP_LEAD, CLOSE_ALPHA, REOPEN_BRAVO], {}), [CLOSE_ALPHA, REOPEN_BRAVO]);
+    assert.deepEqual(stepsToAct([KEEP_LEAD, CLOSE_ALPHA, REOPEN_BRAVO], { alpha: { act: 'close', at: AT } }), [REOPEN_BRAVO]);
+    assert.equal(actOf(KEEP_LEAD), undefined);
+  });
+
+  it('holds an act while its session still asks for it, under IDLE_ACT_HOLD_MS', () => {
+    const pending = { alpha: { act: 'close', at: AT }, bravo: { act: 'reopen', at: AT } } as const;
+    const later: PassStep = { kind: 'later', id: 'bravo', reopening: { kind: 'handed', tasks: [] }, why: 'no room' };
+    assert.deepEqual(heldActs(pending, [KEEP_LEAD, CLOSE_ALPHA, REOPEN_BRAVO], AT + IDLE_ACT_HOLD_MS - 1), pending);
+    assert.deepEqual(heldActs(pending, [KEEP_LEAD, CLOSE_ALPHA, later], AT), pending, 'a reopen held back still wants one');
+  });
+
+  it('lets an act go once done, kept, too old, from a clock gone back, or of a session gone from the roster', () => {
+    const pending = { alpha: { act: 'close', at: AT }, bravo: { act: 'reopen', at: AT } } as const;
+    assert.deepEqual(heldActs(pending, [{ kind: 'closed', id: 'alpha' }, { kind: 'keep', id: 'bravo', why: 'busy' }], AT), {}, 'done');
+    assert.deepEqual(heldActs(pending, [{ kind: 'keep', id: 'alpha', why: 'busy' }, { kind: 'closed', id: 'bravo' }], AT), {}, 'kept');
+    assert.deepEqual(heldActs(pending, [CLOSE_ALPHA, REOPEN_BRAVO], AT + IDLE_ACT_HOLD_MS), {}, 'too old');
+    assert.deepEqual(heldActs(pending, [CLOSE_ALPHA, REOPEN_BRAVO], AT - 1), {}, 'the clock went back');
+    assert.deepEqual(heldActs(pending, [KEEP_LEAD], AT), {}, 'gone from the roster');
+    assert.deepEqual(heldActs(undefined, [CLOSE_ALPHA], AT), {});
   });
 });
 
