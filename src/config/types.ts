@@ -45,6 +45,11 @@ export interface RegisterCheckConfig {
    * while the week has usage left, before NO-PROGRESS; 0 turns the flag off.
    */
   readonly goalProgressDays: number;
+  /**
+   * An active sized task whose metered cost passed this many times its size (`--size`) is OVER-SIZE; 0 turns the
+   * flag off.
+   */
+  readonly overSizeMultiple: number;
   readonly weekLengthDays: number;
   /**
    * The files `check` scans for `stopgap T<id>` tags besides every skill: paths relative to the team's project

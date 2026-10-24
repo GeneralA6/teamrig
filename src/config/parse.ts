@@ -926,6 +926,7 @@ function parseRegister(read: ConfigReader, raw: JsonRecord): RegisterConfig {
       prioritySkipAfterHours: read.integer(check, 'prioritySkipAfterHours', `${path}.check`, defaults.check.prioritySkipAfterHours, { min: 1 }),
       maxSelfMadePerDay: read.integer(check, 'maxSelfMadePerDay', `${path}.check`, defaults.check.maxSelfMadePerDay, CONFIG_LIMITS.maxSelfMadePerDay),
       goalProgressDays: read.integer(check, 'goalProgressDays', `${path}.check`, defaults.check.goalProgressDays, CONFIG_LIMITS.goalProgressDays),
+      overSizeMultiple: read.number(check, 'overSizeMultiple', `${path}.check`, defaults.check.overSizeMultiple, CONFIG_LIMITS.overSizeMultiple),
       weekLengthDays: read.integer(check, 'weekLengthDays', `${path}.check`, defaults.check.weekLengthDays, { min: 1, max: 31 }),
       stopgapFiles: read.stringList(
         check,
