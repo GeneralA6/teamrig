@@ -6,7 +6,10 @@ import {
   failedState,
   formatIdlePassRecord,
   formatIdlePassState,
+  formatIdlePassTrouble,
   IDLE_PASS_EVERY_MS,
+  IDLE_PASS_STALE_MS,
+  idlePassTrouble,
   isPassDue,
   parseIdlePassState,
   passedState,
@@ -45,6 +48,41 @@ describe('the idle pass state', () => {
     assert.deepEqual(changedSteps(undefined, STEPS), STEPS);
     const reopen: PassStep = { kind: 'reopen', id: 'alpha', reopening: { kind: 'handed', tasks: [] } };
     assert.deepEqual(changedSteps(passedState(AT, STEPS), [KEEP_LEAD, reopen, { kind: 'away', id: 'bravo' }]), [reopen]);
+  });
+});
+
+describe('idlePassTrouble', () => {
+  it('finds none while the pass ran within IDLE_PASS_STALE_MS and went through, or the clock went back', () => {
+    const last = passedState(AT, STEPS);
+    assert.equal(idlePassTrouble(last, AT + IDLE_PASS_STALE_MS), undefined);
+    assert.equal(idlePassTrouble(last, AT - IDLE_PASS_STALE_MS), undefined);
+  });
+
+  it('is stale with no pass yet or past IDLE_PASS_STALE_MS, a failure then included', () => {
+    assert.deepEqual(idlePassTrouble(undefined, AT), { kind: 'stale', at: undefined });
+    assert.deepEqual(idlePassTrouble(passedState(AT, STEPS), AT + IDLE_PASS_STALE_MS + 1), { kind: 'stale', at: AT });
+    assert.deepEqual(idlePassTrouble(failedState(undefined, AT, 'EACCES'), AT + IDLE_PASS_STALE_MS + 1), { kind: 'stale', at: AT });
+  });
+
+  it('finds a fresh pass that failed, which its time alone misses', () => {
+    assert.deepEqual(idlePassTrouble(failedState(passedState(AT, STEPS), AT + IDLE_PASS_EVERY_MS, 'EACCES'), AT + IDLE_PASS_EVERY_MS), {
+      kind: 'failed',
+      at: AT + IDLE_PASS_EVERY_MS,
+      error: 'EACCES',
+    });
+  });
+
+  it('says how long ago the pass ran or failed, and what to look at', () => {
+    const later = AT + 16 * 60_000 + 59_000;
+    assert.equal(
+      formatIdlePassTrouble({ kind: 'stale', at: AT }, 'dry-run', later),
+      "FLEET-STALE the idle pass (open.idle.mode dry-run) last ran 16 min ago: an idle tab's hook wake-check runs it once a minute, so check wake.enabled and that the tabs' teamrig hooks run",
+    );
+    assert.match(formatIdlePassTrouble({ kind: 'stale', at: undefined }, 'dry-run', later), /^FLEET-STALE the idle pass \(open\.idle\.mode dry-run\) has not run yet: /);
+    assert.equal(
+      formatIdlePassTrouble({ kind: 'failed', at: AT, error: 'EACCES: permission denied' }, 'dry-run', AT + 2 * 60_000),
+      'FLEET-STALE the idle pass (open.idle.mode dry-run) failed at its last run, 2 min ago: EACCES: permission denied; state/idle-pass.jsonl logs each new failure',
+    );
   });
 });
 
