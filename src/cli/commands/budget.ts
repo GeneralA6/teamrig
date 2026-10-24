@@ -64,7 +64,7 @@ import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.t
 /**
  * The weekly budget from the command line: `budget` measures every session's use from the Claude Code
  * transcripts and shows it against the week's pace, or with `--task` what each session spent on one task;
- * `budget lift` is the lead's lift of one session's
+ * `budget lift` is a leader's lift of one session's, or a sub-lead's group's,
  * daily budget; `statusline` is a status line that saves the plan's own reading for `budget`. Measuring
  * and showing only: nothing here blocks or stops a session.
  */

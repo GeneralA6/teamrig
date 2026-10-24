@@ -2959,8 +2959,10 @@ time to the pace end (`budget.paceEndHoursBeforeReset` before the reset; quiet h
 `budget.quietHours.paceWeight`), times today's active time. The teams of the kit home on one Claude account
 (`budget.account`, else the Claude config dir) split that day by weight: a session's weight is its share times its
 queued work, a team's its sessions' summed. Past 100% of the week, what is left in the extra-usage
-pool takes the place of that remainder (see [teamrig budget extra](#teamrig-budget-extra)). What the lead's lifts
-leave is split among the other sessions by `budget.sessions.<id>.share` times their queued work. Short by
+pool takes the place of that remainder (see [teamrig budget extra](#teamrig-budget-extra)). With sub-leads
+(`leads`), the team's budget splits first among their groups and the sessions the lead leads directly, a group's
+weight its sessions' summed, and each group splits its part the same way. What the lifts leave of a budget is split
+among the other sessions and groups under it by `budget.sessions.<id>.share` times their queued work. Short by
 default: the busiest 7 sessions, then who is past the daily budget. A session past its part is held only while the
 team has no room today: everyone's use today, the outside's included, at or past the in-day pace (today's use in
 quiet hours, plus today's budget times the share of today's active time gone by). While the team has room, they
@@ -3015,16 +3017,20 @@ Today (UTC day), used and daily budget in % of the week:
   the team  5.0%   10.3%  37.50M  1,310
   api       4.0%    3.4%  30.00M  1,000
   lead      1.0%    3.4%   7.50M    310
-Lifts by the lead, today only: a part of the team's daily budget until its time or its stop % of the week, whichever comes first; quiet hours do not apply to them.
+Lifts, today only: a part of the team's daily budget until its time or its stop % of the week, whichever comes first; quiet hours do not apply to them.
   session   part      until  stop at
   web      40.0%  03:00 IDT    97.0%
   03:00 IDT is the end of the budget day.
-Past the daily budget: api (the team has used 5.2% of the week today, at or past its in-day pace of 4.7%). Finish the step in hand and start no new work items or helpers. Never skip a test or check to save budget. The lead can lift it.
+Past the daily budget: api (the team has used 5.2% of the week today, at or past its in-day pace of 4.7%). Finish the step in hand and start no new work items or helpers. Never skip a test or check to save budget. A session's leader can lift its budget.
 W = weighted tokens: input 1, cache writes 1.25 to 2, cache reads 0.1, output 5. 1% of the week is about 7.50M W, estimated from the status line.
 ```
 
 A session's row marks a budget a lift or a burst raised: `(lifted)`, `(burst)`; a lift's part says `(reserve)` for the
-reserve release (`--reserve`). With no status line snapshot and no `budget.weeklyLimitW`, the week line says its use is
+reserve release (`--reserve`). With sub-leads (`leads`), a `group <sub-lead> (<n>)` row follows the team's: the
+use of its n sessions, the sub-lead's own included, against the group's daily budget, marked `(lifted)` under a
+group lift. The lifts block then lists group lifts first, adds an `of` column naming the budget each lift is a part
+of (`the team` or `group <sub-lead>`), and its heading says that quiet hours do not apply to a session's lift, but do
+to a group's. With no status line snapshot and no `budget.weeklyLimitW`, the week line says its use is
 unknown and the table gives W and calls only. `Not on the team: N Claude Code sessions (titled ...)` counts the tabs not tied to a session.
 `Still reading: <sessions>` means a long transcript is read in steps: run it again for the rest.
 
@@ -3081,18 +3087,25 @@ hours yet, and `--quiet-action` with `--quiet off` are usage errors (exit 64).
 
 ### teamrig budget lift
 
-The lead lifts one session to a part of the team's daily budget for today: the session gets `--part` % of the
-team's budget, recomputed at every reading like the budget itself, and the other sessions split the rest by their
-shares and queued work. The lifts in force never give more than the whole team budget. Every lift carries a stop %: it ends at the stop %, at
-`--until` or at the end of the budget day (a UTC day), whichever comes first, and quiet hours do not apply to the session while
-it runs. The stop % is at most `budget.lift.maxStopPct` (99.3). Above that, up to `budget.lift.reserveStopPct`
+A leader lifts one session under it to a part of its parent's daily budget for today: the team's for a session the
+lead leads directly, else its sub-lead's group's (`leads`). The session gets `--part` % of that budget, recomputed at
+every reading like the budget itself, and the other sessions and groups under the same parent split the rest by
+their shares and queued work. The lead lifts any session; a sub-lead lifts the sessions in its group at any depth,
+and its own session too, a part of its own group's budget. With `--group`, a leader above a sub-lead lifts the
+sub-lead's whole group: the group gets `--part` % of its parent's budget, and its sessions split that as usual. The
+lifts in force under one parent never give more than all of its budget. Every lift carries a stop %: it ends at the
+stop %, at `--until` or at the end of the budget day (a UTC day), whichever comes first, and quiet hours do not
+apply to a lifted session while it runs; a group lift keeps them. The stop % is at most `budget.lift.maxStopPct` (99.3). Above that, up to `budget.lift.reserveStopPct`
 (99.9), only with `--reserve` and only in the last hour before the reset; a reserve lift ends 15 minutes before
 the reset. Lifts are kept in the team's `state/usage/lifts.jsonl`.
 
 Flags:
 
-- `--session <id|name>`: the caller; it must be the lead.
-- `--part <pct>`: the session's part of the team's daily budget today, in percent (above 0, up to 100).
+- `--session <id|name>`: the caller; a leader over the session (the lead, or a sub-lead whose group holds it), or
+  a sub-lead lifting its own session.
+- `--group`: lift the named sub-lead's whole group, a part of its parent's daily budget; only a leader above that
+  sub-lead may.
+- `--part <pct>`: the part of the parent's daily budget today, in percent (above 0, up to 100).
 - `--stop-pct <pct>`: required: the week's use at which the lift ends.
 - `--until <HH:MM|date>`: an earlier end: `HH:MM` today or `"YYYY-MM-DD HH:MM"`, on the team's clock unless marked `UTC`.
 - `--reason "<why>"`: required: why the session needs more today.
@@ -3110,8 +3123,25 @@ Output:
 LIFTED api to 50.0% of the team's daily budget today until 03:00 IDT (the end of the budget day) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.
 ```
 
-A caller who is not the lead, a missing stop %, a stop % above the bounds, a part that with the other lifts in
-force would give more than the whole team budget, a week already at the stop % or an unknown week (no status line and no `budget.weeklyLimitW`) is `REFUSED` (exit 2).
+With `web` a sub-lead over `api`, the lead lifts web's whole group, and web lifts api inside it:
+
+```sh
+teamrig budget lift web --session lead --group --part 40 --stop-pct 97 --reason "web's release"
+teamrig budget lift api --session web --part 50 --stop-pct 97 --reason "the release branch"
+```
+
+Output:
+
+```text
+LIFTED web's group to 40.0% of the team's daily budget today until 03:00 IDT (the end of the budget day) or 97.0% of the week, whichever comes first.
+LIFTED api to 50.0% of web's group's daily budget today until 03:00 IDT (the end of the budget day) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.
+```
+
+A caller that leads no group over the session, a `--group` of the lead or of a session that leads no group, a
+missing stop %, a stop % above the bounds, a part that with the other lifts in force under the same parent would
+give more than all of its budget (inside a group, the line names the group's budget, its use today and the group
+lift that gives more), a week already at the stop % or an unknown week (no status line and no
+`budget.weeklyLimitW`) is `REFUSED` (exit 2); [errors.md](errors.md#budget) lists each line.
 
 ### teamrig budget extra
 

@@ -405,7 +405,7 @@ export type HelperGate = { readonly kind: 'allow' } | { readonly kind: 'ask' | '
 /**
  * Before a helper launch: past budget once escalated, `overAction` applies; in quiet hours,
  * `quietHours.action`; the stronger wins. Only "ask" and "block" hold a launch back. The lead's own
- * helpers and a session under a lift always go ahead: the lead decides, and a lift is its decision.
+ * helpers and a session under its own lift always go ahead: the lead decides, and a lift is a leader's decision.
  */
 export function helperGate(facts: BudgetFacts, budget: WarnBudget): HelperGate {
   if (facts.isLead || facts.lift !== undefined) {

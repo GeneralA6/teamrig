@@ -843,7 +843,7 @@
           }
         },
         "lift": {
-          "description": "Bounds on the lead's lift of a session's daily budget (teamrig budget lift). Every lift carries a stop %, the share of the week at which it ends.",
+          "description": "Bounds on a leader's lift of a session's or a sub-lead's group's daily budget (teamrig budget lift). Every lift carries a stop %, the share of the week at which it ends.",
           "type": "object",
           "properties": {
             "maxStopPct": {

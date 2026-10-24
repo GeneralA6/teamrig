@@ -375,7 +375,7 @@ The weekly token budget: the pace line the team is measured against and each ses
 | `overAction` | one of `"warn"`, `"ask-lead"`, `"ask"`, `"block"` | `"warn"` | Past a session's daily budget: warn shows the lines only; ask-lead also writes the lead an inbox line; ask also asks the person before a helper launch; block refuses helper launches. |
 | `escalate` | one of `"session"`, `"session-and-fleet"` | `"session-and-fleet"` | When an action beyond the lines applies: session when the session is over its budget; session-and-fleet only when the team is also ahead of its pace line. |
 | `quietHours` | [object](#budgetquiethours) |  | UTC hours in which the live warning applies action on its own, while the team sleeps. Unset: none. |
-| `lift` | [object](#budgetlift) |  | Bounds on the lead's lift of a session's daily budget (teamrig budget lift). Every lift carries a stop %, the share of the week at which it ends. |
+| `lift` | [object](#budgetlift) |  | Bounds on a leader's lift of a session's or a sub-lead's group's daily budget (teamrig budget lift). Every lift carries a stop %, the share of the week at which it ends. |
 | `statusSnapshotDir` | string (at least 1 character) |  | The folder of status line snapshots, \<Claude session id>.json each. Unset: \<kit home>/usage/live. |
 | `maxBytesPerHook` | integer (100000 to 100000000) | `4000000` | The most transcript bytes one hook run reads; the rest waits for the next run. |
 
@@ -409,7 +409,7 @@ UTC hours in which the live warning applies action on its own, while the team sl
 
 ## `budget.lift`
 
-Bounds on the lead's lift of a session's daily budget (teamrig budget lift). Every lift carries a stop %, the share of the week at which it ends.
+Bounds on a leader's lift of a session's or a sub-lead's group's daily budget (teamrig budget lift). Every lift carries a stop %, the share of the week at which it ends.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
