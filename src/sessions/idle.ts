@@ -6,6 +6,7 @@ import type { Task } from '../register/fold.ts';
 import { waitContext } from '../register/waits.ts';
 import { asksDecision, messageTextOf } from '../tabs/status.ts';
 import { replyOf } from '../turn-log/reply.ts';
+import type { WakeAsk } from '../wake/asks.ts';
 import { dayStartAt, startableTasks } from '../wake/day-start.ts';
 import { byUrgency, isNews, isWakeWorthy, type WakeRest } from '../wake/decide.ts';
 
@@ -106,6 +107,8 @@ export function soonTimeWaitOf(tasks: ReadonlyMap<string, Task>, session: string
 export interface ReopenInput {
   readonly tasks: ReadonlyMap<string, Task>;
   readonly session: string;
+  /** Its urgent lines no wake check has taken (src/wake/asks.ts). */
+  readonly asks: readonly WakeAsk[];
   /** When teamrig closed it, epoch ms. */
   readonly closedAt: number;
   /** The least urgent priority that wakes it now (`effectivePriority`). */
@@ -117,20 +120,25 @@ export interface ReopenInput {
   readonly zone: TimeZone;
 }
 
-/** Whether a closed session reopens now, and for which tasks, most urgent first. */
+/** Whether a closed session reopens now, and for which urgent lines (`at`: the oldest one's post) or tasks, most urgent first. */
 export type ReopenVerdict =
+  | { readonly kind: 'asked'; readonly asks: readonly WakeAsk[]; readonly at: number }
   | { readonly kind: 'handed'; readonly tasks: readonly Task[] }
   | { readonly kind: 'day-start'; readonly at: number; readonly tasks: readonly Task[] }
   | { readonly kind: 'stay' };
 
 /**
- * Whether a session teamrig closed reopens now, as the wake check would wake its open tab: for work it can start
- * within `maxPriority` that someone else or the clock changed since it last touched it (`isNews`, so work it saw
- * before the close does not reopen it), else for a day start after its close when it has any work it can start and
- * does not rest (quiet hours, held by its budget). Else it stays closed.
+ * Whether a session teamrig closed reopens now, as the wake check would wake its open tab: for urgent lines posted to
+ * it, whatever its rest and at once (each is urgent by its sender's choice, and a pass's closes post theirs together),
+ * else for work it can start within `maxPriority` that someone else or the clock changed since it last touched it
+ * (`isNews`, so work it saw before the close does not reopen it), else for a day start after its close when it has any
+ * work it can start and does not rest (quiet hours, held by its budget). Else it stays closed.
  */
 export function reopenVerdict(input: ReopenInput): ReopenVerdict {
   const { tasks, session, now, zone } = input;
+  if (input.asks.length > 0) {
+    return { kind: 'asked', asks: input.asks, at: Math.min(...input.asks.map((ask) => ask.at)) };
+  }
   const context = waitContext(tasks, new Date(now), zone);
   const handed = [...tasks.values()].filter((task) => isWakeWorthy(task, session, input.maxPriority, context) && isNews(task, session, tasks, zone)).sort(byUrgency);
   if (handed.length > 0) {

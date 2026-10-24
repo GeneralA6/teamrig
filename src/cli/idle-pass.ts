@@ -6,6 +6,7 @@ import type { Task } from '../register/fold.ts';
 import { noRoomText } from '../sessions/headroom.ts';
 import { reopenVerdict, type ReopenInput, type ReopenVerdict } from '../sessions/idle.ts';
 import { closedOf, SessionLog, type SessionLogRecord } from '../sessions/log.ts';
+import { urgentLinesText } from '../wake/asks.ts';
 import { byUrgency, effectivePriority, URGENT_PRIORITY, wakeRestOf, type WakeRest } from '../wake/decide.ts';
 import { budgetFactsOf } from './commands/hook-budget.ts';
 import { headroomOf } from './headroom.ts';
@@ -16,7 +17,7 @@ import type { CliRuntime } from './runtime.ts';
 /** A session the budget neither holds nor puts in quiet hours. */
 const AWAKE: WakeRest = { held: false, quiet: false };
 
-/** Why a closed session reopens: work handed to it since its close, or the day's start. */
+/** Why a closed session reopens: urgent lines posted to it, work handed to it since its close, or the day's start. */
 type Reopening = Exclude<ReopenVerdict, { readonly kind: 'stay' }>;
 
 /** What a pass does with one session of the team. */
@@ -38,7 +39,19 @@ export interface ReopenWish {
   readonly kind: 'wish';
   readonly id: string;
   readonly reopening: Reopening;
-  readonly top: Task;
+  /** Undefined only for a reopen for urgent lines, which needs no task. */
+  readonly top: Task | undefined;
+}
+
+/** The pass's pick: urgent lines first, the oldest first, then the most urgent top task. */
+function byReopenOrder(a: ReopenWish, b: ReopenWish): number {
+  if (a.reopening.kind === 'asked') {
+    return b.reopening.kind === 'asked' ? a.reopening.at - b.reopening.at : -1;
+  }
+  if (b.reopening.kind === 'asked') {
+    return 1;
+  }
+  return a.top === undefined || b.top === undefined ? 0 : byUrgency(a.top, b.top);
 }
 
 /** One session judged alone: what it does, or, for one it would reopen, its wish, before the pass picks one reopen. */
@@ -73,7 +86,8 @@ export async function runningVerdictOf(runtime: CliRuntime, kit: Kit, config: Ki
 
 /**
  * One session's step, or its wish to reopen: a running one by {@link runningVerdictOf}, a closed one counted awake
- * unless it would reopen awake (a rest only holds a reopen back), since its budget takes thousands of file reads.
+ * unless it would reopen awake for work (a rest only holds such a reopen back, never one for urgent lines), since its
+ * budget takes thousands of file reads.
  */
 export async function judgeSession(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, facts: IdleFacts, id: string, folderOf: SessionFolderOf, closes: readonly SessionLogRecord[]): Promise<JudgedStep> {
   const { tasks, now, zone } = facts;
@@ -86,10 +100,15 @@ export async function judgeSession(runtime: CliRuntime, kit: Kit, config: KitCon
   if (closed === undefined) {
     return { kind: 'away', id };
   }
-  const input: ReopenInput = { tasks, session: id, closedAt: Date.parse(closed.at), ...awake, dayStartUtc: config.wake.dayStartUtc, now, zone };
+  const asks = facts.asks.get(id) ?? [];
+  const input: ReopenInput = { tasks, session: id, asks, closedAt: Date.parse(closed.at), ...awake, dayStartUtc: config.wake.dayStartUtc, now, zone };
   const asAwake = reopenVerdict(input);
+  if (asAwake.kind === 'asked') {
+    return { kind: 'wish', id, reopening: asAwake, top: undefined };
+  }
   const reopening = asAwake.kind === 'stay' ? asAwake : reopenVerdict({ ...input, ...(await wakeWeightOf(runtime, kit, config, roster, id)) });
-  if (reopening.kind === 'stay') {
+  // Never asked here: a session with asks reopened for them above.
+  if (reopening.kind === 'stay' || reopening.kind === 'asked') {
     return { kind: 'closed', id };
   }
   const [top] = reopening.tasks;
@@ -99,9 +118,9 @@ export async function judgeSession(runtime: CliRuntime, kit: Kit, config: KitCon
 /**
  * What one pass over the team's sessions does, in the roster's order, changing nothing (T1100): each running session
  * closes when `idleVerdictOf` finds it idle, else stays; each one teamrig closed reopens when the wake check would wake
- * it. One reopen a pass, the most urgent top task first, and only with room on the host, read fresh; the rest wait for
- * the next pass, so reopens never outrun what the host can hold. A running session's transcript is read in the
- * folder `folderOf` names for it when its record names none.
+ * it. One reopen a pass, urgent lines first, the oldest first, then the most urgent top task, and only with room on
+ * the host, read fresh; the rest wait for the next pass, so reopens never outrun what the host can hold. A running
+ * session's transcript is read in the folder `folderOf` names for it when its record names none.
  */
 export async function idlePassOf(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, folderOf: SessionFolderOf): Promise<readonly PassStep[]> {
   const facts = await idleFactsOf(runtime, kit, config, roster);
@@ -110,7 +129,7 @@ export async function idlePassOf(runtime: CliRuntime, kit: Kit, config: KitConfi
   for (const id of roster.ids) {
     judged.push(await judgeSession(runtime, kit, config, roster, facts, id, folderOf, closes));
   }
-  const [first] = judged.filter((step): step is ReopenWish => step.kind === 'wish').sort((a, b) => byUrgency(a.top, b.top));
+  const [first] = judged.filter((step): step is ReopenWish => step.kind === 'wish').sort(byReopenOrder);
   const room = first === undefined ? undefined : await headroomOf(runtime, kit.paths, config, roster.ids);
   return judged.map((step): PassStep => {
     if (step.kind !== 'wish') {
@@ -130,9 +149,14 @@ function idsText(tasks: readonly Task[]): string {
 
 /** Why a closed session reopens, as the pass's lines say it. */
 export function reopeningText(reopening: Reopening, zone: TimeZone): string {
-  return reopening.kind === 'handed'
-    ? `work handed to it since its close: ${idsText(reopening.tasks)}`
-    : `the day's start at ${zone.clock(new Date(reopening.at))}, with work it can start: ${idsText(reopening.tasks)}`;
+  switch (reopening.kind) {
+    case 'asked':
+      return urgentLinesText(reopening.asks);
+    case 'handed':
+      return `work handed to it since its close: ${idsText(reopening.tasks)}`;
+    case 'day-start':
+      return `the day's start at ${zone.clock(new Date(reopening.at))}, with work it can start: ${idsText(reopening.tasks)}`;
+  }
 }
 
 /** The step's line, as `teamrig sessions --pass` prints it. */

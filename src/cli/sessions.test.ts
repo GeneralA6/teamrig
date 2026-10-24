@@ -10,6 +10,7 @@ import { FakePathProbe } from '../testing/fake-processes.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
+import { WakeAsks } from '../wake/asks.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 
 const MB = 2 ** 20;
@@ -171,6 +172,39 @@ describe('teamrig sessions --pass', () => {
       'LATER app-bravo (session bravo): work handed to it since its close: T2; app-alpha reopens first, one a pass',
       'PASS 3 session(s): 0 to close, 1 to reopen, 1 to reopen later, 0 kept open, 0 closed, 1 away; nothing changed',
     ]);
+  });
+
+  it('reopens first a session urgent lines wait for, the oldest first, ahead of p1 work, reading no budget for it', async () => {
+    const kit = await closedTeam(BUDGETED);
+    await hand(kit, 'alpha', 'p1');
+    const asks = new WakeAsks(kit.files, join(TEAM_HOME, 'state', 'wake-asks'));
+    await asks.post('bravo', { from: 'lead', text: 'the build broke', at: NOW - MINUTE_MS });
+    const options = { probe: new FakePathProbe({ folders: [APP] }), memory: new FakeHostMemory().lists([]) };
+    const result = await kit.run(['sessions', '--pass'], options);
+    assertOk(result);
+    assert.deepEqual(result.stdout.slice(1, 3), [
+      'LATER app-alpha (session alpha): work handed to it since its close: T1; app-bravo reopens first, one a pass',
+      'REOPEN app-bravo (session bravo): an urgent line from lead',
+    ]);
+
+    await asks.post('alpha', { from: 'bravo', text: 'and the docs', at: NOW - 2 * MINUTE_MS });
+    const older = await kit.run(['sessions', '--pass'], options);
+    assertOk(older);
+    assert.deepEqual(older.stdout.slice(1, 3), [
+      'REOPEN app-alpha (session alpha): an urgent line from bravo',
+      'LATER app-bravo (session bravo): an urgent line from lead; app-alpha reopens first, one a pass',
+    ]);
+
+    // With no work handed, no budget is read: a rest never holds a reopen for urgent lines.
+    const asked = await closedTeam(BUDGETED);
+    await new WakeAsks(asked.files, join(TEAM_HOME, 'state', 'wake-asks')).post('bravo', { from: 'lead', text: 'the build broke', at: NOW - MINUTE_MS });
+    const unread = new FaultyFiles(asked.files);
+    for (const id of ['alpha', 'bravo']) {
+      unread.fail('read', join(TEAM_HOME, 'state', 'usage', `${id}.json`), systemError('EACCES', 'EACCES: permission denied'));
+    }
+    const blind = await asked.run(['sessions', '--pass'], { ...options, files: unread });
+    assertOk(blind);
+    assert.equal(blind.stdout[2], 'REOPEN app-bravo (session bravo): an urgent line from lead');
   });
 
   it('leaves a reopen for later when the host has no room, and a session closed with work under the wake priority', async () => {
