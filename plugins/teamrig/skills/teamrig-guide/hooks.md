@@ -15,7 +15,7 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | `PreToolUse` on `Bash`, `PowerShell`, `Read` and `Grep` | `hook secret-guard` | Refuses a call that would print a secret file, a secret variable, the whole environment or a Kubernetes secret's data into the conversation ([the secret guard](#before-a-shell-command-or-a-read-the-secret-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook exec-guard` | Refuses a privileged command's review run as another session or the owner, and any `exec` call through a client that is no install of the plugin, or one changed after its build ([the exec guard](#before-a-shell-command-the-exec-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook readonly-allow` | With `readonlyShell.enabled`, lets a line whose every command provably only reads run without a permission prompt ([the read-only allow](#before-a-shell-command-the-read-only-allow)) |
-| `PreToolUse` on `AskUserQuestion` | `hook picker-guard` | With `pickerGuard.enabled`, refuses the question picker to every session and helper, and to the lead outside the owner's daily meeting, with the reason to decide it if it is the session's own, else record it on its task and go on ([the picker guard](#before-a-question-the-picker-guard)) |
+| `PreToolUse` on `AskUserQuestion` | `hook picker-guard` | With `pickerGuard.enabled`, refuses the question picker to every session and helper, to the lead outside the owner's daily meeting, and to a sub-team's lead always, with the reason to decide it if it is the session's own, else record it on its task and go on ([the picker guard](#before-a-question-the-picker-guard)) |
 | `PermissionRequest` | `hook prompt-refuse` | With `prompts.hookAsks: refuse`, answers each permission prompt Claude Code is about to raise but the question picker's and plan mode's exit, per case: a line that provably only reads runs, a line with a rerun form is refused quoting it, anything else is refused with the reason to record the step for the owner and go on ([asks off](#asks-off-a-refusal-instead-of-a-prompt)) |
 | `PreToolUse` on `SendMessage` | `hook cold-send` | Holds once a message that would wake an idle session cold; with `open.idle.mode` on, turns a message to a session teamrig closed into its urgent line; during the daily meeting, holds every message to the lead but a CRITICAL one |
 | `PostToolUse` on `SendMessage` | `hook failed-send` | After a send that was not delivered, hands the model [the inbox line to write instead](#after-a-failed-send-the-inbox-line) |
@@ -471,7 +471,11 @@ the team, and its reason says what to do instead:
 
 The lead's own thread keeps the picker only while the owner's daily meeting is open (from `teamrig meeting start` to
 its end or lapse): the owner is there then, and the meeting asks through it. Outside it the lead is refused too, and
-its card goes on the next meeting's agenda. A helper is refused always, the lead's too, since its picker stops the
+its card goes on the next meeting's agenda. In a tree of teams (`team.parent`), only the root team's lead keeps it: a
+sub-team's lead is refused even while a meeting is open, since the user talks only to the root lead, and its reason
+says to record the card, then tell its parent lead in one `teamrig inbox add --to <parent team>/<lead>` line, who
+carries the decision up; with no task left it ends its turn without asking the owner. A team whose `team.parent` has
+no config counts as a root. A helper is refused always, the lead's too, since its picker stops the
 session that started it: its reason says to decide it within its brief, else to end its report with the decision,
 for that session to record. `ExitPlanMode` stays allowed: plan mode starts only when the person chose it in that tab,
 and the tool is its only way out. A tab that is no session of the team (no `$TEAMRIG_SESSION` and no inbox read)

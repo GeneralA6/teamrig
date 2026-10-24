@@ -3515,7 +3515,9 @@ every session and helper of the team, and in the lead's own thread unless the ow
 picker stops the session until the person answers. The reason says to decide it when it is the session's own, else
 gives the session's own `teamrig set <id> --status waiting --waits decision:owner` command with its decision card,
 `--default` included, says to go on with the next task, and only with none left to end the turn with the question and
-a `Decision needed:` line. A helper's reason says to end its report with the decision instead. See
+a `Decision needed:` line. A sub-team's lead is refused even in a meeting, and its reason says to pass the card to its
+parent lead in one inbox line instead of asking the owner. A helper's reason says to end its report with the decision
+instead. See
 [Hooks and permissions](hooks.md#before-a-question-the-picker-guard).
 
 Flags: none.
@@ -3526,8 +3528,8 @@ Example:
 teamrig hook picker-guard < pre-tool-use.json
 ```
 
-Output: a JSON permission decision `deny` with the reason for a team session's or helper's picker, and the lead's
-outside a meeting; nothing for the lead's own thread while the meeting is open, a tab that is no session of the team,
+Output: a JSON permission decision `deny` with the reason for a team session's, a sub-team lead's or a helper's
+picker, and the lead's outside a meeting; nothing for the root lead's own thread while the meeting is open, a tab that is no session of the team,
 any other tool (`ExitPlanMode` too), outside a team, with the guard off, or on an error. Exit 0 always.
 
 ### teamrig hook prompt-refuse
