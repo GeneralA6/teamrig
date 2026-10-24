@@ -1,8 +1,13 @@
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { errorMessage } from '../../core/guards.ts';
+import { KIT_NAME } from '../../core/home.ts';
 import { FileLock, LockBusyError } from '../../core/lock.ts';
 import type { StartOutcome } from '../../open/processes.ts';
+import { hooklessReader } from '../../restore/hookless.ts';
+import { SessionLog } from '../../sessions/log.ts';
+import { SessionRecordStore } from '../../sessions/record.ts';
+import { hooklessReopenLine, hooklessReopensOf, type HooklessReopen } from '../hookless-reopen.ts';
 import { idlePassOf, passLineOf, type PassStep, type SessionFolderOf } from '../idle-pass.ts';
 import { readIdlePassState } from '../idle-pass-check.ts';
 import {
@@ -22,23 +27,56 @@ import {
 } from '../idle-pass-log.ts';
 import { teamZone, type Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
+import { postUrgentLine } from '../urgent-line.ts';
 import { sessionFoldersOf } from './setup.ts';
 
-/** The pass's steps and each session's folder it read them in, or the error it failed with. */
-type PassRun = { readonly kind: 'ran'; readonly steps: readonly PassStep[]; readonly folderOf: SessionFolderOf } | { readonly kind: 'failed'; readonly error: string };
+/** The pass's steps, each session's folder it read them in and the hookless reopens now, or the error it failed with. */
+type PassRun =
+  | { readonly kind: 'ran'; readonly steps: readonly PassStep[]; readonly folderOf: SessionFolderOf; readonly hookless: readonly HooklessReopen[] }
+  | { readonly kind: 'failed'; readonly error: string };
+
+/** The team's reopened tabs no teamrig hook started in, from its session log and its sessions' start records. */
+async function hooklessReopensNow(runtime: CliRuntime, kit: Kit, roster: Roster, now: number): Promise<HooklessReopen[]> {
+  const { records } = await new SessionLog(runtime.files, kit.paths.sessionLog).read();
+  return hooklessReopensOf(records, await new SessionRecordStore(runtime.files, kit.paths).readEach(roster.ids), roster.ids, now);
+}
 
 /**
  * Runs the pass, each session in its own project folder as `teamrig sessions --pass` does by default. The pass reads
  * the host's processes and every session's record, transcript and budget; a failure there is the pass's, logged as
  * such, and must not cost the tab its wake answer.
  */
-async function runPass(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, from: string): Promise<PassRun> {
+async function runPass(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, from: string, now: number): Promise<PassRun> {
   try {
     const folderOf = sessionFoldersOf(runtime, config, undefined, from);
-    return { kind: 'ran', steps: await idlePassOf(runtime, kit, config, roster, folderOf), folderOf };
+    const steps = await idlePassOf(runtime, kit, config, roster, folderOf);
+    return { kind: 'ran', steps, folderOf, hookless: await hooklessReopensNow(runtime, kit, roster, now) };
   } catch (error) {
     return { kind: 'failed', error: errorMessage(error) };
   }
+}
+
+/**
+ * Tells of each hookless reopen once: in mode `on` as an urgent line (src/cli/urgent-line.ts) from teamrig to the
+ * lead, or the coordinator's owner for the lead's own tab (`hooklessReader`), and in both modes as a log record, with
+ * why the line was not posted. One not posted is still marked told, so a refusing inbox gets no line a minute. Returns
+ * each hookless reopen's time by session, for the next pass to skip.
+ */
+async function tellHookless(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, hookless: readonly HooklessReopen[], previous: IdlePassState | undefined, now: number): Promise<Record<string, number>> {
+  const { mode } = config.open.idle;
+  const zone = teamZone(config, runtime);
+  const told: Record<string, number> = {};
+  for (const reopen of hookless) {
+    told[reopen.id] = reopen.at;
+    if (previous?.told?.[reopen.id] === reopen.at) {
+      continue;
+    }
+    const line = hooklessReopenLine(reopen, roster, zone, now);
+    const to = hooklessReader({ session: reopen.id }, config.roles.lead, config.roles.coordinatorOwner);
+    const problem = mode === 'on' ? await postUrgentLine(runtime, kit, config, { to, from: KIT_NAME, text: line }) : undefined;
+    await runtime.files.append(kit.paths.idlePassLog, formatIdlePassRecord({ kind: 'hookless', at: now, mode, id: reopen.id, line, problem }));
+  }
+  return told;
 }
 
 /** The internal command that makes each act (idle-act.ts). */
@@ -88,12 +126,13 @@ async function startActs(runtime: CliRuntime, kit: Kit, roster: Roster, folderOf
 
 /**
  * One pass, under its lock: logs the steps whose kind changed, or a new failure, with the host's commit charge; in
- * mode `on` starts each act its steps ask for and none pending; and keeps the state for the next pass.
+ * mode `on` starts each act its steps ask for and none pending; tells of each new hookless reopen; and keeps the
+ * state for the next pass.
  */
 async function passOnce(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, from: string, previous: IdlePassState | undefined, now: number): Promise<IdlePassState> {
   const { mode } = config.open.idle;
   const { files } = runtime;
-  const run = await runPass(runtime, kit, config, roster, from);
+  const run = await runPass(runtime, kit, config, roster, from, now);
   if (run.kind === 'failed') {
     if (previous?.failed !== run.error) {
       await files.append(kit.paths.idlePassLog, formatIdlePassRecord({ kind: 'failed', at: now, mode, error: run.error }));
@@ -109,15 +148,17 @@ async function passOnce(runtime: CliRuntime, kit: Kit, config: KitConfig, roster
   }
   const held = heldActs(previous?.pending, run.steps, now);
   const started = mode === 'on' ? await startActs(runtime, kit, roster, run.folderOf, actsToStart(run.steps, held), now) : {};
-  return passedState(now, run.steps, { ...held, ...started });
+  const told = await tellHookless(runtime, kit, config, roster, run.hookless, previous, now);
+  return passedState(now, run.steps, { ...held, ...started }, told);
 }
 
 /**
  * The idle pass as `hook wake-check` runs it (T1100), unless `open.idle.mode` is off: once every `IDLE_PASS_EVERY_MS`
  * across the team, claimed under a lock no check waits for, it works out what `teamrig sessions --pass` prints and
  * appends to the team's pass log the steps whose kind changed since the last pass, with the host's commit charge;
- * a failed pass logs its error once until the error changes. In dry-run it changes nothing else; in `on` it starts
- * the closes and the reopen its steps ask for. With mode off it reads nothing.
+ * a failed pass logs its error once until the error changes. It logs once each reopened tab no teamrig hook started
+ * in (src/cli/hookless-reopen.ts). In dry-run it changes nothing else; in `on` it starts the closes and the reopen
+ * its steps ask for, and tells the lead of each hookless reopen with an urgent line. With mode off it reads nothing.
  */
 export async function runIdlePass(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, from: string): Promise<void> {
   if (config.open.idle.mode === 'off') {

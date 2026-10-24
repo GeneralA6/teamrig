@@ -10,7 +10,7 @@ import type { PassStep } from './idle-pass.ts';
  * team, and its log keeps only what changed, so a day of quiet passes writes nothing to it. The state file keeps the
  * last pass's time and each session's step kind then; a failed pass keeps the kinds and its error, logged once until
  * the error changes. It also keeps the acts a pass started, so the next passes start none on their sessions while
- * they may still run.
+ * they may still run, and the reopened tabs no hook started in that a pass told of, so it tells of each reopen once.
  */
 
 /** The format of the pass's state file this code reads and writes; a file in another format reads as no pass yet. */
@@ -41,13 +41,15 @@ export interface PendingAct {
 
 /**
  * The team's pass: when it last ran, each session's step kind at the last pass that ran through, the error of a
- * failing one, and the acts started that may still run, by session.
+ * failing one, the acts started that may still run, and the time of each hookless reopen told of
+ * (src/cli/hookless-reopen.ts), by session.
  */
 export interface IdlePassState {
   readonly at: number;
   readonly kinds: Readonly<Record<string, PassKind>>;
   readonly failed?: string;
   readonly pending?: Readonly<Record<string, PendingAct>>;
+  readonly told?: Readonly<Record<string, number>>;
 }
 
 function isPendingAct(value: unknown): value is PendingAct {
@@ -71,6 +73,23 @@ function pendingOf(value: unknown): Readonly<Record<string, PendingAct>> | undef
   return known.length === entries.length ? Object.fromEntries(known) : undefined;
 }
 
+function isTime(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+/** The reopens told of in a state file: none when absent (as in a file from before them); undefined when damaged. */
+function toldOf(value: unknown): Readonly<Record<string, number>> | undefined {
+  if (value === undefined) {
+    return {};
+  }
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const entries = Object.entries(value);
+  const known = entries.filter((entry): entry is [string, number] => isTime(entry[1]));
+  return known.length === entries.length ? Object.fromEntries(known) : undefined;
+}
+
 /** The state file's content; undefined when it is damaged or from another format, which reads as no pass yet. */
 export function parseIdlePassState(text: string): IdlePassState | undefined {
   const record = parseObject(text.trim());
@@ -79,7 +98,8 @@ export function parseIdlePassState(text: string): IdlePassState | undefined {
   }
   const { at, kinds, failed } = record;
   const pending = pendingOf(record['pending']);
-  if (typeof at !== 'number' || !Number.isFinite(at) || !isRecord(kinds) || (failed !== undefined && typeof failed !== 'string') || pending === undefined) {
+  const told = toldOf(record['told']);
+  if (!isTime(at) || !isRecord(kinds) || (failed !== undefined && typeof failed !== 'string') || pending === undefined || told === undefined) {
     return undefined;
   }
   const entries = Object.entries(kinds);
@@ -87,7 +107,7 @@ export function parseIdlePassState(text: string): IdlePassState | undefined {
   if (known.length !== entries.length) {
     return undefined;
   }
-  return { at, kinds: Object.fromEntries(known), ...(failed === undefined ? {} : { failed }), ...pendingField(pending) };
+  return { at, kinds: Object.fromEntries(known), ...(failed === undefined ? {} : { failed }), ...pendingField(pending), ...toldField(told) };
 }
 
 /** The pending acts as a state field: none while nothing is pending. */
@@ -95,9 +115,15 @@ function pendingField(pending: Readonly<Record<string, PendingAct>> | undefined)
   return pending === undefined || Object.keys(pending).length === 0 ? {} : { pending };
 }
 
+/** The reopens told of as a state field: none while no reopen is hookless. */
+function toldField(told: Readonly<Record<string, number>> | undefined): { readonly told?: Readonly<Record<string, number>> } {
+  return told === undefined || Object.keys(told).length === 0 ? {} : { told };
+}
+
 export function formatIdlePassState(state: IdlePassState): string {
   const pending = Object.fromEntries(Object.entries(state.pending ?? {}).map(([id, { act, at }]) => [id, { act, at }]));
-  return toJsonlLine({ [VERSION_FIELD]: IDLE_PASS_STATE_FORMAT, at: state.at, kinds: { ...state.kinds }, ...(state.failed === undefined ? {} : { failed: state.failed }), ...pendingField(pending) });
+  const told = { ...state.told };
+  return toJsonlLine({ [VERSION_FIELD]: IDLE_PASS_STATE_FORMAT, at: state.at, kinds: { ...state.kinds }, ...(state.failed === undefined ? {} : { failed: state.failed }), ...pendingField(pending), ...toldField(told) });
 }
 
 /** Whether a wake check runs the pass now: `IDLE_PASS_EVERY_MS` passed since the last, or the clock went back past it. */
@@ -141,17 +167,20 @@ export function changedSteps(previous: IdlePassState | undefined, steps: readonl
   return steps.filter((step) => previous?.kinds[step.id] !== step.kind);
 }
 
-/** The state after a pass that ran through, with the acts still pending after it. */
-export function passedState(now: number, steps: readonly PassStep[], pending: Readonly<Record<string, PendingAct>> = {}): IdlePassState {
-  return { at: now, kinds: Object.fromEntries(steps.map((step): [string, PassKind] => [step.id, step.kind])), ...pendingField(pending) };
+/**
+ * The state after a pass that ran through, with the acts still pending after it and the hookless reopens it found,
+ * each told of: a session's mark goes once its tab had a hook, so a later hookless reopen of it is told of again.
+ */
+export function passedState(now: number, steps: readonly PassStep[], pending: Readonly<Record<string, PendingAct>> = {}, told: Readonly<Record<string, number>> = {}): IdlePassState {
+  return { at: now, kinds: Object.fromEntries(steps.map((step): [string, PassKind] => [step.id, step.kind])), ...pendingField(pending), ...toldField(told) };
 }
 
 /**
  * The state after a failed pass: the kinds of the last pass that ran through, so the next one logs its changes since,
- * and its pending acts, which only a pass that weighs the sessions can let go.
+ * its pending acts, which only a pass that weighs the sessions can let go, and the reopens it told of.
  */
 export function failedState(previous: IdlePassState | undefined, now: number, error: string): IdlePassState {
-  return { at: now, kinds: previous?.kinds ?? {}, failed: error, ...pendingField(previous?.pending) };
+  return { at: now, kinds: previous?.kinds ?? {}, failed: error, ...pendingField(previous?.pending), ...toldField(previous?.told) };
 }
 
 /** How long a started act holds its session: past any close's or reopen's run, so one that died is started again. */
@@ -222,11 +251,28 @@ export interface IdleActRecord {
   readonly after: CommitCharge | undefined;
 }
 
-/** A pass that changed a session's step, with the host's commit charge then (undefined: unknown), a new failure of one, or an act. */
+/**
+ * A reopened tab no hook started in, as a pass told of it: its line, and why the line was not posted (in dry-run,
+ * which posts none, undefined too).
+ */
+export interface HooklessRecord {
+  readonly kind: 'hookless';
+  readonly at: number;
+  readonly mode: IdleMode;
+  readonly id: string;
+  readonly line: string;
+  readonly problem: string | undefined;
+}
+
+/**
+ * A pass that changed a session's step, with the host's commit charge then (undefined: unknown), a new failure of
+ * one, an act, or a hookless reopen.
+ */
 export type IdlePassRecord =
   | { readonly kind: 'pass'; readonly at: number; readonly mode: IdleMode; readonly commit: CommitCharge | undefined; readonly steps: readonly LoggedStep[] }
   | { readonly kind: 'failed'; readonly at: number; readonly mode: IdleMode; readonly error: string }
-  | IdleActRecord;
+  | IdleActRecord
+  | HooklessRecord;
 
 /** The commit charge under `key`; nothing where it is unknown. */
 function commitField(key: string, commit: CommitCharge | undefined): JsonRecord {
@@ -240,6 +286,8 @@ export function formatIdlePassRecord(record: IdlePassRecord): string {
       return toJsonlLine({ ...base, error: record.error });
     case 'act':
       return toJsonlLine({ ...base, act: record.act, id: record.id, outcome: record.outcome, line: record.line, ...commitField('before', record.before), ...commitField('after', record.after) });
+    case 'hookless':
+      return toJsonlLine({ ...base, id: record.id, line: record.line, ...(record.problem === undefined ? {} : { problem: record.problem }) });
     case 'pass':
       return toJsonlLine({ ...base, ...commitField('commit', record.commit), steps: record.steps.map((step) => ({ kind: step.kind, id: step.id, line: step.line })) });
   }
