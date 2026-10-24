@@ -1,13 +1,16 @@
+import type { IdleMode } from '../config/types.ts';
 import { clipEnd } from '../core/clip.ts';
 import { KIT_NAME } from '../core/home.ts';
 import { formatFinding, type AllowFinding, type ContextFinding } from '../doctor/doctor.ts';
 import { formatSkillFlag, type SkillFlag } from '../skills/lint.ts';
+import { formatIdlePassTrouble, type IdlePassTrouble } from './idle-pass-log.ts';
 
 /**
  * Warnings no session owns (T951). A context finding weighs text every session on the machine re-reads, so it is no
  * one area's; a wide allow rule sits in settings every session runs under, and a permissions change is the owner's
  * gate, which the lead takes to the owner; a skill flag goes to its skill's `Owner:`, which may be missing or name no
- * session on the team. Such a warning goes to the team's lead, with the check it came from, so it never reaches no
+ * session on the team; the idle pass (T1100) closes and reopens the team's sessions, so a pass that stopped or fails
+ * is the whole team's. Such a warning goes to the team's lead, with the check it came from, so it never reaches no
  * one: the lead fixes it, hands it on or settles the check.
  */
 
@@ -42,6 +45,11 @@ function findingWarning(finding: UnownedFinding): UnownedWarning {
 
 function skillWarning(flag: SkillFlag, skillsDir: string): UnownedWarning {
   return { key: `skill ${flag.kind} ${flag.skill}`, source: `the skill check of ${skillsDir}`, text: formatSkillFlag(flag) };
+}
+
+/** FLEET-STALE: the idle pass's trouble, keyed by its kind, so a pass failing with a new error is not told again. */
+export function idlePassWarning(trouble: IdlePassTrouble, mode: IdleMode, now: number): UnownedWarning {
+  return { key: `idle-pass ${trouble.kind}`, source: 'the idle pass check [open.idle.mode]', text: formatIdlePassTrouble(trouble, mode, now) };
 }
 
 /**

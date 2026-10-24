@@ -42,6 +42,7 @@ import { noPositionals, onePositional, UsageError, type ParsedArgs } from '../ar
 import { addInputOf, callerOf, changesOf, listFilterOf, pinOf, setInputOf, taskIdOf, weekOf, type TypedTimes } from '../inputs.ts';
 import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, projectFolder, requireConfig, rosterOf, sessionIdOf, teamZone, type Access, type Kit } from '../kit.ts';
 import { checkLines, listLines, SHORT_TITLE_CHARS, waitingOnLines, type CheckReport, type CheckSection, type TaskRow } from '../reports.ts';
+import { idlePassWarnings } from '../idle-pass-check.ts';
 import { rollUp, type RolledTeam, type RollUp } from '../roll-up.ts';
 import { splitUnowned } from '../unowned.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
@@ -633,8 +634,9 @@ function withOverLimit(sections: readonly CheckSection[], fit: WeekFit): CheckSe
  * and the batch of the owner's decisions its lead asks next (src/decisions/batch.ts).
  * The `stopgap T<id>` tags in those skills and in the team's `register.check.stopgapFiles` add a STOPGAP-DONE flag
  * per finished task they name. Last, doctor's context-size and context-lists findings against the own team's
- * `contextFiles` budgets: the text every call of a session on this machine re-reads (T393). Those findings and the
- * skill flags no session on the team owns are the unowned warnings, which go to the lead (src/cli/unowned.ts, T951).
+ * `contextFiles` budgets: the text every call of a session on this machine re-reads (T393). Those findings, the
+ * skill flags no session on the team owns and the own team's idle pass gone stale or failing (FLEET-STALE,
+ * src/cli/idle-pass-check.ts) are the unowned warnings, which go to the lead (src/cli/unowned.ts, T951).
  */
 export async function checkReport(args: ParsedArgs, runtime: CliRuntime): Promise<CheckReport> {
   const now = new Date(runtime.clock.now());
@@ -681,8 +683,9 @@ export async function checkReport(args: ParsedArgs, runtime: CliRuntime): Promis
   const context = contextSizeFindings(await readContextInput(runtime, project, own.paths.skills, own.config.contextFiles));
   const allow = allowFindings(await readWideAllow(runtime, { paths: own.paths, config: own.config, project }));
   const { skills, unowned } = splitUnowned([...context, ...allow], lintSkills(skillFiles, now, own.config), new Set(own.config.sessions), own.paths.skills);
+  const idle = await idlePassWarnings(runtime.files, own.paths, own.config.open.idle.mode, now.getTime());
   const lead = own.config.roles.lead;
-  return { sections, scope, skills, skillsDir: own.paths.skills, hires, unowned, lead, decisions: { lead, batch, zone } };
+  return { sections, scope, skills, skillsDir: own.paths.skills, hires, unowned: [...unowned, ...idle], lead, decisions: { lead, batch, zone } };
 }
 
 /** `check [--tree] [--all]`: the report in the short form (src/cli/reports.ts), or with `--all` every flag in full. */

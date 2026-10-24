@@ -56,8 +56,9 @@ export interface CheckReport {
   /** The hire flags: SCALE-OUT on an area, then RETIRE-DUE and REVIEW-DUE on a hired session; printed only when there are some. */
   readonly hires: readonly HireFlag[];
   /**
-   * The warnings no session owns (src/cli/unowned.ts): doctor's context-size, context-lists and allow-wide findings, and
-   * the skill flags with no owner on the team; they go to the lead, printed only when there are some.
+   * The warnings no session owns (src/cli/unowned.ts): doctor's context-size, context-lists and allow-wide findings,
+   * the skill flags with no owner on the team and the idle pass's FLEET-STALE; they go to the lead, printed only when
+   * there are some.
    */
   readonly unowned: readonly UnownedWarning[];
   /** The own team's lead, whom the unowned warnings go to. */

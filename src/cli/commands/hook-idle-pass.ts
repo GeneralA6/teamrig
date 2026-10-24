@@ -3,24 +3,11 @@ import type { KitConfig } from '../../config/types.ts';
 import { errorMessage } from '../../core/guards.ts';
 import { FileLock, LockBusyError } from '../../core/lock.ts';
 import { idlePassOf, passLineOf, type PassStep } from '../idle-pass.ts';
-import {
-  changedSteps,
-  failedState,
-  formatIdlePassRecord,
-  formatIdlePassState,
-  isPassDue,
-  parseIdlePassState,
-  passedState,
-  type IdlePassRecord,
-  type IdlePassState,
-} from '../idle-pass-log.ts';
+import { readIdlePassState } from '../idle-pass-check.ts';
+import { changedSteps, failedState, formatIdlePassRecord, formatIdlePassState, isPassDue, passedState, type IdlePassRecord, type IdlePassState } from '../idle-pass-log.ts';
 import { teamZone, type Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
 import { teamProjectOf } from './setup.ts';
-
-async function readState(runtime: CliRuntime, kit: Kit): Promise<IdlePassState | undefined> {
-  return parseIdlePassState((await runtime.files.read(kit.paths.idlePass)) ?? '');
-}
 
 /** What one pass leaves: the state to keep, and the record to log (undefined: nothing new). */
 interface PassOutcome {
@@ -72,14 +59,14 @@ export async function runIdlePass(runtime: CliRuntime, kit: Kit, config: KitConf
     return;
   }
   const now = runtime.clock.now();
-  if (!isPassDue(await readState(runtime, kit), now)) {
+  if (!isPassDue(await readIdlePassState(runtime.files, kit.paths), now)) {
     return;
   }
   const { files, clock, sleep, pid } = runtime;
   const lock = new FileLock(kit.paths.idlePassLock, { ...config.lock, waitMs: 0 }, { files, clock, sleep, pid });
   try {
     await lock.run(async () => {
-      const previous = await readState(runtime, kit);
+      const previous = await readIdlePassState(runtime.files, kit.paths);
       if (!isPassDue(previous, now)) {
         return;
       }
