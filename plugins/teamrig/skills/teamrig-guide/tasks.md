@@ -301,6 +301,10 @@ every session needs every turn; each item has one home.
   `Owner: <session>` (for a shared skill, the session that owns the tool it runs) and `Last verified: YYYY-MM-DD`. Add a ``Signature: `<regex>` `` line for each tool call that
   shows the procedure run by hand (matched against the tool's name and command, such as `teamrig inbox read`):
   `teamrig skills scorecard` then counts each such run with no load of the skill as a missed use.
+- **Listing**: a session teamrig launches lists another area's skill by name only, without its description, so its
+  words stay out of every call [skills.otherAreas]; shared and personal skills stay in full. When other sessions run
+  your skill too, name them on a `Used by: <session>, <session>` line in its body and they list it in full. The
+  start line counts the skills listed by name only; a restart reads the skills again.
 - **Grants**: auto mode judges a script call by its own command (`node flow.js`), never by what the script runs,
   so a script beside the SKILL.md can make a privileged call unseen. Name each kind its scripts make on a
   `Grants: pod-exec, secret-read, auth-header` line (kubectl exec; a cluster secret or a credential env variable;
