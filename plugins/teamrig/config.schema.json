@@ -1169,9 +1169,9 @@
           "type": "object",
           "properties": {
             "mode": {
-              "description": "off runs no pass; dry-run runs it and logs each close or reopen it would make, with its reason, and makes none.",
+              "description": "off runs no pass; dry-run runs it and logs each close or reopen it would make, with its reason, and makes none; on also starts each of those closes and reopens, hidden, and logs its outcome.",
               "type": "string",
-              "enum": ["off", "dry-run"],
+              "enum": ["off", "dry-run", "on"],
               "default": "off"
             },
             "keepOpen": {

@@ -8,7 +8,7 @@ import type { Files } from '../core/files.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { SessionLog } from '../sessions/log.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
-import { FakePathProbe } from '../testing/fake-processes.ts';
+import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
 import { EXIT } from './runtime.ts';
 import { RESTART_RECHECK_MS } from './commands/hook-wake.ts';
 import { GIVE_UP_MS } from '../refresh/restart.ts';
@@ -299,6 +299,7 @@ describe('hook wake-check runs the idle pass', () => {
   const PASS_STATE = join(STATE, 'idle-pass.json');
   const SESSION_LOG = join(STATE, 'session-log.jsonl');
   const DRY_RUN: JsonRecord = { ...TEAM, open: { idle: { mode: 'dry-run' } } };
+  const ON: JsonRecord = { ...TEAM, open: { idle: { mode: 'on' } } };
   const COMMIT = { usedMb: 85_300, limitMb: 100_700 };
   const WAIT = { kind: 'wait', watch: EVENTS_PATH, recheckAt: null };
 
@@ -309,42 +310,87 @@ describe('hook wake-check runs the idle pass', () => {
     return kit;
   }
 
-  function passCheck(kit: CliHarness, files: Files = kit.files): Promise<CliResult> {
-    return kit.run(['hook', 'wake-check'], { stdin: payload(), files, probe: new FakePathProbe({ folders: [APP] }), memory: new FakeHostMemory().lists([], COMMIT) });
+  /** Alpha's tab's wake check, over `files`, starting hidden programs through `processes`. */
+  function passCheck(kit: CliHarness, { files = kit.files, processes = new FakeProcesses() }: { readonly files?: Files; readonly processes?: FakeProcesses } = {}): Promise<CliResult> {
+    return kit.run(['hook', 'wake-check'], { stdin: payload(), files, processes, probe: new FakePathProbe({ folders: [APP] }), memory: new FakeHostMemory().lists([], COMMIT) });
   }
 
-  const pass = (at: number, steps: readonly JsonRecord[]): JsonRecord => ({ v: 1, at: new Date(at).toISOString(), kind: 'pass', mode: 'dry-run', commit: COMMIT, steps: [...steps] });
+  /** The lead hands bravo a p1, which the wake check would wake bravo for. */
+  async function handBravo(kit: CliHarness): Promise<void> {
+    const handed = await kit.run(['add', '--title', 'Ship the page', '--description', 'what and why', '--priority', 'p1', '--owner', 'bravo', '--session', 'lead']);
+    assert.equal(handed.code, 0, handed.stderr.join('\n'));
+  }
+
+  const pass = (at: number, steps: readonly JsonRecord[], mode = 'dry-run'): JsonRecord => ({ v: 1, at: new Date(at).toISOString(), kind: 'pass', mode, commit: COMMIT, steps: [...steps] });
   const AWAY_LEAD = { kind: 'away', id: 'lead', line: 'AWAY app-lead (session lead): not running, and teamrig did not close it' };
   const AWAY_ALPHA = { kind: 'away', id: 'alpha', line: 'AWAY app-alpha (session alpha): not running, and teamrig did not close it' };
   const CLOSED_BRAVO = { kind: 'closed', id: 'bravo', line: 'CLOSED app-bravo (session bravo): nothing it can start' };
+  const REOPEN_BRAVO = { kind: 'reopen', id: 'bravo', line: 'REOPEN app-bravo (session bravo): work handed to it since its close: T1' };
 
   it('runs once a minute across the team in dry-run, logging only the steps whose kind changed, and the wake answer stands', async () => {
     const kit = await idleTeam();
+    const processes = new FakeProcesses();
     const first = kit.clock.now();
-    assert.deepEqual(answerOf(await passCheck(kit)), WAIT);
+    assert.deepEqual(answerOf(await passCheck(kit, { processes })), WAIT);
     assert.deepEqual(await logLines(kit, PASS_LOG), [pass(first, [AWAY_LEAD, AWAY_ALPHA, CLOSED_BRAVO])]);
-    const handed = await kit.run(['add', '--title', 'Ship the page', '--description', 'what and why', '--priority', 'p1', '--owner', 'bravo', '--session', 'lead']);
-    assert.equal(handed.code, 0, handed.stderr.join('\n'));
+    await handBravo(kit);
     kit.clock.advance(30 * SECOND);
-    await passCheck(kit);
+    await passCheck(kit, { processes });
     assert.equal((await logLines(kit, PASS_LOG)).length, 1, 'once a minute');
     kit.clock.advance(30 * SECOND);
-    await passCheck(kit);
-    const reopen = { kind: 'reopen', id: 'bravo', line: 'REOPEN app-bravo (session bravo): work handed to it since its close: T1' };
-    assert.deepEqual(await logLines(kit, PASS_LOG), [pass(first, [AWAY_LEAD, AWAY_ALPHA, CLOSED_BRAVO]), pass(kit.clock.now(), [reopen])]);
+    await passCheck(kit, { processes });
+    assert.deepEqual(await logLines(kit, PASS_LOG), [pass(first, [AWAY_LEAD, AWAY_ALPHA, CLOSED_BRAVO]), pass(kit.clock.now(), [REOPEN_BRAVO])]);
     kit.clock.advance(MINUTE);
-    await passCheck(kit);
+    await passCheck(kit, { processes });
     assert.equal((await logLines(kit, PASS_LOG)).length, 2, 'a pass that changed nothing logs nothing');
     assert.equal((await logLines(kit, SESSION_LOG)).length, 1, 'and dry-run reopens nothing');
+    assert.deepEqual(processes.hidden, [], 'nor starts a reopen');
+  });
+
+  it('in mode on starts the reopen hidden, starts none on its session for 5 minutes, then starts it again', async () => {
+    const kit = await idleTeam(ON);
+    const processes = new FakeProcesses();
+    await passCheck(kit, { processes });
+    assert.deepEqual(processes.hidden, [], 'a closed session with nothing to start stays closed');
+    await handBravo(kit);
+    kit.clock.advance(MINUTE);
+    assert.deepEqual(answerOf(await passCheck(kit, { processes })), WAIT);
+    const started = kit.clock.now();
+    const reopen = { command: '/usr/bin/node', args: ['/opt/teamrig/dist/cli/main.js', 'idle-open', 'bravo', '--team', 'app', '--project', APP], cwd: APP };
+    assert.deepEqual(
+      processes.hidden.map(({ command, args, cwd }) => ({ command, args, cwd })),
+      [reopen],
+    );
+    const state: unknown = JSON.parse(kit.files.get(PASS_STATE) ?? '');
+    assert.deepEqual(state, { v: 1, at: started, kinds: { lead: 'away', alpha: 'away', bravo: 'reopen' }, pending: { bravo: { act: 'reopen', at: started } } });
+    kit.clock.advance(4 * MINUTE);
+    await passCheck(kit, { processes });
+    assert.equal(processes.hidden.length, 1, 'held while its reopen may still run');
+    kit.clock.advance(MINUTE);
+    await passCheck(kit, { processes });
+    assert.equal(processes.hidden.length, 2, 'started again once the hold ran out and its step still asks for it');
+  });
+
+  it('in mode on logs a reopen that did not start, and holds its session as for one that did', async () => {
+    const kit = await idleTeam(ON);
+    await handBravo(kit);
+    const processes = new FakeProcesses().onStart('/usr/bin/node', { kind: 'missing' });
+    const at = kit.clock.now();
+    await passCheck(kit, { processes });
+    const failed = { v: 1, at: new Date(at).toISOString(), kind: 'act', mode: 'on', act: 'reopen', id: 'bravo', outcome: 'failed', line: 'FAILED to start the reopen of app-bravo (session bravo): node was not found' };
+    assert.deepEqual(await logLines(kit, PASS_LOG), [pass(at, [AWAY_LEAD, AWAY_ALPHA, REOPEN_BRAVO], 'on'), failed]);
+    kit.clock.advance(MINUTE);
+    await passCheck(kit, { processes });
+    assert.equal(processes.hidden.length, 1);
   });
 
   it('logs a failed pass once until its error changes, keeps the wake answer, and logs every step once it runs through', async () => {
     const kit = await idleTeam();
     const faulty = new FaultyFiles(kit.files).fail('read', SESSION_LOG, systemError('EACCES', 'EACCES: permission denied'));
     const first = kit.clock.now();
-    assert.deepEqual(answerOf(await passCheck(kit, faulty)), WAIT);
+    assert.deepEqual(answerOf(await passCheck(kit, { files: faulty })), WAIT);
     kit.clock.advance(MINUTE);
-    assert.deepEqual(answerOf(await passCheck(kit, faulty)), WAIT);
+    assert.deepEqual(answerOf(await passCheck(kit, { files: faulty })), WAIT);
     const failed = { v: 1, at: new Date(first).toISOString(), kind: 'failed', mode: 'dry-run', error: 'EACCES: permission denied' };
     assert.deepEqual(await logLines(kit, PASS_LOG), [failed]);
     kit.clock.advance(MINUTE);
@@ -358,7 +404,7 @@ describe('hook wake-check runs the idle pass', () => {
     assert.deepEqual(answerOf(await passCheck(kit)), WAIT);
     const off = await idleTeam(TEAM);
     const unreadable = new FaultyFiles(off.files).fail('read', PASS_STATE, systemError('EACCES'));
-    assert.deepEqual(answerOf(await passCheck(off, unreadable)), WAIT);
+    assert.deepEqual(answerOf(await passCheck(off, { files: unreadable })), WAIT);
     for (const team of [kit, off]) {
       assert.equal(team.files.get(PASS_LOG), undefined);
       assert.equal(team.files.get(PASS_STATE), undefined);

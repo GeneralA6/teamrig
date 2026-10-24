@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import type { PassStep } from './idle-pass.ts';
 import {
   actOf,
+  actsToStart,
   changedSteps,
   failedState,
   formatIdlePassRecord,
@@ -16,7 +17,6 @@ import {
   isPassDue,
   parseIdlePassState,
   passedState,
-  stepsToAct,
 } from './idle-pass-log.ts';
 
 const AT = Date.parse('2030-01-08T10:00:00.000Z');
@@ -87,8 +87,11 @@ describe('the idle pass acts', () => {
   const REOPEN_BRAVO: PassStep = { kind: 'reopen', id: 'bravo', reopening: { kind: 'handed', tasks: [] } };
 
   it('starts the close and the reopen the steps ask for, but none on a session with one pending', () => {
-    assert.deepEqual(stepsToAct([KEEP_LEAD, CLOSE_ALPHA, REOPEN_BRAVO], {}), [CLOSE_ALPHA, REOPEN_BRAVO]);
-    assert.deepEqual(stepsToAct([KEEP_LEAD, CLOSE_ALPHA, REOPEN_BRAVO], { alpha: { act: 'close', at: AT } }), [REOPEN_BRAVO]);
+    assert.deepEqual(actsToStart([KEEP_LEAD, CLOSE_ALPHA, REOPEN_BRAVO], {}), [
+      { act: 'close', id: 'alpha' },
+      { act: 'reopen', id: 'bravo' },
+    ]);
+    assert.deepEqual(actsToStart([KEEP_LEAD, CLOSE_ALPHA, REOPEN_BRAVO], { alpha: { act: 'close', at: AT } }), [{ act: 'reopen', id: 'bravo' }]);
     assert.equal(actOf(KEEP_LEAD), undefined);
   });
 

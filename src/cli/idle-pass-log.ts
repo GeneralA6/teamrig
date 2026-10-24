@@ -182,9 +182,18 @@ export function heldActs(pending: Readonly<Record<string, PendingAct>> | undefin
   );
 }
 
-/** The steps whose act the pass starts now: each that asks for one, but not while one is pending on its session. */
-export function stepsToAct(steps: readonly PassStep[], held: Readonly<Record<string, PendingAct>>): PassStep[] {
-  return steps.filter((step) => actOf(step) !== undefined && !Object.hasOwn(held, step.id));
+/** An act the pass starts, on its session. */
+export interface ActToStart {
+  readonly act: IdleAct;
+  readonly id: string;
+}
+
+/** The acts the pass starts now: each a step asks for, but none while one is pending on its session. */
+export function actsToStart(steps: readonly PassStep[], held: Readonly<Record<string, PendingAct>>): ActToStart[] {
+  return steps.flatMap((step) => {
+    const act = actOf(step);
+    return act === undefined || Object.hasOwn(held, step.id) ? [] : [{ act, id: step.id }];
+  });
 }
 
 /** One logged step: its kind, its session, and its line as `teamrig sessions --pass` prints it. */

@@ -847,9 +847,9 @@ export interface HeadroomConfig {
 
 /**
  * What the idle pass does with a session it would close or reopen (src/cli/idle-pass.ts): `off` runs no pass,
- * `dry-run` logs each step it would take and takes none.
+ * `dry-run` logs each step it would take and takes none, `on` also starts each close and reopen its steps ask for.
  */
-export const IDLE_MODES = ['off', 'dry-run'] as const;
+export const IDLE_MODES = ['off', 'dry-run', 'on'] as const;
 export type IdleMode = (typeof IDLE_MODES)[number];
 
 export function isIdleMode(value: unknown): value is IdleMode {
