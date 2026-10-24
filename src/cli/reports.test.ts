@@ -50,10 +50,10 @@ function report(overrides: Partial<CheckReport>): CheckReport {
   return { sections: [], scope: 'week 2030-01-07', skills: [], skillsDir: 'skills-dir', hires: [], unowned: [], lead: 'lead', decisions: undefined, ...overrides };
 }
 
-/** `count` tasks numbered from T1, each with a long title, cycling through three owners. */
-function manyTasks(count: number): TaskRow[] {
+/** `count` tasks numbered from T1, each with `title` (a long one by default), cycling through three owners. */
+function manyTasks(count: number, title = LONG_TITLE): TaskRow[] {
   const owners = ['alpha', 'bravo', 'lead'];
-  return Array.from({ length: count }, (_, index) => row({ id: `T${index + 1}`, owner: owners[index % owners.length] ?? 'alpha', title: LONG_TITLE }));
+  return Array.from({ length: count }, (_, index) => row({ id: `T${index + 1}`, owner: owners[index % owners.length] ?? 'alpha', title }));
 }
 
 describe('printedChars and fitBudget', () => {
@@ -241,7 +241,8 @@ describe('checkLines', () => {
   });
 
   it(`shows fewer flags of every kind when ${MAX_FLAGS_PER_KIND} would pass ${SHORT_FORM_CHARS} characters`, () => {
-    const flags = FLAG_KINDS.flatMap((kind) => manyTasks(30).map(({ task }) => ({ kind, task, detail: `${kind} detail for ${task.id}` })));
+    // Short titles keep one flag of each kind within the budget as kinds are added.
+    const flags = FLAG_KINDS.flatMap((kind) => manyTasks(30, 'Short title').map(({ task }) => ({ kind, task, detail: `${kind} detail for ${task.id}` })));
     const lines = checkLines(report({ sections: [{ team: undefined, tree: TREE, flags }] }), false);
     assert.equal(printedChars(lines) <= SHORT_FORM_CHARS, true);
     const more = lines.filter((line) => /^ {2}\+\d+ more$/.test(line));
