@@ -423,7 +423,8 @@ describe('checkTasks: OVER-PACE (T637)', () => {
     const held = [p1(1), p1(2), p1(3, { status: 'in-progress' })];
     assert.deepEqual(paces([...held, finished(4)]), ['T1: alpha holds 3 unfinished p1 tasks, more than the 1 p1 it finished in 7 days; this is the first past that pace']);
     assert.deepEqual(paces([p1(1), finished(4)]), [], 'at the pace');
-    assert.deepEqual(paces([p1(1)]), ['T1: alpha holds 1 unfinished p1 task, more than the 0 p1 it finished in 7 days; this is the first past that pace']);
+    assert.deepEqual(paces([p1(1)]), [], 'one held p1 is in hand at any pace');
+    assert.deepEqual(paces([p1(1), p1(2)]), ['T2: alpha holds 2 unfinished p1 tasks and finished no p1 in 7 days; this is the first past the one in hand']);
   });
 
   it('counts a verifying p1 as finished, not held, and a waiting p1 as held', () => {
@@ -436,9 +437,9 @@ describe('checkTasks: OVER-PACE (T637)', () => {
   it('leaves out finishes older than 7 days, dropped tasks and finishes below p1', () => {
     const held = [p1(1), p1(2)];
     assert.equal(paces([...held, finished(4)]).length, 1);
-    assert.match(paces([...held, finished(4, { statusAt: '2030-01-03T11:59:00.000Z' })])[0] ?? '', /^T1: .* more than the 0 p1 /);
-    assert.match(paces([...held, finished(4, { status: 'dropped' })])[0] ?? '', /^T1: .* more than the 0 p1 /);
-    assert.match(paces([...held, finished(4, { priority: 2 })])[0] ?? '', /^T1: .* more than the 0 p1 /);
+    assert.match(paces([...held, finished(4, { statusAt: '2030-01-03T11:59:00.000Z' })])[0] ?? '', /^T2: .* finished no p1 /);
+    assert.match(paces([...held, finished(4, { status: 'dropped' })])[0] ?? '', /^T2: .* finished no p1 /);
+    assert.match(paces([...held, finished(4, { priority: 2 })])[0] ?? '', /^T2: .* finished no p1 /);
     assert.deepEqual(paces([p1(1), p1(2, { priority: 2 }), finished(4)]), [], 'a held p2 is not held p1 work');
     assert.match(paces([...held, finished(4), finished(5, { statusAt: '2030-01-10T13:00:00.000Z' })])[0] ?? '', /^T2: .* more than the 1 p1 /, 'a finish after now is not counted');
   });
