@@ -960,16 +960,19 @@ start under the wake priority its budget leaves it, no [urgent line](hooks.md#ur
 posted for it, work handed to it since its close, or the day's start with work it can start), `LATER` such a session
 this pass leaves for the next (one reopen a pass, urgent lines first, the oldest first, then the most urgent top task,
 and only on a settled plugin install with room on the host), `CLOSED` one teamrig closed with nothing it can start,
-and `AWAY` one not running that teamrig did not close; then a `PASS` total. A tab opened while a plugin install is
-copied runs without teamrig's hooks, so the install is not settled, and the reopen is `LATER` with why, while a teamrig
-install the folder uses lacks its hooks file, a mod module that file names or `dist/cli/main.js`, or anything in the
-plugin store an install writes changed in the last 30 seconds.
+and `AWAY` one not running that teamrig did not close; then a `PASS` total. A session whose project folder
+(`launch.<id>.project`, else `team.project`, else the folder holding the team's pointer) is no folder holds only
+itself: running, it is `KEEP`, closed, its reopen `LATER`, the refusal its why; the pass goes on for the rest. A tab
+opened while a plugin install is copied runs without teamrig's hooks, so the install is not settled, and the reopen is
+`LATER` with why, while a teamrig install the folder uses lacks its hooks file, a mod module that file names or
+`dist/cli/main.js`, or anything in the plugin store an install writes changed in the last 30 seconds.
 
 With `open.idle.mode: dry-run` the wake check runs this pass itself, once a minute across the team
 ([the idle pass](hooks.md#the-idle-pass)), and appends to `state/idle-pass.jsonl` each step whose kind changed since
 the last pass, with the host's commit charge, and each new failure; it closes and reopens no one. With `on` it also
 starts each close and the reopen its steps ask for, hidden, as [teamrig idle-close](#teamrig-idle-close) and
-[teamrig idle-open](#teamrig-idle-open), and starts none again on that session for 5 minutes. `off`, the default,
+[teamrig idle-open](#teamrig-idle-open), each in the folder the pass read its session in, and starts none again on
+that session for 5 minutes. `off`, the default,
 runs none. The lead reviews a day of that log before any mode that acts.
 
 Flags:
