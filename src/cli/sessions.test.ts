@@ -2,11 +2,13 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { projectTranscriptPath } from '../budget/discover.ts';
+import type { JsonRecord } from '../core/guards.ts';
 import { SessionLog } from '../sessions/log.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakePathProbe } from '../testing/fake-processes.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
+import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 
@@ -16,10 +18,14 @@ const MINUTE_MS = 60_000;
 const NOW = Date.parse('2030-01-08T10:00:00.000Z');
 const SESSIONS = join(TEAM_HOME, 'state', 'sessions');
 const LOG = join(TEAM_HOME, 'state', 'session-log.jsonl');
+/** Alpha's stored token use, which reading any session's budget loads. */
+const ALPHA_USAGE = join(TEAM_HOME, 'state', 'usage', 'alpha.json');
+/** A team that meters its budget and wakes for p2 work too. */
+const BUDGETED: JsonRecord = { ...TEAM, budget: { enabled: true }, wake: { priority: 2 } };
 
 /** A team whose lead last started in Claude Code 6900 (still running, with a shell) and alpha in 7100 (ended). */
-async function recordedTeam(): Promise<CliHarness> {
-  const kit = new CliHarness(TEAM);
+async function recordedTeam(config: JsonRecord = TEAM): Promise<CliHarness> {
+  const kit = new CliHarness(config);
   const store = new SessionRecordStore(kit.files, { sessions: SESSIONS });
   await store.write('lead', { claudePid: 6900, claudeSession: 'claude-lead', at: '2030-01-08T09:00:00.000Z' });
   await store.write('alpha', { claudePid: 7100, claudeSession: 'claude-alpha', at: '2030-01-08T09:30:00.000Z' });
@@ -88,8 +94,8 @@ const ALPHA_CLAUDE = { pid: 8100, parentPid: ALPHA_TAB.pid, name: 'claude.exe', 
 const REPLY = `${JSON.stringify({ type: 'assistant', isSidechain: false, message: { role: 'assistant', usage: { input_tokens: 2, cache_read_input_tokens: 39_998, output_tokens: 50 } } })}\n`;
 
 /** A pass over a team whose lead runs in Claude Code 6900 and alpha in 8100, quiet 75 min; bravo never started. */
-async function runningTeam(): Promise<{ readonly kit: CliHarness; readonly processes: FakeSessionProcesses; readonly options: RunOptions }> {
-  const kit = await recordedTeam();
+async function runningTeam(config: JsonRecord = TEAM): Promise<{ readonly kit: CliHarness; readonly processes: FakeSessionProcesses; readonly options: RunOptions }> {
+  const kit = await recordedTeam(config);
   await new SessionRecordStore(kit.files, { sessions: SESSIONS }).write('alpha', { claudePid: ALPHA_CLAUDE.pid, claudeSession: CLAUDE_SESSION, at: '2030-01-08T08:00:00.000Z' });
   await kit.files.write(TRANSCRIPT, REPLY);
   const processes = new FakeSessionProcesses().add(ALPHA_TAB).add(ALPHA_CLAUDE);
@@ -109,8 +115,8 @@ async function runningTeam(): Promise<{ readonly kit: CliHarness; readonly proce
 }
 
 /** A team none of whose sessions runs, alpha and bravo closed by the lead at 09:00 UTC. */
-async function closedTeam(): Promise<CliHarness> {
-  const kit = new CliHarness(TEAM);
+async function closedTeam(config: JsonRecord = TEAM): Promise<CliHarness> {
+  const kit = new CliHarness(config);
   const log = new SessionLog(kit.files, LOG);
   for (const session of ['alpha', 'bravo']) {
     await log.append({ kind: 'close', session, by: 'lead', at: '2030-01-08T09:00:00.000Z', claudeSession: `claude-${session}`, idleMinutes: 75, freedMb: 1300 });
@@ -166,5 +172,23 @@ describe('teamrig sessions --pass', () => {
     assertOk(result);
     assert.match(result.stdout[1] ?? '', /^LATER app-alpha \(session alpha\): work handed to it since its close: T1; no room on the host to reopen app-alpha, counted at /);
     assert.equal(result.stdout[2], 'CLOSED app-bravo (session bravo): nothing it can start');
+  });
+
+  it("reads a session's budget only where its rest can change the step: work past p1, or a reopen", async () => {
+    const team = await runningTeam(BUDGETED);
+    const unreadable = { ...team.options, files: new FaultyFiles(team.kit.files).fail('read', ALPHA_USAGE, systemError('EACCES', 'EACCES: permission denied')) };
+    const idle = await team.kit.run(['sessions', '--pass'], unreadable);
+    assertOk(idle);
+    assert.equal(idle.stdout[1], 'CLOSE app-alpha (session alpha): quiet 75 min, its Claude Code holds 1300 MB, 1800 MB committed');
+    await hand(team.kit, 'alpha', 'p2');
+    assert.match((await team.kit.run(['sessions', '--pass'], unreadable)).stderr.join('\n'), /EACCES/, 'p2 work weighs only while the budget does not rest it');
+
+    const closed = await closedTeam(BUDGETED);
+    const unread = { probe: new FakePathProbe({ folders: [APP] }), memory: new FakeHostMemory().lists([]), files: new FaultyFiles(closed.files).fail('read', ALPHA_USAGE, systemError('EACCES', 'EACCES: permission denied')) };
+    const resting = await closed.run(['sessions', '--pass'], unread);
+    assertOk(resting);
+    assert.equal(resting.stdout[1], 'CLOSED app-alpha (session alpha): nothing it can start');
+    await hand(closed, 'alpha', 'p1');
+    assert.match((await closed.run(['sessions', '--pass'], unread)).stderr.join('\n'), /EACCES/, 'a rest may hold a reopen back');
   });
 });
