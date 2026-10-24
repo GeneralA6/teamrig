@@ -15,8 +15,9 @@ import { EXIT, RefusedError } from "../runtime.js";
 import { teamRegister } from "../team-register.js";
 import { inboxDepsOf } from "./inbox.js";
 /**
- * `retire`: the lead takes a session off the team once its work is done or handed over (or a hired session
- * retires itself under `hiring.policy` automatic, once its tasks are closed). Without --yes it only shows the
+ * `retire`: a lead over a session takes it off the team once its work is done or handed over: the lead, or a
+ * sub-lead the session is under, who hands its tasks only within its group (T509); or a hired session
+ * retires itself under `hiring.policy` automatic, once its tasks are closed. Without --yes it only shows the
  * retire; with it, its open tasks go to the heir (who gets one inbox line), the old config is kept in the
  * backups folder, the session's keys leave the config, then the retire is logged in the hire log. Its
  * tasks, inbox and records stay where they are, readable by its id.

@@ -18,7 +18,13 @@ export function surplusHintOf(input) {
     const surplus = surplusOf({ window, now: input.now, usedPct: input.usedPct, targetPct: input.targetPct, config, teams: input.teams });
     return surplus === undefined || !surplus.worth
         ? undefined
-        : { sparePct: surplus.sparePct, accountSparePct: surplus.accountSparePct, paceEnd: surplus.paceEnd, reset: surplus.reset, ownerApproves: config.policy === 'owner' };
+        : {
+            sparePct: surplus.sparePct,
+            accountSparePct: surplus.accountSparePct,
+            paceEnd: surplus.paceEnd,
+            reset: surplus.reset,
+            ownerAsk: config.policy === 'owner' ? input.ownerAsk : undefined,
+        };
 }
 function plural(count, word) {
     return `${count} ${word}${count === 1 ? '' : 's'}`;
@@ -73,7 +79,7 @@ function burstModelLine(burst, zone) {
 const BURST_END_LINE = `${BURST_COMMAND}: the burst has ended. Finish the step in hand and start no new helpers; ` +
     `the burst's hires are due to retire (${KIT_NAME} check lists them). ${MORE_BURST}`;
 function surplusLine(surplus, zone) {
-    const approval = surplus.ownerApproves ? ' burst.policy is owner, so ask the owner first and add --approved-by "<who>".' : '';
+    const approval = surplus.ownerAsk === undefined ? '' : ` burst.policy is owner, so first ask ${surplus.ownerAsk}, then add --approved-by "<who>".`;
     return (`${BURST_COMMAND}: about ${formatPct(surplus.sparePct)} of the week${spareShareNote(surplus)} is projected unused at the pace end (${zone.weekdayMinute(new Date(surplus.paceEnd))}). ` +
         `A surplus burst can spend it on independent tasks; preview one: ${BURST_COMMAND} start surplus --reason "<why>".${approval} ${MORE_BURST}`);
 }

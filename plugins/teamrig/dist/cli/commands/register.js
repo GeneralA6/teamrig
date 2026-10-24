@@ -1,5 +1,5 @@
 import { LeadTree } from "../../config/lead-tree.js";
-import { formatAddress } from "../../core/address.js";
+import { formatAddress, splitAddress } from "../../core/address.js";
 import { JsonlDailyLog } from "../../core/daily-log.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { burstsOver } from "../../budget/burst.js";
@@ -24,7 +24,7 @@ import { ACTIVE_STATUSES } from "../../register/model.js";
 import { readStopgapTags, stopgapFlags, stopgapTags } from "../../register/stopgap.js";
 import { dueStartHolds, dueVerifyHold, heldStart, heldStartNotice, metStartNotice, startHolds, verifyQueue } from "../../register/verify.js";
 import { TaskTree } from "../../register/tree.js";
-import { approvalNotice, assignedNotice, formatTask, formatTaskDetail, formatTaskTree, formatVerifyRow, personWaitNotice, selectTasks } from "../../register/views.js";
+import { approvalNotice, assignedNotice, endedNotice, formatTask, formatTaskDetail, formatTaskTree, formatVerifyRow, personWaitNotice, selectTasks } from "../../register/views.js";
 import { isPeerWait, sameWait } from "../../register/waits.js";
 import { lintSkills } from "../../skills/lint.js";
 import { SKILL_FILE, SkillDir } from "../../skills/store.js";
@@ -242,10 +242,40 @@ async function ownerWaitTiming(runtime, team, { task, state }) {
 }
 /** Posts one inbox line, naming it on stderr, or naming `unsent` and why: a line that cannot be posted is never thrown. */
 async function tellLine(runtime, team, by, to, text, unsent, shown = to) {
-    const { inboxes } = inboxDepsOf(runtime, team.paths);
-    const secrets = new SecretScanner(team.config.register.secretPatterns);
-    const problem = await postLine(inboxes, secrets, { to, from: by, text, now: new Date(runtime.clock.now()) });
-    runtime.out.stderr(problem === undefined ? `NOTE ${shown} has an inbox line: ${text}` : `WARN ${unsent}: ${problem}`);
+    await postNamed(runtime, team.paths, new SecretScanner(team.config.register.secretPatterns), { to, from: by, text }, unsent, shown);
+}
+/** Posts one line to an inbox of the team at `paths`, naming it on stderr as `shown`, or naming `unsent` and why. */
+async function postNamed(runtime, paths, secrets, line, unsent, shown) {
+    const { inboxes } = inboxDepsOf(runtime, paths);
+    const problem = await postLine(inboxes, secrets, { ...line, now: new Date(runtime.clock.now()) });
+    runtime.out.stderr(problem === undefined ? `NOTE ${shown} has an inbox line: ${line.text}` : `WARN ${unsent}: ${problem}`);
+}
+/**
+ * One inbox line to the parent team's lead when a task the parent handed this team (`add --team`, its source
+ * `<parent>/<id>`) ends, done or dropped (T509): the parent's register holds no copy of it, so the line is how the
+ * parent hears. It goes to whoever leads the parent now, under `<team>/<setter>`, scanned with both teams' secret
+ * patterns; a task from any other team tells no one. A line that cannot be posted is named, never thrown.
+ */
+async function tellParentOfEnd(runtime, team, by, verdict) {
+    const link = team.config.team;
+    if (!verdict.ok || link?.parent === undefined) {
+        return;
+    }
+    const { task, before } = verdict.value;
+    if (ACTIVE_STATUSES.includes(task.status) || before?.status === task.status || splitAddress(task.source)?.team !== link.parent) {
+        return;
+    }
+    const text = endedNotice(task, link.id);
+    const { tree, teams } = await loadTree(runtime);
+    const lead = tree.parentLeadOf(link.id);
+    const parent = teams.get(link.parent);
+    if (lead === undefined || parent === undefined) {
+        runtime.out.stderr(`WARN ${link.parent}'s lead was not told that ${link.id}/${task.id} ended: team ${link.parent} has no config in this kit home`);
+        return;
+    }
+    const shown = formatAddress(lead);
+    const secrets = new SecretScanner([...team.config.register.secretPatterns, ...parent.config.register.secretPatterns]);
+    await postNamed(runtime, parent.kit.paths, secrets, { to: lead.id, from: formatAddress({ team: link.id, id: by }), text }, `${shown} was not told that ${link.id}/${task.id} ended`, shown);
 }
 export async function set(args, runtime) {
     const id = taskIdOf(onePositional(args, 'id'));
@@ -271,6 +301,7 @@ export async function set(args, runtime) {
         noteProblemHint(runtime, team, verdict.value.task);
     }
     await tellLeadersOfWaits(runtime, team, by, verdict);
+    await tellParentOfEnd(runtime, team, by, verdict);
     if (held !== undefined && warned && verdict.ok && met === null) {
         runtime.out.stderr(`WARN ${heldStart(held.task, held.holds)}; started anyway, as register.verifyGate is warn`);
     }

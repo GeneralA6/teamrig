@@ -1,5 +1,6 @@
 import { basename, dirname, join } from 'node:path';
 import { LeadTree } from "../../config/lead-tree.js";
+import { ownerAsk } from "../../config/tree.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { activeBurst, burstFloorOf, withBurst } from "../../budget/burst.js";
 import { surplusHintOf } from "../../budget/burst-lines.js";
@@ -88,7 +89,15 @@ export async function budgetFactsOf(runtime, scope, transcript) {
     const todayW = own === undefined ? 0 : wSince([own], week.todayFrom, now);
     const isLead = id === config.roles.lead;
     const surplus = isLead && inForce === undefined
-        ? surplusHintOf({ config: config.burst, window: week.window, now, usedPct: week.usedPct, targetPct: budget.targetPct, teams: { split, others } })
+        ? surplusHintOf({
+            config: config.burst,
+            window: week.window,
+            now,
+            usedPct: week.usedPct,
+            targetPct: budget.targetPct,
+            teams: { split, others },
+            ownerAsk: ownerAsk(config),
+        })
         : undefined;
     return {
         now,

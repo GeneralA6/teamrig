@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { ownerAsk } from "../../config/tree.js";
 import { KIT_NAME } from "../../core/home.js";
 import { DailyProfile } from "../../budget/active-time.js";
 import { activeBurst, BURST_KINDS, burstFloorOf, decideBurst, isBurst, isBurstKind, sessionsTodayPct, spareShareNote, surplusOf, } from "../../budget/burst.js";
@@ -216,6 +217,7 @@ export async function start(args, runtime) {
         profile: DailyProfile.ofQuietHours(config.budget.quietHours),
         sessionsTodayPct: sessionsTodayPct(sessions, week, bySession, now),
         teams: await teamsOf(runtime, kit, config, roster, now, week.usedPct),
+        ownerAsk: ownerAsk(config),
     });
     if (decision.kind === 'refused') {
         throw new RefusedError(decision.reason);

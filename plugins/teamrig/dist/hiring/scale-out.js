@@ -2,7 +2,8 @@ import { formatPct } from "../budget/format.js";
 import { KIT_NAME } from "../core/home.js";
 import { MS_PER_DAY, showStored } from "../core/time.js";
 import { ACTIVE_STATUSES } from "../register/model.js";
-import { hireCapProblem, hiresOnTeam, ownerAsk } from "./plan.js";
+import { ownerAsk } from "../config/tree.js";
+import { hireCapProblem, hiresOnTeam } from "./plan.js";
 /** Statuses of work under way: a task such work needs stays with its area. */
 const STARTED = ['in-progress', 'waiting', 'verifying'];
 /** A count past what the pace finishes by more than this rounding is behind. */
