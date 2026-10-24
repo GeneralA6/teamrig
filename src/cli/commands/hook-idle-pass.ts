@@ -8,7 +8,7 @@ import { hooklessReader } from '../../restore/hookless.ts';
 import { SessionLog } from '../../sessions/log.ts';
 import { SessionRecordStore } from '../../sessions/record.ts';
 import { hooklessReopenLine, hooklessReopensOf, type HooklessReopen } from '../hookless-reopen.ts';
-import { idlePassOf, passLineOf, type PassStep, type SessionFolderOf } from '../idle-pass.ts';
+import { idlePassOf, passLineOf, type PassStep } from '../idle-pass.ts';
 import { readIdlePassState } from '../idle-pass-check.ts';
 import {
   actsToStart,
@@ -30,9 +30,9 @@ import type { CliRuntime } from '../runtime.ts';
 import { postUrgentLine } from '../urgent-line.ts';
 import { sessionFoldersOf } from './setup.ts';
 
-/** The pass's steps, each session's folder it read them in and the hookless reopens now, or the error it failed with. */
+/** The pass's steps and the hookless reopens now, or the error it failed with. */
 type PassRun =
-  | { readonly kind: 'ran'; readonly steps: readonly PassStep[]; readonly folderOf: SessionFolderOf; readonly hookless: readonly HooklessReopen[] }
+  | { readonly kind: 'ran'; readonly steps: readonly PassStep[]; readonly hookless: readonly HooklessReopen[] }
   | { readonly kind: 'failed'; readonly error: string };
 
 /** The team's reopened tabs no teamrig hook started in, from its session log and its sessions' start records. */
@@ -48,9 +48,8 @@ async function hooklessReopensNow(runtime: CliRuntime, kit: Kit, roster: Roster,
  */
 async function runPass(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, from: string, now: number): Promise<PassRun> {
   try {
-    const folderOf = sessionFoldersOf(runtime, config, undefined, from);
-    const steps = await idlePassOf(runtime, kit, config, roster, folderOf);
-    return { kind: 'ran', steps, folderOf, hookless: await hooklessReopensNow(runtime, kit, roster, now) };
+    const steps = await idlePassOf(runtime, kit, config, roster, sessionFoldersOf(runtime, config, undefined, from));
+    return { kind: 'ran', steps, hookless: await hooklessReopensNow(runtime, kit, roster, now) };
   } catch (error) {
     return { kind: 'failed', error: errorMessage(error) };
   }
@@ -86,14 +85,8 @@ function startProblemOf(started: Exclude<StartOutcome, { readonly kind: 'started
   return started.kind === 'missing' ? 'node was not found' : started.error;
 }
 
-/** Starts one act hidden in its session's own folder; why it did not start, undefined when it did. */
-async function startAct(runtime: CliRuntime, kit: Kit, folderOf: SessionFolderOf, { act, id }: ActToStart): Promise<string | undefined> {
-  let project: string;
-  try {
-    project = await folderOf(id);
-  } catch (error) {
-    return errorMessage(error);
-  }
+/** Starts one act hidden in the folder the pass read its session in; why it did not start, undefined when it did. */
+async function startAct(runtime: CliRuntime, kit: Kit, { act, id, project }: ActToStart): Promise<string | undefined> {
   const started = await runtime.processes.startHidden({
     command: runtime.self.node,
     args: [runtime.self.script, ACT_COMMANDS[act], id, '--team', kit.paths.team, '--project', project],
@@ -107,14 +100,13 @@ async function startAct(runtime: CliRuntime, kit: Kit, folderOf: SessionFolderOf
  * Starts each act hidden, as hook-restart.ts starts `teamrig restart`: a close takes up to about 22 s
  * (src/open/end-tab.ts) and the mod ends a wake check at 30 s (src/mod/wake-hand.ts), so none runs inside the check.
  * Each act weighs its session again and logs its own outcome. Each is marked pending, one that did not start too, so
- * the passes after it start none on its session for `IDLE_ACT_HOLD_MS`; one that did not start, its folder refused
- * too, is logged.
+ * the passes after it start none on its session for `IDLE_ACT_HOLD_MS`; one that did not start is logged.
  */
-async function startActs(runtime: CliRuntime, kit: Kit, roster: Roster, folderOf: SessionFolderOf, acts: readonly ActToStart[], now: number): Promise<Record<string, PendingAct>> {
+async function startActs(runtime: CliRuntime, kit: Kit, roster: Roster, acts: readonly ActToStart[], now: number): Promise<Record<string, PendingAct>> {
   const pending: Record<string, PendingAct> = {};
   for (const toStart of acts) {
     const { act, id } = toStart;
-    const problem = await startAct(runtime, kit, folderOf, toStart);
+    const problem = await startAct(runtime, kit, toStart);
     pending[id] = { act, at: now };
     if (problem !== undefined) {
       const line = `FAILED to start the ${act} of ${roster.nameOf(id) ?? id} (session ${id}): ${problem}`;
@@ -147,7 +139,7 @@ async function passOnce(runtime: CliRuntime, kit: Kit, config: KitConfig, roster
     await files.append(kit.paths.idlePassLog, formatIdlePassRecord(record));
   }
   const held = heldActs(previous?.pending, run.steps, now);
-  const started = mode === 'on' ? await startActs(runtime, kit, roster, run.folderOf, actsToStart(run.steps, held), now) : {};
+  const started = mode === 'on' ? await startActs(runtime, kit, roster, actsToStart(run.steps, held), now) : {};
   const told = await tellHookless(runtime, kit, config, roster, run.hookless, previous, now);
   return passedState(now, run.steps, { ...held, ...started }, told);
 }

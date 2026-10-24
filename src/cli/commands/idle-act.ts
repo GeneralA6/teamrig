@@ -124,6 +124,8 @@ function stayText(step: Exclude<JudgedStep, ReopenWish>): string {
       return 'it is running';
     case 'closed':
       return 'still closed, nothing it can start';
+    case 'later':
+      return step.why;
     case 'away':
       return `not running, and ${KIT_NAME} did not close it`;
   }

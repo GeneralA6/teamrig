@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { resolve } from 'node:path';
 import type { PassStep } from './idle-pass.ts';
 import {
-  actOf,
   actsToStart,
   changedSteps,
   failedState,
@@ -20,6 +20,7 @@ import {
 } from './idle-pass-log.ts';
 
 const AT = Date.parse('2030-01-08T10:00:00.000Z');
+const APP = resolve('/', 'work', 'app');
 const KEEP_LEAD: PassStep = { kind: 'keep', id: 'lead', why: 'app-lead (session lead) holds the lead role: teamrig never closes it' };
 const STEPS: readonly PassStep[] = [KEEP_LEAD, { kind: 'closed', id: 'alpha' }, { kind: 'away', id: 'bravo' }];
 
@@ -82,7 +83,7 @@ describe('the idle pass state', () => {
 
   it('names every step at the first pass, then only those whose kind changed', () => {
     assert.deepEqual(changedSteps(undefined, STEPS), STEPS);
-    const reopen: PassStep = { kind: 'reopen', id: 'alpha', reopening: { kind: 'handed', tasks: [] } };
+    const reopen: PassStep = { kind: 'reopen', id: 'alpha', reopening: { kind: 'handed', tasks: [] }, project: APP };
     assert.deepEqual(changedSteps(passedState(AT, STEPS), [KEEP_LEAD, reopen, { kind: 'away', id: 'bravo' }]), [reopen]);
   });
 });
@@ -95,16 +96,18 @@ describe('the idle pass acts', () => {
     committedMb: undefined,
     idleMinutes: 75,
   };
-  const CLOSE_ALPHA: PassStep = { kind: 'close', id: 'alpha', closable: CLOSABLE };
-  const REOPEN_BRAVO: PassStep = { kind: 'reopen', id: 'bravo', reopening: { kind: 'handed', tasks: [] } };
+  const BRAVO = resolve('/', 'work', 'bravo');
+  const CLOSE_ALPHA: PassStep = { kind: 'close', id: 'alpha', closable: CLOSABLE, project: APP };
+  const REOPEN_BRAVO: PassStep = { kind: 'reopen', id: 'bravo', reopening: { kind: 'handed', tasks: [] }, project: BRAVO };
 
-  it('starts the close and the reopen the steps ask for, but none on a session with one pending', () => {
+  it('starts the close and the reopen the steps ask for in the folder each was read in, but none on a session with one pending', () => {
     assert.deepEqual(actsToStart([KEEP_LEAD, CLOSE_ALPHA, REOPEN_BRAVO], {}), [
-      { act: 'close', id: 'alpha' },
-      { act: 'reopen', id: 'bravo' },
+      { act: 'close', id: 'alpha', project: APP },
+      { act: 'reopen', id: 'bravo', project: BRAVO },
     ]);
-    assert.deepEqual(actsToStart([KEEP_LEAD, CLOSE_ALPHA, REOPEN_BRAVO], { alpha: { act: 'close', at: AT } }), [{ act: 'reopen', id: 'bravo' }]);
-    assert.equal(actOf(KEEP_LEAD), undefined);
+    assert.deepEqual(actsToStart([KEEP_LEAD, CLOSE_ALPHA, REOPEN_BRAVO], { alpha: { act: 'close', at: AT } }), [{ act: 'reopen', id: 'bravo', project: BRAVO }]);
+    const later: PassStep = { kind: 'later', id: 'bravo', reopening: { kind: 'handed', tasks: [] }, why: 'no room' };
+    assert.deepEqual(actsToStart([KEEP_LEAD, later], {}), [], 'a kept or a later step starts nothing');
   });
 
   it('holds an act while its session still asks for it, under IDLE_ACT_HOLD_MS', () => {

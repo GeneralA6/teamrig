@@ -161,6 +161,34 @@ describe('teamrig sessions --pass', () => {
     assert.equal(result.stdout[1], 'CLOSE app-alpha (session alpha): quiet 75 min, its Claude Code holds 1300 MB, 1800 MB committed');
   });
 
+  it('keeps open a running session whose launch.<id>.project is no folder, and goes on for the rest', async () => {
+    const gone = resolve('/', 'work', 'gone');
+    const team = await runningTeam({ ...TEAM, launch: { alpha: { project: gone } } });
+    const result = await team.kit.run(['sessions', '--pass'], team.options);
+    assertOk(result);
+    assert.deepEqual(result.stdout, [
+      'KEEP app-lead (session lead) holds the lead role: teamrig never closes it',
+      `KEEP app-alpha (session alpha): the project folder ${gone} does not exist`,
+      'AWAY app-bravo (session bravo): not running, and teamrig did not close it',
+      'PASS 3 session(s): 0 to close, 0 to reopen, 0 to reopen later, 2 kept open, 0 closed, 1 away; nothing changed',
+    ]);
+  });
+
+  it('leaves for later the reopen of a closed session whose launch.<id>.project is no folder, and reopens the next', async () => {
+    const gone = resolve('/', 'work', 'gone');
+    const kit = await closedTeam({ ...TEAM, launch: { alpha: { project: gone } } });
+    await hand(kit, 'alpha', 'p1');
+    await hand(kit, 'bravo', 'p1');
+    const result = await kit.run(['sessions', '--pass'], { probe: new FakePathProbe({ folders: [APP] }), memory: new FakeHostMemory().lists([]) });
+    assertOk(result);
+    assert.deepEqual(result.stdout, [
+      'AWAY app-lead (session lead): not running, and teamrig did not close it',
+      `LATER app-alpha (session alpha): work handed to it since its close: T1; the project folder ${gone} does not exist`,
+      'REOPEN app-bravo (session bravo): work handed to it since its close: T2',
+      'PASS 3 session(s): 0 to close, 1 to reopen, 1 to reopen later, 0 kept open, 0 closed, 1 away; nothing changed',
+    ]);
+  });
+
   it('reopens one closed session a pass, the most urgent first, for work handed to it since its close', async () => {
     const kit = await closedTeam();
     await hand(kit, 'alpha', 'p1');
