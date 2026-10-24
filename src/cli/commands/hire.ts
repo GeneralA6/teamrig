@@ -20,7 +20,7 @@ import { checkedNextConfig, configFileJson, findTeam, openKit, requireConfig, ro
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
 import { freshOpenOf, resumeVerdictOf } from './rehire.ts';
-import { teamProjectOf } from './setup.ts';
+import { sessionProjectOf } from './setup.ts';
 
 /**
  * `hire`: the lead adds a temporary session to the team within `hiring`'s policy and caps. Without
@@ -149,7 +149,7 @@ export async function hire(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
     const from = retiredSessions(records).find((record) => record.session === request.id);
     // Measured before anything is written, so the preview shows it too.
     const rehire: Rehire | undefined =
-      from === undefined ? undefined : { from, verdict: await resumeVerdictOf(runtime, kit.paths, config.hiring, request.id, await teamProjectOf(runtime, undefined, found.from)) };
+      from === undefined ? undefined : { from, verdict: await resumeVerdictOf(runtime, kit.paths, config.hiring, request.id, await sessionProjectOf(runtime, config, request.id, undefined, found.from)) };
     const rehireText = rehire === undefined ? [] : rehireLines(rehire, teamZone(config, runtime));
     if (skipped > 0) {
       runtime.out.stdout(`NOTE ${skipped} damaged or newer line(s) in ${log.path} were skipped, so the caps may count too few hires`);

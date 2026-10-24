@@ -7,7 +7,7 @@ import { UsageError, type ParsedArgs } from '../args.ts';
 import { idlePassOf, passLineOf, passTotalOf } from '../idle-pass.ts';
 import { findTeam, openKit, openTeamKit, requireConfig, rosterOf, teamZone } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { teamProjectOf } from './setup.ts';
+import { sessionFoldersOf } from './setup.ts';
 
 /** One session's line: `<id> <name>: ` and where it is. */
 function placeLine(roster: Roster, place: SessionPlace): string {
@@ -62,8 +62,7 @@ async function pass(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const kit = await openKit(runtime, found.team);
   const config = requireConfig(kit, runtime, 'read');
   const roster = await rosterOf(runtime, kit, config);
-  const project = await teamProjectOf(runtime, args.flags.get('project'), found.from);
-  const steps = await idlePassOf(runtime, kit, config, roster, project);
+  const steps = await idlePassOf(runtime, kit, config, roster, sessionFoldersOf(runtime, config, args.flags.get('project'), found.from));
   const zone = teamZone(config, runtime);
   steps.forEach((step) => runtime.out.stdout(passLineOf(step, roster, zone)));
   runtime.out.stdout(passTotalOf(steps));
