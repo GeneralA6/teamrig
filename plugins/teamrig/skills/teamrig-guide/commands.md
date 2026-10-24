@@ -955,10 +955,11 @@ does not count. Then the host's free memory and commit charge (Windows and Linux
 
 With `--pass` it prints, in the roster's order, what an idle pass would do, and changes nothing: `CLOSE` a running
 session [teamrig close](#teamrig-close) would close (quiet `open.headroom.closeIdleMinutes` or more, nothing it can
-start under the wake priority its budget leaves it), `KEEP` one it keeps open and why, `REOPEN` a session teamrig
-closed that the wake check would now wake (work handed to it since its close, or the day's start with work it can
-start), `LATER` such a session this pass leaves for the next (one reopen a pass, the most urgent top task first, and
-only with room on the host), `CLOSED` one teamrig closed with nothing it can start, and `AWAY` one not running that
+start under the wake priority its budget leaves it, no [urgent line](hooks.md#urgent-lines) waiting to wake it),
+`KEEP` one it keeps open and why, `REOPEN` a session teamrig closed that the wake check would now wake (urgent lines
+posted for it, work handed to it since its close, or the day's start with work it can start), `LATER` such a session
+this pass leaves for the next (one reopen a pass, urgent lines first, the oldest first, then the most urgent top task,
+and only with room on the host), `CLOSED` one teamrig closed with nothing it can start, and `AWAY` one not running that
 teamrig did not close; then a `PASS` total.
 
 With `open.idle.mode: dry-run` the wake check runs this pass itself, once a minute across the team
@@ -1950,9 +1951,11 @@ prints `KEPT <why>` when the session no longer closes, and `FAILED to weigh shop
 The idle pass's reopen of one session it closed, once work would wake it: the pass runs it hidden; you do not run it
 yourself. The session may have been opened, or its work done, since the pass, so it judges the session again the way
 the pass does, then opens it as `teamrig open` does: in its last Claude Code session when that is small and recent
-enough, else fresh, with the reopen logged in the team's `state/session-log.jsonl`. Each outcome (reopened, kept,
-failed) is one JSON line in the team's `state/idle-pass.jsonl` (`"kind": "act"`), with the host's commit charge
-before a reopen.
+enough, else fresh, with the reopen logged in the team's `state/session-log.jsonl`. The
+[urgent lines](hooks.md#urgent-lines) posted for it while it was closed are quoted in its first prompt, each with its
+time and sender, ahead of the prompt's own text, and taken once its tab opened, so its wake check does not wake it on
+them again; kept closed, they wait for the next pass. Each outcome (reopened, kept, failed) is one JSON line in the
+team's `state/idle-pass.jsonl` (`"kind": "act"`), with the host's commit charge before a reopen.
 
 Flags:
 
@@ -1971,7 +1974,9 @@ Output:
 REOPENED shop-web (session web) for work handed to it since its close: T12: OPENED shop-web (session web) in a new Windows Terminal tab in /home/you/shop, on the default model and effort, resuming Claude Code session 3f2a9c1e-7b4d-4e8a-9c0f-1a2b3c4d5e6f
 ```
 
-It prints `KEPT shop-web (session web): <why>` when the session no longer reopens, `KEPT shop-web (session web)
+Urgent lines it could not take leave the reopen done, with `; its urgent lines were not taken, so its tab wakes on
+them once more: <why>` at the end of the `REOPENED` line. It prints `KEPT shop-web (session web): <why>` when the
+session no longer reopens, `KEPT shop-web (session web)
 closed: no room on the host ...` when the host has no room for it, and `FAILED to weigh shop-web (session web): <why>`
 or `FAILED to reopen shop-web (session web): <why>` (exit 1) when it could not weigh it or no terminal opened.
 
@@ -3531,6 +3536,14 @@ message and send it again; the same tab's next send to it within 15 minutes goes
 While the owner's daily meeting is open (`teamrig meeting start`), it holds every message to the lead from another
 session, a resend too, unless the message starts with `CRITICAL`; the note says to leave an inbox line instead.
 This hold works with `messages.coldAfterMinutes` at 0 too.
+
+With `open.idle.mode: on`, a message to a team session teamrig closed (its last close in `state/session-log.jsonl`,
+no start of its tab since) reaches no tab, so the hook posts it as the receiver's
+[urgent line](hooks.md#urgent-lines), from the sender's session, and denies the send with that said: the idle pass
+reopens the receiver within about a minute, the line quoted in its first prompt, so the sender need not send it
+again. When the line cannot be posted, the note gives the reason and asks the sender to tell the lead and leave an
+inbox line once that is fixed. The meeting's hold comes first, then this one, then the cold hold; modes `off` and
+`dry-run` reopen no one, so they let the send go, and the failed-send hook's hint stands.
 
 Flags: none.
 

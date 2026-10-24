@@ -17,7 +17,7 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | `PreToolUse` on `Bash` and `PowerShell` | `hook readonly-allow` | With `readonlyShell.enabled`, lets a line whose every command provably only reads run without a permission prompt ([the read-only allow](#before-a-shell-command-the-read-only-allow)) |
 | `PreToolUse` on `AskUserQuestion` | `hook picker-guard` | With `pickerGuard.enabled`, refuses the question picker to every session and helper, and to the lead outside the owner's daily meeting, with the reason to decide it if it is the session's own, else record it on its task and go on ([the picker guard](#before-a-question-the-picker-guard)) |
 | `PermissionRequest` | `hook prompt-refuse` | With `prompts.hookAsks: refuse`, answers each permission prompt Claude Code is about to raise but the question picker's and plan mode's exit, per case: a line that provably only reads runs, a line with a rerun form is refused quoting it, anything else is refused with the reason to record the step for the owner and go on ([asks off](#asks-off-a-refusal-instead-of-a-prompt)) |
-| `PreToolUse` on `SendMessage` | `hook cold-send` | Holds once a message that would wake an idle session cold; during the daily meeting, holds every message to the lead but a CRITICAL one |
+| `PreToolUse` on `SendMessage` | `hook cold-send` | Holds once a message that would wake an idle session cold; with `open.idle.mode` on, turns a message to a session teamrig closed into its urgent line; during the daily meeting, holds every message to the lead but a CRITICAL one |
 | `PostToolUse` on `SendMessage` | `hook failed-send` | After a send that was not delivered, hands the model [the inbox line to write instead](#after-a-failed-send-the-inbox-line) |
 | `PostToolUse` and `PostToolUseFailure` on `Bash` and `PowerShell`, in a team or not | `hook missing-cli` | After a shell call that did not find the bare `teamrig` command, hands the model [the CLI's path to run instead](#after-a-shell-call-the-cli-by-its-path) |
 | `PostToolUse` on reads, edits and shell calls | `hook loop-nudge` | Asks the model once to batch when a turn makes [single-step calls in a row](#after-a-tool-call-the-loop-nudge) |
@@ -736,7 +736,10 @@ asks once the oldest is `wake.batchSeconds` old, so the lines posted together wa
 each line, one a line on the team's clock, before any work handed meanwhile. `wake.minGapMinutes`, the budget's hold
 and quiet hours do not hold them, since each is urgent by its sender's choice; the meeting's and the restart's holds
 do, and the asks wait for the first check after them. The wake log marks such a wake with `asks`; an ask damaged or
-in another format goes at the next check. The idle pass's close posts one to the lead today.
+in another format goes at the next check. The idle pass's close posts one to the lead, and with `open.idle.mode` on
+the `cold-send` hook turns a message to a session teamrig closed into one for that session. The idle pass never
+closes a session with one waiting; a closed session with one reopens at the next pass, ahead of every reopen for
+work, with its lines quoted in its first prompt and taken once its tab opened.
 
 ### The idle pass
 
@@ -748,7 +751,7 @@ check that claims `state/idle-pass.lock` runs it, and no check waits for that lo
 `state/idle-pass.json`, and appends to `state/idle-pass.jsonl` the steps whose kind changed, with the host's commit
 charge, and a failure once until its error changes. In `dry-run` it closes and reopens no one. In `on` it also
 starts, hidden, the [`idle-close`](commands.md#teamrig-idle-close) of each session it would close and the
-[`idle-open`](commands.md#teamrig-idle-open) of the one it would reopen; each weighs its session again and logs its
+[`idle-open`](commands.md#teamrig-idle-open) of the one it would reopen (urgent lines first); each weighs its session again and logs its
 own outcome, and each close tells the lead with an [urgent line](#urgent-lines). The pass marks each act it started pending in `state/idle-pass.json` and starts none on that session
 while the mark holds: 5 minutes, or until the session's step no longer asks for that act. An act that did not start
 is logged as `FAILED to start` and held the same way. A failure of the pass never costs the tab its wake answer; a pass 15 minutes old, never run or failed shows in `teamrig check` as
