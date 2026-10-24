@@ -111,6 +111,7 @@ export function formatWakeRecord(record) {
         w: cost.w,
         cold: cost.cold,
         ...(cost.weekPct === undefined ? {} : { weekPct: cost.weekPct }),
+        ...(record.asks === undefined ? {} : { asks: record.asks }),
         ...(record.moments === undefined ? {} : { moments: [...record.moments] }),
     });
 }

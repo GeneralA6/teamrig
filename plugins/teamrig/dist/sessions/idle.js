@@ -82,13 +82,17 @@ export function soonTimeWaitOf(tasks, session, maxPriority, now, zone) {
     return soonest;
 }
 /**
- * Whether a session teamrig closed reopens now, as the wake check would wake its open tab: for work it can start
- * within `maxPriority` that someone else or the clock changed since it last touched it (`isNews`, so work it saw
- * before the close does not reopen it), else for a day start after its close when it has any work it can start and
- * does not rest (quiet hours, held by its budget). Else it stays closed.
+ * Whether a session teamrig closed reopens now, as the wake check would wake its open tab: for urgent lines posted to
+ * it, whatever its rest and at once (each is urgent by its sender's choice, and a pass's closes post theirs together),
+ * else for work it can start within `maxPriority` that someone else or the clock changed since it last touched it
+ * (`isNews`, so work it saw before the close does not reopen it), else for a day start after its close when it has any
+ * work it can start and does not rest (quiet hours, held by its budget). Else it stays closed.
  */
 export function reopenVerdict(input) {
     const { tasks, session, now, zone } = input;
+    if (input.asks.length > 0) {
+        return { kind: 'asked', asks: input.asks, at: Math.min(...input.asks.map((ask) => ask.at)) };
+    }
     const context = waitContext(tasks, new Date(now), zone);
     const handed = [...tasks.values()].filter((task) => isWakeWorthy(task, session, input.maxPriority, context) && isNews(task, session, tasks, zone)).sort(byUrgency);
     if (handed.length > 0) {

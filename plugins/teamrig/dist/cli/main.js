@@ -10,6 +10,7 @@ import { launchingShellOf, nodeEvery, starterWatch } from "../coordinator/starte
 import { nodeStepRunner } from "../coordinator/steps.js";
 import { realSleep, systemClock } from "../core/lock.js";
 import { NODE_PATH_PROBE } from "../core/path-probe.js";
+import { NODE_STORE_FOLDERS } from "../core/node-store-folders.js";
 import { nodeProgramRunner, systemCredentials } from "../github/credentials.js";
 import { GIT_CHECKOUT } from "../exec/binding.js";
 import { nodeExecSpawner } from "../exec/runner.js";
@@ -58,6 +59,7 @@ process.exitCode = await runCli(process.argv.slice(2), {
     gh: nodeGhRunner(),
     credentials: systemCredentials(process.platform, nodeProgramRunner()),
     probe: NODE_PATH_PROBE,
+    pluginStore: NODE_STORE_FOLDERS,
     transcripts: nodeTranscriptSource,
     self: { node: process.execPath, script: fileURLToPath(import.meta.url) },
     requirements: requirementsCheck({ env: process.env, platform: process.platform, probe: NODE_PATH_PROBE, nodeVersion: process.versions.node }),
