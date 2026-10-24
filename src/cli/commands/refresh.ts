@@ -54,7 +54,7 @@ export async function refresh(args: ParsedArgs, runtime: CliRuntime): Promise<Ex
   const now = new Date(runtime.clock.now()).toISOString();
 
   if (target === undefined) {
-    const decision = decideReady(await store.state(by), await store.handover(by), store.handoverPath(by), now);
+    const decision = decideReady(await store.state(by), await store.handover(by), store.handoverPath(by), now, config.refresh.handoverMaxBytes);
     switch (decision.kind) {
       case 'refused':
         throw new RefusedError(decision.reason);

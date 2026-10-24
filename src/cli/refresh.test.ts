@@ -418,6 +418,24 @@ describe('runCli: context refresh', () => {
     });
   });
 
+  it('refuses a handover over refresh.handoverMaxBytes until it is rewritten short', async () => {
+    const kit = new CliHarness({ ...TEAM, refresh: { tabTitle: false, handoverMaxBytes: 100 } });
+    await kit.files.write(TRANSCRIPT, transcript(300_000));
+    await finishTask(kit, 'alpha');
+    stopJson(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload() }));
+    await kit.files.write(HANDOVER('alpha'), `# every section so far\n${'- a step\n'.repeat(20)}`);
+    const long = await kit.run(['refresh', '--ready', '--session', 'alpha']);
+    assert.deepEqual([long.code, long.stdout], [
+      EXIT.refused,
+      [
+        `REFUSED ${HANDOVER('alpha')} is 203 bytes, over refresh.handoverMaxBytes (100): your fresh start reads all of it. ` +
+          'Rewrite it whole, short, with only what your next session needs',
+      ],
+    ]);
+    await kit.files.write(HANDOVER('alpha'), '# this refresh\n');
+    assert.equal((await kit.run(['refresh', '--ready', '--session', 'alpha'])).code, EXIT.ok);
+  });
+
   it("lets only the lead ask for a refresh, which applies at the session's next turn end whatever its size", async () => {
     const kit = new CliHarness({ ...TEAM, refresh: { handoverDir: 'notes' } });
     const refused = await kit.run(['refresh', 'bravo', '--session', 'alpha']);

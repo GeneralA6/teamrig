@@ -827,6 +827,7 @@ describe('parseConfig', () => {
       holdAfterActivityMinutes: 0,
       countdownSeconds: 0,
       compactCeilingTokens: 0,
+      handoverMaxBytes: 0,
       endCommand: ['node', 'end.cjs', 'end'],
       handoverDir: 'notes',
     };
@@ -846,6 +847,7 @@ describe('parseConfig', () => {
         holdAfterActivityMinutes: 61,
         countdownSeconds: -1,
         compactCeilingTokens: -1,
+        handoverMaxBytes: -1,
         endCommand: 'node end.cjs',
         handoverDir: ' ',
       },
@@ -860,6 +862,7 @@ describe('parseConfig', () => {
       'refresh.everyTasks',
       'refresh.everyTasksMinTokens',
       'refresh.handoverDir',
+      'refresh.handoverMaxBytes',
       'refresh.holdAfterActivityMinutes',
       'refresh.restartDelaySeconds',
       'refresh.tabTitle',
@@ -868,6 +871,7 @@ describe('parseConfig', () => {
     assert.deepEqual(paths(parseConfig({ ...ROSTER, refresh: { countdownSeconds: 121 } }).issues), ['refresh.countdownSeconds']);
     assert.deepEqual(paths(parseConfig({ ...ROSTER, refresh: { endCommand: ['node', ''] } }).issues), ['refresh.endCommand[1]']);
     assert.deepEqual(paths(parseConfig({ ...ROSTER, refresh: { everyTasks: -1 } }).issues), ['refresh.everyTasks']);
+    assert.deepEqual(paths(parseConfig({ ...ROSTER, refresh: { handoverMaxBytes: 1_000_001 } }).issues), ['refresh.handoverMaxBytes']);
     assert.deepEqual(bad.config.refresh, DEFAULT_REFRESH);
     assert.deepEqual(paths(parseConfig({ ...ROSTER, refresh: { contextTokens: 10_000_001 } }).issues), ['refresh.contextTokens']);
   });

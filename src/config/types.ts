@@ -717,6 +717,11 @@ export interface RefreshConfig {
    */
   readonly compactCeilingTokens: number;
   /**
+   * `teamrig refresh --ready` refuses a handover larger than this many bytes: the fresh start reads all of it, so a
+   * handover that grows section by section fills the next session's context before its work begins. 0: no cap.
+   */
+  readonly handoverMaxBytes: number;
+  /**
    * A program (its path, then its arguments) run after an automatic restart ended a session, given Claude
    * Code's SessionEnd hook input (reason `clear`) on stdin: for a SessionEnd hook the end skipped, since on
    * Windows a process is ended without running them. Empty: none.

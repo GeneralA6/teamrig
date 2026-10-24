@@ -607,7 +607,8 @@ At the end of every turn, the Stop hook measures your context from the transcrip
 `refresh.everyTasksMinTokens` (80,000) or more, or when the lead asked with `teamrig refresh <id>`, it keeps you going with one instruction: write your handover to
 `<home>/teams/<team>/handover/<id>.md` with what the register lacks, not task statuses (the fresh start
 [lists them live](#session-start)), then run `teamrig refresh --ready --session <id>`, and start nothing new (mid-task it says
-`refresh now rather than at a task end`).
+`refresh now rather than at a task end`). `--ready` refuses a handover over `refresh.handoverMaxBytes` (20,000
+bytes): rewrite it whole and short, since your fresh start reads all of it.
 After `--ready`, the next turn's end tells the user `teamrig: shop-web finished T2 and wrote its handover; type
 /clear for a fresh start` and sets the tab title to `shop-web: type /clear`: the user clears once done with the
 screen, which a `/clear` wipes. With `refresh.autoRestart: true` it says `teamrig starts it fresh once it has been

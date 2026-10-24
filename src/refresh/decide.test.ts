@@ -26,6 +26,7 @@ import type { RefreshState } from './state.ts';
 const BEFORE = '2030-01-08T09:00:00.000Z';
 const NOW = '2030-01-08T10:00:00.000Z';
 const HANDOVER = '/team/handover/alpha.md';
+const CAP = DEFAULT_REFRESH.handoverMaxBytes;
 
 const BOUNDARY: RefreshState = { phase: 'boundary', task: 'T12', at: BEFORE, finished: 1 };
 const ASKED: RefreshState = { phase: 'asked', task: 'T12', at: BEFORE, tokens: 262_144, handoverHash: null, midTurn: false };
@@ -432,40 +433,53 @@ describe('decideReady', () => {
       | RefreshState
       | undefined
     )[]) {
-      const decision = decideReady(state, '# notes', HANDOVER, NOW);
+      const decision = decideReady(state, '# notes', HANDOVER, NOW, CAP);
       assert.equal(decision.kind, 'refused');
       assert.match(decision.kind === 'refused' ? decision.reason : '', /^no refresh was asked of you/);
     }
   });
 
   it('refuses a missing or blank handover', () => {
-    assert.deepEqual(decideReady(ASKED, undefined, HANDOVER, NOW), { kind: 'refused', reason: `write your handover to ${HANDOVER} first` });
-    assert.deepEqual(decideReady(ASKED, ' \n\t', HANDOVER, NOW), { kind: 'refused', reason: `write your handover to ${HANDOVER} first` });
+    assert.deepEqual(decideReady(ASKED, undefined, HANDOVER, NOW, CAP), { kind: 'refused', reason: `write your handover to ${HANDOVER} first` });
+    assert.deepEqual(decideReady(ASKED, ' \n\t', HANDOVER, NOW, CAP), { kind: 'refused', reason: `write your handover to ${HANDOVER} first` });
   });
 
   it('refuses the handover that was there when it asked', () => {
     const old = '# the last refresh\n';
     const asked: RefreshState = { ...ASKED, handoverHash: handoverHashOf(old) };
-    assert.deepEqual(decideReady(asked, old, HANDOVER, NOW), {
+    assert.deepEqual(decideReady(asked, old, HANDOVER, NOW, CAP), {
       kind: 'refused',
       reason: `${HANDOVER} is the handover from before; write this refresh's handover there`,
     });
-    assert.deepEqual(decideReady(asked, '# this refresh\n', HANDOVER, NOW), {
+    assert.deepEqual(decideReady(asked, '# this refresh\n', HANDOVER, NOW, CAP), {
       kind: 'ready',
       state: { phase: 'ready', task: 'T12', at: NOW, tokens: 262_144, noticed: false, transcript: null, claudePid: null },
     });
+  });
+
+  it('refuses a handover over the byte cap, counted in UTF-8 bytes, unless the cap is 0', () => {
+    const atCap = '#'.repeat(100);
+    assert.equal(decideReady(ASKED, atCap, HANDOVER, NOW, 100).kind, 'ready');
+    assert.deepEqual(decideReady(ASKED, `${'#'.repeat(99)}é`, HANDOVER, NOW, 100), {
+      kind: 'refused',
+      reason:
+        `${HANDOVER} is 101 bytes, over refresh.handoverMaxBytes (100): your fresh start reads all of it. ` +
+        'Rewrite it whole, short, with only what your next session needs',
+    });
+    assert.equal(decideReady(ASKED, '#'.repeat(CAP + 1), HANDOVER, NOW, CAP).kind, 'refused');
+    assert.equal(decideReady(ASKED, '#'.repeat(CAP + 1), HANDOVER, NOW, 0).kind, 'ready');
   });
 
   it('marks a new handover ready, and answers the same when run again', () => {
-    assert.deepEqual(decideReady(ASKED, '# notes', HANDOVER, NOW), {
+    assert.deepEqual(decideReady(ASKED, '# notes', HANDOVER, NOW, CAP), {
       kind: 'ready',
       state: { phase: 'ready', task: 'T12', at: NOW, tokens: 262_144, noticed: false, transcript: null, claudePid: null },
     });
-    assert.deepEqual(decideReady(READY, '# notes', HANDOVER, NOW), { kind: 'already' });
+    assert.deepEqual(decideReady(READY, '# notes', HANDOVER, NOW, CAP), { kind: 'already' });
   });
 
   it('keeps a refresh asked mid-task without a task, and the size it was asked at', () => {
-    const decision = decideReady({ ...ASKED, task: null, tokens: null }, '# notes', HANDOVER, NOW);
+    const decision = decideReady({ ...ASKED, task: null, tokens: null }, '# notes', HANDOVER, NOW, CAP);
     assert.deepEqual(decision.kind === 'ready' ? decision.state : undefined, { phase: 'ready', task: null, at: NOW, tokens: null, noticed: false, transcript: null, claudePid: null });
   });
 });
