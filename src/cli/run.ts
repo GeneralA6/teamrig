@@ -53,6 +53,7 @@ const ruleConflictCommands = () => import('./commands/rule-conflicts.ts');
 const skillsCommands = () => import('./commands/skills.ts');
 const openCommands = () => import('./commands/open.ts');
 const restartCommands = () => import('./commands/restart.ts');
+const idleActCommands = () => import('./commands/idle-act.ts');
 const budgetCommands = () => import('./commands/budget.ts');
 const budgetSetupCommands = () => import('./commands/budget-setup.ts');
 const burstCommands = () => import('./commands/burst.ts');
@@ -135,6 +136,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'restore uninstall': { effect: 'write', flags: [], switches: ['yes'], load: async () => (await restoreInstallCommands()).restoreUninstall },
   'restore resume': { effect: 'internal', flags: ['project', 'home', 'effort', 'encoded-prompt'], load: async () => (await restoreCommands()).restoreResume },
   restart: { effect: 'internal', flags: ['team', 'at', 'project'], load: async () => (await restartCommands()).restart },
+  'idle-close': { effect: 'internal', flags: ['team', 'project'], load: async () => (await idleActCommands()).idleClose },
   who: { effect: 'read', flags: [], load: async () => (await teamCommands()).who },
   sessions: { effect: 'read', flags: ['project'], switches: ['pass'], load: async () => (await sessionsCommands()).sessions },
   close: { effect: 'write', flags: ['session', 'project'], switches: ['yes'], load: async () => (await closeCommands()).close },
@@ -558,6 +560,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       (run by the tab restore run starts for a session outside any team: resumes it in Claude Code)
   restart <id> --team <team> --at <time> --project <dir>
       (run hidden by the Stop hook: starts the session fresh once its handover is written and it is idle)
+  idle-close <id> --team <team> --project <dir>
+      (run hidden by the idle pass: closes a session it found idle, once weighed again)
 Team: $${ENV.team}, else the nearest ${TEAM_POINTER} ({"team": "<id>"}) above the current folder,
 else above $CLAUDE_PROJECT_DIR.
 Sessions: give an id, a current name or a former one; a session never named is <team>-<id>.

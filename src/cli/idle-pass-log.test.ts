@@ -100,4 +100,12 @@ describe('formatIdlePassRecord', () => {
     assert.deepEqual(JSON.parse(formatIdlePassRecord({ kind: 'pass', at: AT, mode: 'dry-run', commit: undefined, steps })), { v: 1, at: '2030-01-08T10:00:00.000Z', kind: 'pass', mode: 'dry-run', steps });
     assert.deepEqual(JSON.parse(formatIdlePassRecord({ kind: 'failed', at: AT, mode: 'dry-run', error: 'EACCES' })), { v: 1, at: '2030-01-08T10:00:00.000Z', kind: 'failed', mode: 'dry-run', error: 'EACCES' });
   });
+
+  it("logs an act with its outcome and line, and the commit charge before and after where known", () => {
+    const act = { kind: 'act', at: AT, mode: 'dry-run', act: 'close', id: 'alpha', line: 'CLOSED app-alpha (session alpha): quiet 75 min' } as const;
+    const before = { usedMb: 85_300, limitMb: 100_700 };
+    const after = { usedMb: 84_000, limitMb: 100_700 };
+    assert.deepEqual(JSON.parse(formatIdlePassRecord({ ...act, outcome: 'done', before, after })), { v: 1, at: '2030-01-08T10:00:00.000Z', kind: 'act', mode: 'dry-run', act: 'close', id: 'alpha', outcome: 'done', line: act.line, before, after });
+    assert.deepEqual(JSON.parse(formatIdlePassRecord({ ...act, outcome: 'kept', before: undefined, after: undefined })), { v: 1, at: '2030-01-08T10:00:00.000Z', kind: 'act', mode: 'dry-run', act: 'close', id: 'alpha', outcome: 'kept', line: act.line });
+  });
 });

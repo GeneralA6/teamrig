@@ -1911,6 +1911,35 @@ It prints `CLEARED shop-web: its tab ran /clear` when the mod cleared the tab,
 `CANCELLED the restart of shop-web: <why>` when the user typed or the restart is off, and
 `FAILED the restart of shop-web: <why>` (exit 1) when no restart happened.
 
+### teamrig idle-close
+
+The idle pass's close of one session it found idle: the pass runs it hidden; you do not run it yourself. Work may
+have reached the session since the pass, so it weighs the session again the way the pass does (work that would wake
+it keeps it open), then ends its Claude Code and its tab as `teamrig close` does and logs the close by `idle-pass` in
+the team's `state/session-log.jsonl`, which `teamrig open` resumes from. Each outcome (closed, kept, failed) is one
+JSON line in the team's `state/idle-pass.jsonl` (`"kind": "act"`), with the host's commit charge before and after a
+close.
+
+Flags:
+
+- `--team <team>`: required.
+- `--project <dir>`: required; the folder its tab resumes in, where a session whose start recorded no transcript has it.
+
+Example:
+
+```sh
+teamrig idle-close web --team shop --project /home/you/shop
+```
+
+Output:
+
+```text
+CLOSED shop-web (session web): quiet 75 min, its Claude Code holds 1300 MB, now free
+```
+
+It prints `KEPT <why>` when the session no longer closes, and `FAILED to weigh shop-web (session web): <why>` or
+`FAILED to close shop-web (session web): <why>` (exit 1) when it could not weigh it or its tab outlived the end.
+
 ### teamrig refresh
 
 Context refresh. The lead asks a session for one (`teamrig refresh <id|name>`): after that session's next
