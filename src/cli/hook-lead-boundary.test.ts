@@ -5,6 +5,7 @@ import type { Files } from '../core/files.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { APP, CLAUDE_SESSION, CliHarness, EVENTS_PATH, TEAM, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
+import { teamHomeOf, treeHarness } from '../testing/team-tree.ts';
 import { promptLine, replyLine, resultsLine, transcript, type FixtureTool } from '../testing/transcript-lines.ts';
 
 const AT = '2030-01-08T10:00:00.000Z';
@@ -12,12 +13,16 @@ const TRANSCRIPT = join(USER_HOME, '.claude', 'projects', 'work-app', `${CLAUDE_
 const EDIT: FixtureTool = { id: 'last', name: 'Edit', path: join(APP, 'src', 'a.ts') };
 const AS_LEAD = { TEAMRIG_SESSION: 'lead' };
 
-/** A team whose transcript holds one turn, started by `prompt`, ending with `last`. */
-async function teamWith(last: FixtureTool, config: JsonRecord = TEAM, prompt = 'go'): Promise<CliHarness> {
-  const kit = new CliHarness(config);
+/** The kit with its transcript holding one turn, started by `prompt`, ending with `last`. */
+async function withTurn(kit: CliHarness, last: FixtureTool, prompt = 'go'): Promise<CliHarness> {
   const reply = replyLine({ id: 'm1', requestId: 'r1', at: AT, usage: { cacheRead: 100_000 }, tools: [last] });
   await kit.files.write(TRANSCRIPT, transcript([promptLine(AT, prompt), reply, resultsLine(AT, [{ id: last.id, text: 'ok' }])]));
   return kit;
+}
+
+/** A team whose transcript holds one turn, started by `prompt`, ending with `last`. */
+function teamWith(last: FixtureTool, config: JsonRecord = TEAM, prompt = 'go'): Promise<CliHarness> {
+  return withTurn(new CliHarness(config), last, prompt);
 }
 
 /** The loop-nudge hook after `tool`, over `files` when given (such as a `FaultyFiles` over the kit's). */
@@ -84,5 +89,17 @@ describe('the lead boundary hooks', () => {
     assert.match(lead.stdout.join(''), /Lead boundary: this turn the lead did 1 edit \(a\.ts\) itself; it delegates such work \[leadBoundary\]\./);
     const alpha = await kit.run(['hook', 'stop'], { stdin, env: { TEAMRIG_SESSION: 'alpha' } });
     assert.doesNotMatch(alpha.stdout.join(''), /Lead boundary/);
+  });
+
+  it("send a lead's search of a sub-team folder to the child team's lead it hangs under, and leave its rules to the lead (T1019)", async () => {
+    const notes: FixtureTool = { id: 'last', name: 'Grep', path: join(teamHomeOf('ui'), 'notes', 'pixel') };
+    const kit = await withTurn(await treeHarness(), notes);
+    assert.match((await afterTool(kit, notes, AS_LEAD)).stdout.join(''), /research itself \(ui\/notes\/pixel\)\. Send the question to web\/lead as a register task/);
+    const stdin = JSON.stringify({ session_id: CLAUDE_SESSION, cwd: APP, transcript_path: TRANSCRIPT });
+    assert.match((await kit.run(['hook', 'stop'], { stdin, env: AS_LEAD })).stdout.join(''), /the lead did 1 research lookup \(ui\/notes\/pixel\) itself/);
+    const web = { TEAMRIG_TEAM: 'web', TEAMRIG_SESSION: 'lead' };
+    assert.match((await afterTool(kit, notes, web)).stdout.join(''), /Send the question to ui\/lead as/, 'a middle lead sends it to its own child team');
+    const rules: FixtureTool = { id: 'last', name: 'Edit', path: join(teamHomeOf('web'), 'rules.md') };
+    assert.deepEqual((await afterTool(await withTurn(kit, rules), rules, AS_LEAD)).stdout, [], "a sub-team's rules are the parent lead's own");
   });
 });

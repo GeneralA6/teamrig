@@ -2,13 +2,26 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ToolUse } from '../budget/line.ts';
 import { promptLine, replyLine, resultsLine, transcript } from '../testing/transcript-lines.ts';
-import { leadNudgeLine, leadStopLine, leadTallyOf, leadWorkOf, OwnPaths, taskOwnersOf, TeamFolders, type LeadPaths } from './lead-boundary.ts';
+import { leadNudgeLine, leadStopLine, leadTallyOf, leadWorkOf, OwnPaths, taskOwnersOf, TeamFolders, type LeadPaths, type SubTeamPlace } from './lead-boundary.ts';
 import { turnTasksOf, turnToolsOf } from './loop-nudge.ts';
 
 const TEAM_HOME = '~/.teamrig/teams/app';
 const OWN = new OwnPaths([TEAM_HOME, '~/ops/lead', '~/ops/board/lead.md', '~/.claude/projects/*/memory'], 'D:\\team\\lee');
+
+/** A team below `app`; `ui` hangs under `web`, so both route to web's lead. */
+function subTeam(team: string): SubTeamPlace {
+  const home = `~/.teamrig/teams/${team}`;
+  return { team, home, own: [`${home}/config.json`, `${home}/rules.md`, `${home}/state`], owner: 'web/lead' };
+}
+
 const TEAM = new TeamFolders(
-  { home: TEAM_HOME, own: [`${TEAM_HOME}/config.json`, `${TEAM_HOME}/rules.md`, `${TEAM_HOME}/state`], lead: 'lead', sessions: ['lead', 'alpha', 'bravo'] },
+  {
+    home: TEAM_HOME,
+    own: [`${TEAM_HOME}/config.json`, `${TEAM_HOME}/rules.md`, `${TEAM_HOME}/state`],
+    lead: 'lead',
+    sessions: ['lead', 'alpha', 'bravo'],
+    subTeams: [subTeam('web'), subTeam('ui')],
+  },
   'D:\\team\\lee',
 );
 const PATHS: LeadPaths = { own: OWN, team: TEAM };
@@ -129,6 +142,27 @@ describe('the lead boundary', () => {
     assert.equal(leadWorkOf(tool('Bash', { command: 'grep -n leadBoundary ~/.teamrig/teams/app/config.json' }), PATHS), undefined);
     assert.equal(leadWorkOf(tool('Bash', { command: 'cat ~/.teamrig/teams/app/notes/alpha/board.md' }), PATHS), undefined, 'a read is no search');
     assert.equal(leadWorkOf(tool('Bash', { command: 'grep -rn x ~/.teamrig/teams/application' }), PATHS), 'search', 'another folder that starts alike');
+  });
+
+  it('counts a search of a sub-team folder as research for the child team lead it hangs under (T1019)', () => {
+    const front = tool('Grep', { path: '~/.teamrig/teams/web/notes/front' }, 'f1');
+    assert.match(leadNudgeLine([front], front, PATHS, 3, ['alpha']) ?? '', /research itself \(web\/notes\/front\)\. Send the question to web\/lead as/);
+    const pixel = tool('Bash', { command: 'grep -rn x D:/team/lee/.teamrig/teams/ui/handover/pixel.md' }, 'p1');
+    assert.match(leadNudgeLine([pixel], pixel, PATHS, 3) ?? '', /research itself \(ui\/handover\/pixel\.md\)\. Send the question to web\/lead as/, 'a grandchild team routes through its child team');
+    assert.deepEqual(TEAM.researchOf('~/.teamrig/teams/web'), { name: 'web', owner: 'web/lead' });
+    assert.deepEqual(TEAM.researchOf('~/.teamrig/teams/web/notes/lead'), { name: 'web/notes/lead', owner: 'web/lead' }, 'the child lead notes are no place of the parent lead');
+    assert.equal(TEAM.researchOf('~/.teamrig/teams/web/state/events.jsonl'), undefined, 'its register');
+    assert.equal(TEAM.researchOf('~/.teamrig/teams/ui/config.json'), undefined, 'its config');
+    assert.equal(leadWorkOf(tool('Grep', { path: '~/.teamrig/teams/other/notes' }), PATHS), 'search', 'a team outside the tree');
+    assert.equal(leadWorkOf(tool('Bash', { command: 'grep -rn x ~/.teamrig/teams/webapp' }), PATHS), 'search', 'another folder that starts alike');
+  });
+
+  it('reads a sub-team folder nested in the lead own folder as the sub-team, and the lead own folder nested in it as its own', () => {
+    const nested = (home: string, sub: string): TeamFolders =>
+      new TeamFolders({ home, own: [`${home}/state`], lead: 'lead', sessions: ['lead', 'alpha'], subTeams: [{ team: 'web', home: sub, own: [`${sub}/state`], owner: 'web/lead' }] }, 'D:\\team\\lee');
+    assert.deepEqual(nested('~/teams/app', '~/teams/app/web').researchOf('~/teams/app/web/notes'), { name: 'web/notes', owner: 'web/lead' });
+    assert.deepEqual(nested('~/teams/web/app', '~/teams/web').researchOf('~/teams/web/app/notes/alpha'), { name: 'notes/alpha', owner: 'alpha' });
+    assert.equal(nested('~/teams/web/app', '~/teams/web').researchOf('~/teams/web/app/state'), undefined);
   });
 
   it('asks the lead once a turn to send research to the session that owns it', () => {

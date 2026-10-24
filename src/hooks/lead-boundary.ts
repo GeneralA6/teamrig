@@ -68,12 +68,33 @@ export class OwnPaths {
   }
 }
 
-/** A search of the team's folder that is research. */
+/** A search of the team's folder, or a sub-team's, that is research. */
 export interface TeamResearch {
-  /** What it searched, relative to the team's folder and at most two folders deep (`notes/symbols`). */
+  /**
+   * What it searched, relative to the team's folder and at most two folders deep (`notes/symbols`); in a sub-team's
+   * folder, after that team's id (`web/notes/front`).
+   */
   readonly name: string;
-  /** The other session the path names, which owns what the search looks for; undefined for a shared folder. */
+  /**
+   * The other session the path names, which owns what the search looks for, and for a sub-team's folder the address
+   * of the child team's lead it hangs under; undefined for a shared folder of the lead's own team.
+   */
   readonly owner: string | undefined;
+}
+
+/** A team below the lead's own in the team tree, whose folder a search of is research for its child team's lead (T1019). */
+export interface SubTeamPlace {
+  /** The team's id, which starts the research's name. */
+  readonly team: string;
+  /** The team's teamrig folder. */
+  readonly home: string;
+  /** Its config, its rules and the register's state: the parent lead reads those as it reads its own. */
+  readonly own: readonly string[];
+  /**
+   * The address of the child team's lead the team hangs under (`web/lead`, for `ui` under `web` too): a parent lead
+   * adds tasks only to its child teams, so the question goes there.
+   */
+  readonly owner: string;
 }
 
 /** The team's folder and the lead's own places in it, for `TeamFolders`. */
@@ -85,21 +106,43 @@ export interface TeamPlaces {
   readonly lead: string;
   /** Every session of the team; a path segment named for one other than the lead (`notes/po`, `handover/po.md`) is its place. */
   readonly sessions: readonly string[];
+  /** Every team below this one in the team tree; none for a team with no child team. */
+  readonly subTeams: readonly SubTeamPlace[];
 }
 
 const PATH_END = `(?=/|$|[\\s"';|&)])`;
+
+/** A sub-team's place with its folders normalized as `TeamFolders` compares them. */
+interface SubTeamFolder {
+  readonly team: string;
+  readonly root: string;
+  readonly own: readonly string[];
+  readonly owner: string;
+}
+
+/** The normalized path is the normalized place or inside it. */
+function within(target: string, place: string): boolean {
+  return target === place || target.startsWith(`${place}/`);
+}
+
+/** The path's folders below `root`, which holds it. */
+function segmentsBelow(target: string, root: string): string[] {
+  return target === root ? [] : target.slice(root.length + 1).split('/');
+}
 
 /**
  * The team's teamrig folder as the lead boundary reads a search of it (T736). The lead's own places there are its
  * config, its rules, the register's state and anything named for the lead; a search anywhere else there (another
  * session's notes or handover, or a shared folder such as all the notes) is research, which the session that owns
- * the question does.
+ * the question does. So is a search of a sub-team's folder outside its config, rules and state (T1019), which the
+ * child team's lead it hangs under answers.
  */
 export class TeamFolders {
   private readonly root: string;
   private readonly own: readonly string[];
   private readonly lead: string;
   private readonly others: ReadonlySet<string>;
+  private readonly subTeams: readonly SubTeamFolder[];
   private readonly home: string;
   private readonly mentioned: RegExp;
 
@@ -109,22 +152,37 @@ export class TeamFolders {
     this.own = places.own.map((place) => this.placeOf(place));
     this.lead = places.lead.toLowerCase();
     this.others = new Set(places.sessions.map((id) => id.toLowerCase()).filter((id) => id !== this.lead));
-    const escaped = this.root.replace(/[.+?^${}()|[\]\\*]/g, '\\$&');
-    this.mentioned = new RegExp(`${escaped}${PATH_END}(?:/[^\\s"';|&)]*)?`, 'g');
+    this.subTeams = places.subTeams.map(({ team, home, own, owner }) => ({ team, root: this.placeOf(home), own: own.map((place) => this.placeOf(place)), owner }));
+    const roots = [this.root, ...this.subTeams.map((sub) => sub.root)].map((root) => root.replace(/[.+?^${}()|[\]\\*]/g, '\\$&'));
+    this.mentioned = new RegExp(`(?:${roots.join('|')})${PATH_END}(?:/[^\\s"';|&)]*)?`, 'g');
   }
 
   private placeOf(path: string): string {
     return normalized(path.trim(), this.home).replace(/\/+$/, '');
   }
 
-  /** The research a search of `path` is; undefined outside the team's folder and in the lead's own places. */
+  /** The sub-team whose folder holds the path, the deepest when folders nest; undefined when the lead's own folder holds it deeper. */
+  private subTeamOf(target: string): SubTeamFolder | undefined {
+    const holder = this.subTeams
+      .filter((sub) => within(target, sub.root))
+      .reduce<SubTeamFolder | undefined>((deepest, sub) => (deepest === undefined || sub.root.length > deepest.root.length ? sub : deepest), undefined);
+    return holder !== undefined && !(within(target, this.root) && this.root.length > holder.root.length) ? holder : undefined;
+  }
+
+  /**
+   * The research a search of `path` is; undefined outside the team's and its sub-teams' folders, in the lead's own
+   * places and in a sub-team's config, rules and state.
+   */
   researchOf(path: string): TeamResearch | undefined {
     const target = this.placeOf(path);
-    const inside = target === this.root || target.startsWith(`${this.root}/`);
-    if (!inside || this.own.some((place) => target === place || target.startsWith(`${place}/`))) {
+    const sub = this.subTeamOf(target);
+    if (sub !== undefined) {
+      return sub.own.some((place) => within(target, place)) ? undefined : { name: [sub.team, ...segmentsBelow(target, sub.root).slice(0, 2)].join('/'), owner: sub.owner };
+    }
+    if (!within(target, this.root) || this.own.some((place) => within(target, place))) {
       return undefined;
     }
-    const segments = target === this.root ? [] : target.slice(this.root.length + 1).split('/');
+    const segments = segmentsBelow(target, this.root);
     const named = segments.map((segment) => segment.replace(/\.md$/, ''));
     if (named.includes(this.lead)) {
       return undefined;
@@ -132,7 +190,7 @@ export class TeamFolders {
     return { name: segments.slice(0, 2).join('/') || 'the team folder', owner: named.find((segment) => this.others.has(segment)) };
   }
 
-  /** The research a shell search is, from the first team-folder path it names that is research. */
+  /** The research a shell search is, from the first path in the team's or a sub-team's folder it names that is research. */
   researchNamed(command: string): TeamResearch | undefined {
     for (const match of normalized(command, this.home).matchAll(this.mentioned)) {
       const research = this.researchOf(match[0]);
@@ -144,7 +202,7 @@ export class TeamFolders {
   }
 }
 
-/** Where the lead's calls land: its own places, and the team's folder, where other places are research. */
+/** Where the lead's calls land: its own places, and the team's and its sub-teams' folders, where other places are research. */
 export interface LeadPaths {
   readonly own: OwnPaths;
   readonly team: TeamFolders;
