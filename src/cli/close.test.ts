@@ -5,11 +5,14 @@ import { projectTranscriptPath } from '../budget/discover.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { SessionLog } from '../sessions/log.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
+import { TEST_CARD_FLAGS } from '../testing/card.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakePathProbe } from '../testing/fake-processes.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
+import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
+import { WakeAsks } from '../wake/asks.ts';
 import { EXIT } from './runtime.ts';
 
 const MB = 2 ** 20;
@@ -204,6 +207,13 @@ describe('teamrig close', () => {
 });
 
 const PASS_LOG = join(TEAM_HOME, 'state', 'idle-pass.jsonl');
+const LEAD_INBOX = join(TEAM_HOME, 'state', 'inbox', 'lead.md');
+const ASKS = join(TEAM_HOME, 'state', 'wake-asks');
+
+/** `text` as a regular expression that matches it literally. */
+function escaped(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+}
 /** A team that wakes a session for p1 work only. */
 const WAKES_P1: JsonRecord = { ...TEAM, wake: { priority: 1 } };
 const CHARGE = { usedMb: 85_300, limitMb: 100_700 };
@@ -239,6 +249,52 @@ describe('teamrig idle-close', () => {
     assert.deepEqual(actsOf(alpha), [{ v: 1, kind: 'act', mode: 'off', act: 'close', id: 'alpha', outcome: 'done', line, before: CHARGE, after: CHARGE }]);
   });
 
+  it('tells the lead with an urgent line: the inbox line and the wake ask that wakes it', async () => {
+    const alpha = await runningAlpha();
+    assert.equal((await idleClose(alpha)).code, 0);
+    const notice =
+      'the idle pass closed app-alpha (session alpha), quiet 75 min, its Claude Code holds 1300 MB; no task of it waits on a decision or an approval; work handed to it reopens it. List the decisions waiting on the owner, ending with a "Decision needed:" line.';
+    assert.match((await alpha.kit.files.read(LEAD_INBOX)) ?? '', new RegExp(`^- 2030-01-08 10:\\d\\d teamrig: ${escaped(notice)}\\n$`));
+    const asks = await new WakeAsks(alpha.kit.files, ASKS).read('lead');
+    assert.deepEqual(
+      asks.map((stored) => stored.ask),
+      [{ from: 'teamrig', text: notice, at: alpha.kit.clock.now() }],
+    );
+  });
+
+  it("names in the lead's line what the session's tasks wait on from a person", async () => {
+    const alpha = await runningAlpha();
+    for (const [title, waits] of [['Pick the plan', 'decision:owner'], ['Merge the fix', 'approval:lead'], ['Pick the name', 'decision:owner']] as const) {
+      const added = await alpha.kit.run(['add', '--title', title, '--description', 'what and why', '--priority', 'p2', '--owner', 'alpha', '--session', 'lead']);
+      assert.equal(added.code, 0, added.stderr.join('\n'));
+      const id = /T\d+/.exec(added.stdout.join('\n'))?.[0] ?? '';
+      const set = await alpha.kit.run(['set', id, '--status', 'waiting', '--waits', waits, '--note', 'the choice', ...TEST_CARD_FLAGS, '--session', 'alpha']);
+      assert.equal(set.code, 0, set.stderr.join('\n'));
+    }
+    assert.equal((await idleClose(alpha)).code, 0);
+    const [stored] = await new WakeAsks(alpha.kit.files, ASKS).read('lead');
+    assert.match(stored?.ask?.text ?? '', /; its tasks wait on decision:owner \(T1, T3\), approval:lead \(T2\); an answer recorded in the register reopens it\. List/);
+  });
+
+  it('logs a close the lead was not told of as done, and posts no wake ask for a line its inbox lacks', async () => {
+    const unposted = await runningAlpha();
+    const noInbox = new FaultyFiles(unposted.kit.files).fail('append', LEAD_INBOX, systemError('EACCES', 'EACCES: permission denied'));
+    const closed = await idleClose({ ...unposted, options: { ...unposted.options, files: noInbox } });
+    assert.equal(closed.code, 0, closed.stderr.join('\n'));
+    assert.match(closed.stdout.join('\n'), /^CLOSED app-alpha \(session alpha\): .+, now free; lead not told: not posted: EACCES: permission denied$/);
+    assert.equal((await new SessionLog(unposted.kit.files, LOG).read()).records.length, 1);
+    assert.deepEqual(await new WakeAsks(unposted.kit.files, ASKS).read('lead'), []);
+
+    const unwoken = await runningAlpha();
+    // A sleep that keeps the clock still, so the ask's file name is known before the run.
+    const still = { ...unwoken.options, sleep: async (): Promise<void> => undefined };
+    const noAsk = new FaultyFiles(unwoken.kit.files).fail('createExclusive', join(ASKS, 'lead', `${NOW}-0.json`), systemError('EACCES', 'EACCES: permission denied'));
+    const posted = await idleClose({ ...unwoken, options: { ...still, files: noAsk } });
+    assert.equal(posted.code, 0, posted.stderr.join('\n'));
+    assert.match(posted.stdout.join('\n'), /, now free; lead not told: posted to the inbox, but it does not wake lead: EACCES: permission denied$/);
+    assert.match((await unwoken.kit.files.read(LEAD_INBOX)) ?? '', /teamrig: the idle pass closed app-alpha/);
+  });
+
   it('weighs work as the wake check does: p2 work does not keep it open where only p1 wakes, p1 work does', async () => {
     const alpha = await runningAlpha(75, reply(40_000), undefined, WAKES_P1);
     const added = await alpha.kit.run(['add', '--title', 'Tidy the docs', '--description', 'what and why', '--priority', 'p2', '--owner', 'alpha', '--session', 'lead']);
@@ -256,6 +312,8 @@ describe('teamrig idle-close', () => {
     assert.deepEqual(urgent.processes.ends, []);
     assert.equal(urgent.kit.files.get(LOG), undefined);
     assert.deepEqual(actsOf(urgent), [{ v: 1, kind: 'act', mode: 'off', act: 'close', id: 'alpha', outcome: 'kept', line: kept.stdout[0] }]);
+    assert.equal(await urgent.kit.files.read(LEAD_INBOX), undefined, 'a session kept open tells the lead nothing');
+    assert.deepEqual(await new WakeAsks(urgent.kit.files, ASKS).read('lead'), []);
   });
 
   it('fails, logged, when it cannot weigh the session or its tab outlives the end', async () => {
