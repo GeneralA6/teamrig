@@ -132,14 +132,31 @@ export function askVerdictOf(stored: readonly StoredWakeAsk[], now: number, batc
   return now < at ? { kind: 'later', at } : { kind: 'wake', asks };
 }
 
+/** `- HH:MM <sender>: <text>`, one line each, on the team's clock. */
+function quotedLines(asks: readonly WakeAsk[], zone: TimeZone): string {
+  return asks.map((ask) => `- ${zone.clock(new Date(ask.at))} ${ask.from}: ${ask.text}`).join('\n');
+}
+
 /** The wake's prompt: the asks quoted one a line, on the team's clock, then the work handed meanwhile, if any. */
 export function handedPrompt(session: string, tasks: readonly Task[], asks: readonly WakeAsk[], cost: WakeCost, zone: TimeZone): string {
   if (asks.length === 0) {
     return wakePrompt(session, tasks, cost);
   }
-  const lines = asks.map((ask) => `- ${zone.clock(new Date(ask.at))} ${ask.from}: ${ask.text}`);
   const rest = tasks.length === 0 ? `This wake costs ${costText(cost)}.` : wakePrompt(session, tasks, cost);
-  return `Urgent lines were posted for you while this tab was idle; act on each now:\n${lines.join('\n')}\n${rest}`;
+  return `Urgent lines were posted for you while this tab was idle; act on each now:\n${quotedLines(asks, zone)}\n${rest}`;
+}
+
+/**
+ * The first prompt of a session reopened with urgent lines posted while it was closed (T1100): the lines quoted on
+ * the team's clock ahead of its own first prompt (`prompt`), so it acts on them first; when that is over `max`
+ * characters, their count and senders instead, since each is also an inbox line.
+ */
+export function urgentFirstPrompt(asks: readonly WakeAsk[], prompt: string, zone: TimeZone, max: number): string {
+  if (asks.length === 0) {
+    return prompt;
+  }
+  const quoted = `Urgent lines were posted for you while you were closed; act on each first:\n${quotedLines(asks, zone)}\n${prompt}`;
+  return quoted.length <= max ? quoted : `Posted for you while you were closed, in your inbox: ${urgentLinesText(asks)}; act on each first.\n${prompt}`;
 }
 
 /** The person's toast: which lines and tasks woke the tab and what it costs. */

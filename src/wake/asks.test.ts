@@ -4,7 +4,7 @@ import { describe, it } from 'node:test';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { testTask } from '../testing/task.ts';
 import { JERUSALEM } from '../testing/zone.ts';
-import { askVerdictOf, ASKS_PER_MS, formatWakeAsk, handedPrompt, handedToast, parseWakeAsk, WakeAsks, type StoredWakeAsk, type WakeAsk } from './asks.ts';
+import { askVerdictOf, ASKS_PER_MS, formatWakeAsk, handedPrompt, handedToast, parseWakeAsk, urgentFirstPrompt, WakeAsks, type StoredWakeAsk, type WakeAsk } from './asks.ts';
 import { wakeCost, wakePrompt, wakeToast } from './decide.ts';
 
 const FOLDER = join('team', 'state', 'wake-asks');
@@ -95,6 +95,16 @@ describe('the wake for urgent lines', () => {
     );
     assert.equal(handedPrompt('lead', [task], [CLOSED], cost, JERUSALEM), `Urgent lines were posted for you while this tab was idle; act on each now:\n- 12:00 IST teamrig: The idle pass closed bravo.\n${wakePrompt('lead', [task], cost)}`);
     assert.equal(handedPrompt('lead', [task], [], cost, JERUSALEM), wakePrompt('lead', [task], cost));
+  });
+
+  it("quotes the lines posted while closed ahead of a reopened session's own first prompt, or counts them when that is too long", () => {
+    const quoted = 'Urgent lines were posted for you while you were closed; act on each first:\n- 12:00 IST teamrig: The idle pass closed bravo.\n- 12:01 IST alpha: Bravo has a reply waiting.\nStart your first open task.';
+    assert.equal(urgentFirstPrompt([CLOSED, REOPEN], 'Start your first open task.', JERUSALEM, quoted.length), quoted);
+    assert.equal(
+      urgentFirstPrompt([CLOSED, REOPEN, CLOSED], 'Start your first open task.', JERUSALEM, 100),
+      'Posted for you while you were closed, in your inbox: 3 urgent lines from teamrig, alpha; act on each first.\nStart your first open task.',
+    );
+    assert.equal(urgentFirstPrompt([], 'Start your first open task.', JERUSALEM, 100), 'Start your first open task.');
   });
 
   it('names the lines, their senders and the tasks in the toast', () => {

@@ -3,14 +3,17 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { projectTranscriptPath } from '../budget/discover.ts';
 import type { CommitCharge } from '../coordinator/memory.ts';
+import type { Files } from '../core/files.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { decodePrompt, defaultPrompt, reopenPrompt } from '../open/prompt.ts';
 import { SessionLog, type CloseRecord } from '../sessions/log.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
+import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
 import { ok } from '../testing/hired-team.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
+import { WakeAsks } from '../wake/asks.ts';
 import { EXIT } from './runtime.ts';
 
 const HOUR_MS = 3_600_000;
@@ -109,11 +112,20 @@ async function handWork(alpha: ClosedAlpha): Promise<void> {
   assert.equal(added.code, 0, added.stderr.join('\n'));
 }
 
-/** Runs the idle pass's reopen of alpha on a host whose memory is `memory`. */
-async function idleOpen(alpha: ClosedAlpha, memory = new FakeHostMemory().lists([], CHARGE)): Promise<{ result: CliResult; argv: readonly string[] }> {
+/** Runs the idle pass's reopen of alpha on a host whose memory is `memory`, over `files` when given. */
+async function idleOpen(alpha: ClosedAlpha, memory = new FakeHostMemory().lists([], CHARGE), files?: Files): Promise<{ result: CliResult; argv: readonly string[] }> {
   const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started' });
-  const result = await alpha.kit.run(['idle-open', 'alpha', '--team', 'app', '--project', APP], { ...alpha.options, processes, memory });
+  const result = await alpha.kit.run(['idle-open', 'alpha', '--team', 'app', '--project', APP], { ...alpha.options, processes, memory, ...(files === undefined ? {} : { files }) });
   return { result, argv: processes.started[0]?.args ?? [] };
+}
+
+const ASKS = join(TEAM_HOME, 'state', 'wake-asks');
+
+/** Posts alpha the lead's urgent line, as a send to it while closed does; returns the store. */
+async function urgentLine(alpha: ClosedAlpha): Promise<WakeAsks> {
+  const asks = new WakeAsks(alpha.kit.files, ASKS);
+  await asks.post('alpha', { from: 'lead', text: 'Answer the review on T1.', at: alpha.kit.clock.now() });
+  return asks;
 }
 
 /** The pass log's act lines, without their time. */
@@ -183,5 +195,36 @@ describe('teamrig idle-open', () => {
     assert.deepEqual(manual.result.stdout, ['FAILED to reopen app-alpha (session alpha): no terminal opened (the terminal setting is print)']);
     assert.deepEqual(await logOf(printing), [CLOSED]);
     assert.equal(actsOf(printing)[0]?.['outcome'], 'failed');
+  });
+
+  it('quotes the urgent lines posted while it was closed ahead of its first prompt, and takes them once its tab opened', async () => {
+    const alpha = await closedAlpha(40_000);
+    const asks = await urgentLine(alpha);
+    const { result, argv } = await idleOpen(alpha);
+    assert.equal(result.code, 0, [...result.stdout, ...result.stderr].join('\n'));
+    assert.match(result.stdout[0] ?? '', /^REOPENED app-alpha \(session alpha\) for an urgent line from lead: OPENED app-alpha \(session alpha\) in a new Windows Terminal tab in .*, resuming Claude Code session \S+$/);
+    const [heading, quoted, ...rest] = (promptOf(argv) ?? '').split('\n');
+    assert.equal(heading, 'Urgent lines were posted for you while you were closed; act on each first:');
+    assert.match(quoted ?? '', /^- \d\d:\d\d \S+ lead: Answer the review on T1\.$/);
+    assert.deepEqual(rest, [reopenPrompt('app', 'alpha')]);
+    assert.deepEqual(await asks.read('alpha'), [], 'taken, so its wake check does not wake it on them again');
+  });
+
+  it('keeps the urgent lines for the next pass when no terminal opens, and says when it could not take them', async () => {
+    const printing = await closedAlpha(40_000, { ...TEAM, open: { terminal: 'print' } });
+    const kept = await urgentLine(printing);
+    const manual = await idleOpen(printing);
+    assert.equal(manual.result.code, EXIT.failed);
+    assert.equal((await kept.read('alpha')).length, 1);
+
+    const alpha = await closedAlpha(40_000);
+    const stuck = await urgentLine(alpha);
+    const [ask] = await stuck.read('alpha');
+    assert.ok(ask !== undefined);
+    const files = new FaultyFiles(alpha.kit.files).fail('remove', join(ASKS, 'alpha', ask.name), systemError('EACCES', 'EACCES: permission denied'));
+    const { result } = await idleOpen(alpha, undefined, files);
+    assert.equal(result.code, 0, result.stdout.join('\n'));
+    assert.match(result.stdout[0] ?? '', /^REOPENED .*; its urgent lines were not taken, so its tab wakes on them once more: EACCES: permission denied$/);
+    assert.equal(actsOf(alpha)[0]?.['outcome'], 'done');
   });
 });
