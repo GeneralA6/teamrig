@@ -2,7 +2,6 @@ import { stringField, type JsonRecord } from '../../core/guards.ts';
 import { ENV } from '../../core/home.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
 import { noticeOf, type NoticeDecision, type StopContext } from '../../refresh/decide.ts';
-import { claudeProcessOf } from '../../refresh/restart.ts';
 import type { RefreshStore } from '../../refresh/store.ts';
 import type { CliRuntime } from '../runtime.ts';
 
@@ -33,6 +32,8 @@ export interface RestartScope {
   readonly id: string;
   readonly context: StopContext;
   readonly target: RestartTarget;
+  /** The Claude Code process the hook runs under (`claudeProcessOf`); undefined when it was not found. */
+  readonly claude: number | undefined;
 }
 
 /**
@@ -41,8 +42,7 @@ export interface RestartScope {
  * found or `restart` does not start, nothing is left armed and the notice asks for /clear instead.
  */
 export async function armRestart(runtime: CliRuntime, store: RefreshStore, scope: RestartScope, notice: NoticeDecision): Promise<NoticeDecision> {
-  const { team, id, context, target } = scope;
-  const claude = await claudeProcessOf(runtime.sessionProcesses, runtime.sessionProcesses.parentPid);
+  const { team, id, context, target, claude } = scope;
   if (claude !== undefined) {
     await store.setRestart(id, {
       phase: 'pending',

@@ -2,11 +2,12 @@ import type { EndHow, EndOutcome, FeedOutcome, FeedRequest, ProcessInfo, Session
 
 /**
  * A process table in memory: only the processes added run, ending one also ends every process it started
- * (as `taskkill /T` does), and each end and fed program is recorded. Feeding a program gives the outcome set
- * for its command, by default `done`.
+ * (as `taskkill /T` does), and each look at a process, end and fed program is recorded. Feeding a program gives
+ * the outcome set for its command, by default `done`.
  */
 export class FakeSessionProcesses implements SessionProcesses {
   readonly parentPid: number;
+  readonly described: number[] = [];
   readonly ends: { readonly pid: number; readonly how: EndHow }[] = [];
   readonly fed: FeedRequest[] = [];
   private readonly running = new Map<number, ProcessInfo>();
@@ -82,6 +83,7 @@ export class FakeSessionProcesses implements SessionProcesses {
   }
 
   async describe(pid: number): Promise<ProcessInfo | undefined> {
+    this.described.push(pid);
     if (this.failingLookups > 0) {
       this.failingLookups -= 1;
       return undefined;
