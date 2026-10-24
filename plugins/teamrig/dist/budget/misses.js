@@ -1,6 +1,8 @@
 import { isNonNegativeInteger, isRecord } from "../core/guards.js";
 import { parseUtcDay } from "../core/time.js";
-import { EXEC_VALUED, NPM_VALUED, runnerCallOf } from "../package-guard/runners.js";
+import { heavyStepOf } from "../package-guard/heavy-steps.js";
+import { afterOptions, wordsOf } from "../package-guard/programs.js";
+import { runnerCallOf } from "../package-guard/runners.js";
 import { GIT_VALUED, shellRunsOf } from "./run-work.js";
 /**
  * The rule misses a transcript shows, counted per day next to the loop patterns (`MISS_FIELDS`). Each one
@@ -23,22 +25,6 @@ const BLOCK_TRIGGERS = new Set(['owner', 'peer', 'scheduled', 'other']);
 const FOLLOWUP_STATUSES = new Set(['verifying', 'done']);
 /** Words saying a task leaves work behind, which `--followups none` denies. */
 const WORK_LEFT = /\b(?:follow[- ]?ups?|to-?do|not (?:yet|built|done|fixed|covered|shipped)|left (?:for|to)|still (?:to|needs?)|next steps?)\b/i;
-/** Programs that run a test suite or a build themselves. */
-const HEAVY_PROGRAMS = new Set(['tsc', 'jest', 'vitest']);
-/** Package scripts that run a test suite or a build: `npm test`, `npm run build`, `pnpm typecheck`, `npm run test:cli`. */
-const HEAVY_SCRIPT = /^(?:test|t|tst|verify|check|coverage|build|typecheck|lint)(?::\S*)?$/;
-const PACKAGE_MANAGERS = new Set(['npm', 'pnpm', 'yarn']);
-function wordsOf(run) {
-    return run.args.map((word) => word.text);
-}
-/** The words from the first that is not an option, skipping the value of each option in `valued`. */
-function afterOptions(words, valued) {
-    let index = 0;
-    while (index < words.length && (words[index] ?? '').startsWith('-')) {
-        index += valued.has(words[index] ?? '') ? 2 : 1;
-    }
-    return words.slice(index);
-}
 function isTeamrig(run, ...subcommand) {
     const words = wordsOf(run);
     return run.name === 'teamrig' && subcommand.every((word, index) => words[index] === word);
@@ -69,25 +55,6 @@ function followupsNoneOf(run) {
     const said = [optionValue(words, 'note'), optionValue(words, 'evidence')].join(' ');
     return WORK_LEFT.test(said) ? 'left' : 'none';
 }
-/** A test suite or a build: `npm test`, `npm run build`, `node --test`, `tsc`, `npx vitest run`. */
-function isHeavyStep(run) {
-    const words = wordsOf(run);
-    if (HEAVY_PROGRAMS.has(run.name)) {
-        return true;
-    }
-    if (run.name === 'node') {
-        return words.includes('--test');
-    }
-    if (run.name === 'npx') {
-        return HEAVY_PROGRAMS.has(afterOptions(words, EXEC_VALUED)[0] ?? '');
-    }
-    if (!PACKAGE_MANAGERS.has(run.name)) {
-        return false;
-    }
-    const [command, script] = afterOptions(words, NPM_VALUED);
-    const named = command === 'run' || command === 'run-script' ? script : command;
-    return HEAVY_SCRIPT.test(named ?? '');
-}
 /** The miss counters one tool call adds to, each at most once, and whether it runs `teamrig start`. */
 export function toolMissesOf(tool) {
     const runs = shellRunsOf(tool);
@@ -109,7 +76,7 @@ export function toolMissesOf(tool) {
     if (runs.some((run) => runnerCallOf(run).kind === 'fetch')) {
         counts.push('missAdHocFetch');
     }
-    const heavy = runs.filter(isHeavyStep);
+    const heavy = runs.filter((run) => heavyStepOf(run) !== undefined);
     if (heavy.length > 0) {
         counts.push('heavySteps');
         if (heavy.some((run) => !run.runner)) {

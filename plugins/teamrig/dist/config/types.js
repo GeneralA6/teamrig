@@ -57,6 +57,10 @@ export const ESCALATIONS = ['session', 'session-and-fleet'];
 export function isEscalation(value) {
     return ESCALATIONS.some((escalation) => escalation === value);
 }
+export const UNWRAPPED_HEAVY_STEPS = ['deny', 'allow'];
+export function isUnwrappedHeavySteps(value) {
+    return UNWRAPPED_HEAVY_STEPS.some((choice) => choice === value);
+}
 /**
  * Who may hire a session onto the team (`teamrig hire`): `off` nobody; `owner` the lead, once the owner
  * approved (`--approved-by`, kept with the hire); `lead` the lead, within the caps; `automatic` as `lead`,

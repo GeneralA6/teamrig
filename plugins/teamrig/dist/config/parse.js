@@ -11,7 +11,7 @@ import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT
 import { isEffort, isModel } from "./launch.js";
 import { BUDGET_ACCOUNT_MAX_LENGTH, CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from "./limits.js";
 import { ConfigReader, describe, isValidRegex, shortLine } from "./reader.js";
-import { AD_HOC_RUNNERS, PACKAGE_INSTALLS, BURST_POLICIES, CONFLICT_WINNERS, ESCALATIONS, HIRING_POLICIES, isAdHocRunners, isPackageInstalls, isBurstPolicy, isCommitGate, isConflictWinner, isEffortLevel, isEscalation, isHiringPolicy, isOverAction, isHookAsks, isIdleMode, isOtherAreaListing, isPushToProtected, isSecretReads, isSkipHooks, isTerminalChoice, isVerifyGate, isWeekday, HOOK_ASKS, IDLE_MODES, OTHER_AREA_LISTINGS, OVER_ACTIONS, PUSH_TO_PROTECTED, SECRET_READS, SKIP_HOOKS, TERMINALS, VERIFY_GATES, WEEKDAYS, } from "./types.js";
+import { AD_HOC_RUNNERS, PACKAGE_INSTALLS, BURST_POLICIES, CONFLICT_WINNERS, ESCALATIONS, HIRING_POLICIES, isAdHocRunners, isPackageInstalls, isBurstPolicy, isCommitGate, isConflictWinner, isEffortLevel, isEscalation, isHiringPolicy, isOverAction, isHookAsks, isIdleMode, isOtherAreaListing, isPushToProtected, isSecretReads, isSkipHooks, isTerminalChoice, isUnwrappedHeavySteps, isVerifyGate, isWeekday, HOOK_ASKS, IDLE_MODES, OTHER_AREA_LISTINGS, OVER_ACTIONS, PUSH_TO_PROTECTED, SECRET_READS, SKIP_HOOKS, TERMINALS, UNWRAPPED_HEAVY_STEPS, VERIFY_GATES, WEEKDAYS, } from "./types.js";
 const isSessionName = (name) => SESSION_NAME.test(name) ? undefined : 'expected a lowercase name: a letter, then letters, digits or -, at most 32';
 const isTimeZone = (name) => (TimeZone.of(name) === undefined ? 'expected an IANA time zone name such as Asia/Jerusalem' : undefined);
 const isUtcTime = (time) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(time) ? undefined : 'expected a UTC time as HH:MM');
@@ -568,6 +568,7 @@ function parseHeavy(read, raw) {
     if (smallMaxRunMinutes > longestRun) {
         read.report(`${path}.smallMaxRunMinutes`, `must be at most maxRunMinutes (${longestRun})`);
     }
+    const unwrapped = read.string(raw, 'unwrapped', path, DEFAULT_HEAVY.unwrapped, oneOf(UNWRAPPED_HEAVY_STEPS));
     return {
         ...(lockPath === undefined ? {} : { lockPath }),
         lockTtlMinutes,
@@ -577,6 +578,7 @@ function parseHeavy(read, raw) {
         memorySampleSeconds: read.integer(raw, 'memorySampleSeconds', path, DEFAULT_HEAVY.memorySampleSeconds, CONFIG_LIMITS.heavyMemorySampleSeconds),
         memoryFloorMb: read.integer(raw, 'memoryFloorMb', path, DEFAULT_HEAVY.memoryFloorMb, CONFIG_LIMITS.heavyMemoryFloorMb),
         smallReserveMb: read.integer(raw, 'smallReserveMb', path, DEFAULT_HEAVY.smallReserveMb, CONFIG_LIMITS.heavySmallReserveMb),
+        unwrapped: isUnwrappedHeavySteps(unwrapped) ? unwrapped : DEFAULT_HEAVY.unwrapped,
     };
 }
 function parseBudget(read, raw, sessions) {

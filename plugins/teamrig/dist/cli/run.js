@@ -182,6 +182,7 @@ const COMMANDS = {
     deploys: { effect: 'read', flags: [], load: async () => (await deploysCommand()).deploys },
     'hook push-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).pushGuard },
     'hook package-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).packageGuard },
+    'hook heavy-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).heavyGuard },
     'hook secret-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).secretGuard },
     'hook exec-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).execGuard },
     'hook cold-send': { effect: 'internal', flags: [], load: async () => (await hookCommands()).coldSend },
@@ -527,7 +528,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   test [--session <id|name>] -- <command ...>   runs a test command in the shell, writes all it printed
       to a log (each session keeps its newest 20) and prints one PASS or FAIL line, then each failing
       test within tests.maxFailureChars; exit 0 when the command passed, 1 otherwise
-  hook push-guard | hook package-guard | hook secret-guard | hook exec-guard | hook cold-send | hook failed-send | hook missing-cli | hook loop-nudge | hook helper-gate | hook inbox-reminder | hook session-start | hook stop | hook subagent-start | hook subagent-stop | hook refresh-wake | hook restore-track | hook tab-status | hook tool-end | hook readonly-allow | hook picker-guard | hook prompt-refuse
+  hook push-guard | hook package-guard | hook heavy-guard | hook secret-guard | hook exec-guard | hook cold-send | hook failed-send | hook missing-cli | hook loop-nudge | hook helper-gate | hook inbox-reminder | hook session-start | hook stop | hook subagent-start | hook subagent-stop | hook refresh-wake | hook restore-track | hook tab-status | hook tool-end | hook readonly-allow | hook picker-guard | hook prompt-refuse
       (run by Claude Code, hook JSON on stdin)
   hook clear-dir | hook clear-claim [--hold [--why <reason>]]
       (run by the plugin's mod: the automatic restart's /clear in the tab)

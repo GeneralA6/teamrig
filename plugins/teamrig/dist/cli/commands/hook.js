@@ -14,6 +14,7 @@ import { failedSendLine, failedSendOf, failedSendOutput } from "../../hooks/fail
 import { checkClient, clientRootOf } from "../../exec/client-integrity.js";
 import { ClientInstalls, ShellPathSearch } from "../../exec/client-launch.js";
 import { execGuardOutput } from "../../hooks/exec-guard.js";
+import { heavyGuardOutput, unwrappedOf } from "../../hooks/heavy-guard.js";
 import { packageGuardOf, packageGuardOutput } from "../../hooks/package-guard.js";
 import { hookAsksOf } from "../../hooks/permission.js";
 import { secretGuardOf, secretGuardOutput } from "../../hooks/secret-guard.js";
@@ -170,6 +171,31 @@ export async function packageGuard(args, runtime) {
     }
     return EXIT.ok;
 }
+/** This tab's team session, for a call the heavy guard hands back; undefined when the tab is unbound or that cannot be read. */
+async function tabSessionOf(runtime, kit, payload) {
+    const identity = await tabIdentityOf(runtime, kit, payload);
+    return identity.kind === 'bound' ? identity.session : undefined;
+}
+/** PreToolUse on Bash and PowerShell: refuses a test suite or a build run outside `teamrig heavy`, naming the call that runs it. */
+export async function heavyGuard(args, runtime) {
+    noPositionals(args);
+    const payload = parseJson(await runtime.readStdin());
+    const guard = await guardLoadOf(payload, runtime);
+    if (guard === undefined) {
+        return EXIT.ok;
+    }
+    const output = await heavyGuardOutput(payload, {
+        cwd: runtime.cwd,
+        home: runtime.userHome,
+        unwrapped: unwrappedOf(guard.load),
+        hookAsks: hookAsksOf(guard.load),
+        session: () => tabSessionOf(runtime, guard.kit, payload),
+    });
+    if (output !== '') {
+        runtime.out.stdout(output);
+    }
+    return EXIT.ok;
+}
 /** PreToolUse on Bash, PowerShell, Read and Grep: refuses, or asks about, a call that would print a secret into the conversation. */
 export async function secretGuard(args, runtime) {
     noPositionals(args);
@@ -191,7 +217,7 @@ export async function secretGuard(args, runtime) {
     return EXIT.ok;
 }
 /**
- * Who this tab runs as, for the exec guard: its team session and the roster to read a `--session` word with. It never
+ * Who this tab runs as, for the exec guard (and the session the heavy guard's call names): its team session and the roster to read a `--session` word with. It never
  * throws: a config or roster it cannot read leaves the tab unbound, so every review from it is refused, saying why.
  */
 async function tabIdentityOf(runtime, kit, payload) {

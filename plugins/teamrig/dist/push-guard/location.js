@@ -37,7 +37,7 @@ function pathRules(...paths) {
     return paths.some((path) => driveOf(path) !== undefined) ? nodePath.win32 : nodePath;
 }
 /** `dir` resolved and normalised, so a folder the line never leaves compares equal to one it returns to. */
-function absoluteDir(dir) {
+export function absoluteDir(dir) {
     return pathRules(dir).resolve(dir);
 }
 /** The drive letter a Windows path names, lower case, if any. */
