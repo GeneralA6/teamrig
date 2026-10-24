@@ -7,7 +7,7 @@ import { readIdlePassState } from '../idle-pass-check.ts';
 import { changedSteps, failedState, formatIdlePassRecord, formatIdlePassState, isPassDue, passedState, type IdlePassRecord, type IdlePassState } from '../idle-pass-log.ts';
 import { teamZone, type Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
-import { teamProjectOf } from './setup.ts';
+import { sessionFoldersOf } from './setup.ts';
 
 /** What one pass leaves: the state to keep, and the record to log (undefined: nothing new). */
 interface PassOutcome {
@@ -19,13 +19,13 @@ interface PassOutcome {
 type PassRun = { readonly kind: 'ran'; readonly steps: readonly PassStep[] } | { readonly kind: 'failed'; readonly error: string };
 
 /**
- * Runs the pass, in the folder holding the team's pointer as `teamrig sessions --pass` does by default. The pass reads
+ * Runs the pass, each session in its own project folder as `teamrig sessions --pass` does by default. The pass reads
  * the host's processes and every session's record, transcript and budget; a failure there is the pass's, logged as
  * such, and must not cost the tab its wake answer.
  */
 async function runPass(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, from: string): Promise<PassRun> {
   try {
-    return { kind: 'ran', steps: await idlePassOf(runtime, kit, config, roster, await teamProjectOf(runtime, undefined, from)) };
+    return { kind: 'ran', steps: await idlePassOf(runtime, kit, config, roster, sessionFoldersOf(runtime, config, undefined, from)) };
   } catch (error) {
     return { kind: 'failed', error: errorMessage(error) };
   }

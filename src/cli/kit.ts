@@ -121,6 +121,14 @@ export async function projectFolder(runtime: CliRuntime): Promise<string> {
   return basename(from) === TEAM_POINTER ? dirname(from) : (teamFolders(runtime.env, [])[0] ?? runtime.cwd);
 }
 
+/**
+ * The team's project folder by its config and the pointer it was found by (`FoundTeam.from`): `team.project`,
+ * else the pointer's folder; none for a team named by `$TEAMRIG_TEAM` alone.
+ */
+export function teamProjectOf(config: KitConfig, from: string): string | undefined {
+  return config.team?.project ?? (basename(from) === TEAM_POINTER ? dirname(from) : undefined);
+}
+
 /** The kit of a command's team (see `findTeam`). */
 export async function openTeamKit(runtime: CliRuntime): Promise<Kit> {
   return openKit(runtime, (await findTeam(runtime)).team);

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { projectTranscriptPath } from '../budget/discover.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { SessionLog } from '../sessions/log.ts';
@@ -87,17 +87,20 @@ describe('teamrig sessions', () => {
   });
 });
 
-const TRANSCRIPT = projectTranscriptPath(join(USER_HOME, '.claude', 'projects'), APP, CLAUDE_SESSION);
 const ALPHA_TAB = { pid: 8000, parentPid: 7900, name: 'powershell.exe', commandLine: `powershell -NoExit -Command claude --resume ${CLAUDE_SESSION}` };
 const ALPHA_CLAUDE = { pid: 8100, parentPid: ALPHA_TAB.pid, name: 'claude.exe', commandLine: `claude --resume ${CLAUDE_SESSION}` };
 /** Alpha's last reply, 40k tokens of context: small enough to resume. */
 const REPLY = `${JSON.stringify({ type: 'assistant', isSidechain: false, message: { role: 'assistant', usage: { input_tokens: 2, cache_read_input_tokens: 39_998, output_tokens: 50 } } })}\n`;
 
-/** A pass over a team whose lead runs in Claude Code 6900 and alpha in 8100, quiet 75 min; bravo never started. */
-async function runningTeam(config: JsonRecord = TEAM): Promise<{ readonly kit: CliHarness; readonly processes: FakeSessionProcesses; readonly options: RunOptions }> {
+/**
+ * A pass over a team whose lead runs in Claude Code 6900 and alpha in 8100, quiet 75 min, its transcript in the project
+ * folder `project`; bravo never started.
+ */
+async function runningTeam(config: JsonRecord = TEAM, project = APP): Promise<{ readonly kit: CliHarness; readonly processes: FakeSessionProcesses; readonly options: RunOptions }> {
   const kit = await recordedTeam(config);
+  const transcript = projectTranscriptPath(join(USER_HOME, '.claude', 'projects'), project, CLAUDE_SESSION);
   await new SessionRecordStore(kit.files, { sessions: SESSIONS }).write('alpha', { claudePid: ALPHA_CLAUDE.pid, claudeSession: CLAUDE_SESSION, at: '2030-01-08T08:00:00.000Z' });
-  await kit.files.write(TRANSCRIPT, REPLY);
+  await kit.files.write(transcript, REPLY);
   const processes = new FakeSessionProcesses().add(ALPHA_TAB).add(ALPHA_CLAUDE);
   const rows = [
     { pid: 6900, parent: 1, bytes: 700 * MB, committed: 1600 * MB },
@@ -106,10 +109,10 @@ async function runningTeam(config: JsonRecord = TEAM): Promise<{ readonly kit: C
   ];
   const options: RunOptions = {
     platform: 'win32',
-    probe: new FakePathProbe({ folders: [APP] }),
+    probe: new FakePathProbe({ folders: [APP, project] }),
     memory: new FakeHostMemory().lists(rows),
     sessionProcesses: processes,
-    transcripts: new MemoryTranscripts({ [TRANSCRIPT]: REPLY }, NOW - 75 * MINUTE_MS),
+    transcripts: new MemoryTranscripts({ [transcript]: REPLY }, NOW - 75 * MINUTE_MS),
   };
   return { kit, processes, options };
 }
@@ -146,6 +149,14 @@ describe('teamrig sessions --pass', () => {
     ]);
     assert.deepEqual(team.processes.ends, [], 'the pass ends nothing');
     assert.equal(team.kit.files.get(LOG), undefined, 'and logs nothing');
+  });
+
+  it("reads a running session's transcript in its own launch.<id>.project folder", async () => {
+    const own = resolve('/', 'work', 'alpha');
+    const team = await runningTeam({ ...TEAM, launch: { alpha: { project: own } } }, own);
+    const result = await team.kit.run(['sessions', '--pass'], team.options);
+    assertOk(result);
+    assert.equal(result.stdout[1], 'CLOSE app-alpha (session alpha): quiet 75 min, its Claude Code holds 1300 MB, 1800 MB committed');
   });
 
   it('reopens one closed session a pass, the most urgent first, for work handed to it since its close', async () => {

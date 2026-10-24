@@ -30,6 +30,9 @@ export type PassStep =
   /** Not running, and not closed by teamrig: the pass leaves it. */
   | { readonly kind: 'away'; readonly id: string };
 
+/** The project folder a session's Claude Code runs in; it refuses one that is no folder. */
+export type SessionFolderOf = (id: string) => Promise<string>;
+
 /** A closed session the wake check would wake, and its most urgent task, before the pass picks which reopens. */
 interface ReopenWish {
   readonly kind: 'wish';
@@ -60,12 +63,12 @@ function hasWorkPastUrgent(tasks: ReadonlyMap<string, Task>, id: string, configu
  * unless its rest can change the step: a running one with work past p1 ({@link hasWorkPastUrgent}), a closed one that
  * would reopen awake (a rest only holds a reopen back).
  */
-async function judge(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, facts: IdleFacts, id: string, project: string, closes: readonly SessionLogRecord[]): Promise<PassStep | ReopenWish> {
+async function judge(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, facts: IdleFacts, id: string, folderOf: SessionFolderOf, closes: readonly SessionLogRecord[]): Promise<PassStep | ReopenWish> {
   const { tasks, now, zone } = facts;
   const awake = { rest: AWAKE, maxPriority: config.wake.priority };
   if (facts.places.find((place) => place.id === id)?.state === 'running') {
     const { maxPriority } = hasWorkPastUrgent(tasks, id, config.wake.priority) ? await wakeWeightOf(runtime, kit, config, roster, id) : awake;
-    const verdict = await idleVerdictOf(runtime, config, roster, facts, id, { maxPriority, project });
+    const verdict = await idleVerdictOf(runtime, config, roster, facts, id, { maxPriority, project: await folderOf(id) });
     return verdict.kind === 'close' ? { kind: 'close', id, closable: verdict.closable } : { kind: 'keep', id, why: verdict.why };
   }
   const closed = closedOf(closes, id);
@@ -86,14 +89,15 @@ async function judge(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: R
  * What one pass over the team's sessions does, in the roster's order, changing nothing (T1100): each running session
  * closes when `idleVerdictOf` finds it idle, else stays; each one teamrig closed reopens when the wake check would wake
  * it. One reopen a pass, the most urgent top task first, and only with room on the host, read fresh; the rest wait for
- * the next pass, so reopens never outrun what the host can hold.
+ * the next pass, so reopens never outrun what the host can hold. A running session's transcript is read in the
+ * folder `folderOf` names for it when its record names none.
  */
-export async function idlePassOf(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, project: string): Promise<readonly PassStep[]> {
+export async function idlePassOf(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, folderOf: SessionFolderOf): Promise<readonly PassStep[]> {
   const facts = await idleFactsOf(runtime, kit, config, roster);
   const closes = (await new SessionLog(runtime.files, kit.paths.sessionLog).read()).records;
   const judged: (PassStep | ReopenWish)[] = [];
   for (const id of roster.ids) {
-    judged.push(await judge(runtime, kit, config, roster, facts, id, project, closes));
+    judged.push(await judge(runtime, kit, config, roster, facts, id, folderOf, closes));
   }
   const [first] = judged.filter((step): step is ReopenWish => step.kind === 'wish').sort((a, b) => byUrgency(a.top, b.top));
   const room = first === undefined ? undefined : await headroomOf(runtime, kit.paths, config, roster.ids);

@@ -1,14 +1,15 @@
-import { dirname, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
+import { launchOf } from '../../config/launch.ts';
 import { SHIPPED_CONFIG_FORMAT } from '../../config/migrate.ts';
+import type { KitConfig } from '../../config/types.ts';
 import { claudeConfigDir, ENV, KIT_NAME, resolveKitHome, teamPaths } from '../../core/home.ts';
-import { ENV_SOURCE } from '../../core/team.ts';
 import { describeRequirement } from '../../requirements/requirements.ts';
 import { applyIgnore, ignoreLines, ignoreStep, type IgnoreStep } from '../../setup/pointer-ignore.ts';
 import { applySetupTask, setupTaskDryLines, setupTaskLines, setupTaskStep } from '../../setup/setup-task.ts';
 import { tabStatusLine } from '../../setup/tab-status-note.ts';
 import { applyTeamSetup, planTeamSetup, teamSpecOf, type FileStep, type SetupPlan, type TeamSpec } from '../../setup/team-create.ts';
 import { onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
-import { openKit, requireConfig } from '../kit.ts';
+import { openKit, requireConfig, teamProjectOf } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { teamRegister } from '../team-register.ts';
 import { loadTree } from '../tree.ts';
@@ -27,9 +28,17 @@ export async function projectOf(runtime: CliRuntime, flag: string | undefined): 
   return project;
 }
 
-/** The folder a team's session works in: `--project`, else the folder holding the team's pointer, else as {@link projectOf}. */
-export function teamProjectOf(runtime: CliRuntime, flag: string | undefined, from: string): Promise<string> {
-  return projectOf(runtime, flag ?? (from === ENV_SOURCE ? undefined : dirname(from)));
+/**
+ * The folder a team's session works in: `--project`, else its own `launch.<id>.project`, else the team's
+ * ({@link teamProjectOf}), else as {@link projectOf}.
+ */
+export function sessionProjectOf(runtime: CliRuntime, config: KitConfig, id: string, flag: string | undefined, from: string): Promise<string> {
+  return projectOf(runtime, flag ?? launchOf(config, id).project ?? teamProjectOf(config, from));
+}
+
+/** {@link sessionProjectOf} for each session a pass over the team reads. */
+export function sessionFoldersOf(runtime: CliRuntime, config: KitConfig, flag: string | undefined, from: string): (id: string) => Promise<string> {
+  return (id) => sessionProjectOf(runtime, config, id, flag, from);
 }
 
 /** One line per file: what the run wrote, or would write, and what it left as it was. */

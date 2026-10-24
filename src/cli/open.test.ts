@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { formatConfig } from '../config/load.ts';
+import type { JsonRecord } from '../core/guards.ts';
 import type { RunOutcome, RunRequest } from '../open/processes.ts';
 import { decodePrompt, defaultPrompt, encodePrompt, refreshPrompt } from '../open/prompt.ts';
 import { shellCommand } from '../open/quote.ts';
@@ -136,6 +137,24 @@ describe('teamrig open', () => {
     });
     assert.equal(result.code, EXIT.ok, result.stdout.join('\n'));
     assert.deepEqual(processes.started[0]?.args.slice(3), [NODE, SCRIPT, 'launch', 'alpha', '--team', 'app', '--project', elsewhere, '--encoded-prompt', encodePrompt(defaultPrompt('app', 'alpha'))]);
+  });
+
+  it("opens in the session's own folder, else the team's over the pointer's, and in the --project folder over both", async () => {
+    const own = resolve('/', 'work', 'alpha');
+    const shared = resolve('/', 'work', 'shared');
+    const probe = new FakePathProbe({ folders: [APP, own, shared] });
+    const team = { ...TEAM, team: { id: 'app', project: shared } };
+    const cases: readonly (readonly [JsonRecord, readonly string[], string])[] = [
+      [{ ...team, launch: { alpha: { project: own } } }, [], own],
+      [team, [], shared],
+      [{ ...team, launch: { alpha: { project: own } } }, ['--project', APP], APP],
+    ];
+    for (const [config, extra, folder] of cases) {
+      const processes = new FakeProcesses().onStart('gnome-terminal', { kind: 'started' });
+      const result = await new CliHarness(config).run(['open', 'alpha', ...extra], { probe, processes });
+      assert.equal(result.code, EXIT.ok, result.stdout.join('\n'));
+      assert.deepEqual(processes.started[0]?.args.slice(3), launchArgv(folder));
+    }
   });
 
   it('refuses a session not on the team and a project that is not there; reads a bad flag as a usage error', async () => {

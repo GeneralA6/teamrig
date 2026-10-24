@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { projectTranscriptPath } from '../budget/discover.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { SessionLog } from '../sessions/log.ts';
@@ -18,7 +18,6 @@ const MINUTE_MS = 60_000;
 const NOW = Date.parse('2030-01-08T10:00:00.000Z');
 const SESSIONS = join(TEAM_HOME, 'state', 'sessions');
 const LOG = join(TEAM_HOME, 'state', 'session-log.jsonl');
-const TRANSCRIPT = projectTranscriptPath(join(USER_HOME, '.claude', 'projects'), APP, CLAUDE_SESSION);
 const TAB = { pid: 8000, parentPid: 7900, name: 'powershell.exe', commandLine: `powershell -NoExit -Command claude --resume ${CLAUDE_SESSION}` };
 const CLAUDE = { pid: 8100, parentPid: TAB.pid, name: 'claude.exe', commandLine: `claude --resume ${CLAUDE_SESSION}` };
 /** Alpha's Claude Code and an MCP server it runs: 1300 MB. */
@@ -52,18 +51,19 @@ interface Alpha {
 
 /**
  * A team (`config`) whose alpha runs in Claude Code 8100 in tab 8000 since 08:00, its transcript `transcript`, last
- * written `idleMinutes` ago: at `recorded`, the path its start recorded, else in the project folder of a record naming none.
+ * written `idleMinutes` ago: at `recorded`, the path its start recorded, else, for a record naming none, in the
+ * project folder `project` (the pointer's, else alpha's own `launch.alpha.project`).
  */
-async function runningAlpha(idleMinutes = 75, transcript = reply(40_000), recorded?: string, config: JsonRecord = TEAM): Promise<Alpha> {
-  const kit = new CliHarness(config);
+async function runningAlpha(idleMinutes = 75, transcript = reply(40_000), recorded?: string, config: JsonRecord = TEAM, project = APP): Promise<Alpha> {
+  const kit = new CliHarness(project === APP ? config : { ...config, launch: { alpha: { project } } });
   const record = { claudePid: CLAUDE.pid, claudeSession: CLAUDE_SESSION, at: '2030-01-08T08:00:00.000Z' };
   await new SessionRecordStore(kit.files, { sessions: SESSIONS }).write('alpha', recorded === undefined ? record : { ...record, transcript: recorded });
-  const path = recorded ?? TRANSCRIPT;
+  const path = recorded ?? projectTranscriptPath(join(USER_HOME, '.claude', 'projects'), project, CLAUDE_SESSION);
   await kit.files.write(path, transcript);
   const processes = new FakeSessionProcesses().add(TAB).add(CLAUDE);
   const options: RunOptions = {
     platform: 'win32',
-    probe: new FakePathProbe({ folders: [APP] }),
+    probe: new FakePathProbe({ folders: [APP, project] }),
     memory: new FakeHostMemory().lists(ROWS),
     sessionProcesses: processes,
     transcripts: new MemoryTranscripts({ [path]: transcript }, NOW - idleMinutes * MINUTE_MS),
@@ -113,6 +113,13 @@ describe('teamrig close', () => {
     const unknown = await close(gone, ['alpha', '--yes', '--session', 'lead']);
     assertRefused(unknown, /has no transcript of Claude Code session \S+ at \S+fix\S+, so its idle time is unknown/);
     assert.deepEqual(alpha.processes.ends, []);
+  });
+
+  it("reads the last session from the session's own project folder", async () => {
+    const own = resolve('/', 'work', 'alpha');
+    const preview = await close(await runningAlpha(75, reply(40_000), undefined, TEAM, own), ['alpha', '--session', 'lead']);
+    assert.equal(preview.code, 0, preview.stdout.join('\n'));
+    assert.match(preview.stdout[0] ?? '', /^CLOSE app-alpha \(session alpha\): quiet 75 min, its Claude Code holds 1300 MB; /);
   });
 
   it('closes only for the lead, and never the lead itself or a session that does not run', async () => {
