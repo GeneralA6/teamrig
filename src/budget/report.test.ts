@@ -90,7 +90,7 @@ const LIFT_HEADING =
 const LIFT_BLOCK = [LIFT_HEADING, '  session   part      until  stop at', '  bravo    40.0%  00:00 UTC    97.0%', '  00:00 UTC is the end of the budget day.'];
 
 function session(id: string, w: number, calls: number, budgetPct: number | undefined = 10.25 / 3, lift: Lift | undefined = undefined): SessionToday {
-  return { id, name: id === 'lead' ? 'commander' : id, w, calls, budgetPct, lift, liftParent: undefined, inBurst: undefined };
+  return { id, name: id === 'lead' ? 'commander' : id, w, calls, budgetPct, lift, liftBy: lift === undefined ? undefined : 'commander', liftParent: undefined, inBurst: undefined };
 }
 
 /** A surplus burst for alpha and bravo until the pace end, Wed 10-21 00:00 UTC, started at a 12.5% floor that is 9.5% now. */
@@ -185,7 +185,7 @@ describe('todayLines', () => {
 
   it('never tells a session past budget to skip a test', () => {
     assert.doesNotMatch(OVER_BUDGET_ADVICE, /skip (a|the) test(?! or check to save)/);
-    assert.match(OVER_BUDGET_ADVICE, /Never skip a test or check to save budget\. The lead can lift it\.$/);
+    assert.match(OVER_BUDGET_ADVICE, /Never skip a test or check to save budget\. A session's leader can lift its budget\.$/);
   });
 
   it('marks the budgets a burst raised and names the burst once, with its sessions', () => {
@@ -310,14 +310,14 @@ describe('sessionLines', () => {
       '  2026-10-15  7.50M W in 1 call, 1.0% of the week',
       '  2026-10-14  15.00M W in 600 calls, 2.0% of the week',
       'Its daily budget today is 2.0% of the week (lifted).',
-      "Budget: the lead lifted bravo to 40.0% of the team's daily budget today until 00:00 UTC (the end of the budget day) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.",
+      "Budget: commander lifted bravo to 40.0% of the team's daily budget today until 00:00 UTC (the end of the budget day) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.",
       W_EXPLAINED,
     ]);
   });
 
-  it("names the sub-lead's group whose daily budget the session's lift is a part of", () => {
-    const lines = sessionLines({ ...session('bravo', 0, 0, 2, LIFT), liftParent: 'alpha' }, state({}), WEEK, TimeZone.UTC);
-    assert.match(lines.find((line) => line.startsWith('Budget:')) ?? '', /^Budget: the lead lifted bravo to 40\.0% of alpha's group's daily budget today /);
+  it("names the leader that lifted the session and the sub-lead's group whose daily budget the lift is a part of", () => {
+    const lines = sessionLines({ ...session('bravo', 0, 0, 2, { ...LIFT, by: 'alpha' }), liftBy: 'alpha', liftParent: 'alpha' }, state({}), WEEK, TimeZone.UTC);
+    assert.match(lines.find((line) => line.startsWith('Budget:')) ?? '', /^Budget: alpha lifted bravo to 40\.0% of alpha's group's daily budget today /);
   });
 
   it("gives the session's burst under its budget today", () => {
@@ -328,7 +328,7 @@ describe('sessionLines', () => {
   });
 
   it('says when there is no use and no budget', () => {
-    const unbudgeted: SessionToday = { id: 'lead', name: 'commander', w: 0, calls: 0, budgetPct: undefined, lift: undefined, liftParent: undefined, inBurst: undefined };
+    const unbudgeted: SessionToday = { id: 'lead', name: 'commander', w: 0, calls: 0, budgetPct: undefined, lift: undefined, liftBy: undefined, liftParent: undefined, inBurst: undefined };
     assert.deepEqual(sessionLines(unbudgeted, state({}), UNKNOWN, TimeZone.UTC), ['commander (lead), by UTC day:', '  no use in the last 8 days', W_EXPLAINED]);
     assert.deepEqual(sessionLines(unbudgeted, state({ '2026-10-15': usage(500, 2) }), UNKNOWN, TimeZone.UTC).slice(1, 2), ['  2026-10-15  500 W in 2 calls']);
   });

@@ -15,7 +15,7 @@ import { calibrationOf } from '../../budget/calibration.ts';
 import { claudeProjectsDir, type TranscriptSource } from '../../budget/discover.ts';
 import { ExtraLog, type ExtraEntry } from '../../budget/extra.ts';
 import { formatPct, formatUsd } from '../../budget/format.ts';
-import { activeLift, decideLift, LiftLog, liftText, parentBudgetText, type Lift } from '../../budget/lift.ts';
+import { activeLift, decideLift, LiftLog, liftText, parentBudgetText, type Lift, type LiftNames } from '../../budget/lift.ts';
 import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID, type Measured } from '../../budget/measure.ts';
 import { budgetSplitOf, dailyBudgetOf, groupPartsOf, liftPlaceOf, teamPartOf, type BudgetSplit } from '../../budget/parts.ts';
 import { nextPeriod, sightOf, type Period } from '../../budget/period.ts';
@@ -178,17 +178,19 @@ function sessionsToday(reading: Reading, roster: Roster, budget: BudgetConfig, s
     const state = reading.measured.bySession.get(id);
     const w = state === undefined ? 0 : wSince([state], reading.week.todayFrom, reading.now);
     const lift = activeLift(reading.lifts, id, reading.now, reading.week.usedPct);
-    const liftParent = lift === undefined ? undefined : liftParentOf(split, roster, id);
     const inBurst = burstNow !== undefined && burstNow.burst.sessions.includes(id) ? burstNow : undefined;
     const budgetPct = withBurst(dailyBudgetOf(reading.week.allowancePct, id, split, others), inBurst?.floorPct);
-    return { id, name: roster.nameOf(id) ?? id, w, calls: state?.byDay[today]?.calls ?? 0, budgetPct, lift, liftParent, inBurst };
+    return { id, name: roster.nameOf(id) ?? id, w, calls: state?.byDay[today]?.calls ?? 0, budgetPct, lift, ...liftNamesOf(split, roster, id, lift), inBurst };
   });
 }
 
-/** The name of the sub-lead whose group's daily budget a lift of session `id` is a part of (`split`'s tree); undefined for the team's. */
-export function liftParentOf(split: BudgetSplit, roster: Roster, id: string): string | undefined {
+/** Session `id`'s lift by name: the leader that gave it and the sub-lead whose group's daily budget it is a part of (`split`'s tree). */
+export function liftNamesOf(split: BudgetSplit, roster: Roster, id: string, lift: Lift | undefined): LiftNames {
+  if (lift === undefined) {
+    return { liftBy: undefined, liftParent: undefined };
+  }
   const parent = liftPlaceOf(split, id, false)?.parent;
-  return parent === undefined ? undefined : (roster.nameOf(parent) ?? parent);
+  return { liftBy: roster.nameOf(lift.by) ?? lift.by, liftParent: parent === undefined ? undefined : (roster.nameOf(parent) ?? parent) };
 }
 
 /** The days a loop table shows, oldest first, ending at `now`'s day. */

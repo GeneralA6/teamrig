@@ -25,7 +25,7 @@ import { helperLaunchReminder } from '../../rules/helper-default.ts';
 import { otherTeamsOnAccount } from '../account-teams.ts';
 import { teamZone, type Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
-import { liftParentOf, snapshotDirOf } from './budget.ts';
+import { liftNamesOf, snapshotDirOf } from './budget.ts';
 import { inboxDepsOf } from './inbox.ts';
 
 /**
@@ -133,7 +133,7 @@ export async function budgetFactsOf(runtime: CliRuntime, scope: BudgetScope, tra
     usedTodayPct: todayW / todayWPerPct,
     budgetPct,
     lift,
-    liftParent: lift === undefined ? undefined : liftParentOf(split, roster, id),
+    ...liftNamesOf(split, roster, id, lift),
     burst,
     surplus,
     weekUsedPct: week.usedPct,

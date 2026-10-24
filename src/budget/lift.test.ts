@@ -12,6 +12,7 @@ import {
   decideLift,
   LIFT_FORMAT,
   LiftLog,
+  liftedLine,
   liftText,
   parentBudgetText,
   parseLift,
@@ -150,6 +151,16 @@ describe('liftText', () => {
 
   it("says when it ends on the team's clock", () => {
     assert.match(liftText(lift(), 'alpha', TEAM, JERUSALEM), /^alpha to 40\.0% of the team's daily budget today until 02:00 IST \(the end of the budget day\) or 97\.0% of the week, /);
+  });
+});
+
+describe('liftedLine', () => {
+  it('names the leader that lifted the session and the budget the lift is a part of', () => {
+    assert.match(liftedLine(lift({ by: 'bravo' }), 'charlie', { liftBy: 'app-bravo', liftParent: 'app-bravo' }, TimeZone.UTC), /^Budget: app-bravo lifted charlie to 40\.0% of app-bravo's group's daily budget today /);
+  });
+
+  it('names the leader by its id when its name is not known', () => {
+    assert.match(liftedLine(lift({ by: 'bravo' }), 'charlie', { liftBy: undefined, liftParent: undefined }, TimeZone.UTC), /^Budget: bravo lifted charlie to 40\.0% of the team's daily budget today /);
   });
 });
 
