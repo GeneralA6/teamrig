@@ -2939,7 +2939,9 @@ last line says which rate counts, how far the fit misses its readings and, for t
 use it forecast missed the status line. The team's daily
 budget is never a fixed number: at every reading, what is left to `budget.targetPct` is spread over the active
 time to the pace end (`budget.paceEndHoursBeforeReset` before the reset; quiet hours count at
-`budget.quietHours.paceWeight`), times today's active time. Past 100% of the week, what is left in the extra-usage
+`budget.quietHours.paceWeight`), times today's active time. The teams of the kit home on one Claude account
+(`budget.account`, else the Claude config dir) split that day by weight: a session's weight is its share times its
+queued work, a team's its sessions' summed. Past 100% of the week, what is left in the extra-usage
 pool takes the place of that remainder (see [teamrig budget extra](#teamrig-budget-extra)). What the lead's lifts
 leave is split among the other sessions by `budget.sessions.<id>.share` times their queued work. Short by
 default: the busiest 7 sessions, then who is past the daily budget. A session past its part is held only while the
