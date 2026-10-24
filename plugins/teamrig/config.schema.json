@@ -272,7 +272,7 @@
       }
     },
     "skills": {
-      "description": "The team's Claude Code skills: the shared area prefix, and the limits teamrig check holds each skill to.",
+      "description": "The team's Claude Code skills: the shared area prefix, the limits teamrig check holds each skill to, and how a session lists the skills of other areas.",
       "type": "object",
       "properties": {
         "sharedPrefix": {
@@ -289,6 +289,12 @@
           "maxItems": 8,
           "items": { "type": "string", "maxLength": 32, "pattern": "^[A-Za-z0-9_-]+$" },
           "default": ["allowed-tools"]
+        },
+        "otherAreas": {
+          "description": "How a session teamrig launches lists a skill of another session's area whose \"Used by:\" line does not name it: on in full, name-only without its description, user-invocable-only only as a /name command the model is not shown, off not at all. Shared and personal skills are always listed in full.",
+          "type": "string",
+          "enum": ["on", "name-only", "user-invocable-only", "off"],
+          "default": "name-only"
         }
       }
     },

@@ -69,6 +69,7 @@ import {
   isOverAction,
   isHookAsks,
   isIdleMode,
+  isOtherAreaListing,
   isPushToProtected,
   isSecretReads,
   isSkipHooks,
@@ -77,6 +78,7 @@ import {
   isWeekday,
   HOOK_ASKS,
   IDLE_MODES,
+  OTHER_AREA_LISTINGS,
   OVER_ACTIONS,
   PUSH_TO_PROTECTED,
   SECRET_READS,
@@ -84,6 +86,7 @@ import {
   TERMINALS,
   type ContextFilesConfig,
   type ExecConfig,
+  type OtherAreaListing,
   VERIFY_GATES,
   WEEKDAYS,
   type PackageGuardConfig,
@@ -1040,7 +1043,15 @@ function parseSkills(read: ConfigReader, raw: JsonRecord): SkillsConfig {
       shortLine(CONFIG_LIMITS.forbidFrontmatter.maxLength, isFrontmatterKey),
       CONFIG_LIMITS.forbidFrontmatter.maxItems,
     ),
+    otherAreas: parseOtherAreas(read, raw, path),
   };
+}
+
+function parseOtherAreas(read: ConfigReader, raw: JsonRecord, path: string): OtherAreaListing {
+  const listing = read.string(raw, 'otherAreas', path, DEFAULT_SKILLS.otherAreas, (value) =>
+    isOtherAreaListing(value) ? undefined : `expected one of ${OTHER_AREA_LISTINGS.join(', ')}`,
+  );
+  return isOtherAreaListing(listing) ? listing : DEFAULT_SKILLS.otherAreas;
 }
 
 function parseOpen(read: ConfigReader, raw: JsonRecord, sessions: readonly string[]): OpenConfig {
