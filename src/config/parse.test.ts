@@ -995,9 +995,10 @@ describe('parseConfig', () => {
     const set = parseConfig({ ...ROSTER, open: { idle: { mode: 'dry-run', keepOpen: ['bravo'] } } });
     assert.deepEqual(set.issues, []);
     assert.deepEqual(set.config.open.idle, { mode: 'dry-run', keepOpen: ['bravo'] });
-    const bad = parseConfig({ ...ROSTER, open: { idle: { mode: 'on', keepOpen: ['bravo', 'charlie', 7] } } });
+    assert.deepEqual(parseConfig({ ...ROSTER, open: { idle: { mode: 'on' } } }).config.open.idle, { mode: 'on', keepOpen: [] });
+    const bad = parseConfig({ ...ROSTER, open: { idle: { mode: 'always', keepOpen: ['bravo', 'charlie', 7] } } });
     assert.deepEqual(paths(bad.issues).sort(), ['open.idle.keepOpen[1]', 'open.idle.keepOpen[2]', 'open.idle.mode']);
-    assert.match(bad.issues.find((issue) => issue.path === 'open.idle.mode')?.message ?? '', /expected one of off, dry-run/);
+    assert.match(bad.issues.find((issue) => issue.path === 'open.idle.mode')?.message ?? '', /expected one of off, dry-run, on/);
     assert.match(bad.issues.find((issue) => issue.path === 'open.idle.keepOpen[1]')?.message ?? '', /"charlie" is not one of the sessions/);
     assert.deepEqual(bad.config.open.idle, { mode: 'off', keepOpen: ['bravo'] });
     assert.deepEqual(paths(parseConfig({ ...ROSTER, open: { idle: { keepOpen: 'bravo' } } }).issues), ['open.idle.keepOpen']);
