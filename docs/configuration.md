@@ -23,7 +23,7 @@ Team settings for the teamrig plugin. Only the roster (sessions, roles.lead) is 
 | `ruleConflicts` | array (at most 40 items) of [object](#ruleconflicts) | `[]` | Local rules (a line of a CLAUDE.md, rules file, skill, memory file, hook or settings file) kept although they conflict with a core rule, each with the side that wins. teamrig rules scan finds them; teamrig rules keep records one, teamrig rules forget drops one. The core pack lists them. |
 | `messages` | [object](#messages) |  | Messages between sessions: how long one may be, and when a send to an idle session is held as a cold wake. |
 | `register` | [object](#register) |  | The task list (the register): its priority levels, what each status change needs, its text limits and the thresholds of the flags teamrig check raises on tasks. |
-| `skills` | [object](#skills) |  | The team's Claude Code skills: the shared area prefix, and the limits teamrig check holds each skill to. |
+| `skills` | [object](#skills) |  | The team's Claude Code skills: the shared area prefix, the limits teamrig check holds each skill to, and how a session lists the skills of other areas. |
 | `contextFiles` | [object](#contextfiles) |  | Character budgets for the text Claude Code puts in every call's context; teamrig doctor flags a file over its budget. |
 | `lock` | [object](#lock) |  | The file lock each write of the team's state files takes (the task list, the exec audit, the GitHub sync), so two writes never interleave. |
 | `pushGuard` | [object](#pushguard) |  | The push guard: what a git push to a protected branch does. |
@@ -155,7 +155,7 @@ How teamrig asks for a problem task's review.
 
 ## `skills`
 
-The team's Claude Code skills: the shared area prefix, and the limits teamrig check holds each skill to.
+The team's Claude Code skills: the shared area prefix, the limits teamrig check holds each skill to, and how a session lists the skills of other areas.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
@@ -164,6 +164,7 @@ The team's Claude Code skills: the shared area prefix, and the limits teamrig ch
 | `maxPerArea` | integer (1 to 100) | `8` | An area with more skills than this is flagged AREA-OVER-LIMIT: merge before adding. |
 | `maxVerifiedAgeDays` | integer (1 to 365) | `30` | A skill last verified more than this many days ago is flagged UNVERIFIED. |
 | `forbidFrontmatter` | array (at most 8 items) of string (at most 32 characters, matching `^[A-Za-z0-9_-]+$`) | `["allowed-tools"]` | Frontmatter keys a team skill may not set; a skill is never a permission. |
+| `otherAreas` | one of `"on"`, `"name-only"`, `"user-invocable-only"`, `"off"` | `"name-only"` | How a session teamrig launches lists a skill of another session's area whose "Used by:" line does not name it: on in full, name-only without its description, user-invocable-only only as a /name command the model is not shown, off not at all. Shared and personal skills are always listed in full. |
 
 ## `contextFiles`
 

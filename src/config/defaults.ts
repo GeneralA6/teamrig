@@ -102,6 +102,7 @@ export const DEFAULT_SKILLS: SkillsConfig = {
   maxPerArea: 8,
   maxVerifiedAgeDays: 30,
   forbidFrontmatter: ['allowed-tools'],
+  otherAreas: 'name-only',
 };
 
 /**

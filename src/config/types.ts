@@ -134,6 +134,18 @@ export interface RuleConflict {
   readonly reason?: string;
 }
 
+/**
+ * How a launched session's Claude Code lists a skill of another session's area, as its `skillOverrides` setting takes
+ * it: `on` in full, `name-only` without its description, `user-invocable-only` only as a `/name` command the model is
+ * not shown, `off` not at all.
+ */
+export const OTHER_AREA_LISTINGS = ['on', 'name-only', 'user-invocable-only', 'off'] as const;
+export type OtherAreaListing = (typeof OTHER_AREA_LISTINGS)[number];
+
+export function isOtherAreaListing(value: unknown): value is OtherAreaListing {
+  return OTHER_AREA_LISTINGS.some((listing) => listing === value);
+}
+
 export interface SkillsConfig {
   /** The area prefix of skills shared by the whole team, e.g. `team-...`. */
   readonly sharedPrefix: string;
@@ -142,6 +154,8 @@ export interface SkillsConfig {
   readonly maxVerifiedAgeDays: number;
   /** Frontmatter keys a team skill may not set, e.g. `allowed-tools` (a skill is never a permission). */
   readonly forbidFrontmatter: readonly string[];
+  /** How a launched session lists a skill of another area whose `Used by:` line does not name it. */
+  readonly otherAreas: OtherAreaListing;
 }
 
 export interface LockConfig {

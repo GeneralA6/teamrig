@@ -1005,6 +1005,19 @@ describe('parseConfig', () => {
     assert.deepEqual(paths(parseConfig({ ...ROSTER, open: { idle: { keepOpen: 'bravo' } } }).issues), ['open.idle.keepOpen']);
   });
 
+  it('reads how a session lists the skills of other areas, name-only unless set, refusing a listing it does not know', () => {
+    assert.equal(parseConfig(ROSTER).config.skills.otherAreas, 'name-only');
+    for (const listing of ['on', 'user-invocable-only', 'off'] as const) {
+      const set = parseConfig({ ...ROSTER, skills: { otherAreas: listing } });
+      assert.deepEqual(set.issues, []);
+      assert.equal(set.config.skills.otherAreas, listing);
+    }
+    const bad = parseConfig({ ...ROSTER, skills: { otherAreas: 'hidden' } });
+    assert.deepEqual(paths(bad.issues), ['skills.otherAreas']);
+    assert.match(bad.issues[0]?.message ?? '', /expected one of on, name-only, user-invocable-only, off/);
+    assert.equal(bad.config.skills.otherAreas, 'name-only');
+  });
+
   it('reads what the status line shows, each part on unless turned off, refusing a value that is not true or false', () => {
     assert.deepEqual(parseConfig(ROSTER).config.statusLine, DEFAULT_STATUS_LINE);
     const set = parseConfig({ ...ROSTER, statusLine: { resume: false } });
