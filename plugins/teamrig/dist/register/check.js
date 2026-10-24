@@ -22,6 +22,7 @@ export const FLAG_KINDS = [
     'PRIORITY-SKIP',
     'SELF-MADE',
     'PILE-UP',
+    'OVER-PACE',
     'OVER-LIMIT',
     'OWNER-UNPLANNED',
     'DUE-UNPLANNED',
@@ -29,6 +30,17 @@ export const FLAG_KINDS = [
     'STOPGAP-DONE',
     'STALE',
 ];
+/**
+ * The days OVER-PACE counts an owner's finished top tasks over. At most RETAIN_DAYS (src/register/compaction.ts): the
+ * check reads the working set, and a compaction retires finished tasks older than that from it.
+ */
+export const PACE_DAYS = 7;
+/** OVER-PACE's held work: a top task neither finished nor shipped. */
+const HELD_STATUSES = ['open', 'in-progress', 'waiting'];
+/** OVER-PACE's pace: a top task finished, or shipped and waiting for its proof. */
+const FINISHED_STATUSES = ['done', 'verifying'];
+/** OVER-PACE's least pace: an owner always has its first held top task in hand, so one is never too many. */
+const IN_HAND = 1;
 /**
  * The daily flags over active tasks:
  * - OVERDUE: past its effective deadline (its own due, or an earlier one of a task that needs it, named in the detail
@@ -59,6 +71,11 @@ export const FLAG_KINDS = [
  *   anything asked for it may be looping or drifting from its goal;
  * - PILE-UP: the oldest verifying task of an owner holding more than `maxVerifying` of them (0 turns it off): shipped
  *   changes pile up unproven;
+ * - OVER-PACE: an owner's held tasks of the top priority (open, in progress or waiting), in plan order, past the count
+ *   of top tasks it finished (done or verifying) in the PACE_DAYS before now, and past the first, which is in hand at
+ *   any pace, on the first held task past that pace:
+ *   it holds more top work than it gets through, so the top priority no longer says what comes first. Not before
+ *   the owner has held tasks for PACE_DAYS, so a new session has a pace to read;
  * - STALE: no event for `staleAfterHours` (not raised on top of NOT-PICKED-UP, nor for a verifying task with an
  *   effective due date: it waits quietly for its proof, and the date raises the alarm, nor for a waiting task with a
  *   time still to come: it is parked until then);
@@ -77,10 +94,12 @@ export function checkTasks(tasks, now, zone, week, config) {
     const top = topPriority(config.priorities);
     const waiting = top === undefined ? new Map() : waitingTopTasks(active, top, tree.context);
     const piles = pileUps(active, config.maxVerifying);
+    const paces = top === undefined ? new Map() : overPaces(all, active, top, at);
     const runs = selfMadeRuns(all, at, config.check.maxSelfMadePerDay);
     const flags = active.flatMap((task) => [
         ...verifyFlags(task, tree, piles, config.maxVerifying),
         ...selfMadeFlags(task, runs, config.check.maxSelfMadePerDay),
+        ...overPaceFlags(task, paces),
         ...readyFlags(task, tree.context),
         ...(task.status === 'waiting' && task.waits.length === 0 ? [{ kind: 'NO-REASON', task, detail: 'set what it waits for (--waits) or its next status' }] : []),
         ...noCardFlags(task, config),
@@ -221,6 +240,46 @@ function verifyFlags(task, tree, piles, max) {
         flags.push({ kind: 'PILE-UP', task, detail: `${task.owner} holds ${held} verifying tasks, more than ${max}; this is the oldest` });
     }
     return flags;
+}
+/**
+ * OVER-PACE, as {@link checkTasks} describes it: its detail keyed by the id of each owner's first held top task past
+ * its pace. `active` is in plan order, so the flag lands on the task that pace would not reach.
+ */
+function overPaces(all, active, top, at) {
+    const since = at - PACE_DAYS * MS_PER_DAY;
+    const firstAssigned = new Map();
+    const finished = new Map();
+    for (const task of all) {
+        const assigned = Date.parse(task.assignedAt);
+        firstAssigned.set(task.owner, Math.min(assigned, firstAssigned.get(task.owner) ?? assigned));
+        const status = Date.parse(task.statusAt);
+        if (task.priority <= top && FINISHED_STATUSES.includes(task.status) && status > since && status <= at) {
+            finished.set(task.owner, (finished.get(task.owner) ?? 0) + 1);
+        }
+    }
+    const held = new Map();
+    for (const task of active.filter((candidate) => candidate.priority <= top && HELD_STATUSES.includes(candidate.status))) {
+        held.set(task.owner, [...(held.get(task.owner) ?? []), task]);
+    }
+    const paces = new Map();
+    for (const [owner, tasks] of held) {
+        const pace = finished.get(owner) ?? 0;
+        const past = tasks[Math.max(pace, IN_HAND)];
+        const first = firstAssigned.get(owner);
+        if (past !== undefined && first !== undefined && first <= since) {
+            const level = priorityText(top);
+            const count = `${tasks.length} unfinished ${level} tasks`;
+            const against = pace === 0
+                ? ` and finished no ${level} in ${PACE_DAYS} days; this is the first past the one in hand`
+                : `, more than the ${pace} ${level} it finished in ${PACE_DAYS} days; this is the first past that pace`;
+            paces.set(past.id, `${owner} holds ${count}${against}`);
+        }
+    }
+    return paces;
+}
+function overPaceFlags(task, paces) {
+    const detail = paces.get(task.id);
+    return detail === undefined ? [] : [{ kind: 'OVER-PACE', task, detail }];
 }
 /** Created by its owner and asked for by no one else: `add` takes the caller as the source unless `--source` names another. */
 function isSelfMade(task) {
