@@ -144,6 +144,14 @@ describe('doctorFindings', () => {
     ]);
   });
 
+  it('flags a current name Claude Code reserves, from an old rename or the default name, and not a former one', () => {
+    const fix = '(session lead) is a name Claude Code keeps for itself, so a message sent to it never reaches a session: give the tab another name with /rename, then record it with `teamrig rename lead <name>`';
+    assert.deepEqual(lines(input({ renames: [renameOf('lead', 'app-lead', 'team-lead')] })), [`WARN name-reserved team-lead ${fix}`]);
+    const team = { ...input(), roster: new Roster({ sessions: ['lead', 'alpha'], names: {}, roles: { lead: 'lead' } }, 'team', []) };
+    assert.deepEqual(lines(team), [`WARN name-reserved team-lead ${fix}`]);
+    assert.deepEqual(lines(input({ renames: [renameOf('lead', 'app-lead', 'main'), renameOf('lead', 'main', 'captain')] })), []);
+  });
+
   it('flags a config edited to rename a session the log has renamed, and not a name the log knows', () => {
     const renames = [renameOf('alpha', 'app-alpha', 'scout')];
     assert.deepEqual(lines(input({ names: { alpha: 'ranger' }, renames })).filter((line) => line.includes('name-config')), [

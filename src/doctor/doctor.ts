@@ -3,6 +3,7 @@ import type { Roster } from '../config/roster.ts';
 import { describeNameClash, describeTreeProblem, type NameClash, type TreeProblem } from '../config/tree.ts';
 import type { ContextFilesConfig, KitConfig, LaunchConfig } from '../config/types.ts';
 import { ENV, type Env } from '../core/home.ts';
+import { isReservedName, RESERVED_RULE } from '../core/ids.ts';
 import type { PathKind } from '../core/path-probe.ts';
 import { MS_PER_DAY } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
@@ -28,6 +29,8 @@ export const UNREAD_INBOX_DAYS = 7;
  * - `name-gone`: a name of a session no longer on the team;
  * - `name-shared`: a current name two sessions share, or a session's former name another holds now;
  * - `name-config`: a config name the rename log never gave the session (the config was edited to rename);
+ * - `name-reserved`: a session's current name Claude Code keeps for itself, so no message reaches it (an older rename
+ *   record, or the default `<team>-<id>`);
  * - `rename-log`: damaged or newer lines in the rename log;
  * - `inbox-orphan`: an inbox no session on the team reads;
  * - `inbox-unread`: unread lines and no read for over `UNREAD_INBOX_DAYS` days;
@@ -53,6 +56,7 @@ export type FindingKind =
   | 'name-gone'
   | 'name-shared'
   | 'name-config'
+  | 'name-reserved'
   | 'rename-log'
   | 'inbox-orphan'
   | 'inbox-unread'
@@ -144,7 +148,7 @@ function plural(count: number, one: string, many: string): string {
 
 /**
  * Names that find the wrong session, or none: a removed session's (not a retired one's), a shared current one, a
- * former one taken over.
+ * former one taken over, a current one no message reaches.
  */
 function nameFindings(input: DoctorInput): Finding[] {
   const { roster, command, retired } = input;
@@ -172,6 +176,12 @@ function nameFindings(input: DoctorInput): Finding[] {
   for (const [id, names] of gone) {
     const these = plural(names.length, 'was a name', 'were names');
     findings.push({ kind: 'name-gone', detail: `${names.join(', ')} ${these} of ${id}, which is no longer on the team: commands refuse them, filters read them as ${id}` });
+  }
+  for (const id of roster.ids) {
+    const name = roster.nameOf(id);
+    if (name !== undefined && isReservedName(name)) {
+      findings.push({ kind: 'name-reserved', detail: `${name} (session ${id}) ${RESERVED_RULE}: give the tab another name with /rename, then record it with \`${command} rename ${id} <name>\`` });
+    }
   }
   return findings;
 }
