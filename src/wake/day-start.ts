@@ -55,10 +55,10 @@ export function dueMoments(now: number, dayStartUtc: string | undefined, burst: 
   return due;
 }
 
-/** The session's work it can go on with now (`canGoOn`), of any priority, most urgent first. */
-export function startableTasks(tasks: ReadonlyMap<string, Task>, session: string, now: number, zone: TimeZone): readonly Task[] {
+/** The session's work it can go on with now (`canGoOn`) at `maxPriority` or more urgent (any by default), most urgent first. */
+export function startableTasks(tasks: ReadonlyMap<string, Task>, session: string, now: number, zone: TimeZone, maxPriority = Number.POSITIVE_INFINITY): readonly Task[] {
   const context = waitContext(tasks, new Date(now), zone);
-  return [...tasks.values()].filter((task) => isWakeWorthy(task, session, Number.POSITIVE_INFINITY, context)).sort(byUrgency);
+  return [...tasks.values()].filter((task) => isWakeWorthy(task, session, maxPriority, context)).sort(byUrgency);
 }
 
 export interface DayStartInput {
