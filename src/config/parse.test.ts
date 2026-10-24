@@ -354,7 +354,7 @@ describe('parseConfig', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,
       roles: { lead: 'alpha', coordinatorOwner: 'bravo', securityReviewer: 'bravo' },
-      register: { priorities: [{ id: 1, name: 'now' }], goalPattern: '^G\\d+$', requireNoteOn: ['waiting'], check: { prioritySkipAfterHours: 12, maxSelfMadePerDay: 0, goalProgressDays: 2 } },
+      register: { priorities: [{ id: 1, name: 'now' }], goalPattern: '^G\\d+$', requireNoteOn: ['waiting'], check: { prioritySkipAfterHours: 12, maxSelfMadePerDay: 0, goalProgressDays: 2, overSizeMultiple: 1.5 } },
       coordinator: { schedule: { heavyCutoffUtc: '22:30' } },
       budget: { enabled: true, targetPct: 95 },
       paths: { inbox: '/srv/team/inbox' },
@@ -370,6 +370,7 @@ describe('parseConfig', () => {
       prioritySkipAfterHours: 12,
       maxSelfMadePerDay: 0,
       goalProgressDays: 2,
+      overSizeMultiple: 1.5,
       weekLengthDays: 7,
       stopgapFiles: ['CLAUDE.md', '.claude/rules'],
     });
@@ -570,6 +571,15 @@ describe('parseConfig', () => {
       assert.equal(config.register.check.goalProgressDays, 1);
     }
     assert.equal(parseConfig({ ...ROSTER, register: { check: { goalProgressDays: 0 } } }).config.register.check.goalProgressDays, 0);
+  });
+
+  it('reads the over-size multiple as a number from 0 to 10, and falls back to 2 outside it', () => {
+    for (const overSizeMultiple of [11, -0.5]) {
+      const { config, issues } = parseConfig({ ...ROSTER, register: { check: { overSizeMultiple } } });
+      assert.deepEqual(paths(issues), ['register.check.overSizeMultiple'], String(overSizeMultiple));
+      assert.equal(config.register.check.overSizeMultiple, 2);
+    }
+    assert.equal(parseConfig({ ...ROSTER, register: { check: { overSizeMultiple: 0 } } }).config.register.check.overSizeMultiple, 0);
   });
 
   it('drops bad priorities and keeps the defaults when none is left', () => {

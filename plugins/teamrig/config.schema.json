@@ -236,6 +236,13 @@
               "maximum": 7,
               "default": 1
             },
+            "overSizeMultiple": {
+              "description": "An active sized task whose cost, as the budget meter attributes it, passed this many times its size (--size) is OVER-SIZE in teamrig check; 0 turns the flag off.",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10,
+              "default": 2
+            },
             "weekLengthDays": { "description": "The length, in days, of the week plan teamrig check measures the week's tasks against.", "type": "integer", "minimum": 1, "maximum": 31, "default": 7 },
             "stopgapFiles": {
               "description": "The files teamrig check scans for stopgap T<id> tags besides every skill, a STOPGAP-DONE flag for each tag that names a finished task: paths relative to the team's project folder, or absolute; a path ending in .md is one file, any other a folder whose .md files are read.",
