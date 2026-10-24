@@ -1,5 +1,5 @@
 import { headroomFor } from "../sessions/headroom.js";
-import { measureSessions } from "../sessions/measure.js";
+import { measureSessions, runningPlaces } from "../sessions/measure.js";
 import { SessionRecordStore } from "../sessions/record.js";
 /**
  * The host's room for one more session of a team whose sessions are `ids`: its free memory, its commit charge and
@@ -8,6 +8,12 @@ import { SessionRecordStore } from "../sessions/record.js";
 export async function headroomOf(runtime, paths, config, ids) {
     const records = await new SessionRecordStore(runtime.files, paths).readEach(ids);
     const [rows, commit] = await Promise.all([runtime.memory.processes(), runtime.memory.commit()]);
-    const runningMb = rows === undefined ? [] : measureSessions(records, rows).flatMap((place) => (place.state === 'running' ? [place.treeMb] : []));
-    return headroomFor({ freeMb: runtime.memory.freeMb(), commit, runningMb }, config.coordinator.heavy.memoryFloorMb, config.open.headroom);
+    const running = rows === undefined ? [] : runningPlaces(measureSessions(records, rows));
+    const room = {
+        freeMb: runtime.memory.freeMb(),
+        commit,
+        runningMb: running.map((place) => place.treeMb),
+        runningCommittedMb: running.flatMap((place) => (place.committedMb === undefined ? [] : [place.committedMb])),
+    };
+    return headroomFor(room, config.coordinator.heavy.memoryFloorMb, config.open.headroom);
 }

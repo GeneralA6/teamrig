@@ -15,7 +15,11 @@ export function parseSessionRecord(text) {
     if (!isNonNegativeInteger(claudePid) || claudePid === 0 || claudeSession === undefined || at === undefined || Number.isNaN(Date.parse(at))) {
         return undefined;
     }
-    return { claudePid, claudeSession, at };
+    if (!('transcript' in record)) {
+        return { claudePid, claudeSession, at };
+    }
+    const transcript = stringField(record, 'transcript');
+    return transcript === undefined || transcript === '' ? undefined : { claudePid, claudeSession, at, transcript };
 }
 export function formatSessionRecord(record) {
     return toJsonlLine({ [VERSION_FIELD]: SESSION_RECORD_FORMAT, ...record });

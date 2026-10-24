@@ -2,11 +2,13 @@ import { clipEnd } from "../core/clip.js";
 import { KIT_NAME } from "../core/home.js";
 import { formatFinding } from "../doctor/doctor.js";
 import { formatSkillFlag } from "../skills/lint.js";
+import { formatIdlePassTrouble } from "./idle-pass-log.js";
 /**
  * Warnings no session owns (T951). A context finding weighs text every session on the machine re-reads, so it is no
  * one area's; a wide allow rule sits in settings every session runs under, and a permissions change is the owner's
  * gate, which the lead takes to the owner; a skill flag goes to its skill's `Owner:`, which may be missing or name no
- * session on the team. Such a warning goes to the team's lead, with the check it came from, so it never reaches no
+ * session on the team; the idle pass (T1100) closes and reopens the team's sessions, so a pass that stopped or fails
+ * is the whole team's. Such a warning goes to the team's lead, with the check it came from, so it never reaches no
  * one: the lead fixes it, hands it on or settles the check.
  */
 /** The most of a warning's text its inbox line carries; `check --all` prints it in full. */
@@ -19,6 +21,10 @@ function findingWarning(finding) {
 }
 function skillWarning(flag, skillsDir) {
     return { key: `skill ${flag.kind} ${flag.skill}`, source: `the skill check of ${skillsDir}`, text: formatSkillFlag(flag) };
+}
+/** FLEET-STALE: the idle pass's trouble, keyed by its kind, so a pass failing with a new error is not told again. */
+export function idlePassWarning(trouble, mode, now) {
+    return { key: `idle-pass ${trouble.kind}`, source: 'the idle pass check [open.idle.mode]', text: formatIdlePassTrouble(trouble, mode, now) };
 }
 /**
  * Every doctor finding given is unowned; a skill flag is owned when its owner is a session on the team, else it leaves

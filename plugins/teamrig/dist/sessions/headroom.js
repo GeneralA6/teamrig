@@ -8,23 +8,26 @@ function medianOf(values) {
 }
 /**
  * Whether the host has room for one more session. It is counted at the median running session's tree (what a
- * session holds on this host), else at `sessionMb`. Its free memory must stay over `floorMb` (what heavy steps keep
- * free) with it, and its commit charge at most `commitMaxPct` of the limit; a host that gives no commit charge is
- * checked on free memory only.
+ * session holds on this host), else at `sessionMb`: its resident MB against free memory, and its committed MB
+ * against the commit charge (a session commits about twice what it holds resident). Free memory must stay over
+ * `floorMb` (what heavy steps keep free) with it, and the commit charge at most `commitMaxPct` of the limit; a host
+ * that gives no commit charge is checked on free memory only.
  */
 export function headroomFor(room, floorMb, config) {
     const needMb = medianOf(room.runningMb) ?? config.sessionMb;
+    const needCommittedMb = medianOf(room.runningCommittedMb) ?? config.sessionMb;
     const short = [];
     if (room.freeMb < floorMb + needMb) {
         short.push(`${room.freeMb} MB free, under the ${floorMb} MB heavy steps keep free (coordinator.heavy.memoryFloorMb) plus ${needMb} MB for it`);
     }
     const { commit } = room;
-    if (commit !== undefined && (commit.usedMb + needMb) * 100 > config.commitMaxPct * commit.limitMb) {
-        short.push(`with it the commit charge would be ${commit.usedMb + needMb} MB, over ${config.commitMaxPct}% of its ${commit.limitMb} MB limit (open.headroom.commitMaxPct)`);
+    if (commit !== undefined && (commit.usedMb + needCommittedMb) * 100 > config.commitMaxPct * commit.limitMb) {
+        short.push(`with it the commit charge would be ${commit.usedMb + needCommittedMb} MB, over ${config.commitMaxPct}% of its ${commit.limitMb} MB limit (open.headroom.commitMaxPct)`);
     }
-    return { needMb, short };
+    return { needMb, needCommittedMb, short };
 }
 /** Why `what` (`open web`, `hire web`) is refused: the host's room and how to make some. */
 export function noRoomText(what, headroom) {
-    return `no room on the host to ${what}, counted at ${headroom.needMb} MB: ${headroom.short.join('; ')}. Close a session first: ${KIT_NAME} sessions lists what each one holds`;
+    const counted = `counted at ${headroom.needMb} MB resident and ${headroom.needCommittedMb} MB committed`;
+    return `no room on the host to ${what}, ${counted}: ${headroom.short.join('; ')}. Close a session first: ${KIT_NAME} sessions lists what each one holds`;
 }

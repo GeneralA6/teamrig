@@ -115,7 +115,7 @@ function topicalPrompt(prompt) {
     return text === '' || text.startsWith('/') || text.startsWith('<') ? undefined : text;
 }
 /** The text of a user entry's message: its string content, else its first text block. */
-function messageTextOf(entry) {
+export function messageTextOf(entry) {
     const content = recordField(entry, 'message')?.['content'];
     if (typeof content === 'string') {
         return content;

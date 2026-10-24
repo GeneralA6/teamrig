@@ -75,6 +75,14 @@ export const TERMINALS = ['auto', 'tmux', 'windows-terminal', 'macos-terminal', 
 export function isTerminalChoice(value) {
     return TERMINALS.some((terminal) => terminal === value);
 }
+/**
+ * What the idle pass does with a session it would close or reopen (src/cli/idle-pass.ts): `off` runs no pass,
+ * `dry-run` logs each step it would take and takes none.
+ */
+export const IDLE_MODES = ['off', 'dry-run'];
+export function isIdleMode(value) {
+    return IDLE_MODES.some((mode) => mode === value);
+}
 /** Claude Code's effort levels, lowest first: what `claude --effort` and `/effort` take. */
 export const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'];
 export function isEffortLevel(value) {
