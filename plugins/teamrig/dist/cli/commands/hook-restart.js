@@ -2,7 +2,6 @@ import { stringField } from "../../core/guards.js";
 import { ENV } from "../../core/home.js";
 import { sessionIdOf } from "../../inbox/inbox.js";
 import { noticeOf } from "../../refresh/decide.js";
-import { claudeProcessOf } from "../../refresh/restart.js";
 /** The restart's target; undefined when Claude Code did not give its session, its transcript or a folder. */
 export function restartTargetOf(runtime, payload) {
     const claudeSession = sessionIdOf(payload);
@@ -20,8 +19,7 @@ export function restartTargetOf(runtime, payload) {
  * found or `restart` does not start, nothing is left armed and the notice asks for /clear instead.
  */
 export async function armRestart(runtime, store, scope, notice) {
-    const { team, id, context, target } = scope;
-    const claude = await claudeProcessOf(runtime.sessionProcesses, runtime.sessionProcesses.parentPid);
+    const { team, id, context, target, claude } = scope;
     if (claude !== undefined) {
         await store.setRestart(id, {
             phase: 'pending',
