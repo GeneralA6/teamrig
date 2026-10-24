@@ -114,9 +114,29 @@ describe('teamrig close', () => {
 
     assertRefused(await close(await runningAlpha(30), ['alpha', '--yes', '--session', 'lead']), /quiet 30 min; it closes after 60 \(open\.headroom\.closeIdleMinutes\)/);
 
-    const helping = await runningAlpha(75, `${reply(40_000)}${backgroundAgent(80)}`);
+    const helping = await runningAlpha(75, `${reply(40_000)}${backgroundAgent(80)}${reply(40_000)}`);
     assertRefused(await close(helping, ['alpha', '--yes', '--session', 'lead']), /still runs background work its transcript shows/);
     for (const kept of [busy, helping]) {
+      assert.deepEqual(kept.processes.ends, []);
+    }
+  });
+
+  it('keeps open a session at a tool call, one that put a decision to the person, and one whose time wait ends soon', async () => {
+    const call = { type: 'assistant', isSidechain: false, message: { role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_1', name: 'Bash', input: {} }] } };
+    const calling = await runningAlpha(75, `${reply(40_000)}${JSON.stringify(call)}\n`);
+    assertRefused(await close(calling, ['alpha', '--yes', '--session', 'lead']), /alpha \(session alpha\) is at a tool call \(running, or waiting on a permission or an answer\)/);
+
+    const question = { type: 'assistant', uuid: 'a1', isSidechain: false, message: { role: 'assistant', content: [{ type: 'text', text: 'Two ways.\nDecision needed: a or b?' }] } };
+    const asking = await runningAlpha(75, `${reply(40_000)}${JSON.stringify(question)}\n`);
+    assertRefused(await close(asking, ['alpha', '--yes', '--session', 'lead']), /alpha \(session alpha\) put a decision to the person and waits for the answer/);
+
+    const waiting = await runningAlpha();
+    const added = await waiting.kit.run(['add', '--title', 'Ship the release', '--description', 'what and why', '--priority', 'p2', '--owner', 'alpha', '--session', 'lead']);
+    assert.equal(added.code, 0, added.stderr.join('\n'));
+    const set = await waiting.kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'time:2030-01-08 10:20', '--note', 'after the window', '--session', 'alpha']);
+    assert.equal(set.code, 0, set.stderr.join('\n'));
+    assertRefused(await close(waiting, ['alpha', '--yes', '--session', 'lead']), /alpha \(session alpha\) waits until .+ on T1, under 30 min away/);
+    for (const kept of [calling, asking, waiting]) {
       assert.deepEqual(kept.processes.ends, []);
     }
   });
