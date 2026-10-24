@@ -124,6 +124,7 @@ export function teamPaths(kitHome, team, userHome, overrides = {}) {
         idlePassLock: join(state, 'idle-pass.lock'),
         idlePassLog: join(state, 'idle-pass.jsonl'),
         wake: join(state, 'wake'),
+        wakeAsks: join(state, 'wake-asks'),
         wakeLog: join(state, 'wakes.jsonl'),
         promptAnswers: join(state, 'prompt-answers.jsonl'),
         turnLog: join(state, 'turn-log'),

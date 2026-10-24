@@ -9,15 +9,16 @@ import { CLAUDE_SESSION_ID } from "../../inbox/marks.js";
 import { findClaude } from "../../open/claude.js";
 import { launchFlags } from "../../open/launch-flags.js";
 import { openTab } from "../../open/open-tab.js";
-import { decodePrompt, defaultPrompt, encodePrompt, promptProblem, refreshPrompt, rehirePrompt, reopenPrompt, resumePrompt } from "../../open/prompt.js";
+import { decodePrompt, defaultPrompt, encodePrompt, PROMPT_MAX, promptProblem, refreshPrompt, rehirePrompt, reopenPrompt, resumePrompt } from "../../open/prompt.js";
 import { shellCommand } from "../../open/quote.js";
 import { sessionEnv } from "../../open/session-env.js";
 import { RefreshStore } from "../../refresh/store.js";
 import { noRoomText } from "../../sessions/headroom.js";
 import { closedOf, SessionLog } from "../../sessions/log.js";
+import { urgentFirstPrompt } from "../../wake/asks.js";
 import { onePositional, requiredFlag, UsageError } from "../args.js";
 import { headroomOf } from "../headroom.js";
-import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
+import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { loadTree } from "../tree.js";
 import { claudeSessionVerdict, freshOpenOf, resumeVerdictOf } from "./rehire.js";
@@ -109,12 +110,31 @@ export async function open(args, runtime) {
     const id = sessionIdOf(roster, address?.session ?? target);
     const terminal = terminalFlag(args.flags.get('terminal')) ?? config.open.terminal;
     const project = await sessionProjectOf(runtime, config, id, args.flags.get('project'), found.from);
+    const prompt = args.flags.get('prompt');
+    const opened = await openSession(runtime, kit, config, roster, { team, id, project, terminal, asked: args.switches.has('resume'), ...(prompt === undefined ? {} : { prompt }) });
+    if (opened.kind === 'opened') {
+        runtime.out.stdout(opened.line);
+        return EXIT.ok;
+    }
+    const shell = runtime.platform === 'win32' ? ' in PowerShell' : '';
+    runtime.out.stdout(`MANUAL no terminal opened (${opened.reasons.join('; ')}); open a new terminal and run this${shell}:`);
+    runtime.out.stdout(shellCommand(runtime.platform, project, opened.argv));
+    return EXIT.printed;
+}
+/**
+ * Opens the session's tab as `open` describes: a rehired one on its handover, a closed one in its last Claude Code
+ * session or fresh, refused (`RefusedError`) for any session but the lead when the host has no room, and a closed
+ * one's reopen logged once its tab opened.
+ */
+export async function openSession(runtime, kit, config, roster, request) {
+    const { team, id, project, terminal, asked } = request;
     const from = rehiredFrom((await new HiringLog(runtime.files, kit.paths.hires).read()).records, id);
     const sessionLog = new SessionLog(runtime.files, kit.paths.sessionLog);
     const closed = closedOf((await sessionLog.read()).records, id);
     const reopen = closed === undefined ? undefined : await claudeSessionVerdict(runtime, config.hiring, closed.claudeSession, project);
-    const resume = await resumeOf(runtime, kit.paths, config, { id, project, from, reopen, asked: args.switches.has('resume') });
-    const prompt = checkedPrompt(args.flags.get('prompt') ?? firstPromptOf(team, id, from, resume, reopen));
+    const resume = await resumeOf(runtime, kit.paths, config, { id, project, from, reopen, asked });
+    const own = request.prompt ?? firstPromptOf(team, id, from, resume, reopen);
+    const prompt = checkedPrompt(urgentFirstPrompt(request.urgent ?? [], own, teamZone(config, runtime), PROMPT_MAX));
     const name = roster.nameOf(id) ?? id;
     // The lead opens whatever the room: it is the session that decides which others run.
     if (id !== roster.holderOf('lead')) {
@@ -124,17 +144,13 @@ export async function open(args, runtime) {
         }
     }
     const { outcome, argv } = await openSessionTab(runtime, { team, id, name, project, prompt, terminal, ...(resume === undefined ? {} : { resume }) });
-    if (outcome.kind === 'opened') {
-        if (closed !== undefined) {
-            await sessionLog.append({ kind: 'reopen', session: id, at: new Date(runtime.clock.now()).toISOString(), ...(resume === undefined ? {} : { resumed: resume }) });
-        }
-        runtime.out.stdout(`OPENED ${name} (session ${id}) in a new ${TERMINAL_LABELS[outcome.terminal]} in ${project}, on ${describeLaunch(launchOf(config, id))}${startNoteOf(resume, reopen)}`);
-        return EXIT.ok;
+    if (outcome.kind !== 'opened') {
+        return { kind: 'manual', reasons: outcome.reasons, argv };
     }
-    const shell = runtime.platform === 'win32' ? ' in PowerShell' : '';
-    runtime.out.stdout(`MANUAL no terminal opened (${outcome.reasons.join('; ')}); open a new terminal and run this${shell}:`);
-    runtime.out.stdout(shellCommand(runtime.platform, project, argv));
-    return EXIT.printed;
+    if (closed !== undefined) {
+        await sessionLog.append({ kind: 'reopen', session: id, at: new Date(runtime.clock.now()).toISOString(), ...(resume === undefined ? {} : { resumed: resume }) });
+    }
+    return { kind: 'opened', line: `OPENED ${name} (session ${id}) in a new ${TERMINAL_LABELS[outcome.terminal]} in ${project}, on ${describeLaunch(launchOf(config, id))}${startNoteOf(resume, reopen)}` };
 }
 /**
  * The Claude Code session the tab resumes, undefined for a new one. A closed session resumes its last one when that

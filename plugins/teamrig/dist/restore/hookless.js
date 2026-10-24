@@ -112,7 +112,8 @@ export function checkedState(now, tabs) {
 }
 /**
  * Who hears of a hookless tab: the lead, or the coordinator's owner when the lead's own tab is hookless, since
- * the lead's inbox reminder is one of the hooks it lacks. With no coordinator's owner, the lead still.
+ * the lead's inbox reminder is one of the hooks it lacks. With no coordinator's owner, the lead still. The idle
+ * pass asks it too, for a reopened tab no hook started in (src/cli/hookless-reopen.ts), which has no entry.
  */
 export function hooklessReader(tab, lead, coordinatorOwner) {
     return tab.session === lead && coordinatorOwner !== undefined ? coordinatorOwner : lead;

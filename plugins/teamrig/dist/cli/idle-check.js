@@ -1,5 +1,7 @@
-import { claudeProjectsDir, projectTranscriptPath } from "../budget/discover.js";
+import { dirname, join } from 'node:path';
+import { claudeProjectSlug, claudeProjectsDir, findTranscript } from "../budget/discover.js";
 import { KIT_NAME } from "../core/home.js";
+import { samePath } from "../core/paths.js";
 import { resumeVerdict } from "../hiring/rehire.js";
 import { workCutOffBy } from "../open/end-tab.js";
 import { isClaudeProcess } from "../open/session-processes.js";
@@ -8,6 +10,7 @@ import { soonTimeWaitOf, tabActivityOf, TIME_WAIT_GUARD_MINUTES } from "../sessi
 import { measureSessions } from "../sessions/measure.js";
 import { SessionRecordStore } from "../sessions/record.js";
 import { REPLY_TAIL_BYTES } from "../turn-log/reply.js";
+import { urgentLinesText, validAsksOf, WakeAsks } from "../wake/asks.js";
 import { startableTasks } from "../wake/day-start.js";
 import { measureTranscript } from "./commands/rehire.js";
 import { teamZone } from "./kit.js";
@@ -33,13 +36,21 @@ export async function idleFactsOf(runtime, kit, config, roster) {
         throw new RefusedError(`${KIT_NAME} could not list the host's processes, so it cannot tell which sessions run`);
     }
     const tasks = (await teamRegister(runtime, kit.paths, config).snapshot()).state.tasks;
-    return { records, places: measureSessions(records, rows), tasks, now: runtime.clock.now(), zone: teamZone(config, runtime) };
+    const store = new WakeAsks(runtime.files, kit.paths.wakeAsks);
+    const asks = new Map();
+    for (const id of roster.ids) {
+        asks.set(id, validAsksOf(await store.read(id)));
+    }
+    return { records, places: measureSessions(records, rows), tasks, asks, now: runtime.clock.now(), zone: teamZone(config, runtime) };
 }
 /**
  * Whether `id` closes, with the checks in the order they cost: a role or open.idle.keepOpen that keeps it, not running in the host's
- * process list, work it can start within `maxPriority`, a time wait of its own ending soon, quiet too briefly, a turn
- * not ended (under way, at a tool call, or a decision put to the person), work running in the background, a last
- * session too big or old to resume (v1 has no handover for a close), its process no longer a Claude Code, or shells
+ * process list, work it can start within `maxPriority`, an urgent line waiting to wake it (closed, it would reopen at
+ * the next pass for it), a time wait of its own ending soon, quiet too briefly, a
+ * transcript outside the project folder `open` resumes it in (Claude Code files a session under the folder it started
+ * in, as `restore` and `rehire` assume), a turn not ended (under way, at a tool call, or a decision put to the person),
+ * work running in the background, a last session too big or old to resume (v1 has no handover for a close), its
+ * process no longer a Claude Code, or shells
  * an end would cut off. The first that holds keeps it open. The last two look at the host's processes one by one
  * (about a second each on Windows), so only a session every other check would close pays for them.
  */
@@ -64,11 +75,19 @@ export async function idleVerdictOf(runtime, config, roster, facts, id, options)
     if (startable.length > 0) {
         return keep(`has work it can start (${startable.map((task) => task.id).join(', ')})`);
     }
+    const asks = facts.asks.get(id) ?? [];
+    if (asks.length > 0) {
+        return keep(`has ${urgentLinesText(asks)} waiting to wake it`);
+    }
     const soon = soonTimeWaitOf(tasks, id, options.maxPriority, now, zone);
     if (soon !== undefined) {
         return keep(`waits until ${zone.clock(new Date(soon.at))} on ${soon.task.id}, under ${TIME_WAIT_GUARD_MINUTES} min away`);
     }
-    const transcript = record.transcript ?? projectTranscriptPath(claudeProjectsDir(runtime.env, runtime.userHome), options.project, record.claudeSession);
+    const projectsDir = claudeProjectsDir(runtime.env, runtime.userHome);
+    const transcript = record.transcript ?? (await findTranscript(runtime.transcripts, projectsDir, options.project, record.claudeSession));
+    if (transcript === undefined) {
+        return keep(`has no transcript of Claude Code session ${record.claudeSession} in any project folder, so its idle time is unknown`);
+    }
     const last = await measureTranscript(runtime, transcript);
     if (last.changedAt === undefined) {
         return keep(`has no transcript of Claude Code session ${record.claudeSession} at ${transcript}, so its idle time is unknown`);
@@ -77,6 +96,10 @@ export async function idleVerdictOf(runtime, config, roster, facts, id, options)
     const needed = config.open.headroom.closeIdleMinutes;
     if (idleMinutes < needed) {
         return keep(`has been quiet ${idleMinutes} min; it closes after ${needed} (open.headroom.closeIdleMinutes)`);
+    }
+    const folder = dirname(last.transcript);
+    if (!samePath(folder, join(projectsDir, claudeProjectSlug(options.project)), runtime.platform)) {
+        return keep(`could not be resumed once closed (its transcript is in ${folder}, and ${KIT_NAME} open resumes it in ${options.project})`);
     }
     const tail = (await runtime.files.readTail(last.transcript, REPLY_TAIL_BYTES)) ?? '';
     const activity = tabActivityOf(tail, Buffer.byteLength(tail, 'utf8') >= REPLY_TAIL_BYTES);

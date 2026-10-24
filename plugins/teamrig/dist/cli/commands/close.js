@@ -1,8 +1,7 @@
 import { KIT_NAME } from "../../core/home.js";
-import { endAndWait, tabProcessOf } from "../../open/end-tab.js";
-import { SessionLog } from "../../sessions/log.js";
 import { onePositional } from "../args.js";
-import { closableText, enderOf, idleFactsOf, idleVerdictOf } from "../idle-check.js";
+import { closeSession } from "../close-session.js";
+import { closableText, idleFactsOf, idleVerdictOf } from "../idle-check.js";
 import { callerOf } from "../inputs.js";
 import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
@@ -40,20 +39,10 @@ export async function close(args, runtime) {
         runtime.out.stdout(`CLOSE ${what}; ${KIT_NAME} open ${name} resumes Claude Code session ${closable.record.claudeSession}. Run again with --yes to close it`);
         return EXIT.ok;
     }
-    const ender = enderOf(runtime);
-    const problem = await endAndWait(ender, await tabProcessOf(ender, closable.claude), closable.claude.pid);
+    const problem = await closeSession(runtime, kit.paths, { id, by, closable });
     if (problem !== undefined) {
         throw new RefusedError(`${name} (session ${id}) was not closed: ${problem}`);
     }
-    await new SessionLog(runtime.files, kit.paths.sessionLog).append({
-        kind: 'close',
-        session: id,
-        by,
-        at: new Date(runtime.clock.now()).toISOString(),
-        claudeSession: closable.record.claudeSession,
-        idleMinutes: closable.idleMinutes,
-        freedMb: closable.heldMb,
-    });
     runtime.out.stdout(`CLOSED ${what}, now free; ${KIT_NAME} open ${name} resumes it`);
     return EXIT.ok;
 }

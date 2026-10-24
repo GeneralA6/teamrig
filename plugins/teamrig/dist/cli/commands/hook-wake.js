@@ -7,8 +7,9 @@ import { MeetingStore, phaseOf } from "../../meeting/state.js";
 import { restartMayAct } from "../../refresh/restart.js";
 import { RefreshStore } from "../../refresh/store.js";
 import { sessionIdOf } from "../../inbox/inbox.js";
+import { askVerdictOf, handedPrompt, handedToast, WakeAsks } from "../../wake/asks.js";
 import { dayStartPrompt, dayStartToast, decideDayStart, dueMoments, nextDayStartAt, startableTasks } from "../../wake/day-start.js";
-import { decideWake, effectivePriority, URGENT_PRIORITY, wakeCost, wakePrompt, wakeRestOf, wakeToast } from "../../wake/decide.js";
+import { decideWake, effectivePriority, URGENT_PRIORITY, wakeCost, wakeRestOf } from "../../wake/decide.js";
 import { logWake, WakeStore } from "../../wake/store.js";
 import { noPositionals } from "../args.js";
 import { openKit, rosterOf, teamZone } from "../kit.js";
@@ -121,7 +122,10 @@ async function momentsOf(runtime, scope, tasks, state, now) {
     const woke = decision.verdict.kind === 'wake' ? { pending: undefined, lastWakeAt: now } : {};
     return { verdict: decision.verdict, state: { ...state, ...woke, settled: decision.settled }, lastTurnAt, next };
 }
-/** Decides under the session's wake lock, so two tabs of one session never wake it twice. */
+/**
+ * Decides under the session's wake lock, so two tabs of one session never wake it twice. Urgent lines due wake it
+ * with any work due as well; the asks a wake takes, or damaged ones, are removed under the lock.
+ */
 async function decide(runtime, scope, store) {
     const { config, kit, id, tab } = scope;
     const { files, clock, sleep, pid } = runtime;
@@ -129,6 +133,10 @@ async function decide(runtime, scope, store) {
     return lock.run(async () => {
         const { tasks } = (await teamRegister(runtime, kit.paths, config).snapshot()).state;
         const now = clock.now();
+        const batchMs = config.wake.batchSeconds * SECOND_MS;
+        const asks = new WakeAsks(files, kit.paths.wakeAsks);
+        const stored = await asks.read(id);
+        const asked = askVerdictOf(stored, now, batchMs);
         const decision = decideWake({
             tasks,
             session: id,
@@ -136,13 +144,16 @@ async function decide(runtime, scope, store) {
             now,
             zone: teamZone(config, runtime),
             maxPriority: await maxPriorityOf(runtime, scope),
-            batchMs: config.wake.batchSeconds * SECOND_MS,
+            batchMs,
             minGapMs: config.wake.minGapMinutes * MINUTE_MS,
             previous: await store.read(id),
         });
-        if (decision.verdict.kind === 'wake') {
+        if (asked.kind !== 'later') {
+            await asks.remove(id, stored);
+        }
+        if (decision.verdict.kind === 'wake' || asked.kind === 'wake') {
             await store.write(id, decision.state);
-            return { kind: 'handed', tasks: decision.verdict.tasks };
+            return { kind: 'handed', tasks: decision.verdict.kind === 'wake' ? decision.verdict.tasks : [], asks: asked.kind === 'wake' ? asked.asks : [] };
         }
         const day = await momentsOf(runtime, scope, tasks, decision.state, now);
         await store.write(id, day.state);
@@ -150,12 +161,14 @@ async function decide(runtime, scope, store) {
             return { kind: 'moments', moments: day.verdict.moments, tasks: day.verdict.tasks, lastTurnAt: day.lastTurnAt };
         }
         const handedAt = decision.verdict.kind === 'later' ? decision.verdict.at : undefined;
-        return { kind: 'wait', recheckAt: earliest(handedAt, day.verdict.kind === 'later' ? day.verdict.at : undefined, day.next) };
+        const askedAt = asked.kind === 'later' ? asked.at : undefined;
+        return { kind: 'wait', recheckAt: earliest(handedAt, askedAt, day.verdict.kind === 'later' ? day.verdict.at : undefined, day.next) };
     });
 }
 /**
- * Run by the plugin's mod while its tab is idle at the prompt: whether new work handed to the tab's session should
- * wake it now (src/wake/decide.ts), else whether the day's start or a burst should (src/wake/day-start.ts). On a
+ * Run by the plugin's mod while its tab is idle at the prompt: whether new work handed to the tab's session, or an
+ * urgent line posted for it (src/wake/asks.ts), should wake it now (src/wake/decide.ts), else whether the day's start
+ * or a burst should (src/wake/day-start.ts). On a
  * wake it logs the wake and its cost to the team's wake log and answers the prompt to submit; a busy lock (another
  * tab of the session checking) answers a recheck now. The lead is not woken while the owner's daily meeting is open,
  * nor any session while its automatic restart may still act. It also runs the team's idle pass, once a minute across
@@ -196,8 +209,10 @@ export async function wakeCheck(args, runtime) {
     const cost = wakeCost(last === undefined ? undefined : now - last, config.messages.coldAfterMinutes, wPerPct);
     const ids = verdict.tasks.map((task) => task.id);
     if (verdict.kind === 'handed') {
-        await logWake(runtime.files, kit.paths.wakeLog, { kind: 'wake', at: now, session: id, tab, ids, cost });
-        return answer(runtime, { kind: 'wake', ids, text: wakePrompt(id, verdict.tasks, cost), toast: wakeToast(verdict.tasks, cost) });
+        const { tasks, asks } = verdict;
+        await logWake(runtime.files, kit.paths.wakeLog, { kind: 'wake', at: now, session: id, tab, ids, cost, ...(asks.length === 0 ? {} : { asks: asks.length }) });
+        const text = handedPrompt(id, tasks, asks, cost, teamZone(config, runtime));
+        return answer(runtime, { kind: 'wake', ids, text, toast: handedToast(tasks, asks, cost) });
     }
     const moments = verdict.moments.map((moment) => moment.kind);
     await logWake(runtime.files, kit.paths.wakeLog, { kind: 'wake', at: now, session: id, tab, ids, cost, moments });
