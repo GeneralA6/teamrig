@@ -4,9 +4,9 @@ import { KIT_NAME } from '../core/home.ts';
 import type { TimeZone } from '../core/zone.ts';
 import type { Task } from '../register/fold.ts';
 import { noRoomText } from '../sessions/headroom.ts';
-import { reopenVerdict, type ReopenVerdict } from '../sessions/idle.ts';
+import { reopenVerdict, type ReopenInput, type ReopenVerdict } from '../sessions/idle.ts';
 import { closedOf, SessionLog, type SessionLogRecord } from '../sessions/log.ts';
-import { byUrgency, effectivePriority, wakeRestOf, type WakeRest } from '../wake/decide.ts';
+import { byUrgency, effectivePriority, URGENT_PRIORITY, wakeRestOf, type WakeRest } from '../wake/decide.ts';
 import { budgetFactsOf } from './commands/hook-budget.ts';
 import { headroomOf } from './headroom.ts';
 import { closableText, idleFactsOf, idleVerdictOf, type Closable, type IdleFacts } from './idle-check.ts';
@@ -47,10 +47,24 @@ async function wakeWeightOf(runtime: CliRuntime, kit: Kit, config: KitConfig, ro
   return { rest, maxPriority: effectivePriority(config.wake.priority, rest) };
 }
 
-/** One session's step, or its wish to reopen. */
+/**
+ * True when the session has an unfinished task past p1 within the configured wake priority: the only tasks a rest
+ * (which caps that priority at p1) takes out of a running session's verdict.
+ */
+function hasWorkPastUrgent(tasks: ReadonlyMap<string, Task>, id: string, configured: number): boolean {
+  return [...tasks.values()].some((task) => task.owner === id && task.priority > URGENT_PRIORITY && task.priority <= configured && task.status !== 'done' && task.status !== 'dropped');
+}
+
+/**
+ * One session's step, or its wish to reopen. Its budget takes thousands of file reads, so a session counts as awake
+ * unless its rest can change the step: a running one with work past p1 ({@link hasWorkPastUrgent}), a closed one that
+ * would reopen awake (a rest only holds a reopen back).
+ */
 async function judge(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, facts: IdleFacts, id: string, project: string, closes: readonly SessionLogRecord[]): Promise<PassStep | ReopenWish> {
-  const { rest, maxPriority } = await wakeWeightOf(runtime, kit, config, roster, id);
+  const { tasks, now, zone } = facts;
+  const awake = { rest: AWAKE, maxPriority: config.wake.priority };
   if (facts.places.find((place) => place.id === id)?.state === 'running') {
+    const { maxPriority } = hasWorkPastUrgent(tasks, id, config.wake.priority) ? await wakeWeightOf(runtime, kit, config, roster, id) : awake;
     const verdict = await idleVerdictOf(runtime, config, roster, facts, id, { maxPriority, project });
     return verdict.kind === 'close' ? { kind: 'close', id, closable: verdict.closable } : { kind: 'keep', id, why: verdict.why };
   }
@@ -58,8 +72,9 @@ async function judge(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: R
   if (closed === undefined) {
     return { kind: 'away', id };
   }
-  const { tasks, now, zone } = facts;
-  const reopening = reopenVerdict({ tasks, session: id, closedAt: Date.parse(closed.at), maxPriority, rest, dayStartUtc: config.wake.dayStartUtc, now, zone });
+  const input: ReopenInput = { tasks, session: id, closedAt: Date.parse(closed.at), ...awake, dayStartUtc: config.wake.dayStartUtc, now, zone };
+  const asAwake = reopenVerdict(input);
+  const reopening = asAwake.kind === 'stay' ? asAwake : reopenVerdict({ ...input, ...(await wakeWeightOf(runtime, kit, config, roster, id)) });
   if (reopening.kind === 'stay') {
     return { kind: 'closed', id };
   }
