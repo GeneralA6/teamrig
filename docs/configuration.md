@@ -600,7 +600,7 @@ Hiring temporary sessions with teamrig hire: who decides, and the cap every hire
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
-| `policy` | one of `"off"`, `"owner"`, `"lead"`, `"automatic"` | `"owner"` | off: no hires. owner: the lead hires once the owner approved (--approved-by, kept with the hire). lead: the lead hires within maxSessions. automatic: as lead, and a hired session whose tasks are all closed may retire itself (teamrig retire). |
+| `policy` | one of `"off"`, `"owner"`, `"lead"`, `"automatic"` | `"owner"` | off: no hires. owner: a lead (the lead, or a sub-lead into its own group) hires once the owner approved (--approved-by, kept with the hire). lead: a lead hires within maxSessions. automatic: as lead, and a hired session whose tasks are all closed may retire itself (teamrig retire). |
 | `maxSessions` | integer (1 to 20) | `2` | Hired sessions on the team at once. |
 | `idleHours` | integer (1 to 168) | `4` | Hours a hired session may hold no open task before it is due to retire. |
 | `reviewDays` | integer (1 to 90) | `7` | Days from a hire to its review date, unless teamrig hire --review names one. |

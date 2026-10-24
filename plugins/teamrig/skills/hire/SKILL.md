@@ -6,7 +6,9 @@ description: Use when the lead needs a temporary session for one job (check flag
 # Hire, retire and rehire a session
 
 A hired session is a temporary member for one job. You, the lead, hire it within the team config's `hiring` policy
-and caps, give it tasks, and retire it once its job is done. Its tasks, inbox and records stay readable by its id.
+and caps, give it tasks, and retire it once its job is done. A sub-lead hires the same way (`--session <sub-lead>`):
+its hire joins its own group, and it retires only sessions it leads, handing their tasks within its group. Its tasks,
+inbox and records stay readable by its id.
 `check` says when: `HIRE SCALE-OUT` on an area that cannot finish its dated work in time, `HIRE RETIRE-DUE` on a
 hire with no work left.
 

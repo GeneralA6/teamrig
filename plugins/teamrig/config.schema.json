@@ -1314,7 +1314,7 @@
       "type": "object",
       "properties": {
         "policy": {
-          "description": "off: no hires. owner: the lead hires once the owner approved (--approved-by, kept with the hire). lead: the lead hires within maxSessions. automatic: as lead, and a hired session whose tasks are all closed may retire itself (teamrig retire).",
+          "description": "off: no hires. owner: a lead (the lead, or a sub-lead into its own group) hires once the owner approved (--approved-by, kept with the hire). lead: a lead hires within maxSessions. automatic: as lead, and a hired session whose tasks are all closed may retire itself (teamrig retire).",
           "enum": ["off", "owner", "lead", "automatic"],
           "default": "owner"
         },
