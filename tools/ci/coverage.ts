@@ -41,7 +41,15 @@ export interface CoveragePolicy {
   /** Files with no runtime code, which no test can load, each with the reason. */
   readonly typeOnly: ReadonlyMap<string, string>;
   readonly exceptions: ReadonlyMap<string, CoverageException>;
+  /** How long the suite may print nothing before the gate stops it as hung, in seconds. */
+  readonly suiteIdleSeconds: number;
 }
+
+/**
+ * The suite's silence limit when the policy sets none: the slowest test file takes seconds, so five quiet minutes mean
+ * a run that will never end, which would otherwise hold the host lock to its limit (T1062).
+ */
+export const DEFAULT_SUITE_IDLE_SECONDS = 300;
 
 export type PolicyResult = { readonly kind: 'ok'; readonly policy: CoveragePolicy } | { readonly kind: 'invalid'; readonly problem: string };
 
@@ -139,7 +147,7 @@ function parseTypeOnly(path: string, value: unknown): Parsed<string> {
   return reason === undefined ? fail(`typeOnly["${path}"] needs a reason`) : ok(reason);
 }
 
-const POLICY_KEYS: ReadonlySet<string> = new Set(['$comment', 'total', 'perFile', 'testSupport', 'typeOnly', 'exceptions']);
+const POLICY_KEYS: ReadonlySet<string> = new Set(['$comment', 'total', 'perFile', 'testSupport', 'typeOnly', 'exceptions', 'suiteIdleSeconds']);
 
 /** Reads the coverage policy, refusing unknown keys, so a typo never silently relaxes a floor. */
 export function parsePolicy(value: unknown): PolicyResult {
@@ -171,7 +179,14 @@ export function parsePolicy(value: unknown): PolicyResult {
   if (!exceptions.ok) {
     return invalid(exceptions.problem);
   }
-  return { kind: 'ok', policy: { total: total.value, perFile: perFile.value, testSupport, typeOnly: typeOnly.value, exceptions: exceptions.value } };
+  const suiteIdleSeconds = value['suiteIdleSeconds'] ?? DEFAULT_SUITE_IDLE_SECONDS;
+  if (typeof suiteIdleSeconds !== 'number' || !Number.isInteger(suiteIdleSeconds) || suiteIdleSeconds < 1) {
+    return invalid('suiteIdleSeconds must be a whole number of seconds, 1 or more');
+  }
+  return {
+    kind: 'ok',
+    policy: { total: total.value, perFile: perFile.value, testSupport, typeOnly: typeOnly.value, exceptions: exceptions.value, suiteIdleSeconds },
+  };
 }
 
 function isTestSupport(path: string, testSupport: readonly string[]): boolean {
