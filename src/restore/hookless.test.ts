@@ -6,6 +6,7 @@ import { promptLine, replyLine, systemLine } from '../testing/transcript-lines.t
 import type { RestoreEntry } from './entry.ts';
 import {
   checkedState,
+  entrySession,
   formatHooklessState,
   HOOKLESS_CHECK_MS,
   HOOKLESS_MS,
@@ -19,6 +20,8 @@ import {
   staleEntries,
   workedPastHook,
   type HooklessTab,
+  type HooklessTeam,
+  type StaleEntry,
 } from './hookless.ts';
 
 const NOW = Date.parse('2030-01-08T12:00:00Z');
@@ -53,6 +56,11 @@ function iso(at: number): string {
   return new Date(at).toISOString();
 }
 
+/** A stale entry, the tab of session `session`. */
+function stale(found: RestoreEntry = entry(), session = 'alpha'): StaleEntry {
+  return { entry: found, session };
+}
+
 /** The alpha tab's transcript end, its last reply at `turnAt`. */
 function replies(turnAt: number): ReadonlyMap<string, number> {
   return new Map([[ALPHA, turnAt]]);
@@ -75,25 +83,52 @@ describe('the hookless state file', () => {
   });
 });
 
-describe('staleEntries', () => {
-  it("keeps only a live session on the team with a transcript, whose hooks last wrote over HOOKLESS_MS ago", () => {
+describe('entrySession and staleEntries', () => {
+  const HAND = '0123abcd-0000-4000-8000-00000000000c';
+  const RETIRED = '0123abcd-0000-4000-8000-00000000000d';
+  const APP_TEAM: HooklessTeam = {
+    team: 'app',
+    sessions: ['lead', 'alpha'],
+    areaBySession: new Map([
+      [ALPHA, 'lead'],
+      [HAND, 'alpha'],
+      [RETIRED, 'retired'],
+    ]),
+  };
+  const byHand = (claudeSession: string): RestoreEntry => entry({ claudeSession, team: undefined, session: undefined });
+
+  it("takes a launched tab's session from its variables, and a tab started by hand's from the inbox it last read (T1002)", () => {
+    assert.equal(entrySession(entry(), APP_TEAM), 'alpha', "the variables win over the marks' lead");
+    assert.equal(entrySession(byHand(HAND), APP_TEAM), 'alpha');
+  });
+
+  it("leaves out another team's tab, a session the team no longer has, and a tab started by hand that read no inbox", () => {
+    assert.equal(entrySession(entry({ claudeSession: HAND, team: 'other' }), APP_TEAM), undefined, 'variables naming another team');
+    assert.equal(entrySession(entry({ session: 'retired' }), APP_TEAM), undefined);
+    assert.equal(entrySession(entry({ session: undefined }), APP_TEAM), undefined, 'variables naming the team and no session');
+    assert.equal(entrySession(byHand(RETIRED), APP_TEAM), undefined);
+    assert.equal(entrySession(byHand(BRAVO), APP_TEAM), undefined);
+  });
+
+  it('keeps only a live tab of a team session with a transcript, whose hooks last wrote over HOOKLESS_MS ago', () => {
     const stale = entry();
+    const hand = byHand(HAND);
     const kept = staleEntries(
       [
         stale,
+        hand,
         entry({ team: 'other' }),
-        entry({ team: undefined }),
-        entry({ session: undefined }),
-        entry({ session: 'retired' }),
         entry({ endedAt: NOW - HOOKLESS_MS }),
         entry({ transcriptPath: undefined }),
         entry({ updatedAt: NOW - HOOKLESS_MS }),
       ],
-      'app',
-      ['lead', 'alpha'],
+      APP_TEAM,
       NOW,
     );
-    assert.deepEqual(kept, [stale]);
+    assert.deepEqual(kept, [
+      { entry: stale, session: 'alpha' },
+      { entry: hand, session: 'alpha' },
+    ]);
   });
 });
 
@@ -133,15 +168,17 @@ describe('lastReplyAt', () => {
 });
 
 describe('hooklessTabs', () => {
-  it('names a stale entry whose last reply came lately, over HOOKLESS_MS past its last hook', () => {
-    assert.deepEqual(hooklessTabs([entry()], replies(NOW - MS_PER_MINUTE), NOW), [TAB]);
+  it('names a stale entry whose last reply came lately, over HOOKLESS_MS past its last hook, as the session it runs as', () => {
+    assert.deepEqual(hooklessTabs([stale()], replies(NOW - MS_PER_MINUTE), NOW), [TAB]);
+    const byHand = stale(entry({ team: undefined, session: undefined }), 'bravo');
+    assert.deepEqual(hooklessTabs([byHand], replies(NOW - MS_PER_MINUTE), NOW), [{ ...TAB, session: 'bravo' }]);
   });
 
   it('skips a tab with no reply lately (an idle tab whose transcript moves with no turn), one soon after the hook, or none read', () => {
-    assert.deepEqual(hooklessTabs([entry()], replies(NOW - HOOKLESS_MS - 1), NOW), []);
-    const soon = entry({ updatedAt: NOW - HOOKLESS_MS - 10 * MS_PER_MINUTE });
+    assert.deepEqual(hooklessTabs([stale()], replies(NOW - HOOKLESS_MS - 1), NOW), []);
+    const soon = stale(entry({ updatedAt: NOW - HOOKLESS_MS - 10 * MS_PER_MINUTE }));
     assert.deepEqual(hooklessTabs([soon], replies(NOW - 10 * MS_PER_MINUTE), NOW), []);
-    assert.deepEqual(hooklessTabs([entry()], new Map(), NOW), []);
+    assert.deepEqual(hooklessTabs([stale()], new Map(), NOW), []);
   });
 });
 
