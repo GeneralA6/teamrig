@@ -5,7 +5,7 @@ import type { Task } from '../register/fold.ts';
 import { TaskTree } from '../register/tree.ts';
 import { TEST_CARD, TEST_OWNER_CARD } from '../testing/card.ts';
 import { testTask } from '../testing/task.ts';
-import { AGENDA_ROWS, agendaLines, agendaSince, asksOwner, DESCRIPTION_CHARS, DONE_WINDOW_DAYS, oneLine, waitsOnOwner, type AgendaInput } from './agenda.ts';
+import { AGENDA_ROWS, agendaLines, agendaSince, asksOwner, cardFacts, DESCRIPTION_CHARS, DONE_WINDOW_DAYS, oneLine, waitsOnOwner, type AgendaInput } from './agenda.ts';
 import { TimeZone } from '../core/zone.ts';
 
 const NOW = Date.parse('2030-01-08T10:00:00Z');
@@ -184,6 +184,18 @@ describe('the meeting agenda: no task number stands alone', () => {
     assert.deepEqual(
       lines.filter((line) => /^ {4}T\d+: /.test(line)),
       ['    T2: Ship the basic tier', '    T9: not in the working set'],
+    );
+  });
+
+  it("names another team's task and the tasks it names by their team, from that team's register", () => {
+    const naming: Task = { ...DECIDE, card: null, note: 'T2 and T9 both matter' };
+    const tasks = [naming, testTask({ id: 'T2', title: 'Ship the basic tier' })];
+    const lines = cardFacts(naming, inputOf(tasks).tree, 'web');
+    assert.match(lines[0] ?? '', /^ {2}web\/T4 waiting, p2, owner alpha \| Pick the pricing tier/);
+    assert.ok(lines.includes("    no card yet: alpha owes one, and team web's check flags it NO-CARD to its lead"), lines.join('\n'));
+    assert.deepEqual(
+      lines.filter((line) => /^ {4}web\/T\d+: /.test(line)),
+      ['    web/T2: Ship the basic tier', '    web/T9: not in the working set'],
     );
   });
 });

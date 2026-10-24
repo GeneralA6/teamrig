@@ -31,12 +31,9 @@ export async function teamDecisions(
   const [asked, meeting] = await Promise.all([new AskedStore(files, paths.decisionsAsked).read(), new MeetingStore(files, paths.meeting).read()]);
   const tree = new TaskTree(tasks, new Date(now), zone, undefined, elsewhere);
   const batch = decisionBatch({
-    tasks: tasks.values(),
-    tree,
+    registers: [{ team: undefined, tasks: tasks.values(), tree, ownerMarker: config.register.ownerSource, requireGate: config.register.requireDecisionCard }],
     now,
     askedAt: askedAtOf(asked, meeting),
-    ownerMarker: config.register.ownerSource,
-    requireGate: config.register.requireDecisionCard,
     config: config.decisions,
   });
   return { batch, tree };

@@ -2,13 +2,11 @@ import type { TimeZone } from '../core/zone.ts';
 import { cardFacts } from '../meeting/agenda.ts';
 import type { Task } from '../register/fold.ts';
 import type { TaskTree } from '../register/tree.ts';
-import { dueBeforeNextBatch, nextBatchText, triggerText, type BatchTrigger, type DecisionBatch } from './batch.ts';
+import { dueBeforeNextBatch, nextBatchText, triggerText, type BatchTrigger, type DecisionBatch, type OwnerWait } from './batch.ts';
 
 /** What `decisions` prints a batch with. */
 export interface BatchView {
   readonly batch: DecisionBatch;
-  readonly tree: TaskTree;
-  readonly byId: ReadonlyMap<string, Task>;
   /** The register's marker for the owner (`register.ownerSource`). */
   readonly ownerMarker: string;
   readonly command: string;
@@ -28,12 +26,12 @@ export function batchHead(batch: DecisionBatch, ownerMarker: string, zone: TimeZ
  * how to ask them and record the batch and each answer.
  */
 export function batchLines(view: BatchView): string[] {
-  const { batch, tree, byId, ownerMarker, command, lead, zone } = view;
+  const { batch, ownerMarker, command, lead, zone } = view;
   const head = batchHead(batch, ownerMarker, zone);
   if (batch.pending.length + batch.overdue.length === 0) {
     return [head];
   }
-  const facts = (tasks: readonly Task[]): string[] => tasks.flatMap((task) => cardFacts(task, tree, byId));
+  const facts = (waits: readonly OwnerWait[]): string[] => waits.flatMap((wait) => cardFacts(wait.task, wait.tree, wait.team));
   return [
     head,
     ...(batch.pending.length === 0 ? [] : ['NOT YET ASKED', ...facts(batch.pending)]),

@@ -4,6 +4,7 @@ import type { TimeZone } from '../core/zone.ts';
 import { asksOwner } from '../meeting/agenda.ts';
 import type { Task } from '../register/fold.ts';
 import type { TaskTree } from '../register/tree.ts';
+import { taskLabel } from '../register/views.ts';
 
 /**
  * The owner's decisions, asked in batches: a session that needs one sets its task waiting on the owner's decision or
@@ -36,46 +37,68 @@ export function nextBatchTime(now: number, times: readonly string[]): number | u
   return timesAround(now, times).find((at) => at > now);
 }
 
+/** One task waiting on the owner, with the team and the tree of the register that holds it. */
+export interface OwnerWait {
+  readonly task: Task;
+  /** The team, for a wait of another team's register (`web/T5`); undefined for the reader's own. */
+  readonly team: string | undefined;
+  /** The dependency tree of its register's read: its effective due and its named tasks. */
+  readonly tree: TaskTree;
+}
+
 /** Why a batch is due now: a wait due before the next batch, enough waits unasked, or a batch time passed over waits. */
 export type BatchTrigger =
-  | { readonly kind: 'deadline'; readonly task: Task; readonly due: number }
+  | { readonly kind: 'deadline'; readonly task: Task; readonly team: string | undefined; readonly due: number }
   | { readonly kind: 'count'; readonly pending: number; readonly batchAt: number }
   | { readonly kind: 'time'; readonly at: number };
 
 export interface DecisionBatch {
-  /** The waits on the owner not yet asked, in plan order. */
-  readonly pending: readonly Task[];
-  /** The waits on the owner asked in an earlier batch and now past their effective due date, in plan order. */
-  readonly overdue: readonly Task[];
+  /** The waits on the owner not yet asked: register by register, each in its plan order. */
+  readonly pending: readonly OwnerWait[];
+  /** The waits on the owner asked in an earlier batch and now past their effective due date, in the same order. */
+  readonly overdue: readonly OwnerWait[];
   /** Why the batch is due now; undefined while it waits for the next one. */
   readonly trigger: BatchTrigger | undefined;
   /** The next batch time; undefined with none set, when the next batch is the daily meeting. */
   readonly nextAt: number | undefined;
 }
 
-export interface BatchInput {
+/** One register whose waits on the owner a batch holds. */
+export interface BatchRegister {
+  /** The team, for another team's register; undefined for the reader's own. */
+  readonly team: string | undefined;
   readonly tasks: Iterable<Task>;
   /** The dependency tree of the same read: effective dues and plan order. */
   readonly tree: TaskTree;
+  /** The register's marker for the owner (`register.ownerSource`). */
+  readonly ownerMarker: string;
+  /** Its `register.requireDecisionCard`: a wait on the owner's decision names its gate, so an ungated one is left out (asksOwner). */
+  readonly requireGate: boolean;
+}
+
+export interface BatchInput {
+  /** The registers the lead asks the owner for, its own first. */
+  readonly registers: readonly BatchRegister[];
   readonly now: number;
   /** When the lead last asked the owner a batch (askedAtOf); undefined: never. */
   readonly askedAt: number | undefined;
-  /** The register's marker for the owner (`register.ownerSource`). */
-  readonly ownerMarker: string;
-  /** `register.requireDecisionCard`: a wait on the owner's decision names its gate, so an ungated one is left out (asksOwner). */
-  readonly requireGate: boolean;
   readonly config: DecisionsConfig;
 }
 
 /** The batch the lead asks the owner next, and whether it is due now. */
 export function decisionBatch(input: BatchInput): DecisionBatch {
-  const { tree, now, askedAt } = input;
-  const waiting = tree.inPlanOrder([...input.tasks].filter((task) => asksOwner(task, input.ownerMarker, input.requireGate)));
-  const asked = (task: Task): boolean => askedAt !== undefined && Date.parse(task.statusAt) <= askedAt;
-  const pending = waiting.filter((task) => !asked(task));
-  const overdue = waiting.filter((task) => asked(task) && (tree.dueTime(task) ?? Number.POSITIVE_INFINITY) < now);
+  const { now, askedAt } = input;
+  const waiting = input.registers.flatMap(ownerWaitsOf);
+  const asked = (wait: OwnerWait): boolean => askedAt !== undefined && Date.parse(wait.task.statusAt) <= askedAt;
+  const pending = waiting.filter((wait) => !asked(wait));
+  const overdue = waiting.filter((wait) => asked(wait) && (wait.tree.dueTime(wait.task) ?? Number.POSITIVE_INFINITY) < now);
   const nextAt = nextBatchTime(now, input.config.batchTimesUtc);
   return { pending, overdue, trigger: triggerOf(input, pending, overdue, nextAt), nextAt };
+}
+
+/** A register's waits the lead asks the owner (asksOwner), in its plan order. */
+function ownerWaitsOf({ team, tasks, tree, ownerMarker, requireGate }: BatchRegister): OwnerWait[] {
+  return tree.inPlanOrder([...tasks].filter((task) => asksOwner(task, ownerMarker, requireGate))).map((task) => ({ task, team, tree }));
 }
 
 /**
@@ -91,11 +114,11 @@ export function dueBeforeNextBatch(task: Task, tree: TaskTree, now: number, next
  * The first reason the batch is due: a pending wait due before the next batch, else `batchAt` pending, else a batch
  * time passed over a wait already pending then or over an overdue one not asked since.
  */
-function triggerOf(input: BatchInput, pending: readonly Task[], overdue: readonly Task[], nextAt: number | undefined): BatchTrigger | undefined {
-  for (const task of pending) {
-    const due = dueBeforeNextBatch(task, input.tree, input.now, nextAt);
+function triggerOf(input: BatchInput, pending: readonly OwnerWait[], overdue: readonly OwnerWait[], nextAt: number | undefined): BatchTrigger | undefined {
+  for (const { task, team, tree } of pending) {
+    const due = dueBeforeNextBatch(task, tree, input.now, nextAt);
     if (due !== undefined) {
-      return { kind: 'deadline', task, due };
+      return { kind: 'deadline', task, team, due };
     }
   }
   const { batchAt } = input.config;
@@ -106,15 +129,15 @@ function triggerOf(input: BatchInput, pending: readonly Task[], overdue: readonl
   if (last === undefined) {
     return undefined;
   }
-  const missed = pending.some((task) => Date.parse(task.statusAt) <= last) || (overdue.length > 0 && (input.askedAt ?? Number.NEGATIVE_INFINITY) < last);
+  const missed = pending.some((wait) => Date.parse(wait.task.statusAt) <= last) || (overdue.length > 0 && (input.askedAt ?? Number.NEGATIVE_INFINITY) < last);
   return missed ? { kind: 'time', at: last } : undefined;
 }
 
-/** Why the batch is due, for one line, its times on `zone`'s clock: `T5 is due Tue 01-08 23:59 UTC, before the next batch`. */
+/** Why the batch is due, for one line, its times on `zone`'s clock: `T5 is due Tue 01-08 23:59 UTC, before the next batch` (`web/T5` for another team's). */
 export function triggerText(trigger: BatchTrigger, zone: TimeZone): string {
   switch (trigger.kind) {
     case 'deadline':
-      return `${trigger.task.id} is due ${zone.weekdayMinute(new Date(trigger.due))}, before the next batch`;
+      return `${taskLabel(trigger.task, trigger.team)} is due ${zone.weekdayMinute(new Date(trigger.due))}, before the next batch`;
     case 'count':
       return `${trigger.pending} not yet asked, decisions.batchAt is ${trigger.batchAt}`;
     case 'time':

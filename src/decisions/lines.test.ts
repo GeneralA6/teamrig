@@ -19,11 +19,11 @@ function ownerWait(id: string, statusAt: string, overrides: Partial<Task> = {}):
   return testTask({ id, title: `Decide ${id}`, status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], card: TEST_OWNER_CARD, statusAt, ...overrides });
 }
 
-function viewOf(tasks: readonly Task[], config: DecisionsConfig = CHECKPOINTS): BatchView {
-  const byId = new Map(tasks.map((task) => [task.id, task]));
-  const tree = new TaskTree(byId, new Date(NOW), TimeZone.UTC);
-  const batch = decisionBatch({ tasks, tree, now: NOW, askedAt: ASKED_AT, ownerMarker: 'owner', requireGate: true, config });
-  return { batch, tree, byId, ownerMarker: 'owner', command: 'teamrig', lead: 'lead', zone: TimeZone.UTC };
+/** The view of a batch of `tasks`, with the tree it was judged on, which a new wait's timing reads. */
+function viewOf(tasks: readonly Task[], config: DecisionsConfig = CHECKPOINTS): BatchView & { readonly tree: TaskTree } {
+  const tree = new TaskTree(new Map(tasks.map((task) => [task.id, task])), new Date(NOW), TimeZone.UTC);
+  const batch = decisionBatch({ registers: [{ team: undefined, tasks, tree, ownerMarker: 'owner', requireGate: true }], now: NOW, askedAt: ASKED_AT, config });
+  return { batch, tree, ownerMarker: 'owner', command: 'teamrig', lead: 'lead', zone: TimeZone.UTC };
 }
 
 describe('the decisions listing', () => {
