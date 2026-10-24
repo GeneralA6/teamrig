@@ -30,12 +30,19 @@ describe('failedSendOf', () => {
 });
 
 describe('failedSendLine', () => {
-  const failed = { to: 'team-lead', reason: "No agent named 'team-lead' is reachable." };
+  const failed = { to: 'captain', reason: "No agent named 'captain' is reachable." };
 
   it('gives a team session the inbox line to write instead', () => {
     assert.equal(
       failedSendLine(failed, 'lead', 'teamrig'),
-      "teamrig: the message to team-lead was not sent (No agent named 'team-lead' is reachable.); leave it as an inbox line, shown at lead's next prompt: `teamrig inbox add --to lead --text \"...\"`.",
+      "teamrig: the message to captain was not sent (No agent named 'captain' is reachable.); leave it as an inbox line, shown at lead's next prompt: `teamrig inbox add --to lead --text \"...\"`.",
+    );
+  });
+
+  it('says why no message to a name Claude Code reserves ever arrives', () => {
+    assert.equal(
+      failedSendLine({ to: 'team-lead', reason: "No agent named 'team-lead' is reachable." }, 'lead', 'teamrig'),
+      "teamrig: the message to team-lead was not sent (No agent named 'team-lead' is reachable.); leave it as an inbox line, shown at lead's next prompt: `teamrig inbox add --to lead --text \"...\"`. team-lead is a name Claude Code keeps for itself, so a message sent to it never reaches a session.",
     );
   });
 

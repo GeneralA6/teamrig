@@ -1,4 +1,5 @@
 import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
+import { isReservedName, RESERVED_RULE } from '../core/ids.ts';
 import { sendTargetOf } from './cold-send.ts';
 
 /**
@@ -43,14 +44,16 @@ function responseOf(value: unknown): JsonRecord | undefined {
 
 /**
  * The line for the model: where the message goes now. `id` is the team session `failed.to` names; for a
- * name that is no team session the line points to `who`, which prints the names to message by.
+ * name that is no team session the line points to `who`, which prints the names to message by. For a name Claude
+ * Code reserves (T1124) it also says why, so the sender stops messaging it.
  */
 export function failedSendLine(failed: FailedSend, id: string | undefined, command: string): string {
   const next =
     id === undefined
       ? `${failed.to} is no team session name (\`${command} who\` prints them); for a team session, leave it as an inbox line: \`${command} inbox add --to <area> --text "..."\`.`
       : `leave it as an inbox line, shown at ${id}'s next prompt: \`${command} inbox add --to ${id} --text "..."\`.`;
-  return `${command}: the message to ${failed.to} was not sent (${failed.reason}); ${next}`;
+  const never = isReservedName(failed.to) ? ` ${failed.to} ${RESERVED_RULE}.` : '';
+  return `${command}: the message to ${failed.to} was not sent (${failed.reason}); ${next}${never}`;
 }
 
 /** The hook's stdout: the line as context for the model after the tool's result. */
