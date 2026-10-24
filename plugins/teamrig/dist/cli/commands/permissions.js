@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { KIT_NAME } from "../../core/home.js";
+import { SecretScanner } from "../../core/secrets.js";
 import { KeepList } from "../../permissions/allow-rules.js";
 import { planLine, totalLine, writeLine } from "../../permissions/report.js";
 import { applyTrim, backupStamp, ownerStateDir, planScope, rewritesOf } from "../../permissions/trim.js";
@@ -10,7 +11,8 @@ import { EXIT } from "../runtime.js";
 /**
  * `permissions trim [--all] [--yes]`: remove the local allow rules off the team's `permissions.keepAllow` from the
  * Claude Code settings the team's sessions run under (src/cli/allow-scope.ts). By default only the rules that approve
- * a whole tool or a program with any arguments go; `--all` removes every rule off the list. It names each file and
+ * a whole tool or a program with any arguments, or hold a credential (one of the team's secret shapes), go; `--all`
+ * removes every rule off the list. It names each file and
  * counts its rules by class, never printing a rule. Without --yes it writes nothing; with it, each old file goes first
  * to `<the person's state folder>/teamrig/permissions-backups/<UTC second>/` with a manifest, outside the kit home
  * every session reads. Changing permissions is an owner gate, so the owner runs it with --yes.
@@ -23,9 +25,9 @@ export async function trim(args, runtime) {
     const config = requireConfig(kit, runtime, 'read');
     const mode = args.switches.has('all') ? 'all' : 'wide';
     const scope = await teamSettingsScope(runtime, { paths: kit.paths, config, project: await projectFolder(runtime, config) });
-    const plans = await planScope(runtime.files, scope, new KeepList(config.permissions.keepAllow), mode);
+    const plans = await planScope(runtime.files, scope, new KeepList(config.permissions.keepAllow), mode, new SecretScanner(config.register.secretPatterns));
     const lines = plans.flatMap((plan) => planLine(plan) ?? []);
-    const what = mode === 'all' ? 'every allow rule' : 'the allow rules that approve a whole tool or program';
+    const what = mode === 'all' ? 'every allow rule' : 'the allow rules that approve a whole tool or program or hold a credential';
     if (rewritesOf(plans).length === 0) {
         runtime.out.stdout(`UNCHANGED no settings file to rewrite holds ${what} off permissions.keepAllow`);
         lines.forEach((line) => runtime.out.stdout(line));

@@ -1,10 +1,3 @@
-/**
- * Claude Code's permission allow rules (`Tool` or `Tool(body)`), as `teamrig permissions trim` and the flags read
- * them. An allow rule approves a call before auto mode's classifier sees it, so a rule that approves a whole tool or a
- * program with any arguments (a bare tool name, or a `*` in the body) skips the one check that stops an injected or
- * mistaken action. A team keeps the rules on its `permissions.keepAllow` list. A rule's text can hold a value (a URI
- * with a password, a token), so a rule off that list is only ever counted by its class, never shown.
- */
 /** `Tool` or `Tool(body)`; the body may hold anything, parentheses too. */
 const RULE_SHAPE = /^([A-Za-z][\w-]*)(?:\((.*)\))?$/s;
 /** The tools a class names; any other tool's rules count as `other`, so a class never carries a rule's own text. */
@@ -63,11 +56,22 @@ export function isToolWide(rule) {
     const parsed = parseRule(rule);
     return parsed?.body === undefined || parsed.body.includes('*');
 }
-/** The class a rule is counted under: its tool (a named one, `mcp`, `other`, or `unreadable`), and `wide` or `exact`. */
-export function ruleClass(rule) {
+/**
+ * Holds a value one of the secret shapes matches. The rule is read as the keep-list reads it, so the prefix rule
+ * `Bash(kubectl get secret:*)` is not taken for a `secret:` assignment.
+ */
+export function holdsCredential(rule, secrets) {
+    return secrets.find(normalRule(rule)) !== undefined;
+}
+/**
+ * The class a rule is counted under: its tool (a named one, `mcp`, `other`, or `unreadable`), and `credential`, `wide`
+ * or `exact`. A credential comes first: it is a reason to remove the rule whatever the rule approves.
+ */
+export function ruleClass(rule, secrets) {
     const parsed = parseRule(rule);
     const tool = parsed === undefined ? 'unreadable' : parsed.tool.startsWith(MCP_PREFIX) ? 'mcp' : NAMED_TOOLS.has(parsed.tool) ? parsed.tool : 'other';
-    return `${tool} ${isToolWide(rule) ? 'wide' : 'exact'}`;
+    const kind = holdsCredential(rule, secrets) ? 'credential' : isToolWide(rule) ? 'wide' : 'exact';
+    return `${tool} ${kind}`;
 }
 /** The team's `permissions.keepAllow` list: a rule on it stays, and a kept `Tool(x *)` keeps `Tool(x)` too. */
 export class KeepList {
@@ -84,8 +88,8 @@ export class KeepList {
         return parsed?.body !== undefined && !parsed.body.includes('*') && this.kept.has(`${parsed.tool}(${parsed.body} *)`);
     }
 }
-function countByClass(rules) {
-    return mergeCounts([rules.map((rule) => [ruleClass(rule), 1])]);
+function countByClass(rules, secrets) {
+    return mergeCounts([rules.map((rule) => [ruleClass(rule, secrets), 1])]);
 }
 /** Several class counts added up, largest first, then by name. */
 export function mergeCounts(all) {
@@ -99,16 +103,16 @@ export function mergeCounts(all) {
 export function countOf(counts) {
     return counts.reduce((total, [, count]) => total + count, 0);
 }
-/** Splits an allow list into what a trim keeps and what it removes. */
-export function planAllowTrim(allow, keep, mode) {
-    const removes = (rule) => !keep.keeps(rule) && (mode === 'all' || isToolWide(rule));
+/** Splits an allow list into what a trim keeps and what it removes; a rule on the keep-list always stays. */
+export function planAllowTrim(allow, keep, mode, secrets) {
+    const removes = (rule) => !keep.keeps(rule) && (mode === 'all' || isToolWide(rule) || holdsCredential(rule, secrets));
     const after = allow.filter((rule) => !removes(rule));
     const listed = after.filter((rule) => keep.keeps(rule));
     return {
         after,
         listed,
-        keptOther: countByClass(after.filter((rule) => !keep.keeps(rule))),
-        removed: countByClass(allow.filter(removes)),
+        keptOther: countByClass(after.filter((rule) => !keep.keeps(rule)), secrets),
+        removed: countByClass(allow.filter(removes), secrets),
     };
 }
 /** Class counts as text, such as `Bash wide 17, WebFetch exact 50`. */

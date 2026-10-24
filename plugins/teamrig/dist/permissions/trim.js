@@ -4,7 +4,7 @@ import { isRecord, isStringArray } from "../core/guards.js";
 import { jsonObjectOf } from "../doctor/settings-env.js";
 import { countOf, mergeCounts, planAllowTrim } from "./allow-rules.js";
 /** The plan for one file's text (undefined: no file). A parse error's message is never kept: it can quote the file. */
-export function planFile(file, text, keep, mode) {
+export function planFile(file, text, keep, mode, secrets) {
     if (text === undefined) {
         return { file, kind: 'absent' };
     }
@@ -20,14 +20,14 @@ export function planFile(file, text, keep, mode) {
     if (!isStringArray(allow)) {
         return { file, kind: 'unreadable', why: 'permissions.allow is not a list of texts' };
     }
-    const trim = planAllowTrim(allow, keep, mode);
+    const trim = planAllowTrim(allow, keep, mode, secrets);
     const rewrites = trim.after.length < allow.length && file.kind !== 'shared';
     const next = rewrites ? settingsText({ ...json, permissions: { ...permissions, allow: trim.after } }) : undefined;
     return { file, kind: 'read', text, total: allow.length, trim, next };
 }
 /** The plan of every file in scope, read now. */
-export async function planScope(files, scope, keep, mode) {
-    return Promise.all(scope.map(async (file) => planFile(file, await files.read(file.path), keep, mode)));
+export async function planScope(files, scope, keep, mode, secrets) {
+    return Promise.all(scope.map(async (file) => planFile(file, await files.read(file.path), keep, mode, secrets)));
 }
 /** What a `wide` plan of the scope would remove, shared files too: the flag doctor and the lead's start show. */
 export function wideAllowOf(plans) {
