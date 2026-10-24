@@ -1894,6 +1894,8 @@ within 10 seconds, it ends the session's Claude Code instead: `launch` starts it
 teamrig did not open gets a new tab first; then it runs `refresh.endCommand`, if set. It ends no Claude Code that
 still runs a background shell (a background command or a monitor), since the end would take that too; the session
 is told to type `/clear`, which keeps it. A prompt typed before then cancels it. A restart that did not happen, or an end command that failed, leaves a line in the session's inbox.
+One that ended without a word (its process was killed) is started again from the session's tab by `hook wake-check`,
+70 minutes after it was asked, once no restart could still act on its request.
 Every outcome (cleared, restarted, cancelled, failed) is one JSON line in the team's `state/refresh/restarts.jsonl`
 (`session`, `at`, `endedAt`, `result`): the record to judge a trial or a week of automatic restarts by.
 
@@ -3840,8 +3842,11 @@ is `wake.batchSeconds` old, held by neither that gap nor its budget, and the wak
 that day, and a burst it is in wakes it once when it starts; quiet hours or a spent daily budget only delay these.
 They are logged with `moments`. No session is woken while its automatic restart may still act (`refresh.autoRestart`),
 since the wake's prompt would cancel it as a typed one does: the check looks again each minute, and the work handed
-meanwhile wakes the fresh session. Unless `open.idle.mode` is `off`, it also runs the team's
-[idle pass](hooks.md#the-idle-pass), once a minute across the team.
+meanwhile wakes the fresh session. A restart that ended without a word (its process was killed) leaves its request
+behind; once no restart could act on it any more (70 minutes after it was asked), the check in the tab it was asked
+for starts `teamrig restart` again while the session still waits for its fresh start, and holds the wake the same
+way. One that cannot start is dropped, and the work wakes the session. Unless `open.idle.mode` is `off`, it also runs
+the team's [idle pass](hooks.md#the-idle-pass), once a minute across the team.
 Stdin: `{"session_id", "cwd"}`.
 
 Flags: none.
