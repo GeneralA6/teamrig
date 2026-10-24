@@ -46,6 +46,19 @@ describe('sessionStartContext', () => {
     assert.ok(!context({ load, session: 'lead' }).includes('Message '), 'the lead messages no leader');
   });
 
+  it('sends a session to the inbox, not to messages, when its leader has a name Claude Code reserves', () => {
+    const renames = [renameOf('lead', 'captain', 'team-lead')];
+    const inbox = ' Write to the lead with `teamrig inbox add --to lead --text "..."`: its name `team-lead` is a name Claude Code keeps for itself, so a message sent to it never reaches a session.\n';
+    for (const session of ['alpha', undefined]) {
+      const text = context({ renames, session });
+      assert.ok(text.includes(inbox), text);
+      assert.ok(!text.includes('Message the lead as'), text);
+    }
+    const load = loaded({ config: testConfig({ names: { lead: 'captain', bravo: 'app-bravo' }, leads: { bravo: ['alpha'] } }) });
+    const sub = context({ load, renames: [renameOf('bravo', 'app-bravo', 'main')] });
+    assert.match(sub, / Write to your leader, who takes to the lead what it cannot settle, with `teamrig inbox add --to bravo --text "\.\.\."`: its name `main` is a name Claude Code keeps/);
+  });
+
   it('gives the core rules, then who the session is and how to reach the lead', () => {
     const text = context();
     assert.ok(text.startsWith(renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK)));
