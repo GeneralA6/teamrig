@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { DEFAULT_SESSION_SHARE } from '../config/defaults.ts';
 import type { SessionBudget } from '../config/types.ts';
 import type { Lift } from './lift.ts';
-import { addedSessionPct, dailyBudgetOf, liftedParts, partOf, sessionNodesOf, teamPartOf, type BudgetSplit, type SplitNode } from './parts.ts';
+import { addedSessionPct, dailyBudgetOf, liftedParts, partOf, sessionNodesOf, teamPartOf, teamShareOf, type BudgetSplit, type SplitNode } from './parts.ts';
 
 const IDS = ['lead', 'alpha', 'bravo'];
 const NOW = Date.parse('2030-01-08T10:00:00Z');
@@ -163,6 +163,20 @@ describe('teamPartOf', () => {
     const idle = otherTeam('idle', ['lead'], { sessions: { lead: { share: 0 } } });
     assert.equal(teamPartOf(9, idle, [split()]), 0);
     assert.equal(teamPartOf(9, split(), [idle]), 9);
+  });
+});
+
+describe('teamShareOf', () => {
+  it('is all of an amount while the team is alone on the account', () => {
+    assert.equal(teamShareOf(7.8, split(), []), 7.8);
+  });
+
+  it("splits an account's spare among its teams by weight, a lift inside a team leaving the teams' parts as they were", () => {
+    const web = otherTeam('web', ['lead', 'front'], { sessions: { front: { share: 2 } } });
+    // Weights app 3, web 3.
+    assert.equal(teamShareOf(8, split(), [web]), 4);
+    assert.equal(teamShareOf(8, split({}, { lifted: new Map([['alpha', 80]]) }), [web]), 4);
+    assert.equal(teamShareOf(8, web, [split()]), 4);
   });
 });
 

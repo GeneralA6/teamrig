@@ -15,6 +15,12 @@ export interface BudgetSplit {
   readonly lifted: ReadonlyMap<string, number>;
 }
 
+/** The team that asks (`split`) and the other teams on its Claude account (`accountTeamsOf`), which share the account's week. */
+export interface TeamsOnAccount {
+  readonly split: BudgetSplit;
+  readonly others: readonly BudgetSplit[];
+}
+
 /** A session in the split tree. */
 export interface SplitLeaf {
   readonly id: string;
@@ -93,15 +99,21 @@ function teamGroupOf(split: BudgetSplit): SplitGroup {
 }
 
 /**
- * The team's part of the account's daily budget (`allowancePct`, in percent of the week), split among the teams on
- * the account (the team's `split` and the `others`, `accountTeamsOf`) by their sessions' summed weights: the whole
- * day while no other team is on the account. Undefined while the account's is unknown.
+ * The team's part of an amount the account shares (`pct`, in percent of the week: its day, its spare), split among the
+ * teams on the account (the team's `split` and the `others`, `accountTeamsOf`) by their sessions' summed weights: all
+ * of it while no other team is on the account.
  */
-export function teamPartOf(allowancePct: number | undefined, split: BudgetSplit, others: readonly BudgetSplit[] = []): number | undefined {
-  if (allowancePct === undefined || others.length === 0) {
-    return allowancePct;
+export function teamShareOf(pct: number, split: BudgetSplit, others: readonly BudgetSplit[]): number {
+  if (others.length === 0) {
+    return pct;
   }
-  return partOf(allowancePct, [split, ...others].map(teamGroupOf), [split.team]);
+  const team = teamGroupOf(split);
+  return partAmong(pct, team, [team, ...others.map(teamGroupOf)]);
+}
+
+/** The team's part (`teamShareOf`) of the account's daily budget (`allowancePct`); undefined while the account's is unknown. */
+export function teamPartOf(allowancePct: number | undefined, split: BudgetSplit, others: readonly BudgetSplit[] = []): number | undefined {
+  return allowancePct === undefined ? undefined : teamShareOf(allowancePct, split, others);
 }
 
 /**
