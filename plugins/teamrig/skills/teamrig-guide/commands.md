@@ -2075,12 +2075,13 @@ lead's default, so the lead is not flagged.
 WARN launch-effort shop-web (session web) launches on model opus with no effort, so it runs at that model's default effort (medium on Opus, Sonnet and Haiku 5.5): set launch.web.effort in the team config
 ```
 
-`allow-wide` counts the allow rules off [permissions.keepAllow] that approve a whole tool or program, in every
+`allow-wide` counts the allow rules off [permissions.keepAllow] that approve a whole tool or program, or hold a
+credential (Claude Code saves an approved command whole, so a password typed into one stays in the rule), in every
 settings file `teamrig permissions trim` reads, by class and never by text. `check` shows it too, as a warning no
 session owns, so the lead's `start` shows it and its inbox gets one line on it.
 
 ```text
-WARN allow-wide 3 local allow rule(s) in 2 settings file(s) approve a whole tool or program, so auto mode's classifier never sees those calls (Bash wide 2, Read wide 1); `teamrig permissions trim` previews their removal, and the owner runs it with --yes
+WARN allow-wide 3 local allow rule(s) in 2 settings file(s) approve a whole tool or program, so auto mode's classifier never sees those calls, or hold a credential saved with an approved command (Bash credential 1, Bash wide 1, Read wide 1); `teamrig permissions trim` previews their removal, and the owner runs it with --yes
 ```
 
 `project-missing` is a `team.project` or `launch.<id>.project` that is missing or a file on this machine: a tab
@@ -2264,17 +2265,20 @@ PREVIEW nothing written (add --yes to write)
 
 Removes local allow rules from the Claude Code settings the team's sessions run under. An allow rule approves a call
 before auto mode's classifier sees it, so a rule for a whole tool or program (`Bash`, `Bash(node:*)`,
-`Read(//c/**)`) lets every such call run unchecked. The files are your user `settings.json`, then the project
+`Read(//c/**)`) lets every such call run unchecked. Claude Code also saves an approved command whole, so a rule can
+hold a credential typed into it, such as a database URI with its password. The files are your user `settings.json`, then the project
 folder's and each `coordinator.repos` checkout's `.claude/settings.json` and `.claude/settings.local.json`, and the
 same two in each worktree Claude Code made under `.claude/worktrees`. A rule on the config's `permissions.keepAllow`
 stays (`:*` and ` *` read the same, a kept `Bash(x *)` keeps `Bash(x)` too, and a shell rule's leading
-`MSYS_NO_PATHCONV=1 ` reads as absent); by default only the rules off it that approve a whole tool or program go,
-and with `--all` every rule off it goes. A committed `.claude/settings.json` is only reported: change it by a commit
+`MSYS_NO_PATHCONV=1 ` reads as absent); by default only the rules off it that approve a whole tool or program or
+hold a credential (text in a secret's shape: the built-in shapes and [register.secretPatterns]) go, and with `--all`
+every rule off it goes. A committed `.claude/settings.json` is only reported: change it by a commit
 in its repo.
 
 It never prints a rule, since a rule can hold a value such as a password: each file shows its counts before and
 after, and the rules it removes or keeps off the list as counts by class (the tool, `mcp`, `other` or
-`unreadable`, each `wide` or `exact`). Without `--yes` it writes nothing. With `--yes` it first copies each file it
+`unreadable`, each `credential`, `wide` or `exact`; a rule that holds a credential counts as `credential`, whatever
+it approves). Without `--yes` it writes nothing. With `--yes` it first copies each file it
 rewrites, with a manifest of their sha256, into a new folder `teamrig/permissions-backups/<UTC second>/` under your
 state folder (`%LOCALAPPDATA%` on Windows, else `$XDG_STATE_HOME` or `~/.local/state`), outside the kit home every
 session reads; then it rewrites only `permissions.allow` of each file, leaves a file that changed since it was read,
@@ -2284,7 +2288,8 @@ the owner runs it with `--yes`.
 
 Flags:
 
-- `--all`: remove every allow rule off the keep-list, not only the ones that approve a whole tool or program.
+- `--all`: remove every allow rule off the keep-list, not only the ones that approve a whole tool or program or hold
+  a credential.
 - `--yes`: write the change; without it, only show it.
 
 Example:
