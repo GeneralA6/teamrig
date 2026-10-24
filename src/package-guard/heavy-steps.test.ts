@@ -60,4 +60,19 @@ describe('heavyStepOf', () => {
       bun: 'bun: -',
     });
   });
+
+  it('leaves out a tool that only prints its version or usage, but not a flag handed on to a script', () => {
+    expectSteps({
+      'tsc --version': 'tsc: -',
+      'jest --help': 'jest: -',
+      'npx vitest --version': 'npx: -',
+      'npx -p typescript tsc --help': 'npx: -',
+      'node --test --help': 'node: -',
+      'npx vitest run -- --help': 'npx: test',
+      'pnpm run build --version': 'pnpm: build',
+      'npm run build -- --help': 'npm: build',
+      'npm test -- --version': 'npm: test',
+      'tsc --versions': 'tsc: build',
+    });
+  });
 });

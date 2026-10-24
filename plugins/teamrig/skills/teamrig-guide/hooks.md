@@ -296,7 +296,9 @@ as the push guard does and refuses each step that neither `teamrig heavy` nor `t
 
 - a package script run by npm, pnpm or yarn (`npm test`, `npm run build`, `pnpm run typecheck`) named `test`, `t`,
   `tst`, `verify`, `check`, `coverage`, `build`, `typecheck` or `lint`, also with a suffix (`test:unit`);
-- `tsc`, `jest` and `vitest`, also through `npx`, and `node --test`.
+- `tsc`, `jest` and `vitest`, also through `npx`, and `node --test`, unless they only print their version or usage
+  (`tsc --version`, `npx vitest --help`); a `--version` or `--help` after a `--`, or after a package script's name,
+  goes to what runs, so `npm test -- --help` and `pnpm run build --version` are still refused.
 
 The reason names the call that runs the same words under the host lock, a test inside `teamrig test` too, with the
 tab's session (`<you>` when the tab is bound to none): "teamrig heavy guard: this line runs a test or a build outside

@@ -96,6 +96,8 @@ describe('heavyGuardOutput', () => {
       "cat > notes.md <<'EOF'\nnpm test\nEOF",
       'npm install',
       'git status',
+      'tsc --version',
+      'npx vitest --help',
     ]) {
       assert.equal(await heavyGuardOutput(payload(command), env()), '', command);
     }
