@@ -888,13 +888,16 @@ export function isEffortLevel(value: unknown): value is EffortLevel {
 }
 
 /**
- * The Claude Code model and effort a session starts on (`claude --model`, `claude --effort`); an unset
- * key leaves Claude Code's own choice. The lead takes `DEFAULT_LEAD_LAUNCH` for each key it leaves unset.
+ * The Claude Code model and effort a session starts on (`claude --model`, `claude --effort`), and the folder it
+ * starts in; an unset key leaves Claude Code's own choice. The lead takes `DEFAULT_LEAD_LAUNCH` for each model
+ * and effort key it leaves unset.
  */
 export interface LaunchConfig {
   /** A Claude Code model alias, such as `best` or `opus`, or a full model id starting `claude-`. */
   readonly model?: string;
   readonly effort?: EffortLevel;
+  /** The session's project folder, an absolute path; unset, the team's (`TeamLink.project`). */
+  readonly project?: string;
 }
 
 /** Character budgets for the text Claude Code puts in every call's context; `doctor` flags a file over its budget. */
@@ -921,6 +924,11 @@ export interface TeamLink {
   readonly id: string;
   /** The team whose lead this team's lead reports to; a team with none is the root of its own tree. */
   readonly parent?: string;
+  /**
+   * The team's project folder, an absolute path: where its CLAUDE.md and rule files sit, and where its sessions
+   * work unless their own `launch` entry names another. Unset, the folder holding the team's pointer file.
+   */
+  readonly project?: string;
 }
 
 export interface KitConfig {

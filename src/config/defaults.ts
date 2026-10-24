@@ -332,4 +332,4 @@ export const DEFAULT_HIRING: HiringConfig = {
  * sets `launch.<lead id>.model` to `best` or a full model id to change it. The other sessions default to
  * Claude Code's own.
  */
-export const DEFAULT_LEAD_LAUNCH: Required<LaunchConfig> = { model: 'opus', effort: 'xhigh' };
+export const DEFAULT_LEAD_LAUNCH: Required<Pick<LaunchConfig, 'model' | 'effort'>> = { model: 'opus', effort: 'xhigh' };
