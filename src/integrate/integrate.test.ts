@@ -183,12 +183,12 @@ describe('integrate holds a dependency change where the repository asks for it',
     assert.deepEqual(world.steps.ran, []);
   });
 
-  it('refuses a package.json change beyond its scripts, reading it at the merge base and at HEAD', async () => {
+  it('refuses a package.json change an install reads, reading it at the merge base and at HEAD', async () => {
     const world = new World({ repos: gated });
     world.git.paths = ['package.json'];
     world.git.files.set('base:package.json', JSON.stringify({ dependencies: { a: '1.0.0' } }));
     world.git.files.set('mine:package.json', JSON.stringify({ dependencies: { a: '1.0.1' } }));
-    refused(await world.run(), /deps changed \(package\.json beyond scripts\)/);
+    refused(await world.run(), /deps changed \(package\.json fields an install reads\)/);
   });
 
   it('lands a package.json change to its scripts only', async () => {
@@ -196,6 +196,14 @@ describe('integrate holds a dependency change where the repository asks for it',
     world.git.paths = ['package.json'];
     world.git.files.set('base:package.json', JSON.stringify({ scripts: { test: 'a' } }));
     world.git.files.set('mine:package.json', JSON.stringify({ scripts: { test: 'b' } }));
+    assert.equal((await world.run()).kind, 'done');
+  });
+
+  it('lands a package.json change to a tool\'s settings only, such as jest', async () => {
+    const world = new World({ repos: gated });
+    world.git.paths = ['package.json'];
+    world.git.files.set('base:package.json', JSON.stringify({ dependencies: { a: '1.0.0' }, jest: { preset: 'ts-jest' } }));
+    world.git.files.set('mine:package.json', JSON.stringify({ dependencies: { a: '1.0.0' }, jest: { preset: 'ts-jest/presets/default-esm' } }));
     assert.equal((await world.run()).kind, 'done');
   });
 
