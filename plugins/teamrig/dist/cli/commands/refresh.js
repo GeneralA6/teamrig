@@ -49,7 +49,7 @@ export async function refresh(args, runtime) {
     const store = new RefreshStore(runtime.files, kit.paths);
     const now = new Date(runtime.clock.now()).toISOString();
     if (target === undefined) {
-        const decision = decideReady(await store.state(by), await store.handover(by), store.handoverPath(by), now);
+        const decision = decideReady(await store.state(by), await store.handover(by), store.handoverPath(by), now, config.refresh.handoverMaxBytes);
         switch (decision.kind) {
             case 'refused':
                 throw new RefusedError(decision.reason);
