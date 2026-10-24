@@ -1,7 +1,9 @@
-import { claudeProjectsDir, projectTranscriptPath } from '../budget/discover.ts';
+import { dirname, join } from 'node:path';
+import { claudeProjectSlug, claudeProjectsDir, projectTranscriptPath } from '../budget/discover.ts';
 import type { Roster } from '../config/roster.ts';
 import type { KitConfig } from '../config/types.ts';
 import { KIT_NAME } from '../core/home.ts';
+import { samePath } from '../core/paths.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { resumeVerdict } from '../hiring/rehire.ts';
 import { workCutOffBy, type TabEnder } from '../open/end-tab.ts';
@@ -78,9 +80,11 @@ export async function idleFactsOf(runtime: CliRuntime, kit: Kit, config: KitConf
 
 /**
  * Whether `id` closes, with the checks in the order they cost: a role or open.idle.keepOpen that keeps it, not running in the host's
- * process list, work it can start within `maxPriority`, a time wait of its own ending soon, quiet too briefly, a turn
- * not ended (under way, at a tool call, or a decision put to the person), work running in the background, a last
- * session too big or old to resume (v1 has no handover for a close), its process no longer a Claude Code, or shells
+ * process list, work it can start within `maxPriority`, a time wait of its own ending soon, quiet too briefly, a
+ * transcript outside the project folder `open` resumes it in (Claude Code files a session under the folder it started
+ * in, as `restore` and `rehire` assume), a turn not ended (under way, at a tool call, or a decision put to the person),
+ * work running in the background, a last session too big or old to resume (v1 has no handover for a close), its
+ * process no longer a Claude Code, or shells
  * an end would cut off. The first that holds keeps it open. The last two look at the host's processes one by one
  * (about a second each on Windows), so only a session every other check would close pays for them.
  */
@@ -109,7 +113,8 @@ export async function idleVerdictOf(runtime: CliRuntime, config: KitConfig, rost
   if (soon !== undefined) {
     return keep(`waits until ${zone.clock(new Date(soon.at))} on ${soon.task.id}, under ${TIME_WAIT_GUARD_MINUTES} min away`);
   }
-  const transcript = record.transcript ?? projectTranscriptPath(claudeProjectsDir(runtime.env, runtime.userHome), options.project, record.claudeSession);
+  const projectsDir = claudeProjectsDir(runtime.env, runtime.userHome);
+  const transcript = record.transcript ?? projectTranscriptPath(projectsDir, options.project, record.claudeSession);
   const last = await measureTranscript(runtime, transcript);
   if (last.changedAt === undefined) {
     return keep(`has no transcript of Claude Code session ${record.claudeSession} at ${transcript}, so its idle time is unknown`);
@@ -118,6 +123,10 @@ export async function idleVerdictOf(runtime: CliRuntime, config: KitConfig, rost
   const needed = config.open.headroom.closeIdleMinutes;
   if (idleMinutes < needed) {
     return keep(`has been quiet ${idleMinutes} min; it closes after ${needed} (open.headroom.closeIdleMinutes)`);
+  }
+  const folder = dirname(last.transcript);
+  if (!samePath(folder, join(projectsDir, claudeProjectSlug(options.project)), runtime.platform)) {
+    return keep(`could not be resumed once closed (its transcript is in ${folder}, and ${KIT_NAME} open resumes it in ${options.project})`);
   }
   const tail = (await runtime.files.readTail(last.transcript, REPLY_TAIL_BYTES)) ?? '';
   const activity = tabActivityOf(tail, Buffer.byteLength(tail, 'utf8') >= REPLY_TAIL_BYTES);

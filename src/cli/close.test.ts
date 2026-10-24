@@ -17,6 +17,8 @@ const MINUTE_MS = 60_000;
 /** The harness clock's now. */
 const NOW = Date.parse('2030-01-08T10:00:00.000Z');
 const SESSIONS = join(TEAM_HOME, 'state', 'sessions');
+/** Alpha's transcript in the project folder, where `teamrig open` resumes it. */
+const TRANSCRIPT = projectTranscriptPath(join(USER_HOME, '.claude', 'projects'), APP, CLAUDE_SESSION);
 const LOG = join(TEAM_HOME, 'state', 'session-log.jsonl');
 const TAB = { pid: 8000, parentPid: 7900, name: 'powershell.exe', commandLine: `powershell -NoExit -Command claude --resume ${CLAUDE_SESSION}` };
 const CLAUDE = { pid: 8100, parentPid: TAB.pid, name: 'claude.exe', commandLine: `claude --resume ${CLAUDE_SESSION}` };
@@ -102,12 +104,16 @@ describe('teamrig close', () => {
     ]);
   });
 
-  it('measures a session at the transcript its start recorded, in whatever folder its tab runs', async () => {
+  it('measures a session at the transcript its start recorded, and keeps open one that started in another folder', async () => {
     const worktree = projectTranscriptPath(join(USER_HOME, '.claude', 'projects'), join(APP, '.worktrees', 'fix'), CLAUDE_SESSION);
     const alpha = await runningAlpha(75, reply(40_000), worktree);
-    const preview = await close(alpha, ['alpha', '--session', 'lead']);
-    assert.equal(preview.code, 0, [...preview.stdout, ...preview.stderr].join('\n'));
-    assert.match(preview.stdout[0] ?? '', /^CLOSE app-alpha \(session alpha\): quiet 75 min, its Claude Code holds 1300 MB;/);
+    assertRefused(
+      await close(alpha, ['alpha', '--yes', '--session', 'lead']),
+      /alpha \(session alpha\) could not be resumed once closed \(its transcript is in \S+fix, and teamrig open resumes it in \S+\)/,
+    );
+    assert.deepEqual(alpha.processes.ends, [], 'open would not find it from the project folder');
+    const recorded = await close(await runningAlpha(75, reply(40_000), TRANSCRIPT), ['alpha', '--session', 'lead']);
+    assert.match(recorded.stdout[0] ?? '', /^CLOSE app-alpha \(session alpha\): quiet 75 min/, [...recorded.stdout, ...recorded.stderr].join('\n'));
 
     const gone = { ...alpha, options: { ...alpha.options, transcripts: new MemoryTranscripts() } };
     const unknown = await close(gone, ['alpha', '--yes', '--session', 'lead']);
