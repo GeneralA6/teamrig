@@ -312,11 +312,66 @@ describe('teamrig budget lift', () => {
     assert.match(passed.stdout.join('\n'), /--until 2030-01-08 11:00 IST has passed/);
   });
 
-  it('is the lead only', async () => {
-    const { run } = await world();
+  it('is refused to a session that leads none, naming who lifts', async () => {
+    const { kit, run } = await world();
     const refused = await run([...LIFT, '--session', 'bravo']);
     assert.equal(refused.code, EXIT.refused);
-    assert.deepEqual(refused.stdout, ["REFUSED only the lead (app-lead) lifts a session's budget"]);
+    assert.deepEqual(refused.stdout, ["REFUSED app-alpha's budget is lifted only by app-lead"]);
+    assert.equal(kit.files.get(join(TEAM_HOME, 'state', 'usage', 'lifts.jsonl')), undefined);
+  });
+
+  describe('in a lead tree', () => {
+    /** Bravo leads alpha; the lead leads bravo's group and itself. */
+    const TREE: JsonRecord = { ...LIMITED, leads: { bravo: ['alpha'] } };
+    const lifted = (who: string, parent: string, quiet = '; quiet hours do not apply to it'): string =>
+      `LIFTED ${who} to 50.0% of ${parent} today until 00:00 UTC (the end of the budget day) or 97.0% of the week, whichever comes first${quiet}.`;
+
+    it('lets a sub-lead lift its members and its own session, parts of its group\'s budget', async () => {
+      const { run } = await world(TREE);
+      assert.deepEqual(ok(await run([...LIFT, '--session', 'bravo'])), [lifted('app-alpha', "app-bravo's group's daily budget")]);
+      assert.deepEqual(ok(await run(['budget', 'lift', 'bravo', '--part', '50', '--stop-pct', '97', '--reason', 'release', '--session', 'bravo'])), [
+        lifted('app-bravo', "app-bravo's group's daily budget"),
+      ]);
+    });
+
+    it('refuses a sub-lead a session outside its group, and a session that leads none a sub-lead', async () => {
+      const { run } = await world(TREE);
+      const outside = await run(['budget', 'lift', 'lead', '--part', '50', '--stop-pct', '97', '--reason', 'release', '--session', 'bravo']);
+      assert.equal(outside.code, EXIT.refused);
+      assert.deepEqual(outside.stdout, ["REFUSED app-lead's budget is lifted only by app-lead"]);
+      const member = await run(['budget', 'lift', 'bravo', '--part', '50', '--stop-pct', '97', '--reason', 'release', '--session', 'alpha']);
+      assert.deepEqual(member.stdout, ["REFUSED app-bravo's budget is lifted only by app-bravo or app-lead"]);
+    });
+
+    it("lets the lead lift a sub-lead's group to a part of the team's budget, which exempts no quiet hours", async () => {
+      const { run } = await world(TREE);
+      assert.deepEqual(ok(await run(['budget', 'lift', 'bravo', '--group', '--part', '50', '--stop-pct', '97', '--reason', 'release', '--session', 'lead'])), [
+        lifted("app-bravo's group", "the team's daily budget", ''),
+      ]);
+    });
+
+    it("refuses --group on a session that leads no group, on the lead, and to the sub-lead itself", async () => {
+      const { run } = await world(TREE);
+      const group = (target: string, by: string): Promise<CliResult> =>
+        run(['budget', 'lift', target, '--group', '--part', '50', '--stop-pct', '97', '--reason', 'release', '--session', by]);
+      assert.deepEqual((await group('alpha', 'lead')).stdout, ["REFUSED --group lifts a sub-lead's group, and app-alpha leads none"]);
+      assert.deepEqual((await group('lead', 'lead')).stdout, ["REFUSED --group lifts a sub-lead's group; app-lead is the lead, whose group is the whole team"]);
+      const own = await group('bravo', 'bravo');
+      assert.equal(own.code, EXIT.refused);
+      assert.deepEqual(own.stdout, ["REFUSED app-bravo's group's budget is lifted only by app-lead"]);
+    });
+
+    it("names the group's budget and use today, and the group lift its leader can give, when a lift is too big for it", async () => {
+      const { run } = await world(TREE);
+      ok(await run(['budget', 'lift', 'alpha', '--part', '60', '--stop-pct', '97', '--reason', 'release', '--session', 'bravo']));
+      const refused = await run(['budget', 'lift', 'bravo', '--part', '60', '--stop-pct', '97', '--reason', 'release', '--session', 'bravo']);
+      assert.equal(refused.code, EXIT.refused);
+      // Alpha's 20M W and bravo's 5M W today, at 10M W per percent.
+      assert.match(
+        refused.stdout.join('\n'),
+        /other lifts in force give 60\.0% of app-bravo's group's daily budget, so --part 60 would give more than all of it; the most this lift may give is 40\.0%\. app-bravo's group gets \d+\.\d% of the week today and has used 2\.5%; app-lead can lift it: `teamrig budget lift app-bravo --group --part <pct> --stop-pct <n> --reason "<why>"`$/,
+      );
+    });
   });
 
   it('refuses a lift the team bounds do not allow, writing nothing', async () => {
