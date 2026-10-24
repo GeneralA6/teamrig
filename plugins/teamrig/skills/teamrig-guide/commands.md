@@ -2398,9 +2398,10 @@ The repository is the entry of `coordinator.repos` whose `mainCheckout` is this 
 
 - `deploysOnPush`: what a push to the default branch deploys, such as `["cloud-api"]`. integrate waits for quiet
   claims on these targets, and records the push in the ledger as a deploy of them, which teamrig does not watch.
-- `dependencyGate`: REFUSED when the branch changes `package-lock.json` or `package.json` beyond its scripts,
-  since landing it changes, unreviewed, the `node_modules` every worktree links to; with no `dependencyCheck`, push
-  such a change by hand. `teamrig roll` holds a pushed range that changes them the same way unless
+- `dependencyGate`: REFUSED when the branch changes `package-lock.json` or a `package.json` field an install reads
+  (any but scripts no install hook runs, a tool's settings such as `jest`, `prettier` or `lint-staged`, and the
+  package's description fields), since landing it changes, unreviewed, the `node_modules` every worktree links to;
+  with no `dependencyCheck`, push such a change by hand. `teamrig roll` holds a pushed range that changes them the same way unless
   `dependencyCheck` and `roll.dependencyInstall` are both set.
 - `dependencyCheck`: with `dependencyGate`, the check that clears a dependency change, such as
   `["node", "tools/check-change.ts"]`: a program and its arguments, run with no shell in the branch's checkout under
@@ -2479,8 +2480,8 @@ the gates again, then pulls fast-forward to the sha they judged and runs the dep
 and the command, each killed after `coordinator.heavy.maxRunMinutes`, all one heavy step in the ledger. Their lines
 show as they come.
 
-A range that changes `package-lock.json`, or `package.json` beyond its scripts, runs `dependencyInstall` in the main
-checkout right after the pull; with `dependencyGate`, `dependencyCheck` runs first, its `TEAMRIG_BASELINE_LOCK` a file
+A range that changes `package-lock.json`, or a `package.json` field an install reads (as `dependencyGate` judges it),
+runs `dependencyInstall` in the main checkout right after the pull; with `dependencyGate`, `dependencyCheck` runs first, its `TEAMRIG_BASELINE_LOCK` a file
 holding the old HEAD's `package-lock.json`. A failed check moves the main checkout back to its old HEAD with nothing
 installed: REFUSED, nothing rolled. A failed install moves it back and installs again, so the `node_modules` every
 worktree links to matches the checkout: FAILED, nothing rolled. When moving back or that install fails too, FAILED
