@@ -6,6 +6,7 @@ import type { Task } from '../../register/fold.ts';
 import { waitSpelling } from '../../register/waits.ts';
 import { SessionLog } from '../../sessions/log.ts';
 import { DECISION_MARKER } from '../../tabs/status.ts';
+import { validAsksOf, WakeAsks, type StoredWakeAsk } from '../../wake/asks.ts';
 import { onePositional, requiredFlag, type ParsedArgs } from '../args.ts';
 import { closeSession } from '../close-session.ts';
 import { closableText, idleFactsOf, type Closable, type IdleFacts, type IdleVerdict } from '../idle-check.ts';
@@ -132,9 +133,11 @@ function stayText(step: Exclude<JudgedStep, ReopenWish>): string {
  * closed, which the pass starts hidden, since the room check and the tab take seconds. The session may have been
  * opened, or its work done, since the pass, so it judges it again as the pass does (`judgeSession`): kept, it opens
  * nothing; else it opens it as `teamrig open` does (`openSession`: in its last Claude Code session when that is small
- * and recent enough, else fresh, the reopen logged), and keeps it closed when the host has no room. Each outcome is a
- * line in the pass log, with the host's commit charge before a reopen (its Claude Code takes a while to load, so a
- * charge right after says nothing); exit 1 when it could not weigh the session or no terminal opened.
+ * and recent enough, else fresh, the reopen logged), and keeps it closed when the host has no room. The urgent lines
+ * posted while it was closed are quoted in its first prompt and, once its tab opened, taken, so its tab's wake check
+ * does not wake it on them again; kept closed, they wait for the next pass. Each outcome is a line in the pass log,
+ * with the host's commit charge before a reopen (its Claude Code takes a while to load, so a charge right after says
+ * nothing); exit 1 when it could not weigh the session or no terminal opened.
  */
 export async function idleOpen(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const id = idFlag('session', onePositional(args, 'id'));
@@ -155,20 +158,33 @@ export async function idleOpen(args: ParsedArgs, runtime: CliRuntime): Promise<E
   }
   const measured = { before: await runtime.memory.commit(), after: undefined };
   const why = reopeningText(step.reopening, teamZone(config, runtime));
+  const asks = new WakeAsks(runtime.files, kit.paths.wakeAsks);
   try {
-    const opened = await openSession(runtime, kit, config, roster, { team, id, project, terminal: config.open.terminal, asked: false });
+    const stored = await asks.read(id);
+    const opened = await openSession(runtime, kit, config, roster, { team, id, project, terminal: config.open.terminal, asked: false, urgent: validAsksOf(stored) });
     const done = { ...act, ...measured, at: runtime.clock.now() };
-    return report(
-      runtime,
-      kit,
-      opened.kind === 'opened'
-        ? { ...done, outcome: 'done', line: `REOPENED ${label} for ${why}: ${opened.line}` }
-        : { ...done, outcome: 'failed', line: `FAILED to reopen ${label}: no terminal opened (${opened.reasons.join('; ')})` },
-    );
+    if (opened.kind !== 'opened') {
+      return report(runtime, kit, { ...done, outcome: 'failed', line: `FAILED to reopen ${label}: no terminal opened (${opened.reasons.join('; ')})` });
+    }
+    const untaken = await untakenText(asks, id, stored);
+    return report(runtime, kit, { ...done, outcome: 'done', line: `REOPENED ${label} for ${why}: ${opened.line}${untaken}` });
   } catch (error) {
     // A refusal here is the host's room, read fresh: the next pass tries again.
     const kept = error instanceof RefusedError;
     return report(runtime, kit, { ...act, ...measured, at: runtime.clock.now(), outcome: kept ? 'kept' : 'failed', line: kept ? `KEPT ${label} closed: ${error.message}` : `FAILED to reopen ${label}: ${errorMessage(error)}` });
+  }
+}
+
+/**
+ * Takes the asks a reopened tab's first prompt quotes; what the REOPENED line adds when they stay, '' once taken. The
+ * tab opened, so a failure here is said, never a failed reopen: its wake check wakes it on them once more.
+ */
+async function untakenText(asks: WakeAsks, id: string, stored: readonly StoredWakeAsk[]): Promise<string> {
+  try {
+    await asks.remove(id, stored);
+    return '';
+  } catch (error) {
+    return `; its urgent lines were not taken, so its tab wakes on them once more: ${errorMessage(error)}`;
   }
 }
 

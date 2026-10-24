@@ -11,7 +11,7 @@ import { CLAUDE_SESSION_ID } from '../../inbox/marks.ts';
 import { findClaude, type ClaudeProgram } from '../../open/claude.ts';
 import { launchFlags } from '../../open/launch-flags.ts';
 import { openTab, type OpenOutcome } from '../../open/open-tab.ts';
-import { decodePrompt, defaultPrompt, encodePrompt, promptProblem, refreshPrompt, rehirePrompt, reopenPrompt, resumePrompt } from '../../open/prompt.ts';
+import { decodePrompt, defaultPrompt, encodePrompt, PROMPT_MAX, promptProblem, refreshPrompt, rehirePrompt, reopenPrompt, resumePrompt } from '../../open/prompt.ts';
 import { shellCommand } from '../../open/quote.ts';
 import { sessionEnv } from '../../open/session-env.ts';
 import type { RunOutcome } from '../../open/processes.ts';
@@ -19,9 +19,10 @@ import { RefreshStore } from '../../refresh/store.ts';
 import { noRoomText } from '../../sessions/headroom.ts';
 import { closedOf, SessionLog } from '../../sessions/log.ts';
 import type { Terminal } from '../../open/terminals.ts';
+import { urgentFirstPrompt, type WakeAsk } from '../../wake/asks.ts';
 import { onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
 import { headroomOf } from '../headroom.ts';
-import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf, type Kit } from '../kit.ts';
+import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf, teamZone, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
 import { claudeSessionVerdict, freshOpenOf, resumeVerdictOf } from './rehire.ts';
@@ -162,6 +163,8 @@ export interface OpenRequest {
   /** The first prompt in place of the one the session's state gives. */
   readonly prompt?: string;
   readonly asked: boolean;
+  /** Urgent lines posted while the session was closed, quoted ahead of its first prompt (the idle pass's reopen). */
+  readonly urgent?: readonly WakeAsk[];
 }
 
 /** A tab that opened, with its OPENED line, or no terminal, with why and the command line to run instead. */
@@ -181,7 +184,8 @@ export async function openSession(runtime: CliRuntime, kit: Kit, config: KitConf
   const closed = closedOf((await sessionLog.read()).records, id);
   const reopen = closed === undefined ? undefined : await claudeSessionVerdict(runtime, config.hiring, closed.claudeSession, project);
   const resume = await resumeOf(runtime, kit.paths, config, { id, project, from, reopen, asked });
-  const prompt = checkedPrompt(request.prompt ?? firstPromptOf(team, id, from, resume, reopen));
+  const own = request.prompt ?? firstPromptOf(team, id, from, resume, reopen);
+  const prompt = checkedPrompt(urgentFirstPrompt(request.urgent ?? [], own, teamZone(config, runtime), PROMPT_MAX));
   const name = roster.nameOf(id) ?? id;
   // The lead opens whatever the room: it is the session that decides which others run.
   if (id !== roster.holderOf('lead')) {
