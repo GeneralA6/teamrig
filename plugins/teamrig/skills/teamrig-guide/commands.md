@@ -1918,9 +1918,11 @@ It prints `CLEARED shop-web: its tab ran /clear` when the mod cleared the tab,
 The idle pass's close of one session it found idle: the pass runs it hidden; you do not run it yourself. Work may
 have reached the session since the pass, so it weighs the session again the way the pass does (work that would wake
 it keeps it open), then ends its Claude Code and its tab as `teamrig close` does and logs the close by `idle-pass` in
-the team's `state/session-log.jsonl`, which `teamrig open` resumes from. Each outcome (closed, kept, failed) is one
-JSON line in the team's `state/idle-pass.jsonl` (`"kind": "act"`), with the host's commit charge before and after a
-close.
+the team's `state/session-log.jsonl`, which `teamrig open` resumes from. It then tells the lead (`roles.lead`) with
+an [urgent line](hooks.md#urgent-lines), which wakes the lead's idle tab with it quoted: which session it closed and
+why, what that session's tasks wait on from a person, and the ask to list the decisions waiting on the owner, ending
+with a `Decision needed:` line. Each outcome (closed, kept, failed) is one JSON line in the team's
+`state/idle-pass.jsonl` (`"kind": "act"`), with the host's commit charge before and after a close.
 
 Flags:
 
@@ -1939,7 +1941,8 @@ Output:
 CLOSED shop-web (session web): quiet 75 min, its Claude Code holds 1300 MB, now free
 ```
 
-It prints `KEPT <why>` when the session no longer closes, and `FAILED to weigh shop-web (session web): <why>` or
+A lead it could not tell leaves the close done, with `; lead not told: <why>` at the end of the `CLOSED` line. It
+prints `KEPT <why>` when the session no longer closes, and `FAILED to weigh shop-web (session web): <why>` or
 `FAILED to close shop-web (session web): <why>` (exit 1) when it could not weigh it or its tab outlived the end.
 
 ### teamrig idle-open
@@ -3812,7 +3815,8 @@ it, and logs each wake with its cost to `<team>/state/wakes.jsonl`. A task wakes
 session's, open or in progress, at `wake.priority` or more urgent (p1 by default; p1 only while the session's
 budget holds it, past its daily budget with no room left in the team's day, or in quiet hours), with every task it comes after finished, and changed by someone else
 since the session last touched it. Tasks handed within `wake.batchSeconds` wake it once, and wakes are
-`wake.minGapMinutes` apart. The first check in a tab takes the work already there as seen. With
+`wake.minGapMinutes` apart. An [urgent line](hooks.md#urgent-lines) posted for the session wakes it once the oldest
+is `wake.batchSeconds` old, held by neither that gap nor its budget, and the wake is logged with `asks`. The first check in a tab takes the work already there as seen. With
 `wake.dayStartUtc` set, a session with work it can start (any priority) and no turn since that time gets one wake
 that day, and a burst it is in wakes it once when it starts; quiet hours or a spent daily budget only delay these.
 They are logged with `moments`. No session is woken while its automatic restart may still act (`refresh.autoRestart`),
