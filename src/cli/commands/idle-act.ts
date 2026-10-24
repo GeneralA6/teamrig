@@ -14,6 +14,7 @@ import { judgeSession, reopeningText, runningVerdictOf, type JudgedStep, type Re
 import { formatIdlePassRecord, type IdleActRecord } from '../idle-pass-log.ts';
 import { openKit, requireConfig, rosterOf, teamZone, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
+import { installStateOf, settleWaitText } from '../settled-install.ts';
 import { postUrgentLine } from '../urgent-line.ts';
 import { idFlag, openSession } from './open.ts';
 
@@ -132,8 +133,9 @@ function stayText(step: Exclude<JudgedStep, ReopenWish>): string {
  * `idle-open <id> --team <team> --project <dir>`: one reopen the idle pass decided (T1100) of a session teamrig
  * closed, which the pass starts hidden, since the room check and the tab take seconds. The session may have been
  * opened, or its work done, since the pass, so it judges it again as the pass does (`judgeSession`): kept, it opens
- * nothing; else it opens it as `teamrig open` does (`openSession`: in its last Claude Code session when that is small
- * and recent enough, else fresh, the reopen logged), and keeps it closed when the host has no room. The urgent lines
+ * nothing. An install may have begun since the pass too, so it keeps it closed on an install not settled
+ * (`installStateOf`). Else it opens it as `teamrig open` does (`openSession`: in its last Claude Code session when
+ * that is small and recent enough, else fresh, the reopen logged), and keeps it closed when the host has no room. The urgent lines
  * posted while it was closed are quoted in its first prompt and, once its tab opened, taken, so its tab's wake check
  * does not wake it on them again; kept closed, they wait for the next pass. Each outcome is a line in the pass log,
  * with the host's commit charge before a reopen (its Claude Code takes a while to load, so a charge right after says
@@ -155,6 +157,10 @@ export async function idleOpen(args: ParsedArgs, runtime: CliRuntime): Promise<E
   }
   if (step.kind !== 'wish') {
     return report(runtime, kit, { ...act, ...unmeasured, at: runtime.clock.now(), outcome: 'kept', line: `KEPT ${label}: ${stayText(step)}` });
+  }
+  const install = await installStateOf(runtime, project);
+  if (install.kind === 'unsettled') {
+    return report(runtime, kit, { ...act, ...unmeasured, at: runtime.clock.now(), outcome: 'kept', line: `KEPT ${label} closed: ${settleWaitText(install.why)}` });
   }
   const measured = { before: await runtime.memory.commit(), after: undefined };
   const why = reopeningText(step.reopening, teamZone(config, runtime));

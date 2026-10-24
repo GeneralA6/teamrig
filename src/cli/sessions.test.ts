@@ -7,6 +7,7 @@ import { SessionLog } from '../sessions/log.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakePathProbe } from '../testing/fake-processes.ts';
+import { FakePluginStore } from '../testing/fake-plugin-store.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
@@ -217,6 +218,24 @@ describe('teamrig sessions --pass', () => {
     assertOk(result);
     assert.match(result.stdout[1] ?? '', /^LATER app-alpha \(session alpha\): work handed to it since its close: T1; no room on the host to reopen app-alpha, counted at /);
     assert.equal(result.stdout[2], 'CLOSED app-bravo (session bravo): nothing it can start');
+  });
+
+  it('leaves a reopen for later while the plugin store changed within 30 s, reading no room for it', async () => {
+    const kit = await closedTeam();
+    await hand(kit, 'alpha', 'p1');
+    const list = join(USER_HOME, '.claude', 'plugins', 'installed_plugins.json');
+    await kit.files.write(list, JSON.stringify({ version: 2, plugins: {} }));
+    const pluginStore = new FakePluginStore().date(list, kit.clock.now() - 10_000);
+    const crowded = new FakeHostMemory().lists([]);
+    crowded.free = 500;
+    const copying = await kit.run(['sessions', '--pass'], { probe: new FakePathProbe({ folders: [APP] }), memory: crowded, pluginStore });
+    assertOk(copying);
+    assert.equal(copying.stdout[1], 'LATER app-alpha (session alpha): work handed to it since its close: T1; the plugin store changed 10 s ago, under 30 s: an install may still be copying, so the reopen waits for a settled install');
+
+    kit.clock.advance(20_000);
+    const settled = await kit.run(['sessions', '--pass'], { probe: new FakePathProbe({ folders: [APP] }), memory: new FakeHostMemory().lists([]), pluginStore });
+    assertOk(settled);
+    assert.equal(settled.stdout[1], 'REOPEN app-alpha (session alpha): work handed to it since its close: T1');
   });
 
   it("reads a session's budget only where its rest can change the step: work past p1, or a reopen", async () => {

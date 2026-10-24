@@ -13,6 +13,7 @@ import { headroomOf } from './headroom.ts';
 import { closableText, idleFactsOf, idleVerdictOf, type Closable, type IdleFacts, type IdleVerdict } from './idle-check.ts';
 import type { Kit } from './kit.ts';
 import type { CliRuntime } from './runtime.ts';
+import { installStateOf, settleWaitText } from './settled-install.ts';
 
 /** A session the budget neither holds nor puts in quiet hours. */
 const AWAKE: WakeRest = { held: false, quiet: false };
@@ -25,7 +26,7 @@ export type PassStep =
   | { readonly kind: 'close'; readonly id: string; readonly closable: Closable }
   | { readonly kind: 'keep'; readonly id: string; readonly why: string }
   | { readonly kind: 'reopen'; readonly id: string; readonly reopening: Reopening }
-  /** A reopen this pass does not make: another took its one reopen, or the host has no room. */
+  /** A reopen this pass does not make: another took its one reopen, the plugin install is not settled, or the host has no room. */
   | { readonly kind: 'later'; readonly id: string; readonly reopening: Reopening; readonly why: string }
   | { readonly kind: 'closed'; readonly id: string }
   /** Not running, and not closed by teamrig: the pass leaves it. */
@@ -118,9 +119,10 @@ export async function judgeSession(runtime: CliRuntime, kit: Kit, config: KitCon
 /**
  * What one pass over the team's sessions does, in the roster's order, changing nothing (T1100): each running session
  * closes when `idleVerdictOf` finds it idle, else stays; each one teamrig closed reopens when the wake check would wake
- * it. One reopen a pass, urgent lines first, the oldest first, then the most urgent top task, and only with room on
- * the host, read fresh; the rest wait for the next pass, so reopens never outrun what the host can hold. A running
- * session's transcript is read in the folder `folderOf` names for it when its record names none.
+ * it. One reopen a pass, urgent lines first, the oldest first, then the most urgent top task, and only on a settled
+ * plugin install for its folder with room on the host, both read fresh (`reopenHoldOf`); the rest wait for the next
+ * pass, so reopens never outrun what the host can hold. A running session's transcript is read in the folder
+ * `folderOf` names for it when its record names none.
  */
 export async function idlePassOf(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, folderOf: SessionFolderOf): Promise<readonly PassStep[]> {
   const facts = await idleFactsOf(runtime, kit, config, roster);
@@ -130,7 +132,7 @@ export async function idlePassOf(runtime: CliRuntime, kit: Kit, config: KitConfi
     judged.push(await judgeSession(runtime, kit, config, roster, facts, id, folderOf, closes));
   }
   const [first] = judged.filter((step): step is ReopenWish => step.kind === 'wish').sort(byReopenOrder);
-  const room = first === undefined ? undefined : await headroomOf(runtime, kit.paths, config, roster.ids);
+  const hold = first === undefined ? undefined : await reopenHoldOf(runtime, kit, config, roster, await folderOf(first.id), first.id);
   return judged.map((step): PassStep => {
     if (step.kind !== 'wish') {
       return step;
@@ -139,8 +141,22 @@ export async function idlePassOf(runtime: CliRuntime, kit: Kit, config: KitConfi
     if (first !== undefined && id !== first.id) {
       return { kind: 'later', id, reopening, why: `${roster.nameOf(first.id) ?? first.id} reopens first, one a pass` };
     }
-    return room === undefined || room.short.length === 0 ? { kind: 'reopen', id, reopening } : { kind: 'later', id, reopening, why: noRoomText(`reopen ${roster.nameOf(id) ?? id}`, room) };
+    return hold === undefined ? { kind: 'reopen', id, reopening } : { kind: 'later', id, reopening, why: hold };
   });
+}
+
+/**
+ * Why the pass's one reopen, of `id`, waits for a later pass; undefined when it goes. A tab opened while an install
+ * is copied runs without teamrig's hooks, so an unsettled install holds it first (`installStateOf`, the host's room
+ * then unread), else a host without room for it.
+ */
+async function reopenHoldOf(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, project: string, id: string): Promise<string | undefined> {
+  const install = await installStateOf(runtime, project);
+  if (install.kind === 'unsettled') {
+    return settleWaitText(install.why);
+  }
+  const room = await headroomOf(runtime, kit.paths, config, roster.ids);
+  return room.short.length === 0 ? undefined : noRoomText(`reopen ${roster.nameOf(id) ?? id}`, room);
 }
 
 function idsText(tasks: readonly Task[]): string {
