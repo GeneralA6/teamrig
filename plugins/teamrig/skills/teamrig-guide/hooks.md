@@ -806,9 +806,10 @@ holds only the current day.
 
 A tab that runs without teamrig's hooks, as one left running across a plugin update, gets no inbox, no
 guards and no tab status, and nothing in it says so. Every 10 minutes for the whole team, the Stop hook of any
-team session reads the team's [restore files](#every-session-the-restore-tracker) whose hooks last wrote over 30
-minutes ago and checks their transcripts: one that changed in the last 30 minutes, and over 30 minutes after that
-last write, is a tab working without its hooks. Each such tab gets one inbox line from teamrig to the lead, or to
+team session reads the [restore files](#every-session-the-restore-tracker) of the team's sessions (a tab
+`teamrig launch` started names its session; one started by hand is the session whose inbox it last read) whose
+hooks last wrote over 30 minutes ago and checks their transcripts: one that changed in the last 30 minutes, and
+over 30 minutes after that last write, is a tab working without its hooks. Each such tab gets one inbox line from teamrig to the lead, or to
 the coordinator's owner (`roles.coordinatorOwner`) when it is the lead's own tab: `HOOKLESS alpha: its tab (Claude
 session 0123abcd) worked 59 min past its last teamrig hook (hook 09:00 IDT, last reply 09:59 IDT), so it gets no
 inbox, guards or tab status: /exit that tab and run claude --resume <id> in <folder>`, with the tab's full Claude
