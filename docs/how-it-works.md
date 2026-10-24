@@ -341,7 +341,9 @@ turns this off: `register.autoArchive: false` in the team's `config.json`, after
   over the active time to the pace end (quiet hours count at `budget.quietHours.paceWeight`). The teams of the kit
   home on one Claude account (`budget.account`, else the Claude config dir) split each day by weight: a session's
   weight is its share times its queued work, a team's its sessions' summed, and each session's part of its team's
-  part comes after the lead's lifts.
+  part comes after the lifts. With sub-leads (`leads`), a team's part splits first among its sub-leads' groups and
+  the sessions the lead leads directly, a group's weight its sessions' summed, and each group splits its part the
+  same way.
   The week's use in percent comes from status line snapshots (`teamrig statusline install` sets the status line
   up), else from the metered W at the week's W per percent: learned from `state/usage/meter-log.jsonl` (a line
   each time the status line passes a whole percent, fitted once 8 weeks of lines span 10 points), else
@@ -456,7 +458,7 @@ sequenceDiagram
   wait cleared, as `teamrig check` flags READY, an approval it waits on answered either way (a decline sends it back
   to work); a task never started also has every task it comes `--after` finished. At `wake.priority` or more
   urgent (p1 by default). Held by its budget (past its daily budget
-  while the team has no room today), or in the budget's quiet hours unless the lead's lift exempts it, only p1 wakes it, whatever `wake.priority` says. While the owner's
+  while the team has no room today), or in the budget's quiet hours unless a lift of the session exempts it (a group's lift does not), only p1 wakes it, whatever `wake.priority` says. While the owner's
   daily meeting is open the lead is not woken; the work waits for the first check after the meeting.
 - How often: each task wakes a session once. The first new task starts a batch of `wake.batchSeconds` (120 s), and
   one wake names every task handed meanwhile; wakes of one session are at least `wake.minGapMinutes` (15) apart.

@@ -870,19 +870,20 @@ it is held: only p1 work wakes it, and it is escalated when `budget.escalate` is
 | `overAction` | What happens |
 | --- | --- |
 | `warn` (default) | the lines only |
-| `ask-lead` | the lead also gets one inbox line a day, naming the lift command |
-| `ask` | the lead's line, and the person is asked before each new helper launch |
-| `block` | the lead's line, and new helper launches are refused |
+| `ask-lead` | the session's leader (the lead, or its sub-lead) also gets one inbox line a day, naming the lift command |
+| `ask` | the leader's line, and the person is asked before each new helper launch |
+| `block` | the leader's line, and new helper launches are refused |
 
 While escalated, the model is told with the next prompt, once per level: `teamrig budget: you are past today's
 budget and the team has no room left today, and it is ahead of its pace line. Finish the step in hand and start
 no new work items or helpers.
-Never skip a test or check to save budget. The lead can lift it.`
+Never skip a test or check to save budget. The lead can lift it.` A sub-lead's session reads `Your leader <name> can
+lift it.` instead, and the lead `As the lead, lift it only with a stop %.`
 
 In quiet hours, `budget.quietHours.action` applies to helper launches as well (`ask` or `block`; `warn` only
 says the team rests), and the stronger of the two wins. Nothing else is ever held, so a fix in hand always
-finishes. The lead's own helpers, and those of a session the lead lifted (`teamrig budget lift`, always with a
-stop %), always go ahead. What each session was shown is kept in `state/usage/warn/<id>.json`.
+finishes. The lead's own helpers, and those of a session a leader lifted (`teamrig budget lift`, always with a
+stop %; a lift of its group does not count), always go ahead. What each session was shown is kept in `state/usage/warn/<id>.json`.
 
 A burst ([teamrig burst start](commands.md#teamrig-burst-start)) comes the same way, once each. A session in it
 sees `Budget: the lead started a surplus burst ...` at its next turn end and a line when it ends; its model is

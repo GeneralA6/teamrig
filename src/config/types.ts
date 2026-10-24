@@ -496,7 +496,7 @@ export interface SessionBudget {
 }
 
 /**
- * The bounds on a lead's lift of a session's daily budget. Every lift carries a stop %, the share of
+ * The bounds on a leader's lift of a session's or a sub-lead's group's daily budget. Every lift carries a stop %, the share of
  * the week at which it ends; the reserve stop % is only for the one reserve release shortly before the reset.
  */
 export interface BudgetLiftConfig {

@@ -140,7 +140,7 @@ export interface TeamPaths {
   readonly meterLog: string;
   /** The extra-usage pool's adds and spent readings, an append-only log (budget/extra.ts). */
   readonly extraLog: string;
-  /** The lead's budget lifts, an append-only log. */
+  /** The leaders' budget lifts, an append-only log. */
   readonly lifts: string;
   /** The lead's bursts and their ends, an append-only log. */
   readonly bursts: string;
