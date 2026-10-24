@@ -2,6 +2,7 @@ import { LeadTree } from "../config/lead-tree.js";
 import { Roster } from "../config/roster.js";
 import { formatAddress } from "../core/address.js";
 import { ENV, KIT_NAME } from "../core/home.js";
+import { isReservedName, RESERVED_RULE } from "../core/ids.js";
 import { renderCorePack, renderLeadRules, renderSessionContext } from "../rules/pack.js";
 /** Whether the session the input names holds the team's lead role. */
 function isLeadSession(roster, session) {
@@ -22,26 +23,37 @@ function identityLines(roster, leaders, input) {
     const tree = input.tree === undefined ? [] : [treeLine(input.tree, input, isLead)];
     if (found === undefined || !found.ok) {
         const why = session === undefined ? `No session is set ($${ENV.session})` : `$${ENV.session} does not name a session on this team`;
-        const toLead = leadName === undefined ? '' : ` Message the lead as \`${leadName}\`.`;
+        const toLead = lead === undefined || leadName === undefined ? '' : reachNote(lead, leadName, true, command);
         return [`${why}: ask the user which session you are (\`${command} who\` lists them) and pass --session <id> to every \`${command}\` task and inbox command.${toLead}`, names, ...tree];
     }
     const roles = roster.rolesOf(found.id);
     const held = roles.length === 0 ? '' : `, roles: ${roles.join(', ')}`;
     const you = `You are the \`${found.id}\` session of team \`${input.team}\` (name \`${roster.nameOf(found.id) ?? found.id}\`${held}).`;
     const pass = input.sessionInEnv ? '' : ` $${ENV.session} is not set here, so pass --session ${found.id} to every \`${command}\` task and inbox command.`;
-    return [`${you}${pass}${messageNote(roster, leaders, found.id)}`, names, ...tree];
+    return [`${you}${pass}${messageNote(roster, leaders, found.id, command)}`, names, ...tree];
 }
 /**
  * Whom the session messages: the lead, or for a sub-lead's member its own leader (T781), who takes up what it cannot
  * settle; nothing for the lead itself.
  */
-function messageNote(roster, leaders, id) {
+function messageNote(roster, leaders, id, command) {
     const leader = leaders.leaderOf(id);
     const name = leader === undefined ? undefined : roster.nameOf(leader);
-    if (name === undefined) {
+    if (leader === undefined || name === undefined) {
         return '';
     }
-    return leader === leaders.lead ? ` Message the lead as \`${name}\`.` : ` Message your leader as \`${name}\`, who takes to the lead what it cannot settle.`;
+    return reachNote(leader, name, leader === leaders.lead, command);
+}
+/**
+ * How the session reaches its leader `id`, named `name`: by message, or by inbox line when Claude Code keeps the name
+ * for itself (T1124), since every message sent to it fails.
+ */
+function reachNote(id, name, isLead, command) {
+    if (!isReservedName(name)) {
+        return isLead ? ` Message the lead as \`${name}\`.` : ` Message your leader as \`${name}\`, who takes to the lead what it cannot settle.`;
+    }
+    const who = isLead ? 'the lead' : 'your leader, who takes to the lead what it cannot settle,';
+    return ` Write to ${who} with \`${command} inbox add --to ${id} --text "..."\`: its name \`${name}\` ${RESERVED_RULE}.`;
 }
 /** The one line a start gets when the team config loaded no rules: why, and the command that fixes it. */
 export function unloadedContext(team, load, command) {
