@@ -1,9 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import { formatConfig } from '../config/load.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { APP, CliHarness, TEAM, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { ok } from '../testing/hired-team.ts';
+import { teamConfigOf } from '../testing/team-tree.ts';
 import { EXIT } from './runtime.ts';
 
 /**
@@ -42,6 +44,11 @@ async function team(extra: JsonRecord = {}, usedPct = 5): Promise<CliHarness> {
 
 function lead(kit: CliHarness, ...argv: string[]): Promise<CliResult> {
   return kit.run([...argv, '--session', 'lead']);
+}
+
+/** Puts a second team on the Claude account, three sessions with no queued work: the app team's weight, so half the spare. */
+async function shareAccount(kit: CliHarness): Promise<void> {
+  await kit.files.write(teamConfigOf('web'), formatConfig({ configVersion: 1, sessions: ['lead', 'front', 'back'], roles: { lead: 'lead' } }));
 }
 
 function refusal(result: CliResult): string {
@@ -90,9 +97,28 @@ describe('burst', () => {
     assert.equal(lines[0], 'POLICY burst.policy off: the team takes no bursts');
     assert.ok(!lines.some((line) => line.startsWith('NEXT')), lines.join('\n'));
   });
+
+  it("shows the team's part of the account's spare when another team shares the account", async () => {
+    const kit = await team();
+    await shareAccount(kit);
+    assert.equal(
+      ok(await kit.run(['burst'])).stdout[2],
+      "SURPLUS about 37.1% of the week, this team's part of the account's 74.2%, projected unused at the pace end (budget.targetPct 99.5%): worth a surplus burst now",
+    );
+  });
 });
 
 describe('burst start', () => {
+  it("refuses a surplus burst once another team on the account leaves the team's part of the spare below burst.minSparePct", async () => {
+    const kit = await team({}, 18);
+    ok(await lead(kit, 'burst', 'start', 'surplus', '--reason', 'week-end surplus', ...OWNER_OK));
+    await shareAccount(kit);
+    assert.match(
+      refusal(await lead(kit, 'burst', 'start', 'surplus', '--reason', 'week-end surplus', ...OWNER_OK)),
+      /only 4\.2% of the week, this team's part of the account's 8\.4%, is projected unused at the pace end, below burst\.minSparePct \(5\.0%\)/,
+    );
+  });
+
   it('previews a surplus burst for the whole team, then starts it with --yes', async () => {
     const kit = await team();
     const preview = ok(await lead(kit, 'burst', 'start', 'surplus', '--reason', 'week-end surplus', ...OWNER_OK));

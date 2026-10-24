@@ -86,7 +86,7 @@ function burst(overrides: Partial<Burst> = {}): Burst {
   };
 }
 
-const HINT: SurplusHint = { sparePct: 12, paceEnd: Date.parse('2026-10-21T00:00:00Z'), reset: RESET, ownerApproves: true };
+const HINT: SurplusHint = { sparePct: 12, accountSparePct: undefined, paceEnd: Date.parse('2026-10-21T00:00:00Z'), reset: RESET, ownerApproves: true };
 
 describe('levelOf', () => {
   const table: readonly [number, number][] = [

@@ -2,9 +2,10 @@ import type { BurstConfig } from '../config/types.ts';
 import { KIT_NAME } from '../core/home.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { formatPct } from './format.ts';
-import { surplusOf, type Burst } from './burst.ts';
+import { spareShareNote, surplusOf, type Burst } from './burst.ts';
 import type { Lift } from './lift.ts';
 import type { WeekWindow } from './pace.ts';
+import type { TeamsOnAccount } from './parts.ts';
 
 /**
  * The burst's part of the live budget lines, pure: the person's line when a burst the session is in
@@ -19,8 +20,10 @@ export const MORE_BURST = `More: ${BURST_COMMAND}`;
 
 /** A surplus worth a burst, as the lead's hook reads it. */
 export interface SurplusHint {
-  /** The share of the week projected unused at the pace end, in %. */
+  /** The team's part of the share of the week projected unused at the pace end, in % (`Surplus.sparePct`). */
   readonly sparePct: number;
+  /** All of it on the account, when other teams share it (`Surplus.accountSparePct`). */
+  readonly accountSparePct: number | undefined;
   readonly paceEnd: number;
   /** The reset that names the week, so the line shows once a week. */
   readonly reset: number;
@@ -34,6 +37,8 @@ export interface SurplusHintInput {
   readonly now: number;
   readonly usedPct: number;
   readonly targetPct: number;
+  /** The team and the other teams on its account, which split the spare (`surplusOf`). */
+  readonly teams: TeamsOnAccount;
 }
 
 /** The surplus worth a burst now, for the lead's line; undefined with `burst.policy` off, an unknown week or too little spare. */
@@ -42,10 +47,10 @@ export function surplusHintOf(input: SurplusHintInput): SurplusHint | undefined 
   if (config.policy === 'off' || window === undefined) {
     return undefined;
   }
-  const surplus = surplusOf({ window, now: input.now, usedPct: input.usedPct, targetPct: input.targetPct, config });
+  const surplus = surplusOf({ window, now: input.now, usedPct: input.usedPct, targetPct: input.targetPct, config, teams: input.teams });
   return surplus === undefined || !surplus.worth
     ? undefined
-    : { sparePct: surplus.sparePct, paceEnd: surplus.paceEnd, reset: surplus.reset, ownerApproves: config.policy === 'owner' };
+    : { sparePct: surplus.sparePct, accountSparePct: surplus.accountSparePct, paceEnd: surplus.paceEnd, reset: surplus.reset, ownerApproves: config.policy === 'owner' };
 }
 
 /** What the burst lines read of a session's budget now. */
@@ -137,7 +142,7 @@ const BURST_END_LINE =
 function surplusLine(surplus: SurplusHint, zone: TimeZone): string {
   const approval = surplus.ownerApproves ? ' burst.policy is owner, so ask the owner first and add --approved-by "<who>".' : '';
   return (
-    `${BURST_COMMAND}: about ${formatPct(surplus.sparePct)} of the week is projected unused at the pace end (${zone.weekdayMinute(new Date(surplus.paceEnd))}). ` +
+    `${BURST_COMMAND}: about ${formatPct(surplus.sparePct)} of the week${spareShareNote(surplus)} is projected unused at the pace end (${zone.weekdayMinute(new Date(surplus.paceEnd))}). ` +
     `A surplus burst can spend it on independent tasks; preview one: ${BURST_COMMAND} start surplus --reason "<why>".${approval} ${MORE_BURST}`
   );
 }

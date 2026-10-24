@@ -14,6 +14,7 @@ import {
   isBurst,
   isBurstKind,
   isBurstOver,
+  spareShareNote,
   surplusOf,
   withBurst,
   type Burst,
@@ -24,6 +25,7 @@ import {
   type BurstRequest,
 } from './burst.ts';
 import { dailyAllowancePct, weekWindow } from './pace.ts';
+import type { BudgetSplit, TeamsOnAccount } from './parts.ts';
 import { emptyPatterns } from './patterns.ts';
 import type { UsageState } from './store.ts';
 
@@ -49,6 +51,14 @@ const REQUEST: BurstRequest = {
   by: 'lead',
   now: NOW,
 };
+/** A team of `ids` at the default share, with no queued work or lift. */
+function plainTeam(team: string, ids: readonly string[]): BudgetSplit {
+  return { team, ids, sessions: {}, work: new Map(), lifted: new Map() };
+}
+
+/** The team alone on its account, and beside a team of the same weight, which takes half the account's spare. */
+const ALONE: TeamsOnAccount = { split: plainTeam('app', ['lead', 'alpha', 'bravo']), others: [] };
+const SHARED: TeamsOnAccount = { ...ALONE, others: [plainTeam('web', ['lead', 'front', 'back'])] };
 const EVEN = DailyProfile.even();
 const CONTEXT: BurstContext = {
   usedPct: 60,
@@ -59,6 +69,7 @@ const CONTEXT: BurstContext = {
   zone: TimeZone.UTC,
   profile: EVEN,
   sessionsTodayPct: 0,
+  teams: ALONE,
 };
 const DUE = Date.parse('2030-01-08T20:00:00Z');
 const DEADLINE: BurstRequest = { ...REQUEST, kind: 'deadline', stopPct: 80, deadline: DUE, tasks: ['T1', 'T2'] };
@@ -99,7 +110,7 @@ function end(burstAt: number, at: number): BurstEnd {
 }
 
 describe('surplusOf', () => {
-  const input = { window: WINDOW, now: NOW, usedPct: 60, targetPct: 99.5, config: DEFAULT_BURST };
+  const input = { window: WINDOW, now: NOW, usedPct: 60, targetPct: 99.5, config: DEFAULT_BURST, teams: ALONE };
 
   it("projects the week's mean rate so far to the pace end and measures what the target leaves", () => {
     const surplus = surplusOf(input);
@@ -132,6 +143,28 @@ describe('surplusOf', () => {
 
   it("is undefined at the week's very start, which has no rate yet", () => {
     assert.equal(surplusOf({ ...input, now: WINDOW.start }), undefined);
+  });
+
+  it("gives a team that shares the account its part of the account's spare, and judges a burst on that part", () => {
+    const alone = surplusOf(input);
+    const shared = surplusOf({ ...input, teams: SHARED });
+    assert.ok(alone !== undefined && shared !== undefined);
+    assert.equal(alone.accountSparePct, undefined);
+    assert.equal(shared.projectedPct, alone.projectedPct);
+    assert.equal(shared.accountSparePct, alone.sparePct);
+    assert.ok(Math.abs(shared.sparePct - alone.sparePct / 2) < 1e-9);
+    // At 84% used the account spares about 7.8%: worth a burst for a team alone, not for one that takes half of it.
+    const tight = surplusOf({ ...input, usedPct: 84, teams: SHARED });
+    assert.ok(tight?.accountSparePct !== undefined && tight.accountSparePct > 5 && tight.sparePct < 5);
+    assert.equal(tight.worth, false);
+    assert.equal(surplusOf({ ...input, usedPct: 84 })?.worth, true);
+  });
+});
+
+describe('spareShareNote', () => {
+  it("names the account's spare when other teams share it, and nothing for a team alone", () => {
+    assert.equal(spareShareNote({ accountSparePct: undefined }), '');
+    assert.equal(spareShareNote({ accountSparePct: 7.8 }), ", this team's part of the account's 7.8%,");
   });
 });
 
@@ -197,6 +230,11 @@ describe('decideBurst', () => {
     assert.match(refusal(decideBurst({ ...REQUEST, now: RESET - 49 * HOUR }, { ...CONTEXT, zone: JERUSALEM })), /starts only from Mon 01-07 03:00 IST \(/);
     assert.match(refusal(decideBurst({ ...REQUEST, now: PACE_END }, CONTEXT)), /starts only from/);
     assert.match(refusal(decideBurst(REQUEST, { ...CONTEXT, usedPct: 88 })), /projected unused at the pace end, below burst\.minSparePct \(5\.0%\)/);
+    assert.match(
+      refusal(decideBurst(REQUEST, { ...CONTEXT, usedPct: 84, teams: SHARED })),
+      /only 3\.9% of the week, this team's part of the account's 7\.8%, is projected unused at the pace end, below burst\.minSparePct \(5\.0%\)/,
+    );
+    assert.equal(given(decideBurst(REQUEST, { ...CONTEXT, usedPct: 84 })).kind, 'surplus');
   });
 
   it('refuses a deadline burst without a stop %, a deadline in the future or its tasks', () => {

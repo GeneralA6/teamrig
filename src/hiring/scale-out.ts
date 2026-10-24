@@ -18,8 +18,8 @@ import { hireCapProblem, hiresOnTeam, ownerAsk } from './plan.ts';
  * by then, a slice moves out: the latest open tasks due by that date that no started task needs (none mid-change),
  * until every date fits. The slice costs a new hire's part of the team's daily budget today (`hirePct`) a day until
  * its last due or the week's pace end, whichever comes first (a day at least), and goes to an idle hire first, else to
- * a new hire within `hiring.maxSessions`, else to the owner as a card when that cap blocks. No flag while the week's
- * projected spare cannot pay the cost (the areas furthest behind pay first), with no reading of the week or of the
+ * a new hire within `hiring.maxSessions`, else to the owner as a card when that cap blocks. No flag while the team's
+ * part of the week's projected spare cannot pay the cost (the areas furthest behind pay first), with no reading of the week or of the
  * team's daily budget, under `hiring.policy` off, or for the lead or a hired session. Its retire is RETIRE-DUE
  * (src/hiring/due.ts): a hire whose slice is done, or that got none, sits idle. Pure: it takes the team's tasks and
  * tree, the hires still active, the week's surplus, a hire's daily part and now.
@@ -28,7 +28,7 @@ import { hireCapProblem, hiresOnTeam, ownerAsk } from './plan.ts';
 export interface ScaleOutInput extends HireCheckInput {
   readonly tree: TaskTree;
   readonly config: Pick<KitConfig, 'sessions' | 'roles' | 'hiring' | 'register' | 'team'>;
-  /** The week's projected surplus (src/budget/burst.ts `surplusOf`); undefined with no reading of the week. */
+  /** The week's projected surplus, its spare the team's part of the account's (src/budget/burst.ts `surplusOf`); undefined with no reading of the week. */
   readonly spare: Pick<Surplus, 'sparePct' | 'paceEnd'> | undefined;
   /**
    * A new hire's part of the team's daily budget today, in percent of the week like `spare` (src/budget/parts.ts

@@ -1,8 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { APP, CliHarness, TEAM, type CliResult } from '../testing/cli-harness.ts';
+import { formatConfig } from '../config/load.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { ok } from '../testing/hired-team.ts';
+import { teamConfigOf } from '../testing/team-tree.ts';
 
 /**
  * The harness clock is Tuesday 2030-01-08 10:00 UTC; the status line's week resets on Monday 2030-01-14 01:00 UTC,
@@ -70,6 +72,14 @@ describe('check SCALE-OUT', () => {
   it("prices the slice at a new hire's part of the team's daily budget, smaller beside a session of a bigger share", async () => {
     const kit = await behindTeam({ sessions: { alpha: { share: 3 } } });
     assert.match((await hireLines(kit))[1] ?? '', /slice T9 T10, due by 01-09, about 0\.71% of the week, 7\d\.\d% spare\) alpha:/);
+  });
+
+  it("weighs the slice against the team's part of the account's spare when another team shares the account", async () => {
+    const kit = await behindTeam();
+    // A second team of three sessions weighs 3 beside the app team's 17: the app team's part is 17/20 of the 74.2% spare.
+    await kit.files.write(teamConfigOf('web'), formatConfig({ configVersion: 1, sessions: ['lead', 'front', 'back'], roles: { lead: 'lead' } }));
+    const lines = await hireLines(kit);
+    assert.ok(lines.some((line) => /^HIRE SCALE-OUT .*, 63\.1% spare\) alpha:/.test(line)), lines.join('\n'));
   });
 
   it('flags nothing when the week has no spare for the slice', async () => {

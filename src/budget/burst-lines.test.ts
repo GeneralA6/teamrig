@@ -6,6 +6,7 @@ import { JERUSALEM } from '../testing/zone.ts';
 import type { Burst } from './burst.ts';
 import { burstPromptLines, burstStopLines, burstText, surplusHintOf, type BurstFacts, type BurstMarks, type SurplusHint } from './burst-lines.ts';
 import { weekWindow } from './pace.ts';
+import type { BudgetSplit, TeamsOnAccount } from './parts.ts';
 
 const HOUR = 3_600_000;
 const RESET = Date.parse('2030-01-09T01:00:00Z');
@@ -35,7 +36,16 @@ const DEADLINE_BURST: Burst = {
   deadline: Date.parse('2030-01-08T20:00:00Z'),
   tasks: ['T1', 'T2'],
 };
-const HINT: SurplusHint = { sparePct: 34, paceEnd: PACE_END, reset: RESET, ownerApproves: true };
+const HINT: SurplusHint = { sparePct: 34, accountSparePct: undefined, paceEnd: PACE_END, reset: RESET, ownerApproves: true };
+
+/** A team of `ids` at the default share, with no queued work or lift. */
+function plainTeam(team: string, ids: readonly string[]): BudgetSplit {
+  return { team, ids, sessions: {}, work: new Map(), lifted: new Map() };
+}
+
+/** The team alone on its account, and beside a team of the same weight, which takes half the account's spare. */
+const ALONE: TeamsOnAccount = { split: plainTeam('app', ['lead', 'alpha', 'bravo']), others: [] };
+const SHARED: TeamsOnAccount = { ...ALONE, others: [plainTeam('web', ['lead', 'front', 'back'])] };
 const NONE: BurstMarks = { burstAt: undefined, modelBurstAt: undefined, surplusShown: undefined };
 
 function facts(extra: Partial<BurstFacts> = {}): BurstFacts {
@@ -123,10 +133,15 @@ describe('burstPromptLines', () => {
     assert.ok(byLead !== undefined && !byLead.includes('--approved-by'));
     assert.equal(burstPromptLines(facts({ surplus: HINT, burst: SURPLUS_BURST }), { ...NONE, modelBurstAt: NOW }).surplusShown, undefined);
   });
+
+  it("names the account's spare beside the team's part when other teams share the account", () => {
+    const [line] = burstPromptLines(facts({ surplus: { ...HINT, sparePct: 17, accountSparePct: 34 } }), NONE).lines;
+    assert.match(line ?? '', /^teamrig burst: about 17\.0% of the week, this team's part of the account's 34\.0%, is projected unused at the pace end \(Wed 01-09 00:00 UTC\)\. /);
+  });
 });
 
 describe('surplusHintOf', () => {
-  const input = { config: DEFAULT_BURST, window: weekWindow(RESET, 1), now: NOW, usedPct: 60, targetPct: 99.5 };
+  const input = { config: DEFAULT_BURST, window: weekWindow(RESET, 1), now: NOW, usedPct: 60, targetPct: 99.5, teams: ALONE };
 
   it('reads a surplus worth a burst, and whether the owner approves it', () => {
     const hint = surplusHintOf(input);
@@ -144,5 +159,16 @@ describe('surplusHintOf', () => {
     assert.equal(surplusHintOf({ ...input, usedPct: 95 }), undefined);
     assert.equal(surplusHintOf({ ...input, now: RESET - 72 * HOUR }), undefined);
     assert.equal(surplusHintOf({ ...input, now: RESET - 7 * 24 * HOUR }), undefined);
+  });
+
+  it("reads the team's part of the account's spare, and none when that part is too little", () => {
+    const shared = surplusHintOf({ ...input, teams: SHARED });
+    const alone = surplusHintOf(input);
+    assert.ok(shared !== undefined && alone !== undefined);
+    assert.equal(alone.accountSparePct, undefined);
+    assert.equal(shared.accountSparePct, alone.sparePct);
+    assert.ok(Math.abs(shared.sparePct - alone.sparePct / 2) < 1e-9);
+    assert.equal(surplusHintOf({ ...input, usedPct: 84, teams: SHARED }), undefined);
+    assert.notEqual(surplusHintOf({ ...input, usedPct: 84 }), undefined);
   });
 });
