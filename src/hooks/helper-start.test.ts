@@ -13,7 +13,7 @@ const DUTY =
   'The rules above bind you as they bind it, but your brief is your task: leave `teamrig start`, task statuses, register entries, inbox lines and messages to it unless your brief asks for them, and return what it needs.';
 
 function loaded(): ConfigLoad {
-  return { status: 'loaded', path: PATH, config: testConfig({ names: { lead: 'team-lead' } }), issues: [] };
+  return { status: 'loaded', path: PATH, config: testConfig({ names: { lead: 'captain' } }), issues: [] };
 }
 
 function context(overrides: Partial<HelperStartInput> = {}): string {
@@ -56,16 +56,16 @@ describe('helperOf', () => {
 describe('helperStartContext', () => {
   it("gives the session's core rules, then whose helper it is and what it leaves to that session", () => {
     const text = context();
-    assert.ok(text.startsWith(renderCorePack(testConfig({ names: { lead: 'team-lead' } }), COMMAND, 'win32', RULES_CLOCK)));
+    assert.ok(text.startsWith(renderCorePack(testConfig({ names: { lead: 'captain' } }), COMMAND, 'win32', RULES_CLOCK)));
     assert.ok(text.endsWith(`\n\nYou are a helper (\`general-purpose\`) of the \`alpha\` session of team \`app\` (name \`app-alpha\`). ${DUTY}`));
   });
 
   it('never gives the helper a session identity, the lead lines or a note only a session acts on', () => {
     const text = context({ session: 'lead' });
     assert.ok(!text.includes('You are the `'));
-    assert.ok(!text.includes(renderLeadRules(testConfig({ names: { lead: 'team-lead' } }), COMMAND)));
+    assert.ok(!text.includes(renderLeadRules(testConfig({ names: { lead: 'captain' } }), COMMAND)));
     assert.ok(!text.includes('Message the lead as'));
-    assert.ok(text.includes('You are a helper (`general-purpose`) of the `lead` session of team `app` (name `team-lead`).'));
+    assert.ok(text.includes('You are a helper (`general-purpose`) of the `lead` session of team `app` (name `captain`).'));
   });
 
   it('names the session by its current name and says to pass --session when $TEAMRIG_SESSION is not set', () => {

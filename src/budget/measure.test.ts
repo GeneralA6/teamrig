@@ -14,7 +14,7 @@ const DAY = '2030-01-08';
 const SINCE = Date.parse('2030-01-07T00:00:00Z');
 const PROJECTS = join('/', 'u', '.claude', 'projects');
 const PROJECT = join(PROJECTS, 'app');
-const ROSTER = new Roster({ sessions: ['lead', 'alpha', 'bravo'], names: { lead: 'team-lead' }, roles: { lead: 'lead' } }, 'app');
+const ROSTER = new Roster({ sessions: ['lead', 'alpha', 'bravo'], names: { lead: 'captain' }, roles: { lead: 'lead' } }, 'app');
 
 const TITLED_ALPHA = '0000000a-0000-4000-8000-000000000001';
 const MARKED_BRAVO = '0000000b-0000-4000-8000-000000000002';

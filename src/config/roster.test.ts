@@ -5,7 +5,7 @@ import { isRole, Roster } from './roster.ts';
 
 const CONFIG = {
   sessions: ['lead', 'alpha', 'bravo'],
-  names: { lead: 'team-lead' },
+  names: { lead: 'captain' },
   roles: { lead: 'lead', coordinatorOwner: 'alpha' },
 };
 
@@ -15,13 +15,13 @@ describe('Roster', () => {
   it('names a session from the config, else <team>-<id>', () => {
     assert.deepEqual(
       ['lead', 'alpha', 'zulu'].map((id) => roster.nameOf(id)),
-      ['team-lead', 'app-alpha', undefined],
+      ['captain', 'app-alpha', undefined],
     );
   });
 
   it('finds a session by id, by its configured name or by its default name', () => {
     assert.deepEqual(
-      ['alpha', 'team-lead', 'app-bravo'].map((text) => roster.lookup(text)),
+      ['alpha', 'captain', 'app-bravo'].map((text) => roster.lookup(text)),
       [
         { ok: true, id: 'alpha' },
         { ok: true, id: 'lead' },
@@ -33,7 +33,7 @@ describe('Roster', () => {
   it('refuses an unknown name and lists every session with its name', () => {
     assert.deepEqual(roster.lookup('app-lead'), {
       ok: false,
-      error: 'app-lead is not a session on this team (sessions: lead (team-lead), alpha (app-alpha), bravo (app-bravo))',
+      error: 'app-lead is not a session on this team (sessions: lead (captain), alpha (app-alpha), bravo (app-bravo))',
     });
   });
 
@@ -72,7 +72,7 @@ describe('Roster with renames', () => {
     assert.equal(roster.nameOf('alpha'), 'ranger');
     assert.deepEqual(roster.formerNamesOf('alpha'), ['app-alpha', 'scout']);
     assert.deepEqual(roster.formerNamesOf('bravo'), []);
-    assert.equal(roster.describe(), 'lead (team-lead), alpha (ranger), bravo (app-bravo)');
+    assert.equal(roster.describe(), 'lead (captain), alpha (ranger), bravo (app-bravo)');
   });
 
   it('finds a session by any name it has had', () => {
@@ -93,16 +93,16 @@ describe('Roster with renames', () => {
   });
 
   it("prefers a session's current name over another session's former name", () => {
-    const odd = new Roster(CONFIG, 'app', [renameOf('bravo', 'team-lead', 'app-bravo-2')]);
-    assert.deepEqual(odd.lookup('team-lead'), { ok: true, id: 'lead' });
-    assert.equal(odd.allNames().get('team-lead'), 'bravo');
-    assert.deepEqual(odd.idsCalled('team-lead'), ['lead']);
+    const odd = new Roster(CONFIG, 'app', [renameOf('bravo', 'captain', 'app-bravo-2')]);
+    assert.deepEqual(odd.lookup('captain'), { ok: true, id: 'lead' });
+    assert.equal(odd.allNames().get('captain'), 'bravo');
+    assert.deepEqual(odd.idsCalled('captain'), ['lead']);
   });
 
   it('refuses a name of a session no longer on the team, naming its id', () => {
     assert.deepEqual(roster.lookup('ghost'), {
       ok: false,
-      error: 'ghost was the name of zulu, which is no longer on this team (sessions: lead (team-lead), alpha (ranger), bravo (app-bravo))',
+      error: 'ghost was the name of zulu, which is no longer on this team (sessions: lead (captain), alpha (ranger), bravo (app-bravo))',
       pastId: 'zulu',
     });
     assert.equal(roster.nameOf('zulu'), undefined);

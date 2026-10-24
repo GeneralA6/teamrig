@@ -6,7 +6,7 @@ import { APP, CLAUDE_SESSION, CliHarness, contextOf, RENAMES_PATH, renameRecords
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { EXIT } from './runtime.ts';
 
-const NAMED: JsonRecord = { ...TEAM, names: { lead: 'team-lead' } };
+const NAMED: JsonRecord = { ...TEAM, names: { lead: 'captain' } };
 const TRANSCRIPT = join(USER_HOME, 'transcripts', 'session.jsonl');
 
 function hookInput(fields: JsonRecord): string {
@@ -18,7 +18,7 @@ describe('runCli: a Claude Code rename', () => {
     const kit = new CliHarness(NAMED);
     const result = await kit.run(['hook', 'session-start'], { env: { TEAMRIG_SESSION: 'app-alpha' }, stdin: hookInput({ session_title: 'scout' }) });
     const text = contextOf(result);
-    assert.ok(text.includes('You are the `alpha` session of team `app` (name `scout`). Message the lead as `team-lead`.'));
+    assert.ok(text.includes('You are the `alpha` session of team `app` (name `scout`). Message the lead as `captain`.'));
     assert.ok(text.includes('This session was renamed in Claude Code, so its team name is now `scout` (was `app-alpha`); the old name still finds it.'));
     assert.deepEqual(await renameRecordsOf(kit), [['alpha', 'app-alpha', 'scout', 'alpha']]);
   });
@@ -62,8 +62,8 @@ describe('runCli: a Claude Code rename', () => {
   it('notes a title that cannot be the team name at SessionStart, and stays silent on a prompt', async () => {
     const kit = new CliHarness(NAMED);
     const env = { TEAMRIG_SESSION: 'alpha' };
-    const text = contextOf(await kit.run(['hook', 'session-start'], { env, stdin: hookInput({ session_title: 'team-lead' }) }));
-    assert.ok(text.includes('This session\'s Claude Code title "team-lead" is not its team name: team-lead is already the name of lead.'));
+    const text = contextOf(await kit.run(['hook', 'session-start'], { env, stdin: hookInput({ session_title: 'captain' }) }));
+    assert.ok(text.includes('This session\'s Claude Code title "captain" is not its team name: captain is already the name of lead.'));
     assert.deepEqual((await kit.run(['hook', 'inbox-reminder'], { env, stdin: hookInput({ session_title: 'Fix the build' }) })).stdout, []);
     assert.equal(await kit.files.read(RENAMES_PATH), undefined);
   });

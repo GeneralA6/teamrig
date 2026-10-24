@@ -34,14 +34,14 @@ describe('runCli: a hand-started tab binds itself by its Claude Code title (T302
   });
 
   it('binds at SessionStart by the current name, keeping the read position, and says so', async () => {
-    const kit = new CliHarness({ ...TEAM, names: { lead: 'team-lead' } });
+    const kit = new CliHarness({ ...TEAM, names: { lead: 'captain' } });
     await kit.run(['inbox', 'add', '--to', 'lead', '--text', 'old news', '--session', 'alpha']);
     await kit.run(['inbox', 'read', '--session', 'lead'], { env: { CLAUDE_CODE_SESSION_ID: '9f8e7d6c-1111-2222-3333-444455556666' } });
-    const text = contextOf(await kit.run(['hook', 'session-start'], { stdin: prompt({ session_title: 'team-lead', source: 'startup' }) }));
-    assert.ok(text.includes('You are the `lead` session of team `app` (name `team-lead`, roles: lead).'), text);
+    const text = contextOf(await kit.run(['hook', 'session-start'], { stdin: prompt({ session_title: 'captain', source: 'startup' }) }));
+    assert.ok(text.includes('You are the `lead` session of team `app` (name `captain`, roles: lead).'), text);
     assert.ok(text.includes('This tab was bound to the `lead` session from its Claude Code title; nothing was marked read.'), text);
     assert.match((await kit.run(['inbox', 'status', '--session', 'lead'])).stdout[0] ?? '', /^lead 0 unread \(read to line 1 of 1/);
-    assert.deepEqual((await kit.run(['hook', 'inbox-reminder'], { stdin: prompt({ session_title: 'team-lead' }) })).stdout, []);
+    assert.deepEqual((await kit.run(['hook', 'inbox-reminder'], { stdin: prompt({ session_title: 'captain' }) })).stdout, []);
   });
 
   it('says once per reason how to bind a tab it cannot bind, until a rename binds it', async () => {
@@ -120,9 +120,9 @@ describe('runCli: the prompt hook titles a bound tab after its session (T407)', 
   });
 
   it("titles a tab $TEAMRIG_SESSION names by the session's current name", async () => {
-    const kit = new CliHarness({ ...TEAM, names: { lead: 'team-lead' } });
+    const kit = new CliHarness({ ...TEAM, names: { lead: 'captain' } });
     const result = await kit.run(['hook', 'inbox-reminder'], { stdin: prompt(), env: { TEAMRIG_SESSION: 'lead' } });
-    assert.equal(titledPromptOf(result).title, 'team-lead');
+    assert.equal(titledPromptOf(result).title, 'captain');
   });
 
   it('binds the Claude Code session a /clear starts by the title the tab kept', async () => {

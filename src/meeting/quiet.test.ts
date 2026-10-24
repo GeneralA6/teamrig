@@ -9,7 +9,7 @@ const FACTS: QuietFacts = {
   to: 'lead',
   lead: 'lead',
   from: 'alpha',
-  leadName: 'team-lead',
+  leadName: 'captain',
   text: 'the build is green',
   command: 'teamrig',
   zone: TimeZone.UTC,
@@ -24,13 +24,13 @@ describe('the meeting quiet window', () => {
   });
 
   it("gives the meeting's start on the team's clock", () => {
-    assert.match(quietHoldReason({ ...FACTS, zone: JERUSALEM }) ?? '', /^Held: team-lead is in the owner's daily meeting since Tue 01-08 11:00 IST\. /);
+    assert.match(quietHoldReason({ ...FACTS, zone: JERUSALEM }) ?? '', /^Held: captain is in the owner's daily meeting since Tue 01-08 11:00 IST\. /);
   });
 
   it('holds a message to the lead during the meeting, naming the inbox line to leave instead', () => {
     assert.equal(
       quietHoldReason(FACTS),
-      "Held: team-lead is in the owner's daily meeting since Tue 01-08 09:00 UTC. Keep working and leave this as one inbox line, which team-lead reads after the meeting: " +
+      "Held: captain is in the owner's daily meeting since Tue 01-08 09:00 UTC. Keep working and leave this as one inbox line, which captain reads after the meeting: " +
         'teamrig inbox add --to lead --text "...". Only what needs the owner now goes as a message: start it with CRITICAL: and send it again.',
     );
     assert.ok(quietHoldReason({ ...FACTS, from: undefined }) !== undefined, 'a sender no session is known for is held too');

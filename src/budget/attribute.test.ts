@@ -4,7 +4,7 @@ import { Roster } from '../config/roster.ts';
 import { attribute } from './attribute.ts';
 import type { ClaudeSessionFiles } from './discover.ts';
 
-const ROSTER = new Roster({ sessions: ['lead', 'alpha', 'bravo'], names: { lead: 'team-lead' }, roles: { lead: 'lead' } }, 'app');
+const ROSTER = new Roster({ sessions: ['lead', 'alpha', 'bravo'], names: { lead: 'captain' }, roles: { lead: 'lead' } }, 'app');
 
 function session(id: string, main: readonly string[], subagents: readonly string[] = []): ClaudeSessionFiles {
   return { claudeSession: id, main, subagents };
@@ -12,7 +12,7 @@ function session(id: string, main: readonly string[], subagents: readonly string
 
 const TITLES: Readonly<Record<string, string>> = {
   '/b.jsonl': 'alpha',
-  '/c.jsonl': 'team-lead',
+  '/c.jsonl': 'captain',
   '/d.jsonl': 'release checks',
   '/e2.jsonl': 'bravo',
   '/g.jsonl': 'lead',

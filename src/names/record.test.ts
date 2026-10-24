@@ -10,7 +10,7 @@ import { JsonlRenameLog } from './log.ts';
 import { recordRename, type RenameDeps, type RenameOutcome, type RenameRequest } from './record.ts';
 
 const PATH = join('/', 'state', 'renames.jsonl');
-const CONFIG = { sessions: ['lead', 'alpha', 'bravo'], names: { lead: 'team-lead' }, roles: { lead: 'lead' } };
+const CONFIG = { sessions: ['lead', 'alpha', 'bravo'], names: { lead: 'captain' }, roles: { lead: 'lead' } };
 
 function setup(text?: string): { deps: RenameDeps; files: MemoryFiles; mutex: InlineMutex } {
   const files = new MemoryFiles(text === undefined ? {} : { [PATH]: text });
@@ -59,15 +59,15 @@ describe('recordRename', () => {
       { id: 'alpha', to: 'scout', by: 'bravo' },
       { id: 'alpha', to: 'Scout Two', by: 'alpha' },
       { id: 'alpha', to: 'bravo', by: 'alpha' },
-      { id: 'alpha', to: 'team-lead', by: 'alpha' },
+      { id: 'alpha', to: 'captain', by: 'alpha' },
     ];
     const reasons = await Promise.all(requests.map(async (request) => reasonOf(await recordRename(deps, request))));
     assert.deepEqual(reasons, [
-      'zulu is not a session on this team (sessions: lead (team-lead), alpha (app-alpha), bravo (app-bravo))',
+      'zulu is not a session on this team (sessions: lead (captain), alpha (app-alpha), bravo (app-bravo))',
       'only alpha itself or the lead may record its new name',
       '"Scout Two" cannot be a session name: a lowercase letter, then lowercase letters, digits or -, at most 65 characters',
       'bravo is the id of another session',
-      'team-lead is already the name of lead',
+      'captain is already the name of lead',
     ]);
     assert.equal(files.get(PATH), undefined);
   });
