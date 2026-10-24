@@ -72,11 +72,11 @@ describe('parseConfig', () => {
     assert.deepEqual(config.names, { alpha: 'captain', bravo: 'bravo' });
   });
 
-  it('refuses names of strangers, malformed names and names that are taken', () => {
+  it('refuses names of strangers, malformed names, reserved names and names that are taken', () => {
     const { config, issues } = parseConfig({
-      sessions: ['alpha', 'bravo', 'charlie', 'delta'],
+      sessions: ['alpha', 'bravo', 'charlie', 'delta', 'echo'],
       roles: { lead: 'alpha' },
-      names: { alpha: 'boss', bravo: 'boss', charlie: 'alpha', delta: 'Delta', zulu: 'z', constructor: 'c' },
+      names: { alpha: 'boss', bravo: 'boss', charlie: 'alpha', delta: 'Delta', echo: 'team-lead', zulu: 'z', constructor: 'c' },
     });
     assert.deepEqual(
       issues.map((issue) => `${issue.path}: ${issue.message}`),
@@ -84,6 +84,7 @@ describe('parseConfig', () => {
         'names.bravo: "boss" is already the name of alpha',
         'names.charlie: "alpha" is already a session id',
         'names.delta: expected a name: a lowercase letter, then lowercase letters, digits or -, at most 65 characters (got "Delta")',
+        'names.echo: expected a name Claude Code does not keep for itself (main, team-lead, user, system): a message to one never reaches a session (got "team-lead")',
         'names.zulu: is not one of the sessions',
         'names.constructor: is not one of the sessions',
       ],
