@@ -48,6 +48,10 @@ describe('TeamTree', () => {
     assert.deepEqual(TREE.parentLeadOf('ui'), { team: 'web', id: 'lead' });
     assert.equal(TREE.parentLeadOf('app'), undefined);
     assert.equal(TREE.parentLeadOf('nope'), undefined);
+    assert.deepEqual(TREE.ownerLeadAbove('web'), { team: 'app', id: 'lead' });
+    assert.deepEqual(TREE.ownerLeadAbove('ui'), { team: 'app', id: 'lead' }, "the root's lead, not the parent's");
+    assert.equal(TREE.ownerLeadAbove('app'), undefined);
+    assert.equal(TREE.ownerLeadAbove('nope'), undefined);
     assert.deepEqual(TREE.childrenOf('app'), ['ops', 'web']);
     assert.deepEqual(TREE.childrenOf('ui'), []);
     assert.equal(TREE.rootOf('ui'), 'app');
@@ -96,6 +100,7 @@ describe('TeamTree', () => {
     const tree = new TeamTree([team('a', 'c'), team('b', 'a'), team('c', 'b'), team('d', 'a')]);
     assert.deepEqual(tree.problems(), [{ kind: 'tree-loop', teams: ['a', 'b', 'c'] }]);
     assert.equal(tree.rootOf('d'), undefined);
+    assert.deepEqual(tree.ownerLeadAbove('d'), { team: 'a', id: 'lead' }, 'no root: the parent lead');
     assert.equal(tree.levelOf('a'), undefined);
     assert.deepEqual(tree.ancestorsOf('d'), []);
     assert.deepEqual(

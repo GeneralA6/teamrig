@@ -1,5 +1,6 @@
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
+import { formatAddress } from '../../core/address.ts';
 import { KIT_NAME } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import type { TimeZone } from '../../core/zone.ts';
@@ -14,6 +15,7 @@ import { noPositionals, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone, type Access, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
+import { loadTree } from '../tree.ts';
 import { weekLineOf } from './budget.ts';
 import { inboxDepsOf, read } from './inbox.ts';
 import { ownRegister, weekFitOf } from './register.ts';
@@ -39,7 +41,10 @@ interface MeetingKit {
   readonly zone: TimeZone;
 }
 
-/** The caller's team, refused unless the caller is its lead: the meeting is the lead's with the owner. */
+/**
+ * The caller's team, refused unless the caller is its lead and the team a root team: the meeting is the lead's with the
+ * owner, and a child team's waits on the owner go up to the lead at its tree's root, whose agenda lists them (T509).
+ */
 async function meetingKit(args: ParsedArgs, runtime: CliRuntime, access: Access): Promise<MeetingKit> {
   noPositionals(args);
   const kit = await openTeamKit(runtime);
@@ -51,6 +56,11 @@ async function meetingKit(args: ParsedArgs, runtime: CliRuntime, access: Access)
   const lead = holder !== undefined && roster.ids.includes(holder) ? holder : undefined;
   if (lead === undefined || caller !== lead) {
     throw new RefusedError(`only the lead${lead === undefined ? '' : ` (${roster.nameOf(lead) ?? lead})`} runs the owner's daily meeting`);
+  }
+  const team = kit.paths.team;
+  const above = (await loadTree(runtime)).tree.ownerLeadAbove(team);
+  if (above !== undefined) {
+    throw new RefusedError(`team ${team} meets no owner: the owner's daily meeting is ${formatAddress(above)}'s, whose agenda lists ${team}'s waits on the owner`);
   }
   const store = new MeetingStore(runtime.files, kit.paths.meeting);
   return { kit, config, roster, lead, leadName: roster.nameOf(lead) ?? lead, store, now: runtime.clock.now(), zone: teamZone(config, runtime) };
