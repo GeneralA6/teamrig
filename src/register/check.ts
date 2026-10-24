@@ -28,6 +28,7 @@ export const FLAG_KINDS = [
   'PILE-UP',
   'OVER-PACE',
   'OVER-LIMIT',
+  'OVER-SIZE',
   'OWNER-UNPLANNED',
   'DUE-UNPLANNED',
   'OFF-GOAL',
