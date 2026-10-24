@@ -2,14 +2,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
+import { formatAddress } from '../../core/address.ts';
 import { isRecord, stringField, type JsonRecord } from '../../core/guards.ts';
 import { claudeConfigDir, claudeTempDir, ENV } from '../../core/home.ts';
 import { resolveTeam, type TeamResolution } from '../../core/team.ts';
-import { OwnPaths, TeamFolders, type LeadPaths } from '../../hooks/lead-boundary.ts';
+import { OwnPaths, TeamFolders, type LeadPaths, type SubTeamPlace } from '../../hooks/lead-boundary.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
 import { indexMarks } from '../../inbox/marks.ts';
 import { openKit, rosterOf, teamFolders, type Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
+import type { KitTree } from '../tree.ts';
 import { inboxDepsOf } from './inbox.ts';
 
 /** A hook's stdin as JSON; undefined when it is not JSON, which every hook treats as nothing to do. */
@@ -113,17 +115,41 @@ export async function hookScopeOf(runtime: CliRuntime, payload: JsonRecord): Pro
 }
 
 /**
- * Where the lead's calls land in this team. Its own paths: its teamrig folder, Claude Code's memory folders, its
- * session scratchpads (notes and command input it keeps for itself, never work to hand off) and
- * `leadBoundary.ownPaths`. In the teamrig folder, a search outside the config, the rules, the register's state and
- * the places named for the lead is research (T736).
+ * The folders of every team below `team` in the tree (T1019), each with the address of the child team's lead it
+ * hangs under, who answers a question about it: a parent lead adds tasks only to its child teams. A team in a loop
+ * of parents is left out, so the team's own folder is never read as a sub-team's.
  */
-export function leadPathsOf(runtime: CliRuntime, kit: Kit, config: KitConfig): LeadPaths {
+export function subTeamPlacesOf({ tree, teams }: KitTree, team: string): SubTeamPlace[] {
+  return tree.childrenOf(team).flatMap((child) => {
+    const lead = tree.leadOf(child);
+    if (lead === undefined) {
+      return [];
+    }
+    const owner = formatAddress({ team: child, id: lead });
+    return [child, ...tree.descendantsOf(child)]
+      .filter((below) => below !== team)
+      .flatMap((below) => {
+        const paths = teams.get(below)?.kit.paths;
+        return paths === undefined ? [] : [{ team: below, home: paths.home, own: [paths.config, paths.teamRules, paths.state], owner }];
+      });
+  });
+}
+
+/**
+ * Where the lead's calls land in this team. Its own paths: its teamrig folder, Claude Code's memory folders, its
+ * session scratchpads (notes and command input it keeps for itself, never work to hand off), its sub-teams' configs,
+ * rules and states, and `leadBoundary.ownPaths`. In the teamrig folder, a search outside the config, the rules, the register's state and
+ * the places named for the lead is research (T736), and so is one in a sub-team's folder outside its config, rules
+ * and state, read from `tree` (T1019).
+ */
+export function leadPathsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, tree: KitTree): LeadPaths {
   const memory = join(claudeConfigDir(runtime.env, runtime.userHome), 'projects', '*', 'memory');
   const scratchpads = join(claudeTempDir(runtime.env, tmpdir()), 'claude', '*', '*', 'scratchpad');
   const { home, config: configFile, teamRules, state } = kit.paths;
+  const subTeams = subTeamPlacesOf(tree, kit.paths.team);
+  const places = { home, own: [configFile, teamRules, state], lead: config.roles.lead, sessions: config.sessions, subTeams };
   return {
-    own: new OwnPaths([home, memory, scratchpads, ...config.leadBoundary.ownPaths], runtime.userHome),
-    team: new TeamFolders({ home, own: [configFile, teamRules, state], lead: config.roles.lead, sessions: config.sessions }, runtime.userHome),
+    own: new OwnPaths([home, memory, scratchpads, ...subTeams.flatMap((sub) => sub.own), ...config.leadBoundary.ownPaths], runtime.userHome),
+    team: new TeamFolders(places, runtime.userHome),
   };
 }

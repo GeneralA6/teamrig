@@ -686,7 +686,7 @@ async function leadStopLines(runtime: CliRuntime, scope: SessionScope, transcrip
     return [];
   }
   const turn = turnToolsOf(text, Buffer.byteLength(text, 'utf8') >= TRANSCRIPT_TAIL_BYTES, undefined);
-  const line = leadStopLine(leadTallyOf(turn, leadPathsOf(runtime, kit, config)), config.leadBoundary.searchNudgeAt);
+  const line = leadStopLine(leadTallyOf(turn, leadPathsOf(runtime, kit, config, await loadTree(runtime))), config.leadBoundary.searchNudgeAt);
   return line === undefined ? [] : [line];
 }
 

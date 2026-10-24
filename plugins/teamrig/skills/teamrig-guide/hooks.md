@@ -579,11 +579,12 @@ the lead's tab (`roles.lead`), the same hook counts the turn's calls that are wo
 - a test run or a build;
 - research: a `WebFetch` or `WebSearch`, or a search (a `Grep` or `Glob`, a shell `grep`, `rg` or `find`) of another
   session's place in the team's teamrig folder (`notes/<session>`, `handover/<session>.md`) or of a shared folder
-  there, such as all the notes;
+  there, such as all the notes, or of a sub-team's folder, whose questions go to the lead of the child team it hangs
+  under (`web/lead`, for a grandchild team `ui` under `web` too);
 - a code search: a `Read` of a source file, a `Grep` or `Glob`, a shell `grep`, `rg` or `find`.
 
-Its own files are the team's teamrig folder, Claude Code's memory folders and session scratchpads, and
-`leadBoundary.ownPaths` (`~` is your home, `*` one folder name), so its board, notes, agenda and scratch files never
+Its own files are the team's teamrig folder, Claude Code's memory folders and session scratchpads, its sub-teams'
+configs, rules and states, and `leadBoundary.ownPaths` (`~` is your home, `*` one folder name), so its board, notes, agenda and scratch files never
 count, nor does reading results, boards and docs. In the teamrig folder only a search of the config, the rules, the
 register's state or a place named for the lead is the lead's own; another search there looks for an answer another
 session owns.
