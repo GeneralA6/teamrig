@@ -1,11 +1,14 @@
+import { join } from 'node:path';
 import { KIT_NAME } from "../../core/home.js";
 import { DailyProfile } from "../../budget/active-time.js";
-import { activeBurst, BURST_KINDS, burstFloorOf, decideBurst, isBurst, isBurstKind, sessionsTodayPct, surplusOf, } from "../../budget/burst.js";
+import { activeBurst, BURST_KINDS, burstFloorOf, decideBurst, isBurst, isBurstKind, sessionsTodayPct, spareShareNote, surplusOf, } from "../../budget/burst.js";
 import { BurstLog } from "../../budget/burst-log.js";
 import { BURST_COMMAND, burstText } from "../../budget/burst-lines.js";
 import { formatPct } from "../../budget/format.js";
+import { cachedWork, WORK_CACHE_FILE } from "../../budget/work.js";
 import { activeHires, HiringLog } from "../../hiring/log.js";
 import { ACTIVE_STATUSES } from "../../register/model.js";
+import { teamsOnAccountOf } from "../account-teams.js";
 import { noPositionals, onePositional, requiredFlag, UsageError } from "../args.js";
 import { readBursts } from "../burst-reading.js";
 import { callerOf, listOf } from "../inputs.js";
@@ -61,17 +64,26 @@ function weekStatusLine(week, zone) {
     }
     return `WEEK ${formatPct(usedPct)} of the week used; the pace ends ${zone.weekdayMinute(new Date(window.paceEnd))}, the reset is ${zone.weekdayMinute(new Date(window.reset))}`;
 }
-/** The surplus line, when the week is known. */
-function surplusStatusLine(week, config, now, zone) {
+/**
+ * The team and the other teams on its account (src/cli/account-teams.ts `teamsOnAccountOf`), split by the roster, lifts
+ * in force at the week's use and each session's queued work as the hooks read it (`cachedWork`).
+ */
+async function teamsOf(runtime, kit, config, roster, now, usedPct) {
+    const work = await cachedWork(runtime.files, kit.paths.events, join(kit.paths.usage, WORK_CACHE_FILE), config.register.priorities);
+    return teamsOnAccountOf(runtime, { team: kit.paths.team, config, usageDir: kit.paths.usage, ids: roster.ids, liftsPath: kit.paths.lifts, work }, now, usedPct);
+}
+/** The week's surplus with the team's part of its spare (`surplusOf`); undefined while the week is unknown or has no rate yet. */
+async function teamSurplusOf(runtime, kit, config, roster, week, now) {
     const { usedPct, window } = week;
     if (usedPct === undefined || window === undefined) {
         return undefined;
     }
-    const surplus = surplusOf({ window, now, usedPct, targetPct: config.budget.targetPct, config: config.burst });
-    if (surplus === undefined) {
-        return undefined;
-    }
-    const projected = `about ${formatPct(surplus.sparePct)} of the week projected unused at the pace end (budget.targetPct ${formatPct(config.budget.targetPct)})`;
+    const teams = await teamsOf(runtime, kit, config, roster, now, usedPct);
+    return surplusOf({ window, now, usedPct, targetPct: config.budget.targetPct, config: config.burst, teams });
+}
+/** The surplus line: the team's part of the spare, and whether a surplus burst may start now. */
+function surplusStatusLine(surplus, config, zone) {
+    const projected = `about ${formatPct(surplus.sparePct)} of the week${spareShareNote(surplus)} projected unused at the pace end (budget.targetPct ${formatPct(config.budget.targetPct)})`;
     if (!surplus.open) {
         return `SURPLUS ${projected}; a surplus burst may start from ${zone.weekdayMinute(new Date(surplus.opensAt))} (burst.surplusHours ${config.burst.surplusHours} before the reset)`;
     }
@@ -80,7 +92,7 @@ function surplusStatusLine(week, config, now, zone) {
         : `SURPLUS ${projected}: below burst.minSparePct (${formatPct(config.burst.minSparePct)}), so no surplus burst`;
 }
 /** What to run next: end the burst in force, else start one the week allows. */
-function nextLine(config, inForce, week, now) {
+function nextLine(config, inForce, surplus) {
     if (inForce !== undefined) {
         return `NEXT end it early: ${BURST_COMMAND} end --reason "<why>"`;
     }
@@ -88,8 +100,6 @@ function nextLine(config, inForce, week, now) {
         return undefined;
     }
     const approval = config.burst.policy === 'owner' ? ' --approved-by "<who>"' : '';
-    const { usedPct, window } = week;
-    const surplus = usedPct === undefined || window === undefined ? undefined : surplusOf({ window, now, usedPct, targetPct: config.budget.targetPct, config: config.burst });
     if (surplus?.worth === true) {
         return `NEXT preview a surplus burst: ${BURST_COMMAND} start surplus --reason "<why>"${approval}`;
     }
@@ -107,9 +117,9 @@ export async function burst(args, runtime) {
     const { records } = await new BurstLog(runtime.files, kit.paths.bursts).read();
     const inForce = activeBurst(records, now, week.usedPct);
     const lines = [`POLICY burst.policy ${config.burst.policy}: ${POLICY_TEXT[config.burst.policy]}`, weekStatusLine(week, zone)];
-    const surplus = surplusStatusLine(week, config, now, zone);
+    const surplus = await teamSurplusOf(runtime, kit, config, roster, week, now);
     if (surplus !== undefined) {
-        lines.push(surplus);
+        lines.push(surplusStatusLine(surplus, config, zone));
     }
     if (inForce === undefined) {
         const last = records.filter(isBurst).at(-1);
@@ -125,7 +135,7 @@ export async function burst(args, runtime) {
             lines.push(`  its hires: ${namesOf(roster, hired.map((hire) => hire.session)).join(', ')} (${hired.length} of ${inForce.hires})`);
         }
     }
-    const next = nextLine(config, inForce, week, now);
+    const next = nextLine(config, inForce, surplus);
     if (next !== undefined) {
         lines.push(next);
     }
@@ -205,6 +215,7 @@ export async function start(args, runtime) {
         zone,
         profile: DailyProfile.ofQuietHours(config.budget.quietHours),
         sessionsTodayPct: sessionsTodayPct(sessions, week, bySession, now),
+        teams: await teamsOf(runtime, kit, config, roster, now, week.usedPct),
     });
     if (decision.kind === 'refused') {
         throw new RefusedError(decision.reason);

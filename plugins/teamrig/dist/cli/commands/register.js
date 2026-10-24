@@ -2,7 +2,7 @@ import { LeadTree } from "../../config/lead-tree.js";
 import { formatAddress } from "../../core/address.js";
 import { JsonlDailyLog } from "../../core/daily-log.js";
 import { SecretScanner } from "../../core/secrets.js";
-import { burstsOver, surplusOf } from "../../budget/burst.js";
+import { burstsOver } from "../../budget/burst.js";
 import { formatW } from "../../budget/format.js";
 import { timingText, waitTiming } from "../../decisions/lines.js";
 import { teamDecisions } from "../../decisions/team.js";
@@ -40,7 +40,7 @@ import { EXIT, RefusedError } from "../runtime.js";
 import { loadTree } from "../tree.js";
 import { teamRegister } from "../team-register.js";
 import { readBursts } from "../burst-reading.js";
-import { readHirePct } from "../hire-cost.js";
+import { readScaleOutBudget } from "../hire-cost.js";
 import { readWPerPct } from "../stored-week.js";
 import { readTaskSpend } from "../task-spend.js";
 import { snapshotDirOf } from "./budget.js";
@@ -564,7 +564,7 @@ export async function checkReport(args, runtime) {
     const zone = teamZone(own.config, runtime);
     const week = weekFor(args, own.snapshot, now, zone);
     const bursts = await readBursts(runtime, own.paths, own.config.budget, now.getTime());
-    const { usedPct, window } = bursts;
+    const { usedPct } = bursts;
     const leftPct = usedPct === undefined ? undefined : leftOfWeek(own.config.budget.targetPct, usedPct);
     // OVER-SIZE reads the own team's metered use, as STOPGAP-DONE reads its files: a sub-team's sessions meter in its own home.
     const { overSizeMultiple } = own.config.register.check;
@@ -579,9 +579,8 @@ export async function checkReport(args, runtime) {
     const sections = week === null || week !== currentWeekOf(own.snapshot, now, zone) ? checked : withOverLimit(checked, await weekFitOf(runtime, { own, teams }, week, tree));
     const { records } = await new HiringLog(runtime.files, own.paths.hires).read();
     const over = burstsOver(bursts.records, now.getTime(), usedPct);
-    const spare = usedPct === undefined || window === undefined ? undefined : surplusOf({ window, now: now.getTime(), usedPct, targetPct: own.config.budget.targetPct, config: own.config.burst });
     const tasks = [...own.snapshot.state.tasks.values()];
-    const hirePct = spare === undefined ? undefined : await readHirePct(runtime, own.paths, own.config, tasks, now.getTime());
+    const { spare, hirePct } = await readScaleOutBudget(runtime, own.paths, own.config, tasks, bursts, now.getTime());
     const input = { hires: activeHires(records), tasks, config: own.config, burstsOver: over, now };
     const scaleOut = scaleOutFlags({ ...input, tree: new TaskTree(own.snapshot.state.tasks, now, zone, week), spare, hirePct });
     const hires = [...scaleOut.flags, ...hireFlags(input, scaleOut.busy)];

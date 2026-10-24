@@ -1,6 +1,6 @@
 import { KIT_NAME } from "../core/home.js";
 import { formatPct } from "./format.js";
-import { surplusOf } from "./burst.js";
+import { spareShareNote, surplusOf } from "./burst.js";
 /**
  * The burst's part of the live budget lines, pure: the person's line when a burst the session is in
  * starts and when it ends; the model's line once at its start (how to work in it) and once at its end
@@ -15,10 +15,10 @@ export function surplusHintOf(input) {
     if (config.policy === 'off' || window === undefined) {
         return undefined;
     }
-    const surplus = surplusOf({ window, now: input.now, usedPct: input.usedPct, targetPct: input.targetPct, config });
+    const surplus = surplusOf({ window, now: input.now, usedPct: input.usedPct, targetPct: input.targetPct, config, teams: input.teams });
     return surplus === undefined || !surplus.worth
         ? undefined
-        : { sparePct: surplus.sparePct, paceEnd: surplus.paceEnd, reset: surplus.reset, ownerApproves: config.policy === 'owner' };
+        : { sparePct: surplus.sparePct, accountSparePct: surplus.accountSparePct, paceEnd: surplus.paceEnd, reset: surplus.reset, ownerApproves: config.policy === 'owner' };
 }
 function plural(count, word) {
     return `${count} ${word}${count === 1 ? '' : 's'}`;
@@ -74,7 +74,7 @@ const BURST_END_LINE = `${BURST_COMMAND}: the burst has ended. Finish the step i
     `the burst's hires are due to retire (${KIT_NAME} check lists them). ${MORE_BURST}`;
 function surplusLine(surplus, zone) {
     const approval = surplus.ownerApproves ? ' burst.policy is owner, so ask the owner first and add --approved-by "<who>".' : '';
-    return (`${BURST_COMMAND}: about ${formatPct(surplus.sparePct)} of the week is projected unused at the pace end (${zone.weekdayMinute(new Date(surplus.paceEnd))}). ` +
+    return (`${BURST_COMMAND}: about ${formatPct(surplus.sparePct)} of the week${spareShareNote(surplus)} is projected unused at the pace end (${zone.weekdayMinute(new Date(surplus.paceEnd))}). ` +
         `A surplus burst can spend it on independent tasks; preview one: ${BURST_COMMAND} start surplus --reason "<why>".${approval} ${MORE_BURST}`);
 }
 /** The model's burst lines with a prompt: its start or end once, and a surplus once a week; and the marks to keep. */

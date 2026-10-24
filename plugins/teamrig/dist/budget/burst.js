@@ -2,12 +2,14 @@ import { MS_PER_HOUR } from "../core/time.js";
 import { DailyProfile } from "./active-time.js";
 import { formatPct } from "./format.js";
 import { spanAllowancePct } from "./pace.js";
+import { teamShareOf } from "./parts.js";
 import { wSince } from "./week.js";
 /**
  * A burst: the lead's time-boxed scale-out of named sessions onto helpers and hired sessions, for one of
  * two reasons. `surplus`: the week would end with budget unused, measured as the share of the week
  * projected unused at the pace end at the week's mean rate so far; it starts only from `burst.surplusHours`
- * before the reset, once at least `burst.minSparePct` is projected unused, and ends at the pace end.
+ * before the reset, once the team's part of it (`surplusOf`) is at least `burst.minSparePct`, and ends at
+ * the pace end.
  * `deadline`: work the user needs by a time; it names its tasks and a stop %, and ends at the deadline or
  * the reset. Every burst ends at its stop % at the latest, never above `budget.targetPct`, so it never
  * spends the reserve. Only a person starts one, by command (`burst.policy`): it spends more of the week.
@@ -22,20 +24,35 @@ export function isBurst(record) {
 }
 /**
  * The week's surplus: the use so far, plus the week's mean rate so far (its use over the time since its
- * start) until the pace end, against the target. The mean counts nights and quiet days alike, so it
- * projects the team's own rhythm; undefined at the week's very start, which has no rate yet.
+ * start) until the pace end, against the target, and the team's part of what that leaves. The mean counts
+ * nights and quiet days alike, so it projects the account's own rhythm; undefined at the week's very start,
+ * which has no rate yet.
  */
 export function surplusOf(input) {
-    const { window, now, usedPct, targetPct, config } = input;
+    const { window, now, usedPct, targetPct, config, teams } = input;
     const elapsed = now - window.start;
     if (elapsed <= 0) {
         return undefined;
     }
     const projectedPct = usedPct + (usedPct / elapsed) * Math.max(0, window.paceEnd - now);
-    const sparePct = Math.max(0, targetPct - projectedPct);
+    const accountSparePct = Math.max(0, targetPct - projectedPct);
+    const sparePct = teamShareOf(accountSparePct, teams.split, teams.others);
     const opensAt = window.reset - config.surplusHours * MS_PER_HOUR;
     const open = now >= opensAt && now < window.paceEnd;
-    return { reset: window.reset, opensAt, paceEnd: window.paceEnd, projectedPct, sparePct, open, worth: open && sparePct >= config.minSparePct };
+    return {
+        reset: window.reset,
+        opensAt,
+        paceEnd: window.paceEnd,
+        projectedPct,
+        sparePct,
+        accountSparePct: teams.others.length === 0 ? undefined : accountSparePct,
+        open,
+        worth: open && sparePct >= config.minSparePct,
+    };
+}
+/** After the team's spare in a line: ", this team's part of the account's 3.0%," when other teams share it; '' for a team alone. */
+export function spareShareNote(surplus) {
+    return surplus.accountSparePct === undefined ? '' : `, this team's part of the account's ${formatPct(surplus.accountSparePct)},`;
 }
 function refused(reason) {
     return { kind: 'refused', reason };
@@ -69,14 +86,14 @@ function capsProblem(request, config) {
 function endOf(request, context, window, usedPct) {
     const { now } = request;
     if (request.kind === 'surplus') {
-        const surplus = surplusOf({ window, now, usedPct, targetPct: context.targetPct, config: context.config });
+        const surplus = surplusOf({ window, now, usedPct, targetPct: context.targetPct, config: context.config, teams: context.teams });
         if (surplus === undefined || !surplus.open) {
             const from = context.zone.weekdayMinute(new Date(window.reset - context.config.surplusHours * MS_PER_HOUR));
             return { problem: `a surplus burst starts only from ${from} (burst.surplusHours ${context.config.surplusHours} before the reset) until the pace end` };
         }
         if (!surplus.worth) {
             return {
-                problem: `only ${formatPct(surplus.sparePct)} of the week is projected unused at the pace end, below burst.minSparePct ` +
+                problem: `only ${formatPct(surplus.sparePct)} of the week${spareShareNote(surplus)} is projected unused at the pace end, below burst.minSparePct ` +
                     `(${formatPct(context.config.minSparePct)}): there is no surplus to spend`,
             };
         }
