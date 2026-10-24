@@ -757,6 +757,15 @@ while the mark holds: 5 minutes, or until the session's step no longer asks for 
 is logged as `FAILED to start` and held the same way. A failure of the pass never costs the tab its wake answer; a pass 15 minutes old, never run or failed shows in `teamrig check` as
 FLEET-STALE, a warning for the lead.
 
+A reopened tab whose SessionStart hook has not written its session's record 5 minutes after the reopen loaded no
+teamrig, as one opened while an install was copied, and [the hookless-tab check](#end-of-a-turn-hookless-tabs) cannot
+see it. The pass logs each such reopen once as a `"kind": "hookless"` line in `state/idle-pass.jsonl` and, in `on`,
+tells the lead with an [urgent line](#urgent-lines) (the coordinator's owner for the lead's own tab): `HOOKLESS api
+(session alpha): reopened 01-08 10:00 UTC, and no teamrig hook has started in its tab in the 7 min since, so it gets no
+inbox, guards or tab status: /exit that tab and run claude --resume <id> in its terminal` (`run teamrig open alpha`
+for a tab that opened fresh). A line the inbox refused is logged with why, and not tried again;
+`state/idle-pass.json` keeps each told reopen's time.
+
 ## The mod: the /teamrig command
 
 In every session, a headless `claude -p` included, the mod adds `/teamrig <command> [args]`: it runs

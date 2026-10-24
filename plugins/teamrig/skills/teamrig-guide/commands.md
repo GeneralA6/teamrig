@@ -959,8 +959,11 @@ start under the wake priority its budget leaves it, no [urgent line](hooks.md#ur
 `KEEP` one it keeps open and why, `REOPEN` a session teamrig closed that the wake check would now wake (urgent lines
 posted for it, work handed to it since its close, or the day's start with work it can start), `LATER` such a session
 this pass leaves for the next (one reopen a pass, urgent lines first, the oldest first, then the most urgent top task,
-and only with room on the host), `CLOSED` one teamrig closed with nothing it can start, and `AWAY` one not running that
-teamrig did not close; then a `PASS` total.
+and only on a settled plugin install with room on the host), `CLOSED` one teamrig closed with nothing it can start,
+and `AWAY` one not running that teamrig did not close; then a `PASS` total. A tab opened while a plugin install is
+copied runs without teamrig's hooks, so the install is not settled, and the reopen is `LATER` with why, while a teamrig
+install the folder uses lacks its hooks file, a mod module that file names or `dist/cli/main.js`, or anything in the
+plugin store an install writes changed in the last 30 seconds.
 
 With `open.idle.mode: dry-run` the wake check runs this pass itself, once a minute across the team
 ([the idle pass](hooks.md#the-idle-pass)), and appends to `state/idle-pass.jsonl` each step whose kind changed since
@@ -1950,8 +1953,9 @@ prints `KEPT <why>` when the session no longer closes, and `FAILED to weigh shop
 
 The idle pass's reopen of one session it closed, once work would wake it: the pass runs it hidden; you do not run it
 yourself. The session may have been opened, or its work done, since the pass, so it judges the session again the way
-the pass does, then opens it as `teamrig open` does: in its last Claude Code session when that is small and recent
-enough, else fresh, with the reopen logged in the team's `state/session-log.jsonl`. The
+the pass does, and keeps it closed while the plugin install is not settled (the pass's `LATER` above says when), then
+opens it as `teamrig open` does: in its last Claude Code session when that is small and recent enough, else fresh,
+with the reopen logged in the team's `state/session-log.jsonl`. The
 [urgent lines](hooks.md#urgent-lines) posted for it while it was closed are quoted in its first prompt, each with its
 time and sender, ahead of the prompt's own text, and taken once its tab opened, so its wake check does not wake it on
 them again; kept closed, they wait for the next pass. Each outcome (reopened, kept, failed) is one JSON line in the
