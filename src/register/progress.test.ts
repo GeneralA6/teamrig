@@ -46,7 +46,7 @@ describe('noProgressFlag', () => {
     const touchedOpen = planned({ id: 'T3', ownerSeenAt: YESTERDAY });
     const dropped = planned({ id: 'T4', status: 'dropped', ownerSeenAt: YESTERDAY });
     const unplanned = testTask({ id: 'T5', status: 'done', ownerSeenAt: YESTERDAY });
-    assert.match(flagOf([planned(), before, touchedOpen, dropped, unplanned]) ?? '', /^NO-PROGRESS T1 /);
+    assert.match(flagOf([planned(), before, touchedOpen, dropped, unplanned]) ?? '', /^NO-PROGRESS T2 /, 'raised, on the started T2: a started task leads its priority in plan order');
   });
 
   it('names the first planned task in plan order its owner can move now', () => {
