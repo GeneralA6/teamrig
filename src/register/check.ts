@@ -49,6 +49,9 @@ const HELD_STATUSES: readonly TaskStatus[] = ['open', 'in-progress', 'waiting'];
 /** OVER-PACE's pace: a top task finished, or shipped and waiting for its proof. */
 const FINISHED_STATUSES: readonly TaskStatus[] = ['done', 'verifying'];
 
+/** OVER-PACE's least pace: an owner always has its first held top task in hand, so one is never too many. */
+const IN_HAND = 1;
+
 export interface Flag {
   readonly kind: FlagKind;
   readonly task: Task;
@@ -86,7 +89,8 @@ export interface Flag {
  * - PILE-UP: the oldest verifying task of an owner holding more than `maxVerifying` of them (0 turns it off): shipped
  *   changes pile up unproven;
  * - OVER-PACE: an owner's held tasks of the top priority (open, in progress or waiting), in plan order, past the count
- *   of top tasks it finished (done or verifying) in the PACE_DAYS before now, on the first held task past that pace:
+ *   of top tasks it finished (done or verifying) in the PACE_DAYS before now, and past the first, which is in hand at
+ *   any pace, on the first held task past that pace:
  *   it holds more top work than it gets through, so the top priority no longer says what comes first. Not before
  *   the owner has held tasks for PACE_DAYS, so a new session has a pace to read;
  * - STALE: no event for `staleAfterHours` (not raised on top of NOT-PICKED-UP, nor for a verifying task with an
@@ -296,12 +300,16 @@ function overPaces(all: readonly Task[], active: readonly Task[], top: number, a
   const paces = new Map<string, string>();
   for (const [owner, tasks] of held) {
     const pace = finished.get(owner) ?? 0;
-    const past = tasks[pace];
+    const past = tasks[Math.max(pace, IN_HAND)];
     const first = firstAssigned.get(owner);
     if (past !== undefined && first !== undefined && first <= since) {
       const level = priorityText(top);
-      const count = `${tasks.length} unfinished ${level} task${tasks.length === 1 ? '' : 's'}`;
-      paces.set(past.id, `${owner} holds ${count}, more than the ${pace} ${level} it finished in ${PACE_DAYS} days; this is the first past that pace`);
+      const count = `${tasks.length} unfinished ${level} tasks`;
+      const against =
+        pace === 0
+          ? ` and finished no ${level} in ${PACE_DAYS} days; this is the first past the one in hand`
+          : `, more than the ${pace} ${level} it finished in ${PACE_DAYS} days; this is the first past that pace`;
+      paces.set(past.id, `${owner} holds ${count}${against}`);
     }
   }
   return paces;
