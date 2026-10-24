@@ -6,9 +6,9 @@
  * reader's light or dark colour scheme: one 18 s CSS loop and no script, so GitHub shows it in an <img>. With motion
  * turned off it is a still of api's tab with T17 done.
  */
+import { lineParts, trackMarks, type Line, type TabStory, type Track } from './story.ts';
 import { escapeXml, renderSvg } from './svg.ts';
 import {
-  bullet,
   DIVIDER_X,
   mark,
   paneHeading,
@@ -52,21 +52,6 @@ export const API_DONE = 13.0;
 /** The outline and the rows move back, ready for the next loop. */
 export const BACK = 16.9;
 
-/** A status a tab or a task row takes from `at` seconds into the loop. */
-export interface Change {
-  readonly status: Status;
-  readonly at: number;
-}
-
-/** A status held the whole loop, or the changes it goes through, the first when it appears. */
-export type Track = Status | readonly [Change, ...Change[]];
-
-/** A session's tab and its status over the loop. */
-export interface TabStory {
-  readonly name: string;
-  readonly track: Track;
-}
-
 /** A row of the pane: a task, its owner, its priority, when it is due while open, and its status over the loop. */
 export interface Row {
   readonly id: string;
@@ -75,17 +60,6 @@ export interface Row {
   readonly priority: string;
   readonly due: string;
   readonly track: Track;
-}
-
-/** How a line of talk looks: your ask after the prompt mark, a line the session says, its tool's output, or a command it runs. */
-export type Look = 'ask' | 'said' | 'output' | 'command';
-
-/** A line of talk: its baseline, when it appears, its words and its look. */
-export interface Line {
-  readonly y: number;
-  readonly from: number;
-  readonly words: string;
-  readonly look: Look;
 }
 
 /** What you type into the input box, when, how fast, and when it is sent. */
@@ -158,11 +132,8 @@ const LABEL =
   'edits and tests, then lands it with teamrig integrate: it waits in line while web holds the lock, then rebases on main ' +
   `and pushes. web's task and then ${NEW_ROW.id} turn done in the pane.`;
 
-/** A track's marks: one still mark for a held status, else one per change, each shown until the next. */
-function marks(t: Timeline, track: Track, draw: (status: Status) => string): string[] {
-  if (typeof track === 'string') return [draw(track)];
-  return track.map((change, i) => `<g class="${t.show(change.at, { to: track[i + 1]?.at ?? TASK_FLOW_CLOCK.end, motion: 'fade' })}">${draw(change.status)}</g>`);
-}
+/** A track's marks, the last shown until the loop clears. */
+const marks = (t: Timeline, track: Track, draw: (status: Status) => string): string[] => trackMarks(t, track, TASK_FLOW_CLOCK.end, draw);
 
 /** The tab strip: the outline moving from the lead's tab to api's, each tab's mark, and its name, bold while in view. */
 function tabs(t: Timeline): string[] {
@@ -177,20 +148,6 @@ function tabs(t: Timeline): string[] {
     return [...marks(t, story.track, (status) => mark(status, x + 18, 27.5)), text(x + 31, 32, story.name, 'mono muted'), ...strong];
   };
   return [`<g class="${outline}">${tabOutline(tabX(LEAD_TAB))}</g>`, ...TABS.flatMap(tab)];
-}
-
-/** A line of talk as its look draws it. */
-function lineParts(line: Line): string[] {
-  switch (line.look) {
-    case 'ask':
-      return [text(24, line.y, '>', 'mono accent'), text(42, line.y, line.words, 'mono')];
-    case 'said':
-      return [bullet(line.y), text(42, line.y, line.words, 'mono')];
-    case 'output':
-      return [text(42, line.y, line.words, 'mono muted')];
-    case 'command':
-      return [bullet(line.y), text(42, line.y, line.words, 'mono accent')];
-  }
 }
 
 /** The talk: the lead's lines until api's tab is in view, then api's. */

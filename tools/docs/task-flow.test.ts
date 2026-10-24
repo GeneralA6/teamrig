@@ -13,10 +13,8 @@ import {
   ROWS_BELOW,
   TABS,
   TASK_FLOW_CLOCK,
-  type Change,
-  type Line,
-  type Track,
 } from './task-flow.ts';
+import type { Change, Line, Track } from './story.ts';
 import { DIVIDER_X, MONO_SIZE, PANE_LEFT, PANE_RIGHT, ROW_STEP, ROW_TOP, tabX, VIEW_HEIGHT, WIDTH, WINDOW_HEIGHT } from './terminal-view.ts';
 import { themeStyle, TOKENS } from './theme.ts';
 import { parseXml, placesIn, textOf, type XmlElement, type XmlPlace } from './xml.ts';
