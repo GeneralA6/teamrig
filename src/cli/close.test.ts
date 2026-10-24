@@ -316,6 +316,24 @@ describe('teamrig idle-close', () => {
     assert.deepEqual(await new WakeAsks(urgent.kit.files, ASKS).read('lead'), []);
   });
 
+  it('keeps open a session with an urgent line waiting to wake it, in close and the pass alike', async () => {
+    const alpha = await runningAlpha();
+    const asks = new WakeAsks(alpha.kit.files, ASKS);
+    await asks.post('alpha', { from: 'bravo', text: 'the build broke', at: NOW - MINUTE_MS });
+    assertRefused(await close(alpha, ['alpha', '--yes', '--session', 'lead']), /alpha \(session alpha\) has an urgent line from bravo waiting to wake it/);
+    await asks.post('alpha', { from: 'lead', text: 'look at it first', at: NOW });
+    const kept = await idleClose(alpha);
+    assert.equal(kept.code, 0, kept.stderr.join('\n'));
+    assert.match(kept.stdout.join('\n'), /^KEPT \S+ \(session alpha\) has 2 urgent lines from bravo, lead waiting to wake it$/);
+    assert.deepEqual(alpha.processes.ends, []);
+
+    // A damaged ask wakes no one, so it keeps no one open.
+    const damaged = await runningAlpha();
+    await damaged.kit.files.write(join(ASKS, 'alpha', `${NOW}-0.json`), '{"v":1,"from":');
+    const preview = await close(damaged, ['alpha', '--session', 'lead']);
+    assert.match(preview.stdout[0] ?? '', /^CLOSE app-alpha \(session alpha\): quiet 75 min/, [...preview.stdout, ...preview.stderr].join('\n'));
+  });
+
   it('fails, logged, when it cannot weigh the session or its tab outlives the end', async () => {
     const unlisted = await runningAlpha();
     const blind = await idleClose({ ...unlisted, options: { ...unlisted.options, memory: new FakeHostMemory().lists(undefined) } });

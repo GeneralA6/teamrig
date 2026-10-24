@@ -14,6 +14,7 @@ import { soonTimeWaitOf, tabActivityOf, TIME_WAIT_GUARD_MINUTES, type TabActivit
 import { measureSessions, type SessionPlace } from '../sessions/measure.ts';
 import { SessionRecordStore, type SessionRecord } from '../sessions/record.ts';
 import { REPLY_TAIL_BYTES } from '../turn-log/reply.ts';
+import { urgentLinesText, validAsksOf, WakeAsks, type WakeAsk } from '../wake/asks.ts';
 import { startableTasks } from '../wake/day-start.ts';
 import { measureTranscript } from './commands/rehire.ts';
 import { teamZone, type Kit } from './kit.ts';
@@ -47,6 +48,8 @@ export interface IdleFacts {
   readonly records: ReadonlyMap<string, SessionRecord | undefined>;
   readonly places: readonly SessionPlace[];
   readonly tasks: ReadonlyMap<string, Task>;
+  /** Every session's urgent lines no wake check has taken yet (src/wake/asks.ts), oldest first. */
+  readonly asks: ReadonlyMap<string, readonly WakeAsk[]>;
   readonly now: number;
   readonly zone: TimeZone;
 }
@@ -75,12 +78,18 @@ export async function idleFactsOf(runtime: CliRuntime, kit: Kit, config: KitConf
     throw new RefusedError(`${KIT_NAME} could not list the host's processes, so it cannot tell which sessions run`);
   }
   const tasks = (await teamRegister(runtime, kit.paths, config).snapshot()).state.tasks;
-  return { records, places: measureSessions(records, rows), tasks, now: runtime.clock.now(), zone: teamZone(config, runtime) };
+  const store = new WakeAsks(runtime.files, kit.paths.wakeAsks);
+  const asks = new Map<string, readonly WakeAsk[]>();
+  for (const id of roster.ids) {
+    asks.set(id, validAsksOf(await store.read(id)));
+  }
+  return { records, places: measureSessions(records, rows), tasks, asks, now: runtime.clock.now(), zone: teamZone(config, runtime) };
 }
 
 /**
  * Whether `id` closes, with the checks in the order they cost: a role or open.idle.keepOpen that keeps it, not running in the host's
- * process list, work it can start within `maxPriority`, a time wait of its own ending soon, quiet too briefly, a
+ * process list, work it can start within `maxPriority`, an urgent line waiting to wake it (closed, it would reopen at
+ * the next pass for it), a time wait of its own ending soon, quiet too briefly, a
  * transcript outside the project folder `open` resumes it in (Claude Code files a session under the folder it started
  * in, as `restore` and `rehire` assume), a turn not ended (under way, at a tool call, or a decision put to the person),
  * work running in the background, a last session too big or old to resume (v1 has no handover for a close), its
@@ -108,6 +117,10 @@ export async function idleVerdictOf(runtime: CliRuntime, config: KitConfig, rost
   const startable = startableTasks(tasks, id, now, zone, options.maxPriority);
   if (startable.length > 0) {
     return keep(`has work it can start (${startable.map((task) => task.id).join(', ')})`);
+  }
+  const asks = facts.asks.get(id) ?? [];
+  if (asks.length > 0) {
+    return keep(`has ${urgentLinesText(asks)} waiting to wake it`);
   }
   const soon = soonTimeWaitOf(tasks, id, options.maxPriority, now, zone);
   if (soon !== undefined) {
