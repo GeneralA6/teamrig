@@ -75,9 +75,9 @@ export async function budgetFactsOf(runtime, scope, transcript) {
     const { lifts } = await new LiftLog(files, kit.paths.lifts).read();
     const lift = activeLift(lifts, id, now, week.usedPct);
     const work = await cachedWork(files, kit.paths.events, join(kit.paths.usage, WORK_CACHE_FILE), config.register.priorities);
-    const lifted = liftedParts(lifts, roster.ids, now, week.usedPct);
+    const split = { team: kit.paths.team, ids: roster.ids, sessions: budget.sessions, work, lifted: liftedParts(lifts, roster.ids, now, week.usedPct) };
     const others = await otherTeamsOnAccount(runtime, { team: kit.paths.team, config, usageDir: kit.paths.usage }, now, week.usedPct);
-    const shared = dailyBudgetOf(week.allowancePct, id, { team: kit.paths.team, ids: roster.ids, sessions: budget.sessions, work, lifted }, others);
+    const shared = dailyBudgetOf(week.allowancePct, id, split, others);
     const inForce = activeBurst((await new BurstLog(files, kit.paths.bursts).read()).records, now, week.usedPct);
     const burst = inForce !== undefined && inForce.sessions.includes(id) ? inForce : undefined;
     const budgetPct = withBurst(shared, burst === undefined ? undefined : burstFloorOf(burst, week, byId, budget, now));
@@ -87,7 +87,9 @@ export async function budgetFactsOf(runtime, scope, transcript) {
     const own = byId.get(id);
     const todayW = own === undefined ? 0 : wSince([own], week.todayFrom, now);
     const isLead = id === config.roles.lead;
-    const surplus = isLead && inForce === undefined ? surplusHintOf({ config: config.burst, window: week.window, now, usedPct: week.usedPct, targetPct: budget.targetPct }) : undefined;
+    const surplus = isLead && inForce === undefined
+        ? surplusHintOf({ config: config.burst, window: week.window, now, usedPct: week.usedPct, targetPct: budget.targetPct, teams: { split, others } })
+        : undefined;
     return {
         now,
         id,

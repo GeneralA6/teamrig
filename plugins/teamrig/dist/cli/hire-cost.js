@@ -1,23 +1,27 @@
-import { LiftLog } from "../budget/lift.js";
-import { addedSessionPct, liftedParts } from "../budget/parts.js";
+import { surplusOf } from "../budget/burst.js";
+import { addedSessionPct } from "../budget/parts.js";
 import { workWeights } from "../budget/work.js";
-import { otherTeamsOnAccount } from "./account-teams.js";
+import { teamsOnAccountOf } from "./account-teams.js";
 import { readStoredWeek } from "./stored-week.js";
 /**
- * What a new hire would spend a day, as `check`'s SCALE-OUT prices a slice (src/hiring/scale-out.ts): its part of the
- * account's daily budget today (src/budget/parts.ts `addedSessionPct`), beside each session's share, queued work
- * (`tasks`) and lift in force, and the other teams on the account (`otherTeamsOnAccount`). The week is read as a hook reads it (`readStoredWeek`). Undefined while the team's daily budget is unknown: no reading of the
- * week's use, or no W per percent (none learned from the meter log, no `budget.weeklyLimitW`, and a meter that does not reach
- * back to the week's start).
+ * SCALE-OUT's budget: the team's part of the spare the account's week projects (`surplusOf`), split among the teams on
+ * the account by the same weights as the day (src/cli/account-teams.ts `teamsOnAccountOf`, lifts in force at the
+ * week's use `week.usedPct`), so two leads never hire against the same spare; and a new hire's part of the account's
+ * daily budget today (src/budget/parts.ts `addedSessionPct`), beside each session's share, queued work (`tasks`) and
+ * lift. The day is read as a hook reads it (`readStoredWeek`): no hire price without a W per percent (none learned
+ * from the meter log, no `budget.weeklyLimitW`, and a meter that does not reach back to the week's start).
  */
-export async function readHirePct(runtime, paths, config, tasks, now) {
-    const { budget, sessions } = config;
-    const week = await readStoredWeek(runtime, paths, config, now);
-    if (week.allowancePct === undefined) {
-        return undefined;
+export async function readScaleOutBudget(runtime, paths, config, tasks, week, now) {
+    const { usedPct, window } = week;
+    if (usedPct === undefined || window === undefined) {
+        return { spare: undefined, hirePct: undefined };
     }
-    const { lifts } = await new LiftLog(runtime.files, paths.lifts).read();
-    const lifted = liftedParts(lifts, sessions, now, week.usedPct);
-    const others = await otherTeamsOnAccount(runtime, { team: paths.team, config, usageDir: paths.usage }, now, week.usedPct);
-    return addedSessionPct(week.allowancePct, { team: paths.team, ids: sessions, sessions: budget.sessions, work: workWeights(tasks, config.register.priorities), lifted }, others);
+    const work = workWeights(tasks, config.register.priorities);
+    const teams = await teamsOnAccountOf(runtime, { team: paths.team, config, usageDir: paths.usage, ids: config.sessions, liftsPath: paths.lifts, work }, now, usedPct);
+    const spare = surplusOf({ window, now, usedPct, targetPct: config.budget.targetPct, config: config.burst, teams });
+    if (spare === undefined) {
+        return { spare, hirePct: undefined };
+    }
+    const { allowancePct } = await readStoredWeek(runtime, paths, config, now);
+    return { spare, hirePct: allowancePct === undefined ? undefined : addedSessionPct(allowancePct, teams.split, teams.others) };
 }

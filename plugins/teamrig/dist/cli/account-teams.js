@@ -1,4 +1,6 @@
 import { accountOf, accountTeamsOf } from "../budget/account.js";
+import { LiftLog } from "../budget/lift.js";
+import { liftedParts } from "../budget/parts.js";
 import { claudeConfigDir } from "../core/home.js";
 import { loadTree } from "./tree.js";
 /**
@@ -16,4 +18,13 @@ export async function otherTeamsOnAccount(runtime, asking, now, usedPct) {
         now,
         usedPct,
     });
+}
+/**
+ * The team that asks, split by its roster, `budget.sessions`, lifts in force at `now` and queued work, beside the
+ * other teams on its account (`otherTeamsOnAccount`): what the account's day and spare are split among.
+ */
+export async function teamsOnAccountOf(runtime, asking, now, usedPct) {
+    const { lifts } = await new LiftLog(runtime.files, asking.liftsPath).read();
+    const split = { team: asking.team, ids: asking.ids, sessions: asking.config.budget.sessions, work: asking.work, lifted: liftedParts(lifts, asking.ids, now, usedPct) };
+    return { split, others: await otherTeamsOnAccount(runtime, asking, now, usedPct) };
 }

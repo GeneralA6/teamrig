@@ -56,15 +56,20 @@ function teamGroupOf(split) {
     return { id: split.team, liftedPct: undefined, nodes: sessionNodesOf(split) };
 }
 /**
- * The team's part of the account's daily budget (`allowancePct`, in percent of the week), split among the teams on
- * the account (the team's `split` and the `others`, `accountTeamsOf`) by their sessions' summed weights: the whole
- * day while no other team is on the account. Undefined while the account's is unknown.
+ * The team's part of an amount the account shares (`pct`, in percent of the week: its day, its spare), split among the
+ * teams on the account (the team's `split` and the `others`, `accountTeamsOf`) by their sessions' summed weights: all
+ * of it while no other team is on the account.
  */
-export function teamPartOf(allowancePct, split, others = []) {
-    if (allowancePct === undefined || others.length === 0) {
-        return allowancePct;
+export function teamShareOf(pct, split, others) {
+    if (others.length === 0) {
+        return pct;
     }
-    return partOf(allowancePct, [split, ...others].map(teamGroupOf), [split.team]);
+    const team = teamGroupOf(split);
+    return partAmong(pct, team, [team, ...others.map(teamGroupOf)]);
+}
+/** The team's part (`teamShareOf`) of the account's daily budget (`allowancePct`); undefined while the account's is unknown. */
+export function teamPartOf(allowancePct, split, others = []) {
+    return allowancePct === undefined ? undefined : teamShareOf(allowancePct, split, others);
 }
 /**
  * The session's daily budget now, in percent of the week: its part (`partOf`) of its team's part (`teamPartOf`) of
