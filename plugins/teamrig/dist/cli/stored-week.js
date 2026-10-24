@@ -6,21 +6,25 @@ import { calibrationOf, MeterLog } from "../budget/calibration.js";
 import { teamWeekOf } from "../budget/team-week.js";
 import { rateOf } from "../budget/week.js";
 import { snapshotDirOf } from "./commands/budget.js";
+/** Each session's use as last stored, by its id, then the use outside the team under OUTSIDE_ID; no transcript measured. */
+export async function readStoredUsage(runtime, paths, sessions) {
+    const team = new UsageStore(runtime.files, paths.usage);
+    const states = new Map();
+    for (const id of sessions) {
+        states.set(id, (await team.load(id)).state);
+    }
+    states.set(OUTSIDE_ID, (await new UsageStore(runtime.files, join(paths.usage, 'outside')).load(OUTSIDE_ID)).state);
+    return states;
+}
 /**
  * The week as a hook reads it: each session's use as last stored, the use outside the team and the newest
  * status-line reading, no transcript measured.
  */
 export async function readStoredWeek(runtime, paths, config, now) {
-    const { files } = runtime;
     const { budget, sessions } = config;
-    const team = new UsageStore(files, paths.usage);
-    const states = [];
-    for (const id of sessions) {
-        states.push((await team.load(id)).state);
-    }
-    states.push((await new UsageStore(files, join(paths.usage, 'outside')).load(OUTSIDE_ID)).state);
-    const statusUse = weekUseOf(await readSnapshots(files, snapshotDirOf(budget, paths)), now);
-    return teamWeekOf(files, paths, { budget, now, statusUse, states });
+    const states = [...(await readStoredUsage(runtime, paths, sessions)).values()];
+    const statusUse = weekUseOf(await readSnapshots(runtime.files, snapshotDirOf(budget, paths)), now);
+    return teamWeekOf(runtime.files, paths, { budget, now, statusUse, states });
 }
 /**
  * The week's W per percent as `teamrig budget` reads it: learned from the meter log, else from

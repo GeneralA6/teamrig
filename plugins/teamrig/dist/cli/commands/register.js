@@ -19,6 +19,7 @@ import { fitLines, leftOfWeek, overLimitFlag, weekFit } from "../../register/fit
 import { problemHint } from "../../register/kind.js";
 import { renderPlan } from "../../register/plan.js";
 import { noProgressFlag } from "../../register/progress.js";
+import { overSizeFlags } from "../../register/over-size.js";
 import { ACTIVE_STATUSES } from "../../register/model.js";
 import { readStopgapTags, stopgapFlags, stopgapTags } from "../../register/stopgap.js";
 import { dueStartHolds, dueVerifyHold, heldStart, heldStartNotice, metStartNotice, startHolds, verifyQueue } from "../../register/verify.js";
@@ -40,6 +41,7 @@ import { teamRegister } from "../team-register.js";
 import { readBursts } from "../burst-reading.js";
 import { readHirePct } from "../hire-cost.js";
 import { readWPerPct } from "../stored-week.js";
+import { readTaskSpend } from "../task-spend.js";
 import { snapshotDirOf } from "./budget.js";
 import { readContextInput } from "./doctor.js";
 import { inboxDepsOf } from "./inbox.js";
@@ -562,10 +564,15 @@ export async function checkReport(args, runtime) {
     const bursts = await readBursts(runtime, own.paths, own.config.budget, now.getTime());
     const { usedPct, window } = bursts;
     const leftPct = usedPct === undefined ? undefined : leftOfWeek(own.config.budget.targetPct, usedPct);
+    // OVER-SIZE reads the own team's metered use, as STOPGAP-DONE reads its files: a sub-team's sessions meter in its own home.
+    const { overSizeMultiple } = own.config.register.check;
+    const spent = overSizeMultiple > 0 ? await readTaskSpend(runtime, own.paths, own.config, now.getTime()) : undefined;
     const checked = teams.map((rolled) => {
         const section = checkRegister(rolled.snapshot, rolled.config, now, teamZone(rolled.config, runtime), week, leftPct, tree ? rolled.team : undefined);
-        const stopgaps = rolled.team === own.team ? stopgapFlags(tags, rolled.snapshot.state.tasks, zone) : [];
-        return { ...section, flags: [...section.flags, ...stopgaps].sort(byFlagKind) };
+        const ownFlags = rolled.team === own.team
+            ? [...stopgapFlags(tags, rolled.snapshot.state.tasks, zone), ...(spent === undefined ? [] : overSizeFlags(rolled.snapshot.state.tasks.values(), spent, overSizeMultiple))]
+            : [];
+        return { ...section, flags: [...section.flags, ...ownFlags].sort(byFlagKind) };
     });
     const sections = week === null || week !== currentWeekOf(own.snapshot, now, zone) ? checked : withOverLimit(checked, await weekFitOf(runtime, { own, teams }, week, tree));
     const { records } = await new HiringLog(runtime.files, own.paths.hires).read();
