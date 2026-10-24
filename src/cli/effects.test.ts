@@ -51,6 +51,7 @@ const EXPECTED = {
   'restore resume': 'internal',
   restart: 'internal',
   'idle-close': 'internal',
+  'idle-open': 'internal',
   who: 'read',
   sessions: 'read',
   close: 'write',

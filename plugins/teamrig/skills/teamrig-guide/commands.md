@@ -1940,6 +1940,36 @@ CLOSED shop-web (session web): quiet 75 min, its Claude Code holds 1300 MB, now 
 It prints `KEPT <why>` when the session no longer closes, and `FAILED to weigh shop-web (session web): <why>` or
 `FAILED to close shop-web (session web): <why>` (exit 1) when it could not weigh it or its tab outlived the end.
 
+### teamrig idle-open
+
+The idle pass's reopen of one session it closed, once work would wake it: the pass runs it hidden; you do not run it
+yourself. The session may have been opened, or its work done, since the pass, so it judges the session again the way
+the pass does, then opens it as `teamrig open` does: in its last Claude Code session when that is small and recent
+enough, else fresh, with the reopen logged in the team's `state/session-log.jsonl`. Each outcome (reopened, kept,
+failed) is one JSON line in the team's `state/idle-pass.jsonl` (`"kind": "act"`), with the host's commit charge
+before a reopen.
+
+Flags:
+
+- `--team <team>`: required.
+- `--project <dir>`: required; the folder its tab opens in, where its last Claude Code session's transcript is.
+
+Example:
+
+```sh
+teamrig idle-open web --team shop --project /home/you/shop
+```
+
+Output:
+
+```text
+REOPENED shop-web (session web) for work handed to it since its close: T12: OPENED shop-web (session web) in a new Windows Terminal tab in /home/you/shop, on the default model and effort, resuming Claude Code session 3f2a9c1e-7b4d-4e8a-9c0f-1a2b3c4d5e6f
+```
+
+It prints `KEPT shop-web (session web): <why>` when the session no longer reopens, `KEPT shop-web (session web)
+closed: no room on the host ...` when the host has no room for it, and `FAILED to weigh shop-web (session web): <why>`
+or `FAILED to reopen shop-web (session web): <why>` (exit 1) when it could not weigh it or no terminal opened.
+
 ### teamrig refresh
 
 Context refresh. The lead asks a session for one (`teamrig refresh <id|name>`): after that session's next

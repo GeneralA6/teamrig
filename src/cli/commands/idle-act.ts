@@ -1,14 +1,16 @@
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { errorMessage } from '../../core/guards.ts';
+import { KIT_NAME } from '../../core/home.ts';
+import { SessionLog } from '../../sessions/log.ts';
 import { onePositional, requiredFlag, type ParsedArgs } from '../args.ts';
 import { closeSession } from '../close-session.ts';
 import { closableText, idleFactsOf, type IdleVerdict } from '../idle-check.ts';
-import { runningVerdictOf } from '../idle-pass.ts';
+import { judgeSession, reopeningText, runningVerdictOf, type JudgedStep, type ReopenWish } from '../idle-pass.ts';
 import { formatIdlePassRecord, type IdleActRecord } from '../idle-pass-log.ts';
-import { openKit, requireConfig, rosterOf, type Kit } from '../kit.ts';
-import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { idFlag } from './open.ts';
+import { openKit, requireConfig, rosterOf, teamZone, type Kit } from '../kit.ts';
+import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
+import { idFlag, openSession } from './open.ts';
 
 /** Who the session log names as the closer of a session the idle pass closed. */
 export const IDLE_PASS_CLOSER = 'idle-pass';
@@ -59,6 +61,74 @@ export async function idleClose(args: ParsedArgs, runtime: CliRuntime): Promise<
           : { ...done, outcome: 'failed', line: `FAILED to close ${label}: ${problem}` },
       );
     }
+  }
+}
+
+/** The session judged alone, as the pass judges each, or the error that kept it from being weighed. */
+async function stepOf(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, id: string, project: string): Promise<JudgedStep | { readonly kind: 'failed'; readonly error: string }> {
+  try {
+    const closes = (await new SessionLog(runtime.files, kit.paths.sessionLog).read()).records;
+    return await judgeSession(runtime, kit, config, roster, await idleFactsOf(runtime, kit, config, roster), id, async () => project, closes);
+  } catch (error) {
+    return { kind: 'failed', error: errorMessage(error) };
+  }
+}
+
+/** Why a session the pass would have reopened stays as it is now. */
+function stayText(step: Exclude<JudgedStep, ReopenWish>): string {
+  switch (step.kind) {
+    case 'close':
+    case 'keep':
+      return 'it is running';
+    case 'closed':
+      return 'still closed, nothing it can start';
+    case 'away':
+      return `not running, and ${KIT_NAME} did not close it`;
+  }
+}
+
+/**
+ * `idle-open <id> --team <team> --project <dir>`: one reopen the idle pass decided (T1100) of a session teamrig
+ * closed, which the pass starts hidden, since the room check and the tab take seconds. The session may have been
+ * opened, or its work done, since the pass, so it judges it again as the pass does (`judgeSession`): kept, it opens
+ * nothing; else it opens it as `teamrig open` does (`openSession`: in its last Claude Code session when that is small
+ * and recent enough, else fresh, the reopen logged), and keeps it closed when the host has no room. Each outcome is a
+ * line in the pass log, with the host's commit charge before a reopen (its Claude Code takes a while to load, so a
+ * charge right after says nothing); exit 1 when it could not weigh the session or no terminal opened.
+ */
+export async function idleOpen(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+  const id = idFlag('session', onePositional(args, 'id'));
+  const team = idFlag('--team', requiredFlag(args.flags, 'team'));
+  const project = requiredFlag(args.flags, 'project');
+  const kit = await openKit(runtime, team);
+  const config = requireConfig(kit, runtime, 'read');
+  const roster = await rosterOf(runtime, kit, config);
+  const label = `${roster.nameOf(id) ?? id} (session ${id})`;
+  const act = { kind: 'act', mode: config.open.idle.mode, act: 'reopen', id } as const;
+  const unmeasured = { before: undefined, after: undefined };
+  const step = await stepOf(runtime, kit, config, roster, id, project);
+  if (step.kind === 'failed') {
+    return report(runtime, kit, { ...act, ...unmeasured, at: runtime.clock.now(), outcome: 'failed', line: `FAILED to weigh ${label}: ${step.error}` });
+  }
+  if (step.kind !== 'wish') {
+    return report(runtime, kit, { ...act, ...unmeasured, at: runtime.clock.now(), outcome: 'kept', line: `KEPT ${label}: ${stayText(step)}` });
+  }
+  const measured = { before: await runtime.memory.commit(), after: undefined };
+  const why = reopeningText(step.reopening, teamZone(config, runtime));
+  try {
+    const opened = await openSession(runtime, kit, config, roster, { team, id, project, terminal: config.open.terminal, asked: false });
+    const done = { ...act, ...measured, at: runtime.clock.now() };
+    return report(
+      runtime,
+      kit,
+      opened.kind === 'opened'
+        ? { ...done, outcome: 'done', line: `REOPENED ${label} for ${why}: ${opened.line}` }
+        : { ...done, outcome: 'failed', line: `FAILED to reopen ${label}: no terminal opened (${opened.reasons.join('; ')})` },
+    );
+  } catch (error) {
+    // A refusal here is the host's room, read fresh: the next pass tries again.
+    const kept = error instanceof RefusedError;
+    return report(runtime, kit, { ...act, ...measured, at: runtime.clock.now(), outcome: kept ? 'kept' : 'failed', line: kept ? `KEPT ${label} closed: ${error.message}` : `FAILED to reopen ${label}: ${errorMessage(error)}` });
   }
 }
 

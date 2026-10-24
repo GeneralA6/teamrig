@@ -34,12 +34,15 @@ export type PassStep =
 export type SessionFolderOf = (id: string) => Promise<string>;
 
 /** A closed session the wake check would wake, and its most urgent task, before the pass picks which reopens. */
-interface ReopenWish {
+export interface ReopenWish {
   readonly kind: 'wish';
   readonly id: string;
   readonly reopening: Reopening;
   readonly top: Task;
 }
+
+/** One session judged alone: what it does, or, for one it would reopen, its wish, before the pass picks one reopen. */
+export type JudgedStep = Extract<PassStep, { readonly kind: 'close' | 'keep' | 'closed' | 'away' }> | ReopenWish;
 
 /**
  * The session's rest and the least urgent priority that wakes it now, as `hook wake-check` weighs them: a session
@@ -72,7 +75,7 @@ export async function runningVerdictOf(runtime: CliRuntime, kit: Kit, config: Ki
  * One session's step, or its wish to reopen: a running one by {@link runningVerdictOf}, a closed one counted awake
  * unless it would reopen awake (a rest only holds a reopen back), since its budget takes thousands of file reads.
  */
-async function judge(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, facts: IdleFacts, id: string, folderOf: SessionFolderOf, closes: readonly SessionLogRecord[]): Promise<PassStep | ReopenWish> {
+export async function judgeSession(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, facts: IdleFacts, id: string, folderOf: SessionFolderOf, closes: readonly SessionLogRecord[]): Promise<JudgedStep> {
   const { tasks, now, zone } = facts;
   if (facts.places.find((place) => place.id === id)?.state === 'running') {
     const verdict = await runningVerdictOf(runtime, kit, config, roster, facts, id, await folderOf(id));
@@ -103,9 +106,9 @@ async function judge(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: R
 export async function idlePassOf(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, folderOf: SessionFolderOf): Promise<readonly PassStep[]> {
   const facts = await idleFactsOf(runtime, kit, config, roster);
   const closes = (await new SessionLog(runtime.files, kit.paths.sessionLog).read()).records;
-  const judged: (PassStep | ReopenWish)[] = [];
+  const judged: JudgedStep[] = [];
   for (const id of roster.ids) {
-    judged.push(await judge(runtime, kit, config, roster, facts, id, folderOf, closes));
+    judged.push(await judgeSession(runtime, kit, config, roster, facts, id, folderOf, closes));
   }
   const [first] = judged.filter((step): step is ReopenWish => step.kind === 'wish').sort((a, b) => byUrgency(a.top, b.top));
   const room = first === undefined ? undefined : await headroomOf(runtime, kit.paths, config, roster.ids);
@@ -125,7 +128,8 @@ function idsText(tasks: readonly Task[]): string {
   return tasks.map((task) => task.id).join(', ');
 }
 
-function reopeningText(reopening: Reopening, zone: TimeZone): string {
+/** Why a closed session reopens, as the pass's lines say it. */
+export function reopeningText(reopening: Reopening, zone: TimeZone): string {
   return reopening.kind === 'handed'
     ? `work handed to it since its close: ${idsText(reopening.tasks)}`
     : `the day's start at ${zone.clock(new Date(reopening.at))}, with work it can start: ${idsText(reopening.tasks)}`;
