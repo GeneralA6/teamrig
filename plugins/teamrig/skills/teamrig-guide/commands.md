@@ -657,26 +657,36 @@ api 3 unread since 10-15 07:40, 2 of them shown at a prompt (read to line 21 of 
 
 ### teamrig inbox add
 
-Appends one line to another session's inbox. It does not wake the receiver: the line shows at its next prompt
-or work block. Use it for anything that is not urgent.
+Appends one line to another session's inbox, or to each session of a group in one call. It does not wake the
+receiver: the line shows at its next prompt or work block. Use it for anything that is not urgent.
 
 Flags:
 
 - `--session <id|name>`: the sender.
-- `--to <id|name|team/id>`: the receiver. `<team>/<id>` reaches another team of the tree, and only a lead may
-  use it: to its parent team's lead or its child teams' leads.
+- `--to <to>`: the receiver, or several, comma-separated, each named once however often the list names it:
+  - `<id|name>`: a session of your team.
+  - `<team>/<id>`: a session of another team of the tree; only a lead may use it, to its parent team's lead or its
+    child teams' leads. It always names one session, so a session called `all` is `<team>/all`.
+  - `all`: every session of your team; `leads`: its lead and its sub-leads; `group:<leader>`: that lead or sub-lead
+    and every session under it, at any depth. A group leaves you out.
 - `--text "<one line>"`: the note: one non-empty line, no secrets.
 
-Example:
+Every receiver gets the same line, stamped with the same minute, or none does: an unknown session, one out of
+reach, `group:` on a session that leads no one, a group that holds only you, or a line any receiving team's secret
+patterns refuse is `REFUSED` (exit 2) and posts nothing.
+
+Example, on a team whose one sub-lead is `web`:
 
 ```sh
 teamrig inbox add --session lead --to web --text "api error codes are in docs/errors.md"
+teamrig inbox add --session lead --to leads,ops --text "main is frozen until 14:00"
 ```
 
 Output:
 
 ```text
 POSTED to web; web is reminded at its next prompt
+POSTED to 2 sessions (web, ops); each is reminded at its next prompt
 ```
 
 The line is stored as `- 2026-10-15 08:58 lead: api error codes are in docs/errors.md`.

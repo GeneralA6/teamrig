@@ -152,8 +152,9 @@ helper it is. Everything runs on your machine, with no account and no cloud bill
 
 ## Also in the box
 
-- **Notes between sessions:** `teamrig inbox add` leaves a line the receiver reads at its next prompt. A message that
-  would wake an idle member at full price is held once, so a cheap note can take its place.
+- **Notes between sessions:** `teamrig inbox add` leaves a line the receiver reads at its next prompt, for one session
+  or a group (`--to all`, `leads`, `group:web`). A message that would wake an idle member at full price is held once,
+  so a cheap note can take its place.
 - **Tab status:** on in every new team, each tab's title starts with a colored circle: ready, working, waiting on you,
   waiting on your decision, an API error or compacting. A tab named after a session (`/rename web`) joins it.
 - **Turn log:** each session's prompts and replies for the last day, secrets masked, so a refresh never takes away
