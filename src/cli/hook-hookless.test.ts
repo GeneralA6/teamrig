@@ -2,7 +2,10 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
+import { PlainLogFile } from '../core/log-file.ts';
 import { MS_PER_MINUTE } from '../core/time.ts';
+import { MARK_VERSION } from '../inbox/marks.ts';
+import { JsonlMarkLog } from '../inbox/store.ts';
 import type { RestoreEntry } from '../restore/entry.ts';
 import { HOOKLESS_CHECK_MS, HOOKLESS_MS, HOOKLESS_TAIL_BYTES, parseHooklessState } from '../restore/hookless.ts';
 import { RestoreRegistry, restoreSessionsDir } from '../restore/registry.ts';
@@ -19,8 +22,8 @@ const STOP = JSON.stringify({ hook_event_name: 'Stop', session_id: CLAUDE_SESSIO
 const RELOAD = '<command-name>/reload-plugins</command-name>\n<command-message>reload-plugins</command-message>\n<command-args></command-args>';
 const NO_HOOKS = 'so it gets no inbox, guards or tab status';
 
-/** A tab's restore entry: session `session` of team app, its hooks' last write `hookAgo` before the harness's clock. */
-async function writeTab(kit: CliHarness, session: string, hookAgo: number, team = 'app'): Promise<void> {
+/** A tab's restore entry: session `session` of team app unless `overrides` say other, its hooks' last write `hookAgo` before the harness's clock. */
+async function writeTab(kit: CliHarness, session: string, hookAgo: number, overrides: Partial<RestoreEntry> = {}): Promise<void> {
   const at = kit.clock.now() - hookAgo;
   const entry: RestoreEntry = {
     claudeSession: TAB,
@@ -29,7 +32,7 @@ async function writeTab(kit: CliHarness, session: string, hookAgo: number, team 
     entrypoint: 'cli',
     sessionKind: undefined,
     pid: 7000,
-    team,
+    team: 'app',
     session,
     state: 'working',
     createdAt: at,
@@ -38,8 +41,15 @@ async function writeTab(kit: CliHarness, session: string, hookAgo: number, team 
     restoredAt: undefined,
     endedAt: undefined,
     endReason: undefined,
+    ...overrides,
   };
   await new RestoreRegistry(kit.files, restoreSessionsDir(KIT)).write(entry);
+}
+
+/** The tab's read of session `area`'s inbox, `ago` before the harness's clock, as the team's inbox marks keep it. */
+async function markRead(kit: CliHarness, area: string, ago: number): Promise<void> {
+  const marks = new JsonlMarkLog(new PlainLogFile(kit.files, join(TEAM_HOME, 'state', 'inbox-marks.jsonl')));
+  await marks.append({ v: MARK_VERSION, area, line: 0, at: isoAgo(kit, ago), claudeSession: TAB, lastLineHash: null });
 }
 
 function isoAgo(kit: CliHarness, ago: number): string {
@@ -95,6 +105,22 @@ describe('the Stop hook checks for tabs that run without their hooks', () => {
     assert.equal(parseHooklessState(kit.files.get(STATE) ?? '')?.checkedAt, kit.clock.now());
   });
 
+  it('names a tab started by hand, which carries no team variables, as the session whose inbox it last read (T1002)', async () => {
+    const kit = new CliHarness(ROLES_TEAM);
+    await writeTab(kit, 'alpha', 2 * HOOKLESS_MS, { team: undefined, session: undefined });
+    await markRead(kit, 'alpha', 3 * HOOKLESS_MS);
+    await stop(kit, tabTranscript(kit, [reply(kit, MS_PER_MINUTE)], MS_PER_MINUTE), 'bravo');
+    assert.deepEqual(hooklessLines(kit, 'lead'), [
+      `HOOKLESS alpha: its tab (Claude session 0123abcd) worked 59 min past its last teamrig hook (hook 09:00 UTC, last reply 09:59 UTC), ${NO_HOOKS}: ` +
+        `/exit that tab and run claude --resume ${TAB} in ${APP}`,
+    ]);
+
+    const unread = new CliHarness(ROLES_TEAM);
+    await writeTab(unread, 'alpha', 2 * HOOKLESS_MS, { team: undefined, session: undefined });
+    await stop(unread, tabTranscript(unread, [reply(unread, MS_PER_MINUTE)], MS_PER_MINUTE), 'bravo');
+    assert.deepEqual(hooklessLines(unread, 'lead'), [], 'a tab started by hand that read no inbox of the team is not its to tell');
+  });
+
   it("tells the coordinator's owner of the lead's own tab", async () => {
     const kit = new CliHarness(ROLES_TEAM);
     await writeTab(kit, 'lead', 2 * HOOKLESS_MS);
@@ -142,7 +168,7 @@ describe('the Stop hook checks for tabs that run without their hooks', () => {
     await writeTab(fresh, 'alpha', 5 * MS_PER_MINUTE);
     await stop(fresh, tabTranscript(fresh, [reply(fresh, 0)]));
     const other = new CliHarness(ROLES_TEAM);
-    await writeTab(other, 'alpha', 2 * HOOKLESS_MS, 'web');
+    await writeTab(other, 'alpha', 2 * HOOKLESS_MS, { team: 'web' });
     await stop(other, tabTranscript(other, [reply(other, 0)]));
     const retired = new CliHarness(ROLES_TEAM);
     await writeTab(retired, 'charlie', 2 * HOOKLESS_MS);

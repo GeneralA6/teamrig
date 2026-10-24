@@ -4,6 +4,7 @@ import { KIT_NAME, resolveKitHome } from '../../core/home.ts';
 import { FileLock } from '../../core/lock.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { postLine } from '../../inbox/inbox.ts';
+import { indexMarks } from '../../inbox/marks.ts';
 import {
   checkedState,
   formatHooklessState,
@@ -48,9 +49,11 @@ async function replyAtEnd(runtime: CliRuntime, path: string): Promise<number | u
  */
 async function findHooklessTabs(runtime: CliRuntime, kit: Kit, config: KitConfig, now: number): Promise<HooklessTab[]> {
   const registry = new RestoreRegistry(runtime.files, restoreSessionsDir(resolveKitHome(runtime.env, runtime.userHome)));
-  const stale = staleEntries(await registry.list(), kit.paths.team, config.sessions, now);
+  const { marks } = await inboxDepsOf(runtime, kit.paths).marks.read();
+  const team = { team: kit.paths.team, sessions: config.sessions, areaBySession: indexMarks(marks).areaBySession };
+  const stale = staleEntries(await registry.list(), team, now);
   const replies = new Map<string, number>();
-  for (const entry of stale) {
+  for (const { entry } of stale) {
     const path = entry.transcriptPath;
     const changed = path === undefined ? undefined : await runtime.transcripts.changedAt(path);
     const found = path === undefined || changed === undefined || !workedPastHook(entry.updatedAt, changed, now) ? undefined : await replyAtEnd(runtime, path);
