@@ -523,7 +523,7 @@ sequenceDiagram
   load mods), the restart ends the session's Claude Code and starts it again: in the same tab when `teamrig open`
   started it (`launch` starts it again), else in a new tab; if a turn ran meanwhile, it waits for quiet and asks
   again first. It never ends a Claude Code that still runs a background shell (a background command or a monitor),
-  since the end would take that too: the session gets an inbox line to type `/clear`, which keeps it. A prompt you send first cancels it and keeps the context; text typed but not sent holds the mod's `/clear`, and is lost only where the restart ends the process. When it is off or cannot start, you type `/clear`. On Windows an ended process runs no
+  since the end would take that too: the session gets an inbox line to type `/clear`, which keeps it. A prompt you send first cancels it and keeps the context; text typed but not sent holds the mod's `/clear`, and is lost only where the restart ends the process. When it is off or cannot start, you type `/clear`. A restart whose own process was killed leaves its request behind: 70 minutes after it was asked, when no restart could still act on it, the tab's mod starts the restart again at its next wake check while the session still waits for its fresh start. On Windows an ended process runs no
   SessionEnd hooks, so `refresh.endCommand` can name a program to run in their place. A compact or a resume
   keeps the handover waiting for the next fresh start.
 - The fresh session keeps who it is and carries on by itself. The restart starts it with a prompt to read its
