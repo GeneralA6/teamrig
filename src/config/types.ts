@@ -774,9 +774,9 @@ export interface RefreshConfig {
 }
 
 /**
- * Who may hire a session onto the team (`teamrig hire`): `off` nobody; `owner` the lead, once the owner
- * approved (`--approved-by`, kept with the hire); `lead` the lead, within the caps; `automatic` as `lead`,
- * and a hired session whose tasks are all closed may also retire itself (`teamrig retire`).
+ * Who may hire a session onto the team (`teamrig hire`): `off` nobody; `owner` a lead (the lead, or a sub-lead
+ * into its own group), once the owner approved (`--approved-by`, kept with the hire); `lead` a lead, within the
+ * caps; `automatic` as `lead`, and a hired session whose tasks are all closed may also retire itself (`teamrig retire`).
  */
 export const HIRING_POLICIES = ['off', 'owner', 'lead', 'automatic'] as const;
 export type HiringPolicy = (typeof HIRING_POLICIES)[number];

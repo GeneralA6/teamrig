@@ -81,9 +81,9 @@ describe('retire', () => {
     assert.equal(kit.files.get(HIRES)?.trim().split('\n').length, 1);
   });
 
-  it('lets a hired session retire itself under hiring.policy automatic, and no one else but the lead', async () => {
+  it('lets a hired session retire itself under hiring.policy automatic, and no one else but a lead over it', async () => {
     const kit = await teamWithHelper({ ...LEAD_TEAM, hiring: { policy: 'automatic' } });
-    assert.match(refusal(await retire(kit, 'alpha', 'helper')), /only the lead retires sessions/);
+    assert.match(refusal(await retire(kit, 'alpha', 'helper')), /only a lead over the session retires it/);
     const result = ok(await retire(kit, 'helper', 'helper', '--yes'));
     assert.equal(result.stdout[1], 'NEXT its records stay readable by its id (teamrig list --session helper --all); finish this turn and close the tab');
     const lead = await teamWithHelper();

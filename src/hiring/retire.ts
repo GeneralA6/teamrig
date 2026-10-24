@@ -1,4 +1,5 @@
 import { leadsAfterRetire } from '../config/lead-edits.ts';
+import { LeadTree } from '../config/lead-tree.ts';
 import type { KitConfig } from '../config/types.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import type { Checked } from '../setup/team-create.ts';
@@ -71,19 +72,24 @@ function withoutLeader(file: JsonRecord, config: KitConfig, id: string): { reado
   return { file: next, regrouped: { members, to } };
 }
 
-/** The refusal for who asked, or undefined: the lead, or a hired session itself under `automatic` once its tasks are closed. */
-function callerProblem(config: KitConfig, request: RetireRequest, hired: boolean): string | undefined {
-  if (request.by === config.roles.lead) {
+/**
+ * The refusal for who asked, or undefined: a lead over the session (the lead, or a sub-lead it is under, T509), or a
+ * hired session itself under `automatic` once its tasks are closed.
+ */
+function callerProblem(config: KitConfig, tree: LeadTree, request: RetireRequest, hired: boolean): string | undefined {
+  if (request.by === config.roles.lead || tree.leads(request.by, request.id)) {
     return undefined;
   }
   if (request.by !== request.id) {
-    return 'only the lead retires sessions, or a hired session itself under hiring.policy automatic';
+    return 'only a lead over the session retires it (the lead, or its sub-lead), or a hired session itself under hiring.policy automatic';
   }
   if (config.hiring.policy !== 'automatic' || !hired) {
-    return `only the lead retires ${request.id}: a session retires itself only when hired, under hiring.policy automatic`;
+    return `only a lead over ${request.id} retires it: a session retires itself only when hired, under hiring.policy automatic`;
   }
   if (request.openTasks.length > 0 || request.heir !== undefined) {
-    return `${request.id} still owns open task(s) ${request.openTasks.join(', ')}: close them first, or ask the lead to retire it with --to <heir>`;
+    const leader = tree.leaderOf(request.id) ?? tree.lead;
+    const ask = leader === tree.lead ? `the lead (${leader})` : `its sub-lead ${leader}`;
+    return `${request.id} still owns open task(s) ${request.openTasks.join(', ')}: close them first, or ask ${ask} to retire it with --to <heir>`;
   }
   return undefined;
 }
@@ -105,16 +111,25 @@ function namedProblem(config: KitConfig, id: string): string | undefined {
   return undefined;
 }
 
-/** The refusal for its open tasks and heir, or undefined. */
-function heirProblem(config: KitConfig, request: RetireRequest): string | undefined {
-  const { heir, id, openTasks } = request;
+/**
+ * The refusal for its open tasks and heir, or undefined. A sub-lead hands them only to itself or a session it leads,
+ * so work never leaves its group by a sub-lead's hand (T782's rule for a task's owner, src/register/policy.ts).
+ */
+function heirProblem(config: KitConfig, tree: LeadTree, request: RetireRequest): string | undefined {
+  const { by, heir, id, openTasks } = request;
   if (heir === undefined) {
     return openTasks.length === 0 ? undefined : `${id} owns open task(s) ${openTasks.join(', ')}: pass --to <heir> to hand them over, or close them first`;
   }
   if (heir === id) {
     return `${id} cannot be its own heir`;
   }
-  return config.sessions.includes(heir) ? undefined : `the heir ${heir} is not on the team`;
+  if (!config.sessions.includes(heir)) {
+    return `the heir ${heir} is not on the team`;
+  }
+  if (by !== config.roles.lead && heir !== by && !tree.leads(by, heir)) {
+    return `${by} hands work only within its group: the heir ${heir} is not led by ${by}; the lead (${config.roles.lead}) moves work between groups`;
+  }
+  return undefined;
 }
 
 function handoverProblem(request: RetireRequest): string | undefined {
@@ -143,7 +158,8 @@ export function planRetire(file: JsonRecord, config: KitConfig, active: readonly
     return { ok: false, problem: 'the config has no sessions list to take it from' };
   }
   const hired = active.some((hire) => hire.session === id);
-  const problem = callerProblem(config, request, hired) ?? namedProblem(config, id) ?? heirProblem(config, request) ?? handoverProblem(request);
+  const tree = new LeadTree(config);
+  const problem = callerProblem(config, tree, request, hired) ?? namedProblem(config, id) ?? heirProblem(config, tree, request) ?? handoverProblem(request);
   if (problem !== undefined) {
     return { ok: false, problem };
   }
