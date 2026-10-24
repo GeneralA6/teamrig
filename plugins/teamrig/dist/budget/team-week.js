@@ -19,7 +19,7 @@ export async function teamWeekOf(files, paths, input) {
     const period = move?.period;
     const entries = await new ExtraLog(files, paths.extraLog).read();
     const wAtFull = period === undefined ? undefined : wAtFullOf(readings, period.start);
-    const week = readWeek({ ...input, period, calibration, extra: { entries, wAtFull } });
+    const week = readWeek({ ...input, period, calibration, readings, extra: { entries, wAtFull } });
     const w = period === undefined ? 0 : wSince(states, period.start, now);
     const crossing = crossingOf({ before: move?.before, period, use: statusUse, covered: week.covered, w, now }, calibration.fit);
     if (crossing !== undefined) {

@@ -68,8 +68,8 @@ export async function budgetFactsOf(runtime, scope, transcript) {
     const statusUse = weekUseOf(snapshots, now);
     const states = [...byId.values(), outside];
     const week = await teamWeekOf(files, kit.paths, { budget, now, statusUse, states });
-    const { teamDay } = week;
-    if (week.usedPct === undefined || week.wPerPct === undefined || teamDay === undefined) {
+    const { teamDay, todayWPerPct } = week;
+    if (week.usedPct === undefined || todayWPerPct === undefined || teamDay === undefined) {
         return undefined;
     }
     const { lifts } = await new LiftLog(files, kit.paths.lifts).read();
@@ -94,7 +94,7 @@ export async function budgetFactsOf(runtime, scope, transcript) {
         now,
         id,
         name: roster.nameOf(id) ?? id,
-        usedTodayPct: todayW / week.wPerPct,
+        usedTodayPct: todayW / todayWPerPct,
         budgetPct,
         lift,
         burst,
