@@ -42,7 +42,7 @@ describe('teamWeekOf', () => {
     const week = await teamWeekOf(files, PATHS, { budget: DEFAULT_BUDGET, now: NOW, statusUse: STATUS, states: STATES });
     const moved = parsePeriod((await files.read(PATHS.period)) ?? '');
     assert.deepEqual(moved, { ...stored, lastPct: 20, lastAt: STATUS.at });
-    assert.deepEqual(week, readWeek({ budget: DEFAULT_BUDGET, now: NOW, statusUse: STATUS, period: stored, states: STATES, calibration: NOTHING_LEARNED }));
+    assert.deepEqual(week, readWeek({ budget: DEFAULT_BUDGET, now: NOW, statusUse: STATUS, period: stored, states: STATES, calibration: NOTHING_LEARNED, readings: [] }));
     const logged: MeterReading = { at: STATUS.at, usedPct: 20, start: START, end: END, w: 1_000, forecastPct: undefined };
     assert.deepEqual(await new MeterLog(files, PATHS.meterLog).read(NOW), [logged]);
   });
@@ -67,12 +67,26 @@ describe('teamWeekOf', () => {
     assert.equal((await log.read(NOW)).at(-1)?.forecastPct, 10);
   });
 
+  it("reads today's use between the period's meter log readings, and prices today's W at that use", async () => {
+    const files = new MemoryFiles();
+    const log = new MeterLog(files, PATHS.meterLog);
+    const period = { start: START, end: END, forecastPct: undefined };
+    // 14% at 500 W, 20% at 1,000 W: the 600 W before today read 15.2%, the 1,000 W now 20%, whatever the rate.
+    await log.append({ ...period, at: NOW - 20 * MS_PER_HOUR, usedPct: 14, w: 500 }, NOW);
+    await log.append({ ...period, at: STATUS.at, usedPct: 20, w: 1_000 }, NOW);
+    const stored = await storedAt(files, 20);
+    const week = await teamWeekOf(files, PATHS, { budget: DEFAULT_BUDGET, now: NOW, statusUse: STATUS, states: STATES });
+    const readings = await log.read(NOW);
+    assert.deepEqual(week, readWeek({ budget: DEFAULT_BUDGET, now: NOW, statusUse: STATUS, period: stored, states: STATES, calibration: calibrationOf(readings), readings }));
+    assert.deepEqual([week.teamDay?.usedPct.toFixed(6), week.todayWPerPct?.toFixed(6)], [(4.8).toFixed(6), (400 / 4.8).toFixed(6)]);
+  });
+
   it('reads the week without a period while no reset is known, and writes none', async () => {
     // The default budget sets no reset, and with no status line nothing shows one.
     const files = new MemoryFiles();
     const week = await teamWeekOf(files, PATHS, { budget: DEFAULT_BUDGET, now: NOW, statusUse: undefined, states: STATES });
     assert.deepEqual([await files.read(PATHS.period), await files.read(PATHS.meterLog)], [undefined, undefined]);
-    assert.deepEqual(week, readWeek({ budget: DEFAULT_BUDGET, now: NOW, statusUse: undefined, period: undefined, states: STATES, calibration: NOTHING_LEARNED }));
+    assert.deepEqual(week, readWeek({ budget: DEFAULT_BUDGET, now: NOW, statusUse: undefined, period: undefined, states: STATES, calibration: NOTHING_LEARNED, readings: [] }));
   });
 
   it("reads the extra-usage pool past 100% from the extra log and the meter log's 100% line", async () => {
@@ -87,7 +101,7 @@ describe('teamWeekOf', () => {
     const week = await teamWeekOf(files, PATHS, { budget, now: NOW, statusUse: status, states: STATES });
     // 1,000 W metered, 100 W past the 100% line at 50 W per dollar: $2 of the $10 spent, 400 W left.
     assert.deepEqual(week.pool, { addedUsd: 10, spentUsd: 2, leftUsd: 8, wPerUsd: 50, learned: false, leftW: 400 });
-    assert.deepEqual(week, readWeek({ budget, now: NOW, statusUse: status, period: stored, states: STATES, calibration: calibrationOf([full]), extra: { entries: [added], wAtFull: 900 } }));
+    assert.deepEqual(week, readWeek({ budget, now: NOW, statusUse: status, period: stored, states: STATES, calibration: calibrationOf([full]), readings: [full], extra: { entries: [added], wAtFull: 900 } }));
     // 10 W per percent from the status line: the pool's 40% over the 132 hours to the pace end, a 24-hour day of it.
     assert.equal(week.allowancePct?.toFixed(6), ((40 * 24) / 132).toFixed(6));
   });

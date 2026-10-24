@@ -49,6 +49,7 @@ const WEEK: WeekReading = {
   allowancePct: 10.25,
   todayFrom: Date.parse('2026-10-15T00:00:00Z'),
   todayW: 38_700_000,
+  todayWPerPct: 7_500_000,
   teamDay: { usedPct: 5.16, pacePct: (10.25 * 11) / 24 },
   pool: undefined,
 };
@@ -67,6 +68,7 @@ const UNKNOWN: WeekReading = {
   allowancePct: undefined,
   todayFrom: Date.parse('2026-10-15T00:00:00Z'),
   todayW: 0,
+  todayWPerPct: undefined,
   teamDay: undefined,
   pool: undefined,
 };

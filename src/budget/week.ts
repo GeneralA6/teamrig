@@ -1,7 +1,7 @@
 import type { BudgetConfig } from '../config/types.ts';
 import { formatUtcDay, formatUtcHour, MS_PER_DAY, MS_PER_HOUR } from '../core/time.ts';
 import { DailyProfile, type ActivityProfile } from './active-time.ts';
-import type { Calibration } from './calibration.ts';
+import { FRESH_READING_MS, useAtW, type Calibration, type MeterReading } from './calibration.ts';
 import { pastLimitOf, poolOf, type ExtraEntry, type ExtraPool } from './extra.ts';
 import {
   dailyAllowancePct,
@@ -24,6 +24,12 @@ import type { UsageState } from './store.ts';
  * reading and W alone.
  */
 export type RateSource = 'learned' | 'limit' | 'estimate';
+
+/**
+ * The points of the week today's use must span, read from the status line, before its own W per percent prices the
+ * sessions' parts of it (`WeekReading.todayWPerPct`): over a narrower span, a small error in it would swing that rate.
+ */
+export const TODAY_RATE_SPAN_PTS = 2;
 
 /**
  * Where the week stands: its use in percent, from the status line (the plan's own count) or, with a
@@ -57,6 +63,12 @@ export interface WeekReading {
   readonly todayFrom: number;
   /** Everyone's W since `todayFrom`, the team's sessions and the use outside it. */
   readonly todayW: number;
+  /**
+   * W per percent of today's use: `todayW` over that use read from the status line once it spans
+   * `TODAY_RATE_SPAN_PTS`, else `wPerPct`. A session's W today in percent of the week is its W over this, so the
+   * sessions' parts add up to the team's day; undefined with `wPerPct`.
+   */
+  readonly todayWPerPct: number | undefined;
   /** Everyone's use today against the team's in-day pace (`hasRoom`); undefined with the allowance. */
   readonly teamDay: TeamDay | undefined;
   /** The extra-usage pool (budget/extra.ts); undefined while nothing was added or the week's use is unknown. */
@@ -81,8 +93,53 @@ export interface WeekInput {
   readonly states: readonly UsageState[];
   /** The meter log's fit and forecasts (budget/calibration.ts); the fit, once there is one, sets the rate. */
   readonly calibration: Calibration;
+  /** The meter log's readings, which today's use is read between (`statusTodayPct`). */
+  readonly readings: readonly MeterReading[];
   /** The extra-usage log; unset, the week ends at its weekly limit with no pool past it. */
   readonly extra?: ExtraInput;
+}
+
+/** What today's use is read from by `statusTodayPct`. */
+interface TodaySight {
+  readonly readings: readonly MeterReading[];
+  /** The period's start; undefined while no reset is known. */
+  readonly start: number | undefined;
+  /** Whether the usage stores reach back to the period's start (`WeekReading.covered`). */
+  readonly covered: boolean;
+  readonly statusUse: WeekUse | undefined;
+  /** Everyone's W since the period's start, and since today's start (`WeekReading.todayFrom`). */
+  readonly weekW: number;
+  readonly todayW: number;
+  readonly wPerPct: number;
+  readonly now: number;
+}
+
+/**
+ * The week's use now read from the meter log (`useAtW`), held to the status line's: at least its percent, and below
+ * the next while its reading is fresh, as it shows the next the moment the use reaches it. Not at 100%, where the
+ * status line stops and the use goes on into the extra-usage pool.
+ */
+function heldToStatus(readPct: number, statusUse: WeekUse, now: number): number {
+  const atLeast = Math.max(readPct, statusUse.usedPct);
+  const fresh = now - statusUse.at <= FRESH_READING_MS && statusUse.usedPct < 100;
+  return fresh ? Math.min(atLeast, Math.floor(statusUse.usedPct) + 1) : atLeast;
+}
+
+/**
+ * Today's use from the status line, in percent of the week (T531): the use now less the use at today's start, each
+ * read between the period's meter readings (`useAtW`), so a rate only prices the part of a percent past the last
+ * reading, and a rate that drifts through the week does not inflate the day. Undefined while the period has no
+ * reading or the stores do not reach its start: today's use is then its W at the week's rate.
+ */
+function statusTodayPct(sight: TodaySight): number | undefined {
+  const { readings, start, covered, statusUse, weekW, todayW, wPerPct, now } = sight;
+  if (start === undefined || !covered || !readings.some((reading) => reading.start === start)) {
+    return undefined;
+  }
+  const fromPct = useAtW(readings, start, weekW - todayW, wPerPct);
+  const readPct = useAtW(readings, start, weekW, wPerPct);
+  const nowPct = statusUse === undefined ? readPct : heldToStatus(readPct, statusUse, now);
+  return Math.max(0, nowPct - fromPct);
 }
 
 /**
@@ -173,7 +230,7 @@ function teamAllowancePct(input: AllowanceInput, pool: ExtraPool | undefined, wP
 }
 
 export function readWeek(input: WeekInput): WeekReading {
-  const { budget, now, statusUse, states, period, calibration, extra } = input;
+  const { budget, now, statusUse, states, period, calibration, readings, extra } = input;
   const reset = period?.end;
   const window = period === undefined ? undefined : weekWindow(period.end, budget.paceEndHoursBeforeReset, period.start);
   const dayStart = now - (now % MS_PER_DAY);
@@ -187,6 +244,9 @@ export function readWeek(input: WeekInput): WeekReading {
   const rate = rateOf(calibration, budget, estimate);
   const wPerPct = rate?.wPerPct;
   const usedPct = statusUse?.usedPct ?? (covered && wPerPct !== undefined ? weekW / wPerPct : undefined);
+  const statusToday = wPerPct === undefined ? undefined : statusTodayPct({ readings, start: period?.start, covered, statusUse, weekW, todayW, wPerPct, now });
+  const todayPct = statusToday ?? (wPerPct === undefined ? undefined : todayW / wPerPct);
+  const todayWPerPct = statusToday !== undefined && statusToday >= TODAY_RATE_SPAN_PTS ? todayW / statusToday : wPerPct;
   const profile = DailyProfile.ofQuietHours(budget.quietHours);
   const pace = window === undefined || usedPct === undefined ? undefined : readPace(window, budget, now, usedPct, profile);
   const pool =
@@ -194,16 +254,16 @@ export function readWeek(input: WeekInput): WeekReading {
       ? undefined
       : poolOf(extra.entries, { start: window.start, w: weekW, usedPct, wAtFull: extra.wAtFull, configuredWPerUsd: budget.extraWPerUsd });
   const allowancePct =
-    window === undefined || usedPct === undefined || wPerPct === undefined
+    window === undefined || usedPct === undefined || wPerPct === undefined || todayPct === undefined
       ? undefined
-      : teamAllowancePct({ window, budget, now, usedPct, todayPct: todayW / wPerPct, profile }, pool, wPerPct);
+      : teamAllowancePct({ window, budget, now, usedPct, todayPct, profile }, pool, wPerPct);
   const pastLimit = usedPct === undefined ? undefined : pastLimitOf(usedPct, pool);
   const teamDay =
-    window === undefined || wPerPct === undefined || allowancePct === undefined
+    window === undefined || todayPct === undefined || todayWPerPct === undefined || allowancePct === undefined
       ? undefined
       : {
-          usedPct: todayW / wPerPct,
-          pacePct: dayPacePct({ window, now, allowancePct, idlePct: idleWSince(states, todayFrom, now, profile) / wPerPct, profile }),
+          usedPct: todayPct,
+          pacePct: dayPacePct({ window, now, allowancePct, idlePct: idleWSince(states, todayFrom, now, profile) / todayWPerPct, profile }),
           ...(pastLimit === undefined ? {} : { pastLimit }),
         };
   return {
@@ -220,6 +280,7 @@ export function readWeek(input: WeekInput): WeekReading {
     allowancePct,
     todayFrom,
     todayW,
+    todayWPerPct,
     teamDay,
     pool,
   };
