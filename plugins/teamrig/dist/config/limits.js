@@ -32,6 +32,7 @@ export const CONFIG_LIMITS = {
     chainNudgeAt: { min: 0, max: 50 },
     leadOwnPaths: { maxItems: 16, maxLength: 256 },
     readonlyShellPrefixes: { maxItems: 16, maxLength: 120 },
+    keepAllow: { maxItems: 64, maxLength: 120 },
     secretPaths: { maxItems: 32, maxLength: 200 },
     secretEnvNames: { maxItems: 16, maxLength: 120 },
     packageCooldownDays: { min: 0, max: 365 },

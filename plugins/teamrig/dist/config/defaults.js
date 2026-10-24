@@ -84,6 +84,38 @@ export const DEFAULT_PROMPTS = { hookAsks: 'ask' };
 export const DEFAULT_SECRET_GUARD = { secretReads: 'deny', paths: [], envNames: [] };
 /** Off, and trusting no prefix, until a team opts in. */
 export const DEFAULT_READONLY_SHELL = { enabled: false, allowPrefixes: [] };
+/**
+ * Read-only commands outside Claude Code's own read-only set whose arguments can neither run a program nor write
+ * (the general part of security's keep-list, T1037 10-23), kept in both shells; PowerShell's own cmdlets in
+ * PowerShell only. A team's own list replaces this one, so one that adds its tools' read-only commands repeats these.
+ */
+const KEPT_SHELL_COMMANDS = [
+    'kubectl get',
+    'kubectl describe',
+    'kubectl logs',
+    'kubectl top',
+    'kubectl rollout status',
+    'kubectl version',
+    'kubectl config current-context',
+    'npm ls',
+    'npm view',
+    'gh pr view',
+    'gh pr list',
+    'gh pr checks',
+    'gh run list',
+    'gh run view',
+    'tasklist',
+    'netstat',
+    'sleep',
+];
+const KEPT_CMDLETS = ['Test-Path', 'Get-Date', 'Get-Process'];
+export const DEFAULT_PERMISSIONS = {
+    keepAllow: [
+        ...KEPT_SHELL_COMMANDS.flatMap((command) => [`Bash(${command} *)`, `PowerShell(${command} *)`]),
+        ...KEPT_CMDLETS.map((cmdlet) => `PowerShell(${cmdlet} *)`),
+        'WebSearch',
+    ],
+};
 /** Tests: a test folder, `*.test.*` and `*.spec.*` files, and pytest's `test_*.py`. `warn` only adds to a push the guard already asks about. */
 export const DEFAULT_COMMITS = {
     maxLines: 400,

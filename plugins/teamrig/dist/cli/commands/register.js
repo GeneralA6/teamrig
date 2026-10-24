@@ -6,7 +6,7 @@ import { burstsOver, surplusOf } from "../../budget/burst.js";
 import { formatW } from "../../budget/format.js";
 import { timingText, waitTiming } from "../../decisions/lines.js";
 import { teamDecisions } from "../../decisions/team.js";
-import { contextSizeFindings } from "../../doctor/doctor.js";
+import { allowFindings, contextSizeFindings } from "../../doctor/doctor.js";
 import { hireFlags } from "../../hiring/due.js";
 import { activeHires, HiringLog } from "../../hiring/log.js";
 import { scaleOutFlags } from "../../hiring/scale-out.js";
@@ -25,6 +25,7 @@ import { approvalNotice, assignedNotice, formatTask, formatTaskDetail, formatTas
 import { isPeerWait, sameWait } from "../../register/waits.js";
 import { lintSkills } from "../../skills/lint.js";
 import { SKILL_FILE, SkillDir } from "../../skills/store.js";
+import { readWideAllow } from "../allow-scope.js";
 import { noPositionals, onePositional, UsageError } from "../args.js";
 import { addInputOf, callerOf, changesOf, listFilterOf, pinOf, setInputOf, taskIdOf, weekOf } from "../inputs.js";
 import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, projectFolder, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
@@ -570,7 +571,8 @@ export async function checkReport(args, runtime) {
     const scope = week === null ? 'no week plan tagged yet, so the week checks are skipped' : `week ${week}`;
     const { batch } = await teamDecisions(runtime.files, own.paths, own.config, own.snapshot.state.tasks, now.getTime(), zone);
     const context = contextSizeFindings(await readContextInput(runtime, project, own.paths.skills, own.config.contextFiles));
-    const { skills, unowned } = splitUnowned(context, lintSkills(skillFiles, now, own.config), new Set(own.config.sessions), own.paths.skills);
+    const allow = allowFindings(await readWideAllow(runtime, { paths: own.paths, config: own.config, project }));
+    const { skills, unowned } = splitUnowned([...context, ...allow], lintSkills(skillFiles, now, own.config), new Set(own.config.sessions), own.paths.skills);
     const lead = own.config.roles.lead;
     return { sections, scope, skills, skillsDir: own.paths.skills, hires, unowned, lead, decisions: { lead, batch, zone } };
 }

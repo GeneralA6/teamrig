@@ -3,6 +3,7 @@ import { describeNameClash, describeTreeProblem } from "../config/tree.js";
 import { ENV } from "../core/home.js";
 import { MS_PER_DAY } from "../core/time.js";
 import { unreadSince } from "../inbox/inbox.js";
+import { wideAllowText } from "../permissions/report.js";
 import { describeRequirement } from "../requirements/requirements.js";
 import { TEAM_RULES_MAX_CHARS } from "../rules/pack.js";
 /**
@@ -221,11 +222,16 @@ function launchFindings({ launches, roster }) {
         return [{ kind: 'launch-effort', detail }];
     });
 }
+/** One finding while any settings file holds a wide allow rule off the keep-list, counted by class, never its text; `check` shows it the lead too. */
+export function allowFindings(wide) {
+    const detail = wideAllowText(wide);
+    return detail === undefined ? [] : [{ kind: 'allow-wide', detail }];
+}
 /**
  * The team's health checks: names that find the wrong session or none, a damaged rename log,
  * inboxes nobody reads, rules too long to show, text every call re-reads over its budget (files, and the lists the newest
  * session holds), a broken tree of teams or a session name two teams use, a variable that overrides every model or effort
- * choice, and a launch with a model but no effort.
+ * choice, a launch with a model but no effort, and local allow rules that approve a whole tool or program.
  * It reads only; every fix is the user's.
  */
 export function doctorFindings(input) {
@@ -240,6 +246,7 @@ export function doctorFindings(input) {
         ...treeFindings(input),
         ...routingEnvFindings(input),
         ...launchFindings(input),
+        ...allowFindings(input.wideAllow),
     ];
 }
 export function formatFinding(finding) {
