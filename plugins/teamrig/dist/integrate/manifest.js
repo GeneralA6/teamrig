@@ -4,6 +4,14 @@ export const MANIFEST_FILE = 'package.json';
 export const LOCKFILE = 'package-lock.json';
 /** The root package's lifecycle scripts `npm ci` and `npm install` run. */
 export const INSTALL_HOOKS = ['preinstall', 'install', 'postinstall', 'prepublish', 'preprepare', 'prepare', 'postprepare', 'dependencies'];
+/**
+ * The root package.json fields `npm ci` and `npm install` never read: tools' settings, which the tool reads when it
+ * runs, and the package's description for a registry. A field not listed counts as one an install reads.
+ */
+export const NO_INSTALL_FIELDS = [
+    'jest', 'prettier', 'eslintConfig', 'eslintIgnore', 'stylelint', 'lint-staged', 'browserslist', 'babel', 'nyc', 'c8', 'mocha', 'ava', 'commitlint',
+    'description', 'keywords', 'author', 'contributors', 'maintainers', 'license', 'homepage', 'repository', 'bugs', 'funding',
+];
 function parseManifest(text) {
     try {
         const parsed = JSON.parse(text);
@@ -53,19 +61,18 @@ export function classifyManifestChange(before, after) {
     if (old === undefined || next === undefined) {
         return 'install';
     }
-    const fields = new Set([...Object.keys(old), ...Object.keys(next)]);
-    fields.delete('scripts');
-    if ([...fields].some((field) => !isDeepStrictEqual(old[field], next[field]))) {
+    const fields = [...new Set([...Object.keys(old), ...Object.keys(next)])].filter((field) => field !== 'scripts' && !isDeepStrictEqual(old[field], next[field]));
+    if (fields.some((field) => !NO_INSTALL_FIELDS.includes(field))) {
         return 'install';
     }
     const oldScripts = scriptsOf(old);
     const nextScripts = scriptsOf(next);
     const changed = [...new Set([...Object.keys(oldScripts), ...Object.keys(nextScripts)])].filter((name) => !isDeepStrictEqual(oldScripts[name], nextScripts[name]));
     if (changed.length === 0) {
-        return 'none';
+        return fields.length === 0 ? 'none' : 'no-install';
     }
     const reached = reachableFromHooks(oldScripts, nextScripts);
-    return changed.some((name) => reached.has(name)) ? 'install' : 'scripts-only';
+    return changed.some((name) => reached.has(name)) ? 'install' : 'no-install';
 }
 /** Whether the change needs a dependency install (`npm ci`) to keep node_modules matching the repository. */
 export function needsInstall(change) {
@@ -78,5 +85,5 @@ export async function packageFilesChange(paths, manifestAt) {
 }
 /** The changed root package files that need the install, as the refusal names them; empty when none does. */
 export function installTouches(change) {
-    return [...(change.lockfile ? [LOCKFILE] : []), ...(change.manifest === 'install' ? [`${MANIFEST_FILE} beyond scripts`] : [])];
+    return [...(change.lockfile ? [LOCKFILE] : []), ...(change.manifest === 'install' ? [`${MANIFEST_FILE} fields an install reads`] : [])];
 }
