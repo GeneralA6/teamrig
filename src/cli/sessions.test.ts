@@ -17,26 +17,40 @@ async function recordedTeam(): Promise<CliHarness> {
   return kit;
 }
 
+/** As a `ps` list gives them: resident memory only. */
 const ROWS = [
   { pid: 6900, parent: 1, bytes: 700 * MB },
   { pid: 6901, parent: 6900, bytes: 150 * MB },
   { pid: 9000, parent: 1, bytes: 4000 * MB },
 ];
 
+/** As Windows gives them: what each process committed too. */
+const COMMITTED_ROWS = [
+  { pid: 6900, parent: 1, bytes: 700 * MB, committed: 1600 * MB },
+  { pid: 6901, parent: 6900, bytes: 150 * MB, committed: 300 * MB },
+  { pid: 9000, parent: 1, bytes: 4000 * MB, committed: 5000 * MB },
+];
+
 describe('teamrig sessions', () => {
-  it('prints where each session runs and the memory its Claude Code holds, then the host', async () => {
+  it('prints where each session runs and the memory its Claude Code holds and committed, then the host', async () => {
     const kit = await recordedTeam();
-    const memory = new FakeHostMemory().lists(ROWS, { usedMb: 85_300, limitMb: 100_700 });
+    const memory = new FakeHostMemory().lists(COMMITTED_ROWS, { usedMb: 85_300, limitMb: 100_700 });
     memory.free = 21_400;
     const result = await kit.run(['sessions'], { memory });
     assert.equal(result.code, 0, result.stderr.join('\n'));
     assert.deepEqual(result.stdout, [
-      'lead app-lead: running in Claude Code 6900, 850 MB',
+      'lead app-lead: running in Claude Code 6900, 850 MB, 1900 MB committed',
       'alpha app-alpha: closed: the Claude Code it last started in has ended',
       'bravo app-bravo: no start recorded',
-      '1 running hold 850 MB; 1 closed; 1 with no start recorded',
+      '1 running hold 850 MB, 1900 MB committed; 1 closed; 1 with no start recorded',
       'host: 21400 MB free; commit 85300 of 100700 MB (85%)',
     ]);
+  });
+
+  it('leaves out what is committed where the host does not say', async () => {
+    const result = await (await recordedTeam()).run(['sessions'], { memory: new FakeHostMemory().lists(ROWS) });
+    assert.deepEqual(result.stdout.slice(0, 1), ['lead app-lead: running in Claude Code 6900, 850 MB']);
+    assert.equal(result.stdout[3], '1 running hold 850 MB; 1 closed; 1 with no start recorded');
   });
 
   it('says so when the host cannot list its processes or give its commit charge', async () => {

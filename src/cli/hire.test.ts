@@ -66,10 +66,11 @@ describe('hire', () => {
     const kit = new CliHarness(LEAD_TEAM);
     const records = new SessionRecordStore(kit.files, { sessions: join(TEAM_HOME, 'state', 'sessions') });
     await records.write('lead', { claudePid: 6900, claudeSession: 'claude-lead', at: '2030-01-08T09:00:00.000Z' });
-    const memory = new FakeHostMemory().lists([{ pid: 6900, parent: 1, bytes: 2000 * 2 ** 20 }], { usedMb: 91_000, limitMb: 100_000 });
+    const lead = { pid: 6900, parent: 1, bytes: 800 * 2 ** 20, committed: 2000 * 2 ** 20 };
+    const memory = new FakeHostMemory().lists([lead], { usedMb: 91_000, limitMb: 100_000 });
     memory.free = 20_000;
     const short =
-      'no room on the host to hire helper, counted at 2000 MB: with it the commit charge would be 93000 MB, over 92% of its ' +
+      'no room on the host to hire helper, counted at 800 MB resident and 2000 MB committed: with it the commit charge would be 93000 MB, over 92% of its ' +
       '100000 MB limit (open.headroom.commitMaxPct). Close a session first: teamrig sessions lists what each one holds';
     const preview = await kit.run(['hire', 'helper', ...JOB, '--session', 'lead'], { memory });
     assert.equal(preview.code, EXIT.ok, preview.stderr.join('\n'));

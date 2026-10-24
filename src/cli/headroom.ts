@@ -1,7 +1,7 @@
 import type { KitConfig } from '../config/types.ts';
 import type { TeamPaths } from '../core/home.ts';
 import { headroomFor, type Headroom } from '../sessions/headroom.ts';
-import { measureSessions } from '../sessions/measure.ts';
+import { measureSessions, runningPlaces } from '../sessions/measure.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
 import type { CliRuntime } from './runtime.ts';
 
@@ -17,6 +17,12 @@ export async function headroomOf(
 ): Promise<Headroom> {
   const records = await new SessionRecordStore(runtime.files, paths).readEach(ids);
   const [rows, commit] = await Promise.all([runtime.memory.processes(), runtime.memory.commit()]);
-  const runningMb = rows === undefined ? [] : measureSessions(records, rows).flatMap((place) => (place.state === 'running' ? [place.treeMb] : []));
-  return headroomFor({ freeMb: runtime.memory.freeMb(), commit, runningMb }, config.coordinator.heavy.memoryFloorMb, config.open.headroom);
+  const running = rows === undefined ? [] : runningPlaces(measureSessions(records, rows));
+  const room = {
+    freeMb: runtime.memory.freeMb(),
+    commit,
+    runningMb: running.map((place) => place.treeMb),
+    runningCommittedMb: running.flatMap((place) => (place.committedMb === undefined ? [] : [place.committedMb])),
+  };
+  return headroomFor(room, config.coordinator.heavy.memoryFloorMb, config.open.headroom);
 }

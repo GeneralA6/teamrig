@@ -1,11 +1,25 @@
-import { treeMb, type ProcessRow } from '../coordinator/memory.ts';
+import { treeCommittedMb, treeMb, type ProcessRow } from '../coordinator/memory.ts';
 import type { SessionRecord } from './record.ts';
 
-/** Where a session is on the host: running in a Claude Code process whose tree holds `treeMb`, closed, or never recorded. */
-export type SessionPlace =
-  | { readonly id: string; readonly state: 'running'; readonly claudePid: number; readonly treeMb: number }
-  | { readonly id: string; readonly state: 'closed' }
-  | { readonly id: string; readonly state: 'unrecorded' };
+/**
+ * A session running in a Claude Code process whose tree holds `treeMb` resident and has committed `committedMb`
+ * (undefined where the host does not say, as with `ps`).
+ */
+export interface RunningPlace {
+  readonly id: string;
+  readonly state: 'running';
+  readonly claudePid: number;
+  readonly treeMb: number;
+  readonly committedMb: number | undefined;
+}
+
+/** Where a session is on the host: running, closed, or never recorded. */
+export type SessionPlace = RunningPlace | { readonly id: string; readonly state: 'closed' } | { readonly id: string; readonly state: 'unrecorded' };
+
+/** The places that are running, in their order. */
+export function runningPlaces(places: readonly SessionPlace[]): RunningPlace[] {
+  return places.flatMap((place) => (place.state === 'running' ? [place] : []));
+}
 
 /**
  * Each session's place, in the order of `records`, from its record and the host's processes. A session runs while
@@ -28,7 +42,7 @@ export function measureSessions(records: ReadonlyMap<string, SessionRecord | und
     const row = byPid.get(record.claudePid);
     const sameProcess = row !== undefined && (row.startedMs === undefined || row.startedMs <= Date.parse(record.at));
     return sameProcess && owners.get(record.claudePid)?.id === id
-      ? { id, state: 'running', claudePid: record.claudePid, treeMb: treeMb(record.claudePid, rows) }
+      ? { id, state: 'running', claudePid: record.claudePid, treeMb: treeMb(record.claudePid, rows), committedMb: treeCommittedMb(record.claudePid, rows) }
       : { id, state: 'closed' };
   });
 }

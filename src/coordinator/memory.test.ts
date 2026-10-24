@@ -5,6 +5,7 @@ import {
   parseMeminfoCommit,
   parseProcessRows,
   parseWindowsCommit,
+  treeCommittedMb,
   treeMb,
   watchMemory,
   type CommitCharge,
@@ -122,11 +123,27 @@ describe('parseProcessRows', () => {
     ]);
   });
 
-  it('reads a fourth number as when the process started, and leaves out a line of five', () => {
-    assert.deepEqual(parseProcessRows('4,0,1024,0\r\n77,4,2048,1760000000000\n8,4,1,2,3\n'), [
+  it('reads a fourth number as when the process started, a fifth as what it committed, and leaves out a line of six', () => {
+    assert.deepEqual(parseProcessRows('4,0,1024,0\r\n77,4,2048,1760000000000\n78,4,2048,1760000000000,4096\n8,4,1,2,3,5\n'), [
       { pid: 4, parent: 0, bytes: 1024, startedMs: 0 },
       { pid: 77, parent: 4, bytes: 2048, startedMs: 1_760_000_000_000 },
+      { pid: 78, parent: 4, bytes: 2048, startedMs: 1_760_000_000_000, committed: 4096 },
     ]);
+  });
+});
+
+describe('treeCommittedMb', () => {
+  it('sums what a process and every descendant committed, leaving out processes beside it', () => {
+    const rows: ProcessRow[] = [
+      { pid: 10, parent: 1, bytes: MB, committed: 900 * MB },
+      { pid: 11, parent: 10, bytes: MB, committed: 200 * MB },
+      { pid: 20, parent: 1, bytes: MB, committed: 5000 * MB },
+    ];
+    assert.equal(treeCommittedMb(10, rows), 1100);
+  });
+
+  it('is undefined when a process of the tree is listed without it, as a ps list gives', () => {
+    assert.equal(treeCommittedMb(10, ROWS), undefined);
   });
 });
 
@@ -191,6 +208,12 @@ describe('nodeMemoryProbe', () => {
     const rows = await probe.processes();
     assert.ok(rows !== undefined, 'the host lists its processes');
     assert.ok(treeMb(process.pid, rows) > 0, 'this process is listed with its memory');
+    const committed = treeCommittedMb(process.pid, rows);
+    if (process.platform === 'win32') {
+      assert.ok(committed !== undefined && committed > 0, 'Windows lists what this process committed');
+    } else {
+      assert.equal(committed, undefined, 'ps lists no commit');
+    }
     assert.deepEqual(
       treeOf(process.pid, rows).filter((row) => row.pid !== process.pid),
       [],

@@ -1,7 +1,7 @@
 import type { Roster } from '../../config/roster.ts';
 import type { CommitCharge } from '../../coordinator/memory.ts';
 import { KIT_NAME } from '../../core/home.ts';
-import { measureSessions, type SessionPlace } from '../../sessions/measure.ts';
+import { measureSessions, runningPlaces, type SessionPlace } from '../../sessions/measure.ts';
 import { SessionRecordStore } from '../../sessions/record.ts';
 import { UsageError, type ParsedArgs } from '../args.ts';
 import { openTeamKit, requireConfig, rosterOf } from '../kit.ts';
@@ -11,19 +11,37 @@ import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 function placeLine(roster: Roster, place: SessionPlace): string {
   const where =
     place.state === 'running'
-      ? `running in Claude Code ${place.claudePid}, ${place.treeMb} MB`
+      ? `running in Claude Code ${place.claudePid}, ${place.treeMb} MB${committedText(place.committedMb)}`
       : place.state === 'closed'
         ? 'closed: the Claude Code it last started in has ended'
         : 'no start recorded';
   return `${place.id} ${roster.nameOf(place.id) ?? place.id}: ${where}`;
 }
 
+/** `, <MB> MB committed`, or nothing where the host does not say. */
+function committedText(committedMb: number | undefined): string {
+  return committedMb === undefined ? '' : `, ${committedMb} MB committed`;
+}
+
+/** The sum of `values`, or undefined when any is undefined. */
+function sumOf(values: readonly (number | undefined)[]): number | undefined {
+  let total = 0;
+  for (const value of values) {
+    if (value === undefined) {
+      return undefined;
+    }
+    total += value;
+  }
+  return total;
+}
+
 function totalLine(places: readonly SessionPlace[]): string {
-  const running = places.flatMap((place) => (place.state === 'running' ? [place.treeMb] : []));
+  const running = runningPlaces(places);
   const closed = places.filter((place) => place.state === 'closed').length;
   const unrecorded = places.length - running.length - closed;
-  const heldMb = running.reduce((total, mb) => total + mb, 0);
-  return `${running.length} running hold ${heldMb} MB; ${closed} closed; ${unrecorded} with no start recorded`;
+  const heldMb = sumOf(running.map((place) => place.treeMb)) ?? 0;
+  const committed = committedText(sumOf(running.map((place) => place.committedMb)));
+  return `${running.length} running hold ${heldMb} MB${committed}; ${closed} closed; ${unrecorded} with no start recorded`;
 }
 
 function hostLine(freeMb: number, commit: CommitCharge | undefined): string {
@@ -33,7 +51,8 @@ function hostLine(freeMb: number, commit: CommitCharge | undefined): string {
 
 /**
  * `sessions`: each session, running (with the MB its Claude Code's process tree holds: helpers, shells, MCP
- * servers), closed or never recorded, then the host's free memory and commit charge. It only reads.
+ * servers, and what it has committed where the host says), closed or never recorded, then the host's free memory
+ * and commit charge. It only reads.
  */
 export async function sessions(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const [extra] = args.positionals;
