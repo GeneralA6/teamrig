@@ -1,5 +1,5 @@
 import { dirname, join } from 'node:path';
-import { claudeProjectSlug, claudeProjectsDir, projectTranscriptPath } from '../budget/discover.ts';
+import { claudeProjectSlug, claudeProjectsDir, findTranscript } from '../budget/discover.ts';
 import type { Roster } from '../config/roster.ts';
 import type { KitConfig } from '../config/types.ts';
 import { KIT_NAME } from '../core/home.ts';
@@ -114,7 +114,10 @@ export async function idleVerdictOf(runtime: CliRuntime, config: KitConfig, rost
     return keep(`waits until ${zone.clock(new Date(soon.at))} on ${soon.task.id}, under ${TIME_WAIT_GUARD_MINUTES} min away`);
   }
   const projectsDir = claudeProjectsDir(runtime.env, runtime.userHome);
-  const transcript = record.transcript ?? projectTranscriptPath(projectsDir, options.project, record.claudeSession);
+  const transcript = record.transcript ?? (await findTranscript(runtime.transcripts, projectsDir, options.project, record.claudeSession));
+  if (transcript === undefined) {
+    return keep(`has no transcript of Claude Code session ${record.claudeSession} in any project folder, so its idle time is unknown`);
+  }
   const last = await measureTranscript(runtime, transcript);
   if (last.changedAt === undefined) {
     return keep(`has no transcript of Claude Code session ${record.claudeSession} at ${transcript}, so its idle time is unknown`);
