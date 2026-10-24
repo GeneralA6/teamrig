@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
+import { NAME_PATTERN, RESERVED_NAMES } from '../core/ids.ts';
 import { MODEL_ALIASES, MODEL_ID_MAX_LENGTH, MODEL_ID_PATTERN } from './launch.ts';
 import { CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from './limits.ts';
 import { parseConfig } from './parse.ts';
@@ -346,6 +347,12 @@ describe('config.schema.json', () => {
     const items = nodeAt(await loadSchema(), 'permissions.keepAllow')['items'];
     assert.ok(isRecord(items));
     assert.equal(items['pattern'], KEEP_RULE_PATTERN.source);
+  });
+
+  it('takes the session names the parser takes, and names the ones Claude Code reserves', async () => {
+    const names = nodeAt(await loadSchema(), 'names');
+    assert.equal(nodeAt(names, '*')['pattern'], NAME_PATTERN.source);
+    assert.ok(String(names['description']).includes(`(${RESERVED_NAMES.join(', ')})`));
   });
 
   it('takes the verify gate choices the parser takes', async () => {

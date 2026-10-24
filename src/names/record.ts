@@ -1,5 +1,5 @@
 import type { Roster } from '../config/roster.ts';
-import { NAME_PATTERN, NAME_RULE } from '../core/ids.ts';
+import { isReservedName, NAME_PATTERN, NAME_RULE, RESERVED_RULE } from '../core/ids.ts';
 import type { Clock, Mutex } from '../core/lock.ts';
 import type { RenameLog } from './log.ts';
 import { RENAME_VERSION, type Rename } from './rename.ts';
@@ -33,7 +33,7 @@ export type RenameCheck =
 
 /**
  * The team's rules for a new name: only the session itself or the lead may record it; it must be a
- * valid name, not another session's id and not another session's current name. A name another
+ * valid name, not one Claude Code reserves, not another session's id and not another session's current name. A name another
  * session had before may be taken: the newest record wins, so it stops finding that session.
  */
 export function checkRename(roster: Roster, request: RenameRequest): RenameCheck {
@@ -50,6 +50,9 @@ export function checkRename(roster: Roster, request: RenameRequest): RenameCheck
   }
   if (!NAME_PATTERN.test(to)) {
     return { kind: 'refused', reason: `"${to}" cannot be a session name: ${NAME_RULE}` };
+  }
+  if (isReservedName(to)) {
+    return { kind: 'refused', reason: `${to} ${RESERVED_RULE}: give the tab another name with /rename` };
   }
   if (to !== id && roster.ids.includes(to)) {
     return { kind: 'refused', reason: `${to} is the id of another session` };

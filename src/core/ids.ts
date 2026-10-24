@@ -18,6 +18,21 @@ export const NAME_PATTERN = /^[a-z][a-z0-9-]{0,64}$/;
 export const NAME_RULE = 'a lowercase letter, then lowercase letters, digits or -, at most 65 characters';
 
 /**
+ * Names Claude Code keeps for itself (2.1.310): its SendMessage refuses an agent name of `main`, `team-lead` (its
+ * agent-teams leader), `user` or `system` and routes a message to one of them to its own mailbox, so a session by such
+ * a name never receives a message. Claude Code folds a name first (NFKC, lowercase, spaces to dashes), which leaves a
+ * {@link NAME_PATTERN} name as it is, so comparing the name itself covers every spelling.
+ */
+export const RESERVED_NAMES: readonly string[] = ['main', 'team-lead', 'user', 'system'];
+
+/** Why a reserved name cannot be a session's, after the name. */
+export const RESERVED_RULE = 'is a name Claude Code keeps for itself, so a message sent to it never reaches a session';
+
+export function isReservedName(name: string): boolean {
+  return RESERVED_NAMES.includes(name);
+}
+
+/**
  * A Claude Code tab title as a session id or name. Ids and names are lowercase, so a title that is a
  * valid name but for its case reads as that name (`Shop-Web` is `shop-web`); any other title stays
  * as typed, so a refusal quotes it as the person wrote it.

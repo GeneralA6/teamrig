@@ -1,6 +1,6 @@
 import { deployTargetsOf } from '../coordinator/targets.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
-import { NAME_PATTERN, NAME_RULE } from '../core/ids.ts';
+import { isReservedName, NAME_PATTERN, NAME_RULE, RESERVED_NAMES } from '../core/ids.ts';
 import { isMinuteInSpan, utcMinuteOf } from '../core/time.ts';
 import { TimeZone } from '../core/zone.ts';
 import { FOLLOWUP_STATUSES, isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, SESSION_NAME, TASK_STATUSES, type TaskStatus } from '../register/model.ts';
@@ -178,11 +178,16 @@ const isFrontmatterKey: Check<string> = (key) => (/^[A-Za-z0-9_-]+$/.test(key) ?
 const isTrailerKey: Check<string> = (key) =>
   /^[A-Za-z][A-Za-z0-9-]{0,39}$/.test(key) ? undefined : 'expected a trailer key: a letter, then at most 39 letters, digits or -';
 
-const isDisplayName: Check<string> = (name) => (NAME_PATTERN.test(name) ? undefined : `expected a name: ${NAME_RULE}`);
+const isDisplayName: Check<string> = (name) => {
+  if (!NAME_PATTERN.test(name)) {
+    return `expected a name: ${NAME_RULE}`;
+  }
+  return isReservedName(name) ? `expected a name Claude Code does not keep for itself (${RESERVED_NAMES.join(', ')}): a message to one never reaches a session` : undefined;
+};
 
 /**
- * `names`: only sessions on the team, and each name unique and never another session's id, so a
- * command given a name finds exactly one session.
+ * `names`: only sessions on the team, each name unique, never another session's id and never one Claude Code reserves,
+ * so a command or a message given a name finds exactly one session.
  */
 function readNames(read: ConfigReader, raw: JsonRecord, sessions: readonly string[]): Record<string, string> {
   const names: Record<string, string> = {};

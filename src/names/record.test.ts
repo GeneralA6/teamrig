@@ -52,12 +52,13 @@ describe('recordRename', () => {
     assert.equal(files.get(PATH), undefined);
   });
 
-  it('refuses a stranger, a rename by another member, and a name that is not usable or is taken', async () => {
+  it('refuses a stranger, a rename by another member, and a name that is not usable, reserved or taken', async () => {
     const { deps, files } = setup();
     const requests: RenameRequest[] = [
       { id: 'zulu', to: 'ghost', by: 'lead' },
       { id: 'alpha', to: 'scout', by: 'bravo' },
       { id: 'alpha', to: 'Scout Two', by: 'alpha' },
+      { id: 'lead', to: 'team-lead', by: 'lead' },
       { id: 'alpha', to: 'bravo', by: 'alpha' },
       { id: 'alpha', to: 'captain', by: 'alpha' },
     ];
@@ -66,6 +67,7 @@ describe('recordRename', () => {
       'zulu is not a session on this team (sessions: lead (captain), alpha (app-alpha), bravo (app-bravo))',
       'only alpha itself or the lead may record its new name',
       '"Scout Two" cannot be a session name: a lowercase letter, then lowercase letters, digits or -, at most 65 characters',
+      'team-lead is a name Claude Code keeps for itself, so a message sent to it never reaches a session: give the tab another name with /rename',
       'bravo is the id of another session',
       'captain is already the name of lead',
     ]);

@@ -39,7 +39,7 @@
       "uniqueItems": true
     },
     "names": {
-      "description": "Each session's first display and Claude Code session name, by id. A session not listed is named <team>-<id>. A name must be unique and never another session's id. A rename in the team's rename log wins over it, and it keeps finding the session.",
+      "description": "Each session's first display and Claude Code session name, by id. A session not listed is named <team>-<id>. A name must be unique, never another session's id and never one Claude Code keeps for itself (main, team-lead, user, system), since a message to one never reaches a session. A rename in the team's rename log wins over it, and it keeps finding the session.",
       "type": "object",
       "propertyNames": { "$ref": "#/$defs/sessionName" },
       "additionalProperties": {
