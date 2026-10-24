@@ -328,6 +328,8 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       (run hidden by the Stop hook: starts the session fresh once its handover is written and it is idle)
   idle-close <id> --team <team> --project <dir>
       (run hidden by the idle pass: closes a session it found idle, once weighed again)
+  idle-open <id> --team <team> --project <dir>
+      (run hidden by the idle pass: reopens a session it closed that work would wake, once judged again)
 Team: $TEAMRIG_TEAM, else the nearest .teamrig.json ({"team": "<id>"}) above the current folder,
 else above $CLAUDE_PROJECT_DIR.
 Sessions: give an id, a current name or a former one; a session never named is <team>-<id>.

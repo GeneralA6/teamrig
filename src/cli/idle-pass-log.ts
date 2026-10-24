@@ -116,7 +116,10 @@ export interface LoggedStep {
   readonly line: string;
 }
 
-/** What an act the pass started came to: done, kept (weighed again, the session no longer closes) or failed. */
+/**
+ * What an act the pass started came to: done, kept (weighed again, the session no longer closes or reopens, or the
+ * host has no room for its reopen) or failed.
+ */
 export type ActOutcome = 'done' | 'kept' | 'failed';
 
 /** An act a pass started on one session: its outcome and line, and the host's commit charge before and after it. */
@@ -124,7 +127,7 @@ export interface IdleActRecord {
   readonly kind: 'act';
   readonly at: number;
   readonly mode: IdleMode;
-  readonly act: 'close';
+  readonly act: 'close' | 'reopen';
   readonly id: string;
   readonly outcome: ActOutcome;
   readonly line: string;
