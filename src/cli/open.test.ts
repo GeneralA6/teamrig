@@ -9,6 +9,7 @@ import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
 import type { RestartRequest } from '../refresh/state.ts';
 import { RefreshStore } from '../refresh/store.ts';
+import { SessionRecordStore } from '../sessions/record.ts';
 import { APP, CLAUDE_SESSION, CliHarness, KIT, TEAM, TEAM_HOME, USER_HOME, type RunOptions } from '../testing/cli-harness.ts';
 import { teamConfigOf, treeHarness } from '../testing/team-tree.ts';
 import { EXIT } from './runtime.ts';
@@ -16,6 +17,7 @@ import { EXIT } from './runtime.ts';
 const NODE = '/usr/bin/node';
 const SCRIPT = '/opt/teamrig/dist/cli/main.js';
 const FOLDERS = new FakePathProbe({ folders: [APP] });
+const MB = 2 ** 20;
 
 /** What `open alpha` hands the new tab to run, with the default prompt. */
 function launchArgv(project: string = APP, prompt: string = defaultPrompt('app', 'alpha')): string[] {
@@ -49,6 +51,28 @@ describe('teamrig open', () => {
     assert.deepEqual(processes.started, []);
     const lead = await new CliHarness(TEAM).run(['open', 'lead'], { probe: FOLDERS, processes, platform: 'win32', memory });
     assert.equal(lead.code, EXIT.ok, lead.stdout.join('\n'));
+    assert.equal(processes.started.length, 1);
+  });
+
+  it('counts a running session at its resident size where the host gives no committed one, and at the default where it lists no process', async () => {
+    const kit = new CliHarness(TEAM);
+    await new SessionRecordStore(kit.files, { sessions: join(TEAM_HOME, 'state', 'sessions') }).write('lead', {
+      claudePid: 6900,
+      claudeSession: 'claude-lead',
+      at: '2030-01-08T09:00:00.000Z',
+    });
+    const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started' });
+    const resident = new FakeHostMemory().lists([{ pid: 6900, parent: 1, bytes: 3000 * MB }]);
+    resident.free = 6000;
+    const refused = await kit.run(['open', 'alpha'], { probe: FOLDERS, processes, platform: 'win32', memory: resident });
+    assert.deepEqual(refused.stdout, [
+      'REFUSED no room on the host to open app-alpha (session alpha), counted at 3000 MB resident and 1200 MB committed: 6000 MB free, under the 4096 MB heavy ' +
+        'steps keep free (coordinator.heavy.memoryFloorMb) plus 3000 MB for it. Close a session first: teamrig sessions lists what each one holds',
+    ]);
+    const unlisted = new FakeHostMemory().lists(undefined);
+    unlisted.free = 6000;
+    const opened = await kit.run(['open', 'alpha'], { probe: FOLDERS, processes, platform: 'win32', memory: unlisted });
+    assert.equal(opened.code, EXIT.ok, opened.stdout.join('\n'));
     assert.equal(processes.started.length, 1);
   });
 
