@@ -177,10 +177,17 @@ function sessionsToday(reading: Reading, roster: Roster, budget: BudgetConfig, s
     const state = reading.measured.bySession.get(id);
     const w = state === undefined ? 0 : wSince([state], reading.week.todayFrom, reading.now);
     const lift = activeLift(reading.lifts, id, reading.now, reading.week.usedPct);
+    const liftParent = lift === undefined ? undefined : liftParentOf(split, roster, id);
     const inBurst = burstNow !== undefined && burstNow.burst.sessions.includes(id) ? burstNow : undefined;
     const budgetPct = withBurst(dailyBudgetOf(reading.week.allowancePct, id, split, others), inBurst?.floorPct);
-    return { id, name: roster.nameOf(id) ?? id, w, calls: state?.byDay[today]?.calls ?? 0, budgetPct, lift, inBurst };
+    return { id, name: roster.nameOf(id) ?? id, w, calls: state?.byDay[today]?.calls ?? 0, budgetPct, lift, liftParent, inBurst };
   });
+}
+
+/** The name of the sub-lead whose group's daily budget a lift of session `id` is a part of (`split`'s tree); undefined for the team's. */
+export function liftParentOf(split: BudgetSplit, roster: Roster, id: string): string | undefined {
+  const parent = liftPlaceOf(split, id, false)?.parent;
+  return parent === undefined ? undefined : (roster.nameOf(parent) ?? parent);
 }
 
 /** The days a loop table shows, oldest first, ending at `now`'s day. */

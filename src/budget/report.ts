@@ -36,6 +36,8 @@ export interface SessionToday {
   /** Its daily budget in percent of the week: its part of the team's while lifted, at least its burst's floor while in a burst; undefined when unknown. */
   readonly budgetPct: number | undefined;
   readonly lift: Lift | undefined;
+  /** The sub-lead whose group's daily budget its lift is a part of, by name; undefined for the team's. */
+  readonly liftParent: string | undefined;
   /** The burst in force and its floor now, when the session is in it. */
   readonly inBurst: InBurst | undefined;
 }
@@ -320,7 +322,7 @@ export function sessionLines(session: SessionToday, state: UsageState, week: Wee
     lines.push(`Its daily budget today is ${formatPct(session.budgetPct)} of the week${budgetMarkOf(session.lift, session.inBurst !== undefined)}.`);
   }
   if (session.lift !== undefined) {
-    lines.push(`Budget: the lead lifted ${liftText(session.lift, session.name, parentBudgetText(undefined), zone)}`);
+    lines.push(`Budget: the lead lifted ${liftText(session.lift, session.name, parentBudgetText(session.liftParent), zone)}`);
   }
   if (session.inBurst !== undefined) {
     lines.push(`Budget: the lead started ${burstText(session.inBurst.burst, [session.name], zone, session.inBurst.floorPct)} ${MORE_BURST}`);

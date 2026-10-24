@@ -90,7 +90,7 @@ const LIFT_HEADING =
 const LIFT_BLOCK = [LIFT_HEADING, '  session   part      until  stop at', '  bravo    40.0%  00:00 UTC    97.0%', '  00:00 UTC is the end of the budget day.'];
 
 function session(id: string, w: number, calls: number, budgetPct: number | undefined = 10.25 / 3, lift: Lift | undefined = undefined): SessionToday {
-  return { id, name: id === 'lead' ? 'commander' : id, w, calls, budgetPct, lift, inBurst: undefined };
+  return { id, name: id === 'lead' ? 'commander' : id, w, calls, budgetPct, lift, liftParent: undefined, inBurst: undefined };
 }
 
 /** A surplus burst for alpha and bravo until the pace end, Wed 10-21 00:00 UTC, started at a 12.5% floor that is 9.5% now. */
@@ -315,6 +315,11 @@ describe('sessionLines', () => {
     ]);
   });
 
+  it("names the sub-lead's group whose daily budget the session's lift is a part of", () => {
+    const lines = sessionLines({ ...session('bravo', 0, 0, 2, LIFT), liftParent: 'alpha' }, state({}), WEEK, TimeZone.UTC);
+    assert.match(lines.find((line) => line.startsWith('Budget:')) ?? '', /^Budget: the lead lifted bravo to 40\.0% of alpha's group's daily budget today /);
+  });
+
   it("gives the session's burst under its budget today", () => {
     const lines = sessionLines(inBurst('alpha', 0), state({}), WEEK, TimeZone.UTC);
     assert.equal(lines[2], 'Its daily budget today is 9.5% of the week (burst).');
@@ -323,7 +328,7 @@ describe('sessionLines', () => {
   });
 
   it('says when there is no use and no budget', () => {
-    const unbudgeted: SessionToday = { id: 'lead', name: 'commander', w: 0, calls: 0, budgetPct: undefined, lift: undefined, inBurst: undefined };
+    const unbudgeted: SessionToday = { id: 'lead', name: 'commander', w: 0, calls: 0, budgetPct: undefined, lift: undefined, liftParent: undefined, inBurst: undefined };
     assert.deepEqual(sessionLines(unbudgeted, state({}), UNKNOWN, TimeZone.UTC), ['commander (lead), by UTC day:', '  no use in the last 8 days', W_EXPLAINED]);
     assert.deepEqual(sessionLines(unbudgeted, state({ '2026-10-15': usage(500, 2) }), UNKNOWN, TimeZone.UTC).slice(1, 2), ['  2026-10-15  500 W in 2 calls']);
   });

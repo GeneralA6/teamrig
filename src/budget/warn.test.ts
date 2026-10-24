@@ -38,6 +38,7 @@ function facts(usedTodayPct: number, weekUsedPct: number, now = DAY, extra: Part
     usedTodayPct,
     budgetPct: 1,
     lift: undefined,
+    liftParent: undefined,
     burst: undefined,
     surplus: undefined,
     weekUsedPct,
@@ -272,6 +273,11 @@ describe('stopWarning', () => {
     const ended = stopWarning(facts(0.5, AHEAD), BUDGET, lifted.state);
     assert.deepEqual(ended.lines, ["Budget: alpha's lift has ended; its daily budget is 1.0% again."]);
     assert.equal(ended.state.liftAt, undefined);
+  });
+
+  it("names the sub-lead's group whose daily budget the lift is a part of", () => {
+    const lifted = stopWarning(facts(0.5, AHEAD, DAY, { lift: lift(), liftParent: 'app-bravo', budgetPct: 2 }), BUDGET, undefined);
+    assert.match(lifted.lines[0] ?? '', /^Budget: the lead lifted alpha to 40\.0% of app-bravo's group's daily budget today /);
   });
 
   it('shows a burst starting and ending, and marks the budget it sets', () => {
