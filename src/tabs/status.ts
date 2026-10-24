@@ -150,7 +150,7 @@ function topicalPrompt(prompt: string | undefined): string | undefined {
 }
 
 /** The text of a user entry's message: its string content, else its first text block. */
-function messageTextOf(entry: JsonRecord): string | undefined {
+export function messageTextOf(entry: JsonRecord): string | undefined {
   const content = recordField(entry, 'message')?.['content'];
   if (typeof content === 'string') {
     return content;
