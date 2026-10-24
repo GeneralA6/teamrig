@@ -99,6 +99,14 @@ function snapshotOf(tasks: unknown): Map<string, CarriedCron> {
   return crons;
 }
 
+/**
+ * The jobs live in the process when Claude Code wrote a `session_cron_carry` snapshot: the session's own (`tasks`)
+ * and those an earlier session in the process armed (`otherArmed`, Claude Code 2.1.310), which CronList lists too.
+ */
+function cronSnapshotOf(attachment: JsonRecord): Map<string, CarriedCron> {
+  return new Map([...snapshotOf(attachment['tasks']), ...snapshotOf(attachment['otherArmed'])]);
+}
+
 /** The session's slug, from the last entry that names one: its plan file is named by it. */
 function lastSlugOf(text: string): string | undefined {
   const start = text.lastIndexOf(SLUG_KEY);
@@ -124,7 +132,7 @@ class ScheduleFold {
   entry(entry: JsonRecord): void {
     const attachment = entry['attachment'];
     if (isRecord(attachment) && attachment['type'] === 'session_cron_carry') {
-      this.crons = snapshotOf(attachment['tasks']);
+      this.crons = cronSnapshotOf(attachment);
       return;
     }
     if (entry['type'] === 'queue-operation' && entry['operation'] === 'enqueue') {

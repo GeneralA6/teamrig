@@ -82,6 +82,20 @@ describe('carryOf', () => {
     assert.equal(carry.crons[1]?.createdAt, NOW - 10 * MINUTE);
   });
 
+  it("keeps the jobs an earlier session in the process armed, which the snapshot lists apart from the session's own", () => {
+    const armed = { id: 'armed1', cron: '17 5 26 10 *', prompt: 'test job', createdAt: NOW - 60 * MINUTE, recurring: false };
+    const snapshot = { type: 'attachment', attachment: { type: 'session_cron_carry', tasks: [], otherArmed: [armed] } };
+    assert.deepEqual(
+      carryOf(lines(snapshot), NOW, [{ ...armed }]).crons.map((cron) => [cron.id, cron.recurring]),
+      [['armed1', false]],
+    );
+    const both = { type: 'attachment', attachment: { type: 'session_cron_carry', tasks: SNAPSHOT.attachment.tasks.slice(0, 1), otherArmed: [armed] } };
+    assert.deepEqual(
+      carryOf(lines(both), NOW, []).crons.map((cron) => cron.id),
+      ['old1', 'armed1'],
+    );
+  });
+
   it('drops a one-shot job once its prompt was queued, and keeps a recurring one', () => {
     const text = lines(
       ...cronCreate('toolu_1', 'once', '13 8 8 1 *', 'morning brief', false, NOW - 120 * MINUTE),
