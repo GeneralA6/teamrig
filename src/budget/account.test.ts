@@ -55,7 +55,7 @@ async function addTask(files: MemoryFiles, eventsPath: string, owner: string, pr
 }
 
 function liftFor(session: string, partPct: number, endsAt: number): Lift {
-  return { session, partPct, stopPct: 99, endsAt, reserve: false, quietHoursExempt: false, reason: 'ship the release', by: 'lead', at: NOW - HOUR };
+  return { session, group: false, partPct, stopPct: 99, endsAt, reserve: false, quietHoursExempt: false, reason: 'ship the release', by: 'lead', at: NOW - HOUR };
 }
 
 describe('accountOf', () => {

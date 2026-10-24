@@ -14,7 +14,7 @@ import { calibrationOf } from '../../budget/calibration.ts';
 import { claudeProjectsDir, type TranscriptSource } from '../../budget/discover.ts';
 import { ExtraLog, type ExtraEntry } from '../../budget/extra.ts';
 import { formatUsd } from '../../budget/format.ts';
-import { activeLift, decideLift, LiftLog, liftText, type Lift } from '../../budget/lift.ts';
+import { activeLift, decideLift, LiftLog, liftText, parentBudgetText, type Lift } from '../../budget/lift.ts';
 import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID, type Measured } from '../../budget/measure.ts';
 import { dailyBudgetOf, liftedParts, teamPartOf, type BudgetSplit } from '../../budget/parts.ts';
 import { nextPeriod, sightOf, type Period } from '../../budget/period.ts';
@@ -348,14 +348,14 @@ export async function lift(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   const { week, lifts } = await readBudget(runtime, kit, config, roster, { recountDay: undefined });
   const others = liftedParts(lifts, roster.ids.filter((each) => each !== id), now, week.usedPct);
   const decision = decideLift(
-    { session: id, partPct, stopPct, until, reserve: args.switches.has('reserve'), reason, by, now },
-    { usedPct: week.usedPct, reset: week.reset, limits: config.budget.lift, liftedPct: [...others.values()].reduce((sum, part) => sum + part, 0), zone },
+    { session: id, group: false, partPct, stopPct, until, reserve: args.switches.has('reserve'), reason, by, now },
+    { usedPct: week.usedPct, reset: week.reset, limits: config.budget.lift, liftedPct: [...others.values()].reduce((sum, part) => sum + part, 0), parent: parentBudgetText(undefined), beyondParent: undefined, zone },
   );
   if (decision.kind === 'refused') {
     throw new RefusedError(decision.reason);
   }
   await new LiftLog(runtime.files, kit.paths.lifts).append(decision.lift);
-  runtime.out.stdout(`LIFTED ${liftText(decision.lift, roster.nameOf(id) ?? id, zone)}`);
+  runtime.out.stdout(`LIFTED ${liftText(decision.lift, roster.nameOf(id) ?? id, parentBudgetText(undefined), zone)}`);
   return EXIT.ok;
 }
 

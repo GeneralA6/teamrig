@@ -5,7 +5,7 @@ import type { TimeZone } from '../core/zone.ts';
 import type { Burst } from './burst.ts';
 import { budgetMarkOf, burstPromptLines, burstStopLines, type BurstMarks, type SurplusHint } from './burst-lines.ts';
 import { formatPct, noRoomText } from './format.ts';
-import { liftText, type Lift } from './lift.ts';
+import { liftText, parentBudgetText, type Lift } from './lift.ts';
 import { hasRoom, type PaceReading, type TeamDay } from './pace.ts';
 
 /**
@@ -313,7 +313,7 @@ export function stopWarning(facts: BudgetFacts, budget: WarnBudget, previous: Wa
   const standing = standingOf(facts, budget);
   const lines: string[] = [];
   if (facts.lift !== undefined && facts.lift.at !== state.liftAt) {
-    lines.push(`Budget: the lead lifted ${liftText(facts.lift, facts.name, facts.zone)}`);
+    lines.push(`Budget: the lead lifted ${liftText(facts.lift, facts.name, parentBudgetText(undefined), facts.zone)}`);
   } else if (facts.lift === undefined && state.liftAt !== undefined) {
     lines.push(`Budget: ${facts.name}'s lift has ended; its daily budget is ${formatPct(facts.budgetPct)} again.`);
   }
