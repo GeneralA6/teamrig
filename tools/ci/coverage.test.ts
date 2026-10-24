@@ -4,6 +4,7 @@ import {
   coverageFindings,
   coverageRun,
   coverageTotals,
+  DEFAULT_SUITE_IDLE_SECONDS,
   NO_COVERAGE_REPORT,
   parseLcov,
   parsePolicy,
@@ -70,11 +71,20 @@ describe('parsePolicy', () => {
     assert.deepEqual(policy.exceptions.get('src/io.ts'), { floors: { lines: 60 }, reason: 'the OS error paths need a real disk failure' });
   });
 
-  it('defaults the optional lists to empty', () => {
+  it('defaults the optional lists to empty and the suite idle limit to five minutes', () => {
     const policy = policyOf({ total: POLICY_JSON.total, perFile: POLICY_JSON.perFile });
     assert.deepEqual(policy.testSupport, []);
     assert.equal(policy.typeOnly.size, 0);
     assert.equal(policy.exceptions.size, 0);
+    assert.equal(policy.suiteIdleSeconds, DEFAULT_SUITE_IDLE_SECONDS);
+    assert.equal(DEFAULT_SUITE_IDLE_SECONDS, 300);
+  });
+
+  it('reads a suite idle limit, and refuses one that is not a whole number of seconds', () => {
+    assert.equal(policyOf({ ...POLICY_JSON, suiteIdleSeconds: 30 }).suiteIdleSeconds, 30);
+    assert.match(problemOf({ ...POLICY_JSON, suiteIdleSeconds: 0 }), /suiteIdleSeconds must be a whole number of seconds, 1 or more/);
+    assert.match(problemOf({ ...POLICY_JSON, suiteIdleSeconds: 1.5 }), /suiteIdleSeconds must be a whole number/);
+    assert.match(problemOf({ ...POLICY_JSON, suiteIdleSeconds: '300' }), /suiteIdleSeconds must be a whole number/);
   });
 
   it('refuses a policy that is not an object, or has an unknown key', () => {
