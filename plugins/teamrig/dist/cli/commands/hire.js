@@ -7,7 +7,7 @@ import { KIT_NAME } from "../../core/home.js";
 import { FileLock } from "../../core/lock.js";
 import { burstHireOf } from "../../hiring/burst-hire.js";
 import { activeHires, HiringLog, retiredSessions } from "../../hiring/log.js";
-import { planHire } from "../../hiring/plan.js";
+import { hirerProblem, planHire } from "../../hiring/plan.js";
 import { noRoomText } from "../../sessions/headroom.js";
 import { onePositional, requiredFlag, UsageError } from "../args.js";
 import { readBursts } from "../burst-reading.js";
@@ -19,7 +19,8 @@ import { loadTree } from "../tree.js";
 import { freshOpenOf, resumeVerdictOf } from "./rehire.js";
 import { sessionProjectOf } from "./setup.js";
 /**
- * `hire`: the lead adds a temporary session to the team within `hiring`'s policy and caps. Without
+ * `hire`: a lead adds a temporary session to the team within `hiring`'s policy and caps: the team's lead, or a
+ * sub-lead, whose hire joins its own group (T509). Without
  * --yes it only shows the hire; with it, the old config is kept in the backups folder, the hire is
  * logged in the hire log, then the session and its launch are written to the config. A hire gets no fixed daily
  * budget: its part of the team's follows its share and queued work, like any session's.
@@ -102,10 +103,10 @@ export async function hire(args, runtime) {
     const kit = await openKit(runtime, found.team);
     const config = requireConfig(kit, runtime, 'write');
     const roster = await rosterOf(runtime, kit, config);
-    const lead = roster.holderOf('lead');
     const by = sessionIdOf(roster, caller);
-    if (by !== lead) {
-        throw new RefusedError(`only the lead${lead === undefined ? '' : ` (${roster.nameOf(lead) ?? lead})`} hires sessions`);
+    const refusal = hirerProblem(config, by);
+    if (refusal !== undefined) {
+        throw new RefusedError(refusal);
     }
     const asked = requestOf(args, runtime, by);
     // Outside the hire lock: listing the host's processes takes about a second.
@@ -125,8 +126,9 @@ export async function hire(args, runtime) {
         const next = checkedNextConfig(plan.value.config);
         const nextRoster = await rosterOf(runtime, kit, next);
         await refuseNameClash(runtime, kit.paths.team, request.id, next, nextRoster);
-        const { hire: record, hired } = plan.value;
-        const what = `${record.session} (name ${nextRoster.nameOf(record.session) ?? record.session}) for "${record.scope}": ${describeLaunch(record)}, review by ${record.reviewBy}${record.burst === undefined ? '' : `, for the burst started ${teamZone(config, runtime).weekdayMinute(new Date(record.burst))}`}`;
+        const { hire: record, hired, leader } = plan.value;
+        const ledBy = leader === config.roles.lead ? '' : `, led by ${nextRoster.nameOf(leader) ?? leader}`;
+        const what = `${record.session} (name ${nextRoster.nameOf(record.session) ?? record.session}) for "${record.scope}"${ledBy}: ${describeLaunch(record)}, review by ${record.reviewBy}${record.burst === undefined ? '' : `, for the burst started ${teamZone(config, runtime).weekdayMinute(new Date(record.burst))}`}`;
         const caps = `  hired sessions with it: ${hired} of ${config.hiring.maxSessions}`;
         const from = retiredSessions(records).find((record) => record.session === request.id);
         // Measured before anything is written, so the preview shows it too.

@@ -1,4 +1,6 @@
 import { isDefaultModel, isModel, launchOf } from "../config/launch.js";
+import { LeadTree } from "../config/lead-tree.js";
+import { ownerAsk } from "../config/tree.js";
 import { isRecord } from "../core/guards.js";
 import { ID_PATTERN } from "../core/ids.js";
 import { formatUtcDay, parseUtcDay } from "../core/time.js";
@@ -38,12 +40,16 @@ function reviewDayOf(request, config) {
     return { ok: true, value: formatUtcDay(day) };
 }
 /**
- * Whom a team's lead asks for what the owner approves: the owner in a root team. A child team's lead asks its parent
- * team's lead, who takes it up to the owner; it never goes to the owner directly.
+ * Why `by` may not hire, or undefined when it may: a lead hires, the team's lead or a sub-lead (T781), and a
+ * sub-lead's hire joins its own group, so work it hires for never leaves the group (T509).
  */
-export function ownerAsk(config) {
-    const parent = config.team?.parent;
-    return parent === undefined ? 'the owner' : `the lead of team ${parent}, who takes it to the owner`;
+export function hirerProblem(config, by) {
+    return new LeadTree(config).isLeader(by) ? undefined : `only a lead hires sessions: the lead (${config.roles.lead}), or a sub-lead into its own group`;
+}
+/** Whom the hirer asks for the owner's approval: a sub-lead its own leader, who takes it up; the lead {@link ownerAsk}. */
+function approvalAsk(config, by) {
+    const leader = new LeadTree(config).leaderOf(by);
+    return by === config.roles.lead || leader === undefined ? ownerAsk(config) : `${leader}, your leader, who takes it to the owner`;
 }
 /** The refusal under `hiring.policy`, or undefined when it allows this hire. */
 function policyProblem(config, request) {
@@ -52,7 +58,7 @@ function policyProblem(config, request) {
             return 'hiring.policy is off: the team takes no hires by command';
         case 'owner':
             return request.approvedBy === undefined || request.approvedBy.trim() === ''
-                ? `hiring.policy is owner: the owner approves each hire; ask ${ownerAsk(config)}, then pass --approved-by "<who>"`
+                ? `hiring.policy is owner: the owner approves each hire; ask ${approvalAsk(config, request.by)}, then pass --approved-by "<who>"`
                 : undefined;
         case 'lead':
         case 'automatic':
@@ -60,11 +66,13 @@ function policyProblem(config, request) {
     }
 }
 /**
- * The new session written into `sessions`, `names` and `launch`, and its hire record; or why not. It gets no fixed daily
- * budget: like any session, its part of the team's daily budget follows its share and its queued work (src/budget/parts.ts).
+ * The new session written into `sessions`, `names` and `launch`, and its hire record; or why not. A sub-lead's hire is
+ * also listed under it in `leads`. It launches on the lead's own model and effort unless told otherwise, whoever hires
+ * it, so a burst hire stays on the lead's (src/hiring/burst-hire.ts). It gets no fixed daily budget: like any session,
+ * its part of the team's daily budget follows its share and its queued work (src/budget/parts.ts).
  */
 export function planHire(file, config, active, request) {
-    const refusal = policyProblem(config, request);
+    const refusal = hirerProblem(config, request.by) ?? policyProblem(config, request);
     if (refusal !== undefined) {
         return { ok: false, problem: refusal };
     }
@@ -99,11 +107,13 @@ export function planHire(file, config, active, request) {
     const model = request.model ?? leads.model;
     const effort = request.effort ?? leads.effort;
     const launch = { ...(isDefaultModel(model) ? {} : { model }), ...(effort === undefined ? {} : { effort }) };
+    const subLead = request.by === lead ? undefined : request.by;
     const next = {
         ...file,
         sessions: [...sessions, request.id],
         ...(request.name === undefined ? {} : { names: { ...recordAt(file, 'names'), [request.id]: request.name } }),
         launch: { ...recordAt(file, 'launch'), [request.id]: launch },
+        ...(subLead === undefined ? {} : { leads: { ...recordAt(file, 'leads'), [subLead]: [...(config.leads[subLead] ?? []), request.id] } }),
     };
     const hire = {
         kind: 'hire',
@@ -117,5 +127,5 @@ export function planHire(file, config, active, request) {
         by: request.by,
         at: request.now,
     };
-    return { ok: true, value: { config: next, hire, hired: hired + 1 } };
+    return { ok: true, value: { config: next, hire, hired: hired + 1, leader: request.by } };
 }
