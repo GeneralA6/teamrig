@@ -4,6 +4,7 @@ import { COMMANDS_COLUMNS, commandsScreen } from './commands-screen.ts';
 import { renderGrowth } from './growth.ts';
 import { renderHero } from './hero.ts';
 import { renderHowItWorks } from './how-it-works.ts';
+import { renderLeadMorning } from './lead-morning.ts';
 import { renderPlan } from './plan.ts';
 import { renderTaskFlow } from './task-flow.ts';
 import { renderTerminalView } from './terminal-view.ts';
@@ -12,10 +13,10 @@ import { renderWhy } from './why.ts';
 import { renderWordmark } from './wordmark.ts';
 
 /**
- * The docs' pictures, all drawn in code: the README's wordmark, hero, how-it-works, task-flow, why, terminal view, plan
- * and growth pictures, in the README's order, and the commands doc's terminal screen, drawn from a demo run of the real
- * CLI (demo.ts). A change to a drawing, or to what the CLI
- * prints, changes a picture, and `images-cli.ts --check` fails until it is redrawn.
+ * The docs' pictures, all drawn in code: the README's wordmark, hero, how-it-works, task-flow, lead-morning, why,
+ * terminal view, plan and growth pictures, in the README's order, and the commands doc's terminal screen, drawn from a
+ * demo run of the real CLI (demo.ts). A change to a drawing, or to what the CLI prints, changes a picture, and
+ * `images-cli.ts --check` fails until it is redrawn.
  */
 
 export const IMAGES_DIR = 'docs/images';
@@ -32,6 +33,7 @@ export async function drawPictures(): Promise<Picture[]> {
     { file: 'hero.svg', svg: renderHero() },
     { file: 'how-it-works.svg', svg: renderHowItWorks() },
     { file: 'task-flow.svg', svg: renderTaskFlow() },
+    { file: 'lead-morning.svg', svg: renderLeadMorning() },
     { file: 'why.svg', svg: renderWhy() },
     { file: 'terminal-view.svg', svg: renderTerminalView() },
     { file: 'plan.svg', svg: renderPlan() },
