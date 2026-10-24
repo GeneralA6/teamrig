@@ -11,7 +11,7 @@ import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
 import type { RestartRequest } from '../refresh/state.ts';
 import { RefreshStore } from '../refresh/store.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
-import { APP, CLAUDE_SESSION, CliHarness, KIT, TEAM, TEAM_HOME, USER_HOME, type RunOptions } from '../testing/cli-harness.ts';
+import { APP, CLAUDE_SESSION, CliHarness, KIT, SKILLS_DIR, TEAM, TEAM_HOME, USER_HOME, type RunOptions } from '../testing/cli-harness.ts';
 import { teamConfigOf, treeHarness } from '../testing/team-tree.ts';
 import { EXIT } from './runtime.ts';
 
@@ -212,24 +212,94 @@ describe('teamrig launch', () => {
   const SESSION_ENV = { TEAMRIG_HOME: KIT, PATH: '/usr/local/bin', TEAMRIG_SESSION: 'alpha', TEAMRIG_TEAM: 'app', TEAMRIG_LAUNCHED: 'alpha' };
   const ENDING: RestartRequest = { phase: 'ending', at: '2030-01-08T10:00:00.000Z', pid: 4100, claudeSession: 'c1', transcript: null, cwd: null, supervised: true };
 
-  /** Claude Code whose first run the automatic restart ends, leaving `request` as `restart` does. */
+  /** Claude Code whose first run the automatic restart ends, leaving `request` as `restart` does, after `during` ran. */
   class RestartedOnce extends FakeProcesses {
     private readonly request: RestartRequest;
+    private readonly during: () => Promise<void>;
     readonly store: RefreshStore;
 
-    constructor(kit: CliHarness, request: RestartRequest) {
+    constructor(kit: CliHarness, request: RestartRequest, during: () => Promise<void> = () => Promise.resolve()) {
       super();
       this.request = request;
+      this.during = during;
       this.store = new RefreshStore(kit.files, { refresh: join(TEAM_HOME, 'state', 'refresh'), handover: join(TEAM_HOME, 'handover') });
     }
 
     override async run(request: RunRequest): Promise<RunOutcome> {
       if (this.ran.length === 0) {
+        await this.during();
         await this.store.setRestart('alpha', this.request);
       }
       return super.run(request);
     }
   }
+
+  const SETTINGS = join(TEAM_HOME, 'state', 'launch', 'alpha.settings.json');
+
+  /** Writes a skill into the default skills folder, its body `Owner: <owner>` and the lines after it. */
+  function writeSkill(kit: CliHarness, name: string, owner: string, ...lines: string[]): Promise<void> {
+    return kit.files.write(join(SKILLS_DIR, name, 'SKILL.md'), ['---', `name: ${name}`, 'description: Use when testing.', '---', '', `Owner: ${owner}`, ...lines, ''].join('\n'));
+  }
+
+  async function overridesOf(kit: CliHarness): Promise<unknown> {
+    return JSON.parse((await kit.files.read(SETTINGS)) ?? 'null');
+  }
+
+  it("lists another area's skills by name only through a settings file, its own, used, shared and personal ones in full", async () => {
+    const kit = new CliHarness(TEAM);
+    await writeSkill(kit, 'alpha-build', 'alpha');
+    await writeSkill(kit, 'bravo-deploy', 'bravo');
+    await writeSkill(kit, 'lead-meeting', 'lead', 'Used by: alpha');
+    await writeSkill(kit, 'team-ship', 'lead');
+    await writeSkill(kit, 'dataviz', 'me');
+    const processes = new FakeProcesses();
+    const result = await kit.run([...LAUNCH, '--no-prompt'], { probe: ON_PATH, processes, env: { PATH: '/usr/local/bin' } });
+    assert.deepEqual(result.stdout, [
+      `Starting Claude Code as app-alpha (session alpha of team app) in ${APP}, on the default model and effort; 1 skill of other areas listed by name only (skills.otherAreas)`,
+    ]);
+    assert.deepEqual(processes.ran[0]?.args, ['--settings', SETTINGS, '--name', 'app-alpha']);
+    assert.deepEqual(await overridesOf(kit), { skillOverrides: { 'bravo-deploy': 'name-only' } });
+  });
+
+  it('counts the sessions of every team sharing the skills folder as areas, and not those of a team with its own', async () => {
+    const kit = await treeHarness({ skills: { otherAreas: 'user-invocable-only' } });
+    await kit.files.write(teamConfigOf('ops'), formatConfig({ configVersion: 1, team: { id: 'ops', parent: 'app' }, sessions: ['lead', 'run'], roles: { lead: 'lead' }, paths: { skills: join('/', 'ops-skills') } }));
+    await writeSkill(kit, 'front-css', 'front');
+    await writeSkill(kit, 'back-api', 'back');
+    await writeSkill(kit, 'run-roll', 'run');
+    const processes = new FakeProcesses();
+    const result = await kit.run([...LAUNCH, '--no-prompt'], { probe: ON_PATH, processes, env: { PATH: '/usr/local/bin' } });
+    assert.match(result.stdout[0] ?? '', /; 2 skills of other areas listed only as \/name commands \(skills\.otherAreas\)$/);
+    assert.deepEqual(await overridesOf(kit), { skillOverrides: { 'back-api': 'user-invocable-only', 'front-css': 'user-invocable-only' } });
+  });
+
+  it('passes no settings when every skill is listed in full', async () => {
+    const cases: readonly { readonly config: JsonRecord; readonly skills: readonly string[] }[] = [
+      { config: { ...TEAM, skills: { otherAreas: 'on' } }, skills: ['alpha-build', 'bravo-deploy'] },
+      { config: TEAM, skills: ['alpha-build', 'team-ship'] },
+    ];
+    for (const { config, skills } of cases) {
+      const kit = new CliHarness(config);
+      for (const name of skills) {
+        await writeSkill(kit, name, 'alpha');
+      }
+      const processes = new FakeProcesses();
+      const result = await kit.run([...LAUNCH, '--no-prompt'], { probe: ON_PATH, processes, env: { PATH: '/usr/local/bin' } });
+      assert.deepEqual(result.stdout, [`Starting Claude Code as app-alpha (session alpha of team app) in ${APP}, on the default model and effort`]);
+      assert.deepEqual(processes.ran[0]?.args, ['--name', 'app-alpha']);
+      assert.equal(await kit.files.read(SETTINGS), undefined);
+    }
+  });
+
+  it('reads the skills again on a restart, so the fresh start lists them as they are now', async () => {
+    const kit = new CliHarness(TEAM);
+    await writeSkill(kit, 'bravo-deploy', 'bravo');
+    const processes = new RestartedOnce(kit, ENDING, () => writeSkill(kit, 'lead-meeting', 'lead'));
+    const result = await kit.run(LAUNCH, { probe: ON_PATH, processes, env: { PATH: '/usr/local/bin' } });
+    assert.equal(result.code, EXIT.ok, result.stderr.join('\n'));
+    assert.deepEqual(processes.ran.map((run) => run.args.slice(0, 2)), [['--settings', SETTINGS], ['--settings', SETTINGS]]);
+    assert.deepEqual(await overridesOf(kit), { skillOverrides: { 'bravo-deploy': 'name-only', 'lead-meeting': 'name-only' } });
+  });
 
   function launch(processes: FakeProcesses, extra: readonly string[] = [], options: RunOptions = {}) {
     return new CliHarness(TEAM).run([...LAUNCH, ...extra], { probe: ON_PATH, processes, env: { PATH: '/usr/local/bin', CLAUDECODE: '1' }, ...options });
