@@ -970,8 +970,8 @@ Flags:
 
 - `--pass`: show what an idle pass would close and reopen, and why it keeps or leaves each other session.
 - `--project <dir>`: with `--pass`, the project folder a close's checks read a session's transcript in when its
-  record names none (a record from before the SessionStart hook kept it); default the folder holding the team's
-  pointer.
+  record names none (a record from before the SessionStart hook kept it); default each session's
+  `launch.<id>.project`, else `team.project`, else the folder holding the team's pointer.
 
 Example:
 
@@ -1013,7 +1013,7 @@ Flags:
 
 - `--session <id|name>`: the caller, the lead.
 - `--project <dir>`: the project folder its Claude Code runs in, where its transcript is read when its record names
-  none; default the one holding the team's pointer.
+  none; default the config's `launch.<id>.project`, else `team.project`, else the folder holding the team's pointer.
 - `--yes`: close it.
 
 Example:
@@ -1076,7 +1076,8 @@ names are machine-wide.
 
 Hiring a retired id again is a rehire: the same command, with the same cap. It shows the retire it comes back
 from and its handover, and measures its last Claude Code session (the one that last ran `inbox read` as it): it can
-be resumed when its transcript is still in the project folder, its context is at most `hiring.resumeMaxTokens`
+be resumed when its transcript is still in its project folder (`launch.<id>.project`, else `team.project`, else the
+pointer's folder), its context is at most `hiring.resumeMaxTokens`
 (250,000 tokens) and it was idle at most `hiring.resumeMaxIdleDays` (7 days). Else it opens fresh, and its first
 prompt sends it to that handover. The measure writes nothing, so the preview shows it too.
 
@@ -1625,10 +1626,10 @@ ASKED 1 decision(s) Mon 10-19 14:10 UTC: T7; the next batch Mon 10-19 19:03 UTC 
 
 ### teamrig open
 
-Opens a new terminal tab in the project folder running Claude Code as that session (`teamrig open <id|name>`, or
-`<team>/<id>` for another team of the same tree). The tab gets `$TEAMRIG_SESSION` and `$TEAMRIG_TEAM`, the
-session's model and effort from the config's `launch`, and a first prompt that reads its inbox and list. A
-rehired session's first prompt reads the handover its retire left first.
+Opens a new terminal tab in the session's project folder running Claude Code as that session
+(`teamrig open <id|name>`, or `<team>/<id>` for another team of the same tree). The tab gets `$TEAMRIG_SESSION` and
+`$TEAMRIG_TEAM`, the session's model and effort from the config's `launch`, and a first prompt that reads its inbox
+and list. A rehired session's first prompt reads the handover its retire left first.
 
 It refuses any session but the lead when the host has no room for one more: its free memory must stay over
 `coordinator.heavy.memoryFloorMb` with the session counted, and its commit charge within `open.headroom.commitMaxPct`
@@ -1649,7 +1650,8 @@ Flags:
   `--resume`; with it, it refuses rather than open fresh.
 - `--terminal <name>`: `auto`, `tmux`, `windows-terminal`, `macos-terminal`, `gnome-terminal`, `konsole`,
   `x-terminal-emulator` or `print`; default the config's `open.terminal` (`auto`).
-- `--project <dir>`: the folder to open in; default the folder holding the team's `.teamrig.json`.
+- `--project <dir>`: the folder to open in; default the config's `launch.<id>.project`, else `team.project`, else
+  the folder holding the team's `.teamrig.json`.
 
 Example:
 
@@ -1967,7 +1969,7 @@ Otherwise `DOCTOR N finding(s)` and one `WARN <kind> <detail and fix>` line each
 Claude Code or Node.js, [the check](requirements.md#the-requirements-check)), `name-gone`,
 `name-shared`, `name-config`, `rename-log`, `inbox-orphan`, `inbox-unread`, `rules-long`, `context-size`,
 `context-lists`, `tree-id`, `tree-parent`, `tree-loop`, `tree-depth`, `tree-children`, `name-two-teams`, `effort-env`,
-`model-env`, `settings-json`, `launch-effort`, `allow-wide`.
+`model-env`, `settings-json`, `launch-effort`, `allow-wide`, `project-missing`.
 
 `context-size` weighs, in characters (about 4 per token), the user's CLAUDE.md with the project folder's and each
 parent's (`CLAUDE.md`, `CLAUDE.local.md`, `.claude/CLAUDE.md`), the project's memory index (`MEMORY.md`) and the
@@ -2002,6 +2004,13 @@ session owns, so the lead's `start` shows it and its inbox gets one line on it.
 
 ```text
 WARN allow-wide 3 local allow rule(s) in 2 settings file(s) approve a whole tool or program, so auto mode's classifier never sees those calls (Bash wide 2, Read wide 1); `teamrig permissions trim` previews their removal, and the owner runs it with --yes
+```
+
+`project-missing` is a `team.project` or `launch.<id>.project` that is missing or a file on this machine: a tab
+`teamrig open` starts in it refuses to launch, so create the folder or fix the key.
+
+```text
+WARN project-missing launch.web.project names /home/you/web, which is missing on this machine, so a tab teamrig open starts for shop-web (session web) refuses to launch: create the folder or fix launch.web.project in the team config
 ```
 
 ### teamrig compact
