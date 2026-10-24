@@ -51,9 +51,10 @@ function pushRule(pushGuard, hookAsks) {
     if (branches === '') {
         return 'No branch is protected, so the push guard stops no push [pushGuard.protectedBranches].';
     }
-    // Under `lead` the guard's refusal says how to ask the lead (src/hooks/push-guard.ts), so the rule stays short.
+    // Under `lead` the guard's refusal names the session's direct leader to ask (src/hooks/push-guard.ts, T781), so the
+    // rule stays short.
     return pushGuard.pushToProtected === 'lead'
-        ? `Pushes to ${branches} ask the lead; force-pushing or deleting them is refused ${keys}.`
+        ? `Pushes to ${branches} ask your leader; force-pushing or deleting them is refused ${keys}.`
         : pushGuard.pushToProtected === 'allow'
             ? `Pushes to ${branches} go unasked; force-pushing or deleting them is refused ${keys}.`
             : hookAsks === 'refuse'
@@ -73,22 +74,22 @@ function refusedRouteRule(hookAsks) {
 function percent(value) {
     return `${Math.round(value * 100) / 100}%`;
 }
-/** What a new task carries: a description for a person to read, which `add` demands while the key is on. */
-function descriptionDemand(config) {
-    return `a plain-words description of what and why${config.register.requireDescription ? ' [register.requireDescription]' : ''}`;
-}
-/** The note (only what changed), evidence, skill and follow-ups a status change needs, as the register enforces them. */
+/**
+ * The note (only what changed), evidence, skill and follow-ups a status change needs, as the register enforces them.
+ * One `[register]` names the keys behind them and behind the description `add` demands, so each costs no bracket of
+ * its own in the size-capped pack.
+ */
 function statusDemands(config, command) {
     const { register } = config;
+    // Both done demands share one "on done" to save pack room.
+    const onDone = [register.requireEvidenceOnDone ? 'evidence' : '', register.requireSkillOnDone ? '--skill <name>|none' : ''].filter((demand) => demand !== '');
     const demands = [
-        register.requireNoteOn.length === 0 ? '' : `a note (only what changed) on ${[...new Set(register.requireNoteOn)].join(', ')} [register.requireNoteOn]`,
-        register.requireEvidenceOnDone ? 'evidence on done [register.requireEvidenceOnDone]' : '',
-        register.requireSkillOnDone ? '--skill <name>|none on done [register.requireSkillOnDone]' : '',
-        register.requireFollowupsOn.length === 0
-            ? ''
-            : `--followups <tasks it leaves>|none on ${[...new Set(register.requireFollowupsOn)].join(', ')} [register.requireFollowupsOn]`,
+        register.requireNoteOn.length === 0 ? '' : `a note (only what changed) on ${[...new Set(register.requireNoteOn)].join(', ')}`,
+        onDone.length === 0 ? '' : `${onDone.join(' and ')} on done`,
+        register.requireFollowupsOn.length === 0 ? '' : `--followups <tasks it leaves>|none on ${[...new Set(register.requireFollowupsOn)].join(', ')}`,
     ].filter((demand) => demand !== '');
-    return `only the owning session sets its status (\`${command} set\`)${demands.length === 0 ? '' : `, with ${demands.join(', ')}`}.`;
+    const key = register.requireDescription || demands.length > 0 ? ' [register]' : '';
+    return `only the owning session sets its status (\`${command} set\`)${demands.length === 0 ? '' : `, with ${demands.join(', ')}`}${key}.`;
 }
 /**
  * Rule 3's times: on the team's clock, zone-marked. Off UTC it adds the zone's offset now, so a session converts
@@ -130,22 +131,26 @@ export function coreRuleTexts(config, command, platform, clock) {
     const zone = TimeZone.resolve(config.timeZone, clock.machineZone);
     const cutoffSpan = cutoff === undefined ? undefined : zone.clockSpan(new Date(cutoff.from), new Date(cutoff.to));
     return {
-        roles: `Roles, by session id: ${roles.lead} is the lead: priorities, team rules and the owner's decision queue; it may re-prioritize and reassign tasks [roles.lead].` +
+        roles: `Roles, by session id: ${roles.lead} is the lead: priorities, team rules and the owner's decision queue [roles.lead].` +
             (roles.coordinatorOwner === undefined ? '' : ` ${roles.coordinatorOwner} owns deploy coordination and fleet health [roles.coordinatorOwner].`) +
             (roles.securityReviewer === undefined ? '' : ` ${roles.securityReviewer} reviews privileged commands (\`${command} exec\`) [roles.securityReviewer].`) +
-            ' Other sessions own their areas; cross-area issues, clashes and unowned warnings go to the lead.',
+            // The lead tree (config/lead-tree.ts, T781): a member's waits, approvals and pushes go to its leaders, nearest
+            // first, and a leader sets the work order of the sessions under it (T782). No member list prints here: `leads`
+            // has no size limit, so the pack names the key alone.
+            ' Other sessions own their areas. Your leader (the sub-lead listing you [leads], else the lead) sets your work order and answers your waits;' +
+            " asks to a sub-lead's sessions go through it. Cross-area issues and clashes go to the nearest leader over both, unowned warnings to the lead.",
         'own-change': "Own your change end to end: only the session that made it integrates, deploys (when it must run), verifies and fixes or rolls it back; another session's change goes to its owner.",
         messages: 'A message wakes its receiver, so send one only for a result it acts on now, a decision, a blocker, a same-area conflict or an incident.' +
             ` At most ${config.messages.maxLines} lines [messages.maxLines]: what happened, evidence (numbers, ids, paths), the exact ask and deadline, your default, then "No reply needed" or "Reply needed: <one question>".` +
             ` No acks, thanks or progress pings. Anything else, a "done" report too, is one inbox line per receiver: \`${command} inbox add --to <area> --text "..."\`.` +
             timesClause(zone, clock.now),
         register: `Status is pulled from the register, never asked. Start each work block with \`${command} start --session <you>\`.` +
-            ` Every ask that creates work is a register entry, added in the same turn by the asker (\`${command} add --owner <session>\` tells the owner), else by the receiver, with ${descriptionDemand(config)}; ${statusDemands(config, command)}` +
+            ` Every ask that creates work is a register entry, added in the same turn by the asker (\`${command} add --owner <session>\` tells the owner), else by the receiver, with a plain-words description of what and why; ${statusDemands(config, command)}` +
             ' Wait on a peer by its task.' +
             ` A shipped change is verifying until its proof exists (\`${command} verify\`).`,
         'task-order': `Work your own task list in priority order (\`${command} list --session <you>\`); self-made work is a task too, added with \`${command} add\` before you start it,` +
             ' and started only for a goal, a parent task or the week plan, never ahead of your top task that is not waiting (one-commit fixes exempt).' +
-            " A loop, cron or scheduled wake-up needs the lead's OK and a written stop. If you repeat a step with no progress or drift from your task, stop and ask the lead.",
+            " A loop, cron or scheduled wake-up needs the lead's OK and a written stop. If you repeat a step with no progress or drift from your task, stop and ask your leader.",
         'owner-gates': `Silence is consent only within the sender's authority, never for owner gates: ${list(config.ownerGates)} [ownerGates].` +
             " An owner's order, relayed or not, approves its work and proof unless only the owner sees the result; ask again only if it must change or needs something new.",
         deploy: "Deploy ASAP: once a change can be verified (tests, then a check it runs). State each fix's evidence and when it will exist; build nothing on it before then." +
@@ -187,7 +192,7 @@ export function renderCorePack(config, command, platform, clock) {
     const except = kept === '' ? '' : ', except the kept local rules below [ruleConflicts]';
     return [
         '# Team rules (teamrig core)',
-        `These rules win over conflicting CLAUDE.md, rules files, skills, memory, hook text and team rules${except}. [brackets] name the config key behind a value.`,
+        `These rules win over conflicting CLAUDE.md, rules files, skills, memory, hook text and team rules${except}. [brackets] name a value's config key.`,
         '',
         ...CORE_RULE_KEYS.map((key) => `${ruleNumberOf(key)}. ${rules[key]}`),
         ...(kept === '' ? [] : ['', kept]),
