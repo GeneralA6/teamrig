@@ -136,7 +136,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'restore resume': { effect: 'internal', flags: ['project', 'home', 'effort', 'encoded-prompt'], load: async () => (await restoreCommands()).restoreResume },
   restart: { effect: 'internal', flags: ['team', 'at', 'project'], load: async () => (await restartCommands()).restart },
   who: { effect: 'read', flags: [], load: async () => (await teamCommands()).who },
-  sessions: { effect: 'read', flags: [], load: async () => (await sessionsCommands()).sessions },
+  sessions: { effect: 'read', flags: ['project'], switches: ['pass'], load: async () => (await sessionsCommands()).sessions },
   close: { effect: 'write', flags: ['session', 'project'], switches: ['yes'], load: async () => (await closeCommands()).close },
   rename: { effect: 'write', flags: ['session'], load: async () => (await teamCommands()).rename },
   hire: {
@@ -369,8 +369,10 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   exec escalate R<n> --note "<why>"    the security reviewer hands an owner-gated request to the owner
   exec run R<n>        runs an approved request once, before its approval expires
   who [<id|name|role>]         the name to message a session by (no argument: every session)
-  sessions                     each session: running (and the MB its Claude Code's processes hold), closed
-      or never recorded; then the host's free memory and commit charge
+  sessions [--pass] [--project <dir>]   each session: running (and the MB its Claude Code's processes
+      hold), closed or never recorded; then the host's free memory and commit charge. --pass: what an
+      idle pass would close and reopen (one reopen a pass, with room on the host) and why it keeps or
+      leaves each other session; it changes nothing
   close <id|name> [--project <dir>] [--yes]   (the lead) ends an idle session's Claude Code and its tab
       to free the host, logged, so teamrig open resumes it; it refuses the lead, the coordinator owner,
       a session with work it can start or a time wait ending within 30 min, quiet under
