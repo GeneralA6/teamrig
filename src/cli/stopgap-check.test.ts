@@ -71,6 +71,16 @@ describe('check flags stopgap tags of finished tasks', () => {
     assert.deepEqual(placesOf(working.stdout), ['CLAUDE.md:3, alpha-ship/SKILL.md:4']);
   });
 
+  it("reads the team.project folder over the pointer's and over the Claude Code project folder", async () => {
+    const shared = join('/', 'shared');
+    const kit = await taggedKit({ ...TEAM, team: { id: 'app', project: shared } });
+    await kit.files.write(join(shared, 'CLAUDE.md'), 'stopgap T3\n');
+    const pointed = await kit.run(['check', '--all'], AS_ALPHA);
+    const named = await kit.run(['check', '--all'], { env: { TEAMRIG_SESSION: 'alpha', TEAMRIG_TEAM: 'app', CLAUDE_PROJECT_DIR: APP } });
+    assert.deepEqual(placesOf(pointed.stdout), ['alpha-ship/SKILL.md:4', 'CLAUDE.md:1']);
+    assert.deepEqual(placesOf(named.stdout), ['alpha-ship/SKILL.md:4', 'CLAUDE.md:1']);
+  });
+
   it('finds a done task a compaction retired, through the history', async () => {
     const kit = await taggedKit();
     kit.clock.advance(20 * MS_PER_DAY);

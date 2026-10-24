@@ -113,12 +113,12 @@ export async function findTeam(runtime: CliRuntime): Promise<FoundTeam> {
 }
 
 /**
- * The team's project folder, where its CLAUDE.md and rule files sit: the folder of its pointer file; for a team
- * named by `$TEAMRIG_TEAM`, the folder Claude Code started the session in, else the working folder.
+ * The team's project folder, where its CLAUDE.md and rule files sit: `team.project`, else the folder of its pointer
+ * file; for a team named by `$TEAMRIG_TEAM` alone, the folder Claude Code started the session in, else the working folder.
  */
-export async function projectFolder(runtime: CliRuntime): Promise<string> {
+export async function projectFolder(runtime: CliRuntime, config: KitConfig): Promise<string> {
   const { from } = await findTeam(runtime);
-  return basename(from) === TEAM_POINTER ? dirname(from) : (teamFolders(runtime.env, [])[0] ?? runtime.cwd);
+  return teamProjectOf(config, from) ?? teamFolders(runtime.env, [])[0] ?? runtime.cwd;
 }
 
 /**
