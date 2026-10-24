@@ -8,6 +8,8 @@ import type { EndHow, EndOutcome, FeedOutcome, FeedRequest, ProcessInfo, Session
 export class FakeSessionProcesses implements SessionProcesses {
   readonly parentPid: number;
   readonly described: number[] = [];
+  /** Each pid whose starters were listed. */
+  readonly lineages: number[] = [];
   readonly ends: { readonly pid: number; readonly how: EndHow }[] = [];
   readonly fed: FeedRequest[] = [];
   private readonly running = new Map<number, ProcessInfo>();
@@ -96,6 +98,7 @@ export class FakeSessionProcesses implements SessionProcesses {
   }
 
   async lineage(pid: number): Promise<readonly ProcessInfo[] | undefined> {
+    this.lineages.push(pid);
     if (this.lineageHidden) {
       return undefined;
     }

@@ -80,20 +80,12 @@ export const CLAIM_WAIT_MS = 10_000;
 /** How far up from a hook Claude Code may be: a hook run through a shell has the shell between. */
 const CLAUDE_HOPS = 3;
 
-/** The Claude Code that runs `pid`: `pid` itself or one of its first parents; undefined when none is. */
+/**
+ * The Claude Code that runs `pid`: `pid` itself or one of its first parents, from one listing of every process (each
+ * look starts a PowerShell on Windows, and a slow hook is killed at Claude Code's timeout); undefined when none is.
+ */
 export async function claudeProcessOf(processes: SessionProcesses, pid: number): Promise<number | undefined> {
-  let next = pid;
-  for (let hop = 0; hop < CLAUDE_HOPS; hop += 1) {
-    const info = await processes.describe(next);
-    if (info === undefined) {
-      return undefined;
-    }
-    if (isClaudeProcess(info)) {
-      return info.pid;
-    }
-    next = info.parentPid;
-  }
-  return undefined;
+  return (await processes.lineage(pid))?.slice(0, CLAUDE_HOPS).find(isClaudeProcess)?.pid;
 }
 
 /** The pending request this restart was started for; undefined once it was cancelled, taken or replaced. */
