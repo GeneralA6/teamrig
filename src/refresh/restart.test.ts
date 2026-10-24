@@ -650,6 +650,7 @@ describe('claudeProcessOf', () => {
     assert.equal(await claudeProcessOf(processes, 10), 10);
     assert.equal(await claudeProcessOf(processes, 11), 10);
     assert.equal(await claudeProcessOf(processes, 20), 20, 'Claude Code run by Node.js');
+    assert.deepEqual([processes.described, processes.lineages], [[], [10, 11, 20]], 'one listing per look');
   });
 
   it('finds none when a process is gone, or Claude Code is further up than a hook would be', async () => {
@@ -662,5 +663,6 @@ describe('claudeProcessOf', () => {
     assert.equal(await claudeProcessOf(processes, 30), undefined, 'three parents up');
     assert.equal(await claudeProcessOf(processes, 99), undefined, 'gone');
     assert.equal(await claudeProcessOf(new FakeSessionProcesses().add(process(40, 41, 'bash', 'bash')), 40), undefined, 'its parent is gone');
+    assert.equal(await claudeProcessOf(processes.hideLineage(), 33), undefined, 'the system would not list the processes');
   });
 });
