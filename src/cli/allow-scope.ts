@@ -1,6 +1,7 @@
 import type { KitConfig } from '../config/types.ts';
 import { teamPlace } from '../coordinator/places.ts';
 import { claudeConfigDir, type TeamPaths } from '../core/home.ts';
+import { SecretScanner } from '../core/secrets.ts';
 import { KeepList } from '../permissions/allow-rules.ts';
 import { settingsScope, type SettingsFile } from '../permissions/settings-scope.ts';
 import { planScope, wideAllowOf, type WideAllow } from '../permissions/trim.ts';
@@ -23,8 +24,9 @@ export async function teamSettingsScope(runtime: CliRuntime, { paths, config, pr
   return settingsScope(runtime.files, claudeConfigDir(runtime.env, runtime.userHome), [project, ...repos], runtime.platform);
 }
 
-/** The rules off the team's keep-list that approve a whole tool or program, in every file of its scope. */
+/** The rules off the team's keep-list that approve a whole tool or program or hold a credential, in every file of its scope. */
 export async function readWideAllow(runtime: CliRuntime, input: AllowScopeInput): Promise<WideAllow> {
-  const plans = await planScope(runtime.files, await teamSettingsScope(runtime, input), new KeepList(input.config.permissions.keepAllow), 'wide');
+  const { config } = input;
+  const plans = await planScope(runtime.files, await teamSettingsScope(runtime, input), new KeepList(config.permissions.keepAllow), 'wide', new SecretScanner(config.register.secretPatterns));
   return wideAllowOf(plans);
 }

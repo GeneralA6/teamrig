@@ -279,9 +279,9 @@ describe('doctorFindings of launch entries', () => {
     assert.deepEqual(lines(input({ launches: launchesOf({ alpha: { model: 'default' } }) })), []);
   });
 
-  it('flags the wide allow rules by class in one finding, and is quiet without any', () => {
-    assert.deepEqual(lines(input({ wideAllow: { files: 2, counts: [['Bash wide', 2]] } })), [
-      "WARN allow-wide 2 local allow rule(s) in 2 settings file(s) approve a whole tool or program, so auto mode's classifier never sees those calls (Bash wide 2); `teamrig permissions trim` previews their removal, and the owner runs it with --yes",
+  it('flags the wide and credential allow rules by class in one finding, and is quiet without any', () => {
+    assert.deepEqual(lines(input({ wideAllow: { files: 2, counts: [['Bash wide', 2], ['Bash credential', 1]] } })), [
+      "WARN allow-wide 3 local allow rule(s) in 2 settings file(s) approve a whole tool or program, so auto mode's classifier never sees those calls, or hold a credential saved with an approved command (Bash wide 2, Bash credential 1); `teamrig permissions trim` previews their removal, and the owner runs it with --yes",
     ]);
     assert.deepEqual(lines(input()), []);
   });

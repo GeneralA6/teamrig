@@ -54,7 +54,7 @@ async function configuredProjects(probe: PathProbe, config: KitConfig, ids: read
  * `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` in doctor's own environment or in the `env` block of the user's or the
  * project's Claude Code settings, a session whose `launch` names a model but no effort, and a `team.project` or
  * `launch.<id>.project` that is no folder on this machine; and the local allow rules off `permissions.keepAllow` that
- * approve a whole tool or program (src/cli/allow-scope.ts). It reads only and
+ * approve a whole tool or program or hold a credential (src/cli/allow-scope.ts). It reads only and
  * exits 0 like `check`: a finding is advice, and each line says the fix. `check` prints the context and allow findings too.
  */
 export async function doctor(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
