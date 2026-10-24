@@ -110,7 +110,7 @@ function whenOf(moment) {
 function handoverAsk(moment, cause, context) {
     const why = whyOf(cause, context.settings);
     const after = moment.kind === 'midTurn' ? ' and end your turn: the fresh start follows it.' : '. Do not start new work.';
-    return (`${context.command}: ${why}${whenOf(moment)}. Write your handover to ${context.handoverPath}: what the register lacks ` +
+    return (`${context.command}: ${why}${whenOf(moment)}. Write your handover to ${context.handoverPath}, replacing the whole file (your fresh start reads all of it): what the register lacks ` +
         '(the next step of each task in progress; what to check later, and when; questions still open with the user; ' +
         'the scratchpad files, plan file and scheduled jobs the next session still needs; where things are), not task statuses, ' +
         `which your fresh start reads live from the register. Then run \`${readyCommand(context.command, context.session.id)}\`${after}`);
@@ -253,9 +253,10 @@ export function handoverHashOf(text) {
 /**
  * `refresh --ready`: only after the Stop hook asked for a handover, and only once the handover
  * exists, is not blank and differs from the file that was there when it asked (the files port has
- * no modification times, so the fingerprint stands for "written since").
+ * no modification times, so the fingerprint stands for "written since"), and is at most `maxBytes` long (0: no cap),
+ * since the fresh start reads all of it.
  */
-export function decideReady(state, handover, handoverPath, now) {
+export function decideReady(state, handover, handoverPath, now, maxBytes) {
     if (state?.phase === 'ready') {
         return { kind: 'already' };
     }
@@ -271,6 +272,14 @@ export function decideReady(state, handover, handoverPath, now) {
     }
     if (handoverHashOf(handover) === state.handoverHash) {
         return { kind: 'refused', reason: `${handoverPath} is the handover from before; write this refresh's handover there` };
+    }
+    const bytes = Buffer.byteLength(handover, 'utf8');
+    if (maxBytes > 0 && bytes > maxBytes) {
+        return {
+            kind: 'refused',
+            reason: `${handoverPath} is ${bytes.toLocaleString('en-US')} bytes, over refresh.handoverMaxBytes (${maxBytes.toLocaleString('en-US')}): ` +
+                'your fresh start reads all of it. Rewrite it whole, short, with only what your next session needs',
+        };
     }
     return {
         kind: 'ready',
