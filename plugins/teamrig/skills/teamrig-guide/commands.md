@@ -2044,7 +2044,8 @@ DOCTOR clean, team shop
 
 Otherwise `DOCTOR N finding(s)` and one `WARN <kind> <detail and fix>` line each. Kinds: `requirement` (git,
 Claude Code or Node.js, [the check](requirements.md#the-requirements-check)), `name-gone`,
-`name-shared`, `name-config`, `rename-log`, `inbox-orphan`, `inbox-unread`, `rules-long`, `context-size`,
+`name-shared`, `name-config`, `name-reserved` (a name Claude Code keeps for itself: `main`, `team-lead`, `user`,
+`system`), `rename-log`, `inbox-orphan`, `inbox-unread`, `rules-long`, `context-size`,
 `context-lists`, `tree-id`, `tree-parent`, `tree-loop`, `tree-depth`, `tree-children`, `name-two-teams`, `effort-env`,
 `model-env`, `settings-json`, `launch-effort`, `allow-wide`, `project-missing`.
 
