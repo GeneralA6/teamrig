@@ -1,5 +1,6 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { formatAddress } from "../../core/address.js";
 import { isRecord, stringField } from "../../core/guards.js";
 import { claudeConfigDir, claudeTempDir, ENV } from "../../core/home.js";
 import { resolveTeam } from "../../core/team.js";
@@ -90,17 +91,40 @@ export async function hookScopeOf(runtime, payload) {
     return team === undefined ? undefined : sessionScopeOf(runtime, team, payload);
 }
 /**
- * Where the lead's calls land in this team. Its own paths: its teamrig folder, Claude Code's memory folders, its
- * session scratchpads (notes and command input it keeps for itself, never work to hand off) and
- * `leadBoundary.ownPaths`. In the teamrig folder, a search outside the config, the rules, the register's state and
- * the places named for the lead is research (T736).
+ * The folders of every team below `team` in the tree (T1019), each with the address of the child team's lead it
+ * hangs under, who answers a question about it: a parent lead adds tasks only to its child teams. A team in a loop
+ * of parents is left out, so the team's own folder is never read as a sub-team's.
  */
-export function leadPathsOf(runtime, kit, config) {
+export function subTeamPlacesOf({ tree, teams }, team) {
+    return tree.childrenOf(team).flatMap((child) => {
+        const lead = tree.leadOf(child);
+        if (lead === undefined) {
+            return [];
+        }
+        const owner = formatAddress({ team: child, id: lead });
+        return [child, ...tree.descendantsOf(child)]
+            .filter((below) => below !== team)
+            .flatMap((below) => {
+            const paths = teams.get(below)?.kit.paths;
+            return paths === undefined ? [] : [{ team: below, home: paths.home, own: [paths.config, paths.teamRules, paths.state], owner }];
+        });
+    });
+}
+/**
+ * Where the lead's calls land in this team. Its own paths: its teamrig folder, Claude Code's memory folders, its
+ * session scratchpads (notes and command input it keeps for itself, never work to hand off), its sub-teams' configs,
+ * rules and states, and `leadBoundary.ownPaths`. In the teamrig folder, a search outside the config, the rules, the register's state and
+ * the places named for the lead is research (T736), and so is one in a sub-team's folder outside its config, rules
+ * and state, read from `tree` (T1019).
+ */
+export function leadPathsOf(runtime, kit, config, tree) {
     const memory = join(claudeConfigDir(runtime.env, runtime.userHome), 'projects', '*', 'memory');
     const scratchpads = join(claudeTempDir(runtime.env, tmpdir()), 'claude', '*', '*', 'scratchpad');
     const { home, config: configFile, teamRules, state } = kit.paths;
+    const subTeams = subTeamPlacesOf(tree, kit.paths.team);
+    const places = { home, own: [configFile, teamRules, state], lead: config.roles.lead, sessions: config.sessions, subTeams };
     return {
-        own: new OwnPaths([home, memory, scratchpads, ...config.leadBoundary.ownPaths], runtime.userHome),
-        team: new TeamFolders({ home, own: [configFile, teamRules, state], lead: config.roles.lead, sessions: config.sessions }, runtime.userHome),
+        own: new OwnPaths([home, memory, scratchpads, ...subTeams.flatMap((sub) => sub.own), ...config.leadBoundary.ownPaths], runtime.userHome),
+        team: new TeamFolders(places, runtime.userHome),
     };
 }

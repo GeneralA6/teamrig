@@ -46,17 +46,27 @@ export class OwnPaths {
     }
 }
 const PATH_END = `(?=/|$|[\\s"';|&)])`;
+/** The normalized path is the normalized place or inside it. */
+function within(target, place) {
+    return target === place || target.startsWith(`${place}/`);
+}
+/** The path's folders below `root`, which holds it. */
+function segmentsBelow(target, root) {
+    return target === root ? [] : target.slice(root.length + 1).split('/');
+}
 /**
  * The team's teamrig folder as the lead boundary reads a search of it (T736). The lead's own places there are its
  * config, its rules, the register's state and anything named for the lead; a search anywhere else there (another
  * session's notes or handover, or a shared folder such as all the notes) is research, which the session that owns
- * the question does.
+ * the question does. So is a search of a sub-team's folder outside its config, rules and state (T1019), which the
+ * child team's lead it hangs under answers.
  */
 export class TeamFolders {
     root;
     own;
     lead;
     others;
+    subTeams;
     home;
     mentioned;
     constructor(places, userHome) {
@@ -65,27 +75,41 @@ export class TeamFolders {
         this.own = places.own.map((place) => this.placeOf(place));
         this.lead = places.lead.toLowerCase();
         this.others = new Set(places.sessions.map((id) => id.toLowerCase()).filter((id) => id !== this.lead));
-        const escaped = this.root.replace(/[.+?^${}()|[\]\\*]/g, '\\$&');
-        this.mentioned = new RegExp(`${escaped}${PATH_END}(?:/[^\\s"';|&)]*)?`, 'g');
+        this.subTeams = places.subTeams.map(({ team, home, own, owner }) => ({ team, root: this.placeOf(home), own: own.map((place) => this.placeOf(place)), owner }));
+        const roots = [this.root, ...this.subTeams.map((sub) => sub.root)].map((root) => root.replace(/[.+?^${}()|[\]\\*]/g, '\\$&'));
+        this.mentioned = new RegExp(`(?:${roots.join('|')})${PATH_END}(?:/[^\\s"';|&)]*)?`, 'g');
     }
     placeOf(path) {
         return normalized(path.trim(), this.home).replace(/\/+$/, '');
     }
-    /** The research a search of `path` is; undefined outside the team's folder and in the lead's own places. */
+    /** The sub-team whose folder holds the path, the deepest when folders nest; undefined when the lead's own folder holds it deeper. */
+    subTeamOf(target) {
+        const holder = this.subTeams
+            .filter((sub) => within(target, sub.root))
+            .reduce((deepest, sub) => (deepest === undefined || sub.root.length > deepest.root.length ? sub : deepest), undefined);
+        return holder !== undefined && !(within(target, this.root) && this.root.length > holder.root.length) ? holder : undefined;
+    }
+    /**
+     * The research a search of `path` is; undefined outside the team's and its sub-teams' folders, in the lead's own
+     * places and in a sub-team's config, rules and state.
+     */
     researchOf(path) {
         const target = this.placeOf(path);
-        const inside = target === this.root || target.startsWith(`${this.root}/`);
-        if (!inside || this.own.some((place) => target === place || target.startsWith(`${place}/`))) {
+        const sub = this.subTeamOf(target);
+        if (sub !== undefined) {
+            return sub.own.some((place) => within(target, place)) ? undefined : { name: [sub.team, ...segmentsBelow(target, sub.root).slice(0, 2)].join('/'), owner: sub.owner };
+        }
+        if (!within(target, this.root) || this.own.some((place) => within(target, place))) {
             return undefined;
         }
-        const segments = target === this.root ? [] : target.slice(this.root.length + 1).split('/');
+        const segments = segmentsBelow(target, this.root);
         const named = segments.map((segment) => segment.replace(/\.md$/, ''));
         if (named.includes(this.lead)) {
             return undefined;
         }
         return { name: segments.slice(0, 2).join('/') || 'the team folder', owner: named.find((segment) => this.others.has(segment)) };
     }
-    /** The research a shell search is, from the first team-folder path it names that is research. */
+    /** The research a shell search is, from the first path in the team's or a sub-team's folder it names that is research. */
     researchNamed(command) {
         for (const match of normalized(command, this.home).matchAll(this.mentioned)) {
             const research = this.researchOf(match[0]);
