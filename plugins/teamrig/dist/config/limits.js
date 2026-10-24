@@ -103,6 +103,8 @@ export const RULE_CONFLICT_LIMITS = {
     textMaxLength: 300,
     reasonMaxLength: 200,
 };
+/** The longest `budget.account` name, on one line. */
+export const BUDGET_ACCOUNT_MAX_LENGTH = 100;
 /**
  * Bounds on a tree of teams, which `team create` and `doctor` enforce. A lead's `--tree` roll-up reads
  * every register below it, so these keep one at most 1 + 8 + 64 registers, and an owner decision
