@@ -229,7 +229,7 @@ function handoverAsk(moment: AskMoment, cause: Cause, context: AskContext): stri
   const why = whyOf(cause, context.settings);
   const after = moment.kind === 'midTurn' ? ' and end your turn: the fresh start follows it.' : '. Do not start new work.';
   return (
-    `${context.command}: ${why}${whenOf(moment)}. Write your handover to ${context.handoverPath}: what the register lacks ` +
+    `${context.command}: ${why}${whenOf(moment)}. Write your handover to ${context.handoverPath}, replacing the whole file (your fresh start reads all of it): what the register lacks ` +
     '(the next step of each task in progress; what to check later, and when; questions still open with the user; ' +
     'the scratchpad files, plan file and scheduled jobs the next session still needs; where things are), not task statuses, ' +
     `which your fresh start reads live from the register. Then run \`${readyCommand(context.command, context.session.id)}\`${after}`

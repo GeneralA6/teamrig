@@ -16,7 +16,7 @@ const GO = { kind: 'go' };
 /** The ask at a tool's result with the context at 130k and no ask before. */
 const ASK_130K =
   'teamrig: your context is 130k (refresh at 120k), so refresh within this turn: finish the step you are on and start no other. ' +
-  `Write your handover to ${HANDOVER}: what the register lacks (the next step of each task in progress; what to check later, and when; ` +
+  `Write your handover to ${HANDOVER}, replacing the whole file (your fresh start reads all of it): what the register lacks (the next step of each task in progress; what to check later, and when; ` +
   'questions still open with the user; the scratchpad files, plan file and scheduled jobs the next session still needs; where things are), ' +
   'not task statuses, which your fresh start reads live from the register. Then run `teamrig refresh --ready --session alpha` and end your turn: ' +
   'the fresh start follows it.';

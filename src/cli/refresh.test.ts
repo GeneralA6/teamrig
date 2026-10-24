@@ -89,7 +89,7 @@ describe('runCli: context refresh', () => {
     assert.deepEqual(stopJson(asked), {
       decision: 'block',
       reason:
-        `teamrig: your context is 300k (refresh at 120k) and you just finished T1. Write your handover to ${HANDOVER('alpha')}: what the register lacks ` +
+        `teamrig: your context is 300k (refresh at 120k) and you just finished T1. Write your handover to ${HANDOVER('alpha')}, replacing the whole file (your fresh start reads all of it): what the register lacks ` +
         '(the next step of each task in progress; what to check later, and when; questions still open with the user; the scratchpad files, plan file and scheduled jobs the next session still needs; where things are), ' +
         'not task statuses, which your fresh start reads live from the register. Then run `teamrig refresh --ready --session alpha`. Do not start new work.',
     });
@@ -450,7 +450,7 @@ describe('runCli: context refresh', () => {
     await finishTask(kit, 'bravo');
     const asked = stopJson(await kit.run(['hook', 'stop'], { env: { TEAMRIG_SESSION: 'bravo' }, stdin: stopPayload(false, { transcript_path: join(USER_HOME, 'gone.jsonl') }) }));
     assert.ok(typeof asked === 'object' && asked !== null && 'reason' in asked);
-    assert.match(String(asked.reason), new RegExp(`^teamrig: app-lead asked for a refresh and you just finished T1\\. Write your handover to ${handover.replaceAll('\\', '\\\\')}: what the register lacks `));
+    assert.match(String(asked.reason), new RegExp(`^teamrig: app-lead asked for a refresh and you just finished T1\\. Write your handover to ${handover.replaceAll('\\', '\\\\')}, replacing the whole file \\(your fresh start reads all of it\\): what the register lacks `));
 
     assert.equal((await kit.run(['refresh', 'app-alpha', '--session', 'lead'])).code, EXIT.ok);
     const midTask = stopJson(await kit.run(['hook', 'stop'], { env: { TEAMRIG_SESSION: 'alpha' }, stdin: stopPayload(false, { transcript_path: join(USER_HOME, 'gone.jsonl') }) }));

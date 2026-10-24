@@ -101,7 +101,7 @@ describe('decideStop', () => {
     assert.deepEqual(decision, {
       kind: 'block',
       state: { phase: 'asked', task: null, at: NOW, tokens: 262_144, handoverHash: 'abc', midTurn: false },
-      reason: 'teamrig: your context is 262k (refresh at 250k), so refresh now rather than at a task end. ' + 'Write your handover to /team/handover/alpha.md: what the register lacks (the next step of each task in progress; what to check later, and when; questions still open with the user; the scratchpad files, plan file and scheduled jobs the next session still needs; where things are), not task statuses, which your fresh start reads live from the register. Then run `teamrig refresh --ready --session alpha`. Do not start new work.',
+      reason: 'teamrig: your context is 262k (refresh at 250k), so refresh now rather than at a task end. ' + 'Write your handover to /team/handover/alpha.md, replacing the whole file (your fresh start reads all of it): what the register lacks (the next step of each task in progress; what to check later, and when; questions still open with the user; the scratchpad files, plan file and scheduled jobs the next session still needs; where things are), not task statuses, which your fresh start reads live from the register. Then run `teamrig refresh --ready --session alpha`. Do not start new work.',
     });
     for (const state of [
       { phase: 'idle', task: 'T12', at: BEFORE, tokens: 120_000, finished: 1 },
@@ -162,7 +162,7 @@ describe('decideStop', () => {
       kind: 'block',
       state: { phase: 'asked', task: 'T12', at: NOW, tokens: 262_144, handoverHash: 'abc', midTurn: false },
       reason:
-        'teamrig: your context is 262k (refresh at 250k) and you just finished T12. Write your handover to /team/handover/alpha.md: what the register lacks ' +
+        'teamrig: your context is 262k (refresh at 250k) and you just finished T12. Write your handover to /team/handover/alpha.md, replacing the whole file (your fresh start reads all of it): what the register lacks ' +
         '(the next step of each task in progress; what to check later, and when; questions still open with the user; the scratchpad files, plan file and scheduled jobs the next session still needs; where things are), ' +
         'not task statuses, which your fresh start reads live from the register. Then run `teamrig refresh --ready --session alpha`. Do not start new work.',
     });
@@ -357,7 +357,7 @@ describe('decideMidTurn', () => {
     assert.deepEqual(decision.state, { phase: 'asked', task: null, at: NOW, tokens: 251_000, handoverHash: 'h', midTurn: true });
     assert.equal(decision.nextAt, 301_000);
     assert.match(decision.reason, /^teamrig: your context is 251k \(refresh at 250k\), so refresh within this turn: finish the step you are on and start no other\. /);
-    assert.match(decision.reason, /Write your handover to \/team\/handover\/alpha\.md: what the register lacks/);
+    assert.match(decision.reason, /Write your handover to \/team\/handover\/alpha\.md, replacing the whole file \(your fresh start reads all of it\): what the register lacks/);
     assert.match(decision.reason, /Then run `teamrig refresh --ready --session alpha` and end your turn: the fresh start follows it\.$/);
   });
 
