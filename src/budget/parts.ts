@@ -178,13 +178,45 @@ export function dailyBudgetOf(allowancePct: number | undefined, session: string,
   }
   const tree = teamTreeOf(split);
   const path = tree.sessionPaths.get(session);
-  if (path === undefined) {
-    return undefined;
-  }
-  // With no other team the session's path skips the team level: an exact split of the day, not one an ulp off it.
+  return path === undefined ? undefined : budgetAt(allowancePct, path, split, tree, others);
+}
+
+/**
+ * The part of the account's daily budget (`allowancePct`) that the node at `path` in the team's tree (`tree`) gets:
+ * of the team's part (`teamPartOf`) beside the `others`, of the whole day while no other team is on the account.
+ */
+function budgetAt(allowancePct: number, path: readonly string[], split: BudgetSplit, tree: TeamTree, others: readonly BudgetSplit[]): number | undefined {
+  // With no other team the path skips the team level: an exact split of the day, not one an ulp off it.
   return others.length === 0
     ? partOf(allowancePct, tree.nodes, path)
     : partOf(allowancePct, [teamGroupOf(split, tree), ...others.map((each) => teamGroupOf(each))], [split.team, ...path]);
+}
+
+/** A sub-lead's group's part of the day (`groupPartsOf`). */
+export interface GroupPart {
+  /** The sub-lead's id. */
+  readonly id: string;
+  /** The group's sessions at any depth, the sub-lead's own included, in tree order. */
+  readonly sessions: readonly string[];
+  /** The group's daily budget now, in percent of the week; undefined while the account's is unknown. */
+  readonly budgetPct: number | undefined;
+  /** Its group lift in force, as its part of its parent's budget in percent; undefined when not lifted. */
+  readonly liftedPct: number | undefined;
+}
+
+/**
+ * Each sub-lead's group's part (`GroupPart`) of the account's daily budget (`allowancePct`), down its team's tree
+ * (`teamTreeOf`) as `dailyBudgetOf` splits it: the budget its sessions' parts are split from. In tree order, each
+ * group before the groups under it; none while no sub-lead on the roster leads.
+ */
+export function groupPartsOf(allowancePct: number | undefined, split: BudgetSplit, others: readonly BudgetSplit[] = []): GroupPart[] {
+  const tree = teamTreeOf(split);
+  return [...tree.groupPaths].map(([id, path]) => ({
+    id,
+    sessions: [...tree.sessionPaths].filter(([, sessionPath]) => sessionPath.includes(id)).map(([session]) => session),
+    budgetPct: allowancePct === undefined ? undefined : budgetAt(allowancePct, path, split, tree, others),
+    liftedPct: split.liftedGroups.get(id),
+  }));
 }
 
 /** Where a lift takes its part from: its parent node in the team's tree. */
