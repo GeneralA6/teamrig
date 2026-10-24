@@ -316,6 +316,7 @@ The host lock and the limits of one heavy step.
 | `memorySampleSeconds` | integer (0 to 600) | `15` | While a heavy step runs, its process tree's memory and the host's free memory are sampled this often, for its ledger record's peakTreeMb and lowFreeMb; 0 samples nothing. |
 | `memoryFloorMb` | integer (0 to 1048576) | `4096` | A small step (heavy --small) shares the host only while it keeps this many MB free besides those held for the small steps. |
 | `smallReserveMb` | integer (0 to 1048576) | `2048` | The MB held for a small step with no ledger record of its peak yet. |
+| `unwrapped` | one of `"deny"`, `"allow"` | `"deny"` | A Bash or PowerShell call that runs a test suite or a build (npm test, npm run build, tsc, node --test, npx vitest) outside teamrig heavy and teamrig test, so outside the host lock: deny refuses it and hands back the teamrig heavy call that runs it, allow lets it run. |
 
 ## `coordinator.claims`
 
