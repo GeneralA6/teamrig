@@ -288,7 +288,7 @@ stateDiagram-v2
   (`register.check.maxSelfMadePerDay`; created by it, asked by no one else) in the last 24 hours, raised on the
   first of them past that count still active: work nothing asked for, piling up that fast, may be a loop or a drift
   from the goal. `OVER-PACE` is a session holding more unfinished p1 tasks (open, in progress or waiting) than the
-  p1 it finished (done or verifying) in the last 7 days, raised on the first p1 in plan order past that pace once
+  p1 it finished (done or verifying) in the last 7 days and past the first p1, which is in hand, raised on the first p1 in plan order past that pace once
   the session has held tasks for 7 days: p1 then no longer says what comes first, so the lead re-prioritizes. `OFF-GOAL` is a task in progress with no goal outside the week's plan:
   work nothing in the plan asked for. teamrig has no parent tasks yet, so a goal tag or the week is what ties a task
   to the plan. `STOPGAP-DONE` is a `stopgap T<id>` tag whose task is done or dropped, in a skill or in the files
