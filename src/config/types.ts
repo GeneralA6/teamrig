@@ -832,7 +832,7 @@ export interface BurstConfig {
   readonly policy: BurstPolicy;
   /** A surplus burst starts at the earliest this many hours before the week's reset. */
   readonly surplusHours: number;
-  /** The least share of the week, in %, projected unused at the pace end for a surplus burst. */
+  /** The least share of the week, in %, projected unused at the pace end for a surplus burst: the team's part of the account's (src/budget/parts.ts `teamShareOf`). */
   readonly minSparePct: number;
   /** The most helpers each burst session runs at once. */
   readonly maxHelpers: number;

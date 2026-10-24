@@ -439,8 +439,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       (the lead only, under burst.policy owner with the owner's approval) a time-boxed scale-out: each
       session in it gets at least its share of what is left to --stop-pct (at most budget.targetPct) a day
       and runs up to --helpers at once; surplus: the whole team, from burst.surplusHours before the reset
-      until the pace end, once burst.minSparePct is projected unused; deadline: --task by --by, the tasks'
-      owners unless --sessions, needs --stop-pct; without --yes it shows the burst and writes nothing
+      until the pace end, once the team's part of the week projected unused is burst.minSparePct or more;
+      deadline: --task by --by, the tasks' owners unless --sessions, needs --stop-pct; without --yes it
+      shows the burst and writes nothing
   burst end --reason "<why>"   (the lead only) ends the burst in force early; its hires are due to retire
   statusline [--pass]          Claude Code's status line (status JSON on stdin): saves the week's use
       for budget and prints the model, folder, branch, week's use and resume command (config

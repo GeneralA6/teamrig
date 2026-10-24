@@ -11,6 +11,8 @@ import { APP, CliHarness, contextOf, decisionOf, reasonOf, TEAM, TEAM_HOME, USER
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { replyLine, transcript } from '../testing/transcript-lines.ts';
 import { ok } from '../testing/hired-team.ts';
+import { teamConfigOf } from '../testing/team-tree.ts';
+import { formatConfig } from '../config/load.ts';
 import { EXIT } from './runtime.ts';
 
 /** The harness clock is Tuesday 2030-01-08 10:00 UTC; this week resets on Monday 2030-01-14 01:00 UTC, so the pace line is at 19.7%. */
@@ -233,6 +235,20 @@ describe('the budget in the hooks', () => {
     assert.ok(!(await hook('inbox-reminder', LEAD_TAB, { prompt: 'again', session_title: 'app-lead' })).stdout.some((line) => line.startsWith('teamrig burst:')));
     assert.ok(!(await hook('inbox-reminder', ALPHA_TAB, { prompt: 'next', session_title: 'app-alpha' })).stdout.some((line) => line.startsWith('teamrig burst:')), 'only the lead');
     assert.equal(kit.files.get(join(TEAM_HOME, 'state', 'usage', 'bursts.jsonl')), undefined);
+  });
+
+  it("tells the lead the team's part of the account's spare when another team shares the account, and nothing once that part is too little", async () => {
+    // A second team of three sessions weighs 3 beside the app team's 2.1: the app team's part is 2.1/5.1 of the spare.
+    const web = formatConfig({ configVersion: 1, sessions: ['lead', 'front', 'back'], roles: { lead: 'lead' } });
+    const shared = await world({}, 0, 5, { burst: { surplusHours: 167 } });
+    await shared.kit.files.write(teamConfigOf('web'), web);
+    const told = (await shared.hook('inbox-reminder', LEAD_TAB, { prompt: 'next', session_title: 'app-lead' })).stdout;
+    assert.ok(told.some((line) => /^teamrig burst: about 30\.6% of the week, this team's part of the account's 74\.2%, is projected unused at the pace end /.test(line)), told.join('\n'));
+    // At 18% used the account spares 8.4%, which alone would be worth a burst; the team's 3.5% is not.
+    const tight = await world({}, 0, 18, { burst: { surplusHours: 167 } });
+    await tight.kit.files.write(teamConfigOf('web'), web);
+    const quiet = (await tight.hook('inbox-reminder', LEAD_TAB, { prompt: 'next', session_title: 'app-lead' })).stdout;
+    assert.ok(!quiet.some((line) => line.startsWith('teamrig burst:')), quiet.join('\n'));
   });
 
   it('does nothing with the budget off but give a helper launch the helper default', async () => {
