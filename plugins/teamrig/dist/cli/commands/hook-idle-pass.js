@@ -4,15 +4,15 @@ import { idlePassOf, passLineOf } from "../idle-pass.js";
 import { readIdlePassState } from "../idle-pass-check.js";
 import { changedSteps, failedState, formatIdlePassRecord, formatIdlePassState, isPassDue, passedState } from "../idle-pass-log.js";
 import { teamZone } from "../kit.js";
-import { teamProjectOf } from "./setup.js";
+import { sessionFoldersOf } from "./setup.js";
 /**
- * Runs the pass, in the folder holding the team's pointer as `teamrig sessions --pass` does by default. The pass reads
+ * Runs the pass, each session in its own project folder as `teamrig sessions --pass` does by default. The pass reads
  * the host's processes and every session's record, transcript and budget; a failure there is the pass's, logged as
  * such, and must not cost the tab its wake answer.
  */
 async function runPass(runtime, kit, config, roster, from) {
     try {
-        return { kind: 'ran', steps: await idlePassOf(runtime, kit, config, roster, await teamProjectOf(runtime, undefined, from)) };
+        return { kind: 'ran', steps: await idlePassOf(runtime, kit, config, roster, sessionFoldersOf(runtime, config, undefined, from)) };
     }
     catch (error) {
         return { kind: 'failed', error: errorMessage(error) };

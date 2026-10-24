@@ -21,11 +21,17 @@ const isRepoName = (repo) => /^[a-z0-9][a-z0-9-]{0,38}\/[a-z0-9._-]{1,100}$/i.te
 const GITHUB_LOGIN = /^[a-z0-9][a-z0-9-]{0,38}$/i;
 const BRANCH_NAME = (name) => (/^[^\s~^:?*[\\]+$/.test(name) ? undefined : 'not a valid branch name');
 /**
- * An `exec.path` folder: absolute from a drive or the root (`C:/tools`, `/usr/bin`), never against the cwd, and with no
- * `;` or `:` past the drive, so joining the list into one PATH cannot split a folder or add one.
+ * A path absolute from a drive or the root (`C:/tools`, `C:\tools`, `/usr/bin`, `\srv\app`, `\\host\share`) on any
+ * host, as Windows' `isAbsolute` takes it, without `node:path`: the read entry parses the config where Node's
+ * built-ins are missing.
+ */
+const ABSOLUTE_PATH = /^(?:[A-Za-z]:)?[\\/]/;
+/**
+ * An `exec.path` folder: absolute ({@link ABSOLUTE_PATH}), never against the cwd, and with no `;` or `:` past the
+ * drive, so joining the list into one PATH cannot split a folder or add one.
  */
 const EXEC_DIRECTORY = (folder) => {
-    if (!/^(?:[A-Za-z]:[\\/]|\/)/.test(folder)) {
+    if (!ABSOLUTE_PATH.test(folder)) {
         return 'expected an absolute folder, such as C:/tools or /usr/bin';
     }
     return /^(?:[A-Za-z]:)?[^;:]*$/.test(folder) ? undefined : 'expected no ; or : past the drive';
@@ -131,9 +137,12 @@ function readLeads(read, raw, sessions, lead) {
     }
     return Object.fromEntries(leads);
 }
+/** A folder named in full, on one line: a relative one would turn on whichever folder a command runs in. */
+const isAbsoluteFolder = (text) => (/[\r\n]/.test(text) || !ABSOLUTE_PATH.test(text) ? 'expected an absolute folder path on one line' : undefined);
 /**
- * `launch`: a model and an effort for sessions on the team. A wrong field is reported and left out,
- * so the session starts on Claude Code's own choice (or, for the lead, the lead's default) for it.
+ * `launch`: a model, an effort and a project folder for sessions on the team. A wrong field is reported and
+ * left out, so the session starts on Claude Code's own choice (or, for the lead, the lead's default) for it,
+ * and in the team's folder.
  */
 function readLaunch(read, raw, sessions) {
     const launch = {};
@@ -149,13 +158,19 @@ function readLaunch(read, raw, sessions) {
         }
         const model = read.optionalString(entry, 'model', path, isModel);
         const effort = read.optionalString(entry, 'effort', path, isEffort);
-        launch[id] = { ...(model === undefined ? {} : { model }), ...(isEffortLevel(effort) ? { effort } : {}) };
+        const project = read.optionalString(entry, 'project', path, isAbsoluteFolder);
+        launch[id] = {
+            ...(model === undefined ? {} : { model }),
+            ...(isEffortLevel(effort) ? { effort } : {}),
+            ...(project === undefined ? {} : { project }),
+        };
     }
     return launch;
 }
 /**
- * `team`: the team's id and its parent's, both ids. Only the shape is checked here; whether the id
- * matches the team's folder and the parent exists is the tree's to judge, as it sees every team.
+ * `team`: the team's id and its parent's, both ids, and its project folder. Only the shape is checked here;
+ * whether the id matches the team's folder and the parent exists is the tree's to judge, as it sees every team,
+ * and whether the project folder exists is `doctor`'s.
  */
 function readTeam(read, raw) {
     const value = raw['team'];
@@ -165,14 +180,16 @@ function readTeam(read, raw) {
     }
     const id = read.requiredString(section, 'id', 'team', isSessionName);
     const parent = read.optionalString(section, 'parent', 'team', isSessionName);
+    const project = read.optionalString(section, 'project', 'team', isAbsoluteFolder);
     if (id === '') {
         return undefined;
     }
+    const where = project === undefined ? {} : { project };
     if (parent === id) {
         read.report('team.parent', 'is the team itself; a root team has no parent');
-        return { id };
+        return { id, ...where };
     }
-    return parent === undefined ? { id } : { id, parent };
+    return { id, ...(parent === undefined ? {} : { parent }), ...where };
 }
 /** Validates a migrated config object against the current format. */
 export function parseConfig(raw) {

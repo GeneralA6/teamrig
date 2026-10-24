@@ -1,14 +1,14 @@
-import { dirname, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
+import { launchOf } from "../../config/launch.js";
 import { SHIPPED_CONFIG_FORMAT } from "../../config/migrate.js";
 import { claudeConfigDir, ENV, KIT_NAME, resolveKitHome, teamPaths } from "../../core/home.js";
-import { ENV_SOURCE } from "../../core/team.js";
 import { describeRequirement } from "../../requirements/requirements.js";
 import { applyIgnore, ignoreLines, ignoreStep } from "../../setup/pointer-ignore.js";
 import { applySetupTask, setupTaskDryLines, setupTaskLines, setupTaskStep } from "../../setup/setup-task.js";
 import { tabStatusLine } from "../../setup/tab-status-note.js";
 import { applyTeamSetup, planTeamSetup, teamSpecOf } from "../../setup/team-create.js";
 import { onePositional, requiredFlag, UsageError } from "../args.js";
-import { openKit, requireConfig } from "../kit.js";
+import { openKit, requireConfig, teamProjectOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { teamRegister } from "../team-register.js";
 import { loadTree } from "../tree.js";
@@ -24,9 +24,16 @@ export async function projectOf(runtime, flag) {
     }
     return project;
 }
-/** The folder a team's session works in: `--project`, else the folder holding the team's pointer, else as {@link projectOf}. */
-export function teamProjectOf(runtime, flag, from) {
-    return projectOf(runtime, flag ?? (from === ENV_SOURCE ? undefined : dirname(from)));
+/**
+ * The folder a team's session works in: `--project`, else its own `launch.<id>.project`, else the team's
+ * ({@link teamProjectOf}), else as {@link projectOf}.
+ */
+export function sessionProjectOf(runtime, config, id, flag, from) {
+    return projectOf(runtime, flag ?? launchOf(config, id).project ?? teamProjectOf(config, from));
+}
+/** {@link sessionProjectOf} for each session a pass over the team reads. */
+export function sessionFoldersOf(runtime, config, flag, from) {
+    return (id) => sessionProjectOf(runtime, config, id, flag, from);
 }
 /** One line per file: what the run wrote, or would write, and what it left as it was. */
 function stepLines(step, dryRun) {

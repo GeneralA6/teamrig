@@ -21,7 +21,7 @@ import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf } from "../kit.
 import { EXIT, RefusedError } from "../runtime.js";
 import { loadTree } from "../tree.js";
 import { claudeSessionVerdict, freshOpenOf, resumeVerdictOf } from "./rehire.js";
-import { teamProjectOf } from "./setup.js";
+import { sessionProjectOf } from "./setup.js";
 /** The terminal names a person reads, for the OPENED line. */
 export const TERMINAL_LABELS = {
     tmux: 'tmux window',
@@ -90,9 +90,9 @@ export async function openSessionTab(runtime, tab) {
 }
 /**
  * `open <id|name> [--prompt <text>] [--terminal <name>] [--project <dir>] [--resume]`: a new terminal tab in
- * the project folder (by default the one holding the team's pointer) that runs `launch`, so Claude Code starts
- * there as the session. The command runs by absolute paths, since the plugin's bin folder is on PATH only inside
- * Claude Code. When no terminal opens it prints the command to run instead and exits 3. A rehired session opens
+ * the session's project folder (by default its `launch.<id>.project`, else the team's `team.project`, else the
+ * folder holding the team's pointer) that runs `launch`, so Claude Code starts there as the session. The command
+ * runs by absolute paths, since the plugin's bin folder is on PATH only inside Claude Code. When no terminal opens it prints the command to run instead and exits 3. A rehired session opens
  * on the handover its retire left, or, with --resume, in its last Claude Code session when that is small and
  * recent enough (`hiring.resumeMaxTokens`, `hiring.resumeMaxIdleDays`). It refuses any session but the lead when
  * the host has no room for one more (`open.headroom`, src/sessions/headroom.ts). A session `teamrig close` ended
@@ -108,7 +108,7 @@ export async function open(args, runtime) {
     const roster = await rosterOf(runtime, kit, config);
     const id = sessionIdOf(roster, address?.session ?? target);
     const terminal = terminalFlag(args.flags.get('terminal')) ?? config.open.terminal;
-    const project = await teamProjectOf(runtime, args.flags.get('project'), found.from);
+    const project = await sessionProjectOf(runtime, config, id, args.flags.get('project'), found.from);
     const from = rehiredFrom((await new HiringLog(runtime.files, kit.paths.hires).read()).records, id);
     const sessionLog = new SessionLog(runtime.files, kit.paths.sessionLog);
     const closed = closedOf((await sessionLog.read()).records, id);

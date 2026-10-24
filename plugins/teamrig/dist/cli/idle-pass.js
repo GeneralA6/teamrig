@@ -28,12 +28,12 @@ function hasWorkPastUrgent(tasks, id, configured) {
  * unless its rest can change the step: a running one with work past p1 ({@link hasWorkPastUrgent}), a closed one that
  * would reopen awake (a rest only holds a reopen back).
  */
-async function judge(runtime, kit, config, roster, facts, id, project, closes) {
+async function judge(runtime, kit, config, roster, facts, id, folderOf, closes) {
     const { tasks, now, zone } = facts;
     const awake = { rest: AWAKE, maxPriority: config.wake.priority };
     if (facts.places.find((place) => place.id === id)?.state === 'running') {
         const { maxPriority } = hasWorkPastUrgent(tasks, id, config.wake.priority) ? await wakeWeightOf(runtime, kit, config, roster, id) : awake;
-        const verdict = await idleVerdictOf(runtime, config, roster, facts, id, { maxPriority, project });
+        const verdict = await idleVerdictOf(runtime, config, roster, facts, id, { maxPriority, project: await folderOf(id) });
         return verdict.kind === 'close' ? { kind: 'close', id, closable: verdict.closable } : { kind: 'keep', id, why: verdict.why };
     }
     const closed = closedOf(closes, id);
@@ -53,14 +53,15 @@ async function judge(runtime, kit, config, roster, facts, id, project, closes) {
  * What one pass over the team's sessions does, in the roster's order, changing nothing (T1100): each running session
  * closes when `idleVerdictOf` finds it idle, else stays; each one teamrig closed reopens when the wake check would wake
  * it. One reopen a pass, the most urgent top task first, and only with room on the host, read fresh; the rest wait for
- * the next pass, so reopens never outrun what the host can hold.
+ * the next pass, so reopens never outrun what the host can hold. A running session's transcript is read in the
+ * folder `folderOf` names for it when its record names none.
  */
-export async function idlePassOf(runtime, kit, config, roster, project) {
+export async function idlePassOf(runtime, kit, config, roster, folderOf) {
     const facts = await idleFactsOf(runtime, kit, config, roster);
     const closes = (await new SessionLog(runtime.files, kit.paths.sessionLog).read()).records;
     const judged = [];
     for (const id of roster.ids) {
-        judged.push(await judge(runtime, kit, config, roster, facts, id, project, closes));
+        judged.push(await judge(runtime, kit, config, roster, facts, id, folderOf, closes));
     }
     const [first] = judged.filter((step) => step.kind === 'wish').sort((a, b) => byUrgency(a.top, b.top));
     const room = first === undefined ? undefined : await headroomOf(runtime, kit.paths, config, roster.ids);

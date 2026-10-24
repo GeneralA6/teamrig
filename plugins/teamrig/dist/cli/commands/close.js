@@ -6,7 +6,7 @@ import { closableText, enderOf, idleFactsOf, idleVerdictOf } from "../idle-check
 import { callerOf } from "../inputs.js";
 import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
-import { teamProjectOf } from "./setup.js";
+import { sessionProjectOf } from "./setup.js";
 /**
  * `close <id|name> --session <lead> [--project <dir>] [--yes]`: (the lead only) ends an idle session's Claude Code
  * and its tab to free the host, and logs the close (`state/session-log.jsonl`); `teamrig open` then resumes its
@@ -28,7 +28,7 @@ export async function close(args, runtime) {
     }
     const id = sessionIdOf(roster, target);
     const name = roster.nameOf(id) ?? id;
-    const project = await teamProjectOf(runtime, args.flags.get('project'), found.from);
+    const project = await sessionProjectOf(runtime, config, id, args.flags.get('project'), found.from);
     const facts = await idleFactsOf(runtime, kit, config, roster);
     const verdict = await idleVerdictOf(runtime, config, roster, facts, id, { maxPriority: Number.POSITIVE_INFINITY, project });
     if (verdict.kind === 'keep') {
