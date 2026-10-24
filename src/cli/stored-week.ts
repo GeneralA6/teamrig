@@ -13,6 +13,17 @@ import type { CliRuntime } from './runtime.ts';
 /** The team paths a stored reading of the week reads. */
 export type StoredWeekPaths = Pick<TeamPaths, 'usage' | 'period' | 'meterLog' | 'extraLog' | 'home' | 'kitHome'>;
 
+/** Each session's use as last stored, by its id, then the use outside the team under OUTSIDE_ID; no transcript measured. */
+export async function readStoredUsage(runtime: CliRuntime, paths: Pick<TeamPaths, 'usage'>, sessions: readonly string[]): Promise<Map<string, UsageState>> {
+  const team = new UsageStore(runtime.files, paths.usage);
+  const states = new Map<string, UsageState>();
+  for (const id of sessions) {
+    states.set(id, (await team.load(id)).state);
+  }
+  states.set(OUTSIDE_ID, (await new UsageStore(runtime.files, join(paths.usage, 'outside')).load(OUTSIDE_ID)).state);
+  return states;
+}
+
 /**
  * The week as a hook reads it: each session's use as last stored, the use outside the team and the newest
  * status-line reading, no transcript measured.
@@ -23,16 +34,10 @@ export async function readStoredWeek(
   config: Pick<KitConfig, 'sessions' | 'budget'>,
   now: number,
 ): Promise<WeekReading> {
-  const { files } = runtime;
   const { budget, sessions } = config;
-  const team = new UsageStore(files, paths.usage);
-  const states: UsageState[] = [];
-  for (const id of sessions) {
-    states.push((await team.load(id)).state);
-  }
-  states.push((await new UsageStore(files, join(paths.usage, 'outside')).load(OUTSIDE_ID)).state);
-  const statusUse = weekUseOf(await readSnapshots(files, snapshotDirOf(budget, paths)), now);
-  return teamWeekOf(files, paths, { budget, now, statusUse, states });
+  const states = [...(await readStoredUsage(runtime, paths, sessions)).values()];
+  const statusUse = weekUseOf(await readSnapshots(runtime.files, snapshotDirOf(budget, paths)), now);
+  return teamWeekOf(runtime.files, paths, { budget, now, statusUse, states });
 }
 
 /**
