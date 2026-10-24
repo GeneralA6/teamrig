@@ -1,5 +1,6 @@
 import { basename, isAbsolute, join } from 'node:path';
 import { DEFAULT_STATUS_LINE } from '../../config/defaults.ts';
+import { LeadTree } from '../../config/lead-tree.ts';
 import type { Roster } from '../../config/roster.ts';
 import type { BudgetConfig, KitConfig, StatusLineConfig } from '../../config/types.ts';
 import { errorMessage } from '../../core/guards.ts';
@@ -13,10 +14,10 @@ import { BurstLog } from '../../budget/burst-log.ts';
 import { calibrationOf } from '../../budget/calibration.ts';
 import { claudeProjectsDir, type TranscriptSource } from '../../budget/discover.ts';
 import { ExtraLog, type ExtraEntry } from '../../budget/extra.ts';
-import { formatUsd } from '../../budget/format.ts';
+import { formatPct, formatUsd } from '../../budget/format.ts';
 import { activeLift, decideLift, LiftLog, liftText, parentBudgetText, type Lift } from '../../budget/lift.ts';
 import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID, type Measured } from '../../budget/measure.ts';
-import { budgetSplitOf, dailyBudgetOf, liftPlaceOf, teamPartOf, type BudgetSplit } from '../../budget/parts.ts';
+import { budgetSplitOf, dailyBudgetOf, groupPartsOf, liftPlaceOf, teamPartOf, type BudgetSplit } from '../../budget/parts.ts';
 import { nextPeriod, sightOf, type Period } from '../../budget/period.ts';
 import {
   burnLines,
@@ -327,7 +328,48 @@ export function timeFlag(flags: Flags, name: string, times: TypedTimes): number 
   return at.getTime();
 }
 
-/** `budget lift <session> --part <pct> --stop-pct <n> [--until <time>] [--reserve] --reason "<text>"`: the lead only. */
+/** `a`, `a or b`, `a, b or c`. */
+function orList(words: readonly string[]): string {
+  return words.length <= 1 ? words.join('') : `${words.slice(0, -1).join(', ')} or ${words.at(-1) ?? ''}`;
+}
+
+/**
+ * Why session `by` may not lift session `id`'s daily budget, or with `group` sub-lead `id`'s group's; undefined when it
+ * may. A leader lifts every session and sub-lead's group under it, at any depth, and a sub-lead its own session too,
+ * a part of its own group's budget; the lead's group is the whole team, which no lift takes a part of.
+ */
+function liftRefusalOf(tree: LeadTree, nameOf: (id: string) => string, by: string, id: string, group: boolean): string | undefined {
+  const name = nameOf(id);
+  if (group) {
+    if (id === tree.lead) {
+      return `--group lifts a sub-lead's group; ${name} is the lead, whose group is the whole team`;
+    }
+    if (!tree.isLeader(id)) {
+      return `--group lifts a sub-lead's group, and ${name} leads none`;
+    }
+    return tree.leads(by, id) ? undefined : `${name}'s group's budget is lifted only by ${orList(tree.chainOf(id).map(nameOf))}`;
+  }
+  if (tree.leads(by, id) || (by === id && tree.isLeader(by))) {
+    return undefined;
+  }
+  return `${name}'s budget is lifted only by ${orList([...(tree.isLeader(id) ? [id] : []), ...tree.chainOf(id)].map(nameOf))}`;
+}
+
+/**
+ * What a lift too big for sub-lead `group`'s group's budget can do instead, for its refusal: the lift of that group its
+ * leader (`leader`) can give, after the group's budget and use today in percent of the week, each left out when unknown.
+ */
+function beyondGroupText(group: string, leader: string, budgetPct: number | undefined, usedPct: number | undefined): string {
+  const facts = [budgetPct === undefined ? undefined : `gets ${formatPct(budgetPct)} of the week today`, usedPct === undefined ? undefined : `has used ${formatPct(usedPct)}`];
+  const known = facts.filter((each): each is string => each !== undefined);
+  const command = `\`teamrig budget lift ${group} --group --part <pct> --stop-pct <n> --reason "<why>"\``;
+  return known.length === 0 ? `${leader} can lift ${group}'s group: ${command}` : `${group}'s group ${known.join(' and ')}; ${leader} can lift it: ${command}`;
+}
+
+/**
+ * `budget lift <session> [--group] --part <pct> --stop-pct <n> [--until <time>] [--reserve] --reason "<text>"`: a
+ * leader lifts a session under it, or with `--group` the group of a sub-lead under it (`liftRefusalOf`).
+ */
 export async function lift(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const caller = callerOf(args.flags, runtime.env);
   const target = onePositional(args, 'session');
@@ -346,24 +388,36 @@ export async function lift(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   const zone = teamZone(config, runtime);
   const until = timeFlag(args.flags, 'until', { nowMs: now, zone });
   const roster = await rosterOf(runtime, kit, config);
+  const nameOf = (each: string): string => roster.nameOf(each) ?? each;
   const by = sessionIdOf(roster, caller);
-  const lead = roster.holderOf('lead');
-  if (by !== lead) {
-    throw new RefusedError(`only the lead${lead === undefined ? '' : ` (${roster.nameOf(lead) ?? lead})`} lifts a session's budget`);
-  }
   const id = sessionIdOf(roster, target);
-  const name = roster.nameOf(id) ?? id;
+  const group = args.switches.has('group');
+  const tree = new LeadTree(config);
+  const refusal = liftRefusalOf(tree, nameOf, by, id, group);
+  if (refusal !== undefined) {
+    throw new RefusedError(refusal);
+  }
+  const name = nameOf(id);
   const reading = await readBudget(runtime, kit, config, roster, { recountDay: undefined });
   const { week } = reading;
   const work = await readWork(runtime.files, kit.paths.events, config.register.priorities);
-  const place = liftPlaceOf(splitOf(reading, kit.paths.team, roster, config, work), id, false);
+  const split = splitOf(reading, kit.paths.team, roster, config, work);
+  const place = liftPlaceOf(split, id, group);
   if (place === undefined) {
-    throw new RefusedError(`${name} has no daily budget to lift: \`leads\` lists it in a loop of sub-leads no leader above reaches`);
+    throw new RefusedError(`${group ? `${name}'s group` : name} has no daily budget to lift: \`leads\` lists it in a loop of sub-leads no leader above reaches`);
   }
-  const parent = parentBudgetText(place.parent === undefined ? undefined : (roster.nameOf(place.parent) ?? place.parent));
+  const parent = parentBudgetText(place.parent === undefined ? undefined : nameOf(place.parent));
+  let beyondParent: string | undefined;
+  if (place.parent !== undefined) {
+    const others = await otherTeamsOnAccount(runtime, { team: kit.paths.team, config, usageDir: kit.paths.usage }, reading.now, week.usedPct);
+    const part = groupPartsOf(week.allowancePct, split, others).find((each) => each.id === place.parent);
+    const states = (part?.sessions ?? []).flatMap((each) => reading.measured.bySession.get(each) ?? []);
+    const usedPct = week.todayWPerPct === undefined || part === undefined ? undefined : wSince(states, week.todayFrom, reading.now) / week.todayWPerPct;
+    beyondParent = beyondGroupText(nameOf(place.parent), nameOf(tree.leaderOf(place.parent) ?? tree.lead), part?.budgetPct, usedPct);
+  }
   const decision = decideLift(
-    { session: id, group: false, partPct, stopPct, until, reserve: args.switches.has('reserve'), reason, by, now },
-    { usedPct: week.usedPct, reset: week.reset, limits: config.budget.lift, liftedPct: place.liftedPct, parent, beyondParent: undefined, zone },
+    { session: id, group, partPct, stopPct, until, reserve: args.switches.has('reserve'), reason, by, now },
+    { usedPct: week.usedPct, reset: week.reset, limits: config.budget.lift, liftedPct: place.liftedPct, parent, beyondParent, zone },
   );
   if (decision.kind === 'refused') {
     throw new RefusedError(decision.reason);
