@@ -127,12 +127,18 @@ export function paneHeading(): string[] {
   return [text(PANE_LEFT, 86, 'Tasks', 'mono strong'), text(PANE_RIGHT, 86, 'teamrig-pane', 'mono muted', 'end'), `<path d="M${PANE_LEFT} 98.5H${PANE_RIGHT}" class="rule"/>`];
 }
 
-/** The empty window: its body, its tab strip, and the lines under the strip and between the conversation and the pane. */
-export function windowFrame(): string[] {
+/** How the window is split: the conversation beside teamrig-pane, or the conversation alone across the window. */
+export interface FrameOptions {
+  readonly pane?: boolean;
+}
+
+/** The empty window: its body, its tab strip, the line under the strip and, with the pane, the line between the conversation and the pane. */
+export function windowFrame({ pane = true }: FrameOptions = {}): string[] {
+  const divider = pane ? `M${DIVIDER_X + 0.5} ${STRIP_HEIGHT + 1}V${WINDOW_HEIGHT - 1}` : '';
   return [
     `<rect x="0.5" y="0.5" width="${WIDTH - 1}" height="${WINDOW_HEIGHT - 1}" rx="12" class="window"/>`,
     `<path d="M1 ${STRIP_HEIGHT}V12.5A11.5 11.5 0 0 1 12.5 1H${WIDTH - 12.5}A11.5 11.5 0 0 1 ${WIDTH - 1} 12.5V${STRIP_HEIGHT}z" class="strip"/>`,
-    `<path d="M1 ${STRIP_HEIGHT + 0.5}H${WIDTH - 1}M${DIVIDER_X + 0.5} ${STRIP_HEIGHT + 1}V${WINDOW_HEIGHT - 1}" class="rule"/>`,
+    `<path d="M1 ${STRIP_HEIGHT + 0.5}H${WIDTH - 1}${divider}" class="rule"/>`,
   ];
 }
 

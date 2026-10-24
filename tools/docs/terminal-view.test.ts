@@ -7,6 +7,7 @@ import {
   CLOSING,
   DECISIONS,
   DIVIDER_X,
+  type FrameOptions,
   KEY,
   KEY_ORDER,
   MONO_SIZE,
@@ -20,6 +21,7 @@ import {
   VIEW_HEIGHT,
   WIDTH,
   WINDOW_HEIGHT,
+  windowFrame,
 } from './terminal-view.ts';
 import { themeStyle, TOKENS } from './theme.ts';
 import { parseXml, placesIn, textOf } from './xml.ts';
@@ -116,5 +118,20 @@ describe('renderTerminalView', () => {
 
   it('draws no pictographs (emoji)', () => {
     assert.doesNotMatch(svg, /\p{Extended_Pictographic}/u);
+  });
+});
+
+describe('windowFrame', () => {
+  const rule = (options?: FrameOptions): string => windowFrame(options).find((part) => part.includes('class="rule"')) ?? '';
+
+  it('draws the line between the conversation and the pane by default', () => {
+    assert.ok(rule().includes(`M${DIVIDER_X + 0.5} `), rule());
+    assert.equal(rule({ pane: true }), rule());
+  });
+
+  it('leaves the line out for a conversation across the whole window, keeping the line under the tab strip', () => {
+    assert.ok(!rule({ pane: false }).includes(`M${DIVIDER_X + 0.5} `), rule({ pane: false }));
+    assert.ok(rule({ pane: false }).includes(`H${WIDTH - 1}`), rule({ pane: false }));
+    assert.deepEqual(windowFrame({ pane: false }).slice(0, 2), windowFrame().slice(0, 2));
   });
 });
