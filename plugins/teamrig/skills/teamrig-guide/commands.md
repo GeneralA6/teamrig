@@ -962,8 +962,9 @@ teamrig did not close; then a `PASS` total.
 Flags:
 
 - `--pass`: show what an idle pass would close and reopen, and why it keeps or leaves each other session.
-- `--project <dir>`: with `--pass`, the project folder a close's checks read (its transcripts); default the folder
-  holding the team's pointer.
+- `--project <dir>`: with `--pass`, the project folder a close's checks read a session's transcript in when its
+  record names none (a record from before the SessionStart hook kept it); default the folder holding the team's
+  pointer.
 
 Example:
 
@@ -1004,7 +1005,8 @@ ends nothing.
 Flags:
 
 - `--session <id|name>`: the caller, the lead.
-- `--project <dir>`: the project folder its Claude Code runs in; default the one holding the team's pointer.
+- `--project <dir>`: the project folder its Claude Code runs in, where its transcript is read when its record names
+  none; default the one holding the team's pointer.
 - `--yes`: close it.
 
 Example:
@@ -3260,8 +3262,9 @@ by hand. What each does: [hooks.md](hooks.md).
 
 Injects the team rules, who you are and your team's `rules.md` when a session starts, resumes, is cleared or is
 compacted. A compaction inside a helper gets the helper's context instead ([A helper's start](hooks.md#a-helpers-start)).
-It also records where the session started, in `<team>/state/sessions/<id>.json`: its tab's Claude Code session and
-process (the hook's parent), overwritten at each start; a record it could not write is a line shown to the user.
+It also records where the session started, in `<team>/state/sessions/<id>.json`: its tab's Claude Code session, that
+session's transcript (the payload's `transcript_path`, in whatever folder the tab runs) and its process (the hook's
+parent), overwritten at each start; a record it could not write is a line shown to the user.
 
 Flags: none.
 
