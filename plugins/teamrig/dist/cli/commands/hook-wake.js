@@ -19,6 +19,7 @@ import { teamRegister } from "../team-register.js";
 import { budgetFactsOf } from "./hook-budget.js";
 import { runIdlePass } from "./hook-idle-pass.js";
 import { parseJson, sessionTeam, teamSessionOf } from "./hook-input.js";
+import { rearmDeadRestart } from "./hook-restart.js";
 const SECOND_MS = 1000;
 const MINUTE_MS = 60 * SECOND_MS;
 function answer(runtime, value) {
@@ -77,11 +78,14 @@ export const RESTART_RECHECK_MS = MINUTE_MS;
 /**
  * While the session's automatic restart may still act (src/refresh/restart.ts), it is not woken: the wake's prompt
  * would cancel the restart as a typed one does (`hook prompt`), leaving the session with its handover written and no
- * fresh start. The work handed meanwhile stays new, so it wakes the fresh session.
+ * fresh start. The work handed meanwhile stays new, so it wakes the fresh session. A restart whose runner died is
+ * re-armed from this tab first (`rearmDeadRestart`), and holds the wake the same way once it is.
  */
-async function restartHoldsWake(runtime, scope) {
-    const request = await new RefreshStore(runtime.files, scope.kit.paths).restart(scope.id);
-    return restartMayAct(request, runtime.clock.now());
+async function restartHoldsWake(runtime, scope, cwd) {
+    const { kit, config, id, tab } = scope;
+    const store = new RefreshStore(runtime.files, kit.paths);
+    const request = await store.restart(id);
+    return restartMayAct(request, runtime.clock.now()) || (await rearmDeadRestart(runtime, store, { team: kit.paths.team, id, tab, refresh: config.refresh, cwd }, request));
 }
 /** The earliest of the times given; null with none. */
 function earliest(...times) {
@@ -171,12 +175,13 @@ async function decide(runtime, scope, store) {
  * or a burst should (src/wake/day-start.ts). On a
  * wake it logs the wake and its cost to the team's wake log and answers the prompt to submit; a busy lock (another
  * tab of the session checking) answers a recheck now. The lead is not woken while the owner's daily meeting is open,
- * nor any session while its automatic restart may still act. It also runs the team's idle pass, once a minute across
- * the team (hook-idle-pass.ts).
+ * nor any session while its automatic restart may still act; one whose restart died is restarted again instead. It
+ * also runs the team's idle pass, once a minute across the team (hook-idle-pass.ts).
  */
 export async function wakeCheck(args, runtime) {
     noPositionals(args);
-    const scope = await scopeOf(runtime, parseJson(await runtime.readStdin()), true);
+    const payload = parseJson(await runtime.readStdin());
+    const scope = await scopeOf(runtime, payload, true);
     if (scope.kind === 'off') {
         return answer(runtime, scope);
     }
@@ -186,7 +191,7 @@ export async function wakeCheck(args, runtime) {
     if (await meetingHoldsWake(runtime, scope)) {
         return answer(runtime, { kind: 'wait', watch: kit.paths.events, recheckAt: null });
     }
-    if (await restartHoldsWake(runtime, scope)) {
+    if (await restartHoldsWake(runtime, scope, isRecord(payload) ? stringField(payload, 'cwd') : undefined)) {
         return answer(runtime, { kind: 'wait', watch: kit.paths.events, recheckAt: runtime.clock.now() + RESTART_RECHECK_MS });
     }
     const store = new WakeStore(runtime.files, kit.paths.wake);
