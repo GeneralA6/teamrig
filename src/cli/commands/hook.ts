@@ -709,8 +709,13 @@ async function refreshDecisionOf(runtime: CliRuntime, scope: SessionScope, paylo
   const measured = facts === undefined ? first : decideStop(state, context, facts);
   const decided =
     facts !== undefined && measured.kind === 'measure' ? decideStop(state, context, { ...facts, due: await dueFactsOf(runtime, store, id, payload) }) : measured;
+  // Looked up once for the restart and the state: each look at a process starts a PowerShell on Windows, and a Stop
+  // hook past Claude Code's timeout is killed with every process it started.
+  const claude = decided.kind === 'notice' ? await claudeProcessOf(runtime.sessionProcesses, runtime.sessionProcesses.parentPid) : undefined;
   const decision =
-    decided.kind === 'notice' && decided.restart && target !== undefined ? await armRestart(runtime, store, { team: kit.paths.team, id, context, target }, decided) : decided;
+    decided.kind === 'notice' && decided.restart && target !== undefined
+      ? await armRestart(runtime, store, { team: kit.paths.team, id, context, target, claude }, decided)
+      : decided;
   switch (decision.kind) {
     case 'write':
     case 'block':
@@ -719,7 +724,7 @@ async function refreshDecisionOf(runtime: CliRuntime, scope: SessionScope, paylo
       break;
     case 'notice':
       // With the Claude Code process it is given in: a /clear keeps the process, so the fresh tab binds by it.
-      await store.setState(id, { ...decision.state, claudePid: (await claudeProcessOf(runtime.sessionProcesses, runtime.sessionProcesses.parentPid)) ?? null });
+      await store.setState(id, { ...decision.state, claudePid: claude ?? null });
       break;
     case 'none':
     case 'measure':

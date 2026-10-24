@@ -231,13 +231,17 @@ describe('runCli: context refresh', () => {
     const store = await handoverWritten(kit);
     const processes = new FakeProcesses();
     const env = { TEAMRIG_SESSION: 'alpha', CLAUDE_PROJECT_DIR: APP, TEAMRIG_LAUNCHED: 'alpha' };
-    assert.deepEqual(stopJson(await kit.run(['hook', 'stop'], { env, stdin: stopPayload(true), sessionProcesses: UNDER_CLAUDE(), processes })), {
+    const underClaude = UNDER_CLAUDE();
+    assert.deepEqual(stopJson(await kit.run(['hook', 'stop'], { env, stdin: stopPayload(true), sessionProcesses: underClaude, processes })), {
       systemMessage: 'teamrig: app-alpha finished T1 and wrote its handover; teamrig starts it fresh once it has been idle 15 s (type anything to keep this context)',
       terminalSequence: '\u001b]0;app-alpha: restarting\u0007',
     });
     const request = await store.restart('alpha');
     assert.ok(request);
     assert.deepEqual(request, { phase: 'pending', at: request.at, pid: 6900, claudeSession: CLAUDE_SESSION, transcript: TRANSCRIPT, cwd: APP, supervised: true });
+    assert.match((await kit.files.read(STATE('alpha'))) ?? '', /"claudePid":6900/);
+    // Each look starts a PowerShell on Windows: a slow hook is killed at Claude Code's timeout.
+    assert.deepEqual(underClaude.described, [7000, 6900], 'the Claude Code process looked up once');
     const waiters = processes.hidden.filter((run) => run.args[1] === 'restart');
     assert.deepEqual(
       waiters.map((run) => [run.command, run.cwd, ...run.args]),
