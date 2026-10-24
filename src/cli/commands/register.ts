@@ -25,6 +25,7 @@ import type { Task } from '../../register/fold.ts';
 import { problemHint } from '../../register/kind.ts';
 import { renderPlan } from '../../register/plan.ts';
 import { noProgressFlag } from '../../register/progress.ts';
+import { overSizeFlags } from '../../register/over-size.ts';
 import type { AddInput, AskInput, StatusInput, Verdict } from '../../register/policy.ts';
 import type { Register, WriteResult } from '../../register/register.ts';
 import { ACTIVE_STATUSES } from '../../register/model.ts';
@@ -49,6 +50,7 @@ import { teamRegister } from '../team-register.ts';
 import { readBursts } from '../burst-reading.ts';
 import { readHirePct } from '../hire-cost.ts';
 import { readWPerPct } from '../stored-week.ts';
+import { readTaskSpend } from '../task-spend.ts';
 import { snapshotDirOf } from './budget.ts';
 import { readContextInput } from './doctor.ts';
 import { inboxDepsOf } from './inbox.ts';
@@ -654,10 +656,16 @@ export async function checkReport(args: ParsedArgs, runtime: CliRuntime): Promis
   const bursts = await readBursts(runtime, own.paths, own.config.budget, now.getTime());
   const { usedPct, window } = bursts;
   const leftPct = usedPct === undefined ? undefined : leftOfWeek(own.config.budget.targetPct, usedPct);
+  // OVER-SIZE reads the own team's metered use, as STOPGAP-DONE reads its files: a sub-team's sessions meter in its own home.
+  const { overSizeMultiple } = own.config.register.check;
+  const spent = overSizeMultiple > 0 ? await readTaskSpend(runtime, own.paths, own.config, now.getTime()) : undefined;
   const checked = teams.map((rolled) => {
     const section = checkRegister(rolled.snapshot, rolled.config, now, teamZone(rolled.config, runtime), week, leftPct, tree ? rolled.team : undefined);
-    const stopgaps = rolled.team === own.team ? stopgapFlags(tags, rolled.snapshot.state.tasks, zone) : [];
-    return { ...section, flags: [...section.flags, ...stopgaps].sort(byFlagKind) };
+    const ownFlags =
+      rolled.team === own.team
+        ? [...stopgapFlags(tags, rolled.snapshot.state.tasks, zone), ...(spent === undefined ? [] : overSizeFlags(rolled.snapshot.state.tasks.values(), spent, overSizeMultiple))]
+        : [];
+    return { ...section, flags: [...section.flags, ...ownFlags].sort(byFlagKind) };
   });
   const sections = week === null || week !== currentWeekOf(own.snapshot, now, zone) ? checked : withOverLimit(checked, await weekFitOf(runtime, { own, teams }, week, tree));
   const { records } = await new HiringLog(runtime.files, own.paths.hires).read();
