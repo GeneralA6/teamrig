@@ -4,7 +4,7 @@ import { assertWritable, parseJsonl, toJsonlLine, VERSION_FIELD } from '../core/
 
 /**
  * The team's session closes and reopens, an append-only log (`<state>/session-log.jsonl`): which running session
- * `teamrig close` ended to free the host, who asked, how long it had been idle and what it held, and when
+ * `teamrig close` or the idle pass ended to free the host, who, how long it had been idle and what it held, and when
  * `teamrig open` started it again, resumed in its last Claude Code session or fresh. A session whose newest
  * record is a close is closed by teamrig. A newer format is skipped on read and refuses a write.
  */
@@ -13,7 +13,7 @@ export const SESSION_LOG_FORMAT = 1;
 export interface CloseRecord {
   readonly kind: 'close';
   readonly session: string;
-  /** The session that closed it: the lead. */
+  /** Who closed it: the lead's session id, or `idle-pass` for the idle pass. */
   readonly by: string;
   /** ISO instant. */
   readonly at: string;

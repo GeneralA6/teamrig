@@ -1,6 +1,6 @@
 import type { IdleMode } from '../config/types.ts';
 import type { CommitCharge } from '../coordinator/memory.ts';
-import { isRecord } from '../core/guards.ts';
+import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
 import { MS_PER_MINUTE } from '../core/time.ts';
 import type { PassStep } from './idle-pass.ts';
@@ -116,16 +116,41 @@ export interface LoggedStep {
   readonly line: string;
 }
 
-/** A pass that changed a session's step, with the host's commit charge then (undefined: unknown), or a new failure of one. */
+/** What an act the pass started came to: done, kept (weighed again, the session no longer closes) or failed. */
+export type ActOutcome = 'done' | 'kept' | 'failed';
+
+/** An act a pass started on one session: its outcome and line, and the host's commit charge before and after it. */
+export interface IdleActRecord {
+  readonly kind: 'act';
+  readonly at: number;
+  readonly mode: IdleMode;
+  readonly act: 'close';
+  readonly id: string;
+  readonly outcome: ActOutcome;
+  readonly line: string;
+  readonly before: CommitCharge | undefined;
+  readonly after: CommitCharge | undefined;
+}
+
+/** A pass that changed a session's step, with the host's commit charge then (undefined: unknown), a new failure of one, or an act. */
 export type IdlePassRecord =
   | { readonly kind: 'pass'; readonly at: number; readonly mode: IdleMode; readonly commit: CommitCharge | undefined; readonly steps: readonly LoggedStep[] }
-  | { readonly kind: 'failed'; readonly at: number; readonly mode: IdleMode; readonly error: string };
+  | { readonly kind: 'failed'; readonly at: number; readonly mode: IdleMode; readonly error: string }
+  | IdleActRecord;
+
+/** The commit charge under `key`; nothing where it is unknown. */
+function commitField(key: string, commit: CommitCharge | undefined): JsonRecord {
+  return commit === undefined ? {} : { [key]: { usedMb: commit.usedMb, limitMb: commit.limitMb } };
+}
 
 export function formatIdlePassRecord(record: IdlePassRecord): string {
   const base = { [VERSION_FIELD]: IDLE_PASS_LOG_FORMAT, at: new Date(record.at).toISOString(), kind: record.kind, mode: record.mode };
-  if (record.kind === 'failed') {
-    return toJsonlLine({ ...base, error: record.error });
+  switch (record.kind) {
+    case 'failed':
+      return toJsonlLine({ ...base, error: record.error });
+    case 'act':
+      return toJsonlLine({ ...base, act: record.act, id: record.id, outcome: record.outcome, line: record.line, ...commitField('before', record.before), ...commitField('after', record.after) });
+    case 'pass':
+      return toJsonlLine({ ...base, ...commitField('commit', record.commit), steps: record.steps.map((step) => ({ kind: step.kind, id: step.id, line: step.line })) });
   }
-  const commit = record.commit === undefined ? {} : { commit: { usedMb: record.commit.usedMb, limitMb: record.commit.limitMb } };
-  return toJsonlLine({ ...base, ...commit, steps: record.steps.map((step) => ({ kind: step.kind, id: step.id, line: step.line })) });
 }

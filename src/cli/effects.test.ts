@@ -50,6 +50,7 @@ const EXPECTED = {
   'restore uninstall': 'write',
   'restore resume': 'internal',
   restart: 'internal',
+  'idle-close': 'internal',
   who: 'read',
   sessions: 'read',
   close: 'write',

@@ -9,7 +9,7 @@ import { closedOf, SessionLog, type SessionLogRecord } from '../sessions/log.ts'
 import { byUrgency, effectivePriority, URGENT_PRIORITY, wakeRestOf, type WakeRest } from '../wake/decide.ts';
 import { budgetFactsOf } from './commands/hook-budget.ts';
 import { headroomOf } from './headroom.ts';
-import { closableText, idleFactsOf, idleVerdictOf, type Closable, type IdleFacts } from './idle-check.ts';
+import { closableText, idleFactsOf, idleVerdictOf, type Closable, type IdleFacts, type IdleVerdict } from './idle-check.ts';
 import type { Kit } from './kit.ts';
 import type { CliRuntime } from './runtime.ts';
 
@@ -59,18 +59,26 @@ function hasWorkPastUrgent(tasks: ReadonlyMap<string, Task>, id: string, configu
 }
 
 /**
- * One session's step, or its wish to reopen. Its budget takes thousands of file reads, so a session counts as awake
- * unless its rest can change the step: a running one with work past p1 ({@link hasWorkPastUrgent}), a closed one that
- * would reopen awake (a rest only holds a reopen back).
+ * Whether the running session `id` closes, its work weighed as `hook wake-check` weighs it: work that would wake it
+ * keeps it open. Its budget takes thousands of file reads, so it counts as awake unless its rest can change the
+ * verdict: when it has work past p1 ({@link hasWorkPastUrgent}).
+ */
+export async function runningVerdictOf(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, facts: IdleFacts, id: string, project: string): Promise<IdleVerdict> {
+  const maxPriority = hasWorkPastUrgent(facts.tasks, id, config.wake.priority) ? (await wakeWeightOf(runtime, kit, config, roster, id)).maxPriority : config.wake.priority;
+  return idleVerdictOf(runtime, config, roster, facts, id, { maxPriority, project });
+}
+
+/**
+ * One session's step, or its wish to reopen: a running one by {@link runningVerdictOf}, a closed one counted awake
+ * unless it would reopen awake (a rest only holds a reopen back), since its budget takes thousands of file reads.
  */
 async function judge(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, facts: IdleFacts, id: string, folderOf: SessionFolderOf, closes: readonly SessionLogRecord[]): Promise<PassStep | ReopenWish> {
   const { tasks, now, zone } = facts;
-  const awake = { rest: AWAKE, maxPriority: config.wake.priority };
   if (facts.places.find((place) => place.id === id)?.state === 'running') {
-    const { maxPriority } = hasWorkPastUrgent(tasks, id, config.wake.priority) ? await wakeWeightOf(runtime, kit, config, roster, id) : awake;
-    const verdict = await idleVerdictOf(runtime, config, roster, facts, id, { maxPriority, project: await folderOf(id) });
+    const verdict = await runningVerdictOf(runtime, kit, config, roster, facts, id, await folderOf(id));
     return verdict.kind === 'close' ? { kind: 'close', id, closable: verdict.closable } : { kind: 'keep', id, why: verdict.why };
   }
+  const awake = { rest: AWAKE, maxPriority: config.wake.priority };
   const closed = closedOf(closes, id);
   if (closed === undefined) {
     return { kind: 'away', id };

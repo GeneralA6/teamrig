@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { projectTranscriptPath } from '../budget/discover.ts';
-import type { JsonRecord } from '../core/guards.ts';
+import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { SessionLog } from '../sessions/log.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
@@ -186,5 +186,77 @@ describe('teamrig close', () => {
     alpha.processes.failEnd(TAB.pid, 'access denied');
     assertRefused(await close(alpha, ['alpha', '--yes', '--session', 'lead']), /alpha \(session alpha\) was not closed: could not end process 8000: access denied/);
     assert.equal(alpha.kit.files.get(LOG), undefined);
+  });
+});
+
+const PASS_LOG = join(TEAM_HOME, 'state', 'idle-pass.jsonl');
+/** A team that wakes a session for p1 work only. */
+const WAKES_P1: JsonRecord = { ...TEAM, wake: { priority: 1 } };
+const CHARGE = { usedMb: 85_300, limitMb: 100_700 };
+
+function idleClose(alpha: Alpha): Promise<CliResult> {
+  return alpha.kit.run(['idle-close', 'alpha', '--team', 'app', '--project', APP], alpha.options);
+}
+
+/** The pass log's act lines, without their time. */
+function actsOf(alpha: Alpha): JsonRecord[] {
+  return (alpha.kit.files.get(PASS_LOG) ?? '')
+    .split('\n')
+    .filter((line) => line !== '')
+    .map((line) => {
+      const parsed: unknown = JSON.parse(line);
+      assert.ok(isRecord(parsed), line);
+      return Object.fromEntries(Object.entries(parsed).filter(([key]) => key !== 'at'));
+    });
+}
+
+describe('teamrig idle-close', () => {
+  it('closes an idle session as the idle pass, and logs the act with the commit charge before and after', async () => {
+    const alpha = await runningAlpha(75, reply(40_000), undefined, WAKES_P1);
+    const charged = { ...alpha, options: { ...alpha.options, memory: new FakeHostMemory().lists(ROWS, CHARGE) } };
+    const closed = await idleClose(charged);
+    assert.equal(closed.code, 0, closed.stderr.join('\n'));
+    const line = 'CLOSED app-alpha (session alpha): quiet 75 min, its Claude Code holds 1300 MB, now free';
+    assert.deepEqual(closed.stdout, [line]);
+    assert.deepEqual(alpha.processes.ends, [{ pid: TAB.pid, how: 'ask' }]);
+    assert.deepEqual((await new SessionLog(alpha.kit.files, LOG).read()).records, [
+      { kind: 'close', session: 'alpha', by: 'idle-pass', at: new Date(alpha.kit.clock.now()).toISOString(), claudeSession: CLAUDE_SESSION, idleMinutes: 75, freedMb: 1300 },
+    ]);
+    assert.deepEqual(actsOf(alpha), [{ v: 1, kind: 'act', mode: 'off', act: 'close', id: 'alpha', outcome: 'done', line, before: CHARGE, after: CHARGE }]);
+  });
+
+  it('weighs work as the wake check does: p2 work does not keep it open where only p1 wakes, p1 work does', async () => {
+    const alpha = await runningAlpha(75, reply(40_000), undefined, WAKES_P1);
+    const added = await alpha.kit.run(['add', '--title', 'Tidy the docs', '--description', 'what and why', '--priority', 'p2', '--owner', 'alpha', '--session', 'lead']);
+    assert.equal(added.code, 0, added.stderr.join('\n'));
+    assertRefused(await close(alpha, ['alpha', '--yes', '--session', 'lead']), /has work it can start \(T1\)/);
+    assert.equal((await idleClose(alpha)).code, 0);
+    assert.deepEqual(alpha.processes.ends, [{ pid: TAB.pid, how: 'ask' }], 'the pass closes past the wake priority');
+
+    const urgent = await runningAlpha(75, reply(40_000), undefined, WAKES_P1);
+    const handed = await urgent.kit.run(['add', '--title', 'Fix the outage', '--description', 'what and why', '--priority', 'p1', '--owner', 'alpha', '--session', 'lead']);
+    assert.equal(handed.code, 0, handed.stderr.join('\n'));
+    const kept = await idleClose(urgent);
+    assert.equal(kept.code, 0, kept.stderr.join('\n'));
+    assert.match(kept.stdout.join('\n'), /^KEPT app-alpha \(session alpha\) has work it can start \(T1\)/);
+    assert.deepEqual(urgent.processes.ends, []);
+    assert.equal(urgent.kit.files.get(LOG), undefined);
+    assert.deepEqual(actsOf(urgent), [{ v: 1, kind: 'act', mode: 'off', act: 'close', id: 'alpha', outcome: 'kept', line: kept.stdout[0] }]);
+  });
+
+  it('fails, logged, when it cannot weigh the session or its tab outlives the end', async () => {
+    const unlisted = await runningAlpha();
+    const blind = await idleClose({ ...unlisted, options: { ...unlisted.options, memory: new FakeHostMemory().lists(undefined) } });
+    assert.equal(blind.code, EXIT.failed);
+    assert.deepEqual(blind.stdout, ["FAILED to weigh app-alpha (session alpha): teamrig could not list the host's processes, so it cannot tell which sessions run"]);
+    assert.deepEqual(actsOf(unlisted), [{ v: 1, kind: 'act', mode: 'off', act: 'close', id: 'alpha', outcome: 'failed', line: blind.stdout[0] }]);
+
+    const stuck = await runningAlpha();
+    stuck.processes.failEnd(TAB.pid, 'access denied');
+    const failed = await idleClose(stuck);
+    assert.equal(failed.code, EXIT.failed);
+    assert.deepEqual(failed.stdout, ['FAILED to close app-alpha (session alpha): could not end process 8000: access denied']);
+    assert.equal(stuck.kit.files.get(LOG), undefined);
+    assert.equal(actsOf(stuck).length, 1);
   });
 });
