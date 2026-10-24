@@ -994,9 +994,9 @@ PASS 3 session(s): 0 to close, 1 to reopen, 0 to reopen later, 1 kept open, 0 cl
 
 Ends an idle session's Claude Code and its tab to free the host, and logs it in `state/session-log.jsonl`, so
 [teamrig open](#teamrig-open) goes on in that Claude Code session later (`teamrig close <id|name>`; the lead only).
-It refuses the lead and the coordinator owner, a session not running, one with work it can start or a time wait
-of its own ending within 30 minutes, one its transcript shows quiet under `open.headroom.closeIdleMinutes` (60),
-in a turn, at a tool call (running, or waiting on a permission or an answer), waiting on a decision it put to the
+It refuses the lead, the coordinator owner and a session listed in `open.idle.keepOpen`, a session not running, one
+with work it can start or a time wait of its own ending within 30 minutes, one its transcript shows quiet under
+`open.headroom.closeIdleMinutes` (60), in a turn, at a tool call (running, or waiting on a permission or an answer), waiting on a decision it put to the
 person (a `Decision needed:` line) or still running background work, one whose Claude Code runs shells the end
 would cut off, and one too big or idle to resume (`hiring.resumeMaxTokens`,
 `hiring.resumeMaxIdleDays`): retire that one with its handover instead. Without `--yes` it shows the close and
