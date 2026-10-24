@@ -12,11 +12,13 @@ import { activeHires, HiringLog } from "../../hiring/log.js";
 import { scaleOutFlags } from "../../hiring/scale-out.js";
 import { postLine } from "../../inbox/inbox.js";
 import { readSnapshots, weekUseOf } from "../../budget/snapshot.js";
+import { teamDayStartAt } from "../../wake/day-start.js";
 import { byFlagKind, checkTasks, peerWaitFlags } from "../../register/check.js";
 import { currentWeekOf } from "../../register/week.js";
 import { fitLines, leftOfWeek, overLimitFlag, weekFit } from "../../register/fit.js";
 import { problemHint } from "../../register/kind.js";
 import { renderPlan } from "../../register/plan.js";
+import { noProgressFlag } from "../../register/progress.js";
 import { ACTIVE_STATUSES } from "../../register/model.js";
 import { readStopgapTags, stopgapFlags, stopgapTags } from "../../register/stopgap.js";
 import { dueStartHolds, dueVerifyHold, heldStart, heldStartNotice, metStartNotice, startHolds, verifyQueue } from "../../register/verify.js";
@@ -497,13 +499,17 @@ function weekFor(args, snapshot, now, zone) {
     return week === undefined ? currentWeekOf(snapshot, now, zone) : weekOf(week);
 }
 /**
- * The task flags of one register, against its own team's config and in its `zone`; with `team`, for `check --tree`,
- * its task ids name it.
+ * The task flags of one register, against its own team's config and day, in its `zone`; with `team`, for
+ * `check --tree`, its task ids name it. `leftPct` is what is left of the week's usage target (one account's limit
+ * covers every team read).
  */
-function checkRegister(snapshot, config, now, zone, week, team) {
+function checkRegister(snapshot, config, now, zone, week, leftPct, team) {
     const tasks = [...snapshot.state.tasks.values()];
-    const flags = [...checkTasks(tasks, now, zone, week, config.register), ...peerWaitFlags(tasks, new LeadTree(config), config.register.ownerSource)];
-    return { team, flags: flags.sort(byFlagKind), tree: new TaskTree(snapshot.state.tasks, now, zone, week) };
+    const tree = new TaskTree(snapshot.state.tasks, now, zone, week);
+    const dayStart = teamDayStartAt(config.wake.dayStartUtc, now.getTime());
+    const progress = noProgressFlag({ tasks, tree, dayStart, days: config.register.check.goalProgressDays, leftPct });
+    const flags = [...checkTasks(tasks, now, zone, week, config.register), ...peerWaitFlags(tasks, new LeadTree(config), config.register.ownerSource), ...(progress === undefined ? [] : [progress])];
+    return { team, flags: flags.sort(byFlagKind), tree };
 }
 /**
  * The week's fit to the weekly limit over every team read (one account's limit covers them all): what is left of
@@ -546,22 +552,24 @@ export async function checkReport(args, runtime) {
         ...(await readStopgapTags(runtime.files, project, read.own.config.register.check.stopgapFiles)),
         ...skillFiles.flatMap((skill) => stopgapTags(`${skill.name}/${SKILL_FILE}`, skill.text)),
     ];
-    // The task flags are on active tasks, which a compaction never retires; a stopgap tag may name a finished task
-    // it retired, so only a tag the own team's working set lacks makes it read that team's whole history.
+    // The task flags read active tasks and, for NO-PROGRESS, tasks finished inside its span, which a compaction never
+    // retires (limits.ts); a stopgap tag may name a finished task it retired, so only a tag the own team's working set
+    // lacks makes it read that team's whole history.
     const working = read.own.snapshot;
     const { own, teams } = await settle(runtime, read, (_retired, snapshot) => snapshot === working && tags.some((tag) => !snapshot.state.tasks.has(tag.id)));
     const zone = teamZone(own.config, runtime);
     const week = weekFor(args, own.snapshot, now, zone);
+    const bursts = await readBursts(runtime, own.paths, own.config.budget, now.getTime());
+    const { usedPct, window } = bursts;
+    const leftPct = usedPct === undefined ? undefined : leftOfWeek(own.config.budget.targetPct, usedPct);
     const checked = teams.map((rolled) => {
-        const section = checkRegister(rolled.snapshot, rolled.config, now, teamZone(rolled.config, runtime), week, tree ? rolled.team : undefined);
+        const section = checkRegister(rolled.snapshot, rolled.config, now, teamZone(rolled.config, runtime), week, leftPct, tree ? rolled.team : undefined);
         const stopgaps = rolled.team === own.team ? stopgapFlags(tags, rolled.snapshot.state.tasks, zone) : [];
         return { ...section, flags: [...section.flags, ...stopgaps].sort(byFlagKind) };
     });
     const sections = week === null || week !== currentWeekOf(own.snapshot, now, zone) ? checked : withOverLimit(checked, await weekFitOf(runtime, { own, teams }, week, tree));
     const { records } = await new HiringLog(runtime.files, own.paths.hires).read();
-    const bursts = await readBursts(runtime, own.paths, own.config.budget, now.getTime());
-    const over = burstsOver(bursts.records, now.getTime(), bursts.usedPct);
-    const { usedPct, window } = bursts;
+    const over = burstsOver(bursts.records, now.getTime(), usedPct);
     const spare = usedPct === undefined || window === undefined ? undefined : surplusOf({ window, now: now.getTime(), usedPct, targetPct: own.config.budget.targetPct, config: own.config.burst });
     const tasks = [...own.snapshot.state.tasks.values()];
     const hirePct = spare === undefined ? undefined : await readHirePct(runtime, own.paths, own.config, tasks, now.getTime());
