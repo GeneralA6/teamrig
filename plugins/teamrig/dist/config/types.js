@@ -8,6 +8,15 @@ export const CONFLICT_WINNERS = ['local', 'teamrig'];
 export function isConflictWinner(value) {
     return CONFLICT_WINNERS.some((winner) => winner === value);
 }
+/**
+ * How a launched session's Claude Code lists a skill of another session's area, as its `skillOverrides` setting takes
+ * it: `on` in full, `name-only` without its description, `user-invocable-only` only as a `/name` command the model is
+ * not shown, `off` not at all.
+ */
+export const OTHER_AREA_LISTINGS = ['on', 'name-only', 'user-invocable-only', 'off'];
+export function isOtherAreaListing(value) {
+    return OTHER_AREA_LISTINGS.some((listing) => listing === value);
+}
 export const PUSH_TO_PROTECTED = ['ask', 'allow', 'lead'];
 export function isPushToProtected(value) {
     return PUSH_TO_PROTECTED.some((choice) => choice === value);

@@ -60,6 +60,7 @@ export const DEFAULT_SKILLS = {
     maxPerArea: 8,
     maxVerifiedAgeDays: 30,
     forbidFrontmatter: ['allowed-tools'],
+    otherAreas: 'name-only',
 };
 /**
  * Measured on a working team (10-15): 23k of CLAUDE.md, 15k of memory index and 4.6k of skill listing were re-read every call.
