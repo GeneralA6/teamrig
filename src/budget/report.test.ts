@@ -20,6 +20,7 @@ import {
   sumUsage,
   todayLines,
   W_EXPLAINED,
+  type GroupToday,
   type OutsideToday,
   type SessionToday,
   type TodayReport,
@@ -85,7 +86,7 @@ const LIFT: Lift = {
   at: Date.parse('2026-10-15T09:00:00Z'),
 };
 const LIFT_HEADING =
-  "Lifts by the lead, today only: a part of the team's daily budget until its time or its stop % of the week, whichever comes first; quiet hours do not apply to them.";
+  "Lifts, today only: a part of the team's daily budget until its time or its stop % of the week, whichever comes first; quiet hours do not apply to them.";
 /** bravo's lift, which lasts the budget day, as `todayLines` gives it on UTC. */
 const LIFT_BLOCK = [LIFT_HEADING, '  session   part      until  stop at', '  bravo    40.0%  00:00 UTC    97.0%', '  00:00 UTC is the end of the budget day.'];
 
@@ -104,7 +105,7 @@ function inBurst(id: string, w: number): SessionToday {
 const SESSIONS: readonly SessionToday[] = [session('lead', 7_500_000, 310), session('alpha', 30_000_000, 1_000), session('bravo', 0, 0, 2, LIFT)];
 const OUTSIDE: OutsideToday = { w: 1_200_000, calls: 40, sessions: 2, titles: ['release checks', 'Docs'] };
 const NOBODY_OUTSIDE: OutsideToday = { w: 0, calls: 0, sessions: 0, titles: [] };
-const REPORT: TodayReport = { week: WEEK, teamPct: WEEK.allowancePct, sessions: SESSIONS, outside: OUTSIDE, behind: [], all: false, zone: TimeZone.UTC };
+const REPORT: TodayReport = { week: WEEK, teamPct: WEEK.allowancePct, sessions: SESSIONS, groups: [], outside: OUTSIDE, behind: [], all: false, zone: TimeZone.UTC };
 
 describe('todayLines', () => {
   it("gives the week's status time and reset on the team's clock", () => {
@@ -189,7 +190,7 @@ describe('todayLines', () => {
   });
 
   it('marks the budgets a burst raised and names the burst once, with its sessions', () => {
-    const lines = todayLines({ week: WEEK, teamPct: WEEK.allowancePct, sessions: [session('lead', 0, 0), inBurst('alpha', 15_000_000), inBurst('bravo', 0)], outside: NOBODY_OUTSIDE, behind: [], all: true, zone: TimeZone.UTC });
+    const lines = todayLines({ ...REPORT, sessions: [session('lead', 0, 0), inBurst('alpha', 15_000_000), inBurst('bravo', 0)], outside: NOBODY_OUTSIDE, all: true });
     assert.match(lines[4] ?? '', /^ {2}alpha +2\.0% +9\.5% +\(burst\) +15\.00M +100$/);
     assert.equal(lines[5], '  No use today: commander, bravo.');
     const burstLines = lines.filter((line) => line.startsWith('Budget: the lead started'));
@@ -200,7 +201,7 @@ describe('todayLines', () => {
 
   it('marks a lifted budget and names the idle sessions with --all', () => {
     const lifted = [session('lead', 0, 0), session('alpha', 15_000_000, 500, 2, { ...LIFT, session: 'alpha' })];
-    const lines = todayLines({ week: WEEK, teamPct: WEEK.allowancePct, sessions: lifted, outside: { ...NOBODY_OUTSIDE, sessions: 1 }, behind: [], all: true, zone: TimeZone.UTC });
+    const lines = todayLines({ ...REPORT, sessions: lifted, outside: { ...NOBODY_OUTSIDE, sessions: 1 }, all: true });
     assert.match(lines[4] ?? '', /^ {2}alpha +2\.0% +2\.0% +\(lifted\) +15\.00M +500$/);
     assert.deepEqual(lines.slice(5, 7), ['  No use today: commander.', LIFT_HEADING]);
     assert.match(lines[8] ?? '', /^ {2}alpha +40\.0% +00:00 UTC +97\.0%$/);
@@ -223,7 +224,7 @@ describe('todayLines', () => {
   });
 
   it('shows plain W when the week is unknown', () => {
-    assert.deepEqual(todayLines({ week: UNKNOWN, teamPct: UNKNOWN.allowancePct, sessions: SESSIONS, outside: NOBODY_OUTSIDE, behind: [], all: false, zone: TimeZone.UTC }), [
+    assert.deepEqual(todayLines({ ...REPORT, week: UNKNOWN, teamPct: UNKNOWN.allowancePct, outside: NOBODY_OUTSIDE }), [
       'Week: its use is unknown: no status line reading (run teamrig statusline install) and no budget.weeklyLimitW.',
       'Today (UTC day):',
       '  session         W  calls',
@@ -241,6 +242,42 @@ describe('todayLines', () => {
     const block = lines.slice(lines.indexOf(LIFT_HEADING), lines.indexOf(LIFT_HEADING) + 3);
     assert.deepEqual(block, [LIFT_HEADING, '  session             part      until  stop at', '  bravo    40.0% (reserve)  23:45 UTC    97.0%']);
     assert.ok(!lines.some((line) => line.includes('end of the budget day')), lines.join('\n'));
+  });
+
+  describe('with a sub-lead', () => {
+    /** bravo leads alpha: the lead lifted bravo's group to 60% of the team's day, and bravo lifted alpha to 50% of its group's. */
+    const GROUP_LIFT: Lift = { ...LIFT, group: true, partPct: 60, quietHoursExempt: false };
+    const ALPHA_LIFT: Lift = { ...LIFT, session: 'alpha', partPct: 50, by: 'bravo' };
+    const MEMBERS: readonly SessionToday[] = [session('lead', 7_500_000, 310), { ...session('alpha', 30_000_000, 1_000, 3, ALPHA_LIFT), liftBy: 'bravo', liftParent: 'bravo' }, session('bravo', 0, 0, 3)];
+    const GROUP: GroupToday = { id: 'bravo', name: 'bravo', sessions: ['bravo', 'alpha'], budgetPct: 6, lift: GROUP_LIFT, liftBy: 'commander', liftParent: undefined };
+
+    it("gives the group a row after the team's: its sessions' use summed against its part of the day", () => {
+      const lines = todayLines({ ...REPORT, sessions: MEMBERS, groups: [GROUP] });
+      assert.match(lines[3] ?? '', /^ {2}the team +5\.0% +10\.3% +37\.50M +1,310$/);
+      assert.match(lines[4] ?? '', /^ {2}group bravo \(2\) +4\.0% +6\.0% +\(lifted\) +30\.00M +1,000$/);
+      assert.match(lines[5] ?? '', /^ {2}alpha +4\.0% +3\.0% +\(lifted\) +30\.00M +1,000$/);
+      const unknown = todayLines({ ...REPORT, week: UNKNOWN, teamPct: undefined, sessions: MEMBERS, groups: [{ ...GROUP, budgetPct: undefined }] });
+      assert.match(unknown[4] ?? '', /^ {2}group bravo \(2\) +30\.00M +1,000$/);
+    });
+
+    it("lists the group's lift first and names the budget each lift is a part of, and that a group's keeps quiet hours", () => {
+      const lines = todayLines({ ...REPORT, sessions: MEMBERS, groups: [GROUP] });
+      const heading = lines.findIndex((line) => line.startsWith('Lifts, today only: '));
+      assert.deepEqual(lines.slice(heading, heading + 5), [
+        "Lifts, today only: a part of the team's or a group's daily budget until its time or its stop % of the week, whichever comes first; " +
+          "quiet hours do not apply to a session's lift, but do to a group's.",
+        '  session      of            part      until  stop at',
+        '  group bravo  the team     60.0%  00:00 UTC    97.0%',
+        '  alpha        group bravo  50.0%  00:00 UTC    97.0%',
+        '  00:00 UTC is the end of the budget day.',
+      ]);
+    });
+
+    it('shows a group with no lift unmarked, and no lifts block while nothing is lifted', () => {
+      const lines = todayLines({ ...REPORT, sessions: [session('lead', 0, 0), session('alpha', 7_500_000, 5), session('bravo', 0, 0)], groups: [{ ...GROUP, lift: undefined, liftBy: undefined }] });
+      assert.match(lines[4] ?? '', /^ {2}group bravo \(2\) +1\.0% +6\.0% +7\.50M +5$/);
+      assert.ok(!lines.some((line) => line.startsWith('Lifts')), lines.join('\n'));
+    });
   });
 
   it('says how to get daily budgets when only the use is known, and marks a metered week and the team past budget', () => {
