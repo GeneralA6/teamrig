@@ -27,6 +27,18 @@ export async function readContextInput(runtime, project, skills, budgets) {
         sessionLists: await readSessionLists(runtime.transcripts, claudeProjectsDir(runtime.env, runtime.userHome), project),
     };
 }
+/** The project folders the config names, `team.project` first, then each session's `launch.<id>.project`, and what is at each. */
+async function configuredProjects(probe, config, ids) {
+    const team = config.team?.project;
+    const named = [
+        ...(team === undefined ? [] : [{ session: undefined, path: team }]),
+        ...ids.flatMap((id) => {
+            const path = launchOf(config, id).project;
+            return path === undefined ? [] : [{ session: id, path }];
+        }),
+    ];
+    return Promise.all(named.map(async (entry) => ({ ...entry, kind: await probe.kind(entry.path) })));
+}
 /**
  * `doctor`: what teamrig lacks on this machine (git, Claude Code, Node.js), then the team's health checks
  * (names, the rename log, inboxes, rules.md, its tree of teams and session names shared with other teams,
@@ -35,8 +47,9 @@ export async function readContextInput(runtime, project, skills, budgets) {
  * MCP server instructions the project's newest session transcript announced) against the team's `contextFiles` budgets. Last, what
  * silently overrides the model or effort a session or helper is given: `CLAUDE_CODE_EFFORT_LEVEL` or
  * `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` in doctor's own environment or in the `env` block of the user's or the
- * project's Claude Code settings, and a session whose `launch` names a model but no effort; and the local allow rules
- * off `permissions.keepAllow` that approve a whole tool or program (src/cli/allow-scope.ts). It reads only and
+ * project's Claude Code settings, a session whose `launch` names a model but no effort, and a `team.project` or
+ * `launch.<id>.project` that is no folder on this machine; and the local allow rules off `permissions.keepAllow` that
+ * approve a whole tool or program (src/cli/allow-scope.ts). It reads only and
  * exits 0 like `check`: a finding is advice, and each line says the fix. `check` prints the context and allow findings too.
  */
 export async function doctor(args, runtime) {
@@ -48,7 +61,7 @@ export async function doctor(args, runtime) {
     const rules = await runtime.files.read(paths.teamRules);
     const { tree } = await loadTree(runtime);
     const claudeDir = claudeConfigDir(runtime.env, runtime.userHome);
-    const project = await projectFolder(runtime);
+    const project = await projectFolder(runtime, config);
     const roster = new Roster(config, paths.team, renameLog.renames);
     const { records } = await new HiringLog(runtime.files, paths.hires).read();
     const findings = doctorFindings({
@@ -65,6 +78,7 @@ export async function doctor(args, runtime) {
         settingsEnv: await readSettingsEnv(runtime.files, claudeSettingsFiles(claudeDir, project)),
         wideAllow: await readWideAllow(runtime, { paths, config, project }),
         launches: roster.ids.map((id) => ({ id, launch: launchOf(config, id) })),
+        projects: await configuredProjects(runtime.probe, config, roster.ids),
         now: new Date(runtime.clock.now()),
         zone: teamZone(config, runtime),
         command: KIT_NAME,

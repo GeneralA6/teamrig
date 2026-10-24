@@ -17,7 +17,7 @@ import { checkedNextConfig, configFileJson, findTeam, openKit, requireConfig, ro
 import { EXIT, RefusedError } from "../runtime.js";
 import { loadTree } from "../tree.js";
 import { freshOpenOf, resumeVerdictOf } from "./rehire.js";
-import { teamProjectOf } from "./setup.js";
+import { sessionProjectOf } from "./setup.js";
 /**
  * `hire`: the lead adds a temporary session to the team within `hiring`'s policy and caps. Without
  * --yes it only shows the hire; with it, the old config is kept in the backups folder, the hire is
@@ -130,7 +130,7 @@ export async function hire(args, runtime) {
         const caps = `  hired sessions with it: ${hired} of ${config.hiring.maxSessions}`;
         const from = retiredSessions(records).find((record) => record.session === request.id);
         // Measured before anything is written, so the preview shows it too.
-        const rehire = from === undefined ? undefined : { from, verdict: await resumeVerdictOf(runtime, kit.paths, config.hiring, request.id, await teamProjectOf(runtime, undefined, found.from)) };
+        const rehire = from === undefined ? undefined : { from, verdict: await resumeVerdictOf(runtime, kit.paths, config.hiring, request.id, await sessionProjectOf(runtime, config, request.id, undefined, found.from)) };
         const rehireText = rehire === undefined ? [] : rehireLines(rehire, teamZone(config, runtime));
         if (skipped > 0) {
             runtime.out.stdout(`NOTE ${skipped} damaged or newer line(s) in ${log.path} were skipped, so the caps may count too few hires`);

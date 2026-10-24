@@ -85,7 +85,7 @@ function candidateLine(candidate, userHome, scanner) {
     return `CANDIDATE ${homeRelative(candidate.place.path, userHome)}:${candidate.line} [${topics}] ${text}`;
 }
 async function scanView(runtime, kit, config, kind, all) {
-    const project = await projectFolder(runtime);
+    const project = await projectFolder(runtime, config);
     const found = await scanRules(runtime.files, runtime.probe, { claudeDir: claudeConfigDir(runtime.env, runtime.userHome), userHome: runtime.userHome, project, skills: kit.paths.skills, teamRules: kit.paths.teamRules }, config.ruleConflicts);
     const kinds = kind === undefined ? PLACE_KINDS : [kind];
     const hashes = ruleHashesOf(coreRuleTexts(config, KIT_NAME, runtime.platform, RULE_HASH_CLOCK));

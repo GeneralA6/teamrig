@@ -5,7 +5,7 @@ import { UsageError } from "../args.js";
 import { idlePassOf, passLineOf, passTotalOf } from "../idle-pass.js";
 import { findTeam, openKit, openTeamKit, requireConfig, rosterOf, teamZone } from "../kit.js";
 import { EXIT } from "../runtime.js";
-import { teamProjectOf } from "./setup.js";
+import { sessionFoldersOf } from "./setup.js";
 /** One session's line: `<id> <name>: ` and where it is. */
 function placeLine(roster, place) {
     const where = place.state === 'running'
@@ -53,8 +53,7 @@ async function pass(args, runtime) {
     const kit = await openKit(runtime, found.team);
     const config = requireConfig(kit, runtime, 'read');
     const roster = await rosterOf(runtime, kit, config);
-    const project = await teamProjectOf(runtime, args.flags.get('project'), found.from);
-    const steps = await idlePassOf(runtime, kit, config, roster, project);
+    const steps = await idlePassOf(runtime, kit, config, roster, sessionFoldersOf(runtime, config, args.flags.get('project'), found.from));
     const zone = teamZone(config, runtime);
     steps.forEach((step) => runtime.out.stdout(passLineOf(step, roster, zone)));
     runtime.out.stdout(passTotalOf(steps));
