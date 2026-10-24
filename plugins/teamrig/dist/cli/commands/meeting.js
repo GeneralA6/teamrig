@@ -2,7 +2,7 @@ import { KIT_NAME } from "../../core/home.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { postLine } from "../../inbox/inbox.js";
 import { agendaLines, agendaSince } from "../../meeting/agenda.js";
-import { decisionsByOwner, endNotice, startNotice } from "../../meeting/notices.js";
+import { decisionsByOwner, endNotice } from "../../meeting/notices.js";
 import { MeetingStore, phaseOf, stoppedAt } from "../../meeting/state.js";
 import { currentWeekOf } from "../../register/week.js";
 import { fitLines } from "../../register/fit.js";
@@ -30,16 +30,21 @@ async function meetingKit(args, runtime, access) {
     const store = new MeetingStore(runtime.files, kit.paths.meeting);
     return { kit, config, roster, lead, leadName: roster.nameOf(lead) ?? lead, store, now: runtime.clock.now(), zone: teamZone(config, runtime) };
 }
-function noticeFacts(mk) {
-    return { lead: mk.lead, leadName: mk.leadName, at: mk.now, command: KIT_NAME, zone: mk.zone };
-}
-/** One inbox line to every session but the lead; prints a line for each it could not post to, and returns how many it told. */
-async function tellSessions(runtime, mk, textFor) {
+/**
+ * One inbox line to each session on the roster with decisions recorded on its tasks, and none to the rest; prints a
+ * line for each it could not post to, and returns how many it told.
+ */
+async function tellDecided(runtime, mk, decisions) {
     const { inboxes } = inboxDepsOf(runtime, mk.kit.paths);
     const secrets = new SecretScanner(mk.config.register.secretPatterns);
+    const facts = { leadName: mk.leadName, at: mk.now, zone: mk.zone };
     let told = 0;
-    for (const session of mk.roster.ids.filter((id) => id !== mk.lead)) {
-        const problem = await postLine(inboxes, secrets, { to: session, from: mk.lead, text: textFor(session), now: new Date(mk.now) });
+    for (const session of mk.roster.ids) {
+        const decided = decisions.get(session);
+        if (session === mk.lead || decided === undefined) {
+            continue;
+        }
+        const problem = await postLine(inboxes, secrets, { to: session, from: mk.lead, text: endNotice(facts, decided), now: new Date(mk.now) });
         if (problem === undefined) {
             told += 1;
         }
@@ -63,7 +68,7 @@ function phaseLine(phase, mk) {
         case 'open':
             return `MEETING open since ${mk.zone.weekdayMinute(new Date(phase.meeting.startedAt))}: messages to ${mk.leadName} are held but CRITICAL ones`;
         case 'lapsed':
-            return `MEETING the one started ${mk.zone.weekdayMinute(new Date(phase.meeting.startedAt))} was never ended and holds no message since ${mk.zone.weekdayMinute(new Date(phase.until))}; ${KIT_NAME} meeting end tells the sessions it ended`;
+            return `MEETING the one started ${mk.zone.weekdayMinute(new Date(phase.meeting.startedAt))} was never ended and holds no message since ${mk.zone.weekdayMinute(new Date(phase.until))}; ${KIT_NAME} meeting end tells each session the decisions on its tasks`;
         case 'closed':
             return `MEETING none open, the last ended ${mk.zone.weekdayMinute(new Date(phase.until))}; the agenda for the next (${KIT_NAME} meeting start opens it)`;
     }
@@ -92,24 +97,23 @@ async function printAgenda(args, runtime, mk, phase) {
     }
 }
 /**
- * `meeting start`: opens the meeting, tells every other session, and prints the agenda. A meeting already open is
- * not told again: its agenda prints.
+ * `meeting start`: opens the meeting and prints the agenda; it posts no line, as the hook tells each sender it
+ * holds. A meeting already open stays as it is: its agenda prints.
  */
 export async function meetingStart(args, runtime) {
     const mk = await meetingKit(args, runtime, 'write');
     const phase = phaseOf(await mk.store.read(), mk.now);
     if (phase.kind === 'open') {
-        runtime.out.stdout(`MEETING already open since ${mk.zone.weekdayMinute(new Date(phase.meeting.startedAt))}; the sessions were told then`);
+        runtime.out.stdout(`MEETING already open since ${mk.zone.weekdayMinute(new Date(phase.meeting.startedAt))}: messages to ${mk.leadName} are held but CRITICAL ones`);
         await printAgenda(args, runtime, mk, phase);
         return EXIT.ok;
     }
     const before = stoppedAt(phase);
     const meeting = { startedAt: new Date(mk.now).toISOString(), by: mk.lead, endedAt: null, since: before === undefined ? null : new Date(before).toISOString() };
     await mk.store.write(meeting);
-    const told = await tellSessions(runtime, mk, () => startNotice(noticeFacts(mk)));
-    runtime.out.stdout(`MEETING started ${mk.zone.weekdayMinute(new Date(mk.now))}: told ${told} session(s) by inbox line; messages to ${mk.leadName} are held but CRITICAL ones`);
+    runtime.out.stdout(`MEETING started ${mk.zone.weekdayMinute(new Date(mk.now))}: messages to ${mk.leadName} are held but CRITICAL ones (the hook tells each sender)`);
     await printAgenda(args, runtime, mk, { kind: 'open', meeting });
-    runtime.out.stdout(`END ${KIT_NAME} meeting end --session ${mk.lead}: tells every session, with the decisions recorded on its tasks`);
+    runtime.out.stdout(`END ${KIT_NAME} meeting end --session ${mk.lead}: tells each session the decisions recorded on its tasks`);
     return EXIT.ok;
 }
 /** `meeting agenda`: the agenda now, during a meeting or to prepare the next one. */
@@ -121,8 +125,8 @@ export async function meetingAgenda(args, runtime) {
     return EXIT.ok;
 }
 /**
- * `meeting end`: closes the open meeting, or one that lapsed unended, and tells every other session it ended, each
- * with the lead's updates on its tasks during the meeting: the decisions recorded.
+ * `meeting end`: closes the open meeting, or one that lapsed unended, and tells each session whose tasks the lead
+ * updated during the meeting those updates (the decisions recorded) by one inbox line; a session with none gets no line.
  */
 export async function meetingEnd(args, runtime) {
     const mk = await meetingKit(args, runtime, 'write');
@@ -135,9 +139,9 @@ export async function meetingEnd(args, runtime) {
     const { snapshot } = (await ownRegister(runtime)).own;
     const startedAt = Date.parse(meeting.startedAt);
     const decisions = decisionsByOwner(snapshot.read.events, snapshot.state.tasks, mk.lead, startedAt);
-    const told = await tellSessions(runtime, mk, (session) => endNotice(noticeFacts(mk), decisions.get(session) ?? []));
+    const told = await tellDecided(runtime, mk, decisions);
     const minutes = Math.round((mk.now - startedAt) / 60_000);
-    runtime.out.stdout(`MEETING ended ${mk.zone.weekdayMinute(new Date(mk.now))} after ${minutes} min: told ${told} session(s) messages to ${mk.leadName} may go again`);
+    runtime.out.stdout(`MEETING ended ${mk.zone.weekdayMinute(new Date(mk.now))} after ${minutes} min: messages to ${mk.leadName} go again; told ${told} session(s) the decisions on their tasks`);
     const recorded = [...decisions].flatMap(([owner, lines]) => lines.map((line) => `  ${owner} ${line}`));
     runtime.out.stdout(recorded.length === 0
         ? `RECORDED nothing on another session's task during it: a decision the register lacks reaches no one (${KIT_NAME} update <id> --note "..." --session ${mk.lead})`

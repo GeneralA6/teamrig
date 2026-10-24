@@ -1,7 +1,7 @@
 /**
- * The meeting's quiet window: while the owner meets the lead, a message to the lead waits as an inbox line, as
- * every session was told at the start. Only a message that starts with CRITICAL goes through, for what needs the
- * owner now. The cold-send hook enforces it, so a session that has not read the start notice yet is held too.
+ * The meeting's quiet window: while the owner meets the lead, a message to the lead waits as an inbox line. Only a
+ * message that starts with CRITICAL goes through, for what needs the owner now. The cold-send hook enforces it when
+ * the message is sent, and its reason tells the sender what to do, so no session is told when the meeting starts.
  */
 /** The word a message to the lead starts with to go through a meeting. */
 export const CRITICAL_WORD = 'CRITICAL';
