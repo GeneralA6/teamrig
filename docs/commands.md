@@ -137,8 +137,10 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   exec escalate R<n> --note "<why>"    the security reviewer hands an owner-gated request to the owner
   exec run R<n>        runs an approved request once, before its approval expires
   who [<id|name|role>]         the name to message a session by (no argument: every session)
-  sessions                     each session: running (and the MB its Claude Code's processes hold), closed
-      or never recorded; then the host's free memory and commit charge
+  sessions [--pass] [--project <dir>]   each session: running (and the MB its Claude Code's processes
+      hold), closed or never recorded; then the host's free memory and commit charge. --pass: what an
+      idle pass would close and reopen (one reopen a pass, with room on the host) and why it keeps or
+      leaves each other session; it changes nothing
   close <id|name> [--project <dir>] [--yes]   (the lead) ends an idle session's Claude Code and its tab
       to free the host, logged, so teamrig open resumes it; it refuses the lead, the coordinator owner,
       a session with work it can start or a time wait ending within 30 min, quiet under
