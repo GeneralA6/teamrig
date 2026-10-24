@@ -624,7 +624,7 @@ async function leadStopLines(runtime, scope, transcript) {
         return [];
     }
     const turn = turnToolsOf(text, Buffer.byteLength(text, 'utf8') >= TRANSCRIPT_TAIL_BYTES, undefined);
-    const line = leadStopLine(leadTallyOf(turn, leadPathsOf(runtime, kit, config)), config.leadBoundary.searchNudgeAt);
+    const line = leadStopLine(leadTallyOf(turn, leadPathsOf(runtime, kit, config, await loadTree(runtime))), config.leadBoundary.searchNudgeAt);
     return line === undefined ? [] : [line];
 }
 /** The refresh decision for this turn's end; none with refresh off. */
