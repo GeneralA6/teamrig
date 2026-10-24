@@ -164,6 +164,12 @@ export interface TeamPaths {
   readonly hookless: string;
   /** Held while a hook runs the hookless-tab check. */
   readonly hooklessLock: string;
+  /** The idle pass's last run and each session's step then (src/cli/idle-pass-log.ts). */
+  readonly idlePass: string;
+  /** Held while a wake check runs the idle pass. */
+  readonly idlePassLock: string;
+  /** Each idle pass that changed a session's step, and each new failure of one, an append-only log. */
+  readonly idlePassLog: string;
   /** What the wake check kept for each session (src/wake/), `<id>.json` each, and its lock, `<id>.lock`. */
   readonly wake: string;
   /** Every wake and every wake Claude Code dropped, with its cost, an append-only log. */
@@ -244,6 +250,9 @@ export function teamPaths(kitHome: string, team: string, userHome: string, overr
     githubSyncLock: join(state, 'github-sync.lock'),
     hookless: join(state, 'hookless.json'),
     hooklessLock: join(state, 'hookless.lock'),
+    idlePass: join(state, 'idle-pass.json'),
+    idlePassLock: join(state, 'idle-pass.lock'),
+    idlePassLog: join(state, 'idle-pass.jsonl'),
     wake: join(state, 'wake'),
     wakeLog: join(state, 'wakes.jsonl'),
     promptAnswers: join(state, 'prompt-answers.jsonl'),

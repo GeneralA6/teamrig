@@ -4,7 +4,11 @@ import { describe, it } from 'node:test';
 import type { Burst } from '../budget/burst.ts';
 import { BurstLog } from '../budget/burst-log.ts';
 import { MeterLog } from '../budget/calibration.ts';
+import type { Files } from '../core/files.ts';
 import type { JsonRecord } from '../core/guards.ts';
+import { SessionLog } from '../sessions/log.ts';
+import { FakeHostMemory } from '../testing/fake-host-memory.ts';
+import { FakePathProbe } from '../testing/fake-processes.ts';
 import { EXIT } from './runtime.ts';
 import { RESTART_RECHECK_MS } from './commands/hook-wake.ts';
 import { GIVE_UP_MS } from '../refresh/restart.ts';
@@ -46,8 +50,8 @@ function check(kit: CliHarness, transcripts = new MemoryTranscripts()): Promise<
   return kit.run(['hook', 'wake-check'], { stdin: payload(), transcripts });
 }
 
-async function logLines(kit: CliHarness): Promise<unknown[]> {
-  const text = (await kit.files.read(WAKE_LOG)) ?? '';
+async function logLines(kit: CliHarness, path = WAKE_LOG): Promise<unknown[]> {
+  const text = (await kit.files.read(path)) ?? '';
   return text
     .split('\n')
     .filter((line) => line !== '')
@@ -286,6 +290,79 @@ describe('hook wake-check at the day start and a burst', () => {
     await hand(kit, 'Fix the outage', 'p1');
     assert.match((await check(kit)).stdout[0] ?? '', /"text":"New work was handed to you while this tab was idle: T1/);
     assert.deepEqual(answerOf(await check(kit)), waitTill(kit.clock.now() + 15 * MINUTE));
+  });
+});
+
+describe('hook wake-check runs the idle pass', () => {
+  const STATE = join(TEAM_HOME, 'state');
+  const PASS_LOG = join(STATE, 'idle-pass.jsonl');
+  const PASS_STATE = join(STATE, 'idle-pass.json');
+  const SESSION_LOG = join(STATE, 'session-log.jsonl');
+  const DRY_RUN: JsonRecord = { ...TEAM, open: { idle: { mode: 'dry-run' } } };
+  const COMMIT = { usedMb: 85_300, limitMb: 100_700 };
+  const WAIT = { kind: 'wait', watch: EVENTS_PATH, recheckAt: null };
+
+  /** A dry-run team whose bravo the lead closed at 09:00 UTC; neither lead nor alpha runs. */
+  async function idleTeam(config: JsonRecord = DRY_RUN): Promise<CliHarness> {
+    const kit = await teamWithAlphaTab(config);
+    await new SessionLog(kit.files, SESSION_LOG).append({ kind: 'close', session: 'bravo', by: 'lead', at: '2030-01-08T09:00:00.000Z', claudeSession: 'claude-bravo', idleMinutes: 75, freedMb: 1300 });
+    return kit;
+  }
+
+  function passCheck(kit: CliHarness, files: Files = kit.files): Promise<CliResult> {
+    return kit.run(['hook', 'wake-check'], { stdin: payload(), files, probe: new FakePathProbe({ folders: [APP] }), memory: new FakeHostMemory().lists([], COMMIT) });
+  }
+
+  const pass = (at: number, steps: readonly JsonRecord[]): JsonRecord => ({ v: 1, at: new Date(at).toISOString(), kind: 'pass', mode: 'dry-run', commit: COMMIT, steps: [...steps] });
+  const AWAY_LEAD = { kind: 'away', id: 'lead', line: 'AWAY app-lead (session lead): not running, and teamrig did not close it' };
+  const AWAY_ALPHA = { kind: 'away', id: 'alpha', line: 'AWAY app-alpha (session alpha): not running, and teamrig did not close it' };
+  const CLOSED_BRAVO = { kind: 'closed', id: 'bravo', line: 'CLOSED app-bravo (session bravo): nothing it can start' };
+
+  it('runs once a minute across the team in dry-run, logging only the steps whose kind changed, and the wake answer stands', async () => {
+    const kit = await idleTeam();
+    const first = kit.clock.now();
+    assert.deepEqual(answerOf(await passCheck(kit)), WAIT);
+    assert.deepEqual(await logLines(kit, PASS_LOG), [pass(first, [AWAY_LEAD, AWAY_ALPHA, CLOSED_BRAVO])]);
+    const handed = await kit.run(['add', '--title', 'Ship the page', '--description', 'what and why', '--priority', 'p1', '--owner', 'bravo', '--session', 'lead']);
+    assert.equal(handed.code, 0, handed.stderr.join('\n'));
+    kit.clock.advance(30 * SECOND);
+    await passCheck(kit);
+    assert.equal((await logLines(kit, PASS_LOG)).length, 1, 'once a minute');
+    kit.clock.advance(30 * SECOND);
+    await passCheck(kit);
+    const reopen = { kind: 'reopen', id: 'bravo', line: 'REOPEN app-bravo (session bravo): work handed to it since its close: T1' };
+    assert.deepEqual(await logLines(kit, PASS_LOG), [pass(first, [AWAY_LEAD, AWAY_ALPHA, CLOSED_BRAVO]), pass(kit.clock.now(), [reopen])]);
+    kit.clock.advance(MINUTE);
+    await passCheck(kit);
+    assert.equal((await logLines(kit, PASS_LOG)).length, 2, 'a pass that changed nothing logs nothing');
+    assert.equal((await logLines(kit, SESSION_LOG)).length, 1, 'and dry-run reopens nothing');
+  });
+
+  it('logs a failed pass once until its error changes, keeps the wake answer, and logs every step once it runs through', async () => {
+    const kit = await idleTeam();
+    const faulty = new FaultyFiles(kit.files).fail('read', SESSION_LOG, systemError('EACCES', 'EACCES: permission denied'));
+    const first = kit.clock.now();
+    assert.deepEqual(answerOf(await passCheck(kit, faulty)), WAIT);
+    kit.clock.advance(MINUTE);
+    assert.deepEqual(answerOf(await passCheck(kit, faulty)), WAIT);
+    const failed = { v: 1, at: new Date(first).toISOString(), kind: 'failed', mode: 'dry-run', error: 'EACCES: permission denied' };
+    assert.deepEqual(await logLines(kit, PASS_LOG), [failed]);
+    kit.clock.advance(MINUTE);
+    await passCheck(kit);
+    assert.deepEqual(await logLines(kit, PASS_LOG), [failed, pass(kit.clock.now(), [AWAY_LEAD, AWAY_ALPHA, CLOSED_BRAVO])]);
+  });
+
+  it("skips the pass while another tab's check holds its lock, and reads nothing with open.idle.mode off", async () => {
+    const kit = await idleTeam();
+    await kit.files.write(join(STATE, 'idle-pass.lock'), JSON.stringify({ pid: 7, at: kit.clock.now() }));
+    assert.deepEqual(answerOf(await passCheck(kit)), WAIT);
+    const off = await idleTeam(TEAM);
+    const unreadable = new FaultyFiles(off.files).fail('read', PASS_STATE, systemError('EACCES'));
+    assert.deepEqual(answerOf(await passCheck(off, unreadable)), WAIT);
+    for (const team of [kit, off]) {
+      assert.equal(team.files.get(PASS_LOG), undefined);
+      assert.equal(team.files.get(PASS_STATE), undefined);
+    }
   });
 });
 

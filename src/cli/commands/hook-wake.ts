@@ -19,6 +19,7 @@ import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { readWPerPct } from '../stored-week.ts';
 import { teamRegister } from '../team-register.ts';
 import { budgetFactsOf } from './hook-budget.ts';
+import { runIdlePass } from './hook-idle-pass.ts';
 import { parseJson, sessionTeam, teamSessionOf } from './hook-input.ts';
 
 /**
@@ -39,9 +40,9 @@ function answer(runtime: CliRuntime, value: WakeAnswer): ExitCode {
   return EXIT.ok;
 }
 
-/** Where the check stands: the team session the tab is, and the kit it is in. */
+/** Where the check stands: the team session the tab is, and the kit it is in, found from the pointer `from`. */
 type Scope =
-  | { readonly kind: 'found'; readonly kit: Kit; readonly config: KitConfig; readonly roster: Roster; readonly id: string; readonly tab: string }
+  | { readonly kind: 'found'; readonly kit: Kit; readonly config: KitConfig; readonly roster: Roster; readonly id: string; readonly tab: string; readonly from: string }
   | { readonly kind: 'off'; readonly why: string };
 
 async function scopeOf(runtime: CliRuntime, payload: unknown, needsWake: boolean): Promise<Scope> {
@@ -63,7 +64,7 @@ async function scopeOf(runtime: CliRuntime, payload: unknown, needsWake: boolean
   }
   const roster = await rosterOf(runtime, kit, config);
   const id = await teamSessionOf(runtime, kit, roster, tab);
-  return id === undefined ? { kind: 'off', why: 'this tab is not a team session' } : { kind: 'found', kit, config, roster, id, tab };
+  return id === undefined ? { kind: 'off', why: 'this tab is not a team session' } : { kind: 'found', kit, config, roster, id, tab, from: found.from };
 }
 
 /**
@@ -203,7 +204,8 @@ async function decide(runtime: CliRuntime, scope: Extract<Scope, { kind: 'found'
  * wake it now (src/wake/decide.ts), else whether the day's start or a burst should (src/wake/day-start.ts). On a
  * wake it logs the wake and its cost to the team's wake log and answers the prompt to submit; a busy lock (another
  * tab of the session checking) answers a recheck now. The lead is not woken while the owner's daily meeting is open,
- * nor any session while its automatic restart may still act.
+ * nor any session while its automatic restart may still act. It also runs the team's idle pass, once a minute across
+ * the team (hook-idle-pass.ts).
  */
 export async function wakeCheck(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
@@ -212,6 +214,8 @@ export async function wakeCheck(args: ParsedArgs, runtime: CliRuntime): Promise<
     return answer(runtime, scope);
   }
   const { kit, config, id, tab } = scope;
+  // The pass is the team's, not this tab's wake: before the holds that keep only this session from waking.
+  await runIdlePass(runtime, kit, config, scope.roster, scope.from);
   if (await meetingHoldsWake(runtime, scope)) {
     return answer(runtime, { kind: 'wait', watch: kit.paths.events, recheckAt: null });
   }
