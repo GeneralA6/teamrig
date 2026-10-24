@@ -65,8 +65,8 @@ export function oneLine(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
 }
 
-function rowOf(task: Task, tree: TaskTree): string {
-  return `  ${formatShortTask(task, TITLE_CHARS, undefined, tree)}`;
+function rowOf(task: Task, tree: TaskTree, team?: string): string {
+  return `  ${formatShortTask(task, TITLE_CHARS, team, tree)}`;
 }
 
 /** A list's heading, its first AGENDA_ROWS rows and a `+N more` line naming the command that lists them all. */
@@ -76,32 +76,40 @@ function listed(head: string, rows: readonly string[], all: string): string[] {
 }
 
 /**
- * Each other task a decision's texts name, by its title, so no number stands alone: `T5: <title>`, or
- * `T5: not in the working set` for one a compaction retired (`show T5` still finds it in the archive).
+ * Each other task a decision's texts name, by its title, so no number stands alone: `T5: <title>` (`web/T5` for
+ * another team's), or `T5: not in the working set` for one a compaction retired (`show T5` still finds it in the archive).
  */
-function namedLines(task: Task, texts: readonly string[], byId: ReadonlyMap<string, Task>): string[] {
+function namedLines(task: Task, texts: readonly string[], tree: TaskTree, team: string | undefined): string[] {
   return namedTaskIds(texts)
     .filter((id) => id !== task.id)
     .map((id) => {
-      const named = byId.get(id);
-      return `    ${id}: ${named === undefined ? 'not in the working set' : cut(oneLine(named.title), TITLE_CHARS)}`;
+      const named = tree.task(id);
+      return `    ${team === undefined ? id : `${team}/${id}`}: ${named === undefined ? 'not in the working set' : cut(oneLine(named.title), TITLE_CHARS)}`;
     });
+}
+
+/** The line of a decision with no card: its owner is asked for one, through its team's lead for another team's. */
+function noCardLine(task: Task, team: string | undefined): string {
+  return team === undefined
+    ? `    no card yet: ask ${task.owner} for one (check flags it NO-CARD)`
+    : `    no card yet: ${task.owner} owes one, and team ${team}'s check flags it NO-CARD to its lead`;
 }
 
 /**
  * A decision's card facts: its row, then what and why, then its card (card.ts) or that it has none, then since when
- * it waits with its newest note, where it was asked, and the title of each other task these name.
+ * it waits with its newest note, where it was asked, and the title of each other task these name. `tree` is the read
+ * of the register that holds the task, and `team` names that register when it is another team's (`web/T5`).
  */
-export function cardFacts(task: Task, tree: TaskTree, byId: ReadonlyMap<string, Task>): string[] {
+export function cardFacts(task: Task, tree: TaskTree, team?: string): string[] {
   const note = task.note === null ? '' : `: ${cut(oneLine(task.note), NOTE_CHARS)}`;
   const texts = [task.title, task.description ?? '', task.note ?? '', ...(task.card === null ? [] : cardTexts(task.card))];
   return [
-    rowOf(task, tree),
+    rowOf(task, tree, team),
     ...(task.description === null ? [] : [`    what and why: ${cut(oneLine(task.description), DESCRIPTION_CHARS)}`]),
-    ...(task.card === null ? [`    no card yet: ask ${task.owner} for one (check flags it NO-CARD)`] : cardLines(task.card, '    ')),
+    ...(task.card === null ? [noCardLine(task, team)] : cardLines(task.card, '    ')),
     `    waiting since ${tree.zone.shortMinute(new Date(task.statusAt))}${note}`,
     ...(task.ref === null ? [] : [`    asked at: ${task.ref}`]),
-    ...namedLines(task, texts, byId),
+    ...namedLines(task, texts, tree, team),
   ];
 }
 
@@ -117,7 +125,7 @@ function decisionLines(input: AgendaInput): string[] {
   }
   return [
     head,
-    ...waiting.flatMap((task) => cardFacts(task, input.tree, new Map(input.tasks.map((other) => [other.id, other])))),
+    ...waiting.flatMap((task) => cardFacts(task, input.tree)),
     `  Read each card to ${input.ownerMarker} as it stands, each figure explained; where one says no card yet, ask its owner for it (check flags it NO-CARD). Never point to a doc; \`${input.command} show <id>\` prints a task whole.`,
     `  A question a card does not answer is its task owner's to find: ${input.command} add --owner <id> --due <date> --session ${input.lead}, then relay the answer; never look it up yourself.`,
     `  Record each answer in the same turn: ${input.command} update <id> --note "${input.ownerMarker} decided: <decision>" --session ${input.lead}; meeting end tells each task's owner.`,

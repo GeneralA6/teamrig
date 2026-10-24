@@ -6,7 +6,7 @@ import { nextBatchText } from '../../decisions/batch.ts';
 import { batchLines } from '../../decisions/lines.ts';
 import { AskedStore } from '../../decisions/store.ts';
 import { teamDecisions, type TeamDecisions } from '../../decisions/team.ts';
-import type { Task } from '../../register/fold.ts';
+import { taskLabel } from '../../register/views.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone, type Access, type Kit } from '../kit.ts';
@@ -25,7 +25,6 @@ interface DecisionsKit extends TeamDecisions {
   readonly config: KitConfig;
   readonly roster: Roster;
   readonly lead: string;
-  readonly tasks: ReadonlyMap<string, Task>;
   readonly now: number;
   /** The team's clock, which the batch times print on. */
   readonly zone: TimeZone;
@@ -43,13 +42,13 @@ async function decisionsKit(args: ParsedArgs, runtime: CliRuntime, access: Acces
   const now = runtime.clock.now();
   const zone = teamZone(config, runtime);
   const decided = await teamDecisions(runtime.files, kit.paths, config, tasks, now, zone, elsewhere);
-  return { kit, config, roster, lead, tasks, now, zone, ...decided };
+  return { kit, config, roster, lead, now, zone, ...decided };
 }
 
 /** `decisions`: the batch the lead asks the owner next, and whether it is due now. */
 export async function decisions(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const dk = await decisionsKit(args, runtime, 'read');
-  const lines = batchLines({ batch: dk.batch, tree: dk.tree, byId: dk.tasks, ownerMarker: dk.config.register.ownerSource, command: KIT_NAME, lead: dk.lead, zone: dk.zone });
+  const lines = batchLines({ batch: dk.batch, ownerMarker: dk.config.register.ownerSource, command: KIT_NAME, lead: dk.lead, zone: dk.zone });
   lines.forEach((line) => runtime.out.stdout(line));
   return EXIT.ok;
 }
@@ -61,7 +60,7 @@ export async function decisionsAsked(args: ParsedArgs, runtime: CliRuntime): Pro
   if (caller !== dk.lead) {
     throw new RefusedError(`only the lead (${dk.roster.nameOf(dk.lead) ?? dk.lead}) asks the owner's decisions`);
   }
-  const ids = [...dk.batch.pending, ...dk.batch.overdue].map((task) => task.id);
+  const ids = [...dk.batch.pending, ...dk.batch.overdue].map((wait) => taskLabel(wait.task, wait.team));
   if (ids.length === 0) {
     runtime.out.stdout(`ASKED nothing: no wait on ${dk.config.register.ownerSource} to ask; nothing recorded`);
     return EXIT.ok;

@@ -31,7 +31,7 @@ describe("a team's decision batch", () => {
   it('counts every wait not yet asked before any batch or meeting', async () => {
     const { batch } = await teamDecisions(new MemoryFiles(), PATHS, CONFIG, TASKS, NOW, TimeZone.UTC);
     assert.deepEqual(
-      batch.pending.map((task) => task.id),
+      batch.pending.map((wait) => wait.task.id),
       ['T1', 'T2'],
     );
   });
@@ -40,7 +40,7 @@ describe("a team's decision batch", () => {
     const files = new MemoryFiles();
     await new AskedStore(files, PATHS.decisionsAsked).write({ askedAt: '2030-01-07T09:00:00.000Z', by: 'lead', ids: ['T1'] });
     assert.deepEqual(
-      (await teamDecisions(files, PATHS, CONFIG, TASKS, NOW, TimeZone.UTC)).batch.pending.map((task) => task.id),
+      (await teamDecisions(files, PATHS, CONFIG, TASKS, NOW, TimeZone.UTC)).batch.pending.map((wait) => wait.task.id),
       ['T2'],
     );
     await new MeetingStore(files, PATHS.meeting).write({ startedAt: '2030-01-08T09:30:00.000Z', by: 'lead', endedAt: null, since: null });
@@ -52,7 +52,7 @@ describe("a team's decision batch", () => {
     assert.equal(urgent.due, '2030-01-08 12:00', '14:00 IST, stored in UTC');
     const local = await teamDecisions(new MemoryFiles(), PATHS, CONFIG, new Map([[urgent.id, urgent]]), NOW, JERUSALEM);
     assert.equal(local.tree.zone, JERUSALEM);
-    assert.deepEqual(local.batch.trigger, { kind: 'deadline', task: urgent, due: Date.parse('2030-01-08T12:00:00Z') });
+    assert.deepEqual(local.batch.trigger, { kind: 'deadline', task: urgent, team: undefined, due: Date.parse('2030-01-08T12:00:00Z') });
     const late = typedDueWait('14:00', TimeZone.UTC);
     const utc = await teamDecisions(new MemoryFiles(), PATHS, CONFIG, new Map([[late.id, late]]), NOW, TimeZone.UTC);
     assert.equal(utc.batch.trigger, undefined, '14:00 UTC is after the 13:03 batch');
