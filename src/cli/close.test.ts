@@ -115,6 +115,14 @@ describe('teamrig close', () => {
     const recorded = await close(await runningAlpha(75, reply(40_000), TRANSCRIPT), ['alpha', '--session', 'lead']);
     assert.match(recorded.stdout[0] ?? '', /^CLOSE app-alpha \(session alpha\): quiet 75 min/, [...recorded.stdout, ...recorded.stderr].join('\n'));
 
+    // A start before records named the transcript: it is found in whatever folder Claude Code filed it.
+    const unrecorded = await runningAlpha();
+    await unrecorded.kit.files.write(worktree, reply(40_000));
+    const elsewhere = { ...unrecorded, options: { ...unrecorded.options, transcripts: new MemoryTranscripts({ [worktree]: reply(40_000) }, NOW - 75 * MINUTE_MS) } };
+    assertRefused(await close(elsewhere, ['alpha', '--yes', '--session', 'lead']), /could not be resumed once closed \(its transcript is in \S+fix,/);
+    const nowhere = { ...unrecorded, options: { ...unrecorded.options, transcripts: new MemoryTranscripts() } };
+    assertRefused(await close(nowhere, ['alpha', '--yes', '--session', 'lead']), /has no transcript of Claude Code session \S+ in any project folder, so its idle time is unknown/);
+
     const gone = { ...alpha, options: { ...alpha.options, transcripts: new MemoryTranscripts() } };
     const unknown = await close(gone, ['alpha', '--yes', '--session', 'lead']);
     assertRefused(unknown, /has no transcript of Claude Code session \S+ at \S+fix\S+, so its idle time is unknown/);
