@@ -47,6 +47,7 @@ function reopen(overrides: Partial<ReopenInput>): ReopenVerdict {
   return reopenVerdict({
     tasks: new Map(),
     session: 'alpha',
+    asks: [],
     closedAt: NOW - 2 * HOUR,
     maxPriority: 2,
     rest: AWAKE,
@@ -58,7 +59,7 @@ function reopen(overrides: Partial<ReopenInput>): ReopenVerdict {
 }
 
 function idsOf(verdict: ReopenVerdict): readonly string[] {
-  return verdict.kind === 'stay' ? [] : verdict.tasks.map((task) => task.id);
+  return verdict.kind === 'stay' || verdict.kind === 'asked' ? [] : verdict.tasks.map((task) => task.id);
 }
 
 describe('tabActivityOf', () => {
@@ -131,6 +132,16 @@ describe('soonTimeWaitOf', () => {
 });
 
 describe('reopenVerdict', () => {
+  it('reopens first for urgent lines posted to it, at once and whatever its rest, dated by the oldest', () => {
+    const asks = [
+      { from: 'lead', text: 'look at it', at: NOW - MINUTE },
+      { from: 'bravo', text: 'the build broke', at: NOW - 5 * MINUTE },
+    ];
+    const expected = { kind: 'asked', asks, at: NOW - 5 * MINUTE };
+    assert.deepEqual(reopen({ asks, tasks: tasksOf(testTask({ id: 'T4', priority: 1 })) }), expected);
+    assert.deepEqual(reopen({ asks, rest: { held: true, quiet: true }, maxPriority: 1 }), expected);
+  });
+
   it('reopens for news it can start within maxPriority, most urgent first', () => {
     const tasks = tasksOf(testTask({ id: 'T7' }), testTask({ id: 'T4', priority: 1 }), testTask({ id: 'T3', priority: 1 }));
     const verdict = reopen({ tasks });
