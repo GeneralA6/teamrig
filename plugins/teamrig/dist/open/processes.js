@@ -45,15 +45,12 @@ function startUntilExit(request, waitMs) {
         });
     });
 }
-/**
- * A program that runs on after this process ends, in its own process group: a `spawn` launcher, which is the new
- * window, or a hidden background program (`extra` hides the console window Windows would open for it).
- */
-function startDetached(request, extra = {}) {
+/** A `spawn` launcher, which is the new window: it runs on after this process ends, in its own process group. */
+function startDetached(request) {
     return new Promise((resolve) => {
         let child;
         try {
-            child = spawn(request.command, request.args, { cwd: request.cwd, detached: true, stdio: 'ignore', ...extra });
+            child = spawn(request.command, request.args, { cwd: request.cwd, detached: true, stdio: 'ignore' });
         }
         catch (error) {
             resolve(outcomeOfError(error));
@@ -63,6 +60,70 @@ function startDetached(request, extra = {}) {
         child.once('spawn', () => {
             child.unref();
             resolve({ kind: 'started' });
+        });
+    });
+}
+/** The exit code of HIDDEN_LAUNCHER when the program it was given is not installed. */
+const LAUNCH_MISSING = 9;
+/**
+ * A node script that starts the program after its `--` hidden and detached, then exits: 0 once the program runs,
+ * LAUNCH_MISSING when it is not installed, 1 with the reason on stderr when it cannot start for another reason.
+ */
+const HIDDEN_LAUNCHER = `
+const [command, ...args] = process.argv.slice(1);
+const fail = (error) => {
+  process.stderr.write(String(error instanceof Error ? error.message : error));
+  process.exit(error instanceof Error && 'code' in error && error.code === 'ENOENT' ? ${LAUNCH_MISSING} : 1);
+};
+try {
+  const child = require('node:child_process').spawn(command, args, { detached: true, stdio: 'ignore', windowsHide: true });
+  child.once('error', fail);
+  child.once('spawn', () => {
+    child.unref();
+    process.exit(0);
+  });
+} catch (error) {
+  fail(error);
+}`;
+/**
+ * A hidden background program, with no console window, started through HIDDEN_LAUNCHER: the launcher has exited
+ * when this resolves, so the program is no longer a descendant of this process and outlives a kill of it with every
+ * process it started. That is how Claude Code ends a hook past its timeout (taskkill /T on Windows), which took the
+ * automatic restart a Stop hook had just started with it.
+ */
+function startHiddenProgram(request) {
+    return new Promise((resolve) => {
+        let launcher;
+        try {
+            launcher = spawn(process.execPath, ['-e', HIDDEN_LAUNCHER, '--', request.command, ...request.args], {
+                cwd: request.cwd,
+                env: { ...request.env },
+                detached: true,
+                stdio: ['ignore', 'ignore', 'pipe'],
+                windowsHide: true,
+            });
+        }
+        catch (error) {
+            resolve(outcomeOfError(error));
+            return;
+        }
+        let stderr = '';
+        launcher.stderr.setEncoding('utf8');
+        launcher.stderr.on('data', (chunk) => {
+            stderr = `${stderr}${chunk}`.slice(0, ERROR_TEXT_MAX * 2);
+        });
+        launcher.once('error', (error) => resolve(outcomeOfError(error)));
+        launcher.once('close', (code) => {
+            switch (code) {
+                case 0:
+                    resolve({ kind: 'started' });
+                    break;
+                case LAUNCH_MISSING:
+                    resolve({ kind: 'missing' });
+                    break;
+                default:
+                    resolve({ kind: 'failed', error: exitText(code, stderr) });
+            }
         });
     });
 }
@@ -97,6 +158,6 @@ export function nodeProcesses(options = {}) {
     return {
         start: (request) => (request.mode === 'exit' ? startUntilExit(request, waitMs) : startDetached(request)),
         run: (request) => runAttached(request, interrupts),
-        startHidden: (request) => startDetached(request, { env: { ...request.env }, windowsHide: true }),
+        startHidden: startHiddenProgram,
     };
 }
