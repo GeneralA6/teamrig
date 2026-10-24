@@ -15,6 +15,7 @@ import {
   parseMeterRecord,
   periodForecasts,
   READINGS_KEPT_MS,
+  useAtW,
   type MeterReading,
   type RateFit,
   type ReadingSight,
@@ -119,6 +120,32 @@ describe('periodForecasts', () => {
   it('pairs the fit with the forecasts', () => {
     const readings = [reading(1, 10, { forecastPct: 2 }), reading(11, 110)];
     assert.deepEqual(calibrationOf(readings), { fit: fitRate(readings), periods: periodForecasts(readings) });
+  });
+});
+
+describe('useAtW', () => {
+  const RATE = 10_000_000;
+  /** 46% at 460M W and 47% at 480M W: 20M W made the 47th percent, twice the fitted rate. */
+  const READINGS = [reading(47, 480_000_000), reading(46, 460_000_000)];
+
+  it('reads a W between two readings on the line through them, not at the fitted rate', () => {
+    assert.equal(useAtW(READINGS, START, 470_000_000, RATE), 46.5);
+    assert.equal(useAtW(READINGS, START, 460_000_000, RATE), 46);
+  });
+
+  it('reads a W past the last reading as that reading plus the W since it at the rate', () => {
+    assert.equal(useAtW(READINGS, START, 485_000_000, RATE), 47.5);
+  });
+
+  it("reads a W before the first reading on the line from the period's start, 0% at 0 W", () => {
+    assert.equal(useAtW(READINGS, START, 230_000_000, RATE), 23);
+    assert.equal(useAtW([], START, 30_000_000, RATE), 3);
+    assert.equal(useAtW(READINGS, START, -1, RATE), 0);
+  });
+
+  it("leaves out another period's readings", () => {
+    const earlier = reading(80, 470_000_000, { start: START - MS_PER_WEEK, end: START });
+    assert.equal(useAtW([...READINGS, earlier], START, 470_000_000, RATE), 46.5);
   });
 });
 
