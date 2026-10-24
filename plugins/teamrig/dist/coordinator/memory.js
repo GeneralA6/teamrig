@@ -15,6 +15,17 @@ export const nodeEvery = (ms, tick) => {
 export function treeMb(root, rows) {
     return Math.round(treeOf(root, rows).reduce((total, row) => total + row.bytes, 0) / MB);
 }
+/** The MB the tree of `root` has committed; undefined when a process of it is listed without it (a `ps` list). */
+export function treeCommittedMb(root, rows) {
+    let total = 0;
+    for (const row of treeOf(root, rows)) {
+        if (row.committed === undefined) {
+            return undefined;
+        }
+        total += row.committed;
+    }
+    return Math.round(total / MB);
+}
 /**
  * Watches the tree of `root`: a sample now and every `intervalMs`, a tick skipped while the last sample still runs
  * (a slow process list never piles up), and one last look at free memory when stopped.
@@ -48,14 +59,22 @@ export function watchMemory(probe, root, intervalMs, every) {
         },
     };
 }
-/** Rows of `<pid>,<parent>,<bytes>[,<started ms>]` lines; a line that is not three or four whole numbers is left out. */
+/**
+ * Rows of `<pid>,<parent>,<bytes>[,<started ms>[,<committed bytes>]]` lines; a line that is not three to five whole
+ * numbers is left out.
+ */
 export function parseProcessRows(text) {
-    return wholeNumberLines(text, [3, 4]).flatMap(([pid, parent, bytes, startedMs]) => {
+    return wholeNumberLines(text, [3, 4, 5]).flatMap(([pid, parent, bytes, startedMs, committed]) => {
         if (pid === undefined || parent === undefined || bytes === undefined) {
             return [];
         }
-        return [startedMs === undefined ? { pid, parent, bytes } : { pid, parent, bytes, startedMs }];
+        return [{ pid, parent, bytes, ...(startedMs === undefined ? {} : { startedMs }), ...(committed === undefined ? {} : { committed }) }];
     });
+}
+/** A listed row with its memory in bytes, from the lister's unit (KB for `ps`). */
+function inBytes(row, bytesPerUnit) {
+    const bytes = row.bytes * bytesPerUnit;
+    return row.committed === undefined ? { ...row, bytes } : { ...row, bytes, committed: row.committed * bytesPerUnit };
 }
 /** Win32_OperatingSystem's `<total>,<free>` virtual memory in KB: the commit limit, and what is left of it. */
 export function parseWindowsCommit(text) {
@@ -76,11 +95,14 @@ export function parseMeminfoCommit(text) {
     const limitKb = kbOf('CommitLimit');
     return usedKb === undefined || limitKb === undefined || limitKb === 0 ? undefined : { usedMb: Math.round(usedKb / 1024), limitMb: Math.round(limitKb / 1024) };
 }
-/** Win32_Process lists every process with its parent, working set and start; `ps` prints the resident set in KB. */
+/**
+ * Win32_Process lists every process with its parent, working set, start and private bytes (`PrivatePageCount`, in
+ * bytes despite its name); `ps` prints the resident set in KB and has no column for what a process committed.
+ */
 function listCommand(platform) {
     if (platform === 'win32') {
         const started = '$(if ($_.CreationDate) { ([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds() } else { 0 })';
-        const script = `Get-CimInstance Win32_Process | ForEach-Object { '{0},{1},{2},{3}' -f $_.ProcessId,$_.ParentProcessId,$_.WorkingSetSize,${started} }`;
+        const script = `Get-CimInstance Win32_Process | ForEach-Object { '{0},{1},{2},{3},{4}' -f $_.ProcessId,$_.ParentProcessId,$_.WorkingSetSize,${started},$_.PrivatePageCount }`;
         return { file: 'powershell.exe', args: ['-NoProfile', '-NonInteractive', '-Command', script], bytesPerUnit: 1 };
     }
     return { file: 'ps', args: ['-A', '-o', 'pid=,ppid=,rss='], bytesPerUnit: 1024 };
@@ -122,7 +144,7 @@ export function nodeMemoryProbe(platform) {
                     resolve(undefined);
                     return;
                 }
-                const rows = parseProcessRows(stdout).map((row) => ({ ...row, bytes: row.bytes * bytesPerUnit }));
+                const rows = parseProcessRows(stdout).map((row) => inBytes(row, bytesPerUnit));
                 const own = new Set(lister.pid === undefined ? [] : treeOf(lister.pid, rows).map((row) => row.pid));
                 resolve(rows.filter((row) => !own.has(row.pid)));
             });

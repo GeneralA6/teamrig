@@ -1,37 +1,80 @@
 import { KIT_NAME } from "../../core/home.js";
-import { measureSessions } from "../../sessions/measure.js";
+import { measureSessions, runningPlaces } from "../../sessions/measure.js";
 import { SessionRecordStore } from "../../sessions/record.js";
 import { UsageError } from "../args.js";
-import { openTeamKit, requireConfig, rosterOf } from "../kit.js";
+import { idlePassOf, passLineOf, passTotalOf } from "../idle-pass.js";
+import { findTeam, openKit, openTeamKit, requireConfig, rosterOf, teamZone } from "../kit.js";
 import { EXIT } from "../runtime.js";
+import { teamProjectOf } from "./setup.js";
 /** One session's line: `<id> <name>: ` and where it is. */
 function placeLine(roster, place) {
     const where = place.state === 'running'
-        ? `running in Claude Code ${place.claudePid}, ${place.treeMb} MB`
+        ? `running in Claude Code ${place.claudePid}, ${place.treeMb} MB${committedText(place.committedMb)}`
         : place.state === 'closed'
             ? 'closed: the Claude Code it last started in has ended'
             : 'no start recorded';
     return `${place.id} ${roster.nameOf(place.id) ?? place.id}: ${where}`;
 }
+/** `, <MB> MB committed`, or nothing where the host does not say. */
+function committedText(committedMb) {
+    return committedMb === undefined ? '' : `, ${committedMb} MB committed`;
+}
+/** The sum of `values`, or undefined when any is undefined. */
+function sumOf(values) {
+    let total = 0;
+    for (const value of values) {
+        if (value === undefined) {
+            return undefined;
+        }
+        total += value;
+    }
+    return total;
+}
 function totalLine(places) {
-    const running = places.flatMap((place) => (place.state === 'running' ? [place.treeMb] : []));
+    const running = runningPlaces(places);
     const closed = places.filter((place) => place.state === 'closed').length;
     const unrecorded = places.length - running.length - closed;
-    const heldMb = running.reduce((total, mb) => total + mb, 0);
-    return `${running.length} running hold ${heldMb} MB; ${closed} closed; ${unrecorded} with no start recorded`;
+    const heldMb = sumOf(running.map((place) => place.treeMb)) ?? 0;
+    const committed = committedText(sumOf(running.map((place) => place.committedMb)));
+    return `${running.length} running hold ${heldMb} MB${committed}; ${closed} closed; ${unrecorded} with no start recorded`;
 }
 function hostLine(freeMb, commit) {
     const commitText = commit === undefined ? 'commit charge unknown on this system' : `commit ${commit.usedMb} of ${commit.limitMb} MB (${Math.round((commit.usedMb * 100) / commit.limitMb)}%)`;
     return `host: ${freeMb} MB free; ${commitText}`;
 }
 /**
+ * `sessions --pass [--project <dir>]`: what one idle pass would do with each session (T1100): close a running one
+ * `teamrig close` would close, reopen one teamrig closed that the wake check would wake (one a pass, with room on
+ * the host), and why it keeps or leaves the others. It only reads; `--project` is the folder the sessions' Claude
+ * Code runs in, as for `close`.
+ */
+async function pass(args, runtime) {
+    const found = await findTeam(runtime);
+    const kit = await openKit(runtime, found.team);
+    const config = requireConfig(kit, runtime, 'read');
+    const roster = await rosterOf(runtime, kit, config);
+    const project = await teamProjectOf(runtime, args.flags.get('project'), found.from);
+    const steps = await idlePassOf(runtime, kit, config, roster, project);
+    const zone = teamZone(config, runtime);
+    steps.forEach((step) => runtime.out.stdout(passLineOf(step, roster, zone)));
+    runtime.out.stdout(passTotalOf(steps));
+    return EXIT.ok;
+}
+/**
  * `sessions`: each session, running (with the MB its Claude Code's process tree holds: helpers, shells, MCP
- * servers), closed or never recorded, then the host's free memory and commit charge. It only reads.
+ * servers, and what it has committed where the host says), closed or never recorded, then the host's free memory
+ * and commit charge; with `--pass`, what an idle pass would close and reopen. It only reads.
  */
 export async function sessions(args, runtime) {
     const [extra] = args.positionals;
     if (extra !== undefined) {
         throw new UsageError(`unexpected "${extra}"`);
+    }
+    if (args.switches.has('pass')) {
+        return pass(args, runtime);
+    }
+    if (args.flags.has('project')) {
+        throw new UsageError('--project goes with --pass');
     }
     const kit = await openTeamKit(runtime);
     const roster = await rosterOf(runtime, kit, requireConfig(kit, runtime, 'read'));

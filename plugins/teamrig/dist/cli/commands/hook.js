@@ -429,7 +429,7 @@ async function teamPartsOf(runtime, kit, config, payload) {
         await logStart(runtime, { config, paths: kit.paths, id }, payload).catch(() => undefined);
     }
     return {
-        recordNote: id === undefined || claudeSession === null ? undefined : await recordSessionStart(runtime, kit, id, claudeSession),
+        recordNote: id === undefined || claudeSession === null ? undefined : await recordSessionStart(runtime, kit, id, claudeSession, startTranscriptOf(payload)),
         teamRules: text === undefined ? undefined : { path: kit.paths.teamRules, text },
         renames,
         titleNote,

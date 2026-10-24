@@ -33,10 +33,10 @@ export function dueMoments(now, dayStartUtc, burst, settled) {
     }
     return due;
 }
-/** The session's work it can go on with now (`canGoOn`), of any priority, most urgent first. */
-export function startableTasks(tasks, session, now, zone) {
+/** The session's work it can go on with now (`canGoOn`) at `maxPriority` or more urgent (any by default), most urgent first. */
+export function startableTasks(tasks, session, now, zone, maxPriority = Number.POSITIVE_INFINITY) {
     const context = waitContext(tasks, new Date(now), zone);
-    return [...tasks.values()].filter((task) => isWakeWorthy(task, session, Number.POSITIVE_INFINITY, context)).sort(byUrgency);
+    return [...tasks.values()].filter((task) => isWakeWorthy(task, session, maxPriority, context)).sort(byUrgency);
 }
 function settle(settled, moments) {
     return moments.reduce((kept, moment) => (moment.kind === 'day-start' ? { ...kept, dayStart: moment.at } : { ...kept, burst: moment.at }), settled);

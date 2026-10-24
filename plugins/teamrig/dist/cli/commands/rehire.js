@@ -33,8 +33,11 @@ function unmeasured(error) {
     return { kind: 'fresh', detail: `its last Claude Code session could not be measured: ${errorMessage(error)}` };
 }
 /** Measures Claude Code session `claudeSession` in `project`: `<projects>/<project slug>/<session>.jsonl`. It throws when a read fails. */
-export async function lastSessionOf(runtime, claudeSession, project) {
-    const transcript = projectTranscriptPath(claudeProjectsDir(runtime.env, runtime.userHome), project, claudeSession);
+export function lastSessionOf(runtime, claudeSession, project) {
+    return measureTranscript(runtime, projectTranscriptPath(claudeProjectsDir(runtime.env, runtime.userHome), project, claudeSession));
+}
+/** Measures the Claude Code transcript at `transcript`, in whatever folder it sits. It throws when a read fails. */
+export async function measureTranscript(runtime, transcript) {
     const changedAt = await runtime.transcripts.changedAt(transcript);
     const tokens = changedAt === undefined ? undefined : await readContextTokens(runtime.files, transcript);
     return { transcript, changedAt, tokens };

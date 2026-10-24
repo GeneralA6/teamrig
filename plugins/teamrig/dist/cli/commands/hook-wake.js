@@ -16,6 +16,7 @@ import { EXIT } from "../runtime.js";
 import { readWPerPct } from "../stored-week.js";
 import { teamRegister } from "../team-register.js";
 import { budgetFactsOf } from "./hook-budget.js";
+import { runIdlePass } from "./hook-idle-pass.js";
 import { parseJson, sessionTeam, teamSessionOf } from "./hook-input.js";
 const SECOND_MS = 1000;
 const MINUTE_MS = 60 * SECOND_MS;
@@ -42,7 +43,7 @@ async function scopeOf(runtime, payload, needsWake) {
     }
     const roster = await rosterOf(runtime, kit, config);
     const id = await teamSessionOf(runtime, kit, roster, tab);
-    return id === undefined ? { kind: 'off', why: 'this tab is not a team session' } : { kind: 'found', kit, config, roster, id, tab };
+    return id === undefined ? { kind: 'off', why: 'this tab is not a team session' } : { kind: 'found', kit, config, roster, id, tab, from: found.from };
 }
 /**
  * The least urgent priority that wakes the session now. Waking for p1 alone needs no budget read; for more, a
@@ -157,7 +158,8 @@ async function decide(runtime, scope, store) {
  * wake it now (src/wake/decide.ts), else whether the day's start or a burst should (src/wake/day-start.ts). On a
  * wake it logs the wake and its cost to the team's wake log and answers the prompt to submit; a busy lock (another
  * tab of the session checking) answers a recheck now. The lead is not woken while the owner's daily meeting is open,
- * nor any session while its automatic restart may still act.
+ * nor any session while its automatic restart may still act. It also runs the team's idle pass, once a minute across
+ * the team (hook-idle-pass.ts).
  */
 export async function wakeCheck(args, runtime) {
     noPositionals(args);
@@ -166,6 +168,8 @@ export async function wakeCheck(args, runtime) {
         return answer(runtime, scope);
     }
     const { kit, config, id, tab } = scope;
+    // The pass is the team's, not this tab's wake: before the holds that keep only this session from waking.
+    await runIdlePass(runtime, kit, config, scope.roster, scope.from);
     if (await meetingHoldsWake(runtime, scope)) {
         return answer(runtime, { kind: 'wait', watch: kit.paths.events, recheckAt: null });
     }

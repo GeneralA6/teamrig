@@ -7,11 +7,11 @@ import { FOLLOWUP_STATUSES, isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_ST
 import { KEEP_RULE_PATTERN } from "../permissions/allow-rules.js";
 import { PREFIX_PATTERN } from "../readonly-shell/rules.js";
 import { CORE_RULE_KEYS, isCoreRuleKey } from "../rules/keys.js";
-import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT_CONTEXT_FILES, DEFAULT_CLAIMS, DEFAULT_DECISIONS, DEFAULT_COORDINATOR_WAIT, DEFAULT_GATE_TIMEOUT_SECONDS, DEFAULT_GITHUB, DEFAULT_HEAVY, DEFAULT_HIRING, DEFAULT_EXEC, DEFAULT_LOCK, DEFAULT_LEAD_BOUNDARY, DEFAULT_TURN_LOG, DEFAULT_LOOPS, DEFAULT_MESSAGES, DEFAULT_HEADROOM, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_COMMIT_GUARD, DEFAULT_SECRET_GUARD, DEFAULT_PACKAGE_GUARD, DEFAULT_PERMISSIONS, DEFAULT_PROMPTS, DEFAULT_PUSH_GUARD, DEFAULT_READONLY_SHELL, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SCALE_OUT, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_STATUS_LINE, DEFAULT_TESTS, DEFAULT_WAKE, DEFAULT_WINDOWS, HEAVY_TTL_MARGIN_MINUTES, } from "./defaults.js";
+import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT_CONTEXT_FILES, DEFAULT_CLAIMS, DEFAULT_DECISIONS, DEFAULT_COORDINATOR_WAIT, DEFAULT_GATE_TIMEOUT_SECONDS, DEFAULT_GITHUB, DEFAULT_HEAVY, DEFAULT_HIRING, DEFAULT_EXEC, DEFAULT_LOCK, DEFAULT_LEAD_BOUNDARY, DEFAULT_TURN_LOG, DEFAULT_LOOPS, DEFAULT_MESSAGES, DEFAULT_HEADROOM, DEFAULT_IDLE, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_COMMIT_GUARD, DEFAULT_SECRET_GUARD, DEFAULT_PACKAGE_GUARD, DEFAULT_PERMISSIONS, DEFAULT_PROMPTS, DEFAULT_PUSH_GUARD, DEFAULT_READONLY_SHELL, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SCALE_OUT, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_STATUS_LINE, DEFAULT_TESTS, DEFAULT_WAKE, DEFAULT_WINDOWS, HEAVY_TTL_MARGIN_MINUTES, } from "./defaults.js";
 import { isEffort, isModel } from "./launch.js";
 import { CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from "./limits.js";
 import { ConfigReader, describe, isValidRegex, shortLine } from "./reader.js";
-import { AD_HOC_RUNNERS, PACKAGE_INSTALLS, BURST_POLICIES, CONFLICT_WINNERS, ESCALATIONS, HIRING_POLICIES, isAdHocRunners, isPackageInstalls, isBurstPolicy, isCommitGate, isConflictWinner, isEffortLevel, isEscalation, isHiringPolicy, isOverAction, isHookAsks, isPushToProtected, isSecretReads, isSkipHooks, isTerminalChoice, isVerifyGate, isWeekday, HOOK_ASKS, OVER_ACTIONS, PUSH_TO_PROTECTED, SECRET_READS, SKIP_HOOKS, TERMINALS, VERIFY_GATES, WEEKDAYS, } from "./types.js";
+import { AD_HOC_RUNNERS, PACKAGE_INSTALLS, BURST_POLICIES, CONFLICT_WINNERS, ESCALATIONS, HIRING_POLICIES, isAdHocRunners, isPackageInstalls, isBurstPolicy, isCommitGate, isConflictWinner, isEffortLevel, isEscalation, isHiringPolicy, isOverAction, isHookAsks, isIdleMode, isPushToProtected, isSecretReads, isSkipHooks, isTerminalChoice, isVerifyGate, isWeekday, HOOK_ASKS, IDLE_MODES, OVER_ACTIONS, PUSH_TO_PROTECTED, SECRET_READS, SKIP_HOOKS, TERMINALS, VERIFY_GATES, WEEKDAYS, } from "./types.js";
 const isSessionName = (name) => SESSION_NAME.test(name) ? undefined : 'expected a lowercase name: a letter, then letters, digits or -, at most 32';
 const isTimeZone = (name) => (TimeZone.of(name) === undefined ? 'expected an IANA time zone name such as Asia/Jerusalem' : undefined);
 const isUtcTime = (time) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(time) ? undefined : 'expected a UTC time as HH:MM');
@@ -272,7 +272,7 @@ export function parseConfig(raw) {
         refresh: parseRefresh(read, read.section(raw, 'refresh', '')),
         hiring: parseHiring(read, read.section(raw, 'hiring', '')),
         burst: parseBurst(read, read.section(raw, 'burst', '')),
-        open: parseOpen(read, read.section(raw, 'open', '')),
+        open: parseOpen(read, read.section(raw, 'open', ''), sessions),
         statusLine: parseStatusLine(read, read.section(raw, 'statusLine', '')),
         launch,
         paths: parsePaths(read, read.section(raw, 'paths', '')),
@@ -790,9 +790,27 @@ function parseSkills(read, raw) {
         forbidFrontmatter: read.stringList(raw, 'forbidFrontmatter', path, defaults.forbidFrontmatter, shortLine(CONFIG_LIMITS.forbidFrontmatter.maxLength, isFrontmatterKey), CONFIG_LIMITS.forbidFrontmatter.maxItems),
     };
 }
-function parseOpen(read, raw) {
+function parseOpen(read, raw, sessions) {
     const terminal = read.string(raw, 'terminal', 'open', DEFAULT_OPEN.terminal, (value) => isTerminalChoice(value) ? undefined : `expected one of ${TERMINALS.join(', ')}`);
-    return { terminal: isTerminalChoice(terminal) ? terminal : DEFAULT_OPEN.terminal, headroom: parseHeadroom(read, read.section(raw, 'headroom', 'open')) };
+    return {
+        terminal: isTerminalChoice(terminal) ? terminal : DEFAULT_OPEN.terminal,
+        headroom: parseHeadroom(read, read.section(raw, 'headroom', 'open')),
+        idle: parseIdle(read, read.section(raw, 'idle', 'open'), sessions),
+    };
+}
+/** `open.idle`: whether the idle pass runs, and the sessions it keeps open; one not on the team is reported and left out. */
+function parseIdle(read, raw, sessions) {
+    const path = 'open.idle';
+    const mode = read.string(raw, 'mode', path, DEFAULT_IDLE.mode, (value) => (isIdleMode(value) ? undefined : `expected one of ${IDLE_MODES.join(', ')}`));
+    const keepOpen = read.list(raw, 'keepOpen', path, DEFAULT_IDLE.keepOpen, (value, itemPath) => {
+        const id = read.stringItem(value, itemPath, isSessionName);
+        if (id !== undefined && sessions.length > 0 && !sessions.includes(id)) {
+            read.report(itemPath, `${describe(id)} is not one of the sessions`);
+            return undefined;
+        }
+        return id;
+    });
+    return { mode: isIdleMode(mode) ? mode : DEFAULT_IDLE.mode, keepOpen };
 }
 /** `open.headroom`: the room a new session needs on the host. */
 function parseHeadroom(read, raw) {
