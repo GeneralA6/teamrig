@@ -12,6 +12,10 @@ export function dayStartAt(dayStartUtc, now) {
     const today = now - (now % MS_PER_DAY) + minute * MS_PER_MINUTE;
     return today <= now ? today : today - MS_PER_DAY;
 }
+/** The start of the team's current day, epoch ms: its latest `wake.dayStartUtc`, else (unset or malformed) midnight UTC. */
+export function teamDayStartAt(dayStartUtc, now) {
+    return (dayStartUtc === undefined ? undefined : dayStartAt(dayStartUtc, now)) ?? now - (now % MS_PER_DAY);
+}
 /** The first day start after `now`, epoch ms; undefined for a malformed time. */
 export function nextDayStartAt(dayStartUtc, now) {
     const latest = dayStartAt(dayStartUtc, now);
