@@ -19,25 +19,34 @@ describe('guardsPicker', () => {
   });
 });
 
+const PARENT = { team: 'app', id: 'lead', name: 'app-lead' };
+
 describe('askerOf', () => {
   it("names a session's own thread, the lead's, and a helper of either", () => {
-    assert.deepEqual(askerOf('alpha', false, 'lead'), { session: 'alpha', role: 'session' });
-    assert.deepEqual(askerOf('lead', false, 'lead'), { session: 'lead', role: 'lead' });
-    assert.deepEqual(askerOf('alpha', true, 'lead'), { session: 'alpha', role: 'helper' });
-    assert.deepEqual(askerOf('lead', true, 'lead'), { session: 'lead', role: 'helper' });
+    assert.deepEqual(askerOf('alpha', false, 'lead', undefined), { session: 'alpha', role: 'session' });
+    assert.deepEqual(askerOf('lead', false, 'lead', undefined), { session: 'lead', role: 'lead' });
+    assert.deepEqual(askerOf('alpha', true, 'lead', undefined), { session: 'alpha', role: 'helper' });
+    assert.deepEqual(askerOf('lead', true, 'lead', undefined), { session: 'lead', role: 'helper' });
+  });
+
+  it("names a sub-team's lead with its parent lead, and its helpers and members as in any team", () => {
+    assert.deepEqual(askerOf('lead', false, 'lead', PARENT), { session: 'lead', role: 'subteam-lead', parentLead: PARENT });
+    assert.deepEqual(askerOf('lead', true, 'lead', PARENT), { session: 'lead', role: 'helper' });
+    assert.deepEqual(askerOf('alpha', false, 'lead', PARENT), { session: 'alpha', role: 'session' });
   });
 
   it('leaves a tab that is no team session alone, from a helper too', () => {
-    assert.equal(askerOf(undefined, false, 'lead'), undefined);
-    assert.equal(askerOf(undefined, true, 'lead'), undefined);
+    assert.equal(askerOf(undefined, false, 'lead', undefined), undefined);
+    assert.equal(askerOf(undefined, true, 'lead', PARENT), undefined);
   });
 });
 
 describe('refusesAsker', () => {
-  it("refuses a session and a helper always, and the lead's own thread unless the meeting is open", () => {
+  it("refuses a session, a helper and a sub-team's lead always, and the lead's own thread unless the meeting is open", () => {
     for (const meetingOpen of [false, true]) {
       assert.equal(refusesAsker({ session: 'alpha', role: 'session' }, meetingOpen), true);
       assert.equal(refusesAsker({ session: 'lead', role: 'helper' }, meetingOpen), true, "a lead's helper reports, the meeting or not");
+      assert.equal(refusesAsker({ session: 'lead', role: 'subteam-lead', parentLead: PARENT }, meetingOpen), true, 'only the root lead talks to the user');
     }
     assert.equal(refusesAsker({ session: 'lead', role: 'lead' }, false), true, 'the owner may be away');
     assert.equal(refusesAsker({ session: 'lead', role: 'lead' }, true), false, 'the meeting asks through it');
@@ -60,6 +69,15 @@ describe('pickerReason', () => {
     assert.match(reason, /--session lead`; the agenda of the owner's next daily meeting lists it, and the picker opens for you only while that meeting is open \(`teamrig meeting start`\)\./);
     assert.doesNotMatch(reason, /the lead brings it/);
     assert.match(reason, /a `Decision needed:` line\.$/);
+  });
+
+  it("tells a sub-team's lead to record the card and pass it to its parent lead, and never to ask the owner from its tab", () => {
+    const reason = pickerReason('teamrig', { session: 'lead', role: 'subteam-lead', parentLead: PARENT });
+    assert.match(reason, /Else record it on its task as a decision card, its --default included, and take your next task/);
+    assert.match(reason, /--session lead`; then tell your parent lead app\/lead \(name `app-lead`\) in one inbox line,/);
+    assert.match(reason, /`teamrig inbox add --to app\/lead --text "T<id> waits on the owner's decision: <what is decided>" --session lead`, and it carries the decision up\./);
+    assert.match(reason, /the picker never opens for a sub-team's lead, and its tab never asks the owner: with no task left, end your turn\.$/);
+    assert.doesNotMatch(reason, /Decision needed|meeting start|the lead brings it/);
   });
 
   it('tells a helper to decide it within its brief, else to end its report with the decision, and to run no set', () => {

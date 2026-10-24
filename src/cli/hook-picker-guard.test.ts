@@ -1,9 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { formatConfig } from '../config/load.ts';
 import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import { MEETING_LAPSE_MS } from '../meeting/state.ts';
 import { APP, CLAUDE_SESSION, CliHarness, CONFIG_PATH, decisionOf, TEAM, type CliResult } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
+import { SUB_TEAMS, teamConfigOf, treeHarness } from '../testing/team-tree.ts';
 import { EXIT } from './runtime.ts';
 
 const ON_TEAM: JsonRecord = { ...TEAM, pickerGuard: { enabled: true } };
@@ -58,6 +60,24 @@ describe('hook picker-guard', () => {
     assert.equal(decisionOf(inLead), 'deny', "the meeting asks through the lead's own thread only");
     assert.equal(reasonOf(inLead), reasonOf(inAlpha));
     assert.deepEqual(await kit.run(HOOK, { stdin: helper }), NOTHING, 'a helper in a tab that is no team session');
+  });
+
+  it("refuses a sub-team's lead even while its team's meeting is open, routing the card to its parent lead", async () => {
+    const kit = await treeHarness();
+    await kit.files.write(teamConfigOf('web'), formatConfig({ ...SUB_TEAMS['web'], pickerGuard: { enabled: true } }));
+    const web = { TEAMRIG_TEAM: 'web', TEAMRIG_SESSION: 'lead' };
+    assert.equal((await kit.run(['meeting', 'start', '--session', 'lead'], { env: { TEAMRIG_TEAM: 'web' } })).code, EXIT.ok);
+    const result = await kit.run(HOOK, { stdin: call('AskUserQuestion'), env: web });
+    assert.equal(decisionOf(result), 'deny', 'the user talks only to the root lead');
+    assert.match(reasonOf(result) ?? '', /then tell your parent lead app\/lead \(name `[^`]+`\) in one inbox line, `teamrig inbox add --to app\/lead /);
+    const member = await kit.run(HOOK, { stdin: call('AskUserQuestion'), env: { ...web, TEAMRIG_SESSION: 'front' } });
+    assert.match(reasonOf(member) ?? '', /--session front`; the lead brings it to the owner\./);
+  });
+
+  it("lets the root lead of a tree ask in the owner's meeting, as the lead of a team on its own", async () => {
+    const kit = await treeHarness({ pickerGuard: { enabled: true } });
+    assert.equal((await kit.run(['meeting', 'start', '--session', 'lead'])).code, EXIT.ok);
+    assert.deepEqual(await kit.run(HOOK, { stdin: call('AskUserQuestion'), env: LEAD }), NOTHING);
   });
 
   it('lets a tab that is no team session ask', async () => {
