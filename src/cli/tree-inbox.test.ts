@@ -81,6 +81,6 @@ describe('teamrig inbox add across a tree of teams', () => {
     assert.match(broken.stdout[0] ?? '', /^REFUSED the team config has 1 problem\(s\)/);
     const bad = await kit.run(['inbox', 'add', '--to', 'web/lead/x', '--text', 'hi', '--session', 'lead']);
     assert.equal(bad.code, EXIT.usage);
-    assert.match(bad.stderr[0] ?? '', /^--to "web\/lead\/x" is not a session id or name, or <team>\/<id>/);
+    assert.match(bad.stderr[0] ?? '', /^--to "web\/lead\/x" is not a session id or name, <team>\/<id>, all, leads, group:<leader>, or a comma-separated list/);
   });
 });

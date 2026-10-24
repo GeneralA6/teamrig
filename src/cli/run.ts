@@ -361,8 +361,10 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       the date to verify by
   inbox read [--session <area>]     prints the unread lines and marks them read
   inbox status [--session <area>]   unread lines per area
-  inbox add --to <id|name|team/id> --text "<one line>"
-      team/id: a lead may write to its parent team's lead and its child teams' leads
+  inbox add --to <id|name|team/id|all|leads|group:<leader>>[,...] --text "<one line>"
+      team/id: a lead may write to its parent team's lead and its child teams' leads; all, leads (the
+      lead and the sub-leads) and group:<leader> (it and every session under it) are your own team's,
+      leaving you out; a comma-separated list posts the line to each receiver once
   exec request --file <request.json>   asks to run a privileged command: the JSON names the command, its
       code binding, variables, dry run or preview, purpose, expected effect and rollback; logged as R<n>
   exec dry-run R<n>    runs the request's read-only dry run, logged for the reviewer
