@@ -13,10 +13,11 @@ import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
 import { EXIT } from './runtime.ts';
 import { RESTART_RECHECK_MS } from './commands/hook-wake.ts';
 import { GIVE_UP_MS } from '../refresh/restart.ts';
-import type { RestartRequest } from '../refresh/state.ts';
+import type { RefreshState, RestartRequest } from '../refresh/state.ts';
 import { RefreshStore } from '../refresh/store.ts';
-import { APP, CliHarness, EVENTS_PATH, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
+import { APP, AUTO_RESTART_TEAM, CliHarness, EVENTS_PATH, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
+import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { WakeAsks } from '../wake/asks.ts';
 
@@ -51,6 +52,34 @@ function hand(kit: CliHarness, title: string, priority: string, by = 'lead'): Pr
 
 function check(kit: CliHarness, transcripts = new MemoryTranscripts()): Promise<CliResult> {
   return kit.run(['hook', 'wake-check'], { stdin: payload(), transcripts });
+}
+
+/** Alpha with its handover written, waiting for its fresh start. */
+const READY: RefreshState = { phase: 'ready', task: 'T1', at: '2026-01-01T00:00:00.000Z', tokens: 300_000, noticed: true, transcript: null, claudePid: 4100 };
+
+/** The check (pid 7000) run through a shell by Claude Code (6900). */
+const UNDER_CLAUDE = (): FakeSessionProcesses =>
+  new FakeSessionProcesses(7000)
+    .add({ pid: 7000, parentPid: 6900, name: 'bash.exe', commandLine: 'bash -c "node main.js hook wake-check"' })
+    .add({ pid: 6900, parentPid: 1, name: 'claude.exe', commandLine: 'claude' });
+
+/**
+ * A team whose alpha has p1 work handed after its last check while its restart, asked for `request`'s tab twice the
+ * give-up window ago, never came: the runner died. `ready`: alpha still waits for that fresh start.
+ */
+async function deadRestart(config: JsonRecord, request: Partial<RestartRequest> = {}, ready = true): Promise<{ readonly kit: CliHarness; readonly store: RefreshStore }> {
+  const kit = await teamWithAlphaTab({ ...config, wake: { batchSeconds: 0 } });
+  const store = new RefreshStore(kit.files, { refresh: join(TEAM_HOME, 'state', 'refresh'), handover: join(TEAM_HOME, 'handover') });
+  await check(kit);
+  const left = new Date(kit.clock.now() - 2 * GIVE_UP_MS).toISOString();
+  await store.setRestart('alpha', { phase: 'pending', at: left, pid: 4100, claudeSession: ALPHA_TAB, transcript: null, cwd: null, supervised: true, ...request });
+  await store.setState('alpha', ready ? READY : { phase: 'refreshed', task: 'T1', at: left });
+  await hand(kit, 'Fix the login', 'p1');
+  return { kit, store };
+}
+
+function checkUnder(kit: CliHarness, processes: FakeProcesses, sessionProcesses = UNDER_CLAUDE()): Promise<CliResult> {
+  return kit.run(['hook', 'wake-check'], { stdin: payload(), transcripts: new MemoryTranscripts(), processes, sessionProcesses });
 }
 
 async function logLines(kit: CliHarness, path = WAKE_LOG): Promise<unknown[]> {
@@ -167,12 +196,13 @@ describe('hook wake-check', () => {
     assert.equal((await check(kit)).stdout[0]?.includes('"kind":"wake","ids":["T1"]'), true);
   });
 
-  it('wakes a session whose restart request is older than any restart that could act on it', async () => {
+  it('wakes a session whose restart request is older than any restart that could act on it, with the automatic restart off', async () => {
     const kit = await teamWithAlphaTab({ ...TEAM, wake: { batchSeconds: 0 } });
     const store = new RefreshStore(kit.files, { refresh: join(TEAM_HOME, 'state', 'refresh'), handover: join(TEAM_HOME, 'handover') });
     await check(kit);
     const left = new Date(kit.clock.now() - 2 * GIVE_UP_MS).toISOString();
     await store.setRestart('alpha', { phase: 'pending', at: left, pid: 4100, claudeSession: ALPHA_TAB, transcript: null, cwd: null, supervised: false });
+    await store.setState('alpha', READY);
     await hand(kit, 'Fix the login', 'p1');
     assert.equal((await check(kit)).stdout[0]?.includes('"kind":"wake","ids":["T1"]'), true);
   });
@@ -220,6 +250,50 @@ describe('hook wake-check', () => {
     assert.equal((await kit.run(['meeting', 'end', '--session', 'lead'])).code, EXIT.ok);
     assert.equal((await kit.run(['hook', 'wake-check'], { stdin: payload() })).stdout[0]?.includes('"toast":"teamrig woke this tab for an urgent line from teamrig'), true);
     assert.deepEqual(await asks.read('lead'), [], 'the damaged one goes with the ones the wake took');
+  });
+
+  it('starts a restart whose runner died again from its tab, for the Claude Code the check runs under, holding the wake (T1088)', async () => {
+    const { kit, store } = await deadRestart(AUTO_RESTART_TEAM);
+    const processes = new FakeProcesses();
+    const underClaude = UNDER_CLAUDE();
+    assert.deepEqual(answerOf(await checkUnder(kit, processes, underClaude)), { kind: 'wait', watch: EVENTS_PATH, recheckAt: kit.clock.now() + RESTART_RECHECK_MS });
+    const at = new Date(kit.clock.now()).toISOString();
+    assert.deepEqual(await store.restart('alpha'), { phase: 'pending', at, pid: 6900, claudeSession: ALPHA_TAB, transcript: null, cwd: null, supervised: true });
+    assert.deepEqual(underClaude.lineages, [7000], 'the Claude Code process looked up once');
+    const runners = (): string[][] => processes.hidden.filter((run) => run.args[1] === 'restart').map((run) => [run.command, run.cwd, ...run.args]);
+    // The request names no folder, so the new tab opens in the one the tab's check runs in.
+    assert.deepEqual(runners(), [['/usr/bin/node', APP, '/opt/teamrig/dist/cli/main.js', 'restart', 'alpha', '--team', 'app', '--at', at, '--project', APP]]);
+
+    kit.clock.advance(RESTART_RECHECK_MS);
+    assert.deepEqual(answerOf(await checkUnder(kit, processes)), { kind: 'wait', watch: EVENTS_PATH, recheckAt: kit.clock.now() + RESTART_RECHECK_MS }, 'held by the new runner');
+    assert.equal(runners().length, 1, 'started once');
+  });
+
+  it('leaves a restart whose runner died alone for another tab or a session no longer waiting for its fresh start, and wakes it', async () => {
+    const cases: readonly { readonly name: string; readonly request: Partial<RestartRequest>; readonly ready: boolean }[] = [
+      { name: 'asked for another tab', request: { claudeSession: OTHER_TAB }, ready: true },
+      { name: 'the session refreshed since', request: {}, ready: false },
+    ];
+    for (const { name, request, ready } of cases) {
+      const { kit, store } = await deadRestart(AUTO_RESTART_TEAM, request, ready);
+      const processes = new FakeProcesses();
+      const underClaude = UNDER_CLAUDE();
+      assert.equal((await checkUnder(kit, processes, underClaude)).stdout[0]?.includes('"kind":"wake","ids":["T1"]'), true, name);
+      assert.deepEqual([processes.hidden, underClaude.lineages], [[], []], `${name}: nothing started or looked up`);
+      assert.equal((await store.restart('alpha'))?.at, new Date(kit.clock.now() - 2 * GIVE_UP_MS).toISOString(), `${name}: left as it was`);
+    }
+  });
+
+  it('clears a restart whose runner died when it cannot start again, and wakes the session (T1088)', async () => {
+    const failing = await deadRestart(AUTO_RESTART_TEAM);
+    const missing = new FakeProcesses().onStart('/usr/bin/node', { kind: 'missing' });
+    assert.equal((await checkUnder(failing.kit, missing)).stdout[0]?.includes('"kind":"wake","ids":["T1"]'), true);
+    assert.deepEqual([await failing.store.restart('alpha'), missing.hidden.length], [undefined, 1]);
+
+    const unseen = await deadRestart(AUTO_RESTART_TEAM);
+    const processes = new FakeProcesses();
+    assert.equal((await checkUnder(unseen.kit, processes, new FakeSessionProcesses(7000))).stdout[0]?.includes('"kind":"wake","ids":["T1"]'), true, 'no Claude Code found');
+    assert.deepEqual([await unseen.store.restart('alpha'), processes.hidden], [undefined, []]);
   });
 
   it('answers a recheck now while another tab of the session holds its lock', async () => {
