@@ -2936,7 +2936,12 @@ line: the use, the period and the W metered since its start. Once the last 8 wee
 of W per percent through 0 over them sets the rate, ahead of `budget.weeklyLimitW` (a starting guess until then),
 ahead of the status line's own estimate (the week's W over its use, once the meter counted the whole week). The
 last line says which rate counts, how far the fit misses its readings and, for the latest 3 periods, how far the
-use it forecast missed the status line. The team's daily
+use it forecast missed the status line. Today's use is read from the meter log too: the use now less the use at
+today's start, each read between the period's lines by the W metered and held to the status line's percent, so the
+rate prices only the part of a percent past the last line, and a W per percent that drifts up through the week does
+not swell the day. Once today's use spans 2 points, a session's W today counts at today's own W per percent (today's
+W over that use), so the sessions' parts add up to the team's day; other days and tasks count at the week's.
+The team's daily
 budget is never a fixed number: at every reading, what is left to `budget.targetPct` is spread over the active
 time to the pace end (`budget.paceEndHoursBeforeReset` before the reset; quiet hours count at
 `budget.quietHours.paceWeight`), times today's active time. The teams of the kit home on one Claude account
