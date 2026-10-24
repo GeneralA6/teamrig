@@ -15,7 +15,7 @@ export type TeamWeekPaths = Pick<TeamPaths, 'period' | 'meterLog' | 'extraLog'>;
  * (budget/extra.ts). A percent the status line passed since the period's previous reading is logged, with the W
  * metered for it, for the next fit.
  */
-export async function teamWeekOf(files: Files, paths: TeamWeekPaths, input: Omit<WeekInput, 'period' | 'calibration' | 'extra'>): Promise<WeekReading> {
+export async function teamWeekOf(files: Files, paths: TeamWeekPaths, input: Omit<WeekInput, 'period' | 'calibration' | 'readings' | 'extra'>): Promise<WeekReading> {
   const { budget, statusUse, states, now } = input;
   const log = new MeterLog(files, paths.meterLog);
   const readings = await log.read(now);
@@ -25,7 +25,7 @@ export async function teamWeekOf(files: Files, paths: TeamWeekPaths, input: Omit
   const period = move?.period;
   const entries = await new ExtraLog(files, paths.extraLog).read();
   const wAtFull = period === undefined ? undefined : wAtFullOf(readings, period.start);
-  const week = readWeek({ ...input, period, calibration, extra: { entries, wAtFull } });
+  const week = readWeek({ ...input, period, calibration, readings, extra: { entries, wAtFull } });
   const w = period === undefined ? 0 : wSince(states, period.start, now);
   const crossing = crossingOf({ before: move?.before, period, use: statusUse, covered: week.covered, w, now }, calibration.fit);
   if (crossing !== undefined) {

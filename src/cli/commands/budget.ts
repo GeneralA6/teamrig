@@ -138,7 +138,7 @@ async function readBudget(runtime: CliRuntime, kit: Kit, config: KitConfig, rost
   const input = { budget: config.budget, now, statusUse, states };
   // A recount reads no team state, the meter log included: its rate is the configured one.
   const week = recount
-    ? readWeek({ ...input, period: recountPeriodOf(config.budget, now), calibration: calibrationOf([]) })
+    ? readWeek({ ...input, period: recountPeriodOf(config.budget, now), calibration: calibrationOf([]), readings: [] })
     : await teamWeekOf(files, kit.paths, input);
   const lifts = recount ? [] : (await new LiftLog(files, kit.paths.lifts).read()).lifts;
   const bursts = recount ? [] : (await new BurstLog(files, kit.paths.bursts).read()).records;
