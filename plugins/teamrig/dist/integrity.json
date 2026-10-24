@@ -263,7 +263,7 @@
     "dist/integrate/dependencies.js": "220b9a06914c2e583934fb5904e7d3862b27aaff5f25bbd61aa91659f443a2ff",
     "dist/integrate/git.js": "907d88e9252eca28d2856d2afbf577308b3428409c53c2aade62a6ec81998a07",
     "dist/integrate/integrate.js": "7166123fd8ebd77f7eda74b43f561d1449b33dd1907a2d75ffa34ac7dc486998",
-    "dist/integrate/manifest.js": "8f0592c7a596f4887ca198893fb8a6d328eb7dac9bece0ce97b2fd54965af3e5",
+    "dist/integrate/manifest.js": "b4253d88d2a6a958e94f6e932de09336dcb424da5688553157d9fd38db40b17b",
     "dist/meeting/agenda.js": "d8979f3c081df859a5e49e5927df865da29f76b4603b56c732a5546abae91b9f",
     "dist/meeting/notices.js": "d3fa8e3a598a1149ba131490fb9f7d443d4ed81a43c4c978bd4f29e684544a7b",
     "dist/meeting/quiet.js": "f55b7226772906a067529f80fe7599190dbdcdf1053c3b6d8ff958f49780b8f9",
