@@ -53,6 +53,10 @@ The injected context holds:
    ```text
    No session is set ($TEAMRIG_SESSION): ask the user which session you are (`teamrig who` lists them) and pass --session <id> to every `teamrig` task and inbox command. Message the lead as `shop-lead`.
    ```
+
+   When the lead's (or a sub-lead's) name is one Claude Code keeps for itself (`main`, `team-lead`, `user`,
+   `system`), which `rename` refuses now but an older rename may hold, the line names the inbox instead of a message:
+   ``Write to the lead with `teamrig inbox add --to lead --text "..."`: its name `team-lead` is a name Claude Code keeps for itself, so a message sent to it never reaches a session.``
 3. **The tree of teams**, when the team has a parent or children: whom to escalate to, and for a lead with
    sub-teams, how to read and hand them tasks.
 4. **Notes**: a config with problems or from a newer teamrig; a recorded rename; a tab bound by its title:
@@ -500,10 +504,12 @@ fail the tool: it returns `success: false`, and the message is lost unless the s
 `SendMessage` result, the model gets one line:
 
 ```text
-teamrig: the message to team-lead was not sent (No agent named 'team-lead' is reachable.); leave it as an inbox line, shown at lead's next prompt: `teamrig inbox add --to lead --text "..."`.
+teamrig: the message to shop-lead was not sent (No agent named 'shop-lead' is reachable.); leave it as an inbox line, shown at lead's next prompt: `teamrig inbox add --to lead --text "..."`.
 ```
 
-For a name that is no team session, the line points to `teamrig who`, which prints the names to message by.
+For a name that is no team session, the line points to `teamrig who`, which prints the names to message by. For a
+name Claude Code keeps for itself (`main`, `team-lead`, `user`, `system`), where every send fails, it adds why:
+``team-lead is a name Claude Code keeps for itself, so a message sent to it never reaches a session.``
 Outside a team with a config it says nothing.
 
 ## After a shell call: the CLI by its path

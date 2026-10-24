@@ -1040,7 +1040,9 @@ CLOSED shop-api (session api): quiet 75 min, its Claude Code holds 1300 MB, now 
 ### teamrig rename
 
 Records a session's new name (`teamrig rename <id|name> <new-name>`). Its old names keep finding it in every
-command. Only the session itself or the lead may rename it.
+command. Only the session itself or the lead may rename it. A name Claude Code keeps for itself (`main`,
+`team-lead`, `user`, `system`) is refused, since a message sent to it never reaches a session; `teamrig doctor`
+flags one an older rename recorded.
 
 Flags:
 
