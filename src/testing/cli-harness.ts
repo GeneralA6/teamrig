@@ -9,6 +9,7 @@ import type { Files } from '../core/files.ts';
 import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
 import type { Env } from '../core/home.ts';
 import type { PathProbe } from '../core/path-probe.ts';
+import type { StoreFolders } from '../core/plugin-store.ts';
 import type { TranscriptSource } from '../budget/discover.ts';
 import type { RequirementsCheck } from '../requirements/requirements.ts';
 import type { WorktreePorts } from '../worktree/remove.ts';
@@ -90,6 +91,8 @@ export interface RunOptions {
   readonly credentials?: CredentialStore;
   /** The folders and programs the CLI sees; default none. */
   readonly probe?: PathProbe;
+  /** The plugin store the idle pass dates; default one with nothing in it. */
+  readonly pluginStore?: StoreFolders;
   /** What the requirements check finds; default nothing is missing. */
   readonly requirements?: RequirementsCheck;
   /** The Claude Code transcripts `budget` measures; default none. */
@@ -159,6 +162,7 @@ export class CliHarness {
       ...(options.gh === undefined ? {} : { gh: options.gh }),
       ...(options.credentials === undefined ? {} : { credentials: options.credentials }),
       ...(options.probe === undefined ? {} : { probe: options.probe }),
+      ...(options.pluginStore === undefined ? {} : { pluginStore: options.pluginStore }),
       ...(options.requirements === undefined ? {} : { requirements: options.requirements }),
       ...(options.transcripts === undefined ? {} : { transcripts: options.transcripts }),
       ...(options.worktrees === undefined ? {} : { worktrees: options.worktrees }),

@@ -9,6 +9,7 @@ import type { Env } from '../core/home.ts';
 import type { ExecPorts } from '../exec/ports.ts';
 import type { Clock, Sleep } from '../core/lock.ts';
 import type { PathProbe } from '../core/path-probe.ts';
+import type { StoreFolders } from '../core/plugin-store.ts';
 import type { CredentialStore } from '../github/credentials.ts';
 import type { GhRunner } from '../github/gh.ts';
 import type { IntegrateGit } from '../integrate/git.ts';
@@ -73,6 +74,8 @@ export interface CliRuntime {
   readonly credentials: CredentialStore;
   /** Whether a folder or a program is there. */
   readonly probe: PathProbe;
+  /** The plugin store's file and folder times, which the idle pass reads before it reopens a session. */
+  readonly pluginStore: StoreFolders;
   readonly self: SelfLocation;
   /** The Claude Code transcripts `teamrig budget` measures: their folders and bytes. */
   readonly transcripts: TranscriptSource;
