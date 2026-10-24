@@ -144,6 +144,21 @@ describe('parseConfig', () => {
     assert.deepEqual(config.launch, { alpha: { model: 'opus', effort: 'max' }, bravo: { model: 'claude-haiku-5-5' } });
   });
 
+  it("keeps a session's project folder, and refuses one that is relative or on more than one line", () => {
+    const kept = parseConfig({ ...ROSTER, launch: { alpha: { project: '/srv/app' } } });
+    assert.deepEqual(kept.issues, []);
+    assert.deepEqual(kept.config.launch, { alpha: { project: '/srv/app' } });
+    const { config, issues } = parseConfig({ ...ROSTER, launch: { alpha: { model: 'opus', project: 'projects/app' }, bravo: { project: '/srv/app\n/srv/web' } } });
+    assert.deepEqual(
+      issues.map((issue) => `${issue.path}: ${issue.message}`),
+      [
+        'launch.alpha.project: expected an absolute folder path on one line (got "projects/app")',
+        'launch.bravo.project: expected an absolute folder path on one line (got "/srv/app\\n/srv/web")',
+      ],
+    );
+    assert.deepEqual(config.launch, { alpha: { model: 'opus' }, bravo: {} });
+  });
+
   it('reports launch settings of strangers and wrong models and efforts, and leaves each out', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,
@@ -185,7 +200,7 @@ describe('parseConfig', () => {
 
   it('reads exec.path as absolute folders, empty by default, and refuses one against the cwd or holding a PATH separator', () => {
     assert.deepEqual(parseConfig(ROSTER).config.exec, { path: [] });
-    const folders = ['C:/tools', 'D:\\bin', '/usr/bin'];
+    const folders = ['C:/tools', 'D:\\bin', '/usr/bin', '\\tools'];
     assert.deepEqual(parseConfig({ ...ROSTER, exec: { path: folders } }).config.exec.path, folders);
     const { config, issues } = parseConfig({ ...ROSTER, exec: { path: ['C:/tools', 'bin', 'C:tools', 'C:/a;D:/b', '/usr/bin:/tmp'] } });
     assert.deepEqual(paths(issues), ['exec.path[1]', 'exec.path[2]', 'exec.path[3]', 'exec.path[4]']);
@@ -1004,6 +1019,20 @@ describe('parseConfig', () => {
     const child = parseConfig({ ...ROSTER, team: { id: 'web', parent: 'app' } });
     assert.deepEqual(child.issues, []);
     assert.deepEqual(child.config.team, { id: 'web', parent: 'app' });
+  });
+
+  it("keeps the team's project folder, and refuses a relative one", () => {
+    const kept = parseConfig({ ...ROSTER, team: { id: 'web', parent: 'app', project: '/srv/web' } });
+    assert.deepEqual(kept.issues, []);
+    for (const rooted of ['\\srv\\web', '\\\\host\\web', 'D:\\web']) {
+      assert.deepEqual(parseConfig({ ...ROSTER, team: { id: 'web', project: rooted } }).issues, [], rooted);
+    }
+    assert.deepEqual(kept.config.team, { id: 'web', parent: 'app', project: '/srv/web' });
+    const relative = parseConfig({ ...ROSTER, team: { id: 'web', project: 'web' } });
+    assert.deepEqual(relative.issues, [{ path: 'team.project', message: 'expected an absolute folder path on one line (got "web")' }]);
+    assert.deepEqual(relative.config.team, { id: 'web' });
+    const itself = parseConfig({ ...ROSTER, team: { id: 'web', parent: 'web', project: '/srv/web' } });
+    assert.deepEqual(itself.config.team, { id: 'web', project: '/srv/web' });
   });
 
   it('refuses a team section that is not an object, has no id, or names itself or a bad id as parent', () => {

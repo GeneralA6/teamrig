@@ -49,7 +49,7 @@ Team settings for the teamrig plugin. Only the roster (sessions, roles.lead) is 
 | `permissions` | [object](#permissions) |  | Which local allow rules stay. An allow rule in a Claude Code settings file approves a call before auto mode's classifier sees it, so a rule that approves a whole tool or a program with any arguments skips the one check that stops an injected or mistaken action. teamrig permissions trim removes the rules off keepAllow (the owner runs it with --yes); doctor flags the ones that approve a whole tool or program. |
 | `open` | [object](#open) |  | How teamrig open starts a session in a new terminal tab. |
 | `statusLine` | [object](#statusline) |  | What teamrig statusline shows beside the model and the plan's use of the week. |
-| `launch` | map from [session name](#shared-types) to [object](#launch) | `{}` | Each session's Claude Code model and effort, by id: teamrig open starts it with claude --model and --effort; a session running on another model is told the /model to type at its start, and one at another effort the /effort to type at its first stop. A key left unset is Claude Code's own choice, except for the lead, which starts on model opus at xhigh effort for each key it leaves unset. |
+| `launch` | map from [session name](#shared-types) to [object](#launch) | `{}` | Each session's Claude Code model and effort, and the folder it works in, by id: teamrig open starts it with claude --model and --effort; a session running on another model is told the /model to type at its start, and one at another effort the /effort to type at its first stop. A model or effort left unset is Claude Code's own choice, except for the lead, which starts on model opus at xhigh effort for each one it leaves unset. |
 | `refresh` | [object](#refresh) |  | Context refresh: when a session finishes a task (teamrig set \<id> --status done) with its context at or over contextTokens, or with everyTasks tasks finished since its context was last fresh and the context at everyTasksMinTokens or more, or after the lead ran teamrig refresh \<session>, it writes a handover; then the user types /clear, or teamrig starts it fresh on its own (autoRestart). A relative handoverDir is resolved against the team's folder; unset, it is \<team folder>/handover. |
 | `hiring` | [object](#hiring) |  | Hiring temporary sessions with teamrig hire: who decides, and the cap every hire stays within. A hire is written into sessions, names and launch, and logged with its reason and review date; its part of the team's daily budget follows its share and queued work, like any session's. |
 | `burst` | [object](#burst) |  | Bursts with teamrig burst: a time-boxed scale-out onto helpers and hired sessions that spends more of the week, for a surplus the week would leave unused at the reset or for a deadline. A person always starts one by command; nothing starts one on its own. |
@@ -63,6 +63,7 @@ Where the team sits in a tree of teams. A team with no parent is the root of its
 | --- | --- | --- | --- |
 | `id` (required) | [session name](#shared-types) |  | The team's id: the name of its folder under \<kit home>/teams/. |
 | `parent` | [session name](#shared-types) |  | The parent team: this team's lead reports to that team's lead. A tree has at most 3 levels, and a team at most 8 child teams. |
+| `project` | string |  | The team's project folder, an absolute path: where its CLAUDE.md and rule files sit (teamrig check, doctor and rule-conflicts read them there), and where teamrig open starts its sessions unless a session's launch.\<id>.project names another. Unset, the folder holding the team's .teamrig.json pointer; doctor flags a folder that does not exist. |
 
 ## `roles`
 
@@ -563,12 +564,13 @@ What teamrig statusline shows beside the model and the plan's use of the week.
 
 ## `launch.*`
 
-Each session's Claude Code model and effort, by id: teamrig open starts it with claude --model and --effort; a session running on another model is told the /model to type at its start, and one at another effort the /effort to type at its first stop. A key left unset is Claude Code's own choice, except for the lead, which starts on model opus at xhigh effort for each key it leaves unset.
+Each session's Claude Code model and effort, and the folder it works in, by id: teamrig open starts it with claude --model and --effort; a session running on another model is told the /model to type at its start, and one at another effort the /effort to type at its first stop. A model or effort left unset is Claude Code's own choice, except for the lead, which starts on model opus at xhigh effort for each one it leaves unset.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `model` | one of `"default"`, `"best"`, `"fable"`, `"opus"`, `"sonnet"`, `"haiku"`, `"opusplan"`, `"fable[1m]"`, `"opus[1m]"`, `"sonnet[1m]"`, `"opusplan[1m]"` or string (at most 100 characters, matching `^claude-[a-z0-9]+(?:[.@-][a-z0-9]+)*(?:\[1m\])?$`) |  | A Claude Code model alias or a full model id such as claude-opus-5-5. best is Fable where the account has it, else Opus; default leaves the model to Claude Code. |
 | `effort` | one of `"low"`, `"medium"`, `"high"`, `"xhigh"`, `"max"` |  | The effort level; a model that lacks it runs at the highest level it has below it. |
+| `project` | string |  | The session's project folder, an absolute path: teamrig open starts it there, and close and hire look for its Claude Code sessions there. Unset, team.project, else the folder holding the team's .teamrig.json pointer; doctor flags a folder that does not exist. |
 
 ## `refresh`
 

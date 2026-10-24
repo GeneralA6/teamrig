@@ -25,6 +25,10 @@
         "parent": {
           "description": "The parent team: this team's lead reports to that team's lead. A tree has at most 3 levels, and a team at most 8 child teams.",
           "$ref": "#/$defs/sessionName"
+        },
+        "project": {
+          "description": "The team's project folder, an absolute path: where its CLAUDE.md and rule files sit (teamrig check, doctor and rule-conflicts read them there), and where teamrig open starts its sessions unless a session's launch.<id>.project names another. Unset, the folder holding the team's .teamrig.json pointer; doctor flags a folder that does not exist.",
+          "type": "string"
         }
       }
     },
@@ -1190,7 +1194,7 @@
       }
     },
     "launch": {
-      "description": "Each session's Claude Code model and effort, by id: teamrig open starts it with claude --model and --effort; a session running on another model is told the /model to type at its start, and one at another effort the /effort to type at its first stop. A key left unset is Claude Code's own choice, except for the lead, which starts on model opus at xhigh effort for each key it leaves unset.",
+      "description": "Each session's Claude Code model and effort, and the folder it works in, by id: teamrig open starts it with claude --model and --effort; a session running on another model is told the /model to type at its start, and one at another effort the /effort to type at its first stop. A model or effort left unset is Claude Code's own choice, except for the lead, which starts on model opus at xhigh effort for each one it leaves unset.",
       "type": "object",
       "propertyNames": { "$ref": "#/$defs/sessionName" },
       "additionalProperties": {
@@ -1206,6 +1210,10 @@
           "effort": {
             "description": "The effort level; a model that lacks it runs at the highest level it has below it.",
             "enum": ["low", "medium", "high", "xhigh", "max"]
+          },
+          "project": {
+            "description": "The session's project folder, an absolute path: teamrig open starts it there, and close and hire look for its Claude Code sessions there. Unset, team.project, else the folder holding the team's .teamrig.json pointer; doctor flags a folder that does not exist.",
+            "type": "string"
           }
         }
       },
