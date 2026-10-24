@@ -3137,11 +3137,13 @@ A caller who is not the lead, or an unknown week (no status line and no `budget.
 
 ### teamrig burst
 
-Shows the team's burst policy (`burst.policy`), the week's use, the share of the week projected unused at the pace
-end, the burst in force with its hires, and what to run next. A burst is a time-boxed scale-out: for its time each
-session in it gets a bigger daily budget and may run more helpers at once. It only reads; only a person starts a
+Shows the team's burst policy (`burst.policy`), the week's use, the team's share of the week projected unused at the
+pace end, the burst in force with its hires, and what to run next. A burst is a time-boxed scale-out: for its time
+each session in it gets a bigger daily budget and may run more helpers at once. It only reads; only a person starts a
 burst ([teamrig burst start](#teamrig-burst-start)). The projection is the use so far plus the week's mean rate so
-far, nights included, until the pace end, against `budget.targetPct`.
+far, nights included, until the pace end, against `budget.targetPct`. With other teams on the Claude account, the
+team's share is its part of the account's spare, split by weight as the daily budget is, and the SURPLUS line names
+both: `SURPLUS about 5.2% of the week, this team's part of the account's 10.3%, projected unused at the pace end ...`.
 
 Flags: none.
 
@@ -3169,8 +3171,8 @@ the SURPLUS line says when it opens, and the NEXT line offers a deadline burst i
 Starts a burst, the lead only. Without `--yes` it shows the burst and writes nothing. Its kind comes first:
 
 - `surplus`: for the week-end surplus. The whole team (or `--sessions`), from `burst.surplusHours` (48) before the
-  reset until the pace end, once `burst.minSparePct` (5%) of the week is projected unused. `--task` and `--by` are
-  refused.
+  reset until the pace end, once the team's part of the week projected unused is at least `burst.minSparePct` (5%).
+  `--task` and `--by` are refused.
 - `deadline`: for work due by a time. The owners of its `--task` tasks (or `--sessions`), until `--by`, at the
   latest the reset; it needs `--stop-pct`. Its tasks must still be open: open, in progress, verifying or waiting.
 

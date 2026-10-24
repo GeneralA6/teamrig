@@ -887,9 +887,10 @@ Helpers run on your model and effort, never a cheaper model or lower effort, and
 at its end, to finish the step in hand and start no new helpers. While it runs, the session's daily budget is at
 least the burst's, so the warnings and the helper gate above count against that; quiet hours still apply, and a
 lift wins over it. With no burst in force, the lead's model is told once a week when the surplus window is open
-and enough of the week is projected unused: `teamrig burst: about 10.3% of the week is projected unused at the
-pace end ...; preview one: teamrig burst start surplus --reason "<why>"`. The hooks only suggest a burst; a
-person starts it.
+and the team's part of the week projected unused is enough: `teamrig burst: about 10.3% of the week is projected
+unused at the pace end ...; preview one: teamrig burst start surplus --reason "<why>"` (with other teams on the
+Claude account, `about 5.2% of the week, this team's part of the account's 10.3%, is projected unused ...`). The
+hooks only suggest a burst; a person starts it.
 
 ## Every session: the restore tracker
 
