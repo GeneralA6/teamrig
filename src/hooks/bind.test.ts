@@ -30,7 +30,7 @@ const MARKS = 'state/inbox-marks.jsonl';
 const TAB = '0a1b2c3d-1111-2222-3333-444455556666';
 const OTHER_TAB = '9f8e7d6c-1111-2222-3333-444455556666';
 const NOW = new Date('2030-01-08T10:00:00Z');
-const CONFIG = { sessions: ['lead', 'alpha', 'bravo'], names: { lead: 'team-lead' }, roles: { lead: 'lead' } };
+const CONFIG = { sessions: ['lead', 'alpha', 'bravo'], names: { lead: 'captain' }, roles: { lead: 'lead' } };
 const OWN: TeamRoster = { team: 'app', roster: new Roster(CONFIG, 'app', [renameOf('bravo', 'app-bravo', 'scout')]) };
 const WEB: TeamRoster = { team: 'web', roster: new Roster({ sessions: ['lead', 'docs'], names: {}, roles: { lead: 'lead' } }, 'web') };
 
@@ -59,7 +59,7 @@ function input(title: string | undefined, fields: Partial<BindInput> = {}): Bind
 
 describe('tabTitleFor', () => {
   it("gives an untitled tab its session's current name", () => {
-    assert.equal(tabTitleFor(OWN.roster, 'lead', undefined), 'team-lead');
+    assert.equal(tabTitleFor(OWN.roster, 'lead', undefined), 'captain');
     assert.equal(tabTitleFor(OWN.roster, 'bravo', undefined), 'scout');
     assert.equal(tabTitleFor(OWN.roster, 'alpha', undefined), 'app-alpha');
   });
@@ -77,7 +77,7 @@ describe('tabTitleFor', () => {
 describe('sessionsTitled', () => {
   it('matches an id or a current name, never a former name or a near miss', () => {
     assert.deepEqual(sessionsTitled(OWN.roster, 'alpha'), ['alpha']);
-    assert.deepEqual(sessionsTitled(OWN.roster, 'team-lead'), ['lead']);
+    assert.deepEqual(sessionsTitled(OWN.roster, 'captain'), ['lead']);
     assert.deepEqual(sessionsTitled(OWN.roster, 'scout'), ['bravo']);
     assert.deepEqual(sessionsTitled(OWN.roster, 'app-bravo'), [], 'a former name');
     assert.deepEqual(sessionsTitled(OWN.roster, 'app-alpha '), []);
@@ -85,7 +85,7 @@ describe('sessionsTitled', () => {
 
   it('matches whatever the case of the title', () => {
     assert.deepEqual(sessionsTitled(OWN.roster, 'Alpha'), ['alpha']);
-    assert.deepEqual(sessionsTitled(OWN.roster, 'TEAM-LEAD'), ['lead']);
+    assert.deepEqual(sessionsTitled(OWN.roster, 'CAPTAIN'), ['lead']);
     assert.deepEqual(sessionsTitled(OWN.roster, 'App-Bravo'), [], 'a former name');
   });
 });
@@ -146,7 +146,7 @@ describe('bindByTitle', () => {
     assert.equal(treeReads(), 1);
 
     const byName = setup();
-    assert.equal((await bindByTitle(byName.deps, input('team-lead'))).kind, 'bound');
+    assert.equal((await bindByTitle(byName.deps, input('captain'))).kind, 'bound');
     assert.match(byName.files.get(MARKS) ?? '', /"area":"lead","line":0/);
   });
 

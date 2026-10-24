@@ -290,7 +290,7 @@ describe('decideStop', () => {
         assert.deepEqual(decideStop(state, roomy, cheap({ tokens: 260_000, meeting: true })), { kind: 'none' }, state?.phase);
         assert.equal(decideStop(state, roomy, facts({ tokens: 260_000 })).kind, 'block', state?.phase);
       }
-      assert.deepEqual(decideStop(undefined, roomy, cheap({ requestedBy: 'team-lead', meeting: true })), { kind: 'none' }, "the lead's request waits too");
+      assert.deepEqual(decideStop(undefined, roomy, cheap({ requestedBy: 'captain', meeting: true })), { kind: 'none' }, "the lead's request waits too");
     });
 
     it('still closes a finished task with no refresh due', () => {

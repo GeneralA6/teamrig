@@ -87,7 +87,7 @@ const LIFT_HEADING =
 const LIFT_BLOCK = [LIFT_HEADING, '  session   part      until  stop at', '  bravo    40.0%  00:00 UTC    97.0%', '  00:00 UTC is the end of the budget day.'];
 
 function session(id: string, w: number, calls: number, budgetPct: number | undefined = 10.25 / 3, lift: Lift | undefined = undefined): SessionToday {
-  return { id, name: id === 'lead' ? 'team-lead' : id, w, calls, budgetPct, lift, inBurst: undefined };
+  return { id, name: id === 'lead' ? 'commander' : id, w, calls, budgetPct, lift, inBurst: undefined };
 }
 
 /** A surplus burst for alpha and bravo until the pace end, Wed 10-21 00:00 UTC, started at a 12.5% floor that is 9.5% now. */
@@ -138,7 +138,7 @@ describe('todayLines', () => {
       '  session    used  budget       W  calls',
       '  the team   5.0%   10.3%  37.50M  1,310',
       '  alpha      4.0%    3.4%  30.00M  1,000',
-      '  team-lead  1.0%    3.4%   7.50M    310',
+      '  commander  1.0%    3.4%   7.50M    310',
       ...LIFT_BLOCK,
       'Not on the team: 2 Claude Code sessions (titled release checks, Docs), 1.20M W today. ' +
         'A tab counts for a session once it runs teamrig inbox read --session <id> or is named after it.',
@@ -169,7 +169,7 @@ describe('todayLines', () => {
   it('marks the budgets a burst raised and names the burst once, with its sessions', () => {
     const lines = todayLines({ week: WEEK, sessions: [session('lead', 0, 0), inBurst('alpha', 15_000_000), inBurst('bravo', 0)], outside: NOBODY_OUTSIDE, behind: [], all: true, zone: TimeZone.UTC });
     assert.match(lines[4] ?? '', /^ {2}alpha +2\.0% +9\.5% +\(burst\) +15\.00M +100$/);
-    assert.equal(lines[5], '  No use today: team-lead, bravo.');
+    assert.equal(lines[5], '  No use today: commander, bravo.');
     const burstLines = lines.filter((line) => line.startsWith('Budget: the lead started'));
     assert.equal(burstLines.length, 1, lines.join('\n'));
     assert.match(burstLines[0] ?? '', /: alpha, bravo each have a daily budget of at least 9\.5%, up to 3 helpers at once\. More: teamrig burst$/);
@@ -180,7 +180,7 @@ describe('todayLines', () => {
     const lifted = [session('lead', 0, 0), session('alpha', 15_000_000, 500, 2, { ...LIFT, session: 'alpha' })];
     const lines = todayLines({ week: WEEK, sessions: lifted, outside: { ...NOBODY_OUTSIDE, sessions: 1 }, behind: [], all: true, zone: TimeZone.UTC });
     assert.match(lines[4] ?? '', /^ {2}alpha +2\.0% +2\.0% +\(lifted\) +15\.00M +500$/);
-    assert.deepEqual(lines.slice(5, 7), ['  No use today: team-lead.', LIFT_HEADING]);
+    assert.deepEqual(lines.slice(5, 7), ['  No use today: commander.', LIFT_HEADING]);
     assert.match(lines[8] ?? '', /^ {2}alpha +40\.0% +00:00 UTC +97\.0%$/);
     assert.equal(lines[10], 'Not on the team: 1 Claude Code session, 0 W today. A tab counts for a session once it runs teamrig inbox read --session <id> or is named after it.');
   });
@@ -207,7 +207,7 @@ describe('todayLines', () => {
       '  session         W  calls',
       '  the team   37.50M  1,310',
       '  alpha      30.00M  1,000',
-      '  team-lead   7.50M    310',
+      '  commander   7.50M    310',
       ...LIFT_BLOCK,
       W_EXPLAINED,
     ]);
@@ -252,7 +252,7 @@ describe('recountLines', () => {
       '2026-10-14 (UTC), recounted from the transcripts; nothing was written.',
       'The team used 37.50M W in 1,310 calls that day.',
       'alpha used 30.00M W in 1,000 calls that day.',
-      'team-lead used 7.50M W in 310 calls that day.',
+      'commander used 7.50M W in 310 calls that day.',
       'Not on the team: 2 Claude Code sessions (titled release checks, Docs), 1.20M W in 40 calls.',
       W_EXPLAINED,
     ]);
@@ -301,8 +301,8 @@ describe('sessionLines', () => {
   });
 
   it('says when there is no use and no budget', () => {
-    const unbudgeted: SessionToday = { id: 'lead', name: 'team-lead', w: 0, calls: 0, budgetPct: undefined, lift: undefined, inBurst: undefined };
-    assert.deepEqual(sessionLines(unbudgeted, state({}), UNKNOWN, TimeZone.UTC), ['team-lead (lead), by UTC day:', '  no use in the last 8 days', W_EXPLAINED]);
+    const unbudgeted: SessionToday = { id: 'lead', name: 'commander', w: 0, calls: 0, budgetPct: undefined, lift: undefined, inBurst: undefined };
+    assert.deepEqual(sessionLines(unbudgeted, state({}), UNKNOWN, TimeZone.UTC), ['commander (lead), by UTC day:', '  no use in the last 8 days', W_EXPLAINED]);
     assert.deepEqual(sessionLines(unbudgeted, state({ '2026-10-15': usage(500, 2) }), UNKNOWN, TimeZone.UTC).slice(1, 2), ['  2026-10-15  500 W in 2 calls']);
   });
 });

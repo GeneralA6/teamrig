@@ -448,16 +448,16 @@ describe('runCli: config', () => {
 });
 
 describe('runCli: session names', () => {
-  const NAMED: JsonRecord = { ...TEAM, names: { lead: 'team-lead' }, roles: { lead: 'lead', coordinatorOwner: 'alpha' } };
+  const NAMED: JsonRecord = { ...TEAM, names: { lead: 'captain' }, roles: { lead: 'lead', coordinatorOwner: 'alpha' } };
 
   it('takes a name wherever it takes a session, and keys everything by id', async () => {
     const kit = new CliHarness(NAMED);
-    const posted = await kit.run(['inbox', 'add', '--to', 'team-lead', '--text', 'ready', '--session', 'app-alpha']);
+    const posted = await kit.run(['inbox', 'add', '--to', 'captain', '--text', 'ready', '--session', 'app-alpha']);
     assert.match(posted.stdout[0] ?? '', /^POSTED to lead; lead is reminded at its next prompt$/);
-    const read = await kit.run(['inbox', 'read', '--session', 'team-lead']);
+    const read = await kit.run(['inbox', 'read', '--session', 'captain']);
     assert.deepEqual(read.stdout[0], '- 2030-01-08 10:00 UTC alpha: ready');
 
-    const added = await kit.run(['add', '--title', 'Ship the names', '--description', 'what and why', '--priority', 'p2', '--owner', 'app-bravo', '--session', 'team-lead']);
+    const added = await kit.run(['add', '--title', 'Ship the names', '--description', 'what and why', '--priority', 'p2', '--owner', 'app-bravo', '--session', 'captain']);
     assert.equal(added.code, EXIT.ok, added.stdout.join('\n'));
     const byName = await kit.run(['list', '--session', 'app-bravo', '--all']);
     assert.deepEqual(byName.stdout, (await kit.run(['list', '--session', 'bravo', '--all'])).stdout);
@@ -470,7 +470,7 @@ describe('runCli: session names', () => {
     const result = await new CliHarness(NAMED).run(['inbox', 'add', '--to', 'app-lead', '--text', 'hi', '--session', 'alpha']);
     assert.deepEqual(
       [result.code, result.stdout[0]],
-      [EXIT.refused, 'REFUSED app-lead is not a session on this team (sessions: lead (team-lead), alpha (app-alpha), bravo (app-bravo))'],
+      [EXIT.refused, 'REFUSED app-lead is not a session on this team (sessions: lead (captain), alpha (app-alpha), bravo (app-bravo))'],
     );
   });
 
@@ -485,12 +485,12 @@ describe('runCli: session names', () => {
 
   it('prints who to message, by id, name or role, or the whole roster', async () => {
     const kit = new CliHarness(NAMED);
-    const names = await Promise.all(['lead', 'team-lead', 'coordinatorOwner', 'bravo'].map((text) => kit.run(['who', text])));
+    const names = await Promise.all(['lead', 'captain', 'coordinatorOwner', 'bravo'].map((text) => kit.run(['who', text])));
     assert.deepEqual(
       names.map((result) => result.stdout),
-      [['team-lead'], ['team-lead'], ['app-alpha'], ['app-bravo']],
+      [['captain'], ['captain'], ['app-alpha'], ['app-bravo']],
     );
-    assert.deepEqual((await kit.run(['who'])).stdout, ['lead team-lead (lead)', 'alpha app-alpha (coordinatorOwner)', 'bravo app-bravo']);
+    assert.deepEqual((await kit.run(['who'])).stdout, ['lead captain (lead)', 'alpha app-alpha (coordinatorOwner)', 'bravo app-bravo']);
   });
 
   it('refuses who for a role nobody holds or a stranger', async () => {
@@ -772,13 +772,13 @@ describe('runCli: hook package-guard', () => {
 
 describe('runCli: hook session-start', () => {
   it("loads the core rules, the session's identity and the team's rules", async () => {
-    const kit = new CliHarness({ ...TEAM, names: { lead: 'team-lead' } });
+    const kit = new CliHarness({ ...TEAM, names: { lead: 'captain' } });
     await kit.files.write(join(KIT, 'teams', 'app', 'rules.md'), 'Ship small.');
     const result = await kit.run(['hook', 'session-start'], { env: { TEAMRIG_SESSION: 'app-alpha' }, stdin: JSON.stringify({ cwd: APP }) });
     assert.equal(result.code, EXIT.ok);
     const text = contextOf(result);
     assert.match(text, /^# Team rules \(teamrig core\)/);
-    assert.ok(text.includes('You are the `alpha` session of team `app` (name `app-alpha`). Message the lead as `team-lead`.'));
+    assert.ok(text.includes('You are the `alpha` session of team `app` (name `app-alpha`). Message the lead as `captain`.'));
     assert.ok(text.endsWith("# Your team's rules\nShip small."));
   });
 

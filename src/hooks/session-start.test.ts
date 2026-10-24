@@ -12,7 +12,7 @@ const COMMAND = 'teamrig';
 const NAMES = '`teamrig who` prints the name to message any session by; message only those names.';
 
 function loaded(overrides: Partial<Extract<ConfigLoad, { status: 'loaded' }>> = {}): ConfigLoad {
-  return { status: 'loaded', path: PATH, config: testConfig({ names: { lead: 'team-lead' } }), issues: [], ...overrides };
+  return { status: 'loaded', path: PATH, config: testConfig({ names: { lead: 'captain' } }), issues: [], ...overrides };
 }
 
 function context(overrides: Partial<SessionStartInput> = {}): string {
@@ -38,18 +38,18 @@ function context(overrides: Partial<SessionStartInput> = {}): string {
 
 describe('sessionStartContext', () => {
   it("tells a sub-lead's member to message its own leader, and the sub-lead the lead", () => {
-    const load = loaded({ config: testConfig({ names: { lead: 'team-lead', bravo: 'app-bravo' }, leads: { bravo: ['alpha'] } }) });
+    const load = loaded({ config: testConfig({ names: { lead: 'captain', bravo: 'app-bravo' }, leads: { bravo: ['alpha'] } }) });
     const member = context({ load });
     assert.match(member, /Message your leader as `app-bravo`, who takes to the lead what it cannot settle\.\n/);
     assert.ok(!member.includes('Message the lead as'), member);
-    assert.match(context({ load, session: 'bravo' }), /Message the lead as `team-lead`\.\n/);
+    assert.match(context({ load, session: 'bravo' }), /Message the lead as `captain`\.\n/);
     assert.ok(!context({ load, session: 'lead' }).includes('Message '), 'the lead messages no leader');
   });
 
   it('gives the core rules, then who the session is and how to reach the lead', () => {
     const text = context();
     assert.ok(text.startsWith(renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK)));
-    assert.ok(text.endsWith(`\n\nYou are the \`alpha\` session of team \`app\` (name \`app-alpha\`). Message the lead as \`team-lead\`.\n${NAMES}`));
+    assert.ok(text.endsWith(`\n\nYou are the \`alpha\` session of team \`app\` (name \`app-alpha\`). Message the lead as \`captain\`.\n${NAMES}`));
   });
 
   it('renders the rules for the platform the hook runs on', () => {
@@ -58,12 +58,12 @@ describe('sessionStartContext', () => {
   });
 
   it('finds the session by name too, and tells the lead its role', () => {
-    const text = context({ session: 'team-lead' });
-    assert.ok(text.endsWith(`\n\nYou are the \`lead\` session of team \`app\` (name \`team-lead\`, roles: lead).\n${NAMES}`));
+    const text = context({ session: 'captain' });
+    assert.ok(text.endsWith(`\n\nYou are the \`lead\` session of team \`app\` (name \`captain\`, roles: lead).\n${NAMES}`));
   });
 
   it('gives the lead its own lines after the core rules, and no other session', () => {
-    const lead = context({ session: 'team-lead' });
+    const lead = context({ session: 'captain' });
     assert.ok(lead.includes('\n\nAs the lead, also:\n- Bring the owner only verified results'), lead);
     assert.ok(lead.indexOf('As the lead, also:') < lead.indexOf('You are the `lead` session'));
     assert.ok(!context({ session: 'alpha' }).includes('As the lead'));
@@ -72,12 +72,12 @@ describe('sessionStartContext', () => {
   it('tells a session known only by --session or by its inbox to pass --session', () => {
     assert.ok(
       context({ sessionInEnv: false }).endsWith(
-        `\n\nYou are the \`alpha\` session of team \`app\` (name \`app-alpha\`). $TEAMRIG_SESSION is not set here, so pass --session alpha to every \`teamrig\` task and inbox command. Message the lead as \`team-lead\`.\n${NAMES}`,
+        `\n\nYou are the \`alpha\` session of team \`app\` (name \`app-alpha\`). $TEAMRIG_SESSION is not set here, so pass --session alpha to every \`teamrig\` task and inbox command. Message the lead as \`captain\`.\n${NAMES}`,
       ),
     );
     assert.ok(
       context({ session: 'lead', sessionInEnv: false }).includes(
-        '(name `team-lead`, roles: lead). $TEAMRIG_SESSION is not set here, so pass --session lead to every `teamrig` task and inbox command.\n',
+        '(name `captain`, roles: lead). $TEAMRIG_SESSION is not set here, so pass --session lead to every `teamrig` task and inbox command.\n',
       ),
     );
   });
@@ -85,26 +85,26 @@ describe('sessionStartContext', () => {
   it('asks which session it is when the variable is unset, invalid or not on the team', () => {
     for (const session of [undefined, 'Not A Name '.repeat(50), 'zulu']) {
       const text = context({ session });
-      assert.match(text, /: ask the user which session you are \(`teamrig who` lists them\) and pass --session <id> to every `teamrig` task and inbox command\. Message the lead as `team-lead`\.\n/);
+      assert.match(text, /: ask the user which session you are \(`teamrig who` lists them\) and pass --session <id> to every `teamrig` task and inbox command\. Message the lead as `captain`\.\n/);
       assert.doesNotMatch(text, /Not A Name|zulu/);
     }
   });
 
   it('names the session by its newest name, finds it by an old one, and adds the title note', () => {
-    const renames = [renameOf('alpha', 'app-alpha', 'scout'), renameOf('lead', 'team-lead', 'chief')];
+    const renames = [renameOf('alpha', 'app-alpha', 'scout'), renameOf('lead', 'captain', 'chief')];
     const text = context({ renames, session: 'app-alpha', titleNote: 'Title note.' });
     assert.ok(text.endsWith(`\n\nYou are the \`alpha\` session of team \`app\` (name \`scout\`). Message the lead as \`chief\`.\n${NAMES}\nTitle note.`));
   });
 
   it('points a refreshed session at its handover right after who it is, before the title note', () => {
     const text = context({ refreshNote: 'Read your handover.', titleNote: 'Title note.' });
-    assert.ok(text.endsWith(`Message the lead as \`team-lead\`.\n${NAMES}\nRead your handover.\nTitle note.`));
+    assert.ok(text.endsWith(`Message the lead as \`captain\`.\n${NAMES}\nRead your handover.\nTitle note.`));
   });
 
   it('lists the live tasks right after the handover pointer, before the title note', () => {
     const live = 'LIVE TASKS of alpha, read from the register at this start (1 active; the register wins):\n  T1 in-progress, p2 | Ship it';
     const text = context({ refreshNote: 'Read your handover.', liveTasksNote: live, titleNote: 'Title note.' });
-    assert.ok(text.endsWith(`Message the lead as \`team-lead\`.\n${NAMES}\nRead your handover.\n${live}\nTitle note.`));
+    assert.ok(text.endsWith(`Message the lead as \`captain\`.\n${NAMES}\nRead your handover.\n${live}\nTitle note.`));
     assert.ok(context({ liveTasksNote: live }).endsWith(`${NAMES}\n${live}`), 'after a compaction, with no handover');
   });
 
@@ -146,7 +146,7 @@ VERIFY 1, oldest first:
   });
 
   it('tells the root lead it is the one the user talks to, and how it reaches its sub-teams', () => {
-    const text = context({ session: 'team-lead', tree: { root: 'app', parentLead: undefined, children: ['ops', 'web'] } });
+    const text = context({ session: 'captain', tree: { root: 'app', parentLead: undefined, children: ['ops', 'web'] } });
     assert.ok(
       text.endsWith(
         `${NAMES}\nTeam \`app\` is the root of a tree of teams: you are the one lead the user talks to, and the sub-team leads bring you their owner decisions.` +
@@ -157,7 +157,7 @@ VERIFY 1, oldest first:
 
   it("sends a sub-team's lead to its parent lead, by address and name", () => {
     const parentLead = { team: 'app', id: 'lead', name: 'app-lead' };
-    const text = context({ team: 'web', session: 'team-lead', tree: { root: 'app', parentLead, children: [] } });
+    const text = context({ team: 'web', session: 'captain', tree: { root: 'app', parentLead, children: [] } });
     assert.ok(
       text.endsWith(
         `${NAMES}\nTeam \`web\` is a sub-team of \`app\` in the tree under \`app\`: the user talks only to the root team's lead.` +
@@ -165,7 +165,7 @@ VERIFY 1, oldest first:
           ' Split each task it hands you among your sessions: `teamrig add --owner <id>` gives one its part, and `teamrig open <id>` starts it.',
       ),
     );
-    const withChildren = context({ team: 'web', session: 'team-lead', tree: { root: 'app', parentLead, children: ['ui'] } });
+    const withChildren = context({ team: 'web', session: 'captain', tree: { root: 'app', parentLead, children: ['ui'] } });
     assert.match(withChildren, /`teamrig open <id>` starts it\. Your sub-teams \(ui\) answer to you: /);
   });
 

@@ -67,9 +67,9 @@ describe('parseConfig', () => {
 
   it('keeps a name for each session and defaults to none', () => {
     assert.deepEqual(parseConfig(ROSTER).config.names, {});
-    const { config, issues } = parseConfig({ ...ROSTER, names: { alpha: 'team-lead', bravo: 'bravo' } });
+    const { config, issues } = parseConfig({ ...ROSTER, names: { alpha: 'captain', bravo: 'bravo' } });
     assert.deepEqual(issues, []);
-    assert.deepEqual(config.names, { alpha: 'team-lead', bravo: 'bravo' });
+    assert.deepEqual(config.names, { alpha: 'captain', bravo: 'bravo' });
   });
 
   it('refuses names of strangers, malformed names and names that are taken', () => {

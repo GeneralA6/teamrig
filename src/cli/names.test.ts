@@ -6,7 +6,7 @@ import { TEAM_RULES_MAX_CHARS } from '../rules/pack.ts';
 import { CliHarness, RENAMES_PATH, renameRecordsOf, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
 
-const NAMED: JsonRecord = { ...TEAM, names: { lead: 'team-lead' } };
+const NAMED: JsonRecord = { ...TEAM, names: { lead: 'captain' } };
 const INBOX = join(TEAM_HOME, 'state', 'inbox');
 
 describe('runCli: rename', () => {
@@ -26,7 +26,7 @@ describe('runCli: rename', () => {
 
   it('lets the lead rename any session, by any of their names', async () => {
     const kit = new CliHarness(NAMED);
-    assert.equal((await kit.run(['rename', 'app-bravo', 'ranger', '--session', 'team-lead'])).code, EXIT.ok);
+    assert.equal((await kit.run(['rename', 'app-bravo', 'ranger', '--session', 'captain'])).code, EXIT.ok);
     assert.equal((await kit.run(['rename', 'ranger', 'scout'], { env: { TEAMRIG_SESSION: 'lead' } })).code, EXIT.ok);
     assert.deepEqual(await renameRecordsOf(kit), [
       ['bravo', 'app-bravo', 'ranger', 'lead'],
@@ -38,8 +38,8 @@ describe('runCli: rename', () => {
     const kit = new CliHarness(NAMED);
     const other = await kit.run(['rename', 'bravo', 'ranger', '--session', 'alpha']);
     assert.deepEqual([other.code, other.stdout], [EXIT.refused, ['REFUSED only bravo itself or the lead may record its new name']]);
-    const taken = await kit.run(['rename', 'alpha', 'team-lead', '--session', 'alpha']);
-    assert.deepEqual([taken.code, taken.stdout], [EXIT.refused, ['REFUSED team-lead is already the name of lead']]);
+    const taken = await kit.run(['rename', 'alpha', 'captain', '--session', 'alpha']);
+    assert.deepEqual([taken.code, taken.stdout], [EXIT.refused, ['REFUSED captain is already the name of lead']]);
     assert.equal(await kit.files.read(RENAMES_PATH), undefined);
   });
 
@@ -61,7 +61,7 @@ describe('runCli: rename', () => {
     await kit.run(['rename', 'alpha', 'scout', '--session', 'alpha']);
     await kit.run(['rename', 'scout', 'ranger', '--session', 'scout']);
 
-    const posted = await kit.run(['inbox', 'add', '--to', 'app-alpha', '--text', 'ready', '--session', 'team-lead']);
+    const posted = await kit.run(['inbox', 'add', '--to', 'app-alpha', '--text', 'ready', '--session', 'captain']);
     assert.match(posted.stdout[0] ?? '', /^POSTED to alpha; /);
     assert.deepEqual((await kit.run(['inbox', 'read', '--session', 'scout'])).stdout[0], '- 2030-01-08 10:00 UTC lead: ready');
     assert.equal((await kit.run(['add', '--title', 'Ship it', '--description', 'what and why', '--priority', 'p2', '--owner', 'scout', '--session', 'app-alpha'])).code, EXIT.ok);
@@ -70,7 +70,7 @@ describe('runCli: rename', () => {
     assert.deepEqual(byOldName.stdout, (await kit.run(['list', '--session', 'ranger', '--all'])).stdout);
 
     assert.deepEqual((await kit.run(['who', 'scout'])).stdout, ['ranger']);
-    assert.deepEqual((await kit.run(['who'])).stdout, ['lead team-lead (lead)', 'alpha ranger, formerly app-alpha, scout', 'bravo app-bravo']);
+    assert.deepEqual((await kit.run(['who'])).stdout, ['lead captain (lead)', 'alpha ranger, formerly app-alpha, scout', 'bravo app-bravo']);
   });
 
   it('filters by a name of a session no longer on the team, but refuses to message it', async () => {

@@ -8,7 +8,7 @@ import { JERUSALEM } from '../testing/zone.ts';
 import { NOTE_CHARS } from './agenda.ts';
 import { decisionsByOwner, decisionText, endNotice, type NoticeFacts } from './notices.ts';
 
-const FACTS: NoticeFacts = { leadName: 'team-lead', at: Date.parse('2030-01-08T09:00:00Z'), zone: TimeZone.UTC };
+const FACTS: NoticeFacts = { leadName: 'captain', at: Date.parse('2030-01-08T09:00:00Z'), zone: TimeZone.UTC };
 const SINCE = Date.parse('2030-01-08T09:00:00Z');
 
 function update(id: string, at: string, overrides: Partial<UpdateEvent> = {}): UpdateEvent {
@@ -17,7 +17,7 @@ function update(id: string, at: string, overrides: Partial<UpdateEvent> = {}): U
 
 describe('the meeting notices', () => {
   it('tells a session the meeting ended with the decisions on its tasks', () => {
-    assert.equal(endNotice(FACTS, ['T1: go', 'T2: wait']), "the owner's daily meeting with team-lead ended Tue 01-08 09:00 UTC. Decided on your tasks: T1: go; T2: wait.");
+    assert.equal(endNotice(FACTS, ['T1: go', 'T2: wait']), "the owner's daily meeting with captain ended Tue 01-08 09:00 UTC. Decided on your tasks: T1: go; T2: wait.");
   });
 
   it("gives the meeting's end on the team's clock", () => {

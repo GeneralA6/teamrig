@@ -20,7 +20,7 @@ const EVERY_KEY = {
   sessions: ['alpha', 'bravo', 'charlie'],
   leads: { bravo: ['charlie'] },
   team: { id: 'web', parent: 'app' },
-  names: { alpha: 'team-lead' },
+  names: { alpha: 'captain' },
   ruleConflicts: [{ file: '~/CLAUDE.md', text: 'Commit straight to main.', rule: 'worktrees', wins: 'local', reason: 'solo repo' }],
   launch: { alpha: { model: 'best', effort: 'xhigh' } },
   roles: { lead: 'alpha', coordinatorOwner: 'bravo', securityReviewer: 'bravo' },
