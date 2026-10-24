@@ -49,18 +49,23 @@ interface Alpha {
   readonly options: RunOptions;
 }
 
-/** A team whose alpha runs in Claude Code 8100 in tab 8000 since 08:00, its transcript `transcript`, last written `idleMinutes` ago. */
-async function runningAlpha(idleMinutes = 75, transcript = reply(40_000)): Promise<Alpha> {
+/**
+ * A team whose alpha runs in Claude Code 8100 in tab 8000 since 08:00, its transcript `transcript`, last written
+ * `idleMinutes` ago: at `recorded`, the path its start recorded, else in the project folder of a record naming none.
+ */
+async function runningAlpha(idleMinutes = 75, transcript = reply(40_000), recorded?: string): Promise<Alpha> {
   const kit = new CliHarness(TEAM);
-  await new SessionRecordStore(kit.files, { sessions: SESSIONS }).write('alpha', { claudePid: CLAUDE.pid, claudeSession: CLAUDE_SESSION, at: '2030-01-08T08:00:00.000Z' });
-  await kit.files.write(TRANSCRIPT, transcript);
+  const record = { claudePid: CLAUDE.pid, claudeSession: CLAUDE_SESSION, at: '2030-01-08T08:00:00.000Z' };
+  await new SessionRecordStore(kit.files, { sessions: SESSIONS }).write('alpha', recorded === undefined ? record : { ...record, transcript: recorded });
+  const path = recorded ?? TRANSCRIPT;
+  await kit.files.write(path, transcript);
   const processes = new FakeSessionProcesses().add(TAB).add(CLAUDE);
   const options: RunOptions = {
     platform: 'win32',
     probe: new FakePathProbe({ folders: [APP] }),
     memory: new FakeHostMemory().lists(ROWS),
     sessionProcesses: processes,
-    transcripts: new MemoryTranscripts({ [TRANSCRIPT]: transcript }, NOW - idleMinutes * MINUTE_MS),
+    transcripts: new MemoryTranscripts({ [path]: transcript }, NOW - idleMinutes * MINUTE_MS),
   };
   return { kit, processes, options };
 }
@@ -94,6 +99,19 @@ describe('teamrig close', () => {
     assert.deepEqual((await new SessionLog(alpha.kit.files, LOG).read()).records, [
       { kind: 'close', session: 'alpha', by: 'lead', at: new Date(alpha.kit.clock.now()).toISOString(), claudeSession: CLAUDE_SESSION, idleMinutes: 75, freedMb: 1300 },
     ]);
+  });
+
+  it('measures a session at the transcript its start recorded, in whatever folder its tab runs', async () => {
+    const worktree = projectTranscriptPath(join(USER_HOME, '.claude', 'projects'), join(APP, '.worktrees', 'fix'), CLAUDE_SESSION);
+    const alpha = await runningAlpha(75, reply(40_000), worktree);
+    const preview = await close(alpha, ['alpha', '--session', 'lead']);
+    assert.equal(preview.code, 0, [...preview.stdout, ...preview.stderr].join('\n'));
+    assert.match(preview.stdout[0] ?? '', /^CLOSE app-alpha \(session alpha\): quiet 75 min, its Claude Code holds 1300 MB;/);
+
+    const gone = { ...alpha, options: { ...alpha.options, transcripts: new MemoryTranscripts() } };
+    const unknown = await close(gone, ['alpha', '--yes', '--session', 'lead']);
+    assertRefused(unknown, /has no transcript of Claude Code session \S+ at \S+fix\S+, so its idle time is unknown/);
+    assert.deepEqual(alpha.processes.ends, []);
   });
 
   it('closes only for the lead, and never the lead itself or a session that does not run', async () => {

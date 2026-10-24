@@ -26,13 +26,16 @@ describe('SessionRecordStore', () => {
 });
 
 describe('parseSessionRecord', () => {
-  it('reads what formatSessionRecord wrote', () => {
+  it('reads what formatSessionRecord wrote, with the transcript or without it as an older record has none', () => {
+    const withTranscript: SessionRecord = { ...RECORD, transcript: join('/', 'claude', 'projects', 'w-fix', 'claude-1.jsonl') };
+    assert.deepEqual(parseSessionRecord(formatSessionRecord(withTranscript)), withTranscript);
     assert.deepEqual(parseSessionRecord(formatSessionRecord(RECORD)), RECORD);
   });
 
   it('reads a damaged file, another format or a bad field as absent', () => {
     const line = (fields: Record<string, unknown>): string => JSON.stringify({ v: 1, ...RECORD, ...fields });
-    for (const text of ['{not json', JSON.stringify({ ...RECORD, v: 2 }), line({ claudePid: 0 }), line({ claudePid: -4 }), line({ claudePid: '6900' }), line({ claudeSession: 7 }), line({ at: null }), line({ at: 'yesterday' })]) {
+    const badTranscripts = [line({ transcript: 7 }), line({ transcript: '' }), line({ transcript: null })];
+    for (const text of ['{not json', JSON.stringify({ ...RECORD, v: 2 }), line({ claudePid: 0 }), line({ claudePid: -4 }), line({ claudePid: '6900' }), line({ claudeSession: 7 }), line({ at: null }), line({ at: 'yesterday' }), ...badTranscripts]) {
       assert.equal(parseSessionRecord(text), undefined, text);
     }
   });
