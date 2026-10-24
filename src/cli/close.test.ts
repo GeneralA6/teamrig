@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { projectTranscriptPath } from '../budget/discover.ts';
+import type { JsonRecord } from '../core/guards.ts';
 import { SessionLog } from '../sessions/log.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
@@ -50,11 +51,11 @@ interface Alpha {
 }
 
 /**
- * A team whose alpha runs in Claude Code 8100 in tab 8000 since 08:00, its transcript `transcript`, last written
- * `idleMinutes` ago: at `recorded`, the path its start recorded, else in the project folder of a record naming none.
+ * A team (`config`) whose alpha runs in Claude Code 8100 in tab 8000 since 08:00, its transcript `transcript`, last
+ * written `idleMinutes` ago: at `recorded`, the path its start recorded, else in the project folder of a record naming none.
  */
-async function runningAlpha(idleMinutes = 75, transcript = reply(40_000), recorded?: string): Promise<Alpha> {
-  const kit = new CliHarness(TEAM);
+async function runningAlpha(idleMinutes = 75, transcript = reply(40_000), recorded?: string, config: JsonRecord = TEAM): Promise<Alpha> {
+  const kit = new CliHarness(config);
   const record = { claudePid: CLAUDE.pid, claudeSession: CLAUDE_SESSION, at: '2030-01-08T08:00:00.000Z' };
   await new SessionRecordStore(kit.files, { sessions: SESSIONS }).write('alpha', recorded === undefined ? record : { ...record, transcript: recorded });
   const path = recorded ?? TRANSCRIPT;
@@ -119,6 +120,9 @@ describe('teamrig close', () => {
     assertRefused(await close(alpha, ['alpha', '--yes', '--session', 'bravo']), /only the lead closes a session/);
     assertRefused(await close(alpha, ['lead', '--yes', '--session', 'lead']), /lead \(session lead\) holds the lead role: teamrig never closes it/);
     assertRefused(await close(alpha, ['bravo', '--yes', '--session', 'lead']), /bravo \(session bravo\) is not running: nothing to close/);
+    const kept = await runningAlpha(75, reply(40_000), undefined, { ...TEAM, open: { idle: { keepOpen: ['alpha'] } } });
+    assertRefused(await close(kept, ['alpha', '--yes', '--session', 'lead']), /alpha \(session alpha\) is in open\.idle\.keepOpen: teamrig never closes it/);
+    assert.deepEqual(kept.processes.ends, []);
     const unlisted = await close({ ...alpha, options: { ...alpha.options, memory: new FakeHostMemory().lists(undefined) } }, ['alpha', '--yes', '--session', 'lead']);
     assertRefused(unlisted, /could not list the host's processes/);
     assert.deepEqual(alpha.processes.ends, []);

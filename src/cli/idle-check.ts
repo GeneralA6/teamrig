@@ -77,7 +77,7 @@ export async function idleFactsOf(runtime: CliRuntime, kit: Kit, config: KitConf
 }
 
 /**
- * Whether `id` closes, with the checks in the order they cost: a role that keeps it, not running in the host's
+ * Whether `id` closes, with the checks in the order they cost: a role or open.idle.keepOpen that keeps it, not running in the host's
  * process list, work it can start within `maxPriority`, a time wait of its own ending soon, quiet too briefly, a turn
  * not ended (under way, at a tool call, or a decision put to the person), work running in the background, a last
  * session too big or old to resume (v1 has no handover for a close), its process no longer a Claude Code, or shells
@@ -91,6 +91,9 @@ export async function idleVerdictOf(runtime: CliRuntime, config: KitConfig, rost
   const kept = roster.rolesOf(id).filter((role) => role === 'lead' || role === 'coordinatorOwner');
   if (kept.length > 0) {
     return keep(`holds the ${kept.join(' and ')} role: ${KIT_NAME} never closes it`);
+  }
+  if (config.open.idle.keepOpen.includes(id)) {
+    return keep(`is in open.idle.keepOpen: ${KIT_NAME} never closes it`);
   }
   const record = facts.records.get(id);
   const place = facts.places.find((each) => each.id === id);
