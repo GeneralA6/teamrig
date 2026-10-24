@@ -946,7 +946,8 @@ web shop-site, formerly shop-web
 ### teamrig sessions
 
 Prints each session: running, with the memory its Claude Code's process tree holds (its helpers, shells and MCP
-servers), closed (the Claude Code it last started in has ended) or with no start recorded. The SessionStart hook
+servers) and, on Windows, what it has committed (its private bytes, what it adds to the commit charge), closed (the
+Claude Code it last started in has ended) or with no start recorded. The SessionStart hook
 records that process at each start (`state/sessions/<id>.json`); a process id the host gave to a later process
 does not count. Then the host's free memory and commit charge (Windows and Linux). It only reads.
 
@@ -961,10 +962,10 @@ teamrig sessions
 Output:
 
 ```text
-lead shop-lead: running in Claude Code 6900, 850 MB
+lead shop-lead: running in Claude Code 6900, 850 MB, 1900 MB committed
 api shop-api: closed: the Claude Code it last started in has ended
 web shop-site: no start recorded
-1 running hold 850 MB; 1 closed; 1 with no start recorded
+1 running hold 850 MB, 1900 MB committed; 1 closed; 1 with no start recorded
 host: 21400 MB free; commit 85300 of 100700 MB (85%)
 ```
 
@@ -1601,7 +1602,8 @@ rehired session's first prompt reads the handover its retire left first.
 It refuses any session but the lead when the host has no room for one more: its free memory must stay over
 `coordinator.heavy.memoryFloorMb` with the session counted, and its commit charge within `open.headroom.commitMaxPct`
 (92%; Windows and Linux). A session is counted at the median running session's Claude Code process tree, else at
-`open.headroom.sessionMb` (1200 MB). [teamrig sessions](#teamrig-sessions) shows what each one holds.
+`open.headroom.sessionMb` (1200 MB): what it holds resident against free memory, and what it committed (about twice
+that) against the commit charge. [teamrig sessions](#teamrig-sessions) shows what each one holds and committed.
 
 A session the lead closed while idle ([teamrig close](#teamrig-close)) goes on in its last Claude Code session (`claude --resume`) when that is small and
 recent enough by the `--resume` limits below, with a first prompt to read its inbox and list again; else it opens
