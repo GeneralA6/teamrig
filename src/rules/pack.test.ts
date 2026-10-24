@@ -287,8 +287,8 @@ describe('renderCorePack', () => {
     assert.match(pack, /\[ownerGates\]\. An owner's order, relayed or not, approves its work and proof unless only the owner sees the result; ask again only if it must change or needs something new\.$/m);
     assert.match(pack, /At most 7 lines \[messages\.maxLines\]/);
     assert.match(pack, /never for owner gates: money; deletes \[ownerGates\]/);
-    assert.match(pack, /with a note \(only what changed\) on waiting, verifying, done, dropped \[register\.requireNoteOn\]/);
-    assert.match(pack, /--followups <tasks it leaves>\|none on verifying, done \[register\.requireFollowupsOn\]\. Wait on a peer by its task\./);
+    assert.match(pack, /with a note \(only what changed\) on waiting, verifying, done, dropped, /);
+    assert.match(pack, /--followups <tasks it leaves>\|none on verifying, done \[register\]\. Wait on a peer by its task\./);
     assert.match(pack, /A shipped change is verifying until its proof exists \(`teamrig verify`\)\.$/m);
     assert.match(pack, /`teamrig start --session <you>`/);
     assert.doesNotMatch(pack, /coordinatorOwner|securityReviewer|heavyCutoffUtc|teamrig heavy|coordinator\.repos|Pace the week|\[budget\]/);
@@ -367,14 +367,12 @@ describe('renderCorePack', () => {
     assert.doesNotMatch(even, /subagentWeight|subagent that returns/);
   });
 
-  it('drops status demands the team turned off', () => {
-    const pack = renderCorePack(
-      testConfig({ register: { requireNoteOn: [], requireEvidenceOnDone: false, requireSkillOnDone: false, requireFollowupsOn: [] } }),
-      COMMAND,
-      'win32',
-      RULES_CLOCK,
-    );
-    assert.match(pack, /only the owning session sets its status \(`teamrig set`\)\. Wait on a peer by its task\./);
+  it('drops status demands the team turned off, and the [register] key once add demands no description either', () => {
+    const off = { requireNoteOn: [], requireEvidenceOnDone: false, requireSkillOnDone: false, requireFollowupsOn: [] };
+    const pack = renderCorePack(testConfig({ register: off }), COMMAND, 'win32', RULES_CLOCK);
+    assert.match(pack, /only the owning session sets its status \(`teamrig set`\) \[register\]\. Wait on a peer by its task\./);
+    const bare = renderCorePack(testConfig({ register: { ...off, requireDescription: false } }), COMMAND, 'win32', RULES_CLOCK);
+    assert.match(bare, /only the owning session sets its status \(`teamrig set`\)\. Wait on a peer by its task\./);
   });
 
   it('prints a status the team listed twice once, and the skill and follow-up demands in one flag each', () => {
