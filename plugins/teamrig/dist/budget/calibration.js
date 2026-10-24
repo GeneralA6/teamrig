@@ -68,6 +68,23 @@ export function periodForecasts(readings) {
 export function calibrationOf(readings) {
     return { fit: fitRate(readings), periods: periodForecasts(readings) };
 }
+/** Every period's start: no use, no W. */
+const PERIOD_START_POINT = { usedPct: 0, w: 0 };
+/**
+ * The week's use when `w` had been metered since the start of the period from `start`, read from its meter readings:
+ * between the two around `w`, on the line through them, so a point inside a bracket a percent wide leans little on a
+ * rate; past the last, that reading plus the W since it at `wPerPct`. The period's start reads 0% at 0 W. Readings are
+ * found by W, not time: the W metered since an instant is read from the usage stores now, as theirs was then.
+ */
+export function useAtW(readings, start, w, wPerPct) {
+    const at = Math.max(0, w);
+    const points = [PERIOD_START_POINT, ...readings.filter((reading) => reading.start === start).sort((a, b) => a.w - b.w)];
+    const before = points.filter((point) => point.w <= at).at(-1) ?? PERIOD_START_POINT;
+    const next = points.find((point) => point.w > at);
+    return next === undefined
+        ? before.usedPct + (at - before.w) / wPerPct
+        : before.usedPct + ((at - before.w) * (next.usedPct - before.usedPct)) / (next.w - before.w);
+}
 function iso(at) {
     return new Date(at).toISOString();
 }

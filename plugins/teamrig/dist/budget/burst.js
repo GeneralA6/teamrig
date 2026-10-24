@@ -120,9 +120,12 @@ export function burstFloorPct(burst, pace) {
     const { window, ...reading } = pace;
     return spanAllowancePct({ ...reading, start: window.start, end: burst.endsAt, stopPct: burst.stopPct }) / Math.max(1, burst.sessions.length);
 }
-/** The sessions' use today inside the week, in % of the week; undefined while the week's limit is unknown. */
+/**
+ * The sessions' use today inside the week, in % of the week at today's rate (`WeekReading.todayWPerPct`); undefined
+ * while the week's limit is unknown.
+ */
 export function sessionsTodayPct(sessions, week, states, now) {
-    return week.wPerPct === undefined ? undefined : wSince(sessions.flatMap((id) => states.get(id) ?? []), week.todayFrom, now) / week.wPerPct;
+    return week.todayWPerPct === undefined ? undefined : wSince(sessions.flatMap((id) => states.get(id) ?? []), week.todayFrom, now) / week.todayWPerPct;
 }
 /**
  * The burst's floor now (`burstFloorPct`), read from the week and its sessions' usage stores; its start reading
