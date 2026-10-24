@@ -65,6 +65,11 @@ function pctOf(w: number, week: WeekReading): number | undefined {
   return week.wPerPct === undefined ? undefined : w / week.wPerPct;
 }
 
+/** Today's W in percent of the week, at today's rate (`WeekReading.todayWPerPct`), so the rows add up to the team's day. */
+function todayPctOf(w: number, week: WeekReading): number | undefined {
+  return week.todayWPerPct === undefined ? undefined : w / week.todayWPerPct;
+}
+
 function useText(w: number, calls: number): string {
   return `${formatW(w)} W in ${formatCount(calls)} call${calls === 1 ? '' : 's'}`;
 }
@@ -120,7 +125,7 @@ function useLine(who: string, w: number, calls: number, budgetPct: number | unde
 }
 
 function isPast(w: number, budgetPct: number | undefined, week: WeekReading): boolean {
-  const used = pctOf(w, week);
+  const used = todayPctOf(w, week);
   return used !== undefined && budgetPct !== undefined && used > budgetPct;
 }
 
@@ -163,7 +168,7 @@ function todayTable(report: TodayReport, teamW: number, teamCalls: number): stri
   const { week, sessions, all } = report;
   const row = (who: string, w: number, calls: number, budgetPct: number | undefined, mark: string): string[] => {
     const use = [formatW(w), formatCount(calls)];
-    const used = pctOf(w, week);
+    const used = todayPctOf(w, week);
     return used === undefined ? [who, ...use] : [who, formatPct(used), budgetPct === undefined ? '-' : formatPct(budgetPct), mark.trim(), ...use];
   };
   const { rows, notes } = sessionRows(sessions, all, 'today', (session) => row(session.name, session.w, session.calls, session.budgetPct, budgetMarkOf(session.lift, session.inBurst !== undefined)));

@@ -264,14 +264,17 @@ export function burstFloorPct(burst: Pick<Burst, 'sessions' | 'stopPct' | 'endsA
   return spanAllowancePct({ ...reading, start: window.start, end: burst.endsAt, stopPct: burst.stopPct }) / Math.max(1, burst.sessions.length);
 }
 
-/** The sessions' use today inside the week, in % of the week; undefined while the week's limit is unknown. */
+/**
+ * The sessions' use today inside the week, in % of the week at today's rate (`WeekReading.todayWPerPct`); undefined
+ * while the week's limit is unknown.
+ */
 export function sessionsTodayPct(
   sessions: readonly string[],
-  week: Pick<WeekReading, 'wPerPct' | 'todayFrom'>,
+  week: Pick<WeekReading, 'todayWPerPct' | 'todayFrom'>,
   states: ReadonlyMap<string, UsageState>,
   now: number,
 ): number | undefined {
-  return week.wPerPct === undefined ? undefined : wSince(sessions.flatMap((id) => states.get(id) ?? []), week.todayFrom, now) / week.wPerPct;
+  return week.todayWPerPct === undefined ? undefined : wSince(sessions.flatMap((id) => states.get(id) ?? []), week.todayFrom, now) / week.todayWPerPct;
 }
 
 /**
@@ -280,7 +283,7 @@ export function sessionsTodayPct(
  */
 export function burstFloorOf(
   burst: Burst,
-  week: Pick<WeekReading, 'window' | 'usedPct' | 'wPerPct' | 'todayFrom'>,
+  week: Pick<WeekReading, 'window' | 'usedPct' | 'todayWPerPct' | 'todayFrom'>,
   states: ReadonlyMap<string, UsageState>,
   budget: Pick<BudgetConfig, 'quietHours'>,
   now: number,
