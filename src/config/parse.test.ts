@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT_HIRING, DEFAULT_OPEN, DEFAULT_PERMISSIONS, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_STATUS_LINE, DEFAULT_WAKE } from './defaults.ts';
+import { DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT_HIRING, DEFAULT_IDLE, DEFAULT_OPEN, DEFAULT_PERMISSIONS, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_STATUS_LINE, DEFAULT_WAKE } from './defaults.ts';
 import { parseConfig } from './parse.ts';
 import { CONFIG_VERSION } from './types.ts';
 import type { ConfigIssue } from './reader.ts';
@@ -967,12 +967,25 @@ describe('parseConfig', () => {
     const chosen = { terminal: 'tmux', headroom: { sessionMb: 900, commitMaxPct: 95, closeIdleMinutes: 120 } };
     const set = parseConfig({ ...ROSTER, open: chosen });
     assert.deepEqual(set.issues, []);
-    assert.deepEqual(set.config.open, chosen);
+    assert.deepEqual(set.config.open, { ...chosen, idle: DEFAULT_IDLE });
     const bad = parseConfig({ ...ROSTER, open: { terminal: 'iterm', headroom: { sessionMb: 99, commitMaxPct: 101, closeIdleMinutes: 5 } } });
     assert.deepEqual(paths(bad.issues).sort(), ['open.headroom.closeIdleMinutes', 'open.headroom.commitMaxPct', 'open.headroom.sessionMb', 'open.terminal']);
     assert.match(bad.issues.find((issue) => issue.path === 'open.terminal')?.message ?? '', /expected one of auto, tmux, windows-terminal/);
     assert.deepEqual(bad.config.open, DEFAULT_OPEN);
     assert.deepEqual(paths(parseConfig({ ...ROSTER, open: { headroom: 5 } }).issues), ['open.headroom']);
+  });
+
+  it('reads whether the idle pass runs and the sessions it keeps open, refusing a mode it does not know or a session not on the team', () => {
+    assert.deepEqual(parseConfig(ROSTER).config.open.idle, { mode: 'off', keepOpen: [] });
+    const set = parseConfig({ ...ROSTER, open: { idle: { mode: 'dry-run', keepOpen: ['bravo'] } } });
+    assert.deepEqual(set.issues, []);
+    assert.deepEqual(set.config.open.idle, { mode: 'dry-run', keepOpen: ['bravo'] });
+    const bad = parseConfig({ ...ROSTER, open: { idle: { mode: 'on', keepOpen: ['bravo', 'charlie', 7] } } });
+    assert.deepEqual(paths(bad.issues).sort(), ['open.idle.keepOpen[1]', 'open.idle.keepOpen[2]', 'open.idle.mode']);
+    assert.match(bad.issues.find((issue) => issue.path === 'open.idle.mode')?.message ?? '', /expected one of off, dry-run/);
+    assert.match(bad.issues.find((issue) => issue.path === 'open.idle.keepOpen[1]')?.message ?? '', /"charlie" is not one of the sessions/);
+    assert.deepEqual(bad.config.open.idle, { mode: 'off', keepOpen: ['bravo'] });
+    assert.deepEqual(paths(parseConfig({ ...ROSTER, open: { idle: { keepOpen: 'bravo' } } }).issues), ['open.idle.keepOpen']);
   });
 
   it('reads what the status line shows, each part on unless turned off, refusing a value that is not true or false', () => {

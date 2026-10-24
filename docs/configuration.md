@@ -530,6 +530,7 @@ How teamrig open starts a session in a new terminal tab.
 | --- | --- | --- | --- |
 | `terminal` | one of `"auto"`, `"tmux"`, `"windows-terminal"`, `"macos-terminal"`, `"gnome-terminal"`, `"konsole"`, `"x-terminal-emulator"`, `"print"` | `"auto"` | The terminal to open the tab in. auto takes tmux inside tmux, else Windows Terminal on Windows, Terminal on macOS, or the first of gnome-terminal, konsole and x-terminal-emulator on Linux; print opens nothing and prints the command to run. teamrig open --terminal wins over it. |
 | `headroom` | [object](#openheadroom) |  | The room teamrig open and teamrig hire --yes need on the host before they add a session: free memory over coordinator.heavy.memoryFloorMb with the session, and the commit charge within commitMaxPct. The lead opens whatever the room. |
+| `idle` | [object](#openidle) |  | The idle pass: it would close a session the wake check would not wake once it has been quiet open.headroom.closeIdleMinutes, and reopen it when the wake check would wake it. The lead and the coordinator owner are never closed. |
 
 ## `open.headroom`
 
@@ -540,6 +541,15 @@ The room teamrig open and teamrig hire --yes need on the host before they add a 
 | `sessionMb` | integer (100 to 65536) | `1200` | The MB a new session is counted to need while no session runs to measure; else the median running session's Claude Code process tree. |
 | `commitMaxPct` | integer (50 to 100) | `92` | The most of the host's commit limit, in %, its commit charge may reach with the new session counted (Windows and Linux; elsewhere free memory alone is checked). |
 | `closeIdleMinutes` | integer (15 to 10080) | `60` | How long, in minutes, a session stays quiet before teamrig close may end it to free the host; teamrig open resumes it. |
+
+## `open.idle`
+
+The idle pass: it would close a session the wake check would not wake once it has been quiet open.headroom.closeIdleMinutes, and reopen it when the wake check would wake it. The lead and the coordinator owner are never closed.
+
+| Key | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `mode` | one of `"off"`, `"dry-run"` | `"off"` | off runs no pass; dry-run runs it and logs each close or reopen it would make, with its reason, and makes none. |
+| `keepOpen` | array of [session name](#shared-types) | `[]` | Sessions the idle pass and teamrig close never close for being quiet, on top of the lead and the coordinator owner. |
 
 ## `statusLine`
 
