@@ -51,18 +51,26 @@ export function isCheckDue(state, now) {
     return state === undefined || now < state.checkedAt || now - state.checkedAt >= HOOKLESS_CHECK_MS;
 }
 /**
- * The entries whose transcript the check reads: a live session of `team` (one of its `sessions` now, not ended,
- * with a transcript) whose hooks last wrote more than `HOOKLESS_MS` ago. A session off the team, as a retired
- * hire whose tab stayed open, is not the team's to tell (T1055). Only these cost a file's stat, and only those
- * whose file `workedPastHook` the end of the file.
+ * The team session an entry's tab runs as: the one its variables name when they name `team` (`teamrig launch`
+ * sets them), else, for a tab started by hand, which names no team, the session whose inbox it last read (T1002).
+ * Undefined for a tab of another team, or of a session the team no longer has, as a retired hire whose tab stayed
+ * open: neither is the team's to tell (T1055).
  */
-export function staleEntries(entries, team, sessions, now) {
-    return entries.filter((entry) => entry.team === team &&
-        entry.session !== undefined &&
-        sessions.includes(entry.session) &&
-        entry.endedAt === undefined &&
-        entry.transcriptPath !== undefined &&
-        now - entry.updatedAt > HOOKLESS_MS);
+export function entrySession(entry, team) {
+    const session = entry.team === undefined ? team.areaBySession.get(entry.claudeSession) : entry.team === team.team ? entry.session : undefined;
+    return session !== undefined && team.sessions.includes(session) ? session : undefined;
+}
+/**
+ * The entries whose transcript the check reads: a live tab of one of `team`'s sessions (`entrySession`, not
+ * ended, with a transcript) whose hooks last wrote more than `HOOKLESS_MS` ago. Only these cost a file's stat,
+ * and only those whose file `workedPastHook` the end of the file.
+ */
+export function staleEntries(entries, team, now) {
+    return entries.flatMap((entry) => {
+        const session = entrySession(entry, team);
+        const stale = session !== undefined && entry.endedAt === undefined && entry.transcriptPath !== undefined && now - entry.updatedAt > HOOKLESS_MS;
+        return stale ? [{ entry, session }] : [];
+    });
 }
 /**
  * Whether something the tab did at `at` reads as work without hooks: within the last `HOOKLESS_MS` (the session
@@ -93,12 +101,12 @@ export function lastReplyAt(lines) {
  * is skipped.
  */
 export function hooklessTabs(stale, replies, now) {
-    return stale.flatMap((entry) => {
+    return stale.flatMap(({ entry, session }) => {
         const turnAt = replies.get(entry.claudeSession);
-        if (entry.session === undefined || turnAt === undefined || !workedPastHook(entry.updatedAt, turnAt, now)) {
+        if (turnAt === undefined || !workedPastHook(entry.updatedAt, turnAt, now)) {
             return [];
         }
-        return [{ claudeSession: entry.claudeSession, session: entry.session, projectDir: entry.projectDir, hookAt: entry.updatedAt, turnAt }];
+        return [{ claudeSession: entry.claudeSession, session, projectDir: entry.projectDir, hookAt: entry.updatedAt, turnAt }];
     });
 }
 /** The tabs a check names: hookless now and not named at the last check. */

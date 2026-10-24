@@ -3,6 +3,7 @@ import { KIT_NAME, resolveKitHome } from "../../core/home.js";
 import { FileLock } from "../../core/lock.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { postLine } from "../../inbox/inbox.js";
+import { indexMarks } from "../../inbox/marks.js";
 import { checkedState, formatHooklessState, HOOKLESS_TAIL_BYTES, hooklessLine, hooklessNews, hooklessReader, hooklessTabs, isCheckDue, lastReplyAt, parseHooklessState, staleEntries, workedPastHook, } from "../../restore/hookless.js";
 import { RestoreRegistry, restoreSessionsDir } from "../../restore/registry.js";
 import { teamZone } from "../kit.js";
@@ -28,9 +29,11 @@ async function replyAtEnd(runtime, path) {
  */
 async function findHooklessTabs(runtime, kit, config, now) {
     const registry = new RestoreRegistry(runtime.files, restoreSessionsDir(resolveKitHome(runtime.env, runtime.userHome)));
-    const stale = staleEntries(await registry.list(), kit.paths.team, config.sessions, now);
+    const { marks } = await inboxDepsOf(runtime, kit.paths).marks.read();
+    const team = { team: kit.paths.team, sessions: config.sessions, areaBySession: indexMarks(marks).areaBySession };
+    const stale = staleEntries(await registry.list(), team, now);
     const replies = new Map();
-    for (const entry of stale) {
+    for (const { entry } of stale) {
         const path = entry.transcriptPath;
         const changed = path === undefined ? undefined : await runtime.transcripts.changedAt(path);
         const found = path === undefined || changed === undefined || !workedPastHook(entry.updatedAt, changed, now) ? undefined : await replyAtEnd(runtime, path);
