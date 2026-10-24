@@ -24,6 +24,7 @@ import { onePositional, requiredFlag, UsageError, type ParsedArgs } from '../arg
 import { headroomOf } from '../headroom.ts';
 import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf, teamZone, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
+import { launchListing } from '../skill-listing.ts';
 import { loadTree } from '../tree.ts';
 import { claudeSessionVerdict, freshOpenOf, resumeVerdictOf } from './rehire.ts';
 import { sessionProjectOf } from './setup.ts';
@@ -358,7 +359,7 @@ export function claudeExit(runtime: CliRuntime, command: string, result: RunOutc
  * `launch <id> --team <team> --project <dir> [--home <dir>] [--encoded-prompt <text> | --no-prompt] [--resume <session>] [--effort <level>]`:
  * what a tab that `open` started runs. It sets the session's variables and starts Claude Code under the
  * session's name, on its model and effort from the team config's `launch`, with its first prompt,
- * its input and output on this terminal. `$TEAMRIG_LAUNCHED` tells the Stop hook that launch runs it:
+ * its input and output on this terminal, listing other areas' skills as `skills.otherAreas` says. `$TEAMRIG_LAUNCHED` tells the Stop hook that launch runs it:
  * when the automatic context refresh ended Claude Code for a fresh start, launch starts it again in
  * this tab with the default prompt, and the new session reads its handover first. `--resume` resumes that
  * Claude Code session on the first start only: a restart is always fresh. `--effort` overrides the configured
@@ -386,18 +387,22 @@ export async function launch(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   const name = roster.nameOf(id) ?? id;
   const settings = effort === undefined ? launchOf(config, id) : { ...launchOf(config, id), effort };
   const resumed = resume === undefined ? '' : `, resuming Claude Code session ${resume}`;
-  runtime.out.stdout(`Starting Claude Code as ${name} (session ${id} of team ${team}) in ${project}, on ${describeLaunch(settings)}${resumed}`);
+  let listing = await launchListing(sessionRuntime, kit, config, roster, id);
+  runtime.out.stdout(`Starting Claude Code as ${name} (session ${id} of team ${team}) in ${project}, on ${describeLaunch(settings)}${resumed}${listing.note}`);
   const store = new RefreshStore(runtime.files, kit.paths);
   let first: string | undefined = prompt;
   let resuming = resume;
   for (;;) {
     const resumeArgs = resuming === undefined ? [] : ['--resume', resuming];
-    const result = await runtime.processes.run({ command, args: [...prefix, ...launchFlags(settings), ...resumeArgs, '--name', name, ...(first === undefined ? [] : [first])], cwd: project, env });
+    const args = [...prefix, ...launchFlags(settings), ...listing.args, ...resumeArgs, '--name', name, ...(first === undefined ? [] : [first])];
+    const result = await runtime.processes.run({ command, args, cwd: project, env });
     if (!(await restartTaken(store, id))) {
       return claudeExit(runtime, command, result);
     }
     runtime.out.stdout(`Starting Claude Code again as ${name} with a fresh context: it reads its handover first`);
     first = refreshPrompt(team, id, store.handoverPath(id));
     resuming = undefined;
+    // A skill added or a Used by line changed since the last start is listed as it is now.
+    listing = await launchListing(sessionRuntime, kit, config, roster, id);
   }
 }

@@ -77,6 +77,7 @@ describe('teamPaths', () => {
     assert.equal(paths.logs, join(TEAM_HOME, 'state', 'logs'));
     assert.equal(paths.wake, join(TEAM_HOME, 'state', 'wake'));
     assert.equal(paths.wakeLog, join(TEAM_HOME, 'state', 'wakes.jsonl'));
+    assert.equal(paths.launchSettings, join(TEAM_HOME, 'state', 'launch'));
     assert.equal(paths.sessions, join(TEAM_HOME, 'state', 'sessions'));
     assert.equal(paths.sessionLog, join(TEAM_HOME, 'state', 'session-log.jsonl'));
   });

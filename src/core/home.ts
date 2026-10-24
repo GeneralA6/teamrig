@@ -176,6 +176,8 @@ export interface TeamPaths {
   readonly wakeAsks: string;
   /** Every wake and every wake Claude Code dropped, with its cost, an append-only log. */
   readonly wakeLog: string;
+  /** The settings `teamrig launch` passes each session's Claude Code (src/cli/skill-listing.ts), `<id>.settings.json` each. */
+  readonly launchSettings: string;
   /** Each permission prompt the prompt refusal answered and how (hooks/prompt-refuse.ts), an append-only log. */
   readonly promptAnswers: string;
   /** Each session's prompts and replies for the task pane (src/turn-log/), `<id>/<UTC hour>.jsonl` each. */
@@ -258,6 +260,7 @@ export function teamPaths(kitHome: string, team: string, userHome: string, overr
     wake: join(state, 'wake'),
     wakeAsks: join(state, 'wake-asks'),
     wakeLog: join(state, 'wakes.jsonl'),
+    launchSettings: join(state, 'launch'),
     promptAnswers: join(state, 'prompt-answers.jsonl'),
     turnLog: join(state, 'turn-log'),
     sessions: join(state, 'sessions'),
