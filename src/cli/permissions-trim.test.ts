@@ -35,18 +35,18 @@ function assertNoSecret(lines: readonly string[]): void {
 }
 
 describe('teamrig permissions trim', () => {
-  it('previews the wide rules off the keep-list in each file by class, and writes nothing without --yes', async () => {
+  it('previews the wide and credential rules off the keep-list in each file by class, and writes nothing without --yes', async () => {
     const kit = await withSettings();
     const before = [USER, SHARED, LOCAL, TREE].map((path) => kit.files.get(path));
     const result = await kit.run(['permissions', 'trim'], OPTIONS);
     assert.equal(result.code, EXIT.ok);
     assert.deepEqual(result.stdout, [
-      'PREVIEW nothing written (add --yes to write): removes the allow rules that approve a whole tool or program off permissions.keepAllow',
-      `  ${USER}: 3 allow rules -> 2, remove 1 (Bash wide 1); keeps 1 on the keep-list, 1 more (Bash exact 1)`,
+      'PREVIEW nothing written (add --yes to write): removes the allow rules that approve a whole tool or program or hold a credential off permissions.keepAllow',
+      `  ${USER}: 3 allow rules -> 1, remove 2 (Bash credential 1, Bash wide 1); keeps 1 on the keep-list`,
       `  ${SHARED}: 1 allow rules, 1 to remove (Bash wide 1); it is committed with its repo, so change it by a commit`,
       `  ${LOCAL}: 2 allow rules -> 1, remove 1 (Read wide 1); keeps 1 on the keep-list`,
       `  ${TREE}: 2 allow rules -> 1, remove 1 (Bash wide 1); keeps 0 on the keep-list, 1 more (Bash exact 1)`,
-      'TOTAL 3 file(s) to rewrite: 7 allow rules -> 4 (remove 3: Bash wide 2, Read wide 1)',
+      'TOTAL 3 file(s) to rewrite: 7 allow rules -> 3 (remove 4: Bash wide 2, Bash credential 1, Read wide 1)',
     ]);
     assertNoSecret(result.stdout);
     assert.deepEqual(
@@ -63,26 +63,37 @@ describe('teamrig permissions trim', () => {
       EXIT.ok,
       [
         `WROTE 3 of 3 file(s); their old text and a manifest are in ${BACKUPS}`,
-        `  ${USER}: 3 allow rules -> 2, removed Bash wide 1`,
+        `  ${USER}: 3 allow rules -> 1, removed Bash credential 1, Bash wide 1`,
         `  ${LOCAL}: 2 allow rules -> 1, removed Read wide 1`,
         `  ${TREE}: 2 allow rules -> 1, removed Bash wide 1`,
       ],
     ]);
     assertNoSecret(result.stdout);
-    assert.deepEqual(allowOf(kit, USER), { model: 'opus', permissions: { allow: ['Bash(kubectl get:*)', `Bash(psql ${HELD_VALUE})`], deny: ['Read(.env)'] } });
+    assert.deepEqual(allowOf(kit, USER), { model: 'opus', permissions: { allow: ['Bash(kubectl get:*)'], deny: ['Read(.env)'] } });
     assert.deepEqual(allowOf(kit, TREE), { permissions: { allow: ['Bash(git log)'] } });
     assert.equal(kit.files.get(SHARED), shared);
     assert.deepEqual((await kit.files.list(BACKUPS)).sort(), ['01-settings.json', '02-settings.local.json', '03-settings.local.json', 'manifest.json']);
     const again = await kit.run(['permissions', 'trim', '--yes'], OPTIONS);
-    assert.deepEqual([again.code, again.stdout[0]], [EXIT.ok, 'UNCHANGED no settings file to rewrite holds the allow rules that approve a whole tool or program off permissions.keepAllow']);
+    assert.deepEqual([again.code, again.stdout[0]], [EXIT.ok, 'UNCHANGED no settings file to rewrite holds the allow rules that approve a whole tool or program or hold a credential off permissions.keepAllow']);
   });
 
   it('with --all removes the exact rules off the keep-list too', async () => {
     const kit = await withSettings();
     const result = await kit.run(['permissions', 'trim', '--all'], OPTIONS);
     assert.equal(result.stdout[0], 'PREVIEW nothing written (add --yes to write): removes every allow rule off permissions.keepAllow');
-    assert.equal(result.stdout.at(-1), 'TOTAL 3 file(s) to rewrite: 7 allow rules -> 2 (remove 5: Bash exact 2, Bash wide 2, Read wide 1)');
+    assert.equal(result.stdout.at(-1), 'TOTAL 3 file(s) to rewrite: 7 allow rules -> 2 (remove 5: Bash wide 2, Bash credential 1, Bash exact 1, Read wide 1)');
     assertNoSecret(result.stdout);
+  });
+
+  it("removes an exact rule that holds one of the team's own secret shapes", async () => {
+    const kit = new CliHarness({ sessions: ['lead'], roles: { lead: 'lead' }, register: { secretPatterns: ['hush-[0-9]+'] } });
+    await kit.files.write(LOCAL, formatConfig({ permissions: { allow: ['Bash(deploy --token hush-42)', 'Bash(git log)'] } }));
+    const result = await kit.run(['permissions', 'trim'], OPTIONS);
+    assert.deepEqual(result.stdout.slice(1), [
+      `  ${LOCAL}: 2 allow rules -> 1, remove 1 (Bash credential 1); keeps 0 on the keep-list, 1 more (Bash exact 1)`,
+      'TOTAL 1 file(s) to rewrite: 2 allow rules -> 1 (remove 1: Bash credential 1)',
+    ]);
+    assert.ok(result.stdout.every((line) => !line.includes('hush-42')));
   });
 
   it("checks the settings of each repository the coordinator integrates, and keeps the team's own keep-list", async () => {

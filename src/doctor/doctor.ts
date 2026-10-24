@@ -43,7 +43,8 @@ export const UNREAD_INBOX_DAYS = 7;
  * - `settings-json`: a Claude Code settings file that is not a JSON object, so its `env` block went unchecked;
  * - `launch-effort`: a session's `launch` names a model but no effort, so it starts at the model's default effort;
  * - `allow-wide`: local allow rules off `permissions.keepAllow` that approve a whole tool or program, so auto mode's
- *   classifier never sees those calls (`teamrig permissions trim` removes them, run by the owner);
+ *   classifier never sees those calls, or hold a credential saved with an approved command (`teamrig permissions trim`
+ *   removes them, run by the owner);
  * - `project-missing`: a `team.project` or `launch.<id>.project` that is no folder on this machine, so a tab `open`
  *   starts there refuses to launch.
  */
@@ -122,7 +123,7 @@ export interface DoctorInput {
   readonly tree: { readonly problems: readonly TreeProblem[]; readonly clashes: readonly NameClash[] };
   /** The environment doctor runs in; only the variables that override a model or effort choice are read. */
   readonly env: Env;
-  /** The local allow rules off `permissions.keepAllow` that approve a whole tool or program (`readWideAllow`), as counts. */
+  /** The local allow rules off `permissions.keepAllow` that approve a whole tool or program or hold a credential (`readWideAllow`), as counts. */
   readonly wideAllow: WideAllow;
   /** The `env` blocks of the Claude Code settings files the team's sessions read (`readSettingsEnv`). */
   readonly settingsEnv: readonly SettingsEnv[];
@@ -406,7 +407,7 @@ function projectFindings({ projects, roster, command }: DoctorInput): Finding[] 
  * The team's health checks: names that find the wrong session or none, a damaged rename log,
  * inboxes nobody reads, rules too long to show, text every call re-reads over its budget (files, and the lists the newest
  * session holds), a broken tree of teams or a session name two teams use, a variable that overrides every model or effort
- * choice, a launch with a model but no effort, local allow rules that approve a whole tool or program, and a
+ * choice, a launch with a model but no effort, local allow rules that approve a whole tool or program or hold a credential, and a
  * configured project folder that is no folder here.
  * It reads only; every fix is the user's.
  */

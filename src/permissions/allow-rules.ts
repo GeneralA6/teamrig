@@ -1,10 +1,17 @@
+import type { SecretScanner } from '../core/secrets.ts';
+
 /**
  * Claude Code's permission allow rules (`Tool` or `Tool(body)`), as `teamrig permissions trim` and the flags read
  * them. An allow rule approves a call before auto mode's classifier sees it, so a rule that approves a whole tool or a
  * program with any arguments (a bare tool name, or a `*` in the body) skips the one check that stops an injected or
- * mistaken action. A team keeps the rules on its `permissions.keepAllow` list. A rule's text can hold a value (a URI
- * with a password, a token), so a rule off that list is only ever counted by its class, never shown.
+ * mistaken action. Claude Code saves an approved command whole, so a rule can hold a credential (a URI with a password,
+ * a token) that stays in the settings file; it is counted as its own class and goes too. A team keeps the rules on its
+ * `permissions.keepAllow` list. Since a rule's text can hold such a value, a rule off that list is only ever counted by
+ * its class, never shown.
  */
+
+/** What tells that a rule holds a credential: the team's secret shapes. */
+export type SecretFinder = Pick<SecretScanner, 'find'>;
 
 /** `Tool` or `Tool(body)`; the body may hold anything, parentheses too. */
 const RULE_SHAPE = /^([A-Za-z][\w-]*)(?:\((.*)\))?$/s;
@@ -39,7 +46,7 @@ export const KEEP_RULE_PATTERN = /^[A-Za-z][\w-]*(?:\([^*/\\()\r\n]+(?: \*|:\*)?
 /** The prefix of an MCP tool's name; its rules count as one `mcp` class. */
 const MCP_PREFIX = 'mcp__';
 
-/** Which rules a trim removes: those that approve a whole tool or program, or every one off the keep-list. */
+/** Which rules a trim removes: those that approve a whole tool or program or hold a credential, or every one off the keep-list. */
 export type TrimMode = 'wide' | 'all';
 
 interface ParsedRule {
@@ -82,11 +89,23 @@ export function isToolWide(rule: string): boolean {
   return parsed?.body === undefined || parsed.body.includes('*');
 }
 
-/** The class a rule is counted under: its tool (a named one, `mcp`, `other`, or `unreadable`), and `wide` or `exact`. */
-export function ruleClass(rule: string): string {
+/**
+ * Holds a value one of the secret shapes matches. The rule is read as the keep-list reads it, so the prefix rule
+ * `Bash(kubectl get secret:*)` is not taken for a `secret:` assignment.
+ */
+export function holdsCredential(rule: string, secrets: SecretFinder): boolean {
+  return secrets.find(normalRule(rule)) !== undefined;
+}
+
+/**
+ * The class a rule is counted under: its tool (a named one, `mcp`, `other`, or `unreadable`), and `credential`, `wide`
+ * or `exact`. A credential comes first: it is a reason to remove the rule whatever the rule approves.
+ */
+export function ruleClass(rule: string, secrets: SecretFinder): string {
   const parsed = parseRule(rule);
   const tool = parsed === undefined ? 'unreadable' : parsed.tool.startsWith(MCP_PREFIX) ? 'mcp' : NAMED_TOOLS.has(parsed.tool) ? parsed.tool : 'other';
-  return `${tool} ${isToolWide(rule) ? 'wide' : 'exact'}`;
+  const kind = holdsCredential(rule, secrets) ? 'credential' : isToolWide(rule) ? 'wide' : 'exact';
+  return `${tool} ${kind}`;
 }
 
 /** The team's `permissions.keepAllow` list: a rule on it stays, and a kept `Tool(x *)` keeps `Tool(x)` too. */
@@ -116,14 +135,14 @@ export interface AllowTrim {
   readonly after: readonly string[];
   /** The kept rules that are on the keep-list; their text is safe to show. */
   readonly listed: readonly string[];
-  /** The other kept rules (the exact ones off the list, when only the wide ones go), by class. */
+  /** The other kept rules (the exact ones off the list that hold no credential, when a wide trim leaves them), by class. */
   readonly keptOther: ClassCounts;
   /** The removed rules, by class. */
   readonly removed: ClassCounts;
 }
 
-function countByClass(rules: readonly string[]): ClassCounts {
-  return mergeCounts([rules.map((rule): readonly [string, number] => [ruleClass(rule), 1])]);
+function countByClass(rules: readonly string[], secrets: SecretFinder): ClassCounts {
+  return mergeCounts([rules.map((rule): readonly [string, number] => [ruleClass(rule, secrets), 1])]);
 }
 
 /** Several class counts added up, largest first, then by name. */
@@ -140,16 +159,16 @@ export function countOf(counts: ClassCounts): number {
   return counts.reduce((total, [, count]) => total + count, 0);
 }
 
-/** Splits an allow list into what a trim keeps and what it removes. */
-export function planAllowTrim(allow: readonly string[], keep: KeepList, mode: TrimMode): AllowTrim {
-  const removes = (rule: string): boolean => !keep.keeps(rule) && (mode === 'all' || isToolWide(rule));
+/** Splits an allow list into what a trim keeps and what it removes; a rule on the keep-list always stays. */
+export function planAllowTrim(allow: readonly string[], keep: KeepList, mode: TrimMode, secrets: SecretFinder): AllowTrim {
+  const removes = (rule: string): boolean => !keep.keeps(rule) && (mode === 'all' || isToolWide(rule) || holdsCredential(rule, secrets));
   const after = allow.filter((rule) => !removes(rule));
   const listed = after.filter((rule) => keep.keeps(rule));
   return {
     after,
     listed,
-    keptOther: countByClass(after.filter((rule) => !keep.keeps(rule))),
-    removed: countByClass(allow.filter(removes)),
+    keptOther: countByClass(after.filter((rule) => !keep.keeps(rule)), secrets),
+    removed: countByClass(allow.filter(removes), secrets),
   };
 }
 

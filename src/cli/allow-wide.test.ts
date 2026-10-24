@@ -11,9 +11,9 @@ const SHARED = join(APP, '.claude', 'settings.json');
 const TREE = join(APP, '.claude', 'worktrees', 'fix', '.claude', 'settings.local.json');
 const OPTIONS: RunOptions = { platform: 'linux' };
 const FLAG =
-  "WARN allow-wide 3 local allow rule(s) in 3 settings file(s) approve a whole tool or program, so auto mode's classifier never sees those calls (Bash wide 2, Read wide 1); `teamrig permissions trim` previews their removal, and the owner runs it with --yes";
+  "WARN allow-wide 4 local allow rule(s) in 3 settings file(s) approve a whole tool or program, so auto mode's classifier never sees those calls, or hold a credential saved with an approved command (Bash wide 2, Bash credential 1, Read wide 1); `teamrig permissions trim` previews their removal, and the owner runs it with --yes";
 
-/** Wide rules off the keep-list in the user settings, the committed project settings and a Claude Code worktree's. */
+/** Wide rules and a credential off the keep-list in the user settings, the committed project settings and a Claude Code worktree's. */
 async function withWideRules(): Promise<CliHarness> {
   const kit = new CliHarness();
   await kit.files.write(USER, formatConfig({ permissions: { allow: ['Bash', 'Bash(kubectl get:*)', `Bash(psql ${HELD_VALUE})`] } }));
@@ -45,7 +45,20 @@ describe('the allow-wide flag', () => {
     assertNoSecret([...check.stdout, ...lead.stdout, ...alpha.stdout]);
   });
 
-  it('is quiet once no file holds a wide rule off the keep-list', async () => {
+  it("counts an exact rule that holds one of the team's own secret shapes", async () => {
+    const kit = new CliHarness({ sessions: ['lead'], roles: { lead: 'lead' }, register: { secretPatterns: ['hush-[0-9]+'] } });
+    await kit.files.write(USER, formatConfig({ permissions: { allow: ['Bash(deploy --token hush-42)', 'Bash(git log)'] } }));
+    const doctor = await kit.run(['doctor'], OPTIONS);
+    assert.ok(
+      doctor.stdout.includes(
+        "WARN allow-wide 1 local allow rule(s) in 1 settings file(s) approve a whole tool or program, so auto mode's classifier never sees those calls, or hold a credential saved with an approved command (Bash credential 1); `teamrig permissions trim` previews their removal, and the owner runs it with --yes",
+      ),
+      doctor.stdout.join('\n'),
+    );
+    assert.ok(doctor.stdout.every((line) => !line.includes('hush-42')));
+  });
+
+  it('is quiet once no file holds a wide or credential rule off the keep-list', async () => {
     const kit = new CliHarness();
     await kit.files.write(USER, formatConfig({ permissions: { allow: ['Bash(git log)', 'Bash(kubectl get:*)', 'WebSearch'] } }));
     const doctor = await kit.run(['doctor'], OPTIONS);

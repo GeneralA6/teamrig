@@ -56,14 +56,14 @@ export function writeLine(write: TrimWrite): string {
   }
 }
 
-/** The flag, or undefined when no rule off the keep-list approves a whole tool or program. */
+/** The flag, or undefined when no rule off the keep-list approves a whole tool or program or holds a credential. */
 export function wideAllowText(wide: WideAllow): string | undefined {
   const count = countOf(wide.counts);
   if (count === 0) {
     return undefined;
   }
   return (
-    `${count} local allow rule(s) in ${wide.files} settings file(s) approve a whole tool or program, so auto mode's classifier never sees those calls ` +
-    `(${formatCounts(wide.counts)}); \`teamrig permissions trim\` previews their removal, and the owner runs it with --yes`
+    `${count} local allow rule(s) in ${wide.files} settings file(s) approve a whole tool or program, so auto mode's classifier never sees those calls, ` +
+    `or hold a credential saved with an approved command (${formatCounts(wide.counts)}); \`teamrig permissions trim\` previews their removal, and the owner runs it with --yes`
   );
 }

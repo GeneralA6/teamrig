@@ -279,7 +279,7 @@ export interface ReadonlyShellConfig {
 /**
  * The local allow rules a team keeps (src/permissions/allow-rules.ts). An allow rule in a Claude Code settings file
  * approves a call before auto mode's classifier sees it; `permissions trim` removes the rules off this list, and doctor
- * flags the ones that approve a whole tool or program.
+ * flags the ones that approve a whole tool or program or hold a credential.
  */
 export interface PermissionsConfig {
   /**

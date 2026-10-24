@@ -4,7 +4,7 @@ import type { Files } from '../core/files.ts';
 import { isRecord, isStringArray } from '../core/guards.ts';
 import type { Env } from '../core/home.ts';
 import { jsonObjectOf } from '../doctor/settings-env.ts';
-import { countOf, mergeCounts, planAllowTrim, type AllowTrim, type ClassCounts, type KeepList, type TrimMode } from './allow-rules.ts';
+import { countOf, mergeCounts, planAllowTrim, type AllowTrim, type ClassCounts, type KeepList, type SecretFinder, type TrimMode } from './allow-rules.ts';
 import type { SettingsFile } from './settings-scope.ts';
 
 /**
@@ -34,7 +34,7 @@ export type FilePlan =
 export type ReadPlan = Extract<FilePlan, { kind: 'read' }>;
 
 /** The plan for one file's text (undefined: no file). A parse error's message is never kept: it can quote the file. */
-export function planFile(file: SettingsFile, text: string | undefined, keep: KeepList, mode: TrimMode): FilePlan {
+export function planFile(file: SettingsFile, text: string | undefined, keep: KeepList, mode: TrimMode, secrets: SecretFinder): FilePlan {
   if (text === undefined) {
     return { file, kind: 'absent' };
   }
@@ -50,18 +50,18 @@ export function planFile(file: SettingsFile, text: string | undefined, keep: Kee
   if (!isStringArray(allow)) {
     return { file, kind: 'unreadable', why: 'permissions.allow is not a list of texts' };
   }
-  const trim = planAllowTrim(allow, keep, mode);
+  const trim = planAllowTrim(allow, keep, mode, secrets);
   const rewrites = trim.after.length < allow.length && file.kind !== 'shared';
   const next = rewrites ? settingsText({ ...json, permissions: { ...permissions, allow: trim.after } }) : undefined;
   return { file, kind: 'read', text, total: allow.length, trim, next };
 }
 
 /** The plan of every file in scope, read now. */
-export async function planScope(files: Files, scope: readonly SettingsFile[], keep: KeepList, mode: TrimMode): Promise<FilePlan[]> {
-  return Promise.all(scope.map(async (file) => planFile(file, await files.read(file.path), keep, mode)));
+export async function planScope(files: Files, scope: readonly SettingsFile[], keep: KeepList, mode: TrimMode, secrets: SecretFinder): Promise<FilePlan[]> {
+  return Promise.all(scope.map(async (file) => planFile(file, await files.read(file.path), keep, mode, secrets)));
 }
 
-/** The rules off the keep-list that approve a whole tool or program: how many files hold them, and their classes. */
+/** The rules off the keep-list that approve a whole tool or program or hold a credential: how many files hold them, and their classes. */
 export interface WideAllow {
   readonly files: number;
   readonly counts: ClassCounts;
