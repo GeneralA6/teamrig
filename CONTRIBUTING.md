@@ -63,7 +63,9 @@ which the git hooks from `npm run setup` do before each commit. Its coverage gat
 - any test fails, or is skipped or todo;
 - a source file under `src/` or `tools/` is loaded by no test, new and uncommitted files included;
 - a file, or the total, falls below the floors in `tools/ci/coverage.json`;
-- a test file is named or placed so `npm test` would never run it.
+- a test file is named or placed so `npm test` would never run it;
+- the run prints nothing for `suiteIdleSeconds` in `tools/ci/coverage.json` (300 when unset): it is stopped with every
+  process it started, so a test that never ends cannot hold the host.
 
 Never lower a floor to pass a change. A file that truly cannot reach one (for example an error
 path that needs a real disk failure) gets an entry under `exceptions` in `tools/ci/coverage.json`
