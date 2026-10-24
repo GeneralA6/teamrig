@@ -3,6 +3,7 @@ import type { Roster } from '../config/roster.ts';
 import { describeNameClash, describeTreeProblem, type NameClash, type TreeProblem } from '../config/tree.ts';
 import type { ContextFilesConfig, KitConfig, LaunchConfig } from '../config/types.ts';
 import { ENV, type Env } from '../core/home.ts';
+import type { PathKind } from '../core/path-probe.ts';
 import { MS_PER_DAY } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { unreadSince } from '../inbox/inbox.ts';
@@ -42,7 +43,9 @@ export const UNREAD_INBOX_DAYS = 7;
  * - `settings-json`: a Claude Code settings file that is not a JSON object, so its `env` block went unchecked;
  * - `launch-effort`: a session's `launch` names a model but no effort, so it starts at the model's default effort;
  * - `allow-wide`: local allow rules off `permissions.keepAllow` that approve a whole tool or program, so auto mode's
- *   classifier never sees those calls (`teamrig permissions trim` removes them, run by the owner).
+ *   classifier never sees those calls (`teamrig permissions trim` removes them, run by the owner);
+ * - `project-missing`: a `team.project` or `launch.<id>.project` that is no folder on this machine, so a tab `open`
+ *   starts there refuses to launch.
  */
 export type FindingKind =
   | 'requirement'
@@ -61,7 +64,16 @@ export type FindingKind =
   | 'model-env'
   | 'settings-json'
   | 'launch-effort'
-  | 'allow-wide';
+  | 'allow-wide'
+  | 'project-missing';
+
+/** A project folder the team config names, and what is at its path on this machine. */
+export interface ConfiguredProject {
+  /** The session whose `launch.<id>.project` it is; undefined for the team's `team.project`. */
+  readonly session: string | undefined;
+  readonly path: string;
+  readonly kind: PathKind;
+}
 
 export interface Finding {
   readonly kind: FindingKind;
@@ -116,6 +128,8 @@ export interface DoctorInput {
   readonly settingsEnv: readonly SettingsEnv[];
   /** Each session on the team and the model and effort it starts on. */
   readonly launches: readonly SessionLaunch[];
+  /** The project folders the config names, `team.project` first, then each `launch.<id>.project`. */
+  readonly projects: readonly ConfiguredProject[];
   readonly now: Date;
   /** The team's clock, which the findings' times are shown on. */
   readonly zone: TimeZone;
@@ -374,11 +388,26 @@ export function allowFindings(wide: WideAllow): AllowFinding[] {
   return detail === undefined ? [] : [{ kind: 'allow-wide', detail }];
 }
 
+/** A configured project folder that is a file or nothing: `launch` refuses a tab's folder that is no folder (src/cli/commands/open.ts). */
+function projectFindings({ projects, roster, command }: DoctorInput): Finding[] {
+  return projects.flatMap(({ session, path, kind }): Finding[] => {
+    if (kind === 'folder') {
+      return [];
+    }
+    const key = session === undefined ? 'team.project' : `launch.${session}.project`;
+    const who = session === undefined ? 'a session without its own folder' : `${roster.nameOf(session) ?? session} (session ${session})`;
+    const what = kind === 'file' ? 'a file' : 'missing';
+    const detail = `${key} names ${path}, which is ${what} on this machine, so a tab ${command} open starts for ${who} refuses to launch: create the folder or fix ${key} in the team config`;
+    return [{ kind: 'project-missing', detail }];
+  });
+}
+
 /**
  * The team's health checks: names that find the wrong session or none, a damaged rename log,
  * inboxes nobody reads, rules too long to show, text every call re-reads over its budget (files, and the lists the newest
  * session holds), a broken tree of teams or a session name two teams use, a variable that overrides every model or effort
- * choice, a launch with a model but no effort, and local allow rules that approve a whole tool or program.
+ * choice, a launch with a model but no effort, local allow rules that approve a whole tool or program, and a
+ * configured project folder that is no folder here.
  * It reads only; every fix is the user's.
  */
 export function doctorFindings(input: DoctorInput): Finding[] {
@@ -394,6 +423,7 @@ export function doctorFindings(input: DoctorInput): Finding[] {
     ...routingEnvFindings(input),
     ...launchFindings(input),
     ...allowFindings(input.wideAllow),
+    ...projectFindings(input),
   ];
 }
 

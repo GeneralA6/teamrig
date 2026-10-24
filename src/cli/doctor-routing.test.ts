@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { claudeProjectSlug } from '../budget/discover.ts';
 import { APP, CliHarness, TEAM, USER_HOME } from '../testing/cli-harness.ts';
+import { FakePathProbe } from '../testing/fake-processes.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { skillListingLine, transcript, type FixtureListing } from '../testing/transcript-lines.ts';
 import { EXIT } from './runtime.ts';
@@ -38,6 +39,26 @@ describe('teamrig doctor: what overrides a model or effort choice', () => {
     const kit = new CliHarness({ ...TEAM, launch: { lead: { model: 'sonnet' }, alpha: { model: 'opus', effort: 'xhigh' } } });
     await kit.files.write(USER_SETTINGS, JSON.stringify({ env: { DISABLE_TELEMETRY: '1' } }));
     assert.deepEqual((await kit.run(['doctor'])).stdout, ['DOCTOR clean, team app']);
+  });
+});
+
+describe('teamrig doctor: the project folders the config names', () => {
+  const shared = join('/', 'srv', 'shared');
+  const web = join('/', 'srv', 'web');
+  const notes = join('/', 'srv', 'notes.txt');
+  const config = { ...TEAM, team: { id: 'app', project: shared }, launch: { alpha: { project: web }, bravo: { project: notes } } };
+
+  it('probes team.project and each launch.<id>.project, and flags the ones that are no folder', async () => {
+    const probe = new FakePathProbe({ folders: [web], files: [notes] });
+    const result = await new CliHarness(config).run(['doctor'], { probe });
+    assert.deepEqual(kinds(result.stdout), ['DOCTOR 2', 'WARN project-missing', 'WARN project-missing']);
+    assert.ok(result.stdout[1]?.startsWith(`WARN project-missing team.project names ${shared}, which is missing on this machine`), result.stdout[1]);
+    assert.ok(result.stdout[2]?.startsWith(`WARN project-missing launch.bravo.project names ${notes}, which is a file on this machine`), result.stdout[2]);
+  });
+
+  it('stays clean when every one is a folder', async () => {
+    const probe = new FakePathProbe({ folders: [shared, web, notes] });
+    assert.deepEqual((await new CliHarness(config).run(['doctor'], { probe })).stdout, ['DOCTOR clean, team app']);
   });
 });
 
