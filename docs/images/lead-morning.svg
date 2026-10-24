@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="436" viewBox="0 0 960 436" role="img" aria-label="A lead's morning in its own tab, one plain sentence a step, each tool run folded into one line. data asks whether to rerun last night's failed import now; that is operational, so the lead decides it, sends data the answer, and data goes back to work. The week's plan holds only 7 tasks; the lead fills it to 48, fitted to the week's tokens, and the flags fall from 63 to 12. Host memory is low, 1.8 GB free, so it closes docs and tests, idle with nothing to start: 3.9 GB free, and teamrig open resumes either one. web's question is a product call, so it waits for your morning meeting.">
+<title>A lead's morning in its own tab, one plain sentence a step, each tool run folded into one line. data asks whether to rerun last night's failed import now; that is operational, so the lead decides it, sends data the answer, and data goes back to work. The week's plan holds only 7 tasks; the lead fills it to 48, fitted to the week's tokens, and the flags fall from 63 to 12. Host memory is low, 1.8 GB free, so it closes docs and tests, idle with nothing to start: 3.9 GB free, and teamrig open resumes either one. web's question is a product call, so it waits for your morning meeting.</title>
+<style>
+:root{--fg:#1f2328;--muted:#59636e;--line:#d1d9e0;--tile:#f6f8fa;--bg:#ffffff;--purple:#8250df;--tint:#f0eafb;--amber:#9a6700;--green:#1a7f37}
+@media (prefers-color-scheme:dark){:root{--fg:#e6edf3;--muted:#9198a1;--line:#3d444d;--tile:#151b23;--bg:#0d1117;--purple:#a371f7;--tint:#221e36;--amber:#d29922;--green:#3fb950}}
+text{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif;fill:var(--fg)}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace;font-size:13.5px}.muted{fill:var(--muted)}.accent{fill:var(--purple)}.strong{font-weight:700}
+.key{font-size:13.5px;fill:var(--muted)}
+.window{fill:var(--bg);stroke:var(--line)}.strip{fill:var(--tile)}.tab{fill:var(--bg);stroke:var(--line)}
+.rule,.box{fill:none;stroke:var(--line)}.bullet{fill:var(--muted)}
+.working{fill:var(--green)}.needs{fill:var(--amber)}.open{fill:none;stroke:var(--muted);stroke-width:1.5}
+.done{fill:none;stroke:var(--muted);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+@keyframes a0{0%,0.714%{opacity:0}1.786%,16.786%{opacity:1}17.857%,100%{opacity:0}}
+.a0{opacity:0;animation:a0 28s linear infinite}
+@keyframes a1{0%,17.857%{opacity:0}18.929%,95.357%{opacity:1}96.429%,100%{opacity:0}}
+.a1{opacity:1;animation:a1 28s linear infinite}
+@keyframes a2{0%,0.714%{opacity:0}1.786%,60.357%{opacity:1}61.429%,100%{opacity:0}}
+.a2{opacity:0;animation:a2 28s linear infinite}
+@keyframes a3{0%,0.714%{opacity:0}1.786%,61.786%{opacity:1}62.857%,100%{opacity:0}}
+.a3{opacity:0;animation:a3 28s linear infinite}
+@keyframes a4{0%,2.143%{opacity:0;transform:translateY(5px)}3.214%,95.357%{opacity:1;transform:translateY(0)}96.429%,100%{opacity:0;transform:translateY(5px)}}
+.a4{opacity:1;animation:a4 28s linear infinite}
+@keyframes a5{0%,12.143%{opacity:0;transform:translateY(5px)}13.214%,95.357%{opacity:1;transform:translateY(0)}96.429%,100%{opacity:0;transform:translateY(5px)}}
+.a5{opacity:1;animation:a5 28s linear infinite}
+@keyframes a6{0%,15.714%{opacity:0;transform:translateY(5px)}16.786%,95.357%{opacity:1;transform:translateY(0)}96.429%,100%{opacity:0;transform:translateY(5px)}}
+.a6{opacity:1;animation:a6 28s linear infinite}
+@keyframes a7{0%,25.000%{opacity:0;transform:translateY(5px)}26.071%,95.357%{opacity:1;transform:translateY(0)}96.429%,100%{opacity:0;transform:translateY(5px)}}
+.a7{opacity:1;animation:a7 28s linear infinite}
+@keyframes a8{0%,34.286%{opacity:0;transform:translateY(5px)}35.357%,95.357%{opacity:1;transform:translateY(0)}96.429%,100%{opacity:0;transform:translateY(5px)}}
+.a8{opacity:1;animation:a8 28s linear infinite}
+@keyframes a9{0%,38.571%{opacity:0;transform:translateY(5px)}39.643%,95.357%{opacity:1;transform:translateY(0)}96.429%,100%{opacity:0;transform:translateY(5px)}}
+.a9{opacity:1;animation:a9 28s linear infinite}
+@keyframes a10{0%,51.429%{opacity:0;transform:translateY(5px)}52.500%,95.357%{opacity:1;transform:translateY(0)}96.429%,100%{opacity:0;transform:translateY(5px)}}
+.a10{opacity:1;animation:a10 28s linear infinite}
+@keyframes a11{0%,60.000%{opacity:0;transform:translateY(5px)}61.071%,95.357%{opacity:1;transform:translateY(0)}96.429%,100%{opacity:0;transform:translateY(5px)}}
+.a11{opacity:1;animation:a11 28s linear infinite}
+@keyframes a12{0%,65.714%{opacity:0;transform:translateY(5px)}66.786%,95.357%{opacity:1;transform:translateY(0)}96.429%,100%{opacity:0;transform:translateY(5px)}}
+.a12{opacity:1;animation:a12 28s linear infinite}
+@keyframes a13{0%,76.429%{opacity:0;transform:translateY(5px)}77.500%,95.357%{opacity:1;transform:translateY(0)}96.429%,100%{opacity:0;transform:translateY(5px)}}
+.a13{opacity:1;animation:a13 28s linear infinite}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+<rect x="0.5" y="0.5" width="959" height="391" rx="12" class="window"/>
+<path d="M1 44V12.5A11.5 11.5 0 0 1 12.5 1H947.5A11.5 11.5 0 0 1 959 12.5V44z" class="strip"/>
+<path d="M1 44.5H959" class="rule"/>
+<path d="M12.5 45.5V16a8 8 0 0 1 8-8h75a8 8 0 0 1 8 8V45.5" class="tab"/>
+<circle cx="30" cy="27.5" r="4.5" class="working"/>
+<text x="43" y="32" class="mono strong">lead</text>
+<circle cx="126" cy="27.5" r="4.5" class="working"/>
+<text x="139" y="32" class="mono muted">api</text>
+<rect x="217.5" y="23" width="9" height="9" rx="1.5" class="needs"/>
+<text x="235" y="32" class="mono muted">web</text>
+<g class="a0"><rect x="313.5" y="23" width="9" height="9" rx="1.5" class="needs"/></g>
+<g class="a1"><circle cx="318" cy="27.5" r="4.5" class="working"/></g>
+<text x="331" y="32" class="mono muted">data</text>
+<g class="a2">
+<path d="M409.5 27.5l3 3 6-6.5" class="done"/>
+<text x="427" y="32" class="mono muted">docs</text>
+</g>
+<g class="a3">
+<path d="M505.5 27.5l3 3 6-6.5" class="done"/>
+<text x="523" y="32" class="mono muted">tests</text>
+</g>
+<g class="a4">
+<circle cx="28.5" cy="81.5" r="3.5" class="bullet"/>
+<text x="42" y="86" class="mono">Morning. data asks whether to rerun last night's failed import now: operational, so my call.</text>
+</g>
+<g class="a5">
+<text x="42" y="110" class="mono muted">Ran 3 shell commands</text>
+</g>
+<g class="a6">
+<text x="42" y="134" class="mono muted">&quot;Rerun it now, before the 10:00 report.&quot; → sent to data</text>
+</g>
+<g class="a7">
+<circle cx="28.5" cy="165.5" r="3.5" class="bullet"/>
+<text x="42" y="170" class="mono">Next, the week's plan: it holds only 7 tasks, and 41 due this week aren't in it.</text>
+</g>
+<g class="a8">
+<text x="42" y="194" class="mono muted">Ran 7 shell commands</text>
+</g>
+<g class="a9">
+<circle cx="28.5" cy="225.5" r="3.5" class="bullet"/>
+<text x="42" y="230" class="mono">The plan now holds 48 tasks (was 7) and fits the week's tokens. Flags fell from 63 to 12.</text>
+</g>
+<g class="a10">
+<circle cx="28.5" cy="261.5" r="3.5" class="bullet"/>
+<text x="42" y="266" class="mono">Host memory is low: 1.8 GB free. docs and tests are idle with nothing to start, so I'll close them.</text>
+</g>
+<g class="a11">
+<text x="42" y="290" class="mono muted">Ran 2 shell commands</text>
+</g>
+<g class="a12">
+<circle cx="28.5" cy="321.5" r="3.5" class="bullet"/>
+<text x="42" y="326" class="mono">3.9 GB free now, and teamrig open resumes either one where it left off.</text>
+</g>
+<g class="a13">
+<circle cx="28.5" cy="357.5" r="3.5" class="bullet"/>
+<text x="42" y="362" class="mono">That's the morning. web's question is a product call, so it waits for your 09:30 meeting.</text>
+</g>
+<circle cx="24" cy="415.5" r="4.5" class="working"/>
+<text x="38" y="420" class="key">working</text>
+<rect x="151.5" y="411" width="9" height="9" rx="1.5" class="needs"/>
+<text x="170" y="420" class="key">needs you</text>
+<circle cx="288" cy="415.5" r="4" class="open"/>
+<text x="302" y="420" class="key">not started</text>
+<path d="M415.5 415.5l3 3 6-6.5" class="done"/>
+<text x="434" y="420" class="key">done</text>
+</svg>
