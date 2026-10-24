@@ -186,11 +186,6 @@ export function failedState(previous: IdlePassState | undefined, now: number, er
 /** How long a started act holds its session: past any close's or reopen's run, so one that died is started again. */
 export const IDLE_ACT_HOLD_MS = 5 * MS_PER_MINUTE;
 
-/** The act the step asks the pass to start, if any. */
-export function actOf(step: PassStep): IdleAct | undefined {
-  return step.kind === 'close' || step.kind === 'reopen' ? step.kind : undefined;
-}
-
 /** Whether the step still asks for the act: a reopen held back by another's or by the host's room still wants one. */
 function stillAsks(step: PassStep, act: IdleAct): boolean {
   return act === 'close' ? step.kind === 'close' : step.kind === 'reopen' || step.kind === 'later';
@@ -211,17 +206,20 @@ export function heldActs(pending: Readonly<Record<string, PendingAct>> | undefin
   );
 }
 
-/** An act the pass starts, on its session. */
+/** An act the pass starts, on its session, in the folder the pass read it in. */
 export interface ActToStart {
   readonly act: IdleAct;
   readonly id: string;
+  readonly project: string;
 }
 
-/** The acts the pass starts now: each a step asks for, but none while one is pending on its session. */
+/** The acts the pass starts now: each a close or a reopen step asks for, but none while one is pending on its session. */
 export function actsToStart(steps: readonly PassStep[], held: Readonly<Record<string, PendingAct>>): ActToStart[] {
   return steps.flatMap((step) => {
-    const act = actOf(step);
-    return act === undefined || Object.hasOwn(held, step.id) ? [] : [{ act, id: step.id }];
+    if ((step.kind !== 'close' && step.kind !== 'reopen') || Object.hasOwn(held, step.id)) {
+      return [];
+    }
+    return [{ act: step.kind, id: step.id, project: step.project }];
   });
 }
 

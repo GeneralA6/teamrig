@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import type { Burst } from '../budget/burst.ts';
 import { BurstLog } from '../budget/burst-log.ts';
@@ -358,9 +358,12 @@ describe('hook wake-check runs the idle pass', () => {
     return kit;
   }
 
-  /** Alpha's tab's wake check, over `files`, starting hidden programs through `processes`. */
-  function passCheck(kit: CliHarness, { files = kit.files, processes = new FakeProcesses() }: { readonly files?: Files; readonly processes?: FakeProcesses } = {}): Promise<CliResult> {
-    return kit.run(['hook', 'wake-check'], { stdin: payload(), files, processes, probe: new FakePathProbe({ folders: [APP] }), memory: new FakeHostMemory().lists([], COMMIT) });
+  /** Alpha's tab's wake check, over `files`, starting hidden programs through `processes`, with `folders` on disk. */
+  function passCheck(
+    kit: CliHarness,
+    { files = kit.files, processes = new FakeProcesses(), folders = [APP] }: { readonly files?: Files; readonly processes?: FakeProcesses; readonly folders?: readonly string[] } = {},
+  ): Promise<CliResult> {
+    return kit.run(['hook', 'wake-check'], { stdin: payload(), files, processes, probe: new FakePathProbe({ folders }), memory: new FakeHostMemory().lists([], COMMIT) });
   }
 
   /** The lead hands bravo a p1, which the wake check would wake bravo for. */
@@ -430,6 +433,30 @@ describe('hook wake-check runs the idle pass', () => {
     kit.clock.advance(MINUTE);
     await passCheck(kit, { processes });
     assert.equal(processes.hidden.length, 1);
+  });
+
+  it("in mode on starts the reopen in the session's own launch.<id>.project folder", async () => {
+    const own = resolve('/', 'work', 'bravo');
+    const kit = await idleTeam({ ...ON, launch: { bravo: { project: own } } });
+    await handBravo(kit);
+    const processes = new FakeProcesses();
+    await passCheck(kit, { processes, folders: [APP, own] });
+    assert.deepEqual(
+      processes.hidden.map(({ args, cwd }) => ({ args: args.slice(-2), cwd })),
+      [{ args: ['--project', own], cwd: own }],
+    );
+  });
+
+  it('in mode on leaves for later, starting nothing, the reopen of a session whose launch.<id>.project is no folder', async () => {
+    const gone = resolve('/', 'work', 'gone');
+    const kit = await idleTeam({ ...ON, launch: { bravo: { project: gone } } });
+    await handBravo(kit);
+    const processes = new FakeProcesses();
+    const at = kit.clock.now();
+    await passCheck(kit, { processes });
+    const later = { kind: 'later', id: 'bravo', line: `LATER app-bravo (session bravo): work handed to it since its close: T1; the project folder ${gone} does not exist` };
+    assert.deepEqual(await logLines(kit, PASS_LOG), [pass(at, [AWAY_LEAD, AWAY_ALPHA, later], 'on')]);
+    assert.deepEqual(processes.hidden, []);
   });
 
   it('logs a failed pass once until its error changes, keeps the wake answer, and logs every step once it runs through', async () => {
