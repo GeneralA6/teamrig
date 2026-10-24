@@ -1,6 +1,6 @@
 import { deployTargetsOf } from "../coordinator/targets.js";
 import { isRecord } from "../core/guards.js";
-import { NAME_PATTERN, NAME_RULE } from "../core/ids.js";
+import { isReservedName, NAME_PATTERN, NAME_RULE, RESERVED_NAMES } from "../core/ids.js";
 import { isMinuteInSpan, utcMinuteOf } from "../core/time.js";
 import { TimeZone } from "../core/zone.js";
 import { FOLLOWUP_STATUSES, isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, SESSION_NAME, TASK_STATUSES } from "../register/model.js";
@@ -42,10 +42,15 @@ const ENV_VARIABLE = (name) => /^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(name) ? unde
 const isFrontmatterKey = (key) => (/^[A-Za-z0-9_-]+$/.test(key) ? undefined : 'expected a frontmatter key: letters, digits, _ or -');
 /** A git trailer key, such as `Large-commit`. */
 const isTrailerKey = (key) => /^[A-Za-z][A-Za-z0-9-]{0,39}$/.test(key) ? undefined : 'expected a trailer key: a letter, then at most 39 letters, digits or -';
-const isDisplayName = (name) => (NAME_PATTERN.test(name) ? undefined : `expected a name: ${NAME_RULE}`);
+const isDisplayName = (name) => {
+    if (!NAME_PATTERN.test(name)) {
+        return `expected a name: ${NAME_RULE}`;
+    }
+    return isReservedName(name) ? `expected a name Claude Code does not keep for itself (${RESERVED_NAMES.join(', ')}): a message to one never reaches a session` : undefined;
+};
 /**
- * `names`: only sessions on the team, and each name unique and never another session's id, so a
- * command given a name finds exactly one session.
+ * `names`: only sessions on the team, each name unique, never another session's id and never one Claude Code reserves,
+ * so a command or a message given a name finds exactly one session.
  */
 function readNames(read, raw, sessions) {
     const names = {};

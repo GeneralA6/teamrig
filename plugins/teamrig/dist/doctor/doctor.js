@@ -1,6 +1,7 @@
 import { isDefaultModel } from "../config/launch.js";
 import { describeNameClash, describeTreeProblem } from "../config/tree.js";
 import { ENV } from "../core/home.js";
+import { isReservedName, RESERVED_RULE } from "../core/ids.js";
 import { MS_PER_DAY } from "../core/time.js";
 import { unreadSince } from "../inbox/inbox.js";
 import { wideAllowText } from "../permissions/report.js";
@@ -16,7 +17,7 @@ function plural(count, one, many) {
 }
 /**
  * Names that find the wrong session, or none: a removed session's (not a retired one's), a shared current one, a
- * former one taken over.
+ * former one taken over, a current one no message reaches.
  */
 function nameFindings(input) {
     const { roster, command, retired } = input;
@@ -45,6 +46,12 @@ function nameFindings(input) {
     for (const [id, names] of gone) {
         const these = plural(names.length, 'was a name', 'were names');
         findings.push({ kind: 'name-gone', detail: `${names.join(', ')} ${these} of ${id}, which is no longer on the team: commands refuse them, filters read them as ${id}` });
+    }
+    for (const id of roster.ids) {
+        const name = roster.nameOf(id);
+        if (name !== undefined && isReservedName(name)) {
+            findings.push({ kind: 'name-reserved', detail: `${name} (session ${id}) ${RESERVED_RULE}: give the tab another name with /rename, then record it with \`${command} rename ${id} <name>\`` });
+        }
     }
     return findings;
 }
