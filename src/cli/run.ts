@@ -454,8 +454,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       config change or an upgrade; without --yes it shows the change and writes nothing
   automode uninstall [--yes]   takes the team's lines back out, leaving every other line
   permissions trim [--all] [--yes]   removes the local allow rules off the config's permissions.keepAllow
-      that approve a whole tool or program (--all: every rule) from the team's Claude Code settings, its
-      worktrees' too; it counts them by class, never printing a rule; without --yes it writes nothing
+      that approve a whole tool or program or hold a credential (--all: every rule) from the team's
+      Claude Code settings, its worktrees' too; it counts them by class, never printing a rule; without
+      --yes it writes nothing
   config validate | config migrate [--yes]   migrate shows an older config rewritten in this format and
       the first teamrig that reads it, as a tab on an older one refuses every write after; --yes writes it
   commits check --base <ref> [--tip <ref>]   commits in base..tip (default HEAD) over the size rule
