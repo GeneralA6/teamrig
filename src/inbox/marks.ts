@@ -100,3 +100,22 @@ export function indexMarks(marks: readonly InboxMark[]): MarkIndex {
   }
   return { byArea, areaBySession };
 }
+
+/** How many of a session's latest tabs are checked for its last activity: a restart leaves the old tab's marks behind. */
+export const RECEIVER_TABS = 5;
+
+/** The Claude Code sessions that are `area` now, newest first: those whose latest inbox read or binding named it. */
+export function tabsOf(marks: readonly InboxMark[], area: string, limit: number): string[] {
+  const { areaBySession } = indexMarks(marks);
+  const tabs: string[] = [];
+  for (const mark of [...marks].reverse()) {
+    if (tabs.length >= limit) {
+      break;
+    }
+    const tab = mark.claudeSession;
+    if (tab !== null && areaBySession.get(tab) === area && !tabs.includes(tab)) {
+      tabs.push(tab);
+    }
+  }
+  return tabs;
+}

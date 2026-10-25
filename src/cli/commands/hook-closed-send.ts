@@ -2,13 +2,12 @@ import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { KIT_NAME } from '../../core/home.ts';
 import { holdOutput, sendTargetOf, sendTextOf } from '../../hooks/cold-send.ts';
-import { indexMarks } from '../../inbox/marks.ts';
+import { indexMarks, RECEIVER_TABS, tabsOf } from '../../inbox/marks.ts';
 import { closedOf, SessionLog } from '../../sessions/log.ts';
 import { SessionRecordStore } from '../../sessions/record.ts';
 import { teamZone, type Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
 import { postUrgentLine } from '../urgent-line.ts';
-import { RECEIVER_TABS, tabsOf } from './hook-cold-send.ts';
 import { inboxDepsOf } from './inbox.ts';
 
 /**
