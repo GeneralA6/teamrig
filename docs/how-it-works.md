@@ -578,7 +578,8 @@ sequenceDiagram
 A refresh, by hand or automatic, wipes what the tab showed. So teamrig keeps each session's prompts and replies
 for a day, for the task pane to show: one file per session and UTC hour,
 `state/turn-log/<session>/<YYYY-MM-DDTHH>.jsonl`, one JSON line per prompt you sent, per reply the session wrote
-(every text it showed in the turn, not only the last) and per /clear or compaction. Secret shapes are masked as
+(every text it showed in the turn, not only the last) and per /clear or compaction. A prompt teamrig had the tab
+submit itself, a [wake](#waking-on-urgent-work), is marked `from: "teamrig"`, so it never reads as yours. Secret shapes are masked as
 in the register, and an entry keeps at most 64,000 characters, the end of a longer one. Entries are only appended,
 and each session start removes the hour files wholly past `turnLog.keepHours` (24 by default, 1 to 168), so a
 busy session keeps a day's worth and no file is ever rewritten. `turnLog.enabled: false` writes nothing. A reader
