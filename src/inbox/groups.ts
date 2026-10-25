@@ -1,28 +1,41 @@
 import { LeadTree } from '../config/lead-tree.ts';
+import type { TeamTree } from '../config/tree.ts';
 import type { KitConfig } from '../config/types.ts';
-import { splitAddress, type AddressText } from '../core/address.ts';
-import { NAME_PATTERN } from '../core/ids.ts';
+import { splitAddress, type AddressText, type SessionAddress } from '../core/address.ts';
+import { ID_PATTERN, NAME_PATTERN } from '../core/ids.ts';
 
 /**
- * One comma-separated item of `inbox add --to` (T1134): a group of the sender's own team, or one session as typed. A
- * bare `all` or `leads` is the group; `<team>/<id>` always names one session, so a session called `all` stays
- * reachable as `<its team>/all`.
+ * One comma-separated item of `inbox add --to` (T1134): a group of the sender's own team, a group of its tree (T1150:
+ * `team:<team>` every session of that team, `tree:leads` every team's lead), or one session as typed. A bare `all` or
+ * `leads` is the group; `<team>/<id>` always names one session, so a session called `all` stays reachable as
+ * `<its team>/all`.
  */
 export type ToItem =
   | { readonly kind: 'all' }
   | { readonly kind: 'leads' }
   | { readonly kind: 'group'; readonly leader: string }
+  | { readonly kind: 'team'; readonly team: string }
+  | { readonly kind: 'tree-leads' }
   | { readonly kind: 'session'; readonly address: AddressText };
 
 const GROUP_PREFIX = 'group:';
+const TEAM_PREFIX = 'team:';
+const TREE_LEADS = 'tree:leads';
 
 function toItemOf(text: string): ToItem | undefined {
   if (text === 'all' || text === 'leads') {
     return { kind: text };
   }
+  if (text === TREE_LEADS) {
+    return { kind: 'tree-leads' };
+  }
   if (text.startsWith(GROUP_PREFIX)) {
     const leader = text.slice(GROUP_PREFIX.length);
     return NAME_PATTERN.test(leader) ? { kind: 'group', leader } : undefined;
+  }
+  if (text.startsWith(TEAM_PREFIX)) {
+    const team = text.slice(TEAM_PREFIX.length);
+    return ID_PATTERN.test(team) ? { kind: 'team', team } : undefined;
   }
   const address = splitAddress(text);
   return address === undefined ? undefined : { kind: 'session', address };
@@ -61,4 +74,19 @@ export function groupIds(config: Pick<KitConfig, 'sessions' | 'roles' | 'leads'>
       ? config.sessions.filter((id) => tree.isLeader(id))
       : config.sessions.filter((id) => id === group.leader || tree.leads(group.leader, id));
   return { ok: true, ids: ids.filter((id) => id !== sender) };
+}
+
+/**
+ * Every team's lead in the tree `team` hangs in, as `{ team, id }`, the root first, then depth first; undefined when
+ * the parents above `team` go round a loop, so the tree has no root to start from.
+ */
+export function treeLeadsOf(tree: TeamTree, team: string): SessionAddress[] | undefined {
+  const root = tree.rootOf(team);
+  if (root === undefined) {
+    return undefined;
+  }
+  return tree.walk(root).flatMap((step) => {
+    const id = tree.leadOf(step.team);
+    return id === undefined ? [] : [{ team: step.team, id }];
+  });
 }
