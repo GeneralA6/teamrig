@@ -1,5 +1,6 @@
 import { errorMessage } from "../../core/guards.js";
-import { activeHires, HiringLog } from "../../hiring/log.js";
+import { HiringLog } from "../../hiring/log.js";
+import { activeHires } from "../../hiring/record.js";
 import { SessionAskStore } from "../../core/session-asks.js";
 import { ownsOpenTask, retireAskDue, retireAskReason } from "../../hiring/retire-ask.js";
 import { JsonlEventLog } from "../../register/store.js";

@@ -1,62 +1,5 @@
-import { isEffortLevel } from "../config/types.js";
-import { stringField } from "../core/guards.js";
 import { assertWritable, parseJsonl, toJsonlLine, VERSION_FIELD } from "../core/jsonl.js";
-import { parseUtcDay } from "../core/time.js";
-/**
- * The team's hires and retires, an append-only log: who joined for what job, on whose say-so, until which
- * review day, for which burst if any, and who left, with which handover and to which heir. A session whose
- * newest record is a hire is a hired session.
- */
-/**
- * The format of the hire log's records; a newer one is skipped on read and refuses a write. Format 2 dropped the
- * hire's fixed `dailyPct`, so a teamrig that still requires it refuses to write beside a hire it cannot read.
- */
-export const HIRE_FORMAT = 2;
-/** The formats read: a hire stays on the team for weeks, so a format-1 hire still counts, its `dailyPct` ignored. */
-const READ_FORMATS = [1, HIRE_FORMAT];
-function isHire(record) {
-    return record.kind === 'hire';
-}
-function isRetire(record) {
-    return record.kind === 'retire';
-}
-/** Each session's newest record, in the order the sessions first appear. */
-function newestBySession(records) {
-    const newest = new Map();
-    for (const record of records) {
-        newest.set(record.session, record);
-    }
-    return [...newest.values()];
-}
-/** The sessions hired and not retired since, each with its newest hire, in the order they were first hired. */
-export function activeHires(records) {
-    return newestBySession(records).filter(isHire);
-}
-/** The sessions retired and not hired again since, each with its retire, in the order they first appear. */
-export function retiredSessions(records) {
-    return newestBySession(records).filter(isRetire);
-}
-/**
- * The retire a hired session came back from: the retire before its newest hire, when that hire is a rehire of a
- * retired id. Undefined for a first hire, a retired session, or an id with no record.
- */
-export function rehiredFrom(records, session) {
-    let retire;
-    let from;
-    for (const record of records) {
-        if (record.session !== session) {
-            continue;
-        }
-        if (isHire(record)) {
-            from = retire;
-        }
-        else {
-            retire = record;
-            from = undefined;
-        }
-    }
-    return from;
-}
+import { HIRE_FORMAT, isHire, readHiringLog } from "./record.js";
 function recordOf(record) {
     const base = { [VERSION_FIELD]: HIRE_FORMAT, kind: record.kind, session: record.session, reason: record.reason, by: record.by, at: new Date(record.at).toISOString() };
     if (!isHire(record)) {
@@ -77,64 +20,6 @@ function recordOf(record) {
         ...(record.burst === undefined ? {} : { burst: new Date(record.burst).toISOString() }),
     };
 }
-function instantOf(record, key) {
-    const text = stringField(record, key);
-    const at = text === undefined ? Number.NaN : Date.parse(text);
-    return Number.isNaN(at) ? undefined : at;
-}
-/** One record as a hire or a retire; undefined when it is damaged. */
-export function parseHiringRecord(record) {
-    const session = stringField(record, 'session');
-    const reason = stringField(record, 'reason');
-    const by = stringField(record, 'by');
-    const at = instantOf(record, 'at');
-    if (session === undefined || reason === undefined || by === undefined || at === undefined) {
-        return undefined;
-    }
-    if (record['kind'] === 'retire') {
-        const handover = stringField(record, 'handover');
-        const noHandover = stringField(record, 'noHandover');
-        const heir = stringField(record, 'heir');
-        return {
-            kind: 'retire',
-            session,
-            reason,
-            by,
-            at,
-            ...(handover === undefined ? {} : { handover }),
-            ...(noHandover === undefined ? {} : { noHandover }),
-            ...(heir === undefined ? {} : { heir }),
-        };
-    }
-    const scope = stringField(record, 'scope');
-    const reviewBy = stringField(record, 'reviewBy');
-    const effort = record['effort'];
-    const approvedBy = stringField(record, 'approvedBy');
-    const model = stringField(record, 'model');
-    const burst = instantOf(record, 'burst');
-    if (record['burst'] !== undefined && burst === undefined) {
-        return undefined;
-    }
-    if (record['kind'] !== 'hire' || scope === undefined || reviewBy === undefined || parseUtcDay(reviewBy) === undefined) {
-        return undefined;
-    }
-    if (effort !== undefined && !isEffortLevel(effort)) {
-        return undefined;
-    }
-    return {
-        kind: 'hire',
-        session,
-        scope,
-        reason,
-        ...(approvedBy === undefined ? {} : { approvedBy }),
-        ...(model === undefined ? {} : { model }),
-        ...(effort === undefined ? {} : { effort }),
-        reviewBy,
-        ...(burst === undefined ? {} : { burst }),
-        by,
-        at,
-    };
-}
 /** The team's append-only log of hires and retires, `<state>/hires.jsonl`, oldest first. */
 export class HiringLog {
     files;
@@ -144,15 +29,7 @@ export class HiringLog {
         this.path = path;
     }
     async read() {
-        const parse = parseJsonl((await this.files.read(this.path)) ?? '');
-        const records = [];
-        for (const { record, version } of parse.records) {
-            const parsed = READ_FORMATS.includes(version) ? parseHiringRecord(record) : undefined;
-            if (parsed !== undefined) {
-                records.push(parsed);
-            }
-        }
-        return { records, skipped: parse.unreadable + parse.records.length - records.length };
+        return readHiringLog((await this.files.read(this.path)) ?? '');
     }
     /** One whole line in one append; refused beside records from a newer teamrig. */
     async append(record) {
