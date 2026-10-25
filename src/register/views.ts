@@ -1,4 +1,3 @@
-import { KIT_NAME } from '../core/home.ts';
 import { parseDeadline, showStored, storedText } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { cardLines } from './card.ts';
@@ -474,7 +473,7 @@ export function assignedNotice(task: Pick<Task, 'id' | 'priority' | 'due' | 'tit
  * `T5 went to front (p2): Show the signup errors; reorder or reassign it: teamrig update T5 --priority|--after|--owner`.
  */
 export function askedNotice(task: Pick<Task, 'id' | 'owner' | 'priority' | 'due' | 'title'>, zone: TimeZone): string {
-  return `${task.id} went to ${task.owner} (${priorityAndDue(task, zone)}): ${task.title}; reorder or reassign it: ${KIT_NAME} update ${task.id} --priority|--after|--owner`;
+  return `${task.id} went to ${task.owner} (${priorityAndDue(task, zone)}): ${task.title}; reorder or reassign it: teamrig update ${task.id} --priority|--after|--owner`;
 }
 
 function priorityAndDue(task: Pick<Task, 'priority' | 'due'>, zone: TimeZone): string {
