@@ -30,7 +30,7 @@ function input(overrides: Partial<DoctorInput> & { readonly names?: Record<strin
     requirements: [],
     inboxes: [],
     retired: new Set(),
-    teamRules: undefined,
+    teamRules: [],
     contextFiles: { read: { claudeMd: [], memoryIndex: undefined, skills: { folders: [], count: 0, chars: 0 } }, budgets: DEFAULT_CONTEXT_FILES },
     sessionLists: undefined,
     tree: { problems: [], clashes: [] },
@@ -112,7 +112,7 @@ describe('doctorFindings', () => {
     const renames = [renameOf('alpha', 'app-alpha', 'scout'), renameOf('bravo', 'app-bravo', 'app-alpha'), renameOf('alpha', 'scout', 'ranger')];
     const read = ['- 2030-01-02 09:00 lead: old'];
     const inboxes = [unreadOf('alpha', [...read, '- 2030-01-19 09:00 lead: new'], markAt('alpha', read, '2030-01-18T09:00:00Z'), lineHash)];
-    assert.deepEqual(lines(input({ renames, inboxes, teamRules: { path: 'rules.md', chars: TEAM_RULES_MAX_CHARS } })), []);
+    assert.deepEqual(lines(input({ renames, inboxes, teamRules: [{ path: 'rules.md', chars: TEAM_RULES_MAX_CHARS }] })), []);
   });
 
   it('flags a removed session\'s names, a shared name and a former name another session holds now', () => {
@@ -202,8 +202,30 @@ describe('doctorFindings', () => {
   });
 
   it('flags rules too long to show at session start', () => {
-    assert.deepEqual(lines(input({ teamRules: { path: 'rules.md', chars: TEAM_RULES_MAX_CHARS + 1 } })), [
+    assert.deepEqual(lines(input({ teamRules: [{ path: 'rules.md', chars: TEAM_RULES_MAX_CHARS + 1 }] })), [
       `WARN rules-long rules.md is ${TEAM_RULES_MAX_CHARS + 1} characters, more than the ${TEAM_RULES_MAX_CHARS} a session is shown at start, so sessions get only a pointer to it: shorten it to keep it in every session's context`,
+    ]);
+  });
+
+  it('flags a rules file that fits alone but not beside the files of the teams above, and skips an empty one', () => {
+    const teamRules = [
+      { path: 'app/rules.md', chars: 1_500 },
+      { path: 'web/rules.md', chars: 0 },
+      { path: 'ui/rules.md', chars: 1_000 },
+      { path: 'own/rules.md', chars: 1_000 },
+    ];
+    assert.deepEqual(lines(input({ teamRules })), [
+      `WARN rules-long own/rules.md is 1000 characters, but the team rules shown before it (app/rules.md, ui/rules.md) take 2500 of the ${TEAM_RULES_MAX_CHARS} a session is shown at start, so sessions get only a pointer to it: shorten one of them`,
+    ]);
+  });
+
+  it('still counts a short file below a long one as shown, as the start does', () => {
+    const teamRules = [
+      { path: 'app/rules.md', chars: TEAM_RULES_MAX_CHARS + 1 },
+      { path: 'own/rules.md', chars: TEAM_RULES_MAX_CHARS },
+    ];
+    assert.deepEqual(lines(input({ teamRules })), [
+      `WARN rules-long app/rules.md is ${TEAM_RULES_MAX_CHARS + 1} characters, more than the ${TEAM_RULES_MAX_CHARS} a session is shown at start, so sessions get only a pointer to it: shorten it to keep it in every session's context`,
     ]);
   });
 });
