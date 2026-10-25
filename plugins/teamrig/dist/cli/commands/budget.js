@@ -17,17 +17,18 @@ import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID } from 
 import { budgetSplitOf, dailyBudgetOf, groupPartsOf, liftPlaceOf, teamPartOf } from "../../budget/parts.js";
 import { nextPeriod, sightOf } from "../../budget/period.js";
 import { burnLines, loopLines, missLines, missMatrixLines, recountLines, sessionLines, sumDays, sumUsage, taskLines, todayLines, weekLine, } from "../../budget/report.js";
-import { datedSnapshot, defaultSnapshotDir, formatSnapshot, parseSnapshot, pruneSnapshots, snapshotDirOf, snapshotOfStatus, statusLineText, weekUseOf, } from "../../budget/snapshot.js";
+import { datedSnapshot, defaultSnapshotDir, formatSnapshot, parseSnapshot, pruneSnapshots, snapshotDirOf, snapshotOfStatus, statusLineText, } from "../../budget/snapshot.js";
 import { CURSOR_DAYS_KEPT, DAYS_KEPT, EMPTY_USAGE, MemoryUsageStore, UsageStore } from "../../budget/store.js";
 import { attributedW, taskUseOf } from "../../budget/task-use.js";
 import { teamWeekOf } from "../../budget/team-week.js";
+import { foldIntoWeekSummary } from "../../budget/week-summary.js";
 import { readWeek, wSince } from "../../budget/week.js";
 import { readWork } from "../../budget/work.js";
 import { JsonlMarkLog } from "../../inbox/store.js";
 import { indexMarks } from "../../inbox/marks.js";
 import { customTitleOf, TRANSCRIPT_TAIL_BYTES } from "../../names/title.js";
 import { TASK_ID } from "../../register/model.js";
-import { otherTeamsOnAccount, snapshotsOnAccount } from "../account-teams.js";
+import { otherTeamsOnAccount, weekUseOnAccount } from "../account-teams.js";
 import { UsageError, onePositional, requiredFlag } from "../args.js";
 import { callerOf } from "../inputs.js";
 import { openKit, openTeamKit, requireConfig, rosterOf, sessionIdOf, teamFolders, teamZone } from "../kit.js";
@@ -73,8 +74,7 @@ async function readBudget(runtime, kit, config, roster, options) {
         chunkBytes: CATCH_UP_CHUNK_BYTES,
         maxRuns: MAX_RUNS_PER_SESSION,
     });
-    const snapshots = recount ? [] : await snapshotsOnAccount(runtime, config.budget, kit.paths);
-    const statusUse = weekUseOf(snapshots, now);
+    const statusUse = recount ? undefined : await weekUseOnAccount(runtime, config.budget, kit.paths, now);
     const states = [...measured.bySession.values(), measured.outside];
     const input = { budget: config.budget, now, statusUse, states };
     // A recount reads no team state, the meter log included: its rate is the configured one.
@@ -445,6 +445,15 @@ function statusLineView(git, dir, show) {
         resume: show.resume,
     };
 }
+/** Folds the saved snapshot into the folder's week summary (`foldIntoWeekSummary`); a failure is told on stderr, never breaking the status bar. */
+async function foldQuietly(runtime, dir, snapshot) {
+    try {
+        await foldIntoWeekSummary(runtime.files, dir, snapshot, runtime.clock.now());
+    }
+    catch (error) {
+        runtime.out.stderr(`teamrig statusline: the week summary was not updated: ${errorMessage(error)}`);
+    }
+}
 /** Prunes the snapshot folder's old snapshots and left temporaries (`pruneSnapshots`); a failure is told on stderr, never breaking the status bar. */
 async function pruneQuietly(runtime, dir) {
     try {
@@ -457,7 +466,8 @@ async function pruneQuietly(runtime, dir) {
 /**
  * `statusline`: Claude Code's status line. It saves the status input's reading (the plan's use of the
  * week and its reset) as a snapshot for `budget`, dated by the session's previous snapshot (when the
- * session began to show it, and when it last showed another), removes the folder's snapshots written more
+ * session began to show it, and when it last showed another), folds it into the folder's week summary (the
+ * newest reading, which readers open instead of every snapshot), removes the folder's snapshots written more
  * than 8 days ago (at most one sweep an hour), and prints a short status: the model, the session's
  * folder and branch, the plan's use and the command that resumes the session, as the team's `statusLine`
  * config shows them. It always exits 0, so a bad input or a full disk never breaks the status bar; what
@@ -484,7 +494,9 @@ export async function statusline(args, runtime) {
         show = setup.show;
         const path = join(setup.snapshotDir, `${snapshot.sessionId}.json`);
         const previous = await runtime.files.read(path);
-        await runtime.files.write(path, formatSnapshot(datedSnapshot(snapshot, previous === undefined ? undefined : parseSnapshot(previous))));
+        const dated = datedSnapshot(snapshot, previous === undefined ? undefined : parseSnapshot(previous));
+        await runtime.files.write(path, formatSnapshot(dated));
+        await foldQuietly(runtime, setup.snapshotDir, dated);
         await pruneQuietly(runtime, setup.snapshotDir);
     }
     catch (error) {
