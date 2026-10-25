@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { join, resolve } from 'node:path';
 import { mock, test } from 'node:test';
 import type { Gh } from './github.ts';
 import type { Credential } from './keychain.ts';
@@ -256,7 +257,9 @@ interface RunFixture {
   local?: { checkedOut?: string; status?: string; record?: string; exit?: number };
 }
 
-const RECORD_PATH = 'C:/repo/.git/local-ci/tree-checked.json';
+/** The git folder as git names it for a linked worktree: absolute on every OS ('C:/repo/.git' is relative on POSIX). */
+const GIT_DIR = resolve('/repo/.git');
+const RECORD_PATH = join(GIT_DIR, 'local-ci', 'tree-checked.json').replaceAll('\\', '/');
 const LOCAL_PROFILE = '"local":{"runner":"tools/ci/local.ts"}';
 const RUNNER = 'runner tools/ci/local.ts';
 
@@ -273,7 +276,7 @@ function fakeGate(local: NonNullable<RunFixture['local']>, log: (line: string) =
     'rev-parse HEAD': local.checkedOut ?? SHA,
     'status --porcelain': local.status ?? '',
     'rev-parse HEAD^{tree}': 'tree-checked',
-    'rev-parse --git-common-dir': 'C:/repo/.git',
+    'rev-parse --git-common-dir': GIT_DIR,
   };
   const gate: GateDeps = {
     git: (...args) => {
@@ -439,7 +442,9 @@ test('on the local gate it runs the repo runner on the checked-out head, records
   assert.ok(out.includes(`pass: ${RUNNER} (2s)`));
   assert.ok(!out.some(line => line.startsWith('check ')), 'no GitHub check is read');
   assert.equal(local.written.length, 1);
-  assert.match(local.written[0] ?? '', /^C:\/repo\/\.git\/local-ci\/tree-checked\.json \{\n {2}"tree": "tree-checked",\n {2}"commit": "abc1234def",\n {2}"checks": \[\n {4}"runner tools\/ci\/local\.ts"\n {2}\],\n {2}"passedAt": "2026-10-15T10:00:00\.000Z"/);
+  const [record] = local.written;
+  assert.equal(record?.slice(0, RECORD_PATH.length + 1), `${RECORD_PATH} `);
+  assert.match(record?.slice(RECORD_PATH.length + 1) ?? '', /^\{\n {2}"tree": "tree-checked",\n {2}"commit": "abc1234def",\n {2}"checks": \[\n {4}"runner tools\/ci\/local\.ts"\n {2}\],\n {2}"passedAt": "2026-10-15T10:00:00\.000Z"/);
   assert.equal(out.at(-1), 'MERGED #3 into main, now at main999');
 });
 
