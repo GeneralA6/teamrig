@@ -55,7 +55,7 @@ export async function nestedClaudeMd(files, probe, project) {
     return { paths, capped: false };
 }
 /** The `.md` files in `folder` and its subfolders, up to MARKDOWN_DEPTH deep, sorted. */
-async function markdownBelow(files, probe, folder, depth = 1) {
+export async function markdownBelow(files, probe, folder, depth = 1) {
     const found = [];
     for (const name of (await files.list(folder)).sort()) {
         const path = join(folder, name);
@@ -141,7 +141,7 @@ export async function findRulePlaces(files, probe, at) {
         ],
         skill: skillPaths,
         memory: await markdownBelow(files, probe, claudeMemoryDir(at.claudeDir, at.project)),
-        'team-rules': await existing(probe, [at.teamRules]),
+        'team-rules': await existing(probe, at.teamRules === undefined ? [] : [at.teamRules]),
         hook: await existing(probe, await hookScripts(files, settings, at)),
         settings,
     };
