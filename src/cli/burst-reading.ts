@@ -2,10 +2,9 @@ import type { BurstRecord } from '../budget/burst.ts';
 import { BurstLog } from '../budget/burst-log.ts';
 import { weekWindow, type WeekWindow } from '../budget/pace.ts';
 import { PeriodStore } from '../budget/period.ts';
-import { readSnapshots, weekUseOf } from '../budget/snapshot.ts';
+import { readSnapshots, snapshotDirOf, weekUseOf } from '../budget/snapshot.ts';
 import type { BudgetConfig } from '../config/types.ts';
 import type { TeamPaths } from '../core/home.ts';
-import { snapshotDirOf } from './commands/budget.ts';
 import type { CliRuntime } from './runtime.ts';
 
 /**

@@ -1,7 +1,9 @@
-import { basename, join } from 'node:path';
+import { basename, isAbsolute, join } from 'node:path';
+import type { BudgetConfig } from '../config/types.ts';
 import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import { parseObject } from '../core/jsonl.ts';
 import { isTemporaryName, type Files } from '../core/files.ts';
+import type { TeamPaths } from '../core/home.ts';
 import { MS_PER_DAY, MS_PER_HOUR } from '../core/time.ts';
 import { CLAUDE_SESSION_ID } from '../inbox/marks.ts';
 
@@ -328,6 +330,19 @@ async function readSnapshotFiles(files: Pick<Files, 'list' | 'read'>, dir: strin
     }
   }
   return found;
+}
+
+/** Where the status line snapshots are: `budget.statusSnapshotDir` (relative to the team's folder), else `<kit home>/usage/live`. */
+export function snapshotDirOf(budget: Pick<BudgetConfig, 'statusSnapshotDir'>, paths: Pick<TeamPaths, 'home' | 'kitHome'>): string {
+  const dir = budget.statusSnapshotDir;
+  if (dir === undefined) {
+    return defaultSnapshotDir(paths.kitHome);
+  }
+  return isAbsolute(dir) ? dir : join(paths.home, dir);
+}
+
+export function defaultSnapshotDir(kitHome: string): string {
+  return join(kitHome, 'usage', 'live');
 }
 
 /** Every snapshot in a folder; other files and unreadable ones are skipped. */

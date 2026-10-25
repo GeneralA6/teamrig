@@ -1,3 +1,4 @@
+import { snapshotDirOf } from '../../budget/snapshot.ts';
 import { claimText, readClaims } from '../../coordinator/claims.ts';
 import { holderText, sharesText, type LockState } from '../../coordinator/host-lock.ts';
 import { parseLedger } from '../../coordinator/ledger.ts';
@@ -10,7 +11,6 @@ import type { ParsedArgs } from '../args.ts';
 import { hostLockOf, nextResetFrom } from '../coordinator-ports.ts';
 import { openTeamKit, requireConfig, teamZone } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { snapshotDirOf } from './budget.ts';
 
 function lockText(state: LockState, zone: TimeZone): string {
   switch (state.kind) {

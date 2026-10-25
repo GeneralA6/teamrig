@@ -1,13 +1,12 @@
 import { join } from 'node:path';
 import { OUTSIDE_ID } from '../budget/measure.ts';
-import { readSnapshots, weekUseOf } from '../budget/snapshot.ts';
+import { readSnapshots, snapshotDirOf, weekUseOf } from '../budget/snapshot.ts';
 import { UsageStore, type UsageState } from '../budget/store.ts';
 import { calibrationOf, MeterLog } from '../budget/calibration.ts';
 import { teamWeekOf } from '../budget/team-week.ts';
 import { rateOf, type WeekReading } from '../budget/week.ts';
 import type { KitConfig } from '../config/types.ts';
 import type { TeamPaths } from '../core/home.ts';
-import { snapshotDirOf } from './commands/budget.ts';
 import type { CliRuntime } from './runtime.ts';
 
 /** The team paths a stored reading of the week reads. */

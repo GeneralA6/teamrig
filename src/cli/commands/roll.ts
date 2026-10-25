@@ -1,3 +1,4 @@
+import { snapshotDirOf } from '../../budget/snapshot.ts';
 import { coordinatorPlaces, teamPlace } from '../../coordinator/places.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { deployTargets } from '../../roll/deploy.ts';
@@ -8,7 +9,6 @@ import { callerOf, commandWordsOf, listOf } from '../inputs.ts';
 import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf, teamZone } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { stoppableHooks, stoppableLock, stoppableSleep, stoppedWhileWaiting, unlessStopped, watchStarters } from '../stoppable.ts';
-import { snapshotDirOf } from './budget.ts';
 
 /** What a deploy that pulls nothing restarts, why, and the command that does it. */
 interface DeployParts {
