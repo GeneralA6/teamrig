@@ -44,7 +44,7 @@ describe('the read entry', () => {
   it('reaches no node: module and no package, so a reader without Node built-ins can run it', () => {
     const closure = importClosure(ENTRY, SRC, (file) => readFileSync(file, 'utf8'));
     assert.deepEqual(closure.outside, []);
-    for (const file of ['register/events.ts', 'register/fold.ts', 'register/layout.ts', 'register/marker.ts', 'inbox/unread.ts', 'config/parse.ts']) {
+    for (const file of ['register/events.ts', 'register/fold.ts', 'register/layout.ts', 'register/marker.ts', 'inbox/unread.ts', 'config/parse.ts', 'config/tree.ts', 'hiring/record.ts']) {
       assert.ok(closure.files.includes(file), `${file} is part of the read side`);
     }
     assert.ok(!closure.files.some((file) => file.endsWith('.test.ts')), 'no test file is reachable');
@@ -92,6 +92,39 @@ describe('the read entry', () => {
     const tree = new read.LeadTree(config.config);
     assert.deepEqual(['alpha', 'beta', 'sub', 'lead'].map((id) => tree.leaderOf(id)), ['sub', 'lead', 'lead', undefined]);
     assert.deepEqual([tree.membersOf('sub'), tree.membersOf('lead'), tree.groupOf('lead')], [['alpha'], ['sub', 'beta'], ['sub', 'alpha', 'beta']]);
+  });
+
+  it("finds a team's parent, children, root and lead from each team config's parent link", () => {
+    const nodeOf = (team: string, text: string): read.TeamNode => {
+      const config = read.parseConfigText(text);
+      assert.ok(config.status === 'loaded');
+      return read.teamNodeOf(team, config.config, new read.Roster(config.config, team));
+    };
+    const tree = new read.TeamTree([
+      nodeOf('acme', JSON.stringify({ configVersion: read.CONFIG_VERSION, sessions: ['lead', 'alpha'], roles: { lead: 'lead' } })),
+      nodeOf('web', JSON.stringify({ configVersion: read.CONFIG_VERSION, team: { id: 'web', parent: 'acme' }, sessions: ['wlead'], roles: { lead: 'wlead' } })),
+    ]);
+    assert.deepEqual([tree.parentOf('web'), tree.parentOf('acme'), tree.childrenOf('acme'), tree.rootOf('web'), tree.leadOf('web')], [
+      'acme',
+      undefined,
+      ['web'],
+      'acme',
+      'wlead',
+    ]);
+    assert.deepEqual(tree.node('acme')?.sessions, ['lead', 'alpha']);
+  });
+
+  it('reads the hire log as the hire and retire commands count it, and skips a line from a newer teamrig', () => {
+    const at = '2030-01-08T10:00:00.000Z';
+    const hire = (session: string, version = read.HIRE_FORMAT): string =>
+      JSON.stringify({ v: version, kind: 'hire', session, scope: 'port the importer', reason: 'release week', reviewBy: '2030-01-15', by: 'lead', at });
+    const retire = JSON.stringify({ v: read.HIRE_FORMAT, kind: 'retire', session: 'helper', reason: 'job done', heir: 'alpha', by: 'lead', at });
+    const log = read.readHiringLog([hire('helper'), hire('scout'), retire, hire('later', read.HIRE_FORMAT + 1), ''].join('\n'));
+    assert.equal(log.skipped, 1);
+    assert.deepEqual(read.activeHires(log.records).map((record) => record.session), ['scout']);
+    assert.deepEqual(read.retiredSessions(log.records).map((record) => [record.session, record.heir]), [['helper', 'alpha']]);
+    const again = read.readHiringLog([hire('helper'), retire, hire('helper'), ''].join('\n'));
+    assert.equal(read.rehiredFrom(again.records, 'helper')?.reason, 'job done');
   });
 
   it('finds the unread inbox lines with the line hash the reader hands in', () => {
