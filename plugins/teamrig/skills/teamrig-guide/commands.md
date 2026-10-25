@@ -683,8 +683,8 @@ Flags:
 - `--session <id|name>`: the sender.
 - `--to <to>`: the receiver, or several, comma-separated, each named once however often the list names it:
   - `<id|name>`: a session of your team.
-  - `<team>/<id>`: a session of another team of the tree; only a lead may use it, to its parent team's lead or its
-    child teams' leads. It always names one session, so a session called `all` is `<team>/all`.
+  - `<team>/<id>`: any session of another team of your tree, members and sibling teams included; a team of a
+    separate tree is out of reach. It always names one session, so a session called `all` is `<team>/all`.
   - `all`: every session of your team; `leads`: its lead and its sub-leads; `group:<leader>`: that lead or sub-lead
     and every session under it, at any depth. A group leaves you out.
 - `--text "<one line>"`: the note: one non-empty line, no secrets.

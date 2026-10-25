@@ -96,8 +96,9 @@ talk to one lead: the root team's.
 - Each team keeps its own folder, config, task list and inboxes. Its config names its parent team
   (`"team": {"id": "web", "parent": "your-team"}`), so the tree is read from the configs, with no other file to keep
   in step. A tree has at most 3 levels and a team at most 8 child teams.
-- A member writes notes to its own team only. A lead also writes to its parent team's lead and to its child teams'
-  leads, so a question for you goes up lead by lead to the root. Anything else is refused: escalate through your lead.
+- Any session writes a note to any session of its tree, `<team>/<id>`, with no relay through the leads between them:
+  a note wakes no one and hands no work, which is a task on the receiver's own register. Teams of separate trees never
+  reach each other. A question for you still goes up lead by lead to the root's lead, who talks to you.
 - Claude Code session names are machine-wide, so two teams never share one: `team create` refuses a clash and
   `teamrig doctor` names one, along with a broken link in the tree.
 - `teamrig team tree` prints the tree with each team's lead and sessions.
