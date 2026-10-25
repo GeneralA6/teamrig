@@ -6,9 +6,10 @@ import { parseJsonl, toJsonlLine } from '../core/jsonl.ts';
  * The cold-send hook, PreToolUse on SendMessage. A message wakes its receiver, and a receiver idle
  * past Claude Code's prompt cache wakes cold: its first call re-reads its whole context at full
  * price, about eight times a warm wake. So a message to a team session idle `coldAfterMinutes` or
- * longer is held once, with a note to write an inbox line instead, or to put every ask for that
- * session in the message and send it again: the same tab's next send to it within
- * RESEND_WINDOW_MS goes through.
+ * longer is held once, with a note to write an inbox line instead (with wakes on, marked `--wake now`
+ * when the receiver must act now, so lines posted together wake it once), or to send it again: the
+ * same tab's next send to it within RESEND_WINDOW_MS goes through. With wakes on that resend is kept
+ * for a live back-and-forth; with them off it carries every ask for that session.
  */
 
 export const COLD_SEND_VERSION = 1;
@@ -86,6 +87,8 @@ export interface ColdSendFacts {
   readonly now: Date;
   /** The command name the note tells the sender to run. */
   readonly command: string;
+  /** Whether an inbox line can wake the receiver (`wake.enabled`), so the note offers `--wake now`. */
+  readonly wakeNow: boolean;
 }
 
 export type ColdSendVerdict = { readonly kind: 'send' } | { readonly kind: 'hold'; readonly reason: string };
@@ -95,10 +98,19 @@ const SEND: ColdSendVerdict = { kind: 'send' };
 export function coldSendReason(facts: ColdSendFacts): string {
   const minutes = Math.floor(facts.idleMs / 60_000);
   const window = RESEND_WINDOW_MS / 60_000;
+  const held = `Held once: ${facts.name} has been idle ${minutes} min, so this message would wake it cold (its first call re-reads its whole context at full price, about 8 times a warm wake). `;
+  const line = `${facts.command} inbox add --to ${facts.to} --text "..."`;
+  if (!facts.wakeNow) {
+    return (
+      held +
+      `If it need not act now (no blocker, incident, decision or same-area conflict), write one inbox line instead: ${line}. ` +
+      `If it must go now, put every ask you have for ${facts.name} in this one message and send it again: a send to it within ${window} min goes through.`
+    );
+  }
   return (
-    `Held once: ${facts.name} has been idle ${minutes} min, so this message would wake it cold (its first call re-reads its whole context at full price, about 8 times a warm wake). ` +
-    `If it need not act now (no blocker, incident, decision or same-area conflict), write one inbox line instead: ${facts.command} inbox add --to ${facts.to} --text "...". ` +
-    `If it must go now, put every ask you have for ${facts.name} in this one message and send it again: a send to it within ${window} min goes through.`
+    held +
+    `Write it as one inbox line instead: ${line}, with --wake now if it must act now (a blocker, incident, decision or same-area conflict), so lines posted together wake it once. ` +
+    `Only for a live back-and-forth, send it again: a send to it within ${window} min goes through.`
   );
 }
 

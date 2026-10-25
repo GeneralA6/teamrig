@@ -18,8 +18,8 @@ function send(to: string, message = 'Review the fix on T1.'): string {
 }
 
 /** A team in idle mode `mode` whose alpha the idle pass closed, and whose lead reads its inbox in the sending tab. */
-async function closedAlpha(mode: string): Promise<CliHarness> {
-  const config: JsonRecord = { ...TEAM, open: { idle: { mode } } };
+async function closedAlpha(mode: string, extra: JsonRecord = {}): Promise<CliHarness> {
+  const config: JsonRecord = { ...TEAM, open: { idle: { mode } }, ...extra };
   const kit = new CliHarness(config);
   await new SessionLog(kit.files, join(TEAM_HOME, 'state', 'session-log.jsonl')).append(CLOSED);
   const read = await kit.run(['inbox', 'read', '--session', 'lead'], { env: { CLAUDE_CODE_SESSION_ID: CLAUDE_SESSION } });
@@ -45,7 +45,7 @@ describe('a send to a session teamrig closed', () => {
     assert.equal(decisionOf(held), 'deny');
     assert.match(
       reasonOf(held) ?? '',
-      /^app-alpha is closed \(idle-pass closed it at \d\d:\d\d \S+\), so this message cannot reach it; teamrig posted it as an urgent line in its inbox, and the idle pass reopens it within about a minute with the line quoted in its first prompt\. Do not send it again\.$/,
+      /^app-alpha is closed \(idle-pass closed it at \d\d:\d\d \S+\), so this message cannot reach it; teamrig posted it as an urgent line in its inbox, and the idle pass reopens it within about a minute with the line quoted in its first prompt\. Do not send it again\. Next time post it yourself: teamrig inbox add --to alpha --text "\.\.\." --wake now\.$/,
     );
     assert.deepEqual(validAsksOf(await new WakeAsks(kit.files, ASKS).read('alpha')), [{ from: 'lead', text: 'Review the fix on T1.', at: kit.clock.now() }]);
     const inbox = await kit.run(['inbox', 'read', '--session', 'alpha']);
@@ -84,7 +84,14 @@ describe('a send to a session teamrig closed', () => {
     assert.equal(decisionOf(held), 'deny');
     assert.match(
       reasonOf(held) ?? '',
-      /^app-alpha is closed \(.*\), so this message cannot reach it, and teamrig could not post it as an urgent line: posted to the inbox, but it does not wake alpha: EACCES: permission denied\. Tell the lead the urgent line failed; unless that says it is in the inbox, leave it with teamrig inbox add --to alpha --text "\.\.\." once that is fixed\.$/,
+      /^app-alpha is closed \(.*\), so this message cannot reach it, and teamrig could not post it as an urgent line: posted to the inbox, but it does not wake alpha: EACCES: permission denied\. Tell the lead the urgent line failed; unless that says it is in the inbox, leave it with teamrig inbox add --to alpha --text "\.\.\." --wake now once that is fixed\.$/,
     );
+  });
+
+  it('names no --wake now on a team with wakes off', async () => {
+    const kit = await closedAlpha('on', { wake: { enabled: false } });
+    const held = await coldSend(kit, send('alpha'));
+    assert.equal(decisionOf(held), 'deny');
+    assert.match(reasonOf(held) ?? '', /Do not send it again\.$/);
   });
 });

@@ -412,7 +412,7 @@ export async function failedSend(args: ParsedArgs, runtime: CliRuntime): Promise
     return EXIT.ok;
   }
   const receiver = (await rosterOf(runtime, kit, kit.load.config)).lookup(failed.to);
-  runtime.out.stdout(postToolUseContext(failedSendLine(failed, receiver.ok ? receiver.id : undefined, KIT_NAME)));
+  runtime.out.stdout(postToolUseContext(failedSendLine(failed, receiver.ok ? receiver.id : undefined, KIT_NAME, kit.load.config.wake.enabled)));
   return EXIT.ok;
 }
 

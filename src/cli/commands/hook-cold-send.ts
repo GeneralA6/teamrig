@@ -43,6 +43,7 @@ export async function coldSendHold(runtime: CliRuntime, kit: Kit, config: KitCon
     coldAfterMinutes,
     now: new Date(now),
     command: KIT_NAME,
+    wakeNow: config.wake.enabled,
   });
   return verdict.kind === 'hold' ? holdOutput(verdict.reason) : undefined;
 }
