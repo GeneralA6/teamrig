@@ -79,6 +79,8 @@ No more twelve-hour days steering agents by hand. With teamrig, your part takes 
 3. **Drop in when you like.** A few decisions may be waiting: the lead brings them in batches, not one interruption
    each, and one that cannot wait at once. Answer them and go: the team keeps working.
 
+![A lead's morning in its own tab, one plain sentence a step, each tool run folded into one line. data asks whether to rerun last night's failed import now; that is operational, so the lead decides it, sends data the answer, and data goes back to work. The week's plan holds only 7 tasks; the lead fills it to 48, fitted to the week's tokens, and the flags fall from 63 to 12. Host memory is low, 1.8 GB free, so it closes docs and tests, idle with nothing to start: 3.9 GB free, and teamrig open resumes either one. web's question is a product call, so it waits for your morning meeting.](docs/images/lead-morning.svg)
+
 ## Why it's different
 
 Each of these is something a single Claude Code tab can't do on its own.
