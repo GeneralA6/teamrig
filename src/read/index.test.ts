@@ -169,6 +169,16 @@ describe('the read entry', () => {
     assert.deepEqual(['alpha', 'a-2', 'Alpha', '2a', '../x', ''].map((name) => read.SESSION_NAME.test(name)), [true, true, false, false, false, false]);
   });
 
+  it('words a session as the tab titles do: its team in brackets, then its name without the team prefix', () => {
+    assert.deepEqual(['acme-lead', 'team-lead', 'acme-', 'acmes-web'].map((name) => read.sessionDisplay('acme', name)), [
+      '[acme] lead',
+      '[acme] team-lead',
+      '[acme] acme-',
+      '[acme] acmes-web',
+    ]);
+    assert.deepEqual(['acme-lead', 'lead'].map((name) => read.bareName('acme', name)), ['lead', 'lead']);
+  });
+
   it('reads a turn-log line as the hooks write it, and none from a newer teamrig', () => {
     const reply = { at: '2030-01-08T09:00:00.000Z', kind: 'reply', text: 'shipped', claude: 'claude-1', truncated: true, upTo: 'u-7' };
     assert.deepEqual(read.parseEntry({ v: read.TURN_LOG_VERSION, ...reply, later: 'a field it does not know' }), reply);

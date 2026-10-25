@@ -806,3 +806,5 @@ names, so the effective dues and needed-by names it shows are the ones teamrig p
 From each team's config and roster it builds the team tree (`teamNodeOf` per team, then `TeamTree`: a team's parent,
 children and root), and from the text of the hire log it reads who was hired and who retired (`readHiringLog`, then
 `activeHires`, `retiredSessions`, `rehiredFrom`), the same records teamrig's routing and hire commands use.
+It words a session as the tab titles do, `[acme] lead`, through `sessionDisplay` (and `bareName`, the name without
+its team's prefix), so the reader and the titles cannot drift.
