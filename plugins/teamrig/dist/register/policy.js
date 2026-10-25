@@ -7,6 +7,7 @@ import { CARD_FLAGS, cardProblem, cardTexts, GATE_FLAG, gateOf, gateUsage, keptC
 import { sizeProblem } from "./events.js";
 import { taskNumber } from "./fold.js";
 import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, priorityText, SESSION_NAME, WAIT_STATUSES } from "./model.js";
+import { isProblem, missedTaskIds, reviewGap, reviewGapText, reviewProblem, reviewTexts } from "./review.js";
 import { loopFix, needPath, NO_TASKS_ELSEWHERE, pathText } from "./tree.js";
 import { dueStartHolds, dueVerifyHold, heldStart, startHolds } from "./verify.js";
 import { isPeerWait, sameWait, waitSpelling } from "./waits.js";
@@ -170,7 +171,8 @@ export class RegisterPolicy {
         if (!due.ok) {
             return due;
         }
-        const same = proof.value === task.proof && due.value === null && sameWaits(waits.value, task.waits) && sameCard(card.value, task.card);
+        const givesReview = reviewTexts(input.review ?? {}).length > 0;
+        const same = !givesReview && proof.value === task.proof && due.value === null && sameWaits(waits.value, task.waits) && sameCard(card.value, task.card);
         if (input.status === task.status && note === null && same) {
             return refuse(`${task.id} is already ${task.status}; add --note to record why you set it again`);
         }
@@ -198,12 +200,20 @@ export class RegisterPolicy {
         if (!followups.ok) {
             return followups;
         }
+        const review = this.checkReview(task, input, context);
+        if (!review.ok) {
+            return review;
+        }
+        // A missed part's follow-up (the test, monitor or log it adds) joins the tasks the work leaves.
+        const missed = review.value === null ? [] : missedTaskIds(review.value).filter((id) => id !== task.id);
+        const leaves = followups.value === null && missed.length === 0 ? null : [...new Set([...(followups.value ?? []), ...missed])];
         const texts = [
             ['note', note],
             ['evidence', evidence],
             ['proof', proof.value],
             ['met', met],
             ...(card.value === null ? [] : cardTexts(card.value).map((text) => ['card', text])),
+            ...(review.value === null ? [] : reviewTexts(review.value).map(([flag, text]) => [flag.slice(2), text])),
         ];
         const problem = texts.map(([name, text]) => this.checkText(name, text)).find((found) => found !== undefined);
         const change = {
@@ -216,9 +226,37 @@ export class RegisterPolicy {
             ...(proof.value === null ? {} : { proof: proof.value }),
             ...(met === null ? {} : { met }),
             ...(due.value === null ? {} : { due: due.value }),
-            ...(followups.value === null ? {} : { followups: followups.value }),
+            ...(leaves === null ? {} : { followups: leaves }),
+            ...(review.value === null ? {} : { review: review.value }),
         };
         return problem === undefined ? ok(change) : refuse(problem);
+    }
+    /**
+     * The review parts a status change gives (review.ts): only on a task marked a problem, each saying enough, and each
+     * task a missed part names on the list. A problem reaching a `register.review.requireOn` status with parts still
+     * missing is refused while the review's mode is `refuse`; `warn` lets it through and the CLI names them. Null when
+     * the change gives none.
+     */
+    checkReview(task, input, context) {
+        const given = input.review ?? {};
+        const [first] = reviewTexts(given);
+        if (first !== undefined && !isProblem(task)) {
+            return refuse(`${first[0]} goes only with a problem: mark it first, teamrig update ${task.id} --problem problem|critical`);
+        }
+        const problem = reviewProblem(given);
+        if (problem !== undefined) {
+            return refuse(problem);
+        }
+        const unlisted = missedTaskIds(given).find((id) => !context.state.tasks.has(id));
+        if (unlisted !== undefined) {
+            return refuse(`a missed part names ${unlisted}, which is not on the task list: add it first (teamrig add)`);
+        }
+        const { review } = this.config.register;
+        const missing = reviewGap(task, input.status, given, review);
+        if (missing.length > 0 && review.mode === 'refuse') {
+            return refuse(reviewGapText(task, input.status, missing));
+        }
+        return ok(first === undefined ? null : given);
     }
     /**
      * The follow-ups a status change names: required on the statuses `register.requireFollowupsOn` lists, allowed

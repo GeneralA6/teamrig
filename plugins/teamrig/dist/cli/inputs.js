@@ -5,6 +5,7 @@ import { OPTION_SEPARATOR } from "../register/card.js";
 import { MAX_SIZE_PCT, sizeProblem } from "../register/events.js";
 import { isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, priorityText, TASK_ID, TASK_STATUSES } from "../register/model.js";
 import { WAITS_USAGE } from "../register/policy.js";
+import { REVIEW_FLAGS, REVIEW_ORDER } from "../register/review.js";
 import { isWaitKind, waitOf } from "../register/waits.js";
 import { requiredFlag, UsageError } from "./args.js";
 /**
@@ -292,12 +293,27 @@ export function statusInputOf(flags, times) {
     if (followups !== undefined) {
         input.followups = followups === NONE ? [] : listOf('--followups', followups).map(taskIdOf);
     }
+    const review = reviewInputOf(flags);
+    if (review !== undefined) {
+        input.review = review;
+    }
     return input;
+}
+/** The review parts a `set` gives (`--cause`, `--how`, `--prevent`, `--harden`, `--missed-*`); undefined when it gives none. */
+function reviewInputOf(flags) {
+    const review = {};
+    for (const part of REVIEW_ORDER) {
+        const text = flagText(flags, REVIEW_FLAGS[part].slice(2));
+        if (text !== undefined) {
+            review[part] = text;
+        }
+    }
+    return Object.keys(review).length === 0 ? undefined : review;
 }
 /** The card parts a `set` names (`--question`, `--options`, `--recommend`, `--default`, `--why-ask`, `--gate`); undefined when it names none. */
 function cardInputOf(flags) {
     const card = {};
-    const question = cardPart(flags, 'question');
+    const question = flagText(flags, 'question');
     if (question !== undefined) {
         card.question = question;
     }
@@ -305,26 +321,26 @@ function cardInputOf(flags) {
     if (options !== undefined) {
         card.options = optionsOf(options);
     }
-    const recommend = cardPart(flags, 'recommend');
+    const recommend = flagText(flags, 'recommend');
     if (recommend !== undefined) {
         card.recommend = recommend;
     }
-    const byDefault = cardPart(flags, 'default');
+    const byDefault = flagText(flags, 'default');
     if (byDefault !== undefined) {
         card.byDefault = byDefault;
     }
-    const whyAsk = cardPart(flags, 'why-ask');
+    const whyAsk = flagText(flags, 'why-ask');
     if (whyAsk !== undefined) {
         card.whyAsk = whyAsk;
     }
-    const gate = cardPart(flags, 'gate');
+    const gate = flagText(flags, 'gate');
     if (gate !== undefined) {
         card.gate = gate;
     }
     return Object.keys(card).length === 0 ? undefined : card;
 }
-/** A card part as typed, trimmed; a blank one is a usage error. */
-function cardPart(flags, name) {
+/** A text flag as typed, trimmed, such as a card or review part; a blank one is a usage error. */
+function flagText(flags, name) {
     const text = flags.get(name)?.trim();
     if (text === '') {
         throw new UsageError(`--${name} needs text`);
