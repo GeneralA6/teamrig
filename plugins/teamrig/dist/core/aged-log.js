@@ -3,10 +3,11 @@ import { stringField } from "./guards.js";
 import { parseObject } from "./jsonl.js";
 const DAY_MS = 24 * 60 * 60 * 1000;
 /**
- * The prompt hook's dedup logs (inbox-shown, bind-hints): a record older than a week belongs to a Claude Code
- * session that has almost always ended. One still running past it is shown an unread line or a hint once more.
+ * The hooks' aged logs (cli/hook-logs.ts). A dedup record (inbox-shown, bind-hints) older than a week belongs to a
+ * Claude Code session that has almost always ended; one still running past it is shown an unread line or a hint once
+ * more. The prompt answers feed a daily triage, which a week of them covers.
  */
-export const DEDUP_LOG_AGE = { keepDays: 7, slackDays: 1 };
+export const HOOK_LOG_AGE = { keepDays: 7, slackDays: 1 };
 /** A line's `at` in epoch milliseconds; undefined for a line that is not a record with a readable `at`. */
 function dateOf(line) {
     const record = parseObject(line.trim());
@@ -38,7 +39,7 @@ export class AgedLogFile {
     deps;
     paths;
     policy;
-    constructor(deps, paths, policy = DEDUP_LOG_AGE) {
+    constructor(deps, paths, policy = HOOK_LOG_AGE) {
         this.deps = deps;
         this.paths = paths;
         this.policy = policy;

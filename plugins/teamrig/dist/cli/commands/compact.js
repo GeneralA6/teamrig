@@ -1,12 +1,12 @@
 import { basename } from 'node:path';
-import { DEDUP_LOG_AGE } from "../../core/aged-log.js";
+import { HOOK_LOG_AGE } from "../../core/aged-log.js";
 import { KIT_NAME } from "../../core/home.js";
 import { FileLock } from "../../core/lock.js";
 import { RETAIN_DAYS } from "../../register/compaction.js";
 import { layoutPaths, segmentName, ARCHIVE_DIR, SNAPSHOT_FILE } from "../../register/layout.js";
 import { applyRotation, planRotation, RotationRefusedError } from "../../register/rotate.js";
 import { noPositionals } from "../args.js";
-import { DEDUP_LOGS, dedupLogOf } from "../dedup-logs.js";
+import { HOOK_LOGS, hookLogOf } from "../hook-logs.js";
 import { openTeamKit, requireConfig, teamZone } from "../kit.js";
 import { EXIT } from "../runtime.js";
 function bytes(text) {
@@ -49,8 +49,9 @@ export function agedLine(plan, keepDays) {
  * archived whole, the snapshot rewritten, and tasks finished over RETAIN_DAYS ago leave the working set for the
  * archive. Every run first reads the new files back and holds the working set against the whole history;
  * any difference refuses it with nothing written, and one the history check found points to `--from-history`,
- * which folds the new snapshot from the whole history instead of the old snapshot. Then the hooks' dedup logs move their records older than
- * a week to the archive, as their writes do when due (cli/dedup-logs.ts). `--dry-run` takes no lock and writes nothing.
+ * which folds the new snapshot from the whole history instead of the old snapshot. Then the hooks' aged logs
+ * move their records older than a week to the archive, as their writes do when due (cli/hook-logs.ts).
+ * `--dry-run` takes no lock and writes nothing.
  */
 export async function compact(args, runtime) {
     noPositionals(args);
@@ -78,10 +79,10 @@ export async function compact(args, runtime) {
         }
         throw new RotationRefusedError(plan.problems);
     }
-    const { keepDays } = DEDUP_LOG_AGE;
+    const { keepDays } = HOOK_LOG_AGE;
     const aged = [];
-    for (const name of DEDUP_LOGS) {
-        const log = dedupLogOf(runtime, kit.paths, name);
+    for (const name of HOOK_LOGS) {
+        const log = hookLogOf(runtime, kit.paths, name);
         aged.push(dryRun ? await log.plan() : await log.archive());
     }
     aged.forEach((agedPlan) => runtime.out.stdout(agedLine(agedPlan, keepDays)));

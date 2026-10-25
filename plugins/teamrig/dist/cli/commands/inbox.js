@@ -10,7 +10,7 @@ import { CLAUDE_SESSION_ID } from "../../inbox/marks.js";
 import { reachOf } from "../../inbox/reach.js";
 import { InboxDir, JsonlMarkLog } from "../../inbox/store.js";
 import { noPositionals, requiredFlag, UsageError } from "../args.js";
-import { dedupLogOf } from "../dedup-logs.js";
+import { hookLogOf } from "../hook-logs.js";
 import { callerOf, sessionRef } from "../inputs.js";
 import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
@@ -20,7 +20,7 @@ export function inboxDepsOf(runtime, paths) {
     return {
         inboxes: new InboxDir(runtime.files, paths.inbox),
         marks: new JsonlMarkLog(new PlainLogFile(runtime.files, paths.inboxMarks)),
-        shown: new JsonlMarkLog(dedupLogOf(runtime, paths, 'inbox-shown')),
+        shown: new JsonlMarkLog(hookLogOf(runtime, paths, 'inbox-shown')),
     };
 }
 /** The Claude Code session running the command, so the reminder hook can follow it; null outside one. */

@@ -40,7 +40,7 @@ import { readContextTokens } from "../../refresh/usage.js";
 import { approvedTaskOf } from "../../register/approval.js";
 import { JsonlEventLog } from "../../register/store.js";
 import { noPositionals } from "../args.js";
-import { dedupLogOf } from "../dedup-logs.js";
+import { hookLogOf } from "../hook-logs.js";
 import { openKit, renameDepsOf, rosterOf, rulesClockOf, teamFolders, teamZone } from "../kit.js";
 import { EXIT } from "../runtime.js";
 import { loadTree } from "../tree.js";
@@ -812,7 +812,7 @@ export async function sessionStart(args, runtime) {
     const context = sessionStartContext({ team: found.team, load: kit.load, ...parts, command: KIT_NAME, platform: runtime.platform, clock: rulesClockOf(runtime) });
     const requirementsNote = await requirementsNoteOnce({
         problems: await runtime.requirements.problems(),
-        log: new JsonlHintLog(dedupLogOf(runtime, kit.paths, 'bind-hints')),
+        log: new JsonlHintLog(hookLogOf(runtime, kit.paths, 'bind-hints')),
         claudeSession: sessionIdOf(payload),
         now: new Date(runtime.clock.now()),
         command: KIT_NAME,

@@ -20,8 +20,8 @@ export const SECRET_TOKEN_PATTERNS = [
     { id: 'jwt', description: 'JSON web token', pattern: /\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/ },
 ];
 /**
- * Secrets written as text rather than as a token: credentials inside a URL and `password=`-style assignments.
- * Only shared-file writes use these; the scrub has its own stricter assignment rule, as documentation shows
+ * Secrets written as text rather than as a token: credentials inside a URL or an Authorization header and
+ * `password=`-style assignments. Only shared-file writes and redaction use these; the scrub has its own stricter assignment rule, as documentation shows
  * placeholders such as `password: ${VAULT}`.
  * An assignment's key word may end a longer name, as env vars and code write it (`DB_PASSWORD`, `clientSecret`):
  * no word boundary comes before it, since an underscore is a word character. A quoted key, as JSON and YAML write
@@ -30,8 +30,15 @@ export const SECRET_TOKEN_PATTERNS = [
  * a note naming one ahead of a colon names it, it does not assign it. A dotted key (`jwt.secret`), a header
  * (`X-Api-Key`) and a URL's query still count. That check follows the key word, so it runs only where one matched,
  * not at every place in a long run of word characters.
+ * An Authorization header's credential is opaque, so its scheme word frames it: a placeholder in its place
+ * (`$TOKEN`, `${TOKEN}`, `<token>`, `%TOKEN%`) or a word under 8 characters is not one.
  */
 export const SECRET_TEXT_PATTERNS = [
     { id: 'url-credentials', description: 'credentials in a URL', pattern: /\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]+:[^\s/@]+@/i },
+    {
+        id: 'auth-header',
+        description: 'credentials in an Authorization header',
+        pattern: /\bauthorization["']?\s*[:=]\s*["']?(?:bearer|basic|token|digest)\s+(?![$<{%])[^\s"']{8,}/i,
+    },
     { id: 'secret-assignment', description: 'password or key assignment', pattern: /(?:password|passwd|secret|api[_-]?key)(?<!\/[\w.-]*)["']?\s*[=:]\s*\S/i },
 ];
