@@ -5,7 +5,7 @@ import type { Burst } from '../budget/burst.ts';
 import { BurstLog } from '../budget/burst-log.ts';
 import { MeterLog } from '../budget/calibration.ts';
 import type { Files } from '../core/files.ts';
-import type { JsonRecord } from '../core/guards.ts';
+import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { SessionLog } from '../sessions/log.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
@@ -21,6 +21,7 @@ import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { WakeAsks } from '../wake/asks.ts';
+import { WakePrompts, type WakePrompt } from '../wake/prompts.ts';
 
 const ALPHA_TAB = '0123abcd-0000-4000-8000-0000000000a1';
 const OTHER_TAB = '0123abcd-0000-4000-8000-0000000000b9';
@@ -83,6 +84,11 @@ function checkUnder(kit: CliHarness, processes: FakeProcesses, sessionProcesses 
   return kit.run(['hook', 'wake-check'], { stdin: payload(), transcripts: new MemoryTranscripts(), processes, sessionProcesses });
 }
 
+/** The wake prompt kept for alpha's turn log (src/wake/prompts.ts). */
+function keptPrompt(kit: CliHarness): Promise<WakePrompt | undefined> {
+  return new WakePrompts(kit.files, join(TEAM_HOME, 'state', 'wake')).read('alpha');
+}
+
 async function logLines(kit: CliHarness, path = WAKE_LOG): Promise<unknown[]> {
   const text = (await kit.files.read(path)) ?? '';
   return text
@@ -102,20 +108,27 @@ describe('hook wake-check', () => {
     kit.clock.advance(120 * SECOND);
     const transcripts = new MemoryTranscripts();
     transcripts.set(join(USER_HOME, '.claude', 'projects', 'work-app', `${ALPHA_TAB}.jsonl`), '{}\n', kit.clock.now() - 5 * MINUTE);
-    const woke = answerOf(await check(kit, transcripts));
-    assert.deepEqual(woke, {
-      kind: 'wake',
-      ids: ['T2'],
-      text:
-        'New work was handed to you while this tab was idle: T2 "Fix the login" (p1). ' +
-        'Start a work block (`teamrig start --session alpha`) and work your list in priority order. This wake costs about 27k W, warm cache.',
-      toast: 'teamrig woke this tab for T2 (about 27k W, warm cache)',
-    });
+    const text =
+      'New work was handed to you while this tab was idle: T2 "Fix the login" (p1). ' +
+      'Start a work block (`teamrig start --session alpha`) and work your list in priority order. This wake costs about 27k W, warm cache.';
+    assert.deepEqual(answerOf(await check(kit, transcripts)), { kind: 'wake', ids: ['T2'], text, toast: 'teamrig woke this tab for T2 (about 27k W, warm cache)' });
     assert.deepEqual(await logLines(kit), [
       { v: 1, at: new Date(kit.clock.now()).toISOString(), kind: 'wake', session: 'alpha', tab: ALPHA_TAB, ids: ['T2'], w: 27_000, cold: false },
     ]);
+    assert.deepEqual(await keptPrompt(kit), { tab: ALPHA_TAB, text }, 'kept for the turn log');
     kit.clock.advance(60 * MINUTE);
     assert.deepEqual(answerOf(await check(kit)), { kind: 'wait', watch: EVENTS_PATH, recheckAt: null }, 'never twice for one task');
+  });
+
+  it('keeps no wake prompt with turnLog off', async () => {
+    const kit = await teamWithAlphaTab({ ...TEAM, turnLog: { enabled: false } });
+    await check(kit);
+    await hand(kit, 'Fix the login', 'p1');
+    await check(kit);
+    kit.clock.advance(120 * SECOND);
+    const woke = answerOf(await check(kit));
+    assert.ok(isRecord(woke) && woke['kind'] === 'wake', 'it woke');
+    assert.equal(await keptPrompt(kit), undefined);
   });
 
   it('never wakes for less urgent work by default, and wakes for p2 when wake.priority is 2, costed cold with no transcript', async () => {
@@ -600,9 +613,12 @@ describe('hook wake-check runs the idle pass', () => {
 });
 
 describe('hook wake-dropped', () => {
-  it('logs a dropped wake with its reason, and nothing for a tab that is no team session', async () => {
+  it('logs a dropped wake with its reason and forgets its prompt, and nothing for a tab that is no team session', async () => {
     const kit = await teamWithAlphaTab();
+    const prompts = new WakePrompts(kit.files, join(TEAM_HOME, 'state', 'wake'));
+    await prompts.remember('alpha', { tab: ALPHA_TAB, text: 'New work was handed to you.' });
     const dropped = await kit.run(['hook', 'wake-dropped'], { stdin: payload({ reason: 'blocked by a hook' }) });
+    assert.equal(await keptPrompt(kit), undefined, 'a later typed prompt is never taken for it');
     assert.deepEqual(dropped, { code: 0, stdout: [], stderr: [] });
     await kit.run(['hook', 'wake-dropped'], { stdin: payload() });
     await kit.run(['hook', 'wake-dropped'], { stdin: payload({ reason: 'x' }, OTHER_TAB) });

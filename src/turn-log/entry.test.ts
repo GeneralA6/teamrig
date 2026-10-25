@@ -19,14 +19,19 @@ describe('turn log entry', () => {
     const plain: TurnLogEntry = { at: AT, kind: 'prompt', text: 'go', claude: CLAUDE };
     const plainRecord = parseObject(lineOf(plain));
     assert.deepEqual(plainRecord === undefined ? undefined : parseEntry(plainRecord), plain);
+    const woke: TurnLogEntry = { at: AT, kind: 'prompt', text: 'New work was handed to you.', claude: CLAUDE, from: 'teamrig' };
+    const wokeRecord = parseObject(lineOf(woke));
+    assert.equal(wokeRecord?.['v'], 1);
+    assert.deepEqual(wokeRecord === undefined ? undefined : parseEntry(wokeRecord), woke);
   });
 
-  it('refuses a line of another version, an unknown kind or a missing field, and reads only truncated true', () => {
+  it('refuses a line of another version, an unknown kind or a missing field, and reads only truncated true and from teamrig', () => {
     const base = { v: 1, at: AT, kind: 'clear', text: 'context cleared (/clear)', claude: CLAUDE };
     assert.equal(parseEntry({ ...base, v: 2 }), undefined);
     assert.equal(parseEntry({ ...base, kind: 'thought' }), undefined);
     assert.equal(parseEntry({ v: 1, at: AT, kind: 'clear', claude: CLAUDE }), undefined);
     assert.deepEqual(parseEntry({ ...base, truncated: 'yes' }), { at: AT, kind: 'clear', text: 'context cleared (/clear)', claude: CLAUDE });
+    assert.deepEqual(parseEntry({ ...base, from: 'person' }), { at: AT, kind: 'clear', text: 'context cleared (/clear)', claude: CLAUDE });
   });
 
   it('keeps the end of a text past the cap, where the answer is', () => {

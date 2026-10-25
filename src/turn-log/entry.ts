@@ -32,6 +32,8 @@ export interface TurnLogEntry {
   readonly truncated?: true;
   /** A reply's last transcript entry (its `uuid`): a later reply of the same turn starts after it. */
   readonly upTo?: string;
+  /** A prompt teamrig submitted itself (a wake, src/wake/prompts.ts), not one the person typed. */
+  readonly from?: 'teamrig';
 }
 
 /** `text` cut to its last MAX_TEXT_CHARS, with whether it was cut. */
@@ -64,5 +66,6 @@ export function parseEntry(record: JsonRecord): TurnLogEntry | undefined {
     claude,
     ...(record['truncated'] === true ? { truncated: true } : {}),
     ...(upTo === undefined ? {} : { upTo }),
+    ...(record['from'] === 'teamrig' ? { from: 'teamrig' } : {}),
   };
 }

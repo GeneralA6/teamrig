@@ -172,7 +172,10 @@ export interface TeamPaths {
   readonly idlePassLock: string;
   /** Each idle pass that changed a session's step, and each new failure of one, an append-only log. */
   readonly idlePassLog: string;
-  /** What the wake check kept for each session (src/wake/), `<id>.json` each, and its lock, `<id>.lock`. */
+  /**
+   * What the wake check kept for each session (src/wake/), `<id>.json` each, its lock, `<id>.lock`, and its last
+   * wake's prompt until the turn log takes it, `<id>.prompt.json` (src/wake/prompts.ts).
+   */
   readonly wake: string;
   /** The lines waiting to wake each session at its next wake check (src/wake/asks.ts), `<id>/<at>-<n>.json` each. */
   readonly wakeAsks: string;
