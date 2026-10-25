@@ -17,7 +17,8 @@ import { inboxDepsOf } from './inbox.ts';
  * prompt, and denies the send with that said. It lets go: modes off and dry-run (no pass reopens, so the failed
  * send's hint stands), a receiver that is not a team session, the sender's own session, one not closed, one whose tab
  * was started by hand since its close (its session record is newer), and a message with no text (an idle
- * subscription).
+ * subscription). With wakes on, the denial also names `inbox add --wake now`, which posts the same ask, so the sender
+ * posts such a line itself next time.
  */
 export async function closedSendHold(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, payload: unknown, claudeSession: string): Promise<string | undefined> {
   const to = sendTargetOf(payload);
@@ -44,9 +45,11 @@ export async function closedSendHold(runtime: CliRuntime, kit: Kit, config: KitC
   const from = indexMarks(marks).areaBySession.get(claudeSession) ?? KIT_NAME;
   const why = `${roster.nameOf(receiver.id) ?? receiver.id} is closed (${closed.by} closed it at ${teamZone(config, runtime).clock(new Date(closed.at))}), so this message cannot reach it`;
   const unposted = await postUrgentLine(runtime, kit, config, { to: receiver.id, from, text });
+  const line = `${KIT_NAME} inbox add --to ${receiver.id} --text "..."${config.wake.enabled ? ' --wake now' : ''}`;
   return holdOutput(
     unposted === undefined
-      ? `${why}; ${KIT_NAME} posted it as an urgent line in its inbox, and the idle pass reopens it within about a minute with the line quoted in its first prompt. Do not send it again.`
-      : `${why}, and ${KIT_NAME} could not post it as an urgent line: ${unposted}. Tell the lead the urgent line failed; unless that says it is in the inbox, leave it with ${KIT_NAME} inbox add --to ${receiver.id} --text "..." once that is fixed.`,
+      ? `${why}; ${KIT_NAME} posted it as an urgent line in its inbox, and the idle pass reopens it within about a minute with the line quoted in its first prompt. Do not send it again.` +
+          (config.wake.enabled ? ` Next time post it yourself: ${line}.` : '')
+      : `${why}, and ${KIT_NAME} could not post it as an urgent line: ${unposted}. Tell the lead the urgent line failed; unless that says it is in the inbox, leave it with ${line} once that is fixed.`,
   );
 }

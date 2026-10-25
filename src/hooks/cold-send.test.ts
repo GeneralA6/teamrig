@@ -23,7 +23,7 @@ const NOW = new Date('2030-01-08T10:00:00Z');
 const HOUR = 3_600_000;
 
 function factsAt(now: Date, overrides: Partial<ColdSendFacts> = {}): ColdSendFacts {
-  return { claudeSession: TAB, to: 'alpha', name: 'app-alpha', idleMs: 2 * HOUR, coldAfterMinutes: 60, now, command: 'teamrig', ...overrides };
+  return { claudeSession: TAB, to: 'alpha', name: 'app-alpha', idleMs: 2 * HOUR, coldAfterMinutes: 60, now, command: 'teamrig', wakeNow: true, ...overrides };
 }
 
 describe('sendTargetOf', () => {
@@ -104,11 +104,18 @@ describe('JsonlColdSendLog', () => {
 });
 
 describe('the hold note', () => {
-  it('names the idle time, the inbox command and the resend window', () => {
+  it('names the idle time, the waking inbox line and the resend window kept for a live back-and-forth, with wakes on', () => {
     const reason = coldSendReason(factsAt(NOW, { idleMs: 94 * 60_000 + 59_000 }));
     assert.match(reason, /^Held once: app-alpha has been idle 94 min, so this message would wake it cold/);
-    assert.ok(reason.includes('teamrig inbox add --to alpha --text "..."'));
-    assert.ok(reason.includes('send it again: a send to it within 15 min goes through.'));
+    assert.ok(reason.includes('Write it as one inbox line instead: teamrig inbox add --to alpha --text "...", with --wake now if it must act now'));
+    assert.ok(reason.endsWith('Only for a live back-and-forth, send it again: a send to it within 15 min goes through.'));
+  });
+
+  it('names the plain inbox line and has a must-go message carry every ask, with wakes off', () => {
+    const reason = coldSendReason(factsAt(NOW, { wakeNow: false }));
+    assert.ok(reason.includes('write one inbox line instead: teamrig inbox add --to alpha --text "...". '));
+    assert.ok(reason.endsWith('put every ask you have for app-alpha in this one message and send it again: a send to it within 15 min goes through.'));
+    assert.doesNotMatch(reason, /--wake/);
   });
 
   it('is a PreToolUse refusal carrying the note', () => {

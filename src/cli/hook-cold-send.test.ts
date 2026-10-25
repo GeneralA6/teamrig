@@ -40,8 +40,17 @@ describe('the cold-send hook', () => {
     assert.equal(decisionOf(held), 'deny');
     assert.match(reasonOf(held), /Held once: app-alpha has been idle 125 min/);
     assert.ok(reasonOf(held).includes('teamrig inbox add --to alpha --text'));
+    assert.ok(reasonOf(held).includes(', with --wake now if it must act now'));
     const resent = await kit.run(['hook', 'cold-send'], { stdin: send('alpha'), transcripts });
     assert.deepEqual(resent.stdout, []);
+  });
+
+  it('offers no --wake now on a team with wakes off', async () => {
+    const { kit, transcripts } = await teamWithAlphaIdle(125, { ...TEAM, wake: { enabled: false } });
+    const held = await kit.run(['hook', 'cold-send'], { stdin: send('app-alpha'), transcripts });
+    assert.equal(decisionOf(held), 'deny');
+    assert.ok(reasonOf(held).includes('write one inbox line instead: teamrig inbox add --to alpha --text'));
+    assert.doesNotMatch(reasonOf(held), /--wake/);
   });
 
   it("takes the newest of the receiver's tabs, so an old tab left by a restart does not count", async () => {

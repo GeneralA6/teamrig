@@ -32,21 +32,29 @@ describe('failedSendOf', () => {
 describe('failedSendLine', () => {
   const failed = { to: 'captain', reason: "No agent named 'captain' is reachable." };
 
-  it('gives a team session the inbox line to write instead', () => {
+  it('gives a team session the inbox line to write instead, with wakes off', () => {
     assert.equal(
-      failedSendLine(failed, 'lead', 'teamrig'),
+      failedSendLine(failed, 'lead', 'teamrig', false),
       "teamrig: the message to captain was not sent (No agent named 'captain' is reachable.); leave it as an inbox line, shown at lead's next prompt: `teamrig inbox add --to lead --text \"...\"`.",
+    );
+  });
+
+  it('offers --wake now for a receiver that must act now, with wakes on', () => {
+    assert.equal(
+      failedSendLine(failed, 'lead', 'teamrig', true),
+      "teamrig: the message to captain was not sent (No agent named 'captain' is reachable.); leave it as an inbox line, shown at lead's next prompt: `teamrig inbox add --to lead --text \"...\"`, or with `--wake now` if lead must act on it now.",
     );
   });
 
   it('says why no message to a name Claude Code reserves ever arrives', () => {
     assert.equal(
-      failedSendLine({ to: 'team-lead', reason: "No agent named 'team-lead' is reachable." }, 'lead', 'teamrig'),
+      failedSendLine({ to: 'team-lead', reason: "No agent named 'team-lead' is reachable." }, 'lead', 'teamrig', false),
       "teamrig: the message to team-lead was not sent (No agent named 'team-lead' is reachable.); leave it as an inbox line, shown at lead's next prompt: `teamrig inbox add --to lead --text \"...\"`. team-lead is a name Claude Code keeps for itself, so a message sent to it never reaches a session.",
     );
   });
 
   it('points a name that is no team session to who', () => {
-    assert.match(failedSendLine({ to: 'uds:old-pipe', reason: 'not delivered' }, undefined, 'teamrig'), /uds:old-pipe is no team session name \(`teamrig who` prints them\); for a team session, leave it as an inbox line: `teamrig inbox add --to <area>/);
+    assert.match(failedSendLine({ to: 'uds:old-pipe', reason: 'not delivered' }, undefined, 'teamrig', false), /uds:old-pipe is no team session name \(`teamrig who` prints them\); for a team session, leave it as an inbox line: `teamrig inbox add --to <area> --text "\.\.\."`\.$/);
+    assert.match(failedSendLine({ to: 'uds:old-pipe', reason: 'not delivered' }, undefined, 'teamrig', true), /`teamrig inbox add --to <area> --text "\.\.\."`, or with `--wake now` if it must act on it now\.$/);
   });
 });
