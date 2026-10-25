@@ -116,7 +116,7 @@ export async function hookScopeOf(runtime: CliRuntime, payload: JsonRecord): Pro
 
 /**
  * The folders of every team below `team` in the tree (T1019), each with the address of the child team's lead it
- * hangs under, who answers a question about it: a parent lead adds tasks only to its child teams. A team in a loop
+ * hangs under, who answers a question about it and sets its work order. A team in a loop
  * of parents is left out, so the team's own folder is never read as a sub-team's.
  */
 export function subTeamPlacesOf({ tree, teams }: KitTree, team: string): SubTeamPlace[] {

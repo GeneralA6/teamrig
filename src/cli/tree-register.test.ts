@@ -1,7 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { formatConfig } from '../config/load.ts';
 import { readEvents } from '../register/snapshot.ts';
-import { EVENTS_PATH } from '../testing/cli-harness.ts';
+import { CONFIG_PATH, EVENTS_PATH } from '../testing/cli-harness.ts';
 import { teamConfigOf, teamEventsOf, teamInboxOf, treeHarness } from '../testing/team-tree.ts';
 import type { CliHarness } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
@@ -43,24 +44,51 @@ describe('teamrig add --team', () => {
     assert.equal(event?.type === 'create' ? event.task.description : undefined, 'Users ask for it.');
   });
 
-  it('refuses all but the parent lead, a root team, an unknown team and --owner or --source, writing nothing', async () => {
+  it('lets any session of the tree ask a session of another team, by name, its lead getting a copy line to act on', async () => {
     const kit = await treeHarness();
-    const refusals: [readonly string[], Record<string, string>, string][] = [
-      [['--team', 'web', '--session', 'alpha'], {}, "REFUSED only web's parent lead (app/lead) adds tasks to it; app/alpha may not"],
-      [['--team', 'ui', '--session', 'lead'], {}, "REFUSED only ui's parent lead (web/lead) adds tasks to it; app/lead may not"],
-      [['--team', 'app', '--session', 'lead'], WEB, 'REFUSED team app has no parent team, so only its own sessions add its tasks'],
-      [['--team', 'blog', '--session', 'lead'], {}, 'REFUSED no team blog with a config in this kit home'],
+    const result = await kit.run(['add', '--team', 'web', '--owner', 'web-front', '--title', 'Ship login', '--description', 'what and why', '--priority', 'p2', '--session', 'alpha']);
+    const copy = 'T1 went to front (p2): Ship login; reorder or reassign it: teamrig update T1 --priority|--after|--owner';
+    assert.deepEqual(result, {
+      code: EXIT.ok,
+      stdout: ['ADDED web/T1 open, p2, owner front, from app/alpha | Ship login'],
+      stderr: ['NOTE web/front has an inbox line: T1 is yours (p2): Ship login', `NOTE web/lead has an inbox line: ${copy}`],
+    });
+    assert.equal(kit.files.get(teamInboxOf('web', 'front')), '- 2030-01-08 10:00 app/alpha: T1 is yours (p2): Ship login\n');
+    assert.equal(kit.files.get(teamInboxOf('web', 'lead')), `- 2030-01-08 10:00 app/alpha: ${copy}\n`);
+    const reassigned = await kit.run(['update', 'T1', '--owner', 'back', '--session', 'lead'], { env: WEB });
+    assert.equal(reassigned.code, EXIT.ok);
+  });
+
+  it('reaches a sibling team and the root above, and is a plain add for the caller\'s own team', async () => {
+    const kit = await treeHarness();
+    const runs: readonly [readonly string[], Record<string, string>, string][] = [
+      [['--title', 'New icons', '--team', 'ui', '--owner', 'pixel', '--session', 'run'], { TEAMRIG_TEAM: 'ops' }, 'ADDED ui/T1 open, p2, owner pixel, from ops/run | New icons'],
+      [['--title', 'Ship login', '--team', 'app', '--session', 'pixel'], { TEAMRIG_TEAM: 'ui' }, 'ADDED app/T2 open, p2, owner lead, from ui/pixel | Ship login'],
+      [['--title', 'Own work', '--team', 'app', '--owner', 'bravo', '--session', 'alpha'], {}, 'ADDED T3 open, p2, owner bravo, from alpha | Own work'],
     ];
-    for (const [extra, env, line] of refusals) {
-      const result = await kit.run(['add', '--title', 'Ship login', '--description', 'what and why', '--priority', 'p2', ...extra], { env });
-      assert.deepEqual([result.code, result.stdout], [EXIT.refused, [line]]);
+    for (const [extra, env, line] of runs) {
+      const result = await kit.run(['add', '--description', 'what and why', '--priority', 'p2', ...extra], { env });
+      assert.deepEqual([result.code, result.stdout], [EXIT.ok, [line]]);
     }
-    for (const flag of ['--owner', '--source']) {
-      const result = await kit.run(['add', '--team', 'web', '--title', 'x', '--description', 'what and why', '--priority', 'p2', flag, 'front', '--session', 'lead']);
-      assert.equal(result.code, EXIT.usage);
-      assert.match(result.stderr[0] ?? '', /^--team gives the task to that team's lead, from you: it takes no --owner or --source/);
+  });
+
+  it('refuses a team outside the tree, an unknown team, an owner off its roster and --source, writing nothing', async () => {
+    const kit = await treeHarness();
+    await kit.files.write(teamConfigOf('solo'), formatConfig({ configVersion: 1, team: { id: 'solo' }, sessions: ['lead', 'one'], roles: { lead: 'lead' } }));
+    const refusals: [readonly string[], RegExp][] = [
+      [['--team', 'solo'], /^REFUSED team solo is not in app's team tree, so app\/alpha may not add its tasks$/],
+      [['--team', 'blog'], /^REFUSED no team blog with a config in this kit home$/],
+      [['--team', 'web', '--owner', 'pixel'], /^REFUSED team web: pixel is not a session on this team \(sessions: /],
+    ];
+    for (const [extra, line] of refusals) {
+      const result = await kit.run(['add', '--title', 'Ship login', '--description', 'what and why', '--priority', 'p2', '--session', 'alpha', ...extra]);
+      assert.equal(result.code, EXIT.refused);
+      assert.match(result.stdout[0] ?? '', line);
     }
-    for (const team of ['app', 'web', 'ui']) {
+    const sourced = await kit.run(['add', '--team', 'web', '--title', 'x', '--description', 'what and why', '--priority', 'p2', '--source', 'front', '--session', 'lead']);
+    assert.equal(sourced.code, EXIT.usage);
+    assert.match(sourced.stderr[0] ?? '', /^--team adds the task from you: it takes no --source/);
+    for (const team of ['app', 'web', 'ui', 'solo']) {
       assert.equal(kit.files.get(teamEventsOf(team)), undefined, team);
     }
   });
@@ -174,7 +202,7 @@ describe('teamrig list|check|plan --tree', () => {
   });
 });
 
-describe('teamrig set: a task from the parent team ends (T509)', () => {
+describe('teamrig set: a task another team asked for ends (T509, T1141)', () => {
   const done = (id: string, evidence: string, note = 'shipped', session = 'lead'): string[] =>
     ['set', id, '--status', 'done', '--note', note, '--evidence', evidence, '--skill', 'none', '--followups', 'none', '--session', session];
 
@@ -231,6 +259,25 @@ describe('teamrig set: a task from the parent team ends (T509)', () => {
     assert.equal(await kit.files.remove(teamConfigOf('web')), true);
     const result = await kit.run(done('T1', 'icons in the build'), { env: { TEAMRIG_TEAM: 'ui' } });
     assert.equal(result.code, EXIT.ok);
-    assert.ok(result.stderr.includes("WARN web's lead was not told that ui/T1 ended: team web has no config in this kit home"), result.stderr.join('\n'));
+    assert.ok(result.stderr.includes('WARN web/lead was not told that ui/T1 ended: team web has no config in this kit home'), result.stderr.join('\n'));
+  });
+
+  it('tells the session that asked, on any team of the tree, not its lead', async () => {
+    const kit = await treeHarness();
+    await kit.run(['add', '--team', 'web', '--owner', 'front', '--title', 'Ship login', '--description', 'what and why', '--priority', 'p2', '--session', 'alpha']);
+    await kit.run(['add', '--team', 'ui', '--owner', 'pixel', '--title', 'New icons', '--description', 'what and why', '--priority', 'p2', '--session', 'run'], { env: { TEAMRIG_TEAM: 'ops' } });
+    assert.equal((await kit.run(done('T1', 'PR #12 merged', 'shipped', 'front'), { env: WEB })).code, EXIT.ok);
+    assert.equal((await kit.run(done('T2', 'icons in the build', 'shipped', 'pixel'), { env: { TEAMRIG_TEAM: 'ui' } })).code, EXIT.ok);
+    assert.equal(kit.files.get(teamInboxOf('app', 'alpha')), '- 2030-01-08 10:00 web/front: web/T1 done: Ship login | evidence: PR #12 merged\n');
+    assert.equal(kit.files.get(teamInboxOf('ops', 'run')), '- 2030-01-08 10:00 ui/pixel: ui/T2 done: New icons | evidence: icons in the build\n');
+    assert.equal(kit.files.get(teamInboxOf('app', 'lead')), undefined);
+  });
+
+  it("tells the asker's team lead when the asker has left that team", async () => {
+    const kit = await treeHarness();
+    await kit.run(['add', '--team', 'web', '--title', 'Ship login', '--description', 'what and why', '--priority', 'p2', '--session', 'alpha']);
+    await kit.files.write(CONFIG_PATH, formatConfig({ configVersion: 1, team: { id: 'app' }, sessions: ['lead', 'bravo'], roles: { lead: 'lead' } }));
+    assert.equal((await kit.run(done('T1', 'PR #12 merged'), { env: WEB })).code, EXIT.ok);
+    assert.equal(kit.files.get(teamInboxOf('app', 'lead')), '- 2030-01-08 10:00 web/lead: web/T1 done: Ship login | evidence: PR #12 merged\n');
   });
 });

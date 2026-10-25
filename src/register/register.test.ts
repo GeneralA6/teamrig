@@ -328,14 +328,14 @@ describe('Register on a rotated log', () => {
   });
 });
 
-describe('Register.addFromParent', () => {
-  it('writes the task as the parent lead, who is on no roster here, and lands it with the lead', async () => {
+describe('Register.addFromTeam', () => {
+  it('writes the task as the asker, who is on no roster here, and lands it with the owner asked', async () => {
     const { files, register } = setup();
-    const { task, event } = written(await register.addFromParent('app/lead', { title: 'Ship login', description: 'what and why', owner: 'lead', source: 'app/lead', priority: 1 }));
-    assert.deepEqual([task.id, task.owner, task.source, task.createdBy, event.by], ['T1', 'lead', 'app/lead', 'app/lead', 'app/lead']);
+    const { task, event } = written(await register.addFromTeam('app/alpha', { title: 'Ship login', description: 'what and why', owner: 'bravo', source: 'app/alpha', priority: 1 }));
+    assert.deepEqual([task.id, task.owner, task.source, task.createdBy, event.by], ['T1', 'bravo', 'app/alpha', 'app/alpha', 'app/alpha']);
     assert.equal(readEvents(files.get(LOG) ?? '').events.length, 1);
     assert.match(errorOf(await register.add('app/lead', { title: 'Other', description: 'what and why', owner: 'lead', source: 'lead', priority: 1 })), /app.lead is not a session on this team/);
-    assert.match(errorOf(await register.addFromParent('app/lead', { title: 'Ship login', description: 'what and why', owner: 'lead', source: 'app/lead', priority: 1 })), /T1 already tracks this/);
+    assert.match(errorOf(await register.addFromTeam('app/lead', { title: 'Ship login', description: 'what and why', owner: 'lead', source: 'app/lead', priority: 1 })), /T1 already tracks this/);
   });
 });
 
@@ -389,7 +389,7 @@ describe('Register in a shared numbering (T1139)', () => {
     assert.ok(asked.ok, asked.ok ? '' : asked.error);
     assert.deepEqual([asked.value.asked.id, asked.value.task.waits], ['T50', [{ kind: 'task', id: 'T50' }]]);
     numbering.floor = 60;
-    assert.equal(written(await register.addFromParent('app/lead', { ...INPUT, title: 'Ship login', owner: 'lead', source: 'app/lead' })).task.id, 'T60');
+    assert.equal(written(await register.addFromTeam('app/lead', { ...INPUT, title: 'Ship login', owner: 'lead', source: 'app/lead' })).task.id, 'T60');
     numbering.floor = 70;
     assert.equal(written(await register.importAdd({ title: 'Fix login', description: null, owner: 'bravo', ref: 'gh:acme/web#7', priority: 1 })).task.id, 'T70');
     assert.equal(numbering.issued, 4);
