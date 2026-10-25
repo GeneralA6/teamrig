@@ -5,7 +5,7 @@ import { SkillDir } from "../skills/store.js";
 /** The CLAUDE.md files Claude Code reads in a folder, as path parts below it. */
 export const CLAUDE_MD_FILES = [['CLAUDE.md'], ['CLAUDE.local.md'], ['.claude', 'CLAUDE.md']];
 /** The project folder, then each parent up to the filesystem root. */
-function foldersUp(project) {
+export function foldersUp(project) {
     const folders = [project];
     for (let parent = dirname(project); parent !== folders.at(-1); parent = dirname(parent)) {
         folders.push(parent);

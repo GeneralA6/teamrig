@@ -29,7 +29,7 @@ async function subfolders(files, probe, folder) {
     return kinds.filter((entry) => entry.kind === 'folder').map((entry) => entry.path);
 }
 /** The CLAUDE.md files in folders 1 to NESTED_DEPTH below the project, breadth first, in at most NESTED_FOLDERS_MAX folders. */
-async function nestedClaudeMd(files, probe, project) {
+export async function nestedClaudeMd(files, probe, project) {
     const paths = [];
     let level = await subfolders(files, probe, project);
     let visited = 0;
