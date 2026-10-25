@@ -27,6 +27,11 @@ Then it prints the agenda:
 - your unread inbox lines, marked read;
 - the week's use, and under it what of the planned week fits the weekly limit.
 
+Sort `DECISIONS` before you bring them: a card stays the human's only when it names an owner gate or a business
+decision. Any other, a route, a merge or staffing (who does a job, a reviewer, a hire within caps), is yours however
+many good answers it has: decide it now, send its owner the answer as an inbox line so it sets the task's next
+status, and tell the human in the meeting as an FYI.
+
 Tell the human the meeting started in one line. `teamrig meeting agenda --session lead` prints the agenda again,
 during the meeting or to prepare the next one.
 
@@ -38,6 +43,7 @@ reaches `refresh.compactCeilingTokens` (185,000 by default), past which it goes 
 Lead with what got done and what is late, in a few lines. Then one card per decision, each readable alone:
 
 - what it is and why it matters to the human, in one or two plain lines;
+- the owner gate or business reason that makes it theirs;
 - the options, with their numbers, each figure explained where it appears;
 - your recommendation and why;
 - the exact action (a choice, a click path or a command) and what each result leads to.
