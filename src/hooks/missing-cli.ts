@@ -13,13 +13,23 @@ import { KIT_NAME } from '../core/home.ts';
 const SHELL_TOOLS: ReadonlySet<string> = new Set(['Bash', 'PowerShell']);
 
 /**
- * What bash, sh, zsh and fish print for a command they do not find (`bash: teamrig: command not found`,
- * `sh: 1: teamrig: not found`, `zsh: command not found: teamrig`, `fish: Unknown command: teamrig`), and what
- * PowerShell and cmd print (`The term 'teamrig' is not recognized`). The name must stand alone, not end a path
- * or a longer name. KIT_NAME is a plain word, so it goes into the pattern as it is.
+ * The line a shell prints for a command it does not find, from the line's start: bash and sh (`bash: teamrig:
+ * command not found`, `/usr/bin/bash: line 1: teamrig: command not found`, `sh: 1: teamrig: not found`, a script's
+ * `./run.sh: line 3: ...`), zsh (`zsh: command not found: teamrig`, `zsh:1: ...`), fish (`fish: Unknown command:
+ * teamrig`), PowerShell (`teamrig : The term 'teamrig' is not recognized ...`) and cmd (`'teamrig' is not recognized
+ * as an internal or external command,`). Only the shell's own line counts: output that quotes it inside a line (a
+ * task's text, a note, this comment) printed by a call that found the command is no miss. The name must stand alone,
+ * not end a path or a longer name. KIT_NAME is a plain word, so it goes into the pattern as it is.
  */
 const NOT_FOUND = new RegExp(
-  String.raw`(?<![\w./\\-])${KIT_NAME}: (?:command )?not found|(?:command not found|Unknown command): ${KIT_NAME}(?![\w.-])|'${KIT_NAME}' is not recognized`,
+  [
+    String.raw`^\S+: (?:line \d+: |\d+: )?${KIT_NAME}: (?:command )?not found\r?$`,
+    String.raw`^\S+: command not found: ${KIT_NAME}\r?$`,
+    String.raw`^fish: Unknown command: ${KIT_NAME}\r?$`,
+    String.raw`^${KIT_NAME} ?: The term '${KIT_NAME}' is not recognized`,
+    String.raw`^'${KIT_NAME}' is not recognized as an internal or external command`,
+  ].join('|'),
+  'm',
 );
 
 /** The events the hook answers: a shell call that exits 0 ends in PostToolUse, one that does not in PostToolUseFailure. */
