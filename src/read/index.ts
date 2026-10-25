@@ -70,6 +70,24 @@ export { readRenames, RENAME_VERSION, type Rename, type RenameLogRead } from '..
 // and a leader's group as teamrig's approvals and lists find them.
 export { LeadTree } from '../config/lead-tree.ts';
 
+// The team tree: each team config's `team.parent` link, read across the kit home's team folders, so a reader shows a
+// team's parent, children and root as teamrig's routing and `list --tree` find them.
+export { TeamTree, teamNodeOf, type TeamNode } from '../config/tree.ts';
+
+// The hire log (`hires.jsonl`): who was hired for what job and who retired, so a reader marks a team's hired and
+// retired sessions as teamrig's hire and retire commands count them.
+export {
+  activeHires,
+  HIRE_FORMAT,
+  readHiringLog,
+  rehiredFrom,
+  retiredSessions,
+  type HireRecord,
+  type HiringLogRead,
+  type HiringRecord,
+  type RetireRecord,
+} from '../hiring/record.ts';
+
 // Each session's turn log (`turn-log/<session id>/<UTC hour>.jsonl`): its prompts, replies and clears, one parsed
 // JSON line at a time.
 export { parseEntry, TURN_LOG_VERSION, type TurnLogEntry, type TurnLogKind } from '../turn-log/entry.ts';
