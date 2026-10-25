@@ -2,7 +2,8 @@ import { LeadTree } from '../../config/lead-tree.ts';
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { formatAddress, splitAddress } from '../../core/address.ts';
-import type { TeamPaths } from '../../core/home.ts';
+import { errorMessage } from '../../core/guards.ts';
+import { KIT_NAME, type TeamPaths } from '../../core/home.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import { JsonlDailyLog } from '../../core/daily-log.ts';
 import { SecretScanner } from '../../core/secrets.ts';
@@ -17,6 +18,7 @@ import { activeHires } from '../../hiring/record.ts';
 import { scaleOutFlags } from '../../hiring/scale-out.ts';
 import { postLine } from '../../inbox/inbox.ts';
 import { weekUseOf } from '../../budget/snapshot.ts';
+import { WakeAsks } from '../../wake/asks.ts';
 import { teamDayStartAt } from '../../wake/day-start.ts';
 import { byFlagKind, checkTasks, peerWaitFlags } from '../../register/check.ts';
 import { currentWeekOf } from '../../register/week.ts';
@@ -255,7 +257,7 @@ async function tellAssigned(runtime: CliRuntime, team: Team, by: string, task: T
  * to that leader, a wait on the owner to the task owner's own leader, which passes it up (the lead keeps the owner's
  * decision queue and asks it in its batch); never to the leader who set it. A new wait on the owner says when the owner
  * hears it (src/decisions/batch.ts): in the next batch, in the one due now, or at once when it is due before the next;
- * at once, the setter is told to message the lead too, as an inbox line wakes no one.
+ * at once, the lead is woken or the setter told how to wake it (atOnceNote).
  */
 async function tellLeadersOfWaits(runtime: CliRuntime, team: Team, by: string, verdict: Verdict<WriteResult>): Promise<void> {
   if (!verdict.ok) {
@@ -280,13 +282,40 @@ async function tellLeadersOfWaits(runtime: CliRuntime, team: Team, by: string, v
     const waits = added.filter((reason) => receiverOf(reason) === receiver);
     const timing = waits.some((reason) => reason.who === ownerSource) ? await ownerWaitTiming(runtime, team, verdict.value) : undefined;
     const text = `${personWaitNotice(task, waits, receiver)}${timing === undefined ? '' : ` | ${timingText(timing, team.zone)}`}`;
-    await tellLine(runtime, team, by, receiver, text, `${receiver} was not told that ${task.id} waits on it`);
+    const posted = await tellLine(runtime, team, by, receiver, text, `${receiver} was not told that ${task.id} waits on it`);
     if (timing?.kind === 'at-once') {
-      const leadName = team.roster.nameOf(lead) ?? lead;
-      const how = receiver === lead ? ' too, as an inbox line wakes no one' : `, who asks the owner: the inbox line went to ${receiver}, and a line wakes no one`;
-      runtime.out.stderr(`NOTE ${task.id} is due before the owner's next batch: message ${leadName}${how}`);
+      runtime.out.stderr(await atOnceNote(runtime, team, by, task.id, receiver, posted ? text : undefined));
     }
   }
+}
+
+/**
+ * What the setter of an owner wait due before the next batch is told, so the lead hears of it at once. With wakes on,
+ * the lead's own posted line also gets a wake ask, as an `inbox add --wake now` line does; a line that went to a
+ * sub-lead, or was not posted, leaves the setter the wake line to post the lead. With wakes off a line wakes no one,
+ * so the setter messages the lead.
+ */
+async function atOnceNote(runtime: CliRuntime, team: Team, by: string, id: string, receiver: string, posted: string | undefined): Promise<string> {
+  const { lead } = team.config.roles;
+  const leadName = team.roster.nameOf(lead) ?? lead;
+  const due = `${id} is due before the owner's next batch`;
+  if (!team.config.wake.enabled) {
+    const how = receiver === lead ? ' too, as an inbox line wakes no one' : `, who asks the owner: the inbox line went to ${receiver}, and a line wakes no one`;
+    return `NOTE ${due}: message ${leadName}${how}`;
+  }
+  const wakeLine = `${KIT_NAME} inbox add --to ${lead} --text "..." --wake now`;
+  if (receiver !== lead) {
+    return `NOTE ${due}: wake ${leadName}, who asks the owner (the inbox line went to ${receiver}): ${wakeLine}`;
+  }
+  if (posted === undefined) {
+    return `NOTE ${due}: wake ${leadName}: ${wakeLine}`;
+  }
+  try {
+    await new WakeAsks(runtime.files, team.paths.wakeAsks).post(lead, { from: by, text: posted, at: runtime.clock.now() });
+  } catch (error) {
+    return `WARN ${due}, and ${leadName}'s wake could not be asked (${errorMessage(error)}): ${wakeLine}`;
+  }
+  return `NOTE ${due}: its line wakes ${leadName}, so no message is needed`;
 }
 
 /** When the owner hears of a task's new wait on them, judged on the register after the write. */
@@ -297,11 +326,11 @@ async function ownerWaitTiming(runtime: CliRuntime, team: Team, { task, state, e
 }
 
 /** Posts one inbox line, naming it on stderr, or naming `unsent` and why: a line that cannot be posted is never thrown. */
-async function tellLine(runtime: CliRuntime, team: Team, by: string, to: string, text: string, unsent: string, shown = to): Promise<void> {
-  await postNamed(runtime, team.paths, new SecretScanner(team.config.register.secretPatterns), { to, from: by, text }, unsent, shown);
+async function tellLine(runtime: CliRuntime, team: Team, by: string, to: string, text: string, unsent: string, shown = to): Promise<boolean> {
+  return postNamed(runtime, team.paths, new SecretScanner(team.config.register.secretPatterns), { to, from: by, text }, unsent, shown);
 }
 
-/** Posts one line to an inbox of the team at `paths`, naming it on stderr as `shown`, or naming `unsent` and why. */
+/** Posts one line to an inbox of the team at `paths`, naming it on stderr as `shown`, or naming `unsent` and why; true when posted. */
 async function postNamed(
   runtime: CliRuntime,
   paths: TeamPaths,
@@ -309,10 +338,11 @@ async function postNamed(
   line: { readonly to: string; readonly from: string; readonly text: string },
   unsent: string,
   shown: string,
-): Promise<void> {
+): Promise<boolean> {
   const { inboxes } = inboxDepsOf(runtime, paths);
   const problem = await postLine(inboxes, secrets, { ...line, now: new Date(runtime.clock.now()) });
   runtime.out.stderr(problem === undefined ? `NOTE ${shown} has an inbox line: ${line.text}` : `WARN ${unsent}: ${problem}`);
+  return problem === undefined;
 }
 
 /**
