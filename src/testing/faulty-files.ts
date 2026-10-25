@@ -9,12 +9,14 @@ export function systemError(code: string, message: string = `${code}: simulated`
 }
 
 /**
- * `Files` over another `Files` that fails chosen operations on chosen paths, for the error paths a
- * disk produces (a permission refused, a folder where a file should be). Every other call passes through.
+ * `Files` over another `Files` that fails or stalls chosen operations on chosen paths, for the error paths a
+ * disk produces (a permission refused, a folder where a file should be, a read that outlives a hook's timeout).
+ * Every other call passes through.
  */
 export class FaultyFiles implements Files {
   private readonly inner: Files;
   private readonly faults = new Map<string, Error>();
+  private readonly stalls = new Map<string, () => void>();
 
   constructor(inner: Files) {
     this.inner = inner;
@@ -26,55 +28,68 @@ export class FaultyFiles implements Files {
     return this;
   }
 
+  /** From now on, `operation` on `path` never settles; the promise resolves once a call reaches it. */
+  stall(operation: FileOperation, path: string): Promise<void> {
+    return new Promise((reached) => {
+      this.stalls.set(keyOf(operation, path), reached);
+    });
+  }
+
   async read(path: string): Promise<string | undefined> {
-    this.check('read', path);
+    await this.check('read', path);
     return this.inner.read(path);
   }
 
   async readTail(path: string, maxBytes: number): Promise<string | undefined> {
-    this.check('readTail', path);
+    await this.check('readTail', path);
     return this.inner.readTail(path, maxBytes);
   }
 
   async append(path: string, text: string): Promise<void> {
-    this.check('append', path);
+    await this.check('append', path);
     return this.inner.append(path, text);
   }
 
   async write(path: string, text: string): Promise<void> {
-    this.check('write', path);
+    await this.check('write', path);
     return this.inner.write(path, text);
   }
 
   async createExclusive(path: string, text: string): Promise<boolean> {
-    this.check('createExclusive', path);
+    await this.check('createExclusive', path);
     return this.inner.createExclusive(path, text);
   }
 
   async list(dir: string): Promise<string[]> {
-    this.check('list', dir);
+    await this.check('list', dir);
     return this.inner.list(dir);
   }
 
   async remove(path: string): Promise<boolean> {
-    this.check('remove', path);
+    await this.check('remove', path);
     return this.inner.remove(path);
   }
 
   async stamp(path: string): Promise<string | undefined> {
-    this.check('stamp', path);
+    await this.check('stamp', path);
     return this.inner.stamp(path);
   }
 
   async modifiedAt(path: string): Promise<number | undefined> {
-    this.check('modifiedAt', path);
+    await this.check('modifiedAt', path);
     return this.inner.modifiedAt(path);
   }
 
-  private check(operation: FileOperation, path: string): void {
-    const error = this.faults.get(keyOf(operation, path));
+  private async check(operation: FileOperation, path: string): Promise<void> {
+    const key = keyOf(operation, path);
+    const error = this.faults.get(key);
     if (error !== undefined) {
       throw error;
+    }
+    const reached = this.stalls.get(key);
+    if (reached !== undefined) {
+      reached();
+      await new Promise<never>(() => undefined);
     }
   }
 }
