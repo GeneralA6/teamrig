@@ -61,6 +61,7 @@ function world(input: Partial<MeasureInput> = {}): World {
     input: {
       projectsDir: PROJECTS,
       since: SINCE,
+      team: 'app',
       roster: ROSTER,
       areaBySession: new Map([[MARKED_BRAVO, 'bravo']]),
       subagentWeight: 1,

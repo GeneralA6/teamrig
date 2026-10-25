@@ -6,13 +6,14 @@ import { FakeClock } from '../testing/fake-clock.ts';
 import { InlineMutex } from '../testing/inline-mutex.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { renameOf } from '../testing/rename.ts';
+import type { TeamRoster } from '../hooks/bind.ts';
 import { adoptTitle, promptNote, sessionStartNote, type TitleOutcome } from './detect.ts';
 import { JsonlRenameLog } from './log.ts';
 import type { RenameDeps } from './record.ts';
 
 const PATH = join('/', 'state', 'renames.jsonl');
 const CONFIG = { sessions: ['lead', 'alpha', 'bravo'], names: {}, roles: { lead: 'lead' } };
-const BEFORE = new Roster(CONFIG, 'app');
+const BEFORE: TeamRoster = { team: 'app', roster: new Roster(CONFIG, 'app') };
 
 function setup(text?: string): { deps: RenameDeps; mutex: InlineMutex } {
   const mutex = new InlineMutex();
@@ -60,6 +61,23 @@ describe('adoptTitle', () => {
     assert.deepEqual(await adoptTitle(taken.deps, BEFORE, 'alpha', 'scout'), { kind: 'refused', title: 'scout', reason: 'scout is already the name of bravo' });
     const same = setup(JSON.stringify(renameOf('alpha', 'app-alpha', 'scout')));
     assert.deepEqual(await adoptTitle(same.deps, BEFORE, 'alpha', 'scout'), { kind: 'unchanged' });
+  });
+
+  it('reads its own name in the [<team>] <name> form people see as no rename', async () => {
+    const { deps, mutex } = setup();
+    assert.deepEqual(await adoptTitle(deps, BEFORE, 'alpha', '[app] alpha'), { kind: 'unchanged' }, 'its id');
+    assert.deepEqual(await adoptTitle(deps, BEFORE, 'alpha', '[App] App-Alpha'), { kind: 'unchanged' }, 'its name');
+    const renamed: TeamRoster = { team: 'app', roster: new Roster(CONFIG, 'app', [renameOf('alpha', 'app-alpha', 'app-scout')]) };
+    assert.deepEqual(await adoptTitle(deps, renamed, 'alpha', '[app] scout'), { kind: 'unchanged' }, 'the bare name of app-scout');
+    assert.equal(mutex.runs, 0);
+  });
+
+  it("records the name in a title bracketing its team, and keeps another team's bracket in the title", async () => {
+    const { deps } = setup();
+    const outcome = await adoptTitle(deps, BEFORE, 'alpha', '[app] Scout');
+    assert.ok(outcome.kind === 'recorded');
+    assert.equal(outcome.rename.to, 'scout');
+    assert.equal((await adoptTitle(setup().deps, BEFORE, 'alpha', '[web] scout')).kind, 'refused');
   });
 });
 

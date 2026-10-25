@@ -17,6 +17,7 @@ export interface Attribution {
 
 export interface AttributionInput {
   readonly sessions: readonly ClaudeSessionFiles[];
+  readonly team: string;
   readonly roster: Roster;
   /** The team session each Claude Code session last read its inbox as (the inbox marks). */
   readonly areaBySession: ReadonlyMap<string, string>;
@@ -40,7 +41,7 @@ export async function attribute(input: AttributionInput): Promise<Attribution> {
     let title: string | undefined;
     if (id === undefined) {
       title = await titleOfFirst(input, session.main);
-      const titled = title === undefined ? [] : sessionsTitled(input.roster, title);
+      const titled = title === undefined ? [] : sessionsTitled({ team: input.team, roster: input.roster }, title);
       id = titled.length === 1 ? titled[0] : undefined;
     }
     if (id === undefined) {

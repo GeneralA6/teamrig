@@ -76,17 +76,34 @@ describe('tabTitleFor', () => {
 
 describe('sessionsTitled', () => {
   it('matches an id or a current name, never a former name or a near miss', () => {
-    assert.deepEqual(sessionsTitled(OWN.roster, 'alpha'), ['alpha']);
-    assert.deepEqual(sessionsTitled(OWN.roster, 'captain'), ['lead']);
-    assert.deepEqual(sessionsTitled(OWN.roster, 'scout'), ['bravo']);
-    assert.deepEqual(sessionsTitled(OWN.roster, 'app-bravo'), [], 'a former name');
-    assert.deepEqual(sessionsTitled(OWN.roster, 'app-alpha '), []);
+    assert.deepEqual(sessionsTitled(OWN, 'alpha'), ['alpha']);
+    assert.deepEqual(sessionsTitled(OWN, 'captain'), ['lead']);
+    assert.deepEqual(sessionsTitled(OWN, 'scout'), ['bravo']);
+    assert.deepEqual(sessionsTitled(OWN, 'app-bravo'), [], 'a former name');
+    assert.deepEqual(sessionsTitled(OWN, 'app-alpha '), []);
   });
 
   it('matches whatever the case of the title', () => {
-    assert.deepEqual(sessionsTitled(OWN.roster, 'Alpha'), ['alpha']);
-    assert.deepEqual(sessionsTitled(OWN.roster, 'CAPTAIN'), ['lead']);
-    assert.deepEqual(sessionsTitled(OWN.roster, 'App-Bravo'), [], 'a former name');
+    assert.deepEqual(sessionsTitled(OWN, 'Alpha'), ['alpha']);
+    assert.deepEqual(sessionsTitled(OWN, 'CAPTAIN'), ['lead']);
+    assert.deepEqual(sessionsTitled(OWN, 'App-Bravo'), [], 'a former name');
+  });
+
+  it('matches the [<team>] <name> form people see, whatever its case, by id, name or bare name', () => {
+    assert.deepEqual(sessionsTitled(OWN, '[app] alpha'), ['alpha']);
+    assert.deepEqual(sessionsTitled(OWN, '[app] app-alpha'), ['alpha']);
+    assert.deepEqual(sessionsTitled(OWN, '[App] Captain'), ['lead']);
+    assert.deepEqual(sessionsTitled(OWN, '[app] scout'), ['bravo']);
+    assert.deepEqual(sessionsTitled(OWN, '[app] app-bravo'), [], 'a former name');
+    const renamed: TeamRoster = { team: 'app', roster: new Roster(CONFIG, 'app', [renameOf('alpha', 'app-alpha', 'app-scout')]) };
+    assert.deepEqual(sessionsTitled(renamed, '[app] scout'), ['alpha'], 'the bare name of app-scout');
+    assert.deepEqual(sessionsTitled(renamed, 'scout'), [], 'without the team, scout is no name of the team');
+  });
+
+  it("matches none of the team's sessions for a title bracketing another team", () => {
+    assert.deepEqual(sessionsTitled(OWN, '[web] lead'), []);
+    assert.deepEqual(sessionsTitled(WEB, '[web] lead'), ['lead']);
+    assert.deepEqual(sessionsTitled(WEB, '[app] lead'), []);
   });
 });
 
@@ -184,6 +201,14 @@ describe('bindByTitle', () => {
       ],
     });
     assert.equal(files.get(MARKS), undefined);
+  });
+
+  it('binds a title bracketing the team to its session alone, where the bare name would be ambiguous', async () => {
+    const { deps } = setup([], [WEB]);
+    const outcome = await bindByTitle(deps, input('[app] lead'));
+    assert.ok(outcome.kind === 'bound');
+    assert.equal(outcome.id, 'lead');
+    assert.deepEqual(await bindByTitle(setup([], [WEB]).deps, input('[web] lead')), { kind: 'unmatched', title: '[web] lead' });
   });
 
   it('binds nothing when the title is one session\'s id and another\'s name', async () => {

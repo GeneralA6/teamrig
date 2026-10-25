@@ -280,7 +280,7 @@ async function titleOutcome(runtime: CliRuntime, kit: Kit, config: KitConfig, pa
     }
     const roster = await rosterOf(runtime, kit, config);
     const id = await teamSessionOf(runtime, kit, roster, sessionIdOf(payload));
-    return id === undefined ? { kind: 'none' } : await adoptTitle(renameDepsOf(runtime, kit, config), roster, id, title);
+    return id === undefined ? { kind: 'none' } : await adoptTitle(renameDepsOf(runtime, kit, config), { team: kit.paths.team, roster }, id, title);
   } catch (error) {
     return { kind: 'failed', error: errorMessage(error) };
   }

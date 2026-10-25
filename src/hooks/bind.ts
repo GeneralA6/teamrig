@@ -1,6 +1,6 @@
 import type { Roster } from '../config/roster.ts';
 import { formatAddress, type SessionAddress } from '../core/address.ts';
-import { titleKey } from '../core/ids.ts';
+import { bareName, titleKey, titleParts } from '../core/ids.ts';
 import type { MarkLog } from '../inbox/inbox.ts';
 import { indexMarks, MARK_VERSION, type InboxMark } from '../inbox/marks.ts';
 import type { RefreshState } from '../refresh/state.ts';
@@ -28,12 +28,20 @@ export interface TeamRoster {
 }
 
 /**
- * The sessions of `roster` whose id or current name is `title`, whatever its case (`titleKey`). A former name binds nothing:
- * the title rename that follows would give the session that old name back.
+ * The sessions of the team whose id or current name is `title`, whatever its case (`titleKey`), or, for a title
+ * in the `[<team>] <name>` form people see (sessionDisplay), whose bare name is its name; a title bracketing
+ * another team names none of this team's. A former name binds nothing: the title rename that follows would give
+ * the session that old name back.
  */
-export function sessionsTitled(roster: Roster, title: string): string[] {
-  const key = titleKey(title);
-  return roster.ids.filter((id) => id === key || roster.nameOf(id) === key);
+export function sessionsTitled(own: TeamRoster, title: string): string[] {
+  const { team, roster } = own;
+  const parts = titleParts(title);
+  if (parts.team !== undefined && parts.team !== team) {
+    return [];
+  }
+  const key = titleKey(parts.name);
+  const shown = parts.team === undefined ? undefined : bareName(team, key);
+  return roster.ids.filter((id) => id === key || roster.nameOf(id) === key || (shown !== undefined && bareName(team, roster.nameOf(id) ?? id) === shown));
 }
 
 export type BindOutcome =
@@ -96,11 +104,11 @@ export async function bindByTitle(deps: BindDeps, input: BindInput): Promise<Bin
   if (title === undefined || title === '') {
     return { kind: 'untitled' };
   }
-  const ownIds = sessionsTitled(own.roster, title);
+  const ownIds = sessionsTitled(own, title);
   if (ownIds.length === 0) {
     return { kind: 'unmatched', title };
   }
-  const others = (await deps.treeTeams()).flatMap(({ team, roster }) => sessionsTitled(roster, title).map((id) => ({ team, id })));
+  const others = (await deps.treeTeams()).flatMap((other) => sessionsTitled(other, title).map((id) => ({ team: other.team, id })));
   const candidates = [...ownIds.map((id) => ({ team: own.team, id })), ...others];
   const [only] = candidates;
   if (candidates.length !== 1 || only === undefined) {
@@ -116,6 +124,8 @@ export async function bindByTitle(deps: BindDeps, input: BindInput): Promise<Bin
  * the session's name. The tab then shows which session it is, and since Claude Code keeps the title
  * across /clear, the new session binds itself by it as it starts. Undefined for a tab with no session,
  * or with a title: that is the user's, recorded as a rename (names/detect.ts), never overwritten.
+ * The bare name, never the `[<team>] <name>` people see: Claude Code's session name is the address
+ * SendMessage takes, which a space or a bracket would break.
  */
 export function tabTitleFor(roster: Roster, id: string | undefined, title: string | undefined): string | undefined {
   return id === undefined || title !== undefined ? undefined : (roster.nameOf(id) ?? id);
