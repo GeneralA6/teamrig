@@ -108,16 +108,28 @@ export interface WaitContext {
   readonly now: number;
   /** The team's zone: a stored day is a day of it, and times show in it. */
   readonly zone: TimeZone;
-  /** A task's status; undefined when the read lacks it, which a write never names unless a compaction retired it: finished. */
+  /**
+   * A task's status, from the read or, for an id it lacks, from another register of the team tree; undefined when no
+   * register holds it, which a write never names unless a compaction retired it: finished.
+   */
   statusOf(id: string): TaskStatus | undefined;
 }
 
-/** The context of one register read at `now`, in the team's `zone`. */
-export function waitContext(tasks: ReadonlyMap<string, { readonly status: TaskStatus }>, now: Date, zone: TimeZone): WaitContext {
-  return { now: now.getTime(), zone, statusOf: (id) => tasks.get(id)?.status };
+/**
+ * The tasks the other registers of a team tree hold, by id (one numbering across the tree, T1139), as a read of one
+ * register asks them for an id it lacks; a register outside a tree has none.
+ */
+export type StatusesElsewhere = ReadonlyMap<string, { readonly task: { readonly status: TaskStatus } }>;
+
+/**
+ * The context of one register read at `now`, in the team's `zone`; an id the read lacks reads its status from
+ * `elsewhere`. The read wins an id both hold, which only a register numbered before its tree was can have.
+ */
+export function waitContext(tasks: ReadonlyMap<string, { readonly status: TaskStatus }>, now: Date, zone: TimeZone, elsewhere: StatusesElsewhere = new Map()): WaitContext {
+  return { now: now.getTime(), zone, statusOf: (id) => (tasks.get(id) ?? elsewhere.get(id)?.task)?.status };
 }
 
-/** True when the task is done or dropped, or retired from the read, which only a finished task is. */
+/** True when the task is done or dropped, or retired from every register, which only a finished task is. */
 export function isFinished(id: string, context: WaitContext): boolean {
   const status = context.statusOf(id);
   return status === undefined || status === 'done' || status === 'dropped';

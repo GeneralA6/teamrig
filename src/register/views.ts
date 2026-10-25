@@ -372,14 +372,19 @@ export function formatTaskDetail(task: Task, events: readonly RegisterEvent[], t
 /**
  * `show --tree`: what the task needs, down to tasks that need nothing unfinished (`needs:`), then the active tasks
  * that need it, up to those nothing needs (`needed by:`), each level indented two more spaces, then
- * {@link formatNextMove}. A finished need ends its branch, and one the read lacks reads `T3 finished` (only a
- * compaction retires a task, and only a finished one). Within a part, a task met again reads `T4 (shown above)`,
- * and one already on its own branch `T2 (loop)`. Needs come in plan order, so the first branch leads to the next move.
+ * {@link formatNextMove}. A finished need ends its branch, and so does one another register of the team tree holds,
+ * read as its row there (`web/T3 open, ...`); one no register holds reads `T3 finished` (only a compaction retires a
+ * task, and only a finished one). Within a part, a task met again reads `T4 (shown above)`, and one already on its
+ * own branch `T2 (loop)`. Needs come in plan order, so the first branch leads to the next move.
  */
 export function formatTaskTree(task: Task, tree: TaskTree, titleChars: number): string[] {
   const node = (id: string) => {
     const found = tree.task(id);
-    return found === undefined ? `${id} finished` : shortRow(found, titleChars, undefined, tree);
+    const away = tree.elsewhereOf(id);
+    if (found !== undefined) {
+      return shortRow(found, titleChars, undefined, tree);
+    }
+    return away === undefined ? `${id} finished` : shortRow(away.task, titleChars, away.team, tree);
   };
   const down = (id: string) => {
     const found = tree.task(id);
@@ -416,7 +421,8 @@ function branchLines(id: string, next: (id: string) => string[], node: (id: stri
 /**
  * `Next move: beta (T3)`: who moves first so the task can finish, on which task ({@link TaskTree.nextMove}), with
  * `, decision` or `, approval` when the lead or the owner decides, `, from Thu 01-10` when a time must pass first,
- * and `, behind T7 (p1)` when that session works a higher-priority task first. `Next move: none` says why: the task
+ * and `, behind T7 (p1)` when that session works a higher-priority task first; `Next move: lead on team web (web/T5)`
+ * when an unfinished task of another register of the team tree comes first. `Next move: none` says why: the task
  * is finished, or what it needs runs in a loop.
  */
 export function formatNextMove(task: Task, tree: TaskTree): string {
@@ -425,6 +431,9 @@ export function formatNextMove(task: Task, tree: TaskTree): string {
     return ACTIVE_STATUSES.includes(task.status)
       ? `Next move: none, what ${task.id} needs runs in a loop (check flags it LOOP)`
       : `Next move: none, ${task.id} is ${task.status}`;
+  }
+  if (move.kind === 'elsewhere') {
+    return `Next move: ${move.who} on team ${move.team} (${taskLabel(move.need, move.team)})`;
   }
   const what = move.kind === 'work' ? '' : move.kind === 'time' ? `, from ${weekdayText(move.at, tree.zone)}` : `, ${move.kind}`;
   const behind = move.behind === undefined ? '' : `, behind ${move.behind.id} (${priorityText(move.behind.priority)})`;

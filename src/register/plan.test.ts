@@ -43,6 +43,17 @@ describe('renderPlan', () => {
     );
   });
 
+  it("reads a wait on another register's task there", () => {
+    const week = '2030-01-07';
+    const tasks = [testTask({ id: 'T1', week, status: 'waiting', waits: [{ kind: 'task', id: 'T20' }, { kind: 'task', id: 'T21' }] })];
+    const elsewhere = new Map([
+      ['T20', { team: 'web', task: testTask({ id: 'T20', status: 'in-progress' }) }],
+      ['T21', { team: 'web', task: testTask({ id: 'T21', status: 'done' }) }],
+    ]);
+    const plan = renderPlan(tasks, week, new Date('2030-01-07T08:00:00Z'), TimeZone.UTC, testConfig().register, { elsewhere });
+    assert.match(plan, /\*\*waiting:\*\* on T20 · on T21 ready$/m);
+  });
+
   it('orders and dates each task by its effective due, naming the task it comes from', () => {
     const config = testConfig().register;
     const week = '2030-01-07';

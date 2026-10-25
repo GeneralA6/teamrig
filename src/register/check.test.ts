@@ -255,6 +255,23 @@ describe('checkTasks: READY', () => {
     );
   });
 
+  it("reads a wait on another register's task there: ready once that task finished", () => {
+    const elsewhere = new Map([
+      ['T20', { team: 'web', task: testTask({ id: 'T20', status: 'in-progress' }) }],
+      ['T21', { team: 'web', task: testTask({ id: 'T21', status: 'done' }) }],
+    ]);
+    const tasks = [
+      testTask({ id: 'T1', status: 'waiting', waits: [{ kind: 'task', id: 'T20' }], ...seen }),
+      testTask({ id: 'T2', status: 'waiting', waits: [{ kind: 'task', id: 'T21' }], ...seen }),
+    ];
+    const flagged = checkTasks(tasks, NOW, TimeZone.UTC, null, CONFIG, elsewhere).filter((flag) => flag.kind === 'READY');
+    assert.deepEqual(
+      flagged.map((flag) => flag.task.id),
+      ['T2'],
+    );
+    assert.deepEqual(ready(tasks), ['T1', 'T2'], 'outside a tree, both read retired');
+  });
+
   it("flags a verifying task once its proof's waits cleared, and none whose proof waits for nothing", () => {
     const tasks = [
       testTask({ id: 'T1', status: 'verifying', proof: 'the run', waits: [{ kind: 'task', id: 'T2' }], ...seen }),

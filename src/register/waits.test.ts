@@ -166,6 +166,24 @@ describe('unfinishedAfter', () => {
   });
 });
 
+describe('a task another register of the team tree holds', () => {
+  const elsewhere = new Map<string, { readonly task: { readonly status: TaskStatus } }>([
+    ['T7', { task: { status: 'in-progress' } }],
+    ['T8', { task: { status: 'done' } }],
+    ['T3', { task: { status: 'done' } }],
+  ]);
+  const context = waitContext(TASKS, NOW, TimeZone.UTC, elsewhere);
+
+  it('reads its status there for an id this read lacks, the read winning an id both hold', () => {
+    assert.equal(context.statusOf('T7'), 'in-progress');
+    assert.equal(isFinished('T7', context), false);
+    assert.equal(isReady({ kind: 'task', id: 'T7' }, context), false);
+    assert.equal(isReady({ kind: 'task', id: 'T8' }, context), true);
+    assert.equal(context.statusOf('T3'), 'in-progress', 'a register numbered before its tree reads its own T3');
+    assert.deepEqual(unfinishedAfter(['T7', 'T8', 'T3', 'T9'], context), ['T7', 'T3'], 'T9, in no register, was retired');
+  });
+});
+
 describe("a time wait in the team's zone", () => {
   it('prints a stored minute there, zone-marked, and its weekday there', () => {
     assert.equal(weekdayText('2030-01-10 23:30', JERUSALEM), 'Fri 01-11 01:30 IST', 'a stored minute is UTC; its local day can be the next one');

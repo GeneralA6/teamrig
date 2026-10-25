@@ -3,7 +3,7 @@ import type { TimeZone } from '../core/zone.ts';
 import type { RegisterConfig } from '../config/types.ts';
 import type { Task } from './fold.ts';
 import { priorityText } from './model.ts';
-import { TaskTree } from './tree.ts';
+import { NO_TASKS_ELSEWHERE, TaskTree, type TasksElsewhere } from './tree.ts';
 import { sizeText, taskLabel } from './views.ts';
 import { waitsText } from './waits.ts';
 import { proofOf } from './verify.ts';
@@ -13,6 +13,8 @@ export interface PlanOptions {
   readonly team?: string | undefined;
   /** The week's fit to the weekly limit (fit.ts fitLines), printed under the counts as a list. */
   readonly fit?: readonly string[];
+  /** The tasks of the team tree's other registers, which a wait on or a dependency after a task this one lacks reads. */
+  readonly elsewhere?: TasksElsewhere;
 }
 
 /**
@@ -20,9 +22,16 @@ export interface PlanOptions {
  * PLAN_KEYS: started first, then the effective due, its own or an earlier one of an active task that needs it, which
  * the line names: `due 01-10 from T5`).
  */
-export function renderPlan(tasks: Iterable<Task>, week: string, now: Date, zone: TimeZone, config: RegisterConfig, { team, fit = [] }: PlanOptions = {}): string {
+export function renderPlan(
+  tasks: Iterable<Task>,
+  week: string,
+  now: Date,
+  zone: TimeZone,
+  config: RegisterConfig,
+  { team, fit = [], elsewhere = NO_TASKS_ELSEWHERE }: PlanOptions = {},
+): string {
   const all = [...tasks];
-  const tree = new TaskTree(new Map(all.map((task) => [task.id, task])), now, zone, week);
+  const tree = new TaskTree(new Map(all.map((task) => [task.id, task])), now, zone, week, elsewhere);
   const inWeek = tree.inPlanOrder(all.filter((task) => task.week === week));
   const done = inWeek.filter((task) => task.status === 'done').length;
   const dropped = inWeek.filter((task) => task.status === 'dropped').length;
