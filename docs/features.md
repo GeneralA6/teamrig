@@ -79,7 +79,7 @@ your machine.
 | **Settings and upgrades** | `teamrig config validate` and `config migrate` | works today |
 | | Open tabs take a plugin update by themselves: once an install changed and no turn runs, teamrig's mod runs `/reload-plugins` in each tab, at most once per 5 minutes (a Claude Code without mods still needs it typed) | works today |
 | | A new-version notice and `teamrig upgrade` with rollback | planned (T203) |
-| **Works everywhere** | Windows, macOS and Linux; every change is tested on all three. | works today |
+| **Windows and Linux** | Every change passes the local checks on Windows before it lands; on Linux the full test suite and a smoke run of the commands and hooks pass. The tab status circles and teamrig-pane are proven on Windows only; macOS is untested. | works today |
 
 ## Works with
 
