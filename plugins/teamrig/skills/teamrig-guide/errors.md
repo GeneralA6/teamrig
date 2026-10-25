@@ -29,8 +29,10 @@ or take it to the lead.
 | `REFUSED --followups names T9, which is not on the task list: add it first (teamrig add)` | `teamrig add` the follow-up, then name its id. |
 | `REFUSED --followups names T1 itself: name the tasks it leaves` (also `names T2 twice`) | Name each other task once. |
 | `REFUSED --followups goes only with verifying, done, dropped` | Drop `--followups`. |
-| `REFUSED T1 is a problem: done needs its review, --cause, --how and --missed-log (...)` (also `verifying`) | Give the parts it names: the root cause, how it got in, and the test, monitor or log that missed it, each a follow-up task or why none can (`teamrig help set`). |
-| `REFUSED --how goes only with a problem: mark it first, teamrig update T1 --problem problem\|critical` | Mark the task a problem first, or drop the review flags. |
+| `REFUSED T1 is a bug: done needs its review, --cause, --how and --missed-log (...)` (also `verifying`) | Give the parts it names: the root cause, how it got in, and the test, monitor or log that missed it, each a follow-up task or why none can (`teamrig help set`). |
+| `REFUSED --how goes only with a bug: mark it first, teamrig update T1 --type bug` | Mark the task a bug first, or drop the review flags. |
+| `REFUSED critical marks only a bug: give --type bug too` | Add `--type bug`, or drop `--critical`. |
+| `--problem was renamed: use --type bug [--critical] (or --type task)` | Mark a bug with `--type bug`, a critical one with `--type bug --critical`, and quiet the bug hint with `--type task`. |
 | `REFUSED --missed-test says "T124": give at least 3 plain words besides task ids, ...` | Say what the follow-up adds, as well as its id. |
 | `REFUSED a missed part names T9, which is not on the task list: add it first (teamrig add)` | `teamrig add` the follow-up, then name its id. |
 | `REFUSED waiting needs --note` (also `verifying`, `done`, `dropped`) | Add `--note` saying what it waits for, what was done, or why it was dropped. |
