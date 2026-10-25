@@ -4,6 +4,7 @@ import { sessionIdOf } from "../../inbox/inbox.js";
 import { cappedText } from "../../turn-log/entry.js";
 import { REPLY_TAIL_BYTES, replyOf } from "../../turn-log/reply.js";
 import { TurnLog } from "../../turn-log/store.js";
+import { WakePrompts } from "../../wake/prompts.js";
 /** What SessionStart's `source` logs: a /clear or a compaction, which wipe what the tab showed. */
 const WIPES = { clear: 'context cleared (/clear)', compact: 'context compacted' };
 function entryOf(runtime, scope, said) {
@@ -15,19 +16,25 @@ function entryOf(runtime, scope, said) {
         claude: said.claude,
         ...(cut || said.cut === true ? { truncated: true } : {}),
         ...(said.upTo === undefined ? {} : { upTo: said.upTo }),
+        ...(said.from === undefined ? {} : { from: said.from }),
     };
 }
 function logOf(runtime, scope) {
     return new TurnLog(runtime.files, scope.paths.turnLog);
 }
-/** UserPromptSubmit: the prompt the person sent; nothing with the log off or an empty prompt. */
+/**
+ * UserPromptSubmit: the prompt the person sent, or the wake teamrig submitted in that tab, marked `from: teamrig`;
+ * nothing with the log off or an empty prompt.
+ */
 export async function logPrompt(runtime, scope, payload) {
     const claude = sessionIdOf(payload);
     const prompt = isRecord(payload) ? stringField(payload, 'prompt') : undefined;
     if (!scope.config.turnLog.enabled || claude === null || prompt === undefined || prompt.trim() === '') {
         return;
     }
-    await logOf(runtime, scope).append(scope.id, entryOf(runtime, scope, { kind: 'prompt', claude, text: prompt }));
+    const woke = await new WakePrompts(runtime.files, scope.paths.wake).take(scope.id, { tab: claude, text: prompt });
+    const said = { kind: 'prompt', claude, text: prompt, ...(woke ? { from: 'teamrig' } : {}) };
+    await logOf(runtime, scope).append(scope.id, entryOf(runtime, scope, said));
 }
 /**
  * The turn's reply from the transcript, ending with the message Claude Code gives the Stop hook

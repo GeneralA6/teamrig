@@ -36,5 +36,6 @@ export function parseEntry(record) {
         claude,
         ...(record['truncated'] === true ? { truncated: true } : {}),
         ...(upTo === undefined ? {} : { upTo }),
+        ...(record['from'] === 'teamrig' ? { from: 'teamrig' } : {}),
     };
 }
