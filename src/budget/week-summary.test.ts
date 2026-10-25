@@ -1,9 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Files } from '../core/files.ts';
+import { NewerDataError } from '../core/jsonl.ts';
+import { fieldPaths } from '../testing/field-paths.ts';
 import { MemoryFiles, normalisePath } from '../testing/memory-files.ts';
 import { formatSnapshot, type StatusSnapshot, type WeekFold } from './snapshot.ts';
-import { foldIntoWeekSummary, formatWeekSummary, parseWeekSummary, readFolderWeek, WEEK_SUMMARY_FILE } from './week-summary.ts';
+import { foldIntoWeekSummary, formatWeekSummary, parseWeekSummary, readFolderWeek, WEEK_SUMMARY_FILE, WEEK_SUMMARY_FORMAT } from './week-summary.ts';
 
 const ALPHA = '0000000a-0000-4000-8000-000000000001';
 const BRAVO = '0000000b-0000-4000-8000-000000000002';
@@ -69,14 +71,21 @@ describe('formatWeekSummary and parseWeekSummary', () => {
   it('writes the reading with its reset in epoch seconds, and reads it back', () => {
     const kept = fold(46, '2030-01-08T09:59:00.000Z', '2030-01-08T09:58:00.000Z');
     const text = formatWeekSummary(kept);
-    assert.equal(text, '{"reading":{"used_percentage":46,"resets_at":1894582800,"at":"2030-01-08T09:59:00.000Z"},"followed_by":"2030-01-08T09:58:00.000Z"}');
+    assert.equal(text, '{"v":1,"reading":{"used_percentage":46,"resets_at":1894582800,"at":"2030-01-08T09:59:00.000Z"},"followed_by":"2030-01-08T09:58:00.000Z"}');
     assert.deepEqual(parseWeekSummary(text), kept);
     const none: WeekFold = { best: undefined, followedBy: undefined };
     assert.deepEqual(parseWeekSummary(formatWeekSummary(none)), none);
   });
 
-  it('reads damaged text as none', () => {
-    for (const text of ['{"reading":', '[]', '{}', '{"reading":null}', '{"reading":{"used_percentage":"46","resets_at":1,"at":"2030-01-08T09:59:00.000Z"},"followed_by":null}', '{"reading":null,"followed_by":"soon"}']) {
+  it('writes the pinned fields of its format: a field added to the file raises WEEK_SUMMARY_FORMAT', () => {
+    const written: Readonly<Record<number, readonly string[]>> = { 1: ['followed_by', 'reading.at', 'reading.resets_at', 'reading.used_percentage', 'v'] };
+    const full = fold(46, '2030-01-08T09:59:00.000Z', '2030-01-08T09:58:00.000Z');
+    assert.deepEqual(fieldPaths(JSON.parse(formatWeekSummary(full))), written[WEEK_SUMMARY_FORMAT]);
+  });
+
+  it('reads damaged text, or a format it cannot read, as none', () => {
+    const damaged = ['{"reading":', '[]', '{}', '{"v":1,"reading":null}', '{"v":1,"reading":{"used_percentage":"46","resets_at":1,"at":"2030-01-08T09:59:00.000Z"},"followed_by":null}', '{"v":1,"reading":null,"followed_by":"soon"}'];
+    for (const text of [...damaged, '{"reading":null,"followed_by":null}', '{"v":2,"reading":null,"followed_by":null}']) {
       assert.equal(parseWeekSummary(text), undefined, text);
     }
   });
@@ -132,5 +141,13 @@ describe('foldIntoWeekSummary', () => {
     await memory.write(SUMMARY, '{"reading":');
     assert.equal(await foldIntoWeekSummary(memory, DIR, alphaNew, NOW), true);
     assert.deepEqual(parseWeekSummary(memory.get(SUMMARY) ?? ''), fold(48, '2030-01-08T09:59:10.000Z', '2030-01-08T09:58:00.000Z'));
+  });
+
+  it('refuses a summary a newer teamrig wrote, leaving it as it was', async () => {
+    const memory = saved(alphaNew);
+    const newer = '{"v":2,"reading":null,"followed_by":null}';
+    await memory.write(SUMMARY, newer);
+    await assert.rejects(foldIntoWeekSummary(memory, DIR, alphaNew, NOW), (error: unknown) => error instanceof NewerDataError && error.found === 2 && error.known === WEEK_SUMMARY_FORMAT);
+    assert.equal(memory.get(SUMMARY), newer);
   });
 });
