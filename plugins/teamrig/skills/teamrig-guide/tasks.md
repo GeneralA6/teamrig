@@ -182,9 +182,12 @@ Three shapes, split by the list:
 ## Fields and limits
 
 - **Priority** [register.priorities]: `p1` keep the lights on, `p2` correctness, `p3` scale, `p4` this week's
-  owner decisions, `p5` if budget allows. `p1` is the most urgent.
+  owner decisions, `p5` if budget allows. `p1` is the most urgent the config names. Above them every team has
+  teamrig's own `p0`, for urgent work done right now: `check` flags an open one `URGENT`, so its owner parks the task
+  in hand and starts it; a session held by its budget still wakes for it, and it goes on past the daily stop, helpers
+  too.
 - **Plan order**: by the first of these on which two tasks differ, each a field the task has: pinned (the one
-  task per owner that a leader above it pinned with `update --pin`, above every other key); priority (`p1` first); in progress (a started task stays on top within its priority); effective due (the earliest first, undated
+  task per owner that a leader above it pinned with `update --pin`, above every other key); priority (`p0`, then `p1` first); in progress (a started task stays on top within its priority); effective due (the earliest first, undated
   last); what it unblocks (the best priority among the active tasks that need it, then the most of them); in the
   week plan in force; size (the smallest first, unsized last); then id (the oldest first). `list`, `check` and
   `plan` all use it, and a session works its list in that order. A `list` row ends with the key that put it ahead

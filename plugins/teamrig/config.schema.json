@@ -139,14 +139,14 @@
           "default": "owner"
         },
         "priorities": {
-          "description": "The priority levels, most urgent first; a task's priority prints as p<id>. Config version 1 called them tiers.",
+          "description": "The priority levels, most urgent first; a task's priority prints as p<id>. Above them every team has teamrig's own p0, for urgent work done right now, which no config lists. Config version 1 called them tiers.",
           "type": "array",
           "minItems": 1,
           "items": {
             "type": "object",
             "required": ["id", "name"],
             "properties": {
-              "id": { "description": "The level's number: a task prints it as p<id>, and 1 is the most urgent.", "type": "integer", "minimum": 1, "maximum": 99 },
+              "id": { "description": "The level's number: a task prints it as p<id>, and 1 is the most urgent a config names (0 is teamrig's own p0).", "type": "integer", "minimum": 1, "maximum": 99 },
               "name": { "description": "What the level holds, in a few words.", "type": "string", "minLength": 1 }
             }
           },
@@ -943,7 +943,7 @@
           "default": true
         },
         "priority": {
-          "description": "The least urgent priority that wakes a session: 1 wakes for p1 only. A session past its daily budget, or in the budget's quiet hours, wakes for p1 only whatever this says.",
+          "description": "The least urgent priority that wakes a session: 1 wakes for p0 and p1 only. A session past its daily budget, or in the budget's quiet hours, wakes for p0 and p1 only whatever this says.",
           "type": "integer",
           "minimum": 1,
           "maximum": 99,
