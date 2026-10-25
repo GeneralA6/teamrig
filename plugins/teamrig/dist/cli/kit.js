@@ -4,7 +4,7 @@ import { SHIPPED_CONFIG_FORMAT } from "../config/migrate.js";
 import { Roster } from "../config/roster.js";
 import { parseConfigText } from "../config/text.js";
 import { isRecord } from "../core/guards.js";
-import { ENV, KIT_NAME, resolveKitHome, teamPaths } from "../core/home.js";
+import { claudeConfigDir, ENV, KIT_NAME, resolveKitHome, teamPaths } from "../core/home.js";
 import { ID_PATTERN } from "../core/ids.js";
 import { FileLock } from "../core/lock.js";
 import { resolveTeam, TEAM_POINTER } from "../core/team.js";
@@ -64,8 +64,9 @@ function overridesOf(config) {
 export async function openKit(runtime, team) {
     const kitHome = resolveKitHome(runtime.env, runtime.userHome);
     const format = runtime.configFormat ?? SHIPPED_CONFIG_FORMAT;
-    const load = await loadConfig(runtime.files, teamPaths(kitHome, team, runtime.userHome).config, format.migrations, format.version);
-    return { load, paths: teamPaths(kitHome, team, runtime.userHome, load.status === 'loaded' ? overridesOf(load.config) : {}) };
+    const claudeDir = claudeConfigDir(runtime.env, runtime.userHome);
+    const load = await loadConfig(runtime.files, teamPaths(kitHome, team, claudeDir).config, format.migrations, format.version);
+    return { load, paths: teamPaths(kitHome, team, claudeDir, load.status === 'loaded' ? overridesOf(load.config) : {}) };
 }
 /**
  * Where to look for a team pointer: the given folders in order, then the folder Claude Code started
