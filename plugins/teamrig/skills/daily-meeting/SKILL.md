@@ -54,7 +54,8 @@ options as its choices, your recommendation first, the card text above it.
 Never point to a doc instead of a card: `teamrig show <id>` prints a task whole when the facts are thin; a fact the
 task does not hold is its owner's to find (step 3). Keep decisions apart from FYIs and from hands-on asks. An owner
 gate (destructive data operations, product and design, permissions, budget, resource changes) stays the human's:
-a session's recommendation is not their approval.
+a session's recommendation is not their approval. Each decision card names its gate (`gate:`): the owner gate or
+business decision that makes it the human's; one with no gate (`UNGATED`) is not the human's: never read it out.
 
 ## 3. Send a follow-up question to the task's owner
 
