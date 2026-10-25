@@ -314,7 +314,11 @@ stateDiagram-v2
   under it, with ids like `web/T4`. They only read the other teams' lists. With `--tree`, `--session` names the
   lead asking, so a tab without `$TEAMRIG_SESSION` passes `--session lead`. The teams of a tree number their tasks
   from one count, so an id names one task in the whole tree: a new task in any of them takes the next number none
-  of them has used.
+  of them has used. So a wait or an `after` may name another team's task of the tree: `set` and `update` take it,
+  `list`, `check`, `plan` and `verify` hold the task while that one is open, `show` prints it read-only, and the
+  wake check, the idle pass and keep-working wake, reopen or send its owner on once that team finishes it. A team
+  outside a tree reads only its own log: the others are read only when an active task names an id its own list
+  lacks.
 - The task list is one log that only grows, a line for every move. `teamrig compact` archives it: the log becomes
 the next file in `state/archive/` byte for byte and is never deleted, a fresh log starts with a line naming it,
 and `state/snapshot.jsonl` holds every task as it stood, so commands and the task pane read the snapshot and the

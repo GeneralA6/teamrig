@@ -115,7 +115,8 @@ A shipped change is proven by the session that shipped it, oldest first, before 
   parent's own register is not touched; once the task is done or dropped, the parent's lead gets one inbox line
   (`web/T1 done: <title> | evidence: ...`). Each lead sees the teams under it with `list`, `check` and `plan --tree`.
   The teams of a tree number their tasks from one count: an id names one task in the whole tree, whichever team
-  holds it.
+  holds it. A wait or an `after` may name another team's task (`--waits task:T9`): the task stays held while T9
+  is open, `show T9` prints it read-only, and the wake check tells its owner once that team finishes it.
 
 ## A task or a step
 
