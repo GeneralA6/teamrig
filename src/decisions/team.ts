@@ -1,40 +1,47 @@
-import type { DecisionsConfig, RegisterConfig } from '../config/types.ts';
+import type { DecisionsConfig } from '../config/types.ts';
 import type { Files } from '../core/files.ts';
 import type { TeamPaths } from '../core/home.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { MeetingStore } from '../meeting/state.ts';
 import type { Task } from '../register/fold.ts';
-import { NO_TASKS_ELSEWHERE, TaskTree, type TasksElsewhere } from '../register/tree.ts';
-import { decisionBatch, type DecisionBatch } from './batch.ts';
+import { TaskTree, type TasksElsewhere } from '../register/tree.ts';
+import { decisionBatch, type BatchRegister, type DecisionBatch } from './batch.ts';
 import { askedAtOf, AskedStore } from './store.ts';
 
-export interface TeamDecisions {
-  readonly batch: DecisionBatch;
-  /** The tree the batch was judged on: effective dues and plan order for printing it. */
-  readonly tree: TaskTree;
+/** One register whose waits on the owner a team's batch holds: the team's own, or that of a team under it (T1018). */
+export interface DecisionRegister {
+  /** The team, for a register under the team's own; undefined for its own. */
+  readonly team: string | undefined;
+  readonly tasks: ReadonlyMap<string, Task>;
+  /** The register's marker for the owner (`register.ownerSource`). */
+  readonly ownerMarker: string;
+  /** Whether a wait on the owner needs its decision card to be asked (`register.requireDecisionCard`). */
+  readonly requireGate: boolean;
+  /** The register team's clock, which its tasks' dues are on. */
+  readonly zone: TimeZone;
+  /** The tasks the tree's other registers hold, which a wait on one of them is judged against. */
+  readonly elsewhere: TasksElsewhere;
 }
 
+/** The team's own register first, then those of the teams under it. */
+export type DecisionRegisters = readonly [DecisionRegister, ...DecisionRegister[]];
+
 /**
- * A team's batch of the owner's decisions now: its register's waits on the owner against the batches the lead asked,
- * their effective dues on the team's clock (`zone`). `elsewhere` holds the tasks of the team tree's other registers,
- * which a wait on one of them is judged against.
+ * A team's batch of the owner's decisions now: the waits on the owner of its own register and of the registers under
+ * it, each with its effective dues on its own team's clock, judged with the tasks the tree's other registers hold,
+ * against the batches the team's lead asked.
  */
 export async function teamDecisions(
   files: Files,
   paths: Pick<TeamPaths, 'decisionsAsked' | 'meeting'>,
-  config: { readonly decisions: DecisionsConfig; readonly register: Pick<RegisterConfig, 'ownerSource' | 'requireDecisionCard'> },
-  tasks: ReadonlyMap<string, Task>,
+  config: { readonly decisions: DecisionsConfig },
+  registers: DecisionRegisters,
   now: number,
-  zone: TimeZone,
-  elsewhere: TasksElsewhere = NO_TASKS_ELSEWHERE,
-): Promise<TeamDecisions> {
+): Promise<DecisionBatch> {
   const [asked, meeting] = await Promise.all([new AskedStore(files, paths.decisionsAsked).read(), new MeetingStore(files, paths.meeting).read()]);
-  const tree = new TaskTree(tasks, new Date(now), zone, undefined, elsewhere);
-  const batch = decisionBatch({
-    registers: [{ team: undefined, tasks: tasks.values(), tree, ownerMarker: config.register.ownerSource, requireGate: config.register.requireDecisionCard }],
-    now,
-    askedAt: askedAtOf(asked, meeting),
-    config: config.decisions,
-  });
-  return { batch, tree };
+  return decisionBatch({ registers: registers.map((register) => batchRegisterOf(register, now)), now, askedAt: askedAtOf(asked, meeting), config: config.decisions });
+}
+
+function batchRegisterOf({ team, tasks, ownerMarker, requireGate, zone, elsewhere }: DecisionRegister, now: number): BatchRegister {
+  return { team, tasks: tasks.values(), tree: new TaskTree(tasks, new Date(now), zone, undefined, elsewhere), ownerMarker, requireGate };
 }

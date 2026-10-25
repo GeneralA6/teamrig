@@ -11,6 +11,8 @@ export interface BatchView {
   readonly ownerMarker: string;
   readonly command: string;
   readonly lead: string;
+  /** For a child team, the lead at its tree's root who asks the owner its waits (`app/lead`); undefined in a root team. */
+  readonly askedBy: string | undefined;
   /** The team's clock, which the batch times print on. */
   readonly zone: TimeZone;
 }
@@ -23,21 +25,27 @@ export function batchHead(batch: DecisionBatch, ownerMarker: string, zone: TimeZ
 
 /**
  * `decisions`: the head, then each wait's card facts, the ones not yet asked before the ones asked and past due, then
- * how to ask them and record the batch and each answer.
+ * how to ask them and record the batch and each answer; in a child team, who asks them and how each answer comes back.
  */
 export function batchLines(view: BatchView): string[] {
-  const { batch, ownerMarker, command, lead, zone } = view;
+  const { batch, ownerMarker, command, lead, askedBy, zone } = view;
   const head = batchHead(batch, ownerMarker, zone);
   if (batch.pending.length + batch.overdue.length === 0) {
     return [head];
   }
   const facts = (waits: readonly OwnerWait[]): string[] => waits.flatMap((wait) => cardFacts(wait.task, wait.tree, wait.team));
+  const how =
+    askedBy === undefined
+      ? [
+          `  Ask ${ownerMarker} these together, each card as it stands, each figure explained; then ${command} decisions asked --session ${lead} records the batch asked.`,
+          `  Record each answer in the same turn: ${command} update <id> --note "${ownerMarker} decided: <decision>" --session ${lead}.`,
+        ]
+      : [`  ${askedBy} asks ${ownerMarker} these in its batches and records each answer on its task as a note: "${ownerMarker} decided: <decision>".`];
   return [
     head,
     ...(batch.pending.length === 0 ? [] : ['NOT YET ASKED', ...facts(batch.pending)]),
     ...(batch.overdue.length === 0 ? [] : ['PAST DUE, asked before: ask again', ...facts(batch.overdue)]),
-    `  Ask ${ownerMarker} these together, each card as it stands, each figure explained; then ${command} decisions asked --session ${lead} records the batch asked.`,
-    `  Record each answer in the same turn: ${command} update <id> --note "${ownerMarker} decided: <decision>" --session ${lead}.`,
+    ...how,
   ];
 }
 

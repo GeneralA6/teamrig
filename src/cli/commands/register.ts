@@ -10,7 +10,6 @@ import { SecretScanner } from '../../core/secrets.ts';
 import { burstsOver } from '../../budget/burst.ts';
 import { formatW } from '../../budget/format.ts';
 import { timingText, waitTiming, type WaitTiming } from '../../decisions/lines.ts';
-import { teamDecisions } from '../../decisions/team.ts';
 import { allowFindings, contextSizeFindings } from '../../doctor/doctor.ts';
 import { hireFlags } from '../../hiring/due.ts';
 import { HiringLog } from '../../hiring/log.ts';
@@ -45,8 +44,9 @@ import { readWideAllow } from '../allow-scope.ts';
 import { noPositionals, onePositional, UsageError, type ParsedArgs } from '../args.ts';
 import { addInputOf, callerOf, changesOf, listFilterOf, pinOf, setInputOf, taskIdOf, weekOf, type TypedTimes } from '../inputs.ts';
 import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, projectFolder, requireConfig, rosterOf, sessionIdOf, teamZone, type Access, type Kit } from '../kit.ts';
-import { checkLines, listLines, SHORT_TITLE_CHARS, waitingOnLines, type CheckReport, type CheckSection, type TaskRow } from '../reports.ts';
+import { checkLines, listLines, SHORT_TITLE_CHARS, waitingOnLines, type CheckReport, type CheckSection, type LeadDecisions, type TaskRow } from '../reports.ts';
 import { idlePassWarnings } from '../idle-pass-check.ts';
+import { ownerBatchOf, type BatchedTeam } from '../owner-batch.ts';
 import { rollUp, type RolledTeam, type RollUp } from '../roll-up.ts';
 import { splitUnowned } from '../unowned.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
@@ -330,11 +330,15 @@ async function atOnceNote(runtime: CliRuntime, team: Team, by: string, id: strin
   return `NOTE ${due}: its line wakes ${leadName}, so no message is needed`;
 }
 
-/** When the owner hears of a task's new wait on them, judged on the register after the write. */
+/**
+ * When the owner hears of a task's new wait on them, judged on the register after the write, in the batch that holds
+ * the team's waits: a child team's is the one the lead at its tree's root asks (ownerBatchOf).
+ */
 async function ownerWaitTiming(runtime: CliRuntime, team: Team, { task, state, elsewhere }: WriteResult): Promise<WaitTiming> {
   const now = runtime.clock.now();
-  const { batch, tree } = await teamDecisions(runtime.files, team.paths, team.config, state.tasks, now, team.zone, elsewhere);
-  return waitTiming(batch, task, tree, now);
+  const own: BatchedTeam = { team: team.paths.team, config: team.config, paths: team.paths, tasks: state.tasks, elsewhere };
+  const { batch } = await ownerBatchOf(runtime, own, await loadTree(runtime), now);
+  return waitTiming(batch, task, new TaskTree(state.tasks, new Date(now), team.zone, undefined, elsewhere), now);
 }
 
 /** Posts one inbox line, naming it on stderr, or naming `unsent` and why: a line that cannot be posted is never thrown. */
@@ -759,7 +763,8 @@ function withOverLimit(sections: readonly CheckSection[], fit: WeekFit): CheckSe
  * What `check` reports: the task flags, then the skill flags of the Claude Code skills folder. With `--tree`,
  * the task flags of the lead's team and each team under it, against the lead's week; the skills are the lead's
  * team's only, as teams on one machine share that folder, and so are the flags on hired sessions (src/hiring/due.ts)
- * and the batch of the owner's decisions its lead asks next (src/decisions/batch.ts).
+ * and the batch of the owner's decisions its lead asks next (src/decisions/batch.ts), over its register and every
+ * register under it, in a root team only (leadDecisionsOf).
  * The `stopgap T<id>` tags in those skills and in the team's `register.check.stopgapFiles` add a STOPGAP-DONE flag
  * per finished task they name. Last, doctor's context-size and context-lists findings against the own team's
  * `contextFiles` budgets: the text every call of a session on this machine re-reads (T393). Those findings, the
@@ -806,13 +811,26 @@ export async function checkReport(args: ParsedArgs, runtime: CliRuntime): Promis
   const scaleOut = scaleOutFlags({ ...input, tree: new TaskTree(own.snapshot.state.tasks, now, zone, week, own.elsewhere), spare, hirePct });
   const hires = [...scaleOut.flags, ...hireFlags(input, scaleOut.busy)];
   const scope = week === null ? 'no week plan tagged yet, so the week checks are skipped' : `week ${week}`;
-  const { batch } = await teamDecisions(runtime.files, own.paths, own.config, own.snapshot.state.tasks, now.getTime(), zone, own.elsewhere);
+  const decisions = await leadDecisionsOf(runtime, own, now.getTime(), zone);
   const context = contextSizeFindings(await readContextInput(runtime, project, own.paths.skills, own.config.contextFiles));
   const allow = allowFindings(await readWideAllow(runtime, { paths: own.paths, config: own.config, project }));
   const { skills, unowned } = splitUnowned([...context, ...allow], lintSkills(skillFiles, now, own.config), new Set(own.config.sessions), own.paths.skills);
   const idle = await idlePassWarnings(runtime.files, own.paths, own.config.open.idle.mode, now.getTime());
   const lead = own.config.roles.lead;
-  return { sections, scope, skills, skillsDir: own.paths.skills, hires, unowned: [...unowned, ...idle], lead, decisions: { lead, batch, zone } };
+  return { sections, scope, skills, skillsDir: own.paths.skills, hires, unowned: [...unowned, ...idle], lead, decisions };
+}
+
+/**
+ * The batch of the owner's decisions a root team's lead asks next, over its register and every register under it; none
+ * in a child team, whose waits the lead at its tree's root asks (T1018).
+ */
+async function leadDecisionsOf(runtime: CliRuntime, own: RolledTeam, now: number, zone: TimeZone): Promise<LeadDecisions | undefined> {
+  const loaded = await loadTree(runtime);
+  if (loaded.tree.ownerLeadAbove(own.team) !== undefined) {
+    return undefined;
+  }
+  const { batch } = await ownerBatchOf(runtime, { team: own.team, config: own.config, paths: own.paths, tasks: own.snapshot.state.tasks, elsewhere: own.elsewhere }, loaded, now);
+  return { lead: own.config.roles.lead, batch, zone };
 }
 
 /** `check [--tree] [--all]`: the report in the short form (src/cli/reports.ts), or with `--all` every flag in full. */

@@ -40,7 +40,7 @@ export function nextBatchTime(now: number, times: readonly string[]): number | u
 /** One task waiting on the owner, with the team and the tree of the register that holds it. */
 export interface OwnerWait {
   readonly task: Task;
-  /** The team, for a wait of another team's register (`web/T5`); undefined for the reader's own. */
+  /** The team, for a wait of a register under the batch's own (`web/T5`); undefined for the batch's own. */
   readonly team: string | undefined;
   /** The dependency tree of its register's read: its effective due and its named tasks. */
   readonly tree: TaskTree;
@@ -94,6 +94,15 @@ export function decisionBatch(input: BatchInput): DecisionBatch {
   const overdue = waiting.filter((wait) => asked(wait) && (wait.tree.dueTime(wait.task) ?? Number.POSITIVE_INFINITY) < now);
   const nextAt = nextBatchTime(now, input.config.batchTimesUtc);
   return { pending, overdue, trigger: triggerOf(input, pending, overdue, nextAt), nextAt };
+}
+
+/**
+ * The batch's waits that the registers of `teams` hold, its trigger and next time kept: what a child team sees of the
+ * batch the lead at its tree's root asks (T1018). A wait of the batch's own register is never one of them.
+ */
+export function waitsOfTeams(batch: DecisionBatch, teams: readonly string[]): DecisionBatch {
+  const held = (wait: OwnerWait): boolean => wait.team !== undefined && teams.includes(wait.team);
+  return { ...batch, pending: batch.pending.filter(held), overdue: batch.overdue.filter(held) };
 }
 
 /** A register's waits the lead asks the owner (asksOwner), in its plan order. */
