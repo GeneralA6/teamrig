@@ -33,9 +33,12 @@ export function dueMoments(now, dayStartUtc, burst, settled) {
     }
     return due;
 }
-/** The session's work it can go on with now (`canGoOn`) at `maxPriority` or more urgent (any by default), most urgent first. */
-export function startableTasks(tasks, session, now, zone, maxPriority = Number.POSITIVE_INFINITY) {
-    const context = waitContext(tasks, new Date(now), zone);
+/**
+ * The session's work it can go on with now (`canGoOn`) at `maxPriority` or more urgent (any by default), most urgent
+ * first; a wait or an `after` may name a task the team tree's other registers hold (`elsewhere`).
+ */
+export function startableTasks(tasks, elsewhere, session, now, zone, maxPriority = Number.POSITIVE_INFINITY) {
+    const context = waitContext(tasks, new Date(now), zone, elsewhere);
     return [...tasks.values()].filter((task) => isWakeWorthy(task, session, maxPriority, context)).sort(byUrgency);
 }
 function settle(settled, moments) {

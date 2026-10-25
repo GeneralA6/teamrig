@@ -89,12 +89,12 @@ export function soonTimeWaitOf(tasks, session, maxPriority, now, zone) {
  * work it can start and does not rest (quiet hours, held by its budget). Else it stays closed.
  */
 export function reopenVerdict(input) {
-    const { tasks, session, now, zone } = input;
+    const { tasks, elsewhere, session, now, zone } = input;
     if (input.asks.length > 0) {
         return { kind: 'asked', asks: input.asks, at: Math.min(...input.asks.map((ask) => ask.at)) };
     }
-    const context = waitContext(tasks, new Date(now), zone);
-    const handed = [...tasks.values()].filter((task) => isWakeWorthy(task, session, input.maxPriority, context) && isNews(task, session, tasks, zone)).sort(byUrgency);
+    const context = waitContext(tasks, new Date(now), zone, elsewhere);
+    const handed = [...tasks.values()].filter((task) => isWakeWorthy(task, session, input.maxPriority, context) && isNews(task, session, tasks, elsewhere, zone)).sort(byUrgency);
     if (handed.length > 0) {
         return { kind: 'handed', tasks: handed };
     }
@@ -102,6 +102,6 @@ export function reopenVerdict(input) {
     if (dayStart === undefined || dayStart <= input.closedAt || input.rest.quiet || input.rest.held) {
         return { kind: 'stay' };
     }
-    const startable = startableTasks(tasks, session, now, zone);
+    const startable = startableTasks(tasks, elsewhere, session, now, zone);
     return startable.length === 0 ? { kind: 'stay' } : { kind: 'day-start', at: dayStart, tasks: startable };
 }

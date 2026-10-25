@@ -23,7 +23,7 @@ import { overSizeFlags } from "../../register/over-size.js";
 import { ACTIVE_STATUSES } from "../../register/model.js";
 import { readStopgapTags, stopgapFlags, stopgapTags } from "../../register/stopgap.js";
 import { dueStartHolds, dueVerifyHold, heldStart, heldStartNotice, metStartNotice, startHolds, verifyQueue } from "../../register/verify.js";
-import { TaskTree } from "../../register/tree.js";
+import { readAs, TaskTree } from "../../register/tree.js";
 import { approvalNotice, assignedNotice, endedNotice, formatTask, formatTaskDetail, formatTaskTree, formatVerifyRow, personWaitNotice, selectTasks } from "../../register/views.js";
 import { isPeerWait, sameWait } from "../../register/waits.js";
 import { lintSkills } from "../../skills/lint.js";
@@ -99,8 +99,8 @@ function report(runtime, verdict, verb, written, label) {
     if (!verdict.ok) {
         throw new RefusedError(verdict.error);
     }
-    const { task, state } = verdict.value;
-    runtime.out.stdout(`${verb} ${formatTask(task, label, new TaskTree(state.tasks, new Date(runtime.clock.now()), written.zone))}`);
+    const { task, state, elsewhere } = verdict.value;
+    runtime.out.stdout(`${verb} ${formatTask(task, label, new TaskTree(state.tasks, new Date(runtime.clock.now()), written.zone, undefined, elsewhere))}`);
     const { rotation } = verdict.value;
     const turnOff = autoArchiveSwitch(written.paths.config);
     if (rotation.kind === 'rotated') {
@@ -235,9 +235,9 @@ async function tellLeadersOfWaits(runtime, team, by, verdict) {
     }
 }
 /** When the owner hears of a task's new wait on them, judged on the register after the write. */
-async function ownerWaitTiming(runtime, team, { task, state }) {
+async function ownerWaitTiming(runtime, team, { task, state, elsewhere }) {
     const now = runtime.clock.now();
-    const { batch, tree } = await teamDecisions(runtime.files, team.paths, team.config, state.tasks, now, team.zone);
+    const { batch, tree } = await teamDecisions(runtime.files, team.paths, team.config, state.tasks, now, team.zone, elsewhere);
     return waitTiming(batch, task, tree, now);
 }
 /** Posts one inbox line, naming it on stderr, or naming `unsent` and why: a line that cannot be posted is never thrown. */
@@ -327,8 +327,8 @@ export async function set(args, runtime) {
 async function setAsking(runtime, team, by, id, ask, input) {
     const verdict = await team.register.ask(by, id, ask, input);
     if (verdict.ok) {
-        const { asked, state } = verdict.value;
-        runtime.out.stdout(`ADDED ${formatTask(asked, undefined, new TaskTree(state.tasks, new Date(runtime.clock.now()), team.zone))}`);
+        const { asked, state, elsewhere } = verdict.value;
+        runtime.out.stdout(`ADDED ${formatTask(asked, undefined, new TaskTree(state.tasks, new Date(runtime.clock.now()), team.zone, undefined, elsewhere))}`);
     }
     const exit = report(runtime, verdict, 'SET', team);
     if (verdict.ok && verdict.value.asked.owner !== by) {
@@ -423,7 +423,8 @@ function treeFilterOf(roster, filter) {
 /** The caller's own register, as a roll-up of one team. */
 export async function ownRegister(runtime) {
     const { config, paths, roster, register } = await openTeam(runtime, 'read');
-    const own = { team: paths.team, config, paths, roster, snapshot: await register.snapshot(), history: () => register.history() };
+    const [snapshot, elsewhere] = await Promise.all([register.snapshot(), register.elsewhere()]);
+    const own = { team: paths.team, config, paths, roster, snapshot, history: () => register.history(), elsewhere };
     return { own, teams: [own] };
 }
 /** The registers a command reads: those of `--tree`, else the caller's own. */
@@ -442,10 +443,10 @@ async function settle(runtime, { own, teams }, needsHistory) {
     return { own: settled.find((rolled) => rolled.team === own.team) ?? own, teams: settled };
 }
 /** The dependency tree of one team's register read now, in its zone and week plan in force: ready wait reasons, effective dues and what needs each task. */
-function taskTreeOf({ snapshot, config }, runtime) {
+function taskTreeOf({ snapshot, config, elsewhere }, runtime) {
     const now = new Date(runtime.clock.now());
     const zone = teamZone(config, runtime);
-    return new TaskTree(snapshot.state.tasks, now, zone, currentWeekOf(snapshot, now, zone));
+    return new TaskTree(snapshot.state.tasks, now, zone, currentWeekOf(snapshot, now, zone), elsewhere);
 }
 /** A filter that selects finished tasks, the only ones a compaction retires. */
 function selectsFinished(filter) {
@@ -487,7 +488,8 @@ export async function list(args, runtime) {
 }
 /**
  * `show <id> [--tree]`: every field of the task and its history; with `--tree`, its line, then what it needs and what
- * needs it, each node with its owner, status and due, then who moves next (views.ts formatTaskTree).
+ * needs it, each node with its owner, status and due, then who moves next (views.ts formatTaskTree). A task another
+ * register of the team tree holds shows read-only ({@link elsewhereLines}).
  */
 export async function show(args, runtime) {
     const id = taskIdOf(onePositional(args, 'id'));
@@ -495,7 +497,12 @@ export async function show(args, runtime) {
     const { snapshot } = own;
     const task = snapshot.state.tasks.get(id);
     if (task === undefined) {
-        throw new RefusedError(`no task ${id}`);
+        const away = own.elsewhere.get(id);
+        if (away === undefined) {
+            throw new RefusedError(`no task ${id}`);
+        }
+        elsewhereLines(away, own, args.switches.has('tree'), runtime).forEach((line) => runtime.out.stdout(line));
+        return EXIT.ok;
     }
     const tree = taskTreeOf(own, runtime);
     if (args.switches.has('tree')) {
@@ -506,6 +513,20 @@ export async function show(args, runtime) {
     const wPerPct = task.size === null ? undefined : await readWPerPct(runtime, own.paths, own.config, runtime.clock.now());
     runtime.out.stdout(formatTaskDetail(task, events, tree, (pct) => (wPerPct === undefined ? undefined : `about ${formatW(pct * wPerPct)} W`)));
     return EXIT.ok;
+}
+/**
+ * `show` of a task another register of the team tree holds (T1139): its row, named by its team and judged as that
+ * team's sessions judge it (register/tree.ts readAs), then a line saying only they change it; with `--tree`, what it
+ * needs and what needs it in that register. Its history stays there.
+ */
+function elsewhereLines({ team, task }, own, withTree, runtime) {
+    const read = readAs(team, own.team, own.snapshot.state.tasks.values(), own.elsewhere);
+    const tree = new TaskTree(read.tasks, new Date(runtime.clock.now()), teamZone(own.config, runtime), undefined, read.elsewhere);
+    return [
+        formatTask(task, team, tree),
+        `HELD by team ${team}: only a session of team ${team} changes it, and its history is in that team's register`,
+        ...(withTree ? formatTaskTree(task, tree, SHORT_TITLE_CHARS, team) : []),
+    ];
 }
 /**
  * `start`'s WAITING ON YOU block: the active tasks of other sessions that need the caller's unfinished tasks or wait
@@ -535,14 +556,14 @@ function weekFor(args, snapshot, now, zone) {
 /**
  * The task flags of one register, against its own team's config and day, in its `zone`; with `team`, for
  * `check --tree`, its task ids name it. `leftPct` is what is left of the week's usage target (one account's limit
- * covers every team read).
+ * covers every team read). A wait on another register's task of the tree is judged against that task.
  */
-function checkRegister(snapshot, config, now, zone, week, leftPct, team) {
+function checkRegister({ snapshot, config, elsewhere }, now, zone, week, leftPct, team) {
     const tasks = [...snapshot.state.tasks.values()];
-    const tree = new TaskTree(snapshot.state.tasks, now, zone, week);
+    const tree = new TaskTree(snapshot.state.tasks, now, zone, week, elsewhere);
     const dayStart = teamDayStartAt(config.wake.dayStartUtc, now.getTime());
     const progress = noProgressFlag({ tasks, tree, dayStart, days: config.register.check.goalProgressDays, leftPct });
-    const flags = [...checkTasks(tasks, now, zone, week, config.register), ...peerWaitFlags(tasks, new LeadTree(config), config.register.ownerSource), ...(progress === undefined ? [] : [progress])];
+    const flags = [...checkTasks(tasks, now, zone, week, config.register, elsewhere), ...peerWaitFlags(tasks, new LeadTree(config), config.register.ownerSource), ...(progress === undefined ? [] : [progress])];
     return { team, flags: flags.sort(byFlagKind), tree };
 }
 /**
@@ -556,7 +577,7 @@ export async function weekFitOf(runtime, { own, teams }, week, labelled) {
     const now = runtime.clock.now();
     const use = weekUseOf(await snapshotsOnAccount(runtime, budget, own.paths), now);
     const rows = teams.flatMap((rolled) => {
-        const tree = new TaskTree(rolled.snapshot.state.tasks, new Date(now), teamZone(rolled.config, runtime), week);
+        const tree = new TaskTree(rolled.snapshot.state.tasks, new Date(now), teamZone(rolled.config, runtime), week, rolled.elsewhere);
         return [...rolled.snapshot.state.tasks.values()].map((task) => (labelled ? { task, tree, team: rolled.team } : { task, tree }));
     });
     return weekFit(rows, week, use === undefined ? undefined : leftOfWeek(budget.targetPct, use.usedPct));
@@ -601,7 +622,7 @@ export async function checkReport(args, runtime) {
     const { overSizeMultiple } = own.config.register.check;
     const spent = overSizeMultiple > 0 ? await readTaskSpend(runtime, own.paths, own.config, now.getTime()) : undefined;
     const checked = teams.map((rolled) => {
-        const section = checkRegister(rolled.snapshot, rolled.config, now, teamZone(rolled.config, runtime), week, leftPct, tree ? rolled.team : undefined);
+        const section = checkRegister(rolled, now, teamZone(rolled.config, runtime), week, leftPct, tree ? rolled.team : undefined);
         const ownFlags = rolled.team === own.team
             ? [...stopgapFlags(tags, rolled.snapshot.state.tasks, zone), ...(spent === undefined ? [] : overSizeFlags(rolled.snapshot.state.tasks.values(), spent, overSizeMultiple))]
             : [];
@@ -613,10 +634,10 @@ export async function checkReport(args, runtime) {
     const tasks = [...own.snapshot.state.tasks.values()];
     const { spare, hirePct } = await readScaleOutBudget(runtime, own.paths, own.config, tasks, bursts, now.getTime());
     const input = { hires: activeHires(records), tasks, config: own.config, burstsOver: over, now };
-    const scaleOut = scaleOutFlags({ ...input, tree: new TaskTree(own.snapshot.state.tasks, now, zone, week), spare, hirePct });
+    const scaleOut = scaleOutFlags({ ...input, tree: new TaskTree(own.snapshot.state.tasks, now, zone, week, own.elsewhere), spare, hirePct });
     const hires = [...scaleOut.flags, ...hireFlags(input, scaleOut.busy)];
     const scope = week === null ? 'no week plan tagged yet, so the week checks are skipped' : `week ${week}`;
-    const { batch } = await teamDecisions(runtime.files, own.paths, own.config, own.snapshot.state.tasks, now.getTime(), zone);
+    const { batch } = await teamDecisions(runtime.files, own.paths, own.config, own.snapshot.state.tasks, now.getTime(), zone, own.elsewhere);
     const context = contextSizeFindings(await readContextInput(runtime, project, own.paths.skills, own.config.contextFiles));
     const allow = allowFindings(await readWideAllow(runtime, { paths: own.paths, config: own.config, project }));
     const { skills, unowned } = splitUnowned([...context, ...allow], lintSkills(skillFiles, now, own.config), new Set(own.config.sessions), own.paths.skills);
@@ -647,7 +668,11 @@ export async function plan(args, runtime) {
         throw new RefusedError('no week plan tagged yet; pass --week <YYYY-MM-DD>');
     }
     const fit = week === currentWeekOf(settled.own.snapshot, now, zone) ? fitLines(await weekFitOf(runtime, settled, week, tree)) : [];
-    const sections = settled.teams.map((rolled, index) => renderPlan(rolled.snapshot.state.tasks.values(), week, now, teamZone(rolled.config, runtime), rolled.config.register, { team: tree ? rolled.team : undefined, fit: index === 0 ? fit : [] }));
+    const sections = settled.teams.map((rolled, index) => renderPlan(rolled.snapshot.state.tasks.values(), week, now, teamZone(rolled.config, runtime), rolled.config.register, {
+        team: tree ? rolled.team : undefined,
+        fit: index === 0 ? fit : [],
+        elsewhere: rolled.elsewhere,
+    }));
     runtime.out.stdout(sections.join('\n\n'));
     return EXIT.ok;
 }

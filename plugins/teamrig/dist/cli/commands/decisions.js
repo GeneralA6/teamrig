@@ -15,11 +15,11 @@ async function decisionsKit(args, runtime, access) {
     const config = requireConfig(kit, runtime, access);
     const roster = await rosterOf(runtime, kit, config);
     const lead = config.roles.lead;
-    const { snapshot } = (await ownRegister(runtime)).own;
+    const { snapshot, elsewhere } = (await ownRegister(runtime)).own;
     const tasks = snapshot.state.tasks;
     const now = runtime.clock.now();
     const zone = teamZone(config, runtime);
-    const decided = await teamDecisions(runtime.files, kit.paths, config, tasks, now, zone);
+    const decided = await teamDecisions(runtime.files, kit.paths, config, tasks, now, zone, elsewhere);
     return { kit, config, roster, lead, tasks, now, zone, ...decided };
 }
 /** `decisions`: the batch the lead asks the owner next, and whether it is due now. */
