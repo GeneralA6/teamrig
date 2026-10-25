@@ -1,5 +1,5 @@
 import { MS_PER_DAY, MS_PER_HOUR, parseDayStart, showStored } from "../core/time.js";
-import { topPriority } from "../config/priorities.js";
+import { NOW_PRIORITY, topPriority } from "../config/priorities.js";
 import { approvalCleared } from "./approval.js";
 import { CARD_FLAGS, GATE_FLAG, whyAskUsage } from "./card.js";
 import { taskNumber } from "./fold.js";
@@ -9,6 +9,7 @@ import { formatTask } from "./views.js";
 import { allReady, isPeerWait, isReady, unfinishedAfter, waitSpelling } from "./waits.js";
 /** In report order: the most urgent first. */
 export const FLAG_KINDS = [
+    'URGENT',
     'OVERDUE',
     'VERIFY-OVERDUE',
     'LOOP',
@@ -46,6 +47,9 @@ const FINISHED_STATUSES = ['done', 'verifying'];
 const IN_HAND = 1;
 /**
  * The daily flags over active tasks:
+ * - URGENT: open at p0 (teamrig's own level, NOW_PRIORITY) and free to start (every task it comes after finished):
+ *   its owner starts it now, ahead of the task in hand; with an effective due, the detail names the lead's deadline
+ *   burst that may pay for finishing it by then;
  * - OVERDUE: past its effective deadline (its own due, or an earlier one of a task that needs it, named in the detail
  *   as `due 01-10, from T5`); VERIFY-OVERDUE when the task is verifying: that date is the date to verify it by;
  * - LOOP: the lowest-numbered task of a loop among active tasks (`T2 -> T5 -> T2`), which none of them can finish:
@@ -104,6 +108,7 @@ export function checkTasks(tasks, now, zone, week, config, elsewhere = NO_TASKS_
     const paces = top === undefined ? new Map() : overPaces(all, active, top, at);
     const runs = selfMadeRuns(all, at, config.check.maxSelfMadePerDay);
     const flags = active.flatMap((task) => [
+        ...urgentFlags(task, tree),
         ...verifyFlags(task, tree, piles, config.maxVerifying),
         ...selfMadeFlags(task, runs, config.check.maxSelfMadePerDay),
         ...overPaceFlags(task, paces),
@@ -209,6 +214,15 @@ function waitsForTime(task, context) {
     return task.waits.some((reason) => reason.kind === 'time' && !isReady(reason, context));
 }
 /** OVERDUE or VERIFY-OVERDUE on the effective due, then NOT-PICKED-UP or else STALE. */
+/** URGENT, with the lead's deadline burst on the effective due, typed on the team's clock, when the task has one. */
+function urgentFlags(task, tree) {
+    if (task.priority !== NOW_PRIORITY.id || task.status !== 'open' || unfinishedAfter(task.after, tree.context).length > 0) {
+        return [];
+    }
+    const due = tree.effectiveDue(task.id);
+    const burst = due === undefined ? '' : `; to finish it by its due, the lead may run burst start deadline --task ${task.id} --by "${tree.zone.minute(new Date(due.at))}" --stop-pct <n> --reason "<why>"`;
+    return [{ kind: 'URGENT', task, detail: `p0: start it now, ahead of the task in hand${burst}` }];
+}
 function timeFlags(task, at, check, tree) {
     const flags = [];
     const effective = tree.effectiveDue(task.id);

@@ -1,4 +1,5 @@
 import { formatPct } from "../budget/format.js";
+import { NOW_PRIORITY } from "../config/priorities.js";
 import { KIT_NAME } from "../core/home.js";
 import { MS_PER_DAY, showStored } from "../core/time.js";
 import { ACTIVE_STATUSES } from "../register/model.js";
@@ -8,9 +9,10 @@ import { hireCapProblem, hiresOnTeam } from "./plan.js";
 const STARTED = ['in-progress', 'waiting', 'verifying'];
 /** A count past what the pace finishes by more than this rounding is behind. */
 const EPSILON = 1e-9;
+/** p0, and the config's `hiring.scaleOut.topPriorities` most urgent levels: p0 takes none of those places. */
 function topPriorityIds(config) {
     const ids = config.register.priorities.map((priority) => priority.id).sort((a, b) => a - b);
-    return new Set(ids.slice(0, config.hiring.scaleOut.topPriorities));
+    return new Set([NOW_PRIORITY.id, ...ids.slice(0, config.hiring.scaleOut.topPriorities)]);
 }
 /** The area's active tasks of the top priorities with an effective due, by that due, then in plan order. */
 function datedWork(area, tasks, input) {

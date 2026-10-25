@@ -18,7 +18,7 @@ import { parseWaits } from "./waits.js";
  * each reads there as none (an answered update as a note alone). An older teamrig re-serialized the events of the snapshot a rotation or
  * `compact` rewrites, so it dropped such a field there (the archive keeps the lines as written); this one copies
  * each kept line as written (compaction.ts).
- * Parsing checks the FORMAT only (any positive priority, any goal string): team policy is applied
+ * Parsing checks the FORMAT only (any priority from 0, any goal string): team policy is applied
  * on write, so changing the config never erases history.
  */
 export const EVENT_VERSION = 2;
@@ -249,7 +249,7 @@ function readField(fields, name, value) {
             fields[name] = typeof value === 'string' ? value : null;
             return undefined;
         case 'priority':
-            if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {
+            if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
                 return `bad priority ${JSON.stringify(value)}`;
             }
             fields.priority = value;
