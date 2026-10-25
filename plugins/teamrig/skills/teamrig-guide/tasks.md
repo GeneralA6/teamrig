@@ -61,7 +61,10 @@ again keeps the card, and a flag given then changes only its part. `show` prints
 agenda reads it out with the title of each other task it names. An owner's order approves its own work and proof,
 so a task the owner ordered asks the owner only with `--why-ask` (how the order must change, what new it needs, or
 why only the owner can see the result), printed as `why asked:`; `set` refuses one without it, and `check` flags
-an older one `OWNER-ORDERED`.
+an older one `OWNER-ORDERED`. Only an owner gate [ownerGates] or a business decision is the owner's to decide, so
+a wait on the owner's decision names it with `--gate` (one of the owner gates, or `business`), printed as `gate:`;
+`set` refuses one without it, and `check` flags an older one `UNGATED`. Any other question is the session's or its
+leader's, however many good answers it has: decide it, or wait on your leader (`--waits decision:<leader>`).
 
 Every session needs teamrig 0.10.0 or later before anyone sets `waiting`: an older one skips the
 line with a warning and shows the task at its earlier status. A `blocked` written by an older teamrig reads as
@@ -233,6 +236,7 @@ checkpoint; a session may run it for itself.
 | `NO-REASON` | a `waiting` task with no reason, as a line from an older teamrig reads | The owner sets what it waits for (`set --status waiting --waits ...`) or its next status. |
 | `NO-CARD` | a `waiting` task waits on the owner's decision or approval with no card, as one set before cards reads [register.requireDecisionCard] | The owner sets it waiting again with the card (`set --status waiting --waits ... --question ... --options ... --recommend ... --default ...`). |
 | `OWNER-ORDERED` | a task the owner ordered waits (or its proof waits) on the owner's decision or approval with no `--why-ask`, as one set before it was required, or while cards are not [register.requireDecisionCard], reads | The owner drops the wait on the owner, since the order approves its own work and proof, or sets it again with `--why-ask "<how the order must change, what new it needs, or why only the owner can see the result>"`. |
+| `UNGATED` | a task waits (or its proof waits) on the owner's decision with a card naming no owner gate or business decision, as one set before `--gate` was required reads [register.requireDecisionCard] | The owner decides it, or waits on its leader, since only an owner gate [ownerGates] or a business decision is the owner's; or sets it again with `--gate "<the owner gate, or business>"`. |
 | `PEER-WAIT` | a `waiting` task (or a `verifying` task's proof) waits on the decision or the approval of a session that is neither the lead nor the owner, as an older teamrig wrote | The owner waits on that work by its task instead: `set --status waiting --ask <session> --text "<the work>"`. |
 | `NOT-PICKED-UP` | assigned over 24 h ago with no event from its owner since [register.check.notPickedUpAfterHours] | The owner is idle and reads no inbox: wake it with `teamrig open <id>` or a message, or tell the human. |
 | `STALE` | no event for 72 h [register.check.staleAfterHours] (not raised on top of NOT-PICKED-UP, nor for a `verifying` task with a due date, nor for a `waiting` task with a `time:` reason still to come) | Ask the owner what blocks it, then re-date, re-assign or drop it. |

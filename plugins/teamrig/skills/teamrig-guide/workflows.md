@@ -263,6 +263,9 @@ With sub-teams, run `teamrig check --tree --session lead` too. Then act on each 
   card, before the meeting reads it.
 - `OWNER-ORDERED`: a task the owner ordered asks the owner with no why: never read it to the owner; one inbox line
   to its owner to drop the wait, or to set it again with `--why-ask`.
+- `UNGATED`: a task asks the owner to decide what no owner gate or business decision makes the owner's: never read
+  it to the owner; decide it yourself if it is yours to decide, else one inbox line to its owner to decide it, or
+  to set it again with `--gate`.
 - `DECISIONS batch due`: ask the human the batch `teamrig decisions --session lead` prints, together, each card as it
   stands; record each answer (`update --note "owner decided: ..."`), then `teamrig decisions asked --session lead`.
 - `PEER-WAIT`: a task waits on a peer's approval or decision: one inbox line to its owner to wait on that work by
