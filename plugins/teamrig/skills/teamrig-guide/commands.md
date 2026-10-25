@@ -676,7 +676,8 @@ api 3 unread since 10-15 07:40, 2 of them shown at a prompt (read to line 21 of 
 ### teamrig inbox add
 
 Appends one line to another session's inbox, or to each session of a group in one call. It does not wake the
-receiver: the line shows at its next prompt or work block. Use it for anything that is not urgent.
+receiver: the line shows at its next prompt or work block. Use it for anything that is not urgent; add `--wake now`
+when the receiver must act on it now.
 
 Flags:
 
@@ -690,16 +691,25 @@ Flags:
   - `team:<team>`: every session of a team of your tree; `tree:leads`: every team's lead in your tree, the root's
     first, so the root lead sends one notice down the tree instead of a relay per child lead. A group leaves you out.
 - `--text "<one line>"`: the note: one non-empty line, no secrets.
+- `--wake now`: also wakes each receiver idle at its prompt, at its tab's first wake check once `wake.batchSeconds`
+  (2 minutes by default) have passed, so lines posted together wake it once, quoted in its prompt; a receiver busy
+  in a turn is not woken and reads the line at its next prompt. A `WAKES` line after `POSTED` says who it wakes, at
+  most, within how many minutes, what that costs (a warm cache is about 27k W, a cold one about 210k W, and the
+  share of the week once teamrig knows its W per percent) and whose budget line pays. A receiver whose team has
+  `wake.enabled` false gets the line and no wake, and the `WAKES` line says so.
 
 Every receiver gets the same line, stamped with the same minute, or none does: an unknown session or team, one out
 of reach, `group:` on a session that leads no one, a group that holds only you, or a line any receiving team's secret
-patterns refuse is `REFUSED` (exit 2) and posts nothing.
+patterns refuse is `REFUSED` (exit 2) and posts nothing. With `--wake now`, so is a group sent by a session that
+leads no one, and a session of another team unless you lead a team above it, since a wake spends that team's budget
+line: post the line without `--wake` instead.
 
-Example, on a team whose one sub-lead is `web`:
+Example, on a team `shop` whose one sub-lead is `web`:
 
 ```sh
 teamrig inbox add --session lead --to web --text "api error codes are in docs/errors.md"
 teamrig inbox add --session lead --to leads,ops --text "main is frozen until 14:00"
+teamrig inbox add --session lead --to ops --text "checkout fails since 0.4.1: roll it back" --wake now
 ```
 
 Output:
@@ -707,6 +717,8 @@ Output:
 ```text
 POSTED to web; web is reminded at its next prompt
 POSTED to 2 sessions (web, ops); each is reminded at its next prompt
+POSTED to ops; ops is reminded at its next prompt
+WAKES ops if its tab is idle, within about 3 minutes: about 27k W, warm cache, 0.03% of the week, on shop's budget line
 ```
 
 The line is stored as `- 2026-10-15 08:58 lead: api error codes are in docs/errors.md`.
