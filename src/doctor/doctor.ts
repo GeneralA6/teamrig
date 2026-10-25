@@ -117,8 +117,11 @@ export interface DoctorInput {
    * names stay on purpose, readable by their id, so they are no orphan or gone name.
    */
   readonly retired: ReadonlySet<string>;
-  /** The team's rules.md and its length, when it exists. */
-  readonly teamRules: { readonly path: string; readonly chars: number } | undefined;
+  /**
+   * The rules.md files a session of the team is shown at start and their lengths: each team above it, root first,
+   * then its own; those that exist.
+   */
+  readonly teamRules: readonly { readonly path: string; readonly chars: number }[];
   /** What every call of a session in the project re-reads, and the team's budgets for it. */
   readonly contextFiles: { readonly read: ContextFiles; readonly budgets: ContextFilesConfig };
   /** The lists the newest session in the project holds in its context (`readSessionLists`); undefined with no transcript. */
@@ -244,13 +247,30 @@ function inboxFindings(input: DoctorInput): Finding[] {
   });
 }
 
+/**
+ * Each team rules file a session gets only a pointer to, as `renderSessionContext` shares TEAM_RULES_MAX_CHARS: in
+ * order, a file is shown while it fits beside the files shown before it, so a file that fits alone is named with them.
+ */
 function rulesFindings(input: DoctorInput): Finding[] {
-  const rules = input.teamRules;
-  if (rules === undefined || rules.chars <= TEAM_RULES_MAX_CHARS) {
-    return [];
+  const shown: string[] = [];
+  let used = 0;
+  const findings: Finding[] = [];
+  for (const rules of input.teamRules) {
+    if (rules.chars === 0) {
+      continue;
+    }
+    if (used + rules.chars <= TEAM_RULES_MAX_CHARS) {
+      shown.push(rules.path);
+      used += rules.chars;
+      continue;
+    }
+    const detail =
+      rules.chars > TEAM_RULES_MAX_CHARS
+        ? `${rules.path} is ${rules.chars} characters, more than the ${TEAM_RULES_MAX_CHARS} a session is shown at start, so sessions get only a pointer to it: shorten it to keep it in every session's context`
+        : `${rules.path} is ${rules.chars} characters, but the team rules shown before it (${shown.join(', ')}) take ${used} of the ${TEAM_RULES_MAX_CHARS} a session is shown at start, so sessions get only a pointer to it: shorten one of them`;
+    findings.push({ kind: 'rules-long', detail });
   }
-  const detail = `${rules.path} is ${rules.chars} characters, more than the ${TEAM_RULES_MAX_CHARS} a session is shown at start, so sessions get only a pointer to it: shorten it to keep it in every session's context`;
-  return [{ kind: 'rules-long', detail }];
+  return findings;
 }
 
 function count(value: number): string {
