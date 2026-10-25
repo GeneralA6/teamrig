@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { USAGE_FORMAT } from '../budget/store.ts';
+import { WEEK_SUMMARY_FILE } from '../budget/week-summary.ts';
 import { WORK_CACHE_FILE } from '../budget/work.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { parseObject } from '../core/jsonl.ts';
@@ -160,6 +161,21 @@ describe('the budget in the hooks', () => {
     const snapshotsClosed = new FaultyFiles(kit.files).fail('read', join(KIT, 'usage', 'live', `${ALPHA_TAB}.json`), systemError('EACCES'));
     const prompt = await hook('inbox-reminder', ALPHA_TAB, { prompt: 'next', session_title: 'app-alpha' }, snapshotsClosed);
     assert.ok(prompt.stdout.some((line) => line.startsWith("teamrig budget: you are past today's budget")), prompt.stdout.join('\n'));
+  });
+
+  it('marks no inbox line shown while the budget step stalls, so a hook killed at its timeout loses none', async () => {
+    const { kit, hook } = await world({}, 10_000_000, 30);
+    await kit.run(['inbox', 'add', '--to', 'alpha', '--text', 'T7 is yours', '--session', 'lead']);
+    const shownPath = join(TEAM_HOME, 'state', 'inbox-shown.jsonl');
+    const shownBefore = await kit.files.read(shownPath);
+    const weekStalls = new FaultyFiles(kit.files);
+    const reached = weekStalls.stall('read', join(KIT, 'usage', 'live', WEEK_SUMMARY_FILE));
+    // Claude Code kills the hook at its timeout: this run never ends, and only what it wrote before the stall stays.
+    void hook('inbox-reminder', ALPHA_TAB, { prompt: 'next', session_title: 'app-alpha' }, weekStalls);
+    await reached;
+    assert.equal(await kit.files.read(shownPath), shownBefore);
+    const next = await hook('inbox-reminder', ALPHA_TAB, { prompt: 'again', session_title: 'app-alpha' });
+    assert.ok(next.stdout.some((line) => line.includes('T7 is yours')), next.stdout.join('\n'));
   });
 
   it('asks before a helper launch past budget with overAction ask, and lets it go with ask-lead', async () => {
