@@ -1,11 +1,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { join } from 'node:path';
 import { formatConfig } from '../config/load.ts';
 import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
-import { MEETING_LAPSE_MS } from '../meeting/state.ts';
+import { MEETING_LAPSE_MS, MeetingStore } from '../meeting/state.ts';
 import { APP, CLAUDE_SESSION, CliHarness, CONFIG_PATH, decisionOf, TEAM, type CliResult } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
-import { SUB_TEAMS, teamConfigOf, treeHarness } from '../testing/team-tree.ts';
+import { SUB_TEAMS, teamConfigOf, teamHomeOf, treeHarness } from '../testing/team-tree.ts';
 import { EXIT } from './runtime.ts';
 
 const ON_TEAM: JsonRecord = { ...TEAM, pickerGuard: { enabled: true } };
@@ -62,11 +63,12 @@ describe('hook picker-guard', () => {
     assert.deepEqual(await kit.run(HOOK, { stdin: helper }), NOTHING, 'a helper in a tab that is no team session');
   });
 
-  it("refuses a sub-team's lead even while its team's meeting is open, routing the card to its parent lead", async () => {
+  it("refuses a sub-team's lead even with a meeting of its team left open, routing the card to its parent lead", async () => {
     const kit = await treeHarness();
     await kit.files.write(teamConfigOf('web'), formatConfig({ ...SUB_TEAMS['web'], pickerGuard: { enabled: true } }));
     const web = { TEAMRIG_TEAM: 'web', TEAMRIG_SESSION: 'lead' };
-    assert.equal((await kit.run(['meeting', 'start', '--session', 'lead'], { env: { TEAMRIG_TEAM: 'web' } })).code, EXIT.ok);
+    // A child team's lead holds no meeting (T1018), so seed one it opened before that, still open half an hour on.
+    await new MeetingStore(kit.files, join(teamHomeOf('web'), 'state', 'meeting.json')).write({ startedAt: '2030-01-08T09:30:00.000Z', by: 'lead', endedAt: null, since: null });
     const result = await kit.run(HOOK, { stdin: call('AskUserQuestion'), env: web });
     assert.equal(decisionOf(result), 'deny', 'the user talks only to the root lead');
     assert.match(reasonOf(result) ?? '', /then tell your parent lead app\/lead \(name `[^`]+`\) in one inbox line, `teamrig inbox add --to app\/lead /);
