@@ -42,8 +42,8 @@ import { lintSkills } from '../../skills/lint.ts';
 import { SKILL_FILE, SkillDir } from '../../skills/store.ts';
 import { weekUseOnAccount } from '../account-teams.ts';
 import { readWideAllow } from '../allow-scope.ts';
-import { noPositionals, onePositional, UsageError, type ParsedArgs } from '../args.ts';
-import { addInputOf, callerOf, changesOf, listFilterOf, pinOf, setInputOf, taskIdOf, weekOf, type TypedTimes } from '../inputs.ts';
+import { noPositionals, onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
+import { addInputOf, callerOf, changesOf, listFilterOf, pinOf, setInputOf, taskIdOf, taskRefOf, weekOf, type TypedTimes } from '../inputs.ts';
 import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, projectFolder, requireConfig, rosterOf, sessionIdOf, teamZone, type Access, type Kit } from '../kit.ts';
 import { checkLines, listLines, SHORT_TITLE_CHARS, waitingOnLines, type CheckReport, type CheckSection, type LeadDecisions, type TaskRow } from '../reports.ts';
 import { idlePassWarnings } from '../idle-pass-check.ts';
@@ -537,9 +537,40 @@ async function tellVerifiers(runtime: CliRuntime, team: Team, caller: string, { 
   }
 }
 
+/**
+ * `update <team>/<id> --note ".."`: the lead who asks the owner a team's decisions, at its tree's root (T1018), records
+ * a note, such as the owner's answer, on a task of that team. It lands in that team's register as an event by the
+ * lead's `<team>/<id>`. Only that lead may, and only a note: every field stays the task's own team's to change.
+ */
+async function noteBelow(args: ParsedArgs, runtime: CliRuntime, caller: string, below: string, id: string): Promise<ExitCode> {
+  const others = [...[...args.flags.keys()].filter((flag) => flag !== 'session' && flag !== 'note'), ...args.switches];
+  if (others.length > 0) {
+    throw new UsageError(`update ${below}/${id} adds a --note to another team's task: it takes no --${others.join(', --')}`);
+  }
+  const note = requiredFlag(args.flags, 'note');
+  const { team } = await findTeam(runtime);
+  if (team === below) {
+    throw new UsageError(`${below}/${id} is a task of your own team: update ${id}`);
+  }
+  const { from, tree } = await treeCallerOf(runtime, team, caller, below);
+  const asker = tree.ownerLeadAbove(below);
+  if (asker === undefined) {
+    throw new RefusedError(`team ${below} has no parent team, so only its own sessions note its tasks`);
+  }
+  if (asker.team !== from.team || asker.id !== from.id) {
+    throw new RefusedError(`only ${formatAddress(asker)}, who asks the owner team ${below}'s decisions, notes its tasks from another team; ${formatAddress(from)} may not`);
+  }
+  const target = await teamOf(runtime, await openKit(runtime, below), 'write');
+  return report(runtime, await target.register.noteFrom(formatAddress(from), id, note), 'UPDATED', target, below);
+}
+
 export async function update(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
-  const id = taskIdOf(onePositional(args, 'id'));
+  const ref = taskRefOf(onePositional(args, 'id'));
   const caller = callerOf(args.flags, runtime.env);
+  if (ref.team !== undefined) {
+    return noteBelow(args, runtime, caller, ref.team, ref.id);
+  }
+  const { id } = ref;
   const team = await openTeam(runtime, 'write');
   const by = sessionIdOf(team.roster, caller);
   const changes = { ...changesOf(args.flags, typedTimes(runtime, team.zone)), ...pinOf(args.switches, by) };

@@ -1,5 +1,5 @@
 import { ENV, type Env } from '../core/home.ts';
-import { NAME_PATTERN, NAME_RULE } from '../core/ids.ts';
+import { ID_PATTERN, NAME_PATTERN, NAME_RULE } from '../core/ids.ts';
 import { parseTypedInstant, parseUtcDay, storedDeadline, typedDeadline, typedTimeHint } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { OPTION_SEPARATOR, type DecisionCard } from '../register/card.ts';
@@ -49,6 +49,25 @@ export function commandWordsOf(args: ParsedArgs): readonly string[] {
     throw new UsageError(stray === undefined ? 'no command to run after --' : `put "${stray}" and the rest of the command after --`);
   }
   return args.rest;
+}
+
+/** A task as typed: its id, and the team when the id is written as a roll-up over a team tree prints it. */
+export interface TaskRef {
+  readonly team: string | undefined;
+  readonly id: string;
+}
+
+/** `T12`, or `web/T12`: team web's task, as a roll-up over a team tree names a task of another team. */
+export function taskRefOf(text: string): TaskRef {
+  const parts = text.split('/');
+  const [first = '', second] = parts;
+  if (parts.length === 1) {
+    return { team: undefined, id: taskIdOf(first) };
+  }
+  if (parts.length > 2 || second === undefined || !ID_PATTERN.test(first) || !TASK_ID.test(second)) {
+    throw new UsageError(`"${text}" is not a task id like T12, or web/T12 for a task of team web`);
+  }
+  return { team: first, id: second };
 }
 
 export function taskIdOf(text: string): string {

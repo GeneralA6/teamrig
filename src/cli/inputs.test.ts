@@ -4,7 +4,7 @@ import { TimeZone } from '../core/zone.ts';
 import { TASK_STATUSES } from '../register/model.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import { UsageError } from './args.ts';
-import { addInputOf, callerOf, changesOf, deadlineOf, instantOf, kindOf, listFilterOf, pinOf, priorityOf, sessionRef, setInputOf, sizeOf, statusInputOf, taskIdOf, waitsOf, weekOf, type TypedTimes } from './inputs.ts';
+import { addInputOf, callerOf, changesOf, deadlineOf, instantOf, kindOf, listFilterOf, pinOf, priorityOf, sessionRef, setInputOf, sizeOf, statusInputOf, taskIdOf, taskRefOf, waitsOf, weekOf, type TypedTimes } from './inputs.ts';
 
 const flags = (entries: Readonly<Record<string, string>>): ReadonlyMap<string, string> => new Map(Object.entries(entries));
 
@@ -25,6 +25,15 @@ describe('names and ids', () => {
     assert.throws(() => callerOf(flags({ session: '9lives' }), {}), UsageError);
     assert.equal(taskIdOf('T12'), 'T12');
     assert.throws(() => taskIdOf('12'), /"12" is not a task id like T12/);
+  });
+
+  it("reads a task as typed: an id, or a team tree roll-up's <team>/<id>", () => {
+    assert.deepEqual(taskRefOf('T12'), { team: undefined, id: 'T12' });
+    assert.deepEqual(taskRefOf('web/T12'), { team: 'web', id: 'T12' });
+    assert.throws(() => taskRefOf('12'), /"12" is not a task id like T12$/);
+    for (const text of ['web/12', 'Web/T12', 'web/T12/x', '/T12', 'web/']) {
+      assert.throws(() => taskRefOf(text), new RegExp(`^UsageError: "${text}" is not a task id like T12, or web/T12 for a task of team web$`), text);
+    }
   });
 
   it('takes a week as a day only', () => {
