@@ -7,6 +7,7 @@ import { JsonlEventLog } from '../register/store.ts';
 import { SkillDir } from '../skills/store.ts';
 import { teamZone } from './kit.ts';
 import type { CliRuntime } from './runtime.ts';
+import { KitTreeNumbering } from './tree-numbering.ts';
 
 /** The team's register on disk: its event log under the team's lock, judged by the team's policy. */
 export function teamRegister(runtime: CliRuntime, paths: TeamPaths, config: KitConfig): Register {
@@ -14,6 +15,7 @@ export function teamRegister(runtime: CliRuntime, paths: TeamPaths, config: KitC
   return new Register({
     log: new JsonlEventLog(files, paths.events),
     mutex: new FileLock(paths.eventsLock, config.lock, { files, clock, sleep, pid }),
+    numbering: new KitTreeNumbering(runtime, paths.team, config.lock),
     clock,
     policy: new RegisterPolicy(config),
     skills: new SkillDir(files, paths.skills),

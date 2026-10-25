@@ -10,6 +10,7 @@ import { MemoryFiles } from '../testing/memory-files.ts';
 import { rotateRegister } from '../testing/rotation.ts';
 import { EVENT_VERSION } from './events.ts';
 import { layoutPaths } from './layout.ts';
+import { OWN_NUMBERS, type TaskNumbering } from './numbering.ts';
 import { RegisterPolicy, type Verdict } from './policy.ts';
 import { Register, type SkillCatalog, type WriteResult } from './register.ts';
 import { readEvents } from './snapshot.ts';
@@ -32,7 +33,22 @@ class FakeSkills implements SkillCatalog {
   }
 }
 
-function setup(initial: Readonly<Record<string, string>> = {}) {
+/** A numbering shared with registers whose next number is `floor`: counts the creates it numbered. */
+class FloorNumbering implements TaskNumbering {
+  issued = 0;
+  floor: number;
+
+  constructor(floor: number) {
+    this.floor = floor;
+  }
+
+  async issue<T>(write: (floor: number) => Promise<T>): Promise<T> {
+    this.issued += 1;
+    return write(this.floor);
+  }
+}
+
+function setup(initial: Readonly<Record<string, string>> = {}, numbering: TaskNumbering = OWN_NUMBERS) {
   const files = new MemoryFiles(initial);
   const clock = new FakeClock(START);
   const mutex = new InlineMutex();
@@ -40,6 +56,7 @@ function setup(initial: Readonly<Record<string, string>> = {}) {
   const register = new Register({
     log: new JsonlEventLog(files, LOG),
     mutex,
+    numbering,
     clock,
     zone: TimeZone.UTC,
     policy: new RegisterPolicy(testConfig()),
@@ -328,6 +345,46 @@ describe('Register, the GitHub import', () => {
     assert.match(errorOf(await register.setStatus('github', 'T1', { status: 'done', evidence: URL, skill: 'none' })), /github is not a session on this team/);
     assert.match(errorOf(await register.importStatus('T9', { status: 'open' })), /T9/);
     assert.equal(readEvents(files.get(LOG) ?? '').events.length, 1);
+  });
+});
+
+describe('Register in a shared numbering (T1139)', () => {
+  const INPUT = { title: 'Ship it', description: 'what and why', owner: 'alpha', source: 'owner', priority: 1 } as const;
+
+  it('issues the floor when the other registers are ahead, its own next number once it is past them', async () => {
+    const numbering = new FloorNumbering(40);
+    const { register } = setup({}, numbering);
+    assert.equal(written(await register.add('lead', INPUT)).task.id, 'T40');
+    assert.equal(written(await register.add('lead', { ...INPUT, title: 'Next' })).task.id, 'T41');
+    numbering.floor = 1;
+    assert.equal(written(await register.add('lead', { ...INPUT, title: 'Last' })).task.id, 'T42');
+    assert.equal(numbering.issued, 3);
+  });
+
+  it('numbers an asked task, a task from the parent lead and an imported issue the same way', async () => {
+    const numbering = new FloorNumbering(10);
+    const { register } = setup({}, numbering);
+    written(await register.add('lead', INPUT));
+    written(await register.setStatus('alpha', 'T10', { status: 'in-progress' }));
+    numbering.floor = 50;
+    const asked = await register.ask('alpha', 'T10', { owner: 'bravo', title: 'Land the schema change', due: '2030-01-10' }, { status: 'waiting' });
+    assert.ok(asked.ok, asked.ok ? '' : asked.error);
+    assert.deepEqual([asked.value.asked.id, asked.value.task.waits], ['T50', [{ kind: 'task', id: 'T50' }]]);
+    numbering.floor = 60;
+    assert.equal(written(await register.addFromParent('app/lead', { ...INPUT, title: 'Ship login', owner: 'lead', source: 'app/lead' })).task.id, 'T60');
+    numbering.floor = 70;
+    assert.equal(written(await register.importAdd({ title: 'Fix login', description: null, owner: 'bravo', ref: 'gh:acme/web#7', priority: 1 })).task.id, 'T70');
+    assert.equal(numbering.issued, 4);
+  });
+
+  it('takes no number for a write that creates no task, or a caller off the roster', async () => {
+    const numbering = new FloorNumbering(5);
+    const { register } = setup({}, numbering);
+    written(await register.add('lead', INPUT));
+    written(await register.setStatus('alpha', 'T5', { status: 'in-progress' }));
+    written(await register.update('lead', 'T5', { priority: 2 }, undefined));
+    assert.match(errorOf(await register.add('mallory', { ...INPUT, title: 'Other' })), /mallory is not a session on this team/);
+    assert.equal(numbering.issued, 1);
   });
 });
 

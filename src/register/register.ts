@@ -6,6 +6,7 @@ import { EVENT_VERSION, type ApprovalVerdict, type CreateEvent, type RegisterEve
 import { foldEvents, taskNumber, type RegisterState, type Task } from './fold.ts';
 import { GITHUB_ACTOR, NO_SKILL, type AddInput, type AskInput, type ImportChanges, type ImportInput, type RegisterPolicy, type StatusContext, type StatusInput, type Verdict } from './policy.ts';
 import { ACTIVE_STATUSES } from './model.ts';
+import type { TaskNumbering } from './numbering.ts';
 import { isWritable, type RegisterSnapshot } from './snapshot.ts';
 import type { EventLog } from './store.ts';
 import type { WaitReason } from './waits.ts';
@@ -18,6 +19,8 @@ export interface SkillCatalog {
 export interface RegisterDeps {
   readonly log: EventLog;
   readonly mutex: Mutex;
+  /** Where a new task's number comes from: the register alone, or every register of the team's tree. */
+  readonly numbering: TaskNumbering;
   readonly clock: Clock;
   readonly policy: RegisterPolicy;
   readonly skills: SkillCatalog;
@@ -78,7 +81,7 @@ export class Register {
   }
 
   add(caller: string, input: AddInput): Promise<Verdict<WriteResult>> {
-    return this.commit(caller, ({ state }) => single(this.created(caller, state.nextId, this.deps.policy.add(input, state))));
+    return this.asCaller(caller, () => this.writeNew(({ state }, id) => single(this.created(caller, id, this.deps.policy.add(input, state)))));
   }
 
   /**
@@ -86,7 +89,7 @@ export class Register {
    * who that may be, so this team's roster check is skipped; the event names that lead as its writer.
    */
   addFromParent(parentLead: string, input: AddInput): Promise<Verdict<WriteResult>> {
-    return this.write(({ state }) => single(this.created(parentLead, state.nextId, this.deps.policy.addFromParent(input, state))));
+    return this.writeNew(({ state }, id) => single(this.created(parentLead, id, this.deps.policy.addFromParent(input, state))));
   }
 
   /**
@@ -95,7 +98,7 @@ export class Register {
    * own tasks: a new one per issue, its title and priority, and open, done or dropped as GitHub has it.
    */
   importAdd(input: ImportInput): Promise<Verdict<WriteResult>> {
-    return this.write(({ state }) => single(this.created(GITHUB_ACTOR, state.nextId, this.deps.policy.importAdd(input, state))));
+    return this.writeNew(({ state }, id) => single(this.created(GITHUB_ACTOR, id, this.deps.policy.importAdd(input, state))));
   }
 
   importUpdate(id: string, changes: ImportChanges, note: string): Promise<Verdict<WriteResult>> {
@@ -131,20 +134,21 @@ export class Register {
    */
   async ask(caller: string, id: string, ask: AskInput, input: StatusInput): Promise<Verdict<AskResult>> {
     const skillExists = await this.skillExists(input);
-    const written = await this.commit(caller, (snapshot) =>
-      onTask(snapshot, id, (task) => {
-        const fields = this.deps.policy.ask(task, caller, ask, input, snapshot.state);
-        if (!fields.ok) {
-          return fields;
-        }
-        const askedId = snapshot.state.nextId;
-        const created: CreateEvent = { ...this.base(askedId, caller), type: 'create', task: fields.value };
-        const state = foldEvents([created], [], snapshot.state);
-        const waits: readonly WaitReason[] = [...(input.waits ?? []), { kind: 'task', id: askedId }];
-        const asking: StatusInput = { ...input, waits, note: input.note ?? fields.value.title };
-        const status = this.statusEvents(task, caller, asking, { state, now: new Date(this.deps.clock.now()), zone: this.deps.zone, skillExists });
-        return status.ok ? { ok: true, value: [created, ...status.value] } : status;
-      }),
+    const written = await this.asCaller(caller, () =>
+      this.writeNew((snapshot, askedId) =>
+        onTask(snapshot, id, (task) => {
+          const fields = this.deps.policy.ask(task, caller, ask, input, snapshot.state);
+          if (!fields.ok) {
+            return fields;
+          }
+          const created: CreateEvent = { ...this.base(askedId, caller), type: 'create', task: fields.value };
+          const state = foldEvents([created], [], snapshot.state);
+          const waits: readonly WaitReason[] = [...(input.waits ?? []), { kind: 'task', id: askedId }];
+          const asking: StatusInput = { ...input, waits, note: input.note ?? fields.value.title };
+          const status = this.statusEvents(task, caller, asking, { state, now: new Date(this.deps.clock.now()), zone: this.deps.zone, skillExists });
+          return status.ok ? { ok: true, value: [created, ...status.value] } : status;
+        }),
+      ),
     );
     if (!written.ok) {
       return written;
@@ -231,12 +235,27 @@ export class Register {
   }
 
   /** A write by a session of this team: refused unless the caller is on the roster. */
-  private async commit(caller: string, decide: (snapshot: RegisterSnapshot) => Verdict<readonly RegisterEvent[]>): Promise<Verdict<WriteResult>> {
+  private commit(caller: string, decide: (snapshot: RegisterSnapshot) => Verdict<readonly RegisterEvent[]>): Promise<Verdict<WriteResult>> {
+    return this.asCaller(caller, () => this.write(decide));
+  }
+
+  /** Runs `write` for a session of this team: refused unless the caller is on the roster. */
+  private async asCaller<T>(caller: string, write: () => Promise<Verdict<T>>): Promise<Verdict<T>> {
     const callerProblem = this.deps.policy.checkCaller(caller);
     if (callerProblem !== undefined) {
       return { ok: false, error: callerProblem };
     }
-    return this.write(decide);
+    return write();
+  }
+
+  /**
+   * A write that creates a task, under the numbering: the new id is the higher of the register's own next one and
+   * the numbering's floor, so it is free in every register that shares the numbering (numbering.ts).
+   */
+  private writeNew(decide: (snapshot: RegisterSnapshot, id: string) => Verdict<readonly RegisterEvent[]>): Promise<Verdict<WriteResult>> {
+    return this.deps.numbering.issue((floor) =>
+      this.write((snapshot) => decide(snapshot, `T${Math.max(taskNumber(snapshot.state.nextId), floor)}`)),
+    );
   }
 
   /**
