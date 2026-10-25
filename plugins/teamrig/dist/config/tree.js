@@ -46,6 +46,16 @@ export class TeamTree {
         const parent = this.nodes.get(this.nodes.get(team)?.parent ?? '');
         return parent === undefined ? undefined : { team: parent.team, id: parent.lead };
     }
+    /**
+     * The lead who asks the owner the team's decisions when the team's own lead does not (T509): for a child team, the
+     * lead at its tree's root, the one lead the owner meets; its parent's lead while its parents go round a loop.
+     * Undefined for a root team, whose own lead asks them.
+     */
+    ownerLeadAbove(team) {
+        const parentLead = this.parentLeadOf(team);
+        const root = this.nodes.get(this.rootOf(team) ?? '');
+        return parentLead === undefined || root === undefined ? parentLead : { team: root.team, id: root.lead };
+    }
     childrenOf(team) {
         return this.teams.filter((child) => this.nodes.get(child)?.parent === team);
     }

@@ -1,3 +1,4 @@
+import { formatAddress } from "../../core/address.js";
 import { KIT_NAME } from "../../core/home.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { postLine } from "../../inbox/inbox.js";
@@ -6,15 +7,19 @@ import { decisionsByOwner, endNotice } from "../../meeting/notices.js";
 import { MeetingStore, phaseOf, stoppedAt } from "../../meeting/state.js";
 import { currentWeekOf } from "../../register/week.js";
 import { fitLines } from "../../register/fit.js";
-import { TaskTree } from "../../register/tree.js";
 import { noPositionals } from "../args.js";
 import { callerOf } from "../inputs.js";
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
+import { subtreeOf } from "../roll-up.js";
 import { EXIT, RefusedError } from "../runtime.js";
+import { loadTree } from "../tree.js";
 import { weekLineOf } from "./budget.js";
 import { inboxDepsOf, read } from "./inbox.js";
-import { ownRegister, weekFitOf } from "./register.js";
-/** The caller's team, refused unless the caller is its lead: the meeting is the lead's with the owner. */
+import { taskTreeOf, weekFitOf } from "./register.js";
+/**
+ * The caller's team, refused unless the caller is its lead and the team a root team: the meeting is the lead's with the
+ * owner, and a child team's waits on the owner go up to the lead at its tree's root, whose agenda lists them (T509).
+ */
 async function meetingKit(args, runtime, access) {
     noPositionals(args);
     const kit = await openTeamKit(runtime);
@@ -27,29 +32,47 @@ async function meetingKit(args, runtime, access) {
     if (lead === undefined || caller !== lead) {
         throw new RefusedError(`only the lead${lead === undefined ? '' : ` (${roster.nameOf(lead) ?? lead})`} runs the owner's daily meeting`);
     }
+    const team = kit.paths.team;
+    const kitTree = await loadTree(runtime);
+    const above = kitTree.tree.ownerLeadAbove(team);
+    if (above !== undefined) {
+        throw new RefusedError(`team ${team} meets no owner: the owner's daily meeting is ${formatAddress(above)}'s, whose agenda lists ${team}'s waits on the owner`);
+    }
     const store = new MeetingStore(runtime.files, kit.paths.meeting);
-    return { kit, config, roster, lead, leadName: roster.nameOf(lead) ?? lead, store, now: runtime.clock.now(), zone: teamZone(config, runtime) };
+    return { kit, config, roster, lead, leadName: roster.nameOf(lead) ?? lead, store, now: runtime.clock.now(), zone: teamZone(config, runtime), kitTree };
+}
+/** The registers of the lead's team and of every team under it, depth first, its own first (subtreeOf). */
+async function meetingRegisters(runtime, mk) {
+    return subtreeOf(runtime, { kit: mk.kit, config: mk.config, roster: mk.roster }, mk.kitTree);
+}
+/** How the lead's end lines name a session of the register: by its id in the lead's own team, by `<team>/<id>` in another. */
+function sessionLabel({ below }, session) {
+    return below === undefined ? session : formatAddress({ team: below, id: session });
 }
 /**
- * One inbox line to each session on the roster with decisions recorded on its tasks, and none to the rest; prints a
- * line for each it could not post to, and returns how many it told.
+ * One inbox line to each session on the register's roster with decisions recorded on its tasks, and none to the rest;
+ * prints a line for each it could not post to, and returns how many it told. A team under the lead's gets them from
+ * the lead's `<team>/<id>`, scanned with both teams' secret patterns, as a line to another team is.
  */
-async function tellDecided(runtime, mk, decisions) {
-    const { inboxes } = inboxDepsOf(runtime, mk.kit.paths);
-    const secrets = new SecretScanner(mk.config.register.secretPatterns);
+async function tellDecided(runtime, mk, decided) {
+    const { rolled, below, byOwner } = decided;
+    const { inboxes } = inboxDepsOf(runtime, rolled.paths);
+    const patterns = below === undefined ? mk.config.register.secretPatterns : [...mk.config.register.secretPatterns, ...rolled.config.register.secretPatterns];
+    const secrets = new SecretScanner(patterns);
+    const from = below === undefined ? mk.lead : formatAddress({ team: mk.kit.paths.team, id: mk.lead });
     const facts = { leadName: mk.leadName, at: mk.now, zone: mk.zone };
     let told = 0;
-    for (const session of mk.roster.ids) {
-        const decided = decisions.get(session);
-        if (session === mk.lead || decided === undefined) {
+    for (const session of rolled.roster.ids) {
+        const decisions = byOwner.get(session);
+        if (from === session || decisions === undefined) {
             continue;
         }
-        const problem = await postLine(inboxes, secrets, { to: session, from: mk.lead, text: endNotice(facts, decided), now: new Date(mk.now) });
+        const problem = await postLine(inboxes, secrets, { to: session, from, text: endNotice(facts, decisions), now: new Date(mk.now) });
         if (problem === undefined) {
             told += 1;
         }
         else {
-            runtime.out.stdout(`NOT TOLD ${session}: ${problem}`);
+            runtime.out.stdout(`NOT TOLD ${sessionLabel(decided, session)}: ${problem}`);
         }
     }
     return told;
@@ -73,28 +96,38 @@ function phaseLine(phase, mk) {
             return `MEETING none open, the last ended ${mk.zone.weekdayMinute(new Date(phase.until))}; the agenda for the next (${KIT_NAME} meeting start opens it)`;
     }
 }
-/** The agenda: the register's part (decisions, late, done), the lead's inbox marked read, then the week's use and, under it, the planned week's fit (as `plan` gives it). */
+/**
+ * The agenda: the register's part (decisions, with those of every team under the lead's, then late and done), the
+ * lead's inbox marked read, then the week's use and, under it, the planned week's fit (as `plan` gives it).
+ */
 async function printAgenda(args, runtime, mk, phase) {
-    const rollUp = await ownRegister(runtime);
-    const { snapshot, elsewhere } = rollUp.own;
-    const now = new Date(mk.now);
-    const { zone } = mk;
+    const { own, teams } = await meetingRegisters(runtime, mk);
+    const { snapshot } = own;
     const lines = agendaLines({
         tasks: [...snapshot.state.tasks.values()],
-        tree: new TaskTree(snapshot.state.tasks, now, zone, currentWeekOf(snapshot, now, zone), elsewhere),
+        tree: taskTreeOf(own, runtime),
         now: mk.now,
         since: agendaSince(previousEnd(phase), mk.now),
         ownerMarker: mk.config.register.ownerSource,
         requireGate: mk.config.register.requireDecisionCard,
+        below: teams
+            .filter((rolled) => rolled.team !== own.team)
+            .map((rolled) => ({
+            team: rolled.team,
+            tasks: [...rolled.snapshot.state.tasks.values()],
+            tree: taskTreeOf(rolled, runtime),
+            ownerMarker: rolled.config.register.ownerSource,
+            requireGate: rolled.config.register.requireDecisionCard,
+        })),
         lead: mk.lead,
         command: KIT_NAME,
     });
     lines.forEach((line) => runtime.out.stdout(line));
     await read({ ...args, flags: new Map([['session', mk.lead]]) }, runtime);
     runtime.out.stdout(await weekLineOf(runtime, mk.kit, mk.config, mk.roster));
-    const week = currentWeekOf(snapshot, now, zone);
+    const week = currentWeekOf(snapshot, new Date(mk.now), mk.zone);
     if (week !== null) {
-        fitLines(await weekFitOf(runtime, rollUp, week, false)).forEach((line) => runtime.out.stdout(`  ${line}`));
+        fitLines(await weekFitOf(runtime, { own, teams: [own] }, week, false)).forEach((line) => runtime.out.stdout(`  ${line}`));
     }
 }
 /**
@@ -127,7 +160,8 @@ export async function meetingAgenda(args, runtime) {
 }
 /**
  * `meeting end`: closes the open meeting, or one that lapsed unended, and tells each session whose tasks the lead
- * updated during the meeting those updates (the decisions recorded) by one inbox line; a session with none gets no line.
+ * updated during the meeting those updates (the decisions recorded) by one inbox line, in a team under the lead's
+ * too (T1018); a session with none gets no line.
  */
 export async function meetingEnd(args, runtime) {
     const mk = await meetingKit(args, runtime, 'write');
@@ -137,13 +171,21 @@ export async function meetingEnd(args, runtime) {
     }
     const { meeting } = phase;
     await mk.store.write({ ...meeting, endedAt: new Date(mk.now).toISOString() });
-    const { snapshot } = (await ownRegister(runtime)).own;
+    const { own, teams } = await meetingRegisters(runtime, mk);
     const startedAt = Date.parse(meeting.startedAt);
-    const decisions = decisionsByOwner(snapshot.read.events, snapshot.state.tasks, mk.lead, startedAt);
-    const told = await tellDecided(runtime, mk, decisions);
+    const address = formatAddress({ team: own.team, id: mk.lead });
+    const decided = teams.map((rolled) => {
+        const below = rolled.team === own.team ? undefined : rolled.team;
+        const { events } = rolled.snapshot.read;
+        return { rolled, below, byOwner: decisionsByOwner(events, rolled.snapshot.state.tasks, below === undefined ? mk.lead : address, startedAt) };
+    });
+    let told = 0;
+    for (const register of decided) {
+        told += await tellDecided(runtime, mk, register);
+    }
     const minutes = Math.round((mk.now - startedAt) / 60_000);
     runtime.out.stdout(`MEETING ended ${mk.zone.weekdayMinute(new Date(mk.now))} after ${minutes} min: messages to ${mk.leadName} go again; told ${told} session(s) the decisions on their tasks`);
-    const recorded = [...decisions].flatMap(([owner, lines]) => lines.map((line) => `  ${owner} ${line}`));
+    const recorded = decided.flatMap((register) => [...register.byOwner].flatMap(([owner, lines]) => lines.map((line) => `  ${sessionLabel(register, owner)} ${line}`)));
     runtime.out.stdout(recorded.length === 0
         ? `RECORDED nothing on another session's task during it: a decision the register lacks reaches no one (${KIT_NAME} update <id> --note "..." --session ${mk.lead})`
         : `RECORDED ${recorded.length} decision(s), each told to its task's owner`);
