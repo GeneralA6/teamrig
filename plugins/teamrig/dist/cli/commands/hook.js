@@ -6,11 +6,14 @@ import { errorMessage, isRecord, stringField } from "../../core/guards.js";
 import { claudeConfigDir, claudeTempDir, KIT_NAME } from "../../core/home.js";
 import { resolveTeam } from "../../core/team.js";
 import { sessionIdOf } from "../../inbox/inbox.js";
+import { routeReminderOf } from "../../inbox/route.js";
 import { boundPromptNote, boundStartNote, tabTitleFor } from "../../hooks/bind.js";
 import { modelCheckLine, payloadEffortOf } from "../../hooks/model-check.js";
 import { ModelNoticeStore } from "../../hooks/model-notices.js";
 import { sendTargetOf } from "../../hooks/cold-send.js";
-import { failedSendLine, failedSendOf, failedSendOutput } from "../../hooks/failed-send.js";
+import { failedSendLine, failedSendOf } from "../../hooks/failed-send.js";
+import { deliveredSendOf } from "../../hooks/route-reminder.js";
+import { postToolUseContext } from "../../hooks/post-tool-use.js";
 import { checkClient, clientRootOf } from "../../exec/client-integrity.js";
 import { ClientInstalls, ShellPathSearch } from "../../exec/client-launch.js";
 import { execGuardOutput } from "../../hooks/exec-guard.js";
@@ -382,7 +385,41 @@ export async function failedSend(args, runtime) {
         return EXIT.ok;
     }
     const receiver = (await rosterOf(runtime, kit, kit.load.config)).lookup(failed.to);
-    runtime.out.stdout(failedSendOutput(failedSendLine(failed, receiver.ok ? receiver.id : undefined, KIT_NAME)));
+    runtime.out.stdout(postToolUseContext(failedSendLine(failed, receiver.ok ? receiver.id : undefined, KIT_NAME)));
+    return EXIT.ok;
+}
+/**
+ * PostToolUse on SendMessage (T783): after a delivered message to a session under a sub-lead below the sender, hands
+ * the model one line to route such work via that sub-lead next time, naming sessions by the names they are messaged
+ * by. A CRITICAL message, a send to or from no team session, or anything outside a loaded team gets nothing.
+ */
+export async function routeReminder(args, runtime) {
+    noPositionals(args);
+    const payload = parseJson(await runtime.readStdin());
+    const sent = deliveredSendOf(payload);
+    if (sent === undefined || !isRecord(payload)) {
+        return EXIT.ok;
+    }
+    const found = await sessionTeam(payload, runtime);
+    if (found.kind !== 'team') {
+        return EXIT.ok;
+    }
+    const kit = await openKit(runtime, found.team);
+    if (kit.load.status !== 'loaded') {
+        return EXIT.ok;
+    }
+    const { config } = kit.load;
+    const roster = await rosterOf(runtime, kit, config);
+    const receiver = roster.lookup(sent.to);
+    const sender = await teamSessionOf(runtime, kit, roster, sessionIdOf(payload));
+    if (!receiver.ok || sender === undefined) {
+        return EXIT.ok;
+    }
+    const message = { from: sender, to: receiver.id, text: sent.text };
+    const line = routeReminderOf(new LeadTree(config), message, (id) => roster.nameOf(id) ?? id, KIT_NAME);
+    if (line !== undefined) {
+        runtime.out.stdout(postToolUseContext(line));
+    }
     return EXIT.ok;
 }
 /**

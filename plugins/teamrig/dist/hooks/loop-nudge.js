@@ -86,7 +86,3 @@ export function nudgeLine(chain, at) {
         : 'put independent reads in one message, and an edit with its re-test';
     return `teamrig: ${chain.length} single-step calls in a row this turn (about ${rereads} W of re-reads at this context); ${fix}.`;
 }
-/** The hook's stdout: the line as context for the model after the tool's result. */
-export function nudgeOutput(line) {
-    return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: line } });
-}

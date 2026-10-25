@@ -1,6 +1,6 @@
 import { LeadTree } from "../../config/lead-tree.js";
 import { formatAddress } from "../../core/address.js";
-import { ENV } from "../../core/home.js";
+import { ENV, KIT_NAME } from "../../core/home.js";
 import { NAME_RULE } from "../../core/ids.js";
 import { PlainLogFile } from "../../core/log-file.js";
 import { SecretScanner } from "../../core/secrets.js";
@@ -8,6 +8,7 @@ import { groupIds, parseTo } from "../../inbox/groups.js";
 import { formatRead, formatStatus, inboxStatus, lineOnClock, postLines, readInbox } from "../../inbox/inbox.js";
 import { CLAUDE_SESSION_ID } from "../../inbox/marks.js";
 import { reachOf } from "../../inbox/reach.js";
+import { routeReminderOf } from "../../inbox/route.js";
 import { InboxDir, JsonlMarkLog } from "../../inbox/store.js";
 import { noPositionals, requiredFlag, UsageError } from "../args.js";
 import { hookLogOf } from "../hook-logs.js";
@@ -127,12 +128,33 @@ function postedLine(recipients) {
     }
     return `POSTED to ${recipients.length} sessions (${recipients.map((recipient) => recipient.label).join(', ')}); each is reminded at its next prompt`;
 }
+/**
+ * The route reminders (T783) for the sessions of the sender's team that `--to` names one by one, each once. A group
+ * (`all`, `leads`, `group:<leader>`) is a broadcast, not work handed past a sub-lead, so it gets none.
+ */
+function routeRemindersOf(own, items, text) {
+    const tree = new LeadTree(own.config);
+    const reminders = new Set();
+    for (const item of items) {
+        if (item.kind !== 'session' || (item.address.team !== undefined && item.address.team !== own.from.team)) {
+            continue;
+        }
+        const to = sessionIdOf(own.roster, item.address.session);
+        const reminder = routeReminderOf(tree, { from: own.from.id, to, text }, (id) => id, KIT_NAME);
+        if (reminder !== undefined) {
+            reminders.add(reminder);
+        }
+    }
+    return [...reminders];
+}
 const TO_FORMS = 'a session id or name, <team>/<id>, all, leads, group:<leader>, or a comma-separated list of them';
 /**
  * `inbox add --to <to> --text "<line>"`: appends one dated line to each receiver's inbox, all of them or, when one is
  * refused, none. A bare id or name is on the sender's team; `<team>/<id>` reaches another team of its tree, as far as
  * the sender's place allows, and that line names the sender `<team>/<id>`. `all`, `leads` and `group:<leader>` are
- * groups of the sender's team that leave the sender out; a comma-separated list names each receiver once.
+ * groups of the sender's team that leave the sender out; a comma-separated list names each receiver once. A line to a
+ * session named on the sender's team that skips a sub-lead below the sender is posted, then a further line tells the
+ * sender to route such work via that sub-lead (T783).
  */
 export async function add(args, runtime) {
     noPositionals(args);
@@ -159,5 +181,8 @@ export async function add(args, runtime) {
         throw new RefusedError(problem);
     }
     runtime.out.stdout(postedLine(recipients));
+    for (const reminder of routeRemindersOf(own, items, text)) {
+        runtime.out.stdout(reminder);
+    }
     return EXIT.ok;
 }
