@@ -5,19 +5,24 @@ import type { Task } from '../register/fold.ts';
 import { TaskTree } from '../register/tree.ts';
 import { TEST_CARD, TEST_OWNER_CARD } from '../testing/card.ts';
 import { testTask } from '../testing/task.ts';
-import { AGENDA_ROWS, agendaLines, agendaSince, asksOwner, cardFacts, DESCRIPTION_CHARS, DONE_WINDOW_DAYS, oneLine, waitsOnOwner, type AgendaInput } from './agenda.ts';
+import { AGENDA_ROWS, agendaLines, agendaSince, asksOwner, cardFacts, DESCRIPTION_CHARS, DONE_WINDOW_DAYS, oneLine, waitsOnOwner, type AgendaInput, type AgendaTeam } from './agenda.ts';
 import { TimeZone } from '../core/zone.ts';
 
 const NOW = Date.parse('2030-01-08T10:00:00Z');
 
-function inputOf(tasks: readonly Task[], since = NOW - MS_PER_DAY, requireGate = true): AgendaInput {
+function treeOf(tasks: readonly Task[]): TaskTree {
+  return new TaskTree(new Map(tasks.map((task) => [task.id, task])), new Date(NOW), TimeZone.UTC);
+}
+
+function inputOf(tasks: readonly Task[], since = NOW - MS_PER_DAY, requireGate = true, below: readonly AgendaTeam[] = []): AgendaInput {
   return {
     tasks,
-    tree: new TaskTree(new Map(tasks.map((task) => [task.id, task])), new Date(NOW), TimeZone.UTC),
+    tree: treeOf(tasks),
     now: NOW,
     since,
     ownerMarker: 'owner',
     requireGate,
+    below,
     lead: 'lead',
     command: 'teamrig',
   };
@@ -103,6 +108,34 @@ describe('the meeting agenda', () => {
     );
     assert.equal(lines[16], '  Record each answer in the same turn: teamrig update <id> --note "owner decided: <decision>" --session lead; meeting end tells each task\'s owner.');
     assert.equal(lines.length, 17);
+  });
+
+  // T1018: a child team's waits on the owner go up to the lead at its tree's root, who reads them after its own.
+  it("lists the decisions of each team under the lead's after its own, by <team>/<id>, and how to ask and record them there", () => {
+    const decide = testTask({ id: 'T7', status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], card: TEST_OWNER_CARD });
+    const ungated = { ...UNGATED, id: 'T8' };
+    const web: AgendaTeam = { team: 'web', tasks: [decide, ungated], tree: treeOf([decide, ungated]), ownerMarker: 'owner', requireGate: true };
+    const lines = section(agendaLines(inputOf([DECIDE], NOW - MS_PER_DAY, true, [web])), 'DECISIONS');
+    assert.equal(lines[0], 'DECISIONS 2 waiting on owner (decision or approval)');
+    const rows = lines.filter((line) => /^ {2}\S+ waiting, /.test(line));
+    assert.deepEqual(rows, ['  T4 waiting, p2, owner alpha | Pick the pricing tier (waiting: decision owner)', '  web/T7 waiting, p2, owner alpha | Add a health check (waiting: decision owner)']);
+    assert.ok(!lines.some((line) => /\bT8\b/.test(line)), 'an ungated wait of a team that requires gates stays out');
+    assert.equal(
+      lines.at(-2),
+      "  A question a card does not answer is its task owner's to find: teamrig add --owner <id> (--team <team> in place of --owner for a team under yours: its lead hands it on) --due <date> --session lead, then relay the answer; never look it up yourself.",
+    );
+    assert.equal(
+      lines.at(-1),
+      '  Record each answer in the same turn: teamrig update <id> (<team>/<id> for a task of a team under yours, as its row names it) --note "owner decided: <decision>" --session lead; meeting end tells each task\'s owner.',
+    );
+  });
+
+  it("counts a team under the lead's alone when the lead's own team waits on nothing", () => {
+    const decide = testTask({ id: 'T7', status: 'waiting', waits: [{ kind: 'approval', who: 'owner' }] });
+    const web: AgendaTeam = { team: 'web', tasks: [decide], tree: treeOf([decide]), ownerMarker: 'owner', requireGate: true };
+    const lines = section(agendaLines(inputOf([testTask()], NOW - MS_PER_DAY, true, [web])), 'DECISIONS');
+    assert.equal(lines[0], 'DECISIONS 1 waiting on owner (decision or approval)');
+    assert.match(lines[1] ?? '', /^ {2}web\/T7 waiting, /);
   });
 
   // T1219: an ungated wait is its session's or its leader's, so the lead never reads it to the owner.

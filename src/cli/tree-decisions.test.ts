@@ -99,4 +99,32 @@ describe("runCli: a child team's owner decisions go up to the lead at its tree's
     assert.deepEqual(member.stdout, ["REFUSED only the lead (web-lead) asks the owner's decisions"]);
     assert.deepEqual(rowIds((await kit.run(['decisions', '--session', 'lead'])).stdout), ['T1', 'ops/T4', 'web/T2', 'ui/T3'], 'nothing was recorded asked, the teams depth first');
   });
+
+  it("reads the waits of every team under the root lead at its meeting, and tells each decided task's owner in its own team at the end (T1018)", async () => {
+    const kit = await treeHarness();
+    await ownerWait(kit, APP, 'alpha', 'Pick the pricing tier');
+    await ownerWait(kit, WEB, 'front', 'Pick the landing page');
+    await ownerWait(kit, UI, 'pixel', 'Pick the icon set');
+    const started = await kit.run(['meeting', 'start', '--session', 'lead']);
+    assert.equal(started.code, EXIT.ok, started.stderr.join('\n'));
+    assert.ok(started.stdout.includes('DECISIONS 3 waiting on owner (decision or approval)'), started.stdout.join('\n'));
+    assert.deepEqual(rowIds(started.stdout), ['T1', 'web/T2', 'ui/T3'], 'its own first, then the teams under it depth first');
+
+    for (const [label, note] of [['T1', 'human decided: basic'], ['web/T2', 'human decided: ship it']] as const) {
+      const noted = await kit.run(['update', label, '--note', note, '--session', 'lead']);
+      assert.equal(noted.code, EXIT.ok, noted.stderr.join('\n'));
+    }
+    const ended = await kit.run(['meeting', 'end', '--session', 'lead']);
+    assert.equal(ended.code, EXIT.ok, ended.stderr.join('\n'));
+    assert.match(ended.stdout[0] ?? '', /told 2 session\(s\) the decisions on their tasks$/);
+    assert.ok(ended.stdout.includes('  alpha T1: human decided: basic'), ended.stdout.join('\n'));
+    assert.ok(ended.stdout.includes('  web/front T2: human decided: ship it'), ended.stdout.join('\n'));
+
+    const front = (await kit.run(['inbox', 'read', '--session', 'front'], { env: WEB })).stdout;
+    const told = front.filter((line) => line.includes('Decided on your tasks:'));
+    assert.equal(told.length, 1, front.join('\n'));
+    assert.match(told[0] ?? '', /app\/lead: the owner's daily meeting with app-lead ended .*\. Decided on your tasks: T2: human decided: ship it\.$/);
+    const pixel = (await kit.run(['inbox', 'read', '--session', 'pixel'], { env: UI })).stdout;
+    assert.ok(!pixel.some((line) => line.includes('Decided on your tasks:')), "a team's session with nothing decided gets no line");
+  });
 });
