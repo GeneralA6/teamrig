@@ -44,17 +44,18 @@ describe('names and ids', () => {
 
 describe('priorityOf', () => {
   it('reads p<n> as the level', () => {
-    assert.deepEqual(['p1', 'p2', 'p5', 'p12', 'p99'].map(priorityOf), [1, 2, 5, 12, 99]);
+    assert.deepEqual(['p0', 'p1', 'p2', 'p5', 'p12', 'p99'].map(priorityOf), [0, 1, 2, 5, 12, 99]);
   });
 
   it('refuses the old tier spelling and a bare level with the spelling to write', () => {
     assert.throws(() => priorityOf('t2'), { name: 'UsageError', message: 'priority "t2" is the old tier spelling: write p2' });
     assert.throws(() => priorityOf('T3'), { name: 'UsageError', message: 'priority "T3" is the old tier spelling: write p3' });
     assert.throws(() => priorityOf('2'), { name: 'UsageError', message: 'priority "2" is not p<n>: write p2' });
+    assert.throws(() => priorityOf('0'), { name: 'UsageError', message: 'priority "0" is not p<n>: write p0' });
   });
 
   it('refuses any other text without a hint', () => {
-    for (const text of ['p0', 'p100', 'P2', 'p1.5', '0', 't0', 'high', '']) {
+    for (const text of ['p00', 'p01', 'p100', 'P2', 'p1.5', 't0', 'high', '']) {
       assert.throws(() => priorityOf(text), { name: 'UsageError', message: `priority "${text}" is not p<n>` }, text);
     }
   });

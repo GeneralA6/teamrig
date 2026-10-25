@@ -77,12 +77,12 @@ export function taskIdOf(text: string): string {
   return text;
 }
 
-/** A priority as typed: `p` and the level, 1 to 99. The team config's levels are judged by the policy. */
-const PRIORITY_TEXT = /^p([1-9]\d?)$/;
+/** A priority as typed: `p` and the level, 0 to 99. The policy judges it against teamrig's p0 and the team config's levels. */
+const PRIORITY_TEXT = /^p(0|[1-9]\d?)$/;
 /** The tier spelling, such as `t2`, that the register took before priorities. */
 const OLD_TIER_TEXT = /^t([1-9]\d?)$/i;
 /** A bare level, such as `2`: what `--tier` took. */
-const BARE_LEVEL_TEXT = /^[1-9]\d?$/;
+const BARE_LEVEL_TEXT = /^(0|[1-9]\d?)$/;
 
 /** `--priority p2`: a level in the shape `p<n>`; the old `t2` and a bare `2` are refused with the spelling to use. */
 export function priorityOf(text: string): number {

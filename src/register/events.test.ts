@@ -43,9 +43,10 @@ describe('eventRecord', () => {
 });
 
 describe('parseEvent', () => {
-  it('accepts any positive priority and any goal text: policy is checked on write, not on read', () => {
+  it('accepts any priority from 0 and any goal text: policy is checked on write, not on read', () => {
     const result = parse({ ...BASE, type: 'create', task: { ...TASK, priority: 42, goals: ['anything at all'] } });
     assert.equal(result.kind, 'event');
+    assert.equal(parse({ ...BASE, type: 'create', task: { ...TASK, priority: 0 } }).kind, 'event', "teamrig's p0");
   });
 
   it('fills missing optional task fields with null or an empty list', () => {
@@ -243,7 +244,7 @@ describe('parseEvent', () => {
       [{ ...BASE, at: 'yesterday', type: 'create', task: TASK }, /bad time/],
       [{ ...BASE, by: '', type: 'create', task: TASK }, /missing author/],
       [{ ...BASE, type: 'create', task: 'x' }, /task is not an object/],
-      [{ ...BASE, type: 'create', task: { ...TASK, priority: 0 } }, /bad priority 0/],
+      [{ ...BASE, type: 'create', task: { ...TASK, priority: -1 } }, /bad priority -1/],
       [{ ...BASE, type: 'create', task: { ...TASK, due: '2030-02-30' } }, /bad due/],
       [{ ...BASE, type: 'create', task: { ...TASK, week: 'next' } }, /bad week/],
       [{ ...BASE, type: 'create', task: { ...TASK, goals: [1] } }, /goals is not a list of text/],

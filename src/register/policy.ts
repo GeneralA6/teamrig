@@ -1,5 +1,6 @@
 import { MAX_DESCRIPTION } from '../config/defaults.ts';
 import { LeadTree } from '../config/lead-tree.ts';
+import { priorityLevels } from '../config/priorities.ts';
 import type { KitConfig } from '../config/types.ts';
 import { ADDRESS_PATTERN } from '../core/address.ts';
 import { SecretScanner } from '../core/secrets.ts';
@@ -766,8 +767,9 @@ export class RegisterPolicy {
     if (sourceProblem !== undefined) {
       return sourceProblem;
     }
-    if (!register.priorities.some((priority) => priority.id === fields.priority)) {
-      return `priority ${priorityText(fields.priority)} is not one of ${register.priorities.map((priority) => priorityText(priority.id)).join(', ')}`;
+    const levels = priorityLevels(register.priorities);
+    if (!levels.some((priority) => priority.id === fields.priority)) {
+      return `priority ${priorityText(fields.priority)} is not one of ${levels.map((priority) => priorityText(priority.id)).join(', ')}`;
     }
     if (fields.due !== null && parseUtcDeadline(fields.due) === undefined) {
       return `due ${fields.due} is not YYYY-MM-DD or YYYY-MM-DD HH:MM`;

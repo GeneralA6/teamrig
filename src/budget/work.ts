@@ -1,3 +1,4 @@
+import { priorityLevels } from '../config/priorities.ts';
 import type { PriorityConfig } from '../config/types.ts';
 import type { Files } from '../core/files.ts';
 import { isRecord, recordField } from '../core/guards.ts';
@@ -12,11 +13,11 @@ const QUEUED: ReadonlySet<TaskStatus> = new Set<TaskStatus>(['open', 'in-progres
 
 /**
  * Each session's queued work, the weight of its part of the team's daily budget: its open and in-progress tasks,
- * each weighed by its priority, the top priority as many as the config lists and the last 1 (p1..p5: 5..1). A
- * priority the config does not list weighs 1. A session with no queued work is not in the map.
+ * each weighed by its priority, p0 as many as there are levels (teamrig's p0 and the config's) and the last 1
+ * (p0..p5: 6..1). A priority the config does not list weighs 1. A session with no queued work is not in the map.
  */
 export function workWeights(tasks: Iterable<Pick<Task, 'owner' | 'status' | 'priority'>>, priorities: readonly PriorityConfig[]): ReadonlyMap<string, number> {
-  const ranked = priorities.map((priority) => priority.id).sort((a, b) => a - b);
+  const ranked = priorityLevels(priorities).map((priority) => priority.id).sort((a, b) => a - b);
   const weights = new Map<string, number>();
   for (const task of tasks) {
     if (!QUEUED.has(task.status)) {
