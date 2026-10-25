@@ -2931,15 +2931,17 @@ metering on; `--day <YYYY-MM-DD>` recounts a past day at the new weight.
 ### teamrig budget
 
 Measures every session's use since the last run, keeps 8 days of it in the team's `state/usage` folder, and
-shows the week against the pace line: the week's use and reset from the status line snapshots (see
-[teamrig statusline](#teamrig-statusline)), else from `budget.weeklyLimitW` and `budget.reset`. The use counts in
-the period kept in the team's `state/usage/period.json`: from the last reset to the next, each week opening where the
-last one ended, and a moved reset keeping its start. A reading 2 points or more below the latest one, its reset
-unchanged, is a reset inside the week: a new budget runs from that latest reading to the reset, and the pace line and
-today's use start there. With no period kept yet, the week before the reset is taken, unless the W metered since its
-start (at the week's W per percent) is 1.5 times the status line's use and 10 points over it: the use was reset inside
-the week before any period was kept, so the period starts at the latest hour from which the metered W reaches that
-use. After a reset inside the week, the week line says where the use counts from.
+shows the week against the pace line: the week's use and reset from the newest status line snapshot (see [teamrig
+statusline](#teamrig-statusline)) in the team's folder or in that of any team of the kit home on its Claude account
+(`budget.account`), so a team whose tabs are idle still reads the account's week, else from `budget.weeklyLimitW`
+and `budget.reset`. A reading taken before today's start gives its day: `at 10-24 21:46 IDT`. The use counts
+in the period kept in the team's `state/usage/period.json`: from the last reset to the next, each week opening
+where the last one ended, and a moved reset keeping its start. A reading 2 points or more below the latest one,
+its reset unchanged, is a reset inside the week: a new budget runs from that latest reading to the reset, and the
+pace line and today's use start there. With no period kept yet, the week before the reset is taken, unless the W
+metered since its start (at the week's W per percent) is 1.5 times the status line's use and 10 points over it:
+the use was reset inside the week before any period was kept, so the period starts at the latest hour from which
+the metered W reaches that use. After a reset inside the week, the week line says where the use counts from.
 
 The week's W per percent is learned from the meter (since 0.136.0). Each time the status line passes a whole
 percent in a period whose start was seen (a weekly reset or a reset inside the week), within 10 minutes of the
