@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { MAX_DESCRIPTION } from '../config/defaults.ts';
 import { TimeZone } from '../core/zone.ts';
 import { testConfig } from '../testing/config.ts';
-import { TEST_CARD } from '../testing/card.ts';
+import { TEST_CARD, TEST_OWNER_CARD } from '../testing/card.ts';
 import { testTask } from '../testing/task.ts';
 import { foldEvents, type RegisterState, type Task } from './fold.ts';
 import type { DecisionCard } from './card.ts';
@@ -80,7 +80,7 @@ describe('RegisterPolicy.add', () => {
     const refused = error(policy.add({ ...INPUT, ref: `see ${token}` }, EMPTY));
     assert.equal(refused, 'ref looks like it holds a secret (GitHub token); refer to where it is kept instead');
     assert.match(error(policy.add({ ...INPUT, title: `rotate ${token}` }, EMPTY)), /^title looks like it holds a secret \(GitHub token\)/);
-    assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'waiting', waits: OWNER_DECISION, card: TEST_CARD, note: `key ${token}` }, CTX)), /^note looks like it holds a secret/);
+    assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'waiting', waits: OWNER_DECISION, card: TEST_OWNER_CARD, note: `key ${token}` }, CTX)), /^note looks like it holds a secret/);
     assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'done', note: 'ok', evidence: token, skill: 'none', followups: [] }, CTX)), /^evidence looks like it holds a secret/);
     assert.match(error(policy.update(TASK, 'alpha', { title: 'Add two health checks' }, `see ${token}`, EMPTY)), /^note looks like it holds a secret/);
   });
@@ -201,7 +201,7 @@ describe('RegisterPolicy.setStatus', () => {
   });
 
   it('keeps --skill for done and wants a reason to repeat a status', () => {
-    assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'waiting', waits: OWNER_DECISION, card: TEST_CARD, note: 'x', skill: 'none' }, CTX)), /only with done/);
+    assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'waiting', waits: OWNER_DECISION, card: TEST_OWNER_CARD, note: 'x', skill: 'none' }, CTX)), /only with done/);
     assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'in-progress' }, CTX)), /already in-progress/);
     assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'dropped' }, CTX)), /dropped needs --note/);
     assert.equal(policy.setStatus(TASK, 'alpha', { status: 'open' }, CTX).ok, true);
@@ -246,7 +246,7 @@ describe('RegisterPolicy.setStatus: the follow-ups a closing change names', () =
   it('takes --followups only while shipping, finishing or dropping a task, and on dropped asks none by default', () => {
     const only = '--followups goes only with verifying, done, dropped';
     assert.equal(error(policy.setStatus(TASK, 'alpha', { status: 'open', followups: [] }, context)), only);
-    assert.equal(error(policy.setStatus(TASK, 'alpha', { status: 'waiting', waits: OWNER_DECISION, card: TEST_CARD, note: 'x', followups: ['T2'] }, context)), only);
+    assert.equal(error(policy.setStatus(TASK, 'alpha', { status: 'waiting', waits: OWNER_DECISION, card: TEST_OWNER_CARD, note: 'x', followups: ['T2'] }, context)), only);
     assert.equal(error(policy.setStatus(TASK, 'alpha', { status: 'dropped', note: 'not needed' }, context)), 'allowed');
     assert.equal(error(policy.setStatus(TASK, 'alpha', { status: 'dropped', note: 'moved', followups: ['T2'] }, context)), 'allowed');
   });
@@ -389,9 +389,9 @@ describe('RegisterPolicy.setStatus to waiting', () => {
   const DONE = testTask({ id: 'T3', status: 'done' });
   const BUSY = testTask({ id: 'T4', status: 'in-progress', owner: 'bravo' });
   const STATE = stateOf(TASK, OPEN, DONE, BUSY);
-  /** A wait set with TEST_CARD when it asks a decision or an approval, as one on the owner must. */
+  /** A wait set with a card when it asks a decision or an approval, as one on the owner must (cardFor). */
   const waiting = (task: Task, waits: readonly WaitReason[], state: RegisterState = STATE) =>
-    policy.setStatus(task, 'alpha', { status: 'waiting', note: 'x', waits, ...(asksPerson(waits) ? { card: TEST_CARD } : {}) }, { ...CTX, state });
+    policy.setStatus(task, 'alpha', { status: 'waiting', note: 'x', waits, ...(asksPerson(waits) ? { card: cardFor(waits) } : {}) }, { ...CTX, state });
 
   it('keeps every kind of reason, each named once', () => {
     const waits: WaitReason[] = [
@@ -400,7 +400,7 @@ describe('RegisterPolicy.setStatus to waiting', () => {
       { kind: 'task', id: 'T4' },
       { kind: 'time', at: '2030-01-09 13:00' },
     ];
-    assert.deepEqual(waiting(TASK, waits), { ok: true, value: { status: 'waiting', note: 'x', evidence: null, skill: null, waits, card: TEST_CARD } });
+    assert.deepEqual(waiting(TASK, waits), { ok: true, value: { status: 'waiting', note: 'x', evidence: null, skill: null, waits, card: TEST_OWNER_CARD } });
   });
 
   it('needs a reason, and takes reasons only with waiting or verifying', () => {
@@ -520,7 +520,7 @@ describe('RegisterPolicy.setStatus to waiting', () => {
   });
 
   it('takes the same status again only with a new note or new reasons', () => {
-    const held = testTask({ status: 'waiting', startedAt: TASK.startedAt, waits: OWNER_DECISION, card: TEST_CARD });
+    const held = testTask({ status: 'waiting', startedAt: TASK.startedAt, waits: OWNER_DECISION, card: TEST_OWNER_CARD });
     assert.match(error(policy.setStatus(held, 'alpha', { status: 'waiting', waits: OWNER_DECISION }, CTX)), /already waiting/);
     assert.equal(policy.setStatus(held, 'alpha', { status: 'waiting', waits: [{ kind: 'approval', who: 'owner' }], note: 'x' }, CTX).ok, true);
     const relaxed = new RegisterPolicy(testConfig({ register: { requireNoteOn: [] } }));
@@ -817,18 +817,60 @@ function asksPerson(waits: readonly WaitReason[]): boolean {
   return waits.some((reason) => reason.kind === 'decision' || reason.kind === 'approval');
 }
 
+/** The card a wait asking a person takes: naming its gate on the owner's decision (T1194). */
+function cardFor(waits: readonly WaitReason[]): DecisionCard {
+  return waits.some((reason) => reason.kind === 'decision' && reason.who === 'owner') ? TEST_OWNER_CARD : TEST_CARD;
+}
+
+/** How `--gate` is typed under the default owner gates. */
+const GATE_USAGE = '--gate "<destructive data operations, product and design decisions, permissions, budget, resource changes or business>"';
+
 describe('RegisterPolicy.setStatus: the decision card', () => {
   const policy = new RegisterPolicy(testConfig());
-  const ASKED = testTask({ status: 'waiting', startedAt: TASK.startedAt, waits: OWNER_DECISION, card: TEST_CARD });
+  const ASKED = testTask({ status: 'waiting', startedAt: TASK.startedAt, waits: OWNER_DECISION, card: TEST_OWNER_CARD });
   const set = (task: Task, input: Omit<StatusInput, 'status'>, on: RegisterPolicy = policy) => on.setStatus(task, 'alpha', { status: 'waiting', note: 'x', ...input }, CTX);
 
   it("needs a card on a wait on the owner's decision or approval, so the owner decides from it alone", () => {
-    assert.equal(error(set(TASK, { waits: OWNER_DECISION })), `a wait on owner's decision needs a card, so owner decides from it alone: ${CARD_USAGE}`);
+    assert.equal(error(set(TASK, { waits: OWNER_DECISION })), `a wait on owner's decision needs a card, so owner decides from it alone: ${CARD_USAGE} ${GATE_USAGE}`);
     assert.match(error(set(TASK, { waits: [{ kind: 'approval', who: 'owner' }, ...OWNER_DECISION] })), /^a wait on owner's approval and decision needs a card/);
-    assert.deepEqual(set(TASK, { waits: OWNER_DECISION, card: TEST_CARD }), {
+    assert.equal(error(set(TASK, { waits: [{ kind: 'approval', who: 'owner' }] })), `a wait on owner's approval needs a card, so owner decides from it alone: ${CARD_USAGE}`);
+    assert.deepEqual(set(TASK, { waits: OWNER_DECISION, card: TEST_OWNER_CARD }), {
       ok: true,
-      value: { status: 'waiting', note: 'x', evidence: null, skill: null, waits: OWNER_DECISION, card: TEST_CARD },
+      value: { status: 'waiting', note: 'x', evidence: null, skill: null, waits: OWNER_DECISION, card: TEST_OWNER_CARD },
     });
+  });
+
+  it("asks the owner to decide only an owner gate or a business decision, else refers it to the leader (T1194)", () => {
+    const refusal = `only an owner gate or a business decision is owner's to decide: give ${GATE_USAGE}; any other question is yours however many good answers it has: decide it, or wait on your leader (--waits decision:lead)`;
+    assert.equal(error(set(TASK, { waits: OWNER_DECISION, card: TEST_CARD })), refusal, 'a new card');
+    assert.equal(error(set({ ...ASKED, card: TEST_CARD }, { waits: OWNER_DECISION, note: 'asked again' })), refusal, 'a card kept from an older row');
+    const lead = testTask({ status: 'in-progress', startedAt: TASK.startedAt, owner: 'lead' });
+    assert.match(
+      error(policy.setStatus(lead, 'lead', { status: 'waiting', note: 'x', waits: OWNER_DECISION, card: TEST_CARD }, CTX)),
+      /good answers it has: decide it$/,
+      'the lead has no leader to wait on',
+    );
+    const business = set(TASK, { waits: OWNER_DECISION, card: { ...TEST_CARD, gate: 'Business ' } });
+    assert.deepEqual(business.ok ? business.value.card : undefined, { ...TEST_CARD, gate: 'business' }, 'named as configured');
+    assert.equal(set(TASK, { waits: [{ kind: 'approval', who: 'owner' }], card: { ...TEST_CARD, options: [] } }).ok, true, "an approval on the owner needs no gate");
+    assert.equal(set(TASK, { waits: [{ kind: 'decision', who: 'lead' }], card: TEST_CARD }).ok, true, "a decision of the lead's needs no gate");
+    const relaxed = new RegisterPolicy(testConfig({ register: { requireDecisionCard: false } }));
+    assert.equal(set(TASK, { waits: OWNER_DECISION, card: TEST_CARD }, relaxed).ok, true, 'requireDecisionCard off');
+  });
+
+  it('takes --gate only on a wait on the owner\'s decision, naming an owner gate or business, and keeps it only while it waits on one (T1194)', () => {
+    assert.equal(
+      error(set(TASK, { waits: [{ kind: 'approval', who: 'owner' }], card: { ...TEST_OWNER_CARD, options: [] } })),
+      "--gate names the owner gate or business decision that makes a question owner's: it goes only with a wait on owner's decision",
+    );
+    assert.equal(error(set(TASK, { waits: OWNER_DECISION, card: { ...TEST_CARD, gate: 'staffing' } })), `--gate "staffing" is no owner gate [ownerGates] and no business decision: ${GATE_USAGE}`);
+    const changed = set(ASKED, { waits: OWNER_DECISION, card: { gate: 'permissions' } });
+    assert.deepEqual(changed.ok ? changed.value.card : undefined, { ...TEST_CARD, gate: 'permissions' }, 'a later set changes the gate alone');
+    const toLead = set(ASKED, { waits: [{ kind: 'decision', who: 'lead' }] });
+    assert.deepEqual(toLead.ok ? toLead.value.card : undefined, TEST_CARD, "a wait moved to the lead's decision drops it");
+    const gated = new RegisterPolicy(testConfig({ ownerGates: ['hiring'] }));
+    assert.equal(set(TASK, { waits: OWNER_DECISION, card: { ...TEST_CARD, gate: 'hiring' } }, gated).ok, true, 'the team names its own gates');
+    assert.match(error(set(TASK, { waits: OWNER_DECISION, card: TEST_OWNER_CARD }, gated)), /^--gate "budget" is no owner gate \[ownerGates\] and no business decision: --gate "<hiring or business>"$/);
   });
 
   it("takes a card on the lead's wait without needing one, and needs none while requireDecisionCard is off", () => {
@@ -856,10 +898,10 @@ describe('RegisterPolicy.setStatus: the decision card', () => {
 
   it('keeps the card a waiting task had, and changes one part alone', () => {
     const kept = set(ASKED, { waits: OWNER_DECISION, note: 'asked again' });
-    assert.deepEqual(kept.ok ? kept.value.card : undefined, TEST_CARD);
+    assert.deepEqual(kept.ok ? kept.value.card : undefined, TEST_OWNER_CARD);
     const later = 'Pro, since the launch is late';
     const changed = set(ASKED, { waits: OWNER_DECISION, card: { recommend: later } });
-    assert.deepEqual(changed.ok ? changed.value.card : undefined, { ...TEST_CARD, recommend: later });
+    assert.deepEqual(changed.ok ? changed.value.card : undefined, { ...TEST_OWNER_CARD, recommend: later });
     const resumed = testTask({ status: 'in-progress', startedAt: TASK.startedAt, card: TEST_CARD });
     assert.match(error(set(resumed, { waits: OWNER_DECISION, card: { recommend: later } })), /^a card needs/, 'only a waiting task has a card to build on');
   });
@@ -867,14 +909,14 @@ describe('RegisterPolicy.setStatus: the decision card', () => {
   it('takes --why-ask only on an owner order waiting on the owner, and keeps it only while it does (T802)', () => {
     const whyAsk = 'the ordered tier cannot ship at that price';
     const ordered: Task = { ...TASK, source: 'owner' };
-    const asked = set(ordered, { waits: OWNER_DECISION, card: { ...TEST_CARD, whyAsk } });
-    assert.deepEqual(asked.ok ? asked.value.card : undefined, { ...TEST_CARD, whyAsk });
+    const asked = set(ordered, { waits: OWNER_DECISION, card: { ...TEST_OWNER_CARD, whyAsk } });
+    assert.deepEqual(asked.ok ? asked.value.card : undefined, { ...TEST_OWNER_CARD, whyAsk });
     const refusal = "--why-ask says why owner is asked about what owner ordered: it goes only with a wait on owner's decision or approval of a task from owner";
     assert.equal(error(set(TASK, { waits: OWNER_DECISION, card: { ...TEST_CARD, whyAsk } })), refusal, 'a task the lead made');
     assert.equal(error(set(ordered, { waits: [{ kind: 'approval', who: 'lead' }], card: { ...TEST_CARD, options: [], whyAsk } })), refusal, "a wait on the lead's approval");
-    const waiting: Task = { ...ordered, status: 'waiting', waits: OWNER_DECISION, card: { ...TEST_CARD, whyAsk } };
+    const waiting: Task = { ...ordered, status: 'waiting', waits: OWNER_DECISION, card: { ...TEST_OWNER_CARD, whyAsk } };
     const again = set(waiting, { waits: OWNER_DECISION, note: 'asked again' });
-    assert.deepEqual(again.ok ? again.value.card : undefined, { ...TEST_CARD, whyAsk });
+    assert.deepEqual(again.ok ? again.value.card : undefined, { ...TEST_OWNER_CARD, whyAsk });
     const toLead = set(waiting, { waits: [{ kind: 'decision', who: 'lead' }] });
     assert.deepEqual(toLead.ok ? toLead.value.card : undefined, TEST_CARD, "a wait moved to the lead's decision drops it");
   });
@@ -882,8 +924,9 @@ describe('RegisterPolicy.setStatus: the decision card', () => {
   it("refuses an owner order waiting on the owner with no --why-ask while cards are required (T802)", () => {
     const ordered: Task = { ...TASK, source: 'owner' };
     const refusal = `owner ordered ${TASK.id}, and an order approves its own work and proof: drop the wait on owner's decision, or give --why-ask "<how the order must change, what new it needs, or why only owner can see the result>"`;
-    assert.equal(error(set(ordered, { waits: OWNER_DECISION, card: TEST_CARD })), refusal, 'a new card');
-    assert.equal(error(set({ ...ordered, status: 'waiting', waits: OWNER_DECISION, card: TEST_CARD }, { waits: OWNER_DECISION, note: 'asked again' })), refusal, 'a card kept from an older row');
+    assert.equal(error(set(ordered, { waits: OWNER_DECISION, card: TEST_OWNER_CARD })), refusal, 'a new card');
+    assert.equal(error(set(ordered, { waits: OWNER_DECISION, card: TEST_CARD })), refusal, 'before its gate');
+    assert.equal(error(set({ ...ordered, status: 'waiting', waits: OWNER_DECISION, card: TEST_OWNER_CARD }, { waits: OWNER_DECISION, note: 'asked again' })), refusal, 'a card kept from an older row');
     assert.equal(error(set(ordered, { waits: OWNER_DECISION })), `${refusal} with ${CARD_USAGE}`, 'no card');
     const lead: WaitReason[] = [{ kind: 'approval', who: 'lead' }];
     assert.equal(set(ordered, { waits: lead }).ok, true, "a wait on the lead's approval asks no owner");
@@ -899,8 +942,8 @@ describe('RegisterPolicy.setStatus: the decision card', () => {
   });
 
   it('checks each part like any text', () => {
-    assert.match(error(set(TASK, { waits: OWNER_DECISION, card: { ...TEST_CARD, question: credentialUrl() } })), /card looks like it holds a secret/);
-    assert.match(error(set(TASK, { waits: OWNER_DECISION, card: { ...TEST_CARD, byDefault: 'x '.repeat(200) } })), /^card has 400 characters/);
+    assert.match(error(set(TASK, { waits: OWNER_DECISION, card: { ...TEST_OWNER_CARD, question: credentialUrl() } })), /card looks like it holds a secret/);
+    assert.match(error(set(TASK, { waits: OWNER_DECISION, card: { ...TEST_OWNER_CARD, byDefault: 'x '.repeat(200) } })), /^card has 400 characters/);
   });
 });
 

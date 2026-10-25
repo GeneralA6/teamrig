@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { TEST_CARD } from '../testing/card.ts';
-import { cardLines, cardProblem, cardTexts, namedTaskIds, parseCard, plainWords, sameCard, withoutWhyAsk } from './card.ts';
+import { TEST_CARD, TEST_GATE, TEST_OWNER_CARD } from '../testing/card.ts';
+import { cardLines, cardProblem, cardTexts, gateChoices, gateOf, keptCard, namedTaskIds, parseCard, plainWords, sameCard } from './card.ts';
 
 const WHY_ASK = 'the ordered tier cannot ship at that price';
 
@@ -48,6 +48,9 @@ describe('the decision card', () => {
     assert.equal(sameCard(TEST_CARD, { ...TEST_CARD, recommend: 'Pro, since it pays more' }), false);
     assert.equal(sameCard(TEST_CARD, { ...TEST_CARD, whyAsk: WHY_ASK }), false);
     assert.equal(sameCard({ ...TEST_CARD, whyAsk: WHY_ASK }, { ...TEST_CARD, whyAsk: WHY_ASK }), true);
+    assert.equal(sameCard(TEST_CARD, TEST_OWNER_CARD), false);
+    assert.equal(sameCard(TEST_OWNER_CARD, { ...TEST_OWNER_CARD, gate: 'permissions' }), false);
+    assert.equal(sameCard(TEST_OWNER_CARD, { ...TEST_CARD, gate: TEST_GATE }), true);
     assert.equal(sameCard(null, null), true);
     assert.equal(sameCard(TEST_CARD, null), false);
   });
@@ -62,6 +65,8 @@ describe('the decision card', () => {
     assert.equal(parseCard({ ...TEST_CARD, options: ['Basic', 2] }), 'card options is not a list of texts');
     assert.deepEqual(parseCard({ ...TEST_CARD, whyAsk: WHY_ASK }), { ...TEST_CARD, whyAsk: WHY_ASK });
     assert.equal(parseCard({ ...TEST_CARD, whyAsk: 7 }), 'card whyAsk is not text');
+    assert.deepEqual(parseCard(TEST_OWNER_CARD), TEST_OWNER_CARD);
+    assert.equal(parseCard({ ...TEST_CARD, gate: ['budget'] }), 'card gate is not text');
   });
 
   it('prints the question, each option numbered, the recommendation and the default', () => {
@@ -79,6 +84,25 @@ describe('the decision card', () => {
     const asked = { ...TEST_CARD, whyAsk: WHY_ASK };
     assert.deepEqual(cardTexts(asked), [TEST_CARD.question, WHY_ASK, ...TEST_CARD.options, TEST_CARD.recommend, TEST_CARD.byDefault]);
     assert.deepEqual(cardLines(asked, '  ').slice(0, 2), ['  decide: Which pricing tier ships first', `  why asked: ${WHY_ASK}`]);
-    assert.deepEqual(withoutWhyAsk(asked), TEST_CARD);
+    assert.deepEqual(keptCard(asked, { whyAsk: false, gate: true }), TEST_CARD);
+    assert.deepEqual(keptCard(asked, { whyAsk: true, gate: true }), asked);
+  });
+
+  it('prints the gate that makes it the owner\'s under the question, and drops it on request (T1194)', () => {
+    const both = { ...TEST_OWNER_CARD, whyAsk: WHY_ASK };
+    assert.deepEqual(cardTexts(both), [TEST_CARD.question, TEST_GATE, WHY_ASK, ...TEST_CARD.options, TEST_CARD.recommend, TEST_CARD.byDefault]);
+    assert.deepEqual(cardLines(both, '  ').slice(0, 3), ['  decide: Which pricing tier ships first', `  gate: ${TEST_GATE}`, `  why asked: ${WHY_ASK}`]);
+    assert.deepEqual(keptCard(both, { whyAsk: true, gate: false }), { ...TEST_CARD, whyAsk: WHY_ASK });
+    assert.deepEqual(keptCard(both, { whyAsk: false, gate: false }), TEST_CARD);
+  });
+
+  it('names a gate among the owner gates and business, as configured, case aside (T1194)', () => {
+    const gates = ['destructive data operations', 'budget'];
+    assert.deepEqual(gateChoices(gates), ['destructive data operations', 'budget', 'business']);
+    assert.equal(gateOf(' Budget ', gates), 'budget');
+    assert.equal(gateOf('BUSINESS', gates), 'business');
+    assert.equal(gateOf('Destructive data operations', gates), 'destructive data operations');
+    assert.equal(gateOf('staffing', gates), undefined);
+    assert.equal(gateOf('budg', gates), undefined);
   });
 });

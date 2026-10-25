@@ -5,7 +5,7 @@ import { ADDRESS_PATTERN } from '../core/address.ts';
 import { SecretScanner } from '../core/secrets.ts';
 import { parseDeadline, parseUtcDay, parseUtcDeadline, showStored } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
-import { CARD_FLAGS, cardProblem, cardTexts, OPTION_SEPARATOR, sameCard, WHY_ASK_FLAG, whyAskUsage, withoutWhyAsk, type DecisionCard } from './card.ts';
+import { CARD_FLAGS, cardProblem, cardTexts, GATE_FLAG, gateOf, gateUsage, keptCard, OPTION_SEPARATOR, sameCard, WHY_ASK_FLAG, whyAskUsage, type DecisionCard } from './card.ts';
 import { sizeProblem, type ApprovalVerdict, type TaskFieldName, type TaskFields, type TaskKind } from './events.ts';
 import { taskNumber, type RegisterState, type Task } from './fold.ts';
 import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, priorityText, SESSION_NAME, WAIT_STATUSES, type TaskStatus } from './model.ts';
@@ -424,7 +424,9 @@ export class RegisterPolicy {
    * with none given, that card. A wait on the owner's decision or approval needs a card while
    * `register.requireDecisionCard` is on, so the owner decides from it alone (T514). `--why-ask` goes only on a
    * task the owner ordered that waits on the owner, and a card keeps it only while that holds (T802); while cards
-   * are required, such a task asks the owner only with it (ownerOrderCard).
+   * are required, such a task asks the owner only with it (ownerOrderCard). `--gate` goes only with a wait on the
+   * owner's decision, naming an owner gate or business, and a card keeps it only while that holds (T1194); while
+   * cards are required, the owner is asked to decide only with it (gatedCard).
    */
   private cardChange(task: Task, input: StatusInput, waits: readonly WaitReason[]): Verdict<DecisionCard | null> {
     const asks = waits.filter((reason): reason is PersonWait => reason.kind === 'decision' || reason.kind === 'approval');
@@ -435,19 +437,27 @@ export class RegisterPolicy {
     const { ownerSource, requireDecisionCard } = this.config.register;
     const owners = asks.filter((reason) => reason.who === ownerSource);
     const ordered = task.source === ownerSource && owners.length > 0;
+    const decidesOwner = owners.some((reason) => reason.kind === 'decision');
     if (given?.whyAsk !== undefined && !ordered) {
       return refuse(`${WHY_ASK_FLAG} says why ${ownerSource} is asked about what ${ownerSource} ordered: it goes only with a wait on ${ownerSource}'s decision or approval of a task from ${ownerSource}`);
     }
+    if (given?.gate !== undefined && !decidesOwner) {
+      return refuse(`${GATE_FLAG} names the owner gate or business decision that makes a question ${ownerSource}'s: it goes only with a wait on ${ownerSource}'s decision`);
+    }
+    const gate = given?.gate === undefined ? undefined : gateOf(given.gate, this.config.ownerGates);
+    if (given?.gate !== undefined && gate === undefined) {
+      return refuse(`${GATE_FLAG} "${given.gate}" is no owner gate [ownerGates] and no business decision: ${gateUsage(this.config.ownerGates)}`);
+    }
     const kept = WAIT_STATUSES.includes(task.status) ? task.card : null;
-    const before = kept === null || ordered ? kept : withoutWhyAsk(kept);
+    const before = kept === null ? null : keptCard(kept, { whyAsk: ordered, gate: decidesOwner });
     if (given === undefined) {
       if (before !== null || owners.length === 0 || !requireDecisionCard || ordered) {
-        return this.ownerOrderCard(task, owners, before);
+        return this.ownerAsk(task, owners, before);
       }
       const kinds = owners.map((reason) => reason.kind).join(' and ');
-      return refuse(`a wait on ${ownerSource}'s ${kinds} needs a card, so ${ownerSource} decides from it alone: ${CARD_USAGE}`);
+      return refuse(`a wait on ${ownerSource}'s ${kinds} needs a card, so ${ownerSource} decides from it alone: ${CARD_USAGE}${decidesOwner ? ` ${gateUsage(this.config.ownerGates)}` : ''}`);
     }
-    const parts: Partial<DecisionCard> = { ...before, ...given };
+    const parts: Partial<DecisionCard> = { ...before, ...given, ...(gate === undefined ? {} : { gate }) };
     if (parts.question === undefined || parts.recommend === undefined || parts.byDefault === undefined) {
       return refuse(`a card needs ${CARD_FLAGS} (--options for a decision): ${CARD_USAGE}`);
     }
@@ -457,9 +467,34 @@ export class RegisterPolicy {
       recommend: parts.recommend,
       byDefault: parts.byDefault,
       ...(parts.whyAsk === undefined ? {} : { whyAsk: parts.whyAsk }),
+      ...(parts.gate === undefined ? {} : { gate: parts.gate }),
     };
     const problem = cardProblem(card, asks.some((reason) => reason.kind === 'decision'));
-    return problem === undefined ? this.ownerOrderCard(task, owners, card) : refuse(problem);
+    return problem === undefined ? this.ownerAsk(task, owners, card) : refuse(problem);
+  }
+
+  /** What a card asking the owner (`owners`) must say besides its parts: why, on an owner's order; its gate, on a decision. */
+  private ownerAsk(task: Task, owners: readonly PersonWait[], card: DecisionCard | null): Verdict<DecisionCard | null> {
+    const ordered = this.ownerOrderCard(task, owners, card);
+    return ordered.ok ? this.gatedCard(task, owners, card) : ordered;
+  }
+
+  /**
+   * Only an owner gate [ownerGates] or a business decision is the owner's to decide (T1194), so while
+   * `register.requireDecisionCard` is on, a wait on the owner's decision needs a card naming its gate; any other
+   * question is the session's or its leader's, however many good answers it has. check flags rows written before
+   * (UNGATED).
+   */
+  private gatedCard(task: Task, owners: readonly PersonWait[], card: DecisionCard | null): Verdict<DecisionCard | null> {
+    const { ownerSource, requireDecisionCard } = this.config.register;
+    if (!requireDecisionCard || card?.gate !== undefined || !owners.some((reason) => reason.kind === 'decision')) {
+      return ok(card);
+    }
+    const leader = this.tree.leaderOf(task.owner);
+    const elsewhere = leader === undefined ? 'decide it' : `decide it, or wait on your leader (--waits decision:${leader})`;
+    return refuse(
+      `only an owner gate or a business decision is ${ownerSource}'s to decide: give ${gateUsage(this.config.ownerGates)}${card === null ? ` with ${CARD_USAGE}` : ''}; any other question is yours however many good answers it has: ${elsewhere}`,
+    );
   }
 
   /**

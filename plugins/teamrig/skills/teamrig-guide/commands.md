@@ -120,6 +120,11 @@ Flags:
   its own work and proof, so while cards are required (`register.requireDecisionCard`) such a wait is refused
   without one, and `check` flags one an older row holds (`OWNER-ORDERED`); once no wait is on the owner, the part
   is dropped.
+- `--gate "<an owner gate, or business>"`: allowed only with a wait on the owner's decision: the owner gate
+  (`ownerGates`) or the business decision that makes the question the owner's, case aside. Only those are the
+  owner's to decide, so while cards are required (`register.requireDecisionCard`) such a wait is refused without
+  one: any other question is yours or your leader's (decide it, or `--waits decision:<leader>`). `check` flags one
+  an older row holds (`UNGATED`); once no wait is on the owner's decision, the part is dropped.
 - `--ask <id|name>`: allowed only with `waiting`, and needs `--text`: adds the work you need as that session's task
   (from you, at your task's priority and goals, its description naming your task), tells that session, and sets
   your task waiting on it, in one write. `--note` defaults to the text, and other `--waits` reasons come first.

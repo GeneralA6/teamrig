@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { TEST_CARD, TEST_CARD_FLAGS } from '../testing/card.ts';
+import { TEST_CARD, TEST_OWNER_CARD_FLAGS } from '../testing/card.ts';
 import { CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
 
@@ -14,7 +14,7 @@ async function ownerWait(kit: CliHarness, title: string, ...extra: readonly stri
   const added = await kit.run(['add', '--title', title, '--description', 'what and why', '--priority', 'p2', ...extra, '--session', 'alpha']);
   assert.equal(added.code, EXIT.ok, added.stderr.join('\n'));
   const id = /^ADDED (T\d+)/.exec(added.stdout[0] ?? '')?.[1] ?? '';
-  const set = await kit.run(['set', id, '--status', 'waiting', '--waits', 'decision:owner', '--note', 'two options', ...TEST_CARD_FLAGS, '--session', 'alpha']);
+  const set = await kit.run(['set', id, '--status', 'waiting', '--waits', 'decision:owner', '--note', 'two options', ...TEST_OWNER_CARD_FLAGS, '--session', 'alpha']);
   assert.equal(set.code, EXIT.ok, set.stderr.join('\n'));
   return set.stderr;
 }

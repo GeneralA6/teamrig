@@ -19,3 +19,12 @@ export const TEST_CARD_FLAGS: readonly string[] = [
   '--default',
   TEST_CARD.byDefault,
 ];
+
+/** An owner gate of the default config, as a card on a wait on the owner's decision names it (T1194). */
+export const TEST_GATE = 'budget';
+
+/** TEST_CARD as a wait on the owner's decision takes it: naming its gate. */
+export const TEST_OWNER_CARD: DecisionCard = { ...TEST_CARD, gate: TEST_GATE };
+
+/** TEST_OWNER_CARD as `set` flags. */
+export const TEST_OWNER_CARD_FLAGS: readonly string[] = [...TEST_CARD_FLAGS, '--gate', TEST_GATE];
