@@ -1,6 +1,6 @@
 import { parseDeadline, showStored, storedText } from "../core/time.js";
 import { cardLines } from "./card.js";
-import { PROBLEM_KINDS } from "./events.js";
+import { itemTypeOf } from "./item-types.js";
 import { ACTIVE_STATUSES, GITHUB_SOURCE, priorityText } from "./model.js";
 import { reviewLines, reviewPartNames } from "./review.js";
 import { decidingKey, planOrder } from "./tree.js";
@@ -37,7 +37,8 @@ export function selectTasks(tasks, filter, tree) {
             (filter.priorities === undefined || filter.priorities.includes(task.priority)) &&
             (dueBefore === undefined || (due !== undefined && due < dueBefore)) &&
             (filter.week === undefined || task.week === filter.week) &&
-            (filter.goal === undefined || task.goals.includes(filter.goal)));
+            (filter.goal === undefined || task.goals.includes(filter.goal)) &&
+            (filter.types === undefined || filter.types.includes(itemTypeOf(task))));
     })
         .sort((a, b) => tree.byPlanOrder(a, b));
 }
@@ -46,14 +47,15 @@ export function taskLabel(task, team) {
     return team === undefined ? task.id : `${team}/${task.id}`;
 }
 /**
- * The fields every task row starts with: `T12 in-progress`, `p2`, `problem` or `critical` for a problem task,
+ * The fields every task row starts with: `T12 in-progress`, `p2`, its type past a plain task (`bug`, `critical bug`),
  * `owner alpha`, then `due 01-15` and `after T5,T6` (its plan dependency) when it has them. The due is the effective
  * one of `tree`, in its zone: an earlier due of a task that needs it names that task (`due 01-10 (from T194)`).
  */
 function rowHead(task, team, tree) {
-    const kind = task.kind !== null && PROBLEM_KINDS.includes(task.kind) ? [task.kind] : [];
+    const type = itemTypeOf(task);
+    const typed = type === 'task' ? [] : [task.critical ? `critical ${type}` : type];
     const pinned = task.pin === null ? [] : ['pinned'];
-    const parts = [`${taskLabel(task, team)} ${task.status}`, priorityText(task.priority), ...pinned, ...kind, `owner ${task.owner}`];
+    const parts = [`${taskLabel(task, team)} ${task.status}`, priorityText(task.priority), ...pinned, ...typed, `owner ${task.owner}`];
     const inherited = tree.effectiveDue(task.id);
     if (inherited !== undefined && inherited.from !== null) {
         parts.push(`due ${showStored(inherited.due, tree.zone)} (from ${inherited.from})`);
@@ -248,7 +250,8 @@ export function formatEvent(event, zone) {
                 task.goals.length === 0 ? undefined : `goals=${task.goals.join(',')}`,
                 task.after.length === 0 ? undefined : `after=${task.after.join(',')}`,
                 task.size === null ? undefined : `size=${sizeText(task.size)}`,
-                task.kind === null ? undefined : `kind=${task.kind}`,
+                task.type === null ? undefined : `type=${task.type}`,
+                task.critical ? 'critical=true' : undefined,
             ]
                 .filter((part) => part !== undefined)
                 .join(' ');

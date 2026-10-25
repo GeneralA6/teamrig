@@ -1,5 +1,6 @@
 import { isRecord } from "../core/guards.js";
 import { CARD_MIN_WORDS, namedTaskIds, plainWords } from "./card.js";
+import { itemTypeOf, traitsOf } from "./item-types.js";
 /** Every part, in the order a review prints and a refusal names them. */
 export const REVIEW_ORDER = ['cause', 'how', 'prevent', 'harden', 'missedTest', 'missedMonitor', 'missedLog'];
 /** The `set` flag that gives each part. */
@@ -24,7 +25,7 @@ const REVIEW_LABELS = {
 };
 /** The parts that say how the problem was missed: each names a follow-up task or why that kind cannot catch it. */
 const MISSED_PARTS = ['missedTest', 'missedMonitor', 'missedLog'];
-/** The parts a problem's review needs: every one but `harden`, which only a critical problem needs too. */
+/** The parts a bug's review needs: every one but `harden`, which only a critical bug needs too. */
 export function requiredParts(critical) {
     return REVIEW_ORDER.filter((part) => critical || part !== 'harden');
 }
@@ -32,27 +33,27 @@ export function requiredParts(critical) {
 export function missingParts(review, critical) {
     return requiredParts(critical).filter((part) => review[part] === undefined);
 }
-/** Whether a task is a problem whose review is asked: marked `--problem problem` or `--problem critical`. */
-export function isProblem(task) {
-    return task.kind === 'problem' || task.kind === 'critical';
+/** Whether an item gives the problem review: its type has one (item-types.ts), as a bug does. */
+export function asksReview(task) {
+    return traitsOf(task).review;
 }
-/** Whether a problem is critical, and so asked `--harden` too: marked so, or owned by one of `criticalOwners`. */
+/** Whether an item that gives the review is critical, and so asked `--harden` too: marked `--critical`, or owned by one of `criticalOwners`. */
 export function isCritical(task, criticalOwners) {
-    return task.kind === 'critical' || (task.kind === 'problem' && criticalOwners.includes(task.owner));
+    return asksReview(task) && (task.critical || criticalOwners.includes(task.owner));
 }
 /**
- * The review parts a task still lacks to reach `status` once `given` is added to its review: none when it is not a
- * problem, the status is not one `requireOn` lists, or the review is `off`.
+ * The review parts a task still lacks to reach `status` once `given` is added to its review: none when its type gives
+ * no review, the status is not one `requireOn` lists, or the review is `off`.
  */
 export function reviewGap(task, status, given, config) {
-    if (config.mode === 'off' || !isProblem(task) || !config.requireOn.includes(status)) {
+    if (config.mode === 'off' || !asksReview(task) || !config.requireOn.includes(status)) {
         return [];
     }
     return missingParts({ ...task.review, ...given }, isCritical(task, config.criticalOwners));
 }
-/** What a problem task lacks to reach `status`, naming the flags that give it, for a refusal or a warning. */
+/** What a task whose type gives the review lacks to reach `status`, naming the flags that give it, for a refusal or a warning. */
 export function reviewGapText(task, status, missing) {
-    return `${task.id} is a problem: ${status} needs its review, ${partFlags(missing)} (how it happened, what stops it and how it was missed; teamrig help set)`;
+    return `${task.id} is a ${itemTypeOf(task)}: ${status} needs its review, ${partFlags(missing)} (how it happened, what stops it and how it was missed; teamrig help set)`;
 }
 /** The flags that give `parts`, as one phrase: `--cause, --how and --missed-log`. */
 export function partFlags(parts) {

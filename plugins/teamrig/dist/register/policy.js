@@ -4,10 +4,11 @@ import { ADDRESS_PATTERN } from "../core/address.js";
 import { SecretScanner } from "../core/secrets.js";
 import { parseDeadline, parseUtcDay, parseUtcDeadline, showStored } from "../core/time.js";
 import { CARD_FLAGS, cardProblem, cardTexts, GATE_FLAG, gateOf, gateUsage, keptCard, OPTION_SEPARATOR, sameCard, WHY_ASK_FLAG, whyAskUsage } from "./card.js";
-import { sizeProblem } from "./events.js";
+import { ITEM_TYPES, sizeProblem } from "./events.js";
 import { taskNumber } from "./fold.js";
 import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, priorityText, SESSION_NAME, WAIT_STATUSES } from "./model.js";
-import { isProblem, missedTaskIds, reviewGap, reviewGapText, reviewProblem, reviewTexts } from "./review.js";
+import { ITEM_TYPE_TRAITS, traitsOf } from "./item-types.js";
+import { asksReview, missedTaskIds, reviewGap, reviewGapText, reviewProblem, reviewTexts } from "./review.js";
 import { loopFix, needPath, NO_TASKS_ELSEWHERE, pathText } from "./tree.js";
 import { dueStartHolds, dueVerifyHold, heldStart, startHolds } from "./verify.js";
 import { isPeerWait, sameWait, waitSpelling } from "./waits.js";
@@ -19,9 +20,9 @@ export const GITHUB_ACTOR = 'github';
 export const GITHUB_STATUSES = ['open', 'done', 'dropped'];
 /**
  * Fields the lead may change on a task someone else owns: who does it, how urgent, when, in what order and its size
- * (the lead plans the week), and its kind, so the lead can mark another session's fix a problem.
+ * (the lead plans the week), and its type and critical mark, so the lead can mark another session's fix a bug.
  */
-export const LEAD_FIELDS = ['owner', 'priority', 'due', 'week', 'after', 'size', 'kind', 'pin'];
+export const LEAD_FIELDS = ['owner', 'priority', 'due', 'week', 'after', 'size', 'type', 'critical', 'pin'];
 /** The refusal of an `add` with no description while `register.requireDescription` is on. */
 export const DESCRIPTION_NEEDED = 'add needs --description "<what and why, in plain words>"';
 /** How a card is typed, for the refusals that ask for one. */
@@ -80,7 +81,8 @@ export class RegisterPolicy {
             week: input.week ?? null,
             after: input.after ?? [],
             size: input.size ?? null,
-            kind: input.kind ?? null,
+            type: input.type ?? null,
+            critical: input.critical ?? false,
             pin: null,
         };
         if (fields.description === null && this.config.register.requireDescription) {
@@ -228,16 +230,16 @@ export class RegisterPolicy {
         return problem === undefined ? ok(change) : refuse(problem);
     }
     /**
-     * The review parts a status change gives (review.ts): only on a task marked a problem, each saying enough, and each
-     * task a missed part names on the list. A problem reaching a `register.review.requireOn` status with parts still
+     * The review parts a status change gives (review.ts): only on a bug, each saying enough, and each
+     * task a missed part names on the list. A bug reaching a `register.review.requireOn` status with parts still
      * missing is refused while the review's mode is `refuse`; `warn` lets it through and the CLI names them. Null when
      * the change gives none.
      */
     checkReview(task, input, context) {
         const given = input.review ?? {};
         const [first] = reviewTexts(given);
-        if (first !== undefined && !isProblem(task)) {
-            return refuse(`${first[0]} goes only with a problem: mark it first, teamrig update ${task.id} --problem problem|critical`);
+        if (first !== undefined && !asksReview(task)) {
+            return refuse(`${first[0]} goes only with a ${reviewedTypes()}: mark it first, teamrig update ${task.id} --type ${reviewedTypes()}`);
         }
         const problem = reviewProblem(given);
         if (problem !== undefined) {
@@ -441,7 +443,7 @@ export class RegisterPolicy {
     }
     /** `elsewhere`: the tasks the team tree's other registers hold, which `--after` may name. */
     update(task, caller, asked, note, state, elsewhere = NO_TASKS_ELSEWHERE) {
-        const changes = trimDescription(asked);
+        const changes = clearCritical(task, trimDescription(asked));
         const names = Object.keys(changes).filter((name) => name in changes);
         const text = blankToNull(note);
         if (names.length === 0) {
@@ -509,7 +511,7 @@ export class RegisterPolicy {
      * the duplicate-title rule does not apply.
      */
     importAdd(input, state) {
-        const fields = { ...input, source: GITHUB_SOURCE, due: null, goals: [], week: null, after: [], size: null, kind: null, pin: null };
+        const fields = { ...input, source: GITHUB_SOURCE, due: null, goals: [], week: null, after: [], size: null, type: null, critical: false, pin: null };
         const holder = [...state.tasks.values()].find((task) => task.source === GITHUB_SOURCE && task.ref === input.ref);
         if (holder !== undefined) {
             return refuse(`${holder.id} already has ref ${input.ref}`);
@@ -584,6 +586,9 @@ export class RegisterPolicy {
         if (!sessions.includes(fields.owner)) {
             return `owner ${fields.owner} is not a session on this team`;
         }
+        if (fields.critical && !traitsOf(fields).review) {
+            return `critical marks only a ${reviewedTypes()}: give --type ${reviewedTypes()} too`;
+        }
         const sourceProblem = sourceRule(fields.source);
         if (sourceProblem !== undefined) {
             return sourceProblem;
@@ -625,8 +630,16 @@ export class RegisterPolicy {
 /** The texts whose length is judged against their own limit, not `maxText`. */
 const OWN_LIMITS = ['title', 'description'];
 function pickFields(task) {
-    const { title, description, owner, source, ref, priority, due, goals, week, after, size, kind, pin } = task;
-    return { title, description, owner, source, ref, priority, due, goals, week, after, size, kind, pin };
+    const { title, description, owner, source, ref, priority, due, goals, week, after, size, type, critical, pin } = task;
+    return { title, description, owner, source, ref, priority, due, goals, week, after, size, type, critical, pin };
+}
+/** The types an item can be critical in, those that give the review: `bug`, or `bug|incident`. */
+function reviewedTypes() {
+    return ITEM_TYPES.filter((type) => ITEM_TYPE_TRAITS[type].review).join('|');
+}
+/** An update moving a critical item to a type without a review also clears its critical mark, which that type cannot hold. */
+function clearCritical(task, changes) {
+    return changes.type !== undefined && changes.critical === undefined && task.critical && !traitsOf({ type: changes.type }).review ? { ...changes, critical: false } : changes;
 }
 /** An update's description trimmed at both ends, its newlines kept; a blank one clears it, as `none` does. */
 function trimDescription(changes) {

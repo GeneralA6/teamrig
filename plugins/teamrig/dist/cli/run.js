@@ -66,17 +66,17 @@ const restoreCommands = () => import("./commands/restore.js");
 const restoreInstallCommands = () => import("./commands/restore-install.js");
 const execCommands = () => import("./commands/exec.js");
 const setupBackupCommands = () => import("./commands/setup-backup.js");
-const TASK_FIELDS = ['title', 'description', 'owner', 'ref', 'priority', 'due', 'goals', 'week', 'after', 'size', 'problem'];
-/** The parts of a problem task's review `set` gives (register/review.ts REVIEW_FLAGS). */
+const TASK_FIELDS = ['title', 'description', 'owner', 'ref', 'priority', 'due', 'goals', 'week', 'after', 'size', 'type'];
+/** The parts of a bug's review `set` gives (register/review.ts REVIEW_FLAGS). */
 const REVIEW_FLAGS = ['cause', 'how', 'prevent', 'harden', 'missed-test', 'missed-monitor', 'missed-log'];
 const COMMANDS = {
-    add: { effect: 'write', flags: ['session', 'source', 'team', ...TASK_FIELDS], load: async () => (await registerCommands()).add },
+    add: { effect: 'write', flags: ['session', 'source', 'team', ...TASK_FIELDS], switches: ['critical'], load: async () => (await registerCommands()).add },
     set: { effect: 'write', flags: ['session', 'status', 'note', 'evidence', 'skill', 'followups', 'waits', 'question', 'options', 'recommend', 'default', 'why-ask', 'gate', 'proof', 'met', 'due', 'ask', 'text', ...REVIEW_FLAGS], load: async () => (await registerCommands()).set },
-    update: { effect: 'write', flags: ['session', 'note', ...TASK_FIELDS], switches: ['pin', 'unpin'], load: async () => (await registerCommands()).update },
+    update: { effect: 'write', flags: ['session', 'note', ...TASK_FIELDS], switches: ['pin', 'unpin', 'critical', 'not-critical'], load: async () => (await registerCommands()).update },
     approve: { effect: 'write', flags: ['session', 'note'], switches: ['decline'], load: async () => (await registerCommands()).approve },
     list: {
         effect: 'read',
-        flags: ['session', 'status', 'source', 'priority', 'due-before', 'week', 'goal'],
+        flags: ['session', 'status', 'source', 'priority', 'due-before', 'week', 'goal', 'type'],
         switches: ['tree', 'all'],
         load: async () => (await registerCommands()).list,
     },
@@ -234,7 +234,7 @@ export const COMMAND_EFFECTS = Object.fromEntries(Object.entries(COMMANDS).map((
 /** The commands that take a command line after `--`. */
 export const COMMAND_REST = new Set(Object.entries(COMMANDS).flatMap(([name, spec]) => (spec.rest === true ? [name] : [])));
 /** `--tier` became `--priority` (levels p1, p2, ...): refused everywhere with the new name, never an alias. */
-const RENAMED_FLAGS = { tier: 'priority' };
+const RENAMED_FLAGS = { tier: 'priority', problem: 'type bug [--critical] (or --type task)' };
 /** The table a line is read with, and each command's effect: what `/teamrig` plans a line from (src/slash/plan.ts). */
 export const COMMAND_TABLE = { flags: COMMAND_FLAGS, switches: COMMAND_SWITCHES, renamed: RENAMED_FLAGS, rest: COMMAND_REST, effects: COMMAND_EFFECTS };
 export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|name>, else $${ENV.session})
@@ -295,15 +295,16 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       waits under it, and a child team's decisions prints its own and its teams' waits, naming that lead
   add --title "<one line>" --description "<what and why>" --priority p<n> [--ref <where it was asked>]
       [--owner <session>] [--source <session>|<owner source>] [--due <date>] [--goals a,b] [--week <date>]
-      [--after T5,T6] [--size <pct>] [--problem problem|critical|none]
+      [--after T5,T6] [--size <pct>] [--type task|bug] [--critical]
       --description: what the task is and why, in plain words for a person (newlines kept, at most 2,000
       characters), needed unless register.requireDescription is off; show prints it under the title
       --after: the tasks to finish before this one starts; its line shows "after T5"
       --size: what the task still costs, in percent of the weekly usage limit (1.5 or 1.5%); plan sums
       the week's sizes against what is left of the limit
-      --problem: a fix, incident, failure investigation or problem design (critical: in a critical area);
-      none marks it no problem; its line shows "problem"; an unmarked task whose title or description
-      matches register.review.hintPattern prints a hint to mark it, here and when it starts
+      --type: what the item is, a task (the default) or a bug: a fix, incident, failure investigation or
+      problem design; --critical marks a bug in a critical area; its line shows "bug" or "critical bug";
+      a task with no type whose title or description matches register.review.hintPattern prints a hint
+      to mark it, here and when it starts
   add --team <team> [--owner <s>] --title .. --description .. --priority p<n> [...]   asks a team of your tree for work
   set <id> --status open|in-progress|verifying|waiting|done|dropped [--note "<what/why>"] [--evidence <proof>]
       [--skill <name>|none] [--followups T<id>,...|none] [--waits decision:<who>,approval:<who>,task:T<id>,time:<date>]
@@ -330,16 +331,16 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       a wait on the owner's decision names what makes it the owner's: --gate "<an owner gate (ownerGates)
       or business>"; any other question is yours or your leader's: decide it, or wait on your leader;
       check flags it UNGATED without one
-      a task marked --problem gives its review (register.review): --cause "<the root cause, at its source>"
+      a bug gives its review (register.review): --cause "<the root cause, at its source>"
       --how "<the change or assumption that let it in>" --prevent "<what stops it coming back>", and
       --missed-test, --missed-monitor and --missed-log "<a follow-up task that adds it, or why none can catch it>";
-      a critical one (--problem critical, or an owner in criticalOwners) --harden "<past the direct guard>" too;
+      a critical one (--critical, or an owner in criticalOwners) --harden "<past the direct guard>" too;
       each part at least 3 words besides task ids, kept across sets; tasks a missed part names join
       --followups; verifying and done need every part (requireOn; mode refuse, warn or off)
   update <id> [--title ..] [--description ..|none] [--owner ..] [--priority ..] [--ref ..|none]
       [--due <date>|none] [--goals a,b|none] [--week <date>|none] [--after T5,T6|none] [--size <pct>|none]
-      [--problem problem|critical|none] [--pin|--unpin] [--note ..]   the lead may change owner, priority, due,
-      week, after, size, problem and pin on any task
+      [--type task|bug] [--critical|--not-critical] [--pin|--unpin] [--note ..]   the lead may change owner,
+      priority, due, week, after, size, type, critical and pin on any task
       --pin: puts the task above every other task on its owner's list, set by the owner's leaders (the lead
       on its own tasks too); it moves the owner's earlier pin, and handing the task on clears it
       a --note from the task's owner also replaces the note show and the waiting text print
@@ -349,7 +350,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       its approval (approval:<lead>); its owner gets an inbox line to push or merge (or to fix the note's
       point and ask again), and check flags the approved task READY
   list [--session <owner>] [--status a,b|all] [--source <s>] [--priority p1,p2] [--due-before <date>]
-      [--week <date>|none] [--goal <tag>] [--tree] [--all]
+      [--week <date>|none] [--goal <tag>] [--type task,bug] [--tree] [--all]
       short rows within 3,000 characters; --all: every field of every task. A task takes the earlier due
       of a task that needs it ("due 01-12 (from T9)"), and a row names another session's task needing it
   show <id> [--tree]   every field and the history; --tree: what it needs and what needs it, each with
