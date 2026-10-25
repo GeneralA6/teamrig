@@ -2,7 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { testTask } from '../testing/task.ts';
 import type { Task } from './fold.ts';
-import { decidingKey, needPath, needsOf, pathText, planOrder, TaskTree, type PlanPlace, type TreeTask } from './tree.ts';
+import { decidingKey, needPath, needsOf, pathText, planOrder, TaskTree, type PlanPlace, type TaskElsewhere, type TasksElsewhere, type TreeTask } from './tree.ts';
+import { isReady } from './waits.ts';
 import { TimeZone } from '../core/zone.ts';
 
 const NOW = new Date('2030-01-08T10:00:00.000Z');
@@ -333,6 +334,47 @@ describe('TaskTree nextMove', () => {
       testTask({ id: 'T4', owner: 'bravo' }),
     );
     assert.equal(branching.nextMove('T1')?.task.id, 'T4');
+  });
+});
+
+describe("TaskTree over a team tree's other registers", () => {
+  const started = '2030-01-07T09:00:00.000Z';
+  const away = (team: string, task: Task): [string, TaskElsewhere] => [task.id, { team, task }];
+  const elsewhere: TasksElsewhere = new Map([
+    away('web', testTask({ id: 'T20', owner: 'lead', status: 'in-progress' })),
+    away('web', testTask({ id: 'T21', status: 'done' })),
+    away('ops', testTask({ id: 'T1', owner: 'lead' })),
+  ]);
+  const tasks = [
+    testTask({ id: 'T1', owner: 'alpha', status: 'waiting', startedAt: started, waits: [{ kind: 'task', id: 'T20' }] }),
+    testTask({ id: 'T2', owner: 'alpha', after: ['T21'] }),
+    testTask({ id: 'T3', owner: 'alpha', after: ['T20', 'T4'] }),
+    testTask({ id: 'T4', owner: 'bravo' }),
+  ];
+  const tree = new TaskTree(new Map(tasks.map((task) => [task.id, task])), NOW, TimeZone.UTC, undefined, elsewhere);
+
+  it("waits on another register's unfinished task, whose owner there moves, and goes on once it finished", () => {
+    assert.equal(isReady({ kind: 'task', id: 'T20' }, tree.context), false);
+    const move = tree.nextMove('T1');
+    assert.deepEqual(move?.kind === 'elsewhere' ? [move.who, move.team, move.need.id, move.task.id] : move, ['lead', 'web', 'T20', 'T1']);
+    assert.deepEqual(tree.nextMove('T2'), { kind: 'work', who: 'alpha', task: tree.task('T2'), behind: undefined });
+  });
+
+  it("moves on the read's own unfinished needs first", () => {
+    assert.equal(tree.nextMove('T3')?.who, 'bravo');
+    assert.equal(tree.nextMove('T3')?.task.id, 'T4');
+  });
+
+  it('reads an id elsewhere only when the read lacks it', () => {
+    assert.equal(tree.elsewhereOf('T20')?.team, 'web');
+    assert.equal(tree.elsewhereOf('T1'), undefined, 'a register numbered before its tree keeps its own T1');
+    assert.equal(tree.elsewhereOf('T99'), undefined);
+  });
+
+  it('reads every id it lacks as retired outside a tree', () => {
+    const alone = new TaskTree(new Map(tasks.map((task) => [task.id, task])), NOW, TimeZone.UTC);
+    assert.equal(isReady({ kind: 'task', id: 'T20' }, alone.context), true);
+    assert.equal(alone.nextMove('T1')?.kind, 'work');
   });
 });
 

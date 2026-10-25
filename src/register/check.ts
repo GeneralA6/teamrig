@@ -7,7 +7,7 @@ import { approvalCleared } from './approval.ts';
 import { CARD_FLAGS, whyAskUsage } from './card.ts';
 import { taskNumber, type Task } from './fold.ts';
 import { ACTIVE_STATUSES, priorityText, type TaskStatus } from './model.ts';
-import { loopFix, pathText, TaskTree } from './tree.ts';
+import { loopFix, NO_TASKS_ELSEWHERE, pathText, TaskTree, type TasksElsewhere } from './tree.ts';
 import { formatTask } from './views.ts';
 import { allReady, isPeerWait, isReady, unfinishedAfter, waitSpelling, type WaitContext } from './waits.ts';
 
@@ -102,13 +102,21 @@ export interface Flag {
  * - DUE-UNPLANNED: effectively due inside the current week but outside its plan;
  * - OFF-GOAL: in progress with no goal and outside the current week plan, so nothing the team planned asked
  *   for it. The register has no parent tasks: a goal tag or the week plan is what ties a task to the plan.
- * The three week flags need a week; null skips them, and each task gets at most one of them.
+ * The three week flags need a week; null skips them, and each task gets at most one of them. A wait on or a plan
+ * dependency after a task of another register of the team tree reads that task in `elsewhere`.
  */
 
-export function checkTasks(tasks: Iterable<Task>, now: Date, zone: TimeZone, week: string | null, config: RegisterConfig): Flag[] {
+export function checkTasks(
+  tasks: Iterable<Task>,
+  now: Date,
+  zone: TimeZone,
+  week: string | null,
+  config: RegisterConfig,
+  elsewhere: TasksElsewhere = NO_TASKS_ELSEWHERE,
+): Flag[] {
   const at = now.getTime();
   const all = [...tasks];
-  const tree = new TaskTree(new Map(all.map((task) => [task.id, task])), now, zone, week);
+  const tree = new TaskTree(new Map(all.map((task) => [task.id, task])), now, zone, week, elsewhere);
   const active = tree.inPlanOrder(all.filter((candidate) => ACTIVE_STATUSES.includes(candidate.status)));
   const plan = weekPlan(week, config.check.weekLengthDays, zone);
   const top = topPriority(config.priorities);

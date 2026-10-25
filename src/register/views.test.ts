@@ -221,6 +221,22 @@ describe('formatTaskTree and formatNextMove', () => {
     ]);
   });
 
+  it("reads a need another register of the team tree holds as its row there, and names its owner's move", () => {
+    const root = testTask({ id: 'T1', after: ['T20', 'T21', 'T9'] });
+    const elsewhere = new Map([
+      ['T20', { team: 'web', task: testTask({ id: 'T20', owner: 'lead', status: 'in-progress', after: ['T22'] }) }],
+      ['T21', { team: 'web', task: testTask({ id: 'T21', status: 'done' }) }],
+    ]);
+    assert.deepEqual(formatTaskTree(root, new TaskTree(new Map([[root.id, root]]), NOW, TimeZone.UTC, undefined, elsewhere), 60), [
+      'needs:',
+      '  web/T20 in-progress, p2, owner lead, after T22 | Add a health check',
+      '  web/T21 done, p2, owner alpha | Add a health check',
+      '  T9 finished',
+      'needed by: none',
+      'Next move: lead on team web (web/T20)',
+    ]);
+  });
+
   it('lists a finished task its needs, with no next move', () => {
     const done = testTask({ id: 'T3', status: 'done', after: ['T2'] });
     const need = testTask({ id: 'T2', status: 'done' });

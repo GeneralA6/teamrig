@@ -8,9 +8,11 @@ import { currentWeek } from './week.ts';
 /**
  * The dependency tree of one register, from the links its tasks already have: a task needs the tasks it is planned
  * after (`after`) and the tasks it waits on (`--waits task:`), and is needed by every active task that names it so.
- * A need is finished once its task is done or dropped, or retired from the read (waits.ts). Read side only, with no
- * `node:` import: `show --tree`, `list`, `check`, `start`, the meeting agenda, the plan, the live-tasks note and the
- * status pane read it, and the register's write policy refuses a link that would close a loop with {@link needPath}.
+ * A need is finished once its task is done or dropped, or retired from every register (waits.ts); a need another
+ * register of the team tree holds is read there ({@link TasksElsewhere}, one numbering across the tree). Read side
+ * only, with no `node:` import: `show --tree`, `list`, `check`, `start`, the meeting agenda, the plan, the live-tasks
+ * note and the status pane read it, and the register's write policy refuses a link that would close a loop with
+ * {@link needPath}.
  */
 
 /** What a task needs first: the tasks it is planned after, then the tasks it waits on, each once. */
@@ -142,11 +144,25 @@ export interface EffectiveDue {
 /**
  * Who moves first so a task can finish, on which task: the owner's work (`work`), the lead's or the owner's
  * decision or approval, or the owner again once a time passed (`time`, with `at`). `behind` is an in-progress task
- * of the same session with a higher priority than the move's task, which it works first.
+ * of the same session with a higher priority than the move's task, which it works first. `elsewhere`: the move's
+ * task needs `need`, an unfinished task of another register of the team tree, so `who`, its owner on `team`, moves.
  */
 export type NextMove<T extends TreeTask = Task> =
   | { readonly kind: 'work' | PersonWaitKind; readonly who: string; readonly task: T; readonly behind: T | undefined }
-  | { readonly kind: 'time'; readonly who: string; readonly task: T; readonly at: string; readonly behind: T | undefined };
+  | { readonly kind: 'time'; readonly who: string; readonly task: T; readonly at: string; readonly behind: T | undefined }
+  | { readonly kind: 'elsewhere'; readonly who: string; readonly team: string; readonly need: Task; readonly task: T; readonly behind: undefined };
+
+/** A task another register of the team tree holds (one numbering across the tree, T1139), with that register's team. */
+export interface TaskElsewhere {
+  readonly team: string;
+  readonly task: Task;
+}
+
+/** The tasks of a team tree's other registers by id, as one register's read asks them for an id it lacks. */
+export type TasksElsewhere = ReadonlyMap<string, TaskElsewhere>;
+
+/** What a register outside a team tree reads elsewhere: nothing. */
+export const NO_TASKS_ELSEWHERE: TasksElsewhere = new Map();
 
 /** Another session's active task that waits on a session: on its unfinished tasks, or on its decision or approval. */
 export interface WaitingOnYou<T extends TreeTask = Task> {
@@ -169,16 +185,28 @@ export class TaskTree<T extends TreeTask = Task> {
   /** The week plan in force, whose tasks plan order puts first after priority, due and need; null: none. */
   readonly week: string | null;
   private readonly tasks: ReadonlyMap<string, T>;
+  /** The tasks of the team tree's other registers, for a need this read lacks. */
+  private readonly elsewhere: TasksElsewhere;
   /** Per id, the active tasks that need it, by number. */
   private readonly needers: ReadonlyMap<string, readonly T[]>;
   private readonly dues = new Map<string, EffectiveDue | undefined>();
 
-  /** `week` defaults to the newest week tag of `tasks` started by `now`; a register read passes the one it knows. */
-  constructor(tasks: ReadonlyMap<string, T>, now: Date, zone: TimeZone, week: string | null = currentWeek(tasks.values(), now, zone)) {
+  /**
+   * `week` defaults to the newest week tag of `tasks` started by `now`; a register read passes the one it knows.
+   * `elsewhere` holds the tasks of the team tree's other registers, which a need the read lacks is read from.
+   */
+  constructor(
+    tasks: ReadonlyMap<string, T>,
+    now: Date,
+    zone: TimeZone,
+    week: string | null = currentWeek(tasks.values(), now, zone),
+    elsewhere: TasksElsewhere = NO_TASKS_ELSEWHERE,
+  ) {
     this.tasks = tasks;
+    this.elsewhere = elsewhere;
     this.zone = zone;
     this.week = week;
-    this.context = waitContext(tasks, now, zone);
+    this.context = waitContext(tasks, now, zone, elsewhere);
     const needers = new Map<string, T[]>();
     for (const task of [...tasks.values()].filter(isActive).sort((a, b) => taskNumber(a.id) - taskNumber(b.id))) {
       for (const id of needsOf(task)) {
@@ -193,7 +221,15 @@ export class TaskTree<T extends TreeTask = Task> {
     return this.tasks.get(id);
   }
 
-  /** The ids the task needs first ({@link needsOf}); a need may be missing from the read: retired, so finished. */
+  /** The task another register of the team tree holds under an id the read lacks; undefined when the read has it or none does. */
+  elsewhereOf(id: string): TaskElsewhere | undefined {
+    return this.tasks.has(id) ? undefined : this.elsewhere.get(id);
+  }
+
+  /**
+   * The ids the task needs first ({@link needsOf}); a need may be missing from the read: another register of the team
+   * tree holds it, or it was retired, so finished.
+   */
   needs(id: string): string[] {
     const task = this.tasks.get(id);
     return task === undefined ? [] : needsOf(task);
@@ -279,8 +315,9 @@ export class TaskTree<T extends TreeTask = Task> {
 
   /**
    * The first move toward finishing the task: down its unfinished needs in plan order to one that needs nothing
-   * unfinished, whose pending decision or approval (the lead's or the owner's) comes first, then a time still to
-   * come, else its owner's work. Undefined for a finished task, or when every unfinished need runs into a loop.
+   * unfinished in this read, whose unfinished need another register of the team tree holds comes first (its owner
+   * there moves), then its pending decision or approval (the lead's or the owner's), then a time still to come, else
+   * its owner's work. Undefined for a finished task, or when every unfinished need runs into a loop.
    */
   nextMove(id: string): NextMove<T> | undefined {
     return this.isActiveId(id) ? this.moveFrom(id, new Set()) : undefined;
@@ -342,6 +379,13 @@ export class TaskTree<T extends TreeTask = Task> {
     });
   }
 
+  /** The task's first unfinished need, in {@link needsOf} order, that this read lacks and another register holds. */
+  private unfinishedElsewhere(task: T): TaskElsewhere | undefined {
+    return needsOf(task)
+      .flatMap((id) => this.elsewhereOf(id) ?? [])
+      .find((away) => !isFinished(away.task.id, this.context));
+  }
+
   private moveFrom(id: string, seen: Set<string>): NextMove<T> | undefined {
     const task = this.tasks.get(id);
     if (task === undefined) {
@@ -357,6 +401,10 @@ export class TaskTree<T extends TreeTask = Task> {
         }
       }
       return undefined;
+    }
+    const away = this.unfinishedElsewhere(task);
+    if (away !== undefined) {
+      return { kind: 'elsewhere', who: away.task.owner, team: away.team, need: away.task, task, behind: undefined };
     }
     const pending = task.waits.filter((reason) => !isReady(reason, this.context));
     const person = pending.find((reason): reason is PersonWait => reason.kind === 'decision' || reason.kind === 'approval');

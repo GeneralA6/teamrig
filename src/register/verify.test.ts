@@ -146,6 +146,15 @@ describe('dueVerifies, dueStartHolds and dueVerifyHold', () => {
     assert.deepEqual(ids(dueStartHolds({ ...fresh, owner: 'bravo' }, 'in-progress', tasks, NOW, TimeZone.UTC, 5)), [], "only its own owner's verify steps hold it");
   });
 
+  it("reads a proof's wait on another register's task there", () => {
+    const fresh = testTask({ id: 'T2' });
+    const tasks = tasksOf(verifying('T1', 9, { waits: [{ kind: 'task', id: 'T20' }] }), fresh);
+    const away = (status: Task['status']) => new Map([['T20', { team: 'web', task: testTask({ id: 'T20', status }) }]]);
+    const ids = (held: readonly DueVerify[]): string[] => held.map((due) => due.task.id);
+    assert.deepEqual(ids(dueStartHolds(fresh, 'in-progress', tasks, NOW, TimeZone.UTC, 5, away('in-progress'))), [], 'its proof still waits on web');
+    assert.deepEqual(ids(dueStartHolds(fresh, 'in-progress', tasks, NOW, TimeZone.UTC, 5, away('done'))), ['T1']);
+  });
+
   it('names up to three due verify steps, counts the rest, and says how to clear each', () => {
     const due = ['T1', 'T2', 'T3', 'T4', 'T5'].map((id): DueVerify => ({ task: testTask({ id }), why: 'verify by 01-08' }));
     assert.equal(

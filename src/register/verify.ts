@@ -2,7 +2,7 @@ import { parseDeadline, showStored } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { taskNumber, type Task } from './fold.ts';
 import type { TaskStatus } from './model.ts';
-import { needsOf } from './tree.ts';
+import { needsOf, NO_TASKS_ELSEWHERE, type TasksElsewhere } from './tree.ts';
 import { allReady, waitContext, type WaitContext } from './waits.ts';
 
 /** `Proof: ...` or `Proof = ...` in a note written before `--proof` existed: what follows names the proof. */
@@ -106,10 +106,19 @@ function dueWhy(task: Task, context: WaitContext): string | undefined {
 
 /**
  * The due verify steps that hold a task's first start: new work waits until its owner has verified, reopened,
- * asked for or re-dated each one. Resuming a task already started is never held, nor is any other status.
+ * asked for or re-dated each one. Resuming a task already started is never held, nor is any other status. A proof
+ * that waits on a task of another register of the team tree reads it in `elsewhere`.
  */
-export function dueStartHolds(task: Task, status: TaskStatus, tasks: ReadonlyMap<string, Task>, now: Date, zone: TimeZone, max: number): DueVerify[] {
-  return status === 'in-progress' && task.startedAt === null ? dueVerifies(tasks.values(), task.owner, waitContext(tasks, now, zone), max) : [];
+export function dueStartHolds(
+  task: Task,
+  status: TaskStatus,
+  tasks: ReadonlyMap<string, Task>,
+  now: Date,
+  zone: TimeZone,
+  max: number,
+  elsewhere: TasksElsewhere = NO_TASKS_ELSEWHERE,
+): DueVerify[] {
+  return status === 'in-progress' && task.startedAt === null ? dueVerifies(tasks.values(), task.owner, waitContext(tasks, now, zone, elsewhere), max) : [];
 }
 
 /**
