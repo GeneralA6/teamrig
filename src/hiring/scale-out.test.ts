@@ -8,7 +8,7 @@ import type { Task } from '../register/fold.ts';
 import { TaskTree } from '../register/tree.ts';
 import { testConfig } from '../testing/config.ts';
 import { testTask } from '../testing/task.ts';
-import type { HireRecord } from './log.ts';
+import type { HireRecord } from './record.ts';
 import { scaleOutFlags, type ScaleOutInput, type ScaleOutResult } from './scale-out.ts';
 import { TimeZone } from '../core/zone.ts';
 

@@ -3,7 +3,7 @@ import { LeadTree } from '../config/lead-tree.ts';
 import type { KitConfig } from '../config/types.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import type { Checked } from '../setup/team-create.ts';
-import type { HireRecord, RetireRecord } from './log.ts';
+import type { HireRecord, RetireRecord } from './record.ts';
 
 /**
  * The plan behind `retire`: a session taken off the team config, its open tasks to an heir. Pure: it takes

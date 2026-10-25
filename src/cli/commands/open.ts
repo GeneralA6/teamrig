@@ -5,7 +5,8 @@ import { isEffortLevel, isTerminalChoice, TERMINALS, type EffortLevel, type KitC
 import { splitAddress } from '../../core/address.ts';
 import { ENV, KIT_NAME, type Env, type TeamPaths } from '../../core/home.ts';
 import { ID_PATTERN, ID_RULE, sessionDisplay } from '../../core/ids.ts';
-import { HiringLog, rehiredFrom, type RetireRecord } from '../../hiring/log.ts';
+import { HiringLog } from '../../hiring/log.ts';
+import { rehiredFrom, type RetireRecord } from '../../hiring/record.ts';
 import type { ResumeVerdict } from '../../hiring/rehire.ts';
 import { CLAUDE_SESSION_ID } from '../../inbox/marks.ts';
 import { findClaude, type ClaudeProgram } from '../../open/claude.ts';

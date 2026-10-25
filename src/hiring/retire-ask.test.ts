@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_HIRING } from '../config/defaults.ts';
 import { testTask } from '../testing/task.ts';
-import type { HireRecord } from './log.ts';
+import type { HireRecord } from './record.ts';
 import { ownsOpenTask, retireAskDue, retireAskReason, type RetireAskInput } from './retire-ask.ts';
 
 const ASK = { task: 'T4', at: '2030-01-08T10:00:00.000Z' };

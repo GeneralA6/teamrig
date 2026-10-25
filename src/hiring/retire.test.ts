@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseConfig } from '../config/parse.ts';
 import type { JsonRecord } from '../core/guards.ts';
-import type { HireRecord } from './log.ts';
+import type { HireRecord } from './record.ts';
 import { planRetire, type RetirePlan, type RetireRequest } from './retire.ts';
 
 const NOW = Date.parse('2030-01-08T10:00:00Z');

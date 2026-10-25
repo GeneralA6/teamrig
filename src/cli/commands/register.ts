@@ -12,7 +12,8 @@ import { timingText, waitTiming, type WaitTiming } from '../../decisions/lines.t
 import { teamDecisions } from '../../decisions/team.ts';
 import { allowFindings, contextSizeFindings } from '../../doctor/doctor.ts';
 import { hireFlags } from '../../hiring/due.ts';
-import { activeHires, HiringLog } from '../../hiring/log.ts';
+import { HiringLog } from '../../hiring/log.ts';
+import { activeHires } from '../../hiring/record.ts';
 import { scaleOutFlags } from '../../hiring/scale-out.ts';
 import { postLine } from '../../inbox/inbox.ts';
 import { weekUseOf } from '../../budget/snapshot.ts';

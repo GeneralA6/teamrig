@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { DEFAULT_HIRING } from '../config/defaults.ts';
 import { testTask } from '../testing/task.ts';
 import { formatHireFlag, hireFlags, type HireCheckInput, type HireFlag } from './due.ts';
-import type { HireRecord } from './log.ts';
+import type { HireRecord } from './record.ts';
 
 const HIRED_AT = Date.parse('2030-01-08T10:00:00Z');
 const HOUR_MS = 3_600_000;
