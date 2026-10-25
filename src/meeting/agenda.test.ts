@@ -122,7 +122,7 @@ describe('the meeting agenda', () => {
     assert.ok(!lines.some((line) => /\bT8\b/.test(line)), 'an ungated wait of a team that requires gates stays out');
     assert.equal(
       lines.at(-2),
-      "  A question a card does not answer is its task owner's to find: teamrig add --owner <id> (--team <team> in place of --owner for a team under yours: its lead hands it on) --due <date> --session lead, then relay the answer; never look it up yourself.",
+      "  A question a card does not answer is its task owner's to find: teamrig add --owner <id> (and --team <team> for a team under yours) --due <date> --session lead, then relay the answer; never look it up yourself.",
     );
     assert.equal(
       lines.at(-1),

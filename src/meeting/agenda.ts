@@ -142,7 +142,7 @@ function decisionLines(input: AgendaInput): string[] {
     return [head];
   }
   const labelled = below.length === 0 ? '' : ' (<team>/<id> for a task of a team under yours, as its row names it)';
-  const handed = below.length === 0 ? '' : ' (--team <team> in place of --owner for a team under yours: its lead hands it on)';
+  const handed = below.length === 0 ? '' : ' (and --team <team> for a team under yours)';
   return [
     head,
     ...[...own, ...below].flat(),
