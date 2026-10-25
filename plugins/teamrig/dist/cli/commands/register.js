@@ -11,7 +11,7 @@ import { hireFlags } from "../../hiring/due.js";
 import { activeHires, HiringLog } from "../../hiring/log.js";
 import { scaleOutFlags } from "../../hiring/scale-out.js";
 import { postLine } from "../../inbox/inbox.js";
-import { readSnapshots, weekUseOf } from "../../budget/snapshot.js";
+import { weekUseOf } from "../../budget/snapshot.js";
 import { teamDayStartAt } from "../../wake/day-start.js";
 import { byFlagKind, checkTasks, peerWaitFlags } from "../../register/check.js";
 import { currentWeekOf } from "../../register/week.js";
@@ -28,6 +28,7 @@ import { approvalNotice, assignedNotice, endedNotice, formatTask, formatTaskDeta
 import { isPeerWait, sameWait } from "../../register/waits.js";
 import { lintSkills } from "../../skills/lint.js";
 import { SKILL_FILE, SkillDir } from "../../skills/store.js";
+import { snapshotsOnAccount } from "../account-teams.js";
 import { readWideAllow } from "../allow-scope.js";
 import { noPositionals, onePositional, UsageError } from "../args.js";
 import { addInputOf, callerOf, changesOf, listFilterOf, pinOf, setInputOf, taskIdOf, weekOf } from "../inputs.js";
@@ -43,7 +44,6 @@ import { readBursts } from "../burst-reading.js";
 import { readScaleOutBudget } from "../hire-cost.js";
 import { readWPerPct } from "../stored-week.js";
 import { readTaskSpend } from "../task-spend.js";
-import { snapshotDirOf } from "./budget.js";
 import { readContextInput } from "./doctor.js";
 import { inboxDepsOf } from "./inbox.js";
 import { markBoundary } from "./refresh.js";
@@ -547,14 +547,14 @@ function checkRegister(snapshot, config, now, zone, week, leftPct, team) {
 }
 /**
  * The week's fit to the weekly limit over every team read (one account's limit covers them all): what is left of
- * the own team's `budget.targetPct` after the newest status-line reading of the week, which costs one folder read
- * (no transcript is measured). `labelled` names each row's team, for a roll-up. `plan`, `check` and the meeting
- * agenda (meeting.ts) read it.
+ * the own team's `budget.targetPct` after the newest status-line reading of the week on the account, which costs a
+ * read of each account team's snapshot folder (`snapshotsOnAccount`; no transcript is measured). `labelled` names
+ * each row's team, for a roll-up. `plan`, `check` and the meeting agenda (meeting.ts) read it.
  */
 export async function weekFitOf(runtime, { own, teams }, week, labelled) {
     const { budget } = own.config;
     const now = runtime.clock.now();
-    const use = weekUseOf(await readSnapshots(runtime.files, snapshotDirOf(budget, own.paths)), now);
+    const use = weekUseOf(await snapshotsOnAccount(runtime, budget, own.paths), now);
     const rows = teams.flatMap((rolled) => {
         const tree = new TaskTree(rolled.snapshot.state.tasks, new Date(now), teamZone(rolled.config, runtime), week);
         return [...rolled.snapshot.state.tasks.values()].map((task) => (labelled ? { task, tree, team: rolled.team } : { task, tree }));

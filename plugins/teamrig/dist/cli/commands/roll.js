@@ -1,3 +1,4 @@
+import { snapshotDirOf } from "../../budget/snapshot.js";
 import { coordinatorPlaces, teamPlace } from "../../coordinator/places.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { deployTargets } from "../../roll/deploy.js";
@@ -8,7 +9,6 @@ import { callerOf, commandWordsOf, listOf } from "../inputs.js";
 import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { stoppableHooks, stoppableLock, stoppableSleep, stoppedWhileWaiting, unlessStopped, watchStarters } from "../stoppable.js";
-import { snapshotDirOf } from "./budget.js";
 /** The deploy `--targets` asks for, with its `--what` and the command after `--`; undefined for a plain roll. */
 function deployPartsOf(args) {
     const targets = args.flags.get('targets');

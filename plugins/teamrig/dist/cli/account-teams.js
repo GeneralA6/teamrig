@@ -1,6 +1,7 @@
-import { accountOf, accountTeamsOf } from "../budget/account.js";
+import { accountOf, accountSnapshotsOf, accountTeamsOf } from "../budget/account.js";
 import { LiftLog } from "../budget/lift.js";
 import { budgetSplitOf } from "../budget/parts.js";
+import { snapshotDirOf } from "../budget/snapshot.js";
 import { claudeConfigDir } from "../core/home.js";
 import { loadTree } from "./tree.js";
 /**
@@ -27,4 +28,14 @@ export async function teamsOnAccountOf(runtime, asking, now, usedPct) {
     const { lifts } = await new LiftLog(runtime.files, asking.liftsPath).read();
     const split = budgetSplitOf({ team: asking.team, ids: asking.ids, sessions: asking.config.budget.sessions, leads: asking.config.leads, work: asking.work, lifts, now, usedPct });
     return { split, others: await otherTeamsOnAccount(runtime, asking, now, usedPct) };
+}
+/**
+ * Every status line snapshot on the asking team's Claude account (`accountSnapshotsOf`): its own folder's, then the
+ * other teams' on the account, read-only, so a team whose tabs are idle reads the account's newest week %. Every
+ * team's config is read on each call.
+ */
+export async function snapshotsOnAccount(runtime, budget, paths) {
+    const { teams } = await loadTree(runtime);
+    const configDir = claudeConfigDir(runtime.env, runtime.userHome);
+    return accountSnapshotsOf(runtime.files, teams, snapshotDirOf(budget, paths), { account: accountOf(budget, configDir), configDir });
 }

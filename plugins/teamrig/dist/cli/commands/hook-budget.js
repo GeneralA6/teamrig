@@ -9,7 +9,7 @@ import { activeLift, LiftLog } from "../../budget/lift.js";
 import { OUTSIDE_ID } from "../../budget/measure.js";
 import { runMeter } from "../../budget/meter.js";
 import { budgetSplitOf, dailyBudgetOf } from "../../budget/parts.js";
-import { readSnapshots, weekUseOf } from "../../budget/snapshot.js";
+import { weekUseOf } from "../../budget/snapshot.js";
 import { UsageStore } from "../../budget/store.js";
 import { teamWeekOf } from "../../budget/team-week.js";
 import { helperGate, promptWarning, stopWarning } from "../../budget/warn.js";
@@ -19,9 +19,9 @@ import { cachedWork, WORK_CACHE_FILE } from "../../budget/work.js";
 import { postLine } from "../../inbox/inbox.js";
 import { holdBack } from "../../hooks/permission.js";
 import { helperLaunchReminder } from "../../rules/helper-default.js";
-import { otherTeamsOnAccount } from "../account-teams.js";
+import { otherTeamsOnAccount, snapshotsOnAccount } from "../account-teams.js";
 import { teamZone } from "../kit.js";
-import { liftNamesOf, snapshotDirOf } from "./budget.js";
+import { liftNamesOf } from "./budget.js";
 import { inboxDepsOf } from "./inbox.js";
 const TRANSCRIPT = '.jsonl';
 /** A tab's subagent transcripts, `<project>/<claude session>/subagents/*.jsonl`, by name so each run reads them in the same order. */
@@ -65,7 +65,7 @@ export async function budgetFactsOf(runtime, scope, transcript) {
         byId.set(each, (await team.load(each)).state);
     }
     const outside = (await new UsageStore(files, join(kit.paths.usage, 'outside')).load(OUTSIDE_ID)).state;
-    const snapshots = await readSnapshots(files, snapshotDirOf(budget, kit.paths));
+    const snapshots = await snapshotsOnAccount(runtime, budget, kit.paths);
     const statusUse = weekUseOf(snapshots, now);
     const states = [...byId.values(), outside];
     const week = await teamWeekOf(files, kit.paths, { budget, now, statusUse, states });
