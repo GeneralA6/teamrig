@@ -27,12 +27,9 @@ async function fileStatsOf(path) {
         throw error;
     }
 }
-/**
- * The real filesystem. Windows refuses to rename or remove a file another process holds open, so
- * those steps are repeated for about a second (`sleep` paces them) before the error is thrown.
- */
-export function nodeFiles(sleep) {
-    const removeFile = (path) => retryTransient(async () => {
+/** Removes a file: true when this call removed it, false when it was missing. Repeated while another process holds it open. */
+function removeFile(path, sleep) {
+    return retryTransient(async () => {
         try {
             await unlink(path);
             return true;
@@ -44,6 +41,46 @@ export function nodeFiles(sleep) {
             throw error;
         }
     }, sleep);
+}
+/** Replaces the file atomically (write a private sibling, then rename it over the file), creating folders as needed. */
+export async function writeAtomic(path, data, sleep) {
+    await mkdir(dirname(path), { recursive: true });
+    const temporary = temporaryOf(path);
+    await writeFile(temporary, data);
+    try {
+        await retryTransient(() => rename(temporary, path), sleep);
+    }
+    catch (error) {
+        await removeFile(temporary, sleep);
+        throw error;
+    }
+}
+/** Creates the file only if it does not exist yet, creating folders as needed; false when it already exists. */
+export async function createOnce(path, data, sleep) {
+    // Write a private sibling, then hard-link it into place: link() fails when the target exists,
+    // so the file appears complete or not at all and no reader ever sees it half written.
+    await mkdir(dirname(path), { recursive: true });
+    const temporary = temporaryOf(path);
+    await writeFile(temporary, data);
+    try {
+        await link(temporary, path);
+        return true;
+    }
+    catch (error) {
+        if (errorCode(error) === 'EEXIST') {
+            return false;
+        }
+        throw error;
+    }
+    finally {
+        await removeFile(temporary, sleep);
+    }
+}
+/**
+ * The real filesystem. Windows refuses to rename or remove a file another process holds open, so
+ * those steps are repeated for about a second (`sleep` paces them) before the error is thrown.
+ */
+export function nodeFiles(sleep) {
     return {
         async read(path) {
             try {
@@ -88,36 +125,10 @@ export function nodeFiles(sleep) {
             await appendFile(path, text, 'utf8');
         },
         async write(path, text) {
-            await mkdir(dirname(path), { recursive: true });
-            const temporary = temporaryOf(path);
-            await writeFile(temporary, text, 'utf8');
-            try {
-                await retryTransient(() => rename(temporary, path), sleep);
-            }
-            catch (error) {
-                await removeFile(temporary);
-                throw error;
-            }
+            await writeAtomic(path, text, sleep);
         },
         async createExclusive(path, text) {
-            // Write a private sibling, then hard-link it into place: link() fails when the target exists,
-            // so the file appears complete or not at all and no reader ever sees it half written.
-            await mkdir(dirname(path), { recursive: true });
-            const temporary = temporaryOf(path);
-            await writeFile(temporary, text, 'utf8');
-            try {
-                await link(temporary, path);
-                return true;
-            }
-            catch (error) {
-                if (errorCode(error) === 'EEXIST') {
-                    return false;
-                }
-                throw error;
-            }
-            finally {
-                await removeFile(temporary);
-            }
+            return createOnce(path, text, sleep);
         },
         async list(dir) {
             try {
@@ -131,7 +142,7 @@ export function nodeFiles(sleep) {
             }
         },
         async remove(path) {
-            return removeFile(path);
+            return removeFile(path, sleep);
         },
         async stamp(path) {
             const stats = await fileStatsOf(path);

@@ -64,6 +64,7 @@ const slashCommands = () => import("./commands/slash.js");
 const restoreCommands = () => import("./commands/restore.js");
 const restoreInstallCommands = () => import("./commands/restore-install.js");
 const execCommands = () => import("./commands/exec.js");
+const setupBackupCommands = () => import("./commands/setup-backup.js");
 const TASK_FIELDS = ['title', 'description', 'owner', 'ref', 'priority', 'due', 'goals', 'week', 'after', 'size', 'problem'];
 const COMMANDS = {
     add: { effect: 'write', flags: ['session', 'source', 'team', ...TASK_FIELDS], load: async () => (await registerCommands()).add },
@@ -165,6 +166,8 @@ const COMMANDS = {
     'automode install': { effect: 'write', flags: [], switches: ['yes'], load: async () => (await automodeCommands()).install },
     'automode uninstall': { effect: 'write', flags: [], switches: ['yes'], load: async () => (await automodeCommands()).uninstall },
     'permissions trim': { effect: 'write', flags: [], switches: ['all', 'yes'], load: async () => (await permissionsCommands()).trim },
+    'setup backup': { effect: 'write', flags: ['project'], load: async () => (await setupBackupCommands()).backup },
+    'setup restore': { effect: 'write', flags: [], switches: ['yes', 'remove-new'], load: async () => (await setupBackupCommands()).restore },
     'config validate': { effect: 'read', flags: [], load: async () => (await configCommands()).validate },
     'config migrate': { effect: 'write', flags: [], switches: ['yes'], load: async () => (await configCommands()).migrate },
     'commits check': { effect: 'read', flags: ['base', 'tip'], load: async () => (await commitsCommands()).check },
@@ -441,6 +444,12 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       that approve a whole tool or program or hold a credential (--all: every rule) from the team's
       Claude Code settings, its worktrees' too; it counts them by class, never printing a rule; without
       --yes it writes nothing
+  setup backup [--project <dir>]   copies your Claude Code setup byte for byte (CLAUDE.md files, settings,
+      rules, skills, agents, commands, output styles, the project's memory) with a manifest of each
+      file's sha256 into a new folder under your state folder; it counts files, never printing one
+  setup restore [<stamp>] [--yes] [--remove-new]   lists the backups, or previews putting one back:
+      changed and deleted files and files made since; --yes backs the setup up first, then writes and
+      prints the restore that undoes it; --remove-new also removes the files made since
   config validate | config migrate [--yes]   migrate shows an older config rewritten in this format and
       the first teamrig that reads it, as a tab on an older one refuses every write after; --yes writes it
   commits check --base <ref> [--tip <ref>]   commits in base..tip (default HEAD) over the size rule
