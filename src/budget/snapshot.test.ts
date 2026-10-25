@@ -1,11 +1,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { join } from 'node:path';
 import type { Files } from '../core/files.ts';
 import { MS_PER_DAY } from '../core/time.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { MemoryFiles, normalisePath } from '../testing/memory-files.ts';
 import {
   datedSnapshot,
+  defaultSnapshotDir,
   formatSnapshot,
   parseSnapshot,
   pruneSnapshots,
@@ -14,6 +16,7 @@ import {
   SNAPSHOT_PRUNE_EVERY_MS,
   SNAPSHOT_PRUNED_FILE,
   SNAPSHOT_TEMPORARY_KEPT_MS,
+  snapshotDirOf,
   snapshotOfStatus,
   statusLineText,
   weekUseOf,
@@ -403,5 +406,15 @@ describe('pruneSnapshots', () => {
     const files = new MemoryFiles();
     assert.equal(await pruneSnapshots(files, '/nowhere', NOW), 0);
     assert.deepEqual(files.paths(), [`/nowhere/${SNAPSHOT_PRUNED_FILE}`]);
+  });
+});
+
+describe('snapshotDirOf', () => {
+  it("is the team's setting, relative to its folder, else the kit's live folder", () => {
+    const paths = { home: join('/', 'teams', 'web'), kitHome: join('/', 'kit') };
+    assert.equal(snapshotDirOf({}, paths), defaultSnapshotDir(paths.kitHome));
+    assert.equal(defaultSnapshotDir(paths.kitHome), join(paths.kitHome, 'usage', 'live'));
+    assert.equal(snapshotDirOf({ statusSnapshotDir: 'live' }, paths), join(paths.home, 'live'));
+    assert.equal(snapshotDirOf({ statusSnapshotDir: join('/', 'snap') }, paths), join('/', 'snap'));
   });
 });

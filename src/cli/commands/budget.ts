@@ -1,10 +1,10 @@
-import { basename, isAbsolute, join } from 'node:path';
+import { basename, join } from 'node:path';
 import { DEFAULT_STATUS_LINE } from '../../config/defaults.ts';
 import { LeadTree } from '../../config/lead-tree.ts';
 import type { Roster } from '../../config/roster.ts';
 import type { BudgetConfig, KitConfig, StatusLineConfig } from '../../config/types.ts';
 import { errorMessage } from '../../core/guards.ts';
-import { resolveKitHome, type TeamPaths } from '../../core/home.ts';
+import { resolveKitHome } from '../../core/home.ts';
 import type { Clock } from '../../core/lock.ts';
 import { PlainLogFile } from '../../core/log-file.ts';
 import { resolveTeam } from '../../core/team.ts';
@@ -36,10 +36,12 @@ import {
 } from '../../budget/report.ts';
 import {
   datedSnapshot,
+  defaultSnapshotDir,
   formatSnapshot,
   parseSnapshot,
   pruneSnapshots,
   readSnapshots,
+  snapshotDirOf,
   snapshotOfStatus,
   statusLineText,
   weekUseOf,
@@ -71,19 +73,6 @@ import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.t
 
 /** Days the loop table shows by default; `--all` shows every stored day. */
 export const LOOP_DAYS_SHOWN = 4;
-
-/** Where the status line snapshots are: `budget.statusSnapshotDir` (relative to the team's folder), else `<kit home>/usage/live`. */
-export function snapshotDirOf(budget: Pick<BudgetConfig, 'statusSnapshotDir'>, paths: Pick<TeamPaths, 'home' | 'kitHome'>): string {
-  const dir = budget.statusSnapshotDir;
-  if (dir === undefined) {
-    return defaultSnapshotDir(paths.kitHome);
-  }
-  return isAbsolute(dir) ? dir : join(paths.home, dir);
-}
-
-export function defaultSnapshotDir(kitHome: string): string {
-  return join(kitHome, 'usage', 'live');
-}
 
 /** The title the user gave a Claude Code session, from its transcript's last `TRANSCRIPT_TAIL_BYTES`. */
 async function titleOf(transcripts: TranscriptSource, path: string): Promise<string | undefined> {

@@ -13,7 +13,6 @@ import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { teamConfigOf } from '../testing/team-tree.ts';
 import { promptLine, replyLine, transcript, type FixtureTool } from '../testing/transcript-lines.ts';
 import type { RepoState } from '../push-guard/push.ts';
-import { defaultSnapshotDir, snapshotDirOf } from './commands/budget.ts';
 import { EXIT } from './runtime.ts';
 
 /** The harness clock is Tuesday 2030-01-08 10:00 UTC; this week resets on Monday 2030-01-14 01:00 UTC. */
@@ -626,14 +625,5 @@ describe('teamrig statusline', () => {
       stderr: ['teamrig statusline: old snapshots were not pruned: EACCES: simulated'],
     });
     assert.notEqual(kit.files.get(join(LIVE, SNAPSHOT)), undefined);
-  });
-});
-
-describe('snapshotDirOf', () => {
-  it("is the team's setting, relative to its folder, else the kit's live folder", () => {
-    const paths = { home: TEAM_HOME, kitHome: KIT };
-    assert.equal(snapshotDirOf({}, paths), defaultSnapshotDir(KIT));
-    assert.equal(snapshotDirOf({ statusSnapshotDir: 'live' }, paths), join(TEAM_HOME, 'live'));
-    assert.equal(snapshotDirOf({ statusSnapshotDir: join('/', 'snap') }, paths), join('/', 'snap'));
   });
 });

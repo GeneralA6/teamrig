@@ -1,5 +1,5 @@
 import { planBudgetSetup, type BudgetChoices, type KeyChange, type QuietWindow } from '../../budget/setup.ts';
-import { readSnapshots } from '../../budget/snapshot.ts';
+import { readSnapshots, snapshotDirOf } from '../../budget/snapshot.ts';
 import { DEFAULT_BUDGET } from '../../config/defaults.ts';
 import { writeConfigWithBackup } from '../../config/load.ts';
 import { ESCALATIONS, isEscalation, isOverAction, OVER_ACTIONS, type Escalation, type OverAction } from '../../config/types.ts';
@@ -8,7 +8,6 @@ import { noPositionals, UsageError, type Flags, type ParsedArgs } from '../args.
 import { callerOf } from '../inputs.ts';
 import { checkedNextConfig, configFileJson, openTeamKit, requireConfig, rosterOf, sessionIdOf } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { snapshotDirOf } from './budget.ts';
 
 /**
  * `budget setup`: the lead writes the team's budget policy into the team config. Without --yes it only

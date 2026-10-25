@@ -12,7 +12,7 @@ import { activeLift, LiftLog } from '../../budget/lift.ts';
 import { OUTSIDE_ID } from '../../budget/measure.ts';
 import { runMeter } from '../../budget/meter.ts';
 import { budgetSplitOf, dailyBudgetOf } from '../../budget/parts.ts';
-import { readSnapshots, weekUseOf } from '../../budget/snapshot.ts';
+import { readSnapshots, snapshotDirOf, weekUseOf } from '../../budget/snapshot.ts';
 import { UsageStore, type UsageState } from '../../budget/store.ts';
 import { teamWeekOf } from '../../budget/team-week.ts';
 import { helperGate, promptWarning, stopWarning, type BudgetFacts, type BudgetLeader, type HelperGate } from '../../budget/warn.ts';
@@ -25,7 +25,7 @@ import { helperLaunchReminder } from '../../rules/helper-default.ts';
 import { otherTeamsOnAccount } from '../account-teams.ts';
 import { teamZone, type Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
-import { liftNamesOf, snapshotDirOf } from './budget.ts';
+import { liftNamesOf } from './budget.ts';
 import { inboxDepsOf } from './inbox.ts';
 
 /**
