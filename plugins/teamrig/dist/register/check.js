@@ -1,7 +1,7 @@
 import { MS_PER_DAY, MS_PER_HOUR, parseDayStart, showStored } from "../core/time.js";
 import { topPriority } from "../config/priorities.js";
 import { approvalCleared } from "./approval.js";
-import { CARD_FLAGS, whyAskUsage } from "./card.js";
+import { CARD_FLAGS, GATE_FLAG, whyAskUsage } from "./card.js";
 import { taskNumber } from "./fold.js";
 import { ACTIVE_STATUSES, priorityText } from "./model.js";
 import { loopFix, NO_TASKS_ELSEWHERE, pathText, TaskTree } from "./tree.js";
@@ -18,6 +18,7 @@ export const FLAG_KINDS = [
     'PEER-WAIT',
     'NO-CARD',
     'OWNER-ORDERED',
+    'UNGATED',
     'NOT-PICKED-UP',
     'PRIORITY-SKIP',
     'SELF-MADE',
@@ -63,6 +64,9 @@ const IN_HAND = 1;
  *   owner's decision or approval with no card saying why the owner is asked (`whyAsk`, card.ts): an owner's order
  *   approves its own work and proof unless the order must change, the work needs something new, or only the owner
  *   can see the result (T802);
+ * - UNGATED: waiting, or its proof waiting, on the owner's decision with a card naming no owner gate or business
+ *   decision (`gate`, card.ts), as one set before gates reads; never with `requireDecisionCard` off: only an owner
+ *   gate or a business decision is the owner's to decide, any other question its session's or its leader's (T1194);
  * - NOT-PICKED-UP: assigned longer ago than `notPickedUpAfterHours` with no event from its owner since
  *   (an idle session never reads its inbox, so it needs a direct wake);
  * - PRIORITY-SKIP: in progress below an open task of the top priority that has the same owner and is free to start
@@ -107,6 +111,7 @@ export function checkTasks(tasks, now, zone, week, config, elsewhere = NO_TASKS_
         ...(task.status === 'waiting' && task.waits.length === 0 ? [{ kind: 'NO-REASON', task, detail: 'set what it waits for (--waits) or its next status' }] : []),
         ...noCardFlags(task, config),
         ...ownerOrderedFlags(task, config.ownerSource),
+        ...ungatedFlags(task, config),
         ...timeFlags(task, at, config.check, tree),
         ...(top === undefined ? [] : prioritySkip(task, top, waiting, at, config.check, zone)),
         ...(plan === undefined ? [] : planFlags(task, plan, config.ownerSource, tree)),
@@ -162,6 +167,20 @@ function ownerOrderedFlags(task, ownerSource) {
                 detail: `${ownerSource} ordered it, and an order approves its own work and proof: drop the wait on ${ownerSource}'s ${kinds.join(' and ')}, or set it ${task.status} again with ${whyAskUsage(ownerSource)}`,
             },
         ];
+}
+/** UNGATED, as {@link checkTasks} describes it; a task with no card is NO-CARD's. */
+function ungatedFlags(task, config) {
+    const { ownerSource } = config;
+    const decidesOwner = task.waits.some((reason) => reason.kind === 'decision' && reason.who === ownerSource);
+    return config.requireDecisionCard && decidesOwner && task.card !== null && task.card.gate === undefined
+        ? [
+            {
+                kind: 'UNGATED',
+                task,
+                detail: `only an owner gate or a business decision is ${ownerSource}'s to decide: set it ${task.status} again with ${GATE_FLAG} "<the owner gate, or business>", or decide it, or wait on your leader`,
+            },
+        ]
+        : [];
 }
 /**
  * READY, as {@link checkTasks} describes it: a waiting task's reasons, or a verifying task's proof waits, all cleared;
