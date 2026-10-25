@@ -50,7 +50,8 @@ asked task's due date. A budget hold is a time (`time:<date>`), never an approva
 posts the lead one inbox line (`T3 waits on your approval: <the card's question, else the note>`; an owner wait too,
 since the lead keeps the owner's decision queue), unless the lead set it. The lead asks the owner in batches
 (`teamrig decisions`), so an owner wait's line ends with when the owner hears of it: `AT ONCE` when it is due
-before the next batch (message the lead too: an inbox line wakes no one), else in the batch due now or the next.
+before the next batch (the line then wakes the lead; through a sub-lead you are given the `--wake now` line to post
+the lead; with wakes off, message the lead), else in the batch due now or the next.
 
 A wait on the owner's decision or approval needs a card, so the owner decides from it alone, never from a bare
 task number [register.requireDecisionCard]: `--question` (what is decided), `--options` (the choices with their
@@ -201,20 +202,23 @@ Three shapes, split by the list:
 
 ## Inbox line or message
 
-| | Inbox line | Message |
-| --- | --- | --- |
-| How | `teamrig inbox add --to <id> --text "..."` | Claude Code's own messaging to the session's name (`teamrig who`) |
-| Wakes the receiver | no: shown at its next prompt or work block | yes: costs the receiver a full re-read of its context |
-| Use for | results it will not act on now, reports, announcements, anything not urgent | a result it consumes now, a decision, a blocker, a same-area conflict, an incident |
-| Size | one line | at most 10 lines [messages.maxLines] |
-| Receiver idle an hour or more | no extra cost | held once, since it wakes cold and re-reads its whole context at full price: write an inbox line, or put every ask in it and send it again [messages.coldAfterMinutes] |
-| To the lead during the daily meeting | read after the meeting | held, unless it starts with `CRITICAL` (`teamrig meeting start`) |
+| | Inbox line | Wake line | Message |
+| --- | --- | --- | --- |
+| How | `teamrig inbox add --to <id> --text "..."` | the same with `--wake now` | Claude Code's own messaging to the session's name (`teamrig who`) |
+| Wakes the receiver | no: shown at its next prompt or work block | an idle one, once for the lines posted within 2 minutes [wake.batchSeconds]; a busy one sees it at its next tool call's end | yes, each message: costs the receiver a full re-read of its context |
+| Use for | results it will not act on now, reports, a "done" one too, announcements | a result it acts on now, a decision, a blocker, a same-area conflict, an incident | a live back-and-forth |
+| Size | one line | one line | at most 10 lines [messages.maxLines] |
+| Receiver idle an hour or more | no extra cost | wakes it cold, once | held once, since it wakes cold and re-reads its whole context at full price: write a line (a wake line if it must act now), or send it again for a live back-and-forth [messages.coldAfterMinutes] |
+| To the lead during the daily meeting | read after the meeting | wakes the lead after the meeting | held, unless it starts with `CRITICAL` (`teamrig meeting start`) |
 
-A message holds what happened, the evidence (numbers, ids, paths), the exact ask and deadline, your default
-("doing X at 14:00 unless you object"), then "No reply needed" or "Reply needed: <one question>". No acks, thanks
-or progress pings. Silence counts as consent only within the sender's own authority, never for an owner gate.
-A report, a "done" one too, is an inbox line unless the receiver acts on it now. If a send fails, write the inbox
-line instead.
+A wake line or a message says what happened, the evidence (numbers, ids, paths), the exact ask and deadline, your
+default ("doing X at 14:00 unless you object"), then "No reply needed" or "Reply needed: <one question>". No acks,
+thanks or progress pings. Silence counts as consent only within the sender's own authority, never for an owner gate.
+A report, a "done" one too, is a line without `--wake`. If a send fails, write the line instead.
+
+With `wake.enabled: false` no line wakes anyone, so a message is how to wake a peer: one only for a result it acts on
+now, a decision, a blocker, a same-area conflict or an incident, and everything else an inbox line. Rule 3 of the
+core pack says whichever of the two holds for the team.
 
 An ask that creates work is a task first (`teamrig add --owner <id>`): `add` posts the owner an inbox line naming
 the task id, so only urgent work needs a message too. When a task you started cannot go on without that work,
