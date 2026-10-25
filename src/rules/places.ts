@@ -34,8 +34,8 @@ export interface RulePlaceLocations {
   readonly project: string;
   /** The team's skills folder. */
   readonly skills: string;
-  /** The team's own rules file. */
-  readonly teamRules: string;
+  /** The team's own rules file; none before a team exists (`setup scan`). */
+  readonly teamRules: string | undefined;
 }
 
 export interface FoundPlaces {
@@ -92,7 +92,7 @@ export async function nestedClaudeMd(files: Files, probe: PathProbe, project: st
 }
 
 /** The `.md` files in `folder` and its subfolders, up to MARKDOWN_DEPTH deep, sorted. */
-async function markdownBelow(files: Files, probe: PathProbe, folder: string, depth = 1): Promise<string[]> {
+export async function markdownBelow(files: Files, probe: PathProbe, folder: string, depth = 1): Promise<string[]> {
   const found: string[] = [];
   for (const name of (await files.list(folder)).sort()) {
     const path = join(folder, name);
@@ -187,7 +187,7 @@ export async function findRulePlaces(files: Files, probe: PathProbe, at: RulePla
     ],
     skill: skillPaths,
     memory: await markdownBelow(files, probe, claudeMemoryDir(at.claudeDir, at.project)),
-    'team-rules': await existing(probe, [at.teamRules]),
+    'team-rules': await existing(probe, at.teamRules === undefined ? [] : [at.teamRules]),
     hook: await existing(probe, await hookScripts(files, settings, at)),
     settings,
   };
