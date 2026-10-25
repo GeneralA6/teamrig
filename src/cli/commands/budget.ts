@@ -115,6 +115,7 @@ async function readBudget(runtime: CliRuntime, kit: Kit, config: KitConfig, rost
     {
       projectsDir: claudeProjectsDir(runtime.env, runtime.userHome),
       since: options.recountDay ?? dayStartOf(now) - (CURSOR_DAYS_KEPT - 1) * MS_PER_DAY,
+      team: kit.paths.team,
       roster,
       areaBySession: indexMarks(marks).areaBySession,
       subagentWeight: config.budget.subagentWeight,

@@ -35,6 +35,7 @@ describe('attribute', () => {
         session('g', ['/g.jsonl']),
         session('h', ['/h.jsonl']),
       ],
+      team: 'app',
       roster: ROSTER,
       areaBySession: new Map([
         ['a', 'bravo'],
@@ -56,11 +57,25 @@ describe('attribute', () => {
   it('lists an outside title once', async () => {
     const result = await attribute({
       sessions: [session('d1', ['/d.jsonl']), session('d2', ['/d.jsonl'])],
+      team: 'app',
       roster: ROSTER,
       areaBySession: new Map(),
       titleOf,
     });
     assert.equal(result.outsideSessions, 2);
     assert.deepEqual(result.outsideTitles, ['release checks']);
+  });
+
+  it('reads a title in the [<team>] <name> form as the team session it shows, and one of another team as outside', async () => {
+    const titles: Readonly<Record<string, string>> = { '/own.jsonl': '[app] captain', '/web.jsonl': '[web] lead' };
+    const result = await attribute({
+      sessions: [session('own', ['/own.jsonl']), session('web', ['/web.jsonl'])],
+      team: 'app',
+      roster: ROSTER,
+      areaBySession: new Map(),
+      titleOf: async (path) => titles[path],
+    });
+    assert.deepEqual([...result.byTeamSession.keys()], ['lead']);
+    assert.deepEqual(result.outsideTitles, ['[web] lead']);
   });
 });

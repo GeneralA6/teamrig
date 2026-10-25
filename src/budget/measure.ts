@@ -28,6 +28,7 @@ export interface MeasureInput {
   readonly projectsDir: string;
   /** Transcripts last changed before this are not read. */
   readonly since: number;
+  readonly team: string;
   readonly roster: Roster;
   /** The team session each Claude Code session last read its inbox as. */
   readonly areaBySession: ReadonlyMap<string, string>;
@@ -73,7 +74,7 @@ async function meterSession(deps: MeasureDeps, store: UsageStorage, session: str
  */
 export async function measure(deps: MeasureDeps, input: MeasureInput): Promise<Measured> {
   const sessions = await discoverTranscripts(deps.transcripts, input.projectsDir, input.since);
-  const found = await attribute({ sessions, roster: input.roster, areaBySession: input.areaBySession, titleOf: (path) => deps.titleOf(path) });
+  const found = await attribute({ sessions, team: input.team, roster: input.roster, areaBySession: input.areaBySession, titleOf: (path) => deps.titleOf(path) });
   const bySession = new Map<string, UsageState>();
   const behind: string[] = [];
   for (const id of input.roster.ids) {
