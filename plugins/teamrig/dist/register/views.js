@@ -406,8 +406,18 @@ export function formatWaitingOnYou(entry, titleChars, tree) {
  * `T5 is yours (p2, due 2030-01-10): Show the signup errors`.
  */
 export function assignedNotice(task, zone) {
-    const due = task.due === null ? '' : `, due ${storedText(task.due, zone)}`;
-    return `${task.id} is yours (${priorityText(task.priority)}${due}): ${task.title}`;
+    return `${task.id} is yours (${priorityAndDue(task, zone)}): ${task.title}`;
+}
+/**
+ * The copy line a team's lead gets, under the asker's `<team>/<id>`, when a session of another team asks one of its
+ * sessions for work (T1141), so the lead, who sets its team's work order, can reorder or reassign it:
+ * `T5 went to front (p2): Show the signup errors; reorder or reassign it: teamrig update T5 --priority|--after|--owner`.
+ */
+export function askedNotice(task, zone) {
+    return `${task.id} went to ${task.owner} (${priorityAndDue(task, zone)}): ${task.title}; reorder or reassign it: teamrig update ${task.id} --priority|--after|--owner`;
+}
+function priorityAndDue(task, zone) {
+    return `${priorityText(task.priority)}${task.due === null ? '' : `, due ${storedText(task.due, zone)}`}`;
 }
 /**
  * The inbox line telling a task's owner the lead's answer to its approval wait (T684): an approval sends it to push or
@@ -420,8 +430,8 @@ export function approvalNotice(task, answer) {
         : `${answer.by} declined ${task.id}${note}; set it in-progress, fix that, then ask again (--status waiting --waits approval:${answer.by})`;
 }
 /**
- * The inbox line a parent team's lead gets when a task it handed `team` ends (T509), the task named `<team>/<id>`: a
- * done one with its evidence, a dropped one with its note, `web/T1 done: Ship login | evidence: PR #12 merged`.
+ * The inbox line a session of another team gets when a task it asked of `team` ends (T509, T1141), the task named
+ * `<team>/<id>`: a done one with its evidence, a dropped one with its note, `web/T1 done: Ship login | evidence: PR #12 merged`.
  */
 export function endedNotice(task, team) {
     const [label, why] = task.status === 'done' ? ['evidence', task.evidence] : ['note', task.note];
