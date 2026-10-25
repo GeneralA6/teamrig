@@ -1,4 +1,5 @@
 import { parseTranscriptLine } from "../budget/line.js";
+import { roleHolderOf } from "../config/roster.js";
 import { parseObject, toJsonlLine, VERSION_FIELD } from "../core/jsonl.js";
 import { MS_PER_MINUTE } from "../core/time.js";
 /**
@@ -119,27 +120,29 @@ export function checkedState(now, tabs) {
     return { checkedAt: now, told: tabs.map((tab) => tab.claudeSession) };
 }
 /**
- * Who hears of a hookless tab: the lead, or the coordinator's owner when the lead's own tab is hookless, since
- * the lead's inbox reminder is one of the hooks it lacks. With no coordinator's owner, the lead still. The idle
- * pass asks it too, for a reopened tab no hook started in (src/cli/hookless-reopen.ts), which has no entry.
+ * Who of team `team` hears of a hookless tab: its lead, or the coordinator's owner when the lead's own tab is
+ * hookless, since the lead's inbox reminder is one of the hooks it lacks; that owner may sit on a team above, which a
+ * child team leaves the role to (roleHolderOf, T1143). With no coordinator's owner, the lead still. The idle pass asks
+ * it too, for a reopened tab no hook started in (src/cli/hookless-reopen.ts), which has no entry.
  */
-export function hooklessReader(tab, lead, coordinatorOwner) {
-    return tab.session === lead && coordinatorOwner !== undefined ? coordinatorOwner : lead;
+export function hooklessReader(tab, roles, team) {
+    const coordinatorOwner = roleHolderOf(roles, 'coordinatorOwner', team);
+    return tab.session === roles.lead && coordinatorOwner !== undefined ? coordinatorOwner : { team, id: roles.lead };
 }
 /**
  * The inbox line naming a hookless tab, written at `now`, its times on `zone`'s clock: `14:20 IDT` on the line's
  * day, else with their date (`10-20 16:37 IDT`), so a tab hookless for days does not read as hours (T1069). It
  * asks for a restart in the tab's folder, never a reload: a /reload-plugins does not bring a tab's hooks back
- * (T1055).
+ * (T1055). It names the tab's session as `session`, as the reader's team writes it: `app/lead` on a team above.
  */
-export function hooklessLine(tab, zone, now) {
+export function hooklessLine(tab, session, zone, now) {
     const today = zone.day(new Date(now));
     const time = (at) => {
         const date = new Date(at);
         return zone.day(date) === today ? zone.clock(date) : zone.shortMinute(date);
     };
     const minutes = Math.round((tab.turnAt - tab.hookAt) / MS_PER_MINUTE);
-    return (`HOOKLESS ${tab.session}: its tab (Claude session ${tab.claudeSession.slice(0, 8)}) worked ${minutes} min past its last teamrig hook ` +
+    return (`HOOKLESS ${session}: its tab (Claude session ${tab.claudeSession.slice(0, 8)}) worked ${minutes} min past its last teamrig hook ` +
         `(hook ${time(tab.hookAt)}, last reply ${time(tab.turnAt)}), so it gets no inbox, guards or tab status: ` +
         `/exit that tab and run claude --resume ${tab.claudeSession} in ${tab.projectDir}`);
 }

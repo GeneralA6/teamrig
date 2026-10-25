@@ -1,4 +1,5 @@
 import { deployTargetsOf } from "../coordinator/targets.js";
+import { ADDRESS_PATTERN, splitAddress } from "../core/address.js";
 import { isRecord } from "../core/guards.js";
 import { isReservedName, NAME_PATTERN, NAME_RULE, RESERVED_NAMES } from "../core/ids.js";
 import { isMinuteInSpan, utcMinuteOf } from "../core/time.js";
@@ -13,6 +14,8 @@ import { BUDGET_ACCOUNT_MAX_LENGTH, CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from "
 import { ConfigReader, describe, isValidRegex, shortLine } from "./reader.js";
 import { AD_HOC_RUNNERS, PACKAGE_INSTALLS, BURST_POLICIES, CONFLICT_WINNERS, ESCALATIONS, HIRING_POLICIES, isAdHocRunners, isPackageInstalls, isBurstPolicy, isCommitGate, isConflictWinner, isEffortLevel, isEscalation, isHiringPolicy, isOverAction, isHookAsks, isIdleMode, isOtherAreaListing, isPushToProtected, isSecretReads, isSkipHooks, isTerminalChoice, isReviewMode, isVerifyGate, isWeekday, HOOK_ASKS, IDLE_MODES, OTHER_AREA_LISTINGS, OVER_ACTIONS, PUSH_TO_PROTECTED, SECRET_READS, SKIP_HOOKS, TERMINALS, REVIEW_MODES, VERIFY_GATES, WEEKDAYS, } from "./types.js";
 const isSessionName = (name) => SESSION_NAME.test(name) ? undefined : 'expected a lowercase name: a letter, then letters, digits or -, at most 32';
+/** A role a team may leave to a team above it (ANCESTOR_ROLES): one of its sessions, or `<team>/<id>` (T1143). */
+const isRoleHolder = (holder) => SESSION_NAME.test(holder) || ADDRESS_PATTERN.test(holder) ? undefined : 'expected a session id of the team, or <team>/<id> of a team above it';
 const isTimeZone = (name) => (TimeZone.of(name) === undefined ? 'expected an IANA time zone name such as Asia/Jerusalem' : undefined);
 const isUtcTime = (time) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(time) ? undefined : 'expected a UTC time as HH:MM');
 /** A repository as GitHub names it: an owner login, a slash, then letters, digits, `.`, `_` or `-`. */
@@ -205,14 +208,15 @@ export function parseConfig(raw) {
     }
     const rolesRaw = read.section(raw, 'roles', '');
     const lead = read.requiredString(rolesRaw, 'lead', 'roles', isSessionName);
-    const coordinatorOwner = read.optionalString(rolesRaw, 'coordinatorOwner', 'roles', isSessionName);
-    const securityReviewer = read.optionalString(rolesRaw, 'securityReviewer', 'roles', isSessionName);
+    const coordinatorOwner = read.optionalString(rolesRaw, 'coordinatorOwner', 'roles', isRoleHolder);
+    const securityReviewer = read.optionalString(rolesRaw, 'securityReviewer', 'roles', isRoleHolder);
     for (const [key, name] of [
         ['lead', lead],
         ['coordinatorOwner', coordinatorOwner],
         ['securityReviewer', securityReviewer],
     ]) {
-        if (name !== undefined && name !== '' && sessions.length > 0 && !sessions.includes(name)) {
+        // A holder on a team above is the tree's to check (tree-role), as only the tree sees that team.
+        if (name !== undefined && name !== '' && sessions.length > 0 && !ADDRESS_PATTERN.test(name) && !sessions.includes(name)) {
             read.report(`roles.${key}`, `${describe(name)} is not one of the sessions`);
         }
     }
@@ -223,6 +227,15 @@ export function parseConfig(raw) {
     const leads = readLeads(read, read.section(raw, 'leads', ''), sessions, lead);
     const launch = readLaunch(read, read.section(raw, 'launch', ''), sessions);
     const team = readTeam(read, raw);
+    for (const [key, holder] of [
+        ['coordinatorOwner', coordinatorOwner],
+        ['securityReviewer', securityReviewer],
+    ]) {
+        const at = holder === undefined ? undefined : splitAddress(holder)?.team;
+        if (at !== undefined && at === team?.id) {
+            read.report(`roles.${key}`, `names its own team ${at}: write the bare id`);
+        }
+    }
     const timeZone = read.optionalString(raw, 'timeZone', '', isTimeZone);
     const messages = read.section(raw, 'messages', '');
     const pushGuard = read.section(raw, 'pushGuard', '');

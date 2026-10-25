@@ -1,4 +1,6 @@
+import { formatAddress } from "../core/address.js";
 import { TREE_LIMITS } from "./limits.js";
+import { ANCESTOR_ROLES, roleHolderOf } from "./roster.js";
 /** The node of a team, from its folder name, its config and its roster with the renames applied. */
 export function teamNodeOf(team, config, roster) {
     return {
@@ -6,6 +8,7 @@ export function teamNodeOf(team, config, roster) {
         statedId: config.team?.id,
         parent: config.team?.parent,
         lead: config.roles.lead,
+        roles: config.roles,
         sessions: config.sessions,
         names: new Map(config.sessions.map((id) => [id, roster.nameOf(id) ?? id])),
     };
@@ -139,6 +142,9 @@ export class TeamTree {
             if (children.length > TREE_LIMITS.childTeams) {
                 problems.push({ kind: 'tree-children', team, children });
             }
+            if (node !== undefined) {
+                problems.push(...this.roleProblemsOf(node));
+            }
         }
         for (const teams of loops.values()) {
             problems.push({ kind: 'tree-loop', teams });
@@ -157,6 +163,20 @@ export class TeamTree {
             .filter(([, held]) => new Set(held.map((holder) => holder.team)).size > 1)
             .sort(([a], [b]) => a.localeCompare(b))
             .map(([name, held]) => ({ name, holders: held.sort((a, b) => a.team.localeCompare(b.team)) }));
+    }
+    /** The roles a team leaves to another team: each must name that role's own holder on a team above it. */
+    roleProblemsOf(node) {
+        const above = this.ancestorsOf(node.team);
+        return ANCESTOR_ROLES.flatMap((role) => {
+            const holder = roleHolderOf(node.roles, role, node.team);
+            if (holder === undefined || holder.team === node.team) {
+                return [];
+            }
+            if (!above.includes(holder.team)) {
+                return [{ kind: 'tree-role', team: node.team, role, holder, reason: 'not-above' }];
+            }
+            return this.nodes.get(holder.team)?.roles[role] === holder.id ? [] : [{ kind: 'tree-role', team: node.team, role, holder, reason: 'not-holder' }];
+        });
     }
     chain(team) {
         const teams = [];
@@ -185,6 +205,13 @@ export function describeTreeProblem(problem, command) {
             return `team ${problem.team} is at level ${problem.level} of its tree, and a tree has at most ${TREE_LIMITS.levels} levels: hang it under a team nearer the root`;
         case 'tree-children':
             return `team ${problem.team} has ${problem.children.length} child teams (${problem.children.join(', ')}), and a team has at most ${TREE_LIMITS.childTeams}: hang some under another team`;
+        case 'tree-role': {
+            const named = `team ${problem.team}'s roles.${problem.role} names ${formatAddress(problem.holder)}`;
+            const fix = `or one of ${problem.team}'s own sessions`;
+            return problem.reason === 'not-above'
+                ? `${named}, but team ${problem.holder.team} is not above ${problem.team}: name the holder on a team above it, ${fix}`
+                : `${named}, which does not hold roles.${problem.role} on team ${problem.holder.team}: name the session that does, ${fix}`;
+        }
     }
 }
 /** One line on a session name two teams use. */

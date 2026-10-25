@@ -1,7 +1,22 @@
+import { splitAddress } from "../core/address.js";
 /** The roles a config can assign, by their key under `roles`. */
 export const ROLES = ['lead', 'coordinatorOwner', 'securityReviewer'];
+/** The roles a child team may leave to a team above it, naming that team's holder as `<team>/<id>` (T1143); never the lead. */
+export const ANCESTOR_ROLES = ['coordinatorOwner', 'securityReviewer'];
 export function isRole(text) {
     return ROLES.some((role) => role === text);
+}
+/**
+ * The session holding a role, if the team assigns it: a bare id is a session of `team` itself, and `<team>/<id>` one of
+ * a team above it (T1143), as a child team with no reviewer or coordinator of its own names its parent's.
+ */
+export function roleHolderOf(roles, role, team) {
+    const holder = roles[role];
+    if (holder === undefined) {
+        return undefined;
+    }
+    const address = splitAddress(holder);
+    return { team: address?.team ?? team, id: address?.session ?? holder };
 }
 /**
  * The team's sessions by id and by name. Ids are the stable keys of every file and record; names
@@ -48,7 +63,7 @@ export class Roster {
     allNames() {
         return this.holders;
     }
-    /** The session holding a role, if the team assigns it. */
+    /** The session holding a role, if the team assigns it, as the config writes it: `<team>/<id>` for one of a team above (roleHolderOf). */
     holderOf(role) {
         return this.roles[role];
     }
