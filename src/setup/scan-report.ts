@@ -4,14 +4,14 @@ import { KIT_NAME } from '../core/home.ts';
 import { homeRelative } from '../core/paths.ts';
 import type { SecretScanner } from '../core/secrets.ts';
 import { PLACE_KINDS } from '../rules/places.ts';
-import type { Candidate } from '../rules/scan.ts';
 import { MEMORY_INDEX_LINES, type ListedSkill, type LoadedFile } from './scan-context.ts';
 import type { SetupScan, SkillListing } from './scan.ts';
 
 /**
  * The lines `teamrig setup scan` prints: every file and listing a session loads with its size, then the findings, one
- * line each, `<id> <kind> <path>: <what> (~<tokens> tokens/turn)`, numbered per section (C, D, O, S, U), and what
- * applying the CONTEXT, DUPLICATE and UNUSED ones saves. Rule lines and settings values are counted, never printed.
+ * line each, `<id> <kind> <path>: <what> (~<tokens> tokens/turn)`, numbered per section (C, D, S, U), and what
+ * applying the CONTEXT, DUPLICATE and UNUSED ones saves. Rule lines and settings values are counted, never printed;
+ * override lines only by kind, since a setup holds hundreds of them and `rules scan` lists them a kind at a time.
  */
 
 /** An always-loaded file longer than this is worth slimming. */
@@ -106,23 +106,18 @@ function duplicateFindings(scan: SetupScan, at: ScanReportContext, show: (path: 
   }));
 }
 
-function overrideLines(scan: SetupScan, at: ScanReportContext, show: (path: string) => string): string[] {
+function overrideLines(scan: SetupScan, at: ScanReportContext): string[] {
   const recorded = `${scan.recorded} recorded`;
   if (scan.overrides.length === 0) {
     return [`OVERRIDE none to judge; ${recorded}`];
   }
-  const byFile = new Map<string, Candidate[]>();
-  for (const candidate of scan.overrides) {
-    byFile.set(candidate.place.path, [...(byFile.get(candidate.place.path) ?? []), candidate]);
-  }
+  const files = new Set(scan.overrides.map((candidate) => candidate.place.path));
   const kinds = PLACE_KINDS.flatMap((kind) => {
     const count = scan.overrides.filter((candidate) => candidate.place.kind === kind).length;
     return count === 0 ? [] : [`${kind} ${count}`];
   });
-  const findings = Array.from(byFile, ([path, lines]): Finding => ({ kind: 'override', where: show(path), what: `${lines.length} line(s) touch a core rule's topic`, saves: 0 }));
   return [
-    `OVERRIDE ${scan.overrides.length} line(s) in ${byFile.size} file(s) may override a core rule: ${kinds.join(', ')}; ${recorded}`,
-    ...findingLines('O', findings),
+    `OVERRIDE ${scan.overrides.length} line(s) in ${files.size} file(s) may override a core rule: ${kinds.join(', ')}; ${recorded}`,
     `NEXT ${KIT_NAME} rules scan${afterTeam(at)}, to judge each line with the user`,
   ];
 }
@@ -171,7 +166,7 @@ export function scanReport(scan: SetupScan, at: ScanReportContext): string[] {
     ...findingLines('C', context),
     duplicates.length === 0 ? 'DUPLICATE none' : `DUPLICATE ${duplicates.length} line(s) or sentence(s) repeat one loaded before`,
     ...findingLines('D', duplicates),
-    ...overrideLines(scan, at, show),
+    ...overrideLines(scan, at),
     ...settingsLines(scan, at, show),
     scan.usage.transcripts === 0 ? `UNUSED not checked: no transcript on this machine in ${at.days} day(s)` : unusedHeader(scan, unused, at),
     ...findingLines('U', parked),
