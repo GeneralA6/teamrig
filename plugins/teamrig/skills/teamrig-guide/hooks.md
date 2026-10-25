@@ -198,7 +198,7 @@ Before Claude runs a Bash or PowerShell command, the guard reads it and decides:
   with a note when the lead pushes ("... through: the lead (lead) pushes unasked") or when the lead approved one of
   the session's waiting tasks with `teamrig approve` ("... through: lead approved T1; set its next status once
   pushed, as the approval covers this push only"). Otherwise it is refused, never asked: "This push to a protected
-  branch (main, master) needs the lead's approval, not the human's: lead has approved no waiting task of web's.
+  branch (main, master) needs a lead's approval, not the human's: lead has approved no waiting task of web's.
   Ask on the register: `teamrig set <task> --status waiting --waits approval:lead --note "<branch, what it lands,
   its tests>"`, take your next task, and push once lead approves it (`teamrig approve`)." A tab not bound to a
   team session, or a register the guard cannot read, is refused the same way with that reason. `--force-with-lease`
