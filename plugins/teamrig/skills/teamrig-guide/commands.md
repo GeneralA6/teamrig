@@ -2366,7 +2366,8 @@ tokens a turn applying it saves:
 - SETTINGS (`S1`...): allow rules that approve a whole tool or program (`teamrig permissions trim` removes them), no
   deny rule, `defaultMode: bypassPermissions`, and hooks whose output enters the context.
 - UNUSED (`U1`...): skills in your user or project skill folders with no `Skill` call or `/<skill>` in the last
-  `--days` days of this machine's transcripts; not checked when there is no transcript.
+  `--days` days of this machine's transcripts; not checked when there is no transcript. A skill whose file changed
+  within those days has not had them all to be used, so it is not judged; the UNUSED line counts it as too new.
 
 The last line, SAVINGS, adds up what applying every CONTEXT, DUPLICATE and UNUSED finding saves each turn. It reads
 every transcript of those days, so a busy machine takes a minute or more.

@@ -55,6 +55,13 @@ export interface SetupScan {
   readonly recorded: number;
   readonly settings: readonly SettingsFinding[];
   readonly usage: SkillUse;
+  /** The paths of the listed skills whose file changed since `at.since`: too new for the transcripts to show unused. */
+  readonly recent: ReadonlySet<string>;
+}
+
+async function recentSkills(files: Files, skills: readonly ListedSkill[], since: number): Promise<ReadonlySet<string>> {
+  const changed = await Promise.all(skills.map(async (skill) => ({ path: skill.path, at: await files.modifiedAt(skill.path) })));
+  return new Set(changed.filter(({ at }) => at !== undefined && at >= since).map(({ path }) => path));
 }
 
 function folderListing(skills: readonly ListedSkill[]): SkillListing {
@@ -70,7 +77,7 @@ async function readListing(transcripts: TranscriptSource, at: SetupScanInput, sk
 /**
  * What the user's Claude Code setup costs every turn in `at.project`, and what to slim: the files and skill listing
  * each session loads, the lines they repeat, the rule lines that may override a core rule, the settings findings and
- * the skills no transcript used since `at.since`. It only reads.
+ * the skills no transcript used since `at.since`, and which skills changed since then. It only reads.
  */
 export async function scanSetup(ports: SetupScanPorts, at: SetupScanInput): Promise<SetupScan> {
   const context = await readSessionContext(ports.files, ports.probe, at);
@@ -83,5 +90,6 @@ export async function scanSetup(ports: SetupScanPorts, at: SetupScanInput): Prom
     recorded: rules.recorded.length,
     settings: await scanSettings(ports.files, at.claudeDir, at.settings, at.keep, at.secrets),
     usage: await readSkillUse(ports.transcripts, at.projectsDir, at.since),
+    recent: await recentSkills(ports.files, context.skills, at.since),
   };
 }

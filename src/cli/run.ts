@@ -490,7 +490,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       session loads, with chars and tokens; files over 6,000 chars, skill descriptions over 250, repeated
       lines, rule lines that may override a core rule, wide allow rules, no deny rule, bypassed prompts,
       hooks writing into the context, and skills unused in --days (default 30) days of this machine's
-      transcripts; works before a team exists; it only reads
+      transcripts (one changed within them is not judged); works before a team exists; it only reads
   config validate | config migrate [--yes]   migrate shows an older config rewritten in this format and
       the first teamrig that reads it, as a tab on an older one refuses every write after; --yes writes it
   commits check --base <ref> [--tip <ref>]   commits in base..tip (default HEAD) over the size rule
