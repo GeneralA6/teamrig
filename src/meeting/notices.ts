@@ -6,7 +6,8 @@ import { NOTE_CHARS, oneLine } from './agenda.ts';
 
 /**
  * What the meeting tells the other sessions: at its end, one inbox line to each session with a decision recorded on
- * its tasks, and nothing to the rest. An inbox line wakes no one, where a message would wake an idle session cold.
+ * its tasks, and nothing to the rest. These lines carry no wake ask, so they wake no one, where a message would wake
+ * an idle session cold.
  * The start tells no one: the cold-send hook holds a message to the lead when it is sent, and its reason says what
  * to do instead (quiet.ts).
  */
