@@ -3493,7 +3493,9 @@ that resumes the session. The team config's `statusLine` turns `folder`, `branch
 is on by default; with `branch` off, git is never asked). It also removes the folder's snapshots written more than
 8 days ago, which hold no reading of the current week, and the temporary files over an hour old that a status line
 stopped before its rename left, sweeping the folder at most once an hour (its `.pruned` file says when it last did),
-so every reader's walk of the folder stays bounded. It always exits 0, so a bad input or
+so every reader's walk of the folder stays bounded. Each reading it saves also goes into the folder's `.week` file,
+the week's reading that counts, which `teamrig budget` and every hook read instead of each snapshot in the folder,
+so a burst of tabs opening at once stays quick. It always exits 0, so a bad input or
 a full disk never breaks the status bar; what went wrong goes to stderr. With `--pass` it prints the status JSON
 again instead of its status, for the status line after it in a pipe. A plugin cannot set the status line:
 [teamrig statusline install](#teamrig-statusline-install) sets it up.
@@ -3529,6 +3531,10 @@ times date it: `rate_limits_since`, when the session's snapshots began to show t
 `rate_limits_after`, when its snapshot last showed other ones. `teamrig budget` drops a reading taken by the
 time another is known to follow, then takes the highest of the rest. Without them it takes the highest
 reading of the week, and the owner's reset in the middle of a week shows only when that week ends.
+
+A folder with no `.week` file is read in full, every snapshot each time. If you move a folder from `teamrig
+statusline` to your own status line, delete its `.week`: teamrig keeps reading the last week it holds, which your
+status line never updates.
 
 ### teamrig statusline install
 
