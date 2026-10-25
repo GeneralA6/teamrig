@@ -1,6 +1,6 @@
 ---
 name: team-setup
-description: Use to split work across parallel Claude Code sessions or a sub-team (propose, create, open sessions), to settle local rules that override teamrig, and at each lead checkpoint.
+description: Use to split work across parallel Claude Code sessions or a sub-team (propose, slim the setup, create, open), to settle local rules that override teamrig, and at each lead checkpoint.
 ---
 
 # Team setup
@@ -29,26 +29,57 @@ Team pricing, with this tab as the lead:
 - research: gather competitors' plans and prices
 - analysis: model three price points against last year's sales
 - writeup: draft the recommendation, with the numbers behind it
+First I back up your Claude setup and show what slimming it would save; you choose what changes.
 Create it and open the three sessions?
 ```
 
 If the user changes something, show the new plan and ask once more. Run nothing before a yes.
 
-## 3. Create the team, in one Bash call
+## 3. Back up the Claude setup, then slim it
+
+Every session of the team loads the user's Claude setup (the CLAUDE.md and rules files, memory's index, the skill
+listing) at its start and carries it in every turn, so a lean setup saves tokens in each of them. Back it up before
+anything changes, then scan it, in one Bash call:
+
+```
+teamrig setup backup --project "<project>" && teamrig setup scan --project "<project>"
+```
+
+- `BACKED UP <n> file(s) ... to <folder>`: the folder's last part is the backup's stamp, such as
+  `20261025T120000Z`. No `BACKED UP` line: tell the user why, change nothing in their setup, and go on to step 4.
+- The scan only reads. Show the user its `TOTAL` line (what every session start costs) and each group of findings
+  with its count and the tokens a turn it saves, in a few lines, with what you propose for it:
+  - `CONTEXT` (`C<n>`), a file loaded every turn over 6,000 chars or a skill description over 250: shorten it, and
+    move rules that matter only in some folders into `.claude/rules/<topic>.md` with a `paths:` frontmatter, or
+    into the `CLAUDE.md` of the sub-folder they are about, so they load only there.
+  - `DUPLICATE` (`D<n>`), a line that repeats one loaded before: keep the first, remove the repeat.
+  - `UNUSED` (`U<n>`), a skill no transcript used in 30 days: park its folder in `skills-parked/` beside the
+    `skills/` folder it is in. Claude Code no longer lists it; moving it back brings it back.
+  - `OVERRIDE` and `SETTINGS` need the team: step 7 settles those rule lines and the wide allow rules. Name them
+    now and change nothing yet.
+- Ask one yes or no per group in AskUserQuestion (up to 4 per call): what changes, in which files, and the tokens
+  a turn it saves. No `CONTEXT`, `DUPLICATE` or `UNUSED` finding: say so in one line and go on to step 4.
+- Carry out each yes: write the shortened or moved text with the Edit tool, and park a skill with one Bash `mv`.
+  Change only the files its findings name, and never a settings file's `autoMode` line.
+- Run `teamrig setup scan --project "<project>"` again and tell the user, in two lines, the `TOTAL` before and
+  after, and that `teamrig setup restore <stamp>` shows what undoing it writes and the same with `--yes` puts every
+  backed-up file back.
+
+## 4. Create the team, in one Bash call
 
 ```
 teamrig team create <team> --sessions <id>,<id> --project "<project>" && teamrig inbox read --session lead && teamrig rules --session lead
 ```
 
 - `team create` writes the team config in the kit home and `.teamrig.json` in the project, and keeps `.teamrig.json` out of git in this clone (its `ADDED` line names the repository's `.git/info/exclude`, which git never commits). The file names a team that exists on this machine only, and sessions find the team without it in git, so never offer to commit it. An `UNCHANGED … in git: it is committed` line means the repository already has it: tell the user what that line says. A `REFUSED` line says why it stopped (another team has that id, or the project belongs to another team): tell the user and stop.
-- Your first task: `team create` adds `Set up the team` to the task list, owned by you and in progress, so the setup shows in the task pane and the register like any work. Its `ADDED T<n>` line gives the id; an `UNCHANGED T<n> Set up the team` line means an earlier run added it. You close it in step 7. No such line: the team already had tasks, so there is none to close.
+- Your first task: `team create` adds `Set up the team` to the task list, owned by you and in progress, so the setup shows in the task pane and the register like any work. Its `ADDED T<n>` line gives the id; an `UNCHANGED T<n> Set up the team` line means an earlier run added it. You close it in step 8. No such line: the team already had tasks, so there is none to close.
 - Tab status: `team create` turns on the colored circle before each tab's title for what its session is doing. A `TAB STATUS on` line means the tabs show it. A `NOTE` line names what is missing: show the user the exact `env` line, the settings file it goes in and that Claude Code needs a restart, as the line says. That switch changes every Claude Code tab, also outside this team, so never edit the settings yourself unless the user asks.
 - `inbox read --session lead` ties this Claude Code session to the lead, so the team's hooks know this tab as the lead from now on.
 - `rules --session lead` prints the team rules this tab did not get when it started. Follow them from now on.
 - The lead plans and judges the whole team's work, so it runs on Opus at xhigh effort (`launch.lead` in the team config can change that). This tab was not started by teamrig: unless the user already chose them, ask them to type `/model opus` and `/effort xhigh` here.
 - `$TEAMRIG_SESSION` is not set in this tab, so pass `--session lead` to every `teamrig` task and inbox command here.
 
-## 4. Give each session its first task, then open it
+## 5. Give each session its first task, then open it
 
 One Bash call per session:
 
@@ -60,7 +91,7 @@ teamrig add --session lead --owner <id> --priority p2 --title "<first task>" --d
 - Exit code 3, with a `MANUAL` line: no terminal could be opened from here. Show the user the printed command to paste into a new terminal in the project.
 - A `REFUSED` line: tell the user why and stop.
 
-## 5. Turn on the daily budget
+## 6. Turn on the daily budget
 
 The budget turns what is left of the week into a daily budget for the team, recomputed at every reading, so the work
 lasts until the weekly reset; there is no daily number to choose. Ask the user in one AskUserQuestion call with these
@@ -84,7 +115,7 @@ week's use: offer to run `teamrig statusline install`, which keeps a status line
 it with `--yes`; when Claude may not change its own settings, the user types `! teamrig statusline install --yes`.
 If the user skips this step, say they can ask you to turn it on later.
 
-## 6. Settle the local rules that override teamrig
+## 7. Settle the local rules that override teamrig
 
 The core rules win over a CLAUDE.md, a rules file, a skill, memory, a hook's text and the team's `rules.md`, except
 the local rules the user keeps. A local line that says otherwise still sits in every session's context and pulls
@@ -122,10 +153,13 @@ it the other way, so settle each one with the user now, and again whenever they 
      (`--wins teamrig` for the third choice), then run it with `--yes`. The team keeps at most 40.
 6. Run `teamrig rules scan` again: no conflict should be left outside the `RECORDED` lines. A `GONE` line, whose
    text is no longer there: `teamrig rules forget <n> --session lead --yes`.
+7. Step 3's scan had a `SETTINGS` finding of allow rules that approve a whole tool or program: run
+   `teamrig permissions trim` and show the user its preview. A permissions change is theirs to make, so after a yes
+   they type `! teamrig permissions trim --yes`; it backs up each file it rewrites first.
 
-## 7. Close the setup task, then tell the user, in three short lines
+## 8. Close the setup task, then tell the user, in three short lines
 
-Every session now runs its first task, so the setup is done. Close it with the id from step 3 and the first tasks of step 4:
+Every session now runs its first task, so the setup is done. Close it with the id from step 4 and the first tasks of step 5:
 
 ```
 teamrig set T<n> --session lead --status done --note "team set up: <ids> working" --evidence "<first task ids> open in their tabs" --skill none --followups <first task ids, comma-separated>
@@ -137,7 +171,7 @@ This tab is the lead: ask me for status, new tasks or changes.
 Close a tab to stop that session; teamrig open <id> starts it again.
 ```
 
-## 8. Grow a part of the work into a sub-team
+## 9. Grow a part of the work into a sub-team
 
 When one part outgrows a single session, or the user asks for a team under this one, propose it as in step 2 (the
 sub-team's id, its sessions and the part it takes on), then, after a yes, in one Bash call:
@@ -154,7 +188,7 @@ teamrig team create <sub-team> --sessions <id>,<id> --parent <team> --project "<
   under it. A tree is at most 3 levels deep, with at most 8 sub-teams under one team; `team create` says when a new
   one would break that.
 
-## 9. Checkpoint: keep the team on its plan
+## 10. Checkpoint: keep the team on its plan
 
 At the start of each work block, and when the user asks for status, in one Bash call:
 
