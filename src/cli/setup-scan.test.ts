@@ -1,8 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { claudeProjectSlug } from '../budget/discover.ts';
-import { APP, CliHarness, SKILLS_DIR, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
+import { formatConfig } from '../config/load.ts';
+import type { Env } from '../core/home.ts';
+import { APP, CliHarness, KIT, SKILLS_DIR, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { MemoryPathProbe } from '../testing/memory-files.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { replyLine } from '../testing/transcript-lines.ts';
@@ -13,6 +15,8 @@ const CLAUDE_DIR = join(USER_HOME, '.claude');
 const NOW = Date.parse('2030-01-08T10:00:00Z');
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
+/** A project of another team, with its own pointer. */
+const OTHER = resolve('/', 'work', 'other');
 
 function skill(name: string, description: string): string {
   return `---\nname: ${name}\ndescription: ${description}\n---\nBody.\n`;
@@ -32,8 +36,8 @@ function transcripts(ago: number): MemoryTranscripts {
   return new MemoryTranscripts({ [join(CLAUDE_DIR, 'projects', claudeProjectSlug(APP), '0123abcd-0000-4000-8000-00000000000a.jsonl')]: `${line}\n` }, NOW - ago);
 }
 
-function scan(harness: CliHarness, argv: readonly string[] = [], source: MemoryTranscripts = new MemoryTranscripts()): Promise<CliResult> {
-  return harness.run(['setup', 'scan', ...argv], { probe: new MemoryPathProbe(harness.files), transcripts: source });
+function scan(harness: CliHarness, argv: readonly string[] = [], source: MemoryTranscripts = new MemoryTranscripts(), env: Env = {}): Promise<CliResult> {
+  return harness.run(['setup', 'scan', ...argv], { env, probe: new MemoryPathProbe(harness.files), transcripts: source });
 }
 
 function okLines(result: CliResult): readonly string[] {
@@ -78,6 +82,22 @@ describe('setup scan', () => {
     const harness = await world();
     const lines = okLines(await scan(harness, ['--project', '../other']));
     assert.match(lines[0] ?? '', /other \(no team yet\)$/);
+  });
+
+  it("reads the --project folder's own team, never the caller's $TEAMRIG_TEAM", async () => {
+    const harness = await world();
+    const caller: Env = { TEAMRIG_TEAM: 'app' };
+    await harness.files.write(join(TEAM_HOME, 'rules.md'), 'Team rules.\n');
+    assert.match(okLines(await scan(harness, ['--project', OTHER], new MemoryTranscripts(), caller))[0] ?? '', /other \(no team yet\)$/);
+    const otherRules = join(KIT, 'teams', 'other', 'rules.md');
+    await harness.files.write(join(OTHER, '.teamrig.json'), '{"team": "other"}');
+    await harness.files.write(join(KIT, 'teams', 'other', 'config.json'), formatConfig(TEAM));
+    await harness.files.write(otherRules, 'Other rules.\n');
+    const lines = okLines(await scan(harness, ['--project', OTHER], new MemoryTranscripts(), caller));
+    assert.match(lines[0] ?? '', / \(team other\)$/);
+    const rulesLines = lines.filter((line) => line.startsWith('CONTEXT team-rules'));
+    assert.equal(rulesLines.length, 1, lines.join('\n'));
+    assert.match(rulesLines[0] ?? '', /[\\/]teams[\\/]other[\\/]rules\.md: 13 chars/);
   });
 
   it('refuses a --days that is not a whole number of 1 or more, a positional and a broken team pointer', async () => {

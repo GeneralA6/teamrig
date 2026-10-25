@@ -2349,7 +2349,8 @@ TOTAL 2 file(s) to rewrite: 52 allow rules -> 5 (remove 47: Bash exact 33, Bash 
 
 Shows what your Claude Code setup costs at every session start in a project, and what to slim. It works before a
 team exists (team setup runs it first) and only reads. Without `--project` it scans the team's project, else the
-working folder.
+working folder. With `--project`, the team is the one that folder's `.teamrig.json` names, never the caller's
+`$TEAMRIG_TEAM`, so a session of one team can scan another team's project.
 
 It lists each file a session loads, with its chars and tokens (about four chars a token): your user and the
 project's `CLAUDE.md` with their `@` imports, `CLAUDE.local.md`, the `.claude/rules/*.md` files without a `paths:`
