@@ -4,7 +4,8 @@ import { isEffortLevel, isTerminalChoice, TERMINALS } from "../../config/types.j
 import { splitAddress } from "../../core/address.js";
 import { ENV, KIT_NAME } from "../../core/home.js";
 import { ID_PATTERN, ID_RULE, sessionDisplay } from "../../core/ids.js";
-import { HiringLog, rehiredFrom } from "../../hiring/log.js";
+import { HiringLog } from "../../hiring/log.js";
+import { rehiredFrom } from "../../hiring/record.js";
 import { CLAUDE_SESSION_ID } from "../../inbox/marks.js";
 import { findClaude } from "../../open/claude.js";
 import { launchFlags } from "../../open/launch-flags.js";
