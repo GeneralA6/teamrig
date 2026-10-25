@@ -282,7 +282,7 @@ describe('renderCorePack', () => {
     assert.match(pack, /^1\. Roles, by session id: lead is the lead/m);
     assert.match(pack, /the owner's decision queue \[roles\.lead\]\. /);
     assert.doesNotMatch(pack, /re-prioritize/);
-    assert.match(pack, / Other sessions own their areas\. Your leader \(the sub-lead listing you \[leads\], else the lead\) sets your work order and answers your waits;/);
+    assert.match(pack, / Other sessions own their areas\. Your leader \(the sub-lead listing you \[leads\], else the lead\) sets your work order and staffing, answers your waits;/);
     assert.match(pack, / asks to a sub-lead's sessions go through it\. Cross-area issues and clashes go to the nearest leader over both, unowned warnings to the lead\.$/m);
     assert.match(pack, /\[ownerGates\]\. An owner's order, relayed or not, approves its work and proof unless only the owner sees the result; ask again only if it must change or needs something new\.$/m);
     assert.match(pack, /At most 7 lines \[messages\.maxLines\]/);
@@ -346,12 +346,13 @@ describe('renderCorePack', () => {
     assert.ok(!off.includes('Decision needed'), off);
   });
 
-  it('asks the owner only on an owner gate or a business decision, never staffing, however many good answers the rest has (T1194)', () => {
+  it('asks the owner only on an owner gate or a business decision, however many good answers the rest has, and names staffing the leader\'s (T1194)', () => {
     const on = renderCorePack(testConfig({ tabStatus: { enabled: true } }), COMMAND, 'win32', RULES_CLOCK);
-    assert.ok(on.includes(' Ask the owner only gates and business calls, not staffing: '), on);
+    assert.ok(on.includes(' Ask the owner only gates and business calls: '), on);
     const off = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
-    assert.ok(off.includes(' Ask the owner only on owner gates and business decisions, never staffing: '), off);
+    assert.ok(off.includes(' Ask the owner only on owner gates and business decisions: '), off);
     for (const pack of [on, off]) {
+      assert.ok(pack.includes('Your leader (the sub-lead listing you [leads], else the lead) sets your work order and staffing,'), pack);
       assert.ok(!/right answer|correct answer/.test(pack), 'two good answers are no reason to ask the owner');
     }
   });

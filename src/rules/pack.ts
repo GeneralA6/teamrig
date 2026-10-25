@@ -165,7 +165,7 @@ export function coreRuleTexts(config: KitConfig, command: string, platform: Node
       // The lead tree (config/lead-tree.ts, T781): a member's waits, approvals and pushes go to its leaders, nearest
       // first, and a leader sets the work order of the sessions under it (T782). No member list prints here: `leads`
       // has no size limit, so the pack names the key alone.
-      ' Other sessions own their areas. Your leader (the sub-lead listing you [leads], else the lead) sets your work order and answers your waits;' +
+      ' Other sessions own their areas. Your leader (the sub-lead listing you [leads], else the lead) sets your work order and staffing, answers your waits;' +
       " asks to a sub-lead's sessions go through it. Cross-area issues and clashes go to the nearest leader over both, unowned warnings to the lead.",
     'own-change':
       "Own your change end to end: only the session that made it integrates, deploys (when it must run), verifies and fixes or rolls it back; another session's change goes to its owner.",
@@ -197,12 +197,12 @@ export function coreRuleTexts(config: KitConfig, command: string, platform: Node
       'Investigate first: frequency × impact, the cheapest fix for the visible symptom.' +
       // An owner question names no task by its number alone (the register refuses an owner wait without its
       // decision card, register/card.ts). With tab status on, the marker line ends the turn on the decision circle
-      // (tabs/status.ts); the words are shorter there so the worst-case pack still fits CORE_PACK_MAX_CHARS, with no
-      // character to spare. Who decides is an authority test, not a count of good answers (T1194): a question that is
-      // no owner gate and no business decision, staffing included, is the leader's however many good answers it has.
+      // (tabs/status.ts); the words are shorter there so the worst-case pack still fits CORE_PACK_MAX_CHARS. Who
+      // decides is an authority test, not a count of good answers (T1194): a question that is no owner gate and no
+      // business decision is the leader's however many good answers it has, and rule 1 names staffing the leader's.
       (config.tabStatus.enabled
-        ? ` Ask the owner only gates and business calls, not staffing: stand alone, no bare ids; options, numbers, your pick, a \`${DECISION_MARKER}\` line.`
-        : ' Ask the owner only on owner gates and business decisions, never staffing: each question stands alone, no bare task ids, with options, numbers and a recommendation.'),
+        ? ` Ask the owner only gates and business calls: stand alone, no bare ids; options, numbers, your pick, a \`${DECISION_MARKER}\` line.`
+        : ' Ask the owner only on owner gates and business decisions: each question stands alone, no bare task ids, with options, numbers and a recommendation.'),
     resources:
       'Rising resource use (memory, CPU, storage, tokens) needs its root cause; a raised limit is only an owner-approved bridge with a dated root-cause task. Tag a stopgap with its replacement: `stopgap T<id>`.',
     data:
