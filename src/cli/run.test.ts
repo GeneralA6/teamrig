@@ -98,7 +98,7 @@ describe('runCli: help, version and usage errors', () => {
     const setLines = [
       '  set <id> --status open|in-progress|verifying|waiting|done|dropped [--note "<what/why>"] [--evidence <proof>]',
       '      [--skill <name>|none] [--followups T<id>,...|none] [--waits decision:<who>,approval:<who>,task:T<id>,time:<date>]',
-      '      [--question ".." --options "<a> | <b>" --recommend ".." --default ".." --why-ask ".."]',
+      '      [--question ".." --options "<a> | <b>" --recommend ".." --default ".." --why-ask ".." --gate ".."]',
       '      [--proof "<what proves it>"] [--met "<what shows it>"] [--due <date>] [--ask <session> --text "<the work>"]',
       '      verifying needs --proof: what will prove the shipped change works; --due sets the date to verify by',
       "      a start that a verifying task it needs holds goes through with --met: what shows that task's proof",
@@ -117,6 +117,9 @@ describe('runCli: help, version and usage errors', () => {
       '      besides task ids; a later set changes one part alone',
       '      a task the owner ordered asks the owner only with --why-ask "<how the order must change, what new it',
       '      needs, or why only the owner can see the result>"; check flags it OWNER-ORDERED without one',
+      "      a wait on the owner's decision names what makes it the owner's: --gate \"<an owner gate (ownerGates)",
+      "      or business>\"; any other question is yours or your leader's: decide it, or wait on your leader;",
+      '      check flags it UNGATED without one',
     ];
     assert.deepEqual([done.code, done.stderr], [EXIT.usage, [['unexpected "done"', '', head, ...setLines, FULL_HELP_POINTER].join('\n')]]);
     assert.equal((done.stderr[0] ?? '').length < USAGE.length / 5, true, 'a fifth of the full help at most');

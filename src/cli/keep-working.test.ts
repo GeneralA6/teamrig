@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
-import { TEST_CARD_FLAGS } from '../testing/card.ts';
+import { TEST_OWNER_CARD_FLAGS } from '../testing/card.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { ok } from '../testing/hired-team.ts';
@@ -29,7 +29,7 @@ async function teamOf(config: JsonRecord, tasks: readonly Owned[]): Promise<CliH
 }
 
 function wait(kit: CliHarness, files?: FaultyFiles): Promise<CliResult> {
-  const waiting = ['set', 'T1', '--status', 'waiting', '--waits', 'decision:owner', '--note', 'two plans', ...TEST_CARD_FLAGS, '--session', 'alpha'];
+  const waiting = ['set', 'T1', '--status', 'waiting', '--waits', 'decision:owner', '--note', 'two plans', ...TEST_OWNER_CARD_FLAGS, '--session', 'alpha'];
   return kit.run(waiting, files === undefined ? {} : { files });
 }
 

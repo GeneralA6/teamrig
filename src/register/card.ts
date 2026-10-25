@@ -20,6 +20,11 @@ export interface DecisionCard {
    * work and proof unless the order must change, the work needs something new, or only the owner can see the result.
    */
   readonly whyAsk?: string;
+  /**
+   * Only on a wait on the owner's decision (T1194): the owner gate [ownerGates] or the business decision that makes
+   * the question the owner's at all; any other question is its leader's, however many good answers it has.
+   */
+  readonly gate?: string;
 }
 
 /** The CLI flags that write a card's parts, for the refusals that name them. */
@@ -27,6 +32,29 @@ export const CARD_FLAGS = '--question, --options, --recommend and --default';
 
 /** The CLI flag that writes a card's `whyAsk`. */
 export const WHY_ASK_FLAG = '--why-ask';
+
+/** The CLI flag that writes a card's `gate`. */
+export const GATE_FLAG = '--gate';
+
+/** The gate that names a business decision, the owner's besides the owner gates (T1194). */
+export const BUSINESS_GATE = 'business';
+
+/** The gates a card may name: each owner gate [ownerGates], then a business decision. */
+export function gateChoices(ownerGates: readonly string[]): string[] {
+  return [...ownerGates, BUSINESS_GATE];
+}
+
+/** How `--gate` is typed, naming each gate a card may name. */
+export function gateUsage(ownerGates: readonly string[]): string {
+  const choices = gateChoices(ownerGates);
+  return `${GATE_FLAG} "<${choices.slice(0, -1).join(', ')} or ${BUSINESS_GATE}>"`;
+}
+
+/** The gate `typed` names, as `ownerGates` or BUSINESS_GATE spell it, case aside; undefined when it names none. */
+export function gateOf(typed: string, ownerGates: readonly string[]): string | undefined {
+  const key = typed.trim().toLowerCase();
+  return gateChoices(ownerGates).find((choice) => choice.toLowerCase() === key);
+}
 
 /** How to say why the owner (`ownerSource`) is asked about what the owner ordered (T802). */
 export function whyAskUsage(ownerSource: string): string {
@@ -47,12 +75,34 @@ const TASK_WORD = /\bT[1-9]\d*\b/g;
 
 /** The card's parts as one list of texts, in the order a card prints them. */
 export function cardTexts(card: DecisionCard): string[] {
-  return [card.question, ...(card.whyAsk === undefined ? [] : [card.whyAsk]), ...card.options, card.recommend, card.byDefault];
+  return [
+    card.question,
+    ...(card.gate === undefined ? [] : [card.gate]),
+    ...(card.whyAsk === undefined ? [] : [card.whyAsk]),
+    ...card.options,
+    card.recommend,
+    card.byDefault,
+  ];
 }
 
-/** The card without its `whyAsk`: what it keeps once its task waits on no owner's decision or approval. */
-export function withoutWhyAsk(card: DecisionCard): DecisionCard {
-  return { question: card.question, options: card.options, recommend: card.recommend, byDefault: card.byDefault };
+/** Which of a card's owner parts still hold: `whyAsk` and `gate` each go once what they answer no longer applies. */
+export interface KeptOwnerParts {
+  /** The task is one the owner ordered and waits on the owner's decision or approval (T802). */
+  readonly whyAsk: boolean;
+  /** The task waits on the owner's decision (T1194). */
+  readonly gate: boolean;
+}
+
+/** The card with only the owner parts that still hold (`keep`). */
+export function keptCard(card: DecisionCard, keep: KeptOwnerParts): DecisionCard {
+  return {
+    question: card.question,
+    options: card.options,
+    recommend: card.recommend,
+    byDefault: card.byDefault,
+    ...(keep.whyAsk && card.whyAsk !== undefined ? { whyAsk: card.whyAsk } : {}),
+    ...(keep.gate && card.gate !== undefined ? { gate: card.gate } : {}),
+  };
 }
 
 /** How many words a text says besides task ids: letters and digits in runs, so `30 days: 4 GB` is four. */
@@ -101,6 +151,7 @@ export function sameCard(a: DecisionCard | null, b: DecisionCard | null): boolea
     a.recommend === b.recommend &&
     a.byDefault === b.byDefault &&
     a.whyAsk === b.whyAsk &&
+    a.gate === b.gate &&
     a.options.length === b.options.length &&
     a.options.every((option, index) => option === b.options[index])
   );
@@ -117,7 +168,7 @@ export function parseCard(value: unknown): DecisionCard | undefined | string {
   if (!isRecord(value)) {
     return 'card is not an object';
   }
-  const { question, options, recommend, byDefault, whyAsk } = value;
+  const { question, options, recommend, byDefault, whyAsk, gate } = value;
   if (typeof question !== 'string' || typeof recommend !== 'string' || typeof byDefault !== 'string') {
     return 'card needs question, recommend and byDefault as text';
   }
@@ -127,16 +178,21 @@ export function parseCard(value: unknown): DecisionCard | undefined | string {
   if (whyAsk !== undefined && typeof whyAsk !== 'string') {
     return 'card whyAsk is not text';
   }
-  return { question, options, recommend, byDefault, ...(whyAsk === undefined ? {} : { whyAsk }) };
+  if (gate !== undefined && typeof gate !== 'string') {
+    return 'card gate is not text';
+  }
+  return { question, options, recommend, byDefault, ...(whyAsk === undefined ? {} : { whyAsk }), ...(gate === undefined ? {} : { gate }) };
 }
 
 /**
- * A card as printed under its task: the question, why the owner is asked (when the card says), each option
- * numbered, the recommendation and the default, each line led by `indent`.
+ * A card as printed under its task: the question, the owner gate or business reason that makes it the owner's and
+ * why the owner is asked (when the card says), each option numbered, the recommendation and the default, each line
+ * led by `indent`.
  */
 export function cardLines(card: DecisionCard, indent: string): string[] {
   return [
     `${indent}decide: ${card.question}`,
+    ...(card.gate === undefined ? [] : [`${indent}gate: ${card.gate}`]),
     ...(card.whyAsk === undefined ? [] : [`${indent}why asked: ${card.whyAsk}`]),
     ...card.options.map((option, index) => `${indent}  ${index + 1}. ${option}`),
     `${indent}recommended: ${card.recommend}`,

@@ -5,7 +5,7 @@ import { projectTranscriptPath } from '../budget/discover.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { SessionLog } from '../sessions/log.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
-import { TEST_CARD_FLAGS } from '../testing/card.ts';
+import { TEST_CARD_FLAGS, TEST_OWNER_CARD_FLAGS } from '../testing/card.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakePathProbe } from '../testing/fake-processes.ts';
@@ -268,7 +268,7 @@ describe('teamrig idle-close', () => {
       const added = await alpha.kit.run(['add', '--title', title, '--description', 'what and why', '--priority', 'p2', '--owner', 'alpha', '--session', 'lead']);
       assert.equal(added.code, 0, added.stderr.join('\n'));
       const id = /T\d+/.exec(added.stdout.join('\n'))?.[0] ?? '';
-      const set = await alpha.kit.run(['set', id, '--status', 'waiting', '--waits', waits, '--note', 'the choice', ...TEST_CARD_FLAGS, '--session', 'alpha']);
+      const set = await alpha.kit.run(['set', id, '--status', 'waiting', '--waits', waits, '--note', 'the choice', ...(waits === 'decision:owner' ? TEST_OWNER_CARD_FLAGS : TEST_CARD_FLAGS), '--session', 'alpha']);
       assert.equal(set.code, 0, set.stderr.join('\n'));
     }
     assert.equal((await idleClose(alpha)).code, 0);

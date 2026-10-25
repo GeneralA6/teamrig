@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { MEETING_LAPSE_MS } from '../meeting/state.ts';
-import { TEST_CARD, TEST_CARD_FLAGS } from '../testing/card.ts';
+import { TEST_CARD, TEST_GATE, TEST_OWNER_CARD_FLAGS } from '../testing/card.ts';
 import { APP, CliHarness, TEAM } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
 
@@ -15,7 +15,7 @@ async function teamBeforeTheMeeting(config = TEAM): Promise<CliHarness> {
   const kit = new CliHarness(config);
   const added = await kit.run(['add', '--title', 'Pick the pricing tier', '--description', 'which tier ships first', '--priority', 'p1', '--session', 'alpha']);
   assert.equal(added.code, EXIT.ok, added.stderr.join('\n'));
-  await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'decision:owner', '--note', 'two options', ...TEST_CARD_FLAGS, '--session', 'alpha']);
+  await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'decision:owner', '--note', 'two options', ...TEST_OWNER_CARD_FLAGS, '--session', 'alpha']);
   await kit.run(['add', '--title', 'Ship the docs', '--description', 'what and why', '--priority', 'p2', '--owner', 'bravo', '--due', '2030-01-07', '--session', 'lead']);
   await kit.run(['inbox', 'add', '--to', 'lead', '--text', 'the build is green', '--session', 'alpha']);
   return kit;
@@ -36,6 +36,7 @@ describe('runCli: the daily meeting', () => {
     assert.match(stdout[2] ?? '', /^ {2}T1 waiting, p1, owner alpha \| Pick the pricing tier/);
     assert.equal(stdout[3], '    what and why: which tier ships first');
     assert.equal(stdout[4], `    decide: ${TEST_CARD.question}`);
+    assert.equal(stdout[5], `    gate: ${TEST_GATE}`);
     assert.ok(stdout.includes('    waiting since 01-08 10:00 UTC: two options'), stdout.join('\n'));
     const late = stdout.indexOf('LATE 1 past their due date');
     assert.match(stdout[late + 1] ?? '', /^ {2}T2 open, p2, owner bravo, due 01-07 \| Ship the docs/);

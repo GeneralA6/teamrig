@@ -86,7 +86,7 @@ const TASK_FIELDS = ['title', 'description', 'owner', 'ref', 'priority', 'due', 
 
 const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   add: { effect: 'write', flags: ['session', 'source', 'team', ...TASK_FIELDS], load: async () => (await registerCommands()).add },
-  set: { effect: 'write', flags: ['session', 'status', 'note', 'evidence', 'skill', 'followups', 'waits', 'question', 'options', 'recommend', 'default', 'why-ask', 'proof', 'met', 'due', 'ask', 'text'], load: async () => (await registerCommands()).set },
+  set: { effect: 'write', flags: ['session', 'status', 'note', 'evidence', 'skill', 'followups', 'waits', 'question', 'options', 'recommend', 'default', 'why-ask', 'gate', 'proof', 'met', 'due', 'ask', 'text'], load: async () => (await registerCommands()).set },
   update: { effect: 'write', flags: ['session', 'note', ...TASK_FIELDS], switches: ['pin', 'unpin'], load: async () => (await registerCommands()).update },
   approve: { effect: 'write', flags: ['session', 'note'], switches: ['decline'], load: async () => (await registerCommands()).approve },
   list: {
@@ -321,7 +321,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   add --team <child team> --title .. --description .. --priority p<n> [...]   hands that team's lead a task
   set <id> --status open|in-progress|verifying|waiting|done|dropped [--note "<what/why>"] [--evidence <proof>]
       [--skill <name>|none] [--followups T<id>,...|none] [--waits decision:<who>,approval:<who>,task:T<id>,time:<date>]
-      [--question ".." --options "<a> | <b>" --recommend ".." --default ".." --why-ask ".."]
+      [--question ".." --options "<a> | <b>" --recommend ".." --default ".." --why-ask ".." --gate ".."]
       [--proof "<what proves it>"] [--met "<what shows it>"] [--due <date>] [--ask <session> --text "<the work>"]
       verifying needs --proof: what will prove the shipped change works; --due sets the date to verify by
       a start that a verifying task it needs holds goes through with --met: what shows that task's proof
@@ -340,6 +340,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       besides task ids; a later set changes one part alone
       a task the owner ordered asks the owner only with --why-ask "<how the order must change, what new it
       needs, or why only the owner can see the result>"; check flags it OWNER-ORDERED without one
+      a wait on the owner's decision names what makes it the owner's: --gate "<an owner gate (ownerGates)
+      or business>"; any other question is yours or your leader's: decide it, or wait on your leader;
+      check flags it UNGATED without one
   update <id> [--title ..] [--description ..|none] [--owner ..] [--priority ..] [--ref ..|none]
       [--due <date>|none] [--goals a,b|none] [--week <date>|none] [--after T5,T6|none] [--size <pct>|none]
       [--problem problem|critical|none] [--pin|--unpin] [--note ..]   the lead may change owner, priority, due,
