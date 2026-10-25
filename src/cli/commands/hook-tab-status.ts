@@ -58,24 +58,30 @@ export async function tabTitleOf(runtime: CliRuntime, payload: JsonRecord, own: 
 }
 
 /**
- * What the hook prints for this payload: the tab title as a terminal sequence, or '' with tab status off or no change.
- * A question picker the picker guard refuses leaves the title: the picker never opens, and the session goes on.
+ * The tab title this payload sets, as a terminal sequence; undefined with tab status off or no change. A question
+ * picker the picker guard refuses leaves the title: the picker never opens, and the session goes on.
  */
-export async function tabStatusOutputOf(runtime: CliRuntime, payload: JsonRecord): Promise<string> {
+export async function tabSequenceOf(runtime: CliRuntime, payload: JsonRecord): Promise<string | undefined> {
   // The switch first: it costs no file read, and on most machines it is off.
   if (!titleLeftToHooks(runtime.env)) {
-    return '';
+    return undefined;
   }
   const found = await sessionTeam(payload, runtime);
   const kit = found.kind === 'team' ? await openKit(runtime, found.team) : undefined;
   if (kit?.load.status !== 'loaded' || !kit.load.config.tabStatus.enabled) {
-    return '';
+    return undefined;
   }
   if ((await refusedPickerAsker(runtime, kit, kit.load.config, payload)) !== undefined) {
-    return '';
+    return undefined;
   }
   const title = await tabTitleOf(runtime, payload, { team: kit.paths.team, roster: await rosterOf(runtime, kit, kit.load.config) });
-  return title === undefined ? '' : JSON.stringify({ terminalSequence: tabTitleSequence(title) });
+  return title === undefined ? undefined : tabTitleSequence(title);
+}
+
+/** What the hook prints for this payload: the tab title's terminal sequence in Claude Code's JSON, or '' for none. */
+export async function tabStatusOutputOf(runtime: CliRuntime, payload: JsonRecord): Promise<string> {
+  const sequence = await tabSequenceOf(runtime, payload);
+  return sequence === undefined ? '' : JSON.stringify({ terminalSequence: sequence });
 }
 
 /**
