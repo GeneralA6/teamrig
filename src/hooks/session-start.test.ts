@@ -19,7 +19,7 @@ function context(overrides: Partial<SessionStartInput> = {}): string {
   return sessionStartContext({
     team: 'app',
     load: loaded(),
-    teamRules: undefined,
+    teamRules: [],
     renames: [],
     titleNote: undefined,
     refreshNote: undefined,
@@ -138,7 +138,7 @@ VERIFY 1, oldest first:
   });
 
   it("appends the team's rules", () => {
-    const text = context({ teamRules: { path: '/kit/teams/app/rules.md', text: 'Ship small.' } });
+    const text = context({ teamRules: [{ ancestor: undefined, path: '/kit/teams/app/rules.md', text: 'Ship small.' }] });
     assert.match(text, /# Your team's rules\nShip small\.$/);
   });
 
@@ -193,7 +193,7 @@ VERIFY 1, oldest first:
   });
 
   it('stays inside the context cap with long team rules', () => {
-    const text = context({ teamRules: { path: '/kit/teams/app/rules.md', text: 'x'.repeat(CONTEXT_MAX_CHARS) } });
+    const text = context({ teamRules: [{ ancestor: undefined, path: '/kit/teams/app/rules.md', text: 'x'.repeat(CONTEXT_MAX_CHARS) }] });
     assert.ok(text.length <= CONTEXT_MAX_CHARS);
     assert.match(text, /Your team's rules are in \/kit\/teams\/app\/rules\.md/);
   });

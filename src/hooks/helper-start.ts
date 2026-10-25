@@ -35,8 +35,8 @@ export function helperOf(payload: unknown): Helper | undefined {
 export interface HelperStartInput {
   readonly team: string;
   readonly load: ConfigLoad;
-  /** The team's `rules.md`, when it exists. */
-  readonly teamRules: TeamRules | undefined;
+  /** The `rules.md` of each team above the session's, root first, then its own team's; those that exist. */
+  readonly teamRules: readonly TeamRules[];
   /** The team's rename log, so the helper learns its session's current name. */
   readonly renames: readonly Rename[];
   /** The helper's agent type, printed when Claude Code gave a plain name. */

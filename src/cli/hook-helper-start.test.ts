@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { APP, CLAUDE_SESSION, CliHarness, contextOf, TEAM, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import type { MemoryFiles } from '../testing/memory-files.ts';
+import { teamHomeOf, treeHarness } from '../testing/team-tree.ts';
 import { EXIT } from './runtime.ts';
 
 const RULES = join(TEAM_HOME, 'rules.md');
@@ -46,6 +47,14 @@ describe('the subagent-start hook', () => {
     assert.match(text, /pass --session alpha to any `teamrig` command your brief asks for\./);
     assert.ok(text.endsWith("# Your team's rules\nShip small."));
     assert.ok(!text.includes('You are the `'));
+  });
+
+  it("gives a helper of a child team's session the rules of each team above it first", async () => {
+    const kit = await treeHarness();
+    await kit.files.write(RULES, '- app rule.');
+    await kit.files.write(join(teamHomeOf('ui'), 'rules.md'), '- ui rule.');
+    const text = contextOf(await kit.run(['hook', 'subagent-start'], { stdin: SUBAGENT_START, env: { TEAMRIG_TEAM: 'ui', TEAMRIG_SESSION: 'pixel' } }));
+    assert.ok(text.endsWith("# Team app's rules (a team above yours; they win over a lower team's)\n- app rule.\n\n# Your team's rules\n- ui rule."), text);
   });
 
   it('takes the session from $TEAMRIG_SESSION when it is set', async () => {

@@ -11,8 +11,8 @@ import { renderCorePack, renderLeadRules, renderSessionContext, type RulesClock,
 export interface SessionStartInput {
   readonly team: string;
   readonly load: ConfigLoad;
-  /** The team's `rules.md`, when it exists. */
-  readonly teamRules: TeamRules | undefined;
+  /** The `rules.md` of each team above the session's, root first, then its own team's; those that exist. */
+  readonly teamRules: readonly TeamRules[];
   /** The team's rename log, so the session learns its current name and old names still find it. */
   readonly renames: readonly Rename[];
   /** What the hook did with the session's Claude Code title, when there is something to say. */

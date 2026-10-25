@@ -5,7 +5,7 @@ import { CONFIG_MIGRATIONS, type ConfigFormat } from '../config/migrate.ts';
 import { CONFIG_VERSION } from '../config/types.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { FakePackageRegistry } from '../testing/fake-package-registry.ts';
-import { teamInboxOf } from '../testing/team-tree.ts';
+import { teamHomeOf, teamInboxOf, treeHarness } from '../testing/team-tree.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { ENV } from '../core/home.ts';
 import { CLIENT_MANIFEST, clientFileHash, clientManifestText, clientRootOf } from '../exec/client-integrity.ts';
@@ -790,6 +790,16 @@ describe('runCli: hook session-start', () => {
     assert.match(text, /^# Team rules \(teamrig core\)/);
     assert.ok(text.includes('You are the `alpha` session of team `app` (name `app-alpha`). Message the lead as `captain`.'));
     assert.ok(text.endsWith("# Your team's rules\nShip small."));
+  });
+
+  it("gives a child team's session the rules of each team above it, root first, before its own", async () => {
+    const kit = await treeHarness();
+    for (const team of ['app', 'web', 'ui']) {
+      await kit.files.write(join(teamHomeOf(team), 'rules.md'), `- ${team} rule.`);
+    }
+    const result = await kit.run(['hook', 'session-start'], { env: { TEAMRIG_TEAM: 'ui', TEAMRIG_SESSION: 'pixel' }, stdin: JSON.stringify({ cwd: APP }) });
+    const above = (team: string) => `# Team ${team}'s rules (a team above yours; they win over a lower team's)\n- ${team} rule.`;
+    assert.ok(contextOf(result).endsWith([above('app'), above('web'), "# Your team's rules\n- ui rule."].join('\n\n')));
   });
 
   it('says why no rules load without a team config', async () => {
