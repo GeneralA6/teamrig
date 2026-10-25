@@ -41,3 +41,41 @@ export function titleKey(title: string): string {
   const lower = title.toLowerCase();
   return NAME_PATTERN.test(lower) ? lower : title;
 }
+
+/**
+ * A session's name without its team's prefix: the default name `<team>-<id>` reads as the id beside the team it
+ * already names (`app-lead` of team app is `lead`); a name that is only the prefix, or another team's, stays.
+ */
+export function bareName(team: string, name: string): string {
+  const prefix = `${team}-`;
+  return name.startsWith(prefix) && name.length > prefix.length ? name.slice(prefix.length) : name;
+}
+
+/**
+ * How a session reads where people see it (a tab's title, the pane's header): its team once, in brackets, before
+ * its bare name, `[app] lead`. Only for text written for people: the Claude Code session name stays the
+ * session's name, the address SendMessage takes, which a space or a bracket would break.
+ */
+export function sessionDisplay(team: string, name: string): string {
+  return `[${team}] ${bareName(team, name)}`;
+}
+
+/** A title's team and name: `team` is undefined for a title that names no team. */
+export interface TitleParts {
+  readonly team: string | undefined;
+  readonly name: string;
+}
+
+/** `[<team>] <name>`, the {@link sessionDisplay} form. */
+const DISPLAY_PATTERN = /^\[([^\]]*)\]\s+(\S.*)$/;
+
+/**
+ * A title in the {@link sessionDisplay} form, whatever the team's case, as its team and name; any other title,
+ * one whose brackets hold no team id among them, is a bare name, kept whole.
+ */
+export function titleParts(title: string): TitleParts {
+  const match = DISPLAY_PATTERN.exec(title.trim());
+  const team = match?.[1]?.trim().toLowerCase();
+  const name = match?.[2]?.trim();
+  return team !== undefined && name !== undefined && ID_PATTERN.test(team) ? { team, name } : { team: undefined, name: title };
+}
