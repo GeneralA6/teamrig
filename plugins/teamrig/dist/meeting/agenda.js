@@ -1,5 +1,6 @@
 import { MS_PER_DAY } from "../core/time.js";
-import { cardLines, cardTexts, namedTaskIds } from "../register/card.js";
+import { cardLines, cardTexts, GATE_FLAG, namedTaskIds } from "../register/card.js";
+import { isUngated } from "../register/check.js";
 import { ACTIVE_STATUSES } from "../register/model.js";
 import { cut, formatShortTask } from "../register/views.js";
 /**
@@ -26,6 +27,14 @@ export function agendaSince(previousEnd, now) {
 /** Whether a task waits for a decision or an approval from the owner: a waiting one, or a verifying one's proof. */
 export function waitsOnOwner(task, ownerMarker) {
     return task.waits.some((reason) => (reason.kind === 'decision' || reason.kind === 'approval') && reason.who === ownerMarker);
+}
+/**
+ * Whether the lead asks the owner a task's wait: it waits on the owner (waitsOnOwner) and, while `requireGate`
+ * (`register.requireDecisionCard`) is on, is not ungated (isUngated, T1194): an ungated one is its session's or its
+ * leader's to decide, so neither the agenda's DECISIONS nor a decision batch holds it.
+ */
+export function asksOwner(task, ownerMarker, requireGate) {
+    return waitsOnOwner(task, ownerMarker) && !(requireGate && isUngated(task, ownerMarker));
 }
 /** Text on one line: line breaks and runs of spaces become one space. */
 export function oneLine(text) {
@@ -72,7 +81,7 @@ export function cardFacts(task, tree, byId) {
  * card form is the owner's: each item readable alone, with the numbers to decide by and one exact action.
  */
 function decisionLines(input) {
-    const waiting = input.tree.inPlanOrder(input.tasks.filter((task) => waitsOnOwner(task, input.ownerMarker)));
+    const waiting = input.tree.inPlanOrder(input.tasks.filter((task) => asksOwner(task, input.ownerMarker, input.requireGate)));
     const head = `DECISIONS ${waiting.length} waiting on ${input.ownerMarker} (decision or approval)`;
     if (waiting.length === 0) {
         return [head];
@@ -83,6 +92,21 @@ function decisionLines(input) {
         `  Read each card to ${input.ownerMarker} as it stands, each figure explained; where one says no card yet, ask its owner for it (check flags it NO-CARD). Never point to a doc; \`${input.command} show <id>\` prints a task whole.`,
         `  A question a card does not answer is its task owner's to find: ${input.command} add --owner <id> --due <date> --session ${input.lead}, then relay the answer; never look it up yourself.`,
         `  Record each answer in the same turn: ${input.command} update <id> --note "${input.ownerMarker} decided: <decision>" --session ${input.lead}; meeting end tells each task's owner.`,
+    ];
+}
+/**
+ * UNGATED: the waits on the owner's decision whose card names no owner gate or business decision (isUngated), each
+ * its session's or its leader's to decide, so the lead never reads one out; none while `requireGate` is off, and
+ * no block when none waits.
+ */
+function ungatedLines(input) {
+    const ungated = input.requireGate ? input.tree.inPlanOrder(input.tasks.filter((task) => isUngated(task, input.ownerMarker))) : [];
+    if (ungated.length === 0) {
+        return [];
+    }
+    return [
+        ...listed(`UNGATED ${ungated.length} waiting on ${input.ownerMarker}'s decision with no gate: never read to ${input.ownerMarker}`, ungated.map((task) => rowOf(task, input.tree)), `${input.command} check`),
+        `  Each is its session's or its leader's to decide: decide those of the sessions you lead and send each its answer as an inbox line; where an owner gate or a business decision does apply, its owner sets it again with ${GATE_FLAG} "<the owner gate, or business>".`,
     ];
 }
 /** LATE: the active tasks past their effective due date (their own, or an earlier one of a task that needs them), in plan order. */
@@ -96,7 +120,10 @@ function doneLines(input) {
     const done = input.tree.inPlanOrder(input.tasks.filter((task) => (task.status === 'done' || task.status === 'dropped') && Date.parse(task.statusAt) >= input.since));
     return listed(`DONE ${done.length} done or dropped since ${input.tree.zone.weekdayMinute(new Date(input.since))}`, done.map((task) => rowOf(task, input.tree)), `${input.command} list --status done,dropped`);
 }
-/** The register's agenda: the owner's decisions first, as they are what the meeting is for, then the late tasks, then the finished ones. */
+/**
+ * The register's agenda: the owner's decisions first, as they are what the meeting is for, then the ungated waits
+ * that are not, then the late tasks, then the finished ones.
+ */
 export function agendaLines(input) {
-    return [...decisionLines(input), ...lateLines(input), ...doneLines(input)];
+    return [...decisionLines(input), ...ungatedLines(input), ...lateLines(input), ...doneLines(input)];
 }

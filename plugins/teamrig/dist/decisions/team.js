@@ -16,6 +16,7 @@ export async function teamDecisions(files, paths, config, tasks, now, zone, else
         now,
         askedAt: askedAtOf(asked, meeting),
         ownerMarker: config.register.ownerSource,
+        requireGate: config.register.requireDecisionCard,
         config: config.decisions,
     });
     return { batch, tree };
