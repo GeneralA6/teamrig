@@ -321,10 +321,12 @@ stateDiagram-v2
 - `teamrig list` and `teamrig check` print a short form within 3,000 characters by default, since a session reads
   them at every work block: counts, short rows and `+N more`. `--all` prints every field of every task or flag.
   A command line teamrig cannot read prints only that command's usage lines; `teamrig <command> --help` shows them.
-- A lead hands a child team work with `teamrig add --team web --title "..." --description "..." --priority p2`: the task lands in `web`'s own
-  list, owned by `web`'s lead and marked as from `your-team/lead`, and `web`'s lead splits it among its sessions
-  and opens them. Only the parent team's lead may do this. When the task is done or dropped, the parent team's lead
-  gets one inbox line, `web/T1 done: <title> | evidence: ...`, as its own register holds no copy.
+- Any session asks another team of its tree for work with `teamrig add --team web --title "..." --description "..." --priority p2`:
+  the task lands in `web`'s own list, marked as from the asker (`your-team/alpha`). Without `--owner` it goes to
+  `web`'s lead, who splits it among its sessions and opens them; `--owner web-front` gives it to that session, and
+  `web`'s lead gets a copy line, as it sets its team's work order and may reorder or reassign it with `teamrig update`.
+  A team outside the tree is refused. When the task is done or dropped, the asker gets one inbox line,
+  `web/T1 done: <title> | evidence: ...`, as its own register holds no copy (its team's lead, once it left that team).
 - `teamrig list --tree`, `check --tree` and `plan --tree` give a lead its team's tasks and those of every team
   under it, with ids like `web/T4`. They only read the other teams' lists. With `--tree`, `--session` names the
   lead asking, so a tab without `$TEAMRIG_SESSION` passes `--session lead`. The teams of a tree number their tasks
