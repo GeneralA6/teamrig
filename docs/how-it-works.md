@@ -801,3 +801,7 @@ sets none gets.
 
 The reader builds the dependency tree (`TaskTree`) from the rows it keeps, any row with the fields `TreeTask`
 names, so the effective dues and needed-by names it shows are the ones teamrig prints.
+
+From each team's config and roster it builds the team tree (`teamNodeOf` per team, then `TeamTree`: a team's parent,
+children and root), and from the text of the hire log it reads who was hired and who retired (`readHiringLog`, then
+`activeHires`, `retiredSessions`, `rehiredFrom`), the same records teamrig's routing and hire commands use.
