@@ -187,10 +187,10 @@ so it never loses work to a compaction.
    and due dates: the fresh start reads them live from the register (step 5), and a copy here could only go stale.
    It must be new: the old file left as it was is refused.
 3. Run `teamrig refresh --ready --session web`. It prints `Ready. Ask the user to type /clear; your next start
-   reads <path>.`. At the end of that turn the tab title becomes `shop-web: type /clear` (the session's name;
+   reads <path>.`. At the end of that turn the tab title becomes `[shop] web: type /clear` (the session's team and name;
    `refresh.tabTitle: false` turns that off; with `tabStatus.enabled`, after the tab's state circle).
 4. End your turn and start nothing new. The user types `/clear` once done with your screen, which a `/clear`
-   wipes. With `refresh.autoRestart: true` the title reads `shop-web: restarting` instead: once the tab has been
+   wipes. With `refresh.autoRestart: true` the title reads `[shop] web: restarting` instead: once the tab has been
    idle 15 s (`refresh.restartDelaySeconds`), teamrig's
    mod runs `/clear` in this tab, after asking Claude Code that no helper of yours still runs (it waits while one does),
    and once the user is away: it waits while the prompt box holds a draft and for 5 minutes after their last key or
@@ -199,7 +199,7 @@ so it never loses work to a compaction.
    tab when `teamrig open` started it, else in a new tab. While a background shell runs (a background command or
    a monitor), it ends nothing and your inbox says to type `/clear`, which keeps the shell.
    If the user sends a prompt first, the restart is cancelled and you keep this context. When the restart
-   cannot start, the title reads `shop-web: type /clear`: ask the user to type `/clear`.
+   cannot start, the title reads `[shop] web: type /clear`: ask the user to type `/clear`.
 5. After the fresh start, the session-start context says `You were refreshed after T2; read your handover first:
    <path>`, then the scheduled jobs (still scheduled after a `/clear`, to make again after a new process), the
    wake-up to make again, the old scratchpad and the plan file, then your active tasks as the register holds them

@@ -744,7 +744,7 @@ export interface RefreshConfig {
   readonly everyTasks: number;
   /** The smallest context the task count refreshes at: under it a fresh start saves little. */
   readonly everyTasksMinTokens: number;
-  /** Title the tab once the session's handover is written: `<name>: restarting`, or `<name>: type /clear`. */
+  /** Title the tab once the session's handover is written: `[<team>] <name>: restarting`, or `[<team>] <name>: type /clear`. */
   readonly tabTitle: boolean;
   /**
    * Once the handover is written and the turn has ended, start the session fresh, which reads the handover:

@@ -177,7 +177,8 @@ sequenceDiagram
   gives it the rules it missed at start. Its next prompt titles the tab with the lead's name, and Claude Code keeps
   that title across a `/clear`, so the session a `/clear` starts binds itself to the lead by it.
 - A tab you start by hand binds itself when its Claude Code title (`claude --name`, `/rename`) is a session's id or
-  current name on the team of the folder it started in, and on no other team of the tree. The hooks then know it as
+  current name, or the `[<team>] <name>` form teamrig titles tabs with, on the team of the folder it started in,
+  and on no other team of the tree. The hooks then know it as
   `inbox read` would, but nothing is marked read. A title that names no session, or sessions of two teams, binds
   nothing, and the prompt hook says once how to bind the tab. `$TEAMRIG_SESSION` and an earlier binding always win.
   A bound tab with no title gets its session's name as title at its next prompt (`sessionTitle` in the prompt
@@ -500,7 +501,7 @@ sequenceDiagram
   W->>H: teamrig set T2 --status done, then the turn ends
   H-->>W: Stop: your context is 132k (refresh at 120k), write your handover
   W->>H: writes handover/web.md, runs teamrig refresh --ready
-  H-->>Y: Stop: web finished T2 and wrote its handover, it restarts once idle (the tab title reads "web: restarting")
+  H-->>Y: Stop: web finished T2 and wrote its handover, it restarts once idle (the tab title reads "[shop] web: restarting")
   H->>W: idle 15 s: teamrig's mod runs /clear in the tab
   H-->>W: SessionStart: you were refreshed after T2, read your handover first
 ```
