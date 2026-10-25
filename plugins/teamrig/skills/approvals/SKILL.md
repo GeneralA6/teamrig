@@ -42,6 +42,8 @@ Approve only when every line holds:
   fix>"`. Its owner gets an inbox line to fix that and ask again.
 - Owner-gated content: decline with a note that says so ("owner-gated: <what>; ask the owner with a card"), so its
   owner sets it waiting on the owner's approval with a decision card. Your approval never stands in for the owner's.
+- Anything else, a route, a merge or who reviews, is yours however many good answers it has: answer it yourself and
+  never send it on to the owner.
 
 ## 4. After
 
