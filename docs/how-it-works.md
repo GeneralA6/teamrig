@@ -98,8 +98,10 @@ talk to one lead: the root team's.
   in step. A tree has at most 3 levels and a team at most 8 child teams.
 - Any session writes a note to any session of its tree, `<team>/<id>`, with no relay through the leads between them:
   a note hands no work, which is a task on the receiver's own register, and wakes it only with `--wake now`. Teams
-  of separate trees never reach each other. A question for you still goes up lead by lead to the root's lead, who
-  talks to you.
+  of separate trees never reach each other. Only the root's lead talks to you: a wait on your decision in any team of
+  the tree is in its decisions batch and daily meeting as `<team>/<id>` (`web/T2`), and your answer, recorded on
+  that task, reaches the task's owner when the meeting ends. An urgent one also tells its team's own lead, who
+  passes it up.
 - Claude Code session names are machine-wide, so two teams never share one: `team create` refuses a clash and
   `teamrig doctor` names one, along with a broken link in the tree.
 - `teamrig team tree` prints the tree with each team's lead and sessions.

@@ -37,6 +37,9 @@ status, and tell the human in the meeting as an FYI.
 Tell the human the meeting started in one line. `teamrig meeting agenda --session lead` prints the agenda again,
 during the meeting or to prepare the next one.
 
+In a tree of teams only the root team's lead holds the meeting: its `DECISIONS` also lists the waits of every team
+under it, named `<team>/<id>` (`web/T2`), and a child team's lead holds none.
+
 Your context refresh waits for the meeting: no handover ask and no restart until it ends, unless your context
 reaches `refresh.compactCeilingTokens` (185,000 by default), past which it goes on so you never run out of room.
 
@@ -69,7 +72,8 @@ its notes, nor through a helper: add the question as that session's task with a 
 teamrig add --session lead --owner <id> --source owner --priority p1 --due <date> --title "Owner asks on T7: <the question>" --description "<what the human needs, and for which decision>"
 ```
 
-The `add` tells the owner by inbox line; when the human waits for the answer in this meeting, also send the owner
+For a task of a team under yours (`web/T2`), add `--team web` and drop `--source`: the task lands in that team, its
+lead copied. The `add` tells the owner by inbox line; when the human waits for the answer in this meeting, also send the owner
 one message with the deadline. Tell the human when the answer will come and go on to the next card. Relay the
 answer as soon as it arrives, or bring it at the next meeting. On your tab, the lead boundary hook flags a web lookup
 or a search of another session's notes, naming whom to ask.
@@ -80,7 +84,9 @@ or a search of another session's notes, naming whom to ask.
 teamrig update T7 --note "owner decided: the middle tier ships first" --priority p1 --session lead
 ```
 
-The note is what `meeting end` tells the task's owner, with any priority, due date or week you changed. A new order
+The note is what `meeting end` tells the task's owner, with any priority, due date or week you changed. A task of a
+team under yours takes its row's name and a note alone: `teamrig update web/T2 --note "owner decided: ..." --session
+lead`; its fields stay that team's. A new order
 of the human's that creates work is a new task: `teamrig add --session lead --owner <id> --source owner ...`. When a
 decision changes what a session works on right now, send it one CRITICAL message; anything else waits for the end.
 
