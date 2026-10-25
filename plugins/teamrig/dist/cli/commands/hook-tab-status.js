@@ -1,11 +1,12 @@
 import { isRecord, stringField } from "../../core/guards.js";
 import { ENV } from "../../core/home.js";
+import { tabDisplayOf } from "../../hooks/bind.js";
 import { tabTitleSequence } from "../../hooks/stop.js";
 import { TRANSCRIPT_TAIL_BYTES } from "../../names/title.js";
 import { readRunningKinds } from "../../refresh/running.js";
 import { helpersRun, readyWaitsOnHelpers, tabChangeOf, tabTitle, topicOf } from "../../tabs/status.js";
 import { noPositionals } from "../args.js";
-import { openKit } from "../kit.js";
+import { openKit, rosterOf } from "../kit.js";
 import { EXIT } from "../runtime.js";
 import { parseJson, sessionTeam } from "./hook-input.js";
 import { refusedPickerAsker } from "./hook-picker-guard.js";
@@ -32,10 +33,11 @@ async function helpersRunFor(runtime, payload) {
 }
 /**
  * The title this hook event gives the tab: its state's circle before `label` (a refresh notice's title), else
- * before the session's topic, read from the transcript only when the payload has no session title. A ready
- * state reads as working while a helper still runs. '' gives the title back to the terminal; undefined leaves it.
+ * before the session's topic, read from the transcript only when the payload has no session title; a topic
+ * naming one session of `own` reads `[<team>] <name>` (tabDisplayOf). A ready state reads as working while a
+ * helper still runs. '' gives the title back to the terminal; undefined leaves it.
  */
-export async function tabTitleOf(runtime, payload, label) {
+export async function tabTitleOf(runtime, payload, own, label) {
     const change = tabChangeOf(payload);
     if (change === undefined || change === 'reset') {
         return change === 'reset' ? '' : undefined;
@@ -45,7 +47,7 @@ export async function tabTitleOf(runtime, payload, label) {
         return tabTitle(state, label);
     }
     const named = stringField(payload, 'session_title')?.trim();
-    return tabTitle(state, topicOf(payload, named === undefined || named === '' ? await transcriptTailOf(runtime, payload) : undefined));
+    return tabTitle(state, tabDisplayOf(own, topicOf(payload, named === undefined || named === '' ? await transcriptTailOf(runtime, payload) : undefined)));
 }
 /**
  * What the hook prints for this payload: the tab title as a terminal sequence, or '' with tab status off or no change.
@@ -64,7 +66,7 @@ export async function tabStatusOutputOf(runtime, payload) {
     if ((await refusedPickerAsker(runtime, kit, kit.load.config, payload)) !== undefined) {
         return '';
     }
-    const title = await tabTitleOf(runtime, payload);
+    const title = await tabTitleOf(runtime, payload, { team: kit.paths.team, roster: await rosterOf(runtime, kit, kit.load.config) });
     return title === undefined ? '' : JSON.stringify({ terminalSequence: tabTitleSequence(title) });
 }
 /**

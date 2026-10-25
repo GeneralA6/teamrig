@@ -47,7 +47,7 @@ function askContextOf(runtime, scope, store) {
     return {
         settings: config.refresh,
         now: new Date(runtime.clock.now()).toISOString(),
-        session: { id, name: roster.nameOf(id) ?? id },
+        session: { id, team: scope.kit.paths.team, name: roster.nameOf(id) ?? id },
         handoverPath: store.handoverPath(id),
         command: KIT_NAME,
     };

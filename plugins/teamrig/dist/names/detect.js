@@ -1,15 +1,23 @@
-import { titleKey } from "../core/ids.js";
+import { bareName, titleKey, titleParts } from "../core/ids.js";
 import { checkRename, recordRename } from "./record.js";
 /**
  * Records the title the user gave session `id` in Claude Code as the session's own rename; its id is
- * no rename, since a tab may be titled by its id to bind it (hooks/bind.ts). The
+ * no rename, since a tab may be titled by its id to bind it (hooks/bind.ts), and neither is the
+ * `[<team>] <name>` form of its own name people see (sessionDisplay). The
  * roster read without the lock settles the common cases, the same name or a refused one, so a hook
  * on every prompt takes the lock only to record.
  */
-export async function adoptTitle(deps, roster, id, title) {
-    const name = titleKey(title);
+export async function adoptTitle(deps, own, id, title) {
+    const { team, roster } = own;
+    const parts = titleParts(title);
+    const ownBracket = parts.team === team;
+    const name = titleKey(ownBracket ? parts.name : title);
     if (name === id) {
         // The id always names the session, so a tab titled by its id (to bind it) keeps the session's name.
+        return { kind: 'unchanged' };
+    }
+    if (ownBracket && bareName(team, name) === bareName(team, roster.nameOf(id) ?? id)) {
+        // `[app] scout` shows the session named `app-scout`: its own name as people see it, not a rename to `scout`.
         return { kind: 'unchanged' };
     }
     const request = { id, to: name, by: id };

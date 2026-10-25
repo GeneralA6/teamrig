@@ -1,3 +1,4 @@
+import { sessionDisplay } from "../core/ids.js";
 import { lineHash } from "../inbox/line-hash.js";
 const NONE = { kind: 'none' };
 const MEASURE = { kind: 'measure' };
@@ -40,7 +41,7 @@ export function noticeOf(state, context, restart) {
         kind: 'notice',
         state: { ...state, noticed: true, transcript: context.transcript },
         message: `${context.command}: ${name}${finished} wrote its handover; ${next}`,
-        title: context.settings.tabTitle ? `${name}: ${restart ? 'restarting' : 'type /clear'}` : undefined,
+        title: context.settings.tabTitle ? `${sessionDisplay(context.session.team, name)}: ${restart ? 'restarting' : 'type /clear'}` : undefined,
         restart,
     };
 }

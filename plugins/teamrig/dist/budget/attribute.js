@@ -16,7 +16,7 @@ export async function attribute(input) {
         let title;
         if (id === undefined) {
             title = await titleOfFirst(input, session.main);
-            const titled = title === undefined ? [] : sessionsTitled(input.roster, title);
+            const titled = title === undefined ? [] : sessionsTitled({ team: input.team, roster: input.roster }, title);
             id = titled.length === 1 ? titled[0] : undefined;
         }
         if (id === undefined) {
