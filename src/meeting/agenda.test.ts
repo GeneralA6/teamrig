@@ -3,20 +3,21 @@ import assert from 'node:assert/strict';
 import { MS_PER_DAY } from '../core/time.ts';
 import type { Task } from '../register/fold.ts';
 import { TaskTree } from '../register/tree.ts';
-import { TEST_CARD } from '../testing/card.ts';
+import { TEST_CARD, TEST_OWNER_CARD } from '../testing/card.ts';
 import { testTask } from '../testing/task.ts';
-import { AGENDA_ROWS, agendaLines, agendaSince, DESCRIPTION_CHARS, DONE_WINDOW_DAYS, oneLine, waitsOnOwner, type AgendaInput } from './agenda.ts';
+import { AGENDA_ROWS, agendaLines, agendaSince, asksOwner, DESCRIPTION_CHARS, DONE_WINDOW_DAYS, oneLine, waitsOnOwner, type AgendaInput } from './agenda.ts';
 import { TimeZone } from '../core/zone.ts';
 
 const NOW = Date.parse('2030-01-08T10:00:00Z');
 
-function inputOf(tasks: readonly Task[], since = NOW - MS_PER_DAY): AgendaInput {
+function inputOf(tasks: readonly Task[], since = NOW - MS_PER_DAY, requireGate = true): AgendaInput {
   return {
     tasks,
     tree: new TaskTree(new Map(tasks.map((task) => [task.id, task])), new Date(NOW), TimeZone.UTC),
     now: NOW,
     since,
     ownerMarker: 'owner',
+    requireGate,
     lead: 'lead',
     command: 'teamrig',
   };
@@ -37,8 +38,11 @@ const DECIDE = testTask({
   note: 'two options, numbers in the card',
   statusAt: '2030-01-07T15:30:00.000Z',
   ref: 'issue 12',
-  card: TEST_CARD,
+  card: TEST_OWNER_CARD,
 });
+
+/** A wait on the owner's decision whose card names no gate (T1194). */
+const UNGATED = testTask({ id: 'T6', status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], card: TEST_CARD });
 
 describe('the meeting agenda', () => {
   it('starts the finished work at the meeting before, else a day back, and never past the window', () => {
@@ -55,17 +59,30 @@ describe('the meeting agenda', () => {
     assert.equal(waitsOnOwner(testTask({ status: 'verifying', proof: 'the run', waits: [{ kind: 'approval', who: 'owner' }] }), 'owner'), true, "a verifying task's proof");
   });
 
+  it("asks the owner a wait on the owner unless gates are required and its decision's card names none", () => {
+    const approval = testTask({ status: 'waiting', waits: [{ kind: 'approval', who: 'owner' }], card: TEST_CARD });
+    const uncarded = testTask({ status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }] });
+    assert.deepEqual(
+      [DECIDE, UNGATED, approval, uncarded].map((task) => asksOwner(task, 'owner', true)),
+      [true, false, true, true],
+      'an approval names no gate, and a missing card is NO-CARD',
+    );
+    assert.equal(asksOwner(UNGATED, 'owner', false), true, 'while gates are not required');
+    assert.equal(asksOwner(testTask(), 'owner', true), false);
+  });
+
   it('puts text on one line', () => {
     assert.equal(oneLine(' a\n  b\tc '), 'a b c');
   });
 
   it("gives each owner's decision its card facts, then how to card, ask about and record it", () => {
     const lines = section(agendaLines(inputOf([DECIDE, testTask({ id: 'T5', status: 'waiting', waits: [{ kind: 'approval', who: 'owner' }] })])), 'DECISIONS');
-    assert.deepEqual(lines.slice(0, 10), [
+    assert.deepEqual(lines.slice(0, 11), [
       'DECISIONS 2 waiting on owner (decision or approval)',
       '  T4 waiting, p2, owner alpha | Pick the pricing tier (waiting: decision owner)',
       '    what and why: Which tier ships first. The launch waits on it.',
       '    decide: Which pricing tier ships first',
+      '    gate: budget',
       '      1. Basic at 9 dollars a month',
       '      2. Pro at 29 dollars a month',
       '    recommended: Basic, the cheaper launch',
@@ -73,19 +90,44 @@ describe('the meeting agenda', () => {
       '    waiting since 01-07 15:30 UTC: two options, numbers in the card',
       '    asked at: issue 12',
     ]);
-    assert.deepEqual(lines.slice(10, 13), [
+    assert.deepEqual(lines.slice(11, 14), [
       '  T5 waiting, p2, owner alpha | Add a health check (waiting: approval owner)',
       '    no card yet: ask alpha for one (check flags it NO-CARD)',
       '    waiting since 01-07 09:00 UTC',
     ]);
-    assert.match(lines[13] ?? '', /^ {2}Read each card to owner as it stands, .*Never point to a doc; `teamrig show <id>` prints a task whole\.$/);
+    assert.match(lines[14] ?? '', /^ {2}Read each card to owner as it stands, .*Never point to a doc; `teamrig show <id>` prints a task whole\.$/);
     // T737: the owner's follow-up question goes to the task's owner, not to the lead's own research.
     assert.equal(
-      lines[14],
+      lines[15],
       "  A question a card does not answer is its task owner's to find: teamrig add --owner <id> --due <date> --session lead, then relay the answer; never look it up yourself.",
     );
-    assert.equal(lines[15], '  Record each answer in the same turn: teamrig update <id> --note "owner decided: <decision>" --session lead; meeting end tells each task\'s owner.');
-    assert.equal(lines.length, 16);
+    assert.equal(lines[16], '  Record each answer in the same turn: teamrig update <id> --note "owner decided: <decision>" --session lead; meeting end tells each task\'s owner.');
+    assert.equal(lines.length, 17);
+  });
+
+  // T1219: an ungated wait is its session's or its leader's, so the lead never reads it to the owner.
+  it("moves a wait on the owner's decision whose card names no gate out of DECISIONS, into UNGATED with whose it is", () => {
+    const all = agendaLines(inputOf([DECIDE, UNGATED]));
+    assert.equal(section(all, 'DECISIONS')[0], 'DECISIONS 1 waiting on owner (decision or approval)');
+    assert.ok(!section(all, 'DECISIONS').some((line) => /\bT6\b/.test(line)), all.join('\n'));
+    assert.deepEqual(section(all, 'UNGATED'), [
+      "UNGATED 1 waiting on owner's decision with no gate: never read to owner",
+      '  T6 waiting, p2, owner alpha | Add a health check (waiting: decision owner)',
+      `  Each is its session's or its leader's to decide: decide those of the sessions you lead and send each its answer as an inbox line; where an owner gate or a business decision does apply, its owner sets it again with --gate "<the owner gate, or business>".`,
+    ]);
+  });
+
+  it('lists at most a screen of ungated waits, then the command for all', () => {
+    const ungated = Array.from({ length: AGENDA_ROWS + 1 }, (_, index) => ({ ...UNGATED, id: `T${index + 10}` }));
+    const lines = section(agendaLines(inputOf(ungated)), 'UNGATED');
+    assert.equal(lines[0], `UNGATED ${AGENDA_ROWS + 1} waiting on owner's decision with no gate: never read to owner`);
+    assert.equal(lines.at(-2), '  +1 more: teamrig check');
+  });
+
+  it('keeps an ungated wait in DECISIONS while gates are not required', () => {
+    const all = agendaLines(inputOf([DECIDE, UNGATED], NOW - MS_PER_DAY, false));
+    assert.equal(all[0], 'DECISIONS 2 waiting on owner (decision or approval)');
+    assert.ok(!all.some((line) => line.startsWith('UNGATED')), all.join('\n'));
   });
 
   it('cuts a long description', () => {
@@ -137,7 +179,7 @@ describe('the meeting agenda', () => {
 
 describe('the meeting agenda: no task number stands alone', () => {
   it('names each other task a decision names by its title', () => {
-    const naming: Task = { ...DECIDE, card: { ...TEST_CARD, recommend: 'Basic, as T2 already shipped it' }, note: 'T2 and T9 both matter' };
+    const naming: Task = { ...DECIDE, card: { ...TEST_OWNER_CARD, recommend: 'Basic, as T2 already shipped it' }, note: 'T2 and T9 both matter' };
     const lines = section(agendaLines(inputOf([naming, testTask({ id: 'T2', title: 'Ship the basic tier' })])), 'DECISIONS');
     assert.deepEqual(
       lines.filter((line) => /^ {4}T\d+: /.test(line)),

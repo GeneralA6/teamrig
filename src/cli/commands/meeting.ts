@@ -113,6 +113,7 @@ async function printAgenda(args: ParsedArgs, runtime: CliRuntime, mk: MeetingKit
     now: mk.now,
     since: agendaSince(previousEnd(phase), mk.now),
     ownerMarker: mk.config.register.ownerSource,
+    requireGate: mk.config.register.requireDecisionCard,
     lead: mk.lead,
     command: KIT_NAME,
   });

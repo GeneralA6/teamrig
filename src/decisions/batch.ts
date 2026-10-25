@@ -1,7 +1,7 @@
 import type { DecisionsConfig } from '../config/types.ts';
 import { MS_PER_DAY } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
-import { waitsOnOwner } from '../meeting/agenda.ts';
+import { asksOwner } from '../meeting/agenda.ts';
 import type { Task } from '../register/fold.ts';
 import type { TaskTree } from '../register/tree.ts';
 
@@ -62,13 +62,15 @@ export interface BatchInput {
   readonly askedAt: number | undefined;
   /** The register's marker for the owner (`register.ownerSource`). */
   readonly ownerMarker: string;
+  /** `register.requireDecisionCard`: a wait on the owner's decision names its gate, so an ungated one is left out (asksOwner). */
+  readonly requireGate: boolean;
   readonly config: DecisionsConfig;
 }
 
 /** The batch the lead asks the owner next, and whether it is due now. */
 export function decisionBatch(input: BatchInput): DecisionBatch {
   const { tree, now, askedAt } = input;
-  const waiting = tree.inPlanOrder([...input.tasks].filter((task) => waitsOnOwner(task, input.ownerMarker)));
+  const waiting = tree.inPlanOrder([...input.tasks].filter((task) => asksOwner(task, input.ownerMarker, input.requireGate)));
   const asked = (task: Task): boolean => askedAt !== undefined && Date.parse(task.statusAt) <= askedAt;
   const pending = waiting.filter((task) => !asked(task));
   const overdue = waiting.filter((task) => asked(task) && (tree.dueTime(task) ?? Number.POSITIVE_INFINITY) < now);
