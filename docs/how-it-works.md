@@ -496,7 +496,8 @@ sequenceDiagram
   (`budget.weeklyLimitW`). Each wake is a line in `state/wakes.jsonl` (session, tab, tasks, W, cold or not); a wake
   a prompt hook refused is logged there with its reason.
 - When it looks: every 15 s while no turn runs (a subagent's included), the mod runs `teamrig hook wake-check` once
-  the task log (`state/events.jsonl`) changed, a batch fell due, or 10 minutes passed. Each check holds a lock of the
+  the task log (`state/events.jsonl`) or the session's asks folder (`state/wake-asks/<id>`, where an urgent or
+  `inbox add --wake now` line posts) changed, a batch fell due, or 10 minutes passed. Each check holds a lock of the
   session's, so two tabs never wake it twice; a session open in two tabs at once is not woken, since each tab's first
   check starts the count over.
 - `wake.enabled: false` turns it off. A headless `claude -p` or a Claude Code that does not load mods is never woken.

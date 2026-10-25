@@ -4098,8 +4098,8 @@ Output: one JSON line, exit 0: `{"kind":"go"}` or `{"kind":"skip","reason":"<why
 
 ### teamrig hook wake-check
 
-Run by the plugin's mod while its tab is idle at the prompt, when the register changed, a batch falls due or 10
-minutes passed (it looks every 15 seconds). It decides whether new work handed to the tab's session should wake
+Run by the plugin's mod while its tab is idle at the prompt, when the register or the session's asks folder (an
+urgent or `inbox add --wake now` line) changed, a batch falls due or 10 minutes passed (it looks every 15 seconds). It decides whether new work handed to the tab's session should wake
 it, and logs each wake with its cost to `<team>/state/wakes.jsonl`. A task wakes the session once, when it is the
 session's, open or in progress, at `wake.priority` or more urgent (p1 by default; p1 only while the session's
 budget holds it, past its daily budget with no room left in the team's day, or in quiet hours), with every task it comes after finished, and changed by someone else
