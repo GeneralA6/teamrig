@@ -12,7 +12,6 @@ import { activeLift, LiftLog } from '../../budget/lift.ts';
 import { OUTSIDE_ID } from '../../budget/measure.ts';
 import { runMeter } from '../../budget/meter.ts';
 import { budgetSplitOf, dailyBudgetOf } from '../../budget/parts.ts';
-import { weekUseOf } from '../../budget/snapshot.ts';
 import { UsageStore, type UsageState } from '../../budget/store.ts';
 import { teamWeekOf } from '../../budget/team-week.ts';
 import { helperGate, promptWarning, stopWarning, type BudgetFacts, type BudgetLeader, type HelperGate } from '../../budget/warn.ts';
@@ -22,7 +21,7 @@ import { cachedWork, WORK_CACHE_FILE } from '../../budget/work.ts';
 import { postLine } from '../../inbox/inbox.ts';
 import { holdBack } from '../../hooks/permission.ts';
 import { helperLaunchReminder } from '../../rules/helper-default.ts';
-import { otherTeamsOnAccount, snapshotsOnAccount } from '../account-teams.ts';
+import { otherTeamsOnAccount, weekUseOnAccount } from '../account-teams.ts';
 import { teamZone, type Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
 import { liftNamesOf } from './budget.ts';
@@ -91,8 +90,7 @@ export async function budgetFactsOf(runtime: CliRuntime, scope: BudgetScope, tra
     byId.set(each, (await team.load(each)).state);
   }
   const outside = (await new UsageStore(files, join(kit.paths.usage, 'outside')).load(OUTSIDE_ID)).state;
-  const snapshots = await snapshotsOnAccount(runtime, budget, kit.paths);
-  const statusUse = weekUseOf(snapshots, now);
+  const statusUse = await weekUseOnAccount(runtime, budget, kit.paths, now);
   const states = [...byId.values(), outside];
   const week = await teamWeekOf(files, kit.paths, { budget, now, statusUse, states });
   const { teamDay, todayWPerPct } = week;

@@ -12,7 +12,7 @@ import { FakeClock } from '../testing/fake-clock.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { InlineMutex } from '../testing/inline-mutex.ts';
 import { MemoryFiles, normalisePath } from '../testing/memory-files.ts';
-import { accountOf, accountSnapshotsOf, accountTeamsOf, workCacheFileOf, type AccountScope, type AccountTeamSource, type SnapshotDirSource } from './account.ts';
+import { accountOf, accountTeamsOf, accountWeekOf, workCacheFileOf, type AccountScope, type AccountTeamSource, type SnapshotDirSource } from './account.ts';
 import { LiftLog, type Lift } from './lift.ts';
 import { formatSnapshot, snapshotOfStatus } from './snapshot.ts';
 
@@ -124,7 +124,7 @@ describe('accountTeamsOf', () => {
   });
 });
 
-describe('accountSnapshotsOf', () => {
+describe('accountWeekOf', () => {
   const KIT_HOME = join('/', 'kit');
   const OWN = join(KIT_HOME, 'teams', 'app', 'live');
   const ALPHA = '0000000a-0000-4000-8000-000000000001';
@@ -158,12 +158,9 @@ describe('accountSnapshotsOf', () => {
       ['web', dirSourceOf('web')],
     ]);
 
-    const snapshots = await accountSnapshotsOf(files, teams, OWN, SCOPE);
+    const fold = await accountWeekOf(files, teams, OWN, SCOPE);
 
-    assert.deepEqual(
-      snapshots.map((snapshot) => snapshot.sessionId),
-      [ALPHA, CHARLIE, DELTA],
-    );
+    assert.equal(fold.best?.usedPct, 46, "ops's 80 is on another account; ui and web share the kit's folder");
   });
 
   it("skips another team's folder that cannot be read, and fails on its own", async () => {
@@ -173,12 +170,9 @@ describe('accountSnapshotsOf', () => {
     const teams = new Map([['qa', dirSourceOf('qa', { statusSnapshotDir: qa })]]);
 
     const others = new FaultyFiles(memory).fail('list', qa, systemError('EACCES'));
-    assert.deepEqual(
-      (await accountSnapshotsOf(others, teams, OWN, SCOPE)).map((snapshot) => snapshot.sessionId),
-      [ALPHA],
-    );
+    assert.equal((await accountWeekOf(others, teams, OWN, SCOPE)).best?.usedPct, 40);
 
     const own = new FaultyFiles(memory).fail('list', OWN, systemError('EACCES'));
-    await assert.rejects(accountSnapshotsOf(own, teams, OWN, SCOPE), /EACCES/);
+    await assert.rejects(accountWeekOf(own, teams, OWN, SCOPE), /EACCES/);
   });
 });

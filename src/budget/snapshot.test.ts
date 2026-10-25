@@ -9,6 +9,7 @@ import {
   datedSnapshot,
   defaultSnapshotDir,
   formatSnapshot,
+  mergeWeekFolds,
   parseSnapshot,
   pruneSnapshots,
   readSnapshots,
@@ -19,8 +20,11 @@ import {
   snapshotDirOf,
   snapshotOfStatus,
   statusLineText,
-  weekUseOf,
+  weekFoldOf,
+  weekUseAt,
   type StatusSnapshot,
+  type WeekFold,
+  type WeekUse,
 } from './snapshot.ts';
 
 const SID = '0b6f9c2e-5d1a-4c3e-9f7a-2e8d4b1c6a90';
@@ -66,6 +70,11 @@ function snapshot(overrides: Partial<StatusSnapshot> = {}): StatusSnapshot {
     contextInputTokens: null,
     ...overrides,
   };
+}
+
+/** The reading that counts among the snapshots at `now`. */
+function weekUseOf(snapshots: readonly StatusSnapshot[], now: number): WeekUse | undefined {
+  return weekFoldOf(snapshots, now).best;
 }
 
 /** A snapshot written at `ts` whose week reading is `usedPct`, shown since `since` and taken after `after`. */
@@ -183,7 +192,7 @@ describe('datedSnapshot', () => {
   });
 });
 
-describe('weekUseOf', () => {
+describe('weekFoldOf: the reading that counts', () => {
   const resetsAt = WEEK_RESET_S * 1000;
 
   it("drops readings taken before another one is known to follow, so the owner's mid-week reset shows at once", () => {
@@ -246,6 +255,51 @@ describe('weekUseOf', () => {
     );
     assert.equal(use?.usedPct, 4);
     assert.equal(weekUseOf([], NOW), undefined);
+  });
+});
+
+describe('weekFoldOf, mergeWeekFolds and weekUseAt', () => {
+  const resetsAt = WEEK_RESET_S * 1000;
+  const NONE: WeekFold = { best: undefined, followedBy: undefined };
+  const highBefore = reading('2026-10-15T12:00:40.000Z', 98, '2026-10-15T09:00:00.000Z');
+  const undated = reading('2026-10-15T11:59:00.000Z', 98);
+  const resetMidWeek = reading('2026-10-15T12:00:30.000Z', 0.4, '2026-10-15T12:00:30.000Z', '2026-10-15T12:00:00.000Z');
+
+  it('keeps the reading that counts and the latest time a reading is known to follow', () => {
+    assert.deepEqual(weekFoldOf([highBefore, undated, resetMidWeek], NOW), {
+      best: { usedPct: 0.4, resetsAt, at: Date.parse('2026-10-15T12:00:30.000Z') },
+      followedBy: Date.parse('2026-10-15T12:00:00.000Z'),
+    });
+    assert.deepEqual(weekFoldOf([], NOW), NONE);
+  });
+
+  it('merges folds one snapshot at a time into the fold of them all, in any order', () => {
+    const all = weekFoldOf([highBefore, undated, resetMidWeek], NOW);
+    const orders = [
+      [highBefore, undated, resetMidWeek],
+      [resetMidWeek, undated, highBefore],
+      [undated, resetMidWeek, highBefore],
+    ];
+    for (const order of orders) {
+      const merged = order.reduce((fold, each) => mergeWeekFolds(fold, weekFoldOf([each], NOW)), NONE);
+      assert.deepEqual(merged, all, order.map((each) => each.ts).join(', '));
+    }
+  });
+
+  it('of the readings no other follows, takes a later week over a higher one, then the higher of one week', () => {
+    const fold = (usedPct: number, weekResetsAt: number): WeekFold => ({ best: { usedPct, resetsAt: weekResetsAt, at: NOW - 1 }, followedBy: undefined });
+    const nextWeek = resetsAt + 7 * MS_PER_DAY;
+    assert.deepEqual(mergeWeekFolds(fold(57, resetsAt), fold(10, nextWeek)), fold(10, nextWeek));
+    assert.deepEqual(mergeWeekFolds(fold(60, resetsAt), fold(57, resetsAt)), fold(60, resetsAt));
+    assert.deepEqual(mergeWeekFolds(NONE, fold(57, resetsAt)), fold(57, resetsAt));
+  });
+
+  it("gives the fold's reading while its week is current, also one dated after now, and none once it reset", () => {
+    const takenAfter = weekFoldOf([reading('2026-10-15T12:00:52.000Z', 59, '2026-10-15T12:00:51.000Z')], Date.parse('2026-10-15T12:00:52.000Z'));
+    assert.equal(weekUseAt(takenAfter, NOW)?.usedPct, 59, 'a reading folded while the reader read counts');
+    assert.equal(weekUseAt(takenAfter, resetsAt - 1)?.usedPct, 59);
+    assert.equal(weekUseAt(takenAfter, resetsAt), undefined, 'its week reset');
+    assert.equal(weekUseAt(NONE, NOW), undefined);
   });
 });
 

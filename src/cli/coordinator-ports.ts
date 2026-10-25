@@ -1,5 +1,6 @@
 import { resolveReset } from '../budget/pace.ts';
-import { readSnapshots, weekUseOf } from '../budget/snapshot.ts';
+import { weekUseAt } from '../budget/snapshot.ts';
+import { readFolderWeek } from '../budget/week-summary.ts';
 import type { BudgetConfig, HeavyConfig } from '../config/types.ts';
 import { CLAIMS_LOCK_TTL_MS } from '../coordinator/claim-store.ts';
 import { HostLock } from '../coordinator/host-lock.ts';
@@ -46,7 +47,7 @@ function lockAt(runtime: LockRuntime, path: string, ttlMs: number): HostLock {
 /** The next weekly token reset at each check: the one the status line last reported, else the one `budget.reset` sets; undefined when neither says. */
 export function nextResetFrom(runtime: Pick<CliRuntime, 'files'>, budget: Pick<BudgetConfig, 'reset'>, snapshotDir: string): (nowMs: number) => Promise<ResetTime | undefined> {
   return async (nowMs) => {
-    const fromStatus = weekUseOf(await readSnapshots(runtime.files, snapshotDir), nowMs)?.resetsAt;
+    const fromStatus = weekUseAt(await readFolderWeek(runtime.files, snapshotDir, nowMs), nowMs)?.resetsAt;
     const at = resolveReset(nowMs, fromStatus, budget.reset);
     if (at === undefined) {
       return undefined;

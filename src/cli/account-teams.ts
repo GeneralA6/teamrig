@@ -1,7 +1,7 @@
-import { accountOf, accountSnapshotsOf, accountTeamsOf } from '../budget/account.ts';
+import { accountOf, accountTeamsOf, accountWeekOf } from '../budget/account.ts';
 import { LiftLog } from '../budget/lift.ts';
 import { budgetSplitOf, type BudgetSplit, type TeamsOnAccount } from '../budget/parts.ts';
-import { snapshotDirOf, type StatusSnapshot } from '../budget/snapshot.ts';
+import { snapshotDirOf, weekUseAt, type WeekUse } from '../budget/snapshot.ts';
 import type { BudgetConfig, KitConfig } from '../config/types.ts';
 import { claudeConfigDir, type TeamPaths } from '../core/home.ts';
 import type { CliRuntime } from './runtime.ts';
@@ -50,16 +50,18 @@ export async function teamsOnAccountOf(runtime: CliRuntime, asking: AskingRoster
 }
 
 /**
- * Every status line snapshot on the asking team's Claude account (`accountSnapshotsOf`): its own folder's, then the
- * other teams' on the account, read-only, so a team whose tabs are idle reads the account's newest week %. Every
- * team's config is read on each call.
+ * The week's use at `now` from the newest status line reading on the asking team's Claude account (`accountWeekOf`):
+ * its own folder's, then the other teams' on the account, read-only, each through its week summary when it keeps one,
+ * so a team whose tabs are idle reads the account's newest week %. Every team's config is read on each call.
  */
-export async function snapshotsOnAccount(
+export async function weekUseOnAccount(
   runtime: CliRuntime,
   budget: Pick<BudgetConfig, 'account' | 'statusSnapshotDir'>,
   paths: Pick<TeamPaths, 'home' | 'kitHome'>,
-): Promise<StatusSnapshot[]> {
+  now: number,
+): Promise<WeekUse | undefined> {
   const { teams } = await loadTree(runtime);
   const configDir = claudeConfigDir(runtime.env, runtime.userHome);
-  return accountSnapshotsOf(runtime.files, teams, snapshotDirOf(budget, paths), { account: accountOf(budget, configDir), configDir });
+  const fold = await accountWeekOf(runtime.files, teams, snapshotDirOf(budget, paths), { account: accountOf(budget, configDir), configDir, now });
+  return weekUseAt(fold, now);
 }

@@ -31,7 +31,9 @@ import { CLAUDE_SESSION_ID } from '../inbox/marks.ts';
  *
  * `teamrig statusline` also prunes the folder (`pruneSnapshots`): a snapshot written more than 8 days
  * ago is removed, as it can no longer hold a reading of the current week, and so is a write's temporary
- * sibling over an hour old, left by a status line stopped before its rename.
+ * sibling over an hour old, left by a status line stopped before its rename. It also keeps the folder's
+ * week summary, `<snapshot folder>/.week` (`week-summary.ts`): the folder's readings of the week folded
+ * into one, which readers open instead of every snapshot.
  */
 
 /** One rate-limit window: percent used and when it resets, in epoch milliseconds. */
@@ -245,25 +247,67 @@ function currentReadingOf(snapshot: StatusSnapshot, now: number): DatedReading |
 }
 
 /**
- * The week's use at `now` from the snapshots of every session. A week's use only grows, except when the
+ * Readings of the week folded into one: the reading that counts among them and the latest time any of them is
+ * known to have been taken after, which drops every reading taken by then, such as one folded in later.
+ */
+export interface WeekFold {
+  readonly best: WeekUse | undefined;
+  readonly followedBy: number | undefined;
+}
+
+/** `use` when it counts over `best`: of a later week, or of the same week and higher. */
+function countsOver(best: WeekUse | undefined, use: WeekUse): WeekUse {
+  const later = best === undefined || use.resetsAt > best.resetsAt;
+  return later || (use.resetsAt === best.resetsAt && use.usedPct > best.usedPct) ? use : best;
+}
+
+function latestOf(a: number | undefined, b: number | undefined): number | undefined {
+  return a === undefined ? b : b === undefined ? a : Math.max(a, b);
+}
+
+/**
+ * The snapshots' readings of the week current at `now`, folded. A week's use only grows, except when the
  * owner resets it mid-week (its reset time unchanged), and an exited session's file keeps its last
  * reading for good. So a reading taken by the time another is known to follow is dropped; of the rest,
  * which no reading is known to follow, the latest week's highest counts.
  */
-export function weekUseOf(snapshots: readonly StatusSnapshot[], now: number): WeekUse | undefined {
+export function weekFoldOf(snapshots: readonly StatusSnapshot[], now: number): WeekFold {
   const readings = snapshots.flatMap((snapshot) => currentReadingOf(snapshot, now) ?? []);
-  const followedBy = readings.reduce((latest, reading) => Math.max(latest, reading.after ?? Number.NEGATIVE_INFINITY), Number.NEGATIVE_INFINITY);
+  const followedBy = readings.reduce<number | undefined>((latest, reading) => latestOf(latest, reading.after), undefined);
   let best: WeekUse | undefined;
   for (const reading of readings) {
-    if (reading.since <= followedBy) {
-      continue;
-    }
-    const later = best === undefined || reading.resetsAt > best.resetsAt;
-    if (later || (reading.resetsAt === best?.resetsAt && reading.usedPct > best.usedPct)) {
-      best = { usedPct: reading.usedPct, resetsAt: reading.resetsAt, at: reading.since };
+    if (followedBy === undefined || reading.since > followedBy) {
+      best = countsOver(best, { usedPct: reading.usedPct, resetsAt: reading.resetsAt, at: reading.since });
     }
   }
-  return best;
+  return { best, followedBy };
+}
+
+/**
+ * Two folds as one, as the fold of both their readings: the later follower time drops the reading of either
+ * taken by then, and of the rest the latest week's highest counts. A reading that lost to the other fold's is
+ * not kept, so when the follower time then drops the winner the loser cannot come back; a week's use only grows,
+ * so a reading that would is never higher than the one that drops the winner.
+ */
+export function mergeWeekFolds(a: WeekFold, b: WeekFold): WeekFold {
+  const followedBy = latestOf(a.followedBy, b.followedBy);
+  let best: WeekUse | undefined;
+  for (const use of [a.best, b.best]) {
+    if (use !== undefined && (followedBy === undefined || use.at > followedBy)) {
+      best = countsOver(best, use);
+    }
+  }
+  return { best, followedBy };
+}
+
+/**
+ * The fold's reading when its week is still current at `now`, resetting after it. A reading dated after `now`
+ * counts too: the status line folds each reading as it is shown, so one dated after a reader took its clock was
+ * folded while it read, and it replaced the reading the reader would otherwise have found.
+ */
+export function weekUseAt(fold: WeekFold, now: number): WeekUse | undefined {
+  const { best } = fold;
+  return best === undefined || best.resetsAt <= now ? undefined : best;
 }
 
 /** What the status line shows beside the snapshot: where the session works, and whether to show how to resume it. */
@@ -353,7 +397,7 @@ export async function readSnapshots(files: Pick<Files, 'list' | 'read'>, dir: st
 /**
  * Days a snapshot is kept after it was written: 8, as many as the usage files keep a day's totals. A
  * reading is taken by its snapshot's `ts` and its week resets at most 7 days later, so a snapshot older
- * than that holds no reading of the current week (`weekUseOf` skips it), and a session that shows the
+ * than that holds no reading of the current week (`weekFoldOf` skips it), and a session that shows the
  * reading again after a pause needs no previous snapshot to date it.
  */
 export const SNAPSHOT_DAYS_KEPT = 8;

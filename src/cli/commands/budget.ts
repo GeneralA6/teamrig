@@ -43,12 +43,13 @@ import {
   snapshotDirOf,
   snapshotOfStatus,
   statusLineText,
-  weekUseOf,
   type StatusLineView,
+  type StatusSnapshot,
 } from '../../budget/snapshot.ts';
 import { CURSOR_DAYS_KEPT, DAYS_KEPT, EMPTY_USAGE, MemoryUsageStore, UsageStore, type UsageState } from '../../budget/store.ts';
 import { attributedW, taskUseOf } from '../../budget/task-use.ts';
 import { teamWeekOf } from '../../budget/team-week.ts';
+import { foldIntoWeekSummary } from '../../budget/week-summary.ts';
 import { readWeek, wSince, type WeekReading } from '../../budget/week.ts';
 import { readWork } from '../../budget/work.ts';
 import { JsonlMarkLog } from '../../inbox/store.ts';
@@ -56,7 +57,7 @@ import { indexMarks } from '../../inbox/marks.ts';
 import type { RepoState } from '../../push-guard/push.ts';
 import { customTitleOf, TRANSCRIPT_TAIL_BYTES } from '../../names/title.ts';
 import { TASK_ID } from '../../register/model.ts';
-import { otherTeamsOnAccount, snapshotsOnAccount } from '../account-teams.ts';
+import { otherTeamsOnAccount, weekUseOnAccount } from '../account-teams.ts';
 import { UsageError, onePositional, requiredFlag, type Flags, type ParsedArgs } from '../args.ts';
 import { callerOf, type TypedTimes } from '../inputs.ts';
 import { openKit, openTeamKit, requireConfig, rosterOf, sessionIdOf, teamFolders, teamZone, type Kit } from '../kit.ts';
@@ -123,8 +124,7 @@ async function readBudget(runtime: CliRuntime, kit: Kit, config: KitConfig, rost
       maxRuns: MAX_RUNS_PER_SESSION,
     },
   );
-  const snapshots = recount ? [] : await snapshotsOnAccount(runtime, config.budget, kit.paths);
-  const statusUse = weekUseOf(snapshots, now);
+  const statusUse = recount ? undefined : await weekUseOnAccount(runtime, config.budget, kit.paths, now);
   const states = [...measured.bySession.values(), measured.outside];
   const input = { budget: config.budget, now, statusUse, states };
   // A recount reads no team state, the meter log included: its rate is the configured one.
@@ -531,6 +531,15 @@ function statusLineView(git: Pick<RepoState, 'branch' | 'head'>, dir: string, sh
   };
 }
 
+/** Folds the saved snapshot into the folder's week summary (`foldIntoWeekSummary`); a failure is told on stderr, never breaking the status bar. */
+async function foldQuietly(runtime: CliRuntime, dir: string, snapshot: StatusSnapshot): Promise<void> {
+  try {
+    await foldIntoWeekSummary(runtime.files, dir, snapshot, runtime.clock.now());
+  } catch (error) {
+    runtime.out.stderr(`teamrig statusline: the week summary was not updated: ${errorMessage(error)}`);
+  }
+}
+
 /** Prunes the snapshot folder's old snapshots and left temporaries (`pruneSnapshots`); a failure is told on stderr, never breaking the status bar. */
 async function pruneQuietly(runtime: CliRuntime, dir: string): Promise<void> {
   try {
@@ -543,7 +552,8 @@ async function pruneQuietly(runtime: CliRuntime, dir: string): Promise<void> {
 /**
  * `statusline`: Claude Code's status line. It saves the status input's reading (the plan's use of the
  * week and its reset) as a snapshot for `budget`, dated by the session's previous snapshot (when the
- * session began to show it, and when it last showed another), removes the folder's snapshots written more
+ * session began to show it, and when it last showed another), folds it into the folder's week summary (the
+ * newest reading, which readers open instead of every snapshot), removes the folder's snapshots written more
  * than 8 days ago (at most one sweep an hour), and prints a short status: the model, the session's
  * folder and branch, the plan's use and the command that resumes the session, as the team's `statusLine`
  * config shows them. It always exits 0, so a bad input or a full disk never breaks the status bar; what
@@ -570,7 +580,9 @@ export async function statusline(args: ParsedArgs, runtime: CliRuntime): Promise
     show = setup.show;
     const path = join(setup.snapshotDir, `${snapshot.sessionId}.json`);
     const previous = await runtime.files.read(path);
-    await runtime.files.write(path, formatSnapshot(datedSnapshot(snapshot, previous === undefined ? undefined : parseSnapshot(previous))));
+    const dated = datedSnapshot(snapshot, previous === undefined ? undefined : parseSnapshot(previous));
+    await runtime.files.write(path, formatSnapshot(dated));
+    await foldQuietly(runtime, setup.snapshotDir, dated);
     await pruneQuietly(runtime, setup.snapshotDir);
   } catch (error) {
     runtime.out.stderr(`teamrig statusline: the snapshot was not saved: ${errorMessage(error)}`);
