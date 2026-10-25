@@ -312,7 +312,9 @@ stateDiagram-v2
   gets one inbox line, `web/T1 done: <title> | evidence: ...`, as its own register holds no copy.
 - `teamrig list --tree`, `check --tree` and `plan --tree` give a lead its team's tasks and those of every team
   under it, with ids like `web/T4`. They only read the other teams' lists. With `--tree`, `--session` names the
-  lead asking, so a tab without `$TEAMRIG_SESSION` passes `--session lead`.
+  lead asking, so a tab without `$TEAMRIG_SESSION` passes `--session lead`. The teams of a tree number their tasks
+  from one count, so an id names one task in the whole tree: a new task in any of them takes the next number none
+  of them has used.
 - The task list is one log that only grows, a line for every move. `teamrig compact` archives it: the log becomes
 the next file in `state/archive/` byte for byte and is never deleted, a fresh log starts with a line naming it,
 and `state/snapshot.jsonl` holds every task as it stood, so commands and the task pane read the snapshot and the
