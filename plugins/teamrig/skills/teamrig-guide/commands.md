@@ -1636,9 +1636,10 @@ the next is. A batch is due when:
 The lead's `start` and `check` print one `DECISIONS batch due (<why>)` line while a batch is due, and nothing
 otherwise; other sessions get no line. A new owner wait's inbox line to the lead ends with when the owner hears of
 it: `AT ONCE, due <date> before the next batch`, `BATCH DUE: <why>` or `asked in the next batch <date>`. Its times,
-and a typed due date, are on the team's clock (`timeZone`); `batchTimesUtc` stays in UTC. On an `AT ONCE` one, the
-session setting it is told to message the lead too, as an inbox line wakes no one. Anyone may run it; it changes
-nothing.
+and a typed due date, are on the team's clock (`timeZone`); `batchTimesUtc` stays in UTC. An `AT ONCE` line to the
+lead also wakes it, as an `inbox add --wake now` line does; one that went to a sub-lead leaves the session setting
+the wait the `--wake now` line to post the lead. With `wake.enabled: false` that session is told to message the lead
+instead, as a line then wakes no one. Anyone may run it; it changes nothing.
 
 Flags:
 
@@ -3789,8 +3790,10 @@ asks on, for the picker or plan mode's exit, outside a team, or on an error. Exi
 
 Before a SendMessage call to a team session idle `messages.coldAfterMinutes` (60 by default) or longer, holds
 the message once: it would wake the receiver cold, and its first call would re-read its whole context at full
-price. The note says to write an inbox line if the receiver need not act now, or to put every ask for it in one
-message and send it again; the same tab's next send to it within 15 minutes goes through.
+price. The note says to write it as one inbox line instead, with `--wake now` if the receiver must act now, so
+lines posted together wake it once, and to send it again only for a live back-and-forth; the same tab's next send
+to it within 15 minutes goes through. With `wake.enabled: false` a line wakes no one, so the note says to write an
+inbox line if the receiver need not act now, or to put every ask for it in one message and send it again.
 
 While the owner's daily meeting is open (`teamrig meeting start`), it holds every message to the lead from another
 session, a resend too, unless the message starts with `CRITICAL`; the note says to leave an inbox line instead.
@@ -3800,9 +3803,11 @@ With `open.idle.mode: on`, a message to a team session teamrig closed (its last 
 no start of its tab since) reaches no tab, so the hook posts it as the receiver's
 [urgent line](hooks.md#urgent-lines), from the sender's session, and denies the send with that said: the idle pass
 reopens the receiver within about a minute, the line quoted in its first prompt, so the sender need not send it
-again. When the line cannot be posted, the note gives the reason and asks the sender to tell the lead and leave an
-inbox line once that is fixed. The meeting's hold comes first, then this one, then the cold hold; modes `off` and
-`dry-run` reopen no one, so they let the send go, and the failed-send hook's hint stands.
+again; with `wake.enabled` the note also gives the `inbox add --wake now` command that posts such a line, for the
+sender to run itself next time. When the line cannot be posted, the note gives the reason and asks the sender to
+tell the lead and leave an inbox line (`--wake now` with `wake.enabled`) once that is fixed. The meeting's hold
+comes first, then this one, then the cold hold; modes `off` and `dry-run` reopen no one, so they let the send go,
+and the failed-send hook's hint stands.
 
 Flags: none.
 

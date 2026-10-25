@@ -514,10 +514,11 @@ fail the tool: it returns `success: false`, and the message is lost unless the s
 `SendMessage` result, the model gets one line:
 
 ```text
-teamrig: the message to shop-lead was not sent (No agent named 'shop-lead' is reachable.); leave it as an inbox line, shown at lead's next prompt: `teamrig inbox add --to lead --text "..."`.
+teamrig: the message to shop-lead was not sent (No agent named 'shop-lead' is reachable.); leave it as an inbox line, shown at lead's next prompt: `teamrig inbox add --to lead --text "..."`, or with `--wake now` if lead must act on it now.
 ```
 
-For a name that is no team session, the line points to `teamrig who`, which prints the names to message by. For a
+With `wake.enabled: false` the line stops after the command, since a line then wakes no one. For a name that is no
+team session, the line points to `teamrig who`, which prints the names to message by. For a
 name Claude Code keeps for itself (`main`, `team-lead`, `user`, `system`), where every send fails, it adds why:
 ``team-lead is a name Claude Code keeps for itself, so a message sent to it never reaches a session.``
 Outside a team with a config it says nothing.

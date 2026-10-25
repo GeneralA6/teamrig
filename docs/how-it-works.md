@@ -97,8 +97,9 @@ talk to one lead: the root team's.
   (`"team": {"id": "web", "parent": "your-team"}`), so the tree is read from the configs, with no other file to keep
   in step. A tree has at most 3 levels and a team at most 8 child teams.
 - Any session writes a note to any session of its tree, `<team>/<id>`, with no relay through the leads between them:
-  a note wakes no one and hands no work, which is a task on the receiver's own register. Teams of separate trees never
-  reach each other. A question for you still goes up lead by lead to the root's lead, who talks to you.
+  a note hands no work, which is a task on the receiver's own register, and wakes it only with `--wake now`. Teams
+  of separate trees never reach each other. A question for you still goes up lead by lead to the root's lead, who
+  talks to you.
 - Claude Code session names are machine-wide, so two teams never share one: `team create` refuses a clash and
   `teamrig doctor` names one, along with a broken link in the tree.
 - `teamrig team tree` prints the tree with each team's lead and sessions.
@@ -426,7 +427,7 @@ sequenceDiagram
   participant Y as You
   participant W as web session
   L->>F: teamrig inbox add --to web --text "T2 is ready"
-  Note over W: web is idle, and a note does not wake it
+  Note over W: web is idle, and a note without --wake now does not wake it
   Y->>W: your next prompt to web
   W->>F: the UserPromptSubmit hook reads the lines it has not shown this session
   F-->>W: INBOX web, new in ... (each line is shown once; reading marks them read)
@@ -447,7 +448,8 @@ sequenceDiagram
   refusal names the kind, never the value. Task titles, refs, notes and evidence get the same check.
 - In a tree of teams, `--to web/lead` writes to a session of another team, within the rights in
   [Who is on the team](#who-is-on-the-team); the note names its sender as `your-team/lead`.
-- A note wakes no one; urgent work handed as a task does ([Waking on urgent work](#waking-on-urgent-work)). A task
+- A note wakes no one unless sent with `inbox add --wake now`; urgent work handed as a task does
+  ([Waking on urgent work](#waking-on-urgent-work)). A task
   that wakes no one, a p2 one by default, waits for its owner's next prompt, which is why `teamrig check` reports
   a task not picked up.
 
