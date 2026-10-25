@@ -1,13 +1,21 @@
 import { formatAddress } from "../core/address.js";
-import { titleKey } from "../core/ids.js";
+import { bareName, sessionDisplay, titleKey, titleParts } from "../core/ids.js";
 import { indexMarks, MARK_VERSION } from "../inbox/marks.js";
 /**
- * The sessions of `roster` whose id or current name is `title`, whatever its case (`titleKey`). A former name binds nothing:
- * the title rename that follows would give the session that old name back.
+ * The sessions of the team whose id or current name is `title`, whatever its case (`titleKey`), or, for a title
+ * in the `[<team>] <name>` form people see (sessionDisplay), whose bare name is its name; a title bracketing
+ * another team names none of this team's. A former name binds nothing: the title rename that follows would give
+ * the session that old name back.
  */
-export function sessionsTitled(roster, title) {
-    const key = titleKey(title);
-    return roster.ids.filter((id) => id === key || roster.nameOf(id) === key);
+export function sessionsTitled(own, title) {
+    const { team, roster } = own;
+    const parts = titleParts(title);
+    if (parts.team !== undefined && parts.team !== team) {
+        return [];
+    }
+    const key = titleKey(parts.name);
+    const shown = parts.team === undefined ? undefined : bareName(team, key);
+    return roster.ids.filter((id) => id === key || roster.nameOf(id) === key || (shown !== undefined && bareName(team, roster.nameOf(id) ?? id) === shown));
 }
 /**
  * The mark that binds `claudeSession` to `area`: the area's newest read position (line, last line's
@@ -39,11 +47,11 @@ export async function bindByTitle(deps, input) {
     if (title === undefined || title === '') {
         return { kind: 'untitled' };
     }
-    const ownIds = sessionsTitled(own.roster, title);
+    const ownIds = sessionsTitled(own, title);
     if (ownIds.length === 0) {
         return { kind: 'unmatched', title };
     }
-    const others = (await deps.treeTeams()).flatMap(({ team, roster }) => sessionsTitled(roster, title).map((id) => ({ team, id })));
+    const others = (await deps.treeTeams()).flatMap((other) => sessionsTitled(other, title).map((id) => ({ team: other.team, id })));
     const candidates = [...ownIds.map((id) => ({ team: own.team, id })), ...others];
     const [only] = candidates;
     if (candidates.length !== 1 || only === undefined) {
@@ -58,9 +66,19 @@ export async function bindByTitle(deps, input) {
  * the session's name. The tab then shows which session it is, and since Claude Code keeps the title
  * across /clear, the new session binds itself by it as it starts. Undefined for a tab with no session,
  * or with a title: that is the user's, recorded as a rename (names/detect.ts), never overwritten.
+ * The bare name, never the `[<team>] <name>` people see: Claude Code's session name is the address
+ * SendMessage takes, which a space or a bracket would break.
  */
 export function tabTitleFor(roster, id, title) {
     return id === undefined || title !== undefined ? undefined : (roster.nameOf(id) ?? id);
+}
+/**
+ * How a tab's topic reads in the title tab status writes for people: `[<team>] <name>` (sessionDisplay) when
+ * it names exactly one session of the team, as the name tabTitleFor gives a bound tab does; any other topic as it is.
+ */
+export function tabDisplayOf(own, topic) {
+    const [only, ...more] = sessionsTitled(own, topic);
+    return only === undefined || more.length > 0 ? topic : sessionDisplay(own.team, own.roster.nameOf(only) ?? only);
 }
 /**
  * How long after its handover was marked ready a session's Claude Code process still binds a cleared tab:

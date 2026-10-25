@@ -3,7 +3,7 @@ import { describeLaunch, launchOf } from "../../config/launch.js";
 import { isEffortLevel, isTerminalChoice, TERMINALS } from "../../config/types.js";
 import { splitAddress } from "../../core/address.js";
 import { ENV, KIT_NAME } from "../../core/home.js";
-import { ID_PATTERN, ID_RULE } from "../../core/ids.js";
+import { ID_PATTERN, ID_RULE, sessionDisplay } from "../../core/ids.js";
 import { HiringLog, rehiredFrom } from "../../hiring/log.js";
 import { CLAUDE_SESSION_ID } from "../../inbox/marks.js";
 import { findClaude } from "../../open/claude.js";
@@ -88,7 +88,7 @@ export async function openSessionTab(runtime, tab) {
         ...(tab.effort === undefined ? [] : ['--effort', tab.effort]),
         ...(tab.prompt === undefined ? ['--no-prompt'] : ['--encoded-prompt', encodePrompt(tab.prompt)]),
     ];
-    return { outcome: await openTab(runtime, tab.terminal, { title: tab.name, folder: tab.project, argv }), argv };
+    return { outcome: await openTab(runtime, tab.terminal, { title: sessionDisplay(tab.team, tab.name), folder: tab.project, argv }), argv };
 }
 /**
  * `open <id|name> [--prompt <text>] [--terminal <name>] [--project <dir>] [--resume]`: a new terminal tab in

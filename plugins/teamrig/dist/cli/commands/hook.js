@@ -257,7 +257,7 @@ async function titleOutcome(runtime, kit, config, payload, read) {
         }
         const roster = await rosterOf(runtime, kit, config);
         const id = await teamSessionOf(runtime, kit, roster, sessionIdOf(payload));
-        return id === undefined ? { kind: 'none' } : await adoptTitle(renameDepsOf(runtime, kit, config), roster, id, title);
+        return id === undefined ? { kind: 'none' } : await adoptTitle(renameDepsOf(runtime, kit, config), { team: kit.paths.team, roster }, id, title);
     }
     catch (error) {
         return { kind: 'failed', error: errorMessage(error) };
@@ -640,7 +640,7 @@ async function refreshDecisionOf(runtime, scope, payload) {
         stopHookActive: payload['stop_hook_active'] === true,
         settings: config.refresh,
         now: new Date(runtime.clock.now()).toISOString(),
-        session: { id, name: roster.nameOf(id) ?? id },
+        session: { id, team: kit.paths.team, name: roster.nameOf(id) ?? id },
         handoverPath: store.handoverPath(id),
         command: KIT_NAME,
         canRestart: config.refresh.autoRestart && target !== undefined,
@@ -705,11 +705,12 @@ async function askBlockOf(runtime, scope, payload, decision) {
  * notice's title, else before the session's topic. Undefined with tab status off, which leaves the notice's
  * own title, at a block, whose turn goes on, and on an error.
  */
-async function stopTabTitleOf(runtime, config, payload, decision) {
-    if (!tabStatusOn(runtime.env, config) || decision.kind === 'block') {
+async function stopTabTitleOf(runtime, team, roster, payload, decision) {
+    if (!tabStatusOn(runtime.env, team.config) || decision.kind === 'block') {
         return undefined;
     }
-    return tabTitleOf(runtime, payload, decision.kind === 'notice' ? decision.title : undefined).catch(() => undefined);
+    const own = { team: team.kit.paths.team, roster: roster ?? (await rosterOf(runtime, team.kit, team.config)) };
+    return tabTitleOf(runtime, payload, own, decision.kind === 'notice' ? decision.title : undefined).catch(() => undefined);
 }
 /**
  * What the Stop hook prints for this turn's end; '' outside a team, and only the tab's title (with tab status
@@ -721,7 +722,7 @@ async function stopOutputOf(runtime, payload) {
     const scope = team === undefined ? undefined : await sessionScopeOf(runtime, team, payload);
     if (scope === undefined) {
         const none = { kind: 'none' };
-        return team === undefined ? '' : stopOutput(none, [], await stopTabTitleOf(runtime, team.config, payload, none));
+        return team === undefined ? '' : stopOutput(none, [], await stopTabTitleOf(runtime, team, undefined, payload, none));
     }
     await logReply(runtime, { config: scope.config, paths: scope.kit.paths, id: scope.id }, payload).catch(() => undefined);
     // Before the refresh, which records a block's state before it prints: this block leaves the rest to the next stop.
@@ -738,7 +739,7 @@ async function stopOutputOf(runtime, payload) {
     const lead = await leadStopLines(runtime, scope, stringField(payload, 'transcript_path')).catch(() => []);
     const lines = [...notices, ...budget, ...verify, ...lead, ...hookless];
     const ask = await askBlockOf(runtime, scope, payload, decision).catch(() => undefined);
-    return ask === undefined ? stopOutput(decision, lines, await stopTabTitleOf(runtime, scope.config, payload, decision)) : blockOutput(ask, lines);
+    return ask === undefined ? stopOutput(decision, lines, await stopTabTitleOf(runtime, scope, scope.roster, payload, decision)) : blockOutput(ask, lines);
 }
 /**
  * Stop, at the end of every turn: first sends the session back, once, to a skill edit of the turn that

@@ -27,7 +27,7 @@ async function meterSession(deps, store, session, transcripts, input) {
  */
 export async function measure(deps, input) {
     const sessions = await discoverTranscripts(deps.transcripts, input.projectsDir, input.since);
-    const found = await attribute({ sessions, roster: input.roster, areaBySession: input.areaBySession, titleOf: (path) => deps.titleOf(path) });
+    const found = await attribute({ sessions, team: input.team, roster: input.roster, areaBySession: input.areaBySession, titleOf: (path) => deps.titleOf(path) });
     const bySession = new Map();
     const behind = [];
     for (const id of input.roster.ids) {
