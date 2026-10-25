@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { JsonRecord } from '../core/guards.ts';
+import { OWN_NUMBERS } from '../register/numbering.ts';
 import { RegisterPolicy } from '../register/policy.ts';
 import { Register } from '../register/register.ts';
 import { JsonlEventLog } from '../register/store.ts';
@@ -41,6 +42,7 @@ function register(): Register {
   return new Register({
     log: new JsonlEventLog(new MemoryFiles(), 'register/events.jsonl'),
     mutex: new InlineMutex(),
+    numbering: OWN_NUMBERS,
     clock: new FakeClock('2030-01-08T10:00:00.000Z'),
     zone: TimeZone.UTC,
     policy: new RegisterPolicy(testConfig()),

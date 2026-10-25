@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
 import { TimeZone } from '../core/zone.ts';
+import { OWN_NUMBERS } from '../register/numbering.ts';
 import { RegisterPolicy } from '../register/policy.ts';
 import { Register, type SkillCatalog } from '../register/register.ts';
 import { JsonlEventLog } from '../register/store.ts';
@@ -45,6 +46,7 @@ async function addTask(files: MemoryFiles, eventsPath: string, owner: string, pr
   const register = new Register({
     log: new JsonlEventLog(files, eventsPath),
     mutex: new InlineMutex(),
+    numbering: OWN_NUMBERS,
     clock: new FakeClock('2030-01-07T09:00:00.000Z'),
     policy: new RegisterPolicy(testConfig({ sessions: ['lead', 'front', 'back'] })),
     skills: new NoSkills(),

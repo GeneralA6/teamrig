@@ -93,6 +93,8 @@ export interface TeamPaths {
   readonly state: string;
   readonly events: string;
   readonly eventsLock: string;
+  /** A tree's root team's: taken by every task created in the tree, so one number is issued once (T1139). */
+  readonly idsLock: string;
   readonly inbox: string;
   readonly inboxMarks: string;
   /** What the prompt hook showed each Claude Code session of its inbox, so each line is shown once. */
@@ -220,6 +222,7 @@ export function teamPaths(kitHome: string, team: string, claudeDir: string, over
     state,
     events: join(state, 'events.jsonl'),
     eventsLock: join(state, 'events.lock'),
+    idsLock: join(state, 'ids.lock'),
     inbox: inHome(overrides.inbox) ?? join(state, 'inbox'),
     inboxMarks: join(state, 'inbox-marks.jsonl'),
     inboxShown: join(state, 'inbox-shown.jsonl'),

@@ -13,6 +13,7 @@ import { compactRegister, RETAIN_DAYS } from './compaction.ts';
 import { EVENT_VERSION } from './events.ts';
 import { layoutPaths, readHistory, readSnapshotText, readWorkingSet, snapshotHeaderRecord } from './layout.ts';
 import { markerRecord } from './marker.ts';
+import { OWN_NUMBERS } from './numbering.ts';
 import { RegisterPolicy } from './policy.ts';
 import { Register, type SkillCatalog } from './register.ts';
 import { applyRotation, AUTO_ROTATE_CHARS, planRotation, readBack, RotationRefusedError, type RotationOptions, type RotationPlan } from './rotate.ts';
@@ -313,6 +314,7 @@ function registerOn(files: MemoryFiles | FaultyFiles, autoArchive = true): Regis
   return new Register({
     log: new JsonlEventLog(files, LOG),
     mutex: new InlineMutex(),
+    numbering: OWN_NUMBERS,
     clock: new FakeClock(at(6)),
     zone: TimeZone.UTC,
     policy: new RegisterPolicy(testConfig()),

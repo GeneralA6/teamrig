@@ -5,6 +5,7 @@ import { recordField, type JsonRecord } from '../core/guards.ts';
 import { parseObject, VERSION_FIELD } from '../core/jsonl.ts';
 import { TimeZone } from '../core/zone.ts';
 import { layoutPaths } from '../register/layout.ts';
+import { OWN_NUMBERS } from '../register/numbering.ts';
 import { RegisterPolicy } from '../register/policy.ts';
 import { Register, type SkillCatalog } from '../register/register.ts';
 import { JsonlEventLog } from '../register/store.ts';
@@ -74,6 +75,7 @@ describe('cachedWork', () => {
     const register = new Register({
       log: new JsonlEventLog(files, PATH),
       mutex: new InlineMutex(),
+      numbering: OWN_NUMBERS,
       clock: new FakeClock('2030-01-07T09:00:00.000Z'),
       policy: new RegisterPolicy(testConfig({ sessions: ['lead', 'alpha', 'bravo', 'charlie'] })),
       skills: new NoSkills(),
