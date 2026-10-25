@@ -52,6 +52,10 @@ describe('TeamTree', () => {
     assert.equal(TREE.rootOf('nope'), undefined);
     assert.equal(TREE.levelOf('app'), 1);
     assert.equal(TREE.levelOf('ui'), 3);
+    assert.deepEqual(TREE.ancestorsOf('ui'), ['app', 'web']);
+    assert.deepEqual(TREE.ancestorsOf('ops'), ['app']);
+    assert.deepEqual(TREE.ancestorsOf('app'), []);
+    assert.deepEqual(TREE.ancestorsOf('nope'), []);
   });
 
   it('walks down depth first and tells which teams share a tree', () => {
@@ -83,6 +87,7 @@ describe('TeamTree', () => {
     ]);
     assert.equal(tree.parentOf('web'), undefined);
     assert.equal(tree.rootOf('ui'), 'web');
+    assert.deepEqual(tree.ancestorsOf('ui'), ['web']);
   });
 
   it('flags a loop of parents once, and walks it without going round', () => {
@@ -90,6 +95,7 @@ describe('TeamTree', () => {
     assert.deepEqual(tree.problems(), [{ kind: 'tree-loop', teams: ['a', 'b', 'c'] }]);
     assert.equal(tree.rootOf('d'), undefined);
     assert.equal(tree.levelOf('a'), undefined);
+    assert.deepEqual(tree.ancestorsOf('d'), []);
     assert.deepEqual(
       tree.walk('a').map((step) => step.team),
       ['a', 'b', 'c', 'd'],
