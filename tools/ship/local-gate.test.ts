@@ -2,15 +2,16 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { type CheckCommandDeps, type CheckRun, type GateDeps, checkCommand, commandOf, parseRecord, proveTree, realGateDeps, recordPath, runnerCheck } from './local-gate.ts';
 import { type LocalChecks, parseProfiles } from './repos.ts';
 
-const DIR = 'C:/repo';
+/** Absolute on every OS: a 'C:/repo' is relative on POSIX, where resolve() puts the working folder in front of it. */
+const DIR = resolve('/repo');
 const TREE = 'tree000aaa';
 const COMMIT = 'commit0bbb';
-const RECORD = join('C:/repo/.git', 'local-ci', `${TREE}.json`);
+const RECORD = join(DIR, '.git', 'local-ci', `${TREE}.json`);
 const CHECKS: LocalChecks = { runner: 'tools/ci/local.ts' };
 const RUNNER = 'runner tools/ci/local.ts';
 const VALID = (tree = TREE): string => JSON.stringify({ tree, commit: COMMIT, checks: ['lint'], passedAt: '2026-10-15T09:00:00.000Z', node: 'v22.19.0' });
@@ -40,7 +41,7 @@ function fakeGate(fixture: GateFixture = {}): { deps: GateDeps; runs: string[]; 
       if (key === 'status --porcelain') return pick(fixture.status ?? ['', ''], 'status');
       if (key === 'rev-parse HEAD^{tree}') return pick(fixture.trees ?? [TREE, TREE], 'tree');
       if (key === 'rev-parse HEAD') return COMMIT;
-      if (key === 'rev-parse --git-common-dir') return 'C:/repo/.git';
+      if (key === 'rev-parse --git-common-dir') return join(DIR, '.git');
       throw new Error(`unexpected git ${key}`);
     },
     exists: path => fixture.runner !== false && path === join(DIR, 'tools/ci/local.ts'),
@@ -89,7 +90,7 @@ test('a pass record for the tree skips the runner', () => {
 test('refuses uncommitted changes before running anything, naming the first few', () => {
   const { deps, runs } = fakeGate({ status: [' M a.ts\n M b.ts\n?? c.ts\n?? d.ts', ''] });
   const verdict = proveTree(DIR, CHECKS, deps);
-  assert.deepEqual(verdict, { passed: false, reason: 'C:/repo has uncommitted changes ( M a.ts;  M b.ts; ?? c.ts; and 1 more): commit or stash them, the checks prove only a committed tree' });
+  assert.deepEqual(verdict, { passed: false, reason: `${DIR} has uncommitted changes ( M a.ts;  M b.ts; ?? c.ts; and 1 more): commit or stash them, the checks prove only a committed tree` });
   assert.deepEqual(runs, []);
 });
 
@@ -106,10 +107,10 @@ test('a failed runner logs its full output and records nothing', () => {
 
 test('refuses a tree the runner changed, so a stale generated file never passes', () => {
   const dirty = fakeGate({ status: ['', ' M dist/a.js'] });
-  assert.deepEqual(proveTree(DIR, CHECKS, dirty.deps), { passed: false, reason: 'the checks left C:/repo changed ( M dist/a.js): a generated file differs from the committed one' });
+  assert.deepEqual(proveTree(DIR, CHECKS, dirty.deps), { passed: false, reason: `the checks left ${DIR} changed ( M dist/a.js): a generated file differs from the committed one` });
   assert.deepEqual(dirty.written, []);
   const moved = fakeGate({ trees: [TREE, 'tree999zzz'] });
-  assert.deepEqual(proveTree(DIR, CHECKS, moved.deps), { passed: false, reason: 'the checks left C:/repo changed (HEAD now holds tree tree999): a generated file differs from the committed one' });
+  assert.deepEqual(proveTree(DIR, CHECKS, moved.deps), { passed: false, reason: `the checks left ${DIR} changed (HEAD now holds tree tree999): a generated file differs from the committed one` });
 });
 
 test('the runner check is the runner repos.json names, only when the tree holds it', () => {
@@ -124,7 +125,7 @@ test('refuses a repo that names no runner, or a tree that does not hold it, befo
   assert.deepEqual(proveTree(DIR, { runner: null }, none.deps), { passed: false, reason: 'repos.json names no local runner for this repo: nothing would prove the tree' });
   assert.deepEqual(none.runs, []);
   const missing = fakeGate({ runner: false });
-  assert.deepEqual(proveTree(DIR, CHECKS, missing.deps), { passed: false, reason: "C:/repo holds no tools/ci/local.ts, the repo's local CI runner: rebase the branch on its main" });
+  assert.deepEqual(proveTree(DIR, CHECKS, missing.deps), { passed: false, reason: `${DIR} holds no tools/ci/local.ts, the repo's local CI runner: rebase the branch on its main` });
   assert.deepEqual(missing.runs, []);
   assert.deepEqual(missing.written, []);
 });
@@ -140,7 +141,8 @@ test('reads a record only when it is one, for this tree', () => {
 });
 
 test('puts the record in the git folder every worktree shares, whether git names it absolute or relative', () => {
-  assert.equal(recordPath(DIR, 'C:/work/r/.git', TREE), join('C:/work/r/.git', 'local-ci', `${TREE}.json`));
+  const shared = resolve('/work/r/.git');
+  assert.equal(recordPath(DIR, shared, TREE), join(shared, 'local-ci', `${TREE}.json`));
   assert.equal(recordPath(DIR, '.git', TREE), join(DIR, '.git', 'local-ci', `${TREE}.json`));
 });
 
