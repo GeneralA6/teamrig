@@ -255,11 +255,14 @@ export function wakeCost(idleMs: number | undefined, coldAfterMinutes: number, w
 /** The smallest share of the week `formatPct` shows as more than 0.00%. */
 const LEAST_PCT = 0.01;
 
+/** `, under 0.01% of the week` or `, 0.05% of the week`; empty while the week's W per percent is unknown. */
+export function weekShareText(weekPct: number | undefined): string {
+  return weekPct === undefined ? '' : weekPct < LEAST_PCT ? `, under ${formatPct(LEAST_PCT)} of the week` : `, ${formatPct(weekPct)} of the week`;
+}
+
 /** `about 27k W, warm cache, under 0.01% of the week`. */
 export function costText(cost: WakeCost): string {
-  const week =
-    cost.weekPct === undefined ? '' : cost.weekPct < LEAST_PCT ? `, under ${formatPct(LEAST_PCT)} of the week` : `, ${formatPct(cost.weekPct)} of the week`;
-  return `about ${formatW(cost.w)} W, ${cost.cold ? 'cold' : 'warm cache'}${week}`;
+  return `about ${formatW(cost.w)} W, ${cost.cold ? 'cold' : 'warm cache'}${weekShareText(cost.weekPct)}`;
 }
 
 function shortTitle(title: string): string {
