@@ -128,8 +128,8 @@ function report(runtime: CliRuntime, verdict: Verdict<WriteResult>, verb: string
   if (!verdict.ok) {
     throw new RefusedError(verdict.error);
   }
-  const { task, state } = verdict.value;
-  runtime.out.stdout(`${verb} ${formatTask(task, label, new TaskTree(state.tasks, new Date(runtime.clock.now()), written.zone))}`);
+  const { task, state, elsewhere } = verdict.value;
+  runtime.out.stdout(`${verb} ${formatTask(task, label, new TaskTree(state.tasks, new Date(runtime.clock.now()), written.zone, undefined, elsewhere))}`);
   const { rotation } = verdict.value;
   const turnOff = autoArchiveSwitch(written.paths.config);
   if (rotation.kind === 'rotated') {
@@ -380,8 +380,8 @@ export async function set(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
 async function setAsking(runtime: CliRuntime, team: Team, by: string, id: string, ask: AskInput, input: StatusInput): Promise<ExitCode> {
   const verdict = await team.register.ask(by, id, ask, input);
   if (verdict.ok) {
-    const { asked, state } = verdict.value;
-    runtime.out.stdout(`ADDED ${formatTask(asked, undefined, new TaskTree(state.tasks, new Date(runtime.clock.now()), team.zone))}`);
+    const { asked, state, elsewhere } = verdict.value;
+    runtime.out.stdout(`ADDED ${formatTask(asked, undefined, new TaskTree(state.tasks, new Date(runtime.clock.now()), team.zone, undefined, elsewhere))}`);
   }
   const exit = report(runtime, verdict, 'SET', team);
   if (verdict.ok && verdict.value.asked.owner !== by) {

@@ -9,7 +9,7 @@ import { CARD_FLAGS, cardProblem, cardTexts, OPTION_SEPARATOR, sameCard, WHY_ASK
 import { sizeProblem, type ApprovalVerdict, type TaskFieldName, type TaskFields, type TaskKind } from './events.ts';
 import { taskNumber, type RegisterState, type Task } from './fold.ts';
 import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, priorityText, SESSION_NAME, WAIT_STATUSES, type TaskStatus } from './model.ts';
-import { loopFix, needPath, pathText } from './tree.ts';
+import { loopFix, needPath, NO_TASKS_ELSEWHERE, pathText, type TasksElsewhere } from './tree.ts';
 import { dueStartHolds, dueVerifyHold, heldStart, startHolds } from './verify.ts';
 import { isPeerWait, sameWait, waitSpelling, type PersonWait, type WaitReason } from './waits.ts';
 
@@ -101,11 +101,13 @@ export interface AskInput {
 }
 
 /**
- * What a status change is judged against besides the task: the register as read, the time, the team's zone (a stored
- * day is a day of it), and whether a cited skill exists.
+ * What a status change is judged against besides the task: the register as read, the tasks the team tree's other
+ * registers hold (a wait or a follow-up may name one), the time, the team's zone (a stored day is a day of it), and
+ * whether a cited skill exists.
  */
 export interface StatusContext {
   readonly state: RegisterState;
+  readonly elsewhere: TasksElsewhere;
   readonly now: Date;
   readonly zone: TimeZone;
   readonly skillExists: boolean;
@@ -187,25 +189,29 @@ export class RegisterPolicy {
       : `${session} is not a session on this team (sessions: ${this.config.sessions.join(', ')})`;
   }
 
-  add(input: AddInput, state: RegisterState): Verdict<TaskFields> {
-    return this.create(input, state, (source) => this.teamSourceProblem(source));
+  /** `elsewhere`: the tasks the team tree's other registers hold, which `--after` may name. */
+  add(input: AddInput, state: RegisterState, elsewhere: TasksElsewhere = NO_TASKS_ELSEWHERE): Verdict<TaskFields> {
+    return this.create(input, state, (source) => this.teamSourceProblem(source), elsewhere);
   }
 
   /**
    * A task the parent team's lead hands this team: its source is that lead's `<team>/<id>`, and it
    * goes to this team's lead, who plans it in.
    */
-  addFromParent(input: AddInput, state: RegisterState): Verdict<TaskFields> {
+  addFromParent(input: AddInput, state: RegisterState, elsewhere: TasksElsewhere = NO_TASKS_ELSEWHERE): Verdict<TaskFields> {
     const { lead } = this.config.roles;
     if (input.owner !== lead) {
       return refuse(`a task from the parent team goes to this team's lead (${lead}), not ${input.owner}`);
     }
-    return this.create(input, state, (source) =>
-      ADDRESS_PATTERN.test(source) ? undefined : `source ${source} is not the parent team lead's <team>/<id>`,
+    return this.create(
+      input,
+      state,
+      (source) => (ADDRESS_PATTERN.test(source) ? undefined : `source ${source} is not the parent team lead's <team>/<id>`),
+      elsewhere,
     );
   }
 
-  private create(input: AddInput, state: RegisterState, sourceRule: SourceRule): Verdict<TaskFields> {
+  private create(input: AddInput, state: RegisterState, sourceRule: SourceRule, elsewhere: TasksElsewhere = NO_TASKS_ELSEWHERE): Verdict<TaskFields> {
     const fields: TaskFields = {
       title: input.title.trim(),
       description: blankToNull(input.description),
@@ -224,7 +230,7 @@ export class RegisterPolicy {
     if (fields.description === null && this.config.register.requireDescription) {
       return refuse(DESCRIPTION_NEEDED);
     }
-    const problem = this.checkFields(fields, sourceRule) ?? afterProblem(state.nextId, fields.after, state);
+    const problem = this.checkFields(fields, sourceRule) ?? afterProblem(null, fields.after, state, elsewhere);
     if (problem !== undefined) {
       return refuse(problem);
     }
@@ -286,7 +292,7 @@ export class RegisterPolicy {
       return refuse(`${heldStart(task, holds)}; start ${task.id} once ${done}, or with --met "<what shows the proof exists>"`);
     }
     // New work also waits for its owner's own verify steps that are due, so shipped changes get proven, not piled up.
-    const dueVerify = dueStartHolds(task, input.status, context.state.tasks, context.now, context.zone, register.maxVerifying);
+    const dueVerify = dueStartHolds(task, input.status, context.state.tasks, context.now, context.zone, register.maxVerifying, context.elsewhere);
     if (dueVerify.length > 0 && register.verifyGate === 'refuse') {
       return refuse(dueVerifyHold(task, dueVerify));
     }
@@ -361,7 +367,8 @@ export class RegisterPolicy {
 
   /**
    * The follow-ups a status change names: required on the statuses `register.requireFollowupsOn` lists, allowed
-   * only on FOLLOWUP_STATUSES, each another task on the list and named once; null when the change names none.
+   * only on FOLLOWUP_STATUSES, each another task on the list, or on another register of the team tree, and named
+   * once; null when the change names none.
    */
   private checkFollowups(task: Task, input: StatusInput, context: StatusContext): Verdict<readonly string[] | null> {
     const { followups } = input;
@@ -380,7 +387,7 @@ export class RegisterPolicy {
       if (followups.indexOf(id) !== index) {
         return refuse(`--followups names ${id} twice`);
       }
-      if (!context.state.tasks.has(id)) {
+      if (!context.state.tasks.has(id) && !context.elsewhere.has(id)) {
         return refuse(`--followups names ${id}, which is not on the task list: add it first (teamrig add)`);
       }
     }
@@ -475,7 +482,7 @@ export class RegisterPolicy {
       case 'approval':
         return this.personWaitProblem(task, status, reason);
       case 'task':
-        return taskWaitProblem(task, reason.id, context.state);
+        return taskWaitProblem(task, reason.id, context.state, context.elsewhere);
       case 'time':
         return (parseDeadline(reason.at, context.zone)?.getTime() ?? 0) > context.now.getTime() ? undefined : `time ${showStored(reason.at, context.zone)} has passed: name a time to come`;
     }
@@ -519,7 +526,15 @@ export class RegisterPolicy {
     return problem === undefined ? ok({ changes: {}, note: text, verdict }) : refuse(problem);
   }
 
-  update(task: Task, caller: string, asked: Partial<TaskFields>, note: string | undefined, state: RegisterState): Verdict<UpdateChange> {
+  /** `elsewhere`: the tasks the team tree's other registers hold, which `--after` may name. */
+  update(
+    task: Task,
+    caller: string,
+    asked: Partial<TaskFields>,
+    note: string | undefined,
+    state: RegisterState,
+    elsewhere: TasksElsewhere = NO_TASKS_ELSEWHERE,
+  ): Verdict<UpdateChange> {
     const changes = trimDescription(asked);
     const names = Object.keys(changes).filter((name): name is TaskFieldName => name in changes);
     const text = blankToNull(note);
@@ -547,7 +562,7 @@ export class RegisterPolicy {
     const merged: TaskFields = { ...pickFields(task), ...changes };
     // A task keeps the source it was added with, even one from the parent team's lead.
     const sourceRule: SourceRule = (source) => (source === task.source ? undefined : this.teamSourceProblem(source));
-    const after = changes.after === undefined ? undefined : afterChangeProblem(task, changes.after, state);
+    const after = changes.after === undefined ? undefined : afterChangeProblem(task, changes.after, state, elsewhere);
     const problem = after ?? this.checkFields(merged, sourceRule) ?? this.checkText('note', text);
     return problem === undefined ? ok({ changes, note: text }) : refuse(problem);
   }
@@ -755,9 +770,11 @@ function sameWaits(a: readonly WaitReason[], b: readonly WaitReason[]): boolean 
 /**
  * A task reason is for a task already started (see {@link hasStarted}) that found another task must finish first,
  * a verifying one for its proof: one not started stays open with a plan dependency instead, and a finished one
- * reopens first. It never closes a loop.
+ * reopens first. The task waited on may be another register's of the team tree; an id no register's working set holds
+ * reads as finished below this register's next number, else as no task. It never closes a loop, through another
+ * register's tasks either.
  */
-function taskWaitProblem(task: Task, id: string, state: RegisterState): string | undefined {
+function taskWaitProblem(task: Task, id: string, state: RegisterState, elsewhere: TasksElsewhere): string | undefined {
   if (id === task.id) {
     return `${task.id} cannot wait on itself`;
   }
@@ -767,14 +784,25 @@ function taskWaitProblem(task: Task, id: string, state: RegisterState): string |
   if (!hasStarted(task)) {
     return `${task.id} has not started, so it does not wait on ${id}: it stays ${task.status}, planned after it (teamrig update ${task.id} --after ${id})`;
   }
-  if (taskNumber(id) >= taskNumber(state.nextId)) {
+  const target = state.tasks.get(id) ?? elsewhere.get(id)?.task;
+  if (target === undefined && taskNumber(id) >= taskNumber(state.nextId)) {
     return `no task ${id}`;
   }
-  const target = state.tasks.get(id);
   if (target === undefined || target.status === 'done' || target.status === 'dropped') {
     return `${id} is already finished; nothing to wait on`;
   }
-  return loopProblem(task.id, id, state, true);
+  return loopProblem(task.id, id, treeTasks(state, elsewhere), true);
+}
+
+/**
+ * This register's working set over the tasks the team tree's other registers hold, as one map a need is followed
+ * through: a loop may pass through another team's task.
+ */
+function treeTasks(state: RegisterState, elsewhere: TasksElsewhere): ReadonlyMap<string, Task> {
+  if (elsewhere.size === 0) {
+    return state.tasks;
+  }
+  return new Map([...[...elsewhere].map(([id, held]): [string, Task] => [id, held.task]), ...state.tasks]);
 }
 
 /**
@@ -803,34 +831,39 @@ function activeDuplicate(title: string, state: RegisterState): Task | undefined 
  * A plan dependency is for a task not started yet, as {@link taskWaitProblem} sends it here: a started one waits on
  * a task instead, and a finished one needs neither. Clearing it is always fine.
  */
-function afterChangeProblem(task: Task, after: readonly string[], state: RegisterState): string | undefined {
+function afterChangeProblem(task: Task, after: readonly string[], state: RegisterState, elsewhere: TasksElsewhere): string | undefined {
   const first = after[0];
   if (first !== undefined && !notStarted(task)) {
     const keeps = task.status === 'verifying' ? 'verifying' : 'waiting';
     const instead = hasStarted(task) ? `; a started task waits on another with --status ${keeps} --waits task:${first}` : '';
     return `--after plans a task not started yet, and ${task.id} is ${task.status}${instead}`;
   }
-  return afterProblem(task.id, after, state);
+  return afterProblem(task.id, after, state, elsewhere);
 }
 
 /**
- * The tasks `id` comes after must exist, be named once, and never need `id` back, by a plan dependency or a task
- * wait: a loop could never start. On a create, `id` is the id the new task gets.
+ * The tasks `id` comes after must exist, here or on another register of the team tree, be named once, and never need
+ * `id` back, by a plan dependency or a task wait: a loop could never start. On a create, `id` is null: the new task's
+ * number comes from the numbering at the write, above every register's, so no task names it yet.
  */
-function afterProblem(id: string, after: readonly string[], state: RegisterState): string | undefined {
+function afterProblem(id: string | null, after: readonly string[], state: RegisterState, elsewhere: TasksElsewhere): string | undefined {
   const twice = after.find((other, index) => after.indexOf(other) !== index);
   if (twice !== undefined) {
     return `--after names ${twice} twice`;
   }
-  if (after.includes(id)) {
+  if (id !== null && after.includes(id)) {
     return `${id} cannot come after itself`;
   }
-  const missing = after.find((other) => taskNumber(other) >= taskNumber(state.nextId));
+  const missing = after.find((other) => !elsewhere.has(other) && taskNumber(other) >= taskNumber(state.nextId));
   if (missing !== undefined) {
     return `no task ${missing}`;
   }
+  if (id === null) {
+    return undefined;
+  }
+  const tasks = treeTasks(state, elsewhere);
   for (const other of after) {
-    const loop = loopProblem(id, other, state, false);
+    const loop = loopProblem(id, other, tasks, false);
     if (loop !== undefined) {
       return loop;
     }
@@ -842,9 +875,9 @@ function afterProblem(id: string, after: readonly string[], state: RegisterState
  * The refusal when making `id` need `other` (by a task wait when `byWait`, else a plan dependency) would close a loop:
  * `other` already needs `id`, directly or not, and no task in a loop can ever finish.
  */
-function loopProblem(id: string, other: string, state: RegisterState, byWait: boolean): string | undefined {
-  const path = needPath(state.tasks, other, id);
-  const owner = state.tasks.get(other)?.owner;
+function loopProblem(id: string, other: string, tasks: ReadonlyMap<string, Task>, byWait: boolean): string | undefined {
+  const path = needPath(tasks, other, id);
+  const owner = tasks.get(other)?.owner;
   if (path === undefined || owner === undefined) {
     return undefined;
   }

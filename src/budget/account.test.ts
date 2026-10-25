@@ -5,7 +5,7 @@ import type { JsonRecord } from '../core/guards.ts';
 import { TimeZone } from '../core/zone.ts';
 import { OWN_NUMBERS } from '../register/numbering.ts';
 import { RegisterPolicy } from '../register/policy.ts';
-import { Register, type SkillCatalog } from '../register/register.ts';
+import { NOTHING_ELSEWHERE, Register, type SkillCatalog } from '../register/register.ts';
 import { JsonlEventLog } from '../register/store.ts';
 import { testConfig } from '../testing/config.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
@@ -47,6 +47,7 @@ async function addTask(files: MemoryFiles, eventsPath: string, owner: string, pr
     log: new JsonlEventLog(files, eventsPath),
     mutex: new InlineMutex(),
     numbering: OWN_NUMBERS,
+    elsewhere: NOTHING_ELSEWHERE,
     clock: new FakeClock('2030-01-07T09:00:00.000Z'),
     policy: new RegisterPolicy(testConfig({ sessions: ['lead', 'front', 'back'] })),
     skills: new NoSkills(),
