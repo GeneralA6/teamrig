@@ -5,6 +5,7 @@ import { runCli } from '../cli/run.ts';
 import type { ExitCode } from '../cli/runtime.ts';
 import { formatConfig } from '../config/load.ts';
 import type { ConfigFormat } from '../config/migrate.ts';
+import type { FileBytes } from '../core/file-bytes.ts';
 import type { Files } from '../core/files.ts';
 import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
 import type { Env } from '../core/home.ts';
@@ -33,6 +34,7 @@ import type { PointerGit } from '../setup/pointer-ignore.ts';
 import { FakeClock } from './fake-clock.ts';
 import { MemoryFiles } from './memory-files.ts';
 import { quietWorld } from './quiet-world.ts';
+import { textFileBytes } from './text-file-bytes.ts';
 
 /** The user's home folder the CLI sees; the default skills folder lives under it. */
 export const USER_HOME = join('/', 'u');
@@ -69,6 +71,8 @@ export interface RunOptions {
   readonly cwd?: string;
   /** The files the CLI sees for this run, such as a `FaultyFiles` over `files`; default `files`. */
   readonly files?: Files;
+  /** The byte-exact files the CLI sees, such as one that fails on a path; default the run's files as UTF-8 text. */
+  readonly fileBytes?: FileBytes;
   /** The config format the CLI reads, such as a newer release's; default the shipped one. */
   readonly configFormat?: ConfigFormat;
   /** The commits git lists for any range; default none. */
@@ -148,6 +152,7 @@ export class CliHarness {
       cwd: options.cwd ?? APP,
       pid: 4242,
       files: options.files ?? this.files,
+      fileBytes: options.fileBytes ?? textFileBytes(options.files ?? this.files),
       clock: this.clock,
       timeZone: options.timeZone ?? 'UTC',
       sleep: options.sleep ?? this.clock.sleep,

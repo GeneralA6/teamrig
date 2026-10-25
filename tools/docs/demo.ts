@@ -6,6 +6,7 @@ import type { JsonRecord } from '../../src/core/guards.ts';
 import { FakeClock } from '../../src/testing/fake-clock.ts';
 import { MemoryFiles } from '../../src/testing/memory-files.ts';
 import { quietWorld } from '../../src/testing/quiet-world.ts';
+import { textFileBytes } from '../../src/testing/text-file-bytes.ts';
 
 /**
  * Runs the real CLI for a fictional team, in memory and on a fixed clock, so the commands doc's picture shows what
@@ -65,6 +66,7 @@ export async function runDemo(steps: readonly DemoStep[], config: JsonRecord = D
       cwd: PROJECT,
       pid: 1,
       files,
+      fileBytes: textFileBytes(files),
       clock,
       timeZone: 'UTC',
       sleep: clock.sleep,
