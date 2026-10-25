@@ -85,7 +85,7 @@ describe('renderLeadRules', () => {
 
   it("names what reaches the owner, the owner's orders as tasks, plans from the register, approvals, rule fixes, the hire flags and other sessions' work", () => {
     const lines = renderLeadRules(testConfig({ register: { ownerSource: 'boss' } }), COMMAND);
-    assert.match(lines, /^As the lead, also:\n- Bring the owner only verified results, your decisions, investigated questions and incidents\.\n/);
+    assert.match(lines, /^As the lead, also:\n- Bring the owner only verified results, decisions, owner-gate or business questions and incidents\.\n/);
     assert.match(lines, /\n- Relay each owner order as an approved task in the same turn: `teamrig add --owner <id> --source boss` \[register\.ownerSource\]/);
     assert.match(lines, /`teamrig plan` and run `teamrig check` at each checkpoint, never from memory\.\n/);
     assert.match(lines, /\n- Answer each approval wait on you with `teamrig approve` per the `approvals` skill; owner-gated content goes to the owner\.\n/);

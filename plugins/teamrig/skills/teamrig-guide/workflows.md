@@ -297,8 +297,8 @@ the order, with the owner's source [register.ownerSource]:
 teamrig add --session lead --owner api --source owner --priority p2 --title "Rate-limit the signup endpoint" --description "Bots create fake accounts; allow 5 signups a minute from one address."
 ```
 
-Bring the human only what needs them: verified results, decisions taken, investigated questions (options,
-numbers and a recommendation) and incidents. Progress and plans stay in the register.
+Bring the human only what needs them: verified results, decisions taken, questions on an owner gate or a business
+call (options, numbers and a recommendation) and incidents. Progress and plans stay in the register.
 
 ## Turn a lesson into a fix
 
