@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { join, resolve, sep } from 'node:path';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { pathKey } from './paths.ts';
-import { resolveTeam, TEAM_POINTER } from './team.ts';
+import { pointerTeam, resolveTeam, TEAM_POINTER } from './team.ts';
 
 const WORK = resolve('/work');
 const APP = join(WORK, 'app');
@@ -43,6 +43,12 @@ describe('resolveTeam', () => {
     const found = await resolveTeam(new MemoryFiles(), { TEAMRIG_TEAM: 'Ops Team' }, [APP]);
     assert.equal(found.kind, 'broken');
     assert.match(found.kind === 'broken' ? `${found.from} ${found.problem}` : '', /^\$TEAMRIG_TEAM "Ops Team" is not a team id/);
+  });
+
+  it("pointerTeam reads the folder's pointer, never $TEAMRIG_TEAM, for a command asked about a project", async () => {
+    const files = new MemoryFiles({ [pointer(APP)]: '{"team":"app"}' });
+    assert.deepEqual(await pointerTeam(files, [DEEP]), { kind: 'team', team: 'app', from: pointer(APP) });
+    assert.deepEqual(await pointerTeam(files, [OTHER]), { kind: 'none' });
   });
 
   it('finds the nearest pointer walking up from the folder', async () => {

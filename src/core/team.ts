@@ -22,14 +22,19 @@ export const ENV_SOURCE = `$${ENV.team}`;
 
 /**
  * `$TEAMRIG_TEAM` wins, so a session working in another team's repo keeps its own team. Otherwise
- * the nearest pointer file, walking up from each folder in order; a folder already walked from an
- * earlier start, in any spelling the platform treats as the same, is not read twice.
+ * the nearest pointer file ({@link pointerTeam}).
  */
 export async function resolveTeam(files: Files, env: Env, folders: readonly string[]): Promise<TeamResolution> {
   const fromEnv = env[ENV.team]?.trim();
-  if (fromEnv) {
-    return checkTeam(fromEnv, ENV_SOURCE);
-  }
+  return fromEnv ? checkTeam(fromEnv, ENV_SOURCE) : pointerTeam(files, folders);
+}
+
+/**
+ * The team the folders' nearest pointer file names, whatever `$TEAMRIG_TEAM` says: for a command asked about a
+ * project, not run for the caller's team. It walks up from each folder in order; a folder already walked from an
+ * earlier start, in any spelling the platform treats as the same, is not read twice.
+ */
+export async function pointerTeam(files: Files, folders: readonly string[]): Promise<TeamResolution> {
   const walked = new Set<string>();
   for (const folder of folders) {
     for (let dir = resolve(folder); !walked.has(pathKey(dir)); dir = dirname(dir)) {

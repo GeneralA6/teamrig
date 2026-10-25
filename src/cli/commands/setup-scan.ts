@@ -5,7 +5,7 @@ import type { KitConfig } from '../../config/types.ts';
 import { claudeConfigDir, KIT_NAME } from '../../core/home.ts';
 import { expandHome } from '../../core/paths.ts';
 import { SecretScanner } from '../../core/secrets.ts';
-import { resolveTeam } from '../../core/team.ts';
+import { pointerTeam, resolveTeam } from '../../core/team.ts';
 import { KeepList } from '../../permissions/allow-rules.ts';
 import { settingsScope, type SettingsFile } from '../../permissions/settings-scope.ts';
 import { coreRuleTexts } from '../../rules/pack.ts';
@@ -50,9 +50,12 @@ function daysOf(args: ParsedArgs): number {
   return days;
 }
 
-/** The team of the project the scan is asked about (or of the working folder), or undefined before one exists. */
+/**
+ * The team of the project the scan is asked about, by its pointer alone: the caller's `$TEAMRIG_TEAM` names the
+ * caller's team, not that project's. Without --project, the caller's team. Undefined before one exists.
+ */
 async function scanTeamOf(runtime: CliRuntime, asked: string | undefined): Promise<ScanTeam | undefined> {
-  const found = await resolveTeam(runtime.files, runtime.env, asked === undefined ? teamFolders(runtime.env, [runtime.cwd]) : [asked]);
+  const found = asked === undefined ? await resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [runtime.cwd])) : await pointerTeam(runtime.files, [asked]);
   switch (found.kind) {
     case 'none':
       return undefined;
