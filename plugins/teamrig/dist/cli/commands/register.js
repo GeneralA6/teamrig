@@ -7,7 +7,6 @@ import { SecretScanner } from "../../core/secrets.js";
 import { burstsOver } from "../../budget/burst.js";
 import { formatW } from "../../budget/format.js";
 import { timingText, waitTiming } from "../../decisions/lines.js";
-import { teamDecisions } from "../../decisions/team.js";
 import { allowFindings, contextSizeFindings } from "../../doctor/doctor.js";
 import { hireFlags } from "../../hiring/due.js";
 import { HiringLog } from "../../hiring/log.js";
@@ -34,11 +33,12 @@ import { lintSkills } from "../../skills/lint.js";
 import { SKILL_FILE, SkillDir } from "../../skills/store.js";
 import { weekUseOnAccount } from "../account-teams.js";
 import { readWideAllow } from "../allow-scope.js";
-import { noPositionals, onePositional, UsageError } from "../args.js";
-import { addInputOf, callerOf, changesOf, listFilterOf, pinOf, setInputOf, taskIdOf, weekOf } from "../inputs.js";
+import { noPositionals, onePositional, requiredFlag, UsageError } from "../args.js";
+import { addInputOf, callerOf, changesOf, listFilterOf, pinOf, setInputOf, taskIdOf, taskRefOf, weekOf } from "../inputs.js";
 import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, projectFolder, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { checkLines, listLines, SHORT_TITLE_CHARS, waitingOnLines } from "../reports.js";
 import { idlePassWarnings } from "../idle-pass-check.js";
+import { ownerBatchOf } from "../owner-batch.js";
 import { rollUp } from "../roll-up.js";
 import { splitUnowned } from "../unowned.js";
 import { EXIT, RefusedError } from "../runtime.js";
@@ -123,6 +123,18 @@ function warnDamage(runtime, snapshot, path) {
         runtime.out.stderr(`WARN ${path}: ${unreadable} unreadable line(s), ${newer} line(s) from a newer teamrig, ${orphans} event(s) naming no task`);
     }
 }
+/** The caller, a session of team `team`, as `<team>/<id>` and the team tree it writes across; refused when team `target` has no config here. */
+async function treeCallerOf(runtime, team, caller, target) {
+    const kit = await openKit(runtime, team);
+    const config = requireConfig(kit, runtime, 'read');
+    const from = { team, id: sessionIdOf(await rosterOf(runtime, kit, config), caller) };
+    const { tree } = await loadTree(runtime);
+    const targetLead = tree.leadOf(target);
+    if (targetLead === undefined) {
+        throw new RefusedError(`no team ${target} with a config in this kit home`);
+    }
+    return { from, config, tree, targetLead };
+}
 /**
  * `add --team <team>`: a session asks another team of its tree for work (T1141). The task lands in that team's
  * register only, as an event by the asker's `<team>/<id>`, which is also its source, owned by `--owner` (a session of
@@ -138,14 +150,8 @@ async function addToTeam(args, runtime, caller, asked) {
     if (args.flags.has('source')) {
         throw new UsageError("--team adds the task from you: it takes no --source, unless it names your own team");
     }
-    const kit = await openKit(runtime, team);
-    const config = requireConfig(kit, runtime, 'read');
-    const from = formatAddress({ team, id: sessionIdOf(await rosterOf(runtime, kit, config), caller) });
-    const { tree } = await loadTree(runtime);
-    const lead = tree.leadOf(asked);
-    if (lead === undefined) {
-        throw new RefusedError(`no team ${asked} with a config in this kit home`);
-    }
+    const { from: address, config, tree, targetLead: lead } = await treeCallerOf(runtime, team, caller, asked);
+    const from = formatAddress(address);
     if (!tree.sameTree(team, asked)) {
         throw new RefusedError(`team ${asked} is not in ${team}'s team tree, so ${from} may not add its tasks`);
     }
@@ -288,11 +294,15 @@ async function atOnceNote(runtime, team, by, id, receiver, posted) {
     }
     return `NOTE ${due}: its line wakes ${leadName}, so no message is needed`;
 }
-/** When the owner hears of a task's new wait on them, judged on the register after the write. */
+/**
+ * When the owner hears of a task's new wait on them, judged on the register after the write, in the batch that holds
+ * the team's waits: a child team's is the one the lead at its tree's root asks (ownerBatchOf).
+ */
 async function ownerWaitTiming(runtime, team, { task, state, elsewhere }) {
     const now = runtime.clock.now();
-    const { batch, tree } = await teamDecisions(runtime.files, team.paths, team.config, state.tasks, now, team.zone, elsewhere);
-    return waitTiming(batch, task, tree, now);
+    const own = { team: team.paths.team, config: team.config, paths: team.paths, tasks: state.tasks, elsewhere };
+    const { batch } = await ownerBatchOf(runtime, own, await loadTree(runtime), now);
+    return waitTiming(batch, task, new TaskTree(state.tasks, new Date(now), team.zone, undefined, elsewhere), now);
 }
 /** Posts one inbox line, naming it on stderr, or naming `unsent` and why: a line that cannot be posted is never thrown. */
 async function tellLine(runtime, team, by, to, text, unsent, shown = to) {
@@ -442,9 +452,39 @@ async function tellVerifiers(runtime, team, caller, { task, holds }, met) {
         }
     }
 }
+/**
+ * `update <team>/<id> --note ".."`: the lead who asks the owner a team's decisions, at its tree's root (T1018), records
+ * a note, such as the owner's answer, on a task of that team. It lands in that team's register as an event by the
+ * lead's `<team>/<id>`. Only that lead may, and only a note: every field stays the task's own team's to change.
+ */
+async function noteBelow(args, runtime, caller, below, id) {
+    const others = [...[...args.flags.keys()].filter((flag) => flag !== 'session' && flag !== 'note'), ...args.switches];
+    if (others.length > 0) {
+        throw new UsageError(`update ${below}/${id} adds a --note to another team's task: it takes no --${others.join(', --')}`);
+    }
+    const note = requiredFlag(args.flags, 'note');
+    const { team } = await findTeam(runtime);
+    if (team === below) {
+        throw new UsageError(`${below}/${id} is a task of your own team: update ${id}`);
+    }
+    const { from, tree } = await treeCallerOf(runtime, team, caller, below);
+    const asker = tree.ownerLeadAbove(below);
+    if (asker === undefined) {
+        throw new RefusedError(`team ${below} has no parent team, so only its own sessions note its tasks`);
+    }
+    if (asker.team !== from.team || asker.id !== from.id) {
+        throw new RefusedError(`only ${formatAddress(asker)}, who asks the owner team ${below}'s decisions, notes its tasks from another team; ${formatAddress(from)} may not`);
+    }
+    const target = await teamOf(runtime, await openKit(runtime, below), 'write');
+    return report(runtime, await target.register.noteFrom(formatAddress(from), id, note), 'UPDATED', target, below);
+}
 export async function update(args, runtime) {
-    const id = taskIdOf(onePositional(args, 'id'));
+    const ref = taskRefOf(onePositional(args, 'id'));
     const caller = callerOf(args.flags, runtime.env);
+    if (ref.team !== undefined) {
+        return noteBelow(args, runtime, caller, ref.team, ref.id);
+    }
+    const { id } = ref;
     const team = await openTeam(runtime, 'write');
     const by = sessionIdOf(team.roster, caller);
     const changes = { ...changesOf(args.flags, typedTimes(runtime, team.zone)), ...pinOf(args.switches, by) };
@@ -501,7 +541,7 @@ async function settle(runtime, { own, teams }, needsHistory) {
     return { own: settled.find((rolled) => rolled.team === own.team) ?? own, teams: settled };
 }
 /** The dependency tree of one team's register read now, in its zone and week plan in force: ready wait reasons, effective dues and what needs each task. */
-function taskTreeOf({ snapshot, config, elsewhere }, runtime) {
+export function taskTreeOf({ snapshot, config, elsewhere }, runtime) {
     const now = new Date(runtime.clock.now());
     const zone = teamZone(config, runtime);
     return new TaskTree(snapshot.state.tasks, now, zone, currentWeekOf(snapshot, now, zone), elsewhere);
@@ -649,7 +689,8 @@ function withOverLimit(sections, fit) {
  * What `check` reports: the task flags, then the skill flags of the Claude Code skills folder. With `--tree`,
  * the task flags of the lead's team and each team under it, against the lead's week; the skills are the lead's
  * team's only, as teams on one machine share that folder, and so are the flags on hired sessions (src/hiring/due.ts)
- * and the batch of the owner's decisions its lead asks next (src/decisions/batch.ts).
+ * and the batch of the owner's decisions its lead asks next (src/decisions/batch.ts), over its register and every
+ * register under it, in a root team only (leadDecisionsOf).
  * The `stopgap T<id>` tags in those skills and in the team's `register.check.stopgapFiles` add a STOPGAP-DONE flag
  * per finished task they name. Last, doctor's context-size and context-lists findings against the own team's
  * `contextFiles` budgets: the text every call of a session on this machine re-reads (T393). Those findings, the
@@ -695,13 +736,25 @@ export async function checkReport(args, runtime) {
     const scaleOut = scaleOutFlags({ ...input, tree: new TaskTree(own.snapshot.state.tasks, now, zone, week, own.elsewhere), spare, hirePct });
     const hires = [...scaleOut.flags, ...hireFlags(input, scaleOut.busy)];
     const scope = week === null ? 'no week plan tagged yet, so the week checks are skipped' : `week ${week}`;
-    const { batch } = await teamDecisions(runtime.files, own.paths, own.config, own.snapshot.state.tasks, now.getTime(), zone, own.elsewhere);
+    const decisions = await leadDecisionsOf(runtime, own, now.getTime(), zone);
     const context = contextSizeFindings(await readContextInput(runtime, project, own.paths.skills, own.config.contextFiles));
     const allow = allowFindings(await readWideAllow(runtime, { paths: own.paths, config: own.config, project }));
     const { skills, unowned } = splitUnowned([...context, ...allow], lintSkills(skillFiles, now, own.config), new Set(own.config.sessions), own.paths.skills);
     const idle = await idlePassWarnings(runtime.files, own.paths, own.config.open.idle.mode, now.getTime());
     const lead = own.config.roles.lead;
-    return { sections, scope, skills, skillsDir: own.paths.skills, hires, unowned: [...unowned, ...idle], lead, decisions: { lead, batch, zone } };
+    return { sections, scope, skills, skillsDir: own.paths.skills, hires, unowned: [...unowned, ...idle], lead, decisions };
+}
+/**
+ * The batch of the owner's decisions a root team's lead asks next, over its register and every register under it; none
+ * in a child team, whose waits the lead at its tree's root asks (T1018).
+ */
+async function leadDecisionsOf(runtime, own, now, zone) {
+    const loaded = await loadTree(runtime);
+    if (loaded.tree.ownerLeadAbove(own.team) !== undefined) {
+        return undefined;
+    }
+    const { batch } = await ownerBatchOf(runtime, { team: own.team, config: own.config, paths: own.paths, tasks: own.snapshot.state.tasks, elsewhere: own.elsewhere }, loaded, now);
+    return { lead: own.config.roles.lead, batch, zone };
 }
 /** `check [--tree] [--all]`: the report in the short form (src/cli/reports.ts), or with `--all` every flag in full. */
 export async function check(args, runtime) {

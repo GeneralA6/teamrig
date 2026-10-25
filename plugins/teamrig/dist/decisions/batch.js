@@ -1,5 +1,6 @@
 import { MS_PER_DAY } from "../core/time.js";
 import { asksOwner } from "../meeting/agenda.js";
+import { taskLabel } from "../register/views.js";
 /**
  * The owner's decisions, asked in batches: a session that needs one sets its task waiting on the owner's decision or
  * approval, with its card, and goes on with other work; the lead asks the owner the waiting ones together, at its
@@ -28,13 +29,25 @@ export function nextBatchTime(now, times) {
 }
 /** The batch the lead asks the owner next, and whether it is due now. */
 export function decisionBatch(input) {
-    const { tree, now, askedAt } = input;
-    const waiting = tree.inPlanOrder([...input.tasks].filter((task) => asksOwner(task, input.ownerMarker, input.requireGate)));
-    const asked = (task) => askedAt !== undefined && Date.parse(task.statusAt) <= askedAt;
-    const pending = waiting.filter((task) => !asked(task));
-    const overdue = waiting.filter((task) => asked(task) && (tree.dueTime(task) ?? Number.POSITIVE_INFINITY) < now);
+    const { now, askedAt } = input;
+    const waiting = input.registers.flatMap(ownerWaitsOf);
+    const asked = (wait) => askedAt !== undefined && Date.parse(wait.task.statusAt) <= askedAt;
+    const pending = waiting.filter((wait) => !asked(wait));
+    const overdue = waiting.filter((wait) => asked(wait) && (wait.tree.dueTime(wait.task) ?? Number.POSITIVE_INFINITY) < now);
     const nextAt = nextBatchTime(now, input.config.batchTimesUtc);
     return { pending, overdue, trigger: triggerOf(input, pending, overdue, nextAt), nextAt };
+}
+/**
+ * The batch's waits that the registers of `teams` hold, its trigger and next time kept: what a child team sees of the
+ * batch the lead at its tree's root asks (T1018). A wait of the batch's own register is never one of them.
+ */
+export function waitsOfTeams(batch, teams) {
+    const held = (wait) => wait.team !== undefined && teams.includes(wait.team);
+    return { ...batch, pending: batch.pending.filter(held), overdue: batch.overdue.filter(held) };
+}
+/** A register's waits the lead asks the owner (asksOwner), in its plan order. */
+function ownerWaitsOf({ team, tasks, tree, ownerMarker, requireGate }) {
+    return tree.inPlanOrder([...tasks].filter((task) => asksOwner(task, ownerMarker, requireGate))).map((task) => ({ task, team, tree }));
 }
 /**
  * A task's effective due time when it falls before the next batch (a day on when no batch time is set: the next
@@ -49,10 +62,10 @@ export function dueBeforeNextBatch(task, tree, now, nextAt) {
  * time passed over a wait already pending then or over an overdue one not asked since.
  */
 function triggerOf(input, pending, overdue, nextAt) {
-    for (const task of pending) {
-        const due = dueBeforeNextBatch(task, input.tree, input.now, nextAt);
+    for (const { task, team, tree } of pending) {
+        const due = dueBeforeNextBatch(task, tree, input.now, nextAt);
         if (due !== undefined) {
-            return { kind: 'deadline', task, due };
+            return { kind: 'deadline', task, team, due };
         }
     }
     const { batchAt } = input.config;
@@ -63,14 +76,14 @@ function triggerOf(input, pending, overdue, nextAt) {
     if (last === undefined) {
         return undefined;
     }
-    const missed = pending.some((task) => Date.parse(task.statusAt) <= last) || (overdue.length > 0 && (input.askedAt ?? Number.NEGATIVE_INFINITY) < last);
+    const missed = pending.some((wait) => Date.parse(wait.task.statusAt) <= last) || (overdue.length > 0 && (input.askedAt ?? Number.NEGATIVE_INFINITY) < last);
     return missed ? { kind: 'time', at: last } : undefined;
 }
-/** Why the batch is due, for one line, its times on `zone`'s clock: `T5 is due Tue 01-08 23:59 UTC, before the next batch`. */
+/** Why the batch is due, for one line, its times on `zone`'s clock: `T5 is due Tue 01-08 23:59 UTC, before the next batch` (`web/T5` for another team's). */
 export function triggerText(trigger, zone) {
     switch (trigger.kind) {
         case 'deadline':
-            return `${trigger.task.id} is due ${zone.weekdayMinute(new Date(trigger.due))}, before the next batch`;
+            return `${taskLabel(trigger.task, trigger.team)} is due ${zone.weekdayMinute(new Date(trigger.due))}, before the next batch`;
         case 'count':
             return `${trigger.pending} not yet asked, decisions.batchAt is ${trigger.batchAt}`;
         case 'time':

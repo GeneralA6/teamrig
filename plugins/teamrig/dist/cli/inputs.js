@@ -1,5 +1,5 @@
 import { ENV } from "../core/home.js";
-import { NAME_PATTERN, NAME_RULE } from "../core/ids.js";
+import { ID_PATTERN, NAME_PATTERN, NAME_RULE } from "../core/ids.js";
 import { parseTypedInstant, parseUtcDay, storedDeadline, typedDeadline, typedTimeHint } from "../core/time.js";
 import { OPTION_SEPARATOR } from "../register/card.js";
 import { MAX_SIZE_PCT, sizeProblem } from "../register/events.js";
@@ -40,6 +40,18 @@ export function commandWordsOf(args) {
         throw new UsageError(stray === undefined ? 'no command to run after --' : `put "${stray}" and the rest of the command after --`);
     }
     return args.rest;
+}
+/** `T12`, or `web/T12`: team web's task, as a roll-up over a team tree names a task of another team. */
+export function taskRefOf(text) {
+    const parts = text.split('/');
+    const [first = '', second] = parts;
+    if (parts.length === 1) {
+        return { team: undefined, id: taskIdOf(first) };
+    }
+    if (parts.length > 2 || second === undefined || !ID_PATTERN.test(first) || !TASK_ID.test(second)) {
+        throw new UsageError(`"${text}" is not a task id like T12, or web/T12 for a task of team web`);
+    }
+    return { team: first, id: second };
 }
 export function taskIdOf(text) {
     if (!TASK_ID.test(text)) {
