@@ -11,8 +11,9 @@ import { FakeClock } from '../testing/fake-clock.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { InlineMutex } from '../testing/inline-mutex.ts';
 import { MemoryFiles, normalisePath } from '../testing/memory-files.ts';
-import { accountOf, accountTeamsOf, workCacheFileOf, type AccountScope, type AccountTeamSource } from './account.ts';
+import { accountOf, accountSnapshotsOf, accountTeamsOf, workCacheFileOf, type AccountScope, type AccountTeamSource, type SnapshotDirSource } from './account.ts';
 import { LiftLog, type Lift } from './lift.ts';
+import { formatSnapshot, snapshotOfStatus } from './snapshot.ts';
 
 const CONFIG_DIR = join('/', 'u', '.claude');
 const NOW = Date.parse('2030-01-07T10:00:00Z');
@@ -117,5 +118,64 @@ describe('accountTeamsOf', () => {
 
   it('finds no other team when the kit home holds only the asking one', async () => {
     assert.deepEqual(await accountTeamsOf(new MemoryFiles(), new Map([['app', sourceOf('app')]]), SCOPE), []);
+  });
+});
+
+describe('accountSnapshotsOf', () => {
+  const KIT_HOME = join('/', 'kit');
+  const OWN = join(KIT_HOME, 'teams', 'app', 'live');
+  const ALPHA = '0000000a-0000-4000-8000-000000000001';
+  const BRAVO = '0000000b-0000-4000-8000-000000000002';
+  const CHARLIE = '0000000c-0000-4000-8000-000000000003';
+  const DELTA = '0000000d-0000-4000-8000-000000000004';
+
+  function dirSourceOf(team: string, budget: SnapshotDirSource['config']['budget'] = {}): SnapshotDirSource {
+    return { kit: { paths: { home: join(KIT_HOME, 'teams', team), kitHome: KIT_HOME } }, config: { budget } };
+  }
+
+  /** A snapshot a tab saved in `dir`: the week `usedPct` used. */
+  async function save(files: MemoryFiles, dir: string, session: string, usedPct: number): Promise<void> {
+    const input = JSON.stringify({ session_id: session, rate_limits: { seven_day: { used_percentage: usedPct, resets_at: NOW / 1000 + 86_400 } } });
+    const snapshot = snapshotOfStatus(input, NOW);
+    assert.ok(snapshot, input);
+    await files.write(join(dir, `${session}.json`), formatSnapshot(snapshot));
+  }
+
+  it("reads its own folder first, then each other team's on its account once, and no team's on another account", async () => {
+    const files = new MemoryFiles();
+    await save(files, OWN, ALPHA, 40);
+    await save(files, join('/', 'ops-live'), BRAVO, 80);
+    await save(files, join('/', 'qa-live'), CHARLIE, 45);
+    await save(files, join(KIT_HOME, 'usage', 'live'), DELTA, 46);
+    const teams = new Map([
+      ['app', dirSourceOf('app', { statusSnapshotDir: 'live' })],
+      ['ops', dirSourceOf('ops', { account: 'home', statusSnapshotDir: join('/', 'ops-live') })],
+      ['qa', dirSourceOf('qa', { account: CONFIG_DIR, statusSnapshotDir: join('/', 'qa-live') })],
+      ['ui', dirSourceOf('ui')],
+      ['web', dirSourceOf('web')],
+    ]);
+
+    const snapshots = await accountSnapshotsOf(files, teams, OWN, SCOPE);
+
+    assert.deepEqual(
+      snapshots.map((snapshot) => snapshot.sessionId),
+      [ALPHA, CHARLIE, DELTA],
+    );
+  });
+
+  it("skips another team's folder that cannot be read, and fails on its own", async () => {
+    const memory = new MemoryFiles();
+    await save(memory, OWN, ALPHA, 40);
+    const qa = join('/', 'qa-live');
+    const teams = new Map([['qa', dirSourceOf('qa', { statusSnapshotDir: qa })]]);
+
+    const others = new FaultyFiles(memory).fail('list', qa, systemError('EACCES'));
+    assert.deepEqual(
+      (await accountSnapshotsOf(others, teams, OWN, SCOPE)).map((snapshot) => snapshot.sessionId),
+      [ALPHA],
+    );
+
+    const own = new FaultyFiles(memory).fail('list', OWN, systemError('EACCES'));
+    await assert.rejects(accountSnapshotsOf(own, teams, OWN, SCOPE), /EACCES/);
   });
 });

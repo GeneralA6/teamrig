@@ -4,6 +4,7 @@ import type { Files } from '../core/files.ts';
 import type { TeamPaths } from '../core/home.ts';
 import { LiftLog, type Lift } from './lift.ts';
 import { budgetSplitOf, type BudgetSplit } from './parts.ts';
+import { readSnapshots, snapshotDirOf, type StatusSnapshot } from './snapshot.ts';
 import { cachedWork } from './work.ts';
 
 /** The Claude account a team's week is on: its `budget.account`, else the Claude config dir, which signs in one account. */
@@ -58,6 +59,44 @@ export async function accountTeamsOf(files: Files, teams: ReadonlyMap<string, Ac
 async function liftsOf(files: Files, path: string): Promise<readonly Lift[]> {
   try {
     return (await new LiftLog(files, path).read()).lifts;
+  } catch {
+    return [];
+  }
+}
+
+/** A team of the kit home as `accountSnapshotsOf` reads it: where its status line snapshots are, and its account. */
+export interface SnapshotDirSource {
+  readonly kit: { readonly paths: Pick<TeamPaths, 'home' | 'kitHome'> };
+  readonly config: { readonly budget: Pick<BudgetConfig, 'account' | 'statusSnapshotDir'> };
+}
+
+/**
+ * Every status line snapshot on the asking team's account, read-only: its own folder's (`own`), then each other
+ * team's on the account in the order of `teams`, each folder once. A team's tabs write only its own folder, so a
+ * team whose tabs are idle would show an old week %; `weekUseOf` takes the newest reading among them all. Another
+ * team's folder that cannot be read gives no snapshot, so it never stops this team's budget.
+ */
+export async function accountSnapshotsOf(
+  files: Pick<Files, 'list' | 'read'>,
+  teams: ReadonlyMap<string, SnapshotDirSource>,
+  own: string,
+  scope: Pick<AccountScope, 'account' | 'configDir'>,
+): Promise<StatusSnapshot[]> {
+  const snapshots = await readSnapshots(files, own);
+  const read = new Set([own]);
+  for (const { kit, config } of teams.values()) {
+    const dir = snapshotDirOf(config.budget, kit.paths);
+    if (!read.has(dir) && accountOf(config.budget, scope.configDir) === scope.account) {
+      read.add(dir);
+      snapshots.push(...(await othersSnapshots(files, dir)));
+    }
+  }
+  return snapshots;
+}
+
+async function othersSnapshots(files: Pick<Files, 'list' | 'read'>, dir: string): Promise<readonly StatusSnapshot[]> {
+  try {
+    return await readSnapshots(files, dir);
   } catch {
     return [];
   }

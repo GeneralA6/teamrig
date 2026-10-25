@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { basename, join } from 'node:path';
 import { parsePeriod } from '../budget/period.ts';
 import { W_EXPLAINED } from '../budget/report.ts';
-import { parseSnapshot, SNAPSHOT_PRUNED_FILE } from '../budget/snapshot.ts';
+import { formatSnapshot, parseSnapshot, snapshotOfStatus, SNAPSHOT_PRUNED_FILE } from '../budget/snapshot.ts';
 import { formatConfig } from '../config/load.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { MS_PER_DAY } from '../core/time.ts';
@@ -55,6 +55,14 @@ function status(cwd: string): string {
     model: { display_name: 'Opus 5.5' },
     rate_limits: { five_hour: { used_percentage: 6, resets_at: RESET / 1000 - 86_400 }, seven_day: { used_percentage: 30, resets_at: RESET / 1000 } },
   });
+}
+
+/** A status line snapshot a tab of another team saved in `dir`: the week `usedPct` used, read now. */
+async function saveReading(kit: CliHarness, dir: string, session: string, usedPct: number): Promise<void> {
+  const input = JSON.stringify({ session_id: session, cwd: APP, rate_limits: { seven_day: { used_percentage: usedPct, resets_at: RESET / 1000 } } });
+  const snapshot = snapshotOfStatus(input, kit.clock.now());
+  assert.ok(snapshot, input);
+  await kit.files.write(join(dir, `${session}.json`), formatSnapshot(snapshot));
 }
 
 interface World {
@@ -126,6 +134,21 @@ describe('teamrig budget', () => {
       '  app-alpha   2.0%    4.1%  20.00M      2',
       '  app-bravo  0.50%    4.1%   5.00M      1',
     ]);
+  });
+
+  it('reads the week from the newest snapshot of any team on the account, never of a team on another account', async () => {
+    const { kit, run } = await world();
+    const webLive = join('/', 'web-live');
+    const opsLive = join('/', 'ops-live');
+    await kit.files.write(teamConfigOf('web'), formatConfig({ configVersion: 1, sessions: ['lead', 'front', 'back'], roles: { lead: 'lead' }, budget: { statusSnapshotDir: webLive } }));
+    await kit.files.write(
+      teamConfigOf('ops'),
+      formatConfig({ configVersion: 1, sessions: ['lead', 'front', 'back'], roles: { lead: 'lead' }, budget: { account: 'work', statusSnapshotDir: opsLive } }),
+    );
+    kit.clock.advance(3_600_000);
+    await saveReading(kit, webLive, BRAVO_TAB, 45);
+    await saveReading(kit, opsLive, STRANGER, 80);
+    assert.match(ok(await run(['budget']))[0] ?? '', /^Week: 45\.0% used at 11:00 UTC \(status line\)/);
   });
 
   it('keeps what it measured, so a second run reads only what is new', async () => {

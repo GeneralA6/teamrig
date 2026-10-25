@@ -1,8 +1,9 @@
-import { accountOf, accountTeamsOf } from '../budget/account.ts';
+import { accountOf, accountSnapshotsOf, accountTeamsOf } from '../budget/account.ts';
 import { LiftLog } from '../budget/lift.ts';
 import { budgetSplitOf, type BudgetSplit, type TeamsOnAccount } from '../budget/parts.ts';
-import type { KitConfig } from '../config/types.ts';
-import { claudeConfigDir } from '../core/home.ts';
+import { snapshotDirOf, type StatusSnapshot } from '../budget/snapshot.ts';
+import type { BudgetConfig, KitConfig } from '../config/types.ts';
+import { claudeConfigDir, type TeamPaths } from '../core/home.ts';
 import type { CliRuntime } from './runtime.ts';
 import { loadTree } from './tree.ts';
 
@@ -46,4 +47,19 @@ export async function teamsOnAccountOf(runtime: CliRuntime, asking: AskingRoster
   const { lifts } = await new LiftLog(runtime.files, asking.liftsPath).read();
   const split = budgetSplitOf({ team: asking.team, ids: asking.ids, sessions: asking.config.budget.sessions, leads: asking.config.leads, work: asking.work, lifts, now, usedPct });
   return { split, others: await otherTeamsOnAccount(runtime, asking, now, usedPct) };
+}
+
+/**
+ * Every status line snapshot on the asking team's Claude account (`accountSnapshotsOf`): its own folder's, then the
+ * other teams' on the account, read-only, so a team whose tabs are idle reads the account's newest week %. Every
+ * team's config is read on each call.
+ */
+export async function snapshotsOnAccount(
+  runtime: CliRuntime,
+  budget: Pick<BudgetConfig, 'account' | 'statusSnapshotDir'>,
+  paths: Pick<TeamPaths, 'home' | 'kitHome'>,
+): Promise<StatusSnapshot[]> {
+  const { teams } = await loadTree(runtime);
+  const configDir = claudeConfigDir(runtime.env, runtime.userHome);
+  return accountSnapshotsOf(runtime.files, teams, snapshotDirOf(budget, paths), { account: accountOf(budget, configDir), configDir });
 }

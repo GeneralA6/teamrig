@@ -1,12 +1,13 @@
 import { join } from 'node:path';
 import { OUTSIDE_ID } from '../budget/measure.ts';
-import { readSnapshots, snapshotDirOf, weekUseOf } from '../budget/snapshot.ts';
+import { weekUseOf } from '../budget/snapshot.ts';
 import { UsageStore, type UsageState } from '../budget/store.ts';
 import { calibrationOf, MeterLog } from '../budget/calibration.ts';
 import { teamWeekOf } from '../budget/team-week.ts';
 import { rateOf, type WeekReading } from '../budget/week.ts';
 import type { KitConfig } from '../config/types.ts';
 import type { TeamPaths } from '../core/home.ts';
+import { snapshotsOnAccount } from './account-teams.ts';
 import type { CliRuntime } from './runtime.ts';
 
 /** The team paths a stored reading of the week reads. */
@@ -25,7 +26,7 @@ export async function readStoredUsage(runtime: CliRuntime, paths: Pick<TeamPaths
 
 /**
  * The week as a hook reads it: each session's use as last stored, the use outside the team and the newest
- * status-line reading, no transcript measured.
+ * status-line reading on the account (`snapshotsOnAccount`), no transcript measured.
  */
 export async function readStoredWeek(
   runtime: CliRuntime,
@@ -35,7 +36,7 @@ export async function readStoredWeek(
 ): Promise<WeekReading> {
   const { budget, sessions } = config;
   const states = [...(await readStoredUsage(runtime, paths, sessions)).values()];
-  const statusUse = weekUseOf(await readSnapshots(runtime.files, snapshotDirOf(budget, paths)), now);
+  const statusUse = weekUseOf(await snapshotsOnAccount(runtime, budget, paths), now);
   return teamWeekOf(runtime.files, paths, { budget, now, statusUse, states });
 }
 
