@@ -34,6 +34,54 @@ async function fileStatsOf(path: string): Promise<Stats | undefined> {
   }
 }
 
+/** Removes a file: true when this call removed it, false when it was missing. Repeated while another process holds it open. */
+function removeFile(path: string, sleep: Sleep): Promise<boolean> {
+  return retryTransient(async () => {
+    try {
+      await unlink(path);
+      return true;
+    } catch (error) {
+      if (errorCode(error) === 'ENOENT') {
+        return false;
+      }
+      throw error;
+    }
+  }, sleep);
+}
+
+/** Replaces the file atomically (write a private sibling, then rename it over the file), creating folders as needed. */
+export async function writeAtomic(path: string, data: string | Uint8Array, sleep: Sleep): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  const temporary = temporaryOf(path);
+  await writeFile(temporary, data);
+  try {
+    await retryTransient(() => rename(temporary, path), sleep);
+  } catch (error) {
+    await removeFile(temporary, sleep);
+    throw error;
+  }
+}
+
+/** Creates the file only if it does not exist yet, creating folders as needed; false when it already exists. */
+export async function createOnce(path: string, data: string | Uint8Array, sleep: Sleep): Promise<boolean> {
+  // Write a private sibling, then hard-link it into place: link() fails when the target exists,
+  // so the file appears complete or not at all and no reader ever sees it half written.
+  await mkdir(dirname(path), { recursive: true });
+  const temporary = temporaryOf(path);
+  await writeFile(temporary, data);
+  try {
+    await link(temporary, path);
+    return true;
+  } catch (error) {
+    if (errorCode(error) === 'EEXIST') {
+      return false;
+    }
+    throw error;
+  } finally {
+    await removeFile(temporary, sleep);
+  }
+}
+
 /** The file operations the kit needs, behind one interface so every module can be tested in memory. */
 export interface Files {
   /** The file's text, or undefined when it does not exist. */
@@ -70,18 +118,6 @@ export interface Files {
  * those steps are repeated for about a second (`sleep` paces them) before the error is thrown.
  */
 export function nodeFiles(sleep: Sleep): Files {
-  const removeFile = (path: string): Promise<boolean> =>
-    retryTransient(async () => {
-      try {
-        await unlink(path);
-        return true;
-      } catch (error) {
-        if (errorCode(error) === 'ENOENT') {
-          return false;
-        }
-        throw error;
-      }
-    }, sleep);
   return {
     async read(path) {
       try {
@@ -123,33 +159,10 @@ export function nodeFiles(sleep: Sleep): Files {
       await appendFile(path, text, 'utf8');
     },
     async write(path, text) {
-      await mkdir(dirname(path), { recursive: true });
-      const temporary = temporaryOf(path);
-      await writeFile(temporary, text, 'utf8');
-      try {
-        await retryTransient(() => rename(temporary, path), sleep);
-      } catch (error) {
-        await removeFile(temporary);
-        throw error;
-      }
+      await writeAtomic(path, text, sleep);
     },
     async createExclusive(path, text) {
-      // Write a private sibling, then hard-link it into place: link() fails when the target exists,
-      // so the file appears complete or not at all and no reader ever sees it half written.
-      await mkdir(dirname(path), { recursive: true });
-      const temporary = temporaryOf(path);
-      await writeFile(temporary, text, 'utf8');
-      try {
-        await link(temporary, path);
-        return true;
-      } catch (error) {
-        if (errorCode(error) === 'EEXIST') {
-          return false;
-        }
-        throw error;
-      } finally {
-        await removeFile(temporary);
-      }
+      return createOnce(path, text, sleep);
     },
     async list(dir) {
       try {
@@ -162,7 +175,7 @@ export function nodeFiles(sleep: Sleep): Files {
       }
     },
     async remove(path) {
-      return removeFile(path);
+      return removeFile(path, sleep);
     },
     async stamp(path) {
       const stats = await fileStatsOf(path);
