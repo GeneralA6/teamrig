@@ -82,9 +82,10 @@ describe('teamrig inbox add to a list across a tree of teams', () => {
 
   it('refuses the whole list when one receiver is out of reach or its team refuses the line', async () => {
     const kit = await treeHarness();
-    const skip = await kit.run(['inbox', 'add', '--to', 'alpha,web/lead,ui/lead', '--text', 'hi', '--session', 'lead']);
-    assert.equal(skip.code, EXIT.refused);
-    assert.match(skip.stdout[0] ?? '', /ui\/lead is none of them/);
+    await kit.files.write(teamConfigOf('shop'), formatConfig({ configVersion: 1, team: { id: 'shop' }, sessions: ['lead', 'till'], roles: { lead: 'lead' } }));
+    const apart = await kit.run(['inbox', 'add', '--to', 'alpha,web/lead,shop/lead', '--text', 'hi', '--session', 'lead']);
+    assert.equal(apart.code, EXIT.refused);
+    assert.match(apart.stdout[0] ?? '', /shop\/lead are in separate trees of teams/);
     await kit.files.write(
       teamConfigOf('web'),
       formatConfig({ configVersion: 1, team: { id: 'web', parent: 'app' }, sessions: ['lead', 'front'], roles: { lead: 'lead' }, register: { secretPatterns: ['acme-[0-9]+'] } }),

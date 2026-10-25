@@ -32,30 +32,28 @@ describe('teamrig inbox add across a tree of teams', () => {
     assert.equal(kit.files.get(teamInboxOf('app', 'bravo')), '- 2030-01-08 10:00 alpha: one\n- 2030-01-08 10:00 alpha: two\n');
   });
 
-  it("points a sub-lead's member at its own leader, not the team's lead", async () => {
-    const kit = await treeHarness({ leads: { bravo: ['alpha'] } });
-    const member = await kit.run(['inbox', 'add', '--to', 'web/lead', '--text', 'hi', '--session', 'alpha']);
-    assert.deepEqual([member.code, member.stdout], [
-      EXIT.refused,
-      ['REFUSED app/alpha may write to its own team only, and web/lead is not on it: escalate through your lead (app/bravo)'],
-    ]);
+  it("lets a member write to another team's lead and members, and a lead past a level, with no relay", async () => {
+    const kit = await treeHarness();
+    const member = await kit.run(['inbox', 'add', '--to', 'web/lead', '--text', 'the api is ready', '--session', 'alpha']);
+    assert.deepEqual([member.code, member.stdout], [EXIT.ok, ['POSTED to web/lead; web/lead is reminded at its next prompt']]);
+    assert.equal(kit.files.get(teamInboxOf('web', 'lead')), '- 2030-01-08 10:00 app/alpha: the api is ready\n');
+    const sibling = await kit.run(['inbox', 'add', '--to', 'ops/run', '--text', 'deploy after 18:00', '--session', 'front'], { env: { TEAMRIG_TEAM: 'web' } });
+    assert.equal(sibling.code, EXIT.ok);
+    assert.equal(kit.files.get(teamInboxOf('ops', 'run')), '- 2030-01-08 10:00 web/front: deploy after 18:00\n');
+    const skip = await kit.run(['inbox', 'add', '--to', 'ui/pixel', '--text', 'new icons', '--session', 'lead']);
+    assert.equal(skip.code, EXIT.ok);
+    assert.equal(kit.files.get(teamInboxOf('ui', 'pixel')), '- 2030-01-08 10:00 app/lead: new icons\n');
   });
 
-  it('refuses a member writing outside its team, and a lead skipping a level, writing nothing', async () => {
+  it('refuses a session of a separate tree of teams, writing nothing', async () => {
     const kit = await treeHarness();
-    const member = await kit.run(['inbox', 'add', '--to', 'web/lead', '--text', 'hi', '--session', 'alpha']);
-    assert.deepEqual([member.code, member.stdout], [
+    await kit.files.write(teamConfigOf('shop'), formatConfig({ configVersion: 1, team: { id: 'shop' }, sessions: ['lead', 'till'], roles: { lead: 'lead' } }));
+    const other = await kit.run(['inbox', 'add', '--to', 'shop/till', '--text', 'hi', '--session', 'lead']);
+    assert.deepEqual([other.code, other.stdout], [
       EXIT.refused,
-      ['REFUSED app/alpha may write to its own team only, and web/lead is not on it: escalate through your lead (app/lead)'],
+      ['REFUSED app/lead and shop/till are in separate trees of teams: an inbox line reaches only a session of its own tree'],
     ]);
-    const skip = await kit.run(['inbox', 'add', '--to', 'ui/lead', '--text', 'hi', '--session', 'lead']);
-    assert.equal(skip.code, EXIT.refused);
-    assert.match(skip.stdout[0] ?? '', /ui\/lead is none of them: escalate through your lead/);
-    const toMember = await kit.run(['inbox', 'add', '--to', 'web/front', '--text', 'hi', '--session', 'lead']);
-    assert.equal(toMember.code, EXIT.refused);
-    assert.equal(kit.files.get(teamInboxOf('web', 'lead')), undefined);
-    assert.equal(kit.files.get(teamInboxOf('ui', 'lead')), undefined);
-    assert.equal(kit.files.get(teamInboxOf('web', 'front')), undefined);
+    assert.equal(kit.files.get(teamInboxOf('shop', 'till')), undefined);
   });
 
   it('refuses an unknown team or session, a broken target config, a secret and a bad address', async () => {
