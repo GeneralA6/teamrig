@@ -4,7 +4,9 @@ import { parseWakeAnswer, RECHECK_MS, WAKE_TICK_MS, WakeHand, wakeCliArgv, type 
 
 const TAB = '0123abcd-0000-4000-8000-0000000000a1';
 const EVENTS = '/kit/teams/app/state/events.jsonl';
-const WAIT: WakeAnswer = { kind: 'wait', watch: EVENTS, recheckAt: null };
+const ASKS_ROOT = '/kit/teams/app/state/wake-asks';
+const ASKS = `${ASKS_ROOT}/alpha`;
+const WAIT: WakeAnswer = { kind: 'wait', watch: [EVENTS, ASKS], recheckAt: null };
 const WAKE: WakeAnswer = { kind: 'wake', ids: ['T2'], text: 'New work was handed to you.', toast: 'teamrig woke this tab for T2' };
 
 interface Call {
@@ -14,12 +16,16 @@ interface Call {
   readonly cwd: string;
 }
 
-/** Claude Code as the mod sees it: the tab, the CLI's answers in turn, the register file's change time and the prompt. */
+/**
+ * Claude Code as the mod sees it: the tab, the CLI's answers in turn, the change times of the register file and of
+ * alpha's asks folder (missing, as every other session's, until an ask is posted), and the prompt.
+ */
 class FakeHost implements WakeHandHost {
   time = 1_000_000;
   /** What each `hook wake-check` answers, in turn; the last one repeats. */
   answers: WakeRun[] = [];
   changed: number | undefined = 5;
+  asksChanged: number | undefined;
   dropReason: string | undefined;
   submitFailure: Error | undefined;
   readonly calls: Call[] = [];
@@ -49,8 +55,11 @@ class FakeHost implements WakeHandHost {
   }
 
   async changedAt(path: string): Promise<number | undefined> {
-    assert.equal(path, EVENTS);
-    return this.changed;
+    if (path === EVENTS) {
+      return this.changed;
+    }
+    assert.ok(path.startsWith(`${ASKS_ROOT}/`), path);
+    return path === ASKS ? this.asksChanged : undefined;
   }
 
   async submit(text: string): Promise<string | undefined> {
@@ -111,7 +120,7 @@ describe('WakeHand', () => {
     const host = new FakeHost();
     const hand = await settled(host);
     host.changed = 6;
-    host.answer({ kind: 'wait', watch: EVENTS, recheckAt: host.time + 120_000 });
+    host.answer({ kind: 'wait', watch: [EVENTS, ASKS], recheckAt: host.time + 120_000 });
     assert.deepEqual(await hand.tick(), { kind: 'waiting', recheckAt: host.time + 120_000 });
     host.time += 60_000;
     assert.deepEqual(await hand.tick(), { kind: 'quiet' });
@@ -155,6 +164,32 @@ describe('WakeHand', () => {
     assert.deepEqual(host.toasts, []);
   });
 
+  it("asks again at the next look when an ask is posted to the session's folder alone, the register unchanged", async () => {
+    const host = new FakeHost();
+    const hand = await settled(host);
+    host.time += WAKE_TICK_MS;
+    assert.deepEqual(await hand.tick(), { kind: 'quiet' });
+    host.asksChanged = 9;
+    host.answer(WAKE);
+    assert.deepEqual(await hand.tick(), { kind: 'woke', ids: ['T2'] });
+    assert.equal(host.checks(), 3);
+    host.asksChanged = 10;
+    host.answer(WAIT);
+    assert.deepEqual(await hand.tick(), { kind: 'waiting', recheckAt: null }, 'the wake took the ask, so its folder changed again');
+    assert.deepEqual(await hand.tick(), { kind: 'quiet' });
+  });
+
+  it('takes the change times again when the CLI names other files (the tab is another session after a /clear)', async () => {
+    const host = new FakeHost();
+    const hand = await settled(host);
+    host.answer({ kind: 'wait', watch: [EVENTS, `${ASKS_ROOT}/bravo`], recheckAt: null });
+    host.changed = 6;
+    assert.deepEqual(await hand.tick(), { kind: 'waiting', recheckAt: null });
+    assert.deepEqual(await hand.tick(), { kind: 'waiting', recheckAt: null });
+    assert.deepEqual(await hand.tick(), { kind: 'quiet' });
+    assert.equal(host.checks(), 4);
+  });
+
   it('asks again at the next look after a wake that came before the CLI named its file', async () => {
     const host = new FakeHost();
     const hand = new WakeHand(host);
@@ -185,10 +220,19 @@ describe('WakeHand', () => {
 
 describe('parseWakeAnswer', () => {
   it('reads each answer and refuses any other shape', () => {
-    for (const answer of [WAKE, WAIT, { kind: 'wait', watch: EVENTS, recheckAt: 7 }, { kind: 'off', why: 'x' }] as const) {
+    for (const answer of [WAKE, WAIT, { kind: 'wait', watch: [EVENTS], recheckAt: 7 }, { kind: 'off', why: 'x' }] as const) {
       assert.deepEqual(parseWakeAnswer(JSON.stringify(answer)), answer);
     }
-    const refused = ['[]', '"wake"', '{"kind":"wake","ids":[1],"text":"t","toast":"t"}', '{"kind":"wait","watch":"w","recheckAt":"soon"}', '{"kind":"off"}', '{"kind":"other"}'];
+    const refused = [
+      '[]',
+      '"wake"',
+      '{"kind":"wake","ids":[1],"text":"t","toast":"t"}',
+      '{"kind":"wait","watch":["w"],"recheckAt":"soon"}',
+      '{"kind":"wait","watch":"w","recheckAt":null}',
+      '{"kind":"wait","watch":["w",1],"recheckAt":null}',
+      '{"kind":"off"}',
+      '{"kind":"other"}',
+    ];
     for (const text of refused) {
       assert.equal(parseWakeAnswer(text), undefined, text);
     }

@@ -30,6 +30,8 @@ const MINUTE = 60 * SECOND;
 const WAKE_LOG = join(TEAM_HOME, 'state', 'wakes.jsonl');
 const ALPHA_LOCK = join(TEAM_HOME, 'state', 'wake', 'alpha.lock');
 const ASKS = join(TEAM_HOME, 'state', 'wake-asks');
+/** What a waiting tab of the session watches: the register, and the session's asks folder. */
+const watchOf = (id = 'alpha'): readonly string[] => [EVENTS_PATH, join(ASKS, id)];
 
 function payload(extra: JsonRecord = {}, tab = ALPHA_TAB): string {
   return JSON.stringify({ session_id: tab, cwd: APP, ...extra });
@@ -101,10 +103,10 @@ describe('hook wake-check', () => {
   it('takes what is there at the first check, then wakes once for p1 work handed meanwhile, after the batch', async () => {
     const kit = await teamWithAlphaTab();
     await hand(kit, 'Old work', 'p1');
-    assert.deepEqual(answerOf(await check(kit)), { kind: 'wait', watch: EVENTS_PATH, recheckAt: null });
+    assert.deepEqual(answerOf(await check(kit)), { kind: 'wait', watch: watchOf(), recheckAt: null });
     await hand(kit, 'Fix the login', 'p1');
     const start = kit.clock.now();
-    assert.deepEqual(answerOf(await check(kit)), { kind: 'wait', watch: EVENTS_PATH, recheckAt: start + 120 * SECOND });
+    assert.deepEqual(answerOf(await check(kit)), { kind: 'wait', watch: watchOf(), recheckAt: start + 120 * SECOND });
     kit.clock.advance(120 * SECOND);
     const transcripts = new MemoryTranscripts();
     transcripts.set(join(USER_HOME, '.claude', 'projects', 'work-app', `${ALPHA_TAB}.jsonl`), '{}\n', kit.clock.now() - 5 * MINUTE);
@@ -117,7 +119,7 @@ describe('hook wake-check', () => {
     ]);
     assert.deepEqual(await keptPrompt(kit), { tab: ALPHA_TAB, text }, 'kept for the turn log');
     kit.clock.advance(60 * MINUTE);
-    assert.deepEqual(answerOf(await check(kit)), { kind: 'wait', watch: EVENTS_PATH, recheckAt: null }, 'never twice for one task');
+    assert.deepEqual(answerOf(await check(kit)), { kind: 'wait', watch: watchOf(), recheckAt: null }, 'never twice for one task');
   });
 
   it('keeps no wake prompt with turnLog off', async () => {
@@ -166,7 +168,7 @@ describe('hook wake-check', () => {
     const kit = await teamWithAlphaTab({ ...TEAM, wake: { priority: 2, batchSeconds: 0 }, budget });
     await check(kit);
     await hand(kit, 'Ship the page', 'p2');
-    assert.deepEqual(answerOf(await check(kit)), { kind: 'wait', watch: EVENTS_PATH, recheckAt: null });
+    assert.deepEqual(answerOf(await check(kit)), { kind: 'wait', watch: watchOf(), recheckAt: null });
     await hand(kit, 'Fix the outage', 'p1');
     assert.equal((await check(kit)).stdout[0]?.includes('"kind":"wake","ids":["T2"]'), true);
   });
@@ -177,7 +179,7 @@ describe('hook wake-check', () => {
     await hand(kit, 'My own idea', 'p1', 'alpha');
     await hand(kit, 'First step', 'p2');
     await kit.run(['add', '--title', 'Second step', '--description', 'what and why', '--priority', 'p1', '--owner', 'alpha', '--after', 'T2', '--session', 'lead']);
-    assert.deepEqual(answerOf(await check(kit)), { kind: 'wait', watch: EVENTS_PATH, recheckAt: null });
+    assert.deepEqual(answerOf(await check(kit)), { kind: 'wait', watch: watchOf(), recheckAt: null });
   });
 
   it("never wakes the lead while the owner's daily meeting is open, and wakes it for the work handed meanwhile after", async () => {
@@ -188,10 +190,10 @@ describe('hook wake-check', () => {
     assert.equal((await kit.run(['meeting', 'start', '--session', 'lead'])).code, EXIT.ok);
     await kit.run(['add', '--title', 'Decide the outage fix', '--description', 'what and why', '--priority', 'p1', '--owner', 'lead', '--session', 'alpha']);
     kit.clock.advance(10 * MINUTE);
-    assert.deepEqual(answerOf(await leadCheck()), { kind: 'wait', watch: EVENTS_PATH, recheckAt: null });
+    assert.deepEqual(answerOf(await leadCheck()), { kind: 'wait', watch: watchOf('lead'), recheckAt: null });
     assert.equal((await kit.run(['meeting', 'end', '--session', 'lead'])).code, EXIT.ok);
     const start = kit.clock.now();
-    assert.deepEqual(answerOf(await leadCheck()), { kind: 'wait', watch: EVENTS_PATH, recheckAt: start + 120 * SECOND });
+    assert.deepEqual(answerOf(await leadCheck()), { kind: 'wait', watch: watchOf('lead'), recheckAt: start + 120 * SECOND });
     kit.clock.advance(120 * SECOND);
     assert.equal((await leadCheck()).stdout[0]?.includes('"kind":"wake","ids":["T1"]'), true);
   });
@@ -203,9 +205,9 @@ describe('hook wake-check', () => {
     await check(kit);
     await store.setRestart('alpha', request);
     await hand(kit, 'Fix the login', 'p1');
-    assert.deepEqual(answerOf(await check(kit)), { kind: 'wait', watch: EVENTS_PATH, recheckAt: kit.clock.now() + RESTART_RECHECK_MS });
+    assert.deepEqual(answerOf(await check(kit)), { kind: 'wait', watch: watchOf(), recheckAt: kit.clock.now() + RESTART_RECHECK_MS });
     await store.setRestart('alpha', { ...request, phase: 'ending' });
-    assert.deepEqual(answerOf(await check(kit)), { kind: 'wait', watch: EVENTS_PATH, recheckAt: kit.clock.now() + RESTART_RECHECK_MS }, 'ending too');
+    assert.deepEqual(answerOf(await check(kit)), { kind: 'wait', watch: watchOf(), recheckAt: kit.clock.now() + RESTART_RECHECK_MS }, 'ending too');
     await store.clearRestart('alpha');
     assert.equal((await check(kit)).stdout[0]?.includes('"kind":"wake","ids":["T1"]'), true);
   });
@@ -226,7 +228,7 @@ describe('hook wake-check', () => {
     const asks = new WakeAsks(kit.files, ASKS);
     await check(kit);
     await asks.post('alpha', { from: 'teamrig', text: 'The idle pass closed bravo.', at: kit.clock.now() });
-    assert.deepEqual(answerOf(await check(kit)), { kind: 'wait', watch: EVENTS_PATH, recheckAt: kit.clock.now() + 120 * SECOND });
+    assert.deepEqual(answerOf(await check(kit)), { kind: 'wait', watch: watchOf(), recheckAt: kit.clock.now() + 120 * SECOND });
     kit.clock.advance(120 * SECOND);
     const woke = answerOf(await check(kit));
     assert.ok(typeof woke === 'object' && woke !== null && 'text' in woke && 'toast' in woke && 'ids' in woke);
@@ -235,7 +237,7 @@ describe('hook wake-check', () => {
     assert.equal(woke.toast, 'teamrig woke this tab for an urgent line from teamrig (about 210k W, cold)');
     assert.deepEqual(await logLines(kit), [{ v: 1, at: new Date(kit.clock.now()).toISOString(), kind: 'wake', session: 'alpha', tab: ALPHA_TAB, ids: [], w: 210_000, cold: true, asks: 1 }]);
     assert.deepEqual(await asks.read('alpha'), []);
-    assert.deepEqual(answerOf(await check(kit)), { kind: 'wait', watch: EVENTS_PATH, recheckAt: null }, 'never twice for one line');
+    assert.deepEqual(answerOf(await check(kit)), { kind: 'wait', watch: watchOf(), recheckAt: null }, 'never twice for one line');
   });
 
   it('wakes for an urgent line and the work handed with it in one wake, and for the next line with no gap since', async () => {
@@ -258,7 +260,7 @@ describe('hook wake-check', () => {
     const asks = new WakeAsks(kit.files, ASKS);
     await asks.post('lead', { from: 'teamrig', text: 'The idle pass closed bravo.', at: kit.clock.now() });
     assert.equal((await kit.run(['meeting', 'start', '--session', 'lead'])).code, EXIT.ok);
-    assert.deepEqual(answerOf(await kit.run(['hook', 'wake-check'], { stdin: payload() })), { kind: 'wait', watch: EVENTS_PATH, recheckAt: null });
+    assert.deepEqual(answerOf(await kit.run(['hook', 'wake-check'], { stdin: payload() })), { kind: 'wait', watch: watchOf('lead'), recheckAt: null });
     assert.equal((await asks.read('lead')).length, 1);
     await kit.files.write(join(ASKS, 'lead', '1-0.json'), '{"v":1,"from":"teamrig"');
     assert.equal((await kit.run(['meeting', 'end', '--session', 'lead'])).code, EXIT.ok);
@@ -270,7 +272,7 @@ describe('hook wake-check', () => {
     const { kit, store } = await deadRestart(AUTO_RESTART_TEAM);
     const processes = new FakeProcesses();
     const underClaude = UNDER_CLAUDE();
-    assert.deepEqual(answerOf(await checkUnder(kit, processes, underClaude)), { kind: 'wait', watch: EVENTS_PATH, recheckAt: kit.clock.now() + RESTART_RECHECK_MS });
+    assert.deepEqual(answerOf(await checkUnder(kit, processes, underClaude)), { kind: 'wait', watch: watchOf(), recheckAt: kit.clock.now() + RESTART_RECHECK_MS });
     const at = new Date(kit.clock.now()).toISOString();
     assert.deepEqual(await store.restart('alpha'), { phase: 'pending', at, pid: 6900, claudeSession: ALPHA_TAB, transcript: null, cwd: null, supervised: true });
     assert.deepEqual(underClaude.lineages, [7000], 'the Claude Code process looked up once');
@@ -279,7 +281,7 @@ describe('hook wake-check', () => {
     assert.deepEqual(runners(), [['/usr/bin/node', APP, '/opt/teamrig/dist/cli/main.js', 'restart', 'alpha', '--team', 'app', '--at', at, '--project', APP]]);
 
     kit.clock.advance(RESTART_RECHECK_MS);
-    assert.deepEqual(answerOf(await checkUnder(kit, processes)), { kind: 'wait', watch: EVENTS_PATH, recheckAt: kit.clock.now() + RESTART_RECHECK_MS }, 'held by the new runner');
+    assert.deepEqual(answerOf(await checkUnder(kit, processes)), { kind: 'wait', watch: watchOf(), recheckAt: kit.clock.now() + RESTART_RECHECK_MS }, 'held by the new runner');
     assert.equal(runners().length, 1, 'started once');
   });
 
@@ -313,7 +315,7 @@ describe('hook wake-check', () => {
   it('answers a recheck now while another tab of the session holds its lock', async () => {
     const kit = await teamWithAlphaTab();
     await kit.files.write(ALPHA_LOCK, JSON.stringify({ pid: 7, at: kit.clock.now() }));
-    assert.deepEqual(answerOf(await check(kit)), { kind: 'wait', watch: EVENTS_PATH, recheckAt: kit.clock.now() });
+    assert.deepEqual(answerOf(await check(kit)), { kind: 'wait', watch: watchOf(), recheckAt: kit.clock.now() });
   });
 
   it('fails on any other error under the lock', async () => {
@@ -343,7 +345,7 @@ describe('hook wake-check at the day start and a burst', () => {
   const ALPHA_TRANSCRIPT = join(USER_HOME, '.claude', 'projects', 'work-app', `${ALPHA_TAB}.jsonl`);
   /** The harness's clock starts at 2030-01-08 10:00 UTC, so today's 06:00 has passed: the next day start is tomorrow's. */
   const TOMORROW_SIX = Date.parse('2030-01-09T06:00:00.000Z');
-  const waitTill = (recheckAt: number | null) => ({ kind: 'wait', watch: EVENTS_PATH, recheckAt });
+  const waitTill = (recheckAt: number | null) => ({ kind: 'wait', watch: watchOf(), recheckAt });
 
   function turnAt(at: number): MemoryTranscripts {
     const transcripts = new MemoryTranscripts();
@@ -437,7 +439,7 @@ describe('hook wake-check runs the idle pass', () => {
   const DRY_RUN: JsonRecord = { ...TEAM, open: { idle: { mode: 'dry-run' } } };
   const ON: JsonRecord = { ...TEAM, open: { idle: { mode: 'on' } } };
   const COMMIT = { usedMb: 85_300, limitMb: 100_700 };
-  const WAIT = { kind: 'wait', watch: EVENTS_PATH, recheckAt: null };
+  const WAIT = { kind: 'wait', watch: watchOf(), recheckAt: null };
 
   /** A dry-run team whose bravo the lead closed at 09:00 UTC; neither lead nor alpha runs. */
   async function idleTeam(config: JsonRecord = DRY_RUN): Promise<CliHarness> {
