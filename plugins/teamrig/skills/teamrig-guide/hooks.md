@@ -27,7 +27,7 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | `Stop` (end of each turn) | `hook stop` | Sends the session back once to [a skill edit it dropped](#end-of-a-turn-or-a-helper-a-dropped-skill-edit), and after a task is set waiting, once to [its other work](#end-of-a-turn-keep-working-while-a-task-waits); asks for a handover when a context refresh is due, then starts the automatic restart; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines; names a verifying task whose verify-by day has come; once per `github.everyMinutes` for the whole team, starts `gh sync --auto` hidden in the background; every 10 minutes for the whole team, tells the lead of [a tab that runs without its hooks](#end-of-a-turn-hookless-tabs); with tab status on, sets the tab's ready circle, or the decision circle after a turn that asks the user to decide |
 | `SessionStart`, `UserPromptSubmit`, `Stop`, `StopFailure` and `SessionEnd`, in a team or not | `hook restore-track` | Records each Claude Code session on the machine, where it started and what it was doing, for the restore after a reboot ([the restore tracker](#every-session-the-restore-tracker)) |
 | Every event but `Stop` and a tool call's end: session start and end, each prompt, `PreToolUse` on `AskUserQuestion` and `ExitPlanMode`, `PermissionRequest`, `Elicitation` and its result, a helper's start, `StopFailure`, `PreCompact`, `PostCompact` | `hook tab-status` | With `tabStatus.enabled`, puts a colored circle before the tab's title for what the session is doing ([tab status](#every-event-tab-status)) |
-| Every tool call's end (`PostToolUse`, `PostToolUseFailure`), in a team or not | `hook tool-end` | Sets the tab's circle as `hook tab-status` does, and at most every 5 minutes records in [the restore tracker](#every-session-the-restore-tracker) that the session's hooks still run |
+| Every tool call's end (`PostToolUse`, `PostToolUseFailure`), in a team or not | `hook tool-end` | Sets the tab's circle as `hook tab-status` does, and at most every 5 minutes records in [the restore tracker](#every-session-the-restore-tracker) that the session's hooks still run; in a team, shows a busy session its new inbox lines once an [urgent line](#urgent-lines) waits for it |
 
 ## Session start
 
@@ -770,7 +770,10 @@ asks once the oldest is `wake.batchSeconds` old, so the lines posted together wa
 each line, one a line on the team's clock, before any work handed meanwhile. `wake.minGapMinutes`, the budget's hold
 and quiet hours do not hold them, since each is urgent by its sender's choice; the meeting's and the restart's holds
 do, and the asks wait for the first check after them. The wake log marks such a wake with `asks`; an ask damaged or
-in another format goes at the next check. The idle pass's close posts one to the lead, and with `open.idle.mode` on
+in another format goes at the next check. A session busy in a turn is not woken for them: at its next tool call's
+end (its own, not a helper's), `hook tool-end` shows it its new inbox lines, recorded as shown so its next prompt
+does not repeat them, and takes its asks under the session's wake lock, so its turn's end wakes nothing for lines it
+already saw; with a wake check holding the lock, the next tool end looks again. The idle pass's close posts one to the lead, and with `open.idle.mode` on
 the `cold-send` hook turns a message to a session teamrig closed into one for that session. The idle pass never
 closes a session with one waiting; a closed session with one reopens at the next pass, ahead of every reopen for
 work, with its lines quoted in its first prompt and taken once its tab opened.

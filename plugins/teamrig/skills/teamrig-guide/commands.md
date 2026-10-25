@@ -693,7 +693,8 @@ Flags:
 - `--text "<one line>"`: the note: one non-empty line, no secrets.
 - `--wake now`: also wakes each receiver idle at its prompt, at its tab's first wake check once `wake.batchSeconds`
   (2 minutes by default) have passed, so lines posted together wake it once, quoted in its prompt; a receiver busy
-  in a turn is not woken and reads the line at its next prompt. A `WAKES` line after `POSTED` says who it wakes, at
+  in a turn is not woken: it is shown the line at its next tool call's end ([`hook tool-end`](#teamrig-hook-tool-end)),
+  so its turn's end wakes nothing for a line it saw. A `WAKES` line after `POSTED` says who it wakes, at
   most, within how many minutes, what that costs (a warm cache is about 27k W, a cold one about 210k W, and the
   share of the week once teamrig knows its W per percent) and whose budget line pays. A receiver whose team has
   `wake.enabled` false gets the line and no wake, and the `WAKES` line says so.
@@ -3974,8 +3975,12 @@ event that changes nothing, or on an error. Exit 0 always.
 
 Run by Claude Code at every tool call's end (`PostToolUse`, `PostToolUseFailure`), in a team or not: sets the tab's
 title as `hook tab-status` does, and records the session in `<home>/restore/sessions/<session id>.json` as
-`hook restore-track` does, at most every 5 minutes, marking it working unless a helper made the call. Both come
-from one process, since a tool's end is the most frequent hook event.
+`hook restore-track` does, at most every 5 minutes, marking it working unless a helper made the call. In a team,
+once an [urgent line](hooks.md#urgent-lines) (an `inbox add --wake now` line, say) waits to wake the session, it
+also shows the busy session its new inbox lines, at its own tool call's end and never a helper's, recorded as
+shown, and takes the session's wake asks, so its turn's end wakes nothing for lines it already saw; while a wake
+check holds the session's wake lock, the next tool end looks again. All of it comes from one process, since a
+tool's end is the most frequent hook event.
 
 Flags: none.
 
@@ -3985,7 +3990,8 @@ Example:
 teamrig hook tool-end < post-tool-use.json
 ```
 
-Output: the title's `terminalSequence` as `hook tab-status` prints it, or nothing. Exit 0 always.
+Output: one JSON object with the title's `terminalSequence` as `hook tab-status` prints it, and the inbox lines as
+`hookSpecificOutput.additionalContext` when an urgent line waited, or nothing. Exit 0 always.
 
 ### teamrig hook restore-track
 
