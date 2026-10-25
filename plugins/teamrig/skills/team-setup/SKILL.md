@@ -182,8 +182,9 @@ teamrig team create <sub-team> --sessions <id>,<id> --parent <team> --project "<
 
 - The sub-team gets its own lead and task list in the same project. Its lead splits the task among its sessions and
   opens them, and brings you the decisions that need the user: you stay the one lead the user talks to.
-- `add --team` hands the task to the sub-team's lead only (it takes no `--owner`): work goes down the tree through
-  each team's lead, and questions, and a line when the task is done or dropped, come back up the same way.
+- `add --team` without `--owner` hands the task to the sub-team's lead, who splits it. Any session of the tree may ask
+  any team of it the same way, `--owner` naming one of its sessions; that team's lead gets a copy line and may reorder
+  or reassign it. The line when the task is done or dropped goes back to the session that asked.
 - `teamrig team tree` shows the teams, and `teamrig list --session lead --tree` the tasks of this team and every team
   under it. A tree is at most 3 levels deep, with at most 8 sub-teams under one team; `team create` says when a new
   one would break that.

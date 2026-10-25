@@ -73,7 +73,8 @@ or take it to the lead.
 | `REFUSED due 17-10-2026 is not YYYY-MM-DD or YYYY-MM-DD HH:MM` | Write the date as `2026-10-17`. |
 | `REFUSED no task T9` | Check the id with `teamrig list --status all`. |
 | `REFUSED no week plan tagged yet; pass --week <YYYY-MM-DD>` (from `plan`) | Tag tasks with `--week` first, or pass `--week`. |
-| `REFUSED only shop's parent lead (...) adds tasks to it` (from `add --team`) | Only the parent team's lead hands a child team work. |
+| `REFUSED team shop is not in app's team tree, so app/alpha may not add its tasks` (from `add --team`) | Only a team of your own tree takes your asks; ask a team of another tree through its people. |
+| `REFUSED team shop: front is not a session on this team (sessions: ...)` (from `add --team --owner`) | Name a session of that team, by id or name (`teamrig who`), or drop `--owner` to give the task to its lead. |
 | `REFUSED --tree is for the team's lead ...` | Run it without `--tree`, or as the lead. |
 
 ## Inbox
@@ -215,7 +216,7 @@ From `teamrig restore install` and `uninstall` ([commands.md](commands.md#teamri
 | `--text goes only with --ask <session>: it is the work asked for` | Add `--ask <session>`, or drop `--text` (a status note is `--note`). |
 | `--ask needs --text "<the work asked for>": the title of the task it creates` | Add `--text` naming the work. |
 | `--week "x" is not a YYYY-MM-DD date` | Write the week's first day as `2026-10-12`. |
-| `--team gives the task to that team's lead, from you: it takes no --owner or --source` | Drop `--owner` and `--source` from `add --team`. |
+| `--team adds the task from you: it takes no --source, unless it names your own team` | Drop `--source` from `add --team`: the task is marked as from you. |
 
 ## Requirements
 

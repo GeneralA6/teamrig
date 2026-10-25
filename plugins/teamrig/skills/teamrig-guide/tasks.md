@@ -114,10 +114,13 @@ A shipped change is proven by the session that shipped it, oldest first, before 
   added with.
 - **Context** (`update <id> --note "..."` alone): any session, on any task. It changes nothing on the task; it
   adds a line to its history, so an asker can attach the evidence or a wording the owner should take up.
-- **Child teams**: only a parent team's lead hands a child team work, with `add --team <child>`. The task lands
-  in the child's register, owned by the child's lead (who plans it in) and sourced `<parent team>/<lead id>`; the
-  parent's own register is not touched; once the task is done or dropped, the parent's lead gets one inbox line
-  (`web/T1 done: <title> | evidence: ...`). Each lead sees the teams under it with `list`, `check` and `plan --tree`.
+- **Asks across teams**: any session asks another team of its tree for work with `add --team <team>`. The task
+  lands in that team's register, sourced `<asker's team>/<id>`, owned by `--owner` (a session of that team, by id
+  or name), else by that team's lead (who plans it in); when the owner is not the lead, the lead gets a copy line
+  and may reorder or reassign it (`update --priority|--after|--owner`). The asker's own register is not touched;
+  once the task is done or dropped, the asker gets one inbox line (`web/T1 done: <title> | evidence: ...`), or its
+  team's lead once the asker left that team. `--team` naming your own team is a plain add. Each lead sees the teams
+  under it with `list`, `check` and `plan --tree`.
   The teams of a tree number their tasks from one count: an id names one task in the whole tree, whichever team
   holds it. A wait or an `after` may name another team's task (`--waits task:T9`): the task stays held while T9
   is open, `show T9` prints it read-only, and the wake check tells its owner once that team finishes it.
