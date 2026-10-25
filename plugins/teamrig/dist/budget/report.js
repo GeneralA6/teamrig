@@ -1,7 +1,7 @@
 import { ruleLabel, ruleNumberOf } from "../rules/keys.js";
 import { budgetMarkOf, burstText, MORE_BURST } from "./burst-lines.js";
 import { formatCount, formatPct, formatUsd, formatW, isBudgetDayEnd, noRoomText } from "./format.js";
-import { liftText } from "./lift.js";
+import { liftedLine } from "./lift.js";
 import { TURN_TRIGGERS } from "./line.js";
 import { hasRoom } from "./pace.js";
 import { emptyPatterns, PATTERN_FIELDS } from "./patterns.js";
@@ -12,7 +12,7 @@ export const SESSION_ROWS_SHOWN = 7;
 /** Titles of sessions outside the team named by default. */
 export const OUTSIDE_TITLES_SHOWN = 5;
 /** What a session past its daily budget does: never skip a test or check (G-B1 wording). */
-export const OVER_BUDGET_ADVICE = 'Finish the step in hand and start no new work items or helpers. Never skip a test or check to save budget. The lead can lift it.';
+export const OVER_BUDGET_ADVICE = "Finish the step in hand and start no new work items or helpers. Never skip a test or check to save budget. A session's leader can lift its budget.";
 export const W_EXPLAINED = 'W = weighted tokens: input 1, cache writes 1.25 to 2, cache reads 0.1, output 5.';
 function pctOf(w, week) {
     return week.wPerPct === undefined ? undefined : w / week.wPerPct;
@@ -96,11 +96,12 @@ function indented(lines) {
     return lines.map((line) => `${TABLE_INDENT}${line}`);
 }
 /**
- * Today's use as a table: the team, then each session, with its use and daily budget in % of the week, its
- * mark (lifted, burst), its W and calls; W and calls alone while the week's W is unknown.
+ * Today's use as a table: the team, each sub-lead's group (its sessions' use summed), then each session, with its use
+ * and daily budget in % of the week, its mark (lifted, burst), its W and calls; W and calls alone while the week's W
+ * is unknown.
  */
 function todayTable(report, teamW, teamCalls) {
-    const { week, sessions, all } = report;
+    const { week, sessions, groups, all } = report;
     const row = (who, w, calls, budgetPct, mark) => {
         const use = [formatW(w), formatCount(calls)];
         const used = todayPctOf(w, week);
@@ -108,30 +109,50 @@ function todayTable(report, teamW, teamCalls) {
     };
     const { rows, notes } = sessionRows(sessions, all, 'today', (session) => row(session.name, session.w, session.calls, session.budgetPct, budgetMarkOf(session.lift, session.inBurst !== undefined)));
     const team = row('the team', teamW, teamCalls, report.teamPct, '');
+    const groupRows = groups.map((group) => {
+        const members = sessions.filter((session) => group.sessions.includes(session.id));
+        const w = members.reduce((sum, session) => sum + session.w, 0);
+        const calls = members.reduce((sum, session) => sum + session.calls, 0);
+        return row(`group ${group.name} (${group.sessions.length})`, w, calls, group.budgetPct, budgetMarkOf(group.lift, false));
+    });
     if (week.wPerPct === undefined) {
-        return ['Today (UTC day):', ...indented([...aligned([['session', 'W', 'calls'], team, ...rows]), ...notes])];
+        return ['Today (UTC day):', ...indented([...aligned([['session', 'W', 'calls'], team, ...groupRows, ...rows]), ...notes])];
     }
-    const table = aligned([['session', 'used', 'budget', '', 'W', 'calls'], team, ...rows], ['left', 'right', 'right', 'left', 'right', 'right']);
+    const table = aligned([['session', 'used', 'budget', '', 'W', 'calls'], team, ...groupRows, ...rows], ['left', 'right', 'right', 'left', 'right', 'right']);
     return ['Today (UTC day), used and daily budget in % of the week:', ...indented([...table, ...notes])];
 }
 /**
- * The lifts in force as one block: the terms every lift shares once in its heading, then a row each with its
- * part of the team's daily budget, its end time and its stop; a lift that lasts the day ends at its UTC midnight.
+ * The lifts in force as one block: the terms every lift shares once in its heading, then a row each, group lifts
+ * first, with the budget it is a part of while the team has sub-leads, its part, its end time and its stop; a lift
+ * that lasts the day ends at its UTC midnight.
  */
-function liftLines(sessions, zone) {
-    const lifts = sessions.flatMap((session) => (session.lift === undefined ? [] : [{ name: session.name, lift: session.lift }]));
+function liftLines(report) {
+    const { sessions, groups, zone } = report;
+    const lifts = [
+        ...groups.flatMap((group) => (group.lift === undefined ? [] : [{ who: `group ${group.name}`, lift: group.lift, parent: group.liftParent }])),
+        ...sessions.flatMap((session) => (session.lift === undefined ? [] : [{ who: session.name, lift: session.lift, parent: session.liftParent }])),
+    ];
     if (lifts.length === 0) {
         return [];
     }
-    const rows = lifts.map(({ name, lift }) => [name, `${formatPct(lift.partPct)}${lift.reserve ? ' (reserve)' : ''}`, zone.clock(new Date(lift.endsAt)), formatPct(lift.stopPct)]);
-    const table = aligned([['session', 'part', 'until', 'stop at'], ...rows]);
+    // With no sub-lead every lift is a session's part of the team's budget: no parent column, and none keeps quiet hours.
+    const nested = groups.length > 0;
+    const parentOf = (parent) => (!nested ? '' : parent === undefined ? 'the team' : `group ${parent}`);
+    const rows = lifts.map(({ who, lift, parent }) => [
+        who,
+        parentOf(parent),
+        `${formatPct(lift.partPct)}${lift.reserve ? ' (reserve)' : ''}`,
+        zone.clock(new Date(lift.endsAt)),
+        formatPct(lift.stopPct),
+    ]);
+    const table = aligned([['session', nested ? 'of' : '', 'part', 'until', 'stop at'], ...rows], ['left', 'left']);
     const dayEnd = lifts.find(({ lift }) => isBudgetDayEnd(lift.endsAt));
     const notes = dayEnd === undefined ? [] : [`${zone.clock(new Date(dayEnd.lift.endsAt))} is the end of the budget day.`];
-    return [
-        "Lifts by the lead, today only: a part of the team's daily budget until its time or its stop % of the week, " +
-            'whichever comes first; quiet hours do not apply to them.',
-        ...indented([...table, ...notes]),
-    ];
+    const terms = nested
+        ? "a part of the team's or a group's daily budget until its time or its stop % of the week, whichever comes first; " +
+            "quiet hours do not apply to a session's lift, but do to a group's."
+        : "a part of the team's daily budget until its time or its stop % of the week, whichever comes first; quiet hours do not apply to them.";
+    return [`Lifts, today only: ${terms}`, ...indented([...table, ...notes])];
 }
 /** "N Claude Code sessions (titled a, b, +2 more)": the first five titles, or every one with `--all`. */
 function outsideSessionsText(outside, all) {
@@ -172,7 +193,7 @@ export function todayLines(report) {
     const { week, sessions, outside, all, zone } = report;
     const teamW = sessions.reduce((sum, session) => sum + session.w, 0);
     const teamCalls = sessions.reduce((sum, session) => sum + session.calls, 0);
-    const lines = [weekLine(week, zone), ...todayTable(report, teamW, teamCalls), ...liftLines(sessions, zone)];
+    const lines = [weekLine(week, zone), ...todayTable(report, teamW, teamCalls), ...liftLines(report)];
     const inBurst = sessions.filter((session) => session.inBurst !== undefined);
     const first = inBurst[0]?.inBurst;
     if (first !== undefined) {
@@ -243,7 +264,7 @@ export function sessionLines(session, state, week, zone) {
         lines.push(`Its daily budget today is ${formatPct(session.budgetPct)} of the week${budgetMarkOf(session.lift, session.inBurst !== undefined)}.`);
     }
     if (session.lift !== undefined) {
-        lines.push(`Budget: the lead lifted ${liftText(session.lift, session.name, zone)}`);
+        lines.push(liftedLine(session.lift, session.name, session, zone));
     }
     if (session.inBurst !== undefined) {
         lines.push(`Budget: the lead started ${burstText(session.inBurst.burst, [session.name], zone, session.inBurst.floorPct)} ${MORE_BURST}`);

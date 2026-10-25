@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { LiftLog } from "./lift.js";
-import { liftedParts } from "./parts.js";
+import { budgetSplitOf } from "./parts.js";
 import { cachedWork } from "./work.js";
 /** The Claude account a team's week is on: its `budget.account`, else the Claude config dir, which signs in one account. */
 export function accountOf(budget, configDir) {
@@ -24,8 +24,7 @@ export async function accountTeamsOf(files, teams, scope) {
         }
         const lifts = await liftsOf(files, kit.paths.lifts);
         const work = await cachedWork(files, kit.paths.events, join(scope.usageDir, workCacheFileOf(team)), config.register.priorities);
-        const lifted = liftedParts(lifts, roster.ids, scope.now, scope.usedPct);
-        others.push({ team, ids: roster.ids, sessions: config.budget.sessions, work, lifted });
+        others.push(budgetSplitOf({ team, ids: roster.ids, sessions: config.budget.sessions, leads: config.leads, work, lifts, now: scope.now, usedPct: scope.usedPct }));
     }
     return others;
 }
