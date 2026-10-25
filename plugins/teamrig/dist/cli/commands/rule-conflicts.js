@@ -17,6 +17,7 @@ import { noPositionals, onePositional, requiredFlag, UsageError } from "../args.
 import { callerOf, listOf } from "../inputs.js";
 import { checkedNextConfig, configFileJson, openTeamKit, projectFolder, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
+import { teamRulesPathsOf } from "../team-rules.js";
 /**
  * `rules scan`, `rules keep`, `rules forget` and `rules clear`: the local rules that can override a core rule, the ones
  * the user chose to keep [ruleConflicts], and the lines judged not to conflict (src/rules/verdicts.ts). The CLI does the
@@ -86,7 +87,7 @@ function candidateLine(candidate, userHome, scanner) {
 }
 async function scanView(runtime, kit, config, kind, all) {
     const project = await projectFolder(runtime, config);
-    const found = await scanRules(runtime.files, runtime.probe, { claudeDir: claudeConfigDir(runtime.env, runtime.userHome), userHome: runtime.userHome, project, skills: kit.paths.skills, teamRules: kit.paths.teamRules }, config.ruleConflicts);
+    const found = await scanRules(runtime.files, runtime.probe, { claudeDir: claudeConfigDir(runtime.env, runtime.userHome), userHome: runtime.userHome, project, skills: kit.paths.skills, teamRules: await teamRulesPathsOf(runtime, kit) }, config.ruleConflicts);
     const kinds = kind === undefined ? PLACE_KINDS : [kind];
     const hashes = ruleHashesOf(coreRuleTexts(config, KIT_NAME, runtime.platform, RULE_HASH_CLOCK));
     const verdicts = await new VerdictStore(runtime.files, kit.paths.ruleVerdicts).read();

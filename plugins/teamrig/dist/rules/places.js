@@ -141,7 +141,7 @@ export async function findRulePlaces(files, probe, at) {
         ],
         skill: skillPaths,
         memory: await markdownBelow(files, probe, claudeMemoryDir(at.claudeDir, at.project)),
-        'team-rules': await existing(probe, at.teamRules === undefined ? [] : [at.teamRules]),
+        'team-rules': await existing(probe, at.teamRules),
         hook: await existing(probe, await hookScripts(files, settings, at)),
         settings,
     };

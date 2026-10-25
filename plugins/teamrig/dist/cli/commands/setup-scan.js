@@ -15,11 +15,12 @@ import { teamSettingsScope } from "../allow-scope.js";
 import { noPositionals, UsageError } from "../args.js";
 import { openKit, requireConfig, teamFolders, teamProjectOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
+import { teamRulesPathsOf } from "../team-rules.js";
 /**
  * `setup scan [--project <dir>] [--days <n>]`: what the user's Claude Code setup costs every turn in a project, and
  * what to slim (src/setup/scan.ts, its lines src/setup/scan-report.ts). It runs before a team exists too, the first
- * step of the team-setup skill; with a team it reads the team's skills folder, rules file, recorded conflicts and
- * rule verdicts. It only reads.
+ * step of the team-setup skill; with a team it reads the team's skills folder, its rules file and those of the teams
+ * above it, recorded conflicts and rule verdicts. It only reads.
  */
 /** The days of transcripts that tell which skills are in use, unless --days says otherwise. */
 export const DEFAULT_SCAN_DAYS = 30;
@@ -80,7 +81,7 @@ export async function scan(args, runtime) {
         userHome: runtime.userHome,
         project,
         skills: team?.kit.paths.skills ?? join(claudeDir, 'skills'),
-        teamRules: team?.kit.paths.teamRules,
+        teamRules: team === undefined ? [] : await teamRulesPathsOf(runtime, team.kit),
         projectsDir: claudeProjectsDir(runtime.env, runtime.userHome),
         since: runtime.clock.now() - days * DAY_MS,
         settings: await settingsOf(runtime, team, claudeDir, project),

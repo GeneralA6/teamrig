@@ -14,6 +14,7 @@ import { readWideAllow } from "../allow-scope.js";
 import { noPositionals } from "../args.js";
 import { openTeamKit, projectFolder, requireConfig, teamZone } from "../kit.js";
 import { EXIT } from "../runtime.js";
+import { readTeamRules } from "../team-rules.js";
 import { loadTree } from "../tree.js";
 import { inboxDepsOf } from "./inbox.js";
 /**
@@ -42,7 +43,7 @@ async function configuredProjects(probe, config, ids) {
 }
 /**
  * `doctor`: what teamrig lacks on this machine (git, Claude Code, Node.js), then the team's health checks
- * (names, the rename log, inboxes, rules.md, its tree of teams and session names shared with other teams,
+ * (names, the rename log, inboxes, its rules.md beside those of the teams above it, its tree of teams and session names shared with other teams,
  * read from every team config of the kit home), and the text every call of a session in the project re-reads
  * (CLAUDE.md files, the memory index, the skill listing, and the lists of skills, deferred tools, agent types and
  * MCP server instructions the project's newest session transcript announced) against the team's `contextFiles` budgets. Last, what
@@ -59,8 +60,8 @@ export async function doctor(args, runtime) {
     const config = requireConfig(kit, runtime, 'read');
     const { paths } = kit;
     const renameLog = await new JsonlRenameLog(runtime.files, paths.renames).read();
-    const rules = await runtime.files.read(paths.teamRules);
-    const { tree } = await loadTree(runtime);
+    const kitTree = await loadTree(runtime);
+    const { tree } = kitTree;
     const claudeDir = claudeConfigDir(runtime.env, runtime.userHome);
     const project = await projectFolder(runtime, config);
     const roster = new Roster(config, paths.team, renameLog.renames);
@@ -72,7 +73,7 @@ export async function doctor(args, runtime) {
         renameLog: { ...renameLog, path: paths.renames },
         inboxes: (await inboxStatus(inboxDepsOf(runtime, paths))).map((status) => status.unread),
         retired: new Set(retiredSessions(records).map((record) => record.session)),
-        teamRules: rules === undefined ? undefined : { path: paths.teamRules, chars: rules.trim().length },
+        teamRules: (await readTeamRules(runtime, kit, kitTree)).map((rules) => ({ path: rules.path, chars: rules.text.trim().length })),
         ...(await readContextInput(runtime, project, paths.skills, config.contextFiles)),
         tree: { problems: tree.problemsOf(paths.team), clashes: tree.nameClashesOf(paths.team) },
         env: runtime.env,

@@ -51,6 +51,14 @@ export class TeamTree {
         const chain = this.chain(team);
         return chain.loop === undefined ? chain.teams.at(-1) : undefined;
     }
+    /**
+     * The teams above a team, its root first and its parent last: empty for a root, for a team with no config and for
+     * one whose parents go round a loop, which `doctor` names.
+     */
+    ancestorsOf(team) {
+        const chain = this.chain(team);
+        return chain.loop === undefined ? chain.teams.slice(1).reverse() : [];
+    }
     /** The team's level, its root being 1; undefined when its parents go round a loop. */
     levelOf(team) {
         const chain = this.chain(team);

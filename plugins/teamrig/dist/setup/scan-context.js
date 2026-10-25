@@ -96,8 +96,8 @@ export async function readSessionContext(files, probe, at) {
         }
     }
     await loaded.add('memory', join(claudeMemoryDir(at.claudeDir, at.project), 'MEMORY.md'), (text) => text.split('\n').slice(0, MEMORY_INDEX_LINES).join('\n'));
-    if (at.teamRules !== undefined) {
-        await loaded.add('team-rules', at.teamRules);
+    for (const path of at.teamRules) {
+        await loaded.add('team-rules', path);
     }
     return { files: loaded.files, skills: await readSkills(files, at) };
 }
