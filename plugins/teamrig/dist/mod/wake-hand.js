@@ -1,7 +1,8 @@
 /**
  * The tab's side of waking an idle session when work is handed to it. An idle session sees new work only at its
  * next prompt, so the plugin's mod (`hooks/register.ts`) runs a `WakeHand` in every interactive tab. Every
- * WAKE_TICK_MS while no turn runs, the hand asks the CLI (`hook wake-check`) when the register file changed, when
+ * WAKE_TICK_MS while no turn runs, the hand asks the CLI (`hook wake-check`) when a file the CLI named changed (the
+ * register's, for handed work, and the session's asks folder, for urgent and `inbox add --wake now` lines), when
  * the time the CLI named falls due (a batch of handed tasks), or RECHECK_MS after its last ask. The CLI decides,
  * under the session's own lock, and logs each wake with its cost (src/wake/decide.ts); the hand submits the prompt
  * it answers with `$.prompt.submit`, Claude Code's own call for a prompt, which starts a turn under the plugin's
@@ -27,6 +28,9 @@ function isRecord(value) {
 function isTextList(value) {
     return Array.isArray(value) && value.every((item) => typeof item === 'string');
 }
+function sameList(a, b) {
+    return a.length === b.length && a.every((item, index) => item === b[index]);
+}
 /** The CLI's answer; undefined for anything else. */
 export function parseWakeAnswer(stdout) {
     let value;
@@ -43,7 +47,7 @@ export function parseWakeAnswer(stdout) {
     if (kind === 'wake' && isTextList(ids) && typeof text === 'string' && typeof toast === 'string') {
         return { kind, ids, text, toast };
     }
-    if (kind === 'wait' && typeof watch === 'string' && (recheckAt === null || (typeof recheckAt === 'number' && Number.isFinite(recheckAt)))) {
+    if (kind === 'wait' && isTextList(watch) && (recheckAt === null || (typeof recheckAt === 'number' && Number.isFinite(recheckAt)))) {
         return { kind, watch, recheckAt };
     }
     if (kind === 'off' && typeof why === 'string') {
@@ -59,9 +63,9 @@ export class WakeHand {
     /** The turns running now, the main loop's and subagents' alike, by turn id. */
     turns = new Set();
     checking = false;
-    /** The register file the CLI named, and when it had changed at the last ask (undefined: ask at the next tick). */
+    /** The files the CLI named (undefined: ask at the next tick), and when each had changed at the last ask. */
     watch;
-    seenChange;
+    seenChanges = [];
     /** When the last ask ran, and when the CLI asked to be asked again. */
     lastAsk;
     recheckAt;
@@ -95,12 +99,12 @@ export class WakeHand {
     }
     async step() {
         const now = this.host.now();
-        const changed = this.watch === undefined ? undefined : await this.host.changedAt(this.watch);
+        const changed = this.watch === undefined ? [] : await Promise.all(this.watch.map((path) => this.host.changedAt(path)));
         if (!this.isDue(now, changed)) {
             return { kind: 'quiet' };
         }
         // Taken before the ask, so a change made while it runs is seen at the next tick.
-        this.seenChange = changed;
+        this.seenChanges = changed;
         this.lastAsk = now;
         this.recheckAt = undefined;
         const [sessionId, cwd, root] = await Promise.all([this.host.sessionId(), this.host.cwd(), this.host.root()]);
@@ -114,10 +118,10 @@ export class WakeHand {
             return answer;
         }
         if (answer.kind === 'wait') {
-            if (answer.watch !== this.watch) {
-                // A file first named now: ask once more at the next tick, which takes its change time first.
+            if (this.watch === undefined || !sameList(answer.watch, this.watch)) {
+                // Files first named now: ask once more at the next tick, which takes their change times first.
                 this.watch = answer.watch;
-                this.seenChange = undefined;
+                this.seenChanges = [];
                 this.lastAsk = undefined;
             }
             this.recheckAt = answer.recheckAt ?? undefined;
@@ -135,9 +139,9 @@ export class WakeHand {
         this.host.toast(answer.toast);
         return { kind: 'woke', ids: answer.ids };
     }
-    /** Ask the CLI at the first look, when the register changed, when the CLI's time fell due, or RECHECK_MS on. */
+    /** Ask the CLI at the first look, when a file it named changed, when the CLI's time fell due, or RECHECK_MS on. */
     isDue(now, changed) {
-        if (this.lastAsk === undefined || changed !== this.seenChange) {
+        if (this.lastAsk === undefined || !sameList(changed, this.seenChanges)) {
             return true;
         }
         return (this.recheckAt !== undefined && now >= this.recheckAt) || now >= this.lastAsk + RECHECK_MS;

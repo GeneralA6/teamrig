@@ -1,20 +1,26 @@
+import { claudeProjectsDir, lastWriteOf } from "../../budget/discover.js";
 import { LeadTree } from "../../config/lead-tree.js";
 import { formatAddress } from "../../core/address.js";
+import { errorMessage } from "../../core/guards.js";
 import { ENV, KIT_NAME } from "../../core/home.js";
 import { NAME_RULE } from "../../core/ids.js";
 import { PlainLogFile } from "../../core/log-file.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { groupIds, parseTo, treeLeadsOf } from "../../inbox/groups.js";
 import { formatRead, formatStatus, inboxStatus, lineOnClock, postLines, readInbox } from "../../inbox/inbox.js";
-import { CLAUDE_SESSION_ID } from "../../inbox/marks.js";
+import { CLAUDE_SESSION_ID, RECEIVER_TABS, tabsOf } from "../../inbox/marks.js";
 import { reachOf } from "../../inbox/reach.js";
 import { routeReminderOf } from "../../inbox/route.js";
 import { InboxDir, JsonlMarkLog } from "../../inbox/store.js";
+import { WAKE_NOW, wakeRefusal, wakesLine } from "../../inbox/wake-now.js";
+import { WakeAsks } from "../../wake/asks.js";
+import { wakeCost } from "../../wake/decide.js";
 import { noPositionals, requiredFlag, UsageError } from "../args.js";
 import { hookLogOf } from "../hook-logs.js";
 import { callerOf, sessionRef } from "../inputs.js";
 import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
+import { readWPerPct } from "../stored-week.js";
 import { loadTree } from "../tree.js";
 import { verifyNoteOf } from "./verify-queue.js";
 export function inboxDepsOf(runtime, paths) {
@@ -68,7 +74,7 @@ export async function status(args, runtime) {
     return EXIT.ok;
 }
 function ownTeamRecipient(own, id) {
-    return { paths: own.paths, config: own.config, id, label: id, sender: own.from.id, crossing: false };
+    return { team: own.from.team, paths: own.paths, config: own.config, id, label: id, sender: own.from.id, crossing: false };
 }
 function teamOf(loaded, team) {
     const target = loaded.teams.get(team);
@@ -84,7 +90,15 @@ function recipientInTree(runtime, loaded, from, to) {
     if (!reach.ok) {
         throw new RefusedError(reach.problem);
     }
-    return { paths: target.kit.paths, config: requireConfig(target.kit, runtime, 'write'), id: to.id, label: formatAddress(to), sender: formatAddress(from), crossing: true };
+    return {
+        team: to.team,
+        paths: target.kit.paths,
+        config: requireConfig(target.kit, runtime, 'write'),
+        id: to.id,
+        label: formatAddress(to),
+        sender: formatAddress(from),
+        crossing: true,
+    };
 }
 /** A session of the sender's tree as `{ team, id }`: the sender's own team takes the own-team form, the sender left out. */
 function recipientsAt(runtime, own, loaded, addresses) {
@@ -125,9 +139,7 @@ async function recipientsOfItem(runtime, own, item, tree) {
     return ids.ids.map((id) => ownTeamRecipient(own, id));
 }
 /** Every recipient the `--to` items name, each once, in the order first named; refused when none is left. */
-async function recipientsOf(runtime, own, items, to) {
-    let loaded;
-    const tree = () => (loaded ??= loadTree(runtime));
+async function recipientsOf(runtime, own, items, to, tree) {
     const byLabel = new Map();
     for (const item of items) {
         for (const recipient of await recipientsOfItem(runtime, own, item, tree)) {
@@ -168,15 +180,59 @@ function routeRemindersOf(own, items, text) {
     }
     return [...reminders];
 }
+/** The sender as the `--wake now` gate reads it; the teams below its own are read only when a recipient is on another team. */
+async function wakeSenderOf(own, recipients, tree) {
+    const leads = new LeadTree(own.config);
+    const below = recipients.some((recipient) => recipient.crossing) ? (await tree()).tree.descendantsOf(own.from.team) : [];
+    return { team: own.from.team, id: own.from.id, leader: leads.isLeader(own.from.id), teamLead: leads.lead === own.from.id, below };
+}
+/**
+ * Posts a wake ask beside each recipient's posted line, so its tab's wake check wakes it, and returns what that
+ * prints: a WAKE FAILED line for each ask that could not be posted (its line stays posted), then the WAKES line. A
+ * recipient whose team has `wake.enabled` false gets no ask. Each wake's cost runs from the recipient's last write to
+ * its latest tabs' transcripts, as the wake check reckons it.
+ */
+async function postWakes(runtime, own, recipients, text, now) {
+    const wPerPct = await readWPerPct(runtime, own.paths, own.config, now);
+    const projects = claudeProjectsDir(runtime.env, runtime.userHome);
+    const marksByTeam = new Map();
+    const marksOf = (recipient) => {
+        const read = marksByTeam.get(recipient.team) ?? inboxDepsOf(runtime, recipient.paths).marks.read().then((log) => log.marks);
+        marksByTeam.set(recipient.team, read);
+        return read;
+    };
+    const failed = [];
+    const off = [];
+    const wakes = [];
+    for (const recipient of recipients) {
+        if (!recipient.config.wake.enabled) {
+            off.push(recipient.label);
+            continue;
+        }
+        try {
+            await new WakeAsks(runtime.files, recipient.paths.wakeAsks).post(recipient.id, { from: recipient.sender, text, at: now });
+        }
+        catch (error) {
+            failed.push(`WAKE FAILED for ${recipient.label}: ${errorMessage(error)}; its line is posted`);
+            continue;
+        }
+        const last = await lastWriteOf(runtime.transcripts, projects, tabsOf(await marksOf(recipient), recipient.id, RECEIVER_TABS));
+        const cost = wakeCost(last === undefined ? undefined : now - last, recipient.config.messages.coldAfterMinutes, wPerPct);
+        wakes.push({ label: recipient.label, team: recipient.team, batchSeconds: recipient.config.wake.batchSeconds, cost });
+    }
+    return wakes.length === 0 && off.length === 0 ? failed : [...failed, wakesLine(wakes, off)];
+}
 const TO_FORMS = 'a session id or name, <team>/<id>, all, leads, group:<leader>, team:<team>, tree:leads, or a comma-separated list of them';
 /**
- * `inbox add --to <to> --text "<line>"`: appends one dated line to each receiver's inbox, all of them or, when one is
- * refused, none. A bare id or name is on the sender's team; `<team>/<id>` reaches any session of another team of its
- * tree, and that line names the sender `<team>/<id>`. `all`, `leads` and `group:<leader>` are groups of the sender's
- * team, `team:<team>` (every session of a team of its tree) and `tree:leads` (every team's lead of its tree) groups of
- * its tree; a group leaves the sender out, and a comma-separated list names each receiver once. A line to a
- * session named on the sender's team that skips a sub-lead below the sender is posted, then a further line tells the
- * sender to route such work via that sub-lead (T783).
+ * `inbox add --to <to> --text "<line>" [--wake now]`: appends one dated line to each receiver's inbox, all of them
+ * or, when one is refused, none. A bare id or name is on the sender's team; `<team>/<id>` reaches any session of
+ * another team of its tree, and that line names the sender `<team>/<id>`. `all`, `leads` and `group:<leader>` are
+ * groups of the sender's team, `team:<team>` (every session of a team of its tree) and `tree:leads` (every team's lead
+ * of its tree) groups of its tree; a group leaves the sender out, and a comma-separated list names each receiver once.
+ * A line to a session named on the sender's team that skips a sub-lead below the sender is posted, then a further line
+ * tells the sender to route such work via that sub-lead (T783). `--wake now` (T1147) also wakes each receiver idle at
+ * its prompt within about 3 minutes (`wake.batchSeconds`), and says what that costs; a group is woken only by a
+ * leader, another team only by the lead of a team above it, else nothing is posted.
  */
 export async function add(args, runtime) {
     noPositionals(args);
@@ -187,22 +243,40 @@ export async function add(args, runtime) {
         throw new UsageError(`--to "${to}" is not ${TO_FORMS} (${NAME_RULE})`);
     }
     const text = requiredFlag(args.flags, 'text');
+    const wake = args.flags.get('wake');
+    if (wake !== undefined && wake !== WAKE_NOW) {
+        throw new UsageError(`--wake takes ${WAKE_NOW}, to wake each receiver as soon as its tab's wake check may, not "${wake}"`);
+    }
     const { team } = await findTeam(runtime);
     const kit = await openKit(runtime, team);
     const config = requireConfig(kit, runtime, 'write');
     const roster = await rosterOf(runtime, kit, config);
     const own = { from: { team, id: sessionIdOf(roster, caller) }, paths: kit.paths, config, roster };
-    const recipients = await recipientsOf(runtime, own, items, to);
+    let loaded;
+    const tree = () => (loaded ??= loadTree(runtime));
+    const recipients = await recipientsOf(runtime, own, items, to, tree);
+    if (wake !== undefined) {
+        const refusal = wakeRefusal(await wakeSenderOf(own, recipients, tree), items.some((item) => item.kind !== 'session'), recipients);
+        if (refusal !== undefined) {
+            throw new RefusedError(refusal);
+        }
+    }
     const secrets = new SecretScanner([
         ...config.register.secretPatterns,
         ...recipients.filter((recipient) => recipient.crossing).flatMap((recipient) => recipient.config.register.secretPatterns),
     ]);
     const targets = recipients.map((recipient) => ({ inboxes: inboxDepsOf(runtime, recipient.paths).inboxes, to: recipient.id, from: recipient.sender }));
-    const problem = await postLines(targets, secrets, { text, now: new Date(runtime.clock.now()) });
+    const now = runtime.clock.now();
+    const problem = await postLines(targets, secrets, { text, now: new Date(now) });
     if (problem !== undefined) {
         throw new RefusedError(problem);
     }
     runtime.out.stdout(postedLine(recipients));
+    if (wake !== undefined) {
+        for (const line of await postWakes(runtime, own, recipients, text.trim(), now)) {
+            runtime.out.stdout(line);
+        }
+    }
     for (const reminder of routeRemindersOf(own, items, text)) {
         runtime.out.stdout(reminder);
     }

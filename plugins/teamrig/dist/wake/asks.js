@@ -28,6 +28,10 @@ function orderOf(name) {
     const match = ASK_FILE.exec(name);
     return match === null ? undefined : [Number(match[1]), Number(match[2])];
 }
+/** The folder that holds the session's asks, which an idle tab of the session watches (src/mod/wake-hand.ts). */
+export function asksFolderOf(folder, id) {
+    return join(folder, id);
+}
 /**
  * Each session's asks, one file each (`<id>/<at>-<n>.json`), created whole (`createExclusive`), so a check that
  * takes the asks it read never takes, nor loses, one posted meanwhile. Ids are session ids, checked by the roster, so
@@ -43,7 +47,7 @@ export class WakeAsks {
     async post(id, ask) {
         const text = formatWakeAsk(ask);
         for (let n = 0; n < ASKS_PER_MS; n += 1) {
-            if (await this.files.createExclusive(join(this.folder, id, `${ask.at}-${n}.json`), text)) {
+            if (await this.files.createExclusive(join(asksFolderOf(this.folder, id), `${ask.at}-${n}.json`), text)) {
                 return;
             }
         }
@@ -51,14 +55,14 @@ export class WakeAsks {
     }
     /** The session's asks, oldest first. */
     async read(id) {
-        const named = (await this.files.list(join(this.folder, id))).flatMap((name) => {
+        const named = (await this.files.list(asksFolderOf(this.folder, id))).flatMap((name) => {
             const order = orderOf(name);
             return order === undefined ? [] : [{ name, order }];
         });
         named.sort((a, b) => a.order[0] - b.order[0] || a.order[1] - b.order[1]);
         const stored = [];
         for (const { name } of named) {
-            const text = await this.files.read(join(this.folder, id, name));
+            const text = await this.files.read(join(asksFolderOf(this.folder, id), name));
             if (text !== undefined) {
                 stored.push({ name, ask: parseWakeAsk(text) });
             }
@@ -68,7 +72,7 @@ export class WakeAsks {
     /** Removes the asks read, and only those. */
     async remove(id, stored) {
         for (const { name } of stored) {
-            await this.files.remove(join(this.folder, id, name));
+            await this.files.remove(join(asksFolderOf(this.folder, id), name));
         }
     }
 }

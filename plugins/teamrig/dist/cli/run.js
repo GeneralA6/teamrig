@@ -87,7 +87,7 @@ const COMMANDS = {
     verify: { effect: 'read', flags: ['session'], load: async () => (await registerCommands()).verify },
     'inbox read': { effect: 'write', flags: ['session'], load: async () => (await inboxCommands()).read },
     'inbox status': { effect: 'read', flags: ['session'], load: async () => (await inboxCommands()).status },
-    'inbox add': { effect: 'write', flags: ['session', 'to', 'text'], load: async () => (await inboxCommands()).add },
+    'inbox add': { effect: 'write', flags: ['session', 'to', 'text', 'wake'], load: async () => (await inboxCommands()).add },
     'exec request': { effect: 'write', flags: ['session', 'file'], load: async () => (await execCommands()).request },
     'exec dry-run': { effect: 'write', flags: [], load: async () => (await execCommands()).dryRun },
     'exec approve': { effect: 'write', flags: ['session', 'note'], load: async () => (await execCommands()).approve },
@@ -358,11 +358,13 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       the date to verify by
   inbox read [--session <area>]     prints the unread lines and marks them read
   inbox status [--session <area>]   unread lines per area
-  inbox add --to <id|name|team/id|all|leads|group:<leader>|team:<team>|tree:leads>[,...] --text "<one line>"
+  inbox add --to <id|name|team/id|all|leads|group:<leader>|team:<team>|tree:leads>[,...] --text "<one line>" [--wake now]
       team/id: any session of another team of your tree; all, leads (the
       lead and the sub-leads) and group:<leader> (it and every session under it) are your own team's;
       team:<team> is every session of a team of your tree and tree:leads every team's lead in it; a
       group leaves you out; a comma-separated list posts the line to each receiver once
+      --wake now: also wakes each receiver idle at its prompt within about 3 minutes and says what
+      that costs; a group only from a leader, another team only from the lead of a team above it
   exec request --file <request.json>   asks to run a privileged command: the JSON names the command, its
       code binding, variables, dry run or preview, purpose, expected effect and rollback; logged as R<n>
   exec dry-run R<n>    runs the request's read-only dry run, logged for the reviewer
