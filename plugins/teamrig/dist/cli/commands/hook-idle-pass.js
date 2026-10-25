@@ -4,6 +4,7 @@ import { FileLock, LockBusyError } from "../../core/lock.js";
 import { hooklessReader } from "../../restore/hookless.js";
 import { SessionLog } from "../../sessions/log.js";
 import { SessionRecordStore } from "../../sessions/record.js";
+import { postToHolder, sessionNameOn } from "../holder-team.js";
 import { hooklessReopenLine, hooklessReopensOf } from "../hookless-reopen.js";
 import { idlePassOf, passLineOf } from "../idle-pass.js";
 import { readIdlePassState } from "../idle-pass-check.js";
@@ -32,9 +33,9 @@ async function runPass(runtime, kit, config, roster, from, now) {
 }
 /**
  * Tells of each hookless reopen once: in mode `on` as an urgent line (src/cli/urgent-line.ts) from teamrig to the
- * lead, or the coordinator's owner for the lead's own tab (`hooklessReader`), and in both modes as a log record, with
- * why the line was not posted. One not posted is still marked told, so a refusing inbox gets no line a minute. Returns
- * each hookless reopen's time by session, for the next pass to skip.
+ * lead, or the coordinator's owner for the lead's own tab (`hooklessReader`), on its team, a team above included,
+ * and in both modes as a log record, with why the line was not posted. One not posted is still marked told, so a
+ * refusing inbox gets no line a minute. Returns each hookless reopen's time by session, for the next pass to skip.
  */
 async function tellHookless(runtime, kit, config, roster, hookless, previous, now) {
     const { mode } = config.open.idle;
@@ -45,9 +46,9 @@ async function tellHookless(runtime, kit, config, roster, hookless, previous, no
         if (previous?.told?.[reopen.id] === reopen.at) {
             continue;
         }
-        const line = hooklessReopenLine(reopen, roster, zone, now);
-        const to = hooklessReader({ session: reopen.id }, config.roles.lead, config.roles.coordinatorOwner);
-        const problem = mode === 'on' ? await postUrgentLine(runtime, kit, config, { to, from: KIT_NAME, text: line }) : undefined;
+        const to = hooklessReader({ session: reopen.id }, config.roles, kit.paths.team);
+        const line = hooklessReopenLine(reopen, sessionNameOn(to.team, kit.paths.team, reopen.id), roster, zone, now);
+        const problem = mode === 'on' ? await postToHolder(runtime, { kit, config }, to, { from: KIT_NAME, text: line }, postUrgentLine) : undefined;
         await runtime.files.append(kit.paths.idlePassLog, formatIdlePassRecord({ kind: 'hookless', at: now, mode, id: reopen.id, line, problem }));
     }
     return told;

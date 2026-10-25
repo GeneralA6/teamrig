@@ -1,4 +1,5 @@
-import { isRole } from "../../config/roster.js";
+import { isRole, roleHolderOf } from "../../config/roster.js";
+import { formatAddress } from "../../core/address.js";
 import { KIT_NAME } from "../../core/home.js";
 import { recordRename } from "../../names/record.js";
 import { UsageError } from "../args.js";
@@ -14,17 +15,28 @@ function rosterLine(roster, id) {
     const formerText = former.length === 0 ? '' : `, formerly ${former.join(', ')}`;
     return `${id} ${roster.nameOf(id) ?? id}${rolesText}${formerText}`;
 }
-/** A session by id or name, else the holder of a role, so `who lead` works whatever the lead's id. */
-function idOf(roster, text) {
+/**
+ * A session by id or name, else the holder of a role, so `who lead` works whatever the lead's id; a role the team
+ * leaves to a team above (`<team>/<id>`, T1143) gives its holder there.
+ */
+function addressOf(roster, roles, text, team) {
     const found = roster.lookup(text);
     if (found.ok || !isRole(text)) {
-        return sessionIdOf(roster, text);
+        return { team, id: sessionIdOf(roster, text) };
     }
-    const holder = roster.holderOf(text);
+    const holder = roleHolderOf(roles, text, team);
     if (holder === undefined) {
         throw new RefusedError(`no session holds the ${text} role`);
     }
     return holder;
+}
+/** The name to message a session by, from its own team's roster; `<team>/<id>` when that team has no config to read. */
+async function nameAt(runtime, roster, address, team) {
+    if (address.team === team) {
+        return roster.nameOf(address.id) ?? address.id;
+    }
+    const { teams } = await loadTree(runtime);
+    return teams.get(address.team)?.roster.nameOf(address.id) ?? formatAddress(address);
 }
 /** `who [<id|name|role>]`: the name to message a session by; with no argument, every session. */
 export async function who(args, runtime) {
@@ -33,13 +45,14 @@ export async function who(args, runtime) {
         throw new UsageError(`unexpected "${extra}"`);
     }
     const kit = await openTeamKit(runtime);
-    const roster = await rosterOf(runtime, kit, requireConfig(kit, runtime, 'read'));
+    const config = requireConfig(kit, runtime, 'read');
+    const roster = await rosterOf(runtime, kit, config);
     if (text === undefined) {
         roster.ids.forEach((id) => runtime.out.stdout(rosterLine(roster, id)));
         return EXIT.ok;
     }
-    const id = idOf(roster, text);
-    runtime.out.stdout(roster.nameOf(id) ?? id);
+    const address = addressOf(roster, config.roles, text, kit.paths.team);
+    runtime.out.stdout(await nameAt(runtime, roster, address, kit.paths.team));
     return EXIT.ok;
 }
 /** `<id> (<name>)`: the id addresses the session as `<team>/<id>`, the name is what Claude Code calls it. */

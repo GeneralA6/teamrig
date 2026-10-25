@@ -1,11 +1,10 @@
 import { readLines } from "../../budget/cursor.js";
 import { KIT_NAME, resolveKitHome } from "../../core/home.js";
 import { FileLock } from "../../core/lock.js";
-import { SecretScanner } from "../../core/secrets.js";
-import { postLine } from "../../inbox/inbox.js";
 import { indexMarks } from "../../inbox/marks.js";
 import { checkedState, formatHooklessState, HOOKLESS_TAIL_BYTES, hooklessLine, hooklessNews, hooklessReader, hooklessTabs, isCheckDue, lastReplyAt, parseHooklessState, staleEntries, workedPastHook, } from "../../restore/hookless.js";
 import { RestoreRegistry, restoreSessionsDir } from "../../restore/registry.js";
+import { postToHolder, sessionNameOn } from "../holder-team.js";
 import { teamZone } from "../kit.js";
 import { inboxDepsOf } from "./inbox.js";
 async function readState(runtime, kit) {
@@ -51,7 +50,8 @@ async function findHooklessTabs(runtime, kit, config, now) {
  * (the coordinator's owner for the lead's own tab), from teamrig. A turn end that is not due reads one small
  * file. A tab with no hook since its start has no entry and is not seen (the idle pass names a reopened one,
  * src/cli/hookless-reopen.ts); nor is any tab while no tab of the team
- * has its hooks. It returns the lines refused (a secret pattern), for the caller to drop or show.
+ * has its hooks. It returns the lines not posted (a secret pattern, a reader's team above with no config), for the
+ * caller to drop or show.
  */
 export async function checkHooklessTabs(runtime, kit, config) {
     const now = runtime.clock.now();
@@ -69,15 +69,15 @@ export async function checkHooklessTabs(runtime, kit, config) {
         await runtime.files.write(kit.paths.hookless, formatHooklessState(checkedState(now, tabs)));
         return hooklessNews(state, tabs);
     });
-    const inboxes = inboxDepsOf(runtime, kit.paths).inboxes;
-    const secrets = new SecretScanner(config.register.secretPatterns);
+    const team = kit.paths.team;
     const zone = teamZone(config, runtime);
     const refused = [];
     for (const tab of news) {
-        const to = hooklessReader(tab, config.roles.lead, config.roles.coordinatorOwner);
-        const problem = await postLine(inboxes, secrets, { to, from: KIT_NAME, text: hooklessLine(tab, zone, now), now: new Date(now) });
+        const to = hooklessReader(tab, config.roles, team);
+        const text = hooklessLine(tab, sessionNameOn(to.team, team, tab.session), zone, now);
+        const problem = await postToHolder(runtime, { kit, config }, to, { from: KIT_NAME, text });
         if (problem !== undefined) {
-            refused.push(`INBOX ${to}: not posted: ${problem}`);
+            refused.push(`INBOX ${sessionNameOn(team, to.team, to.id)}: not posted: ${problem}`);
         }
     }
     return refused;
