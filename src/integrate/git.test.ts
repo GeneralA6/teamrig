@@ -191,6 +191,31 @@ describe('GIT_INTEGRATE cleanup', () => {
     }
   });
 
+  it('refuses a branch or commit name that git would read as an option, leaving HEAD and the branch as they were', () => {
+    const { repo } = repoWithOrigin('integrate-dash');
+    try {
+      const head = git.sha(repo.dir, 'HEAD');
+      assert.deepEqual(git.checkout(repo.dir, '--orphan'), { ok: false, reason: 'git checkout refused "--orphan": a branch or commit name never starts with "-"' });
+      assert.deepEqual(git.resetTo(repo.dir, '--hard'), { ok: false, reason: 'git reset --keep refused "--hard": a branch or commit name never starts with "-"' });
+      assert.equal(git.sha(repo.dir, 'HEAD'), head);
+      assert.equal(git.checkoutOf(repo.dir)?.branch, 'main');
+    } finally {
+      repo.remove();
+    }
+  });
+
+  it('checks out a branch named like a file in the checkout', () => {
+    const { repo } = repoWithOrigin('integrate-file-named');
+    try {
+      repo.git('branch', 'app.txt');
+      assert.deepEqual(git.checkout(repo.dir, 'app.txt'), { ok: true });
+      assert.equal(git.checkoutOf(repo.dir)?.branch, 'app.txt');
+      assert.deepEqual(git.changes(repo.dir, true), []);
+    } finally {
+      repo.remove();
+    }
+  });
+
   it('resets the checkout back to a commit, and refuses where a local change would be lost', () => {
     const { repo } = repoWithOrigin('integrate-reset');
     try {
