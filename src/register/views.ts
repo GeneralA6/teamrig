@@ -1,7 +1,7 @@
 import { parseDeadline, showStored, storedText } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { cardLines } from './card.ts';
-import type { RegisterEvent } from './events.ts';
+import type { ItemType, RegisterEvent } from './events.ts';
 import { itemTypeOf } from './item-types.ts';
 import type { ApprovalAnswer, Task } from './fold.ts';
 import { ACTIVE_STATUSES, GITHUB_SOURCE, priorityText, type TaskStatus } from './model.ts';
@@ -21,6 +21,8 @@ export interface ListFilter {
   /** A week plan's start day; null selects tasks in no week plan. */
   readonly week?: string | null;
   readonly goal?: string;
+  /** The item types to show; a task with no type counts as a task. */
+  readonly types?: readonly ItemType[];
 }
 
 /** A size as printed: percent of the weekly limit, at most two decimals (`1.5%`). */
@@ -61,7 +63,8 @@ export function selectTasks(tasks: Iterable<Task>, filter: ListFilter, tree: Tas
         (filter.priorities === undefined || filter.priorities.includes(task.priority)) &&
         (dueBefore === undefined || (due !== undefined && due < dueBefore)) &&
         (filter.week === undefined || task.week === filter.week) &&
-        (filter.goal === undefined || task.goals.includes(filter.goal))
+        (filter.goal === undefined || task.goals.includes(filter.goal)) &&
+        (filter.types === undefined || filter.types.includes(itemTypeOf(task)))
       );
     })
     .sort((a, b) => tree.byPlanOrder(a, b));

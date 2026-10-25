@@ -477,5 +477,9 @@ export function listFilterOf(flags: Flags, times: TypedTimes): ListFilter {
   if (goal !== undefined) {
     filter.goal = goal;
   }
+  const types = flags.get('type');
+  if (types !== undefined) {
+    filter.types = listOf('--type', types).map(typeOf);
+  }
   return filter;
 }
