@@ -1,7 +1,8 @@
 import { toolUseFrom } from "../../budget/line.js";
 import { isRecord, recordField, stringField } from "../../core/guards.js";
 import { leadNudgeLine, leadWorkOf, taskOwnersOf } from "../../hooks/lead-boundary.js";
-import { chainOf, nudgeLine, nudgeOutput, turnTasksOf, turnToolsOf } from "../../hooks/loop-nudge.js";
+import { chainOf, nudgeLine, turnTasksOf, turnToolsOf } from "../../hooks/loop-nudge.js";
+import { postToolUseContext } from "../../hooks/post-tool-use.js";
 import { sessionIdOf } from "../../inbox/inbox.js";
 import { TRANSCRIPT_TAIL_BYTES } from "../../names/title.js";
 import { JsonlEventLog } from "../../register/store.js";
@@ -82,7 +83,7 @@ export async function loopNudge(args, runtime) {
     noPositionals(args);
     const lines = await loopNudgeLines(parseJson(await runtime.readStdin()), runtime).catch(() => []);
     if (lines.length > 0) {
-        runtime.out.stdout(nudgeOutput(lines.join('\n')));
+        runtime.out.stdout(postToolUseContext(lines.join('\n')));
     }
     return EXIT.ok;
 }
