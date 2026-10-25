@@ -153,6 +153,12 @@ sequenceDiagram
   you->>lead: what you want done
   lead->>you: the team it proposes
   you->>lead: yes
+  lead->>cli: setup backup, setup scan
+  cli-->>lead: the backup's stamp, what every turn costs and what to slim
+  lead->>you: one yes or no per group of findings
+  you->>lead: your answers
+  lead->>lead: shortens, dedupes, moves and parks what you said yes to, scans again
+  lead->>you: every turn's cost before and after, and the restore that undoes it
   lead->>cli: team create, inbox read, rules
   cli-->>lead: config.json and .teamrig.json written, the setup task started, the team rules
   loop each session
@@ -164,6 +170,12 @@ sequenceDiagram
   lead->>you: the team is up
 ```
 
+- Before anything changes, `teamrig setup backup` copies your Claude setup (CLAUDE.md and rules files, settings,
+  skills, memory) into a dated backup, and `teamrig setup scan` shows what each session start costs and what to slim:
+  files over 6,000 chars, lines loaded twice and skills no transcript used in 30 days. On your yes for a group, the
+  lead shortens those files, moves rules needed only in some folders into files that load only there, removes the
+  repeats and parks the unused skills in `skills-parked/`, then scans again for the before and after.
+  `teamrig setup restore <stamp> --yes` puts every backed-up file back.
 - `teamrig team create signup --sessions api,web,tests` writes the team's `config.json` and ties the project folder
   to it with `.teamrig.json`, which it keeps out of git in that clone (`.git/info/exclude`). The lead's first task,
   `Set up the team`, goes in the task list in progress, so the setup shows in the task pane like any work, and the
