@@ -114,6 +114,8 @@ A shipped change is proven by the session that shipped it, oldest first, before 
   in the child's register, owned by the child's lead (who plans it in) and sourced `<parent team>/<lead id>`; the
   parent's own register is not touched; once the task is done or dropped, the parent's lead gets one inbox line
   (`web/T1 done: <title> | evidence: ...`). Each lead sees the teams under it with `list`, `check` and `plan --tree`.
+  The teams of a tree number their tasks from one count: an id names one task in the whole tree, whichever team
+  holds it.
 
 ## A task or a step
 
