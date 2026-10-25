@@ -150,6 +150,39 @@ describe('checkTasks', () => {
   });
 });
 
+describe('checkTasks: URGENT', () => {
+  const seen = { ownerSeenAt: FRESH, updatedAt: FRESH };
+  const urgent = testTask({ id: 'T1', priority: 0, ...seen });
+  const flags = (tasks: Parameters<typeof checkTasks>[0]) => checkTasks(tasks, NOW, TimeZone.UTC, null, CONFIG);
+  const urgentIds = (tasks: Parameters<typeof checkTasks>[0]) => flags(tasks).filter((flag) => flag.kind === 'URGENT').map((flag) => flag.task.id);
+
+  it('flags an open p0 free to start before every other kind: its owner starts it now, ahead of the task in hand', () => {
+    const stale = testTask({ id: 'T2', ownerSeenAt: FRESH, updatedAt: '2030-01-01T00:00:00.000Z' });
+    const raised = flags([stale, urgent]);
+    assert.deepEqual(raised.map((flag) => `${flag.kind} ${flag.task.id}`), ['URGENT T1', 'STALE T2']);
+    const [first] = raised;
+    assert.ok(first);
+    assert.equal(formatFlag(first, undefined, TREE),'URGENT (p0: start it now, ahead of the task in hand) T1 open, p0, owner alpha, from lead | Add a health check');
+  });
+
+  it("names the lead's deadline burst on its effective due, typed on the team's clock: its own or a later task's", () => {
+    const own = flags([{ ...urgent, due: '2030-01-12 09:30' }])[0]?.detail;
+    assert.equal(own, 'p0: start it now, ahead of the task in hand; to finish it by its due, the lead may run burst start deadline --task T1 --by "2030-01-12 09:30 UTC" --stop-pct <n> --reason "<why>"');
+    const needer = testTask({ id: 'T3', priority: 2, after: ['T1'], due: '2030-01-11 08:00', ...seen });
+    assert.match(flags([urgent, needer])[0]?.detail ?? '', /--task T1 --by "2030-01-11 08:00 UTC" /);
+  });
+
+  it('leaves a p0 in progress, waiting, verifying or planned after a task not finished yet alone, and an open p1', () => {
+    const first = testTask({ id: 'T3', priority: 2, ...seen });
+    assert.deepEqual(urgentIds([{ ...urgent, status: 'in-progress' }]), []);
+    assert.deepEqual(urgentIds([{ ...urgent, status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], card: TEST_OWNER_CARD }]), []);
+    assert.deepEqual(urgentIds([{ ...urgent, status: 'verifying' }]), []);
+    assert.deepEqual(urgentIds([{ ...urgent, after: ['T3'] }, first]), []);
+    assert.deepEqual(urgentIds([{ ...urgent, priority: 1 }]), []);
+    assert.deepEqual(urgentIds([{ ...urgent, after: ['T3'] }, { ...first, status: 'done' }]), ['T1'], 'free once the task before it finished');
+  });
+});
+
 describe('peerWaitFlags', () => {
   it("flags a waiting task, or a verifying task's proof, on a peer's decision or approval, as an older teamrig wrote it, naming the ask to make", () => {
     const tasks = [

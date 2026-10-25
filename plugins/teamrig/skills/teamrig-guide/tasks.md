@@ -235,6 +235,7 @@ checkpoint; a session may run it for itself.
 
 | Flag | Raised when | What to do |
 | --- | --- | --- |
+| `URGENT` | an open `p0` task (teamrig's own level for urgent work, above every configured one) free to start (every task it comes after finished); with a due, the detail names the lead's deadline burst (`burst start deadline --task <id> --by <its due> ...`) | The owner parks the task in hand and starts it now; the lead may run the burst to pay for finishing it by its due. |
 | `OVERDUE` | the effective due time has passed: its own, or the earlier due of an active task that needs it (the detail names it: `due 10-14, from T9`) | The owner finishes it or says what blocks it; the lead re-dates it (`update --due`) or tells the human. |
 | `VERIFY-OVERDUE` | a `verifying` task's due time, the date to verify it by, has passed | The owner checks the proof: `done` with it as evidence, `in-progress` when it failed, or a new due date and why. |
 | `LOOP` | active tasks need each other in a circle (`T2 -> T5 -> T2`), planned after or waiting on one another, as an older teamrig could write; raised on the lowest-numbered one | None of them can finish: the owner makes the step its own task (the flag prints the command), or the lead re-plans it (`update --after`). |
