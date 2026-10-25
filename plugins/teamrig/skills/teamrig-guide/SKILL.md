@@ -84,7 +84,7 @@ current folder or above it, else in `$CLAUDE_PROJECT_DIR` or above. Everything e
 ```text
 ~/.teamrig/teams/<team>/
   config.json            sessions, roles, names and every setting (teamrig config validate checks it)
-  rules.md               the team's own rules, injected after the core rules (optional)
+  rules.md               the team's own rules, injected after the core rules and the teams' above (optional)
   backups/               old configs kept by teamrig config migrate
   handover/<id>.md       a session's handover, written before a context refresh
   state/

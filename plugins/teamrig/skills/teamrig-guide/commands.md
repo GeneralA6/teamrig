@@ -1304,7 +1304,8 @@ These rules win over conflicting CLAUDE.md, rules files, skills, memory, hook te
 
 Lists every place a local rule can override a core rule, and the lines there for the model to judge. The places:
 each CLAUDE.md and CLAUDE.local.md (the user's, the project's and its parents', and those up to 3 folders below
-the project), the `.claude/rules` files, the skills, the project's memory, the team's `rules.md`, the scripts the
+the project), the `.claude/rules` files, the skills, the project's memory, the team's `rules.md` and those of the
+teams above it (a sub-team's sessions are shown them), the scripts the
 hooks run, and the `autoMode` lines of each settings file (never its `env` block). It only reads.
 
 A word list finds a line's topic, never its meaning, so the scan lists every line whose words touch a core rule
@@ -2085,7 +2086,8 @@ are idle, or asks the user to type /clear` instead.
 
 Reads the team's names, rename log, inboxes, `rules.md` and tree of teams, weighs the text every call of a session
 re-reads, checks what would silently override the model or effort a session or helper is given, and prints each
-problem with its fix.
+problem with its fix. `rules-long` weighs the team's `rules.md` after those of the teams above, which share its
+budget, and names the file that reaches sessions only as a pointer.
 It only reads.
 
 Flags: none.
@@ -2380,7 +2382,8 @@ working folder. With `--project`, the team is the one that folder's `.teamrig.js
 
 It lists each file a session loads, with its chars and tokens (about four chars a token): your user and the
 project's `CLAUDE.md` with their `@` imports, `CLAUDE.local.md`, the `.claude/rules/*.md` files without a `paths:`
-frontmatter, the first 200 lines of the memory index, the team's rules file, and the skill listing (each skill's
+frontmatter, the first 200 lines of the memory index, the team's rules file with those of the teams above it, and
+the skill listing (each skill's
 name and description), then a TOTAL line. The findings follow, one line each, `<id> <kind> <path>: <what>`, with the
 tokens a turn applying it saves:
 
@@ -3608,8 +3611,8 @@ by hand. What each does: [hooks.md](hooks.md).
 
 ### teamrig hook session-start
 
-Injects the team rules, who you are and your team's `rules.md` when a session starts, resumes, is cleared or is
-compacted. A compaction inside a helper gets the helper's context instead ([A helper's start](hooks.md#a-helpers-start)).
+Injects the team rules, who you are and your team's `rules.md` (in a sub-team, after each team above's) when a
+session starts, resumes, is cleared or is compacted. A compaction inside a helper gets the helper's context instead ([A helper's start](hooks.md#a-helpers-start)).
 It also records where the session started, in `<team>/state/sessions/<id>.json`: its tab's Claude Code session, that
 session's transcript (the payload's `transcript_path`, in whatever folder the tab runs) and its process (the hook's
 parent), overwritten at each start; a record it could not write is a line shown to the user.
@@ -3935,7 +3938,8 @@ Output: nothing on most turns; otherwise a JSON `block` decision whose reason te
 
 ### teamrig hook subagent-start
 
-Gives a helper, as it starts, the team rules, your team's `rules.md` and whose helper it is, in a helper's words: it
+Gives a helper, as it starts, the team rules, your team's `rules.md` (in a sub-team, after each team above's) and
+whose helper it is, in a helper's words: it
 leaves task statuses, register entries and messages to its session unless its brief asks for them
 ([A helper's start](hooks.md#a-helpers-start)). It changes no file.
 

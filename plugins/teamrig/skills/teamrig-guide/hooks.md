@@ -64,7 +64,10 @@ The injected context holds:
    ``This tab was bound to the `web` session from its Claude Code title; nothing was marked read.``, or, after a
    `/clear` in a tab whose title names no session, by the Claude Code process the session refreshed in (for 24 hours):
    ``This tab was bound to the `web` session: /clear kept the Claude Code process that session refreshed in; nothing was marked read.``
-5. **The team's own `rules.md`**, when it exists. Where it, a CLAUDE.md, a rules file, a skill, memory or a hook's
+5. **The team's own `rules.md`**, when it exists. In a sub-team, the `rules.md` of each team above comes first, the
+   root's first, headed `Team <id>'s rules (a team above yours; they win over a lower team's)`. The files share one
+   budget of 2,750 characters, in that order: one that does not fit comes as a pointer to it, with the room that was
+   left, and `teamrig doctor` names it. Where one of them, a CLAUDE.md, a rules file, a skill, memory or a hook's
    text conflicts with the core rules, the core rules win, except the local rules the team kept (`teamrig rules
    keep`), which the core rules list under `Kept local rules`. `teamrig rules scan` lists the lines to settle.
 6. **After a refresh**: `You were refreshed after T2; read your handover first: <path>`, once, at the first
@@ -115,7 +118,8 @@ brand-new tab teamrig did not open, with no title naming a session, has none of 
 ## A helper's start
 
 Claude Code starts a helper (a subagent) with the CLAUDE.md files but without its session's start context, so
-`hook subagent-start` gives it the same core rules and your team's `rules.md`, then one line on whose helper it is:
+`hook subagent-start` gives it the same core rules and team rules files (in a sub-team, those of the teams above
+before your team's `rules.md`), then one line on whose helper it is:
 
 ```text
 You are a helper (`general-purpose`) of the `web` session of team `shop` (name `shop-web`). The rules above bind you as they bind it, but your brief is your task: leave `teamrig start`, task statuses, register entries, inbox lines and messages to it unless your brief asks for them, and return what it needs. $TEAMRIG_SESSION is not set here, so pass --session web to any `teamrig` command your brief asks for.
