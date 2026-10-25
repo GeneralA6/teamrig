@@ -979,7 +979,9 @@ leaves the tab green: only a helper keeps it yellow.
 So that a refresh never takes away what the person was reading, three hooks keep each team session's turns in
 `state/turn-log/<session id>/<UTC hour>.jsonl` (`turnLog.enabled`, on by default), which the task pane shows:
 
-- `hook inbox-reminder` (a prompt) writes the prompt sent.
+- `hook inbox-reminder` (a prompt) writes the prompt sent. A prompt the wake check had that tab submit (its text
+  kept in `state/wake/<id>.prompt.json` until a prompt of that tab matches it exactly, outer white space aside) is
+  marked `from: teamrig`, so a wake never reads as the person's words.
 - `hook stop` (a turn's end) writes the reply: the text of every model entry since the turn's prompt, read from the
   last MiB of the transcript, ending with Claude Code's `last_assistant_message` when the transcript does not hold
   it yet. A stop a hook sent back (the handover ask) ends part of a turn: the entry records the last transcript
@@ -987,7 +989,7 @@ So that a refresh never takes away what the person was reading, three hooks keep
 - `hook session-start` writes a `clear` entry after a /clear or a compaction, then removes every session's hour
   files that ended more than `turnLog.keepHours` (24) ago; it only lists folders.
 
-Each line is `{v: 1, at, kind: prompt|reply|clear, text, claude, truncated?, upTo?}`, `claude` the Claude Code
+Each line is `{v: 1, at, kind: prompt|reply|clear, text, claude, truncated?, upTo?, from?}`, `claude` the Claude Code
 session id. `text` has secret shapes masked (the register's patterns and `register.secretPatterns`) and keeps at
 most 64,000 characters, the end of a longer one; `truncated` marks that cut, or a reply whose turn began before
 the part of the transcript read. A tab that is no session of the team writes nothing, and any error leaves the
