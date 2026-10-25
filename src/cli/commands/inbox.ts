@@ -98,10 +98,7 @@ function ownTeamRecipient(own: SenderTeam, id: string): Recipient {
   return { paths: own.paths, config: own.config, id, label: id, sender: own.from.id, crossing: false };
 }
 
-/**
- * A session of another team of the sender's tree, when the sender may write to it: a member only to
- * its own team, a lead also to its parent team's lead and its child teams' leads.
- */
+/** A session of another team, when it is in the sender's tree (reachOf). */
 async function recipientInTree(runtime: CliRuntime, loaded: KitTree, from: SessionAddress, team: string, session: string): Promise<Recipient> {
   const { tree, teams } = loaded;
   const target = teams.get(team);
@@ -109,8 +106,7 @@ async function recipientInTree(runtime: CliRuntime, loaded: KitTree, from: Sessi
     throw new RefusedError(`no team ${team} with a config in this kit home`);
   }
   const to = { team, id: sessionIdOf(target.roster, session) };
-  const own = teams.get(from.team);
-  const reach = reachOf(tree, from, to, own === undefined ? undefined : new LeadTree(own.config).leaderOf(from.id));
+  const reach = reachOf(tree, from, to);
   if (!reach.ok) {
     throw new RefusedError(reach.problem);
   }
@@ -184,8 +180,8 @@ const TO_FORMS = 'a session id or name, <team>/<id>, all, leads, group:<leader>,
 
 /**
  * `inbox add --to <to> --text "<line>"`: appends one dated line to each receiver's inbox, all of them or, when one is
- * refused, none. A bare id or name is on the sender's team; `<team>/<id>` reaches another team of its tree, as far as
- * the sender's place allows, and that line names the sender `<team>/<id>`. `all`, `leads` and `group:<leader>` are
+ * refused, none. A bare id or name is on the sender's team; `<team>/<id>` reaches any session of another team of its
+ * tree, and that line names the sender `<team>/<id>`. `all`, `leads` and `group:<leader>` are
  * groups of the sender's team that leave the sender out; a comma-separated list names each receiver once. A line to a
  * session named on the sender's team that skips a sub-lead below the sender is posted, then a further line tells the
  * sender to route such work via that sub-lead (T783).

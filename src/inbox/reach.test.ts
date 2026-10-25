@@ -7,14 +7,13 @@ function team(id: string, parent?: string): TeamNode {
   return { team: id, statedId: id, parent, lead: 'lead', sessions: ['lead', 'dev'], names: new Map() };
 }
 
-/** `app` is the root; `web` and `ops` are its children; `ui` is under `web`. */
-const TREE = new TeamTree([team('app'), team('web', 'app'), team('ops', 'app'), team('ui', 'web')]);
+/** `app` is a root; `web` and `ops` are its children; `ui` is under `web`. `shop` is the root of a separate tree. */
+const TREE = new TeamTree([team('app'), team('web', 'app'), team('ops', 'app'), team('ui', 'web'), team('shop')]);
 
-/** The sender's own leader is its team's lead unless `leader` names a sub-lead. */
-function reach(from: string, to: string, leader?: string): Reach {
+function reach(from: string, to: string): Reach {
   const [fromTeam = '', fromId = ''] = from.split('/');
   const [toTeam = '', toId = ''] = to.split('/');
-  return reachOf(TREE, { team: fromTeam, id: fromId }, { team: toTeam, id: toId }, leader ?? TREE.leadOf(fromTeam));
+  return reachOf(TREE, { team: fromTeam, id: fromId }, { team: toTeam, id: toId });
 }
 
 function problemOf(verdict: Reach): string {
@@ -26,27 +25,22 @@ describe('reachOf', () => {
   it('lets anyone reach their own team', () => {
     assert.deepEqual(reach('web/dev', 'web/lead'), { ok: true });
     assert.deepEqual(reach('web/lead', 'web/dev'), { ok: true });
+    assert.deepEqual(reach('shop/dev', 'shop/lead'), { ok: true });
   });
 
-  it('lets a lead reach its parent lead and its child leads, and nobody else', () => {
-    assert.deepEqual(reach('web/lead', 'app/lead'), { ok: true });
-    assert.deepEqual(reach('web/lead', 'ui/lead'), { ok: true });
-    assert.deepEqual(reach('app/lead', 'web/lead'), { ok: true });
-    assert.match(problemOf(reach('app/lead', 'ui/lead')), /^app\/lead may write to its own team, its parent team's lead and its child teams' leads, and ui\/lead is none of them: escalate through your lead/);
-    assert.match(problemOf(reach('web/lead', 'ops/lead')), /ops\/lead is none of them/);
-    assert.match(problemOf(reach('app/lead', 'web/dev')), /web\/dev is none of them/);
+  it('lets any session reach any session of its tree: up, down, across sibling teams and past a level', () => {
+    assert.deepEqual(reach('web/dev', 'app/lead'), { ok: true });
+    assert.deepEqual(reach('app/lead', 'ui/dev'), { ok: true });
+    assert.deepEqual(reach('web/dev', 'ops/dev'), { ok: true });
+    assert.deepEqual(reach('ui/dev', 'ops/lead'), { ok: true });
   });
 
-  it('keeps a member to its own team, pointing at its lead', () => {
-    assert.equal(problemOf(reach('web/dev', 'app/lead')), 'web/dev may write to its own team only, and app/lead is not on it: escalate through your lead (web/lead)');
-    assert.match(problemOf(reach('web/dev', 'ui/lead')), /escalate through your lead \(web\/lead\)$/);
+  it('refuses a session of a separate tree, either way', () => {
+    assert.equal(problemOf(reach('app/lead', 'shop/lead')), 'app/lead and shop/lead are in separate trees of teams: an inbox line reaches only a session of its own tree');
+    assert.match(problemOf(reach('shop/dev', 'ui/dev')), /^shop\/dev and ui\/dev are in separate trees/);
   });
 
-  it("points a sub-lead's member at its own leader", () => {
-    assert.equal(problemOf(reach('web/dev', 'app/lead', 'tech')), 'web/dev may write to its own team only, and app/lead is not on it: escalate through your lead (web/tech)');
-  });
-
-  it('refuses a sender whose team is not in the tree, without naming a lead', () => {
-    assert.equal(problemOf(reach('gone/dev', 'app/lead')), 'gone/dev may write to its own team only, and app/lead is not on it: escalate through your lead');
+  it('refuses a sender whose team is not in the tree', () => {
+    assert.match(problemOf(reach('gone/dev', 'app/lead')), /^gone\/dev and app\/lead are in separate trees/);
   });
 });
