@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { win32 } from 'node:path';
+import { join, relative, resolve, win32 } from 'node:path';
 import { TempRepo } from '../../tools/lib/temp-repo.ts';
 import type { PathSearchDeps } from '../core/path-search.ts';
 import { execRequest } from '../testing/exec-request.ts';
@@ -100,13 +100,13 @@ describe('GIT_CHECKOUT', () => {
       repo.git('commit', '-q', '-m', 'first');
       const commit = repo.git('rev-parse', 'HEAD').trim();
       assert.equal(await GIT_CHECKOUT.head(repo.dir), commit);
-      assert.ok(win32.relative(win32.resolve((await GIT_CHECKOUT.topLevel(repo.dir)) ?? ''), win32.resolve(repo.dir)) === '');
+      assert.ok(relative(resolve((await GIT_CHECKOUT.topLevel(repo.dir)) ?? ''), resolve(repo.dir)) === '');
       assert.deepEqual(await GIT_CHECKOUT.changes(repo.dir), []);
       repo.write('new.ts', 'x');
       assert.deepEqual(await GIT_CHECKOUT.changes(repo.dir), ['?? new.ts']);
-      const lock = win32.join(repo.dir, 'package-lock.json');
+      const lock = join(repo.dir, 'package-lock.json');
       assert.equal(await GIT_CHECKOUT.fileSha256(lock), createHash('sha256').update('{"lockfileVersion":3}\n').digest('hex'));
-      assert.equal(await GIT_CHECKOUT.fileSha256(win32.join(repo.dir, 'yarn.lock')), undefined);
+      assert.equal(await GIT_CHECKOUT.fileSha256(join(repo.dir, 'yarn.lock')), undefined);
     } finally {
       repo.remove();
     }
