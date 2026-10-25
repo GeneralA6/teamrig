@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolve, win32 } from 'node:path';
+import { posix, resolve, win32 } from 'node:path';
 import { Location, resolveDir } from './location.ts';
 import { parseShell, type ShellDialect, type ShellWord } from './tokenizer.ts';
 
@@ -96,6 +96,15 @@ describe('Location: PowerShell', () => {
   it('follows Push-Location and Pop-Location', () => {
     assert.equal(dirAfter('Push-Location -StackName s x; Pop-Location', 'powershell'), resolve(CWD));
     assert.equal(dirAfter('Push-Location; cd x; Pop-Location', 'powershell'), resolve(CWD));
+  });
+
+  it('reads \\ as a separator on a POSIX host too, as PowerShell and cmd do, while bash keeps it in a name', () => {
+    const onPosix = (line: string, dialect: ShellDialect): string | undefined => walk(line, dialect, new Location(CWD, HOME, posix)).dir;
+    assert.equal(onPosix('Set-Location ..\\other', 'powershell'), '/work/other');
+    assert.equal(onPosix('Push-Location sub\\deeper', 'powershell'), '/work/app/sub/deeper');
+    assert.equal(onPosix('cd sub\\deeper', 'cmd'), '/work/app/sub/deeper');
+    assert.equal(onPosix("cd 'a\\b'", 'bash'), '/work/app/a\\b');
+    assert.equal(walk('cd a', 'bash', new Location(CWD, HOME, posix)).child().dir, '/work/app/a');
   });
 });
 

@@ -33,11 +33,12 @@ const PS_VALUED_PARAMETERS: ReadonlySet<string> = new Set(['-stackname']);
 
 /**
  * Where a `cd` target leads from `current`; `~` is the home folder. A path with a drive letter resolves by
- * Windows rules on every host (see {@link pathRules}). Undefined when `current` is unknown and the target is relative.
+ * Windows rules on every host (see {@link pathRules}), any other by `host`'s, the host's own unless a test
+ * names another. Undefined when `current` is unknown and the target is relative.
  */
-export function resolveDir(current: string | undefined, target: string, home: string): string | undefined {
-  const expanded = target === '~' || /^~[\\/]/.test(target) ? pathRules(home).join(home, target.slice(1)) : target;
-  const rules = pathRules(current, expanded);
+export function resolveDir(current: string | undefined, target: string, home: string, host: nodePath.PlatformPath = nodePath): string | undefined {
+  const expanded = target === '~' || /^~[\\/]/.test(target) ? pathRules(host, home).join(home, target.slice(1)) : target;
+  const rules = pathRules(host, current, expanded);
   if (rules.isAbsolute(expanded)) {
     return rules.resolve(expanded);
   }
@@ -48,13 +49,21 @@ export function resolveDir(current: string | undefined, target: string, home: st
  * The rules that resolve `paths`: Windows rules when any of them names a drive, since only a Windows shell
  * writes one (so `cd /d D:\x` leads to `D:\x` on every host), and the host's rules otherwise.
  */
-function pathRules(...paths: readonly (string | undefined)[]): nodePath.PlatformPath {
-  return paths.some((path) => driveOf(path) !== undefined) ? nodePath.win32 : nodePath;
+function pathRules(host: nodePath.PlatformPath, ...paths: readonly (string | undefined)[]): nodePath.PlatformPath {
+  return paths.some((path) => driveOf(path) !== undefined) ? nodePath.win32 : host;
 }
 
 /** `dir` resolved and normalised, so a folder the line never leaves compares equal to one it returns to. */
-function absoluteDir(dir: string): string {
-  return pathRules(dir).resolve(dir);
+function absoluteDir(dir: string, host: nodePath.PlatformPath): string {
+  return pathRules(host, dir).resolve(dir);
+}
+
+/**
+ * A folder command's target as its shell reads it: PowerShell and cmd take `\` as a separator on every host
+ * (PowerShell on Linux too), while in bash it is part of a name.
+ */
+function shellPath(text: string, dialect: ShellDialect): string {
+  return dialect === 'bash' ? text : text.replaceAll('\\', '/');
 }
 
 /** The drive letter a Windows path names, lower case, if any. */
@@ -72,10 +81,13 @@ export class Location {
   private frames: Frame[];
   /** The folder `~` names. */
   readonly home: string;
+  /** The path rules of the host the line runs on, for every path that names no drive. */
+  private readonly host: nodePath.PlatformPath;
 
-  constructor(dir: string | undefined, home: string) {
-    this.frames = [{ id: undefined, dir: dir === undefined ? undefined : absoluteDir(dir), previous: undefined, stack: [] }];
-    this.home = absoluteDir(home);
+  constructor(dir: string | undefined, home: string, host: nodePath.PlatformPath = nodePath) {
+    this.host = host;
+    this.frames = [{ id: undefined, dir: dir === undefined ? undefined : absoluteDir(dir, host), previous: undefined, stack: [] }];
+    this.home = absoluteDir(home, host);
   }
 
   /** The folder the next command runs in; undefined when it is only known when the line runs. */
@@ -106,7 +118,7 @@ export class Location {
 
   /** A location for a nested shell started here, such as `bash -c`: it starts in this folder and moves on its own. */
   child(): Location {
-    return new Location(this.dir, this.home);
+    return new Location(this.dir, this.home, this.host);
   }
 
   /** Takes on where a script run in this same shell (`eval`, `Invoke-Expression`) left its location. */
@@ -119,7 +131,7 @@ export class Location {
 
   /** Moves to a folder a launcher names, such as `env -C dir` or `-WorkingDirectory dir`. */
   moveTo(target: ShellWord): void {
-    this.change(target.dynamic ? undefined : resolveDir(this.dir, target.text, this.home));
+    this.change(target.dynamic ? undefined : resolveDir(this.dir, target.text, this.home, this.host));
   }
 
   /** Applies a command if it changes the folder; false for any other command. */
@@ -178,14 +190,14 @@ export class Location {
     return dialect === 'cmd' ? { text: operands.map((word) => word.text).join(' '), dynamic: operands.some((word) => word.dynamic) } : (operands[0] ?? null);
   }
 
-  private resolveTarget(target: ShellWord): string | undefined {
+  private resolveTarget(target: ShellWord, dialect: ShellDialect): string | undefined {
     if (target.dynamic) {
       return undefined;
     }
     if (target.text === '-') {
       return this.top.previous;
     }
-    return resolveDir(this.dir, target.text, this.home);
+    return resolveDir(this.dir, shellPath(target.text, dialect), this.home, this.host);
   }
 
   private changeDir(args: readonly ShellWord[], dialect: ShellDialect): void {
@@ -207,7 +219,7 @@ export class Location {
       // Without /d, cmd's cd only sets that drive's folder and stays where it is.
       return;
     }
-    this.change(this.resolveTarget(target));
+    this.change(this.resolveTarget(target, dialect));
   }
 
   private pushDir(args: readonly ShellWord[], dialect: ShellDialect): void {
@@ -225,7 +237,7 @@ export class Location {
       return;
     }
     // pushd +N and -N rotate the stack, which the guard does not track.
-    const dir = dialect === 'bash' && /^[+-]\d+$/.test(target.text) ? undefined : this.resolveTarget(target);
+    const dir = dialect === 'bash' && /^[+-]\d+$/.test(target.text) ? undefined : this.resolveTarget(target, dialect);
     top.stack.push(top.dir);
     this.change(dir);
   }
