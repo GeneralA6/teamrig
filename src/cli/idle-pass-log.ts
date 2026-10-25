@@ -2,14 +2,15 @@ import type { IdleMode } from '../config/types.ts';
 import type { CommitCharge } from '../coordinator/memory.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
-import { MS_PER_MINUTE } from '../core/time.ts';
+import { MS_PER_HOUR, MS_PER_MINUTE } from '../core/time.ts';
 import type { PassStep } from './idle-pass.ts';
 
 /**
  * The idle pass as the wake check runs it (T1100), kept pure: at most once every `IDLE_PASS_EVERY_MS` across the
- * team, and its log keeps only what changed, so a day of quiet passes writes nothing to it. The state file keeps the
- * last pass's time and each session's step kind then; a failed pass keeps the kinds and its error, logged once until
- * the error changes. It also keeps the acts a pass started, so the next passes start none on their sessions while
+ * team, and its log keeps what changed, and every step once its last pass record is `IDLE_PASS_LOG_EVERY_MS` old, so
+ * a day of quiet passes writes one record an hour and a log silent for longer means the pass stopped (T1158). The
+ * state file keeps the last pass's time, each session's step kind then and when a pass last logged its steps; a
+ * failed pass keeps the kinds and its error, logged once until the error changes. It also keeps the acts a pass started, so the next passes start none on their sessions while
  * they may still run, and the reopened tabs no hook started in that a pass told of, so it tells of each reopen once.
  */
 
@@ -21,6 +22,9 @@ export const IDLE_PASS_LOG_FORMAT = 1;
 
 /** How often the wake checks run the pass, across the team. */
 export const IDLE_PASS_EVERY_MS = MS_PER_MINUTE;
+
+/** How old the last pass record may grow before a pass that changed nothing logs every step again. */
+export const IDLE_PASS_LOG_EVERY_MS = MS_PER_HOUR;
 
 export type PassKind = PassStep['kind'];
 
@@ -41,13 +45,14 @@ export interface PendingAct {
 
 /**
  * The team's pass: when it last ran, each session's step kind at the last pass that ran through, the error of a
- * failing one, the acts started that may still run, and the time of each hookless reopen told of
- * (src/cli/hookless-reopen.ts), by session.
+ * failing one, when a pass last logged its steps (none in a file from before T1158), the acts started that may still
+ * run, and the time of each hookless reopen told of (src/cli/hookless-reopen.ts), by session.
  */
 export interface IdlePassState {
   readonly at: number;
   readonly kinds: Readonly<Record<string, PassKind>>;
   readonly failed?: string;
+  readonly logged?: number;
   readonly pending?: Readonly<Record<string, PendingAct>>;
   readonly told?: Readonly<Record<string, number>>;
 }
@@ -96,10 +101,10 @@ export function parseIdlePassState(text: string): IdlePassState | undefined {
   if (record === undefined || record[VERSION_FIELD] !== IDLE_PASS_STATE_FORMAT) {
     return undefined;
   }
-  const { at, kinds, failed } = record;
+  const { at, kinds, failed, logged } = record;
   const pending = pendingOf(record['pending']);
   const told = toldOf(record['told']);
-  if (!isTime(at) || !isRecord(kinds) || (failed !== undefined && typeof failed !== 'string') || pending === undefined || told === undefined) {
+  if (!isTime(at) || !isRecord(kinds) || (failed !== undefined && typeof failed !== 'string') || (logged !== undefined && !isTime(logged)) || pending === undefined || told === undefined) {
     return undefined;
   }
   const entries = Object.entries(kinds);
@@ -107,7 +112,12 @@ export function parseIdlePassState(text: string): IdlePassState | undefined {
   if (known.length !== entries.length) {
     return undefined;
   }
-  return { at, kinds: Object.fromEntries(known), ...(failed === undefined ? {} : { failed }), ...pendingField(pending), ...toldField(told) };
+  return { at, kinds: Object.fromEntries(known), ...(failed === undefined ? {} : { failed }), ...loggedField(logged), ...pendingField(pending), ...toldField(told) };
+}
+
+/** When a pass last logged its steps, as a state field: none before the first. */
+function loggedField(logged: number | undefined): { readonly logged?: number } {
+  return logged === undefined ? {} : { logged };
 }
 
 /** The pending acts as a state field: none while nothing is pending. */
@@ -123,7 +133,7 @@ function toldField(told: Readonly<Record<string, number>> | undefined): { readon
 export function formatIdlePassState(state: IdlePassState): string {
   const pending = Object.fromEntries(Object.entries(state.pending ?? {}).map(([id, { act, at }]) => [id, { act, at }]));
   const told = { ...state.told };
-  return toJsonlLine({ [VERSION_FIELD]: IDLE_PASS_STATE_FORMAT, at: state.at, kinds: { ...state.kinds }, ...(state.failed === undefined ? {} : { failed: state.failed }), ...pendingField(pending), ...toldField(told) });
+  return toJsonlLine({ [VERSION_FIELD]: IDLE_PASS_STATE_FORMAT, at: state.at, kinds: { ...state.kinds }, ...(state.failed === undefined ? {} : { failed: state.failed }), ...loggedField(state.logged), ...pendingField(pending), ...toldField(told) });
 }
 
 /** Whether a wake check runs the pass now: `IDLE_PASS_EVERY_MS` passed since the last, or the clock went back past it. */
@@ -168,19 +178,36 @@ export function changedSteps(previous: IdlePassState | undefined, steps: readonl
 }
 
 /**
- * The state after a pass that ran through, with the acts still pending after it and the hookless reopens it found,
- * each told of: a session's mark goes once its tab had a hook, so a later hookless reopen of it is told of again.
+ * The steps a pass logs: every one when no pass logged its steps yet, the last did `IDLE_PASS_LOG_EVERY_MS` ago or
+ * more, or the clock went back past it; else only those whose kind changed (`changedSteps`).
  */
-export function passedState(now: number, steps: readonly PassStep[], pending: Readonly<Record<string, PendingAct>> = {}, told: Readonly<Record<string, number>> = {}): IdlePassState {
-  return { at: now, kinds: Object.fromEntries(steps.map((step): [string, PassKind] => [step.id, step.kind])), ...pendingField(pending), ...toldField(told) };
+export function stepsToLog(previous: IdlePassState | undefined, steps: readonly PassStep[], now: number): PassStep[] {
+  const logged = previous?.logged;
+  return logged === undefined || now < logged || now - logged >= IDLE_PASS_LOG_EVERY_MS ? [...steps] : changedSteps(previous, steps);
+}
+
+/**
+ * The state after a pass that ran through, with the acts still pending after it, the hookless reopens it found, each
+ * told of: a session's mark goes once its tab had a hook, so a later hookless reopen of it is told of again, and when
+ * a pass last logged its steps.
+ */
+export function passedState(
+  now: number,
+  steps: readonly PassStep[],
+  pending: Readonly<Record<string, PendingAct>> = {},
+  told: Readonly<Record<string, number>> = {},
+  logged?: number,
+): IdlePassState {
+  return { at: now, kinds: Object.fromEntries(steps.map((step): [string, PassKind] => [step.id, step.kind])), ...loggedField(logged), ...pendingField(pending), ...toldField(told) };
 }
 
 /**
  * The state after a failed pass: the kinds of the last pass that ran through, so the next one logs its changes since,
- * its pending acts, which only a pass that weighs the sessions can let go, and the reopens it told of.
+ * when a pass last logged its steps, its pending acts, which only a pass that weighs the sessions can let go, and the
+ * reopens it told of.
  */
 export function failedState(previous: IdlePassState | undefined, now: number, error: string): IdlePassState {
-  return { at: now, kinds: previous?.kinds ?? {}, failed: error, ...pendingField(previous?.pending), ...toldField(previous?.told) };
+  return { at: now, kinds: previous?.kinds ?? {}, failed: error, ...loggedField(previous?.logged), ...pendingField(previous?.pending), ...toldField(previous?.told) };
 }
 
 /** How long a started act holds its session: past any close's or reopen's run, so one that died is started again. */

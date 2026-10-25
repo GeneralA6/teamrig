@@ -11,6 +11,7 @@ import { SessionRecordStore } from '../sessions/record.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
 import { EXIT } from './runtime.ts';
+import { IDLE_PASS_LOG_EVERY_MS } from './idle-pass-log.ts';
 import { RESTART_RECHECK_MS } from './commands/hook-wake.ts';
 import { GIVE_UP_MS } from '../refresh/restart.ts';
 import type { RefreshState, RestartRequest } from '../refresh/state.ts';
@@ -472,6 +473,19 @@ describe('hook wake-check runs the idle pass', () => {
     assert.deepEqual(processes.hidden, [], 'nor starts a reopen');
   });
 
+  it('logs every step again once its last pass record is an hour old, though no kind changed (T1158)', async () => {
+    const kit = await idleTeam();
+    const first = kit.clock.now();
+    await passCheck(kit);
+    kit.clock.advance(IDLE_PASS_LOG_EVERY_MS - MINUTE);
+    await passCheck(kit);
+    assert.equal((await logLines(kit, PASS_LOG)).length, 1, 'a quiet pass inside the hour logs nothing');
+    kit.clock.advance(MINUTE);
+    await passCheck(kit);
+    const steps = [AWAY_LEAD, AWAY_ALPHA, CLOSED_BRAVO];
+    assert.deepEqual(await logLines(kit, PASS_LOG), [pass(first, steps), pass(kit.clock.now(), steps)]);
+  });
+
   it('in mode on starts the reopen hidden, starts none on its session for 5 minutes, then starts it again', async () => {
     const kit = await idleTeam(ON);
     const processes = new FakeProcesses();
@@ -487,7 +501,7 @@ describe('hook wake-check runs the idle pass', () => {
       [reopen],
     );
     const state: unknown = JSON.parse(kit.files.get(PASS_STATE) ?? '');
-    assert.deepEqual(state, { v: 1, at: started, kinds: { lead: 'away', alpha: 'away', bravo: 'reopen' }, pending: { bravo: { act: 'reopen', at: started } } });
+    assert.deepEqual(state, { v: 1, at: started, kinds: { lead: 'away', alpha: 'away', bravo: 'reopen' }, logged: started, pending: { bravo: { act: 'reopen', at: started } } });
     kit.clock.advance(4 * MINUTE);
     await passCheck(kit, { processes });
     assert.equal(processes.hidden.length, 1, 'held while its reopen may still run');

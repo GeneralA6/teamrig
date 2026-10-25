@@ -12,11 +12,13 @@ import {
   heldActs,
   IDLE_ACT_HOLD_MS,
   IDLE_PASS_EVERY_MS,
+  IDLE_PASS_LOG_EVERY_MS,
   IDLE_PASS_STALE_MS,
   idlePassTrouble,
   isPassDue,
   parseIdlePassState,
   passedState,
+  stepsToLog,
 } from './idle-pass-log.ts';
 
 const AT = Date.parse('2030-01-08T10:00:00.000Z');
@@ -54,6 +56,14 @@ describe('the idle pass state', () => {
     assert.deepEqual(parseIdlePassState('{"v":1,"at":1,"kinds":{}}'), { at: 1, kinds: {} }, 'a file from before the marks');
   });
 
+  it('reads back when a pass last logged its steps, keeps it through a failed pass, and writes none before the first', () => {
+    const passed = passedState(AT, STEPS, {}, {}, AT - IDLE_PASS_EVERY_MS);
+    assert.deepEqual(passed, { at: AT, kinds: { lead: 'keep', alpha: 'closed', bravo: 'away' }, logged: AT - IDLE_PASS_EVERY_MS });
+    assert.deepEqual(parseIdlePassState(formatIdlePassState(passed)), passed);
+    assert.equal(failedState(passed, AT + 1, 'EACCES').logged, AT - IDLE_PASS_EVERY_MS);
+    assert.equal(formatIdlePassState(passedState(AT, STEPS)).includes('logged'), false);
+  });
+
   it('reads a damaged file, another format, an unknown step kind or a damaged pending act as no pass yet', () => {
     const damaged = [
       '',
@@ -62,6 +72,7 @@ describe('the idle pass state', () => {
       '{"v":1,"at":"x","kinds":{}}',
       '{"v":1,"at":1,"kinds":{"alpha":"gone"}}',
       '{"v":1,"at":1,"kinds":{},"failed":7}',
+      '{"v":1,"at":1,"kinds":{},"logged":"10:00"}',
       '{"v":1,"at":1,"kinds":{},"pending":[]}',
       '{"v":1,"at":1,"kinds":{},"pending":{"alpha":{"act":"end","at":1}}}',
       '{"v":1,"at":1,"kinds":{},"pending":{"alpha":{"act":"close"}}}',
@@ -85,6 +96,18 @@ describe('the idle pass state', () => {
     assert.deepEqual(changedSteps(undefined, STEPS), STEPS);
     const reopen: PassStep = { kind: 'reopen', id: 'alpha', reopening: { kind: 'handed', tasks: [] }, project: APP };
     assert.deepEqual(changedSteps(passedState(AT, STEPS), [KEEP_LEAD, reopen, { kind: 'away', id: 'bravo' }]), [reopen]);
+  });
+
+  it('logs every step once the last pass record is IDLE_PASS_LOG_EVERY_MS old, else only those whose kind changed (T1158)', () => {
+    const reopen: PassStep = { kind: 'reopen', id: 'alpha', reopening: { kind: 'handed', tasks: [] }, project: APP };
+    const last = passedState(AT, STEPS, {}, {}, AT);
+    const inside = AT + IDLE_PASS_LOG_EVERY_MS - 1;
+    assert.deepEqual(stepsToLog(undefined, STEPS, AT), STEPS);
+    assert.deepEqual(stepsToLog(last, STEPS, inside), []);
+    assert.deepEqual(stepsToLog(last, [KEEP_LEAD, reopen, { kind: 'away', id: 'bravo' }], inside), [reopen]);
+    assert.deepEqual(stepsToLog(last, STEPS, AT + IDLE_PASS_LOG_EVERY_MS), STEPS);
+    assert.deepEqual(stepsToLog(last, STEPS, AT - 1), STEPS, 'the clock went back');
+    assert.deepEqual(stepsToLog(passedState(AT, STEPS), STEPS, AT + IDLE_PASS_EVERY_MS), STEPS, 'a state file from before T1158');
   });
 });
 
