@@ -43,7 +43,8 @@ describe('sessionStartContext', () => {
     assert.match(member, /Message your leader as `app-bravo`, who takes to the lead what it cannot settle\.\n/);
     assert.ok(!member.includes('Message the lead as'), member);
     assert.match(context({ load, session: 'bravo' }), /Message the lead as `captain`\.\n/);
-    assert.ok(!context({ load, session: 'lead' }).includes('Message '), 'the lead messages no leader');
+    // Rule 3 names SendMessage; the lead is only never told a leader to message.
+    assert.doesNotMatch(context({ load, session: 'lead' }), /\bMessage (the lead|your leader)\b/, 'the lead messages no leader');
   });
 
   it('sends a session to the inbox, not to messages, when its leader has a name Claude Code reserves', () => {
