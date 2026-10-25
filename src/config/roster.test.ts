@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { renameOf } from '../testing/rename.ts';
-import { isRole, Roster } from './roster.ts';
+import { isRole, roleHolderOf, Roster } from './roster.ts';
 
 const CONFIG = {
   sessions: ['lead', 'alpha', 'bravo'],
@@ -106,6 +106,15 @@ describe('Roster with renames', () => {
       pastId: 'zulu',
     });
     assert.equal(roster.nameOf('zulu'), undefined);
+  });
+});
+
+describe('roleHolderOf (T1143)', () => {
+  it('reads a bare holder as a session of the team, and <team>/<id> as one of a team above', () => {
+    const roles = { lead: 'lead', coordinatorOwner: 'alpha', securityReviewer: 'root/security' };
+    assert.deepEqual(roleHolderOf(roles, 'coordinatorOwner', 'web'), { team: 'web', id: 'alpha' });
+    assert.deepEqual(roleHolderOf(roles, 'securityReviewer', 'web'), { team: 'root', id: 'security' });
+    assert.equal(roleHolderOf({ lead: 'lead' }, 'securityReviewer', 'web'), undefined);
   });
 });
 

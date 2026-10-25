@@ -1,3 +1,4 @@
+import { splitAddress, type SessionAddress } from '../core/address.ts';
 import type { Rename } from '../names/rename.ts';
 import type { KitConfig, RolesConfig } from './types.ts';
 
@@ -6,8 +7,26 @@ export const ROLES = ['lead', 'coordinatorOwner', 'securityReviewer'] as const s
 
 export type Role = (typeof ROLES)[number];
 
+/** The roles a child team may leave to a team above it, naming that team's holder as `<team>/<id>` (T1143); never the lead. */
+export const ANCESTOR_ROLES = ['coordinatorOwner', 'securityReviewer'] as const satisfies readonly Role[];
+
+export type AncestorRole = (typeof ANCESTOR_ROLES)[number];
+
 export function isRole(text: string): text is Role {
   return ROLES.some((role) => role === text);
+}
+
+/**
+ * The session holding a role, if the team assigns it: a bare id is a session of `team` itself, and `<team>/<id>` one of
+ * a team above it (T1143), as a child team with no reviewer or coordinator of its own names its parent's.
+ */
+export function roleHolderOf(roles: RolesConfig, role: Role, team: string): SessionAddress | undefined {
+  const holder = roles[role];
+  if (holder === undefined) {
+    return undefined;
+  }
+  const address = splitAddress(holder);
+  return { team: address?.team ?? team, id: address?.session ?? holder };
 }
 
 /**
@@ -69,7 +88,7 @@ export class Roster {
     return this.holders;
   }
 
-  /** The session holding a role, if the team assigns it. */
+  /** The session holding a role, if the team assigns it, as the config writes it: `<team>/<id>` for one of a team above (roleHolderOf). */
   holderOf(role: Role): string | undefined {
     return this.roles[role];
   }

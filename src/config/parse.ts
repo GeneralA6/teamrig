@@ -1,4 +1,5 @@
 import { deployTargetsOf } from '../coordinator/targets.ts';
+import { ADDRESS_PATTERN, splitAddress } from '../core/address.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { isReservedName, NAME_PATTERN, NAME_RULE, RESERVED_NAMES } from '../core/ids.ts';
 import { isMinuteInSpan, utcMinuteOf } from '../core/time.ts';
@@ -140,6 +141,10 @@ export interface ConfigParse {
 
 const isSessionName: Check<string> = (name) =>
   SESSION_NAME.test(name) ? undefined : 'expected a lowercase name: a letter, then letters, digits or -, at most 32';
+
+/** A role a team may leave to a team above it (ANCESTOR_ROLES): one of its sessions, or `<team>/<id>` (T1143). */
+const isRoleHolder: Check<string> = (holder) =>
+  SESSION_NAME.test(holder) || ADDRESS_PATTERN.test(holder) ? undefined : 'expected a session id of the team, or <team>/<id> of a team above it';
 
 const isTimeZone: Check<string> = (name) => (TimeZone.of(name) === undefined ? 'expected an IANA time zone name such as Asia/Jerusalem' : undefined);
 
@@ -353,14 +358,15 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
   }
   const rolesRaw = read.section(raw, 'roles', '');
   const lead = read.requiredString(rolesRaw, 'lead', 'roles', isSessionName);
-  const coordinatorOwner = read.optionalString(rolesRaw, 'coordinatorOwner', 'roles', isSessionName);
-  const securityReviewer = read.optionalString(rolesRaw, 'securityReviewer', 'roles', isSessionName);
+  const coordinatorOwner = read.optionalString(rolesRaw, 'coordinatorOwner', 'roles', isRoleHolder);
+  const securityReviewer = read.optionalString(rolesRaw, 'securityReviewer', 'roles', isRoleHolder);
   for (const [key, name] of [
     ['lead', lead],
     ['coordinatorOwner', coordinatorOwner],
     ['securityReviewer', securityReviewer],
   ] as const) {
-    if (name !== undefined && name !== '' && sessions.length > 0 && !sessions.includes(name)) {
+    // A holder on a team above is the tree's to check (tree-role), as only the tree sees that team.
+    if (name !== undefined && name !== '' && sessions.length > 0 && !ADDRESS_PATTERN.test(name) && !sessions.includes(name)) {
       read.report(`roles.${key}`, `${describe(name)} is not one of the sessions`);
     }
   }
@@ -371,6 +377,15 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
   const leads = readLeads(read, read.section(raw, 'leads', ''), sessions, lead);
   const launch = readLaunch(read, read.section(raw, 'launch', ''), sessions);
   const team = readTeam(read, raw);
+  for (const [key, holder] of [
+    ['coordinatorOwner', coordinatorOwner],
+    ['securityReviewer', securityReviewer],
+  ] as const) {
+    const at = holder === undefined ? undefined : splitAddress(holder)?.team;
+    if (at !== undefined && at === team?.id) {
+      read.report(`roles.${key}`, `names its own team ${at}: write the bare id`);
+    }
+  }
   const timeZone = read.optionalString(raw, 'timeZone', '', isTimeZone);
 
   const messages = read.section(raw, 'messages', '');

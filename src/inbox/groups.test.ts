@@ -61,7 +61,7 @@ describe('groupIds', () => {
 });
 
 function team(id: string, parent?: string, lead = 'lead'): TeamNode {
-  return { team: id, statedId: id, parent, lead, sessions: [lead, 'dev'], names: new Map() };
+  return { team: id, statedId: id, parent, lead, roles: { lead }, sessions: [lead, 'dev'], names: new Map() };
 }
 
 describe('treeLeadsOf', () => {

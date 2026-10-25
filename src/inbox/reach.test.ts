@@ -4,7 +4,7 @@ import { TeamTree, type TeamNode } from '../config/tree.ts';
 import { reachOf, type Reach } from './reach.ts';
 
 function team(id: string, parent?: string): TeamNode {
-  return { team: id, statedId: id, parent, lead: 'lead', sessions: ['lead', 'dev'], names: new Map() };
+  return { team: id, statedId: id, parent, lead: 'lead', roles: { lead: 'lead' }, sessions: ['lead', 'dev'], names: new Map() };
 }
 
 /** `app` is a root; `web` and `ops` are its children; `ui` is under `web`. `shop` is the root of a separate tree. */
