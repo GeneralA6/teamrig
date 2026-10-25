@@ -4,7 +4,7 @@ import { ENV, KIT_NAME } from "../../core/home.js";
 import { NAME_RULE } from "../../core/ids.js";
 import { PlainLogFile } from "../../core/log-file.js";
 import { SecretScanner } from "../../core/secrets.js";
-import { groupIds, parseTo } from "../../inbox/groups.js";
+import { groupIds, parseTo, treeLeadsOf } from "../../inbox/groups.js";
 import { formatRead, formatStatus, inboxStatus, lineOnClock, postLines, readInbox } from "../../inbox/inbox.js";
 import { CLAUDE_SESSION_ID } from "../../inbox/marks.js";
 import { reachOf } from "../../inbox/reach.js";
@@ -70,28 +70,52 @@ export async function status(args, runtime) {
 function ownTeamRecipient(own, id) {
     return { paths: own.paths, config: own.config, id, label: id, sender: own.from.id, crossing: false };
 }
-/** A session of another team, when it is in the sender's tree (reachOf). */
-async function recipientInTree(runtime, loaded, from, team, session) {
-    const { tree, teams } = loaded;
-    const target = teams.get(team);
+function teamOf(loaded, team) {
+    const target = loaded.teams.get(team);
     if (target === undefined) {
         throw new RefusedError(`no team ${team} with a config in this kit home`);
     }
-    const to = { team, id: sessionIdOf(target.roster, session) };
-    const reach = reachOf(tree, from, to);
+    return target;
+}
+/** A session of another team, when it is in the sender's tree (reachOf). */
+function recipientInTree(runtime, loaded, from, to) {
+    const target = teamOf(loaded, to.team);
+    const reach = reachOf(loaded.tree, from, to);
     if (!reach.ok) {
         throw new RefusedError(reach.problem);
     }
-    const kit = await openKit(runtime, team);
-    return { paths: kit.paths, config: requireConfig(kit, runtime, 'write'), id: to.id, label: formatAddress(to), sender: formatAddress(from), crossing: true };
+    return { paths: target.kit.paths, config: requireConfig(target.kit, runtime, 'write'), id: to.id, label: formatAddress(to), sender: formatAddress(from), crossing: true };
 }
-/** The recipients one `--to` item names: a group of the sender's team, or one session of its tree. */
+/** A session of the sender's tree as `{ team, id }`: the sender's own team takes the own-team form, the sender left out. */
+function recipientsAt(runtime, own, loaded, addresses) {
+    return addresses
+        .filter((to) => to.team !== own.from.team || to.id !== own.from.id)
+        .map((to) => (to.team === own.from.team ? ownTeamRecipient(own, to.id) : recipientInTree(runtime, loaded, own.from, to)));
+}
+/** `tree:leads`: every team's lead in the sender's tree, root first; refused when the tree has no root. */
+function treeLeadRecipients(runtime, own, loaded) {
+    const leads = treeLeadsOf(loaded.tree, own.from.team);
+    if (leads === undefined) {
+        throw new RefusedError(`the parent teams above ${own.from.team} go round a loop, so its tree has no leads to list: teamrig doctor names the loop`);
+    }
+    return recipientsAt(runtime, own, loaded, leads);
+}
+/** The recipients one `--to` item names: a group of the sender's team or of its tree, or one session of its tree. */
 async function recipientsOfItem(runtime, own, item, tree) {
     if (item.kind === 'session') {
         const { team, session } = item.address;
-        return [team === undefined || team === own.from.team
-                ? ownTeamRecipient(own, sessionIdOf(own.roster, session))
-                : await recipientInTree(runtime, await tree(), own.from, team, session)];
+        if (team === undefined || team === own.from.team) {
+            return [ownTeamRecipient(own, sessionIdOf(own.roster, session))];
+        }
+        const loaded = await tree();
+        return [recipientInTree(runtime, loaded, own.from, { team, id: sessionIdOf(teamOf(loaded, team).roster, session) })];
+    }
+    if (item.kind === 'team') {
+        const loaded = await tree();
+        return recipientsAt(runtime, own, loaded, teamOf(loaded, item.team).config.sessions.map((id) => ({ team: item.team, id })));
+    }
+    if (item.kind === 'tree-leads') {
+        return treeLeadRecipients(runtime, own, await tree());
     }
     const group = item.kind === 'group' ? { kind: item.kind, leader: sessionIdOf(own.roster, item.leader) } : item;
     const ids = groupIds(own.config, group, own.from.id);
@@ -126,7 +150,8 @@ function postedLine(recipients) {
 }
 /**
  * The route reminders (T783) for the sessions of the sender's team that `--to` names one by one, each once. A group
- * (`all`, `leads`, `group:<leader>`) is a broadcast, not work handed past a sub-lead, so it gets none.
+ * (`all`, `leads`, `group:<leader>`, `team:<team>`, `tree:leads`) is a broadcast, not work handed past a sub-lead, so
+ * it gets none.
  */
 function routeRemindersOf(own, items, text) {
     const tree = new LeadTree(own.config);
@@ -143,12 +168,13 @@ function routeRemindersOf(own, items, text) {
     }
     return [...reminders];
 }
-const TO_FORMS = 'a session id or name, <team>/<id>, all, leads, group:<leader>, or a comma-separated list of them';
+const TO_FORMS = 'a session id or name, <team>/<id>, all, leads, group:<leader>, team:<team>, tree:leads, or a comma-separated list of them';
 /**
  * `inbox add --to <to> --text "<line>"`: appends one dated line to each receiver's inbox, all of them or, when one is
  * refused, none. A bare id or name is on the sender's team; `<team>/<id>` reaches any session of another team of its
- * tree, and that line names the sender `<team>/<id>`. `all`, `leads` and `group:<leader>` are
- * groups of the sender's team that leave the sender out; a comma-separated list names each receiver once. A line to a
+ * tree, and that line names the sender `<team>/<id>`. `all`, `leads` and `group:<leader>` are groups of the sender's
+ * team, `team:<team>` (every session of a team of its tree) and `tree:leads` (every team's lead of its tree) groups of
+ * its tree; a group leaves the sender out, and a comma-separated list names each receiver once. A line to a
  * session named on the sender's team that skips a sub-lead below the sender is posted, then a further line tells the
  * sender to route such work via that sub-lead (T783).
  */
