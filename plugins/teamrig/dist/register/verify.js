@@ -1,6 +1,6 @@
 import { parseDeadline, showStored } from "../core/time.js";
 import { taskNumber } from "./fold.js";
-import { needsOf } from "./tree.js";
+import { needsOf, NO_TASKS_ELSEWHERE } from "./tree.js";
 import { allReady, waitContext } from "./waits.js";
 /** `Proof: ...` or `Proof = ...` in a note written before `--proof` existed: what follows names the proof. */
 const NOTE_PROOF = /\bproof\s*[:=]\s*(.+)$/i;
@@ -84,10 +84,11 @@ function dueWhy(task, context) {
 }
 /**
  * The due verify steps that hold a task's first start: new work waits until its owner has verified, reopened,
- * asked for or re-dated each one. Resuming a task already started is never held, nor is any other status.
+ * asked for or re-dated each one. Resuming a task already started is never held, nor is any other status. A proof
+ * that waits on a task of another register of the team tree reads it in `elsewhere`.
  */
-export function dueStartHolds(task, status, tasks, now, zone, max) {
-    return status === 'in-progress' && task.startedAt === null ? dueVerifies(tasks.values(), task.owner, waitContext(tasks, now, zone), max) : [];
+export function dueStartHolds(task, status, tasks, now, zone, max, elsewhere = NO_TASKS_ELSEWHERE) {
+    return status === 'in-progress' && task.startedAt === null ? dueVerifies(tasks.values(), task.owner, waitContext(tasks, now, zone, elsewhere), max) : [];
 }
 /**
  * `T9 is new work; T3 (verify by 01-08), T4 (proof's waits cleared) are due to verify first: ...`, naming up to

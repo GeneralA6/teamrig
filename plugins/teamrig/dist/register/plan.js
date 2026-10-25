@@ -1,6 +1,6 @@
 import { showStored } from "../core/time.js";
 import { priorityText } from "./model.js";
-import { TaskTree } from "./tree.js";
+import { NO_TASKS_ELSEWHERE, TaskTree } from "./tree.js";
 import { sizeText, taskLabel } from "./views.js";
 import { waitsText } from "./waits.js";
 import { proofOf } from "./verify.js";
@@ -9,9 +9,9 @@ import { proofOf } from "./verify.js";
  * PLAN_KEYS: started first, then the effective due, its own or an earlier one of an active task that needs it, which
  * the line names: `due 01-10 from T5`).
  */
-export function renderPlan(tasks, week, now, zone, config, { team, fit = [] } = {}) {
+export function renderPlan(tasks, week, now, zone, config, { team, fit = [], elsewhere = NO_TASKS_ELSEWHERE } = {}) {
     const all = [...tasks];
-    const tree = new TaskTree(new Map(all.map((task) => [task.id, task])), now, zone, week);
+    const tree = new TaskTree(new Map(all.map((task) => [task.id, task])), now, zone, week, elsewhere);
     const inWeek = tree.inPlanOrder(all.filter((task) => task.week === week));
     const done = inWeek.filter((task) => task.status === 'done').length;
     const dropped = inWeek.filter((task) => task.status === 'dropped').length;

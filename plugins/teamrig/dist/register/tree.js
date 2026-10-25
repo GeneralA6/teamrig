@@ -6,14 +6,23 @@ import { currentWeek } from "./week.js";
 /**
  * The dependency tree of one register, from the links its tasks already have: a task needs the tasks it is planned
  * after (`after`) and the tasks it waits on (`--waits task:`), and is needed by every active task that names it so.
- * A need is finished once its task is done or dropped, or retired from the read (waits.ts). Read side only, with no
- * `node:` import: `show --tree`, `list`, `check`, `start`, the meeting agenda, the plan, the live-tasks note and the
- * status pane read it, and the register's write policy refuses a link that would close a loop with {@link needPath}.
+ * A need is finished once its task is done or dropped, or retired from every register (waits.ts); a need another
+ * register of the team tree holds is read there ({@link TasksElsewhere}, one numbering across the tree). Read side
+ * only, with no `node:` import: `show --tree`, `list`, `check`, `start`, the meeting agenda, the plan, the live-tasks
+ * note and the status pane read it, and the register's write policy refuses a link that would close a loop with
+ * {@link needPath}.
  */
 /** What a task needs first: the tasks it is planned after, then the tasks it waits on, each once. */
 export function needsOf(task) {
     const waitedOn = task.waits.flatMap((reason) => (reason.kind === 'task' ? [reason.id] : []));
     return [...new Set([...task.after, ...waitedOn])];
+}
+/**
+ * True when an active task of `tasks` needs an id they lack ({@link needsOf}), which another register of the team tree
+ * may hold; a read with none has no need to read the tree's other registers.
+ */
+export function needsElsewhere(tasks) {
+    return [...tasks.values()].some((task) => ACTIVE_STATUSES.includes(task.status) && needsOf(task).some((id) => !tasks.has(id)));
 }
 /**
  * The shortest chain from `from` to `to`, each task needing the next, over every task the map holds whatever its
@@ -78,6 +87,30 @@ function lowFirst(a, b) {
 function trueFirst(a, b) {
     return Number(b === true) - Number(a === true);
 }
+/** What a register outside a team tree reads elsewhere: nothing. */
+export const NO_TASKS_ELSEWHERE = new Map();
+/**
+ * The team tree as team `holder` reads it, from a read of team `reader`'s register (its `own` tasks and what it read
+ * `elsewhere`): the holder's tasks, and every other register's, the reader's own among them, as the holder's
+ * elsewhere; so another team's task is judged as that team's sessions judge it. The reader's own task wins an id
+ * another register holds too, which only a register numbered before its tree can have.
+ */
+export function readAs(holder, reader, own, elsewhere) {
+    const tasks = new Map();
+    const others = new Map();
+    for (const task of own) {
+        others.set(task.id, { team: reader, task });
+    }
+    for (const [id, away] of elsewhere) {
+        if (away.team === holder) {
+            tasks.set(id, away.task);
+        }
+        else if (!others.has(id)) {
+            others.set(id, away);
+        }
+    }
+    return { tasks, elsewhere: others };
+}
 /**
  * The tree of one register read at `now`, over teamrig's tasks or a reader's own rows ({@link TreeTask}): what it
  * hands back (a needer, a move's task, a waiting task) is one of those rows.
@@ -90,15 +123,21 @@ export class TaskTree {
     /** The week plan in force, whose tasks plan order puts first after priority, due and need; null: none. */
     week;
     tasks;
+    /** The tasks of the team tree's other registers, for a need this read lacks. */
+    elsewhere;
     /** Per id, the active tasks that need it, by number. */
     needers;
     dues = new Map();
-    /** `week` defaults to the newest week tag of `tasks` started by `now`; a register read passes the one it knows. */
-    constructor(tasks, now, zone, week = currentWeek(tasks.values(), now, zone)) {
+    /**
+     * `week` defaults to the newest week tag of `tasks` started by `now`; a register read passes the one it knows.
+     * `elsewhere` holds the tasks of the team tree's other registers, which a need the read lacks is read from.
+     */
+    constructor(tasks, now, zone, week = currentWeek(tasks.values(), now, zone), elsewhere = NO_TASKS_ELSEWHERE) {
         this.tasks = tasks;
+        this.elsewhere = elsewhere;
         this.zone = zone;
         this.week = week;
-        this.context = waitContext(tasks, now, zone);
+        this.context = waitContext(tasks, now, zone, elsewhere);
         const needers = new Map();
         for (const task of [...tasks.values()].filter(isActive).sort((a, b) => taskNumber(a.id) - taskNumber(b.id))) {
             for (const id of needsOf(task)) {
@@ -111,7 +150,14 @@ export class TaskTree {
     task(id) {
         return this.tasks.get(id);
     }
-    /** The ids the task needs first ({@link needsOf}); a need may be missing from the read: retired, so finished. */
+    /** The task another register of the team tree holds under an id the read lacks; undefined when the read has it or none does. */
+    elsewhereOf(id) {
+        return this.tasks.has(id) ? undefined : this.elsewhere.get(id);
+    }
+    /**
+     * The ids the task needs first ({@link needsOf}); a need may be missing from the read: another register of the team
+     * tree holds it, or it was retired, so finished.
+     */
     needs(id) {
         const task = this.tasks.get(id);
         return task === undefined ? [] : needsOf(task);
@@ -188,8 +234,9 @@ export class TaskTree {
     }
     /**
      * The first move toward finishing the task: down its unfinished needs in plan order to one that needs nothing
-     * unfinished, whose pending decision or approval (the lead's or the owner's) comes first, then a time still to
-     * come, else its owner's work. Undefined for a finished task, or when every unfinished need runs into a loop.
+     * unfinished in this read, whose unfinished need another register of the team tree holds comes first (its owner
+     * there moves), then its pending decision or approval (the lead's or the owner's), then a time still to come, else
+     * its owner's work. Undefined for a finished task, or when every unfinished need runs into a loop.
      */
     nextMove(id) {
         return this.isActiveId(id) ? this.moveFrom(id, new Set()) : undefined;
@@ -245,6 +292,12 @@ export class TaskTree {
             return need !== undefined && !isFinished(id, this.context) ? [need] : [];
         });
     }
+    /** The task's first unfinished need, in {@link needsOf} order, that this read lacks and another register holds. */
+    unfinishedElsewhere(task) {
+        return needsOf(task)
+            .flatMap((id) => this.elsewhereOf(id) ?? [])
+            .find((away) => !isFinished(away.task.id, this.context));
+    }
     moveFrom(id, seen) {
         const task = this.tasks.get(id);
         if (task === undefined) {
@@ -260,6 +313,10 @@ export class TaskTree {
                 }
             }
             return undefined;
+        }
+        const away = this.unfinishedElsewhere(task);
+        if (away !== undefined) {
+            return { kind: 'elsewhere', who: away.task.owner, team: away.team, need: away.task, task, behind: undefined };
         }
         const pending = task.waits.filter((reason) => !isReady(reason, this.context));
         const person = pending.find((reason) => reason.kind === 'decision' || reason.kind === 'approval');

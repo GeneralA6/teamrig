@@ -35,13 +35,13 @@ export async function idleFactsOf(runtime, kit, config, roster) {
     if (rows === undefined) {
         throw new RefusedError(`${KIT_NAME} could not list the host's processes, so it cannot tell which sessions run`);
     }
-    const tasks = (await teamRegister(runtime, kit.paths, config).snapshot()).state.tasks;
+    const { snapshot, elsewhere } = await teamRegister(runtime, kit.paths, config).snapshotWithElsewhere();
     const store = new WakeAsks(runtime.files, kit.paths.wakeAsks);
     const asks = new Map();
     for (const id of roster.ids) {
         asks.set(id, validAsksOf(await store.read(id)));
     }
-    return { records, places: measureSessions(records, rows), tasks, asks, now: runtime.clock.now(), zone: teamZone(config, runtime) };
+    return { records, places: measureSessions(records, rows), tasks: snapshot.state.tasks, elsewhere, asks, now: runtime.clock.now(), zone: teamZone(config, runtime) };
 }
 /**
  * Whether `id` closes, with the checks in the order they cost: a role or open.idle.keepOpen that keeps it, not running in the host's
@@ -70,8 +70,8 @@ export async function idleVerdictOf(runtime, config, roster, facts, id, options)
     if (record === undefined || place?.state !== 'running') {
         return keep(notRunning);
     }
-    const { now, zone, tasks } = facts;
-    const startable = startableTasks(tasks, id, now, zone, options.maxPriority);
+    const { now, zone, tasks, elsewhere } = facts;
+    const startable = startableTasks(tasks, elsewhere, id, now, zone, options.maxPriority);
     if (startable.length > 0) {
         return keep(`has work it can start (${startable.map((task) => task.id).join(', ')})`);
     }

@@ -5,6 +5,9 @@ import { foldEvents, taskNumber } from "./fold.js";
 import { GITHUB_ACTOR, NO_SKILL } from "./policy.js";
 import { ACTIVE_STATUSES } from "./model.js";
 import { isWritable } from "./snapshot.js";
+import { needsElsewhere, NO_TASKS_ELSEWHERE } from "./tree.js";
+/** The reader of a register no other register shares a tree with: nothing is held elsewhere. */
+export const NOTHING_ELSEWHERE = { read: () => Promise.resolve(NO_TASKS_ELSEWHERE) };
 /**
  * The register's write path: under the lock, read the log, replay it, apply the team policy,
  * append its events and return the task as it now stands. Reads take no lock.
@@ -22,15 +25,28 @@ export class Register {
     history() {
         return this.deps.log.readHistory();
     }
+    /** The tasks the team tree's other registers hold, which a read judges a wait on one of them against (T1139). */
+    elsewhere() {
+        return this.deps.elsewhere.read();
+    }
+    /**
+     * The working set, and the tasks the team tree's other registers hold only when an active task needs an id it lacks
+     * ({@link needsElsewhere}), so a read that runs often, such as the wake check, reads one log for a team whose tasks
+     * all need tasks of its own.
+     */
+    async snapshotWithElsewhere() {
+        const snapshot = await this.snapshot();
+        return { snapshot, elsewhere: needsElsewhere(snapshot.state.tasks) ? await this.elsewhere() : NO_TASKS_ELSEWHERE };
+    }
     add(caller, input) {
-        return this.commit(caller, ({ state }) => single(this.created(caller, state.nextId, this.deps.policy.add(input, state))));
+        return this.asCaller(caller, () => this.writeNew(({ state }, id, elsewhere) => single(this.created(caller, id, this.deps.policy.add(input, state, elsewhere)))));
     }
     /**
      * A task from the parent team's lead, `parentLead` being its `<team>/<id>`. The tree's rules decide
      * who that may be, so this team's roster check is skipped; the event names that lead as its writer.
      */
     addFromParent(parentLead, input) {
-        return this.write(({ state }) => single(this.created(parentLead, state.nextId, this.deps.policy.addFromParent(input, state))));
+        return this.writeNew(({ state }, id, elsewhere) => single(this.created(parentLead, id, this.deps.policy.addFromParent(input, state, elsewhere))));
     }
     /**
      * The GitHub import's writes (github/sync.ts): each is judged again under the lock, on the register as it
@@ -38,23 +54,23 @@ export class Register {
      * own tasks: a new one per issue, its title and priority, and open, done or dropped as GitHub has it.
      */
     importAdd(input) {
-        return this.write(({ state }) => single(this.created(GITHUB_ACTOR, state.nextId, this.deps.policy.importAdd(input, state))));
+        return this.writeNew(({ state }, id) => single(this.created(GITHUB_ACTOR, id, this.deps.policy.importAdd(input, state))));
     }
     importUpdate(id, changes, note) {
-        return this.write((snapshot) => onTask(snapshot, id, (task) => {
+        return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => {
             const change = this.deps.policy.importUpdate(task, changes, note);
             return single(change.ok ? { ok: true, value: { ...this.base(id, GITHUB_ACTOR), type: 'update', ...change.value } } : change);
         }));
     }
     importStatus(id, input) {
-        return this.write((snapshot) => onTask(snapshot, id, (task) => {
+        return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => {
             const change = this.deps.policy.importStatus(task, input);
             return single(change.ok ? { ok: true, value: { ...this.base(id, GITHUB_ACTOR), type: 'status', ...change.value } } : change);
         }));
     }
     async setStatus(caller, id, input) {
         const skillExists = await this.skillExists(input);
-        return this.commit(caller, (snapshot) => onTask(snapshot, id, (task) => this.statusEvents(task, caller, input, { state: snapshot.state, now: new Date(this.deps.clock.now()), zone: this.deps.zone, skillExists })));
+        return this.commit(caller, (snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => this.statusEvents(task, caller, input, { state: snapshot.state, elsewhere, now: new Date(this.deps.clock.now()), zone: this.deps.zone, skillExists })));
     }
     /**
      * `set <id> --status waiting|verifying --ask <session> --text "<the work>"`, in one write: the task asked of that
@@ -64,19 +80,18 @@ export class Register {
      */
     async ask(caller, id, ask, input) {
         const skillExists = await this.skillExists(input);
-        const written = await this.commit(caller, (snapshot) => onTask(snapshot, id, (task) => {
+        const written = await this.asCaller(caller, () => this.writeNew((snapshot, askedId, elsewhere) => onTask(snapshot, elsewhere, id, (task) => {
             const fields = this.deps.policy.ask(task, caller, ask, input, snapshot.state);
             if (!fields.ok) {
                 return fields;
             }
-            const askedId = snapshot.state.nextId;
             const created = { ...this.base(askedId, caller), type: 'create', task: fields.value };
             const state = foldEvents([created], [], snapshot.state);
             const waits = [...(input.waits ?? []), { kind: 'task', id: askedId }];
             const asking = { ...input, waits, note: input.note ?? fields.value.title };
-            const status = this.statusEvents(task, caller, asking, { state, now: new Date(this.deps.clock.now()), zone: this.deps.zone, skillExists });
+            const status = this.statusEvents(task, caller, asking, { state, elsewhere, now: new Date(this.deps.clock.now()), zone: this.deps.zone, skillExists });
             return status.ok ? { ok: true, value: [created, ...status.value] } : status;
-        }));
+        })));
         if (!written.ok) {
             return written;
         }
@@ -88,8 +103,8 @@ export class Register {
         return { ok: true, value: { ...written.value, asked } };
     }
     update(caller, id, changes, note) {
-        return this.commit(caller, (snapshot) => onTask(snapshot, id, (task) => {
-            const change = this.deps.policy.update(task, caller, changes, note, snapshot.state);
+        return this.commit(caller, (snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => {
+            const change = this.deps.policy.update(task, caller, changes, note, snapshot.state, elsewhere);
             if (!change.ok) {
                 return change;
             }
@@ -111,7 +126,7 @@ export class Register {
     }
     /** `approve`: the lead's answer to a task's approval wait, an update that changes no field (T684). */
     approve(caller, id, verdict, note) {
-        return this.commit(caller, (snapshot) => onTask(snapshot, id, (task) => {
+        return this.commit(caller, (snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => {
             const change = this.deps.policy.approve(task, caller, verdict, note);
             if (!change.ok) {
                 return change;
@@ -150,25 +165,38 @@ export class Register {
         return { v: EVENT_VERSION, id, at: new Date(this.deps.clock.now()).toISOString(), by };
     }
     /** A write by a session of this team: refused unless the caller is on the roster. */
-    async commit(caller, decide) {
+    commit(caller, decide) {
+        return this.asCaller(caller, () => this.write(decide));
+    }
+    /** Runs `write` for a session of this team: refused unless the caller is on the roster. */
+    async asCaller(caller, write) {
         const callerProblem = this.deps.policy.checkCaller(caller);
         if (callerProblem !== undefined) {
             return { ok: false, error: callerProblem };
         }
-        return this.write(decide);
+        return write();
     }
     /**
-     * Under the lock: refuse newer data, read the working set, decide on the events (one; a due date and a status;
-     * or an asked task and the status that waits on it), append them, rotate the log when it is due and the team has not turned that
-     * off, and return the task after the events.
+     * A write that creates a task, under the numbering: the new id is the higher of the register's own next one and
+     * the numbering's floor, so it is free in every register that shares the numbering (numbering.ts).
      */
-    write(decide) {
+    writeNew(decide) {
+        return this.deps.numbering.issue((floor) => this.write((snapshot, elsewhere) => decide(snapshot, `T${Math.max(taskNumber(snapshot.state.nextId), floor)}`, elsewhere)));
+    }
+    /**
+     * Read the tasks the team tree's other registers hold, which their own locks guard, so before this register's;
+     * then under the lock: refuse newer data, read the working set, decide on the events (one; a due date and a
+     * status; or an asked task and the status that waits on it), append them, rotate the log when it is due and the
+     * team has not turned that off, and return the task after the events.
+     */
+    async write(decide) {
+        const elsewhere = await this.deps.elsewhere.read();
         return this.deps.mutex.run(async () => {
             const snapshot = await this.deps.log.read();
             if (!isWritable(snapshot.read)) {
                 throw new NewerDataError(this.deps.log.path, snapshot.read.newestVersion, EVENT_VERSION);
             }
-            const decision = decide(snapshot);
+            const decision = decide(snapshot, elsewhere);
             if (!decision.ok) {
                 return decision;
             }
@@ -184,7 +212,7 @@ export class Register {
                 throw new Error(`${event.id} is missing after its own write`);
             }
             const before = snapshot.state.tasks.get(event.id) ?? null;
-            return { ok: true, value: { task, before, state, event, events, rotation: await this.rotation(snapshot) } };
+            return { ok: true, value: { task, before, state, elsewhere, event, events, rotation: await this.rotation(snapshot) } };
         });
     }
     /**
@@ -204,18 +232,23 @@ export class Register {
         }
     }
 }
-/**
- * The decision on a task of the working set. An id below the next one that is not in it may be a task a
- * compaction retired: it is named as such, as this teamrig changes only tasks in the working set.
- */
 /** One event, as the list a write takes. */
 function single(verdict) {
     return verdict.ok ? { ok: true, value: [verdict.value] } : verdict;
 }
-function onTask(snapshot, id, decide) {
+/**
+ * The decision on a task of the working set. An id another register of the team tree holds is that team's task,
+ * which only its own sessions change. An id below the next one that is in neither may be a task a compaction
+ * retired: it is named as such, as this teamrig changes only tasks in the working set.
+ */
+function onTask(snapshot, elsewhere, id, decide) {
     const task = snapshot.state.tasks.get(id);
     if (task !== undefined) {
         return decide(task);
+    }
+    const away = elsewhere.get(id);
+    if (away !== undefined) {
+        return { ok: false, error: `${id} is team ${away.team}'s task (owner ${away.task.owner}): only a session of team ${away.team} changes it` };
     }
     const archived = snapshot.retired !== null && taskNumber(id) < taskNumber(snapshot.state.nextId);
     return { ok: false, error: archived ? `no task ${id} in the working set: if it was finished long ago it is archived (teamrig show ${id})` : `no task ${id}` };

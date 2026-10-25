@@ -7,7 +7,7 @@ import { CARD_FLAGS, cardProblem, cardTexts, OPTION_SEPARATOR, sameCard, WHY_ASK
 import { sizeProblem } from "./events.js";
 import { taskNumber } from "./fold.js";
 import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, priorityText, SESSION_NAME, WAIT_STATUSES } from "./model.js";
-import { loopFix, needPath, pathText } from "./tree.js";
+import { loopFix, needPath, NO_TASKS_ELSEWHERE, pathText } from "./tree.js";
 import { dueStartHolds, dueVerifyHold, heldStart, startHolds } from "./verify.js";
 import { isPeerWait, sameWait, waitSpelling } from "./waits.js";
 /** The skill name that closes a task which produced no reusable procedure. */
@@ -55,21 +55,22 @@ export class RegisterPolicy {
             ? undefined
             : `${session} is not a session on this team (sessions: ${this.config.sessions.join(', ')})`;
     }
-    add(input, state) {
-        return this.create(input, state, (source) => this.teamSourceProblem(source));
+    /** `elsewhere`: the tasks the team tree's other registers hold, which `--after` may name. */
+    add(input, state, elsewhere = NO_TASKS_ELSEWHERE) {
+        return this.create(input, state, (source) => this.teamSourceProblem(source), elsewhere);
     }
     /**
      * A task the parent team's lead hands this team: its source is that lead's `<team>/<id>`, and it
      * goes to this team's lead, who plans it in.
      */
-    addFromParent(input, state) {
+    addFromParent(input, state, elsewhere = NO_TASKS_ELSEWHERE) {
         const { lead } = this.config.roles;
         if (input.owner !== lead) {
             return refuse(`a task from the parent team goes to this team's lead (${lead}), not ${input.owner}`);
         }
-        return this.create(input, state, (source) => ADDRESS_PATTERN.test(source) ? undefined : `source ${source} is not the parent team lead's <team>/<id>`);
+        return this.create(input, state, (source) => (ADDRESS_PATTERN.test(source) ? undefined : `source ${source} is not the parent team lead's <team>/<id>`), elsewhere);
     }
-    create(input, state, sourceRule) {
+    create(input, state, sourceRule, elsewhere = NO_TASKS_ELSEWHERE) {
         const fields = {
             title: input.title.trim(),
             description: blankToNull(input.description),
@@ -88,7 +89,7 @@ export class RegisterPolicy {
         if (fields.description === null && this.config.register.requireDescription) {
             return refuse(DESCRIPTION_NEEDED);
         }
-        const problem = this.checkFields(fields, sourceRule) ?? afterProblem(state.nextId, fields.after, state);
+        const problem = this.checkFields(fields, sourceRule) ?? afterProblem(null, fields.after, state, elsewhere);
         if (problem !== undefined) {
             return refuse(problem);
         }
@@ -146,7 +147,7 @@ export class RegisterPolicy {
             return refuse(`${heldStart(task, holds)}; start ${task.id} once ${done}, or with --met "<what shows the proof exists>"`);
         }
         // New work also waits for its owner's own verify steps that are due, so shipped changes get proven, not piled up.
-        const dueVerify = dueStartHolds(task, input.status, context.state.tasks, context.now, context.zone, register.maxVerifying);
+        const dueVerify = dueStartHolds(task, input.status, context.state.tasks, context.now, context.zone, register.maxVerifying, context.elsewhere);
         if (dueVerify.length > 0 && register.verifyGate === 'refuse') {
             return refuse(dueVerifyHold(task, dueVerify));
         }
@@ -221,7 +222,8 @@ export class RegisterPolicy {
     }
     /**
      * The follow-ups a status change names: required on the statuses `register.requireFollowupsOn` lists, allowed
-     * only on FOLLOWUP_STATUSES, each another task on the list and named once; null when the change names none.
+     * only on FOLLOWUP_STATUSES, each another task on the list, or on another register of the team tree, and named
+     * once; null when the change names none.
      */
     checkFollowups(task, input, context) {
         const { followups } = input;
@@ -240,7 +242,7 @@ export class RegisterPolicy {
             if (followups.indexOf(id) !== index) {
                 return refuse(`--followups names ${id} twice`);
             }
-            if (!context.state.tasks.has(id)) {
+            if (!context.state.tasks.has(id) && !context.elsewhere.has(id)) {
                 return refuse(`--followups names ${id}, which is not on the task list: add it first (teamrig add)`);
             }
         }
@@ -331,7 +333,7 @@ export class RegisterPolicy {
             case 'approval':
                 return this.personWaitProblem(task, status, reason);
             case 'task':
-                return taskWaitProblem(task, reason.id, context.state);
+                return taskWaitProblem(task, reason.id, context.state, context.elsewhere);
             case 'time':
                 return (parseDeadline(reason.at, context.zone)?.getTime() ?? 0) > context.now.getTime() ? undefined : `time ${showStored(reason.at, context.zone)} has passed: name a time to come`;
         }
@@ -372,7 +374,8 @@ export class RegisterPolicy {
         const problem = this.checkText('note', text);
         return problem === undefined ? ok({ changes: {}, note: text, verdict }) : refuse(problem);
     }
-    update(task, caller, asked, note, state) {
+    /** `elsewhere`: the tasks the team tree's other registers hold, which `--after` may name. */
+    update(task, caller, asked, note, state, elsewhere = NO_TASKS_ELSEWHERE) {
         const changes = trimDescription(asked);
         const names = Object.keys(changes).filter((name) => name in changes);
         const text = blankToNull(note);
@@ -400,7 +403,7 @@ export class RegisterPolicy {
         const merged = { ...pickFields(task), ...changes };
         // A task keeps the source it was added with, even one from the parent team's lead.
         const sourceRule = (source) => (source === task.source ? undefined : this.teamSourceProblem(source));
-        const after = changes.after === undefined ? undefined : afterChangeProblem(task, changes.after, state);
+        const after = changes.after === undefined ? undefined : afterChangeProblem(task, changes.after, state, elsewhere);
         const problem = after ?? this.checkFields(merged, sourceRule) ?? this.checkText('note', text);
         return problem === undefined ? ok({ changes, note: text }) : refuse(problem);
     }
@@ -592,9 +595,11 @@ function sameWaits(a, b) {
 /**
  * A task reason is for a task already started (see {@link hasStarted}) that found another task must finish first,
  * a verifying one for its proof: one not started stays open with a plan dependency instead, and a finished one
- * reopens first. It never closes a loop.
+ * reopens first. The task waited on may be another register's of the team tree; an id no register's working set holds
+ * reads as finished below this register's next number, else as no task. It never closes a loop, through another
+ * register's tasks either.
  */
-function taskWaitProblem(task, id, state) {
+function taskWaitProblem(task, id, state, elsewhere) {
     if (id === task.id) {
         return `${task.id} cannot wait on itself`;
     }
@@ -604,14 +609,24 @@ function taskWaitProblem(task, id, state) {
     if (!hasStarted(task)) {
         return `${task.id} has not started, so it does not wait on ${id}: it stays ${task.status}, planned after it (teamrig update ${task.id} --after ${id})`;
     }
-    if (taskNumber(id) >= taskNumber(state.nextId)) {
+    const target = state.tasks.get(id) ?? elsewhere.get(id)?.task;
+    if (target === undefined && taskNumber(id) >= taskNumber(state.nextId)) {
         return `no task ${id}`;
     }
-    const target = state.tasks.get(id);
     if (target === undefined || target.status === 'done' || target.status === 'dropped') {
         return `${id} is already finished; nothing to wait on`;
     }
-    return loopProblem(task.id, id, state, true);
+    return loopProblem(task.id, id, treeTasks(state, elsewhere), true);
+}
+/**
+ * This register's working set over the tasks the team tree's other registers hold, as one map a need is followed
+ * through: a loop may pass through another team's task.
+ */
+function treeTasks(state, elsewhere) {
+    if (elsewhere.size === 0) {
+        return state.tasks;
+    }
+    return new Map([...[...elsewhere].map(([id, held]) => [id, held.task]), ...state.tasks]);
 }
 /**
  * In progress, verifying (its work shipped, whatever an older register's row says of its start) or waiting after it
@@ -635,33 +650,38 @@ function activeDuplicate(title, state) {
  * A plan dependency is for a task not started yet, as {@link taskWaitProblem} sends it here: a started one waits on
  * a task instead, and a finished one needs neither. Clearing it is always fine.
  */
-function afterChangeProblem(task, after, state) {
+function afterChangeProblem(task, after, state, elsewhere) {
     const first = after[0];
     if (first !== undefined && !notStarted(task)) {
         const keeps = task.status === 'verifying' ? 'verifying' : 'waiting';
         const instead = hasStarted(task) ? `; a started task waits on another with --status ${keeps} --waits task:${first}` : '';
         return `--after plans a task not started yet, and ${task.id} is ${task.status}${instead}`;
     }
-    return afterProblem(task.id, after, state);
+    return afterProblem(task.id, after, state, elsewhere);
 }
 /**
- * The tasks `id` comes after must exist, be named once, and never need `id` back, by a plan dependency or a task
- * wait: a loop could never start. On a create, `id` is the id the new task gets.
+ * The tasks `id` comes after must exist, here or on another register of the team tree, be named once, and never need
+ * `id` back, by a plan dependency or a task wait: a loop could never start. On a create, `id` is null: the new task's
+ * number comes from the numbering at the write, above every register's, so no task names it yet.
  */
-function afterProblem(id, after, state) {
+function afterProblem(id, after, state, elsewhere) {
     const twice = after.find((other, index) => after.indexOf(other) !== index);
     if (twice !== undefined) {
         return `--after names ${twice} twice`;
     }
-    if (after.includes(id)) {
+    if (id !== null && after.includes(id)) {
         return `${id} cannot come after itself`;
     }
-    const missing = after.find((other) => taskNumber(other) >= taskNumber(state.nextId));
+    const missing = after.find((other) => !elsewhere.has(other) && taskNumber(other) >= taskNumber(state.nextId));
     if (missing !== undefined) {
         return `no task ${missing}`;
     }
+    if (id === null) {
+        return undefined;
+    }
+    const tasks = treeTasks(state, elsewhere);
     for (const other of after) {
-        const loop = loopProblem(id, other, state, false);
+        const loop = loopProblem(id, other, tasks, false);
         if (loop !== undefined) {
             return loop;
         }
@@ -672,9 +692,9 @@ function afterProblem(id, after, state) {
  * The refusal when making `id` need `other` (by a task wait when `byWait`, else a plan dependency) would close a loop:
  * `other` already needs `id`, directly or not, and no task in a loop can ever finish.
  */
-function loopProblem(id, other, state, byWait) {
-    const path = needPath(state.tasks, other, id);
-    const owner = state.tasks.get(other)?.owner;
+function loopProblem(id, other, tasks, byWait) {
+    const path = needPath(tasks, other, id);
+    const owner = tasks.get(other)?.owner;
     if (path === undefined || owner === undefined) {
         return undefined;
     }

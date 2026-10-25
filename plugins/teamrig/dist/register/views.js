@@ -318,14 +318,20 @@ export function formatTaskDetail(task, events, tree, sizeCost = () => undefined)
 /**
  * `show --tree`: what the task needs, down to tasks that need nothing unfinished (`needs:`), then the active tasks
  * that need it, up to those nothing needs (`needed by:`), each level indented two more spaces, then
- * {@link formatNextMove}. A finished need ends its branch, and one the read lacks reads `T3 finished` (only a
- * compaction retires a task, and only a finished one). Within a part, a task met again reads `T4 (shown above)`,
- * and one already on its own branch `T2 (loop)`. Needs come in plan order, so the first branch leads to the next move.
+ * {@link formatNextMove}. A finished need ends its branch, and so does one another register of the team tree holds,
+ * read as its row there (`web/T3 open, ...`); one no register holds reads `T3 finished` (only a compaction retires a
+ * task, and only a finished one). Within a part, a task met again reads `T4 (shown above)`, and one already on its
+ * own branch `T2 (loop)`. Needs come in plan order, so the first branch leads to the next move. With `team`, the
+ * read is that team's register, another than the caller's: its rows and its next move name it too (`web/T4`).
  */
-export function formatTaskTree(task, tree, titleChars) {
+export function formatTaskTree(task, tree, titleChars, team = undefined) {
     const node = (id) => {
         const found = tree.task(id);
-        return found === undefined ? `${id} finished` : shortRow(found, titleChars, undefined, tree);
+        const away = tree.elsewhereOf(id);
+        if (found !== undefined) {
+            return shortRow(found, titleChars, team, tree);
+        }
+        return away === undefined ? `${id} finished` : shortRow(away.task, titleChars, away.team, tree);
     };
     const down = (id) => {
         const found = tree.task(id);
@@ -341,7 +347,7 @@ export function formatTaskTree(task, tree, titleChars) {
         const lines = branchLines(task.id, next, node, new Set([task.id]), [task.id]);
         return lines.length === 0 ? [`${name}: none`] : [`${name}:`, ...lines];
     };
-    return [...part('needs', down), ...part('needed by', up), formatNextMove(task, tree)];
+    return [...part('needs', down), ...part('needed by', up), formatNextMove(task, tree, team)];
 }
 /** The lines under `id` along `next`, depth first, two spaces deeper per level; see {@link formatTaskTree}. */
 function branchLines(id, next, node, shown, path) {
@@ -360,19 +366,25 @@ function branchLines(id, next, node, shown, path) {
 /**
  * `Next move: beta (T3)`: who moves first so the task can finish, on which task ({@link TaskTree.nextMove}), with
  * `, decision` or `, approval` when the lead or the owner decides, `, from Thu 01-10` when a time must pass first,
- * and `, behind T7 (p1)` when that session works a higher-priority task first. `Next move: none` says why: the task
- * is finished, or what it needs runs in a loop.
+ * and `, behind T7 (p1)` when that session works a higher-priority task first; `Next move: lead on team web (web/T5)`
+ * when an unfinished task of another register of the team tree comes first. `Next move: none` says why: the task
+ * is finished, or what it needs runs in a loop. With `team`, the read is that team's register, another than the
+ * caller's, which each move and task names: `Next move: beta on team web (web/T3)`.
  */
-export function formatNextMove(task, tree) {
+export function formatNextMove(task, tree, team = undefined) {
     const move = tree.nextMove(task.id);
     if (move === undefined) {
         return ACTIVE_STATUSES.includes(task.status)
-            ? `Next move: none, what ${task.id} needs runs in a loop (check flags it LOOP)`
-            : `Next move: none, ${task.id} is ${task.status}`;
+            ? `Next move: none, what ${taskLabel(task, team)} needs runs in a loop (check flags it LOOP)`
+            : `Next move: none, ${taskLabel(task, team)} is ${task.status}`;
     }
+    if (move.kind === 'elsewhere') {
+        return `Next move: ${move.who} on team ${move.team} (${taskLabel(move.need, move.team)})`;
+    }
+    const who = team === undefined ? move.who : `${move.who} on team ${team}`;
     const what = move.kind === 'work' ? '' : move.kind === 'time' ? `, from ${weekdayText(move.at, tree.zone)}` : `, ${move.kind}`;
-    const behind = move.behind === undefined ? '' : `, behind ${move.behind.id} (${priorityText(move.behind.priority)})`;
-    return `Next move: ${move.who} (${move.task.id})${what}${behind}`;
+    const behind = move.behind === undefined ? '' : `, behind ${taskLabel(move.behind, team)} (${priorityText(move.behind.priority)})`;
+    return `Next move: ${who} (${taskLabel(move.task, team)})${what}${behind}`;
 }
 /**
  * A row of the waiting-on-you block: another session's task as its short row, then what it waits on from you:

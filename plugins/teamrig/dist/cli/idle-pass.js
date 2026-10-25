@@ -64,7 +64,7 @@ export async function runningVerdictOf(runtime, kit, config, roster, facts, id, 
  * its reopen left for later.
  */
 export async function judgeSession(runtime, kit, config, roster, facts, id, folderOf, closes) {
-    const { tasks, now, zone } = facts;
+    const { tasks, elsewhere, now, zone } = facts;
     if (facts.places.find((place) => place.id === id)?.state === 'running') {
         const folder = await folderOrRefusalOf(folderOf, id);
         if (folder.kind === 'refused') {
@@ -79,7 +79,7 @@ export async function judgeSession(runtime, kit, config, roster, facts, id, fold
         return { kind: 'away', id };
     }
     const asks = facts.asks.get(id) ?? [];
-    const input = { tasks, session: id, asks, closedAt: Date.parse(closed.at), ...awake, dayStartUtc: config.wake.dayStartUtc, now, zone };
+    const input = { tasks, elsewhere, session: id, asks, closedAt: Date.parse(closed.at), ...awake, dayStartUtc: config.wake.dayStartUtc, now, zone };
     const asAwake = reopenVerdict(input);
     if (asAwake.kind === 'asked') {
         return wishOf(folderOf, id, asAwake, undefined);
