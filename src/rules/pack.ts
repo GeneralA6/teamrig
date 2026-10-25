@@ -140,6 +140,31 @@ function heavySteps(coordinator: CoordinatorConfig, command: string, cutoff: str
   );
 }
 
+/** What a message or an urgent inbox line says, in rule 3's order. */
+const REPORT_PARTS = 'what happened, evidence (numbers, ids, paths), the exact ask and deadline, your default, then "No reply needed" or "Reply needed: <one question>"';
+
+/**
+ * Rule 3's sending rule. With wakes on, `inbox add --wake now` (T1147) reaches a receiver idle, busy (at its next
+ * tool end) or closed (the idle pass reopens it), so urgent work is a waking inbox line and a direct message is kept
+ * for a live back-and-forth. With wakes off, a line wakes no one, so a message stays the way to reach a peer now. The
+ * wake-on words are cut to fit: the worst-case pack sits near CORE_PACK_MAX_CHARS.
+ */
+function messagesRule(config: KitConfig, command: string): string {
+  const lines = `${config.messages.maxLines} lines [messages.maxLines]`;
+  if (!config.wake.enabled) {
+    return (
+      'A message wakes its receiver, so send one only for a result it acts on now, a decision, a blocker, a same-area conflict or an incident.' +
+      ` At most ${lines}: ${REPORT_PARTS}.` +
+      ` No acks, thanks or progress pings. Anything else, a "done" report too, is one inbox line per receiver: \`${command} inbox add --to <area> --text "..."\`.`
+    );
+  }
+  return (
+    `Wake a peer only for a result it acts on now, a decision, a blocker, a same-area conflict or an incident: \`${command} inbox add --to <id> --text "..." --wake now\`;` +
+    ` SendMessage (at most ${lines}) only for live back-and-forth. Say ${REPORT_PARTS}.` +
+    ' No acks, thanks or progress pings; drop --wake for the rest, a "done" report too.'
+  );
+}
+
 /** When the rules are read, and the machine's zone that a team without `timeZone` reads them in. */
 export interface RulesClock {
   readonly now: Date;
@@ -169,11 +194,7 @@ export function coreRuleTexts(config: KitConfig, command: string, platform: Node
       " asks to a sub-lead's sessions go through it. Cross-area issues and clashes go to the nearest leader over both, unowned warnings to the lead.",
     'own-change':
       "Own your change end to end: only the session that made it integrates, deploys (when it must run), verifies and fixes or rolls it back; another session's change goes to its owner.",
-    messages:
-      'A message wakes its receiver, so send one only for a result it acts on now, a decision, a blocker, a same-area conflict or an incident.' +
-      ` At most ${config.messages.maxLines} lines [messages.maxLines]: what happened, evidence (numbers, ids, paths), the exact ask and deadline, your default, then "No reply needed" or "Reply needed: <one question>".` +
-      ` No acks, thanks or progress pings. Anything else, a "done" report too, is one inbox line per receiver: \`${command} inbox add --to <area> --text "..."\`.` +
-      timesClause(zone, clock.now),
+    messages: messagesRule(config, command) + timesClause(zone, clock.now),
     register:
       `Status is pulled from the register, never asked. Start each work block with \`${command} start --session <you>\`.` +
       ` Every ask that creates work is a register entry, added in the same turn by the asker (\`${command} add --owner <session>\` tells the owner), else by the receiver, with a plain-words description of what and why; ${statusDemands(config, command)}` +

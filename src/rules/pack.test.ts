@@ -28,14 +28,18 @@ const longest = (letter: string, length: number) => letter.repeat(length);
 const filled = (limit: { readonly maxItems: number; readonly maxLength: number }, letter: string) =>
   Array.from({ length: limit.maxItems }, () => longest(letter, limit.maxLength));
 
-/** How the push rule is worded: the budget spec tries every pair, as which is longest changes with the wording. */
-interface PushWording {
+/**
+ * How the push and message rules are worded: the budget spec tries every combination, as which is longest changes
+ * with the wording.
+ */
+interface Wording {
   readonly pushToProtected: PushToProtected;
   readonly hookAsks: HookAsks;
+  readonly wakeEnabled: boolean;
 }
 
 /** Every printed value at its longest: names, lists, numbers and the optional rules all on. */
-function worstCaseConfig(wording: PushWording = { pushToProtected: 'ask', hookAsks: 'refuse' }) {
+function worstCaseConfig(wording: Wording = { pushToProtected: 'ask', hookAsks: 'refuse', wakeEnabled: true }) {
   const lead = longest('l', 32);
   const coordinator = longest('c', 32);
   return testConfig({
@@ -61,6 +65,7 @@ function worstCaseConfig(wording: PushWording = { pushToProtected: 'ask', hookAs
     },
     pushGuard: { protectedBranches: filled(CONFIG_LIMITS.protectedBranches, 'b'), pushToProtected: wording.pushToProtected },
     prompts: { hookAsks: wording.hookAsks },
+    wake: { enabled: wording.wakeEnabled },
     commits: { maxLines: CONFIG_LIMITS.commitMaxLines.max, maxFiles: CONFIG_LIMITS.commitMaxFiles.max, largeCommitTrailer: 'T'.repeat(40), gate: 'refuse' },
     coordinator: { schedule: { heavyCutoffUtc: '22:30' }, repos: { app: ROLLED_REPO } },
     // Both round to their longest two-decimal form (two digits before the point), and together stay within 100%.
@@ -104,17 +109,19 @@ describe('renderCorePack', () => {
     CORE_RULE_KEYS.forEach((key, index) => assert.ok(lines.includes(`${index + 1}. ${texts[key]}`), key));
   });
 
-  it('fits its budget with every printed value at its worst case, in every push rule wording, and the kept rules at their size cap', () => {
+  it('fits its budget with every printed value at its worst case, in every push and message rule wording, and the kept rules at their size cap', () => {
     const over: string[] = [];
     for (const pushToProtected of PUSH_TO_PROTECTED) {
       for (const hookAsks of HOOK_ASKS) {
-        const config = worstCaseConfig({ pushToProtected, hookAsks });
-        const pack = renderCorePack(config, COMMAND, 'win32', RULES_CLOCK);
-        const kept = renderKeptRules(config.ruleConflicts, COMMAND);
-        assert.ok(pack.endsWith(kept));
-        const bound = pack.length - kept.length + KEPT_RULES_MAX_CHARS;
-        if (bound > CORE_PACK_MAX_CHARS) {
-          over.push(`pushToProtected ${pushToProtected}, hookAsks ${hookAsks}: ${bound}`);
+        for (const wakeEnabled of [true, false]) {
+          const config = worstCaseConfig({ pushToProtected, hookAsks, wakeEnabled });
+          const pack = renderCorePack(config, COMMAND, 'win32', RULES_CLOCK);
+          const kept = renderKeptRules(config.ruleConflicts, COMMAND);
+          assert.ok(pack.endsWith(kept));
+          const bound = pack.length - kept.length + KEPT_RULES_MAX_CHARS;
+          if (bound > CORE_PACK_MAX_CHARS) {
+            over.push(`pushToProtected ${pushToProtected}, hookAsks ${hookAsks}, wake ${wakeEnabled}: ${bound}`);
+          }
         }
       }
     }
@@ -163,10 +170,23 @@ describe('renderCorePack', () => {
     assert.match(pack, /If you repeat a step with no progress or drift from your task, stop and ask your leader\.$/m);
   });
 
-  it('keeps messages for what the receiver acts on now and sends reports to the inbox (the failed-send hook covers a failed send)', () => {
-    const pack = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
+  it('wakes a peer with an inbox line for what it acts on now and keeps a message for a live back-and-forth, with wakes on', () => {
+    const pack = renderCorePack(testConfig({ messages: { maxLines: 9 } }), COMMAND, 'win32', RULES_CLOCK);
+    assert.match(
+      pack,
+      /^3\. Wake a peer only for a result it acts on now, a decision, a blocker, a same-area conflict or an incident: `teamrig inbox add --to <id> --text "\.\.\." --wake now`;/m,
+    );
+    assert.match(pack, / SendMessage \(at most 9 lines \[messages\.maxLines\]\) only for live back-and-forth\. Say what happened, evidence \(numbers, ids, paths\),/);
+    assert.match(pack, / No acks, thanks or progress pings; drop --wake for the rest, a "done" report too\. Write times/);
+    assert.doesNotMatch(pack, /A message wakes its receiver/);
+  });
+
+  it('keeps messages for what the receiver acts on now and sends reports to the inbox, with wakes off (the failed-send hook covers a failed send)', () => {
+    const pack = renderCorePack(testConfig({ wake: { enabled: false }, messages: { maxLines: 9 } }), COMMAND, 'win32', RULES_CLOCK);
     assert.match(pack, /^3\. A message wakes its receiver, so send one only for a result it acts on now, a decision,/m);
+    assert.match(pack, / At most 9 lines \[messages\.maxLines\]: what happened, evidence \(numbers, ids, paths\),/);
     assert.match(pack, /Anything else, a "done" report too, is one inbox line per receiver: `teamrig inbox add --to <area> --text "\.\.\."`\./);
+    assert.doesNotMatch(pack, /--wake now/);
   });
 
   it("writes times on the team's clock, zone-marked, with the offset from UTC off it", () => {
@@ -285,7 +305,7 @@ describe('renderCorePack', () => {
     assert.match(pack, / Other sessions own their areas\. Your leader \(the sub-lead listing you \[leads\], else the lead\) sets your work order and staffing, answers your waits;/);
     assert.match(pack, / asks to a sub-lead's sessions go through it\. Cross-area issues and clashes go to the nearest leader over both, unowned warnings to the lead\.$/m);
     assert.match(pack, /\[ownerGates\]\. An owner's order, relayed or not, approves its work and proof unless only the owner sees the result; ask again only if it must change or needs something new\.$/m);
-    assert.match(pack, /At most 7 lines \[messages\.maxLines\]/);
+    assert.match(pack, /at most 7 lines \[messages\.maxLines\]/);
     assert.match(pack, /never for owner gates: money; deletes \[ownerGates\]/);
     assert.match(pack, /with a note \(only what changed\) on waiting, verifying, done, dropped, /);
     assert.match(pack, /--followups <tasks it leaves>\|none on verifying, done \[register\]\. Wait on a peer by its task\./);
