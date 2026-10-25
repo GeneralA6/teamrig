@@ -96,3 +96,31 @@ describe("a read in one team of a tree judges a wait on another register's task 
     assert.ok(shown.stdout.some((line) => /^ {2}app\/T1 open\b/.test(line)), shown.stdout.join('\n'));
   });
 });
+
+describe('show of a task another register of the tree holds (T1139)', () => {
+  const held = "HELD by team app: only a session of team app changes it, and its history is in that team's register";
+
+  it('shows its row read-only, named by the team that holds it', async () => {
+    const kit = await seeded();
+    const shown = await ok(kit, ['show', 'T1', '--session', 'front'], WEB);
+    assert.equal(shown.stdout.length, 2, shown.stdout.join('\n'));
+    assert.match(shown.stdout[0] ?? '', /^app\/T1 open, p2, owner lead\b.*\| Root task$/);
+    assert.equal(shown.stdout[1], held);
+  });
+
+  it("walks its tree in that team's register, naming that team in each row and move", async () => {
+    const kit = await seeded();
+    await ok(kit, add('Second root task', '--after', 'T1'));
+    const shown = await ok(kit, ['show', 'T3', '--tree', '--session', 'front'], WEB);
+    assert.match(shown.stdout[0] ?? '', /^app\/T3 open, p2, owner lead, after T1\b.*\| Second root task$/);
+    assert.deepEqual(shown.stdout.slice(1, 3), [held, 'needs:']);
+    assert.match(shown.stdout[3] ?? '', /^ {2}app\/T1 open\b/);
+    assert.deepEqual(shown.stdout.slice(4), ['needed by: none', 'Next move: lead on team app (app/T1)']);
+  });
+
+  it('refuses an id no register of the tree holds', async () => {
+    const kit = await seeded();
+    const result = await kit.run(['show', 'T9', '--session', 'front'], WEB);
+    assert.deepEqual([result.code, result.stdout], [EXIT.refused, ['REFUSED no task T9']]);
+  });
+});

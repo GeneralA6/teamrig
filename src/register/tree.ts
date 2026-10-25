@@ -164,6 +164,34 @@ export type TasksElsewhere = ReadonlyMap<string, TaskElsewhere>;
 /** What a register outside a team tree reads elsewhere: nothing. */
 export const NO_TASKS_ELSEWHERE: TasksElsewhere = new Map();
 
+/** One register's tasks and the tasks it reads elsewhere: what a {@link TaskTree} of a team tree is built from. */
+export interface TreeRead {
+  readonly tasks: ReadonlyMap<string, Task>;
+  readonly elsewhere: TasksElsewhere;
+}
+
+/**
+ * The team tree as team `holder` reads it, from a read of team `reader`'s register (its `own` tasks and what it read
+ * `elsewhere`): the holder's tasks, and every other register's, the reader's own among them, as the holder's
+ * elsewhere; so another team's task is judged as that team's sessions judge it. The reader's own task wins an id
+ * another register holds too, which only a register numbered before its tree can have.
+ */
+export function readAs(holder: string, reader: string, own: Iterable<Task>, elsewhere: TasksElsewhere): TreeRead {
+  const tasks = new Map<string, Task>();
+  const others = new Map<string, TaskElsewhere>();
+  for (const task of own) {
+    others.set(task.id, { team: reader, task });
+  }
+  for (const [id, away] of elsewhere) {
+    if (away.team === holder) {
+      tasks.set(id, away.task);
+    } else if (!others.has(id)) {
+      others.set(id, away);
+    }
+  }
+  return { tasks, elsewhere: others };
+}
+
 /** Another session's active task that waits on a session: on its unfinished tasks, or on its decision or approval. */
 export interface WaitingOnYou<T extends TreeTask = Task> {
   readonly task: T;

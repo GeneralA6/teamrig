@@ -237,6 +237,19 @@ describe('formatTaskTree and formatNextMove', () => {
     ]);
   });
 
+  it("names another team's register, read as that team reads it, in its rows and its next move", () => {
+    const root = testTask({ id: 'T1', after: ['T2'] });
+    const need = testTask({ id: 'T2', owner: 'bravo' });
+    assert.deepEqual(formatTaskTree(root, treeOf(root, need), 60, 'web'), [
+      'needs:',
+      '  web/T2 open, p2, owner bravo | Add a health check',
+      'needed by: none',
+      'Next move: bravo on team web (web/T2)',
+    ]);
+    const done = testTask({ id: 'T3', status: 'done' });
+    assert.deepEqual(formatTaskTree(done, treeOf(done), 60, 'web').at(-1), 'Next move: none, web/T3 is done');
+  });
+
   it('lists a finished task its needs, with no next move', () => {
     const done = testTask({ id: 'T3', status: 'done', after: ['T2'] });
     const need = testTask({ id: 'T2', status: 'done' });
