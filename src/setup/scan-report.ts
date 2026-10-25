@@ -142,12 +142,22 @@ function unusedFindings(unused: readonly ListedSkill[], at: ScanReportContext, s
 
 function unusedHeader(scan: SetupScan, unused: readonly ListedSkill[], at: ScanReportContext): string {
   const { transcripts, bytes } = scan.usage;
-  return `UNUSED ${unused.length} of ${scan.context.skills.length} skill(s) not used in ${at.days} day(s) (read ${transcripts} transcript(s), ${(bytes / BYTES_PER_MB).toFixed(1)} MB)`;
+  const young = notUsed(scan).filter((skill) => scan.recent.has(skill.path)).length;
+  const unjudged = young === 0 ? '' : `; ${young} more changed in that time, too new to judge`;
+  return `UNUSED ${unused.length} of ${scan.context.skills.length} skill(s) not used in ${at.days} day(s) (read ${transcripts} transcript(s), ${(bytes / BYTES_PER_MB).toFixed(1)} MB)${unjudged}`;
 }
 
-/** The skills no transcript used; none when there is no transcript to tell, since then every skill would look unused. */
+function notUsed(scan: SetupScan): ListedSkill[] {
+  return scan.context.skills.filter((skill) => !scan.usage.used.has(skill.name));
+}
+
+/**
+ * The skills no transcript used, of those whose file is older than the window: a skill written or changed inside it
+ * has not had the whole window to be used. None when there is no transcript to tell, since then every skill would
+ * look unused.
+ */
 function unusedSkills(scan: SetupScan): ListedSkill[] {
-  return scan.usage.transcripts === 0 ? [] : scan.context.skills.filter((skill) => !scan.usage.used.has(skill.name));
+  return scan.usage.transcripts === 0 ? [] : notUsed(scan).filter((skill) => !scan.recent.has(skill.path));
 }
 
 export function scanReport(scan: SetupScan, at: ScanReportContext): string[] {

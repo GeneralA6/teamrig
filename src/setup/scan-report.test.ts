@@ -49,6 +49,7 @@ const SCAN: SetupScan = {
   recorded: 1,
   settings: [WIDE],
   usage: { used: new Set(['alpha']), transcripts: 3, bytes: 1.5 * 1024 * 1024 },
+  recent: new Set(),
 };
 
 describe('tokensOf', () => {
@@ -114,6 +115,14 @@ describe('scanReport', () => {
       'UNUSED not checked: no transcript on this machine in 7 day(s)',
       'SAVINGS ~26 tokens/turn if every CONTEXT, DUPLICATE and UNUSED finding is applied',
     ]);
+  });
+
+  it('judges no skill whose file changed inside the window, and counts only the unused ones among them', () => {
+    const scan: SetupScan = { ...SCAN, recent: new Set([ALPHA.path, BETA.path]) };
+    assert.deepEqual(
+      scanReport(scan, AT).filter((line) => /^U(NUSED|\d)/.test(line)),
+      ['UNUSED 0 of 2 skill(s) not used in 30 day(s) (read 3 transcript(s), 1.5 MB); 1 more changed in that time, too new to judge'],
+    );
   });
 
   it('says so when there is nothing to judge', () => {
