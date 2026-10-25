@@ -58,6 +58,7 @@ import { noPositionals, type ParsedArgs } from '../args.ts';
 import { hookLogOf } from '../hook-logs.ts';
 import { openKit, renameDepsOf, rosterOf, rulesClockOf, teamFolders, teamZone, type Kit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
+import { readTeamRules } from '../team-rules.ts';
 import { loadTree } from '../tree.ts';
 import { bindAfterClear, bindHintOnce, bindTab, inboxLinesFor, readTitle, type TitleRead } from './hook-bind.ts';
 import { helperGateOutput, promptBudgetLine, stopBudgetLines } from './hook-budget.ts';
@@ -485,7 +486,7 @@ type TeamParts = Pick<
 };
 
 /**
- * A loaded team's rules.md and rename log, after binding a hand-started tab by its Claude Code title
+ * The rules.md of a loaded team and of each team above it, and its rename log, after binding a hand-started tab by its Claude Code title
  * and recording a Claude Code rename of the session; the pointer to its handover after a refresh; who
  * the session is: `$TEAMRIG_SESSION`, else the area it read its inbox as or was bound to, so a tab that
  * set the team up keeps its identity across a compact or resume; after a refresh or a compaction its live
@@ -502,9 +503,8 @@ async function teamPartsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, pay
   const { renames } = await new JsonlRenameLog(runtime.files, kit.paths.renames).read();
   const roster = new Roster(config, kit.paths.team, renames);
   const refresh = await refreshStartOf(runtime, kit, config, roster, payload);
-  const text = await runtime.files.read(kit.paths.teamRules);
   const fromEnv = envSession(runtime);
-  const { tree } = await loadTree(runtime);
+  const kitTree = await loadTree(runtime);
   const session = fromEnv ?? (await startSessionOf(runtime, kit, roster, payload));
   const id = rosterIdOf(roster, session);
   if (id !== undefined) {
@@ -512,7 +512,7 @@ async function teamPartsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, pay
   }
   return {
     recordNote: id === undefined || claudeSession === null ? undefined : await recordSessionStart(runtime, kit, id, claudeSession, startTranscriptOf(payload)),
-    teamRules: text === undefined ? undefined : { path: kit.paths.teamRules, text },
+    teamRules: await readTeamRules(runtime, kit, kitTree),
     renames,
     titleNote,
     refreshNote: refresh.note,
@@ -521,7 +521,7 @@ async function teamPartsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, pay
     verifyNote: await verifyNoteOf(runtime, kit.paths, id),
     session,
     sessionInEnv: fromEnv !== undefined,
-    tree: tree.placeOf(kit.paths.team),
+    tree: kitTree.tree.placeOf(kit.paths.team),
   };
 }
 
@@ -910,7 +910,7 @@ export async function sessionStart(args: ParsedArgs, runtime: CliRuntime): Promi
       ? await teamPartsOf(runtime, kit, kit.load.config, payload)
       : {
           recordNote: undefined,
-          teamRules: undefined,
+          teamRules: [],
           renames: [],
           titleNote: undefined,
           refreshNote: undefined,

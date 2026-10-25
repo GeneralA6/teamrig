@@ -467,32 +467,81 @@ describe('kept local rules', () => {
 
 describe('renderSessionContext', () => {
   const core = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
-  const context = (team?: TeamRules) => renderSessionContext(core, team, COMMAND);
+  const context = (...files: TeamRules[]) => renderSessionContext(core, files, COMMAND);
+  const own = (text: string, path = 'rules.md'): TeamRules => ({ ancestor: undefined, path, text });
+  const above = (team: string, text: string): TeamRules => ({ ancestor: team, path: `teams/${team}/rules.md`, text });
+  const ROOT_TITLE = "Team app's rules (a team above yours; they win over a lower team's)";
 
   it('is the core pack alone without team rules', () => {
     assert.equal(context(), core);
-    assert.equal(context({ path: 'rules.md', text: ' \n' }), core);
+    assert.equal(context(own(' \n')), core);
   });
 
   it("shows a team's rules file at its size limit in full beside the worst-case core", () => {
     const text = 'x'.repeat(TEAM_RULES_MAX_CHARS);
-    const full = renderSessionContext(renderCorePack(worstCaseConfig(), COMMAND, 'win32', RULES_CLOCK), { path: 'rules.md', text }, COMMAND);
+    const full = renderSessionContext(renderCorePack(worstCaseConfig(), COMMAND, 'win32', RULES_CLOCK), [own(text)], COMMAND);
     assert.ok(full.endsWith(`# Your team's rules\n${text}`));
     assert.ok(full.length <= CONTEXT_MAX_CHARS);
   });
 
   it("appends the team's rules when they fit", () => {
-    assert.equal(context({ path: 'rules.md', text: '- Ship on Fridays.\n' }), `${core}\n\n# Your team's rules\n- Ship on Fridays.`);
+    assert.equal(context(own('- Ship on Fridays.\n')), `${core}\n\n# Your team's rules\n- Ship on Fridays.`);
   });
 
   it('points to rules that are too long, and stays inside the context cap', () => {
     const text = 'x'.repeat(TEAM_RULES_MAX_CHARS + 1);
     assert.equal(
-      context({ path: 'home/rules.md', text }),
-      `${core}\n\nYour team's rules are in home/rules.md (${text.length} characters, more than the ${TEAM_RULES_MAX_CHARS} shown here): read them now.`,
+      renderSessionContext('CORE', [own(text, 'home/rules.md')], COMMAND),
+      `CORE\n\nYour team's rules are in home/rules.md (${text.length} characters; this start has room for ${TEAM_RULES_MAX_CHARS}): read them now.`,
     );
-    const capped = context({ path: `/${'p'.repeat(CONTEXT_MAX_CHARS)}`, text });
+    const capped = context(own(text, `/${'p'.repeat(CONTEXT_MAX_CHARS)}`));
     assert.ok(capped.length <= CONTEXT_MAX_CHARS);
     assert.match(capped, /run `teamrig doctor`/);
+  });
+
+  it('names the room the context cap leaves when a long core, not the file, is the cause', () => {
+    const long = 'c'.repeat(7_500);
+    const before = `${long}\n\n# Your team's rules\n`;
+    assert.equal(
+      renderSessionContext(long, [own('x'.repeat(2_620))], COMMAND),
+      `${long}\n\nYour team's rules are in rules.md (2620 characters; this start has room for ${CONTEXT_MAX_CHARS - before.length}): read them now.`,
+    );
+  });
+
+  it('shows the teams above first, root first, each under its own heading', () => {
+    assert.equal(
+      context(above('app', '- Root rule.'), above('web', '- Web rule.'), own('- Own rule.')),
+      [
+        core,
+        `# ${ROOT_TITLE}\n- Root rule.`,
+        "# Team web's rules (a team above yours; they win over a lower team's)\n- Web rule.",
+        "# Your team's rules\n- Own rule.",
+      ].join('\n\n'),
+    );
+  });
+
+  it('shares one size limit across the files, pointing to the one that no longer fits', () => {
+    const root = 'r'.repeat(2_000);
+    assert.equal(
+      renderSessionContext('CORE', [above('app', root), own('o'.repeat(1_000))], COMMAND),
+      `CORE\n\n# ${ROOT_TITLE}\n${root}\n\nYour team's rules are in rules.md (1000 characters; this start has room for ${TEAM_RULES_MAX_CHARS - 2_000}): read them now.`,
+    );
+  });
+
+  it('still shows a short file below a long one that gets a pointer', () => {
+    const root = 'r'.repeat(TEAM_RULES_MAX_CHARS + 250);
+    assert.equal(
+      renderSessionContext('CORE', [above('app', root), own('- Own rule.')], COMMAND),
+      `CORE\n\n${ROOT_TITLE} are in teams/app/rules.md (${root.length} characters; this start has room for ${TEAM_RULES_MAX_CHARS}): read them now.\n\n# Your team's rules\n- Own rule.`,
+    );
+  });
+
+  it('skips an empty file above', () => {
+    assert.equal(context(above('app', '\n'), own('- Own rule.')), `${core}\n\n# Your team's rules\n- Own rule.`);
+  });
+
+  it('ends without a pointer when even the doctor line no longer fits', () => {
+    const full = 'c'.repeat(CONTEXT_MAX_CHARS - 10);
+    assert.equal(renderSessionContext(full, [own('x', `/${'p'.repeat(CONTEXT_MAX_CHARS)}`)], COMMAND), full);
   });
 });

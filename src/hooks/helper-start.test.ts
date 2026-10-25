@@ -20,7 +20,7 @@ function context(overrides: Partial<HelperStartInput> = {}): string {
   return helperStartContext({
     team: 'app',
     load: loaded(),
-    teamRules: undefined,
+    teamRules: [],
     renames: [],
     agentType: 'general-purpose',
     session: 'alpha',
@@ -88,7 +88,7 @@ describe('helperStartContext', () => {
   });
 
   it("adds the team's rules.md after the helper line", () => {
-    const text = context({ teamRules: { path: '/kit/teams/app/rules.md', text: 'Ship small.' } });
+    const text = context({ teamRules: [{ ancestor: undefined, path: '/kit/teams/app/rules.md', text: 'Ship small.' }] });
     assert.ok(text.endsWith(`${DUTY}\n\n# Your team's rules\nShip small.`));
   });
 

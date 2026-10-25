@@ -15,7 +15,10 @@ import { helperDefaultClause } from './helper-default.ts';
 export const CORE_PACK_MAX_CHARS = 7_225;
 /** The kept local rules the core pack lists [ruleConflicts] fit in this many characters (see `renderKeptRules`). */
 export const KEPT_RULES_MAX_CHARS = 420;
-/** The team's own rules file is shown in full only up to this size; a longer one gets a pointer. */
+/**
+ * The team rules files a session is shown in full, its own and those of the teams above it, share this size; one that
+ * does not fit gets a pointer.
+ */
 export const TEAM_RULES_MAX_CHARS = 2_750;
 /** Claude Code caps a SessionStart hook's `additionalContext` at this size. */
 export const CONTEXT_MAX_CHARS = 10_000;
@@ -25,7 +28,10 @@ export const CONTEXT_MAX_CHARS = 10_000;
  */
 export const LEAD_RULES_MAX_CHARS = 810;
 
+/** A team's rules.md as a session reads it at start. */
 export interface TeamRules {
+  /** The team above the session's whose file this is; undefined for the session's own team's. */
+  readonly ancestor: string | undefined;
   readonly path: string;
   readonly text: string;
 }
@@ -320,16 +326,42 @@ export function renderLeadRules(config: KitConfig, command: string): string {
   ].join('\n');
 }
 
-/** The SessionStart context: the core pack, then the team's rules in full when they fit, else a pointer. */
-export function renderSessionContext(core: string, team: TeamRules | undefined, command: string): string {
-  const text = team?.text.trim() ?? '';
-  if (team === undefined || text === '') {
-    return core;
+/**
+ * Whose rules a file holds, as its heading and pointer name it. A team above wins over the teams below it, as its
+ * lead stands over theirs (rule 1).
+ */
+function rulesTitleOf(rules: TeamRules): string {
+  return rules.ancestor === undefined ? "Your team's rules" : `Team ${rules.ancestor}'s rules (a team above yours; they win over a lower team's)`;
+}
+
+/**
+ * The SessionStart context: the core pack, then each team rules file in the order given (the teams above the
+ * session's, root first, then its own). Each comes in full while the files shown so far fit TEAM_RULES_MAX_CHARS and
+ * the context CONTEXT_MAX_CHARS, else as a pointer saying how much room was left, so a long file further up takes no
+ * room a shorter one below could use.
+ */
+export function renderSessionContext(core: string, files: readonly TeamRules[], command: string): string {
+  let context = core;
+  let shown = 0;
+  for (const rules of files) {
+    const text = rules.text.trim();
+    if (text === '') {
+      continue;
+    }
+    const title = rulesTitleOf(rules);
+    const before = `${context}\n\n# ${title}\n`;
+    if (shown + text.length <= TEAM_RULES_MAX_CHARS && before.length + text.length <= CONTEXT_MAX_CHARS) {
+      context = `${before}${text}`;
+      shown += text.length;
+      continue;
+    }
+    const room = Math.max(0, Math.min(TEAM_RULES_MAX_CHARS - shown, CONTEXT_MAX_CHARS - before.length));
+    const pointer = `${context}\n\n${title} are in ${rules.path} (${text.length} characters; this start has room for ${room}): read them now.`;
+    if (pointer.length > CONTEXT_MAX_CHARS) {
+      const tooLong = `${context}\n\nYour team rules files are too long to show or point to here; run \`${command} doctor\`.`;
+      return tooLong.length <= CONTEXT_MAX_CHARS ? tooLong : context;
+    }
+    context = pointer;
   }
-  const full = `${core}\n\n# Your team's rules\n${text}`;
-  if (text.length <= TEAM_RULES_MAX_CHARS && full.length <= CONTEXT_MAX_CHARS) {
-    return full;
-  }
-  const pointer = `${core}\n\nYour team's rules are in ${team.path} (${text.length} characters, more than the ${TEAM_RULES_MAX_CHARS} shown here): read them now.`;
-  return pointer.length <= CONTEXT_MAX_CHARS ? pointer : `${core}\n\nYour team's rules file is too long to show or point to here; run \`${command} doctor\`.`;
+  return context;
 }
