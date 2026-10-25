@@ -44,6 +44,15 @@ export function asksOwner(task: Task, ownerMarker: string, requireGate: boolean)
   return waitsOnOwner(task, ownerMarker) && !(requireGate && isUngated(task, ownerMarker));
 }
 
+/** A register under the lead's team, whose waits on the owner the lead asks too (T1018), read on its own clock and config. */
+export interface AgendaTeam {
+  readonly team: string;
+  readonly tasks: readonly Task[];
+  readonly tree: TaskTree;
+  readonly ownerMarker: string;
+  readonly requireGate: boolean;
+}
+
 export interface AgendaInput {
   readonly tasks: readonly Task[];
   /** The dependency tree of the same read: effective dues, ready reasons and what needs each task. */
@@ -55,6 +64,8 @@ export interface AgendaInput {
   readonly ownerMarker: string;
   /** `register.requireDecisionCard`: a wait on the owner's decision names its gate, so an ungated one leaves DECISIONS. */
   readonly requireGate: boolean;
+  /** The registers of every team under the lead's, depth first: a child team's waits on the owner go up to the lead at its tree's root. */
+  readonly below: readonly AgendaTeam[];
   /** The lead's session id, which records the decisions. */
   readonly lead: string;
   readonly command: string;
@@ -113,22 +124,31 @@ export function cardFacts(task: Task, tree: TaskTree, team?: string): string[] {
   ];
 }
 
+/** The card facts of a register's tasks the lead asks the owner, in its plan order; `team` labels a register under the lead's. */
+function decisionCards(tasks: readonly Task[], tree: TaskTree, ownerMarker: string, requireGate: boolean, team?: string): string[][] {
+  return tree.inPlanOrder(tasks.filter((task) => asksOwner(task, ownerMarker, requireGate))).map((task) => cardFacts(task, tree, team));
+}
+
 /**
- * DECISIONS: the tasks waiting on the owner, each with its card facts, then how to card and record them. The
- * card form is the owner's: each item readable alone, with the numbers to decide by and one exact action.
+ * DECISIONS: the tasks waiting on the owner, the lead's team's first, then those of each team under it (T1018), each
+ * with its card facts, then how to card and record them. The card form is the owner's: each item readable alone,
+ * with the numbers to decide by and one exact action.
  */
 function decisionLines(input: AgendaInput): string[] {
-  const waiting = input.tree.inPlanOrder(input.tasks.filter((task) => asksOwner(task, input.ownerMarker, input.requireGate)));
-  const head = `DECISIONS ${waiting.length} waiting on ${input.ownerMarker} (decision or approval)`;
-  if (waiting.length === 0) {
+  const own = decisionCards(input.tasks, input.tree, input.ownerMarker, input.requireGate);
+  const below = input.below.flatMap((team) => decisionCards(team.tasks, team.tree, team.ownerMarker, team.requireGate, team.team));
+  const head = `DECISIONS ${own.length + below.length} waiting on ${input.ownerMarker} (decision or approval)`;
+  if (own.length + below.length === 0) {
     return [head];
   }
+  const labelled = below.length === 0 ? '' : ' (<team>/<id> for a task of a team under yours, as its row names it)';
+  const handed = below.length === 0 ? '' : ' (--team <team> in place of --owner for a team under yours: its lead hands it on)';
   return [
     head,
-    ...waiting.flatMap((task) => cardFacts(task, input.tree)),
+    ...[...own, ...below].flat(),
     `  Read each card to ${input.ownerMarker} as it stands, each figure explained; where one says no card yet, ask its owner for it (check flags it NO-CARD). Never point to a doc; \`${input.command} show <id>\` prints a task whole.`,
-    `  A question a card does not answer is its task owner's to find: ${input.command} add --owner <id> --due <date> --session ${input.lead}, then relay the answer; never look it up yourself.`,
-    `  Record each answer in the same turn: ${input.command} update <id> --note "${input.ownerMarker} decided: <decision>" --session ${input.lead}; meeting end tells each task's owner.`,
+    `  A question a card does not answer is its task owner's to find: ${input.command} add --owner <id>${handed} --due <date> --session ${input.lead}, then relay the answer; never look it up yourself.`,
+    `  Record each answer in the same turn: ${input.command} update <id>${labelled} --note "${input.ownerMarker} decided: <decision>" --session ${input.lead}; meeting end tells each task's owner.`,
   ];
 }
 

@@ -639,7 +639,7 @@ async function settle(runtime: CliRuntime, { own, teams }: RollUp, needsHistory:
 }
 
 /** The dependency tree of one team's register read now, in its zone and week plan in force: ready wait reasons, effective dues and what needs each task. */
-function taskTreeOf({ snapshot, config, elsewhere }: Pick<RolledTeam, 'snapshot' | 'config' | 'elsewhere'>, runtime: CliRuntime): TaskTree {
+export function taskTreeOf({ snapshot, config, elsewhere }: Pick<RolledTeam, 'snapshot' | 'config' | 'elsewhere'>, runtime: CliRuntime): TaskTree {
   const now = new Date(runtime.clock.now());
   const zone = teamZone(config, runtime);
   return new TaskTree(snapshot.state.tasks, now, zone, currentWeekOf(snapshot, now, zone), elsewhere);
