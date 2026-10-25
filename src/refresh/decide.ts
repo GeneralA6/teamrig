@@ -1,4 +1,5 @@
 import type { RefreshConfig } from '../config/types.ts';
+import { sessionDisplay } from '../core/ids.ts';
 import { lineHash } from '../inbox/line-hash.ts';
 import type { RefreshState } from './state.ts';
 
@@ -21,7 +22,7 @@ export interface StopContext {
   readonly stopHookActive: boolean;
   readonly settings: RefreshSettings;
   readonly now: string;
-  readonly session: { readonly id: string; readonly name: string };
+  readonly session: { readonly id: string; readonly team: string; readonly name: string };
   readonly handoverPath: string;
   /** The CLI's name, as the session runs it from its Bash tool. */
   readonly command: string;
@@ -137,7 +138,7 @@ export function noticeOf(state: ReadyState, context: StopContext, restart: boole
     kind: 'notice',
     state: { ...state, noticed: true, transcript: context.transcript },
     message: `${context.command}: ${name}${finished} wrote its handover; ${next}`,
-    title: context.settings.tabTitle ? `${name}: ${restart ? 'restarting' : 'type /clear'}` : undefined,
+    title: context.settings.tabTitle ? `${sessionDisplay(context.session.team, name)}: ${restart ? 'restarting' : 'type /clear'}` : undefined,
     restart,
   };
 }

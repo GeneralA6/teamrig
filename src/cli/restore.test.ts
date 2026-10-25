@@ -146,7 +146,7 @@ describe('teamrig restore run', () => {
     assert.deepEqual(options.countdown.counted, [60]);
     assert.deepEqual(
       processes.started.map((request) => request.args),
-      [windowsTab('app-alpha', APP, ALPHA_LAUNCH), windowsTab('notes', APP, NOTES_RESUME)],
+      [windowsTab('[app] alpha', APP, ALPHA_LAUNCH), windowsTab('notes', APP, NOTES_RESUME)],
     );
     assert.deepEqual(kit.clock.sleeps, [TAB_STAGGER_MS]);
     assert.ok(result.stdout.includes('Opened app-alpha (idle)'));

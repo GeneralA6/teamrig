@@ -69,7 +69,7 @@ describe('teamrig restart', () => {
     assert.deepEqual(result, { code: EXIT.ok, stdout: ['RESTARTED app-alpha in a new tab'], stderr: [] });
     const [tab] = tabs.started;
     assert.ok(tab);
-    assert.deepEqual(tab.args.slice(0, 7), ['-w', '0', 'new-tab', '--title', 'app-alpha', '-d', APP]);
+    assert.deepEqual(tab.args.slice(0, 7), ['-w', '0', 'new-tab', '--title', '[app] alpha', '-d', APP]);
     assert.ok(tab.args.includes('launch'));
     const encoded = tab.args[tab.args.indexOf('--encoded-prompt') + 1] ?? '';
     assert.equal(decodePrompt(encoded), refreshPrompt('app', 'alpha', store.handoverPath('alpha')), 'the new session starts at its handover');

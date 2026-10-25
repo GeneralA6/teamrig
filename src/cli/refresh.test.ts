@@ -105,7 +105,7 @@ describe('runCli: context refresh', () => {
 
     assert.deepEqual(stopJson(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload(true) })), {
       systemMessage: 'teamrig: app-alpha finished T1 and wrote its handover; type /clear for a fresh start',
-      terminalSequence: '\u001b]0;app-alpha: type /clear\u0007',
+      terminalSequence: '\u001b]0;[app] alpha: type /clear\u0007',
     });
     assert.deepEqual(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload() }), SILENT, 'the notice shows once');
 
@@ -234,7 +234,7 @@ describe('runCli: context refresh', () => {
     const underClaude = UNDER_CLAUDE();
     assert.deepEqual(stopJson(await kit.run(['hook', 'stop'], { env, stdin: stopPayload(true), sessionProcesses: underClaude, processes })), {
       systemMessage: 'teamrig: app-alpha finished T1 and wrote its handover; teamrig starts it fresh once it has been idle 15 s (type anything to keep this context)',
-      terminalSequence: '\u001b]0;app-alpha: restarting\u0007',
+      terminalSequence: '\u001b]0;[app] alpha: restarting\u0007',
     });
     const request = await store.restart('alpha');
     assert.ok(request);
@@ -257,7 +257,7 @@ describe('runCli: context refresh', () => {
     const processes = new FakeProcesses().onStart('/usr/bin/node', { kind: 'missing' });
     const clear = {
       systemMessage: 'teamrig: app-alpha finished T1 and wrote its handover; type /clear for a fresh start',
-      terminalSequence: '\u001b]0;app-alpha: type /clear\u0007',
+      terminalSequence: '\u001b]0;[app] alpha: type /clear\u0007',
     };
     assert.deepEqual(stopJson(await missing.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload(true), sessionProcesses: UNDER_CLAUDE(), processes })), clear);
     assert.equal(await store.restart('alpha'), undefined);

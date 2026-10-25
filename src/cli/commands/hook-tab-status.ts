@@ -1,12 +1,13 @@
 import type { KitConfig } from '../../config/types.ts';
 import { isRecord, stringField, type JsonRecord } from '../../core/guards.ts';
 import { ENV, type Env } from '../../core/home.ts';
+import { tabDisplayOf, type TeamRoster } from '../../hooks/bind.ts';
 import { tabTitleSequence } from '../../hooks/stop.ts';
 import { TRANSCRIPT_TAIL_BYTES } from '../../names/title.ts';
 import { readRunningKinds } from '../../refresh/running.ts';
 import { helpersRun, readyWaitsOnHelpers, tabChangeOf, tabTitle, topicOf, type TranscriptTail } from '../../tabs/status.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
-import { openKit } from '../kit.ts';
+import { openKit, rosterOf } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { parseJson, sessionTeam } from './hook-input.ts';
 import { refusedPickerAsker } from './hook-picker-guard.ts';
@@ -39,10 +40,11 @@ async function helpersRunFor(runtime: CliRuntime, payload: JsonRecord): Promise<
 
 /**
  * The title this hook event gives the tab: its state's circle before `label` (a refresh notice's title), else
- * before the session's topic, read from the transcript only when the payload has no session title. A ready
- * state reads as working while a helper still runs. '' gives the title back to the terminal; undefined leaves it.
+ * before the session's topic, read from the transcript only when the payload has no session title; a topic
+ * naming one session of `own` reads `[<team>] <name>` (tabDisplayOf). A ready state reads as working while a
+ * helper still runs. '' gives the title back to the terminal; undefined leaves it.
  */
-export async function tabTitleOf(runtime: CliRuntime, payload: JsonRecord, label?: string): Promise<string | undefined> {
+export async function tabTitleOf(runtime: CliRuntime, payload: JsonRecord, own: TeamRoster, label?: string): Promise<string | undefined> {
   const change = tabChangeOf(payload);
   if (change === undefined || change === 'reset') {
     return change === 'reset' ? '' : undefined;
@@ -52,7 +54,7 @@ export async function tabTitleOf(runtime: CliRuntime, payload: JsonRecord, label
     return tabTitle(state, label);
   }
   const named = stringField(payload, 'session_title')?.trim();
-  return tabTitle(state, topicOf(payload, named === undefined || named === '' ? await transcriptTailOf(runtime, payload) : undefined));
+  return tabTitle(state, tabDisplayOf(own, topicOf(payload, named === undefined || named === '' ? await transcriptTailOf(runtime, payload) : undefined)));
 }
 
 /**
@@ -72,7 +74,7 @@ export async function tabStatusOutputOf(runtime: CliRuntime, payload: JsonRecord
   if ((await refusedPickerAsker(runtime, kit, kit.load.config, payload)) !== undefined) {
     return '';
   }
-  const title = await tabTitleOf(runtime, payload);
+  const title = await tabTitleOf(runtime, payload, { team: kit.paths.team, roster: await rosterOf(runtime, kit, kit.load.config) });
   return title === undefined ? '' : JSON.stringify({ terminalSequence: tabTitleSequence(title) });
 }
 

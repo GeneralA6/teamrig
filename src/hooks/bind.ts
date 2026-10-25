@@ -1,6 +1,6 @@
 import type { Roster } from '../config/roster.ts';
 import { formatAddress, type SessionAddress } from '../core/address.ts';
-import { bareName, titleKey, titleParts } from '../core/ids.ts';
+import { bareName, sessionDisplay, titleKey, titleParts } from '../core/ids.ts';
 import type { MarkLog } from '../inbox/inbox.ts';
 import { indexMarks, MARK_VERSION, type InboxMark } from '../inbox/marks.ts';
 import type { RefreshState } from '../refresh/state.ts';
@@ -129,6 +129,15 @@ export async function bindByTitle(deps: BindDeps, input: BindInput): Promise<Bin
  */
 export function tabTitleFor(roster: Roster, id: string | undefined, title: string | undefined): string | undefined {
   return id === undefined || title !== undefined ? undefined : (roster.nameOf(id) ?? id);
+}
+
+/**
+ * How a tab's topic reads in the title tab status writes for people: `[<team>] <name>` (sessionDisplay) when
+ * it names exactly one session of the team, as the name tabTitleFor gives a bound tab does; any other topic as it is.
+ */
+export function tabDisplayOf(own: TeamRoster, topic: string): string {
+  const [only, ...more] = sessionsTitled(own, topic);
+  return only === undefined || more.length > 0 ? topic : sessionDisplay(own.team, own.roster.nameOf(only) ?? only);
 }
 
 /**

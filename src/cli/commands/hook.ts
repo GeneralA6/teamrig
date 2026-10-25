@@ -69,7 +69,7 @@ import { helperContextOf } from './hook-helper-start.ts';
 import { checkHooklessTabs } from './hook-hookless.ts';
 import { dueFactsAt, inMeetingNow } from './hook-refresh-mod.ts';
 import { recordSessionStart } from './hook-session-record.ts';
-import { envSession, hookScopeOf, leadPathsOf, parseJson, sessionScopeOf, sessionTeam, startSessionOf, teamScopeOf, teamSessionOf, type SessionScope } from './hook-input.ts';
+import { envSession, hookScopeOf, leadPathsOf, parseJson, sessionScopeOf, sessionTeam, startSessionOf, teamScopeOf, teamSessionOf, type SessionScope, type TeamScope } from './hook-input.ts';
 import { tabStatusOn, tabTitleOf } from './hook-tab-status.ts';
 import { logPrompt, logReply, logStart } from './hook-turn-log.ts';
 import { keepWorkingReasonOf } from './keep-working.ts';
@@ -703,7 +703,7 @@ async function refreshDecisionOf(runtime: CliRuntime, scope: SessionScope, paylo
     stopHookActive: payload['stop_hook_active'] === true,
     settings: config.refresh,
     now: new Date(runtime.clock.now()).toISOString(),
-    session: { id, name: roster.nameOf(id) ?? id },
+    session: { id, team: kit.paths.team, name: roster.nameOf(id) ?? id },
     handoverPath: store.handoverPath(id),
     command: KIT_NAME,
     canRestart: config.refresh.autoRestart && target !== undefined,
@@ -773,11 +773,12 @@ async function askBlockOf(runtime: CliRuntime, scope: SessionScope, payload: Jso
  * notice's title, else before the session's topic. Undefined with tab status off, which leaves the notice's
  * own title, at a block, whose turn goes on, and on an error.
  */
-async function stopTabTitleOf(runtime: CliRuntime, config: KitConfig, payload: JsonRecord, decision: StopDecision): Promise<string | undefined> {
-  if (!tabStatusOn(runtime.env, config) || decision.kind === 'block') {
+async function stopTabTitleOf(runtime: CliRuntime, team: TeamScope, roster: Roster | undefined, payload: JsonRecord, decision: StopDecision): Promise<string | undefined> {
+  if (!tabStatusOn(runtime.env, team.config) || decision.kind === 'block') {
     return undefined;
   }
-  return tabTitleOf(runtime, payload, decision.kind === 'notice' ? decision.title : undefined).catch((): string | undefined => undefined);
+  const own = { team: team.kit.paths.team, roster: roster ?? (await rosterOf(runtime, team.kit, team.config)) };
+  return tabTitleOf(runtime, payload, own, decision.kind === 'notice' ? decision.title : undefined).catch((): string | undefined => undefined);
 }
 
 /**
@@ -790,7 +791,7 @@ async function stopOutputOf(runtime: CliRuntime, payload: JsonRecord): Promise<s
   const scope = team === undefined ? undefined : await sessionScopeOf(runtime, team, payload);
   if (scope === undefined) {
     const none: StopDecision = { kind: 'none' };
-    return team === undefined ? '' : stopOutput(none, [], await stopTabTitleOf(runtime, team.config, payload, none));
+    return team === undefined ? '' : stopOutput(none, [], await stopTabTitleOf(runtime, team, undefined, payload, none));
   }
   await logReply(runtime, { config: scope.config, paths: scope.kit.paths, id: scope.id }, payload).catch(() => undefined);
   // Before the refresh, which records a block's state before it prints: this block leaves the rest to the next stop.
@@ -807,7 +808,7 @@ async function stopOutputOf(runtime: CliRuntime, payload: JsonRecord): Promise<s
   const lead = await leadStopLines(runtime, scope, stringField(payload, 'transcript_path')).catch((): readonly string[] => []);
   const lines = [...notices, ...budget, ...verify, ...lead, ...hookless];
   const ask = await askBlockOf(runtime, scope, payload, decision).catch((): string | undefined => undefined);
-  return ask === undefined ? stopOutput(decision, lines, await stopTabTitleOf(runtime, scope.config, payload, decision)) : blockOutput(ask, lines);
+  return ask === undefined ? stopOutput(decision, lines, await stopTabTitleOf(runtime, scope, scope.roster, payload, decision)) : blockOutput(ask, lines);
 }
 
 /**

@@ -20,6 +20,7 @@ import {
   processBoundNote,
   refreshedIn,
   sessionsTitled,
+  tabDisplayOf,
   tabTitleFor,
   type BindInput,
   type BindOutcome,
@@ -71,6 +72,21 @@ describe('tabTitleFor', () => {
 
   it('falls back to the id for a session the roster does not name', () => {
     assert.equal(tabTitleFor(OWN.roster, 'zulu', undefined), 'zulu');
+  });
+});
+
+describe('tabDisplayOf', () => {
+  it('shows a topic naming one session of the team as [<team>] <name>', () => {
+    assert.equal(tabDisplayOf(OWN, 'app-alpha'), '[app] alpha');
+    assert.equal(tabDisplayOf(OWN, 'Captain'), '[app] captain');
+    assert.equal(tabDisplayOf(OWN, '[app] scout'), '[app] scout');
+  });
+
+  it('keeps any other topic as it is', () => {
+    assert.equal(tabDisplayOf(OWN, 'fix the build'), 'fix the build');
+    assert.equal(tabDisplayOf(OWN, '[web] lead'), '[web] lead');
+    const odd = { team: 'odd', roster: new Roster({ sessions: ['b', 'c'], names: { c: 'b-two' }, roles: { lead: 'b' } }, 'odd', [renameOf('c', 'b-two', 'b')]) };
+    assert.equal(tabDisplayOf(odd, 'b'), 'b', 'a topic naming two sessions');
   });
 });
 
