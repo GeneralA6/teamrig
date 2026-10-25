@@ -3,6 +3,24 @@ import { isRecord } from "../core/guards.js";
 export const CARD_FLAGS = '--question, --options, --recommend and --default';
 /** The CLI flag that writes a card's `whyAsk`. */
 export const WHY_ASK_FLAG = '--why-ask';
+/** The CLI flag that writes a card's `gate`. */
+export const GATE_FLAG = '--gate';
+/** The gate that names a business decision, the owner's besides the owner gates (T1194). */
+export const BUSINESS_GATE = 'business';
+/** The gates a card may name: each owner gate [ownerGates], then a business decision. */
+export function gateChoices(ownerGates) {
+    return [...ownerGates, BUSINESS_GATE];
+}
+/** How `--gate` is typed, naming each gate a card may name. */
+export function gateUsage(ownerGates) {
+    const choices = gateChoices(ownerGates);
+    return `${GATE_FLAG} "<${choices.slice(0, -1).join(', ')} or ${BUSINESS_GATE}>"`;
+}
+/** The gate `typed` names, as `ownerGates` or BUSINESS_GATE spell it, case aside; undefined when it names none. */
+export function gateOf(typed, ownerGates) {
+    const key = typed.trim().toLowerCase();
+    return gateChoices(ownerGates).find((choice) => choice.toLowerCase() === key);
+}
 /** How to say why the owner (`ownerSource`) is asked about what the owner ordered (T802). */
 export function whyAskUsage(ownerSource) {
     return `${WHY_ASK_FLAG} "<how the order must change, what new it needs, or why only ${ownerSource} can see the result>"`;
@@ -17,11 +35,25 @@ export const MIN_DECISION_OPTIONS = 2;
 const TASK_WORD = /\bT[1-9]\d*\b/g;
 /** The card's parts as one list of texts, in the order a card prints them. */
 export function cardTexts(card) {
-    return [card.question, ...(card.whyAsk === undefined ? [] : [card.whyAsk]), ...card.options, card.recommend, card.byDefault];
+    return [
+        card.question,
+        ...(card.gate === undefined ? [] : [card.gate]),
+        ...(card.whyAsk === undefined ? [] : [card.whyAsk]),
+        ...card.options,
+        card.recommend,
+        card.byDefault,
+    ];
 }
-/** The card without its `whyAsk`: what it keeps once its task waits on no owner's decision or approval. */
-export function withoutWhyAsk(card) {
-    return { question: card.question, options: card.options, recommend: card.recommend, byDefault: card.byDefault };
+/** The card with only the owner parts that still hold (`keep`). */
+export function keptCard(card, keep) {
+    return {
+        question: card.question,
+        options: card.options,
+        recommend: card.recommend,
+        byDefault: card.byDefault,
+        ...(keep.whyAsk && card.whyAsk !== undefined ? { whyAsk: card.whyAsk } : {}),
+        ...(keep.gate && card.gate !== undefined ? { gate: card.gate } : {}),
+    };
 }
 /** How many words a text says besides task ids: letters and digits in runs, so `30 days: 4 GB` is four. */
 export function plainWords(text) {
@@ -65,6 +97,7 @@ export function sameCard(a, b) {
         a.recommend === b.recommend &&
         a.byDefault === b.byDefault &&
         a.whyAsk === b.whyAsk &&
+        a.gate === b.gate &&
         a.options.length === b.options.length &&
         a.options.every((option, index) => option === b.options[index]));
 }
@@ -79,7 +112,7 @@ export function parseCard(value) {
     if (!isRecord(value)) {
         return 'card is not an object';
     }
-    const { question, options, recommend, byDefault, whyAsk } = value;
+    const { question, options, recommend, byDefault, whyAsk, gate } = value;
     if (typeof question !== 'string' || typeof recommend !== 'string' || typeof byDefault !== 'string') {
         return 'card needs question, recommend and byDefault as text';
     }
@@ -89,15 +122,20 @@ export function parseCard(value) {
     if (whyAsk !== undefined && typeof whyAsk !== 'string') {
         return 'card whyAsk is not text';
     }
-    return { question, options, recommend, byDefault, ...(whyAsk === undefined ? {} : { whyAsk }) };
+    if (gate !== undefined && typeof gate !== 'string') {
+        return 'card gate is not text';
+    }
+    return { question, options, recommend, byDefault, ...(whyAsk === undefined ? {} : { whyAsk }), ...(gate === undefined ? {} : { gate }) };
 }
 /**
- * A card as printed under its task: the question, why the owner is asked (when the card says), each option
- * numbered, the recommendation and the default, each line led by `indent`.
+ * A card as printed under its task: the question, the owner gate or business reason that makes it the owner's and
+ * why the owner is asked (when the card says), each option numbered, the recommendation and the default, each line
+ * led by `indent`.
  */
 export function cardLines(card, indent) {
     return [
         `${indent}decide: ${card.question}`,
+        ...(card.gate === undefined ? [] : [`${indent}gate: ${card.gate}`]),
         ...(card.whyAsk === undefined ? [] : [`${indent}why asked: ${card.whyAsk}`]),
         ...card.options.map((option, index) => `${indent}  ${index + 1}. ${option}`),
         `${indent}recommended: ${card.recommend}`,
