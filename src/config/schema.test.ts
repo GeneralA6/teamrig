@@ -358,6 +358,21 @@ describe('config.schema.json', () => {
     assert.ok(String(names['description']).includes(`(${RESERVED_NAMES.join(', ')})`));
   });
 
+  it('takes the role holders the parser takes: a session id, or <team>/<id> of a team above (T1143)', async () => {
+    const schema = await loadSchema();
+    const defs = schema['$defs'];
+    const holder = isRecord(defs) ? defs['roleHolder'] : undefined;
+    assert.ok(isRecord(holder));
+    for (const role of ['coordinatorOwner', 'securityReviewer']) {
+      assert.equal(nodeAt(schema, `roles.${role}`)['$ref'], '#/$defs/roleHolder');
+    }
+    const pattern = new RegExp(String(holder['pattern']));
+    for (const name of ['security', 'root/security', 'root/', '/security', 'Root/security', 'a/b/c', `root/s${'x'.repeat(32)}`]) {
+      const { issues } = parseConfig({ sessions: ['alpha', 'security'], roles: { lead: 'alpha', securityReviewer: name } });
+      assert.equal(pattern.test(name), issues.length === 0, name);
+    }
+  });
+
   it('takes the budget account names the parser takes', async () => {
     const account = nodeAt(await loadSchema(), 'budget.account');
     assert.deepEqual([account['maxLength'], account['pattern']], [BUDGET_ACCOUNT_MAX_LENGTH, '^[^\\r\\n]+$']);
