@@ -104,12 +104,12 @@ function phaseLine(phase: MeetingPhase, mk: MeetingKit): string {
 /** The agenda: the register's part (decisions, late, done), the lead's inbox marked read, then the week's use and, under it, the planned week's fit (as `plan` gives it). */
 async function printAgenda(args: ParsedArgs, runtime: CliRuntime, mk: MeetingKit, phase: MeetingPhase): Promise<void> {
   const rollUp = await ownRegister(runtime);
-  const { snapshot } = rollUp.own;
+  const { snapshot, elsewhere } = rollUp.own;
   const now = new Date(mk.now);
   const { zone } = mk;
   const lines = agendaLines({
     tasks: [...snapshot.state.tasks.values()],
-    tree: new TaskTree(snapshot.state.tasks, now, zone, currentWeekOf(snapshot, now, zone)),
+    tree: new TaskTree(snapshot.state.tasks, now, zone, currentWeekOf(snapshot, now, zone), elsewhere),
     now: mk.now,
     since: agendaSince(previousEnd(phase), mk.now),
     ownerMarker: mk.config.register.ownerSource,
