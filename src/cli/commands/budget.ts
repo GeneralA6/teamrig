@@ -40,7 +40,6 @@ import {
   formatSnapshot,
   parseSnapshot,
   pruneSnapshots,
-  readSnapshots,
   snapshotDirOf,
   snapshotOfStatus,
   statusLineText,
@@ -57,7 +56,7 @@ import { indexMarks } from '../../inbox/marks.ts';
 import type { RepoState } from '../../push-guard/push.ts';
 import { customTitleOf, TRANSCRIPT_TAIL_BYTES } from '../../names/title.ts';
 import { TASK_ID } from '../../register/model.ts';
-import { otherTeamsOnAccount } from '../account-teams.ts';
+import { otherTeamsOnAccount, snapshotsOnAccount } from '../account-teams.ts';
 import { UsageError, onePositional, requiredFlag, type Flags, type ParsedArgs } from '../args.ts';
 import { callerOf, type TypedTimes } from '../inputs.ts';
 import { openKit, openTeamKit, requireConfig, rosterOf, sessionIdOf, teamFolders, teamZone, type Kit } from '../kit.ts';
@@ -123,7 +122,7 @@ async function readBudget(runtime: CliRuntime, kit: Kit, config: KitConfig, rost
       maxRuns: MAX_RUNS_PER_SESSION,
     },
   );
-  const snapshots = recount ? [] : await readSnapshots(files, snapshotDirOf(config.budget, kit.paths));
+  const snapshots = recount ? [] : await snapshotsOnAccount(runtime, config.budget, kit.paths);
   const statusUse = weekUseOf(snapshots, now);
   const states = [...measured.bySession.values(), measured.outside];
   const input = { budget: config.budget, now, statusUse, states };

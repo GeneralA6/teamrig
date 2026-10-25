@@ -15,7 +15,7 @@ import { hireFlags } from '../../hiring/due.ts';
 import { activeHires, HiringLog } from '../../hiring/log.ts';
 import { scaleOutFlags } from '../../hiring/scale-out.ts';
 import { postLine } from '../../inbox/inbox.ts';
-import { readSnapshots, snapshotDirOf, weekUseOf } from '../../budget/snapshot.ts';
+import { weekUseOf } from '../../budget/snapshot.ts';
 import { teamDayStartAt } from '../../wake/day-start.ts';
 import { byFlagKind, checkTasks, peerWaitFlags } from '../../register/check.ts';
 import { currentWeekOf } from '../../register/week.ts';
@@ -37,6 +37,7 @@ import { approvalNotice, assignedNotice, endedNotice, formatTask, formatTaskDeta
 import { isPeerWait, sameWait, type PersonWait } from '../../register/waits.ts';
 import { lintSkills } from '../../skills/lint.ts';
 import { SKILL_FILE, SkillDir } from '../../skills/store.ts';
+import { snapshotsOnAccount } from '../account-teams.ts';
 import { readWideAllow } from '../allow-scope.ts';
 import { noPositionals, onePositional, UsageError, type ParsedArgs } from '../args.ts';
 import { addInputOf, callerOf, changesOf, listFilterOf, pinOf, setInputOf, taskIdOf, weekOf, type TypedTimes } from '../inputs.ts';
@@ -643,14 +644,14 @@ function checkRegister(snapshot: RegisterSnapshot, config: KitConfig, now: Date,
 
 /**
  * The week's fit to the weekly limit over every team read (one account's limit covers them all): what is left of
- * the own team's `budget.targetPct` after the newest status-line reading of the week, which costs one folder read
- * (no transcript is measured). `labelled` names each row's team, for a roll-up. `plan`, `check` and the meeting
- * agenda (meeting.ts) read it.
+ * the own team's `budget.targetPct` after the newest status-line reading of the week on the account, which costs a
+ * read of each account team's snapshot folder (`snapshotsOnAccount`; no transcript is measured). `labelled` names
+ * each row's team, for a roll-up. `plan`, `check` and the meeting agenda (meeting.ts) read it.
  */
 export async function weekFitOf(runtime: CliRuntime, { own, teams }: RollUp, week: string, labelled: boolean): Promise<WeekFit> {
   const { budget } = own.config;
   const now = runtime.clock.now();
-  const use = weekUseOf(await readSnapshots(runtime.files, snapshotDirOf(budget, own.paths)), now);
+  const use = weekUseOf(await snapshotsOnAccount(runtime, budget, own.paths), now);
   const rows = teams.flatMap((rolled) => {
     const tree = new TaskTree(rolled.snapshot.state.tasks, new Date(now), teamZone(rolled.config, runtime), week);
     return [...rolled.snapshot.state.tasks.values()].map((task) => (labelled ? { task, tree, team: rolled.team } : { task, tree }));
