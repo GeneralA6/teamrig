@@ -32,7 +32,7 @@ import { ACTIVE_STATUSES } from '../../register/model.ts';
 import type { RegisterSnapshot, RetiredTasks } from '../../register/snapshot.ts';
 import { readStopgapTags, stopgapFlags, stopgapTags } from '../../register/stopgap.ts';
 import { dueStartHolds, dueVerifyHold, heldStart, heldStartNotice, metStartNotice, startHolds, verifyQueue, type DueVerify } from '../../register/verify.ts';
-import { TaskTree } from '../../register/tree.ts';
+import { readAs, TaskTree, type TaskElsewhere } from '../../register/tree.ts';
 import { approvalNotice, assignedNotice, endedNotice, formatTask, formatTaskDetail, formatTaskTree, formatVerifyRow, personWaitNotice, selectTasks, type ListFilter } from '../../register/views.ts';
 import { isPeerWait, sameWait, type PersonWait } from '../../register/waits.ts';
 import { lintSkills } from '../../skills/lint.ts';
@@ -580,7 +580,8 @@ export async function list(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
 
 /**
  * `show <id> [--tree]`: every field of the task and its history; with `--tree`, its line, then what it needs and what
- * needs it, each node with its owner, status and due, then who moves next (views.ts formatTaskTree).
+ * needs it, each node with its owner, status and due, then who moves next (views.ts formatTaskTree). A task another
+ * register of the team tree holds shows read-only ({@link elsewhereLines}).
  */
 export async function show(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const id = taskIdOf(onePositional(args, 'id'));
@@ -588,7 +589,12 @@ export async function show(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   const { snapshot } = own;
   const task = snapshot.state.tasks.get(id);
   if (task === undefined) {
-    throw new RefusedError(`no task ${id}`);
+    const away = own.elsewhere.get(id);
+    if (away === undefined) {
+      throw new RefusedError(`no task ${id}`);
+    }
+    elsewhereLines(away, own, args.switches.has('tree'), runtime).forEach((line) => runtime.out.stdout(line));
+    return EXIT.ok;
   }
   const tree = taskTreeOf(own, runtime);
   if (args.switches.has('tree')) {
@@ -599,6 +605,21 @@ export async function show(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   const wPerPct = task.size === null ? undefined : await readWPerPct(runtime, own.paths, own.config, runtime.clock.now());
   runtime.out.stdout(formatTaskDetail(task, events, tree, (pct) => (wPerPct === undefined ? undefined : `about ${formatW(pct * wPerPct)} W`)));
   return EXIT.ok;
+}
+
+/**
+ * `show` of a task another register of the team tree holds (T1139): its row, named by its team and judged as that
+ * team's sessions judge it (register/tree.ts readAs), then a line saying only they change it; with `--tree`, what it
+ * needs and what needs it in that register. Its history stays there.
+ */
+function elsewhereLines({ team, task }: TaskElsewhere, own: RolledTeam, withTree: boolean, runtime: CliRuntime): string[] {
+  const read = readAs(team, own.team, own.snapshot.state.tasks.values(), own.elsewhere);
+  const tree = new TaskTree(read.tasks, new Date(runtime.clock.now()), teamZone(own.config, runtime), undefined, read.elsewhere);
+  return [
+    formatTask(task, team, tree),
+    `HELD by team ${team}: only a session of team ${team} changes it, and its history is in that team's register`,
+    ...(withTree ? formatTaskTree(task, tree, SHORT_TITLE_CHARS, team) : []),
+  ];
 }
 
 /**

@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { testTask } from '../testing/task.ts';
 import type { Task } from './fold.ts';
-import { decidingKey, needPath, needsOf, pathText, planOrder, TaskTree, type PlanPlace, type TaskElsewhere, type TasksElsewhere, type TreeTask } from './tree.ts';
+import { decidingKey, needPath, needsOf, pathText, planOrder, readAs, TaskTree, type PlanPlace, type TaskElsewhere, type TasksElsewhere, type TreeTask } from './tree.ts';
 import { isReady } from './waits.ts';
 import { TimeZone } from '../core/zone.ts';
 
@@ -375,6 +375,24 @@ describe("TaskTree over a team tree's other registers", () => {
     const alone = new TaskTree(new Map(tasks.map((task) => [task.id, task])), NOW, TimeZone.UTC);
     assert.equal(isReady({ kind: 'task', id: 'T20' }, alone.context), true);
     assert.equal(alone.nextMove('T1')?.kind, 'work');
+  });
+});
+
+describe('readAs', () => {
+  it("reads the tree as another team's register does: the holder's tasks, every other register's elsewhere", () => {
+    const own = [testTask({ id: 'T1', owner: 'front' }), testTask({ id: 'T5', owner: 'front' })];
+    const elsewhere: TasksElsewhere = new Map([
+      ['T2', { team: 'app', task: testTask({ id: 'T2', owner: 'lead' }) }],
+      ['T3', { team: 'ops', task: testTask({ id: 'T3', owner: 'run' }) }],
+      ['T5', { team: 'ops', task: testTask({ id: 'T5', owner: 'run' }) }],
+    ]);
+    const read = readAs('app', 'web', own, elsewhere);
+    assert.deepEqual([...read.tasks.keys()], ['T2']);
+    assert.deepEqual(
+      [...read.elsewhere].map(([id, away]) => `${away.team}/${id} ${away.task.owner}`),
+      ['web/T1 front', 'web/T5 front', 'ops/T3 run'],
+      "the reader's own task wins an id another register holds too",
+    );
   });
 });
 
