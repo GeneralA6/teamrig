@@ -189,6 +189,19 @@ export interface HiringLogRead {
   readonly skipped: number;
 }
 
+/** A hire log's text as its records, oldest first; damaged lines and lines from a newer teamrig are skipped. */
+export function readHiringLog(text: string): HiringLogRead {
+  const parse = parseJsonl(text);
+  const records: HiringRecord[] = [];
+  for (const { record, version } of parse.records) {
+    const parsed = READ_FORMATS.includes(version) ? parseHiringRecord(record) : undefined;
+    if (parsed !== undefined) {
+      records.push(parsed);
+    }
+  }
+  return { records, skipped: parse.unreadable + parse.records.length - records.length };
+}
+
 /** The team's append-only log of hires and retires, `<state>/hires.jsonl`, oldest first. */
 export class HiringLog {
   private readonly files: Files;
@@ -200,15 +213,7 @@ export class HiringLog {
   }
 
   async read(): Promise<HiringLogRead> {
-    const parse = parseJsonl((await this.files.read(this.path)) ?? '');
-    const records: HiringRecord[] = [];
-    for (const { record, version } of parse.records) {
-      const parsed = READ_FORMATS.includes(version) ? parseHiringRecord(record) : undefined;
-      if (parsed !== undefined) {
-        records.push(parsed);
-      }
-    }
-    return { records, skipped: parse.unreadable + parse.records.length - records.length };
+    return readHiringLog((await this.files.read(this.path)) ?? '');
   }
 
   /** One whole line in one append; refused beside records from a newer teamrig. */
