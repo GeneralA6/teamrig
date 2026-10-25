@@ -111,7 +111,7 @@ export async function runningVerdictOf(runtime: CliRuntime, kit: Kit, config: Ki
  * its reopen left for later.
  */
 export async function judgeSession(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, facts: IdleFacts, id: string, folderOf: SessionFolderOf, closes: readonly SessionLogRecord[]): Promise<JudgedStep> {
-  const { tasks, now, zone } = facts;
+  const { tasks, elsewhere, now, zone } = facts;
   if (facts.places.find((place) => place.id === id)?.state === 'running') {
     const folder = await folderOrRefusalOf(folderOf, id);
     if (folder.kind === 'refused') {
@@ -126,7 +126,7 @@ export async function judgeSession(runtime: CliRuntime, kit: Kit, config: KitCon
     return { kind: 'away', id };
   }
   const asks = facts.asks.get(id) ?? [];
-  const input: ReopenInput = { tasks, session: id, asks, closedAt: Date.parse(closed.at), ...awake, dayStartUtc: config.wake.dayStartUtc, now, zone };
+  const input: ReopenInput = { tasks, elsewhere, session: id, asks, closedAt: Date.parse(closed.at), ...awake, dayStartUtc: config.wake.dayStartUtc, now, zone };
   const asAwake = reopenVerdict(input);
   if (asAwake.kind === 'asked') {
     return wishOf(folderOf, id, asAwake, undefined);

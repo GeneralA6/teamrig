@@ -10,6 +10,7 @@ import { restartMayAct } from '../../refresh/restart.ts';
 import { RefreshStore } from '../../refresh/store.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
 import type { Task } from '../../register/fold.ts';
+import type { TasksElsewhere } from '../../register/tree.ts';
 import { askVerdictOf, handedPrompt, handedToast, WakeAsks, type WakeAsk } from '../../wake/asks.ts';
 import { dayStartPrompt, dayStartToast, decideDayStart, dueMoments, nextDayStartAt, startableTasks, type DayMoment, type DayStartVerdict } from '../../wake/day-start.ts';
 import { decideWake, effectivePriority, URGENT_PRIORITY, wakeCost, wakeRestOf, type WakeState } from '../../wake/decide.ts';
@@ -142,7 +143,14 @@ function earliest(...times: readonly (number | undefined)[]): number | null {
  * `wake.dayStartUtc` set. The budget and the tab's last turn are read only once a moment is due and the session has
  * work it can start; a moments wake takes in any batch still pending, since it names all that work.
  */
-async function momentsOf(runtime: CliRuntime, scope: Extract<Scope, { kind: 'found' }>, tasks: ReadonlyMap<string, Task>, state: WakeState, now: number): Promise<MomentsCheck> {
+async function momentsOf(
+  runtime: CliRuntime,
+  scope: Extract<Scope, { kind: 'found' }>,
+  tasks: ReadonlyMap<string, Task>,
+  elsewhere: TasksElsewhere,
+  state: WakeState,
+  now: number,
+): Promise<MomentsCheck> {
   const { config, kit, roster, id, tab } = scope;
   const { dayStartUtc } = config.wake;
   if (dayStartUtc === undefined) {
@@ -150,7 +158,7 @@ async function momentsOf(runtime: CliRuntime, scope: Extract<Scope, { kind: 'fou
   }
   const next = nextDayStartAt(dayStartUtc, now);
   const none: MomentsCheck = { verdict: { kind: 'none' }, state, lastTurnAt: undefined, next };
-  const startable = startableTasks(tasks, id, now, teamZone(config, runtime));
+  const startable = startableTasks(tasks, elsewhere, id, now, teamZone(config, runtime));
   const logged = activeBurst((await new BurstLog(runtime.files, kit.paths.bursts).read()).records, now, undefined);
   const inBurst = logged?.sessions.includes(id) === true ? logged : undefined;
   if (startable.length === 0 || dueMoments(now, dayStartUtc, inBurst, state.settled).length === 0) {
@@ -181,7 +189,8 @@ async function decide(runtime: CliRuntime, scope: Extract<Scope, { kind: 'found'
   const { files, clock, sleep, pid } = runtime;
   const lock = new FileLock(store.lockOf(id), { ...config.lock, waitMs: 0 }, { files, clock, sleep, pid });
   return lock.run(async (): Promise<CheckVerdict> => {
-    const { tasks } = (await teamRegister(runtime, kit.paths, config).snapshot()).state;
+    const { snapshot, elsewhere } = await teamRegister(runtime, kit.paths, config).snapshotWithElsewhere();
+    const { tasks } = snapshot.state;
     const now = clock.now();
     const batchMs = config.wake.batchSeconds * SECOND_MS;
     const asks = new WakeAsks(files, kit.paths.wakeAsks);
@@ -189,6 +198,7 @@ async function decide(runtime: CliRuntime, scope: Extract<Scope, { kind: 'found'
     const asked = askVerdictOf(stored, now, batchMs);
     const decision = decideWake({
       tasks,
+      elsewhere,
       session: id,
       tab,
       now,
@@ -205,7 +215,7 @@ async function decide(runtime: CliRuntime, scope: Extract<Scope, { kind: 'found'
       await store.write(id, decision.state);
       return { kind: 'handed', tasks: decision.verdict.kind === 'wake' ? decision.verdict.tasks : [], asks: asked.kind === 'wake' ? asked.asks : [] };
     }
-    const day = await momentsOf(runtime, scope, tasks, decision.state, now);
+    const day = await momentsOf(runtime, scope, tasks, elsewhere, decision.state, now);
     await store.write(id, day.state);
     if (day.verdict.kind === 'wake') {
       return { kind: 'moments', moments: day.verdict.moments, tasks: day.verdict.tasks, lastTurnAt: day.lastTurnAt };

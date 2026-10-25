@@ -9,7 +9,7 @@ import { ACTIVE_STATUSES } from './model.ts';
 import type { TaskNumbering } from './numbering.ts';
 import { isWritable, type RegisterSnapshot } from './snapshot.ts';
 import type { EventLog } from './store.ts';
-import { NO_TASKS_ELSEWHERE, type TasksElsewhere } from './tree.ts';
+import { needsElsewhere, NO_TASKS_ELSEWHERE, type TasksElsewhere } from './tree.ts';
 import type { WaitReason } from './waits.ts';
 
 /** Tells whether a skill exists, so `done --skill <name>` cannot cite one that was never written. */
@@ -99,6 +99,16 @@ export class Register {
   /** The tasks the team tree's other registers hold, which a read judges a wait on one of them against (T1139). */
   elsewhere(): Promise<TasksElsewhere> {
     return this.deps.elsewhere.read();
+  }
+
+  /**
+   * The working set, and the tasks the team tree's other registers hold only when an active task needs an id it lacks
+   * ({@link needsElsewhere}), so a read that runs often, such as the wake check, reads one log for a team whose tasks
+   * all need tasks of its own.
+   */
+  async snapshotWithElsewhere(): Promise<{ readonly snapshot: RegisterSnapshot; readonly elsewhere: TasksElsewhere }> {
+    const snapshot = await this.snapshot();
+    return { snapshot, elsewhere: needsElsewhere(snapshot.state.tasks) ? await this.elsewhere() : NO_TASKS_ELSEWHERE };
   }
 
   add(caller: string, input: AddInput): Promise<Verdict<WriteResult>> {

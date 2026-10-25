@@ -2,11 +2,11 @@ import { errorMessage } from '../../core/guards.ts';
 import type { TeamPaths } from '../../core/home.ts';
 import { SessionAskStore } from '../../core/session-asks.ts';
 import type { WriteResult } from '../../register/register.ts';
-import { JsonlEventLog } from '../../register/store.ts';
 import { wakeRestOf } from '../../wake/decide.ts';
 import { keepWorkingOf, keepWorkingReason } from '../../wake/keep-working.ts';
 import { teamZone } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
+import { teamRegister } from '../team-register.ts';
 import { budgetFactsOf, type BudgetScope } from './hook-budget.ts';
 
 /**
@@ -40,8 +40,8 @@ export async function keepWorkingReasonOf(runtime: CliRuntime, scope: BudgetScop
   await store.clear(id);
   const now = runtime.clock.now();
   const rest = wakeRestOf(await budgetFactsOf(runtime, scope, undefined), config.budget.quietHours, now);
-  const snapshot = await new JsonlEventLog(runtime.files, kit.paths.events).read();
+  const { snapshot, elsewhere } = await teamRegister(runtime, kit.paths, config).snapshotWithElsewhere();
   const zone = teamZone(config, runtime);
-  const work = keepWorkingOf({ tasks: snapshot.state.tasks, session: id, ask, now, zone, rest });
+  const work = keepWorkingOf({ tasks: snapshot.state.tasks, elsewhere, session: id, ask, now, zone, rest });
   return work === undefined ? undefined : keepWorkingReason(id, work, zone);
 }

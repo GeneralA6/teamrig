@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import type { JsonRecord } from '../core/guards.ts';
 import { TimeZone } from '../core/zone.ts';
 import type { Task } from '../register/fold.ts';
+import { NO_TASKS_ELSEWHERE, type TasksElsewhere } from '../register/tree.ts';
 import { DECISION_MARKER } from '../tabs/status.ts';
 import { testTask } from '../testing/task.ts';
 import { reopenVerdict, soonTimeWaitOf, tabActivityOf, TIME_WAIT_GUARD_MINUTES, type ReopenInput, type ReopenVerdict } from './idle.ts';
@@ -46,6 +47,7 @@ function timeWait(id: string, at: string, overrides: Partial<Task> = {}): Task {
 function reopen(overrides: Partial<ReopenInput>): ReopenVerdict {
   return reopenVerdict({
     tasks: new Map(),
+    elsewhere: NO_TASKS_ELSEWHERE,
     session: 'alpha',
     asks: [],
     closedAt: NOW - 2 * HOUR,
@@ -147,6 +149,15 @@ describe('reopenVerdict', () => {
     const verdict = reopen({ tasks });
     assert.equal(verdict.kind, 'handed');
     assert.deepEqual(idsOf(verdict), ['T3', 'T4', 'T7']);
+  });
+
+  it("reopens once another team of the tree finished a task it waits on, and stays closed while that task is open (T1139)", () => {
+    const tasks = tasksOf(testTask({ id: 'T4', priority: 1, status: 'waiting', waits: [{ kind: 'task', id: 'T9' }], ownerSeenAt: SEEN }));
+    const held = (status: 'in-progress' | 'done', statusAt: string): TasksElsewhere => new Map([['T9', { team: 'app', task: testTask({ id: 'T9', owner: 'web', status, statusAt }) }]]);
+    assert.deepEqual(reopen({ tasks, elsewhere: held('in-progress', '2030-01-08T09:00:00.000Z') }), { kind: 'stay' });
+    const verdict = reopen({ tasks, elsewhere: held('done', '2030-01-08T09:00:00.000Z') });
+    assert.equal(verdict.kind, 'handed');
+    assert.deepEqual(idsOf(verdict), ['T4']);
   });
 
   it('stays closed for work it saw before the close, or less urgent than maxPriority', () => {

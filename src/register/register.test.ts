@@ -16,7 +16,7 @@ import { RegisterPolicy, type Verdict } from './policy.ts';
 import { NOTHING_ELSEWHERE, Register, type ElsewhereReader, type SkillCatalog, type WriteResult } from './register.ts';
 import { readEvents } from './snapshot.ts';
 import { JsonlEventLog } from './store.ts';
-import type { TasksElsewhere } from './tree.ts';
+import { NO_TASKS_ELSEWHERE, type TasksElsewhere } from './tree.ts';
 
 const LOG = 'register/events.jsonl';
 const START = '2030-01-07T09:00:00.000Z';
@@ -409,6 +409,21 @@ describe('Register in a shared numbering (T1139)', () => {
 describe("Register beside its tree's other registers (T1139)", () => {
   const INPUT = { title: 'Ship it', description: 'what and why', owner: 'alpha', source: 'owner', priority: 1 } as const;
   const HELD: TasksElsewhere = new Map([['T7', { team: 'app', task: testTask({ id: 'T7', owner: 'lead', status: 'in-progress' }) }]]);
+
+  it('reads the tasks held elsewhere with the working set only once an active task needs an id the working set lacks', async () => {
+    const elsewhere = new FixedElsewhere(HELD);
+    const { register } = setup({}, new FloorNumbering(8), elsewhere);
+    written(await register.add('lead', INPUT));
+    const byWrites = elsewhere.reads;
+    const home = await register.snapshotWithElsewhere();
+    assert.equal(home.snapshot.state.tasks.has('T8'), true);
+    assert.equal(home.elsewhere, NO_TASKS_ELSEWHERE);
+    assert.equal(elsewhere.reads, byWrites, 'a working set that needs nothing elsewhere reads one log');
+    written(await register.setStatus('alpha', 'T8', { status: 'in-progress' }));
+    written(await register.setStatus('alpha', 'T8', { status: 'waiting', waits: [{ kind: 'task', id: 'T7' }], note: 'needs the app login' }));
+    const needing = await register.snapshotWithElsewhere();
+    assert.equal(needing.elsewhere, HELD);
+  });
 
   it('judges each write with the tasks held elsewhere, read once per write, and returns them with it', async () => {
     const elsewhere = new FixedElsewhere(HELD);

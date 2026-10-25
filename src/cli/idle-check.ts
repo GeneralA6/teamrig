@@ -10,6 +10,7 @@ import { workCutOffBy, type TabEnder } from '../open/end-tab.ts';
 import { isClaudeProcess, type ProcessInfo } from '../open/session-processes.ts';
 import { readRunningWork } from '../refresh/running.ts';
 import type { Task } from '../register/fold.ts';
+import type { TasksElsewhere } from '../register/tree.ts';
 import { soonTimeWaitOf, tabActivityOf, TIME_WAIT_GUARD_MINUTES, type TabActivity } from '../sessions/idle.ts';
 import { measureSessions, type SessionPlace } from '../sessions/measure.ts';
 import { SessionRecordStore, type SessionRecord } from '../sessions/record.ts';
@@ -48,6 +49,8 @@ export interface IdleFacts {
   readonly records: ReadonlyMap<string, SessionRecord | undefined>;
   readonly places: readonly SessionPlace[];
   readonly tasks: ReadonlyMap<string, Task>;
+  /** The tasks the team tree's other registers hold, which a wait or an `after` may name. */
+  readonly elsewhere: TasksElsewhere;
   /** Every session's urgent lines no wake check has taken yet (src/wake/asks.ts), oldest first. */
   readonly asks: ReadonlyMap<string, readonly WakeAsk[]>;
   readonly now: number;
@@ -77,13 +80,13 @@ export async function idleFactsOf(runtime: CliRuntime, kit: Kit, config: KitConf
   if (rows === undefined) {
     throw new RefusedError(`${KIT_NAME} could not list the host's processes, so it cannot tell which sessions run`);
   }
-  const tasks = (await teamRegister(runtime, kit.paths, config).snapshot()).state.tasks;
+  const { snapshot, elsewhere } = await teamRegister(runtime, kit.paths, config).snapshotWithElsewhere();
   const store = new WakeAsks(runtime.files, kit.paths.wakeAsks);
   const asks = new Map<string, readonly WakeAsk[]>();
   for (const id of roster.ids) {
     asks.set(id, validAsksOf(await store.read(id)));
   }
-  return { records, places: measureSessions(records, rows), tasks, asks, now: runtime.clock.now(), zone: teamZone(config, runtime) };
+  return { records, places: measureSessions(records, rows), tasks: snapshot.state.tasks, elsewhere, asks, now: runtime.clock.now(), zone: teamZone(config, runtime) };
 }
 
 /**
@@ -113,8 +116,8 @@ export async function idleVerdictOf(runtime: CliRuntime, config: KitConfig, rost
   if (record === undefined || place?.state !== 'running') {
     return keep(notRunning);
   }
-  const { now, zone, tasks } = facts;
-  const startable = startableTasks(tasks, id, now, zone, options.maxPriority);
+  const { now, zone, tasks, elsewhere } = facts;
+  const startable = startableTasks(tasks, elsewhere, id, now, zone, options.maxPriority);
   if (startable.length > 0) {
     return keep(`has work it can start (${startable.map((task) => task.id).join(', ')})`);
   }

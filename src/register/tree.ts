@@ -22,6 +22,14 @@ export function needsOf(task: Pick<Task, 'after' | 'waits'>): string[] {
 }
 
 /**
+ * True when an active task of `tasks` needs an id they lack ({@link needsOf}), which another register of the team tree
+ * may hold; a read with none has no need to read the tree's other registers.
+ */
+export function needsElsewhere(tasks: ReadonlyMap<string, Pick<Task, 'status' | 'after' | 'waits'>>): boolean {
+  return [...tasks.values()].some((task) => ACTIVE_STATUSES.includes(task.status) && needsOf(task).some((id) => !tasks.has(id)));
+}
+
+/**
  * The shortest chain from `from` to `to`, each task needing the next, over every task the map holds whatever its
  * status (a finished task may be reopened); `[from]` when both are one task, undefined when no chain leads there.
  * A write that makes `id` need `other` closes a loop when `needPath(tasks, other, id)` finds one.

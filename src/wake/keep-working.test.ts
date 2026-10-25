@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { TimeZone } from '../core/zone.ts';
 import type { Task } from '../register/fold.ts';
+import { NO_TASKS_ELSEWHERE, type TasksElsewhere } from '../register/tree.ts';
 import { testTask } from '../testing/task.ts';
 import type { WakeRest } from './decide.ts';
 import { keepWorkingOf, keepWorkingReason, type KeepWorking } from './keep-working.ts';
@@ -16,12 +17,12 @@ function tasksOf(...tasks: readonly Task[]): ReadonlyMap<string, Task> {
 
 const AWAKE: WakeRest = { quiet: false, held: false };
 
-function workOf(tasks: ReadonlyMap<string, Task>, rest = AWAKE): KeepWorking | undefined {
-  return keepWorkingOf({ tasks, session: 'alpha', ask: ASK, now: NOW, zone: TimeZone.UTC, rest });
+function workOf(tasks: ReadonlyMap<string, Task>, rest = AWAKE, elsewhere: TasksElsewhere = NO_TASKS_ELSEWHERE): KeepWorking | undefined {
+  return keepWorkingOf({ tasks, elsewhere, session: 'alpha', ask: ASK, now: NOW, zone: TimeZone.UTC, rest });
 }
 
-function idsOf(tasks: ReadonlyMap<string, Task>): readonly string[] | undefined {
-  return workOf(tasks)?.startable.map((task) => task.id);
+function idsOf(tasks: ReadonlyMap<string, Task>, elsewhere: TasksElsewhere = NO_TASKS_ELSEWHERE): readonly string[] | undefined {
+  return workOf(tasks, AWAKE, elsewhere)?.startable.map((task) => task.id);
 }
 
 describe('keepWorkingOf', () => {
@@ -35,6 +36,13 @@ describe('keepWorkingOf', () => {
     );
     assert.deepEqual(idsOf(tasks), ['T3', 'T4', 'T2']);
     assert.equal(workOf(tasks)?.waiting, WAITING);
+  });
+
+  it("leaves a task after another team's open task of the tree, and sends the session to it once that team finished it (T1139)", () => {
+    const tasks = tasksOf(WAITING, testTask({ id: 'T2', after: ['T9'] }), testTask({ id: 'T3', priority: 3 }));
+    const held = (status: 'in-progress' | 'done'): TasksElsewhere => new Map([['T9', { team: 'app', task: testTask({ id: 'T9', owner: 'web', status }) }]]);
+    assert.deepEqual(idsOf(tasks, held('in-progress')), ['T3']);
+    assert.deepEqual(idsOf(tasks, held('done')), ['T2', 'T3']);
   });
 
   it('sends nobody back in quiet hours or while the budget holds it', () => {
