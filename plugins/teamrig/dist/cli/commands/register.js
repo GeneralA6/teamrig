@@ -18,7 +18,7 @@ import { teamDayStartAt } from "../../wake/day-start.js";
 import { byFlagKind, checkTasks, peerWaitFlags } from "../../register/check.js";
 import { currentWeekOf } from "../../register/week.js";
 import { fitLines, leftOfWeek, overLimitFlag, weekFit } from "../../register/fit.js";
-import { problemHint } from "../../register/kind.js";
+import { bugHint } from "../../register/bug-hint.js";
 import { reviewGap, reviewGapText } from "../../register/review.js";
 import { renderPlan } from "../../register/plan.js";
 import { noProgressFlag } from "../../register/progress.js";
@@ -34,7 +34,7 @@ import { SKILL_FILE, SkillDir } from "../../skills/store.js";
 import { weekUseOnAccount } from "../account-teams.js";
 import { readWideAllow } from "../allow-scope.js";
 import { noPositionals, onePositional, requiredFlag, UsageError } from "../args.js";
-import { addInputOf, callerOf, changesOf, listFilterOf, pinOf, setInputOf, taskIdOf, taskRefOf, weekOf } from "../inputs.js";
+import { addInputOf, callerOf, changesOf, criticalOf, listFilterOf, pinOf, setInputOf, taskIdOf, taskRefOf, weekOf } from "../inputs.js";
 import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, projectFolder, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { checkLines, listLines, SHORT_TITLE_CHARS, waitingOnLines } from "../reports.js";
 import { idlePassWarnings } from "../idle-pass-check.js";
@@ -162,7 +162,7 @@ async function addToTeam(args, runtime, caller, asked) {
         throw new RefusedError(`team ${asked}: ${found.error}`);
     }
     const owner = found.id;
-    const input = { ...addInputOf(args.flags, caller, typedTimes(runtime, teamZone(config, runtime))), owner, source: from };
+    const input = { ...addInputOf(args.flags, caller, typedTimes(runtime, teamZone(config, runtime))), ...criticalOf(args.switches), owner, source: from };
     const verdict = await target.register.addFromTeam(from, input);
     const code = report(runtime, verdict, 'ADDED', target, asked);
     if (verdict.ok) {
@@ -184,25 +184,25 @@ export async function add(args, runtime) {
 /** A task of the caller's own team, owned by `--owner`, else by the caller. */
 async function addHere(args, runtime, caller) {
     const team = await openTeam(runtime, 'write');
-    const input = addInputOf(args.flags, caller, typedTimes(runtime, team.zone));
+    const input = { ...addInputOf(args.flags, caller, typedTimes(runtime, team.zone)), ...criticalOf(args.switches) };
     const by = sessionIdOf(team.roster, caller);
     const verdict = await team.register.add(by, addInputIds(team, input));
     const code = report(runtime, verdict, 'ADDED', team);
     if (verdict.ok) {
-        noteProblemHint(runtime, team, verdict.value.task);
+        noteBugHint(runtime, team, verdict.value.task);
     }
     await tellNewOwner(runtime, team, by, verdict);
     return code;
 }
-/** A NOTE asking to mark the task a problem when its text reads like one and no one marked it (register/kind.ts). */
-function noteProblemHint(runtime, team, task) {
-    const hint = problemHint(task, team.config.register.review.hintPattern);
+/** A NOTE asking to mark the task a bug when its text reads like one and no one gave it a type (register/bug-hint.ts). */
+function noteBugHint(runtime, team, task) {
+    const hint = bugHint(task, team.config.register.review.hintPattern);
     if (hint !== undefined) {
         runtime.out.stderr(`NOTE ${hint}`);
     }
 }
 /**
- * A WARN naming the review parts a problem task reached `status` without, while `register.review.mode` is `warn`
+ * A WARN naming the review parts a bug reached `status` without, while `register.review.mode` is `warn`
  * (refuse never writes it, and off asks nothing); judged on the task as written, so its review holds every part given.
  */
 function warnReviewGap(runtime, team, task, status) {
@@ -363,7 +363,7 @@ export async function set(args, runtime) {
     }
     const exit = report(runtime, verdict, 'SET', team);
     if (verdict.ok && input.status === 'in-progress' && verdict.value.before?.status !== 'in-progress') {
-        noteProblemHint(runtime, team, verdict.value.task);
+        noteBugHint(runtime, team, verdict.value.task);
     }
     await tellLeadersOfWaits(runtime, team, by, verdict);
     await tellAskerOfEnd(runtime, team, by, verdict);
@@ -487,7 +487,7 @@ export async function update(args, runtime) {
     const { id } = ref;
     const team = await openTeam(runtime, 'write');
     const by = sessionIdOf(team.roster, caller);
-    const changes = { ...changesOf(args.flags, typedTimes(runtime, team.zone)), ...pinOf(args.switches, by) };
+    const changes = { ...changesOf(args.flags, typedTimes(runtime, team.zone)), ...criticalOf(args.switches), ...pinOf(args.switches, by) };
     const verdict = await team.register.update(by, id, changeIds(team.roster, changes), args.flags.get('note'));
     const code = report(runtime, verdict, 'UPDATED', team);
     await tellNewOwner(runtime, team, by, verdict);
