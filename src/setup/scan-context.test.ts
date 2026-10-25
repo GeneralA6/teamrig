@@ -14,7 +14,7 @@ const AT: SessionContextLocations = {
   userHome: USER_HOME,
   project: PROJECT,
   skills: join(CLAUDE_DIR, 'skills'),
-  teamRules: TEAM_RULES,
+  teamRules: [TEAM_RULES],
 };
 
 describe('importsOf', () => {
@@ -110,8 +110,21 @@ describe('readSessionContext', () => {
   it('looks for no team rules before a team exists, and skips a missing file', async () => {
     const { files, probe } = world();
     await files.remove(join(PROJECT, 'CLAUDE.md'));
-    const context = await readSessionContext(files, probe, { ...AT, teamRules: undefined });
+    const context = await readSessionContext(files, probe, { ...AT, teamRules: [] });
     assert.equal(context.files.some((file) => file.kind === 'team-rules'), false);
     assert.equal(context.files.some((file) => file.path === join(PROJECT, 'CLAUDE.md')), false);
+  });
+
+  it('loads the rules of the teams above, root first, and skips a team above without one', async () => {
+    const rootRules = resolve('/', 'kit', 'teams', 'root', 'rules.md');
+    const { files, probe } = world({ [rootRules]: 'Root rules.\n' });
+    const context = await readSessionContext(files, probe, { ...AT, teamRules: [rootRules, resolve('/', 'kit', 'teams', 'mid', 'rules.md'), TEAM_RULES] });
+    assert.deepEqual(
+      context.files.filter((file) => file.kind === 'team-rules').map((file) => [file.path, file.text]),
+      [
+        [rootRules, 'Root rules.\n'],
+        [TEAM_RULES, 'Team rules.\n'],
+      ],
+    );
   });
 });

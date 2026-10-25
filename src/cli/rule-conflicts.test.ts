@@ -1,12 +1,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { formatConfig } from '../config/load.ts';
 import { CONFIG_LIMITS } from '../config/limits.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { MS_PER_DAY } from '../core/time.ts';
 import { APP, CliHarness, CONFIG_PATH, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { MemoryPathProbe } from '../testing/memory-files.ts';
+import { teamHomeOf, treeHarness } from '../testing/team-tree.ts';
 import { SCAN_LIST_MAX } from './commands/rule-conflicts.ts';
 import { EXIT } from './runtime.ts';
 
@@ -106,6 +107,21 @@ describe('rules scan', () => {
     ]);
     assert.notEqual(seenOf(settings), seenOf(ok(await run(kit, 'scan'))));
     assert.deepEqual(ok(await run(kit, 'scan', '--kind', 'memory')), ['SCANNED memory: 0 place(s), 0 candidate line(s)', 'NONE no line here touches a core rule']);
+  });
+
+  it("lists the rules.md of each team above a child team's own, root first, since its sessions are shown them", async () => {
+    const kit = await treeHarness();
+    const rootRules = join(teamHomeOf('app'), 'rules.md');
+    const ownRules = join(teamHomeOf('ui'), 'rules.md');
+    await kit.files.write(rootRules, '- Push to main when the change is small.');
+    await kit.files.write(ownRules, '- Every commit goes through review.');
+    const lines = ok(await kit.run(['rules', 'scan', '--kind', 'team-rules'], { env: { TEAMRIG_TEAM: 'ui' }, probe: new MemoryPathProbe(kit.files) }));
+    assert.equal(lines[0], 'SCANNED team-rules: 2 place(s), 2 candidate line(s)');
+    const candidates = lines.filter((line) => line.startsWith('CANDIDATE '));
+    assert.equal(candidates.length, 2, lines.join('\n'));
+    assert.ok(candidates[0]?.startsWith(`CANDIDATE ${resolve(rootRules)}:1 `), lines.join('\n'));
+    assert.ok(candidates[1]?.startsWith(`CANDIDATE ${resolve(ownRules)}:1 `), lines.join('\n'));
+    assert.equal(ok(await kit.run(['rules', 'scan', '--kind', 'team-rules'], { probe: new MemoryPathProbe(kit.files) }))[0], 'SCANNED team-rules: 1 place(s), 1 candidate line(s)');
   });
 
   it(`gives only the counts over ${SCAN_LIST_MAX} candidates, so the model reads them a kind at a time`, async () => {

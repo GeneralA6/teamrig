@@ -1,7 +1,7 @@
 import type { TeamRules } from '../rules/pack.ts';
 import type { Kit } from './kit.ts';
 import type { CliRuntime } from './runtime.ts';
-import type { KitTree } from './tree.ts';
+import { loadTree, type KitTree } from './tree.ts';
 
 /** A team rules file a session of `kit`'s team is shown at start: whose it is and where. */
 export type TeamRulesFile = Pick<TeamRules, 'ancestor' | 'path'>;
@@ -16,6 +16,11 @@ export function teamRulesFilesOf(kit: Kit, kitTree: KitTree): TeamRulesFile[] {
     return team === undefined ? [] : [{ ancestor, path: team.kit.paths.teamRules }];
   });
   return [...above, { ancestor: undefined, path: kit.paths.teamRules }];
+}
+
+/** The paths of `teamRulesFilesOf`, existing or not, for the scans that look for them. */
+export async function teamRulesPathsOf(runtime: CliRuntime, kit: Kit): Promise<string[]> {
+  return teamRulesFilesOf(kit, await loadTree(runtime)).map((file) => file.path);
 }
 
 /** The team rules files of `teamRulesFilesOf` that exist, read in its order. */

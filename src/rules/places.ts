@@ -34,8 +34,11 @@ export interface RulePlaceLocations {
   readonly project: string;
   /** The team's skills folder. */
   readonly skills: string;
-  /** The team's own rules file; none before a team exists (`setup scan`). */
-  readonly teamRules: string | undefined;
+  /**
+   * The team rules files a session is shown at start, the root team's first and its own team's last; none before a
+   * team exists (`setup scan`). A team above's line counts too: it overrides a core rule for this team's sessions.
+   */
+  readonly teamRules: readonly string[];
 }
 
 export interface FoundPlaces {
@@ -187,7 +190,7 @@ export async function findRulePlaces(files: Files, probe: PathProbe, at: RulePla
     ],
     skill: skillPaths,
     memory: await markdownBelow(files, probe, claudeMemoryDir(at.claudeDir, at.project)),
-    'team-rules': await existing(probe, at.teamRules === undefined ? [] : [at.teamRules]),
+    'team-rules': await existing(probe, at.teamRules),
     hook: await existing(probe, await hookScripts(files, settings, at)),
     settings,
   };
