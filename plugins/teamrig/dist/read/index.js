@@ -28,6 +28,9 @@ export { DEFAULT_REGISTER } from "../config/defaults.js";
 export { priorityName } from "../config/priorities.js";
 export { parseConfigText } from "../config/text.js";
 export { CONFIG_VERSION } from "../config/types.js";
+// A session's launch settings: the model and effort it starts on (its `launch` entry, the lead's defaults under it), so
+// a reader shows them as teamrig launches the session, in its words.
+export { describeLaunch, launchOf } from "../config/launch.js";
 // Session names: the config's roster with the rename log (`renames.jsonl`), so a reader finds a session
 // by its id, its name or a name it had before, as every teamrig command does; and the form people read a
 // session in, `[acme] lead`, as the tab titles show it.
