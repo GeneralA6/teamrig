@@ -1,7 +1,8 @@
 import { LeadTree } from '../../config/lead-tree.ts';
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
-import { formatAddress, splitAddress } from '../../core/address.ts';
+import type { TeamTree } from '../../config/tree.ts';
+import { formatAddress, splitAddress, type SessionAddress } from '../../core/address.ts';
 import { errorMessage } from '../../core/guards.ts';
 import { KIT_NAME, type TeamPaths } from '../../core/home.ts';
 import type { TimeZone } from '../../core/zone.ts';
@@ -154,6 +155,27 @@ function warnDamage(runtime: CliRuntime, snapshot: RegisterSnapshot, path: strin
   }
 }
 
+/** The caller of a write into another team's register: its address, its own team's config, the team tree and the written team's lead. */
+interface TreeCaller {
+  readonly from: SessionAddress;
+  readonly config: KitConfig;
+  readonly tree: TeamTree;
+  readonly targetLead: string;
+}
+
+/** The caller, a session of team `team`, as `<team>/<id>` and the team tree it writes across; refused when team `target` has no config here. */
+async function treeCallerOf(runtime: CliRuntime, team: string, caller: string, target: string): Promise<TreeCaller> {
+  const kit = await openKit(runtime, team);
+  const config = requireConfig(kit, runtime, 'read');
+  const from = { team, id: sessionIdOf(await rosterOf(runtime, kit, config), caller) };
+  const { tree } = await loadTree(runtime);
+  const targetLead = tree.leadOf(target);
+  if (targetLead === undefined) {
+    throw new RefusedError(`no team ${target} with a config in this kit home`);
+  }
+  return { from, config, tree, targetLead };
+}
+
 /**
  * `add --team <team>`: a session asks another team of its tree for work (T1141). The task lands in that team's
  * register only, as an event by the asker's `<team>/<id>`, which is also its source, owned by `--owner` (a session of
@@ -169,14 +191,8 @@ async function addToTeam(args: ParsedArgs, runtime: CliRuntime, caller: string, 
   if (args.flags.has('source')) {
     throw new UsageError("--team adds the task from you: it takes no --source, unless it names your own team");
   }
-  const kit = await openKit(runtime, team);
-  const config = requireConfig(kit, runtime, 'read');
-  const from = formatAddress({ team, id: sessionIdOf(await rosterOf(runtime, kit, config), caller) });
-  const { tree } = await loadTree(runtime);
-  const lead = tree.leadOf(asked);
-  if (lead === undefined) {
-    throw new RefusedError(`no team ${asked} with a config in this kit home`);
-  }
+  const { from: address, config, tree, targetLead: lead } = await treeCallerOf(runtime, team, caller, asked);
+  const from = formatAddress(address);
   if (!tree.sameTree(team, asked)) {
     throw new RefusedError(`team ${asked} is not in ${team}'s team tree, so ${from} may not add its tasks`);
   }
