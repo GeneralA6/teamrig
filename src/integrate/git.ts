@@ -76,6 +76,15 @@ function rebaseStopped(dir: string, onto: string, said: string): string {
   return `rebase onto ${onto} stopped (${why}); ${left}`;
 }
 
+/**
+ * A refusal when `name` starts with '-', which git would read as an option; undefined otherwise. `checkout` and `reset`
+ * cannot end their options with `--end-of-options` as the other steps do (git 2.39 reads it there as a pathspec or
+ * refuses it), so they take the name before a `--` and need this check: no branch or commit name starts with '-'.
+ */
+function refusedAsOption(name: string, what: string): GitOutcome | undefined {
+  return name.startsWith('-') ? { ok: false, reason: `${what} refused "${name}": a branch or commit name never starts with "-"` } : undefined;
+}
+
 /** The git CLI. */
 export const GIT_INTEGRATE: IntegrateGit = {
   checkoutOf(dir) {
@@ -133,7 +142,7 @@ export const GIT_INTEGRATE: IntegrateGit = {
     }
     return /checked out|refusing to fetch/i.test(done.reason) ? { kind: 'checkedOut' } : { kind: 'failed', reason: done.reason };
   },
-  checkout: (dir, branch) => outcome(runGit(dir, ['checkout', '--end-of-options', branch]), 'git checkout'),
+  checkout: (dir, branch) => refusedAsOption(branch, 'git checkout') ?? outcome(runGit(dir, ['checkout', branch, '--']), 'git checkout'),
   fastForward: (dir, to) => outcome(runGit(dir, ['merge', '--ff-only', '--end-of-options', to], LONG_TIMEOUT_MS), 'git merge --ff-only'),
-  resetTo: (dir, to) => outcome(runGit(dir, ['reset', '--keep', '--end-of-options', to], LONG_TIMEOUT_MS), 'git reset --keep'),
+  resetTo: (dir, to) => refusedAsOption(to, 'git reset --keep') ?? outcome(runGit(dir, ['reset', '--keep', to, '--'], LONG_TIMEOUT_MS), 'git reset --keep'),
 };
