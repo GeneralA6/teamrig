@@ -87,6 +87,8 @@ const EXPECTED = {
   'automode install': 'write',
   'automode uninstall': 'write',
   'permissions trim': 'write',
+  'setup backup': 'write',
+  'setup restore': 'write',
   'config validate': 'read',
   'config migrate': 'write',
   'commits check': 'read',

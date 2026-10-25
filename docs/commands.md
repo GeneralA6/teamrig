@@ -227,6 +227,12 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       that approve a whole tool or program or hold a credential (--all: every rule) from the team's
       Claude Code settings, its worktrees' too; it counts them by class, never printing a rule; without
       --yes it writes nothing
+  setup backup [--project <dir>]   copies your Claude Code setup byte for byte (CLAUDE.md files, settings,
+      rules, skills, agents, commands, output styles, the project's memory) with a manifest of each
+      file's sha256 into a new folder under your state folder; it counts files, never printing one
+  setup restore [<stamp>] [--yes] [--remove-new]   lists the backups, or previews putting one back:
+      changed and deleted files and files made since; --yes backs the setup up first, then writes and
+      prints the restore that undoes it; --remove-new also removes the files made since
   config validate | config migrate [--yes]   migrate shows an older config rewritten in this format and
       the first teamrig that reads it, as a tab on an older one refuses every write after; --yes writes it
   commits check --base <ref> [--tip <ref>]   commits in base..tip (default HEAD) over the size rule
