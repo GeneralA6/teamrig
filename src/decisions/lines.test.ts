@@ -23,7 +23,7 @@ function ownerWait(id: string, statusAt: string, overrides: Partial<Task> = {}):
 function viewOf(tasks: readonly Task[], config: DecisionsConfig = CHECKPOINTS): BatchView & { readonly tree: TaskTree } {
   const tree = new TaskTree(new Map(tasks.map((task) => [task.id, task])), new Date(NOW), TimeZone.UTC);
   const batch = decisionBatch({ registers: [{ team: undefined, tasks, tree, ownerMarker: 'owner', requireGate: true }], now: NOW, askedAt: ASKED_AT, config });
-  return { batch, tree, ownerMarker: 'owner', command: 'teamrig', lead: 'lead', zone: TimeZone.UTC };
+  return { batch, tree, ownerMarker: 'owner', command: 'teamrig', lead: 'lead', askedBy: undefined, zone: TimeZone.UTC };
 }
 
 describe('the decisions listing', () => {
@@ -46,6 +46,12 @@ describe('the decisions listing', () => {
       '  Ask owner these together, each card as it stands, each figure explained; then teamrig decisions asked --session lead records the batch asked.',
       '  Record each answer in the same turn: teamrig update <id> --note "owner decided: <decision>" --session lead.',
     ]);
+  });
+
+  it("names in a child team the lead at its tree's root, who asks the waits and records each answer (T1018)", () => {
+    const lines = batchLines({ ...viewOf([ownerWait('T1', '2030-01-08T09:00:00.000Z')]), askedBy: 'app/lead' });
+    assert.deepEqual(lines.slice(-1), ['  app/lead asks owner these in its batches and records each answer on its task as a note: "owner decided: <decision>".']);
+    assert.ok(!lines.some((line) => line.includes('decisions asked')), lines.join('\n'));
   });
 });
 
