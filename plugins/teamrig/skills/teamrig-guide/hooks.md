@@ -143,7 +143,8 @@ first line over 1,500 characters is cut, and a note names the command that print
 
 A tab started by hand, with no `$TEAMRIG_SESSION` and no `inbox read` yet, binds itself when its Claude Code title
 (`claude --name` or `/rename`) is a session's id or current name on this team and on no other team of the tree, in
-any case (`Web` binds `web`).
+any case (`Web` binds `web`), or is the `[<team>] <name>` form teamrig titles tabs with (`[shop] web` binds `web`;
+a title bracketing another team binds none of this team's sessions).
 The hook then knows it as `inbox read` would, marks nothing read, and says so once:
 
 ```text
@@ -626,9 +627,9 @@ At the end of every turn, the Stop hook measures your context from the transcrip
 `refresh now rather than at a task end`). `--ready` refuses a handover over `refresh.handoverMaxBytes` (20,000
 bytes): rewrite it whole and short, since your fresh start reads all of it.
 After `--ready`, the next turn's end tells the user `teamrig: shop-web finished T2 and wrote its handover; type
-/clear for a fresh start` and sets the tab title to `shop-web: type /clear`: the user clears once done with the
+/clear for a fresh start` and sets the tab title to `[shop] web: type /clear`: the user clears once done with the
 screen, which a `/clear` wipes. With `refresh.autoRestart: true` it says `teamrig starts it fresh once it has been
-idle 15 s (type anything to keep this context)` instead, the title reads `shop-web: restarting`, and a hidden
+idle 15 s (type anything to keep this context)` instead, the title reads `[shop] web: restarting`, and a hidden
 `teamrig restart` then waits until the tab has been idle
 `refresh.restartDelaySeconds` (15) with nothing running and its last turn ended, and the plugin's mod runs `/clear` in
 this tab. Where no mod claims it within 10 s, the restart ends this Claude Code and starts it again: in the same tab
@@ -938,8 +939,9 @@ each tab of the team shows a colored circle before its title for what its sessio
 
 After the circle comes the session's topic, the first of: the session's title (a `/rename` or Claude Code's
 own), the first prompt typed (read from a transcript short enough to read whole), the prompt just typed, the
-project folder's name, then `Claude Code`; at most 40 characters, longer ones cut with an ellipsis. When the
-refresh marks the tab (`refresh.tabTitle`), the circle goes before that mark (`shop-web: type /clear`) instead.
+project folder's name, then `Claude Code`; at most 40 characters, longer ones cut with an ellipsis. A topic that
+names one session of the team reads as its team and name, `[shop] web`. When the
+refresh marks the tab (`refresh.tabTitle`), the circle goes before that mark (`[shop] web: type /clear`) instead.
 At the session's end the title goes back to the terminal.
 
 The decision circle needs no model guess: `hook stop` reads the turn's last message (Claude Code's
