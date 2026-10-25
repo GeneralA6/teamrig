@@ -115,6 +115,11 @@ describe('todayLines', () => {
     );
   });
 
+  it('gives the day of a status line reading taken before today, so a stale one shows as stale', () => {
+    const stale: WeekReading = { ...WEEK, statusAt: Date.parse('2026-10-14T18:46:00Z') };
+    assert.match(todayLines({ ...REPORT, week: stale, zone: JERUSALEM })[0] ?? '', /^Week: 57\.0% used at 10-14 21:46 IDT \(status line\); /);
+  });
+
   it('says where the use counts from after a reset inside the week, and how that start was found', () => {
     const window = weekWindow(RESET, 1, Date.parse('2026-10-18T16:00:00Z'));
     const fallen: WeekReading = { ...WEEK, window, periodKind: 'reset' };
