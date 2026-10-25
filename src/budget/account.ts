@@ -51,7 +51,7 @@ export async function accountTeamsOf(files: Files, teams: ReadonlyMap<string, Ac
       continue;
     }
     const lifts = await liftsOf(files, kit.paths.lifts);
-    const work = await cachedWork(files, kit.paths.events, join(scope.usageDir, workCacheFileOf(team)), config.register.priorities);
+    const { weights: work } = await cachedWork(files, kit.paths.events, join(scope.usageDir, workCacheFileOf(team)), config.register.priorities);
     others.push(budgetSplitOf({ team, ids: roster.ids, sessions: config.budget.sessions, leads: config.leads, work, lifts, now: scope.now, usedPct: scope.usedPct }));
   }
   return others;

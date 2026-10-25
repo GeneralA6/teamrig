@@ -217,6 +217,17 @@ describe('the budget in the hooks', () => {
     assert.match(await leadInbox(kit), /alpha: app-alpha is past its daily budget/);
   });
 
+  it('lets a session past its budget go on with its p0 work, helpers too, and tells its leader so', async () => {
+    // Alpha's p0 task weighs 6, so its part is 0.6/2.6 of the team's 12.4%: 2.87%, which its 4.1% today is past.
+    const team = await world({ overAction: 'block' }, 40_000_000, 30);
+    const { kit, hook } = team;
+    ok(await kit.run(['add', '--title', 'Stop the outage', '--description', 'what and why', '--priority', 'p0', '--owner', 'alpha', '--session', 'lead']));
+    await meterLead(team);
+    assert.match(messageOf(await hook('stop', ALPHA_TAB)), /Its p0 work \(T\d+\) goes on past the stop, helpers too; the lead has an inbox line\./);
+    remindedOnly(await hook('helper-gate', ALPHA_TAB, AGENT));
+    assert.match(await leadInbox(kit), /alpha: app-alpha is past its daily budget: .* It goes on with its p0 work \(T\d+\) past the stop;/);
+  });
+
   it("counts a session's use today from the week's start on the day the week began", async () => {
     // This week began at 01:00 today: alpha's 50M W at 00:30 was the last week's, so its 10M + 1M W since are today's.
     const kit = new CliHarness(config());
