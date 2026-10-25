@@ -62,9 +62,11 @@ export { parseConfigText, type ConfigRead } from '../config/text.ts';
 export { CONFIG_VERSION, type KitConfig, type PriorityConfig } from '../config/types.ts';
 
 // Session names: the config's roster with the rename log (`renames.jsonl`), so a reader finds a session
-// by its id, its name or a name it had before, as every teamrig command does.
+// by its id, its name or a name it had before, as every teamrig command does; and the form people read a
+// session in, `[acme] lead`, as the tab titles show it.
 export { Roster, type SessionLookup } from '../config/roster.ts';
 export { readRenames, RENAME_VERSION, type Rename, type RenameLogRead } from '../names/rename.ts';
+export { bareName, sessionDisplay } from '../core/ids.ts';
 
 // The lead tree: `roles.lead` over the sub-leads the config's `leads` names, so a reader shows a session's leader
 // and a leader's group as teamrig's approvals and lists find them.
