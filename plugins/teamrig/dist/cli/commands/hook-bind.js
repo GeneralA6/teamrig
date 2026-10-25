@@ -6,7 +6,7 @@ import { firstHint, JsonlHintLog } from "../../hooks/hint-log.js";
 import { injectFor } from "../../inbox/inject.js";
 import { claudeProcessOf } from "../../refresh/restart.js";
 import { RefreshStore } from "../../refresh/store.js";
-import { dedupLogOf } from "../dedup-logs.js";
+import { hookLogOf } from "../hook-logs.js";
 import { loadTree } from "../tree.js";
 import { inboxDepsOf } from "./inbox.js";
 /** Reads the title once for everything a hook does with it; it never throws. */
@@ -71,7 +71,7 @@ export async function bindHintOnce(runtime, kit, binding, claudeSession) {
     if (hint === undefined || reason === undefined) {
         return undefined;
     }
-    const log = new JsonlHintLog(dedupLogOf(runtime, kit.paths, 'bind-hints'));
+    const log = new JsonlHintLog(hookLogOf(runtime, kit.paths, 'bind-hints'));
     return (await firstHint(log, claudeSession, reason, new Date(runtime.clock.now()))) ? hint : undefined;
 }
 /** The session's new inbox lines for this prompt (inbox/inject.ts) on the team's clock, recorded as shown; undefined when none wait. */

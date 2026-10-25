@@ -1,4 +1,5 @@
 import { recordField, stringField } from "../core/guards.js";
+import { redact } from "../exec/redact.js";
 import { ASK_REFUSED_NOTE } from "./permission.js";
 import { rerunForm } from "./rerun-forms.js";
 /**
@@ -57,9 +58,11 @@ export function promptAnswerOutput(tool, answer) {
 }
 /**
  * One line of the team's prompt-answers log, for the daily triage that turns each refused line into a fixed guard or a
- * new rerun form. It keeps the first `LOGGED_COMMAND_CHARS` characters of the command, never the rest of the input.
+ * new rerun form. The command is redacted (a URL's user part and the scanner's secret shapes), then cut to its first
+ * `LOGGED_COMMAND_CHARS` characters: redacting first leaves no secret whose start the cut would keep. The rest of the
+ * input is never kept.
  */
-export function promptAnswerRecord(facts) {
+export function promptAnswerRecord(facts, scanner) {
     const command = commandOf(facts.payload);
     return {
         v: 1,
@@ -68,7 +71,7 @@ export function promptAnswerRecord(facts) {
         claudeSession: facts.claudeSession,
         tool: facts.tool,
         answer: facts.answer.kind,
-        command: command === undefined ? null : command.slice(0, LOGGED_COMMAND_CHARS),
+        command: command === undefined ? null : redact(command, [], scanner).slice(0, LOGGED_COMMAND_CHARS),
     };
 }
 function commandOf(payload) {
