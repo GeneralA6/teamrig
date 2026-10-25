@@ -65,7 +65,7 @@ or take it to the lead.
 | `REFUSED only the owner (web) or the lead (lead) changes T2` | Ask the owner or a leader it names (a sub-lead's member: `a leader above web (backend or lead)`). |
 | `REFUSED backend hands T2 only to itself or a session it leads (importer, search); the lead (lead) moves work between groups` | Hand it within your group, or ask the lead to move it to another. |
 | `REFUSED nothing to change: give a field or a --note` | `update` needs a field flag, or a `--note` to add alone. |
-| `REFUSED priority p9 is not one of p1, p2, p3, p4, p5` | Use a priority the team defines. |
+| `REFUSED priority p9 is not one of p0, p1, p2, p3, p4, p5` | Use a priority the team defines, or p0 for urgent work. |
 | `REFUSED the title has 141 characters; the limit is 140` | Shorten the title; put the detail in `--description`. |
 | `REFUSED add needs --description "<what and why, in plain words>"` | Add `--description` saying what the task is and why, for a person who has not seen the ask. A team that does not want it sets `register.requireDescription` to `false`. |
 | `REFUSED the description has 2001 characters; the limit is 2000` | Shorten it; point at a file for the rest. |

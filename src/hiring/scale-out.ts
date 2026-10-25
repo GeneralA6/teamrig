@@ -1,5 +1,6 @@
 import type { Surplus } from '../budget/burst.ts';
 import { formatPct } from '../budget/format.ts';
+import { NOW_PRIORITY } from '../config/priorities.ts';
 import type { KitConfig } from '../config/types.ts';
 import { KIT_NAME } from '../core/home.ts';
 import { MS_PER_DAY, showStored } from '../core/time.ts';
@@ -76,9 +77,10 @@ interface AreaNeed {
   readonly stuck: number;
 }
 
+/** p0, and the config's `hiring.scaleOut.topPriorities` most urgent levels: p0 takes none of those places. */
 function topPriorityIds(config: ScaleOutInput['config']): ReadonlySet<number> {
   const ids = config.register.priorities.map((priority) => priority.id).sort((a, b) => a - b);
-  return new Set(ids.slice(0, config.hiring.scaleOut.topPriorities));
+  return new Set([NOW_PRIORITY.id, ...ids.slice(0, config.hiring.scaleOut.topPriorities)]);
 }
 
 /** The area's active tasks of the top priorities with an effective due, by that due, then in plan order. */

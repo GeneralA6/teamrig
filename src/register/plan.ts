@@ -1,5 +1,6 @@
 import { showStored } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
+import { priorityLevels } from '../config/priorities.ts';
 import type { RegisterConfig } from '../config/types.ts';
 import type { Task } from './fold.ts';
 import { priorityText } from './model.ts';
@@ -41,7 +42,7 @@ export function renderPlan(
     `${inWeek.length} tasks: ${done} done, ${dropped} dropped, ${inWeek.length - done - dropped} to do. From the task register at ${zone.minute(now)}.`,
     ...(fit.length === 0 ? [] : ['', ...fit.map((line) => `- ${line}`)]),
   ];
-  for (const priority of config.priorities) {
+  for (const priority of priorityLevels(config.priorities)) {
     const rows = inWeek.filter((task) => task.priority === priority.id);
     if (rows.length > 0) {
       lines.push('', `## ${priorityText(priority.id)}: ${priority.name}`, '', ...rows.map((task) => planLine(task, config.ownerSource, tree, team)));

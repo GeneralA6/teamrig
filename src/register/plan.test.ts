@@ -43,6 +43,13 @@ describe('renderPlan', () => {
     );
   });
 
+  it("heads teamrig's p0 tasks first, above the configured levels", () => {
+    const week = '2030-01-07';
+    const tasks = [testTask({ id: 'T1', week, priority: 1 }), testTask({ id: 'T2', week, priority: 0 })];
+    const plan = renderPlan(tasks, week, new Date('2030-01-07T08:00:00Z'), TimeZone.UTC, testConfig().register);
+    assert.match(plan, /\n## p0: urgent, right now\n\n- \[ \] \*\*T2\*\* [^\n]*\n\n## p1: /);
+  });
+
   it("reads a wait on another register's task there", () => {
     const week = '2030-01-07';
     const tasks = [testTask({ id: 'T1', week, status: 'waiting', waits: [{ kind: 'task', id: 'T20' }, { kind: 'task', id: 'T21' }] })];

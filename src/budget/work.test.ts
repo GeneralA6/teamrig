@@ -37,6 +37,11 @@ describe('workWeights', () => {
     assert.deepEqual([...weights], [['alpha', 8], ['charlie', 2]]);
   });
 
+  it("weighs teamrig's p0 above the configured top level, whatever levels the config lists", () => {
+    assert.equal(workWeights([{ owner: 'alpha', status: 'open', priority: 0 }], priorities).get('alpha'), 6);
+    assert.equal(workWeights([{ owner: 'alpha', status: 'open', priority: 0 }], [{ id: 2, name: 'b' }]).get('alpha'), 2);
+  });
+
   it('ranks the priorities by id whatever their order in the config', () => {
     const weights = workWeights([{ owner: 'alpha', status: 'open', priority: 2 }], [{ id: 3, name: 'c' }, { id: 1, name: 'a' }, { id: 2, name: 'b' }]);
     assert.equal(weights.get('alpha'), 2);

@@ -53,6 +53,14 @@ describe('RegisterPolicy.add', () => {
     });
   });
 
+  it("takes teamrig's p0 beside the configured levels, a team with its own levels included", () => {
+    const verdict = policy.add({ ...INPUT, priority: 0 }, EMPTY);
+    assert.equal(verdict.ok ? verdict.value.priority : undefined, 0);
+    const own = new RegisterPolicy(testConfig({ register: { priorities: [{ id: 2, name: 'soon' }] } }));
+    assert.equal(error(own.add({ ...INPUT, priority: 0 }, EMPTY)), 'allowed');
+    assert.equal(error(own.add({ ...INPUT, priority: 1 }, EMPTY)), 'priority p1 is not one of p0, p2');
+  });
+
   it('keeps the type and critical mark it is given', () => {
     const verdict = policy.add({ ...INPUT, type: 'bug', critical: true }, EMPTY);
     assert.deepEqual(verdict.ok ? [verdict.value.type, verdict.value.critical] : undefined, ['bug', true]);
@@ -71,7 +79,7 @@ describe('RegisterPolicy.add', () => {
       [{ title: 'x'.repeat(141) }, /141 characters; the limit is 140/],
       [{ owner: 'charlie' }, /owner charlie is not a session/],
       [{ source: 'The Owner' }, /neither a session id nor owner/],
-      [{ priority: 9 }, /^priority p9 is not one of p1, p2, p3, p4, p5$/],
+      [{ priority: 9 }, /^priority p9 is not one of p0, p1, p2, p3, p4, p5$/],
       [{ due: 'friday' }, /due friday is not/],
       [{ week: '2030-1-7' }, /week 2030-1-7 is not/],
       [{ ref: 'r'.repeat(301) }, /ref has 301 characters/],
@@ -888,7 +896,7 @@ describe('RegisterPolicy, the GitHub import', () => {
       value: { changes: { title: 'Fix the login' }, note: 'title changed on GitHub' },
     });
     assert.equal(error(policy.importUpdate(IMPORTED, { title: 'Fix login', priority: 1 }, 'again')), 'nothing to change');
-    assert.equal(error(policy.importUpdate(IMPORTED, { priority: 9 }, 'p9')), 'priority p9 is not one of p1, p2, p3, p4, p5');
+    assert.equal(error(policy.importUpdate(IMPORTED, { priority: 9 }, 'p9')), 'priority p9 is not one of p0, p1, p2, p3, p4, p5');
     assert.equal(error(policy.importUpdate(TASK, { title: 'Other' }, 'x')), 'T1 is not a GitHub task (source lead): the import changes only its own');
   });
 

@@ -81,6 +81,12 @@ describe('scaleOutFlags: when an area is behind', () => {
     assert.match(scaleOut(inherits).flags[0]?.detail ?? '', /^4 due by 01-10 00:00 UTC, .*; slice T2 T3,/, 'T5 counts; it unblocks T9, so it sorts first');
   });
 
+  it("counts teamrig's p0 tasks beside the top priorities, without taking one of their places", () => {
+    const one = config({ scaleOut: { topPriorities: 1 } });
+    const tasks = [...finished('alpha', 7, 100), ...dated('alpha', [1, 2]), ...dated('alpha', [3, 4], { priority: 0 })];
+    assert.match(scaleOut(tasks, { config: one }).flags[0]?.detail ?? '', /^4 due by 01-10 00:00 UTC, /);
+  });
+
   it('never measures the lead or a hired session', () => {
     const team = config({}, ['lead', 'alpha', 'helper']);
     const tasks = [...finished('lead', 7, 100), ...dated('lead', [1, 2, 3, 4]), ...finished('helper', 7, 200), ...dated('helper', [11, 12, 13, 14], { status: 'waiting' })];

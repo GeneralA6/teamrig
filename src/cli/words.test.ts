@@ -96,7 +96,7 @@ describe('runCli: every output speaks in words, with no pictograph markers (T242
       'dropped',
       'done',
       'priority=p2',
-      'REFUSED priority p9 is not one of p1, p2, p3, p4, p5',
+      'REFUSED priority p9 is not one of p0, p1, p2, p3, p4, p5',
       '--tier was renamed: use --priority',
       'is the old tier spelling: write p2',
       'INBOX bravo, new in',
