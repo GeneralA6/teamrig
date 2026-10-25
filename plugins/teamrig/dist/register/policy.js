@@ -61,15 +61,11 @@ export class RegisterPolicy {
         return this.create(input, state, (source) => this.teamSourceProblem(source), elsewhere);
     }
     /**
-     * A task the parent team's lead hands this team: its source is that lead's `<team>/<id>`, and it
-     * goes to this team's lead, who plans it in.
+     * A task a session of another team in the tree asks of this team (T1141): its source is the asker's `<team>/<id>`,
+     * and any session of this team may own it, as for a task of the team's own.
      */
-    addFromParent(input, state, elsewhere = NO_TASKS_ELSEWHERE) {
-        const { lead } = this.config.roles;
-        if (input.owner !== lead) {
-            return refuse(`a task from the parent team goes to this team's lead (${lead}), not ${input.owner}`);
-        }
-        return this.create(input, state, (source) => (ADDRESS_PATTERN.test(source) ? undefined : `source ${source} is not the parent team lead's <team>/<id>`), elsewhere);
+    addFromTeam(input, state, elsewhere = NO_TASKS_ELSEWHERE) {
+        return this.create(input, state, (source) => (ADDRESS_PATTERN.test(source) ? undefined : `source ${source} is not the asking session's <team>/<id>`), elsewhere);
     }
     create(input, state, sourceRule, elsewhere = NO_TASKS_ELSEWHERE) {
         const fields = {

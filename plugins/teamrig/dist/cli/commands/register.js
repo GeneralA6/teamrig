@@ -28,7 +28,7 @@ import { ACTIVE_STATUSES } from "../../register/model.js";
 import { readStopgapTags, stopgapFlags, stopgapTags } from "../../register/stopgap.js";
 import { dueStartHolds, dueVerifyHold, heldStart, heldStartNotice, metStartNotice, startHolds, verifyQueue } from "../../register/verify.js";
 import { readAs, TaskTree } from "../../register/tree.js";
-import { approvalNotice, assignedNotice, endedNotice, formatTask, formatTaskDetail, formatTaskTree, formatVerifyRow, personWaitNotice, selectTasks } from "../../register/views.js";
+import { approvalNotice, askedNotice, assignedNotice, endedNotice, formatTask, formatTaskDetail, formatTaskTree, formatVerifyRow, personWaitNotice, selectTasks } from "../../register/views.js";
 import { isPeerWait, sameWait } from "../../register/waits.js";
 import { lintSkills } from "../../skills/lint.js";
 import { SKILL_FILE, SkillDir } from "../../skills/store.js";
@@ -124,47 +124,59 @@ function warnDamage(runtime, snapshot, path) {
     }
 }
 /**
- * `add --team <child>`: a parent team's lead hands a child team a task. It lands in the child's
- * register as an event by `<parent team>/<lead id>`, which is also its source, owned by the child's
- * lead, who plans it in and gets an inbox line from that address. Only the child's parent lead may; the
- * parent's register is not touched.
+ * `add --team <team>`: a session asks another team of its tree for work (T1141). The task lands in that team's
+ * register only, as an event by the asker's `<team>/<id>`, which is also its source, owned by `--owner` (a session of
+ * that team, by name or id), else by that team's lead. The owner gets an inbox line from the asker's address, and the
+ * team's lead, when it is not the owner, a copy line, as it sets its team's work order and may reorder or reassign
+ * it. A team outside the caller's tree is refused; `--team` naming the caller's own team is a plain add.
  */
-async function addToChild(args, runtime, caller, child) {
-    if (args.flags.has('owner') || args.flags.has('source')) {
-        throw new UsageError("--team gives the task to that team's lead, from you: it takes no --owner or --source");
-    }
+async function addToTeam(args, runtime, caller, asked) {
     const { team } = await findTeam(runtime);
+    if (asked === team) {
+        return addHere(args, runtime, caller);
+    }
+    if (args.flags.has('source')) {
+        throw new UsageError("--team adds the task from you: it takes no --source, unless it names your own team");
+    }
     const kit = await openKit(runtime, team);
     const config = requireConfig(kit, runtime, 'read');
-    const from = { team, id: sessionIdOf(await rosterOf(runtime, kit, config), caller) };
+    const from = formatAddress({ team, id: sessionIdOf(await rosterOf(runtime, kit, config), caller) });
     const { tree } = await loadTree(runtime);
-    const childLead = tree.leadOf(child);
-    if (childLead === undefined) {
-        throw new RefusedError(`no team ${child} with a config in this kit home`);
+    const lead = tree.leadOf(asked);
+    if (lead === undefined) {
+        throw new RefusedError(`no team ${asked} with a config in this kit home`);
     }
-    const parentLead = tree.parentLeadOf(child);
-    if (parentLead === undefined) {
-        throw new RefusedError(`team ${child} has no parent team, so only its own sessions add its tasks`);
+    if (!tree.sameTree(team, asked)) {
+        throw new RefusedError(`team ${asked} is not in ${team}'s team tree, so ${from} may not add its tasks`);
     }
-    if (parentLead.team !== from.team || parentLead.id !== from.id) {
-        throw new RefusedError(`only ${child}'s parent lead (${formatAddress(parentLead)}) adds tasks to it; ${formatAddress(from)} may not`);
+    const target = await teamOf(runtime, await openKit(runtime, asked), 'write');
+    const named = args.flags.get('owner');
+    const found = named === undefined ? { ok: true, id: lead } : target.roster.lookup(named);
+    if (!found.ok) {
+        throw new RefusedError(`team ${asked}: ${found.error}`);
     }
-    const target = await teamOf(runtime, await openKit(runtime, child), 'write');
-    const input = { ...addInputOf(args.flags, caller, typedTimes(runtime, teamZone(config, runtime))), owner: childLead, source: formatAddress(from) };
-    const verdict = await target.register.addFromParent(formatAddress(from), input);
-    const code = report(runtime, verdict, 'ADDED', target, child);
+    const owner = found.id;
+    const input = { ...addInputOf(args.flags, caller, typedTimes(runtime, teamZone(config, runtime))), owner, source: from };
+    const verdict = await target.register.addFromTeam(from, input);
+    const code = report(runtime, verdict, 'ADDED', target, asked);
     if (verdict.ok) {
-        await tellAssigned(runtime, target, formatAddress(from), verdict.value.task, formatAddress({ team: child, id: childLead }));
+        const { task } = verdict.value;
+        await tellAssigned(runtime, target, from, task, formatAddress({ team: asked, id: task.owner }));
+        if (task.owner !== lead) {
+            const shown = formatAddress({ team: asked, id: lead });
+            await tellLine(runtime, target, from, lead, askedNotice(task, target.zone), `${shown} was not told of ${task.id}`, shown);
+        }
     }
     return code;
 }
 export async function add(args, runtime) {
     noPositionals(args);
     const caller = callerOf(args.flags, runtime.env);
-    const child = args.flags.get('team');
-    if (child !== undefined) {
-        return addToChild(args, runtime, caller, child);
-    }
+    const asked = args.flags.get('team');
+    return asked === undefined ? addHere(args, runtime, caller) : addToTeam(args, runtime, caller, asked);
+}
+/** A task of the caller's own team, owned by `--owner`, else by the caller. */
+async function addHere(args, runtime, caller) {
     const team = await openTeam(runtime, 'write');
     const input = addInputOf(args.flags, caller, typedTimes(runtime, team.zone));
     const by = sessionIdOf(team.roster, caller);
@@ -294,31 +306,31 @@ async function postNamed(runtime, paths, secrets, line, unsent, shown) {
     return problem === undefined;
 }
 /**
- * One inbox line to the parent team's lead when a task the parent handed this team (`add --team`, its source
- * `<parent>/<id>`) ends, done or dropped (T509): the parent's register holds no copy of it, so the line is how the
- * parent hears. It goes to whoever leads the parent now, under `<team>/<setter>`, scanned with both teams' secret
- * patterns; a task from any other team tells no one. A line that cannot be posted is named, never thrown.
+ * One inbox line to the session that asked this team for a task (`add --team`, its source `<team>/<id>`) when the
+ * task ends, done or dropped (T509, T1141): the asker's register holds no copy of it, so the line is how it hears. It
+ * goes to the asker, or to its team's lead when the asker has left that team, under `<team>/<setter>`, scanned with
+ * both teams' secret patterns; a task of the team's own tells no one. A line that cannot be posted is named, never thrown.
  */
-async function tellParentOfEnd(runtime, team, by, verdict) {
-    const link = team.config.team;
-    if (!verdict.ok || link?.parent === undefined) {
+async function tellAskerOfEnd(runtime, team, by, verdict) {
+    if (!verdict.ok) {
         return;
     }
+    const here = team.paths.team;
     const { task, before } = verdict.value;
-    if (ACTIVE_STATUSES.includes(task.status) || before?.status === task.status || splitAddress(task.source)?.team !== link.parent) {
+    const asker = splitAddress(task.source);
+    if (ACTIVE_STATUSES.includes(task.status) || before?.status === task.status || asker?.team === undefined || asker.team === here) {
         return;
     }
-    const text = endedNotice(task, link.id);
-    const { tree, teams } = await loadTree(runtime);
-    const lead = tree.parentLeadOf(link.id);
-    const parent = teams.get(link.parent);
-    if (lead === undefined || parent === undefined) {
-        runtime.out.stderr(`WARN ${link.parent}'s lead was not told that ${link.id}/${task.id} ended: team ${link.parent} has no config in this kit home`);
+    const ended = `${here}/${task.id} ended`;
+    const home = (await loadTree(runtime)).teams.get(asker.team);
+    if (home === undefined) {
+        runtime.out.stderr(`WARN ${task.source} was not told that ${ended}: team ${asker.team} has no config in this kit home`);
         return;
     }
-    const shown = formatAddress(lead);
-    const secrets = new SecretScanner([...team.config.register.secretPatterns, ...parent.config.register.secretPatterns]);
-    await postNamed(runtime, parent.kit.paths, secrets, { to: lead.id, from: formatAddress({ team: link.id, id: by }), text }, `${shown} was not told that ${link.id}/${task.id} ended`, shown);
+    const to = home.config.sessions.includes(asker.session) ? asker.session : home.config.roles.lead;
+    const shown = formatAddress({ team: asker.team, id: to });
+    const secrets = new SecretScanner([...team.config.register.secretPatterns, ...home.config.register.secretPatterns]);
+    await postNamed(runtime, home.kit.paths, secrets, { to, from: formatAddress({ team: here, id: by }), text: endedNotice(task, here) }, `${shown} was not told that ${ended}`, shown);
 }
 export async function set(args, runtime) {
     const id = taskIdOf(onePositional(args, 'id'));
@@ -344,7 +356,7 @@ export async function set(args, runtime) {
         noteProblemHint(runtime, team, verdict.value.task);
     }
     await tellLeadersOfWaits(runtime, team, by, verdict);
-    await tellParentOfEnd(runtime, team, by, verdict);
+    await tellAskerOfEnd(runtime, team, by, verdict);
     if (held !== undefined && warned && verdict.ok && met === null) {
         runtime.out.stderr(`WARN ${heldStart(held.task, held.holds)}; started anyway, as register.verifyGate is warn`);
     }
