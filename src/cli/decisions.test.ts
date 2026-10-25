@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { TEST_CARD, TEST_OWNER_CARD_FLAGS } from '../testing/card.ts';
 import { CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
+import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
+import { WakeAsks, type WakeAsk } from '../wake/asks.ts';
 import { EXIT } from './runtime.ts';
 
 /** Batch times at the lead's checkpoints; the clock is Tue 01-08 10:00, after the 19:03 one of the day before. */
@@ -17,6 +19,11 @@ async function ownerWait(kit: CliHarness, title: string, ...extra: readonly stri
   const set = await kit.run(['set', id, '--status', 'waiting', '--waits', 'decision:owner', '--note', 'two options', ...TEST_OWNER_CARD_FLAGS, '--session', 'alpha']);
   assert.equal(set.code, EXIT.ok, set.stderr.join('\n'));
   return set.stderr;
+}
+
+/** The wake asks posted for a session, oldest first, as its tab's wake check reads them. */
+async function asksOf(kit: CliHarness, id: string): Promise<readonly (WakeAsk | undefined)[]> {
+  return (await new WakeAsks(kit.files, join(TEAM_HOME, 'state', 'wake-asks')).read(id)).map((stored) => stored.ask);
 }
 
 async function decisionLines(kit: CliHarness, session: string): Promise<readonly string[]> {
@@ -54,29 +61,67 @@ describe('runCli: the owner decisions the lead asks in batches', () => {
     assert.deepEqual((await kit.run(['decisions', '--session', 'lead'])).stdout, ['DECISIONS 0 to ask owner, 0 asked and past due; the next batch Tue 01-08 13:03 UTC']);
   });
 
-  it('asks a wait due before the next batch at once, and tells the setter to message the lead too', async () => {
+  it("asks a wait due before the next batch at once: the lead's line also asks its wake, so no message is needed", async () => {
     const kit = new CliHarness(BATCHED);
+    const atOnce = `${TEST_CARD.question} | AT ONCE, due Tue 01-08 12:00 UTC before the next batch`;
+    assert.deepEqual(await ownerWait(kit, 'Pick the pricing tier', '--due', '2030-01-08 12:00'), [
+      `${WAIT_LINE} | AT ONCE, due Tue 01-08 12:00 UTC before the next batch`,
+      "NOTE T1 is due before the owner's next batch: its line wakes app-lead, so no message is needed",
+    ]);
+    assert.deepEqual(await asksOf(kit, 'lead'), [{ from: 'alpha', text: `T1 waits on the owner's decision: ${atOnce}`, at: Date.parse('2030-01-08T10:00:00Z') }]);
+    assert.deepEqual(await decisionLines(kit, 'lead'), ['DECISIONS batch due (T1 is due Tue 01-08 12:00 UTC, before the next batch): 1 to ask, 0 past due; teamrig decisions --session lead']);
+  });
+
+  it("gives the setter the wake line when the lead's wake cannot be asked", async () => {
+    const kit = new CliHarness(BATCHED);
+    const ask = join(TEAM_HOME, 'state', 'wake-asks', 'lead', `${Date.parse('2030-01-08T10:00:00Z')}-0.json`);
+    const files = new FaultyFiles(kit.files).fail('createExclusive', ask, systemError('EACCES', 'EACCES: permission denied'));
+    await kit.run(['add', '--title', 'Pick the pricing tier', '--description', 'what and why', '--priority', 'p2', '--due', '2030-01-08 12:00', '--session', 'alpha']);
+    const set = await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'decision:owner', '--note', 'two options', ...TEST_OWNER_CARD_FLAGS, '--session', 'alpha'], { files });
+    assert.deepEqual([set.code, set.stderr[1]], [
+      EXIT.ok,
+      `WARN T1 is due before the owner's next batch, and app-lead's wake could not be asked (EACCES: permission denied): teamrig inbox add --to lead --text "..." --wake now`,
+    ]);
+  });
+
+  it('asks no wake for a wait the next batch holds', async () => {
+    const kit = new CliHarness(BATCHED);
+    await ownerWait(kit, 'Pick the pricing tier');
+    assert.deepEqual(await asksOf(kit, 'lead'), []);
+  });
+
+  it('tells the setter to message the lead of a wait due at once when wakes are off, as a line then wakes no one', async () => {
+    const kit = new CliHarness({ ...BATCHED, wake: { enabled: false } });
     assert.deepEqual(await ownerWait(kit, 'Pick the pricing tier', '--due', '2030-01-08 12:00'), [
       `${WAIT_LINE} | AT ONCE, due Tue 01-08 12:00 UTC before the next batch`,
       "NOTE T1 is due before the owner's next batch: message app-lead too, as an inbox line wakes no one",
     ]);
-    assert.deepEqual(await decisionLines(kit, 'lead'), ['DECISIONS batch due (T1 is due Tue 01-08 12:00 UTC, before the next batch): 1 to ask, 0 past due; teamrig decisions --session lead']);
+    assert.deepEqual(await asksOf(kit, 'lead'), []);
   });
 
-  it("tells a sub-lead's member's own leader of a wait due at once, and the setter to message the lead", async () => {
+  it("tells a sub-lead's member's own leader of a wait due at once, and the setter the line that wakes the lead", async () => {
     const kit = new CliHarness({ ...BATCHED, leads: { bravo: ['alpha'] } });
     assert.deepEqual(await ownerWait(kit, 'Pick the pricing tier', '--due', '2030-01-08 12:00'), [
       `NOTE bravo has an inbox line: T1 waits on the owner's decision: ${TEST_CARD.question} | AT ONCE, due Tue 01-08 12:00 UTC before the next batch`,
-      "NOTE T1 is due before the owner's next batch: message app-lead, who asks the owner: the inbox line went to bravo, and a line wakes no one",
+      `NOTE T1 is due before the owner's next batch: wake app-lead, who asks the owner (the inbox line went to bravo): teamrig inbox add --to lead --text "..." --wake now`,
     ]);
+    assert.deepEqual([await asksOf(kit, 'lead'), await asksOf(kit, 'bravo')], [[], []]);
     assert.deepEqual(await decisionLines(kit, 'lead'), ['DECISIONS batch due (T1 is due Tue 01-08 12:00 UTC, before the next batch): 1 to ask, 0 past due; teamrig decisions --session lead']);
+  });
+
+  it('names the message to the lead, past a sub-lead, when wakes are off', async () => {
+    const kit = new CliHarness({ ...BATCHED, leads: { bravo: ['alpha'] }, wake: { enabled: false } });
+    assert.equal(
+      (await ownerWait(kit, 'Pick the pricing tier', '--due', '2030-01-08 12:00'))[1],
+      "NOTE T1 is due before the owner's next batch: message app-lead, who asks the owner: the inbox line went to bravo, and a line wakes no one",
+    );
   });
 
   it("reads and prints every time on the team's clock", async () => {
     const kit = new CliHarness({ ...BATCHED, timeZone: 'Asia/Jerusalem' });
     assert.deepEqual(await ownerWait(kit, 'Pick the pricing tier', '--due', '2030-01-08 14:00'), [
       `${WAIT_LINE} | AT ONCE, due Tue 01-08 14:00 IST before the next batch`,
-      "NOTE T1 is due before the owner's next batch: message app-lead too, as an inbox line wakes no one",
+      "NOTE T1 is due before the owner's next batch: its line wakes app-lead, so no message is needed",
     ]);
     assert.deepEqual(await decisionLines(kit, 'lead'), ['DECISIONS batch due (T1 is due Tue 01-08 14:00 IST, before the next batch): 1 to ask, 0 past due; teamrig decisions --session lead']);
     assert.deepEqual((await kit.run(['decisions', 'asked', '--session', 'lead'])).stdout, [
