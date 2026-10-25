@@ -25,14 +25,12 @@ import { resolveProgram } from '../../exec/binding.ts';
 import { parseDraft, type CodeBinding, type ExecRequest } from '../../exec/request.ts';
 import { decideReview, RANDOM_NONCES, UnsignedReviews, type ReviewKit } from '../../exec/review.ts';
 import { baseEnvironment, environmentCredentials, Executor, type ExecResult } from '../../exec/runner.ts';
-import { postLine } from '../../inbox/inbox.ts';
 import { noPositionals, onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
-import { holderTeamOf, type OpenTeam } from '../holder-team.ts';
+import { postToHolder, sessionNameOn, type OpenTeam } from '../holder-team.ts';
 import { callerOf } from '../inputs.ts';
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, type Access, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
-import { inboxDepsOf } from './inbox.ts';
 
 /** What every exec command works on: the team's kit and config, its exec audit log, and the exec PATH. */
 interface ExecTeam {
@@ -238,17 +236,9 @@ async function tellReviewer(runtime: CliRuntime, team: ExecTeam, stored: ExecReq
   const own = team.kit.paths.team;
   const reviewer = firstReviewerOf(team.config, own, stored.requester);
   const crossing = reviewer.team !== own;
-  const label = crossing ? formatAddress(reviewer) : reviewer.id;
+  const label = sessionNameOn(own, reviewer.team, reviewer.id);
   const text = `${stored.id} asks to run a ${stored.kind} on ${stored.target} for ${stored.task}: review it (teamrig exec status ${stored.id}${crossing ? ` --team ${own}` : ''})`;
-  const found = await holderTeamOf(runtime, team, reviewer);
-  const problem = found.ok
-    ? await postLine(inboxDepsOf(runtime, found.holder.kit.paths).inboxes, new SecretScanner(found.holder.config.register.secretPatterns), {
-        to: reviewer.id,
-        from: found.holder.sender(stored.requester),
-        text,
-        now: new Date(runtime.clock.now()),
-      })
-    : found.problem;
+  const problem = await postToHolder(runtime, team, reviewer, { from: stored.requester, text });
   runtime.out.stderr(problem === undefined ? `NOTE ${label} has an inbox line: ${text}` : `WARN ${stored.id} is logged, but ${label} was not told: ${problem}`);
 }
 
