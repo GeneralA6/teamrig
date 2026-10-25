@@ -551,7 +551,7 @@ teamrig: app-bravo works under app-alpha: route such work via app-alpha next tim
 
 A message that starts with CRITICAL, an urgent incident, gets no line, nor does one from the receiver's direct leader,
 or one up or across the tree. `teamrig inbox add` prints the same line, by ids, for each session it names past a
-sub-lead, never for a group (`all`, `leads`, `group:<leader>`). Outside a team with a config it says nothing.
+sub-lead, never for a group (`all`, `leads`, `group:<leader>`, `team:<team>`, `tree:leads`). Outside a team with a config it says nothing.
 
 ## End of a turn or a helper: a dropped skill edit
 

@@ -686,11 +686,13 @@ Flags:
   - `<team>/<id>`: any session of another team of your tree, members and sibling teams included; a team of a
     separate tree is out of reach. It always names one session, so a session called `all` is `<team>/all`.
   - `all`: every session of your team; `leads`: its lead and its sub-leads; `group:<leader>`: that lead or sub-lead
-    and every session under it, at any depth. A group leaves you out.
+    and every session under it, at any depth.
+  - `team:<team>`: every session of a team of your tree; `tree:leads`: every team's lead in your tree, the root's
+    first, so the root lead sends one notice down the tree instead of a relay per child lead. A group leaves you out.
 - `--text "<one line>"`: the note: one non-empty line, no secrets.
 
-Every receiver gets the same line, stamped with the same minute, or none does: an unknown session, one out of
-reach, `group:` on a session that leads no one, a group that holds only you, or a line any receiving team's secret
+Every receiver gets the same line, stamped with the same minute, or none does: an unknown session or team, one out
+of reach, `group:` on a session that leads no one, a group that holds only you, or a line any receiving team's secret
 patterns refuse is `REFUSED` (exit 2) and posts nothing.
 
 Example, on a team whose one sub-lead is `web`:
