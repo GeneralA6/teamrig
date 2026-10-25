@@ -197,29 +197,32 @@ describe('hooklessNews and checkedState', () => {
 });
 
 describe('hooklessReader and hooklessLine', () => {
-  it("tells the lead, or the coordinator's owner of the lead's own tab", () => {
-    assert.equal(hooklessReader(TAB, 'lead', 'po'), 'lead');
+  it("tells the lead, or the coordinator's owner of the lead's own tab, one on a team above too (T1143)", () => {
+    const roles = { lead: 'lead', coordinatorOwner: 'po' };
+    assert.deepEqual(hooklessReader(TAB, roles, 'app'), { team: 'app', id: 'lead' });
     const lead: HooklessTab = { ...TAB, session: 'lead' };
-    assert.equal(hooklessReader(lead, 'lead', 'po'), 'po');
-    assert.equal(hooklessReader(lead, 'lead', undefined), 'lead');
+    assert.deepEqual(hooklessReader(lead, roles, 'app'), { team: 'app', id: 'po' });
+    assert.deepEqual(hooklessReader(lead, { lead: 'lead' }, 'app'), { team: 'app', id: 'lead' });
+    assert.deepEqual(hooklessReader(lead, { lead: 'lead', coordinatorOwner: 'root/po' }, 'app'), { team: 'root', id: 'po' });
   });
 
   it('names the session, its Claude session, the gap, both times and a restart in its folder, never a reload', () => {
     assert.equal(
-      hooklessLine(TAB, TimeZone.UTC, NOW),
+      hooklessLine(TAB, 'alpha', TimeZone.UTC, NOW),
       'HOOKLESS alpha: its tab (Claude session 0123abcd) worked 59 min past its last teamrig hook (hook 11:00 UTC, last reply 11:59 UTC), ' +
         `so it gets no inbox, guards or tab status: /exit that tab and run claude --resume ${ALPHA} in /work/app`,
     );
+    assert.match(hooklessLine(TAB, 'app/alpha', TimeZone.UTC, NOW), /^HOOKLESS app\/alpha: its tab /, "a team above's reader reads the session's address");
   });
 
   it("dates a time off the line's day on the zone's calendar, so days do not read as hours (T1069)", () => {
     const daysAgo = { ...TAB, hookAt: NOW - 3 * 24 * 60 * MS_PER_MINUTE - 23 * MS_PER_MINUTE };
-    assert.match(hooklessLine(daysAgo, TimeZone.UTC, NOW), /worked 4342 min past its last teamrig hook \(hook 01-05 11:37 UTC, last reply 11:59 UTC\)/);
+    assert.match(hooklessLine(daysAgo, 'alpha', TimeZone.UTC, NOW), /worked 4342 min past its last teamrig hook \(hook 01-05 11:37 UTC, last reply 11:59 UTC\)/);
     const zone = TimeZone.of('Asia/Jerusalem');
     assert.ok(zone !== undefined);
     const pastMidnight = NOW + 630 * MS_PER_MINUTE;
     assert.match(
-      hooklessLine({ ...TAB, turnAt: pastMidnight - 10 * MS_PER_MINUTE }, zone, pastMidnight),
+      hooklessLine({ ...TAB, turnAt: pastMidnight - 10 * MS_PER_MINUTE }, 'alpha', zone, pastMidnight),
       /\(hook 01-08 13:00 IST, last reply 00:20 IST\)/,
       "the zone's midnight, not UTC's, starts the line's day",
     );

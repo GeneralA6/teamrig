@@ -57,13 +57,14 @@ export function hooklessReopensOf(records: readonly SessionLogRecord[], starts: 
 
 /**
  * The line naming a hookless reopen, written at `now`: a tab that resumed its Claude Code session resumes it again
- * in the same terminal once the plugins settled, and one that opened fresh lost nothing, so it opens again.
+ * in the same terminal once the plugins settled, and one that opened fresh lost nothing, so it opens again. It names
+ * the session as `session`, as the reader's team writes it (`app/lead` on a team above), which `open` takes there too.
  */
-export function hooklessReopenLine(reopen: HooklessReopen, roster: Roster, zone: TimeZone, now: number): string {
+export function hooklessReopenLine(reopen: HooklessReopen, session: string, roster: Roster, zone: TimeZone, now: number): string {
   const minutes = Math.floor((now - reopen.at) / MS_PER_MINUTE);
-  const restart = reopen.resumed === undefined ? `run ${KIT_NAME} open ${reopen.id}` : `run claude --resume ${reopen.resumed} in its terminal`;
+  const restart = reopen.resumed === undefined ? `run ${KIT_NAME} open ${session}` : `run claude --resume ${reopen.resumed} in its terminal`;
   return (
-    `HOOKLESS ${roster.nameOf(reopen.id) ?? reopen.id} (session ${reopen.id}): reopened ${zone.shortMinute(new Date(reopen.at))}, and no teamrig hook ` +
+    `HOOKLESS ${roster.nameOf(reopen.id) ?? session} (session ${session}): reopened ${zone.shortMinute(new Date(reopen.at))}, and no teamrig hook ` +
     `has started in its tab in the ${minutes} min since, so it gets no inbox, guards or tab status: /exit that tab and ${restart}`
   );
 }

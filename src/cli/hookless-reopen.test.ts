@@ -59,9 +59,17 @@ describe('hooklessReopenLine', () => {
   it('asks a resumed tab to resume again in its terminal, and a fresh one to open again', () => {
     const now = REOPEN + 7 * 60_000 + 59_000;
     assert.equal(
-      hooklessReopenLine({ id: 'alpha', at: REOPEN, resumed: 'c-alpha' }, ROSTER, TimeZone.UTC, now),
+      hooklessReopenLine({ id: 'alpha', at: REOPEN, resumed: 'c-alpha' }, 'alpha', ROSTER, TimeZone.UTC, now),
       'HOOKLESS api (session alpha): reopened 01-08 10:00 UTC, and no teamrig hook has started in its tab in the 7 min since, so it gets no inbox, guards or tab status: /exit that tab and run claude --resume c-alpha in its terminal',
     );
-    assert.match(hooklessReopenLine({ id: 'bravo', at: REOPEN, resumed: undefined }, ROSTER, TimeZone.UTC, now), /^HOOKLESS app-bravo \(session bravo\): .*: \/exit that tab and run teamrig open bravo$/);
+    assert.match(hooklessReopenLine({ id: 'bravo', at: REOPEN, resumed: undefined }, 'bravo', ROSTER, TimeZone.UTC, now), /^HOOKLESS app-bravo \(session bravo\): .*: \/exit that tab and run teamrig open bravo$/);
+  });
+
+  it("names the session by its address for a reader on a team above, which open takes there too (T1143)", () => {
+    const now = REOPEN + 6 * 60_000;
+    assert.match(
+      hooklessReopenLine({ id: 'lead', at: REOPEN, resumed: undefined }, 'app/lead', ROSTER, TimeZone.UTC, now),
+      /^HOOKLESS app-lead \(session app\/lead\): .*: \/exit that tab and run teamrig open app\/lead$/,
+    );
   });
 });
