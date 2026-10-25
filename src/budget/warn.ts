@@ -44,6 +44,8 @@ export interface BudgetFacts extends LiftNames {
   readonly teamDay: TeamDay;
   /** The session is the team's lead: it lifts budgets, so its own helpers never ask and it gets no inbox line. */
   readonly isLead: boolean;
+  /** Its open and in-progress p0 task ids: urgent work that goes on past the daily stop, helpers too. */
+  readonly urgent: readonly string[];
   /** Who gets the session's inbox line when it escalates: its own leader; undefined for the lead, which gets none. */
   readonly leader: BudgetLeader | undefined;
   /** The team's zone, which the lines print their times in. */
@@ -246,7 +248,7 @@ function escalatedText(facts: BudgetFacts, budget: WarnBudget): string {
   if (facts.isLead || budget.overAction === 'warn') {
     return '';
   }
-  const helpers = helperClause(budget.overAction);
+  const helpers = facts.urgent.length === 0 ? helperClause(budget.overAction) : `its p0 work (${facts.urgent.join(', ')}) goes on past the stop, helpers too`;
   const told = toldText(facts.leader);
   return helpers === undefined ? `${capitalized(told)}.` : `${capitalized(helpers)}; ${told}.`;
 }
@@ -305,7 +307,7 @@ function leadLineOf(facts: BudgetFacts, standing: Standing): string {
   return (
     `${facts.name} is past its daily budget: ${formatPct(facts.usedTodayPct)} of the week today against ${formatPct(facts.budgetPct)}, ` +
     `and ${heldClause(facts, standing)}. ` +
-    `It finishes the step in hand; lift it only with a stop %: ${command}.`
+    `${facts.urgent.length === 0 ? 'It finishes the step in hand' : `It goes on with its p0 work (${facts.urgent.join(', ')}) past the stop`}; lift it only with a stop %: ${command}.`
   );
 }
 
@@ -369,8 +371,9 @@ function escalationLine(facts: BudgetFacts, standing: Standing, state: WarnState
   }
   const team = standing.ahead ? ', and it is ahead of its pace line' : '';
   const lift = facts.isLead ? 'As the lead, lift it only with a stop %.' : `${capitalized(leaderText(facts.leader, 'your'))} can lift it.`;
+  const urgent = facts.urgent.length === 0 ? '' : `, except your p0 work (${facts.urgent.join(', ')}): it goes on past the daily stop`;
   return (
-    `${BUDGET_COMMAND}: you are past today's budget and the team has no room left today${team}. Finish the step in hand and start no new work items or helpers. ` +
+    `${BUDGET_COMMAND}: you are past today's budget and the team has no room left today${team}. Finish the step in hand and start no new work items or helpers${urgent}. ` +
     `Never skip a test or check to save budget. ${lift}`
   );
 }
@@ -405,10 +408,11 @@ export type HelperGate = { readonly kind: 'allow' } | { readonly kind: 'ask' | '
 /**
  * Before a helper launch: past budget once escalated, `overAction` applies; in quiet hours,
  * `quietHours.action`; the stronger wins. Only "ask" and "block" hold a launch back. The lead's own
- * helpers and a session under its own lift always go ahead: the lead decides, and a lift is a leader's decision.
+ * helpers, a session under its own lift and one with p0 work always go ahead: the lead decides, a lift is a
+ * leader's decision, and p0 work is done right now.
  */
 export function helperGate(facts: BudgetFacts, budget: WarnBudget): HelperGate {
-  if (facts.isLead || facts.lift !== undefined) {
+  if (facts.isLead || facts.lift !== undefined || facts.urgent.length > 0) {
     return { kind: 'allow' };
   }
   const standing = standingOf(facts, budget);

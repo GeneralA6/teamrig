@@ -1,4 +1,4 @@
-import { priorityLevels } from '../config/priorities.ts';
+import { NOW_PRIORITY, priorityLevels } from '../config/priorities.ts';
 import type { PriorityConfig } from '../config/types.ts';
 import type { Files } from '../core/files.ts';
 import { isRecord, recordField } from '../core/guards.ts';
@@ -29,28 +29,51 @@ export function workWeights(tasks: Iterable<Pick<Task, 'owner' | 'status' | 'pri
   return weights;
 }
 
+/** The sessions' queued work: what weighs each one's part of the daily budget, and the p0 work that goes on past it. */
+export interface QueuedWork {
+  /** Each session's weight (`workWeights`); a session with no queued work is not in it. */
+  readonly weights: ReadonlyMap<string, number>;
+  /** Each session's queued p0 task ids, in the register's order; a session with none is not in it. */
+  readonly urgent: ReadonlyMap<string, readonly string[]>;
+}
+
+/** No queued work: every part falls back to its session's `share`, and no session has p0 work. */
+export const NO_WORK: QueuedWork = { weights: new Map(), urgent: new Map() };
+
+/** The sessions' queued work: `workWeights`, and each session's open and in-progress p0 tasks. */
+export function queuedWork(tasks: Iterable<Pick<Task, 'id' | 'owner' | 'status' | 'priority'>>, priorities: readonly PriorityConfig[]): QueuedWork {
+  const queued = [...tasks].filter((task) => QUEUED.has(task.status));
+  const urgent = new Map<string, string[]>();
+  for (const task of queued) {
+    if (task.priority === NOW_PRIORITY.id) {
+      urgent.set(task.owner, [...(urgent.get(task.owner) ?? []), task.id]);
+    }
+  }
+  return { weights: workWeights(queued, priorities), urgent };
+}
+
 /** The sessions' queued work, replayed from the register's working set; a register that cannot be read throws. */
-async function replayWork(files: Files, eventsPath: string, priorities: readonly PriorityConfig[]): Promise<ReadonlyMap<string, number>> {
+async function replayWork(files: Files, eventsPath: string, priorities: readonly PriorityConfig[]): Promise<QueuedWork> {
   const { state } = await new JsonlEventLog(files, eventsPath).read();
-  return workWeights(state.tasks.values(), priorities);
+  return queuedWork(state.tasks.values(), priorities);
 }
 
 /**
- * The sessions' queued work, read from the register at `eventsPath`; empty when the register cannot be read, so
+ * The sessions' queued work, read from the register at `eventsPath`; none when the register cannot be read, so
  * every part falls back to its session's `share` and a damaged register never stops the budget.
  */
-export async function readWork(files: Files, eventsPath: string, priorities: readonly PriorityConfig[]): Promise<ReadonlyMap<string, number>> {
+export async function readWork(files: Files, eventsPath: string, priorities: readonly PriorityConfig[]): Promise<QueuedWork> {
   try {
     return await replayWork(files, eventsPath, priorities);
   } catch {
-    return new Map();
+    return NO_WORK;
   }
 }
 
 /** The work cache's file in the usage folder: a name no session id can have, so it is never taken for a session's usage file. */
 export const WORK_CACHE_FILE = 'work.cache.json';
-/** The work cache's format; a cache in any other reads as missing and is written again. */
-const WORK_CACHE_FORMAT = 1;
+/** The work cache's format (2: with each session's p0 ids); a cache in any other reads as missing and is written again. */
+const WORK_CACHE_FORMAT = 2;
 
 /** What a reading of the work was read from: the stamps of the register files the working set folds, and the priority ids that weighed it. */
 interface WorkKey {
@@ -61,7 +84,7 @@ interface WorkKey {
 
 interface CachedWork {
   readonly key: WorkKey;
-  readonly work: ReadonlyMap<string, number>;
+  readonly work: QueuedWork;
 }
 
 function sameKey(a: WorkKey, b: WorkKey): boolean {
@@ -77,12 +100,30 @@ function isNumberArray(value: unknown): value is readonly number[] {
   return Array.isArray(value) && value.every((each) => typeof each === 'number');
 }
 
+function isStringArray(value: unknown): value is readonly string[] {
+  return Array.isArray(value) && value.every((each) => typeof each === 'string');
+}
+
+/** The stored p0 ids by session; undefined when any entry is not a list of ids. */
+function storedUrgent(value: Record<string, unknown>): ReadonlyMap<string, readonly string[]> | undefined {
+  const urgent = new Map<string, readonly string[]>();
+  for (const [session, ids] of Object.entries(value)) {
+    if (!isStringArray(ids)) {
+      return undefined;
+    }
+    urgent.set(session, ids);
+  }
+  return urgent;
+}
+
 /** The cache file's key and work; undefined when it is missing, damaged or in another format. */
 function parseWorkCache(text: string | undefined): CachedWork | undefined {
   const stored = text === undefined ? undefined : parseObject(text);
   const key = stored === undefined ? undefined : recordField(stored, 'key');
   const work = stored === undefined ? undefined : stored['work'];
-  if (stored === undefined || recordVersion(stored) !== WORK_CACHE_FORMAT || key === undefined || !isRecord(work)) {
+  const urgentField = stored === undefined ? undefined : recordField(stored, 'urgent');
+  const urgent = urgentField === undefined ? undefined : storedUrgent(urgentField);
+  if (stored === undefined || recordVersion(stored) !== WORK_CACHE_FORMAT || key === undefined || !isRecord(work) || urgent === undefined) {
     return undefined;
   }
   const tail = storedStamp(key['tail']);
@@ -98,11 +139,11 @@ function parseWorkCache(text: string | undefined): CachedWork | undefined {
     }
     weights.set(session, weight);
   }
-  return { key: { tail, snapshot, priorities }, work: weights };
+  return { key: { tail, snapshot, priorities }, work: { weights, urgent } };
 }
 
-function formatWorkCache(key: WorkKey, work: ReadonlyMap<string, number>): string {
-  return JSON.stringify({ [VERSION_FIELD]: WORK_CACHE_FORMAT, key, work: Object.fromEntries(work) });
+function formatWorkCache(key: WorkKey, work: QueuedWork): string {
+  return JSON.stringify({ [VERSION_FIELD]: WORK_CACHE_FORMAT, key, work: Object.fromEntries(work.weights), urgent: Object.fromEntries(work.urgent) });
 }
 
 /** The key of a reading taken now; undefined when a stamp cannot be taken. */
@@ -122,11 +163,11 @@ async function workKeyOf(files: Pick<Files, 'stamp'>, eventsPath: string, priori
  * the same the cache is the answer, so a hook takes two stamps and reads one small file, however long the
  * register's history. The stamps are taken before the register is read, so a write between the two leaves a
  * newer stamp and the next call reads again. A missing, damaged or other-format cache, or a changed key, reads
- * the register and writes the cache again. A register that cannot be read is empty work, as with `readWork`,
+ * the register and writes the cache again. A register that cannot be read is no work, as with `readWork`,
  * and is not cached, nor is a reading whose stamps could not be taken; a cache that cannot be read is missing,
  * and one that cannot be written is left for the next call. It never throws, so the cache never stops the budget.
  */
-export async function cachedWork(files: Files, eventsPath: string, cachePath: string, priorities: readonly PriorityConfig[]): Promise<ReadonlyMap<string, number>> {
+export async function cachedWork(files: Files, eventsPath: string, cachePath: string, priorities: readonly PriorityConfig[]): Promise<QueuedWork> {
   const key = await workKeyOf(files, eventsPath, priorities);
   if (key === undefined) {
     return readWork(files, eventsPath, priorities);
@@ -135,11 +176,11 @@ export async function cachedWork(files: Files, eventsPath: string, cachePath: st
   if (cached !== undefined && sameKey(cached.key, key)) {
     return cached.work;
   }
-  let work: ReadonlyMap<string, number>;
+  let work: QueuedWork;
   try {
     work = await replayWork(files, eventsPath, priorities);
   } catch {
-    return new Map();
+    return NO_WORK;
   }
   await files.write(cachePath, formatWorkCache(key, work)).catch(() => undefined);
   return work;

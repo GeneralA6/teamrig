@@ -46,6 +46,7 @@ function facts(usedTodayPct: number, weekUsedPct: number, now = DAY, extra: Part
     pace: readPace(WINDOW, PACE, now, weekUsedPct, DailyProfile.even()),
     teamDay: NO_ROOM,
     isLead: false,
+    urgent: [],
     leader: LEAD,
     zone: TimeZone.UTC,
     ...extra,
@@ -234,6 +235,13 @@ describe('stopWarning', () => {
     assert.match(result.leadLine ?? '', /It finishes the step in hand; lift it only with a stop %: teamrig budget lift alpha --part <pct> --stop-pct <pct> --reason "<why>"\.$/);
   });
 
+  it('tells the person and the leader that p0 work goes on past the stop, helpers too', () => {
+    const result = stopWarning(facts(1.1, AHEAD, DAY, { urgent: ['T5', 'T7'] }), { ...BUDGET, overAction: 'block' }, undefined);
+    assert.match(result.lines[0] ?? '', /Its p0 work \(T5, T7\) goes on past the stop, helpers too; the lead has an inbox line\./);
+    assert.ok(!(result.lines[0] ?? '').includes('refused'), result.lines[0]);
+    assert.match(result.leadLine ?? '', /It goes on with its p0 work \(T5, T7\) past the stop; lift it only with a stop %: teamrig budget lift alpha /);
+  });
+
   it('never tells the lead about itself', () => {
     const result = stopWarning(facts(1.1, AHEAD, DAY, { isLead: true }), BUDGET, undefined);
     assert.equal(result.leadLine, undefined);
@@ -327,6 +335,13 @@ describe('promptWarning', () => {
     assert.equal(promptWarning(facts(1.5, AHEAD, DAY, { teamDay: ROOM }), BUDGET, undefined).line, undefined);
   });
 
+  it('tells the model its p0 work goes on past the daily stop', () => {
+    assert.match(
+      promptWarning(facts(1.1, AHEAD, DAY, { urgent: ['T5'] }), BUDGET, undefined).line ?? '',
+      /Finish the step in hand and start no new work items or helpers, except your p0 work \(T5\): it goes on past the daily stop\. Never skip a test/,
+    );
+  });
+
   it('tells the lead to lift itself only with a stop %', () => {
     assert.match(promptWarning(facts(1.1, AHEAD, DAY, { isLead: true }), BUDGET, undefined).line ?? '', /As the lead, lift it only with a stop %\.$/);
   });
@@ -402,6 +417,13 @@ describe('helperGate', () => {
     const budget: WarnBudget = { ...BUDGET, overAction: 'block', quietHours: { ...QUIET, action: 'block' } };
     assert.equal(helperGate(facts(5, AHEAD, NIGHT, { isLead: true }), budget).kind, 'allow');
     assert.equal(helperGate(facts(5, AHEAD, NIGHT, { lift: lift({ endsAt: NIGHT + 3_600_000 }) }), budget).kind, 'allow');
+  });
+
+  it('lets a session with p0 work launch helpers past its budget and in quiet hours', () => {
+    const budget: WarnBudget = { ...BUDGET, overAction: 'block', quietHours: { ...QUIET, action: 'block' } };
+    assert.equal(helperGate(facts(5, AHEAD, NIGHT), budget).kind, 'deny');
+    assert.equal(helperGate(facts(5, AHEAD, DAY, { urgent: ['T5'] }), budget).kind, 'allow');
+    assert.equal(helperGate(facts(5, AHEAD, NIGHT, { urgent: ['T5'] }), budget).kind, 'allow');
   });
 
   it('holds nothing back without quiet hours', () => {

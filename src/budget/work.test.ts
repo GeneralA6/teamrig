@@ -15,7 +15,7 @@ import { InlineMutex } from '../testing/inline-mutex.ts';
 import { MemoryFiles, normalisePath } from '../testing/memory-files.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { rotateRegister } from '../testing/rotation.ts';
-import { cachedWork, readWork, WORK_CACHE_FILE, workWeights } from './work.ts';
+import { cachedWork, queuedWork, readWork, WORK_CACHE_FILE, workWeights } from './work.ts';
 
 const { priorities } = DEFAULT_REGISTER;
 
@@ -48,16 +48,35 @@ describe('workWeights', () => {
   });
 });
 
+describe('queuedWork', () => {
+  it("lists each owner's open and in-progress p0 tasks beside the weights", () => {
+    const work = queuedWork(
+      [
+        { id: 'T1', owner: 'alpha', status: 'open', priority: 0 },
+        { id: 'T2', owner: 'alpha', status: 'in-progress', priority: 0 },
+        { id: 'T3', owner: 'alpha', status: 'open', priority: 1 },
+        { id: 'T4', owner: 'bravo', status: 'waiting', priority: 0 },
+        { id: 'T5', owner: 'bravo', status: 'done', priority: 0 },
+        { id: 'T6', owner: 'charlie', status: 'open', priority: 2 },
+      ],
+      priorities,
+    );
+    assert.deepEqual([...work.urgent], [['alpha', ['T1', 'T2']]]);
+    // p0..p5 weigh 6..1.
+    assert.deepEqual([...work.weights], [['alpha', 17], ['charlie', 4]]);
+  });
+});
+
 describe('readWork', () => {
   const PATH = '/kit/teams/app/state/events.jsonl';
 
   it('is empty for a missing register', async () => {
-    assert.deepEqual([...(await readWork(new MemoryFiles(), PATH, priorities))], []);
+    assert.deepEqual([...(await readWork(new MemoryFiles(), PATH, priorities)).weights], []);
   });
 
   it('is empty when the register cannot be read, so the split falls back to shares', async () => {
     const files = new FaultyFiles(new MemoryFiles({ [PATH]: '' })).fail('read', PATH, systemError('EIO'));
-    assert.deepEqual([...(await readWork(files, PATH, priorities))], []);
+    assert.deepEqual([...(await readWork(files, PATH, priorities)).weights], []);
   });
 });
 
@@ -124,32 +143,41 @@ describe('cachedWork', () => {
 
   it('replays the register on a miss and keeps the reading with what it was read from', async () => {
     const { files } = await team();
-    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities))], BOTH);
+    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities)).weights], BOTH);
     assert.deepEqual(cacheIn(files), {
-      [VERSION_FIELD]: 1,
+      [VERSION_FIELD]: 2,
       key: { tail: await files.stamp(tail), snapshot: null, priorities: [1, 2, 3, 4, 5] },
       work: { alpha: 5, bravo: 3 },
+      urgent: {},
     });
+  });
+
+  it("keeps each session's p0 ids in the cache and answers them from it", async () => {
+    const { files, add } = await team();
+    await add('charlie', 0);
+    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities)).urgent], [['charlie', ['T3']]]);
+    assert.deepEqual(cacheIn(files)['urgent'], { charlie: ['T3'] });
+    assert.deepEqual([...(await cachedWork(unreadable(files), PATH, CACHE, priorities)).urgent], [['charlie', ['T3']]]);
   });
 
   it('answers from the cache while the register and the priorities are unchanged, without reading the register', async () => {
     const { files } = await team();
     await cachedWork(files, PATH, CACHE, priorities);
-    assert.deepEqual([...(await cachedWork(unreadable(files), PATH, CACHE, priorities))], BOTH);
+    assert.deepEqual([...(await cachedWork(unreadable(files), PATH, CACHE, priorities)).weights], BOTH);
   });
 
   it('reads the register again after a write to it', async () => {
     const { files, add } = await team();
     await cachedWork(files, PATH, CACHE, priorities);
     await add('charlie', 2);
-    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities))], [...BOTH, ['charlie', 4]]);
+    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities)).weights], [...BOTH, ['charlie', 4]]);
   });
 
   it('reads the register again after a rotation, which rewrites its tail and its snapshot', async () => {
     const { files } = await team();
     await cachedWork(files, PATH, CACHE, priorities);
     await rotateRegister(files, PATH, { now: new Date('2030-01-08T09:00:00.000Z') });
-    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities))], BOTH);
+    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities)).weights], BOTH);
     const key = keyIn(files);
     assert.deepEqual([key['tail'], key['snapshot']], [await files.stamp(tail), await files.stamp(snapshot)]);
     assert.notEqual(key['snapshot'], null);
@@ -159,14 +187,17 @@ describe('cachedWork', () => {
     const { files } = await team();
     await cachedWork(files, PATH, CACHE, priorities);
     const three = [{ id: 1, name: 'high' }, { id: 2, name: 'medium' }, { id: 3, name: 'low' }];
-    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, three))], [['alpha', 3], ['bravo', 1]]);
+    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, three)).weights], [['alpha', 3], ['bravo', 1]]);
   });
 
   /** The cache a call just wrote, its key matching the register, made over by `damage`. */
   type Damage = (cache: JsonRecord, key: JsonRecord) => string;
   const DAMAGES: readonly (readonly [string, Damage])[] = [
     ['damaged', (cache) => JSON.stringify(cache).slice(0, -2)],
-    ['in another format', (cache) => JSON.stringify({ ...cache, [VERSION_FIELD]: 2, work: {} })],
+    ['in another format', (cache) => JSON.stringify({ ...cache, [VERSION_FIELD]: 3, work: {} })],
+    ['in the first format, with no p0 ids', (cache) => JSON.stringify({ [VERSION_FIELD]: 1, key: cache['key'], work: {} })],
+    ['without its p0 ids', (cache) => JSON.stringify({ ...cache, urgent: 'none' })],
+    ['with p0 ids that are not text', (cache) => JSON.stringify({ ...cache, urgent: { alpha: [5] } })],
     ['without its key', (cache) => JSON.stringify({ ...cache, key: 'none' })],
     ['without its work', (cache) => JSON.stringify({ ...cache, work: 'none' })],
     ['with a weight that is not a number', (cache) => JSON.stringify({ ...cache, work: { alpha: 'five' } })],
@@ -179,7 +210,7 @@ describe('cachedWork', () => {
       const { files } = await team();
       await cachedWork(files, PATH, CACHE, priorities);
       await files.write(CACHE, damage(cacheIn(files), keyIn(files)));
-      assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities))], BOTH);
+      assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities)).weights], BOTH);
       assert.deepEqual(cacheIn(files)['work'], { alpha: 5, bravo: 3 });
     });
   }
@@ -206,20 +237,20 @@ describe('cachedWork', () => {
     const files = new WriteAfterRead();
     const { add } = await team(files);
     files.afterNextTailRead(() => add('charlie', 2));
-    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities))], BOTH);
-    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities))], [...BOTH, ['charlie', 4]]);
+    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities)).weights], BOTH);
+    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities)).weights], [...BOTH, ['charlie', 4]]);
   });
 
   it('is empty and caches nothing when the register cannot be read', async () => {
     const { files } = await team();
-    assert.deepEqual([...(await cachedWork(unreadable(files), PATH, CACHE, priorities))], []);
+    assert.deepEqual([...(await cachedWork(unreadable(files), PATH, CACHE, priorities)).weights], []);
     assert.equal(files.get(CACHE), undefined);
   });
 
   it('reads the register uncached when a stamp cannot be taken', async () => {
     const { files } = await team();
     const faulty = new FaultyFiles(files).fail('stamp', snapshot, systemError('EIO'));
-    assert.deepEqual([...(await cachedWork(faulty, PATH, CACHE, priorities))], BOTH);
+    assert.deepEqual([...(await cachedWork(faulty, PATH, CACHE, priorities)).weights], BOTH);
     assert.equal(files.get(CACHE), undefined);
   });
 
@@ -228,7 +259,7 @@ describe('cachedWork', () => {
     await cachedWork(files, PATH, CACHE, priorities);
     await files.write(CACHE, JSON.stringify({ ...cacheIn(files), work: {} }));
     const faulty = new FaultyFiles(files).fail('read', CACHE, systemError('EIO')).fail('write', CACHE, systemError('EACCES'));
-    assert.deepEqual([...(await cachedWork(faulty, PATH, CACHE, priorities))], BOTH);
+    assert.deepEqual([...(await cachedWork(faulty, PATH, CACHE, priorities)).weights], BOTH);
     assert.deepEqual(cacheIn(files)['work'], {});
   });
 });
