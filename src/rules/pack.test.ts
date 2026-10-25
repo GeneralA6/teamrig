@@ -340,10 +340,20 @@ describe('renderCorePack', () => {
 
   it('has owner questions stand alone, and carry the decision marker line only while tab status shows it', () => {
     const on = renderCorePack(testConfig({ tabStatus: { enabled: true } }), COMMAND, 'win32', RULES_CLOCK);
-    assert.ok(on.includes('Owner questions stand alone, no bare task ids: options, numbers, your pick, a `Decision needed:` line; one with'), on);
+    assert.ok(on.includes('stand alone, no bare ids; options, numbers, your pick, a `Decision needed:` line.'), on);
     const off = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
-    assert.ok(off.includes('Owner questions stand alone, no bare task ids: options, numbers and a recommendation; one with'), off);
+    assert.ok(off.includes('each question stands alone, no bare task ids, with options, numbers and a recommendation.'), off);
     assert.ok(!off.includes('Decision needed'), off);
+  });
+
+  it('asks the owner only on an owner gate or a business decision, never staffing, however many good answers the rest has (T1194)', () => {
+    const on = renderCorePack(testConfig({ tabStatus: { enabled: true } }), COMMAND, 'win32', RULES_CLOCK);
+    assert.ok(on.includes(' Ask the owner only gates and business calls, not staffing: '), on);
+    const off = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
+    assert.ok(off.includes(' Ask the owner only on owner gates and business decisions, never staffing: '), off);
+    for (const pack of [on, off]) {
+      assert.ok(!/right answer|correct answer/.test(pack), 'two good answers are no reason to ask the owner');
+    }
   });
 
   it('prints budget percentages with at most two decimals', () => {
