@@ -70,12 +70,12 @@
           "$ref": "#/$defs/sessionName"
         },
         "coordinatorOwner": {
-          "description": "Owns deploy coordination and fleet health, when the team has that role.",
-          "$ref": "#/$defs/sessionName"
+          "description": "Owns deploy coordination and fleet health, when the team has that role; a child team may leave it to a team above.",
+          "$ref": "#/$defs/roleHolder"
         },
         "securityReviewer": {
-          "description": "Reviews the privileged commands sessions ask to run (exec), when the team has that role; the owner always may too.",
-          "$ref": "#/$defs/sessionName"
+          "description": "Reviews the privileged commands sessions ask to run (exec), when the team has that role; the owner always may too. A child team may leave it to a team above.",
+          "$ref": "#/$defs/roleHolder"
         }
       }
     },
@@ -1388,6 +1388,11 @@
     "sessionName": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9-]{0,31}$"
+    },
+    "roleHolder": {
+      "description": "A session of the team by id, or `<team>/<id>`: the session holding the same role on a team above it (doctor's tree-role problem when that team is not above, or the session does not hold the role there).",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,31}(/[a-z][a-z0-9-]{0,31})?$"
     }
   }
 }
