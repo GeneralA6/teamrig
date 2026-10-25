@@ -1,5 +1,7 @@
 import { resolve } from 'node:path';
+import { roleHolderOf } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
+import { formatAddress, type SessionAddress } from '../../core/address.ts';
 import { errorMessage } from '../../core/guards.ts';
 import { FileLock } from '../../core/lock.ts';
 import type { PathSearchDeps } from '../../core/path-search.ts';
@@ -25,9 +27,11 @@ import { decideReview, RANDOM_NONCES, UnsignedReviews, type ReviewKit } from '..
 import { baseEnvironment, environmentCredentials, Executor, type ExecResult } from '../../exec/runner.ts';
 import { postLine } from '../../inbox/inbox.ts';
 import { noPositionals, onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
+import { holderTeamOf, type OpenTeam } from '../holder-team.ts';
 import { callerOf } from '../inputs.ts';
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, type Access, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
+import { loadTree } from '../tree.ts';
 import { inboxDepsOf } from './inbox.ts';
 
 /** What every exec command works on: the team's kit and config, its exec audit log, and the exec PATH. */
@@ -43,7 +47,10 @@ interface ExecTeam {
 
 async function openExec(runtime: CliRuntime, access: Access): Promise<ExecTeam> {
   const kit = await openTeamKit(runtime);
-  const config = requireConfig(kit, runtime, access);
+  return execTeamOf(runtime, kit, requireConfig(kit, runtime, access));
+}
+
+function execTeamOf(runtime: CliRuntime, kit: Kit, config: KitConfig): ExecTeam {
   const { files, clock, sleep, pid, platform } = runtime;
   const lock = new FileLock(kit.paths.execAuditLock, config.lock, { files, clock, sleep, pid });
   const execPath = config.exec.path.join(platform === 'win32' ? ';' : ':');
@@ -61,6 +68,52 @@ async function openExec(runtime: CliRuntime, access: Access): Promise<ExecTeam> 
 async function actorOf(args: ParsedArgs, runtime: CliRuntime, team: ExecTeam): Promise<string> {
   const caller = callerOf(args.flags, runtime.env);
   return caller === team.config.register.ownerSource ? caller : sessionIdOf(await rosterOf(runtime, team.kit, team.config), caller);
+}
+
+/** A team below the caller's that `--team <child>` names, as a reviewer on a team above it reads and reviews its requests (T1143). */
+interface ChildExec {
+  readonly team: ExecTeam;
+  /** The caller's own team. */
+  readonly own: OpenTeam;
+}
+
+async function childExecOf(runtime: CliRuntime, child: string, access: Access): Promise<ChildExec> {
+  const kit = await openTeamKit(runtime);
+  const own: OpenTeam = { kit, config: requireConfig(kit, runtime, 'read') };
+  const { tree, teams } = await loadTree(runtime);
+  const target = teams.get(child);
+  if (target === undefined) {
+    throw new RefusedError(`no team ${child} with a config in this kit home`);
+  }
+  if (!tree.ancestorsOf(child).includes(kit.paths.team)) {
+    throw new RefusedError(`team ${child} is not below team ${kit.paths.team}: --team names a team below yours`);
+  }
+  return { team: execTeamOf(runtime, target.kit, requireConfig(target.kit, runtime, access)), own };
+}
+
+/** The exec team `status` reads: the caller's own, or with `--team <child>` a team below it. */
+async function readTeamOf(args: ParsedArgs, runtime: CliRuntime): Promise<ExecTeam> {
+  const child = args.flags.get('team');
+  return child === undefined ? openExec(runtime, 'read') : (await childExecOf(runtime, child, 'read')).team;
+}
+
+/**
+ * The exec team a review goes to, and the reviewer as its log names them: the caller's own team (actorOf), or with
+ * `--team <child>` a team below it, where the owner keeps its marker and a session of the caller's team is
+ * `<team>/<id>`, the form the child's roles.securityReviewer names a reviewer above it by; decideReview refuses anyone else.
+ */
+async function reviewerTeamOf(args: ParsedArgs, runtime: CliRuntime): Promise<{ readonly team: ExecTeam; readonly reviewer: string }> {
+  const child = args.flags.get('team');
+  if (child === undefined) {
+    const team = await openExec(runtime, 'write');
+    return { team, reviewer: await actorOf(args, runtime, team) };
+  }
+  const { team, own } = await childExecOf(runtime, child, 'write');
+  const caller = callerOf(args.flags, runtime.env);
+  if (caller === team.config.register.ownerSource) {
+    return { team, reviewer: caller };
+  }
+  return { team, reviewer: formatAddress({ team: own.kit.paths.team, id: sessionIdOf(await rosterOf(runtime, own.kit, own.config), caller) }) };
 }
 
 function brokenLog(file: string, line: number, reason: string): RefusedError {
@@ -168,19 +221,35 @@ export async function request(args: ParsedArgs, runtime: CliRuntime): Promise<Ex
   return EXIT.ok;
 }
 
-/** Who reviews a new request first (spec §7): the security reviewer, or the owner for security's own request or when none is set. */
-function firstReviewerOf(config: KitConfig, requester: string): string {
-  const security = config.roles.securityReviewer;
-  return security === undefined || security === requester ? config.register.ownerSource : security;
+/**
+ * Who reviews a new request first (spec §7): the security reviewer, of this team or of a team above it (T1143), or
+ * the owner for security's own request or when none is set.
+ */
+function firstReviewerOf(config: KitConfig, team: string, requester: string): SessionAddress {
+  const security = roleHolderOf(config.roles, 'securityReviewer', team);
+  return security === undefined || (security.team === team && security.id === requester) ? { team, id: config.register.ownerSource } : security;
 }
 
-/** Posts the first reviewer one inbox line for a logged request; a line that cannot be posted warns, as the request stands. */
+/**
+ * Posts the first reviewer one inbox line for a logged request, on the reviewer's own team when it sits above this one,
+ * where the line names the requester and the team to review on; a line that cannot be posted warns, as the request stands.
+ */
 async function tellReviewer(runtime: CliRuntime, team: ExecTeam, stored: ExecRequest): Promise<void> {
-  const reviewer = firstReviewerOf(team.config, stored.requester);
-  const text = `${stored.id} asks to run a ${stored.kind} on ${stored.target} for ${stored.task}: review it (teamrig exec status ${stored.id})`;
-  const { inboxes } = inboxDepsOf(runtime, team.kit.paths);
-  const problem = await postLine(inboxes, team.scanner, { to: reviewer, from: stored.requester, text, now: new Date(runtime.clock.now()) });
-  runtime.out.stderr(problem === undefined ? `NOTE ${reviewer} has an inbox line: ${text}` : `WARN ${stored.id} is logged, but ${reviewer} was not told: ${problem}`);
+  const own = team.kit.paths.team;
+  const reviewer = firstReviewerOf(team.config, own, stored.requester);
+  const crossing = reviewer.team !== own;
+  const label = crossing ? formatAddress(reviewer) : reviewer.id;
+  const text = `${stored.id} asks to run a ${stored.kind} on ${stored.target} for ${stored.task}: review it (teamrig exec status ${stored.id}${crossing ? ` --team ${own}` : ''})`;
+  const found = await holderTeamOf(runtime, team, reviewer);
+  const problem = found.ok
+    ? await postLine(inboxDepsOf(runtime, found.holder.kit.paths).inboxes, new SecretScanner(found.holder.config.register.secretPatterns), {
+        to: reviewer.id,
+        from: found.holder.sender(stored.requester),
+        text,
+        now: new Date(runtime.clock.now()),
+      })
+    : found.problem;
+  runtime.out.stderr(problem === undefined ? `NOTE ${label} has an inbox line: ${text}` : `WARN ${stored.id} is logged, but ${label} was not told: ${problem}`);
 }
 
 function executorOf(team: ExecTeam, runtime: CliRuntime): Executor {
@@ -295,8 +364,7 @@ function reviewHead(review: Review, owner: string): string {
 /** A reviewer's decision (spec §7, §9), bound to the request and dry run the log holds when it is appended. */
 async function review(args: ParsedArgs, runtime: CliRuntime, decision: ReviewDecision): Promise<ExitCode> {
   const id = requestIdOf(onePositional(args, 'id'));
-  const team = await openExec(runtime, 'write');
-  const reviewer = await actorOf(args, runtime, team);
+  const { team, reviewer } = await reviewerTeamOf(args, runtime);
   const ask = { id, decision, reviewer, note: args.flags.get('note') ?? '' };
   const leak = team.scanner.refusal('the note', ask.note);
   if (leak !== undefined) {
@@ -406,7 +474,7 @@ export async function status(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     throw new UsageError(`unexpected "${extra}"`);
   }
   const id = text === undefined ? undefined : requestIdOf(text);
-  const team = await openExec(runtime, 'read');
+  const team = await readTeamOf(args, runtime);
   const state = await stateOf(team);
   const now = runtime.clock.now();
   if (id === undefined) {
