@@ -1,7 +1,8 @@
 import { join } from 'node:path';
 import { LiftLog } from "./lift.js";
 import { budgetSplitOf } from "./parts.js";
-import { readSnapshots, snapshotDirOf } from "./snapshot.js";
+import { mergeWeekFolds, snapshotDirOf } from "./snapshot.js";
+import { readFolderWeek } from "./week-summary.js";
 import { cachedWork } from "./work.js";
 /** The Claude account a team's week is on: its `budget.account`, else the Claude config dir, which signs in one account. */
 export function accountOf(budget, configDir) {
@@ -37,29 +38,32 @@ async function liftsOf(files, path) {
         return [];
     }
 }
+/** A fold of no reading, for a folder that cannot be read. */
+const NO_READING = { best: undefined, followedBy: undefined };
 /**
- * Every status line snapshot on the asking team's account, read-only: its own folder's (`own`), then each other
- * team's on the account in the order of `teams`, each folder once. A team's tabs write only its own folder, so a
- * team whose tabs are idle would show an old week %; `weekUseOf` takes the newest reading among them all. Another
- * team's folder that cannot be read gives no snapshot, so it never stops this team's budget.
+ * The status line readings of the week on the asking team's account, folded, read-only: its own folder's (`own`),
+ * then each other team's on the account in the order of `teams`, each folder once, through its week summary when it
+ * keeps one (`readFolderWeek`). A team's tabs write only its own folder, so a team whose tabs are idle would show an
+ * old week %; the merged fold takes the newest reading among them all. Another team's folder that cannot be read
+ * gives no reading, so it never stops this team's budget.
  */
-export async function accountSnapshotsOf(files, teams, own, scope) {
-    const snapshots = await readSnapshots(files, own);
+export async function accountWeekOf(files, teams, own, scope) {
+    let fold = await readFolderWeek(files, own, scope.now);
     const read = new Set([own]);
     for (const { kit, config } of teams.values()) {
         const dir = snapshotDirOf(config.budget, kit.paths);
         if (!read.has(dir) && accountOf(config.budget, scope.configDir) === scope.account) {
             read.add(dir);
-            snapshots.push(...(await othersSnapshots(files, dir)));
+            fold = mergeWeekFolds(fold, await othersWeek(files, dir, scope.now));
         }
     }
-    return snapshots;
+    return fold;
 }
-async function othersSnapshots(files, dir) {
+async function othersWeek(files, dir, now) {
     try {
-        return await readSnapshots(files, dir);
+        return await readFolderWeek(files, dir, now);
     }
     catch {
-        return [];
+        return NO_READING;
     }
 }

@@ -1,5 +1,6 @@
 import { resolveReset } from "../budget/pace.js";
-import { readSnapshots, weekUseOf } from "../budget/snapshot.js";
+import { weekUseAt } from "../budget/snapshot.js";
+import { readFolderWeek } from "../budget/week-summary.js";
 import { CLAIMS_LOCK_TTL_MS } from "../coordinator/claim-store.js";
 import { HostLock } from "../coordinator/host-lock.js";
 const MINUTE_MS = 60_000;
@@ -31,7 +32,7 @@ function lockAt(runtime, path, ttlMs) {
 /** The next weekly token reset at each check: the one the status line last reported, else the one `budget.reset` sets; undefined when neither says. */
 export function nextResetFrom(runtime, budget, snapshotDir) {
     return async (nowMs) => {
-        const fromStatus = weekUseOf(await readSnapshots(runtime.files, snapshotDir), nowMs)?.resetsAt;
+        const fromStatus = weekUseAt(await readFolderWeek(runtime.files, snapshotDir, nowMs), nowMs)?.resetsAt;
         const at = resolveReset(nowMs, fromStatus, budget.reset);
         if (at === undefined) {
             return undefined;
