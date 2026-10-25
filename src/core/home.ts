@@ -204,7 +204,8 @@ export function teamHome(kitHome: string, team: string): string {
   return join(kitHome, 'teams', team);
 }
 
-export function teamPaths(kitHome: string, team: string, userHome: string, overrides: PathOverrides = {}): TeamPaths {
+/** The team's paths; `claudeDir` is Claude Code's own folder (`claudeConfigDir`), whose `skills` is the default skills folder. */
+export function teamPaths(kitHome: string, team: string, claudeDir: string, overrides: PathOverrides = {}): TeamPaths {
   const home = teamHome(kitHome, team);
   const inHome = (path: string | undefined): string | undefined =>
     path === undefined || isAbsolute(path) ? path : join(home, path);
@@ -232,7 +233,7 @@ export function teamPaths(kitHome: string, team: string, userHome: string, overr
     ruleVerdicts: join(state, 'rule-verdicts.json'),
     renames: join(state, 'renames.jsonl'),
     renamesLock: join(state, 'renames.lock'),
-    skills: inHome(overrides.skills) ?? join(userHome, '.claude', 'skills'),
+    skills: inHome(overrides.skills) ?? join(claudeDir, 'skills'),
     refresh: join(state, 'refresh'),
     handover: inHome(overrides.handover) ?? join(home, 'handover'),
     verifyNotices: join(state, 'verify-notices.jsonl'),
