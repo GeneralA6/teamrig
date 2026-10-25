@@ -41,4 +41,12 @@ describe('docs/features.md', () => {
       });
     assert.deepEqual(unnamed, [], 'docs/features.md names no row for these commands: add one where the feature belongs');
   });
+
+  // CI is paused (.github/workflows/ci.yml), so only the systems a proof ran on are named (T1175).
+  it('names the systems it is proven on, Windows and Linux, and macOS as untested', () => {
+    const row = FEATURES.split('\n').find((line) => line.startsWith('| **Windows and Linux** |')) ?? '';
+    assert.match(row, /on Linux the full test suite and a smoke run of the commands and hooks pass/);
+    assert.match(row, /macOS is untested/);
+    assert.doesNotMatch(FEATURES, /tested on all three/);
+  });
 });
