@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { formatConfig } from '../config/load.ts';
 import { CliHarness } from '../testing/cli-harness.ts';
-import { teamConfigOf, treeHarness } from '../testing/team-tree.ts';
+import { SUB_TEAMS, teamConfigOf, treeHarness } from '../testing/team-tree.ts';
 import { EXIT } from './runtime.ts';
 
 const WHOLE_TREE = [
@@ -48,5 +48,19 @@ describe('teamrig team tree', () => {
     assert.deepEqual([none.code, none.stdout], [EXIT.refused, ['REFUSED no team config for team app; create it with: teamrig team create app --sessions <id,id>']]);
     const extra = await new CliHarness().run(['team', 'tree', 'web']);
     assert.equal(extra.code, EXIT.usage);
+  });
+});
+
+describe('teamrig who <role> in a team tree (T1143)', () => {
+  it("names a role's holder on a team above by that team's name for it, else its address", async () => {
+    const kit = await treeHarness({ roles: { lead: 'lead', securityReviewer: 'alpha' } });
+    const web = SUB_TEAMS['web'] ?? {};
+    await kit.files.write(teamConfigOf('web'), formatConfig({ ...web, roles: { lead: 'lead', securityReviewer: 'app/alpha', coordinatorOwner: 'gone/po' } }));
+    const fromWeb = { env: { TEAMRIG_TEAM: 'web' } };
+    assert.deepEqual((await kit.run(['who', 'securityReviewer'], fromWeb)).stdout, ['app-alpha']);
+    assert.deepEqual((await kit.run(['who', 'coordinatorOwner'], fromWeb)).stdout, ['gone/po'], 'a team with no config to read');
+    assert.deepEqual((await kit.run(['who', 'securityReviewer'])).stdout, ['app-alpha'], "the holder's own team");
+    const none = await kit.run(['who', 'securityReviewer'], { env: { TEAMRIG_TEAM: 'ops' } });
+    assert.deepEqual([none.code, none.stdout], [EXIT.refused, ['REFUSED no session holds the securityReviewer role']]);
   });
 });

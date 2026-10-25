@@ -1,5 +1,7 @@
-import { isRole, type Roster } from '../../config/roster.ts';
+import { isRole, roleHolderOf, type Roster } from '../../config/roster.ts';
 import type { TeamNode } from '../../config/tree.ts';
+import type { RolesConfig } from '../../config/types.ts';
+import { formatAddress, type SessionAddress } from '../../core/address.ts';
 import { KIT_NAME } from '../../core/home.ts';
 import { recordRename } from '../../names/record.ts';
 import { UsageError, type ParsedArgs } from '../args.ts';
@@ -17,17 +19,29 @@ function rosterLine(roster: Roster, id: string): string {
   return `${id} ${roster.nameOf(id) ?? id}${rolesText}${formerText}`;
 }
 
-/** A session by id or name, else the holder of a role, so `who lead` works whatever the lead's id. */
-function idOf(roster: Roster, text: string): string {
+/**
+ * A session by id or name, else the holder of a role, so `who lead` works whatever the lead's id; a role the team
+ * leaves to a team above (`<team>/<id>`, T1143) gives its holder there.
+ */
+function addressOf(roster: Roster, roles: RolesConfig, text: string, team: string): SessionAddress {
   const found = roster.lookup(text);
   if (found.ok || !isRole(text)) {
-    return sessionIdOf(roster, text);
+    return { team, id: sessionIdOf(roster, text) };
   }
-  const holder = roster.holderOf(text);
+  const holder = roleHolderOf(roles, text, team);
   if (holder === undefined) {
     throw new RefusedError(`no session holds the ${text} role`);
   }
   return holder;
+}
+
+/** The name to message a session by, from its own team's roster; `<team>/<id>` when that team has no config to read. */
+async function nameAt(runtime: CliRuntime, roster: Roster, address: SessionAddress, team: string): Promise<string> {
+  if (address.team === team) {
+    return roster.nameOf(address.id) ?? address.id;
+  }
+  const { teams } = await loadTree(runtime);
+  return teams.get(address.team)?.roster.nameOf(address.id) ?? formatAddress(address);
 }
 
 /** `who [<id|name|role>]`: the name to message a session by; with no argument, every session. */
@@ -37,13 +51,14 @@ export async function who(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
     throw new UsageError(`unexpected "${extra}"`);
   }
   const kit = await openTeamKit(runtime);
-  const roster = await rosterOf(runtime, kit, requireConfig(kit, runtime, 'read'));
+  const config = requireConfig(kit, runtime, 'read');
+  const roster = await rosterOf(runtime, kit, config);
   if (text === undefined) {
     roster.ids.forEach((id) => runtime.out.stdout(rosterLine(roster, id)));
     return EXIT.ok;
   }
-  const id = idOf(roster, text);
-  runtime.out.stdout(roster.nameOf(id) ?? id);
+  const address = addressOf(roster, config.roles, text, kit.paths.team);
+  runtime.out.stdout(await nameAt(runtime, roster, address, kit.paths.team));
   return EXIT.ok;
 }
 
