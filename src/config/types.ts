@@ -7,9 +7,15 @@ export const CONFIG_VERSION = 4;
 export interface RolesConfig {
   /** Owns priorities, team rules and the owner's decision queue; may re-prioritize and reassign tasks; hands the work itself to others (`leadBoundary`). */
   readonly lead: string;
-  /** Owns deploy coordination and fleet health, when the team has that role. */
+  /**
+   * Owns deploy coordination and fleet health, when the team has that role: a session id of the team, or `<team>/<id>`,
+   * the holder of the same role on a team above it (T1143), for a child team with no coordinator of its own.
+   */
   readonly coordinatorOwner?: string;
-  /** Reviews the privileged commands sessions ask to run (`exec`), when the team has that role; the owner always may too. */
+  /**
+   * Reviews the privileged commands sessions ask to run (`exec`), when the team has that role; the owner always may too.
+   * A session id of the team, or `<team>/<id>`, the reviewer of a team above it (T1143).
+   */
   readonly securityReviewer?: string;
 }
 

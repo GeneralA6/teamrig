@@ -4,6 +4,7 @@ import { testConfig } from '../testing/config.ts';
 import { Roster } from './roster.ts';
 import { describeNameClash, describeTreeProblem, ownerAsk, TeamTree, teamNodeOf } from './tree.ts';
 import type { TeamNode, TreeProblem } from './tree.ts';
+import type { RolesConfig } from './types.ts';
 
 /** A team led by `lead` with one member `dev`, named `<team>-<id>`, under `parent` when given. */
 function team(id: string, parent?: string, names: Readonly<Record<string, string>> = {}): TeamNode {
@@ -23,6 +24,7 @@ describe('TeamTree', () => {
       statedId: 'web',
       parent: 'app',
       lead: 'lead',
+      roles: config.roles,
       sessions: ['lead', 'alpha', 'bravo'],
       names: new Map([
         ['lead', 'web-lead'],
@@ -116,6 +118,24 @@ describe('TeamTree', () => {
     ]);
   });
 
+  it('flags a role left to a team that is not above, or to a session that does not hold it there (T1143)', () => {
+    const roled = (id: string, parent: string | undefined, roles: RolesConfig): TeamNode => {
+      const config = testConfig({ sessions: ['lead', 'dev'], roles, team: parent === undefined ? { id } : { id, parent } });
+      return teamNodeOf(id, config, new Roster(config, id));
+    };
+    const tree = new TeamTree([
+      roled('app', undefined, { lead: 'lead', coordinatorOwner: 'dev', securityReviewer: 'dev' }),
+      roled('web', 'app', { lead: 'lead', coordinatorOwner: 'app/dev', securityReviewer: 'app/dev' }),
+      roled('ui', 'web', { lead: 'lead', coordinatorOwner: 'web/dev', securityReviewer: 'app/dev' }),
+      roled('ops', 'app', { lead: 'lead', securityReviewer: 'web/dev' }),
+    ]);
+    assert.deepEqual(tree.ancestorsOf('ui'), ['app', 'web']);
+    assert.deepEqual(tree.problems(), [
+      { kind: 'tree-role', team: 'ops', role: 'securityReviewer', holder: { team: 'web', id: 'dev' }, reason: 'not-above' },
+      { kind: 'tree-role', team: 'ui', role: 'coordinatorOwner', holder: { team: 'web', id: 'dev' }, reason: 'not-holder' },
+    ]);
+  });
+
   it('finds a session name two teams use, but not one team using its own names', () => {
     const tree = TREE.with(team('ops', 'app', { dev: 'web-dev' }));
     assert.deepEqual(tree.nameClashes(), [
@@ -149,8 +169,12 @@ describe('describeTreeProblem', () => {
       { kind: 'tree-loop', teams: ['a', 'b'] },
       { kind: 'tree-depth', team: 'deep', level: 4 },
       { kind: 'tree-children', team: 'app', children: ['a', 'b'] },
+      { kind: 'tree-role', team: 'ops', role: 'securityReviewer', holder: { team: 'web', id: 'dev' }, reason: 'not-above' },
+      { kind: 'tree-role', team: 'ui', role: 'coordinatorOwner', holder: { team: 'web', id: 'dev' }, reason: 'not-holder' },
     ];
     const lines = problems.map((problem) => describeTreeProblem(problem, 'teamrig'));
+    assert.match(lines[5] ?? '', /roles\.securityReviewer names web\/dev, but team web is not above ops: name the holder on a team above it/);
+    assert.match(lines[6] ?? '', /names web\/dev, which does not hold roles\.coordinatorOwner on team web: name the session that does/);
     assert.match(lines[0] ?? '', /team\.id "webby", but its folder is web: set team\.id to web/);
     assert.match(lines[1] ?? '', /`teamrig team create gone`/);
     assert.match(lines[2] ?? '', /teams a, b name each other as parents in a loop/);

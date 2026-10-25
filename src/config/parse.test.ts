@@ -53,6 +53,16 @@ describe('parseConfig', () => {
     assert.equal(config.roles.securityReviewer, 'delta');
   });
 
+  it('takes a reviewer or coordinator of a team above as <team>/<id>, never its own team so, nor a qualified lead (T1143)', () => {
+    const above = parseConfig({ sessions: ['alpha'], roles: { lead: 'alpha', coordinatorOwner: 'root/po', securityReviewer: 'root/security' }, team: { id: 'web', parent: 'root' } });
+    assert.deepEqual(above.issues, []);
+    assert.deepEqual(above.config.roles, { lead: 'alpha', coordinatorOwner: 'root/po', securityReviewer: 'root/security' });
+    const own = parseConfig({ sessions: ['alpha'], roles: { lead: 'alpha', securityReviewer: 'web/alpha' }, team: { id: 'web', parent: 'root' } });
+    assert.deepEqual(own.issues, [{ path: 'roles.securityReviewer', message: 'names its own team web: write the bare id' }]);
+    const bad = parseConfig({ sessions: ['alpha'], roles: { lead: 'root/alpha', coordinatorOwner: 'Root/po', securityReviewer: 'a/b/c' } });
+    assert.deepEqual(paths(bad.issues), ['roles.lead', 'roles.coordinatorOwner', 'roles.securityReviewer']);
+  });
+
   it('leaves the optional roles out when the config does not assign them', () => {
     const { config, issues } = parseConfig({ sessions: ['alpha'], roles: { lead: 'alpha' } });
     assert.deepEqual(issues, []);
