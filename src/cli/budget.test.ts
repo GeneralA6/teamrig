@@ -4,6 +4,7 @@ import { basename, join } from 'node:path';
 import { parsePeriod } from '../budget/period.ts';
 import { W_EXPLAINED } from '../budget/report.ts';
 import { formatSnapshot, parseSnapshot, snapshotOfStatus, SNAPSHOT_PRUNED_FILE } from '../budget/snapshot.ts';
+import { WEEK_SUMMARY_FILE } from '../budget/week-summary.ts';
 import { formatConfig } from '../config/load.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { MS_PER_DAY } from '../core/time.ts';
@@ -507,6 +508,7 @@ describe('teamrig statusline', () => {
     const result = await kit.run(['statusline'], { stdin: status(APP) });
     assert.deepEqual([result.code, result.stdout, result.stderr], [EXIT.ok, [SHOWN], []]);
     assert.match(kit.files.get(join(LIVE, SNAPSHOT)) ?? '', /"seven_day":\{"used_percentage":30,"resets_at":1894582800\}/);
+    assert.match(kit.files.get(join(LIVE, WEEK_SUMMARY_FILE)) ?? '', /^\{"reading":\{"used_percentage":30,"resets_at":1894582800,"at":"2030-01-08T10:00:00\.000Z"\},/);
   });
 
   it("dates each reading by the session's previous snapshot, so a reading after a mid-week reset outranks older higher ones", async () => {
@@ -648,5 +650,17 @@ describe('teamrig statusline', () => {
       stderr: ['teamrig statusline: old snapshots were not pruned: EACCES: simulated'],
     });
     assert.notEqual(kit.files.get(join(LIVE, SNAPSHOT)), undefined);
+  });
+
+  it('tells a failed week summary write on stderr and still shows the status, saves the snapshot and prunes', async () => {
+    const kit = new CliHarness(LIMITED);
+    const files = new FaultyFiles(kit.files).fail('write', join(LIVE, WEEK_SUMMARY_FILE), systemError('EACCES'));
+    assert.deepEqual(await kit.run(['statusline'], { stdin: status(APP), files }), {
+      code: EXIT.ok,
+      stdout: [SHOWN],
+      stderr: ['teamrig statusline: the week summary was not updated: EACCES: simulated'],
+    });
+    assert.notEqual(kit.files.get(join(LIVE, SNAPSHOT)), undefined);
+    assert.notEqual(kit.files.get(join(LIVE, SNAPSHOT_PRUNED_FILE)), undefined);
   });
 });

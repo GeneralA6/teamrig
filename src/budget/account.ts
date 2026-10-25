@@ -4,7 +4,8 @@ import type { Files } from '../core/files.ts';
 import type { TeamPaths } from '../core/home.ts';
 import { LiftLog, type Lift } from './lift.ts';
 import { budgetSplitOf, type BudgetSplit } from './parts.ts';
-import { readSnapshots, snapshotDirOf, type StatusSnapshot } from './snapshot.ts';
+import { mergeWeekFolds, snapshotDirOf, type WeekFold } from './snapshot.ts';
+import { readFolderWeek } from './week-summary.ts';
 import { cachedWork } from './work.ts';
 
 /** The Claude account a team's week is on: its `budget.account`, else the Claude config dir, which signs in one account. */
@@ -64,40 +65,44 @@ async function liftsOf(files: Files, path: string): Promise<readonly Lift[]> {
   }
 }
 
-/** A team of the kit home as `accountSnapshotsOf` reads it: where its status line snapshots are, and its account. */
+/** A team of the kit home as `accountWeekOf` reads it: where its status line snapshots are, and its account. */
 export interface SnapshotDirSource {
   readonly kit: { readonly paths: Pick<TeamPaths, 'home' | 'kitHome'> };
   readonly config: { readonly budget: Pick<BudgetConfig, 'account' | 'statusSnapshotDir'> };
 }
 
+/** A fold of no reading, for a folder that cannot be read. */
+const NO_READING: WeekFold = { best: undefined, followedBy: undefined };
+
 /**
- * Every status line snapshot on the asking team's account, read-only: its own folder's (`own`), then each other
- * team's on the account in the order of `teams`, each folder once. A team's tabs write only its own folder, so a
- * team whose tabs are idle would show an old week %; `weekUseOf` takes the newest reading among them all. Another
- * team's folder that cannot be read gives no snapshot, so it never stops this team's budget.
+ * The status line readings of the week on the asking team's account, folded, read-only: its own folder's (`own`),
+ * then each other team's on the account in the order of `teams`, each folder once, through its week summary when it
+ * keeps one (`readFolderWeek`). A team's tabs write only its own folder, so a team whose tabs are idle would show an
+ * old week %; the merged fold takes the newest reading among them all. Another team's folder that cannot be read
+ * gives no reading, so it never stops this team's budget.
  */
-export async function accountSnapshotsOf(
+export async function accountWeekOf(
   files: Pick<Files, 'list' | 'read'>,
   teams: ReadonlyMap<string, SnapshotDirSource>,
   own: string,
-  scope: Pick<AccountScope, 'account' | 'configDir'>,
-): Promise<StatusSnapshot[]> {
-  const snapshots = await readSnapshots(files, own);
+  scope: Pick<AccountScope, 'account' | 'configDir' | 'now'>,
+): Promise<WeekFold> {
+  let fold = await readFolderWeek(files, own, scope.now);
   const read = new Set([own]);
   for (const { kit, config } of teams.values()) {
     const dir = snapshotDirOf(config.budget, kit.paths);
     if (!read.has(dir) && accountOf(config.budget, scope.configDir) === scope.account) {
       read.add(dir);
-      snapshots.push(...(await othersSnapshots(files, dir)));
+      fold = mergeWeekFolds(fold, await othersWeek(files, dir, scope.now));
     }
   }
-  return snapshots;
+  return fold;
 }
 
-async function othersSnapshots(files: Pick<Files, 'list' | 'read'>, dir: string): Promise<readonly StatusSnapshot[]> {
+async function othersWeek(files: Pick<Files, 'list' | 'read'>, dir: string, now: number): Promise<WeekFold> {
   try {
-    return await readSnapshots(files, dir);
+    return await readFolderWeek(files, dir, now);
   } catch {
-    return [];
+    return NO_READING;
   }
 }

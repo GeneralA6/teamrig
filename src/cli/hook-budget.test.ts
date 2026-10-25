@@ -7,7 +7,9 @@ import type { JsonRecord } from '../core/guards.ts';
 import { parseObject } from '../core/jsonl.ts';
 import { ASK_REFUSED_NOTE } from '../hooks/permission.ts';
 import { helperLaunchReminder } from '../rules/helper-default.ts';
-import { APP, CliHarness, contextOf, decisionOf, reasonOf, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
+import type { Files } from '../core/files.ts';
+import { APP, CliHarness, contextOf, decisionOf, KIT, reasonOf, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
+import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { replyLine, transcript } from '../testing/transcript-lines.ts';
 import { ok } from '../testing/hired-team.ts';
@@ -54,7 +56,7 @@ function status(usedPct: number, resetsAt = RESET): string {
 
 interface World {
   readonly kit: CliHarness;
-  readonly hook: (name: string, tab: string, extra?: JsonRecord) => Promise<CliResult>;
+  readonly hook: (name: string, tab: string, extra?: JsonRecord, files?: Files) => Promise<CliResult>;
 }
 
 /** Alpha's and the lead's tabs read their inboxes; alpha used `ownW` + 1M W today; the week is `usedPct` used. */
@@ -64,9 +66,10 @@ async function world(budget: JsonRecord, ownW: number, usedPct: number, extra: J
   await kit.run(['inbox', 'read', '--session', 'alpha'], { env: { CLAUDE_CODE_SESSION_ID: ALPHA_TAB } });
   await kit.run(['inbox', 'read', '--session', 'lead'], { env: { CLAUDE_CODE_SESSION_ID: LEAD_TAB } });
   assert.equal((await kit.run(['statusline'], { stdin: status(usedPct) })).code, EXIT.ok);
-  const hook = (name: string, tab: string, extra: JsonRecord = {}): Promise<CliResult> => {
+  const hook = (name: string, tab: string, extra: JsonRecord = {}, files?: Files): Promise<CliResult> => {
     const path = tab === LEAD_TAB ? LEAD_TRANSCRIPT : ALPHA_TRANSCRIPT;
-    return kit.run(['hook', name], { stdin: JSON.stringify({ session_id: tab, cwd: APP, transcript_path: path, ...extra }), transcripts: source });
+    const stdin = JSON.stringify({ session_id: tab, cwd: APP, transcript_path: path, ...extra });
+    return kit.run(['hook', name], { stdin, transcripts: source, ...(files === undefined ? {} : { files }) });
   };
   return { kit, hook };
 }
@@ -146,6 +149,17 @@ describe('the budget in the hooks', () => {
     assert.ok(prompt.stdout.some((line) => line.startsWith("teamrig budget: you are past today's budget")), prompt.stdout.join('\n'));
     const again = await hook('inbox-reminder', ALPHA_TAB, { prompt: 'again', session_title: 'app-alpha' });
     assert.ok(!again.stdout.some((line) => line.startsWith('teamrig budget:')));
+  });
+
+  it("reads the week from the status line's week summary, opening no snapshot", async () => {
+    const team = await world({}, 10_000_000, 30);
+    const { kit, hook } = team;
+    await meterLead(team);
+    await hook('stop', ALPHA_TAB);
+    // Each prompt hook of every tab once read each snapshot in the folder: 18 tabs restored at once outlived the hook's 15 s.
+    const snapshotsClosed = new FaultyFiles(kit.files).fail('read', join(KIT, 'usage', 'live', `${ALPHA_TAB}.json`), systemError('EACCES'));
+    const prompt = await hook('inbox-reminder', ALPHA_TAB, { prompt: 'next', session_title: 'app-alpha' }, snapshotsClosed);
+    assert.ok(prompt.stdout.some((line) => line.startsWith("teamrig budget: you are past today's budget")), prompt.stdout.join('\n'));
   });
 
   it('asks before a helper launch past budget with overAction ask, and lets it go with ask-lead', async () => {

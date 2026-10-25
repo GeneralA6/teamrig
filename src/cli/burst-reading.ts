@@ -2,15 +2,14 @@ import type { BurstRecord } from '../budget/burst.ts';
 import { BurstLog } from '../budget/burst-log.ts';
 import { weekWindow, type WeekWindow } from '../budget/pace.ts';
 import { PeriodStore } from '../budget/period.ts';
-import { weekUseOf } from '../budget/snapshot.ts';
 import type { BudgetConfig } from '../config/types.ts';
 import type { TeamPaths } from '../core/home.ts';
-import { snapshotsOnAccount } from './account-teams.ts';
+import { weekUseOnAccount } from './account-teams.ts';
 import type { CliRuntime } from './runtime.ts';
 
 /**
  * The bursts as `check`, `hire --burst` and `burst end` read them: the burst log, the week's use from the newest
- * status-line reading on the account (`snapshotsOnAccount`) and the week it counts in (whose spare pays `check`'s
+ * status-line reading on the account (`weekUseOnAccount`) and the week it counts in (whose spare pays `check`'s
  * SCALE-OUT), no transcript measured. With no status-line reading the use is unknown, so a burst then ends by its
  * time or the lead's end only, never by its stop %, and no SCALE-OUT is raised.
  */
@@ -25,7 +24,7 @@ export interface BurstReading {
 
 export async function readBursts(runtime: CliRuntime, paths: Pick<TeamPaths, 'bursts' | 'period' | 'home' | 'kitHome'>, budget: BudgetConfig, now: number): Promise<BurstReading> {
   const { records } = await new BurstLog(runtime.files, paths.bursts).read();
-  const use = weekUseOf(await snapshotsOnAccount(runtime, budget, paths), now);
+  const use = await weekUseOnAccount(runtime, budget, paths, now);
   const period = await new PeriodStore(runtime.files, paths.period).periodAt(budget, use, now);
   return { records, usedPct: use?.usedPct, window: period === undefined ? undefined : weekWindow(period.end, budget.paceEndHoursBeforeReset, period.start) };
 }
