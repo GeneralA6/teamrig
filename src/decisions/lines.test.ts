@@ -4,7 +4,7 @@ import type { DecisionsConfig } from '../config/types.ts';
 import { TimeZone } from '../core/zone.ts';
 import type { Task } from '../register/fold.ts';
 import { TaskTree } from '../register/tree.ts';
-import { TEST_CARD } from '../testing/card.ts';
+import { TEST_OWNER_CARD } from '../testing/card.ts';
 import { testTask } from '../testing/task.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import { decisionBatch } from './batch.ts';
@@ -16,13 +16,13 @@ const CHECKPOINTS: DecisionsConfig = { batchTimesUtc: ['13:03', '19:03'], batchA
 const ASKED_AT = Date.parse('2030-01-07T20:00:00Z');
 
 function ownerWait(id: string, statusAt: string, overrides: Partial<Task> = {}): Task {
-  return testTask({ id, title: `Decide ${id}`, status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], card: TEST_CARD, statusAt, ...overrides });
+  return testTask({ id, title: `Decide ${id}`, status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], card: TEST_OWNER_CARD, statusAt, ...overrides });
 }
 
 function viewOf(tasks: readonly Task[], config: DecisionsConfig = CHECKPOINTS): BatchView {
   const byId = new Map(tasks.map((task) => [task.id, task]));
   const tree = new TaskTree(byId, new Date(NOW), TimeZone.UTC);
-  const batch = decisionBatch({ tasks, tree, now: NOW, askedAt: ASKED_AT, ownerMarker: 'owner', config });
+  const batch = decisionBatch({ tasks, tree, now: NOW, askedAt: ASKED_AT, ownerMarker: 'owner', requireGate: true, config });
   return { batch, tree, byId, ownerMarker: 'owner', command: 'teamrig', lead: 'lead', zone: TimeZone.UTC };
 }
 
@@ -38,7 +38,7 @@ describe('the decisions listing', () => {
     assert.equal(lines[0], 'DECISIONS 1 to ask owner, 1 asked and past due; the next batch Tue 01-08 13:03 UTC');
     assert.equal(lines[1], 'NOT YET ASKED');
     assert.match(lines[2] ?? '', /^ {2}T1 waiting, p2, owner alpha \| Decide T1/);
-    assert.ok(lines.includes(`    decide: ${TEST_CARD.question}`), lines.join('\n'));
+    assert.ok(lines.includes(`    decide: ${TEST_OWNER_CARD.question}`), lines.join('\n'));
     const past = lines.indexOf('PAST DUE, asked before: ask again');
     assert.ok(past > 2, lines.join('\n'));
     assert.match(lines[past + 1] ?? '', /^ {2}T2 waiting, p2, owner alpha, due 01-07 \| Decide T2/);

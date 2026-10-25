@@ -22,7 +22,7 @@ export interface TeamDecisions {
 export async function teamDecisions(
   files: Files,
   paths: Pick<TeamPaths, 'decisionsAsked' | 'meeting'>,
-  config: { readonly decisions: DecisionsConfig; readonly register: Pick<RegisterConfig, 'ownerSource'> },
+  config: { readonly decisions: DecisionsConfig; readonly register: Pick<RegisterConfig, 'ownerSource' | 'requireDecisionCard'> },
   tasks: ReadonlyMap<string, Task>,
   now: number,
   zone: TimeZone,
@@ -36,6 +36,7 @@ export async function teamDecisions(
     now,
     askedAt: askedAtOf(asked, meeting),
     ownerMarker: config.register.ownerSource,
+    requireGate: config.register.requireDecisionCard,
     config: config.decisions,
   });
   return { batch, tree };

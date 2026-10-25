@@ -4,7 +4,7 @@ import type { DecisionsConfig } from '../config/types.ts';
 import { TimeZone } from '../core/zone.ts';
 import type { Task } from '../register/fold.ts';
 import { TaskTree } from '../register/tree.ts';
-import { TEST_CARD } from '../testing/card.ts';
+import { TEST_CARD, TEST_OWNER_CARD } from '../testing/card.ts';
 import { testTask } from '../testing/task.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import { decisionBatch, lastBatchTime, nextBatchText, nextBatchTime, triggerText, type BatchInput } from './batch.ts';
@@ -14,18 +14,19 @@ const NOW = Date.parse('2030-01-08T10:00:00Z');
 const TIMES = ['13:03', '19:03'];
 const CHECKPOINTS: DecisionsConfig = { batchTimesUtc: TIMES, batchAt: 5 };
 
-/** A task waiting on the owner's decision since `statusAt`, with a card. */
+/** A task waiting on the owner's decision since `statusAt`, with a card naming its gate. */
 function ownerWait(id: string, statusAt: string, overrides: Partial<Task> = {}): Task {
-  return testTask({ id, status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], card: TEST_CARD, statusAt, ...overrides });
+  return testTask({ id, status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], card: TEST_OWNER_CARD, statusAt, ...overrides });
 }
 
-function inputOf(tasks: readonly Task[], askedAt: string | undefined, config: DecisionsConfig = CHECKPOINTS): BatchInput {
+function inputOf(tasks: readonly Task[], askedAt: string | undefined, config: DecisionsConfig = CHECKPOINTS, requireGate = true): BatchInput {
   return {
     tasks,
     tree: new TaskTree(new Map(tasks.map((task) => [task.id, task])), new Date(NOW), TimeZone.UTC),
     now: NOW,
     askedAt: askedAt === undefined ? undefined : Date.parse(askedAt),
     ownerMarker: 'owner',
+    requireGate,
     config,
   };
 }
@@ -54,6 +55,13 @@ describe('the decision batch', () => {
     const onLead = testTask({ id: 'T4', status: 'waiting', waits: [{ kind: 'decision', who: 'lead' }], statusAt: '2030-01-08T09:00:00.000Z' });
     const batch = decisionBatch(inputOf([fresh, askedLate, askedOnTime, onLead], '2030-01-07T12:00:00.000Z'));
     assert.deepEqual([ids(batch.pending), ids(batch.overdue)], [['T1'], ['T2']]);
+  });
+
+  // T1219: an ungated wait is its session's or its leader's, never asked of the owner.
+  it("leaves out a wait on the owner's decision whose card names no gate, unless gates are not required", () => {
+    const tasks = [ownerWait('T1', '2030-01-08T09:00:00.000Z'), ownerWait('T2', '2030-01-08T09:00:00.000Z', { card: TEST_CARD })];
+    assert.deepEqual(ids(decisionBatch(inputOf(tasks, undefined)).pending), ['T1']);
+    assert.deepEqual(ids(decisionBatch(inputOf(tasks, undefined, CHECKPOINTS, false)).pending), ['T1', 'T2']);
   });
 
   it('counts every wait not yet asked when no batch was ever asked', () => {

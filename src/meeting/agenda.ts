@@ -1,5 +1,6 @@
 import { MS_PER_DAY } from '../core/time.ts';
-import { cardLines, cardTexts, namedTaskIds } from '../register/card.ts';
+import { cardLines, cardTexts, GATE_FLAG, namedTaskIds } from '../register/card.ts';
+import { isUngated } from '../register/check.ts';
 import type { Task } from '../register/fold.ts';
 import { ACTIVE_STATUSES } from '../register/model.ts';
 import type { TaskTree } from '../register/tree.ts';
@@ -34,6 +35,15 @@ export function waitsOnOwner(task: Task, ownerMarker: string): boolean {
   return task.waits.some((reason) => (reason.kind === 'decision' || reason.kind === 'approval') && reason.who === ownerMarker);
 }
 
+/**
+ * Whether the lead asks the owner a task's wait: it waits on the owner (waitsOnOwner) and, while `requireGate`
+ * (`register.requireDecisionCard`) is on, is not ungated (isUngated, T1194): an ungated one is its session's or its
+ * leader's to decide, so neither the agenda's DECISIONS nor a decision batch holds it.
+ */
+export function asksOwner(task: Task, ownerMarker: string, requireGate: boolean): boolean {
+  return waitsOnOwner(task, ownerMarker) && !(requireGate && isUngated(task, ownerMarker));
+}
+
 export interface AgendaInput {
   readonly tasks: readonly Task[];
   /** The dependency tree of the same read: effective dues, ready reasons and what needs each task. */
@@ -43,6 +53,8 @@ export interface AgendaInput {
   readonly since: number;
   /** The register's marker for the owner (`register.ownerSource`), which a decision or approval reason names. */
   readonly ownerMarker: string;
+  /** `register.requireDecisionCard`: a wait on the owner's decision names its gate, so an ungated one leaves DECISIONS. */
+  readonly requireGate: boolean;
   /** The lead's session id, which records the decisions. */
   readonly lead: string;
   readonly command: string;
@@ -98,7 +110,7 @@ export function cardFacts(task: Task, tree: TaskTree, byId: ReadonlyMap<string, 
  * card form is the owner's: each item readable alone, with the numbers to decide by and one exact action.
  */
 function decisionLines(input: AgendaInput): string[] {
-  const waiting = input.tree.inPlanOrder(input.tasks.filter((task) => waitsOnOwner(task, input.ownerMarker)));
+  const waiting = input.tree.inPlanOrder(input.tasks.filter((task) => asksOwner(task, input.ownerMarker, input.requireGate)));
   const head = `DECISIONS ${waiting.length} waiting on ${input.ownerMarker} (decision or approval)`;
   if (waiting.length === 0) {
     return [head];
@@ -109,6 +121,26 @@ function decisionLines(input: AgendaInput): string[] {
     `  Read each card to ${input.ownerMarker} as it stands, each figure explained; where one says no card yet, ask its owner for it (check flags it NO-CARD). Never point to a doc; \`${input.command} show <id>\` prints a task whole.`,
     `  A question a card does not answer is its task owner's to find: ${input.command} add --owner <id> --due <date> --session ${input.lead}, then relay the answer; never look it up yourself.`,
     `  Record each answer in the same turn: ${input.command} update <id> --note "${input.ownerMarker} decided: <decision>" --session ${input.lead}; meeting end tells each task's owner.`,
+  ];
+}
+
+/**
+ * UNGATED: the waits on the owner's decision whose card names no owner gate or business decision (isUngated), each
+ * its session's or its leader's to decide, so the lead never reads one out; none while `requireGate` is off, and
+ * no block when none waits.
+ */
+function ungatedLines(input: AgendaInput): string[] {
+  const ungated = input.requireGate ? input.tree.inPlanOrder(input.tasks.filter((task) => isUngated(task, input.ownerMarker))) : [];
+  if (ungated.length === 0) {
+    return [];
+  }
+  return [
+    ...listed(
+      `UNGATED ${ungated.length} waiting on ${input.ownerMarker}'s decision with no gate: never read to ${input.ownerMarker}`,
+      ungated.map((task) => rowOf(task, input.tree)),
+      `${input.command} check`,
+    ),
+    `  Each is its session's or its leader's to decide: decide those of the sessions you lead and send each its answer as an inbox line; where an owner gate or a business decision does apply, its owner sets it again with ${GATE_FLAG} "<the owner gate, or business>".`,
   ];
 }
 
@@ -133,7 +165,10 @@ function doneLines(input: AgendaInput): string[] {
   );
 }
 
-/** The register's agenda: the owner's decisions first, as they are what the meeting is for, then the late tasks, then the finished ones. */
+/**
+ * The register's agenda: the owner's decisions first, as they are what the meeting is for, then the ungated waits
+ * that are not, then the late tasks, then the finished ones.
+ */
 export function agendaLines(input: AgendaInput): string[] {
-  return [...decisionLines(input), ...lateLines(input), ...doneLines(input)];
+  return [...decisionLines(input), ...ungatedLines(input), ...lateLines(input), ...doneLines(input)];
 }

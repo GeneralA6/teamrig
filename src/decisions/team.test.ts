@@ -4,7 +4,7 @@ import { storedDeadline } from '../core/time.ts';
 import { TimeZone } from '../core/zone.ts';
 import { MeetingStore } from '../meeting/state.ts';
 import type { Task } from '../register/fold.ts';
-import { TEST_CARD } from '../testing/card.ts';
+import { TEST_OWNER_CARD } from '../testing/card.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { testTask } from '../testing/task.ts';
 import { JERUSALEM } from '../testing/zone.ts';
@@ -13,16 +13,16 @@ import { teamDecisions } from './team.ts';
 
 const NOW = Date.parse('2030-01-08T10:00:00Z');
 const PATHS = { decisionsAsked: '/kit/state/decisions-asked.json', meeting: '/kit/state/meeting.json' };
-const CONFIG = { decisions: { batchTimesUtc: ['13:03', '19:03'], batchAt: 5 }, register: { ownerSource: 'owner' } };
+const CONFIG = { decisions: { batchTimesUtc: ['13:03', '19:03'], batchAt: 5 }, register: { ownerSource: 'owner', requireDecisionCard: true } };
 
 function ownerWait(id: string, statusAt: string): Task {
-  return testTask({ id, status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], card: TEST_CARD, statusAt });
+  return testTask({ id, status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], card: TEST_OWNER_CARD, statusAt });
 }
 
 /** An owner wait due at `typed` as a person types it on `zone`'s clock, stored the way the CLI stores it (in UTC). */
 function typedDueWait(typed: string, zone: TimeZone): Task {
   const due = storedDeadline(typed, NOW, zone) ?? assert.fail(`${typed} does not read as a deadline`);
-  return testTask({ id: 'T3', status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], card: TEST_CARD, statusAt: '2030-01-08T09:50:00.000Z', due });
+  return testTask({ id: 'T3', status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], card: TEST_OWNER_CARD, statusAt: '2030-01-08T09:50:00.000Z', due });
 }
 
 const TASKS = new Map([ownerWait('T1', '2030-01-07T08:00:00.000Z'), ownerWait('T2', '2030-01-08T09:00:00.000Z')].map((task) => [task.id, task]));
