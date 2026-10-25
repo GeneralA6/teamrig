@@ -4,7 +4,7 @@ import type { Burst } from '../budget/burst.ts';
 import { parseConfig } from '../config/parse.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { burstHireOf } from './burst-hire.ts';
-import type { HireRecord } from './log.ts';
+import type { HireRecord } from './record.ts';
 import type { HireRequest } from './plan.ts';
 
 const AT = Date.parse('2030-01-08T10:00:00Z');

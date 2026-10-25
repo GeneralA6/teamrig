@@ -3,7 +3,7 @@ import { isDefaultModel, launchOf } from '../config/launch.ts';
 import { EFFORT_LEVELS, type KitConfig } from '../config/types.ts';
 import { KIT_NAME } from '../core/home.ts';
 import type { Checked } from '../setup/team-create.ts';
-import type { HireRecord } from './log.ts';
+import type { HireRecord } from './record.ts';
 import type { HireRequest } from './plan.ts';
 
 /**

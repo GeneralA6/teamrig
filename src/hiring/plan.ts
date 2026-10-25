@@ -6,7 +6,7 @@ import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { ID_PATTERN } from '../core/ids.ts';
 import { formatUtcDay, parseUtcDay } from '../core/time.ts';
 import type { Checked } from '../setup/team-create.ts';
-import type { HireRecord } from './log.ts';
+import type { HireRecord } from './record.ts';
 
 /**
  * The plan behind `hire`: a new session written into the team config within `hiring`'s policy and

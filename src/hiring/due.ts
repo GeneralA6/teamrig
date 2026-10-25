@@ -3,7 +3,7 @@ import { KIT_NAME } from '../core/home.ts';
 import { formatUtcDay } from '../core/time.ts';
 import type { Task } from '../register/fold.ts';
 import { ACTIVE_STATUSES } from '../register/model.ts';
-import type { HireRecord } from './log.ts';
+import type { HireRecord } from './record.ts';
 
 /**
  * The `check` flags on hired sessions: RETIRE-DUE when the burst it was hired for is over, or when it has

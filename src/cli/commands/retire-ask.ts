@@ -1,7 +1,8 @@
 import type { KitConfig } from '../../config/types.ts';
 import { errorMessage } from '../../core/guards.ts';
 import type { TeamPaths } from '../../core/home.ts';
-import { activeHires, HiringLog } from '../../hiring/log.ts';
+import { HiringLog } from '../../hiring/log.ts';
+import { activeHires } from '../../hiring/record.ts';
 import { SessionAskStore } from '../../core/session-asks.ts';
 import { ownsOpenTask, retireAskDue, retireAskReason } from '../../hiring/retire-ask.ts';
 import type { WriteResult } from '../../register/register.ts';

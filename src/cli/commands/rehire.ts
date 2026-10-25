@@ -6,7 +6,7 @@ import { PlainLogFile } from '../../core/log-file.ts';
 import { lastClaudeSessionOf } from '../../inbox/marks.ts';
 import { JsonlMarkLog } from '../../inbox/store.ts';
 import { resumeVerdict, type ResumeVerdict } from '../../hiring/rehire.ts';
-import type { RetireRecord } from '../../hiring/log.ts';
+import type { RetireRecord } from '../../hiring/record.ts';
 import { readContextTokens } from '../../refresh/usage.ts';
 import type { CliRuntime } from '../runtime.ts';
 

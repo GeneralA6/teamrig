@@ -3,7 +3,7 @@ import { KIT_NAME } from '../core/home.ts';
 import type { SessionAsk } from '../core/session-asks.ts';
 import type { Task } from '../register/fold.ts';
 import { ACTIVE_STATUSES } from '../register/model.ts';
-import type { HireRecord } from './log.ts';
+import type { HireRecord } from './record.ts';
 
 /**
  * Under `hiring.policy` `automatic`, a hired session whose last open task closes is asked at its next turn
