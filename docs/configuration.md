@@ -103,7 +103,7 @@ The task list (the register): its priority levels, what each status change needs
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `ownerSource` | [session name](#shared-types) | `"owner"` | The --source that marks a task as ordered by the human owner. |
-| `priorities` | array (at least 1 item) of [object](#registerpriorities) | `[{"id":1,"name":"keep the lights on"},{"id":2,"name":"correctness"},{"id":3,"name":"scale"},{"id":4,"name":"this week's owner decisions"},{"id":5,"name":"if budget allows"}]` | The priority levels, most urgent first; a task's priority prints as p\<id>. Config version 1 called them tiers. |
+| `priorities` | array (at least 1 item) of [object](#registerpriorities) | `[{"id":1,"name":"keep the lights on"},{"id":2,"name":"correctness"},{"id":3,"name":"scale"},{"id":4,"name":"this week's owner decisions"},{"id":5,"name":"if budget allows"}]` | The priority levels, most urgent first; a task's priority prints as p\<id>. Above them every team has teamrig's own p0, for urgent work done right now, which no config lists. Config version 1 called them tiers. |
 | `goalPattern` | string (at least 1 character) |  | When set, every goal tag on a new task must match this regular expression. |
 | `maxTitle` | integer (20 to 1000) | `140` | The most characters a task title may have. |
 | `maxText` | integer (20 to 5000) | `300` | The most characters of a task's other text, such as its ref and notes; the title and the description have their own limits. |
@@ -123,11 +123,11 @@ The task list (the register): its priority levels, what each status change needs
 
 ## `register.priorities[]`
 
-The priority levels, most urgent first; a task's priority prints as p\<id>. Config version 1 called them tiers.
+The priority levels, most urgent first; a task's priority prints as p\<id>. Above them every team has teamrig's own p0, for urgent work done right now, which no config lists. Config version 1 called them tiers.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
-| `id` (required) | integer (1 to 99) |  | The level's number: a task prints it as p\<id>, and 1 is the most urgent. |
+| `id` (required) | integer (1 to 99) |  | The level's number: a task prints it as p\<id>, and 1 is the most urgent a config names (0 is teamrig's own p0). |
 | `name` (required) | string (at least 1 character) |  | What the level holds, in a few words. |
 
 ## `register.check`
@@ -444,7 +444,7 @@ Waking a session idle at its prompt when work is handed to it, instead of at its
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `enabled` | boolean | `true` | Off: a session sees new work only at its next prompt. |
-| `priority` | integer (1 to 99) | `1` | The least urgent priority that wakes a session: 1 wakes for p1 only. A session past its daily budget, or in the budget's quiet hours, wakes for p1 only whatever this says. |
+| `priority` | integer (1 to 99) | `1` | The least urgent priority that wakes a session: 1 wakes for p0 and p1 only. A session past its daily budget, or in the budget's quiet hours, wakes for p0 and p1 only whatever this says. |
 | `batchSeconds` | integer (0 to 3600) | `120` | How long a wake waits after the first new task it is for, so tasks handed together wake the session once. |
 | `minGapMinutes` | integer (0 to 1440) | `15` | The least time between two wakes of one session; work handed meanwhile waits and wakes it once. |
 | `dayStartUtc` | string (matching `^([01]\d\|2[0-3]):[0-5]\d$`) |  | The day's start (HH:MM UTC, outside the budget's quiet hours): from then each session with work it can start, of any priority, that has had no turn since gets one wake that day, and a burst wakes its sessions the same way once it starts. Unset: no day-start wake, and a burst wakes no one. |

@@ -746,7 +746,7 @@ waits) with every wait cleared or answered, and, when never started, with every 
 and an answered one as `(p2, waiting: lead approved it)` or `declined it` (back to work on the answer's note), so the
 session sets its next status. Held by its budget (past
 its daily budget while the team has no room today), or in the budget's quiet hours unless its lift exempts it, only
-p1 wakes it. While the owner's daily meeting is open
+p0 and p1 wake it. While the owner's daily meeting is open
 the lead is not woken; the work waits for the first check after it.
 
 Tasks handed within `wake.batchSeconds` (120) of the first wake it once, each task wakes it once, and wakes of one
@@ -895,7 +895,7 @@ allowance, which is recomputed from what is left, so a night a lift worked throu
 the pace.
 Past its part while the team has room, a session is not held, and its line says so: `The team has room today: 2.0%
 of the week used, below its in-day pace of 4.0%, so nothing more happens.` Past its part once the team has no room,
-it is held: only p1 work wakes it, and it is escalated when `budget.escalate` is `session`, or, with
+it is held: only p0 and p1 work wakes it, and it is escalated when `budget.escalate` is `session`, or, with
 `session-and-fleet` (the default), only while the whole team is also ahead of its pace line. Then
 `budget.overAction` applies:
 
@@ -910,12 +910,15 @@ While escalated, the model is told with the next prompt, once per level: `teamri
 budget and the team has no room left today, and it is ahead of its pace line. Finish the step in hand and start
 no new work items or helpers.
 Never skip a test or check to save budget. The lead can lift it.` A sub-lead's session reads `Your leader <name> can
-lift it.` instead, and the lead `As the lead, lift it only with a stop %.`
+lift it.` instead, and the lead `As the lead, lift it only with a stop %.` A session with an open or in-progress p0 task
+reads `start no new work items or helpers, except your p0 work (T5): it goes on past the daily stop.`, and its
+leader's line says it goes on with that work past the stop.
 
 In quiet hours, `budget.quietHours.action` applies to helper launches as well (`ask` or `block`; `warn` only
 says the team rests), and the stronger of the two wins. Nothing else is ever held, so a fix in hand always
-finishes. The lead's own helpers, and those of a session a leader lifted (`teamrig budget lift`, always with a
-stop %; a lift of its group does not count), always go ahead. What each session was shown is kept in `state/usage/warn/<id>.json`.
+finishes. The lead's own helpers, those of a session a leader lifted (`teamrig budget lift`, always with a
+stop %; a lift of its group does not count), and those of a session with an open or in-progress p0 task always go
+ahead. What each session was shown is kept in `state/usage/warn/<id>.json`.
 
 A burst ([teamrig burst start](commands.md#teamrig-burst-start)) comes the same way, once each. A session in it
 sees `Budget: the lead started a surplus burst ...` at its next turn end and a line when it ends; its model is
