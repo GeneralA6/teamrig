@@ -2,10 +2,10 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_REGISTER } from '../config/defaults.ts';
 import { testTask } from '../testing/task.ts';
-import type { TaskKind } from './events.ts';
+import type { ItemType } from './events.ts';
 import {
+  asksReview,
   isCritical,
-  isProblem,
   missedTaskIds,
   missingParts,
   parseReview,
@@ -90,24 +90,25 @@ describe('the problem review', () => {
 
 describe('the review gate', () => {
   const CONFIG = DEFAULT_REGISTER.review;
-  const PROBLEM = testTask({ kind: 'problem', owner: 'alpha' });
+  const PROBLEM = testTask({ type: 'bug', owner: 'alpha' });
 
-  it('asks a review only of a task marked a problem or critical', () => {
-    const kinds: (TaskKind | null)[] = [null, 'work', 'problem', 'critical'];
+  it('asks a review only of a bug, never of a task or an untyped item', () => {
+    const types: (ItemType | null)[] = [null, 'task', 'bug'];
     assert.deepEqual(
-      kinds.map((kind) => isProblem({ kind })),
-      [false, false, true, true],
+      types.map((type) => asksReview({ type })),
+      [false, false, true],
     );
   });
 
-  it('counts a problem critical when marked so, or when a critical owner owns it, never work', () => {
-    assert.equal(isCritical({ kind: 'critical', owner: 'alpha' }, []), true);
-    assert.equal(isCritical({ kind: 'problem', owner: 'alpha' }, ['alpha']), true);
-    assert.equal(isCritical({ kind: 'problem', owner: 'alpha' }, ['bravo']), false);
-    assert.equal(isCritical({ kind: 'work', owner: 'alpha' }, ['alpha']), false);
+  it('counts a bug critical when marked so, or when a critical owner owns it, never a task', () => {
+    assert.equal(isCritical({ type: 'bug', critical: true, owner: 'alpha' }, []), true);
+    assert.equal(isCritical({ type: 'bug', critical: false, owner: 'alpha' }, ['alpha']), true);
+    assert.equal(isCritical({ type: 'bug', critical: false, owner: 'alpha' }, ['bravo']), false);
+    assert.equal(isCritical({ type: 'task', critical: false, owner: 'alpha' }, ['alpha']), false);
+    assert.equal(isCritical({ type: null, critical: true, owner: 'alpha' }, []), false, 'a mark on a type without a review counts for nothing');
   });
 
-  it('names the parts a problem lacks at a required status, counting those it has and those given now', () => {
+  it('names the parts a bug lacks at a required status, counting those it has and those given now', () => {
     assert.deepEqual(reviewGap(PROBLEM, 'verifying', {}, CONFIG), ['cause', 'how', 'prevent', 'missedTest', 'missedMonitor', 'missedLog']);
     const partly = testTask({ ...PROBLEM, review: { cause: FULL.cause } });
     assert.deepEqual(reviewGap(partly, 'done', { how: FULL.how, missedLog: FULL.missedLog }, CONFIG), ['prevent', 'missedTest', 'missedMonitor']);
@@ -115,8 +116,8 @@ describe('the review gate', () => {
     assert.deepEqual(reviewGap(PROBLEM, 'done', FULL, { ...CONFIG, criticalOwners: ['alpha'] }), ['harden']);
   });
 
-  it('asks nothing of work, at a status the team leaves out, or with the review off', () => {
-    assert.deepEqual(reviewGap(testTask({ kind: 'work' }), 'done', {}, CONFIG), []);
+  it('asks nothing of a task, at a status the team leaves out, or with the review off', () => {
+    assert.deepEqual(reviewGap(testTask({ type: 'task' }), 'done', {}, CONFIG), []);
     assert.deepEqual(reviewGap(PROBLEM, 'in-progress', {}, CONFIG), []);
     assert.deepEqual(reviewGap(PROBLEM, 'dropped', {}, CONFIG), []);
     assert.deepEqual(reviewGap(PROBLEM, 'verifying', {}, { ...CONFIG, requireOn: ['done'] }), []);
@@ -126,8 +127,8 @@ describe('the review gate', () => {
 
   it('words the gap as one line naming the flags that close it', () => {
     assert.equal(
-      reviewGapText({ id: 'T7' }, 'done', ['harden']),
-      'T7 is a problem: done needs its review, --harden (how it happened, what stops it and how it was missed; teamrig help set)',
+      reviewGapText({ id: 'T7', type: 'bug' }, 'done', ['harden']),
+      'T7 is a bug: done needs its review, --harden (how it happened, what stops it and how it was missed; teamrig help set)',
     );
   });
 });

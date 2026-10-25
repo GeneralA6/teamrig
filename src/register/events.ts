@@ -15,8 +15,8 @@ import { parseWaits, type WaitReason } from './waits.ts';
  * a newer teamrig's, and a `blocked` line reads here as `waiting` with no reasons. It also gained a
  * `verifying` status's `proof`, a task's `description` (0.44.0) and its `size` (0.47.0), and a `waiting` status's
  * decision `card` (0.79.0), the same `waits` and `card` on a `verifying` line for what its proof waits for
- * (0.109.0), an update's approval `verdict` (0.126.0), a task's `kind` (0.147.0), its `pin` (T637) and a status line's
- * `review` (T916), which an older reader ignores:
+ * (0.109.0), an update's approval `verdict` (0.126.0), a task's `kind` (0.147.0), its `pin` (T637), a status line's
+ * `review` (T916) and a task's `type` and `critical` mark (T1252), which replaced `kind`, which an older reader ignores:
  * each reads there as none (an answered update as a note alone). An older teamrig re-serialized the events of the snapshot a rotation or
  * `compact` rewrites, so it dropped such a field there (the archive keeps the lines as written); this one copies
  * each kept line as written (compaction.ts).
@@ -48,28 +48,43 @@ export interface TaskFields {
   readonly after: readonly string[];
   /** What the task still costs, in percent of the weekly usage limit (above 0, at most 100). Absent on older lines: not sized. */
   readonly size: number | null;
-  /** Whether the task is a problem (TASK_KINDS); null when no one marked it, read as work. Absent on older lines: not marked. */
-  readonly kind: TaskKind | null;
+  /**
+   * What the item is (ITEM_TYPES); null when no one set it, read as a task. A type a newer teamrig writes reads as a
+   * task here. Absent on older lines: their `kind` (LEGACY_KIND_FIELD), else not set.
+   */
+  readonly type: ItemType | null;
+  /** Whether the item sits in a critical area, which only a type with a review takes (item-types.ts). Absent on older lines: a `kind` of critical. */
+  readonly critical: boolean;
   /** The leader who pinned the task to the top of its owner's list, above priority; null: not pinned. Absent on older lines: not pinned. */
   readonly pin: string | null;
 }
 
 /**
- * What a task was marked (`--problem`): `work`, marked as no problem; a `problem`, such as a fix, an incident, the
- * investigation of a failure, a problem's design or the decision about one; or `critical`, a problem in a critical area.
+ * What a register item is (`--type`): a `task`, the default, or a `bug`, such as a fix, an incident, the investigation
+ * of a failure, a bug's design or the decision about one. What each type does is its row in item-types.ts.
  */
-export const TASK_KINDS = ['work', 'problem', 'critical'] as const;
+export const ITEM_TYPES = ['task', 'bug'] as const;
 
-export type TaskKind = (typeof TASK_KINDS)[number];
+export type ItemType = (typeof ITEM_TYPES)[number];
 
-export function isTaskKind(value: unknown): value is TaskKind {
-  return TASK_KINDS.some((kind) => kind === value);
+export function isItemType(value: unknown): value is ItemType {
+  return ITEM_TYPES.some((type) => type === value);
 }
 
-/** The kinds that mark a problem, which its review covers. */
-export const PROBLEM_KINDS: readonly TaskKind[] = ['problem', 'critical'];
+/** How a type is spelled (`bug`): a well-spelled one this code does not know is a newer teamrig's, read as a task. */
+const TYPE_NAME = /^[a-z]+(?:-[a-z]+)*$/;
 
-export const TASK_FIELD_NAMES = ['title', 'description', 'owner', 'source', 'ref', 'priority', 'due', 'goals', 'week', 'after', 'size', 'kind', 'pin'] as const;
+/** The field lines before T1252 marked a task with (`work`, `problem` or `critical`); read as a type and critical mark, never written. */
+export const LEGACY_KIND_FIELD = 'kind';
+
+/** What each `kind` an older line wrote reads as. */
+const LEGACY_KINDS: ReadonlyMap<unknown, Pick<TaskFields, 'type' | 'critical'>> = new Map([
+  ['work', { type: 'task', critical: false }],
+  ['problem', { type: 'bug', critical: false }],
+  ['critical', { type: 'bug', critical: true }],
+]);
+
+export const TASK_FIELD_NAMES = ['title', 'description', 'owner', 'source', 'ref', 'priority', 'due', 'goals', 'week', 'after', 'size', 'type', 'critical', 'pin'] as const;
 
 export type TaskFieldName = (typeof TASK_FIELD_NAMES)[number];
 
@@ -110,7 +125,7 @@ export interface StatusEvent extends EventBase {
   readonly met?: string;
   /** The tasks the work leaves, empty for `--followups none`; absent when the change named none, and on lines from before `--followups`. */
   readonly followups?: readonly string[];
-  /** The parts of a problem task's review this change gave (review.ts); absent when it gave none. */
+  /** The parts of a bug's review this change gave (review.ts); absent when it gave none. */
   readonly review?: ProblemReview;
 }
 
@@ -157,8 +172,9 @@ export function sizeProblem(value: number): string | undefined {
 const STATUS_NAME = /^[a-z]+(?:-[a-z]+)*$/;
 
 /**
- * The record an event is written as. A create line leaves out an empty `after` and a null `description`, `size`,
- * `kind` or `pin`, which read back as none, so a task without them costs no bytes and its line is the one an older teamrig wrote.
+ * The record an event is written as. A create line leaves out an empty `after`, a null `description`, `size`, `type`
+ * or `pin` and a false `critical`, which read back as none, so a task without them costs no bytes and its line is the
+ * one an older teamrig wrote.
  */
 export function eventRecord(event: RegisterEvent): JsonRecord {
   if (event.type !== 'create') {
@@ -169,7 +185,8 @@ export function eventRecord(event: RegisterEvent): JsonRecord {
     (name === 'after' && task.after.length === 0) ||
     (name === 'description' && task.description === null) ||
     (name === 'size' && task.size === null) ||
-    (name === 'kind' && task.kind === null) ||
+    (name === 'type' && task.type === null) ||
+    (name === 'critical' && !task.critical) ||
     (name === 'pin' && task.pin === null);
   return { ...event, task: Object.fromEntries(Object.entries(task).filter(([name]) => !left(name))) };
 }
@@ -300,9 +317,13 @@ function textOrNull(record: JsonRecord, key: string): string | null {
 function parseTaskFields(record: JsonRecord, complete: true): TaskFields | string;
 function parseTaskFields(record: JsonRecord, complete: false): Partial<TaskFields> | string;
 function parseTaskFields(record: JsonRecord, complete: boolean): Partial<TaskFields> | string {
+  const legacy = legacyMarkOf(record);
+  if (typeof legacy === 'string') {
+    return legacy;
+  }
   const fields: { -readonly [K in TaskFieldName]?: TaskFields[K] } = {};
   for (const name of TASK_FIELD_NAMES) {
-    const value = name === 'priority' ? priorityOf(record) : record[name];
+    const value = fieldValue(record, name, legacy);
     if (value === undefined && !complete) {
       continue;
     }
@@ -314,9 +335,32 @@ function parseTaskFields(record: JsonRecord, complete: boolean): Partial<TaskFie
   return fields;
 }
 
+/** The value a line gives field `name`, reading a field an older line spelled another way (`tier`, `kind`) as its new one. */
+function fieldValue(record: JsonRecord, name: TaskFieldName, legacy: Pick<TaskFields, 'type' | 'critical'> | undefined): unknown {
+  if (name === 'priority') {
+    return priorityOf(record);
+  }
+  if ((name === 'type' || name === 'critical') && !(name in record) && legacy !== undefined) {
+    return legacy[name];
+  }
+  return record[name];
+}
+
 /** The line's priority: `priority`, else the `tier` of a line written before version 2; `priority` wins when a line has both. */
 function priorityOf(record: JsonRecord): unknown {
   return 'priority' in record ? record['priority'] : record[LEGACY_PRIORITY_FIELD];
+}
+
+/**
+ * The type and critical mark a line from before T1252 gave as its `kind`: undefined when it has none, a null `kind`
+ * as not set; a `type` or `critical` on the same line wins over it.
+ */
+function legacyMarkOf(record: JsonRecord): Pick<TaskFields, 'type' | 'critical'> | undefined | string {
+  const kind = record[LEGACY_KIND_FIELD];
+  if (kind === undefined) {
+    return undefined;
+  }
+  return kind === null ? { type: null, critical: false } : (LEGACY_KINDS.get(kind) ?? `bad kind ${JSON.stringify(kind)}`);
 }
 
 function readField(fields: { -readonly [K in TaskFieldName]?: TaskFields[K] }, name: TaskFieldName, value: unknown): string | undefined {
@@ -384,11 +428,17 @@ function readField(fields: { -readonly [K in TaskFieldName]?: TaskFields[K] }, n
       }
       fields.size = value;
       return undefined;
-    case 'kind':
-      if (value !== undefined && value !== null && !isTaskKind(value)) {
-        return `bad kind ${JSON.stringify(value)}`;
+    case 'type':
+      if (value !== undefined && value !== null && (typeof value !== 'string' || !TYPE_NAME.test(value))) {
+        return `bad type ${JSON.stringify(value)}`;
       }
-      fields.kind = isTaskKind(value) ? value : null;
+      fields.type = typeof value !== 'string' ? null : isItemType(value) ? value : 'task';
+      return undefined;
+    case 'critical':
+      if (value !== undefined && value !== null && typeof value !== 'boolean') {
+        return `bad critical ${JSON.stringify(value)}`;
+      }
+      fields.critical = value === true;
       return undefined;
     case 'pin':
       if (value !== undefined && value !== null && (typeof value !== 'string' || value === '')) {

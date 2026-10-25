@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TEST_CARD } from '../testing/card.ts';
 import { testTask } from '../testing/task.ts';
-import type { RegisterEvent, TaskKind } from './events.ts';
+import type { ItemType, RegisterEvent } from './events.ts';
 import {
   aheadReason,
   aheadText,
@@ -390,9 +390,9 @@ describe('formatEvent and formatTaskDetail', () => {
       id: 'T1',
       at: AT,
       by: 'lead',
-      task: { title: 'x', description: 'Why x.', owner: 'alpha', source: 'owner', ref: 'inbox:3', priority: 1, due: '2030-01-08', goals: ['G1'], week: null, after: [], size: null, kind: null, pin: null },
+      task: { title: 'x', description: 'Why x.', owner: 'alpha', source: 'owner', ref: 'inbox:3', priority: 1, due: '2030-01-08', goals: ['G1'], week: null, after: [], size: null, type: null, critical: false, pin: null },
     },
-    { v: 1, type: 'create', id: 'T2', at: AT, by: 'lead', task: { title: 'y', description: null, owner: 'bravo', source: 'lead', ref: null, priority: 2, due: null, goals: [], week: null, after: ['T1'], size: null, kind: null, pin: null } },
+    { v: 1, type: 'create', id: 'T2', at: AT, by: 'lead', task: { title: 'y', description: null, owner: 'bravo', source: 'lead', ref: null, priority: 2, due: null, goals: [], week: null, after: ['T1'], size: null, type: null, critical: false, pin: null } },
     { v: 1, type: 'update', id: 'T1', at: '2030-01-07T10:00:00.000Z', by: 'lead', changes: { due: '2030-01-09', goals: ['G1', 'G2'] }, note: 'later' },
     { v: 1, type: 'status', id: 'T1', at: '2030-01-07T11:00:00.000Z', by: 'alpha', status: 'done', note: 'ok', evidence: 'abc1234', skill: 'none' },
     {
@@ -475,14 +475,14 @@ describe('formatEvent and formatTaskDetail', () => {
     assert.ok(!formatTaskDetail(testTask(), [], TREE).includes('followups'), 'a task with none prints no line');
   });
 
-  it("prints a problem's review in show, a line per part given, and the parts a status line gave in the history", () => {
+  it("prints a bug's review in show, a line per part given, and the parts a status line gave in the history", () => {
     const review = { cause: 'the parser skipped blank rows', missedLog: 'the skip logged nothing at all' };
     const reviewed: RegisterEvent = { v: 2, type: 'status', id: 'T3', at: '2030-01-07T14:00:00.000Z', by: 'alpha', status: 'in-progress', note: null, evidence: null, skill: null, review };
     assert.match(formatEvent(reviewed, TimeZone.UTC), / status in-progress review=cause,missed-log$/);
-    const lines = formatTaskDetail(testTask({ id: 'T3', kind: 'problem', review }), [], TREE).split('\n');
+    const lines = formatTaskDetail(testTask({ id: 'T3', type: 'bug', review }), [], TREE).split('\n');
     const at = lines.indexOf('review:');
     assert.deepEqual(lines.slice(at, at + 3), ['review:', '  cause: the parser skipped blank rows', '  missed by log: the skip logged nothing at all']);
-    assert.ok(!formatTaskDetail(testTask({ kind: 'problem' }), [], TREE).includes('review:'), 'an unreviewed problem prints no review');
+    assert.ok(!formatTaskDetail(testTask({ type: 'bug' }), [], TREE).includes('review:'), 'an unreviewed bug prints no review');
   });
 
   it('shows the description under the task line, its later lines indented and a blank one kept blank', () => {
@@ -513,24 +513,24 @@ describe('formatEvent and formatTaskDetail', () => {
     assert.deepEqual([sizeText(2), sizeText(0.125), sizeText(33.333)], ['2%', '0.13%', '33.33%']);
   });
 
-  it('names a problem or critical task on its row after the priority, never work or an unmarked task, and prints the kind in the history', () => {
-    assert.equal(formatTask(testTask({ kind: 'critical' }), undefined, TREE), 'T1 open, p2, critical, owner alpha, from lead | Add a health check');
-    assert.equal(formatTask(testTask({ kind: 'problem' }), undefined, TREE), 'T1 open, p2, problem, owner alpha, from lead | Add a health check');
-    const quiet: (TaskKind | null)[] = ['work', null];
-    for (const kind of quiet) {
-      assert.equal(formatTask(testTask({ kind }), undefined, TREE), 'T1 open, p2, owner alpha, from lead | Add a health check', String(kind));
+  it('names a bug or critical bug on its row after the priority, never a task or an untyped one, and prints the type in the history', () => {
+    assert.equal(formatTask(testTask({ type: 'bug', critical: true }), undefined, TREE), 'T1 open, p2, critical bug, owner alpha, from lead | Add a health check');
+    assert.equal(formatTask(testTask({ type: 'bug' }), undefined, TREE), 'T1 open, p2, bug, owner alpha, from lead | Add a health check');
+    const quiet: (ItemType | null)[] = ['task', null];
+    for (const type of quiet) {
+      assert.equal(formatTask(testTask({ type }), undefined, TREE), 'T1 open, p2, owner alpha, from lead | Add a health check', String(type));
     }
-    const created: RegisterEvent = { v: 2, type: 'create', id: 'T1', at: AT, by: 'alpha', task: testTask({ id: 'T1', kind: 'problem' }) };
-    assert.match(formatEvent(created, TimeZone.UTC), / kind=problem$/);
-    const unmarked: RegisterEvent = { v: 2, type: 'create', id: 'T1', at: AT, by: 'alpha', task: testTask({ id: 'T1' }) };
-    assert.doesNotMatch(formatEvent(unmarked, TimeZone.UTC), /kind=/);
-    const remarked: RegisterEvent = { v: 2, type: 'update', id: 'T1', at: AT, by: 'lead', changes: { kind: 'work' }, note: null };
-    assert.equal(formatEvent(remarked, TimeZone.UTC), '2030-01-07 09:00 UTC lead update kind=work');
+    const created: RegisterEvent = { v: 2, type: 'create', id: 'T1', at: AT, by: 'alpha', task: testTask({ id: 'T1', type: 'bug', critical: true }) };
+    assert.match(formatEvent(created, TimeZone.UTC), / type=bug critical=true$/);
+    const untyped: RegisterEvent = { v: 2, type: 'create', id: 'T1', at: AT, by: 'alpha', task: testTask({ id: 'T1' }) };
+    assert.doesNotMatch(formatEvent(untyped, TimeZone.UTC), /type=|critical=/);
+    const retyped: RegisterEvent = { v: 2, type: 'update', id: 'T1', at: AT, by: 'lead', changes: { type: 'task' }, note: null };
+    assert.equal(formatEvent(retyped, TimeZone.UTC), '2030-01-07 09:00 UTC lead update type=task');
   });
 
   it('names a pinned task on its row after the priority, and who pinned it in the detail and the history (T637)', () => {
-    const pinned = testTask({ kind: 'problem', pin: 'lead' });
-    assert.equal(formatTask(pinned, undefined, TREE), 'T1 open, p2, pinned, problem, owner alpha, from lead | Add a health check');
+    const pinned = testTask({ type: 'bug', pin: 'lead' });
+    assert.equal(formatTask(pinned, undefined, TREE), 'T1 open, p2, pinned, bug, owner alpha, from lead | Add a health check');
     assert.ok(formatTaskDetail(pinned, [], TREE).split('\n').includes('pinned by lead: above every other task of alpha'));
     assert.ok(!formatTaskDetail(testTask(), [], TREE).includes('pinned'), 'an unpinned task prints no line');
     const pinning: RegisterEvent = { v: 2, type: 'update', id: 'T1', at: AT, by: 'lead', changes: { pin: 'lead' }, note: null };

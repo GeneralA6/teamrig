@@ -8,7 +8,7 @@ import type { TaskStatus } from './model.ts';
 import type { ProblemReview } from './review.ts';
 import type { WaitReason } from './waits.ts';
 
-const FIELDS: TaskFields = { title: 'Ship it', description: null, owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], week: null, after: [], size: null, kind: null, pin: null };
+const FIELDS: TaskFields = { title: 'Ship it', description: null, owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], week: null, after: [], size: null, type: null, critical: false, pin: null };
 
 const at = (hour: number): string => `2030-01-07T${String(hour).padStart(2, '0')}:00:00.000Z`;
 
@@ -116,7 +116,7 @@ describe('foldEvents: what a waiting task waits for, and when it started', () =>
     assert.deepEqual(taskAfter([create(9), status(10, 'done')]).followups, [], 'a line from before --followups names none');
   });
 
-  it("keeps every review part a problem's status changes gave, a later one replacing it", () => {
+  it("keeps every review part a bug's status changes gave, a later one replacing it", () => {
     const reviewing = (hour: number, value: TaskStatus, review: ProblemReview): RegisterEvent => ({
       v: EVENT_VERSION,
       type: 'status',

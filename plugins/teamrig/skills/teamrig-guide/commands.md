@@ -50,10 +50,12 @@ Flags:
   at most 100). `plan` sums the week's sizes against what is left of the limit; `show` prints it, and its
   weighted tokens at the week's W per percent (learned from the meter log, else `budget.weeklyLimitW`, else the
   status line's estimate; see [teamrig budget](#teamrig-budget)) once known.
-- `--problem problem|critical|none`: marks the task a problem (a fix, an incident, a failure's investigation, a
-  problem's design or the decision on one), `critical` for one in a critical area, or `none` for no problem; its
-  line shows `problem` or `critical`. A task no one marked whose title or description matches
-  `register.review.hintPattern` prints a `NOTE` asking to mark it, when it is added and when it starts.
+- `--type task|bug`: what the item is: a task (the default) or a bug (a fix, an incident, a failure's
+  investigation, a problem's design or the decision on one); its line shows `bug`. A task with no type whose
+  title or description matches `register.review.hintPattern` prints a `NOTE` asking to type it, when it is added
+  and when it starts; `--type task` quiets it.
+- `--critical`: marks a bug in a critical area, whose review asks `--harden` too; its line shows `critical bug`.
+  Only with `--type bug`.
 - `--team <child team>`: only for a lead with sub-teams: hands that team's lead the task. It takes no
   `--owner` or `--source`.
 
@@ -99,16 +101,16 @@ Flags:
   only with `verifying`, `done` and `dropped`: the tasks the work leaves (a finding, a next step), each already on
   the task list (`teamrig add` it first), or `none`. A finding written only in a notes file then cannot close
   unseen. `show` lists every follow-up the task's changes named.
-- `--cause "<text>"`: the root cause, at its source, of a task marked a problem (`--problem`); allowed only on
+- `--cause "<text>"`: the root cause, at its source, of a bug (`--type bug`); allowed only on
   one, at any status. It and the review parts below each say at least 3 words besides task ids, are kept across
   sets (a later one replaces it), and are all needed for `verifying` and `done` (`register.review.requireOn`);
   with `register.review.mode` `warn` the set goes through with a WARN naming what is missing, and `off` asks
   nothing. `show` prints the review.
-- `--how "<text>"`: the problem's review: the change or assumption that let it in.
-- `--prevent "<text>"`: the problem's review: what now stops it coming back.
-- `--harden "<text>"`: the review of a critical problem (`--problem critical`, or one owned by a session in
+- `--how "<text>"`: the bug's review: the change or assumption that let it in.
+- `--prevent "<text>"`: the bug's review: what now stops it coming back.
+- `--harden "<text>"`: the review of a critical bug (`--critical`, or one owned by a session in
   `register.review.criticalOwners`), and needed only there: hardening past the direct guard.
-- `--missed-test "<text>"`: the problem's review: a follow-up task that adds the test that should have caught
+- `--missed-test "<text>"`: the bug's review: a follow-up task that adds the test that should have caught
   it, or why none can. The tasks a missed part names must be on the task list, and join the follow-ups.
 - `--missed-monitor "<text>"`: as `--missed-test`, for the monitor that should have caught it.
 - `--missed-log "<text>"`: as `--missed-test`, for the log line that should have caught it.
@@ -226,7 +228,7 @@ The status is a flag, never a word after the id: `teamrig set T1 done` is a usag
 ### teamrig update
 
 Changes a task's fields. The owner may change any of them; a leader above the owner (the lead on any task, a
-sub-lead on its group's) may change only the owner, priority, due date, week, plan order (`--after`), size, problem mark and
+sub-lead on its group's) may change only the owner, priority, due date, week, plan order (`--after`), size, type, critical mark and
 pin of a task it does not own. A pin puts a task above every other task of its owner, whatever its priority: a
 leader above the owner sets or clears it (the lead on its own tasks too), never the owner itself; an owner has one
 pin, so a new pin clears the earlier one in the same write, and handing the task to another owner clears it. A sub-lead hands a task only to itself or a session it leads; the lead moves work between
@@ -256,8 +258,10 @@ Flags:
   `set --status waiting --waits task:T5`). The owner or a leader above it changes it. A plan that would close a
   loop (`T5 -> T3 -> T5`: T3 already needs T5) is refused with the fix ([errors](errors.md)).
 - `--size <pct>|none`: a new size, in percent of the weekly usage limit, or `none` to clear it.
-- `--problem problem|critical|none`: marks the task a problem, a critical one, or no problem (`none`, which also
-  quiets the hint); the lead may mark any task.
+- `--type task|bug`: makes the item a task or a bug (`--type task` also quiets the hint); the lead may type any
+  task. A critical bug made a task loses its critical mark.
+- `--critical`: marks a bug critical; only on a bug.
+- `--not-critical`: clears a bug's critical mark.
 - `--pin`: pins the task to the top of its owner's list; the pin names who set it, which `show` prints
   (`pinned by lead: above every other task of api`), and its `list` row says `pinned`.
 - `--unpin`: clears the task's pin.

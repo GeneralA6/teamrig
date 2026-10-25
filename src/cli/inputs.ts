@@ -3,7 +3,7 @@ import { ID_PATTERN, NAME_PATTERN, NAME_RULE } from '../core/ids.ts';
 import { parseTypedInstant, parseUtcDay, storedDeadline, typedDeadline, typedTimeHint } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { OPTION_SEPARATOR, type DecisionCard } from '../register/card.ts';
-import { MAX_SIZE_PCT, sizeProblem, type TaskFields, type TaskKind } from '../register/events.ts';
+import { isItemType, ITEM_TYPES, MAX_SIZE_PCT, sizeProblem, type ItemType, type TaskFields } from '../register/events.ts';
 import { isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, priorityText, TASK_ID, TASK_STATUSES, type TaskStatus } from '../register/model.ts';
 import { WAITS_USAGE, type AddInput, type AskInput, type StatusInput } from '../register/policy.ts';
 import { REVIEW_FLAGS, REVIEW_ORDER, type ProblemReview } from '../register/review.ts';
@@ -154,15 +154,20 @@ export function pinOf(switches: ReadonlySet<string>, by: string): Partial<TaskFi
   return switches.has('pin') ? { pin: by } : switches.has('unpin') ? { pin: null } : {};
 }
 
-/** `--problem problem|critical|none`: whether the task is a problem, or a critical one; `none` marks it work, no problem. */
-export function kindOf(text: string): TaskKind {
-  if (text === NONE) {
-    return 'work';
-  }
-  if (text !== 'problem' && text !== 'critical') {
-    throw new UsageError(`--problem "${text}" is not problem|critical|${NONE}`);
+/** `--type task|bug`: what the item is (T1252); `--type task` also tells the bug hint the task is no bug. */
+export function typeOf(text: string): ItemType {
+  if (!isItemType(text)) {
+    throw new UsageError(`--type "${text}" is not ${ITEM_TYPES.join('|')}`);
   }
   return text;
+}
+
+/** `--critical` (a bug in a critical area) or, on update, `--not-critical`, as a change; none with neither. */
+export function criticalOf(switches: ReadonlySet<string>): { readonly critical?: boolean } {
+  if (switches.has('critical') && switches.has('not-critical')) {
+    throw new UsageError('--critical and --not-critical: give one');
+  }
+  return switches.has('critical') ? { critical: true } : switches.has('not-critical') ? { critical: false } : {};
 }
 
 /** `--week`: a day, checked here because `check` and `plan` read it without the policy. */
@@ -208,9 +213,9 @@ export function addInputOf(flags: Flags, caller: string, times: TypedTimes): Add
   if (size !== undefined) {
     input.size = sizeOf(size);
   }
-  const problem = flags.get('problem');
-  if (problem !== undefined) {
-    input.kind = kindOf(problem);
+  const type = flags.get('type');
+  if (type !== undefined) {
+    input.type = typeOf(type);
   }
   return input;
 }
@@ -241,8 +246,7 @@ export function waitsOf(text: string, times: TypedTimes): WaitReason[] {
 }
 
 /**
- * The fields `update` changes; `none` clears the description, ref, due date, goals, week, plan dependency or size, and
- * `--problem none` marks the task work, no problem.
+ * The fields `update` changes; `none` clears the description, ref, due date, goals, week, plan dependency or size.
  */
 export function changesOf(flags: Flags, times: TypedTimes): Partial<TaskFields> {
   const changes: Partial<Mutable<TaskFields>> = {};
@@ -286,9 +290,9 @@ export function changesOf(flags: Flags, times: TypedTimes): Partial<TaskFields> 
   if (size !== undefined) {
     changes.size = size === NONE ? null : sizeOf(size);
   }
-  const problem = flags.get('problem');
-  if (problem !== undefined) {
-    changes.kind = kindOf(problem);
+  const type = flags.get('type');
+  if (type !== undefined) {
+    changes.type = typeOf(type);
   }
   return changes;
 }

@@ -40,7 +40,7 @@ export interface Task extends TaskFields {
   readonly proof: string | null;
   /** Every task its status changes named as left by the work (`--followups`), in the order first named. */
   readonly followups: readonly string[];
-  /** A problem task's review (review.ts): every part its status changes gave, a later one replacing it; empty when none. */
+  /** A bug's review (review.ts): every part its status changes gave, a later one replacing it; empty when none. */
   readonly review: ProblemReview;
   /** When the task first went in progress (or verifying): only a started task can wait on another task. */
   readonly startedAt: string | null;

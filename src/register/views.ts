@@ -1,7 +1,8 @@
 import { parseDeadline, showStored, storedText } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { cardLines } from './card.ts';
-import { PROBLEM_KINDS, type RegisterEvent } from './events.ts';
+import type { RegisterEvent } from './events.ts';
+import { itemTypeOf } from './item-types.ts';
 import type { ApprovalAnswer, Task } from './fold.ts';
 import { ACTIVE_STATUSES, GITHUB_SOURCE, priorityText, type TaskStatus } from './model.ts';
 import { reviewLines, reviewPartNames } from './review.ts';
@@ -72,14 +73,15 @@ export function taskLabel(task: Task, team?: string): string {
 }
 
 /**
- * The fields every task row starts with: `T12 in-progress`, `p2`, `problem` or `critical` for a problem task,
+ * The fields every task row starts with: `T12 in-progress`, `p2`, its type past a plain task (`bug`, `critical bug`),
  * `owner alpha`, then `due 01-15` and `after T5,T6` (its plan dependency) when it has them. The due is the effective
  * one of `tree`, in its zone: an earlier due of a task that needs it names that task (`due 01-10 (from T194)`).
  */
 function rowHead(task: Task, team: string | undefined, tree: TaskTree): string[] {
-  const kind = task.kind !== null && PROBLEM_KINDS.includes(task.kind) ? [task.kind] : [];
+  const type = itemTypeOf(task);
+  const typed = type === 'task' ? [] : [task.critical ? `critical ${type}` : type];
   const pinned = task.pin === null ? [] : ['pinned'];
-  const parts = [`${taskLabel(task, team)} ${task.status}`, priorityText(task.priority), ...pinned, ...kind, `owner ${task.owner}`];
+  const parts = [`${taskLabel(task, team)} ${task.status}`, priorityText(task.priority), ...pinned, ...typed, `owner ${task.owner}`];
   const inherited = tree.effectiveDue(task.id);
   if (inherited !== undefined && inherited.from !== null) {
     parts.push(`due ${showStored(inherited.due, tree.zone)} (from ${inherited.from})`);
@@ -297,7 +299,8 @@ export function formatEvent(event: RegisterEvent, zone: TimeZone): string {
         task.goals.length === 0 ? undefined : `goals=${task.goals.join(',')}`,
         task.after.length === 0 ? undefined : `after=${task.after.join(',')}`,
         task.size === null ? undefined : `size=${sizeText(task.size)}`,
-        task.kind === null ? undefined : `kind=${task.kind}`,
+        task.type === null ? undefined : `type=${task.type}`,
+        task.critical ? 'critical=true' : undefined,
       ]
         .filter((part) => part !== undefined)
         .join(' ');

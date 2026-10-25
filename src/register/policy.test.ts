@@ -49,13 +49,20 @@ describe('RegisterPolicy.add', () => {
     const verdict = policy.add({ ...INPUT, title: '  Add a health check ' }, EMPTY);
     assert.deepEqual(verdict, {
       ok: true,
-      value: { title: 'Add a health check', description: 'what and why', owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], week: null, after: [], size: null, kind: null, pin: null },
+      value: { title: 'Add a health check', description: 'what and why', owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], week: null, after: [], size: null, type: null, critical: false, pin: null },
     });
   });
 
-  it('keeps the kind it is given', () => {
-    const verdict = policy.add({ ...INPUT, kind: 'problem' }, EMPTY);
-    assert.equal(verdict.ok ? verdict.value.kind : undefined, 'problem');
+  it('keeps the type and critical mark it is given', () => {
+    const verdict = policy.add({ ...INPUT, type: 'bug', critical: true }, EMPTY);
+    assert.deepEqual(verdict.ok ? [verdict.value.type, verdict.value.critical] : undefined, ['bug', true]);
+  });
+
+  it('refuses a critical mark on an item whose type gives no review, an untyped one included', () => {
+    const marked: AddInput[] = [{ ...INPUT, critical: true }, { ...INPUT, type: 'task', critical: true }];
+    for (const input of marked) {
+      assert.equal(error(policy.add(input, EMPTY)), 'critical marks only a bug: give --type bug too', String(input.type));
+    }
   });
 
   it('applies the team policy', () => {
@@ -95,7 +102,7 @@ describe('RegisterPolicy.add', () => {
 
   it('refuses an active task with the same title, but not a closed one', () => {
     const open = foldEvents([
-      { v: 1, type: 'create', id: 'T4', at: TASK.createdAt, by: 'lead', task: { ...INPUT, description: null, ref: null, due: null, goals: [], week: null, after: [], size: null, kind: null, pin: null } },
+      { v: 1, type: 'create', id: 'T4', at: TASK.createdAt, by: 'lead', task: { ...INPUT, description: null, ref: null, due: null, goals: [], week: null, after: [], size: null, type: null, critical: false, pin: null } },
     ]);
     assert.match(error(policy.add({ ...INPUT, title: 'add a  HEALTH check' }, open)), /T4 already tracks this \(open, owner alpha\)/);
     const closed = foldEvents([
@@ -158,7 +165,7 @@ describe('RegisterPolicy: the description', () => {
   });
 
   it("leaves the description to the owner: the lead may not change it on another session's task", () => {
-    assert.equal(error(policy.update(TASK, 'lead', { description: 'Why it matters.' }, undefined, EMPTY)), 'a leader may change only owner, priority, due, week, after, size, kind, pin on a task it does not own (asked: description)');
+    assert.equal(error(policy.update(TASK, 'lead', { description: 'Why it matters.' }, undefined, EMPTY)), 'a leader may change only owner, priority, due, week, after, size, type, critical, pin on a task it does not own (asked: description)');
     assert.equal(error(policy.update(TASK, 'bravo', { description: 'Why it matters.' }, undefined, EMPTY)), 'only the owner (alpha) or the lead (lead) changes T1');
   });
 
@@ -261,11 +268,11 @@ describe('RegisterPolicy.setStatus: the follow-ups a closing change names', () =
   });
 });
 
-describe("RegisterPolicy.setStatus: a problem task's review", () => {
+describe("RegisterPolicy.setStatus: a bug's review", () => {
   const policy = new RegisterPolicy(testConfig());
-  const PROBLEM = testTask({ status: 'in-progress', kind: 'problem' });
+  const BUG = testTask({ status: 'in-progress', type: 'bug' });
   const LEFT = testTask({ id: 'T2', title: 'Add a blank-row spec' });
-  const context: StatusContext = { ...CTX, state: stateOf(PROBLEM, LEFT) };
+  const context: StatusContext = { ...CTX, state: stateOf(BUG, LEFT) };
   const REVIEW = {
     cause: 'the parser skipped blank rows',
     how: 'a refactor dropped the guard',
@@ -279,75 +286,76 @@ describe("RegisterPolicy.setStatus: a problem task's review", () => {
 
   it('refuses verifying and done until every part is given, naming only the missing flags', () => {
     assert.equal(
-      error(policy.setStatus(PROBLEM, 'alpha', { ...VERIFYING, review: { cause: REVIEW.cause, how: REVIEW.how } }, context)),
-      'T1 is a problem: verifying needs its review, --prevent, --missed-test, --missed-monitor and --missed-log (how it happened, what stops it and how it was missed; teamrig help set)',
+      error(policy.setStatus(BUG, 'alpha', { ...VERIFYING, review: { cause: REVIEW.cause, how: REVIEW.how } }, context)),
+      'T1 is a bug: verifying needs its review, --prevent, --missed-test, --missed-monitor and --missed-log (how it happened, what stops it and how it was missed; teamrig help set)',
     );
-    assert.match(error(policy.setStatus(PROBLEM, 'alpha', DONE, context)), /^T1 is a problem: done needs its review, --cause, --how, --prevent/);
+    assert.match(error(policy.setStatus(BUG, 'alpha', DONE, context)), /^T1 is a bug: done needs its review, --cause, --how, --prevent/);
   });
 
-  it('lets a problem through with every part, given now or kept from an earlier set, and writes the parts given', () => {
-    const given = policy.setStatus(PROBLEM, 'alpha', { ...VERIFYING, review: REVIEW }, context);
+  it('lets a bug through with every part, given now or kept from an earlier set, and writes the parts given', () => {
+    const given = policy.setStatus(BUG, 'alpha', { ...VERIFYING, review: REVIEW }, context);
     assert.deepEqual(given.ok ? given.value.review : undefined, REVIEW);
-    const kept = testTask({ ...PROBLEM, review: { ...REVIEW, prevent: 'an older guard text' } });
+    const kept = testTask({ ...BUG, review: { ...REVIEW, prevent: 'an older guard text' } });
     const keptContext: StatusContext = { ...context, state: stateOf(kept, LEFT) };
     const later = policy.setStatus(kept, 'alpha', { ...DONE, review: { prevent: REVIEW.prevent } }, keptContext);
     assert.deepEqual(later.ok ? later.value.review : undefined, { prevent: REVIEW.prevent });
     assert.equal(error(policy.setStatus(kept, 'alpha', DONE, keptContext)), 'allowed');
   });
 
-  it('asks --harden of a critical problem, marked so or owned by a critical owner', () => {
-    const critical = testTask({ ...PROBLEM, kind: 'critical' });
+  it('asks --harden of a critical bug, marked so or owned by a critical owner', () => {
+    const critical = testTask({ ...BUG, critical: true });
     assert.match(error(policy.setStatus(critical, 'alpha', { ...VERIFYING, review: REVIEW }, context)), /verifying needs its review, --harden \(/);
     const owned = new RegisterPolicy(testConfig({ register: { review: { criticalOwners: ['alpha'] } } }));
-    assert.match(error(owned.setStatus(PROBLEM, 'alpha', { ...VERIFYING, review: REVIEW }, context)), /--harden \(/);
-    assert.equal(error(owned.setStatus(PROBLEM, 'alpha', { ...VERIFYING, review: { ...REVIEW, harden: 'every reader refuses blank rows' } }, context)), 'allowed');
+    assert.match(error(owned.setStatus(BUG, 'alpha', { ...VERIFYING, review: REVIEW }, context)), /--harden \(/);
+    assert.equal(error(owned.setStatus(BUG, 'alpha', { ...VERIFYING, review: { ...REVIEW, harden: 'every reader refuses blank rows' } }, context)), 'allowed');
   });
 
-  it('asks nothing of work, of a dropped problem, of a status the team leaves out, or with the review off or warning', () => {
+  it('asks nothing of a task, of a dropped bug, of a status the team leaves out, or with the review off or warning', () => {
     assert.equal(error(policy.setStatus(TASK, 'alpha', DONE, context)), 'allowed');
-    assert.equal(error(policy.setStatus(PROBLEM, 'alpha', { status: 'dropped', note: 'not a problem after all' }, context)), 'allowed');
+    assert.equal(error(policy.setStatus(testTask({ ...TASK, type: 'task' }), 'alpha', DONE, context)), 'allowed', 'a typed task too');
+    assert.equal(error(policy.setStatus(BUG, 'alpha', { status: 'dropped', note: 'not a bug after all' }, context)), 'allowed');
     const doneOnly = new RegisterPolicy(testConfig({ register: { review: { requireOn: ['done'] } } }));
-    assert.equal(error(doneOnly.setStatus(PROBLEM, 'alpha', VERIFYING, context)), 'allowed');
+    assert.equal(error(doneOnly.setStatus(BUG, 'alpha', VERIFYING, context)), 'allowed');
     for (const mode of ['off', 'warn']) {
       const lenient = new RegisterPolicy(testConfig({ register: { review: { mode } } }));
-      assert.equal(error(lenient.setStatus(PROBLEM, 'alpha', DONE, context)), 'allowed', mode);
+      assert.equal(error(lenient.setStatus(BUG, 'alpha', DONE, context)), 'allowed', mode);
     }
   });
 
-  it('takes review parts on a problem at any status, as a change of their own', () => {
-    const started = policy.setStatus(PROBLEM, 'alpha', { status: 'in-progress', review: { cause: REVIEW.cause } }, context);
+  it('takes review parts on a bug at any status, as a change of their own', () => {
+    const started = policy.setStatus(BUG, 'alpha', { status: 'in-progress', review: { cause: REVIEW.cause } }, context);
     assert.deepEqual(started.ok ? started.value.review : undefined, { cause: REVIEW.cause });
-    assert.match(error(policy.setStatus(PROBLEM, 'alpha', { status: 'in-progress' }, context)), /already in-progress/);
+    assert.match(error(policy.setStatus(BUG, 'alpha', { status: 'in-progress' }, context)), /already in-progress/);
   });
 
-  it('refuses review parts on a task no one marked a problem, naming how to mark it', () => {
+  it('refuses review parts on an item no one typed a bug, naming how to mark it', () => {
     assert.equal(
       error(policy.setStatus(TASK, 'alpha', { status: 'in-progress', review: { how: REVIEW.how } }, context)),
-      '--how goes only with a problem: mark it first, teamrig update T1 --problem problem|critical',
+      '--how goes only with a bug: mark it first, teamrig update T1 --type bug',
     );
   });
 
   it('refuses a part that says too little, or that names a task not on the list', () => {
-    assert.match(error(policy.setStatus(PROBLEM, 'alpha', { status: 'in-progress', review: { missedTest: 'T2' } }, context)), /^--missed-test says "T2": give at least 3 plain words/);
+    assert.match(error(policy.setStatus(BUG, 'alpha', { status: 'in-progress', review: { missedTest: 'T2' } }, context)), /^--missed-test says "T2": give at least 3 plain words/);
     assert.equal(
-      error(policy.setStatus(PROBLEM, 'alpha', { status: 'in-progress', review: { missedLog: 'T9 adds the skip log line' } }, context)),
+      error(policy.setStatus(BUG, 'alpha', { status: 'in-progress', review: { missedLog: 'T9 adds the skip log line' } }, context)),
       'a missed part names T9, which is not on the task list: add it first (teamrig add)',
     );
   });
 
   it('adds the tasks the missed parts name to the follow-ups, once, never the task itself', () => {
-    const closed = policy.setStatus(PROBLEM, 'alpha', { ...DONE, followups: ['T2'], review: { ...REVIEW, missedLog: 'T1 itself logs the skip now' } }, context);
+    const closed = policy.setStatus(BUG, 'alpha', { ...DONE, followups: ['T2'], review: { ...REVIEW, missedLog: 'T1 itself logs the skip now' } }, context);
     assert.deepEqual(closed.ok ? closed.value.followups : undefined, ['T2']);
-    const started = policy.setStatus(PROBLEM, 'alpha', { status: 'in-progress', review: { missedTest: REVIEW.missedTest } }, context);
+    const started = policy.setStatus(BUG, 'alpha', { status: 'in-progress', review: { missedTest: REVIEW.missedTest } }, context);
     assert.deepEqual(started.ok ? started.value.followups : undefined, ['T2']);
   });
 
   it('holds every part to the length limit and refuses a secret in one', () => {
     assert.equal(
-      error(policy.setStatus(PROBLEM, 'alpha', { status: 'in-progress', review: { cause: `the cause is ${'x'.repeat(300)}` } }, context)),
+      error(policy.setStatus(BUG, 'alpha', { status: 'in-progress', review: { cause: `the cause is ${'x'.repeat(300)}` } }, context)),
       'cause has 313 characters; the limit is 300',
     );
-    assert.match(error(policy.setStatus(PROBLEM, 'alpha', { status: 'in-progress', review: { how: `it leaked at ${credentialUrl()} today` } }, context)), /^how looks like it holds a secret/);
+    assert.match(error(policy.setStatus(BUG, 'alpha', { status: 'in-progress', review: { how: `it leaked at ${credentialUrl()} today` } }, context)), /^how looks like it holds a secret/);
   });
 });
 
@@ -643,7 +651,8 @@ describe('RegisterPolicy.ask', () => {
         week: null,
         after: [],
         size: null,
-        kind: null,
+        type: null,
+        critical: false,
         pin: null,
       },
     });
@@ -690,16 +699,25 @@ describe('RegisterPolicy.update', () => {
     assert.match(error(policy.update(TASK, 'alpha', { priority: 7 }, undefined, EMPTY)), /priority p7 is not one of/);
   });
 
-  it('lets the lead change only owner, priority, due, week, after, size, kind and pin', () => {
+  it('lets the lead change only owner, priority, due, week, after, size, type, critical and pin', () => {
     assert.equal(policy.update(TASK, 'lead', { owner: 'bravo', due: '2030-01-10' }, undefined, EMPTY).ok, true);
     assert.equal(policy.update(TASK, 'lead', { after: [] }, undefined, EMPTY).ok, true);
     assert.deepEqual(policy.update(TASK, 'lead', { size: 2.5 }, undefined, EMPTY), { ok: true, value: { changes: { size: 2.5 }, note: null } });
     assert.equal(policy.update(TASK, 'lead', { size: null }, undefined, EMPTY).ok, true);
-    assert.deepEqual(policy.update(TASK, 'lead', { kind: 'critical' }, undefined, EMPTY), { ok: true, value: { changes: { kind: 'critical' }, note: null } });
+    assert.deepEqual(policy.update(TASK, 'lead', { type: 'bug', critical: true }, undefined, EMPTY), { ok: true, value: { changes: { type: 'bug', critical: true }, note: null } });
     assert.deepEqual(policy.update(TASK, 'lead', { pin: 'lead' }, undefined, EMPTY), { ok: true, value: { changes: { pin: 'lead' }, note: null } });
     assert.equal(error(policy.update(TASK, 'bravo', { size: 2 }, undefined, EMPTY)), 'only the owner (alpha) or the lead (lead) changes T1');
-    assert.equal(error(policy.update(TASK, 'bravo', { kind: 'problem' }, undefined, EMPTY)), 'only the owner (alpha) or the lead (lead) changes T1');
+    assert.equal(error(policy.update(TASK, 'bravo', { type: 'bug' }, undefined, EMPTY)), 'only the owner (alpha) or the lead (lead) changes T1');
     assert.match(error(policy.update(TASK, 'lead', { title: 'x', priority: 1 }, undefined, EMPTY)), /asked: title/);
+  });
+
+  it('refuses a critical mark on a task, and clears the mark when a critical bug becomes a task (T1252)', () => {
+    assert.equal(error(policy.update(TASK, 'alpha', { critical: true }, undefined, EMPTY)), 'critical marks only a bug: give --type bug too');
+    assert.equal(error(policy.update(testTask({ ...TASK, type: 'task' }), 'alpha', { critical: true }, undefined, EMPTY)), 'critical marks only a bug: give --type bug too');
+    const criticalBug = testTask({ ...TASK, type: 'bug', critical: true });
+    assert.deepEqual(policy.update(criticalBug, 'alpha', { type: 'task' }, undefined, EMPTY), { ok: true, value: { changes: { type: 'task', critical: false }, note: null } });
+    assert.deepEqual(policy.update(criticalBug, 'alpha', { critical: false }, undefined, EMPTY), { ok: true, value: { changes: { critical: false }, note: null } });
+    assert.equal(error(policy.update(criticalBug, 'alpha', { type: 'task', critical: true }, undefined, EMPTY)), 'critical marks only a bug: give --type bug too', 'an asked mark is never cleared');
   });
 
   it("lets a sub-lead set its group's work order and keep the work in its group, never another group's (T782)", () => {
@@ -852,7 +870,7 @@ describe('RegisterPolicy, the GitHub import', () => {
     const team = testTask({ title: 'Fix login', ref: 'gh:acme/web#7' });
     assert.deepEqual(policy.importAdd(ISSUE, stateOf(team)), {
       ok: true,
-      value: { title: 'Fix login', description: null, owner: 'bravo', source: 'github', ref: 'gh:acme/web#7', priority: 1, due: null, goals: [], week: null, after: [], size: null, kind: null, pin: null },
+      value: { title: 'Fix login', description: null, owner: 'bravo', source: 'github', ref: 'gh:acme/web#7', priority: 1, due: null, goals: [], week: null, after: [], size: null, type: null, critical: false, pin: null },
     });
     assert.equal(error(policy.importAdd(ISSUE, stateOf(team, IMPORTED))), 'T2 already has ref gh:acme/web#7');
     assert.equal(error(policy.importAdd({ ...ISSUE, owner: 'octocat' }, EMPTY)), 'owner octocat is not a session on this team');

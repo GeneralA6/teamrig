@@ -119,7 +119,7 @@ The task list (the register): its priority levels, what each status change needs
 | `verifyGate` | one of `"refuse"`, `"warn"` | `"refuse"` | teamrig set --status in-progress while a task it needs (--after, or --waits task:) is verifying: refuse it, or warn and start it. Either way the verifying task's owner gets one inbox line a day about it. |
 | `maxVerifying` | integer (0 to 100) | `5` | A session holding more verifying tasks than this is a PILE-UP in teamrig check; 0 turns the flag off. |
 | `check` | [object](#registercheck) |  | The thresholds of the flags teamrig check raises on tasks. |
-| `review` | [object](#registerreview) |  | How teamrig asks for a problem task's review. |
+| `review` | [object](#registerreview) |  | How teamrig asks for a bug's review. |
 
 ## `register.priorities[]`
 
@@ -147,14 +147,14 @@ The thresholds of the flags teamrig check raises on tasks.
 
 ## `register.review`
 
-How teamrig asks for a problem task's review.
+How teamrig asks for a bug's review.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
-| `mode` | one of `"refuse"`, `"warn"`, `"off"` | `"refuse"` | A task marked --problem reaching a requireOn status with review parts missing (--cause, --how, --prevent, --missed-test, --missed-monitor, --missed-log, and --harden when critical): refuse the change and name the missing flags, warn (make it and print them), or off (ask nothing). |
-| `requireOn` | array (at most 2 items) of one of `"verifying"`, `"done"` | `["verifying","done"]` | The statuses a task marked --problem cannot reach with review parts missing. A dropped task is never asked: its note says why. |
-| `criticalOwners` | array (at most 32 items) of [session name](#shared-types) | `[]` | Sessions whose every problem task counts as critical, and so is asked --harden too: a team's security or data areas. |
-| `hintPattern` | string (at least 1 character) | `"\\b(fix\|bug\|broken?\|regress\\w*\|incident\|fail\\w*\|crash\\w*\|leak\\w*\|wrong\|missed)\\b"` | A regular expression, matched case-insensitively against the title and description of a task no one marked with --problem: a match prints a NOTE line asking to mark it --problem problem\|critical, or --problem none, when the task is added and when it starts. |
+| `mode` | one of `"refuse"`, `"warn"`, `"off"` | `"refuse"` | A bug (--type bug) reaching a requireOn status with review parts missing (--cause, --how, --prevent, --missed-test, --missed-monitor, --missed-log, and --harden when critical): refuse the change and name the missing flags, warn (make it and print them), or off (ask nothing). |
+| `requireOn` | array (at most 2 items) of one of `"verifying"`, `"done"` | `["verifying","done"]` | The statuses a bug cannot reach with review parts missing. A dropped task is never asked: its note says why. |
+| `criticalOwners` | array (at most 32 items) of [session name](#shared-types) | `[]` | Sessions whose every bug counts as critical, and so is asked --harden too: a team's security or data areas. |
+| `hintPattern` | string (at least 1 character) | `"\\b(fix\|bug\|broken?\|regress\\w*\|incident\|fail\\w*\|crash\\w*\|leak\\w*\|wrong\|missed)\\b"` | A regular expression, matched case-insensitively against the title and description of a task with no type: a match prints a NOTE line asking to mark it --type bug [--critical], or --type task, when the task is added and when it starts. |
 
 ## `skills`
 

@@ -14,7 +14,7 @@ export const ACTIVE_STATUSES: readonly TaskStatus[] = ['open', 'in-progress', 'v
 /** The statuses a change may name the task's follow-ups with (`set --followups`): shipping, finishing or dropping it. */
 export const FOLLOWUP_STATUSES: readonly TaskStatus[] = ['verifying', 'done', 'dropped'];
 
-/** The statuses a problem task's review may be asked at (`register.review.requireOn`): never dropped, whose note says why. */
+/** The statuses a bug's review may be asked at (`register.review.requireOn`): never dropped, whose note says why. */
 export const REVIEW_STATUSES: readonly TaskStatus[] = ['verifying', 'done'];
 
 /**
