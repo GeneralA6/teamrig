@@ -265,7 +265,7 @@ describe('listFilterOf', () => {
 
   it('reads every filter', () => {
     const filter = listFilterOf(
-      flags({ session: 'bravo', status: 'open,waiting', source: 'owner', priority: 'p1,p2', 'due-before': '2030-01-09 12:00', week: 'none', goal: 'g1' }), TIMES,
+      flags({ session: 'bravo', status: 'open,waiting', source: 'owner', priority: 'p1,p2', 'due-before': '2030-01-09 12:00', week: 'none', goal: 'g1', type: 'bug,task' }), TIMES,
     );
     assert.deepEqual(filter, {
       owner: 'bravo',
@@ -275,6 +275,7 @@ describe('listFilterOf', () => {
       dueBefore: new Date('2030-01-09T12:00:00Z'),
       week: null,
       goal: 'g1',
+      types: ['bug', 'task'],
     });
   });
 
@@ -285,6 +286,7 @@ describe('listFilterOf', () => {
   it('refuses a malformed deadline or status', () => {
     assert.throws(() => listFilterOf(flags({ 'due-before': 'tomorrow' }), TIMES), /--due-before "tomorrow" is not YYYY-MM-DD/);
     assert.throws(() => listFilterOf(flags({ status: 'open,later' }), TIMES), /--status "later" is not/);
+    assert.throws(() => listFilterOf(flags({ type: 'bug,epic' }), TIMES), /--type "epic" is not task\|bug/);
   });
 });
 

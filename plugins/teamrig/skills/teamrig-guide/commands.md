@@ -328,6 +328,7 @@ Flags:
 - `--due-before <date>`: only tasks due before that time.
 - `--week <date>|none`: only tasks planned in that week, or in no week.
 - `--goal <tag>`: only tasks with that goal.
+- `--type task,bug`: only these item types; a task with no type counts as a task.
 - `--tree`: the lead only: also every team under it, read-only, ids as `<team>/T<n>`.
 - `--all`: every task in full, one task line each, instead of the short form.
 

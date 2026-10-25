@@ -60,7 +60,7 @@ describe('byPlanOrder', () => {
 describe('selectTasks', () => {
   const tasks = [
     testTask({ id: 'T1', owner: 'alpha', due: '2030-01-08', week: '2030-01-07', goals: ['G1'] }),
-    testTask({ id: 'T2', owner: 'bravo', status: 'waiting', priority: 1, source: 'owner' }),
+    testTask({ id: 'T2', owner: 'bravo', status: 'waiting', priority: 1, source: 'owner', type: 'bug' }),
     testTask({ id: 'T3', owner: 'alpha', status: 'done' }),
   ];
   const ids = (filter: Parameters<typeof selectTasks>[1]) => selectTasks(tasks, filter, treeOf(...tasks)).map((task) => task.id);
@@ -76,6 +76,9 @@ describe('selectTasks', () => {
     assert.deepEqual(ids({ week: '2030-01-07' }), ['T1']);
     assert.deepEqual(ids({ week: null }), ['T2']);
     assert.deepEqual(ids({ goal: 'G1' }), ['T1']);
+    assert.deepEqual(ids({ types: ['bug'] }), ['T2']);
+    assert.deepEqual(ids({ types: ['task'] }), ['T1'], 'a task with no type counts as a task');
+    assert.deepEqual(ids({ types: ['task', 'bug'] }), ['T2', 'T1']);
   });
 
   it('reads the effective due: a task inherits the earlier due of a task that needs it', () => {

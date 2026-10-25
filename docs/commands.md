@@ -128,7 +128,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       its approval (approval:<lead>); its owner gets an inbox line to push or merge (or to fix the note's
       point and ask again), and check flags the approved task READY
   list [--session <owner>] [--status a,b|all] [--source <s>] [--priority p1,p2] [--due-before <date>]
-      [--week <date>|none] [--goal <tag>] [--tree] [--all]
+      [--week <date>|none] [--goal <tag>] [--type task,bug] [--tree] [--all]
       short rows within 3,000 characters; --all: every field of every task. A task takes the earlier due
       of a task that needs it ("due 01-12 (from T9)"), and a row names another session's task needing it
   show <id> [--tree]   every field and the history; --tree: what it needs and what needs it, each with
