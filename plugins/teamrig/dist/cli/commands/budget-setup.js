@@ -1,5 +1,5 @@
 import { planBudgetSetup } from "../../budget/setup.js";
-import { readSnapshots } from "../../budget/snapshot.js";
+import { readSnapshots, snapshotDirOf } from "../../budget/snapshot.js";
 import { DEFAULT_BUDGET } from "../../config/defaults.js";
 import { writeConfigWithBackup } from "../../config/load.js";
 import { ESCALATIONS, isEscalation, isOverAction, OVER_ACTIONS } from "../../config/types.js";
@@ -8,7 +8,6 @@ import { noPositionals, UsageError } from "../args.js";
 import { callerOf } from "../inputs.js";
 import { checkedNextConfig, configFileJson, openTeamKit, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
-import { snapshotDirOf } from "./budget.js";
 /**
  * `budget setup`: the lead writes the team's budget policy into the team config. Without --yes it only
  * shows what would change; with it, the old file is kept in the backups folder first. Flags left out

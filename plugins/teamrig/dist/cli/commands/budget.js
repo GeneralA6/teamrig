@@ -1,4 +1,4 @@
-import { basename, isAbsolute, join } from 'node:path';
+import { basename, join } from 'node:path';
 import { DEFAULT_STATUS_LINE } from "../../config/defaults.js";
 import { LeadTree } from "../../config/lead-tree.js";
 import { errorMessage } from "../../core/guards.js";
@@ -17,7 +17,7 @@ import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID } from 
 import { budgetSplitOf, dailyBudgetOf, groupPartsOf, liftPlaceOf, teamPartOf } from "../../budget/parts.js";
 import { nextPeriod, sightOf } from "../../budget/period.js";
 import { burnLines, loopLines, missLines, missMatrixLines, recountLines, sessionLines, sumDays, sumUsage, taskLines, todayLines, weekLine, } from "../../budget/report.js";
-import { datedSnapshot, formatSnapshot, parseSnapshot, pruneSnapshots, readSnapshots, snapshotOfStatus, statusLineText, weekUseOf, } from "../../budget/snapshot.js";
+import { datedSnapshot, defaultSnapshotDir, formatSnapshot, parseSnapshot, pruneSnapshots, snapshotDirOf, snapshotOfStatus, statusLineText, weekUseOf, } from "../../budget/snapshot.js";
 import { CURSOR_DAYS_KEPT, DAYS_KEPT, EMPTY_USAGE, MemoryUsageStore, UsageStore } from "../../budget/store.js";
 import { attributedW, taskUseOf } from "../../budget/task-use.js";
 import { teamWeekOf } from "../../budget/team-week.js";
@@ -27,7 +27,7 @@ import { JsonlMarkLog } from "../../inbox/store.js";
 import { indexMarks } from "../../inbox/marks.js";
 import { customTitleOf, TRANSCRIPT_TAIL_BYTES } from "../../names/title.js";
 import { TASK_ID } from "../../register/model.js";
-import { otherTeamsOnAccount } from "../account-teams.js";
+import { otherTeamsOnAccount, snapshotsOnAccount } from "../account-teams.js";
 import { UsageError, onePositional, requiredFlag } from "../args.js";
 import { callerOf } from "../inputs.js";
 import { openKit, openTeamKit, requireConfig, rosterOf, sessionIdOf, teamFolders, teamZone } from "../kit.js";
@@ -41,17 +41,6 @@ import { EXIT, RefusedError } from "../runtime.js";
  */
 /** Days the loop table shows by default; `--all` shows every stored day. */
 export const LOOP_DAYS_SHOWN = 4;
-/** Where the status line snapshots are: `budget.statusSnapshotDir` (relative to the team's folder), else `<kit home>/usage/live`. */
-export function snapshotDirOf(budget, paths) {
-    const dir = budget.statusSnapshotDir;
-    if (dir === undefined) {
-        return defaultSnapshotDir(paths.kitHome);
-    }
-    return isAbsolute(dir) ? dir : join(paths.home, dir);
-}
-export function defaultSnapshotDir(kitHome) {
-    return join(kitHome, 'usage', 'live');
-}
 /** The title the user gave a Claude Code session, from its transcript's last `TRANSCRIPT_TAIL_BYTES`. */
 async function titleOf(transcripts, path) {
     const size = (await transcripts.size(path)) ?? 0;
@@ -83,7 +72,7 @@ async function readBudget(runtime, kit, config, roster, options) {
         chunkBytes: CATCH_UP_CHUNK_BYTES,
         maxRuns: MAX_RUNS_PER_SESSION,
     });
-    const snapshots = recount ? [] : await readSnapshots(files, snapshotDirOf(config.budget, kit.paths));
+    const snapshots = recount ? [] : await snapshotsOnAccount(runtime, config.budget, kit.paths);
     const statusUse = weekUseOf(snapshots, now);
     const states = [...measured.bySession.values(), measured.outside];
     const input = { budget: config.budget, now, statusUse, states };

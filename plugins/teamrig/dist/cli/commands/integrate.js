@@ -1,3 +1,4 @@
+import { snapshotDirOf } from "../../budget/snapshot.js";
 import { coordinatorPlaces, teamPlace } from "../../coordinator/places.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { integrateBranch } from "../../integrate/integrate.js";
@@ -6,7 +7,6 @@ import { callerOf } from "../inputs.js";
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { stoppableHooks, stoppableLock, stoppableSleep, stoppableSteps, stoppedWhileWaiting, unlessStopped, watchStarters } from "../stoppable.js";
-import { snapshotDirOf } from "./budget.js";
 /**
  * `teamrig integrate [--keep-remote] [--no-delete-local]`: lands the branch checked out in the current folder on origin's
  * default branch (src/integrate/integrate.ts). Refused for a branch it must not land, from

@@ -1,4 +1,4 @@
-import { basename, join } from 'node:path';
+import { basename, isAbsolute, join } from 'node:path';
 import { isRecord, recordField, stringField } from "../core/guards.js";
 import { parseObject } from "../core/jsonl.js";
 import { isTemporaryName } from "../core/files.js";
@@ -223,6 +223,17 @@ async function readSnapshotFiles(files, dir) {
         }
     }
     return found;
+}
+/** Where the status line snapshots are: `budget.statusSnapshotDir` (relative to the team's folder), else `<kit home>/usage/live`. */
+export function snapshotDirOf(budget, paths) {
+    const dir = budget.statusSnapshotDir;
+    if (dir === undefined) {
+        return defaultSnapshotDir(paths.kitHome);
+    }
+    return isAbsolute(dir) ? dir : join(paths.home, dir);
+}
+export function defaultSnapshotDir(kitHome) {
+    return join(kitHome, 'usage', 'live');
 }
 /** Every snapshot in a folder; other files and unreadable ones are skipped. */
 export async function readSnapshots(files, dir) {

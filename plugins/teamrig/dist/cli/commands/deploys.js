@@ -1,3 +1,4 @@
+import { snapshotDirOf } from "../../budget/snapshot.js";
 import { claimText, readClaims } from "../../coordinator/claims.js";
 import { holderText, sharesText } from "../../coordinator/host-lock.js";
 import { parseLedger } from "../../coordinator/ledger.js";
@@ -8,7 +9,6 @@ import { plural, readPending, rollRepos, short } from "../../roll/pending.js";
 import { hostLockOf, nextResetFrom } from "../coordinator-ports.js";
 import { openTeamKit, requireConfig, teamZone } from "../kit.js";
 import { EXIT } from "../runtime.js";
-import { snapshotDirOf } from "./budget.js";
 function lockText(state, zone) {
     switch (state.kind) {
         case 'free':

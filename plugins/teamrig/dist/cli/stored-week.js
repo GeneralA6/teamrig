@@ -1,11 +1,11 @@
 import { join } from 'node:path';
 import { OUTSIDE_ID } from "../budget/measure.js";
-import { readSnapshots, weekUseOf } from "../budget/snapshot.js";
+import { weekUseOf } from "../budget/snapshot.js";
 import { UsageStore } from "../budget/store.js";
 import { calibrationOf, MeterLog } from "../budget/calibration.js";
 import { teamWeekOf } from "../budget/team-week.js";
 import { rateOf } from "../budget/week.js";
-import { snapshotDirOf } from "./commands/budget.js";
+import { snapshotsOnAccount } from "./account-teams.js";
 /** Each session's use as last stored, by its id, then the use outside the team under OUTSIDE_ID; no transcript measured. */
 export async function readStoredUsage(runtime, paths, sessions) {
     const team = new UsageStore(runtime.files, paths.usage);
@@ -18,12 +18,12 @@ export async function readStoredUsage(runtime, paths, sessions) {
 }
 /**
  * The week as a hook reads it: each session's use as last stored, the use outside the team and the newest
- * status-line reading, no transcript measured.
+ * status-line reading on the account (`snapshotsOnAccount`), no transcript measured.
  */
 export async function readStoredWeek(runtime, paths, config, now) {
     const { budget, sessions } = config;
     const states = [...(await readStoredUsage(runtime, paths, sessions)).values()];
-    const statusUse = weekUseOf(await readSnapshots(runtime.files, snapshotDirOf(budget, paths)), now);
+    const statusUse = weekUseOf(await snapshotsOnAccount(runtime, budget, paths), now);
     return teamWeekOf(runtime.files, paths, { budget, now, statusUse, states });
 }
 /**

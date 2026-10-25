@@ -29,12 +29,17 @@ export function weekLine(week, zone) {
     if (week.usedPct === undefined || week.reset === undefined) {
         return "Week: its use is unknown: no status line reading (run teamrig statusline install) and no budget.weeklyLimitW.";
     }
-    const source = week.statusAt === undefined ? ' (metered)' : ` at ${zone.clock(new Date(week.statusAt))} (status line)`;
+    const source = week.statusAt === undefined ? ' (metered)' : ` at ${readingTimeText(week.statusAt, week.todayFrom, zone)} (status line)`;
     const pace = week.pace;
     const paceText = pace === undefined
         ? ''
         : `; the pace line is at ${formatPct(pace.linePct)}: ${pace.state === 'on pace' ? 'on pace' : `${Math.abs(pace.gapPts).toFixed(1)} points ${pace.state}`}`;
     return `Week: ${formatPct(week.usedPct)} used${source}${paceText}. Resets ${zone.weekdayMinute(new Date(week.reset))}.${periodText(week, zone)}${poolText(week.pool)}`;
+}
+/** When the status line reading was taken: its time, and its day too when that was before today's start, so a stale reading shows as stale. */
+function readingTimeText(statusAt, todayFrom, zone) {
+    const at = new Date(statusAt);
+    return statusAt < todayFrom ? zone.shortMinute(at) : zone.clock(at);
 }
 /**
  * The extra-usage pool (budget/extra.ts) once dollars were added: what is left in dollars and, with its W per dollar,

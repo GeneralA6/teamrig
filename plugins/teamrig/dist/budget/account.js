@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { LiftLog } from "./lift.js";
 import { budgetSplitOf } from "./parts.js";
+import { readSnapshots, snapshotDirOf } from "./snapshot.js";
 import { cachedWork } from "./work.js";
 /** The Claude account a team's week is on: its `budget.account`, else the Claude config dir, which signs in one account. */
 export function accountOf(budget, configDir) {
@@ -31,6 +32,32 @@ export async function accountTeamsOf(files, teams, scope) {
 async function liftsOf(files, path) {
     try {
         return (await new LiftLog(files, path).read()).lifts;
+    }
+    catch {
+        return [];
+    }
+}
+/**
+ * Every status line snapshot on the asking team's account, read-only: its own folder's (`own`), then each other
+ * team's on the account in the order of `teams`, each folder once. A team's tabs write only its own folder, so a
+ * team whose tabs are idle would show an old week %; `weekUseOf` takes the newest reading among them all. Another
+ * team's folder that cannot be read gives no snapshot, so it never stops this team's budget.
+ */
+export async function accountSnapshotsOf(files, teams, own, scope) {
+    const snapshots = await readSnapshots(files, own);
+    const read = new Set([own]);
+    for (const { kit, config } of teams.values()) {
+        const dir = snapshotDirOf(config.budget, kit.paths);
+        if (!read.has(dir) && accountOf(config.budget, scope.configDir) === scope.account) {
+            read.add(dir);
+            snapshots.push(...(await othersSnapshots(files, dir)));
+        }
+    }
+    return snapshots;
+}
+async function othersSnapshots(files, dir) {
+    try {
+        return await readSnapshots(files, dir);
     }
     catch {
         return [];
