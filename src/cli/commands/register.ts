@@ -24,7 +24,7 @@ import { currentWeekOf } from '../../register/week.ts';
 import type { ApprovalVerdict, TaskFields } from '../../register/events.ts';
 import { fitLines, leftOfWeek, overLimitFlag, weekFit, type WeekFit } from '../../register/fit.ts';
 import type { Task } from '../../register/fold.ts';
-import { problemHint } from '../../register/kind.ts';
+import { bugHint } from '../../register/bug-hint.ts';
 import { reviewGap, reviewGapText } from '../../register/review.ts';
 import { renderPlan } from '../../register/plan.ts';
 import { noProgressFlag } from '../../register/progress.ts';
@@ -43,7 +43,7 @@ import { SKILL_FILE, SkillDir } from '../../skills/store.ts';
 import { weekUseOnAccount } from '../account-teams.ts';
 import { readWideAllow } from '../allow-scope.ts';
 import { noPositionals, onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
-import { addInputOf, callerOf, changesOf, listFilterOf, pinOf, setInputOf, taskIdOf, taskRefOf, weekOf, type TypedTimes } from '../inputs.ts';
+import { addInputOf, callerOf, changesOf, criticalOf, listFilterOf, pinOf, setInputOf, taskIdOf, taskRefOf, weekOf, type TypedTimes } from '../inputs.ts';
 import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, projectFolder, requireConfig, rosterOf, sessionIdOf, teamZone, type Access, type Kit } from '../kit.ts';
 import { checkLines, listLines, SHORT_TITLE_CHARS, waitingOnLines, type CheckReport, type CheckSection, type LeadDecisions, type TaskRow } from '../reports.ts';
 import { idlePassWarnings } from '../idle-pass-check.ts';
@@ -203,7 +203,7 @@ async function addToTeam(args: ParsedArgs, runtime: CliRuntime, caller: string, 
     throw new RefusedError(`team ${asked}: ${found.error}`);
   }
   const owner = found.id;
-  const input = { ...addInputOf(args.flags, caller, typedTimes(runtime, teamZone(config, runtime))), owner, source: from };
+  const input = { ...addInputOf(args.flags, caller, typedTimes(runtime, teamZone(config, runtime))), ...criticalOf(args.switches), owner, source: from };
   const verdict = await target.register.addFromTeam(from, input);
   const code = report(runtime, verdict, 'ADDED', target, asked);
   if (verdict.ok) {
@@ -227,27 +227,27 @@ export async function add(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
 /** A task of the caller's own team, owned by `--owner`, else by the caller. */
 async function addHere(args: ParsedArgs, runtime: CliRuntime, caller: string): Promise<ExitCode> {
   const team = await openTeam(runtime, 'write');
-  const input = addInputOf(args.flags, caller, typedTimes(runtime, team.zone));
+  const input = { ...addInputOf(args.flags, caller, typedTimes(runtime, team.zone)), ...criticalOf(args.switches) };
   const by = sessionIdOf(team.roster, caller);
   const verdict = await team.register.add(by, addInputIds(team, input));
   const code = report(runtime, verdict, 'ADDED', team);
   if (verdict.ok) {
-    noteProblemHint(runtime, team, verdict.value.task);
+    noteBugHint(runtime, team, verdict.value.task);
   }
   await tellNewOwner(runtime, team, by, verdict);
   return code;
 }
 
-/** A NOTE asking to mark the task a problem when its text reads like one and no one marked it (register/kind.ts). */
-function noteProblemHint(runtime: CliRuntime, team: Team, task: Task): void {
-  const hint = problemHint(task, team.config.register.review.hintPattern);
+/** A NOTE asking to mark the task a bug when its text reads like one and no one gave it a type (register/bug-hint.ts). */
+function noteBugHint(runtime: CliRuntime, team: Team, task: Task): void {
+  const hint = bugHint(task, team.config.register.review.hintPattern);
   if (hint !== undefined) {
     runtime.out.stderr(`NOTE ${hint}`);
   }
 }
 
 /**
- * A WARN naming the review parts a problem task reached `status` without, while `register.review.mode` is `warn`
+ * A WARN naming the review parts a bug reached `status` without, while `register.review.mode` is `warn`
  * (refuse never writes it, and off asks nothing); judged on the task as written, so its review holds every part given.
  */
 function warnReviewGap(runtime: CliRuntime, team: Team, task: Task, status: TaskStatus): void {
@@ -426,7 +426,7 @@ export async function set(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
   }
   const exit = report(runtime, verdict, 'SET', team);
   if (verdict.ok && input.status === 'in-progress' && verdict.value.before?.status !== 'in-progress') {
-    noteProblemHint(runtime, team, verdict.value.task);
+    noteBugHint(runtime, team, verdict.value.task);
   }
   await tellLeadersOfWaits(runtime, team, by, verdict);
   await tellAskerOfEnd(runtime, team, by, verdict);
@@ -573,7 +573,7 @@ export async function update(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   const { id } = ref;
   const team = await openTeam(runtime, 'write');
   const by = sessionIdOf(team.roster, caller);
-  const changes = { ...changesOf(args.flags, typedTimes(runtime, team.zone)), ...pinOf(args.switches, by) };
+  const changes = { ...changesOf(args.flags, typedTimes(runtime, team.zone)), ...criticalOf(args.switches), ...pinOf(args.switches, by) };
   const verdict = await team.register.update(by, id, changeIds(team.roster, changes), args.flags.get('note'));
   const code = report(runtime, verdict, 'UPDATED', team);
   await tellNewOwner(runtime, team, by, verdict);

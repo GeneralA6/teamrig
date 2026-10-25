@@ -4,7 +4,7 @@ import { TimeZone } from '../core/zone.ts';
 import { TASK_STATUSES } from '../register/model.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import { UsageError } from './args.ts';
-import { addInputOf, callerOf, changesOf, deadlineOf, instantOf, kindOf, listFilterOf, pinOf, priorityOf, sessionRef, setInputOf, sizeOf, statusInputOf, taskIdOf, taskRefOf, waitsOf, weekOf, type TypedTimes } from './inputs.ts';
+import { addInputOf, callerOf, changesOf, criticalOf, deadlineOf, instantOf, listFilterOf, pinOf, priorityOf, sessionRef, setInputOf, sizeOf, statusInputOf, taskIdOf, taskRefOf, typeOf, waitsOf, weekOf, type TypedTimes } from './inputs.ts';
 
 const flags = (entries: Readonly<Record<string, string>>): ReadonlyMap<string, string> => new Map(Object.entries(entries));
 
@@ -129,28 +129,36 @@ describe('changesOf', () => {
     assert.deepEqual(changesOf(flags({ size: 'none' }), TIMES), { size: null });
   });
 
-  it('marks a task a problem, or work with none, which the problem hint reads as marked', () => {
-    assert.deepEqual(changesOf(flags({ problem: 'critical' }), TIMES), { kind: 'critical' });
-    assert.deepEqual(changesOf(flags({ problem: 'none' }), TIMES), { kind: 'work' });
+  it('types a task a bug, or a task, which the bug hint reads as typed', () => {
+    assert.deepEqual(changesOf(flags({ type: 'bug' }), TIMES), { type: 'bug' });
+    assert.deepEqual(changesOf(flags({ type: 'task' }), TIMES), { type: 'task' });
   });
 });
 
-describe('kindOf', () => {
-  it('reads problem and critical as themselves and none as work', () => {
-    assert.equal(kindOf('problem'), 'problem');
-    assert.equal(kindOf('critical'), 'critical');
-    assert.equal(kindOf('none'), 'work');
+describe('typeOf', () => {
+  it('reads task and bug as themselves', () => {
+    assert.equal(typeOf('task'), 'task');
+    assert.equal(typeOf('bug'), 'bug');
   });
 
-  it('refuses any other text, the stored work spelling too', () => {
-    for (const text of ['work', 'Problem', 'bug', '']) {
-      assert.throws(() => kindOf(text), { name: 'UsageError', message: `--problem "${text}" is not problem|critical|none` }, text);
+  it('refuses any other text, the old problem spelling too', () => {
+    for (const text of ['Bug', 'problem', 'critical', 'none', '']) {
+      assert.throws(() => typeOf(text), { name: 'UsageError', message: `--type "${text}" is not task|bug` }, text);
     }
   });
 
   it('reaches add, which leaves it out when not given', () => {
-    assert.equal(addInputOf(flags({ title: 'x', priority: 'p2', problem: 'problem' }), 'alpha', TIMES).kind, 'problem');
-    assert.equal(addInputOf(flags({ title: 'x', priority: 'p2' }), 'alpha', TIMES).kind, undefined);
+    assert.equal(addInputOf(flags({ title: 'x', priority: 'p2', type: 'bug' }), 'alpha', TIMES).type, 'bug');
+    assert.equal(addInputOf(flags({ title: 'x', priority: 'p2' }), 'alpha', TIMES).type, undefined);
+  });
+});
+
+describe('criticalOf', () => {
+  it('marks critical, clears the mark, or changes nothing, and refuses both at once', () => {
+    assert.deepEqual(criticalOf(new Set(['critical'])), { critical: true });
+    assert.deepEqual(criticalOf(new Set(['not-critical'])), { critical: false });
+    assert.deepEqual(criticalOf(new Set()), {});
+    assert.throws(() => criticalOf(new Set(['critical', 'not-critical'])), { name: 'UsageError', message: '--critical and --not-critical: give one' });
   });
 });
 

@@ -258,30 +258,30 @@
           }
         },
         "review": {
-          "description": "How teamrig asks for a problem task's review.",
+          "description": "How teamrig asks for a bug's review.",
           "type": "object",
           "properties": {
             "mode": {
-              "description": "A task marked --problem reaching a requireOn status with review parts missing (--cause, --how, --prevent, --missed-test, --missed-monitor, --missed-log, and --harden when critical): refuse the change and name the missing flags, warn (make it and print them), or off (ask nothing).",
+              "description": "A bug (--type bug) reaching a requireOn status with review parts missing (--cause, --how, --prevent, --missed-test, --missed-monitor, --missed-log, and --harden when critical): refuse the change and name the missing flags, warn (make it and print them), or off (ask nothing).",
               "enum": ["refuse", "warn", "off"],
               "default": "refuse"
             },
             "requireOn": {
-              "description": "The statuses a task marked --problem cannot reach with review parts missing. A dropped task is never asked: its note says why.",
+              "description": "The statuses a bug cannot reach with review parts missing. A dropped task is never asked: its note says why.",
               "type": "array",
               "maxItems": 2,
               "items": { "enum": ["verifying", "done"] },
               "default": ["verifying", "done"]
             },
             "criticalOwners": {
-              "description": "Sessions whose every problem task counts as critical, and so is asked --harden too: a team's security or data areas.",
+              "description": "Sessions whose every bug counts as critical, and so is asked --harden too: a team's security or data areas.",
               "type": "array",
               "maxItems": 32,
               "items": { "$ref": "#/$defs/sessionName" },
               "default": []
             },
             "hintPattern": {
-              "description": "A regular expression, matched case-insensitively against the title and description of a task no one marked with --problem: a match prints a NOTE line asking to mark it --problem problem|critical, or --problem none, when the task is added and when it starts.",
+              "description": "A regular expression, matched case-insensitively against the title and description of a task with no type: a match prints a NOTE line asking to mark it --type bug [--critical], or --type task, when the task is added and when it starts.",
               "type": "string",
               "minLength": 1,
               "default": "\\b(fix|bug|broken?|regress\\w*|incident|fail\\w*|crash\\w*|leak\\w*|wrong|missed)\\b"

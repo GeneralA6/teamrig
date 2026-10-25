@@ -121,10 +121,10 @@ describe('runCli: help, version and usage errors', () => {
       "      a wait on the owner's decision names what makes it the owner's: --gate \"<an owner gate (ownerGates)",
       "      or business>\"; any other question is yours or your leader's: decide it, or wait on your leader;",
       '      check flags it UNGATED without one',
-      '      a task marked --problem gives its review (register.review): --cause "<the root cause, at its source>"',
+      '      a bug gives its review (register.review): --cause "<the root cause, at its source>"',
       '      --how "<the change or assumption that let it in>" --prevent "<what stops it coming back>", and',
       '      --missed-test, --missed-monitor and --missed-log "<a follow-up task that adds it, or why none can catch it>";',
-      '      a critical one (--problem critical, or an owner in criticalOwners) --harden "<past the direct guard>" too;',
+      '      a critical one (--critical, or an owner in criticalOwners) --harden "<past the direct guard>" too;',
       '      each part at least 3 words besides task ids, kept across sets; tasks a missed part names join',
       '      --followups; verifying and done need every part (requireOn; mode refuse, warn or off)',
     ];
@@ -144,7 +144,7 @@ describe('runCli: help, version and usage errors', () => {
     const kit = new CliHarness();
     const add = await kit.run(['add', '--help']);
     assert.deepEqual([add.code, add.stdout, add.stderr], [EXIT.ok, [COMMAND_HELP.forCommand('add')], []]);
-    assert.match(add.stdout[0] ?? '', /\n {2}add --title .*\n(?: {6}\[.*\n)+ {6}--description: .*\n {6}\S.*\n {6}--after: .*\n {6}--size: .*\n {6}\S.*\n {6}--problem: .*\n(?: {6}\S.*\n)+ {2}add --team /);
+    assert.match(add.stdout[0] ?? '', /\n {2}add --title .*\n(?: {6}\[.*\n)+ {6}--description: .*\n {6}\S.*\n {6}--after: .*\n {6}--size: .*\n {6}\S.*\n {6}--type: .*\n(?: {6}\S.*\n)+ {2}add --team /);
     assert.deepEqual((await kit.run(['set', 'T1', '-h'])).stdout, [COMMAND_HELP.forCommand('set')]);
     const inbox = await kit.run(['inbox', '--help']);
     assert.deepEqual(

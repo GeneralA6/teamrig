@@ -2,10 +2,11 @@ import type { RegisterReviewConfig } from '../config/types.ts';
 import { isRecord } from '../core/guards.ts';
 import { CARD_MIN_WORDS, namedTaskIds, plainWords } from './card.ts';
 import type { Task } from './fold.ts';
+import { itemTypeOf, traitsOf } from './item-types.ts';
 import type { TaskStatus } from './model.ts';
 
 /**
- * A problem task's review (T916): beside the fix, how the problem came about, what stops it coming back and how it
+ * A bug's review (T916): beside the fix, how the bug came about, what stops it coming back and how it
  * was missed, so the next one is caught sooner. Each part is given with its own `set` flag and kept across sets, a
  * later one replacing it (fold.ts); an empty review is a task no one has reviewed yet.
  */
@@ -56,7 +57,7 @@ const REVIEW_LABELS: Readonly<Record<ReviewPart, string>> = {
 /** The parts that say how the problem was missed: each names a follow-up task or why that kind cannot catch it. */
 const MISSED_PARTS: readonly ReviewPart[] = ['missedTest', 'missedMonitor', 'missedLog'];
 
-/** The parts a problem's review needs: every one but `harden`, which only a critical problem needs too. */
+/** The parts a bug's review needs: every one but `harden`, which only a critical bug needs too. */
 export function requiredParts(critical: boolean): ReviewPart[] {
   return REVIEW_ORDER.filter((part) => critical || part !== 'harden');
 }
@@ -66,30 +67,30 @@ export function missingParts(review: ProblemReview, critical: boolean): ReviewPa
   return requiredParts(critical).filter((part) => review[part] === undefined);
 }
 
-/** Whether a task is a problem whose review is asked: marked `--problem problem` or `--problem critical`. */
-export function isProblem(task: Pick<Task, 'kind'>): boolean {
-  return task.kind === 'problem' || task.kind === 'critical';
+/** Whether an item gives the problem review: its type has one (item-types.ts), as a bug does. */
+export function asksReview(task: Pick<Task, 'type'>): boolean {
+  return traitsOf(task).review;
 }
 
-/** Whether a problem is critical, and so asked `--harden` too: marked so, or owned by one of `criticalOwners`. */
-export function isCritical(task: Pick<Task, 'kind' | 'owner'>, criticalOwners: readonly string[]): boolean {
-  return task.kind === 'critical' || (task.kind === 'problem' && criticalOwners.includes(task.owner));
+/** Whether an item that gives the review is critical, and so asked `--harden` too: marked `--critical`, or owned by one of `criticalOwners`. */
+export function isCritical(task: Pick<Task, 'type' | 'critical' | 'owner'>, criticalOwners: readonly string[]): boolean {
+  return asksReview(task) && (task.critical || criticalOwners.includes(task.owner));
 }
 
 /**
- * The review parts a task still lacks to reach `status` once `given` is added to its review: none when it is not a
- * problem, the status is not one `requireOn` lists, or the review is `off`.
+ * The review parts a task still lacks to reach `status` once `given` is added to its review: none when its type gives
+ * no review, the status is not one `requireOn` lists, or the review is `off`.
  */
-export function reviewGap(task: Pick<Task, 'kind' | 'owner' | 'review'>, status: TaskStatus, given: ProblemReview, config: RegisterReviewConfig): ReviewPart[] {
-  if (config.mode === 'off' || !isProblem(task) || !config.requireOn.includes(status)) {
+export function reviewGap(task: Pick<Task, 'type' | 'critical' | 'owner' | 'review'>, status: TaskStatus, given: ProblemReview, config: RegisterReviewConfig): ReviewPart[] {
+  if (config.mode === 'off' || !asksReview(task) || !config.requireOn.includes(status)) {
     return [];
   }
   return missingParts({ ...task.review, ...given }, isCritical(task, config.criticalOwners));
 }
 
-/** What a problem task lacks to reach `status`, naming the flags that give it, for a refusal or a warning. */
-export function reviewGapText(task: Pick<Task, 'id'>, status: TaskStatus, missing: readonly ReviewPart[]): string {
-  return `${task.id} is a problem: ${status} needs its review, ${partFlags(missing)} (how it happened, what stops it and how it was missed; teamrig help set)`;
+/** What a task whose type gives the review lacks to reach `status`, naming the flags that give it, for a refusal or a warning. */
+export function reviewGapText(task: Pick<Task, 'id' | 'type'>, status: TaskStatus, missing: readonly ReviewPart[]): string {
+  return `${task.id} is a ${itemTypeOf(task)}: ${status} needs its review, ${partFlags(missing)} (how it happened, what stops it and how it was missed; teamrig help set)`;
 }
 
 /** The flags that give `parts`, as one phrase: `--cause, --how and --missed-log`. */
