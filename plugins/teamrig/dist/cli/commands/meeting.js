@@ -85,6 +85,7 @@ async function printAgenda(args, runtime, mk, phase) {
         now: mk.now,
         since: agendaSince(previousEnd(phase), mk.now),
         ownerMarker: mk.config.register.ownerSource,
+        requireGate: mk.config.register.requireDecisionCard,
         lead: mk.lead,
         command: KIT_NAME,
     });

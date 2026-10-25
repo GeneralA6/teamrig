@@ -1,5 +1,5 @@
 import { MS_PER_DAY } from "../core/time.js";
-import { waitsOnOwner } from "../meeting/agenda.js";
+import { asksOwner } from "../meeting/agenda.js";
 /**
  * The owner's decisions, asked in batches: a session that needs one sets its task waiting on the owner's decision or
  * approval, with its card, and goes on with other work; the lead asks the owner the waiting ones together, at its
@@ -29,7 +29,7 @@ export function nextBatchTime(now, times) {
 /** The batch the lead asks the owner next, and whether it is due now. */
 export function decisionBatch(input) {
     const { tree, now, askedAt } = input;
-    const waiting = tree.inPlanOrder([...input.tasks].filter((task) => waitsOnOwner(task, input.ownerMarker)));
+    const waiting = tree.inPlanOrder([...input.tasks].filter((task) => asksOwner(task, input.ownerMarker, input.requireGate)));
     const asked = (task) => askedAt !== undefined && Date.parse(task.statusAt) <= askedAt;
     const pending = waiting.filter((task) => !asked(task));
     const overdue = waiting.filter((task) => asked(task) && (tree.dueTime(task) ?? Number.POSITIVE_INFINITY) < now);

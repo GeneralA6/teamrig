@@ -241,7 +241,7 @@ export function renderKeptRules(conflicts, command) {
 export function renderLeadRules(config, command) {
     return [
         'As the lead, also:',
-        '- Bring the owner only verified results, your decisions, investigated questions and incidents.',
+        '- Bring the owner only verified results, decisions, owner-gate or business questions and incidents.',
         `- Relay each owner order as an approved task in the same turn: \`${command} add --owner <id> --source ${config.register.ownerSource}\` [register.ownerSource].`,
         `- Plan the week from \`${command} plan\` and run \`${command} check\` at each checkpoint, never from memory.`,
         `- Answer each approval wait on you with \`${command} approve\` per the \`approvals\` skill; owner-gated content goes to the owner.`,
