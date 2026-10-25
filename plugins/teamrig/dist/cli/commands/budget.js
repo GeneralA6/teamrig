@@ -23,7 +23,7 @@ import { attributedW, taskUseOf } from "../../budget/task-use.js";
 import { teamWeekOf } from "../../budget/team-week.js";
 import { foldIntoWeekSummary } from "../../budget/week-summary.js";
 import { readWeek, wSince } from "../../budget/week.js";
-import { readWork } from "../../budget/work.js";
+import { NO_WORK, readWork } from "../../budget/work.js";
 import { JsonlMarkLog } from "../../inbox/store.js";
 import { indexMarks } from "../../inbox/marks.js";
 import { customTitleOf, TRANSCRIPT_TAIL_BYTES } from "../../names/title.js";
@@ -201,7 +201,7 @@ export async function budget(args, runtime) {
         }
         return EXIT.ok;
     }
-    const work = recountDay === undefined ? await readWork(runtime.files, kit.paths.events, config.register.priorities) : new Map();
+    const { weights: work } = recountDay === undefined ? await readWork(runtime.files, kit.paths.events, config.register.priorities) : NO_WORK;
     const split = splitOf(reading, kit.paths.team, roster, config, work);
     // A recount shows no budgets, so it reads no other team.
     const others = recountDay === undefined ? await otherTeamsOnAccount(runtime, { team: kit.paths.team, config, usageDir: kit.paths.usage }, reading.now, reading.week.usedPct) : [];
@@ -331,7 +331,7 @@ export async function lift(args, runtime) {
     const name = nameOf(id);
     const reading = await readBudget(runtime, kit, config, roster, { recountDay: undefined });
     const { week } = reading;
-    const work = await readWork(runtime.files, kit.paths.events, config.register.priorities);
+    const { weights: work } = await readWork(runtime.files, kit.paths.events, config.register.priorities);
     const split = splitOf(reading, kit.paths.team, roster, config, work);
     const place = liftPlaceOf(split, id, group);
     if (place === undefined) {

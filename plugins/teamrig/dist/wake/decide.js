@@ -25,7 +25,7 @@ export const COLD_WAKE_W = 210_000;
 export const WAKE_LIST_MAX = 5;
 /** The most characters of a task's title a wake shows. */
 export const WAKE_TITLE_MAX = 80;
-/** The most urgent priority: what a session past its budget or in quiet hours still wakes for. */
+/** The least urgent priority a session past its budget or in quiet hours still wakes for: p1, and p0 above it. */
 export const URGENT_PRIORITY = 1;
 /** True for a status whose task names reasons to wait for: it goes on once they all cleared (`check`'s READY). */
 function goesOnByWaits(status) {

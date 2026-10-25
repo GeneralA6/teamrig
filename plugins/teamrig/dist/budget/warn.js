@@ -145,7 +145,7 @@ function escalatedText(facts, budget) {
     if (facts.isLead || budget.overAction === 'warn') {
         return '';
     }
-    const helpers = helperClause(budget.overAction);
+    const helpers = facts.urgent.length === 0 ? helperClause(budget.overAction) : `its p0 work (${facts.urgent.join(', ')}) goes on past the stop, helpers too`;
     const told = toldText(facts.leader);
     return helpers === undefined ? `${capitalized(told)}.` : `${capitalized(helpers)}; ${told}.`;
 }
@@ -188,7 +188,7 @@ function leadLineOf(facts, standing) {
     const command = `teamrig budget lift ${facts.id} --part <pct> --stop-pct <pct> --reason "<why>"`;
     return (`${facts.name} is past its daily budget: ${formatPct(facts.usedTodayPct)} of the week today against ${formatPct(facts.budgetPct)}, ` +
         `and ${heldClause(facts, standing)}. ` +
-        `It finishes the step in hand; lift it only with a stop %: ${command}.`);
+        `${facts.urgent.length === 0 ? 'It finishes the step in hand' : `It goes on with its p0 work (${facts.urgent.join(', ')}) past the stop`}; lift it only with a stop %: ${command}.`);
 }
 /**
  * The person's lines at a turn's end: a lift or a burst starting or ending, the quiet hours starting, a new
@@ -245,7 +245,8 @@ function escalationLine(facts, standing, state) {
     }
     const team = standing.ahead ? ', and it is ahead of its pace line' : '';
     const lift = facts.isLead ? 'As the lead, lift it only with a stop %.' : `${capitalized(leaderText(facts.leader, 'your'))} can lift it.`;
-    return (`${BUDGET_COMMAND}: you are past today's budget and the team has no room left today${team}. Finish the step in hand and start no new work items or helpers. ` +
+    const urgent = facts.urgent.length === 0 ? '' : `, except your p0 work (${facts.urgent.join(', ')}): it goes on past the daily stop`;
+    return (`${BUDGET_COMMAND}: you are past today's budget and the team has no room left today${team}. Finish the step in hand and start no new work items or helpers${urgent}. ` +
         `Never skip a test or check to save budget. ${lift}`);
 }
 /**
@@ -275,10 +276,11 @@ export function promptWarning(facts, budget, previous) {
 /**
  * Before a helper launch: past budget once escalated, `overAction` applies; in quiet hours,
  * `quietHours.action`; the stronger wins. Only "ask" and "block" hold a launch back. The lead's own
- * helpers and a session under its own lift always go ahead: the lead decides, and a lift is a leader's decision.
+ * helpers, a session under its own lift and one with p0 work always go ahead: the lead decides, a lift is a
+ * leader's decision, and p0 work is done right now.
  */
 export function helperGate(facts, budget) {
-    if (facts.isLead || facts.lift !== undefined) {
+    if (facts.isLead || facts.lift !== undefined || facts.urgent.length > 0) {
         return { kind: 'allow' };
     }
     const standing = standingOf(facts, budget);

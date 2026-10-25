@@ -1,4 +1,5 @@
 import { showStored } from "../core/time.js";
+import { priorityLevels } from "../config/priorities.js";
 import { priorityText } from "./model.js";
 import { NO_TASKS_ELSEWHERE, TaskTree } from "./tree.js";
 import { sizeText, taskLabel } from "./views.js";
@@ -21,7 +22,7 @@ export function renderPlan(tasks, week, now, zone, config, { team, fit = [], els
         `${inWeek.length} tasks: ${done} done, ${dropped} dropped, ${inWeek.length - done - dropped} to do. From the task register at ${zone.minute(now)}.`,
         ...(fit.length === 0 ? [] : ['', ...fit.map((line) => `- ${line}`)]),
     ];
-    for (const priority of config.priorities) {
+    for (const priority of priorityLevels(config.priorities)) {
         const rows = inWeek.filter((task) => task.priority === priority.id);
         if (rows.length > 0) {
             lines.push('', `## ${priorityText(priority.id)}: ${priority.name}`, '', ...rows.map((task) => planLine(task, config.ownerSource, tree, team)));
