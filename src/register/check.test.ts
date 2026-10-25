@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { LeadTree } from '../config/lead-tree.ts';
-import { TEST_CARD } from '../testing/card.ts';
+import { TEST_CARD, TEST_OWNER_CARD } from '../testing/card.ts';
 import { testConfig } from '../testing/config.ts';
 import { testTask } from '../testing/task.ts';
 import { checkTasks, formatFlag, PACE_DAYS, peerWaitFlags } from './check.ts';
@@ -183,7 +183,7 @@ describe('checkTasks: PRIORITY-SKIP', () => {
   });
 
   it('leaves a waiting p1, another owner\'s p1, a p1 in progress and work that is not in progress alone', () => {
-    assert.deepEqual(skips([{ ...waiting, status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], card: TEST_CARD }, working]), []);
+    assert.deepEqual(skips([{ ...waiting, status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], card: TEST_OWNER_CARD }, working]), []);
     assert.deepEqual(skips([{ ...waiting, owner: 'bravo' }, working]), []);
     assert.deepEqual(skips([waiting, { ...working, priority: 1 }]), []);
     assert.deepEqual(skips([waiting, { ...working, status: 'open' }]), []);
@@ -296,7 +296,7 @@ describe('checkTasks: OFF-GOAL', () => {
       testTask({ id: 'T2', status: 'in-progress', goals: ['G1'], ...seen }),
       testTask({ id: 'T3', status: 'in-progress', week: '2030-01-07', ...seen }),
       testTask({ id: 'T4', ...seen }),
-      testTask({ id: 'T5', status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], card: TEST_CARD, ...seen }),
+      testTask({ id: 'T5', status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], card: TEST_OWNER_CARD, ...seen }),
     ];
     assert.deepEqual(kinds(tasks), ['OFF-GOAL T1']);
     assert.deepEqual(kinds(tasks, null), [], 'no week plan, no week flags');
@@ -356,6 +356,32 @@ describe('checkTasks: OWNER-ORDERED', () => {
       testTask({ id: 'T5', source: 'owner', status: 'waiting', waits: [{ kind: 'approval', who: 'lead' }], ...seen }),
     ];
     assert.deepEqual(flagged(tasks), [`T1: ${fix('approval', 'waiting')}`, `T2: ${fix('decision and approval', 'verifying')}`]);
+  });
+});
+
+describe('checkTasks: UNGATED', () => {
+  const seen = { ownerSeenAt: FRESH, updatedAt: FRESH };
+  const flagged = (tasks: Parameters<typeof checkTasks>[0], config: typeof CONFIG = CONFIG) =>
+    checkTasks(tasks, NOW, TimeZone.UTC, null, config)
+      .filter((flag) => flag.kind === 'UNGATED')
+      .map((flag) => `${flag.task.id}: ${flag.detail}`);
+  const fix = (status: string) =>
+    `only an owner gate or a business decision is owner's to decide: set it ${status} again with --gate "<the owner gate, or business>", or decide it, or wait on your leader`;
+  const tasks = [
+    testTask({ id: 'T1', status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], card: TEST_CARD, ...seen }),
+    testTask({ id: 'T2', status: 'verifying', proof: 'the run', waits: [{ kind: 'decision', who: 'owner' }], card: TEST_CARD, ...seen }),
+    testTask({ id: 'T3', status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], card: TEST_OWNER_CARD, ...seen }),
+    testTask({ id: 'T4', status: 'waiting', waits: [{ kind: 'approval', who: 'owner' }], card: TEST_CARD, ...seen }),
+    testTask({ id: 'T5', status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], ...seen }),
+    testTask({ id: 'T6', status: 'waiting', waits: [{ kind: 'decision', who: 'lead' }], card: TEST_CARD, ...seen }),
+  ];
+
+  it("flags a wait on the owner's decision whose card names no gate, its proof too; never an approval, a gated or a missing card", () => {
+    assert.deepEqual(flagged(tasks), [`T1: ${fix('waiting')}`, `T2: ${fix('verifying')}`]);
+  });
+
+  it('flags nothing while cards are not required', () => {
+    assert.deepEqual(flagged(tasks, { ...CONFIG, requireDecisionCard: false }), []);
   });
 });
 
