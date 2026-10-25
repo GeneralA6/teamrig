@@ -11,7 +11,7 @@ import { RefreshStore } from '../../refresh/store.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
 import type { Task } from '../../register/fold.ts';
 import type { TasksElsewhere } from '../../register/tree.ts';
-import { askVerdictOf, handedPrompt, handedToast, WakeAsks, type WakeAsk } from '../../wake/asks.ts';
+import { askVerdictOf, asksFolderOf, handedPrompt, handedToast, WakeAsks, type WakeAsk } from '../../wake/asks.ts';
 import { dayStartPrompt, dayStartToast, decideDayStart, dueMoments, nextDayStartAt, startableTasks, type DayMoment, type DayStartVerdict } from '../../wake/day-start.ts';
 import { decideWake, effectivePriority, URGENT_PRIORITY, wakeCost, wakeRestOf, type WakeState } from '../../wake/decide.ts';
 import { WakePrompts } from '../../wake/prompts.ts';
@@ -28,12 +28,12 @@ import { rearmDeadRestart } from './hook-restart.ts';
 
 /**
  * What `hook wake-check` answers the plugin's mod, one JSON line: submit `text` as a prompt and show `toast`; or
- * check again once the register file `watch` changes or at `recheckAt` (epoch ms; null: no time set); or nothing to
- * wake for in this tab (`why`), which the mod checks again later all the same, since the config may change.
+ * check again once a file or folder in `watch` changes or at `recheckAt` (epoch ms; null: no time set); or nothing
+ * to wake for in this tab (`why`), which the mod checks again later all the same, since the config may change.
  */
 export type WakeAnswer =
   | { readonly kind: 'wake'; readonly ids: readonly string[]; readonly text: string; readonly toast: string }
-  | { readonly kind: 'wait'; readonly watch: string; readonly recheckAt: number | null }
+  | { readonly kind: 'wait'; readonly watch: readonly string[]; readonly recheckAt: number | null }
   | { readonly kind: 'off'; readonly why: string };
 
 const SECOND_MS = 1000;
@@ -42,6 +42,14 @@ const MINUTE_MS = 60 * SECOND_MS;
 function answer(runtime: CliRuntime, value: WakeAnswer): ExitCode {
   runtime.out.stdout(JSON.stringify(value));
   return EXIT.ok;
+}
+
+/**
+ * Check again at `recheckAt`, or once the register changes (work handed) or the session's asks folder does (an urgent
+ * or `inbox add --wake now` line posted), so a line is seen at the mod's next look, not RECHECK_MS later.
+ */
+function waitAnswer(scope: Extract<Scope, { kind: 'found' }>, recheckAt: number | null): WakeAnswer {
+  return { kind: 'wait', watch: [scope.kit.paths.events, asksFolderOf(scope.kit.paths.wakeAsks, scope.id)], recheckAt };
 }
 
 /** Where the check stands: the team session the tab is, and the kit it is in, found from the pointer `from`. */
@@ -248,10 +256,10 @@ export async function wakeCheck(args: ParsedArgs, runtime: CliRuntime): Promise<
   // The pass is the team's, not this tab's wake: before the holds that keep only this session from waking.
   await runIdlePass(runtime, kit, config, scope.roster, scope.from);
   if (await meetingHoldsWake(runtime, scope)) {
-    return answer(runtime, { kind: 'wait', watch: kit.paths.events, recheckAt: null });
+    return answer(runtime, waitAnswer(scope, null));
   }
   if (await restartHoldsWake(runtime, scope, isRecord(payload) ? stringField(payload, 'cwd') : undefined)) {
-    return answer(runtime, { kind: 'wait', watch: kit.paths.events, recheckAt: runtime.clock.now() + RESTART_RECHECK_MS });
+    return answer(runtime, waitAnswer(scope, runtime.clock.now() + RESTART_RECHECK_MS));
   }
   const store = new WakeStore(runtime.files, kit.paths.wake);
   let verdict: CheckVerdict;
@@ -259,12 +267,12 @@ export async function wakeCheck(args: ParsedArgs, runtime: CliRuntime): Promise<
     verdict = await decide(runtime, scope, store);
   } catch (error) {
     if (error instanceof LockBusyError) {
-      return answer(runtime, { kind: 'wait', watch: kit.paths.events, recheckAt: runtime.clock.now() });
+      return answer(runtime, waitAnswer(scope, runtime.clock.now()));
     }
     throw error;
   }
   if (verdict.kind === 'wait') {
-    return answer(runtime, { kind: 'wait', watch: kit.paths.events, recheckAt: verdict.recheckAt });
+    return answer(runtime, waitAnswer(scope, verdict.recheckAt));
   }
   const now = runtime.clock.now();
   const last = verdict.kind === 'moments' ? verdict.lastTurnAt : await lastWriteOf(runtime.transcripts, claudeProjectsDir(runtime.env, runtime.userHome), [tab]);
