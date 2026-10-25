@@ -60,6 +60,7 @@ const burstCommands = () => import('./commands/burst.ts');
 const statuslineCommands = () => import('./commands/statusline.ts');
 const automodeCommands = () => import('./commands/automode.ts');
 const permissionsCommands = () => import('./commands/permissions.ts');
+const setupScanCommand = () => import('./commands/setup-scan.ts');
 const testCommand = () => import('./commands/test.ts');
 const heavyCommand = () => import('./commands/heavy.ts');
 const withdrawCommand = () => import('./commands/withdraw.ts');
@@ -186,6 +187,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'permissions trim': { effect: 'write', flags: [], switches: ['all', 'yes'], load: async () => (await permissionsCommands()).trim },
   'setup backup': { effect: 'write', flags: ['project'], load: async () => (await setupBackupCommands()).backup },
   'setup restore': { effect: 'write', flags: [], switches: ['yes', 'remove-new'], load: async () => (await setupBackupCommands()).restore },
+  'setup scan': { effect: 'read', flags: ['project', 'days'], switches: [], load: async () => (await setupScanCommand()).scan },
   'config validate': { effect: 'read', flags: [], load: async () => (await configCommands()).validate },
   'config migrate': { effect: 'write', flags: [], switches: ['yes'], load: async () => (await configCommands()).migrate },
   'commits check': { effect: 'read', flags: ['base', 'tip'], load: async () => (await commitsCommands()).check },
@@ -474,6 +476,12 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   setup restore [<stamp>] [--yes] [--remove-new]   lists the backups, or previews putting one back:
       changed and deleted files and files made since; --yes backs the setup up first, then writes and
       prints the restore that undoes it; --remove-new also removes the files made since
+  setup scan [--project <dir>] [--days <n>]   what the Claude Code setup costs every turn in the project
+      (default: the team's, else the working folder) and what to slim: each file and the skill listing a
+      session loads, with chars and tokens; files over 6,000 chars, skill descriptions over 250, repeated
+      lines, rule lines that may override a core rule, wide allow rules, no deny rule, bypassed prompts,
+      hooks writing into the context, and skills unused in --days (default 30) days of this machine's
+      transcripts; works before a team exists; it only reads
   config validate | config migrate [--yes]   migrate shows an older config rewritten in this format and
       the first teamrig that reads it, as a tab on an older one refuses every write after; --yes writes it
   commits check --base <ref> [--tip <ref>]   commits in base..tip (default HEAD) over the size rule

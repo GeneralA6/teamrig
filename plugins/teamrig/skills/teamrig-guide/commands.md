@@ -2331,6 +2331,63 @@ PREVIEW nothing written (add --yes to write): removes every allow rule off permi
 TOTAL 2 file(s) to rewrite: 52 allow rules -> 5 (remove 47: Bash exact 33, Bash wide 11, WebFetch exact 2, Read wide 1)
 ```
 
+### teamrig setup scan
+
+Shows what your Claude Code setup costs at every session start in a project, and what to slim. It works before a
+team exists (team setup runs it first) and only reads. Without `--project` it scans the team's project, else the
+working folder.
+
+It lists each file a session loads, with its chars and tokens (about four chars a token): your user and the
+project's `CLAUDE.md` with their `@` imports, `CLAUDE.local.md`, the `.claude/rules/*.md` files without a `paths:`
+frontmatter, the first 200 lines of the memory index, the team's rules file, and the skill listing (each skill's
+name and description), then a TOTAL line. The findings follow, one line each, `<id> <kind> <path>: <what>`, with the
+tokens a turn applying it saves:
+
+- CONTEXT (`C1`...): a file over 6,000 chars, a skill description over 250.
+- DUPLICATE (`D1`...): a line or sentence of 40 chars or more that repeats one loaded before, in another file or the
+  same one; its excerpt has text in a secret's shape replaced.
+- OVERRIDE: how many rule lines, in how many files and of which kind, may override a core rule; never the lines.
+  Lines a recorded verdict clears are left out. `teamrig rules scan` lists them to judge.
+- SETTINGS (`S1`...): allow rules that approve a whole tool or program (`teamrig permissions trim` removes them), no
+  deny rule, `defaultMode: bypassPermissions`, and hooks whose output enters the context.
+- UNUSED (`U1`...): skills in your user or project skill folders with no `Skill` call or `/<skill>` in the last
+  `--days` days of this machine's transcripts; not checked when there is no transcript.
+
+The last line, SAVINGS, adds up what applying every CONTEXT, DUPLICATE and UNUSED finding saves each turn. It reads
+every transcript of those days, so a busy machine takes a minute or more.
+
+Flags:
+
+- `--project <dir>`: the project to scan.
+- `--days <n>`: the days of transcripts that tell which skills are in use (default 30).
+
+Example:
+
+```sh
+teamrig setup scan --project ~/work/shop
+```
+
+Output:
+
+```text
+SCAN ~/work/shop (no team yet)
+CONTEXT claude-md ~/.claude/CLAUDE.md: 2,100 chars (~525 tokens/turn)
+CONTEXT claude-md ~/work/shop/CLAUDE.md: 7,200 chars (~1,800 tokens/turn)
+CONTEXT skills 30 skill(s) listed: 7,400 chars (~1,850 tokens/turn); as this project's newest transcript lists them: skills folders and built-in 30 (7,400 chars)
+TOTAL 16,700 chars (~4,175 tokens/turn) at every session start
+C1 large-file ~/work/shop/CLAUDE.md: 7,200 chars, over the 6,000 an always-loaded file should keep to (~300 tokens/turn)
+DUPLICATE 1 line(s) or sentence(s) repeat one loaded before
+D1 duplicate ~/work/shop/CLAUDE.md:12: "Run the full test suite before every commit." repeats ~/.claude/CLAUDE.md:4 (~11 tokens/turn)
+OVERRIDE 6 line(s) in 2 file(s) may override a core rule: claude-md 4, skill 2; 0 recorded
+NEXT teamrig rules scan, after teamrig team create, to judge each line with the user
+SETTINGS 1 finding(s)
+S1 wide-allow ~/work/shop/.claude/settings.local.json: 14 allow rule(s) approve a whole tool or hold a credential: Bash wide 14
+NEXT teamrig permissions trim, after teamrig team create
+UNUSED 1 of 22 skill(s) not used in 30 day(s) (read 210 transcript(s), 380.4 MB)
+U1 unused-skill ~/.claude/skills/old-deploy/SKILL.md: no Skill call or /old-deploy in 30 day(s) (~45 tokens/turn)
+SAVINGS ~356 tokens/turn if every CONTEXT, DUPLICATE and UNUSED finding is applied
+```
+
 With `--yes`: `WROTE 2 of 2 file(s); their old text and a manifest are in <folder>`, then one line per file. With
 nothing to remove: `UNCHANGED no settings file to rewrite holds every allow rule off permissions.keepAllow`.
 
