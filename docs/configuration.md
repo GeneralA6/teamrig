@@ -72,8 +72,8 @@ Each role's session, by id.
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `lead` (required) | [session name](#shared-types) |  | Owns priorities, team rules and the owner's decision queue. |
-| `coordinatorOwner` | [session name](#shared-types) |  | Owns deploy coordination and fleet health, when the team has that role. |
-| `securityReviewer` | [session name](#shared-types) |  | Reviews the privileged commands sessions ask to run (exec), when the team has that role; the owner always may too. |
+| `coordinatorOwner` | [role holder](#shared-types) |  | Owns deploy coordination and fleet health, when the team has that role; a child team may leave it to a team above. |
+| `securityReviewer` | [role holder](#shared-types) |  | Reviews the privileged commands sessions ask to run (exec), when the team has that role; the owner always may too. A child team may leave it to a team above. |
 
 ## `ruleConflicts[]`
 
@@ -648,3 +648,4 @@ Folders moved from their defaults; a relative path is resolved against the team'
 | Name | Type | What it is |
 | --- | --- | --- |
 | session name | string (matching `^[a-z][a-z0-9-]{0,31}$`) |  |
+| role holder | string (matching `^[a-z][a-z0-9-]{0,31}(/[a-z][a-z0-9-]{0,31})?$`) | A session of the team by id, or `<team>/<id>`: the session holding the same role on a team above it (doctor's tree-role problem when that team is not above, or the session does not hold the role there). |

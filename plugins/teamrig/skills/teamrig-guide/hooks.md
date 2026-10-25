@@ -853,7 +853,7 @@ team session reads the [restore files](#every-session-the-restore-tracker) of th
 `teamrig launch` started names its session; one started by hand is the session whose inbox it last read) whose
 hooks last wrote over 30 minutes ago and checks their transcripts: one that changed in the last 30 minutes, and
 over 30 minutes after that last write, is a tab working without its hooks. Each such tab gets one inbox line from teamrig to the lead, or to
-the coordinator's owner (`roles.coordinatorOwner`) when it is the lead's own tab: `HOOKLESS alpha: its tab (Claude
+the coordinator's owner (`roles.coordinatorOwner`, on a team above when it names `<team>/<id>`) when it is the lead's own tab: `HOOKLESS alpha: its tab (Claude
 session 0123abcd) worked 59 min past its last teamrig hook (hook 09:00 IDT, last reply 09:59 IDT), so it gets no
 inbox, guards or tab status: /exit that tab and run claude --resume <id> in <folder>`, with the tab's full Claude
 session id and the folder it started in; a time not on the line's day carries its date (`hook 10-20 16:37 IDT`).

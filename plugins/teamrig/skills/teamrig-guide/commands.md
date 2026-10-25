@@ -738,6 +738,11 @@ the approved command runs once (`exec run`). Each step is one line of the team's
 `lead` as the security reviewer. The guard that keeps a tab reviewing only as itself is
 [`hook exec-guard`](#teamrig-hook-exec-guard).
 
+A child team without a reviewer of its own names the one of a team above as `<team>/<id>`
+(`roles.securityReviewer: root/security`): its requests reach that session's inbox, and that session reads and
+settles them from its own team with `--team <child>`, its review logged as `root/security`; the owner may still
+settle any.
+
 ### teamrig exec request
 
 Checks a request file and logs it as the next `R<n>`; nothing runs yet. The file is one JSON object:
@@ -802,7 +807,9 @@ Without an id, each request and its stage (waits for its dry run, waits for revi
 With `R<n>`, the whole request as the reviewer reads it: the command, its binding, variables, case, dry run and
 reviews.
 
-Flags: none.
+Flags:
+
+- `--team <child>`: the requests of a team below yours, as its reviewer on a team above reads them.
 
 Example:
 
@@ -828,6 +835,7 @@ Flags:
 
 - `--session <id|name>`: the caller, the reviewer.
 - `--note "<text>"`: what was checked; optional. A note that looks like a secret is refused.
+- `--team <child>`: a request of a team below yours whose `roles.securityReviewer` names you as `<team>/<id>`.
 
 Example:
 
@@ -850,6 +858,7 @@ Flags:
 
 - `--session <id|name>`: the caller, the reviewer.
 - `--note "<text>"`: the reason and the safe alternative; required.
+- `--team <child>`: a request of a team below yours, as for `exec approve`.
 
 Example:
 
@@ -872,6 +881,7 @@ Flags:
 
 - `--session <id|name>`: the caller, the security reviewer.
 - `--note "<text>"`: why the owner must decide; required.
+- `--team <child>`: a request of a team below yours, as for `exec approve`.
 
 Example:
 
@@ -974,7 +984,8 @@ shop (this team): lead lead (shop-lead); members api (shop-api), web (shop-web)
 ### teamrig who
 
 Prints the name to message each session by (no argument), or one session's name (`teamrig who lead`, a role,
-id or name). Message sessions only by these names.
+id or name). A role the team leaves to a team above (`<team>/<id>`) gives that session's name there, or `<team>/<id>`
+when that team has no config to read. Message sessions only by these names.
 
 Flags: none.
 
@@ -2108,8 +2119,10 @@ Otherwise `DOCTOR N finding(s)` and one `WARN <kind> <detail and fix>` line each
 Claude Code or Node.js, [the check](requirements.md#the-requirements-check)), `name-gone`,
 `name-shared`, `name-config`, `name-reserved` (a name Claude Code keeps for itself: `main`, `team-lead`, `user`,
 `system`), `rename-log`, `inbox-orphan`, `inbox-unread`, `rules-long`, `context-size`,
-`context-lists`, `tree-id`, `tree-parent`, `tree-loop`, `tree-depth`, `tree-children`, `name-two-teams`, `effort-env`,
-`model-env`, `settings-json`, `launch-effort`, `allow-wide`, `project-missing`.
+`context-lists`, `tree-id`, `tree-parent`, `tree-loop`, `tree-depth`, `tree-children`, `tree-role` (a
+`roles.securityReviewer` or `roles.coordinatorOwner` of `<team>/<id>` whose team is not above this one, or whose
+session does not hold that role there), `name-two-teams`, `effort-env`, `model-env`, `settings-json`, `launch-effort`,
+`allow-wide`, `project-missing`.
 
 `context-size` weighs, in characters (about 4 per token), the user's CLAUDE.md with the project folder's and each
 parent's (`CLAUDE.md`, `CLAUDE.local.md`, `.claude/CLAUDE.md`), the project's memory index (`MEMORY.md`) and the
