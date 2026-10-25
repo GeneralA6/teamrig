@@ -807,4 +807,6 @@ From each team's config and roster it builds the team tree (`teamNodeOf` per tea
 children and root), and from the text of the hire log it reads who was hired and who retired (`readHiringLog`, then
 `activeHires`, `retiredSessions`, `rehiredFrom`), the same records teamrig's routing and hire commands use.
 It words a session as the tab titles do, `[acme] lead`, through `sessionDisplay` (and `bareName`, the name without
-its team's prefix), so the reader and the titles cannot drift.
+its team's prefix), so the reader and the titles cannot drift. It reads the model and effort a session starts on with
+`launchOf` (its `launch` entry, the lead's defaults under the keys it leaves unset) and words them with
+`describeLaunch`, as teamrig launches the session.
