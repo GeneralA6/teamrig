@@ -7,7 +7,7 @@ import { MeetingStore, phaseOf } from "../../meeting/state.js";
 import { restartMayAct } from "../../refresh/restart.js";
 import { RefreshStore } from "../../refresh/store.js";
 import { sessionIdOf } from "../../inbox/inbox.js";
-import { askVerdictOf, handedPrompt, handedToast, WakeAsks } from "../../wake/asks.js";
+import { askVerdictOf, asksFolderOf, handedPrompt, handedToast, WakeAsks } from "../../wake/asks.js";
 import { dayStartPrompt, dayStartToast, decideDayStart, dueMoments, nextDayStartAt, startableTasks } from "../../wake/day-start.js";
 import { decideWake, effectivePriority, URGENT_PRIORITY, wakeCost, wakeRestOf } from "../../wake/decide.js";
 import { WakePrompts } from "../../wake/prompts.js";
@@ -27,7 +27,14 @@ function answer(runtime, value) {
     runtime.out.stdout(JSON.stringify(value));
     return EXIT.ok;
 }
-async function scopeOf(runtime, payload, needsWake) {
+/**
+ * Check again at `recheckAt`, or once the register changes (work handed) or the session's asks folder does (an urgent
+ * or `inbox add --wake now` line posted), so a line is seen at the mod's next look, not RECHECK_MS later.
+ */
+function waitAnswer(scope, recheckAt) {
+    return { kind: 'wait', watch: [scope.kit.paths.events, asksFolderOf(scope.kit.paths.wakeAsks, scope.id)], recheckAt };
+}
+export async function wakeScopeOf(runtime, payload, needsWake) {
     const tab = sessionIdOf(payload);
     if (tab === null) {
         return { kind: 'off', why: 'no session id' };
@@ -185,7 +192,7 @@ async function decide(runtime, scope, store) {
 export async function wakeCheck(args, runtime) {
     noPositionals(args);
     const payload = parseJson(await runtime.readStdin());
-    const scope = await scopeOf(runtime, payload, true);
+    const scope = await wakeScopeOf(runtime, payload, true);
     if (scope.kind === 'off') {
         return answer(runtime, scope);
     }
@@ -193,10 +200,10 @@ export async function wakeCheck(args, runtime) {
     // The pass is the team's, not this tab's wake: before the holds that keep only this session from waking.
     await runIdlePass(runtime, kit, config, scope.roster, scope.from);
     if (await meetingHoldsWake(runtime, scope)) {
-        return answer(runtime, { kind: 'wait', watch: kit.paths.events, recheckAt: null });
+        return answer(runtime, waitAnswer(scope, null));
     }
     if (await restartHoldsWake(runtime, scope, isRecord(payload) ? stringField(payload, 'cwd') : undefined)) {
-        return answer(runtime, { kind: 'wait', watch: kit.paths.events, recheckAt: runtime.clock.now() + RESTART_RECHECK_MS });
+        return answer(runtime, waitAnswer(scope, runtime.clock.now() + RESTART_RECHECK_MS));
     }
     const store = new WakeStore(runtime.files, kit.paths.wake);
     let verdict;
@@ -205,12 +212,12 @@ export async function wakeCheck(args, runtime) {
     }
     catch (error) {
         if (error instanceof LockBusyError) {
-            return answer(runtime, { kind: 'wait', watch: kit.paths.events, recheckAt: runtime.clock.now() });
+            return answer(runtime, waitAnswer(scope, runtime.clock.now()));
         }
         throw error;
     }
     if (verdict.kind === 'wait') {
-        return answer(runtime, { kind: 'wait', watch: kit.paths.events, recheckAt: verdict.recheckAt });
+        return answer(runtime, waitAnswer(scope, verdict.recheckAt));
     }
     const now = runtime.clock.now();
     const last = verdict.kind === 'moments' ? verdict.lastTurnAt : await lastWriteOf(runtime.transcripts, claudeProjectsDir(runtime.env, runtime.userHome), [tab]);
@@ -242,7 +249,7 @@ async function wake(runtime, scope, value) {
 export async function wakeDropped(args, runtime) {
     noPositionals(args);
     const payload = parseJson(await runtime.readStdin());
-    const scope = await scopeOf(runtime, payload, false);
+    const scope = await wakeScopeOf(runtime, payload, false);
     if (scope.kind === 'off') {
         return EXIT.ok;
     }

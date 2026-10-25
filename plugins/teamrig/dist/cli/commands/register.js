@@ -1,5 +1,7 @@
 import { LeadTree } from "../../config/lead-tree.js";
 import { formatAddress, splitAddress } from "../../core/address.js";
+import { errorMessage } from "../../core/guards.js";
+import { KIT_NAME } from "../../core/home.js";
 import { JsonlDailyLog } from "../../core/daily-log.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { burstsOver } from "../../budget/burst.js";
@@ -13,6 +15,7 @@ import { activeHires } from "../../hiring/record.js";
 import { scaleOutFlags } from "../../hiring/scale-out.js";
 import { postLine } from "../../inbox/inbox.js";
 import { weekUseOf } from "../../budget/snapshot.js";
+import { WakeAsks } from "../../wake/asks.js";
 import { teamDayStartAt } from "../../wake/day-start.js";
 import { byFlagKind, checkTasks, peerWaitFlags } from "../../register/check.js";
 import { currentWeekOf } from "../../register/week.js";
@@ -217,7 +220,7 @@ async function tellAssigned(runtime, team, by, task, shown = task.owner) {
  * to that leader, a wait on the owner to the task owner's own leader, which passes it up (the lead keeps the owner's
  * decision queue and asks it in its batch); never to the leader who set it. A new wait on the owner says when the owner
  * hears it (src/decisions/batch.ts): in the next batch, in the one due now, or at once when it is due before the next;
- * at once, the setter is told to message the lead too, as an inbox line wakes no one.
+ * at once, the lead is woken or the setter told how to wake it (atOnceNote).
  */
 async function tellLeadersOfWaits(runtime, team, by, verdict) {
     if (!verdict.ok) {
@@ -239,13 +242,40 @@ async function tellLeadersOfWaits(runtime, team, by, verdict) {
         const waits = added.filter((reason) => receiverOf(reason) === receiver);
         const timing = waits.some((reason) => reason.who === ownerSource) ? await ownerWaitTiming(runtime, team, verdict.value) : undefined;
         const text = `${personWaitNotice(task, waits, receiver)}${timing === undefined ? '' : ` | ${timingText(timing, team.zone)}`}`;
-        await tellLine(runtime, team, by, receiver, text, `${receiver} was not told that ${task.id} waits on it`);
+        const posted = await tellLine(runtime, team, by, receiver, text, `${receiver} was not told that ${task.id} waits on it`);
         if (timing?.kind === 'at-once') {
-            const leadName = team.roster.nameOf(lead) ?? lead;
-            const how = receiver === lead ? ' too, as an inbox line wakes no one' : `, who asks the owner: the inbox line went to ${receiver}, and a line wakes no one`;
-            runtime.out.stderr(`NOTE ${task.id} is due before the owner's next batch: message ${leadName}${how}`);
+            runtime.out.stderr(await atOnceNote(runtime, team, by, task.id, receiver, posted ? text : undefined));
         }
     }
+}
+/**
+ * What the setter of an owner wait due before the next batch is told, so the lead hears of it at once. With wakes on,
+ * the lead's own posted line also gets a wake ask, as an `inbox add --wake now` line does; a line that went to a
+ * sub-lead, or was not posted, leaves the setter the wake line to post the lead. With wakes off a line wakes no one,
+ * so the setter messages the lead.
+ */
+async function atOnceNote(runtime, team, by, id, receiver, posted) {
+    const { lead } = team.config.roles;
+    const leadName = team.roster.nameOf(lead) ?? lead;
+    const due = `${id} is due before the owner's next batch`;
+    if (!team.config.wake.enabled) {
+        const how = receiver === lead ? ' too, as an inbox line wakes no one' : `, who asks the owner: the inbox line went to ${receiver}, and a line wakes no one`;
+        return `NOTE ${due}: message ${leadName}${how}`;
+    }
+    const wakeLine = `${KIT_NAME} inbox add --to ${lead} --text "..." --wake now`;
+    if (receiver !== lead) {
+        return `NOTE ${due}: wake ${leadName}, who asks the owner (the inbox line went to ${receiver}): ${wakeLine}`;
+    }
+    if (posted === undefined) {
+        return `NOTE ${due}: wake ${leadName}: ${wakeLine}`;
+    }
+    try {
+        await new WakeAsks(runtime.files, team.paths.wakeAsks).post(lead, { from: by, text: posted, at: runtime.clock.now() });
+    }
+    catch (error) {
+        return `WARN ${due}, and ${leadName}'s wake could not be asked (${errorMessage(error)}): ${wakeLine}`;
+    }
+    return `NOTE ${due}: its line wakes ${leadName}, so no message is needed`;
 }
 /** When the owner hears of a task's new wait on them, judged on the register after the write. */
 async function ownerWaitTiming(runtime, team, { task, state, elsewhere }) {
@@ -255,13 +285,14 @@ async function ownerWaitTiming(runtime, team, { task, state, elsewhere }) {
 }
 /** Posts one inbox line, naming it on stderr, or naming `unsent` and why: a line that cannot be posted is never thrown. */
 async function tellLine(runtime, team, by, to, text, unsent, shown = to) {
-    await postNamed(runtime, team.paths, new SecretScanner(team.config.register.secretPatterns), { to, from: by, text }, unsent, shown);
+    return postNamed(runtime, team.paths, new SecretScanner(team.config.register.secretPatterns), { to, from: by, text }, unsent, shown);
 }
-/** Posts one line to an inbox of the team at `paths`, naming it on stderr as `shown`, or naming `unsent` and why. */
+/** Posts one line to an inbox of the team at `paths`, naming it on stderr as `shown`, or naming `unsent` and why; true when posted. */
 async function postNamed(runtime, paths, secrets, line, unsent, shown) {
     const { inboxes } = inboxDepsOf(runtime, paths);
     const problem = await postLine(inboxes, secrets, { ...line, now: new Date(runtime.clock.now()) });
     runtime.out.stderr(problem === undefined ? `NOTE ${shown} has an inbox line: ${line.text}` : `WARN ${unsent}: ${problem}`);
+    return problem === undefined;
 }
 /**
  * One inbox line to the parent team's lead when a task the parent handed this team (`add --team`, its source
