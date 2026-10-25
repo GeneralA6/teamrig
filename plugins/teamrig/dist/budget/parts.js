@@ -1,5 +1,5 @@
 import { DEFAULT_SESSION_SHARE } from "../config/defaults.js";
-import { activeLift } from "./lift.js";
+import { activeGroupLift, activeLift } from "./lift.js";
 function weightOf(node) {
     return 'nodes' in node ? node.nodes.reduce((sum, each) => sum + weightOf(each), 0) : node.weight;
 }
@@ -43,17 +43,50 @@ export function partOf(budgetPct, nodes, path) {
     }
     return node === undefined ? undefined : pct;
 }
-/** The team's sessions as split-tree nodes, each weighed by its `share` and queued work, with its lift in force. */
-export function sessionNodesOf(split) {
-    return split.ids.map((id) => ({
-        id,
-        liftedPct: split.lifted.get(id),
-        weight: (split.sessions[id]?.share ?? DEFAULT_SESSION_SHARE) * Math.max(1, split.work.get(id) ?? 0),
-    }));
+/** The nodes `path` leads to from the top `nodes` down: those of the group at its end, the top's for an empty path. */
+function nodesAt(nodes, path) {
+    let level = nodes;
+    for (const id of path) {
+        const node = level.find((each) => each.id === id);
+        level = node !== undefined && 'nodes' in node ? node.nodes : [];
+    }
+    return level;
 }
-/** The team as a split-tree node: its sessions (`sessionNodesOf`) under its id, its weight theirs summed. */
-function teamGroupOf(split) {
-    return { id: split.team, liftedPct: undefined, nodes: sessionNodesOf(split) };
+/** A session as a split-tree leaf, weighed by its `share` and queued work, with its session lift in force. */
+function leafOf(split, id) {
+    return { id, liftedPct: split.lifted.get(id), weight: (split.sessions[id]?.share ?? DEFAULT_SESSION_SHARE) * Math.max(1, split.work.get(id) ?? 0) };
+}
+/**
+ * The team as a split tree that follows its lead tree (`leads`): the lead and the sessions no sub-lead lists at the
+ * top, in roster order, and each sub-lead a group of its own leaf and the sessions it lists, at any depth. A group
+ * weighs what its sessions weigh together, so while no group is lifted each session gets the part a flat split of the
+ * team gives it. A sub-lead off the roster leads no group here. A session in a loop of listings (the parser refuses
+ * them) hangs under no group the top reaches, so it has no path and no budget.
+ */
+export function teamTreeOf(split) {
+    const subLeads = new Set(Object.keys(split.leads).filter((id) => split.ids.includes(id)));
+    const listedBy = new Map(Object.entries(split.leads)
+        .filter(([subLead]) => subLeads.has(subLead))
+        .flatMap(([subLead, members]) => members.map((member) => [member, subLead])));
+    const sessionPaths = new Map();
+    const groupPaths = new Map();
+    const nodesUnder = (leader, above) => split.ids
+        .filter((id) => listedBy.get(id) === leader)
+        .map((id) => {
+        const path = [...above, id];
+        if (!subLeads.has(id)) {
+            sessionPaths.set(id, path);
+            return leafOf(split, id);
+        }
+        groupPaths.set(id, path);
+        sessionPaths.set(id, [...path, id]);
+        return { id, liftedPct: split.liftedGroups.get(id), nodes: [leafOf(split, id), ...nodesUnder(id, path)] };
+    });
+    return { nodes: nodesUnder(undefined, []), sessionPaths, groupPaths };
+}
+/** The team as a split-tree node: its tree's top nodes (`teamTreeOf`) under its id, its weight theirs summed. */
+function teamGroupOf(split, tree = teamTreeOf(split)) {
+    return { id: split.team, liftedPct: undefined, nodes: tree.nodes };
 }
 /**
  * The team's part of an amount the account shares (`pct`, in percent of the week: its day, its spare), split among the
@@ -65,7 +98,7 @@ export function teamShareOf(pct, split, others) {
         return pct;
     }
     const team = teamGroupOf(split);
-    return partAmong(pct, team, [team, ...others.map(teamGroupOf)]);
+    return partAmong(pct, team, [team, ...others.map((each) => teamGroupOf(each))]);
 }
 /** The team's part (`teamShareOf`) of the account's daily budget (`allowancePct`); undefined while the account's is unknown. */
 export function teamPartOf(allowancePct, split, others = []) {
@@ -73,21 +106,69 @@ export function teamPartOf(allowancePct, split, others = []) {
 }
 /**
  * The session's daily budget now, in percent of the week: its part (`partOf`) of its team's part (`teamPartOf`) of
- * the account's (`allowancePct`); a lift is its part of its team's. Undefined while the account's is unknown, or for
- * a session the split does not hold.
+ * the account's (`allowancePct`), down its team's tree (`teamTreeOf`); a lift is its part of its parent's, the team's
+ * or its sub-lead's group's. Undefined while the account's is unknown, or for a session the tree does not hold.
  */
 export function dailyBudgetOf(allowancePct, session, split, others = []) {
     if (allowancePct === undefined) {
         return undefined;
     }
-    // With no other team the session's path skips the team level: an exact split of the day, not one an ulp off it.
-    return others.length === 0 ? partOf(allowancePct, sessionNodesOf(split), [session]) : partOf(allowancePct, [split, ...others].map(teamGroupOf), [split.team, session]);
+    const tree = teamTreeOf(split);
+    const path = tree.sessionPaths.get(session);
+    return path === undefined ? undefined : budgetAt(allowancePct, path, split, tree, others);
 }
-/** The lifts in force at `now` (`activeLift`), as each lifted session's part of the team's budget. */
-export function liftedParts(lifts, ids, now, usedPct) {
+/**
+ * The part of the account's daily budget (`allowancePct`) that the node at `path` in the team's tree (`tree`) gets:
+ * of the team's part (`teamPartOf`) beside the `others`, of the whole day while no other team is on the account.
+ */
+function budgetAt(allowancePct, path, split, tree, others) {
+    // With no other team the path skips the team level: an exact split of the day, not one an ulp off it.
+    return others.length === 0
+        ? partOf(allowancePct, tree.nodes, path)
+        : partOf(allowancePct, [teamGroupOf(split, tree), ...others.map((each) => teamGroupOf(each))], [split.team, ...path]);
+}
+/**
+ * Each sub-lead's group's part (`GroupPart`) of the account's daily budget (`allowancePct`), down its team's tree
+ * (`teamTreeOf`) as `dailyBudgetOf` splits it: the budget its sessions' parts are split from. In tree order, each
+ * group before the groups under it; none while no sub-lead on the roster leads.
+ */
+export function groupPartsOf(allowancePct, split, others = []) {
+    const tree = teamTreeOf(split);
+    return [...tree.groupPaths].map(([id, path]) => ({
+        id,
+        sessions: [...tree.sessionPaths].filter(([, sessionPath]) => sessionPath.includes(id)).map(([session]) => session),
+        budgetPct: allowancePct === undefined ? undefined : budgetAt(allowancePct, path, split, tree, others),
+        liftedPct: split.liftedGroups.get(id),
+    }));
+}
+/**
+ * The place (`LiftPlace`) of a lift of session `id`, or with `group` of sub-lead `id`'s group: a sub-lead's own leaf
+ * is inside its group, so its session lift is a part of its group's budget. The lift `id` already has is not counted:
+ * a new one replaces it. Undefined for a session or group the tree does not hold.
+ */
+export function liftPlaceOf(split, id, group) {
+    const tree = teamTreeOf(split);
+    const path = (group ? tree.groupPaths : tree.sessionPaths).get(id);
+    if (path === undefined) {
+        return undefined;
+    }
+    const liftedPct = nodesAt(tree.nodes, path.slice(0, -1)).reduce((sum, each) => (each.id === id ? sum : sum + (each.liftedPct ?? 0)), 0);
+    return { parent: path.at(-2), liftedPct };
+}
+/** The team's split, with the session and group lifts in force (`activeLift`, `activeGroupLift`) as their parts. */
+export function budgetSplitOf(source) {
+    const { lifts, now, usedPct, ...split } = source;
+    const subLeads = Object.keys(split.leads).filter((id) => split.ids.includes(id));
+    return {
+        ...split,
+        lifted: partsInForce(split.ids, (id) => activeLift(lifts, id, now, usedPct)),
+        liftedGroups: partsInForce(subLeads, (id) => activeGroupLift(lifts, id, now, usedPct)),
+    };
+}
+function partsInForce(ids, liftOf) {
     const parts = new Map();
     for (const id of ids) {
-        const lift = activeLift(lifts, id, now, usedPct);
+        const lift = liftOf(id);
         if (lift !== undefined) {
             parts.set(id, lift.partPct);
         }
@@ -98,8 +179,8 @@ export function liftedParts(lifts, ids, now, usedPct) {
 const ADDED_SESSION = '+added';
 /**
  * The part of the account's daily budget (`allowancePct`, in percent of the week) one more session of the team would
- * get: added at the default share with no queued work, it takes its part out of the other sessions' on the account
- * (`others` being its other teams), as a new hire does.
+ * get: added at the top of its tree at the default share with no queued work, it takes its part out of the other
+ * sessions' on the account (`others` being its other teams), as a new hire does.
  */
 export function addedSessionPct(allowancePct, split, others = []) {
     return dailyBudgetOf(allowancePct, ADDED_SESSION, { ...split, ids: [...split.ids, ADDED_SESSION] }, others) ?? 0;

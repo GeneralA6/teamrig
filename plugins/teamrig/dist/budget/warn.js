@@ -2,11 +2,11 @@ import { KIT_NAME } from "../core/home.js";
 import { formatUtcDay, isMinuteInSpan, MS_PER_DAY, MS_PER_MINUTE, utcMinuteOf } from "../core/time.js";
 import { budgetMarkOf, burstPromptLines, burstStopLines } from "./burst-lines.js";
 import { formatPct, noRoomText } from "./format.js";
-import { liftText } from "./lift.js";
+import { liftedLine } from "./lift.js";
 import { hasRoom } from "./pace.js";
 /**
  * The live budget warning, pure: from a session's use today and the team's pace, which line its
- * person sees at a turn's end, which line the model gets with the next prompt, whether the lead gets
+ * person sees at a turn's end, which line the model gets with the next prompt, whether its leader gets
  * an inbox line, and whether a helper launch goes ahead, asks the person or is refused. Lines come
  * only at crossings, each once, so a session sees a few a day and none on most turns. A burst's lines
  * (`burst-lines.ts`) come the same way: at its start and end, and the lead's surplus line once a week.
@@ -149,9 +149,13 @@ function escalatedText(facts, budget) {
     const told = toldText(facts.leader);
     return helpers === undefined ? `${capitalized(told)}.` : `${capitalized(helpers)}; ${told}.`;
 }
+/** The session's leader in its lines: `the lead`, or for a sub-lead's member `its leader <name>` (`your leader <name>` to the model). */
+function leaderText(leader, whose) {
+    return leader === undefined || leader.isLead ? 'the lead' : `${whose} leader ${leader.name}`;
+}
 /** `the lead has an inbox line`, or for a sub-lead's member `its leader <name> has an inbox line`. */
 function toldText(leader) {
-    return leader === undefined || leader.isLead ? 'the lead has an inbox line' : `its leader ${leader.name} has an inbox line`;
+    return `${leaderText(leader, 'its')} has an inbox line`;
 }
 function joined(parts) {
     return parts.filter((part) => part !== '').join(' ');
@@ -176,18 +180,20 @@ function quietLine(quiet, span, facts) {
     const what = helpers === undefined ? 'the team rests; start no new work.' : `${helpers}.`;
     return `Quiet hours (${facts.zone.clockSpan(new Date(span.from), new Date(span.to))}): ${what} ${MORE}`;
 }
-/** The leader's line: the lead lifts the budget itself; a sub-lead, which cannot, asks the lead when it should. */
+/**
+ * The leader's line, with the lift it can give: the lead's or a sub-lead's alike, as `budget lift` itself refuses a part
+ * past the parent's budget and names the `--group` lift that would make room.
+ */
 function leadLineOf(facts, standing) {
     const command = `teamrig budget lift ${facts.id} --part <pct> --stop-pct <pct> --reason "<why>"`;
-    const lift = facts.leader === undefined || facts.leader.isLead ? `lift it only with a stop %: ${command}` : `only the lead lifts it, with a stop %, so ask the lead when it should: ${command}`;
     return (`${facts.name} is past its daily budget: ${formatPct(facts.usedTodayPct)} of the week today against ${formatPct(facts.budgetPct)}, ` +
         `and ${heldClause(facts, standing)}. ` +
-        `It finishes the step in hand; ${lift}.`);
+        `It finishes the step in hand; lift it only with a stop %: ${command}.`);
 }
 /**
  * The person's lines at a turn's end: a lift or a burst starting or ending, the quiet hours starting, a new
  * warning level, or the session escalating with no new level (the team's room for the day running out, or the
- * team moving ahead of its pace line, while the session is past budget). The lead gets one inbox line a day per
+ * team moving ahead of its pace line, while the session is past budget). Its leader gets one inbox line a day per
  * session once it escalates, unless the action is only `warn`.
  */
 export function stopWarning(facts, budget, previous) {
@@ -195,7 +201,7 @@ export function stopWarning(facts, budget, previous) {
     const standing = standingOf(facts, budget);
     const lines = [];
     if (facts.lift !== undefined && facts.lift.at !== state.liftAt) {
-        lines.push(`Budget: the lead lifted ${liftText(facts.lift, facts.name, facts.zone)}`);
+        lines.push(liftedLine(facts.lift, facts.name, facts, facts.zone));
     }
     else if (facts.lift === undefined && state.liftAt !== undefined) {
         lines.push(`Budget: ${facts.name}'s lift has ended; its daily budget is ${formatPct(facts.budgetPct)} again.`);
@@ -238,7 +244,7 @@ function escalationLine(facts, standing, state) {
         return undefined;
     }
     const team = standing.ahead ? ', and it is ahead of its pace line' : '';
-    const lift = facts.isLead ? 'As the lead, lift it only with a stop %.' : 'The lead can lift it.';
+    const lift = facts.isLead ? 'As the lead, lift it only with a stop %.' : `${capitalized(leaderText(facts.leader, 'your'))} can lift it.`;
     return (`${BUDGET_COMMAND}: you are past today's budget and the team has no room left today${team}. Finish the step in hand and start no new work items or helpers. ` +
         `Never skip a test or check to save budget. ${lift}`);
 }
@@ -269,7 +275,7 @@ export function promptWarning(facts, budget, previous) {
 /**
  * Before a helper launch: past budget once escalated, `overAction` applies; in quiet hours,
  * `quietHours.action`; the stronger wins. Only "ask" and "block" hold a launch back. The lead's own
- * helpers and a session under a lift always go ahead: the lead decides, and a lift is its decision.
+ * helpers and a session under its own lift always go ahead: the lead decides, and a lift is a leader's decision.
  */
 export function helperGate(facts, budget) {
     if (facts.isLead || facts.lift !== undefined) {
@@ -291,6 +297,6 @@ export function helperGate(facts, budget) {
     if (strongest === 0) {
         return { kind: 'allow' };
     }
-    const reason = `${BUDGET_COMMAND}: ${reasons.map((each) => each.text).join(' ')} ${strongest === 2 ? 'New helpers are refused' : 'New helpers ask first'}; the lead can lift it. ${MORE}`;
+    const reason = `${BUDGET_COMMAND}: ${reasons.map((each) => each.text).join(' ')} ${strongest === 2 ? 'New helpers are refused' : 'New helpers ask first'}; ${leaderText(facts.leader, 'its')} can lift it. ${MORE}`;
     return { kind: strongest === 2 ? 'deny' : 'ask', reason };
 }

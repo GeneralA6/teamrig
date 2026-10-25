@@ -8,7 +8,7 @@ import { BurstLog } from "../../budget/burst-log.js";
 import { activeLift, LiftLog } from "../../budget/lift.js";
 import { OUTSIDE_ID } from "../../budget/measure.js";
 import { runMeter } from "../../budget/meter.js";
-import { dailyBudgetOf, liftedParts } from "../../budget/parts.js";
+import { budgetSplitOf, dailyBudgetOf } from "../../budget/parts.js";
 import { readSnapshots, weekUseOf } from "../../budget/snapshot.js";
 import { UsageStore } from "../../budget/store.js";
 import { teamWeekOf } from "../../budget/team-week.js";
@@ -21,7 +21,7 @@ import { holdBack } from "../../hooks/permission.js";
 import { helperLaunchReminder } from "../../rules/helper-default.js";
 import { otherTeamsOnAccount } from "../account-teams.js";
 import { teamZone } from "../kit.js";
-import { snapshotDirOf } from "./budget.js";
+import { liftNamesOf, snapshotDirOf } from "./budget.js";
 import { inboxDepsOf } from "./inbox.js";
 const TRANSCRIPT = '.jsonl';
 /** A tab's subagent transcripts, `<project>/<claude session>/subagents/*.jsonl`, by name so each run reads them in the same order. */
@@ -76,7 +76,7 @@ export async function budgetFactsOf(runtime, scope, transcript) {
     const { lifts } = await new LiftLog(files, kit.paths.lifts).read();
     const lift = activeLift(lifts, id, now, week.usedPct);
     const work = await cachedWork(files, kit.paths.events, join(kit.paths.usage, WORK_CACHE_FILE), config.register.priorities);
-    const split = { team: kit.paths.team, ids: roster.ids, sessions: budget.sessions, work, lifted: liftedParts(lifts, roster.ids, now, week.usedPct) };
+    const split = budgetSplitOf({ team: kit.paths.team, ids: roster.ids, sessions: budget.sessions, leads: config.leads, work, lifts, now, usedPct: week.usedPct });
     const others = await otherTeamsOnAccount(runtime, { team: kit.paths.team, config, usageDir: kit.paths.usage }, now, week.usedPct);
     const shared = dailyBudgetOf(week.allowancePct, id, split, others);
     const inForce = activeBurst((await new BurstLog(files, kit.paths.bursts).read()).records, now, week.usedPct);
@@ -106,6 +106,7 @@ export async function budgetFactsOf(runtime, scope, transcript) {
         usedTodayPct: todayW / todayWPerPct,
         budgetPct,
         lift,
+        ...liftNamesOf(split, roster, id, lift),
         burst,
         surplus,
         weekUsedPct: week.usedPct,
