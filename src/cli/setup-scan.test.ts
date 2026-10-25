@@ -7,6 +7,7 @@ import type { Env } from '../core/home.ts';
 import { APP, CliHarness, KIT, SKILLS_DIR, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { MemoryPathProbe } from '../testing/memory-files.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
+import { teamHomeOf, treeHarness } from '../testing/team-tree.ts';
 import { replyLine } from '../testing/transcript-lines.ts';
 import { DEFAULT_SCAN_DAYS } from './commands/setup-scan.ts';
 import { EXIT } from './runtime.ts';
@@ -102,6 +103,21 @@ describe('setup scan', () => {
     const rulesLines = lines.filter((line) => line.startsWith('CONTEXT team-rules'));
     assert.equal(rulesLines.length, 1, lines.join('\n'));
     assert.match(rulesLines[0] ?? '', /[\\/]teams[\\/]other[\\/]rules\.md: 13 chars/);
+  });
+
+  it("in a child team: loads the rules of each team above before the team's own, root first", async () => {
+    const harness = await world(await treeHarness());
+    const rootRules = join(teamHomeOf('app'), 'rules.md');
+    const ownRules = join(teamHomeOf('ui'), 'rules.md');
+    await harness.files.write(rootRules, 'Root rules.\n');
+    await harness.files.write(ownRules, 'Own rules.\n');
+    const lines = okLines(await scan(harness, [], new MemoryTranscripts(), { TEAMRIG_TEAM: 'ui' }));
+    assert.match(lines[0] ?? '', / \(team ui\)$/);
+    const rulesLines = lines.filter((line) => line.startsWith('CONTEXT team-rules'));
+    assert.deepEqual(
+      rulesLines.map((line) => line.split(': ')[0]),
+      [`CONTEXT team-rules ${resolve(rootRules)}`, `CONTEXT team-rules ${resolve(ownRules)}`],
+    );
   });
 
   it('judges no skill written inside the window, and counts it in the UNUSED header', async () => {

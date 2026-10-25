@@ -14,7 +14,7 @@ const AT: RulePlaceLocations = {
   userHome: USER_HOME,
   project: PROJECT,
   skills: join(CLAUDE_DIR, 'skills'),
-  teamRules: resolve('/', 'kit', 'teams', 'app', 'rules.md'),
+  teamRules: [resolve('/', 'kit', 'teams', 'app', 'rules.md')],
 };
 
 const SETTINGS = [

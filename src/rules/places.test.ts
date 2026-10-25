@@ -14,7 +14,7 @@ const AT: RulePlaceLocations = {
   userHome: USER_HOME,
   project: PROJECT,
   skills: join(CLAUDE_DIR, 'skills'),
-  teamRules: TEAM_RULES,
+  teamRules: [TEAM_RULES],
 };
 
 const SETTINGS = {
@@ -111,9 +111,19 @@ describe('findRulePlaces', () => {
 
   it('looks for no team rules before a team exists', async () => {
     const { files, probe } = world();
-    const { places } = await findRulePlaces(files, probe, { ...AT, teamRules: undefined });
+    const { places } = await findRulePlaces(files, probe, { ...AT, teamRules: [] });
     assert.equal(places.some((place) => place.kind === 'team-rules'), false);
     assert.equal(places.some((place) => place.kind === 'memory'), true);
+  });
+
+  it('lists the rules files of the teams above, root first, and skips a team above without one', async () => {
+    const rootRules = resolve('/', 'kit', 'teams', 'root', 'rules.md');
+    const { files, probe } = world({ [rootRules]: 'root rules' });
+    const { places } = await findRulePlaces(files, probe, { ...AT, teamRules: [rootRules, resolve('/', 'kit', 'teams', 'mid', 'rules.md'), TEAM_RULES] });
+    assert.deepEqual(
+      shown(places.filter((place) => place.kind === 'team-rules')),
+      [`team-rules ${normalisePath(rootRules)}`, `team-rules ${normalisePath(TEAM_RULES)}`],
+    );
   });
 
   it('lists a file once when the project is the home folder', async () => {

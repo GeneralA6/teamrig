@@ -18,6 +18,7 @@ import { noPositionals, onePositional, requiredFlag, UsageError, type ParsedArgs
 import { callerOf, listOf } from '../inputs.ts';
 import { checkedNextConfig, configFileJson, openTeamKit, projectFolder, requireConfig, rosterOf, sessionIdOf, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
+import { teamRulesPathsOf } from '../team-rules.ts';
 
 /**
  * `rules scan`, `rules keep`, `rules forget` and `rules clear`: the local rules that can override a core rule, the ones
@@ -118,7 +119,7 @@ async function scanView(runtime: CliRuntime, kit: Kit, config: KitConfig, kind: 
   const found = await scanRules(
     runtime.files,
     runtime.probe,
-    { claudeDir: claudeConfigDir(runtime.env, runtime.userHome), userHome: runtime.userHome, project, skills: kit.paths.skills, teamRules: kit.paths.teamRules },
+    { claudeDir: claudeConfigDir(runtime.env, runtime.userHome), userHome: runtime.userHome, project, skills: kit.paths.skills, teamRules: await teamRulesPathsOf(runtime, kit) },
     config.ruleConflicts,
   );
   const kinds = kind === undefined ? PLACE_KINDS : [kind];

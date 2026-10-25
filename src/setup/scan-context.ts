@@ -39,8 +39,8 @@ export interface SessionContextLocations {
   readonly project: string;
   /** The skills folder Claude Code lists the user's skills from: the team's, else `<claudeDir>/skills`. */
   readonly skills: string;
-  /** The team's rules file; none before a team exists. */
-  readonly teamRules: string | undefined;
+  /** The team rules files a session is shown at start, the root team's first and its own team's last; none before a team exists. */
+  readonly teamRules: readonly string[];
 }
 
 /** Claude Code loads this many lines of the memory index. */
@@ -145,8 +145,8 @@ export async function readSessionContext(files: Files, probe: PathProbe, at: Ses
     }
   }
   await loaded.add('memory', join(claudeMemoryDir(at.claudeDir, at.project), 'MEMORY.md'), (text) => text.split('\n').slice(0, MEMORY_INDEX_LINES).join('\n'));
-  if (at.teamRules !== undefined) {
-    await loaded.add('team-rules', at.teamRules);
+  for (const path of at.teamRules) {
+    await loaded.add('team-rules', path);
   }
   return { files: loaded.files, skills: await readSkills(files, at) };
 }
