@@ -4,7 +4,7 @@ import type { Roster } from '../../config/roster.ts';
 import { isEffortLevel, isTerminalChoice, TERMINALS, type EffortLevel, type KitConfig, type TerminalChoice } from '../../config/types.ts';
 import { splitAddress } from '../../core/address.ts';
 import { ENV, KIT_NAME, type Env, type TeamPaths } from '../../core/home.ts';
-import { ID_PATTERN, ID_RULE } from '../../core/ids.ts';
+import { ID_PATTERN, ID_RULE, sessionDisplay } from '../../core/ids.ts';
 import { HiringLog, rehiredFrom, type RetireRecord } from '../../hiring/log.ts';
 import type { ResumeVerdict } from '../../hiring/rehire.ts';
 import { CLAUDE_SESSION_ID } from '../../inbox/marks.ts';
@@ -119,7 +119,7 @@ export async function openSessionTab(runtime: CliRuntime, tab: SessionTab): Prom
     ...(tab.effort === undefined ? [] : ['--effort', tab.effort]),
     ...(tab.prompt === undefined ? ['--no-prompt'] : ['--encoded-prompt', encodePrompt(tab.prompt)]),
   ];
-  return { outcome: await openTab(runtime, tab.terminal, { title: tab.name, folder: tab.project, argv }), argv };
+  return { outcome: await openTab(runtime, tab.terminal, { title: sessionDisplay(tab.team, tab.name), folder: tab.project, argv }), argv };
 }
 
 /**

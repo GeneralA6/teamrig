@@ -130,7 +130,7 @@ describe('hook stop: tab status', () => {
 
   it("titles a session's tab too, and leaves the tab alone with tab status off or on an error", async () => {
     const env = { ...TITLE_OFF, TEAMRIG_SESSION: 'alpha' };
-    assert.equal(titleOf(await (await teamWith()).run(['hook', 'stop'], { stdin: stop({ session_title: 'alpha' }), env })), `${TAB_CIRCLES.ready} alpha`);
+    assert.equal(titleOf(await (await teamWith()).run(['hook', 'stop'], { stdin: stop({ session_title: 'alpha' }), env })), `${TAB_CIRCLES.ready} [app] alpha`);
     assert.deepEqual((await (await teamWith(TEAM)).run(['hook', 'stop'], { stdin: stop(), env })).stdout, []);
     assert.deepEqual((await (await teamWith()).run(['hook', 'stop'], { stdin: stop() })).stdout, []);
     const kit = await teamWith();
@@ -152,6 +152,6 @@ describe('hook stop: tab status', () => {
     await kit.files.write(HANDOVER, '# In progress\n');
     assert.equal((await kit.run(['refresh', '--ready', '--session', 'alpha'])).code, EXIT.ok);
     const notice = await kit.run(['hook', 'stop'], { stdin: stop({ stop_hook_active: true }), env });
-    assert.equal(titleOf(notice), `${TAB_CIRCLES.ready} app-alpha: type /clear`);
+    assert.equal(titleOf(notice), `${TAB_CIRCLES.ready} [app] alpha: type /clear`);
   });
 });

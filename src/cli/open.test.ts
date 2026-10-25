@@ -35,7 +35,7 @@ describe('teamrig open', () => {
     const result = await openAlpha(processes, { platform: 'win32' });
     assert.deepEqual(result, { code: EXIT.ok, stdout: [`OPENED app-alpha (session alpha) in a new Windows Terminal tab in ${APP}, on the default model and effort`], stderr: [] });
     assert.deepEqual(processes.started, [
-      { command: 'wt.exe', args: ['-w', '0', 'new-tab', '--title', 'app-alpha', '-d', APP, '--', ...launchArgv()], cwd: APP, mode: 'exit' },
+      { command: 'wt.exe', args: ['-w', '0', 'new-tab', '--title', '[app] alpha', '-d', APP, '--', ...launchArgv()], cwd: APP, mode: 'exit' },
     ]);
   });
 
@@ -81,7 +81,7 @@ describe('teamrig open', () => {
     const tmux = new FakeProcesses().onStart('tmux', { kind: 'started' });
     const tmuxRun = await openAlpha(tmux, { env: { TMUX: '/tmp/tmux-1/default,1,0' } });
     assert.deepEqual(tmuxRun.stdout, [`OPENED app-alpha (session alpha) in a new tmux window in ${APP}, on the default model and effort`]);
-    assert.deepEqual(tmux.started[0]?.args, ['new-window', '-c', APP, '-n', 'app-alpha', ...launchArgv()]);
+    assert.deepEqual(tmux.started[0]?.args, ['new-window', '-c', APP, '-n', '[app] alpha', ...launchArgv()]);
     const mac = new FakeProcesses().onStart('osascript', { kind: 'started' });
     await openAlpha(mac, { platform: 'darwin' });
     assert.equal(mac.started[0]?.args.at(-1), shellCommand('darwin', APP, launchArgv()));
