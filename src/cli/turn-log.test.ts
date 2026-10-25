@@ -8,6 +8,7 @@ import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME, USER_HOME } from '../
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { promptLine, textLine, transcript } from '../testing/transcript-lines.ts';
 import { parseEntry, type TurnLogEntry } from '../turn-log/entry.ts';
+import { WakePrompts } from '../wake/prompts.ts';
 import { EXIT } from './runtime.ts';
 
 const AT = '2030-01-08T09:50:00.000Z';
@@ -96,6 +97,23 @@ describe('turn log hooks', () => {
     assert.deepEqual(await answers(full, faulty), await answers(healthy, healthy.files));
     assert.equal(full.files.get(NOW_FILE), undefined);
     assert.equal(entriesOf(healthy).length, 3);
+  });
+
+  it("marks the prompt of the wake teamrig answered that tab as teamrig's, once, and leaves a typed one the person's", async () => {
+    const kit = new CliHarness(TEAM);
+    const woke = 'New work was handed to you while this tab was idle: T2 "Fix the login" (p1).';
+    await new WakePrompts(kit.files, join(TEAM_HOME, 'state', 'wake')).remember('alpha', { tab: CLAUDE_SESSION, text: woke });
+    for (const prompt of ['go on', woke, woke]) {
+      await kit.run(['hook', 'inbox-reminder'], { stdin: payload('UserPromptSubmit', { prompt }), env: ALPHA });
+    }
+    assert.deepEqual(
+      entriesOf(kit).map(({ text, from }) => ({ text, from })),
+      [
+        { text: 'go on', from: undefined },
+        { text: woke, from: 'teamrig' },
+        { text: woke, from: undefined },
+      ],
+    );
   });
 
   it('writes nothing with turnLog off, or in a tab that is no team session', async () => {

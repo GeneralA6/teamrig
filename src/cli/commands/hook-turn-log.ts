@@ -6,12 +6,13 @@ import { sessionIdOf } from '../../inbox/inbox.ts';
 import { cappedText, type TurnLogEntry, type TurnLogKind } from '../../turn-log/entry.ts';
 import { REPLY_TAIL_BYTES, replyOf, type Reply } from '../../turn-log/reply.ts';
 import { TurnLog } from '../../turn-log/store.ts';
+import { WakePrompts } from '../../wake/prompts.ts';
 import type { CliRuntime } from '../runtime.ts';
 
 /** The team session a hook logs for. */
 export interface TurnLogScope {
   readonly config: KitConfig;
-  readonly paths: Pick<TeamPaths, 'turnLog'>;
+  readonly paths: Pick<TeamPaths, 'turnLog' | 'wake'>;
   readonly id: string;
 }
 
@@ -22,6 +23,7 @@ interface Said {
   readonly text: string;
   readonly cut?: boolean;
   readonly upTo?: string;
+  readonly from?: 'teamrig';
 }
 
 /** What SessionStart's `source` logs: a /clear or a compaction, which wipe what the tab showed. */
@@ -36,6 +38,7 @@ function entryOf(runtime: CliRuntime, scope: TurnLogScope, said: Said): TurnLogE
     claude: said.claude,
     ...(cut || said.cut === true ? { truncated: true } : {}),
     ...(said.upTo === undefined ? {} : { upTo: said.upTo }),
+    ...(said.from === undefined ? {} : { from: said.from }),
   };
 }
 
@@ -43,14 +46,19 @@ function logOf(runtime: CliRuntime, scope: TurnLogScope): TurnLog {
   return new TurnLog(runtime.files, scope.paths.turnLog);
 }
 
-/** UserPromptSubmit: the prompt the person sent; nothing with the log off or an empty prompt. */
+/**
+ * UserPromptSubmit: the prompt the person sent, or the wake teamrig submitted in that tab, marked `from: teamrig`;
+ * nothing with the log off or an empty prompt.
+ */
 export async function logPrompt(runtime: CliRuntime, scope: TurnLogScope, payload: unknown): Promise<void> {
   const claude = sessionIdOf(payload);
   const prompt = isRecord(payload) ? stringField(payload, 'prompt') : undefined;
   if (!scope.config.turnLog.enabled || claude === null || prompt === undefined || prompt.trim() === '') {
     return;
   }
-  await logOf(runtime, scope).append(scope.id, entryOf(runtime, scope, { kind: 'prompt', claude, text: prompt }));
+  const woke = await new WakePrompts(runtime.files, scope.paths.wake).take(scope.id, { tab: claude, text: prompt });
+  const said: Said = { kind: 'prompt', claude, text: prompt, ...(woke ? { from: 'teamrig' } : {}) };
+  await logOf(runtime, scope).append(scope.id, entryOf(runtime, scope, said));
 }
 
 /** A reply to log: its text, whether its start is missing, and the last transcript entry it took, when known. */

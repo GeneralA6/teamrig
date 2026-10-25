@@ -14,6 +14,7 @@ import type { TasksElsewhere } from '../../register/tree.ts';
 import { askVerdictOf, handedPrompt, handedToast, WakeAsks, type WakeAsk } from '../../wake/asks.ts';
 import { dayStartPrompt, dayStartToast, decideDayStart, dueMoments, nextDayStartAt, startableTasks, type DayMoment, type DayStartVerdict } from '../../wake/day-start.ts';
 import { decideWake, effectivePriority, URGENT_PRIORITY, wakeCost, wakeRestOf, type WakeState } from '../../wake/decide.ts';
+import { WakePrompts } from '../../wake/prompts.ts';
 import { logWake, WakeStore } from '../../wake/store.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { openKit, rosterOf, teamZone, type Kit } from '../kit.ts';
@@ -230,7 +231,8 @@ async function decide(runtime: CliRuntime, scope: Extract<Scope, { kind: 'found'
  * Run by the plugin's mod while its tab is idle at the prompt: whether new work handed to the tab's session, or an
  * urgent line posted for it (src/wake/asks.ts), should wake it now (src/wake/decide.ts), else whether the day's start
  * or a burst should (src/wake/day-start.ts). On a
- * wake it logs the wake and its cost to the team's wake log and answers the prompt to submit; a busy lock (another
+ * wake it logs the wake and its cost to the team's wake log and answers the prompt to submit, keeping its text for
+ * the turn log (src/wake/prompts.ts); a busy lock (another
  * tab of the session checking) answers a recheck now. The lead is not woken while the owner's daily meeting is open,
  * nor any session while its automatic restart may still act; one whose restart died is restarted again instead. It
  * also runs the team's idle pass, once a minute across the team (hook-idle-pass.ts).
@@ -273,15 +275,26 @@ export async function wakeCheck(args: ParsedArgs, runtime: CliRuntime): Promise<
     const { tasks, asks } = verdict;
     await logWake(runtime.files, kit.paths.wakeLog, { kind: 'wake', at: now, session: id, tab, ids, cost, ...(asks.length === 0 ? {} : { asks: asks.length }) });
     const text = handedPrompt(id, tasks, asks, cost, teamZone(config, runtime));
-    return answer(runtime, { kind: 'wake', ids, text, toast: handedToast(tasks, asks, cost) });
+    return wake(runtime, scope, { kind: 'wake', ids, text, toast: handedToast(tasks, asks, cost) });
   }
   const moments = verdict.moments.map((moment) => moment.kind);
   await logWake(runtime.files, kit.paths.wakeLog, { kind: 'wake', at: now, session: id, tab, ids, cost, moments });
   const text = dayStartPrompt(id, scope.roster.nameOf(id) ?? id, verdict.moments, verdict.tasks, cost, teamZone(config, runtime));
-  return answer(runtime, { kind: 'wake', ids, text, toast: dayStartToast(verdict.moments, verdict.tasks, cost) });
+  return wake(runtime, scope, { kind: 'wake', ids, text, toast: dayStartToast(verdict.moments, verdict.tasks, cost) });
 }
 
-/** Run by the mod when Claude Code dropped a wake it submitted (a prompt hook refused it): logs it with the reason. */
+/** Answers a wake, keeping its text first with the turn log on, so the prompt it submits is logged as teamrig's. */
+async function wake(runtime: CliRuntime, scope: Extract<Scope, { kind: 'found' }>, value: Extract<WakeAnswer, { kind: 'wake' }>): Promise<ExitCode> {
+  if (scope.config.turnLog.enabled) {
+    await new WakePrompts(runtime.files, scope.kit.paths.wake).remember(scope.id, { tab: scope.tab, text: value.text });
+  }
+  return answer(runtime, value);
+}
+
+/**
+ * Run by the mod when Claude Code dropped a wake it submitted (a prompt hook refused it): logs it with the reason and
+ * forgets its text, so a prompt the person types later is never taken for it.
+ */
 export async function wakeDropped(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
   const payload = parseJson(await runtime.readStdin());
@@ -291,5 +304,6 @@ export async function wakeDropped(args: ParsedArgs, runtime: CliRuntime): Promis
   }
   const reason = (isRecord(payload) ? stringField(payload, 'reason') : undefined) ?? 'no reason given';
   await logWake(runtime.files, scope.kit.paths.wakeLog, { kind: 'dropped', at: runtime.clock.now(), session: scope.id, tab: scope.tab, reason });
+  await new WakePrompts(runtime.files, scope.kit.paths.wake).forget(scope.id, scope.tab);
   return EXIT.ok;
 }
