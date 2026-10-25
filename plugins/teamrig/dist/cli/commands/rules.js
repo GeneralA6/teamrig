@@ -6,9 +6,10 @@ import { noPositionals } from "../args.js";
 import { sessionRef } from "../inputs.js";
 import { findTeam, openKit, requireConfig, rulesClockOf, sessionIdOf } from "../kit.js";
 import { EXIT } from "../runtime.js";
+import { readTeamRules } from "../team-rules.js";
 import { loadTree } from "../tree.js";
 /**
- * `rules [--session <id|name>]`: the team's rules and who the session is, the same text the
+ * `rules [--session <id|name>]`: the rules of the team and of each team above it, and who the session is, the same text the
  * SessionStart hook gives. A tab that set the team up started with no team, so it loads them with
  * this instead of a restart.
  */
@@ -24,14 +25,13 @@ export async function rules(args, runtime) {
     }
     const fromEnv = runtime.env[ENV.session]?.trim();
     const inEnv = flag === undefined && fromEnv !== undefined && fromEnv !== '';
-    const text = await runtime.files.read(kit.paths.teamRules);
-    const { tree } = await loadTree(runtime);
+    const kitTree = await loadTree(runtime);
     const context = sessionStartContext({
         team,
         platform: runtime.platform,
         clock: rulesClockOf(runtime),
         load: kit.load,
-        teamRules: text === undefined ? undefined : { path: kit.paths.teamRules, text },
+        teamRules: await readTeamRules(runtime, kit, kitTree),
         renames,
         titleNote: undefined,
         refreshNote: undefined,
@@ -40,7 +40,7 @@ export async function rules(args, runtime) {
         verifyNote: undefined,
         session: flag ?? (inEnv ? fromEnv : undefined),
         sessionInEnv: inEnv,
-        tree: tree.placeOf(team),
+        tree: kitTree.tree.placeOf(team),
         command: KIT_NAME,
     });
     runtime.out.stdout(context);

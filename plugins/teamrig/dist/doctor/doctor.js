@@ -109,13 +109,29 @@ function inboxFindings(input) {
         return [{ kind: 'inbox-unread', detail: `${area} has ${count} unread line(s) and ${read}: over ${UNREAD_INBOX_DAYS} days with no read` }];
     });
 }
+/**
+ * Each team rules file a session gets only a pointer to, as `renderSessionContext` shares TEAM_RULES_MAX_CHARS: in
+ * order, a file is shown while it fits beside the files shown before it, so a file that fits alone is named with them.
+ */
 function rulesFindings(input) {
-    const rules = input.teamRules;
-    if (rules === undefined || rules.chars <= TEAM_RULES_MAX_CHARS) {
-        return [];
+    const shown = [];
+    let used = 0;
+    const findings = [];
+    for (const rules of input.teamRules) {
+        if (rules.chars === 0) {
+            continue;
+        }
+        if (used + rules.chars <= TEAM_RULES_MAX_CHARS) {
+            shown.push(rules.path);
+            used += rules.chars;
+            continue;
+        }
+        const detail = rules.chars > TEAM_RULES_MAX_CHARS
+            ? `${rules.path} is ${rules.chars} characters, more than the ${TEAM_RULES_MAX_CHARS} a session is shown at start, so sessions get only a pointer to it: shorten it to keep it in every session's context`
+            : `${rules.path} is ${rules.chars} characters, but the team rules shown before it (${shown.join(', ')}) take ${used} of the ${TEAM_RULES_MAX_CHARS} a session is shown at start, so sessions get only a pointer to it: shorten one of them`;
+        findings.push({ kind: 'rules-long', detail });
     }
-    const detail = `${rules.path} is ${rules.chars} characters, more than the ${TEAM_RULES_MAX_CHARS} a session is shown at start, so sessions get only a pointer to it: shorten it to keep it in every session's context`;
-    return [{ kind: 'rules-long', detail }];
+    return findings;
 }
 function count(value) {
     return value.toLocaleString('en-US');

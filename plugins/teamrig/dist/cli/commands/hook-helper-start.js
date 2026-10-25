@@ -6,10 +6,12 @@ import { JsonlRenameLog } from "../../names/log.js";
 import { noPositionals } from "../args.js";
 import { openKit, rulesClockOf } from "../kit.js";
 import { EXIT } from "../runtime.js";
+import { readTeamRules } from "../team-rules.js";
+import { loadTree } from "../tree.js";
 import { envSession, parseJson, sessionTeam, startSessionOf } from "./hook-input.js";
 /**
- * A helper's start context, read-only: the rename log, the team's rules.md and the session that started
- * it, found as that session's own start finds it (`$TEAMRIG_SESSION`, else the area its Claude Code
+ * A helper's start context, read-only: the rename log, the rules.md of its team and of each team above
+ * it, and the session that started it, found as that session's own start finds it (`$TEAMRIG_SESSION`, else the area its Claude Code
  * session read its inbox as: a helper's hooks carry the session's id). It binds no tab, renames nothing
  * and starts no refresh: those belong to the session.
  */
@@ -17,16 +19,15 @@ export async function helperContextOf(runtime, kit, payload, agentType) {
     const base = { team: kit.paths.team, agentType, platform: runtime.platform, clock: rulesClockOf(runtime), command: KIT_NAME };
     const { load } = kit;
     if (load.status !== 'loaded') {
-        return helperStartContext({ ...base, load, teamRules: undefined, renames: [], session: undefined, sessionInEnv: false });
+        return helperStartContext({ ...base, load, teamRules: [], renames: [], session: undefined, sessionInEnv: false });
     }
     const { renames } = await new JsonlRenameLog(runtime.files, kit.paths.renames).read();
     const roster = new Roster(load.config, kit.paths.team, renames);
-    const text = await runtime.files.read(kit.paths.teamRules);
     const fromEnv = envSession(runtime);
     const input = {
         ...base,
         load,
-        teamRules: text === undefined ? undefined : { path: kit.paths.teamRules, text },
+        teamRules: await readTeamRules(runtime, kit, await loadTree(runtime)),
         renames,
         session: fromEnv ?? (await startSessionOf(runtime, kit, roster, payload)),
         sessionInEnv: fromEnv !== undefined,
