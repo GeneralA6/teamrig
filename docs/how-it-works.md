@@ -500,6 +500,9 @@ sequenceDiagram
   `inbox add --wake now` line posts) changed, a batch fell due, or 10 minutes passed. Each check holds a lock of the
   session's, so two tabs never wake it twice; a session open in two tabs at once is not woken, since each tab's first
   check starts the count over.
+- A busy session: an urgent or `inbox add --wake now` line does not wait for its turn to end. At its next tool call's
+  end the `hook tool-end` hook shows it its new inbox lines and takes the asks, so the turn's end wakes nothing for a
+  line it already saw.
 - `wake.enabled: false` turns it off. A headless `claude -p` or a Claude Code that does not load mods is never woken.
 
 ## A fresh context
