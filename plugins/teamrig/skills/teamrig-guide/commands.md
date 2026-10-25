@@ -2329,6 +2329,87 @@ TOTAL 2 file(s) to rewrite: 52 allow rules -> 5 (remove 47: Bash exact 33, Bash 
 With `--yes`: `WROTE 2 of 2 file(s); their old text and a manifest are in <folder>`, then one line per file. With
 nothing to remove: `UNCHANGED no settings file to rewrite holds every allow rule off permissions.keepAllow`.
 
+### teamrig setup backup
+
+Copies your Claude Code setup byte for byte into a new folder `teamrig/setup-backups/<UTC second>/` under your state
+folder (`%LOCALAPPDATA%` on Windows, else `$XDG_STATE_HOME` or `~/.local/state`), outside the kit home every session
+reads, with a manifest of each file's size and sha256. The setup is Claude Code's own folder (`$CLAUDE_CONFIG_DIR`,
+else `~/.claude`): its `CLAUDE.md`, `settings.json` and `settings.local.json` and its `rules`, `skills`,
+`skills-parked`, `agents`, `commands` and `output-styles` folders; the project's `CLAUDE.md`, `CLAUDE.local.md`,
+`.claude/CLAUDE.md`, `.claude/settings.json` and `.claude/settings.local.json`, its `.claude` folders `rules`,
+`skills`, `skills-parked`, `agents` and `commands`, and the CLAUDE.md files of its own folders that `rules scan`
+finds; the CLAUDE.md files of each folder above the project; and the project's memory folder. It skips `node_modules`
+and `.git` folders and folders more than 12 deep, and the manifest names each folder it skipped. It never prints a
+file's text, only counts, and it needs no team. Run it before you change your setup, by hand or by a team setup, and
+`teamrig setup restore` puts the setup back.
+
+Flags:
+
+- `--project <dir>`: the project folder; default `$CLAUDE_PROJECT_DIR`, else the current folder.
+
+Example:
+
+```sh
+teamrig setup backup --project /home/me/shop
+```
+
+Output:
+
+```text
+BACKED UP 214 file(s), 1873402 bytes to /home/me/.local/state/teamrig/setup-backups/20261025T120000Z
+  user: 168 file(s)
+  project: 31 file(s)
+  parents: 0 file(s)
+  memory: 15 file(s)
+```
+
+### teamrig setup restore
+
+Without a stamp, lists the setup backups: `BACKUPS <n> in <folder>`, then each backup's stamp, file count and project
+(or `NONE` when there is none yet). With a stamp such as `20261025T120000Z`, compares the setup with that backup and shows what a restore
+writes: each file changed since the backup (`RESTORE`), deleted since (`RECREATE`), and each file in the setup's
+places made since (`NEW`, kept unless `--remove-new`); the files that match count as one `UNCHANGED` line. A copy in
+the backup that no longer matches its sha256 in the manifest is `DAMAGED` and never written. It writes only where the
+backup's files came from: a manifest edited to name any other path is refused, and nothing is written.
+
+Without `--yes` it writes nothing. With `--yes` it first backs the setup up as `setup backup` does, then writes each
+file from the backup, checking the copy's sha256 again as it writes and reading each file back, and prints
+`WROTE <k> of <m> file(s) from setup backup <stamp>; <u> unchanged`, one line per file (`RESTORED`, `RECREATED`,
+`REMOVED`, or `FAILED <path>: <why>`) and an `UNDO` line: the restore of the backup it just made, which takes the
+change back. It exits 1 when a file was damaged or failed. When the setup already matches:
+`UNCHANGED the setup matches setup backup <stamp>: <n> file(s)`.
+
+Flags:
+
+- `--yes`: write the restore; without it, only show it.
+- `--remove-new`: also remove the files made since the backup.
+
+Example:
+
+```sh
+teamrig setup restore 20261025T120000Z
+```
+
+Output:
+
+```text
+PREVIEW nothing written (add --yes to write): setup backup 20261025T120000Z (214 file(s), made 2026-10-25T12:00:00.000Z) of /home/me/shop
+  RESTORE /home/me/.claude/settings.json: changed since the backup
+  RECREATE /home/me/.claude/skills/deploy/SKILL.md: deleted since the backup
+  NEW /home/me/.claude/skills/scratch/SKILL.md: not in the backup; kept (--remove-new removes it)
+  UNCHANGED 212 file(s)
+```
+
+With `--yes`, after the `BACKED UP` lines of the backup it makes first:
+
+```text
+WROTE 2 of 2 file(s) from setup backup 20261025T120000Z; 212 unchanged
+  RESTORED /home/me/.claude/settings.json
+  RECREATED /home/me/.claude/skills/deploy/SKILL.md
+  NEW /home/me/.claude/skills/scratch/SKILL.md: not in the backup; kept (--remove-new removes it)
+UNDO teamrig setup restore 20261025T130500Z --yes --remove-new
+```
+
 ### teamrig commits check
 
 Checks the commits in `base..tip` against the small-commits rule: a commit over 400 changed non-test lines or 15
