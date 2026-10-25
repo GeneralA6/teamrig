@@ -86,8 +86,10 @@ describe('nodeProcesses', () => {
 
   it('starts a hidden program that outlives a kill of its starter with every process the starter started', async () => {
     const marker = join(DIR, 'outlived.txt');
-    // Written a second after the start, long after the starter and its whole tree are killed.
-    const program = `setTimeout(() => require("node:fs").writeFileSync(${JSON.stringify(marker)}, "alive"), 1000)`;
+    const part = `${marker}.part`;
+    // Written a second after the start, long after the starter and its whole tree are killed; beside the marker and
+    // renamed in, so the marker exists only once its whole content does.
+    const program = `setTimeout(() => { const fs = require("node:fs"); fs.writeFileSync(${JSON.stringify(part)}, "alive"); fs.renameSync(${JSON.stringify(part)}, ${JSON.stringify(marker)}); }, 1000)`;
     const request = `{ command: process.execPath, args: ["-e", ${JSON.stringify(program)}], cwd: ${JSON.stringify(TEMP)}, env: process.env }`;
     // A hook that starts the program and keeps running, as the Stop hook does until Claude Code's timeout ends it.
     const starter = `import(${JSON.stringify(new URL('./processes.ts', import.meta.url).href)}).then(async ({ nodeProcesses }) => {
