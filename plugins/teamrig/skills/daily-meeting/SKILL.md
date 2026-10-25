@@ -21,14 +21,16 @@ sender to keep working and leave it as an inbox line. So no session is told the 
 Then it prints the agenda:
 
 - `DECISIONS`: each task waiting on the human's decision or approval, with its card facts;
+- `UNGATED`: the waits on the human's decision whose card names no owner gate or business decision: never read
+  them out; decide those of sessions you lead and send each its answer as an inbox line;
 - `LATE`: the active tasks past their due date, their own or the earlier one of a task that needs them
   (`due 10-14 (from T9)`);
 - `DONE`: what finished since the last meeting;
 - your unread inbox lines, marked read;
 - the week's use, and under it what of the planned week fits the weekly limit.
 
-Sort `DECISIONS` before you bring them: a card stays the human's only when it names an owner gate or a business
-decision. Any other, a route, a merge or staffing (who does a job, a reviewer, a hire within caps), is yours however
+Sort `DECISIONS` before you bring them: a card stays the human's only when the owner gate or business decision it
+names truly applies. Any other, a route, a merge or staffing (who does a job, a reviewer, a hire within caps), is yours however
 many good answers it has: decide it now, send its owner the answer as an inbox line so it sets the task's next
 status, and tell the human in the meeting as an FYI.
 

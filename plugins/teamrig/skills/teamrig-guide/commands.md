@@ -1500,6 +1500,9 @@ as an inbox line. So no session is told the meeting started, and none is woken. 
 
 - `DECISIONS`: each task waiting on the owner's decision or approval, with its card facts (what and why, since when
   it waits and its newest note, where it was asked), then the card form and how to record each answer;
+- `UNGATED`: each wait on the owner's decision whose card names no owner gate or business decision (`gate:`), left
+  out of `DECISIONS` while cards are required (`register.requireDecisionCard`): its session's or the lead's to
+  decide, never read to the owner (`check` flags each one `UNGATED`);
 - `LATE`: the active tasks past their due date, their own or the earlier one of a task that needs them
   (`due 10-14 (from T9)`);
 - `DONE`: what finished since the last meeting ended (a day back for the first, 7 days at most);
@@ -1529,6 +1532,7 @@ DECISIONS 1 waiting on owner (decision or approval)
   T7 waiting, p1, owner web | Pick the pricing tier (waiting: decision owner)
     what and why: Two tiers are built; the launch page needs one.
     decide: Which tier the launch page shows
+    gate: business
       1. Basic at 9 dollars a month, 40 sign-ups in the trial
       2. Pro at 29 dollars a month, 12 sign-ups
     recommended: Basic, three times the sign-ups
@@ -1600,7 +1604,8 @@ secret pattern matched it) prints `NOT TOLD <id>: <why>` first; the rest go on.
 
 The owner's decisions the lead asks in batches (since 0.126.0), so the owner is not interrupted once per wait: the
 tasks waiting on the owner's decision or approval not yet asked, then the asked ones past their due date, each
-with its card facts as the meeting agenda prints them. A wait counts as asked once the lead runs `decisions asked`
+with its card facts as the meeting agenda prints them. While cards are required, a wait on the owner's decision
+whose card names no gate is left out: it is not the owner's (`check` flags it `UNGATED`). A wait counts as asked once the lead runs `decisions asked`
 or starts the daily meeting after it was set. The head line says whether a batch is due now and why, else when
 the next is. A batch is due when:
 
@@ -1634,6 +1639,7 @@ NOT YET ASKED
   T7 waiting, p1, owner web | Pick the pricing tier (waiting: decision owner)
     what and why: Two tiers are built; the launch page needs one.
     decide: Which tier the launch page shows
+    gate: business
       1. Basic at 9 dollars a month, 40 sign-ups in the trial
       2. Pro at 29 dollars a month, 12 sign-ups
     recommended: Basic, three times the sign-ups
