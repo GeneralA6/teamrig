@@ -89,6 +89,7 @@ const EXPECTED = {
   'permissions trim': 'write',
   'setup backup': 'write',
   'setup restore': 'write',
+  'setup scan': 'read',
   'config validate': 'read',
   'config migrate': 'write',
   'commits check': 'read',
