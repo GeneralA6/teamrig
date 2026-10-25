@@ -48,16 +48,16 @@ function answer(runtime: CliRuntime, value: WakeAnswer): ExitCode {
  * Check again at `recheckAt`, or once the register changes (work handed) or the session's asks folder does (an urgent
  * or `inbox add --wake now` line posted), so a line is seen at the mod's next look, not RECHECK_MS later.
  */
-function waitAnswer(scope: Extract<Scope, { kind: 'found' }>, recheckAt: number | null): WakeAnswer {
+function waitAnswer(scope: Extract<WakeScope, { kind: 'found' }>, recheckAt: number | null): WakeAnswer {
   return { kind: 'wait', watch: [scope.kit.paths.events, asksFolderOf(scope.kit.paths.wakeAsks, scope.id)], recheckAt };
 }
 
 /** Where the check stands: the team session the tab is, and the kit it is in, found from the pointer `from`. */
-type Scope =
+export type WakeScope =
   | { readonly kind: 'found'; readonly kit: Kit; readonly config: KitConfig; readonly roster: Roster; readonly id: string; readonly tab: string; readonly from: string }
   | { readonly kind: 'off'; readonly why: string };
 
-async function scopeOf(runtime: CliRuntime, payload: unknown, needsWake: boolean): Promise<Scope> {
+export async function wakeScopeOf(runtime: CliRuntime, payload: unknown, needsWake: boolean): Promise<WakeScope> {
   const tab = sessionIdOf(payload);
   if (tab === null) {
     return { kind: 'off', why: 'no session id' };
@@ -84,7 +84,7 @@ async function scopeOf(runtime: CliRuntime, payload: unknown, needsWake: boolean
  * session its budget holds (past its daily budget while the team has no room today) or in the budget's quiet hours
  * (unless its lift exempts it) still wakes for p1 only.
  */
-async function maxPriorityOf(runtime: CliRuntime, scope: Extract<Scope, { kind: 'found' }>): Promise<number> {
+async function maxPriorityOf(runtime: CliRuntime, scope: Extract<WakeScope, { kind: 'found' }>): Promise<number> {
   const { config } = scope;
   const configured = config.wake.priority;
   if (configured <= URGENT_PRIORITY || !config.budget.enabled) {
@@ -99,7 +99,7 @@ async function maxPriorityOf(runtime: CliRuntime, scope: Extract<Scope, { kind: 
  * CRITICAL one (src/meeting/quiet.ts), and a wake would start a turn in the middle of it. The work handed meanwhile
  * stays new, so it wakes the lead at the first check after the meeting.
  */
-async function meetingHoldsWake(runtime: CliRuntime, scope: Extract<Scope, { kind: 'found' }>): Promise<boolean> {
+async function meetingHoldsWake(runtime: CliRuntime, scope: Extract<WakeScope, { kind: 'found' }>): Promise<boolean> {
   if (scope.roster.holderOf('lead') !== scope.id) {
     return false;
   }
@@ -116,7 +116,7 @@ export const RESTART_RECHECK_MS = MINUTE_MS;
  * fresh start. The work handed meanwhile stays new, so it wakes the fresh session. A restart whose runner died is
  * re-armed from this tab first (`rearmDeadRestart`), and holds the wake the same way once it is.
  */
-async function restartHoldsWake(runtime: CliRuntime, scope: Extract<Scope, { kind: 'found' }>, cwd: string | undefined): Promise<boolean> {
+async function restartHoldsWake(runtime: CliRuntime, scope: Extract<WakeScope, { kind: 'found' }>, cwd: string | undefined): Promise<boolean> {
   const { kit, config, id, tab } = scope;
   const store = new RefreshStore(runtime.files, kit.paths);
   const request = await store.restart(id);
@@ -154,7 +154,7 @@ function earliest(...times: readonly (number | undefined)[]): number | null {
  */
 async function momentsOf(
   runtime: CliRuntime,
-  scope: Extract<Scope, { kind: 'found' }>,
+  scope: Extract<WakeScope, { kind: 'found' }>,
   tasks: ReadonlyMap<string, Task>,
   elsewhere: TasksElsewhere,
   state: WakeState,
@@ -193,7 +193,7 @@ async function momentsOf(
  * Decides under the session's wake lock, so two tabs of one session never wake it twice. Urgent lines due wake it
  * with any work due as well; the asks a wake takes, or damaged ones, are removed under the lock.
  */
-async function decide(runtime: CliRuntime, scope: Extract<Scope, { kind: 'found' }>, store: WakeStore): Promise<CheckVerdict> {
+async function decide(runtime: CliRuntime, scope: Extract<WakeScope, { kind: 'found' }>, store: WakeStore): Promise<CheckVerdict> {
   const { config, kit, id, tab } = scope;
   const { files, clock, sleep, pid } = runtime;
   const lock = new FileLock(store.lockOf(id), { ...config.lock, waitMs: 0 }, { files, clock, sleep, pid });
@@ -248,7 +248,7 @@ async function decide(runtime: CliRuntime, scope: Extract<Scope, { kind: 'found'
 export async function wakeCheck(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
   const payload = parseJson(await runtime.readStdin());
-  const scope = await scopeOf(runtime, payload, true);
+  const scope = await wakeScopeOf(runtime, payload, true);
   if (scope.kind === 'off') {
     return answer(runtime, scope);
   }
@@ -292,7 +292,7 @@ export async function wakeCheck(args: ParsedArgs, runtime: CliRuntime): Promise<
 }
 
 /** Answers a wake, keeping its text first with the turn log on, so the prompt it submits is logged as teamrig's. */
-async function wake(runtime: CliRuntime, scope: Extract<Scope, { kind: 'found' }>, value: Extract<WakeAnswer, { kind: 'wake' }>): Promise<ExitCode> {
+async function wake(runtime: CliRuntime, scope: Extract<WakeScope, { kind: 'found' }>, value: Extract<WakeAnswer, { kind: 'wake' }>): Promise<ExitCode> {
   if (scope.config.turnLog.enabled) {
     await new WakePrompts(runtime.files, scope.kit.paths.wake).remember(scope.id, { tab: scope.tab, text: value.text });
   }
@@ -306,7 +306,7 @@ async function wake(runtime: CliRuntime, scope: Extract<Scope, { kind: 'found' }
 export async function wakeDropped(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
   const payload = parseJson(await runtime.readStdin());
-  const scope = await scopeOf(runtime, payload, false);
+  const scope = await wakeScopeOf(runtime, payload, false);
   if (scope.kind === 'off') {
     return EXIT.ok;
   }
