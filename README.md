@@ -51,6 +51,7 @@ lead what you want done. No config files to write.
 Claude Code 2.1.139 or later and Node.js 22.18 or later. teamrig checks for anything else when you set up a team and
 when a session starts, and tells you in plain words what is missing and how to fix it. Auto mode runs `teamrig` as is;
 in default mode, allow `Bash(teamrig:*)` ([permissions](plugins/teamrig/skills/teamrig-guide/hooks.md#permissions)).
+Windows and Linux: on Linux the tests and a smoke run pass; the tab circles and teamrig-pane are proven on Windows only.
 
 ## How it works
 
