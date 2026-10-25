@@ -4,6 +4,7 @@ import type { HostMemory } from '../coordinator/memory.ts';
 import type { TreeState } from '../coordinator/push-pass.ts';
 import type { StarterWatch } from '../coordinator/starter-watch.ts';
 import type { StepRunner } from '../coordinator/steps.ts';
+import type { FileBytes } from '../core/file-bytes.ts';
 import type { Files } from '../core/files.ts';
 import type { Env } from '../core/home.ts';
 import type { ExecPorts } from '../exec/ports.ts';
@@ -45,6 +46,8 @@ export interface CliRuntime {
   readonly cwd: string;
   readonly pid: number;
   readonly files: Files;
+  /** Byte-exact files, for copies that must match their original (`setup backup` and `setup restore`). */
+  readonly fileBytes: FileBytes;
   readonly clock: Clock;
   /** The machine's IANA time zone, which the team config's `timeZone` overrides. */
   readonly timeZone: string;

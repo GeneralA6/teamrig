@@ -3,6 +3,7 @@ import { homedir } from 'node:os';
 import { text } from 'node:stream/consumers';
 import { fileURLToPath } from 'node:url';
 import { nodeTranscriptSource } from '../budget/discover.ts';
+import { nodeFileBytes } from '../core/file-bytes.ts';
 import { nodeFiles } from '../core/files.ts';
 import { GIT_TREES } from '../coordinator/git-tree.ts';
 import { nodeHostMemory } from '../coordinator/memory.ts';
@@ -41,6 +42,7 @@ process.exitCode = await runCli(process.argv.slice(2), {
   cwd: process.cwd(),
   pid: process.pid,
   files: nodeFiles(realSleep),
+  fileBytes: nodeFileBytes(realSleep),
   clock: systemClock,
   timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   sleep: realSleep,
