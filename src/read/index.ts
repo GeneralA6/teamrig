@@ -59,7 +59,11 @@ export { inboxLines, unreadOf, type LineHash, type ResumeKind, type Unread } fro
 export { DEFAULT_REGISTER } from '../config/defaults.ts';
 export { priorityName } from '../config/priorities.ts';
 export { parseConfigText, type ConfigRead } from '../config/text.ts';
-export { CONFIG_VERSION, type KitConfig, type PriorityConfig } from '../config/types.ts';
+export { CONFIG_VERSION, type KitConfig, type LaunchConfig, type PriorityConfig } from '../config/types.ts';
+
+// A session's launch settings: the model and effort it starts on (its `launch` entry, the lead's defaults under it), so
+// a reader shows them as teamrig launches the session, in its words.
+export { describeLaunch, launchOf } from '../config/launch.ts';
 
 // Session names: the config's roster with the rename log (`renames.jsonl`), so a reader finds a session
 // by its id, its name or a name it had before, as every teamrig command does; and the form people read a
