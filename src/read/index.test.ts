@@ -114,6 +114,16 @@ describe('the read entry', () => {
     assert.deepEqual(tree.node('acme')?.sessions, ['lead', 'alpha']);
   });
 
+  it("gives a session's model and effort as teamrig launches it: its own entry, the lead's defaults under it", () => {
+    const config = read.parseConfigText(
+      JSON.stringify({ configVersion: read.CONFIG_VERSION, sessions: ['lead', 'alpha', 'beta'], roles: { lead: 'lead' }, launch: { alpha: { model: 'sonnet' }, lead: { effort: 'high' } } }),
+    );
+    assert.ok(config.status === 'loaded');
+    const launches: read.LaunchConfig[] = ['lead', 'alpha', 'beta'].map((id) => read.launchOf(config.config, id));
+    assert.deepEqual(launches, [{ model: 'opus', effort: 'high' }, { model: 'sonnet' }, {}]);
+    assert.deepEqual(launches.map(read.describeLaunch), ['model opus at high effort', 'model sonnet at the default effort', 'the default model and effort']);
+  });
+
   it('reads the hire log as the hire and retire commands count it, and skips a line from a newer teamrig', () => {
     const at = '2030-01-08T10:00:00.000Z';
     const hire = (session: string, version = read.HIRE_FORMAT): string =>
