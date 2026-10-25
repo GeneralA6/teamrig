@@ -323,7 +323,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       --problem: a fix, incident, failure investigation or problem design (critical: in a critical area);
       none marks it no problem; its line shows "problem"; an unmarked task whose title or description
       matches register.review.hintPattern prints a hint to mark it, here and when it starts
-  add --team <child team> --title .. --description .. --priority p<n> [...]   hands that team's lead a task
+  add --team <team> [--owner <s>] --title .. --description .. --priority p<n> [...]   asks a team of your tree for work
   set <id> --status open|in-progress|verifying|waiting|done|dropped [--note "<what/why>"] [--evidence <proof>]
       [--skill <name>|none] [--followups T<id>,...|none] [--waits decision:<who>,approval:<who>,task:T<id>,time:<date>]
       [--question ".." --options "<a> | <b>" --recommend ".." --default ".." --why-ask ".." --gate ".."]

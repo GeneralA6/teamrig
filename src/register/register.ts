@@ -116,11 +116,11 @@ export class Register {
   }
 
   /**
-   * A task from the parent team's lead, `parentLead` being its `<team>/<id>`. The tree's rules decide
-   * who that may be, so this team's roster check is skipped; the event names that lead as its writer.
+   * A task asked by a session of another team, `asker` being its `<team>/<id>`. The tree's rules decide who
+   * may ask, so this team's roster check is skipped; the event names the asker as its writer.
    */
-  addFromParent(parentLead: string, input: AddInput): Promise<Verdict<WriteResult>> {
-    return this.writeNew(({ state }, id, elsewhere) => single(this.created(parentLead, id, this.deps.policy.addFromParent(input, state, elsewhere))));
+  addFromTeam(asker: string, input: AddInput): Promise<Verdict<WriteResult>> {
+    return this.writeNew(({ state }, id, elsewhere) => single(this.created(asker, id, this.deps.policy.addFromTeam(input, state, elsewhere))));
   }
 
   /**

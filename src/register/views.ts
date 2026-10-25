@@ -1,3 +1,4 @@
+import { KIT_NAME } from '../core/home.ts';
 import { parseDeadline, showStored, storedText } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { cardLines } from './card.ts';
@@ -464,8 +465,20 @@ export function formatWaitingOnYou(entry: WaitingOnYou, titleChars: number, tree
  * `T5 is yours (p2, due 2030-01-10): Show the signup errors`.
  */
 export function assignedNotice(task: Pick<Task, 'id' | 'priority' | 'due' | 'title'>, zone: TimeZone): string {
-  const due = task.due === null ? '' : `, due ${storedText(task.due, zone)}`;
-  return `${task.id} is yours (${priorityText(task.priority)}${due}): ${task.title}`;
+  return `${task.id} is yours (${priorityAndDue(task, zone)}): ${task.title}`;
+}
+
+/**
+ * The copy line a team's lead gets, under the asker's `<team>/<id>`, when a session of another team asks one of its
+ * sessions for work (T1141), so the lead, who sets its team's work order, can reorder or reassign it:
+ * `T5 went to front (p2): Show the signup errors; reorder or reassign it: teamrig update T5 --priority|--after|--owner`.
+ */
+export function askedNotice(task: Pick<Task, 'id' | 'owner' | 'priority' | 'due' | 'title'>, zone: TimeZone): string {
+  return `${task.id} went to ${task.owner} (${priorityAndDue(task, zone)}): ${task.title}; reorder or reassign it: ${KIT_NAME} update ${task.id} --priority|--after|--owner`;
+}
+
+function priorityAndDue(task: Pick<Task, 'priority' | 'due'>, zone: TimeZone): string {
+  return `${priorityText(task.priority)}${task.due === null ? '' : `, due ${storedText(task.due, zone)}`}`;
 }
 
 /**
@@ -480,8 +493,8 @@ export function approvalNotice(task: Pick<Task, 'id'>, answer: ApprovalAnswer): 
 }
 
 /**
- * The inbox line a parent team's lead gets when a task it handed `team` ends (T509), the task named `<team>/<id>`: a
- * done one with its evidence, a dropped one with its note, `web/T1 done: Ship login | evidence: PR #12 merged`.
+ * The inbox line a session of another team gets when a task it asked of `team` ends (T509, T1141), the task named
+ * `<team>/<id>`: a done one with its evidence, a dropped one with its note, `web/T1 done: Ship login | evidence: PR #12 merged`.
  */
 export function endedNotice(task: Pick<Task, 'id' | 'status' | 'title' | 'note' | 'evidence'>, team: string): string {
   const [label, why] = task.status === 'done' ? ['evidence', task.evidence] : ['note', task.note];

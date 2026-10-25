@@ -7,6 +7,7 @@ import {
   aheadReason,
   aheadText,
   approvalNotice,
+  askedNotice,
   assignedNotice,
   byPlanOrder,
   dueTime,
@@ -558,6 +559,16 @@ describe('assignedNotice', () => {
   it('names the task, its priority, its due date when it has one, and its title', () => {
     assert.equal(assignedNotice(testTask({ id: 'T5', due: '2030-01-10' }), TimeZone.UTC), 'T5 is yours (p2, due 2030-01-10): Add a health check');
     assert.equal(assignedNotice(testTask({ id: 'T5', priority: 1 }), TimeZone.UTC), 'T5 is yours (p1): Add a health check');
+  });
+});
+
+describe('askedNotice', () => {
+  it("names the task, its owner, its priority and due date, its title, and how the lead reorders or reassigns it", () => {
+    assert.equal(
+      askedNotice(testTask({ id: 'T5', owner: 'front', due: '2030-01-10' }), TimeZone.UTC),
+      'T5 went to front (p2, due 2030-01-10): Add a health check; reorder or reassign it: teamrig update T5 --priority|--after|--owner',
+    );
+    assert.match(askedNotice(testTask({ id: 'T5', owner: 'front', priority: 1 }), TimeZone.UTC), /^T5 went to front \(p1\): Add a health check; /);
   });
 });
 

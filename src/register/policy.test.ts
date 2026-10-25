@@ -124,7 +124,7 @@ describe('RegisterPolicy: the description', () => {
     assert.equal(error(policy.add(BARE, EMPTY)), DESCRIPTION_NEEDED);
     assert.equal(error(policy.add({ ...INPUT, description: ' \n ' }, EMPTY)), DESCRIPTION_NEEDED);
     assert.equal(DESCRIPTION_NEEDED, 'add needs --description "<what and why, in plain words>"');
-    assert.equal(error(policy.addFromParent({ ...BARE, owner: 'lead', source: 'app/lead' }, EMPTY)), DESCRIPTION_NEEDED);
+    assert.equal(error(policy.addFromTeam({ ...BARE, owner: 'lead', source: 'app/lead' }, EMPTY)), DESCRIPTION_NEEDED);
   });
 
   it('takes an add with none when the team turns the demand off', () => {
@@ -818,21 +818,26 @@ describe('normaliseTitle', () => {
   });
 });
 
-describe('RegisterPolicy.addFromParent', () => {
+describe('RegisterPolicy.addFromTeam', () => {
   const policy = new RegisterPolicy(testConfig());
-  const FROM_PARENT: AddInput = { ...INPUT, owner: 'lead', source: 'app/lead' };
+  const FROM_TEAM: AddInput = { ...INPUT, owner: 'lead', source: 'app/lead' };
 
   it('takes a task for the lead, sourced <team>/<id>, which an update keeps', () => {
-    const verdict = policy.addFromParent(FROM_PARENT, EMPTY);
+    const verdict = policy.addFromTeam(FROM_TEAM, EMPTY);
     assert.equal(verdict.ok && verdict.value.source, 'app/lead');
     const handed = testTask({ owner: 'lead', source: 'app/lead' });
     assert.equal(policy.update(handed, 'lead', { priority: 1 }, undefined, EMPTY).ok, true);
     assert.match(error(policy.update(handed, 'lead', { source: 'web/lead' }, undefined, EMPTY)), /source web.lead is neither a session id nor owner/);
   });
 
-  it('refuses another owner, a bare source, and the parent address on a team add', () => {
-    assert.equal(error(policy.addFromParent({ ...FROM_PARENT, owner: 'alpha' }, EMPTY)), "a task from the parent team goes to this team's lead (lead), not alpha");
-    assert.equal(error(policy.addFromParent({ ...FROM_PARENT, source: 'lead' }, EMPTY)), "source lead is not the parent team lead's <team>/<id>");
+  it('gives the task to any session of the team, as asked', () => {
+    const verdict = policy.addFromTeam({ ...FROM_TEAM, owner: 'alpha', source: 'ops/run' }, EMPTY);
+    assert.deepEqual(verdict.ok && [verdict.value.owner, verdict.value.source], ['alpha', 'ops/run']);
+  });
+
+  it('refuses an owner off the roster, a bare source, and an address on a team add', () => {
+    assert.equal(error(policy.addFromTeam({ ...FROM_TEAM, owner: 'zulu' }, EMPTY)), 'owner zulu is not a session on this team');
+    assert.equal(error(policy.addFromTeam({ ...FROM_TEAM, source: 'lead' }, EMPTY)), "source lead is not the asking session's <team>/<id>");
     assert.match(error(policy.add({ ...INPUT, source: 'app/lead' }, EMPTY)), /source app.lead is neither a session id nor owner/);
   });
 });
