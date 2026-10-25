@@ -7,7 +7,7 @@ import { SessionRecordStore } from "../../sessions/record.js";
 import { hooklessReopenLine, hooklessReopensOf } from "../hookless-reopen.js";
 import { idlePassOf, passLineOf } from "../idle-pass.js";
 import { readIdlePassState } from "../idle-pass-check.js";
-import { actsToStart, changedSteps, failedState, formatIdlePassRecord, formatIdlePassState, heldActs, isPassDue, passedState, } from "../idle-pass-log.js";
+import { actsToStart, failedState, formatIdlePassRecord, formatIdlePassState, heldActs, isPassDue, passedState, stepsToLog, } from "../idle-pass-log.js";
 import { teamZone } from "../kit.js";
 import { postUrgentLine } from "../urgent-line.js";
 import { sessionFoldersOf } from "./setup.js";
@@ -87,9 +87,9 @@ async function startActs(runtime, kit, roster, acts, now) {
     return pending;
 }
 /**
- * One pass, under its lock: logs the steps whose kind changed, or a new failure, with the host's commit charge; in
- * mode `on` starts each act its steps ask for and none pending; tells of each new hookless reopen; and keeps the
- * state for the next pass.
+ * One pass, under its lock: logs the steps whose kind changed, every step once the last pass record is an hour old
+ * (`stepsToLog`), or a new failure, with the host's commit charge; in mode `on` starts each act its steps ask for and
+ * none pending; tells of each new hookless reopen; and keeps the state for the next pass.
  */
 async function passOnce(runtime, kit, config, roster, from, previous, now) {
     const { mode } = config.open.idle;
@@ -101,22 +101,23 @@ async function passOnce(runtime, kit, config, roster, from, previous, now) {
         }
         return failedState(previous, now, run.error);
     }
-    const changed = changedSteps(previous, run.steps);
-    if (changed.length > 0) {
+    const toLog = stepsToLog(previous, run.steps, now);
+    if (toLog.length > 0) {
         const zone = teamZone(config, runtime);
-        const steps = changed.map((step) => ({ kind: step.kind, id: step.id, line: passLineOf(step, roster, zone) }));
+        const steps = toLog.map((step) => ({ kind: step.kind, id: step.id, line: passLineOf(step, roster, zone) }));
         const record = { kind: 'pass', at: now, mode, commit: await runtime.memory.commit(), steps };
         await files.append(kit.paths.idlePassLog, formatIdlePassRecord(record));
     }
     const held = heldActs(previous?.pending, run.steps, now);
     const started = mode === 'on' ? await startActs(runtime, kit, roster, actsToStart(run.steps, held), now) : {};
     const told = await tellHookless(runtime, kit, config, roster, run.hookless, previous, now);
-    return passedState(now, run.steps, { ...held, ...started }, told);
+    return passedState(now, run.steps, { ...held, ...started }, told, toLog.length > 0 ? now : previous?.logged);
 }
 /**
  * The idle pass as `hook wake-check` runs it (T1100), unless `open.idle.mode` is off: once every `IDLE_PASS_EVERY_MS`
  * across the team, claimed under a lock no check waits for, it works out what `teamrig sessions --pass` prints and
- * appends to the team's pass log the steps whose kind changed since the last pass, with the host's commit charge;
+ * appends to the team's pass log the steps whose kind changed since the last pass, and every step once its last
+ * pass record is an hour old, with the host's commit charge;
  * a failed pass logs its error once until the error changes. It logs once each reopened tab no teamrig hook started
  * in (src/cli/hookless-reopen.ts). In dry-run it changes nothing else; in `on` it starts the closes and the reopen
  * its steps ask for, and tells the lead of each hookless reopen with an urgent line. With mode off it reads nothing.
