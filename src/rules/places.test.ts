@@ -8,12 +8,13 @@ import { findRulePlaces, isPlaceKind, NESTED_FOLDERS_MAX, type RulePlace, type R
 const USER_HOME = resolve('/', 'u');
 const CLAUDE_DIR = join(USER_HOME, '.claude');
 const PROJECT = resolve('/', 'work', 'app');
+const TEAM_RULES = resolve('/', 'kit', 'teams', 'app', 'rules.md');
 const AT: RulePlaceLocations = {
   claudeDir: CLAUDE_DIR,
   userHome: USER_HOME,
   project: PROJECT,
   skills: join(CLAUDE_DIR, 'skills'),
-  teamRules: resolve('/', 'kit', 'teams', 'app', 'rules.md'),
+  teamRules: TEAM_RULES,
 };
 
 const SETTINGS = {
@@ -61,7 +62,7 @@ function world(extra: Readonly<Record<string, string>> = {}): { files: MemoryFil
     [join(PROJECT, '.claude', 'skills', 'api-check', 'SKILL.md')]: 'project skill',
     [join(claudeMemoryDir(CLAUDE_DIR, PROJECT), 'MEMORY.md')]: 'index',
     [join(claudeMemoryDir(CLAUDE_DIR, PROJECT), 'feedback.md')]: 'memory',
-    [AT.teamRules]: 'team rules',
+    [TEAM_RULES]: 'team rules',
     [join(CLAUDE_DIR, 'settings.json')]: JSON.stringify(SETTINGS),
     [join(PROJECT, '.claude', 'settings.local.json')]: '\uFEFF{"autoMode": {}}',
     [join(PROJECT, '.claude', 'settings.json')]: 'not json',
@@ -97,7 +98,7 @@ describe('findRulePlaces', () => {
       `skill ${path(PROJECT, '.claude', 'skills', 'api-check', 'SKILL.md')}`,
       `memory ${path(claudeMemoryDir(CLAUDE_DIR, PROJECT), 'MEMORY.md')}`,
       `memory ${path(claudeMemoryDir(CLAUDE_DIR, PROJECT), 'feedback.md')}`,
-      `team-rules ${path(AT.teamRules)}`,
+      `team-rules ${path(TEAM_RULES)}`,
       `hook ${path(CLAUDE_DIR, 'hooks', 'policy.cjs')}`,
       `hook ${path(PROJECT, '.claude', 'hooks', 'guard.js')}`,
       `hook ${path(PROJECT, 'hooks', 'start.sh')}`,
@@ -106,6 +107,13 @@ describe('findRulePlaces', () => {
       `settings ${path(PROJECT, '.claude', 'settings.local.json')}`,
     ]);
     assert.equal(nestedCapped, false);
+  });
+
+  it('looks for no team rules before a team exists', async () => {
+    const { files, probe } = world();
+    const { places } = await findRulePlaces(files, probe, { ...AT, teamRules: undefined });
+    assert.equal(places.some((place) => place.kind === 'team-rules'), false);
+    assert.equal(places.some((place) => place.kind === 'memory'), true);
   });
 
   it('lists a file once when the project is the home folder', async () => {
