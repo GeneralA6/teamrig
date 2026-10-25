@@ -99,7 +99,8 @@ current folder or above it, else in `$CLAUDE_PROJECT_DIR` or above. Everything e
 ```
 
 The config's `paths` (`state`, `inbox`, `skills`) and `refresh.handoverDir` can move these. Skills are read
-from `~/.claude/skills` unless `paths.skills` says otherwise. Never edit `events.jsonl`, the inboxes or the logs
+from the `skills` folder of Claude Code's folder (`$CLAUDE_CONFIG_DIR`, else `~/.claude`) unless `paths.skills`
+says otherwise. Never edit `events.jsonl`, the inboxes or the logs
 by hand: every change goes through a command, which locks, checks and appends.
 
 ## The daily loop

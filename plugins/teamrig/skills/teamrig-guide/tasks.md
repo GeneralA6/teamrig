@@ -285,7 +285,7 @@ Only the lead and the task's owner may change a task's week.
 
 ## Skills
 
-A skill is a repeatable how-to in `<skills folder>/<name>/SKILL.md` (by default `~/.claude/skills`
+A skill is a repeatable how-to in `<skills folder>/<name>/SKILL.md` (by default `~/.claude/skills`, or `$CLAUDE_CONFIG_DIR/skills`
 [paths.skills]). Memory holds facts and decisions, a skill holds steps, the project's CLAUDE.md holds the rules
 every session needs every turn; each item has one home.
 
