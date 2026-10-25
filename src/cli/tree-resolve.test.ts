@@ -66,3 +66,33 @@ describe("a write in one team of a tree reads its other registers' tasks (T1139)
     assert.match(result.stdout[0] ?? '', /^REFUSED T1 .*T2.* would be a loop, and no task in a loop can finish: /);
   });
 });
+
+/** Whether a `check --all` run flags T2 READY: the long form prints each flag's kind and task on one line. */
+function readyT2(result: CliResult): boolean {
+  return result.stdout.some((line) => /^READY .*\bT2\b/.test(line));
+}
+
+describe("a read in one team of a tree judges a wait on another register's task against it (T1139)", () => {
+  it('flags the wait READY only once the other team finishes the task', async () => {
+    const kit = await seeded();
+    await ok(kit, waitOn('T2', 'T1', 'front'), WEB);
+    assert.equal(readyT2(await ok(kit, ['check', '--all', '--session', 'front'], WEB)), false);
+    await ok(kit, ['set', 'T1', '--status', 'dropped', '--note', 'not needed', '--session', 'lead']);
+    assert.equal(readyT2(await ok(kit, ['check', '--all', '--session', 'front'], WEB)), true);
+  });
+
+  it('judges each team of a roll-up against the registers the roll-up read', async () => {
+    const kit = await seeded();
+    await ok(kit, waitOn('T2', 'T1', 'front'), WEB);
+    assert.equal(readyT2(await ok(kit, ['check', '--all', '--tree', '--session', 'lead'])), false);
+    await ok(kit, ['set', 'T1', '--status', 'dropped', '--note', 'not needed', '--session', 'lead']);
+    assert.equal(readyT2(await ok(kit, ['check', '--all', '--tree', '--session', 'lead'])), true);
+  });
+
+  it('shows the task waited on as its row in the register holding it', async () => {
+    const kit = await seeded();
+    await ok(kit, waitOn('T2', 'T1', 'front'), WEB);
+    const shown = await ok(kit, ['show', 'T2', '--tree', '--session', 'front'], WEB);
+    assert.ok(shown.stdout.some((line) => /^ {2}app\/T1 open\b/.test(line)), shown.stdout.join('\n'));
+  });
+});

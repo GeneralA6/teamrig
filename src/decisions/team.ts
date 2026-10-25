@@ -4,7 +4,7 @@ import type { TeamPaths } from '../core/home.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { MeetingStore } from '../meeting/state.ts';
 import type { Task } from '../register/fold.ts';
-import { TaskTree } from '../register/tree.ts';
+import { NO_TASKS_ELSEWHERE, TaskTree, type TasksElsewhere } from '../register/tree.ts';
 import { decisionBatch, type DecisionBatch } from './batch.ts';
 import { askedAtOf, AskedStore } from './store.ts';
 
@@ -16,7 +16,8 @@ export interface TeamDecisions {
 
 /**
  * A team's batch of the owner's decisions now: its register's waits on the owner against the batches the lead asked,
- * their effective dues on the team's clock (`zone`).
+ * their effective dues on the team's clock (`zone`). `elsewhere` holds the tasks of the team tree's other registers,
+ * which a wait on one of them is judged against.
  */
 export async function teamDecisions(
   files: Files,
@@ -25,9 +26,10 @@ export async function teamDecisions(
   tasks: ReadonlyMap<string, Task>,
   now: number,
   zone: TimeZone,
+  elsewhere: TasksElsewhere = NO_TASKS_ELSEWHERE,
 ): Promise<TeamDecisions> {
   const [asked, meeting] = await Promise.all([new AskedStore(files, paths.decisionsAsked).read(), new MeetingStore(files, paths.meeting).read()]);
-  const tree = new TaskTree(tasks, new Date(now), zone);
+  const tree = new TaskTree(tasks, new Date(now), zone, undefined, elsewhere);
   const batch = decisionBatch({
     tasks: tasks.values(),
     tree,

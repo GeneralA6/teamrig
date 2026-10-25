@@ -96,6 +96,11 @@ export class Register {
     return this.deps.log.readHistory();
   }
 
+  /** The tasks the team tree's other registers hold, which a read judges a wait on one of them against (T1139). */
+  elsewhere(): Promise<TasksElsewhere> {
+    return this.deps.elsewhere.read();
+  }
+
   add(caller: string, input: AddInput): Promise<Verdict<WriteResult>> {
     return this.asCaller(caller, () => this.writeNew(({ state }, id, elsewhere) => single(this.created(caller, id, this.deps.policy.add(input, state, elsewhere)))));
   }
