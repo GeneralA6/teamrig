@@ -759,8 +759,9 @@ idle pass, right after it finds the tab's session and before the meeting's and t
 the team's and not this tab's wake; it needs `wake.enabled`. It runs at most once a minute across the team: the
 check that claims `state/idle-pass.lock` runs it, and no check waits for that lock. It works out what
 [`teamrig sessions --pass`](commands.md#teamrig-sessions) prints, keeps the pass's time and each session's step kind in
-`state/idle-pass.json`, and appends to `state/idle-pass.jsonl` the steps whose kind changed, with the host's commit
-charge, and a failure once until its error changes. In `dry-run` it closes and reopens no one. In `on` it also
+`state/idle-pass.json`, and appends to `state/idle-pass.jsonl` the steps whose kind changed, and every step once its
+last pass record is an hour old (so a log silent for longer means the pass stopped), with the host's commit charge,
+and a failure once until its error changes. In `dry-run` it closes and reopens no one. In `on` it also
 starts, hidden, the [`idle-close`](commands.md#teamrig-idle-close) of each session it would close and the
 [`idle-open`](commands.md#teamrig-idle-open) of the one it would reopen (urgent lines first); each weighs its session again and logs its
 own outcome, and each close tells the lead with an [urgent line](#urgent-lines). The pass marks each act it started pending in `state/idle-pass.json` and starts none on that session

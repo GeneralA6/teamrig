@@ -979,7 +979,8 @@ opened while a plugin install is copied runs without teamrig's hooks, so the ins
 
 With `open.idle.mode: dry-run` the wake check runs this pass itself, once a minute across the team
 ([the idle pass](hooks.md#the-idle-pass)), and appends to `state/idle-pass.jsonl` each step whose kind changed since
-the last pass, with the host's commit charge, and each new failure; it closes and reopens no one. With `on` it also
+the last pass, and every step once its last pass record is an hour old, with the host's commit charge, and each new
+failure; it closes and reopens no one. With `on` it also
 starts each close and the reopen its steps ask for, hidden, as [teamrig idle-close](#teamrig-idle-close) and
 [teamrig idle-open](#teamrig-idle-open), each in the folder the pass read its session in, and starts none again on
 that session for 5 minutes. `off`, the default,
