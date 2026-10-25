@@ -526,7 +526,8 @@ Claude Code puts the plugin's `bin/` folder on the Bash tool's PATH through its 
 the first Bash call after a plugin reload, within 10 seconds. On a busy machine the rebuild can fail; the Bash tool
 then runs without the folder until the next reload, so the bare `teamrig` is not found. A session left there tends to
 run whatever copy it finds in the plugin cache, often an older version. After a `Bash` or `PowerShell` call whose
-output says the bare command was not found (bash, sh, zsh, fish, PowerShell or cmd), the model gets one line naming
+output holds the shell's own line for a bare command it did not find (bash, sh, zsh, fish, PowerShell or cmd), as a
+line of its own, the model gets one line naming
 the copy its own hooks run:
 
 ```text
