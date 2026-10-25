@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import type { Files } from '../core/files.ts';
 import { isRecord, numberField } from '../core/guards.ts';
-import { parseObject } from '../core/jsonl.ts';
+import { parseObject, recordVersion, VERSION_FIELD, writableObject } from '../core/jsonl.ts';
 import { mergeWeekFolds, readSnapshots, weekFoldOf, type StatusSnapshot, type WeekFold, type WeekUse } from './snapshot.ts';
 
 /**
@@ -9,6 +9,7 @@ import { mergeWeekFolds, readSnapshots, weekFoldOf, type StatusSnapshot, type We
  * `<snapshot folder>/.week` by `teamrig statusline`, so a reader opens one small file instead of every snapshot
  * in the folder, which each hook of each tab reads. The format, one JSON object:
  *
+ * - `v`: `WEEK_SUMMARY_FORMAT`;
  * - `reading`: null, or `{ used_percentage, resets_at, at }`: the reading that counts, its reset in epoch seconds,
  *   and by when it was taken, ISO 8601 UTC;
  * - `followed_by`: the latest time a folded reading is known to have been taken after, ISO 8601 UTC, or null.
@@ -17,12 +18,16 @@ import { mergeWeekFolds, readSnapshots, weekFoldOf, type StatusSnapshot, type We
  */
 export const WEEK_SUMMARY_FILE = '.week';
 
+/** The week summary's format; a field added to it raises this. */
+export const WEEK_SUMMARY_FORMAT = 1;
+
 const MS_PER_SECOND = 1000;
 
 /** The fold as the summary file's text. */
 export function formatWeekSummary(fold: WeekFold): string {
   const { best, followedBy } = fold;
   return JSON.stringify({
+    [VERSION_FIELD]: WEEK_SUMMARY_FORMAT,
     reading:
       best === undefined
         ? null
@@ -54,9 +59,10 @@ function storedReading(value: unknown): WeekUse | null | undefined {
   return usedPct === undefined || resetsAt === undefined || typeof at !== 'number' ? undefined : { usedPct, resetsAt: resetsAt * MS_PER_SECOND, at };
 }
 
-/** The summary file's text; undefined when it is damaged. */
+/** The summary file's text; undefined when it is damaged or in a format this teamrig cannot read. */
 export function parseWeekSummary(text: string): WeekFold | undefined {
-  const stored = parseObject(text);
+  const parsed = parseObject(text);
+  const stored = parsed !== undefined && recordVersion(parsed) === WEEK_SUMMARY_FORMAT ? parsed : undefined;
   const best = stored === undefined ? undefined : storedReading(stored['reading']);
   const followedBy = stored === undefined ? undefined : storedTime(stored['followed_by']);
   if (best === undefined || followedBy === undefined) {
@@ -80,11 +86,13 @@ export async function readFolderWeek(files: Pick<Files, 'list' | 'read'>, dir: s
  * Folds a snapshot just saved in the folder into its summary, written only when that changes it. A missing or
  * damaged summary is first rebuilt from every snapshot in the folder. Two status lines that fold at once may lose
  * one's reading (the later write wins); that session's next status line run folds it again, and a week's use only
- * grows, so any later reading is at least as high. Returns whether it wrote the summary.
+ * grows, so any later reading is at least as high. Returns whether it wrote the summary. A summary a newer teamrig
+ * wrote is refused (`NewerDataError`), never overwritten.
  */
 export async function foldIntoWeekSummary(files: Pick<Files, 'list' | 'read' | 'write'>, dir: string, snapshot: StatusSnapshot, now: number): Promise<boolean> {
   const path = join(dir, WEEK_SUMMARY_FILE);
   const text = await files.read(path);
+  writableObject(path, text, WEEK_SUMMARY_FORMAT);
   const kept = (text === undefined ? undefined : parseWeekSummary(text)) ?? weekFoldOf(await readSnapshots(files, dir), now);
   const next = formatWeekSummary(mergeWeekFolds(kept, weekFoldOf([snapshot], now)));
   if (next === text) {
