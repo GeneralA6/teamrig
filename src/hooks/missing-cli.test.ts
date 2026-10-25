@@ -45,6 +45,24 @@ describe('missingCliOf', () => {
     }
   });
 
+  it('knows the line of a script, of zsh running one, and a line ending in a carriage return', () => {
+    for (const text of ['./run.sh: line 3: teamrig: command not found', 'zsh:1: command not found: teamrig', 'out\r\nbash: teamrig: command not found\r\nmore']) {
+      assert.equal(missingCliOf(succeeded({ stdout: text, stderr: '' })), 'PostToolUse', text);
+    }
+  });
+
+  it('ignores output that quotes the not-found line inside its own text (T1186)', () => {
+    for (const text of [
+      "description: api's tab got 'teamrig: command not found' at 23:30 IDT",
+      ' * the line a shell prints (`bash: teamrig: command not found`, `zsh: command not found: teamrig`),',
+      '   "teamrig: command not found" (the description printed by `teamrig show`)',
+      'T1186: bash: teamrig: command not found, then the fix',
+      "the note says 'teamrig' is not recognized there",
+    ]) {
+      assert.equal(missingCliOf(succeeded({ stdout: text, stderr: '' })), undefined, text);
+    }
+  });
+
   it('ignores any other tool and any other event', () => {
     assert.equal(missingCliOf(succeeded('bash: teamrig: command not found', 'Read')), undefined);
     assert.equal(missingCliOf({ hook_event_name: 'PreToolUse', tool_name: 'Bash', error: 'bash: teamrig: command not found' }), undefined);
