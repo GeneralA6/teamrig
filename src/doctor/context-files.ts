@@ -33,7 +33,7 @@ export interface ContextFileLocations {
 export const CLAUDE_MD_FILES: readonly (readonly string[])[] = [['CLAUDE.md'], ['CLAUDE.local.md'], ['.claude', 'CLAUDE.md']];
 
 /** The project folder, then each parent up to the filesystem root. */
-function foldersUp(project: string): string[] {
+export function foldersUp(project: string): string[] {
   const folders = [project];
   for (let parent = dirname(project); parent !== folders.at(-1); parent = dirname(parent)) {
     folders.push(parent);
