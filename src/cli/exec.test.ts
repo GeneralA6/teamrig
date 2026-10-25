@@ -1,12 +1,14 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import { formatConfig } from '../config/load.ts';
 import type { RequestDraft } from '../exec/request.ts';
 import { APP, CliHarness, TEAM, TEAM_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { execDraft } from '../testing/exec-request.ts';
 import { FakeCheckout, probeOf } from '../testing/fake-checkout.ts';
 import { FakeExecSpawner } from '../testing/fake-exec-spawner.ts';
 import { FakeWebhook } from '../testing/fake-webhook.ts';
+import { teamConfigOf } from '../testing/team-tree.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import type { Env } from '../core/home.ts';
 import { EXIT } from './runtime.ts';
@@ -45,6 +47,11 @@ class ExecTeam {
 
   async run(...argv: string[]): Promise<CliResult> {
     return this.kit.run(['exec', ...argv], this.options);
+  }
+
+  /** An exec command run from another team of the kit home ($TEAMRIG_TEAM). */
+  async runOn(team: string, ...argv: string[]): Promise<CliResult> {
+    return this.kit.run(['exec', ...argv], { ...this.options, env: { ...this.options.env, TEAMRIG_TEAM: team } });
   }
 
   /** alpha's request R1 for `draft`, checked to be logged. */
@@ -319,5 +326,65 @@ describe('runCli: exec status (T755)', () => {
     await team.kit.files.write(AUDIT, 'not a line\n');
     assertRefused(await team.run('status'), /the exec audit log is broken at .*audit\.jsonl line 1: .+; nothing more is written to it/);
     assertRefused(await team.request(), /the exec audit log is broken at .*audit\.jsonl line 1: /);
+  });
+});
+
+/** EXEC_TEAM as a child of team root, leaving its security reviewer to root's (T1143). */
+const CHILD_TEAM: JsonRecord = { ...EXEC_TEAM, team: { id: 'app', parent: 'root' }, roles: { lead: 'lead', securityReviewer: 'root/sec' } };
+const ROOT_TEAM: JsonRecord = { configVersion: 1, team: { id: 'root' }, sessions: ['lead', 'sec'], roles: { lead: 'lead', securityReviewer: 'sec' } };
+
+/** CHILD_TEAM with its parent root's config written. */
+async function childTeam(): Promise<ExecTeam> {
+  const team = new ExecTeam(CHILD_TEAM);
+  await team.kit.files.write(teamConfigOf('root'), formatConfig(ROOT_TEAM));
+  return team;
+}
+
+describe('runCli: exec on a child team whose security reviewer sits on a team above (T1143)', () => {
+  const line = 'R1 asks to run a db-write on local app.items for T755: review it (teamrig exec status R1 --team app)';
+
+  it("posts the reviewer's team the request from the requester's address, naming the team to review on", async () => {
+    const team = await childTeam();
+    const requested = await team.request();
+    assertOk(requested);
+    assert.deepEqual(requested.stderr, [`NOTE root/sec has an inbox line: ${line}`]);
+    const read = await team.kit.run(['inbox', 'read', '--session', 'sec'], { env: { TEAMRIG_TEAM: 'root' } });
+    assert.deepEqual(read.stdout.filter((text) => text.startsWith('- ')), [`- 2030-01-08 10:00 UTC app/alpha: ${line}`]);
+  });
+
+  it('warns when the team above has no config to post to, and the request stands', async () => {
+    const team = new ExecTeam(CHILD_TEAM);
+    const requested = await team.request();
+    assertOk(requested);
+    assert.deepEqual(requested.stderr, ['WARN R1 is logged, but root/sec was not told: no team root with a config in this kit home']);
+    assert.match(outputOf(await team.run('status')), /^R1 .*: waits for its dry run$/);
+  });
+
+  it('lets the reviewer above read and approve it with --team, logged by its address, and the child runs it', async () => {
+    const team = await dryRun(execDraft(), await childTeam());
+    const listed = await team.runOn('root', 'status', '--team', 'app');
+    assertOk(listed);
+    assert.deepEqual(listed.stdout, ['R1 db-write for T755 by alpha on local app.items: dry run exit 0: waits for review']);
+    const approved = await team.runOn('root', 'approve', 'R1', '--team', 'app', '--session', 'sec');
+    assertOk(approved);
+    assert.match(approved.stdout[0] ?? '', /^APPROVED R1 by root\/sec until .+; next: teamrig exec run R1$/);
+    assertOk(await team.run('run', 'R1'));
+  });
+
+  it('lets the owner review with --team too', async () => {
+    const team = await dryRun(execDraft(), await childTeam());
+    const approved = await team.runOn('root', 'approve', 'R1', '--team', 'app', '--session', 'owner');
+    assertOk(approved);
+    assert.match(approved.stdout[0] ?? '', /^APPROVED R1 by owner until /);
+  });
+
+  it('refuses another session of the team above, a team not below, and an unknown team', async () => {
+    const team = await dryRun(execDraft(), await childTeam());
+    assertRefused(
+      await team.runOn('root', 'approve', 'R1', '--team', 'app', '--session', 'lead'),
+      /root\/lead reviews nothing: the security reviewer \(root\/sec\) or the owner \(owner\) reviews R1/,
+    );
+    assertRefused(await team.run('approve', 'R1', '--team', 'root', '--session', 'bravo'), /team root is not below team app: --team names a team below yours/);
+    assertRefused(await team.runOn('root', 'status', '--team', 'ops'), /no team ops with a config in this kit home/);
   });
 });
