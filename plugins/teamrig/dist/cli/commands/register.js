@@ -17,6 +17,7 @@ import { byFlagKind, checkTasks, peerWaitFlags } from "../../register/check.js";
 import { currentWeekOf } from "../../register/week.js";
 import { fitLines, leftOfWeek, overLimitFlag, weekFit } from "../../register/fit.js";
 import { problemHint } from "../../register/kind.js";
+import { reviewGap, reviewGapText } from "../../register/review.js";
 import { renderPlan } from "../../register/plan.js";
 import { noProgressFlag } from "../../register/progress.js";
 import { overSizeFlags } from "../../register/over-size.js";
@@ -180,6 +181,17 @@ function noteProblemHint(runtime, team, task) {
     }
 }
 /**
+ * A WARN naming the review parts a problem task reached `status` without, while `register.review.mode` is `warn`
+ * (refuse never writes it, and off asks nothing); judged on the task as written, so its review holds every part given.
+ */
+function warnReviewGap(runtime, team, task, status) {
+    const { review } = team.config.register;
+    const missing = review.mode === 'warn' ? reviewGap(task, status, {}, review) : [];
+    if (missing.length > 0) {
+        runtime.out.stderr(`WARN ${reviewGapText(task, status, missing)}; set anyway, as register.review.mode is warn`);
+    }
+}
+/**
  * One inbox line to the task's owner when this write gave it the task (`add --owner`, `update --owner`), so asking
  * for work is one command; never to the caller, who gave it. A line that cannot be posted is named, never thrown:
  * the task is written either way.
@@ -307,6 +319,9 @@ export async function set(args, runtime) {
     }
     if (due !== undefined && warned && verdict.ok) {
         runtime.out.stderr(`WARN ${dueVerifyHold(due.task, due.due)}; started anyway, as register.verifyGate is warn`);
+    }
+    if (verdict.ok) {
+        warnReviewGap(runtime, team, verdict.value.task, input.status);
     }
     if (input.status === 'done') {
         await markBoundary(runtime, config, paths, by, id);

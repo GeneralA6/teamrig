@@ -2,6 +2,7 @@ import { parseDeadline, showStored, storedText } from "../core/time.js";
 import { cardLines } from "./card.js";
 import { PROBLEM_KINDS } from "./events.js";
 import { ACTIVE_STATUSES, GITHUB_SOURCE, priorityText } from "./model.js";
+import { reviewLines, reviewPartNames } from "./review.js";
 import { decidingKey, planOrder } from "./tree.js";
 import { waitsText, weekdayText } from "./waits.js";
 import { proofOf, proofText } from "./verify.js";
@@ -260,6 +261,7 @@ export function formatEvent(event, zone) {
                 event.evidence === null ? undefined : `evidence=${event.evidence}`,
                 event.skill === null ? undefined : `skill=${event.skill}`,
                 event.followups === undefined ? undefined : `followups=${event.followups.length === 0 ? 'none' : event.followups.join(',')}`,
+                event.review === undefined ? undefined : `review=${reviewPartNames(event.review)}`,
             ]
                 .filter((part) => part !== undefined)
                 .join(' ');
@@ -311,6 +313,10 @@ export function formatTaskDetail(task, events, tree, sizeCost = () => undefined)
     }
     if (task.followups.length > 0) {
         lines.push(`followups: ${task.followups.join(', ')}`);
+    }
+    const review = reviewLines(task.review, '  ');
+    if (review.length > 0) {
+        lines.push('review:', ...review);
     }
     lines.push('history:', ...events.filter((event) => event.id === task.id).map((event) => `  ${formatEvent(event, tree.zone)}`));
     return lines.join('\n');

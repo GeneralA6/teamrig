@@ -2,6 +2,7 @@ import { isRecord } from "../core/guards.js";
 import { parseUtcDeadline } from "../core/time.js";
 import { isTaskStatus, LEGACY_WAITING_STATUS, TASK_ID, WAIT_STATUSES } from "./model.js";
 import { parseCard } from "./card.js";
+import { parseReview } from "./review.js";
 import { parseWaits } from "./waits.js";
 /**
  * The register's event format. Version 0 lines have no `v`; version 1 adds `"v": 1` and nothing
@@ -12,7 +13,8 @@ import { parseWaits } from "./waits.js";
  * a newer teamrig's, and a `blocked` line reads here as `waiting` with no reasons. It also gained a
  * `verifying` status's `proof`, a task's `description` (0.44.0) and its `size` (0.47.0), and a `waiting` status's
  * decision `card` (0.79.0), the same `waits` and `card` on a `verifying` line for what its proof waits for
- * (0.109.0), an update's approval `verdict` (0.126.0), a task's `kind` (0.147.0) and its `pin` (T637), which an older reader ignores:
+ * (0.109.0), an update's approval `verdict` (0.126.0), a task's `kind` (0.147.0), its `pin` (T637) and a status line's
+ * `review` (T916), which an older reader ignores:
  * each reads there as none (an answered update as a note alone). An older teamrig re-serialized the events of the snapshot a rotation or
  * `compact` rewrites, so it dropped such a field there (the archive keeps the lines as written); this one copies
  * each kept line as written (compaction.ts).
@@ -101,6 +103,10 @@ export function parseEvent(line) {
             if (typeof followups === 'string') {
                 return unreadable(followups);
             }
+            const review = parseReview(record['review']);
+            if (typeof review === 'string') {
+                return unreadable(review);
+            }
             const event = {
                 ...base,
                 type: 'status',
@@ -113,6 +119,7 @@ export function parseEvent(line) {
                 ...(proof === null ? {} : { proof }),
                 ...(met === null ? {} : { met }),
                 ...(followups === undefined ? {} : { followups }),
+                ...(review === undefined ? {} : { review }),
             };
             return { kind: 'event', event };
         }

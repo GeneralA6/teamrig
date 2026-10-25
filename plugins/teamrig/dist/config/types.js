@@ -4,6 +4,10 @@ export const VERIFY_GATES = ['refuse', 'warn'];
 export function isVerifyGate(value) {
     return VERIFY_GATES.some((gate) => gate === value);
 }
+export const REVIEW_MODES = ['refuse', 'warn', 'off'];
+export function isReviewMode(value) {
+    return REVIEW_MODES.some((mode) => mode === value);
+}
 export const CONFLICT_WINNERS = ['local', 'teamrig'];
 export function isConflictWinner(value) {
     return CONFLICT_WINNERS.some((winner) => winner === value);

@@ -3,7 +3,7 @@ import { isRecord } from "../core/guards.js";
 import { isReservedName, NAME_PATTERN, NAME_RULE, RESERVED_NAMES } from "../core/ids.js";
 import { isMinuteInSpan, utcMinuteOf } from "../core/time.js";
 import { TimeZone } from "../core/zone.js";
-import { FOLLOWUP_STATUSES, isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, SESSION_NAME, TASK_STATUSES } from "../register/model.js";
+import { FOLLOWUP_STATUSES, isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, REVIEW_STATUSES, SESSION_NAME, TASK_STATUSES } from "../register/model.js";
 import { KEEP_RULE_PATTERN } from "../permissions/allow-rules.js";
 import { PREFIX_PATTERN } from "../readonly-shell/rules.js";
 import { CORE_RULE_KEYS, isCoreRuleKey } from "../rules/keys.js";
@@ -11,7 +11,7 @@ import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT
 import { isEffort, isModel } from "./launch.js";
 import { BUDGET_ACCOUNT_MAX_LENGTH, CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from "./limits.js";
 import { ConfigReader, describe, isValidRegex, shortLine } from "./reader.js";
-import { AD_HOC_RUNNERS, PACKAGE_INSTALLS, BURST_POLICIES, CONFLICT_WINNERS, ESCALATIONS, HIRING_POLICIES, isAdHocRunners, isPackageInstalls, isBurstPolicy, isCommitGate, isConflictWinner, isEffortLevel, isEscalation, isHiringPolicy, isOverAction, isHookAsks, isIdleMode, isOtherAreaListing, isPushToProtected, isSecretReads, isSkipHooks, isTerminalChoice, isVerifyGate, isWeekday, HOOK_ASKS, IDLE_MODES, OTHER_AREA_LISTINGS, OVER_ACTIONS, PUSH_TO_PROTECTED, SECRET_READS, SKIP_HOOKS, TERMINALS, VERIFY_GATES, WEEKDAYS, } from "./types.js";
+import { AD_HOC_RUNNERS, PACKAGE_INSTALLS, BURST_POLICIES, CONFLICT_WINNERS, ESCALATIONS, HIRING_POLICIES, isAdHocRunners, isPackageInstalls, isBurstPolicy, isCommitGate, isConflictWinner, isEffortLevel, isEscalation, isHiringPolicy, isOverAction, isHookAsks, isIdleMode, isOtherAreaListing, isPushToProtected, isSecretReads, isSkipHooks, isTerminalChoice, isReviewMode, isVerifyGate, isWeekday, HOOK_ASKS, IDLE_MODES, OTHER_AREA_LISTINGS, OVER_ACTIONS, PUSH_TO_PROTECTED, SECRET_READS, SKIP_HOOKS, TERMINALS, REVIEW_MODES, VERIFY_GATES, WEEKDAYS, } from "./types.js";
 const isSessionName = (name) => SESSION_NAME.test(name) ? undefined : 'expected a lowercase name: a letter, then letters, digits or -, at most 32';
 const isTimeZone = (name) => (TimeZone.of(name) === undefined ? 'expected an IANA time zone name such as Asia/Jerusalem' : undefined);
 const isUtcTime = (time) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(time) ? undefined : 'expected a UTC time as HH:MM');
@@ -724,6 +724,7 @@ function parseRegister(read, raw) {
     }
     const goalPattern = read.optionalString(raw, 'goalPattern', path, isValidRegex);
     const verifyGate = read.string(raw, 'verifyGate', path, defaults.verifyGate, oneOf(VERIFY_GATES));
+    const reviewMode = read.string(review, 'mode', `${path}.review`, defaults.review.mode, oneOf(REVIEW_MODES));
     const register = {
         ownerSource: read.string(raw, 'ownerSource', path, defaults.ownerSource, isSessionName),
         priorities: priorities.length === 0 ? defaults.priorities : priorities,
@@ -734,7 +735,7 @@ function parseRegister(read, raw) {
         requireEvidenceOnDone: read.boolean(raw, 'requireEvidenceOnDone', path, defaults.requireEvidenceOnDone),
         requireSkillOnDone: read.boolean(raw, 'requireSkillOnDone', path, defaults.requireSkillOnDone),
         requireNoteOn: read.list(raw, 'requireNoteOn', path, defaults.requireNoteOn, (value, itemPath) => parseStatus(read, value, itemPath), CONFIG_LIMITS.requireNoteOn.maxItems),
-        requireFollowupsOn: read.list(raw, 'requireFollowupsOn', path, defaults.requireFollowupsOn, (value, itemPath) => parseFollowupStatus(read, value, itemPath), CONFIG_LIMITS.requireFollowupsOn.maxItems),
+        requireFollowupsOn: read.list(raw, 'requireFollowupsOn', path, defaults.requireFollowupsOn, (value, itemPath) => parseStatusAmong(read, value, itemPath, FOLLOWUP_STATUSES), CONFIG_LIMITS.requireFollowupsOn.maxItems),
         autoArchive: read.boolean(raw, 'autoArchive', path, defaults.autoArchive),
         requireProofOnVerifying: read.boolean(raw, 'requireProofOnVerifying', path, defaults.requireProofOnVerifying),
         requireDecisionCard: read.boolean(raw, 'requireDecisionCard', path, defaults.requireDecisionCard),
@@ -751,6 +752,9 @@ function parseRegister(read, raw) {
             stopgapFiles: read.stringList(check, 'stopgapFiles', `${path}.check`, defaults.check.stopgapFiles, shortLine(CONFIG_LIMITS.stopgapFiles.maxLength, (value) => (value.trim() === '' ? 'expected a path' : undefined)), CONFIG_LIMITS.stopgapFiles.maxItems),
         },
         review: {
+            mode: isReviewMode(reviewMode) ? reviewMode : defaults.review.mode,
+            requireOn: read.list(review, 'requireOn', `${path}.review`, defaults.review.requireOn, (value, itemPath) => parseStatusAmong(read, value, itemPath, REVIEW_STATUSES), CONFIG_LIMITS.reviewRequireOn.maxItems),
+            criticalOwners: read.stringList(review, 'criticalOwners', `${path}.review`, defaults.review.criticalOwners, isSessionName, CONFIG_LIMITS.criticalOwners.maxItems),
             hintPattern: read.string(review, 'hintPattern', `${path}.review`, defaults.review.hintPattern, isValidRegex),
         },
     };
@@ -777,12 +781,12 @@ function parseStatus(read, value, path) {
     read.report(path, `expected one of ${TASK_STATUSES.join(', ')}, got ${describe(value)}${hint}`);
     return undefined;
 }
-/** A status that may need `--followups`: one of FOLLOWUP_STATUSES. */
-function parseFollowupStatus(read, value, path) {
-    if (typeof value === 'string' && FOLLOWUP_STATUSES.some((status) => status === value)) {
+/** A status a key accepts only some of, such as the statuses `--followups` may be given with. */
+function parseStatusAmong(read, value, path, allowed) {
+    if (typeof value === 'string' && allowed.some((status) => status === value)) {
         return parseStatus(read, value, path);
     }
-    read.report(path, `expected one of ${FOLLOWUP_STATUSES.join(', ')}, got ${describe(value)}`);
+    read.report(path, `expected one of ${allowed.join(', ')}, got ${describe(value)}`);
     return undefined;
 }
 function parseExec(read, raw) {
