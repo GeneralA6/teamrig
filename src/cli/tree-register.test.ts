@@ -202,6 +202,49 @@ describe('teamrig list|check|plan --tree', () => {
   });
 });
 
+describe('teamrig update <team>/<id>: the root lead notes a task below (T1018)', () => {
+  it("writes the note in that team's register only, by the root lead's address, on a child's and a grandchild's task", async () => {
+    const kit = await seeded();
+    const appEvents = kit.files.get(EVENTS_PATH);
+    for (const [label, team] of [['web/T2', 'web'], ['ui/T3', 'ui']] as const) {
+      const result = await kit.run(['update', label, '--note', 'human decided: ship it', '--session', 'lead']);
+      assert.equal(result.code, EXIT.ok, label);
+      assert.match(result.stdout[0] ?? '', new RegExp(`^UPDATED ${label} open, `), label);
+      const event = readEvents(kit.files.get(teamEventsOf(team)) ?? '').events.at(-1);
+      assert.deepEqual([event?.by, event?.type, event?.type === 'update' ? event.note : undefined], ['app/lead', 'update', 'human decided: ship it'], label);
+    }
+    assert.equal(kit.files.get(EVENTS_PATH), appEvents);
+  });
+
+  it('refuses all but the root lead, a root team, an unknown team, its own team, a field and no note, writing nothing', async () => {
+    const kit = await seeded();
+    const before = filesOf(kit);
+    const refusals: [readonly string[], Record<string, string>, string][] = [
+      [['web/T2', '--session', 'alpha'], {}, "REFUSED only app/lead, who asks the owner team web's decisions, notes its tasks from another team; app/alpha may not"],
+      [['ui/T3', '--session', 'lead'], WEB, "REFUSED only app/lead, who asks the owner team ui's decisions, notes its tasks from another team; web/lead may not"],
+      [['app/T1', '--session', 'lead'], WEB, 'REFUSED team app has no parent team, so only its own sessions note its tasks'],
+      [['blog/T2', '--session', 'lead'], {}, 'REFUSED no team blog with a config in this kit home'],
+    ];
+    for (const [extra, env, line] of refusals) {
+      const result = await kit.run(['update', ...extra, '--note', 'x'], { env });
+      assert.deepEqual([result.code, result.stdout], [EXIT.refused, [line]]);
+    }
+    const usages: [readonly string[], RegExp][] = [
+      [['app/T1', '--note', 'x'], /^app\/T1 is a task of your own team: update T1/],
+      [['web/T2', '--priority', 'p1', '--note', 'x'], /^update web\/T2 adds a --note to another team's task: it takes no --priority/],
+      [['web/T2', '--pin'], /^update web\/T2 adds a --note to another team's task: it takes no --pin/],
+      [['web/T2'], /^--note is required/],
+      [['web/T2/x', '--note', 'x'], /is not a task id like T12, or web\/T12/],
+    ];
+    for (const [extra, message] of usages) {
+      const result = await kit.run(['update', ...extra, '--session', 'lead']);
+      assert.equal(result.code, EXIT.usage, extra.join(' '));
+      assert.match(result.stderr[0] ?? '', message);
+    }
+    assert.deepEqual(filesOf(kit), before);
+  });
+});
+
 describe('teamrig set: a task another team asked for ends (T509, T1141)', () => {
   const done = (id: string, evidence: string, note = 'shipped', session = 'lead'): string[] =>
     ['set', id, '--status', 'done', '--note', note, '--evidence', evidence, '--skill', 'none', '--followups', 'none', '--session', session];

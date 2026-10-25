@@ -339,6 +339,20 @@ describe('Register.addFromTeam', () => {
   });
 });
 
+describe('Register.noteFrom', () => {
+  it('writes a note as the lead who asks the owner, on no roster here, and changes nothing else on the task', async () => {
+    const { files, register } = setup();
+    written(await register.add('lead', { title: 'Ship login', description: 'what and why', owner: 'alpha', source: 'lead', priority: 1 }));
+    const { task, before, event } = written(await register.noteFrom('app/lead', 'T1', 'human decided: ship it'));
+    assert.deepEqual([event.by, event.type === 'update' ? event.note : undefined], ['app/lead', 'human decided: ship it']);
+    assert.deepEqual([task.owner, task.status, task.title, task.priority, task.note], [before?.owner, before?.status, before?.title, before?.priority, before?.note]);
+    assert.match(errorOf(await register.update('app/lead', 'T1', {}, 'x')), /app.lead is not a session on this team/);
+    assert.equal(errorOf(await register.noteFrom('app/lead', 'T1', ' ')), 'nothing to change: give a field or a --note');
+    assert.equal(errorOf(await register.noteFrom('app/lead', 'T9', 'x')), 'no task T9');
+    assert.equal(readEvents(files.get(LOG) ?? '').events.length, 2);
+  });
+});
+
 describe('Register, the GitHub import', () => {
   const ISSUE = { title: 'Fix login', description: null, owner: 'bravo', ref: 'gh:acme/web#7', priority: 1 };
   const URL = 'https://github.com/acme/web/issues/7';

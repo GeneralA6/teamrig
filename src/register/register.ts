@@ -124,6 +124,20 @@ export class Register {
   }
 
   /**
+   * A note on a task from the lead who asks the owner this team's decisions, `asker` being its `<team>/<id>`
+   * (TeamTree.ownerLeadAbove, T1018), such as the owner's answer. The tree's rules decide who that may be, so this
+   * team's roster check is skipped; a note changes nothing on the task, so it is all this write may add.
+   */
+  noteFrom(asker: string, id: string, note: string): Promise<Verdict<WriteResult>> {
+    return this.write((snapshot, elsewhere) =>
+      onTask(snapshot, elsewhere, id, (task) => {
+        const change = this.deps.policy.update(task, asker, {}, note, snapshot.state, elsewhere);
+        return single(change.ok ? { ok: true, value: { ...this.base(id, asker), type: 'update', ...change.value } } : change);
+      }),
+    );
+  }
+
+  /**
    * The GitHub import's writes (github/sync.ts): each is judged again under the lock, on the register as it
    * then stands, and written by GITHUB_ACTOR, which is on no roster. The policy limits them to the import's
    * own tasks: a new one per issue, its title and priority, and open, done or dropped as GitHub has it.
