@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { NewerDataError } from '../core/jsonl.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { activeHires, HIRE_FORMAT, HiringLog, parseHiringRecord, rehiredFrom, retiredSessions, type HireRecord, type RetireRecord } from './log.ts';
+import { activeHires, HIRE_FORMAT, HiringLog, parseHiringRecord, readHiringLog, rehiredFrom, retiredSessions, type HireRecord, type RetireRecord } from './log.ts';
 
 const PATH = '/kit/teams/app/state/hires.jsonl';
 const AT = Date.parse('2030-01-08T10:00:00Z');
@@ -69,6 +69,17 @@ describe('rehiredFrom', () => {
     assert.equal(rehiredFrom(records, 'helper'), undefined, 'a first hire came back from nothing');
     assert.equal(rehiredFrom([...records, retire({ session: 'back', at: AT + 3000 })], 'back'), undefined, 'retired again');
     assert.equal(rehiredFrom(records, 'nobody'), undefined);
+  });
+});
+
+describe('readHiringLog', () => {
+  it('reads a text without files, skipping damaged lines and lines from a newer teamrig', () => {
+    const line = (record: object): string => `${JSON.stringify(record)}\n`;
+    const hireLine = { v: HIRE_FORMAT, kind: 'hire', session: 'helper', scope: 'port the importer', reason: 'release week', reviewBy: '2030-01-15', by: 'lead', at: '2030-01-08T10:00:00.000Z' };
+    const retireLine = { v: HIRE_FORMAT, kind: 'retire', session: 'helper', reason: 'its tasks are closed', by: 'lead', at: '2030-01-08T10:00:01.000Z' };
+    const text = line(hireLine) + 'not json\n' + line({ ...hireLine, v: HIRE_FORMAT + 1 }) + line({ v: HIRE_FORMAT, kind: 'hire' }) + line(retireLine);
+    assert.deepEqual(readHiringLog(text), { records: [hire(), retire()], skipped: 3 });
+    assert.deepEqual(readHiringLog(''), { records: [], skipped: 0 });
   });
 });
 
