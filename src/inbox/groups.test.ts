@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { groupIds, parseTo, type Group, type GroupIds } from './groups.ts';
+import { TeamTree, type TeamNode } from '../config/tree.ts';
+import { groupIds, parseTo, treeLeadsOf, type Group, type GroupIds } from './groups.ts';
 
 /** `lead` leads `alpha` and the sub-lead `bravo`; `bravo` leads the sub-lead `charlie`, which leads `delta`. */
 const TEAM = {
@@ -22,12 +23,16 @@ describe('parseTo', () => {
     assert.deepEqual(parseTo('leads,group:bravo,all'), [{ kind: 'leads' }, { kind: 'group', leader: 'bravo' }, { kind: 'all' }]);
   });
 
+  it('reads team:<team> and tree:leads as groups of the tree', () => {
+    assert.deepEqual(parseTo('team:web,tree:leads'), [{ kind: 'team', team: 'web' }, { kind: 'tree-leads' }]);
+  });
+
   it('keeps all and leads after a team as session names, so a session called all stays reachable', () => {
     assert.deepEqual(parseTo('app/all'), [{ kind: 'session', address: { team: 'app', session: 'all' } }]);
   });
 
   it('refuses an empty item, a group with no leader or a bad one, and any other form', () => {
-    for (const text of ['', 'alpha,', ',alpha', 'alpha,,bravo', 'group:', 'group:a/b', 'a/b/c', 'web/group:lead', 'all bravo']) {
+    for (const text of ['', 'alpha,', ',alpha', 'alpha,,bravo', 'group:', 'group:a/b', 'a/b/c', 'web/group:lead', 'all bravo', 'team:', 'team:Web', 'team:web/lead', 'tree:all', 'tree:']) {
       assert.equal(parseTo(text), undefined, text);
     }
   });
@@ -52,5 +57,23 @@ describe('groupIds', () => {
       ok: false,
       problem: 'delta leads no session: group:<leader> takes the lead or a sub-lead',
     });
+  });
+});
+
+function team(id: string, parent?: string, lead = 'lead'): TeamNode {
+  return { team: id, statedId: id, parent, lead, sessions: [lead, 'dev'], names: new Map() };
+}
+
+describe('treeLeadsOf', () => {
+  it("names every team's lead of the tree, the root first, then depth first with children by id", () => {
+    const tree = new TeamTree([team('app', undefined, 'boss'), team('web', 'app'), team('ops', 'app'), team('ui', 'web'), team('shop')]);
+    const leads = [{ team: 'app', id: 'boss' }, { team: 'ops', id: 'lead' }, { team: 'web', id: 'lead' }, { team: 'ui', id: 'lead' }];
+    assert.deepEqual(treeLeadsOf(tree, 'ui'), leads, 'from a leaf');
+    assert.deepEqual(treeLeadsOf(tree, 'app'), leads, 'from the root');
+    assert.deepEqual(treeLeadsOf(tree, 'shop'), [{ team: 'shop', id: 'lead' }], 'a separate tree has its own leads');
+  });
+
+  it('gives none when the parents above the team go round a loop', () => {
+    assert.equal(treeLeadsOf(new TeamTree([team('a', 'b'), team('b', 'a')]), 'a'), undefined);
   });
 });

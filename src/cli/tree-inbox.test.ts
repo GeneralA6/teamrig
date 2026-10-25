@@ -56,6 +56,43 @@ describe('teamrig inbox add across a tree of teams', () => {
     assert.equal(kit.files.get(teamInboxOf('shop', 'till')), undefined);
   });
 
+  it('posts team:<team> to every session of that team, and of its own team with the sender left out', async () => {
+    const kit = await treeHarness();
+    const web = await kit.run(['inbox', 'add', '--to', 'team:web', '--text', 'freeze at 20:00', '--session', 'alpha']);
+    assert.deepEqual(web.stdout, ['POSTED to 3 sessions (web/lead, web/front, web/back); each is reminded at its next prompt']);
+    assert.equal(kit.files.get(teamInboxOf('web', 'back')), '- 2030-01-08 10:00 app/alpha: freeze at 20:00\n');
+    const own = await kit.run(['inbox', 'add', '--to', 'team:app', '--text', 'standup', '--session', 'alpha']);
+    assert.deepEqual(own.stdout, ['POSTED to 2 sessions (lead, bravo); each is reminded at its next prompt']);
+    assert.equal(kit.files.get(teamInboxOf('app', 'bravo')), '- 2030-01-08 10:00 alpha: standup\n');
+  });
+
+  it("posts tree:leads to every team's lead of the tree, the root first, the sender left out", async () => {
+    const kit = await treeHarness();
+    const root = await kit.run(['inbox', 'add', '--to', 'tree:leads', '--text', 'the week resets at 03:00', '--session', 'lead']);
+    assert.deepEqual(root.stdout, ['POSTED to 3 sessions (ops/lead, web/lead, ui/lead); each is reminded at its next prompt']);
+    assert.equal(kit.files.get(teamInboxOf('ui', 'lead')), '- 2030-01-08 10:00 app/lead: the week resets at 03:00\n');
+    const member = await kit.run(['inbox', 'add', '--to', 'tree:leads,web/front', '--text', 'docs moved', '--session', 'pixel'], { env: { TEAMRIG_TEAM: 'ui' } });
+    assert.deepEqual(member.stdout, ['POSTED to 5 sessions (app/lead, ops/lead, web/lead, lead, web/front); each is reminded at its next prompt']);
+  });
+
+  it('refuses team:<team> for an unknown team or one of a separate tree, writing nothing', async () => {
+    const kit = await treeHarness();
+    await kit.files.write(teamConfigOf('shop'), formatConfig({ configVersion: 1, team: { id: 'shop' }, sessions: ['lead', 'till'], roles: { lead: 'lead' } }));
+    const unknown = await kit.run(['inbox', 'add', '--to', 'alpha,team:blog', '--text', 'hi', '--session', 'lead']);
+    assert.deepEqual([unknown.code, unknown.stdout], [EXIT.refused, ['REFUSED no team blog with a config in this kit home']]);
+    const apart = await kit.run(['inbox', 'add', '--to', 'team:shop', '--text', 'hi', '--session', 'lead']);
+    assert.equal(apart.code, EXIT.refused);
+    assert.match(apart.stdout[0] ?? '', /^REFUSED app\/lead and shop\/lead are in separate trees of teams/);
+    assert.deepEqual([kit.files.get(teamInboxOf('app', 'alpha')), kit.files.get(teamInboxOf('shop', 'lead'))], [undefined, undefined]);
+  });
+
+  it('refuses tree:leads from the lead of a one-team tree, which names no one but the sender', async () => {
+    const kit = await treeHarness();
+    await kit.files.write(teamConfigOf('shop'), formatConfig({ configVersion: 1, team: { id: 'shop' }, sessions: ['lead', 'till'], roles: { lead: 'lead' } }));
+    const alone = await kit.run(['inbox', 'add', '--to', 'tree:leads', '--text', 'hi', '--session', 'lead'], { env: { TEAMRIG_TEAM: 'shop' } });
+    assert.deepEqual([alone.code, alone.stdout], [EXIT.refused, ['REFUSED --to tree:leads names no session but the sender lead']]);
+  });
+
   it('refuses an unknown team or session, a broken target config, a secret and a bad address', async () => {
     const kit = await treeHarness();
     const noTeam = await kit.run(['inbox', 'add', '--to', 'blog/lead', '--text', 'hi', '--session', 'lead']);
@@ -79,6 +116,6 @@ describe('teamrig inbox add across a tree of teams', () => {
     assert.match(broken.stdout[0] ?? '', /^REFUSED the team config has 1 problem\(s\)/);
     const bad = await kit.run(['inbox', 'add', '--to', 'web/lead/x', '--text', 'hi', '--session', 'lead']);
     assert.equal(bad.code, EXIT.usage);
-    assert.match(bad.stderr[0] ?? '', /^--to "web\/lead\/x" is not a session id or name, <team>\/<id>, all, leads, group:<leader>, or a comma-separated list/);
+    assert.match(bad.stderr[0] ?? '', /^--to "web\/lead\/x" is not a session id or name, <team>\/<id>, all, leads, group:<leader>, team:<team>, tree:leads, or a comma-separated list/);
   });
 });
