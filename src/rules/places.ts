@@ -65,7 +65,7 @@ async function subfolders(files: Files, probe: PathProbe, folder: string): Promi
 }
 
 /** The CLAUDE.md files in folders 1 to NESTED_DEPTH below the project, breadth first, in at most NESTED_FOLDERS_MAX folders. */
-async function nestedClaudeMd(files: Files, probe: PathProbe, project: string): Promise<{ paths: string[]; capped: boolean }> {
+export async function nestedClaudeMd(files: Files, probe: PathProbe, project: string): Promise<{ paths: string[]; capped: boolean }> {
   const paths: string[] = [];
   let level = await subfolders(files, probe, project);
   let visited = 0;
