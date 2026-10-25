@@ -32,7 +32,8 @@ or the week's pace end) and the week's spare; no flag is raised while the spare 
    sessions the team would have with it, of `hiring.maxSessions`. It gets no fixed daily budget: its part of the
    team's follows its share and queued work, like any session's.
 3. Under `hiring.policy` `owner`, show the user the preview and ask; on a yes, add `--approved-by "<who>"`. Under
-   `lead` or `automatic`, decide yourself.
+   `lead` or `automatic`, decide yourself: a hire within the caps is staffing, your call, never a question for the
+   owner.
 4. Write it: the same command with `--yes`.
 5. Give it its first task before you open it, so its first `list` has work:
    `teamrig add --session lead --owner <id> --priority p2 --title "<task>" --description "<what and why>"`, then
