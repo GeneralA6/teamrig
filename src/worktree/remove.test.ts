@@ -359,7 +359,8 @@ describe('carryOut puts back every link it unlinked when the removal stops', () 
 function realWorld(prefix: string): { repo: TempRepo; worktree: string; modules: string } {
   const repo = new TempRepo(prefix).init();
   repo.git('checkout', '-q', '-b', 'main');
-  repo.write('.gitignore', 'node_modules/\n');
+  // No trailing slash: on POSIX the worktree's link is a symlink, which a folder-only `node_modules/` does not ignore.
+  repo.write('.gitignore', 'node_modules\n');
   repo.write('src/a.ts', 'export const a = 1;\n');
   repo.git('add', '-A');
   repo.git('commit', '-q', '-m', 'first');
