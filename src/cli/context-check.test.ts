@@ -121,6 +121,22 @@ describe('the warnings no session owns go to the lead (T951)', () => {
   });
 });
 
+describe("the skill and context checks read the skills of Claude Code's folder (T1185)", () => {
+  it("reads $CLAUDE_CONFIG_DIR/skills, not ~/.claude/skills, when Claude Code's folder is moved", async () => {
+    const kit = new CliHarness(TEAM);
+    const moved = join('/', 'cfg');
+    const skill = (name: string): string => `---\nname: ${name}\ndescription: A skill with an owner who left.\n---\nOwner: ghost\nLast verified: 2030-01-01\n`;
+    await kit.files.write(join(SKILLS_DIR, 'at-home', 'SKILL.md'), skill('at-home'));
+    await kit.files.write(join(moved, 'skills', 'in-moved', 'SKILL.md'), skill('in-moved'));
+    const lead = await kit.run(['check', '--all'], { env: { TEAMRIG_SESSION: 'lead', CLAUDE_CONFIG_DIR: moved } });
+    assert.equal(lead.code, EXIT.ok, lead.stderr.join('\n'));
+    const out = lead.stdout.join('\n');
+    assert.equal(lead.stdout.includes(`SKILLS 0 flag(s) in ${join(moved, 'skills')}`), true, out);
+    assert.match(out, /SKILL OWNER \(owner ghost is not a session on the team\) ghost in-moved/);
+    assert.equal(out.includes('at-home'), false, out);
+  });
+});
+
 /** The lead's inbox lines on warnings no session owns. */
 async function leadNotices(kit: CliHarness): Promise<string[]> {
   const text = (await kit.files.read(join(TEAM_HOME, 'state', 'inbox', 'lead.md'))) ?? '';

@@ -53,7 +53,7 @@ Team settings for the teamrig plugin. Only the roster (sessions, roles.lead) is 
 | `refresh` | [object](#refresh) |  | Context refresh: when a session finishes a task (teamrig set \<id> --status done) with its context at or over contextTokens, or with everyTasks tasks finished since its context was last fresh and the context at everyTasksMinTokens or more, or after the lead ran teamrig refresh \<session>, it writes a handover; then the user types /clear, or teamrig starts it fresh on its own (autoRestart). A relative handoverDir is resolved against the team's folder; unset, it is \<team folder>/handover. |
 | `hiring` | [object](#hiring) |  | Hiring temporary sessions with teamrig hire: who decides, and the cap every hire stays within. A hire is written into sessions, names and launch, and logged with its reason and review date; its part of the team's daily budget follows its share and queued work, like any session's. |
 | `burst` | [object](#burst) |  | Bursts with teamrig burst: a time-boxed scale-out onto helpers and hired sessions that spends more of the week, for a surplus the week would leave unused at the reset or for a deadline. A person always starts one by command; nothing starts one on its own. |
-| `paths` | [object](#paths) |  | Folders moved from their defaults; a relative path is resolved against the team's folder (\<kit home>/teams/\<team>). Unset, state and inbox stay under the team's folder and skills is \~/.claude/skills. |
+| `paths` | [object](#paths) |  | Folders moved from their defaults; a relative path is resolved against the team's folder (\<kit home>/teams/\<team>). Unset, state and inbox stay under the team's folder and skills is the skills folder of Claude Code's folder ($CLAUDE\_CONFIG\_DIR, else \~/.claude). |
 
 ## `team`
 
@@ -632,13 +632,13 @@ Bursts with teamrig burst: a time-boxed scale-out onto helpers and hired session
 
 ## `paths`
 
-Folders moved from their defaults; a relative path is resolved against the team's folder (\<kit home>/teams/\<team>). Unset, state and inbox stay under the team's folder and skills is \~/.claude/skills.
+Folders moved from their defaults; a relative path is resolved against the team's folder (\<kit home>/teams/\<team>). Unset, state and inbox stay under the team's folder and skills is the skills folder of Claude Code's folder ($CLAUDE\_CONFIG\_DIR, else \~/.claude).
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `state` | string (at least 1 character) |  | The team's state folder: the task list's log, the inboxes, the coordinator's ledger and the logs. Unset: state in the team's folder. |
 | `inbox` | string (at least 1 character) |  | The folder of the sessions' inbox files. Unset: inbox in the state folder. |
-| `skills` | string (at least 1 character) |  | The Claude Code skills folder teamrig check and doctor read. Unset: \~/.claude/skills. |
+| `skills` | string (at least 1 character) |  | The Claude Code skills folder teamrig check and doctor read. Unset: skills in Claude Code's folder ($CLAUDE\_CONFIG\_DIR, else \~/.claude). |
 
 ## Shared types
 

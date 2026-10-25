@@ -6,7 +6,7 @@ import { Roster } from '../config/roster.ts';
 import { parseConfigText } from '../config/text.ts';
 import type { KitConfig } from '../config/types.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
-import { ENV, KIT_NAME, resolveKitHome, teamPaths, type Env, type PathOverrides, type TeamPaths } from '../core/home.ts';
+import { claudeConfigDir, ENV, KIT_NAME, resolveKitHome, teamPaths, type Env, type PathOverrides, type TeamPaths } from '../core/home.ts';
 import { ID_PATTERN } from '../core/ids.ts';
 import { FileLock } from '../core/lock.ts';
 import { resolveTeam, TEAM_POINTER } from '../core/team.ts';
@@ -79,8 +79,9 @@ function overridesOf(config: KitConfig): PathOverrides {
 export async function openKit(runtime: CliRuntime, team: string): Promise<Kit> {
   const kitHome = resolveKitHome(runtime.env, runtime.userHome);
   const format = runtime.configFormat ?? SHIPPED_CONFIG_FORMAT;
-  const load = await loadConfig(runtime.files, teamPaths(kitHome, team, runtime.userHome).config, format.migrations, format.version);
-  return { load, paths: teamPaths(kitHome, team, runtime.userHome, load.status === 'loaded' ? overridesOf(load.config) : {}) };
+  const claudeDir = claudeConfigDir(runtime.env, runtime.userHome);
+  const load = await loadConfig(runtime.files, teamPaths(kitHome, team, claudeDir).config, format.migrations, format.version);
+  return { load, paths: teamPaths(kitHome, team, claudeDir, load.status === 'loaded' ? overridesOf(load.config) : {}) };
 }
 
 /**

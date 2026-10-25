@@ -112,7 +112,7 @@ export async function teamCreate(args: ParsedArgs, runtime: CliRuntime): Promise
   }
   (await runtime.requirements.problems()).forEach((problem) => runtime.out.stdout(`WARN ${describeRequirement(problem, KIT_NAME)}`));
   const project = await projectOf(runtime, args.flags.get('project'));
-  const configPath = teamPaths(resolveKitHome(runtime.env, runtime.userHome), team, runtime.userHome).config;
+  const configPath = teamPaths(resolveKitHome(runtime.env, runtime.userHome), team, claudeConfigDir(runtime.env, runtime.userHome)).config;
   const format = runtime.configFormat ?? SHIPPED_CONFIG_FORMAT;
   const { tree } = await loadTree(runtime);
   const planned = await planTeamSetup(runtime.files, format, spec.value, configPath, project, tree);

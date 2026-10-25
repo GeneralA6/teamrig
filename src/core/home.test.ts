@@ -6,6 +6,8 @@ import { claudeConfigDir, claudeTempDir, resolveKitHome, teamHome, teamPaths } f
 const USER_HOME = join('/', 'u');
 const KIT = join('/', 'kit');
 const TEAM_HOME = join(KIT, 'teams', 'app');
+/** Claude Code's folder, away from the user's home as `CLAUDE_CONFIG_DIR` may move it. */
+const CLAUDE_DIR = join('/', 'cfg');
 
 describe('claudeConfigDir', () => {
   it('uses $CLAUDE_CONFIG_DIR, else ~/.claude', () => {
@@ -51,8 +53,8 @@ describe('teamHome', () => {
 });
 
 describe('teamPaths', () => {
-  it("keeps everything under the team's folder by default, except the Claude Code skills folder", () => {
-    const paths = teamPaths(KIT, 'app', USER_HOME);
+  it("keeps everything under the team's folder by default, except the skills folder of Claude Code's folder", () => {
+    const paths = teamPaths(KIT, 'app', CLAUDE_DIR);
     assert.equal(paths.kitHome, KIT);
     assert.equal(paths.team, 'app');
     assert.equal(paths.home, TEAM_HOME);
@@ -61,7 +63,7 @@ describe('teamPaths', () => {
     assert.equal(paths.inbox, join(TEAM_HOME, 'state', 'inbox'));
     assert.equal(paths.renames, join(TEAM_HOME, 'state', 'renames.jsonl'));
     assert.equal(paths.renamesLock, join(TEAM_HOME, 'state', 'renames.lock'));
-    assert.equal(paths.skills, join(USER_HOME, '.claude', 'skills'));
+    assert.equal(paths.skills, join(CLAUDE_DIR, 'skills'));
     assert.equal(paths.refresh, join(TEAM_HOME, 'state', 'refresh'));
     assert.equal(paths.handover, join(TEAM_HOME, 'handover'));
     assert.equal(paths.verifyNotices, join(TEAM_HOME, 'state', 'verify-notices.jsonl'));
@@ -83,16 +85,16 @@ describe('teamPaths', () => {
   });
 
   it('never shares a file between two teams', () => {
-    const app = Object.values(teamPaths(KIT, 'app', USER_HOME));
-    const site = new Set(Object.values(teamPaths(KIT, 'site', USER_HOME)));
+    const app = Object.values(teamPaths(KIT, 'app', CLAUDE_DIR));
+    const site = new Set(Object.values(teamPaths(KIT, 'site', CLAUDE_DIR)));
     assert.deepEqual(
       app.filter((path) => site.has(path)),
-      [KIT, join(USER_HOME, '.claude', 'skills')],
+      [KIT, join(CLAUDE_DIR, 'skills')],
     );
   });
 
   it('applies overrides', () => {
-    const paths = teamPaths(KIT, 'app', USER_HOME, { state: '/data', inbox: '/notes', skills: '/skills', handover: '/hand' });
+    const paths = teamPaths(KIT, 'app', CLAUDE_DIR, { state: '/data', inbox: '/notes', skills: '/skills', handover: '/hand' });
     assert.equal(paths.events, join('/data', 'events.jsonl'));
     assert.equal(paths.inbox, '/notes');
     assert.equal(paths.skills, '/skills');
@@ -101,14 +103,14 @@ describe('teamPaths', () => {
   });
 
   it("keeps the exec audit log and run outputs in the team's folder, whatever the state override", () => {
-    const paths = teamPaths(KIT, 'app', USER_HOME, { state: '/data' });
+    const paths = teamPaths(KIT, 'app', CLAUDE_DIR, { state: '/data' });
     assert.equal(paths.execAudit, join(TEAM_HOME, 'exec', 'audit.jsonl'));
     assert.equal(paths.execAuditLock, join(TEAM_HOME, 'exec', 'audit.lock'));
     assert.equal(paths.execOut, join(TEAM_HOME, 'exec', 'out'));
   });
 
   it("resolves relative overrides against the team's folder, not the working folder", () => {
-    const paths = teamPaths(KIT, 'app', USER_HOME, { state: 'data', inbox: join('notes', 'in'), skills: '../skills', handover: 'hand' });
+    const paths = teamPaths(KIT, 'app', CLAUDE_DIR, { state: 'data', inbox: join('notes', 'in'), skills: '../skills', handover: 'hand' });
     assert.equal(paths.events, join(TEAM_HOME, 'data', 'events.jsonl'));
     assert.equal(paths.inbox, join(TEAM_HOME, 'notes', 'in'));
     assert.equal(paths.skills, join(KIT, 'teams', 'skills'));

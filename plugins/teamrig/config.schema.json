@@ -1356,12 +1356,12 @@
       }
     },
     "paths": {
-      "description": "Folders moved from their defaults; a relative path is resolved against the team's folder (<kit home>/teams/<team>). Unset, state and inbox stay under the team's folder and skills is ~/.claude/skills.",
+      "description": "Folders moved from their defaults; a relative path is resolved against the team's folder (<kit home>/teams/<team>). Unset, state and inbox stay under the team's folder and skills is the skills folder of Claude Code's folder ($CLAUDE_CONFIG_DIR, else ~/.claude).",
       "type": "object",
       "properties": {
         "state": { "description": "The team's state folder: the task list's log, the inboxes, the coordinator's ledger and the logs. Unset: state in the team's folder.", "type": "string", "minLength": 1 },
         "inbox": { "description": "The folder of the sessions' inbox files. Unset: inbox in the state folder.", "type": "string", "minLength": 1 },
-        "skills": { "description": "The Claude Code skills folder teamrig check and doctor read. Unset: ~/.claude/skills.", "type": "string", "minLength": 1 }
+        "skills": { "description": "The Claude Code skills folder teamrig check and doctor read. Unset: skills in Claude Code's folder ($CLAUDE_CONFIG_DIR, else ~/.claude).", "type": "string", "minLength": 1 }
       }
     }
   },
