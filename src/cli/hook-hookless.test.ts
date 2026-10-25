@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import { formatConfig } from '../config/load.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { PlainLogFile } from '../core/log-file.ts';
 import { MS_PER_MINUTE } from '../core/time.ts';
@@ -11,10 +12,14 @@ import { HOOKLESS_CHECK_MS, HOOKLESS_MS, HOOKLESS_TAIL_BYTES, parseHooklessState
 import { RestoreRegistry, restoreSessionsDir } from '../restore/registry.ts';
 import { APP, CLAUDE_SESSION, CliHarness, KIT, TEAM, TEAM_HOME, USER_HOME } from '../testing/cli-harness.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
+import { teamConfigOf, teamInboxOf } from '../testing/team-tree.ts';
 import { promptLine, replyLine, systemLine, transcript } from '../testing/transcript-lines.ts';
 import { EXIT } from './runtime.ts';
 
 const ROLES_TEAM: JsonRecord = { ...TEAM, roles: { lead: 'lead', coordinatorOwner: 'bravo' } };
+/** A child team of root that leaves its coordinator's owner to root's po (T1143), and root's config. */
+const CHILD_TEAM: JsonRecord = { ...TEAM, team: { id: 'app', parent: 'root' }, roles: { lead: 'lead', coordinatorOwner: 'root/po' } };
+const ROOT_TEAM: JsonRecord = { configVersion: 1, team: { id: 'root' }, sessions: ['lead', 'po'], roles: { lead: 'lead', coordinatorOwner: 'po' } };
 const STATE = join(TEAM_HOME, 'state', 'hookless.json');
 const TAB = '0123abcd-0000-4000-8000-0000000000b1';
 const TAB_TRANSCRIPT = join(USER_HOME, '.claude', 'projects', 'work-app', `${TAB}.jsonl`);
@@ -127,6 +132,23 @@ describe('the Stop hook checks for tabs that run without their hooks', () => {
     await stop(kit, tabTranscript(kit, [reply(kit, 0)]));
     assert.deepEqual(hooklessLines(kit, 'lead'), []);
     assert.equal(hooklessLines(kit, 'bravo').length, 1);
+  });
+
+  it("tells the coordinator's owner on a team above of the lead's own tab, naming the tab's session by its address (T1143)", async () => {
+    const kit = new CliHarness(CHILD_TEAM);
+    await kit.files.write(teamConfigOf('root'), formatConfig(ROOT_TEAM));
+    await writeTab(kit, 'lead', 2 * HOOKLESS_MS);
+    await stop(kit, tabTranscript(kit, [reply(kit, 0)]));
+    assert.deepEqual(hooklessLines(kit, 'lead'), []);
+    assert.match(kit.files.get(teamInboxOf('root', 'po')) ?? '', / app\/teamrig: HOOKLESS app\/lead: its tab \(Claude session 0123abcd\) worked /);
+  });
+
+  it('shows at the turn end the line it could not post to a team above with no config', async () => {
+    const kit = new CliHarness(CHILD_TEAM);
+    await writeTab(kit, 'lead', 2 * HOOKLESS_MS);
+    const result = await kit.run(['hook', 'stop'], { stdin: STOP, env: { TEAMRIG_SESSION: 'alpha' }, transcripts: tabTranscript(kit, [reply(kit, 0)]) });
+    assert.equal(result.code, EXIT.ok);
+    assert.match(result.stdout.join('\n'), /INBOX root\/po: not posted: no team root with a config in this kit home/);
   });
 
   it('names no idle tab whose transcript moves with no turn, as with /reload-plugins and Claude Code notes (T1055)', async () => {

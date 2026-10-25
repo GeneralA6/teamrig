@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import type { Burst } from '../budget/burst.ts';
 import { BurstLog } from '../budget/burst-log.ts';
 import { MeterLog } from '../budget/calibration.ts';
+import { formatConfig } from '../config/load.ts';
 import type { Files } from '../core/files.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { SessionLog } from '../sessions/log.ts';
@@ -20,6 +21,7 @@ import { APP, AUTO_RESTART_TEAM, CliHarness, EVENTS_PATH, TEAM, TEAM_HOME, USER_
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
+import { teamConfigOf, teamHomeOf, teamInboxOf } from '../testing/team-tree.ts';
 import { WakeAsks } from '../wake/asks.ts';
 import { WakePrompts, type WakePrompt } from '../wake/prompts.ts';
 
@@ -598,6 +600,19 @@ describe('hook wake-check runs the idle pass', () => {
       const state: unknown = JSON.parse(kit.files.get(PASS_STATE) ?? '');
       assert.equal(JSON.stringify(state).includes('told'), false, `${mode}: its mark dropped`);
     }
+  });
+
+  it("in mode on names a reopened lead tab to the coordinator's owner on a team above, with a wake there (T1143)", async () => {
+    const kit = await idleTeam({ ...ON, team: { id: 'app', parent: 'root' }, roles: { lead: 'lead', coordinatorOwner: 'root/po' } });
+    await kit.files.write(teamConfigOf('root'), formatConfig({ configVersion: 1, team: { id: 'root' }, sessions: ['lead', 'po'], roles: { lead: 'lead', coordinatorOwner: 'po' } }));
+    await new SessionLog(kit.files, SESSION_LOG).append({ kind: 'reopen', session: 'lead', at: new Date(kit.clock.now()).toISOString(), resumed: 'claude-lead' });
+    kit.clock.advance(5 * MINUTE);
+    await passCheck(kit);
+    const line = 'HOOKLESS app-lead (session app/lead): reopened 01-08 10:00 UTC, and no teamrig hook has started in its tab in the 5 min since, so it gets no inbox, guards or tab status: /exit that tab and run claude --resume claude-lead in its terminal';
+    const asksOf = async (dir: string, id: string): Promise<unknown[]> => (await new WakeAsks(kit.files, dir).read(id)).map((stored) => stored.ask?.text);
+    assert.deepEqual(await asksOf(join(teamHomeOf('root'), 'state', 'wake-asks'), 'po'), [line]);
+    assert.ok((kit.files.get(teamInboxOf('root', 'po')) ?? '').includes(` app/teamrig: ${line}`), "root's po has the line in its inbox, from app's teamrig");
+    assert.deepEqual(await asksOf(ASKS, 'lead'), [], "the child's own lead is not woken for its own hookless tab");
   });
 
   it("skips the pass while another tab's check holds its lock, and reads nothing with open.idle.mode off", async () => {
