@@ -121,6 +121,8 @@ the same way.
 ### Improves itself
 
 A procedure a member works out and will run again becomes a skill in the same turn, and a lesson becomes a team rule.
+Setup first backs up your Claude setup and shows what each turn costs; it shortens, dedupes and parks what you say
+yes to, one group at a time, and shows the cost before and after (`teamrig setup restore` puts it all back).
 The team rules win over a CLAUDE.md, skill or memory line that says otherwise: setup finds each such line
 (`teamrig rules scan`) and asks you whether to remove it, keep it as an exception or rewrite it.
 `teamrig skills scorecard` shows whether each skill earns its place: its loads, the times its procedure was run by
