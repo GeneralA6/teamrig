@@ -4,6 +4,10 @@ import { readSessionContext } from "./scan-context.js";
 import { findDuplicates } from "./scan-duplicates.js";
 import { scanSettings } from "./scan-settings.js";
 import { readSkillUse } from "./scan-usage.js";
+async function recentSkills(files, skills, since) {
+    const changed = await Promise.all(skills.map(async (skill) => ({ path: skill.path, at: await files.modifiedAt(skill.path) })));
+    return new Set(changed.filter(({ at }) => at !== undefined && at >= since).map(({ path }) => path));
+}
 function folderListing(skills) {
     return { count: skills.length, chars: skills.reduce((sum, skill) => sum + skill.line.length, 0), sources: undefined };
 }
@@ -15,7 +19,7 @@ async function readListing(transcripts, at, skills) {
 /**
  * What the user's Claude Code setup costs every turn in `at.project`, and what to slim: the files and skill listing
  * each session loads, the lines they repeat, the rule lines that may override a core rule, the settings findings and
- * the skills no transcript used since `at.since`. It only reads.
+ * the skills no transcript used since `at.since`, and which skills changed since then. It only reads.
  */
 export async function scanSetup(ports, at) {
     const context = await readSessionContext(ports.files, ports.probe, at);
@@ -28,5 +32,6 @@ export async function scanSetup(ports, at) {
         recorded: rules.recorded.length,
         settings: await scanSettings(ports.files, at.claudeDir, at.settings, at.keep, at.secrets),
         usage: await readSkillUse(ports.transcripts, at.projectsDir, at.since),
+        recent: await recentSkills(ports.files, context.skills, at.since),
     };
 }

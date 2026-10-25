@@ -4,7 +4,7 @@ import { DEFAULT_PERMISSIONS } from "../../config/defaults.js";
 import { claudeConfigDir, KIT_NAME } from "../../core/home.js";
 import { expandHome } from "../../core/paths.js";
 import { SecretScanner } from "../../core/secrets.js";
-import { resolveTeam } from "../../core/team.js";
+import { pointerTeam, resolveTeam } from "../../core/team.js";
 import { KeepList } from "../../permissions/allow-rules.js";
 import { settingsScope } from "../../permissions/settings-scope.js";
 import { coreRuleTexts } from "../../rules/pack.js";
@@ -35,9 +35,12 @@ function daysOf(args) {
     }
     return days;
 }
-/** The team of the project the scan is asked about (or of the working folder), or undefined before one exists. */
+/**
+ * The team of the project the scan is asked about, by its pointer alone: the caller's `$TEAMRIG_TEAM` names the
+ * caller's team, not that project's. Without --project, the caller's team. Undefined before one exists.
+ */
 async function scanTeamOf(runtime, asked) {
-    const found = await resolveTeam(runtime.files, runtime.env, asked === undefined ? teamFolders(runtime.env, [runtime.cwd]) : [asked]);
+    const found = asked === undefined ? await resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [runtime.cwd])) : await pointerTeam(runtime.files, [asked]);
     switch (found.kind) {
         case 'none':
             return undefined;
