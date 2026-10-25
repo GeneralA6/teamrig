@@ -9,6 +9,7 @@ import { isCold } from '../hooks/cold-send.ts';
 import { answerTo } from '../register/approval.ts';
 import { taskNumber, type Task } from '../register/fold.ts';
 import type { TaskStatus } from '../register/model.ts';
+import type { TasksElsewhere } from '../register/tree.ts';
 import { isReady, unfinishedAfter, waitContext, type WaitContext } from '../register/waits.ts';
 
 /**
@@ -73,30 +74,39 @@ function timeOf(at: string | null): number {
   return at === null ? Number.NEGATIVE_INFINITY : Date.parse(at);
 }
 
-/** True when a session other than `session` finished the task after `seen`, epoch ms. */
-function finishedByAnotherSince(id: string, session: string, tasks: ReadonlyMap<string, Task>, seen: number): boolean {
+/**
+ * True when a session other than `session` finished the task after `seen`, epoch ms. A task another register of the
+ * team tree holds (`elsewhere`) is news whoever finished it, since session ids repeat across teams; the read wins an
+ * id both hold.
+ */
+function finishedByAnotherSince(id: string, session: string, tasks: ReadonlyMap<string, Task>, elsewhere: TasksElsewhere, seen: number): boolean {
   const task = tasks.get(id);
-  return task !== undefined && task.updatedBy !== session && timeOf(task.statusAt) > seen;
+  if (task !== undefined) {
+    return task.updatedBy !== session && timeOf(task.statusAt) > seen;
+  }
+  const other = elsewhere.get(id)?.task;
+  return other !== undefined && timeOf(other.statusAt) > seen;
 }
 
 /**
  * True when someone else changed the task since its owner last touched it: handed it over, raised its priority,
  * set its status, finished a task it comes after or waits on, or answered an approval it waits on; or when a time it
  * waits for falls after that touch (the caller asks only once the task can go on, so that time has come). The
- * owner's own changes are never news to it.
+ * owner's own changes are never news to it. A task it comes after or waits on may be another register's of the team
+ * tree (`elsewhere`).
  */
-export function isNews(task: Task, session: string, tasks: ReadonlyMap<string, Task>, zone: TimeZone): boolean {
+export function isNews(task: Task, session: string, tasks: ReadonlyMap<string, Task>, elsewhere: TasksElsewhere, zone: TimeZone): boolean {
   const seen = timeOf(task.ownerSeenAt);
   if (Math.max(timeOf(task.assignedAt), timeOf(task.priorityAt), timeOf(task.statusAt)) > seen) {
     return true;
   }
-  if (task.after.some((id) => finishedByAnotherSince(id, session, tasks, seen))) {
+  if (task.after.some((id) => finishedByAnotherSince(id, session, tasks, elsewhere, seen))) {
     return true;
   }
   return task.waits.some((reason) => {
     switch (reason.kind) {
       case 'task':
-        return finishedByAnotherSince(reason.id, session, tasks, seen);
+        return finishedByAnotherSince(reason.id, session, tasks, elsewhere, seen);
       case 'time':
         return (parseDeadline(reason.at, zone)?.getTime() ?? Number.NEGATIVE_INFINITY) > seen;
       case 'approval': {
@@ -139,6 +149,8 @@ export interface WakeState {
 
 export interface WakeInput {
   readonly tasks: ReadonlyMap<string, Task>;
+  /** The tasks the team tree's other registers hold, which a wait or an `after` may name. */
+  readonly elsewhere: TasksElsewhere;
   readonly session: string;
   readonly tab: string;
   readonly now: number;
@@ -170,8 +182,8 @@ export function byUrgency(a: Task, b: Task): number {
  * there as known: work from before the tab started is seen at its first prompt, as it always was.
  */
 export function decideWake(input: WakeInput): WakeDecision {
-  const { tasks, session, tab, now, previous } = input;
-  const context = waitContext(tasks, new Date(now), input.zone);
+  const { tasks, elsewhere, session, tab, now, previous } = input;
+  const context = waitContext(tasks, new Date(now), input.zone, elsewhere);
   const worthy = [...tasks.values()].filter((task) => isWakeWorthy(task, session, input.maxPriority, context));
   const known = worthy.map((task) => task.id);
   const none: WakeVerdict = { kind: 'none' };
@@ -181,8 +193,8 @@ export function decideWake(input: WakeInput): WakeDecision {
   }
   const wasKnown = new Set(previous.known);
   const pendingIds = new Set(previous.pending?.ids ?? []);
-  const kept = worthy.filter((task) => pendingIds.has(task.id) && isNews(task, session, tasks, input.zone));
-  const fresh = worthy.filter((task) => !wasKnown.has(task.id) && isNews(task, session, tasks, input.zone));
+  const kept = worthy.filter((task) => pendingIds.has(task.id) && isNews(task, session, tasks, elsewhere, input.zone));
+  const fresh = worthy.filter((task) => !wasKnown.has(task.id) && isNews(task, session, tasks, elsewhere, input.zone));
   const due = [...kept, ...fresh].sort(byUrgency);
   if (due.length === 0) {
     return { verdict: none, state: { tab, known, pending: undefined, lastWakeAt: previous.lastWakeAt, settled } };

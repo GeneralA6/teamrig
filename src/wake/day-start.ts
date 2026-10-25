@@ -4,6 +4,7 @@ import { KIT_NAME } from '../core/home.ts';
 import { MS_PER_DAY, MS_PER_MINUTE, utcMinuteOf } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
 import type { Task } from '../register/fold.ts';
+import type { TasksElsewhere } from '../register/tree.ts';
 import { waitContext } from '../register/waits.ts';
 import { byUrgency, costText, idsText, isWakeWorthy, taskListText, type SettledMoments, type WakeCost, type WakeRest } from './decide.ts';
 
@@ -55,9 +56,19 @@ export function dueMoments(now: number, dayStartUtc: string | undefined, burst: 
   return due;
 }
 
-/** The session's work it can go on with now (`canGoOn`) at `maxPriority` or more urgent (any by default), most urgent first. */
-export function startableTasks(tasks: ReadonlyMap<string, Task>, session: string, now: number, zone: TimeZone, maxPriority = Number.POSITIVE_INFINITY): readonly Task[] {
-  const context = waitContext(tasks, new Date(now), zone);
+/**
+ * The session's work it can go on with now (`canGoOn`) at `maxPriority` or more urgent (any by default), most urgent
+ * first; a wait or an `after` may name a task the team tree's other registers hold (`elsewhere`).
+ */
+export function startableTasks(
+  tasks: ReadonlyMap<string, Task>,
+  elsewhere: TasksElsewhere,
+  session: string,
+  now: number,
+  zone: TimeZone,
+  maxPriority = Number.POSITIVE_INFINITY,
+): readonly Task[] {
+  const context = waitContext(tasks, new Date(now), zone, elsewhere);
   return [...tasks.values()].filter((task) => isWakeWorthy(task, session, maxPriority, context)).sort(byUrgency);
 }
 

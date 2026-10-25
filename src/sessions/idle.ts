@@ -3,6 +3,7 @@ import { parseObject } from '../core/jsonl.ts';
 import { MS_PER_MINUTE, parseDeadline } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
 import type { Task } from '../register/fold.ts';
+import type { TasksElsewhere } from '../register/tree.ts';
 import { waitContext } from '../register/waits.ts';
 import { asksDecision, messageTextOf } from '../tabs/status.ts';
 import { replyOf } from '../turn-log/reply.ts';
@@ -106,6 +107,8 @@ export function soonTimeWaitOf(tasks: ReadonlyMap<string, Task>, session: string
 /** What a closed session's reopen goes by. */
 export interface ReopenInput {
   readonly tasks: ReadonlyMap<string, Task>;
+  /** The tasks the team tree's other registers hold, which a wait or an `after` may name. */
+  readonly elsewhere: TasksElsewhere;
   readonly session: string;
   /** Its urgent lines no wake check has taken (src/wake/asks.ts). */
   readonly asks: readonly WakeAsk[];
@@ -135,12 +138,12 @@ export type ReopenVerdict =
  * work it can start and does not rest (quiet hours, held by its budget). Else it stays closed.
  */
 export function reopenVerdict(input: ReopenInput): ReopenVerdict {
-  const { tasks, session, now, zone } = input;
+  const { tasks, elsewhere, session, now, zone } = input;
   if (input.asks.length > 0) {
     return { kind: 'asked', asks: input.asks, at: Math.min(...input.asks.map((ask) => ask.at)) };
   }
-  const context = waitContext(tasks, new Date(now), zone);
-  const handed = [...tasks.values()].filter((task) => isWakeWorthy(task, session, input.maxPriority, context) && isNews(task, session, tasks, zone)).sort(byUrgency);
+  const context = waitContext(tasks, new Date(now), zone, elsewhere);
+  const handed = [...tasks.values()].filter((task) => isWakeWorthy(task, session, input.maxPriority, context) && isNews(task, session, tasks, elsewhere, zone)).sort(byUrgency);
   if (handed.length > 0) {
     return { kind: 'handed', tasks: handed };
   }
@@ -148,6 +151,6 @@ export function reopenVerdict(input: ReopenInput): ReopenVerdict {
   if (dayStart === undefined || dayStart <= input.closedAt || input.rest.quiet || input.rest.held) {
     return { kind: 'stay' };
   }
-  const startable = startableTasks(tasks, session, now, zone);
+  const startable = startableTasks(tasks, elsewhere, session, now, zone);
   return startable.length === 0 ? { kind: 'stay' } : { kind: 'day-start', at: dayStart, tasks: startable };
 }

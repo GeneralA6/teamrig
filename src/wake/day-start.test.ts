@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { Burst } from '../budget/burst.ts';
 import type { Task } from '../register/fold.ts';
+import { NO_TASKS_ELSEWHERE, type TasksElsewhere } from '../register/tree.ts';
 import { testTask } from '../testing/task.ts';
 import {
   dayStartAt,
@@ -108,15 +109,15 @@ describe('startableTasks', () => {
       testTask({ id: 'T8', priority: 2, owner: 'bravo', status: 'done' }),
     );
     assert.deepEqual(
-      startableTasks(tasks, 'alpha', NOW, TimeZone.UTC).map((task) => task.id),
+      startableTasks(tasks, NO_TASKS_ELSEWHERE, 'alpha', NOW, TimeZone.UTC).map((task) => task.id),
       ['T2', 'T7', 'T1'],
     );
     assert.deepEqual(
-      startableTasks(tasks, 'alpha', NOW, TimeZone.UTC, 2).map((task) => task.id),
+      startableTasks(tasks, NO_TASKS_ELSEWHERE, 'alpha', NOW, TimeZone.UTC, 2).map((task) => task.id),
       ['T2', 'T7'],
       'a max priority leaves out less urgent work',
     );
-    assert.deepEqual(startableTasks(tasks, 'charlie', NOW, TimeZone.UTC), []);
+    assert.deepEqual(startableTasks(tasks, NO_TASKS_ELSEWHERE, 'charlie', NOW, TimeZone.UTC), []);
   });
 
   it('takes a waiting task once every wait cleared, and a started task past what it comes after', () => {
@@ -127,9 +128,23 @@ describe('startableTasks', () => {
       testTask({ id: 'T4', owner: 'bravo' }),
     );
     assert.deepEqual(
-      startableTasks(tasks, 'alpha', NOW, TimeZone.UTC).map((task) => task.id),
+      startableTasks(tasks, NO_TASKS_ELSEWHERE, 'alpha', NOW, TimeZone.UTC).map((task) => task.id),
       ['T1', 'T3'],
     );
+  });
+
+  it("holds a task waiting on or after another team's open task of the tree, and takes it once that team finished it (T1139)", () => {
+    const tasks = tasksOf(
+      testTask({ id: 'T1', status: 'waiting', waits: [{ kind: 'task', id: 'T8' }] }),
+      testTask({ id: 'T2', after: ['T8'] }),
+      testTask({ id: 'T3', status: 'waiting', waits: [{ kind: 'task', id: 'T9' }] }),
+      testTask({ id: 'T4', after: ['T9'] }),
+    );
+    const elsewhere: TasksElsewhere = new Map([
+      ['T8', { team: 'app', task: testTask({ id: 'T8', owner: 'web', status: 'done' }) }],
+      ['T9', { team: 'app', task: testTask({ id: 'T9', owner: 'web', status: 'in-progress' }) }],
+    ]);
+    assert.deepEqual(startableTasks(tasks, elsewhere, 'alpha', NOW, TimeZone.UTC).map((task) => task.id).sort(), ['T1', 'T2']);
   });
 });
 

@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { testTask } from '../testing/task.ts';
 import type { Task } from './fold.ts';
-import { decidingKey, needPath, needsOf, pathText, planOrder, readAs, TaskTree, type PlanPlace, type TaskElsewhere, type TasksElsewhere, type TreeTask } from './tree.ts';
+import { decidingKey, needPath, needsElsewhere, needsOf, pathText, planOrder, readAs, TaskTree, type PlanPlace, type TaskElsewhere, type TasksElsewhere, type TreeTask } from './tree.ts';
 import { isReady } from './waits.ts';
 import { TimeZone } from '../core/zone.ts';
 
@@ -21,6 +21,19 @@ describe('needsOf', () => {
     const task = testTask({ status: 'waiting', after: ['T3', 'T2'], waits: [{ kind: 'task', id: 'T2' }, { kind: 'decision', who: 'lead' }, { kind: 'task', id: 'T9' }] });
     assert.deepEqual(needsOf(task), ['T3', 'T2', 'T9']);
     assert.deepEqual(needsOf(testTask()), []);
+  });
+});
+
+describe('needsElsewhere', () => {
+  const byId = (...tasks: readonly Task[]): ReadonlyMap<string, Task> => new Map(tasks.map((task) => [task.id, task]));
+
+  it('is true only when an active task comes after or waits on an id the tasks lack', () => {
+    const home = testTask({ id: 'T2' });
+    assert.equal(needsElsewhere(byId(home, testTask({ id: 'T3', after: ['T2'], waits: [{ kind: 'decision', who: 'lead' }] }))), false);
+    assert.equal(needsElsewhere(byId(home, testTask({ id: 'T3', after: ['T9'] }))), true);
+    assert.equal(needsElsewhere(byId(home, testTask({ id: 'T3', status: 'waiting', waits: [{ kind: 'task', id: 'T9' }] }))), true);
+    assert.equal(needsElsewhere(byId(home, testTask({ id: 'T3', status: 'done', after: ['T9'] }))), false, 'a finished task needs nothing');
+    assert.equal(needsElsewhere(byId()), false);
   });
 });
 

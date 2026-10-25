@@ -2,6 +2,7 @@ import { KIT_NAME } from '../core/home.ts';
 import type { SessionAsk } from '../core/session-asks.ts';
 import type { TimeZone } from '../core/zone.ts';
 import type { Task } from '../register/fold.ts';
+import type { TasksElsewhere } from '../register/tree.ts';
 import { waitsText } from '../register/waits.ts';
 import { startableTasks } from './day-start.ts';
 import { taskListText, type WakeRest } from './decide.ts';
@@ -24,6 +25,8 @@ export interface KeepWorking {
 
 export interface KeepWorkingInput {
   readonly tasks: ReadonlyMap<string, Task>;
+  /** The tasks the team tree's other registers hold, which a wait or an `after` may name. */
+  readonly elsewhere: TasksElsewhere;
   readonly session: string;
   readonly ask: SessionAsk;
   readonly now: number;
@@ -38,12 +41,12 @@ export interface KeepWorkingInput {
  * waiting or changed hands, or with nothing it can start.
  */
 export function keepWorkingOf(input: KeepWorkingInput): KeepWorking | undefined {
-  const { tasks, session, ask, now, zone, rest } = input;
+  const { tasks, elsewhere, session, ask, now, zone, rest } = input;
   const waiting = tasks.get(ask.task);
   if (rest.quiet || rest.held || waiting?.owner !== session || waiting.status !== 'waiting') {
     return undefined;
   }
-  const startable = startableTasks(tasks, session, now, zone).filter((task) => task.id !== waiting.id);
+  const startable = startableTasks(tasks, elsewhere, session, now, zone).filter((task) => task.id !== waiting.id);
   return startable.length === 0 ? undefined : { waiting, startable };
 }
 

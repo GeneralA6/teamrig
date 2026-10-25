@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { BudgetFacts } from '../budget/warn.ts';
 import type { ApprovalAnswer, Task } from '../register/fold.ts';
+import { NO_TASKS_ELSEWHERE, type TasksElsewhere } from '../register/tree.ts';
 import { waitContext, type WaitReason } from '../register/waits.ts';
 import { testTask } from '../testing/task.ts';
 import { JERUSALEM } from '../testing/zone.ts';
@@ -40,7 +41,7 @@ function tasksOf(...tasks: Task[]): ReadonlyMap<string, Task> {
 }
 
 function input(tasks: ReadonlyMap<string, Task>, previous: WakeState | undefined, overrides: Partial<WakeInput> = {}): WakeInput {
-  return { tasks, session: 'alpha', tab: TAB, now: NOW, zone: TimeZone.UTC, maxPriority: 1, batchMs: BATCH_MS, minGapMs: GAP_MS, previous, ...overrides };
+  return { tasks, elsewhere: NO_TASKS_ELSEWHERE, session: 'alpha', tab: TAB, now: NOW, zone: TimeZone.UTC, maxPriority: 1, batchMs: BATCH_MS, minGapMs: GAP_MS, previous, ...overrides };
 }
 
 const QUIET: WakeState = { tab: TAB, known: [], pending: undefined, lastWakeAt: undefined, settled: NO_SETTLED_MOMENTS };
@@ -112,50 +113,62 @@ describe('isNews', () => {
   const seen = '2030-01-08T09:00:00.000Z';
 
   it('is news when another handed it over, raised it or set its status after the owner last touched it', () => {
-    assert.equal(isNews(p1(), 'alpha', tasksOf(), TimeZone.UTC), true);
-    assert.equal(isNews(p1({ ownerSeenAt: seen }), 'alpha', tasksOf(), TimeZone.UTC), false);
-    assert.equal(isNews(p1({ ownerSeenAt: seen, priorityAt: '2030-01-08T09:30:00.000Z' }), 'alpha', tasksOf(), TimeZone.UTC), true);
-    assert.equal(isNews(p1({ ownerSeenAt: seen, statusAt: '2030-01-08T09:30:00.000Z' }), 'alpha', tasksOf(), TimeZone.UTC), true);
-    assert.equal(isNews(p1({ ownerSeenAt: seen, assignedAt: '2030-01-08T09:30:00.000Z' }), 'alpha', tasksOf(), TimeZone.UTC), true);
+    assert.equal(isNews(p1(), 'alpha', tasksOf(), NO_TASKS_ELSEWHERE, TimeZone.UTC), true);
+    assert.equal(isNews(p1({ ownerSeenAt: seen }), 'alpha', tasksOf(), NO_TASKS_ELSEWHERE, TimeZone.UTC), false);
+    assert.equal(isNews(p1({ ownerSeenAt: seen, priorityAt: '2030-01-08T09:30:00.000Z' }), 'alpha', tasksOf(), NO_TASKS_ELSEWHERE, TimeZone.UTC), true);
+    assert.equal(isNews(p1({ ownerSeenAt: seen, statusAt: '2030-01-08T09:30:00.000Z' }), 'alpha', tasksOf(), NO_TASKS_ELSEWHERE, TimeZone.UTC), true);
+    assert.equal(isNews(p1({ ownerSeenAt: seen, assignedAt: '2030-01-08T09:30:00.000Z' }), 'alpha', tasksOf(), NO_TASKS_ELSEWHERE, TimeZone.UTC), true);
   });
 
   const finishedBy = (by: string) => testTask({ id: 'T5', status: 'done', updatedBy: by, statusAt: '2030-01-08T09:30:00.000Z' });
 
   it('is news when another finished a task it comes after, never when the owner did or the task is retired', () => {
     const task = p1({ after: ['T5', 'T7'], ownerSeenAt: seen });
-    assert.equal(isNews(task, 'alpha', tasksOf(finishedBy('bravo')), TimeZone.UTC), true);
-    assert.equal(isNews(task, 'alpha', tasksOf(finishedBy('alpha')), TimeZone.UTC), false);
-    assert.equal(isNews(task, 'alpha', tasksOf(testTask({ id: 'T5', status: 'done', updatedBy: 'bravo' })), TimeZone.UTC), false);
+    assert.equal(isNews(task, 'alpha', tasksOf(finishedBy('bravo')), NO_TASKS_ELSEWHERE, TimeZone.UTC), true);
+    assert.equal(isNews(task, 'alpha', tasksOf(finishedBy('alpha')), NO_TASKS_ELSEWHERE, TimeZone.UTC), false);
+    assert.equal(isNews(task, 'alpha', tasksOf(testTask({ id: 'T5', status: 'done', updatedBy: 'bravo' })), NO_TASKS_ELSEWHERE, TimeZone.UTC), false);
   });
 
   it('is news when another finished a task it waits on, never when the owner did', () => {
     const task = p1({ status: 'waiting', waits: [{ kind: 'task', id: 'T5' }], ownerSeenAt: seen });
-    assert.equal(isNews(task, 'alpha', tasksOf(finishedBy('bravo')), TimeZone.UTC), true);
-    assert.equal(isNews(task, 'alpha', tasksOf(finishedBy('alpha')), TimeZone.UTC), false);
+    assert.equal(isNews(task, 'alpha', tasksOf(finishedBy('bravo')), NO_TASKS_ELSEWHERE, TimeZone.UTC), true);
+    assert.equal(isNews(task, 'alpha', tasksOf(finishedBy('alpha')), NO_TASKS_ELSEWHERE, TimeZone.UTC), false);
+  });
+
+  it("is news when another team of the tree finished a task it waits on or comes after, whoever set it, never before the owner's touch (T1139)", () => {
+    const elsewhere = (by: string, statusAt: string): TasksElsewhere => new Map([['T5', { team: 'app', task: testTask({ id: 'T5', status: 'done', updatedBy: by, statusAt }) }]]);
+    const waiting = p1({ status: 'waiting', waits: [{ kind: 'task', id: 'T5' }], ownerSeenAt: seen });
+    const after = p1({ after: ['T5'], ownerSeenAt: seen });
+    for (const task of [waiting, after]) {
+      assert.equal(isNews(task, 'alpha', tasksOf(), elsewhere('bravo', '2030-01-08T09:30:00.000Z'), TimeZone.UTC), true);
+      assert.equal(isNews(task, 'alpha', tasksOf(), elsewhere('alpha', '2030-01-08T09:30:00.000Z'), TimeZone.UTC), true, "app's alpha is another session");
+      assert.equal(isNews(task, 'alpha', tasksOf(), elsewhere('bravo', '2030-01-08T08:30:00.000Z'), TimeZone.UTC), false, 'seen since');
+      assert.equal(isNews(task, 'alpha', tasksOf(finishedBy('alpha')), elsewhere('bravo', '2030-01-08T09:30:00.000Z'), TimeZone.UTC), false, 'the read wins an id both hold');
+    }
   });
 
   it('is news when a time it waits for falls after the owner last touched it, a bare day ending in the team zone', () => {
     const until = (at: string, ownerSeenAt = seen) => p1({ status: 'waiting', waits: [{ kind: 'time', at }], ownerSeenAt });
-    assert.equal(isNews(until('2030-01-08 09:30'), 'alpha', tasksOf(), TimeZone.UTC), true);
-    assert.equal(isNews(until('2030-01-08 08:30'), 'alpha', tasksOf(), TimeZone.UTC), false);
-    assert.equal(isNews(until('2030-01-08 09:30'), 'alpha', tasksOf(), JERUSALEM), true, 'a stored minute is UTC in any zone');
+    assert.equal(isNews(until('2030-01-08 09:30'), 'alpha', tasksOf(), NO_TASKS_ELSEWHERE, TimeZone.UTC), true);
+    assert.equal(isNews(until('2030-01-08 08:30'), 'alpha', tasksOf(), NO_TASKS_ELSEWHERE, TimeZone.UTC), false);
+    assert.equal(isNews(until('2030-01-08 09:30'), 'alpha', tasksOf(), NO_TASKS_ELSEWHERE, JERUSALEM), true, 'a stored minute is UTC in any zone');
     const late = '2030-01-08T23:00:00.000Z';
-    assert.equal(isNews(until('2030-01-08', late), 'alpha', tasksOf(), TimeZone.UTC), true, 'the day ends 23:59 UTC');
-    assert.equal(isNews(until('2030-01-08', late), 'alpha', tasksOf(), JERUSALEM), false, 'the day ended 21:59 UTC there');
+    assert.equal(isNews(until('2030-01-08', late), 'alpha', tasksOf(), NO_TASKS_ELSEWHERE, TimeZone.UTC), true, 'the day ends 23:59 UTC');
+    assert.equal(isNews(until('2030-01-08', late), 'alpha', tasksOf(), NO_TASKS_ELSEWHERE, JERUSALEM), false, 'the day ended 21:59 UTC there');
   });
 
   it('is never news for a wait on a decision or an approval not yet answered', () => {
     const task = p1({ status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }, ON_LEAD], ownerSeenAt: seen });
-    assert.equal(isNews(task, 'alpha', tasksOf(), TimeZone.UTC), false);
+    assert.equal(isNews(task, 'alpha', tasksOf(), NO_TASKS_ELSEWHERE, TimeZone.UTC), false);
   });
 
   it("is news when the giver answered an approval it waits on after the owner's touch, never before or by the owner (T996)", () => {
     const waiting = (answer: ApprovalAnswer) => p1({ status: 'waiting', waits: [ON_LEAD], ownerSeenAt: seen, answer });
-    assert.equal(isNews(waiting(APPROVED), 'alpha', tasksOf(), TimeZone.UTC), true);
-    assert.equal(isNews(waiting(DECLINED), 'alpha', tasksOf(), TimeZone.UTC), true);
-    assert.equal(isNews(waiting({ ...APPROVED, at: '2030-01-08T08:30:00.000Z' }), 'alpha', tasksOf(), TimeZone.UTC), false, 'seen since');
+    assert.equal(isNews(waiting(APPROVED), 'alpha', tasksOf(), NO_TASKS_ELSEWHERE, TimeZone.UTC), true);
+    assert.equal(isNews(waiting(DECLINED), 'alpha', tasksOf(), NO_TASKS_ELSEWHERE, TimeZone.UTC), true);
+    assert.equal(isNews(waiting({ ...APPROVED, at: '2030-01-08T08:30:00.000Z' }), 'alpha', tasksOf(), NO_TASKS_ELSEWHERE, TimeZone.UTC), false, 'seen since');
     const own = p1({ status: 'waiting', waits: [{ kind: 'approval', who: 'alpha' }], ownerSeenAt: seen, answer: { ...APPROVED, by: 'alpha' } });
-    assert.equal(isNews(own, 'alpha', tasksOf(), TimeZone.UTC), false, "the owner's own answer");
+    assert.equal(isNews(own, 'alpha', tasksOf(), NO_TASKS_ELSEWHERE, TimeZone.UTC), false, "the owner's own answer");
   });
 });
 
@@ -207,6 +220,15 @@ describe('decideWake', () => {
     assert.deepEqual(woke.verdict.kind === 'wake' ? woke.verdict.tasks.map((task) => task.id) : [], ['T1']);
     const again = decideWake(input(tasksOf(answered), woke.state, { now: NOW + 120 * MINUTE, batchMs: 0 }));
     assert.deepEqual(again.verdict, { kind: 'none' }, 'one answer wakes it once');
+  });
+
+  it("wakes the owner of a task waiting on another team's task of the tree once that team finishes it, not before (T1139)", () => {
+    const waiting = p1({ status: 'waiting', waits: [{ kind: 'task', id: 'T9' }], ownerSeenAt: '2030-01-08T09:00:00.000Z' });
+    const held = (status: 'in-progress' | 'done', statusAt: string): TasksElsewhere => new Map([['T9', { team: 'app', task: testTask({ id: 'T9', owner: 'alpha', status, statusAt }) }]]);
+    const before = decideWake(input(tasksOf(waiting), QUIET, { batchMs: 0, elsewhere: held('in-progress', '2030-01-08T08:00:00.000Z') }));
+    assert.deepEqual(before.verdict, { kind: 'none' });
+    const woke = decideWake(input(tasksOf(waiting), before.state, { now: NOW + MINUTE, batchMs: 0, elsewhere: held('done', '2030-01-08T10:00:30.000Z') }));
+    assert.deepEqual(woke.verdict.kind === 'wake' ? woke.verdict.tasks.map((task) => task.id) : [], ['T1']);
   });
 
   it('waits out the least gap since the last wake', () => {
