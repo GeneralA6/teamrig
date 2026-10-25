@@ -732,7 +732,8 @@ load mods leaves `/reload-plugins` to you.
 
 An idle session sees new work only at its next prompt. In each interactive tab, every 15 s while no turn runs (a
 subagent's included), the mod runs [`teamrig hook wake-check`](commands.md#teamrig-hook-wake-check) once the task
-log changed, a batch fell due or 10 minutes passed. It wakes the tab's session for a task it owns that another
+log or the session's asks folder (an urgent or `inbox add --wake now` line) changed, a batch fell due or 10 minutes
+passed. It wakes the tab's session for a task it owns that another
 session handed to it, raised, reopened or freed, whose waited-for time came, or whose approval its giver answered
 (its own changes are not news), that it can go on with: open or in-progress, or waiting (a verifying task's proof
 waits) with every wait cleared or answered, and, when never started, with every task it comes `--after` finished; at
