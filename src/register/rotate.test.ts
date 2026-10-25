@@ -15,7 +15,7 @@ import { layoutPaths, readHistory, readSnapshotText, readWorkingSet, snapshotHea
 import { markerRecord } from './marker.ts';
 import { OWN_NUMBERS } from './numbering.ts';
 import { RegisterPolicy } from './policy.ts';
-import { Register, type SkillCatalog } from './register.ts';
+import { NOTHING_ELSEWHERE, Register, type SkillCatalog } from './register.ts';
 import { applyRotation, AUTO_ROTATE_CHARS, planRotation, readBack, RotationRefusedError, type RotationOptions, type RotationPlan } from './rotate.ts';
 import { readEvents, readRegister } from './snapshot.ts';
 import { rotateRegister } from '../testing/rotation.ts';
@@ -315,6 +315,7 @@ function registerOn(files: MemoryFiles | FaultyFiles, autoArchive = true): Regis
     log: new JsonlEventLog(files, LOG),
     mutex: new InlineMutex(),
     numbering: OWN_NUMBERS,
+    elsewhere: NOTHING_ELSEWHERE,
     clock: new FakeClock(at(6)),
     zone: TimeZone.UTC,
     policy: new RegisterPolicy(testConfig()),

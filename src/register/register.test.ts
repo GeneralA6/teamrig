@@ -8,13 +8,15 @@ import { FakeClock } from '../testing/fake-clock.ts';
 import { InlineMutex } from '../testing/inline-mutex.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { rotateRegister } from '../testing/rotation.ts';
+import { testTask } from '../testing/task.ts';
 import { EVENT_VERSION } from './events.ts';
 import { layoutPaths } from './layout.ts';
 import { OWN_NUMBERS, type TaskNumbering } from './numbering.ts';
 import { RegisterPolicy, type Verdict } from './policy.ts';
-import { Register, type SkillCatalog, type WriteResult } from './register.ts';
+import { NOTHING_ELSEWHERE, Register, type ElsewhereReader, type SkillCatalog, type WriteResult } from './register.ts';
 import { readEvents } from './snapshot.ts';
 import { JsonlEventLog } from './store.ts';
+import type { TasksElsewhere } from './tree.ts';
 
 const LOG = 'register/events.jsonl';
 const START = '2030-01-07T09:00:00.000Z';
@@ -33,6 +35,21 @@ class FakeSkills implements SkillCatalog {
   }
 }
 
+/** The tasks a team tree's other registers hold, fixed: counts the writes that read them. */
+class FixedElsewhere implements ElsewhereReader {
+  reads = 0;
+  private readonly tasks: TasksElsewhere;
+
+  constructor(tasks: TasksElsewhere) {
+    this.tasks = tasks;
+  }
+
+  async read(): Promise<TasksElsewhere> {
+    this.reads += 1;
+    return this.tasks;
+  }
+}
+
 /** A numbering shared with registers whose next number is `floor`: counts the creates it numbered. */
 class FloorNumbering implements TaskNumbering {
   issued = 0;
@@ -48,7 +65,7 @@ class FloorNumbering implements TaskNumbering {
   }
 }
 
-function setup(initial: Readonly<Record<string, string>> = {}, numbering: TaskNumbering = OWN_NUMBERS) {
+function setup(initial: Readonly<Record<string, string>> = {}, numbering: TaskNumbering = OWN_NUMBERS, elsewhere: ElsewhereReader = NOTHING_ELSEWHERE) {
   const files = new MemoryFiles(initial);
   const clock = new FakeClock(START);
   const mutex = new InlineMutex();
@@ -57,6 +74,7 @@ function setup(initial: Readonly<Record<string, string>> = {}, numbering: TaskNu
     log: new JsonlEventLog(files, LOG),
     mutex,
     numbering,
+    elsewhere,
     clock,
     zone: TimeZone.UTC,
     policy: new RegisterPolicy(testConfig()),
@@ -385,6 +403,31 @@ describe('Register in a shared numbering (T1139)', () => {
     written(await register.update('lead', 'T5', { priority: 2 }, undefined));
     assert.match(errorOf(await register.add('mallory', { ...INPUT, title: 'Other' })), /mallory is not a session on this team/);
     assert.equal(numbering.issued, 1);
+  });
+});
+
+describe("Register beside its tree's other registers (T1139)", () => {
+  const INPUT = { title: 'Ship it', description: 'what and why', owner: 'alpha', source: 'owner', priority: 1 } as const;
+  const HELD: TasksElsewhere = new Map([['T7', { team: 'app', task: testTask({ id: 'T7', owner: 'lead', status: 'in-progress' }) }]]);
+
+  it('judges each write with the tasks held elsewhere, read once per write, and returns them with it', async () => {
+    const elsewhere = new FixedElsewhere(HELD);
+    const { register } = setup({}, new FloorNumbering(8), elsewhere);
+    written(await register.add('lead', INPUT));
+    written(await register.setStatus('alpha', 'T8', { status: 'in-progress' }));
+    const waiting = written(await register.setStatus('alpha', 'T8', { status: 'waiting', waits: [{ kind: 'task', id: 'T7' }], note: 'needs the app login' }));
+    assert.deepEqual(waiting.task.waits, [{ kind: 'task', id: 'T7' }]);
+    assert.equal(waiting.elsewhere, HELD);
+    assert.equal(elsewhere.reads, 3);
+  });
+
+  it("refuses to change another register's task, naming its team, and writes nothing", async () => {
+    const { register, files } = setup({}, new FloorNumbering(8), new FixedElsewhere(HELD));
+    const refusal = /^T7 is team app's task \(owner lead\): only a session of team app changes it$/;
+    assert.match(errorOf(await register.setStatus('alpha', 'T7', { status: 'in-progress' })), refusal);
+    assert.match(errorOf(await register.update('lead', 'T7', { priority: 1 }, undefined)), refusal);
+    assert.match(errorOf(await register.approve('lead', 'T7', 'approved', undefined)), refusal);
+    assert.equal(files.get(LOG), undefined);
   });
 });
 

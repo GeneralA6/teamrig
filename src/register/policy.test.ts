@@ -8,6 +8,7 @@ import { testTask } from '../testing/task.ts';
 import { foldEvents, type RegisterState, type Task } from './fold.ts';
 import type { DecisionCard } from './card.ts';
 import { CARD_USAGE, DESCRIPTION_NEEDED, GITHUB_ACTOR, normaliseTitle, RegisterPolicy, type AddInput, type AskInput, type ImportInput, type StatusContext, type StatusInput, type Verdict } from './policy.ts';
+import { NO_TASKS_ELSEWHERE, type TasksElsewhere } from './tree.ts';
 import type { WaitReason } from './waits.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 
@@ -17,7 +18,12 @@ const INPUT: AddInput = { title: 'Add a health check', description: 'what and wh
 const TASK: Task = testTask({ status: 'in-progress', startedAt: '2030-01-07T10:00:00.000Z' });
 const NOW = new Date('2030-01-08T12:00:00.000Z');
 /** A status change judged on an empty register at NOW, with no skill on disk. */
-const CTX: StatusContext = { state: EMPTY, now: NOW, zone: TimeZone.UTC, skillExists: false };
+const CTX: StatusContext = { state: EMPTY, elsewhere: NO_TASKS_ELSEWHERE, now: NOW, zone: TimeZone.UTC, skillExists: false };
+
+/** The tasks of the tree's other registers, all on team `web`'s. */
+function elsewhereOf(...tasks: readonly Task[]): TasksElsewhere {
+  return new Map(tasks.map((task) => [task.id, { team: 'web', task }]));
+}
 const OWNER_DECISION: readonly WaitReason[] = [{ kind: 'decision', who: 'owner' }];
 
 /** A register holding these tasks, its next id after the highest. */
@@ -476,6 +482,38 @@ describe('RegisterPolicy.setStatus to waiting', () => {
     assert.equal(waiting(TASK, [{ kind: 'task', id: 'T5' }], finished).ok, true, 'a finished task needs nothing any more');
   });
 
+  it("waits on another register's task of the team tree, judged as one of its own (T1139)", () => {
+    const own = stateOf(TASK);
+    const onWeb = (elsewhere: TasksElsewhere, id: string) =>
+      policy.setStatus(TASK, 'alpha', { status: 'waiting', note: 'x', waits: [{ kind: 'task', id }] }, { ...CTX, state: own, elsewhere });
+    const web = elsewhereOf(
+      testTask({ id: 'T7', owner: 'front', status: 'in-progress' }),
+      testTask({ id: 'T8', owner: 'front', status: 'done' }),
+      testTask({ id: 'T9', owner: 'front', status: 'waiting', startedAt: TASK.startedAt, waits: [{ kind: 'task', id: 'T1' }] }),
+    );
+    assert.equal(onWeb(web, 'T7').ok, true, 'above its own next number');
+    assert.equal(error(onWeb(NO_TASKS_ELSEWHERE, 'T7')), 'no task T7', 'not without the other registers');
+    assert.equal(error(onWeb(web, 'T8')), 'T8 is already finished; nothing to wait on');
+    assert.equal(error(onWeb(web, 'T12')), 'no task T12');
+    assert.match(error(onWeb(web, 'T9')), /^T1 -> T9 -> T1 would be a loop, .* --ask front /, 'a loop through the other register');
+    const below = elsewhereOf(testTask({ id: 'T1', owner: 'front' }));
+    assert.equal(error(onWeb(below, 'T1')), 'T1 cannot wait on itself', 'its own id is its own task, whatever another register holds');
+  });
+
+  it("reads an id below its next number that no register holds as finished", () => {
+    const own = stateOf(TASK, testTask({ id: 'T4' }));
+    const state: RegisterState = { ...own, tasks: new Map([[TASK.id, TASK]]) };
+    assert.equal(error(policy.setStatus(TASK, 'alpha', { status: 'waiting', note: 'x', waits: [{ kind: 'task', id: 'T3' }] }, { ...CTX, state })), 'T3 is already finished; nothing to wait on');
+  });
+
+  it("takes a follow-up another register of the team tree holds", () => {
+    const done = { status: 'done' as const, note: 'ok', evidence: 'abc1234', skill: 'none', followups: ['T7'] };
+    const elsewhere = elsewhereOf(testTask({ id: 'T7', owner: 'front' }));
+    const left = policy.setStatus(TASK, 'alpha', done, { ...CTX, state: stateOf(TASK), elsewhere });
+    assert.deepEqual(left.ok ? left.value.followups : undefined, ['T7']);
+    assert.equal(error(policy.setStatus(TASK, 'alpha', done, { ...CTX, state: stateOf(TASK) })), '--followups names T7, which is not on the task list: add it first (teamrig add)');
+  });
+
   it('waits until a time to come, never one that passed', () => {
     assert.equal(error(waiting(TASK, [{ kind: 'time', at: '2030-01-08 11:59' }])), 'time 01-08 11:59 UTC has passed: name a time to come');
     assert.equal(waiting(TASK, [{ kind: 'time', at: '2030-01-08' }]).ok, true, 'a bare day lasts to its end');
@@ -651,8 +689,25 @@ describe('RegisterPolicy.update', () => {
     const state = stateOf(testTask({ id: 'T1' }), testTask({ id: 'T2', after: ['T1'] }));
     const verdict = policy.add({ ...INPUT, title: 'Ship it', after: ['T2', 'T1'] }, state);
     assert.equal(verdict.ok && verdict.value.after.join(','), 'T2,T1');
-    assert.equal(error(policy.add({ ...INPUT, title: 'Ship it', after: ['T3'] }, state)), 'T3 cannot come after itself', 'T3 is the id it gets');
+    assert.equal(error(policy.add({ ...INPUT, title: 'Ship it', after: ['T3'] }, state)), 'no task T3', 'the id it may get is no task yet');
     assert.equal(error(policy.add({ ...INPUT, title: 'Ship it', after: ['T4'] }, state)), 'no task T4');
+  });
+
+  it("plans a task after another register's of the team tree, which this register's next number may name", () => {
+    const state = stateOf(testTask({ id: 'T1' }));
+    const elsewhere = elsewhereOf(testTask({ id: 'T2', owner: 'front' }), testTask({ id: 'T5', owner: 'front', status: 'done' }));
+    const added = policy.add({ ...INPUT, title: 'Ship it', after: ['T2', 'T5'] }, state, elsewhere);
+    assert.equal(added.ok && added.value.after.join(','), 'T2,T5', 'a finished one too, as on its own register');
+    assert.equal(error(policy.add({ ...INPUT, title: 'Ship it', after: ['T6'] }, state, elsewhere)), 'no task T6');
+    const open = testTask({ id: 'T1', status: 'open' });
+    assert.deepEqual(policy.update(open, 'alpha', { after: ['T2'] }, undefined, state, elsewhere), { ok: true, value: { changes: { after: ['T2'] }, note: null } });
+    assert.equal(error(policy.update(open, 'alpha', { after: ['T2'] }, undefined, state)), 'no task T2', 'not without the other registers');
+  });
+
+  it("refuses a plan dependency that closes a loop through another register's task", () => {
+    const open = testTask({ id: 'T1', status: 'open' });
+    const elsewhere = elsewhereOf(testTask({ id: 'T2', owner: 'front', after: ['T1'] }));
+    assert.match(error(policy.update(open, 'alpha', { after: ['T2'] }, undefined, stateOf(open), elsewhere)), /^T1 -> T2 -> T1 would be a loop, .* teamrig add --owner front /);
   });
 
   it('refuses everyone else and empty changes', () => {

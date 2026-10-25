@@ -8,7 +8,7 @@ import { InlineMutex } from '../testing/inline-mutex.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { LogNumbers, OWN_NUMBERS, TreeNumbering, type NumberSource, type TaskNumbering } from './numbering.ts';
 import { RegisterPolicy } from './policy.ts';
-import { Register } from './register.ts';
+import { NOTHING_ELSEWHERE, Register } from './register.ts';
 import { JsonlEventLog } from './store.ts';
 
 /** A mutex that tells whether a task is running under it. */
@@ -47,6 +47,7 @@ function registerOn(files: MemoryFiles, path: string, numbering: TaskNumbering):
     log: new JsonlEventLog(files, path),
     mutex: new InlineMutex(),
     numbering,
+    elsewhere: NOTHING_ELSEWHERE,
     clock: new FakeClock('2030-01-07T09:00:00.000Z'),
     zone: TimeZone.UTC,
     policy: new RegisterPolicy(testConfig()),
