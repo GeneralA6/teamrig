@@ -233,6 +233,12 @@ pin, so a new pin clears the earlier one in the same write, and handing the task
 groups. A `--note` alone adds context to any task's history, from any session; one from the task's owner also becomes the note `show` and the waiting text print, as a note on `set` does, so a restated note shows at once.
 The status never changes here: use `set`.
 
+In a tree of teams, the lead at its root, who asks the owner every team's decisions, records an answer on a task of
+a team under it, named as its batch prints it: `update web/T12 --note "owner decided: <decision>"`. The note lands in
+that team's register only, by the lead's `<team>/<id>`, and the meeting's end tells the task's owner. It takes only
+`--note`: every field stays that team's to change. Any other session, a root team's task, a team with no config here
+and any other flag are refused, writing nothing; `<team>/<id>` naming your own team says to use `update <id>`.
+
 Flags:
 
 - `--session <id|name>`: the caller.
@@ -255,7 +261,7 @@ Flags:
 - `--pin`: pins the task to the top of its owner's list; the pin names who set it, which `show` prints
   (`pinned by lead: above every other task of api`), and its `list` row says `pinned`.
 - `--unpin`: clears the task's pin.
-- `--note "<text>"`: records a note with the change.
+- `--note "<text>"`: records a note with the change; the only flag with `<team>/<id>`.
 
 Example:
 
@@ -1545,6 +1551,12 @@ Each list shows 10 rows at most, then the command that lists them all. A meeting
 lead runs it. A start counts as asking the owner the decisions it lists: `teamrig decisions` then holds only the
 waits set since and the asked ones past due (since 0.126.0).
 
+In a tree of teams only the root team's lead holds it; a child team's lead is refused: `REFUSED team web meets no
+owner: the owner's daily meeting is app/lead's, whose agenda lists web's waits on the owner`. The root lead's
+`DECISIONS` lists its own team's waits, then those of each team under it, depth first, named `<team>/<id>`
+(`web/T2`), each carded by its own team's rule; its hints add `--team <team>` to ask a question of a team under it
+and `<team>/<id>` to record an answer there. `UNGATED`, `LATE` and `DONE` stay the root team's own.
+
 Flags:
 
 - `--session <area>`: who you are: the lead.
@@ -1631,6 +1643,11 @@ RECORDED 1 decision(s), each told to its task's owner
 With nothing recorded it says so: a decision the register lacks reaches no one. A line the inbox refuses (a team
 secret pattern matched it) prints `NOT TOLD <id>: <why>` first; the rest go on.
 
+In a tree of teams a decision the root lead recorded on a task below (`update web/T2 --note`) reaches that task's
+owner in its own team's inbox, from the lead's address (`app/lead`), scanned with both teams' secret patterns. Its
+row names the owner with its team, `  web/front T2: owner decided: ship it`, as does a refused line, `NOT TOLD
+web/front: <why>`.
+
 ### teamrig decisions
 
 The owner's decisions the lead asks in batches (since 0.126.0), so the owner is not interrupted once per wait: the
@@ -1652,6 +1669,13 @@ and a typed due date, are on the team's clock (`timeZone`); `batchTimesUtc` stay
 lead also wakes it, as an `inbox add --wake now` line does; one that went to a sub-lead leaves the session setting
 the wait the `--wake now` line to post the lead. With `wake.enabled: false` that session is told to message the lead
 instead, as a line then wakes no one. Anyone may run it; it changes nothing.
+
+In a tree of teams the root lead's batch holds the waits of every team under it, after its own, depth first, named
+`<team>/<id>`, on the root team's batch times and `decisions` settings; its `decisions asked` records them all.
+A child team's `decisions` prints its own and its teams' waits, then who asks them: `  app/lead asks owner these in
+its batches and records each answer on its task as a note: "owner decided: <decision>".` Its lead's `decisions
+asked` is refused (`REFUSED team web asks no owner: app/lead asks the owner web's waits, in its batches`), and its
+`start` and `check` print no `DECISIONS` line.
 
 Flags:
 
