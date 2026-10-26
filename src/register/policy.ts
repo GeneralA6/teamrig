@@ -14,7 +14,7 @@ import { ITEM_TYPE_TRAITS, traitsOf } from './item-types.ts';
 import { asksReview, missedTaskIds, reviewGap, reviewGapText, reviewProblem, reviewTexts, type ProblemReview } from './review.ts';
 import { loopFix, needPath, NO_TASKS_ELSEWHERE, pathText, type TasksElsewhere } from './tree.ts';
 import { dueStartHolds, dueVerifyHold, heldStart, startHolds } from './verify.ts';
-import { isPeerWait, sameWait, waitSpelling, type PersonWait, type WaitReason } from './waits.ts';
+import { isPeerWait, sameWait, sameWaits, waitSpelling, type PersonWait, type WaitReason } from './waits.ts';
 
 /** Team policy, applied on WRITE only: the parser accepts any well-formed history. */
 export type Verdict<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: string };
@@ -858,10 +858,6 @@ function dueChange(task: Task, input: StatusInput): Verdict<string | null> {
     return refuse(`--due goes only with --status verifying; teamrig update ${task.id} --due sets it otherwise`);
   }
   return parseUtcDeadline(due) === undefined ? refuse(`due ${due} is not YYYY-MM-DD or YYYY-MM-DD HH:MM`) : ok(due);
-}
-
-function sameWaits(a: readonly WaitReason[], b: readonly WaitReason[]): boolean {
-  return a.length === b.length && a.every((reason) => b.some((other) => sameWait(reason, other)));
 }
 
 /**

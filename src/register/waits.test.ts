@@ -9,6 +9,7 @@ import {
   isWaitKind,
   parseWaits,
   sameWait,
+  sameWaits,
   unfinishedAfter,
   waitContext,
   waitOf,
@@ -44,6 +45,13 @@ describe('waitSpelling, sameWait and isWaitKind', () => {
   it('matches two reasons naming the same thing', () => {
     assert.equal(sameWait(DECISION, { kind: 'decision', who: 'owner' }), true);
     assert.equal(sameWait(DECISION, { kind: 'approval', who: 'owner' }), false);
+  });
+
+  it('matches two lists naming the same reasons in any order', () => {
+    assert.equal(sameWaits([DECISION, APPROVAL], [APPROVAL, DECISION]), true);
+    assert.equal(sameWaits([DECISION], [DECISION, APPROVAL]), false);
+    assert.equal(sameWaits([DECISION], [APPROVAL]), false);
+    assert.equal(sameWaits([], []), true);
   });
 
   it('knows the four kinds only', () => {
