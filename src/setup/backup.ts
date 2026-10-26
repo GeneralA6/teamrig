@@ -69,6 +69,7 @@ export async function backupSetup(ports: SetupPorts, at: SetupLocations, root: s
     createdAt: new Date(now).toISOString(),
     claudeDir: at.claudeDir,
     project: at.project,
+    teamSkills: at.teamSkills,
     files: entries,
     absent,
     skipped: places.skipped,

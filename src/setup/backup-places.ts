@@ -1,4 +1,4 @@
-import { join, relative, sep } from 'node:path';
+import { basename, dirname, join, relative, sep } from 'node:path';
 import type { Files } from '../core/files.ts';
 import type { PathProbe } from '../core/path-probe.ts';
 import { pathKey } from '../core/paths.ts';
@@ -6,13 +6,31 @@ import { CLAUDE_MD_FILES, claudeMemoryDir, foldersUp } from '../doctor/context-f
 import { NESTED_FOLDERS_MAX, nestedClaudeMd } from '../rules/places.ts';
 
 /** The parts of a Claude Code setup, each kept under `files/<kind>/` in a setup backup. */
-export const SETUP_KINDS = ['user', 'project', 'parents', 'memory'] as const;
+export const SETUP_KINDS = ['user', 'project', 'parents', 'memory', 'team-skills'] as const;
 export type SetupKind = (typeof SETUP_KINDS)[number];
 
-/** Where a setup lives: Claude Code's own folder and the project its sessions start in. */
+/** Where a setup lives: Claude Code's own folder, the project its sessions start in and the team's own skills folder. */
 export interface SetupLocations {
   readonly claudeDir: string;
   readonly project: string;
+  /**
+   * The team's skills folder (`paths.skills`) when it is not Claude Code's own, which the user kind keeps: the folder
+   * setup scan reads and a slimming parks skills from. Undefined without a team or with the default folder.
+   */
+  readonly teamSkills: string | undefined;
+}
+
+/** The folder beside a skills folder that a slimming parks its unused skills in. */
+const PARKED_SKILLS = 'skills-parked';
+
+/** {@link SetupLocations.teamSkills} for a team whose skills folder is `skills`: undefined when that is Claude Code's own. */
+export function teamSkillsOf(skills: string | undefined, claudeDir: string): string | undefined {
+  return skills === undefined || pathKey(skills) === pathKey(join(claudeDir, 'skills')) ? undefined : skills;
+}
+
+/** The folders the team-skills kind keeps, below the folder that holds the team's skills folder. */
+function teamSkillsFolders(teamSkills: string): readonly string[] {
+  return [basename(teamSkills), PARKED_SKILLS];
 }
 
 /** One file of the setup: where it is, and where a backup keeps it (`files/<kind>/<its path below the kind's folder, with />`). */
@@ -43,10 +61,10 @@ export interface PlacePorts {
 
 /** In Claude Code's folder. `skills-parked` holds the skills a slimming parked, so a restore can take the parking back. */
 const USER_FILES: readonly (readonly string[])[] = [['CLAUDE.md'], ['settings.json'], ['settings.local.json']];
-const USER_FOLDERS: readonly (readonly string[])[] = ['rules', 'skills', 'skills-parked', 'agents', 'commands', 'output-styles'].map((name) => [name]);
+const USER_FOLDERS: readonly (readonly string[])[] = ['rules', 'skills', PARKED_SKILLS, 'agents', 'commands', 'output-styles'].map((name) => [name]);
 /** In the project folder. */
 const PROJECT_FILES: readonly (readonly string[])[] = [...CLAUDE_MD_FILES, ['.claude', 'settings.json'], ['.claude', 'settings.local.json']];
-const PROJECT_FOLDERS: readonly (readonly string[])[] = ['rules', 'skills', 'skills-parked', 'agents', 'commands'].map((name) => ['.claude', name]);
+const PROJECT_FOLDERS: readonly (readonly string[])[] = ['rules', 'skills', PARKED_SKILLS, 'agents', 'commands'].map((name) => ['.claude', name]);
 
 /** Folders a walk never enters: what they hold is not setup, and can be large. */
 const SKIPPED_NAMES: ReadonlyMap<string, string> = new Map([
@@ -83,7 +101,8 @@ function below(root: string, path: string): string {
 /**
  * The files of the setup at `at`: Claude Code's own CLAUDE.md, settings and rules, skills, parked skills, agents,
  * commands and output styles; the project's CLAUDE.md files (its folders' too, as the rules scan finds them),
- * settings and `.claude` folders; the CLAUDE.md files of each folder above the project; the project's memory folder.
+ * settings and `.claude` folders; the CLAUDE.md files of each folder above the project; the project's memory folder;
+ * the team's own skills folder and the parked skills beside it.
  */
 export async function findSetupPlaces(ports: PlacePorts, at: SetupLocations): Promise<SetupPlaces> {
   const files: SetupFile[] = [];
@@ -144,6 +163,9 @@ export async function findSetupPlaces(ports: PlacePorts, at: SetupLocations): Pr
     }
   }
   await named('memory', claudeMemoryDir(at.claudeDir, at.project), [], [[]]);
+  if (at.teamSkills !== undefined) {
+    await named('team-skills', dirname(at.teamSkills), [], teamSkillsFolders(at.teamSkills).map((name) => [name]));
+  }
   return { files, absent, skipped };
 }
 
@@ -165,6 +187,13 @@ export function sourceOfStored(at: SetupLocations, stored: string): string | und
     const [levels, ...parts] = rest;
     const folder = levels !== undefined && /^[1-9]\d*$/.test(levels) ? foldersUp(at.project)[Number(levels)] : undefined;
     return folder !== undefined && safeParts(parts) ? join(folder, ...parts) : undefined;
+  }
+  if (kind === 'team-skills') {
+    // The kind's root holds the team's whole home, so only its two folders are a place a restore may write.
+    const teamSkills = at.teamSkills;
+    const [folder] = rest;
+    const kept = teamSkills !== undefined && folder !== undefined && teamSkillsFolders(teamSkills).includes(folder);
+    return kept && safeParts(rest) ? join(dirname(teamSkills), ...rest) : undefined;
   }
   const root = kind === 'user' ? at.claudeDir : kind === 'project' ? at.project : kind === 'memory' ? claudeMemoryDir(at.claudeDir, at.project) : undefined;
   return root !== undefined && safeParts(rest) ? join(root, ...rest) : undefined;

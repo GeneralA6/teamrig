@@ -7,13 +7,18 @@ import { claudeMemoryDir } from '../doctor/context-files.ts';
 import { MANIFEST } from '../permissions/trim.ts';
 import { MemoryFiles, MemoryPathProbe } from '../testing/memory-files.ts';
 import { textFileBytes } from '../testing/text-file-bytes.ts';
-import { manifestText, parseManifest, readManifest, type BackupManifest } from './backup-manifest.ts';
-import { findSetupPlaces, sourceOfStored, WALK_DEPTH, type SetupLocations } from './backup-places.ts';
+import { fieldPaths } from '../testing/field-paths.ts';
+import { BACKUP_FORMAT, manifestText, parseManifest, readManifest, type BackupManifest } from './backup-manifest.ts';
+import { findSetupPlaces, sourceOfStored, teamSkillsOf, WALK_DEPTH, type SetupLocations } from './backup-places.ts';
 import { backupSetup, listBackups, sha256Of, storedPath, type SetupPorts } from './backup.ts';
 
 const CLAUDE = join('/', 'u', '.claude');
 const PROJECT = join('/', 'work', 'app');
-const AT: SetupLocations = { claudeDir: CLAUDE, project: PROJECT };
+const AT: SetupLocations = { claudeDir: CLAUDE, project: PROJECT, teamSkills: undefined };
+/** A team whose `paths.skills` moves its skills into its own home. */
+const TEAM_HOME = join('/', 'kit', 'teams', 'app');
+const TEAM_SKILLS = join(TEAM_HOME, 'skills');
+const TEAM_AT: SetupLocations = { ...AT, teamSkills: TEAM_SKILLS };
 const MEMORY = claudeMemoryDir(CLAUDE, PROJECT);
 const ROOT = join('/', 'state', 'teamrig', 'setup-backups');
 const NOW = Date.parse('2030-01-08T10:00:00Z');
@@ -70,11 +75,29 @@ describe('findSetupPlaces', () => {
   it('keeps a file two kinds name once, for the first, when the project is the home folder', async () => {
     const home = join('/', 'u');
     const files = new MemoryFiles({ [join(CLAUDE, 'settings.json')]: '{}', [join(CLAUDE, 'skills', 'a', 'SKILL.md')]: 'a' });
-    const places = await findSetupPlaces(portsOf(files), { claudeDir: CLAUDE, project: home });
+    const places = await findSetupPlaces(portsOf(files), { claudeDir: CLAUDE, project: home, teamSkills: undefined });
     assert.deepEqual(places.files, [
       { kind: 'user', source: join(CLAUDE, 'settings.json'), stored: 'files/user/settings.json' },
       { kind: 'user', source: join(CLAUDE, 'skills', 'a', 'SKILL.md'), stored: 'files/user/skills/a/SKILL.md' },
     ]);
+  });
+
+  it("keeps the team's own skills folder and the parked skills beside it, and nothing else of the team's home", async () => {
+    const files = seeded({
+      [join(TEAM_SKILLS, 'review', 'SKILL.md')]: 'review',
+      [join(TEAM_HOME, 'skills-parked', 'old-team', 'SKILL.md')]: 'parked',
+      [join(TEAM_HOME, 'config.json')]: '{}',
+      [join(TEAM_HOME, 'register', 'tasks.jsonl')]: 'not setup',
+    });
+    const places = await findSetupPlaces(portsOf(files), TEAM_AT);
+    assert.deepEqual(
+      places.files.filter((file) => file.kind === 'team-skills').map((file) => [file.source, file.stored]),
+      [
+        [join(TEAM_SKILLS, 'review', 'SKILL.md'), 'files/team-skills/skills/review/SKILL.md'],
+        [join(TEAM_HOME, 'skills-parked', 'old-team', 'SKILL.md'), 'files/team-skills/skills-parked/old-team/SKILL.md'],
+      ],
+    );
+    assert.deepEqual(places.files.filter((file) => file.kind !== 'team-skills').map((file) => file.stored), STORED);
   });
 
   it(`walks ${WALK_DEPTH} folders deep below a named folder and records the deeper one as skipped`, async () => {
@@ -89,17 +112,32 @@ describe('findSetupPlaces', () => {
   });
 });
 
+describe('teamSkillsOf', () => {
+  it("names the team's skills folder only when it is not Claude Code's own", () => {
+    assert.equal(teamSkillsOf(undefined, CLAUDE), undefined);
+    assert.equal(teamSkillsOf(join(CLAUDE, 'skills'), CLAUDE), undefined);
+    assert.equal(teamSkillsOf(TEAM_SKILLS, CLAUDE), TEAM_SKILLS);
+  });
+});
+
 describe('sourceOfStored', () => {
   it('maps each stored path back to its file', async () => {
-    const places = await findSetupPlaces(portsOf(seeded()), AT);
+    const places = await findSetupPlaces(portsOf(seeded({ [join(TEAM_SKILLS, 'review', 'SKILL.md')]: 'review' })), TEAM_AT);
+    assert.ok(places.files.some((file) => file.kind === 'team-skills'));
     for (const file of places.files) {
-      assert.equal(pathKey(sourceOfStored(AT, file.stored) ?? ''), pathKey(file.source), file.stored);
+      assert.equal(pathKey(sourceOfStored(TEAM_AT, file.stored) ?? ''), pathKey(file.source), file.stored);
     }
   });
 
   it('refuses a path no backup makes, so a restore never writes outside the setup', () => {
-    for (const stored of ['files/user/../../etc/passwd', 'files/user', 'files/user//x', 'files/user/a\\..\\..\\b', 'files/other/x', 'copies/user/x', 'files/parents/0/CLAUDE.md', 'files/parents/9/CLAUDE.md', 'files/parents/x/CLAUDE.md', 'files/parents/1']) {
+    for (const stored of ['files/user/../../etc/passwd', 'files/user', 'files/user//x', 'files/user/a\\..\\..\\b', 'files/other/x', 'copies/user/x', 'files/parents/0/CLAUDE.md', 'files/parents/9/CLAUDE.md', 'files/parents/x/CLAUDE.md', 'files/parents/1', 'files/team-skills/skills/a/SKILL.md']) {
       assert.equal(sourceOfStored(AT, stored), undefined, stored);
+    }
+  });
+
+  it("refuses a team-skills path outside the team's two skills folders", () => {
+    for (const stored of ['files/team-skills/config.json', 'files/team-skills/register/tasks.jsonl', 'files/team-skills', 'files/team-skills/skills/../config.json', 'files/team-skills/..']) {
+      assert.equal(sourceOfStored(TEAM_AT, stored), undefined, stored);
     }
   });
 });
@@ -112,7 +150,7 @@ describe('backupSetup', () => {
     assert.equal(result.dir, join(ROOT, '20300108T100000Z'));
     assert.equal(files.get(storedPath(result.dir, 'files/user/skills/deploy/SKILL.md')), 'deploy');
     assert.equal(files.get(storedPath(result.dir, 'files/parents/1/CLAUDE.md')), 'parent rules');
-    assert.deepEqual([...result.counts], [['user', 4], ['project', 3], ['parents', 1], ['memory', 2]]);
+    assert.deepEqual([...result.counts], [['user', 4], ['project', 3], ['parents', 1], ['memory', 2], ['team-skills', 0]]);
     const read = await readManifest(files, result.dir);
     assert.equal(read.kind, 'read');
     const manifest = read.kind === 'read' ? read.manifest : undefined;
@@ -145,24 +183,46 @@ describe('backupSetup', () => {
 
 describe('parseManifest', () => {
   const manifest: BackupManifest = {
-    format: 1,
+    format: BACKUP_FORMAT,
     createdAt: '2030-01-08T10:00:00.000Z',
     claudeDir: CLAUDE,
     project: PROJECT,
-    files: [{ source: join(CLAUDE, 'CLAUDE.md'), stored: 'files/user/CLAUDE.md', bytes: 3, sha256: 'a'.repeat(64) }],
+    teamSkills: TEAM_SKILLS,
+    files: [
+      { source: join(CLAUDE, 'CLAUDE.md'), stored: 'files/user/CLAUDE.md', bytes: 3, sha256: 'a'.repeat(64) },
+      { source: join(TEAM_SKILLS, 'review', 'SKILL.md'), stored: 'files/team-skills/skills/review/SKILL.md', bytes: 6, sha256: 'b'.repeat(64) },
+    ],
     absent: [join(CLAUDE, 'rules')],
     skipped: [{ path: join(CLAUDE, 'skills', 'node_modules'), why: 'installed packages' }],
   };
-  const [entry] = manifest.files;
+  const [entry, teamEntry] = manifest.files;
 
   it('reads back the manifest it writes', () => {
     assert.deepEqual(parseManifest(manifestText(manifest)), manifest);
   });
 
+  it('writes the fields of its format', () => {
+    const written: Readonly<Record<number, readonly string[]>> = {
+      2: ['absent[]', 'claudeDir', 'createdAt', 'files[].bytes', 'files[].sha256', 'files[].source', 'files[].stored', 'format', 'project', 'skipped[].path', 'skipped[].why', 'teamSkills'],
+    };
+    assert.deepEqual(fieldPaths(JSON.parse(manifestText(manifest))), written[BACKUP_FORMAT]);
+  });
+
+  it('reads a format 1 manifest, made before the team skills folder, as one without it', () => {
+    const files = manifest.files.slice(0, 1);
+    const older = { format: 1, createdAt: manifest.createdAt, claudeDir: CLAUDE, project: PROJECT, files, absent: manifest.absent, skipped: manifest.skipped };
+    assert.deepEqual(parseManifest(JSON.stringify(older)), { ...manifest, teamSkills: undefined, files });
+  });
+
   it('refuses an edited or foreign manifest', () => {
-    assert.ok(entry !== undefined);
+    assert.ok(entry !== undefined && teamEntry !== undefined);
     const edited: readonly unknown[] = [
-      { ...manifest, format: 2 },
+      { ...manifest, format: BACKUP_FORMAT + 1 },
+      { ...manifest, format: 1 },
+      { ...manifest, teamSkills: 'relative' },
+      { ...manifest, teamSkills: 7 },
+      { ...manifest, teamSkills: undefined },
+      { ...manifest, files: [{ ...teamEntry, stored: 'files/team-skills/config.json', source: join(TEAM_HOME, 'config.json') }] },
       { ...manifest, project: 'relative' },
       { ...manifest, files: [{ ...entry, source: join('/', 'etc', 'passwd') }] },
       { ...manifest, files: [{ ...entry, stored: 'files/user/../../etc/passwd' }] },

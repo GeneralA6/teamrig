@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { FileBytes } from '../core/file-bytes.ts';
 import { MANIFEST } from '../permissions/trim.ts';
-import { CliHarness, APP, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
+import { readManifest } from '../setup/backup-manifest.ts';
+import { CliHarness, APP, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { MemoryPathProbe } from '../testing/memory-files.ts';
 import { textFileBytes } from '../testing/text-file-bytes.ts';
 import { EXIT } from './runtime.ts';
@@ -69,6 +70,27 @@ describe('teamrig setup backup', () => {
     const manifest: unknown = JSON.parse(kit.files.get(join(ROOT, STAMP, MANIFEST)) ?? 'null');
     assert.ok(typeof manifest === 'object' && manifest !== null && 'files' in manifest && Array.isArray(manifest.files));
     assert.equal(manifest.files.length, 4);
+  });
+
+  it("keeps the team's own skills folder and its parked skills, and puts them back with the rest", async () => {
+    const kit = new CliHarness({ ...TEAM, paths: { skills: 'skills' } });
+    const teamSkill = join(TEAM_HOME, 'skills', 'review', 'SKILL.md');
+    await kit.files.write(PROJECT_RULES, 'project rules');
+    await kit.files.write(teamSkill, 'review');
+    await kit.files.write(join(TEAM_HOME, 'skills-parked', 'old', 'SKILL.md'), 'old');
+    const result = await kit.run(['setup', 'backup', '--project', APP], optionsOf(kit));
+    assert.equal(result.code, EXIT.ok, result.stderr.join('\n'));
+    assert.ok(result.stdout.includes('  team-skills: 2 file(s)'), result.stdout.join('\n'));
+    const read = await readManifest(kit.files, join(ROOT, STAMP));
+    assert.equal(read.kind === 'read' ? read.manifest.teamSkills : undefined, join(TEAM_HOME, 'skills'));
+    await kit.files.remove(teamSkill);
+    kit.clock.advance(1000);
+    const restored = await kit.run(['setup', 'restore', STAMP, '--yes'], optionsOf(kit));
+    assert.equal(restored.code, EXIT.ok, restored.stderr.join('\n'));
+    // The backup a restore makes first keeps the team's skills too, so the undo puts them back as well.
+    assert.ok(restored.stdout.includes('  team-skills: 1 file(s)'), restored.stdout.join('\n'));
+    assert.ok(restored.stdout.includes(`  RECREATED ${teamSkill}`));
+    assert.equal(kit.files.get(teamSkill), 'review');
   });
 
   it('refuses a project folder that does not exist', async () => {
