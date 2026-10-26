@@ -982,19 +982,20 @@ old, it first prints one `WARN` line each ([the check](requirements.md#the-requi
 
 ### teamrig team split
 
-Plans moving sessions of your team, with the tasks they own, into a new child team under you, the lead. For now it
-only plans: it runs with `--dry-run`, writes nothing and prints the child's config, what your team's config loses, the
-tasks that move and what crosses the new border. The child keeps each moved session's name, launch block and sub-lead
-list, so no tab title changes, and a role it has no holder for names your team's holder as `<team>/<id>`. Each task
-that names a session on the other side of the border, as its source, its pin or a wait, has that name rewritten as
-`<team>/<id>`.
+Moves sessions of your team, with the tasks they own, into a new child team under you, the lead. Run it with
+`--dry-run` first: that writes nothing and prints the plan, the child's config, what your team's config loses, the
+tasks that move, what crosses the new border and what blocks the split. The child keeps each moved session's name,
+launch block and sub-lead list, so no tab title changes, and a role it has no holder for names your team's holder as
+`<team>/<id>`. A moved task's lines go to the child's register with each session that stays, as who wrote a line, the
+owner, the source, the pin or a decision or approval wait, named `<team>/<id>`; a task that stays and names a moved
+session as its source or pin gets an update that names it `<team>/<id>`.
 
 Flags:
 
 - `--session <id|name>`: the caller; it must be the lead.
 - `--lead <id>`: required: the session that leads the child team; it moves too.
 - `--sessions <id,id>`: required: the other sessions that move.
-- `--dry-run`: required for now: print the plan, and write nothing.
+- `--dry-run`: print the plan, and write nothing.
 
 Example:
 
@@ -1005,7 +1006,7 @@ teamrig team split front --lead web --sessions ui --dry-run --session lead
 Output:
 
 ```text
-DRY RUN nothing is written; team split only plans for now
+DRY RUN nothing is written
 TEAM front under shop: lead web (shop-web); sessions web (shop-web), ui (shop-ui)
 WOULD CREATE /home/you/.teamrig/teams/front/config.json:
 {
@@ -1045,11 +1046,32 @@ Besides the sessions, `PARENT` names the `names`, `launch` and `leads` keys your
 names a staying sub-lead whose list loses a moved session, and `UNLED` a staying session whose sub-lead moves, so you
 lead it. `TASKS` counts the moved sessions' tasks by status. `LINK` names an `after` or a task wait between a task that
 moves and one that stays. `INBOX`, `FILES` and `RENAMES` name what each moved session leaves in your team's folders.
+`BLOCKED` names what the split refuses until you clear it: a task that stays and waits on a moved session's decision or
+approval (ask it of a session that stays), or a moved session whose Claude Code runs (close its tab).
 
-It refuses a caller other than the lead, a run without `--dry-run`, a child id another team of the tree has or whose
-folder exists, a session not in your team, your team's lead, and a session that holds one of your team's roles (give
-that role to a session that stays, then split). It also refuses a split that would break the tree's limits (3 levels,
-8 child teams under a team) or the child config's schema.
+Without `--dry-run` it writes the split, one line per step once done:
+
+```text
+MOVED 2 task(s) to /home/you/.teamrig/teams/front/state/events.jsonl; shop's register sends each there
+FILES web: state/inbox/web.md
+FILES ui: state/inbox/ui.md
+RENAMES 0 line(s) moved
+CREATED /home/you/.teamrig/teams/front/config.json
+TRIMMED /home/you/.teamrig/teams/shop/config.json: sessions web, ui left
+VERIFIED 2 task(s) read the same in front, and shop sends each there
+NEXT reopen each moved session from its team: teamrig open front/web; teamrig open front/ui
+```
+
+The tasks move under your register's lock, which reads them again, so a wait set since the dry run still blocks. Your
+register keeps a line for each moved task that sends a read of it to the child. Each moved session's files, its inbox
+among them, move to the same place in the child's folders, and its renames to the child's rename log. Last, both
+registers are read back: a moved task that reads otherwise in the child prints a `PROBLEM` line and exits 1. Nothing
+undoes a step: when one fails, the lines printed before it say what moved already.
+
+It refuses a caller other than the lead, a child id another team of the tree has or whose folder exists, a session not
+in your team, your team's lead, a session that holds one of your team's roles (give that role to a session that stays,
+then split) and what `BLOCKED` names. It also refuses a split that would break the tree's limits (3 levels, 8 child
+teams under a team) or either team's config schema.
 
 ### teamrig team tree
 
