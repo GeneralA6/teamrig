@@ -118,6 +118,7 @@ The task list (the register): its priority levels, what each status change needs
 | `requireProofOnVerifying` | boolean | `true` | Whether teamrig set --status verifying needs --proof, what will prove the shipped change works. |
 | `verifyGate` | one of `"refuse"`, `"warn"` | `"refuse"` | teamrig set --status in-progress while a task it needs (--after, or --waits task:) is verifying: refuse it, or warn and start it. Either way the verifying task's owner gets one inbox line a day about it. |
 | `maxVerifying` | integer (0 to 100) | `5` | A session holding more verifying tasks than this is a PILE-UP in teamrig check; 0 turns the flag off. |
+| `maxReparks` | integer (0 to 20) | `2` | How many times in a row a verifying task's proof may be put off to other waits; past it teamrig set --status verifying with other waits is refused and teamrig check flags REPARKED. 0 turns both off. |
 | `check` | [object](#registercheck) |  | The thresholds of the flags teamrig check raises on tasks. |
 | `review` | [object](#registerreview) |  | How teamrig asks for a bug's review. |
 

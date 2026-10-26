@@ -102,8 +102,12 @@ A shipped change is proven by the session that shipped it, oldest first, before 
   act on) [register.maxVerifying]. Clear each: `done` with the proof, `in-progress` if it failed, verifying with
   `--ask` or `--waits` for what the proof waits on, or a new `--due` with a `--note` saying why. A task already
   started is never held.
-- `check` flags a verifying task that work needs (`VERIFY-BLOCKS`), one past its date (`VERIFY-OVERDUE`) and a
-  session holding more than 5 of them (`PILE-UP` [register.maxVerifying], 0 turns it off).
+- A proof put off to other waits 2 times in a row [register.maxReparks] cannot be put off again: setting the task
+  verifying with other waits is refused, so its owner runs the proof (`done`) or reopens it (`in-progress`). Keeping
+  the same waits, or naming the first waits of a task that had none, is not putting it off.
+- `check` flags a verifying task that work needs (`VERIFY-BLOCKS`), one past its date (`VERIFY-OVERDUE`), one put
+  off to the limit (`REPARKED`) and a session holding more than 5 of them (`PILE-UP` [register.maxVerifying], 0
+  turns it off).
 
 ## Who may change what
 
@@ -254,6 +258,7 @@ checkpoint; a session may run it for itself.
 | `PRIORITY-SKIP` | in progress while a top-priority (`p1`) task of the same owner waits open and free to start (every task it comes after finished), for over 24 h [register.check.prioritySkipAfterHours] | The owner parks the lower task and starts the waiting one; or the lead fixes the order (`update --priority`). |
 | `SELF-MADE` | a session added more than 10 tasks for itself (created by it, asked by no one else) in the last 24 h [register.check.maxSelfMadePerDay] (0 turns it off); raised on the first of them past that count still active | The lead reads them (`list --session <id> --source <id> --status all`): each must serve a goal, a parent task or the week plan, else its owner drops or parks it; a run of the same step with no progress is a loop: the owner stops and asks the lead. |
 | `PILE-UP` | a session holds more than 5 `verifying` tasks [register.maxVerifying] (0 turns it off); raised on its oldest | The owner works its queue, oldest first (`teamrig verify`), before new work. |
+| `REPARKED` | a `verifying` task whose proof was put off to other waits 2 times in a row [register.maxReparks] (0 turns it off); `set` refuses another | The owner runs the proof now and sets it `done`, or reopens it (`in-progress`). |
 | `OVER-PACE` | a session holds more unfinished top-priority (`p1`) tasks (open, in progress or waiting) than the p1 it finished (done or verifying) in the last 7 days, past the first p1, which is in hand, once it has held tasks for 7 days; raised on the first p1 in plan order past that pace | The lead re-prioritizes: lowers the p1s that pace will not reach this week (`update --priority`), moves them to another session, or tells the human what is held. |
 | `OVER-LIMIT` | the first sized to-do task of the week in force that no longer fits the weekly usage limit left, summed in plan order (`teamrig plan` shows the line) | The lead moves it and the sized tasks after it to next week (`update --week`), cuts or re-sizes work, or tells the human. |
 | `OVER-SIZE` | an unfinished sized task whose cost, as the budget meter attributes it over the 8 UTC days it keeps, passed twice its size [register.check.overSizeMultiple] (0 turns it off); none while the W of one percent is unknown | Its owner (or the lead) re-sizes what is left (`update --size`), splits the rest into its own task, or drops it; `teamrig budget --task <id>` shows where the W went. |

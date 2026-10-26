@@ -219,6 +219,13 @@
           "maximum": 100,
           "default": 5
         },
+        "maxReparks": {
+          "description": "How many times in a row a verifying task's proof may be put off to other waits; past it teamrig set --status verifying with other waits is refused and teamrig check flags REPARKED. 0 turns both off.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 20,
+          "default": 2
+        },
         "check": {
           "description": "The thresholds of the flags teamrig check raises on tasks.",
           "type": "object",

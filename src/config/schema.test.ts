@@ -115,6 +115,7 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   reviewRequireOn: 'register.review.requireOn',
   criticalOwners: 'register.review.criticalOwners',
   maxVerifying: 'register.maxVerifying',
+  maxReparks: 'register.maxReparks',
   maxSelfMadePerDay: 'register.check.maxSelfMadePerDay',
   goalProgressDays: 'register.check.goalProgressDays',
   overSizeMultiple: 'register.check.overSizeMultiple',

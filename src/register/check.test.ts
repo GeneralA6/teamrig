@@ -84,6 +84,15 @@ describe('checkTasks', () => {
     assert.deepEqual(checkTasks(pile, NOW, TimeZone.UTC, null, { ...CONFIG, maxVerifying: 0 }), []);
   });
 
+  it('flags a verifying task whose proof was put off maxReparks times, never with 0', () => {
+    const parked = (reparks: number) => testTask({ status: 'verifying', due: '2030-01-11', reparks, ownerSeenAt: FRESH, updatedAt: FRESH });
+    assert.deepEqual(checkTasks([parked(2)], NOW, TimeZone.UTC, null, CONFIG).map((flag) => `${flag.kind} ${flag.task.id}: ${flag.detail}`), [
+      'REPARKED T1: its proof was put off to other waits 2 times [register.maxReparks]: run the proof now, or reopen it',
+    ]);
+    assert.deepEqual(kinds([parked(1)]), []);
+    assert.deepEqual(checkTasks([parked(5)], NOW, TimeZone.UTC, null, { ...CONFIG, maxReparks: 0 }), []);
+  });
+
   it('lets a verifying task with a due date wait quietly for its proof, and calls one with none stale', () => {
     const quiet = (due: string | null) => testTask({ status: 'verifying', due, ownerSeenAt: '2030-01-01T08:00:00.000Z', updatedAt: '2030-01-01T08:00:00.000Z' });
     assert.deepEqual(kinds([quiet('2030-01-12')]), []);
