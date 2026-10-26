@@ -251,7 +251,9 @@ export function coreRuleTexts(config: KitConfig, command: string, platform: Node
       `${pushRule(config.pushGuard, config.prompts.hookAsks)} ${refusedRouteRule(config.prompts.hookAsks)}`,
     worktrees:
       'Edit in your own worktree and branch in every git repo, never a main checkout.' +
-      (platform === 'win32' ? ` Remove a worktree with \`${command} worktree remove <path>\`; a plain \`git worktree remove\` empties the main node_modules.` : '') +
+      // Any other removal (`git worktree remove`, `rm -rf`, `Remove-Item -Recurse`) follows a node_modules junction
+      // into the main checkout's folder and empties it (T1279).
+      (platform === 'win32' ? ` Remove a worktree only with \`${command} worktree remove <path>\`: any other removal may empty the main node_modules.` : '') +
       " Update comments in their code's commit, deleting one you cannot make true; verify a load-bearing comment or recorded number at its source;" +
       ' fix a stale comment, doc or proven-dead code you find in its own commit and tell its area.',
   };
