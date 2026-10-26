@@ -11,10 +11,16 @@ export type TeamrigReload = { readonly fingerprint: string; readonly at: number 
 
 /**
  * The band above the prompt while a refresh's /clear is near (src/mod/clear-hand.ts BandView): the count to the
- * /clear in whole seconds, or that it comes with the restart's next ask. The clear hand writes it each time it
- * changes, null when there is no band, and the band's drawing reads it, so a write redraws the band.
+ * /clear in whole seconds, that it comes with the restart's next ask, the person's hold (their keys in the tab or
+ * their Hold) with the seconds it has left, or what else holds it (a live helper, a draft). The clear hand writes
+ * it each time what it draws changes, null when there is no band, and the band's drawing reads it, so a write
+ * redraws the band.
  */
-export type TeamrigBand = { readonly kind: 'counting'; readonly secondsLeft: number } | { readonly kind: 'refreshing' }
+export type TeamrigBand =
+  | { readonly kind: 'counting'; readonly secondsLeft: number }
+  | { readonly kind: 'refreshing' }
+  | { readonly kind: 'waiting'; readonly by: 'activity' | 'button'; readonly secondsLeft: number }
+  | { readonly kind: 'held'; readonly why: string }
 
 declare module 'claude-code' {
   interface PluginState {

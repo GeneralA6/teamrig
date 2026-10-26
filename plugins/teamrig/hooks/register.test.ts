@@ -158,12 +158,14 @@ interface AskedTab {
   clears: number;
   /** The ask in the tab's file, as the runner last posted it. */
   ask: string;
+  /** What the prompt box holds: empty, or a draft the person left unsent. */
+  draft: string;
 }
 
-/** The runner's nth ask, each one new, carrying the team's default hold: a 20 s count, 5 min after a key. */
+/** The runner's nth ask, each one new, carrying the team's defaults: a 20 s count, 5 min after a key, an ask each 15 s. */
 function askOf(n: number): string {
   const askedAt = new Date(Date.parse(REQUESTED_AT) + n * 15_000).toISOString();
-  return JSON.stringify({ team: 'app', id: 'alpha', at: REQUESTED_AT, askedAt, hold: { countdownMs: 20_000, afterActivityMs: 300_000 } });
+  return JSON.stringify({ team: 'app', id: 'alpha', at: REQUESTED_AT, askedAt, hold: { countdownMs: 20_000, afterActivityMs: 300_000 }, askEveryMs: 15_000 });
 }
 
 /**
@@ -171,7 +173,7 @@ function askOf(n: number): string {
  * session, which builds the clear hand, whose CLI holds each ask the hand holds and hands it each one it claims.
  */
 async function askedTab($: Engine, on: On): Promise<AskedTab> {
-  const tab: AskedTab = { clock: mock.clock(on, { now: 1_000_000 }), claims: [], clears: 0, ask: askOf(1) };
+  const tab: AskedTab = { clock: mock.clock(on, { now: 1_000_000 }), claims: [], clears: 0, ask: askOf(1), draft: '' };
   on('session.id', () => ({ value: TAB }));
   on('session.cwd', () => ({ value: '/work/app' }));
   on('session.root', () => ({ value: '/work/app' }));
@@ -184,7 +186,7 @@ async function askedTab($: Engine, on: On): Promise<AskedTab> {
     return { value: tab.ask };
   });
   on('agent.list', () => ({ value: [] }));
-  on('prompt.read', () => ({ value: { text: '', cursor: 0 } }));
+  on('prompt.read', () => ({ value: { text: tab.draft, cursor: tab.draft.length } }));
   on('process.run', (_$, e) => {
     const [command, ...flags] = e.argv.slice(3);
     if (command === 'clear-claim') {
@@ -227,16 +229,21 @@ async function countingBand($: Engine, tab: AskedTab): Promise<Mounted<'terminal
   return $.ui.mount({ plugin: 'teamrig', surface: 'terminal', component: 'AbovePrompt', props: ABOVE_PROMPT });
 }
 
+/** The band's buttons in order, each by its key and the digit that presses it, undefined where none does. */
+async function buttonsOf(band: Mounted<'terminal', 'AbovePrompt'>): Promise<(readonly [string | undefined, unknown])[]> {
+  return (await band.findAll({ type: 'Button' })).map((button) => [button.key, button.props['hotkey']] as const);
+}
+
 describe("the band before a refresh's /clear", () => {
   test('counts down above the prompt, and Refresh now has the next ask claimed and /clear run', async ($, on) => {
     const tab = await askedTab($, on);
     const band = await countingBand($, tab);
     expect(tab.claims).toEqual([COUNTING]);
     expect((await band.find({ type: 'Text' }))?.text).toBe('teamrig: this session refreshes in 20 s, a fresh start from its handover');
-    expect((await band.findAll({ type: 'Button' })).map((button) => button.key)).toEqual(['refresh-now', 'hold-refresh']);
+    expect(await buttonsOf(band)).toEqual([['refresh-now', '1'], ['hold-refresh', '2']]);
     await band.press({ key: 'refresh-now' });
     expect((await band.find({ type: 'Text' }))?.text).toBe('teamrig: this session is refreshing, a fresh start from its handover');
-    expect((await band.findAll({ type: 'Button' })).map((button) => button.key)).toEqual(['hold-refresh']);
+    expect(await buttonsOf(band)).toEqual([['hold-refresh', '2']]);
     tab.ask = askOf(2);
     await tab.clock.advance(TICK);
     expect(tab.claims).toEqual([COUNTING, []]);
@@ -244,17 +251,27 @@ describe("the band before a refresh's /clear", () => {
     expect(await band.find({ type: 'Button' })).toBeUndefined();
   });
 
-  test("hides at the person's Hold, which holds the next ask", async ($, on) => {
+  test("counts the person's Hold down, which holds the next ask, its buttons leaving the digits to the person", async ($, on) => {
     const tab = await askedTab($, on);
     const band = await countingBand($, tab);
     await band.press({ key: 'hold-refresh' });
-    expect(await band.find({ type: 'Button' })).toBeUndefined();
-    expect(await band.drawn()).toMatchObject({ type: 'Text', children: [ENGINE_ROW] });
+    const waiting = 'teamrig: this session refreshes from its handover; you pressed Hold, so it waits 10 min more';
+    expect((await band.find({ type: 'Text' }))?.text).toBe(waiting);
+    expect(await buttonsOf(band)).toEqual([['refresh-now', undefined], ['hold-refresh', undefined]]);
     tab.ask = askOf(2);
     await tab.clock.advance(TICK);
     expect(tab.claims).toEqual([COUNTING, ['--hold', '--why', 'the person pressed Hold: 10 min left']]);
-    expect(await band.find({ type: 'Button' })).toBeUndefined();
+    expect((await band.find({ type: 'Text' }))?.text).toBe(waiting);
     expect(tab.clears).toBe(0);
+  });
+
+  test('says a draft holds the /clear from the first ask on, before any count, with Hold alone and no digit', async ($, on) => {
+    const tab = await askedTab($, on);
+    tab.draft = 'half a thought';
+    const band = await countingBand($, tab);
+    expect(tab.claims).toEqual([['--hold', '--why', 'the prompt box holds an unsent draft']]);
+    expect((await band.find({ type: 'Text' }))?.text).toBe('teamrig: this session refreshes from its handover once nothing holds it: the prompt box holds an unsent draft');
+    expect(await buttonsOf(band)).toEqual([['hold-refresh', undefined]]);
   });
 
   test("hides at the person's prompt, not at a background task's", async ($, on) => {
