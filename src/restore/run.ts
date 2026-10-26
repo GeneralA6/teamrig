@@ -26,6 +26,7 @@ import {
 import type { RestoreRegistry } from './registry.ts';
 import type { ShutdownLog } from './shutdowns.ts';
 import { teamSessionOf, type RestoreTeam, type TeamSession } from './teams.ts';
+import { KIND_TAIL_BYTES, transcriptKindOf, type TranscriptKind } from './transcript-kind.ts';
 
 /** How long the person has to start, idle or cancel the restore before it starts on its own. */
 export const COUNTDOWN_SECONDS = 60;
@@ -78,10 +79,11 @@ export interface RestoreItem extends Judged {
   readonly why: string;
 }
 
-/** What the machine says of each recorded session: still running, and where its transcript is. */
+/** What the machine says of each recorded session: still running, where its transcript is and what it says. */
 async function factsOf(deps: RestoreDeps, entries: readonly RestoreEntry[], since: number): Promise<JudgeFacts> {
   const running = new Set<string>();
   const transcripts = new Map<string, string>();
+  const kinds = new Map<string, TranscriptKind>();
   // One at a time: on Windows each process check starts a program.
   for (const entry of entries) {
     if (await deps.stillRunning(entry)) {
@@ -90,9 +92,13 @@ async function factsOf(deps: RestoreDeps, entries: readonly RestoreEntry[], sinc
     const transcript = await deps.transcriptOf(entry);
     if (transcript !== undefined) {
       transcripts.set(entry.claudeSession, transcript);
+      const tail = await deps.readTail(transcript, KIND_TAIL_BYTES);
+      if (tail !== undefined) {
+        kinds.set(entry.claudeSession, transcriptKindOf(tail));
+      }
     }
   }
-  return { now: deps.clock.now(), since, shutdownStart: await deps.shutdowns.lastShutdownStart(), running, transcripts };
+  return { now: deps.clock.now(), since, shutdownStart: await deps.shutdowns.lastShutdownStart(), running, transcripts, kinds };
 }
 
 /** The label is the team session's name, else the title the person gave the session, else its short id. */
