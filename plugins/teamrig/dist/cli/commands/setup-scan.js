@@ -4,18 +4,20 @@ import { DEFAULT_PERMISSIONS } from "../../config/defaults.js";
 import { claudeConfigDir, KIT_NAME } from "../../core/home.js";
 import { expandHome } from "../../core/paths.js";
 import { SecretScanner } from "../../core/secrets.js";
-import { pointerTeam, resolveTeam } from "../../core/team.js";
 import { KeepList } from "../../permissions/allow-rules.js";
 import { settingsScope } from "../../permissions/settings-scope.js";
 import { coreRuleTexts } from "../../rules/pack.js";
 import { isCleared, RULE_HASH_CLOCK, ruleHashesOf, verdictsByText, VerdictStore } from "../../rules/verdicts.js";
+import { teamSkillsOf } from "../../setup/backup-places.js";
+import { latestBackupOf, listBackups, setupBackupsDir } from "../../setup/backup.js";
 import { BYTES_PER_MB, scanReport } from "../../setup/scan-report.js";
 import { scanSetup } from "../../setup/scan.js";
 import { teamSettingsScope } from "../allow-scope.js";
 import { noPositionals, UsageError } from "../args.js";
-import { openKit, requireConfig, teamFolders, teamProjectOf } from "../kit.js";
-import { EXIT, RefusedError } from "../runtime.js";
+import { teamFolders, teamProjectOf } from "../kit.js";
+import { EXIT } from "../runtime.js";
 import { teamRulesPathsOf } from "../team-rules.js";
+import { setupTeamOf } from "./setup.js";
 /**
  * `setup scan [--project <dir>] [--days <n>] [--max-mb <n>]`: what the user's Claude Code setup costs every turn in a project, and
  * what to slim (src/setup/scan.ts, its lines src/setup/scan-report.ts). It runs before a team exists too, the first
@@ -43,23 +45,6 @@ function wholeFlagOf(args, flag, fallback) {
     }
     return value;
 }
-/**
- * The team of the project the scan is asked about, by its pointer alone: the caller's `$TEAMRIG_TEAM` names the
- * caller's team, not that project's. Without --project, the caller's team. Undefined before one exists.
- */
-async function scanTeamOf(runtime, asked) {
-    const found = asked === undefined ? await resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [runtime.cwd])) : await pointerTeam(runtime.files, [asked]);
-    switch (found.kind) {
-        case 'none':
-            return undefined;
-        case 'broken':
-            throw new RefusedError(`${found.from} ${found.problem}`);
-        case 'team': {
-            const kit = await openKit(runtime, found.team);
-            return { name: found.team, kit, config: requireConfig(kit, runtime, 'read'), from: found.from };
-        }
-    }
-}
 /** The rule lines a stored verdict still clears: none before a team exists. */
 async function clearedOf(runtime, team) {
     if (team === undefined) {
@@ -80,7 +65,7 @@ export async function scan(args, runtime) {
     const maxMb = wholeFlagOf(args, 'max-mb', DEFAULT_SCAN_MAX_MB);
     const flag = args.flags.get('project');
     const asked = flag === undefined ? undefined : resolve(runtime.cwd, expandHome(flag, runtime.userHome));
-    const team = await scanTeamOf(runtime, asked);
+    const team = await setupTeamOf(runtime, asked);
     const project = asked ?? (team === undefined ? undefined : teamProjectOf(team.config, team.from)) ?? teamFolders(runtime.env, [])[0] ?? runtime.cwd;
     const claudeDir = claudeConfigDir(runtime.env, runtime.userHome);
     const secrets = new SecretScanner(team?.config.register.secretPatterns);
@@ -99,7 +84,9 @@ export async function scan(args, runtime) {
         conflicts: team?.config.ruleConflicts ?? [],
         cleared: await clearedOf(runtime, team),
     });
-    const lines = scanReport(found, { project, team: team?.name, days, now: runtime.clock.now(), maxMb, userHome: runtime.userHome, secrets });
+    const backups = await listBackups({ files: runtime.files, probe: runtime.probe }, setupBackupsDir(runtime.env, runtime.userHome, runtime.platform));
+    const backup = latestBackupOf(backups, { claudeDir, project, teamSkills: teamSkillsOf(team?.kit.paths.skills, claudeDir) });
+    const lines = scanReport(found, { project, team: team?.name, days, now: runtime.clock.now(), maxMb, userHome: runtime.userHome, secrets, backup });
     lines.forEach((line) => runtime.out.stdout(line));
     return EXIT.ok;
 }

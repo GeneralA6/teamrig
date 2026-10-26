@@ -8,7 +8,8 @@ import { applySetupTask, setupTaskDryLines, setupTaskLines, setupTaskStep } from
 import { tabStatusLine } from "../../setup/tab-status-note.js";
 import { applyTeamSetup, planTeamSetup, teamSpecOf } from "../../setup/team-create.js";
 import { onePositional, requiredFlag, UsageError } from "../args.js";
-import { openKit, requireConfig, teamProjectOf } from "../kit.js";
+import { pointerTeam, resolveTeam } from "../../core/team.js";
+import { openKit, requireConfig, teamFolders, teamProjectOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { teamRegister } from "../team-register.js";
 import { loadTree } from "../tree.js";
@@ -34,6 +35,23 @@ export function sessionProjectOf(runtime, config, id, flag, from) {
 /** {@link sessionProjectOf} for each session a pass over the team reads. */
 export function sessionFoldersOf(runtime, config, flag, from) {
     return (id) => sessionProjectOf(runtime, config, id, flag, from);
+}
+/**
+ * The team of the project a setup command is asked about, by its pointer alone: the caller's `$TEAMRIG_TEAM` names
+ * the caller's team, not that project's. Without --project, the caller's team. Undefined before one exists.
+ */
+export async function setupTeamOf(runtime, asked) {
+    const found = asked === undefined ? await resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [runtime.cwd])) : await pointerTeam(runtime.files, [asked]);
+    switch (found.kind) {
+        case 'none':
+            return undefined;
+        case 'broken':
+            throw new RefusedError(`${found.from} ${found.problem}`);
+        case 'team': {
+            const kit = await openKit(runtime, found.team);
+            return { name: found.team, kit, config: requireConfig(kit, runtime, 'read'), from: found.from };
+        }
+    }
 }
 /** One line per file: what the run wrote, or would write, and what it left as it was. */
 function stepLines(step, dryRun) {

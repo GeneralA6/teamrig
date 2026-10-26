@@ -1,15 +1,25 @@
-import { join, relative, sep } from 'node:path';
+import { basename, dirname, join, relative, sep } from 'node:path';
 import { pathKey } from "../core/paths.js";
 import { CLAUDE_MD_FILES, claudeMemoryDir, foldersUp } from "../doctor/context-files.js";
 import { NESTED_FOLDERS_MAX, nestedClaudeMd } from "../rules/places.js";
 /** The parts of a Claude Code setup, each kept under `files/<kind>/` in a setup backup. */
-export const SETUP_KINDS = ['user', 'project', 'parents', 'memory'];
+export const SETUP_KINDS = ['user', 'project', 'parents', 'memory', 'team-skills'];
+/** The folder beside a skills folder that a slimming parks its unused skills in. */
+const PARKED_SKILLS = 'skills-parked';
+/** {@link SetupLocations.teamSkills} for a team whose skills folder is `skills`: undefined when that is Claude Code's own. */
+export function teamSkillsOf(skills, claudeDir) {
+    return skills === undefined || pathKey(skills) === pathKey(join(claudeDir, 'skills')) ? undefined : skills;
+}
+/** The folders the team-skills kind keeps, below the folder that holds the team's skills folder. */
+function teamSkillsFolders(teamSkills) {
+    return [basename(teamSkills), PARKED_SKILLS];
+}
 /** In Claude Code's folder. `skills-parked` holds the skills a slimming parked, so a restore can take the parking back. */
 const USER_FILES = [['CLAUDE.md'], ['settings.json'], ['settings.local.json']];
-const USER_FOLDERS = ['rules', 'skills', 'skills-parked', 'agents', 'commands', 'output-styles'].map((name) => [name]);
+const USER_FOLDERS = ['rules', 'skills', PARKED_SKILLS, 'agents', 'commands', 'output-styles'].map((name) => [name]);
 /** In the project folder. */
 const PROJECT_FILES = [...CLAUDE_MD_FILES, ['.claude', 'settings.json'], ['.claude', 'settings.local.json']];
-const PROJECT_FOLDERS = ['rules', 'skills', 'skills-parked', 'agents', 'commands'].map((name) => ['.claude', name]);
+const PROJECT_FOLDERS = ['rules', 'skills', PARKED_SKILLS, 'agents', 'commands'].map((name) => ['.claude', name]);
 /** Folders a walk never enters: what they hold is not setup, and can be large. */
 const SKIPPED_NAMES = new Map([
     ['node_modules', 'installed packages'],
@@ -43,7 +53,8 @@ function below(root, path) {
 /**
  * The files of the setup at `at`: Claude Code's own CLAUDE.md, settings and rules, skills, parked skills, agents,
  * commands and output styles; the project's CLAUDE.md files (its folders' too, as the rules scan finds them),
- * settings and `.claude` folders; the CLAUDE.md files of each folder above the project; the project's memory folder.
+ * settings and `.claude` folders; the CLAUDE.md files of each folder above the project; the project's memory folder;
+ * the team's own skills folder and the parked skills beside it.
  */
 export async function findSetupPlaces(ports, at) {
     const files = [];
@@ -104,6 +115,9 @@ export async function findSetupPlaces(ports, at) {
         }
     }
     await named('memory', claudeMemoryDir(at.claudeDir, at.project), [], [[]]);
+    if (at.teamSkills !== undefined) {
+        await named('team-skills', dirname(at.teamSkills), [], teamSkillsFolders(at.teamSkills).map((name) => [name]));
+    }
     return { files, absent, skipped };
 }
 /** A stored path's parts after `files/<kind>/`: none empty, `.` or `..`, and no backslash that a Windows path would split on. */
@@ -123,6 +137,13 @@ export function sourceOfStored(at, stored) {
         const [levels, ...parts] = rest;
         const folder = levels !== undefined && /^[1-9]\d*$/.test(levels) ? foldersUp(at.project)[Number(levels)] : undefined;
         return folder !== undefined && safeParts(parts) ? join(folder, ...parts) : undefined;
+    }
+    if (kind === 'team-skills') {
+        // The kind's root holds the team's whole home, so only its two folders are a place a restore may write.
+        const teamSkills = at.teamSkills;
+        const [folder] = rest;
+        const kept = teamSkills !== undefined && folder !== undefined && teamSkillsFolders(teamSkills).includes(folder);
+        return kept && safeParts(rest) ? join(dirname(teamSkills), ...rest) : undefined;
     }
     const root = kind === 'user' ? at.claudeDir : kind === 'project' ? at.project : kind === 'memory' ? claudeMemoryDir(at.claudeDir, at.project) : undefined;
     return root !== undefined && safeParts(rest) ? join(root, ...rest) : undefined;

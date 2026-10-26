@@ -26,7 +26,7 @@ export async function planRestore(ports, dir, manifest) {
         files.push({ entry, action: await actionOf(ports, dir, entry) });
     }
     const kept = new Set(manifest.files.map((entry) => pathKey(entry.source)));
-    const places = await findSetupPlaces(ports, { claudeDir: manifest.claudeDir, project: manifest.project });
+    const places = await findSetupPlaces(ports, { claudeDir: manifest.claudeDir, project: manifest.project, teamSkills: manifest.teamSkills });
     const added = places.files.filter((file) => !kept.has(pathKey(file.source))).map((file) => file.source);
     return { files, added };
 }
