@@ -203,7 +203,7 @@
           "default": true
         },
         "requireProofOnVerifying": {
-          "description": "Whether teamrig set --status verifying needs --proof, what will prove the shipped change works.",
+          "description": "Whether teamrig set --status verifying needs --proof, what will prove the shipped change works, and --waits naming when it runs: a time, or a task in progress or verifying.",
           "type": "boolean",
           "default": true
         },

@@ -102,7 +102,10 @@ export interface RegisterConfig {
    * `--options`, `--recommend`, `--default`; register/card.ts), so the owner decides from it alone.
    */
   readonly requireDecisionCard: boolean;
-  /** Whether `set --status verifying` needs `--proof`, what will prove the shipped change works. */
+  /**
+   * Whether `set --status verifying` needs `--proof`, what will prove the shipped change works, and `--waits` naming
+   * when it runs: a time, or a task in progress or verifying.
+   */
   readonly requireProofOnVerifying: boolean;
   /** What `set --status in-progress` does while a task it needs is still verifying, or, on a first start, while its owner's own verify steps are due. */
   readonly verifyGate: VerifyGate;
