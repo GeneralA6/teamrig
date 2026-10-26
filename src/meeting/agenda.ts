@@ -1,3 +1,4 @@
+import type { AskWith } from '../config/types.ts';
 import { MS_PER_DAY } from '../core/time.ts';
 import { cardLines, cardTexts, GATE_FLAG, namedTaskIds } from '../register/card.ts';
 import { isUngated } from '../register/check.ts';
@@ -69,6 +70,8 @@ export interface AgendaInput {
   /** The lead's session id, which records the decisions. */
   readonly lead: string;
   readonly command: string;
+  /** `decisions.askWith`: whether the lead asks the cards in plain text or with the question picker (T1278). */
+  readonly askWith: AskWith;
 }
 
 /** Text on one line: line breaks and runs of spaces become one space. */
@@ -130,8 +133,18 @@ function decisionCards(tasks: readonly Task[], tree: TaskTree, ownerMarker: stri
 }
 
 /**
+ * How the lead asks the owner the cards it read: in plain text, the owner answering in their own words, unless the
+ * team asks for the question picker (`decisions.askWith`, T1278).
+ */
+function askLine(askWith: AskWith, ownerMarker: string): string {
+  return askWith === 'picker'
+    ? "  Ask the choices with the question picker (AskUserQuestion), at most 4 a call: each card's options as its choices, your recommendation first."
+    : `  Ask in plain text, never with the question picker: each card's options numbered, your recommendation first; ${ownerMarker} answers in their own words.`;
+}
+
+/**
  * DECISIONS: the tasks waiting on the owner, the lead's team's first, then those of each team under it (T1018), each
- * with its card facts, then how to card and record them. The card form is the owner's: each item readable alone,
+ * with its card facts, then how to card, ask and record them. The card form is the owner's: each item readable alone,
  * with the numbers to decide by and one exact action.
  */
 function decisionLines(input: AgendaInput): string[] {
@@ -147,6 +160,7 @@ function decisionLines(input: AgendaInput): string[] {
     head,
     ...[...own, ...below].flat(),
     `  Read each card to ${input.ownerMarker} as it stands, each figure explained; where one says no card yet, ask its owner for it (check flags it NO-CARD). Never point to a doc; \`${input.command} show <id>\` prints a task whole.`,
+    askLine(input.askWith, input.ownerMarker),
     `  A question a card does not answer is its task owner's to find: ${input.command} add --owner <id>${handed} --due <date> --session ${input.lead}, then relay the answer; never look it up yourself.`,
     `  Record each answer in the same turn: ${input.command} update <id>${labelled} --note "${input.ownerMarker} decided: <decision>" --session ${input.lead}; meeting end tells each task's owner.`,
   ];
