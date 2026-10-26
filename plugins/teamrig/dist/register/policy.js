@@ -42,15 +42,23 @@ export class RegisterPolicy {
     config;
     secrets;
     tree;
-    constructor(config) {
+    /** `above`: the parent team's lead, on a child team, who approves the lead's own work (T1140). */
+    constructor(config, above) {
         this.config = config;
         this.secrets = new SecretScanner(config.register.secretPatterns);
-        this.tree = new LeadTree(config);
+        this.tree = new LeadTree(config, above);
     }
-    /** The approvers of the owner's task in words: the lead alone, or its leaders up the tree, nearest first (T781). */
+    /**
+     * The approvers of the owner's task in words: the lead alone, or its leaders up the tree, nearest first (T781); for a
+     * child team's lead, the parent team's lead (T1140).
+     */
     approversText(owner) {
         const approvers = this.tree.approversOf(owner);
-        return approvers.length === 1 ? `the lead (${this.config.roles.lead})` : `a leader above ${owner} (${approvers.join(' or ')})`;
+        if (approvers.length > 1) {
+            return `a leader above ${owner} (${approvers.join(' or ')})`;
+        }
+        const [only] = approvers;
+        return only !== undefined && only === this.tree.above ? `the parent team's lead (${only})` : `the lead (${this.config.roles.lead})`;
     }
     /** The caller must be on the roster before writing anything. */
     checkCaller(session) {
@@ -378,7 +386,7 @@ export class RegisterPolicy {
         if (!requireDecisionCard || card?.gate !== undefined || !owners.some((reason) => reason.kind === 'decision')) {
             return ok(card);
         }
-        const leader = this.tree.leaderOf(task.owner);
+        const leader = this.tree.leaderOf(task.owner) ?? (task.owner === this.tree.lead ? this.tree.above : undefined);
         const elsewhere = leader === undefined ? 'decide it' : `decide it, or wait on your leader (--waits decision:${leader})`;
         return refuse(`only an owner gate or a business decision is ${ownerSource}'s to decide: give ${gateUsage(this.config.ownerGates)}${card === null ? ` with ${CARD_USAGE}` : ''}; any other question is yours however many good answers it has: ${elsewhere}`);
     }
@@ -407,9 +415,9 @@ export class RegisterPolicy {
         }
     }
     /**
-     * Decision and approval waits are for the task owner's leaders (the lead, and any sub-lead above it) and the owner: a
-     * peer's work is a task, waited on by its id, which clears by itself once that task finishes, where a peer's decision
-     * would hold the task until its owner noticed.
+     * Decision and approval waits are for the task owner's leaders (the lead, and any sub-lead above it; for a child
+     * team's lead, the parent team's lead) and the owner: a peer's work is a task, waited on by its id, which clears by
+     * itself once that task finishes, where a peer's decision would hold the task until its owner noticed.
      */
     personWaitProblem(task, status, reason) {
         const { ownerSource } = this.config.register;
@@ -423,8 +431,9 @@ export class RegisterPolicy {
     }
     /**
      * A lead's answer to a task's approval wait (T684): only a leader above the task's owner answers (the lead, or a
-     * sub-lead, T781), only a task waiting on its own approval, and always with a note, which the task's owner reads: what
-     * it checked, or why it declines. An approval of the owner's stays the owner's: no lead answers it.
+     * sub-lead, T781; on a child team's lead's task, the parent team's lead, as `<team>/<id>`, T1140), only a task waiting
+     * on its own approval, and always with a note, which the task's owner reads: what it checked, or why it declines. An
+     * approval of the owner's stays the owner's: no lead answers it.
      */
     approve(task, caller, verdict, note) {
         const { lead } = this.config.roles;

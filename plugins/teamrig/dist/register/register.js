@@ -146,6 +146,17 @@ export class Register {
             return { ok: true, value: [event] };
         }));
     }
+    /**
+     * `approve <team>/<id>`: the parent team's answer to an approval wait of this team's lead (T1140), written as its
+     * lead's `<team>/<id>`. The tree decides who that may be, so this team's roster check is skipped, as in noteFrom; the
+     * policy still holds the answer to the task owner's approvers.
+     */
+    approveFrom(asker, id, verdict, note) {
+        return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => {
+            const change = this.deps.policy.approve(task, asker, verdict, note);
+            return single(change.ok ? { ok: true, value: { ...this.base(id, asker), type: 'update', ...change.value } } : change);
+        }));
+    }
     /** Whether the skill a status change cites exists; true when it cites none. */
     async skillExists(input) {
         const skill = input.skill?.trim();

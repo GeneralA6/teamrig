@@ -21,3 +21,13 @@ export async function loadTree(runtime) {
     const nodes = [...teams].map(([team, { config, roster }]) => teamNodeOf(team, config, roster));
     return { tree: new TeamTree(nodes), teams };
 }
+/**
+ * The parent team's lead, who approves the team's lead's own work (T1140); undefined for a root team, read without the
+ * tree, or for a team whose parent has no config, which `doctor` names.
+ */
+export async function leadAboveOf(runtime, team, config) {
+    if (config.team?.parent === undefined) {
+        return undefined;
+    }
+    return (await loadTree(runtime)).tree.parentLeadOf(team);
+}

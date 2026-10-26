@@ -42,7 +42,7 @@ import { ownerBatchOf } from "../owner-batch.js";
 import { rollUp } from "../roll-up.js";
 import { splitUnowned } from "../unowned.js";
 import { EXIT, RefusedError } from "../runtime.js";
-import { loadTree } from "../tree.js";
+import { leadAboveOf, loadTree } from "../tree.js";
 import { teamRegister } from "../team-register.js";
 import { readBursts } from "../burst-reading.js";
 import { readScaleOutBudget } from "../hire-cost.js";
@@ -59,7 +59,8 @@ function typedTimes(runtime, zone) {
 }
 async function teamOf(runtime, kit, access) {
     const config = requireConfig(kit, runtime, access);
-    return { config, paths: kit.paths, register: teamRegister(runtime, kit.paths, config), roster: await rosterOf(runtime, kit, config), zone: teamZone(config, runtime) };
+    const above = await leadAboveOf(runtime, kit.paths.team, config);
+    return { config, paths: kit.paths, register: teamRegister(runtime, kit.paths, config, above), roster: await rosterOf(runtime, kit, config), zone: teamZone(config, runtime), above };
 }
 async function openTeam(runtime, access) {
     return teamOf(runtime, await openTeamKit(runtime), access);
@@ -69,15 +70,24 @@ function addInputIds(team, input) {
     const source = input.source === team.config.register.ownerSource ? input.source : pastOrPresentIdOf(team.roster, input.source);
     return { ...input, owner: sessionIdOf(team.roster, input.owner), source };
 }
-/** Who a decision or an approval waits for, as an id: a session's name becomes its id, the owner's marker stays. */
+/**
+ * Who a decision or an approval waits for, as an id: a session's name, bare or as `<own team>/<name>`, becomes its id,
+ * the owner's marker stays, and another team's `<team>/<id>` stays as typed, for the policy to judge: the parent team's
+ * lead approves the lead's own work (T1140).
+ */
 function statusInputIds(team, input) {
     if (input.waits === undefined) {
         return input;
     }
     const { ownerSource } = team.config.register;
-    const waits = input.waits.map((reason) => (reason.kind === 'decision' || reason.kind === 'approval') && reason.who !== ownerSource
-        ? { kind: reason.kind, who: sessionIdOf(team.roster, reason.who) }
-        : reason);
+    const idOf = (who) => {
+        const address = splitAddress(who);
+        if (address?.team === undefined) {
+            return sessionIdOf(team.roster, who);
+        }
+        return address.team === team.paths.team ? sessionIdOf(team.roster, address.session) : who;
+    };
+    const waits = input.waits.map((reason) => (reason.kind === 'decision' || reason.kind === 'approval') && reason.who !== ownerSource ? { kind: reason.kind, who: idOf(reason.who) } : reason);
     return { ...input, waits };
 }
 function changeIds(roster, changes) {
@@ -235,9 +245,11 @@ async function tellAssigned(runtime, team, by, task, shown = task.owner) {
  * One inbox line to each leader that a write set a task waiting on, or a verifying task's proof, for a decision or an
  * approval it did not wait on before: a wait on one of the task owner's leaders (the lead, or a sub-lead, T781) goes
  * to that leader, a wait on the owner to the task owner's own leader, which passes it up (the lead keeps the owner's
- * decision queue and asks it in its batch); never to the leader who set it. A new wait on the owner says when the owner
- * hears it (src/decisions/batch.ts): in the next batch, in the one due now, or at once when it is due before the next;
- * at once, the lead is woken or the setter told how to wake it (atOnceNote).
+ * decision queue and asks it in its batch); never to the leader who set it. A wait on the parent team's lead, the
+ * lead's own approver on a child team (T1140), goes to that lead's inbox in the parent team, the task named
+ * `<team>/T12`. A new wait on the owner says when the owner hears it (src/decisions/batch.ts): in the next batch, in the
+ * one due now, or at once when it is due before the next; at once, the lead is woken or the setter told how to wake it
+ * (atOnceNote).
  */
 async function tellLeadersOfWaits(runtime, team, by, verdict) {
     if (!verdict.ok) {
@@ -247,7 +259,7 @@ async function tellLeadersOfWaits(runtime, team, by, verdict) {
     const { ownerSource } = team.config.register;
     const { task, before } = verdict.value;
     const earlier = before?.waits ?? [];
-    const leaders = new LeadTree(team.config);
+    const leaders = new LeadTree(team.config, team.above);
     const approvers = leaders.approversOf(task.owner);
     const added = task.waits.filter((reason) => (reason.kind === 'decision' || reason.kind === 'approval') && !isPeerWait(reason, approvers, ownerSource) && !earlier.some((other) => sameWait(reason, other)));
     const ownLeader = leaders.leaderOf(task.owner) ?? lead;
@@ -257,6 +269,10 @@ async function tellLeadersOfWaits(runtime, team, by, verdict) {
             continue;
         }
         const waits = added.filter((reason) => receiverOf(reason) === receiver);
+        if (receiver === leaders.above) {
+            await tellLeadAbove(runtime, team, by, receiver, personWaitNotice({ ...task, id: `${team.paths.team}/${task.id}` }, waits, receiver));
+            continue;
+        }
         const timing = waits.some((reason) => reason.who === ownerSource) ? await ownerWaitTiming(runtime, team, verdict.value) : undefined;
         const text = `${personWaitNotice(task, waits, receiver)}${timing === undefined ? '' : ` | ${timingText(timing, team.zone)}`}`;
         const posted = await tellLine(runtime, team, by, receiver, text, `${receiver} was not told that ${task.id} waits on it`);
@@ -264,6 +280,22 @@ async function tellLeadersOfWaits(runtime, team, by, verdict) {
             runtime.out.stderr(await atOnceNote(runtime, team, by, task.id, receiver, posted ? text : undefined));
         }
     }
+}
+/**
+ * One inbox line to the parent team's lead (`<team>/<id>`, T1140) in its own team's inbox, from `<team>/<setter>`,
+ * scanned with both teams' secret patterns, as tellAskerOfEnd posts across teams. A line that cannot be posted is
+ * named, never thrown.
+ */
+async function tellLeadAbove(runtime, team, by, above, text) {
+    const address = splitAddress(above);
+    const home = address?.team === undefined ? undefined : (await loadTree(runtime)).teams.get(address.team);
+    if (address === undefined || home === undefined) {
+        runtime.out.stderr(`WARN ${above} was not told of the wait on it: its team has no config in this kit home`);
+        return;
+    }
+    const secrets = new SecretScanner([...team.config.register.secretPatterns, ...home.config.register.secretPatterns]);
+    const from = formatAddress({ team: team.paths.team, id: by });
+    await postNamed(runtime, home.kit.paths, secrets, { to: address.session, from, text }, `${above} was not told of the wait on it`, above);
 }
 /**
  * What the setter of an owner wait due before the next batch is told, so the lead hears of it at once. With wakes on,
@@ -494,12 +526,49 @@ export async function update(args, runtime) {
     return code;
 }
 /**
+ * `approve <team>/<id> --note ".." [--decline]`: the parent team's lead answers an approval wait of team `below`'s
+ * lead (T1140). It lands in that team's register as an event by the caller's `<team>/<id>`; only the lead of the team
+ * just above `below` may, and the policy still holds it to a task of `below`'s lead waiting on it. The task's owner
+ * gets the answer as an inbox line from that address.
+ */
+async function approveBelow(args, runtime, caller, below, id) {
+    const note = args.flags.get('note');
+    const { team } = await findTeam(runtime);
+    if (team === below) {
+        throw new UsageError(`${below}/${id} is a task of your own team: approve ${id}`);
+    }
+    const { from: address, tree } = await treeCallerOf(runtime, team, caller, below);
+    const from = formatAddress(address);
+    const parentLead = tree.parentLeadOf(below);
+    if (parentLead === undefined) {
+        throw new RefusedError(`team ${below} has no parent team, so only its own leaders approve its tasks`);
+    }
+    if (formatAddress(parentLead) !== from) {
+        throw new RefusedError(`only ${formatAddress(parentLead)}, the lead of team ${below}'s parent, approves its tasks from another team; ${from} may not`);
+    }
+    const target = await teamOf(runtime, await openKit(runtime, below), 'write');
+    const verdict = args.switches.has('decline') ? 'declined' : 'approved';
+    const written = await target.register.approveFrom(from, id, verdict, note);
+    const code = report(runtime, written, verdict.toUpperCase(), target, below);
+    const answered = written.ok ? written.value.task : null;
+    if (answered !== null && answered.answer !== null) {
+        const shown = formatAddress({ team: below, id: answered.owner });
+        await tellLine(runtime, target, from, answered.owner, approvalNotice({ id: `${below}/${answered.id}` }, answered.answer), `${shown} was not told of the answer on ${below}/${answered.id}`, shown);
+    }
+    return code;
+}
+/**
  * `approve <id> --note ".." [--decline]`: the lead's answer to a task waiting on its approval (T684); the task's owner
  * gets one inbox line with the answer and the note, and pushes or merges (or fixes what the note names) at once.
+ * `<team>/<id>` answers a child team's lead from the parent team (approveBelow).
  */
 export async function approve(args, runtime) {
-    const id = taskIdOf(onePositional(args, 'id'));
+    const ref = taskRefOf(onePositional(args, 'id'));
     const caller = callerOf(args.flags, runtime.env);
+    if (ref.team !== undefined) {
+        return approveBelow(args, runtime, caller, ref.team, ref.id);
+    }
+    const { id } = ref;
     const team = await openTeam(runtime, 'write');
     const by = sessionIdOf(team.roster, caller);
     const verdict = args.switches.has('decline') ? 'declined' : 'approved';
@@ -520,9 +589,9 @@ function treeFilterOf(roster, filter) {
 }
 /** The caller's own register, as a roll-up of one team. */
 export async function ownRegister(runtime) {
-    const { config, paths, roster, register } = await openTeam(runtime, 'read');
+    const { config, paths, roster, register, above } = await openTeam(runtime, 'read');
     const [snapshot, elsewhere] = await Promise.all([register.snapshot(), register.elsewhere()]);
-    const own = { team: paths.team, config, paths, roster, snapshot, history: () => register.history(), elsewhere };
+    const own = { team: paths.team, config, paths, roster, snapshot, history: () => register.history(), elsewhere, above };
     return { own, teams: [own] };
 }
 /** The registers a command reads: those of `--tree`, else the caller's own. */
@@ -654,14 +723,15 @@ function weekFor(args, snapshot, now, zone) {
 /**
  * The task flags of one register, against its own team's config and day, in its `zone`; with `team`, for
  * `check --tree`, its task ids name it. `leftPct` is what is left of the week's usage target (one account's limit
- * covers every team read). A wait on another register's task of the tree is judged against that task.
+ * covers every team read). A wait on another register's task of the tree is judged against that task, and one on the
+ * parent team's lead, `above`, is the lead's own approver's (T1140).
  */
-function checkRegister({ snapshot, config, elsewhere }, now, zone, week, leftPct, team) {
+function checkRegister({ snapshot, config, elsewhere, above }, now, zone, week, leftPct, team) {
     const tasks = [...snapshot.state.tasks.values()];
     const tree = new TaskTree(snapshot.state.tasks, now, zone, week, elsewhere);
     const dayStart = teamDayStartAt(config.wake.dayStartUtc, now.getTime());
     const progress = noProgressFlag({ tasks, tree, dayStart, days: config.register.check.goalProgressDays, leftPct });
-    const flags = [...checkTasks(tasks, now, zone, week, config.register, elsewhere), ...peerWaitFlags(tasks, new LeadTree(config), config.register.ownerSource), ...(progress === undefined ? [] : [progress])];
+    const flags = [...checkTasks(tasks, now, zone, week, config.register, elsewhere), ...peerWaitFlags(tasks, new LeadTree(config, above), config.register.ownerSource), ...(progress === undefined ? [] : [progress])];
     return { team, flags: flags.sort(byFlagKind), tree };
 }
 /**

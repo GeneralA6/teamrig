@@ -4,9 +4,9 @@ import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf } from "./kit.j
 import { RefusedError } from "./runtime.js";
 import { TreeTasks } from "./tree-tasks.js";
 import { loadTree } from "./tree.js";
-async function readOf(runtime, team, { kit, config, roster }) {
+async function readOf(runtime, team, { kit, config, roster }, kitTree) {
     const log = new JsonlEventLog(runtime.files, kit.paths.events);
-    return { team, config, paths: kit.paths, roster, snapshot: await log.read(), history: () => log.readHistory() };
+    return { team, config, paths: kit.paths, roster, snapshot: await log.read(), history: () => log.readHistory(), above: kitTree.tree.parentLeadOf(team) };
 }
 /**
  * The registers of the team `own` and of every team under it in `kitTree`, depth-first, its own first, each with the
@@ -17,10 +17,10 @@ export async function subtreeOf(runtime, own, kitTree) {
     const team = own.kit.paths.team;
     const order = kitTree.tree.descendantsOf(team);
     const below = [...kitTree.teams].filter(([member]) => order.includes(member)).sort(([a], [b]) => order.indexOf(a) - order.indexOf(b));
-    const ownRead = await readOf(runtime, team, own);
+    const ownRead = await readOf(runtime, team, own, kitTree);
     const belowRead = [];
     for (const [member, loaded] of below) {
-        belowRead.push(await readOf(runtime, member, loaded));
+        belowRead.push(await readOf(runtime, member, loaded, kitTree));
     }
     const treeTasks = new TreeTasks(runtime, kitTree, new Map([ownRead, ...belowRead].map((read) => [read.team, read.snapshot])));
     const withElsewhere = async (read) => ({ ...read, elsewhere: await treeTasks.elsewhereFor(read.team) });
