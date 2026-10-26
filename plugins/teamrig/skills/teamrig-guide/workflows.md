@@ -143,7 +143,7 @@ session asks the owner: with `pickerGuard.enabled`, the question picker, which w
 refused to every session and helper, and to the lead outside the owner's daily meeting. It stays
 waiting until every reason has cleared; `check` flags it `READY` once its tasks are done and its time has passed,
 and a decision or an approval clears when you set the next status (`set --status in-progress`). A new decision or
-approval wait posts the lead one inbox line; a decision for the human goes to the lead with the options, numbers
+approval wait posts the lead one inbox line (a child team's lead's own, the lead of the team above it); a decision for the human goes to the lead with the options, numbers
 and your recommendation. The lead asks the human in batches; when the line says `AT ONCE` (due before the next
 batch), message the lead too. A budget hold is a time (`time:<date>`), never an approval.
 

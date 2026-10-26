@@ -299,7 +299,9 @@ In a tree of teams, a child team's lead answers to the lead of the team just abo
 answers from its own team: `approve web/T3 --note "<what you checked>"`, or with `--decline`. The answer lands in
 that team's register by `app/lead`, and the task's owner gets the inbox line. Only the lead of the team just above
 answers that way; any other session and a root team's task are refused, writing nothing, and `<team>/<id>` naming
-your own team says to use `approve <id>`. The push guard holds a child team's lead to that approval too.
+your own team says to use `approve <id>`. The push guard holds a child team's lead to that approval too. A child
+team's lead's own wait on the owner's decision or approval goes to that lead the same way, its line naming
+`web/T3` and when the owner hears it; the lead at the tree's root asks the owner in its batch.
 
 Flags:
 
