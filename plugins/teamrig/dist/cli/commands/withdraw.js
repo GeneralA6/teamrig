@@ -2,26 +2,17 @@ import { coordinatorPlaces } from "../../coordinator/places.js";
 import { ENV } from "../../core/home.js";
 import { UsageError } from "../args.js";
 import { hostLockOf } from "../coordinator-ports.js";
-import { sessionRef } from "../inputs.js";
-import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
+import { openTeamKit, requireConfig, rosterOf, teamZone } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
-import { envSession, markedSessionOf } from "./hook-input.js";
+import { tabSessionOf } from "./tab-session.js";
 /**
  * The session whose steps are withdrawn: `--session` or `$TEAMRIG_SESSION`, else the session this Claude Code tab is
  * bound to. A tab bound to a session withdraws only that session's steps, so naming another one there is refused.
  */
 async function ownSessionOf(args, runtime, kit, roster) {
-    const named = args.flags.get('session') ?? envSession(runtime);
-    const bound = await markedSessionOf(runtime, kit, roster, runtime.env[ENV.claudeSession]?.trim() ?? null);
-    if (named === undefined) {
-        if (bound === undefined) {
-            throw new UsageError(`--session (or $${ENV.session}) is required outside a tab bound to a session`);
-        }
-        return bound;
-    }
-    const session = sessionIdOf(roster, sessionRef('--session', named));
-    if (bound !== undefined && bound !== session) {
-        throw new RefusedError(`this tab is ${bound}'s: a session withdraws only its own steps, not ${session}'s`);
+    const session = await tabSessionOf(args, runtime, kit, roster, 'withdraws only its own steps');
+    if (session === undefined) {
+        throw new UsageError(`--session (or $${ENV.session}) is required outside a tab bound to a session`);
     }
     return session;
 }
