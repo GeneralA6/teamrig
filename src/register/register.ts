@@ -262,6 +262,27 @@ export class Register {
     );
   }
 
+  /**
+   * A team split's write (T1144), by a session of this team: under the lock, `move` decides on the working set, writes
+   * what goes to the other team and returns the events this register keeps of it, appended as one write; a refusal
+   * appends nothing. Returns the state after them. The log rotates at the next write, as a split is a lead's one-off.
+   */
+  moveOut(caller: string, move: (snapshot: RegisterSnapshot) => Promise<Verdict<readonly RegisterEvent[]>>): Promise<Verdict<RegisterState>> {
+    return this.asCaller(caller, () =>
+      this.deps.mutex.run(async (): Promise<Verdict<RegisterState>> => {
+        const snapshot = await this.writableSnapshot();
+        const moved = await move(snapshot);
+        if (!moved.ok) {
+          return moved;
+        }
+        if (moved.value.length > 0) {
+          await this.deps.log.append(moved.value);
+        }
+        return { ok: true, value: foldEvents(moved.value, [], snapshot.state) };
+      }),
+    );
+  }
+
   /** Whether the skill a status change cites exists; true when it cites none. */
   private async skillExists(input: StatusInput): Promise<boolean> {
     const skill = input.skill?.trim();
@@ -328,10 +349,7 @@ export class Register {
   private async write(decide: (snapshot: RegisterSnapshot, elsewhere: TasksElsewhere) => Verdict<readonly RegisterEvent[]>): Promise<Verdict<WriteResult>> {
     const elsewhere = await this.deps.elsewhere.read();
     return this.deps.mutex.run(async () => {
-      const snapshot = await this.deps.log.read();
-      if (!isWritable(snapshot.read)) {
-        throw new NewerDataError(this.deps.log.path, snapshot.read.newestVersion, EVENT_VERSION);
-      }
+      const snapshot = await this.writableSnapshot();
       const decision = decide(snapshot, elsewhere);
       if (!decision.ok) {
         return decision;
@@ -350,6 +368,15 @@ export class Register {
       const before = snapshot.state.tasks.get(event.id) ?? null;
       return { ok: true, value: { task, before, state, elsewhere, event, events, rotation: await this.rotation(snapshot) } };
     });
+  }
+
+  /** The working set, under the lock; throws when the log holds lines of a newer teamrig, which no write may follow. */
+  private async writableSnapshot(): Promise<RegisterSnapshot> {
+    const snapshot = await this.deps.log.read();
+    if (!isWritable(snapshot.read)) {
+      throw new NewerDataError(this.deps.log.path, snapshot.read.newestVersion, EVENT_VERSION);
+    }
+    return snapshot;
   }
 
   /**

@@ -91,7 +91,7 @@ function written(verdict: Verdict<WriteResult>): WriteResult {
   return verdict.value;
 }
 
-function errorOf(verdict: Verdict<WriteResult>): string {
+function errorOf<T>(verdict: Verdict<T>): string {
   return verdict.ok ? 'allowed' : verdict.error;
 }
 
@@ -231,6 +231,36 @@ describe('Register', () => {
     assert.equal(files.get(LOG), text);
     const next = written(await register.add('lead', { title: 'Next', description: 'what and why', owner: 'alpha', source: 'owner', priority: 1 }));
     assert.equal(next.task.id, 'T2', 'the moved id stays taken');
+  });
+
+  it('moves tasks out under the lock: appends the events the move decides on, and nothing on a refusal (T1144)', async () => {
+    const { files, mutex, register } = setup();
+    written(await register.add('lead', { title: 'Ship it', description: 'what and why', owner: 'alpha', source: 'owner', priority: 1 }));
+    const before = files.get(LOG);
+    const refused = await register.moveOut('lead', async (snapshot) => {
+      assert.ok(snapshot.state.tasks.has('T1'));
+      return { ok: false, error: 'not now' };
+    });
+    assert.deepEqual(refused, { ok: false, error: 'not now' });
+    assert.equal(files.get(LOG), before);
+    const runs = mutex.runs;
+    const moved = await register.moveOut('lead', async () => ({ ok: true, value: [{ v: EVENT_VERSION, type: 'moved', id: 'T1', at: START, by: 'lead', to: 'web' }] }));
+    assert.ok(moved.ok);
+    assert.equal(moved.value.moved.get('T1'), 'web');
+    assert.equal(moved.value.tasks.has('T1'), false);
+    assert.equal(mutex.runs, runs + 1);
+    assert.equal((await register.snapshot()).state.moved.get('T1'), 'web');
+    const none = await register.moveOut('lead', async () => ({ ok: true, value: [] }));
+    assert.ok(none.ok);
+    assert.equal(files.get(LOG)?.split('\n').filter((line) => line !== '').length, 2);
+  });
+
+  it('refuses a move by a session off the roster, and one beside lines from a newer format', async () => {
+    const { register } = setup();
+    const never = async (): Promise<Verdict<readonly []>> => assert.fail('the move must not run');
+    assert.match(errorOf(await register.moveOut('charlie', never)), /charlie/);
+    const newer = `${JSON.stringify({ v: EVENT_VERSION + 1, type: 'create', id: 'T1' })}\n`;
+    await assert.rejects(setup({ [LOG]: newer }).register.moveOut('lead', never), NewerDataError);
   });
 
   it('reads a snapshot without the lock', async () => {
