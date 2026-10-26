@@ -263,12 +263,13 @@ describe('renderCorePack', () => {
   it('keeps every edit in a worktree, in every repo, and names the command that removes one safely', () => {
     const pack = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
     assert.match(pack, /Edit in your own worktree and branch in every git repo, never a main checkout\./);
-    assert.match(pack, /Remove a worktree with `teamrig worktree remove <path>`; a plain `git worktree remove` empties the main node_modules\./);
+    // T1279: any removal but the command, `rm -rf` or `Remove-Item -Recurse` too, not `git worktree remove` alone.
+    assert.match(pack, /Remove a worktree only with `teamrig worktree remove <path>`: any other removal may empty the main node_modules\./);
     assert.doesNotMatch(pack, /rmdir/);
   });
 
   it('names the safe worktree removal on Windows alone', () => {
-    assert.match(renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK), /never a main checkout\. Remove a worktree with /);
+    assert.match(renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK), /never a main checkout\. Remove a worktree only with /);
     const pack = renderCorePack(testConfig(), COMMAND, 'linux', RULES_CLOCK);
     assert.match(pack, /never a main checkout\. Update comments in their code's commit/);
     assert.doesNotMatch(pack, /node_modules|worktree remove/);
