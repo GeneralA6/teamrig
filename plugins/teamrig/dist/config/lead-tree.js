@@ -1,16 +1,21 @@
+import { formatAddress } from "../core/address.js";
 /**
  * The team's lead tree (T781): `roles.lead` at the top, and each sub-lead in `leads` over the sessions it lists. A
- * session's leader is the sub-lead that lists it, else the lead; the lead has none. The parser keeps the tree whole (one
- * leader per session, the lead never a member, no cycles), so every walk here ends at the lead.
+ * session's leader is the sub-lead that lists it, else the lead; the lead has none on its team. The parser keeps the tree
+ * whole (one leader per session, the lead never a member, no cycles), so every walk here ends at the lead. On a child
+ * team, `above` is the parent team's lead (T1140), who approves the lead's own work, as the lead approves its members'.
  */
 export class LeadTree {
     lead;
+    /** The parent team's lead as `<team>/<id>`, on a child team; undefined on a root team. */
+    above;
     sessions;
     /** Each listed member to the sub-lead that leads it. */
     listedLeader;
     subLeads;
-    constructor(config) {
+    constructor(config, above) {
         this.lead = config.roles.lead;
+        this.above = above === undefined ? undefined : formatAddress(above);
         this.sessions = config.sessions;
         this.subLeads = new Set(Object.keys(config.leads));
         this.listedLeader = new Map(Object.entries(config.leads).flatMap(([subLead, members]) => members.map((member) => [member, subLead])));
@@ -35,11 +40,14 @@ export class LeadTree {
     }
     /**
      * Whose decision or approval a session's task may wait on, besides the human owner: its leaders, nearest first, so
-     * the lead always; the lead's own task waits on the lead.
+     * the lead always; the lead's own task waits on the parent team's lead on a child team, else on the lead.
      */
     approversOf(id) {
         const chain = this.chainOf(id);
-        return chain.length === 0 ? [this.lead] : chain;
+        if (chain.length > 0) {
+            return chain;
+        }
+        return id === this.lead && this.above !== undefined ? [this.above] : [this.lead];
     }
     /** The sessions the leader leads directly, in config order: for the lead, every session no sub-lead lists. */
     membersOf(leader) {

@@ -2,6 +2,7 @@ import { tmpdir } from 'node:os';
 import { launchOf } from "../../config/launch.js";
 import { LeadTree } from "../../config/lead-tree.js";
 import { Roster } from "../../config/roster.js";
+import { formatAddress } from "../../core/address.js";
 import { errorMessage, isRecord, stringField } from "../../core/guards.js";
 import { claudeConfigDir, claudeTempDir, KIT_NAME } from "../../core/home.js";
 import { resolveTeam } from "../../core/team.js";
@@ -47,7 +48,7 @@ import { hookLogOf } from "../hook-logs.js";
 import { openKit, renameDepsOf, rosterOf, rulesClockOf, teamFolders, teamZone } from "../kit.js";
 import { EXIT } from "../runtime.js";
 import { readTeamRules } from "../team-rules.js";
-import { loadTree } from "../tree.js";
+import { leadAboveOf, loadTree } from "../tree.js";
 import { bindAfterClear, bindHintOnce, bindTab, inboxLinesFor, readTitle } from "./hook-bind.js";
 import { helperGateOutput, promptBudgetLine, stopBudgetLines } from "./hook-budget.js";
 import { startAutoSync } from "./gh-auto.js";
@@ -92,8 +93,9 @@ async function guardLoadOf(payload, runtime) {
 }
 /**
  * Under `pushToProtected: lead`, what lets this tab's normal push to a protected branch through (T684): the lead's own
- * push, else a waiting task of its session's that a leader above it approved (T781), read lock-free from the register. It never throws:
- * a register it cannot read clears nothing, so the push is refused, saying why.
+ * push, else a waiting task of its session's that a leader above it approved (T781), read lock-free from the register.
+ * A child team's lead is no lead of the whole tree: its push needs the parent team's lead's approval (T1140). It never
+ * throws: a register or tree it cannot read clears nothing, so the push is refused, saying why.
  */
 async function pushClearanceOf(runtime, kit, payload) {
     if (kit === undefined || kit.load.status !== 'loaded') {
@@ -110,7 +112,7 @@ async function pushClearanceOf(runtime, kit, payload) {
             return { kind: 'none', approver: lead, why: 'this tab is not bound to a session of the team, so the guard cannot tell whose push it is' };
         }
         if (session === lead) {
-            return { kind: 'lead', lead };
+            return leadClearanceOf(runtime, kit, config);
         }
         const { state } = await new JsonlEventLog(runtime.files, kit.paths.events).read();
         const approvers = tree.chainOf(session);
@@ -122,6 +124,28 @@ async function pushClearanceOf(runtime, kit, payload) {
     catch (error) {
         return { kind: 'none', approver: lead, why: `the guard could not read the register (${errorMessage(error)})` };
     }
+}
+/**
+ * The lead's own push: cleared on a root team; on a child team (T1140), only by a waiting task of the lead's that the
+ * parent team's lead approved, as `<team>/<id>`. A parent with no config to read clears nothing: whoever approves is
+ * unknown. Throws when the tree or register cannot be read; the caller refuses.
+ */
+async function leadClearanceOf(runtime, kit, config) {
+    const lead = config.roles.lead;
+    const parent = config.team?.parent;
+    if (parent === undefined) {
+        return { kind: 'lead', lead };
+    }
+    const above = await leadAboveOf(runtime, kit.paths.team, config);
+    if (above === undefined) {
+        return { kind: 'none', approver: `the lead of team ${parent}`, why: `team ${parent}, the parent team, has no config to name its lead` };
+    }
+    const approver = formatAddress(above);
+    const { state } = await new JsonlEventLog(runtime.files, kit.paths.events).read();
+    const approved = approvedTaskOf(state.tasks.values(), lead, [approver]);
+    return approved === undefined
+        ? { kind: 'none', approver, why: `${approver}, the lead of the parent team, has approved no waiting task of ${lead}'s` }
+        : { kind: 'approved', by: approved.by, task: approved.task.id };
 }
 /** PreToolUse on Bash and PowerShell: asks before a push to a protected branch, refuses a force-push of one. */
 export async function pushGuard(args, runtime) {
