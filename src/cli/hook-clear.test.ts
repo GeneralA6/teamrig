@@ -25,7 +25,7 @@ async function asked(kit: CliHarness, ask: Partial<ClearAsk> = {}): Promise<Aske
   const store = new RefreshStore(kit.files, { refresh: join(TEAM_HOME, 'state', 'refresh'), handover: join(TEAM_HOME, 'handover') });
   await store.setRestart('alpha', { phase: 'pending', at: AT, pid: 4100, claudeSession: CLAUDE_SESSION, transcript: null, cwd: null, supervised: false });
   const asks = new ClearAsks(kit.files, ASK_DIR);
-  await asks.post(CLAUDE_SESSION, { team: 'app', id: 'alpha', at: AT, askedAt: AT, hold: PERSON_HOLD, ...ask });
+  await asks.post(CLAUDE_SESSION, { team: 'app', id: 'alpha', at: AT, askedAt: AT, hold: PERSON_HOLD, askEveryMs: 15_000, ...ask });
   return { store, asks };
 }
 
@@ -56,7 +56,7 @@ describe('teamrig hook clear-claim', () => {
     const { store, asks } = await asked(kit, { at: '2030-01-08T09:00:00.000Z' });
     assert.deepEqual((await kit.run(CLAIM, FROM_TAB)).stdout, ['declined: the restart is no longer pending']);
     await store.clearRestart('alpha');
-    await asks.post(CLAUDE_SESSION, { team: 'app', id: 'alpha', at: AT, askedAt: AT, hold: PERSON_HOLD });
+    await asks.post(CLAUDE_SESSION, { team: 'app', id: 'alpha', at: AT, askedAt: AT, hold: PERSON_HOLD, askEveryMs: 15_000 });
     assert.deepEqual((await kit.run(CLAIM, FROM_TAB)).stdout, ['declined: the restart is no longer pending'], 'the user typed');
     assert.equal(await asks.withdraw(CLAUDE_SESSION), true);
   });
@@ -119,7 +119,7 @@ describe('teamrig hook clear-claim --hold', () => {
     const { store, asks } = await asked(kit);
     await asks.claim(CLAUDE_SESSION);
     assert.deepEqual((await kit.run(HOLD, FROM_TAB)).stdout, ['declined: the ask was already taken']);
-    await asks.post(CLAUDE_SESSION, { team: 'app', id: 'alpha', at: AT, askedAt: AT, hold: PERSON_HOLD });
+    await asks.post(CLAUDE_SESSION, { team: 'app', id: 'alpha', at: AT, askedAt: AT, hold: PERSON_HOLD, askEveryMs: 15_000 });
     assert.deepEqual((await kit.run(HOLD, FROM_TAB)).stdout, ['held']);
     assert.deepEqual((await kit.run(CLAIM, FROM_TAB)).stdout, ['declined: the ask was already held']);
     assert.equal((await store.restart('alpha'))?.phase, 'pending', 'the lost claim cleared nothing');
