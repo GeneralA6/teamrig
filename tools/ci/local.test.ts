@@ -54,9 +54,12 @@ describe('local (the local gate CLI)', () => {
     const { head, tree } = commit();
     recordPass(tree, head);
     const args = ['--pre-push', 'origin', 'https://example.invalid/repo.git'];
-    const pushed = repo.run(CLI, args, {}, `refs/heads/main ${head} refs/heads/main ${'0'.repeat(40)}\n`);
+    const pushed = repo.run(CLI, args, {}, `refs/heads/topic ${head} refs/heads/topic ${'0'.repeat(40)}\n`);
     assert.equal(pushed.status, 0, pushed.stderr);
-    assert.match(pushed.stdout, /^local checks: refs\/heads\/main \(tree [0-9a-f]{7}\) passed earlier/);
+    assert.match(pushed.stdout, /^local checks: refs\/heads\/topic \(tree [0-9a-f]{7}\) passed earlier/);
+
+    const toMain = repo.run(CLI, args, {}, `refs/heads/topic ${head} refs/heads/main ${'0'.repeat(40)}\n`);
+    assert.deepEqual([toMain.status, toMain.stdout], [1, 'local checks: REFUSED refs/heads/main changes only through a pull request: push a branch of your own and open a pull request from it\n']);
 
     const empty = repo.run(CLI, args);
     assert.deepEqual([empty.status, empty.stdout], [0, 'local checks: nothing to push\n']);

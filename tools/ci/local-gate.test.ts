@@ -207,6 +207,16 @@ describe('provePush', () => {
     assert.deepEqual(runs, []);
   });
 
+  it('refuses an update or a deletion of main before any git call or check', async () => {
+    const reason = 'refs/heads/main changes only through a pull request: push a branch of your own and open a pull request from it';
+    for (const localSha of [HEAD, '0'.repeat(40)]) {
+      const { deps, git, runs } = fixture({ git: { [`rev-parse ${HEAD}^{tree}`]: [TREE] } });
+      const toMain: PushUpdate = { localRef: 'refs/heads/topic', localSha, remoteRef: 'refs/heads/main' };
+      assert.deepEqual(await provePush([push(HEAD), toMain], CHECKS, deps), { passed: false, reason });
+      assert.deepEqual([git.calls, runs], [[], []]);
+    }
+  });
+
   it('runs the checks on the checked-out commit and stops on a failure', async () => {
     const passing = fixture({ git: { [`rev-parse ${HEAD}^{tree}`]: [TREE] } });
     assert.deepEqual(await provePush([push(HEAD), push(HEAD, 'refs/heads/again')], CHECKS, passing.deps), { passed: true });

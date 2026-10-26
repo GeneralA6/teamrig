@@ -1,4 +1,5 @@
 #!/bin/sh
-# Runs every check CI runs on the pushed commits (tools/ci/local.ts), once per tree: a tree that passed
-# is recorded and not checked again. There is no skip: never push with --no-verify.
+# Refuses a push to main, which changes only through a pull request, then runs every check CI runs on the
+# pushed commits (tools/ci/local.ts), once per tree: a tree that passed is recorded and not checked again.
+# There is no skip: never push with --no-verify.
 exec node tools/ci/local.ts --pre-push
