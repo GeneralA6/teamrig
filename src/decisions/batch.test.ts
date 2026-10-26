@@ -1,6 +1,5 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import type { DecisionsConfig } from '../config/types.ts';
 import { TimeZone } from '../core/zone.ts';
 import type { Task } from '../register/fold.ts';
 import { TaskTree } from '../register/tree.ts';
@@ -8,12 +7,12 @@ import { TEST_CARD, TEST_OWNER_CARD } from '../testing/card.ts';
 import { testTask } from '../testing/task.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import { taskLabel } from '../register/views.ts';
-import { decisionBatch, lastBatchTime, nextBatchText, nextBatchTime, triggerText, type BatchInput, type BatchRegister, type OwnerWait } from './batch.ts';
+import { decisionBatch, lastBatchTime, nextBatchText, nextBatchTime, triggerText, type BatchConfig, type BatchInput, type BatchRegister, type OwnerWait } from './batch.ts';
 
 /** A Tuesday, between the 13:03 and 19:03 batch times of the day before and of this day. */
 const NOW = Date.parse('2030-01-08T10:00:00Z');
 const TIMES = ['13:03', '19:03'];
-const CHECKPOINTS: DecisionsConfig = { batchTimesUtc: TIMES, batchAt: 5 };
+const CHECKPOINTS: BatchConfig = { batchTimesUtc: TIMES, batchAt: 5 };
 
 /** A task waiting on the owner's decision since `statusAt`, with a card naming its gate. */
 function ownerWait(id: string, statusAt: string, overrides: Partial<Task> = {}): Task {
@@ -25,7 +24,7 @@ function registerOf(tasks: readonly Task[], team?: string, ownerMarker = 'owner'
   return { team, tasks, tree: new TaskTree(new Map(tasks.map((task) => [task.id, task])), new Date(NOW), TimeZone.UTC), ownerMarker, requireGate };
 }
 
-function inputOf(tasks: readonly Task[], askedAt: string | undefined, config: DecisionsConfig = CHECKPOINTS, others: readonly BatchRegister[] = []): BatchInput {
+function inputOf(tasks: readonly Task[], askedAt: string | undefined, config: BatchConfig = CHECKPOINTS, others: readonly BatchRegister[] = []): BatchInput {
   return { registers: [registerOf(tasks), ...others], now: NOW, askedAt: askedAt === undefined ? undefined : Date.parse(askedAt), config };
 }
 
@@ -93,7 +92,7 @@ describe('the decision batch', () => {
   });
 
   it('with no batch time set, asks at once a wait due within a day, the next meeting at most', () => {
-    const config: DecisionsConfig = { batchTimesUtc: [], batchAt: 5 };
+    const config: BatchConfig = { batchTimesUtc: [], batchAt: 5 };
     const today = decisionBatch(inputOf([ownerWait('T1', '2030-01-08T09:00:00.000Z', { due: '2030-01-08' })], undefined, config));
     const later = decisionBatch(inputOf([ownerWait('T1', '2030-01-08T09:00:00.000Z', { due: '2030-01-10' })], undefined, config));
     assert.deepEqual([today.trigger?.kind, later.trigger, later.nextAt], ['deadline', undefined, undefined]);

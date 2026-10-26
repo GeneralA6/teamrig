@@ -76,13 +76,16 @@ export interface BatchRegister {
   readonly requireGate: boolean;
 }
 
+/** The keys of the team's `decisions` config that time a batch. */
+export type BatchConfig = Pick<DecisionsConfig, 'batchTimesUtc' | 'batchAt'>;
+
 export interface BatchInput {
   /** The registers the lead asks the owner for, its own first. */
   readonly registers: readonly BatchRegister[];
   readonly now: number;
   /** When the lead last asked the owner a batch (askedAtOf); undefined: never. */
   readonly askedAt: number | undefined;
-  readonly config: DecisionsConfig;
+  readonly config: BatchConfig;
 }
 
 /** The batch the lead asks the owner next, and whether it is due now. */

@@ -1,11 +1,10 @@
-import type { DecisionsConfig } from '../config/types.ts';
 import type { Files } from '../core/files.ts';
 import type { TeamPaths } from '../core/home.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { MeetingStore } from '../meeting/state.ts';
 import type { Task } from '../register/fold.ts';
 import { TaskTree, type TasksElsewhere } from '../register/tree.ts';
-import { decisionBatch, type BatchRegister, type DecisionBatch } from './batch.ts';
+import { decisionBatch, type BatchConfig, type BatchRegister, type DecisionBatch } from './batch.ts';
 import { askedAtOf, AskedStore } from './store.ts';
 
 /** One register whose waits on the owner a team's batch holds: the team's own, or that of a team under it (T1018). */
@@ -34,7 +33,7 @@ export type DecisionRegisters = readonly [DecisionRegister, ...DecisionRegister[
 export async function teamDecisions(
   files: Files,
   paths: Pick<TeamPaths, 'decisionsAsked' | 'meeting'>,
-  config: { readonly decisions: DecisionsConfig },
+  config: { readonly decisions: BatchConfig },
   registers: DecisionRegisters,
   now: number,
 ): Promise<DecisionBatch> {
