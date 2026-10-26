@@ -17,7 +17,8 @@
  * `countdownMs` on that band, holding each ask until the count ends, so the person sees the /clear coming;
  * "Refresh now" ends the count and every hold of theirs but a draft. The hand answers each ask at once: the
  * runner ends a tab that leaves an ask unanswered, so a hold is an answer, and the runner asks again after
- * its quiet delay.
+ * its quiet delay. The band shows through every hold, not only the count: what holds the /clear and, for the
+ * person's own holds, how long they have left, so the person never waits on a count that does not start.
  *
  * The mod runs inside Claude Code without Node, so this file imports nothing at run time: it compiles to
  * a module the mod imports as it is, and the CLI shares its file names from here.
@@ -41,22 +42,44 @@ export const DEFAULT_PERSON_HOLD = { countdownMs: 20_000, afterActivityMs: 5 * 6
 /** How long the band's "Hold" button holds the /clear. */
 export const HOLD_BUTTON_MS = 10 * 60_000;
 /**
- * How long the band reads "refreshing" once the count ended or the person pressed "Refresh now": the next ask
- * comes one quiet delay later; a restart that ended meanwhile sends none, and the band must not stay.
+ * How often the restart asks while the hand holds, for an ask that does not say (`askEveryMs`, which a restart
+ * older than it leaves out): `refresh.restartDelaySeconds`' default, 15 s.
  */
-export const REFRESHING_SHOWN_MS = 60_000;
+export const DEFAULT_ASK_EVERY_MS = 15_000;
+/**
+ * How late the restart's next ask may come past its quiet delay (its process lookup and file reads). The band
+ * stays that long past the delay after the last ask the hand held, and no longer: a restart that ended or gave
+ * up meanwhile sends none, and the band must not stay.
+ */
+export const ASK_LATE_MS = 45_000;
+/** A wait as the band reads it: whole minutes, rounded up, from a minute on; seconds below it. */
+function waitText(secondsLeft) {
+    return secondsLeft >= 60 ? `${Math.ceil(secondsLeft / 60)} min` : `${secondsLeft} s`;
+}
 /** The band's line above the prompt for what it shows. */
 export function bandLine(view) {
-    return view.kind === 'counting'
-        ? `teamrig: this session refreshes in ${view.secondsLeft} s, a fresh start from its handover`
-        : 'teamrig: this session is refreshing, a fresh start from its handover';
+    switch (view.kind) {
+        case 'counting':
+            return `teamrig: this session refreshes in ${view.secondsLeft} s, a fresh start from its handover`;
+        case 'refreshing':
+            return 'teamrig: this session is refreshing, a fresh start from its handover';
+        case 'waiting': {
+            const who = view.by === 'button' ? 'you pressed Hold' : 'you were active in this tab';
+            return `teamrig: this session refreshes from its handover; ${who}, so it waits ${waitText(view.secondsLeft)} more`;
+        }
+        case 'held':
+            return `teamrig: this session refreshes from its handover once nothing holds it: ${view.why}`;
+    }
 }
-/** Whether two views draw the same band (undefined: none), so the mod writes the band's value only when it changes. */
+/**
+ * Whether two views draw the same band (undefined: none): the same kind, whose buttons it draws, and the same
+ * line, so the mod writes the band's value only when what it draws changes, not each second of a minute.
+ */
 export function sameBand(a, b) {
     if (a === undefined || b === undefined) {
         return a === b;
     }
-    return a.kind === 'counting' ? b.kind === 'counting' && a.secondsLeft === b.secondsLeft : b.kind === 'refreshing';
+    return a.kind === b.kind && bandLine(a) === bandLine(b);
 }
 /** The statuses of an agent whose loop has ended (Claude Code's `AgentStatus`); every other one is live. */
 const ENDED_AGENT_STATUSES = new Set(['completed', 'failed', 'killed']);
@@ -104,20 +127,27 @@ function holdOf(value) {
     const { countdownMs, afterActivityMs } = value;
     return isDuration(countdownMs) && isDuration(afterActivityMs) ? { countdownMs, afterActivityMs } : DEFAULT_PERSON_HOLD;
 }
-/** The ask file's request and hold; DEFAULT_PERSON_HOLD when it carries none or a damaged one. */
+/**
+ * The ask file's request, hold and delay; DEFAULT_PERSON_HOLD when it carries no hold or a damaged one,
+ * DEFAULT_ASK_EVERY_MS when it carries no delay or a damaged one.
+ */
 export function parseHandAsk(text) {
     let value;
     try {
         value = JSON.parse(text);
     }
     catch {
-        return { request: undefined, hold: DEFAULT_PERSON_HOLD };
+        return { request: undefined, hold: DEFAULT_PERSON_HOLD, askEveryMs: DEFAULT_ASK_EVERY_MS };
     }
     if (!isRecord(value)) {
-        return { request: undefined, hold: DEFAULT_PERSON_HOLD };
+        return { request: undefined, hold: DEFAULT_PERSON_HOLD, askEveryMs: DEFAULT_ASK_EVERY_MS };
     }
-    const { at, hold } = value;
-    return { request: typeof at === 'string' ? at : undefined, hold: holdOf(hold) };
+    const { at, hold, askEveryMs } = value;
+    return {
+        request: typeof at === 'string' ? at : undefined,
+        hold: holdOf(hold),
+        askEveryMs: isDuration(askEveryMs) ? askEveryMs : DEFAULT_ASK_EVERY_MS,
+    };
 }
 function messageOf(error) {
     return error instanceof Error ? error.message : String(error);
@@ -148,45 +178,75 @@ export class ClearHand {
     nowAskedAt;
     /** The band's count for one restart request, which ends at `endsAt`. */
     countdown;
+    /** The last ask the hand held, which the band shows while the restart's next ask is not overdue. */
+    lastHeld;
     constructor(host) {
         this.host = host;
     }
-    /** A turn starts: the ask that comes after it starts a new count. */
+    /** A turn starts: the band hides, and the ask that comes after the turn starts a new count. */
     turnStarted() {
         this.busy = true;
-        this.endCount();
+        this.release();
     }
     turnEnded() {
         this.busy = false;
     }
-    /** The person typed in the prompt box or sent a prompt: the /clear waits `afterActivityMs` from now, and the band hides. */
+    /** The person typed in the prompt box: the /clear waits `afterActivityMs` from now, which the band counts. */
     personActed() {
         this.lastActivity = this.host.now();
         this.countdown = undefined;
+    }
+    /**
+     * The person sent a prompt, which cancels a pending restart (the UserPromptSubmit hook): the /clear waits
+     * `afterActivityMs` from now, and the band hides until the restart asks again.
+     */
+    promptSent() {
+        this.personActed();
+        this.release();
     }
     /** The band's "Refresh now": the next ask is claimed, through every hold of the person's but a draft. */
     refreshNow() {
         this.nowAskedAt = this.host.now();
         this.holdUntil = undefined;
     }
-    /** The band's "Hold": no /clear for HOLD_BUTTON_MS, and the band hides. */
+    /** The band's "Hold": no /clear for HOLD_BUTTON_MS, which the band counts. */
     holdRefresh() {
         this.holdUntil = this.host.now() + HOLD_BUTTON_MS;
         this.endCount();
     }
-    /** What the band above the prompt shows now; undefined: no band. */
+    /**
+     * What the band above the prompt shows now, from the last ask the hand held: undefined when it held none,
+     * and once the restart's next ask is ASK_LATE_MS overdue (the restart ended or gave up).
+     */
     band() {
         const now = this.host.now();
-        const { countdown, nowAskedAt } = this;
-        if (nowAskedAt === undefined && countdown !== undefined && now < countdown.endsAt) {
-            return { kind: 'counting', secondsLeft: Math.ceil((countdown.endsAt - now) / 1000) };
+        const { lastHeld, countdown } = this;
+        if (lastHeld === undefined || now - lastHeld.at >= lastHeld.ask.askEveryMs + ASK_LATE_MS) {
+            return undefined;
         }
-        const since = nowAskedAt ?? countdown?.endsAt;
-        return since !== undefined && now - since < REFRESHING_SHOWN_MS ? { kind: 'refreshing' } : undefined;
+        if (lastHeld.named !== undefined) {
+            return { kind: 'held', why: lastHeld.named };
+        }
+        if (this.nowAskedAt === undefined) {
+            const wait = this.personWait(lastHeld.ask.hold);
+            if (wait !== undefined) {
+                return { kind: 'waiting', by: wait.by, secondsLeft: Math.ceil(wait.msLeft / 1000) };
+            }
+            if (countdown !== undefined && now < countdown.endsAt) {
+                return { kind: 'counting', secondsLeft: Math.ceil((countdown.endsAt - now) / 1000) };
+            }
+        }
+        // "Refresh now", or the count or the person's hold ended: the /clear, or its count, comes with the next ask.
+        return { kind: 'refreshing' };
     }
     endCount() {
         this.countdown = undefined;
         this.nowAskedAt = undefined;
+    }
+    /** The restart's ask is over (claimed, no longer pending, cancelled or a turn ran): no band until the next ask is held. */
+    release() {
+        this.lastHeld = undefined;
+        this.endCount();
     }
     async tick() {
         if (this.ticking) {
@@ -222,19 +282,21 @@ export class ClearHand {
             return { kind: 'busy' };
         }
         const stdin = JSON.stringify({ session_id: claudeSession });
-        const held = await this.heldBy(parseHandAsk(text));
+        const handAsk = parseHandAsk(text);
+        const held = await this.heldBy(handAsk);
         if (held !== undefined) {
-            const hold = await this.host.cli(['hook', 'clear-claim', `--${HOLD_SWITCH}`, `--${WHY_FLAG}`, held], stdin);
+            const hold = await this.host.cli(['hook', 'clear-claim', `--${HOLD_SWITCH}`, `--${WHY_FLAG}`, held.why], stdin);
             if (answered(hold, CLAIM_HELD)) {
-                return { kind: 'held', why: held };
+                this.lastHeld = { at: this.host.now(), ask: handAsk, named: held.named };
+                return { kind: 'held', why: held.why };
             }
-            // The restart is no longer pending: no /clear follows this count.
-            this.endCount();
+            // The restart is no longer pending: no /clear follows this hold.
+            this.release();
             return declined(hold);
         }
         const claim = await this.host.cli(['hook', 'clear-claim'], stdin);
         // Cleared, or the restart is no longer pending: either way the count is over.
-        this.endCount();
+        this.release();
         if (!answered(claim, CLAIM_TAKEN)) {
             return declined(claim);
         }
@@ -246,10 +308,10 @@ export class ClearHand {
      * "Refresh now", their "Hold", their activity in the tab and the band's count. Undefined: claim it.
      */
     async heldBy(ask) {
-        const helper = (await this.helperHold()) ?? (await this.draftHold());
-        if (helper !== undefined) {
+        const named = (await this.helperHold()) ?? (await this.draftHold());
+        if (named !== undefined) {
             this.endCount();
-            return helper;
+            return { why: named, named };
         }
         if (this.nowAskedAt !== undefined) {
             return undefined;
@@ -257,9 +319,10 @@ export class ClearHand {
         const person = this.personHold(ask.hold);
         if (person !== undefined) {
             this.countdown = undefined;
-            return person;
+            return { why: person, named: undefined };
         }
-        return this.countHold(ask);
+        const count = this.countHold(ask);
+        return count === undefined ? undefined : { why: count, named: undefined };
     }
     /** Why a /clear would cut off a helper now, or undefined when the session runs none: a list that fails counts as one. */
     async helperHold() {
@@ -283,16 +346,26 @@ export class ClearHand {
             return `Claude Code would not read the prompt box: ${messageOf(error)}`;
         }
     }
-    /** Why the person holds the /clear now: their "Hold", or their last key or prompt within `afterActivityMs`. */
-    personHold(hold) {
+    /** The person's hold now and the ms it has left: their "Hold", else their last key or prompt within `afterActivityMs`. */
+    personWait(hold) {
         const now = this.host.now();
         if (this.holdUntil !== undefined && now < this.holdUntil) {
-            return `the person pressed Hold: ${Math.ceil((this.holdUntil - now) / 60_000)} min left`;
+            return { by: 'button', msLeft: this.holdUntil - now };
         }
         if (this.lastActivity !== undefined && now - this.lastActivity < hold.afterActivityMs) {
-            return `the person was active in this tab ${Math.floor((now - this.lastActivity) / 1000)} s ago`;
+            return { by: 'activity', msLeft: this.lastActivity + hold.afterActivityMs - now };
         }
         return undefined;
+    }
+    /** Why the person holds the /clear now, for the restart. */
+    personHold(hold) {
+        const wait = this.personWait(hold);
+        if (wait === undefined) {
+            return undefined;
+        }
+        return wait.by === 'button'
+            ? `the person pressed Hold: ${Math.ceil(wait.msLeft / 60_000)} min left`
+            : `the person was active in this tab ${Math.floor((hold.afterActivityMs - wait.msLeft) / 1000)} s ago`;
     }
     /** Starts the band's count at a request's first ask that passed every other hold, and holds until it ends. */
     countHold(ask) {
