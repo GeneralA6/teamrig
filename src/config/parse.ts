@@ -54,12 +54,14 @@ import { BUDGET_ACCOUNT_MAX_LENGTH, CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from '
 import { ConfigReader, describe, isValidRegex, shortLine, type Check, type ConfigIssue } from './reader.ts';
 import {
   AD_HOC_RUNNERS,
+  ASK_WITH,
   PACKAGE_INSTALLS,
   BURST_POLICIES,
   CONFLICT_WINNERS,
   ESCALATIONS,
   HIRING_POLICIES,
   isAdHocRunners,
+  isAskWith,
   isPackageInstalls,
   isBurstPolicy,
   isCommitGate,
@@ -86,6 +88,7 @@ import {
   SECRET_READS,
   SKIP_HOOKS,
   TERMINALS,
+  type AskWith,
   type ContextFilesConfig,
   type ExecConfig,
   type OtherAreaListing,
@@ -471,6 +474,7 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
     decisions: {
       batchTimesUtc: read.stringList(decisions, 'batchTimesUtc', 'decisions', DEFAULT_DECISIONS.batchTimesUtc, isUtcTime, CONFIG_LIMITS.decisionBatchTimes.maxItems),
       batchAt: read.integer(decisions, 'batchAt', 'decisions', DEFAULT_DECISIONS.batchAt, CONFIG_LIMITS.decisionBatchAt),
+      askWith: parseAskWith(read, decisions),
     },
     tabStatus: { enabled: read.boolean(tabStatus, 'enabled', 'tabStatus', false) },
     pickerGuard: { enabled: read.boolean(pickerGuard, 'enabled', 'pickerGuard', false) },
@@ -1127,6 +1131,12 @@ function parseStatusLine(read: ConfigReader, raw: JsonRecord): StatusLineConfig 
     branch: read.boolean(raw, 'branch', path, DEFAULT_STATUS_LINE.branch),
     resume: read.boolean(raw, 'resume', path, DEFAULT_STATUS_LINE.resume),
   };
+}
+
+function parseAskWith(read: ConfigReader, raw: JsonRecord): AskWith {
+  const fallback = DEFAULT_DECISIONS.askWith;
+  const value = read.string(raw, 'askWith', 'decisions', fallback, oneOf(ASK_WITH));
+  return isAskWith(value) ? value : fallback;
 }
 
 function parsePushToProtected(read: ConfigReader, raw: JsonRecord): PushToProtected {

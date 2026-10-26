@@ -485,6 +485,7 @@ When the lead asks the owner the decisions waiting on them (tasks waiting on the
 | --- | --- | --- | --- |
 | `batchTimesUtc` | array (at most 8 items) of string (matching `^([01]\d\|2[0-3]):[0-5]\d$`) | `[]` | The lead's batch times, HH:MM UTC (its budget checkpoints, say): a batch is due once one passed since the last was asked. A wait due before the next batch time is asked at once. With none, a batch comes only at the daily meeting or by batchAt, and a wait due within a day is asked at once. |
 | `batchAt` | integer (0 to 50) | `5` | A batch is due once this many waits on the owner are not yet asked; 0: never by count. |
+| `askWith` | one of `"text"`, `"picker"` | `"text"` | How the lead asks the owner each decision at the daily meeting: text reads the cards in plain text and the owner answers in their own words; picker asks the choices with Claude Code's question picker (AskUserQuestion), at most 4 a call. With pickerGuard on, the picker opens for the lead in the meeting only under picker. |
 
 ## `tabStatus`
 

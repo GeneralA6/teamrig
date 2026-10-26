@@ -1265,18 +1265,25 @@ describe('parseConfig: the decision card', () => {
 });
 
 describe('parseConfig: the owner decision batches', () => {
-  it('reads no batch times and a batch at 5 by default', () => {
-    assert.deepEqual(parseConfig(ROSTER).config.decisions, { batchTimesUtc: [], batchAt: 5 });
+  it('reads no batch times, a batch at 5 and plain-text asks by default', () => {
+    assert.deepEqual(parseConfig(ROSTER).config.decisions, { batchTimesUtc: [], batchAt: 5, askWith: 'text' });
   });
 
-  it('keeps valid batch times and count', () => {
-    const { config, issues } = parseConfig({ ...ROSTER, decisions: { batchTimesUtc: ['13:03', '19:03'], batchAt: 0 } });
-    assert.deepEqual([issues, config.decisions], [[], { batchTimesUtc: ['13:03', '19:03'], batchAt: 0 }]);
+  it('keeps valid batch times, count and way to ask', () => {
+    const { config, issues } = parseConfig({ ...ROSTER, decisions: { batchTimesUtc: ['13:03', '19:03'], batchAt: 0, askWith: 'picker' } });
+    assert.deepEqual([issues, config.decisions], [[], { batchTimesUtc: ['13:03', '19:03'], batchAt: 0, askWith: 'picker' }]);
   });
 
   it('drops a time that is no HH:MM and falls back on a count out of bounds', () => {
     const { config, issues } = parseConfig({ ...ROSTER, decisions: { batchTimesUtc: ['13:03', '25:00'], batchAt: 51 } });
     assert.deepEqual(paths(issues).sort(), ['decisions.batchAt', 'decisions.batchTimesUtc[1]']);
-    assert.deepEqual(config.decisions, { batchTimesUtc: ['13:03'], batchAt: 5 });
+    assert.deepEqual(config.decisions, { batchTimesUtc: ['13:03'], batchAt: 5, askWith: 'text' });
+  });
+
+  it('refuses a way to ask that is neither text nor picker, and asks in plain text', () => {
+    for (const askWith of ['cards', true]) {
+      const { config, issues } = parseConfig({ ...ROSTER, decisions: { askWith } });
+      assert.deepEqual([paths(issues), config.decisions.askWith], [['decisions.askWith'], 'text']);
+    }
   });
 });
