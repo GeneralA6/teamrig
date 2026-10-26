@@ -121,6 +121,7 @@ async function printAgenda(args, runtime, mk, phase) {
         })),
         lead: mk.lead,
         command: KIT_NAME,
+        askWith: mk.config.decisions.askWith,
     });
     lines.forEach((line) => runtime.out.stdout(line));
     await read({ ...args, flags: new Map([['session', mk.lead]]) }, runtime);

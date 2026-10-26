@@ -25,11 +25,11 @@ async function parentLeadOf(runtime, kit, config) {
     return tree.placeOf(kit.paths.team)?.parentLead;
 }
 /**
- * Who the guard refuses the question picker to (hooks/picker-guard.ts); undefined lets the call go. The session is
- * read only for a picker call with the switch on, so the tab-status hook's other events read no file, and the
- * team tree and the meeting only for the lead's own thread.
+ * Why the guard refuses this payload's question picker (hooks/picker-guard.ts); undefined lets the call go. The
+ * session is read only for a picker call with the switch on, so the tab-status hook's other events read no file, and
+ * the team tree and the meeting only for the lead's own thread.
  */
-export async function refusedPickerAsker(runtime, kit, config, payload) {
+export async function pickerRefusal(runtime, kit, config, payload) {
     if (!guardsPicker(config.pickerGuard.enabled, payload)) {
         return undefined;
     }
@@ -40,7 +40,8 @@ export async function refusedPickerAsker(runtime, kit, config, payload) {
     if (asker === undefined) {
         return undefined;
     }
-    return refusesAsker(asker, asker.role === 'lead' && (await meetingOpen(runtime, kit))) ? asker : undefined;
+    const meeting = { open: asker.role === 'lead' && (await meetingOpen(runtime, kit)), askWith: config.decisions.askWith };
+    return refusesAsker(asker, meeting) ? pickerReason(KIT_NAME, asker, meeting) : undefined;
 }
 /** What the hook prints for this payload: the refusal with its reason, or '' when the picker opens. */
 async function pickerGuardOutputOf(runtime, payload) {
@@ -49,16 +50,17 @@ async function pickerGuardOutputOf(runtime, payload) {
     if (kit?.load.status !== 'loaded') {
         return '';
     }
-    const asker = await refusedPickerAsker(runtime, kit, kit.load.config, payload);
-    return asker === undefined ? '' : pickerGuardOutput(pickerReason(KIT_NAME, asker));
+    const reason = await pickerRefusal(runtime, kit, kit.load.config, payload);
+    return reason === undefined ? '' : pickerGuardOutput(reason);
 }
 /**
  * PreToolUse on AskUserQuestion: with `pickerGuard.enabled`, refuses the question picker in every team session and
- * every helper, the lead's own thread too unless the owner's daily meeting is open, and a sub-team's lead always,
- * with a reason that says to decide it if it is the caller's own, else record it as a decision card (a sub-team's
- * lead also tells its parent lead) and go on with the next task. Outside a
- * team, with the guard off, for the lead in a meeting, a tab that is no team session, input that is not a hook
- * payload or on any error, it prints nothing, so the picker opens.
+ * every helper, the lead's own thread too unless the owner's daily meeting is open and asks with the picker
+ * (`decisions.askWith`), and a sub-team's lead always, with a reason that says to decide it if it is the caller's
+ * own, else record it as a decision card (a sub-team's lead also tells its parent lead) and go on with the next task;
+ * the lead in a meeting that asks in plain text is told to ask so. Outside a team, with the guard off, for the lead in
+ * a meeting that asks with the picker, a tab that is no team session, input that is not a hook payload or on any
+ * error, it prints nothing, so the picker opens.
  */
 export async function pickerGuard(args, runtime) {
     noPositionals(args);
