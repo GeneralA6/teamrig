@@ -93,8 +93,14 @@ interface OpenHeredoc {
 export interface ShellParse {
   /** Every simple command in order; a substitution's commands come before the command that holds them. */
   readonly commands: readonly ShellCommand[];
-  /** False when a quote, a bracket or a substitution never closes, or nesting runs too deep: the line is not read with confidence. */
+  /** False when a quote, a bracket or a substitution never closes, or text is skipped: the line is not read with confidence. */
   readonly complete: boolean;
+  /**
+   * True when the reader left text unread that may hold commands: nesting ran too deep, or a single-quoted
+   * piece of a quoted `${...}` holds more than plain text, which bash may expand. Text that only never
+   * closes is still read to its end.
+   */
+  readonly skipped: boolean;
   /** bash heredoc bodies no command reads on stdin, such as the first of `cat <<A <<B` or one on a line with no command. */
   readonly unreadBodies: readonly ShellWord[];
   /**
@@ -119,6 +125,8 @@ export function parseShell(command: string, dialect: ShellDialect): ShellParse {
 /**
  * The commands bash runs when an expansion reads a word's {@link ShellWord.held} text again: the substitutions
  * in it, read as in an unquoted heredoc's body, where quotes are plain text and a backslash keeps a `$`.
+ * bash expands that text left to right, so where it never closes bash stops at the error after running the
+ * substitutions before it, which the commands hold; only {@link ShellParse.skipped} text may hide one.
  */
 export function parseHeldText(held: string): ShellParse {
   return new Scanner(held, 'bash', { nesting: 0, subshells: [], ids: { next: 0 } }).parseExpandable();
@@ -288,6 +296,7 @@ interface ScanScope {
 class Scanner {
   private index = 0;
   private complete = true;
+  private skipped = false;
   private nesting: number;
   private readonly commands: ScannedCommand[] = [];
   /** bash heredocs opened since the last newline, in order. */
@@ -316,13 +325,24 @@ class Scanner {
   /** Reads the whole source as expandable text; the commands are those of the substitutions in it. */
   parseExpandable(): ShellParse {
     this.readExpandable(new WordBuilder(true), this.source.length);
-    return { commands: this.commands, complete: this.complete, unreadBodies: this.unreadBodies, bindingsUnclear: this.bindingsUnclear };
+    return this.result();
   }
 
   /** Reads the whole source; its commands stay open to the separators an enclosing scanner adds after them. */
   private scan(): ShellParse & { readonly commands: ScannedCommand[] } {
     this.readList(false);
-    return { commands: this.commands, complete: this.complete, unreadBodies: this.unreadBodies, bindingsUnclear: this.bindingsUnclear };
+    return this.result();
+  }
+
+  /** What the reader found so far. */
+  private result(): ShellParse & { readonly commands: ScannedCommand[] } {
+    return { commands: this.commands, complete: this.complete, skipped: this.skipped, unreadBodies: this.unreadBodies, bindingsUnclear: this.bindingsUnclear };
+  }
+
+  /** Notes text the reader leaves unread that may hold commands; see {@link ShellParse.skipped}. */
+  private skip(): void {
+    this.complete = false;
+    this.skipped = true;
   }
 
   /** Adds separator characters to the command read last, if any. */
@@ -903,7 +923,9 @@ class Scanner {
         }
       } else if (char === "'") {
         const close = this.source.indexOf("'", this.index + 1);
-        this.complete &&= close !== -1 && !/[}"$`\\]/.test(this.source.slice(this.index + 1, close));
+        if (close === -1 || /[}"$`\\]/.test(this.source.slice(this.index + 1, close))) {
+          this.skip();
+        }
         this.index = close === -1 ? this.source.length : close + 1;
       } else if (char === '"') {
         this.readDoubleQuoted(inner);
@@ -925,7 +947,7 @@ class Scanner {
   /** Inside `$(`, `@(` or `<(`: reads the commands through the closing `)`; in bash they run in a subshell. */
   private readSubstitution(): void {
     if (this.nesting >= MAX_NESTING) {
-      this.complete = false;
+      this.skip();
       this.index = this.source.length;
       return;
     }
@@ -974,7 +996,7 @@ class Scanner {
   /** Counts one more bash expansion the reader is inside; false, with the line unreadable, when they nest too deep. */
   private enterExpansion(): boolean {
     if (this.expansions >= MAX_NESTING) {
-      this.complete = false;
+      this.skip();
       this.index = this.source.length;
       return false;
     }
@@ -1000,7 +1022,7 @@ class Scanner {
       this.index += 1;
     }
     if (this.nesting >= MAX_NESTING) {
-      this.complete = false;
+      this.skip();
     } else {
       const subshells = [...this.subshells, this.ids.next];
       this.ids.next += 1;
@@ -1008,6 +1030,7 @@ class Scanner {
       this.commands.push(...nested.commands);
       this.unreadBodies.push(...nested.unreadBodies);
       this.complete &&= nested.complete;
+      this.skipped ||= nested.skipped;
       this.bindingsUnclear ||= nested.bindingsUnclear;
     }
     word.add(this.source.slice(start, this.index), 'dynamic');

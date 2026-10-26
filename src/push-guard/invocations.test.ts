@@ -237,11 +237,15 @@ describe('findGitInvocations: scripts and shells', () => {
 
   it('doubts a push held in quoted text, and reads a substitution a shell runs as commands', () => {
     const held = 'g:it holds a quoted command substitution that pushes, which bash runs if an expansion reads it again';
-    for (const line of ["x='$(git push origin main)'; echo ${x@P}", "x='a[$(git push)]'; echo $((x))", "export X='`git push`'", "echo 'a[$(git p)]'", 'x="a[\\$(git push)]"; let y=x']) {
+    // bash expands held text left to right, so a push before the point where it never closes still runs.
+    for (const line of ["x='$(git push origin main)'; echo ${x@P}", "x='a[$(git push)]'; echo $((x))", "export X='`git push`'", "echo 'a[$(git p)]'", 'x="a[\\$(git push)]"; let y=x', "echo '$(git push) $('"]) {
       expectDoubt(line, held);
     }
     expectDoubt("echo '$(git $SUB)'", 'g:the git command it runs is only known when it runs');
+    expectDoubt(`echo "\\\${x:-'\\$(git push)'}"`, 'g:it holds quoted text the guard cannot read for the commands bash runs if an expansion reads it again');
     expectInvocations([
+      [`grep -n "^##\\|push(\\\`##\\|'## " file`, []],
+      ["echo '$(git status'", []],
       ["git commit -m 'run $(git status) first'", [`${CWD}|commit|-m run $(git status) first`]],
       ["bash -c 'echo $(git push origin feat)'", [`${CWD}|push|origin feat`]],
       ["eval 'echo $(git push)'", [`${CWD}|push|`]],

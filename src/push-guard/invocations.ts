@@ -297,17 +297,22 @@ class GitInvocationFinder {
    * `cat` hands its stdin down a pipe to the next command, so `cat <<EOF | bash` runs the body as commands.
    */
   private visitScript(script: ShellWord, dialect: ShellDialect, location: Location, depth: number): void {
-    this.visitParsed(parseShell(script.text, dialect), script.text, dialect, location, depth);
+    const parsed = parseShell(script.text, dialect);
+    const unread = parsed.complete ? undefined : 'part of it cannot be read, as a quote, bracket or substitution never closes';
+    this.visitParsed(parsed, script.text, unread, dialect, location, depth);
   }
 
-  /** Visits the commands parsed from `source` in order; see {@link visitScript}. */
-  private visitParsed(parsed: ShellParse, source: string, dialect: ShellDialect, location: Location, depth: number): void {
+  /**
+   * Visits the commands parsed from `source` in order; see {@link visitScript}. `unread` is the doubt when the
+   * parse may not hold every command `source` runs.
+   */
+  private visitParsed(parsed: ShellParse, source: string, unread: string | undefined, dialect: ShellDialect, location: Location, depth: number): void {
     if (depth > MAX_SCRIPT_DEPTH) {
       this.doubt('scripts nest too deep to read', false);
       return;
     }
-    if (!parsed.complete) {
-      this.doubt('part of it cannot be read, as a quote, bracket or substitution never closes', true);
+    if (unread !== undefined) {
+      this.doubt(unread, true);
       this.mention(source);
     }
     parsed.unreadBodies.forEach((body) => this.mention(body.text));
@@ -341,16 +346,20 @@ class GitInvocationFinder {
 
   /**
    * Reads the command substitutions words hold as text (see `ShellWord.held`), which bash runs when an expansion
-   * reads the text again, in this line or a later one the guard never sees. One that pushes, or that the guard
-   * cannot read, is a doubt: the push is not judged as written, as nothing on the line says when it runs.
+   * reads the text again, in this line or a later one the guard never sees. One that pushes, or text the guard
+   * leaves unread, is a doubt: the push is not judged as written, as nothing on the line says when it runs.
+   * Text that only never closes, such as a grep pattern's escaped backtick, still shows every substitution
+   * bash runs there (see {@link parseHeldText}).
    */
   private visitHeld(words: readonly ShellWord[], location: Location, depth: number): void {
     for (const word of words) {
       if (word.held === undefined) {
         continue;
       }
+      const parsed = parseHeldText(word.held);
+      const unread = parsed.skipped ? 'it holds quoted text the guard cannot read for the commands bash runs if an expansion reads it again' : undefined;
       const held = new GitInvocationFinder(this.context);
-      held.visitParsed(parseHeldText(word.held), word.held, 'bash', location.child(), depth + 1);
+      held.visitParsed(parsed, word.held, unread, 'bash', location.child(), depth + 1);
       this.doubts.push(...held.doubts);
       if (held.invocations.some((invocation) => invocation.subcommand === 'push')) {
         this.doubt('it holds a quoted command substitution that pushes, which bash runs if an expansion reads it again', true);

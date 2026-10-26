@@ -18,6 +18,7 @@ function withStdin(command: string): string[] {
 }
 
 const complete = (command: string, dialect: ShellDialect = 'bash'): boolean => parseShell(command, dialect).complete;
+const skipped = (command: string): boolean => parseShell(command, 'bash').skipped;
 
 describe('parseShell: bash', () => {
   it('splits on separators and drops redirections with their targets', () => {
@@ -82,12 +83,20 @@ describe('parseShell: bash', () => {
       ['git', 'fetch'],
       ['git', 'status'],
     ]);
+    // Held text that never closes is read to its end: bash runs the substitutions before its error.
+    const pattern = parseHeldText("^##\\|push(`##\\|'## ");
+    assert.deepEqual([pattern.commands.length, pattern.complete, pattern.skipped], [0, false, false]);
+    const unclosed = parseHeldText('$(git push) $(git status');
+    assert.deepEqual([run('$(git push) $(git status'), unclosed.complete, unclosed.skipped], [[['git', 'push'], ['git', 'status']], false, false]);
+    assert.equal(parseHeldText(`${'$('.repeat(20)}git push${')'.repeat(20)}`).skipped, true);
   });
 
   it('reads a single-quoted piece of a double-quoted ${...} with confidence only when it is plain text', () => {
     assert.equal(complete(`echo "\${B:-'a b'}"; cat <<EOF\n\${B:-'x'}\nEOF`), true);
+    assert.equal(skipped(`echo "\${B:-'a b'}"`), false);
     for (const command of [`echo "\${B:-'}"'$(git push)''}"`, `echo "\${B:-'$(git push)'}"`, `echo "\${B:-'open}"`]) {
       assert.equal(complete(command), false, command);
+      assert.equal(skipped(command), true, command);
     }
   });
 
@@ -272,15 +281,21 @@ describe('parseShell: bash', () => {
     assert.deepEqual(words('git push origin a#b # main\nls'), [['git', 'push', 'origin', 'a#b'], ['ls']]);
   });
 
-  it('reports an unclosed quote, substitution or bracket as incomplete', () => {
+  it('reports an unclosed quote, substitution or bracket as incomplete, and nesting too deep as skipped', () => {
     for (const command of ["echo 'open", 'echo "open', 'echo $(git push', 'echo `git push', 'echo ${open', "echo $'open", '(git push', 'echo $((1 + 2']) {
       assert.equal(complete(command), false, command);
+      assert.equal(skipped(command), false, command);
     }
     assert.equal(complete('echo "closed" $(ok) `ok` ${ok}'), true);
-    assert.equal(complete(`echo ${'$('.repeat(20)}x${')'.repeat(20)}`), false);
-    assert.equal(complete(`echo ${'`'.repeat(1)}${'$('.repeat(16)}x${')'.repeat(16)}\``), false);
-    assert.equal(complete(`echo ${'${x:-'.repeat(20)}x${'}'.repeat(20)}`), false);
-    assert.equal(complete(`echo ${'$(('.repeat(20)}1${'))'.repeat(20)}`), false);
+    for (const command of [
+      `echo ${'$('.repeat(20)}x${')'.repeat(20)}`,
+      `echo ${'`'.repeat(1)}${'$('.repeat(16)}x${')'.repeat(16)}\``,
+      `echo ${'${x:-'.repeat(20)}x${'}'.repeat(20)}`,
+      `echo ${'$(('.repeat(20)}1${'))'.repeat(20)}`,
+    ]) {
+      assert.equal(complete(command), false, command);
+      assert.equal(skipped(command), true, command);
+    }
     assert.equal(complete(`echo ${'$(('.repeat(10)}1${'))'.repeat(10)}`), true);
   });
 
@@ -292,6 +307,7 @@ describe('parseShell: bash', () => {
       ['echo', '~$(( $(git push) + `git fetch` + (1) ))x', '~$[ "$(echo 1)" + a[2] ]'],
     ]);
     assert.equal(complete("echo $(( '1' ))"), false);
+    assert.equal(skipped("echo $(( '1' ))"), false);
   });
 });
 
