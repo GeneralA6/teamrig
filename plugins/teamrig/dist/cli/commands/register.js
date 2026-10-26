@@ -126,7 +126,7 @@ function report(runtime, verdict, verb, written, label) {
     return EXIT.ok;
 }
 /** Damaged or newer lines never stop a read; they are named on stderr so someone fixes them. */
-function warnDamage(runtime, snapshot, path) {
+export function warnDamage(runtime, snapshot, path) {
     const { unreadable, newer } = snapshot.read;
     const { orphans } = snapshot.state;
     if (unreadable + newer + orphans > 0) {
