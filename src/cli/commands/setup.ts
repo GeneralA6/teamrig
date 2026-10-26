@@ -9,7 +9,8 @@ import { applySetupTask, setupTaskDryLines, setupTaskLines, setupTaskStep } from
 import { tabStatusLine } from '../../setup/tab-status-note.ts';
 import { applyTeamSetup, planTeamSetup, teamSpecOf, type FileStep, type SetupPlan, type TeamSpec } from '../../setup/team-create.ts';
 import { onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
-import { openKit, requireConfig, teamProjectOf } from '../kit.ts';
+import { pointerTeam, resolveTeam } from '../../core/team.ts';
+import { openKit, requireConfig, teamFolders, teamProjectOf, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { teamRegister } from '../team-register.ts';
 import { loadTree } from '../tree.ts';
@@ -39,6 +40,33 @@ export function sessionProjectOf(runtime: CliRuntime, config: KitConfig, id: str
 /** {@link sessionProjectOf} for each session a pass over the team reads. */
 export function sessionFoldersOf(runtime: CliRuntime, config: KitConfig, flag: string | undefined, from: string): (id: string) => Promise<string> {
   return (id) => sessionProjectOf(runtime, config, id, flag, from);
+}
+
+/** The team a project's Claude Code setup is read or backed up for, with its config. */
+export interface SetupTeam {
+  readonly name: string;
+  readonly kit: Kit;
+  readonly config: KitConfig;
+  /** The pointer file or `$TEAMRIG_TEAM` the team was found by. */
+  readonly from: string;
+}
+
+/**
+ * The team of the project a setup command is asked about, by its pointer alone: the caller's `$TEAMRIG_TEAM` names
+ * the caller's team, not that project's. Without --project, the caller's team. Undefined before one exists.
+ */
+export async function setupTeamOf(runtime: CliRuntime, asked: string | undefined): Promise<SetupTeam | undefined> {
+  const found = asked === undefined ? await resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [runtime.cwd])) : await pointerTeam(runtime.files, [asked]);
+  switch (found.kind) {
+    case 'none':
+      return undefined;
+    case 'broken':
+      throw new RefusedError(`${found.from} ${found.problem}`);
+    case 'team': {
+      const kit = await openKit(runtime, found.team);
+      return { name: found.team, kit, config: requireConfig(kit, runtime, 'read'), from: found.from };
+    }
+  }
 }
 
 /** One line per file: what the run wrote, or would write, and what it left as it was. */
