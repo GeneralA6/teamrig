@@ -314,14 +314,15 @@ export const DEFAULT_BURST: BurstConfig = { policy: 'owner', surplusHours: 48, m
 export const DEFAULT_SCALE_OUT: ScaleOutConfig = { windowDays: 7, minDone: 3, topPriorities: 2 };
 
 /**
- * A hire spends the week's budget, so it waits for the owner's yes: at most two hires at once, each spending its
- * part of the team's daily budget, reviewed after a week and due to retire after 4 hours with no open task. A
- * rehire resumes its last Claude Code session only when it holds at most 250k tokens of context and was idle at
- * most a week.
+ * A hire spends the week's budget, so it waits for the owner's yes: at most two hires at once, a cap only the
+ * owner raises, each spending its part of the team's daily budget, reviewed after a week and due to retire after 4
+ * hours with no open task. A rehire resumes its last Claude Code session only when it holds at most 250k tokens of
+ * context and was idle at most a week.
  */
 export const DEFAULT_HIRING: HiringConfig = {
   policy: 'owner',
   maxSessions: 2,
+  capRaisedBy: 'owner',
   idleHours: 4,
   reviewDays: 7,
   resumeMaxTokens: 250_000,

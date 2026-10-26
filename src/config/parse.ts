@@ -57,6 +57,7 @@ import {
   ASK_WITH,
   PACKAGE_INSTALLS,
   BURST_POLICIES,
+  CAP_RAISERS,
   CONFLICT_WINNERS,
   ESCALATIONS,
   HIRING_POLICIES,
@@ -64,6 +65,7 @@ import {
   isAskWith,
   isPackageInstalls,
   isBurstPolicy,
+  isCapRaiser,
   isCommitGate,
   isConflictWinner,
   isEffortLevel,
@@ -1267,17 +1269,19 @@ function parseRefresh(read: ConfigReader, raw: JsonRecord): RefreshConfig {
   };
 }
 
-/** `hiring`: who decides, the session cap, idle and review days, and when a rehire resumes. */
+/** `hiring`: who decides, the session cap and who raises it, idle and review days, and when a rehire resumes. */
 function parseHiring(read: ConfigReader, raw: JsonRecord): HiringConfig {
   const path = 'hiring';
   const defaults = DEFAULT_HIRING;
   const policy = read.string(raw, 'policy', path, defaults.policy, oneOf(HIRING_POLICIES));
+  const capRaisedBy = read.string(raw, 'capRaisedBy', path, defaults.capRaisedBy, oneOf(CAP_RAISERS));
   const why = "a hire's daily budget is its part of the team's, by its share and queued work; maxSessions bounds hiring";
   read.dropped(raw, 'dailyPct', path, why);
   read.dropped(raw, 'maxDailyPct', path, why);
   return {
     policy: isHiringPolicy(policy) ? policy : defaults.policy,
     maxSessions: read.integer(raw, 'maxSessions', path, defaults.maxSessions, CONFIG_LIMITS.hiringMaxSessions),
+    capRaisedBy: isCapRaiser(capRaisedBy) ? capRaisedBy : defaults.capRaisedBy,
     idleHours: read.integer(raw, 'idleHours', path, defaults.idleHours, CONFIG_LIMITS.hiringIdleHours),
     reviewDays: read.integer(raw, 'reviewDays', path, defaults.reviewDays, CONFIG_LIMITS.hiringReviewDays),
     resumeMaxTokens: read.integer(raw, 'resumeMaxTokens', path, defaults.resumeMaxTokens, CONFIG_LIMITS.hiringResumeMaxTokens),

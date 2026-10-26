@@ -966,19 +966,21 @@ describe('parseConfig', () => {
     assert.deepEqual(paths(parseConfig({ ...ROSTER, refresh: { contextTokens: 10_000_001 } }).issues), ['refresh.contextTokens']);
   });
 
-  it('reads the hiring settings, defaulting each and refusing a bad policy, cap or scale-out measure', () => {
+  it('reads the hiring settings, defaulting each and refusing a bad policy, cap, cap raiser or scale-out measure', () => {
     assert.deepEqual(parseConfig(ROSTER).config.hiring, DEFAULT_HIRING);
+    assert.equal(DEFAULT_HIRING.capRaisedBy, 'owner');
     const scaleOut = { windowDays: 5, minDone: 2, topPriorities: 1 };
-    const chosen = { policy: 'lead', maxSessions: 4, idleHours: 2, reviewDays: 14, resumeMaxTokens: 120_000, resumeMaxIdleDays: 3, scaleOut };
+    const chosen = { policy: 'lead', maxSessions: 4, capRaisedBy: 'lead', idleHours: 2, reviewDays: 14, resumeMaxTokens: 120_000, resumeMaxIdleDays: 3, scaleOut };
     const set = parseConfig({ ...ROSTER, hiring: chosen });
     assert.deepEqual(set.issues, []);
     assert.deepEqual(set.config.hiring, chosen);
     const badScaleOut = { windowDays: 9, minDone: 0, topPriorities: 11 };
     const bad = parseConfig({
       ...ROSTER,
-      hiring: { policy: 'auto', maxSessions: 0, idleHours: 169, reviewDays: 91, resumeMaxTokens: 9_999, resumeMaxIdleDays: 91, scaleOut: badScaleOut },
+      hiring: { policy: 'auto', maxSessions: 0, capRaisedBy: 'anyone', idleHours: 169, reviewDays: 91, resumeMaxTokens: 9_999, resumeMaxIdleDays: 91, scaleOut: badScaleOut },
     });
     assert.deepEqual(paths(bad.issues).sort(), [
+      'hiring.capRaisedBy',
       'hiring.idleHours',
       'hiring.maxSessions',
       'hiring.policy',

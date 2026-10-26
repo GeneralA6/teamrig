@@ -821,6 +821,17 @@ export function isHiringPolicy(value: unknown): value is HiringPolicy {
   return HIRING_POLICIES.some((policy) => policy === value);
 }
 
+/**
+ * Who raises `hiring.maxSessions` when it blocks a hire a SCALE-OUT calls for: `owner` on the lead's card, as a
+ * raised cap spends more of the week; `lead` the lead itself, in the team config, saying so in its next report.
+ */
+export const CAP_RAISERS = ['owner', 'lead'] as const;
+export type CapRaiser = (typeof CAP_RAISERS)[number];
+
+export function isCapRaiser(value: unknown): value is CapRaiser {
+  return CAP_RAISERS.some((raiser) => raiser === value);
+}
+
 /** How `check` measures an area against its dated work for a SCALE-OUT flag (src/hiring/scale-out.ts). */
 export interface ScaleOutConfig {
   /** Days back over which the tasks an area finished give its pace; at most the 8 days a register keeps finished tasks. */
@@ -839,6 +850,8 @@ export interface HiringConfig {
   readonly policy: HiringPolicy;
   /** Hired sessions on the team at once. */
   readonly maxSessions: number;
+  /** Who raises `maxSessions` when it blocks a SCALE-OUT's hire. */
+  readonly capRaisedBy: CapRaiser;
   /** Hours a hired session may hold no open task before it is due to retire. */
   readonly idleHours: number;
   /** Days from a hire to its review date, unless the hire names one. */

@@ -606,6 +606,7 @@ Hiring temporary sessions with teamrig hire: who decides, and the cap every hire
 | --- | --- | --- | --- |
 | `policy` | one of `"off"`, `"owner"`, `"lead"`, `"automatic"` | `"owner"` | off: no hires. owner: a lead (the lead, or a sub-lead into its own group) hires once the owner approved (--approved-by, kept with the hire). lead: a lead hires within maxSessions. automatic: as lead, and a hired session whose tasks are all closed may retire itself (teamrig retire). |
 | `maxSessions` | integer (1 to 20) | `2` | Hired sessions on the team at once. |
+| `capRaisedBy` | one of `"owner"`, `"lead"` | `"owner"` | Who raises maxSessions when it blocks a hire a SCALE-OUT flag calls for. owner: the lead brings the owner a card to raise it, as a higher cap spends more of the week. lead: the lead raises it in the team config itself and says so in its next report. |
 | `idleHours` | integer (1 to 168) | `4` | Hours a hired session may hold no open task before it is due to retire. |
 | `reviewDays` | integer (1 to 90) | `7` | Days from a hire to its review date, unless teamrig hire --review names one. |
 | `resumeMaxTokens` | integer (10000 to 1000000) | `250000` | The most context tokens a rehired session's last Claude Code session may hold for teamrig open --resume to resume it; past it the session starts fresh on its handover. |

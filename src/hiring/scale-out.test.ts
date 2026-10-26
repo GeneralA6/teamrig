@@ -173,4 +173,15 @@ describe('scaleOutFlags: the budget and who takes the slice', () => {
     const capped = scaleOut([...ALPHA_BEHIND, testTask({ id: 'T50', owner: 'helper' })], { config: tight, hires: [hire('helper')] });
     assert.equal(capped.flags[0]?.action, `the team already has 1 hired session(s), the most hiring.maxSessions allows${card}`);
   });
+
+  it('has the lead raise hiring.maxSessions itself under hiring.capRaisedBy lead, in a child team too', () => {
+    const raise =
+      'the team already has 1 hired session(s), the most hiring.maxSessions allows: the lead raises it in the team config and says so in its next report [hiring.capRaisedBy], or moves the slice to another area';
+    const tasks = [...ALPHA_BEHIND, testTask({ id: 'T50', owner: 'helper' })];
+    const sessions = ['lead', 'alpha', 'helper'];
+    const root = scaleOut(tasks, { config: config({ maxSessions: 1, capRaisedBy: 'lead' }, sessions), hires: [hire('helper')] });
+    assert.equal(root.flags[0]?.action, raise);
+    const child = testConfig({ sessions, team: { id: 'ui', parent: 'web' }, hiring: { policy: 'lead', maxSessions: 1, capRaisedBy: 'lead' } });
+    assert.equal(scaleOut(tasks, { config: child, hires: [hire('helper')] }).flags[0]?.action, raise);
+  });
 });
