@@ -105,7 +105,7 @@ import {
   type CoordinatorConfig,
   type CoordinatorRepoConfig,
   type HeavyConfig,
-  type LandConfig,
+  type MergeConfig,
   type RollConfig,
   type RollGateConfig,
   type CommitsConfig,
@@ -705,7 +705,7 @@ function parseCoordinatorRepos(read: ConfigReader, raw: JsonRecord): Record<stri
     if (mainCheckout === '') {
       continue;
     }
-    const land = entry['land'] === undefined ? undefined : parseLand(read, entry['land'], `${path}.land`);
+    const merge = entry['merge'] === undefined ? undefined : parseMerge(read, entry['merge'], `${path}.merge`);
     const roll = entry['roll'] === undefined ? undefined : parseRoll(read, entry['roll'], `${path}.roll`);
     const dependencyGate = read.boolean(entry, 'dependencyGate', path, false);
     const dependencyCheck = entry['dependencyCheck'] === undefined ? undefined : read.stringListItem(entry['dependencyCheck'], `${path}.dependencyCheck`, ROLL_ARGV_MAX_ITEMS);
@@ -718,15 +718,15 @@ function parseCoordinatorRepos(read: ConfigReader, raw: JsonRecord): Record<stri
       dependencyGate,
       ...(dependencyCheck === undefined ? {} : { dependencyCheck }),
       followMainCheckout: read.boolean(entry, 'followMainCheckout', path, false),
-      ...(land === undefined ? {} : { land }),
+      ...(merge === undefined ? {} : { merge }),
       ...(roll === undefined ? {} : { roll }),
     };
   }
   return repos;
 }
 
-/** A repository's land command; one with no usable command is reported and left out, so integrate pushes the branch. */
-function parseLand(read: ConfigReader, raw: unknown, path: string): LandConfig | undefined {
+/** A repository's merge command; one with no usable command is reported and left out, so integrate pushes the branch. */
+function parseMerge(read: ConfigReader, raw: unknown, path: string): MergeConfig | undefined {
   const entry = read.objectItem(raw, path);
   if (entry === undefined) {
     return undefined;
@@ -735,7 +735,7 @@ function parseLand(read: ConfigReader, raw: unknown, path: string): LandConfig |
   return command === undefined ? undefined : { command };
 }
 
-/** A program's arguments in a roll or land hook, and the roll hooks of one kind, at most. */
+/** A program's arguments in a roll or merge hook, and the roll hooks of one kind, at most. */
 const ROLL_ARGV_MAX_ITEMS = 64;
 const ROLL_HOOKS_MAX_ITEMS = 16;
 
