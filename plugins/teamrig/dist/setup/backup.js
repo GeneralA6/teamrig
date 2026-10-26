@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { KIT_NAME } from "../core/home.js";
+import { pathKey } from "../core/paths.js";
 import { backupStamp, MANIFEST, ownerStateDir } from "../permissions/trim.js";
 import { BACKUP_FORMAT, manifestText, readManifest } from "./backup-manifest.js";
 import { findSetupPlaces, SETUP_KINDS } from "./backup-places.js";
@@ -50,6 +51,7 @@ export async function backupSetup(ports, at, root, now) {
         createdAt: new Date(now).toISOString(),
         claudeDir: at.claudeDir,
         project: at.project,
+        teamSkills: at.teamSkills,
         files: entries,
         absent,
         skipped: places.skipped,
@@ -63,4 +65,20 @@ export async function backupSetup(ports, at, root, now) {
 export async function listBackups(ports, root) {
     const stamps = (await ports.files.list(root)).filter((name) => STAMP.test(name)).sort();
     return Promise.all(stamps.map(async (stamp) => ({ stamp, read: await readManifest(ports.files, join(root, stamp)) })));
+}
+/** True when both name the same folder, or both name none. */
+function samePlace(path, other) {
+    return path === undefined || other === undefined ? path === other : pathKey(path) === pathKey(other);
+}
+/**
+ * The newest finished backup in `listed` (oldest first, as {@link listBackups} gives them) of the setup at `at`: the
+ * same Claude Code folder, project and team skills folder, so it holds every file a slimming of that setup may change.
+ */
+export function latestBackupOf(listed, at) {
+    for (const { stamp, read } of [...listed].reverse()) {
+        if (read.kind === 'read' && samePlace(read.manifest.claudeDir, at.claudeDir) && samePlace(read.manifest.project, at.project) && samePlace(read.manifest.teamSkills, at.teamSkills)) {
+            return { stamp, madeAt: Date.parse(read.manifest.createdAt) };
+        }
+    }
+    return undefined;
 }

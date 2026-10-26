@@ -5,7 +5,8 @@ import { homeRelative } from "../core/paths.js";
 import { PLACE_KINDS } from "../rules/places.js";
 import { MEMORY_INDEX_LINES } from "./scan-context.js";
 /**
- * The lines `teamrig setup scan` prints: every file and listing a session loads with its size, then the findings, one
+ * The lines `teamrig setup scan` prints: the setup backup a slimming can be undone from (or NO BACKUP, which stops
+ * one), every file and listing a session loads with its size, then the findings, one
  * line each, `<id> <kind> <path>: <what> (~<tokens> tokens/turn)`, numbered per section (C, D, S, U), and what
  * applying the CONTEXT, DUPLICATE and UNUSED ones saves. Rule lines and settings values are counted, never printed;
  * override lines only by kind, since a setup holds hundreds of them and `rules scan` lists them a kind at a time.
@@ -20,6 +21,22 @@ const CHARS_PER_TOKEN = 4;
 const EXCERPT_MAX_CHARS = 60;
 export const BYTES_PER_MB = 1024 * 1024;
 const DAY_MS = 24 * 60 * 60 * 1000;
+/** How long ago something was, at a glance: `under a minute`, `12 min`, `5 h`, `3 days`. */
+function ageOf(ms) {
+    const minutes = Math.floor(ms / 60_000);
+    if (minutes < 1) {
+        return 'under a minute';
+    }
+    const hours = Math.floor(minutes / 60);
+    return minutes < 60 ? `${minutes} min` : hours < 48 ? `${hours} h` : `${Math.floor(hours / 24)} days`;
+}
+/** The backup that undoes a slimming of the setup, or the line that stops one until a backup exists. */
+function backupLine(backup, now) {
+    if (backup === undefined) {
+        return `NO BACKUP of this setup: change nothing in it before ${KIT_NAME} setup backup makes one`;
+    }
+    return `BACKUP ${backup.stamp}, made ${ageOf(now - backup.madeAt)} ago: ${KIT_NAME} setup restore ${backup.stamp} previews putting the setup back`;
+}
 export function tokensOf(chars) {
     return Math.ceil(chars / CHARS_PER_TOKEN);
 }
@@ -138,6 +155,7 @@ export function scanReport(scan, at) {
     const savings = [...context, ...duplicates, ...parked].reduce((sum, finding) => sum + finding.saves, 0);
     return [
         `SCAN ${show(at.project)} (${at.team === undefined ? 'no team yet' : `team ${at.team}`})`,
+        backupLine(at.backup, at.now),
         ...scan.context.files.map((file) => fileLine(file, show)),
         listingLine(scan.listing),
         `TOTAL ${sized(loaded)} at every session start`,
