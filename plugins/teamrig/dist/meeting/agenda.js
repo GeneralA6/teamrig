@@ -88,8 +88,17 @@ function decisionCards(tasks, tree, ownerMarker, requireGate, team) {
     return tree.inPlanOrder(tasks.filter((task) => asksOwner(task, ownerMarker, requireGate))).map((task) => cardFacts(task, tree, team));
 }
 /**
+ * How the lead asks the owner the cards it read: in plain text, the owner answering in their own words, unless the
+ * team asks for the question picker (`decisions.askWith`, T1278).
+ */
+function askLine(askWith, ownerMarker) {
+    return askWith === 'picker'
+        ? "  Ask the choices with the question picker (AskUserQuestion), at most 4 a call: each card's options as its choices, your recommendation first."
+        : `  Ask in plain text, never with the question picker: each card's options numbered, your recommendation first; ${ownerMarker} answers in their own words.`;
+}
+/**
  * DECISIONS: the tasks waiting on the owner, the lead's team's first, then those of each team under it (T1018), each
- * with its card facts, then how to card and record them. The card form is the owner's: each item readable alone,
+ * with its card facts, then how to card, ask and record them. The card form is the owner's: each item readable alone,
  * with the numbers to decide by and one exact action.
  */
 function decisionLines(input) {
@@ -105,6 +114,7 @@ function decisionLines(input) {
         head,
         ...[...own, ...below].flat(),
         `  Read each card to ${input.ownerMarker} as it stands, each figure explained; where one says no card yet, ask its owner for it (check flags it NO-CARD). Never point to a doc; \`${input.command} show <id>\` prints a task whole.`,
+        askLine(input.askWith, input.ownerMarker),
         `  A question a card does not answer is its task owner's to find: ${input.command} add --owner <id>${handed} --due <date> --session ${input.lead}, then relay the answer; never look it up yourself.`,
         `  Record each answer in the same turn: ${input.command} update <id>${labelled} --note "${input.ownerMarker} decided: <decision>" --session ${input.lead}; meeting end tells each task's owner.`,
     ];

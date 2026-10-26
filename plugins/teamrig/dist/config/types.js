@@ -61,6 +61,10 @@ export const ESCALATIONS = ['session', 'session-and-fleet'];
 export function isEscalation(value) {
     return ESCALATIONS.some((escalation) => escalation === value);
 }
+export const ASK_WITH = ['text', 'picker'];
+export function isAskWith(value) {
+    return ASK_WITH.some((way) => way === value);
+}
 /**
  * Who may hire a session onto the team (`teamrig hire`): `off` nobody; `owner` a lead (the lead, or a sub-lead
  * into its own group), once the owner approved (`--approved-by`, kept with the hire); `lead` a lead, within the

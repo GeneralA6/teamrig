@@ -9,7 +9,7 @@ import { noPositionals } from "../args.js";
 import { openKit, rosterOf } from "../kit.js";
 import { EXIT } from "../runtime.js";
 import { parseJson, sessionTeam } from "./hook-input.js";
-import { refusedPickerAsker } from "./hook-picker-guard.js";
+import { pickerRefusal } from "./hook-picker-guard.js";
 /** The values Claude Code reads as on for a switch such as `CLAUDE_CODE_DISABLE_TERMINAL_TITLE`. */
 const ON_VALUES = new Set(['1', 'true', 'yes', 'on']);
 /** Whether Claude Code leaves the tab title to hooks: otherwise it writes its own over the circle. */
@@ -63,7 +63,7 @@ export async function tabSequenceOf(runtime, payload) {
     if (kit?.load.status !== 'loaded' || !kit.load.config.tabStatus.enabled) {
         return undefined;
     }
-    if ((await refusedPickerAsker(runtime, kit, kit.load.config, payload)) !== undefined) {
+    if ((await pickerRefusal(runtime, kit, kit.load.config, payload)) !== undefined) {
         return undefined;
     }
     const title = await tabTitleOf(runtime, payload, { team: kit.paths.team, roster: await rosterOf(runtime, kit, kit.load.config) });
