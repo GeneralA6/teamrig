@@ -18,7 +18,7 @@ describe('kitTag', () => {
 });
 
 describe('kitLines', () => {
-  it('fills the branches, the register and the wrappers from the team', () => {
+  it('fills the branches, the register, the wrappers and worktree removal from the team', () => {
     assert.deepEqual(kitLines(FACTS), [
       '[teamrig alpha] Protected branches: main, release. A normal push to one asks the person. A force-push, a --mirror push or deleting one is refused, and a --force-with-lease push asks. ' +
         "Every session edits on its own branch in its own git worktree, never in a repo's main checkout.",
@@ -27,6 +27,9 @@ describe('kitLines', () => {
         'they write only under ~/.teamrig/teams/alpha/.',
       "[teamrig alpha] `teamrig heavy ... -- <cmd>` and `teamrig test ... -- <cmd>` run the session's own build, test or script on this host (heavy waits for the host lock, " +
         'test records the result); neither grants anything, so judge the command after `--` as if it ran alone.',
+      '[teamrig alpha] `teamrig worktree remove <path> [--delete-branch]` is how a session removes its finished worktree, and every session may run it: teamrig itself removes ' +
+        'only a worktree whose t<id>- branch names a task the session owns or one of a session it leads (any for the lead, session boss), and refuses the main checkout, ' +
+        'uncommitted work and a branch with a commit not on its base.',
     ]);
   });
 
