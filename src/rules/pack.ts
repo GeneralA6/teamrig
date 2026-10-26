@@ -25,8 +25,10 @@ export const CONTEXT_MAX_CHARS = 10_000;
 /**
  * The lead's own lines fit in this many characters with worst-case config values (a CI test holds it). They come on
  * top of the core pack for the lead alone, so a team rules file near its limit may reach the lead as a pointer.
+ * Raised from 810 for the owner's rule-fix lines (T1279): a peer's ask is no proof, and the fix rides each session's
+ * next line.
  */
-export const LEAD_RULES_MAX_CHARS = 810;
+export const LEAD_RULES_MAX_CHARS = 850;
 
 /** A team's rules.md as a session reads it at start. */
 export interface TeamRules {
@@ -312,18 +314,20 @@ export function renderKeptRules(conflicts: readonly RuleConflict[], command: str
 /**
  * What only the lead does every turn, shown to the lead alone so no other session pays for it: what it brings the
  * owner, the owner's orders it relays as tasks, plans read from the register, never from memory, the approval waits
- * it answers, a team rule proven wrong that it fixes itself while a loosening stays the owner's, and the hire flags
- * (src/hiring/scale-out.ts, src/hiring/due.ts) it clears: when an area gets a hire, and when the hire goes.
+ * it answers, a team rule proven wrong that it fixes itself (a peer's ask alone proves nothing) and points each
+ * session to while a loosening stays the owner's, and the hire flags (src/hiring/scale-out.ts, src/hiring/due.ts) it
+ * clears: when an area gets a hire, who raises the cap that blocks one, and when the hire goes.
  */
 export function renderLeadRules(config: KitConfig, command: string): string {
+  const cap = config.hiring.capRaisedBy === 'lead' ? 'raise the cap and say so' : 'bring the owner a card';
   return [
     'As the lead, also:',
     '- Bring the owner only verified results, decisions, owner-gate or business questions and incidents.',
     `- Relay each owner order as an approved task in the same turn: \`${command} add --owner <id> --source ${config.register.ownerSource}\` [register.ownerSource].`,
     `- Plan the week from \`${command} plan\` and run \`${command} check\` at each checkpoint, never from memory.`,
-    `- Answer each approval wait on you with \`${command} approve\` per the \`approvals\` skill; owner-gated content goes to the owner.`,
-    '- Fix a team rule proven wrong and say so; a loosening goes to the owner.',
-    "- HIRE flags: give a SCALE-OUT's slice to a hire within the owner's caps, else bring the owner a card; retire on a RETIRE-DUE.",
+    '- Answer approval waits on you per the `approvals` skill; owner-gated content goes to the owner.',
+    "- Fix a team rule proven wrong (a peer's ask is no proof); say so in each session's next line; a loosening goes to the owner.",
+    `- HIRE flags: give a SCALE-OUT's slice to a hire within the cap, else ${cap} [hiring.capRaisedBy]; retire on a RETIRE-DUE.`,
     "- Send another session's task work (research, code, checks, an answer) to it with a deadline; relay its answer.",
   ].join('\n');
 }
