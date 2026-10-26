@@ -7,6 +7,8 @@ import { MeterLog } from '../budget/calibration.ts';
 import { formatConfig } from '../config/load.ts';
 import type { Files } from '../core/files.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
+import { inboxLineOf } from '../inbox/inbox.ts';
+import { lineHash } from '../inbox/line-hash.ts';
 import { SessionLog } from '../sessions/log.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
@@ -254,6 +256,31 @@ describe('hook wake-check', () => {
     assert.equal(woke.toast, 'teamrig woke this tab for T1 and an urgent line from teamrig (about 210k W, cold)');
     await new WakeAsks(kit.files, ASKS).post('alpha', { from: 'bravo', text: 'Bravo has a reply waiting.', at: kit.clock.now() });
     assert.equal((await check(kit)).stdout[0]?.includes('"toast":"teamrig woke this tab for an urgent line from bravo'), true, 'wake.minGapMinutes holds no line');
+  });
+
+  it('wakes for a --wake-by line at its time while it is unseen, looking again then, and drops one read before', async () => {
+    for (const read of [false, true]) {
+      const kit = await teamWithAlphaTab();
+      await check(kit);
+      const text = 'Answer on T7.';
+      assert.equal((await kit.run(['inbox', 'add', '--to', 'alpha', '--text', text, '--session', 'bravo'])).code, EXIT.ok);
+      const at = kit.clock.now();
+      const asks = new WakeAsks(kit.files, ASKS);
+      await asks.post('alpha', { from: 'bravo', text, at, by: { at: at + 10 * MINUTE, line: lineHash(inboxLineOf(new Date(at), 'bravo', text)) } });
+      assert.deepEqual(answerOf(await check(kit)), { kind: 'wait', watch: watchOf(), recheckAt: at + 10 * MINUTE });
+      if (read) {
+        assert.equal((await kit.run(['inbox', 'read', '--session', 'alpha'])).code, EXIT.ok);
+      }
+      kit.clock.advance(10 * MINUTE);
+      const answer = answerOf(await check(kit));
+      if (read) {
+        assert.deepEqual(answer, { kind: 'wait', watch: watchOf(), recheckAt: null });
+      } else {
+        assert.ok(typeof answer === 'object' && answer !== null && 'toast' in answer);
+        assert.equal(answer.toast, 'teamrig woke this tab for an urgent line from bravo (about 210k W, cold)');
+      }
+      assert.deepEqual(await asks.read('alpha'), [], `read: ${read}`);
+    }
   });
 
   it("keeps an urgent line for the lead while the owner's daily meeting is open, and removes a damaged one", async () => {

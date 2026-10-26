@@ -7,7 +7,7 @@ import { SessionLog, type CloseRecord } from '../sessions/log.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
 import { APP, CLAUDE_SESSION, CliHarness, decisionOf, reasonOf, TEAM, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
-import { validAsksOf, WakeAsks } from '../wake/asks.ts';
+import { WakeAsks } from '../wake/asks.ts';
 
 const ASKS = join(TEAM_HOME, 'state', 'wake-asks');
 const ALPHA_TAB = '0123abcd-0000-4000-8000-0000000000a1';
@@ -47,7 +47,7 @@ describe('a send to a session teamrig closed', () => {
       reasonOf(held) ?? '',
       /^app-alpha is closed \(idle-pass closed it at \d\d:\d\d \S+\), so this message cannot reach it; teamrig posted it as an urgent line in its inbox, and the idle pass reopens it within about a minute with the line quoted in its first prompt\. Do not send it again\. Next time post it yourself: teamrig inbox add --to alpha --text "\.\.\." --wake now\.$/,
     );
-    assert.deepEqual(validAsksOf(await new WakeAsks(kit.files, ASKS).read('alpha')), [{ from: 'lead', text: 'Review the fix on T1.', at: kit.clock.now() }]);
+    assert.deepEqual((await new WakeAsks(kit.files, ASKS).read('alpha')).map((stored) => stored.ask), [{ from: 'lead', text: 'Review the fix on T1.', at: kit.clock.now() }]);
     const inbox = await kit.run(['inbox', 'read', '--session', 'alpha']);
     assert.match(inbox.stdout.join('\n'), /lead: Review the fix on T1\./);
   });

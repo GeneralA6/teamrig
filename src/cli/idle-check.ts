@@ -15,8 +15,10 @@ import { soonTimeWaitOf, tabActivityOf, TIME_WAIT_GUARD_MINUTES, type TabActivit
 import { measureSessions, type SessionPlace } from '../sessions/measure.ts';
 import { SessionRecordStore, type SessionRecord } from '../sessions/record.ts';
 import { REPLY_TAIL_BYTES } from '../turn-log/reply.ts';
-import { urgentLinesText, validAsksOf, WakeAsks, type WakeAsk } from '../wake/asks.ts';
+import { unseenLinesOf } from '../inbox/inbox.ts';
+import { asksNowOf, urgentLinesText, WakeAsks, type WakeAsk } from '../wake/asks.ts';
 import { startableTasks } from '../wake/day-start.ts';
+import { inboxDepsOf } from './commands/inbox.ts';
 import { measureTranscript } from './commands/rehire.ts';
 import { teamZone, type Kit } from './kit.ts';
 import { RefusedError, type CliRuntime } from './runtime.ts';
@@ -75,6 +77,7 @@ const ACTIVITY_CLAUSES: Readonly<Record<Exclude<TabActivity, 'idle'>, string>> =
 
 /** The facts for every session of the roster; refuses when the host's processes cannot be listed. */
 export async function idleFactsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster): Promise<IdleFacts> {
+  const now = runtime.clock.now();
   const records = await new SessionRecordStore(runtime.files, kit.paths).readEach(roster.ids);
   const rows = await runtime.memory.processes();
   if (rows === undefined) {
@@ -84,9 +87,10 @@ export async function idleFactsOf(runtime: CliRuntime, kit: Kit, config: KitConf
   const store = new WakeAsks(runtime.files, kit.paths.wakeAsks);
   const asks = new Map<string, readonly WakeAsk[]>();
   for (const id of roster.ids) {
-    asks.set(id, validAsksOf(await store.read(id)));
+    // A timed ask counts from its time, and only while its line is unseen.
+    asks.set(id, (await asksNowOf(await store.read(id), now, () => unseenLinesOf(inboxDepsOf(runtime, kit.paths), id))).asks);
   }
-  return { records, places: measureSessions(records, rows), tasks: snapshot.state.tasks, elsewhere, asks, now: runtime.clock.now(), zone: teamZone(config, runtime) };
+  return { records, places: measureSessions(records, rows), tasks: snapshot.state.tasks, elsewhere, asks, now, zone: teamZone(config, runtime) };
 }
 
 /**

@@ -6,7 +6,8 @@ import type { Task } from '../../register/fold.ts';
 import { waitSpelling } from '../../register/waits.ts';
 import { SessionLog } from '../../sessions/log.ts';
 import { DECISION_MARKER } from '../../tabs/status.ts';
-import { validAsksOf, WakeAsks, type StoredWakeAsk } from '../../wake/asks.ts';
+import { unseenLinesOf } from '../../inbox/inbox.ts';
+import { asksNowOf, WakeAsks, type StoredWakeAsk } from '../../wake/asks.ts';
 import { onePositional, requiredFlag, type ParsedArgs } from '../args.ts';
 import { closeSession } from '../close-session.ts';
 import { closableText, idleFactsOf, type Closable, type IdleFacts, type IdleVerdict } from '../idle-check.ts';
@@ -16,6 +17,7 @@ import { openKit, requireConfig, rosterOf, teamZone, type Kit } from '../kit.ts'
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { installStateOf, settleWaitText } from '../settled-install.ts';
 import { postUrgentLine } from '../urgent-line.ts';
+import { inboxDepsOf } from './inbox.ts';
 import { idFlag, openSession } from './open.ts';
 
 /** Who the session log names as the closer of a session the idle pass closed. */
@@ -168,13 +170,13 @@ export async function idleOpen(args: ParsedArgs, runtime: CliRuntime): Promise<E
   const why = reopeningText(step.reopening, teamZone(config, runtime));
   const asks = new WakeAsks(runtime.files, kit.paths.wakeAsks);
   try {
-    const stored = await asks.read(id);
-    const opened = await openSession(runtime, kit, config, roster, { team, id, project, terminal: config.open.terminal, asked: false, urgent: validAsksOf(stored) });
+    const found = await asksNowOf(await asks.read(id), runtime.clock.now(), () => unseenLinesOf(inboxDepsOf(runtime, kit.paths), id));
+    const opened = await openSession(runtime, kit, config, roster, { team, id, project, terminal: config.open.terminal, asked: false, urgent: found.asks });
     const done = { ...act, ...measured, at: runtime.clock.now() };
     if (opened.kind !== 'opened') {
       return report(runtime, kit, { ...done, outcome: 'failed', line: `FAILED to reopen ${label}: no terminal opened (${opened.reasons.join('; ')})` });
     }
-    const untaken = await untakenText(asks, id, stored);
+    const untaken = await untakenText(asks, id, found.taken);
     return report(runtime, kit, { ...done, outcome: 'done', line: `REOPENED ${label} for ${why}: ${opened.line}${untaken}` });
   } catch (error) {
     // A refusal here is the host's room, read fresh: the next pass tries again.

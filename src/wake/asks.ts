@@ -8,33 +8,61 @@ import type { Task } from '../register/fold.ts';
 import { costText, idsText, wakePrompt, wakeToast, type WakeCost } from './decide.ts';
 
 /**
+ * A timed ask's terms (`inbox add --wake-by`, T1148): it wakes its receiver at `at`, epoch ms, and only when the
+ * receiver had not seen the posted inbox line by then, found by the line's hash (src/inbox/line-hash.ts).
+ */
+export interface WakeBy {
+  readonly at: number;
+  readonly line: string;
+}
+
+/**
  * A line that wakes the session it is for at its tab's next wake check, as work handed to it does: who posted it,
  * what it says (the wake's prompt quotes it) and when, epoch ms. It is posted beside the plain inbox line, which stays
- * the record; the ask only makes that line wake its receiver.
+ * the record; the ask only makes that line wake its receiver. A timed ask (`by`) waits for its time first.
  */
 export interface WakeAsk {
   readonly from: string;
   readonly text: string;
   readonly at: number;
+  readonly by?: WakeBy;
 }
 
-/** The format of an ask's file; one in another format, or damaged, reads as no ask and goes at the next check. */
+/**
+ * The format of a plain ask's file, which an older teamrig reads as well; one in another format, or damaged, reads as
+ * no ask and goes at the next check.
+ */
 export const WAKE_ASK_FORMAT = 1;
 
+/** The format of a timed ask's file (T1148): a plain ask's fields, and `dueAt` and `line` for its `by`. */
+export const TIMED_ASK_FORMAT = 2;
+
 export function formatWakeAsk(ask: WakeAsk): string {
-  return toJsonlLine({ [VERSION_FIELD]: WAKE_ASK_FORMAT, from: ask.from, text: ask.text, at: ask.at });
+  const plain = { from: ask.from, text: ask.text, at: ask.at };
+  return ask.by === undefined
+    ? toJsonlLine({ [VERSION_FIELD]: WAKE_ASK_FORMAT, ...plain })
+    : toJsonlLine({ [VERSION_FIELD]: TIMED_ASK_FORMAT, ...plain, dueAt: ask.by.at, line: ask.by.line });
 }
 
 /** An ask file's content; undefined when it is damaged or from another format. */
 export function parseWakeAsk(text: string): WakeAsk | undefined {
   const record = parseObject(text.trim());
-  if (record === undefined || record[VERSION_FIELD] !== WAKE_ASK_FORMAT) {
+  const format = record?.[VERSION_FIELD];
+  if (record === undefined || (format !== WAKE_ASK_FORMAT && format !== TIMED_ASK_FORMAT)) {
     return undefined;
   }
   const from = stringField(record, 'from');
-  const line = stringField(record, 'text');
+  const said = stringField(record, 'text');
   const at = numberField(record, 'at');
-  return from === undefined || line === undefined || at === undefined ? undefined : { from, text: line, at };
+  if (from === undefined || said === undefined || at === undefined) {
+    return undefined;
+  }
+  if (format === WAKE_ASK_FORMAT) {
+    return { from, text: said, at };
+  }
+  const dueAt = numberField(record, 'dueAt');
+  const line = stringField(record, 'line');
+  return dueAt === undefined || line === undefined ? undefined : { from, text: said, at, by: { at: dueAt, line } };
 }
 
 /** An ask as stored: its file's name, and the ask, undefined when the file is damaged or from another format. */
@@ -109,9 +137,49 @@ export class WakeAsks {
   }
 }
 
-/** The asks read, without the damaged ones and those from another format. */
-export function validAsksOf(stored: readonly StoredWakeAsk[]): readonly WakeAsk[] {
-  return stored.flatMap((each) => (each.ask === undefined ? [] : [each.ask]));
+/** The stored asks as a check finds them at one time. */
+export interface AsksNow {
+  /** The asks that wake the session: plain ones, and timed ones due whose line it has not seen; oldest first. */
+  readonly asks: readonly WakeAsk[];
+  /** The files a check that takes those asks removes: theirs, and the spent ones. */
+  readonly taken: readonly StoredWakeAsk[];
+  /** The files the next check removes whatever it does: damaged asks, and timed ones due whose line was seen first. */
+  readonly spent: readonly StoredWakeAsk[];
+  /** When the earliest timed ask not yet due comes due (it stays until then); undefined when none waits. */
+  readonly nextAt: number | undefined;
+}
+
+/**
+ * Sorts the stored asks at `now`. A timed ask is absent until its time, then present only while its line is among the
+ * session's unseen lines: `unseen` hands their hashes (lines neither read nor shown at a prompt), and is called only
+ * once a timed ask is due, since it reads the inbox.
+ */
+export async function asksNowOf(stored: readonly StoredWakeAsk[], now: number, unseen: () => Promise<ReadonlySet<string>>): Promise<AsksNow> {
+  const asks: WakeAsk[] = [];
+  const taken: StoredWakeAsk[] = [];
+  const spent: StoredWakeAsk[] = [];
+  const waiting: number[] = [];
+  let unseenLines: ReadonlySet<string> | undefined;
+  for (const each of stored) {
+    const { ask } = each;
+    if (ask === undefined) {
+      spent.push(each);
+    } else if (ask.by === undefined) {
+      asks.push(ask);
+      taken.push(each);
+    } else if (now < ask.by.at) {
+      waiting.push(ask.by.at);
+    } else {
+      unseenLines ??= await unseen();
+      if (unseenLines.has(ask.by.line)) {
+        asks.push(ask);
+        taken.push(each);
+      } else {
+        spent.push(each);
+      }
+    }
+  }
+  return { asks, taken: [...taken, ...spent], spent, nextAt: waiting.length === 0 ? undefined : Math.min(...waiting) };
 }
 
 /** `an urgent line from <sender>`, or `<n> urgent lines from <senders>`, each sender once. */
@@ -124,17 +192,18 @@ export function urgentLinesText(asks: readonly WakeAsk[]): string {
 export type AskVerdict = { readonly kind: 'none' } | { readonly kind: 'later'; readonly at: number } | { readonly kind: 'wake'; readonly asks: readonly WakeAsk[] };
 
 /**
- * The asks wake the session once the oldest is `batchMs` old (`wake.batchSeconds`), so the asks posted together (the
- * closes one idle pass starts at once) wake it once; the minimum gap between wakes does not hold them, since each is
- * urgent by its sender's choice.
+ * The asks found wake the session once the oldest plain one is `batchMs` old (`wake.batchSeconds`), so the asks posted
+ * together (the closes one idle pass starts at once) wake it once, and at once for a timed ask due, its time being the
+ * sender's; the minimum gap between wakes does not hold them, since each is urgent by its sender's choice. A timed
+ * ask not yet due sets when to look again.
  */
-export function askVerdictOf(stored: readonly StoredWakeAsk[], now: number, batchMs: number): AskVerdict {
-  const asks = validAsksOf(stored);
+export function askVerdictOf(found: AsksNow, now: number, batchMs: number): AskVerdict {
+  const { asks, nextAt } = found;
   if (asks.length === 0) {
-    return { kind: 'none' };
+    return nextAt === undefined ? { kind: 'none' } : { kind: 'later', at: nextAt };
   }
-  const at = Math.min(...asks.map((ask) => ask.at)) + batchMs;
-  return now < at ? { kind: 'later', at } : { kind: 'wake', asks };
+  const at = Math.min(...asks.map((ask) => ask.by?.at ?? ask.at + batchMs));
+  return now < at ? { kind: 'later', at: Math.min(at, nextAt ?? at) } : { kind: 'wake', asks };
 }
 
 /** `- HH:MM <sender>: <text>`, one line each, on the team's clock. */
