@@ -26,6 +26,7 @@ import {
   DEFAULT_LEAD_BOUNDARY,
   DEFAULT_TURN_LOG,
   DEFAULT_LOOPS,
+  DEFAULT_MERGE_REMOTE,
   DEFAULT_MESSAGES,
   DEFAULT_HEADROOM,
   DEFAULT_IDLE,
@@ -732,8 +733,13 @@ function parseMerge(read: ConfigReader, raw: unknown, path: string): MergeConfig
     return undefined;
   }
   const command = read.stringListItem(entry['command'], `${path}.command`, ROLL_ARGV_MAX_ITEMS);
-  return command === undefined ? undefined : { command };
+  const remote = read.string(entry, 'remote', path, DEFAULT_MERGE_REMOTE, isRemoteName);
+  return command === undefined ? undefined : { command, remote };
 }
+
+/** A git remote's name, as `git remote add` takes it; it never starts with `-`, so git cannot read it as an option. */
+const isRemoteName: Check<string> = (name) =>
+  /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name) && !name.includes('..') ? undefined : 'expected a git remote name: letters, digits, ., _ or -, from a letter or digit, without ..';
 
 /** A program's arguments in a roll or merge hook, and the roll hooks of one kind, at most. */
 const ROLL_ARGV_MAX_ITEMS = 64;

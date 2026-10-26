@@ -485,11 +485,28 @@ describe('parseConfig', () => {
     };
     const { config, issues } = parseConfig({ ...ROSTER, coordinator: { repos } });
     assert.deepEqual(paths(issues).sort(), ['coordinator.repos.bare.merge', 'coordinator.repos.empty.merge.command', 'coordinator.repos.text.merge.command']);
-    assert.deepEqual(config.coordinator.repos['forge'], { mainCheckout: 'repos/forge', deploysOnPush: [], dependencyGate: false, followMainCheckout: false, merge: { command } });
+    assert.deepEqual(config.coordinator.repos['forge'], { mainCheckout: 'repos/forge', deploysOnPush: [], dependencyGate: false, followMainCheckout: false, merge: { command, remote: 'origin' } });
     assert.equal(config.coordinator.repos['push']?.merge, undefined);
     assert.equal(config.coordinator.repos['text']?.merge, undefined);
     assert.equal(config.coordinator.repos['empty']?.merge, undefined);
     assert.equal(config.coordinator.repos['bare']?.merge, undefined);
+  });
+
+  it('reads the remote a merge command merges into, and refuses one git could read as an option or a range', () => {
+    const command = ['node', 'tools/merge.ts'];
+    const repos = {
+      fork: { mainCheckout: 'repos/fork', merge: { command, remote: 'upstream' } },
+      dotted: { mainCheckout: 'repos/dotted', merge: { command, remote: 'my.Remote_2' } },
+      option: { mainCheckout: 'repos/option', merge: { command, remote: '-x' } },
+      spaced: { mainCheckout: 'repos/spaced', merge: { command, remote: 'a b' } },
+      range: { mainCheckout: 'repos/range', merge: { command, remote: 'a..b' } },
+    };
+    const { config, issues } = parseConfig({ ...ROSTER, coordinator: { repos } });
+    assert.deepEqual(paths(issues).sort(), ['coordinator.repos.option.merge.remote', 'coordinator.repos.range.merge.remote', 'coordinator.repos.spaced.merge.remote']);
+    assert.match(issues.find((issue) => issue.path === 'coordinator.repos.option.merge.remote')?.message ?? '', /expected a git remote name/);
+    assert.deepEqual(config.coordinator.repos['fork']?.merge, { command, remote: 'upstream' });
+    assert.deepEqual(config.coordinator.repos['dotted']?.merge, { command, remote: 'my.Remote_2' });
+    assert.deepEqual(config.coordinator.repos['option']?.merge, { command, remote: 'origin' });
   });
 
   it('reads a repository’s roll, its gates and afterPull hooks from their defaults', () => {

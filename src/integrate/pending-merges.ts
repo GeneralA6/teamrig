@@ -7,12 +7,12 @@ import { parseObject, recordVersion, VERSION_FIELD, writableObject } from '../co
 /**
  * A branch whose repository's merge command said it waits (exit 75), say on a pull request's checks or review: one
  * file per branch in the coordinator's `pending-merges` folder, written and removed under the host lock. The next
- * integrate of that branch, still at that commit, finishes it without running the command again once origin's default
- * branch holds it. The format, one JSON object:
+ * integrate of that branch, still at that commit, finishes it without running the command again once the merge remote's
+ * default branch holds it. The format, one JSON object:
  *
  * - `v`: `PENDING_MERGE_FORMAT`;
  * - `session`, `repo`, `branch`: who ran the command, and for which repository's branch;
- * - `head`, `base`: the rebased commit the command was given, and origin's default branch when it ran;
+ * - `head`, `base`: the rebased commit the command was given, and the merge remote's default branch when it ran;
  * - `since`: when the first run of the command for this branch started, ISO 8601 UTC;
  * - `note`: the command's last output line, such as the pull request's address; empty when it printed none.
  */
@@ -22,7 +22,7 @@ export interface PendingMerge {
   readonly branch: string;
   /** The rebased commit the merge command was given. */
   readonly head: string;
-  /** Origin's default branch when the command ran: the merge is looked for in the commits after it. */
+  /** The merge remote's default branch when the command ran: the merge is looked for in the commits after it. */
   readonly base: string;
   /** When the first run of the merge command for this branch started, as an ISO time. */
   readonly since: string;

@@ -2953,7 +2953,10 @@ The repository is the entry of `coordinator.repos` whose `mainCheckout` is this 
   merge commit all do), else FAILED and the branch is kept. 75: the merge waits, say on the pull request's checks or
   review: WAITING with its last line, exit 75, the branch kept and the lock freed; run integrate again later, and once
   origin holds the merge it finishes without running the command again (a branch with new commits is a new merge).
-  Any other end: FAILED, the branch kept.
+  Any other end: FAILED, the branch kept. `merge.remote` [coordinator.repos.<name>.merge.remote] names the remote it
+  merges into, origin unless set: where origin is your fork and pull requests merge into the project's repository,
+  set `"remote": "upstream"`. Integrate then fetches and rebases onto upstream's default branch, confirms the merge
+  there and moves the local default branch to upstream's; the branch is still pushed to and deleted from origin.
 
 A repository not listed gets a NOTE and none of these. Then integrate waits up to `coordinator.wait.maxMinutes` (60),
 looking every `coordinator.wait.pollSeconds` (30), for the claims and the host lock (see `teamrig heavy`; longer while its line moves), fetches,

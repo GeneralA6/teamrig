@@ -397,7 +397,7 @@ describe('integrate lands a branch', () => {
 
 describe('integrate merges through the repository’s merge command, where one is set', () => {
   const MERGE = ['node', 'merge.ts'];
-  const MERGING: CoordinatorRepoConfig = { ...PLAIN, merge: { command: MERGE } };
+  const MERGING: CoordinatorRepoConfig = { ...PLAIN, merge: { command: MERGE, remote: 'origin' } };
   const PENDING = join(PLACES.pendingMerges, 'app%2Ffeat.json');
   const WAITED: PendingMerge = { session: 'api', repo: 'app', branch: 'feat', head: 'rebased', base: 'base', since: '2030-01-08T10:00:00.000Z', note: 'https://forge/pr/7' };
   const HALF_HOUR = 30 * 60_000;
@@ -466,6 +466,41 @@ describe('integrate merges through the repository’s merge command, where one i
       },
     ]);
     assert.equal(world.files.get(PENDING), undefined);
+    assert.ok(world.lockFree());
+  });
+
+  it('merges into the merge remote beside origin: rebases onto it and confirms there, deletes the branch on origin, and moves the local main to it', async () => {
+    const world = new World({ repos: { app: { ...MERGING, merge: { command: MERGE, remote: 'upstream' } } } });
+    world.git.remotes.set('upstream', new Map([['main', 'base']]));
+    world.hooks.answer(MERGE, {
+      lines: ['pull request https://forge/pr/7 merged'],
+      during: async () => {
+        world.git.remotes.get('upstream')?.set('main', 'squashed');
+        world.git.landed = ['squashed'];
+        world.git.diffs.set('squashed..rebased', []);
+      },
+    });
+    assert.deepEqual(await world.run(), { kind: 'done', summary: 'merged squashed into main through the merge command' });
+    assert.equal(world.hooks.ran[0]?.env['TEAMRIG_MERGE_BASE'], 'main');
+    assert.deepEqual(world.git.log, [
+      `fetch ${WORKTREE} upstream`,
+      `fetch ${WORKTREE} upstream`,
+      `rebase ${WORKTREE} upstream/main`,
+      `fetch ${WORKTREE} upstream`,
+      `deleteRemoteBranch ${WORKTREE} feat`,
+      `detach ${WORKTREE}`,
+      `deleteBranch ${WORKTREE} feat`,
+      `updateLocalBranch ${WORKTREE} upstream main`,
+    ]);
+    assert.equal(world.git.origin.get('main'), 'base', 'origin, the fork, is left as it was');
+    assert.ok(world.lockFree());
+  });
+
+  it('fails before the lock when the merge remote is not a remote of the checkout', async () => {
+    const world = new World({ repos: { app: { ...MERGING, merge: { command: MERGE, remote: 'upstream' } } } });
+    failed(await world.run(), /git fetch failed: 'upstream' does not appear to be a git repository/);
+    assert.deepEqual(world.hooks.ran, []);
+    assert.deepEqual(world.git.log, [`fetch ${WORKTREE} upstream`]);
     assert.ok(world.lockFree());
   });
 

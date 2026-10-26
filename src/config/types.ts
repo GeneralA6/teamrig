@@ -674,6 +674,12 @@ export interface MergeConfig {
    * fails it. Its last output line is shown as the reason.
    */
   readonly command: readonly string[];
+  /**
+   * The git remote whose default branch the command merges into: integrate rebases onto it and confirms the merge on
+   * it, and moves the local default branch to it. `origin` unless set; say `upstream` where origin is a contributor's
+   * fork. The branch itself is pushed to and deleted from origin either way.
+   */
+  readonly remote: string;
 }
 
 /** A check `teamrig roll` asks before it rolls: a program and its arguments, run without a shell from the main checkout. */

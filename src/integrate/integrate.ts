@@ -31,7 +31,9 @@ import { readPendingMerge, removePendingMerge, writePendingMerge, type PendingMe
  * pushes (the pre-push hook runs as a heavy step), then tidies the branch away and, when configured, fast-forwards the
  * main checkout. It never deploys: a push a host deploys by itself is recorded as that deploy. A repository with a
  * merge command (`coordinator.repos.<name>.merge`, say one that merges through a pull request) runs it in place of the
- * push: exit 0 merged, once origin shows it; 75 waits, and the next integrate finishes it once it merged; else failed.
+ * push: exit 0 merged, once its remote shows it; 75 waits, and the next integrate finishes it once it merged; else
+ * failed. That remote is origin unless `merge.remote` names another, say the upstream a fork's pull request merges
+ * into: the branch is rebased onto its default branch, and the local default branch follows it.
  */
 
 const MINUTE_MS = 60_000;
@@ -104,12 +106,14 @@ export function repoOf(checkout: Checkout, setup: IntegrateSetup, platform: Node
   return { name: basename(main), config: { mainCheckout: main, deploysOnPush: [], dependencyGate: false, followMainCheckout: false }, listed: false };
 }
 
-/** What integrate lands: a branch of a checkout, onto origin's default branch. */
+/** What integrate lands: a branch of a checkout, onto its remote's default branch. */
 interface Plan {
   readonly top: string;
   readonly branch: string;
   readonly linked: boolean;
   readonly mainCheckout: string | undefined;
+  /** The remote whose default branch the branch lands on: the merge command's `remote`, else origin. */
+  readonly remote: string;
   readonly defaultBranch: string;
   readonly repo: RepoMatch;
   /** The merge the branch's last integrate left waiting, with the branch still at the commit the command was given. */
@@ -164,16 +168,17 @@ async function planOf(setup: IntegrateSetup, ports: IntegratePorts, request: Int
   if (changes.length > 0) {
     return { kind: 'refused', reason: `${top} has ${changes.length} uncommitted change${changes.length === 1 ? '' : 's'}: commit or stash them first` };
   }
-  const fetched = git.fetch(top, ORIGIN);
+  const repo = repoOf(checkout, setup, ports.platform);
+  const remote = repo.config.merge?.remote ?? ORIGIN;
+  const fetched = git.fetch(top, remote);
   if (!fetched.ok) {
     return { kind: 'failed', reason: `git fetch failed: ${fetched.reason}` };
   }
-  const defaultBranch = git.defaultBranch(top, ORIGIN);
+  const defaultBranch = git.defaultBranch(top, remote);
   if (branch === defaultBranch || PROTECTED_BRANCHES.includes(branch)) {
     return { kind: 'refused', reason: `${branch} is a default branch: integrate a feature branch` };
   }
-  const onto = `${ORIGIN}/${defaultBranch}`;
-  const repo = repoOf(checkout, setup, ports.platform);
+  const onto = `${remote}/${defaultBranch}`;
   // A merge commit can make the branch an ancestor of what it merged into: a pending merge is still to finish.
   const pending = await waitingMerge(setup, ports, repo, top, branch);
   if (pending === undefined && git.isAncestor(top, 'HEAD', onto)) {
@@ -183,7 +188,7 @@ async function planOf(setup: IntegrateSetup, ports: IntegratePorts, request: Int
   if (held !== undefined) {
     return { kind: 'refused', reason: held };
   }
-  return { kind: 'ready', plan: { top, branch, linked: checkout.linked, mainCheckout: checkout.mainCheckout, defaultBranch, repo, pending } };
+  return { kind: 'ready', plan: { top, branch, linked: checkout.linked, mainCheckout: checkout.mainCheckout, remote, defaultBranch, repo, pending } };
 }
 
 /** The merge the branch's last integrate left waiting, when its repository merges by command and the branch is still at the commit that run gave the command. */
@@ -347,7 +352,7 @@ async function landByPush(setup: IntegrateSetup, ports: IntegratePorts, plan: Pl
 }
 
 /**
- * Origin's default branch (`onto`'s commit) when one of its commits since `base` holds the branch's work: every path the
+ * The default branch (`onto`'s commit) when one of its commits since `base` holds the branch's work: every path the
  * branch changed from `base` to `head` reads there as at `head`. That finds a rebase, a squash and a merge commit
  * alike, also once more commits came after it; a change to one of those files that reached the default branch first
  * hides it, and the branch is kept. One diff per commit, newest first, with no path list on the command line.
@@ -371,16 +376,16 @@ function mergedAt(git: IntegrateGit, top: string, onto: string, base: string, he
 
 /**
  * Under the host lock `taking` holds, for a repository with a merge command: a merge an earlier integrate left waiting
- * is done once origin's default branch holds it (see {@link mergedAt}); else rebases onto the fresh default branch,
- * runs the dependency check and then the command (its contract: `MergeConfig`). Exit 0 must show on origin, 75 leaves
- * a pending merge for the next integrate, anything else fails. The command's lines show redacted; its last one is the
- * reason given.
+ * is done once the merge remote's default branch holds it (see {@link mergedAt}); else rebases onto the fresh default
+ * branch, runs the dependency check and then the command (its contract: `MergeConfig`). Exit 0 must show on that
+ * remote, 75 leaves a pending merge for the next integrate, anything else fails. The command's lines show redacted; its
+ * last one is the reason given.
  */
 async function mergeByCommand(setup: IntegrateSetup, ports: IntegratePorts, plan: Plan, taking: Taking, argv: readonly string[]): Promise<Landing> {
   const { git } = ports;
-  const { top, branch, defaultBranch, repo, pending } = plan;
-  const onto = `${ORIGIN}/${defaultBranch}`;
-  const fetched = git.fetch(top, ORIGIN);
+  const { top, branch, remote, defaultBranch, repo, pending } = plan;
+  const onto = `${remote}/${defaultBranch}`;
+  const fetched = git.fetch(top, remote);
   if (!fetched.ok) {
     return { kind: 'failed', reason: `git fetch failed: ${fetched.reason}` };
   }
@@ -434,7 +439,7 @@ async function mergeByCommand(setup: IntegrateSetup, ports: IntegratePorts, plan
   if (!succeeded(end)) {
     return { kind: 'failed', reason: `the merge command \`${command}\` ${hookEndText(end)}, so ${branch} is not on ${defaultBranch}${last === undefined ? '' : `: ${last}`}` };
   }
-  const refetched = git.fetch(top, ORIGIN);
+  const refetched = git.fetch(top, remote);
   const after = refetched.ok ? mergedAt(git, top, onto, before, head) : undefined;
   if (after === undefined) {
     const why = refetched.ok ? `no commit on ${onto} since ${short(before)} holds its files at ${short(head)}` : `git fetch failed: ${refetched.reason}`;
@@ -449,7 +454,7 @@ async function land(setup: IntegrateSetup, ports: IntegratePorts, plan: Plan, ta
   return command === undefined ? landByPush(setup, ports, plan, taking) : mergeByCommand(setup, ports, plan, taking, command);
 }
 
-/** Removes the landed branch on origin and here, and moves the local default branch, as far as each step goes; a failed step is a warning. */
+/** Removes the landed branch on origin and here, and moves the local default branch to its remote's, as far as each step goes; a failed step is a warning. */
 function tidy(ports: IntegratePorts, request: IntegrateRequest, plan: Plan): void {
   const { git, say } = ports;
   const { top, branch, defaultBranch } = plan;
@@ -471,9 +476,9 @@ function tidy(ports: IntegratePorts, request: IntegrateRequest, plan: Plan): voi
       warn(`delete the local ${branch}`, deleted.reason);
     }
   }
-  const update = git.updateLocalBranch(top, ORIGIN, defaultBranch);
+  const update = git.updateLocalBranch(top, plan.remote, defaultBranch);
   if (update.kind === 'failed') {
-    warn(`move the local ${defaultBranch} to origin's`, update.reason);
+    warn(`move the local ${defaultBranch} to ${plan.remote}'s`, update.reason);
   } else if (update.kind === 'updated' && !plan.linked && !request.keepLocal) {
     const switched = git.checkout(top, defaultBranch);
     if (!switched.ok) {
@@ -502,7 +507,7 @@ async function followMainCheckout(ports: IntegratePorts, plan: Plan, landed: str
   }
   const was = git.sha(main, 'HEAD');
   if (was === undefined || !git.isAncestor(main, was, landed)) {
-    note(`its ${plan.defaultBranch} has commits that are not on origin`);
+    note(`its ${plan.defaultBranch} has commits that are not on ${plan.remote}`);
     return;
   }
   const moved = git.fastForward(main, landed);
@@ -529,7 +534,7 @@ function nextStep(request: IntegrateRequest, plan: Plan): string | undefined {
   return request.keepLocal ? `next: teamrig worktree remove "${plan.top}" --delete-branch` : `next: teamrig worktree remove "${plan.top}"`;
 }
 
-/** Lands the branch of the checkout at `request.dir` on origin's default branch (see the module comment). */
+/** Lands the branch of the checkout at `request.dir` on its remote's default branch (see the module comment). */
 export async function integrateBranch(setup: IntegrateSetup, ports: IntegratePorts, request: IntegrateRequest): Promise<IntegrateEnd> {
   const planned = await planOf(setup, ports, request);
   if (planned.kind !== 'ready') {
