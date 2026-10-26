@@ -7,7 +7,7 @@ import type { JsonRecord } from '../core/guards.ts';
 import type { Task } from '../register/fold.ts';
 import { testTask } from '../testing/task.ts';
 import { configRecordOf, teamNodeOfSpec, teamSpecOf, type Checked, type TeamSpec } from './team-create.ts';
-import { planTeamSplit, type SplitParent, type SplitPlan } from './team-split.ts';
+import { planTeamSplit, trimmedParentOf, type SplitParent, type SplitPlan } from './team-split.ts';
 
 /**
  * Team `app`: `dave` reviews security and leads `alpha`, `bravo` leads `carol` and `erin`, `alpha` has its own name
@@ -107,12 +107,24 @@ describe('planTeamSplit', () => {
       testTask({ id: 'T4', owner: 'erin', source: 'org/po', waits: [{ kind: 'decision', who: 'dave' }] }),
     );
     assert.deepEqual(valueOf(plan(tasks)).rewrites, [
-      { task: 'T1', field: 'source', from: 'lead', to: 'app/lead' },
-      { task: 'T1', field: 'pin', from: 'lead', to: 'app/lead' },
-      { task: 'T2', field: 'source', from: 'bravo', to: 'web/bravo' },
-      { task: 'T2', field: 'approval', from: 'alpha', to: 'web/alpha' },
-      { task: 'T3', field: 'answer', from: 'lead', to: 'app/lead' },
+      { task: 'T1', field: 'source', from: 'lead', to: 'app/lead', moves: true },
+      { task: 'T1', field: 'pin', from: 'lead', to: 'app/lead', moves: true },
+      { task: 'T2', field: 'source', from: 'bravo', to: 'web/bravo', moves: false },
+      { task: 'T3', field: 'answer', from: 'lead', to: 'app/lead', moves: true },
     ]);
+  });
+
+  it("blocks on a staying task's wait for a moved session's decision or approval, and leaves an approval it gave as written", () => {
+    const tasks = tasksOf(
+      testTask({ id: 'T1', owner: 'lead', waits: [{ kind: 'approval', who: 'bravo' }], answer: { verdict: 'approved', by: 'bravo', at: '2030-01-07T10:00:00.000Z', note: 'ok' } }),
+      testTask({ id: 'T2', owner: 'erin', waits: [{ kind: 'decision', who: 'carol' }, { kind: 'decision', who: 'lead' }] }),
+    );
+    const split = valueOf(plan(tasks));
+    assert.deepEqual(split.blockers, [
+      { task: 'T1', field: 'approval', from: 'bravo', to: 'web/bravo', moves: false },
+      { task: 'T2', field: 'decision', from: 'carol', to: 'web/carol', moves: false },
+    ]);
+    assert.deepEqual(split.rewrites, []);
   });
 
   it('lists the after and wait links between a moving task and a staying one of the working set', () => {
@@ -153,5 +165,33 @@ describe('planTeamSplit', () => {
   it('refuses a launch block the child config could not hold as written', () => {
     const record: JsonRecord = { ...RECORD, launch: { carol: { model: 42 } } };
     assert.match(problemOf(plan(new Map(), parentOf(record, RECORD))), /^team web's config would break its schema at launch\.carol/);
+  });
+});
+
+describe('trimmedParentOf', () => {
+  it("drops the moved sessions from the sessions, names, launch blocks and sub-leads' lists, every other key as written", () => {
+    const record = {
+      version: 1,
+      sessions: ['lead', 'alpha', 'bravo', 'carol', 'dave'],
+      names: { alpha: 'scout', carol: 'cee' },
+      launch: { bravo: { effort: 'high' }, carol: { effort: 'low' } },
+      leads: { alpha: ['dave'], carol: ['bravo'], dave: ['erin', 'alpha'] },
+      roles: { lead: 'lead' },
+      future: { kept: true },
+    };
+    assert.deepEqual(trimmedParentOf(record, new Set(['alpha', 'bravo'])), {
+      version: 1,
+      sessions: ['lead', 'carol', 'dave'],
+      names: { carol: 'cee' },
+      launch: { carol: { effort: 'low' } },
+      leads: { dave: ['erin'] },
+      roles: { lead: 'lead' },
+      future: { kept: true },
+    });
+  });
+
+  it('adds no key the config lacks, and leaves a damaged list for the config check to name', () => {
+    assert.deepEqual(trimmedParentOf({ sessions: ['lead', 'alpha'] }, new Set(['alpha'])), { sessions: ['lead'] });
+    assert.deepEqual(trimmedParentOf({ sessions: 'lead', leads: { carol: 'alpha' } }, new Set(['alpha'])), { sessions: 'lead', leads: { carol: 'alpha' } });
   });
 });
