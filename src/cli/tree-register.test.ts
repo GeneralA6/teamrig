@@ -1,13 +1,22 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { join } from 'node:path';
 import { formatConfig } from '../config/load.ts';
+import type { Files } from '../core/files.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { readEvents } from '../register/snapshot.ts';
 import { TEST_OWNER_CARD, TEST_OWNER_CARD_FLAGS } from '../testing/card.ts';
 import { bash, CONFIG_PATH, EVENTS_PATH, reasonOf } from '../testing/cli-harness.ts';
-import { SUB_TEAMS, teamConfigOf, teamEventsOf, teamInboxOf, treeHarness } from '../testing/team-tree.ts';
+import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
+import { SUB_TEAMS, teamConfigOf, teamEventsOf, teamHomeOf, teamInboxOf, treeHarness } from '../testing/team-tree.ts';
 import type { CliHarness } from '../testing/cli-harness.ts';
+import { WakeAsks, type WakeAsk } from '../wake/asks.ts';
 import { EXIT } from './runtime.ts';
+
+/** A team's wake asks folder, where its sessions' tabs' wake checks read them. */
+function wakeAsksOf(team: string): string {
+  return join(teamHomeOf(team), 'state', 'wake-asks');
+}
 
 const WEB = { TEAMRIG_TEAM: 'web' };
 const AS_LEAD = { env: { TEAMRIG_SESSION: 'lead' } };
@@ -421,5 +430,89 @@ describe("leaders across the tree: the parent team's lead approves a child team'
     assert.match((await push(webLead)).stdout[0] ?? '', /^\{"systemMessage":"teamrig let this push .* app\/lead approved T1; set its next status once pushed/);
     assert.equal(await kit.files.remove(CONFIG_PATH), true);
     assert.match(reasonOf(await push(webLead)) ?? '', /: team app, the parent team, has no config to name its lead\./);
+  });
+});
+
+describe("an owner wait due before the next batch, in a child team, wakes the lead at the tree's root (T1277)", () => {
+  /** app's batch times; the clock is Tue 01-08 10:00, so a wait due 12:00 is due before the 13:03 batch. */
+  const BATCHED = { decisions: { batchTimesUtc: ['13:03', '19:03'], batchAt: 2 } };
+  const AT_ONCE = `${TEST_OWNER_CARD.question} | AT ONCE, due Tue 01-08 12:00 UTC before the next batch`;
+  const WOKEN = "NOTE T1 is due before the owner's next batch: its line wakes app-lead, who asks the owner, so no message is needed";
+  const AT = Date.parse('2030-01-08T10:00:00Z');
+
+  /** Adds a task of `session`'s on `team`, due 12:00 unless `due` is empty, and sets it waiting on the owner; returns the set's stderr. */
+  async function ownerWait(kit: CliHarness, team: string, session: string, options: { files?: Files; due?: string } = {}): Promise<readonly string[]> {
+    const env = { TEAMRIG_TEAM: team };
+    const due = options.due ?? '2030-01-08 12:00';
+    const added = await kit.run(['add', '--title', 'Pick a host', '--description', 'what and why', '--priority', 'p1', ...(due === '' ? [] : ['--due', due]), '--session', session], { env });
+    assert.equal(added.code, EXIT.ok, added.stderr.join('\n'));
+    const set = await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'decision:owner', '--note', 'the cost', ...TEST_OWNER_CARD_FLAGS, '--session', session], { env, files: options.files ?? kit.files });
+    assert.equal(set.code, EXIT.ok, [`code ${set.code}`, ...set.stdout, ...set.stderr].join('\n'));
+    return set.stderr;
+  }
+
+  async function asksOf(kit: CliHarness, team: string, id: string): Promise<readonly (WakeAsk | undefined)[]> {
+    return (await new WakeAsks(kit.files, wakeAsksOf(team)).read(id)).map((stored) => stored.ask);
+  }
+
+  it("posts the root lead a line and its wake; the member's own lead keeps its line, unwoken", async () => {
+    const kit = await treeHarness(BATCHED);
+    const line = `web/T1 waits on the owner's decision: ${AT_ONCE}`;
+    assert.deepEqual(await ownerWait(kit, 'web', 'front'), [
+      `NOTE lead has an inbox line: T1 waits on the owner's decision: ${AT_ONCE}`,
+      `NOTE app/lead has an inbox line: ${line}`,
+      WOKEN,
+    ]);
+    assert.equal(kit.files.get(teamInboxOf('app', 'lead')), `- 2030-01-08 10:00 web/front: ${line}\n`);
+    assert.deepEqual(await asksOf(kit, 'app', 'lead'), [{ from: 'web/front', text: line, at: AT }]);
+    assert.deepEqual(await asksOf(kit, 'web', 'lead'), []);
+  });
+
+  it("wakes the parent team's lead on the one line a child lead's own wait sends it", async () => {
+    const kit = await treeHarness(BATCHED);
+    const line = `web/T1 waits on the owner's decision: ${AT_ONCE}`;
+    assert.deepEqual(await ownerWait(kit, 'web', 'lead'), [`NOTE app/lead has an inbox line: ${line}`, WOKEN]);
+    assert.equal(kit.files.get(teamInboxOf('app', 'lead')), `- 2030-01-08 10:00 web/lead: ${line}\n`);
+    assert.deepEqual(await asksOf(kit, 'app', 'lead'), [{ from: 'web/lead', text: line, at: AT }]);
+  });
+
+  it("wakes the root lead past a grandchild lead's parent lead, who keeps its line, unwoken", async () => {
+    const kit = await treeHarness(BATCHED);
+    const line = `ui/T1 waits on the owner's decision: ${AT_ONCE}`;
+    assert.deepEqual(await ownerWait(kit, 'ui', 'lead'), [`NOTE web/lead has an inbox line: ${line}`, `NOTE app/lead has an inbox line: ${line}`, WOKEN]);
+    assert.deepEqual(await asksOf(kit, 'app', 'lead'), [{ from: 'ui/lead', text: line, at: AT }]);
+    assert.deepEqual(await asksOf(kit, 'web', 'lead'), []);
+  });
+
+  it('wakes no one, and tells the root lead nothing, for a wait the next batch holds', async () => {
+    const kit = await treeHarness(BATCHED);
+    assert.equal((await ownerWait(kit, 'web', 'front', { due: '' })).length, 1);
+    assert.equal(kit.files.get(teamInboxOf('app', 'lead')), undefined);
+    assert.deepEqual([await asksOf(kit, 'app', 'lead'), await asksOf(kit, 'web', 'lead')], [[], []]);
+  });
+
+  it("tells the setter to message the root lead when the root team's wakes are off", async () => {
+    const kit = await treeHarness({ ...BATCHED, wake: { enabled: false } });
+    assert.equal((await ownerWait(kit, 'web', 'front')).at(-1), "NOTE T1 is due before the owner's next batch: message app-lead, who asks the owner, as an inbox line wakes no one");
+    assert.deepEqual(await asksOf(kit, 'app', 'lead'), []);
+  });
+
+  it('tells the setter to message the root lead when its wake cannot be asked, its line posted', async () => {
+    const kit = await treeHarness(BATCHED);
+    const ask = join(wakeAsksOf('app'), 'lead', `${AT}-0.json`);
+    const files = new FaultyFiles(kit.files).fail('createExclusive', ask, systemError('EACCES', 'EACCES: permission denied'));
+    assert.equal(
+      (await ownerWait(kit, 'web', 'front', { files })).at(-1),
+      "WARN T1 is due before the owner's next batch, and app-lead's wake could not be asked (EACCES: permission denied): message app-lead, who asks the owner",
+    );
+    assert.match(kit.files.get(teamInboxOf('app', 'lead')) ?? '', /web\/T1 waits on the owner's decision/);
+  });
+
+  it("tells the setter to message the root lead, asking no wake, when the root team's secret patterns refuse its line", async () => {
+    const kit = await treeHarness({ ...BATCHED, register: { secretPatterns: ['pricing tier'] } });
+    const stderr = await ownerWait(kit, 'web', 'front');
+    assert.match(stderr[1] ?? '', /^WARN app\/lead was not told of the wait on it: /);
+    assert.equal(stderr[2], "NOTE T1 is due before the owner's next batch: message app-lead, who asks the owner, as its line could not be posted");
+    assert.deepEqual(await asksOf(kit, 'app', 'lead'), []);
   });
 });
