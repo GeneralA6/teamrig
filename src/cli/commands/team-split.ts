@@ -15,12 +15,13 @@ import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.t
 import { teamRegister } from '../team-register.ts';
 import { loadTree } from '../tree.ts';
 import { warnDamage } from './register.ts';
+import { blockerText, liveSessionsOf, liveText, writeTeamSplit, type LiveSession } from './team-split-write.ts';
 
 /**
- * `team split <child> --lead <id> --sessions <id,id> --dry-run`: the lead's plan for moving sessions of its team, with
- * the tasks they own, into a new child team under it (T1144). It plans only, so it runs with --dry-run alone: the
- * child's config, what the parent's config loses, the tasks that move, the links and names that cross the new border,
- * and each moved session's inbox, files and renames.
+ * `team split <child> --lead <id> --sessions <id,id> [--dry-run]`: the lead moves sessions of its team, with the tasks
+ * they own, into a new child team under it (T1144). The plan, which --dry-run prints alone, names the child's config,
+ * what the parent's config loses, the tasks that move, the links and names that cross the new border, each moved
+ * session's inbox, files and renames, and what blocks the split; team-split-write.ts writes it.
  */
 
 /** What a moved session leaves in the parent's folders: its inbox lines, the files kept for it and its renames. */
@@ -61,11 +62,11 @@ function statusCounts(plan: SplitPlan, owner: string): string {
   }).join(', ');
 }
 
-function planLines(plan: SplitPlan, parent: string, roster: Roster, configPaths: { child: string; parent: string }, left: readonly SessionLeft[]): string[] {
+function planLines(plan: SplitPlan, parent: string, roster: Roster, configPaths: { child: string; parent: string }, left: readonly SessionLeft[], live: readonly LiveSession[]): string[] {
   const { spec, trim } = plan;
   const sideOf = (moves: boolean): string => (moves ? spec.team : parent);
   return [
-    'DRY RUN nothing is written; team split only plans for now',
+    'DRY RUN nothing is written',
     `TEAM ${spec.team} under ${parent}: lead ${named(roster, spec.lead)}; sessions ${spec.sessions.map((id) => named(roster, id)).join(', ')}`,
     `WOULD CREATE ${configPaths.child}:`,
     ...formatConfig(plan.config).trimEnd().split('\n'),
@@ -82,6 +83,8 @@ function planLines(plan: SplitPlan, parent: string, roster: Roster, configPaths:
       return `LINK ${link.task} in ${sideOf(link.taskMoves)} ${relation} ${link.on} in ${sideOf(!link.taskMoves)}`;
     }),
     ...plan.rewrites.map((rewrite) => `REWRITE ${rewrite.task} ${rewrite.field} ${rewrite.from} -> ${rewrite.to}`),
+    ...plan.blockers.map(blockerText).map((text) => `BLOCKED ${text}`),
+    ...live.map(liveText).map((text) => `BLOCKED ${text}`),
     ...left.flatMap((session) => [
       ...(session.inboxLines === 0 ? [] : [`INBOX ${session.id}: ${session.inboxLines} line(s) move`]),
       ...(session.files.length === 0 ? [] : [`FILES ${session.id}: ${session.files.join(', ')}`]),
@@ -92,13 +95,11 @@ function planLines(plan: SplitPlan, parent: string, roster: Roster, configPaths:
 
 export async function teamSplit(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const child = onePositional(args, 'team');
-  if (!args.switches.has('dry-run')) {
-    throw new RefusedError('team split only plans for now: run it with --dry-run to see what it would move');
-  }
+  const dryRun = args.switches.has('dry-run');
   const kit = await openTeamKit(runtime);
-  const config = requireConfig(kit, runtime, 'read');
+  const config = requireConfig(kit, runtime, dryRun ? 'read' : 'write');
   const roster = await rosterOf(runtime, kit, config);
-  leadOnly(roster, callerOf(args.flags, runtime.env), 'splits the team');
+  const by = leadOnly(roster, callerOf(args.flags, runtime.env), 'splits the team');
   const lead = sessionIdOf(roster, requiredFlag(args.flags, 'lead'));
   const sessions = listOf('--sessions', requiredFlag(args.flags, 'sessions')).map((each) => sessionIdOf(roster, each));
   const spec = teamSpecOf(child, sessions.join(','), lead, kit.paths.team);
@@ -116,7 +117,11 @@ export async function teamSplit(args: ParsedArgs, runtime: CliRuntime): Promise<
   if (!planned.ok) {
     throw new RefusedError(planned.problem);
   }
+  if (!dryRun) {
+    return writeTeamSplit({ runtime, kit, config, record: parent.record, by, plan: planned.value, childPaths });
+  }
   const left = await sessionsLeftOf(runtime, kit.paths, spec.value.sessions);
-  planLines(planned.value, kit.paths.team, roster, { child: childPaths.config, parent: kit.load.path }, left).forEach((line) => runtime.out.stdout(line));
+  const live = await liveSessionsOf(runtime, kit.paths, spec.value.sessions);
+  planLines(planned.value, kit.paths.team, roster, { child: childPaths.config, parent: kit.load.path }, left, live).forEach((line) => runtime.out.stdout(line));
   return EXIT.ok;
 }
