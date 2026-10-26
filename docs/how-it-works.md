@@ -564,6 +564,7 @@ sequenceDiagram
   its own SessionEnd and SessionStart hooks. It holds the `/clear` for you first: while the prompt box holds a draft,
   for `refresh.holdAfterActivityMinutes` (5) after your last key or prompt, and 10 minutes after you press Hold; then
   a band above the prompt counts `refresh.countdownSeconds` (20) down with `1: Refresh now` and `2: Hold 10 min`.
+  Before that the band shows each hold: what holds the `/clear` and, for your own, how long it has left.
   While Claude Code lists a live agent of the session (`$.agent.list()`:
   a helper or teammate not completed, failed or killed), or will not list them, the mod holds the ask instead
   (`hook clear-claim --hold --why <reason>`) and runs nothing: the restart ends nothing, waits for quiet and asks
