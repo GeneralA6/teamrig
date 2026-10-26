@@ -2901,17 +2901,28 @@ The repository is the entry of `coordinator.repos` whose `mainCheckout` is this 
   any other end, or a range integrate cannot read, is REFUSED and nothing is pushed.
 - `followMainCheckout`: after a landing from a linked worktree, fast-forward the main checkout too, when it is on
   the default branch with no uncommitted changes; a NOTE says when it was left as it is, or needs `npm ci`.
+- `merge`: a merge command run in place of the push, such as `{ "command": ["node", "tools/merge.ts"] }` for a
+  repository that lands through pull requests (a sketch below). It runs like the `dependencyCheck`, after it, with
+  `TEAMRIG_MERGE_BRANCH`, `TEAMRIG_MERGE_BASE` (the default branch), `TEAMRIG_MERGE_HEAD` (the rebased commit) and
+  `TEAMRIG_SESSION` set; its last line is the reason shown. Exit 0: it merged, and integrate fetches to confirm it: a
+  commit on origin's default branch must hold every file the branch changed as at its head (a rebase, a squash and a
+  merge commit all do), else FAILED and the branch is kept. 75: the merge waits, say on the pull request's checks or
+  review: WAITING with its last line, exit 75, the branch kept and the lock freed; run integrate again later, and once
+  origin holds the merge it finishes without running the command again (a branch with new commits is a new merge).
+  Any other end: FAILED, the branch kept.
 
 A repository not listed gets a NOTE and none of these. Then integrate waits up to `coordinator.wait.maxMinutes` (60),
 looking every `coordinator.wait.pollSeconds` (30), for the claims and the host lock (see `teamrig heavy`; longer while its line moves), fetches,
-rebases onto origin's default branch, runs the `dependencyCheck` on a dependency change and pushes there, the push a heavy step in the ledger that runs the pre-push
+rebases onto origin's default branch, runs the `dependencyCheck` on a dependency change and pushes there (or runs the
+`merge` command), the push a heavy step in the ledger that runs the pre-push
 hook. It landed when origin's default branch is at the rebased commit, whatever the push's exit code. When origin
 moved meanwhile, it rebases and pushes again, 3 times in all. After a landing it deletes the branch on origin and
 here, moves the local default branch to origin's and prints the `teamrig worktree remove` that ends a worktree.
 Like `teamrig heavy`, it watches the processes that started it. Once its launching shell ends it stops waiting
 (`STOPPED before the host lock was free: nothing ran`), or kills the push it runs, records exit 129, frees the lock
 and pushes no more (FAILED).
-Exit 0 landed, 1 failed (FAILED and the reason; the branch is kept), 2 when the dependency check refused it.
+Exit 0 landed, 1 failed (FAILED and the reason; the branch is kept), 2 when the dependency check refused it, 75 when
+the merge command waits.
 
 Flags:
 
@@ -2935,7 +2946,48 @@ Output:
 DONE pushed 9a0b1c2d..4f1c2a9e to main; cloud-api deploy on push
 ```
 
-A wait prints `waiting: <reason>` lines first, such as a quiet claim or the host lock's holder.
+A wait prints `waiting: <reason>` lines first, such as a quiet claim or the host lock's holder. A merge command that
+waits:
+
+```text
+2030-01-08 12:00:00 IST merging t12-parser (4f1c2a9e) into main through the merge command node tools/merge.ts
+2030-01-08 12:00:40 IST   https://github.com/you/api/pull/12
+2030-01-08 12:00:40 IST next: run teamrig integrate again in /home/you/api-t12 once t12-parser is merged
+WAITING https://github.com/you/api/pull/12
+```
+
+A sketch of `tools/merge.ts` for GitHub pull requests the forge merges once their checks pass (`gh` signed in, the
+repository's "Allow auto-merge" setting on and its checks required by a branch rule):
+
+```ts
+import { execFileSync } from 'node:child_process';
+
+const branch = process.env['TEAMRIG_MERGE_BRANCH'] ?? '';
+const base = process.env['TEAMRIG_MERGE_BASE'] ?? '';
+const head = process.env['TEAMRIG_MERGE_HEAD'] ?? '';
+const run = (program: string, args: readonly string[]): string => execFileSync(program, args, { encoding: 'utf8' }).trim();
+/** The branch's pull request: its state, review decision and address; undefined when it has none. */
+const pullRequest = (): readonly string[] | undefined => {
+  try {
+    return run('gh', ['pr', 'view', branch, '--json', 'state,reviewDecision,url', '--jq', '.state, .reviewDecision, .url']).split('\n');
+  } catch {
+    return undefined;
+  }
+};
+
+run('git', ['push', '--force-with-lease', 'origin', `HEAD:refs/heads/${branch}`]);
+if (pullRequest()?.[0] !== 'OPEN') {
+  run('gh', ['pr', 'create', '--head', branch, '--base', base, '--fill']);
+}
+run('gh', ['pr', 'merge', branch, '--auto', '--rebase', '--match-head-commit', head]);
+const [state = '', review = '', url = ''] = pullRequest() ?? [];
+console.log(url);
+process.exit(state === 'MERGED' ? 0 : state === 'OPEN' && review !== 'CHANGES_REQUESTED' ? 75 : 1);
+```
+
+Its push runs the pre-push hook, so checks kept in git's hooks still run before the forge sees the branch. A merge
+the forge makes later lands outside the host lock and the quiet claims: a `deploysOnPush` deploy starts when the forge
+merges, and is recorded when the next integrate finishes the merge.
 
 ### teamrig roll
 
