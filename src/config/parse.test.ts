@@ -474,6 +474,24 @@ describe('parseConfig', () => {
     assert.equal(config.coordinator.repos['bad']?.dependencyCheck, undefined);
   });
 
+  it('reads a repository’s land command, and leaves out one that is not a program with its arguments', () => {
+    const command = ['node', 'tools/land.ts'];
+    const repos = {
+      forge: { mainCheckout: 'repos/forge', land: { command } },
+      push: { mainCheckout: 'repos/push' },
+      text: { mainCheckout: 'repos/text', land: { command: 'node land.ts' } },
+      empty: { mainCheckout: 'repos/empty', land: {} },
+      bare: { mainCheckout: 'repos/bare', land: ['node', 'land.ts'] },
+    };
+    const { config, issues } = parseConfig({ ...ROSTER, coordinator: { repos } });
+    assert.deepEqual(paths(issues).sort(), ['coordinator.repos.bare.land', 'coordinator.repos.empty.land.command', 'coordinator.repos.text.land.command']);
+    assert.deepEqual(config.coordinator.repos['forge'], { mainCheckout: 'repos/forge', deploysOnPush: [], dependencyGate: false, followMainCheckout: false, land: { command } });
+    assert.equal(config.coordinator.repos['push']?.land, undefined);
+    assert.equal(config.coordinator.repos['text']?.land, undefined);
+    assert.equal(config.coordinator.repos['empty']?.land, undefined);
+    assert.equal(config.coordinator.repos['bare']?.land, undefined);
+  });
+
   it('reads a repository’s roll, its gates and afterPull hooks from their defaults', () => {
     const roll = { targets: ['cloud-api'], gates: [{ name: 'flow', command: ['node', 'gates/flow.js', '--quiet'] }], command: ['node', 'roll.js'] };
     const { config, issues } = parseConfig({ ...ROSTER, coordinator: { repos: { api: { mainCheckout: 'C:/src/api', roll }, web: { mainCheckout: 'C:/src/web', roll: { command: ['npm', 'run', 'deploy'] } } } } });
