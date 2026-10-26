@@ -370,6 +370,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   approve <id> --note "<what you checked, or why not>" [--decline]   the lead only: answers a task waiting on
       its approval (approval:<lead>); its owner gets an inbox line to push or merge (or to fix the note's
       point and ask again), and check flags the approved task READY
+  approve <team>/<id> --note .. [--decline]   the lead of a team's parent team answers a task of that
+      team's lead waiting on its approval (approval:app/lead), named as its inbox line prints it: web/T3
   list [--session <owner>] [--status a,b|all] [--source <s>] [--priority p1,p2] [--due-before <date>]
       [--week <date>|none] [--goal <tag>] [--type task,bug] [--tree] [--all]
       short rows within 3,000 characters; --all: every field of every task. A task takes the earlier due
