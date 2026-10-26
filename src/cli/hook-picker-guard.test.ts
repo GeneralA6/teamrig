@@ -10,6 +10,8 @@ import { SUB_TEAMS, teamConfigOf, teamHomeOf, treeHarness } from '../testing/tea
 import { EXIT } from './runtime.ts';
 
 const ON_TEAM: JsonRecord = { ...TEAM, pickerGuard: { enabled: true } };
+/** A team whose daily meeting asks the owner with the picker (decisions.askWith). */
+const PICKER_TEAM: JsonRecord = { ...ON_TEAM, decisions: { askWith: 'picker' } };
 const HOOK = ['hook', 'picker-guard'];
 const NOTHING = { code: EXIT.ok, stdout: [], stderr: [] };
 const ALPHA = { TEAMRIG_SESSION: 'alpha' };
@@ -35,12 +37,12 @@ describe('hook picker-guard', () => {
     assert.match(reasonOf(result) ?? '', /--session alpha`; the lead brings it to the owner\./);
   });
 
-  it("refuses the lead's picker while no meeting is open, lets it open in the meeting, and refuses it again once it ends or lapses", async () => {
-    const kit = new CliHarness(ON_TEAM);
+  it("refuses the lead's picker while no meeting is open, lets it open in a meeting that asks with it, and refuses it again once it ends or lapses", async () => {
+    const kit = new CliHarness(PICKER_TEAM);
     const ask = { stdin: call('AskUserQuestion'), env: LEAD };
     const away = await kit.run(HOOK, ask);
     assert.equal(decisionOf(away), 'deny', 'no meeting was ever held');
-    assert.match(reasonOf(away) ?? '', /--session lead`; the agenda of the owner's next daily meeting lists it/);
+    assert.match(reasonOf(away) ?? '', /--session lead`; the agenda of the owner's next daily meeting lists it, and the picker opens for you only while that meeting is open/);
     assert.equal((await kit.run(['meeting', 'start', '--session', 'lead'])).code, EXIT.ok);
     assert.deepEqual(await kit.run(HOOK, ask), NOTHING, 'the owner is in the meeting');
     kit.clock.advance(MEETING_LAPSE_MS);
@@ -50,8 +52,19 @@ describe('hook picker-guard', () => {
     assert.equal(decisionOf(await kit.run(HOOK, ask)), 'deny', 'the meeting ended');
   });
 
-  it("refuses a helper's picker in any team session, the lead's in a meeting too, with the helper's reason", async () => {
+  // T1278: by default the daily meeting asks in plain text, so the lead's picker stays shut in it too.
+  it("refuses the lead's picker in a meeting that asks in plain text, saying to read the card and let the owner answer in words", async () => {
     const kit = new CliHarness(ON_TEAM);
+    const ask = { stdin: call('AskUserQuestion'), env: LEAD };
+    assert.match(reasonOf(await kit.run(HOOK, ask)) ?? '', /the agenda of the owner's next daily meeting lists it, and you ask it there in plain text/);
+    assert.equal((await kit.run(['meeting', 'start', '--session', 'lead'])).code, EXIT.ok);
+    const inMeeting = await kit.run(HOOK, ask);
+    assert.equal(decisionOf(inMeeting), 'deny');
+    assert.match(reasonOf(inMeeting) ?? '', /^teamrig picker guard: the owner's daily meeting asks in plain text \(decisions\.askWith: text\)\./);
+  });
+
+  it("refuses a helper's picker in any team session, the lead's in a meeting too, with the helper's reason", async () => {
+    const kit = new CliHarness(PICKER_TEAM);
     const helper = call('AskUserQuestion', { agent_id: 'a1b2', agent_type: 'general-purpose' });
     const inAlpha = await kit.run(HOOK, { stdin: helper, env: ALPHA });
     assert.equal(decisionOf(inAlpha), 'deny');
@@ -77,7 +90,7 @@ describe('hook picker-guard', () => {
   });
 
   it("lets the root lead of a tree ask in the owner's meeting, as the lead of a team on its own", async () => {
-    const kit = await treeHarness({ pickerGuard: { enabled: true } });
+    const kit = await treeHarness({ pickerGuard: { enabled: true }, decisions: { askWith: 'picker' } });
     assert.equal((await kit.run(['meeting', 'start', '--session', 'lead'])).code, EXIT.ok);
     assert.deepEqual(await kit.run(HOOK, { stdin: call('AskUserQuestion'), env: LEAD }), NOTHING);
   });

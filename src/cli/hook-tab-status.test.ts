@@ -69,7 +69,7 @@ describe('hook tab-status', () => {
   });
 
   it('leaves the title for a question picker the picker guard refuses, and shows the lead asking in a meeting', async () => {
-    const kit = await teamWith({ ...ON_TEAM, pickerGuard: { enabled: true } });
+    const kit = await teamWith({ ...ON_TEAM, pickerGuard: { enabled: true }, decisions: { askWith: 'picker' } });
     const asking = payload('PreToolUse', { tool_name: 'AskUserQuestion', session_title: 'web' });
     const lead = { stdin: asking, env: { ...TITLE_OFF, TEAMRIG_SESSION: 'lead' } };
     assert.deepEqual((await kit.run(['hook', 'tab-status'], { stdin: asking, env: { ...TITLE_OFF, TEAMRIG_SESSION: 'alpha' } })).stdout, []);
