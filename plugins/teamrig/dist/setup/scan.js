@@ -19,11 +19,13 @@ async function readListing(transcripts, at, skills) {
 /**
  * What the user's Claude Code setup costs every turn in `at.project`, and what to slim: the files and skill listing
  * each session loads, the lines they repeat, the rule lines that may override a core rule, the settings findings and
- * the skills no transcript used since `at.since`, and which skills changed since then. It only reads.
+ * the skills no transcript used since `at.since` (or, past `at.maxBytes` of transcripts, in the newest ones read), and
+ * which skills changed since the read window starts. It only reads.
  */
 export async function scanSetup(ports, at) {
     const context = await readSessionContext(ports.files, ports.probe, at);
     const rules = await scanRules(ports.files, ports.probe, at, at.conflicts);
+    const usage = await readSkillUse(ports.transcripts, at.projectsDir, { since: at.since, maxBytes: at.maxBytes });
     return {
         context,
         listing: await readListing(ports.transcripts, at, context.skills),
@@ -31,7 +33,7 @@ export async function scanSetup(ports, at) {
         overrides: rules.candidates.filter((candidate) => !at.cleared(candidate)),
         recorded: rules.recorded.length,
         settings: await scanSettings(ports.files, at.claudeDir, at.settings, at.keep, at.secrets),
-        usage: await readSkillUse(ports.transcripts, at.projectsDir, at.since),
-        recent: await recentSkills(ports.files, context.skills, at.since),
+        usage,
+        recent: await recentSkills(ports.files, context.skills, usage.since),
     };
 }
