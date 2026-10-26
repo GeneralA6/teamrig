@@ -4,7 +4,7 @@ import { boundaryOf, decideReady } from "../../refresh/decide.js";
 import { RefreshStore } from "../../refresh/store.js";
 import { noPositionals, onePositional } from "../args.js";
 import { callerOf } from "../inputs.js";
-import { openTeamKit, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
+import { leadOnly, openTeamKit, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 /**
  * Context refresh from the command line: the lead asks for a session's refresh (`refresh <session>`),
@@ -65,10 +65,7 @@ export async function refresh(args, runtime) {
         runtime.out.stdout(`Ready. ${next}; your next start reads ${store.handoverPath(by)}.`);
         return EXIT.ok;
     }
-    const lead = roster.holderOf('lead');
-    if (by !== lead) {
-        throw new RefusedError(`only the lead${lead === undefined ? '' : ` (${roster.nameOf(lead) ?? lead})`} asks for a refresh`);
-    }
+    leadOnly(roster, by, 'asks for a refresh');
     const id = sessionIdOf(roster, target);
     await store.setRequest(id, { by, at: now });
     runtime.out.stdout(`REQUESTED a refresh of ${roster.nameOf(id) ?? id}: at its next turn end it writes its handover to ` +

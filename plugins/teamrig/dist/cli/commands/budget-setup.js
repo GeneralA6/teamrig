@@ -6,7 +6,7 @@ import { ESCALATIONS, isEscalation, isOverAction, OVER_ACTIONS } from "../../con
 import { isRecord } from "../../core/guards.js";
 import { noPositionals, UsageError } from "../args.js";
 import { callerOf } from "../inputs.js";
-import { checkedNextConfig, configFileJson, openTeamKit, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
+import { checkedNextConfig, configFileJson, leadOnly, openTeamKit, requireConfig, rosterOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 /**
  * `budget setup`: the lead writes the team's budget policy into the team config. Without --yes it only
@@ -86,10 +86,7 @@ export async function setup(args, runtime) {
     const config = requireConfig(kit, runtime, 'write');
     const { load } = kit;
     const roster = await rosterOf(runtime, kit, config);
-    const lead = roster.holderOf('lead');
-    if (sessionIdOf(roster, caller) !== lead) {
-        throw new RefusedError(`only the lead${lead === undefined ? '' : ` (${roster.nameOf(lead) ?? lead})`} sets the team's budget`);
-    }
+    leadOnly(roster, caller, "sets the team's budget");
     const plan = planBudgetSetup(await configFileJson(runtime, load.path), choices);
     if (!plan.ok) {
         throw new UsageError(plan.problem);

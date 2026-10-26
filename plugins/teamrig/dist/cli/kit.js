@@ -37,6 +37,15 @@ export function sessionIdOf(roster, text) {
     }
     return found.id;
 }
+/** The caller's id when it leads the team; anyone else is refused, naming the lead and `what` only the lead does. */
+export function leadOnly(roster, caller, what) {
+    const by = sessionIdOf(roster, caller);
+    const lead = roster.holderOf('lead');
+    if (by !== lead) {
+        throw new RefusedError(`only the lead${lead === undefined ? '' : ` (${roster.nameOf(lead) ?? lead})`} ${what}`);
+    }
+    return by;
+}
 /**
  * For a filter or a status: the id when the text names a session, and the id of a session no longer
  * on the team, given as its id or a name it had, so a past session's records stay reachable.

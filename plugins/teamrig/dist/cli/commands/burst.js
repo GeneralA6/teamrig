@@ -14,7 +14,7 @@ import { teamsOnAccountOf } from "../account-teams.js";
 import { noPositionals, onePositional, requiredFlag, UsageError } from "../args.js";
 import { readBursts } from "../burst-reading.js";
 import { callerOf, listOf } from "../inputs.js";
-import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
+import { leadOnly, openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { pctFlag, timeFlag, usageReadingOf } from "./budget.js";
 import { ownRegister } from "./register.js";
@@ -30,15 +30,6 @@ const POLICY_TEXT = {
     owner: 'the lead starts one once the owner approves it (--approved-by)',
     lead: 'the lead starts one within the caps',
 };
-/** The lead's id, or a refusal naming who may run the command. */
-function leadOnly(roster, caller, what) {
-    const by = sessionIdOf(roster, caller);
-    const lead = roster.holderOf('lead');
-    if (by !== lead) {
-        throw new RefusedError(`only the lead${lead === undefined ? '' : ` (${roster.nameOf(lead) ?? lead})`} ${what}`);
-    }
-    return by;
-}
 /** A count flag: a whole number of 0 or more, or undefined when it is not given. */
 function countFlag(flags, name) {
     const text = flags.get(name);

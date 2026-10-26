@@ -15,7 +15,7 @@ import { lineHash } from "../../inbox/line-hash.js";
 import { formatUtcDay } from "../../core/time.js";
 import { noPositionals, onePositional, requiredFlag, UsageError } from "../args.js";
 import { callerOf, listOf } from "../inputs.js";
-import { checkedNextConfig, configFileJson, openTeamKit, projectFolder, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
+import { checkedNextConfig, configFileJson, leadOnly, openTeamKit, projectFolder, requireConfig, rosterOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { teamRulesPathsOf } from "../team-rules.js";
 /**
@@ -161,10 +161,7 @@ async function leadConfig(args, runtime, what) {
     const kit = await openTeamKit(runtime);
     const config = requireConfig(kit, runtime, 'write');
     const roster = await rosterOf(runtime, kit, config);
-    const lead = roster.holderOf('lead');
-    if (sessionIdOf(roster, caller) !== lead) {
-        throw new RefusedError(`only the lead${lead === undefined ? '' : ` (${roster.nameOf(lead) ?? lead})`} ${what}`);
-    }
+    leadOnly(roster, caller, what);
     return { kit, config };
 }
 /**

@@ -31,7 +31,7 @@ import { TASK_ID } from "../../register/model.js";
 import { otherTeamsOnAccount, weekUseOnAccount } from "../account-teams.js";
 import { UsageError, onePositional, requiredFlag } from "../args.js";
 import { callerOf } from "../inputs.js";
-import { openKit, openTeamKit, requireConfig, rosterOf, sessionIdOf, teamFolders, teamZone } from "../kit.js";
+import { leadOnly, openKit, openTeamKit, requireConfig, rosterOf, sessionIdOf, teamFolders, teamZone } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 /**
  * The weekly budget from the command line: `budget` measures every session's use from the Claude Code
@@ -385,10 +385,7 @@ export async function extra(args, runtime) {
     const config = requireConfig(kit, runtime, writes ? 'write' : 'read');
     const roster = await rosterOf(runtime, kit, config);
     if (caller !== undefined) {
-        const lead = roster.holderOf('lead');
-        if (sessionIdOf(roster, caller) !== lead) {
-            throw new RefusedError(`only the lead${lead === undefined ? '' : ` (${roster.nameOf(lead) ?? lead})`} enters the extra-usage pool`);
-        }
+        leadOnly(roster, caller, 'enters the extra-usage pool');
         const { week, measured, now } = await readBudget(runtime, kit, config, roster, { recountDay: undefined });
         const window = week.window;
         if (window === undefined) {
