@@ -196,8 +196,14 @@ function hireAction(config: ScaleOutInput['config']): string {
   return `the lead ${owner ? `asks ${ownerAsk(config)}, then ` : ''}hires for it (${hire}), then ${KIT_NAME} update <id> --owner <new id>, for each`;
 }
 
-/** What the lead does when `hiring.maxSessions` blocks a hire: a card for the owner, through the parent team's lead in a child team. */
+/**
+ * What the lead does when `hiring.maxSessions` blocks a hire: raises the cap itself under `hiring.capRaisedBy` lead,
+ * else a card for the owner, through the parent team's lead in a child team.
+ */
 function capAction(config: ScaleOutInput['config'], capProblem: string): string {
+  if (config.hiring.capRaisedBy === 'lead') {
+    return `${capProblem}: the lead raises it in the team config and says so in its next report [hiring.capRaisedBy], or moves the slice to another area`;
+  }
   const parent = config.team?.parent;
   const card = parent === undefined ? 'brings the owner a card' : `asks the lead of team ${parent} to bring the owner a card`;
   return `${capProblem}: the lead ${card} to raise the cap, or moves the slice to another area`;
