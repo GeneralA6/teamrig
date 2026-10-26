@@ -18,11 +18,14 @@ export interface ClearAsk {
 }
 
 /**
- * The ask as the restart posts it: with how the tab's mod holds the /clear for the person, which only the mod
- * reads. A claim reads the ask without it, so an ask an older restart posted is still claimed.
+ * The ask as the restart posts it: with how the tab's mod holds the /clear for the person and how often the
+ * restart asks again, which only the mod reads. A claim reads the ask without them, so an ask an older restart
+ * posted is still claimed.
  */
 export interface PostedClearAsk extends ClearAsk {
   readonly hold: PersonHold;
+  /** The restart's quiet delay in ms (`refresh.restartDelaySeconds`): the mod's band stays until the next ask is overdue. */
+  readonly askEveryMs: number;
 }
 
 /**
