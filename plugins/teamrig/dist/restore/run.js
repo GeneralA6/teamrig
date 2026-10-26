@@ -3,14 +3,16 @@ import { customTitleOf } from "../names/title.js";
 import { CARRY_TAIL_BYTES } from "../refresh/carry.js";
 import { chooseMode, continuePrompt, diedAt, judgeEntry, lastRecordedEffort, lostWorkOf, nearestExistingFolder, selectRestorePlan, summarizeRestore, } from "./plan.js";
 import { teamSessionOf } from "./teams.js";
+import { KIND_TAIL_BYTES, transcriptKindOf } from "./transcript-kind.js";
 /** How long the person has to start, idle or cancel the restore before it starts on its own. */
 export const COUNTDOWN_SECONDS = 60;
 /** The pause after each reopened tab, so the terminal and Claude Code start it before the next. */
 export const TAB_STAGGER_MS = 4_000;
-/** What the machine says of each recorded session: still running, and where its transcript is. */
+/** What the machine says of each recorded session: still running, where its transcript is and what it says. */
 async function factsOf(deps, entries, since) {
     const running = new Set();
     const transcripts = new Map();
+    const kinds = new Map();
     // One at a time: on Windows each process check starts a program.
     for (const entry of entries) {
         if (await deps.stillRunning(entry)) {
@@ -19,9 +21,13 @@ async function factsOf(deps, entries, since) {
         const transcript = await deps.transcriptOf(entry);
         if (transcript !== undefined) {
             transcripts.set(entry.claudeSession, transcript);
+            const tail = await deps.readTail(transcript, KIND_TAIL_BYTES);
+            if (tail !== undefined) {
+                kinds.set(entry.claudeSession, transcriptKindOf(tail));
+            }
         }
     }
-    return { now: deps.clock.now(), since, shutdownStart: await deps.shutdowns.lastShutdownStart(), running, transcripts };
+    return { now: deps.clock.now(), since, shutdownStart: await deps.shutdowns.lastShutdownStart(), running, transcripts, kinds };
 }
 /** The label is the team session's name, else the title the person gave the session, else its short id. */
 async function itemOf(deps, facts, judged) {
