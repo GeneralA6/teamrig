@@ -54,6 +54,8 @@ export interface RemovalPlan {
   readonly links: readonly PlannedLink[];
   /** The branch to delete and the base that holds all of it; undefined to keep the branch. */
   readonly branch: { readonly name: string; readonly base: string } | undefined;
+  /** The branch checked out in the worktree, which tells whose it is (owner.ts); undefined on a detached HEAD. */
+  readonly onBranch: string | undefined;
 }
 
 export type RemovalDecision = { readonly kind: 'ready'; readonly plan: RemovalPlan } | { readonly kind: 'refused'; readonly reason: string };
@@ -219,7 +221,7 @@ export async function planRemoval(request: RemovalRequest, ports: WorktreePorts)
     const target = await files.linkTarget(link);
     links.push({ path: link, name: untrackedNames[index] ?? link, target, targetEntries: await files.entryCount(target) });
   }
-  return { kind: 'ready', plan: { top, mainDir: main.path, links, branch } };
+  return { kind: 'ready', plan: { top, mainDir: main.path, links, branch, onBranch: mine.branch } };
 }
 
 function entriesText(count: number | undefined): string {

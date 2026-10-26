@@ -252,7 +252,7 @@ describe('planRemoval and carryOut', () => {
     it('when a link target changed during the removal', async () => {
       const files = new FakeWorktreeFiles({ [`${MODULES}/keep.txt`]: { kind: 'file' }, [`${MODULES}/pkg`]: { kind: 'folder' }, [LINK]: { kind: 'link', target: MODULES } });
       const git = new FakeWorktreeGit({}, () => files.delete(`${MODULES}/keep.txt`));
-      const plan: RemovalPlan = { top: TOP, mainDir: MAIN, links: [{ path: resolve(LINK), name: 'node_modules', target: resolve(MODULES), targetEntries: 2 }], branch: undefined };
+      const plan: RemovalPlan = { top: TOP, mainDir: MAIN, links: [{ path: resolve(LINK), name: 'node_modules', target: resolve(MODULES), targetEntries: 2 }], branch: undefined, onBranch: 't4' };
       await assert.rejects(carried(plan, { git, files }), /held 2 entries before and 1 entry after the removal/);
     });
 
@@ -307,7 +307,7 @@ describe('carryOut puts back every link it unlinked when the removal stops', () 
       { path: resolve(LINK), name: 'node_modules', target: resolve(MODULES), targetEntries: 2 },
       { path: resolve(WEB_LINK), name: 'web/node_modules', target: resolve(WEB_MODULES), targetEntries: 1 },
     ];
-    return { ...built, plan: { top: TOP, mainDir: MAIN, links, branch: undefined } };
+    return { ...built, plan: { top: TOP, mainDir: MAIN, links, branch: undefined, onBranch: 't4' } };
   }
 
   it('when git refuses the removal, each to its own target, telling each', async () => {
@@ -350,7 +350,7 @@ describe('carryOut puts back every link it unlinked when the removal stops', () 
   it('names a link the system refuses to make', async () => {
     const files = new LinklessFiles({ [`${MODULES}/pkg`]: { kind: 'folder' }, [`${TOP}/src/index.ts`]: { kind: 'file' }, [LINK]: { kind: 'link', target: MODULES } });
     const git = new FakeWorktreeGit({ removal: { ok: false, reason: 'fatal: busy' } });
-    const plan: RemovalPlan = { top: TOP, mainDir: MAIN, links: [{ path: resolve(LINK), name: 'node_modules', target: resolve(MODULES), targetEntries: 1 }], branch: undefined };
+    const plan: RemovalPlan = { top: TOP, mainDir: MAIN, links: [{ path: resolve(LINK), name: 'node_modules', target: resolve(MODULES), targetEntries: 1 }], branch: undefined, onBranch: 't4' };
     assert.equal(await failure(carried(plan, { git, files })), `git worktree remove /w/t4: fatal: busy (still gone: node_modules, a link to ${resolve(MODULES)}: EPERM: operation not permitted)`);
   });
 });
