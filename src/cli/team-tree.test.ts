@@ -64,3 +64,28 @@ describe('teamrig who <role> in a team tree (T1143)', () => {
     assert.deepEqual([none.code, none.stdout], [EXIT.refused, ['REFUSED no session holds the securityReviewer role']]);
   });
 });
+
+describe('teamrig who <team>/<id> in a team tree (T1276)', () => {
+  const fromWeb = { env: { TEAMRIG_TEAM: 'web' } };
+
+  it('names a session of any team of the tree, up, down, sideways or its own, by id or name', async () => {
+    const kit = await treeHarness();
+    const names = async (text: string): Promise<readonly string[]> => (await kit.run(['who', text], fromWeb)).stdout;
+    assert.deepEqual(await names('app/lead'), ['app-lead'], 'the parent team');
+    assert.deepEqual(await names('app/app-alpha'), ['app-alpha'], 'by its name there');
+    assert.deepEqual(await names('ui/pixel'), ['ui-pixel'], 'a child team');
+    assert.deepEqual(await names('ops/run'), ['ops-run'], 'a sibling team');
+    assert.deepEqual(await names('web/front'), ['web-front'], 'its own team, written out');
+  });
+
+  it('refuses a team of a separate tree, one with no config, and a session its team does not have', async () => {
+    const kit = await treeHarness();
+    await kit.files.write(teamConfigOf('blog'), formatConfig({ configVersion: 1, sessions: ['lead', 'pen'], roles: { lead: 'lead' } }));
+    const separate = await kit.run(['who', 'blog/pen'], fromWeb);
+    assert.deepEqual([separate.code, separate.stdout], [EXIT.refused, ['REFUSED team blog is not in the tree of team web; who names the sessions of its own tree']]);
+    const missing = await kit.run(['who', 'gone/po'], fromWeb);
+    assert.deepEqual([missing.code, missing.stdout], [EXIT.refused, ['REFUSED team gone is not in the tree of team web; who names the sessions of its own tree']]);
+    const unknown = await kit.run(['who', 'app/zed'], fromWeb);
+    assert.deepEqual([unknown.code, unknown.stdout], [EXIT.refused, ['REFUSED team app: zed is not a session on this team (sessions: lead (app-lead), alpha (app-alpha), bravo (app-bravo))']]);
+  });
+});
