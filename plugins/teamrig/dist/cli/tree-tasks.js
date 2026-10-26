@@ -4,7 +4,8 @@ import { loadTree } from "./tree.js";
 /**
  * The tasks a team tree's other registers hold, as one team of it reads them (T1139): each register's working set,
  * in the tree's walk order from its root, the first to hold an id winning. Nothing when the team hangs in no tree,
- * or when its parents go round a loop, which `doctor` names. Each register is read once however many teams ask.
+ * or when its parents go round a loop, which `doctor` names. Each register is read once however many teams ask, and
+ * {@link registersFor} gives each register's working set apart, the asking team's own among them.
  */
 export class TreeTasks {
     runtime;
@@ -19,19 +20,8 @@ export class TreeTasks {
         }
     }
     async elsewhereFor(team) {
-        const { tree, teams } = this.kitTree;
-        const rootId = tree.rootOf(team);
-        if (rootId === undefined) {
-            return NO_TASKS_ELSEWHERE;
-        }
-        const others = tree
-            .walk(rootId)
-            .filter((step) => step.team !== team)
-            .flatMap((step) => {
-            const other = teams.get(step.team);
-            return other === undefined ? [] : [{ team: step.team, events: other.kit.paths.events }];
-        });
-        const reads = await Promise.all(others.map(async (other) => ({ team: other.team, snapshot: await this.snapshotOf(other.team, other.events) })));
+        const others = this.registersOf(team)?.filter((other) => other.team !== team) ?? [];
+        const reads = await this.read(others);
         const tasks = new Map();
         for (const { team: holder, snapshot } of reads) {
             for (const task of snapshot.state.tasks.values()) {
@@ -41,6 +31,28 @@ export class TreeTasks {
             }
         }
         return tasks.size === 0 ? NO_TASKS_ELSEWHERE : tasks;
+    }
+    /**
+     * The working set of every register of the tree `team` hangs in, its own among them, in the tree's walk order from
+     * its root; undefined when the parents above `team` go round a loop, so the tree has no root to walk from.
+     */
+    async registersFor(team) {
+        const registers = this.registersOf(team);
+        return registers === undefined ? undefined : this.read(registers);
+    }
+    registersOf(team) {
+        const { tree, teams } = this.kitTree;
+        const rootId = tree.rootOf(team);
+        if (rootId === undefined) {
+            return undefined;
+        }
+        return tree.walk(rootId).flatMap((step) => {
+            const other = teams.get(step.team);
+            return other === undefined ? [] : [{ team: step.team, events: other.kit.paths.events }];
+        });
+    }
+    read(registers) {
+        return Promise.all(registers.map(async (register) => ({ team: register.team, snapshot: await this.snapshotOf(register.team, register.events) })));
     }
     snapshotOf(team, events) {
         const known = this.snapshots.get(team);
