@@ -1,5 +1,5 @@
 import { isRole, roleHolderOf } from "../../config/roster.js";
-import { formatAddress } from "../../core/address.js";
+import { formatAddress, splitAddress } from "../../core/address.js";
 import { KIT_NAME } from "../../core/home.js";
 import { recordRename } from "../../names/record.js";
 import { UsageError } from "../args.js";
@@ -38,7 +38,23 @@ async function nameAt(runtime, roster, address, team) {
     const { teams } = await loadTree(runtime);
     return teams.get(address.team)?.roster.nameOf(address.id) ?? formatAddress(address);
 }
-/** `who [<id|name|role>]`: the name to message a session by; with no argument, every session. */
+/**
+ * The name of a session of another team of the caller's tree (T1276), found by its id or any name it has had there; a
+ * team of a separate tree, or one with no config to read, is refused.
+ */
+async function treeNameOf(runtime, own, team, session) {
+    const { tree, teams } = await loadTree(runtime);
+    const other = teams.get(team);
+    if (other === undefined || !tree.sameTree(own, team)) {
+        throw new RefusedError(`team ${team} is not in the tree of team ${own}; who names the sessions of its own tree`);
+    }
+    const found = other.roster.lookup(session);
+    if (!found.ok) {
+        throw new RefusedError(`team ${team}: ${found.error}`);
+    }
+    return other.roster.nameOf(found.id) ?? found.id;
+}
+/** `who [<id|name|role|team/id>]`: the name to message a session by; with no argument, every session of the team. */
 export async function who(args, runtime) {
     const [text, extra] = args.positionals;
     if (extra !== undefined) {
@@ -51,7 +67,12 @@ export async function who(args, runtime) {
         roster.ids.forEach((id) => runtime.out.stdout(rosterLine(roster, id)));
         return EXIT.ok;
     }
-    const address = addressOf(roster, config.roles, text, kit.paths.team);
+    const typed = splitAddress(text);
+    if (typed?.team !== undefined && typed.team !== kit.paths.team) {
+        runtime.out.stdout(await treeNameOf(runtime, kit.paths.team, typed.team, typed.session));
+        return EXIT.ok;
+    }
+    const address = addressOf(roster, config.roles, typed?.session ?? text, kit.paths.team);
     runtime.out.stdout(await nameAt(runtime, roster, address, kit.paths.team));
     return EXIT.ok;
 }
