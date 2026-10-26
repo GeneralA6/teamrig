@@ -3,8 +3,8 @@
 ## Development
 
 ```sh
-npm ci
-npm run setup         # points git at .githooks (scrub + DCO sign-off checks, and the local gate before each push)
+npm ci                # also points git at .githooks (scrub + DCO sign-off checks, the local gate before each push, no push to main)
+npm run setup         # the same hook setup, for a clone installed with --ignore-scripts
 npm run check         # CI's gates on your tree: typecheck, tests with the coverage gate, build, dist checks, pictures, config reference, doc links, scrub
 npm run docs:images   # redraws the pictures in docs/images
 npm run docs:config   # redraws docs/configuration.md from the config schema
@@ -46,7 +46,7 @@ Every commit must carry a `Signed-off-by:` line that matches the commit author, 
 git commit -s
 ```
 
-The `commit-msg` hook (installed by `npm run setup`) and the local gate both reject a commit without it.
+The `commit-msg` hook (set by `npm ci` or `npm run setup`) and the local gate both reject a commit without it.
 
 ## Tests
 Every change ships tests, so the next change cannot break it unnoticed:
@@ -59,7 +59,7 @@ Every change ships tests, so the next change cannot break it unnoticed:
 - No skipped or todo tests: a test that does not run catches nothing.
 
 `npm run check` runs every gate CI runs on the tree; the local gate also checks each pushed commit's sign-off and scrubs it,
-which the git hooks from `npm run setup` do before each commit. Its coverage gate (`npm run coverage`) fails when:
+which the git hooks `npm ci` sets do before each commit. Its coverage gate (`npm run coverage`) fails when:
 - any test fails, or is skipped or todo;
 - a source file under `src/` or `tools/` is loaded by no test, new and uncommitted files included;
 - a file, or the total, falls below the floors in `tools/ci/coverage.json`;
@@ -84,8 +84,11 @@ usage files.
 
 ## The local gate
 CI (`.github/workflows/ci.yml`) is paused until it is turned back on, and runs only when started by hand.
-Until then the `pre-push` hook from `npm run setup` runs every check CI runs (`tools/ci/local.ts`; the list is
+Until then the `pre-push` hook that `npm ci` sets runs every check CI runs (`tools/ci/local.ts`; the list is
 `tools/ci/local-checks.ts`) on the commit being pushed:
+- It refuses a push to `main`, before any check: every change lands through a pull request. On GitHub,
+  `.github/workflows/main-push-alert.yml` opens an issue when main changes outside a pull request anyway (from a
+  clone without the hooks), so the owner hears of it; a commit made in GitHub's web editor raises none.
 - It proves a committed tree: it refuses uncommitted changes, and a pushed commit that is not checked out.
 - It stops at the first failing check and prints its output.
 - A pass is recorded in the clone's git folder (`local-ci/<tree>.json`, shared by its worktrees), so a tree is
