@@ -115,7 +115,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'exec run': { effect: 'write', flags: [], load: async () => (await execCommands()).run },
   'exec status': { effect: 'read', flags: ['team'], load: async () => (await execCommands()).status },
   'team create': { effect: 'write', flags: ['sessions', 'lead', 'parent', 'project'], switches: ['dry-run'], load: async () => (await setupCommands()).teamCreate },
-  'team split': { effect: 'read', flags: ['session', 'lead', 'sessions'], switches: ['dry-run'], load: async () => (await teamSplitCommand()).teamSplit },
+  'team split': { effect: 'write', flags: ['session', 'lead', 'sessions'], switches: ['dry-run'], load: async () => (await teamSplitCommand()).teamSplit },
   'team tree': { effect: 'read', flags: [], load: async () => (await teamCommands()).teamTree },
   rules: { effect: 'read', flags: ['session'], load: async () => (await rulesCommands()).rules },
   'rules scan': { effect: 'read', flags: ['kind'], switches: ['all'], load: async () => (await ruleConflictCommands()).scan },
@@ -265,10 +265,11 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       writes the team config, ties the project folder to the team (the lead defaults to lead) and
       starts a root team's lead on its first task, setting the team up; --parent hangs it under
       that team's lead in a tree of teams
-  team split <team> --lead <id> --sessions <id,id> --dry-run
-      the lead's plan for moving sessions of its team, with the tasks they own, into a new child
-      team under it: the child's config, what the parent loses, and the links and names that cross;
-      it only plans for now, so --dry-run is required
+  team split <team> --lead <id> --sessions <id,id> [--dry-run]
+      moves sessions of the lead's team, with the tasks they own, into a new child team under it:
+      the child's config and register, their files and renames, the parent's config trimmed; refused
+      while a moved session's Claude Code runs or a staying task waits on a moved session's decision
+      or approval; --dry-run prints the plan, with what crosses the new border, and writes nothing
   team tree                    the tree of teams this team is in, with each team's lead and sessions
   open <id|name|team/id> [--prompt "<first prompt>"] [--terminal <name>] [--project <dir>] [--resume]
       a new terminal tab running Claude Code as that session (team/id: another team of the tree);
