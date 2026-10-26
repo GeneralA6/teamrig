@@ -11,14 +11,16 @@ A task is `open` when added. Only its owner sets its status, with `teamrig set <
 | --- | --- | --- |
 | `open` | waiting to start | nothing |
 | `in-progress` | the owner is on it now | nothing |
-| `verifying` | shipped, waiting for what proves it (a test run, a night's flow, a number) | `--note`, `--proof` naming what will prove it, and `--followups` naming the tasks the work leaves or `none` [register.requireNoteOn, register.requireProofOnVerifying, register.requireFollowupsOn]; `--due <date>`: the date to verify it by; a bug's review, `--cause` to `--missed-log` [register.review] |
+| `verifying` | shipped, waiting for what proves it (a test run, a night's flow, a number) | `--note`, `--proof` naming what will prove it, `--waits` naming when it runs (a time, or a task in progress or verifying whose end runs it), and `--followups` naming the tasks the work leaves or `none` [register.requireNoteOn, register.requireProofOnVerifying, register.requireFollowupsOn]; `--due <date>`: the date to verify it by; a bug's review, `--cause` to `--missed-log` [register.review] |
 | `waiting` | started, and cannot go on until something else happens | `--waits` naming every reason (a decision, an approval, a task, a time) and `--note` [register.requireNoteOn]; on the owner's decision or approval, a card (`--question`, `--options`, `--recommend`, `--default`) [register.requireDecisionCard] |
-| `done` | finished and verified | `--note`, `--evidence` (unless the task already has some), `--skill <name>` or `--skill none`, and `--followups T<id>,...` or `--followups none` [register.requireEvidenceOnDone, register.requireSkillOnDone, register.requireFollowupsOn]; a bug's review, `--cause` to `--missed-log` [register.review] |
+| `done` | finished and verified | `--note`, `--evidence` (unless the task already has some), `--skill <name>` or `--skill none`, and `--followups T<id>,...` or `--followups none` [register.requireEvidenceOnDone, register.requireSkillOnDone, register.requireFollowupsOn]; a bug's review, `--cause` to `--missed-log` [register.review]; `--watch "<what a sighting shows>"` (with evidence) when tests or a dry run proved it and a live sighting is still to come |
 | `dropped` | will not be done | `--note` saying why and who decided; `--followups` may name the tasks the work moved to |
 
 `open`, `in-progress`, `verifying` and `waiting` are the active statuses: `list` shows them by default and `check`
 reads only them. Set `verifying` when the work is merged or deployed but its proof does not exist yet, then `done`
-with that proof as evidence once it does, or `in-progress` again when the proof fails. Every session needs
+with that proof as evidence once it does, or `in-progress` again when the proof fails. When tests or a dry run
+already proved it and only a live sighting is left (a night's run, a page a user opens), set it `done` with
+`--watch` instead. Every session needs
 teamrig 0.7.0 or later before anyone sets it: an older teamrig skips the line with a warning and shows the task
 at its earlier status. A task can move from any status to any other, so a dropped task can be reopened, and setting the status it
 already has needs a `--note`.
@@ -79,15 +81,22 @@ skills folder), or `none` for a one-off.
 
 A shipped change is proven by the session that shipped it, oldest first, before work that needs it starts.
 
-- `teamrig set <id> --status verifying --note "<what shipped>" --proof "<what proves it>" --due <date> --followups none`
+- `teamrig set <id> --status verifying --note "<what shipped>" --proof "<what proves it>" --waits "time:<YYYY-MM-DD HH:MM>" --due <date> --followups none`
   starts it (name the tasks the work leaves in place of `none`).
-  Without `--proof` it is refused [register.requireProofOnVerifying]; with that key `false`, the note names the
-  proof.
-- A proof another party makes is that party's task, asked at once: `teamrig set <id> --status verifying --ask
-  <session> --text "<the run or check>"` (with the `--proof`, `--note` and `--followups` of a first set) adds it and
-  makes the verifying task wait on it. `--waits` names other proof waits: `time:<date>` for an event that comes on
-  a date, `approval:owner` (with a card) for one only the owner can try, which then reaches the meeting's
-  DECISIONS. Set verifying again without `--waits` and they stay; `check` flags the task `READY` once all cleared.
+  Without `--proof`, or without `--waits` naming when the proof runs, it is refused
+  [register.requireProofOnVerifying]; with that key `false`, the note names the proof. A proof runs at a time
+  (`time:<date>`, for an event that comes on a date) or when a task in progress or verifying ends (`task:T<id>`);
+  one with neither would be put off without end. `approval:owner` (with a card) may stand beside one, for a proof
+  only the owner can try, which then reaches the meeting's DECISIONS.
+- A proof another party makes is that party's task: ask it with `teamrig set <id> --status waiting --ask <session>
+  --text "<the run or check>"`, which adds it and makes the task wait on it. Once that task has started, set yours
+  verifying with `--waits task:T<id>`: a proof waits only on a task in progress or verifying.
+- Set verifying again without `--waits` and the waits stay while none cleared; once one cleared the proof is due
+  now, and keeping it is refused. `check` flags the task `READY` once all cleared.
+- A change tests or a dry run proved, whose proof left is a live sighting (a night's run, a page a user opens),
+  closes `done` with its evidence and `--watch "<what a sighting shows>"`. `teamrig verify`, the start context and
+  `teamrig inbox read` list it under `WATCH` until it is set `done` again without `--watch`, or reopened
+  (`in-progress`) if the sighting shows a fault.
 - The queue stays in view: `teamrig verify` lists it, oldest first, and the session start context and
   `teamrig inbox read` end with one `VERIFY <n>: T1 (proof: ...)` line.
 - From a task's verify-by day (its due date, on the team's clock), the Stop hook shows the user `VERIFY T1 was to be verified by
@@ -100,10 +109,11 @@ A shipped change is proven by the session that shipped it, oldest first, before 
 - A session's first start of a new task is refused while one of its own verify steps is due [register.verifyGate]:
   its proof's waits cleared, its verify-by day came, or it holds more than 5 verifying tasks (the oldest it can
   act on) [register.maxVerifying]. Clear each: `done` with the proof, `in-progress` if it failed, verifying with
-  `--ask` or `--waits` for what the proof waits on, or a new `--due` with a `--note` saying why. A task already
-  started is never held.
+  `--waits` for when its proof runs, or a new `--due` with a `--note` saying why. A task already started is never
+  held.
 - A proof put off to other waits 2 times in a row [register.maxReparks] cannot be put off again: setting the task
-  verifying with other waits is refused, so its owner runs the proof (`done`) or reopens it (`in-progress`). Keeping
+  verifying with other waits is refused, so its owner runs the proof (`done`), closes it `done` with `--watch` if
+  tests or a dry run proved it, or reopens it (`in-progress`). Keeping
   the same waits, or naming the first waits of a task that had none, is not putting it off.
 - `check` flags a verifying task that work needs (`VERIFY-BLOCKS`), one past its date (`VERIFY-OVERDUE`), one put
   off to the limit (`REPARKED`) and a session holding more than 5 of them (`PILE-UP` [register.maxVerifying], 0
@@ -258,7 +268,7 @@ checkpoint; a session may run it for itself.
 | `PRIORITY-SKIP` | in progress while a top-priority (`p1`) task of the same owner waits open and free to start (every task it comes after finished), for over 24 h [register.check.prioritySkipAfterHours] | The owner parks the lower task and starts the waiting one; or the lead fixes the order (`update --priority`). |
 | `SELF-MADE` | a session added more than 10 tasks for itself (created by it, asked by no one else) in the last 24 h [register.check.maxSelfMadePerDay] (0 turns it off); raised on the first of them past that count still active | The lead reads them (`list --session <id> --source <id> --status all`): each must serve a goal, a parent task or the week plan, else its owner drops or parks it; a run of the same step with no progress is a loop: the owner stops and asks the lead. |
 | `PILE-UP` | a session holds more than 5 `verifying` tasks [register.maxVerifying] (0 turns it off); raised on its oldest | The owner works its queue, oldest first (`teamrig verify`), before new work. |
-| `REPARKED` | a `verifying` task whose proof was put off to other waits 2 times in a row [register.maxReparks] (0 turns it off); `set` refuses another | The owner runs the proof now and sets it `done`, or reopens it (`in-progress`). |
+| `REPARKED` | a `verifying` task whose proof was put off to other waits 2 times in a row [register.maxReparks] (0 turns it off); `set` refuses another | The owner runs the proof now and sets it `done`, closes it `done` with `--watch` if tests or a dry run proved it, or reopens it (`in-progress`). |
 | `OVER-PACE` | a session holds more unfinished top-priority (`p1`) tasks (open, in progress or waiting) than the p1 it finished (done or verifying) in the last 7 days, past the first p1, which is in hand, once it has held tasks for 7 days; raised on the first p1 in plan order past that pace | The lead re-prioritizes: lowers the p1s that pace will not reach this week (`update --priority`), moves them to another session, or tells the human what is held. |
 | `OVER-LIMIT` | the first sized to-do task of the week in force that no longer fits the weekly usage limit left, summed in plan order (`teamrig plan` shows the line) | The lead moves it and the sized tasks after it to next week (`update --week`), cuts or re-sizes work, or tells the human. |
 | `OVER-SIZE` | an unfinished sized task whose cost, as the budget meter attributes it over the 8 UTC days it keeps, passed twice its size [register.check.overSizeMultiple] (0 turns it off); none while the W of one percent is unknown | Its owner (or the lead) re-sizes what is left (`update --size`), splits the rest into its own task, or drops it; `teamrig budget --task <id>` shows where the W went. |

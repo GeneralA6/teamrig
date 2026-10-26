@@ -192,13 +192,13 @@ SET T1 waiting, p2, owner web, from lead | Fix the broken login form (waiting: o
 A shipped change waiting for its proof:
 
 ```sh
-teamrig set T1 --session api --status verifying --note "merged and deployed" --proof "the signup smoke test passes on staging" --due 2026-10-14 --followups none
+teamrig set T1 --session api --status verifying --note "merged and deployed" --proof "the signup smoke test passes on staging" --waits "time:2026-10-14 09:00" --due 2026-10-14 --followups none
 ```
 
 Output:
 
 ```text
-SET T1 verifying, p2, owner api, due 10-14, from lead | Build the signup endpoint (proof: the signup smoke test passes on staging)
+SET T1 verifying, p2, owner api, due 10-14, from lead | Build the signup endpoint (proof: the signup smoke test passes on staging; waiting: until Wed 10-14 09:00 UTC)
 ```
 
 Starting a task that needs a verifying one (planned `--after` it, or waiting on it with `--waits task:`) is
@@ -224,7 +224,7 @@ A first start of new work also waits for the session's own verify steps that are
 its verify-by day came, or more verifying tasks than `register.maxVerifying`); a task already started goes on:
 
 ```text
-REFUSED T2 is new work; T1 (verify by 10-14) is due to verify first (teamrig verify): set each done with its proof, in-progress if it failed, or verifying with --ask or --waits for what its proof waits on; a verify-by date moves with --due and a --note saying why
+REFUSED T2 is new work; T1 (verify by 10-14) is due to verify first (teamrig verify): set each done with its proof, in-progress if it failed, or verifying with --waits for when its proof runs; a verify-by date moves with --due and a --note saying why
 ```
 
 With `register.verifyGate` set to `warn`, either start goes through and a `WARN` line names the same tasks (none

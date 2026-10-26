@@ -115,11 +115,19 @@ be on the task list. When a task will not be done, set it `dropped` with a note 
 ## Shipped, verifying
 
 When the change is merged or deployed but what proves it does not exist yet (a night's flow, a run on another
-machine, a number to measure), set it `verifying` with `--proof` naming that proof and `--due` the date to verify
-it by:
+machine, a number to measure), set it `verifying` with `--proof` naming that proof, `--waits` when it runs (a time,
+or a task in progress or verifying whose end runs it) and `--due` the date to verify it by:
 
 ```sh
-teamrig set T4 --session api --status verifying --note "new parser merged" --proof "tonight's import runs clean on the new parser" --due 2026-10-17 --followups none
+teamrig set T4 --session api --status verifying --note "new parser merged" --proof "tonight's import runs clean on the new parser" --waits "time:2026-10-17 06:00" --due 2026-10-17 --followups none
+```
+
+When tests or a dry run already proved the change and only a live sighting is left (a night's run, a page a user
+opens), close it `done` and watch for the sighting instead; it stays under `WATCH` in `teamrig verify` until you
+set it `done` again without `--watch`, or reopen it if the sighting shows a fault:
+
+```sh
+teamrig set T5 --session api --status done --note "parser fix merged" --evidence "the parser specs and a dry run on last night's file pass" --watch "tonight's import log shows no parse error" --skill none --followups none
 ```
 
 It stays in `list` and `check` until you set it `done` with the proof as evidence, or `in-progress` again when
@@ -282,7 +290,7 @@ With sub-teams, run `teamrig check --tree --session lead` too. Then act on each 
 - `PILE-UP`: a session ships faster than it proves: one inbox line asking it to work its queue (`teamrig verify`)
   before new work.
 - `REPARKED`: a proof keeps moving to other waits and never runs: one inbox line to its owner to run it now
-  (`done`) or reopen the task (`in-progress`).
+  (`done`), close it `done` with `--watch` if tests or a dry run proved it, or reopen the task (`in-progress`).
 - `OVER-PACE`: a session holds more p1 work than it finished in the last 7 days, past the first p1, which is in hand, so p1 no longer says what comes
   first: lower the p1s past the flagged one that its pace will not reach (`update --priority`), hand some to another
   session, or tell the human what is held.
