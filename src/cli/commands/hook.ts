@@ -4,6 +4,7 @@ import { LeadTree } from '../../config/lead-tree.ts';
 import type { ConfigLoad } from '../../config/load.ts';
 import { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
+import { formatAddress } from '../../core/address.ts';
 import { errorMessage, isRecord, stringField, type JsonRecord } from '../../core/guards.ts';
 import { claudeConfigDir, claudeTempDir, KIT_NAME } from '../../core/home.ts';
 import { resolveTeam, type TeamResolution } from '../../core/team.ts';
@@ -59,7 +60,7 @@ import { hookLogOf } from '../hook-logs.ts';
 import { openKit, renameDepsOf, rosterOf, rulesClockOf, teamFolders, teamZone, type Kit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { readTeamRules } from '../team-rules.ts';
-import { loadTree } from '../tree.ts';
+import { leadAboveOf, loadTree } from '../tree.ts';
 import { bindAfterClear, bindHintOnce, bindTab, inboxLinesFor, readTitle, type TitleRead } from './hook-bind.ts';
 import { helperGateOutput, promptBudgetLine, stopBudgetLines } from './hook-budget.ts';
 import { startAutoSync } from './gh-auto.ts';
@@ -111,8 +112,9 @@ async function guardLoadOf(
 
 /**
  * Under `pushToProtected: lead`, what lets this tab's normal push to a protected branch through (T684): the lead's own
- * push, else a waiting task of its session's that a leader above it approved (T781), read lock-free from the register. It never throws:
- * a register it cannot read clears nothing, so the push is refused, saying why.
+ * push, else a waiting task of its session's that a leader above it approved (T781), read lock-free from the register.
+ * A child team's lead is no lead of the whole tree: its push needs the parent team's lead's approval (T1140). It never
+ * throws: a register or tree it cannot read clears nothing, so the push is refused, saying why.
  */
 async function pushClearanceOf(runtime: CliRuntime, kit: Kit | undefined, payload: unknown): Promise<PushClearance> {
   if (kit === undefined || kit.load.status !== 'loaded') {
@@ -129,7 +131,7 @@ async function pushClearanceOf(runtime: CliRuntime, kit: Kit | undefined, payloa
       return { kind: 'none', approver: lead, why: 'this tab is not bound to a session of the team, so the guard cannot tell whose push it is' };
     }
     if (session === lead) {
-      return { kind: 'lead', lead };
+      return leadClearanceOf(runtime, kit, config);
     }
     const { state } = await new JsonlEventLog(runtime.files, kit.paths.events).read();
     const approvers = tree.chainOf(session);
@@ -140,6 +142,29 @@ async function pushClearanceOf(runtime: CliRuntime, kit: Kit | undefined, payloa
   } catch (error) {
     return { kind: 'none', approver: lead, why: `the guard could not read the register (${errorMessage(error)})` };
   }
+}
+
+/**
+ * The lead's own push: cleared on a root team; on a child team (T1140), only by a waiting task of the lead's that the
+ * parent team's lead approved, as `<team>/<id>`. A parent with no config to read clears nothing: whoever approves is
+ * unknown. Throws when the tree or register cannot be read; the caller refuses.
+ */
+async function leadClearanceOf(runtime: CliRuntime, kit: Kit, config: KitConfig): Promise<PushClearance> {
+  const lead = config.roles.lead;
+  const parent = config.team?.parent;
+  if (parent === undefined) {
+    return { kind: 'lead', lead };
+  }
+  const above = await leadAboveOf(runtime, kit.paths.team, config);
+  if (above === undefined) {
+    return { kind: 'none', approver: `the lead of team ${parent}`, why: `team ${parent}, the parent team, has no config to name its lead` };
+  }
+  const approver = formatAddress(above);
+  const { state } = await new JsonlEventLog(runtime.files, kit.paths.events).read();
+  const approved = approvedTaskOf(state.tasks.values(), lead, [approver]);
+  return approved === undefined
+    ? { kind: 'none', approver, why: `${approver}, the lead of the parent team, has approved no waiting task of ${lead}'s` }
+    : { kind: 'approved', by: approved.by, task: approved.task.id };
 }
 
 /** PreToolUse on Bash and PowerShell: asks before a push to a protected branch, refuses a force-push of one. */
