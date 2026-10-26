@@ -7,7 +7,7 @@
  */
 
 // The task register (`events.jsonl`, and once rotated its `archive/` and `snapshot.jsonl`).
-export { EVENT_VERSION, type CreateEvent, type RegisterEvent, type StatusEvent, type TaskFields, type UpdateEvent } from '../register/events.ts';
+export { EVENT_VERSION, TASK_LINE_VERSION, type CreateEvent, type MovedEvent, type RegisterEvent, type StatusEvent, type TaskFields, type UpdateEvent } from '../register/events.ts';
 export { foldEvents, taskNumber, type RegisterState, type Task } from '../register/fold.ts';
 export { ACTIVE_STATUSES, isTaskStatus, priorityText, SESSION_NAME, TASK_STATUSES, type TaskStatus } from '../register/model.ts';
 export {

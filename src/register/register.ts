@@ -2,7 +2,7 @@ import { errorMessage } from '../core/guards.ts';
 import { NewerDataError } from '../core/jsonl.ts';
 import type { Clock, Mutex } from '../core/lock.ts';
 import type { TimeZone } from '../core/zone.ts';
-import { EVENT_VERSION, type ApprovalVerdict, type CreateEvent, type RegisterEvent, type StatusEvent, type TaskFields, type UpdateEvent } from './events.ts';
+import { EVENT_VERSION, TASK_LINE_VERSION, type ApprovalVerdict, type CreateEvent, type RegisterEvent, type StatusEvent, type TaskFields, type UpdateEvent } from './events.ts';
 import { foldEvents, taskNumber, type RegisterState, type Task } from './fold.ts';
 import { GITHUB_ACTOR, NO_SKILL, type AddInput, type AskInput, type ImportChanges, type ImportInput, type RegisterPolicy, type StatusContext, type StatusInput, type Verdict } from './policy.ts';
 import { ACTIVE_STATUSES } from './model.ts';
@@ -292,7 +292,7 @@ export class Register {
   }
 
   private base(id: string, by: string): { v: number; id: string; at: string; by: string } {
-    return { v: EVENT_VERSION, id, at: new Date(this.deps.clock.now()).toISOString(), by };
+    return { v: TASK_LINE_VERSION, id, at: new Date(this.deps.clock.now()).toISOString(), by };
   }
 
   /** A write by a session of this team: refused unless the caller is on the roster. */
@@ -376,8 +376,9 @@ function single(verdict: Verdict<RegisterEvent>): Verdict<readonly RegisterEvent
 
 /**
  * The decision on a task of the working set. An id another register of the team tree holds is that team's task,
- * which only its own sessions change. An id below the next one that is in neither may be a task a compaction
- * retired: it is named as such, as this teamrig changes only tasks in the working set.
+ * which only its own sessions change; so is one that moved to a team this register's tree read does not reach. An id
+ * below the next one that is in none may be a task a compaction retired: it is named as such, as this teamrig changes
+ * only tasks in the working set.
  */
 function onTask<T>(snapshot: RegisterSnapshot, elsewhere: TasksElsewhere, id: string, decide: (task: Task) => Verdict<T>): Verdict<T> {
   const task = snapshot.state.tasks.get(id);
@@ -387,6 +388,10 @@ function onTask<T>(snapshot: RegisterSnapshot, elsewhere: TasksElsewhere, id: st
   const away = elsewhere.get(id);
   if (away !== undefined) {
     return { ok: false, error: `${id} is team ${away.team}'s task (owner ${away.task.owner}): only a session of team ${away.team} changes it` };
+  }
+  const movedTo = snapshot.state.moved.get(id);
+  if (movedTo !== undefined) {
+    return { ok: false, error: `${id} moved to team ${movedTo}: only a session of team ${movedTo} changes it` };
   }
   const archived = snapshot.retired !== null && taskNumber(id) < taskNumber(snapshot.state.nextId);
   return { ok: false, error: archived ? `no task ${id} in the working set: if it was finished long ago it is archived (teamrig show ${id})` : `no task ${id}` };

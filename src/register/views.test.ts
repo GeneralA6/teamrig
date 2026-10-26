@@ -421,6 +421,11 @@ describe('formatEvent and formatTaskDetail', () => {
     assert.match(formatEvent(event, TimeZone.UTC), / bravo update note="context"$/);
   });
 
+  it('prints a moved line with the team the task went to (T1144)', () => {
+    const event: RegisterEvent = { v: 3, type: 'moved', id: 'T1', at: AT, by: 'lead', to: 'web' };
+    assert.equal(formatEvent(event, TimeZone.UTC), '2030-01-07 09:00 UTC lead moved to=web');
+  });
+
   it('prints each event type on one line', () => {
     assert.deepEqual(events.map((event) => formatEvent(event, TimeZone.UTC)), [
       '2030-01-07 09:00 UTC lead create owner=alpha source=owner priority=p1 ref=inbox:3 due=2030-01-08 goals=G1',

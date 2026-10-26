@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { JsonRecord } from '../core/guards.ts';
 import { TEST_CARD } from '../testing/card.ts';
-import { eventRecord, parseEvent, type EventParse, type RegisterEvent } from './events.ts';
+import { EVENT_VERSION, eventRecord, parseEvent, TASK_LINE_VERSION, type EventParse, type RegisterEvent } from './events.ts';
 
 const BASE = { id: 'T3', at: '2030-01-07T09:00:00.000Z', by: 'alpha' };
 const TASK = { title: 'A task', description: null, owner: 'alpha', source: 'owner', ref: null, priority: 2, due: null, goals: [], week: null, after: [], size: null, type: null, critical: false, pin: null };
@@ -77,7 +77,7 @@ describe('parseEvent', () => {
   });
 
   it('flags lines from a newer format before looking at them', () => {
-    assert.deepEqual(parse({ nothing: 'here' }, 3), { kind: 'newer' });
+    assert.deepEqual(parse({ nothing: 'here' }, EVENT_VERSION + 1), { kind: 'newer' });
   });
 
   it('reads a well-spelled status it does not know as from a newer teamrig, so its task keeps its last status', () => {
@@ -297,5 +297,24 @@ describe('parseEvent: the answer to an approval (T684)', () => {
   it('writes the verdict as it is', () => {
     const event: RegisterEvent = { ...BASE, v: 2, type: 'update', changes: {}, note: 'n', verdict: 'declined' };
     assert.deepEqual(eventRecord(event), event);
+  });
+});
+
+describe('parseEvent: a task moved to another team (T1144)', () => {
+  it('reads a moved line of this version, and writes it back as it is', () => {
+    const moved: RegisterEvent = { ...BASE, v: EVENT_VERSION, type: 'moved', to: 'web' };
+    assert.deepEqual(parse(eventRecord(moved), EVENT_VERSION), { kind: 'event', event: moved });
+  });
+
+  it('cannot read a moved line without a team, or with a team id no team can have', () => {
+    assert.match(reason(parse({ ...BASE, type: 'moved' }, EVENT_VERSION)), /bad team undefined/);
+    assert.match(reason(parse({ ...BASE, type: 'moved', to: 'Web Team' }, EVENT_VERSION)), /bad team "Web Team"/);
+    assert.match(reason(parse({ ...BASE, type: 'moved', to: 3 }, EVENT_VERSION)), /bad team 3/);
+  });
+
+  it('reads the lines of every other record at the version they are written with, version 2', () => {
+    assert.equal(TASK_LINE_VERSION, 2);
+    const create: RegisterEvent = { ...BASE, v: TASK_LINE_VERSION, type: 'create', task: TASK };
+    assert.deepEqual(parse(eventRecord(create), TASK_LINE_VERSION), { kind: 'event', event: create });
   });
 });
