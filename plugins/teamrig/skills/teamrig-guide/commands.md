@@ -57,8 +57,10 @@ Flags:
   and when it starts; `--type task` quiets it.
 - `--critical`: marks a bug in a critical area, whose review asks `--harden` too; its line shows `critical bug`.
   Only with `--type bug`.
-- `--team <child team>`: only for a lead with sub-teams: hands that team's lead the task. It takes no
-  `--owner` or `--source`.
+- `--team <team>`: asks another team of your tree for the work: the task lands in that team's register from you,
+  owned by `--owner` (a session of that team, by id or name) or else that team's lead. The owner gets an inbox line
+  and the team's lead, when it is not the owner, a copy. A team of a separate tree is refused. It takes no
+  `--source`.
 
 Example:
 
