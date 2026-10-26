@@ -10,7 +10,7 @@ import { openTab, type OpenOutcome } from '../../open/open-tab.ts';
 import { encodePrompt } from '../../open/prompt.ts';
 import { shellCommand } from '../../open/quote.ts';
 import { plainSessionEnv } from '../../open/session-env.ts';
-import { isClaudeProcess } from '../../open/session-processes.ts';
+import { runsClaude } from '../../open/session-processes.ts';
 import { RestoreRegistry, restoreSessionsDir } from '../../restore/registry.ts';
 import { checkRestore, previewRestore, runRestore, type ReopenOutcome, type ReopenTab, type RestoreDeps, type RestoreRun } from '../../restore/run.ts';
 import type { RestoreTeam } from '../../restore/teams.ts';
@@ -53,15 +53,6 @@ async function restoreTeamsOf(runtime: CliRuntime): Promise<RestoreTeam[]> {
     });
   }
   return found;
-}
-
-/** Whether the recorded process still runs Claude Code: a pid the system gave another program since does not count. */
-async function stillRunning(runtime: CliRuntime, pid: number | undefined): Promise<boolean> {
-  if (pid === undefined || !runtime.sessionProcesses.alive(pid)) {
-    return false;
-  }
-  const info = await runtime.sessionProcesses.describe(pid);
-  return info !== undefined && isClaudeProcess(info);
 }
 
 function reopenOutcomeOf(runtime: CliRuntime, outcome: OpenOutcome, folder: string, argv: readonly string[]): ReopenOutcome {
@@ -120,7 +111,7 @@ async function restoreDepsOf(runtime: CliRuntime, terminal: TerminalChoice | und
     countdown: runtime.restore.countdown,
     teams: await restoreTeamsOf(runtime),
     home: runtime.userHome,
-    stillRunning: (entry) => stillRunning(runtime, entry.pid),
+    stillRunning: (entry) => runsClaude(runtime.sessionProcesses, entry.pid),
     transcriptOf: (entry) => finder.find(entry),
     readTail: (path, maxBytes) => runtime.files.readTail(path, maxBytes),
     reopen: (tab) => reopen(runtime, tab, terminal),

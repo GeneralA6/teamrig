@@ -73,6 +73,15 @@ export interface SessionProcesses {
   feed(request: FeedRequest): Promise<FeedOutcome>;
 }
 
+/** Whether `pid` still runs Claude Code: a pid the system gave another program since does not count. */
+export async function runsClaude(processes: Pick<SessionProcesses, 'alive' | 'describe'>, pid: number | undefined): Promise<boolean> {
+  if (pid === undefined || !processes.alive(pid)) {
+    return false;
+  }
+  const info = await processes.describe(pid);
+  return info !== undefined && isClaudeProcess(info);
+}
+
 export interface SessionProcessesOptions {
   readonly platform?: NodeJS.Platform;
   readonly parentPid?: number;
