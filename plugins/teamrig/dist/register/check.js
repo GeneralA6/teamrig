@@ -5,6 +5,7 @@ import { CARD_FLAGS, GATE_FLAG, whyAskUsage } from "./card.js";
 import { taskNumber } from "./fold.js";
 import { ACTIVE_STATUSES, priorityText } from "./model.js";
 import { loopFix, NO_TASKS_ELSEWHERE, pathText, TaskTree } from "./tree.js";
+import { WATCH_USAGE } from "./verify.js";
 import { formatTask } from "./views.js";
 import { allReady, isPeerWait, isReady, unfinishedAfter, waitSpelling } from "./waits.js";
 /** In report order: the most urgent first. */
@@ -24,6 +25,7 @@ export const FLAG_KINDS = [
     'PRIORITY-SKIP',
     'SELF-MADE',
     'PILE-UP',
+    'REPARKED',
     'OVER-PACE',
     'OVER-LIMIT',
     'OVER-SIZE',
@@ -81,6 +83,8 @@ const IN_HAND = 1;
  *   anything asked for it may be looping or drifting from its goal;
  * - PILE-UP: the oldest verifying task of an owner holding more than `maxVerifying` of them (0 turns it off): shipped
  *   changes pile up unproven;
+ * - REPARKED: a verifying task whose proof was put off to other waits `maxReparks` times in a row (0 turns it off):
+ *   `set` refuses another, so its owner runs the proof or reopens it;
  * - OVER-PACE: an owner's held tasks of the top priority (open, in progress or waiting), in plan order, past the count
  *   of top tasks it finished (done or verifying) in the PACE_DAYS before now, and past the first, which is in hand at
  *   any pace, on the first held task past that pace:
@@ -110,6 +114,7 @@ export function checkTasks(tasks, now, zone, week, config, elsewhere = NO_TASKS_
     const flags = active.flatMap((task) => [
         ...urgentFlags(task, tree),
         ...verifyFlags(task, tree, piles, config.maxVerifying),
+        ...reparkedFlags(task, config.maxReparks),
         ...selfMadeFlags(task, runs, config.check.maxSelfMadePerDay),
         ...overPaceFlags(task, paces),
         ...readyFlags(task, tree.context),
@@ -142,7 +147,7 @@ export function peerWaitFlags(tasks, tree, ownerSource) {
         const peer = task.waits.find((reason) => isPeerWait(reason, approvers, ownerSource));
         return peer === undefined
             ? []
-            : [{ kind: 'PEER-WAIT', task, detail: `${waitSpelling(peer)} is a peer's work: wait on it by its task (set ${task.id} --status ${task.status} --ask ${peer.who} --text "<the work>")` }];
+            : [{ kind: 'PEER-WAIT', task, detail: `${waitSpelling(peer)} is a peer's work: wait on it by its task (set ${task.id} --status waiting --ask ${peer.who} --text "<the work>")` }];
     });
 }
 function weekPlan(week, lengthDays, zone) {
@@ -284,6 +289,18 @@ function verifyFlags(task, tree, piles, max) {
         flags.push({ kind: 'PILE-UP', task, detail: `${task.owner} holds ${held} verifying tasks, more than ${max}; this is the oldest` });
     }
     return flags;
+}
+function reparkedFlags(task, max) {
+    if (task.status !== 'verifying' || max === 0 || task.reparks < max) {
+        return [];
+    }
+    return [
+        {
+            kind: 'REPARKED',
+            task,
+            detail: `its proof was put off to other waits ${task.reparks} times [register.maxReparks]: run the proof now, close it done with ${WATCH_USAGE} if tests or a dry run proved it, or reopen it`,
+        },
+    ];
 }
 /**
  * OVER-PACE, as {@link checkTasks} describes it: its detail keyed by the id of each owner's first held top task past

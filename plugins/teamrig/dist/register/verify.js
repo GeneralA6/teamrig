@@ -48,11 +48,21 @@ export function metStartNotice(task, held, met) {
 export function proofText(task) {
     return proofOf(task) ?? 'no proof named';
 }
+/** How a done task names the sighting left to watch for (T1306), for the refusals and lines that offer it. */
+export const WATCH_USAGE = '--watch "<what a sighting shows>"';
 /** A session's verifying tasks, oldest first: the order to prove them in. */
 export function verifyQueue(tasks, owner) {
-    return [...tasks]
-        .filter((task) => task.status === 'verifying' && task.owner === owner)
-        .sort((a, b) => Date.parse(a.statusAt) - Date.parse(b.statusAt) || taskNumber(a.id) - taskNumber(b.id));
+    return oldestFirst([...tasks].filter((task) => task.status === 'verifying' && task.owner === owner));
+}
+/**
+ * A session's done tasks still watched for a sighting (`--watch`), oldest first: tests or a dry run proved each, and
+ * the owner looks for its sighting once it runs live.
+ */
+export function watchQueue(tasks, owner) {
+    return oldestFirst([...tasks].filter((task) => task.status === 'done' && task.watch !== null && task.owner === owner));
+}
+function oldestFirst(tasks) {
+    return tasks.sort((a, b) => Date.parse(a.statusAt) - Date.parse(b.statusAt) || taskNumber(a.id) - taskNumber(b.id));
 }
 /** True once the day of the task's verify-by date, its due date, has come in the team's `zone`. */
 export function verifyByArrived(task, now, zone) {
@@ -99,5 +109,5 @@ export function dueVerifyHold(task, due) {
     const more = due.length > NAMED_DUE ? ` and ${due.length - NAMED_DUE} more` : '';
     const verb = due.length === 1 ? 'is' : 'are';
     return (`${task.id} is new work; ${named.join(', ')}${more} ${verb} due to verify first (teamrig verify): set each done with its proof, ` +
-        'in-progress if it failed, or verifying with --ask or --waits for what its proof waits on; a verify-by date moves with --due and a --note saying why');
+        'in-progress if it failed, or verifying with --waits for when its proof runs; a verify-by date moves with --due and a --note saying why');
 }

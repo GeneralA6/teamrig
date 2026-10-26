@@ -74,22 +74,28 @@ const SUMMARY_PROOF_CHARS = 60;
 export const SUMMARY_VERIFY_ROWS = 5;
 /**
  * `VERIFY 2, oldest first:` and a row each, `  T1 (proof: ...)`, each proof cut short, at most SUMMARY_VERIFY_ROWS
- * rows and a `+N more` line naming `<command> verify --session <owner>`, which lists the whole queue; undefined when
- * empty.
+ * rows and a `+N more` line naming `<command> verify --session <owner>`, which lists the whole queue, then one
+ * `WATCH <n> done, ...` line for the done tasks still `watched` for a sighting; undefined when both are empty.
  */
-export function formatVerifySummary(queue, owner, command) {
+export function formatVerifySummary(queue, watched, owner, command) {
+    const listed = `\`${command} verify --session ${owner}\``;
+    const watch = watched.length > 0 ? [`WATCH ${watched.length} done, waiting on a sighting: ${listed}`] : [];
     if (queue.length === 0) {
-        return undefined;
+        return watch.length === 0 ? undefined : watch.join('\n');
     }
     const rows = queue.slice(0, SUMMARY_VERIFY_ROWS).map((task) => `  ${task.id} (proof: ${cut(proofText(task), SUMMARY_PROOF_CHARS)})`);
     const left = queue.length - rows.length;
-    const more = left > 0 ? [`  +${left} more: \`${command} verify --session ${owner}\``] : [];
-    return [`VERIFY ${queue.length}, oldest first:`, ...rows, ...more].join('\n');
+    const more = left > 0 ? [`  +${left} more: ${listed}`] : [];
+    return [`VERIFY ${queue.length}, oldest first:`, ...rows, ...more, ...watch].join('\n');
 }
 /** A row of `verify`, times in the team's `zone`: `T1 since 01-07 12:00 IST, verify by 01-09 | <title> (proof: ...)`. */
 export function formatVerifyRow(task, zone) {
     const by = task.due === null ? 'no verify-by date' : `verify by ${showStored(task.due, zone)}`;
     return `${task.id} since ${zone.shortMinute(new Date(task.statusAt))}, ${by} | ${task.title} (proof: ${proofText(task)})`;
+}
+/** A watched row of `verify`, its time in the team's `zone`: `T1 done 01-07 12:00 IST | <title> (watch: ...)`. */
+export function formatWatchRow(task, zone) {
+    return `${task.id} done ${zone.shortMinute(new Date(task.statusAt))} | ${task.title} (watch: ${task.watch})`;
 }
 /** The Stop hook's line once a verifying task's verify-by day has come, its time in the team's `zone`. */
 export function formatVerifyByLine(task, zone) {
@@ -194,12 +200,16 @@ export function formatTask(task, team, tree) {
 /**
  * What a row adds for a status that waits on something: a waiting task's reasons, then its note
  * (`(waiting: decision owner · on T5; the schema first)`), or what will prove a verifying one, then what that
- * proof waits for (`(proof: the night's flow; waiting: on T7)`).
+ * proof waits for (`(proof: the night's flow; waiting: on T7)`), or the sighting a done one is watched for
+ * (`(watch: the night's flow lists it)`).
  */
 function statusNote(task, tree) {
     if (task.status === 'waiting') {
         const parts = [task.waits.length > 0 ? waitingText(task, tree) : null, task.note].filter((part) => part !== null);
         return parts.length === 0 ? '' : ` (waiting: ${parts.join('; ')})`;
+    }
+    if (task.watch !== null) {
+        return ` (watch: ${task.watch})`;
     }
     const proof = task.status === 'verifying' ? proofOf(task) : null;
     const waits = task.waits.length > 0 ? `; waiting: ${waitsText(task.waits, tree.zone, tree.context)}` : '';
@@ -260,6 +270,7 @@ export function formatEvent(event, zone) {
             return [
                 `${head} ${event.status}${event.waits === undefined ? '' : ` waits="${waitsText(event.waits, zone)}"`}${note}`,
                 event.proof === undefined ? undefined : `proof="${event.proof}"`,
+                event.watch === undefined ? undefined : `watch="${event.watch}"`,
                 event.met === undefined ? undefined : `met="${event.met}"`,
                 event.evidence === null ? undefined : `evidence=${event.evidence}`,
                 event.skill === null ? undefined : `skill=${event.skill}`,
@@ -309,6 +320,9 @@ export function formatTaskDetail(task, events, tree, sizeCost = () => undefined)
     }
     if (task.proof !== null) {
         lines.push(`proof: ${task.proof}`);
+    }
+    if (task.watch !== null) {
+        lines.push(`watch: ${task.watch}`);
     }
     if (task.evidence !== null) {
         lines.push(`evidence: ${task.evidence}`);

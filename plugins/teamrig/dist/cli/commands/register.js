@@ -25,9 +25,9 @@ import { noProgressFlag } from "../../register/progress.js";
 import { overSizeFlags } from "../../register/over-size.js";
 import { ACTIVE_STATUSES } from "../../register/model.js";
 import { readStopgapTags, stopgapFlags, stopgapTags } from "../../register/stopgap.js";
-import { dueStartHolds, dueVerifyHold, heldStart, heldStartNotice, metStartNotice, startHolds, verifyQueue } from "../../register/verify.js";
+import { dueStartHolds, dueVerifyHold, heldStart, heldStartNotice, metStartNotice, startHolds, verifyQueue, watchQueue } from "../../register/verify.js";
 import { readAs, TaskTree } from "../../register/tree.js";
-import { approvalNotice, askedNotice, assignedNotice, endedNotice, formatTask, formatTaskDetail, formatTaskTree, formatVerifyRow, personWaitNotice, selectTasks } from "../../register/views.js";
+import { approvalNotice, askedNotice, assignedNotice, endedNotice, formatTask, formatTaskDetail, formatTaskTree, formatVerifyRow, formatWatchRow, personWaitNotice, selectTasks } from "../../register/views.js";
 import { isPeerWait, sameWait } from "../../register/waits.js";
 import { lintSkills } from "../../skills/lint.js";
 import { SKILL_FILE, SkillDir } from "../../skills/store.js";
@@ -750,14 +750,23 @@ export async function waitingReport(args, runtime) {
     const tree = taskTreeOf(own, runtime);
     return waitingOnLines(owner, tree.waitingOn(owner), tree, args.switches.has('all'));
 }
-/** `verify`: the caller's verifying tasks, oldest first, each with its proof and the date to verify by. */
+/**
+ * `verify`: the caller's verifying tasks, oldest first, each with its proof and the date to verify by, then its done
+ * tasks still watched for a sighting (`--watch`), if any, with what to do once it shows.
+ */
 export async function verify(args, runtime) {
     noPositionals(args);
     const { own } = await settle(runtime, await ownRegister(runtime), () => false);
     const owner = sessionIdOf(own.roster, callerOf(args.flags, runtime.env));
+    const zone = teamZone(own.config, runtime);
     const queue = verifyQueue(own.snapshot.state.tasks.values(), owner);
     runtime.out.stdout(`VERIFY ${queue.length} ${queue.length === 1 ? 'task' : 'tasks'} of ${owner}, oldest first`);
-    queue.forEach((task) => runtime.out.stdout(formatVerifyRow(task, teamZone(own.config, runtime))));
+    queue.forEach((task) => runtime.out.stdout(formatVerifyRow(task, zone)));
+    const watched = watchQueue(own.snapshot.state.tasks.values(), owner);
+    if (watched.length > 0) {
+        runtime.out.stdout(`WATCH ${watched.length} done ${watched.length === 1 ? 'task' : 'tasks'} of ${owner} waiting on a sighting: once it shows, set it done again without --watch; if it shows a fault, reopen it (--status in-progress)`);
+        watched.forEach((task) => runtime.out.stdout(formatWatchRow(task, zone)));
+    }
     return EXIT.ok;
 }
 /** The `--week` given, else the newest week plan that has started in the team's `zone`. */
