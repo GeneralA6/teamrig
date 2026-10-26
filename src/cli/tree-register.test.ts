@@ -1,9 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { formatConfig } from '../config/load.ts';
+import type { JsonRecord } from '../core/guards.ts';
 import { readEvents } from '../register/snapshot.ts';
 import { CONFIG_PATH, EVENTS_PATH } from '../testing/cli-harness.ts';
-import { teamConfigOf, teamEventsOf, teamInboxOf, treeHarness } from '../testing/team-tree.ts';
+import { SUB_TEAMS, teamConfigOf, teamEventsOf, teamInboxOf, treeHarness } from '../testing/team-tree.ts';
 import type { CliHarness } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
 
@@ -322,5 +323,68 @@ describe('teamrig set: a task another team asked for ends (T509, T1141)', () => 
     await kit.files.write(CONFIG_PATH, formatConfig({ configVersion: 1, team: { id: 'app' }, sessions: ['lead', 'bravo'], roles: { lead: 'lead' } }));
     assert.equal((await kit.run(done('T1', 'PR #12 merged'), { env: WEB })).code, EXIT.ok);
     assert.equal(kit.files.get(teamInboxOf('app', 'lead')), '- 2030-01-08 10:00 web/lead: web/T1 done: Ship login | evidence: PR #12 merged\n');
+  });
+});
+
+describe("leaders across the tree: the parent team's lead approves a child team's lead (T1140)", () => {
+  /** The tree with web/T1, web's lead's, waiting on app/lead's approval; `root` adds to app's config. */
+  async function asking(root: JsonRecord = {}): Promise<CliHarness> {
+    const kit = await treeHarness(root);
+    assert.equal((await kit.run(['add', '--title', 'Ship the CLI', '--description', 'what and why', '--priority', 'p1', '--session', 'lead'], { env: WEB })).code, EXIT.ok);
+    const set = await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'approval:app/lead', '--note', 'branch t1', '--session', 'lead'], { env: WEB });
+    assert.equal(set.code, EXIT.ok, [...set.stdout, ...set.stderr].join('\n'));
+    return kit;
+  }
+
+  it("tells the parent's lead in its own inbox, and the parent's lead's answer reaches web's register and lead", async () => {
+    const kit = await asking();
+    assert.equal(kit.files.get(teamInboxOf('app', 'lead')), '- 2030-01-08 10:00 web/lead: web/T1 waits on your approval: branch t1\n');
+    const approved = await kit.run(['approve', 'web/T1', '--note', 'tests green', '--session', 'lead']);
+    assert.equal(approved.code, EXIT.ok, [...approved.stdout, ...approved.stderr].join('\n'));
+    assert.match(approved.stdout[0] ?? '', /^APPROVED web\/T1 /);
+    const event = readEvents(kit.files.get(teamEventsOf('web')) ?? '').events.at(-1);
+    assert.deepEqual([event?.by, event?.type], ['app/lead', 'update']);
+    assert.match(kit.files.get(teamInboxOf('web', 'lead')) ?? '', /app\/lead: app\/lead approved web\/T1: tests green; push or merge it now/);
+  });
+
+  it("keeps a wait on the parent team's lead off the child lead's PEER-WAIT flags", async () => {
+    const kit = await asking();
+    const checked = await kit.run(['check', '--all', '--session', 'lead'], { env: WEB });
+    assert.equal(checked.code, EXIT.ok);
+    assert.doesNotMatch(checked.stdout.join('\n'), /PEER-WAIT/);
+  });
+
+  it("sends a grandchild lead's wait to its parent's lead, web/lead, in web's inbox", async () => {
+    const kit = await treeHarness();
+    const ui = { env: { TEAMRIG_TEAM: 'ui' } };
+    assert.equal((await kit.run(['add', '--title', 'New icons', '--description', 'what and why', '--priority', 'p1', '--session', 'lead'], ui)).code, EXIT.ok);
+    const set = await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'approval:web/lead', '--note', 'icons branch', '--session', 'lead'], ui);
+    assert.equal(set.code, EXIT.ok, [...set.stdout, ...set.stderr].join('\n'));
+    assert.equal(kit.files.get(teamInboxOf('web', 'lead')), '- 2030-01-08 10:00 ui/lead: ui/T1 waits on your approval: icons branch\n');
+    assert.equal(kit.files.get(teamInboxOf('app', 'lead')), undefined);
+  });
+
+  it("refuses all but the parent team's lead, a root team, an unknown team, its own team and no note, writing nothing", async () => {
+    const kit = await asking();
+    const before = filesOf(kit);
+    const refusals: [readonly string[], Record<string, string>, RegExp][] = [
+      [['web/T1', '--session', 'alpha'], {}, /^REFUSED only app\/lead, the lead of team web's parent, approves its tasks from another team; app\/alpha may not$/],
+      [['web/T1', '--session', 'lead'], { TEAMRIG_TEAM: 'ops' }, /; ops\/lead may not$/],
+      [['web/T1', '--session', 'lead'], { TEAMRIG_TEAM: 'ui' }, /; ui\/lead may not$/],
+      [['app/T1', '--session', 'lead'], WEB, /^REFUSED team app has no parent team, so only its own leaders approve its tasks$/],
+      [['blog/T1', '--session', 'lead'], {}, /^REFUSED no team blog with a config in this kit home$/],
+    ];
+    for (const [extra, env, line] of refusals) {
+      const result = await kit.run(['approve', ...extra, '--note', 'ok'], { env });
+      assert.equal(result.code, EXIT.refused, extra.join(' '));
+      assert.match(result.stdout[0] ?? '', line);
+    }
+    const own = await kit.run(['approve', 'app/T1', '--note', 'ok', '--session', 'lead']);
+    assert.equal(own.code, EXIT.usage);
+    assert.match(own.stderr[0] ?? '', /^app\/T1 is a task of your own team: approve T1/);
+    const bare = await kit.run(['approve', 'web/T1', '--session', 'lead']);
+    assert.notEqual(bare.code, EXIT.ok);
+    assert.match([...bare.stdout, ...bare.stderr].join('\n'), /an answer needs --note/);
+    assert.deepEqual(filesOf(kit), before);
   });
 });
