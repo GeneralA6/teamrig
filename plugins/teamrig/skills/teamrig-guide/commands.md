@@ -711,7 +711,7 @@ api 3 unread since 10-15 07:40, 2 of them shown at a prompt (read to line 21 of 
 
 Appends one line to another session's inbox, or to each session of a group in one call. It does not wake the
 receiver: the line shows at its next prompt or work block. Use it for anything that is not urgent; add `--wake now`
-when the receiver must act on it now.
+when the receiver must act on it now, or `--wake-by <time>` when it must have read it by a time.
 
 Flags:
 
@@ -736,12 +736,20 @@ Flags:
   most, within how many minutes, what that costs (a warm cache is about 27k W, a cold one about 210k W, and the
   share of the week once teamrig knows its W per percent) and whose budget line pays. A receiver whose team has
   `wake.enabled` false gets the line and no wake, and the `WAKES` line says so.
+- `--wake-by <time>`: wakes each receiver at that time instead (`HH:MM` on the team's clock, or `YYYY-MM-DD HH:MM`),
+  and only if it has not seen the line by then: a receiver that read it, or was shown it at a prompt or a tool
+  call's end, before the time is not woken. One idle at its prompt then is woken at its tab's next wake check, one busy in a
+  turn is shown the line at its next tool call's end, and a closed one is reopened at the next idle pass. The
+  `WAKES` line names the time; a wake long after the receiver's last turn is priced cold. Until the time, the line
+  keeps no idle session open. It takes the same gate as `--wake now`, and one or the other, not both.
 
 Every receiver gets the same line, stamped with the same minute, or none does: an unknown session or team, one out
 of reach, `group:` on a session that leads no one, a task no register of your tree holds, a group that holds only
-you, or a line any receiving team's secret patterns refuse is `REFUSED` (exit 2) and posts nothing. With `--wake now`, so is a group sent by a session that
-leads no one, and a session of another team unless you lead a team above it, since a wake spends that team's budget
-line: post the line without `--wake` instead.
+you, or a line any receiving team's secret patterns refuse is `REFUSED` (exit 2) and posts nothing. With `--wake now`
+or `--wake-by`, so is a group sent by a session that leads no one, and a session of another team unless you lead a
+team above it, since a wake spends that team's budget line: post the line without the flag instead. Both flags
+together, a `--wake-by` time that is not a time, and one already past are usage errors (exit 64): send a line due now
+with `--wake now`.
 
 Example, on a team `shop` whose one sub-lead is `web`:
 
@@ -749,6 +757,7 @@ Example, on a team `shop` whose one sub-lead is `web`:
 teamrig inbox add --session lead --to web --text "api error codes are in docs/errors.md"
 teamrig inbox add --session lead --to leads,ops --text "main is frozen until 14:00"
 teamrig inbox add --session lead --to ops --text "checkout fails since 0.4.1: roll it back" --wake now
+teamrig inbox add --session lead --to web --text "the 15:00 release needs your sign-off" --wake-by 14:30
 ```
 
 Output:
@@ -758,6 +767,8 @@ POSTED to web; web is reminded at its next prompt
 POSTED to 2 sessions (web, ops); each is reminded at its next prompt
 POSTED to ops; ops is reminded at its next prompt
 WAKES ops if its tab is idle, within about 3 minutes: about 27k W, warm cache, 0.03% of the week, on shop's budget line
+POSTED to web; web is reminded at its next prompt
+WAKES web at 14:30 UTC if it has not seen the line by then and its tab is idle: about 210k W, cold, 0.23% of the week, on shop's budget line
 ```
 
 The line is stored as `- 2026-10-15 08:58 lead: api error codes are in docs/errors.md`.
