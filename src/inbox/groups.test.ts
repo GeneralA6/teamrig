@@ -1,7 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TeamTree, type TeamNode } from '../config/tree.ts';
-import { groupIds, parseTo, treeLeadsOf, type Group, type GroupIds } from './groups.ts';
+import type { SessionAddress } from '../core/address.ts';
+import type { Task } from '../register/fold.ts';
+import { testTask } from '../testing/task.ts';
+import { groupIds, parseTo, taskGroupOf, treeLeadsOf, type Group, type GroupIds, type RegisterTasks, type TaskGroup } from './groups.ts';
 
 /** `lead` leads `alpha` and the sub-lead `bravo`; `bravo` leads the sub-lead `charlie`, which leads `delta`. */
 const TEAM = {
@@ -27,12 +30,16 @@ describe('parseTo', () => {
     assert.deepEqual(parseTo('team:web,tree:leads'), [{ kind: 'team', team: 'web' }, { kind: 'tree-leads' }]);
   });
 
+  it('reads task:T<n> as the sessions working a task', () => {
+    assert.deepEqual(parseTo('task:T12,web/lead'), [{ kind: 'task', id: 'T12' }, { kind: 'session', address: { team: 'web', session: 'lead' } }]);
+  });
+
   it('keeps all and leads after a team as session names, so a session called all stays reachable', () => {
     assert.deepEqual(parseTo('app/all'), [{ kind: 'session', address: { team: 'app', session: 'all' } }]);
   });
 
   it('refuses an empty item, a group with no leader or a bad one, and any other form', () => {
-    for (const text of ['', 'alpha,', ',alpha', 'alpha,,bravo', 'group:', 'group:a/b', 'a/b/c', 'web/group:lead', 'all bravo', 'team:', 'team:Web', 'team:web/lead', 'tree:all', 'tree:']) {
+    for (const text of ['', 'alpha,', ',alpha', 'alpha,,bravo', 'group:', 'group:a/b', 'a/b/c', 'web/group:lead', 'all bravo', 'team:', 'team:Web', 'team:web/lead', 'tree:all', 'tree:', 'task:', 'task:12', 'task:T0', 'task:t12', 'task:web/T12']) {
       assert.equal(parseTo(text), undefined, text);
     }
   });
@@ -75,5 +82,43 @@ describe('treeLeadsOf', () => {
 
   it('gives none when the parents above the team go round a loop', () => {
     assert.equal(treeLeadsOf(new TeamTree([team('a', 'b'), team('b', 'a')]), 'a'), undefined);
+  });
+});
+
+function register(team: string, tasks: readonly Task[]): RegisterTasks {
+  return { team, tasks: new Map(tasks.map((task) => [task.id, task])) };
+}
+
+function sessionsOf(group: TaskGroup): SessionAddress[] {
+  assert.ok(group.ok, 'expected the task to resolve');
+  return group.sessions;
+}
+
+describe('taskGroupOf', () => {
+  const tree = [
+    register('app', [
+      testTask({ id: 'T5', owner: 'boss' }),
+      testTask({ id: 'T6', owner: 'boss', ref: 'T5' }),
+      testTask({ id: 'T7', owner: 'dev', ref: 'T5', status: 'done' }),
+    ]),
+    register('web', [testTask({ id: 'T8', owner: 'front', ref: 'T5', status: 'waiting' }), testTask({ id: 'T9', owner: 'back', ref: 'see T5' })]),
+    register('ui', [testTask({ id: 'T10', owner: 'pixel', ref: 'T5', status: 'verifying' }), testTask({ id: 'T11', owner: 'lead', ref: 'T8' })]),
+  ];
+
+  it("names the task's owner, then each active task's owner whose ref is its id, register by register, each once", () => {
+    const sessions = [{ team: 'app', id: 'boss' }, { team: 'web', id: 'front' }, { team: 'ui', id: 'pixel' }];
+    assert.deepEqual(sessionsOf(taskGroupOf(tree, 'app', 'T5')), sessions, 'from the owning team');
+    assert.deepEqual(sessionsOf(taskGroupOf(tree, 'ui', 'T5')), sessions, 'from a contributing team');
+    assert.deepEqual(sessionsOf(taskGroupOf(tree, 'app', 'T8')), [{ team: 'web', id: 'front' }, { team: 'ui', id: 'lead' }], 'a task of another team');
+  });
+
+  it("reads an id the reader's own register holds as its own, and a ref as the referring register reads it", () => {
+    const numberedBefore = [...tree, register('ops', [testTask({ id: 'T5', owner: 'run' }), testTask({ id: 'T12', owner: 'deploy', ref: 'T5' })])];
+    assert.deepEqual(sessionsOf(taskGroupOf(numberedBefore, 'ops', 'T5')), [{ team: 'ops', id: 'run' }, { team: 'ops', id: 'deploy' }]);
+    assert.deepEqual(sessionsOf(taskGroupOf(numberedBefore, 'web', 'T5')), [{ team: 'app', id: 'boss' }, { team: 'web', id: 'front' }, { team: 'ui', id: 'pixel' }]);
+  });
+
+  it('refuses an id no register of the tree holds', () => {
+    assert.deepEqual(taskGroupOf(tree, 'web', 'T99'), { ok: false, problem: 'no task T99 in a register of the tree of teams web is in' });
   });
 });
