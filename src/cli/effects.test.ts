@@ -21,6 +21,7 @@ const EXPECTED = {
   'inbox status': 'read',
   'inbox add': 'write',
   'team create': 'write',
+  'team split': 'read',
   'team tree': 'read',
   rules: 'read',
   'rules scan': 'read',
