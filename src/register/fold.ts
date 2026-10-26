@@ -2,7 +2,7 @@ import type { DecisionCard } from './card.ts';
 import type { ProblemReview } from './review.ts';
 import type { ApprovalVerdict, RegisterEvent, TaskFields, UpdateEvent } from './events.ts';
 import { WAIT_STATUSES, type TaskStatus } from './model.ts';
-import type { WaitReason } from './waits.ts';
+import { sameWait, type WaitReason } from './waits.ts';
 
 /** The lead's answer to a task's approval wait (T684), as `approve` wrote it. */
 export interface ApprovalAnswer {
@@ -38,6 +38,12 @@ export interface Task extends TaskFields {
    * task set verifying before `--proof` existed, whose note says it (`proofOf` in verify.ts reads both).
    */
   readonly proof: string | null;
+  /**
+   * How many times in a row its proof was put off: a verifying status on a task already verifying with waits, naming a
+   * wait it did not have, adds one (a task naming its first waits is parked, not re-parked, and one dropping a cleared
+   * wait puts nothing off); any other status starts again at 0.
+   */
+  readonly reparks: number;
   /** Every task its status changes named as left by the work (`--followups`), in the order first named. */
   readonly followups: readonly string[];
   /** A bug's review (review.ts): every part its status changes gave, a later one replacing it; empty when none. */
@@ -155,6 +161,7 @@ function created(id: string, fields: TaskFields, at: string, by: string): Task {
     card: null,
     answer: null,
     proof: null,
+    reparks: 0,
     followups: [],
     review: {},
     startedAt: null,
@@ -181,6 +188,7 @@ function withStatus(task: Task, event: Extract<RegisterEvent, { type: 'status' }
     card: WAIT_STATUSES.includes(event.status) ? (event.card ?? null) : null,
     answer: null,
     proof: event.status === 'verifying' ? (event.proof ?? null) : null,
+    reparks: reparksAfter(task, event),
     followups: event.followups === undefined ? task.followups : [...new Set([...task.followups, ...event.followups])],
     review: event.review === undefined ? task.review : { ...task.review, ...event.review },
     startedAt: task.startedAt ?? (event.status === 'in-progress' || event.status === 'verifying' ? event.at : null),
@@ -188,6 +196,18 @@ function withStatus(task: Task, event: Extract<RegisterEvent, { type: 'status' }
     updatedBy: event.by,
     ownerSeenAt: event.by === task.owner ? event.at : task.ownerSeenAt,
   };
+}
+
+/** True when setting `status` with `waits` re-parks the task's proof, as {@link Task.reparks} counts it. */
+export function isRepark(task: Task, status: TaskStatus, waits: readonly WaitReason[]): boolean {
+  return status === 'verifying' && task.status === 'verifying' && task.waits.length > 0 && waits.some((reason) => !task.waits.some((had) => sameWait(had, reason)));
+}
+
+function reparksAfter(task: Task, event: Extract<RegisterEvent, { type: 'status' }>): number {
+  if (event.status !== 'verifying') {
+    return 0;
+  }
+  return isRepark(task, event.status, event.waits ?? []) ? task.reparks + 1 : task.reparks;
 }
 
 /**

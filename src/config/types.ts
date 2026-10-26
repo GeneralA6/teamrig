@@ -108,6 +108,11 @@ export interface RegisterConfig {
   readonly verifyGate: VerifyGate;
   /** A session holding more verifying tasks than this is a PILE-UP in `check`, and its oldest are due to verify before new work starts; 0 turns both off. */
   readonly maxVerifying: number;
+  /**
+   * How many times in a row a verifying task's proof may be put off to other waits; past it `set --status verifying`
+   * with other waits is refused, and `check` flags REPARKED on the task. 0 turns both off.
+   */
+  readonly maxReparks: number;
   readonly check: RegisterCheckConfig;
   readonly review: RegisterReviewConfig;
 }

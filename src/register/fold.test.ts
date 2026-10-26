@@ -97,6 +97,20 @@ describe('foldEvents: what a waiting task waits for, and when it started', () =>
     assert.equal(taskAfter([create(9), verifying(10)]).proof, null, 'a line from before --proof has none');
   });
 
+  it('counts a re-park only when a verifying task with waits names other waits, and starts again on any other status', () => {
+    const night: readonly WaitReason[] = [{ kind: 'time', at: '2030-01-08 02:00' }];
+    const nextNight: readonly WaitReason[] = [{ kind: 'time', at: '2030-01-09 02:00' }];
+    const run: readonly WaitReason[] = [{ kind: 'task', id: 'T2' }];
+    assert.equal(taskAfter([create(9), status(10, 'verifying', night)]).reparks, 0, 'a first park is not a re-park');
+    assert.equal(taskAfter([create(9), status(10, 'verifying'), status(11, 'verifying', night)]).reparks, 0, 'naming its first waits is not a re-park');
+    assert.equal(taskAfter([create(9), status(10, 'verifying', night), status(11, 'verifying', night)]).reparks, 0, 'the same waits again');
+    assert.equal(taskAfter([create(9), status(10, 'verifying', [...night, ...run]), status(11, 'verifying', run)]).reparks, 0, 'a cleared wait dropped');
+    const twice = [create(9), status(10, 'verifying', night), status(11, 'verifying', nextNight), status(12, 'verifying', run)];
+    assert.equal(taskAfter(twice).reparks, 2);
+    assert.equal(taskAfter([...twice, status(13, 'in-progress')]).reparks, 0);
+    assert.equal(taskAfter([...twice, status(13, 'in-progress'), status(14, 'verifying', night)]).reparks, 0);
+  });
+
   it('gathers the follow-ups every status change named, each once, in the order first named', () => {
     const closing = (hour: number, value: TaskStatus, followups: readonly string[]): RegisterEvent => ({
       v: EVENT_VERSION,

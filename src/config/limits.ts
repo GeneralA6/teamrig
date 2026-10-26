@@ -26,6 +26,7 @@ export const CONFIG_LIMITS = {
   reviewRequireOn: { maxItems: 2 },
   criticalOwners: { maxItems: 32 },
   maxVerifying: { min: 0, max: 100 },
+  maxReparks: { min: 0, max: 20 },
   maxSelfMadePerDay: { min: 0, max: 200 },
   /** Its span (these days and today) stays inside compaction's RETAIN_DAYS, so every task moved in it is still read. */
   goalProgressDays: { min: 0, max: 7 },

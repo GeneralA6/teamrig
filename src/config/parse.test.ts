@@ -715,16 +715,19 @@ describe('parseConfig', () => {
   });
 
   it('reads the verify loop keys, and falls back to the default on a wrong one', () => {
-    const set = parseConfig({ ...ROSTER, register: { requireProofOnVerifying: false, verifyGate: 'warn', maxVerifying: 0 } });
+    const set = parseConfig({ ...ROSTER, register: { requireProofOnVerifying: false, verifyGate: 'warn', maxVerifying: 0, maxReparks: 0 } });
     assert.deepEqual(set.issues, []);
     assert.deepEqual(
-      [set.config.register.requireProofOnVerifying, set.config.register.verifyGate, set.config.register.maxVerifying],
-      [false, 'warn', 0],
+      [set.config.register.requireProofOnVerifying, set.config.register.verifyGate, set.config.register.maxVerifying, set.config.register.maxReparks],
+      [false, 'warn', 0, 0],
     );
-    const { config, issues } = parseConfig({ ...ROSTER, register: { requireProofOnVerifying: 'yes', verifyGate: 'block', maxVerifying: 101 } });
-    assert.deepEqual(paths(issues).sort(), ['register.maxVerifying', 'register.requireProofOnVerifying', 'register.verifyGate']);
+    const { config, issues } = parseConfig({ ...ROSTER, register: { requireProofOnVerifying: 'yes', verifyGate: 'block', maxVerifying: 101, maxReparks: 21 } });
+    assert.deepEqual(paths(issues).sort(), ['register.maxReparks', 'register.maxVerifying', 'register.requireProofOnVerifying', 'register.verifyGate']);
     assert.match(issues.find((issue) => issue.path === 'register.verifyGate')?.message ?? '', /refuse, warn/);
-    assert.deepEqual([config.register.requireProofOnVerifying, config.register.verifyGate, config.register.maxVerifying], [true, 'refuse', 5]);
+    assert.deepEqual(
+      [config.register.requireProofOnVerifying, config.register.verifyGate, config.register.maxVerifying, config.register.maxReparks],
+      [true, 'refuse', 5, 2],
+    );
   });
 
   it('falls back to the default count of self-made tasks past its limit', () => {

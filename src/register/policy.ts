@@ -8,7 +8,7 @@ import { parseDeadline, parseUtcDay, parseUtcDeadline, showStored } from '../cor
 import type { TimeZone } from '../core/zone.ts';
 import { CARD_FLAGS, cardProblem, cardTexts, GATE_FLAG, gateOf, gateUsage, keptCard, OPTION_SEPARATOR, sameCard, WHY_ASK_FLAG, whyAskUsage, type DecisionCard } from './card.ts';
 import { ITEM_TYPES, sizeProblem, type ApprovalVerdict, type ItemType, type TaskFieldName, type TaskFields } from './events.ts';
-import { taskNumber, type RegisterState, type Task } from './fold.ts';
+import { isRepark, taskNumber, type RegisterState, type Task } from './fold.ts';
 import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, priorityText, SESSION_NAME, WAIT_STATUSES, type TaskStatus } from './model.ts';
 import { ITEM_TYPE_TRAITS, traitsOf } from './item-types.ts';
 import { asksReview, missedTaskIds, reviewGap, reviewGapText, reviewProblem, reviewTexts, type ProblemReview } from './review.ts';
@@ -311,6 +311,12 @@ export class RegisterPolicy {
     const waits = this.checkWaits(task, input, context);
     if (!waits.ok) {
       return waits;
+    }
+    // A proof put off to other waits again and again is never run: past the limit the task is proven or reopened.
+    if (register.maxReparks > 0 && task.reparks >= register.maxReparks && isRepark(task, input.status, waits.value)) {
+      return refuse(
+        `${task.id}'s proof was put off to other waits ${task.reparks} times [register.maxReparks]: run the proof now and set it done, or reopen it (teamrig set ${task.id} --status in-progress)`,
+      );
     }
     const card = this.cardChange(task, input, waits.value);
     if (!card.ok) {

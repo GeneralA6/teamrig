@@ -480,6 +480,20 @@ describe('RegisterPolicy.setStatus to verifying', () => {
     assert.equal(fromWaiting.ok && 'waits' in fromWaiting.value, false, "a waiting task's reasons are not its proof's");
   });
 
+  it('refuses putting the proof off to other waits past register.maxReparks, and lets the same waits or a reopen through', () => {
+    const parked: Task = { ...VERIFYING, waits: [{ kind: 'time', at: '2030-01-09 02:00' }], reparks: 2 };
+    const later = { status: 'verifying' as const, note: 'the run moved', waits: [{ kind: 'time' as const, at: '2030-01-10 02:00' }], followups: [] };
+    assert.equal(
+      error(policy.setStatus(parked, 'alpha', later, CTX)),
+      "T1's proof was put off to other waits 2 times [register.maxReparks]: run the proof now and set it done, or reopen it (teamrig set T1 --status in-progress)",
+    );
+    assert.equal(policy.setStatus({ ...parked, reparks: 1 }, 'alpha', later, CTX).ok, true, 'under the limit');
+    assert.equal(policy.setStatus(parked, 'alpha', { status: 'verifying', note: 'still tonight', followups: [] }, CTX).ok, true, 'the same waits kept');
+    assert.equal(policy.setStatus(parked, 'alpha', { status: 'in-progress', note: 'the proof failed' }, CTX).ok, true);
+    const unlimited = new RegisterPolicy(testConfig({ register: { maxReparks: 0 } }));
+    assert.equal(unlimited.setStatus({ ...parked, reparks: 9 }, 'alpha', later, CTX).ok, true, '0 turns the limit off');
+  });
+
   it('asks the note for the proof when the team does not require --proof', () => {
     const relaxed = new RegisterPolicy(testConfig({ register: { requireProofOnVerifying: false } }));
     assert.equal(error(relaxed.setStatus(TASK, 'alpha', { status: 'verifying' }, CTX)), 'verifying needs --note saying what proves it');

@@ -990,6 +990,7 @@ function parseRegister(read: ConfigReader, raw: JsonRecord): RegisterConfig {
     requireDecisionCard: read.boolean(raw, 'requireDecisionCard', path, defaults.requireDecisionCard),
     verifyGate: isVerifyGate(verifyGate) ? verifyGate : defaults.verifyGate,
     maxVerifying: read.integer(raw, 'maxVerifying', path, defaults.maxVerifying, CONFIG_LIMITS.maxVerifying),
+    maxReparks: read.integer(raw, 'maxReparks', path, defaults.maxReparks, CONFIG_LIMITS.maxReparks),
     check: {
       staleAfterHours: read.integer(check, 'staleAfterHours', `${path}.check`, defaults.check.staleAfterHours, { min: 1 }),
       notPickedUpAfterHours: read.integer(check, 'notPickedUpAfterHours', `${path}.check`, defaults.check.notPickedUpAfterHours, { min: 1 }),

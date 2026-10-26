@@ -235,6 +235,8 @@ With sub-teams, run `teamrig check --tree --session lead` too. Act on each flag:
   inbox line to make the step its own task (the flag prints the command), or re-plan it yourself (`update --after`).
 - `PILE-UP`: a session holds more verifying tasks than `register.maxVerifying`. Ask it to work its queue
   (`teamrig verify`) before new work.
+- `REPARKED`: a task's proof was put off to other waits `register.maxReparks` times. Ask its owner to run the
+  proof now (`done`) or reopen it (`in-progress`).
 - `OVER-PACE`: a session holds more unfinished p1 tasks than the p1 it finished in the last 7 days, past the first p1, which is in hand. Lower the p1s
   its pace will not reach (`update --priority`), hand some to another session, or tell the user what is held.
 - `OVER-LIMIT`: the week's sized work passes the weekly limit left at this task. Move it and the tasks after it to
