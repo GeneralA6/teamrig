@@ -390,7 +390,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   exec escalate R<n> --note "<why>" [--team <child>]   the security reviewer hands an owner-gated request to the owner
       --team <child>: a request of a team below yours, whose roles.securityReviewer names you as <team>/<id>
   exec run R<n>        runs an approved request once, before its approval expires
-  who [<id|name|role>]         the name to message a session by (no argument: every session)
+  who [<id|name|role|team/id>] the name to message a session by (no argument: every session of yours)
   sessions [--pass] [--project <dir>]   each session: running (and the MB its Claude Code's processes
       hold), closed or never recorded; then the host's free memory and commit charge. --pass: what an
       idle pass would close and reopen (one reopen a pass, with room on the host) and why it keeps or
