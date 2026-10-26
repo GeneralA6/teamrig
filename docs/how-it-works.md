@@ -778,7 +778,8 @@ session waiting on one task's decision moves none of its other tasks. With `pick
 picker to every session and helper, and its reason says to decide it when it is the session's own, else record it on
 its task (a waiting status with its decision card and default, which the lead brings to the owner) and go on with the
 next task; only with none left does the turn end on the question. A helper ends its report with the decision instead.
-The lead's own thread keeps the picker only while the owner's daily meeting is open, and plan mode's `ExitPlanMode`
+The lead's own thread keeps the picker only while the owner's daily meeting is open and the team asks with it
+(`decisions.askWith: picker`); by default the meeting asks the cards in plain text. Plan mode's `ExitPlanMode`
 stays allowed
 ([the picker guard](../plugins/teamrig/skills/teamrig-guide/hooks.md#before-a-question-the-picker-guard)).
 

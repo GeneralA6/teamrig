@@ -140,7 +140,8 @@ teamrig set T4 --session api --status waiting --waits decision:owner --note "whi
 Name every reason, comma-separated: `decision:<who>` or `approval:<who>` (the lead, or `owner` for the human),
 `task:T<id>` (a task to finish first) or `time:<YYYY-MM-DD HH:MM>` (on the team's clock unless marked UTC). Then move to your next task. This is how a
 session asks the owner: with `pickerGuard.enabled`, the question picker, which would stop it until the answer, is
-refused to every session and helper, and to the lead outside the owner's daily meeting. It stays
+refused to every session and helper, and to the lead outside the owner's daily meeting (in it too, unless the team
+asks with the picker [decisions.askWith]). It stays
 waiting until every reason has cleared; `check` flags it `READY` once its tasks are done and its time has passed,
 and a decision or an approval clears when you set the next status (`set --status in-progress`). A new decision or
 approval wait posts the lead one inbox line (a child team's lead's own, the lead of the team above it); a decision for the human goes to the lead with the options, numbers
@@ -337,7 +338,8 @@ teamrig meeting start --session lead
 It holds every message to the lead (a CRITICAL one still goes) and prints the agenda; no session is told. Until
 the meeting ends, the lead's own context refresh waits (no handover ask, no restart) unless its context reaches
 `refresh.compactCeilingTokens`; the turn that ends the meeting asks at once. Bring
-each decision as a card the human can decide from alone, record each answer in the same turn with
+each decision as a card the human can decide from alone, asked in plain text unless the team asks with the question
+picker [decisions.askWith], record each answer in the same turn with
 `teamrig update <id> --note "owner decided: <decision>" --session lead` (and any new priority or date), then:
 
 ```sh
