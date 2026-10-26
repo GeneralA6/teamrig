@@ -18,7 +18,8 @@ export const LONG_DESCRIPTION_CHARS = 250;
 const CHARS_PER_TOKEN = 4;
 /** A repeated line prints up to this many characters. */
 const EXCERPT_MAX_CHARS = 60;
-const BYTES_PER_MB = 1024 * 1024;
+export const BYTES_PER_MB = 1024 * 1024;
+const DAY_MS = 24 * 60 * 60 * 1000;
 export function tokensOf(chars) {
     return Math.ceil(chars / CHARS_PER_TOKEN);
 }
@@ -96,19 +97,25 @@ function settingsLines(scan, at, show) {
     const trim = scan.settings.some((finding) => finding.kind === 'wide-allow') ? [`NEXT ${KIT_NAME} permissions trim${afterTeam(at)}`] : [];
     return [`SETTINGS ${findings.length} finding(s)`, ...findingLines('S', findings), ...trim];
 }
-function unusedFindings(unused, at, show) {
+/** The days the transcripts read cover: all --days of them, else the newest ones read before the bound. */
+function windowOf(scan, at) {
+    return scan.usage.unread === 0 ? `${at.days} day(s)` : `the newest ${((at.now - scan.usage.since) / DAY_MS).toFixed(1)} day(s)`;
+}
+function unusedFindings(unused, window, show) {
     return unused.map((skill) => ({
         kind: 'unused-skill',
         where: show(skill.path),
-        what: `no Skill call or /${skill.name} in ${at.days} day(s)`,
+        what: `no Skill call or /${skill.name} in ${window}`,
         saves: tokensOf(skill.line.length),
     }));
 }
 function unusedHeader(scan, unused, at) {
-    const { transcripts, bytes } = scan.usage;
+    const { transcripts, bytes, unread } = scan.usage;
     const young = notUsed(scan).filter((skill) => scan.recent.has(skill.path)).length;
     const unjudged = young === 0 ? '' : `; ${young} more changed in that time, too new to judge`;
-    return `UNUSED ${unused.length} of ${scan.context.skills.length} skill(s) not used in ${at.days} day(s) (read ${transcripts} transcript(s), ${(bytes / BYTES_PER_MB).toFixed(1)} MB)${unjudged}`;
+    const bound = unread === 0 ? '' : `, newest first; ${unread} older one(s) of ${at.days} day(s) left unread past the ${at.maxMb} MB bound, --max-mb raises it`;
+    const read = `read ${transcripts} transcript(s), ${(bytes / BYTES_PER_MB).toFixed(1)} MB${bound}`;
+    return `UNUSED ${unused.length} of ${scan.context.skills.length} skill(s) not used in ${windowOf(scan, at)} (${read})${unjudged}`;
 }
 function notUsed(scan) {
     return scan.context.skills.filter((skill) => !scan.usage.used.has(skill.name));
@@ -126,7 +133,7 @@ export function scanReport(scan, at) {
     const unused = unusedSkills(scan);
     const context = contextFindings(scan, new Set(unused), show);
     const duplicates = duplicateFindings(scan, at, show);
-    const parked = unusedFindings(unused, at, show);
+    const parked = unusedFindings(unused, windowOf(scan, at), show);
     const loaded = scan.context.files.reduce((sum, file) => sum + file.text.length, 0) + scan.listing.chars;
     const savings = [...context, ...duplicates, ...parked].reduce((sum, finding) => sum + finding.saves, 0);
     return [
