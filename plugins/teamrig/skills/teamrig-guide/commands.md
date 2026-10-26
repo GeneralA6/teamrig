@@ -2837,8 +2837,8 @@ teamrig heavy --session api --what "build api" -- npm run build
 Output:
 
 ```text
-2030-01-08T10:00:00.000Z waiting for the host lock: web (heavy: test web) since 2030-01-08 11:52 IST
-2030-01-08T10:04:30.000Z running: build api (killed after 45m)
+2030-01-08 12:00:00 IST waiting for the host lock: web (heavy: test web) since 2030-01-08 11:52 IST
+2030-01-08 12:04:30 IST running: build api (killed after 45m)
 DONE exit 0
 ```
 
@@ -2928,10 +2928,10 @@ teamrig integrate --session api
 Output:
 
 ```text
-2030-01-08T10:00:00.000Z pushing t12-parser (4f1c2a9e) to main; the pre-push hook runs now
-2030-01-08T10:03:10.000Z deleted t12-parser on origin
-2030-01-08T10:03:10.000Z deleted the local t12-parser
-2030-01-08T10:03:10.000Z next: teamrig worktree remove "/home/you/api-t12"
+2030-01-08 12:00:00 IST pushing t12-parser (4f1c2a9e) to main; the pre-push hook runs now
+2030-01-08 12:03:10 IST deleted t12-parser on origin
+2030-01-08 12:03:10 IST deleted the local t12-parser
+2030-01-08 12:03:10 IST next: teamrig worktree remove "/home/you/api-t12"
 DONE pushed 9a0b1c2d..4f1c2a9e to main; cloud-api deploy on push
 ```
 
@@ -3037,13 +3037,13 @@ teamrig roll --session api
 Output:
 
 ```text
-2030-01-08T10:00:00.000Z 2 commits pending in pipeline (4f1c2a9e..9a0b1c2d)
-2030-01-08T10:00:00.000Z waiting: gate flow holds the roll: a batch run is open
-2030-01-08T10:00:30.000Z clear; pulling 2 commits (4f1c2a9e..9a0b1c2d) into /home/you/pipeline
-2030-01-08T10:00:30.000Z pulled /home/you/pipeline to 9a0b1c2d
-2030-01-08T10:00:30.000Z afterPull: npm run build
-2030-01-08T10:01:10.000Z roll: node tools/roll.js
-2030-01-08T10:03:40.000Z   rolled api, workers on sha-9a0b1c2d
+2030-01-08 12:00:00 IST 2 commits pending in pipeline (4f1c2a9e..9a0b1c2d)
+2030-01-08 12:00:00 IST waiting: gate flow holds the roll: a batch run is open
+2030-01-08 12:00:30 IST clear; pulling 2 commits (4f1c2a9e..9a0b1c2d) into /home/you/pipeline
+2030-01-08 12:00:30 IST pulled /home/you/pipeline to 9a0b1c2d
+2030-01-08 12:00:30 IST afterPull: npm run build
+2030-01-08 12:01:10 IST roll: node tools/roll.js
+2030-01-08 12:03:40 IST   rolled api, workers on sha-9a0b1c2d
 DONE 4f1c2a9e..9a0b1c2d rolled: rolled api, workers on sha-9a0b1c2d
 ```
 
@@ -3056,8 +3056,8 @@ teamrig roll --session sec --targets api,workers --what "rotate the db credentia
 Output:
 
 ```text
-2030-01-08T10:00:00.000Z clear; deploying api, workers of pipeline: node tools/restart.js api workers
-2030-01-08T10:01:30.000Z   restarted 2 deployments
+2030-01-08 12:00:00 IST clear; deploying api, workers of pipeline: node tools/restart.js api workers
+2030-01-08 12:01:30 IST   restarted 2 deployments
 DONE deployed api, workers of pipeline: restarted 2 deployments
 ```
 
