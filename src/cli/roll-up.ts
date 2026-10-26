@@ -1,6 +1,6 @@
 import type { Roster } from '../config/roster.ts';
 import type { KitConfig } from '../config/types.ts';
-import { formatAddress } from '../core/address.ts';
+import { formatAddress, type SessionAddress } from '../core/address.ts';
 import type { TeamPaths } from '../core/home.ts';
 import type { RegisterSnapshot } from '../register/snapshot.ts';
 import { JsonlEventLog } from '../register/store.ts';
@@ -23,6 +23,8 @@ export interface RolledTeam {
   /** Reads the register's whole history, for a command the working set cannot serve. */
   readonly history: () => Promise<RegisterSnapshot>;
   readonly elsewhere: TasksElsewhere;
+  /** The parent team's lead, who approves the team's lead's own work (T1140); undefined on a root team. */
+  readonly above: SessionAddress | undefined;
 }
 
 type ReadTeam = Omit<RolledTeam, 'elsewhere'>;
@@ -33,9 +35,9 @@ export interface RollUp {
   readonly teams: readonly RolledTeam[];
 }
 
-async function readOf(runtime: CliRuntime, team: string, { kit, config, roster }: TreeTeam): Promise<ReadTeam> {
+async function readOf(runtime: CliRuntime, team: string, { kit, config, roster }: TreeTeam, kitTree: KitTree): Promise<ReadTeam> {
   const log = new JsonlEventLog(runtime.files, kit.paths.events);
-  return { team, config, paths: kit.paths, roster, snapshot: await log.read(), history: () => log.readHistory() };
+  return { team, config, paths: kit.paths, roster, snapshot: await log.read(), history: () => log.readHistory(), above: kitTree.tree.parentLeadOf(team) };
 }
 
 /**
@@ -47,10 +49,10 @@ export async function subtreeOf(runtime: CliRuntime, own: TreeTeam, kitTree: Kit
   const team = own.kit.paths.team;
   const order = kitTree.tree.descendantsOf(team);
   const below = [...kitTree.teams].filter(([member]) => order.includes(member)).sort(([a], [b]) => order.indexOf(a) - order.indexOf(b));
-  const ownRead = await readOf(runtime, team, own);
+  const ownRead = await readOf(runtime, team, own, kitTree);
   const belowRead: ReadTeam[] = [];
   for (const [member, loaded] of below) {
-    belowRead.push(await readOf(runtime, member, loaded));
+    belowRead.push(await readOf(runtime, member, loaded, kitTree));
   }
   const treeTasks = new TreeTasks(runtime, kitTree, new Map([ownRead, ...belowRead].map((read) => [read.team, read.snapshot])));
   const withElsewhere = async (read: ReadTeam): Promise<RolledTeam> => ({ ...read, elsewhere: await treeTasks.elsewhereFor(read.team) });

@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import type { Roster } from '../config/roster.ts';
 import { TeamTree, teamNodeOf } from '../config/tree.ts';
 import type { KitConfig } from '../config/types.ts';
+import type { SessionAddress } from '../core/address.ts';
 import { resolveKitHome } from '../core/home.ts';
 import { ID_PATTERN } from '../core/ids.ts';
 import { openKit, rosterOf, type Kit } from './kit.ts';
@@ -37,4 +38,15 @@ export async function loadTree(runtime: CliRuntime): Promise<KitTree> {
   }
   const nodes = [...teams].map(([team, { config, roster }]) => teamNodeOf(team, config, roster));
   return { tree: new TeamTree(nodes), teams };
+}
+
+/**
+ * The parent team's lead, who approves the team's lead's own work (T1140); undefined for a root team, read without the
+ * tree, or for a team whose parent has no config, which `doctor` names.
+ */
+export async function leadAboveOf(runtime: CliRuntime, team: string, config: KitConfig): Promise<SessionAddress | undefined> {
+  if (config.team?.parent === undefined) {
+    return undefined;
+  }
+  return (await loadTree(runtime)).tree.parentLeadOf(team);
 }
