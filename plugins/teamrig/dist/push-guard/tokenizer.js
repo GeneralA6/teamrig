@@ -7,6 +7,8 @@ export function parseShell(command, dialect) {
 /**
  * The commands bash runs when an expansion reads a word's {@link ShellWord.held} text again: the substitutions
  * in it, read as in an unquoted heredoc's body, where quotes are plain text and a backslash keeps a `$`.
+ * bash expands that text left to right, so where it never closes bash stops at the error after running the
+ * substitutions before it, which the commands hold; only {@link ShellParse.skipped} text may hide one.
  */
 export function parseHeldText(held) {
     return new Scanner(held, 'bash', { nesting: 0, subshells: [], ids: { next: 0 } }).parseExpandable();
@@ -149,6 +151,7 @@ const ANSI_C_ESCAPES = new Map([
 class Scanner {
     index = 0;
     complete = true;
+    skipped = false;
     nesting;
     commands = [];
     /** bash heredocs opened since the last newline, in order. */
@@ -174,12 +177,21 @@ class Scanner {
     /** Reads the whole source as expandable text; the commands are those of the substitutions in it. */
     parseExpandable() {
         this.readExpandable(new WordBuilder(true), this.source.length);
-        return { commands: this.commands, complete: this.complete, unreadBodies: this.unreadBodies, bindingsUnclear: this.bindingsUnclear };
+        return this.result();
     }
     /** Reads the whole source; its commands stay open to the separators an enclosing scanner adds after them. */
     scan() {
         this.readList(false);
-        return { commands: this.commands, complete: this.complete, unreadBodies: this.unreadBodies, bindingsUnclear: this.bindingsUnclear };
+        return this.result();
+    }
+    /** What the reader found so far. */
+    result() {
+        return { commands: this.commands, complete: this.complete, skipped: this.skipped, unreadBodies: this.unreadBodies, bindingsUnclear: this.bindingsUnclear };
+    }
+    /** Notes text the reader leaves unread that may hold commands; see {@link ShellParse.skipped}. */
+    skip() {
+        this.complete = false;
+        this.skipped = true;
     }
     /** Adds separator characters to the command read last, if any. */
     addTerminator(chars) {
@@ -782,7 +794,9 @@ class Scanner {
             }
             else if (char === "'") {
                 const close = this.source.indexOf("'", this.index + 1);
-                this.complete &&= close !== -1 && !/[}"$`\\]/.test(this.source.slice(this.index + 1, close));
+                if (close === -1 || /[}"$`\\]/.test(this.source.slice(this.index + 1, close))) {
+                    this.skip();
+                }
                 this.index = close === -1 ? this.source.length : close + 1;
             }
             else if (char === '"') {
@@ -808,7 +822,7 @@ class Scanner {
     /** Inside `$(`, `@(` or `<(`: reads the commands through the closing `)`; in bash they run in a subshell. */
     readSubstitution() {
         if (this.nesting >= MAX_NESTING) {
-            this.complete = false;
+            this.skip();
             this.index = this.source.length;
             return;
         }
@@ -859,7 +873,7 @@ class Scanner {
     /** Counts one more bash expansion the reader is inside; false, with the line unreadable, when they nest too deep. */
     enterExpansion() {
         if (this.expansions >= MAX_NESTING) {
-            this.complete = false;
+            this.skip();
             this.index = this.source.length;
             return false;
         }
@@ -885,7 +899,7 @@ class Scanner {
             this.index += 1;
         }
         if (this.nesting >= MAX_NESTING) {
-            this.complete = false;
+            this.skip();
         }
         else {
             const subshells = [...this.subshells, this.ids.next];
@@ -894,6 +908,7 @@ class Scanner {
             this.commands.push(...nested.commands);
             this.unreadBodies.push(...nested.unreadBodies);
             this.complete &&= nested.complete;
+            this.skipped ||= nested.skipped;
             this.bindingsUnclear ||= nested.bindingsUnclear;
         }
         word.add(this.source.slice(start, this.index), 'dynamic');
