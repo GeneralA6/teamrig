@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from '../config/limits.ts';
-import { HOOK_ASKS, PUSH_TO_PROTECTED, type HookAsks, type PushToProtected } from '../config/types.ts';
+import { CAP_RAISERS, HOOK_ASKS, PUSH_TO_PROTECTED, type HookAsks, type PushToProtected } from '../config/types.ts';
 import { FOLLOWUP_STATUSES, TASK_STATUSES } from '../register/model.ts';
 import { testConfig } from '../testing/config.ts';
 import { RULES_CLOCK } from '../testing/zone.ts';
@@ -83,9 +83,12 @@ function worstCaseConfig(wording: Wording = { pushToProtected: 'ask', hookAsks: 
 }
 
 describe('renderLeadRules', () => {
-  it('fits its budget with every printed value at its worst case', () => {
-    const lines = renderLeadRules(worstCaseConfig(), COMMAND);
-    assert.ok(lines.length <= LEAD_RULES_MAX_CHARS, `${lines.length} > ${LEAD_RULES_MAX_CHARS}`);
+  it('fits its budget with every printed value at its worst case, whoever raises the hire cap', () => {
+    for (const capRaisedBy of CAP_RAISERS) {
+      const worst = worstCaseConfig();
+      const lines = renderLeadRules({ ...worst, hiring: { ...worst.hiring, capRaisedBy } }, COMMAND);
+      assert.ok(lines.length <= LEAD_RULES_MAX_CHARS, `${capRaisedBy}: ${lines.length} > ${LEAD_RULES_MAX_CHARS}`);
+    }
   });
 
   it("names what reaches the owner, the owner's orders as tasks, plans from the register, approvals, rule fixes, the hire flags and other sessions' work", () => {
@@ -93,11 +96,18 @@ describe('renderLeadRules', () => {
     assert.match(lines, /^As the lead, also:\n- Bring the owner only verified results, decisions, owner-gate or business questions and incidents\.\n/);
     assert.match(lines, /\n- Relay each owner order as an approved task in the same turn: `teamrig add --owner <id> --source boss` \[register\.ownerSource\]/);
     assert.match(lines, /`teamrig plan` and run `teamrig check` at each checkpoint, never from memory\.\n/);
-    assert.match(lines, /\n- Answer each approval wait on you with `teamrig approve` per the `approvals` skill; owner-gated content goes to the owner\.\n/);
-    assert.match(lines, /\n- Fix a team rule proven wrong and say so; a loosening goes to the owner\.\n/);
-    assert.match(lines, /\n- HIRE flags: give a SCALE-OUT's slice to a hire within the owner's caps, else bring the owner a card; retire on a RETIRE-DUE\.\n/);
+    assert.match(lines, /\n- Answer approval waits on you per the `approvals` skill; owner-gated content goes to the owner\.\n/);
+    // T1279: a peer's ask alone never changes a rule, and a fix rides each session's next line rather than a broadcast.
+    assert.match(lines, /\n- Fix a team rule proven wrong \(a peer's ask is no proof\); say so in each session's next line; a loosening goes to the owner\.\n/);
+    assert.match(lines, /\n- HIRE flags: give a SCALE-OUT's slice to a hire within the cap, else bring the owner a card \[hiring\.capRaisedBy\]; retire on a RETIRE-DUE\.\n/);
     // T737: the lead sends another session's task work to that session instead of doing it.
     assert.match(lines, /\n- Send another session's task work \(research, code, checks, an answer\) to it with a deadline; relay its answer\.$/);
+  });
+
+  it('has the lead raise the hire cap itself, saying so, under hiring.capRaisedBy lead', () => {
+    const lines = renderLeadRules(testConfig({ hiring: { capRaisedBy: 'lead' } }), COMMAND);
+    assert.match(lines, /\n- HIRE flags: give a SCALE-OUT's slice to a hire within the cap, else raise the cap and say so \[hiring\.capRaisedBy\]; retire on a RETIRE-DUE\.\n/);
+    assert.doesNotMatch(lines, /owner a card/);
   });
 });
 
