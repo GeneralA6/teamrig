@@ -16,7 +16,7 @@ import { MemoryFiles } from '../testing/memory-files.ts';
 import { commandLine } from '../test-run/shell.ts';
 import { BASELINE_LOCK_ENV } from './dependencies.ts';
 import { integrateBranch, PUSH_ATTEMPTS, repoOf, type IntegrateEnd, type IntegrateRequest, type IntegrateSetup } from './integrate.ts';
-import type { PendingMerge } from './pending-merges.ts';
+import { parsePendingMerge, type PendingMerge } from './pending-merges.ts';
 
 const PLACES: CoordinatorPlaces = {
   ledger: '/team/deploys/ledger.jsonl',
@@ -409,9 +409,9 @@ describe('integrate merges through the repository’s merge command, where one i
     world.git.diffs.set(`${commit}..rebased`, []);
   }
 
-  function pendingOf(world: World): unknown {
+  function pendingOf(world: World): PendingMerge | undefined {
     const text = world.files.get(PENDING);
-    return text === undefined ? undefined : JSON.parse(text);
+    return text === undefined ? undefined : parsePendingMerge(text);
   }
 
   function tidied(world: World): boolean {
