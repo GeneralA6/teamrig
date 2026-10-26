@@ -5,27 +5,18 @@ import { ENV } from '../../core/home.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import { UsageError, type ParsedArgs } from '../args.ts';
 import { hostLockOf } from '../coordinator-ports.ts';
-import { sessionRef } from '../inputs.ts';
-import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone, type Kit } from '../kit.ts';
+import { openTeamKit, requireConfig, rosterOf, teamZone, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { envSession, markedSessionOf } from './hook-input.ts';
+import { tabSessionOf } from './tab-session.ts';
 
 /**
  * The session whose steps are withdrawn: `--session` or `$TEAMRIG_SESSION`, else the session this Claude Code tab is
  * bound to. A tab bound to a session withdraws only that session's steps, so naming another one there is refused.
  */
 async function ownSessionOf(args: ParsedArgs, runtime: CliRuntime, kit: Kit, roster: Roster): Promise<string> {
-  const named = args.flags.get('session') ?? envSession(runtime);
-  const bound = await markedSessionOf(runtime, kit, roster, runtime.env[ENV.claudeSession]?.trim() ?? null);
-  if (named === undefined) {
-    if (bound === undefined) {
-      throw new UsageError(`--session (or $${ENV.session}) is required outside a tab bound to a session`);
-    }
-    return bound;
-  }
-  const session = sessionIdOf(roster, sessionRef('--session', named));
-  if (bound !== undefined && bound !== session) {
-    throw new RefusedError(`this tab is ${bound}'s: a session withdraws only its own steps, not ${session}'s`);
+  const session = await tabSessionOf(args, runtime, kit, roster, 'withdraws only its own steps');
+  if (session === undefined) {
+    throw new UsageError(`--session (or $${ENV.session}) is required outside a tab bound to a session`);
   }
   return session;
 }
