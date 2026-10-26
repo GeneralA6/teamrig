@@ -15,6 +15,7 @@
     "verify": "npm run typecheck && npm test",
     "scrub": "node tools/scrub/cli.ts --tree",
     "setup": "node tools/setup/cli.ts",
+    "prepare": "node tools/setup/cli.ts",
     "coverage": "node tools/ci/coverage-cli.ts",
     "docs:images": "node tools/docs/images-cli.ts",
     "docs:check": "node tools/docs/doc-check-cli.ts",
