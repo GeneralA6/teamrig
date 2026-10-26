@@ -16,6 +16,8 @@ export interface CoordinatorPlaces {
   readonly claimsMd: string;
   readonly claimsLock: string;
   readonly hostLock: string;
+  /** The folder of the branches whose merge command waits, one file each (src/integrate/pending-merges.ts). */
+  readonly pendingMerges: string;
 }
 
 /** A configured path as a place: a relative one is in the team's folder. */
@@ -24,7 +26,7 @@ export function teamPlace(paths: Pick<TeamPaths, 'home'>, path: string): string 
 }
 
 /**
- * Where the coordinator's files are: the ledgers, the quiet claims and their lock in `coordinator.dir` (default `<state>/deploys`), the host lock at
+ * Where the coordinator's files are: the ledgers, the quiet claims and their lock, and the pending merges in `coordinator.dir` (default `<state>/deploys`), the host lock at
  * `coordinator.heavy.lockPath` (default the kit home's, one for the host). A relative path is in the team's folder.
  */
 export function coordinatorPlaces(config: CoordinatorConfig, paths: TeamPaths): CoordinatorPlaces {
@@ -37,5 +39,6 @@ export function coordinatorPlaces(config: CoordinatorConfig, paths: TeamPaths): 
     claimsMd: join(dir, CLAIMS_MD_FILE),
     claimsLock: join(dir, CLAIMS_LOCK_FILE),
     hostLock: config.heavy.lockPath === undefined ? join(paths.kitHome, HOST_LOCK_FILE) : inTeam(config.heavy.lockPath),
+    pendingMerges: join(dir, 'pending-merges'),
   };
 }

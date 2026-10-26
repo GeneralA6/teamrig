@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { formatSnapshot } from '../budget/snapshot.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { APP, CliHarness, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
+import { FakeHooks } from '../testing/fake-hooks.ts';
 import { FakeIntegrateGit, MAIN_CHECKOUT, WORKTREE } from '../testing/fake-integrate-git.ts';
 import { FakeStarterWatch } from '../testing/fake-starter-watch.ts';
 import { FakeSteps } from '../testing/fake-steps.ts';
@@ -120,6 +121,18 @@ describe('teamrig integrate', () => {
     assert.equal(result.stdout.at(-1), 'STOPPED before the host lock was free: nothing ran');
     assert.equal(result.stdout.at(-2), '2030-01-08 10:00:02 UTC its launching shell ended (bash.exe 4100) while it waited: no one waits for it any more');
     assert.deepEqual([steps.ran, kit.files.get(LOCK), kit.files.get(LEDGER), starters.openWatches], [[], heldBy(), undefined, 0]);
+  });
+
+  it('prints WAITING with the merge command’s last line and exits 75 when the command waits, pushing nothing', async () => {
+    const MERGE = ['node', 'merge.ts'];
+    const { kit, git, steps } = world({ ...TEAM, coordinator: { repos: { app: { mainCheckout: MAIN_CHECKOUT, merge: { command: MERGE } } } } });
+    const hooks = new FakeHooks(kit.clock).answer(MERGE, { end: 75, lines: ['https://forge/pr/7'] });
+    const result = await kit.run(INTEGRATE, { ...IN_WORKTREE, integrateGit: git, steps, hooks });
+    assert.equal(result.code, 75);
+    assert.equal(result.stdout.at(-2), `2030-01-08 10:00:00 UTC next: run teamrig integrate again in ${WORKTREE} once feat is merged`);
+    assert.equal(result.stdout.at(-1), 'WAITING https://forge/pr/7');
+    assert.deepEqual([steps.ran, kit.files.get(LOCK)], [[], undefined]);
+    assert.ok(kit.files.get(join(TEAM_HOME, 'state', 'deploys', 'pending-merges', 'app%2Ffeat.json'))?.includes('"note": "https://forge/pr/7"'));
   });
 
   it('refuses a folder outside git', async () => {
