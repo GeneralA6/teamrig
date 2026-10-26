@@ -206,7 +206,8 @@ so it never loses work to a compaction.
    idle 15 s (`refresh.restartDelaySeconds`), teamrig's
    mod runs `/clear` in this tab, after asking Claude Code that no helper of yours still runs (it waits while one does),
    and once the user is away: it waits while the prompt box holds a draft and for 5 minutes after their last key or
-   prompt, then counts 20 s down in a band above the prompt with `1: Refresh now` and `2: Hold 10 min`
+   prompt, which a band above the prompt shows with the time left, then counts 20 s down there with
+   `1: Refresh now` and `2: Hold 10 min`
    (`refresh.holdAfterActivityMinutes`, `refresh.countdownSeconds`); where it cannot, teamrig ends this Claude Code and starts it again, in the same
    tab when `teamrig open` started it, else in a new tab. While a background shell runs (a background command or
    a monitor), it ends nothing and your inbox says to type `/clear`, which keeps the shell.

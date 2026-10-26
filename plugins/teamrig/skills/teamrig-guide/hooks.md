@@ -716,8 +716,13 @@ sent through Remote Control; a background task's prompt does not count. It holds
 Hold. Then a band above the prompt counts `refresh.countdownSeconds` (20) down: `teamrig: this session refreshes in
 20 s, a fresh start from its handover`, with `1: Refresh now` and `2: Hold 10 min`, which a bare digit in an empty
 prompt box presses. The `/clear` comes with the restart's first ask after the count. Refresh now has the next ask
-claimed, unless a draft or a live helper holds it. A turn, a key or Hold hides the band, and a survey Claude Code
-shows takes its place; the terminal and the desktop app draw it. With both set to 0, only a draft holds the
+claimed, unless a draft or a live helper holds it. Through each hold before the count the band says what holds the
+`/clear`: `teamrig: this session refreshes from its handover; you were active in this tab, so it waits 5 min more`
+(or `you pressed Hold`), counting the time left down, or `teamrig: this session refreshes from its handover once
+nothing holds it: the prompt box holds an unsent draft` for a draft or a live helper. Those bands draw their buttons
+with no digit, so a digit typed into an empty prompt box stays the person's, and Refresh now only for the person's
+own holds. A turn or a prompt the person sends hides the band, and so does a restart whose next ask is 45 s late; a
+survey Claude Code shows takes its place; the terminal and the desktop app draw it. With both set to 0, only a draft holds the
 `/clear`.
 
 ## The mod: the reload after an install
