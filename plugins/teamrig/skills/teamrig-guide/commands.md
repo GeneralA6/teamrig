@@ -1926,10 +1926,10 @@ It refuses when `claude` is not on the PATH.
 What a restore after a reboot would do now. The `hook restore-track` hook records every Claude Code session on the
 machine, in a team or not, in `<home>/restore/sessions/`; after a shutdown or reboot killed them, `restore run`
 reopens each one the shutdown interrupted, in its folder, at its last effort. A session that ended on purpose
-(`/exit`, `/clear`), still runs, was active since logon, was not a terminal session (`claude -p`), has no transcript
-left, is too old or failed to resume too often is not reopened. This command prints each recorded session as
-`RESTORE` (how it comes back and at which effort), `KEEP` or `DISCARD`, with the reason, and what each lead's first
-prompt says of its team. It only reads.
+(`/exit`, `/clear`), still runs, was active since logon, was not a terminal session (`claude -p`, a background job
+Claude Code resumes itself), was continued in another session, has no transcript left, is too old or failed to resume
+too often is not reopened. This command prints each recorded session as `RESTORE` (how it comes back and at which
+effort), `KEEP` or `DISCARD`, with the reason, and what each lead's first prompt says of its team. It only reads.
 
 Flags: none.
 
