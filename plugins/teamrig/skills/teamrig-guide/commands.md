@@ -1787,6 +1787,10 @@ instead, as a line then wakes no one. Anyone may run it; it changes nothing.
 
 In a tree of teams the root lead's batch holds the waits of every team under it, after its own, depth first, named
 `<team>/<id>`, on the root team's batch times and `decisions` settings; its `decisions asked` records them all.
+An `AT ONCE` wait of a child team wakes the root lead, who asks it, not the team's own lead: the root lead gets the
+line in its own team's inbox, and its wake; the leads between keep their line, unwoken. With the root team's
+`wake.enabled: false`, or a line or wake that cannot be posted, the session setting the wait is told to message the
+root lead.
 A child team's `decisions` prints its own and its teams' waits, then who asks them: `  app/lead asks owner these in
 its batches and records each answer on its task as a note: "owner decided: <decision>".` Its lead's `decisions
 asked` is refused (`REFUSED team web asks no owner: app/lead asks the owner web's waits, in its batches`), and its
