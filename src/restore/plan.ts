@@ -7,6 +7,7 @@ import { PROMPT_MAX } from '../open/prompt.ts';
 import { carryOf } from '../refresh/carry.ts';
 import { runningWorkOf } from '../refresh/running.ts';
 import { INTENTIONAL_END_REASONS, type RestoreEntry } from './entry.ts';
+import type { TranscriptKind } from './transcript-kind.ts';
 
 /**
  * Which recorded sessions the last shutdown killed, and how each comes back. A session is restored when it was
@@ -14,8 +15,9 @@ import { INTENTIONAL_END_REASONS, type RestoreEntry } from './entry.ts';
  * earlier than SHUTDOWN_GRACE_MS before the last clean shutdown began (the system closing its terminal). It is
  * kept when it still runs, was active since this logon, or was reopened moments ago and has not started yet,
  * so a second run never opens it twice. Every other entry is discarded: an end the person chose, a tab closed
- * long before the shutdown, a session that is no tab (`claude -p`, background), no transcript left to resume,
- * an entry older than MAX_ENTRY_AGE_MS, or one that failed MAX_RESTORE_ATTEMPTS restores.
+ * long before the shutdown, a session that is no tab (`claude -p`, background), no transcript left to resume, one
+ * its transcript shows running as a background job or continued in another session, an entry older than
+ * MAX_ENTRY_AGE_MS, or one that failed MAX_RESTORE_ATTEMPTS restores.
  * Nothing here reads a file or the system: the restore command gathers the facts.
  */
 
@@ -54,6 +56,8 @@ export interface JudgeFacts {
   readonly running: ReadonlySet<string>;
   /** Each session's transcript where it is found now; a session missing here has none left to resume. */
   readonly transcripts: ReadonlyMap<string, string>;
+  /** What each session's transcript says of where it runs now; a session missing here reads as a tab. */
+  readonly kinds: ReadonlyMap<string, TranscriptKind>;
 }
 
 export function judgeEntry(entry: RestoreEntry, facts: JudgeFacts): Judgement {
@@ -81,6 +85,14 @@ export function judgeEntry(entry: RestoreEntry, facts: JudgeFacts): Judgement {
   // `claude --resume` needs the transcript; a session that never got a first prompt has none.
   if (!facts.transcripts.has(entry.claudeSession)) {
     return { verdict: 'discard', reason: 'no transcript' };
+  }
+  // A job's hooks may not see its session kind, and a tab sent to a job never records an end: its transcript tells.
+  const kind = facts.kinds.get(entry.claudeSession);
+  if (kind?.background === true) {
+    return { verdict: 'discard', reason: 'background session' };
+  }
+  if (kind?.continuedIn !== undefined) {
+    return { verdict: 'discard', reason: `continued in ${kind.continuedIn.slice(0, 8)}` };
   }
   if (entry.endedAt === undefined) {
     return { verdict: 'restore', reason: 'killed without exiting' };

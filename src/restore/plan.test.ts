@@ -57,6 +57,7 @@ function facts(overrides: Partial<JudgeFacts> = {}): JudgeFacts {
     shutdownStart: SHUTDOWN,
     running: new Set(),
     transcripts: new Map([[SESSION, '/claude/projects/app/s.jsonl']]),
+    kinds: new Map(),
     ...overrides,
   };
 }
@@ -86,6 +87,17 @@ describe('judgeEntry', () => {
     assert.equal(judgeEntry(entry({ entrypoint: 'sdk-ts' }), facts()).reason, 'not a terminal session (sdk-ts)');
     assert.equal(judgeEntry(entry({ sessionKind: 'bg' }), facts()).reason, 'background session');
     assert.equal(judgeEntry(entry({ entrypoint: undefined }), facts()).verdict, 'restore');
+  });
+
+  it('discards a session its transcript shows as a background job or continued in another, though no end was recorded', () => {
+    const job = '9ac07f9d-2832-4320-88f9-69e667e4c38e';
+    const background = facts({ kinds: new Map([[SESSION, { background: true, continuedIn: undefined }]]) });
+    assert.deepEqual(judgeEntry(entry(), background), { verdict: 'discard', reason: 'background session' });
+    const moved = facts({ kinds: new Map([[SESSION, { background: false, continuedIn: job }]]) });
+    assert.deepEqual(judgeEntry(entry(), moved), { verdict: 'discard', reason: 'continued in 9ac07f9d' });
+    const tab = facts({ kinds: new Map([[SESSION, { background: false, continuedIn: undefined }]]) });
+    assert.deepEqual(judgeEntry(entry(), tab), { verdict: 'restore', reason: 'killed without exiting' });
+    assert.equal(judgeEntry(entry(), { ...moved, running: new Set([SESSION]) }).verdict, 'keep');
   });
 
   it('keeps a session reopened moments ago that has not started, and gives one up after repeated failures', () => {

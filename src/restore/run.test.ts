@@ -17,6 +17,8 @@ const ALPHA = '20000000-2222-4333-8444-555555555555';
 const LONE = '30000000-2222-4333-8444-555555555555';
 const SDK = '40000000-2222-4333-8444-555555555555';
 const LIVE = '50000000-2222-4333-8444-555555555555';
+const JOB = '60000000-2222-4333-8444-555555555555';
+const MOVED = '70000000-2222-4333-8444-555555555555';
 const NOTHING_LOST: LostWork = { background: 0, crons: 0, wake: false };
 
 const turn = (effort: string): string => JSON.stringify({ type: 'assistant', effort, message: { model: 'claude-opus-5-5' } });
@@ -78,6 +80,12 @@ async function world(choice: RestoreChoice = 'go', reopen: Reopen = async () => 
     [`/t/${LONE}.jsonl`]: `${JSON.stringify({ type: 'custom-title', customTitle: 'notes', sessionId: LONE })}\n`,
     [`/t/${SDK}.jsonl`]: '',
     [`/t/${LIVE}.jsonl`]: '',
+    [`/t/${JOB}.jsonl`]: `${JSON.stringify({ type: 'user', entrypoint: 'cli', sessionKind: 'bg', sessionId: JOB })}\n`,
+    [`/t/${MOVED}.jsonl`]: [
+      JSON.stringify({ type: 'assistant', entrypoint: 'cli', sessionId: MOVED }),
+      JSON.stringify({ type: 'continued-in', sessionId: MOVED, continuedInSessionId: JOB }),
+      '',
+    ].join('\n'),
   });
   const probe = new MemoryPathProbe(files);
   const registry = new RestoreRegistry(files, restoreSessionsDir('/kit'));
@@ -153,6 +161,13 @@ describe('checkRestore', () => {
     assert.deepEqual(await checkRestore(deps), { since: clock.now(), count: 3 });
     assert.equal(await registry.read(SDK), undefined);
     assert.deepEqual(logged, [`discarded ${SDK} (not a terminal session (sdk-cli))`, 'check: 3 to restore, 1 kept']);
+  });
+
+  it('drops a background job and a tab continued in it, which the tracker recorded as tabs with no end', async () => {
+    const { deps, registry, logged, clock } = await world('go', undefined, [LEAD_ENTRY, entry(JOB, 6), entry(MOVED, 7)]);
+    assert.deepEqual(await checkRestore(deps), { since: clock.now(), count: 1 });
+    assert.deepEqual((await registry.list()).map(({ claudeSession }) => claudeSession), [LEAD]);
+    assert.deepEqual(logged, [`discarded ${JOB} (background session)`, `discarded ${MOVED} (continued in 60000000)`, 'check: 1 to restore, 0 kept']);
   });
 });
 
