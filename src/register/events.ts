@@ -17,7 +17,8 @@ import { parseWaits, type WaitReason } from './waits.ts';
  * `verifying` status's `proof`, a task's `description` (0.44.0) and its `size` (0.47.0), and a `waiting` status's
  * decision `card` (0.79.0), the same `waits` and `card` on a `verifying` line for what its proof waits for
  * (0.109.0), an update's approval `verdict` (0.126.0), a task's `kind` (0.147.0), its `pin` (T637), a status line's
- * `review` (T916) and a task's `type` and `critical` mark (T1252), which replaced `kind`, which an older reader ignores:
+ * `review` (T916), a task's `type` and `critical` mark (T1252), which replaced `kind`, and a `done` status's `watch`
+ * (T1306), which an older reader ignores:
  * each reads there as none (an answered update as a note alone). An older teamrig re-serialized the events of the snapshot a rotation or
  * `compact` rewrites, so it dropped such a field there (the archive keeps the lines as written); this one copies
  * each kept line as written (compaction.ts).
@@ -124,6 +125,8 @@ export interface StatusEvent extends EventBase {
   readonly card?: DecisionCard;
   /** What will prove a `verifying` task works; written only with that status, and absent on lines from before `--proof`. */
   readonly proof?: string;
+  /** What a sighting shows once a `done` change runs live (`--watch`); written only with that status. */
+  readonly watch?: string;
   /**
    * On a start the verifying tasks it needs held: what shows their proof exists (`--met`). Written only with
    * `in-progress`, apart from the evidence, which a task keeps until it is done and would then prove the wrong task.
@@ -226,7 +229,7 @@ export function parseEvent(line: JsonlRecord): EventParse {
       if (!isTaskStatus(status)) {
         return typeof status === 'string' && STATUS_NAME.test(status) ? { kind: 'newer' } : unreadable(`unknown status ${JSON.stringify(status)}`);
       }
-      const problem = textProblem(record, ['note', 'evidence', 'skill', 'proof', 'met']);
+      const problem = textProblem(record, ['note', 'evidence', 'skill', 'proof', 'watch', 'met']);
       if (problem !== undefined) {
         return unreadable(problem);
       }
@@ -239,6 +242,7 @@ export function parseEvent(line: JsonlRecord): EventParse {
         return unreadable(card);
       }
       const proof = status === 'verifying' ? textOrNull(record, 'proof') : null;
+      const watch = status === 'done' ? textOrNull(record, 'watch') : null;
       const met = status === 'in-progress' ? textOrNull(record, 'met') : null;
       const followups = parseFollowups(record['followups']);
       if (typeof followups === 'string') {
@@ -258,6 +262,7 @@ export function parseEvent(line: JsonlRecord): EventParse {
         ...(waits === undefined ? {} : { waits }),
         ...(card === undefined ? {} : { card }),
         ...(proof === null ? {} : { proof }),
+        ...(watch === null ? {} : { watch }),
         ...(met === null ? {} : { met }),
         ...(followups === undefined ? {} : { followups }),
         ...(review === undefined ? {} : { review }),

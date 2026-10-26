@@ -39,6 +39,11 @@ export interface Task extends TaskFields {
    */
   readonly proof: string | null;
   /**
+   * What a sighting shows once the change runs live, from its latest status change when that closed it `done` with
+   * `--watch` (T1306): `verify` lists it until the owner sets it done again without one, or reopens it; null otherwise.
+   */
+  readonly watch: string | null;
+  /**
    * How many times in a row its proof was put off: a verifying status on a task already verifying with waits, naming a
    * wait it did not have, adds one (a task naming its first waits is parked, not re-parked, and one dropping a cleared
    * wait puts nothing off); any other status starts again at 0.
@@ -161,6 +166,7 @@ function created(id: string, fields: TaskFields, at: string, by: string): Task {
     card: null,
     answer: null,
     proof: null,
+    watch: null,
     reparks: 0,
     followups: [],
     review: {},
@@ -188,6 +194,7 @@ function withStatus(task: Task, event: Extract<RegisterEvent, { type: 'status' }
     card: WAIT_STATUSES.includes(event.status) ? (event.card ?? null) : null,
     answer: null,
     proof: event.status === 'verifying' ? (event.proof ?? null) : null,
+    watch: event.status === 'done' ? (event.watch ?? null) : null,
     reparks: reparksAfter(task, event),
     followups: event.followups === undefined ? task.followups : [...new Set([...task.followups, ...event.followups])],
     review: event.review === undefined ? task.review : { ...task.review, ...event.review },

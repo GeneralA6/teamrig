@@ -34,9 +34,9 @@ import type { Register, WriteResult } from '../../register/register.ts';
 import { ACTIVE_STATUSES, type TaskStatus } from '../../register/model.ts';
 import type { RegisterSnapshot, RetiredTasks } from '../../register/snapshot.ts';
 import { readStopgapTags, stopgapFlags, stopgapTags } from '../../register/stopgap.ts';
-import { dueStartHolds, dueVerifyHold, heldStart, heldStartNotice, metStartNotice, startHolds, verifyQueue, type DueVerify } from '../../register/verify.ts';
+import { dueStartHolds, dueVerifyHold, heldStart, heldStartNotice, metStartNotice, startHolds, verifyQueue, watchQueue, type DueVerify } from '../../register/verify.ts';
 import { readAs, TaskTree, type TaskElsewhere } from '../../register/tree.ts';
-import { approvalNotice, askedNotice, assignedNotice, endedNotice, formatTask, formatTaskDetail, formatTaskTree, formatVerifyRow, personWaitNotice, selectTasks, type ListFilter } from '../../register/views.ts';
+import { approvalNotice, askedNotice, assignedNotice, endedNotice, formatTask, formatTaskDetail, formatTaskTree, formatVerifyRow, formatWatchRow, personWaitNotice, selectTasks, type ListFilter } from '../../register/views.ts';
 import { isPeerWait, sameWait, type PersonWait } from '../../register/waits.ts';
 import { lintSkills } from '../../skills/lint.ts';
 import { SKILL_FILE, SkillDir } from '../../skills/store.ts';
@@ -874,14 +874,25 @@ export async function waitingReport(args: ParsedArgs, runtime: CliRuntime): Prom
   return waitingOnLines(owner, tree.waitingOn(owner), tree, args.switches.has('all'));
 }
 
-/** `verify`: the caller's verifying tasks, oldest first, each with its proof and the date to verify by. */
+/**
+ * `verify`: the caller's verifying tasks, oldest first, each with its proof and the date to verify by, then its done
+ * tasks still watched for a sighting (`--watch`), if any, with what to do once it shows.
+ */
 export async function verify(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
   const { own } = await settle(runtime, await ownRegister(runtime), () => false);
   const owner = sessionIdOf(own.roster, callerOf(args.flags, runtime.env));
+  const zone = teamZone(own.config, runtime);
   const queue = verifyQueue(own.snapshot.state.tasks.values(), owner);
   runtime.out.stdout(`VERIFY ${queue.length} ${queue.length === 1 ? 'task' : 'tasks'} of ${owner}, oldest first`);
-  queue.forEach((task) => runtime.out.stdout(formatVerifyRow(task, teamZone(own.config, runtime))));
+  queue.forEach((task) => runtime.out.stdout(formatVerifyRow(task, zone)));
+  const watched = watchQueue(own.snapshot.state.tasks.values(), owner);
+  if (watched.length > 0) {
+    runtime.out.stdout(
+      `WATCH ${watched.length} done ${watched.length === 1 ? 'task' : 'tasks'} of ${owner} waiting on a sighting: once it shows, set it done again without --watch; if it shows a fault, reopen it (--status in-progress)`,
+    );
+    watched.forEach((task) => runtime.out.stdout(formatWatchRow(task, zone)));
+  }
   return EXIT.ok;
 }
 

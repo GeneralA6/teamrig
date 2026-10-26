@@ -336,6 +336,10 @@ export function statusInputOf(flags: Flags, times: TypedTimes): StatusInput {
   if (proof !== undefined) {
     input.proof = proof;
   }
+  const watch = flags.get('watch');
+  if (watch !== undefined) {
+    input.watch = watch;
+  }
   const met = flags.get('met');
   if (met !== undefined) {
     input.met = met;

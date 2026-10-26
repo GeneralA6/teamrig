@@ -90,7 +90,7 @@ const REVIEW_FLAGS = ['cause', 'how', 'prevent', 'harden', 'missed-test', 'misse
 
 const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   add: { effect: 'write', flags: ['session', 'source', 'team', ...TASK_FIELDS], switches: ['critical'], load: async () => (await registerCommands()).add },
-  set: { effect: 'write', flags: ['session', 'status', 'note', 'evidence', 'skill', 'followups', 'waits', 'question', 'options', 'recommend', 'default', 'why-ask', 'gate', 'proof', 'met', 'due', 'ask', 'text', ...REVIEW_FLAGS], load: async () => (await registerCommands()).set },
+  set: { effect: 'write', flags: ['session', 'status', 'note', 'evidence', 'skill', 'followups', 'waits', 'question', 'options', 'recommend', 'default', 'why-ask', 'gate', 'proof', 'watch', 'met', 'due', 'ask', 'text', ...REVIEW_FLAGS], load: async () => (await registerCommands()).set },
   update: { effect: 'write', flags: ['session', 'note', ...TASK_FIELDS], switches: ['pin', 'unpin', 'critical', 'not-critical'], load: async () => (await registerCommands()).update },
   approve: { effect: 'write', flags: ['session', 'note'], switches: ['decline'], load: async () => (await registerCommands()).approve },
   list: {
@@ -337,9 +337,12 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   set <id> --status open|in-progress|verifying|waiting|done|dropped [--note "<what/why>"] [--evidence <proof>]
       [--skill <name>|none] [--followups T<id>,...|none] [--waits decision:<who>,approval:<who>,task:T<id>,time:<date>]
       [--question ".." --options "<a> | <b>" --recommend ".." --default ".." --why-ask ".." --gate ".."]
-      [--proof "<what proves it>"] [--met "<what shows it>"] [--due <date>] [--ask <session> --text "<the work>"]
+      [--proof "<what proves it>"] [--watch "<what a sighting shows>"] [--met "<what shows it>"] [--due <date>]
+      [--ask <session> --text "<the work>"]
       [--cause ".." --how ".." --prevent ".." --harden ".." --missed-test ".." --missed-monitor ".." --missed-log ".."]
       verifying needs --proof: what will prove the shipped change works; --due sets the date to verify by
+      --watch (with done only, and evidence given or kept): a change tests or a dry run proved, whose live
+      proof is a sighting to come; verify lists it until you set it done again without --watch, or reopen it
       a start that a verifying task it needs holds goes through with --met: what shows that task's proof
       exists; its owner gets an inbox line to set it done or reopen it
       verifying and done need --followups: the tasks the work leaves (a finding, a next step), or none
@@ -390,7 +393,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   plan [--week <date>] [--tree]    the week plan (default: the newest week that has started)
       --tree (the lead only): also every team under it, read-only, ids as <team>/T<n>
   verify [--session <id|name>]   the session's verifying tasks, oldest first, each with its proof and
-      the date to verify by
+      the date to verify by, then its done tasks still watched for a sighting (--watch)
   inbox read [--session <area>]     prints the unread lines and marks them read
   inbox status [--session <area>]   unread lines per area
   inbox add --to <id|name|team/id|all|leads|group:<leader>|team:<team>|tree:leads|task:T<n>>[,...] --text "<one line>" [--wake now]

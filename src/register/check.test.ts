@@ -8,6 +8,7 @@ import { checkTasks, formatFlag, PACE_DAYS, peerWaitFlags } from './check.ts';
 import { RETAIN_DAYS } from './compaction.ts';
 import type { Task } from './fold.ts';
 import { TaskTree } from './tree.ts';
+import { WATCH_USAGE } from './verify.ts';
 import { TimeZone } from '../core/zone.ts';
 
 const NOW = new Date('2030-01-10T12:00:00.000Z');
@@ -87,7 +88,7 @@ describe('checkTasks', () => {
   it('flags a verifying task whose proof was put off maxReparks times, never with 0', () => {
     const parked = (reparks: number) => testTask({ status: 'verifying', due: '2030-01-11', reparks, ownerSeenAt: FRESH, updatedAt: FRESH });
     assert.deepEqual(checkTasks([parked(2)], NOW, TimeZone.UTC, null, CONFIG).map((flag) => `${flag.kind} ${flag.task.id}: ${flag.detail}`), [
-      'REPARKED T1: its proof was put off to other waits 2 times [register.maxReparks]: run the proof now, or reopen it',
+      `REPARKED T1: its proof was put off to other waits 2 times [register.maxReparks]: run the proof now, close it done with ${WATCH_USAGE} if tests or a dry run proved it, or reopen it`,
     ]);
     assert.deepEqual(kinds([parked(1)]), []);
     assert.deepEqual(checkTasks([parked(5)], NOW, TimeZone.UTC, null, { ...CONFIG, maxReparks: 0 }), []);

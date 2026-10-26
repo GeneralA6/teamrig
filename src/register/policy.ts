@@ -13,7 +13,7 @@ import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, priorityText, SESSIO
 import { ITEM_TYPE_TRAITS, traitsOf } from './item-types.ts';
 import { asksReview, missedTaskIds, reviewGap, reviewGapText, reviewProblem, reviewTexts, type ProblemReview } from './review.ts';
 import { loopFix, needPath, NO_TASKS_ELSEWHERE, pathText, type TasksElsewhere } from './tree.ts';
-import { dueStartHolds, dueVerifyHold, heldStart, startHolds } from './verify.ts';
+import { dueStartHolds, dueVerifyHold, heldStart, startHolds, WATCH_USAGE } from './verify.ts';
 import { isPeerWait, isReady, sameWait, sameWaits, waitContext, waitSpelling, type PersonWait, type WaitReason } from './waits.ts';
 
 /** Team policy, applied on WRITE only: the parser accepts any well-formed history. */
@@ -82,6 +82,11 @@ export interface StatusInput {
   /** What will prove a `verifying` task works; only with that status. */
   readonly proof?: string;
   /**
+   * What a sighting shows once a `done` change runs live, when tests or a dry run proved it and only that sighting is
+   * left to watch for (T1306); only with `done`.
+   */
+  readonly watch?: string;
+  /**
    * What shows the proof of the verifying tasks a start needs exists; only on a start they hold. The start then goes
    * through, and the CLI asks their owners to confirm (done) or reopen them.
    */
@@ -131,6 +136,8 @@ export interface StatusChange {
   readonly card?: DecisionCard;
   /** Only with `verifying`: the proof given, or the one the task already had when it was verifying before. */
   readonly proof?: string;
+  /** Only with `done`, and only when given: the sighting left to watch for. Setting done again without one clears it. */
+  readonly watch?: string;
   /** Only on a start the verifying tasks it needs hold: what shows their proof exists. */
   readonly met?: string;
   /** Only with `verifying`, and only when it moves the task's due date: the date to verify by. */
@@ -325,7 +332,7 @@ export class RegisterPolicy {
     // A proof put off to other waits again and again is never run: past the limit the task is proven or reopened.
     if (register.maxReparks > 0 && task.reparks >= register.maxReparks && isRepark(task, input.status, waits.value)) {
       return refuse(
-        `${task.id}'s proof was put off to other waits ${task.reparks} times [register.maxReparks]: run the proof now and set it done, or reopen it (teamrig set ${task.id} --status in-progress)`,
+        `${task.id}'s proof was put off to other waits ${task.reparks} times [register.maxReparks]: run the proof now and set it done, close it done with ${WATCH_USAGE} if tests or a dry run proved it, or reopen it (teamrig set ${task.id} --status in-progress)`,
       );
     }
     const card = this.cardChange(task, input, waits.value);
@@ -336,12 +343,16 @@ export class RegisterPolicy {
     if (!proof.ok) {
       return proof;
     }
+    const watch = watchChange(input);
+    if (!watch.ok) {
+      return watch;
+    }
     const due = dueChange(task, input);
     if (!due.ok) {
       return due;
     }
     const givesReview = reviewTexts(input.review ?? {}).length > 0;
-    const same = !givesReview && proof.value === task.proof && due.value === null && sameWaits(waits.value, task.waits) && sameCard(card.value, task.card);
+    const same = !givesReview && proof.value === task.proof && watch.value === task.watch && due.value === null && sameWaits(waits.value, task.waits) && sameCard(card.value, task.card);
     if (input.status === task.status && note === null && same) {
       return refuse(`${task.id} is already ${task.status}; add --note to record why you set it again`);
     }
@@ -358,6 +369,10 @@ export class RegisterPolicy {
     if (input.status === 'done') {
       if (register.requireEvidenceOnDone && evidence === null && task.evidence === null) {
         return refuse('done needs --evidence: a commit, test count, path or number that proves it');
+      }
+      // A watch stands in for the live proof only on the tests or dry run that proved the change, so it names them.
+      if (watch.value !== null && evidence === null && task.evidence === null) {
+        return refuse('--watch needs --evidence: the tests or dry run that proved the change');
       }
       if (register.requireSkillOnDone && skill === null) {
         return refuse(`done needs --skill <name> (the skill written or updated) or --skill ${NO_SKILL}`);
@@ -383,6 +398,7 @@ export class RegisterPolicy {
       ['note', note],
       ['evidence', evidence],
       ['proof', proof.value],
+      ['watch', watch.value],
       ['met', met],
       ...(card.value === null ? [] : cardTexts(card.value).map((text): [string, string] => ['card', text])),
       ...(review.value === null ? [] : reviewTexts(review.value).map(([flag, text]): [string, string] => [flag.slice(2), text])),
@@ -396,6 +412,7 @@ export class RegisterPolicy {
       ...(waits.value.length > 0 ? { waits: waits.value } : {}),
       ...(card.value === null ? {} : { card: card.value }),
       ...(proof.value === null ? {} : { proof: proof.value }),
+      ...(watch.value === null ? {} : { watch: watch.value }),
       ...(met === null ? {} : { met }),
       ...(due.value === null ? {} : { due: due.value }),
       ...(leaves === null ? {} : { followups: leaves }),
@@ -868,6 +885,15 @@ function proofChange(task: Task, input: StatusInput): Verdict<string | null> {
     return proof === null ? ok(null) : refuse('--proof goes only with --status verifying');
   }
   return ok(proof ?? (task.status === 'verifying' ? task.proof : null));
+}
+
+/**
+ * The sighting a status change leaves to watch for: none outside `done`, where `--watch` is refused, and only the one
+ * given, so setting done again without one clears it once the sighting came.
+ */
+function watchChange(input: StatusInput): Verdict<string | null> {
+  const watch = blankToNull(input.watch);
+  return watch === null || input.status === 'done' ? ok(watch) : refuse('--watch goes only with --status done');
 }
 
 /** The verify-by date a status change moves the task's due date to: only with `verifying`, and null when it stays. */

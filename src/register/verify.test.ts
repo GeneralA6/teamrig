@@ -4,7 +4,7 @@ import { testTask } from '../testing/task.ts';
 import { TimeZone } from '../core/zone.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import type { Task } from './fold.ts';
-import { dueStartHolds, dueVerifies, dueVerifyHold, heldStart, heldStartNotice, metStartNotice, proofOf, proofText, startHolds, verifyByArrived, verifyingNeeds, verifyQueue, type DueVerify } from './verify.ts';
+import { dueStartHolds, dueVerifies, dueVerifyHold, heldStart, heldStartNotice, metStartNotice, proofOf, proofText, startHolds, verifyByArrived, verifyingNeeds, verifyQueue, watchQueue, type DueVerify } from './verify.ts';
 import { waitContext, type WaitReason } from './waits.ts';
 
 describe('proofOf', () => {
@@ -73,6 +73,22 @@ describe('verifyQueue, verifyByArrived and proofText', () => {
       ['T3', 'T9', 'T10'],
     );
     assert.deepEqual(verifyQueue(tasks, 'lead'), []);
+  });
+
+  it("lists one session's done tasks still watched for a sighting, oldest first, then by id number (T1306)", () => {
+    const tasks = [
+      testTask({ id: 'T10', status: 'done', watch: 'the row shows', statusAt: '2030-01-07T12:00:00.000Z' }),
+      testTask({ id: 'T9', status: 'done', watch: 'the row shows', statusAt: '2030-01-07T12:00:00.000Z' }),
+      testTask({ id: 'T3', status: 'done', watch: 'the page loads', statusAt: '2030-01-07T08:00:00.000Z' }),
+      testTask({ id: 'T4', status: 'done', watch: 'the row shows', owner: 'bravo' }),
+      testTask({ id: 'T5', status: 'done' }),
+      testTask({ id: 'T6', status: 'verifying', proof: 'the nightly run' }),
+    ];
+    assert.deepEqual(
+      watchQueue(tasks, 'alpha').map((task) => `${task.id}: ${task.watch}`),
+      ['T3: the page loads', 'T9: the row shows', 'T10: the row shows'],
+    );
+    assert.deepEqual(watchQueue(tasks, 'lead'), []);
   });
 
   it('comes due at the start of the verify-by day, in UTC', () => {

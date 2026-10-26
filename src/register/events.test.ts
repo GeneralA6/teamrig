@@ -110,6 +110,14 @@ describe('parseEvent', () => {
     assert.match(reason(parse({ ...BASE, type: 'status', status: 'in-progress', met: 3 }, 2)), /met is not text/);
   });
 
+  it('reads the sighting a done line is watched for, and keeps it off any other status (T1306)', () => {
+    const done = parse({ ...BASE, type: 'status', status: 'done', watch: 'the row shows' }, 2);
+    assert.equal(done.kind === 'event' && done.event.type === 'status' ? done.event.watch : undefined, 'the row shows');
+    const verifying = parse({ ...BASE, type: 'status', status: 'verifying', proof: 'the nightly run', watch: 'the row shows' }, 2);
+    assert.equal(verifying.kind === 'event' && verifying.event.type === 'status' ? verifying.event.watch : 'no event', undefined);
+    assert.match(reason(parse({ ...BASE, type: 'status', status: 'done', watch: 3 }, 2)), /watch is not text/);
+  });
+
   it('reads the follow-ups a status line names, none as an empty list, and refuses anything but task ids', () => {
     const followupsOf = (record: JsonRecord): readonly string[] | undefined | 'no event' => {
       const result = parse({ ...BASE, type: 'status', status: 'done', note: 'ok', ...record }, 2);
