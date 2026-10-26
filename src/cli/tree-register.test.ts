@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { formatConfig } from '../config/load.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { readEvents } from '../register/snapshot.ts';
-import { CONFIG_PATH, EVENTS_PATH } from '../testing/cli-harness.ts';
+import { bash, CONFIG_PATH, EVENTS_PATH, reasonOf } from '../testing/cli-harness.ts';
 import { SUB_TEAMS, teamConfigOf, teamEventsOf, teamInboxOf, treeHarness } from '../testing/team-tree.ts';
 import type { CliHarness } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
@@ -386,5 +386,22 @@ describe("leaders across the tree: the parent team's lead approves a child team'
     assert.notEqual(bare.code, EXIT.ok);
     assert.match([...bare.stdout, ...bare.stderr].join('\n'), /an answer needs --note/);
     assert.deepEqual(filesOf(kit), before);
+  });
+
+  it("under pushToProtected lead, clears a child lead's push only once the parent team's lead approved it", async () => {
+    const guarded = { pushGuard: { pushToProtected: 'lead' } };
+    const kit = await asking(guarded);
+    await kit.files.write(teamConfigOf('web'), formatConfig({ ...SUB_TEAMS['web'], ...guarded }));
+    const push = (env: Record<string, string>) => kit.run(['hook', 'push-guard'], { stdin: bash('git push origin main'), env });
+    const webLead = { ...WEB, TEAMRIG_SESSION: 'lead' };
+    assert.match(
+      reasonOf(await push(webLead)) ?? '',
+      /: app\/lead, the lead of the parent team, has approved no waiting task of lead's\. Ask on the register: `teamrig set <task> --status waiting --waits approval:app\/lead /,
+    );
+    assert.match((await push({ TEAMRIG_SESSION: 'lead' })).stdout[0] ?? '', /the lead \(lead\) pushes unasked/);
+    assert.equal((await kit.run(['approve', 'web/T1', '--note', 'tests green', '--session', 'lead'])).code, EXIT.ok);
+    assert.match((await push(webLead)).stdout[0] ?? '', /^\{"systemMessage":"teamrig let this push .* app\/lead approved T1; set its next status once pushed/);
+    assert.equal(await kit.files.remove(CONFIG_PATH), true);
+    assert.match(reasonOf(await push(webLead)) ?? '', /: team app, the parent team, has no config to name its lead\./);
   });
 });
