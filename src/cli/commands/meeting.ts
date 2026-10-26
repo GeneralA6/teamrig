@@ -163,6 +163,7 @@ async function printAgenda(args: ParsedArgs, runtime: CliRuntime, mk: MeetingKit
       })),
     lead: mk.lead,
     command: KIT_NAME,
+    askWith: mk.config.decisions.askWith,
   });
   lines.forEach((line) => runtime.out.stdout(line));
   await read({ ...args, flags: new Map([['session', mk.lead]]) }, runtime);

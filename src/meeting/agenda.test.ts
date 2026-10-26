@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import type { AskWith } from '../config/types.ts';
 import { MS_PER_DAY } from '../core/time.ts';
 import type { Task } from '../register/fold.ts';
 import { TaskTree } from '../register/tree.ts';
@@ -14,7 +15,7 @@ function treeOf(tasks: readonly Task[]): TaskTree {
   return new TaskTree(new Map(tasks.map((task) => [task.id, task])), new Date(NOW), TimeZone.UTC);
 }
 
-function inputOf(tasks: readonly Task[], since = NOW - MS_PER_DAY, requireGate = true, below: readonly AgendaTeam[] = []): AgendaInput {
+function inputOf(tasks: readonly Task[], since = NOW - MS_PER_DAY, requireGate = true, below: readonly AgendaTeam[] = [], askWith: AskWith = 'text'): AgendaInput {
   return {
     tasks,
     tree: treeOf(tasks),
@@ -25,6 +26,7 @@ function inputOf(tasks: readonly Task[], since = NOW - MS_PER_DAY, requireGate =
     below,
     lead: 'lead',
     command: 'teamrig',
+    askWith,
   };
 }
 
@@ -101,13 +103,25 @@ describe('the meeting agenda', () => {
       '    waiting since 01-07 09:00 UTC',
     ]);
     assert.match(lines[14] ?? '', /^ {2}Read each card to owner as it stands, .*Never point to a doc; `teamrig show <id>` prints a task whole\.$/);
-    // T737: the owner's follow-up question goes to the task's owner, not to the lead's own research.
+    // T1278: by default the owner answers in plain text, never through the picker.
     assert.equal(
       lines[15],
+      "  Ask in plain text, never with the question picker: each card's options numbered, your recommendation first; owner answers in their own words.",
+    );
+    // T737: the owner's follow-up question goes to the task's owner, not to the lead's own research.
+    assert.equal(
+      lines[16],
       "  A question a card does not answer is its task owner's to find: teamrig add --owner <id> --due <date> --session lead, then relay the answer; never look it up yourself.",
     );
-    assert.equal(lines[16], '  Record each answer in the same turn: teamrig update <id> --note "owner decided: <decision>" --session lead; meeting end tells each task\'s owner.');
-    assert.equal(lines.length, 17);
+    assert.equal(lines[17], '  Record each answer in the same turn: teamrig update <id> --note "owner decided: <decision>" --session lead; meeting end tells each task\'s owner.');
+    assert.equal(lines.length, 18);
+  });
+
+  // T1278: a team that asks for the picker (decisions.askWith: picker) gets it named instead of plain text.
+  it('tells the lead to ask the choices with the question picker when the team asks with it', () => {
+    const lines = section(agendaLines(inputOf([DECIDE], NOW - MS_PER_DAY, true, [], 'picker')), 'DECISIONS');
+    const asks = lines.filter((line) => line.startsWith('  Ask '));
+    assert.deepEqual(asks, ["  Ask the choices with the question picker (AskUserQuestion), at most 4 a call: each card's options as its choices, your recommendation first."]);
   });
 
   // T1018: a child team's waits on the owner go up to the lead at its tree's root, who reads them after its own.
