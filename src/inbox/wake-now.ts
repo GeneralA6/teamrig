@@ -1,4 +1,5 @@
 import { formatW } from '../budget/format.ts';
+import type { TimeZone } from '../core/zone.ts';
 import { WAKE_TICK_MS } from '../mod/wake-hand.ts';
 import { costText, weekShareText, type WakeCost } from '../wake/decide.ts';
 
@@ -8,7 +9,26 @@ export const WAKE_NOW = 'now';
 const SECOND_MS = 1000;
 const MINUTE_MS = 60 * SECOND_MS;
 
-/** The sender of `inbox add --wake now`, as the gate reads it. */
+/**
+ * When `inbox add` wakes the receivers: `--wake now`, or `--wake-by <time>` (T1148), at that time and only while the
+ * line is unseen: its time, and that time as the lines show it on the team's clock.
+ */
+export type WakeWhen = { readonly kind: 'now' } | { readonly kind: 'by'; readonly at: number; readonly clock: string };
+
+export const WAKE_AT_ONCE: WakeWhen = { kind: 'now' };
+
+/** A `--wake-by` wake at `at`: `HH:MM <zone>` on the team's clock when it is today there, else `MM-DD HH:MM <zone>`. */
+export function wakeByOf(at: number, now: number, zone: TimeZone): WakeWhen {
+  const date = new Date(at);
+  return { kind: 'by', at, clock: zone.day(date) === zone.day(new Date(now)) ? zone.clock(date) : zone.shortMinute(date) };
+}
+
+/** How a refusal names the flag that asked the wake, and the flag to post the line without. */
+function flagsOf(when: WakeWhen): { readonly asked: string; readonly flag: string } {
+  return when.kind === 'now' ? { asked: `--wake ${WAKE_NOW}`, flag: '--wake' } : { asked: '--wake-by', flag: '--wake-by' };
+}
+
+/** The sender of `inbox add --wake now` or `--wake-by`, as the gate reads it. */
 export interface WakeSender {
   readonly team: string;
   readonly id: string;
@@ -32,15 +52,16 @@ export interface WakeTarget {
  * leader, and a session of another team only by the lead of a team above that team; on its own team any session may
  * wake a session it names.
  */
-export function wakeRefusal(sender: WakeSender, group: boolean, targets: readonly WakeTarget[]): string | undefined {
+export function wakeRefusal(sender: WakeSender, group: boolean, targets: readonly WakeTarget[], when: WakeWhen): string | undefined {
+  const { asked, flag } = flagsOf(when);
   if (group && !sender.leader) {
-    return `--wake now on a group is a leader's: ${sender.id} leads no one on ${sender.team}; post the line without --wake, and each receiver reads it at its next prompt`;
+    return `${asked} on a group is a leader's: ${sender.id} leads no one on ${sender.team}; post the line without ${flag}, and each receiver reads it at its next prompt`;
   }
   const outside = targets.filter((target) => target.team !== sender.team && !(sender.teamLead && sender.below.includes(target.team)));
   if (outside.length > 0) {
     return (
-      `--wake now reaches another team only from the lead of a team above it, since a wake spends that team's budget line: ` +
-      `${sender.team}/${sender.id} may not wake ${outside.map((target) => target.label).join(', ')}; post the line without --wake`
+      `${asked} reaches another team only from the lead of a team above it, since a wake spends that team's budget line: ` +
+      `${sender.team}/${sender.id} may not wake ${outside.map((target) => target.label).join(', ')}; post the line without ${flag}`
     );
   }
   return undefined;
@@ -83,18 +104,23 @@ function sumText(wakes: readonly ReceiverWake[]): string {
 }
 
 /**
- * What `--wake now` asked, after the POSTED line: who it wakes, at most, since a busy tab is not woken, what that
- * costs and whose budget line pays. `off` names the receivers whose team turned wakes off (`wake.enabled` false):
- * their line is posted and wakes no one.
+ * What `--wake now` or `--wake-by` asked, after the POSTED line: who it wakes and when, at most, since a busy tab is
+ * not woken, nor at its time a session that has seen the line, what that costs and whose budget line pays. `off`
+ * names the receivers whose team turned wakes off (`wake.enabled` false): their line is posted and wakes no one.
  */
-export function wakesLine(wakes: readonly ReceiverWake[], off: readonly string[]): string {
+export function wakesLine(wakes: readonly ReceiverWake[], off: readonly string[], when: WakeWhen): string {
   const offText = off.length === 0 ? '' : `; wake.enabled is false on the team of ${off.join(', ')}, so ${off.length === 1 ? 'its line wakes' : 'their lines wake'} no one`;
   const [only] = wakes;
   if (only === undefined) {
     return `WAKES no one: wake.enabled is false on the team of ${off.join(', ')}`;
   }
+  const pays = `on ${budgetLinesText(wakes)}${offText}`;
   if (wakes.length === 1) {
-    return `WAKES ${only.label} if its tab is idle, ${withinText(wakes)}: ${costText(only.cost)}, on ${budgetLinesText(wakes)}${offText}`;
+    return when.kind === 'now'
+      ? `WAKES ${only.label} if its tab is idle, ${withinText(wakes)}: ${costText(only.cost)}, ${pays}`
+      : `WAKES ${only.label} at ${when.clock} if it has not seen the line by then and its tab is idle: ${costText(only.cost)}, ${pays}`;
   }
-  return `WAKES at most ${wakes.length} sessions, those whose tab is idle, ${withinText(wakes)}: ${sumText(wakes)}, on ${budgetLinesText(wakes)}${offText}`;
+  return when.kind === 'now'
+    ? `WAKES at most ${wakes.length} sessions, those whose tab is idle, ${withinText(wakes)}: ${sumText(wakes)}, ${pays}`
+    : `WAKES at most ${wakes.length} sessions at ${when.clock}, those that have not seen the line by then and whose tab is idle: ${sumText(wakes)}, ${pays}`;
 }

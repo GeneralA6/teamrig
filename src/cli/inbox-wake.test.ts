@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { formatConfig } from '../config/load.ts';
+import { lineHash } from '../inbox/line-hash.ts';
 import { CliHarness, USER_HOME } from '../testing/cli-harness.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { SUB_TEAMS, teamConfigOf, teamHomeOf, teamInboxOf, treeHarness } from '../testing/team-tree.ts';
@@ -119,5 +120,65 @@ describe('teamrig inbox add --wake now', () => {
     assert.equal(result.code, EXIT.usage);
     assert.match(result.stderr.join('\n'), /--wake takes now, to wake each receiver as soon as its tab's wake check may, not "later"/);
     assert.equal(kit.files.get(teamInboxOf('app', 'bravo')), undefined);
+  });
+});
+
+describe('teamrig inbox add --wake-by', () => {
+  const DUE = Date.parse('2030-01-08T16:30:00Z');
+
+  it("posts the line and a timed ask beside it, carrying the time and the line's hash, and says when it wakes", async () => {
+    const kit = await treeHarness(LED);
+    const result = await kit.run(['inbox', 'add', '--to', 'bravo', '--text', ' the api is ready ', '--wake-by', '16:30', '--session', 'alpha']);
+    assert.deepEqual(result.stdout, [
+      'POSTED to bravo; bravo is reminded at its next prompt',
+      "WAKES bravo at 16:30 UTC if it has not seen the line by then and its tab is idle: about 210k W, cold, on app's budget line",
+    ]);
+    const line = '- 2030-01-08 10:00 alpha: the api is ready';
+    assert.equal(kit.files.get(teamInboxOf('app', 'bravo')), `${line}\n`);
+    assert.equal(askOf(kit, 'app', 'bravo'), formatWakeAsk({ from: 'alpha', text: 'the api is ready', at: NOW, by: { at: DUE, line: lineHash(line) } }));
+  });
+
+  it("dates a time that is not today on the team's clock, and hashes the line another team's receiver gets", async () => {
+    const kit = await treeHarness(LED);
+    const result = await kit.run(['inbox', 'add', '--to', 'web/front', '--text', 'new icons', '--wake-by', '2030-01-09T07:00:00Z', '--session', 'lead']);
+    assert.equal(result.stdout[1], "WAKES web/front at 01-09 07:00 UTC if it has not seen the line by then and its tab is idle: about 210k W, cold, on web's budget line");
+    const by = { at: Date.parse('2030-01-09T07:00:00Z'), line: lineHash('- 2030-01-08 10:00 app/lead: new icons') };
+    assert.equal(askOf(kit, 'web', 'front'), formatWakeAsk({ from: 'app/lead', text: 'new icons', at: NOW, by }));
+  });
+
+  it('costs the wake at its time: a tab warm now is cold by then', async () => {
+    const kit = await treeHarness(LED);
+    await kit.run(['inbox', 'read', '--session', 'bravo'], { env: { CLAUDE_CODE_SESSION_ID: BRAVO_TAB } });
+    const transcripts = new MemoryTranscripts();
+    transcripts.set(transcriptOf(BRAVO_TAB), '{}\n', NOW - 5 * MINUTE);
+    const soon = await kit.run(['inbox', 'add', '--to', 'bravo', '--text', 'hi', '--wake-by', '10:30', '--session', 'alpha'], { transcripts });
+    const later = await kit.run(['inbox', 'add', '--to', 'bravo', '--text', 'hi again', '--wake-by', '16:30', '--session', 'alpha'], { transcripts });
+    assert.match(soon.stdout[1] ?? '', /at 10:30 UTC .*: about 27k W, warm cache,/);
+    assert.match(later.stdout[1] ?? '', /at 16:30 UTC .*: about 210k W, cold,/);
+  });
+
+  it('refuses it beside --wake now, a time already past and one it cannot read, before posting', async () => {
+    const kit = await treeHarness(LED);
+    const add = (...wake: string[]) => kit.run(['inbox', 'add', '--to', 'bravo', '--text', 'hi', ...wake, '--session', 'alpha']);
+    const both = await add('--wake', 'now', '--wake-by', '16:30');
+    assert.equal(both.code, EXIT.usage);
+    assert.match(both.stderr.join('\n'), /--wake now and --wake-by are one or the other: --wake now wakes each receiver at once, --wake-by at a time/);
+    const past = await add('--wake-by', '09:00');
+    assert.equal(past.code, EXIT.usage);
+    assert.match(past.stderr.join('\n'), /--wake-by "09:00" is past \(01-08 09:00 UTC\); --wake now wakes each receiver at once/);
+    const unread = await add('--wake-by', 'soon');
+    assert.equal(unread.code, EXIT.usage);
+    assert.match(unread.stderr.join('\n'), /--wake-by "soon" is not a time/);
+    assert.equal(kit.files.get(teamInboxOf('app', 'bravo')), undefined, 'no line posted');
+    assert.equal(askOf(kit, 'app', 'bravo'), undefined, 'no ask posted');
+  });
+
+  it('holds the --wake now gate, naming --wake-by', async () => {
+    const kit = await treeHarness(LED);
+    const member = await kit.run(['inbox', 'add', '--to', 'all', '--text', 'main is frozen', '--wake-by', '16:30', '--session', 'alpha']);
+    assert.deepEqual(
+      [member.code, member.stdout],
+      [EXIT.refused, ["REFUSED --wake-by on a group is a leader's: alpha leads no one on app; post the line without --wake-by, and each receiver reads it at its next prompt"]],
+    );
   });
 });
