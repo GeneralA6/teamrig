@@ -23,6 +23,7 @@ import {
   formatVerifyRow,
   formatVerifySummary,
   formatWaitingOnYou,
+  formatWatchRow,
   personWaitNotice,
   selectTasks,
   sizeText,
@@ -30,6 +31,7 @@ import {
 } from './views.ts';
 import type { Task } from './fold.ts';
 import { TaskTree } from './tree.ts';
+import type { WatchedTask } from './verify.ts';
 import type { WaitReason } from './waits.ts';
 import { TimeZone } from '../core/zone.ts';
 import { JERUSALEM } from '../testing/zone.ts';
@@ -118,6 +120,10 @@ describe('formatTask', () => {
       'T1 verifying, p2, owner alpha, from lead | Add a health check (proof: the nightly run is green; waiting: on T9 ready)',
     );
     assert.equal(formatTask(testTask({ status: 'in-progress', note: 'started' }), undefined, TREE), 'T1 in-progress, p2, owner alpha, from lead | Add a health check');
+    assert.equal(
+      formatTask(testTask({ status: 'done', note: 'tests green', watch: 'the row shows' }), undefined, TREE),
+      'T1 done, p2, owner alpha, from lead | Add a health check (watch: the row shows)',
+    );
   });
 });
 
@@ -358,8 +364,8 @@ describe('the verify queue lines', () => {
   const long = testTask({ id: 'T2', status: 'verifying', proof: `the nightly run ${'and more '.repeat(10)}` });
 
   it('sums up a queue as a heading and a row per task, each proof cut short, and nothing for an empty one', () => {
-    assert.equal(formatVerifySummary([], 'alpha', 'kit'), undefined);
-    const lines = (formatVerifySummary([shipped, long], 'alpha', 'kit') ?? '').split('\n');
+    assert.equal(formatVerifySummary([], [], 'alpha', 'kit'), undefined);
+    const lines = (formatVerifySummary([shipped, long], [], 'alpha', 'kit') ?? '').split('\n');
     assert.equal(lines.length, 3);
     assert.equal(lines[0], 'VERIFY 2, oldest first:');
     assert.equal(lines[1], '  T1 (proof: the nightly run)');
@@ -369,10 +375,25 @@ describe('the verify queue lines', () => {
 
   it(`names the first ${SUMMARY_VERIFY_ROWS} tasks of a longer queue and the command that lists the rest`, () => {
     const queue = Array.from({ length: SUMMARY_VERIFY_ROWS + 2 }, (_, index) => testTask({ id: `T${index + 1}`, status: 'verifying', proof: 'the nightly run' }));
-    const lines = (formatVerifySummary(queue, 'alpha', 'kit') ?? '').split('\n');
+    const lines = (formatVerifySummary(queue, [], 'alpha', 'kit') ?? '').split('\n');
     assert.equal(lines[0], `VERIFY ${SUMMARY_VERIFY_ROWS + 2}, oldest first:`);
     assert.deepEqual(lines.slice(1, -1), queue.slice(0, SUMMARY_VERIFY_ROWS).map((task) => `  ${task.id} (proof: the nightly run)`));
     assert.equal(lines.at(-1), '  +2 more: `kit verify --session alpha`');
+  });
+
+  it('ends with a line counting the done tasks watched for a sighting, alone when nothing verifies (T1306)', () => {
+    const watched = [testTask({ id: 'T3', status: 'done', watch: 'the row shows' }), testTask({ id: 'T4', status: 'done', watch: 'the page loads' })];
+    assert.equal(formatVerifySummary([], watched, 'alpha', 'kit'), 'WATCH 2 done, waiting on a sighting: `kit verify --session alpha`');
+    assert.deepEqual((formatVerifySummary([shipped], watched, 'alpha', 'kit') ?? '').split('\n'), [
+      'VERIFY 1, oldest first:',
+      '  T1 (proof: the nightly run)',
+      'WATCH 2 done, waiting on a sighting: `kit verify --session alpha`',
+    ]);
+  });
+
+  it('prints a watched row with when it was closed and the sighting to watch for (T1306)', () => {
+    const watched: WatchedTask = { ...testTask({ status: 'done', statusAt: '2030-01-07T10:30:00.000Z' }), watch: 'the row shows' };
+    assert.equal(formatWatchRow(watched, TimeZone.UTC), 'T1 done 01-07 10:30 UTC | Add a health check (watch: the row shows)');
   });
 
   it('prints a row with when it started verifying and the date to verify by', () => {
@@ -461,6 +482,13 @@ describe('formatEvent and formatTaskDetail', () => {
     assert.equal(formatEvent(proven, TimeZone.UTC), '2030-01-07 14:00 UTC alpha status verifying note="shipped" proof="the nightly run"');
     const detail = formatTaskDetail(testTask({ id: 'T3', status: 'verifying', note: 'shipped', proof: 'the nightly run' }), [proven], TREE).split('\n');
     assert.deepEqual(detail.slice(1, 3), ['note: shipped', 'proof: the nightly run']);
+  });
+
+  it('shows the sighting a done task is watched for and its status line (T1306)', () => {
+    const closed: RegisterEvent = { v: 2, type: 'status', id: 'T3', at: '2030-01-07T14:00:00.000Z', by: 'alpha', status: 'done', note: 'tests green', evidence: '6012 tests', skill: 'none', watch: 'the row shows' };
+    assert.equal(formatEvent(closed, TimeZone.UTC), '2030-01-07 14:00 UTC alpha status done note="tests green" watch="the row shows" evidence=6012 tests skill=none');
+    const detail = formatTaskDetail(testTask({ id: 'T3', status: 'done', note: 'tests green', evidence: '6012 tests', watch: 'the row shows' }), [closed], TREE).split('\n');
+    assert.deepEqual(detail.slice(1, 4), ['note: tests green', 'watch: the row shows', 'evidence: 6012 tests']);
   });
 
   it('shows the follow-ups a status line named, none as none, and those of a task', () => {

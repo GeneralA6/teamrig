@@ -98,6 +98,10 @@ Flags:
   evidence, and the verifying task's owner gets an inbox line to set it done or reopen it.
 - `--evidence <proof>`: required for `done`: a commit, test count, path or number that proves it. Evidence
   already on the task counts.
+- `--watch "<what a sighting shows>"`: allowed only with `done`, and needs evidence (given or already on the task)
+  even where `done` asks none: closes a change that tests or a dry run proved while its live sighting is still to
+  come (a night's run, a page a user opens). `teamrig verify`, the start context and `inbox read` list it until you
+  set it `done` again without `--watch` once the sighting shows, or reopen it if the sighting shows a fault.
 - `--skill <name>|none`: required for `done`, and allowed only with `done`: the skill you wrote or updated, or
   `none`. A named skill must exist in the skills folder.
 - `--followups T<id>,...|none`: required for `verifying` and `done` (`register.requireFollowupsOn`), and allowed
@@ -569,6 +573,13 @@ T1 since 10-12 09:12, verify by 10-14 | Build the signup endpoint (proof: the si
 
 A task with no due date shows `no verify-by date`. A task set verifying without `--proof` shows the proof its
 note names (`Proof: ...`), else the whole note. With none: `VERIFY 0 tasks of api, oldest first`.
+
+The done tasks closed with `--watch` follow, oldest first, while their sighting is still to come:
+
+```text
+WATCH 1 done task of api waiting on a sighting: once it shows, set it done again without --watch; if it shows a fault, reopen it (--status in-progress)
+T2 done 10-12 10:05 | Log the signup errors (watch: the night's log lists a signup error)
+```
 
 ### teamrig gh sync
 

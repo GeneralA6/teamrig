@@ -164,6 +164,7 @@ describe('isRetirable', () => {
     assert.equal(isRetirable(testTask({ status: 'done', updatedAt: old, week: '2030-01-27' }), now, 8 * MS_PER_DAY, '2030-01-27'), false);
     assert.equal(isRetirable(testTask({ status: 'done', updatedAt: old, week: '2030-02-03' }), now, 8 * MS_PER_DAY, '2030-01-27'), false);
     assert.equal(isRetirable(testTask({ status: 'done', updatedAt: old, week: '2030-01-20' }), now, 8 * MS_PER_DAY, null), false, 'no week in force');
+    assert.equal(isRetirable(testTask({ status: 'done', updatedAt: old, watch: 'the row shows' }), now, 8 * MS_PER_DAY, null), false, 'still watched (T1306)');
   });
 });
 

@@ -63,6 +63,28 @@ describe('runCli: verify lists the verifying tasks of a session', () => {
     const none = await kit.run(['verify', '--session', 'bravo']);
     assert.deepEqual([none.code, none.stdout], [EXIT.ok, ['VERIFY 0 tasks of bravo, oldest first']]);
   });
+
+  it('lists after them the done tasks watched for a sighting, until set done again without --watch (T1306)', async () => {
+    const kit = await startedTask();
+    const watched = await kit.run([
+      'set', 'T1', '--status', 'done', '--note', 'tests green', '--evidence', '6012 tests', '--skill', 'none', '--followups', 'none', '--watch', 'the nightly run lists the row', '--session', 'alpha',
+    ]);
+    assert.equal(watched.code, EXIT.ok, watched.stdout.join('\n'));
+    assert.match(watched.stdout[0] ?? '', /^SET T1 done, .*\(watch: the nightly run lists the row\)$/);
+    const listed = await kit.run(['verify', '--session', 'alpha']);
+    assert.deepEqual(listed.stdout, [
+      'VERIFY 0 tasks of alpha, oldest first',
+      'WATCH 1 done task of alpha waiting on a sighting: once it shows, set it done again without --watch; if it shows a fault, reopen it (--status in-progress)',
+      'T1 done 01-08 10:00 UTC | Ship the CLI (watch: the nightly run lists the row)',
+    ]);
+    const start = JSON.stringify({ session_id: CLAUDE_SESSION, cwd: APP, source: 'startup' });
+    const context = contextOf(await kit.run(['hook', 'session-start'], { stdin: start, env: { TEAMRIG_SESSION: 'alpha' } }));
+    assert.match(context, /\nWATCH 1 done, waiting on a sighting: `\S+ verify --session alpha`/);
+
+    const sighted = await kit.run(['set', 'T1', '--status', 'done', '--note', 'the row showed', '--skill', 'none', '--followups', 'none', '--session', 'alpha']);
+    assert.equal(sighted.code, EXIT.ok, sighted.stdout.join('\n'));
+    assert.deepEqual((await kit.run(['verify', '--session', 'alpha'])).stdout, ['VERIFY 0 tasks of alpha, oldest first']);
+  });
 });
 
 describe('the verify queue reaches its session', () => {

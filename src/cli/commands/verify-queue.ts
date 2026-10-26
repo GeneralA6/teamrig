@@ -3,30 +3,31 @@ import { KIT_NAME, type TeamPaths } from '../../core/home.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import type { Task } from '../../register/fold.ts';
 import { JsonlEventLog } from '../../register/store.ts';
-import { verifyByArrived, verifyQueue } from '../../register/verify.ts';
+import { verifyByArrived, verifyQueue, watchQueue } from '../../register/verify.ts';
 import { formatVerifyByLine, formatVerifySummary } from '../../register/views.ts';
 import type { CliRuntime } from '../runtime.ts';
 
 /**
- * The verifying tasks of session `id`, oldest first, from the working set of the team's register log
- * alone: no lock and no archive (a compaction retires only finished tasks), so a hook can afford it.
+ * The tasks of the team's register log's working set alone: no lock and no archive (a compaction retires only
+ * finished tasks with no watch), so a hook can afford it.
  */
-async function queueOf(runtime: CliRuntime, paths: TeamPaths, id: string): Promise<Task[]> {
+async function workingTasksOf(runtime: CliRuntime, paths: TeamPaths): Promise<Task[]> {
   const snapshot = await new JsonlEventLog(runtime.files, paths.events).read();
-  return verifyQueue(snapshot.state.tasks.values(), id);
+  return [...snapshot.state.tasks.values()];
 }
 
 /**
- * `VERIFY <n>, oldest first:` and a row per verifying task (formatVerifySummary) for a session that holds some, for
- * its start context and `inbox read`; undefined for none, and when the register cannot be read, so its caller never
- * fails on it.
+ * `VERIFY <n>, oldest first:` and a row per verifying task, then a `WATCH` line for its watched done tasks
+ * (formatVerifySummary) for a session that holds some, for its start context and `inbox read`; undefined for none,
+ * and when the register cannot be read, so its caller never fails on it.
  */
 export async function verifyNoteOf(runtime: CliRuntime, paths: TeamPaths, id: string | undefined): Promise<string | undefined> {
   if (id === undefined) {
     return undefined;
   }
   try {
-    return formatVerifySummary(await queueOf(runtime, paths, id), id, KIT_NAME);
+    const tasks = await workingTasksOf(runtime, paths);
+    return formatVerifySummary(verifyQueue(tasks, id), watchQueue(tasks, id), id, KIT_NAME);
   } catch {
     return undefined;
   }
@@ -45,7 +46,7 @@ export async function verifyByLinesOf(runtime: CliRuntime, paths: TeamPaths, id:
   if (await scans.seen(key, now)) {
     return [];
   }
-  const due = (await queueOf(runtime, paths, id)).filter((task) => verifyByArrived(task, now, zone));
+  const due = verifyQueue(await workingTasksOf(runtime, paths), id).filter((task) => verifyByArrived(task, now, zone));
   await scans.record(key, now);
   return due.map((task) => formatVerifyByLine(task, zone));
 }

@@ -71,6 +71,20 @@ describe('foldEvents: when a task took its status and priority', () => {
   });
 });
 
+describe('foldEvents: the sighting a done task is watched for (T1306)', () => {
+  const watched: RegisterEvent = { v: EVENT_VERSION, type: 'status', id: 'T1', at: at(10), by: 'alpha', status: 'done', note: 'n', evidence: 'abc1234', skill: 'none', watch: 'the row shows' };
+
+  it('keeps the watch of the done line that closed it, and none for a task never watched', () => {
+    assert.equal(taskAfter([create(9), watched]).watch, 'the row shows');
+    assert.equal(taskAfter([create(9), status(10, 'done')]).watch, null);
+  });
+
+  it('clears it when set done again without one, or reopened', () => {
+    assert.equal(taskAfter([create(9), watched, status(11, 'done')]).watch, null);
+    assert.equal(taskAfter([create(9), watched, status(11, 'in-progress')]).watch, null);
+  });
+});
+
 describe('foldEvents: what a waiting task waits for, and when it started', () => {
   const OWNER: readonly WaitReason[] = [{ kind: 'decision', who: 'owner' }];
 

@@ -8,6 +8,7 @@ import { CARD_FLAGS, GATE_FLAG, whyAskUsage } from './card.ts';
 import { taskNumber, type Task } from './fold.ts';
 import { ACTIVE_STATUSES, priorityText, type TaskStatus } from './model.ts';
 import { loopFix, NO_TASKS_ELSEWHERE, pathText, TaskTree, type TasksElsewhere } from './tree.ts';
+import { WATCH_USAGE } from './verify.ts';
 import { formatTask } from './views.ts';
 import { allReady, isPeerWait, isReady, unfinishedAfter, waitSpelling, type WaitContext } from './waits.ts';
 
@@ -340,7 +341,13 @@ function reparkedFlags(task: Task, max: number): Flag[] {
   if (task.status !== 'verifying' || max === 0 || task.reparks < max) {
     return [];
   }
-  return [{ kind: 'REPARKED', task, detail: `its proof was put off to other waits ${task.reparks} times [register.maxReparks]: run the proof now, or reopen it` }];
+  return [
+    {
+      kind: 'REPARKED',
+      task,
+      detail: `its proof was put off to other waits ${task.reparks} times [register.maxReparks]: run the proof now, close it done with ${WATCH_USAGE} if tests or a dry run proved it, or reopen it`,
+    },
+  ];
 }
 
 /**

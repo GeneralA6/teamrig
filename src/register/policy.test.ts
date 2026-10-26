@@ -12,6 +12,7 @@ import type { ProblemReview } from './review.ts';
 import { NO_TASKS_ELSEWHERE, type TasksElsewhere } from './tree.ts';
 import type { WaitReason } from './waits.ts';
 import { JERUSALEM } from '../testing/zone.ts';
+import { WATCH_USAGE } from './verify.ts';
 
 const EMPTY: RegisterState = foldEvents([]);
 const INPUT: AddInput = { title: 'Add a health check', description: 'what and why', owner: 'alpha', source: 'lead', priority: 2 };
@@ -236,6 +237,45 @@ describe('RegisterPolicy.setStatus', () => {
       ok: true,
       value: { status: 'done', note: null, evidence: null, skill: null },
     });
+  });
+});
+
+describe('RegisterPolicy.setStatus: a done change watched for its sighting (T1306)', () => {
+  const policy = new RegisterPolicy(testConfig());
+  const DONE: StatusInput = { status: 'done', note: 'tests green', evidence: '6012 tests', skill: 'none', followups: [] };
+  const SIGHTING = "the night's flow lists the new row";
+  const WATCHED = testTask({ status: 'done', evidence: '6012 tests', watch: SIGHTING });
+
+  it('closes a change done with the sighting left to watch for', () => {
+    assert.deepEqual(policy.setStatus(TASK, 'alpha', { ...DONE, watch: ` ${SIGHTING} ` }, CTX), {
+      ok: true,
+      value: { status: 'done', note: 'tests green', evidence: '6012 tests', skill: 'none', followups: [], watch: SIGHTING },
+    });
+  });
+
+  it('refuses --watch on any other status', () => {
+    const verifying: StatusInput = { status: 'verifying', note: 'shipped', proof: 'the nightly run', waits: RUN_TONIGHT, followups: [], watch: SIGHTING };
+    assert.equal(error(policy.setStatus(TASK, 'alpha', verifying, CTX)), '--watch goes only with --status done');
+    assert.equal(error(policy.setStatus(testTask(), 'alpha', { status: 'in-progress', watch: SIGHTING }, CTX)), '--watch goes only with --status done');
+  });
+
+  it('names the tests or dry run that proved it, even where done needs no evidence, or takes the evidence already recorded', () => {
+    const relaxed = new RegisterPolicy(testConfig({ register: { requireEvidenceOnDone: false } }));
+    const bare: StatusInput = { status: 'done', note: 'tests green', skill: 'none', followups: [], watch: SIGHTING };
+    assert.equal(error(relaxed.setStatus(TASK, 'alpha', bare, CTX)), '--watch needs --evidence: the tests or dry run that proved the change');
+    assert.equal(relaxed.setStatus({ ...TASK, evidence: '6012 tests' }, 'alpha', bare, CTX).ok, true);
+  });
+
+  it('refuses a watch past the length limit or holding a secret', () => {
+    assert.match(error(policy.setStatus(TASK, 'alpha', { ...DONE, watch: 'w'.repeat(301) }, CTX)), /^watch has 301 characters/);
+    assert.match(error(policy.setStatus(TASK, 'alpha', { ...DONE, watch: `it shows at ${credentialUrl()}` }, CTX)), /^watch looks like it holds a secret/);
+  });
+
+  it('clears the watch when set done again without one, and wants a note to repeat the same watch', () => {
+    const sighted = policy.setStatus(WATCHED, 'alpha', { ...DONE, note: 'the row showed' }, CTX);
+    assert.ok(sighted.ok);
+    assert.equal(sighted.value.watch, undefined);
+    assert.match(error(policy.setStatus(WATCHED, 'alpha', { status: 'done', watch: SIGHTING }, CTX)), /^T1 is already done; add --note/);
   });
 });
 
@@ -537,7 +577,7 @@ describe('RegisterPolicy.setStatus to verifying', () => {
     const later = { status: 'verifying' as const, note: 'the run moved', waits: [{ kind: 'time' as const, at: '2030-01-10 02:00' }], followups: [] };
     assert.equal(
       error(policy.setStatus(parked, 'alpha', later, CTX)),
-      "T1's proof was put off to other waits 2 times [register.maxReparks]: run the proof now and set it done, or reopen it (teamrig set T1 --status in-progress)",
+      `T1's proof was put off to other waits 2 times [register.maxReparks]: run the proof now and set it done, close it done with ${WATCH_USAGE} if tests or a dry run proved it, or reopen it (teamrig set T1 --status in-progress)`,
     );
     assert.equal(policy.setStatus({ ...parked, reparks: 1 }, 'alpha', later, CTX).ok, true, 'under the limit');
     assert.equal(policy.setStatus(parked, 'alpha', { status: 'verifying', note: 'still tonight', followups: [] }, CTX).ok, true, 'the same waits kept');
