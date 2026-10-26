@@ -362,9 +362,12 @@ export class RegisterPolicy {
     if (input.status === 'verifying' && register.requireProofOnVerifying && proof.value === null) {
       return refuse('verifying needs --proof saying what will prove the shipped change works');
     }
-    // A proof with no time or task to run on is put off without end, so verifying names when it runs (T1306).
+    // A proof with no time or task to run on is put off without end, so verifying names when it runs (T1306); a
+    // change whose proof left is a sighting has neither, so the refusal names --watch.
     if (input.status === 'verifying' && register.requireProofOnVerifying && !waits.value.some(runsProof)) {
-      return refuse(`verifying needs --waits saying when its proof runs: ${PROOF_WAITS_USAGE}`);
+      return refuse(
+        `verifying needs --waits saying when its proof runs: ${PROOF_WAITS_USAGE}; if tests or a dry run proved it and its proof is a sighting, close it done with ${WATCH_USAGE} instead`,
+      );
     }
     if (input.status === 'done') {
       if (register.requireEvidenceOnDone && evidence === null && task.evidence === null) {

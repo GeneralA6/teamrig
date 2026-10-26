@@ -23,6 +23,7 @@ describe('runCli: set verifying names its proof', () => {
     const unrun = await kit.run(['set', 'T1', '--status', 'verifying', '--note', 'shipped', '--followups', 'none', '--proof', 'the nightly run is green', '--session', 'alpha']);
     assert.equal(unrun.code, EXIT.refused);
     assert.match(unrun.stdout[0] ?? '', /^REFUSED verifying needs --waits saying when its proof runs: time:<YYYY-MM-DD HH:MM> when it runs, or task:T<id> /);
+    assert.match(unrun.stdout[0] ?? '', /; if tests or a dry run proved it and its proof is a sighting, close it done with --watch "<what a sighting shows>" instead$/);
 
     const set = await kit.run(['set', 'T1', '--status', 'verifying', '--waits', 'time:2030-02-01 09:00', '--note', 'shipped', '--followups', 'none', '--proof', 'the nightly run is green', '--session', 'alpha']);
     assert.equal(set.code, EXIT.ok, set.stdout.join('\n'));
