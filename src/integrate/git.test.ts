@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { TempRepo } from '../../tools/lib/temp-repo.ts';
-import { GIT_INTEGRATE as git } from './git.ts';
+import { GIT_INTEGRATE as git, ORIGIN } from './git.ts';
 
 /** A repo on `main`, pushed to a bare origin beside it, with `origin/HEAD` set; returns the repo and the origin's folder. */
 function repoWithOrigin(prefix: string): { repo: TempRepo; origin: string } {
@@ -83,13 +83,13 @@ describe('GIT_INTEGRATE where a checkout is', () => {
       repo.git('push', '-q', 'origin', 'main:trunk');
       repo.git('fetch', '-q', 'origin');
       repo.git('remote', 'set-head', 'origin', 'trunk');
-      assert.equal(git.defaultBranch(repo.dir), 'trunk');
+      assert.equal(git.defaultBranch(repo.dir, ORIGIN), 'trunk');
       repo.git('remote', 'set-head', 'origin', '--delete');
-      assert.equal(git.defaultBranch(repo.dir), 'main');
+      assert.equal(git.defaultBranch(repo.dir, ORIGIN), 'main');
       repo.git('update-ref', '-d', 'refs/remotes/origin/main');
-      assert.equal(git.defaultBranch(repo.dir), 'main');
+      assert.equal(git.defaultBranch(repo.dir, ORIGIN), 'main');
       repo.git('update-ref', 'refs/remotes/origin/master', 'HEAD');
-      assert.equal(git.defaultBranch(repo.dir), 'master');
+      assert.equal(git.defaultBranch(repo.dir, ORIGIN), 'master');
     } finally {
       repo.remove();
     }
@@ -103,12 +103,38 @@ describe('GIT_INTEGRATE reading origin and a range', () => {
       const before = repo.git('rev-parse', 'HEAD').trim();
       const landed = landElsewhere(repo, 'other.txt', 'other\n');
       repo.git('update-ref', 'refs/remotes/origin/main', before);
-      assert.equal(git.remoteHead(repo.dir, 'main'), landed);
-      assert.equal(git.remoteHead(repo.dir, 'none'), undefined);
+      assert.equal(git.remoteHead(repo.dir, ORIGIN, 'main'), landed);
+      assert.equal(git.remoteHead(repo.dir, ORIGIN, 'none'), undefined);
       assert.equal(git.sha(repo.dir, 'origin/main'), before);
-      assert.deepEqual(git.fetch(repo.dir), { ok: true });
+      assert.deepEqual(git.fetch(repo.dir, ORIGIN), { ok: true });
       assert.equal(git.sha(repo.dir, 'origin/main'), landed);
       assert.equal(git.sha(repo.dir, 'no-such-ref'), undefined);
+    } finally {
+      repo.remove();
+    }
+  });
+
+  it('reads, fetches and follows a remote beside origin, such as the project a fork was made from', () => {
+    const { repo } = repoWithOrigin('integrate-upstream');
+    try {
+      const upstream = join(repo.outside, 'upstream.git');
+      repo.git('init', '-q', '--bare', '-b', 'trunk', upstream);
+      repo.git('remote', 'add', 'upstream', upstream);
+      repo.git('switch', '-q', '-c', 'up');
+      const landed = commit(repo, 'up.txt', 'up\n', 'up');
+      repo.git('push', '-q', 'upstream', 'up:trunk');
+      repo.git('switch', '-q', 'main');
+      repo.git('branch', '-q', '-D', 'up');
+      assert.equal(git.remoteHead(repo.dir, 'upstream', 'trunk'), landed);
+      assert.equal(git.remoteHead(repo.dir, ORIGIN, 'trunk'), undefined);
+      assert.deepEqual(git.fetch(repo.dir, 'upstream'), { ok: true });
+      assert.equal(git.fetch(repo.dir, 'none').ok, false);
+      repo.git('remote', 'set-head', 'upstream', 'trunk');
+      assert.equal(git.defaultBranch(repo.dir, 'upstream'), 'trunk');
+      assert.equal(git.defaultBranch(repo.dir, ORIGIN), 'main');
+      assert.equal(git.sha(repo.dir, 'upstream/trunk'), landed);
+      assert.deepEqual(git.updateLocalBranch(repo.dir, 'upstream', 'trunk'), { kind: 'updated' });
+      assert.equal(git.sha(repo.dir, 'refs/heads/trunk'), landed);
     } finally {
       repo.remove();
     }
@@ -142,7 +168,7 @@ describe('GIT_INTEGRATE rebase', () => {
       repo.git('switch', '-q', '-c', 'feat');
       commit(repo, 'feat.txt', 'feat\n', 'feat');
       landElsewhere(repo, 'other.txt', 'other\n');
-      git.fetch(repo.dir);
+      git.fetch(repo.dir, ORIGIN);
       assert.deepEqual(git.rebase(repo.dir, 'origin/main'), { ok: true });
       assert.equal(git.isAncestor(repo.dir, 'origin/main', 'HEAD'), true);
     } finally {
@@ -156,7 +182,7 @@ describe('GIT_INTEGRATE rebase', () => {
       repo.git('switch', '-q', '-c', 'feat');
       const mine = commit(repo, 'app.txt', 'mine\n', 'mine');
       landElsewhere(repo, 'app.txt', 'theirs\n');
-      git.fetch(repo.dir);
+      git.fetch(repo.dir, ORIGIN);
       const stopped = git.rebase(repo.dir, 'origin/main');
       assert.deepEqual(stopped, { ok: false, reason: 'rebase onto origin/main stopped (conflicts in app.txt); aborted, the branch is as it was' });
       assert.equal(git.sha(repo.dir, 'HEAD'), mine);
@@ -175,13 +201,13 @@ describe('GIT_INTEGRATE cleanup', () => {
       repo.git('switch', '-q', '-c', 'feat');
       commit(repo, 'feat.txt', 'feat\n', 'feat');
       repo.git('push', '-q', 'origin', 'feat', 'HEAD:main');
-      git.fetch(repo.dir);
+      git.fetch(repo.dir, ORIGIN);
       assert.deepEqual(git.deleteRemoteBranch(repo.dir, 'feat'), { ok: true });
-      assert.equal(git.remoteHead(repo.dir, 'feat'), undefined);
+      assert.equal(git.remoteHead(repo.dir, ORIGIN, 'feat'), undefined);
       assert.deepEqual(git.detach(repo.dir), { ok: true });
       assert.deepEqual(git.deleteBranch(repo.dir, 'feat'), { ok: true });
       assert.equal(git.sha(repo.dir, 'refs/heads/feat'), undefined);
-      assert.deepEqual(git.updateLocalBranch(repo.dir, 'main'), { kind: 'updated' });
+      assert.deepEqual(git.updateLocalBranch(repo.dir, ORIGIN, 'main'), { kind: 'updated' });
       assert.equal(git.sha(repo.dir, 'refs/heads/main'), git.sha(repo.dir, 'origin/main'));
       assert.deepEqual(git.checkout(repo.dir, 'main'), { ok: true });
       assert.equal(git.checkoutOf(repo.dir)?.branch, 'main');
@@ -240,8 +266,8 @@ describe('GIT_INTEGRATE cleanup', () => {
     try {
       repo.git('worktree', 'add', '-q', '-b', 'feat', linked);
       const landed = landElsewhere(repo, 'other.txt', 'other\n');
-      git.fetch(linked);
-      assert.deepEqual(git.updateLocalBranch(linked, 'main'), { kind: 'checkedOut' });
+      git.fetch(linked, ORIGIN);
+      assert.deepEqual(git.updateLocalBranch(linked, ORIGIN, 'main'), { kind: 'checkedOut' });
       assert.equal(git.isAncestor(repo.dir, 'HEAD', landed), true);
       assert.deepEqual(git.fastForward(repo.dir, landed), { ok: true });
       assert.equal(git.sha(repo.dir, 'HEAD'), landed);

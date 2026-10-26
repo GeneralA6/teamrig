@@ -1,7 +1,7 @@
 import type { CoordinatorConfig, CoordinatorRepoConfig, RollConfig } from '../config/types.ts';
 import { rangeText } from '../coordinator/ledger.ts';
 import { rangeInstallTouches } from '../integrate/dependencies.ts';
-import type { IntegrateGit } from '../integrate/git.ts';
+import { ORIGIN, type IntegrateGit } from '../integrate/git.ts';
 
 /**
  * What a roll would pull for a repository with a roll block: its main checkout's `HEAD..origin/<default branch>` after
@@ -98,11 +98,11 @@ export async function readPending(git: RollGit, repo: RollRepo): Promise<Pending
   if (checkout === undefined) {
     return { kind: 'refused', reason: `${main} (coordinator.repos.${name}.mainCheckout) is not a git checkout` };
   }
-  const fetched = git.fetch(main);
+  const fetched = git.fetch(main, ORIGIN);
   if (!fetched.ok) {
     return { kind: 'failed', reason: `git fetch failed in ${main}: ${fetched.reason}` };
   }
-  const defaultBranch = git.defaultBranch(main);
+  const defaultBranch = git.defaultBranch(main, ORIGIN);
   if (checkout.branch !== defaultBranch) {
     return { kind: 'refused', reason: `the ${name} main checkout ${main} is on ${checkout.branch ?? 'a detached HEAD'}, not ${defaultBranch}` };
   }

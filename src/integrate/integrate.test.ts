@@ -335,13 +335,13 @@ describe('integrate lands a branch', () => {
       { command: commandLine(['git', 'push', 'origin', 'HEAD:refs/heads/main'], 'linux'), cwd: WORKTREE, env: { PATH: '/bin', TEAMRIG_HOST_LOCK: 'lock-1' }, timeoutMs: DEFAULT_HEAVY.maxRunMinutes * 60_000 },
     ]);
     assert.deepEqual(world.git.log, [
-      `fetch ${WORKTREE}`,
-      `fetch ${WORKTREE}`,
+      `fetch ${WORKTREE} origin`,
+      `fetch ${WORKTREE} origin`,
       `rebase ${WORKTREE} origin/main`,
       `deleteRemoteBranch ${WORKTREE} feat`,
       `detach ${WORKTREE}`,
       `deleteBranch ${WORKTREE} feat`,
-      `updateLocalBranch ${WORKTREE} main`,
+      `updateLocalBranch ${WORKTREE} origin main`,
     ]);
     const start = { type: 'heavy', id: 'step-1', session: 'api', what: 'integrate app: push feat to main', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(world.records(PLACES.ledger), [start, { ...start, endedAt: '2030-01-08T10:01:30.000Z', exitCode: 0 }]);
@@ -372,7 +372,7 @@ describe('integrate lands a branch', () => {
   it('keeps the branch on origin and here when asked, and says how to remove the worktree with it', async () => {
     const world = new World();
     assert.equal((await world.run({ ...REQUEST, keepRemote: true, keepLocal: true })).kind, 'done');
-    assert.deepEqual(world.git.log.slice(3), [`updateLocalBranch ${WORKTREE} main`]);
+    assert.deepEqual(world.git.log.slice(3), [`updateLocalBranch ${WORKTREE} origin main`]);
     assert.equal(world.said.at(-1), `next: teamrig worktree remove "${WORKTREE}" --delete-branch`);
   });
 
@@ -438,14 +438,14 @@ describe('integrate merges through the repository’s merge command, where one i
     assert.deepEqual(during, { head: 'rebased', lockHeld: true });
     assert.deepEqual(world.steps.ran, [], 'nothing is pushed');
     assert.deepEqual(world.git.log, [
-      `fetch ${WORKTREE}`,
-      `fetch ${WORKTREE}`,
+      `fetch ${WORKTREE} origin`,
+      `fetch ${WORKTREE} origin`,
       `rebase ${WORKTREE} origin/main`,
-      `fetch ${WORKTREE}`,
+      `fetch ${WORKTREE} origin`,
       `deleteRemoteBranch ${WORKTREE} feat`,
       `detach ${WORKTREE}`,
       `deleteBranch ${WORKTREE} feat`,
-      `updateLocalBranch ${WORKTREE} main`,
+      `updateLocalBranch ${WORKTREE} origin main`,
     ]);
     assert.ok(world.said.includes('merging feat (rebased) into main through the merge command node merge.ts'));
     assert.ok(world.said.includes('  pull request https://forge/pr/7 merged'));

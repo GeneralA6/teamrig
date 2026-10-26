@@ -1,5 +1,5 @@
 import type { GitOutcome } from '../core/git-run.ts';
-import type { Checkout, IntegrateGit, LocalUpdate } from '../integrate/git.ts';
+import { ORIGIN, type Checkout, type IntegrateGit, type LocalUpdate } from '../integrate/git.ts';
 
 /** The linked worktree a fake integrate runs in. */
 export const WORKTREE = '/w/feat';
@@ -7,7 +7,6 @@ export const WORKTREE = '/w/feat';
 export const MAIN_CHECKOUT = '/repo/app';
 
 const OK: GitOutcome = { ok: true };
-const TRACKING = 'origin/';
 const BRANCH_REF = 'refs/heads/';
 
 function failed(reason: string | undefined): GitOutcome {
@@ -17,9 +16,10 @@ function failed(reason: string | undefined): GitOutcome {
 /**
  * A repository for `teamrig integrate`, in memory. The branch `feat` is checked out at commit `mine` in the linked
  * worktree `/w/feat`; its main checkout `/repo/app` is on `main` at `base`, where origin's `main` is too. A fetch
- * copies origin's branches to `origin/<name>`, a rebase moves HEAD to `rebasedTo` on top of what it rebased onto, and
- * each step that touches git is logged in `log`. A test sets a `...Fails` field to make that step fail, calls
- * `pushed` where a push lands, or moves `origin` alone where another clone pushed.
+ * of a remote copies its branches to `<remote>/<name>`, a rebase moves HEAD to `rebasedTo` on top of what it rebased
+ * onto, and each step that touches git is logged in `log`. A test sets a `...Fails` field to make that step fail,
+ * calls `pushed` where a push lands, moves `origin` alone where another clone pushed, or adds a remote beside origin
+ * to `remotes`.
  */
 export class FakeIntegrateGit implements IntegrateGit {
   /** Each step, as `<step> <folder> <arguments>`. */
@@ -37,7 +37,9 @@ export class FakeIntegrateGit implements IntegrateGit {
     ['main', 'base'],
     ['feat', 'mine'],
   ]);
-  /** origin's branches as the last fetch copied them. */
+  /** The remotes beside origin, each with its branches; fetching a remote not here fails. */
+  readonly remotes = new Map<string, Map<string, string>>();
+  /** Each remote's branches as its last fetch copied them, by `<remote>/<branch>`. */
   readonly tracking = new Map<string, string>();
   readonly heads = new Map<string, string>([
     [WORKTREE, 'mine'],
@@ -71,15 +73,24 @@ export class FakeIntegrateGit implements IntegrateGit {
   /** A push of ours lands: origin's branch moves, and so does its tracking ref, as git push moves both. */
   pushed(branch: string, commit: string): void {
     this.origin.set(branch, commit);
-    this.tracking.set(branch, commit);
+    this.tracking.set(`${ORIGIN}/${branch}`, commit);
+  }
+
+  private branchesOf(remote: string): Map<string, string> | undefined {
+    return remote === ORIGIN ? this.origin : this.remotes.get(remote);
+  }
+
+  private isTracking(ref: string): boolean {
+    const slash = ref.indexOf('/');
+    return slash > 0 && this.branchesOf(ref.slice(0, slash)) !== undefined;
   }
 
   private commitOf(dir: string, ref: string): string | undefined {
     if (ref === 'HEAD') {
       return this.heads.get(dir);
     }
-    if (ref.startsWith(TRACKING)) {
-      return this.tracking.get(ref.slice(TRACKING.length));
+    if (this.isTracking(ref)) {
+      return this.tracking.get(ref);
     }
     if (ref.startsWith(BRANCH_REF)) {
       return this.branches.get(ref.slice(BRANCH_REF.length));
@@ -98,12 +109,19 @@ export class FakeIntegrateGit implements IntegrateGit {
     return (this.status.get(dir) ?? []).filter((line) => untracked || !line.startsWith('??'));
   }
 
-  fetch(dir: string): GitOutcome {
-    this.log.push(`fetch ${dir}`);
+  fetch(dir: string, remote: string): GitOutcome {
+    this.log.push(`fetch ${dir} ${remote}`);
+    const branches = this.branchesOf(remote);
+    if (branches === undefined) {
+      return failed(`'${remote}' does not appear to be a git repository`);
+    }
     if (this.fetchFails === undefined) {
-      this.tracking.clear();
-      for (const [name, commit] of this.origin) {
-        this.tracking.set(name, commit);
+      const prefix = `${remote}/`;
+      for (const ref of [...this.tracking.keys()].filter((key) => key.startsWith(prefix))) {
+        this.tracking.delete(ref);
+      }
+      for (const [name, commit] of branches) {
+        this.tracking.set(`${prefix}${name}`, commit);
       }
     }
     return failed(this.fetchFails);
@@ -117,8 +135,8 @@ export class FakeIntegrateGit implements IntegrateGit {
     return this.commitOf(dir, ref);
   }
 
-  remoteHead(_dir: string, branch: string): string | undefined {
-    return this.origin.get(branch);
+  remoteHead(_dir: string, remote: string, branch: string): string | undefined {
+    return this.branchesOf(remote)?.get(branch);
   }
 
   mergeBase(): string | undefined {
@@ -183,9 +201,9 @@ export class FakeIntegrateGit implements IntegrateGit {
     return OK;
   }
 
-  updateLocalBranch(dir: string, branch: string): LocalUpdate {
-    this.log.push(`updateLocalBranch ${dir} ${branch}`);
-    const commit = this.tracking.get(branch);
+  updateLocalBranch(dir: string, remote: string, branch: string): LocalUpdate {
+    this.log.push(`updateLocalBranch ${dir} ${remote} ${branch}`);
+    const commit = this.tracking.get(`${remote}/${branch}`);
     if (this.localUpdate.kind === 'updated' && commit !== undefined) {
       this.branches.set(branch, commit);
     }

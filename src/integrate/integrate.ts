@@ -19,7 +19,7 @@ import { shownLine } from '../roll/gates.ts';
 import { HOOK_WAIT_EXIT, hookEndText, hookExitCode, succeeded, type HookRunner } from '../roll/hooks.ts';
 import { commandLine } from '../test-run/shell.ts';
 import { rangeInstallTouches, runDependencyCheck } from './dependencies.ts';
-import type { Checkout, IntegrateGit } from './git.ts';
+import { ORIGIN, type Checkout, type IntegrateGit } from './git.ts';
 import { LOCKFILE } from './manifest.ts';
 import { readPendingMerge, removePendingMerge, writePendingMerge, type PendingMerge } from './pending-merges.ts';
 
@@ -164,15 +164,15 @@ async function planOf(setup: IntegrateSetup, ports: IntegratePorts, request: Int
   if (changes.length > 0) {
     return { kind: 'refused', reason: `${top} has ${changes.length} uncommitted change${changes.length === 1 ? '' : 's'}: commit or stash them first` };
   }
-  const fetched = git.fetch(top);
+  const fetched = git.fetch(top, ORIGIN);
   if (!fetched.ok) {
     return { kind: 'failed', reason: `git fetch failed: ${fetched.reason}` };
   }
-  const defaultBranch = git.defaultBranch(top);
+  const defaultBranch = git.defaultBranch(top, ORIGIN);
   if (branch === defaultBranch || PROTECTED_BRANCHES.includes(branch)) {
     return { kind: 'refused', reason: `${branch} is a default branch: integrate a feature branch` };
   }
-  const onto = `origin/${defaultBranch}`;
+  const onto = `${ORIGIN}/${defaultBranch}`;
   const repo = repoOf(checkout, setup, ports.platform);
   // A merge commit can make the branch an ancestor of what it merged into: a pending merge is still to finish.
   const pending = await waitingMerge(setup, ports, repo, top, branch);
@@ -295,9 +295,9 @@ function readinessOf(setup: IntegrateSetup, ports: IntegratePorts, repo: RepoMat
 async function landByPush(setup: IntegrateSetup, ports: IntegratePorts, plan: Plan, taking: Taking): Promise<Landing> {
   const { git } = ports;
   const { top, branch, defaultBranch, repo } = plan;
-  const onto = `origin/${defaultBranch}`;
+  const onto = `${ORIGIN}/${defaultBranch}`;
   for (let attempt = 1; ; attempt += 1) {
-    const fetched = git.fetch(top);
+    const fetched = git.fetch(top, ORIGIN);
     if (!fetched.ok) {
       return { kind: 'failed', reason: `git fetch failed: ${fetched.reason}` };
     }
@@ -329,7 +329,7 @@ async function landByPush(setup: IntegrateSetup, ports: IntegratePorts, plan: Pl
       },
     });
     const endedAt = new Date(ports.clock.now()).toISOString();
-    const after = git.remoteHead(top, defaultBranch);
+    const after = git.remoteHead(top, ORIGIN, defaultBranch);
     if (after === head) {
       if (end.kind !== 'exited' || end.code !== 0) {
         ports.say(`the push ${endText(end)}, but origin's ${defaultBranch} is at ${short(head)}: it landed`);
@@ -379,8 +379,8 @@ function mergedAt(git: IntegrateGit, top: string, onto: string, base: string, he
 async function mergeByCommand(setup: IntegrateSetup, ports: IntegratePorts, plan: Plan, taking: Taking, argv: readonly string[]): Promise<Landing> {
   const { git } = ports;
   const { top, branch, defaultBranch, repo, pending } = plan;
-  const onto = `origin/${defaultBranch}`;
-  const fetched = git.fetch(top);
+  const onto = `${ORIGIN}/${defaultBranch}`;
+  const fetched = git.fetch(top, ORIGIN);
   if (!fetched.ok) {
     return { kind: 'failed', reason: `git fetch failed: ${fetched.reason}` };
   }
@@ -434,7 +434,7 @@ async function mergeByCommand(setup: IntegrateSetup, ports: IntegratePorts, plan
   if (!succeeded(end)) {
     return { kind: 'failed', reason: `the merge command \`${command}\` ${hookEndText(end)}, so ${branch} is not on ${defaultBranch}${last === undefined ? '' : `: ${last}`}` };
   }
-  const refetched = git.fetch(top);
+  const refetched = git.fetch(top, ORIGIN);
   const after = refetched.ok ? mergedAt(git, top, onto, before, head) : undefined;
   if (after === undefined) {
     const why = refetched.ok ? `no commit on ${onto} since ${short(before)} holds its files at ${short(head)}` : `git fetch failed: ${refetched.reason}`;
@@ -454,7 +454,7 @@ function tidy(ports: IntegratePorts, request: IntegrateRequest, plan: Plan): voi
   const { git, say } = ports;
   const { top, branch, defaultBranch } = plan;
   const warn = (what: string, reason: string): void => say(`WARNING could not ${what}: ${reason}`);
-  if (!request.keepRemote && git.remoteHead(top, branch) !== undefined) {
+  if (!request.keepRemote && git.remoteHead(top, ORIGIN, branch) !== undefined) {
     const deleted = git.deleteRemoteBranch(top, branch);
     if (deleted.ok) {
       say(`deleted ${branch} on origin`);
@@ -471,7 +471,7 @@ function tidy(ports: IntegratePorts, request: IntegrateRequest, plan: Plan): voi
       warn(`delete the local ${branch}`, deleted.reason);
     }
   }
-  const update = git.updateLocalBranch(top, defaultBranch);
+  const update = git.updateLocalBranch(top, ORIGIN, defaultBranch);
   if (update.kind === 'failed') {
     warn(`move the local ${defaultBranch} to origin's`, update.reason);
   } else if (update.kind === 'updated' && !plan.linked && !request.keepLocal) {
