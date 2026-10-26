@@ -31,6 +31,7 @@ describe('generic scrub rules', () => {
       join('b', '@', 'sub.example.org'),
       join('noreply', '@', 'anthropic.com'),
       join('1+dana', '@', 'users.noreply.github.com'),
+      join('noreply', '@', 'github.com'),
       join('git', '@', 'github.com:owner/repo.git'),
       join('typescript', '@', '5.9.3'),
       '@types/node',
