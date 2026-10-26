@@ -83,6 +83,23 @@ export class MemoryFiles implements Files {
     return this.contents.delete(key);
   }
 
+  async move(from: string, to: string): Promise<boolean> {
+    const source = normalisePath(from);
+    const target = normalisePath(to);
+    const moving = [...this.contents].filter(([key]) => isAtOrBelow(key, source));
+    if (moving.length === 0) {
+      return false;
+    }
+    if ([...this.contents.keys()].some((key) => isAtOrBelow(key, target))) {
+      throw new Error(`${to} exists already; a move never replaces it`);
+    }
+    for (const [key, text] of moving) {
+      await this.remove(key);
+      this.put(`${target}${key.slice(source.length)}`, text);
+    }
+    return true;
+  }
+
   async stamp(path: string): Promise<string | undefined> {
     const key = normalisePath(path);
     const text = this.contents.get(key);
@@ -99,6 +116,11 @@ export class MemoryFiles implements Files {
     this.changedBy.set(key, this.changes);
     this.changedAt.set(key, this.clock.now());
   }
+}
+
+/** Whether the file `key` is the path `path` or lies in the folder at it. */
+function isAtOrBelow(key: string, path: string): boolean {
+  return key === path || key.startsWith(`${path}/`);
 }
 
 /** A clock that stays at the epoch, for files whose change times no test reads. */

@@ -70,6 +70,11 @@ export class FaultyFiles implements Files {
     return this.inner.remove(path);
   }
 
+  async move(from: string, to: string): Promise<boolean> {
+    await this.check('move', from);
+    return this.inner.move(from, to);
+  }
+
   async stamp(path: string): Promise<string | undefined> {
     await this.check('stamp', path);
     return this.inner.stamp(path);

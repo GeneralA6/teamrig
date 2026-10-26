@@ -110,6 +110,19 @@ describe('nodeFiles', () => {
     assert.deepEqual([await files.remove(path), await files.remove(path)], [true, false]);
     assert.equal(await files.read(path), undefined);
   });
+
+  it('moves a file and a folder with what it holds, creating folders, and never replaces what is there', async () => {
+    await files.write(join(root, 'one.txt'), 'x');
+    await files.write(join(root, 'box', 'inner', 'two.txt'), 'y');
+    assert.equal(await files.move(join(root, 'one.txt'), join(root, 'to', 'deep', 'one.txt')), true);
+    assert.equal(await files.move(join(root, 'box'), join(root, 'to', 'box')), true);
+    assert.deepEqual([await files.read(join(root, 'to', 'deep', 'one.txt')), await files.read(join(root, 'to', 'box', 'inner', 'two.txt'))], ['x', 'y']);
+    assert.deepEqual((await readdir(root)).filter((name) => name === 'one.txt' || name === 'box'), []);
+    assert.equal(await files.move(join(root, 'missing'), join(root, 'elsewhere')), false);
+    await files.write(join(root, 'three.txt'), 'z');
+    await assert.rejects(files.move(join(root, 'three.txt'), join(root, 'to', 'deep', 'one.txt')), /exists already; a move never replaces it/);
+    assert.equal(await files.read(join(root, 'to', 'deep', 'one.txt')), 'x');
+  });
 });
 
 describe('isTemporaryName', () => {

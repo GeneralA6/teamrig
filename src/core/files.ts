@@ -1,5 +1,5 @@
 import type { Stats } from 'node:fs';
-import { appendFile, link, mkdir, open, readdir, readFile, rename, stat, unlink, writeFile, type FileHandle } from 'node:fs/promises';
+import { appendFile, link, lstat, mkdir, open, readdir, readFile, rename, stat, unlink, writeFile, type FileHandle } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { errorCode } from './guards.ts';
 import type { Sleep } from './lock.ts';
@@ -29,6 +29,19 @@ async function fileStatsOf(path: string): Promise<Stats | undefined> {
   } catch (error) {
     if (errorCode(error) === 'ENOENT') {
       return undefined;
+    }
+    throw error;
+  }
+}
+
+/** Whether anything is at the path, a file, a folder or a link, without following a link. */
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await lstat(path);
+    return true;
+  } catch (error) {
+    if (errorCode(error) === 'ENOENT') {
+      return false;
     }
     throw error;
   }
@@ -105,6 +118,11 @@ export interface Files {
    */
   remove(path: string): Promise<boolean>;
   /**
+   * Moves a file, or a folder with all it holds, to `to`, creating the folders above it: true when it moved, false
+   * when nothing was at `from`. Throws when something is at `to` already, which a move never replaces.
+   */
+  move(from: string, to: string): Promise<boolean>;
+  /**
    * A short text made of the file's size and when it last changed, or undefined when there is no file there, so a
    * reader can tell that a file changed since it last read it without reading it again.
    */
@@ -176,6 +194,17 @@ export function nodeFiles(sleep: Sleep): Files {
     },
     async remove(path) {
       return removeFile(path, sleep);
+    },
+    async move(from, to) {
+      if (!(await pathExists(from))) {
+        return false;
+      }
+      if (await pathExists(to)) {
+        throw new Error(`${to} exists already; a move never replaces it`);
+      }
+      await mkdir(dirname(to), { recursive: true });
+      await retryTransient(() => rename(from, to), sleep);
+      return true;
     },
     async stamp(path) {
       const stats = await fileStatsOf(path);
