@@ -6,7 +6,7 @@
  * two can never drift. `read/index.test.ts` fails if anything reachable from here imports `node:`.
  */
 // The task register (`events.jsonl`, and once rotated its `archive/` and `snapshot.jsonl`).
-export { EVENT_VERSION } from "../register/events.js";
+export { EVENT_VERSION, TASK_LINE_VERSION } from "../register/events.js";
 export { foldEvents, taskNumber } from "../register/fold.js";
 export { ACTIVE_STATUSES, isTaskStatus, priorityText, SESSION_NAME, TASK_STATUSES } from "../register/model.js";
 export { assemble, historyPlan, layoutPaths, MissingSegmentError, readHistory, readSnapshotText, readWorkingSet, segmentName, workingSetPlan, ARCHIVE_DIR, SNAPSHOT_FILE, } from "../register/layout.js";

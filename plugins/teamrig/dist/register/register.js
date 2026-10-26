@@ -1,6 +1,6 @@
 import { errorMessage } from "../core/guards.js";
 import { NewerDataError } from "../core/jsonl.js";
-import { EVENT_VERSION } from "./events.js";
+import { EVENT_VERSION, TASK_LINE_VERSION } from "./events.js";
 import { foldEvents, taskNumber } from "./fold.js";
 import { GITHUB_ACTOR, NO_SKILL } from "./policy.js";
 import { ACTIVE_STATUSES } from "./model.js";
@@ -184,7 +184,7 @@ export class Register {
         return { ok: true, value: event };
     }
     base(id, by) {
-        return { v: EVENT_VERSION, id, at: new Date(this.deps.clock.now()).toISOString(), by };
+        return { v: TASK_LINE_VERSION, id, at: new Date(this.deps.clock.now()).toISOString(), by };
     }
     /** A write by a session of this team: refused unless the caller is on the roster. */
     commit(caller, decide) {
@@ -260,8 +260,9 @@ function single(verdict) {
 }
 /**
  * The decision on a task of the working set. An id another register of the team tree holds is that team's task,
- * which only its own sessions change. An id below the next one that is in neither may be a task a compaction
- * retired: it is named as such, as this teamrig changes only tasks in the working set.
+ * which only its own sessions change; so is one that moved to a team this register's tree read does not reach. An id
+ * below the next one that is in none may be a task a compaction retired: it is named as such, as this teamrig changes
+ * only tasks in the working set.
  */
 function onTask(snapshot, elsewhere, id, decide) {
     const task = snapshot.state.tasks.get(id);
@@ -271,6 +272,10 @@ function onTask(snapshot, elsewhere, id, decide) {
     const away = elsewhere.get(id);
     if (away !== undefined) {
         return { ok: false, error: `${id} is team ${away.team}'s task (owner ${away.task.owner}): only a session of team ${away.team} changes it` };
+    }
+    const movedTo = snapshot.state.moved.get(id);
+    if (movedTo !== undefined) {
+        return { ok: false, error: `${id} moved to team ${movedTo}: only a session of team ${movedTo} changes it` };
     }
     const archived = snapshot.retired !== null && taskNumber(id) < taskNumber(snapshot.state.nextId);
     return { ok: false, error: archived ? `no task ${id} in the working set: if it was finished long ago it is archived (teamrig show ${id})` : `no task ${id}` };
