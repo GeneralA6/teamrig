@@ -2,11 +2,10 @@ import type { RollGateConfig } from '../config/types.ts';
 import type { ClearancePhase, Readiness } from '../coordinator/clearance.ts';
 import type { Env } from '../core/home.ts';
 import type { SecretScanner } from '../core/secrets.ts';
-import type { HookEnd, HookRunner } from './hooks.ts';
+import { HOOK_WAIT_EXIT, type HookEnd, type HookRunner } from './hooks.ts';
 
-/** A gate's exit codes: go, wait (`EX_TEMPFAIL`) and refuse; any other end makes the roll wait, so a broken gate never lets it through. */
+/** A gate's exit codes: go and refuse, beside every hook's wait (`HOOK_WAIT_EXIT`); any other end makes the roll wait, so a broken gate never lets it through. */
 export const GATE_GO_EXIT = 0;
-export const GATE_WAIT_EXIT = 75;
 export const GATE_REFUSE_EXIT = 2;
 
 /** A stdout line that names what the roll deploys, such as an image tag; the last one wins. */
@@ -57,7 +56,7 @@ export function gateReadiness(name: string, end: HookEnd, reason: string | undef
       if (end.code === GATE_REFUSE_EXIT) {
         return { kind: 'refuse', reason: `gate ${name} refuses the roll${because}` };
       }
-      if (end.code === GATE_WAIT_EXIT) {
+      if (end.code === HOOK_WAIT_EXIT) {
         return { kind: 'wait', reason: `gate ${name} holds the roll${because}` };
       }
       return { kind: 'wait', reason: `gate ${name} failed (exit ${end.code}), so the roll waits${because}` };
