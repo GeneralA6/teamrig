@@ -1,17 +1,16 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import type { DecisionsConfig } from '../config/types.ts';
 import { TimeZone } from '../core/zone.ts';
 import type { Task } from '../register/fold.ts';
 import { TaskTree } from '../register/tree.ts';
 import { TEST_OWNER_CARD } from '../testing/card.ts';
 import { testTask } from '../testing/task.ts';
 import { JERUSALEM } from '../testing/zone.ts';
-import { decisionBatch } from './batch.ts';
+import { decisionBatch, type BatchConfig } from './batch.ts';
 import { batchHead, batchLines, checkDecisionLines, timingText, waitTiming, type BatchView } from './lines.ts';
 
 const NOW = Date.parse('2030-01-08T10:00:00Z');
-const CHECKPOINTS: DecisionsConfig = { batchTimesUtc: ['13:03', '19:03'], batchAt: 5 };
+const CHECKPOINTS: BatchConfig = { batchTimesUtc: ['13:03', '19:03'], batchAt: 5 };
 /** After the 19:03 batch time of the day before, so a wait set since is not yet due. */
 const ASKED_AT = Date.parse('2030-01-07T20:00:00Z');
 
@@ -20,7 +19,7 @@ function ownerWait(id: string, statusAt: string, overrides: Partial<Task> = {}):
 }
 
 /** The view of a batch of `tasks`, with the tree it was judged on, which a new wait's timing reads. */
-function viewOf(tasks: readonly Task[], config: DecisionsConfig = CHECKPOINTS): BatchView & { readonly tree: TaskTree } {
+function viewOf(tasks: readonly Task[], config: BatchConfig = CHECKPOINTS): BatchView & { readonly tree: TaskTree } {
   const tree = new TaskTree(new Map(tasks.map((task) => [task.id, task])), new Date(NOW), TimeZone.UTC);
   const batch = decisionBatch({ registers: [{ team: undefined, tasks, tree, ownerMarker: 'owner', requireGate: true }], now: NOW, askedAt: ASKED_AT, config });
   return { batch, tree, ownerMarker: 'owner', command: 'teamrig', lead: 'lead', askedBy: undefined, zone: TimeZone.UTC };
