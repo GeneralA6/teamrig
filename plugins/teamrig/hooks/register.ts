@@ -39,8 +39,10 @@ import { WAKE_TICK_MS, WAKE_TIMEOUT_MS, WakeHand, wakeCliArgv } from '../dist/mo
  * prompt box holds a draft; for `refresh.holdAfterActivityMinutes` after the person's last key in the prompt box or
  * prompt (typed, or through Remote Control); for 10 minutes after the band's Hold. Then the band above the prompt
  * counts `refresh.countdownSeconds` down, with `1: Refresh now` (the next ask is claimed, unless a draft or a live
- * helper holds it) and `2: Hold 10 min`, which a bare digit in an empty prompt box presses. The band's value is the
- * session's `band` (types/index.d.ts), written each time it changes, so the drawing redraws.
+ * helper holds it) and `2: Hold 10 min`, which a bare digit in an empty prompt box presses. Through every hold before
+ * the count the band shows what holds the /clear, and the time the person's own hold has left, with the same
+ * buttons but no digits, which stay the person's. The band's value is the session's `band` (types/index.d.ts),
+ * written each time what it draws changes, so the drawing redraws.
  *
  * The reload after an install (`reload-hand.ts`): every 15 s the hand reads Claude Code's installed_plugins.json, and
  * once an install that applies to this tab changed, the file stood for 10 s and nothing in the plugin store changed for
@@ -265,16 +267,17 @@ export const register: Register = (on) => {
     return next(e);
   });
 
-  // The person's keys in the prompt box and prompts hold the refresh's /clear a while, and hide its band.
+  // The person's keys in the prompt box hold the refresh's /clear a while, which its band counts.
   on('prompt.edit', async (_$, e, next) => {
     clearHand?.personActed();
     void showBand?.();
     return next(e);
   });
 
+  // The person's prompt cancels the restart, which hides the band until the restart asks again.
   on('prompt.submit', async (_$, e, next) => {
     if (e.origin.kind === 'composer' || e.origin.kind === 'bridge') {
-      clearHand?.personActed();
+      clearHand?.promptSent();
       void showBand?.();
     }
     return next(e);
@@ -287,9 +290,13 @@ export const register: Register = (on) => {
       return next(e);
     }
     const { Box, Button, Text } = $.ui.resolve(e);
+    // Only the count and its end arm the digits, once the person left the tab alone a while: while they work in
+    // it, or a draft or a helper holds, a digit typed into the empty prompt box is theirs, and a click or the
+    // band's focus presses the buttons.
+    const armed = view.kind === 'counting' || view.kind === 'refreshing';
     const refreshNow = Button({
       key: REFRESH_NOW_KEY,
-      hotkey: '1',
+      ...(armed ? { hotkey: '1' } : {}),
       label: 'Refresh now',
       plain: true,
       onPress: () => {
@@ -299,7 +306,7 @@ export const register: Register = (on) => {
     });
     const hold = Button({
       key: HOLD_KEY,
-      hotkey: '2',
+      ...(armed ? { hotkey: '2' } : {}),
       label: 'Hold 10 min',
       plain: true,
       onPress: () => {
@@ -307,8 +314,9 @@ export const register: Register = (on) => {
         void showBand?.();
       },
     });
-    // Once the count ended the /clear comes with the next ask: Hold alone still stops it.
-    const buttons = view.kind === 'counting' ? [refreshNow, hold] : [hold];
+    // "Refresh now" passes the count and the person's holds, never a draft's or a helper's; once the count ended
+    // the /clear comes with the next ask, which Hold alone still stops.
+    const buttons = view.kind === 'counting' || view.kind === 'waiting' ? [refreshNow, hold] : [hold];
     return Box({ flexDirection: 'row', gap: 2, children: [Text({ children: bandLine(view) }), ...buttons] });
   });
 
