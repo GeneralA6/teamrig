@@ -2567,6 +2567,10 @@ tokens a turn applying it saves:
   The transcripts are read newest first up to `--max-mb` MB: past it the older ones are left unread, and the UNUSED
   lines say how many, and judge only the newest days read.
 
+Under the SCAN line, `BACKUP <stamp>, made <age> ago` names the newest finished `setup backup` of the same setup
+(Claude Code's folder, the project and the team's own skills folder) and the `setup restore` that previews putting it
+back; `NO BACKUP of this setup` means none holds it yet, so change nothing in it before `teamrig setup backup`.
+
 The last line, SAVINGS, adds up what applying every CONTEXT, DUPLICATE and UNUSED finding saves each turn. A busy
 machine writes hundreds of MB of transcripts a day, read at about 11 MB a second, so the default bound keeps a scan
 near a minute and a half.
@@ -2587,6 +2591,7 @@ Output:
 
 ```text
 SCAN ~/work/shop (no team yet)
+BACKUP 20261025T120000Z, made 3 min ago: teamrig setup restore 20261025T120000Z previews putting the setup back
 CONTEXT claude-md ~/.claude/CLAUDE.md: 2,100 chars (~525 tokens/turn)
 CONTEXT claude-md ~/work/shop/CLAUDE.md: 7,200 chars (~1,800 tokens/turn)
 CONTEXT skills 30 skill(s) listed: 7,400 chars (~1,850 tokens/turn); as this project's newest transcript lists them: skills folders and built-in 30 (7,400 chars)
@@ -2616,10 +2621,12 @@ else `~/.claude`): its `CLAUDE.md`, `settings.json` and `settings.local.json` an
 `skills-parked`, `agents`, `commands` and `output-styles` folders; the project's `CLAUDE.md`, `CLAUDE.local.md`,
 `.claude/CLAUDE.md`, `.claude/settings.json` and `.claude/settings.local.json`, its `.claude` folders `rules`,
 `skills`, `skills-parked`, `agents` and `commands`, and the CLAUDE.md files of its own folders that `rules scan`
-finds; the CLAUDE.md files of each folder above the project; and the project's memory folder. It skips `node_modules`
-and `.git` folders and folders more than 12 deep, and the manifest names each folder it skipped. It never prints a
-file's text, only counts, and it needs no team. Run it before you change your setup, by hand or by a team setup, and
-`teamrig setup restore` puts the setup back.
+finds; the CLAUDE.md files of each folder above the project; and the project's memory folder. When the project's
+team keeps its skills in its own folder (`paths.skills`), it also keeps that folder and the `skills-parked` folder
+beside it, which a team setup's slimming edits, and a `team-skills` line counts them; the team is found as `setup
+scan` finds it. It skips `node_modules` and `.git` folders and folders more than 12 deep, and the manifest names
+each folder it skipped. It never prints a file's text, only counts, and it needs no team. Run it before you change
+your setup, by hand or by a team setup, and `teamrig setup restore` puts the setup back.
 
 Flags:
 

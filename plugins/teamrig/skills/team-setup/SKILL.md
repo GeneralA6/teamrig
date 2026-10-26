@@ -47,6 +47,9 @@ teamrig setup backup --project "<project>" && teamrig setup scan --project "<pro
 
 - `BACKED UP <n> file(s) ... to <folder>`: the folder's last part is the backup's stamp, such as
   `20261025T120000Z`. No `BACKED UP` line: tell the user why, change nothing in their setup, and go on to step 4.
+  The backup keeps the team's own skills folder too (a `team-skills` line), which the slimming below edits.
+- The scan's second line names the backup that undoes the slimming: `BACKUP <stamp>, made <age> ago`. It reads
+  `NO BACKUP of this setup` instead: change nothing in their setup, tell the user, and go on to step 4.
 - The scan only reads. Show the user its `TOTAL` line (what every session start costs) and each group of findings
   with its count and the tokens a turn it saves, in a few lines, with what you propose for it:
   - `CONTEXT` (`C<n>`), a file loaded every turn over 6,000 chars or a skill description over 250: shorten it, and

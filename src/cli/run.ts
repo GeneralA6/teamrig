@@ -503,8 +503,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       Claude Code settings, its worktrees' too; it counts them by class, never printing a rule; without
       --yes it writes nothing
   setup backup [--project <dir>]   copies your Claude Code setup byte for byte (CLAUDE.md files, settings,
-      rules, skills, agents, commands, output styles, the project's memory) with a manifest of each
-      file's sha256 into a new folder under your state folder; it counts files, never printing one
+      rules, skills, agents, commands, output styles, the project's memory, the team's own skills folder)
+      with a manifest of each file's sha256 into a new folder under your state folder; it counts files,
+      never printing one
   setup restore [<stamp>] [--yes] [--remove-new]   lists the backups, or previews putting one back:
       changed and deleted files and files made since; --yes backs the setup up first, then writes and
       prints the restore that undoes it; --remove-new also removes the files made since
@@ -514,7 +515,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       over 250, repeated lines, rule lines that may override a core rule, wide allow rules, no deny rule,
       bypassed prompts, hooks writing into the context, and skills unused in --days (default 30) days of
       this machine's transcripts, read newest first up to --max-mb (default 1024) MB (one changed within
-      them is not judged); works before a team exists; it only reads
+      them is not judged); it names the newest setup backup, or NO BACKUP; works before a team exists;
+      it only reads
   config validate | config migrate [--yes]   migrate shows an older config rewritten in this format and
       the first teamrig that reads it, as a tab on an older one refuses every write after; --yes writes it
   commits check --base <ref> [--tip <ref>]   commits in base..tip (default HEAD) over the size rule
