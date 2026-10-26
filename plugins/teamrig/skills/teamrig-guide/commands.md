@@ -1100,8 +1100,9 @@ shop (this team): lead lead (shop-lead); members api (shop-api), web (shop-web)
 ### teamrig who
 
 Prints the name to message each session by (no argument), or one session's name (`teamrig who lead`, a role,
-id or name). A role the team leaves to a team above (`<team>/<id>`) gives that session's name there, or `<team>/<id>`
-when that team has no config to read. Message sessions only by these names.
+id or name). `teamrig who <team>/<id>` names a session of another team of your tree, by its id or name there; a team
+of a separate tree is refused. A role the team leaves to a team above (`<team>/<id>`) gives that session's name
+there, or `<team>/<id>` when that team has no config to read. Message sessions only by these names.
 
 Flags: none.
 
