@@ -255,8 +255,11 @@ describe('evaluatePushes: where a push hides', () => {
     expectRows([
       ["x='$(git push origin main)'; echo ${x@P}", 'ask', 'doubt'],
       ["x='a[$(git push -f origin main)]'; echo $((x))", 'ask', 'doubt'],
+      ["x='$(git push origin main) $('; echo ${x@P}", 'ask', 'doubt'],
+      [`x='${'$('.repeat(20)}git push origin main${')'.repeat(20)}'; echo \${x@P}`, 'ask', 'doubt'],
       ["git commit -m 'run $(git log -1) first'", 'allow'],
       ["bash -c 'echo $(git push origin feature)'", 'allow'],
+      [`grep -n "^##\\|push(\\\`##\\|'## " src/push-guard/push.ts`, 'allow'],
     ]);
   });
 
