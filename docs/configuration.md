@@ -282,7 +282,16 @@ The repositories teamrig integrate lands branches of on their default branch, by
 | `dependencyGate` | boolean |  | Refuse a branch (integrate) or a pushed range (roll) whose package files need a dependency install, so the main checkout node\_modules, which its worktrees link to, never changes unreviewed; dependencyCheck clears one for integrate, and with roll.dependencyInstall for roll. |
 | `dependencyCheck` | array (1 to 64 items) of string (at least 1 character) |  | With dependencyGate, what clears a dependency change: a program and its arguments, run without a shell under the host lock with the base package-lock.json in the file TEAMRIG\_BASELINE\_LOCK names (unset when the base has none). teamrig integrate runs it in the branch checkout after the rebase and before the push, the default branch its base; teamrig roll in the main checkout after the pull, its old HEAD the base. Exit 0 lets the change go, anything else refuses it. |
 | `followMainCheckout` | boolean |  | After the push, fast-forward the main checkout to it: only a fast-forward, only on the default branch with no tracked changes. |
+| `land` | [object](#coordinatorreposland) |  | How teamrig integrate lands a branch when the team's own flow merges it, such as a pull request the forge merges. Unset: integrate pushes the branch to the default branch. |
 | `roll` | [object](#coordinatorreposroll) |  | How teamrig roll deploys what landed on the default branch, each command a program and its arguments run without a shell from the main checkout. Unset: the repository is not rolled. |
+
+## `coordinator.repos.*.land`
+
+How teamrig integrate lands a branch when the team's own flow merges it, such as a pull request the forge merges. Unset: integrate pushes the branch to the default branch.
+
+| Key | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `command` (required) | array (1 to 64 items) of string (at least 1 character) |  | A program and its arguments, run without a shell in the branch checkout under the host lock after the rebase and the dependency check, with TEAMRIG\_LAND\_BRANCH, TEAMRIG\_LAND\_BASE (the default branch), TEAMRIG\_LAND\_HEAD and TEAMRIG\_SESSION set. Exit 0: the branch landed, which integrate confirms on the remote; 75: it waits (say a pull request waits on its checks or review), and running integrate again finishes it once it lands; anything else fails it. Its last output line is shown as the reason. |
 
 ## `coordinator.repos.*.roll`
 

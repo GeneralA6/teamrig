@@ -105,6 +105,7 @@ import {
   type CoordinatorConfig,
   type CoordinatorRepoConfig,
   type HeavyConfig,
+  type LandConfig,
   type RollConfig,
   type RollGateConfig,
   type CommitsConfig,
@@ -704,6 +705,7 @@ function parseCoordinatorRepos(read: ConfigReader, raw: JsonRecord): Record<stri
     if (mainCheckout === '') {
       continue;
     }
+    const land = entry['land'] === undefined ? undefined : parseLand(read, entry['land'], `${path}.land`);
     const roll = entry['roll'] === undefined ? undefined : parseRoll(read, entry['roll'], `${path}.roll`);
     const dependencyGate = read.boolean(entry, 'dependencyGate', path, false);
     const dependencyCheck = entry['dependencyCheck'] === undefined ? undefined : read.stringListItem(entry['dependencyCheck'], `${path}.dependencyCheck`, ROLL_ARGV_MAX_ITEMS);
@@ -716,13 +718,24 @@ function parseCoordinatorRepos(read: ConfigReader, raw: JsonRecord): Record<stri
       dependencyGate,
       ...(dependencyCheck === undefined ? {} : { dependencyCheck }),
       followMainCheckout: read.boolean(entry, 'followMainCheckout', path, false),
+      ...(land === undefined ? {} : { land }),
       ...(roll === undefined ? {} : { roll }),
     };
   }
   return repos;
 }
 
-/** A program's arguments in a roll hook, and the hooks of one kind, at most. */
+/** A repository's land command; one with no usable command is reported and left out, so integrate pushes the branch. */
+function parseLand(read: ConfigReader, raw: unknown, path: string): LandConfig | undefined {
+  const entry = read.objectItem(raw, path);
+  if (entry === undefined) {
+    return undefined;
+  }
+  const command = read.stringListItem(entry['command'], `${path}.command`, ROLL_ARGV_MAX_ITEMS);
+  return command === undefined ? undefined : { command };
+}
+
+/** A program's arguments in a roll or land hook, and the roll hooks of one kind, at most. */
 const ROLL_ARGV_MAX_ITEMS = 64;
 const ROLL_HOOKS_MAX_ITEMS = 16;
 

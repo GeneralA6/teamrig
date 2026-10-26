@@ -650,8 +650,22 @@ export interface CoordinatorRepoConfig {
   readonly dependencyCheck?: readonly string[];
   /** After the push, fast-forward the main checkout to it: only a fast-forward, only on the default branch with no tracked changes. */
   readonly followMainCheckout: boolean;
+  /** How `teamrig integrate` lands a branch when the team's own flow merges it; unset: integrate pushes it to the default branch. */
+  readonly land?: LandConfig;
   /** How `teamrig roll` deploys what landed on the default branch; unset: the repository is not rolled. */
   readonly roll?: RollConfig;
+}
+
+/** A team's own way of landing a branch on the default branch, such as a pull request merged by the forge. */
+export interface LandConfig {
+  /**
+   * A program and its arguments, run without a shell in the branch's checkout under the host lock after the rebase and
+   * the dependency check, with `TEAMRIG_LAND_BRANCH`, `TEAMRIG_LAND_BASE` (the default branch), `TEAMRIG_LAND_HEAD`
+   * and `TEAMRIG_SESSION` set. Exit 0: the branch landed, which integrate confirms on the remote; 75: it waits (say a
+   * pull request waits on its checks or review), and running integrate again finishes it once it lands; anything else
+   * fails it. Its last output line is shown as the reason.
+   */
+  readonly command: readonly string[];
 }
 
 /** A check `teamrig roll` asks before it rolls: a program and its arguments, run without a shell from the main checkout. */
