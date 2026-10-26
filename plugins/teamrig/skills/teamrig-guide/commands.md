@@ -2427,10 +2427,11 @@ A current config prints `UNCHANGED <path> needs no migration`, and one from a ne
 ### teamrig automode install
 
 Writes the team's lines into Claude Code's `autoMode.environment` setting on this machine: the facts auto mode's
-classifier takes as true when it decides whether a tool call may run without asking. There are three, each starting
+classifier takes as true when it decides whether a tool call may run without asking. There are four, each starting
 with the team's tag `[teamrig <team>] `: the protected branches and what a push to one does (from the config's
 `pushGuard` and `roles.lead`), the register commands every session runs (they write only under the team's folder),
-and what `teamrig heavy` and `teamrig test` wrap (nothing is granted: the command after `--` is judged on its own). A
+what `teamrig heavy` and `teamrig test` wrap (nothing is granted: the command after `--` is judged on its own), and
+that every session may run `teamrig worktree remove`, which removes only the worktrees the session may remove. A
 plugin cannot ship these (its settings take only `agent` and `subagentStatusLine`), so this writes them into your
 own Claude Code settings (`settings.json` in `$CLAUDE_CONFIG_DIR`, else in `~/.claude`). The lines replace the
 team's tagged lines where they were, else go at the end; your own lines and other teams' tagged lines stay as they
@@ -2459,6 +2460,7 @@ WROTE the changes below; the old settings file is at /home/me/.teamrig/backups/c
   ADD /home/me/.claude/settings.json autoMode.environment: [teamrig shop] Protected branches: main, master. A normal push to one asks the person. A force-push, a --mirror push or deleting one is refused, and a --force-with-lease push asks. Every session edits on its own branch in its own git worktree, never in a repo's main checkout.
   ADD /home/me/.claude/settings.json autoMode.environment: [teamrig shop] The task register: every session may run teamrig start, teamrig add, teamrig set, teamrig update, teamrig verify, teamrig list, teamrig show, teamrig check, teamrig plan, teamrig budget, teamrig rules, teamrig refresh, teamrig inbox read, teamrig inbox status, teamrig inbox add, teamrig who, teamrig rename for team shop; they write only under ~/.teamrig/teams/shop/.
   ADD /home/me/.claude/settings.json autoMode.environment: [teamrig shop] `teamrig heavy ... -- <cmd>` and `teamrig test ... -- <cmd>` run the session's own build, test or script on this host (heavy waits for the host lock, test records the result); neither grants anything, so judge the command after `--` as if it ran alone.
+  ADD /home/me/.claude/settings.json autoMode.environment: [teamrig shop] `teamrig worktree remove <path> [--delete-branch]` is how a session removes its finished worktree, and every session may run it: teamrig itself removes only a worktree whose t<id>- branch names a task the session owns or one of a session it leads (any for the lead, session lead), and refuses the main checkout, uncommitted work and a branch with a commit not on its base.
 ```
 
 A line that changed shows as `REMOVE` (the old text) and `ADD` (the new). `UNCHANGED <settings>: team <team>'s lines
@@ -2489,6 +2491,7 @@ PREVIEW nothing written (add --yes to write)
   REMOVE /home/me/.claude/settings.json autoMode.environment: [teamrig shop] Protected branches: main, master. A normal push to one asks the person. A force-push, a --mirror push or deleting one is refused, and a --force-with-lease push asks. Every session edits on its own branch in its own git worktree, never in a repo's main checkout.
   REMOVE /home/me/.claude/settings.json autoMode.environment: [teamrig shop] The task register: every session may run teamrig start, teamrig add, teamrig set, teamrig update, teamrig verify, teamrig list, teamrig show, teamrig check, teamrig plan, teamrig budget, teamrig rules, teamrig refresh, teamrig inbox read, teamrig inbox status, teamrig inbox add, teamrig who, teamrig rename for team shop; they write only under ~/.teamrig/teams/shop/.
   REMOVE /home/me/.claude/settings.json autoMode.environment: [teamrig shop] `teamrig heavy ... -- <cmd>` and `teamrig test ... -- <cmd>` run the session's own build, test or script on this host (heavy waits for the host lock, test records the result); neither grants anything, so judge the command after `--` as if it ran alone.
+  REMOVE /home/me/.claude/settings.json autoMode.environment: [teamrig shop] `teamrig worktree remove <path> [--delete-branch]` is how a session removes its finished worktree, and every session may run it: teamrig itself removes only a worktree whose t<id>- branch names a task the session owns or one of a session it leads (any for the lead, session lead), and refuses the main checkout, uncommitted work and a branch with a commit not on its base.
 ```
 
 `UNCHANGED <settings>: team <team> has no lines there` when it has none.
@@ -2733,8 +2736,20 @@ a locked worktree; a run from inside the worktree; a real `node_modules` folder 
 it); a link with tracked files under it; and uncommitted changes or untracked files, the files behind a link left
 out. It resolves `<path>` against the current folder.
 
+In a team, a session removes only its own worktrees and those of the sessions it leads; the lead removes any. A
+worktree is the session's whose branch names a task it owns: `t12-parser` is T12's. One on a branch that names no
+task, a task the register lacks, or no branch at all is the lead's alone. The caller is the session the Claude Code tab
+is bound to, else `--session` or `TEAMRIG_SESSION`; a tab bound to no session must give `--session`, and a tab bound
+to one session that names another is refused. Run outside Claude Code by the person, nothing is checked. Another
+session's worktree is refused before any change, naming who may remove it:
+
+```text
+REFUSED the worktree's branch t12-parser is T12's, which api owns: only api or lead removes it
+```
+
 Flags:
 
+- `--session <id|name>`: the session removing it, when the tab is bound to none.
 - `--delete-branch`: deletes the worktree's branch after it, once every commit of it is on the base: by ancestry,
   or as the same change under a new id, as a rebase merge leaves it (`git cherry`). It compares them as of the
   last fetch, so fetch first. Refused for a detached HEAD or a commit the base lacks.
