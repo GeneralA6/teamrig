@@ -174,9 +174,9 @@ export class Register {
   }
 
   /**
-   * `set <id> --status waiting|verifying --ask <session> --text "<the work>"`, in one write: the task asked of that
-   * session, then the caller's task set waiting on it, or its proof (after any `--waits` reasons given), so neither
-   * lands without the other. The status is judged on the register with the asked task in it; with no `--note`, the
+   * `set <id> --status waiting --ask <session> --text "<the work>"`, in one write: the task asked of that session,
+   * then the caller's task set waiting on it (after any `--waits` reasons given), so neither lands without the
+   * other. The status is judged on the register with the asked task in it; with no `--note`, the
    * work asked for is the note.
    */
   async ask(caller: string, id: string, ask: AskInput, input: StatusInput): Promise<Verdict<AskResult>> {

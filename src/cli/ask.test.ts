@@ -36,14 +36,27 @@ describe('runCli: set --ask asks a peer for work by a task', () => {
     assert.match(shown.stdout.join('\n'), /description: Asked by alpha for T1 \(Ship the release\), which waits on this task\./);
   });
 
-  it("asks for a verifying task's proof: the proof's party gets its task, and the verifying task waits on it", async () => {
+  it("refuses asking for a verifying task's proof, since the asked task starts open: the task waits on it instead", async () => {
     const kit = await startedTask();
     const proof = ['--proof', 'the nightly run is green', '--note', 'shipped', '--followups', 'none'];
-    const asked = await kit.run(['set', 'T1', '--status', 'verifying', ...proof, '--ask', 'bravo', '--text', 'Run the build tonight', '--session', 'alpha']);
+    const before = kit.files.get(EVENTS_PATH);
+    const refused = await kit.run(['set', 'T1', '--status', 'verifying', ...proof, '--ask', 'bravo', '--text', 'Run the build tonight', '--session', 'alpha']);
+    assert.equal(refused.code, EXIT.refused);
+    assert.match(
+      [...refused.stdout, ...refused.stderr].join('\n'),
+      /REFUSED --ask goes only with --status waiting: the asked task starts open, .* \(teamrig set T1 --status waiting --ask bravo --text "Run the build tonight"\)/,
+    );
+    assert.equal(kit.files.get(EVENTS_PATH), before);
+    const asked = await kit.run(['set', 'T1', '--status', 'waiting', '--ask', 'bravo', '--text', 'Run the build tonight', '--session', 'alpha']);
     assert.equal(asked.code, EXIT.ok, asked.stderr.join('\n'));
     assert.deepEqual(asked.stderr, ['NOTE bravo has an inbox line: T2 is yours (p2): Run the build tonight']);
-    assert.match(asked.stdout.join('\n'), /SET T1 verifying, .* \(proof: the nightly run is green; waiting: on T2\)/);
-    const owner = await kit.run(['set', 'T1', '--status', 'verifying', '--note', 'the owner tries it', '--waits', 'approval:owner', ...TEST_CARD_FLAGS, '--followups', 'none', '--session', 'alpha']);
+    assert.match(asked.stdout.join('\n'), /SET T1 waiting, .* \(waiting: on T2; Run the build tonight\)/);
+  });
+
+  it("parks a verifying task on the owner's approval beside the time its proof runs", async () => {
+    const kit = await startedTask();
+    const proof = ['--proof', 'the owner tries it', '--note', 'shipped', '--followups', 'none'];
+    const owner = await kit.run(['set', 'T1', '--status', 'verifying', ...proof, '--waits', 'approval:owner,time:2030-01-08 22:00', ...TEST_CARD_FLAGS, '--session', 'alpha']);
     assert.equal(owner.code, EXIT.ok, owner.stderr.join('\n'));
     assert.deepEqual(owner.stderr, [`NOTE lead has an inbox line: T1 waits on the owner's approval: ${TEST_CARD.question} | asked in the next batch at the daily meeting`]);
   });

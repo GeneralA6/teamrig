@@ -203,7 +203,7 @@ describe('peerWaitFlags', () => {
       peerWaitFlags(tasks, new LeadTree(testConfig()), 'owner').map((flag) => `${flag.kind} ${flag.task.id}: ${flag.detail}`),
       [
         `PEER-WAIT T1: approval:bravo is a peer's work: wait on it by its task (set T1 --status waiting --ask bravo --text "<the work>")`,
-        `PEER-WAIT T3: approval:bravo is a peer's work: wait on it by its task (set T3 --status verifying --ask bravo --text "<the work>")`,
+        `PEER-WAIT T3: approval:bravo is a peer's work: wait on it by its task (set T3 --status waiting --ask bravo --text "<the work>")`,
       ],
     );
   });
