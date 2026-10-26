@@ -34,7 +34,8 @@ function lineOf(read, index) {
  * The snapshot of a register's working set after a compaction: the header, then, in write order, every
  * event but those of the tasks it retires, so `show` lists the same events for every task it keeps. Each
  * is its line as written, never re-serialized, so a field this code does not parse is kept. The orphans
- * among the events left out are counted in the header.
+ * among the events left out are counted in the header. A task that moved to another team retires at once, whatever
+ * its age, with its moved line: the other team's register holds it, and the history still says where it went.
  * `source` must hold in `read.events` exactly the events its state folds from (a working-set or a
  * history read), and hold no line from a newer teamrig's format or status: those are no events, so the
  * snapshot would drop them, and such a log is never compacted (rotate.ts).
@@ -44,7 +45,8 @@ export function compactRegister(source, options) {
     const floor = currentWeekOf(source, options.now, options.zone);
     const retainMs = options.retainDays * MS_PER_DAY;
     const retiring = [...source.state.tasks.values()].filter((task) => !options.keep.has(task.id) && isRetirable(task, now, retainMs, floor));
-    const retiredIds = new Set(retiring.map((task) => task.id));
+    const moved = [...source.state.moved.keys()];
+    const retiredIds = new Set([...retiring.map((task) => task.id), ...moved]);
     const fold = new RegisterFold();
     const kept = [];
     let keptOrphans = 0;
@@ -63,11 +65,11 @@ export function compactRegister(source, options) {
         unreadable: source.read.unreadable,
         newer: source.read.newer,
         newestVersion: source.read.newestVersion,
-        retired: (source.retired?.count ?? 0) + retiring.length,
+        retired: (source.retired?.count ?? 0) + retiredIds.size,
         retiredLastWeek: newestWeek([source.retired?.lastWeek ?? null, ...retiring.map((task) => task.week)]),
         at: options.now.toISOString(),
     };
     const text = [toJsonlLine(snapshotHeaderRecord(header)), ...kept.map((line) => `${line}\n`)].join('');
-    const retiredNow = retiring.map((task) => task.id).sort((a, b) => taskNumber(a) - taskNumber(b));
+    const retiredNow = [...retiredIds].sort((a, b) => taskNumber(a) - taskNumber(b));
     return { header, text, kept: source.state.tasks.size - retiring.length, retiredNow };
 }

@@ -6,10 +6,12 @@ export function taskNumber(id) {
 /**
  * Replays events in write order, one at a time. A task's state depends on its own events only, so
  * replaying one task's events gives the same task as replaying the whole log: a compaction keeps the
- * events of the tasks it keeps and nothing else (compaction.ts).
+ * events of the tasks it keeps and nothing else (compaction.ts). A moved event takes its task out of the
+ * register: the id is the other team's from then on, and any event on it here is an orphan, a create too.
  */
 export class RegisterFold {
     tasks;
+    moved;
     orphans;
     maxId;
     /**
@@ -19,13 +21,17 @@ export class RegisterFold {
      */
     constructor(from, seenIds = []) {
         this.tasks = new Map(from?.tasks);
+        this.moved = new Map(from?.moved);
         this.orphans = from?.orphans ?? 0;
         const floor = from === undefined ? 0 : taskNumber(from.nextId) - 1;
         this.maxId = seenIds.reduce((max, id) => Math.max(max, taskNumber(id)), floor);
     }
-    /** Applies one event; false when it names no task, or creates one twice: an orphan, counted and ignored. */
+    /** Applies one event; false when it names no task, creates one twice or names one that moved: an orphan, counted and ignored. */
     apply(event) {
         this.maxId = Math.max(this.maxId, taskNumber(event.id));
+        if (this.moved.has(event.id)) {
+            return this.orphan();
+        }
         const current = this.tasks.get(event.id);
         if (event.type === 'create') {
             if (current !== undefined) {
@@ -37,12 +43,17 @@ export class RegisterFold {
         if (current === undefined) {
             return this.orphan();
         }
+        if (event.type === 'moved') {
+            this.tasks.delete(event.id);
+            this.moved.set(event.id, event.to);
+            return true;
+        }
         this.tasks.set(event.id, event.type === 'status' ? withStatus(current, event) : withChanges(current, event));
         return true;
     }
-    /** The state so far. Its task map is a copy, so later events never change a state already handed out. */
+    /** The state so far. Its maps are copies, so later events never change a state already handed out. */
     state() {
-        return { tasks: new Map(this.tasks), orphans: this.orphans, nextId: `T${this.maxId + 1}` };
+        return { tasks: new Map(this.tasks), orphans: this.orphans, nextId: `T${this.maxId + 1}`, moved: new Map(this.moved) };
     }
     orphan() {
         this.orphans += 1;
