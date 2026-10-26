@@ -5,7 +5,7 @@ import { boundaryOf, decideReady } from '../../refresh/decide.ts';
 import { RefreshStore } from '../../refresh/store.ts';
 import { noPositionals, onePositional, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
-import { openTeamKit, requireConfig, rosterOf, sessionIdOf } from '../kit.ts';
+import { leadOnly, openTeamKit, requireConfig, rosterOf, sessionIdOf } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 
 /**
@@ -71,10 +71,7 @@ export async function refresh(args: ParsedArgs, runtime: CliRuntime): Promise<Ex
     return EXIT.ok;
   }
 
-  const lead = roster.holderOf('lead');
-  if (by !== lead) {
-    throw new RefusedError(`only the lead${lead === undefined ? '' : ` (${roster.nameOf(lead) ?? lead})`} asks for a refresh`);
-  }
+  leadOnly(roster, by, 'asks for a refresh');
   const id = sessionIdOf(roster, target);
   await store.setRequest(id, { by, at: now });
   runtime.out.stdout(

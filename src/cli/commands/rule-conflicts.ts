@@ -16,7 +16,7 @@ import { lineHash } from '../../inbox/line-hash.ts';
 import { formatUtcDay } from '../../core/time.ts';
 import { noPositionals, onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
 import { callerOf, listOf } from '../inputs.ts';
-import { checkedNextConfig, configFileJson, openTeamKit, projectFolder, requireConfig, rosterOf, sessionIdOf, type Kit } from '../kit.ts';
+import { checkedNextConfig, configFileJson, leadOnly, openTeamKit, projectFolder, requireConfig, rosterOf, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { teamRulesPathsOf } from '../team-rules.ts';
 
@@ -205,10 +205,7 @@ async function leadConfig(args: ParsedArgs, runtime: CliRuntime, what: string): 
   const kit = await openTeamKit(runtime);
   const config = requireConfig(kit, runtime, 'write');
   const roster = await rosterOf(runtime, kit, config);
-  const lead = roster.holderOf('lead');
-  if (sessionIdOf(roster, caller) !== lead) {
-    throw new RefusedError(`only the lead${lead === undefined ? '' : ` (${roster.nameOf(lead) ?? lead})`} ${what}`);
-  }
+  leadOnly(roster, caller, what);
   return { kit, config };
 }
 

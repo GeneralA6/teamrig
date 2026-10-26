@@ -60,7 +60,7 @@ import { TASK_ID } from '../../register/model.ts';
 import { otherTeamsOnAccount, weekUseOnAccount } from '../account-teams.ts';
 import { UsageError, onePositional, requiredFlag, type Flags, type ParsedArgs } from '../args.ts';
 import { callerOf, type TypedTimes } from '../inputs.ts';
-import { openKit, openTeamKit, requireConfig, rosterOf, sessionIdOf, teamFolders, teamZone, type Kit } from '../kit.ts';
+import { leadOnly, openKit, openTeamKit, requireConfig, rosterOf, sessionIdOf, teamFolders, teamZone, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 
 /**
@@ -462,10 +462,7 @@ export async function extra(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const config = requireConfig(kit, runtime, writes ? 'write' : 'read');
   const roster = await rosterOf(runtime, kit, config);
   if (caller !== undefined) {
-    const lead = roster.holderOf('lead');
-    if (sessionIdOf(roster, caller) !== lead) {
-      throw new RefusedError(`only the lead${lead === undefined ? '' : ` (${roster.nameOf(lead) ?? lead})`} enters the extra-usage pool`);
-    }
+    leadOnly(roster, caller, 'enters the extra-usage pool');
     const { week, measured, now } = await readBudget(runtime, kit, config, roster, { recountDay: undefined });
     const window = week.window;
     if (window === undefined) {

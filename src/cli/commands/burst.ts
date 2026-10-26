@@ -32,7 +32,7 @@ import { teamsOnAccountOf } from '../account-teams.ts';
 import { noPositionals, onePositional, requiredFlag, UsageError, type Flags, type ParsedArgs } from '../args.ts';
 import { readBursts } from '../burst-reading.ts';
 import { callerOf, listOf } from '../inputs.ts';
-import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone, type Kit } from '../kit.ts';
+import { leadOnly, openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { pctFlag, timeFlag, usageReadingOf } from './budget.ts';
 import { ownRegister } from './register.ts';
@@ -51,15 +51,6 @@ const POLICY_TEXT: Readonly<Record<BurstPolicy, string>> = {
   lead: 'the lead starts one within the caps',
 };
 
-/** The lead's id, or a refusal naming who may run the command. */
-function leadOnly(roster: Roster, caller: string, what: string): string {
-  const by = sessionIdOf(roster, caller);
-  const lead = roster.holderOf('lead');
-  if (by !== lead) {
-    throw new RefusedError(`only the lead${lead === undefined ? '' : ` (${roster.nameOf(lead) ?? lead})`} ${what}`);
-  }
-  return by;
-}
 
 /** A count flag: a whole number of 0 or more, or undefined when it is not given. */
 function countFlag(flags: Flags, name: string): number | undefined {
