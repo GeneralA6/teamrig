@@ -12,10 +12,11 @@ export const RETAIN_DAYS = 8;
  * A task leaves the working set when every reader that skips the history can do without it: finished
  * (done or dropped) at least `retainMs` ago, and in no week plan from the one in force (`floor`) on. Then
  * `list` of active tasks, `check`, the current week's `plan` and the pane read the same on the working set
- * as on the whole history; `show`, `list --status done` and older plans read the history.
+ * as on the whole history; `show`, `list --status done` and older plans read the history. A done task still
+ * watched for a sighting stays too: `verify` lists it from the working set.
  */
 export function isRetirable(task, now, retainMs, floor) {
-    const finished = task.status === 'done' || task.status === 'dropped';
+    const finished = (task.status === 'done' && task.watch === null) || task.status === 'dropped';
     const inPlan = task.week !== null && (floor === null || task.week >= floor);
     return finished && !inPlan && now - Date.parse(task.updatedAt) >= retainMs;
 }

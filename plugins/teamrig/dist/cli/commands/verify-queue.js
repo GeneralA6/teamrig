@@ -1,27 +1,28 @@
 import { JsonlDailyLog } from "../../core/daily-log.js";
 import { KIT_NAME } from "../../core/home.js";
 import { JsonlEventLog } from "../../register/store.js";
-import { verifyByArrived, verifyQueue } from "../../register/verify.js";
+import { verifyByArrived, verifyQueue, watchQueue } from "../../register/verify.js";
 import { formatVerifyByLine, formatVerifySummary } from "../../register/views.js";
 /**
- * The verifying tasks of session `id`, oldest first, from the working set of the team's register log
- * alone: no lock and no archive (a compaction retires only finished tasks), so a hook can afford it.
+ * The tasks of the team's register log's working set alone: no lock and no archive (a compaction retires only
+ * finished tasks with no watch), so a hook can afford it.
  */
-async function queueOf(runtime, paths, id) {
+async function workingTasksOf(runtime, paths) {
     const snapshot = await new JsonlEventLog(runtime.files, paths.events).read();
-    return verifyQueue(snapshot.state.tasks.values(), id);
+    return [...snapshot.state.tasks.values()];
 }
 /**
- * `VERIFY <n>, oldest first:` and a row per verifying task (formatVerifySummary) for a session that holds some, for
- * its start context and `inbox read`; undefined for none, and when the register cannot be read, so its caller never
- * fails on it.
+ * `VERIFY <n>, oldest first:` and a row per verifying task, then a `WATCH` line for its watched done tasks
+ * (formatVerifySummary) for a session that holds some, for its start context and `inbox read`; undefined for none,
+ * and when the register cannot be read, so its caller never fails on it.
  */
 export async function verifyNoteOf(runtime, paths, id) {
     if (id === undefined) {
         return undefined;
     }
     try {
-        return formatVerifySummary(await queueOf(runtime, paths, id), id, KIT_NAME);
+        const tasks = await workingTasksOf(runtime, paths);
+        return formatVerifySummary(verifyQueue(tasks, id), watchQueue(tasks, id), id, KIT_NAME);
     }
     catch {
         return undefined;
@@ -40,7 +41,7 @@ export async function verifyByLinesOf(runtime, paths, id, zone) {
     if (await scans.seen(key, now)) {
         return [];
     }
-    const due = (await queueOf(runtime, paths, id)).filter((task) => verifyByArrived(task, now, zone));
+    const due = verifyQueue(await workingTasksOf(runtime, paths), id).filter((task) => verifyByArrived(task, now, zone));
     await scans.record(key, now);
     return due.map((task) => formatVerifyByLine(task, zone));
 }

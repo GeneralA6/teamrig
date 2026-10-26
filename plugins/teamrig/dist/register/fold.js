@@ -1,4 +1,5 @@
 import { WAIT_STATUSES } from "./model.js";
+import { sameWait } from "./waits.js";
 /** The numeric part of a task id (`T12` → 12). */
 export function taskNumber(id) {
     return Number(id.slice(1));
@@ -78,6 +79,8 @@ function created(id, fields, at, by) {
         card: null,
         answer: null,
         proof: null,
+        watch: null,
+        reparks: 0,
         followups: [],
         review: {},
         startedAt: null,
@@ -103,6 +106,8 @@ function withStatus(task, event) {
         card: WAIT_STATUSES.includes(event.status) ? (event.card ?? null) : null,
         answer: null,
         proof: event.status === 'verifying' ? (event.proof ?? null) : null,
+        watch: event.status === 'done' ? (event.watch ?? null) : null,
+        reparks: reparksAfter(task, event),
         followups: event.followups === undefined ? task.followups : [...new Set([...task.followups, ...event.followups])],
         review: event.review === undefined ? task.review : { ...task.review, ...event.review },
         startedAt: task.startedAt ?? (event.status === 'in-progress' || event.status === 'verifying' ? event.at : null),
@@ -110,6 +115,16 @@ function withStatus(task, event) {
         updatedBy: event.by,
         ownerSeenAt: event.by === task.owner ? event.at : task.ownerSeenAt,
     };
+}
+/** True when setting `status` with `waits` re-parks the task's proof, as {@link Task.reparks} counts it. */
+export function isRepark(task, status, waits) {
+    return status === 'verifying' && task.status === 'verifying' && task.waits.length > 0 && waits.some((reason) => !task.waits.some((had) => sameWait(had, reason)));
+}
+function reparksAfter(task, event) {
+    if (event.status !== 'verifying') {
+        return 0;
+    }
+    return isRepark(task, event.status, event.waits ?? []) ? task.reparks + 1 : task.reparks;
 }
 /**
  * An update's note from the task's owner is its note from then on, as a restated one on `set` is, so show and the

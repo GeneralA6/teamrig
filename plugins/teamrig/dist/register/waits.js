@@ -31,6 +31,10 @@ export function waitSpelling(reason) {
 export function sameWait(a, b) {
     return waitSpelling(a) === waitSpelling(b);
 }
+/** True when both lists name the same things to wait for, in any order. */
+export function sameWaits(a, b) {
+    return a.length === b.length && a.every((reason) => b.some((other) => sameWait(reason, other)));
+}
 /**
  * A decision or an approval asked of a peer: anyone but the task owner's `approvers` (its leaders, `LeadTree`) and the
  * owner. A peer's work is a task to wait on (`task:T<id>`, which clears by itself once that task finishes), so a write
