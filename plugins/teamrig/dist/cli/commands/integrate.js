@@ -13,7 +13,8 @@ import { stoppableHooks, stoppableLock, stoppableSleep, stoppableSteps, stoppedW
  * `coordinator.schedule.heavyCutoffUtc` to midnight UTC and in the `resetBlackoutHours` before the weekly token reset;
  * it waits up to `coordinator.wait.maxMinutes` for quiet claims on what the push deploys and for the host lock, then
  * rebases and pushes, the push a heavy step in the ledger. Once the shell that started it ends, it stops waiting, or
- * kills the step it runs (exit 129) and frees the lock. Exit 0 landed, 1 failed or stopped, 2 refused.
+ * kills the step it runs (exit 129) and frees the lock. A repository with a merge command runs it in place of the push.
+ * Exit 0 landed, 1 failed or stopped, 2 refused, 75 the merge command waits: run it again once the branch is merged.
  */
 export async function integrate(args, runtime) {
     const caller = callerOf(args.flags, runtime.env);
@@ -54,6 +55,9 @@ export async function integrate(args, runtime) {
                 return EXIT.failed;
             case 'refused':
                 throw new RefusedError(end.reason);
+            case 'waiting':
+                runtime.out.stdout(`WAITING ${end.reason}`);
+                return EXIT.waiting;
         }
     }
     finally {
