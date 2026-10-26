@@ -1,13 +1,20 @@
 import { join } from 'node:path';
 import type { CoordinatorPlaces } from '../coordinator/places.ts';
 import type { Files } from '../core/files.ts';
-import { isRecord, stringField } from '../core/guards.ts';
+import { stringField } from '../core/guards.ts';
+import { parseObject, recordVersion, VERSION_FIELD, writableObject } from '../core/jsonl.ts';
 
 /**
  * A branch whose repository's merge command said it waits (exit 75), say on a pull request's checks or review: one
- * JSON file per branch in the coordinator's `pending-merges` folder, written and removed under the host lock. The next
+ * file per branch in the coordinator's `pending-merges` folder, written and removed under the host lock. The next
  * integrate of that branch, still at that commit, finishes it without running the command again once origin's default
- * branch holds it.
+ * branch holds it. The format, one JSON object:
+ *
+ * - `v`: `PENDING_MERGE_FORMAT`;
+ * - `session`, `repo`, `branch`: who ran the command, and for which repository's branch;
+ * - `head`, `base`: the rebased commit the command was given, and origin's default branch when it ran;
+ * - `since`: when the first run of the command for this branch started, ISO 8601 UTC;
+ * - `note`: the command's last output line, such as the pull request's address; empty when it printed none.
  */
 export interface PendingMerge {
   readonly session: string;
@@ -23,13 +30,24 @@ export interface PendingMerge {
   readonly note: string;
 }
 
+/** The pending merge file's format; a field added to it raises this. */
+export const PENDING_MERGE_FORMAT = 1;
+
 /** The branch's file; git refuses `* ? :` and the like in branch names, so the encoded name is a file name on every OS. */
 export function pendingMergePath(places: Pick<CoordinatorPlaces, 'pendingMerges'>, repo: string, branch: string): string {
   return join(places.pendingMerges, `${encodeURIComponent(`${repo}/${branch}`)}.json`);
 }
 
-function pendingMergeOf(value: unknown): PendingMerge | undefined {
-  if (!isRecord(value)) {
+/** The file's text for a pending merge. */
+export function formatPendingMerge(pending: PendingMerge): string {
+  const { session, repo, branch, head, base, since, note } = pending;
+  return `${JSON.stringify({ [VERSION_FIELD]: PENDING_MERGE_FORMAT, session, repo, branch, head, base, since, note }, null, 2)}\n`;
+}
+
+/** The pending merge a file's text holds; undefined for damaged text, a missing field or a format it cannot read. */
+export function parsePendingMerge(text: string): PendingMerge | undefined {
+  const value = parseObject(text.trim());
+  if (value === undefined || recordVersion(value) !== PENDING_MERGE_FORMAT) {
     return undefined;
   }
   const session = stringField(value, 'session');
@@ -48,21 +66,15 @@ function pendingMergeOf(value: unknown): PendingMerge | undefined {
 /** The branch's pending merge; undefined when there is none, or its file is unreadable or names another branch. */
 export async function readPendingMerge(files: Pick<Files, 'read'>, places: Pick<CoordinatorPlaces, 'pendingMerges'>, repo: string, branch: string): Promise<PendingMerge | undefined> {
   const text = await files.read(pendingMergePath(places, repo, branch));
-  if (text === undefined) {
-    return undefined;
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    return undefined;
-  }
-  const pending = pendingMergeOf(parsed);
+  const pending = text === undefined ? undefined : parsePendingMerge(text);
   return pending?.repo === repo && pending.branch === branch ? pending : undefined;
 }
 
-export async function writePendingMerge(files: Pick<Files, 'write'>, places: Pick<CoordinatorPlaces, 'pendingMerges'>, pending: PendingMerge): Promise<void> {
-  await files.write(pendingMergePath(places, pending.repo, pending.branch), `${JSON.stringify(pending, null, 2)}\n`);
+/** Writes the branch's pending merge; one a newer teamrig wrote is refused (`NewerDataError`), never overwritten. */
+export async function writePendingMerge(files: Pick<Files, 'read' | 'write'>, places: Pick<CoordinatorPlaces, 'pendingMerges'>, pending: PendingMerge): Promise<void> {
+  const path = pendingMergePath(places, pending.repo, pending.branch);
+  writableObject(path, await files.read(path), PENDING_MERGE_FORMAT);
+  await files.write(path, formatPendingMerge(pending));
 }
 
 /** Removes the branch's pending merge; none is no error. */
