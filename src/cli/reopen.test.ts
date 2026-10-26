@@ -5,6 +5,9 @@ import { projectTranscriptPath } from '../budget/discover.ts';
 import type { CommitCharge } from '../coordinator/memory.ts';
 import type { Files } from '../core/files.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
+import { MS_PER_MINUTE } from '../core/time.ts';
+import { inboxLineOf } from '../inbox/inbox.ts';
+import { lineHash } from '../inbox/line-hash.ts';
 import { decodePrompt, defaultPrompt, reopenPrompt } from '../open/prompt.ts';
 import { SessionLog, type CloseRecord } from '../sessions/log.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
@@ -223,6 +226,23 @@ describe('teamrig idle-open', () => {
     assert.match(quoted ?? '', /^- \d\d:\d\d \S+ lead: Answer the review on T1\.$/);
     assert.deepEqual(rest, [reopenPrompt('app', 'alpha')]);
     assert.deepEqual(await asks.read('alpha'), [], 'taken, so its wake check does not wake it on them again');
+  });
+
+  it('reopens for a --wake-by line only from its time, quoting it', async () => {
+    const alpha = await closedAlpha(40_000);
+    const at = alpha.kit.clock.now();
+    const text = 'Answer the review on T1.';
+    assert.equal((await alpha.kit.run(['inbox', 'add', '--to', 'alpha', '--text', text, '--session', 'lead'])).code, EXIT.ok);
+    const asks = new WakeAsks(alpha.kit.files, ASKS);
+    await asks.post('alpha', { from: 'lead', text, at, by: { at: at + 10 * MS_PER_MINUTE, line: lineHash(inboxLineOf(new Date(at), 'lead', text)) } });
+    const early = await idleOpen(alpha);
+    assert.match(early.result.stdout[0] ?? '', /^KEPT app-alpha/);
+    assert.deepEqual(early.argv, []);
+    alpha.kit.clock.advance(10 * MS_PER_MINUTE);
+    const { result, argv } = await idleOpen(alpha);
+    assert.match(result.stdout[0] ?? '', /^REOPENED app-alpha \(session alpha\) for an urgent line from lead: /);
+    assert.match((promptOf(argv) ?? '').split('\n')[1] ?? '', /^- \d\d:\d\d \S+ lead: Answer the review on T1\.$/);
+    assert.deepEqual(await asks.read('alpha'), []);
   });
 
   it('keeps the urgent lines for the next pass when no terminal opens, and says when it could not take them', async () => {

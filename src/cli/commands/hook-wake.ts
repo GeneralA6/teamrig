@@ -8,10 +8,10 @@ import { FileLock, LockBusyError } from '../../core/lock.ts';
 import { MeetingStore, phaseOf } from '../../meeting/state.ts';
 import { restartMayAct } from '../../refresh/restart.ts';
 import { RefreshStore } from '../../refresh/store.ts';
-import { sessionIdOf } from '../../inbox/inbox.ts';
+import { sessionIdOf, unseenLinesOf } from '../../inbox/inbox.ts';
 import type { Task } from '../../register/fold.ts';
 import type { TasksElsewhere } from '../../register/tree.ts';
-import { askVerdictOf, asksFolderOf, handedPrompt, handedToast, WakeAsks, type WakeAsk } from '../../wake/asks.ts';
+import { askVerdictOf, asksFolderOf, asksNowOf, handedPrompt, handedToast, WakeAsks, type WakeAsk } from '../../wake/asks.ts';
 import { dayStartPrompt, dayStartToast, decideDayStart, dueMoments, nextDayStartAt, startableTasks, type DayMoment, type DayStartVerdict } from '../../wake/day-start.ts';
 import { decideWake, effectivePriority, URGENT_PRIORITY, wakeCost, wakeRestOf, type WakeState } from '../../wake/decide.ts';
 import { WakePrompts } from '../../wake/prompts.ts';
@@ -22,6 +22,7 @@ import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { readWPerPct } from '../stored-week.ts';
 import { teamRegister } from '../team-register.ts';
 import { budgetFactsOf } from './hook-budget.ts';
+import { inboxDepsOf } from './inbox.ts';
 import { runIdlePass } from './hook-idle-pass.ts';
 import { parseJson, sessionTeam, teamSessionOf } from './hook-input.ts';
 import { rearmDeadRestart } from './hook-restart.ts';
@@ -191,7 +192,8 @@ async function momentsOf(
 
 /**
  * Decides under the session's wake lock, so two tabs of one session never wake it twice. Urgent lines due wake it
- * with any work due as well; the asks a wake takes, or damaged ones, are removed under the lock.
+ * with any work due as well; the asks a wake takes, and spent ones (damaged, or timed with their line seen), are
+ * removed under the lock. A timed ask stays until its time.
  */
 async function decide(runtime: CliRuntime, scope: Extract<WakeScope, { kind: 'found' }>, store: WakeStore): Promise<CheckVerdict> {
   const { config, kit, id, tab } = scope;
@@ -203,8 +205,8 @@ async function decide(runtime: CliRuntime, scope: Extract<WakeScope, { kind: 'fo
     const now = clock.now();
     const batchMs = config.wake.batchSeconds * SECOND_MS;
     const asks = new WakeAsks(files, kit.paths.wakeAsks);
-    const stored = await asks.read(id);
-    const asked = askVerdictOf(stored, now, batchMs);
+    const found = await asksNowOf(await asks.read(id), now, () => unseenLinesOf(inboxDepsOf(runtime, kit.paths), id));
+    const asked = askVerdictOf(found, now, batchMs);
     const decision = decideWake({
       tasks,
       elsewhere,
@@ -217,9 +219,7 @@ async function decide(runtime: CliRuntime, scope: Extract<WakeScope, { kind: 'fo
       minGapMs: config.wake.minGapMinutes * MINUTE_MS,
       previous: await store.read(id),
     });
-    if (asked.kind !== 'later') {
-      await asks.remove(id, stored);
-    }
+    await asks.remove(id, asked.kind === 'wake' ? found.taken : found.spent);
     if (decision.verdict.kind === 'wake' || asked.kind === 'wake') {
       await store.write(id, decision.state);
       return { kind: 'handed', tasks: decision.verdict.kind === 'wake' ? decision.verdict.tasks : [], asks: asked.kind === 'wake' ? asked.asks : [] };

@@ -2,6 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
+import { inboxLineOf } from '../inbox/inbox.ts';
+import { lineHash } from '../inbox/line-hash.ts';
 import { MS_PER_MINUTE } from '../core/time.ts';
 import { TOOL_END_WRITE_MS, type RestoreEntry } from '../restore/entry.ts';
 import { RestoreRegistry, restoreSessionsDir } from '../restore/registry.ts';
@@ -168,6 +170,24 @@ describe('hook tool-end: a busy session sees its --wake now lines', () => {
     const off = await alphaWithLine(false, { ...ON_TEAM, wake: { enabled: false } });
     await new WakeAsks(off.files, ASKS).post('alpha', { from: 'bravo', text: 'the api is ready', at: off.clock.now() });
     assert.deepEqual(await off.run(['hook', 'tool-end'], { stdin: BASH_END, env: TITLE_ON }), NO_OUTPUT);
+  });
+
+  it('takes a --wake-by ask only from its time, and drops it without a word once the session saw its line', async () => {
+    for (const seen of [false, true]) {
+      const kit = await alphaWithLine(false);
+      const at = kit.clock.now();
+      const line = lineHash(inboxLineOf(new Date(at), 'bravo', 'the api is ready'));
+      await new WakeAsks(kit.files, ASKS).post('alpha', { from: 'bravo', text: 'the api is ready', at, by: { at: at + 10 * MS_PER_MINUTE, line } });
+      assert.deepEqual(await kit.run(['hook', 'tool-end'], { stdin: BASH_END, env: TITLE_ON }), NO_OUTPUT);
+      assert.equal((await asksOf(kit)).length, 1, 'held until its time');
+      if (seen) {
+        assert.match(titledPromptOf(await kit.run(['hook', 'inbox-reminder'], { stdin: PROMPT })).context ?? '', LINE);
+      }
+      kit.clock.advance(10 * MS_PER_MINUTE);
+      const result = await kit.run(['hook', 'tool-end'], { stdin: BASH_END, env: TITLE_ON });
+      assert.match(linesOf(result)?.lines ?? '', seen ? /^$/ : LINE, `seen: ${seen}`);
+      assert.deepEqual(await asksOf(kit), [], `seen: ${seen}`);
+    }
   });
 
   it('still titles the tab when reading the asks fails', async () => {

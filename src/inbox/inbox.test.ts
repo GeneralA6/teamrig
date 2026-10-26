@@ -8,11 +8,13 @@ import { JERUSALEM } from '../testing/zone.ts';
 import {
   formatRead,
   formatStatus,
+  inboxLineOf,
   inboxStatus,
   lineOnClock,
   postLine,
   readInbox,
   sessionIdOf,
+  unseenLinesOf,
   type InboxDeps,
 } from './inbox.ts';
 import { lineHash } from './line-hash.ts';
@@ -128,6 +130,26 @@ describe('inboxStatus', () => {
   });
 });
 
+describe('unseenLinesOf', () => {
+  const hashes = (lines: readonly (string | undefined)[]) => new Set(lines.map((line) => lineHash(line ?? '')));
+
+  it('holds the hashes of the unread lines no prompt has shown, and none for an area without an inbox', async () => {
+    const { deps } = setup({ [`${DIR}/alpha.md`]: LINES.join('\n') });
+    assert.deepEqual(await unseenLinesOf(deps, 'alpha'), hashes(LINES));
+    assert.deepEqual(await unseenLinesOf(deps, 'charlie'), new Set());
+  });
+
+  it('leaves out the lines marked read and those a prompt showed any session of the area', async () => {
+    const { deps } = setup({ [`${DIR}/alpha.md`]: LINES.slice(0, 2).join('\n') });
+    await readInbox(deps, { area: 'alpha', claudeSession: SESSION, now: NOW });
+    await deps.inboxes.append('alpha', LINES[2] ?? '');
+    assert.deepEqual(await unseenLinesOf(deps, 'alpha'), hashes([LINES[2]]), 'read up to line 2');
+
+    const shown = setup({ [`${DIR}/alpha.md`]: LINES.join('\n'), [SHOWN]: shownLine('alpha', LINES[1] ?? '', 2, OTHER_SESSION) });
+    assert.deepEqual(await unseenLinesOf(shown.deps, 'alpha'), hashes([LINES[2]]), 'shown up to line 2, never marked read');
+  });
+});
+
 describe('lineOnClock', () => {
   it("shows a dated line's time on the team's clock, and an undated line as it is", () => {
     assert.equal(lineOnClock('- 2030-01-08 10:00 lead: ship it', TimeZone.UTC), '- 2030-01-08 10:00 UTC lead: ship it');
@@ -144,6 +166,7 @@ describe('postLine', () => {
     const { files, deps } = setup({ [`${DIR}/bravo.md`]: '- 2030-01-07 09:00 lead: old' });
     assert.equal(await postLine(deps.inboxes, secrets, { to: 'bravo', from: 'alpha', text: ' disk is at 91% ', now: NOW }), undefined);
     assert.equal(files.get(`${DIR}/bravo.md`), '- 2030-01-07 09:00 lead: old\n- 2030-01-08 10:00 alpha: disk is at 91%\n');
+    assert.equal(inboxLineOf(NOW, 'alpha', 'disk is at 91%'), '- 2030-01-08 10:00 alpha: disk is at 91%', 'the line a timed ask hashes');
   });
 
   it('refuses bad areas, multi-line text and secrets', async () => {
