@@ -1,16 +1,17 @@
 import { join } from 'node:path';
 import { claudeConfigDir, KIT_NAME } from '../../core/home.ts';
 import { readManifest, type BackupManifest } from '../../setup/backup-manifest.ts';
-import { SETUP_KINDS } from '../../setup/backup-places.ts';
+import { SETUP_KINDS, teamSkillsOf } from '../../setup/backup-places.ts';
 import { applyRestore, planRestore, type RestoreOutcome, type RestorePlan } from '../../setup/backup-restore.ts';
 import { backupSetup, listBackups, setupBackupsDir, STAMP, type BackupResult, type ListedBackup, type SetupPorts } from '../../setup/backup.ts';
 import { noPositionals, UsageError, type ParsedArgs } from '../args.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { projectOf } from './setup.ts';
+import { projectOf, setupTeamOf } from './setup.ts';
 
 /**
  * `setup backup [--project <dir>]` copies the person's Claude Code setup byte for byte (its CLAUDE.md files, settings,
- * rules, skills, parked skills, agents, commands, output styles and the project's memory) into
+ * rules, skills, parked skills, agents, commands, output styles, the project's memory, and the project's team's own
+ * skills folder with the parked skills beside it when `paths.skills` moves it) into
  * `<the person's state folder>/teamrig/setup-backups/<UTC second>/` with a manifest of each file's SHA-256, outside the
  * kit home every session reads. `setup restore [<stamp>] [--yes] [--remove-new]` lists the backups, previews one, and
  * with --yes backs the setup up first and then puts the backup's files back. Neither ever prints a file's text.
@@ -27,16 +28,23 @@ function rootOf(runtime: CliRuntime): string {
 function backedUpLines(result: BackupResult): string[] {
   const bytes = result.manifest.files.reduce((sum, entry) => sum + entry.bytes, 0);
   const whys = [...new Set(result.manifest.skipped.map((folder) => folder.why))];
+  // A setup with no team skills folder of its own keeps none, so its line would only say so.
+  const kinds = SETUP_KINDS.filter((kind) => kind !== 'team-skills' || result.manifest.teamSkills !== undefined);
   return [
     `BACKED UP ${result.manifest.files.length} file(s), ${bytes} bytes to ${result.dir}`,
-    ...SETUP_KINDS.map((kind) => `  ${kind}: ${result.counts.get(kind) ?? 0} file(s)`),
+    ...kinds.map((kind) => `  ${kind}: ${result.counts.get(kind) ?? 0} file(s)`),
     ...(whys.length === 0 ? [] : [`  skipped ${result.manifest.skipped.length} folder(s): ${whys.join(', ')}; the manifest lists them`]),
   ];
 }
 
 export async function backup(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const at = { claudeDir: claudeConfigDir(runtime.env, runtime.userHome), project: await projectOf(runtime, args.flags.get('project')) };
+  const flag = args.flags.get('project');
+  const project = await projectOf(runtime, flag);
+  // The team setup scan reads for the same --project, so the backup keeps the skills folder a slimming edits.
+  const team = await setupTeamOf(runtime, flag === undefined ? undefined : project);
+  const claudeDir = claudeConfigDir(runtime.env, runtime.userHome);
+  const at = { claudeDir, project, teamSkills: teamSkillsOf(team?.kit.paths.skills, claudeDir) };
   const result = await backupSetup(portsOf(runtime), at, rootOf(runtime), runtime.clock.now());
   backedUpLines(result).forEach((line) => runtime.out.stdout(line));
   return EXIT.ok;
@@ -141,7 +149,7 @@ export async function restore(args: ParsedArgs, runtime: CliRuntime): Promise<Ex
     planLines(plan, removeNew).forEach((line) => runtime.out.stdout(line));
     return EXIT.ok;
   }
-  const before = await backupSetup(ports, { claudeDir: manifest.claudeDir, project: manifest.project }, root, runtime.clock.now());
+  const before = await backupSetup(ports, { claudeDir: manifest.claudeDir, project: manifest.project, teamSkills: manifest.teamSkills }, root, runtime.clock.now());
   backedUpLines(before).forEach((line) => runtime.out.stdout(line));
   const outcomes = await applyRestore(ports, dir, plan, removeNew);
   const done = outcomes.filter((outcome) => outcome.failed === undefined);

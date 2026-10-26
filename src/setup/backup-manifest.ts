@@ -5,8 +5,10 @@ import { pathKey } from '../core/paths.ts';
 import { MANIFEST } from '../permissions/trim.ts';
 import { sourceOfStored, type SetupLocations, type SkippedFolder } from './backup-places.ts';
 
-/** The manifest format this teamrig writes and reads. */
-export const BACKUP_FORMAT = 1;
+/** The manifest format this teamrig writes: 2 added `teamSkills` and the files kept under `files/team-skills/`. */
+export const BACKUP_FORMAT = 2;
+/** The format before `teamSkills`, still read: a backup made of a setup with no team skills folder of its own. */
+const NO_TEAM_SKILLS_FORMAT = 1;
 
 /** One file a setup backup keeps: where it was, its copy's path in the backup folder, its size and its SHA-256. */
 export interface BackupEntry {
@@ -79,7 +81,15 @@ function skippedOf(value: unknown): SkippedFolder | undefined {
   return path === undefined || why === undefined ? undefined : { path, why };
 }
 
-/** The manifest in `text`, or undefined when it is not one this teamrig wrote (another format, a field missing or edited). */
+/** A manifest's `teamSkills`: an absolute path, or absent, as format 1 always is. */
+function teamSkillsReads(value: unknown, format: unknown): value is string | undefined {
+  return value === undefined || (format === BACKUP_FORMAT && typeof value === 'string' && isAbsolute(value));
+}
+
+/**
+ * The manifest in `text`, or undefined when it is not one this teamrig wrote (another format, a field missing or
+ * edited). A format 1 manifest reads as the current format with no team skills folder.
+ */
 export function parseManifest(text: string): BackupManifest | undefined {
   let value: unknown;
   try {
@@ -87,20 +97,24 @@ export function parseManifest(text: string): BackupManifest | undefined {
   } catch {
     return undefined;
   }
-  if (!isRecord(value) || value['format'] !== BACKUP_FORMAT) {
+  if (!isRecord(value) || (value['format'] !== BACKUP_FORMAT && value['format'] !== NO_TEAM_SKILLS_FORMAT)) {
     return undefined;
   }
   const createdAt = stringField(value, 'createdAt');
   const claudeDir = stringField(value, 'claudeDir');
   const project = stringField(value, 'project');
+  const teamSkills = value['teamSkills'];
   const absent = value['absent'];
   if (createdAt === undefined || claudeDir === undefined || !isAbsolute(claudeDir) || project === undefined || !isAbsolute(project) || !isStringArray(absent)) {
     return undefined;
   }
-  const at: SetupLocations = { claudeDir, project };
+  if (!teamSkillsReads(teamSkills, value['format'])) {
+    return undefined;
+  }
+  const at: SetupLocations = { claudeDir, project, teamSkills };
   const files = listOf(value['files'], (entry) => entryOf(entry, at));
   const skipped = listOf(value['skipped'], skippedOf);
-  return files === undefined || skipped === undefined ? undefined : { format: BACKUP_FORMAT, createdAt, claudeDir, project, files, absent, skipped };
+  return files === undefined || skipped === undefined ? undefined : { format: BACKUP_FORMAT, createdAt, claudeDir, project, teamSkills, files, absent, skipped };
 }
 
 /** The manifest of the setup backup in `dir`. */

@@ -10,7 +10,7 @@ import { backupSetup, storedPath, type BackupResult, type SetupPorts } from './b
 
 const CLAUDE = join('/', 'u', '.claude');
 const PROJECT = join('/', 'work', 'app');
-const AT: SetupLocations = { claudeDir: CLAUDE, project: PROJECT };
+const AT: SetupLocations = { claudeDir: CLAUDE, project: PROJECT, teamSkills: undefined };
 const ROOT = join('/', 'state', 'teamrig', 'setup-backups');
 const NOW = Date.parse('2030-01-08T10:00:00Z');
 
@@ -130,5 +130,20 @@ describe('applyRestore', () => {
       { path: SETTINGS, step: 'restore', failed: 'EBUSY: resource busy or locked' },
       { path: SKILL, step: 'recreate', failed: 'the file read back differs from its backup copy' },
     ]);
+  });
+});
+
+describe("the team's own skills folder", () => {
+  it('plans a skill deleted there since the backup, and finds one made there since', async () => {
+    const teamSkills = join('/', 'kit', 'teams', 'app', 'skills');
+    const kept = join(teamSkills, 'review', 'SKILL.md');
+    const made = join(teamSkills, 'fresh', 'SKILL.md');
+    const files = new MemoryFiles({ [USER_RULES]: 'user rules', [kept]: 'review' });
+    const backup = await backupSetup(portsOf(files), { ...AT, teamSkills }, ROOT, NOW);
+    await files.remove(kept);
+    await files.write(made, 'fresh');
+    const plan = await planRestore(portsOf(files), backup.dir, backup.manifest);
+    assert.deepEqual(plan.files.map(({ entry, action }) => [entry.source, action]), [[USER_RULES, 'unchanged'], [kept, 'recreate']]);
+    assert.deepEqual(plan.added, [made]);
   });
 });
