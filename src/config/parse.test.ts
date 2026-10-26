@@ -474,22 +474,22 @@ describe('parseConfig', () => {
     assert.equal(config.coordinator.repos['bad']?.dependencyCheck, undefined);
   });
 
-  it('reads a repository’s land command, and leaves out one that is not a program with its arguments', () => {
-    const command = ['node', 'tools/land.ts'];
+  it('reads a repository’s merge command, and leaves out one that is not a program with its arguments', () => {
+    const command = ['node', 'tools/merge.ts'];
     const repos = {
-      forge: { mainCheckout: 'repos/forge', land: { command } },
+      forge: { mainCheckout: 'repos/forge', merge: { command } },
       push: { mainCheckout: 'repos/push' },
-      text: { mainCheckout: 'repos/text', land: { command: 'node land.ts' } },
-      empty: { mainCheckout: 'repos/empty', land: {} },
-      bare: { mainCheckout: 'repos/bare', land: ['node', 'land.ts'] },
+      text: { mainCheckout: 'repos/text', merge: { command: 'node merge.ts' } },
+      empty: { mainCheckout: 'repos/empty', merge: {} },
+      bare: { mainCheckout: 'repos/bare', merge: ['node', 'merge.ts'] },
     };
     const { config, issues } = parseConfig({ ...ROSTER, coordinator: { repos } });
-    assert.deepEqual(paths(issues).sort(), ['coordinator.repos.bare.land', 'coordinator.repos.empty.land.command', 'coordinator.repos.text.land.command']);
-    assert.deepEqual(config.coordinator.repos['forge'], { mainCheckout: 'repos/forge', deploysOnPush: [], dependencyGate: false, followMainCheckout: false, land: { command } });
-    assert.equal(config.coordinator.repos['push']?.land, undefined);
-    assert.equal(config.coordinator.repos['text']?.land, undefined);
-    assert.equal(config.coordinator.repos['empty']?.land, undefined);
-    assert.equal(config.coordinator.repos['bare']?.land, undefined);
+    assert.deepEqual(paths(issues).sort(), ['coordinator.repos.bare.merge', 'coordinator.repos.empty.merge.command', 'coordinator.repos.text.merge.command']);
+    assert.deepEqual(config.coordinator.repos['forge'], { mainCheckout: 'repos/forge', deploysOnPush: [], dependencyGate: false, followMainCheckout: false, merge: { command } });
+    assert.equal(config.coordinator.repos['push']?.merge, undefined);
+    assert.equal(config.coordinator.repos['text']?.merge, undefined);
+    assert.equal(config.coordinator.repos['empty']?.merge, undefined);
+    assert.equal(config.coordinator.repos['bare']?.merge, undefined);
   });
 
   it('reads a repository’s roll, its gates and afterPull hooks from their defaults', () => {
