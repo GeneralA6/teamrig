@@ -545,6 +545,18 @@ describe('RegisterPolicy.setStatus to waiting', () => {
     );
   });
 
+  it("has a child team's lead wait on the parent team's lead, its members still on theirs (T1140)", () => {
+    const child = new RegisterPolicy(testConfig(), { team: 'app', id: 'boss' });
+    const leads = testTask({ owner: 'lead', status: 'in-progress', startedAt: TASK.startedAt });
+    const wait = (on: RegisterPolicy, task: Task, who: string) =>
+      on.setStatus(task, task.owner, { status: 'waiting', note: 'x', waits: [{ kind: 'approval', who }], card: TEST_CARD }, { ...CTX, state: stateOf(task) });
+    assert.equal(wait(child, leads, 'app/boss').ok, true, "the parent team's lead approves the child lead's work");
+    assert.equal(error(wait(child, leads, 'lead')), "approval lead: decision and approval waits are for the parent team's lead (app/boss) and owner; wait on lead's work by its task: teamrig set T1 --status waiting --ask lead --text \"<the work you need>\"");
+    assert.equal(error(wait(policy, leads, 'app/boss')), 'approval app/boss: app/boss is neither the lead (lead) nor owner', 'a root team has no lead above');
+    assert.equal(error(wait(child, TASK, 'app/boss')), 'approval app/boss: app/boss is neither the lead (lead) nor owner', 'a member waits on its own leaders');
+    assert.equal(wait(child, TASK, 'lead').ok, true);
+  });
+
   it('waits on a task only once started, and only on another live task', () => {
     assert.equal(
       error(waiting(OPEN, [{ kind: 'task', id: 'T4' }])),
@@ -972,6 +984,12 @@ describe('RegisterPolicy.setStatus: the decision card', () => {
       /good answers it has: decide it$/,
       'the lead has no leader to wait on',
     );
+    const child = new RegisterPolicy(testConfig(), { team: 'app', id: 'boss' });
+    assert.match(
+      error(child.setStatus(lead, 'lead', { status: 'waiting', note: 'x', waits: OWNER_DECISION, card: TEST_CARD }, CTX)),
+      /good answers it has: decide it, or wait on your leader \(--waits decision:app\/boss\)$/,
+      "a child team's lead waits on the parent team's lead (T1140)",
+    );
     const business = set(TASK, { waits: OWNER_DECISION, card: { ...TEST_CARD, gate: 'Business ' } });
     assert.deepEqual(business.ok ? business.value.card : undefined, { ...TEST_CARD, gate: 'business' }, 'named as configured');
     assert.equal(set(TASK, { waits: [{ kind: 'approval', who: 'owner' }], card: { ...TEST_CARD, options: [] } }).ok, true, "an approval on the owner needs no gate");
@@ -1130,6 +1148,15 @@ describe('RegisterPolicy.approve (T684)', () => {
     assert.match(error(tree.approve(bravos('lead'), 'alpha', 'approved', 'ok')), /T1 does not wait on alpha's approval \(approval:alpha\)/);
     const alphas = testTask({ status: 'waiting', waits: [{ kind: 'approval', who: 'alpha' }] });
     assert.equal(error(tree.approve(alphas, 'alpha', 'approved', 'ok')), "only the lead (lead) answers an approval of alpha's");
+  });
+
+  it("lets only the parent team's lead answer a child team's lead, and not a member's wait (T1140)", () => {
+    const child = new RegisterPolicy(testConfig(), { team: 'app', id: 'boss' });
+    const leads = testTask({ owner: 'lead', status: 'waiting', waits: [{ kind: 'approval', who: 'app/boss' }] });
+    assert.deepEqual(child.approve(leads, 'app/boss', 'approved', 'ok'), { ok: true, value: { changes: {}, note: 'ok', verdict: 'approved' } });
+    assert.equal(error(child.approve(leads, 'lead', 'approved', 'mine')), "only the parent team's lead (app/boss) answers an approval of lead's");
+    assert.equal(error(child.approve(asking, 'app/boss', 'approved', 'ok')), "only the lead (lead) answers an approval of alpha's");
+    assert.match(error(child.approve({ ...leads, waits: [{ kind: 'approval', who: 'owner' }] }, 'app/boss', 'approved', 'ok')), /T1 does not wait on app\/boss's approval \(approval:app\/boss\)/);
   });
 
   it('needs a note, checked like any other', () => {
