@@ -57,7 +57,7 @@ describe('teamrig inbox add to a group', () => {
     assert.equal(secret.code, EXIT.refused);
     const usage = await kit.run(['inbox', 'add', '--to', 'bravo,', '--text', 'hi', '--session', 'lead']);
     assert.equal(usage.code, EXIT.usage);
-    assert.match(usage.stderr.join('\n'), /--to "bravo," is not a session id or name, <team>\/<id>, all, leads, group:<leader>, team:<team>, tree:leads, or a comma-separated list of them/);
+    assert.match(usage.stderr.join('\n'), /--to "bravo," is not a session id or name, <team>\/<id>, all, leads, group:<leader>, team:<team>, tree:leads, task:T<n>, or a comma-separated list of them/);
     assert.deepEqual([inboxOf(kit, 'alpha'), inboxOf(kit, 'bravo')], [undefined, undefined]);
   });
 

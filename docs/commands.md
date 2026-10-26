@@ -148,10 +148,11 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       the date to verify by
   inbox read [--session <area>]     prints the unread lines and marks them read
   inbox status [--session <area>]   unread lines per area
-  inbox add --to <id|name|team/id|all|leads|group:<leader>|team:<team>|tree:leads>[,...] --text "<one line>" [--wake now]
+  inbox add --to <id|name|team/id|all|leads|group:<leader>|team:<team>|tree:leads|task:T<n>>[,...] --text "<one line>" [--wake now]
       team/id: any session of another team of your tree; all, leads (the
       lead and the sub-leads) and group:<leader> (it and every session under it) are your own team's;
-      team:<team> is every session of a team of your tree and tree:leads every team's lead in it; a
+      team:<team> is every session of a team of your tree and tree:leads every team's lead in it;
+      task:T<n> is that task's owner and the owner of each active task of your tree whose ref is T<n>; a
       group leaves you out; a comma-separated list posts the line to each receiver once
       --wake now: also wakes each receiver idle at its prompt within about 3 minutes and says what
       that costs; a group only from a leader, another team only from the lead of a team above it
