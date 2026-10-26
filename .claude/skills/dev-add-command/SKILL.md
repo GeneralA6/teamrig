@@ -29,5 +29,9 @@ flag missing from any of them fails `npm test`.
 - A new flag on an existing command needs steps 2 to 6 too: the help line, the guide section's flags, the docs.
 - The guide is a skill every user's Claude reads; describe what the command does for the user and its refusals, not
   how it is built.
+- Changing a command's `effect` (say `read` to `write` once it writes) breaks three specs that list each command's
+  effect: `src/cli/effects.test.ts`, `src/cli/slash.test.ts` and `src/slash/plan.test.ts` (what `/teamrig` runs at
+  once). Update them in the commit that changes the effect, and run the `src/cli` and `src/slash` specs, not only
+  the command's own.
 
-Last verified: 2026-10-21
+Last verified: 2026-10-26
