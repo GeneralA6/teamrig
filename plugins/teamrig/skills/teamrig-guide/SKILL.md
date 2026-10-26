@@ -117,8 +117,9 @@ takes the earlier due of a task that needs it: `due 10-17 (from T9)`).
 ```sh
 teamrig set T4 --session api --status in-progress
 # ... do the work, commit it, verify it ...
-# shipped, but its proof comes later (a night's flow, a measurement)? set it verifying, with the proof and a date:
-# teamrig set T4 --session api --status verifying --note "shipped" --proof "tonight's run is clean" --due 2026-10-17 --followups none
+# shipped, but its proof comes later (a night's flow, a measurement)? set it verifying, with the proof, when it runs and a date:
+# teamrig set T4 --session api --status verifying --note "shipped" --proof "tonight's run is clean" --waits "time:2026-10-17 06:00" --due 2026-10-17 --followups none
+# tests or a dry run proved it and only a live sighting is left? close it done with --watch "<what a sighting shows>"
 # done, naming the tasks the work leaves (a finding, a next step), each added first, or none:
 teamrig set T4 --session api --status done --note "signup endpoint merged" --evidence "PR #12, 41 tests pass" --skill none --followups none
 ```
