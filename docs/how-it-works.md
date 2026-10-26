@@ -291,7 +291,8 @@ stateDiagram-v2
   `state/decisions-asked.json`) or starts the daily meeting after it was set. A batch is due when a wait not yet
   asked is due before the next batch time (asked at once), `decisions.batchAt` waits are not yet asked, or a
   `decisions.batchTimesUtc` time passed; the lead's `start` and `check` say so in one line, and `teamrig
-  decisions` prints the batch.
+  decisions` prints the batch. A wait asked at once wakes the lead who asks it: the team's lead, or, in a tree of
+  teams, the root team's lead.
 - A task's effective due is the earliest of its own due date and the effective dues of the active tasks that need
   it (planned after it or waiting on it), so the work a dated task needs inherits its date: a row shows it as
   `due 10-17 (from T9)`, and lists, `plan`, the meeting's late tasks and `check`'s date flags go by it. A row

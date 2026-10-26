@@ -145,7 +145,8 @@ waiting until every reason has cleared; `check` flags it `READY` once its tasks 
 and a decision or an approval clears when you set the next status (`set --status in-progress`). A new decision or
 approval wait posts the lead one inbox line (a child team's lead's own, the lead of the team above it); a decision for the human goes to the lead with the options, numbers
 and your recommendation. The lead asks the human in batches; when the line says `AT ONCE` (due before the next
-batch), message the lead too. A budget hold is a time (`time:<date>`), never an approval.
+batch), the lead who asks the human (in a tree of teams, the root team's) is woken too; message it only when the
+`set` says to. A budget hold is a time (`time:<date>`), never an approval.
 
 Work you need from another session is a task, never its approval. Ask for it and wait on it in one step:
 
