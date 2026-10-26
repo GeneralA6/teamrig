@@ -134,7 +134,7 @@ async function tabAnswerOf(deps, claudeSession, outcome) {
  * returns, so the next round asks afresh; an earlier run's are removed with the new ask's posting.
  */
 async function handToTab(deps, plan, claudeSession) {
-    await deps.asks.post(claudeSession, { team: plan.team, id: plan.id, at: plan.at, askedAt: new Date(deps.clock.now()).toISOString(), hold: plan.hold });
+    await deps.asks.post(claudeSession, { team: plan.team, id: plan.id, at: plan.at, askedAt: new Date(deps.clock.now()).toISOString(), hold: plan.hold, askEveryMs: plan.delayMs });
     try {
         const deadline = deps.clock.now() + CLAIM_WAIT_MS;
         for (;;) {

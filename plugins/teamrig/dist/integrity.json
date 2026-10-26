@@ -164,7 +164,7 @@
     "dist/config/limits.js": "cce30368a0a2d466014d1881725f2c19f1dc9135cff0630ad399985a57421758",
     "dist/config/load.js": "e3200d50db3d2a3b06ae86f98b24b31e0881dba624b538171e6c215bea973835",
     "dist/config/migrate.js": "6eebbd0c9e4e6076c08234e94df9c9246b0e469b0d785230298aec9008110d5b",
-    "dist/config/parse.js": "358d873be04495d4a07332e52500c4cbd890b8fe0902317fe21b68ece5b484c5",
+    "dist/config/parse.js": "bec6e213205d8281493597cc86cab602e1b5e25ca5d483feb62d660374255ab4",
     "dist/config/priorities.js": "52f412fb457deba1922ed1482a36d88dc8f0a9c813989a3601d9e49124e0b952",
     "dist/config/reader.js": "1abe6cfbb120122f221329e0218155898c4123d949e8050347ff419277f69b21",
     "dist/config/roster.js": "38e28b49421cd3f27917cf7a5427c7644b30457bb03ba4b6b340fc933b55b8e5",
@@ -303,7 +303,7 @@
     "dist/meeting/notices.js": "380e379dd89a82217e4c7cd6e214d2cff959894add645bee15f6d773ed84a2c8",
     "dist/meeting/quiet.js": "9eaabcc4165fd0c9c5d9de815193523696d384aa8a74889883d2688854216737",
     "dist/meeting/state.js": "cf4b5a48419983f658741923f266b16d9026f7a7589a4a63b901a8457efa7000",
-    "dist/mod/clear-hand.js": "68ea412ecb4eb77987e4d64e6f654b9817a8baa36b079d3320eddcbc29288fa7",
+    "dist/mod/clear-hand.js": "73b86c6b705ff9943657ac60604d3a1a77647be0bcd8c07926b03f97c4ddb77d",
     "dist/mod/refresh-hand.js": "3047049089a78fd08b6d8c84440c06036ea0fba31edf7da13d252ecd0eb0d432",
     "dist/mod/reload-hand.js": "c9e8ca0d861ba4ff1a1f7c7115204dec0df6037d92429acc37e67d79364d3414",
     "dist/mod/slash-hand.js": "d5891af28872043de6ec54354a949d577ff91c31ead4476eaaf5c6b42dcbdfe7",
@@ -357,7 +357,7 @@
     "dist/refresh/clear-asks.js": "75535574d640f0dc2e50b4693d43801f9a442d4f16bddcc7159d8c16986b128d",
     "dist/refresh/decide.js": "d9068f935085a5a1eac98e068f99a283d417c0383cff229cdb8eb605ce4fe732",
     "dist/refresh/restart-log.js": "5e8dd860079e1ff0b4e643d79639af45694a560785e6eabe6f476d286a84ac43",
-    "dist/refresh/restart.js": "908002992b15a253cda11a88f08c8803530959888a7e7cffa3546d94f43d6205",
+    "dist/refresh/restart.js": "5fbe6d05fdb78f48af7dc85d3ca263f2c70a9b716e8cf6e8f07cde4563bb1caf",
     "dist/refresh/running.js": "eb769d13d646299167f5c9a25546b1c8ee3a878bab82727710ae2e518089c045",
     "dist/refresh/state.js": "9809fcb9912e314bc45e371c52f465320e00a1231a1cbcbaa9c31ac97a044f37",
     "dist/refresh/store.js": "369e6ad5248179bb7cd658f5214bd69bd99735b1716c56addbfad4a417ae7dd4",
@@ -484,7 +484,7 @@
     "dist/worktree/git.js": "7ff958e8719e55522849055cb0cbf72dd8664f1966a54f90d80cd579b84d79b5",
     "dist/worktree/remove.js": "6ce7f4ad864f822bfef22905399af9e1857a2cfe59f141b629b90f6b32c39618",
     "hooks/hooks.json": "cfc7ef20ce924b68401bf064dbad4c990caadbcf36059ef86bdce71e59cdb2ae",
-    "hooks/register.test.ts": "1f4f0dcdd296b937b6ea2511f8dd5ea78dbac8751f74a15f2e905cc7d66d3275",
-    "hooks/register.ts": "89c67ed350214f0a4126de08758c18aca83994aa093a61b43cd07121dafdab26"
+    "hooks/register.test.ts": "d96064b78b6447a8a0b65198b874e37536cccbc597c987a31b2af8980bb5a4dc",
+    "hooks/register.ts": "f511c2621b92d3692eb99273c6e8a20f0e089a01dcc9b8782d2c66d10943839b"
   }
 }
