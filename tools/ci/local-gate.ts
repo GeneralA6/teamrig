@@ -5,6 +5,7 @@ import { dirname, join, resolve } from 'node:path';
 import { readTextIfPresent } from '../lib/files.ts';
 import { createGit, type Git } from '../lib/git.ts';
 import { isRecord } from '../lib/guards.ts';
+import { protectedPushRefusal } from './protected-refs.ts';
 
 /**
  * The local gate: runs every check CI runs on a committed tree, on this machine, and records the pass so a
@@ -160,14 +161,17 @@ export function parsePushUpdates(text: string): PushUpdate[] {
 }
 
 /**
- * Proves each commit a push sends: a deletion sends none; a commit whose tree has a pass record passes; the
- * commit checked out runs the checks; any other commit is refused, since the checks run on the checkout.
+ * Refuses a push that updates or deletes a protected branch (protected-refs.ts), then proves each commit it sends:
+ * a deletion sends none; a commit whose tree has a pass record passes; the commit checked out runs the checks; any
+ * other commit is refused, since the checks run on the checkout.
  */
 export async function provePush(updates: readonly PushUpdate[], checks: readonly LocalCheck[], deps: GateDeps): Promise<Verdict> {
   if (updates.length === 0) {
     deps.out('local checks: nothing to push');
     return PASSED;
   }
+  const refusal = protectedPushRefusal(updates.map((update) => update.remoteRef));
+  if (refusal !== undefined) return { passed: false, reason: refusal };
   const head = await gitLine(deps.git, ['rev-parse', 'HEAD']);
   for (const update of updates) {
     if (ZERO_SHA.test(update.localSha)) {
