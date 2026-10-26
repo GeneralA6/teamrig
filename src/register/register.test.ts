@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import type { SessionAddress } from '../core/address.ts';
 import { NewerDataError } from '../core/jsonl.ts';
 import { TEST_OWNER_CARD } from '../testing/card.ts';
 import { TimeZone } from '../core/zone.ts';
@@ -65,7 +66,8 @@ class FloorNumbering implements TaskNumbering {
   }
 }
 
-function setup(initial: Readonly<Record<string, string>> = {}, numbering: TaskNumbering = OWN_NUMBERS, elsewhere: ElsewhereReader = NOTHING_ELSEWHERE) {
+/** `above`: the parent team's lead, on a child team (T1140). */
+function setup(initial: Readonly<Record<string, string>> = {}, numbering: TaskNumbering = OWN_NUMBERS, elsewhere: ElsewhereReader = NOTHING_ELSEWHERE, above?: SessionAddress) {
   const files = new MemoryFiles(initial);
   const clock = new FakeClock(START);
   const mutex = new InlineMutex();
@@ -77,7 +79,7 @@ function setup(initial: Readonly<Record<string, string>> = {}, numbering: TaskNu
     elsewhere,
     clock,
     zone: TimeZone.UTC,
-    policy: new RegisterPolicy(testConfig()),
+    policy: new RegisterPolicy(testConfig(), above),
     skills,
     autoArchive: true,
   });
@@ -481,6 +483,21 @@ describe('Register.approve (T684)', () => {
     const { files, register } = await asking();
     const before = files.get(LOG);
     assert.match(errorOf(await register.approve('alpha', 'T1', 'approved', 'mine')), /only the lead/);
+    assert.equal(files.get(LOG), before);
+  });
+});
+
+describe('Register.approveFrom (T1140)', () => {
+  it("writes the parent team's lead's answer to the child lead's approval wait, on no roster here", async () => {
+    const { files, register } = setup({}, OWN_NUMBERS, NOTHING_ELSEWHERE, { team: 'app', id: 'boss' });
+    written(await register.add('lead', { title: 'Ship it', description: 'what and why', owner: 'lead', source: 'lead', priority: 1 }));
+    written(await register.setStatus('lead', 'T1', { status: 'waiting', waits: [{ kind: 'approval', who: 'app/boss' }], note: 'branch t1' }));
+    assert.match(errorOf(await register.approve('app/boss', 'T1', 'approved', 'ok')), /app.boss is not a session on this team/);
+    const { task, event } = written(await register.approveFrom('app/boss', 'T1', 'approved', 'tests green'));
+    assert.deepEqual([event.by, task.status, task.answer?.by, task.answer?.verdict], ['app/boss', 'waiting', 'app/boss', 'approved']);
+    const before = files.get(LOG);
+    assert.equal(errorOf(await register.approveFrom('app/other', 'T1', 'approved', 'ok')), "only the parent team's lead (app/boss) answers an approval of lead's");
+    assert.equal(errorOf(await register.approveFrom('app/boss', 'T9', 'approved', 'ok')), 'no task T9');
     assert.equal(files.get(LOG), before);
   });
 });
