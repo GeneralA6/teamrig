@@ -9,7 +9,7 @@ import { openTab } from "../../open/open-tab.js";
 import { encodePrompt } from "../../open/prompt.js";
 import { shellCommand } from "../../open/quote.js";
 import { plainSessionEnv } from "../../open/session-env.js";
-import { isClaudeProcess } from "../../open/session-processes.js";
+import { runsClaude } from "../../open/session-processes.js";
 import { RestoreRegistry, restoreSessionsDir } from "../../restore/registry.js";
 import { checkRestore, previewRestore, runRestore } from "../../restore/run.js";
 import { TranscriptFinder } from "../../restore/transcripts.js";
@@ -47,14 +47,6 @@ async function restoreTeamsOf(runtime) {
         });
     }
     return found;
-}
-/** Whether the recorded process still runs Claude Code: a pid the system gave another program since does not count. */
-async function stillRunning(runtime, pid) {
-    if (pid === undefined || !runtime.sessionProcesses.alive(pid)) {
-        return false;
-    }
-    const info = await runtime.sessionProcesses.describe(pid);
-    return info !== undefined && isClaudeProcess(info);
 }
 function reopenOutcomeOf(runtime, outcome, folder, argv) {
     if (outcome.kind === 'opened') {
@@ -110,7 +102,7 @@ async function restoreDepsOf(runtime, terminal) {
         countdown: runtime.restore.countdown,
         teams: await restoreTeamsOf(runtime),
         home: runtime.userHome,
-        stillRunning: (entry) => stillRunning(runtime, entry.pid),
+        stillRunning: (entry) => runsClaude(runtime.sessionProcesses, entry.pid),
         transcriptOf: (entry) => finder.find(entry),
         readTail: (path, maxBytes) => runtime.files.readTail(path, maxBytes),
         reopen: (tab) => reopen(runtime, tab, terminal),

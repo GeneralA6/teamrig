@@ -10,6 +10,14 @@ const NODE_PROGRAM = /^node(\.exe)?$/i;
 export function isClaudeProcess(info) {
     return CLAUDE_PROGRAM.test(info.name) || (NODE_PROGRAM.test(info.name) && /claude/i.test(info.commandLine));
 }
+/** Whether `pid` still runs Claude Code: a pid the system gave another program since does not count. */
+export async function runsClaude(processes, pid) {
+    if (pid === undefined || !processes.alive(pid)) {
+        return false;
+    }
+    const info = await processes.describe(pid);
+    return info !== undefined && isClaudeProcess(info);
+}
 /** PowerShell's start alone can take seconds on a busy machine. */
 export const LOOKUP_TIMEOUT_MS = 20_000;
 /** The stand-in for a SessionEnd hook gets as long as Claude Code gives its hooks by default. */

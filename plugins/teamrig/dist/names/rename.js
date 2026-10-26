@@ -1,6 +1,6 @@
 import { stringField } from "../core/guards.js";
 import { ID_PATTERN, NAME_PATTERN } from "../core/ids.js";
-import { parseJsonl } from "../core/jsonl.js";
+import { parseJsonl, parseObject } from "../core/jsonl.js";
 export const RENAME_VERSION = 1;
 export function parseRename(line) {
     if (line.version > RENAME_VERSION) {
@@ -46,4 +46,19 @@ export function readRenames(text) {
         }
     }
     return { renames, unreadable, newer };
+}
+/**
+ * The lines of a rename log's text that rename one of `ids`, for a team split that moves those sessions, and the
+ * rest. A damaged line, or one without an id, stays with the rest, as the log it was in still reports it.
+ */
+export function splitRenameLog(text, ids) {
+    const of = [];
+    const rest = [];
+    for (const line of text.split('\n').filter((each) => each.trim() !== '')) {
+        const record = parseObject(line.endsWith('\r') ? line.slice(0, -1) : line);
+        const id = record === undefined ? undefined : stringField(record, 'id');
+        (id !== undefined && ids.has(id) ? of : rest).push(line);
+    }
+    const textOf = (lines) => lines.map((line) => `${line}\n`).join('');
+    return { of: textOf(of), rest: textOf(rest), moved: of.length };
 }

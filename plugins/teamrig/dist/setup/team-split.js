@@ -2,9 +2,36 @@ import { parseConfig } from "../config/parse.js";
 import { ANCESTOR_ROLES, Roster } from "../config/roster.js";
 import { describeTreeProblem, teamNodeOf } from "../config/tree.js";
 import { ADDRESS_PATTERN } from "../core/address.js";
-import { recordField } from "../core/guards.js";
+import { isStringArray, recordField } from "../core/guards.js";
 import { KIT_NAME } from "../core/home.js";
 import { configRecordOf } from "./team-create.js";
+/**
+ * How a task on one side of the new border names a session from then on: as written when the session is on the same
+ * side, is the owner's marker or is named as `<team>/<id>` already; else as `<team>/<id>` of the team it is on.
+ */
+export class SplitBorder {
+    parent;
+    child;
+    moved;
+    ownerSource;
+    constructor(parent, child, moved, ownerSource) {
+        this.parent = parent;
+        this.child = child;
+        this.moved = new Set(moved);
+        this.ownerSource = ownerSource;
+    }
+    /** Whether a task its owner `owner` holds moves with the split. */
+    moves(owner) {
+        return this.moved.has(owner);
+    }
+    /** `name` as a task on the moving side (`moves`) or the staying side names it from then on; undefined when as written. */
+    crossing(moves, name) {
+        if (name === this.ownerSource || ADDRESS_PATTERN.test(name) || this.moved.has(name) === moves) {
+            return undefined;
+        }
+        return `${moves ? this.parent : this.child}/${name}`;
+    }
+}
 function ok(value) {
     return { ok: true, value };
 }
@@ -127,21 +154,32 @@ function namedSessions(task) {
     }
     return named;
 }
-/**
- * The sessions tasks name across the new border, as `<team>/<id>`: a staying session in a moving task names the
- * parent, a moved one in a staying task the child. The owner marker and a name already `<team>/<id>` stay as written.
- */
-function rewritesOf(tasks, moved, spec, parent) {
-    const owner = parent.config.register.ownerSource;
+/** The sessions tasks name across the new border (SplitBorder): a staying session in a moving task, a moved one in a staying task. */
+function crossingsOf(tasks, border) {
     return [...tasks].flatMap((task) => {
-        const moves = moved.has(task.owner);
+        const moves = border.moves(task.owner);
         return namedSessions(task).flatMap(([field, from]) => {
-            if (from === owner || ADDRESS_PATTERN.test(from) || moved.has(from) === moves) {
-                return [];
-            }
-            return [{ task: task.id, field, from, to: `${moves ? parent.team : spec.team}/${from}` }];
+            const to = border.crossing(moves, from);
+            return to === undefined ? [] : [{ task: task.id, field, from, to, moves }];
         });
     });
+}
+/**
+ * What the split does to the tasks of the parent's working set: those the moved sessions own move, the links between
+ * them and the rest cross the border, and so do the sessions they name. A moving task's lines are rewritten whole; a
+ * staying one gets an update for who asked and who pinned it, a wait on a moved session's decision or approval blocks
+ * the split, and an approval a moved session gave stays as written, as no update can give it again.
+ */
+export function splitTasksOf(tasks, border) {
+    const moving = [...tasks.values()].filter((task) => border.moves(task.owner));
+    const crossings = crossingsOf(tasks.values(), border);
+    return {
+        moving,
+        staying: tasks.size - moving.length,
+        links: linksOf(tasks, new Set(moving.map((task) => task.id))),
+        rewrites: crossings.filter((rewrite) => rewrite.moves || rewrite.field === 'source' || rewrite.field === 'pin'),
+        blockers: crossings.filter((rewrite) => !rewrite.moves && (rewrite.field === 'decision' || rewrite.field === 'approval')),
+    };
 }
 /** The `after` and task-wait links between a moving task and a staying one of the working set. */
 function linksOf(tasks, moving) {
@@ -174,15 +212,40 @@ export function planTeamSplit(parent, spec, tree, tasks) {
     if (placed !== undefined) {
         return fail(placed);
     }
-    const moved = new Set(spec.sessions);
-    const moving = [...tasks.values()].filter((task) => moved.has(task.owner));
-    return ok({
-        spec,
-        config: config.value,
-        moving,
-        staying: tasks.size - moving.length,
-        links: linksOf(tasks, new Set(moving.map((task) => task.id))),
-        rewrites: rewritesOf(tasks.values(), moved, spec, parent),
-        trim: trimOf(parent, moved),
+    const border = new SplitBorder(parent.team, spec.team, spec.sessions, parent.config.register.ownerSource);
+    return ok({ spec, config: config.value, border, ...splitTasksOf(tasks, border), trim: trimOf(parent, new Set(spec.sessions)) });
+}
+/** The map at `key` without the keys of moved sessions; nothing when the parent has no such map. */
+function withoutMoved(record, key, moved) {
+    const map = recordField(record, key);
+    return map === undefined ? {} : { [key]: Object.fromEntries(Object.entries(map).filter(([id]) => !moved.has(id))) };
+}
+/** The sub-leads' lists without a moved sub-lead's, and each staying one's without the moved sessions, an emptied one dropped. */
+function trimmedLeads(record, moved) {
+    const leads = recordField(record, 'leads');
+    if (leads === undefined) {
+        return {};
+    }
+    const kept = Object.entries(leads).flatMap(([lead, ids]) => {
+        if (moved.has(lead)) {
+            return [];
+        }
+        const left = isStringArray(ids) ? ids.filter((id) => !moved.has(id)) : ids;
+        return isStringArray(left) && left.length === 0 ? [] : [[lead, left]];
     });
+    return { leads: Object.fromEntries(kept) };
+}
+/**
+ * The parent's config after the split, as its file holds it: the moved sessions gone from its sessions, names, launch
+ * blocks and sub-leads' lists (ParentTrim says which), every other key as it was.
+ */
+export function trimmedParentOf(record, moved) {
+    const sessions = record['sessions'];
+    return {
+        ...record,
+        ...(isStringArray(sessions) ? { sessions: sessions.filter((id) => !moved.has(id)) } : {}),
+        ...withoutMoved(record, 'names', moved),
+        ...withoutMoved(record, 'launch', moved),
+        ...trimmedLeads(record, moved),
+    };
 }
