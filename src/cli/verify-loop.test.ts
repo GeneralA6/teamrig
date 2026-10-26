@@ -20,16 +20,20 @@ describe('runCli: set verifying names its proof', () => {
     const bare = await kit.run(['set', 'T1', '--status', 'verifying', '--note', 'shipped', '--followups', 'none', '--session', 'alpha']);
     assert.deepEqual([bare.code, bare.stdout], [EXIT.refused, ['REFUSED verifying needs --proof saying what will prove the shipped change works']]);
 
-    const set = await kit.run(['set', 'T1', '--status', 'verifying', '--note', 'shipped', '--followups', 'none', '--proof', 'the nightly run is green', '--session', 'alpha']);
+    const unrun = await kit.run(['set', 'T1', '--status', 'verifying', '--note', 'shipped', '--followups', 'none', '--proof', 'the nightly run is green', '--session', 'alpha']);
+    assert.equal(unrun.code, EXIT.refused);
+    assert.match(unrun.stdout[0] ?? '', /^REFUSED verifying needs --waits saying when its proof runs: time:<YYYY-MM-DD HH:MM> when it runs, or task:T<id> /);
+
+    const set = await kit.run(['set', 'T1', '--status', 'verifying', '--waits', 'time:2030-02-01 09:00', '--note', 'shipped', '--followups', 'none', '--proof', 'the nightly run is green', '--session', 'alpha']);
     assert.equal(set.code, EXIT.ok, set.stdout.join('\n'));
-    assert.match(set.stdout[0] ?? '', /^SET T1 verifying, .*\(proof: the nightly run is green\)$/);
+    assert.match(set.stdout[0] ?? '', /^SET T1 verifying, .*\(proof: the nightly run is green; waiting: until Fri 02-01 09:00 UTC\)$/);
     const shown = await kit.run(['show', 'T1', '--session', 'alpha']);
-    assert.match(shown.stdout.join('\n'), /\nproof: the nightly run is green\n[\s\S]*status verifying note="shipped" proof="the nightly run is green"/);
+    assert.match(shown.stdout.join('\n'), /\nproof: the nightly run is green\n[\s\S]*status verifying waits="until Fri 02-01 09:00 UTC" note="shipped" proof="the nightly run is green"/);
   });
 
   it('takes the date to verify by as --due', async () => {
     const kit = await startedTask();
-    const set = await kit.run(['set', 'T1', '--status', 'verifying', '--note', 'shipped', '--followups', 'none', '--proof', 'the nightly run', '--due', '2030-01-09', '--session', 'alpha']);
+    const set = await kit.run(['set', 'T1', '--status', 'verifying', '--waits', 'time:2030-02-01 09:00', '--note', 'shipped', '--followups', 'none', '--proof', 'the nightly run', '--due', '2030-01-09', '--session', 'alpha']);
     assert.equal(set.code, EXIT.ok, set.stdout.join('\n'));
     assert.match(set.stdout[0] ?? '', /^SET T1 verifying, p2, owner alpha, due 01-09,/);
   });
@@ -38,11 +42,11 @@ describe('runCli: set verifying names its proof', () => {
 describe('runCli: verify lists the verifying tasks of a session', () => {
   it('lists them oldest first, with the proof and the date to verify by', async () => {
     const kit = await startedTask();
-    await kit.run(['set', 'T1', '--status', 'verifying', '--note', 'shipped', '--followups', 'none', '--proof', 'the nightly run', '--due', '2030-01-09', '--session', 'alpha']);
+    await kit.run(['set', 'T1', '--status', 'verifying', '--waits', 'time:2030-02-01 09:00', '--note', 'shipped', '--followups', 'none', '--proof', 'the nightly run', '--due', '2030-01-09', '--session', 'alpha']);
     kit.clock.advance(60 * 60 * 1000);
     await kit.run(['add', '--title', 'Ship the docs', '--description', 'what and why', '--priority', 'p2', '--session', 'alpha']);
     await kit.run(['set', 'T2', '--status', 'in-progress', '--session', 'alpha']);
-    await kit.run(['set', 'T2', '--status', 'verifying', '--note', 'shipped', '--followups', 'none', '--proof', 'the docs build', '--session', 'alpha']);
+    await kit.run(['set', 'T2', '--status', 'verifying', '--waits', 'time:2030-02-01 09:00', '--note', 'shipped', '--followups', 'none', '--proof', 'the docs build', '--session', 'alpha']);
 
     const listed = await kit.run(['verify', '--session', 'alpha']);
     assert.deepEqual(
@@ -67,7 +71,7 @@ describe('the verify queue reaches its session', () => {
 
   async function verifying(): Promise<CliHarness> {
     const kit = await startedTask();
-    await kit.run(['set', 'T1', '--status', 'verifying', '--note', 'shipped', '--followups', 'none', '--proof', 'the nightly run', '--session', 'alpha']);
+    await kit.run(['set', 'T1', '--status', 'verifying', '--waits', 'time:2030-02-01 09:00', '--note', 'shipped', '--followups', 'none', '--proof', 'the nightly run', '--session', 'alpha']);
     return kit;
   }
 
@@ -111,7 +115,7 @@ describe('the Stop hook names a verifying task once its verify-by day has come',
 
   it('once a day from that day on, reading the register at the first stop of the day only', async () => {
     const kit = await startedTask();
-    await kit.run(['set', 'T1', '--status', 'verifying', '--note', 'shipped', '--followups', 'none', '--proof', 'the nightly run', '--due', '2030-01-09', '--session', 'alpha']);
+    await kit.run(['set', 'T1', '--status', 'verifying', '--waits', 'time:2030-02-01 09:00', '--note', 'shipped', '--followups', 'none', '--proof', 'the nightly run', '--due', '2030-01-09', '--session', 'alpha']);
     assert.deepEqual((await stop(kit)).stdout, [], 'not before the day');
     await kit.run(['update', 'T1', '--due', '2030-01-08', '--session', 'lead']);
     assert.deepEqual((await stop(kit)).stdout, [], 'a date that comes later in the day waits for the next one');
@@ -130,7 +134,7 @@ describe('the Stop hook names a verifying task once its verify-by day has come',
 
   it('says nothing when it cannot keep its daily record, so it never repeats', async () => {
     const kit = await startedTask();
-    await kit.run(['set', 'T1', '--status', 'verifying', '--note', 'shipped', '--followups', 'none', '--proof', 'the nightly run', '--due', '2030-01-08', '--session', 'alpha']);
+    await kit.run(['set', 'T1', '--status', 'verifying', '--waits', 'time:2030-02-01 09:00', '--note', 'shipped', '--followups', 'none', '--proof', 'the nightly run', '--due', '2030-01-08', '--session', 'alpha']);
     const files = new FaultyFiles(kit.files).fail('write', SCANS, systemError('EACCES'));
     assert.deepEqual(await stop(kit, files), { code: EXIT.ok, stdout: [], stderr: [] });
     assert.equal(shown(await stop(kit)), line);
@@ -141,7 +145,7 @@ describe('the Stop hook names a verifying task once its verify-by day has come',
 async function heldStart(kit = new CliHarness()): Promise<CliHarness> {
   await kit.run(['add', '--title', 'Ship the CLI', '--description', 'what and why', '--priority', 'p2', '--session', 'bravo']);
   await kit.run(['set', 'T1', '--status', 'in-progress', '--session', 'bravo']);
-  await kit.run(['set', 'T1', '--status', 'verifying', '--note', 'shipped', '--followups', 'none', '--proof', 'the nightly run', '--session', 'bravo']);
+  await kit.run(['set', 'T1', '--status', 'verifying', '--waits', 'time:2030-02-01 09:00', '--note', 'shipped', '--followups', 'none', '--proof', 'the nightly run', '--session', 'bravo']);
   await kit.run(['add', '--title', 'Build on the CLI', '--description', 'what and why', '--priority', 'p2', '--after', 'T1', '--session', 'alpha']);
   return kit;
 }
@@ -174,7 +178,7 @@ describe('runCli: a start waits for the verifying tasks it needs', () => {
     const kit = new CliHarness();
     await kit.run(['add', '--title', 'Ship the CLI', '--description', 'what and why', '--priority', 'p2', '--session', 'alpha']);
     await kit.run(['set', 'T1', '--status', 'in-progress', '--session', 'alpha']);
-    await kit.run(['set', 'T1', '--status', 'verifying', '--note', 'shipped', '--followups', 'none', '--proof', 'the nightly run', '--session', 'alpha']);
+    await kit.run(['set', 'T1', '--status', 'verifying', '--waits', 'time:2030-02-01 09:00', '--note', 'shipped', '--followups', 'none', '--proof', 'the nightly run', '--session', 'alpha']);
     await kit.run(['add', '--title', 'Build on the CLI', '--description', 'what and why', '--priority', 'p2', '--after', 'T1', '--session', 'alpha']);
     const start = await kit.run(['set', 'T2', '--status', 'in-progress', '--session', 'alpha']);
     assert.deepEqual([start.code, start.stderr], [EXIT.refused, []]);
@@ -243,8 +247,11 @@ describe('runCli: a start names what met the proof it waits for', () => {
   });
 });
 
-/** A harness where alpha's T1 is verifying, to be verified by today, and alpha's T2 is new work. */
-async function dueVerify(kit = new CliHarness()): Promise<CliHarness> {
+/**
+ * A harness where alpha's T1 is verifying with no waits, to be verified by today, and alpha's T2 is new work: a
+ * relaxed register, as register.requireProofOnVerifying has every verifying task name when its proof runs.
+ */
+async function dueVerify(kit = new CliHarness({ ...TEAM, register: { requireProofOnVerifying: false } })): Promise<CliHarness> {
   await kit.run(['add', '--title', 'Ship the CLI', '--description', 'what and why', '--priority', 'p2', '--session', 'alpha']);
   await kit.run(['set', 'T1', '--status', 'in-progress', '--session', 'alpha']);
   await kit.run(['set', 'T1', '--status', 'verifying', '--note', 'shipped', '--followups', 'none', '--proof', 'the nightly run', '--due', '2030-01-08', '--session', 'alpha']);
@@ -254,6 +261,24 @@ async function dueVerify(kit = new CliHarness()): Promise<CliHarness> {
 
 describe("runCli: new work waits for its owner's verify steps that are due", () => {
   const start = ['set', 'T2', '--status', 'in-progress', '--session', 'alpha'];
+
+  it("refuses the first start once a proof's time has passed, until the proof names its next run", async () => {
+    const kit = await startedTask();
+    const parked = await kit.run(['set', 'T1', '--status', 'verifying', '--waits', 'time:2030-01-08 11:00', '--note', 'shipped', '--followups', 'none', '--proof', 'the nightly run', '--session', 'alpha']);
+    assert.equal(parked.code, EXIT.ok, parked.stdout.join('\n'));
+    await kit.run(['add', '--title', 'Plan the next step', '--description', 'what and why', '--priority', 'p2', '--session', 'alpha']);
+    kit.clock.advance(2 * 60 * 60 * 1000);
+    const held = await kit.run(start);
+    assert.equal(held.code, EXIT.refused);
+    assert.match(held.stdout[0] ?? '', /^REFUSED T2 is new work; T1 \(proof's waits cleared\) is due to verify first \(teamrig verify\): /);
+    const kept = await kit.run(['set', 'T1', '--status', 'verifying', '--note', 'the nightly run moved', '--followups', 'none', '--session', 'alpha']);
+    assert.equal(kept.code, EXIT.refused);
+    assert.match(kept.stdout[0] ?? '', /^REFUSED T1's proof waited on .*, which has cleared: run the proof now and set it done, or name when it runs with --waits/);
+    const moved = await kit.run(['set', 'T1', '--status', 'verifying', '--waits', 'time:2030-01-08 22:00', '--note', 'the nightly run moved', '--followups', 'none', '--session', 'alpha']);
+    assert.equal(moved.code, EXIT.ok, moved.stdout.join('\n'));
+    const started = await kit.run(start);
+    assert.equal(started.code, EXIT.ok, started.stdout.join('\n'));
+  });
 
   it('refuses the first start until the verify step is re-dated with a reason', async () => {
     const kit = await dueVerify();
@@ -267,7 +292,7 @@ describe("runCli: new work waits for its owner's verify steps that are due", () 
   });
 
   it('starts it in warn mode, with a warning', async () => {
-    const kit = await dueVerify(new CliHarness({ ...TEAM, register: { verifyGate: 'warn' } }));
+    const kit = await dueVerify(new CliHarness({ ...TEAM, register: { verifyGate: 'warn', requireProofOnVerifying: false } }));
     const started = await kit.run(start);
     assert.equal(started.code, EXIT.ok, started.stdout.join('\n'));
     assert.equal(started.stderr.length, 1, started.stderr.join('\n'));

@@ -131,6 +131,6 @@ export function dueVerifyHold(task: Pick<Task, 'id'>, due: readonly DueVerify[])
   const verb = due.length === 1 ? 'is' : 'are';
   return (
     `${task.id} is new work; ${named.join(', ')}${more} ${verb} due to verify first (teamrig verify): set each done with its proof, ` +
-    'in-progress if it failed, or verifying with --ask or --waits for what its proof waits on; a verify-by date moves with --due and a --note saying why'
+    'in-progress if it failed, or verifying with --waits for when its proof runs; a verify-by date moves with --due and a --note saying why'
   );
 }

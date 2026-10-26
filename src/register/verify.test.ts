@@ -160,7 +160,7 @@ describe('dueVerifies, dueStartHolds and dueVerifyHold', () => {
     assert.equal(
       dueVerifyHold({ id: 'T9' }, due.slice(0, 1)),
       'T9 is new work; T1 (verify by 01-08) is due to verify first (teamrig verify): set each done with its proof, in-progress if it failed, ' +
-        'or verifying with --ask or --waits for what its proof waits on; a verify-by date moves with --due and a --note saying why',
+        'or verifying with --waits for when its proof runs; a verify-by date moves with --due and a --note saying why',
     );
     assert.match(dueVerifyHold({ id: 'T9' }, due), /^T9 is new work; T1 \(verify by 01-08\), T2 \(verify by 01-08\), T3 \(verify by 01-08\) and 2 more are due to verify first /);
   });

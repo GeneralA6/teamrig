@@ -180,7 +180,7 @@ export function peerWaitFlags(tasks: Iterable<Task>, tree: LeadTree, ownerSource
     const peer = task.waits.find((reason) => isPeerWait(reason, approvers, ownerSource));
     return peer === undefined
       ? []
-      : [{ kind: 'PEER-WAIT' as const, task, detail: `${waitSpelling(peer)} is a peer's work: wait on it by its task (set ${task.id} --status ${task.status} --ask ${peer.who} --text "<the work>")` }];
+      : [{ kind: 'PEER-WAIT' as const, task, detail: `${waitSpelling(peer)} is a peer's work: wait on it by its task (set ${task.id} --status waiting --ask ${peer.who} --text "<the work>")` }];
   });
 }
 

@@ -14,7 +14,7 @@ import { ITEM_TYPE_TRAITS, traitsOf } from './item-types.ts';
 import { asksReview, missedTaskIds, reviewGap, reviewGapText, reviewProblem, reviewTexts, type ProblemReview } from './review.ts';
 import { loopFix, needPath, NO_TASKS_ELSEWHERE, pathText, type TasksElsewhere } from './tree.ts';
 import { dueStartHolds, dueVerifyHold, heldStart, startHolds } from './verify.ts';
-import { isPeerWait, sameWait, sameWaits, waitSpelling, type PersonWait, type WaitReason } from './waits.ts';
+import { isPeerWait, isReady, sameWait, sameWaits, waitContext, waitSpelling, type PersonWait, type WaitReason } from './waits.ts';
 
 /** Team policy, applied on WRITE only: the parser accepts any well-formed history. */
 export type Verdict<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: string };
@@ -150,6 +150,12 @@ export const CARD_USAGE = `--question "<what is decided>" --options "<one choice
 /** How `--waits` is typed, for the refusals that ask for it. */
 export const WAITS_USAGE = 'decision:<who>, approval:<who>, task:T<id> or time:<YYYY-MM-DD HH:MM>, comma-separated';
 
+/** How a verifying task names when its proof runs (T1306), for the refusals that ask for it. */
+export const PROOF_WAITS_USAGE = 'time:<YYYY-MM-DD HH:MM> when it runs, or task:T<id> for a task in progress or verifying whose end runs it';
+
+/** The statuses of a task a proof may wait on: one under way, whose end runs the proof. */
+const PROOF_TASK_STATUSES: readonly TaskStatus[] = ['in-progress', 'verifying'];
+
 export interface UpdateChange {
   readonly changes: Partial<TaskFields>;
   readonly note: string | null;
@@ -248,19 +254,23 @@ export class RegisterPolicy {
   }
 
   /**
-   * The task `set <id> --status waiting|verifying --ask <session> --text "<the work>"` creates, which `task` then
-   * waits on (with `verifying`, its proof does: the session that runs the proof has it on its list): the asked
-   * session's, from the caller, at `task`'s priority and with its goals (the work serves the same plan), its
-   * description naming `task`. Only the owner asks for its task, only with a status of WAIT_STATUSES and only once
-   * started (a verifying task has: its proof may need the ask): one not started keeps its status, planned after the
-   * asked task. An active task of the same title is waited on instead.
+   * The task `set <id> --status waiting --ask <session> --text "<the work>"` creates, which `task` then waits on: the
+   * asked session's, from the caller, at `task`'s priority and with its goals (the work serves the same plan), its
+   * description naming `task`. Only the owner asks for its task, only with `waiting` (the asked task starts open, and
+   * a proof waits only on a task in progress or verifying, T1306) and only once started: one not started keeps its
+   * status, planned after the asked task. An active task of the same title is waited on instead.
    */
   ask(task: Task, caller: string, ask: AskInput, input: StatusInput, state: RegisterState): Verdict<TaskFields> {
     if (caller !== task.owner) {
       return refuse(ownerOnly(task));
     }
-    if (!WAIT_STATUSES.includes(input.status)) {
-      return refuse(`--ask goes only with --status ${WAIT_STATUSES.join(' or ')}`);
+    if (input.status === 'verifying') {
+      return refuse(
+        `--ask goes only with --status waiting: the asked task starts open, and a proof waits only on a task in progress or verifying, so ${task.id} waits on it until it starts (teamrig set ${task.id} --status waiting --ask ${ask.owner} --text "${ask.title}")`,
+      );
+    }
+    if (input.status !== 'waiting') {
+      return refuse('--ask goes only with --status waiting');
     }
     if (!hasStarted(task)) {
       return refuse(
@@ -340,6 +350,10 @@ export class RegisterPolicy {
     }
     if (input.status === 'verifying' && register.requireProofOnVerifying && proof.value === null) {
       return refuse('verifying needs --proof saying what will prove the shipped change works');
+    }
+    // A proof with no time or task to run on is put off without end, so verifying names when it runs (T1306).
+    if (input.status === 'verifying' && register.requireProofOnVerifying && !waits.value.some(runsProof)) {
+      return refuse(`verifying needs --waits saying when its proof runs: ${PROOF_WAITS_USAGE}`);
     }
     if (input.status === 'done') {
       if (register.requireEvidenceOnDone && evidence === null && task.evidence === null) {
@@ -449,15 +463,17 @@ export class RegisterPolicy {
 
   /**
    * The reasons of a status change, each given one judged: at least one for `waiting`; for `verifying`, what its proof
-   * waits for, if anything, where a verifying task set again without `--waits` keeps the reasons it had (a new verify-by
-   * date leaves the proof's ask in place); none for any other status.
+   * waits for, where a verifying task set again without `--waits` keeps the reasons it had (a new verify-by date leaves
+   * them in place), none cleared while `register.requireProofOnVerifying` is on; none for any other status.
    */
   private checkWaits(task: Task, input: StatusInput, context: StatusContext): Verdict<readonly WaitReason[]> {
     if (!WAIT_STATUSES.includes(input.status)) {
       return (input.waits ?? []).length === 0 ? ok([]) : refuse(`--waits goes only with --status ${WAIT_STATUSES.join(' or ')}`);
     }
     if (input.waits === undefined && input.status === 'verifying') {
-      return ok(task.status === 'verifying' ? task.waits : []);
+      const kept = task.status === 'verifying' ? task.waits : [];
+      const cleared = this.config.register.requireProofOnVerifying ? clearedProofWait(task, kept, context) : undefined;
+      return cleared === undefined ? ok(kept) : refuse(cleared);
     }
     const waits = input.waits ?? [];
     if (input.status === 'waiting' && waits.length === 0) {
@@ -568,9 +584,9 @@ export class RegisterPolicy {
     switch (reason.kind) {
       case 'decision':
       case 'approval':
-        return this.personWaitProblem(task, status, reason);
+        return this.personWaitProblem(task, reason);
       case 'task':
-        return taskWaitProblem(task, reason.id, context.state, context.elsewhere);
+        return taskWaitProblem(task, reason.id, context.state, context.elsewhere) ?? (status === 'verifying' ? unstartedProofTask(task, reason.id, context) : undefined);
       case 'time':
         return (parseDeadline(reason.at, context.zone)?.getTime() ?? 0) > context.now.getTime() ? undefined : `time ${showStored(reason.at, context.zone)} has passed: name a time to come`;
     }
@@ -581,14 +597,14 @@ export class RegisterPolicy {
    * team's lead, the parent team's lead) and the owner: a peer's work is a task, waited on by its id, which clears by
    * itself once that task finishes, where a peer's decision would hold the task until its owner noticed.
    */
-  private personWaitProblem(task: Task, status: TaskStatus, reason: PersonWait): string | undefined {
+  private personWaitProblem(task: Task, reason: PersonWait): string | undefined {
     const { ownerSource } = this.config.register;
     if (!isPeerWait(reason, this.tree.approversOf(task.owner), ownerSource)) {
       return undefined;
     }
     const leaders = this.approversText(task.owner);
     return this.config.sessions.includes(reason.who)
-      ? `${reason.kind} ${reason.who}: decision and approval waits are for ${leaders} and ${ownerSource}; wait on ${reason.who}'s work by its task: teamrig set ${task.id} --status ${status} --ask ${reason.who} --text "<the work you need>"`
+      ? `${reason.kind} ${reason.who}: decision and approval waits are for ${leaders} and ${ownerSource}; wait on ${reason.who}'s work by its task: teamrig set ${task.id} --status waiting --ask ${reason.who} --text "<the work you need>"`
       : `${reason.kind} ${reason.who}: ${reason.who} is neither ${leaders} nor ${ownerSource}`;
   }
 
@@ -891,6 +907,35 @@ function taskWaitProblem(task: Task, id: string, state: RegisterState, elsewhere
     return `${id} is already finished; nothing to wait on`;
   }
   return loopProblem(task.id, id, treeTasks(state, elsewhere), true);
+}
+
+/** True for a reason that says when a proof runs: a time, or a task whose end runs it. */
+function runsProof(reason: WaitReason): boolean {
+  return reason.kind === 'time' || reason.kind === 'task';
+}
+
+/**
+ * A proof runs when the task it waits on ends, so it waits only on one in progress or verifying (T1306): one not
+ * started has no end in sight, and the task stays waiting on it until it starts.
+ */
+function unstartedProofTask(task: Task, id: string, context: StatusContext): string | undefined {
+  const target = context.state.tasks.get(id) ?? context.elsewhere.get(id)?.task;
+  if (target === undefined || PROOF_TASK_STATUSES.includes(target.status)) {
+    return undefined;
+  }
+  return `${id} is ${target.status}: a proof waits only on a task in progress or verifying; until it starts, set ${task.id} waiting on it (--status waiting --waits task:${id})`;
+}
+
+/**
+ * The refusal of a verifying task set again without `--waits` whose kept waits hold one that cleared (T1306): its
+ * proof is due now, not put off again by keeping a wait that no longer holds it.
+ */
+function clearedProofWait(task: Task, kept: readonly WaitReason[], context: StatusContext): string | undefined {
+  const waits = waitContext(context.state.tasks, context.now, context.zone, context.elsewhere);
+  const cleared = kept.find((reason) => isReady(reason, waits));
+  return cleared === undefined
+    ? undefined
+    : `${task.id}'s proof waited on ${waitSpelling(cleared)}, which has cleared: run the proof now and set it done, or name when it runs with --waits (${PROOF_WAITS_USAGE})`;
 }
 
 /**

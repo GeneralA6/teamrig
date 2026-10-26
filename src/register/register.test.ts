@@ -135,7 +135,7 @@ describe('Register', () => {
     written(await register.add('lead', { title: 'Ship it', description: 'what and why', owner: 'alpha', source: 'owner', priority: 1 }));
     written(await register.setStatus('alpha', 'T1', { status: 'in-progress' }));
     const appended = files.get(LOG)?.length ?? 0;
-    const result = written(await register.setStatus('alpha', 'T1', { status: 'verifying', note: 'shipped', proof: 'the nightly run', due: '2030-01-09', followups: [] }));
+    const result = written(await register.setStatus('alpha', 'T1', { status: 'verifying', note: 'shipped', proof: 'the nightly run', waits: [{ kind: 'time', at: '2030-01-08 22:00' }], due: '2030-01-09', followups: [] }));
     assert.deepEqual([result.task.status, result.task.due, result.task.proof], ['verifying', '2030-01-09', 'the nightly run']);
     const lines = readEvents((files.get(LOG) ?? '').slice(appended)).events;
     assert.deepEqual(

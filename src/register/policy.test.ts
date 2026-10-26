@@ -7,7 +7,7 @@ import { TEST_CARD, TEST_OWNER_CARD } from '../testing/card.ts';
 import { testTask } from '../testing/task.ts';
 import { foldEvents, type RegisterState, type Task } from './fold.ts';
 import type { DecisionCard } from './card.ts';
-import { CARD_USAGE, DESCRIPTION_NEEDED, GITHUB_ACTOR, normaliseTitle, RegisterPolicy, type AddInput, type AskInput, type ImportInput, type StatusContext, type StatusInput, type Verdict } from './policy.ts';
+import { CARD_USAGE, DESCRIPTION_NEEDED, GITHUB_ACTOR, normaliseTitle, PROOF_WAITS_USAGE, RegisterPolicy, type AddInput, type AskInput, type ImportInput, type StatusContext, type StatusInput, type Verdict } from './policy.ts';
 import type { ProblemReview } from './review.ts';
 import { NO_TASKS_ELSEWHERE, type TasksElsewhere } from './tree.ts';
 import type { WaitReason } from './waits.ts';
@@ -26,6 +26,10 @@ function elsewhereOf(...tasks: readonly Task[]): TasksElsewhere {
   return new Map(tasks.map((task) => [task.id, { team: 'web', task }]));
 }
 const OWNER_DECISION: readonly WaitReason[] = [{ kind: 'decision', who: 'owner' }];
+/** When a verifying task's proof runs: tonight, after NOW. */
+const RUN_TONIGHT: readonly WaitReason[] = [{ kind: 'time', at: '2030-01-08 22:00' }];
+/** The refusal of a verifying task that names no time or task its proof runs on. */
+const PROOF_RUN_NEEDED = `verifying needs --waits saying when its proof runs: ${PROOF_WAITS_USAGE}`;
 
 /** A register holding these tasks, its next id after the highest. */
 function stateOf(...tasks: Task[]): RegisterState {
@@ -197,7 +201,8 @@ describe('RegisterPolicy.setStatus', () => {
       error(policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'shipped' }, CTX)),
       'verifying needs --proof saying what will prove the shipped change works',
     );
-    assert.equal(policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'shipped', proof: 'the nightly run', followups: [] }, CTX).ok, true);
+    assert.equal(error(policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'shipped', proof: 'the nightly run', followups: [] }, CTX)), PROOF_RUN_NEEDED);
+    assert.equal(policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'shipped', proof: 'the nightly run', waits: RUN_TONIGHT, followups: [] }, CTX).ok, true);
     assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'done', note: 'ok' }, CTX)), /needs --evidence/);
     assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'done', note: 'ok', evidence: 'abc1234' }, CTX)), /needs --skill/);
     assert.match(
@@ -243,7 +248,7 @@ describe('RegisterPolicy.setStatus: the follow-ups a closing change names', () =
   it('refuses verifying and done with no --followups, naming what to type', () => {
     const needs = (status: string): string => `${status} needs --followups T<id>,... naming the tasks this work leaves (a finding, a next step), or --followups none`;
     assert.equal(error(policy.setStatus(TASK, 'alpha', DONE, context)), needs('done'));
-    assert.equal(error(policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'shipped', proof: 'p' }, context)), needs('verifying'));
+    assert.equal(error(policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'shipped', proof: 'p', waits: RUN_TONIGHT }, context)), needs('verifying'));
   });
 
   it('takes none, or tasks on the list, and writes them', () => {
@@ -272,7 +277,7 @@ describe('RegisterPolicy.setStatus: the follow-ups a closing change names', () =
     assert.match(error(strict.setStatus(TASK, 'alpha', { status: 'dropped', note: 'moved' }, context)), /^dropped needs --followups/);
     assert.equal(error(strict.setStatus(TASK, 'alpha', DONE, context)), 'allowed');
     const off = new RegisterPolicy(testConfig({ register: { requireFollowupsOn: [] } }));
-    assert.equal(error(off.setStatus(TASK, 'alpha', { status: 'verifying', note: 'shipped', proof: 'p' }, context)), 'allowed');
+    assert.equal(error(off.setStatus(TASK, 'alpha', { status: 'verifying', note: 'shipped', proof: 'p', waits: RUN_TONIGHT }, context)), 'allowed');
   });
 });
 
@@ -289,7 +294,7 @@ describe("RegisterPolicy.setStatus: a bug's review", () => {
     missedMonitor: 'no monitor can see a skipped row',
     missedLog: 'the skip now logs a warning line',
   } satisfies ProblemReview;
-  const VERIFYING: StatusInput = { status: 'verifying', note: 'shipped', proof: 'the nightly run', followups: [] };
+  const VERIFYING: StatusInput = { status: 'verifying', note: 'shipped', proof: 'the nightly run', waits: RUN_TONIGHT, followups: [] };
   const DONE: StatusInput = { status: 'done', note: 'ok', evidence: 'abc1234', skill: 'none', followups: [] };
 
   it('refuses verifying and done until every part is given, naming only the missing flags', () => {
@@ -409,12 +414,12 @@ describe('RegisterPolicy.setStatus: a start waits for the verifying tasks it nee
 
 describe('RegisterPolicy.setStatus to verifying', () => {
   const policy = new RegisterPolicy(testConfig());
-  const VERIFYING: Task = { ...TASK, status: 'verifying', note: 'shipped', proof: 'the nightly run is green' };
+  const VERIFYING: Task = { ...TASK, status: 'verifying', note: 'shipped', proof: 'the nightly run is green', waits: RUN_TONIGHT };
 
   it('writes the proof trimmed, only with verifying', () => {
-    assert.deepEqual(policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'shipped', proof: ' the nightly run ', followups: [] }, CTX), {
+    assert.deepEqual(policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'shipped', proof: ' the nightly run ', waits: RUN_TONIGHT, followups: [] }, CTX), {
       ok: true,
-      value: { status: 'verifying', note: 'shipped', evidence: null, skill: null, proof: 'the nightly run', followups: [] },
+      value: { status: 'verifying', note: 'shipped', evidence: null, skill: null, waits: RUN_TONIGHT, proof: 'the nightly run', followups: [] },
     });
     assert.equal(error(policy.setStatus(TASK, 'alpha', { status: 'open', proof: 'x' }, CTX)), '--proof goes only with --status verifying');
   });
@@ -428,10 +433,10 @@ describe('RegisterPolicy.setStatus to verifying', () => {
   });
 
   it('moves the due date to the verify-by date, only with verifying', () => {
-    const dated = policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'shipped', proof: 'p', due: '2030-01-09 18:00', followups: [] }, CTX);
+    const dated = policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'shipped', proof: 'p', due: '2030-01-09 18:00', waits: RUN_TONIGHT, followups: [] }, CTX);
     assert.equal(dated.ok ? dated.value.due : undefined, '2030-01-09 18:00');
-    const same = policy.setStatus({ ...TASK, due: '2030-01-09' }, 'alpha', { status: 'verifying', note: 'shipped', proof: 'p', due: '2030-01-09', followups: [] }, CTX);
-    assert.deepEqual(same.ok ? Object.keys(same.value) : undefined, ['status', 'note', 'evidence', 'skill', 'proof', 'followups'], 'the same date moves nothing');
+    const same = policy.setStatus({ ...TASK, due: '2030-01-09' }, 'alpha', { status: 'verifying', note: 'shipped', proof: 'p', due: '2030-01-09', waits: RUN_TONIGHT, followups: [] }, CTX);
+    assert.deepEqual(same.ok ? Object.keys(same.value) : undefined, ['status', 'note', 'evidence', 'skill', 'waits', 'proof', 'followups'], 'the same date moves nothing');
     assert.equal(error(policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'x', proof: 'p', due: 'friday' }, CTX)), 'due friday is not YYYY-MM-DD or YYYY-MM-DD HH:MM');
     assert.equal(
       error(policy.setStatus(TASK, 'alpha', { status: 'open', due: '2030-01-09' }, CTX)),
@@ -442,12 +447,12 @@ describe('RegisterPolicy.setStatus to verifying', () => {
   });
 
   it('checks the proof like any text', () => {
-    assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'x', proof: 'p'.repeat(301), followups: [] }, CTX)), /^proof has 301 characters/);
-    assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'x', proof: credentialUrl(), followups: [] }, CTX)), /proof looks like it holds a secret/);
+    assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'x', proof: 'p'.repeat(301), waits: RUN_TONIGHT, followups: [] }, CTX)), /^proof has 301 characters/);
+    assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'x', proof: credentialUrl(), waits: RUN_TONIGHT, followups: [] }, CTX)), /proof looks like it holds a secret/);
   });
 
   it('names what the proof waits for, each reason judged like a waiting one', () => {
-    const context = { ...CTX, state: stateOf(testTask({ id: 'T4', owner: 'bravo' })) };
+    const context = { ...CTX, state: stateOf(testTask({ id: 'T4', owner: 'bravo', status: 'in-progress' })) };
     const waits: WaitReason[] = [
       { kind: 'task', id: 'T4' },
       { kind: 'time', at: '2030-01-09 09:00' },
@@ -456,28 +461,75 @@ describe('RegisterPolicy.setStatus to verifying', () => {
     assert.deepEqual(asked.ok ? asked.value.waits : undefined, waits);
     const passed = { status: 'verifying' as const, note: 'x', proof: 'p', waits: [{ kind: 'time' as const, at: '2030-01-08 09:00' }], followups: [] };
     assert.equal(error(policy.setStatus(TASK, 'alpha', passed, CTX)), 'time 01-08 09:00 UTC has passed: name a time to come');
-    const plain = policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'shipped', proof: 'p', followups: [] }, CTX);
-    assert.equal(plain.ok && 'waits' in plain.value, false, 'a proof that waits for nothing writes no waits');
+  });
+
+  it('refuses a proof that names no time or task it runs on, and lets an approval stand beside one', () => {
+    const verifying = (waits: readonly WaitReason[]): StatusInput => ({ status: 'verifying', note: 'shipped', proof: 'p', waits, followups: [] });
+    assert.equal(error(policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'shipped', proof: 'p', followups: [] }, CTX)), PROOF_RUN_NEEDED);
+    const approval: WaitReason[] = [{ kind: 'approval', who: 'lead' }];
+    assert.equal(error(policy.setStatus(TASK, 'alpha', verifying(approval), CTX)), PROOF_RUN_NEEDED, 'an approval says who acts, not when the proof runs');
+    assert.equal(policy.setStatus(TASK, 'alpha', verifying([...approval, ...RUN_TONIGHT]), CTX).ok, true);
+  });
+
+  it('waits a proof only on a task in progress or verifying, whose end runs it', () => {
+    const started = '2030-01-07T10:00:00.000Z';
+    const tasks = [
+      testTask({ id: 'T4', owner: 'bravo', status: 'open' }),
+      testTask({ id: 'T5', owner: 'bravo', status: 'waiting', startedAt: started, waits: OWNER_DECISION }),
+      testTask({ id: 'T6', owner: 'bravo', status: 'in-progress', startedAt: started }),
+      testTask({ id: 'T7', owner: 'bravo', status: 'verifying', startedAt: started, proof: 'the nightly run' }),
+    ];
+    const context = { ...CTX, state: stateOf(TASK, ...tasks) };
+    const onTask = (id: string): StatusInput => ({ status: 'verifying', note: 'shipped', proof: 'p', waits: [{ kind: 'task', id }], followups: [] });
+    assert.equal(
+      error(policy.setStatus(TASK, 'alpha', onTask('T4'), context)),
+      'T4 is open: a proof waits only on a task in progress or verifying; until it starts, set T1 waiting on it (--status waiting --waits task:T4)',
+    );
+    assert.match(error(policy.setStatus(TASK, 'alpha', onTask('T5'), context)), /^T5 is waiting: a proof waits only on a task in progress or verifying;/);
+    assert.equal(policy.setStatus(TASK, 'alpha', onTask('T6'), context).ok, true);
+    assert.equal(policy.setStatus(TASK, 'alpha', onTask('T7'), context).ok, true);
+    const waiting = policy.setStatus(TASK, 'alpha', { status: 'waiting', note: 'needs the schema', waits: [{ kind: 'task', id: 'T4' }] }, context);
+    assert.equal(waiting.ok, true, 'a waiting task may wait on one not started');
   });
 
   it("refuses a peer's approval of the proof, naming the ask that makes it the peer's task", () => {
     const peer = { status: 'verifying' as const, note: 'x', proof: 'p', waits: [{ kind: 'approval' as const, who: 'bravo' }], followups: [] };
     assert.equal(
       error(policy.setStatus(TASK, 'alpha', peer, CTX)),
-      `approval bravo: decision and approval waits are for the lead (lead) and owner; wait on bravo's work by its task: teamrig set T1 --status verifying --ask bravo --text "<the work you need>"`,
+      `approval bravo: decision and approval waits are for the lead (lead) and owner; wait on bravo's work by its task: teamrig set T1 --status waiting --ask bravo --text "<the work you need>"`,
     );
   });
 
-  it('keeps what the proof waits for when set verifying again without --waits, unjudged, and drops it on another status', () => {
-    const held: Task = { ...VERIFYING, waits: [{ kind: 'time', at: '2030-01-08 09:00' }] };
+  it('keeps what the proof waits for when set verifying again without --waits, and drops it on another status', () => {
+    const held: Task = { ...VERIFYING, waits: [{ kind: 'approval', who: 'lead' }, ...RUN_TONIGHT] };
     const redated = policy.setStatus(held, 'alpha', { status: 'verifying', note: 'the run moved', due: '2030-01-11', followups: [] }, CTX);
-    assert.deepEqual(redated.ok ? redated.value.waits : undefined, held.waits, 'a new verify-by date leaves the ask in place, a time now passed too');
+    assert.deepEqual(redated.ok ? redated.value.waits : undefined, held.waits, 'a new verify-by date leaves the waits in place');
     const replaced = policy.setStatus(held, 'alpha', { status: 'verifying', note: 'x', waits: [{ kind: 'time', at: '2030-01-10' }], followups: [] }, CTX);
     assert.deepEqual(replaced.ok ? replaced.value.waits : undefined, [{ kind: 'time', at: '2030-01-10' }]);
     const reopened = policy.setStatus(held, 'alpha', { status: 'in-progress', note: 'the proof failed' }, CTX);
     assert.equal(reopened.ok && 'waits' in reopened.value, false);
-    const fromWaiting = policy.setStatus({ ...TASK, status: 'waiting', waits: OWNER_DECISION }, 'alpha', { status: 'verifying', note: 'shipped', proof: 'p', followups: [] }, CTX);
-    assert.equal(fromWaiting.ok && 'waits' in fromWaiting.value, false, "a waiting task's reasons are not its proof's");
+    const waiting: Task = { ...TASK, status: 'waiting', waits: OWNER_DECISION };
+    const shipped = { status: 'verifying' as const, note: 'shipped', proof: 'p', followups: [] };
+    assert.equal(error(policy.setStatus(waiting, 'alpha', shipped, CTX)), PROOF_RUN_NEEDED, "a waiting task's reasons are not its proof's");
+    const fromWaiting = policy.setStatus(waiting, 'alpha', { ...shipped, waits: RUN_TONIGHT }, CTX);
+    assert.deepEqual(fromWaiting.ok ? fromWaiting.value.waits : undefined, RUN_TONIGHT);
+  });
+
+  it('refuses keeping a proof wait that cleared, and keeps it unjudged when the team does not require --proof', () => {
+    const finished = testTask({ id: 'T4', owner: 'bravo', status: 'done' });
+    const context = { ...CTX, state: stateOf(finished) };
+    const again = { status: 'verifying' as const, note: 'still to run', followups: [] };
+    const passed: Task = { ...VERIFYING, waits: [{ kind: 'time', at: '2030-01-08 09:00' }] };
+    assert.equal(
+      error(policy.setStatus(passed, 'alpha', again, context)),
+      `T1's proof waited on time:2030-01-08 09:00, which has cleared: run the proof now and set it done, or name when it runs with --waits (${PROOF_WAITS_USAGE})`,
+    );
+    assert.match(error(policy.setStatus({ ...VERIFYING, waits: [{ kind: 'task', id: 'T4' }] }, 'alpha', again, context)), /^T1's proof waited on task:T4, which has cleared:/);
+    const named = policy.setStatus(passed, 'alpha', { ...again, waits: RUN_TONIGHT }, context);
+    assert.deepEqual(named.ok ? named.value.waits : undefined, RUN_TONIGHT, 'a new time names when it runs');
+    const relaxed = new RegisterPolicy(testConfig({ register: { requireProofOnVerifying: false } }));
+    const kept = relaxed.setStatus(passed, 'alpha', again, context);
+    assert.deepEqual(kept.ok ? kept.value.waits : undefined, passed.waits);
   });
 
   it('refuses putting the proof off to other waits past register.maxReparks, and lets the same waits or a reopen through', () => {
@@ -694,12 +746,15 @@ describe('RegisterPolicy.ask', () => {
     assert.equal(undated.ok && undated.value.due, null, 'no --due leaves the task undated; a session may ask itself');
   });
 
-  it('asks only for its own started task, and only to wait on it or to prove it', () => {
+  it('asks only for its own started task, and only to wait on it', () => {
     assert.equal(error(asking(PLANNED, 'bravo')), 'only the owner (alpha) sets the status of T1');
-    assert.equal(error(policy.ask(PLANNED, 'alpha', ASK, { status: 'done' }, stateOf(PLANNED))), '--ask goes only with --status waiting or verifying');
-    assert.equal(policy.ask(PLANNED, 'alpha', ASK, { status: 'verifying' }, stateOf(PLANNED)).ok, true, 'a verifying task asks for its proof');
+    assert.equal(error(policy.ask(PLANNED, 'alpha', ASK, { status: 'done' }, stateOf(PLANNED))), '--ask goes only with --status waiting');
+    assert.equal(
+      error(policy.ask(PLANNED, 'alpha', ASK, { status: 'verifying' }, stateOf(PLANNED))),
+      '--ask goes only with --status waiting: the asked task starts open, and a proof waits only on a task in progress or verifying, so T1 waits on it until it starts (teamrig set T1 --status waiting --ask bravo --text "Land the schema change")',
+    );
     const shipped = testTask({ status: 'verifying', startedAt: null, proof: 'the nightly run' });
-    assert.equal(policy.ask(shipped, 'alpha', ASK, { status: 'verifying' }, stateOf(shipped)).ok, true, 'one already verifying asks for its proof too');
+    assert.match(error(policy.ask(shipped, 'alpha', ASK, { status: 'verifying' }, stateOf(shipped))), /^--ask goes only with --status waiting: /, 'one already verifying waits on the asked work too');
     assert.equal(
       error(asking(testTask({ status: 'open' }))),
       'T1 has not started, so it does not wait: ask with teamrig add --owner bravo --title "Land the schema change", then plan T1 after that task (teamrig update T1 --after <its id>)',
