@@ -14,6 +14,7 @@ import { EXIT, RefusedError } from "../runtime.js";
 import { teamRegister } from "../team-register.js";
 import { loadTree } from "../tree.js";
 import { warnDamage } from "./register.js";
+import { blockerText, liveSessionsOf, liveText, writeTeamSplit } from "./team-split-write.js";
 async function sessionsLeftOf(runtime, paths, ids) {
     const inbox = new InboxDir(runtime.files, paths.inbox);
     const { renames } = await new JsonlRenameLog(runtime.files, paths.renames).read();
@@ -41,11 +42,11 @@ function statusCounts(plan, owner) {
         return count === 0 ? [] : [`${count} ${status}`];
     }).join(', ');
 }
-function planLines(plan, parent, roster, configPaths, left) {
+function planLines(plan, parent, roster, configPaths, left, live) {
     const { spec, trim } = plan;
     const sideOf = (moves) => (moves ? spec.team : parent);
     return [
-        'DRY RUN nothing is written; team split only plans for now',
+        'DRY RUN nothing is written',
         `TEAM ${spec.team} under ${parent}: lead ${named(roster, spec.lead)}; sessions ${spec.sessions.map((id) => named(roster, id)).join(', ')}`,
         `WOULD CREATE ${configPaths.child}:`,
         ...formatConfig(plan.config).trimEnd().split('\n'),
@@ -62,6 +63,8 @@ function planLines(plan, parent, roster, configPaths, left) {
             return `LINK ${link.task} in ${sideOf(link.taskMoves)} ${relation} ${link.on} in ${sideOf(!link.taskMoves)}`;
         }),
         ...plan.rewrites.map((rewrite) => `REWRITE ${rewrite.task} ${rewrite.field} ${rewrite.from} -> ${rewrite.to}`),
+        ...plan.blockers.map(blockerText).map((text) => `BLOCKED ${text}`),
+        ...live.map(liveText).map((text) => `BLOCKED ${text}`),
         ...left.flatMap((session) => [
             ...(session.inboxLines === 0 ? [] : [`INBOX ${session.id}: ${session.inboxLines} line(s) move`]),
             ...(session.files.length === 0 ? [] : [`FILES ${session.id}: ${session.files.join(', ')}`]),
@@ -71,13 +74,11 @@ function planLines(plan, parent, roster, configPaths, left) {
 }
 export async function teamSplit(args, runtime) {
     const child = onePositional(args, 'team');
-    if (!args.switches.has('dry-run')) {
-        throw new RefusedError('team split only plans for now: run it with --dry-run to see what it would move');
-    }
+    const dryRun = args.switches.has('dry-run');
     const kit = await openTeamKit(runtime);
-    const config = requireConfig(kit, runtime, 'read');
+    const config = requireConfig(kit, runtime, dryRun ? 'read' : 'write');
     const roster = await rosterOf(runtime, kit, config);
-    leadOnly(roster, callerOf(args.flags, runtime.env), 'splits the team');
+    const by = leadOnly(roster, callerOf(args.flags, runtime.env), 'splits the team');
     const lead = sessionIdOf(roster, requiredFlag(args.flags, 'lead'));
     const sessions = listOf('--sessions', requiredFlag(args.flags, 'sessions')).map((each) => sessionIdOf(roster, each));
     const spec = teamSpecOf(child, sessions.join(','), lead, kit.paths.team);
@@ -95,7 +96,11 @@ export async function teamSplit(args, runtime) {
     if (!planned.ok) {
         throw new RefusedError(planned.problem);
     }
+    if (!dryRun) {
+        return writeTeamSplit({ runtime, kit, config, record: parent.record, by, plan: planned.value, childPaths });
+    }
     const left = await sessionsLeftOf(runtime, kit.paths, spec.value.sessions);
-    planLines(planned.value, kit.paths.team, roster, { child: childPaths.config, parent: kit.load.path }, left).forEach((line) => runtime.out.stdout(line));
+    const live = await liveSessionsOf(runtime, kit.paths, spec.value.sessions);
+    planLines(planned.value, kit.paths.team, roster, { child: childPaths.config, parent: kit.load.path }, left, live).forEach((line) => runtime.out.stdout(line));
     return EXIT.ok;
 }

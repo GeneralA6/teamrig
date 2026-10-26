@@ -1,4 +1,4 @@
-import { appendFile, link, mkdir, open, readdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
+import { appendFile, link, lstat, mkdir, open, readdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { errorCode } from "./guards.js";
 import { retryTransient } from "./retry.js";
@@ -23,6 +23,19 @@ async function fileStatsOf(path) {
     catch (error) {
         if (errorCode(error) === 'ENOENT') {
             return undefined;
+        }
+        throw error;
+    }
+}
+/** Whether anything is at the path, a file, a folder or a link, without following a link. */
+async function pathExists(path) {
+    try {
+        await lstat(path);
+        return true;
+    }
+    catch (error) {
+        if (errorCode(error) === 'ENOENT') {
+            return false;
         }
         throw error;
     }
@@ -143,6 +156,17 @@ export function nodeFiles(sleep) {
         },
         async remove(path) {
             return removeFile(path, sleep);
+        },
+        async move(from, to) {
+            if (!(await pathExists(from))) {
+                return false;
+            }
+            if (await pathExists(to)) {
+                throw new Error(`${to} exists already; a move never replaces it`);
+            }
+            await mkdir(dirname(to), { recursive: true });
+            await retryTransient(() => rename(from, to), sleep);
+            return true;
         },
         async stamp(path) {
             const stats = await fileStatsOf(path);
