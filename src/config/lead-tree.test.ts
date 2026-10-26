@@ -59,4 +59,19 @@ describe('LeadTree', () => {
     const cycle = new LeadTree({ sessions: ['lead', 'a', 'b'], roles: { lead: 'lead' }, leads: { a: ['b'], b: ['a'] } });
     assert.deepEqual(cycle.chainOf('a'), ['b']);
   });
+
+  it("has the lead's own work approved by the lead on a root team (T1140)", () => {
+    assert.equal(TREE.above, undefined);
+    assert.deepEqual(['lead', 'delta', 'zulu'].map((id) => TREE.approversOf(id)), [['lead'], ['charlie', 'bravo', 'lead'], ['lead']]);
+  });
+
+  it("has a child team's lead approved by the parent team's lead, its members still by their leaders (T1140)", () => {
+    const child = new LeadTree(
+      { sessions: ['lead', 'bravo', 'charlie'], roles: { lead: 'lead' }, leads: { bravo: ['charlie'] } },
+      { team: 'app', id: 'boss' },
+    );
+    assert.equal(child.above, 'app/boss');
+    assert.deepEqual(['lead', 'bravo', 'charlie', 'zulu'].map((id) => child.approversOf(id)), [['app/boss'], ['lead'], ['bravo', 'lead'], ['lead']]);
+    assert.deepEqual([child.leaderOf('lead'), child.chainOf('lead'), child.membersOf('lead')], [undefined, [], ['bravo']]);
+  });
 });
