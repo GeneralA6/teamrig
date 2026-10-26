@@ -15,7 +15,9 @@ const PROJECT_RULE = '/work/app/.claude/rules/x.md';
 const USER_SETTINGS = '/u/.claude/settings.json';
 const RULE = 'Never commit straight to the main branch of any repository.';
 const SECRETS = new SecretScanner(['hunter2-']);
-const AT: ScanReportContext = { project: '/work/app', team: 'app', days: 30, userHome: '/u', secrets: SECRETS };
+const DAY_MS = 24 * 60 * 60 * 1000;
+const NOW = Date.parse('2030-01-08T10:00:00Z');
+const AT: ScanReportContext = { project: '/work/app', team: 'app', days: 30, now: NOW, maxMb: 1024, userHome: '/u', secrets: SECRETS };
 
 /** A path outside the home folder, as this machine's paths print it. */
 function shown(path: string): string {
@@ -48,7 +50,7 @@ const SCAN: SetupScan = {
   overrides: [candidate('claude-md', CLAUDE_MD, 4), candidate('rules', PROJECT_RULE, 2), candidate('claude-md', CLAUDE_MD, 9)],
   recorded: 1,
   settings: [WIDE],
-  usage: { used: new Set(['alpha']), transcripts: 3, bytes: 1.5 * 1024 * 1024 },
+  usage: { used: new Set(['alpha']), transcripts: 3, bytes: 1.5 * 1024 * 1024, unread: 0, since: NOW - 30 * DAY_MS },
   recent: new Set(),
 };
 
@@ -97,7 +99,7 @@ describe('scanReport', () => {
       duplicates: [{ path: CLAUDE_MD, line: 2, text: 'Use the key hunter2-abcdef for the staging API only.', firstPath: CLAUDE_MD, firstLine: 1 }],
       overrides: [candidate('rules', PROJECT_RULE, 2)],
       recorded: 0,
-      usage: { used: new Set(), transcripts: 0, bytes: 0 },
+      usage: { used: new Set(), transcripts: 0, bytes: 0, unread: 0, since: NOW - 7 * DAY_MS },
     };
     const lines = scanReport(scan, { ...AT, team: undefined, days: 7 });
     assert.deepEqual(lines, [
@@ -123,6 +125,14 @@ describe('scanReport', () => {
       scanReport(scan, AT).filter((line) => /^U(NUSED|\d)/.test(line)),
       ['UNUSED 0 of 2 skill(s) not used in 30 day(s) (read 3 transcript(s), 1.5 MB); 1 more changed in that time, too new to judge'],
     );
+  });
+
+  it('judges a bounded read by the newest days it covers, and says how many older transcripts it left unread', () => {
+    const scan: SetupScan = { ...SCAN, usage: { ...SCAN.usage, unread: 4, since: NOW - 2.5 * DAY_MS } };
+    assert.deepEqual(scanReport(scan, AT).filter((line) => /^U(NUSED|\d)/.test(line)), [
+      'UNUSED 1 of 2 skill(s) not used in the newest 2.5 day(s) (read 3 transcript(s), 1.5 MB, newest first; 4 older one(s) of 30 day(s) left unread past the 1024 MB bound, --max-mb raises it)',
+      'U1 unused-skill ~/.claude/skills/beta/SKILL.md: no Skill call or /beta in the newest 2.5 day(s) (~78 tokens/turn)',
+    ]);
   });
 
   it('says so when there is nothing to judge', () => {
