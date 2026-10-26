@@ -532,10 +532,12 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       resetBlackoutHours before the weekly token reset; waits up to coordinator.wait.maxMinutes for
       quiet claims on its deploysOnPush targets and for the host lock (longer while its line moves), rebases, runs the
       dependencyCheck on a dependency change (REFUSED unless it exits 0) and pushes (each a heavy step
-      in the ledger; again when origin moved meanwhile), records the push as a deploy of deploysOnPush, deletes the branch on origin
+      in the ledger; again when origin moved meanwhile), or, where coordinator.repos.<name>.merge is
+      set, runs its command in place of the push (0 merged, once origin holds it; 75 WAITING, say on a
+      pull request's checks: run integrate again once it merged), records the landing as a deploy of deploysOnPush, deletes the branch on origin
       and here (--keep-remote, --no-delete-local keep them) and, where followMainCheckout, fast-forwards
       the main checkout; once the shell that started it ends, it stops waiting, or kills the push
-      and frees the lock (exit 129); exit 0 landed, 1 failed or stopped
+      and frees the lock (exit 129); exit 0 landed, 1 failed or stopped, 75 the merge waits
   roll [--repo <name>] [--session <id|name>]   brings what was pushed to a repository's default
       branch to the running system: pulls its main checkout fast-forward to origin, runs its
       coordinator.repos.<name>.roll dependencyInstall for a dependency change (after its

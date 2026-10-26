@@ -1,6 +1,6 @@
-/** A gate's exit codes: go, wait (`EX_TEMPFAIL`) and refuse; any other end makes the roll wait, so a broken gate never lets it through. */
+import { HOOK_WAIT_EXIT } from "./hooks.js";
+/** A gate's exit codes: go and refuse, beside every hook's wait (`HOOK_WAIT_EXIT`); any other end makes the roll wait, so a broken gate never lets it through. */
 export const GATE_GO_EXIT = 0;
-export const GATE_WAIT_EXIT = 75;
 export const GATE_REFUSE_EXIT = 2;
 /** A stdout line that names what the roll deploys, such as an image tag; the last one wins. */
 const TAG_LINE = /^tag=([A-Za-z0-9._:-]{1,128})$/;
@@ -44,7 +44,7 @@ export function gateReadiness(name, end, reason, timeoutSeconds) {
             if (end.code === GATE_REFUSE_EXIT) {
                 return { kind: 'refuse', reason: `gate ${name} refuses the roll${because}` };
             }
-            if (end.code === GATE_WAIT_EXIT) {
+            if (end.code === HOOK_WAIT_EXIT) {
                 return { kind: 'wait', reason: `gate ${name} holds the roll${because}` };
             }
             return { kind: 'wait', reason: `gate ${name} failed (exit ${end.code}), so the roll waits${because}` };

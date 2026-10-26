@@ -9,7 +9,7 @@ export function teamPlace(paths, path) {
     return isAbsolute(path) ? path : join(paths.home, path);
 }
 /**
- * Where the coordinator's files are: the ledgers, the quiet claims and their lock in `coordinator.dir` (default `<state>/deploys`), the host lock at
+ * Where the coordinator's files are: the ledgers, the quiet claims and their lock, and the pending merges in `coordinator.dir` (default `<state>/deploys`), the host lock at
  * `coordinator.heavy.lockPath` (default the kit home's, one for the host). A relative path is in the team's folder.
  */
 export function coordinatorPlaces(config, paths) {
@@ -22,5 +22,6 @@ export function coordinatorPlaces(config, paths) {
         claimsMd: join(dir, CLAIMS_MD_FILE),
         claimsLock: join(dir, CLAIMS_LOCK_FILE),
         hostLock: config.heavy.lockPath === undefined ? join(paths.kitHome, HOST_LOCK_FILE) : inTeam(config.heavy.lockPath),
+        pendingMerges: join(dir, 'pending-merges'),
     };
 }

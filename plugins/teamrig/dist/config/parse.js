@@ -515,6 +515,7 @@ function parseCoordinatorRepos(read, raw) {
         if (mainCheckout === '') {
             continue;
         }
+        const merge = entry['merge'] === undefined ? undefined : parseMerge(read, entry['merge'], `${path}.merge`);
         const roll = entry['roll'] === undefined ? undefined : parseRoll(read, entry['roll'], `${path}.roll`);
         const dependencyGate = read.boolean(entry, 'dependencyGate', path, false);
         const dependencyCheck = entry['dependencyCheck'] === undefined ? undefined : read.stringListItem(entry['dependencyCheck'], `${path}.dependencyCheck`, ROLL_ARGV_MAX_ITEMS);
@@ -527,12 +528,22 @@ function parseCoordinatorRepos(read, raw) {
             dependencyGate,
             ...(dependencyCheck === undefined ? {} : { dependencyCheck }),
             followMainCheckout: read.boolean(entry, 'followMainCheckout', path, false),
+            ...(merge === undefined ? {} : { merge }),
             ...(roll === undefined ? {} : { roll }),
         };
     }
     return repos;
 }
-/** A program's arguments in a roll hook, and the hooks of one kind, at most. */
+/** A repository's merge command; one with no usable command is reported and left out, so integrate pushes the branch. */
+function parseMerge(read, raw, path) {
+    const entry = read.objectItem(raw, path);
+    if (entry === undefined) {
+        return undefined;
+    }
+    const command = read.stringListItem(entry['command'], `${path}.command`, ROLL_ARGV_MAX_ITEMS);
+    return command === undefined ? undefined : { command };
+}
+/** A program's arguments in a roll or merge hook, and the roll hooks of one kind, at most. */
 const ROLL_ARGV_MAX_ITEMS = 64;
 const ROLL_HOOKS_MAX_ITEMS = 16;
 /** A repository's roll; one with no usable command is reported and left out, so the repository is not rolled. */
