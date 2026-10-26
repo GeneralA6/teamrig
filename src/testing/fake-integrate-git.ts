@@ -54,6 +54,9 @@ export class FakeIntegrateGit implements IntegrateGit {
   defaultName = 'main';
   mergeBaseIs: string | undefined = 'base';
   paths: readonly string[] | undefined = ['src/app.ts'];
+  /** The paths two commits differ in, by `<commit>..<commit>`; a pair not listed differs in `paths`, a commit and itself in none. */
+  readonly diffs = new Map<string, readonly string[]>();
+  /** The commits a range holds, oldest first, whatever its ends; a range from a commit to itself holds none. */
   landed: readonly string[] = ['rebased'];
   rebasedTo = 'rebased';
   localUpdate: LocalUpdate = { kind: 'checkedOut' };
@@ -122,16 +125,18 @@ export class FakeIntegrateGit implements IntegrateGit {
     return this.mergeBaseIs;
   }
 
-  changedPaths(): readonly string[] | undefined {
-    return this.paths;
+  changedPaths(dir: string, base: string, head: string): readonly string[] | undefined {
+    const from = this.commitOf(dir, base) ?? base;
+    const to = this.commitOf(dir, head) ?? head;
+    return from === to ? [] : (this.diffs.get(`${from}..${to}`) ?? this.paths);
   }
 
   fileAt(dir: string, ref: string, path: string): string | undefined {
     return this.files.get(`${this.commitOf(dir, ref) ?? ref}:${path}`);
   }
 
-  commits(): readonly string[] {
-    return this.landed;
+  commits(dir: string, from: string, to: string): readonly string[] {
+    return this.commitOf(dir, from) === this.commitOf(dir, to) ? [] : this.landed;
   }
 
   isAncestor(dir: string, ancestor: string, descendant: string): boolean {

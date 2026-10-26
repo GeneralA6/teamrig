@@ -16,6 +16,7 @@ import { MemoryFiles } from '../testing/memory-files.ts';
 import { commandLine } from '../test-run/shell.ts';
 import { BASELINE_LOCK_ENV } from './dependencies.ts';
 import { integrateBranch, PUSH_ATTEMPTS, repoOf, type IntegrateEnd, type IntegrateRequest, type IntegrateSetup } from './integrate.ts';
+import type { PendingMerge } from './pending-merges.ts';
 
 const PLACES: CoordinatorPlaces = {
   ledger: '/team/deploys/ledger.jsonl',
@@ -24,6 +25,7 @@ const PLACES: CoordinatorPlaces = {
   claimsMd: '/team/deploys/claims.md',
   claimsLock: '/team/deploys/claims.lock',
   hostLock: '/kit/host.lock',
+  pendingMerges: '/team/deploys/pending-merges',
 };
 const REQUEST: IntegrateRequest = { session: 'api', dir: WORKTREE, keepRemote: false, keepLocal: false };
 const PLAIN: CoordinatorRepoConfig = { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], dependencyGate: false, followMainCheckout: false };
@@ -390,6 +392,277 @@ describe('integrate lands a branch', () => {
     assert.equal(world.git.log.at(-1), 'checkout /solo main');
     assert.equal(world.git.branches.get('main'), 'rebased');
     assert.ok(!world.said.some((line) => line.startsWith('next:')));
+  });
+});
+
+describe('integrate merges through the repository’s merge command, where one is set', () => {
+  const MERGE = ['node', 'merge.ts'];
+  const MERGING: CoordinatorRepoConfig = { ...PLAIN, merge: { command: MERGE } };
+  const PENDING = join(PLACES.pendingMerges, 'app%2Ffeat.json');
+  const WAITED: PendingMerge = { session: 'api', repo: 'app', branch: 'feat', head: 'rebased', base: 'base', since: '2030-01-08T10:00:00.000Z', note: 'https://forge/pr/7' };
+  const HALF_HOUR = 30 * 60_000;
+
+  /** Origin's main moves to `commit`, which holds the rebased branch's files, as a squash merge of it does. */
+  function squashedAs(world: World, commit: string): void {
+    world.git.origin.set('main', commit);
+    world.git.landed = [commit];
+    world.git.diffs.set(`${commit}..rebased`, []);
+  }
+
+  function pendingOf(world: World): unknown {
+    const text = world.files.get(PENDING);
+    return text === undefined ? undefined : JSON.parse(text);
+  }
+
+  function tidied(world: World): boolean {
+    return world.git.log.some((line) => line.startsWith('deleteRemoteBranch') || line.startsWith('detach') || line.startsWith('deleteBranch'));
+  }
+
+  it('rebases, runs the command under the host lock as a recorded heavy step, finds the merge on origin, then tidies the branch away', async () => {
+    const world = new World({ repos: { app: { ...MERGING, deploysOnPush: ['cloud-api'] } } });
+    const during: { head?: string | undefined; lockHeld?: boolean } = {};
+    world.hooks.answer(MERGE, {
+      lines: ['pull request https://forge/pr/7 merged', ''],
+      takesMs: 60_000,
+      during: async (request) => {
+        during.head = world.git.heads.get(request.cwd);
+        during.lockHeld = !world.lockFree();
+        squashedAs(world, 'squashed');
+      },
+    });
+    assert.deepEqual(await world.run(), { kind: 'done', summary: 'merged squashed into main through the merge command; cloud-api deploy on push' });
+    const [run] = world.hooks.ran;
+    assert.deepEqual(run?.argv, MERGE);
+    assert.equal(run?.cwd, WORKTREE);
+    assert.deepEqual(run?.env, { PATH: '/bin', TEAMRIG_HOST_LOCK: 'lock-1', TEAMRIG_MERGE_BRANCH: 'feat', TEAMRIG_MERGE_BASE: 'main', TEAMRIG_MERGE_HEAD: 'rebased', TEAMRIG_SESSION: 'api' });
+    assert.deepEqual(during, { head: 'rebased', lockHeld: true });
+    assert.deepEqual(world.steps.ran, [], 'nothing is pushed');
+    assert.deepEqual(world.git.log, [
+      `fetch ${WORKTREE}`,
+      `fetch ${WORKTREE}`,
+      `rebase ${WORKTREE} origin/main`,
+      `fetch ${WORKTREE}`,
+      `deleteRemoteBranch ${WORKTREE} feat`,
+      `detach ${WORKTREE}`,
+      `deleteBranch ${WORKTREE} feat`,
+      `updateLocalBranch ${WORKTREE} main`,
+    ]);
+    assert.ok(world.said.includes('merging feat (rebased) into main through the merge command node merge.ts'));
+    assert.ok(world.said.includes('  pull request https://forge/pr/7 merged'));
+    const start = { type: 'heavy', id: 'step-1', session: 'api', what: 'integrate app: merge feat into main', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    assert.deepEqual(world.records(PLACES.ledger), [
+      start,
+      { ...start, endedAt: '2030-01-08T10:01:00.000Z', exitCode: 0 },
+      {
+        type: 'deploy',
+        kind: 'deploy',
+        session: 'api',
+        repo: 'app',
+        range: 'squashed',
+        what: 'integrate feat',
+        note: 'merged by the merge command into main; cloud-api deploy on push, not watched by teamrig',
+        startedAt: '2030-01-08T10:00:00.000Z',
+        rolledAt: '2030-01-08T10:01:00.000Z',
+      },
+    ]);
+    assert.equal(world.files.get(PENDING), undefined);
+    assert.ok(world.lockFree());
+  });
+
+  it('leaves a pending merge when the command waits, frees the lock, keeps the branch and records no deploy', async () => {
+    const world = new World({ repos: { app: { ...MERGING, deploysOnPush: ['cloud-api'] } } });
+    world.hooks.answer(MERGE, { end: 75, lines: ['checks running with s3cret', 'https://forge/pr/7', ''] });
+    assert.deepEqual(await world.run(), { kind: 'waiting', reason: 'https://forge/pr/7' });
+    assert.deepEqual(pendingOf(world), WAITED);
+    assert.ok(world.lockFree());
+    assert.ok(!tidied(world));
+    const start = { type: 'heavy', id: 'step-1', session: 'api', what: 'integrate app: merge feat into main', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    assert.deepEqual(world.records(PLACES.ledger), [start, { ...start, endedAt: '2030-01-08T10:00:00.000Z', exitCode: 75 }]);
+    assert.ok(world.said.includes('  checks running with [redacted]'));
+    assert.equal(world.said.at(-1), `next: run teamrig integrate again in ${WORKTREE} once feat is merged`);
+  });
+
+  it('names the command as the reason when it waits without a word', async () => {
+    const world = new World({ repos: { app: MERGING } });
+    world.hooks.answer(MERGE, { end: 75 });
+    assert.deepEqual(await world.run(), { kind: 'waiting', reason: 'the merge command `node merge.ts` says feat waits to merge into main' });
+    assert.deepEqual(pendingOf(world), { ...WAITED, note: '' });
+  });
+
+  const merges: readonly { readonly name: string; readonly arrange: (world: World) => void; readonly range: string; readonly tip: string }[] = [
+    { name: 'a squash merge', arrange: (world) => squashedAs(world, 'squashed'), range: 'squashed', tip: 'squashed' },
+    {
+      name: 'a merge commit, which makes the branch an ancestor of the default branch',
+      arrange: (world) => {
+        world.git.origin.set('main', 'mergecommit');
+        world.git.ancestry.add('rebased>mergecommit');
+        world.git.landed = ['rebased', 'mergecommit'];
+        world.git.diffs.set('mergecommit..rebased', []);
+      },
+      range: 'rebased..mergecom',
+      tip: 'mergecom',
+    },
+    {
+      name: 'a rebase merge, with a later commit to other files on the default branch',
+      arrange: (world) => {
+        world.git.origin.set('main', 'later');
+        world.git.landed = ['replayed', 'later'];
+        world.git.diffs.set('later..rebased', ['docs/notes.md']);
+      },
+      range: 'replayed..later',
+      tip: 'later',
+    },
+  ];
+  for (const { name, arrange, range, tip } of merges) {
+    it(`finishes a waiting merge origin holds without running the command again: ${name}`, async () => {
+      const world = new World({ repos: { app: { ...MERGING, deploysOnPush: ['cloud-api'] } } });
+      world.hooks.answer(MERGE, { end: 75, lines: ['https://forge/pr/7'] });
+      assert.equal((await world.run()).kind, 'waiting');
+      world.clock.advance(HALF_HOUR);
+      arrange(world);
+      assert.deepEqual(await world.run(), { kind: 'done', summary: `merged ${range} into main through the merge command; cloud-api deploy on push` });
+      assert.equal(world.hooks.ran.length, 1);
+      assert.equal(world.git.log.filter((line) => line.startsWith('rebase')).length, 1);
+      assert.ok(world.said.includes(`feat (rebased) is merged into main: origin/main at ${tip} holds it`));
+      assert.deepEqual(world.records(PLACES.ledger).at(-1), {
+        type: 'deploy',
+        kind: 'deploy',
+        session: 'api',
+        repo: 'app',
+        range,
+        what: 'integrate feat',
+        note: 'merged by the merge command into main; cloud-api deploy on push, not watched by teamrig',
+        startedAt: '2030-01-08T10:00:00.000Z',
+        rolledAt: '2030-01-08T10:30:00.000Z',
+      });
+      assert.equal(world.files.get(PENDING), undefined);
+      assert.ok(tidied(world));
+      assert.ok(world.lockFree());
+    });
+  }
+
+  it('still refuses a branch with nothing new when no merge of it waits', async () => {
+    const world = new World({ repos: { app: MERGING } });
+    world.git.heads.set(WORKTREE, 'base');
+    refused(await world.run(), /nothing to integrate: every commit of feat is already on origin\/main/);
+    assert.deepEqual(world.hooks.ran, []);
+  });
+
+  it('runs the command again while origin does not hold the waiting merge, and dates the merge from its first run', async () => {
+    const world = new World({ repos: { app: { ...MERGING, deploysOnPush: ['cloud-api'] } } });
+    world.hooks.answer(MERGE, { end: 75, lines: ['https://forge/pr/7'] }, { end: 75, lines: ['https://forge/pr/7'] }, { during: async () => squashedAs(world, 'squashed') });
+    assert.equal((await world.run()).kind, 'waiting');
+    world.clock.advance(HALF_HOUR);
+    assert.equal((await world.run()).kind, 'waiting');
+    assert.deepEqual(pendingOf(world), WAITED);
+    world.clock.advance(HALF_HOUR);
+    assert.equal((await world.run()).kind, 'done');
+    assert.equal(world.hooks.ran.length, 3);
+    assert.equal(world.git.log.filter((line) => line.startsWith('rebase')).length, 3);
+    assert.deepEqual(world.records(PLACES.ledger).at(-1), {
+      type: 'deploy',
+      kind: 'deploy',
+      session: 'api',
+      repo: 'app',
+      range: 'squashed',
+      what: 'integrate feat',
+      note: 'merged by the merge command into main; cloud-api deploy on push, not watched by teamrig',
+      startedAt: '2030-01-08T10:00:00.000Z',
+      rolledAt: '2030-01-08T11:00:00.000Z',
+    });
+    assert.equal(world.files.get(PENDING), undefined);
+  });
+
+  it('runs the command again for a branch with new commits since its merge waited, as a merge of its own', async () => {
+    const world = new World({ repos: { app: MERGING } });
+    world.hooks.answer(MERGE, { end: 75, lines: ['https://forge/pr/7'] });
+    assert.equal((await world.run()).kind, 'waiting');
+    world.clock.advance(HALF_HOUR);
+    squashedAs(world, 'squashed');
+    world.git.heads.set(WORKTREE, 'mine2');
+    world.git.rebasedTo = 'rebased2';
+    assert.equal((await world.run()).kind, 'waiting');
+    assert.equal(world.hooks.ran.length, 2);
+    assert.equal(world.hooks.ran[1]?.env['TEAMRIG_MERGE_HEAD'], 'rebased2');
+    assert.deepEqual(pendingOf(world), { ...WAITED, head: 'rebased2', base: 'squashed', since: '2030-01-08T10:30:00.000Z' });
+    assert.ok(!tidied(world));
+  });
+
+  const unmerged: readonly { readonly name: string; readonly arrange: (world: World) => void; readonly since: string }[] = [
+    { name: 'origin did not move', arrange: () => undefined, since: 'base' },
+    {
+      name: 'origin moved with another change to its files',
+      arrange: (world) => {
+        world.git.origin.set('main', 'other');
+        world.git.landed = ['other'];
+      },
+      since: 'base',
+    },
+  ];
+  for (const { name, arrange, since } of unmerged) {
+    it(`fails when the command says it merged but no commit on origin holds the branch, and keeps the branch: ${name}`, async () => {
+      const world = new World({ repos: { app: MERGING } });
+      world.hooks.answer(MERGE, { lines: ['merged'], during: async () => arrange(world) });
+      failed(await world.run(), new RegExp(`^the merge command said feat merged, but no commit on origin/main since ${since} holds its files at rebased$`));
+      assert.ok(!tidied(world));
+      assert.equal(world.files.get(PENDING), undefined);
+      assert.ok(world.lockFree());
+    });
+  }
+
+  it('fails when the command fails or cannot start, naming its end and last line, and leaves no pending merge', async () => {
+    const world = new World({ repos: { app: MERGING } });
+    world.hooks.answer(MERGE, { end: 1, lines: ['checks failed: lint', ''] }, { end: { kind: 'notStarted', error: 'ENOENT' } });
+    failed(await world.run(), /^the merge command `node merge\.ts` exited 1, so feat is not on main: checks failed: lint$/);
+    failed(await world.run(), /^the merge command `node merge\.ts` could not start \(ENOENT\), so feat is not on main$/);
+    assert.ok(!tidied(world));
+    assert.equal(world.files.get(PENDING), undefined);
+    assert.ok(world.lockFree());
+  });
+
+  const holds: readonly { readonly name: string; readonly options: Options; readonly arrange: (world: World) => void; readonly end: (end: IntegrateEnd) => void }[] = [
+    {
+      name: 'after the heavy cutoff',
+      options: { repos: { app: MERGING }, start: '2030-01-08T22:45:00Z', schedule: { heavyCutoffUtc: '22:30' } },
+      arrange: () => undefined,
+      end: (end) => refused(end, /nothing heavy 22:30-00:00 UTC/),
+    },
+    {
+      name: 'a lockfile change the dependency gate holds',
+      options: { repos: { app: { ...MERGING, dependencyGate: true } } },
+      arrange: (world) => {
+        world.git.paths = ['package-lock.json'];
+      },
+      end: (end) => refused(end, /deps changed \(package-lock\.json\): coordinator\.repos\.app\.dependencyGate/),
+    },
+    {
+      name: 'a rebase conflict',
+      options: { repos: { app: MERGING } },
+      arrange: (world) => {
+        world.git.rebaseFails = 'conflict in src/app.ts';
+      },
+      end: (end) => failed(end, /conflict in src\/app\.ts/),
+    },
+  ];
+  for (const { name, options, arrange, end } of holds) {
+    it(`runs no merge command on ${name}`, async () => {
+      const world = new World(options);
+      arrange(world);
+      end(await world.run());
+      assert.deepEqual(world.hooks.ran, []);
+      assert.equal(world.files.get(PENDING), undefined);
+      assert.ok(world.lockFree());
+    });
+  }
+
+  it('runs the dependency check before the command, and no command when the check refuses the change', async () => {
+    const CHECK = ['node', 'check-change.ts'];
+    const world = new World({ repos: { app: { ...MERGING, dependencyGate: true, dependencyCheck: CHECK } } });
+    world.git.paths = ['package-lock.json'];
+    world.hooks.answer(CHECK, { end: 3, lines: ['a pin moved'] });
+    refused(await world.run(), /the dependency check `node check-change\.ts` exited 3, so feat stays off main/);
+    assert.deepEqual(world.hooks.commands, ['node check-change.ts']);
+    assert.ok(world.lockFree());
   });
 });
 

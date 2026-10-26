@@ -23,6 +23,7 @@ const PLACES: CoordinatorPlaces = {
   claimsMd: '/team/deploys/claims.md',
   claimsLock: '/team/deploys/claims.lock',
   hostLock: '/kit/host.lock',
+  pendingMerges: '/team/deploys/pending-merges',
 };
 const FLOW = { name: 'flow', command: ['node', 'gates/flow.js'] };
 const ROLL_COMMAND = ['node', 'tools/roll.js'];
