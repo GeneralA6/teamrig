@@ -199,8 +199,45 @@ describe('RegisterFold: going on from a folded state', () => {
   });
 
   it('keeps the next id of the state it went on from, even with no tasks in it', () => {
-    const state = foldEvents([], [], { tasks: new Map(), orphans: 3, nextId: 'T40' });
+    const state = foldEvents([], [], { tasks: new Map(), orphans: 3, nextId: 'T40', moved: new Map() });
     assert.deepEqual([state.nextId, state.orphans, state.tasks.size], ['T40', 3, 0]);
+  });
+});
+
+function moved(hour: number, to: string, id = 'T1'): RegisterEvent {
+  return { v: EVENT_VERSION, type: 'moved', id, at: at(hour), by: 'lead', to };
+}
+
+describe('foldEvents: a task that moved to another team (T1144)', () => {
+  it('takes the task out and records the team it went to', () => {
+    const state = foldEvents([create(9), status(10, 'in-progress'), moved(11, 'web')]);
+    assert.deepEqual([state.tasks.size, [...state.moved], state.orphans, state.nextId], [0, [['T1', 'web']], 0, 'T2']);
+  });
+
+  it('counts any later event on the id as an orphan, a create too', () => {
+    const fold = new RegisterFold();
+    assert.deepEqual(
+      [create(9), moved(10, 'web'), status(11, 'done'), update(12, { priority: 1 }), create(13), moved(14, 'ops')].map((event) => fold.apply(event)),
+      [true, true, false, false, false, false],
+    );
+    assert.deepEqual([fold.state().tasks.size, fold.state().orphans, fold.state().moved.get('T1')], [0, 4, 'web']);
+  });
+
+  it('counts a moved line naming no task as an orphan, and records no move', () => {
+    const state = foldEvents([moved(9, 'web', 'T5')]);
+    assert.deepEqual([state.orphans, state.moved.size, state.nextId], [1, 0, 'T6']);
+  });
+
+  it('gives the full replay whatever event it resumes after, and never changes a state it handed out', () => {
+    const events = [create(9), { ...create(10), id: 'T2' }, moved(11, 'web'), status(12, 'done'), moved(13, 'ops', 'T2')];
+    const full = foldEvents(events);
+    for (let split = 0; split <= events.length; split += 1) {
+      assert.deepEqual(foldEvents(events.slice(split), [], foldEvents(events.slice(0, split))), full, `resumed after ${split} event(s)`);
+    }
+    const head = foldEvents(events.slice(0, 3));
+    const fold = new RegisterFold(head);
+    fold.apply(moved(13, 'ops', 'T2'));
+    assert.deepEqual([[...head.moved.keys()], [...fold.state().moved.keys()]], [['T1'], ['T1', 'T2']]);
   });
 });
 

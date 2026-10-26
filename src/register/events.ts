@@ -1,4 +1,5 @@
 import { isRecord, type JsonRecord } from '../core/guards.ts';
+import { ID_PATTERN } from '../core/ids.ts';
 import type { JsonlRecord } from '../core/jsonl.ts';
 import { parseUtcDeadline } from '../core/time.ts';
 import { isTaskStatus, LEGACY_WAITING_STATUS, TASK_ID, WAIT_STATUSES, type TaskStatus } from './model.ts';
@@ -20,10 +21,15 @@ import { parseWaits, type WaitReason } from './waits.ts';
  * each reads there as none (an answered update as a note alone). An older teamrig re-serialized the events of the snapshot a rotation or
  * `compact` rewrites, so it dropped such a field there (the archive keeps the lines as written); this one copies
  * each kept line as written (compaction.ts).
+ * Version 3 adds the `moved` record (T1144), and only a moved line carries it: an older teamrig reads that line as a
+ * newer format and writes to the register no more, so no session of it changes a task that moved to another team.
  * Parsing checks the FORMAT only (any priority from 0, any goal string): team policy is applied
  * on write, so changing the config never erases history.
  */
-export const EVENT_VERSION = 2;
+export const EVENT_VERSION = 3;
+
+/** The version every line but a moved one is written with, so a reader of version 2 reads them all. */
+export const TASK_LINE_VERSION = 2;
 
 /** The name lines before version 2 gave the `priority` field; still read, never written. */
 export const LEGACY_PRIORITY_FIELD = 'tier';
@@ -146,7 +152,16 @@ export interface UpdateEvent extends EventBase {
   readonly verdict?: ApprovalVerdict;
 }
 
-export type RegisterEvent = CreateEvent | StatusEvent | UpdateEvent;
+/**
+ * The task went to team `to` (T1144): its lines live in that team's register from then on, under the same id, and a
+ * later event on the id here is an orphan. Written with EVENT_VERSION, never with TASK_LINE_VERSION.
+ */
+export interface MovedEvent extends EventBase {
+  readonly type: 'moved';
+  readonly to: string;
+}
+
+export type RegisterEvent = CreateEvent | StatusEvent | UpdateEvent | MovedEvent;
 
 export type EventParse =
   | { readonly kind: 'event'; readonly event: RegisterEvent }
@@ -263,6 +278,10 @@ export function parseEvent(line: JsonlRecord): EventParse {
         return unreadable(`unknown approval verdict ${JSON.stringify(verdict)}`);
       }
       return { kind: 'event', event: { ...base, type: 'update', changes, note: textOrNull(record, 'note'), ...(verdict === undefined ? {} : { verdict }) } };
+    }
+    case 'moved': {
+      const to = record['to'];
+      return typeof to === 'string' && ID_PATTERN.test(to) ? { kind: 'event', event: { ...base, type: 'moved', to } } : unreadable(`bad team ${JSON.stringify(to)}`);
     }
     default:
       return unreadable(`unknown event type ${JSON.stringify(record['type'])}`);

@@ -92,7 +92,8 @@ function assertParity(working: RegisterSnapshot, history: RegisterSnapshot, whol
     assert.deepEqual(events(working), events(whole), `events of ${id}`);
   }
   const retired = [...whole.state.tasks.values()].filter((task) => !working.state.tasks.has(task.id));
-  assert.equal(retired.length, working.retired?.count ?? 0, 'retired count');
+  const movedAway = [...whole.state.moved.keys()].filter((id) => !working.state.moved.has(id));
+  assert.equal(retired.length + movedAway.length, working.retired?.count ?? 0, 'retired count: finished tasks and those that moved to another team');
   assert.ok(retired.every((task) => task.status === 'done' || task.status === 'dropped'), 'only finished tasks retire');
   assert.deepEqual([working.state.nextId, working.state.orphans], [whole.state.nextId, whole.state.orphans]);
   assert.deepEqual([working.read.unreadable, working.read.newer, working.read.newestVersion], [whole.read.unreadable, whole.read.newer, whole.read.newestVersion]);
@@ -118,7 +119,7 @@ async function golden(name: string): Promise<string[]> {
 }
 
 describe('compaction parity: the working set reads as the whole history', () => {
-  for (const name of ['events-v0.jsonl', 'events-v1.jsonl', 'events-v2.jsonl']) {
+  for (const name of ['events-v0.jsonl', 'events-v1.jsonl', 'events-v2.jsonl', 'events-v3.jsonl']) {
     it(`on the golden log ${name}, at every split point`, async () => {
       const lines = await golden(name);
       for (let split = 0; split <= lines.length; split += 1) {
@@ -229,5 +230,17 @@ describe('compactRegister', () => {
     // The first kept event is the orphan T40, the sixth of the nine events (the torn line is none).
     const lineless: RegisterSnapshot = { ...source, read: { ...source.read, lines: source.read.lines.slice(0, 1) } };
     assert.throws(() => compactRegister(lineless, { covered: 4, now, zone: TimeZone.UTC, retainDays: 8, keep: new Set() }), /^Error: event 6 of 9 has no line: the read holds 1$/);
+  });
+
+  it('retires a task that moved to another team at once, with its moved line and any later line on it (T1144)', () => {
+    // T5 moved a day ago, so no retention keeps it; the status line after its move is an orphan left out with it.
+    const movedLine = toJsonlLine({ v: EVENT_VERSION, type: 'moved', id: 'T5', at: day(27), by: 'lead', to: 'web' });
+    const later = toJsonlLine({ v: EVENT_VERSION, type: 'status', id: 'T5', at: day(27), by: 'alpha', status: 'done', note: 'n', evidence: 'e', skill: 'none' });
+    const compaction = compactRegister(readRegister(log.join('') + create('T5', 26, null) + movedLine + later), { covered: 4, now, zone: TimeZone.UTC, retainDays: 8, keep: new Set() });
+    assert.deepEqual(compaction.retiredNow, ['T1', 'T2', 'T4', 'T5']);
+    assert.deepEqual([compaction.kept, compaction.header.retired, compaction.header.events, compaction.header.orphans], [1, 4, 2, 2]);
+    const read = readSnapshotText(compaction.text);
+    assert.ok(read.kind === 'usable');
+    assert.deepEqual(read.read.events.map((event) => event.id), ['T40', 'T3']);
   });
 });

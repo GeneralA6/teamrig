@@ -30,7 +30,7 @@ const OWNER_DECISION: readonly WaitReason[] = [{ kind: 'decision', who: 'owner' 
 /** A register holding these tasks, its next id after the highest. */
 function stateOf(...tasks: Task[]): RegisterState {
   const highest = Math.max(0, ...tasks.map((task) => Number(task.id.slice(1))));
-  return { tasks: new Map(tasks.map((task) => [task.id, task])), orphans: 0, nextId: `T${highest + 1}` };
+  return { tasks: new Map(tasks.map((task) => [task.id, task])), orphans: 0, moved: new Map(), nextId: `T${highest + 1}` };
 }
 
 function error<T>(verdict: Verdict<T>): string {

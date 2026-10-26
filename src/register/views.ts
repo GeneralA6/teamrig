@@ -325,6 +325,8 @@ export function formatEvent(event: RegisterEvent, zone: TimeZone): string {
       const verdict = event.verdict === undefined ? [] : [`verdict=${event.verdict}`];
       return `${[head, ...fields, ...verdict].join(' ')}${note}`;
     }
+    case 'moved':
+      return `${head} to=${event.to}`;
   }
 }
 

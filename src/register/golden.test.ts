@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { EVENT_VERSION } from './events.ts';
 import { foldEvents } from './fold.ts';
 import { isWritable, readEvents } from './snapshot.ts';
 
@@ -88,11 +89,12 @@ describe('golden register logs', () => {
   });
 
   it('reads a version 2 log beside older tier lines, skips newer lines and refuses to write beside them', async () => {
-    const read = readEvents(await fixture('events-v2.jsonl'));
+    const newer = JSON.stringify({ v: EVENT_VERSION + 1, type: 'create', id: 'T3', at: '2030-01-07T12:00:00.000Z', by: 'lead', task: { title: 'Written by a newer release', owner: 'alpha' }, newField: true });
+    const read = readEvents(`${await fixture('events-v2.jsonl')}${newer}\n`);
     assert.deepEqual(read.events.map((event) => event.v), [1, 2, 2, 2]);
     assert.equal(read.unreadable, 0);
     assert.equal(read.newer, 1);
-    assert.equal(read.newestVersion, 3);
+    assert.equal(read.newestVersion, EVENT_VERSION + 1);
     assert.equal(isWritable(read), false);
 
     const state = foldEvents(read.events, read.seenIds);
@@ -106,5 +108,29 @@ describe('golden register logs', () => {
     );
     const t1 = state.tasks.get('T1');
     assert.deepEqual([t1?.priorityAt, t1?.statusAt], ['2030-01-07T10:00:00.000Z', '2030-01-07T11:00:00.000Z']);
+  });
+
+  it('reads a version 3 log: a moved task leaves the register, a later line on it is an orphan, writes still allowed', async () => {
+    const read = readEvents(await fixture('events-v3.jsonl'));
+    assert.deepEqual(
+      read.events.map((event) => [event.type, event.v]),
+      [
+        ['create', 2],
+        ['create', 2],
+        ['status', 2],
+        ['moved', 3],
+        ['status', 2],
+        ['status', 2],
+      ],
+    );
+    assert.deepEqual([read.unreadable, read.newer, read.newestVersion], [0, 0, 3]);
+    assert.ok(isWritable(read));
+
+    const state = foldEvents(read.events, read.seenIds);
+    assert.deepEqual([...state.tasks.keys()], ['T1']);
+    assert.deepEqual([...state.moved], [['T2', 'web']]);
+    assert.equal(state.orphans, 1, 'the status written on T2 after it moved');
+    assert.equal(state.nextId, 'T3', 'the moved id stays taken');
+    assert.equal(state.tasks.get('T1')?.status, 'in-progress');
   });
 });

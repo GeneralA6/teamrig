@@ -211,7 +211,7 @@ export function assemble(plan: ReadPlan, segments: readonly EventLogRead[], tail
     newestVersion: Math.max(header?.newestVersion ?? 0, plan.skipped?.newerVersion ?? 0, ...parts.map((part) => part.newestVersion)),
     rotatedAfter: tail.rotatedAfter,
   };
-  const from = header === undefined ? undefined : { tasks: new Map(), orphans: header.orphans, nextId: header.nextId };
+  const from = header === undefined ? undefined : { tasks: new Map(), orphans: header.orphans, nextId: header.nextId, moved: new Map() };
   const retired = header === undefined || header.retired === 0 ? null : { count: header.retired, lastWeek: header.retiredLastWeek };
   return { state: foldEvents(read.events, read.seenIds, from), read, retired };
 }

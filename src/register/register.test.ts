@@ -10,7 +10,7 @@ import { InlineMutex } from '../testing/inline-mutex.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { rotateRegister } from '../testing/rotation.ts';
 import { testTask } from '../testing/task.ts';
-import { EVENT_VERSION } from './events.ts';
+import { EVENT_VERSION, TASK_LINE_VERSION } from './events.ts';
 import { layoutPaths } from './layout.ts';
 import { OWN_NUMBERS, type TaskNumbering } from './numbering.ts';
 import { RegisterPolicy, type Verdict } from './policy.ts';
@@ -107,7 +107,7 @@ describe('Register', () => {
     assert.equal(second.task.createdAt, START);
     const read = readEvents(files.get(LOG) ?? '');
     assert.deepEqual(read.events, [first.event, second.event]);
-    assert.deepEqual(read.events.map((event) => event.v), [EVENT_VERSION, EVENT_VERSION]);
+    assert.deepEqual(read.events.map((event) => event.v), [TASK_LINE_VERSION, TASK_LINE_VERSION]);
   });
 
   it('records the status change and returns the task after it', async () => {
@@ -118,7 +118,7 @@ describe('Register', () => {
     assert.equal(result.task.status, 'in-progress');
     assert.equal(result.task.ownerSeenAt, '2030-01-07T09:01:00.000Z');
     assert.deepEqual(result.event, {
-      v: EVENT_VERSION,
+      v: TASK_LINE_VERSION,
       type: 'status',
       id: 'T1',
       at: '2030-01-07T09:01:00.000Z',
@@ -220,6 +220,17 @@ describe('Register', () => {
     const result = written(await register.setStatus('alpha', 'T1', { status: 'in-progress' }));
     assert.equal(result.task.status, 'in-progress');
     assert.ok(files.get(LOG)?.startsWith(text));
+  });
+
+  it('refuses a write on a task that moved to another team, and still writes the others (T1144)', async () => {
+    const created = { v: TASK_LINE_VERSION, type: 'create', id: 'T1', at: START, by: 'lead', task: { title: 'x', owner: 'alpha', source: 'owner', ref: null, priority: 1, due: null, goals: [], week: null } };
+    const moved = { v: EVENT_VERSION, type: 'moved', id: 'T1', at: START, by: 'lead', to: 'web' };
+    const text = `${JSON.stringify(created)}\n${JSON.stringify(moved)}\n`;
+    const { files, register } = setup({ [LOG]: text });
+    assert.equal(errorOf(await register.setStatus('alpha', 'T1', { status: 'in-progress' })), 'T1 moved to team web: only a session of team web changes it');
+    assert.equal(files.get(LOG), text);
+    const next = written(await register.add('lead', { title: 'Next', description: 'what and why', owner: 'alpha', source: 'owner', priority: 1 }));
+    assert.equal(next.task.id, 'T2', 'the moved id stays taken');
   });
 
   it('reads a snapshot without the lock', async () => {
@@ -475,7 +486,7 @@ describe('Register.approve (T684)', () => {
     const appended = files.get(LOG)?.length ?? 0;
     const { task, event } = written(await register.approve('lead', 'T1', 'approved', 'tests green, small commits'));
     assert.deepEqual(readEvents((files.get(LOG) ?? '').slice(appended)).events, [event]);
-    assert.deepEqual(event, { v: EVENT_VERSION, type: 'update', id: 'T1', at: START, by: 'lead', changes: {}, note: 'tests green, small commits', verdict: 'approved' });
+    assert.deepEqual(event, { v: TASK_LINE_VERSION, type: 'update', id: 'T1', at: START, by: 'lead', changes: {}, note: 'tests green, small commits', verdict: 'approved' });
     assert.deepEqual([task.status, task.note, task.answer?.verdict], ['waiting', 'branch t1, lands the fix', 'approved']);
   });
 

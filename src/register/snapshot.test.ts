@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { EVENT_VERSION } from './events.ts';
+import { EVENT_VERSION, TASK_LINE_VERSION } from './events.ts';
 import { FIRST_LAYOUT_VERSION, NEWEST_LAYOUT_VERSION } from './marker.ts';
 import { isWritable, readEvents, readRegister, snapshotOf } from './snapshot.ts';
 
@@ -38,7 +38,7 @@ describe('readRegister', () => {
     assert.equal(snapshot.state.tasks.get('T1')?.status, 'done');
     assert.equal(snapshot.state.tasks.get('T2')?.status, 'open');
     assert.equal(snapshot.state.tasks.get('T2')?.updatedAt, '2030-01-07T11:00:00.000Z');
-    assert.deepEqual([snapshot.read.newer, snapshot.read.unreadable, snapshot.read.newestVersion], [1, 0, EVENT_VERSION]);
+    assert.deepEqual([snapshot.read.newer, snapshot.read.unreadable, snapshot.read.newestVersion], [1, 0, TASK_LINE_VERSION]);
     assert.equal(isWritable(snapshot.read), true);
   });
 
@@ -75,7 +75,7 @@ describe('readEvents on a rotated log', () => {
     const read = readEvents([marker(2), CREATE_T1].join('\n'));
     assert.equal(read.rotatedAfter, 2);
     assert.equal(read.events.length, 1);
-    assert.deepEqual([read.unreadable, read.newer, read.newestVersion], [0, 0, EVENT_VERSION]);
+    assert.deepEqual([read.unreadable, read.newer, read.newestVersion], [0, 0, TASK_LINE_VERSION]);
   });
 
   it('reads a log with no marker as never rotated, and keeps the first marker of two', () => {
@@ -86,13 +86,13 @@ describe('readEvents on a rotated log', () => {
   it('counts a damaged marker as unreadable without blocking writes', () => {
     const read = readEvents([marker('x'), CREATE_T1].join('\n'));
     assert.deepEqual([read.rotatedAfter, read.unreadable, read.newer], [0, 1, 0]);
-    assert.equal(read.newestVersion, EVENT_VERSION);
+    assert.equal(read.newestVersion, TASK_LINE_VERSION);
   });
 
   it('reads a marker of every layout it knows as the segment the log goes on from, and still writes after it', () => {
     for (let v = FIRST_LAYOUT_VERSION; v <= NEWEST_LAYOUT_VERSION; v += 1) {
       const read = readEvents([marker(2, v), CREATE_T1].join('\n'));
-      assert.deepEqual([read.rotatedAfter, read.newer, read.newestVersion, isWritable(read)], [2, 0, EVENT_VERSION, true], `v${v}`);
+      assert.deepEqual([read.rotatedAfter, read.newer, read.newestVersion, isWritable(read)], [2, 0, TASK_LINE_VERSION, true], `v${v}`);
     }
   });
 
