@@ -157,7 +157,7 @@ function report(runtime: CliRuntime, verdict: Verdict<WriteResult>, verb: string
 }
 
 /** Damaged or newer lines never stop a read; they are named on stderr so someone fixes them. */
-function warnDamage(runtime: CliRuntime, snapshot: RegisterSnapshot, path: string): void {
+export function warnDamage(runtime: CliRuntime, snapshot: RegisterSnapshot, path: string): void {
   const { unreadable, newer } = snapshot.read;
   const { orphans } = snapshot.state;
   if (unreadable + newer + orphans > 0) {
