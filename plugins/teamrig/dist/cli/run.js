@@ -177,7 +177,7 @@ const COMMANDS = {
     'config validate': { effect: 'read', flags: [], load: async () => (await configCommands()).validate },
     'config migrate': { effect: 'write', flags: [], switches: ['yes'], load: async () => (await configCommands()).migrate },
     'commits check': { effect: 'read', flags: ['base', 'tip'], load: async () => (await commitsCommands()).check },
-    'worktree remove': { effect: 'write', flags: ['base'], switches: ['delete-branch', 'dry-run'], load: async () => (await worktreeCommands()).remove },
+    'worktree remove': { effect: 'write', flags: ['base', 'session'], switches: ['delete-branch', 'dry-run'], load: async () => (await worktreeCommands()).remove },
     test: { effect: 'write', flags: ['session'], rest: true, load: async () => (await testCommand()).test },
     heavy: { effect: 'write', flags: ['session', 'what', 'max-minutes'], switches: ['small', 'pre-push'], rest: true, load: async () => (await heavyCommand()).heavy },
     withdraw: { effect: 'write', flags: ['session', 'what'], switches: ['all'], load: async () => (await withdrawCommand()).withdraw },
@@ -474,8 +474,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       already there; without --yes it shows the change and writes nothing
   statusline uninstall [--yes] takes it back out: the status line before it returns
   automode install [--yes]     writes the team's lines (protected branches, the register commands, heavy and
-      test) into Claude Code's autoMode.environment, the facts auto mode trusts; run it again after a
-      config change or an upgrade; without --yes it shows the change and writes nothing
+      test, who removes a worktree) into Claude Code's autoMode.environment, the facts auto mode trusts;
+      run it again after a config change or an upgrade; without --yes it shows the change and writes nothing
   automode uninstall [--yes]   takes the team's lines back out, leaving every other line
   permissions trim [--all] [--yes]   removes the local allow rules off the config's permissions.keepAllow
       that approve a whole tool or program or hold a credential (--all: every rule) from the team's
@@ -500,11 +500,13 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       the first teamrig that reads it, as a tab on an older one refuses every write after; --yes writes it
   commits check --base <ref> [--tip <ref>]   commits in base..tip (default HEAD) over the size rule
       with no reason line; any is REFUSED, for an integrate script or CI
-  worktree remove <path> [--delete-branch [--base <ref>]] [--dry-run]   removes a linked git worktree:
+  worktree remove <path> [--delete-branch [--base <ref>]] [--dry-run] [--session <id|name>]   removes a linked git worktree:
       unlinks each link in it (such as a node_modules junction) and sees it gone, so git cannot follow
       one and empty its target, then runs git worktree remove; REFUSED before any change for the main
-      checkout, a dirty tree or a real node_modules folder. --delete-branch: deletes its branch too, once
-      every commit of it is on --base (default the branch origin/HEAD names); --dry-run: prints the steps
+      checkout, a dirty tree or a real node_modules folder, and in a team for another session's worktree:
+      a session removes its own (its t<id>- branch names a task it owns) and those of the sessions it
+      leads, the lead any. --delete-branch: deletes its branch too, once every commit of it is on --base
+      (default the branch origin/HEAD names); --dry-run: prints the steps
   heavy --what <label> [--session <id|name>] [--max-minutes <n>] [--small] [--pre-push] -- <command ...>   runs one heavy step
       (a build, a test run, a database script) under the host lock, so the host runs one at a time:
       waits in line for the lock, kills the step and every process it started after

@@ -160,7 +160,7 @@ export async function planRemoval(request, ports) {
         const target = await files.linkTarget(link);
         links.push({ path: link, name: untrackedNames[index] ?? link, target, targetEntries: await files.entryCount(target) });
     }
-    return { kind: 'ready', plan: { top, mainDir: main.path, links, branch } };
+    return { kind: 'ready', plan: { top, mainDir: main.path, links, branch, onBranch: mine.branch } };
 }
 function entriesText(count) {
     return count === undefined ? 'missing' : `${count} ${count === 1 ? 'entry' : 'entries'}`;

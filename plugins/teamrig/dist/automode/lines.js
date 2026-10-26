@@ -25,10 +25,10 @@ export const REGISTER_COMMANDS = [
 export function kitTag(team) {
     return `[teamrig ${team}] `;
 }
-/** The team's lines, in order: protected branches, the register, heavy and test. */
+/** The team's lines, in order: protected branches, the register, heavy and test, worktree removal. */
 export function kitLines(facts) {
     const tag = kitTag(facts.team);
-    return [`${tag}${branchesLine(facts)}`, `${tag}${registerLine(facts)}`, `${tag}${wrappersLine()}`];
+    return [branchesLine(facts), registerLine(facts), wrappersLine(), worktreeLine(facts)].map((line) => `${tag}${line}`);
 }
 function branchesLine({ lead, pushGuard }) {
     return (`Protected branches: ${pushGuard.protectedBranches.join(', ')}. ${normalPush(pushGuard.pushToProtected, lead)} ` +
@@ -54,4 +54,10 @@ function wrappersLine() {
     return ('`teamrig heavy ... -- <cmd>` and `teamrig test ... -- <cmd>` run the session\'s own build, test or script on this ' +
         'host (heavy waits for the host lock, test records the result); neither grants anything, so judge the command ' +
         'after `--` as if it ran alone.');
+}
+function worktreeLine({ lead }) {
+    return ('`teamrig worktree remove <path> [--delete-branch]` is how a session removes its finished worktree, and every session ' +
+        'may run it: teamrig itself removes only a worktree whose t<id>- branch names a task the session owns or one of a ' +
+        `session it leads (any for the lead, session ${lead}), and refuses the main checkout, uncommitted work and a branch ` +
+        'with a commit not on its base.');
 }
