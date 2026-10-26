@@ -1064,6 +1064,12 @@
           "minimum": 0,
           "maximum": 50,
           "default": 5
+        },
+        "askWith": {
+          "description": "How the lead asks the owner each decision at the daily meeting: text reads the cards in plain text and the owner answers in their own words; picker asks the choices with Claude Code's question picker (AskUserQuestion), at most 4 a call. With pickerGuard on, the picker opens for the lead in the meeting only under picker.",
+          "type": "string",
+          "enum": ["text", "picker"],
+          "default": "text"
         }
       }
     },

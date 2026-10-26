@@ -731,6 +731,19 @@ export interface DecisionsConfig {
   readonly batchTimesUtc: readonly string[];
   /** A batch is due once this many waits on the owner are not yet asked; 0: never by count. */
   readonly batchAt: number;
+  /** How the lead asks the owner at the daily meeting: in plain text, or with Claude Code's question picker. */
+  readonly askWith: AskWith;
+}
+
+export const ASK_WITH = ['text', 'picker'] as const;
+/**
+ * How the daily meeting asks the owner each decision: `text` reads the cards in plain text and the owner answers in
+ * their own words; `picker` asks the choices with Claude Code's question picker (AskUserQuestion), at most 4 a call.
+ */
+export type AskWith = (typeof ASK_WITH)[number];
+
+export function isAskWith(value: unknown): value is AskWith {
+  return ASK_WITH.some((way) => way === value);
 }
 
 /**

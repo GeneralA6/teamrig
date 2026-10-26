@@ -212,7 +212,7 @@ export const DEFAULT_SESSION_SHARE = 1;
 
 export const DEFAULT_ALERTS: AlertsConfig = { persistentFailureHours: 24 };
 
-export const DEFAULT_DECISIONS: DecisionsConfig = { batchTimesUtc: [], batchAt: 5 };
+export const DEFAULT_DECISIONS: DecisionsConfig = { batchTimesUtc: [], batchAt: 5, askWith: 'text' };
 
 export const DEFAULT_LOOPS: LoopsConfig = { chainNudgeAt: 6 };
 export const DEFAULT_LEAD_BOUNDARY: LeadBoundaryConfig = { enabled: true, ownPaths: [], searchNudgeAt: 3 };
