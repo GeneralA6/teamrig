@@ -9,6 +9,7 @@ const PROJECTS = resolve('/', 'u', '.claude', 'projects');
 const AT = '2030-01-08T10:00:00Z';
 const SINCE = 1_000;
 const RECENT = 2_000;
+const UNBOUNDED = Number.MAX_SAFE_INTEGER;
 
 function skillCall(skill: string): string {
   return replyLine({ id: `m-${skill}`, at: AT, usage: { input: 1, output: 1 }, tools: [{ id: `t-${skill}`, name: 'Skill', skill }] });
@@ -23,15 +24,27 @@ describe('readSkillUse', () => {
     source.set(join(PROJECTS, 'app', '0123abcd-0000-4000-8000-00000000000a.jsonl'), main, RECENT);
     source.set(join(PROJECTS, 'app', '0123abcd-0000-4000-8000-00000000000a', 'subagents', 'agent-1.jsonl'), sub, RECENT);
     source.set(join(PROJECTS, 'other', '0123abcd-0000-4000-8000-00000000000b.jsonl'), old, SINCE - 1);
-    const use = await readSkillUse(source, PROJECTS, SINCE, 16);
+    const use = await readSkillUse(source, PROJECTS, { since: SINCE, maxBytes: UNBOUNDED, chunkBytes: 16 });
     assert.deepEqual([...use.used].sort(), ['alpha-check', 'beta-run', 'tr:guide']);
     assert.equal(use.transcripts, 2);
     assert.equal(use.bytes, Buffer.byteLength(main) + Buffer.byteLength(sub));
+    assert.deepEqual([use.unread, use.since], [0, SINCE]);
+  });
+
+  it('reads the newest transcripts first and starts none past the bound, the window starting at the oldest one read', async () => {
+    const source = new MemoryTranscripts();
+    source.set(join(PROJECTS, 'app', '0123abcd-0000-4000-8000-00000000000a.jsonl'), `${skillCall('skill-mid')}\n`, 2_500);
+    source.set(join(PROJECTS, 'app', '0123abcd-0000-4000-8000-00000000000b.jsonl'), `${skillCall('skill-old')}\n`, RECENT);
+    source.set(join(PROJECTS, 'app', '0123abcd-0000-4000-8000-00000000000c.jsonl'), `${skillCall('skill-new')}\n`, 3_000);
+    const one = Buffer.byteLength(`${skillCall('skill-new')}\n`);
+    const use = await readSkillUse(source, PROJECTS, { since: SINCE, maxBytes: one + 1 });
+    assert.deepEqual([...use.used].sort(), ['skill-mid', 'skill-new']);
+    assert.deepEqual([use.transcripts, use.bytes, use.unread, use.since], [2, 2 * one, 1, 2_500]);
   });
 
   it('reads nothing when no transcript was written since then', async () => {
     const source = new MemoryTranscripts({ [join(PROJECTS, 'app', '0123abcd-0000-4000-8000-00000000000a.jsonl')]: `${skillCall('alpha-check')}\n` }, SINCE - 1);
-    assert.deepEqual(await readSkillUse(source, PROJECTS, SINCE), { used: new Set(), transcripts: 0, bytes: 0 });
+    assert.deepEqual(await readSkillUse(source, PROJECTS, { since: SINCE, maxBytes: UNBOUNDED }), { used: new Set(), transcripts: 0, bytes: 0, unread: 0, since: SINCE });
     assert.equal(source.bytesRead, 0);
   });
 });

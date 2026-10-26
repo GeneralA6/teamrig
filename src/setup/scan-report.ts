@@ -22,7 +22,8 @@ export const LONG_DESCRIPTION_CHARS = 250;
 const CHARS_PER_TOKEN = 4;
 /** A repeated line prints up to this many characters. */
 const EXCERPT_MAX_CHARS = 60;
-const BYTES_PER_MB = 1024 * 1024;
+export const BYTES_PER_MB = 1024 * 1024;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Where the scan ran, and what its lines need to show paths and quotes. */
 export interface ScanReportContext {
@@ -30,6 +31,10 @@ export interface ScanReportContext {
   /** The team the project belongs to; undefined before one is created. */
   readonly team: string | undefined;
   readonly days: number;
+  /** When the scan ran (epoch ms), to tell how many days the transcripts read cover. */
+  readonly now: number;
+  /** The MB of transcripts read before older ones are left unread. */
+  readonly maxMb: number;
   readonly userHome: string;
   readonly secrets: SecretScanner;
 }
@@ -131,20 +136,27 @@ function settingsLines(scan: SetupScan, at: ScanReportContext, show: (path: stri
   return [`SETTINGS ${findings.length} finding(s)`, ...findingLines('S', findings), ...trim];
 }
 
-function unusedFindings(unused: readonly ListedSkill[], at: ScanReportContext, show: (path: string) => string): Finding[] {
+/** The days the transcripts read cover: all --days of them, else the newest ones read before the bound. */
+function windowOf(scan: SetupScan, at: ScanReportContext): string {
+  return scan.usage.unread === 0 ? `${at.days} day(s)` : `the newest ${((at.now - scan.usage.since) / DAY_MS).toFixed(1)} day(s)`;
+}
+
+function unusedFindings(unused: readonly ListedSkill[], window: string, show: (path: string) => string): Finding[] {
   return unused.map((skill) => ({
     kind: 'unused-skill',
     where: show(skill.path),
-    what: `no Skill call or /${skill.name} in ${at.days} day(s)`,
+    what: `no Skill call or /${skill.name} in ${window}`,
     saves: tokensOf(skill.line.length),
   }));
 }
 
 function unusedHeader(scan: SetupScan, unused: readonly ListedSkill[], at: ScanReportContext): string {
-  const { transcripts, bytes } = scan.usage;
+  const { transcripts, bytes, unread } = scan.usage;
   const young = notUsed(scan).filter((skill) => scan.recent.has(skill.path)).length;
   const unjudged = young === 0 ? '' : `; ${young} more changed in that time, too new to judge`;
-  return `UNUSED ${unused.length} of ${scan.context.skills.length} skill(s) not used in ${at.days} day(s) (read ${transcripts} transcript(s), ${(bytes / BYTES_PER_MB).toFixed(1)} MB)${unjudged}`;
+  const bound = unread === 0 ? '' : `, newest first; ${unread} older one(s) of ${at.days} day(s) left unread past the ${at.maxMb} MB bound, --max-mb raises it`;
+  const read = `read ${transcripts} transcript(s), ${(bytes / BYTES_PER_MB).toFixed(1)} MB${bound}`;
+  return `UNUSED ${unused.length} of ${scan.context.skills.length} skill(s) not used in ${windowOf(scan, at)} (${read})${unjudged}`;
 }
 
 function notUsed(scan: SetupScan): ListedSkill[] {
@@ -165,7 +177,7 @@ export function scanReport(scan: SetupScan, at: ScanReportContext): string[] {
   const unused = unusedSkills(scan);
   const context = contextFindings(scan, new Set(unused), show);
   const duplicates = duplicateFindings(scan, at, show);
-  const parked = unusedFindings(unused, at, show);
+  const parked = unusedFindings(unused, windowOf(scan, at), show);
   const loaded = scan.context.files.reduce((sum, file) => sum + file.text.length, 0) + scan.listing.chars;
   const savings = [...context, ...duplicates, ...parked].reduce((sum, finding) => sum + finding.saves, 0);
   return [

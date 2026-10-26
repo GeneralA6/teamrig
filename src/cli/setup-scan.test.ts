@@ -8,7 +8,7 @@ import { APP, CliHarness, KIT, SKILLS_DIR, TEAM, TEAM_HOME, USER_HOME, type CliR
 import { MemoryPathProbe } from '../testing/memory-files.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { teamHomeOf, treeHarness } from '../testing/team-tree.ts';
-import { replyLine } from '../testing/transcript-lines.ts';
+import { promptLine, replyLine } from '../testing/transcript-lines.ts';
 import { DEFAULT_SCAN_DAYS } from './commands/setup-scan.ts';
 import { EXIT } from './runtime.ts';
 
@@ -35,10 +35,21 @@ async function world(harness: CliHarness = new CliHarness()): Promise<CliHarness
   return harness;
 }
 
+const LINE_AT = '2030-01-08T09:00:00Z';
+
+/** A transcript line whose one call loads `skill`. */
+function skillLine(skill: string): string {
+  return replyLine({ id: 'm', at: LINE_AT, usage: { input: 1, output: 1 }, tools: [{ id: 't', name: 'Skill', skill }] });
+}
+
+/** The path of the project's transcript of the Claude Code session ending in `last` (one hex digit). */
+function transcriptPath(last: string): string {
+  return join(CLAUDE_DIR, 'projects', claudeProjectSlug(APP), `0123abcd-0000-4000-8000-00000000000${last}.jsonl`);
+}
+
 /** A transcript of the project whose one call loads `alpha-check`, last written `ago` before the harness's clock. */
 function transcripts(ago: number): MemoryTranscripts {
-  const line = replyLine({ id: 'm', at: '2030-01-08T09:00:00Z', usage: { input: 1, output: 1 }, tools: [{ id: 't', name: 'Skill', skill: 'alpha-check' }] });
-  return new MemoryTranscripts({ [join(CLAUDE_DIR, 'projects', claudeProjectSlug(APP), '0123abcd-0000-4000-8000-00000000000a.jsonl')]: `${line}\n` }, NOW - ago);
+  return new MemoryTranscripts({ [transcriptPath('a')]: `${skillLine('alpha-check')}\n` }, NOW - ago);
 }
 
 function scan(harness: CliHarness, argv: readonly string[] = [], source: MemoryTranscripts = new MemoryTranscripts(), env: Env = {}): Promise<CliResult> {
@@ -134,12 +145,30 @@ describe('setup scan', () => {
     );
   });
 
-  it('refuses a --days that is not a whole number of 1 or more, a positional and a broken team pointer', async () => {
+  it('reads the transcripts newest first up to --max-mb, and judges only the days read', async () => {
     const harness = await world();
-    for (const days of ['0', '1.5', 'x']) {
-      const result = await scan(harness, ['--days', days]);
-      assert.equal(result.code, EXIT.usage);
-      assert.match(result.stderr.join('\n'), new RegExp(`--days "${days.replace('.', '[.]')}" is not a whole number of 1 or more`));
+    const source = new MemoryTranscripts();
+    source.set(transcriptPath('a'), `${skillLine('alpha-check')}\n${promptLine(LINE_AT, 'x'.repeat(Math.round(1.1 * 1024 * 1024)))}\n`, NOW - DAY_MS / 2);
+    source.set(transcriptPath('b'), `${skillLine('beta-run')}\n`, NOW - 2 * DAY_MS);
+    const bounded = okLines(await scan(harness, ['--max-mb', '1'], source));
+    assert.ok(
+      bounded.includes(
+        'UNUSED 1 of 2 skill(s) not used in the newest 0.5 day(s) (read 1 transcript(s), 1.1 MB, newest first; 1 older one(s) of 30 day(s) left unread past the 1 MB bound, --max-mb raises it)',
+      ),
+      bounded.join('\n'),
+    );
+    assert.match(bounded.find((line) => line.startsWith('U1 ')) ?? '', /beta-run.*: no Skill call or \/beta-run in the newest 0\.5 day\(s\)/);
+    assert.ok(okLines(await scan(harness, [], source)).includes(`UNUSED 0 of 2 skill(s) not used in ${DEFAULT_SCAN_DAYS} day(s) (read 2 transcript(s), 1.1 MB)`));
+  });
+
+  it('refuses a --days or --max-mb that is not a whole number of 1 or more, a positional and a broken team pointer', async () => {
+    const harness = await world();
+    for (const flag of ['--days', '--max-mb']) {
+      for (const value of ['0', '1.5', 'x']) {
+        const result = await scan(harness, [flag, value]);
+        assert.equal(result.code, EXIT.usage);
+        assert.match(result.stderr.join('\n'), new RegExp(`${flag} "${value.replace('.', '[.]')}" is not a whole number of 1 or more`));
+      }
     }
     assert.equal((await scan(harness, ['extra'])).code, EXIT.usage);
     assert.equal((await scan(await world(new CliHarness(undefined, '{not json')))).code, EXIT.refused);
