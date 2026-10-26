@@ -980,6 +980,77 @@ Run again with the same team and sessions, it changes nothing. It refuses a team
 and a project folder already tied to another team. When git is not on the PATH or Claude Code or Node.js is too
 old, it first prints one `WARN` line each ([the check](requirements.md#the-requirements-check)).
 
+### teamrig team split
+
+Plans moving sessions of your team, with the tasks they own, into a new child team under you, the lead. For now it
+only plans: it runs with `--dry-run`, writes nothing and prints the child's config, what your team's config loses, the
+tasks that move and what crosses the new border. The child keeps each moved session's name, launch block and sub-lead
+list, so no tab title changes, and a role it has no holder for names your team's holder as `<team>/<id>`. Each task
+that names a session on the other side of the border, as its source, its pin or a wait, has that name rewritten as
+`<team>/<id>`.
+
+Flags:
+
+- `--session <id|name>`: the caller; it must be the lead.
+- `--lead <id>`: required: the session that leads the child team; it moves too.
+- `--sessions <id,id>`: required: the other sessions that move.
+- `--dry-run`: required for now: print the plan, and write nothing.
+
+Example:
+
+```sh
+teamrig team split front --lead web --sessions ui --dry-run --session lead
+```
+
+Output:
+
+```text
+DRY RUN nothing is written; team split only plans for now
+TEAM front under shop: lead web (shop-web); sessions web (shop-web), ui (shop-ui)
+WOULD CREATE /home/you/.teamrig/teams/front/config.json:
+{
+  "configVersion": 4,
+  "team": {
+    "id": "front",
+    "parent": "shop"
+  },
+  "sessions": [
+    "web",
+    "ui"
+  ],
+  "roles": {
+    "lead": "web"
+  },
+  "tabStatus": {
+    "enabled": true
+  },
+  "names": {
+    "web": "shop-web",
+    "ui": "shop-ui"
+  }
+}
+PARENT /home/you/.teamrig/teams/shop/config.json loses sessions web, ui
+TASKS 2 move to front, 2 stay in shop
+  web: 1 open
+  ui: 1 open
+LINK T3 in shop runs after T2 in front
+REWRITE T2 source lead -> shop/lead
+INBOX web: 1 line(s) move
+FILES web: state/inbox/web.md
+INBOX ui: 1 line(s) move
+FILES ui: state/inbox/ui.md
+```
+
+Besides the sessions, `PARENT` names the `names`, `launch` and `leads` keys your team's config loses. `SUB-LEAD`
+names a staying sub-lead whose list loses a moved session, and `UNLED` a staying session whose sub-lead moves, so you
+lead it. `TASKS` counts the moved sessions' tasks by status. `LINK` names an `after` or a task wait between a task that
+moves and one that stays. `INBOX`, `FILES` and `RENAMES` name what each moved session leaves in your team's folders.
+
+It refuses a caller other than the lead, a run without `--dry-run`, a child id another team of the tree has or whose
+folder exists, a session not in your team, your team's lead, and a session that holds one of your team's roles (give
+that role to a session that stays, then split). It also refuses a split that would break the tree's limits (3 levels,
+8 child teams under a team) or the child config's schema.
+
 ### teamrig team tree
 
 Prints the tree of teams this team is in, with each team's lead and members.
