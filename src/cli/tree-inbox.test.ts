@@ -86,6 +86,32 @@ describe('teamrig inbox add across a tree of teams', () => {
     assert.deepEqual([kit.files.get(teamInboxOf('app', 'alpha')), kit.files.get(teamInboxOf('shop', 'lead'))], [undefined, undefined]);
   });
 
+  it('posts task:T<n> to the owner of the task and of each active task of the tree whose ref is T<n>, the sender left out', async () => {
+    const kit = await treeHarness();
+    const task = ['--description', 'what and why', '--priority', 'p2', '--session', 'lead'];
+    await kit.run(['add', '--owner', 'bravo', '--title', 'Login', ...task]);
+    await kit.run(['add', '--team', 'web', '--owner', 'web-front', '--title', 'Login form', '--ref', 'T1', ...task]);
+    await kit.run(['add', '--team', 'ui', '--title', 'Login icons', '--ref', 'T1', ...task]);
+    await kit.run(['add', '--team', 'ops', '--title', 'Login logs', '--ref', 'see T1', ...task]);
+    const result = await kit.run(['inbox', 'add', '--to', 'task:T1', '--text', 'the design is in docs/login.md', '--session', 'front'], { env: { TEAMRIG_TEAM: 'web' } });
+    assert.deepEqual([result.code, result.stdout], [EXIT.ok, ['POSTED to 2 sessions (app/bravo, ui/lead); each is reminded at its next prompt']]);
+    assert.match(kit.files.get(teamInboxOf('app', 'bravo')) ?? '', /\n- 2030-01-08 10:00 web\/front: the design is in docs\/login\.md\n$/);
+    assert.match(kit.files.get(teamInboxOf('ui', 'lead')) ?? '', /\n- 2030-01-08 10:00 web\/front: the design is in docs\/login\.md\n$/);
+    await kit.files.write(teamConfigOf('web'), formatConfig({ configVersion: 1, team: { id: 'web', parent: 'app' }, sessions: ['lead', 'back'], roles: { lead: 'lead' } }));
+    const owners = await kit.run(['inbox', 'add', '--to', 'task:T1', '--text', 'review on friday', '--session', 'alpha']);
+    assert.deepEqual(owners.stdout, ['POSTED to 2 sessions (bravo, ui/lead); each is reminded at its next prompt'], 'an owner no longer a session of its team is left out');
+  });
+
+  it('refuses task:T<n> for a task no register of the tree holds, and its wake from a session that leads no one', async () => {
+    const kit = await treeHarness();
+    await kit.run(['add', '--owner', 'bravo', '--title', 'Login', '--description', 'what and why', '--priority', 'p2', '--session', 'lead']);
+    const unknown = await kit.run(['inbox', 'add', '--to', 'alpha,task:T9', '--text', 'hi', '--session', 'lead']);
+    assert.deepEqual([unknown.code, unknown.stdout], [EXIT.refused, ['REFUSED no task T9 in a register of the tree of teams app is in']]);
+    assert.equal(kit.files.get(teamInboxOf('app', 'alpha')), undefined);
+    const woken = await kit.run(['inbox', 'add', '--to', 'task:T1', '--text', 'hi', '--wake', 'now', '--session', 'alpha']);
+    assert.equal(woken.code, EXIT.refused);
+  });
+
   it('refuses tree:leads from the lead of a one-team tree, which names no one but the sender', async () => {
     const kit = await treeHarness();
     await kit.files.write(teamConfigOf('shop'), formatConfig({ configVersion: 1, team: { id: 'shop' }, sessions: ['lead', 'till'], roles: { lead: 'lead' } }));
@@ -116,6 +142,6 @@ describe('teamrig inbox add across a tree of teams', () => {
     assert.match(broken.stdout[0] ?? '', /^REFUSED the team config has 1 problem\(s\)/);
     const bad = await kit.run(['inbox', 'add', '--to', 'web/lead/x', '--text', 'hi', '--session', 'lead']);
     assert.equal(bad.code, EXIT.usage);
-    assert.match(bad.stderr[0] ?? '', /^--to "web\/lead\/x" is not a session id or name, <team>\/<id>, all, leads, group:<leader>, team:<team>, tree:leads, or a comma-separated list/);
+    assert.match(bad.stderr[0] ?? '', /^--to "web\/lead\/x" is not a session id or name, <team>\/<id>, all, leads, group:<leader>, team:<team>, tree:leads, task:T<n>, or a comma-separated list/);
   });
 });
