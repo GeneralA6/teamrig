@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { formatConfig } from '../config/load.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { readEvents } from '../register/snapshot.ts';
+import { TEST_OWNER_CARD, TEST_OWNER_CARD_FLAGS } from '../testing/card.ts';
 import { bash, CONFIG_PATH, EVENTS_PATH, reasonOf } from '../testing/cli-harness.ts';
 import { SUB_TEAMS, teamConfigOf, teamEventsOf, teamInboxOf, treeHarness } from '../testing/team-tree.ts';
 import type { CliHarness } from '../testing/cli-harness.ts';
@@ -362,6 +363,23 @@ describe("leaders across the tree: the parent team's lead approves a child team'
     assert.equal(set.code, EXIT.ok, [...set.stdout, ...set.stderr].join('\n'));
     assert.equal(kit.files.get(teamInboxOf('web', 'lead')), '- 2030-01-08 10:00 ui/lead: ui/T1 waits on your approval: icons branch\n');
     assert.equal(kit.files.get(teamInboxOf('app', 'lead')), undefined);
+  });
+
+  it("sends a child lead's own wait on the owner to the parent team's lead, its leader (T1265)", async () => {
+    const kit = await treeHarness();
+    assert.equal((await kit.run(['add', '--title', 'Pick a host', '--description', 'what and why', '--priority', 'p1', '--session', 'lead'], { env: WEB })).code, EXIT.ok);
+    const set = await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'decision:owner', '--note', 'the cost', ...TEST_OWNER_CARD_FLAGS, '--session', 'lead'], { env: WEB });
+    assert.equal(set.code, EXIT.ok, [...set.stdout, ...set.stderr].join('\n'));
+    assert.equal(kit.files.get(teamInboxOf('app', 'lead')), `- 2030-01-08 10:00 web/lead: web/T1 waits on the owner's decision: ${TEST_OWNER_CARD.question} | asked in the next batch at the daily meeting\n`);
+    assert.equal(kit.files.get(teamInboxOf('web', 'lead')), undefined, 'never to the lead who set it');
+  });
+
+  it("joins a child lead's wait on the parent lead's approval and on the owner in one line to that lead (T1265)", async () => {
+    const kit = await treeHarness();
+    assert.equal((await kit.run(['add', '--title', 'Pick a host', '--description', 'what and why', '--priority', 'p1', '--session', 'lead'], { env: WEB })).code, EXIT.ok);
+    const set = await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'approval:app/lead,decision:owner', '--note', 'the cost', ...TEST_OWNER_CARD_FLAGS, '--session', 'lead'], { env: WEB });
+    assert.equal(set.code, EXIT.ok, [...set.stdout, ...set.stderr].join('\n'));
+    assert.equal(kit.files.get(teamInboxOf('app', 'lead')), `- 2030-01-08 10:00 web/lead: web/T1 waits on your approval and the owner's decision: ${TEST_OWNER_CARD.question} | asked in the next batch at the daily meeting\n`);
   });
 
   it("refuses all but the parent team's lead, a root team, an unknown team, its own team and no note, writing nothing", async () => {

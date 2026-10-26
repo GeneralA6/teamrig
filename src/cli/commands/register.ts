@@ -297,7 +297,7 @@ async function tellAssigned(runtime: CliRuntime, team: Team, by: string, task: T
  * to that leader, a wait on the owner to the task owner's own leader, which passes it up (the lead keeps the owner's
  * decision queue and asks it in its batch); never to the leader who set it. A wait on the parent team's lead, the
  * lead's own approver on a child team (T1140), goes to that lead's inbox in the parent team, the task named
- * `<team>/T12`. A new wait on the owner says when the owner hears it (src/decisions/batch.ts): in the next batch, in the
+ * `<team>/T12`, and so does a child team's lead's own wait on the owner (T1265), as that lead is its leader. A new wait on the owner says when the owner hears it (src/decisions/batch.ts): in the next batch, in the
  * one due now, or at once when it is due before the next; at once, the lead is woken or the setter told how to wake it
  * (atOnceNote).
  */
@@ -315,19 +315,20 @@ async function tellLeadersOfWaits(runtime: CliRuntime, team: Team, by: string, v
     (reason): reason is PersonWait =>
       (reason.kind === 'decision' || reason.kind === 'approval') && !isPeerWait(reason, approvers, ownerSource) && !earlier.some((other) => sameWait(reason, other)),
   );
-  const ownLeader = leaders.leaderOf(task.owner) ?? lead;
+  const ownLeader = leaders.leaderOf(task.owner) ?? leaders.above ?? lead;
   const receiverOf = (reason: PersonWait) => (reason.who === ownerSource ? ownLeader : reason.who);
   for (const receiver of new Set(added.map(receiverOf))) {
     if (receiver === by) {
       continue;
     }
     const waits = added.filter((reason) => receiverOf(reason) === receiver);
+    const timing = waits.some((reason) => reason.who === ownerSource) ? await ownerWaitTiming(runtime, team, verdict.value) : undefined;
+    const when = timing === undefined ? '' : ` | ${timingText(timing, team.zone)}`;
     if (receiver === leaders.above) {
-      await tellLeadAbove(runtime, team, by, receiver, personWaitNotice({ ...task, id: `${team.paths.team}/${task.id}` }, waits, receiver));
+      await tellLeadAbove(runtime, team, by, receiver, `${personWaitNotice({ ...task, id: `${team.paths.team}/${task.id}` }, waits, receiver)}${when}`);
       continue;
     }
-    const timing = waits.some((reason) => reason.who === ownerSource) ? await ownerWaitTiming(runtime, team, verdict.value) : undefined;
-    const text = `${personWaitNotice(task, waits, receiver)}${timing === undefined ? '' : ` | ${timingText(timing, team.zone)}`}`;
+    const text = `${personWaitNotice(task, waits, receiver)}${when}`;
     const posted = await tellLine(runtime, team, by, receiver, text, `${receiver} was not told that ${task.id} waits on it`);
     if (timing?.kind === 'at-once') {
       runtime.out.stderr(await atOnceNote(runtime, team, by, task.id, receiver, posted ? text : undefined));
