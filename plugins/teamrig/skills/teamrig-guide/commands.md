@@ -115,8 +115,8 @@ Flags:
 - `--missed-monitor "<text>"`: as `--missed-test`, for the monitor that should have caught it.
 - `--missed-log "<text>"`: as `--missed-test`, for the log line that should have caught it.
 - `--waits <reason>,<reason>`: required for `waiting`, and allowed only with it: what the task waits for, one or
-  more of `decision:<who>` and `approval:<who>` (the lead, or `owner` for the human; a peer's work is a task, asked
-  for with `--ask`), `task:T<id>` (a task to finish first; only for a task already started) and
+  more of `decision:<who>` and `approval:<who>` (the lead, or `owner` for the human; a child team's lead asks its
+  parent team's lead, `app/lead`; a peer's work is a task, asked for with `--ask`), `task:T<id>` (a task to finish first; only for a task already started) and
   `time:<YYYY-MM-DD HH:MM>` (on the team's clock unless marked UTC; a bare day lasts to its end; a budget hold is a time, never an approval). It
   stays waiting until every reason has cleared. A new decision or approval wait posts the lead one inbox line
   (`T1 waits on your approval: <the card's question, else the note>`; an owner wait too, since the lead keeps the
@@ -290,6 +290,13 @@ Only the lead answers, only a task waiting on its approval, always with a note; 
 the owner's.
 Under `pushGuard.pushToProtected: lead` the push guard lets the owner's push to a protected branch through while
 the approval stands ([hooks](hooks.md#before-a-shell-command-the-push-guard)).
+
+In a tree of teams, a child team's lead answers to the lead of the team just above it: it asks with
+`--waits approval:app/lead`, and that lead gets an inbox line naming the task as `web/T3`. The parent team's lead
+answers from its own team: `approve web/T3 --note "<what you checked>"`, or with `--decline`. The answer lands in
+that team's register by `app/lead`, and the task's owner gets the inbox line. Only the lead of the team just above
+answers that way; any other session and a root team's task are refused, writing nothing, and `<team>/<id>` naming
+your own team says to use `approve <id>`. The push guard holds a child team's lead to that approval too.
 
 Flags:
 

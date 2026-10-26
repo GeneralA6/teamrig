@@ -24,7 +24,7 @@ at its earlier status. A task can move from any status to any other, so a droppe
 already has needs a `--note`.
 
 Set `waiting` when a task you started cannot go on, with `--waits` naming each reason: `decision:<who>` or
-`approval:<who>` (the lead, or `owner` for the human), `task:T<id>` (a task to finish first) or
+`approval:<who>` (the lead, or `owner` for the human; a child team's lead asks its parent team's lead, `app/lead`), `task:T<id>` (a task to finish first) or
 `time:<YYYY-MM-DD HH:MM>` (on the team's clock unless marked UTC). It stays waiting until all of them have cleared: a task when it is done or
 dropped, a time when it passes, a decision or an approval only when you, its owner, set the next status. `list`
 marks a cleared reason `ready`, and `check` flags the task `READY` once all have. A task not started that needs

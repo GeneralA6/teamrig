@@ -102,6 +102,9 @@ talk to one lead: the root team's.
   the tree is in its decisions batch and daily meeting as `<team>/<id>` (`web/T2`), and your answer, recorded on
   that task, reaches the task's owner when the meeting ends. An urgent one also tells its team's own lead, who
   passes it up.
+- A child team's lead answers to the lead of the team above it: its approval waits, say before a push or a merge,
+  go to that lead's inbox (`--waits approval:app/lead`), which answers with `teamrig approve web/T3`, and under
+  `pushGuard.pushToProtected: lead` its own push waits for that answer.
 - Claude Code session names are machine-wide, so two teams never share one: `team create` refuses a clash and
   `teamrig doctor` names one, along with a broken link in the tree.
 - `teamrig team tree` prints the tree with each team's lead and sessions.
@@ -624,7 +627,8 @@ flowchart TD
 - `pushGuard.pushToProtected` (since 0.11.0) is `ask` by default; set to `allow`, a normal push to a protected branch
   runs with a one-line note instead of a question, and Claude Code's own permissions still decide. Each question
   about a normal push ends by naming this switch.
-- Set to `lead` (since 0.126.0), the lead approves pushes instead of the human: the lead's own runs with a note; a
+- Set to `lead` (since 0.126.0), the lead approves pushes instead of the human: the lead's own runs with a note (a
+  child team's lead's only while its parent team's lead's approval stands on one of its tasks); a
   session's runs with a note while the lead's `teamrig approve` stands on one of its tasks waiting `approval:<lead>`
   (until the task's next status), and is refused otherwise, with how to ask on the register. The human is never
   asked about a normal push, and the refusal holds whatever `prompts.hookAsks` says.

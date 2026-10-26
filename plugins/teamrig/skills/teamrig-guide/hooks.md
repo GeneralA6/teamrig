@@ -200,9 +200,11 @@ Before Claude runs a Bash or PowerShell command, the guard reads it and decides:
   pushed, as the approval covers this push only"). Otherwise it is refused, never asked: "This push to a protected
   branch (main, master) needs a lead's approval, not the human's: lead has approved no waiting task of web's.
   Ask on the register: `teamrig set <task> --status waiting --waits approval:lead --note "<branch, what it lands,
-  its tests>"`, take your next task, and push once lead approves it (`teamrig approve`)." A tab not bound to a
-  team session, or a register the guard cannot read, is refused the same way with that reason. `--force-with-lease`
-  and doubts still ask, and refusals and `commits.gate: refuse` stay.
+  its tests>"`, take your next task, and push once lead approves it (`teamrig approve`)." A child team's lead is
+  no exception: its own push runs only while the parent team's lead's approval stands on one of its tasks
+  (`approval:app/lead`, answered with `teamrig approve web/T3`), and a parent team with no config here refuses it,
+  saying so. A tab not bound to a team session, or a register the guard cannot read, is refused the same way with
+  that reason. `--force-with-lease` and doubts still ask, and refusals and `commits.gate: refuse` stay.
 - **Refuses**: a force-push (`--force`, a `+` refspec), a delete or `--mirror` of a protected branch:
   "Force-pushing, mirroring or deleting a protected branch (main, master) is refused: it can overwrite other
   sessions' commits. Push your own branch, or use --force-with-lease if you truly mean it."
