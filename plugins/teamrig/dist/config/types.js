@@ -75,6 +75,14 @@ export function isHiringPolicy(value) {
     return HIRING_POLICIES.some((policy) => policy === value);
 }
 /**
+ * Who raises `hiring.maxSessions` when it blocks a hire a SCALE-OUT calls for: `owner` on the lead's card, as a
+ * raised cap spends more of the week; `lead` the lead itself, in the team config, saying so in its next report.
+ */
+export const CAP_RAISERS = ['owner', 'lead'];
+export function isCapRaiser(value) {
+    return CAP_RAISERS.some((raiser) => raiser === value);
+}
+/**
  * Who may start a burst (`teamrig burst start`), a time-boxed scale-out onto helpers and hired sessions
  * that spends more of the week: `off` nobody; `owner` the lead, once the owner approved (`--approved-by`,
  * kept with the burst); `lead` the lead, within the caps. No policy starts a burst on its own: it spends
