@@ -5,6 +5,7 @@ import { claudeProjectSlug } from '../budget/discover.ts';
 import { formatConfig } from '../config/load.ts';
 import type { Env } from '../core/home.ts';
 import { APP, CliHarness, KIT, SKILLS_DIR, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
+import { backupStamp } from '../permissions/trim.ts';
 import { MemoryPathProbe } from '../testing/memory-files.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { teamHomeOf, treeHarness } from '../testing/team-tree.ts';
@@ -85,6 +86,16 @@ describe('setup scan', () => {
     assert.equal(lines.some((line) => line.startsWith('CONTEXT team-rules')), false);
     assert.ok(lines.includes('NEXT teamrig rules scan, after teamrig team create, to judge each line with the user'), lines.join('\n'));
     assert.ok(lines.includes(`UNUSED not checked: no transcript on this machine in ${DEFAULT_SCAN_DAYS} day(s)`));
+  });
+
+  it("names the newest backup of the setup it scans, the team's own skills folder too, and NO BACKUP until there is one", async () => {
+    const harness = await world(new CliHarness({ ...TEAM, paths: { skills: 'skills' } }));
+    const probe = new MemoryPathProbe(harness.files);
+    assert.equal(okLines(await scan(harness, ['--project', APP]))[1], 'NO BACKUP of this setup: change nothing in it before teamrig setup backup makes one');
+    const stamp = backupStamp(harness.clock.now());
+    okLines(await harness.run(['setup', 'backup', '--project', APP], { env: {}, probe }));
+    harness.clock.advance(3 * HOUR_MS);
+    assert.equal(okLines(await scan(harness, ['--project', APP]))[1], `BACKUP ${stamp}, made 3 h ago: teamrig setup restore ${stamp} previews putting the setup back`);
   });
 
   it('reads only the transcripts written in the last --days days', async () => {

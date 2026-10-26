@@ -108,7 +108,8 @@ export function parseManifest(text: string): BackupManifest | undefined {
   if (createdAt === undefined || claudeDir === undefined || !isAbsolute(claudeDir) || project === undefined || !isAbsolute(project) || !isStringArray(absent)) {
     return undefined;
   }
-  if (!teamSkillsReads(teamSkills, value['format'])) {
+  // setup scan tells a backup's age from when it was made.
+  if (Number.isNaN(Date.parse(createdAt)) || !teamSkillsReads(teamSkills, value['format'])) {
     return undefined;
   }
   const at: SetupLocations = { claudeDir, project, teamSkills };

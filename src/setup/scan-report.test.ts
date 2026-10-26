@@ -15,9 +15,10 @@ const PROJECT_RULE = '/work/app/.claude/rules/x.md';
 const USER_SETTINGS = '/u/.claude/settings.json';
 const RULE = 'Never commit straight to the main branch of any repository.';
 const SECRETS = new SecretScanner(['hunter2-']);
-const DAY_MS = 24 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
 const NOW = Date.parse('2030-01-08T10:00:00Z');
-const AT: ScanReportContext = { project: '/work/app', team: 'app', days: 30, now: NOW, maxMb: 1024, userHome: '/u', secrets: SECRETS };
+const AT: ScanReportContext = { project: '/work/app', team: 'app', days: 30, now: NOW, maxMb: 1024, userHome: '/u', secrets: SECRETS, backup: undefined };
 
 /** A path outside the home folder, as this machine's paths print it. */
 function shown(path: string): string {
@@ -64,6 +65,7 @@ describe('scanReport', () => {
   it('sizes each loaded file and the listing, then numbers the findings by section and sums what they save', () => {
     assert.deepEqual(scanReport(SCAN, AT), [
       `SCAN ${shown(AT.project)} (team app)`,
+      'NO BACKUP of this setup: change nothing in it before teamrig setup backup makes one',
       'CONTEXT claude-md ~/.claude/CLAUDE.md: 7,000 chars (~1,750 tokens/turn)',
       'CONTEXT memory ~/.claude/projects/app/memory/MEMORY.md: 400 chars (~100 tokens/turn), the first 200 lines Claude Code loads',
       `CONTEXT team-rules ${shown(TEAM_RULES)}: 100 chars (~25 tokens/turn)`,
@@ -101,9 +103,10 @@ describe('scanReport', () => {
       recorded: 0,
       usage: { used: new Set(), transcripts: 0, bytes: 0, unread: 0, since: NOW - 7 * DAY_MS },
     };
-    const lines = scanReport(scan, { ...AT, team: undefined, days: 7 });
+    const lines = scanReport(scan, { ...AT, team: undefined, days: 7, backup: { stamp: '20300108T080000Z', madeAt: NOW - 2 * HOUR_MS } });
     assert.deepEqual(lines, [
       `SCAN ${shown(AT.project)} (no team yet)`,
+      'BACKUP 20300108T080000Z, made 2 h ago: teamrig setup restore 20300108T080000Z previews putting the setup back',
       "CONTEXT skills 7 skill(s) listed: 1,200 chars (~300 tokens/turn); as this project's newest transcript lists them: skills folders and built-in 5 (1,000 chars), tr 2 (200 chars)",
       'TOTAL 1,200 chars (~300 tokens/turn) at every session start',
       "C1 long-description ~/.claude/skills/beta/SKILL.md: skill beta's description is 300 chars, over 250 (~13 tokens/turn)",
@@ -142,5 +145,19 @@ describe('scanReport', () => {
       lines.filter((line) => /^(DUPLICATE|OVERRIDE|SETTINGS|NEXT)/.test(line)),
       ['DUPLICATE none', 'OVERRIDE none to judge; 2 recorded', 'SETTINGS none'],
     );
+  });
+
+  it('tells how old the newest backup is, from under a minute to days', () => {
+    const ages: readonly (readonly [number, string])[] = [
+      [59 * 1000, 'under a minute'],
+      [59 * 60 * 1000, '59 min'],
+      [HOUR_MS, '1 h'],
+      [47 * HOUR_MS + 59 * 60 * 1000, '47 h'],
+      [48 * HOUR_MS, '2 days'],
+    ];
+    for (const [ago, age] of ages) {
+      const [, line] = scanReport(SCAN, { ...AT, backup: { stamp: 'S', madeAt: NOW - ago } });
+      assert.equal(line, `BACKUP S, made ${age} ago: teamrig setup restore S previews putting the setup back`);
+    }
   });
 });

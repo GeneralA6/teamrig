@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import type { FileBytes } from '../core/file-bytes.ts';
 import { KIT_NAME, type Env } from '../core/home.ts';
+import { pathKey } from '../core/paths.ts';
 import { backupStamp, MANIFEST, ownerStateDir } from '../permissions/trim.ts';
 import { BACKUP_FORMAT, manifestText, readManifest, type BackupEntry, type BackupManifest, type ManifestRead } from './backup-manifest.ts';
 import { findSetupPlaces, SETUP_KINDS, type PlacePorts, type SetupKind, type SetupLocations } from './backup-places.ts';
@@ -89,4 +90,28 @@ export interface ListedBackup {
 export async function listBackups(ports: PlacePorts, root: string): Promise<ListedBackup[]> {
   const stamps = (await ports.files.list(root)).filter((name) => STAMP.test(name)).sort();
   return Promise.all(stamps.map(async (stamp) => ({ stamp, read: await readManifest(ports.files, join(root, stamp)) })));
+}
+
+/** A finished setup backup: its stamp and when it was made (epoch ms). */
+export interface MadeBackup {
+  readonly stamp: string;
+  readonly madeAt: number;
+}
+
+/** True when both name the same folder, or both name none. */
+function samePlace(path: string | undefined, other: string | undefined): boolean {
+  return path === undefined || other === undefined ? path === other : pathKey(path) === pathKey(other);
+}
+
+/**
+ * The newest finished backup in `listed` (oldest first, as {@link listBackups} gives them) of the setup at `at`: the
+ * same Claude Code folder, project and team skills folder, so it holds every file a slimming of that setup may change.
+ */
+export function latestBackupOf(listed: readonly ListedBackup[], at: SetupLocations): MadeBackup | undefined {
+  for (const { stamp, read } of [...listed].reverse()) {
+    if (read.kind === 'read' && samePlace(read.manifest.claudeDir, at.claudeDir) && samePlace(read.manifest.project, at.project) && samePlace(read.manifest.teamSkills, at.teamSkills)) {
+      return { stamp, madeAt: Date.parse(read.manifest.createdAt) };
+    }
+  }
+  return undefined;
 }

@@ -4,11 +4,13 @@ import { KIT_NAME } from '../core/home.ts';
 import { homeRelative } from '../core/paths.ts';
 import type { SecretScanner } from '../core/secrets.ts';
 import { PLACE_KINDS } from '../rules/places.ts';
+import type { MadeBackup } from './backup.ts';
 import { MEMORY_INDEX_LINES, type ListedSkill, type LoadedFile } from './scan-context.ts';
 import type { SetupScan, SkillListing } from './scan.ts';
 
 /**
- * The lines `teamrig setup scan` prints: every file and listing a session loads with its size, then the findings, one
+ * The lines `teamrig setup scan` prints: the setup backup a slimming can be undone from (or NO BACKUP, which stops
+ * one), every file and listing a session loads with its size, then the findings, one
  * line each, `<id> <kind> <path>: <what> (~<tokens> tokens/turn)`, numbered per section (C, D, S, U), and what
  * applying the CONTEXT, DUPLICATE and UNUSED ones saves. Rule lines and settings values are counted, never printed;
  * override lines only by kind, since a setup holds hundreds of them and `rules scan` lists them a kind at a time.
@@ -37,6 +39,26 @@ export interface ScanReportContext {
   readonly maxMb: number;
   readonly userHome: string;
   readonly secrets: SecretScanner;
+  /** The newest setup backup of the scanned setup; undefined when it has none, so nothing in it may change yet. */
+  readonly backup: MadeBackup | undefined;
+}
+
+/** How long ago something was, at a glance: `under a minute`, `12 min`, `5 h`, `3 days`. */
+function ageOf(ms: number): string {
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 1) {
+    return 'under a minute';
+  }
+  const hours = Math.floor(minutes / 60);
+  return minutes < 60 ? `${minutes} min` : hours < 48 ? `${hours} h` : `${Math.floor(hours / 24)} days`;
+}
+
+/** The backup that undoes a slimming of the setup, or the line that stops one until a backup exists. */
+function backupLine(backup: MadeBackup | undefined, now: number): string {
+  if (backup === undefined) {
+    return `NO BACKUP of this setup: change nothing in it before ${KIT_NAME} setup backup makes one`;
+  }
+  return `BACKUP ${backup.stamp}, made ${ageOf(now - backup.madeAt)} ago: ${KIT_NAME} setup restore ${backup.stamp} previews putting the setup back`;
 }
 
 /** A finding's line, without its id, and the tokens per turn applying it saves (0 for one that saves none). */
@@ -182,6 +204,7 @@ export function scanReport(scan: SetupScan, at: ScanReportContext): string[] {
   const savings = [...context, ...duplicates, ...parked].reduce((sum, finding) => sum + finding.saves, 0);
   return [
     `SCAN ${show(at.project)} (${at.team === undefined ? 'no team yet' : `team ${at.team}`})`,
+    backupLine(at.backup, at.now),
     ...scan.context.files.map((file) => fileLine(file, show)),
     listingLine(scan.listing),
     `TOTAL ${sized(loaded)} at every session start`,

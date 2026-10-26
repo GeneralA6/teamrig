@@ -9,6 +9,8 @@ import { settingsScope, type SettingsFile } from '../../permissions/settings-sco
 import { coreRuleTexts } from '../../rules/pack.ts';
 import type { Candidate } from '../../rules/scan.ts';
 import { isCleared, RULE_HASH_CLOCK, ruleHashesOf, verdictsByText, VerdictStore } from '../../rules/verdicts.ts';
+import { teamSkillsOf } from '../../setup/backup-places.ts';
+import { latestBackupOf, listBackups, setupBackupsDir } from '../../setup/backup.ts';
 import { BYTES_PER_MB, scanReport } from '../../setup/scan-report.ts';
 import { scanSetup } from '../../setup/scan.ts';
 import { teamSettingsScope } from '../allow-scope.ts';
@@ -89,7 +91,9 @@ export async function scan(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
     conflicts: team?.config.ruleConflicts ?? [],
     cleared: await clearedOf(runtime, team),
   });
-  const lines = scanReport(found, { project, team: team?.name, days, now: runtime.clock.now(), maxMb, userHome: runtime.userHome, secrets });
+  const backups = await listBackups({ files: runtime.files, probe: runtime.probe }, setupBackupsDir(runtime.env, runtime.userHome, runtime.platform));
+  const backup = latestBackupOf(backups, { claudeDir, project, teamSkills: teamSkillsOf(team?.kit.paths.skills, claudeDir) });
+  const lines = scanReport(found, { project, team: team?.name, days, now: runtime.clock.now(), maxMb, userHome: runtime.userHome, secrets, backup });
   lines.forEach((line) => runtime.out.stdout(line));
   return EXIT.ok;
 }

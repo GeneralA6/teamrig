@@ -5,12 +5,12 @@ import type { FileBytes } from '../core/file-bytes.ts';
 import { pathKey } from '../core/paths.ts';
 import { claudeMemoryDir } from '../doctor/context-files.ts';
 import { MANIFEST } from '../permissions/trim.ts';
+import { fieldPaths } from '../testing/field-paths.ts';
 import { MemoryFiles, MemoryPathProbe } from '../testing/memory-files.ts';
 import { textFileBytes } from '../testing/text-file-bytes.ts';
-import { fieldPaths } from '../testing/field-paths.ts';
 import { BACKUP_FORMAT, manifestText, parseManifest, readManifest, type BackupManifest } from './backup-manifest.ts';
 import { findSetupPlaces, sourceOfStored, teamSkillsOf, WALK_DEPTH, type SetupLocations } from './backup-places.ts';
-import { backupSetup, listBackups, sha256Of, storedPath, type SetupPorts } from './backup.ts';
+import { backupSetup, latestBackupOf, listBackups, sha256Of, storedPath, type SetupPorts } from './backup.ts';
 
 const CLAUDE = join('/', 'u', '.claude');
 const PROJECT = join('/', 'work', 'app');
@@ -223,6 +223,7 @@ describe('parseManifest', () => {
       { ...manifest, teamSkills: 7 },
       { ...manifest, teamSkills: undefined },
       { ...manifest, files: [{ ...teamEntry, stored: 'files/team-skills/config.json', source: join(TEAM_HOME, 'config.json') }] },
+      { ...manifest, createdAt: 'yesterday' },
       { ...manifest, project: 'relative' },
       { ...manifest, files: [{ ...entry, source: join('/', 'etc', 'passwd') }] },
       { ...manifest, files: [{ ...entry, stored: 'files/user/../../etc/passwd' }] },
@@ -246,5 +247,24 @@ describe('listBackups', () => {
     const listed = await listBackups(ports, ROOT);
     assert.deepEqual(listed.map((backup) => [backup.stamp, backup.read.kind]), [['20290101T000000Z', 'unreadable'], ['20300108T100000Z', 'read']]);
     assert.deepEqual(await listBackups(ports, join('/', 'nowhere')), []);
+  });
+});
+
+describe('latestBackupOf', () => {
+  it('finds the newest finished backup of the same setup, past unfinished ones and those of another setup', async () => {
+    const files = seeded({ [join(TEAM_SKILLS, 'review', 'SKILL.md')]: 'review' });
+    const ports = portsOf(files);
+    await backupSetup(ports, TEAM_AT, ROOT, NOW);
+    await backupSetup(ports, AT, ROOT, NOW + 1000);
+    await backupSetup(ports, { ...TEAM_AT, project: join('/', 'work', 'other') }, ROOT, NOW + 2000);
+    const newest = await backupSetup(ports, TEAM_AT, ROOT, NOW + 3000);
+    await backupSetup(ports, { ...TEAM_AT, teamSkills: join('/', 'kit', 'teams', 'web', 'skills') }, ROOT, NOW + 4000);
+    await files.write(join(ROOT, '20300108T100005Z', MANIFEST), '{ broken');
+    await files.write(join(ROOT, '20300108T100006Z', 'files', 'user', 'CLAUDE.md'), 'a backup that did not finish');
+    const listed = await listBackups(ports, ROOT);
+    assert.deepEqual(latestBackupOf(listed, TEAM_AT), { stamp: newest.stamp, madeAt: NOW + 3000 });
+    assert.deepEqual(latestBackupOf(listed, AT), { stamp: '20300108T100001Z', madeAt: NOW + 1000 });
+    assert.equal(latestBackupOf(listed, { ...AT, claudeDir: join('/', 'v', '.claude') }), undefined);
+    assert.equal(latestBackupOf([], AT), undefined);
   });
 });
