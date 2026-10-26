@@ -39,7 +39,8 @@ Flags:
 - `--source <session>|owner`: who asked; default you. `--source owner` marks an order from the human
   (`register.ownerSource`).
 - `--ref <where it was asked>`: a pointer to the ask, such as a file and line or an inbox date; at most 300
-  characters.
+  characters. A task id (`T12`) links the task to that task, which may be in another team of your tree:
+  `inbox add --to task:T12` then reaches this task's owner too.
 - `--due <date>`: the deadline.
 - `--goals a,b`: goal tags, such as roadmap item ids.
 - `--week <date>`: puts the task in the week plan that starts on that day.
@@ -708,6 +709,10 @@ Flags:
     and every session under it, at any depth.
   - `team:<team>`: every session of a team of your tree; `tree:leads`: every team's lead in your tree, the root's
     first, so the root lead sends one notice down the tree instead of a relay per child lead. A group leaves you out.
+  - `task:T<n>`: everyone working a task: its owner, then the owner of each open, in-progress, verifying or waiting
+    task in any register of your tree whose ref is exactly `T<n>`. Shared work is a task of the owning team plus a
+    task per contributing team (`teamrig add --team <team> --ref T<n>`), so one line reaches them all. Keep one
+    design file, owned by the task's owner, and send the others a line pointing at it rather than copies.
 - `--text "<one line>"`: the note: one non-empty line, no secrets.
 - `--wake now`: also wakes each receiver idle at its prompt, at its tab's first wake check once `wake.batchSeconds`
   (2 minutes by default) have passed, so lines posted together wake it once, quoted in its prompt; a receiver busy
@@ -718,8 +723,8 @@ Flags:
   `wake.enabled` false gets the line and no wake, and the `WAKES` line says so.
 
 Every receiver gets the same line, stamped with the same minute, or none does: an unknown session or team, one out
-of reach, `group:` on a session that leads no one, a group that holds only you, or a line any receiving team's secret
-patterns refuse is `REFUSED` (exit 2) and posts nothing. With `--wake now`, so is a group sent by a session that
+of reach, `group:` on a session that leads no one, a task no register of your tree holds, a group that holds only
+you, or a line any receiving team's secret patterns refuse is `REFUSED` (exit 2) and posts nothing. With `--wake now`, so is a group sent by a session that
 leads no one, and a session of another team unless you lead a team above it, since a wake spends that team's budget
 line: post the line without `--wake` instead.
 
