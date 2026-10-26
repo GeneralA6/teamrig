@@ -30,7 +30,7 @@ const OWNER_DECISION: readonly WaitReason[] = [{ kind: 'decision', who: 'owner' 
 /** When a verifying task's proof runs: tonight, after NOW. */
 const RUN_TONIGHT: readonly WaitReason[] = [{ kind: 'time', at: '2030-01-08 22:00' }];
 /** The refusal of a verifying task that names no time or task its proof runs on. */
-const PROOF_RUN_NEEDED = `verifying needs --waits saying when its proof runs: ${PROOF_WAITS_USAGE}`;
+const PROOF_RUN_NEEDED = `verifying needs --waits saying when its proof runs: ${PROOF_WAITS_USAGE}; if tests or a dry run proved it and its proof is a sighting, close it done with ${WATCH_USAGE} instead`;
 
 /** A register holding these tasks, its next id after the highest. */
 function stateOf(...tasks: Task[]): RegisterState {
