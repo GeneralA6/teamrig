@@ -39,6 +39,7 @@ describe('golden register logs', () => {
       critical: false,
       pin: null,
       review: {},
+      reparks: 0,
       status: 'done',
       note: 'health check live',
       evidence: 'commit abc1234; 12 tests',
