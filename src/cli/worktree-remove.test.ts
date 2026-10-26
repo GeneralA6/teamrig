@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
-import { CliHarness } from '../testing/cli-harness.ts';
+import { CLAUDE_SESSION, CliHarness } from '../testing/cli-harness.ts';
 import { FakeWorktreeFiles, FakeWorktreeGit, type FakeGitAnswers } from '../testing/fake-worktrees.ts';
 import type { WorktreePorts } from '../worktree/remove.ts';
 import { EXIT } from './runtime.ts';
@@ -90,5 +90,53 @@ describe('runCli: worktree remove', () => {
     const base = await kit.run(['worktree', 'remove', '/w/t4', '--base', 'main'], { worktrees: worktrees().ports });
     assert.equal(base.code, EXIT.usage);
     assert.match(base.stderr.join('\n'), /--base names the branch to check against for --delete-branch/);
+  });
+});
+
+describe('runCli: worktree remove in a team removes only what the caller may (T1319)', () => {
+  /** Team app's worktree /w/t4 on branch t1-parser, T1 being alpha's task. */
+  async function teamWorld(): Promise<{ kit: CliHarness; git: FakeWorktreeGit; ports: WorktreePorts }> {
+    const kit = new CliHarness();
+    const added = await kit.run(['add', '--session', 'lead', '--owner', 'alpha', '--title', 'Parser', '--description', 'Parse the input.', '--priority', 'p1']);
+    assert.equal(added.code, EXIT.ok, added.stdout.join('\n'));
+    const { git, ports } = worktrees({
+      worktrees: [
+        { path: '/w/main', branch: 'main', locked: undefined },
+        { path: '/w/t4', branch: 't1-parser', locked: undefined },
+      ],
+    });
+    return { kit, git, ports };
+  }
+
+  it('removes a session its own worktree, named by --session (T1312)', async () => {
+    const { kit, git, ports } = await teamWorld();
+    const result = await kit.run(['worktree', 'remove', '/w/t4', '--session', 'alpha'], { worktrees: ports, env: { CLAUDE_CODE_SESSION_ID: CLAUDE_SESSION } });
+    assert.equal(result.code, EXIT.ok, result.stdout.join('\n'));
+    assert.deepEqual(git.steps, ['worktree remove /w/t4 in /w/main']);
+  });
+
+  it("removes the lead any session's worktree", async () => {
+    const { kit, git, ports } = await teamWorld();
+    const result = await kit.run(['worktree', 'remove', '/w/t4'], { worktrees: ports, env: { TEAMRIG_SESSION: 'lead', CLAUDE_CODE_SESSION_ID: CLAUDE_SESSION } });
+    assert.equal(result.code, EXIT.ok, result.stdout.join('\n'));
+    assert.deepEqual(git.steps, ['worktree remove /w/t4 in /w/main']);
+  });
+
+  it("refuses another session's worktree before any change, naming who may", async () => {
+    const { kit, git, ports } = await teamWorld();
+    const result = await kit.run(['worktree', 'remove', '/w/t4', '--dry-run'], { worktrees: ports, env: { TEAMRIG_SESSION: 'bravo', CLAUDE_CODE_SESSION_ID: CLAUDE_SESSION } });
+    assert.equal(result.code, EXIT.refused);
+    assert.deepEqual(result.stdout, ["REFUSED the worktree's branch t1-parser is T1's, which alpha owns: only alpha or lead removes it"]);
+    assert.deepEqual(git.steps, []);
+  });
+
+  it('refuses a Claude Code tab bound to no session, and checks nothing for the person at a terminal', async () => {
+    const { kit, git, ports } = await teamWorld();
+    const tab = await kit.run(['worktree', 'remove', '/w/t4'], { worktrees: ports, env: { CLAUDE_CODE_SESSION_ID: CLAUDE_SESSION } });
+    assert.equal(tab.code, EXIT.refused);
+    assert.deepEqual(tab.stdout, ['REFUSED this Claude Code tab is bound to no session of team app: give --session <id|name>']);
+    assert.deepEqual(git.steps, []);
+    const person = await kit.run(['worktree', 'remove', '/w/t4'], { worktrees: ports });
+    assert.equal(person.code, EXIT.ok, person.stdout.join('\n'));
   });
 });
