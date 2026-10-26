@@ -2446,14 +2446,18 @@ tokens a turn applying it saves:
 - UNUSED (`U1`...): skills in your user or project skill folders with no `Skill` call or `/<skill>` in the last
   `--days` days of this machine's transcripts; not checked when there is no transcript. A skill whose file changed
   within those days has not had them all to be used, so it is not judged; the UNUSED line counts it as too new.
+  The transcripts are read newest first up to `--max-mb` MB: past it the older ones are left unread, and the UNUSED
+  lines say how many, and judge only the newest days read.
 
-The last line, SAVINGS, adds up what applying every CONTEXT, DUPLICATE and UNUSED finding saves each turn. It reads
-every transcript of those days, so a busy machine takes a minute or more.
+The last line, SAVINGS, adds up what applying every CONTEXT, DUPLICATE and UNUSED finding saves each turn. A busy
+machine writes hundreds of MB of transcripts a day, read at about 11 MB a second, so the default bound keeps a scan
+near a minute and a half.
 
 Flags:
 
 - `--project <dir>`: the project to scan.
 - `--days <n>`: the days of transcripts that tell which skills are in use (default 30).
+- `--max-mb <n>`: the MB of those transcripts to read, newest first (default 1024).
 
 Example:
 
