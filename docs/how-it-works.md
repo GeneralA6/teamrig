@@ -97,7 +97,8 @@ talk to one lead: the root team's.
   (`"team": {"id": "web", "parent": "your-team"}`), so the tree is read from the configs, with no other file to keep
   in step. A tree has at most 3 levels and a team at most 8 child teams.
 - Any session writes a note to any session of its tree, `<team>/<id>`, with no relay through the leads between them:
-  a note hands no work, which is a task on the receiver's own register, and wakes it only with `--wake now`. Teams
+  a note hands no work, which is a task on the receiver's own register, and wakes it only with `--wake now`, or
+  with `--wake-by <time>` at that time if it is still unseen. Teams
   of separate trees never reach each other. Only the root's lead talks to you: a wait on your decision in any team of
   the tree is in its decisions batch and daily meeting as `<team>/<id>` (`web/T2`), and your answer, recorded on
   that task, reaches the task's owner when the meeting ends. An urgent one also tells its team's own lead, who
@@ -457,7 +458,8 @@ sequenceDiagram
   refusal names the kind, never the value. Task titles, refs, notes and evidence get the same check.
 - In a tree of teams, `--to web/lead` writes to a session of another team, within the rights in
   [Who is on the team](#who-is-on-the-team); the note names its sender as `your-team/lead`.
-- A note wakes no one unless sent with `inbox add --wake now`; urgent work handed as a task does
+- A note wakes no one unless sent with `inbox add --wake now`, or `--wake-by <time>` (at that time, if the
+  receiver has not seen it by then); urgent work handed as a task does
   ([Waking on urgent work](#waking-on-urgent-work)). A task
   that wakes no one, a p2 one by default, waits for its owner's next prompt, which is why `teamrig check` reports
   a task not picked up.

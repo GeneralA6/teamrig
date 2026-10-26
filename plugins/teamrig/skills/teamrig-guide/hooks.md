@@ -792,6 +792,11 @@ the `cold-send` hook turns a message to a session teamrig closed into one for th
 closes a session with one waiting; a closed session with one reopens at the next pass, ahead of every reopen for
 work, with its lines quoted in its first prompt and taken once its tab opened.
 
+An `inbox add --wake-by <time>` line posts a timed ask: it counts only from its time, and only while its line is
+unseen, neither read nor shown; once the line was seen, the ask goes at the next check unspent. Until its time it
+keeps no idle session open, so the idle pass may close the session meanwhile and reopens it at the first pass after
+the time if the line is still unseen.
+
 ### The idle pass
 
 With `open.idle.mode` not `off` (`dry-run` or `on`), `hook wake-check` also runs the team's

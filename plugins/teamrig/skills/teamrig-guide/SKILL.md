@@ -43,8 +43,8 @@ To update an installed teamrig, follow
   status, except on a task `teamrig gh sync` imported from a GitHub issue (source `github`): it opens, finishes or
   drops it as GitHub has the issue. Nothing goes from the task list to GitHub.
 - **Inbox**: one file per session. A line there is a note the receiver reads at its next work block or prompt;
-  it wakes an idle session only when sent with `--wake now`. Urgent work handed to an idle session as a task does
-  wake it ([the wake](hooks.md#the-mod-the-wake-on-urgent-work)).
+  it wakes an idle session only when sent with `--wake now`, or with `--wake-by <time>` at that time if still
+  unseen. Urgent work handed to an idle session as a task does wake it ([the wake](hooks.md#the-mod-the-wake-on-urgent-work)).
 - **Message**: a Claude Code message from one session to another. It wakes the receiver, so it is only for a
   result it needs now, a decision, a blocker, a conflict or an incident. teamrig has no message command; the
   rules only say when to send one and how long it may be.
