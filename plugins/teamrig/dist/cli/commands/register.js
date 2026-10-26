@@ -247,9 +247,10 @@ async function tellAssigned(runtime, team, by, task, shown = task.owner) {
  * to that leader, a wait on the owner to the task owner's own leader, which passes it up (the lead keeps the owner's
  * decision queue and asks it in its batch); never to the leader who set it. A wait on the parent team's lead, the
  * lead's own approver on a child team (T1140), goes to that lead's inbox in the parent team, the task named
- * `<team>/T12`, and so does a child team's lead's own wait on the owner (T1265), as that lead is its leader. A new wait on the owner says when the owner hears it (src/decisions/batch.ts): in the next batch, in the
- * one due now, or at once when it is due before the next; at once, the lead is woken or the setter told how to wake it
- * (atOnceNote).
+ * `<team>/T12`, and so does a child team's lead's own wait on the owner (T1265), as that lead is its leader. A new
+ * wait on the owner says when the owner hears it (src/decisions/batch.ts): in the next batch, in the one due now, or
+ * at once when it is due before the next. At once, the lead who asks the owner is woken, or the setter told how to
+ * reach it: the team's lead (atOnceNote), or, for a child team, the lead at its tree's root (atOnceAtRoot, T1277).
  */
 async function tellLeadersOfWaits(runtime, team, by, verdict) {
     if (!verdict.ok) {
@@ -264,39 +265,78 @@ async function tellLeadersOfWaits(runtime, team, by, verdict) {
     const added = task.waits.filter((reason) => (reason.kind === 'decision' || reason.kind === 'approval') && !isPeerWait(reason, approvers, ownerSource) && !earlier.some((other) => sameWait(reason, other)));
     const ownLeader = leaders.leaderOf(task.owner) ?? leaders.above ?? lead;
     const receiverOf = (reason) => (reason.who === ownerSource ? ownLeader : reason.who);
+    const addressed = { ...task, id: `${team.paths.team}/${task.id}` };
     for (const receiver of new Set(added.map(receiverOf))) {
         if (receiver === by) {
             continue;
         }
         const waits = added.filter((reason) => receiverOf(reason) === receiver);
-        const timing = waits.some((reason) => reason.who === ownerSource) ? await ownerWaitTiming(runtime, team, verdict.value) : undefined;
-        const when = timing === undefined ? '' : ` | ${timingText(timing, team.zone)}`;
-        if (receiver === leaders.above) {
-            await tellLeadAbove(runtime, team, by, receiver, `${personWaitNotice({ ...task, id: `${team.paths.team}/${task.id}` }, waits, receiver)}${when}`);
+        const owner = waits.some((reason) => reason.who === ownerSource) ? await ownerWaitOf(runtime, team, verdict.value) : undefined;
+        const when = owner === undefined ? '' : ` | ${timingText(owner.timing, team.zone)}`;
+        const crossing = receiver === leaders.above;
+        const text = `${personWaitNotice(crossing ? addressed : task, waits, receiver)}${when}`;
+        const posted = crossing ? await tellLeadAbove(runtime, team, by, receiver, text) : await tellLine(runtime, team, by, receiver, text, `${receiver} was not told that ${task.id} waits on it`);
+        if (owner?.timing.kind !== 'at-once') {
             continue;
         }
-        const text = `${personWaitNotice(task, waits, receiver)}${when}`;
-        const posted = await tellLine(runtime, team, by, receiver, text, `${receiver} was not told that ${task.id} waits on it`);
-        if (timing?.kind === 'at-once') {
+        const root = owner.askedBy;
+        if (root === undefined) {
             runtime.out.stderr(await atOnceNote(runtime, team, by, task.id, receiver, posted ? text : undefined));
+            continue;
         }
+        const lined = receiver === formatAddress(root.address);
+        const rootText = lined ? text : `${personWaitNotice(addressed, waits.filter((reason) => reason.who === ownerSource), formatAddress(root.address))}${when}`;
+        const told = lined ? posted : await tellAcross(runtime, team, by, root, rootText);
+        runtime.out.stderr(await atOnceAtRoot(runtime, team, by, task.id, root, told ? rootText : undefined));
     }
 }
-/**
- * One inbox line to the parent team's lead (`<team>/<id>`, T1140) in its own team's inbox, from `<team>/<setter>`,
- * scanned with both teams' secret patterns, as tellAskerOfEnd posts across teams. A line that cannot be posted is
- * named, never thrown.
- */
+/** The parent team's lead (`<team>/<id>`, T1140), who gets its line in its own team's inbox (tellAcross). */
 async function tellLeadAbove(runtime, team, by, above, text) {
     const address = splitAddress(above);
-    const home = address?.team === undefined ? undefined : (await loadTree(runtime)).teams.get(address.team);
-    if (address === undefined || home === undefined) {
+    const aboveTeam = address?.team;
+    const home = aboveTeam === undefined ? undefined : (await loadTree(runtime)).teams.get(aboveTeam);
+    if (address === undefined || aboveTeam === undefined || home === undefined) {
         runtime.out.stderr(`WARN ${above} was not told of the wait on it: its team has no config in this kit home`);
-        return;
+        return false;
     }
-    const secrets = new SecretScanner([...team.config.register.secretPatterns, ...home.config.register.secretPatterns]);
+    return tellAcross(runtime, team, by, { address: { team: aboveTeam, id: address.session }, home }, text);
+}
+/**
+ * One inbox line to a session of another team of the tree in its own team's inbox, from `<team>/<setter>`, scanned
+ * with both teams' secret patterns, as tellAskerOfEnd posts across teams. A line that cannot be posted is named,
+ * never thrown.
+ */
+async function tellAcross(runtime, team, by, to, text) {
+    const shown = formatAddress(to.address);
+    const secrets = new SecretScanner([...team.config.register.secretPatterns, ...to.home.config.register.secretPatterns]);
     const from = formatAddress({ team: team.paths.team, id: by });
-    await postNamed(runtime, home.kit.paths, secrets, { to: address.session, from, text }, `${above} was not told of the wait on it`, above);
+    return postNamed(runtime, to.home.kit.paths, secrets, { to: to.address.id, from, text }, `${shown} was not told of the wait on it`, shown);
+}
+/**
+ * What the setter of a child team's owner wait due before the next batch is told (T1277). The lead at its tree's root
+ * asks the owner, and the setter cannot `--wake now` it, so that lead's line, `posted` (its own, or the receiver's
+ * when the line went to it; undefined when it could not be posted), gets a wake ask in its own team's folder, as an
+ * `inbox add --wake now` line across teams does; the leads between keep their line, unwoken. With the root team's
+ * wakes off, or a line or an ask that cannot be posted, the setter is told to message that lead.
+ */
+async function atOnceAtRoot(runtime, team, by, id, root, posted) {
+    const name = root.home.roster.nameOf(root.address.id) ?? formatAddress(root.address);
+    const due = `${id} is due before the owner's next batch`;
+    const message = `message ${name}, who asks the owner`;
+    if (!root.home.config.wake.enabled) {
+        return `NOTE ${due}: ${message}, as an inbox line wakes no one`;
+    }
+    if (posted === undefined) {
+        return `NOTE ${due}: ${message}, as its line could not be posted`;
+    }
+    try {
+        const from = formatAddress({ team: team.paths.team, id: by });
+        await new WakeAsks(runtime.files, root.home.kit.paths.wakeAsks).post(root.address.id, { from, text: posted, at: runtime.clock.now() });
+    }
+    catch (error) {
+        return `WARN ${due}, and ${name}'s wake could not be asked (${errorMessage(error)}): ${message}`;
+    }
+    return `NOTE ${due}: its line wakes ${name}, who asks the owner, so no message is needed`;
 }
 /**
  * What the setter of an owner wait due before the next batch is told, so the lead hears of it at once. With wakes on,
@@ -329,13 +369,17 @@ async function atOnceNote(runtime, team, by, id, receiver, posted) {
 }
 /**
  * When the owner hears of a task's new wait on them, judged on the register after the write, in the batch that holds
- * the team's waits: a child team's is the one the lead at its tree's root asks (ownerBatchOf).
+ * the team's waits: a child team's is the one the lead at its tree's root asks (ownerBatchOf). That lead's team is the
+ * tree's, as the tree is built from the teams it loaded.
  */
-async function ownerWaitTiming(runtime, team, { task, state, elsewhere }) {
+async function ownerWaitOf(runtime, team, { task, state, elsewhere }) {
     const now = runtime.clock.now();
     const own = { team: team.paths.team, config: team.config, paths: team.paths, tasks: state.tasks, elsewhere };
-    const { batch } = await ownerBatchOf(runtime, own, await loadTree(runtime), now);
-    return waitTiming(batch, task, new TaskTree(state.tasks, new Date(now), team.zone, undefined, elsewhere), now);
+    const loaded = await loadTree(runtime);
+    const { batch, askedBy } = await ownerBatchOf(runtime, own, loaded, now);
+    const home = askedBy === undefined ? undefined : loaded.teams.get(askedBy.team);
+    const timing = waitTiming(batch, task, new TaskTree(state.tasks, new Date(now), team.zone, undefined, elsewhere), now);
+    return { timing, askedBy: askedBy === undefined || home === undefined ? undefined : { address: askedBy, home } };
 }
 /** Posts one inbox line, naming it on stderr, or naming `unsent` and why: a line that cannot be posted is never thrown. */
 async function tellLine(runtime, team, by, to, text, unsent, shown = to) {
