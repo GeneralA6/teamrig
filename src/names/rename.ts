@@ -1,6 +1,6 @@
 import { stringField } from '../core/guards.ts';
 import { ID_PATTERN, NAME_PATTERN } from '../core/ids.ts';
-import { parseJsonl, type JsonlRecord } from '../core/jsonl.ts';
+import { parseJsonl, parseObject, type JsonlRecord } from '../core/jsonl.ts';
 
 export const RENAME_VERSION = 1;
 
@@ -79,4 +79,28 @@ export function readRenames(text: string): RenameLogRead {
     }
   }
   return { renames, unreadable, newer };
+}
+
+/** A rename log's text cut in two, each line as written: the lines of some sessions, and the rest. */
+export interface RenameLogSplit {
+  readonly of: string;
+  readonly rest: string;
+  /** How many lines went to `of`. */
+  readonly moved: number;
+}
+
+/**
+ * The lines of a rename log's text that rename one of `ids`, for a team split that moves those sessions, and the
+ * rest. A damaged line, or one without an id, stays with the rest, as the log it was in still reports it.
+ */
+export function splitRenameLog(text: string, ids: ReadonlySet<string>): RenameLogSplit {
+  const of: string[] = [];
+  const rest: string[] = [];
+  for (const line of text.split('\n').filter((each) => each.trim() !== '')) {
+    const record = parseObject(line.endsWith('\r') ? line.slice(0, -1) : line);
+    const id = record === undefined ? undefined : stringField(record, 'id');
+    (id !== undefined && ids.has(id) ? of : rest).push(line);
+  }
+  const textOf = (lines: readonly string[]): string => lines.map((line) => `${line}\n`).join('');
+  return { of: textOf(of), rest: textOf(rest), moved: of.length };
 }
