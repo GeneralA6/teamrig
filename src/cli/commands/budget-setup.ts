@@ -6,7 +6,7 @@ import { ESCALATIONS, isEscalation, isOverAction, OVER_ACTIONS, type Escalation,
 import { isRecord } from '../../core/guards.ts';
 import { noPositionals, UsageError, type Flags, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
-import { checkedNextConfig, configFileJson, openTeamKit, requireConfig, rosterOf, sessionIdOf } from '../kit.ts';
+import { checkedNextConfig, configFileJson, leadOnly, openTeamKit, requireConfig, rosterOf } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 
 /**
@@ -96,10 +96,7 @@ export async function setup(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const config = requireConfig(kit, runtime, 'write');
   const { load } = kit;
   const roster = await rosterOf(runtime, kit, config);
-  const lead = roster.holderOf('lead');
-  if (sessionIdOf(roster, caller) !== lead) {
-    throw new RefusedError(`only the lead${lead === undefined ? '' : ` (${roster.nameOf(lead) ?? lead})`} sets the team's budget`);
-  }
+  leadOnly(roster, caller, "sets the team's budget");
   const plan = planBudgetSetup(await configFileJson(runtime, load.path), choices);
   if (!plan.ok) {
     throw new UsageError(plan.problem);
