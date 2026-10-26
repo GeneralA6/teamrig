@@ -10,7 +10,7 @@ import { noPositionals, type ParsedArgs } from '../args.ts';
 import { openKit, rosterOf } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { parseJson, sessionTeam } from './hook-input.ts';
-import { refusedPickerAsker } from './hook-picker-guard.ts';
+import { pickerRefusal } from './hook-picker-guard.ts';
 
 /** The values Claude Code reads as on for a switch such as `CLAUDE_CODE_DISABLE_TERMINAL_TITLE`. */
 const ON_VALUES: ReadonlySet<string> = new Set(['1', 'true', 'yes', 'on']);
@@ -71,7 +71,7 @@ export async function tabSequenceOf(runtime: CliRuntime, payload: JsonRecord): P
   if (kit?.load.status !== 'loaded' || !kit.load.config.tabStatus.enabled) {
     return undefined;
   }
-  if ((await refusedPickerAsker(runtime, kit, kit.load.config, payload)) !== undefined) {
+  if ((await pickerRefusal(runtime, kit, kit.load.config, payload)) !== undefined) {
     return undefined;
   }
   const title = await tabTitleOf(runtime, payload, { team: kit.paths.team, roster: await rosterOf(runtime, kit, kit.load.config) });

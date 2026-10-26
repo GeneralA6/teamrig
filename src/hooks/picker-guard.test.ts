@@ -1,9 +1,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { ASK_WITH } from '../config/types.ts';
 import { asksDecision } from '../tabs/status.ts';
-import { askerOf, guardsPicker, pickerGuardOutput, pickerReason, refusesAsker } from './picker-guard.ts';
+import { askerOf, guardsPicker, pickerGuardOutput, pickerReason, refusesAsker, type LeadMeeting } from './picker-guard.ts';
 
 const PICKER = { hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion' };
+/** No meeting open, and the team asks in plain text: the default. */
+const CLOSED: LeadMeeting = { open: false, askWith: 'text' };
 
 describe('guardsPicker', () => {
   it('looks at a PreToolUse call of the question picker with the switch on', () => {
@@ -42,20 +45,25 @@ describe('askerOf', () => {
 });
 
 describe('refusesAsker', () => {
-  it("refuses a session, a helper and a sub-team's lead always, and the lead's own thread unless the meeting is open", () => {
-    for (const meetingOpen of [false, true]) {
-      assert.equal(refusesAsker({ session: 'alpha', role: 'session' }, meetingOpen), true);
-      assert.equal(refusesAsker({ session: 'lead', role: 'helper' }, meetingOpen), true, "a lead's helper reports, the meeting or not");
-      assert.equal(refusesAsker({ session: 'lead', role: 'subteam-lead', parentLead: PARENT }, meetingOpen), true, 'only the root lead talks to the user');
+  it("refuses a session, a helper and a sub-team's lead always, and the lead's own thread unless a meeting that asks with the picker is open", () => {
+    for (const open of [false, true]) {
+      for (const askWith of ASK_WITH) {
+        const meeting = { open, askWith };
+        assert.equal(refusesAsker({ session: 'alpha', role: 'session' }, meeting), true);
+        assert.equal(refusesAsker({ session: 'lead', role: 'helper' }, meeting), true, "a lead's helper reports, the meeting or not");
+        assert.equal(refusesAsker({ session: 'lead', role: 'subteam-lead', parentLead: PARENT }, meeting), true, 'only the root lead talks to the user');
+      }
     }
-    assert.equal(refusesAsker({ session: 'lead', role: 'lead' }, false), true, 'the owner may be away');
-    assert.equal(refusesAsker({ session: 'lead', role: 'lead' }, true), false, 'the meeting asks through it');
+    assert.equal(refusesAsker({ session: 'lead', role: 'lead' }, { open: false, askWith: 'picker' }), true, 'the owner may be away');
+    assert.equal(refusesAsker({ session: 'lead', role: 'lead' }, { open: true, askWith: 'picker' }), false, 'the meeting asks through it');
+    // T1278: by default the meeting asks in plain text, so the picker stays shut in it too.
+    assert.equal(refusesAsker({ session: 'lead', role: 'lead' }, { open: true, askWith: 'text' }), true, 'the meeting asks in plain text');
   });
 });
 
 describe('pickerReason', () => {
   it("says why, to decide it if it is the session's own, else to record a card with its default and take the next task", () => {
-    const reason = pickerReason('teamrig', { session: 'alpha', role: 'session' });
+    const reason = pickerReason('teamrig', { session: 'alpha', role: 'session' }, CLOSED);
     assert.match(reason, /^teamrig picker guard: the question picker stops this session until the owner answers, and the owner may be away for hours/);
     assert.match(reason, /Decide it yourself if it is yours to decide, and note it on its task\. Else record it on its task as a decision card, its --default included, and take your next task/);
     assert.match(reason, /`teamrig set <id> --status waiting --waits decision:owner --note "<what waits>" --question "<what is decided>"/);
@@ -64,15 +72,30 @@ describe('pickerReason', () => {
     assert.match(reason, /a `Decision needed:` line\.$/);
   });
 
-  it("tells the lead its card goes on the next meeting's agenda, the only time its picker opens", () => {
-    const reason = pickerReason('teamrig', { session: 'lead', role: 'lead' });
+  it("tells the lead its card goes on the next meeting's agenda, the only time its picker opens when the team asks with it", () => {
+    const reason = pickerReason('teamrig', { session: 'lead', role: 'lead' }, { open: false, askWith: 'picker' });
     assert.match(reason, /--session lead`; the agenda of the owner's next daily meeting lists it, and the picker opens for you only while that meeting is open \(`teamrig meeting start`\)\./);
     assert.doesNotMatch(reason, /the lead brings it/);
     assert.match(reason, /a `Decision needed:` line\.$/);
   });
 
+  // T1278: a team that asks in plain text never promises the lead the picker in the meeting.
+  it("tells the lead it asks the card in plain text at the next meeting when the team asks in plain text", () => {
+    const reason = pickerReason('teamrig', { session: 'lead', role: 'lead' }, CLOSED);
+    assert.match(reason, /--session lead`; the agenda of the owner's next daily meeting lists it, and you ask it there in plain text \(`teamrig meeting start`\)\./);
+    assert.doesNotMatch(reason, /picker opens/);
+    assert.match(reason, /a `Decision needed:` line\.$/);
+  });
+
+  it('tells the lead in an open meeting that asks in plain text to read the card, let the owner answer in words and record it', () => {
+    const reason = pickerReason('teamrig', { session: 'lead', role: 'lead' }, { open: true, askWith: 'text' });
+    assert.match(reason, /^teamrig picker guard: the owner's daily meeting asks in plain text \(decisions\.askWith: text\)\. Read the card as it stands, its options numbered and your recommendation first/);
+    assert.match(reason, /let the owner answer in their own words; record the answer in the same turn: `teamrig update <id> --note "owner decided: <decision>" --session lead`\.$/);
+    assert.doesNotMatch(reason, /teamrig set|Decision needed|away for hours/);
+  });
+
   it("tells a sub-team's lead to record the card and pass it to its parent lead, and never to ask the owner from its tab", () => {
-    const reason = pickerReason('teamrig', { session: 'lead', role: 'subteam-lead', parentLead: PARENT });
+    const reason = pickerReason('teamrig', { session: 'lead', role: 'subteam-lead', parentLead: PARENT }, CLOSED);
     assert.match(reason, /Else record it on its task as a decision card, its --default included, and take your next task/);
     assert.match(reason, /--session lead`; then tell your parent lead app\/lead \(name `app-lead`\) in one inbox line,/);
     assert.match(reason, /`teamrig inbox add --to app\/lead --text "T<id> waits on the owner's decision: <what is decided>" --session lead`, and it carries the decision up\./);
@@ -81,7 +104,7 @@ describe('pickerReason', () => {
   });
 
   it('tells a helper to decide it within its brief, else to end its report with the decision, and to run no set', () => {
-    const reason = pickerReason('teamrig', { session: 'alpha', role: 'helper' });
+    const reason = pickerReason('teamrig', { session: 'alpha', role: 'helper' }, CLOSED);
     assert.match(reason, /^teamrig picker guard: a helper's question picker stops the session that started it until the owner answers/);
     assert.match(reason, /Decide it yourself if it is within your brief\. Else finish the rest of your brief and end your report with the decision/);
     assert.match(reason, /the session that started you records it\.$/);
