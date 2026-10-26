@@ -10,11 +10,12 @@ const CLI = fileURLToPath(new URL('./cli.ts', import.meta.url));
 describe('setup cli', () => {
   let repo: TempRepo;
   beforeEach(() => {
-    repo = new TempRepo('setup').init();
+    repo = new TempRepo('setup');
   });
   afterEach(() => repo.remove());
 
   it('points the clone at the repo hooks and says how to add the optional denylist', () => {
+    repo.init();
     const result = repo.run(CLI);
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(result.stdout.trimEnd().split(/\r?\n/), [
@@ -25,9 +26,24 @@ describe('setup cli', () => {
   });
 
   it('reports the configured denylist', () => {
+    repo.init();
     repo.git('config', '--local', DENYLIST_CONFIG_KEY, 'private/deny.txt');
     const result = repo.run(CLI);
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /^private denylist: private\/deny\.txt$/m);
+  });
+
+  it('skips with exit 0 outside a git checkout, so npm install of a tarball still works', () => {
+    const result = repo.run(CLI);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trimEnd(), 'git hooks: not a git checkout, skipped');
+  });
+
+  it('skips with exit 0 when git is not on the PATH', () => {
+    repo.init();
+    const result = repo.run(CLI, [], { PATH: repo.outside });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trimEnd(), 'git hooks: not a git checkout, skipped');
+    assert.equal(repo.git('config', '--local', '--default', 'unset', '--get', 'core.hooksPath').trim(), 'unset');
   });
 });

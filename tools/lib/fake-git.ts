@@ -1,11 +1,11 @@
-import type { Git } from './git.ts';
+import type { Git, GitError } from './git.ts';
 
-/** Test double for `Git`: answers from a table keyed by the joined argument list. */
+/** Test double for `Git`: answers from a table keyed by the joined argument list; a `GitError` answer is thrown. */
 export class FakeGit implements Git {
   readonly calls: string[][] = [];
-  private readonly responses: ReadonlyMap<string, string | Buffer>;
+  private readonly responses: ReadonlyMap<string, string | Buffer | GitError>;
 
-  constructor(responses: Readonly<Record<string, string | Buffer>>) {
+  constructor(responses: Readonly<Record<string, string | Buffer | GitError>>) {
     this.responses = new Map(Object.entries(responses));
   }
 
@@ -25,6 +25,9 @@ export class FakeGit implements Git {
     const response = this.responses.get(key);
     if (response === undefined) {
       throw new Error(`unexpected git call: ${key}`);
+    }
+    if (typeof response !== 'string' && !Buffer.isBuffer(response)) {
+      throw response;
     }
     return response;
   }
