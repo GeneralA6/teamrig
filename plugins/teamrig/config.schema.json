@@ -547,6 +547,12 @@
                     "minItems": 1,
                     "maxItems": 64,
                     "items": { "type": "string", "minLength": 1 }
+                  },
+                  "remote": {
+                    "description": "The git remote whose default branch the command merges into: integrate rebases onto it, confirms the merge on it and moves the local default branch to it. Set upstream where origin is a contributor's fork; the branch itself is pushed to and deleted from origin either way.",
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+                    "default": "origin"
                   }
                 }
               },

@@ -293,6 +293,7 @@ How teamrig integrate merges a branch through the team's own flow, such as a pul
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `command` (required) | array (1 to 64 items) of string (at least 1 character) |  | A program and its arguments, run without a shell in the branch checkout under the host lock after the rebase and the dependency check, with TEAMRIG\_MERGE\_BRANCH, TEAMRIG\_MERGE\_BASE (the default branch), TEAMRIG\_MERGE\_HEAD and TEAMRIG\_SESSION set. Exit 0: the branch merged, which integrate confirms on the remote; 75: it waits (say a pull request waits on its checks or review), and running integrate again finishes it once it merges; anything else fails it. Its last output line is shown as the reason. |
+| `remote` | string (matching `^[A-Za-z0-9][A-Za-z0-9._-]*$`) | `"origin"` | The git remote whose default branch the command merges into: integrate rebases onto it, confirms the merge on it and moves the local default branch to it. Set upstream where origin is a contributor's fork; the branch itself is pushed to and deleted from origin either way. |
 
 ## `coordinator.repos.*.roll`
 
