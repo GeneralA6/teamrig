@@ -804,7 +804,7 @@ export interface RefreshConfig {
   readonly holdAfterActivityMinutes: number;
   /**
    * Before the plugin's mod runs the automatic /clear, a band above the prompt counts down this many seconds, with
-   * "Refresh now" and "Hold 10 min"; a key in the prompt holds it too. 0: no band, the /clear runs at once.
+   * "Refresh now" and "Hold 10 min"; a key in the prompt holds it too. 0: no count, the /clear runs once nothing else holds it.
    */
   readonly countdownSeconds: number;
   /**
