@@ -6,7 +6,7 @@ import { ENV, KIT_NAME } from "../../core/home.js";
 import { NAME_RULE } from "../../core/ids.js";
 import { PlainLogFile } from "../../core/log-file.js";
 import { SecretScanner } from "../../core/secrets.js";
-import { groupIds, parseTo, treeLeadsOf } from "../../inbox/groups.js";
+import { groupIds, parseTo, taskGroupOf, treeLeadsOf } from "../../inbox/groups.js";
 import { formatRead, formatStatus, inboxStatus, lineOnClock, postLines, readInbox } from "../../inbox/inbox.js";
 import { CLAUDE_SESSION_ID, RECEIVER_TABS, tabsOf } from "../../inbox/marks.js";
 import { reachOf } from "../../inbox/reach.js";
@@ -21,6 +21,7 @@ import { callerOf, sessionRef } from "../inputs.js";
 import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { readWPerPct } from "../stored-week.js";
+import { TreeTasks } from "../tree-tasks.js";
 import { loadTree } from "../tree.js";
 import { verifyNoteOf } from "./verify-queue.js";
 export function inboxDepsOf(runtime, paths) {
@@ -106,30 +107,72 @@ function recipientsAt(runtime, own, loaded, addresses) {
         .filter((to) => to.team !== own.from.team || to.id !== own.from.id)
         .map((to) => (to.team === own.from.team ? ownTeamRecipient(own, to.id) : recipientInTree(runtime, loaded, own.from, to)));
 }
+/** The sender's tree of teams, each part read at most once and only when a `--to` item needs it. */
+class SenderTreeReads {
+    runtime;
+    team;
+    loaded;
+    registers;
+    constructor(runtime, team) {
+        this.runtime = runtime;
+        this.team = team;
+    }
+    tree() {
+        this.loaded ??= loadTree(this.runtime);
+        return this.loaded;
+    }
+    /** The working set of every register of the sender's tree, in its walk order; undefined when its parents go round a loop. */
+    treeRegisters() {
+        this.registers ??= this.tree().then((loaded) => new TreeTasks(this.runtime, loaded).registersFor(this.team));
+        return this.registers;
+    }
+}
+function loopRefusal(team, what) {
+    return new RefusedError(`the parent teams above ${team} go round a loop, so its tree has no ${what}: teamrig doctor names the loop`);
+}
 /** `tree:leads`: every team's lead in the sender's tree, root first; refused when the tree has no root. */
 function treeLeadRecipients(runtime, own, loaded) {
     const leads = treeLeadsOf(loaded.tree, own.from.team);
     if (leads === undefined) {
-        throw new RefusedError(`the parent teams above ${own.from.team} go round a loop, so its tree has no leads to list: teamrig doctor names the loop`);
+        throw loopRefusal(own.from.team, 'leads to list');
     }
     return recipientsAt(runtime, own, loaded, leads);
 }
+/**
+ * `task:T<n>`: the sessions working the task across the sender's tree ({@link taskGroupOf}), but an owner no longer
+ * a session of its team; refused when no register of the tree holds the task, or the tree has no root.
+ */
+async function taskRecipients(runtime, own, reads, id) {
+    const registers = await reads.treeRegisters();
+    if (registers === undefined) {
+        throw loopRefusal(own.from.team, 'registers to read');
+    }
+    const group = taskGroupOf(registers.map(({ team, snapshot }) => ({ team, tasks: snapshot.state.tasks })), own.from.team, id);
+    if (!group.ok) {
+        throw new RefusedError(group.problem);
+    }
+    const loaded = await reads.tree();
+    return recipientsAt(runtime, own, loaded, group.sessions.filter((session) => teamOf(loaded, session.team).config.sessions.includes(session.id)));
+}
 /** The recipients one `--to` item names: a group of the sender's team or of its tree, or one session of its tree. */
-async function recipientsOfItem(runtime, own, item, tree) {
+async function recipientsOfItem(runtime, own, item, reads) {
     if (item.kind === 'session') {
         const { team, session } = item.address;
         if (team === undefined || team === own.from.team) {
             return [ownTeamRecipient(own, sessionIdOf(own.roster, session))];
         }
-        const loaded = await tree();
+        const loaded = await reads.tree();
         return [recipientInTree(runtime, loaded, own.from, { team, id: sessionIdOf(teamOf(loaded, team).roster, session) })];
     }
     if (item.kind === 'team') {
-        const loaded = await tree();
+        const loaded = await reads.tree();
         return recipientsAt(runtime, own, loaded, teamOf(loaded, item.team).config.sessions.map((id) => ({ team: item.team, id })));
     }
     if (item.kind === 'tree-leads') {
-        return treeLeadRecipients(runtime, own, await tree());
+        return treeLeadRecipients(runtime, own, await reads.tree());
+    }
+    if (item.kind === 'task') {
+        return taskRecipients(runtime, own, reads, item.id);
     }
     const group = item.kind === 'group' ? { kind: item.kind, leader: sessionIdOf(own.roster, item.leader) } : item;
     const ids = groupIds(own.config, group, own.from.id);
@@ -139,10 +182,10 @@ async function recipientsOfItem(runtime, own, item, tree) {
     return ids.ids.map((id) => ownTeamRecipient(own, id));
 }
 /** Every recipient the `--to` items name, each once, in the order first named; refused when none is left. */
-async function recipientsOf(runtime, own, items, to, tree) {
+async function recipientsOf(runtime, own, items, to, reads) {
     const byLabel = new Map();
     for (const item of items) {
-        for (const recipient of await recipientsOfItem(runtime, own, item, tree)) {
+        for (const recipient of await recipientsOfItem(runtime, own, item, reads)) {
             if (!byLabel.has(recipient.label)) {
                 byLabel.set(recipient.label, recipient);
             }
@@ -162,8 +205,8 @@ function postedLine(recipients) {
 }
 /**
  * The route reminders (T783) for the sessions of the sender's team that `--to` names one by one, each once. A group
- * (`all`, `leads`, `group:<leader>`, `team:<team>`, `tree:leads`) is a broadcast, not work handed past a sub-lead, so
- * it gets none.
+ * (`all`, `leads`, `group:<leader>`, `team:<team>`, `tree:leads`, `task:T<n>`) is a broadcast, not work handed past a
+ * sub-lead, so it gets none.
  */
 function routeRemindersOf(own, items, text) {
     const tree = new LeadTree(own.config);
@@ -181,9 +224,9 @@ function routeRemindersOf(own, items, text) {
     return [...reminders];
 }
 /** The sender as the `--wake now` gate reads it; the teams below its own are read only when a recipient is on another team. */
-async function wakeSenderOf(own, recipients, tree) {
+async function wakeSenderOf(own, recipients, reads) {
     const leads = new LeadTree(own.config);
-    const below = recipients.some((recipient) => recipient.crossing) ? (await tree()).tree.descendantsOf(own.from.team) : [];
+    const below = recipients.some((recipient) => recipient.crossing) ? (await reads.tree()).tree.descendantsOf(own.from.team) : [];
     return { team: own.from.team, id: own.from.id, leader: leads.isLeader(own.from.id), teamLead: leads.lead === own.from.id, below };
 }
 /**
@@ -222,13 +265,14 @@ async function postWakes(runtime, own, recipients, text, now) {
     }
     return wakes.length === 0 && off.length === 0 ? failed : [...failed, wakesLine(wakes, off)];
 }
-const TO_FORMS = 'a session id or name, <team>/<id>, all, leads, group:<leader>, team:<team>, tree:leads, or a comma-separated list of them';
+const TO_FORMS = 'a session id or name, <team>/<id>, all, leads, group:<leader>, team:<team>, tree:leads, task:T<n>, or a comma-separated list of them';
 /**
  * `inbox add --to <to> --text "<line>" [--wake now]`: appends one dated line to each receiver's inbox, all of them
  * or, when one is refused, none. A bare id or name is on the sender's team; `<team>/<id>` reaches any session of
  * another team of its tree, and that line names the sender `<team>/<id>`. `all`, `leads` and `group:<leader>` are
- * groups of the sender's team, `team:<team>` (every session of a team of its tree) and `tree:leads` (every team's lead
- * of its tree) groups of its tree; a group leaves the sender out, and a comma-separated list names each receiver once.
+ * groups of the sender's team, `team:<team>` (every session of a team of its tree), `tree:leads` (every team's lead
+ * of its tree) and `task:T<n>` (the owner of that task and of each active task of its tree whose ref is T<n>, T1151)
+ * groups of its tree; a group leaves the sender out, and a comma-separated list names each receiver once.
  * A line to a session named on the sender's team that skips a sub-lead below the sender is posted, then a further line
  * tells the sender to route such work via that sub-lead (T783). `--wake now` (T1147) also wakes each receiver idle at
  * its prompt within about 3 minutes (`wake.batchSeconds`), and says what that costs; a group is woken only by a
@@ -252,11 +296,10 @@ export async function add(args, runtime) {
     const config = requireConfig(kit, runtime, 'write');
     const roster = await rosterOf(runtime, kit, config);
     const own = { from: { team, id: sessionIdOf(roster, caller) }, paths: kit.paths, config, roster };
-    let loaded;
-    const tree = () => (loaded ??= loadTree(runtime));
-    const recipients = await recipientsOf(runtime, own, items, to, tree);
+    const reads = new SenderTreeReads(runtime, team);
+    const recipients = await recipientsOf(runtime, own, items, to, reads);
     if (wake !== undefined) {
-        const refusal = wakeRefusal(await wakeSenderOf(own, recipients, tree), items.some((item) => item.kind !== 'session'), recipients);
+        const refusal = wakeRefusal(await wakeSenderOf(own, recipients, reads), items.some((item) => item.kind !== 'session'), recipients);
         if (refusal !== undefined) {
             throw new RefusedError(refusal);
         }
