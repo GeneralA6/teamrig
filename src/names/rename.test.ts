@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseJsonl } from '../core/jsonl.ts';
-import { parseRename, readRenames } from './rename.ts';
+import { parseRename, readRenames, splitRenameLog } from './rename.ts';
 
 function kindsOf(lines: readonly object[]): string[] {
   return parseJsonl(lines.map((line) => JSON.stringify(line)).join('\n')).records.map((record) => parseRename(record).kind);
@@ -41,5 +41,23 @@ describe('readRenames', () => {
     const text = [JSON.stringify(VALID), '{torn', JSON.stringify({ ...VALID, v: 2 }), JSON.stringify({ ...VALID, to: 'Not A Name' }), JSON.stringify(later), ''].join('\r\n');
     assert.deepEqual(readRenames(text), { renames: [VALID, later], unreadable: 2, newer: 1 });
     assert.deepEqual(readRenames(''), { renames: [], unreadable: 0, newer: 0 });
+  });
+});
+
+describe('splitRenameLog', () => {
+  it("cuts the moved sessions' lines from the rest, each as written, a damaged line or one without an id staying with the rest", () => {
+    const bravo = JSON.stringify({ ...VALID, id: 'bravo', to: 'bee' });
+    const lead = `{"v":1, "id":"lead","from":"app-lead","to":"boss","at":"2030-01-08T09:00:00.000Z","by":"lead"}`;
+    const text = [bravo, lead, '{torn', JSON.stringify({ v: 1, to: 'bee' }), JSON.stringify(VALID), ''].join('\r\n');
+    assert.deepEqual(splitRenameLog(text, new Set(['alpha', 'bravo'])), {
+      of: `${bravo}\r\n${JSON.stringify(VALID)}\r\n`,
+      rest: `${lead}\r\n{torn\r\n${JSON.stringify({ v: 1, to: 'bee' })}\r\n`,
+      moved: 2,
+    });
+  });
+
+  it('gives empty texts for an empty log, and closes a last line that lacks its newline', () => {
+    assert.deepEqual(splitRenameLog('', new Set(['alpha'])), { of: '', rest: '', moved: 0 });
+    assert.deepEqual(splitRenameLog(JSON.stringify(VALID), new Set(['bravo'])), { of: '', rest: `${JSON.stringify(VALID)}\n`, moved: 0 });
   });
 });
