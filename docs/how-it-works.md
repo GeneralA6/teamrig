@@ -130,7 +130,7 @@ sub-lead hires the same way into its own group, and retires only the sessions it
   due or the week's pace end; the areas furthest behind are paid first, out of the team's part of the week's projected
   spare (as for a surplus burst, below), and none
   once it cannot pay or the team's daily budget is unknown. Its action moves the slice to an idle hire, else hires
-  within `maxSessions`, else brings the owner a card to raise it (a child team's lead asks its parent team's lead to). The hire retires as RETIRE-DUE once its slice is
+  within `maxSessions`, else brings the owner a card to raise it (a child team's lead asks its parent team's lead to), or under `hiring.capRaisedBy` `lead` raises it itself and says so in its next report. The hire retires as RETIRE-DUE once its slice is
   done.
 
 When its job is done, the lead retires it with `teamrig retire <id>`. It refuses while the session owns open tasks

@@ -22,7 +22,8 @@ started work needs), its cost (a new hire's part of the team's daily budget toda
 or the week's pace end) and the week's spare; no flag is raised while the spare cannot pay. Do what the action says:
 - it names an idle hire: move the slice to it, `teamrig update <task> --owner <hire> --session lead` for each task;
 - else hire for the slice (the steps below, `--scope` the slice's task ids, `--reason "SCALE-OUT"`), then move it;
-- the cap (`hiring.maxSessions`) blocks: bring the owner a card to raise it, or move the slice to another area.
+- the cap (`hiring.maxSessions`) blocks: bring the owner a card to raise it (under `hiring.capRaisedBy` `lead`, raise it
+  in the team config yourself and say so in your next report), or move the slice to another area.
 
 1. Decide its job in one line (`--scope`), why the team needs it now (`--reason`) and a short id
    (lowercase letters, digits and dashes, not on the team yet).

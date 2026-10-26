@@ -61,7 +61,9 @@ teamrig test --session api -- npm test
 ```
 
 1. Edit only in your own worktree and branch, made off the current main as above (or with Claude Code's
-   EnterWorktree). A `node_modules` linked in from the main checkout (`mklink /J` on Windows) is removed in step 7.
+   EnterWorktree). A `node_modules` linked in from the main checkout (`mklink /J` on Windows) is removed in step 7. If you link one into a worktree Claude Code removes by itself
+   (a helper started with `isolation: worktree`), unlink it before the helper ends: that removal follows the link and
+   empties the main checkout's.
 2. Commit one logical change at a time, each with its tests, as soon as they pass. Run tests through
    `teamrig test`: a long run costs a few lines, and the whole output stays in a log. Over 400 changed lines or
    15 files, the commit needs a `Large-commit: <reason>` line.
@@ -254,7 +256,8 @@ With sub-teams, run `teamrig check --tree --session lead` too. Then act on each 
   open a new task or keep it by a decision).
 - `NOT-PICKED-UP`: the owner is idle and reads no inbox: wake it with `teamrig open <id>`, or tell the human.
 - `HIRE SCALE-OUT`: an area cannot finish its dated work in time, and the week's spare pays for help: move its slice
-  to the idle hire it names, else hire for the slice and move it, else bring the owner a card for the cap that blocks.
+  to the idle hire it names, else hire for the slice and move it, else bring the owner a card for the cap that blocks (under `hiring.capRaisedBy` `lead`, raise it yourself and say
+  so).
 - `HIRE RETIRE-DUE`: a hired session has had no open task for `hiring.idleHours`: give it its next task, or retire
   it (`teamrig retire <id> --session lead`, `--to <heir>` for any open task). Hiring, retiring and rehiring: the
   `hire` skill.
