@@ -16,6 +16,7 @@ import {
   PANE_RIGHT,
   renderTerminalView,
   type Status,
+  statusKey,
   TABS,
   TASKS,
   VIEW_HEIGHT,
@@ -133,5 +134,23 @@ describe('windowFrame', () => {
     assert.ok(!rule({ pane: false }).includes(`M${DIVIDER_X + 0.5} `), rule({ pane: false }));
     assert.ok(rule({ pane: false }).includes(`H${WIDTH - 1}`), rule({ pane: false }));
     assert.deepEqual(windowFrame({ pane: false }).slice(0, 2), windowFrame().slice(0, 2));
+  });
+
+  it('draws the window and the line beside the pane to the height it is given, WINDOW_HEIGHT unless given', () => {
+    assert.deepEqual(windowFrame({ height: WINDOW_HEIGHT }), windowFrame());
+    const tall = windowFrame({ height: 560 });
+    assert.ok(tall[0]?.includes(' height="559" '), tall[0]);
+    assert.ok(rule({ height: 560 }).endsWith('V559" class="rule"/>'), rule({ height: 560 }));
+    assert.deepEqual(tall.slice(1, 2), windowFrame().slice(1, 2), 'the tab strip stays as it is');
+  });
+});
+
+describe('statusKey', () => {
+  const baselines = (parts: readonly string[]): string[] => [...parts.join('').matchAll(/<text x="[\d.]+" y="([\d.]+)"/g)].map((found) => found[1] ?? '');
+
+  it('sits at the foot of the picture, VIEW_HEIGHT unless given, one entry per status', () => {
+    assert.deepEqual(statusKey(VIEW_HEIGHT), statusKey());
+    assert.deepEqual(baselines(statusKey()), KEY_ORDER.map(() => String(VIEW_HEIGHT - 16)));
+    assert.deepEqual(baselines(statusKey(604)), KEY_ORDER.map(() => '588'));
   });
 });
