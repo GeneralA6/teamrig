@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from '
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { drawPictures, IMAGES_DIR, stalePictures, writePictures } from './images.ts';
-import { parseXml } from './xml.ts';
+import { parseXml, placesIn, textOf } from './xml.ts';
 
 describe('drawPictures', () => {
   it("draws the README's pictures in its order, then the commands screen", async () => {
@@ -20,6 +20,14 @@ describe('drawPictures', () => {
       assert.equal(root.attributes.get('role'), 'img', picture.file);
       assert.notEqual(root.attributes.get('aria-label') ?? '', '', picture.file);
       assert.doesNotMatch(picture.svg, /\p{Extended_Pictographic}/u, picture.file);
+    }
+  });
+
+  it('draws no text with a run of spaces, which a browser shows as one space', async () => {
+    for (const picture of await drawPictures()) {
+      for (const { element } of placesIn(parseXml(picture.svg))) {
+        if (element.name === 'text' || element.name === 'tspan') assert.doesNotMatch(textOf(element), / {2}/, `${picture.file}: ${textOf(element)}`);
+      }
     }
   });
 });

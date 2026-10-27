@@ -9,8 +9,8 @@
  * shows it in an <img>. With motion turned off it is a still of the whole meeting.
  */
 import { lineParts, trackMarks, type Line, type TabStory } from './story.ts';
-import { renderSvg } from './svg.ts';
-import { mark, statusKey, tabOutline, tabX, text, VIEW_HEIGHT, WIDTH, WINDOW_HEIGHT, WINDOW_STYLE, windowFrame } from './terminal-view.ts';
+import { escapeXml, renderSvg } from './svg.ts';
+import { mark, MONO_SIZE, statusKey, tabOutline, tabX, text, VIEW_HEIGHT, WIDTH, WINDOW_HEIGHT, WINDOW_STYLE, windowFrame } from './terminal-view.ts';
 import { themeStyle } from './theme.ts';
 import { Timeline, type Clock } from './timeline.ts';
 
@@ -32,18 +32,21 @@ export const TABS: readonly TabStory[] = [
   { name: 'data', track: 'working' },
 ];
 
-/** A decision card: its first line's baseline, when it appears, its task, what it is, its options and the lead's pick. */
+/** A decision card: its first line's baseline, when it appears, its task, what it is, its options A and B and the lead's pick. */
 export interface Card {
   readonly y: number;
   readonly from: number;
   readonly task: string;
   readonly ask: string;
-  readonly options: string;
+  readonly options: readonly [string, string];
   readonly rec: string;
 }
 
 /** The step from one line of a card to the next. */
 export const CARD_LINE = 22;
+
+/** The room between a card's two options, about three characters: a text's run of spaces would show as one. */
+export const OPTION_GAP = 2 * MONO_SIZE;
 
 /** The three decisions: a product call, a budget call and a contract other teams read. */
 export const CARDS: readonly Card[] = [
@@ -52,7 +55,7 @@ export const CARDS: readonly Card[] = [
     from: 9.0,
     task: 'T52',
     ask: 'Guest checkout: let buyers pay without an account? 31% of carts stop at sign-up.',
-    options: "A: add guest checkout, 2 days of web's work.   B: keep sign-up as it is, no cost.",
+    options: ["A: add guest checkout, 2 days of web's work.", 'B: keep sign-up as it is, no cost.'],
     rec: 'Rec: A, it wins back the most carts. With no answer: B, nothing changes.',
   },
   {
@@ -60,7 +63,7 @@ export const CARDS: readonly Card[] = [
     from: 12.6,
     task: 'T60',
     ask: 'A second test database: the tests wait 9 minutes a day for the shared one.',
-    options: 'A: rent one, $14 a month.   B: run the slow tests at night, free, results a day late.',
+    options: ['A: rent one, $14 a month.', 'B: run the slow tests at night, free, results a day late.'],
     rec: 'Rec: A, the wait costs more than $14. With no answer: B.',
   },
   {
@@ -68,7 +71,7 @@ export const CARDS: readonly Card[] = [
     from: 16.2,
     task: 'T66',
     ask: 'Retire the old v1 API: 3 clients still call it, about 40 calls a day.',
-    options: 'A: switch it off on Friday, after a notice.   B: keep it until the month ends.',
+    options: ['A: switch it off on Friday, after a notice.', 'B: keep it until the month ends.'],
     rec: 'Rec: B, it gives the 3 clients time to move. With no answer: B.',
   },
 ];
@@ -92,7 +95,7 @@ export const TALK: readonly Line[] = [
   },
 ];
 
-const spokenCard = (card: Card, index: number): string => `${index + 1}, ${card.task}: ${card.ask} ${card.options} ${card.rec}`;
+const spokenCard = (card: Card, index: number): string => `${index + 1}, ${card.task}: ${card.ask} ${card.options.join(' ')} ${card.rec}`;
 
 const LABEL =
   "Your morning meeting in the lead's tab. You say Morning. The lead opens the meeting at 09:30, and the sessions " +
@@ -114,13 +117,18 @@ function tabs(t: Timeline): string[] {
   return [tabOutline(tabX(0)), ...TABS.flatMap(tab)];
 }
 
+/** A card's options on one line, B a gap after A. */
+function optionsLine(y: number, [a, b]: Card['options']): string {
+  return `<text x="102" y="${y}" class="mono">${escapeXml(a)}<tspan dx="${OPTION_GAP}">${escapeXml(b)}</tspan></text>`;
+}
+
 /** A card's lines: its number and task, what it is, its options under that and the lead's pick under them. */
 function cardParts(card: Card, index: number): string[] {
   return [
     text(42, card.y, String(index + 1), 'mono muted'),
     text(62, card.y, card.task, 'mono accent'),
     text(102, card.y, card.ask, 'mono'),
-    text(102, card.y + CARD_LINE, card.options, 'mono'),
+    optionsLine(card.y + CARD_LINE, card.options),
     text(102, card.y + 2 * CARD_LINE, card.rec, 'mono muted'),
   ];
 }
