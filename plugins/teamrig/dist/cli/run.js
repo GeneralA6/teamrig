@@ -88,7 +88,7 @@ const COMMANDS = {
     verify: { effect: 'read', flags: ['session'], load: async () => (await registerCommands()).verify },
     'inbox read': { effect: 'write', flags: ['session'], load: async () => (await inboxCommands()).read },
     'inbox status': { effect: 'read', flags: ['session'], load: async () => (await inboxCommands()).status },
-    'inbox add': { effect: 'write', flags: ['session', 'to', 'text', 'wake'], load: async () => (await inboxCommands()).add },
+    'inbox add': { effect: 'write', flags: ['session', 'to', 'text', 'wake', 'wake-by'], load: async () => (await inboxCommands()).add },
     'exec request': { effect: 'write', flags: ['session', 'file'], load: async () => (await execCommands()).request },
     'exec dry-run': { effect: 'write', flags: [], load: async () => (await execCommands()).dryRun },
     'exec approve': { effect: 'write', flags: ['session', 'note', 'team'], load: async () => (await execCommands()).approve },
@@ -375,7 +375,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       the date to verify by, then its done tasks still watched for a sighting (--watch)
   inbox read [--session <area>]     prints the unread lines and marks them read
   inbox status [--session <area>]   unread lines per area
-  inbox add --to <id|name|team/id|all|leads|group:<leader>|team:<team>|tree:leads|task:T<n>>[,...] --text "<one line>" [--wake now]
+  inbox add --to <id|name|team/id|all|leads|group:<leader>|team:<team>|tree:leads|task:T<n>>[,...] --text "<one line>" [--wake now | --wake-by <time>]
       team/id: any session of another team of your tree; all, leads (the
       lead and the sub-leads) and group:<leader> (it and every session under it) are your own team's;
       team:<team> is every session of a team of your tree and tree:leads every team's lead in it;
@@ -383,6 +383,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       group leaves you out; a comma-separated list posts the line to each receiver once
       --wake now: also wakes each receiver idle at its prompt within about 3 minutes and says what
       that costs; a group only from a leader, another team only from the lead of a team above it
+      --wake-by <time>: wakes each receiver at that time instead, only if it has not seen the line by
+      then and its tab is idle; the same gate
   exec request --file <request.json>   asks to run a privileged command: the JSON names the command, its
       code binding, variables, dry run or preview, purpose, expected effect and rollback; logged as R<n>
   exec dry-run R<n>    runs the request's read-only dry run, logged for the reviewer

@@ -7,17 +7,18 @@ import { NAME_RULE } from "../../core/ids.js";
 import { PlainLogFile } from "../../core/log-file.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { groupIds, parseTo, taskGroupOf, treeLeadsOf } from "../../inbox/groups.js";
-import { formatRead, formatStatus, inboxStatus, lineOnClock, postLines, readInbox } from "../../inbox/inbox.js";
+import { formatRead, formatStatus, inboxLineOf, inboxStatus, lineOnClock, postLines, readInbox } from "../../inbox/inbox.js";
+import { lineHash } from "../../inbox/line-hash.js";
 import { CLAUDE_SESSION_ID, RECEIVER_TABS, tabsOf } from "../../inbox/marks.js";
 import { reachOf } from "../../inbox/reach.js";
 import { routeReminderOf } from "../../inbox/route.js";
 import { InboxDir, JsonlMarkLog } from "../../inbox/store.js";
-import { WAKE_NOW, wakeRefusal, wakesLine } from "../../inbox/wake-now.js";
+import { WAKE_AT_ONCE, WAKE_NOW, wakeByOf, wakeRefusal, wakesLine } from "../../inbox/wake-now.js";
 import { WakeAsks } from "../../wake/asks.js";
 import { wakeCost } from "../../wake/decide.js";
 import { noPositionals, requiredFlag, UsageError } from "../args.js";
 import { hookLogOf } from "../hook-logs.js";
-import { callerOf, sessionRef } from "../inputs.js";
+import { callerOf, instantOf, sessionRef } from "../inputs.js";
 import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { readWPerPct } from "../stored-week.js";
@@ -223,7 +224,7 @@ function routeRemindersOf(own, items, text) {
     }
     return [...reminders];
 }
-/** The sender as the `--wake now` gate reads it; the teams below its own are read only when a recipient is on another team. */
+/** The sender as the `--wake now` / `--wake-by` gate reads it; the teams below its own are read only when a recipient is on another team. */
 async function wakeSenderOf(own, recipients, reads) {
     const leads = new LeadTree(own.config);
     const below = recipients.some((recipient) => recipient.crossing) ? (await reads.tree()).tree.descendantsOf(own.from.team) : [];
@@ -232,10 +233,11 @@ async function wakeSenderOf(own, recipients, reads) {
 /**
  * Posts a wake ask beside each recipient's posted line, so its tab's wake check wakes it, and returns what that
  * prints: a WAKE FAILED line for each ask that could not be posted (its line stays posted), then the WAKES line. A
- * recipient whose team has `wake.enabled` false gets no ask. Each wake's cost runs from the recipient's last write to
- * its latest tabs' transcripts, as the wake check reckons it.
+ * recipient whose team has `wake.enabled` false gets no ask. A `--wake-by` ask carries its time and the hash of the
+ * line posted at `now`, so it wakes only while that line is unseen. Each wake's cost runs from the recipient's last
+ * write to its latest tabs' transcripts until the wake, as the wake check reckons it.
  */
-async function postWakes(runtime, own, recipients, text, now) {
+async function postWakes(runtime, own, recipients, text, now, when) {
     const wPerPct = await readWPerPct(runtime, own.paths, own.config, now);
     const projects = claudeProjectsDir(runtime.env, runtime.userHome);
     const marksByTeam = new Map();
@@ -244,6 +246,7 @@ async function postWakes(runtime, own, recipients, text, now) {
         marksByTeam.set(recipient.team, read);
         return read;
     };
+    const wakeAt = when.kind === 'by' ? when.at : now;
     const failed = [];
     const off = [];
     const wakes = [];
@@ -252,18 +255,30 @@ async function postWakes(runtime, own, recipients, text, now) {
             off.push(recipient.label);
             continue;
         }
+        const by = when.kind === 'by' ? { by: { at: when.at, line: lineHash(inboxLineOf(new Date(now), recipient.sender, text)) } } : {};
         try {
-            await new WakeAsks(runtime.files, recipient.paths.wakeAsks).post(recipient.id, { from: recipient.sender, text, at: now });
+            await new WakeAsks(runtime.files, recipient.paths.wakeAsks).post(recipient.id, { from: recipient.sender, text, at: now, ...by });
         }
         catch (error) {
             failed.push(`WAKE FAILED for ${recipient.label}: ${errorMessage(error)}; its line is posted`);
             continue;
         }
         const last = await lastWriteOf(runtime.transcripts, projects, tabsOf(await marksOf(recipient), recipient.id, RECEIVER_TABS));
-        const cost = wakeCost(last === undefined ? undefined : now - last, recipient.config.messages.coldAfterMinutes, wPerPct);
+        const cost = wakeCost(last === undefined ? undefined : wakeAt - last, recipient.config.messages.coldAfterMinutes, wPerPct);
         wakes.push({ label: recipient.label, team: recipient.team, batchSeconds: recipient.config.wake.batchSeconds, cost });
     }
-    return wakes.length === 0 && off.length === 0 ? failed : [...failed, wakesLine(wakes, off)];
+    return wakes.length === 0 && off.length === 0 ? failed : [...failed, wakesLine(wakes, off, when)];
+}
+/** The wake `--wake now` or `--wake-by <time>` asks; undefined with neither. A `--wake-by` time not after now is refused. */
+function wakeWhenOf(wake, wakeBy, now, zone) {
+    if (wakeBy === undefined) {
+        return wake === undefined ? undefined : WAKE_AT_ONCE;
+    }
+    const at = instantOf('--wake-by', wakeBy, { nowMs: now, zone });
+    if (at <= now) {
+        throw new UsageError(`--wake-by "${wakeBy}" is past (${zone.shortMinute(new Date(at))}); --wake now wakes each receiver at once`);
+    }
+    return wakeByOf(at, now, zone);
 }
 const TO_FORMS = 'a session id or name, <team>/<id>, all, leads, group:<leader>, team:<team>, tree:leads, task:T<n>, or a comma-separated list of them';
 /**
@@ -275,8 +290,9 @@ const TO_FORMS = 'a session id or name, <team>/<id>, all, leads, group:<leader>,
  * groups of its tree; a group leaves the sender out, and a comma-separated list names each receiver once.
  * A line to a session named on the sender's team that skips a sub-lead below the sender is posted, then a further line
  * tells the sender to route such work via that sub-lead (T783). `--wake now` (T1147) also wakes each receiver idle at
- * its prompt within about 3 minutes (`wake.batchSeconds`), and says what that costs; a group is woken only by a
- * leader, another team only by the lead of a team above it, else nothing is posted.
+ * its prompt within about 3 minutes (`wake.batchSeconds`), and says what that costs; `--wake-by <time>` (T1148) wakes
+ * it at that time instead, and only if it has not seen the line by then. A group is woken only by a leader, another
+ * team only by the lead of a team above it, else nothing is posted.
  */
 export async function add(args, runtime) {
     noPositionals(args);
@@ -291,15 +307,21 @@ export async function add(args, runtime) {
     if (wake !== undefined && wake !== WAKE_NOW) {
         throw new UsageError(`--wake takes ${WAKE_NOW}, to wake each receiver as soon as its tab's wake check may, not "${wake}"`);
     }
+    const wakeBy = args.flags.get('wake-by');
+    if (wake !== undefined && wakeBy !== undefined) {
+        throw new UsageError(`--wake ${WAKE_NOW} and --wake-by are one or the other: --wake ${WAKE_NOW} wakes each receiver at once, --wake-by at a time`);
+    }
     const { team } = await findTeam(runtime);
     const kit = await openKit(runtime, team);
     const config = requireConfig(kit, runtime, 'write');
+    const now = runtime.clock.now();
+    const when = wakeWhenOf(wake, wakeBy, now, teamZone(config, runtime));
     const roster = await rosterOf(runtime, kit, config);
     const own = { from: { team, id: sessionIdOf(roster, caller) }, paths: kit.paths, config, roster };
     const reads = new SenderTreeReads(runtime, team);
     const recipients = await recipientsOf(runtime, own, items, to, reads);
-    if (wake !== undefined) {
-        const refusal = wakeRefusal(await wakeSenderOf(own, recipients, reads), items.some((item) => item.kind !== 'session'), recipients);
+    if (when !== undefined) {
+        const refusal = wakeRefusal(await wakeSenderOf(own, recipients, reads), items.some((item) => item.kind !== 'session'), recipients, when);
         if (refusal !== undefined) {
             throw new RefusedError(refusal);
         }
@@ -309,14 +331,13 @@ export async function add(args, runtime) {
         ...recipients.filter((recipient) => recipient.crossing).flatMap((recipient) => recipient.config.register.secretPatterns),
     ]);
     const targets = recipients.map((recipient) => ({ inboxes: inboxDepsOf(runtime, recipient.paths).inboxes, to: recipient.id, from: recipient.sender }));
-    const now = runtime.clock.now();
     const problem = await postLines(targets, secrets, { text, now: new Date(now) });
     if (problem !== undefined) {
         throw new RefusedError(problem);
     }
     runtime.out.stdout(postedLine(recipients));
-    if (wake !== undefined) {
-        for (const line of await postWakes(runtime, own, recipients, text.trim(), now)) {
+    if (when !== undefined) {
+        for (const line of await postWakes(runtime, own, recipients, text.trim(), now, when)) {
             runtime.out.stdout(line);
         }
     }

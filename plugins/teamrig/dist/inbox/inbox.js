@@ -110,6 +110,16 @@ export async function inboxStatus(deps, area) {
     }
     return result;
 }
+/**
+ * The hashes (`lineHash`) of the area's lines its session has not seen: neither read nor shown at a prompt, read as
+ * `inboxStatus` does. A timed ask (`inbox add --wake-by`) wakes only while its line is among them.
+ */
+export async function unseenLinesOf(deps, area) {
+    const lines = (await deps.inboxes.lines(area)) ?? [];
+    const read = indexMarks((await deps.marks.read()).marks).byArea.get(area) ?? null;
+    const shown = lastShownOf((await deps.shown.read()).marks, area);
+    return new Set(unshownOf(area, lines, read, shown, lineHash).map(lineHash));
+}
 /** Appends one dated line, `- YYYY-MM-DD HH:MM <from>: <text>`, to an area's inbox. */
 export async function postLine(inboxes, secrets, input) {
     return postLines([{ inboxes, to: input.to, from: input.from }], secrets, input);
@@ -131,11 +141,14 @@ export async function postLines(targets, secrets, input) {
     if (secret !== undefined) {
         return secret;
     }
-    const stamp = formatUtcMinute(input.now);
     for (const target of targets) {
-        await target.inboxes.append(target.to, `- ${stamp} ${target.from}: ${text}`);
+        await target.inboxes.append(target.to, inboxLineOf(input.now, target.from, text));
     }
     return undefined;
+}
+/** The line `postLines` appends for `text` (trimmed), `- YYYY-MM-DD HH:MM <from>: <text>`, stamped with the UTC minute. */
+export function inboxLineOf(now, from, text) {
+    return `- ${formatUtcMinute(now)} ${from}: ${text}`;
 }
 /** The `session_id` in a hook's parsed stdin JSON; null when absent or malformed. */
 export function sessionIdOf(payload) {

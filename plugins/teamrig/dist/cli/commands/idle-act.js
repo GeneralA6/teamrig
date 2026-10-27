@@ -3,7 +3,8 @@ import { KIT_NAME } from "../../core/home.js";
 import { waitSpelling } from "../../register/waits.js";
 import { SessionLog } from "../../sessions/log.js";
 import { DECISION_MARKER } from "../../tabs/status.js";
-import { validAsksOf, WakeAsks } from "../../wake/asks.js";
+import { unseenLinesOf } from "../../inbox/inbox.js";
+import { asksNowOf, WakeAsks } from "../../wake/asks.js";
 import { onePositional, requiredFlag } from "../args.js";
 import { closeSession } from "../close-session.js";
 import { closableText, idleFactsOf } from "../idle-check.js";
@@ -13,6 +14,7 @@ import { openKit, requireConfig, rosterOf, teamZone } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { installStateOf, settleWaitText } from "../settled-install.js";
 import { postUrgentLine } from "../urgent-line.js";
+import { inboxDepsOf } from "./inbox.js";
 import { idFlag, openSession } from "./open.js";
 /** Who the session log names as the closer of a session the idle pass closed. */
 export const IDLE_PASS_CLOSER = 'idle-pass';
@@ -152,13 +154,13 @@ export async function idleOpen(args, runtime) {
     const why = reopeningText(step.reopening, teamZone(config, runtime));
     const asks = new WakeAsks(runtime.files, kit.paths.wakeAsks);
     try {
-        const stored = await asks.read(id);
-        const opened = await openSession(runtime, kit, config, roster, { team, id, project, terminal: config.open.terminal, asked: false, urgent: validAsksOf(stored) });
+        const found = await asksNowOf(await asks.read(id), runtime.clock.now(), () => unseenLinesOf(inboxDepsOf(runtime, kit.paths), id));
+        const opened = await openSession(runtime, kit, config, roster, { team, id, project, terminal: config.open.terminal, asked: false, urgent: found.asks });
         const done = { ...act, ...measured, at: runtime.clock.now() };
         if (opened.kind !== 'opened') {
             return report(runtime, kit, { ...done, outcome: 'failed', line: `FAILED to reopen ${label}: no terminal opened (${opened.reasons.join('; ')})` });
         }
-        const untaken = await untakenText(asks, id, stored);
+        const untaken = await untakenText(asks, id, found.taken);
         return report(runtime, kit, { ...done, outcome: 'done', line: `REOPENED ${label} for ${why}: ${opened.line}${untaken}` });
     }
     catch (error) {
