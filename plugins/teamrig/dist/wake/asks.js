@@ -3,21 +3,38 @@ import { numberField, stringField } from "../core/guards.js";
 import { KIT_NAME } from "../core/home.js";
 import { parseObject, toJsonlLine, VERSION_FIELD } from "../core/jsonl.js";
 import { costText, idsText, wakePrompt, wakeToast } from "./decide.js";
-/** The format of an ask's file; one in another format, or damaged, reads as no ask and goes at the next check. */
+/**
+ * The format of a plain ask's file, which an older teamrig reads as well; one in another format, or damaged, reads as
+ * no ask and goes at the next check.
+ */
 export const WAKE_ASK_FORMAT = 1;
+/** The format of a timed ask's file (T1148): a plain ask's fields, and `dueAt` and `line` for its `by`. */
+export const TIMED_ASK_FORMAT = 2;
 export function formatWakeAsk(ask) {
-    return toJsonlLine({ [VERSION_FIELD]: WAKE_ASK_FORMAT, from: ask.from, text: ask.text, at: ask.at });
+    const plain = { from: ask.from, text: ask.text, at: ask.at };
+    return ask.by === undefined
+        ? toJsonlLine({ [VERSION_FIELD]: WAKE_ASK_FORMAT, ...plain })
+        : toJsonlLine({ [VERSION_FIELD]: TIMED_ASK_FORMAT, ...plain, dueAt: ask.by.at, line: ask.by.line });
 }
 /** An ask file's content; undefined when it is damaged or from another format. */
 export function parseWakeAsk(text) {
     const record = parseObject(text.trim());
-    if (record === undefined || record[VERSION_FIELD] !== WAKE_ASK_FORMAT) {
+    const format = record?.[VERSION_FIELD];
+    if (record === undefined || (format !== WAKE_ASK_FORMAT && format !== TIMED_ASK_FORMAT)) {
         return undefined;
     }
     const from = stringField(record, 'from');
-    const line = stringField(record, 'text');
+    const said = stringField(record, 'text');
     const at = numberField(record, 'at');
-    return from === undefined || line === undefined || at === undefined ? undefined : { from, text: line, at };
+    if (from === undefined || said === undefined || at === undefined) {
+        return undefined;
+    }
+    if (format === WAKE_ASK_FORMAT) {
+        return { from, text: said, at };
+    }
+    const dueAt = numberField(record, 'dueAt');
+    const line = stringField(record, 'line');
+    return dueAt === undefined || line === undefined ? undefined : { from, text: said, at, by: { at: dueAt, line } };
 }
 /** `<at>-<n>.json`: the post time, then a count that keeps two asks posted in one millisecond apart. */
 const ASK_FILE = /^(\d+)-(\d+)\.json$/;
@@ -76,9 +93,41 @@ export class WakeAsks {
         }
     }
 }
-/** The asks read, without the damaged ones and those from another format. */
-export function validAsksOf(stored) {
-    return stored.flatMap((each) => (each.ask === undefined ? [] : [each.ask]));
+/**
+ * Sorts the stored asks at `now`. A timed ask is absent until its time, then present only while its line is among the
+ * session's unseen lines: `unseen` hands their hashes (lines neither read nor shown at a prompt), and is called only
+ * once a timed ask is due, since it reads the inbox.
+ */
+export async function asksNowOf(stored, now, unseen) {
+    const asks = [];
+    const taken = [];
+    const spent = [];
+    const waiting = [];
+    let unseenLines;
+    for (const each of stored) {
+        const { ask } = each;
+        if (ask === undefined) {
+            spent.push(each);
+        }
+        else if (ask.by === undefined) {
+            asks.push(ask);
+            taken.push(each);
+        }
+        else if (now < ask.by.at) {
+            waiting.push(ask.by.at);
+        }
+        else {
+            unseenLines ??= await unseen();
+            if (unseenLines.has(ask.by.line)) {
+                asks.push(ask);
+                taken.push(each);
+            }
+            else {
+                spent.push(each);
+            }
+        }
+    }
+    return { asks, taken: [...taken, ...spent], spent, nextAt: waiting.length === 0 ? undefined : Math.min(...waiting) };
 }
 /** `an urgent line from <sender>`, or `<n> urgent lines from <senders>`, each sender once. */
 export function urgentLinesText(asks) {
@@ -86,17 +135,18 @@ export function urgentLinesText(asks) {
     return `${asks.length === 1 ? 'an urgent line' : `${asks.length} urgent lines`} from ${senders}`;
 }
 /**
- * The asks wake the session once the oldest is `batchMs` old (`wake.batchSeconds`), so the asks posted together (the
- * closes one idle pass starts at once) wake it once; the minimum gap between wakes does not hold them, since each is
- * urgent by its sender's choice.
+ * The asks found wake the session once the oldest plain one is `batchMs` old (`wake.batchSeconds`), so the asks posted
+ * together (the closes one idle pass starts at once) wake it once, and at once for a timed ask due, its time being the
+ * sender's; the minimum gap between wakes does not hold them, since each is urgent by its sender's choice. A timed
+ * ask not yet due sets when to look again.
  */
-export function askVerdictOf(stored, now, batchMs) {
-    const asks = validAsksOf(stored);
+export function askVerdictOf(found, now, batchMs) {
+    const { asks, nextAt } = found;
     if (asks.length === 0) {
-        return { kind: 'none' };
+        return nextAt === undefined ? { kind: 'none' } : { kind: 'later', at: nextAt };
     }
-    const at = Math.min(...asks.map((ask) => ask.at)) + batchMs;
-    return now < at ? { kind: 'later', at } : { kind: 'wake', asks };
+    const at = Math.min(...asks.map((ask) => ask.by?.at ?? ask.at + batchMs));
+    return now < at ? { kind: 'later', at: Math.min(at, nextAt ?? at) } : { kind: 'wake', asks };
 }
 /** `- HH:MM <sender>: <text>`, one line each, on the team's clock. */
 function quotedLines(asks, zone) {

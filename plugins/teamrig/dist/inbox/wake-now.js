@@ -5,20 +5,31 @@ import { costText, weekShareText } from "../wake/decide.js";
 export const WAKE_NOW = 'now';
 const SECOND_MS = 1000;
 const MINUTE_MS = 60 * SECOND_MS;
+export const WAKE_AT_ONCE = { kind: 'now' };
+/** A `--wake-by` wake at `at`: `HH:MM <zone>` on the team's clock when it is today there, else `MM-DD HH:MM <zone>`. */
+export function wakeByOf(at, now, zone) {
+    const date = new Date(at);
+    return { kind: 'by', at, clock: zone.day(date) === zone.day(new Date(now)) ? zone.clock(date) : zone.shortMinute(date) };
+}
+/** How a refusal names the flag that asked the wake, and the flag to post the line without. */
+function flagsOf(when) {
+    return when.kind === 'now' ? { asked: `--wake ${WAKE_NOW}`, flag: '--wake' } : { asked: '--wake-by', flag: '--wake-by' };
+}
 /**
  * Why the sender may not wake these receivers; undefined when it may. A wake spends the receiver's turn and its
  * team's budget line, so a group (`all`, `leads`, `group:<leader>`, `team:<team>`, `tree:leads`) is woken only by a
  * leader, and a session of another team only by the lead of a team above that team; on its own team any session may
  * wake a session it names.
  */
-export function wakeRefusal(sender, group, targets) {
+export function wakeRefusal(sender, group, targets, when) {
+    const { asked, flag } = flagsOf(when);
     if (group && !sender.leader) {
-        return `--wake now on a group is a leader's: ${sender.id} leads no one on ${sender.team}; post the line without --wake, and each receiver reads it at its next prompt`;
+        return `${asked} on a group is a leader's: ${sender.id} leads no one on ${sender.team}; post the line without ${flag}, and each receiver reads it at its next prompt`;
     }
     const outside = targets.filter((target) => target.team !== sender.team && !(sender.teamLead && sender.below.includes(target.team)));
     if (outside.length > 0) {
-        return (`--wake now reaches another team only from the lead of a team above it, since a wake spends that team's budget line: ` +
-            `${sender.team}/${sender.id} may not wake ${outside.map((target) => target.label).join(', ')}; post the line without --wake`);
+        return (`${asked} reaches another team only from the lead of a team above it, since a wake spends that team's budget line: ` +
+            `${sender.team}/${sender.id} may not wake ${outside.map((target) => target.label).join(', ')}; post the line without ${flag}`);
     }
     return undefined;
 }
@@ -45,18 +56,23 @@ function sumText(wakes) {
     return `about ${formatW(wakes.reduce((sum, wake) => sum + wake.cost.w, 0))} W (${parts.join(', ')})${week}`;
 }
 /**
- * What `--wake now` asked, after the POSTED line: who it wakes, at most, since a busy tab is not woken, what that
- * costs and whose budget line pays. `off` names the receivers whose team turned wakes off (`wake.enabled` false):
- * their line is posted and wakes no one.
+ * What `--wake now` or `--wake-by` asked, after the POSTED line: who it wakes and when, at most, since a busy tab is
+ * not woken, nor at its time a session that has seen the line, what that costs and whose budget line pays. `off`
+ * names the receivers whose team turned wakes off (`wake.enabled` false): their line is posted and wakes no one.
  */
-export function wakesLine(wakes, off) {
+export function wakesLine(wakes, off, when) {
     const offText = off.length === 0 ? '' : `; wake.enabled is false on the team of ${off.join(', ')}, so ${off.length === 1 ? 'its line wakes' : 'their lines wake'} no one`;
     const [only] = wakes;
     if (only === undefined) {
         return `WAKES no one: wake.enabled is false on the team of ${off.join(', ')}`;
     }
+    const pays = `on ${budgetLinesText(wakes)}${offText}`;
     if (wakes.length === 1) {
-        return `WAKES ${only.label} if its tab is idle, ${withinText(wakes)}: ${costText(only.cost)}, on ${budgetLinesText(wakes)}${offText}`;
+        return when.kind === 'now'
+            ? `WAKES ${only.label} if its tab is idle, ${withinText(wakes)}: ${costText(only.cost)}, ${pays}`
+            : `WAKES ${only.label} at ${when.clock} if it has not seen the line by then and its tab is idle: ${costText(only.cost)}, ${pays}`;
     }
-    return `WAKES at most ${wakes.length} sessions, those whose tab is idle, ${withinText(wakes)}: ${sumText(wakes)}, on ${budgetLinesText(wakes)}${offText}`;
+    return when.kind === 'now'
+        ? `WAKES at most ${wakes.length} sessions, those whose tab is idle, ${withinText(wakes)}: ${sumText(wakes)}, ${pays}`
+        : `WAKES at most ${wakes.length} sessions at ${when.clock}, those that have not seen the line by then and whose tab is idle: ${sumText(wakes)}, ${pays}`;
 }

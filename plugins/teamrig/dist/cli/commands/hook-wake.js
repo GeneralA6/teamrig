@@ -6,8 +6,8 @@ import { FileLock, LockBusyError } from "../../core/lock.js";
 import { MeetingStore, phaseOf } from "../../meeting/state.js";
 import { restartMayAct } from "../../refresh/restart.js";
 import { RefreshStore } from "../../refresh/store.js";
-import { sessionIdOf } from "../../inbox/inbox.js";
-import { askVerdictOf, asksFolderOf, handedPrompt, handedToast, WakeAsks } from "../../wake/asks.js";
+import { sessionIdOf, unseenLinesOf } from "../../inbox/inbox.js";
+import { askVerdictOf, asksFolderOf, asksNowOf, handedPrompt, handedToast, WakeAsks } from "../../wake/asks.js";
 import { dayStartPrompt, dayStartToast, decideDayStart, dueMoments, nextDayStartAt, startableTasks } from "../../wake/day-start.js";
 import { decideWake, effectivePriority, URGENT_PRIORITY, wakeCost, wakeRestOf } from "../../wake/decide.js";
 import { WakePrompts } from "../../wake/prompts.js";
@@ -18,6 +18,7 @@ import { EXIT } from "../runtime.js";
 import { readWPerPct } from "../stored-week.js";
 import { teamRegister } from "../team-register.js";
 import { budgetFactsOf } from "./hook-budget.js";
+import { inboxDepsOf } from "./inbox.js";
 import { runIdlePass } from "./hook-idle-pass.js";
 import { parseJson, sessionTeam, teamSessionOf } from "./hook-input.js";
 import { rearmDeadRestart } from "./hook-restart.js";
@@ -136,7 +137,8 @@ async function momentsOf(runtime, scope, tasks, elsewhere, state, now) {
 }
 /**
  * Decides under the session's wake lock, so two tabs of one session never wake it twice. Urgent lines due wake it
- * with any work due as well; the asks a wake takes, or damaged ones, are removed under the lock.
+ * with any work due as well; the asks a wake takes, and spent ones (damaged, or timed with their line seen), are
+ * removed under the lock. A timed ask stays until its time.
  */
 async function decide(runtime, scope, store) {
     const { config, kit, id, tab } = scope;
@@ -148,8 +150,8 @@ async function decide(runtime, scope, store) {
         const now = clock.now();
         const batchMs = config.wake.batchSeconds * SECOND_MS;
         const asks = new WakeAsks(files, kit.paths.wakeAsks);
-        const stored = await asks.read(id);
-        const asked = askVerdictOf(stored, now, batchMs);
+        const found = await asksNowOf(await asks.read(id), now, () => unseenLinesOf(inboxDepsOf(runtime, kit.paths), id));
+        const asked = askVerdictOf(found, now, batchMs);
         const decision = decideWake({
             tasks,
             elsewhere,
@@ -162,9 +164,7 @@ async function decide(runtime, scope, store) {
             minGapMs: config.wake.minGapMinutes * MINUTE_MS,
             previous: await store.read(id),
         });
-        if (asked.kind !== 'later') {
-            await asks.remove(id, stored);
-        }
+        await asks.remove(id, asked.kind === 'wake' ? found.taken : found.spent);
         if (decision.verdict.kind === 'wake' || asked.kind === 'wake') {
             await store.write(id, decision.state);
             return { kind: 'handed', tasks: decision.verdict.kind === 'wake' ? decision.verdict.tasks : [], asks: asked.kind === 'wake' ? asked.asks : [] };
