@@ -713,18 +713,9 @@ It is a guard against mistakes, not a sandbox; protect the branch on your git ho
   mapping in the repository's own config for a push that names only its source branch;
 - commands from tools other than Bash and PowerShell, and pushes you run in your own terminal.
 
-Planned (T228): a deploy coordinator.
-
-```mermaid
-flowchart LR
-  a["session api"] -.-> q["one push at a time"]
-  b["session web"] -.-> q
-  q -.-> main[("main")]
-  h["a heavy step: tests, a build"] -.-> lock["a lock for heavy steps"]
-  w["no-deploy windows"] -.-> q
-  classDef planned stroke-dasharray: 5 5
-  class a,b,q,main,h,lock,w planned
-```
+Many sessions land their branches one at a time through the deploy coordinator: `teamrig integrate` and
+`teamrig roll` run under the host lock `teamrig heavy` takes for builds and test runs
+([what teamrig does](features.md)).
 
 ## Skipped hooks
 
