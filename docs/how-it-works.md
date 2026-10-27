@@ -11,8 +11,7 @@ whether it works today, is being built (with its task id) or is planned. Parts n
 - [A task's life](#a-tasks-life)
 - [Bursts](#bursts)
 - [Running your day](#running-your-day)
-- [A fresh context](#a-fresh-context)
-- [The turn log](#the-turn-log)
+- [Recovering a session](#recovering-a-session)
 - [Keeping it safe](#keeping-it-safe)
 - [Room for other tools](#room-for-other-tools)
 
@@ -47,15 +46,15 @@ flowchart LR
 
 | Part | When it runs | What it does |
 | --- | --- | --- |
-| SessionStart hook | a session starts, resumes, is cleared or is compacted | gives the session the core rules, its name, the lead's name, where its team sits in a tree of teams and your team's `rules.md`, after those of the teams above; tells you and the session, in one MODEL line, when it runs on another model than its `launch` entry asks, with the `/model` to type. It also marks a /clear or a compaction in the session's [turn log](#the-turn-log) and removes the log's hours past `turnLog.keepHours` |
+| SessionStart hook | a session starts, resumes, is cleared or is compacted | gives the session the core rules, its name, the lead's name, where its team sits in a tree of teams and your team's `rules.md`, after those of the teams above; tells you and the session, in one MODEL line, when it runs on another model than its `launch` entry asks, with the `/model` to type. It also marks a /clear or a compaction in the session's [turn log](guides/recover.md#the-turn-log) and removes the log's hours past `turnLog.keepHours` |
 | SubagentStart hook | a session starts a helper | gives the helper the same core rules and team rules files, and says whose helper it is: the session, not the helper, sets task statuses, adds register entries and sends messages unless the helper's brief asks for them; a compaction inside a helper gets the same context ([A helper's start](../plugins/teamrig/skills/teamrig-guide/hooks.md#a-helpers-start)) |
-| UserPromptSubmit hook | you send a prompt | the session's new inbox lines, each shown once; a line when it binds a hand-started tab by its title, once per cause when it cannot, when it records a Claude Code rename of the session as its team name, or when `.teamrig.json` is broken; once per level, a line telling the session it is past its daily budget while the team has no room today and, by default, is ahead of its pace line; once each, a line when a burst the session is in starts (how to work in it) and when it ends (wind down), and on the lead's tab, once a week, a line when the week's projected surplus is worth a burst ([Bursts](#bursts)); nothing otherwise. It writes the prompt to the session's [turn log](#the-turn-log) |
+| UserPromptSubmit hook | you send a prompt | the session's new inbox lines, each shown once; a line when it binds a hand-started tab by its title, once per cause when it cannot, when it records a Claude Code rename of the session as its team name, or when `.teamrig.json` is broken; once per level, a line telling the session it is past its daily budget while the team has no room today and, by default, is ahead of its pace line; once each, a line when a burst the session is in starts (how to work in it) and when it ends (wind down), and on the lead's tab, once a week, a line when the week's projected surplus is worth a burst ([Bursts](#bursts)); nothing otherwise. It writes the prompt to the session's [turn log](guides/recover.md#the-turn-log) |
 | PreToolUse hook on Bash and PowerShell | Claude runs a Bash or PowerShell command | finds every `git push` in it, through wrappers, nested shells and git aliases, and asks you or refuses; asks when it cannot read the command ([Safe pushes](guides/keep-it-safe.md#safe-pushes)) |
 | PreToolUse hook on SendMessage | Claude messages another session of the team | when the receiver has been idle `messages.coldAfterMinutes` (60 by default) or longer, the message would wake it cold: its first call re-reads its whole context at full price, about 8 times a warm wake. It holds the message once with a note: an inbox line if the receiver need not act now, else every ask for it in one message, sent again; the same tab's next send to it within 15 minutes goes through. Idle time runs from the receiver's last write to its own transcript; a helper, a receiver off the team or one with no transcript yet is never held |
 | PreToolUse hook on Agent and Task | Claude launches a helper | with the budget on, asks you or refuses when the session is past its daily budget while the team has no room today and, by default, is ahead of its pace line, or in quiet hours, as `budget.overAction` and `budget.quietHours` say; the lead's helpers, a lifted session's and those of a session with an open or in-progress p0 task always go |
 | PostToolUse hook on reads, edits, shell calls and web lookups | a Read, Grep, Glob, Bash, PowerShell, Edit, Write, MultiEdit, NotebookEdit, WebFetch or WebSearch call returns | counts the calls in a row since the last prompt that each ran one step (a read, a lookup, an edit, a test, a build); when the run reaches `loops.chainNudgeAt` (6 by default; 0 turns it off), gives the model one line asking it to put independent reads, and an edit with its re-test, in one message, priced in context re-reads. Once per run; a helper's calls are not counted. On the lead's tab, also one line at the lead's first edit outside its own files, first test or build, first research (a web lookup, or a search of another session's notes or a sub-team's folder, naming the session or child team lead to ask) and `leadBoundary.searchNudgeAt`-th code search (3 by default), asking it to hand such work off |
-| Mod (`hooks/register.ts`) | in each interactive tab, while it runs; `/teamrig` in every session | runs `/teamrig <command>` in the tab with no model turn: a read at once, a command that changes the team's files only when you typed it, asking first when it adds the tab's session ([the /teamrig command](../plugins/teamrig/skills/teamrig-guide/hooks.md#the-mod-the-teamrig-command)); runs the refresh's `/clear` when the automatic restart asks ([A fresh context](#a-fresh-context)); runs `/reload-plugins` once an installed plugin changed and no turn runs ([Updating the plugin](#updating-the-plugin)); wakes an idle tab when urgent work is handed to its session ([Waking on urgent work](guides/run-your-day.md#waking-on-urgent-work)) |
-| Stop hook | a turn ends | after a task is marked done, asks for a handover when a refresh is due, then tells you once ([A fresh context](#a-fresh-context)); after a task is set waiting, sends the session back once to its other tasks it can start (not those after the waiting one), outside quiet hours and within its daily budget; tells you once, in a MODEL line, when the session runs at another effort than its `launch` entry asks, or when Claude Code switched it to another model after its safeguards stopped a reply, with the `/effort` or `/model` to type; a Budget line as the session passes each warning level of its daily budget, and when a burst it is in starts or ends; on the lead's tab, a Lead boundary line naming the edits, tests and code searches the lead did itself that turn; nothing otherwise. It writes the turn's reply to the session's [turn log](#the-turn-log) |
+| Mod (`hooks/register.ts`) | in each interactive tab, while it runs; `/teamrig` in every session | runs `/teamrig <command>` in the tab with no model turn: a read at once, a command that changes the team's files only when you typed it, asking first when it adds the tab's session ([the /teamrig command](../plugins/teamrig/skills/teamrig-guide/hooks.md#the-mod-the-teamrig-command)); runs the refresh's `/clear` when the automatic restart asks ([A fresh context](guides/recover.md#a-fresh-context)); runs `/reload-plugins` once an installed plugin changed and no turn runs ([Updating the plugin](#updating-the-plugin)); wakes an idle tab when urgent work is handed to its session ([Waking on urgent work](guides/run-your-day.md#waking-on-urgent-work)) |
+| Stop hook | a turn ends | after a task is marked done, asks for a handover when a refresh is due, then tells you once ([A fresh context](guides/recover.md#a-fresh-context)); after a task is set waiting, sends the session back once to its other tasks it can start (not those after the waiting one), outside quiet hours and within its daily budget; tells you once, in a MODEL line, when the session runs at another effort than its `launch` entry asks, or when Claude Code switched it to another model after its safeguards stopped a reply, with the `/effort` or `/model` to type; a Budget line as the session passes each warning level of its daily budget, and when a burst it is in starts or ends; on the lead's tab, a Lead boundary line naming the edits, tests and code searches the lead did itself that turn; nothing otherwise. It writes the turn's reply to the session's [turn log](guides/recover.md#the-turn-log) |
 | `teamrig` commands | Claude runs them in its Bash tool; you type them in a terminal or after `/teamrig` | the task list, the inbox, names, settings, checks (`teamrig help`) |
 
 A session finds its team through `$TEAMRIG_TEAM`, else the nearest `.teamrig.json` above its folder
@@ -450,91 +449,10 @@ fast gives less a day and one that spends slowly gives more. The floor at its st
 The owner's day has its own guide, [Run your day](guides/run-your-day.md): the daily meeting, never stuck on a
 question, no prompt while nobody answers, notes between sessions and waking on urgent work.
 
-## A fresh context
+## Recovering a session
 
-A long session gets slow and costly, and what it was told early on fades. teamrig lets it start again at a task
-boundary without losing the thread.
-
-```mermaid
-sequenceDiagram
-  participant W as web session
-  participant H as teamrig hooks
-  participant Y as You
-  W->>H: teamrig set T2 --status done, then the turn ends
-  H-->>W: Stop: your context is 132k (refresh at 120k), write your handover
-  W->>H: writes handover/web.md, runs teamrig refresh --ready
-  H-->>Y: Stop: web finished T2 and wrote its handover, it restarts once idle (the tab title reads "[shop] web: restarting")
-  H->>W: idle 15 s: teamrig's mod runs /clear in the tab
-  H-->>W: SessionStart: you were refreshed after T2, read your handover first
-```
-
-- The Stop hook reads the context size at every turn end, from the last reply in the session's transcript, so a
-  long task refreshes before Claude Code compacts it; at a task end (`set <id> --status done`) it names the task.
-  A session that goes on without its fresh start (you typed, or never typed `/clear`) is asked again at its next
-  task end, or once its context grew a fifth of `refresh.contextTokens` more; a compaction or a `/clear` brings
-  the ask back to the threshold.
-- A session busy in one long turn is asked within it: after each tool result teamrig's mod checks the context, and
-  past the threshold it adds the ask to the result (finish the step, write the handover, end the turn). Until the
-  fresh start, Claude Code's own compaction waits, up to `refresh.compactCeilingTokens` (185,000 by default, 15k
-  under a 200k window), so the fresh start replaces it; past that it compacts, so the session never runs out of room.
-- The owner's daily meeting is never cut off: while it is open, the lead is not asked and not restarted, up to
-  `refresh.compactCeilingTokens`; the end of the turn that runs `teamrig meeting end` asks at once.
-- Two rules in the team config ask for it. `refresh.contextTokens` (120,000 by default) refreshes at that size,
-  well before Claude Code compacts a 200k window at about 167k. `refresh.everyTasks` (3 by default) refreshes at
-  every third finished task once the context is at `refresh.everyTasksMinTokens` (80,000) or more, so a session
-  that grows slowly still gets a fresh start; a `/clear`, a new process or a compaction starts the count over.
-- The lead can ask for a refresh at any size: `teamrig refresh web` applies at web's next turn end.
-- It waits while work the session started in the background still runs (subagents, background commands,
-  monitors, workflows): a fresh start would cut it off, so the hook asks for the handover, and later restarts
-  the session, only at a turn end after the last of it reported back. The restart also waits while a turn still
-  runs (a turn stopped with Escape counts as ended). Both read that from the transcript (helpers started within
-  the last 6 hours); with teamrig's mod on, the tab also asks Claude Code itself before each `/clear`, so a refresh
-  waits while the session still runs a helper the transcript no longer shows.
-- `refresh --ready` is refused until the handover is written: missing, blank or unchanged since the hook asked.
-- A hook cannot run `/clear`, but a plugin mod can (`refresh.autoRestart`, off by default: the user types `/clear` once done with the screen). A hidden
-  `teamrig restart` waits until the session has been idle `refresh.restartDelaySeconds` (15) with nothing running,
-  then leaves an ask for its tab. teamrig's mod (`hooks/register.ts`) looks for it each second, claims it while
-  the restart is still pending and runs `/clear` in the tab, so the tab and its process stay and Claude Code runs
-  its own SessionEnd and SessionStart hooks. It holds the `/clear` for you first: while the prompt box holds a draft,
-  for `refresh.holdAfterActivityMinutes` (5) after your last key or prompt, and 10 minutes after you press Hold; then
-  a band above the prompt counts `refresh.countdownSeconds` (20) down with `1: Refresh now` and `2: Hold 10 min`.
-  Before that the band shows each hold: what holds the `/clear` and, for your own, how long it has left.
-  While Claude Code lists a live agent of the session (`$.agent.list()`:
-  a helper or teammate not completed, failed or killed), or will not list them, the mod holds the ask instead
-  (`hook clear-claim --hold --why <reason>`) and runs nothing: the restart ends nothing, waits for quiet and asks
-  again, and an hour after it started gives up as it does for a busy session. Each hold's reason goes in
-  `<session>.held` beside the ask's outcome, which stays the one word `held` that an older restart reads, and the
-  give-up's why names the last one; a helper's hold names each live agent's type, status and task. When no mod claims the ask within 10 s (a Claude Code that does not
-  load mods), the restart ends the session's Claude Code and starts it again: in the same tab when `teamrig open`
-  started it (`launch` starts it again), else in a new tab; if a turn ran meanwhile, it waits for quiet and asks
-  again first. It never ends a Claude Code that still runs a background shell (a background command or a monitor),
-  since the end would take that too: the session gets an inbox line to type `/clear`, which keeps it. A prompt you send first cancels it and keeps the context; text typed but not sent holds the mod's `/clear`, and is lost only where the restart ends the process. When it is off or cannot start, you type `/clear`. A restart whose own process was killed leaves its request behind: 70 minutes after it was asked, when no restart could still act on it, the tab's mod starts the restart again at its next wake check while the session still waits for its fresh start. On Windows an ended process runs no
-  SessionEnd hooks, so `refresh.endCommand` can name a program to run in their place. A compact or a resume
-  keeps the handover waiting for the next fresh start.
-- The fresh session keeps who it is and carries on by itself. The restart starts it with a prompt to read its
-  handover first; after a `/clear`, `hook refresh-wake` starts its first turn with the same ask, so it never sits
-  idle. A `/clear` keeps its id by the tab's Claude Code title or, when the title names no session, by the
-  Claude Code process it refreshed in (for 24 hours).
-- The session-start note lists what the old session leaves, read from the last 64 MB of its transcript: its
-  scheduled jobs (CronCreate), a pending wake-up (ScheduleWakeup) to make again, its scratchpad and its plan
-  file. A `/clear` keeps the process and so its jobs: the note says they are still scheduled, and lists them to
-  make again only after a new process. A job made before the last compaction is missed, and a wake-up can fire
-  twice after a `/clear`.
-- `refresh.enabled: false` turns it off, `refresh.tabTitle: false` leaves the tab title alone and
-  `refresh.handoverDir` moves the handovers. With `tabStatus.enabled`, the tab's state circle goes before that
-  title ([tab status](../plugins/teamrig/skills/teamrig-guide/hooks.md#every-event-tab-status)).
-
-## The turn log
-
-A refresh, by hand or automatic, wipes what the tab showed. So teamrig keeps each session's prompts and replies
-for a day, for the task pane to show: one file per session and UTC hour,
-`state/turn-log/<session>/<YYYY-MM-DDTHH>.jsonl`, one JSON line per prompt you sent, per reply the session wrote
-(every text it showed in the turn, not only the last) and per /clear or compaction. A prompt teamrig had the tab
-submit itself, a [wake](guides/run-your-day.md#waking-on-urgent-work), is marked `from: "teamrig"`, so it never reads as yours. Secret shapes are masked as
-in the register, and an entry keeps at most 64,000 characters, the end of a longer one. Entries are only appended,
-and each session start removes the hour files wholly past `turnLog.keepHours` (24 by default, 1 to 168), so a
-busy session keeps a day's worth and no file is ever rewritten. `turnLog.enabled: false` writes nothing. A reader
-parses each line with teamrig's own `parseEntry` (from `src/read/index.ts`, below).
+How a session comes back has its own guide, [Recover from a crash or a full context](guides/recover.md): after a
+crash or a reboot, a fresh context and the turn log.
 
 ## Keeping it safe
 
