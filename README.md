@@ -105,6 +105,8 @@ meeting instead of one interruption each. With `pickerGuard`, a member that need
 own, else records it on its task and goes on with its next one, so no tab sits at a question while you're away. An
 idle member wakes by itself when urgent work is handed to it.
 
+![Your morning meeting in the lead's tab. You say Morning; the lead opens the meeting, and the sessions hold the messages that aren't critical until it ends. It says what got done since yesterday, what is late and what your OK last night already started, then brings three decisions as numbered cards, each with the facts in numbers, the options with their cost, its pick with a reason and what happens with no answer: guest checkout, a second test database, and retiring an old API. You answer all three in one line, 1 A, 2 B, 3 as recommended. The lead records them on their tasks, web goes back to work on guest checkout, and the meeting closes: the held messages go out.](docs/images/lead-meeting.svg)
+
 ### Never runs out mid-task
 
 Your lead plans the week from the tokens you have left: it sizes each task, fills the week by priority until the plan
