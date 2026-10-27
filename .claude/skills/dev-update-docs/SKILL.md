@@ -11,7 +11,8 @@ Docs land in the same pull request as the change they describe. What each kind o
 | --- | --- | --- |
 | A command or a flag | `USAGE` in `src/cli/run.ts`, `docs/commands.md`, its guide section, `docs/features.md` (`dev-add-command`) | `tools/docs/commands-doc.test.ts`, `tools/docs/llm-guide.test.ts`, `tools/docs/features-doc.test.ts` |
 | A config key | its `description` in `plugins/teamrig/config.schema.json`, then `npm run docs:config` (`dev-add-config-key`) | `npm run check` |
-| A feature people see | `README.md`, `docs/features.md`, the guide in `plugins/teamrig/skills/teamrig-guide/` and `llms.txt` | `tools/docs/readme.test.ts`, `tools/docs/features-doc.test.ts`, `tools/docs/llm-guide.test.ts` |
+| A feature people see | `README.md`, `docs/features.md`, its user guide in `docs/guides/`, the guide in `plugins/teamrig/skills/teamrig-guide/` and `llms.txt` | `tools/docs/readme.test.ts`, `tools/docs/features-doc.test.ts`, `tools/docs/llm-guide.test.ts` |
+| A new user guide | a page in `docs/guides/` with a contents list, linked from the README's Learn more table, `docs/how-it-works.md` and `llms.txt`; a section it takes leaves `how-it-works.md` | `tools/docs/guides.test.ts` |
 | A check flag | the guide's flag tables | `tools/docs/check-flags-doc.test.ts` |
 | A picture | its drawing in `tools/docs/`, then `npm run docs:images` | `npm run check` |
 | A field in a stored file | its format number (CONTRIBUTING, Stored files) | the store's `fieldPaths` spec |

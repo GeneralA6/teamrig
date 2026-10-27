@@ -190,7 +190,8 @@ helper it is. Everything runs on your machine, with no account and no cloud bill
 
 | Page | What's in it |
 | --- | --- |
-| [How it works in detail](docs/how-it-works.md) | The design, the files, safe pushes and [updating the plugin](docs/how-it-works.md#updating-the-plugin) |
+| [How it works in detail](docs/how-it-works.md) | The design, the files and [updating the plugin](docs/how-it-works.md#updating-the-plugin) |
+| [Keep it safe](docs/guides/keep-it-safe.md) | The guards: safe pushes, skipped hooks, unvetted packages, secrets, privileged commands on review |
 | [Everything teamrig does](docs/features.md) | Every feature, and whether it works today |
 | [Every command](docs/commands.md) | Each command with its flags, as `teamrig help` prints it |
 | [Every config key](docs/configuration.md) | Each key of the team config with its type, default and meaning, drawn from the schema |
