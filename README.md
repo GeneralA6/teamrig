@@ -180,7 +180,8 @@ helper it is. Everything runs on your machine, with no account and no cloud bill
   only ([GitHub sync](docs/github-sync.md)).
 - **Shipping from many sessions:** `teamrig heavy` runs builds and test runs under one host lock, `teamrig integrate`
   lands a finished branch (by a push, or through your own merge command such as a pull request), `teamrig roll` brings it to the running system (or, with `--targets`, restarts some services onto new config with
-  nothing pulled), and `teamrig deploys` shows it all in one read.
+  nothing pulled), and `teamrig deploys` shows it all in one read
+  ([Ship from many sessions](docs/guides/ship-from-many-sessions.md)).
 - **Reads without a prompt:** with `readonlyShell`, a shell line that only reads (`grep`, `git log`, `kubectl get`)
   runs without asking.
 - **Tidy history:** big commits are flagged before they land, and `teamrig worktree remove` clears a finished worktree
@@ -196,6 +197,7 @@ helper it is. Everything runs on your machine, with no account and no cloud bill
 | [Recover from a crash or a full context](docs/guides/recover.md) | Sessions reopened after a crash or a reboot, a fresh context at a task boundary, the turn log |
 | [Plan the week](docs/guides/plan-the-week.md) | The week plan and task sizes against the weekly limit, the daily budget and its pace line, bursts |
 | [Grow the team](docs/guides/grow-the-team.md) | Setting up a team with a tab per session, session names, hires and their retire, child teams under the lead |
+| [Ship from many sessions](docs/guides/ship-from-many-sessions.md) | The host lock for builds and test runs, landing a branch, rolling it out, clean measurements beside deploys |
 | [Everything teamrig does](docs/features.md) | Every feature, and whether it works today |
 | [Every command](docs/commands.md) | Each command with its flags, as `teamrig help` prints it |
 | [Every config key](docs/configuration.md) | Each key of the team config with its type, default and meaning, drawn from the schema |

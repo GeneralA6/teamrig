@@ -12,6 +12,7 @@ whether it works today, is being built (with its task id) or is planned. Parts n
 - [Running your day](#running-your-day)
 - [Recovering a session](#recovering-a-session)
 - [Keeping it safe](#keeping-it-safe)
+- [Shipping from many sessions](#shipping-from-many-sessions)
 - [Room for other tools](#room-for-other-tools)
 
 ## The parts
@@ -257,6 +258,12 @@ crash or a reboot, a fresh context and the turn log.
 The guards that read each command before it runs have their own guide, [Keep it safe](guides/keep-it-safe.md):
 safe pushes, skipped hooks, unvetted packages, secrets kept out of the conversation, privileged commands on review
 and reads without a prompt.
+
+## Shipping from many sessions
+
+How many sessions build, land and deploy on one host has its own guide,
+[Ship from many sessions](guides/ship-from-many-sessions.md): the host lock, landing a branch, rolling it out, when a
+step holds back, clean measurements and the deploy state in one read.
 
 ## Room for other tools
 

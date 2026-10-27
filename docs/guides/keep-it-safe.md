@@ -111,7 +111,7 @@ It is a guard against mistakes, not a sandbox; protect the branch on your git ho
 
 Many sessions land their branches one at a time through the deploy coordinator: `teamrig integrate` and
 `teamrig roll` run under the host lock `teamrig heavy` takes for builds and test runs
-([what teamrig does](../features.md)).
+([Ship from many sessions](ship-from-many-sessions.md)).
 
 ## Skipped hooks
 
