@@ -1,6 +1,7 @@
 import { formatPct, formatW } from '../budget/format.ts';
 import { isHeld, quietSpanOf, sessionQuietSpan, type BudgetFacts } from '../budget/warn.ts';
 import { DEFAULT_MESSAGES } from '../config/defaults.ts';
+import { NOW_PRIORITY } from '../config/priorities.ts';
 import type { QuietHours } from '../config/types.ts';
 import { KIT_NAME } from '../core/home.ts';
 import { parseDeadline } from '../core/time.ts';
@@ -15,7 +16,8 @@ import { isReady, unfinishedAfter, waitContext, type WaitContext } from '../regi
 /**
  * Waking a session idle at its prompt when work is handed to it, pure. A wake is a model turn, so only work the
  * session can go on with now ({@link canGoOn}) and has not seen wakes it: its own task at `wake.priority` or more
- * urgent, changed by someone else or by the clock since the session last touched it (handed to it, raised,
+ * urgent (p0 only while its budget holds it, p1 and p0 in quiet hours: {@link effectivePriority}), changed by
+ * someone else or by the clock since the session last touched it (handed to it, raised,
  * reopened, freed by another's finish, its waits cleared, or an approval it waits on answered). Each task wakes a
  * session once, tasks handed together wake it once (`wake.batchSeconds`), and wakes of one session are
  * `wake.minGapMinutes` apart. The plugin's mod asks `hook wake-check` while no turn runs and submits the prompt.
@@ -33,8 +35,14 @@ export const WAKE_LIST_MAX = 5;
 /** The most characters of a task's title a wake shows. */
 export const WAKE_TITLE_MAX = 80;
 
-/** The least urgent priority a session past its budget or in quiet hours still wakes for: p1, and p0 above it. */
-export const URGENT_PRIORITY = 1;
+/**
+ * The least urgent priority a session its budget holds still wakes for: p0, the only work the budget stop lets go on
+ * (`queuedWork`'s urgent, src/budget/work.ts).
+ */
+export const HELD_PRIORITY = NOW_PRIORITY.id;
+
+/** The least urgent priority a session in quiet hours still wakes for: p1, and p0 above it. */
+export const QUIET_PRIORITY = 1;
 
 /** True for a status whose task names reasons to wait for: it goes on once they all cleared (`check`'s READY). */
 function goesOnByWaits(status: TaskStatus): boolean {
@@ -227,9 +235,12 @@ export function wakeRestOf(facts: BudgetFacts | undefined, quietHours: QuietHour
   return { held: isHeld(facts), quiet: sessionQuietSpan(facts, quietHours) !== undefined };
 }
 
-/** The least urgent priority that wakes the session now: p1 only while its budget holds it or in quiet hours. */
+/** The least urgent priority that wakes the session now: p0 only while its budget holds it, p1 in quiet hours. */
 export function effectivePriority(configured: number, rest: WakeRest): number {
-  return rest.held || rest.quiet ? Math.min(configured, URGENT_PRIORITY) : configured;
+  if (rest.held) {
+    return Math.min(configured, HELD_PRIORITY);
+  }
+  return rest.quiet ? Math.min(configured, QUIET_PRIORITY) : configured;
 }
 
 /** What a wake costs. */

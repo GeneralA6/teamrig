@@ -19,6 +19,7 @@ import { RESTART_RECHECK_MS } from './commands/hook-wake.ts';
 import { GIVE_UP_MS } from '../refresh/restart.ts';
 import type { RefreshState, RestartRequest } from '../refresh/state.ts';
 import { RefreshStore } from '../refresh/store.ts';
+import { HOLDING_BUDGET, holdAlpha } from '../testing/budget-hold.ts';
 import { APP, AUTO_RESTART_TEAM, CliHarness, EVENTS_PATH, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
@@ -29,6 +30,7 @@ import { WakePrompts, type WakePrompt } from '../wake/prompts.ts';
 
 const ALPHA_TAB = '0123abcd-0000-4000-8000-0000000000a1';
 const OTHER_TAB = '0123abcd-0000-4000-8000-0000000000b9';
+const LEAD_TAB = '0123abcd-0000-4000-8000-0000000000d4';
 const SECOND = 1000;
 const MINUTE = 60 * SECOND;
 const WAKE_LOG = join(TEAM_HOME, 'state', 'wakes.jsonl');
@@ -175,6 +177,18 @@ describe('hook wake-check', () => {
     assert.deepEqual(answerOf(await check(kit)), { kind: 'wait', watch: watchOf(), recheckAt: null });
     await hand(kit, 'Fix the outage', 'p1');
     assert.equal((await check(kit)).stdout[0]?.includes('"kind":"wake","ids":["T2"]'), true);
+  });
+
+  it('wakes for p0 only while its budget holds it, and for the work held back once the hold ends (T1159)', async () => {
+    const kit = await teamWithAlphaTab({ ...TEAM, wake: { batchSeconds: 0 }, budget: HOLDING_BUDGET });
+    await holdAlpha(kit, ALPHA_TAB, LEAD_TAB);
+    await check(kit);
+    await hand(kit, 'Ship the page', 'p1');
+    assert.deepEqual(answerOf(await check(kit)), { kind: 'wait', watch: watchOf(), recheckAt: null }, 'the budget stop lets only p0 go on');
+    await hand(kit, 'Stop the outage', 'p0');
+    assert.equal((await check(kit)).stdout[0]?.includes('"kind":"wake","ids":["T2"]'), true);
+    kit.clock.advance(24 * 60 * MINUTE);
+    assert.equal((await check(kit)).stdout[0]?.includes('"kind":"wake","ids":["T1"]'), true, "a new day's budget ends the hold");
   });
 
   it("ignores the session's own task and work that waits on an unfinished task", async () => {

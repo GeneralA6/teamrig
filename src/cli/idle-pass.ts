@@ -7,7 +7,7 @@ import { noRoomText } from '../sessions/headroom.ts';
 import { reopenVerdict, type ReopenInput, type ReopenVerdict } from '../sessions/idle.ts';
 import { closedOf, SessionLog, type SessionLogRecord } from '../sessions/log.ts';
 import { urgentLinesText } from '../wake/asks.ts';
-import { byUrgency, effectivePriority, URGENT_PRIORITY, wakeRestOf, type WakeRest } from '../wake/decide.ts';
+import { byUrgency, effectivePriority, HELD_PRIORITY, wakeRestOf, type WakeRest } from '../wake/decide.ts';
 import { budgetFactsOf } from './commands/hook-budget.ts';
 import { headroomOf } from './headroom.ts';
 import { closableText, idleFactsOf, idleVerdictOf, type Closable, type IdleFacts, type IdleVerdict } from './idle-check.ts';
@@ -78,29 +78,35 @@ function byReopenOrder(a: ReopenWish, b: ReopenWish): number {
 export type JudgedStep = Exclude<PassStep, { readonly kind: 'reopen' }> | ReopenWish;
 
 /**
- * The session's rest and the least urgent priority that wakes it now, as `hook wake-check` weighs them: a session
- * its budget holds or in the budget's quiet hours wakes, and so stays open, for p1 only.
+ * The session's rest and the least urgent priority up to `configured` that wakes it now, as `hook wake-check` weighs
+ * them: a session its budget holds wakes, and so stays open, for p0 only, one in the budget's quiet hours for p1 and
+ * p0 (`effectivePriority`).
  */
-async function wakeWeightOf(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, id: string): Promise<{ readonly rest: WakeRest; readonly maxPriority: number }> {
+async function wakeWeightOf(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, id: string, configured: number): Promise<{ readonly rest: WakeRest; readonly maxPriority: number }> {
   const rest = config.budget.enabled ? wakeRestOf(await budgetFactsOf(runtime, { kit, config, roster, id }, undefined), config.budget.quietHours, runtime.clock.now()) : AWAKE;
-  return { rest, maxPriority: effectivePriority(config.wake.priority, rest) };
+  return { rest, maxPriority: effectivePriority(configured, rest) };
 }
 
 /**
- * True when the session has an unfinished task past p1 within the configured wake priority: the only tasks a rest
- * (which caps that priority at p1) takes out of a running session's verdict.
+ * True when the session has an unfinished task past p0 within `configured`: the only tasks a rest (which caps that
+ * priority at p0 or p1) can take out of a running session's verdict.
  */
-function hasWorkPastUrgent(tasks: ReadonlyMap<string, Task>, id: string, configured: number): boolean {
-  return [...tasks.values()].some((task) => task.owner === id && task.priority > URGENT_PRIORITY && task.priority <= configured && task.status !== 'done' && task.status !== 'dropped');
+function hasWorkARestCuts(tasks: ReadonlyMap<string, Task>, id: string, configured: number): boolean {
+  return [...tasks.values()].some((task) => task.owner === id && task.priority > HELD_PRIORITY && task.priority <= configured && task.status !== 'done' && task.status !== 'dropped');
 }
 
 /**
- * Whether the running session `id` closes, its work weighed as `hook wake-check` weighs it: work that would wake it
- * keeps it open. Its budget takes thousands of file reads, so it counts as awake unless its rest can change the
- * verdict: when it has work past p1 ({@link hasWorkPastUrgent}).
+ * The least urgent priority up to `configured` whose work keeps the running session `id` open, weighed as `hook
+ * wake-check` weighs it ({@link wakeWeightOf}). Its budget takes thousands of file reads, so it counts as awake
+ * unless its rest can change the verdict: when it has work a rest cuts ({@link hasWorkARestCuts}).
  */
+export async function restCappedPriority(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, tasks: ReadonlyMap<string, Task>, id: string, configured: number): Promise<number> {
+  return hasWorkARestCuts(tasks, id, configured) ? (await wakeWeightOf(runtime, kit, config, roster, id, configured)).maxPriority : configured;
+}
+
+/** Whether the running session `id` closes, its work weighed as `hook wake-check` weighs it: work that would wake it keeps it open. */
 export async function runningVerdictOf(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, facts: IdleFacts, id: string, project: string): Promise<IdleVerdict> {
-  const maxPriority = hasWorkPastUrgent(facts.tasks, id, config.wake.priority) ? (await wakeWeightOf(runtime, kit, config, roster, id)).maxPriority : config.wake.priority;
+  const maxPriority = await restCappedPriority(runtime, kit, config, roster, facts.tasks, id, config.wake.priority);
   return idleVerdictOf(runtime, config, roster, facts, id, { maxPriority, project });
 }
 
@@ -131,7 +137,7 @@ export async function judgeSession(runtime: CliRuntime, kit: Kit, config: KitCon
   if (asAwake.kind === 'asked') {
     return wishOf(folderOf, id, asAwake, undefined);
   }
-  const reopening = asAwake.kind === 'stay' ? asAwake : reopenVerdict({ ...input, ...(await wakeWeightOf(runtime, kit, config, roster, id)) });
+  const reopening = asAwake.kind === 'stay' ? asAwake : reopenVerdict({ ...input, ...(await wakeWeightOf(runtime, kit, config, roster, id, config.wake.priority)) });
   // Never asked here: a session with asks reopened for them above.
   if (reopening.kind === 'stay' || reopening.kind === 'asked') {
     return { kind: 'closed', id };

@@ -425,8 +425,9 @@ export interface WakeConfig {
   /** Off: a session sees new work only at its next prompt. */
   readonly enabled: boolean;
   /**
-   * The least urgent priority that wakes a session: 1 wakes for p1 only. A session past its daily budget, or in
-   * the budget's quiet hours, wakes for p1 only whatever this says.
+   * The least urgent priority that wakes a session: 1 wakes for p0 and p1 only. A session its budget holds (past
+   * its daily budget while the team has no room today) wakes for p0 only, and one in the budget's quiet hours for p0
+   * and p1 only, whatever this says.
    */
   readonly priority: number;
   /** How long a wake waits after the first new task it is for, so tasks handed together wake the session once. */
