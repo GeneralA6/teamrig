@@ -176,7 +176,7 @@ describe('idlePassTrouble', () => {
     const later = AT + 16 * 60_000 + 59_000;
     assert.equal(
       formatIdlePassTrouble({ kind: 'stale', at: AT }, 'dry-run', later),
-      "FLEET-STALE the idle pass (open.idle.mode dry-run) last ran 16 min ago: an idle tab's hook wake-check runs it once a minute, so check wake.enabled and that the tabs' teamrig hooks run",
+      "FLEET-STALE the idle pass (open.idle.mode dry-run) last ran 16 min ago: an idle tab's hook wake-check runs it at least every 10 minutes, so check wake.enabled and that the tabs' teamrig hooks run",
     );
     assert.match(formatIdlePassTrouble({ kind: 'stale', at: undefined }, 'dry-run', later), /^FLEET-STALE the idle pass \(open\.idle\.mode dry-run\) has not run yet: /);
     assert.equal(

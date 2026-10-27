@@ -169,7 +169,7 @@ export function formatIdlePassTrouble(trouble: IdlePassTrouble, mode: IdleMode, 
     return `${head} failed at its last run, ${minutesAgo(trouble.at, now)}: ${trouble.error}; state/idle-pass.jsonl logs each new failure`;
   }
   const ran = trouble.at === undefined ? 'has not run yet' : `last ran ${minutesAgo(trouble.at, now)}`;
-  return `${head} ${ran}: an idle tab's hook wake-check runs it once a minute, so check wake.enabled and that the tabs' teamrig hooks run`;
+  return `${head} ${ran}: an idle tab's hook wake-check runs it at least every 10 minutes, so check wake.enabled and that the tabs' teamrig hooks run`;
 }
 
 /** The steps whose kind changed since the last pass that ran through; every step at the first. */

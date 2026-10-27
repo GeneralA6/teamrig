@@ -258,7 +258,7 @@ async function decide(runtime: CliRuntime, scope: Extract<WakeScope, { kind: 'fo
  * the turn log (src/wake/prompts.ts); a busy lock (another
  * tab of the session checking) answers a recheck now. The lead is not woken while the owner's daily meeting is open,
  * nor any session while its automatic restart may still act; one whose restart died is restarted again instead. It
- * also runs the team's idle pass, once a minute across the team (hook-idle-pass.ts).
+ * also runs the team's idle pass, at most once a minute across the team (hook-idle-pass.ts).
  */
 export async function wakeCheck(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
