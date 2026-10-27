@@ -37,7 +37,7 @@ describe('docs/guides', () => {
   it('holds the guides', () => {
     assert.deepEqual(
       GUIDES.map((guide) => guide.name),
-      ['keep-it-safe.md', 'run-your-day.md'],
+      ['keep-it-safe.md', 'recover.md', 'run-your-day.md'],
     );
   });
 
