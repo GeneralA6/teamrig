@@ -2,6 +2,7 @@ import { KIT_NAME } from '../../core/home.ts';
 import { onePositional, type ParsedArgs } from '../args.ts';
 import { closeSession } from '../close-session.ts';
 import { closableText, idleFactsOf, idleVerdictOf } from '../idle-check.ts';
+import { restCappedPriority } from '../idle-pass.ts';
 import { callerOf } from '../inputs.ts';
 import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
@@ -11,7 +12,8 @@ import { sessionProjectOf } from './setup.ts';
  * `close <id|name> --session <lead> [--project <dir>] [--yes]`: (the lead only) ends an idle session's Claude Code
  * and its tab to free the host, and logs the close (`state/session-log.jsonl`); `teamrig open` then resumes its
  * last Claude Code session. It refuses what `idleVerdictOf` keeps open (src/cli/idle-check.ts): the lead and the
- * coordinator owner, a session not running, one with any work it can start or a time wait of its own ending soon,
+ * coordinator owner, a session not running, one with work its budget lets it start (p0 only while its budget holds
+ * it, p1 and p0 in the budget's quiet hours: `restCappedPriority`) or a time wait of its own ending soon,
  * one quiet under `open.headroom.closeIdleMinutes`, one in a turn, at a tool call or waiting on a decision it put to
  * the person, one running background work or shells, and one whose last session is too big or old to resume.
  * Without --yes it shows the close and ends nothing.
@@ -30,7 +32,8 @@ export async function close(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const name = roster.nameOf(id) ?? id;
   const project = await sessionProjectOf(runtime, config, id, args.flags.get('project'), found.from);
   const facts = await idleFactsOf(runtime, kit, config, roster);
-  const verdict = await idleVerdictOf(runtime, config, roster, facts, id, { maxPriority: Number.POSITIVE_INFINITY, project });
+  const maxPriority = await restCappedPriority(runtime, kit, config, roster, facts.tasks, id, Number.POSITIVE_INFINITY);
+  const verdict = await idleVerdictOf(runtime, config, roster, facts, id, { maxPriority, project });
   if (verdict.kind === 'keep') {
     throw new RefusedError(verdict.why);
   }

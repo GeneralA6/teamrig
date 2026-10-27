@@ -5,8 +5,10 @@ import { projectTranscriptPath } from '../budget/discover.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { SessionLog } from '../sessions/log.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
+import { HOLDING_BUDGET, holdAlpha } from '../testing/budget-hold.ts';
 import { TEST_CARD_FLAGS, TEST_OWNER_CARD_FLAGS } from '../testing/card.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
+import { ok } from '../testing/hired-team.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakePathProbe } from '../testing/fake-processes.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
@@ -23,6 +25,7 @@ const SESSIONS = join(TEAM_HOME, 'state', 'sessions');
 /** Alpha's transcript in the project folder, where `teamrig open` resumes it. */
 const TRANSCRIPT = projectTranscriptPath(join(USER_HOME, '.claude', 'projects'), APP, CLAUDE_SESSION);
 const LOG = join(TEAM_HOME, 'state', 'session-log.jsonl');
+const LEAD_TAB = '0123abcd-0000-4000-8000-0000000000d4';
 const TAB = { pid: 8000, parentPid: 7900, name: 'powershell.exe', commandLine: `powershell -NoExit -Command claude --resume ${CLAUDE_SESSION}` };
 const CLAUDE = { pid: 8100, parentPid: TAB.pid, name: 'claude.exe', commandLine: `claude --resume ${CLAUDE_SESSION}` };
 /** Alpha's Claude Code and an MCP server it runs: 1300 MB. */
@@ -166,6 +169,17 @@ describe('teamrig close', () => {
       assert.deepEqual(kept.processes.ends, []);
       assert.deepEqual(kept.processes.described, [], 'a session the cheap checks keep costs no look at its process');
     }
+  });
+
+  it('weighs work as its budget lets it start it: one the budget holds closes with p1 work, and stays open for p0 (T1159)', async () => {
+    const held = await runningAlpha(75, reply(40_000), undefined, { ...TEAM, budget: HOLDING_BUDGET });
+    await holdAlpha(held.kit, CLAUDE_SESSION, LEAD_TAB);
+    ok(await held.kit.run(['add', '--title', 'Ship the release', '--description', 'what and why', '--priority', 'p1', '--owner', 'alpha', '--session', 'lead']));
+    const preview = await close(held, ['alpha', '--session', 'lead']);
+    assert.match(preview.stdout[0] ?? '', /^CLOSE app-alpha \(session alpha\): quiet 75 min/, [...preview.stdout, ...preview.stderr].join('\n'));
+    ok(await held.kit.run(['add', '--title', 'Stop the outage', '--description', 'what and why', '--priority', 'p0', '--owner', 'alpha', '--session', 'lead']));
+    assertRefused(await close(held, ['alpha', '--yes', '--session', 'lead']), /alpha \(session alpha\) has work it can start \(T2\)/);
+    assert.deepEqual(held.processes.ends, []);
   });
 
   it('keeps open a session at a tool call, one that put a decision to the person, and one whose time wait ends soon', async () => {
@@ -314,6 +328,23 @@ describe('teamrig idle-close', () => {
     assert.deepEqual(actsOf(urgent), [{ v: 1, kind: 'act', mode: 'off', act: 'close', id: 'alpha', outcome: 'kept', line: kept.stdout[0] }]);
     assert.equal(await urgent.kit.files.read(LEAD_INBOX), undefined, 'a session kept open tells the lead nothing');
     assert.deepEqual(await new WakeAsks(urgent.kit.files, ASKS).read('lead'), []);
+  });
+
+  it('weighs work as the budget lets the session start it: held, p1 work does not keep it open, p0 work does (T1159)', async () => {
+    const config = { ...WAKES_P1, budget: HOLDING_BUDGET };
+    const held = await runningAlpha(75, reply(40_000), undefined, config);
+    await holdAlpha(held.kit, CLAUDE_SESSION, LEAD_TAB);
+    ok(await held.kit.run(['add', '--title', 'Ship the release', '--description', 'what and why', '--priority', 'p1', '--owner', 'alpha', '--session', 'lead']));
+    const closed = await idleClose(held);
+    assert.match(closed.stdout.join('\n'), /^CLOSED app-alpha \(session alpha\): quiet 75 min/, [...closed.stdout, ...closed.stderr].join('\n'));
+    assert.deepEqual(held.processes.ends, [{ pid: TAB.pid, how: 'ask' }]);
+
+    const urgent = await runningAlpha(75, reply(40_000), undefined, config);
+    await holdAlpha(urgent.kit, CLAUDE_SESSION, LEAD_TAB);
+    ok(await urgent.kit.run(['add', '--title', 'Stop the outage', '--description', 'what and why', '--priority', 'p0', '--owner', 'alpha', '--session', 'lead']));
+    const kept = await idleClose(urgent);
+    assert.match(kept.stdout.join('\n'), /^KEPT app-alpha \(session alpha\) has work it can start \(T1\)/, [...kept.stdout, ...kept.stderr].join('\n'));
+    assert.deepEqual(urgent.processes.ends, []);
   });
 
   it('keeps open a session with an urgent line waiting to wake it, in close and the pass alike', async () => {

@@ -294,10 +294,12 @@ describe('wakeRestOf', () => {
 });
 
 describe('effectivePriority', () => {
-  it('keeps the configured priority unless the budget holds the session or it is in quiet hours, then p1', () => {
+  it('keeps the configured priority unless the budget holds the session, then p0, or it is in quiet hours, then p1', () => {
     assert.equal(effectivePriority(3, { held: false, quiet: false }), 3);
-    assert.equal(effectivePriority(3, { held: true, quiet: false }), 1);
+    assert.equal(effectivePriority(3, { held: true, quiet: false }), 0, 'the budget stop lets only p0 go on');
+    assert.equal(effectivePriority(1, { held: true, quiet: false }), 0);
     assert.equal(effectivePriority(3, { held: false, quiet: true }), 1);
+    assert.equal(effectivePriority(3, { held: true, quiet: true }), 0);
   });
 });
 
