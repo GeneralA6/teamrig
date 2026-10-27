@@ -18,6 +18,7 @@
 - [Keep it safe](https://github.com/GeneralA6/teamrig/blob/main/docs/guides/keep-it-safe.md): the guards on pushes, skipped hooks, unvetted packages and secrets, privileged commands a reviewer approves, reads without a prompt
 - [Run your day](https://github.com/GeneralA6/teamrig/blob/main/docs/guides/run-your-day.md): the owner's daily meeting and its decision cards, a question that never stops a session, no prompt while nobody answers, notes between sessions, waking on urgent work
 - [Recover from a crash or a full context](https://github.com/GeneralA6/teamrig/blob/main/docs/guides/recover.md): sessions a crash or a reboot killed reopened by `teamrig restore run`, at each logon on Windows; a fresh context at a task boundary from the session's handover; the turn log of each session's prompts and replies
+- [Plan the week](https://github.com/GeneralA6/teamrig/blob/main/docs/guides/plan-the-week.md): the week plan, task sizes in % of the weekly limit and what fits, the daily budget against the week's pace line, holds and lifts, bursts that spend a surplus or meet a deadline
 - [GitHub sync](https://github.com/GeneralA6/teamrig/blob/main/docs/github-sync.md): reading GitHub issues into the task list: repositories, their sessions, a read-only token per owner, the automatic sync every 15 minutes, and each failure's fix
 - [Team config schema](https://github.com/GeneralA6/teamrig/blob/main/plugins/teamrig/config.schema.json): every key a team config may hold
 
