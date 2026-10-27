@@ -103,8 +103,9 @@ flowchart LR
   cli <--> files["~/.teamrig/teams/your-team/: plain files"]
 ```
 
-[How it works](how-it-works.md) draws each part: the team, a task's life and room for other tools;
-[Keep it safe](guides/keep-it-safe.md) covers the guards, [Run your day](guides/run-your-day.md) the daily meeting,
+[How it works](how-it-works.md) draws each part: a task's life and room for other tools;
+[Grow the team](guides/grow-the-team.md) covers setting up a team, hires and child teams,
+[Keep it safe](guides/keep-it-safe.md) the guards, [Run your day](guides/run-your-day.md) the daily meeting,
 notes between sessions and wakes, [Recover from a crash or a full context](guides/recover.md) a restore after a
 reboot, a fresh context and the turn log, and [Plan the week](guides/plan-the-week.md) the week plan, the daily
 budget and bursts.

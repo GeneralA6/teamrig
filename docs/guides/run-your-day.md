@@ -104,7 +104,7 @@ sequenceDiagram
   `register.secretPatterns`. The
   refusal names the kind, never the value. Task titles, refs, notes and evidence get the same check.
 - In a tree of teams, `--to web/lead` writes to a session of another team, within the rights in
-  [Who is on the team](../how-it-works.md#who-is-on-the-team); the note names its sender as `your-team/lead`.
+  [Who is on the team](grow-the-team.md#who-is-on-the-team); the note names its sender as `your-team/lead`.
 - A note wakes no one unless sent with `inbox add --wake now`, or `--wake-by <time>` (at that time, if the
   receiver has not seen it by then); urgent work handed as a task does
   ([Waking on urgent work](#waking-on-urgent-work)). A task
