@@ -1173,7 +1173,7 @@ opened while a plugin install is copied runs without teamrig's hooks, so the ins
 `LATER` with why, while a teamrig install the folder uses lacks its hooks file, a mod module that file names or
 `dist/cli/main.js`, or anything in the plugin store an install writes changed in the last 30 seconds.
 
-With `open.idle.mode: dry-run` the wake check runs this pass itself, once a minute across the team
+With `open.idle.mode: dry-run` the wake check runs this pass itself, at most once a minute across the team and every 10 minutes in a quiet one
 ([the idle pass](hooks.md#the-idle-pass)), and appends to `state/idle-pass.jsonl` each step whose kind changed since
 the last pass, and every step once its last pass record is an hour old, with the host's commit charge, and each new
 failure; it closes and reopens no one. With `on` it also
@@ -4401,7 +4401,7 @@ meanwhile wakes the fresh session. A restart that ended without a word (its proc
 behind; once no restart could act on it any more (70 minutes after it was asked), the check in the tab it was asked
 for starts `teamrig restart` again while the session still waits for its fresh start, and holds the wake the same
 way. One that cannot start is dropped, and the work wakes the session. Unless `open.idle.mode` is `off`, it also runs
-the team's [idle pass](hooks.md#the-idle-pass), once a minute across the team.
+the team's [idle pass](hooks.md#the-idle-pass), at most once a minute across the team.
 Stdin: `{"session_id", "cwd"}`.
 
 Flags: none.
