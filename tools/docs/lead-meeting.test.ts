@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { ANSWER, CARD_LINE, CARDS, LEAD_MEETING_CLOCK, MEETING_VIEW_HEIGHT, MEETING_WINDOW_HEIGHT, renderLeadMeeting, TABS, TALK, WEB_ANSWERED } from './lead-meeting.ts';
+import { ANSWER, CARD_LINE, CARDS, LEAD_MEETING_CLOCK, MEETING_VIEW_HEIGHT, MEETING_WINDOW_HEIGHT, OPTION_GAP, renderLeadMeeting, TABS, TALK, WEB_ANSWERED } from './lead-meeting.ts';
 import { animationsIn, ascending, keyframesIn, mediaIn, rulesIn, valueOf } from './stylesheet.ts';
 import { DIVIDER_X, MONO_SIZE, tabX, VIEW_HEIGHT, WIDTH, WINDOW_HEIGHT } from './terminal-view.ts';
 import { themeStyle, TOKENS } from './theme.ts';
@@ -23,13 +23,14 @@ const still = (place: XmlPlace): boolean =>
 const named = (words: string): XmlPlace[] => places.filter((place) => place.element.name === 'text' && textOf(place.element) === words);
 const withClass = (name: string): XmlPlace[] => places.filter((place) => classesOf(place.element).includes(name));
 
-/** Every text of the picture, where it starts or ends, and a generous guess at its width. */
+/** Every text of the picture, where it starts or ends, and a generous guess at its width, with the gaps before its spans. */
 const texts = places
   .filter((place) => place.element.name === 'text')
   .map(({ element }) => {
     const words = textOf(element);
     const x = number(element.attributes.get('x'));
-    const width = words.length * 0.62 * MONO_SIZE;
+    const gaps = element.children.reduce((sum, child) => sum + (typeof child === 'string' ? 0 : Number(child.attributes.get('dx') ?? 0)), 0);
+    const width = words.length * 0.62 * MONO_SIZE + gaps;
     const left = element.attributes.get('text-anchor') === 'end' ? x - width : x;
     return { words, left, right: left + width, y: number(element.attributes.get('y')) };
   });
@@ -55,7 +56,7 @@ describe('renderLeadMeeting', () => {
     assert.equal(root.attributes.get('role'), 'img');
     assert.ok(label.startsWith("Your morning meeting in the lead's tab."), label);
     assert.ok(label.includes("the sessions hold the messages that aren't critical until it ends"), label);
-    for (const [i, card] of CARDS.entries()) assert.ok(label.includes(`${i + 1}, ${card.task}: ${card.ask} ${card.options} ${card.rec}`), card.task);
+    for (const [i, card] of CARDS.entries()) assert.ok(label.includes(`${i + 1}, ${card.task}: ${card.ask} ${card.options.join(' ')} ${card.rec}`), card.task);
     assert.ok(label.includes(`You answer all three in one line: ${ANSWER}.`), label);
     assert.ok(label.endsWith('and the meeting closes: the held messages go out.'), label);
     assert.equal(textOf(places.find((place) => place.element.name === 'title')?.element ?? ''), label);
@@ -101,7 +102,7 @@ describe('renderLeadMeeting', () => {
     it('shows every line of the talk and of each card', () => {
       for (const line of TALK) assert.deepEqual(named(line.words).map(still), [true], line.words);
       for (const card of CARDS) {
-        for (const words of [card.task, card.ask, card.options, card.rec]) assert.deepEqual(named(words).map(still), [true], words);
+        for (const words of [card.task, card.ask, card.options.join(''), card.rec]) assert.deepEqual(named(words).map(still), [true], words);
       }
     });
 
@@ -127,6 +128,18 @@ describe('renderLeadMeeting', () => {
       } else {
         assert.ok(found.y < MEETING_VIEW_HEIGHT && found.right <= WIDTH, `key text leaves the picture: ${found.words}`);
       }
+    }
+  });
+
+  it("sets each card's option B a gap after A, one the font cannot collapse as it does a run of spaces", () => {
+    for (const card of CARDS) {
+      const line = named(card.options.join(''))[0]?.element;
+      const [a, span] = line?.children ?? [];
+      assert.equal(a, card.options[0], card.task);
+      assert.ok(typeof span !== 'string' && span?.name === 'tspan', card.task);
+      assert.equal(textOf(span), card.options[1], card.task);
+      assert.equal(span.attributes.get('dx'), String(OPTION_GAP), card.task);
+      assert.ok(OPTION_GAP >= MONO_SIZE, 'wider than a character');
     }
   });
 
@@ -156,7 +169,8 @@ describe('renderLeadMeeting', () => {
       for (const card of CARDS) {
         assert.match(card.task, /^T\d+$/);
         assert.match(card.ask, /\d/, card.task);
-        assert.match(card.options, /^A: .+ {3}B: .+$/, card.task);
+        assert.match(card.options[0], /^A: .+.$/, card.task);
+        assert.match(card.options[1], /^B: .+.$/, card.task);
         assert.match(card.rec, /^Rec: [AB], .+\. With no answer: [AB][.,]/, card.task);
       }
     });
