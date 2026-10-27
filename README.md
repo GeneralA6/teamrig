@@ -194,6 +194,7 @@ helper it is. Everything runs on your machine, with no account and no cloud bill
 | [Keep it safe](docs/guides/keep-it-safe.md) | The guards: safe pushes, skipped hooks, unvetted packages, secrets, privileged commands on review |
 | [Run your day](docs/guides/run-your-day.md) | The daily meeting, a question that never stops a session, notes between sessions, waking on urgent work |
 | [Recover from a crash or a full context](docs/guides/recover.md) | Sessions reopened after a crash or a reboot, a fresh context at a task boundary, the turn log |
+| [Plan the week](docs/guides/plan-the-week.md) | The week plan and task sizes against the weekly limit, the daily budget and its pace line, bursts |
 | [Everything teamrig does](docs/features.md) | Every feature, and whether it works today |
 | [Every command](docs/commands.md) | Each command with its flags, as `teamrig help` prints it |
 | [Every config key](docs/configuration.md) | Each key of the team config with its type, default and meaning, drawn from the schema |
