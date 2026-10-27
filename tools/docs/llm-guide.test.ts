@@ -306,8 +306,8 @@ describe("the lead's default launch in the docs", () => {
   it('is the model and effort the code starts the lead on', () => {
     const guide = sentenceWith(guideText('commands.md'), "the lead's unset keys default to");
     assert.ok(guide.includes(`model ${tick(model)} at ${tick(effort)} effort`), `commands.md: ${guide}`);
-    const howItWorks = sentenceWith(read('docs/how-it-works.md'), 'The lead, for each it leaves unset');
-    assert.ok(howItWorks.includes(`starts on ${tick(model)}`) && howItWorks.includes(`at ${tick(effort)} effort`), `how-it-works.md: ${howItWorks}`);
+    const growTheTeam = sentenceWith(read('docs/guides/grow-the-team.md'), 'The lead, for each it leaves unset');
+    assert.ok(growTheTeam.includes(`starts on ${tick(model)}`) && growTheTeam.includes(`at ${tick(effort)} effort`), `grow-the-team.md: ${growTheTeam}`);
     const setup = read('plugins/teamrig/skills/team-setup/SKILL.md');
     assert.ok(setup.includes(`${tick(`/model ${model}`)} and ${tick(`/effort ${effort}`)}`), 'team-setup names the /model and /effort to type');
   });
