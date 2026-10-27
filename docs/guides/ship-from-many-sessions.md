@@ -1,0 +1,291 @@
+# Ship from many sessions
+
+Many sessions on one host each build, run tests and deploy whenever their change is ready. Left alone, two full test
+suites starve each other of memory, a deploy lands in the middle of another session's measurement, and each session
+ships its own way. teamrig's deploy coordinator puts these steps in one line: heavy steps take turns under a host
+lock, every branch lands and rolls out the same checked way, and each step goes to a ledger, so a session can find
+the stretches no change touched. The `coordinator` keys in the [team config](../configuration.md) set it.
+
+- [One host lock](#one-host-lock)
+- [Landing a branch](#landing-a-branch)
+- [Rolling it out](#rolling-it-out)
+- [When a step holds back](#when-a-step-holds-back)
+- [Clean measurements](#clean-measurements)
+- [The deploy state in one read](#the-deploy-state-in-one-read)
+
+Every command is in [commands](../../plugins/teamrig/skills/teamrig-guide/commands.md), and the order a change ships
+in, from its worktree to the task's proof, in
+[workflows](../../plugins/teamrig/skills/teamrig-guide/workflows.md#ship-a-change).
+
+## One host lock
+
+`teamrig heavy` runs one heavy step, such as a build, a test run or a database script, under the host lock, so the
+host's heavy steps run one at a time instead of competing for its CPU and memory:
+
+```sh
+teamrig heavy --session api --what "build api" -- npm run build
+teamrig heavy --session api --what "test api" -- teamrig test -- npm test
+```
+
+```text
+2030-01-08 12:00:00 IST waiting for the host lock: web (heavy: test web) since 2030-01-08 11:52 IST
+2030-01-08 12:04:30 IST running: build api (killed after 45m)
+DONE exit 0
+```
+
+Waiting steps take the lock in arrival order, each told its place in line. A step is refused once its line has not
+moved for `coordinator.heavy.waitMinutes` (60), and one that runs is killed, with every process it started, after
+`coordinator.heavy.maxRunMinutes` (45; `--max-minutes` for one step). A test run wrapped in `teamrig test`, as
+above, gets both the lock and the short summary. The lock is `host.lock` in the kit home, one for every team on the
+host, unless `coordinator.heavy.lockPath` names another; a lock past `lockTtlMinutes` (150), or whose process is
+gone, is taken over.
+
+A small step, such as a spec run or a lint, runs with `--small`: it shares the host with other small steps instead
+of taking the lock: at once when no other small step runs, else while the host's free memory, less what the running
+ones hold, leaves
+`coordinator.heavy.memoryFloorMb` (4096) plus its own. A step's own is the most its process tree held in its latest
+20 runs under the same session and `--what`, plus a quarter, or `smallReserveMb` (2048) before it has a run. A small
+step is killed after `smallMaxRunMinutes` (10), since a hung one holds back every step waiting for the lock. A step
+that takes the lock waits for the small steps to end, so builds, landings, rolls and full suites still run alone.
+
+A repository's git hooks can wrap their checks in `teamrig heavy`, so a plain `git commit` takes the host lock for
+its hook. A step started under the lock (a hook run by an integrate's push, say) runs at once, as part of its
+parent, instead of waiting on itself. A pre-push hook's `heavy` takes `--pre-push`: git opens the push's connection
+before the hook runs, and a host such as GitHub drops it while the checks wait. With it, the checks' pass on a clean
+tree is recorded, and a push of the same tree with the same command line reuses it at once, with no lock. When the
+checks waited over a minute for the lock, it declines the push once they pass, since its connection may have closed:
+push again, and it reuses their pass.
+
+Each step's start and end go to the ledger, `ledger.jsonl` in `coordinator.dir` (by default `deploys` in the team's
+state folder), with how long it waited, the most memory its processes held at once and the least free memory the
+host had.
+
+## Landing a branch
+
+`teamrig integrate`, run in a branch's worktree, lands the branch on origin's default branch, so every session lands
+its work one way: checked, pushed under the host lock and recorded. `teamrig roll` then brings it to the running
+system.
+
+```mermaid
+flowchart TD
+  branch["A finished branch in its worktree"] --> integrate["teamrig integrate"]
+  integrate --> waitlock["Waits for quiet claims on its targets and for the host lock"]
+  waitlock --> rebase["Fetches and rebases onto the default branch, then runs the dependency check on a dependency change"]
+  rebase --> how{"A merge command set?"}
+  how -- no --> push["Pushes to the default branch, running the pre-push hook"]
+  how -- yes --> merge["Runs the merge command, such as a pull request's"]
+  merge -- "75: waits on checks or review" --> later["Run integrate again later"]
+  merge -- "0: merged" --> landed["Landed: the branch deleted, the push recorded"]
+  push --> landed
+  landed --> roll["teamrig roll: claims, gates and the host lock, then pull and roll"]
+  roll --> recorded["The deploy recorded in the ledger"]
+```
+
+```sh
+teamrig integrate --session api
+```
+
+```text
+2030-01-08 12:00:00 IST pushing t12-parser (4f1c2a9e) to main; the pre-push hook runs now
+2030-01-08 12:03:10 IST deleted t12-parser on origin
+2030-01-08 12:03:10 IST deleted the local t12-parser
+2030-01-08 12:03:10 IST next: teamrig worktree remove "/home/you/api-t12"
+DONE pushed 9a0b1c2d..4f1c2a9e to main; cloud-api deploy on push
+```
+
+It is refused before any change in a detached HEAD, with uncommitted changes, on the default branch itself and for a
+branch with nothing new. Otherwise it waits up to `coordinator.wait.maxMinutes` (60) for the claims and the lock
+(longer while its line moves), fetches, rebases and pushes, the push a heavy step that runs the pre-push hook. When
+origin moved meanwhile, it rebases and pushes again, 3 times in all. Once landed, it deletes the branch on origin and
+here (`--keep-remote` and `--no-delete-local` keep them) and prints the `teamrig worktree remove` that ends the
+worktree. Exit 0 landed, 1 failed with the branch kept, 2 when the dependency check refused it, 75 when the merge
+command waits.
+
+Each repository is an entry of `coordinator.repos`, found by its main checkout; one not listed gets a NOTE and none
+of these:
+
+```json
+"coordinator": {
+  "repos": {
+    "api": {
+      "mainCheckout": "../api",
+      "deploysOnPush": ["cloud-api"],
+      "dependencyGate": true,
+      "dependencyCheck": ["node", "tools/check-change.ts"],
+      "followMainCheckout": true,
+      "merge": { "command": ["node", "tools/merge.ts"] }
+    }
+  }
+}
+```
+
+- `deploysOnPush`: what a push to the default branch deploys by itself, on a host that builds on push. integrate
+  waits for quiet claims on these targets and records the push as their deploy, which teamrig does not watch.
+- `dependencyGate`: refuses a branch that changes `package-lock.json`, or a `package.json` field an install reads,
+  since landing it changes, unreviewed, the `node_modules` every worktree links to. `dependencyCheck` is the check
+  that clears one, run under the lock after each rebase and before the push.
+- `followMainCheckout`: after a landing from a worktree, fast-forwards the main checkout too, when it is on the
+  default branch with no uncommitted changes.
+- `merge`: a command run in place of the push, for a repository that lands through pull requests. Exit 0: it merged,
+  and integrate confirms it on origin. 75: the merge waits, say on the pull request's checks or review; the branch is
+  kept and the lock freed, and integrate run again later finishes it once origin holds the merge. Anything else
+  fails. `merge.remote: "upstream"` merges into the project's repository where origin is your fork.
+  [commands](../../plugins/teamrig/skills/teamrig-guide/commands.md#teamrig-integrate) has a sketch of one for
+  GitHub pull requests.
+
+## Rolling it out
+
+`teamrig roll` brings what was pushed to a repository's default branch to the running system, one roll on the host
+at a time: checked, pulled under the host lock, rolled and recorded. A repository gets a roll block:
+
+```json
+"coordinator": {
+  "repos": {
+    "pipeline": {
+      "mainCheckout": "../pipeline",
+      "roll": {
+        "targets": ["api", "workers"],
+        "gates": [{ "name": "flow", "command": ["node", "tools/flow-gate.js"] }],
+        "dependencyInstall": ["npm", "ci", "--ignore-scripts"],
+        "afterPull": [["npm", "run", "build"]],
+        "command": ["node", "tools/roll.js"]
+      }
+    }
+  }
+}
+```
+
+- `targets`: what the roll deploys; quiet claims on them hold it.
+- `gates`: up to 16 checks your own tools answer, such as "is a batch run open?". Exit 0 lets the roll go, 75 holds
+  it and 2 refuses it; anything else, or no answer within `coordinator.gateTimeoutSeconds` (20), holds it, its last
+  line the reason.
+- `dependencyInstall`: the install a pulled dependency change needs, run right after the pull. A failed install
+  moves the main checkout back and installs again, so the `node_modules` every worktree links to matches it.
+- `afterPull`: up to 16 commands run after the pull and before the roll, such as a build it needs.
+- `command`: the roll itself. A line `no-roll` means nothing needed rolling; otherwise its last line is the deploy
+  record's note.
+
+```sh
+teamrig roll --session api
+```
+
+```text
+2030-01-08 12:00:00 IST 2 commits pending in pipeline (4f1c2a9e..9a0b1c2d)
+2030-01-08 12:00:00 IST waiting: gate flow holds the roll: a batch run is open
+2030-01-08 12:00:30 IST clear; pulling 2 commits (4f1c2a9e..9a0b1c2d) into /home/you/pipeline
+2030-01-08 12:00:30 IST pulled /home/you/pipeline to 9a0b1c2d
+2030-01-08 12:00:30 IST afterPull: npm run build
+2030-01-08 12:01:10 IST roll: node tools/roll.js
+2030-01-08 12:03:40 IST   rolled api, workers on sha-9a0b1c2d
+DONE 4f1c2a9e..9a0b1c2d rolled: rolled api, workers on sha-9a0b1c2d
+```
+
+roll is refused before any gate or lock when the main checkout is off its default branch, has uncommitted changes or
+holds commits origin lacks. With nothing pending it is DONE and runs nothing. Otherwise it waits for the claims, the
+gates and the lock, reads origin again under the lock and asks the gates again, then pulls to the commit they judged
+and runs the dependency steps a dependency change needs, the afterPull commands and the roll, each killed after `coordinator.heavy.maxRunMinutes`, all
+one heavy step in the ledger. A failed roll is recorded too, and its owners fix forward or roll back; the pull stays,
+so run the roll command by hand once it is fixed.
+
+A deploy that pulls nothing, such as a restart that makes services read a rotated secret on the same image, names its
+targets and its own command:
+
+```sh
+teamrig roll --session sec --targets api,workers --what "rotate the db credential" -- node tools/restart.js api workers
+```
+
+It keeps the repository's gates and claims for the targets it names, and is refused for a target not in
+`roll.targets`, since a typo would slip past the quiet claims. A quiet claim of your own on a target holds it too, so
+release it first.
+
+## When a step holds back
+
+- **The heavy cutoff:** no heavy step, integrate or roll starts from `coordinator.schedule.heavyCutoffUtc` until
+  midnight UTC, nor runs a heavy step whose wait for the lock ran past it; set it to keep a nightly stretch free of
+  builds.
+- **The reset blackout:** no integrate or roll starts in the `coordinator.schedule.resetBlackoutHours` before the
+  weekly token reset, the one the status line last reported, else the one `budget.reset` sets; unset, there is none.
+- **A wait that ran out:** a heavy step is refused once its line has not moved for `waitMinutes`, an integrate or a
+  roll after `coordinator.wait.maxMinutes`, unless its line keeps moving.
+- **A step taken out of line:** `teamrig withdraw` takes a session's steps still waiting for the lock out of the line,
+  so a re-ordered or abandoned step never runs:
+
+  ```sh
+  teamrig withdraw --session api --what "build api"
+  ```
+
+  ```text
+  WITHDRAWN heavy: build api, waiting since 2030-01-08 11:58 IST: it stops at its next look
+  ```
+
+- **A shell that ended:** each step watches the processes that started it, up to the tab's Claude Code. Once one
+  ends, a waiting step runs nothing, and a running one is killed with every process it started, recorded as exit 129,
+  and frees the lock.
+
+## Clean measurements
+
+A session measuring a change, say its effect on latency, needs a stretch no deploy or build disturbed. A quiet claim
+holds the integrates and rolls that deploy its targets while it measures:
+
+```sh
+teamrig claim --session api --targets api,workers --metric "p95 latency" --why "cache probe" --for 45m
+```
+
+```text
+CLAIMED api, workers until 2030-01-08 12:45 IST
+```
+
+A claim lasts at most `coordinator.claims.maxMinutes` (120), one per session, on targets a repository deploys. It
+ends at its time, or early with `teamrig release`. Claims are shared files, so a secret in the metric or reason is
+refused. Nothing else holds a deploy: a measurement without a claim adapts to the deploys.
+
+Afterwards, `teamrig windows` lists each target's clean stretches, so a session compares a metric over windows no
+change touched:
+
+```sh
+teamrig windows --targets api --since 08:00
+```
+
+```text
+api (settle 30m): 2 clean windows of at least 15m
+  2030-01-08 08:00 IST to 2030-01-08 08:40 IST (40m)
+  2030-01-08 10:20 IST to 2030-01-08 12:00 IST (1h40m)
+    under load 3f9c1a7e by data: backfill prices (from 2030-01-08 10:30 IST, still running)
+```
+
+A deploy disturbs its repository's targets, or only those a `roll --targets` deploy named, from its start until they
+settled: `coordinator.windows.settleMinutes` (30), a target's own in `targetSettleMinutes`, or `--settle` for one
+run. A deploy line a session wrote by hand in `ledger.md` counts too; one with no record of its start is taken to
+have rolled for `assumedRollMinutes` (20) before its line. A heavy step disturbs the whole host. A window shorter than `minMinutes` (15) is left out.
+
+A background load, such as a long data script or a backfill, is declared with `teamrig load` (`teamrig load end`
+ends it). A load never cuts a window, since two windows under the same load still compare: each window names the
+loads it overlaps.
+
+```sh
+teamrig load --session data --what "backfill prices" --at 10:30
+```
+
+```text
+LOAD 3f9c1a7e on the whole host from 2030-01-08 10:30 IST (end it: teamrig load end --id 3f9c1a7e)
+```
+
+## The deploy state in one read
+
+`teamrig deploys` prints the state now: who holds the host lock and which small steps share the host, the heavy
+cutoff and the reset blackout (each marked IN FORCE while it holds), the quiet claims and loads still open, and what
+each repository with a roll block has pushed but not rolled, with why a roll would refuse it.
+
+```sh
+teamrig deploys
+```
+
+```text
+host lock: po (heavy: build api) since 2030-01-08 11:50 IST
+heavy cutoff: 00:30-02:00 IST (no heavy step starts)
+deploy blackout: Tue 01-08 23:00 IST until Wed 01-09 03:00 IST (no integrate or roll; reset from the status line)
+claims: 1
+  quiet claim by data on cloud-api until 2030-01-08 12:30 IST (p95 latency)
+loads: none
+app: 2 commits pushed, not rolled (c1a2b3c4..d5e6f7a8)
+```
