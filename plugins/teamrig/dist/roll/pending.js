@@ -1,5 +1,6 @@
 import { rangeText } from "../coordinator/ledger.js";
 import { rangeInstallTouches } from "../integrate/dependencies.js";
+import { ORIGIN } from "../integrate/git.js";
 /** The repositories with a roll block, in config order, each with its main checkout as a place. */
 export function rollRepos(coordinator, inTeam) {
     return Object.entries(coordinator.repos).flatMap(([name, config]) => (config.roll === undefined ? [] : [{ name, config, roll: config.roll, main: inTeam(config.mainCheckout) }]));
@@ -45,11 +46,11 @@ export async function readPending(git, repo) {
     if (checkout === undefined) {
         return { kind: 'refused', reason: `${main} (coordinator.repos.${name}.mainCheckout) is not a git checkout` };
     }
-    const fetched = git.fetch(main);
+    const fetched = git.fetch(main, ORIGIN);
     if (!fetched.ok) {
         return { kind: 'failed', reason: `git fetch failed in ${main}: ${fetched.reason}` };
     }
-    const defaultBranch = git.defaultBranch(main);
+    const defaultBranch = git.defaultBranch(main, ORIGIN);
     if (checkout.branch !== defaultBranch) {
         return { kind: 'refused', reason: `the ${name} main checkout ${main} is on ${checkout.branch ?? 'a detached HEAD'}, not ${defaultBranch}` };
     }

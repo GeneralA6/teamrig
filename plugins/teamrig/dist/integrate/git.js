@@ -1,9 +1,14 @@
 import { basename, dirname, resolve } from 'node:path';
 import { outcome, query, queryLine, runGit } from "../core/git-run.js";
-/** A fetch, a push of a deleted branch or a rebase talks to origin or rewrites commits: allow it far longer than a query. */
+/** The remote a branch is pushed to, and the one a roll deploys from. */
+export const ORIGIN = 'origin';
+/** A fetch, a push of a deleted branch or a rebase talks to a remote or rewrites commits: allow it far longer than a query. */
 const LONG_TIMEOUT_MS = 120_000;
 const DEFAULT_BRANCHES = ['main', 'master'];
-const ORIGIN_HEAD = 'refs/remotes/origin/';
+/** Where git keeps its copies of `remote`'s branches. */
+function trackingRefs(remote) {
+    return `refs/remotes/${remote}/`;
+}
 /** A full commit id: SHA-1, or SHA-256 in a repository that uses it. */
 const FULL_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 function lines(text) {
@@ -46,18 +51,19 @@ export const GIT_INTEGRATE = {
         const text = query(dir, ['status', '--porcelain', `--untracked-files=${untracked ? 'normal' : 'no'}`]);
         return text === undefined ? undefined : lines(text);
     },
-    fetch: (dir) => outcome(runGit(dir, ['fetch', '--prune', 'origin'], LONG_TIMEOUT_MS), 'git fetch'),
-    defaultBranch(dir) {
-        const head = queryLine(dir, ['symbolic-ref', '--quiet', `${ORIGIN_HEAD}HEAD`]);
-        if (head?.startsWith(ORIGIN_HEAD) === true) {
-            return head.slice(ORIGIN_HEAD.length);
+    fetch: (dir, remote) => outcome(runGit(dir, ['fetch', '--prune', '--end-of-options', remote], LONG_TIMEOUT_MS), 'git fetch'),
+    defaultBranch(dir, remote) {
+        const refs = trackingRefs(remote);
+        const head = queryLine(dir, ['symbolic-ref', '--quiet', `${refs}HEAD`]);
+        if (head?.startsWith(refs) === true) {
+            return head.slice(refs.length);
         }
-        return DEFAULT_BRANCHES.find((name) => runGit(dir, ['show-ref', '--verify', '--quiet', `${ORIGIN_HEAD}${name}`]).status === 0) ?? 'main';
+        return DEFAULT_BRANCHES.find((name) => runGit(dir, ['show-ref', '--verify', '--quiet', `${refs}${name}`]).status === 0) ?? 'main';
     },
     sha: (dir, ref) => queryLine(dir, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${ref}^{commit}`]),
-    remoteHead(dir, branch) {
+    remoteHead(dir, remote, branch) {
         const ref = `refs/heads/${branch}`;
-        const run = runGit(dir, ['ls-remote', 'origin', ref], LONG_TIMEOUT_MS);
+        const run = runGit(dir, ['ls-remote', '--end-of-options', remote, ref], LONG_TIMEOUT_MS);
         const found = run.status === 0 ? lines(run.stdout).map((line) => line.split('\t')).find(([, name]) => name === ref) : undefined;
         const sha = found?.[0];
         return sha !== undefined && FULL_SHA.test(sha) ? sha : undefined;
@@ -75,11 +81,11 @@ export const GIT_INTEGRATE = {
         const done = outcome(run, 'git rebase');
         return done.ok ? done : { ok: false, reason: rebaseStopped(dir, onto, done.reason) };
     },
-    deleteRemoteBranch: (dir, branch) => outcome(runGit(dir, ['push', 'origin', '--delete', `refs/heads/${branch}`], LONG_TIMEOUT_MS), 'git push --delete'),
+    deleteRemoteBranch: (dir, branch) => outcome(runGit(dir, ['push', ORIGIN, '--delete', `refs/heads/${branch}`], LONG_TIMEOUT_MS), 'git push --delete'),
     detach: (dir) => outcome(runGit(dir, ['switch', '--detach']), 'git switch --detach'),
     deleteBranch: (dir, branch) => outcome(runGit(dir, ['branch', '-D', '--end-of-options', branch]), 'git branch -D'),
-    updateLocalBranch(dir, branch) {
-        const done = outcome(runGit(dir, ['fetch', '.', `${ORIGIN_HEAD}${branch}:refs/heads/${branch}`]), 'git fetch .');
+    updateLocalBranch(dir, remote, branch) {
+        const done = outcome(runGit(dir, ['fetch', '.', `${trackingRefs(remote)}${branch}:refs/heads/${branch}`]), 'git fetch .');
         if (done.ok) {
             return { kind: 'updated' };
         }
