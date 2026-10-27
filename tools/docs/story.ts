@@ -1,6 +1,6 @@
 /**
- * The pieces the animated terminal pictures (task-flow.ts, lead-morning.ts) tell their story with: a status a tab or a
- * pane row goes through over the loop, and a line of talk as a session's tab shows it.
+ * The pieces the animated terminal pictures (task-flow.ts, lead-morning.ts, lead-meeting.ts) tell their story with: a
+ * status a tab or a pane row goes through over the loop, and a line of talk as a session's tab shows it.
  */
 import { bullet, type Status, text } from './terminal-view.ts';
 import type { Timeline } from './timeline.ts';
