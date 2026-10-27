@@ -909,7 +909,7 @@ allowance, which is recomputed from what is left, so a night a lift worked throu
 the pace.
 Past its part while the team has room, a session is not held, and its line says so: `The team has room today: 2.0%
 of the week used, below its in-day pace of 4.0%, so nothing more happens.` Past its part once the team has no room,
-it is held: only p0 and p1 work wakes it, and it is escalated when `budget.escalate` is `session`, or, with
+it is held: only p0 work wakes it or keeps its idle tab open, and it is escalated when `budget.escalate` is `session`, or, with
 `session-and-fleet` (the default), only while the whole team is also ahead of its pace line. Then
 `budget.overAction` applies:
 
