@@ -35,7 +35,10 @@ function anchorOf(title: string): string {
 
 describe('docs/guides', () => {
   it('holds the guides', () => {
-    assert.ok(GUIDES.some((guide) => guide.name === 'keep-it-safe.md'), 'docs/guides/keep-it-safe.md');
+    assert.deepEqual(
+      GUIDES.map((guide) => guide.name),
+      ['keep-it-safe.md', 'run-your-day.md'],
+    );
   });
 
   it('links each guide from the README, how-it-works.md and llms.txt', () => {
