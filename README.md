@@ -146,8 +146,9 @@ Start with one lead and a few members. When a job needs one more pair of hands, 
 (`teamrig hire`) within the caps you set: how many at once, how much of the week they may use a day, and whether you
 approve each hire. The lead's checks say when. Once the job is done, `teamrig retire` hands its open tasks to a member
 you name and leaves a handover note, and hiring it back picks up where it left off. When one team isn't enough, it
-becomes teams of teams, each with its own lead, and a member can become a sub-lead over a few others
-(`teamrig promote`). You still talk to one lead.
+becomes teams of teams: `teamrig team split` moves a few members, with the tasks they own, into a child team with its
+own lead, task list and rules. A task keeps its number across the tree, any member asks any team of it for work, and
+you still talk to one lead.
 
 ![A camera pulls back from your lead as time passes. Day 1: the lead hires a team of three. Week 2: new members join and one whose job is done moves on. Month 2: one team becomes teams of teams, each with its own lead. Month 6: eight teams and 33 members, with members coming and going, and you still talk to one lead.](docs/images/growth.svg)
 

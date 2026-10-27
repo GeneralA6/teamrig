@@ -968,6 +968,11 @@ RAN R4: exit 0; output /home/you/.teamrig/teams/shop/exec/out/R4-run.log (SHA-25
 
 ## Team
 
+A team may grow into a tree of teams: `team create --parent` starts a child team, `team split` moves sessions of
+yours into a new one, and `team tree` prints the tree. Across its teams, work is `add --team <team>`, a note
+`inbox add --to <team>/<id>`, a child team lead's approval `approve <team>/<id>`, and the human's decisions reach
+the root team's lead (`decisions`, `meeting start`).
+
 ### teamrig team create
 
 Creates a team: writes its config in the kit home and `.teamrig.json` in the project folder. The lead session

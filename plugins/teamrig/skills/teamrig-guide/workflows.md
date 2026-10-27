@@ -385,3 +385,23 @@ teamrig open web
    list. If it prints `MANUAL`, show the user the printed command to run in a new terminal.
 
 The bundled `team-setup` skill walks the lead through this, including splitting the work into sessions.
+
+## Move part of a team into a child team
+
+The lead's tab, once a few sessions work one area that needs a lead of its own:
+
+```sh
+teamrig team split front --lead web --sessions ui --dry-run
+teamrig team split front --lead web --sessions ui
+teamrig team tree
+teamrig open front/web
+teamrig open front/ui
+```
+
+1. Show the user the dry run's counts (tasks by status, links across the new border, inbox lines and files) and get
+   a yes: the split moves stored data, and nothing undoes it.
+2. Clear what `BLOCKED` names first: ask a staying session for the decision or approval a staying task waits on,
+   and close each moved session's tab.
+3. The split ends with `VERIFIED` once both task lists read the same; a `PROBLEM` line exits 1 and names the task.
+4. Reopen each moved session from its new team, as the `NEXT` line says. Its start names the child team, its lead's
+   approvals now come to you, and work you ask of it goes as `teamrig add --team front`.

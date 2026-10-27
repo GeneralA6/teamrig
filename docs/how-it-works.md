@@ -63,8 +63,8 @@ marks only ever grow by a line, so parallel sessions never overwrite each other.
 
 ## Who is on the team
 
-A team is a list of sessions with one lead, and a lead may also lead sub-teams; each session learns at start who it
-is and whom to message.
+A team is a list of sessions with one lead, and a lead may also lead child teams, each with a lead and a task list
+of its own; each session learns at start who it is and whom to message.
 
 ```mermaid
 flowchart TB
@@ -72,9 +72,11 @@ flowchart TB
   lead["lead: hands out tasks"]
   api["api"]
   data["data"]
-  sub["web lead: runs the web sub-team"]
-  front["front"]
-  back["back"]
+  subgraph web["child team web"]
+    sub["web lead: runs its own team"]
+    front["front"]
+    back["back"]
+  end
   you --> lead
   lead --> api
   lead --> data
@@ -90,12 +92,17 @@ called `<team>-<id>`. `teamrig who` prints every session's name, and `teamrig re
 while its old names keep finding it until another session takes one. A Claude Code rename of the session
 (`/rename`, `claude --name`) is recorded the same way at its next prompt or start, as if it ran `teamrig rename`.
 
-A team grows into a tree of teams when a lead hires sub-team leads, each running its own sessions, and you still
-talk to one lead: the root team's.
+A team grows into a tree of teams when part of its work needs a lead of its own: `teamrig team split` moves that
+lead and its sessions, with the tasks they own, into a child team under the lead, and `team create --parent` starts
+a new one ([Setting up a team](#setting-up-a-team)). You still talk to one lead: the root team's.
 
 - Each team keeps its own folder, config, task list and inboxes. Its config names its parent team
   (`"team": {"id": "web", "parent": "your-team"}`), so the tree is read from the configs, with no other file to keep
   in step. A tree has at most 3 levels and a team at most 8 child teams.
+- The tree numbers its tasks from one count, so `T12` names one task in every team of it and a moved task keeps its
+  number; a wait or an `after` may name another team's task. Work crosses teams as a task: `teamrig add --team web`
+  puts it in that team's list, its lead gets a copy line, and the asker hears when it is done or dropped
+  ([A task's life](#a-tasks-life)).
 - Any session writes a note to any session of its tree, `<team>/<id>`, with no relay through the leads between them:
   a note hands no work, which is a task on the receiver's own register, and wakes it only with `--wake now`, or
   with `--wake-by <time>` at that time if it is still unseen. Teams
@@ -103,15 +110,19 @@ talk to one lead: the root team's.
   the tree is in its decisions batch and daily meeting as `<team>/<id>` (`web/T2`), and your answer, recorded on
   that task, reaches the task's owner when the meeting ends. An urgent one also tells its team's own lead, who
   passes it up.
-- A child team's lead answers to the lead of the team above it: its approval waits, say before a push or a merge,
-  go to that lead's inbox (`--waits approval:app/lead`), which answers with `teamrig approve web/T3`, and under
-  `pushGuard.pushToProtected: lead` its own push waits for that answer.
+- A member's leader is its team's lead, and a child team's lead answers to the lead of the team above it: its
+  approval waits, say before a push or a merge, go to that lead's inbox (`--waits approval:app/lead`), which answers
+  with `teamrig approve web/T3`, and under `pushGuard.pushToProtected: lead` its own push waits for that answer.
+- A child team's sessions start with the `rules.md` of each team above, root first, then their own. A role the
+  child team leaves to a team above names that team's holder as `<team>/<id>` (`"securityReviewer":
+  "your-team/security"`), so its exec requests go to that reviewer; `teamrig doctor` names one that does not hold
+  the role there.
 - Claude Code session names are machine-wide, so two teams never share one: `team create` refuses a clash and
   `teamrig doctor` names one, along with a broken link in the tree.
 - `teamrig team tree` prints the tree with each team's lead and sessions.
 
 The lead hires a temporary member for one job with `teamrig hire`, within the team config's `hiring` block; a
-sub-lead hires the same way into its own group, and retires only the sessions it leads:
+child team's lead hires the same way into its own team:
 
 - `policy`: `off` (no hires by command), `owner` (the default: each hire names who approved it), `lead`, or
   `automatic` (the lead decides, and a hired session whose last open task closes is asked at its next turn end to
@@ -192,6 +203,12 @@ sequenceDiagram
   `--dry-run` prints what it would write. `--parent your-team` hangs the new team under that
   team's lead; it refuses a parent with no config, a tree deeper than 3 levels, a team's 9th child team and a
   session name another team uses.
+- `teamrig team split front --lead web --sessions ui --dry-run` plans moving sessions of your team, with the tasks
+  they own, their inboxes, files and renames, into a new child team `front` under you, and names what blocks it: a
+  staying task that waits on a moved session's decision or approval, or a moved session whose Claude Code runs.
+  Without `--dry-run` it writes the move, reads both task lists back to check each moved task reads the same, and
+  prints the `teamrig open front/<id>` line that reopens each moved session on its new team. The move changes
+  stored data and nothing undoes it, so the lead shows you the dry run's counts first.
 - The tab that ran the setup becomes the lead without a restart. `teamrig inbox read --session lead` ties its Claude
   Code session to the lead, so the hooks still know it after a compact or a resume, and `teamrig rules --session lead`
   gives it the rules it missed at start. Its next prompt titles the tab with the lead's name, and Claude Code keeps
