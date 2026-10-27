@@ -9,7 +9,7 @@ import { RefreshStore } from "../../refresh/store.js";
 import { sessionIdOf, unseenLinesOf } from "../../inbox/inbox.js";
 import { askVerdictOf, asksFolderOf, asksNowOf, handedPrompt, handedToast, WakeAsks } from "../../wake/asks.js";
 import { dayStartPrompt, dayStartToast, decideDayStart, dueMoments, nextDayStartAt, startableTasks } from "../../wake/day-start.js";
-import { decideWake, effectivePriority, URGENT_PRIORITY, wakeCost, wakeRestOf } from "../../wake/decide.js";
+import { decideWake, effectivePriority, HELD_PRIORITY, wakeCost, wakeRestOf } from "../../wake/decide.js";
 import { WakePrompts } from "../../wake/prompts.js";
 import { logWake, WakeStore } from "../../wake/store.js";
 import { noPositionals } from "../args.js";
@@ -56,19 +56,33 @@ export async function wakeScopeOf(runtime, payload, needsWake) {
     const id = await teamSessionOf(runtime, kit, roster, tab);
     return id === undefined ? { kind: 'off', why: 'this tab is not a team session' } : { kind: 'found', kit, config, roster, id, tab, from: found.from };
 }
+/** The ids of the tasks a verdict wakes the session for, now or later. */
+function dueIdsOf(verdict) {
+    return new Set(verdict.kind === 'wake' ? verdict.tasks.map((task) => task.id) : verdict.kind === 'later' ? verdict.ids : []);
+}
 /**
- * The least urgent priority that wakes the session now. Waking for p1 alone needs no budget read; for more, a
- * session its budget holds (past its daily budget while the team has no room today) or in the budget's quiet hours
- * (unless its lift exempts it) still wakes for p1 only.
+ * The wake decision at the least urgent priority that wakes the session now. It decides at `input.maxPriority`
+ * (`wake.priority`) and reads the budget only when a task past p0 is due: a session its budget holds (past its
+ * daily budget while the team has no room today) wakes for p0 only, one in the budget's quiet hours (unless its lift
+ * exempts it) for p1 and p0 (`effectivePriority`). Then it decides again at that priority, which wakes for a part of
+ * what was due, and leaves the tasks the rest cut out of what the session knows, so they wake it once the rest ends.
  */
-async function maxPriorityOf(runtime, scope) {
+async function restCappedDecision(runtime, scope, input) {
     const { config } = scope;
-    const configured = config.wake.priority;
-    if (configured <= URGENT_PRIORITY || !config.budget.enabled) {
-        return configured;
+    const decision = decideWake(input);
+    const due = dueIdsOf(decision.verdict);
+    const dueTasks = [...input.tasks.values()].filter((task) => due.has(task.id));
+    if (!config.budget.enabled || dueTasks.every((task) => task.priority <= HELD_PRIORITY)) {
+        return decision;
     }
     const facts = await budgetFactsOf(runtime, { kit: scope.kit, config, roster: scope.roster, id: scope.id }, undefined);
-    return effectivePriority(configured, wakeRestOf(facts, config.budget.quietHours, runtime.clock.now()));
+    const maxPriority = effectivePriority(input.maxPriority, wakeRestOf(facts, config.budget.quietHours, input.now));
+    const cut = new Set(dueTasks.filter((task) => task.priority > maxPriority).map((task) => task.id));
+    if (cut.size === 0) {
+        return decision;
+    }
+    const capped = decideWake({ ...input, maxPriority });
+    return { verdict: capped.verdict, state: { ...capped.state, known: decision.state.known.filter((id) => !cut.has(id)) } };
 }
 /**
  * While the owner's daily meeting is open, the lead is not woken: the meeting holds every message to the lead but a
@@ -152,14 +166,14 @@ async function decide(runtime, scope, store) {
         const asks = new WakeAsks(files, kit.paths.wakeAsks);
         const found = await asksNowOf(await asks.read(id), now, () => unseenLinesOf(inboxDepsOf(runtime, kit.paths), id));
         const asked = askVerdictOf(found, now, batchMs);
-        const decision = decideWake({
+        const decision = await restCappedDecision(runtime, scope, {
             tasks,
             elsewhere,
             session: id,
             tab,
             now,
             zone: teamZone(config, runtime),
-            maxPriority: await maxPriorityOf(runtime, scope),
+            maxPriority: config.wake.priority,
             batchMs,
             minGapMs: config.wake.minGapMinutes * MINUTE_MS,
             previous: await store.read(id),
@@ -187,7 +201,7 @@ async function decide(runtime, scope, store) {
  * the turn log (src/wake/prompts.ts); a busy lock (another
  * tab of the session checking) answers a recheck now. The lead is not woken while the owner's daily meeting is open,
  * nor any session while its automatic restart may still act; one whose restart died is restarted again instead. It
- * also runs the team's idle pass, once a minute across the team (hook-idle-pass.ts).
+ * also runs the team's idle pass, at most once a minute across the team (hook-idle-pass.ts).
  */
 export async function wakeCheck(args, runtime) {
     noPositionals(args);
