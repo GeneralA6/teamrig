@@ -4,6 +4,8 @@ export type { GitOutcome };
 
 /** Long enough for git to delete a large worktree. */
 const REMOVE_TIMEOUT_MS = 120_000;
+/** Long enough to fetch over a slow link, or for git to write out a large worktree. */
+const ADD_TIMEOUT_MS = 120_000;
 
 /** One worktree as `git worktree list --porcelain` lists it. */
 export interface WorktreeEntry {
@@ -16,8 +18,8 @@ export interface WorktreeEntry {
 }
 
 /**
- * What `teamrig worktree remove` asks of git. Each query reads as undefined when git cannot answer it (no git on
- * PATH, no repository, an unknown ref), so the caller refuses instead of guessing.
+ * What `teamrig worktree add` and `remove` ask of git. Each query reads as undefined when git cannot answer it (no git
+ * on PATH, no repository, an unknown ref), so the caller refuses instead of guessing.
  */
 export interface WorktreeGit {
   /** The top folder of the worktree that holds `dir`. */
@@ -39,6 +41,12 @@ export interface WorktreeGit {
   removeWorktree(mainDir: string, top: string): GitOutcome;
   /** Deletes `branch`, run in `mainDir`; the caller has checked that every commit of it is on its base. */
   deleteBranch(mainDir: string, branch: string): GitOutcome;
+  /** Whether the repository `dir` belongs to has a local branch `branch`. */
+  hasBranch(dir: string, branch: string): boolean | undefined;
+  /** `git fetch` of `branch` from `remote`, run in `dir`, so `<remote>/<branch>` is the remote's newest. */
+  fetch(dir: string, remote: string, branch: string): GitOutcome;
+  /** `git worktree add` of the new branch `branch` at `path`, from `base` and with no upstream, run in `mainDir`. */
+  addWorktree(mainDir: string, path: string, branch: string, base: string): GitOutcome;
 }
 
 const BRANCH_REF = 'refs/heads/';
@@ -131,4 +139,13 @@ export const GIT_WORKTREES: WorktreeGit = {
   removeWorktree: (mainDir, top) => outcome(runGit(mainDir, ['worktree', 'remove', top], REMOVE_TIMEOUT_MS), 'git worktree remove'),
   // A branch name never starts with `-` (git refuses one), so it cannot read as an option.
   deleteBranch: (mainDir, branch) => outcome(runGit(mainDir, ['branch', '-D', branch]), 'git branch -D'),
+  hasBranch(dir, branch) {
+    // Exit 0: the ref exists; 1: it does not; anything else: git could not tell.
+    const status = runGit(dir, ['show-ref', '--verify', '--quiet', `${BRANCH_REF}${branch}`]).status;
+    return status === 0 ? true : status === 1 ? false : undefined;
+  },
+  // The remote and branch come from origin/HEAD, never from the caller's words, so neither starts with `-`.
+  fetch: (dir, remote, branch) => outcome(runGit(dir, ['fetch', '--quiet', remote, branch], ADD_TIMEOUT_MS), 'git fetch'),
+  // The caller gives an absolute path and a branch name it checked starts with a letter or digit, so neither reads as an option.
+  addWorktree: (mainDir, path, branch, base) => outcome(runGit(mainDir, ['worktree', 'add', '--quiet', '--no-track', '-b', branch, path, base], ADD_TIMEOUT_MS), 'git worktree add'),
 };

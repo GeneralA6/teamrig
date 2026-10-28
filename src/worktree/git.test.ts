@@ -142,6 +142,32 @@ describe('GIT_WORKTREES', () => {
     }
   });
 
+  it('adds a worktree on a new branch from the fetched default branch, with no upstream (T1305)', () => {
+    const { repo } = repoWithWorktree('wt-add');
+    const origin = new TempRepo('wt-add-origin').init();
+    try {
+      origin.git('checkout', '-q', '-b', 'main');
+      origin.write('o.txt', 'o\n');
+      origin.git('add', '-A');
+      origin.git('commit', '-q', '-m', 'on origin');
+      repo.git('remote', 'add', 'origin', origin.dir);
+      assert.equal(git.hasBranch(repo.dir, 'feat'), true);
+      assert.equal(git.hasBranch(repo.dir, 't9-new'), false);
+      assert.deepEqual(git.fetch(repo.dir, 'origin', 'main'), { ok: true });
+      const path = join(repo.outside, 't9-new');
+      assert.deepEqual(git.addWorktree(repo.dir, path, 't9-new', 'origin/main'), { ok: true });
+      assert.ok(existsSync(join(path, 'o.txt')), 'checked out from the fetched origin/main');
+      assert.equal(repo.git('-C', path, 'branch', '--show-current').trim(), 't9-new');
+      assert.equal(repo.git('for-each-ref', '--format=%(upstream)', 'refs/heads/t9-new').trim(), '', 'no upstream until its first push');
+      const again = git.addWorktree(repo.dir, join(repo.outside, 't9-again'), 't9-new', 'origin/main');
+      assert.match(again.ok ? '' : again.reason, /already exists/);
+      assert.equal(git.fetch(repo.dir, 'origin', 'no-such-branch').ok, false);
+    } finally {
+      repo.remove();
+      origin.remove();
+    }
+  });
+
   it('reads as unknown where git cannot answer', () => {
     const missing = join(tmpdir(), 'teamrig-no-such-worktree');
     assert.equal(git.topOf(missing), undefined);
@@ -149,6 +175,7 @@ describe('GIT_WORKTREES', () => {
     assert.equal(git.changes(missing, []), undefined);
     assert.equal(git.tracked(missing, ['a.txt']), undefined);
     assert.equal(git.defaultBase(missing), undefined);
+    assert.equal(git.hasBranch(missing, 'main'), undefined);
     const failed = git.removeWorktree(missing, join(missing, 'wt'));
     assert.equal(failed.ok, false);
   });
