@@ -178,8 +178,8 @@ sequenceDiagram
   free memory over `coordinator.heavy.memoryFloorMb` and the commit charge within `open.headroom.commitMaxPct` (92%),
   with the session counted at the median running one (what it holds resident against free memory, what it
   committed against the commit charge), else `open.headroom.sessionMb` (1200 MB). A session
-  `teamrig close` ended goes on in its last Claude Code session when that is small and recent enough, else opens
-  fresh; `state/session-log.jsonl` logs each close and reopen. `teamrig close` (the lead) ends only a session
+  `teamrig close` ended goes on in its last Claude Code session, in the folder it ran in (a worktree too), when that
+  is small and recent enough, else opens fresh; `state/session-log.jsonl` logs each close and reopen. `teamrig close` (the lead) ends only a session
   quiet `open.headroom.closeIdleMinutes` (60) or more, with no work it can start and no time wait of its own ending
   within 30 minutes, its last turn ended (not at a tool call or a decision put to the person), no background work
   or shells, and
