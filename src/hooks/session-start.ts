@@ -30,6 +30,8 @@ export interface SessionStartInput {
   readonly modelNote: string | undefined;
   /** When the session holds verifying tasks: `VERIFY <n>, oldest first:` and a row each (the first few), so it proves them. */
   readonly verifyNote: string | undefined;
+  /** When the session already runs in another Claude Code: the line that tells this second one to stop. */
+  readonly duplicateNote: string | undefined;
   /**
    * Who the session is: an id or any name it has had, from `$TEAMRIG_SESSION`, a `--session` flag, or
    * the area this Claude Code session last read its inbox as.
@@ -153,6 +155,9 @@ export function sessionStartContext(input: SessionStartInput): string {
   const roster = new Roster(load.config, input.team, input.renames);
   const notes = identityLines(roster, new LeadTree(load.config), input);
   // In the core part, so the size budget that may cut the team's rules.md never cuts it.
+  if (input.duplicateNote !== undefined) {
+    notes.push(input.duplicateNote);
+  }
   if (input.refreshNote !== undefined) {
     notes.push(input.refreshNote);
   }

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { isRecord } from '../core/guards.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
+import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { APP, CLAUDE_SESSION, CliHarness, contextOf, TEAM, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
 
@@ -60,5 +61,55 @@ describe('the SessionStart hook records where the session started', () => {
     const result = await kit.run(['hook', 'session-start'], { env: AS_ALPHA, stdin: start('startup'), sessionProcesses: UNDER_CLAUDE(), files });
     assert.match(contextOf(result), /You are the `alpha` session/);
     assert.match(noticeOf(result) ?? '', /^teamrig could not record the Claude Code process of session alpha \(.*EACCES.*\)\.$/);
+  });
+});
+
+describe('the SessionStart hook of a session that runs in another Claude Code', () => {
+  /** Alpha's record: Claude Code 6800, started an hour before the harness clock. */
+  const LIVE = { claudePid: 6800, claudeSession: 'c0', at: '2030-01-08T09:00:00.000Z' };
+  const STOP =
+    'STOP: session alpha already runs in Claude Code process 6800, so this Claude Code (process 6900) is a second one, which would work beside it on the same tasks; ' +
+    "teamrig kept the session's record on the first. Do no work here: tell the user to use that tab and close this one.";
+
+  /** A hook under Claude Code 6900, started by `parent`, beside alpha's Claude Code 6800 when `live`. */
+  function host(live: boolean, parent: number = 1) {
+    const processes = UNDER_CLAUDE().add({ pid: 6900, parentPid: parent, name: 'claude.exe', commandLine: 'claude' });
+    const rows = [{ pid: 6900, parent, bytes: 1, startedMs: Date.parse('2030-01-08T09:59:00Z') }];
+    if (!live) {
+      return { sessionProcesses: processes, memory: new FakeHostMemory().lists(rows) };
+    }
+    return {
+      sessionProcesses: processes.add({ pid: 6800, parentPid: 1, name: 'claude.exe', commandLine: 'claude' }),
+      memory: new FakeHostMemory().lists([{ pid: 6800, parent: 1, bytes: 1, startedMs: Date.parse('2030-01-08T08:59:00Z') }, ...rows]),
+    };
+  }
+
+  it('keeps the live record and tells this second one, and the user, to stop', async () => {
+    const kit = new CliHarness(TEAM);
+    const store = new SessionRecordStore(kit.files, { sessions: SESSIONS });
+    await store.write('alpha', LIVE);
+    const result = await kit.run(['hook', 'session-start'], { env: AS_ALPHA, stdin: start('startup'), ...host(true) });
+    assert.ok(contextOf(result).includes(STOP));
+    assert.equal(noticeOf(result), STOP);
+    assert.deepEqual(await store.read('alpha'), LIVE);
+  });
+
+  it('keeps the live record silently for a Claude Code that session started, such as a claude -p', async () => {
+    const kit = new CliHarness(TEAM);
+    const store = new SessionRecordStore(kit.files, { sessions: SESSIONS });
+    await store.write('alpha', LIVE);
+    const result = await kit.run(['hook', 'session-start'], { env: AS_ALPHA, stdin: start('startup'), ...host(true, 6800) });
+    assert.ok(!contextOf(result).includes('STOP:'));
+    assert.equal(noticeOf(result), undefined);
+    assert.deepEqual(await store.read('alpha'), LIVE);
+  });
+
+  it('records this one once the recorded Claude Code ended', async () => {
+    const kit = new CliHarness(TEAM);
+    const store = new SessionRecordStore(kit.files, { sessions: SESSIONS });
+    await store.write('alpha', LIVE);
+    const result = await kit.run(['hook', 'session-start'], { env: AS_ALPHA, stdin: start('startup'), ...host(false) });
+    assert.equal(noticeOf(result), undefined);
+    assert.deepEqual(await store.read('alpha'), { claudePid: 6900, claudeSession: CLAUDE_SESSION, at: '2030-01-08T10:00:00.000Z' });
   });
 });

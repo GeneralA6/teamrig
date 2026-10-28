@@ -27,6 +27,7 @@ function context(overrides: Partial<SessionStartInput> = {}): string {
     liveTasksNote: undefined,
     modelNote: undefined,
     verifyNote: undefined,
+    duplicateNote: undefined,
     session: 'alpha',
     sessionInEnv: true,
     tree: undefined,
