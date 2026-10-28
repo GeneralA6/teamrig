@@ -3,7 +3,7 @@ import type { PushGuardConfig, PushToProtected } from '../config/types.ts';
 /**
  * The lines teamrig adds to Claude Code's `autoMode.environment` setting: what auto mode's classifier should take as
  * the trusted ground truth of a teamrig team (its protected branches, the register commands every session runs, what
- * `heavy` and `test` wrap, and who removes a worktree). A plugin cannot ship them (a plugin's settings take only `agent` and
+ * `heavy` and `test` wrap, who removes a worktree, and that a session may rebase its own branch). A plugin cannot ship them (a plugin's settings take only `agent` and
  * `subagentStatusLine`), so `teamrig automode install` writes them into the person's own settings. Each line starts
  * with the team's tag, which is how install and uninstall find their own lines and leave every other one alone.
  */
@@ -46,10 +46,10 @@ export function kitTag(team: string): string {
   return `[teamrig ${team}] `;
 }
 
-/** The team's lines, in order: protected branches, the register, heavy and test, worktree removal. */
+/** The team's lines, in order: protected branches, the register, heavy and test, worktree removal, rebasing. */
 export function kitLines(facts: AutoModeFacts): string[] {
   const tag = kitTag(facts.team);
-  return [branchesLine(facts), registerLine(facts), wrappersLine(), worktreeLine(facts)].map((line) => `${tag}${line}`);
+  return [branchesLine(facts), registerLine(facts), wrappersLine(), worktreeLine(facts), rebaseLine(facts)].map((line) => `${tag}${line}`);
 }
 
 function branchesLine({ lead, pushGuard }: AutoModeFacts): string {
@@ -93,5 +93,19 @@ function worktreeLine({ lead }: AutoModeFacts): string {
     'may run it: teamrig itself removes only a worktree whose t<id>- branch names a task the session owns or one of a ' +
     `session it leads (any for the lead, session ${lead}), and refuses the main checkout, uncommitted work and a branch ` +
     'with a commit not on its base.'
+  );
+}
+
+/**
+ * The owner's grant of 10-26: every session may rebase its own branch. A rebase rewrites only that session's own
+ * commits; a protected branch stays under the branches line, which refuses rewriting one and asks before a leased push.
+ */
+function rebaseLine({ pushGuard }: AutoModeFacts): string {
+  return (
+    'Every session may rebase its own branch in its own git worktree onto the fresh default branch (`git fetch`, then ' +
+    '`git rebase origin/<branch>` or `git pull --rebase`, and `git rebase --continue` or `--abort` to settle a stopped ' +
+    "one): it rewrites only that session's own commits not yet merged. A branch it pushed before goes back with " +
+    `\`git push --force-with-lease\` to that same branch. A protected branch (${pushGuard.protectedBranches.join(', ')}) ` +
+    "is never rebased, nor a repo's main checkout."
   );
 }
