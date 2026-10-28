@@ -144,7 +144,7 @@ function heavySteps(coordinator: CoordinatorConfig, command: string, cutoff: str
   if (repos.length === 0) {
     return cutoff === undefined ? '' : ` No heavy step (builds, test runs, data scripts) starts ${cutoff} [coordinator.schedule.heavyCutoffUtc].`;
   }
-  const roll = repos.some((repo) => repo.roll !== undefined) ? ` and run it with \`${command} roll\`` : '';
+  const roll = repos.some((repo) => repo.deploy !== undefined) ? ` and run it with \`${command} roll\`` : '';
   return (
     ` Run heavy steps (builds, test runs, data scripts) in the background through \`${command} heavy\`, a test run inside \`${command} test\`` +
     (cutoff === undefined ? '' : `, none starting ${cutoff} [coordinator.schedule.heavyCutoffUtc]`) +

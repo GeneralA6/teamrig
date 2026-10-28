@@ -358,7 +358,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       and frees the lock (exit 129); exit 0 merged, 1 failed or stopped, 75 the merge waits
   roll [--repo <name>] [--session <id|name>]   brings what was pushed to a repository's default
       branch to the running system: pulls its main checkout fast-forward to origin, runs its
-      coordinator.repos.<name>.roll dependencyInstall for a dependency change (after its
+      coordinator.repos.<name>.deploy dependencyInstall for a dependency change (after its
       dependencyCheck), its afterPull hooks and command (one heavy step in the ledger) and records
       the deploy; --repo defaults to the repository of this folder, else the only one with a roll
       block. REFUSED for a main checkout off its default branch, dirty or ahead of origin, a
@@ -372,7 +372,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   roll --targets <a,b> --what "<why>" [--repo <name>] [--session <id|name>] -- <command ...>   a deploy
       that pulls nothing, such as a restart onto a rotated secret: runs the command in this folder (one
       heavy step in the ledger) and records a deploy of those targets only. REFUSED for a target not in
-      the repository's roll.targets, when a gate refuses, from coordinator.schedule.heavyCutoffUtc to
+      the repository's deploy.targets, when a gate refuses, from coordinator.schedule.heavyCutoffUtc to
       midnight UTC and in the resetBlackoutHours before the weekly token reset; waits as a roll does,
       for quiet claims on those targets only; its gates and command see TEAMRIG_VERB=deploy and
       TEAMRIG_DEPLOY_TARGETS; exit 0 deployed, 1 failed or stopped

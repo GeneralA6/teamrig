@@ -522,7 +522,7 @@
                 "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" }
               },
               "dependencyGate": {
-                "description": "Refuse a branch (merge) or a pushed range (roll) whose package files need a dependency install, so the main checkout node_modules, which its worktrees link to, never changes unreviewed; dependencyCheck clears one for merge, and with roll.dependencyInstall for roll.",
+                "description": "Refuse a branch (merge) or a pushed range (deploy) whose package files need a dependency install, so the main checkout node_modules, which its worktrees link to, never changes unreviewed; dependencyCheck clears one for merge, and with deploy.dependencyInstall for a deploy.",
                 "type": "boolean"
               },
               "dependencyCheck": {
@@ -569,27 +569,27 @@
                   }
                 }
               },
-              "roll": {
-                "description": "How teamrig roll deploys what merged into the default branch, each command a program and its arguments run without a shell from the main checkout. Unset: the repository is not rolled.",
+              "deploy": {
+                "description": "How teamrig roll deploys what merged into the default branch, each command a program and its arguments run without a shell from the main checkout. Unset: the repository is not deployed.",
                 "type": "object",
                 "required": ["command"],
                 "properties": {
                   "targets": {
-                    "description": "The deploy targets the roll deploys: quiet claims on them hold it.",
+                    "description": "The deploy targets it deploys: quiet claims on them hold it.",
                     "type": "array",
                     "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" }
                   },
-                  "gates": {
-                    "description": "Checks asked in order before the host lock and again under it; the first that does not pass holds the roll. Exit 0 lets it go, 75 makes it wait, 2 refuses it; anything else, or no answer within gateTimeoutSeconds, makes it wait.",
+                  "checks": {
+                    "description": "Checks asked in order before the host lock and again under it; the first that does not pass holds the deploy. Exit 0 lets it go, 75 makes it wait, 2 refuses it; anything else, or no answer within checkTimeoutSeconds, makes it wait.",
                     "type": "array",
                     "maxItems": 16,
                     "items": {
                       "type": "object",
                       "required": ["name", "command"],
                       "properties": {
-                        "name": { "description": "Names the gate in a wait or refusal.", "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" },
+                        "name": { "description": "Names the check in a wait or refusal.", "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" },
                         "command": {
-                          "description": "The gate: a program and its arguments.",
+                          "description": "The check: a program and its arguments.",
                           "type": "array",
                           "minItems": 1,
                           "maxItems": 64,
@@ -599,14 +599,14 @@
                     }
                   },
                   "dependencyInstall": {
-                    "description": "Installs a pulled range's dependency change (package-lock.json, or package.json fields an install reads), such as npm ci --ignore-scripts: run after the pull and the dependencyCheck, before afterPull. A failed install moves the main checkout back and runs again to restore its dependencies. With dependencyGate, a dependency change rolls only when this and dependencyCheck are set.",
+                    "description": "Installs a pulled range's dependency change (package-lock.json, or package.json fields an install reads), such as npm ci --ignore-scripts: run after the pull and the dependencyCheck, before afterPull. A failed install moves the main checkout back and runs again to restore its dependencies. With dependencyGate, a dependency change deploys only when this and dependencyCheck are set.",
                     "type": "array",
                     "minItems": 1,
                     "maxItems": 64,
                     "items": { "type": "string", "minLength": 1 }
                   },
                   "afterPull": {
-                    "description": "Run in order after the pull, before command; one that fails ends the roll before it deploys.",
+                    "description": "Run in order after the pull, before command; one that fails ends the deploy before its command runs.",
                     "type": "array",
                     "maxItems": 16,
                     "items": {
@@ -618,7 +618,7 @@
                     }
                   },
                   "command": {
-                    "description": "Deploys what the pull brought: exit 0 rolled (a stdout line no-roll: nothing needed rolling), else failed. Its last stdout line is the ledger note.",
+                    "description": "Deploys what the pull brought: exit 0 deployed (a stdout line no-roll: nothing needed deploying), else failed. Its last stdout line is the ledger note.",
                     "type": "array",
                     "minItems": 1,
                     "maxItems": 64,
@@ -689,8 +689,8 @@
             }
           }
         },
-        "gateTimeoutSeconds": {
-          "description": "A roll's gate still running after this many seconds is stopped, and the roll waits.",
+        "checkTimeoutSeconds": {
+          "description": "A deploy's check still running after this many seconds is stopped, and the deploy waits.",
           "type": "integer",
           "minimum": 1,
           "maximum": 600,
@@ -714,7 +714,7 @@
           "type": "object",
           "properties": {
             "settleMinutes": {
-              "description": "A target measures cleanly this many minutes after a deploy rolled it.",
+              "description": "A target measures cleanly this many minutes after a deploy reached it.",
               "type": "integer",
               "minimum": 0,
               "maximum": 1440,
@@ -729,8 +729,8 @@
                 "maximum": 1440
               }
             },
-            "assumedRollMinutes": {
-              "description": "How long a deploy is taken to have rolled before its ledger.md line when the ledger has no record of its start.",
+            "assumedDeployMinutes": {
+              "description": "How long a deploy is taken to have run before its ledger.md line when the ledger has no record of its start.",
               "type": "integer",
               "minimum": 0,
               "maximum": 1440,

@@ -2,7 +2,7 @@ import type { TaskStatus } from '../register/model.ts';
 import type { CoreRuleKey } from '../rules/keys.ts';
 
 /** The config format this code reads and writes. Older files are migrated in memory on load. */
-export const CONFIG_VERSION = 4;
+export const CONFIG_VERSION = 5;
 
 export interface RolesConfig {
   /** Owns priorities, team rules and the owner's decision queue; may re-prioritize and reassign tasks; hands the work itself to others (`leadBoundary`). */
@@ -644,9 +644,9 @@ export interface CoordinatorRepoConfig {
    */
   readonly deploysOnPush: readonly string[];
   /**
-   * Refuse a branch (merge) or a pushed range (roll) whose package files need a dependency install, so the main
+   * Refuse a branch (merge) or a pushed range (deploy) whose package files need a dependency install, so the main
    * checkout's node_modules, which its worktrees link to, never changes unreviewed; `dependencyCheck` clears one for
-   * merge, and with `roll.dependencyInstall` for roll.
+   * merge, and with `deploy.dependencyInstall` for a deploy.
    */
   readonly dependencyGate: boolean;
   /**
@@ -672,8 +672,8 @@ export interface CoordinatorRepoConfig {
   readonly worktreeSetup?: readonly string[];
   /** How `teamrig merge` merges a branch through the team's own flow, such as a pull request; unset: it pushes the branch to the default branch. */
   readonly merge?: MergeConfig;
-  /** How `teamrig roll` deploys what merged into the default branch; unset: the repository is not rolled. */
-  readonly roll?: RollConfig;
+  /** How `teamrig roll` deploys what merged into the default branch; unset: the repository is not deployed. */
+  readonly deploy?: DeployConfig;
 }
 
 /** A team's own way of merging a branch into the default branch, such as a pull request merged by the forge. */
@@ -694,30 +694,30 @@ export interface MergeConfig {
   readonly remote: string;
 }
 
-/** A check `teamrig roll` asks before it rolls: a program and its arguments, run without a shell from the main checkout. */
-export interface RollGateConfig {
-  /** Names the gate in a wait or refusal, such as `flow`. */
+/** A check `teamrig roll` asks before it deploys: a program and its arguments, run without a shell from the main checkout. */
+export interface DeployCheckConfig {
+  /** Names the check in a wait or refusal, such as `flow`. */
   readonly name: string;
-  /** Exit 0 lets the roll go, 75 makes it wait, 2 refuses it; anything else, or no answer in time, makes it wait. */
+  /** Exit 0 lets the deploy go, 75 makes it wait, 2 refuses it; anything else, or no answer in time, makes it wait. */
   readonly command: readonly string[];
 }
 
 /** How `teamrig roll` deploys a repository's default branch from its main checkout, each command run without a shell. */
-export interface RollConfig {
-  /** The deploy targets the roll deploys: quiet claims on them hold it. */
+export interface DeployConfig {
+  /** The deploy targets it deploys: quiet claims on them hold it. */
   readonly targets: readonly string[];
-  /** Asked in order before the host lock and again under it; the first that does not pass holds the roll. */
-  readonly gates: readonly RollGateConfig[];
+  /** Asked in order before the host lock and again under it; the first that does not pass holds the deploy. */
+  readonly checks: readonly DeployCheckConfig[];
   /**
    * Installs a pulled range's dependency change (package-lock.json, or package.json fields an install reads), such as
    * `npm ci --ignore-scripts`: run after the pull and the `dependencyCheck`, before `afterPull`. A failed install
    * moves the main checkout back and runs again to restore its dependencies. With `dependencyGate`, a dependency
-   * change rolls only when this and `dependencyCheck` are set.
+   * change deploys only when this and `dependencyCheck` are set.
    */
   readonly dependencyInstall?: readonly string[];
-  /** Run in order after the pull, before `command`; one that fails ends the roll before it deploys. */
+  /** Run in order after the pull, before `command`; one that fails ends the deploy before its command runs. */
   readonly afterPull: readonly (readonly string[])[];
-  /** Deploys what the pull brought: exit 0 rolled (a stdout line `no-roll`: nothing needed rolling), else failed. */
+  /** Deploys what the pull brought: exit 0 deployed (a stdout line `no-roll`: nothing needed deploying), else failed. */
   readonly command: readonly string[];
 }
 
@@ -729,12 +729,12 @@ export interface ClaimsConfig {
 
 /** `teamrig windows`: when a measurement of a deploy target is clean, between the deploys and heavy steps that disturb it. */
 export interface WindowsConfig {
-  /** A target measures cleanly this many minutes after a deploy rolled it. */
+  /** A target measures cleanly this many minutes after a deploy reached it. */
   readonly settleMinutes: number;
   /** Per deploy target, its own settle minutes in place of `settleMinutes`. */
   readonly targetSettleMinutes: Readonly<Record<string, number>>;
-  /** How long a deploy is taken to have rolled before its ledger.md line when the ledger has no record of its start. */
-  readonly assumedRollMinutes: number;
+  /** How long a deploy is taken to have run before its ledger.md line when the ledger has no record of its start. */
+  readonly assumedDeployMinutes: number;
   /** The shortest clean window worth listing. */
   readonly minMinutes: number;
 }
@@ -749,8 +749,8 @@ export interface CoordinatorConfig {
   readonly schedule: ScheduleConfig;
   readonly heavy: HeavyConfig;
   readonly wait: CoordinatorWaitConfig;
-  /** A roll's gate still running after this many seconds is stopped, and the roll waits. */
-  readonly gateTimeoutSeconds: number;
+  /** A deploy's check still running after this many seconds is stopped, and the deploy waits. */
+  readonly checkTimeoutSeconds: number;
   readonly claims: ClaimsConfig;
   readonly windows: WindowsConfig;
   /** By name, such as `api`. */

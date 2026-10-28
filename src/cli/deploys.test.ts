@@ -16,10 +16,10 @@ const DEPLOYING = {
   budget: { reset: { weekday: 'tue', timeUtc: '12:00' } },
   coordinator: {
     schedule: { resetBlackoutHours: 4, heavyCutoffUtc: '22:30' },
-    repos: { app: { mainCheckout: MAIN_CHECKOUT, roll: ROLL }, web: { mainCheckout: '/repo/web', deploysOnPush: ['cloud-web'] } },
+    repos: { app: { mainCheckout: MAIN_CHECKOUT, deploy: ROLL }, web: { mainCheckout: '/repo/web', deploysOnPush: ['cloud-web'] } },
   },
 };
-const PLAIN = { ...TEAM, coordinator: { repos: { app: { mainCheckout: MAIN_CHECKOUT, roll: ROLL } } } };
+const PLAIN = { ...TEAM, coordinator: { repos: { app: { mainCheckout: MAIN_CHECKOUT, deploy: ROLL } } } };
 
 /** A lock po's build took at 09:50, lasting to `expiresAt`. */
 function heldBy(expiresAt: string = '2030-01-08T12:20:00.000Z'): string {

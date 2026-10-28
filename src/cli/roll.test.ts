@@ -10,7 +10,7 @@ import { heldBy, otherRuns } from '../testing/held-lock.ts';
 const LEDGER = join(TEAM_HOME, 'state', 'deploys', 'ledger.jsonl');
 const LOCK = join(KIT, 'host.lock');
 const COMMAND = ['node', 'tools/roll.js'];
-const ROLLING = { ...TEAM, coordinator: { repos: { app: { mainCheckout: MAIN_CHECKOUT, roll: { targets: ['api'], command: COMMAND } } } } };
+const ROLLING = { ...TEAM, coordinator: { repos: { app: { mainCheckout: MAIN_CHECKOUT, deploy: { targets: ['api'], command: COMMAND } } } } };
 const ROLL = ['roll', '--session', 'alpha'];
 /** A run outside the project folder and any checkout: its team comes from $TEAMRIG_TEAM. */
 const ELSEWHERE = { cwd: '/elsewhere', env: { TEAMRIG_TEAM: 'app' } };

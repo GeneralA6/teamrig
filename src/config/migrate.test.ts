@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import type { JsonRecord } from '../core/guards.ts';
-import { CONFIG_MIGRATIONS, DROP_FIXED_DAILY_BUDGETS, migrateConfig, RENAME_BLOCKED_TO_WAITING, RENAME_TIERS_TO_PRIORITIES, type ConfigMigration } from './migrate.ts';
+import { isRecord, type JsonRecord } from '../core/guards.ts';
+import { CONFIG_MIGRATIONS, DROP_FIXED_DAILY_BUDGETS, migrateConfig, RENAME_BLOCKED_TO_WAITING, RENAME_TIERS_TO_PRIORITIES, RENAME_TO_PLAIN_WORDS, type ConfigMigration } from './migrate.ts';
 import { CONFIG_VERSION } from './types.ts';
 
 /** v1→v2 renames `messages.maxLines` to `messages.lineLimit` (release 9.2.0); v2→v3 adds `newKey` (9.3.0). */
@@ -179,12 +179,88 @@ describe('the shipped migrations', () => {
     assert.equal(DROP_FIXED_DAILY_BUDGETS.from, 3);
   });
 
+  it('v4 to v5 renames the deploy keys into plain words, each in its place, and keeps every value', () => {
+    const roll = { targets: ['api'], gates: [{ name: 'flow', command: ['node', 'flow.js'] }], afterPull: [], command: ['node', 'deploy.js'] };
+    const coordinator: JsonRecord = {
+      dir: 'coordinator',
+      gateTimeoutSeconds: 30,
+      windows: { settleMinutes: 30, assumedRollMinutes: 25, minMinutes: 15 },
+      repos: { api: { mainCheckout: '/repo/api', roll, followMainCheckout: true }, web: { mainCheckout: '/repo/web' } },
+    };
+    const raw: JsonRecord = { configVersion: 4, coordinator, custom: true };
+    const result = migrateConfig(raw, 5);
+    assert.deepEqual(result, {
+      kind: 'migrated',
+      fromVersion: 4,
+      version: 5,
+      config: {
+        configVersion: 5,
+        coordinator: {
+          dir: 'coordinator',
+          checkTimeoutSeconds: 30,
+          windows: { settleMinutes: 30, assumedDeployMinutes: 25, minMinutes: 15 },
+          repos: {
+            api: { mainCheckout: '/repo/api', deploy: { targets: ['api'], checks: roll.gates, afterPull: [], command: ['node', 'deploy.js'] }, followMainCheckout: true },
+            web: { mainCheckout: '/repo/web' },
+          },
+        },
+        custom: true,
+      },
+      changes: [
+        'v4→v5: coordinator.repos.api.roll → coordinator.repos.api.deploy',
+        'v4→v5: coordinator.repos.api.deploy.gates → coordinator.repos.api.deploy.checks',
+        'v4→v5: coordinator.gateTimeoutSeconds → coordinator.checkTimeoutSeconds',
+        'v4→v5: coordinator.windows.assumedRollMinutes → coordinator.windows.assumedDeployMinutes',
+      ],
+      firstRelease: RENAME_TO_PLAIN_WORDS.firstRelease,
+    });
+    const written = result.kind === 'migrated' ? result.config['coordinator'] : undefined;
+    assert.ok(isRecord(written));
+    assert.deepEqual(Object.keys(written), ['dir', 'checkTimeoutSeconds', 'windows', 'repos'], 'a renamed key keeps its place');
+    assert.deepEqual(raw['coordinator'], coordinator, 'the input is not mutated');
+    assert.deepEqual(coordinator['repos'], { api: { mainCheckout: '/repo/api', roll, followMainCheckout: true }, web: { mainCheckout: '/repo/web' } });
+  });
+
+  it('v4 to v5 keeps the old key where both are set, as version 4 read only it, and says the new one was replaced', () => {
+    const raw: JsonRecord = {
+      coordinator: {
+        gateTimeoutSeconds: 30,
+        checkTimeoutSeconds: 90,
+        repos: { api: { mainCheckout: '/repo/api', deploy: { command: ['node', 'new.js'] }, roll: { command: ['node', 'old.js'], gates: [], checks: [{ name: 'x' }] } } },
+      },
+    };
+    assert.deepEqual(RENAME_TO_PLAIN_WORDS.apply(raw), {
+      config: { coordinator: { checkTimeoutSeconds: 30, repos: { api: { mainCheckout: '/repo/api', deploy: { command: ['node', 'old.js'], checks: [] } } } } },
+      changes: [
+        'coordinator.repos.api.roll → coordinator.repos.api.deploy, replacing the coordinator.repos.api.deploy version 4 did not read',
+        'coordinator.repos.api.deploy.gates → coordinator.repos.api.deploy.checks, replacing the coordinator.repos.api.deploy.checks version 4 did not read',
+        'coordinator.gateTimeoutSeconds → coordinator.checkTimeoutSeconds, replacing the coordinator.checkTimeoutSeconds version 4 did not read',
+      ],
+    });
+  });
+
+  it('v4 to v5 changes nothing but the version when no old key is set', () => {
+    const configs: JsonRecord[] = [
+      {},
+      { coordinator: 'not an object' },
+      { coordinator: { repos: 'not an object', windows: 3 } },
+      { coordinator: { repos: { api: 'odd', web: { mainCheckout: '/repo/web', merge: { gates: [] } } } } },
+      { coordinator: { checkTimeoutSeconds: 30, windows: { assumedDeployMinutes: 20 }, repos: { api: { deploy: { checks: [] } } } } },
+      { roll: { gates: [] }, gateTimeoutSeconds: 30 },
+    ];
+    for (const config of configs) {
+      assert.deepEqual(RENAME_TO_PLAIN_WORDS.apply(config), { config, changes: [] }, JSON.stringify(config));
+    }
+    assert.equal(RENAME_TO_PLAIN_WORDS.from, 4);
+  });
+
   it('a version-1 file reaches the current version through every step', () => {
-    const result = migrateConfig({ configVersion: 1, register: { tiers: [], requireNoteOn: ['blocked'] } });
+    const result = migrateConfig({ configVersion: 1, register: { tiers: [], requireNoteOn: ['blocked'] }, coordinator: { gateTimeoutSeconds: 30 } });
     assert.equal(result.kind, 'migrated');
     if (result.kind === 'migrated') {
       assert.equal(result.config['configVersion'], CONFIG_VERSION);
       assert.deepEqual(result.config['register'], { priorities: [], requireNoteOn: ['waiting'] });
+      assert.deepEqual(result.config['coordinator'], { checkTimeoutSeconds: 30 });
     }
   });
 });

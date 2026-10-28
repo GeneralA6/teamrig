@@ -1,8 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { dirname, join } from 'node:path';
-import type { CoordinatorConfig, CoordinatorRepoConfig, RollConfig, ScheduleConfig } from '../config/types.ts';
-import { DEFAULT_CLAIMS, DEFAULT_COORDINATOR_WAIT, DEFAULT_GATE_TIMEOUT_SECONDS, DEFAULT_HEAVY, DEFAULT_WINDOWS } from '../config/defaults.ts';
+import type { CoordinatorConfig, CoordinatorRepoConfig, DeployConfig, ScheduleConfig } from '../config/types.ts';
+import { DEFAULT_CLAIMS, DEFAULT_COORDINATOR_WAIT, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_HEAVY, DEFAULT_WINDOWS } from '../config/defaults.ts';
 import { HostLock } from '../coordinator/host-lock.ts';
 import type { CoordinatorPlaces } from '../coordinator/places.ts';
 import type { Env } from '../core/home.ts';
@@ -29,8 +29,8 @@ const PLACES: CoordinatorPlaces = {
 const FLOW = { name: 'flow', command: ['node', 'gates/flow.js'] };
 const AFTER_PULL = ['node', 'scripts/build-cli.js'];
 const COMMAND = ['node', 'tools/roll.js'];
-const ROLL: RollConfig = { targets: ['api', 'workers'], gates: [FLOW], afterPull: [AFTER_PULL], command: COMMAND };
-const PIPELINE: CoordinatorRepoConfig = { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], dependencyGate: false, followMainCheckout: false, roll: ROLL };
+const DEPLOY: DeployConfig = { targets: ['api', 'workers'], checks: [FLOW], afterPull: [AFTER_PULL], command: COMMAND };
+const PIPELINE: CoordinatorRepoConfig = { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], dependencyGate: false, followMainCheckout: false, deploy: DEPLOY };
 const REQUEST: RollRequest = { session: 'po', repo: undefined, dir: '/elsewhere' };
 const HEAVY_MS = DEFAULT_HEAVY.maxRunMinutes * 60_000;
 const SECRET = ['db password', '=', 'hunter2'].join('');
@@ -59,7 +59,7 @@ class World {
       schedule: options.schedule ?? {},
       heavy: DEFAULT_HEAVY,
       wait: DEFAULT_COORDINATOR_WAIT,
-      gateTimeoutSeconds: DEFAULT_GATE_TIMEOUT_SECONDS,
+      checkTimeoutSeconds: DEFAULT_CHECK_TIMEOUT_SECONDS,
       claims: DEFAULT_CLAIMS,
       windows: DEFAULT_WINDOWS,
       repos: options.repos ?? { pipeline: PIPELINE },
@@ -128,8 +128,8 @@ const DEPS_CHANGED = 'deps changed (package-lock.json)';
 
 /** A world whose pushed range changes package-lock.json, with the dependency gate, the check and the install each on unless turned off. */
 function depsWorld({ gate = true, check = true, install = true }: { readonly gate?: boolean; readonly check?: boolean; readonly install?: boolean } = {}): World {
-  const roll: RollConfig = install ? { ...ROLL, dependencyInstall: INSTALL } : ROLL;
-  const world = new World({ repos: { pipeline: { ...PIPELINE, dependencyGate: gate, roll, ...(check ? { dependencyCheck: CHECK } : {}) } } });
+  const deploy: DeployConfig = install ? { ...DEPLOY, dependencyInstall: INSTALL } : DEPLOY;
+  const world = new World({ repos: { pipeline: { ...PIPELINE, dependencyGate: gate, deploy, ...(check ? { dependencyCheck: CHECK } : {}) } } });
   world.git.paths = ['package-lock.json', 'src/app.ts'];
   world.git.files.set(`base:${LOCKFILE}`, OLD_LOCK);
   return world;
@@ -278,7 +278,7 @@ describe('rollRepo', () => {
     held.git.paths = ['package-lock.json', 'src/app.ts'];
     refused(
       await held.run(),
-      'deps changed (package-lock.json): coordinator.repos.pipeline.dependencyGate holds a dependency change, since pulling it changes, unreviewed, the node_modules every worktree links to; set coordinator.repos.pipeline.dependencyCheck and coordinator.repos.pipeline.roll.dependencyInstall to roll one, or pull and install by hand',
+      'deps changed (package-lock.json): coordinator.repos.pipeline.dependencyGate holds a dependency change, since pulling it changes, unreviewed, the node_modules every worktree links to; set coordinator.repos.pipeline.dependencyCheck and coordinator.repos.pipeline.deploy.dependencyInstall to roll one, or pull and install by hand',
     );
     for (const world of [offBranch, dirty, diverged, held]) {
       assert.deepEqual([world.hooks.ran.length, world.files.get(PLACES.hostLock), world.pulled()], [0, undefined, false]);
@@ -393,7 +393,7 @@ describe('rollRepo of a range that changes the dependencies', () => {
   it('holds the range, before any gate or lock, while the gate lacks the check or the install, or cannot read the range', async () => {
     const hold = 'deps changed (package-lock.json): coordinator.repos.pipeline.dependencyGate holds a dependency change, since pulling it changes, unreviewed, the node_modules every worktree links to; set';
     const noInstall = depsWorld({ install: false });
-    refused(await noInstall.run(), `${hold} coordinator.repos.pipeline.roll.dependencyInstall to roll one, or pull and install by hand`);
+    refused(await noInstall.run(), `${hold} coordinator.repos.pipeline.deploy.dependencyInstall to roll one, or pull and install by hand`);
     const noCheck = depsWorld({ check: false });
     refused(await noCheck.run(), `${hold} coordinator.repos.pipeline.dependencyCheck to roll one, or pull and install by hand`);
     const unreadable = depsWorld();

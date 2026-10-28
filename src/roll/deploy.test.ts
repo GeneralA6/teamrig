@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import type { CoordinatorConfig, CoordinatorRepoConfig, RollConfig, ScheduleConfig } from '../config/types.ts';
-import { DEFAULT_CLAIMS, DEFAULT_COORDINATOR_WAIT, DEFAULT_GATE_TIMEOUT_SECONDS, DEFAULT_HEAVY, DEFAULT_WINDOWS } from '../config/defaults.ts';
+import type { CoordinatorConfig, CoordinatorRepoConfig, DeployConfig, ScheduleConfig } from '../config/types.ts';
+import { DEFAULT_CLAIMS, DEFAULT_COORDINATOR_WAIT, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_HEAVY, DEFAULT_WINDOWS } from '../config/defaults.ts';
 import { HostLock } from '../coordinator/host-lock.ts';
 import type { CoordinatorPlaces } from '../coordinator/places.ts';
 import type { ResetTime } from '../coordinator/schedule.ts';
@@ -27,8 +27,8 @@ const PLACES: CoordinatorPlaces = {
 };
 const FLOW = { name: 'flow', command: ['node', 'gates/flow.js'] };
 const ROLL_COMMAND = ['node', 'tools/roll.js'];
-const ROLL: RollConfig = { targets: ['api', 'workers', 'live'], gates: [FLOW], afterPull: [['node', 'scripts/build-cli.js']], command: ROLL_COMMAND };
-const PIPELINE: CoordinatorRepoConfig = { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], dependencyGate: false, followMainCheckout: false, roll: ROLL };
+const DEPLOY: DeployConfig = { targets: ['api', 'workers', 'live'], checks: [FLOW], afterPull: [['node', 'scripts/build-cli.js']], command: ROLL_COMMAND };
+const PIPELINE: CoordinatorRepoConfig = { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], dependencyGate: false, followMainCheckout: false, deploy: DEPLOY };
 const RESTART = ['node', 'tools/restart.js', 'api', 'live'];
 const REQUEST: DeployRequest = { session: 'sec', repo: 'pipeline', dir: '/runner', targets: ['api', 'live'], why: 'rotate the db credential', argv: RESTART };
 const SECRET = ['db password', '=', 'hunter2'].join('');
@@ -58,7 +58,7 @@ class World {
       schedule: options.schedule ?? {},
       heavy: DEFAULT_HEAVY,
       wait: DEFAULT_COORDINATOR_WAIT,
-      gateTimeoutSeconds: DEFAULT_GATE_TIMEOUT_SECONDS,
+      checkTimeoutSeconds: DEFAULT_CHECK_TIMEOUT_SECONDS,
       claims: DEFAULT_CLAIMS,
       windows: DEFAULT_WINDOWS,
       repos: { pipeline: PIPELINE },
@@ -140,7 +140,7 @@ describe('deployTargets', () => {
 
   it('refuses targets its repository does not deploy, or none, before any gate or lock', async () => {
     const world = new World();
-    const listed = 'coordinator.repos.pipeline.roll.targets (api, workers, live)';
+    const listed = 'coordinator.repos.pipeline.deploy.targets (api, workers, live)';
     assert.deepEqual(await world.run({ ...REQUEST, targets: ['api', 'apii', 'cron'] }), { kind: 'refused', reason: `apii, cron are not in ${listed}: a deploy names only targets the quiet claims and windows know` });
     assert.deepEqual(await world.run({ ...REQUEST, targets: ['apii'] }), { kind: 'refused', reason: `apii is not in ${listed}: a deploy names only targets the quiet claims and windows know` });
     assert.deepEqual(await world.run({ ...REQUEST, targets: [] }), { kind: 'refused', reason: `name the targets the command restarts, from ${listed}` });

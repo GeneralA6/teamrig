@@ -121,8 +121,76 @@ export const DROP_FIXED_DAILY_BUDGETS: ConfigMigration = {
   },
 };
 
+/** One key a release renamed: `from` becomes `to` in each record the path `at` reaches, where `*` stands for every entry of a map. */
+interface KeyRename {
+  readonly at: readonly string[];
+  readonly from: string;
+  readonly to: string;
+}
+
+/**
+ * The keys v5 renamed into plain words (T1308): a repository's `roll` block became `deploy` and its `gates` its
+ * `checks`, and the coordinator's `gateTimeoutSeconds` and `windows.assumedRollMinutes` followed. Applied in order, so a
+ * rename inside a key comes before a later rename of the key itself; a later rename of the same release appends here.
+ */
+const PLAIN_WORD_RENAMES: readonly KeyRename[] = [
+  { at: ['coordinator', 'repos', '*'], from: 'roll', to: 'deploy' },
+  { at: ['coordinator', 'repos', '*', 'deploy'], from: 'gates', to: 'checks' },
+  { at: ['coordinator'], from: 'gateTimeoutSeconds', to: 'checkTimeoutSeconds' },
+  { at: ['coordinator', 'windows'], from: 'assumedRollMinutes', to: 'assumedDeployMinutes' },
+];
+
+/**
+ * `record` with `rename.from` renamed to `rename.to` in each record `at` reaches below `path`, each key kept in its place
+ * so a written file's diff shows only the rename. Where both keys are set the old one's value wins, as the version that
+ * wrote the file read only the old one; its change line says the new key's value was replaced.
+ */
+function renameKey(record: JsonRecord, at: readonly string[], rename: KeyRename, path: readonly string[], fromVersion: number): MigrationStep {
+  const [head, ...below] = at;
+  if (head === undefined) {
+    if (!Object.hasOwn(record, rename.from)) {
+      return { config: record, changes: [] };
+    }
+    const [from, to] = [[...path, rename.from].join('.'), [...path, rename.to].join('.')];
+    const replaced = Object.hasOwn(record, rename.to);
+    const entries = Object.entries(record)
+      .filter(([key]) => key !== rename.to)
+      .map(([key, value]): [string, unknown] => [key === rename.from ? rename.to : key, value]);
+    return { config: Object.fromEntries(entries), changes: [replaced ? `${from} → ${to}, replacing the ${to} version ${fromVersion} did not read` : `${from} → ${to}`] };
+  }
+  let config = record;
+  const changes: string[] = [];
+  for (const key of head === '*' ? Object.keys(record) : [head]) {
+    const child = record[key];
+    if (!isRecord(child)) {
+      continue;
+    }
+    const step = renameKey(child, below, rename, [...path, key], fromVersion);
+    if (step.changes.length > 0) {
+      config = { ...config, [key]: step.config };
+      changes.push(...step.changes);
+    }
+  }
+  return { config, changes };
+}
+
+/** `config` with each of `renames` applied in order, and one change line for each key renamed. */
+function renameKeys(config: JsonRecord, renames: readonly KeyRename[], fromVersion: number): MigrationStep {
+  return renames.reduce<MigrationStep>((step, rename) => {
+    const next = renameKey(step.config, rename.at, rename, [], fromVersion);
+    return { config: next.config, changes: [...step.changes, ...next.changes] };
+  }, { config, changes: [] });
+}
+
+/** v4 to v5: the deploy flow's keys in plain words, PLAIN_WORD_RENAMES; every value is kept as it was. */
+export const RENAME_TO_PLAIN_WORDS: ConfigMigration = {
+  from: 4,
+  firstRelease: '0.206.0',
+  apply: (config) => renameKeys(config, PLAIN_WORD_RENAMES, 4),
+};
+
 /** The shipped chain, in order: each step reads `from` and produces `from + 1`. */
-export const CONFIG_MIGRATIONS: readonly ConfigMigration[] = [RENAME_TIERS_TO_PRIORITIES, RENAME_BLOCKED_TO_WAITING, DROP_FIXED_DAILY_BUDGETS];
+export const CONFIG_MIGRATIONS: readonly ConfigMigration[] = [RENAME_TIERS_TO_PRIORITIES, RENAME_BLOCKED_TO_WAITING, DROP_FIXED_DAILY_BUDGETS, RENAME_TO_PLAIN_WORDS];
 
 /** The config format a release reads and writes: its version and the migration chain that reaches it. */
 export interface ConfigFormat {
