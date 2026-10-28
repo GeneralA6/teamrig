@@ -15,7 +15,7 @@ import { logWake, WakeStore } from "../../wake/store.js";
 import { noPositionals } from "../args.js";
 import { openKit, rosterOf, teamZone } from "../kit.js";
 import { EXIT } from "../runtime.js";
-import { readWPerPct } from "../stored-week.js";
+import { readTodayWPerPct } from "../stored-week.js";
 import { teamRegister } from "../team-register.js";
 import { budgetFactsOf } from "./hook-budget.js";
 import { inboxDepsOf } from "./inbox.js";
@@ -241,7 +241,7 @@ export async function wakeCheck(args, runtime) {
     }
     const now = runtime.clock.now();
     const last = verdict.kind === 'moments' ? verdict.lastTurnAt : await lastWriteOf(runtime.transcripts, claudeProjectsDir(runtime.env, runtime.userHome), [tab]);
-    const wPerPct = await readWPerPct(runtime, kit.paths, config, now);
+    const wPerPct = await readTodayWPerPct(runtime, kit.paths, config, now);
     const cost = wakeCost(last === undefined ? undefined : now - last, config.messages.coldAfterMinutes, wPerPct);
     const ids = verdict.tasks.map((task) => task.id);
     if (verdict.kind === 'handed') {
