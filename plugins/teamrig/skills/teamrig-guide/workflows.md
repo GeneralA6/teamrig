@@ -215,7 +215,8 @@ so it never loses work to a compaction.
    If the user sends a prompt first, the restart is cancelled and you keep this context. When the restart
    cannot start, the title reads `[shop] web: type /clear`: ask the user to type `/clear`.
 5. After the fresh start, the session-start context says `You were refreshed after T2; read your handover first:
-   <path>`, then the scheduled jobs (still scheduled after a `/clear`, to make again after a new process), the
+   <path>`, and that a file needs a Read-tool read before an Edit or Write (Claude Code keeps no read from before
+   the refresh, and a read by `cat` does not count), then the scheduled jobs (still scheduled after a `/clear`, to make again after a new process), the
    wake-up to make again, the old scratchpad and the plan file, then your active tasks as the register holds them
    (`LIVE TASKS of web, ...`, at most 6 rows and `+N more`, then the other sessions' tasks waiting on you,
    `WAITING ON YOU`, at most 3; where the handover says otherwise, the register wins).

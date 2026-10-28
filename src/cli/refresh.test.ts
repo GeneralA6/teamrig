@@ -109,7 +109,9 @@ describe('runCli: context refresh', () => {
     });
     assert.deepEqual(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload() }), SILENT, 'the notice shows once');
 
-    const note = `You were refreshed after T1; read your handover first: ${HANDOVER('alpha')}. Then carry on with its next steps.`;
+    const note =
+      `You were refreshed after T1; read your handover first: ${HANDOVER('alpha')}. Then carry on with its next steps. ` +
+      'Read a file with the Read tool before you Edit or Write it: a read by cat or sed, or one before the refresh, does not count.';
     const cron = { cron: '3 13 * * *', prompt: 'budget check', recurring: true };
     await kit.files.append(
       TRANSCRIPT,
@@ -551,7 +553,9 @@ describe('runCli: live tasks in the start note', () => {
     assert.ok(!(await start(kit, 'resume')).includes('LIVE TASKS'), 'a resume keeps its context');
 
     const fresh = await start(kit, 'clear');
-    const note = `You were refreshed after T1; read your handover first: ${HANDOVER('alpha')}. Then carry on with its next steps.`;
+    const note =
+      `You were refreshed after T1; read your handover first: ${HANDOVER('alpha')}. Then carry on with its next steps. ` +
+      'Read a file with the Read tool before you Edit or Write it: a read by cat or sed, or one before the refresh, does not count.';
     assert.ok(fresh.includes(`${note}\n${LIVE}`), fresh);
     assert.ok(!(await start(kit, 'startup')).includes('LIVE TASKS'), 'once: a later start is no refresh');
     assert.ok((await start(kit, 'compact')).endsWith(`\n${LIVE}`), 'every compaction');
