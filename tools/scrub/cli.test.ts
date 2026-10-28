@@ -53,4 +53,13 @@ describe('scrub cli', () => {
     assert.equal(unknown.status, 2, unknown.stdout);
     assert.match(unknown.stderr, /^scrub: Unknown option '--bogus'/);
   });
+
+  it('exits 2 outside a repo, where git config names no private denylist, instead of passing a message', () => {
+    const message = join(repo.outside, 'MSG');
+    writeFileSync(message, 'fix: a clean message\n');
+    const result = repo.runOutside(CLI, ['--message', message]);
+    assert.equal(result.status, 2, result.stderr);
+    assert.match(result.stdout, /^scrub: not inside a git work tree, /m);
+    assert.doesNotMatch(result.stdout, /scrub: clean/);
+  });
 });

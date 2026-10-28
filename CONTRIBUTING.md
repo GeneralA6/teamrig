@@ -141,7 +141,8 @@ Two checks keep private data out of the history:
    IP addresses, internal host names and common secret formats.
 2. **Private denylist** (optional, never committed): a file of your own terms, wired in with
    `git config --local teamrig.scrubDenylist <path>`. Once configured, the hooks fail closed if
-   the file is missing.
+   the file is missing. The scrub runs only inside the repo's work tree, where that setting is read, and refuses
+   anywhere else rather than pass on the generic check alone.
 
 Write test data that looks like a secret by building it at runtime (for example
 `'ghp' + '_' + 'x'.repeat(36)`), so the source never holds the literal.
