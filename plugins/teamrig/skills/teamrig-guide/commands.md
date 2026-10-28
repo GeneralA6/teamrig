@@ -1470,8 +1470,10 @@ hooks run, and the `autoMode` lines of each settings file (never its `env` block
 A word list finds a line's topic, never its meaning, so the scan lists every line whose words touch a core rule
 (`CANDIDATE`, with the rules it touches) and the model judges which of them conflict; most do not. The team-setup
 skill walks the lead and the user through each conflict. `RECORDED` lines are the ones the team kept (`rules
-keep`), numbered for `rules forget`; a kept line that is no longer there prints `GONE`. A line that looks like it
-holds a secret prints as withheld. Not scanned: files a CLAUDE.md pulls in with `@path`, plugin skills and hooks,
+keep`), numbered for `rules forget`; a kept line that is no longer there prints `GONE`. In a sub-team, each line a
+team above kept prints first as `ABOVE <team>` (`ABOVE <team> GONE` when it is no longer there), unnumbered: it
+binds this team's sessions too, only that team's lead records or drops it, and its line is no candidate here. A
+line that looks like it holds a secret prints as withheld. Not scanned: files a CLAUDE.md pulls in with `@path`, plugin skills and hooks,
 and managed settings.
 
 A line `rules clear` recorded as not conflicting is left out while its text and the core rules it touches stay the
@@ -1509,6 +1511,9 @@ Records a local rule the user keeps although it conflicts with a core rule (`tea
 in the team config [ruleConflicts]. The lead only. With `--wins local` the line wins: the core rules' first line
 makes it an exception and lists it under `Kept local rules`. With `--wins teamrig` the line stays but the core rule
 wins; it warns that a session still reads the line and may follow it, so removing or rewriting it is safer.
+A team's kept rules reach the sessions of each sub-team below it too: there they are listed first, root first,
+tagged `(team <id>)`, and a line a team above and the sub-team both kept shows once, with the verdict of the team
+above.
 
 The record quotes the line's text (up to 300 characters), so it still finds the line when lines above it move.
 Keeping the same line against the same rule again changes the record. It refuses a file or line that is not there,

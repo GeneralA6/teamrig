@@ -69,7 +69,8 @@ The injected context holds:
    budget of 2,750 characters, in that order: one that does not fit comes as a pointer to it, with the room that was
    left, and `teamrig doctor` names it. Where one of them, a CLAUDE.md, a rules file, a skill, memory or a hook's
    text conflicts with the core rules, the core rules win, except the local rules the team kept (`teamrig rules
-   keep`), which the core rules list under `Kept local rules`. `teamrig rules scan` lists the lines to settle.
+   keep`), which the core rules list under `Kept local rules`: in a sub-team, those of each team above first, root
+   first, tagged `(team <id>)`. `teamrig rules scan` lists the lines to settle.
 6. **After a refresh**: `You were refreshed after T2; read your handover first: <path>`, once, at the first
    fresh start (the automatic restart, a `/clear` or a new start) after the handover was written. A compact or resume keeps the old context, so the
    note waits. It then lists what the old session leaves: its scheduled jobs (`CronCreate`; after a `/clear`
