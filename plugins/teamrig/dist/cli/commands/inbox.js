@@ -21,7 +21,7 @@ import { hookLogOf } from "../hook-logs.js";
 import { callerOf, instantOf, sessionRef } from "../inputs.js";
 import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
-import { readWPerPct } from "../stored-week.js";
+import { readTodayWPerPct } from "../stored-week.js";
 import { TreeTasks } from "../tree-tasks.js";
 import { loadTree } from "../tree.js";
 import { verifyNoteOf } from "./verify-queue.js";
@@ -238,7 +238,7 @@ async function wakeSenderOf(own, recipients, reads) {
  * write to its latest tabs' transcripts until the wake, as the wake check reckons it.
  */
 async function postWakes(runtime, own, recipients, text, now, when) {
-    const wPerPct = await readWPerPct(runtime, own.paths, own.config, now);
+    const wPerPct = await readTodayWPerPct(runtime, own.paths, own.config, now);
     const projects = claudeProjectsDir(runtime.env, runtime.userHome);
     const marksByTeam = new Map();
     const marksOf = (recipient) => {

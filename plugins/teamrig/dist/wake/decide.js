@@ -169,7 +169,8 @@ export function effectivePriority(configured, rest) {
 /**
  * The cost of waking a session idle `idleMs` (undefined: unknown, counted cold). It is cold past
  * `messages.coldAfterMinutes`; a team that set that to 0 (no held sends) still has a cache that expires, so the
- * default applies then. `wPerPct` is the week's W per percent (`readWPerPct`, cli/stored-week.ts), undefined while unknown.
+ * default applies then. `wPerPct` is today's W per percent of the week (`readTodayWPerPct`, cli/stored-week.ts), as
+ * `teamrig budget` prices today's rows, undefined while unknown.
  */
 export function wakeCost(idleMs, coldAfterMinutes, wPerPct) {
     const after = coldAfterMinutes > 0 ? coldAfterMinutes : DEFAULT_MESSAGES.coldAfterMinutes;
