@@ -158,8 +158,11 @@ describe('idlePassTrouble', () => {
     assert.equal(idlePassTrouble(last, AT - IDLE_PASS_STALE_MS), undefined);
   });
 
-  it('is stale with no pass yet or past IDLE_PASS_STALE_MS, a failure then included', () => {
-    assert.deepEqual(idlePassTrouble(undefined, AT), { kind: 'stale', at: undefined });
+  it('finds none with no pass yet: a new team, or one just moved onto the pass by its default, waits for an idle tab (T1409)', () => {
+    assert.equal(idlePassTrouble(undefined, AT), undefined);
+  });
+
+  it('is stale past IDLE_PASS_STALE_MS, a failure then included', () => {
     assert.deepEqual(idlePassTrouble(passedState(AT, STEPS), AT + IDLE_PASS_STALE_MS + 1), { kind: 'stale', at: AT });
     assert.deepEqual(idlePassTrouble(failedState(undefined, AT, 'EACCES'), AT + IDLE_PASS_STALE_MS + 1), { kind: 'stale', at: AT });
   });
@@ -178,7 +181,6 @@ describe('idlePassTrouble', () => {
       formatIdlePassTrouble({ kind: 'stale', at: AT }, 'dry-run', later),
       "FLEET-STALE the idle pass (open.idle.mode dry-run) last ran 16 min ago: an idle tab's hook wake-check runs it at least every 10 minutes, so check wake.enabled and that the tabs' teamrig hooks run",
     );
-    assert.match(formatIdlePassTrouble({ kind: 'stale', at: undefined }, 'dry-run', later), /^FLEET-STALE the idle pass \(open\.idle\.mode dry-run\) has not run yet: /);
     assert.equal(
       formatIdlePassTrouble({ kind: 'failed', at: AT, error: 'EACCES: permission denied' }, 'dry-run', AT + 2 * 60_000),
       'FLEET-STALE the idle pass (open.idle.mode dry-run) failed at its last run, 2 min ago: EACCES: permission denied; state/idle-pass.jsonl logs each new failure',
