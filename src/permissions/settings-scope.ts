@@ -15,16 +15,25 @@ export type SettingsKind = 'user' | 'local' | 'shared';
 export interface SettingsFile {
   readonly path: string;
   readonly kind: SettingsKind;
+  /** For a file in one of a project's `.claude/worktrees`, the same file in that project folder. */
+  readonly projectFile?: string;
 }
 
 /** Where Claude Code makes a project's worktrees, from the project folder. */
 const WORKTREES = ['.claude', 'worktrees'] as const;
 
+/** A folder's settings files under its `.claude`, with their kinds. */
+const FOLDER_FILES = [
+  ['settings.json', 'shared'],
+  ['settings.local.json', 'local'],
+] as const;
+
 function projectFiles(folder: string): SettingsFile[] {
-  return [
-    { path: join(folder, '.claude', 'settings.json'), kind: 'shared' },
-    { path: join(folder, '.claude', 'settings.local.json'), kind: 'local' },
-  ];
+  return FOLDER_FILES.map(([name, kind]) => ({ path: join(folder, '.claude', name), kind }));
+}
+
+function worktreeFiles(folder: string, worktree: string): SettingsFile[] {
+  return FOLDER_FILES.map(([name, kind]) => ({ path: join(worktree, '.claude', name), kind, projectFile: join(folder, '.claude', name) }));
 }
 
 /** The user settings, then each project folder's files and its worktrees' in name order; a path named twice is listed once, as first named. */
@@ -33,7 +42,7 @@ export async function settingsScope(files: Files, claudeDir: string, projects: r
   for (const folder of projects) {
     const worktrees = join(folder, ...WORKTREES);
     const names = (await files.list(worktrees)).sort((left, right) => left.localeCompare(right));
-    scope.push(...projectFiles(folder), ...names.flatMap((name) => projectFiles(join(worktrees, name))));
+    scope.push(...projectFiles(folder), ...names.flatMap((name) => worktreeFiles(folder, join(worktrees, name))));
   }
   return scope.filter((file, index) => scope.findIndex((other) => samePath(other.path, file.path, platform)) === index);
 }

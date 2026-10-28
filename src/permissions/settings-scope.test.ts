@@ -15,8 +15,15 @@ function project(folder: string): SettingsFile[] {
   ];
 }
 
+function worktree(folder: string, tree: string): SettingsFile[] {
+  return [
+    { path: join(tree, '.claude', 'settings.json'), kind: 'shared', projectFile: join(folder, '.claude', 'settings.json') },
+    { path: join(tree, '.claude', 'settings.local.json'), kind: 'local', projectFile: join(folder, '.claude', 'settings.local.json') },
+  ];
+}
+
 describe('settingsScope', () => {
-  it("lists the user settings, then each project's files and its Claude Code worktrees' in name order", async () => {
+  it("lists the user settings, then each project's files and its Claude Code worktrees' in name order, each naming the project's same file", async () => {
     const worktrees = join(REPO, '.claude', 'worktrees');
     const files = new MemoryFiles({
       [join(worktrees, 'b-tree', '.claude', 'settings.local.json')]: '{}',
@@ -26,8 +33,8 @@ describe('settingsScope', () => {
     assert.deepEqual(scope, [
       { path: join(CLAUDE, 'settings.json'), kind: 'user' },
       ...project(REPO),
-      ...project(join(worktrees, 'a-tree')),
-      ...project(join(worktrees, 'b-tree')),
+      ...worktree(REPO, join(worktrees, 'a-tree')),
+      ...worktree(REPO, join(worktrees, 'b-tree')),
       ...project(OTHER),
     ]);
   });

@@ -35,7 +35,7 @@ function candidate(kind: PlaceKind, path: string, line: number): Candidate {
 
 const ALPHA = skill('alpha', 'a'.repeat(300));
 const BETA = skill('beta', 'b'.repeat(300));
-const WIDE: SettingsFinding = { kind: 'wide-allow', path: USER_SETTINGS, what: '2 allow rule(s) approve a whole tool' };
+const WIDE: SettingsFinding = { kind: 'wide-allow', path: USER_SETTINGS, what: '2 allow rule(s) approve a whole tool', copies: 0 };
 
 const SCAN: SetupScan = {
   context: {
@@ -135,6 +135,15 @@ describe('scanReport', () => {
     assert.deepEqual(scanReport(scan, AT).filter((line) => /^U(NUSED|\d)/.test(line)), [
       'UNUSED 1 of 2 skill(s) not used in the newest 2.5 day(s) (read 3 transcript(s), 1.5 MB, newest first; 4 older one(s) of 30 day(s) left unread past the 1024 MB bound, --max-mb raises it)',
       'U1 unused-skill ~/.claude/skills/beta/SKILL.md: no Skill call or /beta in the newest 2.5 day(s) (~78 tokens/turn)',
+    ]);
+  });
+
+  it("counts a finding's worktree copies on its one line", () => {
+    const local: SettingsFinding = { kind: 'wide-allow', path: '/work/app/.claude/settings.local.json', what: '210 allow rule(s) approve a whole tool', copies: 9 };
+    assert.deepEqual(scanReport({ ...SCAN, settings: [WIDE, local] }, AT).filter((line) => /^S(ETTINGS|\d)/.test(line)), [
+      'SETTINGS 2 finding(s)',
+      'S1 wide-allow ~/.claude/settings.json: 2 allow rule(s) approve a whole tool',
+      `S2 wide-allow ${shown(local.path)}: 210 allow rule(s) approve a whole tool; the same in 9 more file(s) under .claude/worktrees`,
     ]);
   });
 
