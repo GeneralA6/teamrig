@@ -489,7 +489,9 @@ describe('decideStart', () => {
     for (const source of ['clear', 'startup']) {
       assert.deepEqual(decideStart(READY, source, DEFAULT_REFRESH, HANDOVER, NOW), {
         kind: 'inject',
-        note: `You were refreshed after T12; read your handover first: ${HANDOVER}. Then carry on with its next steps.`,
+        note:
+          `You were refreshed after T12; read your handover first: ${HANDOVER}. Then carry on with its next steps. ` +
+          'Read a file with the Read tool before you Edit or Write it: a read by cat or sed, or one before the refresh, does not count.',
         state: { phase: 'refreshed', task: 'T12', at: NOW },
       });
     }
@@ -497,7 +499,9 @@ describe('decideStart', () => {
     const midTask = decideStart({ ...READY, task: null, tokens: 262_144 }, 'clear', DEFAULT_REFRESH, HANDOVER, NOW);
     assert.deepEqual(midTask, {
       kind: 'inject',
-      note: `You were refreshed mid-task; read your handover first: ${HANDOVER}. Then carry on with its next steps.`,
+      note:
+        `You were refreshed mid-task; read your handover first: ${HANDOVER}. Then carry on with its next steps. ` +
+        'Read a file with the Read tool before you Edit or Write it: a read by cat or sed, or one before the refresh, does not count.',
       state: { phase: 'refreshed', task: null, at: NOW },
     });
   });
