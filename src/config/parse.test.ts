@@ -1081,7 +1081,8 @@ describe('parseConfig', () => {
   });
 
   it('reads whether the idle pass runs and the sessions it keeps open, refusing a mode it does not know or a session not on the team', () => {
-    assert.deepEqual(parseConfig(ROSTER).config.open.idle, { mode: 'off', keepOpen: [] });
+    // A team that sets nothing closes and reopens its idle sessions (T1409).
+    assert.deepEqual(parseConfig(ROSTER).config.open.idle, { mode: 'on', keepOpen: [] });
     const set = parseConfig({ ...ROSTER, open: { idle: { mode: 'dry-run', keepOpen: ['bravo'] } } });
     assert.deepEqual(set.issues, []);
     assert.deepEqual(set.config.open.idle, { mode: 'dry-run', keepOpen: ['bravo'] });
@@ -1090,7 +1091,7 @@ describe('parseConfig', () => {
     assert.deepEqual(paths(bad.issues).sort(), ['open.idle.keepOpen[1]', 'open.idle.keepOpen[2]', 'open.idle.mode']);
     assert.match(bad.issues.find((issue) => issue.path === 'open.idle.mode')?.message ?? '', /expected one of off, dry-run, on/);
     assert.match(bad.issues.find((issue) => issue.path === 'open.idle.keepOpen[1]')?.message ?? '', /"charlie" is not one of the sessions/);
-    assert.deepEqual(bad.config.open.idle, { mode: 'off', keepOpen: ['bravo'] });
+    assert.deepEqual(bad.config.open.idle, { mode: 'on', keepOpen: ['bravo'] });
     assert.deepEqual(paths(parseConfig({ ...ROSTER, open: { idle: { keepOpen: 'bravo' } } }).issues), ['open.idle.keepOpen']);
   });
 

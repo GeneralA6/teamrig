@@ -694,7 +694,7 @@ describe('hook wake-check runs the idle pass', () => {
     const kit = await idleTeam();
     await kit.files.write(join(STATE, 'idle-pass.lock'), JSON.stringify({ pid: 7, at: kit.clock.now() }));
     assert.deepEqual(answerOf(await passCheck(kit)), WAIT);
-    const off = await idleTeam(TEAM);
+    const off = await idleTeam({ ...TEAM, open: { idle: { mode: 'off' } } });
     const unreadable = new FaultyFiles(off.files).fail('read', PASS_STATE, systemError('EACCES'));
     assert.deepEqual(answerOf(await passCheck(off, { files: unreadable })), WAIT);
     for (const team of [kit, off]) {
