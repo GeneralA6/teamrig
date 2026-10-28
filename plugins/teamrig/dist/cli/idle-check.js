@@ -48,6 +48,26 @@ export async function idleFactsOf(runtime, kit, config, roster) {
     return { records, places: measureSessions(records, rows), tasks: snapshot.state.tasks, elsewhere, asks, now, zone: teamZone(config, runtime) };
 }
 /**
+ * The transcript of `record`'s Claude Code session, measured: the one its start recorded while a file is there, else
+ * the one of its session id in any project folder (T1357: a running session's transcript can leave the folder its
+ * start recorded; seen 10-28, two sessions re-filed under the project folder of the worktree they moved to).
+ * Undefined when it has none.
+ */
+async function measuredTranscriptOf(runtime, record, projectsDir, project) {
+    if (record.transcript !== undefined) {
+        const recorded = measuredOf(await measureTranscript(runtime, record.transcript));
+        if (recorded !== undefined) {
+            return recorded;
+        }
+    }
+    const found = await findTranscript(runtime.transcripts, projectsDir, project, record.claudeSession);
+    return found === undefined ? undefined : measuredOf(await measureTranscript(runtime, found));
+}
+function measuredOf(last) {
+    const { changedAt } = last;
+    return changedAt === undefined ? undefined : { ...last, changedAt };
+}
+/**
  * Whether `id` closes, with the checks in the order they cost: a role or open.idle.keepOpen that keeps it, not running in the host's
  * process list, work it can start within `maxPriority`, an urgent line waiting to wake it (closed, it would reopen at
  * the next pass for it), a time wait of its own ending soon, quiet too briefly since its last own transcript entry, a
@@ -88,13 +108,9 @@ export async function idleVerdictOf(runtime, config, roster, facts, id, options)
         return keep(`waits until ${zone.clock(new Date(soon.at))} on ${soon.task.id}, under ${TIME_WAIT_GUARD_MINUTES} min away`);
     }
     const projectsDir = claudeProjectsDir(runtime.env, runtime.userHome);
-    const transcript = record.transcript ?? (await findTranscript(runtime.transcripts, projectsDir, options.project, record.claudeSession));
-    if (transcript === undefined) {
+    const last = await measuredTranscriptOf(runtime, record, projectsDir, options.project);
+    if (last === undefined) {
         return keep(`has no transcript of Claude Code session ${record.claudeSession} in any project folder, so its idle time is unknown`);
-    }
-    const last = await measureTranscript(runtime, transcript);
-    if (last.changedAt === undefined) {
-        return keep(`has no transcript of Claude Code session ${record.claudeSession} at ${transcript}, so its idle time is unknown`);
     }
     const tail = (await runtime.files.readTail(last.transcript, REPLY_TAIL_BYTES)) ?? '';
     const cut = Buffer.byteLength(tail, 'utf8') >= REPLY_TAIL_BYTES;
