@@ -84,19 +84,22 @@ describe('chainOf', () => {
 });
 
 describe('nudgeLine', () => {
-  const run: Chain = { length: 6, editThenTest: false, context: 130_000 };
+  const run: Chain = { length: 3, editThenTest: false, context: 130_000 };
 
-  it('speaks once, as the run reaches the threshold, pricing the re-reads after the first call', () => {
+  it('speaks once, as the run reaches the threshold, pricing the re-reads after the first call and naming the one-call form', () => {
     assert.equal(
-      nudgeLine(run, 6),
-      'teamrig: 6 single-step calls in a row this turn (about 65k W of re-reads at this context); put independent reads in one message, and an edit with its re-test.',
+      nudgeLine(run, 3),
+      'teamrig: 3 single-step calls in a row this turn (about 26k W of re-reads at this context); send independent reads and lookups as several tool calls in one message, join shell steps into one command, and send an edit with its re-test.',
     );
-    assert.equal(nudgeLine({ ...run, length: 5 }, 6), undefined);
-    assert.equal(nudgeLine({ ...run, length: 7 }, 6), undefined);
+    assert.equal(nudgeLine({ ...run, length: 2 }, 3), undefined);
+    assert.equal(nudgeLine({ ...run, length: 4 }, 3), undefined);
   });
 
   it('names the edit and test split when it saw one', () => {
-    assert.match(nudgeLine({ ...run, editThenTest: true }, 6) ?? '', /an edit and then its test went in separate calls: send an edit with its re-test in one message/);
+    assert.match(
+      nudgeLine({ ...run, editThenTest: true }, 3) ?? '',
+      /an edit and then its test went in separate calls: send an edit with its re-test in one message, and independent reads as several tool calls in one\.$/,
+    );
   });
 
   it('never speaks when the threshold is 0', () => {

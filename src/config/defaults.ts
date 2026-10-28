@@ -221,7 +221,7 @@ export const DEFAULT_WORKTREE_FOLDER = '.claude/worktrees';
 
 export const DEFAULT_DECISIONS: DecisionsConfig = { batchTimesUtc: [], batchAt: 5, askWith: 'text' };
 
-export const DEFAULT_LOOPS: LoopsConfig = { chainNudgeAt: 6 };
+export const DEFAULT_LOOPS: LoopsConfig = { chainNudgeAt: 3 };
 export const DEFAULT_LEAD_BOUNDARY: LeadBoundaryConfig = { enabled: true, ownPaths: [], searchNudgeAt: 3 };
 /** On, for a day: what a tab showed stays readable through a night of refreshes. */
 export const DEFAULT_TURN_LOG: TurnLogConfig = { enabled: true, keepHours: 24 };
