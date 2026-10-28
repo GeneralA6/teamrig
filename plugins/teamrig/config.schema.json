@@ -536,6 +536,19 @@
                 "description": "After the push, fast-forward the main checkout to it: only a fast-forward, only on the default branch with no tracked changes.",
                 "type": "boolean"
               },
+              "worktreeFolder": {
+                "description": "The folder teamrig worktree add makes each new worktree in, one folder per branch named after it with each / as -. A relative path is in the main checkout.",
+                "type": "string",
+                "minLength": 1,
+                "default": ".claude/worktrees"
+              },
+              "worktreeSetup": {
+                "description": "What teamrig worktree add runs in a new worktree, such as a link to the main checkout node_modules: a program and its arguments, run without a shell, with the main checkout folder in TEAMRIG_MAIN_CHECKOUT. Anything but exit 0 leaves the worktree in place and fails the add. Unset: nothing runs.",
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 64,
+                "items": { "type": "string", "minLength": 1 }
+              },
               "merge": {
                 "description": "How teamrig integrate merges a branch through the team's own flow, such as a pull request the forge merges. Unset: integrate pushes the branch to the default branch.",
                 "type": "object",

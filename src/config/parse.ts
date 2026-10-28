@@ -713,12 +713,16 @@ function parseCoordinatorRepos(read: ConfigReader, raw: JsonRecord): Record<stri
     if (dependencyCheck !== undefined && !dependencyGate) {
       read.report(`${path}.dependencyCheck`, 'runs only with dependencyGate true, so it never runs');
     }
+    const worktreeFolder = read.optionalString(entry, 'worktreeFolder', path, isPathText);
+    const worktreeSetup = entry['worktreeSetup'] === undefined ? undefined : read.stringListItem(entry['worktreeSetup'], `${path}.worktreeSetup`, ROLL_ARGV_MAX_ITEMS);
     repos[name] = {
       mainCheckout,
       deploysOnPush: read.stringList(entry, 'deploysOnPush', path, [], isCoordinatorName),
       dependencyGate,
       ...(dependencyCheck === undefined ? {} : { dependencyCheck }),
       followMainCheckout: read.boolean(entry, 'followMainCheckout', path, false),
+      ...(worktreeFolder === undefined ? {} : { worktreeFolder }),
+      ...(worktreeSetup === undefined ? {} : { worktreeSetup }),
       ...(merge === undefined ? {} : { merge }),
       ...(roll === undefined ? {} : { roll }),
     };

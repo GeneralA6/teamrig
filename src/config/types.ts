@@ -659,6 +659,17 @@ export interface CoordinatorRepoConfig {
   readonly dependencyCheck?: readonly string[];
   /** After the push, fast-forward the main checkout to it: only a fast-forward, only on the default branch with no tracked changes. */
   readonly followMainCheckout: boolean;
+  /**
+   * The folder `teamrig worktree add` makes each new worktree in, one folder per branch named after it with each `/`
+   * as `-`. A relative path is in the main checkout; unset: `.claude/worktrees` there.
+   */
+  readonly worktreeFolder?: string;
+  /**
+   * What `teamrig worktree add` runs in a new worktree, such as a link to the main checkout's node_modules: a program
+   * and its arguments, run without a shell, with the main checkout's folder in `TEAMRIG_MAIN_CHECKOUT`. Anything but
+   * exit 0 leaves the worktree in place and fails the add. Unset: nothing runs.
+   */
+  readonly worktreeSetup?: readonly string[];
   /** How `teamrig integrate` merges a branch through the team's own flow, such as a pull request; unset: integrate pushes it to the default branch. */
   readonly merge?: MergeConfig;
   /** How `teamrig roll` deploys what landed on the default branch; unset: the repository is not rolled. */
