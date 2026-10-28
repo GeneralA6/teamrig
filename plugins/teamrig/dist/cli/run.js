@@ -2,6 +2,7 @@ import { errorMessage } from "../core/guards.js";
 import { ENV, KIT_NAME } from "../core/home.js";
 import { TEAM_POINTER } from "../core/team.js";
 import { KIT_VERSION } from "../core/version.js";
+import { cutLineMessage, shimArgs } from "./cmd-shim.js";
 import { CommandHelp } from "./help.js";
 import { parseArgs, UsageError } from "./args.js";
 import { EXIT, RefusedError } from "./runtime.js";
@@ -626,7 +627,12 @@ export const COMMAND_HELP = new CommandHelp(USAGE, Object.keys(COMMANDS));
 export const HELP = new Set(['help', '--help', '-h']);
 /** The words that print the version; the LLM guide documents them as `teamrig version`. */
 export const VERSION = new Set(['version', '--version', '-v']);
-export async function runCli(argv, runtime) {
+export async function runCli(given, runtime) {
+    const argv = shimArgs(given, runtime.cmdShimLine);
+    if (argv === undefined) {
+        runtime.out.stderr(cutLineMessage(runtime.self.script));
+        return EXIT.usage;
+    }
     const [first] = argv;
     if (first === undefined || HELP.has(first)) {
         runtime.out.stdout(USAGE);
