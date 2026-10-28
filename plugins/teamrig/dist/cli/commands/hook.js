@@ -47,7 +47,7 @@ import { noPositionals } from "../args.js";
 import { hookLogOf } from "../hook-logs.js";
 import { openKit, renameDepsOf, rosterOf, rulesClockOf, teamFolders, teamZone } from "../kit.js";
 import { EXIT } from "../runtime.js";
-import { readTeamRules } from "../team-rules.js";
+import { keptRulesAboveOf, readTeamRules } from "../team-rules.js";
 import { leadAboveOf, loadTree } from "../tree.js";
 import { bindAfterClear, bindHintOnce, bindTab, inboxLinesFor, readTitle } from "./hook-bind.js";
 import { helperGateOutput, promptBudgetLine, stopBudgetLines } from "./hook-budget.js";
@@ -471,7 +471,7 @@ async function helperGateOf(runtime, payload) {
     return scope === undefined ? undefined : helperGateOutput(runtime, scope, stringField(payload, 'transcript_path'));
 }
 /**
- * The rules.md of a loaded team and of each team above it, and its rename log, after binding a hand-started tab by its Claude Code title
+ * The rules.md of a loaded team and of each team above it, the kept local rules of those above, and its rename log, after binding a hand-started tab by its Claude Code title
  * and recording a Claude Code rename of the session; the pointer to its handover after a refresh; who
  * the session is: `$TEAMRIG_SESSION`, else the area it read its inbox as or was bound to, so a tab that
  * set the team up keeps its identity across a compact or resume; after a refresh or a compaction its live
@@ -498,6 +498,7 @@ async function teamPartsOf(runtime, kit, config, payload) {
     return {
         recordNote: id === undefined || claudeSession === null ? undefined : await recordSessionStart(runtime, kit, id, claudeSession, startTranscriptOf(payload)),
         teamRules: await readTeamRules(runtime, kit, kitTree),
+        keptRulesAbove: keptRulesAboveOf(kit, kitTree),
         renames,
         titleNote,
         refreshNote: refresh.note,
@@ -862,6 +863,7 @@ export async function sessionStart(args, runtime) {
         : {
             recordNote: undefined,
             teamRules: [],
+            keptRulesAbove: [],
             renames: [],
             titleNote: undefined,
             refreshNote: undefined,

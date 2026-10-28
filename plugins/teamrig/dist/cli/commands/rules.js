@@ -6,7 +6,7 @@ import { noPositionals } from "../args.js";
 import { sessionRef } from "../inputs.js";
 import { findTeam, openKit, requireConfig, rulesClockOf, sessionIdOf } from "../kit.js";
 import { EXIT } from "../runtime.js";
-import { readTeamRules } from "../team-rules.js";
+import { keptRulesAboveOf, readTeamRules } from "../team-rules.js";
 import { loadTree } from "../tree.js";
 /**
  * `rules [--session <id|name>]`: the rules of the team and of each team above it, and who the session is, the same text the
@@ -32,6 +32,7 @@ export async function rules(args, runtime) {
         clock: rulesClockOf(runtime),
         load: kit.load,
         teamRules: await readTeamRules(runtime, kit, kitTree),
+        keptRulesAbove: keptRulesAboveOf(kit, kitTree),
         renames,
         titleNote: undefined,
         refreshNote: undefined,
