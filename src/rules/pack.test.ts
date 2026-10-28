@@ -1,11 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from '../config/limits.ts';
-import { CAP_RAISERS, HOOK_ASKS, PUSH_TO_PROTECTED, type HookAsks, type PushToProtected } from '../config/types.ts';
+import { CAP_RAISERS, HOOK_ASKS, PUSH_TO_PROTECTED, type ConflictWinner, type HookAsks, type PushToProtected } from '../config/types.ts';
 import { FOLLOWUP_STATUSES, TASK_STATUSES } from '../register/model.ts';
 import { testConfig } from '../testing/config.ts';
 import { RULES_CLOCK } from '../testing/zone.ts';
-import { CORE_RULE_KEYS } from './keys.ts';
+import { CORE_RULE_KEYS, type CoreRuleKey } from './keys.ts';
 import {
   CONTEXT_MAX_CHARS,
   CORE_PACK_MAX_CHARS,
@@ -18,6 +18,7 @@ import {
   renderLeadRules,
   renderSessionContext,
   TEAM_RULES_MAX_CHARS,
+  type KeptRule,
   type TeamRules,
 } from './pack.ts';
 
@@ -473,6 +474,37 @@ describe('kept local rules', () => {
     assert.ok(text.length <= KEPT_RULES_MAX_CHARS, `${text.length} > ${KEPT_RULES_MAX_CHARS}`);
     assert.equal(lines.at(-1), `- and ${12 - (lines.length - 2)} more: \`teamrig rules scan\` lists them`);
     assert.equal(renderKeptRules([], COMMAND), '');
+  });
+
+  const above = (team: string, text: string, wins: ConflictWinner, rule: CoreRuleKey): KeptRule => ({ file: '~/CLAUDE.md', text, rule, wins, team });
+
+  it("lists the kept rules of the teams above, tagged with their team, before the team's own of the same verdict", () => {
+    const pack = renderCorePack(testConfig({ ruleConflicts: [conflict('Commit straight to main.', 'local')] }), COMMAND, 'win32', RULES_CLOCK, [
+      above('root', 'Pings are fine.', 'teamrig', 'messages'),
+      above('mid', 'Push when green.', 'local', 'push'),
+    ]);
+    assert.ok(
+      pack.endsWith(
+        [
+          'Kept local rules [ruleConflicts]:',
+          '- (team mid) ~/CLAUDE.md "Push when green." wins over rule 15',
+          '- ~/CLAUDE.md "Commit straight to main." wins over rule 16',
+          '- (team root) ~/CLAUDE.md "Pings are fine." loses to rule 3',
+        ].join('\n'),
+      ),
+      pack,
+    );
+  });
+
+  it('shows a line a team above and the team both kept once, with the verdict of the team above', () => {
+    const text = renderKeptRules([above('root', 'Commit straight to main.', 'teamrig', 'worktrees'), { file: '~/CLAUDE.md', text: 'Commit straight to main.', rule: 'worktrees', wins: 'local' }], COMMAND);
+    assert.equal(text, ['Kept local rules [ruleConflicts]:', '- (team root) ~/CLAUDE.md "Commit straight to main." loses to rule 16'].join('\n'));
+  });
+
+  it('names the exception when only a team above kept a rule', () => {
+    const pack = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK, [above('root', 'Commit straight to main.', 'local', 'worktrees')]);
+    assert.match(pack, /team rules, except the kept local rules below \[ruleConflicts\]\. \[brackets\]/);
+    assert.ok(pack.endsWith('\n- (team root) ~/CLAUDE.md "Commit straight to main." wins over rule 16'), pack);
   });
 });
 

@@ -38,6 +38,12 @@ export interface TeamRules {
   readonly text: string;
 }
 
+/** A kept local rule [ruleConflicts] as a session reads it at start: its own team's, or a team above's, tagged. */
+export interface KeptRule extends RuleConflict {
+  /** The team above the session's that kept it; undefined for the session's own team's. */
+  readonly team?: string;
+}
+
 /** A list the pack names only to inform (a hook or check enforces it) prints in full up to this many characters. */
 export const LIST_MAX_CHARS = 120;
 
@@ -261,10 +267,13 @@ export function coreRuleTexts(config: KitConfig, command: string, platform: Node
   };
 }
 
-/** The always-loaded core rules (`coreRuleTexts`), numbered, with the kept local rules under them. */
-export function renderCorePack(config: KitConfig, command: string, platform: NodeJS.Platform, clock: RulesClock): string {
+/**
+ * The always-loaded core rules (`coreRuleTexts`), numbered, with the kept local rules under them: those of the teams
+ * above the session's (`above`, root first), then its own team's.
+ */
+export function renderCorePack(config: KitConfig, command: string, platform: NodeJS.Platform, clock: RulesClock, above: readonly KeptRule[] = []): string {
   const rules = coreRuleTexts(config, command, platform, clock);
-  const kept = renderKeptRules(config.ruleConflicts, command);
+  const kept = renderKeptRules([...above, ...config.ruleConflicts], command);
   const except = kept === '' ? '' : ', except the kept local rules below [ruleConflicts]';
   return [
     '# Team rules (teamrig core)',
@@ -279,10 +288,16 @@ export function renderCorePack(config: KitConfig, command: string, platform: Nod
 const KEPT_QUOTE_MAX_CHARS = 60;
 const KEPT_PATH_MAX_CHARS = 50;
 
-function keptLine(conflict: RuleConflict): string {
+function keptLine(conflict: KeptRule): string {
   const rule = `rule ${ruleNumberOf(conflict.rule)}`;
   const verdict = conflict.wins === 'local' ? `wins over ${rule}` : `loses to ${rule}`;
-  return `- ${clipStart(conflict.file, KEPT_PATH_MAX_CHARS)} "${clipEnd(conflict.text, KEPT_QUOTE_MAX_CHARS)}" ${verdict}`;
+  const team = conflict.team === undefined ? '' : `(team ${conflict.team}) `;
+  return `- ${team}${clipStart(conflict.file, KEPT_PATH_MAX_CHARS)} "${clipEnd(conflict.text, KEPT_QUOTE_MAX_CHARS)}" ${verdict}`;
+}
+
+/** The record of the same line against the same core rule, whichever team kept it. */
+function keptKey(conflict: RuleConflict): string {
+  return `${conflict.file}\n${conflict.text}\n${conflict.rule}`;
 }
 
 function moreLine(count: number, command: string): string {
@@ -290,14 +305,23 @@ function moreLine(count: number, command: string): string {
 }
 
 /**
- * The local rules the user kept although they conflict with a core rule [ruleConflicts]: those that win first, then
- * those kept as text that loses, in at most KEPT_RULES_MAX_CHARS, the rest counted as "and N more". Empty when none.
+ * The local rules the user kept although they conflict with a core rule [ruleConflicts], given the teams above's first
+ * (root first): those that win first, then those kept as text that loses, in at most KEPT_RULES_MAX_CHARS, the rest
+ * counted as "and N more". A line two teams kept against the same rule shows once, with the verdict of the team above,
+ * as its lead stands over the lower team's (rule 1). Empty when none.
  */
-export function renderKeptRules(conflicts: readonly RuleConflict[], command: string): string {
-  if (conflicts.length === 0) {
+export function renderKeptRules(conflicts: readonly KeptRule[], command: string): string {
+  const byKey = new Map<string, KeptRule>();
+  for (const conflict of conflicts) {
+    if (!byKey.has(keptKey(conflict))) {
+      byKey.set(keptKey(conflict), conflict);
+    }
+  }
+  const unique = [...byKey.values()];
+  if (unique.length === 0) {
     return '';
   }
-  const ordered = [...conflicts.filter((conflict) => conflict.wins === 'local'), ...conflicts.filter((conflict) => conflict.wins === 'teamrig')];
+  const ordered = [...unique.filter((conflict) => conflict.wins === 'local'), ...unique.filter((conflict) => conflict.wins === 'teamrig')];
   const lines = ['Kept local rules [ruleConflicts]:'];
   for (const [index, conflict] of ordered.entries()) {
     const rest = ordered.length - index - 1;
