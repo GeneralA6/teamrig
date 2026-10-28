@@ -1274,3 +1274,52 @@ describe('RegisterPolicy.approve (T684)', () => {
     assert.notEqual(error(policy.approve(asking, 'lead', 'approved', credentialUrl())), 'allowed');
   });
 });
+
+describe('RegisterPolicy.defer: a Later (T1295)', () => {
+  const policy = new RegisterPolicy(testConfig());
+  const at = { now: NOW, zone: TimeZone.UTC };
+  const asking = testTask({ status: 'waiting', waits: OWNER_DECISION });
+  const tomorrow: WaitReason = { kind: 'time', at: '2030-01-09 09:00' };
+  const putOff = testTask({ status: 'waiting', waits: [...OWNER_DECISION, { kind: 'time', at: '2030-01-08 22:00' }] });
+
+  it('puts a card waiting on the owner off to a time to come, as a time wait beside it, the note trimmed', () => {
+    assert.deepEqual(policy.defer(asking, 'alpha', '2030-01-09 09:00', ' after the demo ', at), { ok: true, value: { changes: {}, note: 'after the demo', waits: [...OWNER_DECISION, tomorrow] } });
+    const proof = testTask({ status: 'verifying', waits: [{ kind: 'approval', who: 'owner' }] });
+    assert.equal(error(policy.defer(proof, 'alpha', '2030-01-09 09:00', 'next week', at)), 'allowed', "a verifying task whose proof waits on the owner's approval");
+  });
+
+  it('replaces the time wait it had, and brings it back with none, keeping the other waits', () => {
+    assert.deepEqual(policy.defer(putOff, 'alpha', '2030-01-09 09:00', 'later still', at), { ok: true, value: { changes: {}, note: 'later still', waits: [...OWNER_DECISION, tomorrow] } });
+    assert.deepEqual(policy.defer(putOff, 'alpha', null, 'asks now', at), { ok: true, value: { changes: {}, note: 'asks now', waits: OWNER_DECISION } });
+  });
+
+  it('lets the owner of the task or a leader above it record one, no peer', () => {
+    assert.equal(error(policy.defer(asking, 'lead', '2030-01-09 09:00', 'after the demo', at)), 'allowed');
+    assert.equal(error(policy.defer(asking, 'bravo', '2030-01-09 09:00', 'after the demo', at)), 'only the owner (alpha) or the lead (lead) puts T1 off');
+    const tree = new RegisterPolicy(testConfig({ sessions: ['lead', 'alpha', 'bravo', 'charlie', 'delta'], leads: { alpha: ['bravo'], charlie: ['delta'] } }));
+    const bravos = testTask({ owner: 'bravo', status: 'waiting', waits: OWNER_DECISION });
+    assert.equal(error(tree.defer(bravos, 'alpha', '2030-01-09 09:00', 'n', at)), 'allowed', 'its sub-lead');
+    assert.equal(error(tree.defer(bravos, 'charlie', '2030-01-09 09:00', 'n', at)), 'only the owner (bravo) or a leader above bravo (alpha or lead) puts T1 off');
+  });
+
+  it("refuses a task that waits on no decision or approval of the owner's", () => {
+    const refusal = 'T1 waits on no decision or approval of owner: only such a card is put off';
+    assert.equal(error(policy.defer(TASK, 'alpha', '2030-01-09 09:00', 'n', at)), refusal);
+    const leads = testTask({ status: 'waiting', waits: [{ kind: 'approval', who: 'lead' }, tomorrow] });
+    assert.equal(error(policy.defer(leads, 'alpha', null, 'n', at)), refusal, "the lead's approval is no owner card");
+  });
+
+  it('needs a note, checked like any other, a time still to come, and a time to drop to bring one back', () => {
+    assert.equal(error(policy.defer(asking, 'alpha', '2030-01-09 09:00', undefined, at)), 'a Later needs --note: what owner said');
+    assert.equal(error(policy.defer(asking, 'alpha', '2030-01-09 09:00', '  ', at)), 'a Later needs --note: what owner said');
+    assert.notEqual(error(policy.defer(asking, 'alpha', '2030-01-09 09:00', credentialUrl(), at)), 'allowed');
+    assert.match(error(policy.defer(asking, 'alpha', '2030-01-08 11:00', 'n', at)), /^time .* has passed: name a time to come$/);
+    assert.equal(error(policy.defer(asking, 'alpha', null, 'n', at)), 'T1 is not put off: no time to drop');
+  });
+
+  it('judges a bare day as its end in the team zone', () => {
+    const late = { now: new Date('2030-01-08T22:30:00.000Z'), zone: JERUSALEM };
+    assert.match(error(policy.defer(asking, 'alpha', '2030-01-08', 'n', late)), /has passed/, 'Jerusalem is at 01-09 00:30');
+    assert.equal(error(policy.defer(asking, 'alpha', '2030-01-08', 'n', { ...late, zone: TimeZone.UTC })), 'allowed', 'UTC is at 01-08 22:30');
+  });
+});

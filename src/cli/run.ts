@@ -94,7 +94,7 @@ const REVIEW_FLAGS = ['cause', 'how', 'prevent', 'harden', 'missed-test', 'misse
 const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   add: { effect: 'write', flags: ['session', 'source', 'team', ...TASK_FIELDS], switches: ['critical'], load: async () => (await registerCommands()).add },
   set: { effect: 'write', flags: ['session', 'status', 'note', 'evidence', 'skill', 'followups', 'waits', 'question', 'options', 'recommend', 'default', 'why-ask', 'gate', 'proof', 'watch', 'met', 'due', 'ask', 'text', ...REVIEW_FLAGS], load: async () => (await registerCommands()).set },
-  update: { effect: 'write', flags: ['session', 'note', ...TASK_FIELDS], switches: ['pin', 'unpin', 'critical', 'not-critical'], load: async () => (await registerCommands()).update },
+  update: { effect: 'write', flags: ['session', 'note', 'later', ...TASK_FIELDS], switches: ['pin', 'unpin', 'critical', 'not-critical'], load: async () => (await registerCommands()).update },
   approve: { effect: 'write', flags: ['session', 'note'], switches: ['decline'], load: async () => (await registerCommands()).approve },
   list: {
     effect: 'read',

@@ -308,6 +308,42 @@ describe('parseEvent: the answer to an approval (T684)', () => {
   });
 });
 
+describe('parseEvent: the waits a Later gives a task (T1295)', () => {
+  const LATER = [
+    { kind: 'decision', who: 'owner' },
+    { kind: 'time', at: '2030-01-09 12:00' },
+  ] as const;
+
+  it("reads an update's waits, and an update without them as it was", () => {
+    const later = parse({ ...BASE, type: 'update', changes: {}, note: 'after the demo', waits: LATER }, 2);
+    assert.deepEqual(later, { kind: 'event', event: { ...BASE, v: 2, type: 'update', changes: {}, note: 'after the demo', waits: LATER } });
+    const plain = parse({ ...BASE, type: 'update', changes: {}, note: 'context' }, 2);
+    assert.ok(plain.kind === 'event' && !('waits' in plain.event));
+  });
+
+  it('reads an empty list as waits with none, which a Later that brings a card back may write', () => {
+    const back = parse({ ...BASE, type: 'update', changes: {}, note: 'now', waits: [] }, 2);
+    assert.ok(back.kind === 'event' && back.event.type === 'update' && back.event.waits?.length === 0);
+  });
+
+  it('cannot read waits that are not a list of known waits', () => {
+    const cases: readonly [JsonRecord, RegExp][] = [
+      [{ ...BASE, type: 'update', changes: {}, note: 'n', waits: 'decision:owner' }, /waits is not a list/],
+      [{ ...BASE, type: 'update', changes: {}, note: 'n', waits: [{ kind: 'soon', at: '2030-01-09' }] }, /unknown wait kind "soon"/],
+      [{ ...BASE, type: 'update', changes: {}, note: 'n', waits: [{ kind: 'time', at: 'tomorrow' }] }, /tomorrow is not YYYY-MM-DD/],
+    ];
+    for (const [record, expected] of cases) {
+      assert.match(reason(parse(record, 2)), expected, JSON.stringify(record));
+    }
+  });
+
+  it('writes the waits as they are, and reads them back', () => {
+    const event: RegisterEvent = { ...BASE, v: 2, type: 'update', changes: {}, note: 'n', waits: LATER };
+    assert.deepEqual(eventRecord(event), event);
+    assert.deepEqual(parse(eventRecord(event), 2), { kind: 'event', event });
+  });
+});
+
 describe('parseEvent: a task moved to another team (T1144)', () => {
   it('reads a moved line of this version, and writes it back as it is', () => {
     const moved: RegisterEvent = { ...BASE, v: EVENT_VERSION, type: 'moved', to: 'web' };

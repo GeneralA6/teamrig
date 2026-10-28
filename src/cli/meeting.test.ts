@@ -190,6 +190,43 @@ describe('runCli: the daily meeting', () => {
     assert.match(ended.stdout[1] ?? '', /told 0 session\(s\)/);
   });
 
+  it('puts a card off with update --later, out of DECISIONS into LATER, and brings it back with --later none (T1295)', async () => {
+    const kit = await teamBeforeTheMeeting();
+    const later = await kit.run(['update', 'T1', '--later', '2030-01-09 09:00', '--note', 'owner: after the demo', '--session', 'lead']);
+    assert.equal(later.code, EXIT.ok, later.stderr.join('\n'));
+    assert.match(later.stdout[0] ?? '', /^UPDATED T1 waiting, /);
+    const putOff = (await kit.run(['meeting', 'agenda', '--session', 'lead'])).stdout;
+    const at = putOff.findIndex((line) => line.startsWith('LATER 1 put off by owner'));
+    assert.ok(at > 0, putOff.join('\n'));
+    assert.match(putOff[at + 1] ?? '', /^ {2}T1 waiting, p1, owner alpha \| Pick the pricing tier/);
+    assert.ok(!putOff.some((line) => line.startsWith('DECISIONS 1')), putOff.join('\n'));
+    const back = await kit.run(['update', 'T1', '--later', 'none', '--note', 'owner: asks now', '--session', 'alpha']);
+    assert.equal(back.code, EXIT.ok, back.stderr.join('\n'));
+    const asked = (await kit.run(['meeting', 'agenda', '--session', 'lead'])).stdout;
+    assert.equal(asked[1], 'DECISIONS 1 waiting on owner (decision or approval)');
+    assert.ok(!asked.some((line) => line.startsWith('LATER')), asked.join('\n'));
+  });
+
+  it('takes --later with a --note alone, a time to come, and refuses a peer, writing nothing (T1295)', async () => {
+    const kit = await teamBeforeTheMeeting();
+    const usages: [readonly string[], RegExp][] = [
+      [['--later', '2030-01-09', '--priority', 'p2', '--note', 'x'], /^--later puts a card off with a --note alone: it takes no --priority/],
+      [['--later', '2030-01-09', '--pin', '--note', 'x'], /^--later puts a card off with a --note alone: it takes no --pin/],
+      [['--later', '2030-01-09'], /^--note is required/],
+      [['--later', 'soon', '--note', 'x'], /^--later /],
+    ];
+    for (const [extra, message] of usages) {
+      const result = await kit.run(['update', 'T1', ...extra, '--session', 'lead']);
+      assert.equal(result.code, EXIT.usage, extra.join(' '));
+      assert.match(result.stderr[0] ?? '', message, extra.join(' '));
+    }
+    const peer = await kit.run(['update', 'T1', '--later', '2030-01-09', '--note', 'x', '--session', 'bravo']);
+    assert.deepEqual([peer.code, peer.stdout], [EXIT.refused, ['REFUSED only the owner (alpha) or the lead (lead) puts T1 off']]);
+    const passed = await kit.run(['update', 'T1', '--later', '2030-01-08 09:00', '--note', 'x', '--session', 'lead']);
+    assert.deepEqual([passed.code, passed.stdout], [EXIT.refused, ['REFUSED time 01-08 09:00 UTC has passed: name a time to come']]);
+    assert.equal((await kit.run(['meeting', 'agenda', '--session', 'lead'])).stdout[1], 'DECISIONS 1 waiting on owner (decision or approval)');
+  });
+
   it("prints the planned week's fit under the week's use", async () => {
     const kit = await teamBeforeTheMeeting();
     await kit.run(['add', '--title', 'Write the guide', '--description', 'what and why', '--priority', 'p2', '--week', '2030-01-07', '--size', '20', '--session', 'alpha']);

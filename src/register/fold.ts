@@ -221,14 +221,16 @@ function reparksAfter(task: Task, event: Extract<RegisterEvent, { type: 'status'
  * An update's note from the task's owner is its note from then on, as a restated one on `set` is, so show and the
  * waiting text print it at once; a note from any other session adds context to the history only, since the note a
  * task shows is its owner's (T630). An update with a `verdict` is the lead's answer to the task's approval wait, its
- * note what the lead checked (T684). A pin holds for the owner it was set for: handing the task on clears it, unless
- * the same update pins it (T637).
+ * note what the lead checked (T684). An update's `waits` (a Later, T1295) replace a waiting or verifying task's, so
+ * the time the owner put it off to is one of its waits; on a task in any other status they mean nothing. A pin holds
+ * for the owner it was set for: handing the task on clears it, unless the same update pins it (T637).
  */
-function withChanges(task: Task, { changes, note, at, by, verdict }: UpdateEvent): Task {
+function withChanges(task: Task, { changes, note, at, by, verdict, waits }: UpdateEvent): Task {
   const priorityAt = changes.priority === undefined || changes.priority === task.priority ? task.priorityAt : at;
   const shown = note !== null && by === task.owner ? note : task.note;
   const answer = verdict === undefined ? task.answer : { verdict, by, at, note };
-  const next: Task = { ...task, ...changes, note: shown, answer, updatedAt: at, updatedBy: by, priorityAt };
+  const kept = waits !== undefined && WAIT_STATUSES.includes(task.status) ? waits : task.waits;
+  const next: Task = { ...task, ...changes, note: shown, answer, waits: kept, updatedAt: at, updatedBy: by, priorityAt };
   if (next.owner !== task.owner) {
     return { ...next, pin: changes.pin ?? null, assignedAt: at, ownerSeenAt: by === next.owner ? at : null };
   }
