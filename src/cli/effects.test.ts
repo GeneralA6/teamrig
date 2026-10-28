@@ -65,7 +65,7 @@ const EXPECTED = {
   rename: 'write',
   heavy: 'write',
   withdraw: 'write',
-  integrate: 'write',
+  merge: 'write',
   roll: 'write',
   claim: 'write',
   release: 'write',

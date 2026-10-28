@@ -65,7 +65,7 @@ Windows and Linux: on Linux the tests and a smoke run pass; the tab circles and 
 
 One task's trip, as you see it in your terminal:
 
-![In the lead's tab you type: Users need a password reset. The lead adds T17 Password reset for api, p1, due today, and it appears in teamrig-pane's list. In api's tab, api starts it, edits and tests, then lands it with teamrig integrate: it waits in line while web holds the lock, then rebases on main and pushes. web's task and then T17 turn done in the pane.](docs/images/task-flow.svg)
+![In the lead's tab you type: Users need a password reset. The lead adds T17 Password reset for api, p1, due today, and it appears in teamrig-pane's list. In api's tab, api starts it, edits and tests, then merges it with teamrig merge: it waits in line while web holds the lock, then rebases on main and pushes. web's task and then T17 turn done in the pane.](docs/images/task-flow.svg)
 
 ## Your day: two hours, not twelve
 
@@ -184,8 +184,8 @@ helper it is. Everything runs on your machine, with no account and no cloud bill
 - **A model per session:** each session starts on its own model and effort, and you're told when one runs on another.
 - **GitHub issues in the task list:** `teamrig gh sync` reads your repositories' open issues every 15 minutes, one way
   only ([GitHub sync](docs/github-sync.md)).
-- **Shipping from many sessions:** `teamrig heavy` runs builds and test runs under one host lock, `teamrig integrate`
-  lands a finished branch (by a push, or through your own merge command such as a pull request), `teamrig roll` brings it to the running system (or, with `--targets`, restarts some services onto new config with
+- **Shipping from many sessions:** `teamrig heavy` runs builds and test runs under one host lock, `teamrig merge`
+  merges a finished branch (by a push, or through your own merge command such as a pull request), `teamrig roll` brings it to the running system (or, with `--targets`, restarts some services onto new config with
   nothing pulled), and `teamrig deploys` shows it all in one read
   ([Ship from many sessions](docs/guides/ship-from-many-sessions.md)).
 - **Reads without a prompt:** with `readonlyShell`, a shell line that only reads (`grep`, `git log`, `kubectl get`)
@@ -204,7 +204,7 @@ helper it is. Everything runs on your machine, with no account and no cloud bill
 | [Recover from a crash or a full context](docs/guides/recover.md) | Sessions reopened after a crash or a reboot, a fresh context at a task boundary, the turn log |
 | [Plan the week](docs/guides/plan-the-week.md) | The week plan and task sizes against the weekly limit, the daily budget and its pace line, bursts |
 | [Grow the team](docs/guides/grow-the-team.md) | Setting up a team with a tab per session, session names, hires and their retire, child teams under the lead |
-| [Ship from many sessions](docs/guides/ship-from-many-sessions.md) | The host lock for builds and test runs, landing a branch, rolling it out, clean measurements beside deploys |
+| [Ship from many sessions](docs/guides/ship-from-many-sessions.md) | The host lock for builds and test runs, merging a branch, rolling it out, clean measurements beside deploys |
 | [Make it improve itself](docs/guides/improve-itself.md) | Lessons kept as skills and team rules, the skills scorecard, settling local rules that say otherwise, a lean setup |
 | [Everything teamrig does](docs/features.md) | Every feature, and whether it works today |
 | [Every command](docs/commands.md) | Each command with its flags, as `teamrig help` prints it |

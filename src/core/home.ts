@@ -20,7 +20,7 @@ export const ENV = {
    */
   claudeSession: 'CLAUDE_CODE_SESSION_ID',
   /**
-   * The token of the host lock a running step holds (`heavy`, `integrate`, `roll`), set for the processes it starts:
+   * The token of the host lock a running step holds (`heavy`, `merge`, `roll`), set for the processes it starts:
    * a `teamrig heavy` among them, such as a git hook's checks, runs at once under that lock instead of waiting on its parent.
    */
   hostLock: 'TEAMRIG_HOST_LOCK',

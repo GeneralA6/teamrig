@@ -8,7 +8,7 @@ import { CORE_RULE_KEYS, type CoreRuleKey } from './keys.ts';
  */
 const RULE_TOPICS: Readonly<Record<CoreRuleKey, RegExp>> = {
   roles: /\b(lead|coordinator|fleet health|re-?prioriti\w*|reassign\w*|owns?)\b/i,
-  'own-change': /\b(integrat\w*|roll(s|ed)? (it |them )?back|another session|own change|end to end)\b/i,
+  'own-change': /\b(merg\w*|integrat\w*|roll(s|ed)? (it |them )?back|another session|own change|end to end)\b/i,
   messages: /\b(messag\w*|inbox\w*|pings?|acks?|SendMessage|reply|notify)\b/i,
   register: /\b(status|boards?|blockers?|deadlines?|register|task ?ids?|tasks?|work block|verifying|handoff|handover|findings)\b/i,
   'task-order': /\b(priority order|top task|loops?|cron\w*|wake-?ups?|self-made|ScheduleWakeup)\b/i,

@@ -113,7 +113,7 @@ export interface RunOptions {
   readonly memory?: HostMemory;
   /** The processes that started a `teamrig heavy` run; default a shell and its Claude Code, which never end. */
   readonly starters?: StarterWatch;
-  /** The git `teamrig integrate` drives; default the fake repository at /w/feat (testing/fake-integrate-git.ts). */
+  /** The git `teamrig merge` drives; default the fake repository at /w/feat (testing/fake-integrate-git.ts). */
   readonly integrateGit?: IntegrateGit;
   /** The working tree `teamrig heavy --pre-push` reads; default no repository. */
   readonly trees?: TreeState;

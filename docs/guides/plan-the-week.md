@@ -88,7 +88,7 @@ fast gives less a day and one that spends slowly gives more. The floor at its st
   (`burst.maxHelpers`, 3) at once per session and `--hires` hired sessions (`burst.maxHires`, 2; none unless set).
   Quiet hours still apply, and a lift wins over it for its session.
 - How its sessions work: the model is told once, with the next prompt, to split only independent tasks, to give
-  each edit in a repo its own worktree, to integrate one change at a time, to keep its model and effort for its
+  each edit in a repo its own worktree, to merge one change at a time, to keep its model and effort for its
   helpers and never to skip a test or check. A burst hire runs on the lead's model at no lower effort.
 - Its log: each start and end is a line in `state/usage/bursts.jsonl`; `teamrig budget` marks a session's budget
   "(burst)" and names the burst, and `check` flags its hires RETIRE-DUE once it is over.

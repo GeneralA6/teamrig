@@ -688,7 +688,7 @@ function parseWindows(read: ConfigReader, raw: JsonRecord, knownTargets: readonl
   };
 }
 
-/** The repositories `teamrig integrate` lands and `teamrig roll` deploys, by name; one with a bad name or no main checkout is reported and left out. */
+/** The repositories `teamrig merge` merges into and `teamrig roll` deploys, by name; one with a bad name or no main checkout is reported and left out. */
 function parseCoordinatorRepos(read: ConfigReader, raw: JsonRecord): Record<string, CoordinatorRepoConfig> {
   const repos: Record<string, CoordinatorRepoConfig> = {};
   for (const [name, value] of Object.entries(raw)) {
@@ -730,7 +730,7 @@ function parseCoordinatorRepos(read: ConfigReader, raw: JsonRecord): Record<stri
   return repos;
 }
 
-/** A repository's merge command; one with no usable command is reported and left out, so integrate pushes the branch. */
+/** A repository's merge command; one with no usable command is reported and left out, so `teamrig merge` pushes the branch. */
 function parseMerge(read: ConfigReader, raw: unknown, path: string): MergeConfig | undefined {
   const entry = read.objectItem(raw, path);
   if (entry === undefined) {

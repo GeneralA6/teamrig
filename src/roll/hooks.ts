@@ -12,7 +12,7 @@ import { endOf } from '../test-run/shell.ts';
  */
 export const HOOK_WAIT_EXIT = 75;
 
-/** One hook a roll or integrate runs: a gate, a dependency check, an afterPull command or the roll command. */
+/** One hook a roll or merge runs: a gate, a dependency check, an afterPull command or the roll command. */
 export interface HookRequest {
   /**
    * A program and its arguments, run without a shell, so no word is read twice: the program is an executable on the

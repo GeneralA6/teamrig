@@ -42,7 +42,7 @@ function blackoutText(nowMs: number, reset: ResetTime | undefined, hours: number
   }
   const from = blackoutStart(reset, hours);
   const inForce = nowMs >= from ? 'IN FORCE ' : '';
-  return `${inForce}${zone.weekdayMinute(new Date(from))} until ${zone.weekdayMinute(new Date(reset.at))} (no integrate or roll; reset from the ${reset.source})`;
+  return `${inForce}${zone.weekdayMinute(new Date(from))} until ${zone.weekdayMinute(new Date(reset.at))} (no merge or roll; reset from the ${reset.source})`;
 }
 
 function loadText(load: Load, zone: TimeZone): string {

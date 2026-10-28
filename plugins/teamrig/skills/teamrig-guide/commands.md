@@ -3005,8 +3005,8 @@ UNDO teamrig setup restore 20261025T130500Z --yes --remove-new
 ### teamrig commits check
 
 Checks the commits in `base..tip` against the small-commits rule: a commit over 400 changed non-test lines or 15
-non-test files (`commits.maxLines`, `commits.maxFiles`) needs a `Large-commit: <reason>` line. For an
-integrate script or CI.
+non-test files (`commits.maxLines`, `commits.maxFiles`) needs a `Large-commit: <reason>` line. For a
+merge script or CI.
 
 Flags:
 
@@ -3141,7 +3141,7 @@ tree held in its latest 20 runs under the same session and `--what`, plus a quar
 is `coordinator.heavy.smallReserveMb` (2048).
 
 A step without `--small` that takes the lock holds it while it waits for the small steps to end. So builds,
-integrates, rolls and full suites still run alone, and no new small step is let in meanwhile. It gives up, releasing
+merges, rolls and full suites still run alone, and no new small step is let in meanwhile. It gives up, releasing
 the lock, when no small step ended for `waitMinutes`, and its lock is renewed if it had to wait. A share whose process is gone, or that
 expired, is removed by the next step that looks. An older kit does not know shares and may take a free lock while
 small steps run.
@@ -3175,12 +3175,12 @@ nothing ran`); running, it kills the step with every process it started, records
 Everything after `--` is the command, read as `teamrig test` reads it. Run a test run as
 `teamrig heavy ... -- teamrig test -- <command>`: it then gets both the lock and the short summary.
 
-A step's processes get `$TEAMRIG_HOST_LOCK`, the lock's token, and so do `integrate`'s push, `roll`'s
+A step's processes get `$TEAMRIG_HOST_LOCK`, the lock's token, and so do `merge`'s push, `roll`'s
 afterPull hooks and command, and a `roll --targets` deploy's command. A `teamrig heavy` started under a lock that token still names runs at once, in the
 parent's session, with no cutoff check or ledger record of its own: it is part of its parent, and waiting would
 wait on its own parent. So a repository's git hooks can wrap their checks in `teamrig heavy` (no `--session`
 needed): a plain `git commit` then takes the host lock for its hook, and a commit or push under `heavy`,
-`integrate` or `roll` does not wait on itself. Prefer that to `teamrig heavy ... -- git commit`, which Claude
+`merge` or `roll` does not wait on itself. Prefer that to `teamrig heavy ... -- git commit`, which Claude
 Code's worktree guard refuses in a worktree session. A token naming no live lock (a leftover exported in a
 shell) is said and ignored.
 
@@ -3225,7 +3225,7 @@ a failed one with `FAILED exit <code>`.
 ### teamrig withdraw
 
 Takes this session's steps that wait for the host lock out of its line, so a re-ordered or abandoned `heavy`,
-`integrate` or `roll` leaves it instead of running later. Each withdrawn step stops at its next look, runs nothing and
+`merge` or `roll` leaves it instead of running later. Each withdrawn step stops at its next look, runs nothing and
 is refused (`REFUSED withdrawn from the host lock's line`). A step that took its turn first is `RUNNING`, one that left
 the line first `LEFT`; one an older teamrig queued is `KEPT`, as its step runs anyway. With neither `--what` nor
 `--all` it lists the session's waiting steps and is refused. From a tab bound to a session it withdraws only that
@@ -3233,7 +3233,7 @@ session's steps. Exit 0 when each chosen step was withdrawn or none waits, 1 whe
 
 Flags:
 
-- `--what <text>`: withdraws the steps whose purpose holds the text (`heavy: <label>`, `integrate <repo>`).
+- `--what <text>`: withdraws the steps whose purpose holds the text (`heavy: <label>`, `merge <repo>`).
 - `--all`: withdraws every waiting step of the session.
 - `--session <id|name>`: the session; default `$TEAMRIG_SESSION`, else the session the tab is bound to.
 
@@ -3249,10 +3249,11 @@ Output:
 WITHDRAWN heavy: build api, waiting since 2030-01-08 11:58 IST: it stops at its next look
 ```
 
-### teamrig integrate
+### teamrig merge
 
-Lands the branch checked out in the current folder, a worktree or a plain checkout, on origin's default branch (the
-one `origin/HEAD` names), so every session lands its work one way: checked, pushed under the host lock and recorded.
+Merges the branch checked out in the current folder, a worktree or a plain checkout, into origin's default branch (the
+one `origin/HEAD` names), so every session merges its work one way: checked, pushed under the host lock and recorded.
+Its old name, integrate, is refused with this one (exit 64).
 
 REFUSED (exit 2) before any change for a folder outside git, a detached HEAD, uncommitted changes, the default branch
 itself (or `main`, `master`) and a branch with nothing that is not on origin already. Also from
@@ -3262,62 +3263,62 @@ blackout).
 
 The repository is the entry of `coordinator.repos` whose `mainCheckout` is this checkout's main one:
 
-- `deploysOnPush`: what a push to the default branch deploys, such as `["cloud-api"]`. integrate waits for quiet
+- `deploysOnPush`: what a push to the default branch deploys, such as `["cloud-api"]`. It waits for quiet
   claims on these targets, and records the push in the ledger as a deploy of them, which teamrig does not watch.
 - `dependencyGate`: REFUSED when the branch changes `package-lock.json` or a `package.json` field an install reads
   (any but scripts no install hook runs, a tool's settings such as `jest`, `prettier` or `lint-staged`, and the
-  package's description fields), since landing it changes, unreviewed, the `node_modules` every worktree links to;
+  package's description fields), since merging it changes, unreviewed, the `node_modules` every worktree links to;
   with no `dependencyCheck`, push such a change by hand. `teamrig roll` holds a pushed range that changes them the same way unless
   `dependencyCheck` and `roll.dependencyInstall` are both set.
 - `dependencyCheck`: with `dependencyGate`, the check that clears a dependency change, such as
   `["node", "tools/check-change.ts"]`: a program and its arguments, run with no shell in the branch's checkout under
   the host lock, after each rebase and before the push, its stdout shown with secrets redacted, killed after
   `coordinator.heavy.maxRunMinutes`, a heavy step in the ledger. It gets `TEAMRIG_BASELINE_LOCK`, a file holding the
-  default branch's `package-lock.json` (unset when that branch has none), removed after. Exit 0 lands the change;
-  any other end, or a range integrate cannot read, is REFUSED and nothing is pushed.
+  default branch's `package-lock.json` (unset when that branch has none), removed after. Exit 0 lets the change through;
+  any other end, or a range it cannot read, is REFUSED and nothing is pushed.
 - `worktreeFolder`: the folder `teamrig worktree add` makes each new worktree in, default `.claude/worktrees`; a
   relative folder is in the main checkout.
 - `worktreeSetup`: what `teamrig worktree add` runs in each new worktree, such as
   `["node", "tools/link-modules.ts"]`: a program and its arguments, run with no shell, with `TEAMRIG_MAIN_CHECKOUT`
   set to the main checkout's folder.
-- `followMainCheckout`: after a landing from a linked worktree, fast-forward the main checkout too, when it is on
+- `followMainCheckout`: after a merge from a linked worktree, fast-forward the main checkout too, when it is on
   the default branch with no uncommitted changes; a NOTE says when it was left as it is, or needs `npm ci`.
 - `merge`: a merge command run in place of the push, such as `{ "command": ["node", "tools/merge.ts"] }` for a
-  repository that lands through pull requests (a sketch below). It runs like the `dependencyCheck`, after it, with
+  repository that merges through pull requests (a sketch below). It runs like the `dependencyCheck`, after it, with
   `TEAMRIG_MERGE_BRANCH`, `TEAMRIG_MERGE_BASE` (the default branch), `TEAMRIG_MERGE_HEAD` (the rebased commit) and
-  `TEAMRIG_SESSION` set; its last line is the reason shown. Exit 0: it merged, and integrate fetches to confirm it: a
+  `TEAMRIG_SESSION` set; its last line is the reason shown. Exit 0: it merged, and `teamrig merge` fetches to confirm it: a
   commit on origin's default branch must hold every file the branch changed as at its head (a rebase, a squash and a
   merge commit all do), else FAILED and the branch is kept. 75: the merge waits, say on the pull request's checks or
-  review: WAITING with its last line, exit 75, the branch kept and the lock freed; run integrate again later, and once
+  review: WAITING with its last line, exit 75, the branch kept and the lock freed; run `teamrig merge` again later, and once
   origin holds the merge it finishes without running the command again (a branch with new commits is a new merge).
   Any other end: FAILED, the branch kept. `merge.remote` [coordinator.repos.<name>.merge.remote] names the remote it
   merges into, origin unless set: where origin is your fork and pull requests merge into the project's repository,
-  set `"remote": "upstream"`. Integrate then fetches and rebases onto upstream's default branch, confirms the merge
+  set `"remote": "upstream"`. `teamrig merge` then fetches and rebases onto upstream's default branch, confirms the merge
   there and moves the local default branch to upstream's; the branch is still pushed to and deleted from origin.
 
-A repository not listed gets a NOTE and none of these. Then integrate waits up to `coordinator.wait.maxMinutes` (60),
+A repository not listed gets a NOTE and none of these. Then `teamrig merge` waits up to `coordinator.wait.maxMinutes` (60),
 looking every `coordinator.wait.pollSeconds` (30), for the claims and the host lock (see `teamrig heavy`; longer while its line moves), fetches,
 rebases onto origin's default branch, runs the `dependencyCheck` on a dependency change and pushes there (or runs the
 `merge` command), the push a heavy step in the ledger that runs the pre-push
-hook. It landed when origin's default branch is at the rebased commit, whatever the push's exit code. When origin
-moved meanwhile, it rebases and pushes again, 3 times in all. After a landing it deletes the branch on origin and
+hook. It merged when origin's default branch is at the rebased commit, whatever the push's exit code. When origin
+moved meanwhile, it rebases and pushes again, 3 times in all. After a merge it deletes the branch on origin and
 here, moves the local default branch to origin's and prints the `teamrig worktree remove` that ends a worktree.
 Like `teamrig heavy`, it watches the processes that started it. Once its launching shell ends it stops waiting
 (`STOPPED before the host lock was free: nothing ran`), or kills the push it runs, records exit 129, frees the lock
 and pushes no more (FAILED).
-Exit 0 landed, 1 failed (FAILED and the reason; the branch is kept), 2 when the dependency check refused it, 75 when
+Exit 0 merged, 1 failed (FAILED and the reason; the branch is kept), 2 when the dependency check refused it, 75 when
 the merge command waits.
 
 Flags:
 
-- `--session <id|name>`: the session landing it, as the ledger names it; default `$TEAMRIG_SESSION`.
+- `--session <id|name>`: the session merging it, as the ledger names it; default `$TEAMRIG_SESSION`.
 - `--keep-remote`: keep the branch on origin.
 - `--no-delete-local`: keep the local branch.
 
 Example:
 
 ```sh
-teamrig integrate --session api
+teamrig merge --session api
 ```
 
 Output:
@@ -3336,7 +3337,7 @@ waits:
 ```text
 2030-01-08 12:00:00 IST merging t12-parser (4f1c2a9e) into main through the merge command node tools/merge.ts
 2030-01-08 12:00:40 IST   https://github.com/you/api/pull/12
-2030-01-08 12:00:40 IST next: run teamrig integrate again in /home/you/api-t12 once t12-parser is merged
+2030-01-08 12:00:40 IST next: run teamrig merge again in /home/you/api-t12 once t12-parser is merged
 WAITING https://github.com/you/api/pull/12
 ```
 
@@ -3370,8 +3371,8 @@ process.exit(state === 'MERGED' ? 0 : state === 'OPEN' && review !== 'CHANGES_RE
 ```
 
 Its push runs the pre-push hook, so checks kept in git's hooks still run before the forge sees the branch. A merge
-the forge makes later lands outside the host lock and the quiet claims: a `deploysOnPush` deploy starts when the forge
-merges, and is recorded when the next integrate finishes the merge.
+the forge makes later happens outside the host lock and the quiet claims: a `deploysOnPush` deploy starts when the forge
+merges, and is recorded when the next `teamrig merge` finishes the merge.
 
 ### teamrig roll
 
@@ -3499,7 +3500,7 @@ DONE deployed api, workers of pipeline: restarted 2 deployments
 
 ### teamrig claim
 
-A quiet claim holds the integrates and rolls that deploy its targets while a session measures them, so no deploy
+A quiet claim holds the merges and rolls that deploy its targets while a session measures them, so no deploy
 lands in the middle of a measurement. It lasts from now for `--for`: minutes, hours or both, such as `45m` or
 `1h30m`, at most `coordinator.claims.maxMinutes` (120). Each target must be one a repository deploys, in its
 `deploysOnPush` or `roll.targets`. One claim per session. REFUSED for an unknown target, a longer span, a second
@@ -3653,7 +3654,7 @@ Output:
 ```text
 host lock: po (heavy: build api) since 2030-01-08 11:50 IST
 heavy cutoff: 00:30-02:00 IST (no heavy step starts)
-deploy blackout: Tue 01-08 23:00 IST until Wed 01-09 03:00 IST (no integrate or roll; reset from the status line)
+deploy blackout: Tue 01-08 23:00 IST until Wed 01-09 03:00 IST (no merge or roll; reset from the status line)
 claims: 1
   quiet claim by data on cloud-api until 2030-01-08 12:30 IST (p95 latency)
 loads: none
@@ -4019,7 +4020,7 @@ and the start show it at the start. It may run up to `--helpers` at once (`burst
 most `budget.targetPct`, so a burst never spends the incident reserve; it ends at its time, when the week reaches
 the stop %, or by `teamrig burst end`. Quiet hours still apply; a lift wins over it for its session. Each of its
 sessions is told once at its next turn, and its model is told how to work in it: independent tasks only, a
-worktree per repo edit, one integrate at a time, the same model and effort for its helpers, and no skipped test.
+worktree per repo edit, one merge at a time, the same model and effort for its helpers, and no skipped test.
 The bursts are kept in the team's `state/usage/bursts.jsonl`.
 
 `burst.policy`: `owner` (the default) needs `--approved-by "<who>"`, after you ask the owner, as a burst spends

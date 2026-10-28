@@ -47,7 +47,7 @@ teamrig add --session api --owner web --priority p2 --title "Show the signup err
    `teamrig set T4 --session api --status waiting --waits task:T5 --note "the error codes on the form first"`.
    Not started yet? Leave it open and plan it after theirs: `teamrig update T4 --session api --after T5`.
 
-Never set another session's task status, and never do, integrate or fix another session's change: hand it to
+Never set another session's task status, and never do, merge or fix another session's change: hand it to
 its owner. A decision that belongs to the human (destructive data operations, product and design, permissions,
 budget, resource changes) goes to the lead, never decided by silence.
 
@@ -70,8 +70,8 @@ teamrig test --session api -- npm test
    15 files, the commit needs a `Large-commit: <reason>` line.
 3. Before you push: `git fetch`, rebase on the current main, and run the tests again. On a conflict, resolve the
    files, `git add` them and `git rebase --continue`, then also run the specs of every file main changed too (the
-   files of `git diff --name-only <old base> origin/main` that you changed) before you integrate.
-4. Integrate by your team's own route: a pull request, a release script, or a push to main, which asks the human
+   files of `git diff --name-only <old base> origin/main` that you changed) before you merge.
+4. Merge by your team's own route: a pull request, a release script, or a push to main, which asks the human
    first. A route that is refused goes to the lead; never route around it or hand it to another session.
 5. If the change must run, deploy it now, then check that the new code runs: the build has your commit, and the
    process restarted on it.

@@ -136,7 +136,7 @@ function timesClause(zone: TimeZone, now: Date): string {
 
 /**
  * Rule 7's heavy-step sentence, `cutoff` the span no heavy step starts in, on the team's clock. A team that names a
- * repository for the coordinator [coordinator.repos] lands and runs its changes through it, so it gets the commands
+ * repository for the coordinator [coordinator.repos] merges and runs its changes through it, so it gets the commands
  * too; a cutoff alone gets only its own sentence.
  */
 function heavySteps(coordinator: CoordinatorConfig, command: string, cutoff: string | undefined): string {
@@ -150,7 +150,7 @@ function heavySteps(coordinator: CoordinatorConfig, command: string, cutoff: str
     (cutoff === undefined ? '' : `, none starting ${cutoff} [coordinator.schedule.heavyCutoffUtc]`) +
     // Never `heavy -- git commit`: a repository's hooks take the lock themselves, and Claude Code's worktree guard
     // refuses that form in a worktree session (the guide's `teamrig heavy` section).
-    `; a commit stays a plain \`git commit\`. Land a tested branch with \`${command} integrate\`${roll}, also in the background [coordinator.repos].`
+    `; a commit stays a plain \`git commit\`. Merge a tested branch with \`${command} merge\`${roll}, also in the background [coordinator.repos].`
   );
 }
 
@@ -207,7 +207,7 @@ export function coreRuleTexts(config: KitConfig, command: string, platform: Node
       ' Other sessions own their areas. Your leader (the sub-lead listing you [leads], else the lead) sets your work order and staffing, answers your waits;' +
       " asks to a sub-lead's sessions go through it. Cross-area issues and clashes go to the nearest leader over both, unowned warnings to the lead.",
     'own-change':
-      "Own your change end to end: only the session that made it integrates, deploys (when it must run), verifies and fixes or rolls it back; another session's change goes to its owner.",
+      "Own your change end to end: only the session that made it merges, deploys (when it must run), verifies and fixes or rolls it back; another session's change goes to its owner.",
     messages: messagesRule(config, command) + timesClause(zone, clock.now),
     register:
       `Status is pulled from the register, never asked. Start each work block with \`${command} start --session <you>\`.` +

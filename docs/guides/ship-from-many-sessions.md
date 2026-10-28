@@ -3,11 +3,11 @@
 Many sessions on one host each build, run tests and deploy whenever their change is ready. Left alone, two full test
 suites starve each other of memory, a deploy lands in the middle of another session's measurement, and each session
 ships its own way. teamrig's deploy coordinator puts these steps in one line: heavy steps take turns under a host
-lock, every branch lands and rolls out the same checked way, and each step goes to a ledger, so a session can find
+lock, every branch merges and rolls out the same checked way, and each step goes to a ledger, so a session can find
 the stretches no change touched. The `coordinator` keys in the [team config](../configuration.md) set it.
 
 - [One host lock](#one-host-lock)
-- [Landing a branch](#landing-a-branch)
+- [Merging a branch](#merging-a-branch)
 - [Rolling it out](#rolling-it-out)
 - [When a step holds back](#when-a-step-holds-back)
 - [Clean measurements](#clean-measurements)
@@ -46,10 +46,10 @@ ones hold, leaves
 `coordinator.heavy.memoryFloorMb` (4096) plus its own. A step's own is the most its process tree held in its latest
 20 runs under the same session and `--what`, plus a quarter, or `smallReserveMb` (2048) before it has a run. A small
 step is killed after `smallMaxRunMinutes` (10), since a hung one holds back every step waiting for the lock. A step
-that takes the lock waits for the small steps to end, so builds, landings, rolls and full suites still run alone.
+that takes the lock waits for the small steps to end, so builds, merges, rolls and full suites still run alone.
 
 A repository's git hooks can wrap their checks in `teamrig heavy`, so a plain `git commit` takes the host lock for
-its hook. A step started under the lock (a hook run by an integrate's push, say) runs at once, as part of its
+its hook. A step started under the lock (a hook run by a merge's push, say) runs at once, as part of its
 parent, instead of waiting on itself. A pre-push hook's `heavy` takes `--pre-push`: git opens the push's connection
 before the hook runs, and a host such as GitHub drops it while the checks wait. With it, the checks' pass on a clean
 tree is recorded, and a push of the same tree with the same command line reuses it at once, with no lock. When the
@@ -60,29 +60,29 @@ Each step's start and end go to the ledger, `ledger.jsonl` in `coordinator.dir` 
 state folder), with how long it waited, the most memory its processes held at once and the least free memory the
 host had.
 
-## Landing a branch
+## Merging a branch
 
-`teamrig integrate`, run in a branch's worktree, lands the branch on origin's default branch, so every session lands
+`teamrig merge`, run in a branch's worktree, merges the branch into origin's default branch, so every session merges
 its work one way: checked, pushed under the host lock and recorded. `teamrig roll` then brings it to the running
 system.
 
 ```mermaid
 flowchart TD
-  branch["A finished branch in its worktree"] --> integrate["teamrig integrate"]
-  integrate --> waitlock["Waits for quiet claims on its targets and for the host lock"]
+  branch["A finished branch in its worktree"] --> mergecmd["teamrig merge"]
+  mergecmd --> waitlock["Waits for quiet claims on its targets and for the host lock"]
   waitlock --> rebase["Fetches and rebases onto the default branch, then runs the dependency check on a dependency change"]
   rebase --> how{"A merge command set?"}
   how -- no --> push["Pushes to the default branch, running the pre-push hook"]
   how -- yes --> merge["Runs the merge command, such as a pull request's"]
-  merge -- "75: waits on checks or review" --> later["Run integrate again later"]
-  merge -- "0: merged" --> landed["Landed: the branch deleted, the push recorded"]
-  push --> landed
-  landed --> roll["teamrig roll: claims, gates and the host lock, then pull and roll"]
+  merge -- "75: waits on checks or review" --> later["Run teamrig merge again later"]
+  merge -- "0: merged" --> merged["Merged: the branch deleted, the push recorded"]
+  push --> merged
+  merged --> roll["teamrig roll: claims, gates and the host lock, then pull and roll"]
   roll --> recorded["The deploy recorded in the ledger"]
 ```
 
 ```sh
-teamrig integrate --session api
+teamrig merge --session api
 ```
 
 ```text
@@ -96,9 +96,9 @@ DONE pushed 9a0b1c2d..4f1c2a9e to main; cloud-api deploy on push
 It is refused before any change in a detached HEAD, with uncommitted changes, on the default branch itself and for a
 branch with nothing new. Otherwise it waits up to `coordinator.wait.maxMinutes` (60) for the claims and the lock
 (longer while its line moves), fetches, rebases and pushes, the push a heavy step that runs the pre-push hook. When
-origin moved meanwhile, it rebases and pushes again, 3 times in all. Once landed, it deletes the branch on origin and
+origin moved meanwhile, it rebases and pushes again, 3 times in all. Once merged, it deletes the branch on origin and
 here (`--keep-remote` and `--no-delete-local` keep them) and prints the `teamrig worktree remove` that ends the
-worktree. Exit 0 landed, 1 failed with the branch kept, 2 when the dependency check refused it, 75 when the merge
+worktree. Exit 0 merged, 1 failed with the branch kept, 2 when the dependency check refused it, 75 when the merge
 command waits.
 
 Each repository is an entry of `coordinator.repos`, found by its main checkout; one not listed gets a NOTE and none
@@ -119,18 +119,18 @@ of these:
 }
 ```
 
-- `deploysOnPush`: what a push to the default branch deploys by itself, on a host that builds on push. integrate
+- `deploysOnPush`: what a push to the default branch deploys by itself, on a host that builds on push. `teamrig merge`
   waits for quiet claims on these targets and records the push as their deploy, which teamrig does not watch.
 - `dependencyGate`: refuses a branch that changes `package-lock.json`, or a `package.json` field an install reads,
-  since landing it changes, unreviewed, the `node_modules` every worktree links to. `dependencyCheck` is the check
+  since merging it changes, unreviewed, the `node_modules` every worktree links to. `dependencyCheck` is the check
   that clears one, run under the lock after each rebase and before the push.
-- `followMainCheckout`: after a landing from a worktree, fast-forwards the main checkout too, when it is on the
+- `followMainCheckout`: after a merge from a worktree, fast-forwards the main checkout too, when it is on the
   default branch with no uncommitted changes.
-- `merge`: a command run in place of the push, for a repository that lands through pull requests. Exit 0: it merged,
-  and integrate confirms it on origin. 75: the merge waits, say on the pull request's checks or review; the branch is
-  kept and the lock freed, and integrate run again later finishes it once origin holds the merge. Anything else
+- `merge`: a command run in place of the push, for a repository that merges through pull requests. Exit 0: it merged,
+  and `teamrig merge` confirms it on origin. 75: the merge waits, say on the pull request's checks or review; the
+  branch is kept and the lock freed, and `teamrig merge` run again later finishes it once origin holds the merge. Anything else
   fails. `merge.remote: "upstream"` merges into the project's repository where origin is your fork.
-  [commands](../../plugins/teamrig/skills/teamrig-guide/commands.md#teamrig-integrate) has a sketch of one for
+  [commands](../../plugins/teamrig/skills/teamrig-guide/commands.md#teamrig-merge) has a sketch of one for
   GitHub pull requests.
 
 ## Rolling it out
@@ -200,12 +200,12 @@ release it first.
 
 ## When a step holds back
 
-- **The heavy cutoff:** no heavy step, integrate or roll starts from `coordinator.schedule.heavyCutoffUtc` until
+- **The heavy cutoff:** no heavy step, merge or roll starts from `coordinator.schedule.heavyCutoffUtc` until
   midnight UTC, nor runs a heavy step whose wait for the lock ran past it; set it to keep a nightly stretch free of
   builds.
-- **The reset blackout:** no integrate or roll starts in the `coordinator.schedule.resetBlackoutHours` before the
+- **The reset blackout:** no merge or roll starts in the `coordinator.schedule.resetBlackoutHours` before the
   weekly token reset, the one the status line last reported, else the one `budget.reset` sets; unset, there is none.
-- **A wait that ran out:** a heavy step is refused once its line has not moved for `waitMinutes`, an integrate or a
+- **A wait that ran out:** a heavy step is refused once its line has not moved for `waitMinutes`, a merge or a
   roll after `coordinator.wait.maxMinutes`, unless its line keeps moving.
 - **A step taken out of line:** `teamrig withdraw` takes a session's steps still waiting for the lock out of the line,
   so a re-ordered or abandoned step never runs:
@@ -225,7 +225,7 @@ release it first.
 ## Clean measurements
 
 A session measuring a change, say its effect on latency, needs a stretch no deploy or build disturbed. A quiet claim
-holds the integrates and rolls that deploy its targets while it measures:
+holds the merges and rolls that deploy its targets while it measures:
 
 ```sh
 teamrig claim --session api --targets api,workers --metric "p95 latency" --why "cache probe" --for 45m
@@ -283,7 +283,7 @@ teamrig deploys
 ```text
 host lock: po (heavy: build api) since 2030-01-08 11:50 IST
 heavy cutoff: 00:30-02:00 IST (no heavy step starts)
-deploy blackout: Tue 01-08 23:00 IST until Wed 01-09 03:00 IST (no integrate or roll; reset from the status line)
+deploy blackout: Tue 01-08 23:00 IST until Wed 01-09 03:00 IST (no merge or roll; reset from the status line)
 claims: 1
   quiet claim by data on cloud-api until 2030-01-08 12:30 IST (p95 latency)
 loads: none

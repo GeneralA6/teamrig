@@ -57,13 +57,13 @@ describe('teamrig withdraw', () => {
 
   it("withdraws each with --all, keeping one an older teamrig queued since its step runs anyway, and exits 1", async () => {
     const kit = new CliHarness(TEAM);
-    const older = olderWaiterOf('2030-01-08T09:56:00.000Z', { purpose: 'integrate app' });
+    const older = olderWaiterOf('2030-01-08T09:56:00.000Z', { purpose: 'merge app' });
     await queued(kit, older, BUILD, THEIRS);
     const result = await kit.run(['withdraw', '--session', 'alpha', '--all'], { sessionProcesses: running() });
     assert.deepEqual(result, {
       code: 1,
       stdout: [
-        'KEPT integrate app, waiting since 2030-01-08 09:56 UTC: an older teamrig queued it and runs it anyway (pid 9001)',
+        'KEPT merge app, waiting since 2030-01-08 09:56 UTC: an older teamrig queued it and runs it anyway (pid 9001)',
         'WITHDRAWN heavy: build api, waiting since 2030-01-08 09:58 UTC: it stops at its next look',
       ],
       stderr: [],

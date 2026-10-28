@@ -303,7 +303,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   config validate | config migrate [--yes]   migrate shows an older config rewritten in this format and
       the first teamrig that reads it, as a tab on an older one refuses every write after; --yes writes it
   commits check --base <ref> [--tip <ref>]   commits in base..tip (default HEAD) over the size rule
-      with no reason line; any is REFUSED, for an integrate script or CI
+      with no reason line; any is REFUSED, for a merge script or CI
   worktree add <branch> [--repo <name>]   makes a session's new worktree the same way every time: fetches
       the default branch origin/HEAD names, adds the worktree on the new branch from it, in a folder
       named after the branch (each / as -) in coordinator.repos.<name>.worktreeFolder (default
@@ -326,7 +326,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       129); REFUSED from coordinator.schedule.heavyCutoffUtc to midnight UTC and once its line has not
       moved for coordinator.heavy.waitMinutes; exit 0 when the command passed, 1 when it failed or was killed. Its
       processes get $TEAMRIG_HOST_LOCK: a heavy step started under a live lock (a git hook's checks
-      under heavy, integrate or roll) runs at once under it. No --session: $TEAMRIG_SESSION, the
+      under heavy, merge or roll) runs at once under it. No --session: $TEAMRIG_SESSION, the
       parent step's session, else the session this Claude Code tab is bound to. --small (a spec run, a
       lint): shares the host with other small steps while it keeps coordinator.heavy.memoryFloorMb free
       besides the MB held for them (its ledger peak and a quarter, else coordinator.heavy.smallReserveMb)
@@ -337,14 +337,14 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       when they pass; when they waited over a minute for the lock it declines the push (REFUSED), whose
       connection may have closed meanwhile: push again, it reuses the pass
   withdraw (--what <text> | --all) [--session <id|name>]   takes this session's steps waiting for the
-      host lock (heavy, integrate, roll) out of its line, so a re-ordered or abandoned step leaves it:
+      host lock (heavy, merge, roll) out of its line, so a re-ordered or abandoned step leaves it:
       --what picks those whose purpose holds the text. Each stops at its next look and runs nothing;
       RUNNING when it took its turn first, LEFT when it left the line first, KEPT when an older
       teamrig queued it (its step runs anyway). With neither flag: lists them, REFUSED. No --session:
       $TEAMRIG_SESSION, else the session this Claude Code tab is bound to; REFUSED for another
       session's steps from a bound tab. Exit 0 each withdrawn or none waits, 1 any RUNNING, LEFT, KEPT
-  integrate [--session <id|name>] [--keep-remote] [--no-delete-local]   lands the branch checked out
-      here on origin's default branch: REFUSED for a detached HEAD, the default branch, uncommitted
+  merge [--session <id|name>] [--keep-remote] [--no-delete-local]   merges the branch checked out
+      here into origin's default branch: REFUSED for a detached HEAD, the default branch, uncommitted
       changes, nothing new or a dependency change coordinator.repos.<name>.dependencyGate holds and
       no dependencyCheck may clear, from coordinator.schedule.heavyCutoffUtc to midnight UTC and in the
       resetBlackoutHours before the weekly token reset; waits up to coordinator.wait.maxMinutes for
@@ -352,10 +352,10 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       dependencyCheck on a dependency change (REFUSED unless it exits 0) and pushes (each a heavy step
       in the ledger; again when origin moved meanwhile), or, where coordinator.repos.<name>.merge is
       set, runs its command in place of the push (0 merged, once origin holds it; 75 WAITING, say on a
-      pull request's checks: run integrate again once it merged), records the landing as a deploy of deploysOnPush, deletes the branch on origin
+      pull request's checks: run merge again once it merged), records the merge as a deploy of deploysOnPush, deletes the branch on origin
       and here (--keep-remote, --no-delete-local keep them) and, where followMainCheckout, fast-forwards
       the main checkout; once the shell that started it ends, it stops waiting, or kills the push
-      and frees the lock (exit 129); exit 0 landed, 1 failed or stopped, 75 the merge waits
+      and frees the lock (exit 129); exit 0 merged, 1 failed or stopped, 75 the merge waits
   roll [--repo <name>] [--session <id|name>]   brings what was pushed to a repository's default
       branch to the running system: pulls its main checkout fast-forward to origin, runs its
       coordinator.repos.<name>.roll dependencyInstall for a dependency change (after its
@@ -377,7 +377,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       for quiet claims on those targets only; its gates and command see TEAMRIG_VERB=deploy and
       TEAMRIG_DEPLOY_TARGETS; exit 0 deployed, 1 failed or stopped
   claim --targets <a,b> --metric <m> --why "<why>" --for <span> [--session <id|name>]   a quiet
-      claim: integrate and roll wait while it holds a target they deploy, from now for the span (45m,
+      claim: merge and roll wait while it holds a target they deploy, from now for the span (45m,
       1h30m; at most coordinator.claims.maxMinutes); one per session; REFUSED for a target no
       repository deploys or a secret in the metric or reason
   release [--session <id|name>]   ends this session's quiet claim before its time
