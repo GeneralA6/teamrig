@@ -1645,7 +1645,8 @@ Read 14 files, 38.2 MB this run.
 
 ### teamrig start
 
-Prints what you read at the start of a work block, in one call: the time on the team's clock, your unread inbox lines (marked read,
+Prints what you read at the start of a work block, in one call: the time on the team's clock, today's scheduled
+meetings you are met in or join and any missed ones (`MEETINGS`, every one for the lead, only when there are some), your unread inbox lines (marked read,
 as `inbox read` does, which also ties this Claude Code session to your area), your task list, the `check` flags you
 act on and the week's use. Between the list and the flags, `WAITING ON YOU` lists the active tasks of other
 sessions that need one of your unfinished tasks or wait on your decision or approval (at most 5, then `+N more`),
@@ -1668,6 +1669,7 @@ Output:
 
 ```text
 START web, Thu 10-15 12:00 IDT
+MEETINGS today: M3 14:00 IDT web with api on T7
 - 2026-10-15 08:58 lead: api error codes are in docs/errors.md
 READ web: 1 new line, shown above; new ones are shown at your next prompt
 LIST 2 task(s) (short rows; --all for every field)
@@ -1698,6 +1700,8 @@ as an inbox line. So no session is told the meeting started, and none is woken. 
 - `LATE`: the active tasks past their due date, their own or the earlier one of a task that needs them
   (`due 10-14 (from T9)`);
 - `DONE`: what finished since the last meeting ended (a day back for the first, 7 days at most);
+- `MEETINGS`: today's scheduled meetings and the missed ones, as `meeting list` shows them, and how the owner starts
+  one or a missed one is moved;
 - the lead's unread inbox lines, marked read;
 - the week's use and, under it, the planned week's fit to the weekly limit, as `plan` gives it.
 
@@ -1752,6 +1756,9 @@ LATE 1 past their due date
 DONE 2 done or dropped since Wed 10-14 11:30 IDT
   T2 done, p1, owner api | Rate-limit the signup endpoint
   T3 done, p2, owner web | Add the error codes page
+MEETINGS 1 today or missed
+  M3 scheduled, Thu 10-15 14:00 IDT, 30 min, web with api, tasks T7 | the pricing tiers
+  The owner starts one with teamrig meeting start <id>; a missed one is moved (teamrig meeting move <id> --at <time>) or dropped.
 - 2026-10-15 07:40 api: the signup retry needs the new error codes first
 READ lead: 1 new line, shown above; new ones are shown at your next prompt
 Week: 31.0% used at 11:00 IDT (status line); the pace line is at 28.6%: 2.4 points ahead. Resets Wed 10-21 04:00 IDT.
