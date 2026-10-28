@@ -1,5 +1,6 @@
 import { parseDeadline } from '../core/time.ts';
 import type { Task } from './fold.ts';
+import type { TaskTree } from './tree.ts';
 import { isReady, type WaitContext } from './waits.ts';
 
 /**
@@ -66,4 +67,35 @@ export function asksOwner(task: Task, ownerMarker: string, requireGate: boolean,
 /** When the lead asks the owner a wait the owner put off (Later), as stored; undefined for any other task. */
 export function ownerLater(task: Task, ownerMarker: string, requireGate: boolean, context: WaitContext): string | undefined {
   return onOwner(task, ownerMarker, requireGate) ? deferredUntil(task, context) : undefined;
+}
+
+/** A card the owner put off (Later), with the time the lead asks it again, as stored. */
+export interface LaterCard {
+  readonly task: Task;
+  readonly until: string;
+}
+
+/** One session's cards on the owner: those the lead asks now (asksOwner), then those the owner put off (ownerLater). */
+export interface OwnerCards {
+  readonly due: readonly Task[];
+  readonly later: readonly LaterCard[];
+}
+
+/**
+ * Each session's cards on the owner (T1295), keyed by the task's owner, each list in the register's plan order: what
+ * `teamrig meet` asks a session about and the task pane's Team tab counts. A session with none is absent.
+ */
+export function ownerCardsBySession(tasks: readonly Task[], tree: TaskTree, ownerMarker: string, requireGate: boolean): ReadonlyMap<string, OwnerCards> {
+  const bySession = new Map<string, { due: Task[]; later: LaterCard[] }>();
+  for (const task of tree.inPlanOrder(tasks.filter((task) => onOwner(task, ownerMarker, requireGate)))) {
+    const cards = bySession.get(task.owner) ?? { due: [], later: [] };
+    const until = deferredUntil(task, tree.context);
+    if (until === undefined) {
+      cards.due.push(task);
+    } else {
+      cards.later.push({ task, until });
+    }
+    bySession.set(task.owner, cards);
+  }
+  return bySession;
 }
