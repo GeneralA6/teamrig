@@ -80,5 +80,5 @@ export async function meet(args, runtime) {
     const project = await sessionProjectOf(runtime, config, id, args.flags.get('project'), found.from);
     const team = found.team;
     const opened = await openSession(runtime, kit, config, roster, { team, id, project, terminal, asked: false, fresh: true, prompt: meetPrompt(team, id, owner) });
-    return printOpenResult(runtime, project, opened);
+    return printOpenResult(runtime, opened);
 }

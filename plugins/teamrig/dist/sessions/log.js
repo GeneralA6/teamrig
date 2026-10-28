@@ -5,6 +5,9 @@ import { assertWritable, parseJsonl, toJsonlLine, VERSION_FIELD } from "../core/
  * `teamrig close` or the idle pass ended to free the host, who, how long it had been idle and what it held, and when
  * `teamrig open` started it again, resumed in its last Claude Code session or fresh. A session whose newest
  * record is a close is closed by teamrig. A newer format is skipped on read and refuses a write.
+ * A close's `folder` (T1408) is no new format, as the register's optional fields are none (src/register/events.ts):
+ * no teamrig rewrites this log, and an older one ignores it and reopens the session in the project, fresh when its
+ * transcript is not there. A new format would instead fail an older tab's close after its tab ended, unlogged.
  */
 export const SESSION_LOG_FORMAT = 1;
 function instantField(record, key) {
@@ -33,7 +36,8 @@ export function parseSessionLogRecord(record) {
     if (record['kind'] !== 'close' || by === undefined || claudeSession === undefined || idleMinutes === undefined || freedMb === undefined) {
         return undefined;
     }
-    return { kind: 'close', session, by, at, claudeSession, idleMinutes, freedMb };
+    const folder = stringField(record, 'folder');
+    return { kind: 'close', session, by, at, claudeSession, idleMinutes, freedMb, ...(folder === undefined ? {} : { folder }) };
 }
 function recordOf(record) {
     return { [VERSION_FIELD]: SESSION_LOG_FORMAT, ...record };
