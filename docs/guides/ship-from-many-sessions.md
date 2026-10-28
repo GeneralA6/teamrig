@@ -162,7 +162,7 @@ at a time: checked, pulled under the host lock, rolled and recorded. A repositor
 - `dependencyInstall`: the install a pulled dependency change needs, run right after the pull. A failed install
   moves the main checkout back and installs again, so the `node_modules` every worktree links to matches it.
 - `afterPull`: up to 16 commands run after the pull and before the roll, such as a build it needs.
-- `command`: the roll itself. A line `no-roll` means nothing needed rolling; otherwise its last line is the deploy
+- `command`: the roll itself. A line `no-deploy` means nothing needed deploying; otherwise its last line is the deploy
   record's note.
 
 ```sh

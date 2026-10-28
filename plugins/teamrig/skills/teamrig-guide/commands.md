@@ -3391,10 +3391,10 @@ The repository is an entry of `coordinator.repos` with a `roll` block: the one `
 - `command`: the roll itself, such as `["node", "tools/roll.js"]`.
 
 Each command is a list of words, run with no shell in the main checkout with stdin closed. Each gets `TEAMRIG_TEAM`,
-`TEAMRIG_SESSION`, `TEAMRIG_VERB=roll`, `TEAMRIG_REPO` and `TEAMRIG_PENDING_RANGE` (`<head sha>..<origin sha>`); a
-gate also gets `TEAMRIG_GATE_NAME` and `TEAMRIG_GATE_PHASE` (`before` the host lock, then `locked` under it); the
-afterPull hooks and the command also get `TEAMRIG_ROLL_TO` (the sha pulled) and, when a gate printed a line
-`tag=<tag>`, `TEAMRIG_ROLL_TAG`. A gate's exit 0 lets the roll go, 75 holds it and 2 refuses it; any other end, or
+`TEAMRIG_SESSION`, `TEAMRIG_VERB=deploy`, `TEAMRIG_REPO` and `TEAMRIG_PENDING_RANGE` (`<head sha>..<origin sha>`); a
+gate also gets `TEAMRIG_CHECK_NAME` and `TEAMRIG_CHECK_PHASE` (`before` the host lock, then `locked` under it); the
+afterPull hooks and the command also get `TEAMRIG_DEPLOY_TO` (the sha pulled) and, when a gate printed a line
+`tag=<tag>`, `TEAMRIG_DEPLOY_TAG`. A gate's exit 0 lets the roll go, 75 holds it and 2 refuses it; any other end, or
 none within `coordinator.checkTimeoutSeconds` (20), holds it. Its last line, secrets redacted, is the reason.
 
 REFUSED (exit 2) before any gate or lock for a main checkout off its default branch, with uncommitted changes or with
@@ -3414,7 +3414,7 @@ installed: REFUSED, nothing rolled. A failed install moves it back and installs 
 worktree links to matches the checkout: FAILED, nothing rolled. When moving back or that install fails too, FAILED
 names what to run by hand. With the gate off and no `dependencyInstall`, the range rolls with no install.
 
-A command that prints the line `no-roll` had nothing to roll: DONE, with no deploy record. Otherwise the deploy is
+A command that prints the line `no-deploy` had nothing to deploy: DONE, with no deploy record. Otherwise the deploy is
 recorded with the command's last line, and exit 0 is DONE, any other end FAILED (exit 1): its owners fix forward or
 roll back. The pull stays after a failure, so a new roll finds nothing pending: run the roll command by hand once it
 is fixed. A failed pull rolled nothing: roll again.
@@ -3431,8 +3431,8 @@ and when a gate refuses. It waits for quiet claims on the targets it names, not 
 the host lock, and asks the gates again under the lock. The command runs with no shell in this folder, killed after
 `coordinator.heavy.maxRunMinutes`, as one heavy step in the ledger; its lines show as they come.
 
-The gates and the command get `TEAMRIG_TEAM`, `TEAMRIG_SESSION`, `TEAMRIG_VERB=deploy`, `TEAMRIG_REPO` and
-`TEAMRIG_DEPLOY_TARGETS` (`api,live`), and no `TEAMRIG_PENDING_RANGE`: a gate that reads the range tells a deploy by
+The gates and the command get `TEAMRIG_TEAM`, `TEAMRIG_SESSION`, `TEAMRIG_VERB=redeploy`, `TEAMRIG_REPO` and
+`TEAMRIG_DEPLOY_TARGETS` (`api,live`), and no `TEAMRIG_PENDING_RANGE`: a gate that reads the range tells a redeploy by
 its verb. The command also gets `$TEAMRIG_HOST_LOCK`. The deploy record names the targets (`"targets": ["api",
 "live"]`), so `teamrig windows` counts only them as disturbed. It is written even when the command fails (FAILED,
 exit 1), since a failed restart may have restarted some of them; a command that cannot start records no deploy.

@@ -717,7 +717,7 @@ export interface DeployConfig {
   readonly dependencyInstall?: readonly string[];
   /** Run in order after the pull, before `command`; one that fails ends the deploy before its command runs. */
   readonly afterPull: readonly (readonly string[])[];
-  /** Deploys what the pull brought: exit 0 deployed (a stdout line `no-roll`: nothing needed deploying), else failed. */
+  /** Deploys what the pull brought: exit 0 deployed (a stdout line `no-deploy`: nothing needed deploying), else failed. */
   readonly command: readonly string[];
 }
 

@@ -84,7 +84,7 @@ export interface GateRun {
 export type GatesAnswer = { readonly readiness: Readiness; readonly tag: string | undefined };
 
 /**
- * Asks each gate in order, with `TEAMRIG_GATE_NAME` and `TEAMRIG_GATE_PHASE` set, and stops at the first that does
+ * Asks each gate in order, with `TEAMRIG_CHECK_NAME` and `TEAMRIG_CHECK_PHASE` set, and stops at the first that does
  * not pass. Each reason is redacted, since a wait or refusal is printed and may reach the ledger.
  */
 export async function askGates(gates: readonly DeployCheckConfig[], phase: ClearancePhase, run: GateRun): Promise<GatesAnswer> {
@@ -94,7 +94,7 @@ export async function askGates(gates: readonly DeployCheckConfig[], phase: Clear
     const end = await run.hooks.run({
       argv: gate.command,
       cwd: run.cwd,
-      env: { ...run.env, TEAMRIG_GATE_NAME: gate.name, TEAMRIG_GATE_PHASE: phase },
+      env: { ...run.env, TEAMRIG_CHECK_NAME: gate.name, TEAMRIG_CHECK_PHASE: phase },
       timeoutMs: run.timeoutSeconds * 1000,
       onLine: output.hear,
     });

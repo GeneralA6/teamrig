@@ -112,10 +112,10 @@ describe('deployTargets', () => {
     world.hooks.answer(RESTART, { lines: ['restarting api, live', 'restarted 2 deployments'], takesMs: 90_000 });
     assert.deepEqual(await world.run(), { kind: 'done', summary: 'deployed api, live of pipeline: restarted 2 deployments' });
     assert.deepEqual(world.hooks.commands, ['node gates/flow.js', 'node gates/flow.js', RESTART.join(' ')], 'nothing is pulled, built or rolled');
-    const base = { TEAMRIG_TEAM: 'app', TEAMRIG_SESSION: 'sec', TEAMRIG_VERB: 'deploy', TEAMRIG_REPO: 'pipeline', TEAMRIG_DEPLOY_TARGETS: 'api,live' };
+    const base = { TEAMRIG_TEAM: 'app', TEAMRIG_SESSION: 'sec', TEAMRIG_VERB: 'redeploy', TEAMRIG_REPO: 'pipeline', TEAMRIG_DEPLOY_TARGETS: 'api,live' };
     const [before, locked, command] = world.hooks.ran;
-    assert.deepEqual(teamrigEnv(before?.env ?? {}), { ...base, TEAMRIG_GATE_NAME: 'flow', TEAMRIG_GATE_PHASE: 'before' });
-    assert.deepEqual(teamrigEnv(locked?.env ?? {}), { ...base, TEAMRIG_GATE_NAME: 'flow', TEAMRIG_GATE_PHASE: 'locked' });
+    assert.deepEqual(teamrigEnv(before?.env ?? {}), { ...base, TEAMRIG_CHECK_NAME: 'flow', TEAMRIG_CHECK_PHASE: 'before' });
+    assert.deepEqual(teamrigEnv(locked?.env ?? {}), { ...base, TEAMRIG_CHECK_NAME: 'flow', TEAMRIG_CHECK_PHASE: 'locked' });
     assert.deepEqual(teamrigEnv(command?.env ?? {}), { ...base, TEAMRIG_HOST_LOCK: 'lock-1' });
     assert.deepEqual([before?.cwd, command?.cwd, command?.timeoutMs, command?.env['PATH']], [MAIN_CHECKOUT, '/runner', DEFAULT_HEAVY.maxRunMinutes * 60_000, '/bin']);
     assert.deepEqual(world.records(), [

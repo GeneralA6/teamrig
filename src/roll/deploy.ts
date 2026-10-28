@@ -39,7 +39,7 @@ function deployEnv(setup: RollSetup, ports: RollPorts, request: DeployRequest, r
     ...ports.env,
     TEAMRIG_TEAM: setup.team,
     TEAMRIG_SESSION: request.session,
-    TEAMRIG_VERB: 'deploy',
+    TEAMRIG_VERB: 'redeploy',
     TEAMRIG_REPO: repo.name,
     TEAMRIG_DEPLOY_TARGETS: request.targets.join(','),
   };

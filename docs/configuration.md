@@ -307,7 +307,7 @@ How teamrig roll deploys what merged into the default branch, each command a pro
 | `checks` | array (at most 16 items) of [object](#coordinatorreposdeploychecks) |  | Checks asked in order before the host lock and again under it; the first that does not pass holds the deploy. Exit 0 lets it go, 75 makes it wait, 2 refuses it; anything else, or no answer within checkTimeoutSeconds, makes it wait. |
 | `dependencyInstall` | array (1 to 64 items) of string (at least 1 character) |  | Installs a pulled range's dependency change (package-lock.json, or package.json fields an install reads), such as npm ci --ignore-scripts: run after the pull and the dependencyCheck, before afterPull. A failed install moves the main checkout back and runs again to restore its dependencies. With dependencyGate, a dependency change deploys only when this and dependencyCheck are set. |
 | `afterPull` | array (at most 16 items) of array (1 to 64 items) of string (at least 1 character) |  | Run in order after the pull, before command; one that fails ends the deploy before its command runs. |
-| `command` (required) | array (1 to 64 items) of string (at least 1 character) |  | Deploys what the pull brought: exit 0 deployed (a stdout line no-roll: nothing needed deploying), else failed. Its last stdout line is the ledger note. |
+| `command` (required) | array (1 to 64 items) of string (at least 1 character) |  | Deploys what the pull brought: exit 0 deployed (a stdout line no-deploy: nothing needed deploying), else failed. Its last stdout line is the ledger note. |
 
 ## `coordinator.repos.*.deploy.checks[]`
 

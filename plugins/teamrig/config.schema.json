@@ -618,7 +618,7 @@
                     }
                   },
                   "command": {
-                    "description": "Deploys what the pull brought: exit 0 deployed (a stdout line no-roll: nothing needed deploying), else failed. Its last stdout line is the ledger note.",
+                    "description": "Deploys what the pull brought: exit 0 deployed (a stdout line no-deploy: nothing needed deploying), else failed. Its last stdout line is the ledger note.",
                     "type": "array",
                     "minItems": 1,
                     "maxItems": 64,

@@ -141,11 +141,11 @@ describe('rollRepo', () => {
     world.hooks.answer(FLOW.command, { lines: ['no flow open', 'tag=sha-0f8e'] }).answer(COMMAND, { lines: ['building', 'rolled api, workers on sha-0f8e'], takesMs: 120_000 });
     assert.deepEqual(await world.run(), { kind: 'done', summary: 'c1..c2 rolled: rolled api, workers on sha-0f8e' });
     assert.deepEqual(world.hooks.commands, ['node gates/flow.js', 'node gates/flow.js', 'node scripts/build-cli.js', 'node tools/roll.js']);
-    const base = { TEAMRIG_TEAM: 'app', TEAMRIG_SESSION: 'po', TEAMRIG_VERB: 'roll', TEAMRIG_REPO: 'pipeline', TEAMRIG_PENDING_RANGE: 'base..c2' };
+    const base = { TEAMRIG_TEAM: 'app', TEAMRIG_SESSION: 'po', TEAMRIG_VERB: 'deploy', TEAMRIG_REPO: 'pipeline', TEAMRIG_PENDING_RANGE: 'base..c2' };
     const [before, locked, afterPull, command] = world.hooks.ran;
-    assert.deepEqual(teamrigEnv(before?.env ?? {}), { ...base, TEAMRIG_GATE_NAME: 'flow', TEAMRIG_GATE_PHASE: 'before' });
-    assert.deepEqual(teamrigEnv(locked?.env ?? {}), { ...base, TEAMRIG_GATE_NAME: 'flow', TEAMRIG_GATE_PHASE: 'locked' });
-    const rolling = { ...base, TEAMRIG_ROLL_TO: 'c2', TEAMRIG_ROLL_TAG: 'sha-0f8e', TEAMRIG_HOST_LOCK: 'lock-1' };
+    assert.deepEqual(teamrigEnv(before?.env ?? {}), { ...base, TEAMRIG_CHECK_NAME: 'flow', TEAMRIG_CHECK_PHASE: 'before' });
+    assert.deepEqual(teamrigEnv(locked?.env ?? {}), { ...base, TEAMRIG_CHECK_NAME: 'flow', TEAMRIG_CHECK_PHASE: 'locked' });
+    const rolling = { ...base, TEAMRIG_DEPLOY_TO: 'c2', TEAMRIG_DEPLOY_TAG: 'sha-0f8e', TEAMRIG_HOST_LOCK: 'lock-1' };
     assert.deepEqual(teamrigEnv(afterPull?.env ?? {}), rolling);
     assert.deepEqual(teamrigEnv(command?.env ?? {}), rolling);
     assert.deepEqual([command?.cwd, command?.timeoutMs, command?.env['PATH']], [MAIN_CHECKOUT, HEAVY_MS, '/bin']);
@@ -242,9 +242,20 @@ describe('rollRepo', () => {
 
   it('records no deploy when the roll command says nothing needed rolling', async () => {
     const world = new World();
-    world.hooks.answer(COMMAND, { lines: ['no image change', 'no-roll'] });
+    world.hooks.answer(COMMAND, { lines: ['no image change', 'no-deploy'] });
     assert.deepEqual(await world.run(), { kind: 'done', summary: 'c1..c2 pulled; nothing needed rolling' });
     assert.deepEqual(world.records(), world.heavy(0, '2030-01-08T10:00:00.000Z'));
+  });
+
+  it('reads the no-deploy line wherever the command prints it, and the old no-roll line as any other', async () => {
+    const early = new World();
+    early.hooks.answer(COMMAND, { lines: ['no-deploy', 'image unchanged'] });
+    assert.deepEqual(await early.run(), { kind: 'done', summary: 'c1..c2 pulled; nothing needed rolling: image unchanged' });
+    assert.deepEqual(early.records(), early.heavy(0, '2030-01-08T10:00:00.000Z'));
+    const old = new World();
+    old.hooks.answer(COMMAND, { lines: ['no-roll'] });
+    assert.deepEqual(await old.run(), { kind: 'done', summary: 'c1..c2 rolled: no-roll' });
+    assert.equal(old.records().length, 3, 'the heavy step and a deploy are recorded');
   });
 
   it('fails without running the roll command when an afterPull hook fails', async () => {
@@ -316,7 +327,7 @@ describe('rollRepo of a range that changes the dependencies', () => {
     assert.deepEqual(atCheck, ['c2', OLD_LOCK], 'the check judges what was pulled against the old HEAD’s lock');
     const [, , check, install] = world.hooks.ran;
     assert.deepEqual([check?.cwd, check?.timeoutMs, check?.env[BASELINE_LOCK_ENV], check?.env['TEAMRIG_HOST_LOCK']], [MAIN_CHECKOUT, HEAVY_MS, BASELINE, 'lock-1']);
-    assert.deepEqual([install?.cwd, install?.timeoutMs, install?.env[BASELINE_LOCK_ENV], install?.env['TEAMRIG_HOST_LOCK'], install?.env['TEAMRIG_ROLL_TO']], [MAIN_CHECKOUT, HEAVY_MS, undefined, 'lock-1', 'c2']);
+    assert.deepEqual([install?.cwd, install?.timeoutMs, install?.env[BASELINE_LOCK_ENV], install?.env['TEAMRIG_HOST_LOCK'], install?.env['TEAMRIG_DEPLOY_TO']], [MAIN_CHECKOUT, HEAVY_MS, undefined, 'lock-1', 'c2']);
     assert.equal(world.files.get(BASELINE), undefined, 'the baseline copy is removed');
     for (const line of [`${DEPS_CHANGED}: dependency check node gates/deps-check.js`, '  1 package added, no advisories', `${DEPS_CHANGED}: dependency install npm ci --ignore-scripts`, 'installed: the worktrees that link to the node_modules in /repo/app have the new dependencies now']) {
       assert.ok(world.said.includes(line), line);
