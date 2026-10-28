@@ -367,8 +367,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       [--week <date>|none] [--goal <tag>] [--type task,bug] [--tree] [--all]
       short rows within 3,000 characters; --all: every field of every task. A task takes the earlier due
       of a task that needs it ("due 01-12 (from T9)"), and a row names another session's task needing it
-  show <id> [--tree]   every field and the history; --tree: what it needs and what needs it, each with
-      owner, status and due, then the next move (who acts first, on which task)
+  show <id> [--tree]   every field, the history and the inbox lines naming it; --tree: what it needs and
+      what needs it, each with owner, status and due, then the next move (who acts first, on which task)
   check [--week <date>] [--tree] [--all]   tasks and skills that break a team rule and context
       text over budget, in a short form within 3,000 characters; --all: every flag in full
   plan [--week <date>] [--tree]    the week plan (default: the newest week that has started)
