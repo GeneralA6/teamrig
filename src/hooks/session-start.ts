@@ -32,6 +32,8 @@ export interface SessionStartInput {
   readonly verifyNote: string | undefined;
   /** When the session already runs in another Claude Code: the line that tells this second one to stop. */
   readonly duplicateNote: string | undefined;
+  /** When the session starts in a Claude Code worktree: the shell forms its isolation refuses (hooks/worktree-note.ts). */
+  readonly worktreeNote: string | undefined;
   /**
    * Who the session is: an id or any name it has had, from `$TEAMRIG_SESSION`, a `--session` flag, or
    * the area this Claude Code session last read its inbox as.
@@ -172,6 +174,9 @@ export function sessionStartContext(input: SessionStartInput): string {
   }
   if (input.verifyNote !== undefined) {
     notes.push(input.verifyNote);
+  }
+  if (input.worktreeNote !== undefined) {
+    notes.push(input.worktreeNote);
   }
   if (load.newerVersion !== undefined) {
     notes.push(`The team config is version ${load.newerVersion}, from a newer ${KIT_NAME}: these rules are read best-effort.`);

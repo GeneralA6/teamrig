@@ -28,6 +28,7 @@ function context(overrides: Partial<SessionStartInput> = {}): string {
     modelNote: undefined,
     verifyNote: undefined,
     duplicateNote: undefined,
+    worktreeNote: undefined,
     session: 'alpha',
     sessionInEnv: true,
     tree: undefined,
@@ -137,6 +138,14 @@ MODEL app-alpha runs model claude-haiku-5-5.`));
 MODEL line.
 VERIFY 1, oldest first:
   T1 (proof: the nightly run)`));
+  });
+
+  it('says the worktree line after the verify queue', () => {
+    const text = context({ verifyNote: 'VERIFY 1, oldest first:\n  T1 (proof: the nightly run)', worktreeNote: 'WORKTREE line.' });
+    assert.ok(text.endsWith(`${NAMES}
+VERIFY 1, oldest first:
+  T1 (proof: the nightly run)
+WORKTREE line.`));
   });
 
   it("appends the team's rules", () => {
