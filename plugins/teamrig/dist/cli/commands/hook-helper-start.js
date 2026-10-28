@@ -6,7 +6,7 @@ import { JsonlRenameLog } from "../../names/log.js";
 import { noPositionals } from "../args.js";
 import { openKit, rulesClockOf } from "../kit.js";
 import { EXIT } from "../runtime.js";
-import { readTeamRules } from "../team-rules.js";
+import { keptRulesAboveOf, readTeamRules } from "../team-rules.js";
 import { loadTree } from "../tree.js";
 import { envSession, parseJson, sessionTeam, startSessionOf } from "./hook-input.js";
 /**
@@ -19,15 +19,17 @@ export async function helperContextOf(runtime, kit, payload, agentType) {
     const base = { team: kit.paths.team, agentType, platform: runtime.platform, clock: rulesClockOf(runtime), command: KIT_NAME };
     const { load } = kit;
     if (load.status !== 'loaded') {
-        return helperStartContext({ ...base, load, teamRules: [], renames: [], session: undefined, sessionInEnv: false });
+        return helperStartContext({ ...base, load, teamRules: [], keptRulesAbove: [], renames: [], session: undefined, sessionInEnv: false });
     }
     const { renames } = await new JsonlRenameLog(runtime.files, kit.paths.renames).read();
     const roster = new Roster(load.config, kit.paths.team, renames);
     const fromEnv = envSession(runtime);
+    const kitTree = await loadTree(runtime);
     const input = {
         ...base,
         load,
-        teamRules: await readTeamRules(runtime, kit, await loadTree(runtime)),
+        teamRules: await readTeamRules(runtime, kit, kitTree),
+        keptRulesAbove: keptRulesAboveOf(kit, kitTree),
         renames,
         session: fromEnv ?? (await startSessionOf(runtime, kit, roster, payload)),
         sessionInEnv: fromEnv !== undefined,

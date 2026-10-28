@@ -52,7 +52,8 @@ export function recordedLine(conflict, lines) {
 /**
  * Finds every place a local rule can override a core rule (see `findRulePlaces`), the lines there whose words touch a
  * core rule's topic, and where each recorded conflict's line is now. Which candidates really conflict is the model's
- * call: a word list can find a rule's topic, never its meaning. It only reads.
+ * call: a word list can find a rule's topic, never its meaning. Each recorded conflict comes back as given, so a caller's
+ * extra fields (a team above's tag) stay on it. It only reads.
  */
 export async function scanRules(files, probe, at, conflicts) {
     const { places, nestedCapped } = await findRulePlaces(files, probe, at);
