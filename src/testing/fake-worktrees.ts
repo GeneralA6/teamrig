@@ -121,7 +121,8 @@ function kindOf(node: FakeNode | undefined): EntryKind {
 
 /**
  * What a fake git answers; an answer left out or undefined reads as unknown, as a git that cannot tell, so a test
- * spreads `{ top: undefined }` over a world's answers to take one away. A removal or a branch delete left out succeeds.
+ * spreads `{ top: undefined }` over a world's answers to take one away. A removal, a branch delete, a fetch or a
+ * worktree add left out succeeds.
  */
 export interface FakeGitAnswers {
   readonly top?: string | undefined;
@@ -134,6 +135,10 @@ export interface FakeGitAnswers {
   readonly commitsNotOn?: number | undefined;
   readonly removal?: GitOutcome;
   readonly deletion?: GitOutcome;
+  /** Every local branch; `hasBranch` answers whether it lists the asked one. */
+  readonly branches?: readonly string[] | undefined;
+  readonly fetching?: GitOutcome;
+  readonly adding?: GitOutcome;
 }
 
 /** A `WorktreeGit` with set answers, which records each step that would change something. */
@@ -192,6 +197,20 @@ export class FakeWorktreeGit implements WorktreeGit {
   deleteBranch(mainDir: string, branch: string): GitOutcome {
     this.steps.push(`branch -D ${branch} in ${mainDir}`);
     return this.answers.deletion ?? { ok: true };
+  }
+
+  hasBranch(_dir: string, branch: string): boolean | undefined {
+    return this.answers.branches?.includes(branch);
+  }
+
+  fetch(dir: string, remote: string, branch: string): GitOutcome {
+    this.steps.push(`fetch ${remote} ${branch} in ${dir}`);
+    return this.answers.fetching ?? { ok: true };
+  }
+
+  addWorktree(mainDir: string, path: string, branch: string, base: string): GitOutcome {
+    this.steps.push(`worktree add -b ${branch} ${path} ${base} in ${mainDir}`);
+    return this.answers.adding ?? { ok: true };
   }
 }
 
