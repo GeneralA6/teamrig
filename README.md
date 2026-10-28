@@ -82,6 +82,8 @@ No more twelve-hour days steering agents by hand. With teamrig, your part takes 
 
 ![A lead's morning in its own tab, one plain sentence a step, each tool run folded into one line. data asks whether to rerun last night's failed import now; that is operational, so the lead decides it, sends data the answer, and data goes back to work. The week's plan holds only 7 tasks; the lead fills it to 48, fitted to the week's tokens, and the flags fall from 63 to 12. Host memory is low, 1.8 GB free, so it closes docs and tests, idle with nothing to start: 3.9 GB free, and teamrig open resumes either one. web's question is a product call, so it waits for your morning meeting.](docs/images/lead-morning.svg)
 
+*The lead's morning: it settles the operational calls itself and keeps the product calls for your meeting.*
+
 ## Why it's different
 
 Each of these is something a single Claude Code tab can't do on its own.
@@ -106,6 +108,8 @@ own, else records it on its task and goes on with its next one, so no tab sits a
 idle member wakes by itself when urgent work is handed to it.
 
 ![Your morning meeting in the lead's tab. You say Morning; the lead opens the meeting, and the sessions hold the messages that aren't critical until it ends. It says what got done since yesterday, what is late and what your OK last night already started, then brings three decisions as numbered cards, each with the facts in numbers, the options with their cost, its pick with a reason and what happens with no answer: guest checkout, a second test database, and retiring an old API. You answer all three in one line, 1 A, 2 B, 3 as recommended. The lead records them on their tasks, web goes back to work on guest checkout, and the meeting closes: the held messages go out.](docs/images/lead-meeting.svg)
+
+*Your morning meeting: three decisions as numbered cards, answered in one line.*
 
 ### Never runs out mid-task
 
