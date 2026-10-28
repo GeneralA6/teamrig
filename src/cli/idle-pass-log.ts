@@ -144,16 +144,21 @@ export function isPassDue(state: IdlePassState | undefined, now: number): boolea
 /** How long the pass may go without running before `check` warns the lead (FLEET-STALE): fifteen missed passes. */
 export const IDLE_PASS_STALE_MS = 15 * MS_PER_MINUTE;
 
-/** Why a pass that is on needs the lead: it has not run for `IDLE_PASS_STALE_MS` (`at` undefined: never), or its last run failed. */
-export type IdlePassTrouble = { readonly kind: 'stale'; readonly at: number | undefined } | { readonly kind: 'failed'; readonly at: number; readonly error: string };
+/** Why a pass that is on needs the lead: it has not run for `IDLE_PASS_STALE_MS` since its last run, or that run failed. */
+export type IdlePassTrouble = { readonly kind: 'stale'; readonly at: number } | { readonly kind: 'failed'; readonly at: number; readonly error: string };
 
 /**
  * The trouble of a pass that is on; none while it ran within `IDLE_PASS_STALE_MS` and its last run went through. A
- * failed pass still advances `at`, so its age alone misses it; a clock gone back reads as a pass just run.
+ * failed pass still advances `at`, so its age alone misses it; a clock gone back reads as a pass just run. A pass that
+ * never ran has no time to be late from: a new team, or one just moved onto the pass by its default (T1409), waits for
+ * its first idle tab, so its absence is no trouble; once it ran, its stopping is.
  */
 export function idlePassTrouble(state: IdlePassState | undefined, now: number): IdlePassTrouble | undefined {
-  if (state === undefined || now - state.at > IDLE_PASS_STALE_MS) {
-    return { kind: 'stale', at: state?.at };
+  if (state === undefined) {
+    return undefined;
+  }
+  if (now - state.at > IDLE_PASS_STALE_MS) {
+    return { kind: 'stale', at: state.at };
   }
   return state.failed === undefined ? undefined : { kind: 'failed', at: state.at, error: state.failed };
 }
@@ -168,8 +173,7 @@ export function formatIdlePassTrouble(trouble: IdlePassTrouble, mode: IdleMode, 
   if (trouble.kind === 'failed') {
     return `${head} failed at its last run, ${minutesAgo(trouble.at, now)}: ${trouble.error}; state/idle-pass.jsonl logs each new failure`;
   }
-  const ran = trouble.at === undefined ? 'has not run yet' : `last ran ${minutesAgo(trouble.at, now)}`;
-  return `${head} ${ran}: an idle tab's hook wake-check runs it at least every 10 minutes, so check wake.enabled and that the tabs' teamrig hooks run`;
+  return `${head} last ran ${minutesAgo(trouble.at, now)}: an idle tab's hook wake-check runs it at least every 10 minutes, so check wake.enabled and that the tabs' teamrig hooks run`;
 }
 
 /** The steps whose kind changed since the last pass that ran through; every step at the first. */
