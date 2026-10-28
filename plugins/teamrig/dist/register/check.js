@@ -4,6 +4,7 @@ import { approvalCleared } from "./approval.js";
 import { CARD_FLAGS, GATE_FLAG, whyAskUsage } from "./card.js";
 import { taskNumber } from "./fold.js";
 import { ACTIVE_STATUSES, priorityText } from "./model.js";
+import { isUngated } from "./owner-waits.js";
 import { loopFix, NO_TASKS_ELSEWHERE, pathText, TaskTree } from "./tree.js";
 import { WATCH_USAGE } from "./verify.js";
 import { formatTask } from "./views.js";
@@ -177,15 +178,6 @@ function ownerOrderedFlags(task, ownerSource) {
                 detail: `${ownerSource} ordered it, and an order approves its own work and proof: drop the wait on ${ownerSource}'s ${kinds.join(' and ')}, or set it ${task.status} again with ${whyAskUsage(ownerSource)}`,
             },
         ];
-}
-/**
- * Whether a task waits, or its proof waits, on the owner's (`ownerSource`) decision with a card naming no owner gate
- * or business decision (T1194): while `register.requireDecisionCard` is on, the question is then its session's or its
- * leader's, never the owner's, so check flags it UNGATED and neither the meeting agenda's DECISIONS nor a decision
- * batch asks it. A task with no card is NO-CARD's.
- */
-export function isUngated(task, ownerSource) {
-    return task.card !== null && task.card.gate === undefined && task.waits.some((reason) => reason.kind === 'decision' && reason.who === ownerSource);
 }
 /** UNGATED, as {@link checkTasks} describes it. */
 function ungatedFlags(task, config) {

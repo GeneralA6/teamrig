@@ -1,4 +1,4 @@
-import { cardFacts } from "../meeting/agenda.js";
+import { cardFacts, laterLine } from "../meeting/agenda.js";
 import { dueBeforeNextBatch, nextBatchText, triggerText } from "./batch.js";
 /** `DECISIONS 2 to ask owner, 1 asked and past due; BATCH DUE: <why>`, or `...; the next batch Tue 01-08 13:03 UTC`. */
 export function batchHead(batch, ownerMarker, zone) {
@@ -20,6 +20,7 @@ export function batchLines(view) {
         ? [
             `  Ask ${ownerMarker} these together, each card as it stands, each figure explained; then ${command} decisions asked --session ${lead} records the batch asked.`,
             `  Record each answer in the same turn: ${command} update <id> --note "${ownerMarker} decided: <decision>" --session ${lead}.`,
+            laterLine(command, ownerMarker, lead, 'no batch asks it before then'),
         ]
         : [`  ${askedBy} asks ${ownerMarker} these in its batches and records each answer on its task as a note: "${ownerMarker} decided: <decision>".`];
     return [

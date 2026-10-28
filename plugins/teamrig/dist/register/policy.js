@@ -9,6 +9,7 @@ import { ITEM_TYPES, sizeProblem } from "./events.js";
 import { isRepark, taskNumber } from "./fold.js";
 import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, priorityText, SESSION_NAME, WAIT_STATUSES } from "./model.js";
 import { ITEM_TYPE_TRAITS, traitsOf } from "./item-types.js";
+import { waitsOnOwner } from "./owner-waits.js";
 import { asksReview, missedTaskIds, reviewGap, reviewGapText, reviewProblem, reviewTexts } from "./review.js";
 import { loopFix, needPath, NO_TASKS_ELSEWHERE, pathText } from "./tree.js";
 import { dueStartHolds, dueVerifyHold, heldStart, startHolds, WATCH_USAGE } from "./verify.js";
@@ -438,7 +439,7 @@ export class RegisterPolicy {
             case 'task':
                 return taskWaitProblem(task, reason.id, context.state, context.elsewhere) ?? (status === 'verifying' ? unstartedProofTask(task, reason.id, context) : undefined);
             case 'time':
-                return (parseDeadline(reason.at, context.zone)?.getTime() ?? 0) > context.now.getTime() ? undefined : `time ${showStored(reason.at, context.zone)} has passed: name a time to come`;
+                return timeProblem(reason.at, context);
         }
     }
     /**
@@ -477,6 +478,43 @@ export class RegisterPolicy {
         }
         const problem = this.checkText('note', text);
         return problem === undefined ? ok({ changes: {}, note: text, verdict }) : refuse(problem);
+    }
+    /**
+     * A Later (T1295): the owner puts off a card, a task's wait on the owner's decision or approval, to time `until`
+     * (stored form), or `null` brings it back now. Its owner or a leader above it records what the owner said, as
+     * {@link deferFrom} judges it.
+     */
+    defer(task, caller, until, note, context) {
+        if (caller !== task.owner && caller !== this.tree.lead && !this.tree.leads(caller, task.owner)) {
+            return refuse(`only the owner (${task.owner}) or ${this.approversText(task.owner)} puts ${task.id} off`);
+        }
+        return this.deferFrom(task, until, note, context);
+    }
+    /**
+     * A Later's content, for the lead above who asks the owner this team's decisions too (Register.deferFrom, whose
+     * caller the tree decides): only a task waiting on the owner is put off, always with a note saying what the owner
+     * said, to a time still to come. The time is a time wait beside the owner's, replacing any time wait the task had,
+     * so the latest one still to come is the Later (owner-waits.ts); `null` drops the task's time waits.
+     */
+    deferFrom(task, until, note, context) {
+        const { ownerSource } = this.config.register;
+        if (!waitsOnOwner(task, ownerSource)) {
+            return refuse(`${task.id} waits on no decision or approval of ${ownerSource}: only such a card is put off`);
+        }
+        const text = blankToNull(note);
+        if (text === null) {
+            return refuse(`a Later needs --note: what ${ownerSource} said`);
+        }
+        const untimed = task.waits.filter((reason) => reason.kind !== 'time');
+        if (until === null && untimed.length === task.waits.length) {
+            return refuse(`${task.id} is not put off: no time to drop`);
+        }
+        const problem = (until === null ? undefined : timeProblem(until, context)) ?? this.checkText('note', text);
+        if (problem !== undefined) {
+            return refuse(problem);
+        }
+        const waits = until === null ? untimed : [...untimed, { kind: 'time', at: until }];
+        return ok({ changes: {}, note: text, waits });
     }
     /** `elsewhere`: the tasks the team tree's other registers hold, which `--after` may name. */
     update(task, caller, asked, note, state, elsewhere = NO_TASKS_ELSEWHERE) {
@@ -846,6 +884,10 @@ function loopProblem(id, other, tasks, byWait) {
         return undefined;
     }
     return `${pathText([id, ...path])} would be a loop, and no task in a loop can finish: ${loopFix(id, other, owner, byWait)}`;
+}
+/** Why a time to wait until (stored form) is refused, or undefined: it must be still to come. */
+function timeProblem(at, { now, zone }) {
+    return (parseDeadline(at, zone)?.getTime() ?? 0) > now.getTime() ? undefined : `time ${showStored(at, zone)} has passed: name a time to come`;
 }
 function blankToNull(text) {
     return text === undefined || text.trim() === '' ? null : text.trim();

@@ -158,6 +158,27 @@ export class Register {
         }));
     }
     /**
+     * `update <id> --later <when|none>`: the owner puts a card off to time `until` (stored form), or `null` brings it back
+     * (T1295), an update that changes no field and gives the task its waits from then on.
+     */
+    defer(caller, id, until, note) {
+        return this.commit(caller, (snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.deferEvent(task, caller, this.deps.policy.defer(task, caller, until, note, this.timeContext())))));
+    }
+    /**
+     * A Later from the lead above who asks the owner this team's decisions, `asker` being its `<team>/<id>`, as in
+     * noteFrom: the tree decides who that may be, so this team's roster check and the policy's caller check are skipped.
+     */
+    deferFrom(asker, id, until, note) {
+        return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.deferEvent(task, asker, this.deps.policy.deferFrom(task, until, note, this.timeContext())))));
+    }
+    deferEvent(task, by, change) {
+        return change.ok ? { ok: true, value: { ...this.base(task.id, by), type: 'update', ...change.value } } : change;
+    }
+    /** The clock and zone a write judges a time against. */
+    timeContext() {
+        return { now: new Date(this.deps.clock.now()), zone: this.deps.zone };
+    }
+    /**
      * A team split's write (T1144), by a session of this team: under the lock, `move` decides on the working set, writes
      * what goes to the other team and returns the events this register keeps of it, appended as one write; a refusal
      * appends nothing. Returns the state after them. The log rotates at the next write, as a split is a lead's one-off.

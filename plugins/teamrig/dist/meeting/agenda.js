@@ -1,7 +1,7 @@
 import { MS_PER_DAY } from "../core/time.js";
 import { cardLines, cardTexts, GATE_FLAG, namedTaskIds } from "../register/card.js";
-import { isUngated } from "../register/check.js";
 import { ACTIVE_STATUSES } from "../register/model.js";
+import { asksOwner, isUngated, ownerLater } from "../register/owner-waits.js";
 import { cut, formatShortTask } from "../register/views.js";
 /**
  * The register's part of the daily meeting's agenda, gathered in one call so the lead spends no turn per item:
@@ -23,18 +23,6 @@ export const DONE_WINDOW_DAYS = 7;
 /** When the agenda's finished work starts: the meeting before's end, else a day back, and never past DONE_WINDOW_DAYS. */
 export function agendaSince(previousEnd, now) {
     return Math.max(previousEnd ?? now - MS_PER_DAY, now - DONE_WINDOW_DAYS * MS_PER_DAY);
-}
-/** Whether a task waits for a decision or an approval from the owner: a waiting one, or a verifying one's proof. */
-export function waitsOnOwner(task, ownerMarker) {
-    return task.waits.some((reason) => (reason.kind === 'decision' || reason.kind === 'approval') && reason.who === ownerMarker);
-}
-/**
- * Whether the lead asks the owner a task's wait: it waits on the owner (waitsOnOwner) and, while `requireGate`
- * (`register.requireDecisionCard`) is on, is not ungated (isUngated, T1194): an ungated one is its session's or its
- * leader's to decide, so neither the agenda's DECISIONS nor a decision batch holds it.
- */
-export function asksOwner(task, ownerMarker, requireGate) {
-    return waitsOnOwner(task, ownerMarker) && !(requireGate && isUngated(task, ownerMarker));
 }
 /** Text on one line: line breaks and runs of spaces become one space. */
 export function oneLine(text) {
@@ -83,18 +71,25 @@ export function cardFacts(task, tree, team) {
         ...namedLines(task, texts, tree, team),
     ];
 }
-/** The card facts of a register's tasks the lead asks the owner, in its plan order; `team` labels a register under the lead's. */
+/** The card facts of a register's tasks the lead asks the owner now, in its plan order; `team` labels a register under the lead's. */
 function decisionCards(tasks, tree, ownerMarker, requireGate, team) {
-    return tree.inPlanOrder(tasks.filter((task) => asksOwner(task, ownerMarker, requireGate))).map((task) => cardFacts(task, tree, team));
+    return tree.inPlanOrder(tasks.filter((task) => asksOwner(task, ownerMarker, requireGate, tree.context))).map((task) => cardFacts(task, tree, team));
 }
 /**
- * How the lead asks the owner the cards it read: in plain text, the owner answering in their own words, unless the
- * team asks for the question picker (`decisions.askWith`, T1278).
+ * How the lead, or a session `meet` brings to the owner (src/meeting/meet.ts), asks the owner the cards it read: in
+ * plain text, the owner answering in their own words, unless the team asks for the question picker (`decisions.askWith`, T1278).
  */
-function askLine(askWith, ownerMarker) {
+export function askLine(askWith, ownerMarker) {
     return askWith === 'picker'
         ? "  Ask the choices with the question picker (AskUserQuestion), at most 4 a call: each card's options as its choices, your recommendation first."
         : `  Ask in plain text, never with the question picker: each card's options numbered, your recommendation first; ${ownerMarker} answers in their own words.`;
+}
+/**
+ * How the lead records a card the owner puts off to a date, in place of an answer (T1295); `until` says where it waits
+ * meanwhile: the agenda's LATER block, or out of the batches.
+ */
+export function laterLine(command, ownerMarker, lead, until) {
+    return `  A card ${ownerMarker} puts off to a date: ${command} update <id> --later <date> --note "${ownerMarker} put it off: <why>" --session ${lead}; ${until}.`;
 }
 /**
  * DECISIONS: the tasks waiting on the owner, the lead's team's first, then those of each team under it (T1018), each
@@ -117,7 +112,26 @@ function decisionLines(input) {
         askLine(input.askWith, input.ownerMarker),
         `  A question a card does not answer is its task owner's to find: ${input.command} add --owner <id>${handed} --due <date> --session ${input.lead}, then relay the answer; never look it up yourself.`,
         `  Record each answer in the same turn: ${input.command} update <id>${labelled} --note "${input.ownerMarker} decided: <decision>" --session ${input.lead}; meeting end tells each task's owner.`,
+        laterLine(input.command, input.ownerMarker, input.lead, 'it waits in LATER until then'),
     ];
+}
+/** The rows of a register's waits the owner put off (ownerLater), in its plan order; `team` labels a register under the lead's. */
+function laterRows(tasks, tree, ownerMarker, requireGate, team) {
+    return tree.inPlanOrder(tasks.filter((task) => ownerLater(task, ownerMarker, requireGate, tree.context) !== undefined)).map((task) => rowOf(task, tree, team));
+}
+/**
+ * LATER: the waits on the owner put off to a time still to come (T1295), the lead's team's first, then those of each
+ * team under it, each row with its time; none is read out, and each comes back to DECISIONS once its time passed. No
+ * block when none is put off.
+ */
+function laterLines(input) {
+    const rows = [
+        ...laterRows(input.tasks, input.tree, input.ownerMarker, input.requireGate),
+        ...input.below.flatMap((team) => laterRows(team.tasks, team.tree, team.ownerMarker, team.requireGate, team.team)),
+    ];
+    return rows.length === 0
+        ? []
+        : listed(`LATER ${rows.length} put off by ${input.ownerMarker}: asked once their time passed, never read out before`, rows, `${input.command} list --status waiting`);
 }
 /**
  * UNGATED: the waits on the owner's decision whose card names no owner gate or business decision (isUngated), each
@@ -146,9 +160,9 @@ function doneLines(input) {
     return listed(`DONE ${done.length} done or dropped since ${input.tree.zone.weekdayMinute(new Date(input.since))}`, done.map((task) => rowOf(task, input.tree)), `${input.command} list --status done,dropped`);
 }
 /**
- * The register's agenda: the owner's decisions first, as they are what the meeting is for, then the ungated waits
- * that are not, then the late tasks, then the finished ones.
+ * The register's agenda: the owner's decisions first, as they are what the meeting is for, then those the owner put
+ * off and the ungated waits, which are not, then the late tasks, then the finished ones.
  */
 export function agendaLines(input) {
-    return [...decisionLines(input), ...ungatedLines(input), ...lateLines(input), ...doneLines(input)];
+    return [...decisionLines(input), ...laterLines(input), ...ungatedLines(input), ...lateLines(input), ...doneLines(input)];
 }
