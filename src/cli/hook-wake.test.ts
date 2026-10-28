@@ -19,7 +19,7 @@ import { RESTART_RECHECK_MS } from './commands/hook-wake.ts';
 import { GIVE_UP_MS } from '../refresh/restart.ts';
 import type { RefreshState, RestartRequest } from '../refresh/state.ts';
 import { RefreshStore } from '../refresh/store.ts';
-import { HOLDING_BUDGET, holdAlpha } from '../testing/budget-hold.ts';
+import { HOLDING_BUDGET, holdAlpha, meterToday } from '../testing/budget-hold.ts';
 import { APP, AUTO_RESTART_TEAM, CliHarness, EVENTS_PATH, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
@@ -189,6 +189,16 @@ describe('hook wake-check', () => {
     assert.equal((await check(kit)).stdout[0]?.includes('"kind":"wake","ids":["T2"]'), true);
     kit.clock.advance(24 * 60 * MINUTE);
     assert.equal((await check(kit)).stdout[0]?.includes('"kind":"wake","ids":["T1"]'), true, "a new day's budget ends the hold");
+  });
+
+  it("holds a session whose daily budget the wake's own turn would pass, though it spent nothing today (T1322)", async () => {
+    const kit = await teamWithAlphaTab({ ...TEAM, wake: { batchSeconds: 0 }, budget: { ...HOLDING_BUDGET, sessions: { alpha: { share: 0 } } } });
+    await meterToday(kit, [{ id: 'lead', tab: LEAD_TAB, w: 150_000_000 }]);
+    await check(kit);
+    await hand(kit, 'Ship the page', 'p1');
+    assert.deepEqual(answerOf(await check(kit)), { kind: 'wait', watch: watchOf(), recheckAt: null }, 'its budget of 0 has no room for the cold wake');
+    kit.clock.advance(24 * 60 * MINUTE);
+    assert.equal((await check(kit)).stdout[0]?.includes('"kind":"wake","ids":["T1"]'), true, "a new day's room ends the hold");
   });
 
   it("ignores the session's own task and work that waits on an unfinished task", async () => {
@@ -463,6 +473,17 @@ describe('hook wake-check at the day start and a burst', () => {
     assert.match(woke, /"toast":"teamrig woke this tab for the burst: T1 \(about 210k W, cold\)"/);
     kit.clock.advance(60 * MINUTE);
     assert.deepEqual(answerOf(await check(kit)), waitTill(TOMORROW_SIX), 'once per burst');
+  });
+
+  it("leaves the day start due for a session whose budget the wake's own turn would pass, and wakes it on a day with room (T1322)", async () => {
+    const kit = await teamWithAlphaTab({ ...DAY_START, budget: { ...HOLDING_BUDGET, sessions: { alpha: { share: 0 } } } });
+    // The lead used 15% of the week today, past the team's in-day pace of 5.2%: no room; alpha used nothing.
+    await meterToday(kit, [{ id: 'lead', tab: LEAD_TAB, w: 150_000_000 }]);
+    await hand(kit, 'Ship the page', 'p2');
+    assert.deepEqual(answerOf(await check(kit)), waitTill(TOMORROW_SIX), 'held: a budget of 0 has no room for the cold wake');
+    assert.deepEqual(await logLines(kit), []);
+    kit.clock.advance(TOMORROW_SIX - kit.clock.now());
+    assert.match((await check(kit)).stdout[0] ?? '', /"toast":"teamrig woke this tab for the day start: T1 /, "a new day's room ends the hold");
   });
 
   it('lets a wake for handed work go first, then waits out the gap before the day start', async () => {

@@ -30,6 +30,8 @@ export interface BudgetFacts extends LiftNames {
   readonly name: string;
   /** Its use since 00:00 UTC, in % of the week. */
   readonly usedTodayPct: number;
+  /** The W that make 1% of the week in `usedTodayPct`, so a cost in W reads on the same scale. */
+  readonly todayWPerPct: number;
   /** Its daily budget in % of the week: its lift's while lifted, at least its burst's while in a burst. */
   readonly budgetPct: number;
   readonly lift: Lift | undefined;
@@ -99,12 +101,16 @@ function stateFor(state: WarnState | undefined, now: number): WarnState {
   return { ...emptyWarnState(day), quietFrom, liftAt, burstAt, modelBurstAt, surplusShown };
 }
 
-/** The session's use today in % of its daily budget; any use counts as past a budget of 0. */
-function budgetUsePct(facts: BudgetFacts): number {
+/**
+ * The session's use today, with `extraPct` more of the week spent, in % of its daily budget; any use counts as past a
+ * budget of 0.
+ */
+function budgetUsePct(facts: BudgetFacts, extraPct = 0): number {
+  const usedPct = facts.usedTodayPct + extraPct;
   if (facts.budgetPct > 0) {
-    return (facts.usedTodayPct / facts.budgetPct) * 100;
+    return (usedPct / facts.budgetPct) * 100;
   }
-  return facts.usedTodayPct > 0 ? Number.POSITIVE_INFINITY : 0;
+  return usedPct > 0 ? Number.POSITIVE_INFINITY : 0;
 }
 
 /**
@@ -161,19 +167,23 @@ interface Standing {
   readonly quiet: QuietSpan | undefined;
 }
 
-/** True when the session's use today is past its daily budget (its lift's while lifted). */
-export function isPastDailyBudget(facts: BudgetFacts): boolean {
-  return budgetUsePct(facts) > 100;
+/**
+ * True when the session's use today is past its daily budget (its lift's while lifted), or would be once it spends
+ * `extraPct` more of the week.
+ */
+export function isPastDailyBudget(facts: BudgetFacts, extraPct = 0): boolean {
+  return budgetUsePct(facts, extraPct) > 100;
 }
 
 /**
  * True when the session is past its daily budget while the team has no room today (its use at or past its in-day
  * pace, `hasRoom`): only then is it held, woken for urgent work alone and escalated as `budget.escalate` says.
  * While the team has room, a session past its part uses room the others left, so no session waits while the week
- * has room.
+ * has room. A turn about to start counts as spent (`extraPct`, in % of the week): a session with next to nothing
+ * left, idle since the night, is held before its wake, not after the wake's own turn spent it (T1322).
  */
-export function isHeld(facts: BudgetFacts): boolean {
-  return isPastDailyBudget(facts) && !hasRoom(facts.teamDay);
+export function isHeld(facts: BudgetFacts, extraPct = 0): boolean {
+  return isPastDailyBudget(facts, extraPct) && !hasRoom(facts.teamDay);
 }
 
 /** The quiet hours the session is in; undefined outside them, or while its lift exempts it. */
