@@ -25,10 +25,10 @@ export const REGISTER_COMMANDS = [
 export function kitTag(team) {
     return `[teamrig ${team}] `;
 }
-/** The team's lines, in order: protected branches, the register, heavy and test, worktree removal. */
+/** The team's lines, in order: protected branches, the register, heavy and test, worktree removal, rebasing. */
 export function kitLines(facts) {
     const tag = kitTag(facts.team);
-    return [branchesLine(facts), registerLine(facts), wrappersLine(), worktreeLine(facts)].map((line) => `${tag}${line}`);
+    return [branchesLine(facts), registerLine(facts), wrappersLine(), worktreeLine(facts), rebaseLine(facts)].map((line) => `${tag}${line}`);
 }
 function branchesLine({ lead, pushGuard }) {
     return (`Protected branches: ${pushGuard.protectedBranches.join(', ')}. ${normalPush(pushGuard.pushToProtected, lead)} ` +
@@ -60,4 +60,15 @@ function worktreeLine({ lead }) {
         'may run it: teamrig itself removes only a worktree whose t<id>- branch names a task the session owns or one of a ' +
         `session it leads (any for the lead, session ${lead}), and refuses the main checkout, uncommitted work and a branch ` +
         'with a commit not on its base.');
+}
+/**
+ * The owner's grant of 10-26: every session may rebase its own branch. A rebase rewrites only that session's own
+ * commits; a protected branch stays under the branches line, which refuses rewriting one and asks before a leased push.
+ */
+function rebaseLine({ pushGuard }) {
+    return ('Every session may rebase its own branch in its own git worktree onto the fresh default branch (`git fetch`, then ' +
+        '`git rebase origin/<branch>` or `git pull --rebase`, and `git rebase --continue` or `--abort` to settle a stopped ' +
+        "one): it rewrites only that session's own commits not yet merged. A branch it pushed before goes back with " +
+        `\`git push --force-with-lease\` to that same branch. A protected branch (${pushGuard.protectedBranches.join(', ')}) ` +
+        "is never rebased, nor a repo's main checkout.");
 }
