@@ -9,9 +9,11 @@
  * name once the session is idle, and shows the cost in a toast. Nothing is typed into the terminal: the prompt box
  * and any draft in it stay as they were. A wake a prompt hook drops is logged through `hook wake-dropped`.
  *
- * The mod runs inside Claude Code without Node, so this file imports nothing at run time: it compiles to a module
- * the mod imports as it is.
+ * The mod runs inside Claude Code without Node, so this file imports nothing at run time but look-schedule.ts, which
+ * imports nothing: each compiles to a module the mod imports as it is.
  */
+
+import { LookSchedule } from './look-schedule.ts';
 
 /** How often the hand looks, while no turn runs; a look runs the CLI only when something may have changed. */
 export const WAKE_TICK_MS = 15_000;
@@ -87,10 +89,6 @@ function isTextList(value: unknown): value is readonly string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string');
 }
 
-function sameList<T>(a: readonly T[], b: readonly T[]): boolean {
-  return a.length === b.length && a.every((item, index) => item === b[index]);
-}
-
 /** The CLI's answer; undefined for anything else. */
 export function parseWakeAnswer(stdout: string): WakeAnswer | undefined {
   let value: unknown;
@@ -124,15 +122,11 @@ export class WakeHand {
   /** The turns running now, the main loop's and subagents' alike, by turn id. */
   private readonly turns = new Set<string>();
   private checking = false;
-  /** The files the CLI named (undefined: ask at the next tick), and when each had changed at the last ask. */
-  private watch: readonly string[] | undefined;
-  private seenChanges: readonly (number | undefined)[] = [];
-  /** When the last ask ran, and when the CLI asked to be asked again. */
-  private lastAsk: number | undefined;
-  private recheckAt: number | undefined;
+  private readonly looks: LookSchedule;
 
   constructor(host: WakeHandHost) {
     this.host = host;
+    this.looks = new LookSchedule(RECHECK_MS, (path) => host.changedAt(path));
   }
 
   turnStarted(turnId: string): void {
@@ -162,15 +156,9 @@ export class WakeHand {
   }
 
   private async step(): Promise<WakeTick> {
-    const now = this.host.now();
-    const changed = this.watch === undefined ? [] : await Promise.all(this.watch.map((path) => this.host.changedAt(path)));
-    if (!this.isDue(now, changed)) {
+    if (!(await this.looks.due(this.host.now()))) {
       return { kind: 'quiet' };
     }
-    // Taken before the ask, so a change made while it runs is seen at the next tick.
-    this.seenChanges = changed;
-    this.lastAsk = now;
-    this.recheckAt = undefined;
     const [sessionId, cwd, root] = await Promise.all([this.host.sessionId(), this.host.cwd(), this.host.root()]);
     const env = { CLAUDE_CODE_SESSION_ID: sessionId, CLAUDE_PROJECT_DIR: root };
     const run = await this.host.cli('wake-check', JSON.stringify({ session_id: sessionId, cwd }), env, cwd);
@@ -182,18 +170,12 @@ export class WakeHand {
       return answer;
     }
     if (answer.kind === 'wait') {
-      if (this.watch === undefined || !sameList(answer.watch, this.watch)) {
-        // Files first named now: ask once more at the next tick, which takes their change times first.
-        this.watch = answer.watch;
-        this.seenChanges = [];
-        this.lastAsk = undefined;
-      }
-      this.recheckAt = answer.recheckAt ?? undefined;
+      this.looks.waitFor(answer.watch, answer.recheckAt);
       return { kind: 'waiting', recheckAt: answer.recheckAt };
     }
-    if (this.watch === undefined) {
+    if (!this.looks.watching) {
       // Woken before the CLI named its file (a reload kept the tab's state): ask again at the next idle look.
-      this.lastAsk = undefined;
+      this.looks.askAgain();
     }
     const reason = await this.host.submit(answer.text);
     if (reason !== undefined) {
@@ -202,13 +184,5 @@ export class WakeHand {
     }
     this.host.toast(answer.toast);
     return { kind: 'woke', ids: answer.ids };
-  }
-
-  /** Ask the CLI at the first look, when a file it named changed, when the CLI's time fell due, or RECHECK_MS on. */
-  private isDue(now: number, changed: readonly (number | undefined)[]): boolean {
-    if (this.lastAsk === undefined || !sameList(changed, this.seenChanges)) {
-      return true;
-    }
-    return (this.recheckAt !== undefined && now >= this.recheckAt) || now >= this.lastAsk + RECHECK_MS;
   }
 }
