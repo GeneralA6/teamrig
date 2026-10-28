@@ -179,7 +179,7 @@ export async function idleOpen(args: ParsedArgs, runtime: CliRuntime): Promise<E
     const untaken = await untakenText(asks, id, found.taken);
     return report(runtime, kit, { ...done, outcome: 'done', line: `REOPENED ${label} for ${why}: ${opened.line}${untaken}` });
   } catch (error) {
-    // A refusal here is the host's room, read fresh: the next pass tries again.
+    // A refusal here is the host's room, read fresh, or the session found running in a Claude Code: the next pass tries again.
     const kept = error instanceof RefusedError;
     return report(runtime, kit, { ...act, ...measured, at: runtime.clock.now(), outcome: kept ? 'kept' : 'failed', line: kept ? `KEPT ${label} closed: ${error.message}` : `FAILED to reopen ${label}: ${errorMessage(error)}` });
   }

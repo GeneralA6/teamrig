@@ -8,6 +8,7 @@ import { decodePrompt, defaultPrompt, encodePrompt, refreshPrompt } from '../ope
 import { shellCommand } from '../open/quote.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
+import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import type { RestartRequest } from '../refresh/state.ts';
 import { RefreshStore } from '../refresh/store.ts';
 import { SessionLog, type CloseRecord } from '../sessions/log.ts';
@@ -29,6 +30,24 @@ function launchArgv(project: string = APP, prompt: string = defaultPrompt('app',
 
 function openAlpha(processes: FakeProcesses, options: RunOptions = {}, extra: readonly string[] = []) {
   return new CliHarness(TEAM).run(['open', 'alpha', ...extra], { probe: FOLDERS, processes, ...options });
+}
+
+/** Records that session `id` started in Claude Code `pid` at `at`, by default an hour before the harness clock. */
+function recordStart(kit: CliHarness, pid: number, id: string = 'alpha', at: string = '2030-01-08T09:00:00.000Z'): Promise<void> {
+  return new SessionRecordStore(kit.files, { sessions: join(TEAM_HOME, 'state', 'sessions') }).write(id, { claudePid: pid, claudeSession: 'c0', at });
+}
+
+/** A host where Claude Code runs as `pid` since `started`, by default a minute before alpha's recorded start. */
+function claudeRuns(pid: number, started: string = '2030-01-08T08:59:00Z'): Pick<RunOptions, 'sessionProcesses' | 'memory'> {
+  return {
+    sessionProcesses: new FakeSessionProcesses().add({ pid, parentPid: 1, name: 'claude.exe', commandLine: 'claude' }),
+    memory: new FakeHostMemory().lists([{ pid, parent: 1, bytes: 400 * MB, startedMs: Date.parse(started) }]),
+  };
+}
+
+/** The refusal of a second Claude Code of alpha while it runs in Claude Code `pid`. */
+function liveLine(pid: number): string {
+  return `REFUSED app-alpha (session alpha) already runs in Claude Code process ${pid}, and a second one would work beside it on the same tasks: use its tab, or end that one first (teamrig sessions lists what runs)`;
 }
 
 describe('teamrig open', () => {
@@ -174,6 +193,18 @@ describe('teamrig open', () => {
       assert.equal(result.code, EXIT.usage);
       assert.ok(result.stderr[0]?.startsWith(message), result.stderr[0]);
     }
+  });
+
+  it('refuses a session that runs in a Claude Code, the lead too, so neither gets a second tab', async () => {
+    const kit = new CliHarness(TEAM);
+    await recordStart(kit, 6900);
+    await recordStart(kit, 6800, 'lead');
+    const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started' });
+    const refused = await kit.run(['open', 'alpha'], { probe: FOLDERS, processes, platform: 'win32', ...claudeRuns(6900) });
+    assert.deepEqual([refused.code, refused.stdout], [EXIT.refused, [liveLine(6900)]]);
+    const lead = await kit.run(['open', 'lead'], { probe: FOLDERS, processes, platform: 'win32', ...claudeRuns(6800) });
+    assert.deepEqual([lead.code, lead.stdout[0]?.startsWith('REFUSED app-lead (session lead) already runs in Claude Code process 6800')], [EXIT.refused, true]);
+    assert.deepEqual(processes.started, []);
   });
 });
 
@@ -476,6 +507,43 @@ describe('teamrig launch', () => {
       const kit = new CliHarness(TEAM);
       const result = await kit.run(LAUNCH, { probe: ON_PATH, processes: new FakeProcesses(), env: { PATH: '/usr/local/bin' } });
       assert.deepEqual([result.code, kit.clock.sleeps], [EXIT.ok, []]);
+    });
+  });
+
+  describe('a session that runs in another Claude Code', () => {
+    it('is refused, so a stale tab run again starts no second Claude Code beside it', async () => {
+      const kit = new CliHarness(TEAM);
+      await recordStart(kit, 6900);
+      const processes = new FakeProcesses();
+      const result = await kit.run(LAUNCH, { probe: ON_PATH, processes, env: { PATH: '/usr/local/bin' }, ...claudeRuns(6900) });
+      assert.deepEqual([result.code, result.stdout.at(-1), processes.ran], [EXIT.refused, liveLine(6900), []]);
+    });
+
+    it('starts once its recorded Claude Code ended, its id went to another program or a later Claude Code, or a /clear bound that one to another session', async () => {
+      const otherProgram = new FakeSessionProcesses().add({ pid: 6900, parentPid: 1, name: 'node.exe', commandLine: 'node server.js' });
+      const cases = [
+        { name: 'ended', host: { sessionProcesses: new FakeSessionProcesses(), memory: new FakeHostMemory().lists([]) }, rebound: false },
+        { name: 'another program', host: { ...claudeRuns(6900), sessionProcesses: otherProgram }, rebound: false },
+        { name: 'a later Claude Code', host: claudeRuns(6900, '2030-01-08T09:30:00Z'), rebound: false },
+        { name: 'bound to bravo', host: claudeRuns(6900), rebound: true },
+      ];
+      for (const { name, host, rebound } of cases) {
+        const kit = new CliHarness(TEAM);
+        await recordStart(kit, 6900);
+        if (rebound) {
+          await recordStart(kit, 6900, 'bravo', '2030-01-08T09:10:00.000Z');
+        }
+        const processes = new FakeProcesses();
+        const result = await kit.run(LAUNCH, { probe: ON_PATH, processes, env: { PATH: '/usr/local/bin' }, ...host });
+        assert.deepEqual([result.code, processes.ran.length], [EXIT.ok, 1], name);
+      }
+    });
+
+    it('is refused on a restart when another Claude Code took the session meanwhile', async () => {
+      const kit = new CliHarness(TEAM);
+      const processes = new RestartedOnce(kit, ENDING, () => recordStart(kit, 7300));
+      const result = await kit.run(LAUNCH, { probe: ON_PATH, processes, env: { PATH: '/usr/local/bin' }, ...claudeRuns(7300) });
+      assert.deepEqual([result.code, result.stdout.at(-1), processes.ran.length], [EXIT.refused, liveLine(7300), 1]);
     });
   });
 

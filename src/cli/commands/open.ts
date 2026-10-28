@@ -24,6 +24,7 @@ import { urgentFirstPrompt, type WakeAsk } from '../../wake/asks.ts';
 import { onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
 import { headroomOf } from '../headroom.ts';
 import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf, teamZone, type Kit } from '../kit.ts';
+import { liveRunOf, liveRunText } from '../live-run.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { launchListing } from '../skill-listing.ts';
 import { loadTree } from '../tree.ts';
@@ -176,11 +177,13 @@ export type OpenResult =
 
 /**
  * Opens the session's tab as `open` describes: a rehired one on its handover, a closed one in its last Claude Code
- * session or fresh, refused (`RefusedError`) for any session but the lead when the host has no room, and a closed
- * one's reopen logged once its tab opened.
+ * session or fresh, refused (`RefusedError`) while it runs in a Claude Code and, for any session but the lead, when
+ * the host has no room, and a closed one's reopen logged once its tab opened.
  */
 export async function openSession(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, request: OpenRequest): Promise<OpenResult> {
   const { team, id, project, terminal, asked } = request;
+  const name = roster.nameOf(id) ?? id;
+  await refuseLiveRun(runtime, kit, roster, id, name);
   const from = rehiredFrom((await new HiringLog(runtime.files, kit.paths.hires).read()).records, id);
   const sessionLog = new SessionLog(runtime.files, kit.paths.sessionLog);
   const closed = closedOf((await sessionLog.read()).records, id);
@@ -188,7 +191,6 @@ export async function openSession(runtime: CliRuntime, kit: Kit, config: KitConf
   const resume = await resumeOf(runtime, kit.paths, config, { id, project, from, reopen, asked });
   const own = request.prompt ?? firstPromptOf(team, id, from, resume, reopen);
   const prompt = checkedPrompt(urgentFirstPrompt(request.urgent ?? [], own, teamZone(config, runtime), PROMPT_MAX));
-  const name = roster.nameOf(id) ?? id;
   // The lead opens whatever the room: it is the session that decides which others run.
   if (id !== roster.holderOf('lead')) {
     const headroom = await headroomOf(runtime, kit.paths, config, roster.ids);
@@ -204,6 +206,14 @@ export async function openSession(runtime: CliRuntime, kit: Kit, config: KitConf
     await sessionLog.append({ kind: 'reopen', session: id, at: new Date(runtime.clock.now()).toISOString(), ...(resume === undefined ? {} : { resumed: resume }) });
   }
   return { kind: 'opened', line: `OPENED ${name} (session ${id}) in a new ${TERMINAL_LABELS[outcome.terminal]} in ${project}, on ${describeLaunch(launchOf(config, id))}${startNoteOf(resume, reopen)}` };
+}
+
+/** Refuses a second Claude Code of session `id`, named `name`, while it runs in one (src/cli/live-run.ts). */
+async function refuseLiveRun(runtime: CliRuntime, kit: Kit, roster: Roster, id: string, name: string): Promise<void> {
+  const live = await liveRunOf(runtime, kit.paths, roster.ids, id);
+  if (live !== undefined) {
+    throw new RefusedError(liveRunText(name, id, live));
+  }
 }
 
 /** What decides which Claude Code session a tab goes on in. */
@@ -392,7 +402,8 @@ export function claudeExit(runtime: CliRuntime, command: string, result: RunOutc
  * Claude Code session on the first start only: a restart is always fresh. `--effort` overrides the configured
  * effort and `--no-prompt` starts with no first prompt, as the restore after a reboot reopens an idle session.
  * When `teamrig close` or the idle pass ended Claude Code, launch says so and exits 0, so the tab closes: a tab left
- * open on the error offers to run this line again, starting a stale launch beside the session's next one.
+ * open on the error offers to run this line again, starting a stale launch beside the session's next one. A start or
+ * restart while the session runs in another Claude Code is refused.
  */
 export async function launch(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const id = idFlag('session', onePositional(args, 'id'));
@@ -423,6 +434,7 @@ export async function launch(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   let first: string | undefined = prompt;
   let resuming = resume;
   for (;;) {
+    await refuseLiveRun(runtime, kit, roster, id, name);
     const resumeArgs = resuming === undefined ? [] : ['--resume', resuming];
     const args = [...prefix, ...launchFlags(settings), ...listing.args, ...resumeArgs, '--name', name, ...(first === undefined ? [] : [first])];
     const startedAt = runtime.clock.now();
