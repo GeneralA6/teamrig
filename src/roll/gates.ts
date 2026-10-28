@@ -1,4 +1,4 @@
-import type { RollGateConfig } from '../config/types.ts';
+import type { DeployCheckConfig } from '../config/types.ts';
 import type { ClearancePhase, Readiness } from '../coordinator/clearance.ts';
 import type { Env } from '../core/home.ts';
 import type { SecretScanner } from '../core/secrets.ts';
@@ -87,7 +87,7 @@ export type GatesAnswer = { readonly readiness: Readiness; readonly tag: string 
  * Asks each gate in order, with `TEAMRIG_GATE_NAME` and `TEAMRIG_GATE_PHASE` set, and stops at the first that does
  * not pass. Each reason is redacted, since a wait or refusal is printed and may reach the ledger.
  */
-export async function askGates(gates: readonly RollGateConfig[], phase: ClearancePhase, run: GateRun): Promise<GatesAnswer> {
+export async function askGates(gates: readonly DeployCheckConfig[], phase: ClearancePhase, run: GateRun): Promise<GatesAnswer> {
   let tag: string | undefined;
   for (const gate of gates) {
     const output = new GateOutput();

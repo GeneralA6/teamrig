@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT_HIRING, DEFAULT_IDLE, DEFAULT_OPEN, DEFAULT_PERMISSIONS, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_STATUS_LINE, DEFAULT_WAKE } from './defaults.ts';
+import { DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_COMMITS, DEFAULT_HIRING, DEFAULT_IDLE, DEFAULT_OPEN, DEFAULT_PERMISSIONS, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_STATUS_LINE, DEFAULT_WAKE, DEFAULT_WINDOWS } from './defaults.ts';
 import { parseConfig } from './parse.ts';
 import { CONFIG_VERSION } from './types.ts';
 import type { ConfigIssue } from './reader.ts';
@@ -31,9 +31,9 @@ describe('parseConfig', () => {
       schedule: {},
       heavy: { lockTtlMinutes: 150, maxRunMinutes: 45, smallMaxRunMinutes: 10, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048 },
       wait: { pollSeconds: 30, maxMinutes: 60 },
-      gateTimeoutSeconds: 20,
+      checkTimeoutSeconds: 20,
       claims: { maxMinutes: 120 },
-      windows: { settleMinutes: 30, targetSettleMinutes: {}, assumedRollMinutes: 20, minMinutes: 15 },
+      windows: { settleMinutes: 30, targetSettleMinutes: {}, assumedDeployMinutes: 20, minMinutes: 15 },
       repos: {},
     });
     assert.deepEqual(config.pushGuard.protectedBranches, ['main', 'master']);
@@ -410,9 +410,9 @@ describe('parseConfig', () => {
       dir: 'data/deploys',
       heavy: { lockPath: 'data/deploys/host.lock', lockTtlMinutes: 90, maxRunMinutes: 80, smallMaxRunMinutes: 80, waitMinutes: 0, memorySampleSeconds: 0, memoryFloorMb: 0, smallReserveMb: 512 },
       wait: { pollSeconds: 5, maxMinutes: 0 },
-      gateTimeoutSeconds: 45,
+      checkTimeoutSeconds: 45,
       claims: { maxMinutes: 90 },
-      windows: { settleMinutes: 10, targetSettleMinutes: {}, assumedRollMinutes: 5, minMinutes: 30 },
+      windows: { settleMinutes: 10, targetSettleMinutes: {}, assumedDeployMinutes: 5, minMinutes: 30 },
     };
     const { config, issues } = parseConfig({ ...ROSTER, coordinator });
     assert.deepEqual(issues, []);
@@ -525,53 +525,53 @@ describe('parseConfig', () => {
     assert.deepEqual(config.coordinator.repos['option']?.merge, { command, remote: 'origin' });
   });
 
-  it('reads a repository’s roll, its gates and afterPull hooks from their defaults', () => {
-    const roll = { targets: ['cloud-api'], gates: [{ name: 'flow', command: ['node', 'gates/flow.js', '--quiet'] }], command: ['node', 'roll.js'] };
-    const { config, issues } = parseConfig({ ...ROSTER, coordinator: { repos: { api: { mainCheckout: 'C:/src/api', roll }, web: { mainCheckout: 'C:/src/web', roll: { command: ['npm', 'run', 'deploy'] } } } } });
+  it('reads a repository’s deploy, its checks and afterPull hooks from their defaults', () => {
+    const deploy = { targets: ['cloud-api'], checks: [{ name: 'flow', command: ['node', 'checks/flow.js', '--quiet'] }], command: ['node', 'deploy.js'] };
+    const { config, issues } = parseConfig({ ...ROSTER, coordinator: { repos: { api: { mainCheckout: 'C:/src/api', deploy }, web: { mainCheckout: 'C:/src/web', deploy: { command: ['npm', 'run', 'deploy'] } } } } });
     assert.deepEqual(issues, []);
-    assert.deepEqual(config.coordinator.repos['api']?.roll, { ...roll, afterPull: [] });
-    assert.deepEqual(config.coordinator.repos['web']?.roll, { targets: [], gates: [], afterPull: [], command: ['npm', 'run', 'deploy'] });
+    assert.deepEqual(config.coordinator.repos['api']?.deploy, { ...deploy, afterPull: [] });
+    assert.deepEqual(config.coordinator.repos['web']?.deploy, { targets: [], checks: [], afterPull: [], command: ['npm', 'run', 'deploy'] });
   });
 
-  it('reads a roll’s dependency install, and leaves out one that is not a program with its arguments', () => {
+  it('reads a deploy’s dependency install, and leaves out one that is not a program with its arguments', () => {
     const install = ['npm', 'ci', '--ignore-scripts'];
     const { config, issues } = parseConfig({
       ...ROSTER,
-      coordinator: { repos: { api: { mainCheckout: 'C:/src/api', roll: { dependencyInstall: install, command: ['node', 'roll.js'] } }, web: { mainCheckout: 'C:/src/web', roll: { dependencyInstall: 'npm ci', command: ['node', 'roll.js'] } } } },
+      coordinator: { repos: { api: { mainCheckout: 'C:/src/api', deploy: { dependencyInstall: install, command: ['node', 'deploy.js'] } }, web: { mainCheckout: 'C:/src/web', deploy: { dependencyInstall: 'npm ci', command: ['node', 'deploy.js'] } } } },
     });
-    assert.deepEqual(paths(issues), ['coordinator.repos.web.roll.dependencyInstall']);
-    assert.deepEqual(config.coordinator.repos['api']?.roll?.dependencyInstall, install);
-    assert.deepEqual(config.coordinator.repos['web']?.roll, { targets: [], gates: [], afterPull: [], command: ['node', 'roll.js'] });
+    assert.deepEqual(paths(issues), ['coordinator.repos.web.deploy.dependencyInstall']);
+    assert.deepEqual(config.coordinator.repos['api']?.deploy?.dependencyInstall, install);
+    assert.deepEqual(config.coordinator.repos['web']?.deploy, { targets: [], checks: [], afterPull: [], command: ['node', 'deploy.js'] });
   });
 
-  it('leaves out a roll with no command, and a gate or hook that is not a program with its arguments', () => {
+  it('leaves out a deploy with no command, and a check or hook that is not a program with its arguments', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,
       coordinator: {
-        gateTimeoutSeconds: 0,
+        checkTimeoutSeconds: 0,
         claims: { maxMinutes: 1441 },
         repos: {
-          api: { mainCheckout: 'C:/src/api', roll: { targets: ['cloud-api'] } },
+          api: { mainCheckout: 'C:/src/api', deploy: { targets: ['cloud-api'] } },
           web: {
             mainCheckout: 'C:/src/web',
-            roll: { gates: [{ name: 'Flow', command: ['node', 'flow.js'] }, { name: 'load', command: [] }, 'node load.js'], afterPull: [['npm', ''], 'npm ci'], command: ['node', 'roll.js'] },
+            deploy: { checks: [{ name: 'Flow', command: ['node', 'flow.js'] }, { name: 'load', command: [] }, 'node load.js'], afterPull: [['npm', ''], 'npm ci'], command: ['node', 'deploy.js'] },
           },
         },
       },
     });
     assert.deepEqual(paths(issues).sort(), [
+      'coordinator.checkTimeoutSeconds',
       'coordinator.claims.maxMinutes',
-      'coordinator.gateTimeoutSeconds',
-      'coordinator.repos.api.roll.command',
-      'coordinator.repos.web.roll.afterPull[0][1]',
-      'coordinator.repos.web.roll.afterPull[1]',
-      'coordinator.repos.web.roll.gates[0].name',
-      'coordinator.repos.web.roll.gates[1].command',
-      'coordinator.repos.web.roll.gates[2]',
+      'coordinator.repos.api.deploy.command',
+      'coordinator.repos.web.deploy.afterPull[0][1]',
+      'coordinator.repos.web.deploy.afterPull[1]',
+      'coordinator.repos.web.deploy.checks[0].name',
+      'coordinator.repos.web.deploy.checks[1].command',
+      'coordinator.repos.web.deploy.checks[2]',
     ]);
-    assert.equal(config.coordinator.repos['api']?.roll, undefined);
-    assert.deepEqual(config.coordinator.repos['web']?.roll, { targets: [], gates: [], afterPull: [], command: ['node', 'roll.js'] });
-    assert.equal(config.coordinator.gateTimeoutSeconds, 20);
+    assert.equal(config.coordinator.repos['api']?.deploy, undefined);
+    assert.deepEqual(config.coordinator.repos['web']?.deploy, { targets: [], checks: [], afterPull: [], command: ['node', 'deploy.js'] });
+    assert.equal(config.coordinator.checkTimeoutSeconds, 20);
     assert.equal(config.coordinator.claims.maxMinutes, 120);
   });
 
@@ -590,7 +590,7 @@ describe('parseConfig', () => {
       'coordinator.windows.targetSettleMinutes.cloud-web',
       'coordinator.windows.targetSettleMinutes.workers',
     ]);
-    assert.deepEqual(config.coordinator.windows, { settleMinutes: 30, targetSettleMinutes: { 'cloud-api': 10 }, assumedRollMinutes: 20, minMinutes: 15 });
+    assert.deepEqual(config.coordinator.windows, { settleMinutes: 30, targetSettleMinutes: { 'cloud-api': 10 }, assumedDeployMinutes: 20, minMinutes: 15 });
   });
 
   it('leaves out a repository with no main checkout or a bad name, and reports a bad target, blackout or deploy wait', () => {
@@ -634,9 +634,9 @@ describe('parseConfig', () => {
       schedule: {},
       heavy: { lockTtlMinutes: 150, maxRunMinutes: 45, smallMaxRunMinutes: 10, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048 },
       wait: { pollSeconds: 30, maxMinutes: 60 },
-      gateTimeoutSeconds: 20,
+      checkTimeoutSeconds: 20,
       claims: { maxMinutes: 120 },
-      windows: { settleMinutes: 30, targetSettleMinutes: {}, assumedRollMinutes: 20, minMinutes: 15 },
+      windows: { settleMinutes: 30, targetSettleMinutes: {}, assumedDeployMinutes: 20, minMinutes: 15 },
       repos: {},
     });
   });
@@ -680,6 +680,31 @@ describe('parseConfig', () => {
     const { config, issues } = parseConfig({ ...ROSTER, configVersion: CONFIG_VERSION, register: { tiers: [{ id: 1, name: 'now' }] } });
     assert.deepEqual(issues, [{ path: 'register.tiers', message: 'was renamed: use register.priorities' }]);
     assert.deepEqual(config.register.priorities, DEFAULT_REGISTER.priorities);
+  });
+
+  it('names each version-4 deploy key in a current file with its new name, and reads none of them', () => {
+    const { config, issues } = parseConfig({
+      ...ROSTER,
+      configVersion: CONFIG_VERSION,
+      coordinator: {
+        gateTimeoutSeconds: 45,
+        windows: { assumedRollMinutes: 5 },
+        repos: {
+          api: { mainCheckout: 'C:/src/api', roll: { command: ['node', 'deploy.js'] } },
+          web: { mainCheckout: 'C:/src/web', deploy: { gates: [{ name: 'flow', command: ['node', 'flow.js'] }], command: ['node', 'deploy.js'] } },
+        },
+      },
+    });
+    assert.deepEqual(issues, [
+      { path: 'coordinator.gateTimeoutSeconds', message: 'was renamed: use coordinator.checkTimeoutSeconds' },
+      { path: 'coordinator.repos.api.roll', message: 'was renamed: use coordinator.repos.api.deploy' },
+      { path: 'coordinator.repos.web.deploy.gates', message: 'was renamed: use coordinator.repos.web.deploy.checks' },
+      { path: 'coordinator.windows.assumedRollMinutes', message: 'was renamed: use coordinator.windows.assumedDeployMinutes' },
+    ]);
+    assert.equal(config.coordinator.repos['api']?.deploy, undefined);
+    assert.deepEqual(config.coordinator.repos['web']?.deploy?.checks, []);
+    assert.equal(config.coordinator.checkTimeoutSeconds, DEFAULT_CHECK_TIMEOUT_SECONDS);
+    assert.equal(config.coordinator.windows.assumedDeployMinutes, DEFAULT_WINDOWS.assumedDeployMinutes);
   });
 
   it('validates regular expressions and statuses', () => {

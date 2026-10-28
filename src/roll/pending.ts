@@ -1,4 +1,4 @@
-import type { CoordinatorConfig, CoordinatorRepoConfig, RollConfig } from '../config/types.ts';
+import type { CoordinatorConfig, CoordinatorRepoConfig, DeployConfig } from '../config/types.ts';
 import { rangeText } from '../coordinator/ledger.ts';
 import { rangeInstallTouches } from '../merge/dependencies.ts';
 import { ORIGIN, type MergeGit } from '../merge/git.ts';
@@ -15,14 +15,14 @@ export type RollGit = Pick<MergeGit, 'checkoutOf' | 'changes' | 'fetch' | 'defau
 export interface RollRepo {
   readonly name: string;
   readonly config: CoordinatorRepoConfig;
-  readonly roll: RollConfig;
+  readonly deploy: DeployConfig;
   readonly main: string;
 }
 
 
 /** The repositories with a roll block, in config order, each with its main checkout as a place. */
 export function rollRepos(coordinator: Pick<CoordinatorConfig, 'repos'>, inTeam: (path: string) => string): RollRepo[] {
-  return Object.entries(coordinator.repos).flatMap(([name, config]) => (config.roll === undefined ? [] : [{ name, config, roll: config.roll, main: inTeam(config.mainCheckout) }]));
+  return Object.entries(coordinator.repos).flatMap(([name, config]) => (config.deploy === undefined ? [] : [{ name, config, deploy: config.deploy, main: inTeam(config.mainCheckout) }]));
 }
 
 /** A dependency change the roll checks and installs right after the pull, under the host lock. */
@@ -31,7 +31,7 @@ export interface DependencyStep {
   readonly touches: readonly string[];
   /** `dependencyCheck`, run when `dependencyGate` is on; undefined when it is off. */
   readonly check: readonly string[] | undefined;
-  /** `roll.dependencyInstall`. */
+  /** `deploy.dependencyInstall`. */
   readonly install: readonly string[];
 }
 
@@ -64,12 +64,12 @@ type DependencyRead = { readonly kind: 'step'; readonly step: DependencyStep | u
 
 /**
  * What the range's package files need after the pull: nothing, an install (checked first when `dependencyGate` is on)
- * or a hold. The gate holds a dependency change unless `dependencyCheck` and `roll.dependencyInstall` are both set;
+ * or a hold. The gate holds a dependency change unless `dependencyCheck` and `deploy.dependencyInstall` are both set;
  * with the gate off, an install set runs unchecked, and with neither the range rolls as it is.
  */
 async function dependencyStep(git: RollGit, repo: RollRepo, head: string, target: string): Promise<DependencyRead> {
-  const { name, main, config, roll } = repo;
-  const install = roll.dependencyInstall;
+  const { name, main, config, deploy } = repo;
+  const install = deploy.dependencyInstall;
   if (!config.dependencyGate && install === undefined) {
     return { kind: 'step', step: undefined };
   }
@@ -84,7 +84,7 @@ async function dependencyStep(git: RollGit, repo: RollRepo, head: string, target
   if (install !== undefined && (check !== undefined || !config.dependencyGate)) {
     return { kind: 'step', step: { touches, check, install } };
   }
-  const unset = [...(check === undefined ? ['dependencyCheck'] : []), ...(install === undefined ? ['roll.dependencyInstall'] : [])].map((key) => `coordinator.repos.${name}.${key}`);
+  const unset = [...(check === undefined ? ['dependencyCheck'] : []), ...(install === undefined ? ['deploy.dependencyInstall'] : [])].map((key) => `coordinator.repos.${name}.${key}`);
   return {
     kind: 'held',
     reason: `deps changed (${touches.join(', ')}): coordinator.repos.${name}.dependencyGate holds a dependency change, since pulling it changes, unreviewed, the node_modules every worktree links to; set ${unset.join(' and ')} to roll one, or pull and install by hand`,

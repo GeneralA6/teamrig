@@ -19,7 +19,7 @@ import { chosenRepo, scheduleReadiness, shownBy, type RollEnd, type RollPorts, t
 const MINUTE_MS = 60_000;
 
 export interface DeployRequest extends RollRequest {
-  /** What the command restarts: some of the repository's `roll.targets`. */
+  /** What the command restarts: some of the repository's `deploy.targets`. */
   readonly targets: readonly string[];
   /** Why it runs, as the deploy record's note says it. */
   readonly why: string;
@@ -47,8 +47,8 @@ function deployEnv(setup: RollSetup, ports: RollPorts, request: DeployRequest, r
 
 /** Why the request may not deploy what it names: no targets, or one the repository's roll does not deploy. */
 function targetsProblem(repo: RollRepo, targets: readonly string[]): string | undefined {
-  const known = repo.roll.targets;
-  const listed = `coordinator.repos.${repo.name}.roll.targets (${known.length === 0 ? 'none set' : known.join(', ')})`;
+  const known = repo.deploy.targets;
+  const listed = `coordinator.repos.${repo.name}.deploy.targets (${known.length === 0 ? 'none set' : known.join(', ')})`;
   if (targets.length === 0) {
     return `name the targets the command restarts, from ${listed}`;
   }
@@ -100,7 +100,7 @@ export async function deployTargets(setup: RollSetup, ports: RollPorts, request:
     if (stopped !== undefined) {
       return stopped;
     }
-    const answer = await askGates(repo.roll.gates, phase, { hooks: ports.hooks, scanner: ports.scanner, cwd: repo.main, env, timeoutSeconds: setup.coordinator.gateTimeoutSeconds });
+    const answer = await askGates(repo.deploy.checks, phase, { hooks: ports.hooks, scanner: ports.scanner, cwd: repo.main, env, timeoutSeconds: setup.coordinator.checkTimeoutSeconds });
     return answer.readiness;
   };
   const { wait } = setup.coordinator;

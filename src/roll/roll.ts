@@ -182,7 +182,7 @@ export function shownBy(ports: Pick<RollPorts, 'scanner' | 'say'>): (line: strin
  * gates' to judge, so the check passes and the roll ends under the lock.
  */
 function readinessOf(setup: RollSetup, ports: RollPorts, request: RollRequest, repo: RollRepo, view: LockedView): (phase: ClearancePhase) => Promise<Readiness> {
-  const { targets, gates } = repo.roll;
+  const { targets, checks } = repo.deploy;
   return async (phase) => {
     const stopped = await scheduleReadiness(setup, ports, targets);
     if (stopped !== undefined) {
@@ -196,12 +196,12 @@ function readinessOf(setup: RollSetup, ports: RollPorts, request: RollRequest, r
       }
       view.range = view.read.pending;
     }
-    const answer = await askGates(gates, phase, {
+    const answer = await askGates(checks, phase, {
       hooks: ports.hooks,
       scanner: ports.scanner,
       cwd: repo.main,
       env: hookEnv(setup, ports, request, repo, view.range),
-      timeoutSeconds: setup.coordinator.gateTimeoutSeconds,
+      timeoutSeconds: setup.coordinator.checkTimeoutSeconds,
     });
     if (phase === 'locked') {
       view.tag = answer.tag;
@@ -263,18 +263,18 @@ async function pullAndRoll(setup: RollSetup, ports: RollPorts, request: RollRequ
       return failed;
     }
   }
-  for (const argv of repo.roll.afterPull) {
+  for (const argv of repo.deploy.afterPull) {
     ports.say(`afterPull: ${argv.join(' ')}`);
     const end = await ports.hooks.run({ argv, cwd: repo.main, env, timeoutMs, onLine: show });
     if (!succeeded(end)) {
       return { kind: 'afterPullFailed', argv, end };
     }
   }
-  ports.say(`roll: ${repo.roll.command.join(' ')}`);
+  ports.say(`roll: ${repo.deploy.command.join(' ')}`);
   let lastLine: string | undefined;
   let noRoll = false;
   const end = await ports.hooks.run({
-    argv: repo.roll.command,
+    argv: repo.deploy.command,
     cwd: repo.main,
     env,
     timeoutMs,
@@ -292,7 +292,7 @@ async function pullAndRoll(setup: RollSetup, ports: RollPorts, request: RollRequ
 /** What a pulled range ends as, and its deploy record when the roll command rolled something or failed trying. */
 async function settle(setup: RollSetup, ports: RollPorts, request: RollRequest, repo: RollRepo, pending: Pending, tag: string | undefined, startedAt: string, run: RollRun): Promise<RollEnd> {
   const { range, commits } = pending;
-  const byHand = `a new roll finds nothing pending, so run \`${repo.roll.command.join(' ')}\` in ${repo.main} by hand once it is fixed`;
+  const byHand = `a new roll finds nothing pending, so run \`${repo.deploy.command.join(' ')}\` in ${repo.main} by hand once it is fixed`;
   switch (run.kind) {
     case 'notPulled':
       return { kind: 'failed', reason: `the pull of ${range} into ${repo.main} failed (${run.reason}): nothing pulled, nothing rolled; roll again` };
@@ -310,7 +310,7 @@ async function settle(setup: RollSetup, ports: RollPorts, request: RollRequest, 
     return { kind: 'done', summary: `${range} pulled; nothing needed rolling${said}` };
   }
   const carried = plural(commits.length, 'commit');
-  const what = `roll ${repo.roll.targets.length > 0 ? repo.roll.targets.join(', ') : repo.name}${tag === undefined ? '' : ` (${tag})`}`;
+  const what = `roll ${repo.deploy.targets.length > 0 ? repo.deploy.targets.join(', ') : repo.name}${tag === undefined ? '' : ` (${tag})`}`;
   await appendDeploy(ports.files, setup.places, {
     type: 'deploy',
     kind: 'deploy',

@@ -31,7 +31,7 @@ function deployPartsOf(args: ParsedArgs): DeployParts | undefined {
 
 /**
  * `teamrig roll [--repo <name>]`: brings what was pushed to a repository's default branch to the running system
- * (src/roll/roll.ts): pulls its main checkout fast-forward and runs `coordinator.repos.<name>.roll`, its afterPull
+ * (src/roll/roll.ts): pulls its main checkout fast-forward and runs `coordinator.repos.<name>.deploy`, its afterPull
  * hooks then its command, one heavy step in the ledger, and records the deploy. With `--targets <a,b> --what "<why>"
  * -- <command>` it pulls nothing and runs that command instead, a deploy of those targets (src/roll/deploy.ts). Refused
  * for a main checkout it must not pull into, from `coordinator.schedule.heavyCutoffUtc` to midnight UTC, in the

@@ -2,9 +2,9 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { deployTargetsOf, repoTargetsOf } from './targets.ts';
 
-const ROLL = { targets: ['api', 'workers'], gates: [], afterPull: [], command: ['node', 'roll.js'] };
+const DEPLOY = { targets: ['api', 'workers'], checks: [], afterPull: [], command: ['node', 'deploy.js'] };
 const SITE = { mainCheckout: '/repo/site', deploysOnPush: ['cloud-web', 'api'], dependencyGate: false, followMainCheckout: false };
-const PIPELINE = { mainCheckout: '/repo/app', deploysOnPush: ['api'], dependencyGate: false, followMainCheckout: false, roll: ROLL };
+const PIPELINE = { mainCheckout: '/repo/app', deploysOnPush: ['api'], dependencyGate: false, followMainCheckout: false, deploy: DEPLOY };
 
 describe('repoTargetsOf', () => {
   it('names what a repository deploys on push and what its roll rolls, once', () => {

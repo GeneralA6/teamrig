@@ -99,7 +99,7 @@ export async function windows(args: ParsedArgs, runtime: CliRuntime): Promise<Ex
       records,
       targetsOf: (repo) => repoTargets.get(repo) ?? [],
       settleMs: settle * MINUTE_MS,
-      assumedRollMs: coordinator.windows.assumedRollMinutes * MINUTE_MS,
+      assumedDeployMs: coordinator.windows.assumedDeployMinutes * MINUTE_MS,
       lockTtlMs: coordinator.heavy.lockTtlMinutes * MINUTE_MS,
       nowMs,
     });

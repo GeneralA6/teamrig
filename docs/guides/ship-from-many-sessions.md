@@ -143,9 +143,9 @@ at a time: checked, pulled under the host lock, rolled and recorded. A repositor
   "repos": {
     "pipeline": {
       "mainCheckout": "../pipeline",
-      "roll": {
+      "deploy": {
         "targets": ["api", "workers"],
-        "gates": [{ "name": "flow", "command": ["node", "tools/flow-gate.js"] }],
+        "checks": [{ "name": "flow", "command": ["node", "tools/flow-check.js"] }],
         "dependencyInstall": ["npm", "ci", "--ignore-scripts"],
         "afterPull": [["npm", "run", "build"]],
         "command": ["node", "tools/roll.js"]
@@ -156,8 +156,8 @@ at a time: checked, pulled under the host lock, rolled and recorded. A repositor
 ```
 
 - `targets`: what the roll deploys; quiet claims on them hold it.
-- `gates`: up to 16 checks your own tools answer, such as "is a batch run open?". Exit 0 lets the roll go, 75 holds
-  it and 2 refuses it; anything else, or no answer within `coordinator.gateTimeoutSeconds` (20), holds it, its last
+- `checks`: up to 16 checks your own tools answer, such as "is a batch run open?". Exit 0 lets the roll go, 75 holds
+  it and 2 refuses it; anything else, or no answer within `coordinator.checkTimeoutSeconds` (20), holds it, its last
   line the reason.
 - `dependencyInstall`: the install a pulled dependency change needs, run right after the pull. A failed install
   moves the main checkout back and installs again, so the `node_modules` every worktree links to matches it.
@@ -195,7 +195,7 @@ teamrig roll --session sec --targets api,workers --what "rotate the db credentia
 ```
 
 It keeps the repository's gates and claims for the targets it names, and is refused for a target not in
-`roll.targets`, since a typo would slip past the quiet claims. A quiet claim of your own on a target holds it too, so
+`deploy.targets`, since a typo would slip past the quiet claims. A quiet claim of your own on a target holds it too, so
 release it first.
 
 ## When a step holds back
@@ -256,7 +256,7 @@ api (settle 30m): 2 clean windows of at least 15m
 A deploy disturbs its repository's targets, or only those a `roll --targets` deploy named, from its start until they
 settled: `coordinator.windows.settleMinutes` (30), a target's own in `targetSettleMinutes`, or `--settle` for one
 run. A deploy line a session wrote by hand in `ledger.md` counts too; one with no record of its start is taken to
-have rolled for `assumedRollMinutes` (20) before its line. A heavy step disturbs the whole host. A window shorter than `minMinutes` (15) is left out.
+have rolled for `assumedDeployMinutes` (20) before its line. A heavy step disturbs the whole host. A window shorter than `minMinutes` (15) is left out.
 
 A background load, such as a long data script or a backfill, is declared with `teamrig load` (`teamrig load end`
 ends it). A load never cuts a window, since two windows under the same load still compare: each window names the

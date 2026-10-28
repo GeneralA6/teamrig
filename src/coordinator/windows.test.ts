@@ -17,7 +17,7 @@ function iso(time: string): string {
 const TARGETS: Readonly<Record<string, readonly string[]>> = { pipeline: ['api', 'workers'], site: ['cloud-web'] };
 
 function inputs(md: readonly LedgerMdDeploy[], records: readonly LedgerRecord[], nowMs: number = at('18:00')): DisruptionInputs {
-  return { md, records, targetsOf: (repo) => TARGETS[repo] ?? [], settleMs: 30 * MINUTE, assumedRollMs: 20 * MINUTE, lockTtlMs: 150 * MINUTE, nowMs };
+  return { md, records, targetsOf: (repo) => TARGETS[repo] ?? [], settleMs: 30 * MINUTE, assumedDeployMs: 20 * MINUTE, lockTtlMs: 150 * MINUTE, nowMs };
 }
 
 function line(time: string, session: string, repo: string): LedgerMdDeploy {

@@ -266,7 +266,7 @@ The deploy coordinator: teamrig heavy runs one heavy step on the host at a time,
 | `dir` | string (at least 1 character) |  | The coordinator's folder, which holds its ledger (ledger.jsonl); a relative path is in the team's folder. Unset: deploys in the state folder. |
 | `repos` | map from string (matching `^[a-z0-9][a-z0-9._-]*$`) to [object](#coordinatorrepos) |  | The repositories whose branches teamrig merge merges into their default branch, by name. |
 | `heavy` | [object](#coordinatorheavy) |  | The host lock and the limits of one heavy step. |
-| `gateTimeoutSeconds` | integer (1 to 600) | `20` | A roll's gate still running after this many seconds is stopped, and the roll waits. |
+| `checkTimeoutSeconds` | integer (1 to 600) | `20` | A deploy's check still running after this many seconds is stopped, and the deploy waits. |
 | `claims` | [object](#coordinatorclaims) |  | Quiet claims (teamrig claim), which hold deploys of their targets while a session measures them. |
 | `windows` | [object](#coordinatorwindows) |  | teamrig windows: when a measurement of a deploy target is clean, between the deploys and heavy steps that disturb it. |
 | `wait` | [object](#coordinatorwait) |  | How a coordinator step waits. |
@@ -280,13 +280,13 @@ The repositories whose branches teamrig merge merges into their default branch, 
 | --- | --- | --- | --- |
 | `mainCheckout` (required) | string (at least 1 character) |  | The repository's main checkout; a branch merges from any worktree of it. A relative path is in the team's folder. |
 | `deploysOnPush` | array of string (matching `^[a-z0-9][a-z0-9._-]*$`) |  | The deploy targets a push to the default branch deploys by itself (a host that builds on push): quiet claims on them hold the merge, and the push is recorded as their deploy. |
-| `dependencyGate` | boolean |  | Refuse a branch (merge) or a pushed range (roll) whose package files need a dependency install, so the main checkout node\_modules, which its worktrees link to, never changes unreviewed; dependencyCheck clears one for merge, and with roll.dependencyInstall for roll. |
+| `dependencyGate` | boolean |  | Refuse a branch (merge) or a pushed range (deploy) whose package files need a dependency install, so the main checkout node\_modules, which its worktrees link to, never changes unreviewed; dependencyCheck clears one for merge, and with deploy.dependencyInstall for a deploy. |
 | `dependencyCheck` | array (1 to 64 items) of string (at least 1 character) |  | With dependencyGate, what clears a dependency change: a program and its arguments, run without a shell under the host lock with the base package-lock.json in the file TEAMRIG\_BASELINE\_LOCK names (unset when the base has none). teamrig merge runs it in the branch checkout after the rebase and before the push, the default branch its base; teamrig roll in the main checkout after the pull, its old HEAD the base. Exit 0 lets the change go, anything else refuses it. |
 | `followMainCheckout` | boolean |  | After the push, fast-forward the main checkout to it: only a fast-forward, only on the default branch with no tracked changes. |
 | `worktreeFolder` | string (at least 1 character) | `".claude/worktrees"` | The folder teamrig worktree add makes each new worktree in, one folder per branch named after it with each / as -. A relative path is in the main checkout. |
 | `worktreeSetup` | array (1 to 64 items) of string (at least 1 character) |  | What teamrig worktree add runs in a new worktree, such as a link to the main checkout node\_modules: a program and its arguments, run without a shell, with the main checkout folder in TEAMRIG\_MAIN\_CHECKOUT. Anything but exit 0 leaves the worktree in place and fails the add. Unset: nothing runs. |
 | `merge` | [object](#coordinatorreposmerge) |  | How teamrig merge merges a branch through the team's own flow, such as a pull request the forge merges. Unset: it pushes the branch to the default branch. |
-| `roll` | [object](#coordinatorreposroll) |  | How teamrig roll deploys what merged into the default branch, each command a program and its arguments run without a shell from the main checkout. Unset: the repository is not rolled. |
+| `deploy` | [object](#coordinatorreposdeploy) |  | How teamrig roll deploys what merged into the default branch, each command a program and its arguments run without a shell from the main checkout. Unset: the repository is not deployed. |
 
 ## `coordinator.repos.*.merge`
 
@@ -297,26 +297,26 @@ How teamrig merge merges a branch through the team's own flow, such as a pull re
 | `command` (required) | array (1 to 64 items) of string (at least 1 character) |  | A program and its arguments, run without a shell in the branch checkout under the host lock after the rebase and the dependency check, with TEAMRIG\_MERGE\_BRANCH, TEAMRIG\_MERGE\_BASE (the default branch), TEAMRIG\_MERGE\_HEAD and TEAMRIG\_SESSION set. Exit 0: the branch merged, which teamrig merge confirms on the remote; 75: it waits (say a pull request waits on its checks or review), and running teamrig merge again finishes it once it merges; anything else fails it. Its last output line is shown as the reason. |
 | `remote` | string (matching `^[A-Za-z0-9][A-Za-z0-9._-]*$`) | `"origin"` | The git remote whose default branch the command merges into: teamrig merge rebases onto it, confirms the merge on it and moves the local default branch to it. Set upstream where origin is a contributor's fork; the branch itself is pushed to and deleted from origin either way. |
 
-## `coordinator.repos.*.roll`
+## `coordinator.repos.*.deploy`
 
-How teamrig roll deploys what merged into the default branch, each command a program and its arguments run without a shell from the main checkout. Unset: the repository is not rolled.
-
-| Key | Type | Default | What it does |
-| --- | --- | --- | --- |
-| `targets` | array of string (matching `^[a-z0-9][a-z0-9._-]*$`) |  | The deploy targets the roll deploys: quiet claims on them hold it. |
-| `gates` | array (at most 16 items) of [object](#coordinatorreposrollgates) |  | Checks asked in order before the host lock and again under it; the first that does not pass holds the roll. Exit 0 lets it go, 75 makes it wait, 2 refuses it; anything else, or no answer within gateTimeoutSeconds, makes it wait. |
-| `dependencyInstall` | array (1 to 64 items) of string (at least 1 character) |  | Installs a pulled range's dependency change (package-lock.json, or package.json fields an install reads), such as npm ci --ignore-scripts: run after the pull and the dependencyCheck, before afterPull. A failed install moves the main checkout back and runs again to restore its dependencies. With dependencyGate, a dependency change rolls only when this and dependencyCheck are set. |
-| `afterPull` | array (at most 16 items) of array (1 to 64 items) of string (at least 1 character) |  | Run in order after the pull, before command; one that fails ends the roll before it deploys. |
-| `command` (required) | array (1 to 64 items) of string (at least 1 character) |  | Deploys what the pull brought: exit 0 rolled (a stdout line no-roll: nothing needed rolling), else failed. Its last stdout line is the ledger note. |
-
-## `coordinator.repos.*.roll.gates[]`
-
-Checks asked in order before the host lock and again under it; the first that does not pass holds the roll. Exit 0 lets it go, 75 makes it wait, 2 refuses it; anything else, or no answer within gateTimeoutSeconds, makes it wait.
+How teamrig roll deploys what merged into the default branch, each command a program and its arguments run without a shell from the main checkout. Unset: the repository is not deployed.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
-| `name` (required) | string (matching `^[a-z0-9][a-z0-9._-]*$`) |  | Names the gate in a wait or refusal. |
-| `command` (required) | array (1 to 64 items) of string (at least 1 character) |  | The gate: a program and its arguments. |
+| `targets` | array of string (matching `^[a-z0-9][a-z0-9._-]*$`) |  | The deploy targets it deploys: quiet claims on them hold it. |
+| `checks` | array (at most 16 items) of [object](#coordinatorreposdeploychecks) |  | Checks asked in order before the host lock and again under it; the first that does not pass holds the deploy. Exit 0 lets it go, 75 makes it wait, 2 refuses it; anything else, or no answer within checkTimeoutSeconds, makes it wait. |
+| `dependencyInstall` | array (1 to 64 items) of string (at least 1 character) |  | Installs a pulled range's dependency change (package-lock.json, or package.json fields an install reads), such as npm ci --ignore-scripts: run after the pull and the dependencyCheck, before afterPull. A failed install moves the main checkout back and runs again to restore its dependencies. With dependencyGate, a dependency change deploys only when this and dependencyCheck are set. |
+| `afterPull` | array (at most 16 items) of array (1 to 64 items) of string (at least 1 character) |  | Run in order after the pull, before command; one that fails ends the deploy before its command runs. |
+| `command` (required) | array (1 to 64 items) of string (at least 1 character) |  | Deploys what the pull brought: exit 0 deployed (a stdout line no-roll: nothing needed deploying), else failed. Its last stdout line is the ledger note. |
+
+## `coordinator.repos.*.deploy.checks[]`
+
+Checks asked in order before the host lock and again under it; the first that does not pass holds the deploy. Exit 0 lets it go, 75 makes it wait, 2 refuses it; anything else, or no answer within checkTimeoutSeconds, makes it wait.
+
+| Key | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `name` (required) | string (matching `^[a-z0-9][a-z0-9._-]*$`) |  | Names the check in a wait or refusal. |
+| `command` (required) | array (1 to 64 items) of string (at least 1 character) |  | The check: a program and its arguments. |
 
 ## `coordinator.heavy`
 
@@ -347,9 +347,9 @@ teamrig windows: when a measurement of a deploy target is clean, between the dep
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
-| `settleMinutes` | integer (0 to 1440) | `30` | A target measures cleanly this many minutes after a deploy rolled it. |
+| `settleMinutes` | integer (0 to 1440) | `30` | A target measures cleanly this many minutes after a deploy reached it. |
 | `targetSettleMinutes` | map from string to integer (0 to 1440) |  | Per deploy target, its own settle minutes in place of settleMinutes; each a target some repository deploys. |
-| `assumedRollMinutes` | integer (0 to 1440) | `20` | How long a deploy is taken to have rolled before its ledger.md line when the ledger has no record of its start. |
+| `assumedDeployMinutes` | integer (0 to 1440) | `20` | How long a deploy is taken to have run before its ledger.md line when the ledger has no record of its start. |
 | `minMinutes` | integer (1 to 1440) | `15` | The shortest clean window worth listing. |
 
 ## `coordinator.wait`

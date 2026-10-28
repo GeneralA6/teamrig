@@ -24,7 +24,7 @@ import {
 
 const COMMAND = 'teamrig';
 /** A coordinator repository that `teamrig roll` deploys. */
-const ROLLED_REPO = { mainCheckout: 'C:/src/app', roll: { targets: ['api'], command: ['node', 'roll.js'] } };
+const ROLLED_REPO = { mainCheckout: 'C:/src/app', deploy: { targets: ['api'], command: ['node', 'roll.js'] } };
 const longest = (letter: string, length: number) => letter.repeat(length);
 const filled = (limit: { readonly maxItems: number; readonly maxLength: number }, letter: string) =>
   Array.from({ length: limit.maxItems }, () => longest(letter, limit.maxLength));

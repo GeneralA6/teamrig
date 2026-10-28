@@ -1106,7 +1106,7 @@ DRY RUN nothing is written
 TEAM front under shop: lead web (shop-web); sessions web (shop-web), ui (shop-ui)
 WOULD CREATE /home/you/.teamrig/teams/front/config.json:
 {
-  "configVersion": 4,
+  "configVersion": 5,
   "team": {
     "id": "front",
     "parent": "shop"
@@ -3269,7 +3269,7 @@ The repository is the entry of `coordinator.repos` whose `mainCheckout` is this 
   (any but scripts no install hook runs, a tool's settings such as `jest`, `prettier` or `lint-staged`, and the
   package's description fields), since merging it changes, unreviewed, the `node_modules` every worktree links to;
   with no `dependencyCheck`, push such a change by hand. `teamrig roll` holds a pushed range that changes them the same way unless
-  `dependencyCheck` and `roll.dependencyInstall` are both set.
+  `dependencyCheck` and `deploy.dependencyInstall` are both set.
 - `dependencyCheck`: with `dependencyGate`, the check that clears a dependency change, such as
   `["node", "tools/check-change.ts"]`: a program and its arguments, run with no shell in the branch's checkout under
   the host lock, after each rebase and before the push, its stdout shown with secrets redacted, killed after
@@ -3384,7 +3384,7 @@ The repository is an entry of `coordinator.repos` with a `roll` block: the one `
 
 - `targets`: what the roll deploys, such as `["api", "workers"]`. roll waits for quiet claims on them, and its
   deploy record names them.
-- `gates`: up to 16 `{ "name", "command" }` checks the team's own tools answer, such as "is a batch run open?".
+- `checks`: up to 16 `{ "name", "command" }` checks the team's own tools answer, such as "is a batch run open?".
 - `dependencyInstall`: the install a pushed dependency change needs, such as `["npm", "ci", "--ignore-scripts"]`,
   run after the pull and before the afterPull hooks (see below).
 - `afterPull`: up to 16 commands run after the pull and before the roll command, such as a build the roll needs.
@@ -3395,11 +3395,11 @@ Each command is a list of words, run with no shell in the main checkout with std
 gate also gets `TEAMRIG_GATE_NAME` and `TEAMRIG_GATE_PHASE` (`before` the host lock, then `locked` under it); the
 afterPull hooks and the command also get `TEAMRIG_ROLL_TO` (the sha pulled) and, when a gate printed a line
 `tag=<tag>`, `TEAMRIG_ROLL_TAG`. A gate's exit 0 lets the roll go, 75 holds it and 2 refuses it; any other end, or
-none within `coordinator.gateTimeoutSeconds` (20), holds it. Its last line, secrets redacted, is the reason.
+none within `coordinator.checkTimeoutSeconds` (20), holds it. Its last line, secrets redacted, is the reason.
 
 REFUSED (exit 2) before any gate or lock for a main checkout off its default branch, with uncommitted changes or with
 commits origin lacks, and for a range with a dependency change `dependencyGate` holds: one with no `dependencyCheck`
-or no `roll.dependencyInstall` set, or a range roll cannot read. Also from
+or no `deploy.dependencyInstall` set, or a range roll cannot read. Also from
 `coordinator.schedule.heavyCutoffUtc` to midnight UTC, in the `resetBlackoutHours` before the weekly token reset,
 and when a gate refuses. With nothing pending it is DONE and runs nothing. Otherwise it waits up to
 `coordinator.wait.maxMinutes` for the claims, the gates and the host lock (longer while its line moves), reads origin again under the lock and asks
@@ -3426,7 +3426,7 @@ and frees the lock (FAILED).
 A deploy that pulls nothing: `teamrig roll --targets <a,b> --what "<why>" -- <command ...>` restarts some of the
 repository's targets with a command of its own, such as a restart that makes them read a rotated secret on the same
 image. It keeps the repository's roll rules. It is REFUSED (exit 2) before any gate or lock for a target not in
-`roll.targets`, since a typo would slip past the quiet claims, and also at the heavy cutoff, in the reset blackout
+`deploy.targets`, since a typo would slip past the quiet claims, and also at the heavy cutoff, in the reset blackout
 and when a gate refuses. It waits for quiet claims on the targets it names, not the others, then for the gates and
 the host lock, and asks the gates again under the lock. The command runs with no shell in this folder, killed after
 `coordinator.heavy.maxRunMinutes`, as one heavy step in the ledger; its lines show as they come.
@@ -3453,9 +3453,9 @@ Config:
   "repos": {
     "pipeline": {
       "mainCheckout": "../pipeline",
-      "roll": {
+      "deploy": {
         "targets": ["api", "workers"],
-        "gates": [{ "name": "flow", "command": ["node", "tools/flow-gate.js"] }],
+        "checks": [{ "name": "flow", "command": ["node", "tools/flow-check.js"] }],
         "dependencyInstall": ["npm", "ci", "--ignore-scripts"],
         "afterPull": [["npm", "run", "build"]],
         "command": ["node", "tools/roll.js"]
@@ -3503,7 +3503,7 @@ DONE deployed api, workers of pipeline: restarted 2 deployments
 A quiet claim holds the merges and rolls that deploy its targets while a session measures them, so no deploy
 lands in the middle of a measurement. It lasts from now for `--for`: minutes, hours or both, such as `45m` or
 `1h30m`, at most `coordinator.claims.maxMinutes` (120). Each target must be one a repository deploys, in its
-`deploysOnPush` or `roll.targets`. One claim per session. REFUSED for an unknown target, a longer span, a second
+`deploysOnPush` or `deploy.targets`. One claim per session. REFUSED for an unknown target, a longer span, a second
 claim, or a secret in the metric or reason, since the claims are shared files: `claims.json` beside the ledger, and
 `claims.md` for people, both written under their own lock. A claim ends at its time, or with `teamrig release`.
 Nothing else holds a deploy: a measurement without a claim adapts to the deploys, and no deploy waits for it.
@@ -3552,11 +3552,11 @@ RELEASED api, workers (claimed until 2030-01-08 12:45 IST)
 
 The clean measurement windows of each target between `--since` and `--until` (default now; a later time is cut to
 now), so a session compares a metric over stretches no change touched. A deploy disturbs the targets of its
-repository (its `deploysOnPush` and `roll.targets`), or only those its ledger record names (a `roll --targets`
+repository (its `deploysOnPush` and `deploy.targets`), or only those its ledger record names (a `roll --targets`
 deploy), from its start until it settled:
 `coordinator.windows.targetSettleMinutes` for that target, else `settleMinutes` (30), or `--settle` for every
 target. The deploys are the ledger.md lines, so one a session wrote by hand counts too; a deploy with no ledger
-record of its start is taken to have rolled for `assumedRollMinutes` (20). A heavy step disturbs the whole host. A
+record of its start is taken to have rolled for `assumedDeployMinutes` (20). A heavy step disturbs the whole host. A
 window shorter than `--min` (default `minMinutes`, 15) is left out. Each window names the loads (`teamrig load`) it
 overlaps: a load never cuts a window, since two windows under the same load still compare. A time is `HH:MM`
 (today), `YYYY-MM-DD HH:MM` or `YYYY-MM-DD` on the team's clock unless marked `UTC`, or an ISO time with its zone. A
