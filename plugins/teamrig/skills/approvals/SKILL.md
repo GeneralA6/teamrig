@@ -24,13 +24,13 @@ same checklist.
 Approve only when every line holds:
 
 - Its own, finished change: the requester's task and branch, never another session's work, as only the session
-  that made a change integrates it.
+  that made a change merges it.
 - Its tests are green, the run named in the note, and new behaviour comes with new tests.
 - One logical change per commit, each within the size rule or with a `Large-commit:` reason [commits].
 - No unaudited dependency change: a changed manifest or lockfile names the exact versions it resolves and the
   advisories checked.
 - The time: before the team's heavy-step cutoff [coordinator.schedule.heavyCutoffUtc] when the change needs a
-  build or a test run, and outside any no-integrate window in the team's rules.
+  build or a test run, and outside any no-merge window in the team's rules.
 - Nothing owner-gated inside [ownerGates]: destructive data operations, permissions, budget, resource changes,
   product or design decisions.
 

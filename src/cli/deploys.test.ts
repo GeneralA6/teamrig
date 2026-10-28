@@ -55,7 +55,7 @@ describe('teamrig deploys', () => {
     assert.deepEqual(result.stdout, [
       'host lock: po (heavy: build) since 2030-01-08 09:50 UTC',
       'heavy cutoff: 22:30-00:00 UTC (no heavy step starts)',
-      'deploy blackout: IN FORCE Tue 01-08 08:00 UTC until Tue 01-08 12:00 UTC (no integrate or roll; reset from the budget.reset config)',
+      'deploy blackout: IN FORCE Tue 01-08 08:00 UTC until Tue 01-08 12:00 UTC (no merge or roll; reset from the budget.reset config)',
       'claims: 1',
       '  quiet claim by bravo on cloud-api until 2030-01-08 10:30 UTC (p95)',
       'loads: 2',
@@ -76,7 +76,7 @@ describe('teamrig deploys', () => {
     assert.deepEqual(result.stdout.slice(0, 6), [
       'host lock: po (heavy: build) since 2030-01-08 11:50 IST',
       'heavy cutoff: 00:30-02:00 IST (no heavy step starts)',
-      'deploy blackout: IN FORCE Tue 01-08 10:00 IST until Tue 01-08 14:00 IST (no integrate or roll; reset from the budget.reset config)',
+      'deploy blackout: IN FORCE Tue 01-08 10:00 IST until Tue 01-08 14:00 IST (no merge or roll; reset from the budget.reset config)',
       'claims: 1',
       '  quiet claim by bravo on cloud-api until 2030-01-08 12:30 IST (p95)',
       'loads: 1',

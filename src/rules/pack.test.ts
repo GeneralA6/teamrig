@@ -210,11 +210,11 @@ describe('renderCorePack', () => {
     assert.match(inSummer, /zone-marked \(`04:00 EDT`, UTC-4 now\);/, 'the mark and offset of the day the rules are read');
   });
 
-  it("has only a change's own session integrate, deploy, verify and fix it", () => {
+  it("has only a change's own session merge, deploy, verify and fix it", () => {
     const pack = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
     assert.match(
       pack,
-      /^2\. Own your change end to end: only the session that made it integrates, deploys \(when it must run\), verifies and fixes or rolls it back; another session's change goes to its owner\.$/m,
+      /^2\. Own your change end to end: only the session that made it merges, deploys \(when it must run\), verifies and fixes or rolls it back; another session's change goes to its owner\.$/m,
     );
   });
 
@@ -326,7 +326,7 @@ describe('renderCorePack', () => {
     assert.doesNotMatch(pack, /coordinatorOwner|securityReviewer|heavyCutoffUtc|teamrig heavy|coordinator\.repos|Pace the week|\[budget\]/);
   });
 
-  it('gives a team with a coordinator repository the heavy, test, integrate and roll commands, all in the background', () => {
+  it('gives a team with a coordinator repository the heavy, test, merge and roll commands, all in the background', () => {
     const pack = renderCorePack(
       testConfig({ coordinator: { schedule: { heavyCutoffUtc: '22:30' }, repos: { app: ROLLED_REPO } } }),
       COMMAND,
@@ -335,7 +335,7 @@ describe('renderCorePack', () => {
     );
     assert.match(
       pack,
-      /^7\. .*before then\. Run heavy steps \(builds, test runs, data scripts\) in the background through `teamrig heavy`, a test run inside `teamrig test`, none starting 22:30-00:00 UTC \[coordinator\.schedule\.heavyCutoffUtc\]; a commit stays a plain `git commit`\. Land a tested branch with `teamrig integrate` and run it with `teamrig roll`, also in the background \[coordinator\.repos\]\.$/m,
+      /^7\. .*before then\. Run heavy steps \(builds, test runs, data scripts\) in the background through `teamrig heavy`, a test run inside `teamrig test`, none starting 22:30-00:00 UTC \[coordinator\.schedule\.heavyCutoffUtc\]; a commit stays a plain `git commit`\. Merge a tested branch with `teamrig merge` and run it with `teamrig roll`, also in the background \[coordinator\.repos\]\.$/m,
     );
     assert.doesNotMatch(pack, /No heavy step/);
   });
@@ -344,7 +344,7 @@ describe('renderCorePack', () => {
     const pack = renderCorePack(testConfig({ coordinator: { repos: { app: { mainCheckout: 'C:/src/app' } } } }), COMMAND, 'win32', RULES_CLOCK);
     assert.match(
       pack,
-      / a test run inside `teamrig test`; a commit stays a plain `git commit`\. Land a tested branch with `teamrig integrate`, also in the background \[coordinator\.repos\]\.$/m,
+      / a test run inside `teamrig test`; a commit stays a plain `git commit`\. Merge a tested branch with `teamrig merge`, also in the background \[coordinator\.repos\]\.$/m,
     );
     assert.doesNotMatch(pack, /teamrig roll|heavyCutoffUtc/);
   });

@@ -5,7 +5,7 @@ import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.t
 
 /**
  * `commits check --base <ref> [--tip <ref>]`: the commits in base..tip (tip default HEAD) that go over
- * the team's size rule with no reason line. Any one makes it REFUSED, exit 2, so an integrate script or CI can gate on it.
+ * the team's size rule with no reason line. Any one makes it REFUSED, exit 2, so a merge script or CI can gate on it.
  */
 export async function check(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);

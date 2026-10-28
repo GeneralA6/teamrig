@@ -7,7 +7,7 @@ import { parseObject, recordVersion, VERSION_FIELD, writableObject } from '../co
 /**
  * A branch whose repository's merge command said it waits (exit 75), say on a pull request's checks or review: one
  * file per branch in the coordinator's `pending-merges` folder, written and removed under the host lock. The next
- * integrate of that branch, still at that commit, finishes it without running the command again once the merge remote's
+ * `teamrig merge` of that branch, still at that commit, finishes it without running the command again once the merge remote's
  * default branch holds it. The format, one JSON object:
  *
  * - `v`: `PENDING_MERGE_FORMAT`;

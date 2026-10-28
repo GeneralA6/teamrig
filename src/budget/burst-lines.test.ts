@@ -89,11 +89,11 @@ describe('burstStopLines', () => {
 });
 
 describe('burstPromptLines', () => {
-  it('tells the model how to work in the burst once: caps, independent tasks, worktrees, one integrate at a time, same model and effort', () => {
+  it('tells the model how to work in the burst once: caps, independent tasks, worktrees, one merge at a time, same model and effort', () => {
     const start = burstPromptLines(facts({ burst: SURPLUS_BURST }), NONE);
     assert.deepEqual(start.lines, [
       'teamrig burst: a surplus burst runs until Wed 01-09 00:00 UTC or 99.5% of the week. ' +
-        'Run up to 3 helpers at once, on independent tasks only; give each edit in a repo its own worktree, and integrate one change at a time. ' +
+        'Run up to 3 helpers at once, on independent tasks only; give each edit in a repo its own worktree, and merge one change at a time. ' +
         'Helpers run on your model and effort, never a cheaper model or lower effort, and never skip a test or check. More: teamrig burst',
     ]);
     assert.equal(start.modelBurstAt, NOW);

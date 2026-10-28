@@ -10,13 +10,13 @@ import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.t
 import { stoppableHooks, stoppableLock, stoppableSleep, stoppableSteps, stoppedWhileWaiting, unlessStopped, watchStarters } from '../stoppable.ts';
 
 /**
- * `teamrig integrate [--keep-remote] [--no-delete-local]`: lands the branch checked out in the current folder on origin's
- * default branch (src/integrate/integrate.ts). Refused for a branch it must not land, from
+ * `teamrig merge [--keep-remote] [--no-delete-local]`: merges the branch checked out in the current folder into origin's
+ * default branch (src/integrate/integrate.ts). Refused for a branch it must not merge, from
  * `coordinator.schedule.heavyCutoffUtc` to midnight UTC and in the `resetBlackoutHours` before the weekly token reset;
  * it waits up to `coordinator.wait.maxMinutes` for quiet claims on what the push deploys and for the host lock, then
  * rebases and pushes, the push a heavy step in the ledger. Once the shell that started it ends, it stops waiting, or
  * kills the step it runs (exit 129) and frees the lock. A repository with a merge command runs it in place of the push.
- * Exit 0 landed, 1 failed or stopped, 2 refused, 75 the merge command waits: run it again once the branch is merged.
+ * Exit 0 merged, 1 failed or stopped, 2 refused, 75 the merge command waits: run it again once the branch is merged.
  */
 export async function integrate(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const caller = callerOf(args.flags, runtime.env);

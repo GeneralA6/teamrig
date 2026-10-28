@@ -139,7 +139,7 @@ describe('repoOf', () => {
 });
 
 
-describe('integrate refuses a branch it must not land, before the lock', () => {
+describe('merge refuses a branch it must not merge, before the lock', () => {
   const cases: readonly { readonly name: string; readonly arrange: (world: World) => void; readonly request?: IntegrateRequest; readonly expect: RegExp }[] = [
     { name: 'a folder outside git', arrange: () => undefined, request: { ...REQUEST, dir: '/nowhere' }, expect: /\/nowhere is not in a git checkout/ },
     { name: 'a detached HEAD', arrange: (world) => world.git.checkouts.set(WORKTREE, { top: WORKTREE, branch: undefined, mainCheckout: MAIN_CHECKOUT, linked: true }), expect: /detached HEAD/ },
@@ -155,7 +155,7 @@ describe('integrate refuses a branch it must not land, before the lock', () => {
       },
       expect: /master is a default branch/,
     },
-    { name: 'a branch with nothing new', arrange: (world) => world.git.heads.set(WORKTREE, 'base'), expect: /nothing to integrate: every commit of feat is already on origin\/main/ },
+    { name: 'a branch with nothing new', arrange: (world) => world.git.heads.set(WORKTREE, 'base'), expect: /nothing to merge: every commit of feat is already on origin\/main/ },
   ];
   for (const { name, arrange, request, expect } of cases) {
     it(name, async () => {
@@ -175,7 +175,7 @@ describe('integrate refuses a branch it must not land, before the lock', () => {
   });
 });
 
-describe('integrate holds a dependency change where the repository asks for it', () => {
+describe('merge holds a dependency change where the repository asks for it', () => {
   const gated = { app: { ...PLAIN, dependencyGate: true } };
 
   it('refuses a lockfile change and names the setting that holds it', async () => {
@@ -193,7 +193,7 @@ describe('integrate holds a dependency change where the repository asks for it',
     refused(await world.run(), /deps changed \(package\.json fields an install reads\)/);
   });
 
-  it('lands a package.json change to its scripts only', async () => {
+  it('merges a package.json change to its scripts only', async () => {
     const world = new World({ repos: gated });
     world.git.paths = ['package.json'];
     world.git.files.set('base:package.json', JSON.stringify({ scripts: { test: 'a' } }));
@@ -201,7 +201,7 @@ describe('integrate holds a dependency change where the repository asks for it',
     assert.equal((await world.run()).kind, 'done');
   });
 
-  it('lands a package.json change to a tool\'s settings only, such as jest', async () => {
+  it('merges a package.json change to a tool\'s settings only, such as jest', async () => {
     const world = new World({ repos: gated });
     world.git.paths = ['package.json'];
     world.git.files.set('base:package.json', JSON.stringify({ dependencies: { a: '1.0.0' }, jest: { preset: 'ts-jest' } }));
@@ -228,7 +228,7 @@ describe('integrate holds a dependency change where the repository asks for it',
   });
 });
 
-describe('integrate runs the dependency check, where one is set, on what the rebase made', () => {
+describe('merge runs the dependency check, where one is set, on what the rebase made', () => {
   const CHECK = ['node', 'check-change.ts'];
   const checked = { app: { ...PLAIN, dependencyGate: true, dependencyCheck: CHECK } };
   const BASELINE = join(dirname(PLACES.ledger), 'baseline-step-1.package-lock.json');
@@ -326,7 +326,7 @@ describe('integrate runs the dependency check, where one is set, on what the reb
   });
 });
 
-describe('integrate lands a branch', () => {
+describe('merge pushes a branch to the default branch', () => {
   it('rebases, pushes HEAD to the default branch as a recorded heavy step, then tidies the branch away', async () => {
     const world = new World();
     world.git.landed = ['aaaaaaaa1111', 'bbbbbbbb2222'];
@@ -343,7 +343,7 @@ describe('integrate lands a branch', () => {
       `deleteBranch ${WORKTREE} feat`,
       `updateLocalBranch ${WORKTREE} origin main`,
     ]);
-    const start = { type: 'heavy', id: 'step-1', session: 'api', what: 'integrate app: push feat to main', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    const start = { type: 'heavy', id: 'step-1', session: 'api', what: 'merge app: push feat to main', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(world.records(PLACES.ledger), [start, { ...start, endedAt: '2030-01-08T10:01:30.000Z', exitCode: 0 }]);
     assert.equal(world.files.get(PLACES.ledgerMd), undefined);
     assert.ok(world.lockFree());
@@ -360,13 +360,13 @@ describe('integrate lands a branch', () => {
       session: 'api',
       repo: 'app',
       range: 'rebased',
-      what: 'integrate feat',
+      what: 'merge feat',
       note: 'pushed to main; cloud-api deploy on push, not watched by teamrig',
       startedAt: '2030-01-08T10:00:00.000Z',
       rolledAt: '2030-01-08T10:01:30.000Z',
     };
     assert.deepEqual(world.records(PLACES.ledger).at(-1), deploy);
-    assert.match(world.files.get(PLACES.ledgerMd) ?? '', /\n- 2030-01-08 10:01 \| api \| app \| rebased \| integrate feat \| deploy \| pushed to main; cloud-api deploy on push, not watched by teamrig\n$/);
+    assert.match(world.files.get(PLACES.ledgerMd) ?? '', /\n- 2030-01-08 10:01 \| api \| app \| rebased \| merge feat \| deploy \| pushed to main; cloud-api deploy on push, not watched by teamrig\n$/);
   });
 
   it('keeps the branch on origin and here when asked, and says how to remove the worktree with it', async () => {
@@ -376,14 +376,14 @@ describe('integrate lands a branch', () => {
     assert.equal(world.said.at(-1), `next: teamrig worktree remove "${WORKTREE}" --delete-branch`);
   });
 
-  it('takes a push whose command failed after origin took it as landed, and says so', async () => {
+  it('takes a push whose command failed after origin took it as merged, and says so', async () => {
     const world = new World();
     world.steps.ends(1, 1_000);
     assert.equal((await world.run()).kind, 'done');
-    assert.ok(world.said.includes("the push exited 1, but origin's main is at rebased: it landed"));
+    assert.ok(world.said.includes("the push exited 1, but origin's main is at rebased: it merged"));
   });
 
-  it('checks out the default branch in a main checkout it integrated from, where its local branch moved', async () => {
+  it('checks out the default branch in a main checkout it merged from, where its local branch moved', async () => {
     const world = new World();
     world.git.checkouts.set('/solo', { top: '/solo', branch: 'feat', mainCheckout: '/solo', linked: false });
     world.git.heads.set('/solo', 'mine');
@@ -395,7 +395,7 @@ describe('integrate lands a branch', () => {
   });
 });
 
-describe('integrate merges through the repository’s merge command, where one is set', () => {
+describe('merge goes through the repository’s merge command, where one is set', () => {
   const MERGE = ['node', 'merge.ts'];
   const MERGING: CoordinatorRepoConfig = { ...PLAIN, merge: { command: MERGE, remote: 'origin' } };
   const PENDING = join(PLACES.pendingMerges, 'app%2Ffeat.json');
@@ -449,7 +449,7 @@ describe('integrate merges through the repository’s merge command, where one i
     ]);
     assert.ok(world.said.includes('merging feat (rebased) into main through the merge command node merge.ts'));
     assert.ok(world.said.includes('  pull request https://forge/pr/7 merged'));
-    const start = { type: 'heavy', id: 'step-1', session: 'api', what: 'integrate app: merge feat into main', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    const start = { type: 'heavy', id: 'step-1', session: 'api', what: 'merge app: merge feat into main', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(world.records(PLACES.ledger), [
       start,
       { ...start, endedAt: '2030-01-08T10:01:00.000Z', exitCode: 0 },
@@ -459,7 +459,7 @@ describe('integrate merges through the repository’s merge command, where one i
         session: 'api',
         repo: 'app',
         range: 'squashed',
-        what: 'integrate feat',
+        what: 'merge feat',
         note: 'merged by the merge command into main; cloud-api deploy on push, not watched by teamrig',
         startedAt: '2030-01-08T10:00:00.000Z',
         rolledAt: '2030-01-08T10:01:00.000Z',
@@ -511,10 +511,10 @@ describe('integrate merges through the repository’s merge command, where one i
     assert.deepEqual(pendingOf(world), WAITED);
     assert.ok(world.lockFree());
     assert.ok(!tidied(world));
-    const start = { type: 'heavy', id: 'step-1', session: 'api', what: 'integrate app: merge feat into main', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    const start = { type: 'heavy', id: 'step-1', session: 'api', what: 'merge app: merge feat into main', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(world.records(PLACES.ledger), [start, { ...start, endedAt: '2030-01-08T10:00:00.000Z', exitCode: 75 }]);
     assert.ok(world.said.includes('  checks running with [redacted]'));
-    assert.equal(world.said.at(-1), `next: run teamrig integrate again in ${WORKTREE} once feat is merged`);
+    assert.equal(world.said.at(-1), `next: run teamrig merge again in ${WORKTREE} once feat is merged`);
   });
 
   it('names the command as the reason when it waits without a word', async () => {
@@ -565,7 +565,7 @@ describe('integrate merges through the repository’s merge command, where one i
         session: 'api',
         repo: 'app',
         range,
-        what: 'integrate feat',
+        what: 'merge feat',
         note: 'merged by the merge command into main; cloud-api deploy on push, not watched by teamrig',
         startedAt: '2030-01-08T10:00:00.000Z',
         rolledAt: '2030-01-08T10:30:00.000Z',
@@ -579,7 +579,7 @@ describe('integrate merges through the repository’s merge command, where one i
   it('still refuses a branch with nothing new when no merge of it waits', async () => {
     const world = new World({ repos: { app: MERGING } });
     world.git.heads.set(WORKTREE, 'base');
-    refused(await world.run(), /nothing to integrate: every commit of feat is already on origin\/main/);
+    refused(await world.run(), /nothing to merge: every commit of feat is already on origin\/main/);
     assert.deepEqual(world.hooks.ran, []);
   });
 
@@ -600,7 +600,7 @@ describe('integrate merges through the repository’s merge command, where one i
       session: 'api',
       repo: 'app',
       range: 'squashed',
-      what: 'integrate feat',
+      what: 'merge feat',
       note: 'merged by the merge command into main; cloud-api deploy on push, not watched by teamrig',
       startedAt: '2030-01-08T10:00:00.000Z',
       rolledAt: '2030-01-08T11:00:00.000Z',
@@ -701,8 +701,8 @@ describe('integrate merges through the repository’s merge command, where one i
   });
 });
 
-describe('integrate tidies as far as it can', () => {
-  it('warns about each tidy step that failed and still reports the landing', async () => {
+describe('merge tidies as far as it can', () => {
+  it('warns about each tidy step that failed and still reports the merge', async () => {
     const world = new World();
     world.git.deleteRemoteFails = 'remote rejected';
     world.git.detachFails = 'index.lock exists';
@@ -728,7 +728,7 @@ describe('integrate tidies as far as it can', () => {
   });
 });
 
-describe('integrate under the lock, when the push does not land', () => {
+describe('merge under the lock, when the push does not go through', () => {
   it('rebases and pushes again when origin moved during the push', async () => {
     const world = new World();
     let pushes = 0;
@@ -799,12 +799,12 @@ describe('integrate under the lock, when the push does not land', () => {
   });
 });
 
-describe('integrate waits for what may hold a deploy, and refuses what forbids one', () => {
+describe('merge waits for what may hold a deploy, and refuses what forbids one', () => {
   const deploying = { app: { ...PLAIN, deploysOnPush: ['cloud-api'] } };
   const claim = (until: string, targets: readonly string[] = ['cloud-api']): string =>
     JSON.stringify([{ session: 'po', targets, metric: 'p95 latency', why: 'baseline', from: '2030-01-08T09:00:00Z', until }]);
 
-  it('waits out a quiet claim on what the push deploys, then lands', async () => {
+  it('waits out a quiet claim on what the push deploys, then merges', async () => {
     const world = new World({ repos: deploying, claims: claim('2030-01-08T10:05:00Z') });
     assert.equal((await world.run()).kind, 'done');
     assert.ok(world.said.includes('waiting: quiet claim by po on cloud-api until 2030-01-08 10:05 UTC (p95 latency)'));
@@ -852,10 +852,10 @@ describe('integrate waits for what may hold a deploy, and refuses what forbids o
   });
 });
 
-describe('integrate follows the main checkout where the repository asks for it', () => {
+describe('merge follows the main checkout where the repository asks for it', () => {
   const following = { app: { ...PLAIN, followMainCheckout: true } };
 
-  it('fast-forwards a clean main checkout on the default branch to what landed', async () => {
+  it('fast-forwards a clean main checkout on the default branch to what merged', async () => {
     const world = new World({ repos: following });
     world.git.status.set(MAIN_CHECKOUT, ['?? notes.txt']);
     assert.equal((await world.run()).kind, 'done');

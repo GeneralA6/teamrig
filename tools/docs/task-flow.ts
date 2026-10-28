@@ -1,7 +1,7 @@
 /**
  * The README's task-flow picture: one task's trip, as you see it in the terminal you already have. In the lead's tab
  * you ask for a password reset; the lead adds T17 for api and it appears in teamrig-pane's list. The view moves to
- * api's tab, where api starts T17, tests it and lands it with `teamrig integrate`, waiting in line while web holds the
+ * api's tab, where api starts T17, tests it and merges it with `teamrig merge`, waiting in line while web holds the
  * lock. web's task and then T17 turn done in the pane. It is the terminal view's window (terminal-view.ts), in the
  * reader's light or dark colour scheme: one 18 s CSS loop and no script, so GitHub shows it in an <img>. With motion
  * turned off it is a still of api's tab with T17 done.
@@ -115,12 +115,12 @@ export const LEAD_TALK: readonly Line[] = [
   { y: 158, from: 4.6, words: `${NEW_ROW.owner} is idle, so the task wakes it.`, look: 'said' },
 ];
 
-/** api's talk: it starts T17, tests it, and lands it with integrate, which waits in line for the lock. */
+/** api's talk: it starts T17, tests it, and merges it with teamrig merge, which waits in line for the lock. */
 export const API_TALK: readonly Line[] = [
   { y: 86, from: 6.2, words: `Starting ${NEW_ROW.id} ${NEW_ROW.title} (${NEW_ROW.priority}, from lead).`, look: 'said' },
   { y: 110, from: 7.2, words: 'Edited 3 files, ran 6 shell commands', look: 'output' },
-  { y: 146, from: 8.4, words: 'Tests pass: 58 of 58. Landing it on main.', look: 'said' },
-  { y: 182, from: 9.2, words: 'teamrig integrate', look: 'command' },
+  { y: 146, from: 8.4, words: 'Tests pass: 58 of 58. Merging it into main.', look: 'said' },
+  { y: 182, from: 9.2, words: 'teamrig merge', look: 'command' },
   { y: 206, from: 9.6, words: 'Waiting in line: web holds the lock.', look: 'output' },
   { y: 230, from: 11.4, words: 'Lock taken: rebased on main, pushed.', look: 'output' },
   { y: 266, from: 12.6, words: `${NEW_ROW.id} done. Proof: a reset email arrives.`, look: 'said' },
@@ -129,7 +129,7 @@ export const API_TALK: readonly Line[] = [
 const LABEL =
   `One task's trip in your terminal. In the lead's tab you type: ${ASK} The lead adds ${NEW_ROW.id} ${NEW_ROW.title} for ` +
   `${NEW_ROW.owner}, ${NEW_ROW.priority}, ${NEW_ROW.due}, and it appears in teamrig-pane's list. In api's tab, api starts it, ` +
-  'edits and tests, then lands it with teamrig integrate: it waits in line while web holds the lock, then rebases on main ' +
+  'edits and tests, then merges it with teamrig merge: it waits in line while web holds the lock, then rebases on main ' +
   `and pushes. web's task and then ${NEW_ROW.id} turn done in the pane.`;
 
 /** A track's marks, the last shown until the loop clears. */

@@ -20,7 +20,7 @@ export type LocalUpdate = { readonly kind: 'updated' } | { readonly kind: 'check
 export const ORIGIN = 'origin';
 
 /**
- * The git steps `teamrig integrate` takes, each in the folder it names; the push itself runs as a heavy step. A step
+ * The git steps `teamrig merge` takes, each in the folder it names; the push itself runs as a heavy step. A step
  * that names a `remote` takes a remote's name, such as {@link ORIGIN}.
  */
 export interface IntegrateGit {

@@ -126,7 +126,7 @@ async function parentLockOf(runtime: CliRuntime, lock: HostLock, say: Say): Prom
 
 /**
  * The step's session: `--session`, else `$TEAMRIG_SESSION`, else the parent step's (a git hook's checks under
- * `heavy -- git commit` or an integrate's push), else the session this Claude Code tab is bound to, so a hook
+ * `heavy -- git commit` or a merge's push), else the session this Claude Code tab is bound to, so a hook
  * that wraps its checks in `heavy` needs no session of its own.
  */
 async function sessionOf(args: ParsedArgs, runtime: CliRuntime, kit: Kit, roster: Roster, parent: HostLockInfo | undefined): Promise<string> {

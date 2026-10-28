@@ -443,7 +443,7 @@ describe('parseConfig', () => {
     assert.equal(config.coordinator.heavy.smallMaxRunMinutes, 5);
   });
 
-  it('reads the reset blackout and the repositories integrate lands, each repository from its defaults', () => {
+  it('reads the reset blackout and the repositories teamrig merge merges into, each repository from its defaults', () => {
     const coordinator = {
       schedule: { heavyCutoffUtc: '22:30', resetBlackoutHours: 4 },
       repos: {

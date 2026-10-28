@@ -138,7 +138,7 @@ function burstModelLine(burst: Burst, zone: TimeZone): string {
   const hires = burst.hires === 0 ? '' : ` The lead may hire up to ${plural(burst.hires, 'session')} for it (${KIT_NAME} hire --burst).`;
   return (
     `${BURST_COMMAND}: a ${burst.kind} burst runs ${endText(burst, zone)}.${first} ` +
-    `Run up to ${plural(burst.helpers, 'helper')} at once, on independent tasks only; give each edit in a repo its own worktree, and integrate one change at a time. ` +
+    `Run up to ${plural(burst.helpers, 'helper')} at once, on independent tasks only; give each edit in a repo its own worktree, and merge one change at a time. ` +
     `Helpers run on your model and effort, never a cheaper model or lower effort, and never skip a test or check.${hires} ${MORE_BURST}`
   );
 }

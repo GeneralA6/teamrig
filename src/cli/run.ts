@@ -211,7 +211,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   test: { effect: 'write', flags: ['session'], rest: true, load: async () => (await testCommand()).test },
   heavy: { effect: 'write', flags: ['session', 'what', 'max-minutes'], switches: ['small', 'pre-push'], rest: true, load: async () => (await heavyCommand()).heavy },
   withdraw: { effect: 'write', flags: ['session', 'what'], switches: ['all'], load: async () => (await withdrawCommand()).withdraw },
-  integrate: { effect: 'write', flags: ['session'], switches: ['keep-remote', 'no-delete-local'], load: async () => (await integrateCommand()).integrate },
+  merge: { effect: 'write', flags: ['session'], switches: ['keep-remote', 'no-delete-local'], load: async () => (await integrateCommand()).integrate },
   roll: { effect: 'write', flags: ['session', 'repo', 'targets', 'what'], rest: true, load: async () => (await rollCommand()).roll },
   claim: { effect: 'write', flags: ['session', 'targets', 'metric', 'why', 'for'], load: async () => (await claimCommands()).claim },
   release: { effect: 'write', flags: ['session'], load: async () => (await claimCommands()).release },
@@ -270,9 +270,9 @@ export const COMMAND_EFFECTS: CommandEffects = Object.fromEntries(Object.entries
 export const COMMAND_REST: CommandRest = new Set(Object.entries(COMMANDS).flatMap(([name, spec]) => (spec.rest === true ? [name] : [])));
 /**
  * Renamed flags and commands, refused everywhere with the new name, never an alias: `--tier` became `--priority`
- * (levels p1, p2, ...).
+ * (levels p1, p2, ...), and `teamrig integrate` became `teamrig merge` (T1308).
  */
-const RENAMED: Renamed = { flags: { tier: 'priority', problem: 'type bug [--critical] (or --type task)' }, commands: {} };
+const RENAMED: Renamed = { flags: { tier: 'priority', problem: 'type bug [--critical] (or --type task)' }, commands: { integrate: 'merge' } };
 /** The table a line is read with, and each command's effect: what `/teamrig` plans a line from (src/slash/plan.ts). */
 export const COMMAND_TABLE: CommandTable = { flags: COMMAND_FLAGS, switches: COMMAND_SWITCHES, renamed: RENAMED, rest: COMMAND_REST, effects: COMMAND_EFFECTS };
 
@@ -564,7 +564,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   config validate | config migrate [--yes]   migrate shows an older config rewritten in this format and
       the first teamrig that reads it, as a tab on an older one refuses every write after; --yes writes it
   commits check --base <ref> [--tip <ref>]   commits in base..tip (default HEAD) over the size rule
-      with no reason line; any is REFUSED, for an integrate script or CI
+      with no reason line; any is REFUSED, for a merge script or CI
   worktree add <branch> [--repo <name>]   makes a session's new worktree the same way every time: fetches
       the default branch origin/HEAD names, adds the worktree on the new branch from it, in a folder
       named after the branch (each / as -) in coordinator.repos.<name>.worktreeFolder (default
@@ -587,7 +587,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       129); REFUSED from coordinator.schedule.heavyCutoffUtc to midnight UTC and once its line has not
       moved for coordinator.heavy.waitMinutes; exit 0 when the command passed, 1 when it failed or was killed. Its
       processes get $TEAMRIG_HOST_LOCK: a heavy step started under a live lock (a git hook's checks
-      under heavy, integrate or roll) runs at once under it. No --session: $TEAMRIG_SESSION, the
+      under heavy, merge or roll) runs at once under it. No --session: $TEAMRIG_SESSION, the
       parent step's session, else the session this Claude Code tab is bound to. --small (a spec run, a
       lint): shares the host with other small steps while it keeps coordinator.heavy.memoryFloorMb free
       besides the MB held for them (its ledger peak and a quarter, else coordinator.heavy.smallReserveMb)
@@ -598,14 +598,14 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       when they pass; when they waited over a minute for the lock it declines the push (REFUSED), whose
       connection may have closed meanwhile: push again, it reuses the pass
   withdraw (--what <text> | --all) [--session <id|name>]   takes this session's steps waiting for the
-      host lock (heavy, integrate, roll) out of its line, so a re-ordered or abandoned step leaves it:
+      host lock (heavy, merge, roll) out of its line, so a re-ordered or abandoned step leaves it:
       --what picks those whose purpose holds the text. Each stops at its next look and runs nothing;
       RUNNING when it took its turn first, LEFT when it left the line first, KEPT when an older
       teamrig queued it (its step runs anyway). With neither flag: lists them, REFUSED. No --session:
       $TEAMRIG_SESSION, else the session this Claude Code tab is bound to; REFUSED for another
       session's steps from a bound tab. Exit 0 each withdrawn or none waits, 1 any RUNNING, LEFT, KEPT
-  integrate [--session <id|name>] [--keep-remote] [--no-delete-local]   lands the branch checked out
-      here on origin's default branch: REFUSED for a detached HEAD, the default branch, uncommitted
+  merge [--session <id|name>] [--keep-remote] [--no-delete-local]   merges the branch checked out
+      here into origin's default branch: REFUSED for a detached HEAD, the default branch, uncommitted
       changes, nothing new or a dependency change coordinator.repos.<name>.dependencyGate holds and
       no dependencyCheck may clear, from coordinator.schedule.heavyCutoffUtc to midnight UTC and in the
       resetBlackoutHours before the weekly token reset; waits up to coordinator.wait.maxMinutes for
@@ -613,10 +613,10 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       dependencyCheck on a dependency change (REFUSED unless it exits 0) and pushes (each a heavy step
       in the ledger; again when origin moved meanwhile), or, where coordinator.repos.<name>.merge is
       set, runs its command in place of the push (0 merged, once origin holds it; 75 WAITING, say on a
-      pull request's checks: run integrate again once it merged), records the landing as a deploy of deploysOnPush, deletes the branch on origin
+      pull request's checks: run merge again once it merged), records the merge as a deploy of deploysOnPush, deletes the branch on origin
       and here (--keep-remote, --no-delete-local keep them) and, where followMainCheckout, fast-forwards
       the main checkout; once the shell that started it ends, it stops waiting, or kills the push
-      and frees the lock (exit 129); exit 0 landed, 1 failed or stopped, 75 the merge waits
+      and frees the lock (exit 129); exit 0 merged, 1 failed or stopped, 75 the merge waits
   roll [--repo <name>] [--session <id|name>]   brings what was pushed to a repository's default
       branch to the running system: pulls its main checkout fast-forward to origin, runs its
       coordinator.repos.<name>.roll dependencyInstall for a dependency change (after its
@@ -638,7 +638,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       for quiet claims on those targets only; its gates and command see TEAMRIG_VERB=deploy and
       TEAMRIG_DEPLOY_TARGETS; exit 0 deployed, 1 failed or stopped
   claim --targets <a,b> --metric <m> --why "<why>" --for <span> [--session <id|name>]   a quiet
-      claim: integrate and roll wait while it holds a target they deploy, from now for the span (45m,
+      claim: merge and roll wait while it holds a target they deploy, from now for the span (45m,
       1h30m; at most coordinator.claims.maxMinutes); one per session; REFUSED for a target no
       repository deploys or a secret in the metric or reason
   release [--session <id|name>]   ends this session's quiet claim before its time

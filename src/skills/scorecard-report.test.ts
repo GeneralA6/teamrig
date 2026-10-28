@@ -17,7 +17,7 @@ function flag(kind: SkillFlag['kind'], skill: string): SkillFlag {
 }
 
 const SKILLS = [
-  skillFile('alpha-ship', 'Last verified: 2030-01-05\nSignature: `teamrig integrate`'),
+  skillFile('alpha-ship', 'Last verified: 2030-01-05\nSignature: `teamrig merge`'),
   skillFile('alpha-inbox', 'Signature: `teamrig (inbox`'),
   skillFile('alpha-plain', 'No lines the scorecard reads.'),
 ];

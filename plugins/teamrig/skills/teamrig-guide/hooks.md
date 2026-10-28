@@ -960,7 +960,7 @@ ahead. What each session was shown is kept in `state/usage/warn/<id>.json`.
 A burst ([teamrig burst start](commands.md#teamrig-burst-start)) comes the same way, once each. A session in it
 sees `Budget: the lead started a surplus burst ...` at its next turn end and a line when it ends; its model is
 told with the next prompt how to work in it (`teamrig burst: a surplus burst runs until ... Run up to 3 helpers at
-once, on independent tasks only; give each edit in a repo its own worktree, and integrate one change at a time.
+once, on independent tasks only; give each edit in a repo its own worktree, and merge one change at a time.
 Helpers run on your model and effort, never a cheaper model or lower effort, and never skip a test or check.`) and,
 at its end, to finish the step in hand and start no new helpers. While it runs, the session's daily budget is at
 least the burst's, so the warnings and the helper gate above count against that; quiet hours still apply, and a

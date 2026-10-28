@@ -6,7 +6,7 @@ import { RULE_LINE_MIN_CHARS, topicsOf } from './topics.ts';
 /** A line for each core rule that conflicts with it, as such lines read in a CLAUDE.md, a skill or a memory file. */
 const CONFLICTS: Readonly<Record<CoreRuleKey, string>> = {
   roles: '- The web session owns the priorities of the whole team.',
-  'own-change': 'Any session may integrate a finished branch for another one.',
+  'own-change': 'Any session may merge a finished branch for another one.',
   messages: 'Ping the lead after every step so it knows where you are.',
   register: '- Track your work on your own board file and post status there.',
   'task-order': 'Set up a cron that wakes you every ten minutes to check things.',
@@ -28,6 +28,10 @@ describe('topicsOf', () => {
     for (const key of CORE_RULE_KEYS) {
       assert.ok(topicsOf(CONFLICTS[key])?.rules.includes(key), `${key}: ${CONFLICTS[key]}`);
     }
+  });
+
+  it('ties a line that still says integrate, the old name of merge, to owning your change', () => {
+    assert.ok(topicsOf('Any session may integrate a finished branch for another one.')?.rules.includes('own-change'));
   });
 
   it('tags a line that says which rule wins or names teamrig, whatever its topic', () => {

@@ -16,7 +16,7 @@ export type Clearance =
 
 export interface ClearanceRequest {
   readonly session: string;
-  /** What the lock names as its holder's purpose, such as `integrate api`. */
+  /** What the lock names as its holder's purpose, such as `merge api`. */
   readonly purpose: string;
   /** The whole wait, for claims and the lock together; the lock's goes on past it while its line moves. */
   readonly maxWaitMs: number;

@@ -73,7 +73,7 @@ describe('renderTaskFlow', () => {
     const label = root.attributes.get('aria-label') ?? '';
     assert.equal(root.attributes.get('role'), 'img');
     assert.ok(label.includes("In the lead's tab you type: Users need a password reset."), label);
-    assert.ok(label.includes('lands it with teamrig integrate: it waits in line while web holds the lock'), label);
+    assert.ok(label.includes('merges it with teamrig merge: it waits in line while web holds the lock'), label);
     assert.ok(label.endsWith("web's task and then T17 turn done in the pane."), label);
     assert.equal(textOf(places.find((place) => place.element.name === 'title')?.element ?? ''), label);
   });

@@ -495,7 +495,7 @@
       }
     },
     "coordinator": {
-      "description": "The deploy coordinator: teamrig heavy runs one heavy step on the host at a time, under the host lock, teamrig integrate lands a branch on its repository's default branch, teamrig roll deploys it and teamrig claim holds deploys while a session measures; each step is recorded in the ledger.",
+      "description": "The deploy coordinator: teamrig heavy runs one heavy step on the host at a time, under the host lock, teamrig merge merges a branch into its repository's default branch, teamrig roll deploys it and teamrig claim holds deploys while a session measures; each step is recorded in the ledger.",
       "type": "object",
       "properties": {
         "dir": {
@@ -504,7 +504,7 @@
           "minLength": 1
         },
         "repos": {
-          "description": "The repositories teamrig integrate lands branches of on their default branch, by name.",
+          "description": "The repositories whose branches teamrig merge merges into their default branch, by name.",
           "type": "object",
           "propertyNames": { "pattern": "^[a-z0-9][a-z0-9._-]*$" },
           "additionalProperties": {
@@ -512,21 +512,21 @@
             "required": ["mainCheckout"],
             "properties": {
               "mainCheckout": {
-                "description": "The repository's main checkout; a branch integrates from any worktree of it. A relative path is in the team's folder.",
+                "description": "The repository's main checkout; a branch merges from any worktree of it. A relative path is in the team's folder.",
                 "type": "string",
                 "minLength": 1
               },
               "deploysOnPush": {
-                "description": "The deploy targets a push to the default branch deploys by itself (a host that builds on push): quiet claims on them hold the integrate, and the push is recorded as their deploy.",
+                "description": "The deploy targets a push to the default branch deploys by itself (a host that builds on push): quiet claims on them hold the merge, and the push is recorded as their deploy.",
                 "type": "array",
                 "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" }
               },
               "dependencyGate": {
-                "description": "Refuse a branch (integrate) or a pushed range (roll) whose package files need a dependency install, so the main checkout node_modules, which its worktrees link to, never changes unreviewed; dependencyCheck clears one for integrate, and with roll.dependencyInstall for roll.",
+                "description": "Refuse a branch (merge) or a pushed range (roll) whose package files need a dependency install, so the main checkout node_modules, which its worktrees link to, never changes unreviewed; dependencyCheck clears one for merge, and with roll.dependencyInstall for roll.",
                 "type": "boolean"
               },
               "dependencyCheck": {
-                "description": "With dependencyGate, what clears a dependency change: a program and its arguments, run without a shell under the host lock with the base package-lock.json in the file TEAMRIG_BASELINE_LOCK names (unset when the base has none). teamrig integrate runs it in the branch checkout after the rebase and before the push, the default branch its base; teamrig roll in the main checkout after the pull, its old HEAD the base. Exit 0 lets the change go, anything else refuses it.",
+                "description": "With dependencyGate, what clears a dependency change: a program and its arguments, run without a shell under the host lock with the base package-lock.json in the file TEAMRIG_BASELINE_LOCK names (unset when the base has none). teamrig merge runs it in the branch checkout after the rebase and before the push, the default branch its base; teamrig roll in the main checkout after the pull, its old HEAD the base. Exit 0 lets the change go, anything else refuses it.",
                 "type": "array",
                 "minItems": 1,
                 "maxItems": 64,
@@ -550,19 +550,19 @@
                 "items": { "type": "string", "minLength": 1 }
               },
               "merge": {
-                "description": "How teamrig integrate merges a branch through the team's own flow, such as a pull request the forge merges. Unset: integrate pushes the branch to the default branch.",
+                "description": "How teamrig merge merges a branch through the team's own flow, such as a pull request the forge merges. Unset: it pushes the branch to the default branch.",
                 "type": "object",
                 "required": ["command"],
                 "properties": {
                   "command": {
-                    "description": "A program and its arguments, run without a shell in the branch checkout under the host lock after the rebase and the dependency check, with TEAMRIG_MERGE_BRANCH, TEAMRIG_MERGE_BASE (the default branch), TEAMRIG_MERGE_HEAD and TEAMRIG_SESSION set. Exit 0: the branch merged, which integrate confirms on the remote; 75: it waits (say a pull request waits on its checks or review), and running integrate again finishes it once it merges; anything else fails it. Its last output line is shown as the reason.",
+                    "description": "A program and its arguments, run without a shell in the branch checkout under the host lock after the rebase and the dependency check, with TEAMRIG_MERGE_BRANCH, TEAMRIG_MERGE_BASE (the default branch), TEAMRIG_MERGE_HEAD and TEAMRIG_SESSION set. Exit 0: the branch merged, which teamrig merge confirms on the remote; 75: it waits (say a pull request waits on its checks or review), and running teamrig merge again finishes it once it merges; anything else fails it. Its last output line is shown as the reason.",
                     "type": "array",
                     "minItems": 1,
                     "maxItems": 64,
                     "items": { "type": "string", "minLength": 1 }
                   },
                   "remote": {
-                    "description": "The git remote whose default branch the command merges into: integrate rebases onto it, confirms the merge on it and moves the local default branch to it. Set upstream where origin is a contributor's fork; the branch itself is pushed to and deleted from origin either way.",
+                    "description": "The git remote whose default branch the command merges into: teamrig merge rebases onto it, confirms the merge on it and moves the local default branch to it. Set upstream where origin is a contributor's fork; the branch itself is pushed to and deleted from origin either way.",
                     "type": "string",
                     "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
                     "default": "origin"
@@ -570,7 +570,7 @@
                 }
               },
               "roll": {
-                "description": "How teamrig roll deploys what landed on the default branch, each command a program and its arguments run without a shell from the main checkout. Unset: the repository is not rolled.",
+                "description": "How teamrig roll deploys what merged into the default branch, each command a program and its arguments run without a shell from the main checkout. Unset: the repository is not rolled.",
                 "type": "object",
                 "required": ["command"],
                 "properties": {
@@ -757,7 +757,7 @@
               "default": 30
             },
             "maxMinutes": {
-              "description": "A deploy step (teamrig integrate, roll) waits this many minutes at most for quiet claims and the host lock, then is refused; a wait in a line for the lock that keeps moving goes on past them.",
+              "description": "A deploy step (teamrig merge, roll) waits this many minutes at most for quiet claims and the host lock, then is refused; a wait in a line for the lock that keeps moving goes on past them.",
               "type": "integer",
               "minimum": 0,
               "maximum": 1440,
@@ -770,7 +770,7 @@
           "type": "object",
           "properties": {
             "resetBlackoutHours": {
-              "description": "No deploy (teamrig integrate) starts from this many hours before the weekly token reset until the reset. Unset: no blackout.",
+              "description": "No deploy (teamrig merge) starts from this many hours before the weekly token reset until the reset. Unset: no blackout.",
               "type": "integer",
               "minimum": 1,
               "maximum": 48

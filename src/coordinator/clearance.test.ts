@@ -44,7 +44,7 @@ function world(initial: Readonly<Record<string, string>> = {}, maxWaitMs: number
     newId: () => 'mine',
   });
   const waits: string[] = [];
-  return { files, clock, lock, waits, request: { session: 'api', purpose: 'integrate api', maxWaitMs, pollMs: POLL_MS, onWait: (reason) => waits.push(reason), zone: TimeZone.UTC } };
+  return { files, clock, lock, waits, request: { session: 'api', purpose: 'merge api', maxWaitMs, pollMs: POLL_MS, onWait: (reason) => waits.push(reason), zone: TimeZone.UTC } };
 }
 
 /** Answers the readiness checks in turn, the last one from then on. */
@@ -66,7 +66,7 @@ describe('takeWhenClear', () => {
     const { files, clock, lock, waits, request } = world();
     const clearance = await takeWhenClear(answers(GO), { lock, clock, sleep: clock.sleep }, request);
     assert.equal(clearance.kind, 'taken');
-    assert.match(files.get(LOCK_PATH) ?? '', /"purpose":"integrate api"/);
+    assert.match(files.get(LOCK_PATH) ?? '', /"purpose":"merge api"/);
     assert.deepEqual(waits, []);
   });
 
