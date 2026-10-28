@@ -1,10 +1,63 @@
 import { parseConfig } from "../config/parse.js";
 import { ANCESTOR_ROLES, Roster } from "../config/roster.js";
 import { describeTreeProblem, teamNodeOf } from "../config/tree.js";
+import { coordinatorDirOf, teamPlace } from "../coordinator/places.js";
 import { ADDRESS_PATTERN } from "../core/address.js";
-import { isStringArray, recordField } from "../core/guards.js";
+import { isRecord, isStringArray, recordField } from "../core/guards.js";
 import { KIT_NAME } from "../core/home.js";
 import { configRecordOf } from "./team-create.js";
+/**
+ * The blocks the child takes changed: one coordinator per host, so its folder, host lock and main checkouts stay the
+ * parent's and two heavy steps never overlap; the budget and the idle pass hold only the moved sessions' entries.
+ */
+const REWORKED = { coordinator: sharedCoordinatorOf, budget: movedBudgetOf, open: movedOpenOf };
+/**
+ * How the child takes every other key of the parent's config, so a key added to the config cannot be left out without
+ * a choice here: `github` is the parent's alone, as each repository's issues go to one team, and `paths` are a team's
+ * own folders; every setting is copied, so the child runs as its parent did.
+ */
+const CHILD_TAKES = {
+    configVersion: 'split',
+    team: 'split',
+    sessions: 'split',
+    names: 'split',
+    roles: 'split',
+    leads: 'split',
+    launch: 'split',
+    github: 'own',
+    paths: 'own',
+    timeZone: 'copy',
+    ownerGates: 'copy',
+    ruleConflicts: 'copy',
+    messages: 'copy',
+    register: 'copy',
+    skills: 'copy',
+    contextFiles: 'copy',
+    lock: 'copy',
+    exec: 'copy',
+    pushGuard: 'copy',
+    packageGuard: 'copy',
+    commitGuard: 'copy',
+    prompts: 'copy',
+    secretGuard: 'copy',
+    commits: 'copy',
+    leadBoundary: 'copy',
+    loops: 'copy',
+    wake: 'copy',
+    tests: 'copy',
+    alerts: 'copy',
+    decisions: 'copy',
+    tabStatus: 'copy',
+    pickerGuard: 'copy',
+    turnLog: 'copy',
+    readonlyShell: 'copy',
+    permissions: 'copy',
+    refresh: 'copy',
+    hiring: 'copy',
+    burst: 'copy',
+    statusLine: 'copy',
+};
+const TAKES = new Map(Object.entries(CHILD_TAKES));
 /**
  * How a task on one side of the new border names a session from then on: as written when the session is on the same
  * side, is the owner's marker or is named as `<team>/<id>` already; else as `<team>/<id>` of the team it is on.
@@ -65,9 +118,58 @@ function childLeadsOf(parent, spec, moved) {
         .filter(([, ids]) => ids.length > 0);
     return Object.fromEntries(kept);
 }
+/** The path at `key` made absolute to the parent's folder; the record as it is when it holds none there. */
+function placedAt(record, key, parent) {
+    const path = record[key];
+    return typeof path === 'string' ? { ...record, [key]: teamPlace(parent.paths, path) } : record;
+}
 /**
- * The child's config as team create writes it, plus what keeps the moved sessions as they were: their names, launch
- * blocks and sub-leads, the parent's time zone, and the parent's holder of each role a child may leave to a team above.
+ * The parent's coordinator, written even when the parent leaves it to its defaults: the child keeps its ledger, claims
+ * and pending merges in the parent's folder, and a relative host lock or main checkout is made absolute to it.
+ */
+function sharedCoordinatorOf(block, { parent }) {
+    const raw = block ?? {};
+    const heavy = recordField(raw, 'heavy');
+    const repos = recordField(raw, 'repos');
+    return {
+        ...raw,
+        dir: coordinatorDirOf(parent.config.coordinator, parent.paths),
+        ...(heavy === undefined ? {} : { heavy: placedAt(heavy, 'lockPath', parent) }),
+        ...(repos === undefined
+            ? {}
+            : { repos: Object.fromEntries(Object.entries(repos).map(([name, repo]) => [name, isRecord(repo) ? placedAt(repo, 'mainCheckout', parent) : repo])) }),
+    };
+}
+/** The parent's budget with the moved sessions' shares only, its status line folder made absolute to the parent's. */
+function movedBudgetOf(block, { parent, moved }) {
+    return block === undefined ? undefined : { ...placedAt(block, 'statusSnapshotDir', parent), ...keptIn(block, 'sessions', (id) => moved.has(id)) };
+}
+/** The parent's `open` block with its idle pass keeping open only moved sessions. */
+function movedOpenOf(block, { moved }) {
+    return block === undefined ? undefined : idleKeptBy(block, (id) => moved.has(id));
+}
+/** The parent's blocks as the child takes them: a copy as the parent holds them (CHILD_TAKES), or reworked (REWORKED). */
+function takenBlocks(scope) {
+    const { current } = scope.parent;
+    const copied = Object.entries(current).filter(([key]) => TAKES.get(key) === 'copy');
+    const reworks = Object.entries(REWORKED);
+    const reworked = reworks.flatMap(([key, rework]) => {
+        const block = rework(recordField(current, key), scope);
+        return block === undefined ? [] : [[key, block]];
+    });
+    return Object.fromEntries([...copied, ...reworked]);
+}
+/** The keys the parent's config sets that the child starts without: those CHILD_TAKES leaves the parent, and unknown ones. */
+function leftOutOf(parent) {
+    return Object.keys(parent.current).filter((key) => {
+        const take = TAKES.get(key);
+        return take === 'own' || (take === undefined && !Object.hasOwn(REWORKED, key));
+    });
+}
+/**
+ * The child's config as team create writes it, plus every block of the parent's (takenBlocks), so the child runs as its
+ * parent did, and what keeps the moved sessions as they were: their names, launch blocks and sub-leads, and the parent's
+ * holder of each role a child may leave to a team above.
  */
 function childConfigOf(parent, spec) {
     const moved = new Set(spec.sessions);
@@ -78,7 +180,7 @@ function childConfigOf(parent, spec) {
             roles[role] = ADDRESS_PATTERN.test(holder) ? holder : `${parent.team}/${holder}`;
         }
     }
-    const launch = recordField(parent.record, 'launch');
+    const launch = recordField(parent.current, 'launch');
     const blocks = spec.sessions.flatMap((id) => {
         const block = launch === undefined ? undefined : recordField(launch, id);
         return block === undefined ? [] : [[id, block]];
@@ -86,7 +188,7 @@ function childConfigOf(parent, spec) {
     const leads = childLeadsOf(parent, spec, moved);
     const record = {
         ...configRecordOf(spec),
-        ...(parent.config.timeZone === undefined ? {} : { timeZone: parent.config.timeZone }),
+        ...takenBlocks({ parent, moved }),
         names: Object.fromEntries(spec.sessions.map((id) => [id, parent.roster.nameOf(id) ?? id])),
         roles,
         ...(Object.keys(leads).length === 0 ? {} : { leads }),
@@ -125,11 +227,13 @@ function treeProblem(tree, parent, child) {
     return added === undefined ? undefined : `team ${child.team} cannot join that tree: ${describeTreeProblem(added, KIT_NAME)}`;
 }
 function trimOf(parent, moved) {
-    const { names, launch, leads } = parent.config;
+    const { names, launch, leads, budget, open } = parent.config;
     const keys = [...moved].flatMap((id) => [
         ...(Object.hasOwn(names, id) ? [`names.${id}`] : []),
         ...(Object.hasOwn(launch, id) ? [`launch.${id}`] : []),
         ...(Object.hasOwn(leads, id) ? [`leads.${id}`] : []),
+        ...(Object.hasOwn(budget.sessions, id) ? [`budget.sessions.${id}`] : []),
+        ...(open.idle.keepOpen.includes(id) ? [`open.idle.keepOpen[${id}]`] : []),
     ]);
     const listed = Object.entries(leads).flatMap(([lead, ids]) => ids.map((id) => ({ lead, id })));
     return {
@@ -213,12 +317,27 @@ export function planTeamSplit(parent, spec, tree, tasks) {
         return fail(placed);
     }
     const border = new SplitBorder(parent.team, spec.team, spec.sessions, parent.config.register.ownerSource);
-    return ok({ spec, config: config.value, border, ...splitTasksOf(tasks, border), trim: trimOf(parent, new Set(spec.sessions)) });
+    return ok({ spec, config: config.value, leftOut: leftOutOf(parent), border, ...splitTasksOf(tasks, border), trim: trimOf(parent, new Set(spec.sessions)) });
 }
-/** The map at `key` without the keys of moved sessions; nothing when the parent has no such map. */
-function withoutMoved(record, key, moved) {
+/** The map at `key` with only the sessions `keep` keeps; nothing when the record has no such map. */
+function keptIn(record, key, keep) {
     const map = recordField(record, key);
-    return map === undefined ? {} : { [key]: Object.fromEntries(Object.entries(map).filter(([id]) => !moved.has(id))) };
+    return map === undefined ? {} : { [key]: Object.fromEntries(Object.entries(map).filter(([id]) => keep(id))) };
+}
+/** The block at `key` as `change` makes it; nothing when the record has no such block. */
+function changedBlock(record, key, change) {
+    const block = recordField(record, key);
+    return block === undefined ? {} : { [key]: change(block) };
+}
+/** An `open` block whose idle pass keeps open only the sessions `keep` keeps; a damaged list is left for the config check. */
+function idleKeptBy(open, keep) {
+    return {
+        ...open,
+        ...changedBlock(open, 'idle', (idle) => {
+            const keepOpen = idle['keepOpen'];
+            return isStringArray(keepOpen) ? { ...idle, keepOpen: keepOpen.filter(keep) } : idle;
+        }),
+    };
 }
 /** The sub-leads' lists without a moved sub-lead's, and each staying one's without the moved sessions, an emptied one dropped. */
 function trimmedLeads(record, moved) {
@@ -237,15 +356,18 @@ function trimmedLeads(record, moved) {
 }
 /**
  * The parent's config after the split, as its file holds it: the moved sessions gone from its sessions, names, launch
- * blocks and sub-leads' lists (ParentTrim says which), every other key as it was.
+ * blocks, sub-leads' lists, budget shares and idle keep-open list (ParentTrim says which), every other key as it was.
  */
 export function trimmedParentOf(record, moved) {
     const sessions = record['sessions'];
+    const stays = (id) => !moved.has(id);
     return {
         ...record,
-        ...(isStringArray(sessions) ? { sessions: sessions.filter((id) => !moved.has(id)) } : {}),
-        ...withoutMoved(record, 'names', moved),
-        ...withoutMoved(record, 'launch', moved),
+        ...(isStringArray(sessions) ? { sessions: sessions.filter(stays) } : {}),
+        ...keptIn(record, 'names', stays),
+        ...keptIn(record, 'launch', stays),
         ...trimmedLeads(record, moved),
+        ...changedBlock(record, 'budget', (budget) => ({ ...budget, ...keptIn(budget, 'sessions', stays) })),
+        ...changedBlock(record, 'open', (open) => idleKeptBy(open, stays)),
     };
 }

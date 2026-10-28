@@ -8,13 +8,17 @@ export const HOST_LOCK_FILE = 'host.lock';
 export function teamPlace(paths, path) {
     return isAbsolute(path) ? path : join(paths.home, path);
 }
+/** The coordinator's folder: `coordinator.dir`, a relative one in the team's folder; unset, `<state>/deploys`. */
+export function coordinatorDirOf(config, paths) {
+    return config.dir === undefined ? join(paths.state, 'deploys') : teamPlace(paths, config.dir);
+}
 /**
  * Where the coordinator's files are: the ledgers, the quiet claims and their lock, and the pending merges in `coordinator.dir` (default `<state>/deploys`), the host lock at
  * `coordinator.heavy.lockPath` (default the kit home's, one for the host). A relative path is in the team's folder.
  */
 export function coordinatorPlaces(config, paths) {
     const inTeam = (path) => teamPlace(paths, path);
-    const dir = config.dir === undefined ? join(paths.state, 'deploys') : inTeam(config.dir);
+    const dir = coordinatorDirOf(config, paths);
     return {
         ledger: join(dir, LEDGER_FILE),
         ledgerMd: join(dir, LEDGER_MD_FILE),
