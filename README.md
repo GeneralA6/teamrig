@@ -184,8 +184,9 @@ helper it is. Everything runs on your machine, with no account and no cloud bill
   ([Ship from many sessions](docs/guides/ship-from-many-sessions.md)).
 - **Reads without a prompt:** with `readonlyShell`, a shell line that only reads (`grep`, `git log`, `kubectl get`)
   runs without asking.
-- **Tidy history:** big commits are flagged before they land, and `teamrig worktree remove` clears a finished worktree
-  without emptying the main checkout's `node_modules`.
+- **Tidy history:** big commits are flagged before they land, `teamrig worktree add` makes every session's worktree
+  the same ready way, and `teamrig worktree remove` clears a finished one without emptying the main checkout's
+  `node_modules`.
 
 ## Learn more
 
