@@ -2559,6 +2559,9 @@ PREVIEW nothing written (add --yes to write): removes every allow rule off permi
 TOTAL 2 file(s) to rewrite: 52 allow rules -> 5 (remove 47: Bash exact 33, Bash wide 11, WebFetch exact 2, Read wide 1)
 ```
 
+With `--yes`: `WROTE 2 of 2 file(s); their old text and a manifest are in <folder>`, then one line per file. With
+nothing to remove: `UNCHANGED no settings file to rewrite holds every allow rule off permissions.keepAllow`.
+
 ### teamrig setup scan
 
 Shows what your Claude Code setup costs at every session start in a project, and what to slim. It works before a
@@ -2627,9 +2630,6 @@ UNUSED 1 of 22 skill(s) not used in 30 day(s) (read 210 transcript(s), 380.4 MB)
 U1 unused-skill ~/.claude/skills/old-deploy/SKILL.md: no Skill call or /old-deploy in 30 day(s) (~45 tokens/turn)
 SAVINGS ~356 tokens/turn if every CONTEXT, DUPLICATE and UNUSED finding is applied
 ```
-
-With `--yes`: `WROTE 2 of 2 file(s); their old text and a manifest are in <folder>`, then one line per file. With
-nothing to remove: `UNCHANGED no settings file to rewrite holds every allow rule off permissions.keepAllow`.
 
 ### teamrig setup backup
 
