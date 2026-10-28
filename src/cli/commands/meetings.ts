@@ -4,7 +4,8 @@ import { KIT_NAME } from '../../core/home.ts';
 import { FileLock } from '../../core/lock.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import type { TimeZone } from '../../core/zone.ts';
-import { postLines } from '../../inbox/inbox.ts';
+import { inboxLineOf, postLines } from '../../inbox/inbox.ts';
+import { lineHash } from '../../inbox/line-hash.ts';
 import {
   ABOUT_MAX,
   byTime,
@@ -18,25 +19,37 @@ import {
   type MeetingStatus,
   type ScheduledMeeting,
 } from '../../meeting/schedule.ts';
+import { WAKE_TICK_MS } from '../../mod/wake-hand.ts';
+import { shellCommand } from '../../open/quote.ts';
+import { WakeAsks, type WakeAsk } from '../../wake/asks.ts';
 import { noPositionals, onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
 import { callerOf, instantOf, listOf, taskIdOf } from '../inputs.ts';
-import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone, type Access, type Kit } from '../kit.ts';
+import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf, teamZone, type Access, type Kit } from '../kit.ts';
+import { liveRunOf } from '../live-run.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { inboxDepsOf } from './inbox.ts';
+import { openSession } from './open.ts';
 import { ownRegister } from './register.ts';
+import { sessionProjectOf } from './setup.ts';
 
 /**
- * `meeting schedule|list|move|end <id>|drop` (T1358): the owner's meetings with one session at a set time, apart
- * from the daily meeting with the lead (meeting.ts). The lead or the session met books, moves, ends and drops one;
- * the session met and those joining get one inbox line when it is booked, moved or dropped. Every change is made
- * under the team's meetings lock, so two sessions never book one id.
+ * `meeting schedule|list|move|start <id>|end <id>|drop` (T1358): the owner's meetings with one session at a set time,
+ * apart from the daily meeting with the lead (meeting.ts). The lead or the session met books, moves, ends and drops
+ * one; the session met and those joining get one inbox line when it is booked, moved, started or dropped. Any
+ * session starts one, as the owner does from whichever tab they are in: its opening prompt reaches the session met
+ * as an urgent line its idle tab wakes on, or opens its tab when none runs. Every change is made under the team's
+ * meetings lock, so two sessions never book one id.
  */
 
 /** The longest meeting a schedule takes, in minutes: a working day. */
 export const MEETING_MINUTES_MAX = 480;
 
+const SECOND_MS = 1000;
+
 interface MeetingsKit {
   readonly kit: Kit;
+  /** The pointer file or `$TEAMRIG_TEAM` the team was found by, which names the team's project folder. */
+  readonly from: string;
   readonly config: KitConfig;
   readonly roster: Roster;
   readonly caller: string;
@@ -47,12 +60,14 @@ interface MeetingsKit {
 }
 
 async function meetingsKit(args: ParsedArgs, runtime: CliRuntime, access: Access): Promise<MeetingsKit> {
-  const kit = await openTeamKit(runtime);
+  const found = await findTeam(runtime);
+  const kit = await openKit(runtime, found.team);
   const config = requireConfig(kit, runtime, access);
   const roster = await rosterOf(runtime, kit, config);
   const { files, clock, sleep, pid } = runtime;
   return {
     kit,
+    from: found.from,
     config,
     roster,
     caller: sessionIdOf(roster, callerOf(args.flags, runtime.env)),
@@ -196,7 +211,7 @@ export async function meetingSchedule(args: ParsedArgs, runtime: CliRuntime): Pr
     return booked;
   });
   runtime.out.stdout(`SCHEDULED ${meetingLine(meeting, mk.zone, mk.now)}`);
-  await tell(runtime, mk, meeting, `Meeting ${meeting.id} with the owner booked: ${bookedText(meeting, mk.zone)}. At its time: ${KIT_NAME} meeting start ${meeting.id}`);
+  await tell(runtime, mk, meeting, `Meeting ${meeting.id} with the owner booked: ${bookedText(meeting, mk.zone)}. At its time the owner starts it in ${meeting.session}'s tab (${KIT_NAME} meeting start ${meeting.id})`);
   return EXIT.ok;
 }
 
@@ -257,6 +272,97 @@ export async function meetingMove(args: ParsedArgs, runtime: CliRuntime): Promis
   const moved = await change(args, mk, 'move', ['scheduled'], (meeting) => ({ ...meeting, at, notifiedAt: null, note: note ?? meeting.note }));
   runtime.out.stdout(`MOVED ${meetingLine(moved, mk.zone, mk.now)}`);
   await tell(runtime, mk, moved, `Meeting ${moved.id} with the owner moved: ${bookedText(moved, mk.zone)}${note === null ? '' : ` (${note})`}`);
+  return EXIT.ok;
+}
+
+/**
+ * The opening prompt the session met gets at a start: the meeting, its tasks, those joining and its brief, what to
+ * do now and how to end it.
+ */
+export function openingPrompt(meeting: ScheduledMeeting): string {
+  const tasks = meeting.tasks.length === 0 ? '' : ` Tasks: ${meeting.tasks.join(' ')}.`;
+  const joining = meeting.with.length === 0 ? '' : ` Joining: ${meeting.with.join(', ')}.`;
+  const brief = meeting.brief === null ? ' Meet the owner here now.' : ` Brief: ${meeting.brief}. Read the brief, then meet the owner here.`;
+  const about = meeting.about.replace(/[.\s]+$/, '');
+  return `The owner starts meeting ${meeting.id} now (${meeting.minutes} min): ${about}.${tasks}${joining}${brief} When it is over: ${KIT_NAME} meeting end ${meeting.id} --note "<what came of it>".`;
+}
+
+/**
+ * The urgent line that brings the opening prompt to the session met's tab. Bound to its posted inbox line, it is a
+ * timed ask due now: its idle tab wakes on it at the next wake check, not after the `wake.batchSeconds` a plain ask
+ * waits, and not once the session has seen the line. Unposted, it is a plain ask.
+ */
+function openingAsk(mk: MeetingsKit, text: string, posted: boolean): WakeAsk {
+  const ask = { from: mk.caller, text, at: mk.now };
+  return posted ? { ...ask, by: { at: mk.now, line: lineHash(inboxLineOf(new Date(mk.now), mk.caller, text)) } } : ask;
+}
+
+/**
+ * Brings the opening prompt to the session met and returns what that prints. While its tab runs, an urgent line its
+ * idle tab wakes on, a running turn ending first; with `wake.enabled` false, nothing beyond its inbox line. With no
+ * tab, a new one opens with the prompt ahead of its own first prompt, as the idle pass reopens a closed session;
+ * when none can open (no terminal, no room), the ask waits for its next tab.
+ */
+async function deliver(runtime: CliRuntime, mk: MeetingsKit, meeting: ScheduledMeeting, posted: boolean): Promise<string[]> {
+  const id = meeting.session;
+  const name = mk.roster.nameOf(id) ?? id;
+  const ask = openingAsk(mk, openingPrompt(meeting), posted);
+  const asks = new WakeAsks(runtime.files, mk.kit.paths.wakeAsks);
+  if ((await liveRunOf(runtime, mk.kit.paths, mk.roster.ids, id)) !== undefined) {
+    if (!mk.config.wake.enabled) {
+      return [`NOT WOKEN ${name}: wake.enabled is false on the team, so the meeting waits in its inbox for its next prompt`];
+    }
+    await asks.post(id, ask);
+    const within = posted ? `within about ${Math.ceil(WAKE_TICK_MS / SECOND_MS)} s` : `within about ${mk.config.wake.batchSeconds + Math.ceil(WAKE_TICK_MS / SECOND_MS)} s`;
+    return [`WAKES ${name} with the meeting's opening prompt once its tab is idle, ${within} (a running turn ends first)`];
+  }
+  const project = await sessionProjectOf(runtime, mk.config, id, undefined, mk.from);
+  try {
+    const opened = await openSession(runtime, mk.kit, mk.config, mk.roster, { team: mk.kit.paths.team, id, project, terminal: mk.config.open.terminal, asked: false, urgent: [ask] });
+    if (opened.kind === 'opened') {
+      return [`${opened.line}; its first prompt opens the meeting`];
+    }
+    await asks.post(id, ask);
+    const shell = runtime.platform === 'win32' ? ' in PowerShell' : '';
+    return [`MANUAL no terminal opened (${opened.reasons.join('; ')}); the meeting waits as an urgent line: open a new terminal and run this${shell}:`, shellCommand(runtime.platform, project, opened.argv)];
+  } catch (error) {
+    if (!(error instanceof RefusedError)) {
+      throw error;
+    }
+    await asks.post(id, ask);
+    return [`NOT OPENED ${name}: ${error.message}; the meeting waits as an urgent line for its next tab`];
+  }
+}
+
+/**
+ * `meeting start <id>`: the owner starts a scheduled meeting, a missed one too. It is started, the session met gets
+ * its opening prompt as an inbox line and in its tab (deliver), and those joining one line saying where it is held.
+ */
+export async function meetingStartScheduled(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+  const mk = await meetingsKit(args, runtime, 'write');
+  const id = onePositional(args, 'meeting id');
+  const started = await mk.lock.run(async () => {
+    const meeting = meetingOf(await mk.schedule.read(), id);
+    if (meeting.status !== 'scheduled') {
+      throw new RefusedError(`${id} is ${meeting.status}: meeting start takes a scheduled meeting`);
+    }
+    const changed: ScheduledMeeting = { ...meeting, status: 'started', by: mk.caller, changedAt: mk.now };
+    await mk.schedule.write(changed, mk.now);
+    return changed;
+  });
+  runtime.out.stdout(`STARTED ${meetingLine(started, mk.zone, mk.now)}`);
+  const { inboxes } = inboxDepsOf(runtime, mk.kit.paths);
+  const secrets = new SecretScanner(mk.config.register.secretPatterns);
+  const met = await postLines([{ inboxes, to: started.session, from: mk.caller }], secrets, { text: openingPrompt(started), now: new Date(mk.now) });
+  runtime.out.stdout(met === undefined ? `TOLD ${started.session}` : `NOT TOLD ${started.session}: ${met}`);
+  const delivered = await deliver(runtime, mk, started, met === undefined);
+  const joining = started.with.filter((session) => session !== mk.caller);
+  if (joining.length > 0) {
+    const text = `Meeting ${started.id} with the owner started in ${started.session}'s tab: ${started.about}`;
+    const problem = await postLines(joining.map((to) => ({ inboxes, to, from: mk.caller })), secrets, { text, now: new Date(mk.now) });
+    runtime.out.stdout(problem === undefined ? `TOLD ${joining.join(', ')}` : `NOT TOLD ${joining.join(', ')}: ${problem}`);
+  }
+  delivered.forEach((line) => runtime.out.stdout(line));
   return EXIT.ok;
 }
 

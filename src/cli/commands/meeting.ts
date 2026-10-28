@@ -18,7 +18,7 @@ import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.t
 import { loadTree, type KitTree } from '../tree.ts';
 import { weekLineOf } from './budget.ts';
 import { inboxDepsOf, read } from './inbox.ts';
-import { meetingEndScheduled } from './meetings.ts';
+import { meetingEndScheduled, meetingStartScheduled } from './meetings.ts';
 import { taskTreeOf, weekFitOf } from './register.ts';
 
 /**
@@ -177,9 +177,13 @@ async function printAgenda(args: ParsedArgs, runtime: CliRuntime, mk: MeetingKit
 
 /**
  * `meeting start`: opens the meeting and prints the agenda; it posts no line, as the hook tells each sender it
- * holds. A meeting already open stays as it is: its agenda prints.
+ * holds. A meeting already open stays as it is: its agenda prints. With an id, `meeting start M3` starts a scheduled
+ * meeting instead (meetings.ts).
  */
 export async function meetingStart(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+  if (args.positionals.length > 0) {
+    return meetingStartScheduled(args, runtime);
+  }
   const mk = await meetingKit(args, runtime, 'write');
   const phase = phaseOf(await mk.store.read(), mk.now);
   if (phase.kind === 'open') {
