@@ -304,3 +304,40 @@ describe('openingPrompt', () => {
     assert.equal(openingPrompt(meeting), 'The owner starts meeting M2 now (20 min): the pane. Meet the owner here now. When it is over: teamrig meeting end M2 --note "<what came of it>".');
   });
 });
+
+describe("runCli: today's meetings in start and the daily agenda", () => {
+  it('shows each session the meetings of today it is met in or joins, the lead every one, and a missed one until it is moved', async () => {
+    const kit = await team();
+    await booked(kit, '--with', 'bravo', '--tasks', 'T1', '--session', 'lead');
+    const later = await kit.run(['meeting', 'schedule', '--meets', 'bravo', '--at', '2030-01-09 15:00', '--about', 'the pane', '--session', 'lead']);
+    assert.equal(later.code, EXIT.ok, said(later));
+    for (const session of ['alpha', 'bravo', 'lead']) {
+      const started = await kit.run(['start', '--session', session]);
+      assert.equal(started.stdout[1], 'MEETINGS today: M1 14:00 UTC alpha with bravo on T1', session);
+    }
+    kit.clock.advance(24 * 60 * MS_PER_MINUTE);
+    assert.equal((await kit.run(['start', '--session', 'lead'])).stdout[1], 'MEETINGS today: M1 missed (Tue 01-08 14:00 UTC) alpha with bravo on T1; M2 15:00 UTC bravo');
+    assert.equal((await kit.run(['start', '--session', 'alpha'])).stdout[1], 'MEETINGS today: M1 missed (Tue 01-08 14:00 UTC) alpha with bravo on T1');
+    const startM2 = await kit.run(['meeting', 'start', 'M2', '--session', 'lead'], { probe: new FakePathProbe({ folders: [APP] }) });
+    assert.equal(startM2.code, EXIT.ok, said(startM2));
+    const dropM1 = await kit.run(['meeting', 'drop', 'M1', '--note', 'held in the daily', '--session', 'lead']);
+    assert.equal(dropM1.code, EXIT.ok, said(dropM1));
+    assert.equal((await kit.run(['start', '--session', 'bravo'])).stdout[1], 'MEETINGS today: M2 started 15:00 UTC bravo');
+    assert.equal((await kit.run(['start', '--session', 'alpha'])).stdout.some((line) => line.startsWith('MEETINGS')), false, 'none of its own: no line');
+  });
+
+  it("lists today's and the missed meetings in the daily agenda, as meeting list shows them", async () => {
+    const kit = await team();
+    const none = await kit.run(['meeting', 'agenda', '--session', 'lead']);
+    assert.ok(none.stdout.includes('MEETINGS 0 today'), said(none));
+    await booked(kit, '--with', 'bravo', '--tasks', 'T1', '--session', 'lead');
+    kit.clock.advance(5 * 60 * MS_PER_MINUTE);
+    const agenda = (await kit.run(['meeting', 'agenda', '--session', 'lead'])).stdout;
+    const at = agenda.indexOf('MEETINGS 1 today or missed');
+    assert.ok(at >= 0, agenda.join('\n'));
+    assert.deepEqual(agenda.slice(at + 1, at + 3), [
+      '  M1 missed, Tue 01-08 14:00 UTC, 30 min, alpha with bravo, tasks T1 | the release plan',
+      '  The owner starts one with teamrig meeting start <id>; a missed one is moved (teamrig meeting move <id> --at <time>) or dropped.',
+    ]);
+  });
+});

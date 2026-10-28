@@ -4,6 +4,7 @@ import { KIT_NAME } from '../../core/home.ts';
 import { FileLock, LockBusyError } from '../../core/lock.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { postLine } from '../../inbox/inbox.ts';
+import { MeetingSchedule } from '../../meeting/schedule.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone, type Kit } from '../kit.ts';
@@ -13,6 +14,7 @@ import { UnownedNotices } from '../unowned-notices.ts';
 import { unownedNotice } from '../unowned.ts';
 import { weekLineOf } from './budget.ts';
 import { inboxDepsOf, read } from './inbox.ts';
+import { startMeetingLine } from './meetings.ts';
 import { checkReport, list, waitingReport } from './register.ts';
 
 /** The most inbox lines one start posts the lead on warnings no session owns; the rest wait for the next start. */
@@ -20,7 +22,8 @@ export const MAX_UNOWNED_NOTICES = 5;
 
 /**
  * `start [--session <id|name>] [--all]`: what a session reads at the start of a work block, in one call: the time on
- * the team's clock, its unread inbox lines (marked read, which also ties this tab to it, as `inbox read`), its task list (`list
+ * the team's clock, today's and the missed scheduled meetings it is met in or joins (`MEETINGS`, every one for the
+ * lead, only when there are some), its unread inbox lines (marked read, which also ties this tab to it, as `inbox read`), its task list (`list
  * --session`), the other sessions' tasks waiting on it (`WAITING ON YOU`, only when some do), the check flags it
  * acts on (the lead's: every flag, as `check`; any other session's: those of the tasks and skills it owns, a sub-lead's
  * also those of its group's tasks) and the
@@ -36,13 +39,19 @@ export async function start(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const roster = await rosterOf(runtime, kit, config);
   const id = sessionIdOf(roster, callerOf(args.flags, runtime.env));
   const own: ParsedArgs = { ...args, flags: new Map([['session', id]]) };
-  runtime.out.stdout(`START ${id}, ${teamZone(config, runtime).weekdayMinute(new Date(runtime.clock.now()))}`);
+  const zone = teamZone(config, runtime);
+  const now = runtime.clock.now();
+  const tree = new LeadTree(config);
+  runtime.out.stdout(`START ${id}, ${zone.weekdayMinute(new Date(now))}`);
+  const meetings = startMeetingLine((await new MeetingSchedule(runtime.files, kit.paths.meetings).read()).meetings, zone, now, id, id === tree.lead);
+  if (meetings !== undefined) {
+    runtime.out.stdout(meetings);
+  }
   await read(own, runtime);
   await list(own, runtime);
   (await waitingReport(own, runtime)).forEach((line) => runtime.out.stdout(line));
   const report = await checkReport(own, runtime);
   await tellLead(runtime, kit, config, report);
-  const tree = new LeadTree(config);
   checkLines(id === tree.lead ? report : ownCheck(report, id, tree.groupOf(id)), args.switches.has('all')).forEach((line) => runtime.out.stdout(line));
   runtime.out.stdout(await weekLineOf(runtime, kit, config, roster));
   return EXIT.ok;
