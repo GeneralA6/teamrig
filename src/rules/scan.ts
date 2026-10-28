@@ -73,15 +73,15 @@ export interface Candidate {
 }
 
 /** A recorded conflict and the line it quotes now, undefined when the file or the line is gone. */
-export interface RecordedConflict {
-  readonly conflict: RuleConflict;
+export interface RecordedConflict<C extends RuleConflict = RuleConflict> {
+  readonly conflict: C;
   readonly line: number | undefined;
 }
 
-export interface RuleScan {
+export interface RuleScan<C extends RuleConflict = RuleConflict> {
   readonly places: readonly RulePlace[];
   readonly nestedCapped: boolean;
-  readonly recorded: readonly RecordedConflict[];
+  readonly recorded: readonly RecordedConflict<C>[];
   /** The candidate lines, in place order, leaving out the lines a recorded conflict quotes. */
   readonly candidates: readonly Candidate[];
 }
@@ -89,16 +89,17 @@ export interface RuleScan {
 /**
  * Finds every place a local rule can override a core rule (see `findRulePlaces`), the lines there whose words touch a
  * core rule's topic, and where each recorded conflict's line is now. Which candidates really conflict is the model's
- * call: a word list can find a rule's topic, never its meaning. It only reads.
+ * call: a word list can find a rule's topic, never its meaning. Each recorded conflict comes back as given, so a caller's
+ * extra fields (a team above's tag) stay on it. It only reads.
  */
-export async function scanRules(files: Files, probe: PathProbe, at: RulePlaceLocations, conflicts: readonly RuleConflict[]): Promise<RuleScan> {
+export async function scanRules<C extends RuleConflict>(files: Files, probe: PathProbe, at: RulePlaceLocations, conflicts: readonly C[]): Promise<RuleScan<C>> {
   const { places, nestedCapped } = await findRulePlaces(files, probe, at);
   const linesByKey = new Map<string, readonly RuleLine[]>();
   for (const place of places) {
     linesByKey.set(pathKey(place.path), await readRuleLines(files, place.path));
   }
   const recorded = await Promise.all(
-    conflicts.map(async (conflict): Promise<RecordedConflict> => {
+    conflicts.map(async (conflict): Promise<RecordedConflict<C>> => {
       const path = expandHome(conflict.file, at.userHome);
       const known = linesByKey.get(pathKey(path));
       const lines = known ?? (await readRuleLines(files, path));
