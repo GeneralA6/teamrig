@@ -898,10 +898,10 @@ the tabs it named; a hook that finds the check running skips it.
 
 At each helper launch of a team session, with the budget on or off, the model gets rule 8's helper default. Claude
 Code hands it over with the launch's result, so it speaks of the next helper: `teamrig rule 8: work in your own
-session: a helper's tokens cost 2.2x yours [budget.subagentWeight], so start one only when it keeps far more than
-that out of your context or truly runs in parallel, never for a build or test whose result you need. A broad read
-that returns a short answer is the case that pays; weigh the next helper the same way.` With
-`budget.subagentWeight` at 1 or less it names no factor.
+session: a helper's tokens cost 2.2x yours [budget.subagentWeight], so start one only for truly parallel work or an
+independent review, never to save tokens or for a build or test whose result you need. Weigh the next helper the
+same way.` With `budget.subagentWeight` at 1 or less it names no factor and allows a helper that keeps far more
+tokens out of your context than it uses.
 
 With `budget.enabled` on and the week's use known (from the [status line](commands.md#teamrig-statusline) or
 `budget.weeklyLimitW`), the hooks watch each session's use today against its daily budget. At a turn's end the

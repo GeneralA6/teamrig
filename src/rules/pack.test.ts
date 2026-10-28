@@ -403,7 +403,7 @@ describe('renderCorePack', () => {
     const weighted = renderCorePack(testConfig({ budget: { subagentWeight: 2.15 } }), COMMAND, 'win32', RULES_CLOCK);
     assert.match(
       weighted,
-      /^8\. Lean calls: every tool call re-reads the whole context, so batch related shell steps into one call\. Work in your own session: a helper's tokens cost 2\.15x yours \[budget\.subagentWeight\], so start one only when it keeps far more than that out of your context or truly runs in parallel, never for a build or test whose result you need; run helpers on your own model and effort\.$/m,
+      /^8\. Lean calls: every tool call re-reads the whole context, so batch related shell steps into one call\. Work in your own session: a helper's tokens cost 2\.15x yours \[budget\.subagentWeight\], so start one only for truly parallel work or an independent review, never to save tokens or for a build or test whose result you need; run helpers on your own model and effort\.$/m,
     );
     const even = renderCorePack(testConfig({ budget: { subagentWeight: 1 } }), COMMAND, 'win32', RULES_CLOCK);
     assert.match(even, /^8\. .* Work in your own session: start a helper only when it keeps far more tokens out of your context than it uses or truly runs in parallel,/m);

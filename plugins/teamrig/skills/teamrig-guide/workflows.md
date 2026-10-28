@@ -230,9 +230,10 @@ count with `refresh.everyTasks: 0`. A `/clear`, a new process or a compaction st
 ## Use a helper
 
 Work in your own session by default. A helper (a subagent) keeps file dumps and long output out of your context,
-but its tokens cost `budget.subagentWeight` times yours (one team measured about 2.2), so start one only when it
-keeps far more than that out, or truly runs in parallel; never for a build or test whose result you need. A broad
-read that returns a short answer is the case that pays. Pick who does a job, and on which model, by fit for the
+but its tokens cost `budget.subagentWeight` times yours (one team measured about 2.2). At that weight a helper does
+not save tokens: in one team's week no helper kept more than 1.65 times its own tokens out of its caller's context.
+So start one only for truly parallel work or an independent review; never to save tokens, nor for a build or test
+whose result you need. Pick who does a job, and on which model, by fit for the
 task, never by its length. A helper starts with the team rules and knows it is yours: it
 leaves task statuses, register entries and messages to you unless its brief asks for them, so say so in the brief
 when it should.
