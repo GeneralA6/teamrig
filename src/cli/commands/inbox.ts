@@ -24,7 +24,7 @@ import { hookLogOf } from '../hook-logs.ts';
 import { callerOf, instantOf, sessionRef } from '../inputs.ts';
 import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, requireConfig, rosterOf, sessionIdOf, teamZone } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { readWPerPct } from '../stored-week.ts';
+import { readTodayWPerPct } from '../stored-week.ts';
 import { TreeTasks, type TreeRegister } from '../tree-tasks.ts';
 import { loadTree, type KitTree, type TreeTeam } from '../tree.ts';
 import { verifyNoteOf } from './verify-queue.ts';
@@ -283,7 +283,7 @@ async function wakeSenderOf(own: SenderTeam, recipients: readonly Recipient[], r
  * write to its latest tabs' transcripts until the wake, as the wake check reckons it.
  */
 async function postWakes(runtime: CliRuntime, own: SenderTeam, recipients: readonly Recipient[], text: string, now: number, when: WakeWhen): Promise<string[]> {
-  const wPerPct = await readWPerPct(runtime, own.paths, own.config, now);
+  const wPerPct = await readTodayWPerPct(runtime, own.paths, own.config, now);
   const projects = claudeProjectsDir(runtime.env, runtime.userHome);
   const marksByTeam = new Map<string, Promise<readonly InboxMark[]>>();
   const marksOf = (recipient: Recipient): Promise<readonly InboxMark[]> => {

@@ -42,6 +42,7 @@ export async function readStoredWeek(
 /**
  * The week's W per percent as `teamrig budget` reads it: learned from the meter log, else from
  * `budget.weeklyLimitW`, which read no usage store, else the stored week's estimate; undefined while none is known.
+ * It prices a spend over several days (a task's size); a spend made now takes `readTodayWPerPct`.
  */
 export async function readWPerPct(
   runtime: CliRuntime,
@@ -51,4 +52,18 @@ export async function readWPerPct(
 ): Promise<number | undefined> {
   const calibration = calibrationOf(await new MeterLog(runtime.files, paths.meterLog).read(now));
   return rateOf(calibration, config.budget, undefined)?.wPerPct ?? (await readStoredWeek(runtime, paths, config, now)).wPerPct;
+}
+
+/**
+ * Today's W per percent of the week, as `teamrig budget` prices today's rows (budget/report.ts): today's W over the
+ * status line's points today once they span `TODAY_RATE_SPAN_PTS`, else the week's rate (`readWPerPct`'s order);
+ * undefined while no rate is known. It prices a spend made now, as a wake.
+ */
+export async function readTodayWPerPct(
+  runtime: CliRuntime,
+  paths: StoredWeekPaths,
+  config: Pick<KitConfig, 'sessions' | 'budget'>,
+  now: number,
+): Promise<number | undefined> {
+  return (await readStoredWeek(runtime, paths, config, now)).todayWPerPct;
 }
