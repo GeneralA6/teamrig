@@ -24,6 +24,7 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | `PostToolUse` on reads, edits and shell calls | `hook loop-nudge` | Asks the model once to batch when a turn makes [single-step calls in a row](#after-a-tool-call-the-loop-nudge) |
 | `PreToolUse` on `Agent` and `Task` | `hook helper-gate` | Restates rule 8's helper default at each helper launch; asks before or refuses one while its budget holds it or in quiet hours, [as the team set](#the-daily-budget-warnings-and-the-helper-gate) |
 | The mod, while a tab is idle | `hook wake-check`, `hook wake-dropped` | Wakes the tab's session when unblocked urgent work is handed to it, [batched, with its cost shown](#the-mod-the-wake-on-urgent-work), and runs the team's [idle pass](#the-idle-pass), at most once a minute |
+| The mod, every 30 s in each tab | `hook meeting-due` | Sends a scheduled meeting's OS notification at its time, from one tab of the team, and shows it as a toast there ([a scheduled meeting's notification](#the-mod-a-scheduled-meetings-notification)) |
 | `Stop` (end of each turn) | `hook stop` | Sends the session back once to [a skill edit it dropped](#end-of-a-turn-or-a-helper-a-dropped-skill-edit), and after a task is set waiting, once to [its other work](#end-of-a-turn-keep-working-while-a-task-waits); asks for a handover when a context refresh is due, then starts the automatic restart; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines; names a verifying task whose verify-by day has come; once per `github.everyMinutes` for the whole team, starts `gh sync --auto` hidden in the background; every 10 minutes for the whole team, tells the lead of [a tab that runs without its hooks](#end-of-a-turn-hookless-tabs); with tab status on, sets the tab's ready circle, or the decision circle after a turn that asks the user to decide |
 | `SessionStart`, `UserPromptSubmit`, `Stop`, `StopFailure` and `SessionEnd`, in a team or not | `hook restore-track` | Records each Claude Code session on the machine, where it started and what it was doing, for the restore after a reboot ([the restore tracker](#every-session-the-restore-tracker)) |
 | Every event but `Stop` and a tool call's end: session start and end, each prompt, `PreToolUse` on `AskUserQuestion` and `ExitPlanMode`, `PermissionRequest`, `Elicitation` and its result, a helper's start, `StopFailure`, `PreCompact`, `PostCompact` | `hook tab-status` | With `tabStatus.enabled`, puts a colored circle before the tab's title for what the session is doing ([tab status](#every-event-tab-status)) |
@@ -825,6 +826,18 @@ tells the lead with an [urgent line](#urgent-lines) (the coordinator's owner for
 inbox, guards or tab status: /exit that tab and run claude --resume <id> in its terminal` (`run teamrig open alpha`
 for a tab that opened fresh). A line the inbox refused is logged with why, and not tried again;
 `state/idle-pass.json` keeps each told reopen's time.
+
+## The mod: a scheduled meeting's notification
+
+A meeting the owner booked with one session (`teamrig meeting schedule`) needs someone to look at its time. In each
+interactive tab, every 30 s whether or not a turn runs, the mod runs
+[`teamrig hook meeting-due`](commands.md#teamrig-hook-meeting-due) once the team's meetings file
+(`<team>/state/meetings.jsonl`) changed, the next meeting's time came or 10 minutes passed. At a meeting's time the
+CLI marks it notified under the meetings lock, so one tab of the team sends it, and starts the OS notification: a
+Windows toast, a macOS banner or `notify-send` on Linux, titled "teamrig meeting M3 now", naming the session met,
+the topic, the length and the start command. The tab that sent it shows the same as a toast. The notification starts
+nothing: the owner runs `teamrig meeting start M3` from any tab, which opens it in the session met's tab. While no tab
+of the team is open, nothing is sent; a meeting past its slot is never sent, and `meeting list` shows it as missed.
 
 ## The mod: the /teamrig command
 
