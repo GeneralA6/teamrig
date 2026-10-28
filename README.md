@@ -205,7 +205,7 @@ helper it is. Everything runs on your machine, with no account and no cloud bill
 | [Set up a team by hand](docs/setup-by-hand.md) | The two small files a team needs, if you'd rather not ask the lead |
 | [GitHub sync](docs/github-sync.md) | GitHub issues in the task list: repositories, tokens and each failure's fix |
 | [llms.txt](llms.txt) | teamrig explained for language models: point your AI assistant at it |
-| [Contributing](CONTRIBUTING.md) | How teamrig is built: `npm ci` sets the git hooks, every change lands through a pull request, tests, sign-off and the local gate |
+| [Contributing](CONTRIBUTING.md) | How teamrig is built: `npm ci` sets the git hooks, every change lands through a reviewed pull request (from a fork for outside contributors), tests, sign-off and the local gate |
 
 ## Licence
 
