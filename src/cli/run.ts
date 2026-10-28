@@ -196,6 +196,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'config validate': { effect: 'read', flags: [], load: async () => (await configCommands()).validate },
   'config migrate': { effect: 'write', flags: [], switches: ['yes'], load: async () => (await configCommands()).migrate },
   'commits check': { effect: 'read', flags: ['base', 'tip'], load: async () => (await commitsCommands()).check },
+  'worktree add': { effect: 'write', flags: ['repo'], load: async () => (await worktreeCommands()).add },
   'worktree remove': { effect: 'write', flags: ['base', 'session'], switches: ['delete-branch', 'dry-run'], load: async () => (await worktreeCommands()).remove },
   test: { effect: 'write', flags: ['session'], rest: true, load: async () => (await testCommand()).test },
   heavy: { effect: 'write', flags: ['session', 'what', 'max-minutes'], switches: ['small', 'pre-push'], rest: true, load: async () => (await heavyCommand()).heavy },
@@ -525,6 +526,13 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       the first teamrig that reads it, as a tab on an older one refuses every write after; --yes writes it
   commits check --base <ref> [--tip <ref>]   commits in base..tip (default HEAD) over the size rule
       with no reason line; any is REFUSED, for an integrate script or CI
+  worktree add <branch> [--repo <name>]   makes a session's new worktree the same way every time: fetches
+      the default branch origin/HEAD names, adds the worktree on the new branch from it, in a folder
+      named after the branch (each / as -) in coordinator.repos.<name>.worktreeFolder (default
+      .claude/worktrees in the main checkout), then runs its worktreeSetup there, without a shell and
+      with the main checkout's folder in TEAMRIG_MAIN_CHECKOUT; the repository is --repo's, else the
+      one it runs in; REFUSED before any change for a branch or folder already there; FAILED when its
+      setup fails, the worktree kept
   worktree remove <path> [--delete-branch [--base <ref>]] [--dry-run] [--session <id|name>]   removes a linked git worktree:
       unlinks each link in it (such as a node_modules junction) and sees it gone, so git cannot follow
       one and empty its target, then runs git worktree remove; REFUSED before any change for the main
