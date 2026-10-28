@@ -39,6 +39,7 @@ const rulesCommands = () => import("./commands/rules.js");
 const ruleConflictCommands = () => import("./commands/rule-conflicts.js");
 const skillsCommands = () => import("./commands/skills.js");
 const openCommands = () => import("./commands/open.js");
+const meetCommands = () => import("./commands/meet.js");
 const restartCommands = () => import("./commands/restart.js");
 const idleActCommands = () => import("./commands/idle-act.js");
 const budgetCommands = () => import("./commands/budget.js");
@@ -76,7 +77,7 @@ const REVIEW_FLAGS = ['cause', 'how', 'prevent', 'harden', 'missed-test', 'misse
 const COMMANDS = {
     add: { effect: 'write', flags: ['session', 'source', 'team', ...TASK_FIELDS], switches: ['critical'], load: async () => (await registerCommands()).add },
     set: { effect: 'write', flags: ['session', 'status', 'note', 'evidence', 'skill', 'followups', 'waits', 'question', 'options', 'recommend', 'default', 'why-ask', 'gate', 'proof', 'watch', 'met', 'due', 'ask', 'text', ...REVIEW_FLAGS], load: async () => (await registerCommands()).set },
-    update: { effect: 'write', flags: ['session', 'note', ...TASK_FIELDS], switches: ['pin', 'unpin', 'critical', 'not-critical'], load: async () => (await registerCommands()).update },
+    update: { effect: 'write', flags: ['session', 'note', 'later', ...TASK_FIELDS], switches: ['pin', 'unpin', 'critical', 'not-critical'], load: async () => (await registerCommands()).update },
     approve: { effect: 'write', flags: ['session', 'note'], switches: ['decline'], load: async () => (await registerCommands()).approve },
     list: {
         effect: 'read',
@@ -123,6 +124,7 @@ const COMMANDS = {
     decisions: { effect: 'read', flags: ['session'], load: async () => (await decisionsCommands()).decisions },
     'decisions asked': { effect: 'write', flags: ['session'], load: async () => (await decisionsCommands()).decisionsAsked },
     open: { effect: 'write', flags: ['prompt', 'terminal', 'project'], switches: ['resume'], load: async () => (await openCommands()).open },
+    meet: { effect: 'write', flags: ['session', 'terminal', 'project'], switches: ['cards'], load: async () => (await meetCommands()).meet },
     launch: { effect: 'internal', flags: ['team', 'project', 'home', 'encoded-prompt', 'resume', 'effort'], switches: ['no-prompt'], load: async () => (await openCommands()).launch },
     restore: { effect: 'read', flags: [], load: async () => (await restoreCommands()).restorePreview },
     'restore run': { effect: 'write', flags: ['since', 'terminal', 'home'], switches: ['tab'], load: async () => (await restoreCommands()).restoreRun },
@@ -264,6 +266,11 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       with no terminal it prints the command; a rehired session reads the handover it left first, or,
       with --resume, goes on in its last Claude Code session when that is small and recent enough;
       a session teamrig close ended goes on in its last one by those limits, else opens fresh
+  meet <id|name> [--terminal <name>] [--project <dir>]   the owner meets one session on its cards
+      waiting on them: a running one gets an inbox line that wakes it, any other opens fresh in a new
+      tab; refused when none waits on the owner now (it names those put off with update --later)
+  meet --cards [--session <id|name>]   the session's cards due on the owner, as card facts, and how
+      to bring them one at a time and record each answer
   restore                      what a restore would do now with each Claude Code session this machine
       recorded: RESTORE (how it comes back, at which effort), KEEP or DISCARD, and why; it only reads
   restore run [--since <time>] [--terminal <name>] [--home <dir>] [--tab]   reopens the Claude Code
@@ -377,8 +384,11 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       --pin: puts the task above every other task on its owner's list, set by the owner's leaders (the lead
       on its own tasks too); it moves the owner's earlier pin, and handing the task on clears it
       a --note from the task's owner also replaces the note show and the waiting text print
-  update <team>/<id> --note ..   the lead at a team tree's root, who asks the owner the decisions of the
-      teams under it, notes their tasks (the owner's answer), named as its batch prints them: web/T12
+  update <id> --later <date>|none --note ..   puts a card waiting on the owner off to that time, out of the
+      meeting's DECISIONS and the batches until then (its owner or a leader above it); none brings it back
+  update <team>/<id> --note .. [--later <date>|none]   the lead at a team tree's root, who asks the owner the
+      decisions of the teams under it, notes their tasks (the owner's answer) or puts a card off, named as its
+      batch prints them: web/T12
   approve <id> --note "<what you checked, or why not>" [--decline]   the lead only: answers a task waiting on
       its approval (approval:<lead>); its owner gets an inbox line to push or merge (or to fix the note's
       point and ask again), and check flags the approved task READY

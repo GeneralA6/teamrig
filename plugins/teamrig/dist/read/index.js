@@ -19,6 +19,10 @@ export { byPlanOrder, dueTime } from "../register/views.js";
 export { showStored, storedText } from "../core/time.js";
 export { TimeZone } from "../core/zone.js";
 export { allReady, isReady, unfinishedAfter, WAIT_KINDS, waitContext, waitsText, waitText, } from "../register/waits.js";
+// Waits on the owner: which tasks wait on the owner's decision or approval, which of those the lead asks now and which
+// the owner put off (Later) until a time, and each session's cards grouped as `teamrig meet` asks them (T1295). The
+// owner marker is the config's `register.ownerSource`, `requireGate` its `register.requireDecisionCard`.
+export { asksOwner, deferredUntil, isUngated, ownerCardsBySession, ownerLater, waitsOnOwner, } from "../register/owner-waits.js";
 // The inboxes (`inbox/<area>.md`) and their read marks (`inbox-marks.jsonl`).
 export { indexMarks, MARK_VERSION, parseMark, readMarks } from "../inbox/marks.js";
 export { inboxLines, unreadOf } from "../inbox/unread.js";

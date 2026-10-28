@@ -1,5 +1,5 @@
 import { MS_PER_DAY } from "../core/time.js";
-import { asksOwner } from "../meeting/agenda.js";
+import { askableSince, asksOwner } from "../register/owner-waits.js";
 import { taskLabel } from "../register/views.js";
 /**
  * The owner's decisions, asked in batches: a session that needs one sets its task waiting on the owner's decision or
@@ -7,7 +7,8 @@ import { taskLabel } from "../register/views.js";
  * batch times (`decisions.batchTimesUtc`), at the daily meeting, or once `decisions.batchAt` of them wait unasked,
  * and at once only for one due before the next batch. A wait counts as asked when it was set at or before the last
  * batch the lead asked (`decisions asked`, or a meeting's start): a task's `statusAt` stays put while it stays
- * waiting, so setting it waiting again with a new card does not ask it again.
+ * waiting, so setting it waiting again with a new card does not ask it again. A wait the owner put off (Later, T1295)
+ * stays out of the batch until its time passed, and then counts from that time (askableSince), so it is asked again.
  */
 /** Milliseconds after midnight UTC of a valid `HH:MM`. */
 function offsetOf(time) {
@@ -31,7 +32,7 @@ export function nextBatchTime(now, times) {
 export function decisionBatch(input) {
     const { now, askedAt } = input;
     const waiting = input.registers.flatMap(ownerWaitsOf);
-    const asked = (wait) => askedAt !== undefined && Date.parse(wait.task.statusAt) <= askedAt;
+    const asked = (wait) => askedAt !== undefined && askableSince(wait.task, wait.tree.context) <= askedAt;
     const pending = waiting.filter((wait) => !asked(wait));
     const overdue = waiting.filter((wait) => asked(wait) && (wait.tree.dueTime(wait.task) ?? Number.POSITIVE_INFINITY) < now);
     const nextAt = nextBatchTime(now, input.config.batchTimesUtc);
@@ -45,9 +46,9 @@ export function waitsOfTeams(batch, teams) {
     const held = (wait) => wait.team !== undefined && teams.includes(wait.team);
     return { ...batch, pending: batch.pending.filter(held), overdue: batch.overdue.filter(held) };
 }
-/** A register's waits the lead asks the owner (asksOwner), in its plan order. */
+/** A register's waits the lead asks the owner now (asksOwner), in its plan order. */
 function ownerWaitsOf({ team, tasks, tree, ownerMarker, requireGate }) {
-    return tree.inPlanOrder([...tasks].filter((task) => asksOwner(task, ownerMarker, requireGate))).map((task) => ({ task, team, tree }));
+    return tree.inPlanOrder([...tasks].filter((task) => asksOwner(task, ownerMarker, requireGate, tree.context))).map((task) => ({ task, team, tree }));
 }
 /**
  * A task's effective due time when it falls before the next batch (a day on when no batch time is set: the next
@@ -76,7 +77,7 @@ function triggerOf(input, pending, overdue, nextAt) {
     if (last === undefined) {
         return undefined;
     }
-    const missed = pending.some((wait) => Date.parse(wait.task.statusAt) <= last) || (overdue.length > 0 && (input.askedAt ?? Number.NEGATIVE_INFINITY) < last);
+    const missed = pending.some((wait) => askableSince(wait.task, wait.tree.context) <= last) || (overdue.length > 0 && (input.askedAt ?? Number.NEGATIVE_INFINITY) < last);
     return missed ? { kind: 'time', at: last } : undefined;
 }
 /** Why the batch is due, for one line, its times on `zone`'s clock: `T5 is due Tue 01-08 23:59 UTC, before the next batch` (`web/T5` for another team's). */
