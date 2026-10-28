@@ -2763,7 +2763,8 @@ tokens a turn applying it saves:
 - OVERRIDE: how many rule lines, in how many files and of which kind, may override a core rule; never the lines.
   Lines a recorded verdict clears are left out. `teamrig rules scan` lists them to judge.
 - SETTINGS (`S1`...): allow rules that approve a whole tool or program (`teamrig permissions trim` removes them), no
-  deny rule, `defaultMode: bypassPermissions`, and hooks whose output enters the context.
+  deny rule, `defaultMode: bypassPermissions`, and hooks whose output enters the context, each with the command
+  and the `args` it runs. A finding a file's copies under `.claude/worktrees` repeat is one line that counts them.
 - UNUSED (`U1`...): skills in your user or project skill folders with no `Skill` call or `/<skill>` in the last
   `--days` days of this machine's transcripts; not checked when there is no transcript. A skill whose file changed
   within those days has not had them all to be used, so it is not judged; the UNUSED line counts it as too new.
