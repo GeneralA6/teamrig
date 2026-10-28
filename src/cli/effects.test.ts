@@ -37,6 +37,7 @@ const EXPECTED = {
   'meeting list': 'read',
   'meeting move': 'write',
   'meeting drop': 'write',
+  meet: 'write',
   decisions: 'read',
   'decisions asked': 'write',
   'exec request': 'write',
