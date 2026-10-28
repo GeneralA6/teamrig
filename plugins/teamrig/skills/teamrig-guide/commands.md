@@ -461,7 +461,7 @@ Warnings no session owns print under UNOWNED, addressed to the lead: doctor's co
 findings while the CLAUDE.md files, memory index, skill listing or the newest session's lists run over their
 `contextFiles` budgets (every session on the machine re-reads that text, so it is no one area's), the flags of a
 skill whose `Owner:` line is missing or names no session on the team, and FLEET-STALE: while `open.idle.mode` is not
-`off`, the [idle pass](hooks.md#the-idle-pass) has not run for 15 minutes (or never ran) or its last run failed, so it
+`off`, the [idle pass](hooks.md#the-idle-pass) has not run for 15 minutes since its last run or that run failed, so it
 closes and reopens no one. Each row names the check it came from; the
 lead fixes it, hands it on (`teamrig add --owner <session>`) or settles the check. The lead's `start` shows them
 too, and any session's `start` posts the lead one inbox line per warning it was not told of yet, at most 5 per
@@ -1197,7 +1197,7 @@ opened while a plugin install is copied runs without teamrig's hooks, so the ins
 With `open.idle.mode: dry-run` the wake check runs this pass itself, at most once a minute across the team and every 10 minutes in a quiet one
 ([the idle pass](hooks.md#the-idle-pass)), and appends to `state/idle-pass.jsonl` each step whose kind changed since
 the last pass, and every step once its last pass record is an hour old, with the host's commit charge, and each new
-failure; it closes and reopens no one. With `on` it also
+failure; it closes and reopens no one. With `on`, the default, it also
 starts each close and the reopen its steps ask for, hidden, as [teamrig idle-close](#teamrig-idle-close) and
 [teamrig idle-open](#teamrig-idle-open), each in the folder the pass read its session in, and starts none again on
 that session for 5 minutes. `off`, the default,

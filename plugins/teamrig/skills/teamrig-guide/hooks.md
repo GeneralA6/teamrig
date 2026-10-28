@@ -805,7 +805,7 @@ the time if the line is still unseen.
 
 ### The idle pass
 
-With `open.idle.mode` not `off` (`dry-run` or `on`), `hook wake-check` also runs the team's
+With `open.idle.mode` not `off` (`on`, the default, or `dry-run`), `hook wake-check` also runs the team's
 idle pass, right after it finds the tab's session and before the meeting's and the restart's holds, since the pass is
 the team's and not this tab's wake; it needs `wake.enabled`. It runs at most once a minute across the team: the
 check that claims `state/idle-pass.lock` runs it, and no check waits for that lock. With nothing changed, an idle
@@ -819,8 +819,8 @@ starts, hidden, the [`idle-close`](commands.md#teamrig-idle-close) of each sessi
 [`idle-open`](commands.md#teamrig-idle-open) of the one it would reopen (urgent lines first); each weighs its session again and logs its
 own outcome, and each close tells the lead with an [urgent line](#urgent-lines). The pass marks each act it started pending in `state/idle-pass.json` and starts none on that session
 while the mark holds: 5 minutes, or until the session's step no longer asks for that act. An act that did not start
-is logged as `FAILED to start` and held the same way. A failure of the pass never costs the tab its wake answer; a pass 15 minutes old, never run or failed shows in `teamrig check` as
-FLEET-STALE, a warning for the lead.
+is logged as `FAILED to start` and held the same way. A failure of the pass never costs the tab its wake answer; a pass 15 minutes old or failed shows in `teamrig check` as
+FLEET-STALE, a warning for the lead; a pass that never ran shows nothing, as a new team waits for its first idle tab.
 
 A reopened tab whose SessionStart hook has not written its session's record 5 minutes after the reopen loaded no
 teamrig, as one opened while an install was copied, and [the hookless-tab check](#end-of-a-turn-hookless-tabs) cannot
