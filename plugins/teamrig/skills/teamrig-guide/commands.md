@@ -1034,7 +1034,10 @@ Moves sessions of your team, with the tasks they own, into a new child team unde
 `--dry-run` first: that writes nothing and prints the plan, the child's config, what your team's config loses, the
 tasks that move, what crosses the new border and what blocks the split. The child keeps each moved session's name,
 launch block and sub-lead list, so no tab title changes, and a role it has no holder for names your team's holder as
-`<team>/<id>`. A moved task's lines go to the child's register with each session that stays, as who wrote a line, the
+`<team>/<id>`. It starts with a copy of your team's settings, so it runs as your team does, and shares your deploy
+coordinator (its folder, host lock and main checkouts, written as absolute paths), so two teams' heavy steps never
+overlap; your budget shares and idle keep-open list go with the sessions they name. Your GitHub import and your
+folders (`paths`) stay yours. A moved task's lines go to the child's register with each session that stays, as who wrote a line, the
 owner, the source, the pin or a decision or approval wait, named `<team>/<id>`; a task that stays and names a moved
 session as its source or pin gets an update that names it `<team>/<id>`.
 
@@ -1073,12 +1076,16 @@ WOULD CREATE /home/you/.teamrig/teams/front/config.json:
   "tabStatus": {
     "enabled": true
   },
+  "coordinator": {
+    "dir": "/home/you/.teamrig/teams/shop/state/deploys"
+  },
   "names": {
     "web": "shop-web",
     "ui": "shop-ui"
   }
 }
 PARENT /home/you/.teamrig/teams/shop/config.json loses sessions web, ui
+LEFT OUT github: the child starts without them
 TASKS 2 move to front, 2 stay in shop
   web: 1 open
   ui: 1 open
@@ -1090,7 +1097,9 @@ INBOX ui: 1 line(s) move
 FILES ui: state/inbox/ui.md
 ```
 
-Besides the sessions, `PARENT` names the `names`, `launch` and `leads` keys your team's config loses. `SUB-LEAD`
+Besides the sessions, `PARENT` names the `names`, `launch` and `leads` keys, `budget.sessions` shares and
+`open.idle.keepOpen` entries your team's config loses. `LEFT OUT` names the keys of your team's config the child
+starts without: `github` and `paths`, which stay yours, and any key this teamrig does not know. `SUB-LEAD`
 names a staying sub-lead whose list loses a moved session, and `UNLED` a staying session whose sub-lead moves, so you
 lead it. `TASKS` counts the moved sessions' tasks by status. `LINK` names an `after` or a task wait between a task that
 moves and one that stays. `INBOX`, `FILES` and `RENAMES` name what each moved session leaves in your team's folders.
