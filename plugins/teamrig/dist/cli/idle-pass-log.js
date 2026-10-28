@@ -99,11 +99,16 @@ export function isPassDue(state, now) {
 export const IDLE_PASS_STALE_MS = 15 * MS_PER_MINUTE;
 /**
  * The trouble of a pass that is on; none while it ran within `IDLE_PASS_STALE_MS` and its last run went through. A
- * failed pass still advances `at`, so its age alone misses it; a clock gone back reads as a pass just run.
+ * failed pass still advances `at`, so its age alone misses it; a clock gone back reads as a pass just run. A pass that
+ * never ran has no time to be late from: a new team, or one just moved onto the pass by its default (T1409), waits for
+ * its first idle tab, so its absence is no trouble; once it ran, its stopping is.
  */
 export function idlePassTrouble(state, now) {
-    if (state === undefined || now - state.at > IDLE_PASS_STALE_MS) {
-        return { kind: 'stale', at: state?.at };
+    if (state === undefined) {
+        return undefined;
+    }
+    if (now - state.at > IDLE_PASS_STALE_MS) {
+        return { kind: 'stale', at: state.at };
     }
     return state.failed === undefined ? undefined : { kind: 'failed', at: state.at, error: state.failed };
 }
@@ -116,8 +121,7 @@ export function formatIdlePassTrouble(trouble, mode, now) {
     if (trouble.kind === 'failed') {
         return `${head} failed at its last run, ${minutesAgo(trouble.at, now)}: ${trouble.error}; state/idle-pass.jsonl logs each new failure`;
     }
-    const ran = trouble.at === undefined ? 'has not run yet' : `last ran ${minutesAgo(trouble.at, now)}`;
-    return `${head} ${ran}: an idle tab's hook wake-check runs it at least every 10 minutes, so check wake.enabled and that the tabs' teamrig hooks run`;
+    return `${head} last ran ${minutesAgo(trouble.at, now)}: an idle tab's hook wake-check runs it at least every 10 minutes, so check wake.enabled and that the tabs' teamrig hooks run`;
 }
 /** The steps whose kind changed since the last pass that ran through; every step at the first. */
 export function changedSteps(previous, steps) {
