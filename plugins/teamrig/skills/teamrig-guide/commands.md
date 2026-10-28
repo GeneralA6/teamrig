@@ -245,7 +245,7 @@ The status never changes here: use `set`.
 In a tree of teams, the lead at its root, who asks the owner every team's decisions, records an answer on a task of
 a team under it, named as its batch prints it: `update web/T12 --note "owner decided: <decision>"`. The note lands in
 that team's register only, by the lead's `<team>/<id>`, and the meeting's end tells the task's owner. It takes only
-`--note`: every field stays that team's to change. Any other session, a root team's task, a team with no config here
+`--note`, or a `--later` with it to put the card off: every field stays that team's to change. Any other session, a root team's task, a team with no config here
 and any other flag are refused, writing nothing; `<team>/<id>` naming your own team says to use `update <id>`.
 
 Flags:
@@ -272,7 +272,12 @@ Flags:
 - `--pin`: pins the task to the top of its owner's list; the pin names who set it, which `show` prints
   (`pinned by lead: above every other task of api`), and its `list` row says `pinned`.
 - `--unpin`: clears the task's pin.
-- `--note "<text>"`: records a note with the change; the only flag with `<team>/<id>`.
+- `--later <date>|none`: the owner puts a waiting card off to that time, in place of an answer: it leaves the
+  meeting's DECISIONS for its LATER block, and the decision batches, until the time passed, then is asked again;
+  `none` brings it back at once. It goes with a `--note` alone (what the owner said), only on a task waiting on the
+  owner's decision or approval, by its owner or a leader above it, or as `<team>/<id>` by the lead who asks the owner
+  that team's decisions; a time already passed is refused.
+- `--note "<text>"`: records a note with the change; with `--later`, the only flags with `<team>/<id>`.
 
 Example:
 
@@ -1751,6 +1756,7 @@ DECISIONS 1 waiting on owner (decision or approval)
   Read each card to owner as it stands, each figure explained; where one says no card yet, ask its owner for it (check flags it NO-CARD). Never point to a doc; `teamrig show <id>` prints a task whole.
   A question a card does not answer is its task owner's to find: teamrig add --owner <id> --due <date> --session lead, then relay the answer; never look it up yourself.
   Record each answer in the same turn: teamrig update <id> --note "owner decided: <decision>" --session lead; meeting end tells each task's owner.
+  A card owner puts off to a date: teamrig update <id> --later <date> --note "owner put it off: <why>" --session lead; it waits in LATER until then.
 LATE 1 past their due date
   T4 open, p2, owner api, due 10-14 | Retry the signup call
 DONE 2 done or dropped since Wed 10-14 11:30 IDT
@@ -2022,6 +2028,7 @@ NOT YET ASKED
     waiting since 10-19 11:20: the numbers are in the card
   Ask owner these together, each card as it stands, each figure explained; then teamrig decisions asked --session lead records the batch asked.
   Record each answer in the same turn: teamrig update <id> --note "owner decided: <decision>" --session lead.
+  A card owner puts off to a date: teamrig update <id> --later <date> --note "owner put it off: <why>" --session lead; no batch asks it before then.
 ```
 
 ### teamrig decisions asked
