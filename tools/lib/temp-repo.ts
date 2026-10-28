@@ -82,10 +82,19 @@ export class TempRepo {
    * Git Bash hands Node `COMSPEC` where cmd.exe hands it `ComSpec`. `input` is its stdin, which is empty when absent.
    */
   run(cli: string, args: readonly string[] = [], env: Readonly<Record<string, string | undefined>> = {}, input?: string): CliRun {
+    return this.spawn(this.dir, cli, args, env, input);
+  }
+
+  /** Runs a tool's CLI as `run` does, but in `outside`, where git finds no repo. */
+  runOutside(cli: string, args: readonly string[] = []): CliRun {
+    return this.spawn(this.outside, cli, args, {});
+  }
+
+  private spawn(cwd: string, cli: string, args: readonly string[], env: Readonly<Record<string, string | undefined>>, input?: string): CliRun {
     const overridden = new Set(Object.keys(env).map((name) => name.toUpperCase()));
     const inherited = Object.entries(this.env).filter(([name]) => !overridden.has(name.toUpperCase()));
     const merged = [...inherited, ...Object.entries(env)].filter((entry): entry is [string, string] => entry[1] !== undefined);
-    const result = spawnSync(process.execPath, [cli, ...args], { cwd: this.dir, env: Object.fromEntries(merged), encoding: 'utf8', ...(input === undefined ? {} : { input }) });
+    const result = spawnSync(process.execPath, [cli, ...args], { cwd, env: Object.fromEntries(merged), encoding: 'utf8', ...(input === undefined ? {} : { input }) });
     return { status: result.status, stdout: result.stdout, stderr: result.stderr };
   }
 

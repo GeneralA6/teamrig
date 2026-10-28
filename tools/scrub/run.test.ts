@@ -2,13 +2,16 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { EXIT_CLEAN, EXIT_FINDINGS, EXIT_USAGE } from '../lib/exit.ts';
 import { FakeGit } from '../lib/fake-git.ts';
+import { GitError } from '../lib/git.ts';
 import { runScrub, type ScrubOptions } from './run.ts';
 import type { ReadFile } from './sources.ts';
 
+const INSIDE = 'rev-parse --is-inside-work-tree';
 const CONFIG_GET = 'config --default  --get teamrig.scrubDenylist';
 const NOTHING: ScrubOptions = { staged: false, tree: false, messageFile: undefined, range: undefined, denylistPath: undefined };
 
-function harness(gitResponses: Readonly<Record<string, string>>, files: Readonly<Record<string, string>>) {
+/** Runs inside a work tree unless `gitResponses` answers INSIDE otherwise. */
+function harness(gitResponses: Readonly<Record<string, string | GitError>>, files: Readonly<Record<string, string>>) {
   const lines: string[] = [];
   const readFile: ReadFile = async (path) => {
     const content = files[path];
@@ -17,7 +20,7 @@ function harness(gitResponses: Readonly<Record<string, string>>, files: Readonly
     }
     return Buffer.from(content, 'utf8');
   };
-  return { lines, deps: { git: new FakeGit(gitResponses), readFile, out: (line: string) => lines.push(line) } };
+  return { lines, deps: { git: new FakeGit({ [INSIDE]: 'true\n', ...gitResponses }), readFile, out: (line: string) => lines.push(line) } };
 }
 
 describe('runScrub', () => {
@@ -25,6 +28,22 @@ describe('runScrub', () => {
     const { deps, lines } = harness({}, {});
     assert.equal(await runScrub(NOTHING, deps), EXIT_USAGE);
     assert.match(lines.join('\n'), /nothing to scan/);
+  });
+
+  it('refuses outside a git work tree before reading any denylist, so it never passes on the generic rules alone', async () => {
+    const notARepo = new GitError(['rev-parse', '--is-inside-work-tree'], 'fatal: not a git repository\n', new Error('exit 128'));
+    const { deps, lines } = harness({ [INSIDE]: notARepo }, { MSG: 'ok\n' });
+    assert.equal(await runScrub({ ...NOTHING, messageFile: 'MSG' }, deps), EXIT_USAGE);
+    assert.deepEqual(lines, [
+      'scrub: not inside a git work tree, where git config teamrig.scrubDenylist names the private denylist; run it from inside the repo',
+    ]);
+    assert.deepEqual(deps.git.calls, [['rev-parse', '--is-inside-work-tree']]);
+  });
+
+  it('refuses inside a .git folder, which is no work tree', async () => {
+    const { deps, lines } = harness({ [INSIDE]: 'false\n' }, { MSG: 'ok\n' });
+    assert.equal(await runScrub({ ...NOTHING, messageFile: 'MSG' }, deps), EXIT_USAGE);
+    assert.match(lines.join('\n'), /^scrub: not inside a git work tree/);
   });
 
   it('passes a clean message with only the generic rules when no denylist is configured', async () => {

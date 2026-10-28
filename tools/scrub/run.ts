@@ -1,5 +1,5 @@
 import { EXIT_CLEAN, EXIT_FINDINGS, EXIT_USAGE } from '../lib/exit.ts';
-import type { Git } from '../lib/git.ts';
+import { GitError, type Git } from '../lib/git.ts';
 import { parseDenylist } from './denylist.ts';
 import { GENERIC_RULES, type ScrubRule } from './rules.ts';
 import { formatFinding, scanText, type Finding } from './scan.ts';
@@ -37,6 +37,10 @@ export async function runScrub(options: ScrubOptions, deps: ScrubDeps): Promise<
     deps.out('scrub: nothing to scan; pass --staged, --tree, --message <file> or --range <revisions>');
     return EXIT_USAGE;
   }
+  if (!(await insideWorkTree(deps.git))) {
+    deps.out(`scrub: not inside a git work tree, where git config ${DENYLIST_CONFIG_KEY} names the private denylist; run it from inside the repo`);
+    return EXIT_USAGE;
+  }
   const denylist = await loadDenylist(options.denylistPath, deps);
   if (typeof denylist === 'string') {
     deps.out(`scrub: ${denylist}`);
@@ -61,6 +65,21 @@ export async function runScrub(options: ScrubOptions, deps: ScrubDeps): Promise<
     `${GENERIC_RULES.length} generic + ${denylist.length} private rule(s)`;
   deps.out(findings.length === 0 ? `scrub: clean (${scope})` : `scrub: ${findings.length} finding(s) (${scope})`);
   return findings.length === 0 ? EXIT_CLEAN : EXIT_FINDINGS;
+}
+
+/**
+ * True inside a git work tree. Outside one, git config holds no repo's denylist, so a scan would pass on the generic
+ * rules alone, and there is no index or tree to read.
+ */
+async function insideWorkTree(git: Git): Promise<boolean> {
+  try {
+    return (await git.text(['rev-parse', '--is-inside-work-tree'])).trim() === 'true';
+  } catch (error) {
+    if (error instanceof GitError) {
+      return false;
+    }
+    throw error;
+  }
 }
 
 /** Returns the denylist rules, or an error message. A configured list that is missing or empty fails closed. */
