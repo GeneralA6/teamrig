@@ -6,7 +6,7 @@ import { resumeVerdict } from "../hiring/rehire.js";
 import { workCutOffBy } from "../open/end-tab.js";
 import { isClaudeProcess } from "../open/session-processes.js";
 import { readRunningWork } from "../refresh/running.js";
-import { soonTimeWaitOf, tabActivityOf, TIME_WAIT_GUARD_MINUTES } from "../sessions/idle.js";
+import { lastTurnAtOf, soonTimeWaitOf, tabActivityOf, TIME_WAIT_GUARD_MINUTES } from "../sessions/idle.js";
 import { measureSessions } from "../sessions/measure.js";
 import { SessionRecordStore } from "../sessions/record.js";
 import { REPLY_TAIL_BYTES } from "../turn-log/reply.js";
@@ -50,7 +50,7 @@ export async function idleFactsOf(runtime, kit, config, roster) {
 /**
  * Whether `id` closes, with the checks in the order they cost: a role or open.idle.keepOpen that keeps it, not running in the host's
  * process list, work it can start within `maxPriority`, an urgent line waiting to wake it (closed, it would reopen at
- * the next pass for it), a time wait of its own ending soon, quiet too briefly, a
+ * the next pass for it), a time wait of its own ending soon, quiet too briefly since its last own transcript entry, a
  * transcript outside the project folder `open` resumes it in (Claude Code files a session under the folder it started
  * in, as `restore` and `rehire` assume), a turn not ended (under way, at a tool call, or a decision put to the person),
  * work running in the background, a last session too big or old to resume (v1 has no handover for a close), its
@@ -96,7 +96,10 @@ export async function idleVerdictOf(runtime, config, roster, facts, id, options)
     if (last.changedAt === undefined) {
         return keep(`has no transcript of Claude Code session ${record.claudeSession} at ${transcript}, so its idle time is unknown`);
     }
-    const idleMinutes = Math.floor((now - last.changedAt) / MINUTE_MS);
+    const tail = (await runtime.files.readTail(last.transcript, REPLY_TAIL_BYTES)) ?? '';
+    const cut = Buffer.byteLength(tail, 'utf8') >= REPLY_TAIL_BYTES;
+    // A tail with no timed own entry falls back to the file's last change, which is never earlier.
+    const idleMinutes = Math.floor((now - (lastTurnAtOf(tail, cut) ?? last.changedAt)) / MINUTE_MS);
     const needed = config.open.headroom.closeIdleMinutes;
     if (idleMinutes < needed) {
         return keep(`has been quiet ${idleMinutes} min; it closes after ${needed} (open.headroom.closeIdleMinutes)`);
@@ -105,8 +108,7 @@ export async function idleVerdictOf(runtime, config, roster, facts, id, options)
     if (!samePath(folder, join(projectsDir, claudeProjectSlug(options.project)), runtime.platform)) {
         return keep(`could not be resumed once closed (its transcript is in ${folder}, and ${KIT_NAME} open resumes it in ${options.project})`);
     }
-    const tail = (await runtime.files.readTail(last.transcript, REPLY_TAIL_BYTES)) ?? '';
-    const activity = tabActivityOf(tail, Buffer.byteLength(tail, 'utf8') >= REPLY_TAIL_BYTES);
+    const activity = tabActivityOf(tail, cut);
     if (activity !== 'idle') {
         return keep(ACTIVITY_CLAUSES[activity]);
     }

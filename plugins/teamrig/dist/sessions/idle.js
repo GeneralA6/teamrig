@@ -36,6 +36,20 @@ function isTurnEntry(entry) {
     const text = (messageTextOf(entry) ?? '').trimStart();
     return !LOCAL_COMMAND_TAGS.some((tag) => text.startsWith(tag));
 }
+/** A transcript tail's lines (`cut`: the tail of a longer file, whose partial first line is skipped). */
+function tailLines(text, cut) {
+    return text.split('\n').slice(cut ? 1 : 0);
+}
+/** The last entry of the tab's own turns among `lines`, and its index. */
+function lastTurnEntryOf(lines) {
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+        const entry = parseObject((lines[index] ?? '').trim());
+        if (entry !== undefined && isTurnEntry(entry)) {
+            return { entry, index };
+        }
+    }
+    return undefined;
+}
 /**
  * Where the tab's last turn stands, from its transcript's tail (`cut`: the tail of a longer file, whose first line may
  * be partial and is skipped). Its last own entry decides: a model entry calling a tool is at a call (running, or
@@ -44,22 +58,32 @@ function isTurnEntry(entry) {
  * the person stopping the turn. No entry: idle.
  */
 export function tabActivityOf(text, cut) {
-    const lines = text.split('\n').slice(cut ? 1 : 0);
-    for (let index = lines.length - 1; index >= 0; index -= 1) {
-        const entry = parseObject((lines[index] ?? '').trim());
-        if (entry === undefined || !isTurnEntry(entry)) {
-            continue;
-        }
-        if (entry['type'] === 'user') {
-            return (messageTextOf(entry) ?? '').startsWith(INTERRUPTED) ? 'idle' : 'turn';
-        }
-        if (callsTool(entry)) {
-            return 'call';
-        }
-        // Up to this reply only: a slash command run after it starts no turn, so the decision still waits.
-        return asksDecision(replyOf(lines.slice(0, index + 1).join('\n'), undefined, !cut)?.text) ? 'question' : 'idle';
+    const lines = tailLines(text, cut);
+    const last = lastTurnEntryOf(lines);
+    if (last === undefined) {
+        return 'idle';
     }
-    return 'idle';
+    const { entry, index } = last;
+    if (entry['type'] === 'user') {
+        return (messageTextOf(entry) ?? '').startsWith(INTERRUPTED) ? 'idle' : 'turn';
+    }
+    if (callsTool(entry)) {
+        return 'call';
+    }
+    // Up to this reply only: a slash command run after it starts no turn, so the decision still waits.
+    return asksDecision(replyOf(lines.slice(0, index + 1).join('\n'), undefined, !cut)?.text) ? 'question' : 'idle';
+}
+/**
+ * When the tab's last own entry was written, epoch ms, from its transcript's tail (`cut` as for `tabActivityOf`): what
+ * a session is quiet since. The file's last change is no measure of it: slash commands, away summaries and meta
+ * entries start no turn, and an idle tab's file changes with no entry at all (five idle tabs' transcripts moved
+ * together, an hour apart, their sizes unchanged: T1417). Undefined with no own entry in the tail, or a last one with
+ * no time.
+ */
+export function lastTurnAtOf(text, cut) {
+    const stamp = lastTurnEntryOf(tailLines(text, cut))?.entry['timestamp'];
+    const at = typeof stamp === 'string' ? Date.parse(stamp) : Number.NaN;
+    return Number.isNaN(at) ? undefined : at;
 }
 /**
  * The soonest time wait of the session's own unfinished tasks within `maxPriority` that ends after `now` and within
