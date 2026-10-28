@@ -56,12 +56,13 @@ budget, resource changes) goes to the lead, never decided by silence.
 From the first edit to a change that runs, in this order (rules 2, 7, 14 and 16):
 
 ```sh
-git worktree add ../shop-T4 -b t4-parser origin/main
+teamrig worktree add t4-parser
 teamrig test --session api -- npm test
 ```
 
 1. Edit only in your own worktree and branch, made off the current main as above (or with Claude Code's
-   EnterWorktree). A `node_modules` linked in from the main checkout (`mklink /J` on Windows) is removed in step 7. If you link one into a worktree Claude Code removes by itself
+   EnterWorktree): `teamrig worktree add` fetches main first and runs the repository's `worktreeSetup` in the new
+   worktree. A `node_modules` linked in from the main checkout (`mklink /J` on Windows) is removed in step 7. If you link one into a worktree Claude Code removes by itself
    (a helper started with `isolation: worktree`), unlink it before the helper ends: that removal follows the link and
    empties the main checkout's.
 2. Commit one logical change at a time, each with its tests, as soon as they pass. Run tests through

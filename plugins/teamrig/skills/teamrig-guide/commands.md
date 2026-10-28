@@ -2754,6 +2754,45 @@ OK 3 commit(s) in origin/main..HEAD, none over 400 non-test lines or 15 files wi
 
 A commit over the rule without the reason line is `REFUSED` (exit 2).
 
+### teamrig worktree add
+
+Makes a session's new worktree the same way every time, so each session starts from the same ready checkout. It
+fetches the default branch `origin/HEAD` names, adds the worktree on a new branch `<branch>` from it, with no
+upstream, then runs the repository's setup in it, such as a link to the main checkout's `node_modules`. The
+worktree's folder is the branch's name with each `/` as `-`, in [coordinator.repos.<name>.worktreeFolder] (default
+`.claude/worktrees` in the main checkout; a relative folder is in the main checkout). The setup, a program and its
+arguments in [coordinator.repos.<name>.worktreeSetup], runs without a shell in the new worktree, with the main
+checkout's folder in `TEAMRIG_MAIN_CHECKOUT`, and is killed after 10 minutes; exit 0 is a success.
+
+The repository is the one `--repo` names, else the one the current folder belongs to, with the folder and setup of
+the coordinator.repos entry whose `mainCheckout` is its main checkout; outside a team, or with no entry, it uses the
+default folder and runs no setup.
+
+It refuses (exit 2) before any change for: a name that is no branch name; a folder already there; an `origin/HEAD`
+that names no default branch (`git remote set-head origin --auto` sets it); a branch that already exists; `--repo`
+outside a team or naming a repository the team does not list; and a folder in no git repository without `--repo`. A
+fetch or `git worktree add` that fails is FAILED (exit 1). A setup that fails is FAILED too, and the worktree stays,
+so you can finish its setup by hand or remove it with `teamrig worktree remove <path> --delete-branch`.
+
+Flags:
+
+- `--repo <name>`: the repository in the team's coordinator.repos to add it to, from any folder.
+
+Example:
+
+```sh
+teamrig worktree add t12-parser
+```
+
+Output:
+
+```text
+added the worktree /home/you/app/.claude/worktrees/t12-parser on the new branch t12-parser, from origin/main as just fetched
+linked node_modules
+ran its setup node tools/link-modules.ts
+OK added /home/you/app/.claude/worktrees/t12-parser
+```
+
 ### teamrig worktree remove
 
 Removes a linked git worktree without touching what its links point to. A worktree that shares the main
@@ -2963,6 +3002,11 @@ The repository is the entry of `coordinator.repos` whose `mainCheckout` is this 
   `coordinator.heavy.maxRunMinutes`, a heavy step in the ledger. It gets `TEAMRIG_BASELINE_LOCK`, a file holding the
   default branch's `package-lock.json` (unset when that branch has none), removed after. Exit 0 lands the change;
   any other end, or a range integrate cannot read, is REFUSED and nothing is pushed.
+- `worktreeFolder`: the folder `teamrig worktree add` makes each new worktree in, default `.claude/worktrees`; a
+  relative folder is in the main checkout.
+- `worktreeSetup`: what `teamrig worktree add` runs in each new worktree, such as
+  `["node", "tools/link-modules.ts"]`: a program and its arguments, run with no shell, with `TEAMRIG_MAIN_CHECKOUT`
+  set to the main checkout's folder.
 - `followMainCheckout`: after a landing from a linked worktree, fast-forward the main checkout too, when it is on
   the default branch with no uncommitted changes; a NOTE says when it was left as it is, or needs `npm ci`.
 - `merge`: a merge command run in place of the push, such as `{ "command": ["node", "tools/merge.ts"] }` for a
