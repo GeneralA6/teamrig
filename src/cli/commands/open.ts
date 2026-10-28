@@ -5,6 +5,7 @@ import { isEffortLevel, isTerminalChoice, TERMINALS, type EffortLevel, type KitC
 import { splitAddress } from '../../core/address.ts';
 import { ENV, KIT_NAME, type Env, type TeamPaths } from '../../core/home.ts';
 import { ID_PATTERN, ID_RULE, sessionDisplay } from '../../core/ids.ts';
+import { samePath } from '../../core/paths.ts';
 import { HiringLog } from '../../hiring/log.ts';
 import { rehiredFrom, type RetireRecord } from '../../hiring/record.ts';
 import type { ResumeVerdict } from '../../hiring/rehire.ts';
@@ -147,18 +148,18 @@ export async function open(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   const project = await sessionProjectOf(runtime, config, id, args.flags.get('project'), found.from);
   const prompt = args.flags.get('prompt');
   const opened = await openSession(runtime, kit, config, roster, { team, id, project, terminal, asked: args.switches.has('resume'), ...(prompt === undefined ? {} : { prompt }) });
-  return printOpenResult(runtime, project, opened);
+  return printOpenResult(runtime, opened);
 }
 
-/** Prints what an open did: its OPENED line, or, when no terminal opened, why and the command to run in `project` (exit 3). */
-export function printOpenResult(runtime: CliRuntime, project: string, opened: OpenResult): ExitCode {
+/** Prints what an open did: its OPENED line, or, when no terminal opened, why and the command to run in its folder (exit 3). */
+export function printOpenResult(runtime: CliRuntime, opened: OpenResult): ExitCode {
   if (opened.kind === 'opened') {
     runtime.out.stdout(opened.line);
     return EXIT.ok;
   }
   const shell = runtime.platform === 'win32' ? ' in PowerShell' : '';
   runtime.out.stdout(`MANUAL no terminal opened (${opened.reasons.join('; ')}); open a new terminal and run this${shell}:`);
-  runtime.out.stdout(shellCommand(runtime.platform, project, opened.argv));
+  runtime.out.stdout(shellCommand(runtime.platform, opened.folder, opened.argv));
   return EXIT.printed;
 }
 
@@ -177,10 +178,10 @@ export interface OpenRequest {
   readonly fresh?: boolean;
 }
 
-/** A tab that opened, with its OPENED line, or no terminal, with why and the command line to run instead. */
+/** A tab that opened, with its OPENED line, or no terminal, with why and the command line to run instead, in `folder`. */
 export type OpenResult =
   | { readonly kind: 'opened'; readonly line: string }
-  | { readonly kind: 'manual'; readonly reasons: readonly string[]; readonly argv: readonly string[] };
+  | { readonly kind: 'manual'; readonly reasons: readonly string[]; readonly argv: readonly string[]; readonly folder: string };
 
 /**
  * Opens the session's tab as `open` describes: a rehired one on its handover, a closed one in its last Claude Code
@@ -195,9 +196,12 @@ export async function openSession(runtime: CliRuntime, kit: Kit, config: KitConf
   const sessionLog = new SessionLog(runtime.files, kit.paths.sessionLog);
   const closed = closedOf((await sessionLog.read()).records, id);
   const fresh = request.fresh === true;
-  const reopen = closed === undefined || fresh ? undefined : await claudeSessionVerdict(runtime, config.hiring, closed.claudeSession, project);
+  const closedIn = closed === undefined || fresh ? undefined : await reopenOf(runtime, config, closed, project);
+  const reopen = closedIn?.verdict;
   // A closed session opened fresh still logs its reopen below, so the idle pass knows it runs again.
   const resume = fresh ? undefined : await resumeOf(runtime, kit.paths, config, { id, project, from, reopen, asked });
+  // Claude Code finds a session to resume only in the folder it ran in (T1408); a new one starts in the project.
+  const folder = resume === undefined ? project : (closedIn?.folder ?? project);
   const own = request.prompt ?? firstPromptOf(team, id, from, resume, reopen);
   const prompt = checkedPrompt(urgentFirstPrompt(request.urgent ?? [], own, teamZone(config, runtime), PROMPT_MAX));
   // The lead opens whatever the room: it is the session that decides which others run.
@@ -207,14 +211,32 @@ export async function openSession(runtime: CliRuntime, kit: Kit, config: KitConf
       throw new RefusedError(noRoomText(`open ${name} (session ${id})`, headroom));
     }
   }
-  const { outcome, argv } = await openSessionTab(runtime, { team, id, name, project, prompt, terminal, ...(resume === undefined ? {} : { resume }) });
+  const { outcome, argv } = await openSessionTab(runtime, { team, id, name, project: folder, prompt, terminal, ...(resume === undefined ? {} : { resume }) });
   if (outcome.kind !== 'opened') {
-    return { kind: 'manual', reasons: outcome.reasons, argv };
+    return { kind: 'manual', reasons: outcome.reasons, argv, folder };
   }
   if (closed !== undefined) {
     await sessionLog.append({ kind: 'reopen', session: id, at: new Date(runtime.clock.now()).toISOString(), ...(resume === undefined ? {} : { resumed: resume }) });
   }
-  return { kind: 'opened', line: `OPENED ${name} (session ${id}) in a new ${TERMINAL_LABELS[outcome.terminal]} in ${project}, on ${describeLaunch(launchOf(config, id))}${startNoteOf(resume, reopen)}` };
+  return { kind: 'opened', line: `OPENED ${name} (session ${id}) in a new ${TERMINAL_LABELS[outcome.terminal]} in ${folder}, on ${describeLaunch(launchOf(config, id))}${startNoteOf(resume, reopen)}` };
+}
+
+/** Whether a closed session resumes, and in which folder: the one its close recorded, else the project. */
+interface ClosedReopen {
+  readonly verdict: ResumeVerdict;
+  readonly folder: string;
+}
+
+/**
+ * A closed session's reopen. It resumes in the folder its close recorded, which holds its transcript (T1408), or the
+ * project for a close that recorded none; a recorded folder since removed (a worktree) opens it fresh in the project.
+ */
+async function reopenOf(runtime: CliRuntime, config: KitConfig, closed: CloseRecord, project: string): Promise<ClosedReopen> {
+  const folder = closed.folder ?? project;
+  if (!samePath(folder, project, runtime.platform) && (await runtime.probe.kind(folder)) !== 'folder') {
+    return { verdict: { kind: 'fresh', detail: `${folder}, the folder it ran in, is gone` }, folder: project };
+  }
+  return { verdict: await claudeSessionVerdict(runtime, config.hiring, closed.claudeSession, folder), folder };
 }
 
 /** Refuses a second Claude Code of session `id`, named `name`, while it runs in one (src/cli/live-run.ts). */

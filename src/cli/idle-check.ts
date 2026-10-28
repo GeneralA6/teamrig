@@ -1,9 +1,8 @@
-import { dirname, join } from 'node:path';
-import { claudeProjectSlug, claudeProjectsDir, findTranscript } from '../budget/discover.ts';
+import { dirname } from 'node:path';
+import { claudeProjectsDir, findTranscript } from '../budget/discover.ts';
 import type { Roster } from '../config/roster.ts';
 import type { KitConfig } from '../config/types.ts';
 import { KIT_NAME } from '../core/home.ts';
-import { samePath } from '../core/paths.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { resumeVerdict } from '../hiring/rehire.ts';
 import { workCutOffBy, type TabEnder } from '../open/end-tab.ts';
@@ -13,6 +12,7 @@ import type { Task } from '../register/fold.ts';
 import type { TasksElsewhere } from '../register/tree.ts';
 import { lastTurnAtOf, soonTimeWaitOf, tabActivityOf, TIME_WAIT_GUARD_MINUTES, type TabActivity } from '../sessions/idle.ts';
 import { measureSessions, type SessionPlace } from '../sessions/measure.ts';
+import { resumeFolderOf } from '../sessions/resume-folder.ts';
 import { SessionRecordStore, type SessionRecord } from '../sessions/record.ts';
 import { REPLY_TAIL_BYTES } from '../turn-log/reply.ts';
 import { unseenLinesOf } from '../inbox/inbox.ts';
@@ -34,6 +34,8 @@ export interface Closable {
   /** Undefined where the host does not say. */
   readonly committedMb: number | undefined;
   readonly idleMinutes: number;
+  /** The folder its reopen resumes it in (`resumeFolderOf`). */
+  readonly folder: string;
 }
 
 /** `quiet <n> min, its Claude Code holds <MB> MB[, <MB> MB committed]`, as close and the idle pass print it. */
@@ -97,8 +99,8 @@ export async function idleFactsOf(runtime: CliRuntime, kit: Kit, config: KitConf
  * Whether `id` closes, with the checks in the order they cost: a role or open.idle.keepOpen that keeps it, not running in the host's
  * process list, work it can start within `maxPriority`, an urgent line waiting to wake it (closed, it would reopen at
  * the next pass for it), a time wait of its own ending soon, quiet too briefly since its last own transcript entry, a
- * transcript outside the project folder `open` resumes it in (Claude Code files a session under the folder it started
- * in, as `restore` and `rehire` assume), a turn not ended (under way, at a tool call, or a decision put to the person),
+ * transcript in a project folder no folder `open` could resume it in has (`resumeFolderOf`: the project, or a folder
+ * it ran in, which its close records), a turn not ended (under way, at a tool call, or a decision put to the person),
  * work running in the background, a last session too big or old to resume (v1 has no handover for a close), its
  * process no longer a Claude Code, or shells
  * an end would cut off. The first that holds keeps it open. The last two look at the host's processes one by one
@@ -150,9 +152,9 @@ export async function idleVerdictOf(runtime: CliRuntime, config: KitConfig, rost
   if (idleMinutes < needed) {
     return keep(`has been quiet ${idleMinutes} min; it closes after ${needed} (open.headroom.closeIdleMinutes)`);
   }
-  const folder = dirname(last.transcript);
-  if (!samePath(folder, join(projectsDir, claudeProjectSlug(options.project)), runtime.platform)) {
-    return keep(`could not be resumed once closed (its transcript is in ${folder}, and ${KIT_NAME} open resumes it in ${options.project})`);
+  const folder = resumeFolderOf(last.transcript, tail, options.project, projectsDir, runtime.platform);
+  if (folder === undefined) {
+    return keep(`could not be resumed once closed (its transcript is in ${dirname(last.transcript)}, the project folder of neither ${options.project} nor a folder it ran in)`);
   }
   const activity = tabActivityOf(tail, cut);
   if (activity !== 'idle') {
@@ -173,7 +175,7 @@ export async function idleVerdictOf(runtime: CliRuntime, config: KitConfig, rost
   if (cutOff !== undefined) {
     return { kind: 'keep', why: `${label}: ${cutOff}` };
   }
-  return { kind: 'close', closable: { record, claude, heldMb: place.treeMb, committedMb: place.committedMb, idleMinutes } };
+  return { kind: 'close', closable: { record, claude, heldMb: place.treeMb, committedMb: place.committedMb, idleMinutes, folder } };
 }
 
 /** What ends a session's tab and checks what that would cut off, from the runtime. */

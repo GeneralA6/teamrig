@@ -34,10 +34,14 @@ const ROWS = [
   { pid: 8101, parent: CLAUDE.pid, bytes: 200 * MB },
 ];
 
-/** A transcript line the way Claude Code writes an assistant reply, with `tokens` of context, stamped `minutesAgo` when given. */
-function reply(tokens: number, minutesAgo?: number): string {
+/**
+ * A transcript line the way Claude Code writes an assistant reply, with `tokens` of context, stamped `minutesAgo` and
+ * run in folder `cwd` when given.
+ */
+function reply(tokens: number, minutesAgo?: number, cwd?: string): string {
   const stamp = minutesAgo === undefined ? {} : { timestamp: new Date(NOW - minutesAgo * MINUTE_MS).toISOString() };
-  return `${JSON.stringify({ type: 'assistant', isSidechain: false, ...stamp, message: { role: 'assistant', usage: { input_tokens: 2, cache_read_input_tokens: tokens - 2, output_tokens: 50 } } })}\n`;
+  const ran = cwd === undefined ? {} : { cwd };
+  return `${JSON.stringify({ type: 'assistant', isSidechain: false, ...stamp, ...ran, message: { role: 'assistant', usage: { input_tokens: 2, cache_read_input_tokens: tokens - 2, output_tokens: 50 } } })}\n`;
 }
 
 /** A subagent started in the background `minutesAgo`, with no notification that it ended. */
@@ -107,18 +111,30 @@ describe('teamrig close', () => {
     assert.deepEqual(alpha.processes.ends, [{ pid: TAB.pid, how: 'ask' }], 'it ends the tab, which ends its Claude Code');
     assert.equal(alpha.processes.alive(CLAUDE.pid), false);
     assert.deepEqual((await new SessionLog(alpha.kit.files, LOG).read()).records, [
-      { kind: 'close', session: 'alpha', by: 'lead', at: new Date(alpha.kit.clock.now()).toISOString(), claudeSession: CLAUDE_SESSION, idleMinutes: 75, freedMb: 1300 },
+      { kind: 'close', session: 'alpha', by: 'lead', at: new Date(alpha.kit.clock.now()).toISOString(), claudeSession: CLAUDE_SESSION, idleMinutes: 75, freedMb: 1300, folder: APP },
     ]);
   });
 
-  it('measures a session at the transcript its start recorded, and keeps open one that started in another folder', async () => {
+  it('closes a session that started in a worktree, and logs that folder for its reopen to resume it in (T1408)', async () => {
+    const fix = join(APP, '.claude', 'worktrees', 'fix');
+    const filed = projectTranscriptPath(join(USER_HOME, '.claude', 'projects'), fix, CLAUDE_SESSION);
+    const alpha = await runningAlpha(75, reply(40_000, undefined, fix), filed);
+    const closed = await close(alpha, ['alpha', '--yes', '--session', 'lead']);
+    assert.equal(closed.code, 0, [...closed.stdout, ...closed.stderr].join('\n'));
+    assert.deepEqual(alpha.processes.ends, [{ pid: TAB.pid, how: 'ask' }]);
+    assert.deepEqual((await new SessionLog(alpha.kit.files, LOG).read()).records, [
+      { kind: 'close', session: 'alpha', by: 'lead', at: new Date(alpha.kit.clock.now()).toISOString(), claudeSession: CLAUDE_SESSION, idleMinutes: 75, freedMb: 1300, folder: fix },
+    ]);
+  });
+
+  it('measures a session at the transcript its start recorded, and keeps open one filed under a folder it never ran in', async () => {
     const worktree = projectTranscriptPath(join(USER_HOME, '.claude', 'projects'), join(APP, '.worktrees', 'fix'), CLAUDE_SESSION);
     const alpha = await runningAlpha(75, reply(40_000), worktree);
     assertRefused(
       await close(alpha, ['alpha', '--yes', '--session', 'lead']),
-      /alpha \(session alpha\) could not be resumed once closed \(its transcript is in \S+fix, and teamrig open resumes it in \S+\)/,
+      /alpha \(session alpha\) could not be resumed once closed \(its transcript is in \S+fix, the project folder of neither \S+ nor a folder it ran in\)/,
     );
-    assert.deepEqual(alpha.processes.ends, [], 'open would not find it from the project folder');
+    assert.deepEqual(alpha.processes.ends, [], 'open would not find it from any folder');
     const recorded = await close(await runningAlpha(75, reply(40_000), TRANSCRIPT), ['alpha', '--session', 'lead']);
     assert.match(recorded.stdout[0] ?? '', /^CLOSE app-alpha \(session alpha\): quiet 75 min/, [...recorded.stdout, ...recorded.stderr].join('\n'));
 
@@ -268,7 +284,7 @@ describe('teamrig idle-close', () => {
     assert.deepEqual(closed.stdout, [line]);
     assert.deepEqual(alpha.processes.ends, [{ pid: TAB.pid, how: 'ask' }]);
     assert.deepEqual((await new SessionLog(alpha.kit.files, LOG).read()).records, [
-      { kind: 'close', session: 'alpha', by: 'idle-pass', at: new Date(alpha.kit.clock.now()).toISOString(), claudeSession: CLAUDE_SESSION, idleMinutes: 75, freedMb: 1300 },
+      { kind: 'close', session: 'alpha', by: 'idle-pass', at: new Date(alpha.kit.clock.now()).toISOString(), claudeSession: CLAUDE_SESSION, idleMinutes: 75, freedMb: 1300, folder: APP },
     ]);
     assert.deepEqual(actsOf(alpha), [{ v: 1, kind: 'act', mode: 'on', act: 'close', id: 'alpha', outcome: 'done', line, before: CHARGE, after: CHARGE }]);
   });

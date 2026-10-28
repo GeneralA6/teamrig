@@ -118,6 +118,7 @@ describe('the idle pass acts', () => {
     heldMb: 1300,
     committedMb: undefined,
     idleMinutes: 75,
+    folder: APP,
   };
   const BRAVO = resolve('/', 'work', 'bravo');
   const CLOSE_ALPHA: PassStep = { kind: 'close', id: 'alpha', closable: CLOSABLE, project: APP };
