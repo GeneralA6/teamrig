@@ -75,6 +75,8 @@ export interface RunOptions {
   readonly fileBytes?: FileBytes;
   /** The config format the CLI reads, such as a newer release's; default the shipped one. */
   readonly configFormat?: ConfigFormat;
+  /** cmd.exe's command line the `teamrig.cmd` shim passes; default none, as from Bash. */
+  readonly cmdShimLine?: string;
   /** The commits git lists for any range; default none. */
   readonly commitLog?: CommitLog;
   /** The operating system the CLI sees; default Linux. */
@@ -182,6 +184,7 @@ export class CliHarness {
       ...(options.exec === undefined ? {} : { exec: options.exec }),
       out: { stdout: (line) => stdout.push(line), stderr: (line) => stderr.push(line) },
       ...(options.configFormat === undefined ? {} : { configFormat: options.configFormat }),
+      ...(options.cmdShimLine === undefined ? {} : { cmdShimLine: options.cmdShimLine }),
     });
     return { code, stdout, stderr };
   }
