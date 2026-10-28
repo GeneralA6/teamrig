@@ -15,7 +15,7 @@ import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
 import { FakeMergeGit, MAIN_CHECKOUT, WORKTREE } from '../testing/fake-merge-git.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { rollRepo, type RollEnd, type RollRequest, type RollSetup } from './run.ts';
+import { deployRepo, type DeployEnd, type DeployRequest, type DeploySetup } from './run.ts';
 
 const PLACES: CoordinatorPlaces = {
   ledger: '/team/deploys/ledger.jsonl',
@@ -31,7 +31,7 @@ const AFTER_PULL = ['node', 'scripts/build-cli.js'];
 const COMMAND = ['node', 'tools/deploy.js'];
 const DEPLOY: DeployConfig = { targets: ['api', 'workers'], checks: [FLOW], afterPull: [AFTER_PULL], command: COMMAND };
 const PIPELINE: CoordinatorRepoConfig = { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], dependencyGate: false, followMainCheckout: false, deploy: DEPLOY };
-const REQUEST: RollRequest = { session: 'po', repo: undefined, dir: '/elsewhere' };
+const REQUEST: DeployRequest = { session: 'po', repo: undefined, dir: '/elsewhere' };
 const HEAVY_MS = DEFAULT_HEAVY.maxRunMinutes * 60_000;
 const SECRET = ['db password', '=', 'hunter2'].join('');
 const REDACTED = 'db [redacted password or key assignment]';
@@ -50,7 +50,7 @@ class World {
   readonly hooks = new FakeHooks(this.clock);
   readonly lock: HostLock;
   readonly said: string[] = [];
-  readonly setup: RollSetup;
+  readonly setup: DeploySetup;
 
   constructor(options: Options = {}) {
     this.files = new MemoryFiles(options.claims === undefined ? {} : { [PLACES.claims]: options.claims });
@@ -76,8 +76,8 @@ class World {
     this.git.landed = commits;
   }
 
-  run(request: RollRequest = REQUEST): Promise<RollEnd> {
-    return rollRepo(this.setup, {
+  run(request: DeployRequest = REQUEST): Promise<DeployEnd> {
+    return deployRepo(this.setup, {
       git: this.git,
       hooks: this.hooks,
       files: this.files,
@@ -116,7 +116,7 @@ function teamrigEnv(env: Env): Record<string, string | undefined> {
   return Object.fromEntries(Object.entries(env).filter(([name]) => name.startsWith('TEAMRIG_')));
 }
 
-function refused(end: RollEnd, reason: string): void {
+function refused(end: DeployEnd, reason: string): void {
   assert.deepEqual(end, { kind: 'refused', reason });
 }
 
@@ -135,7 +135,7 @@ function depsWorld({ gate = true, check = true, install = true }: { readonly gat
   return world;
 }
 
-describe('rollRepo', () => {
+describe('deployRepo', () => {
   it('pulls the pending range, runs afterPull then the deploy command, and records one heavy step and the deploy', async () => {
     const world = new World();
     world.hooks.answer(FLOW.command, { lines: ['no flow open', 'tag=sha-0f8e'] }).answer(COMMAND, { lines: ['building', 'deployed api, workers on sha-0f8e'], takesMs: 120_000 });
@@ -190,10 +190,10 @@ describe('rollRepo', () => {
 
   it('ends under the lock, pulling nothing, when another deploy pulled the range meanwhile', async () => {
     const world = new World();
-    const rolledElsewhere = async (): Promise<void> => {
+    const deployedElsewhere = async (): Promise<void> => {
       world.git.heads.set(MAIN_CHECKOUT, 'c2');
     };
-    world.hooks.answer(FLOW.command, { end: 75, during: rolledElsewhere }, {});
+    world.hooks.answer(FLOW.command, { end: 75, during: deployedElsewhere }, {});
     assert.deepEqual(await world.run(), { kind: 'done', summary: "nothing to deploy: the pipeline main checkout is at its origin's default branch (c2)" });
     assert.deepEqual(world.hooks.commands, ['node checks/flow.js', 'node checks/flow.js'], 'no check is asked under the lock about nothing');
     assert.deepEqual([world.records().length, world.pulled(), world.lockFree()], [0, false, true]);
@@ -312,7 +312,7 @@ describe('rollRepo', () => {
   });
 });
 
-describe('rollRepo of a range that changes the dependencies', () => {
+describe('deployRepo of a range that changes the dependencies', () => {
   it('pulls, checks the change against the old package-lock.json, installs it, then runs afterPull and the deploy command', async () => {
     const world = depsWorld();
     const atCheck: (string | undefined)[] = [];

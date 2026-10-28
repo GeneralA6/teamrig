@@ -6,7 +6,7 @@ import { coordinatorPlaces, teamPlace } from '../../coordinator/places.ts';
 import { blackoutStart, heavyCutoffSpan, type ResetTime } from '../../coordinator/schedule.ts';
 import { loadsOf, type Load } from '../../coordinator/windows.ts';
 import type { TimeZone } from '../../core/zone.ts';
-import { plural, readPending, rollRepos, short, type PendingRead } from '../../deploy/pending.ts';
+import { deployRepos, plural, readPending, short, type PendingRead } from '../../deploy/pending.ts';
 import type { ParsedArgs } from '../args.ts';
 import { hostLockOf, nextResetFrom } from '../coordinator-ports.ts';
 import { openTeamKit, requireConfig, teamZone } from '../kit.ts';
@@ -68,7 +68,7 @@ function pendingText(read: PendingRead): string {
  * heavy step removes it), the heavy cutoff and the reset blackout, the quiet claims and loads still open, and what each
  * repository with a deploy block has pushed but not deployed; it fetches each main checkout to tell. Exit 0.
  */
-export async function deploys(_args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+export async function deployStatus(_args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const nowMs = runtime.clock.now();
   const kit = await openTeamKit(runtime);
   const config = requireConfig(kit, runtime, 'read');
@@ -96,7 +96,7 @@ export async function deploys(_args: ParsedArgs, runtime: CliRuntime): Promise<E
   const loads = loadsOf(parseLedger((await runtime.files.read(places.ledger)) ?? ''), nowMs).filter((load) => load.open);
   say(`loads: ${loads.length === 0 ? 'none' : loads.length}`);
   loads.forEach((load) => say(loadText(load, zone)));
-  const repos = rollRepos(coordinator, (path) => teamPlace(kit.paths, path));
+  const repos = deployRepos(coordinator, (path) => teamPlace(kit.paths, path));
   if (repos.length === 0) {
     say('deploys: no repository in coordinator.repos has a deploy block');
   }

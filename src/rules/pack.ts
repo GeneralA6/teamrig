@@ -144,13 +144,13 @@ function heavySteps(coordinator: CoordinatorConfig, command: string, cutoff: str
   if (repos.length === 0) {
     return cutoff === undefined ? '' : ` No heavy step (builds, test runs, data scripts) starts ${cutoff} [coordinator.schedule.heavyCutoffUtc].`;
   }
-  const roll = repos.some((repo) => repo.deploy !== undefined) ? ` and run it with \`${command} deploy\`` : '';
+  const deploy = repos.some((repo) => repo.deploy !== undefined) ? ` and run it with \`${command} deploy\`` : '';
   return (
     ` Run heavy steps (builds, test runs, data scripts) in the background through \`${command} heavy\`, a test run inside \`${command} test\`` +
     (cutoff === undefined ? '' : `, none starting ${cutoff} [coordinator.schedule.heavyCutoffUtc]`) +
     // Never `heavy -- git commit`: a repository's hooks take the lock themselves, and Claude Code's worktree guard
     // refuses that form in a worktree session (the guide's `teamrig heavy` section).
-    `; a commit stays a plain \`git commit\`. Merge a tested branch with \`${command} merge\`${roll}, also in the background [coordinator.repos].`
+    `; a commit stays a plain \`git commit\`. Merge a tested branch with \`${command} merge\`${deploy}, also in the background [coordinator.repos].`
   );
 }
 

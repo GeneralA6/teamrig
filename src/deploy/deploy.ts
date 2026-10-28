@@ -3,10 +3,10 @@ import { underLock } from '../coordinator/host-lock.ts';
 import { appendDeploy } from '../coordinator/ledger.ts';
 import { recordHeavy } from '../coordinator/recorded-step.ts';
 import type { Env } from '../core/home.ts';
-import { askGates, shownLine } from './checks.ts';
+import { askChecks, shownLine } from './checks.ts';
 import { hookEndText, hookExitCode, succeeded, type HookEnd } from './hooks.ts';
-import { short, type RollRepo } from './pending.ts';
-import { chosenRepo, scheduleReadiness, shownBy, type RollEnd, type RollPorts, type RollRequest, type RollSetup } from './run.ts';
+import { short, type DeployRepo } from './pending.ts';
+import { chosenRepo, scheduleReadiness, shownBy, type DeployEnd, type DeployPorts, type DeployRequest, type DeploySetup } from './run.ts';
 
 /**
  * `teamrig deploy --targets <a,b> --what "<why>" -- <command>`: a deploy that pulls nothing, such as the restart that
@@ -18,7 +18,7 @@ import { chosenRepo, scheduleReadiness, shownBy, type RollEnd, type RollPorts, t
 
 const MINUTE_MS = 60_000;
 
-export interface DeployRequest extends RollRequest {
+export interface RedeployRequest extends DeployRequest {
   /** What the command restarts: some of the repository's `deploy.targets`. */
   readonly targets: readonly string[];
   /** Why it runs, as the deploy record's note says it. */
@@ -28,13 +28,13 @@ export interface DeployRequest extends RollRequest {
 }
 
 /** How the command ended, and its last line shown. */
-interface DeployRun {
+interface RedeployRun {
   readonly end: HookEnd;
   readonly lastLine: string | undefined;
 }
 
 /** The checks' and the command's environment: this process's, with the deploy's `TEAMRIG_*` variables. */
-function deployEnv(setup: RollSetup, ports: RollPorts, request: DeployRequest, repo: RollRepo): Env {
+function redeployEnv(setup: DeploySetup, ports: DeployPorts, request: RedeployRequest, repo: DeployRepo): Env {
   return {
     ...ports.env,
     TEAMRIG_TEAM: setup.team,
@@ -46,7 +46,7 @@ function deployEnv(setup: RollSetup, ports: RollPorts, request: DeployRequest, r
 }
 
 /** Why the request may not deploy what it names: no targets, or one not in the repository's deploy targets. */
-function targetsProblem(repo: RollRepo, targets: readonly string[]): string | undefined {
+function targetsProblem(repo: DeployRepo, targets: readonly string[]): string | undefined {
   const known = repo.deploy.targets;
   const listed = `coordinator.repos.${repo.name}.deploy.targets (${known.length === 0 ? 'none set' : known.join(', ')})`;
   if (targets.length === 0) {
@@ -60,7 +60,7 @@ function targetsProblem(repo: RollRepo, targets: readonly string[]): string | un
 }
 
 /** Under the host lock: runs the command with the lock's token in its environment, each line shown redacted. */
-async function runCommand(setup: RollSetup, ports: RollPorts, request: DeployRequest, env: Env): Promise<DeployRun> {
+async function runCommand(setup: DeploySetup, ports: DeployPorts, request: RedeployRequest, env: Env): Promise<RedeployRun> {
   const show = shownBy(ports);
   let lastLine: string | undefined;
   const end = await ports.hooks.run({
@@ -79,7 +79,7 @@ async function runCommand(setup: RollSetup, ports: RollPorts, request: DeployReq
 }
 
 /** Deploys some of a repository's targets with a command that pulls nothing (see the module comment). */
-export async function deployTargets(setup: RollSetup, ports: RollPorts, request: DeployRequest): Promise<RollEnd> {
+export async function redeployTargets(setup: DeploySetup, ports: DeployPorts, request: RedeployRequest): Promise<DeployEnd> {
   const chosen = chosenRepo(setup, ports, request);
   if (chosen.kind === 'refused') {
     return chosen;
@@ -94,13 +94,13 @@ export async function deployTargets(setup: RollSetup, ports: RollPorts, request:
     return { kind: 'refused', reason: `${repo.main} (coordinator.repos.${repo.name}.mainCheckout) names no commit at HEAD, so the deploy could not record what it ran on` };
   }
   const targets = request.targets.join(', ');
-  const env = deployEnv(setup, ports, request, repo);
+  const env = redeployEnv(setup, ports, request, repo);
   const readiness = async (phase: ClearancePhase): Promise<Readiness> => {
     const stopped = await scheduleReadiness(setup, ports, request.targets);
     if (stopped !== undefined) {
       return stopped;
     }
-    const answer = await askGates(repo.deploy.checks, phase, { hooks: ports.hooks, scanner: ports.scanner, cwd: repo.main, env, timeoutSeconds: setup.coordinator.checkTimeoutSeconds });
+    const answer = await askChecks(repo.deploy.checks, phase, { hooks: ports.hooks, scanner: ports.scanner, cwd: repo.main, env, timeoutSeconds: setup.coordinator.checkTimeoutSeconds });
     return answer.readiness;
   };
   const { wait } = setup.coordinator;
