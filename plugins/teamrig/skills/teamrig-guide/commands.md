@@ -1765,8 +1765,14 @@ A scheduled meeting's start prints its line, who was told and how its tab takes 
 STARTED M3 started, Thu 10-15 14:00 IDT, 30 min, web with api, tasks T7 | the pricing tiers
 TOLD web
 TOLD api
+FOCUSED shop-web's Windows Terminal tab, [shop] web
 WAKES shop-web with the meeting's opening prompt once its tab is idle, within about 15 s (a running turn ends first)
 ```
+
+A running tab is brought to the front: in Windows Terminal through UI Automation, by its title, in tmux by its
+window's name. Windows may keep another app's window in front: the tab is then selected in its own window
+(`SELECTED shop-web's Windows Terminal tab, [shop] web, in its window; ...`). A terminal with no call that selects a
+tab by its title prints `NOT FOCUSED shop-web's tab, [shop] web: <why>`, so the owner finds the tab by that title.
 
 A session with no tab running prints `OPENED shop-web (session web) in a new Windows Terminal tab ...; its first
 prompt opens the meeting`. Where no terminal can open it prints `MANUAL` and the command to run; with no room on the
