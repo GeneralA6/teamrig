@@ -474,6 +474,22 @@ describe('parseConfig', () => {
     assert.equal(config.coordinator.repos['bad']?.dependencyCheck, undefined);
   });
 
+  it('reads where a repository’s new worktrees go and their setup, and reports a blank folder or a setup that is no program (T1305)', () => {
+    const setup = ['node', 'tools/link-modules.ts'];
+    const repos = {
+      set: { mainCheckout: 'repos/set', worktreeFolder: '../worktrees', worktreeSetup: setup },
+      unset: { mainCheckout: 'repos/unset' },
+      bad: { mainCheckout: 'repos/bad', worktreeFolder: ' ', worktreeSetup: 'node link.ts' },
+      empty: { mainCheckout: 'repos/empty', worktreeSetup: [] },
+    };
+    const { config, issues } = parseConfig({ ...ROSTER, coordinator: { repos } });
+    assert.deepEqual(paths(issues).sort(), ['coordinator.repos.bad.worktreeFolder', 'coordinator.repos.bad.worktreeSetup', 'coordinator.repos.empty.worktreeSetup']);
+    assert.deepEqual(config.coordinator.repos['set'], { mainCheckout: 'repos/set', deploysOnPush: [], dependencyGate: false, followMainCheckout: false, worktreeFolder: '../worktrees', worktreeSetup: setup });
+    assert.deepEqual(config.coordinator.repos['unset'], { mainCheckout: 'repos/unset', deploysOnPush: [], dependencyGate: false, followMainCheckout: false });
+    assert.equal(config.coordinator.repos['bad']?.worktreeFolder, undefined);
+    assert.equal(config.coordinator.repos['bad']?.worktreeSetup, undefined);
+  });
+
   it('reads a repository’s merge command, and leaves out one that is not a program with its arguments', () => {
     const command = ['node', 'tools/merge.ts'];
     const repos = {
