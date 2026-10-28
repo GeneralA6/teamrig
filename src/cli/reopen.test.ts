@@ -98,6 +98,33 @@ describe('opening a session teamrig closed', () => {
     assert.deepEqual(await logOf(alpha), [CLOSED, { kind: 'reopen', session: 'alpha', at: new Date(alpha.kit.clock.now()).toISOString() }]);
   });
 
+  it('resumes it in the folder its close recorded, and opens it fresh in the project once that folder is gone (T1408)', async () => {
+    const fix = join(APP, '.claude', 'worktrees', 'fix');
+    const filed = projectTranscriptPath(join(USER_HOME, '.claude', 'projects'), fix, CLAUDE_SESSION);
+    const inWorktree = async (folders: readonly string[]): Promise<ClosedAlpha> => {
+      const kit = new CliHarness(TEAM);
+      await new SessionLog(kit.files, LOG).append({ ...CLOSED, folder: fix });
+      await kit.files.write(filed, reply(40_000));
+      const transcripts = new MemoryTranscripts({ [filed]: reply(40_000) }, kit.clock.now() - 2 * HOUR_MS);
+      return { kit, options: { platform: 'win32', probe: new FakePathProbe({ folders }), transcripts } };
+    };
+    const projectOf = (argv: readonly string[]): string | undefined => argv[argv.indexOf('--project') + 1];
+
+    const alpha = await inWorktree([APP, fix]);
+    const { result, argv } = await open(alpha);
+    assert.ok(ok(result).stdout[0]?.includes(` in ${fix}, on `), result.stdout[0]);
+    assert.equal(resumedOf(argv), CLAUDE_SESSION);
+    assert.equal(projectOf(argv), fix, 'Claude Code finds the transcript only from the folder it ran in');
+    const printed = await (await inWorktree([APP, fix])).kit.run(['open', 'alpha', '--terminal', 'print'], alpha.options);
+    assert.equal(printed.code, EXIT.printed, printed.stdout.join('\n'));
+    assert.ok(printed.stdout[1]?.startsWith(`Set-Location -LiteralPath '${fix}'; `), printed.stdout[1]);
+
+    const gone = await open(await inWorktree([APP]));
+    assert.ok(ok(gone.result).stdout[0]?.endsWith(`, fresh (${fix}, the folder it ran in, is gone)`), gone.result.stdout[0]);
+    assert.equal(resumedOf(gone.argv), undefined);
+    assert.equal(projectOf(gone.argv), APP);
+  });
+
   it('logs no reopen when no terminal opens', async () => {
     const alpha = await closedAlpha(40_000);
     const result = await alpha.kit.run(['open', 'alpha', '--terminal', 'print'], alpha.options);

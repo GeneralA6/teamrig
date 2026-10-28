@@ -20,6 +20,14 @@ describe('the session log', () => {
     assert.equal(files.get(PATH)?.split('\n')[0], JSON.stringify({ v: SESSION_LOG_FORMAT, ...CLOSE }));
   });
 
+  it('keeps the folder a close resumes its session in, and reads a close without one or with a damaged one as none (T1408)', async () => {
+    const files = new MemoryFiles();
+    const inWorktree: CloseRecord = { ...CLOSE, folder: '/work/app/.claude/worktrees/fix' };
+    await new SessionLog(files, PATH).append(inWorktree);
+    await files.append(PATH, `${JSON.stringify({ v: SESSION_LOG_FORMAT, ...CLOSE, folder: 7 })}\n`);
+    assert.deepEqual(await new SessionLog(files, PATH).read(), { records: [inWorktree, CLOSE], skipped: 0 });
+  });
+
   it('tells a session teamrig closed until it is reopened', () => {
     assert.equal(closedOf([CLOSE], 'alpha'), CLOSE);
     assert.equal(closedOf([CLOSE, RESUMED], 'alpha'), undefined);

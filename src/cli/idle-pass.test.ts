@@ -14,6 +14,7 @@ const CLOSABLE = {
   heldMb: 1300,
   committedMb: undefined,
   idleMinutes: 75,
+  folder: APP,
 };
 const HANDED = { kind: 'handed', tasks: [testTask({ id: 'T5' }), testTask({ id: 'T7' })] } as const;
 const DAY_START = { kind: 'day-start', at: Date.parse('2030-01-08T06:00:00.000Z'), tasks: [testTask({ id: 'T2', priority: 3 })] } as const;
