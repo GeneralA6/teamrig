@@ -1754,6 +1754,7 @@ DECISIONS 1 waiting on owner (decision or approval)
     with no answer: Basic ships on 10-16
     waiting since 10-14 16:20 IDT: the numbers are in the card
   Read each card to owner as it stands, each figure explained; where one says no card yet, ask its owner for it (check flags it NO-CARD). Never point to a doc; `teamrig show <id>` prints a task whole.
+  Ask in plain text, never with the question picker: each card's options numbered, your recommendation first; owner answers in their own words.
   A question a card does not answer is its task owner's to find: teamrig add --owner <id> --due <date> --session lead, then relay the answer; never look it up yourself.
   Record each answer in the same turn: teamrig update <id> --note "owner decided: <decision>" --session lead; meeting end tells each task's owner.
   A card owner puts off to a date: teamrig update <id> --later <date> --note "owner put it off: <why>" --session lead; it waits in LATER until then.
