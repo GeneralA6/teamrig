@@ -3,15 +3,25 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { MS_PER_MINUTE } from '../core/time.ts';
 import { readMeetings, type ScheduledMeeting } from '../meeting/schedule.ts';
-import { CliHarness, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
+import { decodePrompt } from '../open/prompt.ts';
+import { SessionRecordStore } from '../sessions/record.ts';
+import { APP, CliHarness, TEAM, TEAM_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
+import { FakeHostMemory } from '../testing/fake-host-memory.ts';
+import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
+import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
+import { WakeAsks } from '../wake/asks.ts';
+import { openingPrompt } from './commands/meetings.ts';
 import { EXIT } from './runtime.ts';
 
 const MEETINGS_PATH = join(TEAM_HOME, 'state', 'meetings.jsonl');
+const ASKS_PATH = join(TEAM_HOME, 'state', 'wake-asks');
 const BOOK = ['meeting', 'schedule', '--meets', 'alpha', '--at', '2030-01-08 14:00', '--about', 'the release plan'];
+const MB = 2 ** 20;
+const CLAUDE_PID = 4242;
 
 /** A team whose register holds T1, so a meeting can link it. */
-async function team(): Promise<CliHarness> {
-  const kit = new CliHarness();
+async function team(config = TEAM): Promise<CliHarness> {
+  const kit = new CliHarness(config);
   const added = await kit.run(['add', '--title', 'Plan the release', '--description', 'what ships first', '--priority', 'p1', '--session', 'alpha']);
   assert.equal(added.code, EXIT.ok, added.stderr.join('\n'));
   return kit;
@@ -43,7 +53,7 @@ describe('runCli: meeting schedule', () => {
     assert.deepEqual(result.stdout, ['SCHEDULED M1 scheduled, Tue 01-08 14:00 UTC, 45 min, alpha with bravo, tasks T1 | the release plan', 'TOLD alpha, bravo']);
     for (const session of ['alpha', 'bravo']) {
       const lines = await inboxOf(kit, session);
-      assert.ok(lines.some((line) => line.endsWith('Meeting M1 with the owner booked: Tue 01-08 14:00 UTC (45 min) with alpha: the release plan; tasks T1; brief notes/alpha/brief.md. At its time: teamrig meeting start M1')), lines.join('\n'));
+      assert.ok(lines.some((line) => line.endsWith("Meeting M1 with the owner booked: Tue 01-08 14:00 UTC (45 min) with alpha: the release plan; tasks T1; brief notes/alpha/brief.md. At its time the owner starts it in alpha's tab (teamrig meeting start M1)")), lines.join('\n'));
     }
     const meeting = await stored(kit, 'M1');
     assert.equal(meeting?.status, 'scheduled');
@@ -183,5 +193,95 @@ describe('runCli: meeting move, end and drop', () => {
     const daily = await kit.run(['meeting', 'end', '--note', 'done', '--session', 'lead']);
     assert.equal(daily.code, EXIT.usage);
     assert.match(said(daily), /--note goes with meeting end <id>, a scheduled meeting/);
+  });
+});
+
+/** Alpha's tab runs: its record names Claude Code CLAUDE_PID, which the host lists as started a minute before it. */
+async function alphaRuns(kit: CliHarness): Promise<Pick<RunOptions, 'sessionProcesses' | 'memory'>> {
+  await new SessionRecordStore(kit.files, { sessions: join(TEAM_HOME, 'state', 'sessions') }).write('alpha', { claudePid: CLAUDE_PID, claudeSession: 'c0', at: '2030-01-08T09:00:00.000Z' });
+  return {
+    sessionProcesses: new FakeSessionProcesses().add({ pid: CLAUDE_PID, parentPid: 1, name: 'claude.exe', commandLine: 'claude' }),
+    memory: new FakeHostMemory().lists([{ pid: CLAUDE_PID, parent: 1, bytes: 400 * MB, startedMs: Date.parse('2030-01-08T08:59:00Z') }]),
+  };
+}
+
+async function asksOf(kit: CliHarness, session: string): Promise<readonly string[]> {
+  return (await new WakeAsks(kit.files, ASKS_PATH).read(session)).flatMap((stored) => (stored.ask === undefined ? [] : [stored.ask.text]));
+}
+
+const OPENING = 'The owner starts meeting M1 now (30 min): the release plan. Tasks: T1. Joining: bravo. Brief: notes/alpha/brief.md. Read the brief, then meet the owner here. When it is over: teamrig meeting end M1 --note "<what came of it>".';
+
+describe('runCli: meeting start <id>', () => {
+  it("wakes the session met's running tab with the opening prompt, and tells those joining where it is held", async () => {
+    const kit = await team();
+    await booked(kit, '--with', 'bravo', '--tasks', 'T1', '--brief', 'notes/alpha/brief.md', '--session', 'lead');
+    const result = await kit.run(['meeting', 'start', 'M1', '--session', 'lead'], await alphaRuns(kit));
+    assert.equal(result.code, EXIT.ok, said(result));
+    assert.deepEqual(result.stdout, [
+      'STARTED M1 started, Tue 01-08 14:00 UTC, 30 min, alpha with bravo, tasks T1 | the release plan',
+      'TOLD alpha',
+      'TOLD bravo',
+      'WAKES app-alpha with the meeting\'s opening prompt once its tab is idle, within about 15 s (a running turn ends first)',
+    ]);
+    assert.deepEqual(await asksOf(kit, 'alpha'), [OPENING]);
+    const [timed] = await new WakeAsks(kit.files, ASKS_PATH).read('alpha');
+    assert.equal(timed?.ask?.by?.at, Date.parse('2030-01-08T10:00:00.000Z'), 'a timed ask, due now, so the tab wakes at its next check');
+    assert.equal((await stored(kit, 'M1'))?.status, 'started');
+    assert.ok((await inboxOf(kit, 'alpha')).some((line) => line.endsWith(`lead: ${OPENING}`)));
+    assert.ok((await inboxOf(kit, 'bravo')).some((line) => line.endsWith("lead: Meeting M1 with the owner started in alpha's tab: the release plan")));
+  });
+
+  it('opens the tab of a session that runs none, the opening prompt ahead of its own first prompt, and leaves no ask behind', async () => {
+    const kit = await team();
+    await booked(kit, '--with', 'bravo', '--tasks', 'T1', '--brief', 'notes/alpha/brief.md', '--session', 'lead');
+    const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started' });
+    const result = await kit.run(['meeting', 'start', 'M1', '--session', 'bravo'], { platform: 'win32', processes, probe: new FakePathProbe({ folders: [APP] }) });
+    assert.equal(result.code, EXIT.ok, said(result));
+    assert.equal(result.stdout.length, 3, 'bravo starts it, so only alpha is told');
+    assert.equal(result.stdout[2], `OPENED app-alpha (session alpha) in a new Windows Terminal tab in ${APP}, on the default model and effort; its first prompt opens the meeting`);
+    const args = processes.started[0]?.args ?? [];
+    const prompt = decodePrompt(args[args.indexOf('--encoded-prompt') + 1] ?? '');
+    assert.match(prompt ?? '', /^Urgent lines were posted for you while you were closed; act on each first:\n- 10:00 UTC bravo: The owner starts meeting M1 now/);
+    assert.deepEqual(await asksOf(kit, 'alpha'), []);
+  });
+
+  it('keeps the opening prompt as an urgent line when no terminal opens, and prints the command to run', async () => {
+    const kit = await team();
+    await booked(kit, '--session', 'lead');
+    const result = await kit.run(['meeting', 'start', 'M1', '--session', 'lead'], { probe: new FakePathProbe({ folders: [APP] }) });
+    assert.equal(result.code, EXIT.ok, said(result));
+    assert.match(result.stdout[2] ?? '', /^MANUAL no terminal opened \(.+\); the meeting waits as an urgent line: open a new terminal and run this:$/);
+    assert.equal(result.stdout.length, 4);
+    assert.equal((await asksOf(kit, 'alpha')).length, 1);
+  });
+
+  it('posts no ask while wake.enabled is false, and says the meeting waits in its inbox', async () => {
+    const kit = await team({ ...TEAM, wake: { enabled: false } });
+    await booked(kit, '--session', 'lead');
+    const result = await kit.run(['meeting', 'start', 'M1', '--session', 'lead'], await alphaRuns(kit));
+    assert.equal(result.code, EXIT.ok, said(result));
+    assert.equal(result.stdout.at(-1), 'NOT WOKEN app-alpha: wake.enabled is false on the team, so the meeting waits in its inbox for its next prompt');
+    assert.deepEqual(await asksOf(kit, 'alpha'), []);
+  });
+
+  it('starts a missed meeting, but not one started or finished, and the daily start stays the lead\'s', async () => {
+    const kit = await team();
+    await booked(kit, '--session', 'lead');
+    kit.clock.advance(5 * 60 * MS_PER_MINUTE);
+    const options = await alphaRuns(kit);
+    assert.equal((await kit.run(['meeting', 'start', 'M1', '--session', 'alpha'], options)).code, EXIT.ok);
+    const again = await kit.run(['meeting', 'start', 'M1', '--session', 'alpha'], options);
+    assert.equal(again.code, EXIT.refused);
+    assert.match(said(again), /^REFUSED M1 is started: meeting start takes a scheduled meeting/);
+    const daily = await kit.run(['meeting', 'start', '--session', 'alpha']);
+    assert.equal(daily.code, EXIT.refused);
+    assert.match(said(daily), /only the lead \(app-lead\) runs the owner's daily meeting/);
+  });
+});
+
+describe('openingPrompt', () => {
+  it('names the meeting, and its tasks, those joining and its brief only when it has them', () => {
+    const meeting: ScheduledMeeting = { id: 'M2', at: 0, minutes: 20, session: 'alpha', with: [], tasks: [], about: 'the pane.', brief: null, status: 'scheduled', notifiedAt: null, by: 'lead', changedAt: 0, note: null };
+    assert.equal(openingPrompt(meeting), 'The owner starts meeting M2 now (20 min): the pane. Meet the owner here now. When it is over: teamrig meeting end M2 --note "<what came of it>".');
   });
 });
