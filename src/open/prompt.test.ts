@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { decodePrompt, defaultPrompt, encodePrompt, PROMPT_MAX, promptProblem, refreshPrompt, rehirePrompt, reopenPrompt, resumePrompt } from './prompt.ts';
+import { decodePrompt, defaultPrompt, encodePrompt, meetAsk, meetPrompt, PROMPT_MAX, promptProblem, refreshPrompt, rehirePrompt, reopenPrompt, resumePrompt } from './prompt.ts';
 
 describe('defaultPrompt', () => {
   it('names the session and its team, and starts with the inbox and the task list', () => {
@@ -61,6 +61,15 @@ describe('rehirePrompt and resumePrompt', () => {
     assert.match(resumed, /^You are the api session of team shop, hired back after a retire and resumed in your last Claude Code session\. Your tasks may have moved since: run `teamrig inbox read`/);
     assert.equal(promptProblem(fresh), undefined);
     assert.equal(promptProblem(resumed), undefined);
+  });
+});
+
+describe('meetAsk and meetPrompt', () => {
+  it('send a session to its own cards on the owner, and only to them', () => {
+    assert.equal(meetAsk('api', 'human'), 'human meets you now on your cards waiting on them: run `teamrig meet --cards --session api` and follow what it prints.');
+    const prompt = meetPrompt('shop', 'api', 'human');
+    assert.equal(prompt, `You are the api session of team shop. ${meetAsk('api', 'human')}`);
+    assert.equal(promptProblem(prompt), undefined);
   });
 });
 

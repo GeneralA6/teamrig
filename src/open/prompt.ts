@@ -34,6 +34,19 @@ export function resumePrompt(team: string, id: string): string {
   return `You are the ${id} session of team ${team}, hired back after a retire and resumed in your last Claude Code session. Your tasks may have moved since: run \`${KIT_NAME} inbox read\` and \`${KIT_NAME} list --session ${id}\`, and start your first open task.`;
 }
 
+/**
+ * What a session hears when the owner meets it on its own cards waiting on them (`teamrig meet`, T1295): the line
+ * that wakes a running session, and the first prompt's ask of one opened for the meeting.
+ */
+export function meetAsk(id: string, ownerMarker: string): string {
+  return `${ownerMarker} meets you now on your cards waiting on them: run \`${KIT_NAME} meet --cards --session ${id}\` and follow what it prints.`;
+}
+
+/** The first prompt of a session opened fresh for the owner's meeting on its cards: only the meeting, so its context stays small. */
+export function meetPrompt(team: string, id: string, ownerMarker: string): string {
+  return `You are the ${id} session of team ${team}. ${meetAsk(id, ownerMarker)}`;
+}
+
 /** Why a prompt cannot be passed to Claude Code as its first message, or undefined when it can. */
 export function promptProblem(prompt: string): string | undefined {
   if (prompt.trim() === '') {
