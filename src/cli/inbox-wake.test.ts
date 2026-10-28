@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { formatConfig } from '../config/load.ts';
 import { lineHash } from '../inbox/line-hash.ts';
+import { meterDearDay } from '../testing/budget-hold.ts';
 import { CliHarness, USER_HOME } from '../testing/cli-harness.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { SUB_TEAMS, teamConfigOf, teamHomeOf, teamInboxOf, treeHarness } from '../testing/team-tree.ts';
@@ -11,6 +12,7 @@ import { EXIT } from './runtime.ts';
 
 const NOW = Date.parse('2030-01-08T10:00:00Z');
 const MINUTE = 60_000;
+const ALPHA_TAB = '0123abcd-0000-4000-8000-0000000000a1';
 const BRAVO_TAB = '0123abcd-0000-4000-8000-0000000000b1';
 /** `lead` leads `alpha` and the sub-lead `bravo`, which leads `charlie`. */
 const LED = { sessions: ['lead', 'alpha', 'bravo', 'charlie'], leads: { bravo: ['charlie'] } };
@@ -46,6 +48,13 @@ describe('teamrig inbox add --wake now', () => {
     transcripts.set(transcriptOf(BRAVO_TAB), '{}\n', NOW - 5 * MINUTE);
     const result = await kit.run(['inbox', 'add', '--to', 'bravo', '--text', 'hi', '--wake', 'now', '--session', 'alpha'], { transcripts });
     assert.equal(result.stdout[1], "WAKES bravo if its tab is idle, within about 3 minutes: about 27k W, warm cache, on app's budget line");
+  });
+
+  it("prices the wake at today's W per percent, as the wake check does, on a day dearer than its week (T1138)", async () => {
+    const kit = await treeHarness({ ...LED, budget: { weeklyLimitW: 1_000_000_000 } });
+    await meterDearDay(kit, 'alpha', ALPHA_TAB);
+    const result = await kit.run(['inbox', 'add', '--to', 'bravo', '--text', 'hi', '--wake', 'now', '--session', 'alpha']);
+    assert.equal(result.stdout[1], "WAKES bravo if its tab is idle, within about 3 minutes: about 210k W, cold, 0.04% of the week, on app's budget line", 'the week rate would say 0.02%');
   });
 
   it('lets a leader wake its group, and refuses a group to a session that leads no one, posting nothing', async () => {

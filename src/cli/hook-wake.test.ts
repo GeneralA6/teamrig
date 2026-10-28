@@ -19,7 +19,7 @@ import { RESTART_RECHECK_MS } from './commands/hook-wake.ts';
 import { GIVE_UP_MS } from '../refresh/restart.ts';
 import type { RefreshState, RestartRequest } from '../refresh/state.ts';
 import { RefreshStore } from '../refresh/store.ts';
-import { HOLDING_BUDGET, holdAlpha, meterToday } from '../testing/budget-hold.ts';
+import { HOLDING_BUDGET, holdAlpha, meterDearDay, meterToday } from '../testing/budget-hold.ts';
 import { APP, AUTO_RESTART_TEAM, CliHarness, EVENTS_PATH, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
@@ -166,6 +166,19 @@ describe('hook wake-check', () => {
     assert.equal(woke.toast, 'teamrig woke this tab for T1 (about 210k W, cold, 0.01% of the week)');
     assert.deepEqual(await logLines(kit), [
       { v: 1, at: new Date(kit.clock.now()).toISOString(), kind: 'wake', session: 'alpha', tab: ALPHA_TAB, ids: ['T1'], w: 210_000, cold: true, weekPct: 0.0105 },
+    ]);
+  });
+
+  it("costs the wake at today's W per percent, as the budget table prices today's rows, on a day dearer than its week (T1138)", async () => {
+    const kit = await teamWithAlphaTab({ ...TEAM, wake: { priority: 2, batchSeconds: 0 }, budget: { weeklyLimitW: 1_000_000_000 } });
+    await meterDearDay(kit, 'alpha', ALPHA_TAB);
+    await check(kit);
+    await hand(kit, 'Ship the page', 'p2');
+    const woke = answerOf(await check(kit));
+    assert.ok(typeof woke === 'object' && woke !== null && 'toast' in woke);
+    assert.equal(woke.toast, 'teamrig woke this tab for T1 (about 210k W, cold, 0.04% of the week)', 'the week rate would say 0.02%');
+    assert.deepEqual(await logLines(kit), [
+      { v: 1, at: new Date(kit.clock.now()).toISOString(), kind: 'wake', session: 'alpha', tab: ALPHA_TAB, ids: ['T1'], w: 210_000, cold: true, weekPct: 0.042 },
     ]);
   });
 

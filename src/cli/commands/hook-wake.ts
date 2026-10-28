@@ -19,7 +19,7 @@ import { logWake, WakeStore } from '../../wake/store.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { openKit, rosterOf, teamZone, type Kit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { readWPerPct } from '../stored-week.ts';
+import { readTodayWPerPct } from '../stored-week.ts';
 import { teamRegister } from '../team-register.ts';
 import { budgetFactsOf } from './hook-budget.ts';
 import { inboxDepsOf } from './inbox.ts';
@@ -298,7 +298,7 @@ export async function wakeCheck(args: ParsedArgs, runtime: CliRuntime): Promise<
   }
   const now = runtime.clock.now();
   const last = verdict.kind === 'moments' ? verdict.lastTurnAt : await lastWriteOf(runtime.transcripts, claudeProjectsDir(runtime.env, runtime.userHome), [tab]);
-  const wPerPct = await readWPerPct(runtime, kit.paths, config, now);
+  const wPerPct = await readTodayWPerPct(runtime, kit.paths, config, now);
   const cost = wakeCost(last === undefined ? undefined : now - last, config.messages.coldAfterMinutes, wPerPct);
   const ids = verdict.tasks.map((task) => task.id);
   if (verdict.kind === 'handed') {
