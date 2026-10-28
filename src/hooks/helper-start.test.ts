@@ -21,6 +21,7 @@ function context(overrides: Partial<HelperStartInput> = {}): string {
     team: 'app',
     load: loaded(),
     teamRules: [],
+    keptRulesAbove: [],
     renames: [],
     agentType: 'general-purpose',
     session: 'alpha',

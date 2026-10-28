@@ -5,7 +5,7 @@ import { CONFIG_MIGRATIONS, type ConfigFormat } from '../config/migrate.ts';
 import { CONFIG_VERSION } from '../config/types.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { FakePackageRegistry } from '../testing/fake-package-registry.ts';
-import { teamHomeOf, teamInboxOf, treeHarness } from '../testing/team-tree.ts';
+import { KEPT_PUSH_RULE, keptPushLineOf, teamHomeOf, teamInboxOf, treeHarness } from '../testing/team-tree.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { ENV } from '../core/home.ts';
 import { CLIENT_MANIFEST, clientFileHash, clientManifestText, clientRootOf } from '../exec/client-integrity.ts';
@@ -803,6 +803,12 @@ describe('runCli: hook session-start', () => {
     const result = await kit.run(['hook', 'session-start'], { env: { TEAMRIG_TEAM: 'ui', TEAMRIG_SESSION: 'pixel' }, stdin: JSON.stringify({ cwd: APP }) });
     const above = (team: string) => `# Team ${team}'s rules (a team above yours; they win over a lower team's)\n- ${team} rule.`;
     assert.ok(contextOf(result).endsWith([above('app'), above('web'), "# Your team's rules\n- ui rule."].join('\n\n')));
+  });
+
+  it("gives a child team's session the kept local rules of a team above it, tagged with that team", async () => {
+    const kit = await treeHarness({ ruleConflicts: [KEPT_PUSH_RULE] });
+    const result = await kit.run(['hook', 'session-start'], { env: { TEAMRIG_TEAM: 'ui', TEAMRIG_SESSION: 'pixel' }, stdin: JSON.stringify({ cwd: APP }) });
+    assert.ok(contextOf(result).includes(`\nKept local rules [ruleConflicts]:\n${keptPushLineOf('app')}\n`), contextOf(result));
   });
 
   it('says why no rules load without a team config', async () => {

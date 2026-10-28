@@ -3,7 +3,7 @@ import { Roster } from '../config/roster.ts';
 import { isRecord, stringField } from '../core/guards.ts';
 import { ENV } from '../core/home.ts';
 import type { Rename } from '../names/rename.ts';
-import { renderCorePack, renderSessionContext, type RulesClock, type TeamRules } from '../rules/pack.ts';
+import { renderCorePack, renderSessionContext, type KeptRule, type RulesClock, type TeamRules } from '../rules/pack.ts';
 import { unloadedContext } from './session-start.ts';
 
 /** A Claude Code subagent (a helper) a hook runs in: its id, and its type when that is a plain name. */
@@ -37,6 +37,8 @@ export interface HelperStartInput {
   readonly load: ConfigLoad;
   /** The `rules.md` of each team above the session's, root first, then its own team's; those that exist. */
   readonly teamRules: readonly TeamRules[];
+  /** The kept local rules [ruleConflicts] of each team above the session's, root first; its own team's are in `load`. */
+  readonly keptRulesAbove: readonly KeptRule[];
   /** The team's rename log, so the helper learns its session's current name. */
   readonly renames: readonly Rename[];
   /** The helper's agent type, printed when Claude Code gave a plain name. */
@@ -80,7 +82,7 @@ export function helperStartContext(input: HelperStartInput): string {
     return unloadedContext(input.team, load, command);
   }
   const roster = new Roster(load.config, input.team, input.renames);
-  const core = renderCorePack(load.config, command, input.platform, input.clock);
+  const core = renderCorePack(load.config, command, input.platform, input.clock, input.keptRulesAbove);
   return renderSessionContext(`${core}\n\n${helperLine(roster, input)}`, input.teamRules, command);
 }
 
