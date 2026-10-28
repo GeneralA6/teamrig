@@ -2408,7 +2408,7 @@ with a `Decision needed:` line. Each outcome (closed, kept, failed) is one JSON 
 Flags:
 
 - `--team <team>`: required.
-- `--project <dir>`: required; the folder its tab resumes in, where a session whose start recorded no transcript has it.
+- `--project <dir>`: required; the folder its tab resumes in, where a session's transcript is looked for first when its start recorded none, or one no longer there (Claude Code can file a running session's transcript anew under the project folder of a worktree it moves to: the session is then found by its id in any project folder).
 
 Example:
 
