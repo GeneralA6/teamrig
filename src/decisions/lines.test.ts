@@ -41,9 +41,11 @@ describe('the decisions listing', () => {
     const past = lines.indexOf('PAST DUE, asked before: ask again');
     assert.ok(past > 2, lines.join('\n'));
     assert.match(lines[past + 1] ?? '', /^ {2}T2 waiting, p2, owner alpha, due 01-07 \| Decide T2/);
-    assert.deepEqual(lines.slice(-2), [
+    assert.deepEqual(lines.slice(-3), [
       '  Ask owner these together, each card as it stands, each figure explained; then teamrig decisions asked --session lead records the batch asked.',
       '  Record each answer in the same turn: teamrig update <id> --note "owner decided: <decision>" --session lead.',
+      // T1295: a card the owner puts off leaves the batches until its date.
+      '  A card owner puts off to a date: teamrig update <id> --later <date> --note "owner put it off: <why>" --session lead; no batch asks it before then.',
     ]);
   });
 
