@@ -734,7 +734,8 @@ Flags:
   in a turn is not woken: it is shown the line at its next tool call's end ([`hook tool-end`](#teamrig-hook-tool-end)),
   so its turn's end wakes nothing for a line it saw. A `WAKES` line after `POSTED` says who it wakes, at
   most, within how many minutes, what that costs (a warm cache is about 27k W, a cold one about 210k W, and the
-  share of the week once teamrig knows its W per percent) and whose budget line pays. A receiver whose team has
+  share of the week at today's W per percent, as `teamrig budget` prices today's rows, once teamrig knows it) and
+  whose budget line pays. A receiver whose team has
   `wake.enabled` false gets the line and no wake, and the `WAKES` line says so.
 - `--wake-by <time>`: wakes each receiver at that time instead (`HH:MM` on the team's clock, or `YYYY-MM-DD HH:MM`),
   and only if it has not seen the line by then: a receiver that read it, or was shown it at a prompt or a tool
@@ -4392,7 +4393,8 @@ Output: one JSON line, exit 0: `{"kind":"go"}` or `{"kind":"skip","reason":"<why
 
 Run by the plugin's mod while its tab is idle at the prompt, when the register or the session's asks folder (an
 urgent or `inbox add --wake now` line) changed, a batch falls due or 10 minutes passed (it looks every 15 seconds). It decides whether new work handed to the tab's session should wake
-it, and logs each wake with its cost to `<team>/state/wakes.jsonl`. A task wakes the session once, when it is the
+it, and logs each wake with its cost (W, and the share of the week at today's W per percent) to
+`<team>/state/wakes.jsonl`. A task wakes the session once, when it is the
 session's, open or in progress, at `wake.priority` or more urgent (p1 by default; p0 only while the session's
 budget holds it, past its daily budget with no room left in the team's day, and p0 and p1 only in quiet hours), with every task it comes after finished, and changed by someone else
 since the session last touched it. Tasks handed within `wake.batchSeconds` wake it once, and wakes are
