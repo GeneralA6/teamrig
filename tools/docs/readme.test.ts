@@ -34,6 +34,15 @@ describe('README.md', () => {
     for (const found of README.matchAll(/!\[([^\]]*)\]\(/g)) assert.ok((found[1] ?? '').length > 40, found[0]);
   });
 
+  it("captions the lead's morning and the meeting demos with one line under each", () => {
+    const lines = README.split('\n');
+    for (const name of ['lead-morning', 'lead-meeting']) {
+      const at = lines.findIndex((line) => line.startsWith('![') && line.endsWith(`(docs/images/${name}.svg)`));
+      const caption = lines.slice(at + 1).find((text) => text.trim() !== '') ?? '';
+      assert.match(caption, /^\*[^*]{20,120}\*$/, `${name} has a one-line caption under it`);
+    }
+  });
+
   it('puts text before every picture, never a picture straight under its heading', () => {
     const lines = README.split('\n');
     lines.forEach((line, at) => {
