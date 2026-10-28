@@ -1777,14 +1777,20 @@ in one inbox line: the decisions on its tasks during the meeting, each `update` 
 fields it changed. A session with none gets no line. Messages to the lead go again. Only the lead runs it; with no
 meeting open it is refused.
 
+With a meeting id, `meeting end M3` ends a scheduled meeting instead: one booked with
+`meeting schedule`, scheduled or started, is done; `--note` records what came of it. The lead or the session met
+runs it, and no one is told. The daily meeting takes no `--note`: its decisions are recorded on their tasks.
+
 Flags:
 
-- `--session <area>`: who you are: the lead.
+- `--session <area>`: who you are: the lead, or for a scheduled meeting the session met.
+- `--note "<what came of it>"`: with a meeting id only, one line kept on the meeting.
 
 Example:
 
 ```sh
 teamrig meeting end --session lead
+teamrig meeting end M3 --note "the middle tier ships first" --session web
 ```
 
 Output:
@@ -1802,6 +1808,124 @@ In a tree of teams a decision the root lead recorded on a task below (`update we
 owner in its own team's inbox, from the lead's address (`app/lead`), scanned with both teams' secret patterns. Its
 row names the owner with its team, `  web/front T2: owner decided: ship it`, as does a refused line, `NOT TOLD
 web/front: <why>`.
+
+A scheduled meeting's end prints `ENDED M3 done, Thu 10-15 14:00 IDT, 30 min, web | the pricing tiers`; one done
+or dropped already is refused: `REFUSED M3 is done: meeting end takes a scheduled or started meeting`.
+
+### teamrig meeting schedule
+
+Books the owner's meeting with one session at a set time, apart from the daily meeting with the lead:
+a talk the owner wants with that session alone, on its tasks, at the hour they pick. It prints the
+meeting's id, `M<n>` numbered per team, and tells the session met and those joining, but the caller, by one inbox
+line naming the time, the tasks and the brief, and the command to start it at its time. The lead or the session
+met books one; another session is refused. The team keeps its meetings in `<team>/state/meetings.jsonl`, one line
+each, written under a lock; a finished one stays 8 days.
+
+Flags:
+
+- `--meets <id|name>`: the session met; at its time the meeting starts in that session's tab.
+- `--at <time>`: when it starts, ahead of now: a time on the team's clock (`14:00`, `"2030-01-10 09:00"`) or an
+  ISO time with its zone.
+- `--about "<one line>"`: what it settles, one line of at most 200 characters; the brief holds the rest.
+- `--minutes <n>`: how long, 1 to 480; 30 by default. A scheduled meeting past its slot lists as missed.
+- `--with <a,b>`: other sessions joining, told too.
+- `--tasks <T1,T2>`: the tasks it settles, each a task of the team.
+- `--brief <path>`: the brief the owner reads first, a path kept as typed.
+- `--session <area>`: who you are: the lead or the session met.
+
+Example:
+
+```sh
+teamrig meeting schedule --meets web --at "2026-10-15 14:00" --about "the pricing tiers" --tasks T7 --session lead
+```
+
+Output:
+
+```text
+SCHEDULED M3 scheduled, Thu 10-15 14:00 IDT, 30 min, web, tasks T7 | the pricing tiers
+TOLD web
+```
+
+web's line reads `Meeting M3 with the owner booked: Thu 10-15 14:00 IDT (30 min) with web: the pricing tiers; tasks
+T7. At its time: teamrig meeting start M3`. A time past, a task the register lacks or a line holding a secret is
+refused; a line the inbox refuses prints `NOT TOLD <ids>: <why>` and the meeting stays booked.
+
+### teamrig meeting list
+
+The scheduled and started meetings by time, one line each: id, status, time, length, the session met and those
+joining, its tasks and what it is about, then its brief and note when it has them. A scheduled meeting whose slot
+is over with no start reads `missed` until it is moved, ended or dropped. Anyone may run it; it changes nothing.
+
+Flags:
+
+- `--all`: the meetings done or dropped in the last week too.
+- `--json`: the same meetings as one JSON object, `{"meetings": [...]}`, each with `id`, `at` (ISO), `atText` (on the
+  team's clock), `minutes`, `session`, `with`, `tasks`, `about`, `brief`, `status` and `missed`: what the task pane
+  reads.
+- `--session <area>`: who you are.
+
+Example:
+
+```sh
+teamrig meeting list --all --session lead
+```
+
+Output:
+
+```text
+MEETINGS 2 of the last week and ahead
+  M2 dropped, Wed 10-14 09:00 IDT, 30 min, api | the retry budget
+    note: settled by mail
+  M3 scheduled, Thu 10-15 14:00 IDT, 30 min, web, tasks T7 | the pricing tiers
+```
+
+### teamrig meeting move
+
+A new time for a scheduled meeting; its notification fires again at the new time. The session met and those
+joining, but the caller, are told by one inbox line. The lead or the session met moves one; a meeting started,
+done or dropped is refused.
+
+Flags:
+
+- `--at <time>`: the new start, ahead of now, as `meeting schedule` takes it.
+- `--note "<why>"`: one line, kept on the meeting and added to the line those it meets get.
+- `--session <area>`: who you are: the lead or the session met.
+
+Example:
+
+```sh
+teamrig meeting move M3 --at "2026-10-15 16:00" --note "the owner is out at two" --session lead
+```
+
+Output:
+
+```text
+MOVED M3 scheduled, Thu 10-15 16:00 IDT, 30 min, web, tasks T7 | the pricing tiers
+TOLD web
+```
+
+### teamrig meeting drop
+
+The meeting will not be held: a scheduled or started meeting is dropped, and the session met and those joining,
+but the caller, are told why by one inbox line. The lead or the session met drops one.
+
+Flags:
+
+- `--note "<why>"`: required, one line, kept on the meeting and sent to those it meets.
+- `--session <area>`: who you are: the lead or the session met.
+
+Example:
+
+```sh
+teamrig meeting drop M3 --note "settled by mail" --session lead
+```
+
+Output:
+
+```text
+DROPPED M3 dropped, Thu 10-15 14:00 IDT, 30 min, web, tasks T7 | the pricing tiers
+TOLD web
+```
 
 ### teamrig decisions
 
