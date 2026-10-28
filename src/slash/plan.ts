@@ -7,14 +7,14 @@ import {
   type CommandRest,
   type CommandSwitches,
   type ParsedArgs,
-  type RenamedFlags,
+  type Renamed,
 } from '../cli/args.ts';
 
 /** The CLI's command table, as `/teamrig` reads it (src/cli/run.ts): the same as the CLI parses a line with, plus each command's effect. */
 export interface CommandTable {
   readonly flags: CommandFlags;
   readonly switches: CommandSwitches;
-  readonly renamed: RenamedFlags;
+  readonly renamed: Renamed;
   readonly rest: CommandRest;
   readonly effects: CommandEffects;
 }

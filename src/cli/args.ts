@@ -55,8 +55,21 @@ export type CommandEffects = Readonly<Partial<Record<string, CommandEffect>>>;
  */
 export type RenamedFlags = Readonly<Partial<Record<string, string>>>;
 
+/** Commands that were renamed, old first word to new command, refused like a renamed flag: `integrate` to `merge`. */
+export type RenamedCommands = Readonly<Partial<Record<string, string>>>;
+
+/** The renamed flags and commands a line is read with. */
+export interface Renamed {
+  readonly flags?: RenamedFlags;
+  readonly commands?: RenamedCommands;
+}
+
 /** The command a line names: two words when they form a command (`inbox read`), else one; a group word before `--help`. */
-function commandOf(argv: readonly string[], commandFlags: CommandFlags): { readonly command: string; readonly tail: readonly string[] } {
+function commandOf(
+  argv: readonly string[],
+  commandFlags: CommandFlags,
+  renamedCommands: RenamedCommands,
+): { readonly command: string; readonly tail: readonly string[] } {
   const [first = '', second] = argv;
   const pair = `${first} ${second ?? ''}`;
   if (second !== undefined && commandFlags[pair] !== undefined) {
@@ -72,7 +85,8 @@ function commandOf(argv: readonly string[], commandFlags: CommandFlags): { reado
     .filter((name) => name.startsWith(`${first} `))
     .map((name) => name.slice(first.length + 1));
   if (actions.length === 0) {
-    throw new UsageError(`unknown command "${first}"`);
+    const renamed = renamedCommands[first];
+    throw new UsageError(renamed === undefined ? `unknown command "${first}"` : `${first} was renamed: use ${renamed}`);
   }
   if (second !== undefined && HELP_FLAGS.has(second)) {
     return { command: first, tail: argv.slice(1) };
@@ -83,18 +97,19 @@ function commandOf(argv: readonly string[], commandFlags: CommandFlags): { reado
 /**
  * Splits `<command> [words] [--name value] [--switch]...`. Only the command's own flags are
  * accepted, so a typo is refused instead of silently meaning nothing; every flag takes exactly one
- * value, except the command's switches, which take none. A renamed flag is refused with its new name.
- * `--help` or `-h` after the command stops the reading: the line asks for that command's help. On a
- * command that takes a command line, `--` ends the reading too: the words after it are its `rest`.
+ * value, except the command's switches, which take none. A renamed flag or command is refused with its
+ * new name. `--help` or `-h` after the command stops the reading: the line asks for that command's help.
+ * On a command that takes a command line, `--` ends the reading too: the words after it are its `rest`.
  */
 export function parseArgs(
   argv: readonly string[],
   commandFlags: CommandFlags,
   commandSwitches: CommandSwitches = {},
-  renamedFlags: RenamedFlags = {},
+  renamed: Renamed = {},
   restCommands: CommandRest = new Set(),
 ): ParsedArgs {
-  const { command, tail } = commandOf(argv, commandFlags);
+  const renamedFlags = renamed.flags ?? {};
+  const { command, tail } = commandOf(argv, commandFlags, renamed.commands ?? {});
   const allowed = commandFlags[command] ?? [];
   const switchable = commandSwitches[command] ?? [];
   const positionals: string[] = [];

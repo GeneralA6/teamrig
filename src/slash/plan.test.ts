@@ -8,7 +8,7 @@ import { planSlash, sessionReads, withSession, type CommandTable } from './plan.
 const TABLE: CommandTable = {
   flags: { list: ['session', 'status'], add: ['session', 'title'], who: [], 'inbox read': ['session'], 'hook stop': [], mystery: ['session'], test: ['session'] },
   switches: { list: ['all'] },
-  renamed: { tier: 'priority' },
+  renamed: { flags: { tier: 'priority' } },
   rest: new Set(['test']),
   effects: { list: 'read', add: 'write', who: 'read', 'inbox read': 'write', 'hook stop': 'internal', test: 'write' },
 };

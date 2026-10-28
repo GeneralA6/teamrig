@@ -8,7 +8,7 @@ import {
   UsageError,
   type CommandFlags,
   type CommandSwitches,
-  type RenamedFlags,
+  type Renamed,
 } from './args.ts';
 
 const COMMANDS: CommandFlags = {
@@ -62,10 +62,17 @@ describe('parseArgs', () => {
   });
 
   it('refuses a renamed flag on every command with its new name, never reading it as an alias', () => {
-    const renamed: RenamedFlags = { tier: 'priority' };
+    const renamed: Renamed = { flags: { tier: 'priority' } };
     assert.equal(usageMessage(() => parseArgs(['add', '--title', 'x', '--tier', '2'], COMMANDS, {}, renamed)), '--tier was renamed: use --priority');
     assert.equal(usageMessage(() => parseArgs(['show', 'T1', '--tier', '2'], COMMANDS, {}, renamed)), '--tier was renamed: use --priority');
     assert.equal(usageMessage(() => parseArgs(['add', '--tier', '2'], COMMANDS)), 'add takes no --tier', 'with no rename given it is just unknown');
+  });
+
+  it('refuses a renamed command with its new name, its words after it included, never running it as an alias', () => {
+    const renamed: Renamed = { commands: { post: 'inbox add' } };
+    assert.equal(usageMessage(() => parseArgs(['post', '--to', 'alpha'], COMMANDS, {}, renamed)), 'post was renamed: use inbox add');
+    assert.equal(usageMessage(() => parseArgs(['post', 'end'], COMMANDS, {}, renamed)), 'post was renamed: use inbox add');
+    assert.equal(usageMessage(() => parseArgs(['post'], COMMANDS)), 'unknown command "post"', 'with no rename given it is just unknown');
   });
 
   it('refuses a flag without a value or given twice', () => {
@@ -94,7 +101,7 @@ describe('the command a usage error is for, and help requests', () => {
     assert.equal(commandOf(() => parseArgs(['add', '--titel', 'x'], COMMANDS)), 'add');
     assert.equal(commandOf(() => parseArgs(['add', '--title'], COMMANDS)), 'add');
     assert.equal(commandOf(() => parseArgs(['add', '--priority', 'p1', '--priority', 'p2'], COMMANDS)), 'add');
-    assert.equal(commandOf(() => parseArgs(['show', '--tier', '2'], COMMANDS, {}, { tier: 'priority' })), 'show');
+    assert.equal(commandOf(() => parseArgs(['show', '--tier', '2'], COMMANDS, {}, { flags: { tier: 'priority' } })), 'show');
     assert.equal(commandOf(() => parseArgs(['inbox', 'read', '--all', '--all'], COMMANDS, switches)), 'inbox read');
     assert.equal(commandOf(() => parseArgs(['inbox', 'drop'], COMMANDS)), 'inbox');
     assert.equal(commandOf(() => parseArgs(['launch'], COMMANDS)), undefined);

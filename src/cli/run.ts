@@ -4,7 +4,7 @@ import { TEAM_POINTER } from '../core/team.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { cutLineMessage, shimArgs } from './cmd-shim.ts';
 import { CommandHelp } from './help.ts';
-import { parseArgs, UsageError, type CommandEffect, type CommandEffects, type CommandFlags, type CommandRest, type CommandSwitches, type ParsedArgs, type RenamedFlags } from './args.ts';
+import { parseArgs, UsageError, type CommandEffect, type CommandEffects, type CommandFlags, type CommandRest, type CommandSwitches, type ParsedArgs, type Renamed } from './args.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from './runtime.ts';
 import type { CommandTable } from '../slash/plan.ts';
 
@@ -268,10 +268,13 @@ export const COMMAND_SWITCHES: CommandSwitches = Object.fromEntries(Object.entri
 export const COMMAND_EFFECTS: CommandEffects = Object.fromEntries(Object.entries(COMMANDS).map(([name, spec]) => [name, spec.effect]));
 /** The commands that take a command line after `--`. */
 export const COMMAND_REST: CommandRest = new Set(Object.entries(COMMANDS).flatMap(([name, spec]) => (spec.rest === true ? [name] : [])));
-/** `--tier` became `--priority` (levels p1, p2, ...): refused everywhere with the new name, never an alias. */
-const RENAMED_FLAGS: RenamedFlags = { tier: 'priority', problem: 'type bug [--critical] (or --type task)' };
+/**
+ * Renamed flags and commands, refused everywhere with the new name, never an alias: `--tier` became `--priority`
+ * (levels p1, p2, ...).
+ */
+const RENAMED: Renamed = { flags: { tier: 'priority', problem: 'type bug [--critical] (or --type task)' }, commands: {} };
 /** The table a line is read with, and each command's effect: what `/teamrig` plans a line from (src/slash/plan.ts). */
-export const COMMAND_TABLE: CommandTable = { flags: COMMAND_FLAGS, switches: COMMAND_SWITCHES, renamed: RENAMED_FLAGS, rest: COMMAND_REST, effects: COMMAND_EFFECTS };
+export const COMMAND_TABLE: CommandTable = { flags: COMMAND_FLAGS, switches: COMMAND_SWITCHES, renamed: RENAMED, rest: COMMAND_REST, effects: COMMAND_EFFECTS };
 
 export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|name>, else $${ENV.session})
   team create <team> --sessions <id,id> [--lead <id>] [--project <dir>] [--parent <team>] [--dry-run]
@@ -716,7 +719,7 @@ export async function runCli(given: readonly string[], runtime: CliRuntime): Pro
 
   let named: string | undefined;
   try {
-    const args = parseArgs(argv, COMMAND_FLAGS, COMMAND_SWITCHES, RENAMED_FLAGS, COMMAND_REST);
+    const args = parseArgs(argv, COMMAND_FLAGS, COMMAND_SWITCHES, RENAMED, COMMAND_REST);
     named = args.command;
     if (args.help) {
       runtime.out.stdout(COMMAND_HELP.forCommand(args.command));
