@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { CliHarness, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
-import { FakeIntegrateGit, MAIN_CHECKOUT } from '../testing/fake-integrate-git.ts';
+import { FakeMergeGit, MAIN_CHECKOUT } from '../testing/fake-merge-git.ts';
 import { FakeStarterWatch } from '../testing/fake-starter-watch.ts';
 import { heldBy, otherRuns } from '../testing/held-lock.ts';
 
@@ -18,14 +18,14 @@ const BY_HAND = `a new roll finds nothing pending, so run \`node tools/roll.js\`
 
 interface World {
   readonly kit: CliHarness;
-  readonly git: FakeIntegrateGit;
+  readonly git: FakeMergeGit;
   readonly hooks: FakeHooks;
 }
 
 /** A team whose main checkout is two commits behind origin. */
 function world(): World {
   const kit = new CliHarness(ROLLING);
-  const git = new FakeIntegrateGit();
+  const git = new FakeMergeGit();
   git.origin.set('main', 'c2');
   git.ancestry.add('base>c2');
   git.landed = ['c1', 'c2'];
@@ -43,7 +43,7 @@ describe('teamrig roll', () => {
   it('pulls and rolls what was pushed, records the deploy and prints DONE', async () => {
     const { kit, git, hooks } = world();
     hooks.answer(COMMAND, { lines: ['rolled api on c2'], takesMs: 60_000 });
-    assert.deepEqual(await kit.run(ROLL, { ...ELSEWHERE, integrateGit: git, hooks }), {
+    assert.deepEqual(await kit.run(ROLL, { ...ELSEWHERE, mergeGit: git, hooks }), {
       code: 0,
       stdout: [
         '2030-01-08 10:00:00 UTC 2 commits pending in app (c1..c2)',
@@ -73,7 +73,7 @@ describe('teamrig roll', () => {
   it('is DONE with nothing run when nothing is pending', async () => {
     const { kit, git, hooks } = world();
     git.origin.set('main', 'base');
-    assert.deepEqual(await kit.run(ROLL, { ...ELSEWHERE, integrateGit: git, hooks }), {
+    assert.deepEqual(await kit.run(ROLL, { ...ELSEWHERE, mergeGit: git, hooks }), {
       code: 0,
       stdout: ["DONE nothing to roll: the app main checkout is at its origin's default branch (base)"],
       stderr: [],
@@ -85,7 +85,7 @@ describe('teamrig roll', () => {
     const { kit, git, hooks } = world();
     const claim = ['claim', '--session', 'bravo', '--targets', 'api', '--metric', 'p95', '--why', 'cache probe', '--for', '5m'];
     assert.deepEqual(await kit.run(claim, ELSEWHERE), { code: 0, stdout: ['CLAIMED api until 2030-01-08 10:05 UTC'], stderr: [] });
-    const result = await kit.run(ROLL, { ...ELSEWHERE, integrateGit: git, hooks });
+    const result = await kit.run(ROLL, { ...ELSEWHERE, mergeGit: git, hooks });
     assert.equal(result.code, 0, result.stdout.join('\n'));
     assert.ok(result.stdout.includes('2030-01-08 10:00:00 UTC waiting: quiet claim by bravo on api until 2030-01-08 10:05 UTC (p95)'));
     assert.ok(kit.clock.now() >= Date.parse('2030-01-08T10:05:00Z'), 'it rolled once the claim ended');
@@ -93,14 +93,14 @@ describe('teamrig roll', () => {
 
   it('prints REFUSED for a repository it cannot roll and FAILED when the roll command fails', async () => {
     const refused = world();
-    assert.deepEqual(await refused.kit.run([...ROLL, '--repo', 'site'], { ...ELSEWHERE, integrateGit: refused.git, hooks: refused.hooks }), {
+    assert.deepEqual(await refused.kit.run([...ROLL, '--repo', 'site'], { ...ELSEWHERE, mergeGit: refused.git, hooks: refused.hooks }), {
       code: 2,
       stdout: ['REFUSED site is not in coordinator.repos (with a roll block: app)'],
       stderr: [],
     });
     const failing = world();
     failing.hooks.answer(COMMAND, { lines: ['kubectl: connection refused'], end: 1 });
-    const result = await failing.kit.run(ROLL, { ...ELSEWHERE, integrateGit: failing.git, hooks: failing.hooks });
+    const result = await failing.kit.run(ROLL, { ...ELSEWHERE, mergeGit: failing.git, hooks: failing.hooks });
     assert.equal(result.code, 1);
     assert.equal(result.stdout.at(-1), `FAILED c1..c2 pulled, but the roll command exited 1: kubectl: connection refused; its owners fix forward or roll back, and ${BY_HAND}`);
   });
@@ -109,7 +109,7 @@ describe('teamrig roll', () => {
     const { kit, git, hooks } = world();
     const starters = new FakeStarterWatch();
     hooks.answer(COMMAND, { takesMs: 60_000, during: async () => starters.end() });
-    const result = await kit.run(ROLL, { ...ELSEWHERE, integrateGit: git, hooks, starters });
+    const result = await kit.run(ROLL, { ...ELSEWHERE, mergeGit: git, hooks, starters });
     assert.equal(result.code, 1);
     assert.match(result.stdout.at(-1) ?? '', /^FAILED c1..c2 pulled, but the roll command was killed when its launching shell ended/);
     assert.ok(JSON.stringify(ledgerOf(kit)).includes('"exitCode":129'), 'the roll step is recorded as exit 129');
@@ -121,7 +121,7 @@ describe('teamrig roll', () => {
     const restart = ['node', 'tools/restart.js', 'api'];
     hooks.answer(restart, { lines: ['restarted api'], takesMs: 30_000 });
     const deploy = [...ROLL, '--targets', 'api', '--what', 'rotate the db credential', '--', ...restart];
-    assert.deepEqual(await kit.run(deploy, { ...ELSEWHERE, integrateGit: git, hooks }), {
+    assert.deepEqual(await kit.run(deploy, { ...ELSEWHERE, mergeGit: git, hooks }), {
       code: 0,
       stdout: ['2030-01-08 10:00:00 UTC clear; deploying api of app: node tools/restart.js api', '2030-01-08 10:00:00 UTC   restarted api', 'DONE deployed api of app: restarted api'],
       stderr: [],
@@ -151,7 +151,7 @@ describe('teamrig roll', () => {
       [['--what', 'rotate'], '--what and a command after -- make a deploy: name the targets it restarts with --targets <a,b>'],
     ];
     for (const [extra, message] of cases) {
-      const result = await kit.run([...ROLL, ...extra], { ...ELSEWHERE, integrateGit: git, hooks });
+      const result = await kit.run([...ROLL, ...extra], { ...ELSEWHERE, mergeGit: git, hooks });
       assert.equal(result.code, 64, extra.join(' '));
       assert.equal(result.stderr[0]?.split('\n')[0], message, extra.join(' '));
     }
@@ -166,7 +166,7 @@ describe('teamrig roll', () => {
       await kit.clock.sleep(ms);
       starters.end();
     };
-    const result = await kit.run(ROLL, { ...ELSEWHERE, integrateGit: git, hooks, starters, sleep, sessionProcesses: otherRuns() });
+    const result = await kit.run(ROLL, { ...ELSEWHERE, mergeGit: git, hooks, starters, sleep, sessionProcesses: otherRuns() });
     assert.equal(result.code, 1);
     assert.equal(result.stdout.at(-1), 'STOPPED before the host lock was free: nothing ran');
     assert.equal(result.stdout.at(-2), '2030-01-08 10:00:02 UTC its launching shell ended (bash.exe 4100) while it waited: no one waits for it any more');

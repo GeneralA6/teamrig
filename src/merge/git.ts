@@ -23,7 +23,7 @@ export const ORIGIN = 'origin';
  * The git steps `teamrig merge` takes, each in the folder it names; the push itself runs as a heavy step. A step
  * that names a `remote` takes a remote's name, such as {@link ORIGIN}.
  */
-export interface IntegrateGit {
+export interface MergeGit {
   checkoutOf(dir: string): Checkout | undefined;
   /** `git status --porcelain` lines; untracked files only when `untracked`; undefined when git could not tell. */
   changes(dir: string, untracked: boolean): readonly string[] | undefined;
@@ -96,7 +96,7 @@ function refusedAsOption(name: string, what: string): GitOutcome | undefined {
 }
 
 /** The git CLI. */
-export const GIT_INTEGRATE: IntegrateGit = {
+export const GIT_MERGE: MergeGit = {
   checkoutOf(dir) {
     const [top, gitDir, commonDir] = lines(query(dir, ['rev-parse', '--path-format=absolute', '--show-toplevel', '--git-dir', '--git-common-dir']));
     if (top === undefined || gitDir === undefined || commonDir === undefined) {

@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
-import { MAIN_CHECKOUT } from '../testing/fake-integrate-git.ts';
+import { MAIN_CHECKOUT } from '../testing/fake-merge-git.ts';
 
 const LEDGER = join(TEAM_HOME, 'state', 'deploys', 'ledger.jsonl');
 const LEDGER_MD = join(TEAM_HOME, 'state', 'deploys', 'ledger.md');

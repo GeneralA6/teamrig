@@ -9,11 +9,11 @@ import type { Env } from '../core/home.ts';
 import { SecretScanner } from '../core/secrets.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { TimeZone } from '../core/zone.ts';
-import { BASELINE_LOCK_ENV } from '../integrate/dependencies.ts';
-import { LOCKFILE } from '../integrate/manifest.ts';
+import { BASELINE_LOCK_ENV } from '../merge/dependencies.ts';
+import { LOCKFILE } from '../merge/manifest.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
-import { FakeIntegrateGit, MAIN_CHECKOUT, WORKTREE } from '../testing/fake-integrate-git.ts';
+import { FakeMergeGit, MAIN_CHECKOUT, WORKTREE } from '../testing/fake-merge-git.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { rollRepo, type RollEnd, type RollRequest, type RollSetup } from './roll.ts';
 
@@ -44,7 +44,7 @@ interface Options {
 }
 
 class World {
-  readonly git = new FakeIntegrateGit();
+  readonly git = new FakeMergeGit();
   readonly files: MemoryFiles;
   readonly clock = new FakeClock('2030-01-08T10:00:00Z');
   readonly hooks = new FakeHooks(this.clock);

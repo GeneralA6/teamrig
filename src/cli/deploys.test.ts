@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { KIT_VERSION } from '../core/version.ts';
 import { CliHarness, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
-import { FakeIntegrateGit, MAIN_CHECKOUT } from '../testing/fake-integrate-git.ts';
+import { FakeMergeGit, MAIN_CHECKOUT } from '../testing/fake-merge-git.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 
 const LOCK = join(KIT, 'host.lock');
@@ -31,8 +31,8 @@ function otherRuns(): FakeSessionProcesses {
 }
 
 /** A main checkout two commits behind origin. */
-function behind(): FakeIntegrateGit {
-  const git = new FakeIntegrateGit();
+function behind(): FakeMergeGit {
+  const git = new FakeMergeGit();
   git.origin.set('main', 'c2');
   git.ancestry.add('base>c2');
   git.landed = ['c1', 'c2'];
@@ -49,7 +49,7 @@ describe('teamrig deploys', () => {
     const ended = (await kit.run(['load', '--session', 'alpha', '--what', 'backfill', '--at', '08:30'])).stdout.join('');
     assert.equal((await kit.run(['load', 'end', '--session', 'alpha', '--id', /LOAD (\S+)/.exec(ended)?.[1] ?? '', '--at', '09:00'])).code, 0);
     const open = /LOAD (\S+)/.exec((await kit.run(['load', '--session', 'bravo', '--what', 'reindex', '--targets', 'cloud-api,cloud-web'])).stdout.join(''))?.[1];
-    const result = await kit.run(['deploys'], { integrateGit: behind(), sessionProcesses: otherRuns() });
+    const result = await kit.run(['deploys'], { mergeGit: behind(), sessionProcesses: otherRuns() });
     assert.equal(result.code, 0, JSON.stringify(result));
     const trim = /^ {2}(\S+) by alpha: trim/m.exec(result.stdout.join('\n'))?.[1];
     assert.deepEqual(result.stdout, [
@@ -72,7 +72,7 @@ describe('teamrig deploys', () => {
     const claim = ['claim', '--session', 'bravo', '--targets', 'cloud-api', '--metric', 'p95', '--why', 'cache probe', '--for', '30m'];
     assert.deepEqual((await kit.run(claim, inIsrael)).stdout, ['CLAIMED cloud-api until 2030-01-08 12:30 IST']);
     assert.equal((await kit.run(['load', '--session', 'alpha', '--what', 'trim', '--at', '11:00'], inIsrael)).code, 0);
-    const result = await kit.run(['deploys'], { integrateGit: behind(), sessionProcesses: otherRuns(), ...inIsrael });
+    const result = await kit.run(['deploys'], { mergeGit: behind(), sessionProcesses: otherRuns(), ...inIsrael });
     assert.deepEqual(result.stdout.slice(0, 6), [
       'host lock: po (heavy: build) since 2030-01-08 11:50 IST',
       'heavy cutoff: 00:30-02:00 IST (no heavy step starts)',
@@ -88,7 +88,7 @@ describe('teamrig deploys', () => {
     const kit = new CliHarness(PLAIN);
     await kit.files.append(LOCK, heldBy('2030-01-08T09:55:00.000Z'));
     await kit.files.append(CLAIMS, JSON.stringify([{ session: 'bravo', targets: ['cloud-api'], metric: 'p95', why: 'probe', from: '2030-01-08T09:00:00.000Z', until: '2030-01-08T09:30:00.000Z' }]));
-    assert.deepEqual(await kit.run(['deploys'], { integrateGit: new FakeIntegrateGit(), sessionProcesses: otherRuns() }), {
+    assert.deepEqual(await kit.run(['deploys'], { mergeGit: new FakeMergeGit(), sessionProcesses: otherRuns() }), {
       code: 0,
       stdout: [
         'host lock: free: the lock of po (heavy: build) since 2030-01-08 09:50 UTC is stale, and the next heavy step removes it',
@@ -107,7 +107,7 @@ describe('teamrig deploys', () => {
     const share = { token: 'other', pid: OTHER, session: 'po', purpose: 'heavy: specs', kit: KIT_VERSION, acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z', reserveMb: 2048 };
     await kit.files.append(`${LOCK}.shared/other.json`, JSON.stringify(share));
     await kit.files.append(`${LOCK}.shared/gone.json`, JSON.stringify({ ...share, token: 'gone', pid: 7 }));
-    const { stdout } = await kit.run(['deploys'], { integrateGit: new FakeIntegrateGit(), sessionProcesses: otherRuns() });
+    const { stdout } = await kit.run(['deploys'], { mergeGit: new FakeMergeGit(), sessionProcesses: otherRuns() });
     assert.deepEqual(stdout.slice(0, 2), ['host lock: free', 'sharing the host: 1 small step: po (heavy: specs) since 2030-01-08 09:50 UTC']);
   });
 
@@ -115,9 +115,9 @@ describe('teamrig deploys', () => {
     const kit = new CliHarness({ ...PLAIN, coordinator: { ...PLAIN.coordinator, schedule: { resetBlackoutHours: 4, heavyCutoffUtc: '09:30' } } });
     await kit.files.append(LOCK, '{"tok');
     await kit.files.append(CLAIMS, 'not json');
-    const offBranch = new FakeIntegrateGit();
+    const offBranch = new FakeMergeGit();
     offBranch.checkouts.set(MAIN_CHECKOUT, { top: MAIN_CHECKOUT, branch: 'fix', mainCheckout: MAIN_CHECKOUT, linked: false });
-    const { stdout } = await kit.run(['deploys'], { integrateGit: offBranch });
+    const { stdout } = await kit.run(['deploys'], { mergeGit: offBranch });
     assert.deepEqual(stdout.slice(0, 3), [
       'host lock: a writer that has not finished writing',
       'heavy cutoff: IN FORCE 09:30-00:00 UTC (no heavy step starts)',
@@ -125,9 +125,9 @@ describe('teamrig deploys', () => {
     ]);
     assert.match(stdout[3] ?? '', /^claims: unreadable \(.+\)$/);
     assert.equal(stdout.at(-1), `app: a roll would refuse: the app main checkout ${MAIN_CHECKOUT} is on fix, not main`);
-    const offline = new FakeIntegrateGit();
+    const offline = new FakeMergeGit();
     offline.fetchFails = 'no network';
-    assert.equal((await kit.run(['deploys'], { integrateGit: offline })).stdout.at(-1), `app: cannot read what is pending: git fetch failed in ${MAIN_CHECKOUT}: no network`);
+    assert.equal((await kit.run(['deploys'], { mergeGit: offline })).stdout.at(-1), `app: cannot read what is pending: git fetch failed in ${MAIN_CHECKOUT}: no network`);
     const pushOnly = new CliHarness({ ...TEAM, coordinator: { repos: { web: { mainCheckout: '/repo/web', deploysOnPush: ['cloud-web'] } } } });
     assert.equal((await pushOnly.run(['deploys'])).stdout.at(-1), 'rolls: no repository in coordinator.repos has a roll block');
   });

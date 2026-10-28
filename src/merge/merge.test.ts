@@ -10,12 +10,12 @@ import { KIT_VERSION } from '../core/version.ts';
 import { TimeZone } from '../core/zone.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
-import { FakeIntegrateGit, MAIN_CHECKOUT, WORKTREE } from '../testing/fake-integrate-git.ts';
+import { FakeMergeGit, MAIN_CHECKOUT, WORKTREE } from '../testing/fake-merge-git.ts';
 import { FakeSteps } from '../testing/fake-steps.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { commandLine } from '../test-run/shell.ts';
 import { BASELINE_LOCK_ENV } from './dependencies.ts';
-import { integrateBranch, PUSH_ATTEMPTS, repoOf, type IntegrateEnd, type IntegrateRequest, type IntegrateSetup } from './integrate.ts';
+import { mergeBranch, PUSH_ATTEMPTS, repoOf, type MergeEnd, type MergeRequest, type MergeSetup } from './merge.ts';
 import { parsePendingMerge, type PendingMerge } from './pending-merges.ts';
 
 const PLACES: CoordinatorPlaces = {
@@ -27,7 +27,7 @@ const PLACES: CoordinatorPlaces = {
   hostLock: '/kit/host.lock',
   pendingMerges: '/team/deploys/pending-merges',
 };
-const REQUEST: IntegrateRequest = { session: 'api', dir: WORKTREE, keepRemote: false, keepLocal: false };
+const REQUEST: MergeRequest = { session: 'api', dir: WORKTREE, keepRemote: false, keepLocal: false };
 const PLAIN: CoordinatorRepoConfig = { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], dependencyGate: false, followMainCheckout: false };
 
 interface Options {
@@ -41,7 +41,7 @@ interface Options {
 }
 
 class World {
-  readonly git = new FakeIntegrateGit();
+  readonly git = new FakeMergeGit();
   readonly files: MemoryFiles;
   readonly clock: FakeClock;
   readonly steps: FakeSteps;
@@ -50,7 +50,7 @@ class World {
   readonly said: string[] = [];
   /** How often the next reset was read. */
   resetReads = 0;
-  readonly setup: IntegrateSetup;
+  readonly setup: MergeSetup;
   private readonly reset: ResetTime | undefined;
 
   constructor(options: Options = {}) {
@@ -83,8 +83,8 @@ class World {
     });
   }
 
-  run(request: IntegrateRequest = REQUEST): Promise<IntegrateEnd> {
-    return integrateBranch(this.setup, {
+  run(request: MergeRequest = REQUEST): Promise<MergeEnd> {
+    return mergeBranch(this.setup, {
       git: this.git,
       steps: this.steps,
       hooks: this.hooks,
@@ -114,12 +114,12 @@ class World {
   }
 }
 
-function refused(end: IntegrateEnd, pattern: RegExp): void {
+function refused(end: MergeEnd, pattern: RegExp): void {
   assert.equal(end.kind, 'refused', JSON.stringify(end));
   assert.match(end.kind === 'refused' ? end.reason : '', pattern);
 }
 
-function failed(end: IntegrateEnd, pattern: RegExp): void {
+function failed(end: MergeEnd, pattern: RegExp): void {
   assert.equal(end.kind, 'failed', JSON.stringify(end));
   assert.match(end.kind === 'failed' ? end.reason : '', pattern);
 }
@@ -140,7 +140,7 @@ describe('repoOf', () => {
 
 
 describe('merge refuses a branch it must not merge, before the lock', () => {
-  const cases: readonly { readonly name: string; readonly arrange: (world: World) => void; readonly request?: IntegrateRequest; readonly expect: RegExp }[] = [
+  const cases: readonly { readonly name: string; readonly arrange: (world: World) => void; readonly request?: MergeRequest; readonly expect: RegExp }[] = [
     { name: 'a folder outside git', arrange: () => undefined, request: { ...REQUEST, dir: '/nowhere' }, expect: /\/nowhere is not in a git checkout/ },
     { name: 'a detached HEAD', arrange: (world) => world.git.checkouts.set(WORKTREE, { top: WORKTREE, branch: undefined, mainCheckout: MAIN_CHECKOUT, linked: true }), expect: /detached HEAD/ },
     { name: 'a failed git status', arrange: (world) => world.git.statusFails.add(WORKTREE), expect: /git status failed/ },
@@ -655,7 +655,7 @@ describe('merge goes through the repository’s merge command, where one is set'
     assert.ok(world.lockFree());
   });
 
-  const holds: readonly { readonly name: string; readonly options: Options; readonly arrange: (world: World) => void; readonly end: (end: IntegrateEnd) => void }[] = [
+  const holds: readonly { readonly name: string; readonly options: Options; readonly arrange: (world: World) => void; readonly end: (end: MergeEnd) => void }[] = [
     {
       name: 'after the heavy cutoff',
       options: { repos: { app: MERGING }, start: '2030-01-08T22:45:00Z', schedule: { heavyCutoffUtc: '22:30' } },

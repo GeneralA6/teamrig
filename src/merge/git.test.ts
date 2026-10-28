@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { TempRepo } from '../../tools/lib/temp-repo.ts';
-import { GIT_INTEGRATE as git, ORIGIN } from './git.ts';
+import { GIT_MERGE as git, ORIGIN } from './git.ts';
 
 /** A repo on `main`, pushed to a bare origin beside it, with `origin/HEAD` set; returns the repo and the origin's folder. */
 function repoWithOrigin(prefix: string): { repo: TempRepo; origin: string } {
@@ -40,9 +40,9 @@ function sameFolder(actual: string | undefined, expected: string): void {
   assert.equal(actual === undefined ? undefined : resolve(actual), resolve(expected));
 }
 
-describe('GIT_INTEGRATE where a checkout is', () => {
+describe('GIT_MERGE where a checkout is', () => {
   it('tells the main checkout from a linked worktree, and a branch from a detached HEAD', () => {
-    const { repo } = repoWithOrigin('integrate-where');
+    const { repo } = repoWithOrigin('merge-where');
     const linked = join(repo.outside, 'feat');
     try {
       repo.git('worktree', 'add', '-q', '-b', 'feat', linked);
@@ -64,7 +64,7 @@ describe('GIT_INTEGRATE where a checkout is', () => {
   });
 
   it('lists changes, untracked files only when asked', () => {
-    const { repo } = repoWithOrigin('integrate-changes');
+    const { repo } = repoWithOrigin('merge-changes');
     try {
       assert.deepEqual(git.changes(repo.dir, true), []);
       repo.write('new.txt', 'new\n');
@@ -78,7 +78,7 @@ describe('GIT_INTEGRATE where a checkout is', () => {
   });
 
   it("finds origin's default branch from origin/HEAD, else main or master", () => {
-    const { repo } = repoWithOrigin('integrate-default');
+    const { repo } = repoWithOrigin('merge-default');
     try {
       repo.git('push', '-q', 'origin', 'main:trunk');
       repo.git('fetch', '-q', 'origin');
@@ -96,9 +96,9 @@ describe('GIT_INTEGRATE where a checkout is', () => {
   });
 });
 
-describe('GIT_INTEGRATE reading origin and a range', () => {
+describe('GIT_MERGE reading origin and a range', () => {
   it("reads origin's branch from origin itself, and the local copy only after a fetch", () => {
-    const { repo } = repoWithOrigin('integrate-remote');
+    const { repo } = repoWithOrigin('merge-remote');
     try {
       const before = repo.git('rev-parse', 'HEAD').trim();
       const landed = landElsewhere(repo, 'other.txt', 'other\n');
@@ -115,7 +115,7 @@ describe('GIT_INTEGRATE reading origin and a range', () => {
   });
 
   it('reads, fetches and follows a remote beside origin, such as the project a fork was made from', () => {
-    const { repo } = repoWithOrigin('integrate-upstream');
+    const { repo } = repoWithOrigin('merge-upstream');
     try {
       const upstream = join(repo.outside, 'upstream.git');
       repo.git('init', '-q', '--bare', '-b', 'trunk', upstream);
@@ -141,7 +141,7 @@ describe('GIT_INTEGRATE reading origin and a range', () => {
   });
 
   it("reads a range's commits, paths and files at either end", () => {
-    const { repo } = repoWithOrigin('integrate-range');
+    const { repo } = repoWithOrigin('merge-range');
     try {
       repo.git('switch', '-q', '-c', 'feat');
       const first = commit(repo, 'package.json', '{"name": "app"}\n', 'manifest');
@@ -161,9 +161,9 @@ describe('GIT_INTEGRATE reading origin and a range', () => {
   });
 });
 
-describe('GIT_INTEGRATE rebase', () => {
+describe('GIT_MERGE rebase', () => {
   it('rebases the branch onto a moved main', () => {
-    const { repo } = repoWithOrigin('integrate-rebase');
+    const { repo } = repoWithOrigin('merge-rebase');
     try {
       repo.git('switch', '-q', '-c', 'feat');
       commit(repo, 'feat.txt', 'feat\n', 'feat');
@@ -177,7 +177,7 @@ describe('GIT_INTEGRATE rebase', () => {
   });
 
   it('aborts a rebase that stops on a conflict and names the paths, leaving the branch as it was', () => {
-    const { repo } = repoWithOrigin('integrate-conflict');
+    const { repo } = repoWithOrigin('merge-conflict');
     try {
       repo.git('switch', '-q', '-c', 'feat');
       const mine = commit(repo, 'app.txt', 'mine\n', 'mine');
@@ -194,9 +194,9 @@ describe('GIT_INTEGRATE rebase', () => {
   });
 });
 
-describe('GIT_INTEGRATE cleanup', () => {
+describe('GIT_MERGE cleanup', () => {
   it("deletes the pushed branch on origin and here, and moves main where it is not checked out", () => {
-    const { repo } = repoWithOrigin('integrate-cleanup');
+    const { repo } = repoWithOrigin('merge-cleanup');
     try {
       repo.git('switch', '-q', '-c', 'feat');
       commit(repo, 'feat.txt', 'feat\n', 'feat');
@@ -218,7 +218,7 @@ describe('GIT_INTEGRATE cleanup', () => {
   });
 
   it('refuses a branch or commit name that git would read as an option, leaving HEAD and the branch as they were', () => {
-    const { repo } = repoWithOrigin('integrate-dash');
+    const { repo } = repoWithOrigin('merge-dash');
     try {
       const head = git.sha(repo.dir, 'HEAD');
       assert.deepEqual(git.checkout(repo.dir, '--orphan'), { ok: false, reason: 'git checkout refused "--orphan": a branch or commit name never starts with "-"' });
@@ -231,7 +231,7 @@ describe('GIT_INTEGRATE cleanup', () => {
   });
 
   it('checks out a branch named like a file in the checkout', () => {
-    const { repo } = repoWithOrigin('integrate-file-named');
+    const { repo } = repoWithOrigin('merge-file-named');
     try {
       repo.git('branch', 'app.txt');
       assert.deepEqual(git.checkout(repo.dir, 'app.txt'), { ok: true });
@@ -243,7 +243,7 @@ describe('GIT_INTEGRATE cleanup', () => {
   });
 
   it('resets the checkout back to a commit, and refuses where a local change would be lost', () => {
-    const { repo } = repoWithOrigin('integrate-reset');
+    const { repo } = repoWithOrigin('merge-reset');
     try {
       const before = git.sha(repo.dir, 'HEAD');
       assert.ok(before !== undefined);
@@ -261,7 +261,7 @@ describe('GIT_INTEGRATE cleanup', () => {
   });
 
   it('leaves main alone where another checkout has it, and fast-forwards that checkout instead', () => {
-    const { repo } = repoWithOrigin('integrate-follow');
+    const { repo } = repoWithOrigin('merge-follow');
     const linked = join(repo.outside, 'feat');
     try {
       repo.git('worktree', 'add', '-q', '-b', 'feat', linked);

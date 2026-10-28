@@ -5,7 +5,7 @@ import { formatSnapshot } from '../budget/snapshot.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { APP, CliHarness, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
-import { FakeIntegrateGit, MAIN_CHECKOUT, WORKTREE } from '../testing/fake-integrate-git.ts';
+import { FakeMergeGit, MAIN_CHECKOUT, WORKTREE } from '../testing/fake-merge-git.ts';
 import { FakeStarterWatch } from '../testing/fake-starter-watch.ts';
 import { FakeSteps } from '../testing/fake-steps.ts';
 import { heldBy, otherRuns } from '../testing/held-lock.ts';
@@ -16,20 +16,20 @@ const LOCK = join(KIT, 'host.lock');
 const MINUTE = 60_000;
 const SESSION_ID = '0f8e2c4a-1b3d-4e5f-8a9b-0c1d2e3f4a5b';
 const DEPLOYING = { ...TEAM, coordinator: { repos: { app: { mainCheckout: MAIN_CHECKOUT, deploysOnPush: ['cloud-api'] } } } };
-const INTEGRATE = ['merge', '--session', 'alpha'];
+const MERGE_RUN = ['merge', '--session', 'alpha'];
 /** A run in the worktree, outside the project folder: its team comes from $TEAMRIG_TEAM. */
 const IN_WORKTREE = { cwd: WORKTREE, env: { TEAMRIG_TEAM: 'app' } };
 
 interface World {
   readonly kit: CliHarness;
-  readonly git: FakeIntegrateGit;
+  readonly git: FakeMergeGit;
   readonly steps: FakeSteps;
 }
 
 /** A team whose push takes 2 minutes and lands, as git push does when origin takes it. */
 function world(config: Readonly<Record<string, unknown>> = DEPLOYING): World {
   const kit = new CliHarness(config);
-  const git = new FakeIntegrateGit();
+  const git = new FakeMergeGit();
   const steps = new FakeSteps(kit.clock).ends(0, 2 * MINUTE).whileRunning(async (request) => {
     git.pushed('main', git.heads.get(request.cwd) ?? '');
   });
@@ -46,7 +46,7 @@ function ledgerOf(kit: CliHarness): unknown[] {
 describe('teamrig merge', () => {
   it('merges the branch of the current folder, records the push and the deploy it starts, and prints DONE', async () => {
     const { kit, git, steps } = world();
-    const result = await kit.run(INTEGRATE, { ...IN_WORKTREE, integrateGit: git, steps });
+    const result = await kit.run(MERGE_RUN, { ...IN_WORKTREE, mergeGit: git, steps });
     assert.deepEqual(result, {
       code: 0,
       stdout: [
@@ -80,7 +80,7 @@ describe('teamrig merge', () => {
 
   it('keeps the branch on origin and here with --keep-remote and --no-delete-local', async () => {
     const { kit, git, steps } = world();
-    const result = await kit.run([...INTEGRATE, '--keep-remote', '--no-delete-local'], { ...IN_WORKTREE, integrateGit: git, steps });
+    const result = await kit.run([...MERGE_RUN, '--keep-remote', '--no-delete-local'], { ...IN_WORKTREE, mergeGit: git, steps });
     assert.equal(result.code, 0);
     assert.ok(!git.log.some((line) => line.startsWith('deleteRemoteBranch') || line.startsWith('detach')));
     assert.equal(result.stdout.at(-2), `2030-01-08 10:02:00 UTC next: teamrig worktree remove "${WORKTREE}" --delete-branch`);
@@ -89,7 +89,7 @@ describe('teamrig merge', () => {
   it('prints FAILED and exits 1 when the push does not merge the branch', async () => {
     const { kit, git, steps } = world();
     steps.ends(1).whileRunning(async () => undefined);
-    const result = await kit.run(INTEGRATE, { ...IN_WORKTREE, integrateGit: git, steps });
+    const result = await kit.run(MERGE_RUN, { ...IN_WORKTREE, mergeGit: git, steps });
     assert.equal(result.code, 1);
     assert.equal(result.stdout.at(-1), "FAILED the push exited 1; origin's main is at base, not at rebased");
     assert.equal(kit.files.get(LOCK), undefined, 'the lock is released');
@@ -102,7 +102,7 @@ describe('teamrig merge', () => {
       git.pushed('main', 'moved');
       starters.end();
     });
-    const result = await kit.run(INTEGRATE, { ...IN_WORKTREE, integrateGit: git, steps, starters });
+    const result = await kit.run(MERGE_RUN, { ...IN_WORKTREE, mergeGit: git, steps, starters });
     assert.deepEqual([result.code, result.stdout.at(-1)], [1, "FAILED the push was killed when its launching shell ended (exit 129); origin's main is at moved, not at rebased"]);
     const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'merge app: push feat to main', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:00:00.000Z', exitCode: 129 }]);
@@ -117,7 +117,7 @@ describe('teamrig merge', () => {
       await kit.clock.sleep(ms);
       starters.end();
     };
-    const result = await kit.run(INTEGRATE, { ...IN_WORKTREE, integrateGit: git, steps, starters, sleep, sessionProcesses: otherRuns() });
+    const result = await kit.run(MERGE_RUN, { ...IN_WORKTREE, mergeGit: git, steps, starters, sleep, sessionProcesses: otherRuns() });
     assert.equal(result.code, 1);
     assert.equal(result.stdout.at(-1), 'STOPPED before the host lock was free: nothing ran');
     assert.equal(result.stdout.at(-2), '2030-01-08 10:00:02 UTC its launching shell ended (bash.exe 4100) while it waited: no one waits for it any more');
@@ -128,7 +128,7 @@ describe('teamrig merge', () => {
     const MERGE = ['node', 'merge.ts'];
     const { kit, git, steps } = world({ ...TEAM, coordinator: { repos: { app: { mainCheckout: MAIN_CHECKOUT, merge: { command: MERGE } } } } });
     const hooks = new FakeHooks(kit.clock).answer(MERGE, { end: 75, lines: ['https://forge/pr/7'] });
-    const result = await kit.run(INTEGRATE, { ...IN_WORKTREE, integrateGit: git, steps, hooks });
+    const result = await kit.run(MERGE_RUN, { ...IN_WORKTREE, mergeGit: git, steps, hooks });
     assert.equal(result.code, 75);
     assert.equal(result.stdout.at(-2), `2030-01-08 10:00:00 UTC next: run teamrig merge again in ${WORKTREE} once feat is merged`);
     assert.equal(result.stdout.at(-1), 'WAITING https://forge/pr/7');
@@ -138,7 +138,7 @@ describe('teamrig merge', () => {
 
   it('refuses a folder outside git', async () => {
     const { kit, git, steps } = world();
-    assert.deepEqual(await kit.run(INTEGRATE, { cwd: APP, integrateGit: git, steps }), { code: 2, stdout: [`REFUSED ${APP} is not in a git checkout`], stderr: [] });
+    assert.deepEqual(await kit.run(MERGE_RUN, { cwd: APP, mergeGit: git, steps }), { code: 2, stdout: [`REFUSED ${APP} is not in a git checkout`], stderr: [] });
   });
 
   it('refuses in the blackout before the reset the status line last reported', async () => {
@@ -157,26 +157,26 @@ describe('teamrig merge', () => {
       contextInputTokens: null,
     });
     await kit.files.write(join(TEAM_HOME, 'live', `${SESSION_ID}.json`), snapshot);
-    const result = await kit.run(INTEGRATE, { ...IN_WORKTREE, integrateGit: git, steps });
+    const result = await kit.run(MERGE_RUN, { ...IN_WORKTREE, mergeGit: git, steps });
     assert.deepEqual(result.stdout, ['REFUSED deploy blackout before the weekly token reset: no deploy from Tue 01-08 08:00 UTC until Tue 01-08 12:00 UTC (reset from the status line)']);
     assert.deepEqual(steps.ran, []);
   });
 
   it('merges in a blackout window when neither the status line nor budget.reset names the reset', async () => {
     const { kit, git, steps } = world({ ...DEPLOYING, coordinator: { ...DEPLOYING.coordinator, schedule: { resetBlackoutHours: 24 } } });
-    const result = await kit.run(INTEGRATE, { ...IN_WORKTREE, integrateGit: git, steps });
+    const result = await kit.run(MERGE_RUN, { ...IN_WORKTREE, mergeGit: git, steps });
     assert.equal(result.code, 0);
   });
 
   it('takes the reset from budget.reset when no status line reported one', async () => {
     const { kit, git, steps } = world({ ...DEPLOYING, budget: { reset: { weekday: 'tue', timeUtc: '11:00' } }, coordinator: { ...DEPLOYING.coordinator, schedule: { resetBlackoutHours: 2 } } });
-    const result = await kit.run(INTEGRATE, { ...IN_WORKTREE, integrateGit: git, steps });
+    const result = await kit.run(MERGE_RUN, { ...IN_WORKTREE, mergeGit: git, steps });
     assert.deepEqual(result.stdout, ['REFUSED deploy blackout before the weekly token reset: no deploy from Tue 01-08 09:00 UTC until Tue 01-08 11:00 UTC (reset from the budget.reset config)']);
   });
 
   it('refuses teamrig integrate, its old name, with the new one and exit 64, merging nothing', async () => {
     const { kit, git, steps } = world();
-    const result = await kit.run(['integrate', '--session', 'alpha'], { ...IN_WORKTREE, integrateGit: git, steps });
+    const result = await kit.run(['integrate', '--session', 'alpha'], { ...IN_WORKTREE, mergeGit: git, steps });
     assert.deepEqual([result.code, result.stdout, result.stderr[0]?.split('\n')[0]], [EXIT.usage, [], 'integrate was renamed: use merge']);
     assert.deepEqual([steps.ran, git.log, kit.files.get(LEDGER)], [[], [], undefined]);
   });

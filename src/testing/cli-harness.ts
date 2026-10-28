@@ -26,7 +26,7 @@ import type { HostMemory } from '../coordinator/memory.ts';
 import type { StarterWatch } from '../coordinator/starter-watch.ts';
 import type { StepRunner } from '../coordinator/steps.ts';
 import type { HookRunner } from '../roll/hooks.ts';
-import type { IntegrateGit } from '../integrate/git.ts';
+import type { MergeGit } from '../merge/git.ts';
 import type { TreeState } from '../coordinator/push-pass.ts';
 import type { PackageRegistry } from '../package-guard/registry.ts';
 import type { ExecPorts } from '../exec/ports.ts';
@@ -113,8 +113,8 @@ export interface RunOptions {
   readonly memory?: HostMemory;
   /** The processes that started a `teamrig heavy` run; default a shell and its Claude Code, which never end. */
   readonly starters?: StarterWatch;
-  /** The git `teamrig merge` drives; default the fake repository at /w/feat (testing/fake-integrate-git.ts). */
-  readonly integrateGit?: IntegrateGit;
+  /** The git `teamrig merge` drives; default the fake repository at /w/feat (testing/fake-merge-git.ts). */
+  readonly mergeGit?: MergeGit;
   /** The working tree `teamrig heavy --pre-push` reads; default no repository. */
   readonly trees?: TreeState;
   /** The runner `teamrig roll` runs its gates, afterPull hooks and roll command in; default one whose programs print nothing and exit 0. */
@@ -177,7 +177,7 @@ export class CliHarness {
       ...(options.steps === undefined ? {} : { steps: options.steps }),
       ...(options.memory === undefined ? {} : { memory: options.memory }),
       ...(options.starters === undefined ? {} : { starters: options.starters }),
-      ...(options.integrateGit === undefined ? {} : { integrateGit: options.integrateGit }),
+      ...(options.mergeGit === undefined ? {} : { mergeGit: options.mergeGit }),
       ...(options.trees === undefined ? {} : { trees: options.trees }),
       ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
       ...(options.packageRegistry === undefined ? {} : { packageRegistry: options.packageRegistry }),

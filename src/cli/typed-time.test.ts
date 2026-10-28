@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
-import { MAIN_CHECKOUT } from '../testing/fake-integrate-git.ts';
+import { MAIN_CHECKOUT } from '../testing/fake-merge-git.ts';
 import { EXIT } from './runtime.ts';
 
 /** The harness clock, 2030-01-08 10:00 UTC, reads 12:00 IST on this machine. */

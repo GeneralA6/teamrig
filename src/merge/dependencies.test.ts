@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { HookRunner } from '../roll/hooks.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
-import { FakeIntegrateGit, MAIN_CHECKOUT } from '../testing/fake-integrate-git.ts';
+import { FakeMergeGit, MAIN_CHECKOUT } from '../testing/fake-merge-git.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { BASELINE_LOCK_ENV, rangeInstallTouches, runDependencyCheck, type DependencyCheck } from './dependencies.ts';
 
@@ -11,7 +11,7 @@ const manifest = (dependencies: Readonly<Record<string, string>>, scripts: Reado
 
 describe('rangeInstallTouches', () => {
   it('names the lockfile and a package.json change an install reads, read at both ends of the range', async () => {
-    const git = new FakeIntegrateGit();
+    const git = new FakeMergeGit();
     git.paths = ['package.json', 'package-lock.json', 'src/app.ts'];
     git.files.set('base:package.json', manifest({ left: '1.0.0' }));
     git.files.set('next:package.json', manifest({ left: '1.0.1' }));
@@ -19,7 +19,7 @@ describe('rangeInstallTouches', () => {
   });
 
   it('passes a range that changes only package.json scripts or no package file', async () => {
-    const git = new FakeIntegrateGit();
+    const git = new FakeMergeGit();
     git.paths = ['package.json'];
     git.files.set('base:package.json', manifest({ left: '1.0.0' }, { test: 'node --test' }));
     git.files.set('next:package.json', manifest({ left: '1.0.0' }, { test: 'node --test --experimental-test-coverage' }));
@@ -29,7 +29,7 @@ describe('rangeInstallTouches', () => {
   });
 
   it('is undefined when the range’s paths cannot be read', async () => {
-    const git = new FakeIntegrateGit();
+    const git = new FakeMergeGit();
     git.paths = undefined;
     assert.equal(await rangeInstallTouches(git, MAIN_CHECKOUT, 'base', 'next'), undefined);
   });

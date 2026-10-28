@@ -1,7 +1,7 @@
 import type { CoordinatorConfig, CoordinatorRepoConfig, RollConfig } from '../config/types.ts';
 import { rangeText } from '../coordinator/ledger.ts';
-import { rangeInstallTouches } from '../integrate/dependencies.ts';
-import { ORIGIN, type IntegrateGit } from '../integrate/git.ts';
+import { rangeInstallTouches } from '../merge/dependencies.ts';
+import { ORIGIN, type MergeGit } from '../merge/git.ts';
 
 /**
  * What a roll would pull for a repository with a roll block: its main checkout's `HEAD..origin/<default branch>` after
@@ -9,7 +9,7 @@ import { ORIGIN, type IntegrateGit } from '../integrate/git.ts';
  * to show what each repository has pushed but not rolled.
  */
 
-export type RollGit = Pick<IntegrateGit, 'checkoutOf' | 'changes' | 'fetch' | 'defaultBranch' | 'sha' | 'commits' | 'isAncestor' | 'changedPaths' | 'fileAt' | 'fastForward' | 'resetTo'>;
+export type RollGit = Pick<MergeGit, 'checkoutOf' | 'changes' | 'fetch' | 'defaultBranch' | 'sha' | 'commits' | 'isAncestor' | 'changedPaths' | 'fileAt' | 'fastForward' | 'resetTo'>;
 
 /** A repository with a roll block, and where its main checkout is. */
 export interface RollRepo {

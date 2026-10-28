@@ -56,7 +56,7 @@ export async function roll(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
     const { stop } = watching;
     const setup = { team, coordinator, places, zone, inTeam: (path: string) => teamPlace(kit.paths, path) };
     const ports = {
-      git: runtime.integrateGit,
+      git: runtime.mergeGit,
       hooks: stoppableHooks(runtime.hooks, stop),
       files: runtime.files,
       clock: runtime.clock,

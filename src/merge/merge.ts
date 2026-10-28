@@ -19,7 +19,7 @@ import { shownLine } from '../roll/gates.ts';
 import { HOOK_WAIT_EXIT, hookEndText, hookExitCode, succeeded, type HookRunner } from '../roll/hooks.ts';
 import { commandLine } from '../test-run/shell.ts';
 import { rangeInstallTouches, runDependencyCheck } from './dependencies.ts';
-import { ORIGIN, type Checkout, type IntegrateGit } from './git.ts';
+import { ORIGIN, type Checkout, type MergeGit } from './git.ts';
 import { LOCKFILE } from './manifest.ts';
 import { readPendingMerge, removePendingMerge, writePendingMerge, type PendingMerge } from './pending-merges.ts';
 
@@ -44,7 +44,7 @@ export const MERGE_ENV = { branch: 'TEAMRIG_MERGE_BRANCH', base: 'TEAMRIG_MERGE_
 /** Branch names never merged, whatever origin's default branch is. */
 const PROTECTED_BRANCHES: readonly string[] = ['main', 'master'];
 
-export interface IntegrateRequest {
+export interface MergeRequest {
   readonly session: string;
   /** The folder the command runs in: any folder of the branch's checkout. */
   readonly dir: string;
@@ -54,7 +54,7 @@ export interface IntegrateRequest {
   readonly keepLocal: boolean;
 }
 
-export interface IntegrateSetup {
+export interface MergeSetup {
   readonly coordinator: CoordinatorConfig;
   readonly places: CoordinatorPlaces;
   /** The team's clock, for the times its refusals and waits name. */
@@ -63,8 +63,8 @@ export interface IntegrateSetup {
   inTeam(path: string): string;
 }
 
-export interface IntegratePorts {
-  readonly git: IntegrateGit;
+export interface MergePorts {
+  readonly git: MergeGit;
   readonly steps: StepRunner;
   /** Runs the dependency check, without a shell. */
   readonly hooks: HookRunner;
@@ -83,7 +83,7 @@ export interface IntegratePorts {
   say(text: string): void;
 }
 
-export type IntegrateEnd =
+export type MergeEnd =
   | { readonly kind: 'done'; readonly summary: string }
   | { readonly kind: 'failed'; readonly reason: string }
   | { readonly kind: 'refused'; readonly reason: string }
@@ -96,7 +96,7 @@ export interface RepoMatch {
   readonly listed: boolean;
 }
 
-export function repoOf(checkout: Checkout, setup: IntegrateSetup, platform: NodeJS.Platform): RepoMatch {
+export function repoOf(checkout: Checkout, setup: MergeSetup, platform: NodeJS.Platform): RepoMatch {
   const main = checkout.mainCheckout ?? checkout.top;
   const listed = Object.entries(setup.coordinator.repos).find(([, config]) => samePath(setup.inTeam(config.mainCheckout), main, platform));
   if (listed !== undefined) {
@@ -121,14 +121,14 @@ interface Plan {
 }
 
 /** The checks before the lock: a plan to merge, or why not. */
-type Planned = { readonly kind: 'ready'; readonly plan: Plan } | Exclude<IntegrateEnd, { kind: 'done' | 'waiting' }>;
+type Planned = { readonly kind: 'ready'; readonly plan: Plan } | Exclude<MergeEnd, { kind: 'done' | 'waiting' }>;
 
 /**
  * How the merge went: merged by the push or the merge command (the commits it merged, as `rangeText` names them, and
  * when), waiting on the merge command, refused by the dependency check, or failed.
  */
-type Landing =
-  | { readonly kind: 'landed'; readonly via: 'push' | 'command'; readonly range: string; readonly after: string; readonly startedAt: string; readonly endedAt: string }
+type MergeOutcome =
+  | { readonly kind: 'merged'; readonly via: 'push' | 'command'; readonly range: string; readonly after: string; readonly startedAt: string; readonly endedAt: string }
   | { readonly kind: 'waiting'; readonly reason: string }
   | { readonly kind: 'refused'; readonly reason: string }
   | { readonly kind: 'failed'; readonly reason: string };
@@ -151,7 +151,7 @@ function endText(end: StepEnd): string {
 }
 
 /** The checks that need no lock: what to merge, and whether it may merge at all. */
-async function planOf(setup: IntegrateSetup, ports: IntegratePorts, request: IntegrateRequest): Promise<Planned> {
+async function planOf(setup: MergeSetup, ports: MergePorts, request: MergeRequest): Promise<Planned> {
   const { git } = ports;
   const checkout = git.checkoutOf(request.dir);
   if (checkout === undefined) {
@@ -192,7 +192,7 @@ async function planOf(setup: IntegrateSetup, ports: IntegratePorts, request: Int
 }
 
 /** The merge the branch's last run left waiting, when its repository merges by command and the branch is still at the commit that run gave the command. */
-async function waitingMerge(setup: IntegrateSetup, ports: IntegratePorts, repo: RepoMatch, top: string, branch: string): Promise<PendingMerge | undefined> {
+async function waitingMerge(setup: MergeSetup, ports: MergePorts, repo: RepoMatch, top: string, branch: string): Promise<PendingMerge | undefined> {
   if (repo.config.merge === undefined) {
     return undefined;
   }
@@ -201,7 +201,7 @@ async function waitingMerge(setup: IntegrateSetup, ports: IntegratePorts, repo: 
 }
 
 /** Why the dependency gate, with no check to clear a change, holds the branch: its package files need an install; undefined when they do not. */
-async function dependencyHold(git: IntegrateGit, top: string, onto: string, repo: string): Promise<string | undefined> {
+async function dependencyHold(git: MergeGit, top: string, onto: string, repo: string): Promise<string | undefined> {
   const base = git.mergeBase(top, onto, 'HEAD');
   const touches = base === undefined ? undefined : await rangeInstallTouches(git, top, base, 'HEAD');
   if (touches === undefined) {
@@ -229,7 +229,7 @@ interface Taking {
  * `TEAMRIG_BASELINE_LOCK` names, kept only while the check runs. Undefined lets the push go; else the refusal, the
  * check's output shown above it.
  */
-async function dependencyCheckRefusal(setup: IntegrateSetup, ports: IntegratePorts, plan: Plan, taking: Taking, base: string): Promise<Landing | undefined> {
+async function dependencyCheckRefusal(setup: MergeSetup, ports: MergePorts, plan: Plan, taking: Taking, base: string): Promise<MergeOutcome | undefined> {
   const { top, branch, defaultBranch, repo } = plan;
   const argv = repo.config.dependencyCheck;
   if (!repo.config.dependencyGate || argv === undefined) {
@@ -267,7 +267,7 @@ async function dependencyCheckRefusal(setup: IntegrateSetup, ports: IntegratePor
 }
 
 /** Whether the push may start now: the heavy cutoff and the reset blackout refuse it, a quiet claim on what it deploys holds it. */
-function readinessOf(setup: IntegrateSetup, ports: IntegratePorts, repo: RepoMatch): () => Promise<Readiness> {
+function readinessOf(setup: MergeSetup, ports: MergePorts, repo: RepoMatch): () => Promise<Readiness> {
   const { schedule } = setup.coordinator;
   const targets = repo.config.deploysOnPush;
   return async () => {
@@ -297,7 +297,7 @@ function readinessOf(setup: IntegrateSetup, ports: IntegratePorts, repo: RepoMat
  * the push was killed as its launching shell ended (no one waits for it any more). The check and the
  * push get the lock's token, so a pre-push hook that wraps its checks in `teamrig heavy` runs them under this lock.
  */
-async function landByPush(setup: IntegrateSetup, ports: IntegratePorts, plan: Plan, taking: Taking): Promise<Landing> {
+async function mergeByPush(setup: MergeSetup, ports: MergePorts, plan: Plan, taking: Taking): Promise<MergeOutcome> {
   const { git } = ports;
   const { top, branch, defaultBranch, repo } = plan;
   const onto = `${ORIGIN}/${defaultBranch}`;
@@ -339,7 +339,7 @@ async function landByPush(setup: IntegrateSetup, ports: IntegratePorts, plan: Pl
       if (end.kind !== 'exited' || end.code !== 0) {
         ports.say(`the push ${endText(end)}, but origin's ${defaultBranch} is at ${short(head)}: it merged`);
       }
-      return { kind: 'landed', via: 'push', range: rangeText(git.commits(top, before, after), after), after, startedAt, endedAt };
+      return { kind: 'merged', via: 'push', range: rangeText(git.commits(top, before, after), after), after, startedAt, endedAt };
     }
     const moved = after !== undefined && after !== before;
     if (moved && attempt < PUSH_ATTEMPTS && end.kind !== 'stopped') {
@@ -358,7 +358,7 @@ async function landByPush(setup: IntegrateSetup, ports: IntegratePorts, plan: Pl
  * hides it, and the branch is kept. One diff per commit, newest first, with no path list on the command line.
  * Undefined when no commit holds it, or the branch's changes cannot be read.
  */
-function mergedAt(git: IntegrateGit, top: string, onto: string, base: string, head: string): string | undefined {
+function mergedAt(git: MergeGit, top: string, onto: string, base: string, head: string): string | undefined {
   const paths = git.changedPaths(top, base, head);
   const tip = git.sha(top, onto);
   if (paths === undefined || paths.length === 0 || tip === undefined) {
@@ -381,7 +381,7 @@ function mergedAt(git: IntegrateGit, top: string, onto: string, base: string, he
  * remote, 75 leaves a pending merge for the next run, anything else fails. The command's lines show redacted; its
  * last one is the reason given.
  */
-async function mergeByCommand(setup: IntegrateSetup, ports: IntegratePorts, plan: Plan, taking: Taking, argv: readonly string[]): Promise<Landing> {
+async function mergeByCommand(setup: MergeSetup, ports: MergePorts, plan: Plan, taking: Taking, argv: readonly string[]): Promise<MergeOutcome> {
   const { git } = ports;
   const { top, branch, remote, defaultBranch, repo, pending } = plan;
   const onto = `${remote}/${defaultBranch}`;
@@ -393,7 +393,7 @@ async function mergeByCommand(setup: IntegrateSetup, ports: IntegratePorts, plan
   const merged = pending === undefined ? undefined : mergedAt(git, top, onto, pending.base, pending.head);
   if (pending !== undefined && merged !== undefined) {
     ports.say(`${branch} (${short(pending.head)}) is merged into ${defaultBranch}: ${onto} at ${short(merged)} holds it`);
-    return { kind: 'landed', via: 'command', range: rangeText(git.commits(top, pending.base, merged), merged), after: merged, startedAt: pending.since, endedAt: startedAt };
+    return { kind: 'merged', via: 'command', range: rangeText(git.commits(top, pending.base, merged), merged), after: merged, startedAt: pending.since, endedAt: startedAt };
   }
   const before = git.sha(top, onto);
   if (before === undefined) {
@@ -445,17 +445,17 @@ async function mergeByCommand(setup: IntegrateSetup, ports: IntegratePorts, plan
     const why = refetched.ok ? `no commit on ${onto} since ${short(before)} holds its files at ${short(head)}` : `git fetch failed: ${refetched.reason}`;
     return { kind: 'failed', reason: `the merge command said ${branch} merged, but ${why}` };
   }
-  return { kind: 'landed', via: 'command', range: rangeText(git.commits(top, before, after), after), after, startedAt: pending?.since ?? startedAt, endedAt: new Date(ports.clock.now()).toISOString() };
+  return { kind: 'merged', via: 'command', range: rangeText(git.commits(top, before, after), after), after, startedAt: pending?.since ?? startedAt, endedAt: new Date(ports.clock.now()).toISOString() };
 }
 
 /** Merges the branch: through the repository's merge command when it has one, else by the push. */
-async function land(setup: IntegrateSetup, ports: IntegratePorts, plan: Plan, taking: Taking): Promise<Landing> {
+async function pushOrMerge(setup: MergeSetup, ports: MergePorts, plan: Plan, taking: Taking): Promise<MergeOutcome> {
   const command = plan.repo.config.merge?.command;
-  return command === undefined ? landByPush(setup, ports, plan, taking) : mergeByCommand(setup, ports, plan, taking, command);
+  return command === undefined ? mergeByPush(setup, ports, plan, taking) : mergeByCommand(setup, ports, plan, taking, command);
 }
 
 /** Removes the merged branch on origin and here, and moves the local default branch to its remote's, as far as each step goes; a failed step is a warning. */
-function tidy(ports: IntegratePorts, request: IntegrateRequest, plan: Plan): void {
+function tidy(ports: MergePorts, request: MergeRequest, plan: Plan): void {
   const { git, say } = ports;
   const { top, branch, defaultBranch } = plan;
   const warn = (what: string, reason: string): void => say(`WARNING could not ${what}: ${reason}`);
@@ -488,7 +488,7 @@ function tidy(ports: IntegratePorts, request: IntegrateRequest, plan: Plan): voi
 }
 
 /** Fast-forwards the main checkout to what merged, only on the default branch with no tracked changes; it never fails the merge. */
-async function followMainCheckout(ports: IntegratePorts, plan: Plan, landed: string): Promise<void> {
+async function followMainCheckout(ports: MergePorts, plan: Plan, merged: string): Promise<void> {
   const { git, say } = ports;
   const main = plan.mainCheckout;
   if (!plan.repo.config.followMainCheckout || main === undefined || !plan.linked) {
@@ -506,17 +506,17 @@ async function followMainCheckout(ports: IntegratePorts, plan: Plan, landed: str
     return;
   }
   const was = git.sha(main, 'HEAD');
-  if (was === undefined || !git.isAncestor(main, was, landed)) {
+  if (was === undefined || !git.isAncestor(main, was, merged)) {
     note(`its ${plan.defaultBranch} has commits that are not on ${plan.remote}`);
     return;
   }
-  const moved = git.fastForward(main, landed);
+  const moved = git.fastForward(main, merged);
   if (!moved.ok) {
     note(moved.reason);
     return;
   }
-  say(`fast-forwarded the main checkout ${main} to ${short(landed)}`);
-  const touches = await rangeInstallTouches(git, main, was, landed);
+  say(`fast-forwarded the main checkout ${main} to ${short(merged)}`);
+  const touches = await rangeInstallTouches(git, main, was, merged);
   if (touches === undefined) {
     say(`NOTE could not read what the fast-forward changed: check whether ${main} needs npm ci --ignore-scripts`);
     return;
@@ -527,7 +527,7 @@ async function followMainCheckout(ports: IntegratePorts, plan: Plan, landed: str
 }
 
 /** The step after a merged branch: removing its worktree. */
-function nextStep(request: IntegrateRequest, plan: Plan): string | undefined {
+function nextStep(request: MergeRequest, plan: Plan): string | undefined {
   if (!plan.linked) {
     return undefined;
   }
@@ -535,7 +535,7 @@ function nextStep(request: IntegrateRequest, plan: Plan): string | undefined {
 }
 
 /** Merges the branch of the checkout at `request.dir` into its remote's default branch (see the module comment). */
-export async function integrateBranch(setup: IntegrateSetup, ports: IntegratePorts, request: IntegrateRequest): Promise<IntegrateEnd> {
+export async function mergeBranch(setup: MergeSetup, ports: MergePorts, request: MergeRequest): Promise<MergeEnd> {
   const planned = await planOf(setup, ports, request);
   if (planned.kind !== 'ready') {
     return planned;
@@ -558,42 +558,42 @@ export async function integrateBranch(setup: IntegrateSetup, ports: IntegratePor
   if (clearance.kind !== 'taken') {
     return { kind: 'refused', reason: clearance.reason };
   }
-  let landing: Landing;
+  let outcome: MergeOutcome;
   try {
-    landing = await land(setup, ports, plan, { lock: clearance.lock, session: request.session, markOf: marksOfTaking(request.session, queuedAt) });
-    if (landing.kind === 'landed' && repo.config.merge !== undefined) {
+    outcome = await pushOrMerge(setup, ports, plan, { lock: clearance.lock, session: request.session, markOf: marksOfTaking(request.session, queuedAt) });
+    if (outcome.kind === 'merged' && repo.config.merge !== undefined) {
       await removePendingMerge(ports.files, setup.places, repo.name, plan.branch);
     }
-    if (landing.kind === 'landed' && repo.config.deploysOnPush.length > 0) {
+    if (outcome.kind === 'merged' && repo.config.deploysOnPush.length > 0) {
       await appendDeploy(ports.files, setup.places, {
         type: 'deploy',
         kind: 'deploy',
         session: request.session,
         repo: repo.name,
-        range: landing.range,
+        range: outcome.range,
         what: `merge ${plan.branch}`,
-        note: `${landing.via === 'push' ? 'pushed to' : 'merged by the merge command into'} ${defaultBranch}; ${repo.config.deploysOnPush.join(', ')} deploy on push, not watched by teamrig`,
-        startedAt: landing.startedAt,
-        rolledAt: landing.endedAt,
+        note: `${outcome.via === 'push' ? 'pushed to' : 'merged by the merge command into'} ${defaultBranch}; ${repo.config.deploysOnPush.join(', ')} deploy on push, not watched by teamrig`,
+        startedAt: outcome.startedAt,
+        rolledAt: outcome.endedAt,
       });
     }
   } finally {
     await ports.lock.release(clearance.lock);
   }
-  if (landing.kind === 'waiting') {
+  if (outcome.kind === 'waiting') {
     ports.say(`next: run teamrig merge again in ${plan.top} once ${plan.branch} is merged`);
-    return landing;
+    return outcome;
   }
-  if (landing.kind !== 'landed') {
-    return landing;
+  if (outcome.kind !== 'merged') {
+    return outcome;
   }
   tidy(ports, request, plan);
-  await followMainCheckout(ports, plan, landing.after);
+  await followMainCheckout(ports, plan, outcome.after);
   const next = nextStep(request, plan);
   if (next !== undefined) {
     ports.say(next);
   }
   const deploys = repo.config.deploysOnPush.length > 0 ? `; ${repo.config.deploysOnPush.join(', ')} deploy on push` : '';
-  const how = landing.via === 'push' ? `pushed ${landing.range} to ${defaultBranch}` : `merged ${landing.range} into ${defaultBranch} through the merge command`;
+  const how = outcome.via === 'push' ? `pushed ${outcome.range} to ${defaultBranch}` : `merged ${outcome.range} into ${defaultBranch} through the merge command`;
   return { kind: 'done', summary: `${how}${deploys}` };
 }

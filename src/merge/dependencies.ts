@@ -2,14 +2,14 @@ import { join } from 'node:path';
 import type { Files } from '../core/files.ts';
 import type { Env } from '../core/home.ts';
 import type { HookEnd, HookRunner } from '../roll/hooks.ts';
-import type { IntegrateGit } from './git.ts';
+import type { MergeGit } from './git.ts';
 import { installTouches, LOCKFILE, MANIFEST_FILE, packageFilesChange } from './manifest.ts';
 
 /** Names, for the dependency check, the file holding the base's package-lock.json. */
 export const BASELINE_LOCK_ENV = 'TEAMRIG_BASELINE_LOCK';
 
 /** The git reads a range's dependency check needs. */
-export type RangeReader = Pick<IntegrateGit, 'changedPaths' | 'fileAt'>;
+export type RangeReader = Pick<MergeGit, 'changedPaths' | 'fileAt'>;
 
 /**
  * The root package files the commits `from..to` of the checkout at `dir` change in a way that needs a dependency
