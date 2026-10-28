@@ -12,7 +12,8 @@ export interface OpenTabDeps {
   readonly platform: NodeJS.Platform;
 }
 
-function candidatesOf(choice: TerminalChoice, deps: OpenTabDeps): readonly Terminal[] {
+/** The terminals a choice tries, in order: the one chosen, those `auto` finds, or none for `print`. */
+export function candidatesOf(choice: TerminalChoice, deps: OpenTabDeps): readonly Terminal[] {
   switch (choice) {
     case 'auto':
       return autoTerminals(deps.env, deps.platform);
