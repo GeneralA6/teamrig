@@ -1,6 +1,8 @@
 import { outcome, query, queryLine, runGit } from "../core/git-run.js";
 /** Long enough for git to delete a large worktree. */
 const REMOVE_TIMEOUT_MS = 120_000;
+/** Long enough to fetch over a slow link, or for git to write out a large worktree. */
+const ADD_TIMEOUT_MS = 120_000;
 const BRANCH_REF = 'refs/heads/';
 /** NUL-separated fields, without the empty one after the last NUL. */
 function fields(text) {
@@ -86,4 +88,13 @@ export const GIT_WORKTREES = {
     removeWorktree: (mainDir, top) => outcome(runGit(mainDir, ['worktree', 'remove', top], REMOVE_TIMEOUT_MS), 'git worktree remove'),
     // A branch name never starts with `-` (git refuses one), so it cannot read as an option.
     deleteBranch: (mainDir, branch) => outcome(runGit(mainDir, ['branch', '-D', branch]), 'git branch -D'),
+    hasBranch(dir, branch) {
+        // Exit 0: the ref exists; 1: it does not; anything else: git could not tell.
+        const status = runGit(dir, ['show-ref', '--verify', '--quiet', `${BRANCH_REF}${branch}`]).status;
+        return status === 0 ? true : status === 1 ? false : undefined;
+    },
+    // The remote and branch come from origin/HEAD, never from the caller's words, so neither starts with `-`.
+    fetch: (dir, remote, branch) => outcome(runGit(dir, ['fetch', '--quiet', remote, branch], ADD_TIMEOUT_MS), 'git fetch'),
+    // The caller gives an absolute path and a branch name it checked starts with a letter or digit, so neither reads as an option.
+    addWorktree: (mainDir, path, branch, base) => outcome(runGit(mainDir, ['worktree', 'add', '--quiet', '--no-track', '-b', branch, path, base], ADD_TIMEOUT_MS), 'git worktree add'),
 };

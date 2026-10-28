@@ -157,6 +157,8 @@ export const DEFAULT_SESSION_SHARE = 1;
 export const DEFAULT_ALERTS = { persistentFailureHours: 24 };
 /** The remote a repository's merge command merges into when `merge.remote` is unset. */
 export const DEFAULT_MERGE_REMOTE = 'origin';
+/** Where `teamrig worktree add` makes a repository's worktrees when `worktreeFolder` is unset: in its main checkout, where Claude Code makes its own. */
+export const DEFAULT_WORKTREE_FOLDER = '.claude/worktrees';
 export const DEFAULT_DECISIONS = { batchTimesUtc: [], batchAt: 5, askWith: 'text' };
 export const DEFAULT_LOOPS = { chainNudgeAt: 6 };
 export const DEFAULT_LEAD_BOUNDARY = { enabled: true, ownPaths: [], searchNudgeAt: 3 };
