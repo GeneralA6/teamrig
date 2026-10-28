@@ -1,4 +1,4 @@
-import type { HookEnd, HookRequest, HookRunner } from '../roll/hooks.ts';
+import type { HookEnd, HookRequest, HookRunner } from '../deploy/hooks.ts';
 
 /** A clock a fake run moves forward, such as the harness's `FakeClock`. */
 interface Advancing {

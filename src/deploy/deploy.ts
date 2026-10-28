@@ -3,10 +3,10 @@ import { underLock } from '../coordinator/host-lock.ts';
 import { appendDeploy } from '../coordinator/ledger.ts';
 import { recordHeavy } from '../coordinator/recorded-step.ts';
 import type { Env } from '../core/home.ts';
-import { askGates, shownLine } from './gates.ts';
+import { askGates, shownLine } from './checks.ts';
 import { hookEndText, hookExitCode, succeeded, type HookEnd } from './hooks.ts';
 import { short, type RollRepo } from './pending.ts';
-import { chosenRepo, scheduleReadiness, shownBy, type RollEnd, type RollPorts, type RollRequest, type RollSetup } from './roll.ts';
+import { chosenRepo, scheduleReadiness, shownBy, type RollEnd, type RollPorts, type RollRequest, type RollSetup } from './run.ts';
 
 /**
  * `teamrig deploy --targets <a,b> --what "<why>" -- <command>`: a deploy that pulls nothing, such as the restart that

@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { SecretScanner } from '../core/secrets.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
-import { askGates, GateOutput, gateReadiness, HOOK_LINE_MAX_CHARS, shownLine, type GateRun } from './gates.ts';
+import { askGates, GateOutput, gateReadiness, HOOK_LINE_MAX_CHARS, shownLine, type GateRun } from './checks.ts';
 
 const FLOW = { name: 'flow', command: ['node', 'checks/flow.js'] };
 const REGISTRY = { name: 'registry', command: ['node', 'checks/registry.js'] };

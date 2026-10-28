@@ -16,7 +16,7 @@ import type { SecretScanner } from '../core/secrets.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { runDependencyCheck } from '../merge/dependencies.ts';
 import { LOCKFILE } from '../merge/manifest.ts';
-import { askGates, shownLine } from './gates.ts';
+import { askGates, shownLine } from './checks.ts';
 import { hookEndText, hookExitCode, succeeded, type HookEnd, type HookRunner } from './hooks.ts';
 import { plural, readPending, rollRepos, short, type DependencyStep, type Pending, type PendingRead, type RollGit, type RollRepo } from './pending.ts';
 

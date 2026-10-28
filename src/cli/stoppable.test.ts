@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import type { HostLock, HostLockInfo, Taking } from '../coordinator/host-lock.ts';
 import type { StepRequest } from '../coordinator/steps.ts';
 import { KIT_VERSION } from '../core/version.ts';
-import type { HookRequest } from '../roll/hooks.ts';
+import type { HookRequest } from '../deploy/hooks.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
 import { FakeStarterWatch } from '../testing/fake-starter-watch.ts';
 import { FakeSteps } from '../testing/fake-steps.ts';

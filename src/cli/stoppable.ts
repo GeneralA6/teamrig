@@ -2,7 +2,7 @@ import type { HostLock } from '../coordinator/host-lock.ts';
 import { endedText, type StarterWatching } from '../coordinator/starter-watch.ts';
 import type { StepRunner } from '../coordinator/steps.ts';
 import type { Sleep } from '../core/lock.ts';
-import type { HookRunner } from '../roll/hooks.ts';
+import type { HookRunner } from '../deploy/hooks.ts';
 import type { Say } from './coordinator-ports.ts';
 import { EXIT, type CliRuntime, type ExitCode } from './runtime.ts';
 
