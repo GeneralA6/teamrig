@@ -39,6 +39,7 @@ const missingCliCommand = () => import('./commands/hook-missing-cli.ts');
 const helperStartCommand = () => import('./commands/hook-helper-start.ts');
 const clearCommands = () => import('./commands/hook-clear.ts');
 const wakeCommands = () => import('./commands/hook-wake.ts');
+const meetingDueCommand = () => import('./commands/hook-meeting-due.ts');
 const refreshModCommands = () => import('./commands/hook-refresh-mod.ts');
 const teamCommands = () => import('./commands/team.ts');
 const sessionsCommands = () => import('./commands/sessions.ts');
@@ -240,6 +241,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'hook clear-claim': { effect: 'internal', flags: ['why'], switches: ['hold'], load: async () => (await clearCommands()).clearClaim },
   'hook wake-check': { effect: 'internal', flags: [], load: async () => (await wakeCommands()).wakeCheck },
   'hook wake-dropped': { effect: 'internal', flags: [], load: async () => (await wakeCommands()).wakeDropped },
+  'hook meeting-due': { effect: 'internal', flags: [], load: async () => (await meetingDueCommand()).meetingDue },
   'hook refresh-mid': { effect: 'internal', flags: [], load: async () => (await refreshModCommands()).refreshMid },
   'hook compact-check': { effect: 'internal', flags: [], load: async () => (await refreshModCommands()).compactCheck },
   'hook slash-command': {
@@ -648,6 +650,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       (run by the plugin's mod: the automatic restart's /clear in the tab)
   hook wake-check | hook wake-dropped
       (run by the plugin's mod: wakes an idle tab when unblocked urgent work is handed to its session)
+  hook meeting-due
+      (run by the plugin's mod: the OS notification at a scheduled meeting's time)
   hook refresh-mid | hook compact-check
       (run by the plugin's mod: asks for the handover within a long turn, and holds a compaction while it is due)
   hook slash-command
