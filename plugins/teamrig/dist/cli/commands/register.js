@@ -13,6 +13,7 @@ import { HiringLog } from "../../hiring/log.js";
 import { activeHires } from "../../hiring/record.js";
 import { scaleOutFlags } from "../../hiring/scale-out.js";
 import { postLine } from "../../inbox/inbox.js";
+import { formatTaskLines, taskLinesOf } from "../../inbox/task-lines.js";
 import { WakeAsks } from "../../wake/asks.js";
 import { teamDayStartAt } from "../../wake/day-start.js";
 import { byFlagKind, checkTasks, peerWaitFlags } from "../../register/check.js";
@@ -699,7 +700,8 @@ export async function list(args, runtime) {
     return EXIT.ok;
 }
 /**
- * `show <id> [--tree]`: every field of the task and its history; with `--tree`, its line, then what it needs and what
+ * `show <id> [--tree]`: every field of the task, its history and the team's inbox lines that name it (T1196); with
+ * `--tree`, its line, then what it needs and what
  * needs it, each node with its owner, status and due, then who moves next (views.ts formatTaskTree). A task another
  * register of the team tree holds shows read-only ({@link elsewhereLines}).
  */
@@ -724,6 +726,8 @@ export async function show(args, runtime) {
     const events = snapshot.read.events.filter((event) => event.id === id);
     const wPerPct = task.size === null ? undefined : await readWPerPct(runtime, own.paths, own.config, runtime.clock.now());
     runtime.out.stdout(formatTaskDetail(task, events, tree, (pct) => (wPerPct === undefined ? undefined : `about ${formatW(pct * wPerPct)} W`)));
+    const named = await taskLinesOf(inboxDepsOf(runtime, own.paths).inboxes, id);
+    formatTaskLines(id, named, tree.zone).forEach((line) => runtime.out.stdout(line));
     return EXIT.ok;
 }
 /**

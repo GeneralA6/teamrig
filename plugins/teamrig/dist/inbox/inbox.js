@@ -8,7 +8,7 @@ import { unreadOf } from "./unread.js";
 const LINE_DATE = /^- (\d{4}-\d{2}-\d{2} \d{2}:\d{2})/;
 const STAMP_END = '- YYYY-MM-DD HH:MM'.length;
 /** When a stored line was posted: its leading `YYYY-MM-DD HH:MM`, in UTC; undefined when it is not dated. */
-function postedAt(line) {
+export function postedAt(line) {
     const stamp = LINE_DATE.exec(line)?.[1];
     return stamp === undefined ? undefined : parseUtcDeadline(stamp);
 }
