@@ -1,10 +1,11 @@
 import { extname, isAbsolute, join, resolve } from 'node:path';
 import type { Files } from '../core/files.ts';
-import { isRecord, type JsonRecord } from '../core/guards.ts';
+import type { JsonRecord } from '../core/guards.ts';
 import type { PathProbe } from '../core/path-probe.ts';
 import { expandHome, pathKey } from '../core/paths.ts';
 import { CLAUDE_MD_FILES, claudeMdPaths, claudeMemoryDir, skillFolders } from '../doctor/context-files.ts';
 import { claudeSettingsFiles, jsonObjectOf } from '../doctor/settings-env.ts';
+import { hookCommandsOf } from '../doctor/settings-hooks.ts';
 import { SkillDir } from '../skills/store.ts';
 
 /**
@@ -127,20 +128,7 @@ function expandWord(word: string, at: RulePlaceLocations): string | undefined {
 
 /** The command lines of every `command` hook in a settings object: the command and, in the exec form, its `args`. */
 function hookCommandWords(settings: JsonRecord): string[][] {
-  const hooks = settings['hooks'];
-  if (!isRecord(hooks)) {
-    return [];
-  }
-  const groups = Object.values(hooks).flatMap((event) => (Array.isArray(event) ? event : []));
-  const handlers = groups.flatMap((group) => (isRecord(group) && Array.isArray(group['hooks']) ? group['hooks'] : []));
-  return handlers.flatMap((handler) => {
-    if (!isRecord(handler) || typeof handler['command'] !== 'string') {
-      return [];
-    }
-    const args = handler['args'];
-    const extra = Array.isArray(args) ? args.filter((arg): arg is string => typeof arg === 'string') : [];
-    return [[...commandWords(handler['command']), ...extra]];
-  });
+  return hookCommandsOf(settings).map((hook) => [...commandWords(hook.command), ...hook.args]);
 }
 
 /** The scripts the settings files' hooks run, as absolute paths (a relative one is read from the project folder). */
