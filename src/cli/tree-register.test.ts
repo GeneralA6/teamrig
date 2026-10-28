@@ -242,8 +242,9 @@ describe('teamrig update <team>/<id>: the root lead notes a task below (T1018)',
     }
     const usages: [readonly string[], RegExp][] = [
       [['app/T1', '--note', 'x'], /^app\/T1 is a task of your own team: update T1/],
-      [['web/T2', '--priority', 'p1', '--note', 'x'], /^update web\/T2 adds a --note to another team's task: it takes no --priority/],
-      [['web/T2', '--pin'], /^update web\/T2 adds a --note to another team's task: it takes no --pin/],
+      [['web/T2', '--priority', 'p1', '--note', 'x'], /^update web\/T2 adds a --note or a --later to another team's task: it takes no --priority/],
+      [['web/T2', '--pin'], /^update web\/T2 adds a --note or a --later to another team's task: it takes no --pin/],
+      [['web/T2', '--later', '2030-01-09', '--due', '2030-01-10', '--note', 'x'], /^update web\/T2 adds a --note or a --later to another team's task: it takes no --due/],
       [['web/T2'], /^--note is required/],
       [['web/T2/x', '--note', 'x'], /is not a task id like T12, or web\/T12/],
     ];
@@ -253,6 +254,30 @@ describe('teamrig update <team>/<id>: the root lead notes a task below (T1018)',
       assert.match(result.stderr[0] ?? '', message);
     }
     assert.deepEqual(filesOf(kit), before);
+  });
+});
+
+describe('teamrig update <team>/<id> --later: the root lead puts a card below off (T1295)', () => {
+  it("writes the Later in that team's register by the root lead's address, and refuses a task waiting on no owner", async () => {
+    const kit = await treeHarness();
+    assert.equal((await kit.run(['add', '--title', 'Pick a host', '--description', 'what and why', '--priority', 'p1', '--session', 'lead'], { env: WEB })).code, EXIT.ok);
+    const set = await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'decision:owner', '--note', 'the cost', ...TEST_OWNER_CARD_FLAGS, '--session', 'lead'], { env: WEB });
+    assert.equal(set.code, EXIT.ok, [...set.stdout, ...set.stderr].join('\n'));
+    const later = await kit.run(['update', 'web/T1', '--later', '2030-01-09 09:00', '--note', 'human: after the demo', '--session', 'lead']);
+    assert.equal(later.code, EXIT.ok, [...later.stdout, ...later.stderr].join('\n'));
+    assert.match(later.stdout[0] ?? '', /^UPDATED web\/T1 waiting, /);
+    const event = readEvents(kit.files.get(teamEventsOf('web')) ?? '').events.at(-1);
+    assert.deepEqual(event?.type === 'update' ? [event.by, event.note, event.waits] : undefined, [
+      'app/lead',
+      'human: after the demo',
+      [
+        { kind: 'decision', who: 'owner' },
+        { kind: 'time', at: '2030-01-09 09:00' },
+      ],
+    ]);
+    assert.equal((await kit.run(['add', '--title', 'Draw icons', '--description', 'what and why', '--priority', 'p2', '--session', 'lead'], { env: WEB })).code, EXIT.ok);
+    const open = await kit.run(['update', 'web/T2', '--later', '2030-01-09', '--note', 'x', '--session', 'lead']);
+    assert.deepEqual([open.code, open.stdout], [EXIT.refused, ['REFUSED T2 waits on no decision or approval of owner: only such a card is put off']]);
   });
 });
 

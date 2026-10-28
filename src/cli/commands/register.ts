@@ -44,7 +44,7 @@ import { SKILL_FILE, SkillDir } from '../../skills/store.ts';
 import { weekUseOnAccount } from '../account-teams.ts';
 import { readWideAllow } from '../allow-scope.ts';
 import { noPositionals, onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
-import { addInputOf, callerOf, changesOf, criticalOf, listFilterOf, pinOf, setInputOf, taskIdOf, taskRefOf, weekOf, type TypedTimes } from '../inputs.ts';
+import { addInputOf, callerOf, changesOf, criticalOf, deadlineOf, listFilterOf, NONE, pinOf, setInputOf, taskIdOf, taskRefOf, weekOf, type TypedTimes } from '../inputs.ts';
 import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, projectFolder, requireConfig, rosterOf, sessionIdOf, teamZone, type Access, type Kit } from '../kit.ts';
 import { checkLines, listLines, SHORT_TITLE_CHARS, waitingOnLines, type CheckReport, type CheckSection, type LeadDecisions, type TaskRow } from '../reports.ts';
 import { idlePassWarnings } from '../idle-pass-check.ts';
@@ -631,15 +631,36 @@ async function tellVerifiers(runtime: CliRuntime, team: Team, caller: string, { 
   }
 }
 
+/** `update <id> --later <when|none> --note ".."`: the owner puts a card off to a time, or `none` brings it back (T1295). */
+const LATER_FLAG = 'later';
+
 /**
- * `update <team>/<id> --note ".."`: the lead who asks the owner a team's decisions, at its tree's root (T1018), records
- * a note, such as the owner's answer, on a task of that team. It lands in that team's register as an event by the
- * lead's `<team>/<id>`. Only that lead may, and only a note: every field stays the task's own team's to change.
+ * The time `--later` puts a card off to, as stored, null for `none`, or undefined when the flag is not given. A Later
+ * changes no field, so it goes with a --note (what the owner said) alone.
+ */
+function laterOf(args: ParsedArgs, times: TypedTimes): string | null | undefined {
+  const value = args.flags.get(LATER_FLAG);
+  if (value === undefined) {
+    return undefined;
+  }
+  const others = [...[...args.flags.keys()].filter((flag) => flag !== 'session' && flag !== 'note' && flag !== LATER_FLAG), ...args.switches];
+  if (others.length > 0) {
+    throw new UsageError(`--later puts a card off with a --note alone: it takes no --${others.join(', --')}`);
+  }
+  requiredFlag(args.flags, 'note');
+  return value === NONE ? null : deadlineOf(`--${LATER_FLAG}`, value, times);
+}
+
+/**
+ * `update <team>/<id> --note ".." [--later <when|none>]`: the lead who asks the owner a team's decisions, at its tree's
+ * root (T1018), records a note, such as the owner's answer, or a Later (T1295) on a task of that team. It lands in that
+ * team's register as an event by the lead's `<team>/<id>`. Only that lead may, and only a note or a Later: every field
+ * stays the task's own team's to change.
  */
 async function noteBelow(args: ParsedArgs, runtime: CliRuntime, caller: string, below: string, id: string): Promise<ExitCode> {
-  const others = [...[...args.flags.keys()].filter((flag) => flag !== 'session' && flag !== 'note'), ...args.switches];
+  const others = [...[...args.flags.keys()].filter((flag) => flag !== 'session' && flag !== 'note' && flag !== LATER_FLAG), ...args.switches];
   if (others.length > 0) {
-    throw new UsageError(`update ${below}/${id} adds a --note to another team's task: it takes no --${others.join(', --')}`);
+    throw new UsageError(`update ${below}/${id} adds a --note or a --later to another team's task: it takes no --${others.join(', --')}`);
   }
   const note = requiredFlag(args.flags, 'note');
   const { team } = await findTeam(runtime);
@@ -655,7 +676,10 @@ async function noteBelow(args: ParsedArgs, runtime: CliRuntime, caller: string, 
     throw new RefusedError(`only ${formatAddress(asker)}, who asks the owner team ${below}'s decisions, notes its tasks from another team; ${formatAddress(from)} may not`);
   }
   const target = await teamOf(runtime, await openKit(runtime, below), 'write');
-  return report(runtime, await target.register.noteFrom(formatAddress(from), id, note), 'UPDATED', target, below);
+  const later = laterOf(args, typedTimes(runtime, target.zone));
+  const by = formatAddress(from);
+  const written = later === undefined ? await target.register.noteFrom(by, id, note) : await target.register.deferFrom(by, id, later, note);
+  return report(runtime, written, 'UPDATED', target, below);
 }
 
 export async function update(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
@@ -667,6 +691,10 @@ export async function update(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   const { id } = ref;
   const team = await openTeam(runtime, 'write');
   const by = sessionIdOf(team.roster, caller);
+  const later = laterOf(args, typedTimes(runtime, team.zone));
+  if (later !== undefined) {
+    return report(runtime, await team.register.defer(by, id, later, args.flags.get('note')), 'UPDATED', team);
+  }
   const changes = { ...changesOf(args.flags, typedTimes(runtime, team.zone)), ...criticalOf(args.switches), ...pinOf(args.switches, by) };
   const verdict = await team.register.update(by, id, changeIds(team.roster, changes), args.flags.get('note'));
   const code = report(runtime, verdict, 'UPDATED', team);

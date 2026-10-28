@@ -4,7 +4,7 @@ import type { Clock, Mutex } from '../core/lock.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { EVENT_VERSION, TASK_LINE_VERSION, type ApprovalVerdict, type CreateEvent, type RegisterEvent, type StatusEvent, type TaskFields, type UpdateEvent } from './events.ts';
 import { foldEvents, taskNumber, type RegisterState, type Task } from './fold.ts';
-import { GITHUB_ACTOR, NO_SKILL, type AddInput, type AskInput, type ImportChanges, type ImportInput, type RegisterPolicy, type StatusContext, type StatusInput, type Verdict } from './policy.ts';
+import { GITHUB_ACTOR, NO_SKILL, type AddInput, type AskInput, type DeferChange, type ImportChanges, type ImportInput, type RegisterPolicy, type StatusContext, type StatusInput, type Verdict } from './policy.ts';
 import { ACTIVE_STATUSES } from './model.ts';
 import type { TaskNumbering } from './numbering.ts';
 import { isWritable, type RegisterSnapshot } from './snapshot.ts';
@@ -260,6 +260,35 @@ export class Register {
         return single(change.ok ? { ok: true, value: { ...this.base(id, asker), type: 'update', ...change.value } } : change);
       }),
     );
+  }
+
+  /**
+   * `update <id> --later <when|none>`: the owner puts a card off to time `until` (stored form), or `null` brings it back
+   * (T1295), an update that changes no field and gives the task its waits from then on.
+   */
+  defer(caller: string, id: string, until: string | null, note: string | undefined): Promise<Verdict<WriteResult>> {
+    return this.commit(caller, (snapshot, elsewhere) =>
+      onTask(snapshot, elsewhere, id, (task) => single(this.deferEvent(task, caller, this.deps.policy.defer(task, caller, until, note, this.timeContext())))),
+    );
+  }
+
+  /**
+   * A Later from the lead above who asks the owner this team's decisions, `asker` being its `<team>/<id>`, as in
+   * noteFrom: the tree decides who that may be, so this team's roster check and the policy's caller check are skipped.
+   */
+  deferFrom(asker: string, id: string, until: string | null, note: string | undefined): Promise<Verdict<WriteResult>> {
+    return this.write((snapshot, elsewhere) =>
+      onTask(snapshot, elsewhere, id, (task) => single(this.deferEvent(task, asker, this.deps.policy.deferFrom(task, until, note, this.timeContext())))),
+    );
+  }
+
+  private deferEvent(task: Task, by: string, change: Verdict<DeferChange>): Verdict<UpdateEvent> {
+    return change.ok ? { ok: true, value: { ...this.base(task.id, by), type: 'update', ...change.value } } : change;
+  }
+
+  /** The clock and zone a write judges a time against. */
+  private timeContext(): Pick<StatusContext, 'now' | 'zone'> {
+    return { now: new Date(this.deps.clock.now()), zone: this.deps.zone };
   }
 
   /**

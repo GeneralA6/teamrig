@@ -18,7 +18,7 @@ import { parseWaits, type WaitReason } from './waits.ts';
  * decision `card` (0.79.0), the same `waits` and `card` on a `verifying` line for what its proof waits for
  * (0.109.0), an update's approval `verdict` (0.126.0), a task's `kind` (0.147.0), its `pin` (T637), a status line's
  * `review` (T916), a task's `type` and `critical` mark (T1252), which replaced `kind`, and a `done` status's `watch`
- * (T1306), which an older reader ignores:
+ * (T1306) and an update's `waits` (T1295), which an older reader ignores:
  * each reads there as none (an answered update as a note alone). An older teamrig re-serialized the events of the snapshot a rotation or
  * `compact` rewrites, so it dropped such a field there (the archive keeps the lines as written); this one copies
  * each kept line as written (compaction.ts).
@@ -153,6 +153,8 @@ export interface UpdateEvent extends EventBase {
   readonly note: string | null;
   /** The lead's answer to the task's approval wait, its note saying what it checked or why not; only `approve` writes it. */
   readonly verdict?: ApprovalVerdict;
+  /** The waits a Later gives a waiting or verifying task (T1295): its waits with the time the owner put it off to, or without one; only `defer` writes it. */
+  readonly waits?: readonly WaitReason[];
 }
 
 /**
@@ -282,7 +284,19 @@ export function parseEvent(line: JsonlRecord): EventParse {
       if (verdict !== undefined && !isApprovalVerdict(verdict)) {
         return unreadable(`unknown approval verdict ${JSON.stringify(verdict)}`);
       }
-      return { kind: 'event', event: { ...base, type: 'update', changes, note: textOrNull(record, 'note'), ...(verdict === undefined ? {} : { verdict }) } };
+      const waits = record['waits'] === undefined ? undefined : parseWaits(record['waits']);
+      if (typeof waits === 'string') {
+        return unreadable(waits);
+      }
+      const event: UpdateEvent = {
+        ...base,
+        type: 'update',
+        changes,
+        note: textOrNull(record, 'note'),
+        ...(verdict === undefined ? {} : { verdict }),
+        ...(waits === undefined ? {} : { waits }),
+      };
+      return { kind: 'event', event };
     }
     case 'moved': {
       const to = record['to'];

@@ -542,3 +542,45 @@ describe('Register.approveFrom (T1140)', () => {
     assert.equal(files.get(LOG), before);
   });
 });
+
+describe('Register.defer and deferFrom: a Later (T1295)', () => {
+  const OWNER = { kind: 'decision', who: 'owner' } as const;
+  const LATER = { kind: 'time', at: '2030-01-09 09:00' } as const;
+
+  async function asking() {
+    const kit = setup();
+    written(await kit.register.add('lead', { title: 'Ship it', description: 'what and why', owner: 'alpha', source: 'lead', priority: 1 }));
+    written(await kit.register.setStatus('alpha', 'T1', { status: 'waiting', waits: [OWNER], note: 'ship the export', card: TEST_OWNER_CARD }));
+    return kit;
+  }
+
+  it('writes a Later as one update line that changes no field and gives the task its waits, and brings it back', async () => {
+    const { files, register } = await asking();
+    const appended = files.get(LOG)?.length ?? 0;
+    const { task, event } = written(await register.defer('lead', 'T1', '2030-01-09 09:00', 'after the demo'));
+    assert.deepEqual(readEvents((files.get(LOG) ?? '').slice(appended)).events, [event]);
+    assert.deepEqual(event, { v: TASK_LINE_VERSION, type: 'update', id: 'T1', at: START, by: 'lead', changes: {}, note: 'after the demo', waits: [OWNER, LATER] });
+    assert.deepEqual([task.status, task.note, task.waits], ['waiting', 'ship the export', [OWNER, LATER]]);
+    const back = written(await register.defer('alpha', 'T1', null, 'asks now'));
+    assert.deepEqual([back.task.waits, back.task.note], [[OWNER], 'asks now']);
+  });
+
+  it('writes nothing when the policy refuses it, or the caller is on no roster here', async () => {
+    const { files, register } = await asking();
+    const before = files.get(LOG);
+    assert.equal(errorOf(await register.defer('bravo', 'T1', '2030-01-09 09:00', 'n')), 'only the owner (alpha) or the lead (lead) puts T1 off');
+    assert.equal(errorOf(await register.defer('alpha', 'T1', '2030-01-07 08:00', 'n')), 'time 01-07 08:00 UTC has passed: name a time to come');
+    assert.match(errorOf(await register.defer('app/lead', 'T1', '2030-01-09 09:00', 'n')), /app.lead is not a session on this team/);
+    assert.equal(errorOf(await register.defer('alpha', 'T9', '2030-01-09 09:00', 'n')), 'no task T9');
+    assert.equal(files.get(LOG), before);
+  });
+
+  it('writes a Later by the lead above, on no roster here and past the caller check, still judged on its content', async () => {
+    const { files, register } = await asking();
+    const { task, event } = written(await register.deferFrom('app/lead', 'T1', '2030-01-09 09:00', 'human: after the demo'));
+    assert.deepEqual([event.by, task.waits], ['app/lead', [OWNER, LATER]]);
+    const before = files.get(LOG);
+    assert.equal(errorOf(await register.deferFrom('app/lead', 'T1', '2030-01-09 09:00', ' ')), 'a Later needs --note: what owner said');
+    assert.equal(files.get(LOG), before);
+  });
+});

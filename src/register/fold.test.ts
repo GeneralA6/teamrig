@@ -318,3 +318,29 @@ describe("foldEvents: the lead's answer to an approval (T684)", () => {
     assert.equal(taskAfter([...asked, answered(11, 'approved'), status(12, 'waiting', [{ kind: 'approval', who: 'lead' }])]).answer, null);
   });
 });
+
+function later(hour: number, waits: readonly WaitReason[], by = 'lead'): RegisterEvent {
+  return { v: EVENT_VERSION, type: 'update', id: 'T1', at: at(hour), by, changes: {}, note: 'after the demo', waits };
+}
+
+describe('foldEvents: the waits a Later gives a task (T1295)', () => {
+  const OWNER: readonly WaitReason[] = [{ kind: 'decision', who: 'owner' }];
+  const PUT_OFF: readonly WaitReason[] = [...OWNER, { kind: 'time', at: '2030-01-09 12:00' }];
+
+  it("replaces a waiting or verifying task's waits, keeping its status, when it took it and the note it shows", () => {
+    const task = taskAfter([create(9), status(10, 'waiting', OWNER), later(11, PUT_OFF)]);
+    assert.deepEqual([task.waits, task.status, task.statusAt, task.note], [PUT_OFF, 'waiting', at(10), 'n']);
+    assert.deepEqual(taskAfter([create(9), status(10, 'verifying', OWNER), later(11, PUT_OFF)]).waits, PUT_OFF);
+    assert.deepEqual(taskAfter([create(9), status(10, 'waiting', PUT_OFF), later(11, OWNER)]).waits, OWNER, 'a Later brought back drops its time');
+  });
+
+  it('means nothing on a task in any other status, and a status set after it clears its waits as any', () => {
+    assert.deepEqual(taskAfter([create(9), status(10, 'in-progress'), later(11, PUT_OFF)]).waits, []);
+    assert.deepEqual(taskAfter([create(9), later(10, PUT_OFF)]).waits, [], 'an open task');
+    assert.deepEqual(taskAfter([create(9), status(10, 'waiting', OWNER), later(11, PUT_OFF), status(12, 'in-progress')]).waits, []);
+  });
+
+  it('keeps the waits through an update that names none', () => {
+    assert.deepEqual(taskAfter([create(9), status(10, 'waiting', OWNER), later(11, PUT_OFF), update(12, { priority: 1 })]).waits, PUT_OFF);
+  });
+});
