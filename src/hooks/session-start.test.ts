@@ -20,6 +20,7 @@ function context(overrides: Partial<SessionStartInput> = {}): string {
     team: 'app',
     load: loaded(),
     teamRules: [],
+    keptRulesAbove: [],
     renames: [],
     titleNote: undefined,
     refreshNote: undefined,
@@ -140,6 +141,15 @@ VERIFY 1, oldest first:
   it("appends the team's rules", () => {
     const text = context({ teamRules: [{ ancestor: undefined, path: '/kit/teams/app/rules.md', text: 'Ship small.' }] });
     assert.match(text, /# Your team's rules\nShip small\.$/);
+  });
+
+  it("lists the kept rules of a team above, tagged, before the team's own", () => {
+    const config = testConfig({ names: { lead: 'captain' }, ruleConflicts: [{ file: '~/CLAUDE.md', text: 'Commit straight to main.', rule: 'worktrees', wins: 'local' }] });
+    const text = context({ load: loaded({ config }), keptRulesAbove: [{ file: '~/CLAUDE.md', text: 'Push when green.', rule: 'push', wins: 'local', team: 'root' }] });
+    assert.ok(
+      text.includes('\nKept local rules [ruleConflicts]:\n- (team root) ~/CLAUDE.md "Push when green." wins over rule 15\n- ~/CLAUDE.md "Commit straight to main." wins over rule 16\n'),
+      text,
+    );
   });
 
   it('notes a newer config and config problems', () => {

@@ -6,13 +6,15 @@ import { formatAddress } from '../core/address.ts';
 import { ENV, KIT_NAME } from '../core/home.ts';
 import { isReservedName, RESERVED_RULE } from '../core/ids.ts';
 import type { Rename } from '../names/rename.ts';
-import { renderCorePack, renderLeadRules, renderSessionContext, type RulesClock, type TeamRules } from '../rules/pack.ts';
+import { renderCorePack, renderLeadRules, renderSessionContext, type KeptRule, type RulesClock, type TeamRules } from '../rules/pack.ts';
 
 export interface SessionStartInput {
   readonly team: string;
   readonly load: ConfigLoad;
   /** The `rules.md` of each team above the session's, root first, then its own team's; those that exist. */
   readonly teamRules: readonly TeamRules[];
+  /** The kept local rules [ruleConflicts] of each team above the session's, root first; its own team's are in `load`. */
+  readonly keptRulesAbove: readonly KeptRule[];
   /** The team's rename log, so the session learns its current name and old names still find it. */
   readonly renames: readonly Rename[];
   /** What the hook did with the session's Claude Code title, when there is something to say. */
@@ -172,7 +174,7 @@ export function sessionStartContext(input: SessionStartInput): string {
   if (load.issues.length > 0) {
     notes.push(`The team config has ${load.issues.length} problem(s), each read as its default; run: ${command} config validate`);
   }
-  const core = renderCorePack(load.config, command, input.platform, input.clock);
+  const core = renderCorePack(load.config, command, input.platform, input.clock, input.keptRulesAbove);
   const rules = isLeadSession(roster, input.session) ? `${core}\n\n${renderLeadRules(load.config, command)}` : core;
   return renderSessionContext(`${rules}\n\n${notes.join('\n')}`, input.teamRules, command);
 }

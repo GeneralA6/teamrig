@@ -6,7 +6,7 @@ import { noPositionals, type ParsedArgs } from '../args.ts';
 import { sessionRef } from '../inputs.ts';
 import { findTeam, openKit, requireConfig, rulesClockOf, sessionIdOf } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { readTeamRules } from '../team-rules.ts';
+import { keptRulesAboveOf, readTeamRules } from '../team-rules.ts';
 import { loadTree } from '../tree.ts';
 
 /**
@@ -33,6 +33,7 @@ export async function rules(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
     clock: rulesClockOf(runtime),
     load: kit.load,
     teamRules: await readTeamRules(runtime, kit, kitTree),
+    keptRulesAbove: keptRulesAboveOf(kit, kitTree),
     renames,
     titleNote: undefined,
     refreshNote: undefined,

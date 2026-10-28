@@ -59,7 +59,7 @@ import { noPositionals, type ParsedArgs } from '../args.ts';
 import { hookLogOf } from '../hook-logs.ts';
 import { openKit, renameDepsOf, rosterOf, rulesClockOf, teamFolders, teamZone, type Kit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { readTeamRules } from '../team-rules.ts';
+import { keptRulesAboveOf, readTeamRules } from '../team-rules.ts';
 import { leadAboveOf, loadTree } from '../tree.ts';
 import { bindAfterClear, bindHintOnce, bindTab, inboxLinesFor, readTitle, type TitleRead } from './hook-bind.ts';
 import { helperGateOutput, promptBudgetLine, stopBudgetLines } from './hook-budget.ts';
@@ -504,14 +504,14 @@ async function helperGateOf(runtime: CliRuntime, payload: JsonRecord): Promise<s
 
 type TeamParts = Pick<
   SessionStartInput,
-  'teamRules' | 'renames' | 'titleNote' | 'refreshNote' | 'liveTasksNote' | 'modelNote' | 'verifyNote' | 'session' | 'sessionInEnv' | 'tree'
+  'teamRules' | 'keptRulesAbove' | 'renames' | 'titleNote' | 'refreshNote' | 'liveTasksNote' | 'modelNote' | 'verifyNote' | 'session' | 'sessionInEnv' | 'tree'
 > & {
   /** Why the start's Claude Code process could not be recorded; undefined when it was, or there was nothing to record. */
   readonly recordNote: string | undefined;
 };
 
 /**
- * The rules.md of a loaded team and of each team above it, and its rename log, after binding a hand-started tab by its Claude Code title
+ * The rules.md of a loaded team and of each team above it, the kept local rules of those above, and its rename log, after binding a hand-started tab by its Claude Code title
  * and recording a Claude Code rename of the session; the pointer to its handover after a refresh; who
  * the session is: `$TEAMRIG_SESSION`, else the area it read its inbox as or was bound to, so a tab that
  * set the team up keeps its identity across a compact or resume; after a refresh or a compaction its live
@@ -538,6 +538,7 @@ async function teamPartsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, pay
   return {
     recordNote: id === undefined || claudeSession === null ? undefined : await recordSessionStart(runtime, kit, id, claudeSession, startTranscriptOf(payload)),
     teamRules: await readTeamRules(runtime, kit, kitTree),
+    keptRulesAbove: keptRulesAboveOf(kit, kitTree),
     renames,
     titleNote,
     refreshNote: refresh.note,
@@ -936,6 +937,7 @@ export async function sessionStart(args: ParsedArgs, runtime: CliRuntime): Promi
       : {
           recordNote: undefined,
           teamRules: [],
+          keptRulesAbove: [],
           renames: [],
           titleNote: undefined,
           refreshNote: undefined,

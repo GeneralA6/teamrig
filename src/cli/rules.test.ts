@@ -2,7 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { CliHarness, TEAM, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
-import { teamHomeOf, treeHarness } from '../testing/team-tree.ts';
+import { formatConfig } from '../config/load.ts';
+import { KEPT_PUSH_RULE, keptPushLineOf, SUB_TEAMS, teamConfigOf, teamHomeOf, treeHarness } from '../testing/team-tree.ts';
 import { EXIT } from './runtime.ts';
 
 const LEAD_UNSET =
@@ -36,6 +37,16 @@ describe('teamrig rules', () => {
     assert.ok(ops.endsWith(`\n\n${above('app')}`), ops);
     const app = textOf(await kit.run(['rules', '--session', 'lead']));
     assert.ok(app.endsWith("\n\n# Your team's rules\n- app rule."), app);
+  });
+
+  it("lists the kept local rules of each team above the session's, root first and tagged, and its own untagged", async () => {
+    const kit = await treeHarness({ ruleConflicts: [KEPT_PUSH_RULE] });
+    await kit.files.write(teamConfigOf('web'), formatConfig({ ...SUB_TEAMS['web'], ruleConflicts: [{ ...KEPT_PUSH_RULE, text: 'Commit when green.' }] }));
+    const ui = textOf(await kit.run(['rules', '--session', 'lead'], { env: { TEAMRIG_TEAM: 'ui' } }));
+    const web = '- (team web) ~/CLAUDE.md "Commit when green." wins over rule 15';
+    assert.ok(ui.includes(['Kept local rules [ruleConflicts]:', keptPushLineOf('app'), web].join('\n')), ui);
+    const app = textOf(await kit.run(['rules', '--session', 'lead']));
+    assert.ok(app.includes('Kept local rules [ruleConflicts]:\n- ~/CLAUDE.md "Push when green." wins over rule 15'), app);
   });
 
   it('takes the session from $TEAMRIG_SESSION without the note, and asks when there is none', async () => {
