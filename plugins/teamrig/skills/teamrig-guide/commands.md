@@ -1894,6 +1894,10 @@ It refuses any session but the lead when the host has no room for one more: its 
 `open.headroom.sessionMb` (1200 MB): what it holds resident against free memory, and what it committed (about twice
 that) against the commit charge. [teamrig sessions](#teamrig-sessions) shows what each one holds and committed.
 
+It refuses any session, the lead too, that already runs in a Claude Code, as [teamrig sessions](#teamrig-sessions)
+tells it (its recorded process still runs Claude Code, started before the record and bound to no other session
+since), naming that process: a second one would work beside it on the same tasks. Use its tab, or end it first.
+
 A session the lead closed while idle ([teamrig close](#teamrig-close)) goes on in its last Claude Code session (`claude --resume`) when that is small and
 recent enough by the `--resume` limits below, with a first prompt to read its inbox and list again; else it opens
 fresh and the OPENED line says why. The reopen is logged in `state/session-log.jsonl` beside the close.
@@ -1957,7 +1961,8 @@ Output:
 Starting Claude Code as shop-web (session web of team shop) in /home/you/shop, on the default model and effort
 ```
 
-It refuses when `claude` is not on the PATH.
+It refuses when `claude` is not on the PATH, and, at its start and before each restart, while the session runs in
+another Claude Code, as `open` does.
 
 ### teamrig restore
 
