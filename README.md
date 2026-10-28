@@ -173,8 +173,8 @@ helper it is. Everything runs on your machine, with no account and no cloud bill
   sums up a test run in one line.
 - **Status line:** `teamrig statusline install` shows the week's use, the folder, the branch and the command that
   resumes the session.
-- **Auto mode knows the team:** `teamrig automode install` adds the team's protected branches, task commands and
-  build wrappers to Claude Code's auto-mode facts, so auto mode stops asking about them.
+- **Auto mode knows the team:** `teamrig automode install` adds the team's protected branches, task commands, build
+  wrappers and own-branch rebases to Claude Code's auto-mode facts, so auto mode stops asking about them.
 - **A model per session:** each session starts on its own model and effort, and you're told when one runs on another.
 - **GitHub issues in the task list:** `teamrig gh sync` reads your repositories' open issues every 15 minutes, one way
   only ([GitHub sync](docs/github-sync.md)).
