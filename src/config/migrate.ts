@@ -185,7 +185,7 @@ function renameKeys(config: JsonRecord, renames: readonly KeyRename[], fromVersi
 /** v4 to v5: the deploy flow's keys in plain words, PLAIN_WORD_RENAMES; every value is kept as it was. */
 export const RENAME_TO_PLAIN_WORDS: ConfigMigration = {
   from: 4,
-  firstRelease: '0.206.0',
+  firstRelease: '0.214.0',
   apply: (config) => renameKeys(config, PLAIN_WORD_RENAMES, 4),
 };
 
