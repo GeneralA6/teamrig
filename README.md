@@ -198,6 +198,7 @@ helper it is. Everything runs on your machine, with no account and no cloud bill
 | [Plan the week](docs/guides/plan-the-week.md) | The week plan and task sizes against the weekly limit, the daily budget and its pace line, bursts |
 | [Grow the team](docs/guides/grow-the-team.md) | Setting up a team with a tab per session, session names, hires and their retire, child teams under the lead |
 | [Ship from many sessions](docs/guides/ship-from-many-sessions.md) | The host lock for builds and test runs, landing a branch, rolling it out, clean measurements beside deploys |
+| [Make it improve itself](docs/guides/improve-itself.md) | Lessons kept as skills and team rules, the skills scorecard, settling local rules that say otherwise, a lean setup |
 | [Everything teamrig does](docs/features.md) | Every feature, and whether it works today |
 | [Every command](docs/commands.md) | Each command with its flags, as `teamrig help` prints it |
 | [Every config key](docs/configuration.md) | Each key of the team config with its type, default and meaning, drawn from the schema |

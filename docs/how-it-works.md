@@ -13,6 +13,7 @@ whether it works today, is being built (with its task id) or is planned. Parts n
 - [Recovering a session](#recovering-a-session)
 - [Keeping it safe](#keeping-it-safe)
 - [Shipping from many sessions](#shipping-from-many-sessions)
+- [Improving itself](#improving-itself)
 - [Room for other tools](#room-for-other-tools)
 
 ## The parts
@@ -264,6 +265,12 @@ and reads without a prompt.
 How many sessions build, land and deploy on one host has its own guide,
 [Ship from many sessions](guides/ship-from-many-sessions.md): the host lock, landing a branch, rolling it out, when a
 step holds back, clean measurements and the deploy state in one read.
+
+## Improving itself
+
+How the team keeps what it learns has its own guide, [Make it improve itself](guides/improve-itself.md): a procedure
+becomes a skill, skills held to a shape, the skills scorecard, two sessions editing one skill, team rules, settling
+the local rules that say otherwise and a lean setup.
 
 ## Room for other tools
 

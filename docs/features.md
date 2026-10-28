@@ -108,5 +108,6 @@ flowchart LR
 [Keep it safe](guides/keep-it-safe.md) the guards, [Run your day](guides/run-your-day.md) the daily meeting,
 notes between sessions and wakes, [Recover from a crash or a full context](guides/recover.md) a restore after a
 reboot, a fresh context and the turn log, [Plan the week](guides/plan-the-week.md) the week plan, the daily
-budget and bursts, and [Ship from many sessions](guides/ship-from-many-sessions.md) the host lock, landing and
-rolling out a change, and clean measurements beside deploys.
+budget and bursts, [Ship from many sessions](guides/ship-from-many-sessions.md) the host lock, landing and
+rolling out a change, and clean measurements beside deploys, and [Make it improve itself](guides/improve-itself.md)
+skills, their scorecard, team rules and the local rules that say otherwise.
