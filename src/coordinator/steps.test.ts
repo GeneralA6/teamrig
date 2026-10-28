@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { exitCodeOf, nodeStepRunner, STOPPED_EXIT, TIMED_OUT_EXIT } from './steps.ts';
 import { nodeTreeKill, type TreeKill } from './tree-kill.ts';
+import { livenessOf, parseWrittenProcess, WRITE_PROCESS_SCRIPT, type WrittenProcess } from '../testing/process-liveness.ts';
 
 /**
  * The real tree kill, held until `started` exists, so the spec kills a grandchild that runs, not a step whose shell
@@ -21,22 +22,15 @@ function killOnceStarted(started: string, kill: TreeKill): TreeKill {
   };
 }
 
-/** Whether process `pid` runs: signal 0 only checks, and EPERM means it runs as another user. */
-function isRunning(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return error instanceof Error && 'code' in error && error.code === 'EPERM';
-  }
-}
+/** Whether a process the spec started still runs, told apart from a later process Windows gave its id (T990). */
+const runs = livenessOf(process.platform);
 
-/** Whether process `pid` ends within `ms`: a tree kill returns before the last process in it has ended. */
-async function endsWithin(pid: number, ms: number): Promise<boolean> {
-  for (let waited = 0; waited < ms && isRunning(pid); waited += 50) {
+/** Whether `written` ends within `ms`: a tree kill returns before the last process in it has ended. */
+async function endsWithin(written: WrittenProcess, ms: number): Promise<boolean> {
+  for (let waited = 0; waited < ms && (await runs(written)); waited += 50) {
     await wait(50);
   }
-  return !isRunning(pid);
+  return !(await runs(written));
 }
 
 describe('exitCodeOf', () => {
@@ -74,9 +68,9 @@ describe('nodeStepRunner', () => {
     assert.deepEqual(end, { kind: 'exited', code: 0 });
   });
 
-  /** A step that starts a grandchild, which writes its pid to `started` once it runs, then idles 10 s. */
+  /** A step that starts a grandchild, which writes its pid and the time to `started` once it runs, then idles 10 s. */
   async function stepWithGrandchild(started: string): Promise<string> {
-    await writeFile(join(dir, 'grandchild.cjs'), `require('node:fs').writeFileSync(process.argv[2], String(process.pid)); setTimeout(() => undefined, 10_000);`);
+    await writeFile(join(dir, 'grandchild.cjs'), `${WRITE_PROCESS_SCRIPT}; setTimeout(() => undefined, 10_000);`);
     await writeFile(join(dir, 'child.cjs'), `require('node:child_process').spawn(process.execPath, [${JSON.stringify(join(dir, 'grandchild.cjs'))}, process.argv[2]], { stdio: 'ignore' }); setInterval(() => undefined, 1000);`);
     return `node child.cjs "${started}"`;
   }
@@ -85,17 +79,17 @@ describe('nodeStepRunner', () => {
     const pidFile = join(dir, 'timed-out-grandchild-started');
     const end = await runner.run({ command: await stepWithGrandchild(pidFile), cwd: dir, env: process.env, timeoutMs: 1_000 });
     assert.deepEqual(end, { kind: 'timedOut' });
-    const grandchild = async (): Promise<number | undefined> => (existsSync(pidFile) ? Number(await readFile(pidFile, 'utf8')) : undefined);
+    const grandchild = async (): Promise<WrittenProcess | undefined> => (existsSync(pidFile) ? parseWrittenProcess(await readFile(pidFile, 'utf8')) : undefined);
     const atEnd = await grandchild();
     // A grandchild still starting when the kill ran would write its id late and run on.
     await wait(1_000);
     const late = await grandchild();
     try {
-      assert.equal(atEnd !== undefined && isRunning(atEnd), false, 'the grandchild had ended when the step was reported');
-      assert.equal(late !== undefined && isRunning(late), false, 'no grandchild runs on after its step');
+      assert.equal(atEnd !== undefined && (await runs(atEnd)), false, 'the grandchild had ended when the step was reported');
+      assert.equal(late !== undefined && (await runs(late)), false, 'no grandchild runs on after its step');
     } finally {
-      if (late !== undefined && isRunning(late)) {
-        process.kill(late);
+      if (late !== undefined && (await runs(late))) {
+        process.kill(late.pid);
       }
     }
   });
@@ -121,7 +115,8 @@ describe('nodeStepRunner', () => {
     setTimeout(() => stop.abort(), 500);
     const end = await killing.run({ command: await stepWithGrandchild(started), cwd: dir, env: process.env, timeoutMs: 60_000, stop: stop.signal });
     assert.deepEqual(end, { kind: 'stopped' });
-    const grandchild = Number(await readFile(started, 'utf8'));
+    const grandchild = parseWrittenProcess(await readFile(started, 'utf8'));
+    assert.ok(grandchild !== undefined, 'the grandchild wrote its pid and the time');
     assert.equal(await endsWithin(grandchild, 5_000), true, 'the grandchild was killed with its parent');
   });
 
