@@ -94,7 +94,9 @@ describe('the meeting agenda', () => {
       "  A question a card does not answer is its task owner's to find: teamrig add --owner <id> --due <date> --session lead, then relay the answer; never look it up yourself.",
     );
     assert.equal(lines[17], '  Record each answer in the same turn: teamrig update <id> --note "owner decided: <decision>" --session lead; meeting end tells each task\'s owner.');
-    assert.equal(lines.length, 18);
+    // T1295: a card the owner puts off is recorded with --later, in place of an answer.
+    assert.equal(lines[18], '  A card owner puts off to a date: teamrig update <id> --later <date> --note "owner put it off: <why>" --session lead; it waits in LATER until then.');
+    assert.equal(lines.length, 19);
   });
 
   // T1278: a team that asks for the picker (decisions.askWith: picker) gets it named instead of plain text.
@@ -115,11 +117,11 @@ describe('the meeting agenda', () => {
     assert.deepEqual(rows, ['  T4 waiting, p2, owner alpha | Pick the pricing tier (waiting: decision owner)', '  web/T7 waiting, p2, owner alpha | Add a health check (waiting: decision owner)']);
     assert.ok(!lines.some((line) => /\bT8\b/.test(line)), 'an ungated wait of a team that requires gates stays out');
     assert.equal(
-      lines.at(-2),
+      lines.at(-3),
       "  A question a card does not answer is its task owner's to find: teamrig add --owner <id> (and --team <team> for a team under yours) --due <date> --session lead, then relay the answer; never look it up yourself.",
     );
     assert.equal(
-      lines.at(-1),
+      lines.at(-2),
       '  Record each answer in the same turn: teamrig update <id> (<team>/<id> for a task of a team under yours, as its row names it) --note "owner decided: <decision>" --session lead; meeting end tells each task\'s owner.',
     );
   });

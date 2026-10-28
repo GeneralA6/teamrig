@@ -1,5 +1,5 @@
 import type { TimeZone } from '../core/zone.ts';
-import { cardFacts } from '../meeting/agenda.ts';
+import { cardFacts, laterLine } from '../meeting/agenda.ts';
 import type { Task } from '../register/fold.ts';
 import type { TaskTree } from '../register/tree.ts';
 import { dueBeforeNextBatch, nextBatchText, triggerText, type BatchTrigger, type DecisionBatch, type OwnerWait } from './batch.ts';
@@ -39,6 +39,7 @@ export function batchLines(view: BatchView): string[] {
       ? [
           `  Ask ${ownerMarker} these together, each card as it stands, each figure explained; then ${command} decisions asked --session ${lead} records the batch asked.`,
           `  Record each answer in the same turn: ${command} update <id> --note "${ownerMarker} decided: <decision>" --session ${lead}.`,
+          laterLine(command, ownerMarker, lead, 'no batch asks it before then'),
         ]
       : [`  ${askedBy} asks ${ownerMarker} these in its batches and records each answer on its task as a note: "${ownerMarker} decided: <decision>".`];
   return [

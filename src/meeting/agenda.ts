@@ -129,6 +129,14 @@ function askLine(askWith: AskWith, ownerMarker: string): string {
 }
 
 /**
+ * How the lead records a card the owner puts off to a date, in place of an answer (T1295); `until` says where it waits
+ * meanwhile: the agenda's LATER block, or out of the batches.
+ */
+export function laterLine(command: string, ownerMarker: string, lead: string, until: string): string {
+  return `  A card ${ownerMarker} puts off to a date: ${command} update <id> --later <date> --note "${ownerMarker} put it off: <why>" --session ${lead}; ${until}.`;
+}
+
+/**
  * DECISIONS: the tasks waiting on the owner, the lead's team's first, then those of each team under it (T1018), each
  * with its card facts, then how to card, ask and record them. The card form is the owner's: each item readable alone,
  * with the numbers to decide by and one exact action.
@@ -149,6 +157,7 @@ function decisionLines(input: AgendaInput): string[] {
     askLine(input.askWith, input.ownerMarker),
     `  A question a card does not answer is its task owner's to find: ${input.command} add --owner <id>${handed} --due <date> --session ${input.lead}, then relay the answer; never look it up yourself.`,
     `  Record each answer in the same turn: ${input.command} update <id>${labelled} --note "${input.ownerMarker} decided: <decision>" --session ${input.lead}; meeting end tells each task's owner.`,
+    laterLine(input.command, input.ownerMarker, input.lead, 'it waits in LATER until then'),
   ];
 }
 
