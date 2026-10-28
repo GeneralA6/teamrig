@@ -9,10 +9,10 @@ import { ORIGIN, type MergeGit } from '../merge/git.ts';
  * to show what each repository has pushed but not deployed.
  */
 
-export type RollGit = Pick<MergeGit, 'checkoutOf' | 'changes' | 'fetch' | 'defaultBranch' | 'sha' | 'commits' | 'isAncestor' | 'changedPaths' | 'fileAt' | 'fastForward' | 'resetTo'>;
+export type DeployGit = Pick<MergeGit, 'checkoutOf' | 'changes' | 'fetch' | 'defaultBranch' | 'sha' | 'commits' | 'isAncestor' | 'changedPaths' | 'fileAt' | 'fastForward' | 'resetTo'>;
 
 /** A repository with a deploy block, and where its main checkout is. */
-export interface RollRepo {
+export interface DeployRepo {
   readonly name: string;
   readonly config: CoordinatorRepoConfig;
   readonly deploy: DeployConfig;
@@ -21,7 +21,7 @@ export interface RollRepo {
 
 
 /** The repositories with a deploy block, in config order, each with its main checkout as a place. */
-export function rollRepos(coordinator: Pick<CoordinatorConfig, 'repos'>, inTeam: (path: string) => string): RollRepo[] {
+export function deployRepos(coordinator: Pick<CoordinatorConfig, 'repos'>, inTeam: (path: string) => string): DeployRepo[] {
   return Object.entries(coordinator.repos).flatMap(([name, config]) => (config.deploy === undefined ? [] : [{ name, config, deploy: config.deploy, main: inTeam(config.mainCheckout) }]));
 }
 
@@ -67,7 +67,7 @@ type DependencyRead = { readonly kind: 'step'; readonly step: DependencyStep | u
  * or a hold. The gate holds a dependency change unless `dependencyCheck` and `deploy.dependencyInstall` are both set;
  * with the gate off, an install set runs unchecked, and with neither the range deploys as it is.
  */
-async function dependencyStep(git: RollGit, repo: RollRepo, head: string, target: string): Promise<DependencyRead> {
+async function dependencyStep(git: DeployGit, repo: DeployRepo, head: string, target: string): Promise<DependencyRead> {
   const { name, main, config, deploy } = repo;
   const install = deploy.dependencyInstall;
   if (!config.dependencyGate && install === undefined) {
@@ -92,7 +92,7 @@ async function dependencyStep(git: RollGit, repo: RollRepo, head: string, target
 }
 
 /** Fetches and reads what a deploy would pull now, refusing a main checkout it must not pull into. */
-export async function readPending(git: RollGit, repo: RollRepo): Promise<PendingRead> {
+export async function readPending(git: DeployGit, repo: DeployRepo): Promise<PendingRead> {
   const { main, name } = repo;
   const checkout = git.checkoutOf(main);
   if (checkout === undefined) {

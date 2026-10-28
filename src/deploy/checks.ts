@@ -5,8 +5,8 @@ import type { SecretScanner } from '../core/secrets.ts';
 import { HOOK_WAIT_EXIT, type HookEnd, type HookRunner } from './hooks.ts';
 
 /** A check's exit codes: go and refuse, beside every hook's wait (`HOOK_WAIT_EXIT`); any other end makes the deploy wait, so a broken check never lets it through. */
-export const GATE_GO_EXIT = 0;
-export const GATE_REFUSE_EXIT = 2;
+export const CHECK_GO_EXIT = 0;
+export const CHECK_REFUSE_EXIT = 2;
 
 /** A stdout line that names what the deploy brings, such as an image tag; the last one wins. */
 const TAG_LINE = /^tag=([A-Za-z0-9._:-]{1,128})$/;
@@ -15,7 +15,7 @@ const TAG_LINE = /^tag=([A-Za-z0-9._:-]{1,128})$/;
 export const HOOK_LINE_MAX_CHARS = 300;
 
 /** What a check printed that the deploy reads: its first line that is not a tag (its reason), and its last tag. */
-export class GateOutput {
+export class CheckOutput {
   private first: string | undefined;
   private last: string | undefined;
 
@@ -46,14 +46,14 @@ export function shownLine(scanner: Pick<SecretScanner, 'redact'>, line: string):
 }
 
 /** What a check's end means for the deploy: its exit code read as go, wait or refuse; any other end waits. */
-export function gateReadiness(name: string, end: HookEnd, reason: string | undefined, timeoutSeconds: number): Readiness {
+export function checkReadiness(name: string, end: HookEnd, reason: string | undefined, timeoutSeconds: number): Readiness {
   const because = reason === undefined ? '' : `: ${reason}`;
   switch (end.kind) {
     case 'exited':
-      if (end.code === GATE_GO_EXIT) {
+      if (end.code === CHECK_GO_EXIT) {
         return { kind: 'go' };
       }
-      if (end.code === GATE_REFUSE_EXIT) {
+      if (end.code === CHECK_REFUSE_EXIT) {
         return { kind: 'refuse', reason: `check ${name} refuses the deploy${because}` };
       }
       if (end.code === HOOK_WAIT_EXIT) {
@@ -71,7 +71,7 @@ export function gateReadiness(name: string, end: HookEnd, reason: string | undef
   }
 }
 
-export interface GateRun {
+export interface CheckRun {
   readonly hooks: HookRunner;
   readonly scanner: Pick<SecretScanner, 'redact'>;
   readonly cwd: string;
@@ -81,24 +81,24 @@ export interface GateRun {
 }
 
 /** The checks' answer: the first that does not pass, else go with the last tag a check printed. */
-export type GatesAnswer = { readonly readiness: Readiness; readonly tag: string | undefined };
+export type ChecksAnswer = { readonly readiness: Readiness; readonly tag: string | undefined };
 
 /**
  * Asks each check in order, with `TEAMRIG_CHECK_NAME` and `TEAMRIG_CHECK_PHASE` set, and stops at the first that does
  * not pass. Each reason is redacted, since a wait or refusal is printed and may reach the ledger.
  */
-export async function askGates(gates: readonly DeployCheckConfig[], phase: ClearancePhase, run: GateRun): Promise<GatesAnswer> {
+export async function askChecks(checks: readonly DeployCheckConfig[], phase: ClearancePhase, run: CheckRun): Promise<ChecksAnswer> {
   let tag: string | undefined;
-  for (const gate of gates) {
-    const output = new GateOutput();
+  for (const check of checks) {
+    const output = new CheckOutput();
     const end = await run.hooks.run({
-      argv: gate.command,
+      argv: check.command,
       cwd: run.cwd,
-      env: { ...run.env, TEAMRIG_CHECK_NAME: gate.name, TEAMRIG_CHECK_PHASE: phase },
+      env: { ...run.env, TEAMRIG_CHECK_NAME: check.name, TEAMRIG_CHECK_PHASE: phase },
       timeoutMs: run.timeoutSeconds * 1000,
       onLine: output.hear,
     });
-    const readiness = gateReadiness(gate.name, end, output.reason === undefined ? undefined : shownLine(run.scanner, output.reason), run.timeoutSeconds);
+    const readiness = checkReadiness(check.name, end, output.reason === undefined ? undefined : shownLine(run.scanner, output.reason), run.timeoutSeconds);
     if (readiness.kind !== 'go') {
       return { readiness, tag: undefined };
     }

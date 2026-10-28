@@ -13,8 +13,8 @@ import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
 import { FakeMergeGit, MAIN_CHECKOUT } from '../testing/fake-merge-git.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { deployTargets, type DeployRequest } from './deploy.ts';
-import type { RollEnd } from './run.ts';
+import { redeployTargets, type RedeployRequest } from './deploy.ts';
+import type { DeployEnd } from './run.ts';
 
 const PLACES: CoordinatorPlaces = {
   ledger: '/team/deploys/ledger.jsonl',
@@ -30,7 +30,7 @@ const DEPLOY_COMMAND = ['node', 'tools/deploy.js'];
 const DEPLOY: DeployConfig = { targets: ['api', 'workers', 'live'], checks: [FLOW], afterPull: [['node', 'scripts/build-cli.js']], command: DEPLOY_COMMAND };
 const PIPELINE: CoordinatorRepoConfig = { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], dependencyGate: false, followMainCheckout: false, deploy: DEPLOY };
 const RESTART = ['node', 'tools/restart.js', 'api', 'live'];
-const REQUEST: DeployRequest = { session: 'sec', repo: 'pipeline', dir: '/runner', targets: ['api', 'live'], why: 'rotate the db credential', argv: RESTART };
+const REQUEST: RedeployRequest = { session: 'sec', repo: 'pipeline', dir: '/runner', targets: ['api', 'live'], why: 'rotate the db credential', argv: RESTART };
 const SECRET = ['db password', '=', 'hunter2'].join('');
 const REDACTED = 'db [redacted password or key assignment]';
 
@@ -65,9 +65,9 @@ class World {
     };
   }
 
-  run(request: DeployRequest = REQUEST): Promise<RollEnd> {
+  run(request: RedeployRequest = REQUEST): Promise<DeployEnd> {
     const setup = { team: 'app', coordinator: this.coordinator, places: PLACES, zone: TimeZone.UTC, inTeam: (path: string) => path };
-    return deployTargets(setup, {
+    return redeployTargets(setup, {
       git: this.git,
       hooks: this.hooks,
       files: this.files,
@@ -106,7 +106,7 @@ function claim(targets: readonly string[]): object {
   return { session: 'ops', targets, metric: 'p95', why: 'latency probe', from: '2030-01-08T09:50:00.000Z', until: '2030-01-08T10:05:00.000Z' };
 }
 
-describe('deployTargets', () => {
+describe('redeployTargets', () => {
   it('asks the checks before and under the lock, runs the command with the lock, and records one heavy step and a deploy of its targets', async () => {
     const world = new World();
     world.hooks.answer(RESTART, { lines: ['restarting api, live', 'restarted 2 deployments'], takesMs: 90_000 });

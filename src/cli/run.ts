@@ -70,11 +70,11 @@ const testCommand = () => import('./commands/test.ts');
 const heavyCommand = () => import('./commands/heavy.ts');
 const withdrawCommand = () => import('./commands/withdraw.ts');
 const mergeCommand = () => import('./commands/merge.ts');
-const rollCommand = () => import('./commands/deploy.ts');
+const deployCommand = () => import('./commands/deploy.ts');
 const claimCommands = () => import('./commands/claim.ts');
 const windowsCommand = () => import('./commands/windows.ts');
 const loadCommands = () => import('./commands/load.ts');
-const deploysCommand = () => import('./commands/deploy-status.ts');
+const deployStatusCommand = () => import('./commands/deploy-status.ts');
 const ghCommands = () => import('./commands/gh.ts');
 const startCommands = () => import('./commands/start.ts');
 const meetingCommands = () => import('./commands/meeting.ts');
@@ -212,13 +212,13 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   heavy: { effect: 'write', flags: ['session', 'what', 'max-minutes'], switches: ['small', 'pre-push'], rest: true, load: async () => (await heavyCommand()).heavy },
   withdraw: { effect: 'write', flags: ['session', 'what'], switches: ['all'], load: async () => (await withdrawCommand()).withdraw },
   merge: { effect: 'write', flags: ['session'], switches: ['keep-remote', 'no-delete-local'], load: async () => (await mergeCommand()).merge },
-  deploy: { effect: 'write', flags: ['session', 'repo', 'targets', 'what'], rest: true, load: async () => (await rollCommand()).roll },
+  deploy: { effect: 'write', flags: ['session', 'repo', 'targets', 'what'], rest: true, load: async () => (await deployCommand()).deploy },
   claim: { effect: 'write', flags: ['session', 'targets', 'metric', 'why', 'for'], load: async () => (await claimCommands()).claim },
   release: { effect: 'write', flags: ['session'], load: async () => (await claimCommands()).release },
   windows: { effect: 'read', flags: ['targets', 'since', 'until', 'settle', 'min'], load: async () => (await windowsCommand()).windows },
   load: { effect: 'write', flags: ['session', 'what', 'targets', 'at'], load: async () => (await loadCommands()).load },
   'load end': { effect: 'write', flags: ['session', 'id', 'at'], load: async () => (await loadCommands()).loadEnd },
-  'deploy-status': { effect: 'read', flags: [], load: async () => (await deploysCommand()).deploys },
+  'deploy-status': { effect: 'read', flags: [], load: async () => (await deployStatusCommand()).deployStatus },
   'hook push-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).pushGuard },
   'hook package-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).packageGuard },
   'hook secret-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).secretGuard },

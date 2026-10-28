@@ -1,8 +1,8 @@
 import { snapshotDirOf } from '../../budget/snapshot.ts';
 import { coordinatorPlaces, teamPlace } from '../../coordinator/places.ts';
 import { SecretScanner } from '../../core/secrets.ts';
-import { deployTargets } from '../../deploy/deploy.ts';
-import { rollRepo, type RollRequest } from '../../deploy/run.ts';
+import { redeployTargets } from '../../deploy/deploy.ts';
+import { deployRepo, type DeployRequest } from '../../deploy/run.ts';
 import { requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
 import { hostLockOf, logLineOf, nextResetFrom } from '../coordinator-ports.ts';
 import { callerOf, commandWordsOf, listOf } from '../inputs.ts';
@@ -11,14 +11,14 @@ import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.t
 import { stoppableHooks, stoppableLock, stoppableSleep, stoppedWhileWaiting, unlessStopped, watchStarters } from '../stoppable.ts';
 
 /** What a deploy that pulls nothing restarts, why, and the command that does it. */
-interface DeployParts {
+interface RedeployParts {
   readonly targets: readonly string[];
   readonly why: string;
   readonly argv: readonly string[];
 }
 
 /** The deploy `--targets` asks for, with its `--what` and the command after `--`; undefined for a plain deploy. */
-function deployPartsOf(args: ParsedArgs): DeployParts | undefined {
+function redeployPartsOf(args: ParsedArgs): RedeployParts | undefined {
   const targets = args.flags.get('targets');
   if (targets === undefined) {
     if (args.flags.has('what') || args.rest.length > 0) {
@@ -40,8 +40,8 @@ function deployPartsOf(args: ParsedArgs): DeployParts | undefined {
  * started it ends, it stops waiting, or kills the hook it runs (exit 129) and frees the lock. Exit 0 deployed or nothing
  * pending, 1 failed or stopped, 2 refused.
  */
-export async function roll(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
-  const deploy = deployPartsOf(args);
+export async function deploy(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+  const redeploy = redeployPartsOf(args);
   const caller = callerOf(args.flags, runtime.env);
   const { team } = await findTeam(runtime);
   const kit = await openKit(runtime, team);
@@ -69,8 +69,8 @@ export async function roll(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
       newId: () => runtime.newId(),
       say,
     };
-    const request: RollRequest = { session, repo: args.flags.get('repo'), dir: runtime.cwd };
-    const end = await unlessStopped(stop, deploy === undefined ? rollRepo(setup, ports, request) : deployTargets(setup, ports, { ...request, ...deploy }));
+    const request: DeployRequest = { session, repo: args.flags.get('repo'), dir: runtime.cwd };
+    const end = await unlessStopped(stop, redeploy === undefined ? deployRepo(setup, ports, request) : redeployTargets(setup, ports, { ...request, ...redeploy }));
     if (end === undefined) {
       return stoppedWhileWaiting(runtime, say, watching);
     }
