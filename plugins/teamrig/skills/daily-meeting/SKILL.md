@@ -23,6 +23,8 @@ Then it prints the agenda:
 - `DECISIONS`: each task waiting on the human's decision or approval, with its card facts;
 - `UNGATED`: the waits on the human's decision whose card names no owner gate or business decision: never read
   them out; decide those of sessions you lead and send each its answer as an inbox line;
+- `LATER`: the cards the human put off to a time still to come (step 4): never read out before that time, then back
+  in `DECISIONS`;
 - `LATE`: the active tasks past their due date, their own or the earlier one of a task that needs them
   (`due 10-14 (from T9)`);
 - `DONE`: what finished since the last meeting;
@@ -91,6 +93,20 @@ team under yours takes its row's name and a note alone: `teamrig update web/T2 -
 lead`; its fields stay that team's. A new order
 of the human's that creates work is a new task: `teamrig add --session lead --owner <id> --source owner ...`. When a
 decision changes what a session works on right now, send it one CRITICAL message; anything else waits for the end.
+
+A card the human wants to decide later, not now, is put off to a date instead of answered:
+
+```sh
+teamrig update T7 --later "2026-11-02 09:00" --note "owner put it off: waits for the vendor's quote" --session lead
+```
+
+It leaves `DECISIONS` and the decision batches for `LATER` until that time, then is asked again; `--later none`
+brings it back at once. A task of a team under yours takes it too: `update web/T2 --later ... --note ...`.
+
+When the human would rather hear a session's cards from the session that holds them, `teamrig meet <id|name>`
+wakes that session's tab with an inbox line from the human, or opens it fresh in a new tab; it then brings its own
+due cards, one at a time, and records each answer itself. It is refused when none of its cards waits on the human
+now, naming those put off and until when. Record nothing for those cards here: the session does.
 
 ## 5. End
 
