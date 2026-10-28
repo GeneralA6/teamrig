@@ -29,13 +29,14 @@ const ROOM: TeamDay = { usedPct: 2, pacePct: 5 };
 const LEAD: BudgetLeader = { id: 'lead', name: 'lead', isLead: true };
 const SUB_LEAD: BudgetLeader = { id: 'bravo', name: 'app-bravo', isLead: false };
 
-/** A session at `usedTodayPct` of a 1% daily budget, with the week `weekUsedPct` used at `now` and no room today. */
+/** A session at `usedTodayPct` of a 1% daily budget, with the week `weekUsedPct` used at `now` and no room today; 10M W make 1%. */
 function facts(usedTodayPct: number, weekUsedPct: number, now = DAY, extra: Partial<BudgetFacts> = {}): BudgetFacts {
   return {
     now,
     id: 'alpha',
     name: 'alpha',
     usedTodayPct,
+    todayWPerPct: 10_000_000,
     budgetPct: 1,
     lift: undefined,
     liftBy: undefined,
@@ -147,6 +148,14 @@ describe('isPastDailyBudget and sessionQuietSpan', () => {
     assert.equal(isHeld(facts(1.1, BEHIND)), true);
     assert.equal(isHeld(facts(1.1, AHEAD, DAY, { teamDay: ROOM })), false);
     assert.equal(isHeld(facts(1, AHEAD)), false);
+  });
+
+  it('counts a turn about to start as spent, so a session with less left than that turn is held before it (T1322)', () => {
+    assert.equal(isHeld(facts(0.95, BEHIND)), false);
+    assert.equal(isHeld(facts(0.95, BEHIND), 0.1), true);
+    assert.equal(isHeld(facts(0, BEHIND, DAY, { budgetPct: 0 })), false);
+    assert.equal(isHeld(facts(0, BEHIND, DAY, { budgetPct: 0 }), 0.01), true);
+    assert.equal(isHeld(facts(0.95, AHEAD, DAY, { teamDay: ROOM }), 0.1), false);
   });
 
   it('finds the quiet hours the session is in, unless its lift exempts it', () => {

@@ -129,6 +129,7 @@ export async function budgetFactsOf(runtime: CliRuntime, scope: BudgetScope, tra
     id,
     name: roster.nameOf(id) ?? id,
     usedTodayPct: todayW / todayWPerPct,
+    todayWPerPct,
     budgetPct,
     lift,
     ...liftNamesOf(split, roster, id, lift),
