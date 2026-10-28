@@ -29,6 +29,7 @@ import { showsLiveTasks } from "../../hooks/live-tasks.js";
 import { requirementsNoteOnce } from "../../hooks/requirements-note.js";
 import { helperOf } from "../../hooks/helper-start.js";
 import { sessionStartContext, sessionStartOutput } from "../../hooks/session-start.js";
+import { worktreeNoteOf } from "../../hooks/worktree-note.js";
 import { stopModelNotices } from "../../hooks/stop-model.js";
 import { leadStopLine, leadTallyOf } from "../../hooks/lead-boundary.js";
 import { turnToolsOf } from "../../hooks/loop-nudge.js";
@@ -507,6 +508,7 @@ async function teamPartsOf(runtime, kit, config, payload) {
         liveTasksNote: await liveTasksPartOf(runtime, kit, config, id, payload, refresh),
         modelNote: modelNoteOf(config, roster, id, payload),
         verifyNote: await verifyNoteOf(runtime, kit.paths, id),
+        worktreeNote: worktreeNoteOf(isRecord(payload) ? stringField(payload, 'cwd') : undefined),
         session,
         sessionInEnv: fromEnv !== undefined,
         tree: kitTree.tree.placeOf(kit.paths.team),
@@ -873,6 +875,7 @@ export async function sessionStart(args, runtime) {
             modelNote: undefined,
             verifyNote: undefined,
             duplicateNote: undefined,
+            worktreeNote: undefined,
             session: undefined,
             sessionInEnv: false,
             tree: undefined,

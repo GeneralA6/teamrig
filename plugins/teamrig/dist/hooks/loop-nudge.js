@@ -82,7 +82,7 @@ export function nudgeLine(chain, at) {
     }
     const rereads = formatW((chain.length - 1) * chain.context * WEIGHTS.cacheRead);
     const fix = chain.editThenTest
-        ? 'an edit and then its test went in separate calls: send an edit with its re-test in one message, and independent reads together'
-        : 'put independent reads in one message, and an edit with its re-test';
+        ? 'an edit and then its test went in separate calls: send an edit with its re-test in one message, and independent reads as several tool calls in one'
+        : 'send independent reads and lookups as several tool calls in one message, join shell steps into one command, and send an edit with its re-test';
     return `teamrig: ${chain.length} single-step calls in a row this turn (about ${rereads} W of re-reads at this context); ${fix}.`;
 }
