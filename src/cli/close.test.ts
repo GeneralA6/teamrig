@@ -148,8 +148,22 @@ describe('teamrig close', () => {
 
     const gone = { ...alpha, options: { ...alpha.options, transcripts: new MemoryTranscripts() } };
     const unknown = await close(gone, ['alpha', '--yes', '--session', 'lead']);
-    assertRefused(unknown, /has no transcript of Claude Code session \S+ at \S+fix\S+, so its idle time is unknown/);
+    assertRefused(unknown, /has no transcript of Claude Code session \S+ in any project folder, so its idle time is unknown/);
     assert.deepEqual(alpha.processes.ends, []);
+  });
+
+  it('finds a session by its id once its transcript left the folder its start recorded, and resumes it where it now is (T1357)', async () => {
+    const projects = join(USER_HOME, '.claude', 'projects');
+    const moved = join(APP, '.claude', 'worktrees', 'moved');
+    const alpha = await runningAlpha(75, reply(40_000, undefined, moved), projectTranscriptPath(projects, moved, CLAUDE_SESSION));
+    const started = projectTranscriptPath(projects, join(APP, '.claude', 'worktrees', 'started'), CLAUDE_SESSION);
+    await new SessionRecordStore(alpha.kit.files, { sessions: SESSIONS }).write('alpha', { claudePid: CLAUDE.pid, claudeSession: CLAUDE_SESSION, at: '2030-01-08T08:00:00.000Z', transcript: started });
+    const closed = await close(alpha, ['alpha', '--yes', '--session', 'lead']);
+    assert.equal(closed.code, 0, [...closed.stdout, ...closed.stderr].join('\n'));
+    assert.deepEqual(alpha.processes.ends, [{ pid: TAB.pid, how: 'ask' }]);
+    assert.deepEqual((await new SessionLog(alpha.kit.files, LOG).read()).records, [
+      { kind: 'close', session: 'alpha', by: 'lead', at: new Date(alpha.kit.clock.now()).toISOString(), claudeSession: CLAUDE_SESSION, idleMinutes: 75, freedMb: 1300, folder: moved },
+    ]);
   });
 
   it("reads the last session from the session's own project folder", async () => {
