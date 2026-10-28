@@ -126,10 +126,25 @@ describe('nodeStepRunner', () => {
   });
 
   it('kills a step at once whose stop aborted before it started', async () => {
-    const started = Date.now();
-    const end = await runner.run({ command: 'node -e "setTimeout(() => undefined, 30000)"', cwd: dir, env: process.env, timeoutMs: 60_000, stop: AbortSignal.abort() });
-    assert.deepEqual(end, { kind: 'stopped' });
-    assert.ok(Date.now() - started < 20_000, 'it never ran its course');
+    const treeKill = nodeTreeKill(process.platform);
+    const killed: number[] = [];
+    const recording = nodeStepRunner(process.platform, (pid) => {
+      killed.push(pid);
+      return treeKill(pid);
+    });
+    const ranItsCourse = join(dir, 'aborted-step-ran-its-course');
+    // A clock bound fails under load, where one tree kill can take 20 s (T990): the kill must begin while run starts
+    // the step, and the step, killed, never writes the file it writes after 2 minutes.
+    const running = recording.run({
+      command: `node -e "setTimeout(() => require('node:fs').writeFileSync(process.argv[1], ''), 120000)" "${ranItsCourse}"`,
+      cwd: dir,
+      env: process.env,
+      timeoutMs: 300_000,
+      stop: AbortSignal.abort(),
+    });
+    assert.equal(killed.length, 1, 'the kill began as the step started');
+    assert.deepEqual(await running, { kind: 'stopped' });
+    assert.equal(existsSync(ranItsCourse), false, 'it never ran its course');
   });
 
   it('ends as its command did when its stop aborts only after it', async () => {
