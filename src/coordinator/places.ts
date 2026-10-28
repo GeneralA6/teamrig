@@ -16,7 +16,7 @@ export interface CoordinatorPlaces {
   readonly claimsMd: string;
   readonly claimsLock: string;
   readonly hostLock: string;
-  /** The folder of the branches whose merge command waits, one file each (src/integrate/pending-merges.ts). */
+  /** The folder of the branches whose merge command waits, one file each (src/merge/pending-merges.ts). */
   readonly pendingMerges: string;
 }
 

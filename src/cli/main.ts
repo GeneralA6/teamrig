@@ -17,7 +17,7 @@ import { GIT_CHECKOUT } from '../exec/binding.ts';
 import { nodeExecSpawner } from '../exec/runner.ts';
 import { httpWebhook } from '../exec/webhook.ts';
 import { nodeGhRunner } from '../github/gh.ts';
-import { GIT_INTEGRATE } from '../integrate/git.ts';
+import { GIT_MERGE } from '../merge/git.ts';
 import { nodeProcesses } from '../open/processes.ts';
 import { nodeSessionProcesses } from '../open/session-processes.ts';
 import { httpPackageRegistry } from '../package-guard/registry.ts';
@@ -78,7 +78,7 @@ process.exitCode = await runCli(process.argv.slice(2), {
     countdown: terminalCountdown(stdioCountdownTerminal(process.stdin, process.stdout)),
     logon: systemLogonEntry(process.platform, process.env['SystemRoot'], nodeProgramRunner(LOGON_QUERY_TIMEOUT_MS)),
   },
-  integrateGit: GIT_INTEGRATE,
+  mergeGit: GIT_MERGE,
   trees: GIT_TREES,
   hooks: nodeHookRunner(process.platform),
   packageRegistry: httpPackageRegistry(),

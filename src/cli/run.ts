@@ -69,7 +69,7 @@ const setupScanCommand = () => import('./commands/setup-scan.ts');
 const testCommand = () => import('./commands/test.ts');
 const heavyCommand = () => import('./commands/heavy.ts');
 const withdrawCommand = () => import('./commands/withdraw.ts');
-const integrateCommand = () => import('./commands/integrate.ts');
+const mergeCommand = () => import('./commands/merge.ts');
 const rollCommand = () => import('./commands/roll.ts');
 const claimCommands = () => import('./commands/claim.ts');
 const windowsCommand = () => import('./commands/windows.ts');
@@ -211,7 +211,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   test: { effect: 'write', flags: ['session'], rest: true, load: async () => (await testCommand()).test },
   heavy: { effect: 'write', flags: ['session', 'what', 'max-minutes'], switches: ['small', 'pre-push'], rest: true, load: async () => (await heavyCommand()).heavy },
   withdraw: { effect: 'write', flags: ['session', 'what'], switches: ['all'], load: async () => (await withdrawCommand()).withdraw },
-  merge: { effect: 'write', flags: ['session'], switches: ['keep-remote', 'no-delete-local'], load: async () => (await integrateCommand()).integrate },
+  merge: { effect: 'write', flags: ['session'], switches: ['keep-remote', 'no-delete-local'], load: async () => (await mergeCommand()).merge },
   roll: { effect: 'write', flags: ['session', 'repo', 'targets', 'what'], rest: true, load: async () => (await rollCommand()).roll },
   claim: { effect: 'write', flags: ['session', 'targets', 'metric', 'why', 'for'], load: async () => (await claimCommands()).claim },
   release: { effect: 'write', flags: ['session'], load: async () => (await claimCommands()).release },

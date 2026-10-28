@@ -11,7 +11,7 @@ import { KIT_VERSION } from '../core/version.ts';
 import { TimeZone } from '../core/zone.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
-import { FakeIntegrateGit, MAIN_CHECKOUT } from '../testing/fake-integrate-git.ts';
+import { FakeMergeGit, MAIN_CHECKOUT } from '../testing/fake-merge-git.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { deployTargets, type DeployRequest } from './deploy.ts';
 import type { RollEnd } from './roll.ts';
@@ -41,7 +41,7 @@ interface Options {
 }
 
 class World {
-  readonly git = new FakeIntegrateGit();
+  readonly git = new FakeMergeGit();
   readonly files: MemoryFiles;
   readonly clock = new FakeClock('2030-01-08T10:00:00Z');
   readonly hooks = new FakeHooks(this.clock);

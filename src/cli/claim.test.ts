@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
-import { MAIN_CHECKOUT } from '../testing/fake-integrate-git.ts';
+import { MAIN_CHECKOUT } from '../testing/fake-merge-git.ts';
 
 const CLAIMS = join(TEAM_HOME, 'state', 'deploys', 'claims.json');
 const DEPLOYING = { ...TEAM, coordinator: { claims: { maxMinutes: 120 }, repos: { app: { mainCheckout: MAIN_CHECKOUT, deploysOnPush: ['cloud-api'] } } } };

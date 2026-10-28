@@ -13,7 +13,7 @@ import type { PathProbe } from '../core/path-probe.ts';
 import type { StoreFolders } from '../core/plugin-store.ts';
 import type { CredentialStore } from '../github/credentials.ts';
 import type { GhRunner } from '../github/gh.ts';
-import type { IntegrateGit } from '../integrate/git.ts';
+import type { MergeGit } from '../merge/git.ts';
 import type { RequirementsCheck } from '../requirements/requirements.ts';
 import type { HookRunner } from '../roll/hooks.ts';
 import type { PackageRegistry } from '../package-guard/registry.ts';
@@ -91,7 +91,7 @@ export interface CliRuntime {
   /** The working tree `teamrig heavy --pre-push` checks: clean or changed, and HEAD's tree. */
   readonly trees: TreeState;
   /** The git steps `teamrig merge` takes. */
-  readonly integrateGit: IntegrateGit;
+  readonly mergeGit: MergeGit;
   /** The programs `teamrig roll` runs, its gates, afterPull hooks and roll command: no shell, each with a time limit. */
   readonly hooks: HookRunner;
   /** The registry the package guard asks about the versions an install names: their publish times and advisories. */

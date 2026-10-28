@@ -101,7 +101,7 @@ export async function deploys(_args: ParsedArgs, runtime: CliRuntime): Promise<E
     say('rolls: no repository in coordinator.repos has a roll block');
   }
   for (const repo of repos) {
-    say(`${repo.name}: ${pendingText(await readPending(runtime.integrateGit, repo))}`);
+    say(`${repo.name}: ${pendingText(await readPending(runtime.mergeGit, repo))}`);
   }
   return EXIT.ok;
 }

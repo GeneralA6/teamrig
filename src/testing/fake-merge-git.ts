@@ -1,7 +1,7 @@
 import type { GitOutcome } from '../core/git-run.ts';
-import { ORIGIN, type Checkout, type IntegrateGit, type LocalUpdate } from '../integrate/git.ts';
+import { ORIGIN, type Checkout, type MergeGit, type LocalUpdate } from '../merge/git.ts';
 
-/** The linked worktree a fake integrate runs in. */
+/** The linked worktree a fake merge runs in. */
 export const WORKTREE = '/w/feat';
 /** The main checkout that worktree belongs to. */
 export const MAIN_CHECKOUT = '/repo/app';
@@ -14,14 +14,14 @@ function failed(reason: string | undefined): GitOutcome {
 }
 
 /**
- * A repository for `teamrig integrate`, in memory. The branch `feat` is checked out at commit `mine` in the linked
+ * A repository for `teamrig merge`, in memory. The branch `feat` is checked out at commit `mine` in the linked
  * worktree `/w/feat`; its main checkout `/repo/app` is on `main` at `base`, where origin's `main` is too. A fetch
  * of a remote copies its branches to `<remote>/<name>`, a rebase moves HEAD to `rebasedTo` on top of what it rebased
  * onto, and each step that touches git is logged in `log`. A test sets a `...Fails` field to make that step fail,
  * calls `pushed` where a push lands, moves `origin` alone where another clone pushed, or adds a remote beside origin
  * to `remotes`.
  */
-export class FakeIntegrateGit implements IntegrateGit {
+export class FakeMergeGit implements MergeGit {
   /** Each step, as `<step> <folder> <arguments>`. */
   readonly log: string[] = [];
   readonly checkouts = new Map<string, Checkout>([
