@@ -260,7 +260,7 @@ describe('teamrig idle-close', () => {
     assert.deepEqual((await new SessionLog(alpha.kit.files, LOG).read()).records, [
       { kind: 'close', session: 'alpha', by: 'idle-pass', at: new Date(alpha.kit.clock.now()).toISOString(), claudeSession: CLAUDE_SESSION, idleMinutes: 75, freedMb: 1300 },
     ]);
-    assert.deepEqual(actsOf(alpha), [{ v: 1, kind: 'act', mode: 'off', act: 'close', id: 'alpha', outcome: 'done', line, before: CHARGE, after: CHARGE }]);
+    assert.deepEqual(actsOf(alpha), [{ v: 1, kind: 'act', mode: 'on', act: 'close', id: 'alpha', outcome: 'done', line, before: CHARGE, after: CHARGE }]);
   });
 
   it('tells the lead with an urgent line: the inbox line and the wake ask that wakes it', async () => {
@@ -325,7 +325,7 @@ describe('teamrig idle-close', () => {
     assert.match(kept.stdout.join('\n'), /^KEPT app-alpha \(session alpha\) has work it can start \(T1\)/);
     assert.deepEqual(urgent.processes.ends, []);
     assert.equal(urgent.kit.files.get(LOG), undefined);
-    assert.deepEqual(actsOf(urgent), [{ v: 1, kind: 'act', mode: 'off', act: 'close', id: 'alpha', outcome: 'kept', line: kept.stdout[0] }]);
+    assert.deepEqual(actsOf(urgent), [{ v: 1, kind: 'act', mode: 'on', act: 'close', id: 'alpha', outcome: 'kept', line: kept.stdout[0] }]);
     assert.equal(await urgent.kit.files.read(LEAD_INBOX), undefined, 'a session kept open tells the lead nothing');
     assert.deepEqual(await new WakeAsks(urgent.kit.files, ASKS).read('lead'), []);
   });
@@ -370,7 +370,7 @@ describe('teamrig idle-close', () => {
     const blind = await idleClose({ ...unlisted, options: { ...unlisted.options, memory: new FakeHostMemory().lists(undefined) } });
     assert.equal(blind.code, EXIT.failed);
     assert.deepEqual(blind.stdout, ["FAILED to weigh app-alpha (session alpha): teamrig could not list the host's processes, so it cannot tell which sessions run"]);
-    assert.deepEqual(actsOf(unlisted), [{ v: 1, kind: 'act', mode: 'off', act: 'close', id: 'alpha', outcome: 'failed', line: blind.stdout[0] }]);
+    assert.deepEqual(actsOf(unlisted), [{ v: 1, kind: 'act', mode: 'on', act: 'close', id: 'alpha', outcome: 'failed', line: blind.stdout[0] }]);
 
     const stuck = await runningAlpha();
     stuck.processes.failEnd(TAB.pid, 'access denied');

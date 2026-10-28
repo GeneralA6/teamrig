@@ -568,7 +568,7 @@ The idle pass: it would close a session the wake check would not wake once it ha
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
-| `mode` | one of `"off"`, `"dry-run"`, `"on"` | `"off"` | off runs no pass; dry-run runs it and logs each close or reopen it would make, with its reason, and makes none; on also starts each of those closes and reopens, hidden, and logs its outcome. |
+| `mode` | one of `"off"`, `"dry-run"`, `"on"` | `"on"` | off runs no pass; dry-run runs it and logs each close or reopen it would make, with its reason, and makes none; on, the default, also starts each of those closes and reopens, hidden, and logs its outcome. |
 | `keepOpen` | array of [session name](#shared-types) | `[]` | Sessions the idle pass and teamrig close never close for being quiet, on top of the lead and the coordinator owner. |
 
 ## `statusLine`

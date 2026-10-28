@@ -155,7 +155,7 @@ describe('teamrig idle-open', () => {
     assert.equal(resumedOf(argv), CLAUDE_SESSION);
     assert.equal(promptOf(argv), reopenPrompt('app', 'alpha'));
     assert.deepEqual(await logOf(alpha), [CLOSED, { kind: 'reopen', session: 'alpha', at: new Date(alpha.kit.clock.now()).toISOString(), resumed: CLAUDE_SESSION }]);
-    assert.deepEqual(actsOf(alpha), [{ v: 1, kind: 'act', mode: 'off', act: 'reopen', id: 'alpha', outcome: 'done', line, before: CHARGE }]);
+    assert.deepEqual(actsOf(alpha), [{ v: 1, kind: 'act', mode: 'on', act: 'reopen', id: 'alpha', outcome: 'done', line, before: CHARGE }]);
   });
 
   it('keeps closed a session with nothing it can start, and opens nothing for one teamrig no longer holds closed', async () => {
@@ -165,7 +165,7 @@ describe('teamrig idle-open', () => {
     assert.deepEqual(kept.result.stdout, ['KEPT app-alpha (session alpha): still closed, nothing it can start']);
     assert.deepEqual(kept.argv, []);
     assert.deepEqual(await logOf(idle), [CLOSED]);
-    assert.deepEqual(actsOf(idle), [{ v: 1, kind: 'act', mode: 'off', act: 'reopen', id: 'alpha', outcome: 'kept', line: kept.result.stdout[0] }]);
+    assert.deepEqual(actsOf(idle), [{ v: 1, kind: 'act', mode: 'on', act: 'reopen', id: 'alpha', outcome: 'kept', line: kept.result.stdout[0] }]);
 
     const reopened = await closedAlpha(40_000);
     await handWork(reopened);
@@ -184,7 +184,7 @@ describe('teamrig idle-open', () => {
     assert.match(noRoom.result.stdout.join('\n'), /^KEPT app-alpha \(session alpha\) closed: no room on the host to open app-alpha \(session alpha\), counted at /);
     assert.deepEqual(noRoom.argv, []);
     assert.deepEqual(await logOf(crowded), [CLOSED]);
-    assert.deepEqual(actsOf(crowded), [{ v: 1, kind: 'act', mode: 'off', act: 'reopen', id: 'alpha', outcome: 'kept', line: noRoom.result.stdout[0], before: full }]);
+    assert.deepEqual(actsOf(crowded), [{ v: 1, kind: 'act', mode: 'on', act: 'reopen', id: 'alpha', outcome: 'kept', line: noRoom.result.stdout[0], before: full }]);
 
     const blind = await closedAlpha(40_000);
     const unweighed = await idleOpen(blind, new FakeHostMemory().lists(undefined));
@@ -212,7 +212,7 @@ describe('teamrig idle-open', () => {
     assert.deepEqual(kept.result.stdout, ['KEPT app-alpha (session alpha) closed: teamrig 0.167.0 lacks dist/cli/main.js, so the reopen waits for a settled install']);
     assert.deepEqual(kept.argv, []);
     assert.deepEqual(await logOf(copying), [CLOSED]);
-    assert.deepEqual(actsOf(copying), [{ v: 1, kind: 'act', mode: 'off', act: 'reopen', id: 'alpha', outcome: 'kept', line: kept.result.stdout[0] }]);
+    assert.deepEqual(actsOf(copying), [{ v: 1, kind: 'act', mode: 'on', act: 'reopen', id: 'alpha', outcome: 'kept', line: kept.result.stdout[0] }]);
   });
 
   it('quotes the urgent lines posted while it was closed ahead of its first prompt, and takes them once its tab opened', async () => {
