@@ -292,7 +292,9 @@ const FRESH_SOURCES = new Set(['clear', 'startup']);
 /** Starts after which the context is small again, so the task count starts over: a compaction too. */
 const SMALL_SOURCES = new Set([...FRESH_SOURCES, 'compact']);
 /**
- * SessionStart: the first fresh start after the handover was written points the session at it, once.
+ * SessionStart: the first fresh start after the handover was written points the session at it, once, and says
+ * that Claude Code keeps no read from before it: an Edit or Write of a file the new session has not read with the
+ * Read tool fails, and that was the most common failed call in one team's week (T1380).
  * Any start that leaves the context small (a compaction too) starts the task count over, and forgets the
  * size a refresh the session went on from was asked at, so its next ask comes at the threshold again.
  */
@@ -307,7 +309,8 @@ export function decideStart(state, source, settings, handoverPath, now) {
         const after = state.task === null ? 'mid-task' : `after ${state.task}`;
         return {
             kind: 'inject',
-            note: `You were refreshed ${after}; read your handover first: ${handoverPath}. Then carry on with its next steps.`,
+            note: `You were refreshed ${after}; read your handover first: ${handoverPath}. Then carry on with its next steps. ` +
+                'Read a file with the Read tool before you Edit or Write it: a read by cat or sed, or one before the refresh, does not count.',
             state: { phase: 'refreshed', task: state.task, at: now },
         };
     }
