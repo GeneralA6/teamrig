@@ -387,7 +387,9 @@ marked `ready` has cleared: its task is done or dropped, or its time has passed.
 Prints one task with its description, pointer, latest note, decision card (while it waits), evidence, skill and
 full history. The description
 comes right under the task line; its later lines are indented two spaces. The history prints a changed
-description on one line, cut to 80 characters.
+description on one line, cut to 80 characters. Last come the team's inbox lines that name the task, read or not, in
+the order posted, each once with the sessions that got it. A correction sent by line (`T1: the password needs 12
+characters`) stays with the task, even after the handover of the session that read it is rewritten.
 
 Flags:
 
@@ -414,6 +416,9 @@ history:
   2026-10-15 08:58 lead create owner=api source=lead priority=p2 ref=signup spec, section 2 due=2026-10-17 goals=G1
   2026-10-15 08:58 api status in-progress
   2026-10-15 08:58 api status done note="endpoint merged" evidence=PR #4, 12 tests skill=none followups=none
+inbox lines naming T1 (2):
+  - 2026-10-15 08:58 lead: T1 is yours (p2): Build the signup endpoint (to api)
+  - 2026-10-15 09:20 lead: T1: the password needs 12 characters, not 8 (to api, web)
 ```
 
 With `--tree`:
@@ -711,7 +716,8 @@ api 3 unread since 10-15 07:40, 2 of them shown at a prompt (read to line 21 of 
 
 Appends one line to another session's inbox, or to each session of a group in one call. It does not wake the
 receiver: the line shows at its next prompt or work block. Use it for anything that is not urgent; add `--wake now`
-when the receiver must act on it now, or `--wake-by <time>` when it must have read it by a time.
+when the receiver must act on it now, or `--wake-by <time>` when it must have read it by a time. A line about a
+task names its id (`T5: keep the candles route`): `teamrig show T5` lists it, so it stays with the task.
 
 Flags:
 
