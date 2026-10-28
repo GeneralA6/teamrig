@@ -124,6 +124,23 @@ describe('rules scan', () => {
     assert.equal(ok(await kit.run(['rules', 'scan', '--kind', 'team-rules'], { probe: new MemoryPathProbe(kit.files) }))[0], 'SCANNED team-rules: 1 place(s), 1 candidate line(s)');
   });
 
+  it("lists a rule a team above kept as ABOVE, out of the candidates, and numbers only the team's own", async () => {
+    const kit = await treeHarness();
+    await kit.files.write(USER_CLAUDE_MD, ['- Commit straight to main when the change is small.', '- Every commit goes through review.'].join('\n'));
+    const ui = (...argv: string[]) => kit.run(['rules', ...argv], { env: { TEAMRIG_TEAM: 'ui' }, probe: new MemoryPathProbe(kit.files) });
+    const labelOf = (lines: readonly string[]) => (lines.find((line) => line.startsWith('KEPT 1 ')) ?? '').slice('KEPT 1 '.length).replace(/; the old config is at .*$/, '');
+    const rootLabel = labelOf(ok(await keep(kit, `${USER_CLAUDE_MD}:1`, '--rule', 'push', '--wins', 'local', '--yes')));
+    const ownLabel = labelOf(ok(await ui('keep', `${USER_CLAUDE_MD}:2`, '--rule', 'worktrees', '--wins', 'local', '--yes', '--session', 'lead')));
+    const recorded = (lines: readonly string[]) => lines.filter((line) => /^(ABOVE|RECORDED|GONE) /.test(line));
+    const lines = ok(await ui('scan'));
+    assert.deepEqual(recorded(lines), [`ABOVE app ${rootLabel}`, `RECORDED 1 ${ownLabel}`]);
+    assert.ok(!lines.some((line) => line.startsWith('CANDIDATE ') && line.includes('Commit straight to main')), lines.join('\n'));
+    assert.deepEqual(recorded(ok(await run(kit, 'scan'))), [`RECORDED 1 ${rootLabel}`]);
+    await kit.files.write(USER_CLAUDE_MD, '- Every commit goes through review.');
+    const [gone] = recorded(ok(await ui('scan')));
+    assert.ok(gone?.startsWith('ABOVE app GONE ') && gone.endsWith("(rule 15 push): the line is no longer there; team app's lead drops the record"), gone);
+  });
+
   it(`gives only the counts over ${SCAN_LIST_MAX} candidates, so the model reads them a kind at a time`, async () => {
     const kit = await world();
     const many = Array.from({ length: SCAN_LIST_MAX }, (_, index) => `- Rule ${index}: every commit goes through review.`).join('\n');

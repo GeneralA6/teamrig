@@ -9,7 +9,7 @@ import { expandHome, homeRelative, pathKey } from '../../core/paths.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { CORE_RULE_KEYS, coreRuleKeyOf, ruleLabel, type CoreRuleKey } from '../../rules/keys.ts';
 import { isPlaceKind, PLACE_KINDS, type PlaceKind } from '../../rules/places.ts';
-import { coreRuleTexts } from '../../rules/pack.ts';
+import { coreRuleTexts, type KeptRule } from '../../rules/pack.ts';
 import { ruleLinesOf, scanRules, type Candidate, type RecordedConflict, type RuleScan } from '../../rules/scan.ts';
 import { isCleared, nextVerdicts, RULE_HASH_CLOCK, ruleHashesOf, verdictsByText, VerdictStore, type ClearedLine, type RuleHashes } from '../../rules/verdicts.ts';
 import { lineHash } from '../../inbox/line-hash.ts';
@@ -18,7 +18,8 @@ import { noPositionals, onePositional, requiredFlag, UsageError, type ParsedArgs
 import { callerOf, listOf } from '../inputs.ts';
 import { checkedNextConfig, configFileJson, leadOnly, openTeamKit, projectFolder, requireConfig, rosterOf, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { teamRulesPathsOf } from '../team-rules.ts';
+import { keptRulesAboveOf, teamRulesFilesOf } from '../team-rules.ts';
+import { loadTree } from '../tree.ts';
 
 /**
  * `rules scan`, `rules keep`, `rules forget` and `rules clear`: the local rules that can override a core rule, the ones
@@ -88,7 +89,19 @@ function recordedLine(index: number, { conflict, line }: RecordedConflict): stri
   if (line === undefined) {
     return `GONE ${number} ${conflict.file} ${quoteOf(conflict)} (rule ${ruleLabel(conflict.rule)}): the line is no longer there; \`${KIT_NAME} rules forget ${number} --yes\` drops the record`;
   }
-  return `RECORDED ${number} ${conflict.file}:${line} ${quoteOf(conflict)} ${verdictOf(conflict)}${conflict.reason === undefined ? '' : ` (${conflict.reason})`}`;
+  return `RECORDED ${number} ${conflict.file}:${line} ${quoteOf(conflict)} ${verdictOf(conflict)}${reasonOf(conflict)}`;
+}
+
+function reasonOf(conflict: RuleConflict): string {
+  return conflict.reason === undefined ? '' : ` (${conflict.reason})`;
+}
+
+/** A rule a team above kept: it binds this team's sessions too, and only that team's lead records or drops it. */
+function aboveLine(team: string, { conflict, line }: RecordedConflict): string {
+  if (line === undefined) {
+    return `ABOVE ${team} GONE ${conflict.file} ${quoteOf(conflict)} (rule ${ruleLabel(conflict.rule)}): the line is no longer there; team ${team}'s lead drops the record`;
+  }
+  return `ABOVE ${team} ${conflict.file}:${line} ${quoteOf(conflict)} ${verdictOf(conflict)}${reasonOf(conflict)}`;
 }
 
 function candidateLine(candidate: Candidate, userHome: string, scanner: SecretScanner): string {
@@ -104,7 +117,8 @@ interface ScanView {
   readonly kind: PlaceKind | undefined;
   readonly all: boolean;
   readonly project: string;
-  readonly found: RuleScan;
+  /** Its recorded conflicts: the team's own, in config order, then those of the teams above, root first, tagged. */
+  readonly found: RuleScan<KeptRule>;
   readonly kinds: readonly PlaceKind[];
   /** The candidates of the listed kinds a stored verdict still clears; none with --all. */
   readonly cleared: readonly Candidate[];
@@ -116,11 +130,13 @@ interface ScanView {
 
 async function scanView(runtime: CliRuntime, kit: Kit, config: KitConfig, kind: PlaceKind | undefined, all: boolean): Promise<ScanView> {
   const project = await projectFolder(runtime, config);
-  const found = await scanRules(
+  const kitTree = await loadTree(runtime);
+  const teamRules = teamRulesFilesOf(kit, kitTree).map((file) => file.path);
+  const found = await scanRules<KeptRule>(
     runtime.files,
     runtime.probe,
-    { claudeDir: claudeConfigDir(runtime.env, runtime.userHome), userHome: runtime.userHome, project, skills: kit.paths.skills, teamRules: await teamRulesPathsOf(runtime, kit) },
-    config.ruleConflicts,
+    { claudeDir: claudeConfigDir(runtime.env, runtime.userHome), userHome: runtime.userHome, project, skills: kit.paths.skills, teamRules },
+    [...config.ruleConflicts, ...keptRulesAboveOf(kit, kitTree)],
   );
   const kinds = kind === undefined ? PLACE_KINDS : [kind];
   const hashes = ruleHashesOf(coreRuleTexts(config, KIT_NAME, runtime.platform, RULE_HASH_CLOCK));
@@ -159,7 +175,8 @@ function absoluteOf(path: string, runtime: CliRuntime): string {
 
 /**
  * `rules scan [--kind <kind>] [--all]`: every place a local rule can override a core rule, the recorded rules and where
- * their lines are now, and the candidate lines for the model to judge, leaving out the ones `rules clear` recorded as
+ * their lines are now (those a team above kept as ABOVE lines, then the team's own, numbered for `rules forget`), and
+ * the candidate lines for the model to judge, leaving out the ones `rules clear` recorded as
  * not conflicting while their text and the core rules they touch are unchanged (--all lists those too). It only reads;
  * a secret-shaped line prints withheld.
  */
@@ -179,7 +196,14 @@ export async function scan(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   if (found.nestedCapped) {
     runtime.out.stdout(`NOTE the search for CLAUDE.md files below ${view.project} stopped at its folder cap, so a deeper one is not listed`);
   }
-  found.recorded.forEach((recorded, index) => runtime.out.stdout(recordedLine(index, recorded)));
+  for (const recorded of found.recorded) {
+    if (recorded.conflict.team !== undefined) {
+      runtime.out.stdout(aboveLine(recorded.conflict.team, recorded));
+    }
+  }
+  found.recorded
+    .filter((recorded) => recorded.conflict.team === undefined)
+    .forEach((recorded, index) => runtime.out.stdout(recordedLine(index, recorded)));
   if (isCapped(view)) {
     runtime.out.stdout(`NEXT ${view.open.length} candidate lines are too many to judge in one read: list them a kind at a time with \`${KIT_NAME} rules scan --kind <kind>\``);
     return EXIT.ok;
