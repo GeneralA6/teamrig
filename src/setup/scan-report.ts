@@ -161,7 +161,7 @@ function settingsLines(scan: SetupScan, at: ScanReportContext, show: (path: stri
       saves: 0,
     }),
   );
-  const trim =scan.settings.some((finding) => finding.kind === 'wide-allow') ? [`NEXT ${KIT_NAME} permissions trim${afterTeam(at)}`] : [];
+  const trim = scan.settings.some((finding) => finding.kind === 'wide-allow') ? [`NEXT ${KIT_NAME} permissions trim${afterTeam(at)}`] : [];
   return [`SETTINGS ${findings.length} finding(s)`, ...findingLines('S', findings), ...trim];
 }
 
