@@ -10,9 +10,11 @@ import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
 import type { RestartRequest } from '../refresh/state.ts';
 import { RefreshStore } from '../refresh/store.ts';
+import { SessionLog, type CloseRecord } from '../sessions/log.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
 import { APP, CLAUDE_SESSION, CliHarness, KIT, SKILLS_DIR, TEAM, TEAM_HOME, USER_HOME, type RunOptions } from '../testing/cli-harness.ts';
 import { teamConfigOf, treeHarness } from '../testing/team-tree.ts';
+import { CLOSE_LOG_WAIT_MS } from './commands/open.ts';
 import { EXIT } from './runtime.ts';
 
 const NODE = '/usr/bin/node';
@@ -411,6 +413,70 @@ describe('teamrig launch', () => {
       const result = await launch(new FakeProcesses().onRun(CLAUDE, outcome));
       assert.deepEqual([result.code, result.stderr], [EXIT.failed, [line]]);
     }
+  });
+
+  describe('a Claude Code that teamrig closed', () => {
+    const SESSION_LOG = join(TEAM_HOME, 'state', 'session-log.jsonl');
+    const KILLED: RunOutcome = { kind: 'exited', code: 1 };
+    const CLOSE: CloseRecord = { kind: 'close', session: 'alpha', by: 'idle-pass', at: '2030-01-08T10:00:01.000Z', claudeSession: 'c1', idleMinutes: 95, freedMb: 812 };
+    const CLOSED_LINE = 'Claude Code was closed by idle-pass after 95 min idle (812 MB freed): `teamrig open alpha` resumes it';
+
+    /** Claude Code that teamrig ends while it runs: the closer logs `close`, and Claude Code exits 1. */
+    class ClosedWhileRunning extends FakeProcesses {
+      private readonly log: SessionLog;
+      private readonly close: CloseRecord;
+
+      constructor(log: SessionLog, close: CloseRecord) {
+        super();
+        this.log = log;
+        this.close = close;
+        this.onRun(CLAUDE, KILLED);
+      }
+
+      override async run(request: RunRequest): Promise<RunOutcome> {
+        await this.log.append(this.close);
+        return super.run(request);
+      }
+    }
+
+    it('exits 0 saying why, so the tab closes instead of offering to run the stale launch again', async () => {
+      const kit = new CliHarness(TEAM);
+      const processes = new ClosedWhileRunning(new SessionLog(kit.files, SESSION_LOG), CLOSE);
+      const result = await kit.run(LAUNCH, { probe: ON_PATH, processes, env: { PATH: '/usr/local/bin' } });
+      assert.deepEqual([result.code, result.stdout.at(-1), result.stderr], [EXIT.ok, CLOSED_LINE, []]);
+    });
+
+    it('waits for a close the closer logs only once it sees Claude Code gone', async () => {
+      const kit = new CliHarness(TEAM);
+      const log = new SessionLog(kit.files, SESSION_LOG);
+      const sleep = async (ms: number): Promise<void> => {
+        await kit.clock.sleep(ms);
+        if (kit.clock.sleeps.length === 2) {
+          await log.append({ ...CLOSE, at: new Date(kit.clock.now()).toISOString() });
+        }
+      };
+      const result = await kit.run(LAUNCH, { probe: ON_PATH, processes: new FakeProcesses().onRun(CLAUDE, KILLED), env: { PATH: '/usr/local/bin' }, sleep });
+      assert.deepEqual([result.code, result.stdout.at(-1), kit.clock.sleeps.length], [EXIT.ok, CLOSED_LINE, 2]);
+    });
+
+    it('fails as before when no close came within the wait, or the close is from before this run', async () => {
+      for (const logged of [[], [{ ...CLOSE, at: '2030-01-08T09:00:00.000Z' }]]) {
+        const kit = new CliHarness(TEAM);
+        const log = new SessionLog(kit.files, SESSION_LOG);
+        for (const record of logged) {
+          await log.append(record);
+        }
+        const result = await kit.run(LAUNCH, { probe: ON_PATH, processes: new FakeProcesses().onRun(CLAUDE, KILLED), env: { PATH: '/usr/local/bin' } });
+        assert.deepEqual([result.code, result.stderr], [EXIT.failed, ['FAILED Claude Code exited with code 1']], `${logged.length} close(s) logged`);
+        assert.equal(kit.clock.now() - Date.parse('2030-01-08T10:00:00Z'), CLOSE_LOG_WAIT_MS, 'it looked for the close until the wait ran out');
+      }
+    });
+
+    it('never looks for a close after a clean exit', async () => {
+      const kit = new CliHarness(TEAM);
+      const result = await kit.run(LAUNCH, { probe: ON_PATH, processes: new FakeProcesses(), env: { PATH: '/usr/local/bin' } });
+      assert.deepEqual([result.code, kit.clock.sleeps], [EXIT.ok, []]);
+    });
   });
 
   it('refuses when Claude Code is not on PATH, naming what it skipped', async () => {

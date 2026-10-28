@@ -1224,7 +1224,8 @@ with work it can start or a time wait of its own ending within 30 minutes, one i
 person (a `Decision needed:` line) or still running background work, one whose Claude Code runs shells the end
 would cut off, and one too big or idle to resume (`hiring.resumeMaxTokens`,
 `hiring.resumeMaxIdleDays`): retire that one with its handover instead. Without `--yes` it shows the close and
-ends nothing.
+ends nothing. A tab [teamrig open](#teamrig-open) started closes with it: its launch finds the close in the log, says
+why and exits 0, so the tab is never left on an error that offers to run its old launch again.
 
 Flags:
 
