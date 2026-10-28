@@ -115,6 +115,13 @@ describe('team split', () => {
     assert.equal((await split(kit, WRITE, 'lead', { sessionProcesses })).code, EXIT.ok);
   });
 
+  it("names the keys of the parent's config the child starts without, and prints no such line when there are none", async () => {
+    const result = await split(new CliHarness({ ...TEAM, github: { repos: ['org/app'] } }));
+    assert.equal(result.code, EXIT.ok, result.stdout.join('\n'));
+    assert.ok(result.stdout.includes('LEFT OUT github: the child starts without them'), result.stdout.join('\n'));
+    assert.ok(!(await split(new CliHarness(TEAM))).stdout.some((line) => line.startsWith('LEFT OUT')));
+  });
+
   it('writes nothing with --dry-run', async () => {
     const kit = await withTask();
     const before = filesOf(kit);

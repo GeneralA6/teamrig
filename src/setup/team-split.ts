@@ -2,9 +2,10 @@ import { parseConfig } from '../config/parse.ts';
 import { ANCESTOR_ROLES, Roster } from '../config/roster.ts';
 import { describeTreeProblem, teamNodeOf, type TeamNode, type TeamTree, type TreeProblem } from '../config/tree.ts';
 import type { KitConfig } from '../config/types.ts';
+import { coordinatorDirOf, teamPlace } from '../coordinator/places.ts';
 import { ADDRESS_PATTERN } from '../core/address.ts';
-import { isStringArray, recordField, type JsonRecord } from '../core/guards.ts';
-import { KIT_NAME } from '../core/home.ts';
+import { isRecord, isStringArray, recordField, type JsonRecord } from '../core/guards.ts';
+import { KIT_NAME, type TeamPaths } from '../core/home.ts';
 import type { Task } from '../register/fold.ts';
 import type { PersonWaitKind } from '../register/waits.ts';
 import { configRecordOf, type Checked, type TeamSpec } from './team-create.ts';
@@ -21,10 +22,84 @@ import { configRecordOf, type Checked, type TeamSpec } from './team-create.ts';
 export interface SplitParent {
   readonly team: string;
   readonly config: KitConfig;
-  /** The config file's own JSON: the child copies the moved sessions' launch blocks as written. */
+  /** The config file's own JSON, which the parent keeps as written but for the moved sessions' keys. */
   readonly record: JsonRecord;
+  /**
+   * The config's JSON in this teamrig's format: the file's, migrated in memory when it is older. The child copies its
+   * blocks and the moved sessions' launch blocks from it, so it starts at the current version.
+   */
+  readonly current: JsonRecord;
+  /** The parent's folders: a relative path the child shares with the parent is written absolute to them. */
+  readonly paths: Pick<TeamPaths, 'home' | 'state'>;
   readonly roster: Roster;
 }
+
+/** A split as a reworked block sees it: the parent and the sessions it loses. */
+interface SplitScope {
+  readonly parent: SplitParent;
+  readonly moved: ReadonlySet<string>;
+}
+
+/** A block of the parent's config the child takes changed; undefined: the child starts without it. */
+type Rework = (block: JsonRecord | undefined, scope: SplitScope) => JsonRecord | undefined;
+
+/**
+ * The blocks the child takes changed: one coordinator per host, so its folder, host lock and main checkouts stay the
+ * parent's and two heavy steps never overlap; the budget and the idle pass hold only the moved sessions' entries.
+ */
+const REWORKED = { coordinator: sharedCoordinatorOf, budget: movedBudgetOf, open: movedOpenOf } satisfies Partial<Record<keyof KitConfig, Rework>>;
+
+/** How the child takes a key of the parent's config: the split writes it, the child starts without it, or a copy. */
+type ChildTake = 'split' | 'own' | 'copy';
+
+/**
+ * How the child takes every other key of the parent's config, so a key added to the config cannot be left out without
+ * a choice here: `github` is the parent's alone, as each repository's issues go to one team, and `paths` are a team's
+ * own folders; every setting is copied, so the child runs as its parent did.
+ */
+const CHILD_TAKES: Readonly<Record<Exclude<keyof KitConfig, keyof typeof REWORKED>, ChildTake>> = {
+  configVersion: 'split',
+  team: 'split',
+  sessions: 'split',
+  names: 'split',
+  roles: 'split',
+  leads: 'split',
+  launch: 'split',
+  github: 'own',
+  paths: 'own',
+  timeZone: 'copy',
+  ownerGates: 'copy',
+  ruleConflicts: 'copy',
+  messages: 'copy',
+  register: 'copy',
+  skills: 'copy',
+  contextFiles: 'copy',
+  lock: 'copy',
+  exec: 'copy',
+  pushGuard: 'copy',
+  packageGuard: 'copy',
+  commitGuard: 'copy',
+  prompts: 'copy',
+  secretGuard: 'copy',
+  commits: 'copy',
+  leadBoundary: 'copy',
+  loops: 'copy',
+  wake: 'copy',
+  tests: 'copy',
+  alerts: 'copy',
+  decisions: 'copy',
+  tabStatus: 'copy',
+  pickerGuard: 'copy',
+  turnLog: 'copy',
+  readonlyShell: 'copy',
+  permissions: 'copy',
+  refresh: 'copy',
+  hiring: 'copy',
+  burst: 'copy',
+  statusLine: 'copy',
+};
+
+const TAKES: ReadonlyMap<string, ChildTake> = new Map(Object.entries(CHILD_TAKES));
 
 /** Where a task names a session: who asked for it, who pinned it, who answered its approval, or a wait on a person. */
 export type SplitField = 'source' | 'pin' | 'answer' | PersonWaitKind;
@@ -102,7 +177,10 @@ export interface LedSession {
 
 /** What the parent's config loses besides the moved sessions. */
 export interface ParentTrim {
-  /** Keys removed whole: `names.<id>`, `launch.<id>` and `leads.<id>` of the moved sessions. */
+  /**
+   * What it loses of the moved sessions: the keys `names.<id>`, `launch.<id>`, `leads.<id>` and `budget.sessions.<id>`,
+   * and the items `open.idle.keepOpen[<id>]`.
+   */
   readonly keys: readonly string[];
   /** Moved sessions taken off a staying sub-lead's list. */
   readonly leftLeads: readonly LedSession[];
@@ -115,6 +193,8 @@ export interface SplitPlan extends SplitTasks {
   readonly spec: TeamSpec;
   /** The child's config, as the split writes it. */
   readonly config: JsonRecord;
+  /** The keys the parent's config sets that the child starts without: its own ones (CHILD_TAKES) and unknown ones. */
+  readonly leftOut: readonly string[];
   readonly border: SplitBorder;
   readonly trim: ParentTrim;
 }
@@ -156,9 +236,64 @@ function childLeadsOf(parent: SplitParent, spec: TeamSpec, moved: ReadonlySet<st
   return Object.fromEntries(kept);
 }
 
+/** The path at `key` made absolute to the parent's folder; the record as it is when it holds none there. */
+function placedAt(record: JsonRecord, key: string, parent: SplitParent): JsonRecord {
+  const path = record[key];
+  return typeof path === 'string' ? { ...record, [key]: teamPlace(parent.paths, path) } : record;
+}
+
 /**
- * The child's config as team create writes it, plus what keeps the moved sessions as they were: their names, launch
- * blocks and sub-leads, the parent's time zone, and the parent's holder of each role a child may leave to a team above.
+ * The parent's coordinator, written even when the parent leaves it to its defaults: the child keeps its ledger, claims
+ * and pending merges in the parent's folder, and a relative host lock or main checkout is made absolute to it.
+ */
+function sharedCoordinatorOf(block: JsonRecord | undefined, { parent }: SplitScope): JsonRecord {
+  const raw = block ?? {};
+  const heavy = recordField(raw, 'heavy');
+  const repos = recordField(raw, 'repos');
+  return {
+    ...raw,
+    dir: coordinatorDirOf(parent.config.coordinator, parent.paths),
+    ...(heavy === undefined ? {} : { heavy: placedAt(heavy, 'lockPath', parent) }),
+    ...(repos === undefined
+      ? {}
+      : { repos: Object.fromEntries(Object.entries(repos).map(([name, repo]) => [name, isRecord(repo) ? placedAt(repo, 'mainCheckout', parent) : repo])) }),
+  };
+}
+
+/** The parent's budget with the moved sessions' shares only, its status line folder made absolute to the parent's. */
+function movedBudgetOf(block: JsonRecord | undefined, { parent, moved }: SplitScope): JsonRecord | undefined {
+  return block === undefined ? undefined : { ...placedAt(block, 'statusSnapshotDir', parent), ...keptIn(block, 'sessions', (id) => moved.has(id)) };
+}
+
+/** The parent's `open` block with its idle pass keeping open only moved sessions. */
+function movedOpenOf(block: JsonRecord | undefined, { moved }: SplitScope): JsonRecord | undefined {
+  return block === undefined ? undefined : idleKeptBy(block, (id) => moved.has(id));
+}
+
+/** The parent's blocks as the child takes them: a copy as the parent holds them (CHILD_TAKES), or reworked (REWORKED). */
+function takenBlocks(scope: SplitScope): JsonRecord {
+  const { current } = scope.parent;
+  const copied = Object.entries(current).filter(([key]) => TAKES.get(key) === 'copy');
+  const reworks: [string, Rework][] = Object.entries(REWORKED);
+  const reworked = reworks.flatMap(([key, rework]): [string, JsonRecord][] => {
+    const block = rework(recordField(current, key), scope);
+    return block === undefined ? [] : [[key, block]];
+  });
+  return Object.fromEntries([...copied, ...reworked]);
+}
+
+/** The keys the parent's config sets that the child starts without: those CHILD_TAKES leaves the parent, and unknown ones. */
+function leftOutOf(parent: SplitParent): string[] {
+  return Object.keys(parent.current).filter((key) => {
+    const take = TAKES.get(key);
+    return take === 'own' || (take === undefined && !Object.hasOwn(REWORKED, key));
+  });
+}
+
+/**
+ * The child's config as team create writes it, plus every block of the parent's (takenBlocks), so the child runs as its
+ * parent did, and what keeps the moved sessions as they were: their names, launch blocks and sub-leads, and the parent's
+ * holder of each role a child may leave to a team above.
  */
 function childConfigOf(parent: SplitParent, spec: TeamSpec): Checked<JsonRecord> {
   const moved = new Set(spec.sessions);
@@ -169,7 +304,7 @@ function childConfigOf(parent: SplitParent, spec: TeamSpec): Checked<JsonRecord>
       roles[role] = ADDRESS_PATTERN.test(holder) ? holder : `${parent.team}/${holder}`;
     }
   }
-  const launch = recordField(parent.record, 'launch');
+  const launch = recordField(parent.current, 'launch');
   const blocks = spec.sessions.flatMap((id): [string, JsonRecord][] => {
     const block = launch === undefined ? undefined : recordField(launch, id);
     return block === undefined ? [] : [[id, block]];
@@ -177,7 +312,7 @@ function childConfigOf(parent: SplitParent, spec: TeamSpec): Checked<JsonRecord>
   const leads = childLeadsOf(parent, spec, moved);
   const record: JsonRecord = {
     ...configRecordOf(spec),
-    ...(parent.config.timeZone === undefined ? {} : { timeZone: parent.config.timeZone }),
+    ...takenBlocks({ parent, moved }),
     names: Object.fromEntries(spec.sessions.map((id) => [id, parent.roster.nameOf(id) ?? id])),
     roles,
     ...(Object.keys(leads).length === 0 ? {} : { leads }),
@@ -219,11 +354,13 @@ function treeProblem(tree: TeamTree, parent: SplitParent, child: TeamNode): stri
 }
 
 function trimOf(parent: SplitParent, moved: ReadonlySet<string>): ParentTrim {
-  const { names, launch, leads } = parent.config;
+  const { names, launch, leads, budget, open } = parent.config;
   const keys = [...moved].flatMap((id) => [
     ...(Object.hasOwn(names, id) ? [`names.${id}`] : []),
     ...(Object.hasOwn(launch, id) ? [`launch.${id}`] : []),
     ...(Object.hasOwn(leads, id) ? [`leads.${id}`] : []),
+    ...(Object.hasOwn(budget.sessions, id) ? [`budget.sessions.${id}`] : []),
+    ...(open.idle.keepOpen.includes(id) ? [`open.idle.keepOpen[${id}]`] : []),
   ]);
   const listed = Object.entries(leads).flatMap(([lead, ids]) => ids.map((id) => ({ lead, id })));
   return {
@@ -312,13 +449,30 @@ export function planTeamSplit(parent: SplitParent, spec: TeamSpec, tree: TeamTre
     return fail(placed);
   }
   const border = new SplitBorder(parent.team, spec.team, spec.sessions, parent.config.register.ownerSource);
-  return ok({ spec, config: config.value, border, ...splitTasksOf(tasks, border), trim: trimOf(parent, new Set(spec.sessions)) });
+  return ok({ spec, config: config.value, leftOut: leftOutOf(parent), border, ...splitTasksOf(tasks, border), trim: trimOf(parent, new Set(spec.sessions)) });
 }
 
-/** The map at `key` without the keys of moved sessions; nothing when the parent has no such map. */
-function withoutMoved(record: JsonRecord, key: string, moved: ReadonlySet<string>): JsonRecord {
+/** The map at `key` with only the sessions `keep` keeps; nothing when the record has no such map. */
+function keptIn(record: JsonRecord, key: string, keep: (id: string) => boolean): JsonRecord {
   const map = recordField(record, key);
-  return map === undefined ? {} : { [key]: Object.fromEntries(Object.entries(map).filter(([id]) => !moved.has(id))) };
+  return map === undefined ? {} : { [key]: Object.fromEntries(Object.entries(map).filter(([id]) => keep(id))) };
+}
+
+/** The block at `key` as `change` makes it; nothing when the record has no such block. */
+function changedBlock(record: JsonRecord, key: string, change: (block: JsonRecord) => JsonRecord): JsonRecord {
+  const block = recordField(record, key);
+  return block === undefined ? {} : { [key]: change(block) };
+}
+
+/** An `open` block whose idle pass keeps open only the sessions `keep` keeps; a damaged list is left for the config check. */
+function idleKeptBy(open: JsonRecord, keep: (id: string) => boolean): JsonRecord {
+  return {
+    ...open,
+    ...changedBlock(open, 'idle', (idle) => {
+      const keepOpen = idle['keepOpen'];
+      return isStringArray(keepOpen) ? { ...idle, keepOpen: keepOpen.filter(keep) } : idle;
+    }),
+  };
 }
 
 /** The sub-leads' lists without a moved sub-lead's, and each staying one's without the moved sessions, an emptied one dropped. */
@@ -339,15 +493,18 @@ function trimmedLeads(record: JsonRecord, moved: ReadonlySet<string>): JsonRecor
 
 /**
  * The parent's config after the split, as its file holds it: the moved sessions gone from its sessions, names, launch
- * blocks and sub-leads' lists (ParentTrim says which), every other key as it was.
+ * blocks, sub-leads' lists, budget shares and idle keep-open list (ParentTrim says which), every other key as it was.
  */
 export function trimmedParentOf(record: JsonRecord, moved: ReadonlySet<string>): JsonRecord {
   const sessions = record['sessions'];
+  const stays = (id: string): boolean => !moved.has(id);
   return {
     ...record,
-    ...(isStringArray(sessions) ? { sessions: sessions.filter((id) => !moved.has(id)) } : {}),
-    ...withoutMoved(record, 'names', moved),
-    ...withoutMoved(record, 'launch', moved),
+    ...(isStringArray(sessions) ? { sessions: sessions.filter(stays) } : {}),
+    ...keptIn(record, 'names', stays),
+    ...keptIn(record, 'launch', stays),
     ...trimmedLeads(record, moved),
+    ...changedBlock(record, 'budget', (budget) => ({ ...budget, ...keptIn(budget, 'sessions', stays) })),
+    ...changedBlock(record, 'open', (open) => idleKeptBy(open, stays)),
   };
 }
