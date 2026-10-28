@@ -26,14 +26,14 @@ function json(value: unknown): string {
 const USER_SETTINGS = json({
   permissions: { allow: ['Bash', 'Bash(npm run test)'], defaultMode: 'bypassPermissions' },
   hooks: {
-    SessionStart: [{ hooks: [{ type: 'command', command: `node start.js --token ${HELD}` }] }],
+    SessionStart: [{ hooks: [{ type: 'command', command: 'node', args: ['start.js', '--token', HELD] }] }],
     UserPromptSubmit: [{ matcher: '', hooks: [{ type: 'command', command: 'node prompt.js' }, { type: 'prompt', prompt: 'not a command' }] }],
     PreToolUse: [{ hooks: [{ type: 'command', command: 'node guard.js' }] }],
   },
 });
 
 describe('scanSettings', () => {
-  it('names the wide allow rules by count, prompts turned off, the hooks that print into the context and the missing deny list', async () => {
+  it('names the wide allow rules by count, prompts turned off, the hooks that print into the context (an exec-form one with its args) and the missing deny list', async () => {
     const files = new MemoryFiles({ [USER]: USER_SETTINGS, [SHARED]: json({ permissions: { allow: ['Read'] } }) });
     const found = await scanSettings(files, CLAUDE_DIR, SCOPE, new KeepList([]), SECRETS);
     assert.deepEqual(

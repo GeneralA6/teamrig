@@ -4,6 +4,7 @@ import type { Files } from '../core/files.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import type { SecretScanner } from '../core/secrets.ts';
 import { jsonObjectOf } from '../doctor/settings-env.ts';
+import { hookCommandLine, hookCommandsOf } from '../doctor/settings-hooks.ts';
 import { countOf, formatCounts, type KeepList } from '../permissions/allow-rules.ts';
 import type { SettingsFile } from '../permissions/settings-scope.ts';
 import { planScope } from '../permissions/trim.ts';
@@ -33,24 +34,14 @@ function hasDeny(settings: JsonRecord): boolean {
   return Array.isArray(deny) && deny.length > 0;
 }
 
-/** The `command` hooks of one event, in order. */
-function hookCommands(settings: JsonRecord, event: string): string[] {
-  const hooks = settings['hooks'];
-  const groups: readonly unknown[] = isRecord(hooks) && Array.isArray(hooks[event]) ? hooks[event] : [];
-  const handlers = groups.flatMap((group): readonly unknown[] => (isRecord(group) && Array.isArray(group['hooks']) ? group['hooks'] : []));
-  return handlers.flatMap((handler) => (isRecord(handler) && typeof handler['command'] === 'string' ? [handler['command']] : []));
-}
-
 function fileFindings(path: string, settings: JsonRecord, secrets: SecretScanner): SettingsFinding[] {
   const found: SettingsFinding[] = [];
   if (permissionsOf(settings)['defaultMode'] === 'bypassPermissions') {
     found.push({ kind: 'bypass', path, what: 'permissions.defaultMode is bypassPermissions: every tool call runs without asking' });
   }
-  for (const event of CONTEXT_HOOK_EVENTS) {
-    for (const command of hookCommands(settings, event)) {
-      const shown = clipEnd(secrets.redact(command), HOOK_COMMAND_MAX_CHARS);
-      found.push({ kind: 'context-hook', path, what: `${event} hook "${shown}": what it prints enters the context` });
-    }
+  for (const hook of hookCommandsOf(settings, CONTEXT_HOOK_EVENTS)) {
+    const shown = clipEnd(secrets.redact(hookCommandLine(hook)), HOOK_COMMAND_MAX_CHARS);
+    found.push({ kind: 'context-hook', path, what: `${hook.event} hook "${shown}": what it prints enters the context` });
   }
   return found;
 }
