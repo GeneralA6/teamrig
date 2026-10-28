@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { FakeGit } from '../lib/fake-git.ts';
-import { POSIX_LAUNCHER, hookCommandsOf, launcherModeFinding, smokeDist, type RunRequest, type RunResult, type Runner, type SmokeInput } from './dist-smoke.ts';
+import { MULTI_LINE_ARG, POSIX_LAUNCHER, hookCommandsOf, launcherModeFinding, smokeDist, type RunRequest, type RunResult, type Runner, type SmokeInput } from './dist-smoke.ts';
 
 const ROOT = resolve('/plugin');
 
@@ -28,6 +28,9 @@ function input(overrides: Partial<SmokeInput> = {}): SmokeInput {
 
 const OK: RunResult = { status: 0, stdout: '', stderr: '' };
 
+/** The CLI's answer to the multi-line argument handed over whole: an unknown command, then the usage. */
+const UNKNOWN_MULTI_LINE: RunResult = { status: 64, stdout: '', stderr: `unknown command "${MULTI_LINE_ARG}"\n\nteamrig <command> ...\n` };
+
 /** Answers like a healthy dist; `override` replaces the answer to the request whose args end with the given word. */
 class FakeRunner {
   readonly requests: RunRequest[] = [];
@@ -40,7 +43,7 @@ class FakeRunner {
   readonly run = (request: RunRequest): RunResult => {
     this.requests.push(request);
     const last = request.args.at(-1) ?? '';
-    const word = last.endsWith('--version"') ? '--version' : last;
+    const word = last.endsWith('--version"') ? '--version' : last.includes(MULTI_LINE_ARG) ? MULTI_LINE_ARG : last;
     const override = this.overrides.get(word);
     if (override !== undefined) {
       return override;
@@ -48,6 +51,8 @@ class FakeRunner {
     switch (word) {
       case '--version':
         return { ...OK, stdout: 'teamrig 1.2.3\n' };
+      case MULTI_LINE_ARG:
+        return UNKNOWN_MULTI_LINE;
       case 'session-start':
         return { ...OK, stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: 'rules' } }) };
       case 'subagent-start':
@@ -100,7 +105,8 @@ describe('hookCommandsOf', () => {
 
   it("reports wrong output from every hook in the plugin's own hooks.json, except the reminder, whose output is free", async () => {
     const manifest: unknown = JSON.parse(await readFile(new URL('../../plugins/teamrig/hooks/hooks.json', import.meta.url), 'utf8'));
-    const garbled: Runner = (request) => (request.args.at(-1) === '--version' ? { ...OK, stdout: 'teamrig 1.2.3\n' } : { ...OK, stdout: 'garbled' });
+    const healthy = new FakeRunner();
+    const garbled: Runner = (request) => (request.file === input().nodePath ? { ...OK, stdout: 'garbled' } : healthy.run(request));
     const judged = hookCommandsOf(manifest, ROOT).commands.filter(({ args }) => args.at(-1) !== 'inbox-reminder');
     const findings = smokeDist(input({ manifest }), garbled);
     assert.deepEqual(
@@ -118,24 +124,32 @@ describe('smokeDist', () => {
       runner.requests.map((request) => [request.file, ...request.args]),
       [
         [join(ROOT, 'bin', 'teamrig'), '--version'],
+        [join(ROOT, 'bin', 'teamrig'), MULTI_LINE_ARG],
         ['/usr/bin/node', `${ROOT}/dist/cli/main.js`, 'hook', 'session-start'],
         ['/usr/bin/node', `${ROOT}/dist/cli/main.js`, 'hook', 'push-guard'],
         ['/usr/bin/node', `${ROOT}/dist/cli/main.js`, 'hook', 'inbox-reminder'],
         ['/usr/bin/node', `${ROOT}/dist/cli/main.js`, 'hook', 'stop'],
       ],
     );
-    assert.equal(runner.requests[1]?.input, JSON.stringify({ hook_event_name: 'SessionStart', session_id: '0123abcd-0000-4000-8000-00000000000a', source: 'startup' }));
+    assert.equal(runner.requests[2]?.input, JSON.stringify({ hook_event_name: 'SessionStart', session_id: '0123abcd-0000-4000-8000-00000000000a', source: 'startup' }));
   });
 
-  it('runs the .cmd launcher through cmd.exe on Windows, args passed as written', () => {
+  it('runs the .cmd launcher through cmd.exe on Windows, args passed as written and one with a space quoted', () => {
     const runner = new FakeRunner();
     assert.deepEqual(smokeDist(input({ platform: 'win32' }), runner.run), []);
-    assert.deepEqual(runner.requests[0], {
-      file: 'C:\\cmd.exe',
-      args: ['/d', '/s', '/c', `""${join(ROOT, 'bin', 'teamrig.cmd')}" --version"`],
-      input: '',
-      verbatim: true,
-    });
+    const launcher = `"${join(ROOT, 'bin', 'teamrig.cmd')}"`;
+    assert.deepEqual(runner.requests.slice(0, 2), [
+      { file: 'C:\\cmd.exe', args: ['/d', '/s', '/c', `"${launcher} --version"`], input: '', verbatim: true },
+      { file: 'C:\\cmd.exe', args: ['/d', '/s', '/c', `"${launcher} "${MULTI_LINE_ARG}""`], input: '', verbatim: true },
+    ]);
+  });
+
+  it('reports a launcher that cuts a multi-line argument at the line break, or runs it', () => {
+    const cut = new FakeRunner({ [MULTI_LINE_ARG]: { status: 64, stdout: '', stderr: 'unknown command "no"\n\nteamrig <command> ...\n' } });
+    const expected = `expected exit 64 and ${JSON.stringify(`unknown command "${MULTI_LINE_ARG}"`)}`;
+    assert.deepEqual(smokeDist(input(), cut.run), [`bin launcher with a multi-line argument: ${expected}, got exit 64 and "unknown command \\"no\\""`]);
+    const ran = new FakeRunner({ [MULTI_LINE_ARG]: OK });
+    assert.deepEqual(smokeDist(input(), ran.run), [`bin launcher with a multi-line argument: ${expected}, got exit 0 and ""`]);
   });
 
   it('reports a launcher that cannot start or prints another version', () => {

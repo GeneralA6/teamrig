@@ -250,24 +250,47 @@ export async function launcherModeFinding(git: Git): Promise<string | undefined>
   return mode === '100755' ? undefined : `${POSIX_LAUNCHER} is committed with mode ${mode}, not 100755; run git update-index --chmod=+x ${POSIX_LAUNCHER}`;
 }
 
-/** The launcher on the Bash PATH (POSIX) or for cmd and PowerShell (Windows) prints the version. */
-function launcherFinding(input: SmokeInput, run: Runner): string | undefined {
+/** An argument holding a line break, which the launcher must hand the CLI whole: cmd.exe ends `%*` at the first one. */
+export const MULTI_LINE_ARG = 'no\nsuch';
+
+/** The CLI's usage exit, which an unknown command gets. */
+const USAGE_EXIT = 64;
+
+/** The launcher on the Bash PATH (POSIX), or cmd.exe running the one for cmd and PowerShell (Windows), given `args`. */
+function launcherRequest(input: SmokeInput, args: readonly string[]): RunRequest {
   const bin = join(input.pluginRoot, 'bin');
-  const request: RunRequest =
-    input.platform === 'win32'
-      ? { file: input.comspec, args: ['/d', '/s', '/c', `""${join(bin, 'teamrig.cmd')}" --version"`], input: '', verbatim: true }
-      : { file: join(bin, 'teamrig'), args: ['--version'], input: '' };
-  const result = run(request);
+  if (input.platform !== 'win32') {
+    return { file: join(bin, 'teamrig'), args, input: '' };
+  }
+  const line = [`"${join(bin, 'teamrig.cmd')}"`, ...args.map((arg) => (/\s/.test(arg) ? `"${arg}"` : arg))].join(' ');
+  return { file: input.comspec, args: ['/d', '/s', '/c', `"${line}"`], input: '', verbatim: true };
+}
+
+/** The launcher prints the version. */
+function versionFinding(input: SmokeInput, run: Runner): string | undefined {
+  const result = run(launcherRequest(input, ['--version']));
   const expected = `teamrig ${input.version}`;
   return failed('bin launcher --version', result) ?? (result.stdout.trim() === expected ? undefined : `bin launcher --version: printed "${result.stdout.trim()}", expected "${expected}"`);
+}
+
+/** The launcher hands the CLI a multi-line argument whole, which the CLI names back as an unknown command. */
+function multiLineFinding(input: SmokeInput, run: Runner): string | undefined {
+  const result = run(launcherRequest(input, [MULTI_LINE_ARG]));
+  const expected = `unknown command "${MULTI_LINE_ARG}"`;
+  if (result.status === USAGE_EXIT && result.stderr.startsWith(expected)) {
+    return undefined;
+  }
+  const said = result.stderr.split('\n').slice(0, 2).join('\n').trim();
+  return `bin launcher with a multi-line argument: expected exit ${USAGE_EXIT} and ${JSON.stringify(expected)}, got exit ${result.status ?? 'none'} and ${JSON.stringify(said)}`;
 }
 
 /** Runs the built plugin the way an installed copy runs; returns what is wrong, empty when nothing is. */
 export function smokeDist(input: SmokeInput, run: Runner): string[] {
   const { commands, findings } = hookCommandsOf(input.manifest, input.pluginRoot);
-  const launcher = launcherFinding(input, run);
-  if (launcher !== undefined) {
-    findings.push(launcher);
+  for (const launcher of [versionFinding(input, run), multiLineFinding(input, run)]) {
+    if (launcher !== undefined) {
+      findings.push(launcher);
+    }
   }
   for (const { event, args } of commands) {
     const hook = args.slice(1).join(' ');
