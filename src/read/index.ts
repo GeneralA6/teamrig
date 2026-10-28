@@ -50,6 +50,20 @@ export {
   type WaitReason,
 } from '../register/waits.ts';
 
+// Waits on the owner: which tasks wait on the owner's decision or approval, which of those the lead asks now and which
+// the owner put off (Later) until a time, and each session's cards grouped as `teamrig meet` asks them (T1295). The
+// owner marker is the config's `register.ownerSource`, `requireGate` its `register.requireDecisionCard`.
+export {
+  asksOwner,
+  deferredUntil,
+  isUngated,
+  ownerCardsBySession,
+  ownerLater,
+  waitsOnOwner,
+  type LaterCard,
+  type OwnerCards,
+} from '../register/owner-waits.ts';
+
 // The inboxes (`inbox/<area>.md`) and their read marks (`inbox-marks.jsonl`).
 export { indexMarks, MARK_VERSION, parseMark, readMarks, type InboxMark, type MarkIndex, type MarkLogRead } from '../inbox/marks.ts';
 export { inboxLines, unreadOf, type LineHash, type ResumeKind, type Unread } from '../inbox/unread.ts';

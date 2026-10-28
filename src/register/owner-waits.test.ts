@@ -4,7 +4,9 @@ import { TimeZone } from '../core/zone.ts';
 import { TEST_CARD, TEST_OWNER_CARD } from '../testing/card.ts';
 import { testTask } from '../testing/task.ts';
 import { JERUSALEM } from '../testing/zone.ts';
-import { askableSince, asksOwner, deferredUntil, isUngated, ownerLater, waitsOnOwner } from './owner-waits.ts';
+import type { Task } from './fold.ts';
+import { askableSince, asksOwner, deferredUntil, isUngated, ownerCardsBySession, ownerLater, waitsOnOwner, type OwnerCards } from './owner-waits.ts';
+import { TaskTree } from './tree.ts';
 import { waitContext, type WaitReason } from './waits.ts';
 
 const NOW = Date.parse('2030-01-08T10:00:00Z');
@@ -81,5 +83,54 @@ describe('a card the owner put off', () => {
     assert.equal(askableSince(decide(), CONTEXT), Date.parse('2030-01-07T09:00:00Z'));
     assert.equal(askableSince(decide(['2030-01-07 18:00', '2030-01-08 09:00', '2030-01-09 12:00']), CONTEXT), Date.parse('2030-01-08T09:00:00Z'), 'a time still to come counts not');
     assert.equal(askableSince(decide(['2030-01-06 18:00']), CONTEXT), Date.parse('2030-01-07T09:00:00Z'), 'a time passed before its status');
+  });
+});
+
+/** A card as {@link decide} makes it, as task `id` of session `owner` at `priority`. */
+function cardOf(id: string, owner: string, times: readonly string[] = [], priority = 2): Task {
+  return { ...decide(times), id, owner, priority };
+}
+
+/** The tree of one read of `tasks` at NOW, in UTC. */
+function treeOf(tasks: readonly Task[]): TaskTree {
+  return new TaskTree(new Map(tasks.map((task) => [task.id, task])), new Date(NOW), TimeZone.UTC);
+}
+
+/** A session's cards by id, each put-off one with its time; undefined when the session has none. */
+function idsOf(cards: OwnerCards | undefined) {
+  return cards === undefined ? undefined : { due: cards.due.map((task) => task.id), later: cards.later.map((card) => [card.task.id, card.until]) };
+}
+
+describe("each session's cards on the owner", () => {
+  it('groups them by the task owner, those the lead asks now apart from those put off, each with its time', () => {
+    const tasks = [cardOf('T1', 'alpha'), cardOf('T2', 'alpha', ['2030-01-09 12:00']), cardOf('T3', 'beta'), testTask({ id: 'T4', owner: 'gamma' })];
+    const cards = ownerCardsBySession(tasks, treeOf(tasks), 'owner', true);
+    assert.deepEqual([...cards.keys()].sort(), ['alpha', 'beta'], 'a session with none is absent');
+    assert.deepEqual(idsOf(cards.get('alpha')), { due: ['T1'], later: [['T2', '2030-01-09 12:00']] });
+    assert.deepEqual(idsOf(cards.get('beta')), { due: ['T3'], later: [] });
+  });
+
+  it('keeps each list in plan order', () => {
+    const tasks = [cardOf('T1', 'alpha'), cardOf('T5', 'alpha', [], 1), cardOf('T2', 'alpha', ['2030-01-10']), cardOf('T6', 'alpha', ['2030-01-09 12:00'], 1)];
+    assert.deepEqual(idsOf(ownerCardsBySession(tasks, treeOf(tasks), 'owner', true).get('alpha')), {
+      due: ['T5', 'T1'],
+      later: [
+        ['T6', '2030-01-09 12:00'],
+        ['T2', '2030-01-10'],
+      ],
+    });
+  });
+
+  it('leaves out a wait on another session, and an ungated card while gates are required', () => {
+    const ungated = testTask({ id: 'T1', status: 'waiting', waits: [ON_OWNER], card: TEST_CARD });
+    const onLead = testTask({ id: 'T2', status: 'waiting', waits: [{ kind: 'decision', who: 'lead' }] });
+    const tasks = [ungated, onLead];
+    assert.equal(ownerCardsBySession(tasks, treeOf(tasks), 'owner', true).size, 0);
+    assert.deepEqual(idsOf(ownerCardsBySession(tasks, treeOf(tasks), 'owner', false).get('alpha')), { due: ['T1'], later: [] }, 'while gates are not required');
+  });
+
+  it('asks a card put off once its time passed', () => {
+    const tasks = [cardOf('T1', 'alpha', ['2030-01-08 09:00'])];
+    assert.deepEqual(idsOf(ownerCardsBySession(tasks, treeOf(tasks), 'owner', true).get('alpha')), { due: ['T1'], later: [] });
   });
 });
