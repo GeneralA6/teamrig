@@ -88,6 +88,43 @@ export function meetingLine(meeting: ScheduledMeeting, zone: TimeZone, now: numb
   return `${meeting.id} ${status}, ${zone.weekdayMinute(new Date(meeting.at))}, ${meeting.minutes} min, ${meeting.session}${joining}${tasks} | ${meeting.about}`;
 }
 
+/** The open meetings to hold by the end of today on the team's clock, by time: today's, and any missed before. */
+export function meetingsToday(meetings: readonly ScheduledMeeting[], zone: TimeZone, now: number): ScheduledMeeting[] {
+  const today = zone.day(new Date(now));
+  return byTime(meetings.filter((meeting) => isOpenMeeting(meeting) && zone.day(new Date(meeting.at)) <= today));
+}
+
+/** The daily agenda's MEETINGS section: today's scheduled meetings and the missed ones, each as `meeting list` shows it. */
+export function agendaMeetingLines(meetings: readonly ScheduledMeeting[], zone: TimeZone, now: number): string[] {
+  const today = meetingsToday(meetings, zone, now);
+  if (today.length === 0) {
+    return ['MEETINGS 0 today'];
+  }
+  return [
+    `MEETINGS ${today.length} today or missed`,
+    ...today.map((meeting) => `  ${meetingLine(meeting, zone, now)}`),
+    `  The owner starts one with ${KIT_NAME} meeting start <id>; a missed one is moved (${KIT_NAME} meeting move <id> --at <time>) or dropped.`,
+  ];
+}
+
+/**
+ * `start`'s MEETINGS line: today's and the missed meetings `session` is met in or joins, every one for the lead;
+ * undefined when there are none.
+ */
+export function startMeetingLine(meetings: readonly ScheduledMeeting[], zone: TimeZone, now: number, session: string, lead: boolean): string | undefined {
+  const shown = meetingsToday(meetings, zone, now).filter((meeting) => lead || meeting.session === session || meeting.with.includes(session));
+  if (shown.length === 0) {
+    return undefined;
+  }
+  const entries = shown.map((meeting) => {
+    const when = isMissed(meeting, now) ? `missed (${zone.weekdayMinute(new Date(meeting.at))})` : `${meeting.status === 'started' ? 'started ' : ''}${zone.clock(new Date(meeting.at))}`;
+    const joining = meeting.with.length === 0 ? '' : ` with ${meeting.with.join(', ')}`;
+    const tasks = meeting.tasks.length === 0 ? '' : ` on ${meeting.tasks.join(' ')}`;
+    return `${meeting.id} ${when} ${meeting.session}${joining}${tasks}`;
+  });
+  return `MEETINGS today: ${entries.join('; ')}`;
+}
+
 function detailLines(meeting: ScheduledMeeting): string[] {
   return [...(meeting.brief === null ? [] : [`    brief: ${meeting.brief}`]), ...(meeting.note === null ? [] : [`    note: ${meeting.note}`])];
 }

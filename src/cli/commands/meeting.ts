@@ -7,6 +7,7 @@ import type { TimeZone } from '../../core/zone.ts';
 import { postLine } from '../../inbox/inbox.ts';
 import { agendaLines, agendaSince } from '../../meeting/agenda.ts';
 import { decisionsByOwner, endNotice, type NoticeFacts } from '../../meeting/notices.ts';
+import { MeetingSchedule } from '../../meeting/schedule.ts';
 import { MeetingStore, phaseOf, stoppedAt, type Meeting, type MeetingPhase } from '../../meeting/state.ts';
 import { currentWeekOf } from '../../register/week.ts';
 import { fitLines } from '../../register/fit.ts';
@@ -18,7 +19,7 @@ import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.t
 import { loadTree, type KitTree } from '../tree.ts';
 import { weekLineOf } from './budget.ts';
 import { inboxDepsOf, read } from './inbox.ts';
-import { meetingEndScheduled, meetingStartScheduled } from './meetings.ts';
+import { agendaMeetingLines, meetingEndScheduled, meetingStartScheduled } from './meetings.ts';
 import { taskTreeOf, weekFitOf } from './register.ts';
 
 /**
@@ -140,8 +141,9 @@ function phaseLine(phase: MeetingPhase, mk: MeetingKit): string {
 }
 
 /**
- * The agenda: the register's part (decisions, with those of every team under the lead's, then late and done), the
- * lead's inbox marked read, then the week's use and, under it, the planned week's fit (as `plan` gives it).
+ * The agenda: the register's part (decisions, with those of every team under the lead's, then late and done), today's
+ * scheduled meetings and the missed ones, the lead's inbox marked read, then the week's use and, under it, the planned
+ * week's fit (as `plan` gives it).
  */
 async function printAgenda(args: ParsedArgs, runtime: CliRuntime, mk: MeetingKit, phase: MeetingPhase): Promise<void> {
   const { own, teams } = await meetingRegisters(runtime, mk);
@@ -167,6 +169,8 @@ async function printAgenda(args: ParsedArgs, runtime: CliRuntime, mk: MeetingKit
     askWith: mk.config.decisions.askWith,
   });
   lines.forEach((line) => runtime.out.stdout(line));
+  const scheduled = await new MeetingSchedule(runtime.files, mk.kit.paths.meetings).read();
+  agendaMeetingLines(scheduled.meetings, mk.zone, mk.now).forEach((line) => runtime.out.stdout(line));
   await read({ ...args, flags: new Map([['session', mk.lead]]) }, runtime);
   runtime.out.stdout(await weekLineOf(runtime, mk.kit, mk.config, mk.roster));
   const week = currentWeekOf(snapshot, new Date(mk.now), mk.zone);
