@@ -11,6 +11,7 @@ import { readSessionContext, type ListedSkill, type SessionContext, type Session
 import { findDuplicates, type Duplicate } from './scan-duplicates.ts';
 import { scanSettings, type SettingsFinding } from './scan-settings.ts';
 import { readSkillUse, type SkillUse } from './scan-usage.ts';
+import type { SkillDoctor, SkillDoctorRead } from './skill-doctor.ts';
 
 /**
  * The skill listing every call carries: as the project's newest transcript recorded it (plugins' and built-in skills
@@ -23,11 +24,12 @@ export interface SkillListing {
   readonly sources: readonly SessionListSource[] | undefined;
 }
 
-/** What the scan reads through: the setup's files, which paths exist, and the machine's transcripts. */
+/** What the scan reads through: the setup's files, which paths exist, the machine's transcripts and Claude Code's `/skill-doctor`. */
 export interface SetupScanPorts {
   readonly files: Files;
   readonly probe: PathProbe;
   readonly transcripts: TranscriptSource;
+  readonly doctor: SkillDoctor;
 }
 
 export interface SetupScanInput extends SessionContextLocations {
@@ -59,6 +61,8 @@ export interface SetupScan {
   readonly usage: SkillUse;
   /** The paths of the listed skills whose file changed since `usage.since`: too new for the transcripts to show unused. */
   readonly recent: ReadonlySet<string>;
+  /** Claude Code's own count of each skill's uses on this machine, or why it was not read. */
+  readonly doctor: SkillDoctorRead;
 }
 
 async function recentSkills(files: Files, skills: readonly ListedSkill[], since: number): Promise<ReadonlySet<string>> {
@@ -80,12 +84,16 @@ async function readListing(transcripts: TranscriptSource, at: SetupScanInput, sk
  * What the user's Claude Code setup costs every turn in `at.project`, and what to slim: the files and skill listing
  * each session loads, the lines they repeat, the rule lines that may override a core rule, the settings findings and
  * the skills no transcript used since `at.since` (or, past `at.maxBytes` of transcripts, in the newest ones read), and
- * which skills changed since the read window starts. It only reads.
+ * which skills changed since the read window starts, with Claude Code's `/skill-doctor` run beside the transcript read.
+ * It only reads.
  */
 export async function scanSetup(ports: SetupScanPorts, at: SetupScanInput): Promise<SetupScan> {
   const context = await readSessionContext(ports.files, ports.probe, at);
   const rules = await scanRules(ports.files, ports.probe, at, at.conflicts);
-  const usage = await readSkillUse(ports.transcripts, at.projectsDir, { since: at.since, maxBytes: at.maxBytes });
+  const [usage, doctor] = await Promise.all([
+    readSkillUse(ports.transcripts, at.projectsDir, { since: at.since, maxBytes: at.maxBytes }),
+    ports.doctor.read(at.project),
+  ]);
   return {
     context,
     listing: await readListing(ports.transcripts, at, context.skills),
@@ -95,5 +103,6 @@ export async function scanSetup(ports: SetupScanPorts, at: SetupScanInput): Prom
     settings: await scanSettings(ports.files, at.claudeDir, at.settings, at.keep, at.secrets),
     usage,
     recent: await recentSkills(ports.files, context.skills, usage.since),
+    doctor,
   };
 }

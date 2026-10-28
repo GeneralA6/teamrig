@@ -10,6 +10,8 @@ import { MemoryPathProbe } from '../testing/memory-files.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { teamHomeOf, treeHarness } from '../testing/team-tree.ts';
 import { promptLine, replyLine } from '../testing/transcript-lines.ts';
+import { FakeHooks } from '../testing/fake-hooks.ts';
+import { SKILL_DOCTOR_ARGS } from '../setup/skill-doctor.ts';
 import { DEFAULT_SCAN_DAYS } from './commands/setup-scan.ts';
 import { EXIT } from './runtime.ts';
 
@@ -53,9 +55,13 @@ function transcripts(ago: number): MemoryTranscripts {
   return new MemoryTranscripts({ [transcriptPath('a')]: `${skillLine('alpha-check')}\n` }, NOW - ago);
 }
 
-function scan(harness: CliHarness, argv: readonly string[] = [], source: MemoryTranscripts = new MemoryTranscripts(), env: Env = {}): Promise<CliResult> {
-  return harness.run(['setup', 'scan', ...argv], { env, probe: new MemoryPathProbe(harness.files), transcripts: source });
+function scan(harness: CliHarness, argv: readonly string[] = [], source: MemoryTranscripts = new MemoryTranscripts(), env: Env = {}, hooks: FakeHooks = new FakeHooks()): Promise<CliResult> {
+  return harness.run(['setup', 'scan', ...argv], { env, probe: new MemoryPathProbe(harness.files), transcripts: source, hooks });
 }
+
+/** Claude Code on the PATH {@link CLAUDE_PATH} names, as the harness's Linux finds it. */
+const CLAUDE = '/opt/claude/bin/claude';
+const CLAUDE_PATH: Env = { PATH: '/opt/claude/bin' };
 
 function okLines(result: CliResult): readonly string[] {
   assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
@@ -103,6 +109,17 @@ describe('setup scan', () => {
     const source = transcripts(2 * DAY_MS);
     assert.ok(okLines(await scan(harness, ['--days', '1'], source)).includes('UNUSED not checked: no transcript on this machine in 1 day(s)'));
     assert.ok(okLines(await scan(harness, ['--days', '3'], source)).some((line) => line.startsWith('UNUSED 1 of 2 skill(s) not used in 3 day(s)')));
+  });
+
+  it("runs Claude Code's /skill-doctor in the scanned project, and nothing when Claude Code is not on PATH", async () => {
+    const harness = await world();
+    await harness.files.write(CLAUDE, '');
+    const hooks = new FakeHooks();
+    okLines(await scan(harness, ['--project', OTHER], new MemoryTranscripts(), CLAUDE_PATH, hooks));
+    assert.deepEqual(hooks.ran.map((request) => ({ argv: request.argv, cwd: request.cwd })), [{ argv: [CLAUDE, ...SKILL_DOCTOR_ARGS], cwd: OTHER }]);
+    const none = new FakeHooks();
+    okLines(await scan(harness, [], new MemoryTranscripts(), {}, none));
+    assert.deepEqual(none.ran, []);
   });
 
   it('scans the --project folder, from the working folder, outside any team', async () => {
