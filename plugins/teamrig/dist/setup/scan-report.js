@@ -110,7 +110,12 @@ function settingsLines(scan, at, show) {
     if (scan.settings.length === 0) {
         return ['SETTINGS none'];
     }
-    const findings = scan.settings.map((finding) => ({ kind: finding.kind, where: show(finding.path), what: finding.what, saves: 0 }));
+    const findings = scan.settings.map((finding) => ({
+        kind: finding.kind,
+        where: show(finding.path),
+        what: finding.copies === 0 ? finding.what : `${finding.what}; the same in ${finding.copies} more file(s) under .claude/worktrees`,
+        saves: 0,
+    }));
     const trim = scan.settings.some((finding) => finding.kind === 'wide-allow') ? [`NEXT ${KIT_NAME} permissions trim${afterTeam(at)}`] : [];
     return [`SETTINGS ${findings.length} finding(s)`, ...findingLines('S', findings), ...trim];
 }

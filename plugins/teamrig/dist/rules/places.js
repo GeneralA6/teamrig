@@ -1,8 +1,8 @@
 import { extname, isAbsolute, join, resolve } from 'node:path';
-import { isRecord } from "../core/guards.js";
 import { expandHome, pathKey } from "../core/paths.js";
 import { CLAUDE_MD_FILES, claudeMdPaths, claudeMemoryDir, skillFolders } from "../doctor/context-files.js";
 import { claudeSettingsFiles, jsonObjectOf } from "../doctor/settings-env.js";
+import { hookCommandsOf } from "../doctor/settings-hooks.js";
 import { SkillDir } from "../skills/store.js";
 /**
  * The kinds of place a local rule that can override a core rule lives in: CLAUDE.md files (the user's, the project's
@@ -85,20 +85,7 @@ function expandWord(word, at) {
 }
 /** The command lines of every `command` hook in a settings object: the command and, in the exec form, its `args`. */
 function hookCommandWords(settings) {
-    const hooks = settings['hooks'];
-    if (!isRecord(hooks)) {
-        return [];
-    }
-    const groups = Object.values(hooks).flatMap((event) => (Array.isArray(event) ? event : []));
-    const handlers = groups.flatMap((group) => (isRecord(group) && Array.isArray(group['hooks']) ? group['hooks'] : []));
-    return handlers.flatMap((handler) => {
-        if (!isRecord(handler) || typeof handler['command'] !== 'string') {
-            return [];
-        }
-        const args = handler['args'];
-        const extra = Array.isArray(args) ? args.filter((arg) => typeof arg === 'string') : [];
-        return [[...commandWords(handler['command']), ...extra]];
-    });
+    return hookCommandsOf(settings).map((hook) => [...commandWords(hook.command), ...hook.args]);
 }
 /** The scripts the settings files' hooks run, as absolute paths (a relative one is read from the project folder). */
 async function hookScripts(files, settingsPaths, at) {
