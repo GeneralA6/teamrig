@@ -31,7 +31,12 @@ import { GIT_WORKTREES } from "../worktree/git.js";
 import { stdioCountdownTerminal, terminalCountdown } from "../restore/countdown.js";
 import { LOGON_QUERY_TIMEOUT_MS, systemLogonEntry } from "../restore/logon.js";
 import { SHUTDOWN_QUERY_TIMEOUT_MS, systemShutdownLog } from "../restore/shutdowns.js";
+import { CMD_SHIM_LINE_ENV } from "./cmd-shim.js";
 import { runCli } from "./run.js";
+// The shim's command line is this run's alone: the steps, hooks and commands it starts take `process.env`, and a
+// teamrig among them that reads it would refuse its own arguments.
+const cmdShimLine = process.env[CMD_SHIM_LINE_ENV];
+delete process.env[CMD_SHIM_LINE_ENV];
 const sessionProcesses = nodeSessionProcesses();
 /** The process adapter: real files, clock, git, child processes and stdio around the testable runner. */
 process.exitCode = await runCli(process.argv.slice(2), {
@@ -76,6 +81,7 @@ process.exitCode = await runCli(process.argv.slice(2), {
     hooks: nodeHookRunner(process.platform),
     packageRegistry: httpPackageRegistry(),
     exec: { spawner: nodeExecSpawner(process.platform), checkout: GIT_CHECKOUT, webhook: httpWebhook() },
+    cmdShimLine,
     readStdin: () => text(process.stdin),
     newId: () => randomUUID(),
 });
