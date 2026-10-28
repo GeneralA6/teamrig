@@ -19,7 +19,7 @@ import { unseenLinesOf } from '../inbox/inbox.ts';
 import { asksNowOf, urgentLinesText, WakeAsks, type WakeAsk } from '../wake/asks.ts';
 import { startableTasks } from '../wake/day-start.ts';
 import { inboxDepsOf } from './commands/inbox.ts';
-import { measureTranscript } from './commands/rehire.ts';
+import { measureTranscript, type LastSession } from './commands/rehire.ts';
 import { teamZone, type Kit } from './kit.ts';
 import { RefusedError, type CliRuntime } from './runtime.ts';
 import { teamRegister } from './team-register.ts';
@@ -63,7 +63,7 @@ export interface IdleFacts {
 
 /**
  * How a verdict weighs work: the least urgent priority that keeps a session open, and the folder it resumes in,
- * where a session whose record names no transcript has it.
+ * where a session's transcript is looked for first when its record names none, or one no longer there.
  */
 export interface IdleOptions {
   readonly maxPriority: number;
@@ -93,6 +93,31 @@ export async function idleFactsOf(runtime: CliRuntime, kit: Kit, config: KitConf
     asks.set(id, (await asksNowOf(await store.read(id), now, () => unseenLinesOf(inboxDepsOf(runtime, kit.paths), id))).asks);
   }
   return { records, places: measureSessions(records, rows), tasks: snapshot.state.tasks, elsewhere, asks, now, zone: teamZone(config, runtime) };
+}
+
+/** A session's transcript measured, with its last change known. */
+type MeasuredSession = LastSession & { readonly changedAt: number };
+
+/**
+ * The transcript of `record`'s Claude Code session, measured: the one its start recorded while a file is there, else
+ * the one of its session id in any project folder (T1357: a running session's transcript can leave the folder its
+ * start recorded; seen 10-28, two sessions re-filed under the project folder of the worktree they moved to).
+ * Undefined when it has none.
+ */
+async function measuredTranscriptOf(runtime: CliRuntime, record: SessionRecord, projectsDir: string, project: string): Promise<MeasuredSession | undefined> {
+  if (record.transcript !== undefined) {
+    const recorded = measuredOf(await measureTranscript(runtime, record.transcript));
+    if (recorded !== undefined) {
+      return recorded;
+    }
+  }
+  const found = await findTranscript(runtime.transcripts, projectsDir, project, record.claudeSession);
+  return found === undefined ? undefined : measuredOf(await measureTranscript(runtime, found));
+}
+
+function measuredOf(last: LastSession): MeasuredSession | undefined {
+  const { changedAt } = last;
+  return changedAt === undefined ? undefined : { ...last, changedAt };
 }
 
 /**
@@ -136,13 +161,9 @@ export async function idleVerdictOf(runtime: CliRuntime, config: KitConfig, rost
     return keep(`waits until ${zone.clock(new Date(soon.at))} on ${soon.task.id}, under ${TIME_WAIT_GUARD_MINUTES} min away`);
   }
   const projectsDir = claudeProjectsDir(runtime.env, runtime.userHome);
-  const transcript = record.transcript ?? (await findTranscript(runtime.transcripts, projectsDir, options.project, record.claudeSession));
-  if (transcript === undefined) {
+  const last = await measuredTranscriptOf(runtime, record, projectsDir, options.project);
+  if (last === undefined) {
     return keep(`has no transcript of Claude Code session ${record.claudeSession} in any project folder, so its idle time is unknown`);
-  }
-  const last = await measureTranscript(runtime, transcript);
-  if (last.changedAt === undefined) {
-    return keep(`has no transcript of Claude Code session ${record.claudeSession} at ${transcript}, so its idle time is unknown`);
   }
   const tail = (await runtime.files.readTail(last.transcript, REPLY_TAIL_BYTES)) ?? '';
   const cut = Buffer.byteLength(tail, 'utf8') >= REPLY_TAIL_BYTES;
