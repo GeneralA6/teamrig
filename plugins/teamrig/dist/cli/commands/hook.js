@@ -495,8 +495,10 @@ async function teamPartsOf(runtime, kit, config, payload) {
     if (id !== undefined) {
         await logStart(runtime, { config, paths: kit.paths, id }, payload).catch(() => undefined);
     }
+    const recorded = id === undefined || claudeSession === null ? undefined : await recordSessionStart(runtime, kit, roster.ids, id, claudeSession, startTranscriptOf(payload));
     return {
-        recordNote: id === undefined || claudeSession === null ? undefined : await recordSessionStart(runtime, kit, id, claudeSession, startTranscriptOf(payload)),
+        recordNote: recorded?.failure,
+        duplicateNote: recorded?.duplicate,
         teamRules: await readTeamRules(runtime, kit, kitTree),
         keptRulesAbove: keptRulesAboveOf(kit, kitTree),
         renames,
@@ -870,6 +872,7 @@ export async function sessionStart(args, runtime) {
             liveTasksNote: undefined,
             modelNote: undefined,
             verifyNote: undefined,
+            duplicateNote: undefined,
             session: undefined,
             sessionInEnv: false,
             tree: undefined,
@@ -882,6 +885,6 @@ export async function sessionStart(args, runtime) {
         now: new Date(runtime.clock.now()),
         command: KIT_NAME,
     });
-    runtime.out.stdout(sessionStartOutput(context, [parts.modelNote, parts.recordNote, requirementsNote]));
+    runtime.out.stdout(sessionStartOutput(context, [parts.duplicateNote, parts.modelNote, parts.recordNote, requirementsNote]));
     return EXIT.ok;
 }

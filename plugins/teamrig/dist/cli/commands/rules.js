@@ -39,6 +39,7 @@ export async function rules(args, runtime) {
         liveTasksNote: undefined,
         modelNote: undefined,
         verifyNote: undefined,
+        duplicateNote: undefined,
         session: flag ?? (inEnv ? fromEnv : undefined),
         sessionInEnv: inEnv,
         tree: kitTree.tree.placeOf(team),
