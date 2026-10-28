@@ -18,7 +18,7 @@ describe('kitTag', () => {
 });
 
 describe('kitLines', () => {
-  it('fills the branches, the register, the wrappers and worktree removal from the team', () => {
+  it('fills the branches, the register, the wrappers, worktree removal and rebasing from the team', () => {
     assert.deepEqual(kitLines(FACTS), [
       '[teamrig alpha] Protected branches: main, release. A normal push to one asks the person. A force-push, a --mirror push or deleting one is refused, and a --force-with-lease push asks. ' +
         "Every session edits on its own branch in its own git worktree, never in a repo's main checkout.",
@@ -30,6 +30,9 @@ describe('kitLines', () => {
       '[teamrig alpha] `teamrig worktree remove <path> [--delete-branch]` is how a session removes its finished worktree, and every session may run it: teamrig itself removes ' +
         'only a worktree whose t<id>- branch names a task the session owns or one of a session it leads (any for the lead, session boss), and refuses the main checkout, ' +
         'uncommitted work and a branch with a commit not on its base.',
+      '[teamrig alpha] Every session may rebase its own branch in its own git worktree onto the fresh default branch (`git fetch`, then `git rebase origin/<branch>` or ' +
+        "`git pull --rebase`, and `git rebase --continue` or `--abort` to settle a stopped one): it rewrites only that session's own commits not yet merged. A branch it " +
+        "pushed before goes back with `git push --force-with-lease` to that same branch. A protected branch (main, release) is never rebased, nor a repo's main checkout.",
     ]);
   });
 
