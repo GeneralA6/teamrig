@@ -4,10 +4,11 @@ import { SecretScanner } from "../../core/secrets.js";
 import { postLine } from "../../inbox/inbox.js";
 import { agendaLines, agendaSince } from "../../meeting/agenda.js";
 import { decisionsByOwner, endNotice } from "../../meeting/notices.js";
+import { MeetingSchedule } from "../../meeting/schedule.js";
 import { MeetingStore, phaseOf, stoppedAt } from "../../meeting/state.js";
 import { currentWeekOf } from "../../register/week.js";
 import { fitLines } from "../../register/fit.js";
-import { noPositionals } from "../args.js";
+import { noPositionals, UsageError } from "../args.js";
 import { callerOf } from "../inputs.js";
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { subtreeOf } from "../roll-up.js";
@@ -15,6 +16,7 @@ import { EXIT, RefusedError } from "../runtime.js";
 import { loadTree } from "../tree.js";
 import { weekLineOf } from "./budget.js";
 import { inboxDepsOf, read } from "./inbox.js";
+import { agendaMeetingLines, meetingEndScheduled, meetingStartScheduled } from "./meetings.js";
 import { taskTreeOf, weekFitOf } from "./register.js";
 /**
  * The caller's team, refused unless the caller is its lead and the team a root team: the meeting is the lead's with the
@@ -97,8 +99,9 @@ function phaseLine(phase, mk) {
     }
 }
 /**
- * The agenda: the register's part (decisions, with those of every team under the lead's, then late and done), the
- * lead's inbox marked read, then the week's use and, under it, the planned week's fit (as `plan` gives it).
+ * The agenda: the register's part (decisions, with those of every team under the lead's, then late and done), today's
+ * scheduled meetings and the missed ones, the lead's inbox marked read, then the week's use and, under it, the planned
+ * week's fit (as `plan` gives it).
  */
 async function printAgenda(args, runtime, mk, phase) {
     const { own, teams } = await meetingRegisters(runtime, mk);
@@ -124,6 +127,8 @@ async function printAgenda(args, runtime, mk, phase) {
         askWith: mk.config.decisions.askWith,
     });
     lines.forEach((line) => runtime.out.stdout(line));
+    const scheduled = await new MeetingSchedule(runtime.files, mk.kit.paths.meetings).read();
+    agendaMeetingLines(scheduled.meetings, mk.zone, mk.now).forEach((line) => runtime.out.stdout(line));
     await read({ ...args, flags: new Map([['session', mk.lead]]) }, runtime);
     runtime.out.stdout(await weekLineOf(runtime, mk.kit, mk.config, mk.roster));
     const week = currentWeekOf(snapshot, new Date(mk.now), mk.zone);
@@ -133,9 +138,13 @@ async function printAgenda(args, runtime, mk, phase) {
 }
 /**
  * `meeting start`: opens the meeting and prints the agenda; it posts no line, as the hook tells each sender it
- * holds. A meeting already open stays as it is: its agenda prints.
+ * holds. A meeting already open stays as it is: its agenda prints. With an id, `meeting start M3` starts a scheduled
+ * meeting instead (meetings.ts).
  */
 export async function meetingStart(args, runtime) {
+    if (args.positionals.length > 0) {
+        return meetingStartScheduled(args, runtime);
+    }
     const mk = await meetingKit(args, runtime, 'write');
     const phase = phaseOf(await mk.store.read(), mk.now);
     if (phase.kind === 'open') {
@@ -162,9 +171,15 @@ export async function meetingAgenda(args, runtime) {
 /**
  * `meeting end`: closes the open meeting, or one that lapsed unended, and tells each session whose tasks the lead
  * updated during the meeting those updates (the decisions recorded) by one inbox line, in a team under the lead's
- * too (T1018); a session with none gets no line.
+ * too (T1018); a session with none gets no line. `meeting end <id>` ends a scheduled meeting instead (meetings.ts).
  */
 export async function meetingEnd(args, runtime) {
+    if (args.positionals.length > 0) {
+        return meetingEndScheduled(args, runtime);
+    }
+    if (args.flags.has('note')) {
+        throw new UsageError('--note goes with meeting end <id>, a scheduled meeting; the daily meeting records its decisions on the tasks');
+    }
     const mk = await meetingKit(args, runtime, 'write');
     const phase = phaseOf(await mk.store.read(), mk.now);
     if (phase.kind !== 'open' && phase.kind !== 'lapsed') {

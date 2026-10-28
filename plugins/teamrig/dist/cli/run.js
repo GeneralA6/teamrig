@@ -23,6 +23,7 @@ const missingCliCommand = () => import("./commands/hook-missing-cli.js");
 const helperStartCommand = () => import("./commands/hook-helper-start.js");
 const clearCommands = () => import("./commands/hook-clear.js");
 const wakeCommands = () => import("./commands/hook-wake.js");
+const meetingDueCommand = () => import("./commands/hook-meeting-due.js");
 const refreshModCommands = () => import("./commands/hook-refresh-mod.js");
 const teamCommands = () => import("./commands/team.js");
 const sessionsCommands = () => import("./commands/sessions.js");
@@ -59,6 +60,7 @@ const deploysCommand = () => import("./commands/deploys.js");
 const ghCommands = () => import("./commands/gh.js");
 const startCommands = () => import("./commands/start.js");
 const meetingCommands = () => import("./commands/meeting.js");
+const meetingsCommands = () => import("./commands/meetings.js");
 const decisionsCommands = () => import("./commands/decisions.js");
 const hireCommands = () => import("./commands/hire.js");
 const retireCommands = () => import("./commands/retire.js");
@@ -113,7 +115,11 @@ const COMMANDS = {
     start: { effect: 'write', flags: ['session'], switches: ['all'], load: async () => (await startCommands()).start },
     'meeting start': { effect: 'write', flags: ['session'], load: async () => (await meetingCommands()).meetingStart },
     'meeting agenda': { effect: 'write', flags: ['session'], load: async () => (await meetingCommands()).meetingAgenda },
-    'meeting end': { effect: 'write', flags: ['session'], load: async () => (await meetingCommands()).meetingEnd },
+    'meeting end': { effect: 'write', flags: ['session', 'note'], load: async () => (await meetingCommands()).meetingEnd },
+    'meeting schedule': { effect: 'write', flags: ['session', 'meets', 'at', 'about', 'minutes', 'with', 'tasks', 'brief'], load: async () => (await meetingsCommands()).meetingSchedule },
+    'meeting list': { effect: 'read', flags: ['session'], switches: ['all', 'json'], load: async () => (await meetingsCommands()).meetingList },
+    'meeting move': { effect: 'write', flags: ['session', 'at', 'note'], load: async () => (await meetingsCommands()).meetingMove },
+    'meeting drop': { effect: 'write', flags: ['session', 'note'], load: async () => (await meetingsCommands()).meetingDrop },
     decisions: { effect: 'read', flags: ['session'], load: async () => (await decisionsCommands()).decisions },
     'decisions asked': { effect: 'write', flags: ['session'], load: async () => (await decisionsCommands()).decisionsAsked },
     open: { effect: 'write', flags: ['prompt', 'terminal', 'project'], switches: ['resume'], load: async () => (await openCommands()).open },
@@ -217,6 +223,7 @@ const COMMANDS = {
     'hook clear-claim': { effect: 'internal', flags: ['why'], switches: ['hold'], load: async () => (await clearCommands()).clearClaim },
     'hook wake-check': { effect: 'internal', flags: [], load: async () => (await wakeCommands()).wakeCheck },
     'hook wake-dropped': { effect: 'internal', flags: [], load: async () => (await wakeCommands()).wakeDropped },
+    'hook meeting-due': { effect: 'internal', flags: [], load: async () => (await meetingDueCommand()).meetingDue },
     'hook refresh-mid': { effect: 'internal', flags: [], load: async () => (await refreshModCommands()).refreshMid },
     'hook compact-check': { effect: 'internal', flags: [], load: async () => (await refreshModCommands()).compactCheck },
     'hook slash-command': {
@@ -285,10 +292,10 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       loads, missed uses (a call matching its "Signature: \`<regex>\`" line with no load before it), calls
       and errors per run, against a baseline (default: the last 7 UTC days, and the 7 before); each run
       reads only what the transcripts gained since the last one
-  start [--session <id|name>] [--all]   the start of a work block in one call: the team's time, the
-      unread inbox lines (marked read), the session's tasks, the other sessions' tasks waiting on it, the
-      check flags it acts on (the lead: all) and the week's use; --all: the tasks and flags in full, and
-      every task waiting on it
+  start [--session <id|name>] [--all]   the start of a work block in one call: the team's time, today's
+      scheduled meetings it is in (the lead: all), the unread inbox lines (marked read), the session's
+      tasks, the other sessions' tasks waiting on it, the check flags it acts on (the lead: all) and the
+      week's use; --all: the tasks and flags in full, and every task waiting on it
   meeting start | meeting agenda | meeting end [--session <id|name>]   the lead's daily meeting with
       the owner: start holds messages to the lead until its end (one starting CRITICAL goes; the hook
       tells each sender, so no session is told) and prints the agenda: the owner's decisions as card
@@ -296,6 +303,20 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       and fit; agenda prints it again; end tells each session the decisions recorded on its tasks
       (update --note) by one inbox line, and no other session; in a tree of teams only the root team's
       lead holds it, and its decisions and end cover every team under it
+  meeting schedule --meets <id|name> --at <time> --about "<one line>" [--minutes <n>] [--with a,b]
+      [--tasks T1,T2] [--brief <path>]   books the owner's meeting with one session at a set time, apart
+      from the daily one: it prints its id (M3) and tells the session met and those joining by one inbox
+      line; the lead or the session met books, moves, ends and drops one
+  meeting list [--all] [--json]   the scheduled and started meetings by time, one line each, a scheduled
+      one past its slot shown as missed; --all: those done or dropped in the last week too; --json: as
+      JSON, for the task pane
+  meeting move <id> --at <time> [--note "<why>"]   a new time for a scheduled meeting; those it meets
+      are told
+  meeting start <id>   the owner starts a scheduled meeting, from any session: the session met gets its
+      opening prompt (the topic, tasks, brief and those joining), its running tab brought to the front
+      and woken once idle or a closed one opened, and those joining are told by one inbox line
+  meeting end <id> [--note "<what came of it>"] | meeting drop <id> --note "<why>"   the meeting was
+      held, or will not be (those it meets are told why)
   decisions | decisions asked [--session <id|name>]   the owner's decisions the lead asks in batches:
       decisions prints the waits on the owner not yet asked and the asked ones past due, as card facts,
       and whether a batch is due (a wait due before the next batch, decisions.batchAt not yet asked, or a
@@ -608,6 +629,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       (run by the plugin's mod: the automatic restart's /clear in the tab)
   hook wake-check | hook wake-dropped
       (run by the plugin's mod: wakes an idle tab when unblocked urgent work is handed to its session)
+  hook meeting-due
+      (run by the plugin's mod: the OS notification at a scheduled meeting's time)
   hook refresh-mid | hook compact-check
       (run by the plugin's mod: asks for the handover within a long turn, and holds a compaction while it is due)
   hook slash-command
