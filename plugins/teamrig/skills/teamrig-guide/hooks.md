@@ -110,7 +110,11 @@ The injected context holds:
    the effort only at the end of a turn, so the effort is checked there ([model notices](#end-of-a-turn-model-notices)).
 9. **The verify queue**: while the session has `verifying` tasks, a `VERIFY 2, oldest first:` heading and a row
    each, `  T1 (proof: the nightly run)`, the first 5 and a `+N more` line. `teamrig verify` lists them in full.
-10. **What teamrig lacks**: shown to the user only, once per Claude Code session, when git is not on the PATH or
+10. **A Claude Code worktree**: when the session starts in `<repo>/.claude/worktrees/<name>` (EnterWorktree or
+   `claude --worktree`), one line on the shell forms Claude Code's isolation there refuses: write paths out in full,
+   not as variables; run git as one plain command from that folder, never with `cd` or `-C` into the shared
+   checkout; start no PowerShell from Bash.
+11. **What teamrig lacks**: shown to the user only, once per Claude Code session, when git is not on the PATH or
    Claude Code or Node.js is too old ([the requirements check](requirements.md#the-requirements-check)).
 
 The session is found from `$TEAMRIG_SESSION`, else from the area this Claude Code session last ran

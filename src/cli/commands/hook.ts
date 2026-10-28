@@ -32,6 +32,7 @@ import { showsLiveTasks } from '../../hooks/live-tasks.ts';
 import { requirementsNoteOnce } from '../../hooks/requirements-note.ts';
 import { helperOf } from '../../hooks/helper-start.ts';
 import { sessionStartContext, sessionStartOutput, type SessionStartInput } from '../../hooks/session-start.ts';
+import { worktreeNoteOf } from '../../hooks/worktree-note.ts';
 import { stopModelNotices } from '../../hooks/stop-model.ts';
 import { leadStopLine, leadTallyOf } from '../../hooks/lead-boundary.ts';
 import { turnToolsOf } from '../../hooks/loop-nudge.ts';
@@ -504,7 +505,7 @@ async function helperGateOf(runtime: CliRuntime, payload: JsonRecord): Promise<s
 
 type TeamParts = Pick<
   SessionStartInput,
-  'teamRules' | 'keptRulesAbove' | 'renames' | 'titleNote' | 'refreshNote' | 'liveTasksNote' | 'modelNote' | 'verifyNote' | 'duplicateNote' | 'session' | 'sessionInEnv' | 'tree'
+  'teamRules' | 'keptRulesAbove' | 'renames' | 'titleNote' | 'refreshNote' | 'liveTasksNote' | 'modelNote' | 'verifyNote' | 'duplicateNote' | 'worktreeNote' | 'session' | 'sessionInEnv' | 'tree'
 > & {
   /** Why the start's Claude Code process could not be recorded; undefined when it was, or there was nothing to record. */
   readonly recordNote: string | undefined;
@@ -547,6 +548,7 @@ async function teamPartsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, pay
     liveTasksNote: await liveTasksPartOf(runtime, kit, config, id, payload, refresh),
     modelNote: modelNoteOf(config, roster, id, payload),
     verifyNote: await verifyNoteOf(runtime, kit.paths, id),
+    worktreeNote: worktreeNoteOf(isRecord(payload) ? stringField(payload, 'cwd') : undefined),
     session,
     sessionInEnv: fromEnv !== undefined,
     tree: kitTree.tree.placeOf(kit.paths.team),
@@ -947,6 +949,7 @@ export async function sessionStart(args: ParsedArgs, runtime: CliRuntime): Promi
           modelNote: undefined,
           verifyNote: undefined,
           duplicateNote: undefined,
+          worktreeNote: undefined,
           session: undefined,
           sessionInEnv: false,
           tree: undefined,
