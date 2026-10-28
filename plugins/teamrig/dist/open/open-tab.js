@@ -1,5 +1,6 @@
 import { autoTerminals, tabCommand } from "./terminals.js";
-function candidatesOf(choice, deps) {
+/** The terminals a choice tries, in order: the one chosen, those `auto` finds, or none for `print`. */
+export function candidatesOf(choice, deps) {
     switch (choice) {
         case 'auto':
             return autoTerminals(deps.env, deps.platform);
