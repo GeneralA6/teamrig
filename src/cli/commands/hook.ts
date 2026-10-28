@@ -504,7 +504,7 @@ async function helperGateOf(runtime: CliRuntime, payload: JsonRecord): Promise<s
 
 type TeamParts = Pick<
   SessionStartInput,
-  'teamRules' | 'keptRulesAbove' | 'renames' | 'titleNote' | 'refreshNote' | 'liveTasksNote' | 'modelNote' | 'verifyNote' | 'session' | 'sessionInEnv' | 'tree'
+  'teamRules' | 'keptRulesAbove' | 'renames' | 'titleNote' | 'refreshNote' | 'liveTasksNote' | 'modelNote' | 'verifyNote' | 'duplicateNote' | 'session' | 'sessionInEnv' | 'tree'
 > & {
   /** Why the start's Claude Code process could not be recorded; undefined when it was, or there was nothing to record. */
   readonly recordNote: string | undefined;
@@ -535,8 +535,10 @@ async function teamPartsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, pay
   if (id !== undefined) {
     await logStart(runtime, { config, paths: kit.paths, id }, payload).catch(() => undefined);
   }
+  const recorded = id === undefined || claudeSession === null ? undefined : await recordSessionStart(runtime, kit, roster.ids, id, claudeSession, startTranscriptOf(payload));
   return {
-    recordNote: id === undefined || claudeSession === null ? undefined : await recordSessionStart(runtime, kit, id, claudeSession, startTranscriptOf(payload)),
+    recordNote: recorded?.failure,
+    duplicateNote: recorded?.duplicate,
     teamRules: await readTeamRules(runtime, kit, kitTree),
     keptRulesAbove: keptRulesAboveOf(kit, kitTree),
     renames,
@@ -944,6 +946,7 @@ export async function sessionStart(args: ParsedArgs, runtime: CliRuntime): Promi
           liveTasksNote: undefined,
           modelNote: undefined,
           verifyNote: undefined,
+          duplicateNote: undefined,
           session: undefined,
           sessionInEnv: false,
           tree: undefined,
@@ -956,6 +959,6 @@ export async function sessionStart(args: ParsedArgs, runtime: CliRuntime): Promi
     now: new Date(runtime.clock.now()),
     command: KIT_NAME,
   });
-  runtime.out.stdout(sessionStartOutput(context, [parts.modelNote, parts.recordNote, requirementsNote]));
+  runtime.out.stdout(sessionStartOutput(context, [parts.duplicateNote, parts.modelNote, parts.recordNote, requirementsNote]));
   return EXIT.ok;
 }
