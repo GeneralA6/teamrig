@@ -2,6 +2,7 @@ import { errorMessage } from '../core/guards.ts';
 import { ENV, KIT_NAME } from '../core/home.ts';
 import { TEAM_POINTER } from '../core/team.ts';
 import { KIT_VERSION } from '../core/version.ts';
+import { cutLineMessage, shimArgs } from './cmd-shim.ts';
 import { CommandHelp } from './help.ts';
 import { parseArgs, UsageError, type CommandEffect, type CommandEffects, type CommandFlags, type CommandRest, type CommandSwitches, type ParsedArgs, type RenamedFlags } from './args.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from './runtime.ts';
@@ -650,7 +651,12 @@ export const HELP: ReadonlySet<string> = new Set(['help', '--help', '-h']);
 /** The words that print the version; the LLM guide documents them as `teamrig version`. */
 export const VERSION: ReadonlySet<string> = new Set(['version', '--version', '-v']);
 
-export async function runCli(argv: readonly string[], runtime: CliRuntime): Promise<ExitCode> {
+export async function runCli(given: readonly string[], runtime: CliRuntime): Promise<ExitCode> {
+  const argv = shimArgs(given, runtime.cmdShimLine);
+  if (argv === undefined) {
+    runtime.out.stderr(cutLineMessage(runtime.self.script));
+    return EXIT.usage;
+  }
   const [first] = argv;
   if (first === undefined || HELP.has(first)) {
     runtime.out.stdout(USAGE);

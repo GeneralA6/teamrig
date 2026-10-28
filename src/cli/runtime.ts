@@ -100,6 +100,8 @@ export interface CliRuntime {
   readonly exec: ExecPorts;
   /** The config format the run reads and migrates to; default the shipped one (tests give a newer release's). */
   readonly configFormat?: ConfigFormat;
+  /** cmd.exe's whole command line, which the `teamrig.cmd` shim passes, for the arguments cmd cut at a line break (cmd-shim.ts). */
+  readonly cmdShimLine?: string | undefined;
   /** All of stdin, for hooks, which Claude Code feeds one JSON object. */
   readStdin(): Promise<string>;
   /** A new unique id, such as a host lock's token. */

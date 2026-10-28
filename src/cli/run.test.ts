@@ -13,6 +13,7 @@ import { quietWorld } from '../testing/quiet-world.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { ASK_REFUSED_NOTE } from '../hooks/permission.ts';
 import { APP, bash, CLAUDE_SESSION, CliHarness, CONFIG_PATH, contextOf, decisionOf, EVENTS_PATH, KIT, POINTER, reasonOf, SKILLS_DIR, TEAM, type CliResult } from '../testing/cli-harness.ts';
+import { cutLineMessage } from './cmd-shim.ts';
 import { FULL_HELP_POINTER } from './help.ts';
 import { SHORT_FORM_CHARS } from './reports.ts';
 import { COMMAND_HELP, USAGE } from './run.ts';
@@ -183,6 +184,27 @@ describe('runCli: help, version and usage errors', () => {
     assert.deepEqual([oldSpelling.code, reasonOf(oldSpelling)], [EXIT.usage, 'priority "t2" is the old tier spelling: write p2']);
     const bare = await kit.run(['update', 'T1', '--priority', '3', '--session', 'alpha']);
     assert.deepEqual([bare.code, reasonOf(bare)], [EXIT.usage, 'priority "3" is not p<n>: write p3']);
+    assert.equal(kit.files.get(EVENTS_PATH), undefined);
+  });
+});
+
+describe('runCli: a command line cmd.exe cut at a line break', () => {
+  /** The line PowerShell 5.1 hands cmd.exe for the shim, of which cmd passed the CLI only the first line. */
+  const ADD_LINE = 'C:\\WINDOWS\\system32\\cmd.exe /c ""C:\\kit\\bin\\teamrig.cmd" add --title "Ship it" --description "line one\nline two\nline three" --priority p2 --session alpha"';
+
+  it('runs the arguments rebuilt from the line, every line and the flags after it kept', async () => {
+    const kit = new CliHarness();
+    const added = await kit.run(['add', '--title', 'Ship it', '--description', 'line one'], { cmdShimLine: ADD_LINE });
+    assert.equal(added.code, EXIT.ok, added.stderr.join('\n'));
+    assert.match(added.stdout[0] ?? '', /^ADDED T1 open, p2, owner alpha,/);
+    const shown = await kit.run(['show', 'T1', '--session', 'alpha']);
+    assert.match(shown.stdout.join('\n'), /description: line one\n {2}line two\n {2}line three\n/);
+  });
+
+  it('refuses a cut line it cannot read back, with the ways to run it whole, and runs nothing', async () => {
+    const kit = new CliHarness();
+    const result = await kit.run(['version'], { cmdShimLine: ADD_LINE });
+    assert.deepEqual([result.code, result.stdout, result.stderr], [EXIT.usage, [], [cutLineMessage('/opt/teamrig/dist/cli/main.js')]]);
     assert.equal(kit.files.get(EVENTS_PATH), undefined);
   });
 });
