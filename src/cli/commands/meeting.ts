@@ -10,7 +10,7 @@ import { decisionsByOwner, endNotice, type NoticeFacts } from '../../meeting/not
 import { MeetingStore, phaseOf, stoppedAt, type Meeting, type MeetingPhase } from '../../meeting/state.ts';
 import { currentWeekOf } from '../../register/week.ts';
 import { fitLines } from '../../register/fit.ts';
-import { noPositionals, type ParsedArgs } from '../args.ts';
+import { noPositionals, UsageError, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone, type Access, type Kit } from '../kit.ts';
 import { subtreeOf, type RolledTeam, type RollUp } from '../roll-up.ts';
@@ -18,6 +18,7 @@ import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.t
 import { loadTree, type KitTree } from '../tree.ts';
 import { weekLineOf } from './budget.ts';
 import { inboxDepsOf, read } from './inbox.ts';
+import { meetingEndScheduled } from './meetings.ts';
 import { taskTreeOf, weekFitOf } from './register.ts';
 
 /**
@@ -207,9 +208,15 @@ export async function meetingAgenda(args: ParsedArgs, runtime: CliRuntime): Prom
 /**
  * `meeting end`: closes the open meeting, or one that lapsed unended, and tells each session whose tasks the lead
  * updated during the meeting those updates (the decisions recorded) by one inbox line, in a team under the lead's
- * too (T1018); a session with none gets no line.
+ * too (T1018); a session with none gets no line. `meeting end <id>` ends a scheduled meeting instead (meetings.ts).
  */
 export async function meetingEnd(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+  if (args.positionals.length > 0) {
+    return meetingEndScheduled(args, runtime);
+  }
+  if (args.flags.has('note')) {
+    throw new UsageError('--note goes with meeting end <id>, a scheduled meeting; the daily meeting records its decisions on the tasks');
+  }
   const mk = await meetingKit(args, runtime, 'write');
   const phase = phaseOf(await mk.store.read(), mk.now);
   if (phase.kind !== 'open' && phase.kind !== 'lapsed') {

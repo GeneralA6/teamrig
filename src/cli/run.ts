@@ -75,6 +75,7 @@ const deploysCommand = () => import('./commands/deploys.ts');
 const ghCommands = () => import('./commands/gh.ts');
 const startCommands = () => import('./commands/start.ts');
 const meetingCommands = () => import('./commands/meeting.ts');
+const meetingsCommands = () => import('./commands/meetings.ts');
 const decisionsCommands = () => import('./commands/decisions.ts');
 const hireCommands = () => import('./commands/hire.ts');
 const retireCommands = () => import('./commands/retire.ts');
@@ -131,7 +132,11 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   start: { effect: 'write', flags: ['session'], switches: ['all'], load: async () => (await startCommands()).start },
   'meeting start': { effect: 'write', flags: ['session'], load: async () => (await meetingCommands()).meetingStart },
   'meeting agenda': { effect: 'write', flags: ['session'], load: async () => (await meetingCommands()).meetingAgenda },
-  'meeting end': { effect: 'write', flags: ['session'], load: async () => (await meetingCommands()).meetingEnd },
+  'meeting end': { effect: 'write', flags: ['session', 'note'], load: async () => (await meetingCommands()).meetingEnd },
+  'meeting schedule': { effect: 'write', flags: ['session', 'meets', 'at', 'about', 'minutes', 'with', 'tasks', 'brief'], load: async () => (await meetingsCommands()).meetingSchedule },
+  'meeting list': { effect: 'read', flags: ['session'], switches: ['all', 'json'], load: async () => (await meetingsCommands()).meetingList },
+  'meeting move': { effect: 'write', flags: ['session', 'at', 'note'], load: async () => (await meetingsCommands()).meetingMove },
+  'meeting drop': { effect: 'write', flags: ['session', 'note'], load: async () => (await meetingsCommands()).meetingDrop },
   decisions: { effect: 'read', flags: ['session'], load: async () => (await decisionsCommands()).decisions },
   'decisions asked': { effect: 'write', flags: ['session'], load: async () => (await decisionsCommands()).decisionsAsked },
   open: { effect: 'write', flags: ['prompt', 'terminal', 'project'], switches: ['resume'], load: async () => (await openCommands()).open },
@@ -317,6 +322,17 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       and fit; agenda prints it again; end tells each session the decisions recorded on its tasks
       (update --note) by one inbox line, and no other session; in a tree of teams only the root team's
       lead holds it, and its decisions and end cover every team under it
+  meeting schedule --meets <id|name> --at <time> --about "<one line>" [--minutes <n>] [--with a,b]
+      [--tasks T1,T2] [--brief <path>]   books the owner's meeting with one session at a set time, apart
+      from the daily one: it prints its id (M3) and tells the session met and those joining by one inbox
+      line; the lead or the session met books, moves, ends and drops one
+  meeting list [--all] [--json]   the scheduled and started meetings by time, one line each, a scheduled
+      one past its slot shown as missed; --all: those done or dropped in the last week too; --json: as
+      JSON, for the task pane
+  meeting move <id> --at <time> [--note "<why>"]   a new time for a scheduled meeting; those it meets
+      are told
+  meeting end <id> [--note "<what came of it>"] | meeting drop <id> --note "<why>"   the meeting was
+      held, or will not be (those it meets are told why)
   decisions | decisions asked [--session <id|name>]   the owner's decisions the lead asks in batches:
       decisions prints the waits on the owner not yet asked and the asked ones past due, as card facts,
       and whether a batch is due (a wait due before the next batch, decisions.batchAt not yet asked, or a
