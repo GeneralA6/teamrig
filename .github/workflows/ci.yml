@@ -1,12 +1,13 @@
 name: ci
 
 on:
-  # Paused until CI is turned back on: it runs only when started by hand, and every check below runs
-  # before each push instead, through the pre-push hook (tools/ci/local.ts, list in tools/ci/local-checks.ts).
-  # To turn it back on, put back these triggers in place of workflow_dispatch:
-  #   push:
-  #     branches: [main]
-  #   pull_request:
+  # Runs on each pull request and each push to main, but every job skips while the repository is private,
+  # where Actions minutes bill: it checks once the repository is public, where they are free. Until then
+  # every check below runs before each push instead, through the pre-push hook (tools/ci/local.ts, list in
+  # tools/ci/local-checks.ts). A pull request from a fork runs with no secrets and the read-only token below.
+  push:
+    branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -19,6 +20,7 @@ concurrency:
 jobs:
   gates:
     name: scrub and DCO gates
+    if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
@@ -36,6 +38,7 @@ jobs:
     name: commit size rule
     # Fails a commit over 400 changed non-test lines or 15 non-test files whose message has no
     # Large-commit: <reason> line, the push guard's rule (see CONTRIBUTING.md).
+    if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
@@ -51,6 +54,7 @@ jobs:
     name: coverage gate
     # Fails on a failing, skipped or todo test, a source file no test loads, or a file or total
     # below the floors in tools/ci/coverage.json (see CONTRIBUTING.md).
+    if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
@@ -67,6 +71,7 @@ jobs:
     # Fails a change under the plugin's folder that does not raise the version in its plugin.json
     # above the base's (installs update only when it rises), and a version in a marketplace entry,
     # which Claude Code ignores (see CONTRIBUTING.md).
+    if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
@@ -82,6 +87,7 @@ jobs:
     name: test (${{ matrix.os }}, node ${{ matrix.node }})
     # Each run tests all three OSes on node 22 and 24, since paths,
     # renames and hook launch differ by OS (macOS minutes bill at 10x, Windows at 2x).
+    if: ${{ !github.event.repository.private }}
     strategy:
       fail-fast: false
       matrix:
@@ -109,3 +115,17 @@ jobs:
       - run: node tools/docs/configuration-cli.ts --check
       # Every link, anchor and Mermaid block in the Markdown must resolve on every OS.
       - run: node tools/docs/doc-check-cli.ts
+
+  summary:
+    name: every check passed
+    # The one check main's ruleset requires, so a grown test matrix or a new job here (added to needs, which
+    # tools/ci/ci-workflow.test.ts holds to every job) needs no ruleset change. It fails when any job it needs
+    # failed, was cancelled or skipped; always() runs it after a failed one, where a job would skip, which
+    # a required check reads as a pass.
+    if: ${{ always() && !github.event.repository.private }}
+    needs: [gates, size-rule, coverage, plugin-version, test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: fail unless every job it needs passed
+        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}
+        run: exit 1
