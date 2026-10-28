@@ -211,6 +211,7 @@ From `teamrig restore install` and `uninstall` ([commands.md](commands.md#teamri
 | Output | Fix |
 | --- | --- |
 | `unknown command "x"` | See [commands.md](commands.md) or `teamrig help`. |
+| `the command line held a line break, and cmd.exe, which runs teamrig.cmd for PowerShell and cmd, dropped everything after it, so nothing was done. ...` | `teamrig.cmd` rebuilds a multi-line argument from the command line cmd.exe ran, and refuses when that line does not match the arguments cmd passed on. Run the command from Bash, keep each argument on one line, or run `node "<plugin>/dist/cli/main.js"` with the same arguments, as the message says. |
 | `unexpected "done"` | The status is a flag: `teamrig set T1 --status done ...`. |
 | `<cmd> takes no --x` | That command has no such flag: check its section in [commands.md](commands.md). |
 | `--x is given twice` | Give each flag once; a list is comma-separated (`--goals G1,G2`). |

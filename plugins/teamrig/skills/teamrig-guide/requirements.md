@@ -35,7 +35,9 @@ claude plugin install teamrig@teamrig
 ```
 
 While the plugin is enabled, its `bin/` folder is on the PATH of Claude Code's Bash and PowerShell tools:
-`bin/teamrig` serves bash, `bin/teamrig.cmd` PowerShell and cmd. In your own terminal, outside Claude Code, `teamrig`
+`bin/teamrig` serves bash, `bin/teamrig.cmd` PowerShell and cmd. An argument that holds a line break, such as a
+multi-line `--description`, reaches teamrig whole from all three, although cmd.exe alone would cut it at the break
+([the refusal when it cannot](errors.md#usage-errors-exit-64)). In your own terminal, outside Claude Code, `teamrig`
 is not on the PATH unless you add that folder. Each change to the plugin raises its version; to take the newest one, follow
 [Updating the plugin](https://github.com/GeneralA6/teamrig/blob/main/docs/how-it-works.md#updating-the-plugin).
 
