@@ -15,7 +15,7 @@ import type { CredentialStore } from '../github/credentials.ts';
 import type { GhRunner } from '../github/gh.ts';
 import type { MergeGit } from '../merge/git.ts';
 import type { RequirementsCheck } from '../requirements/requirements.ts';
-import type { HookRunner } from '../roll/hooks.ts';
+import type { HookRunner } from '../deploy/hooks.ts';
 import type { PackageRegistry } from '../package-guard/registry.ts';
 import type { WorktreePorts } from '../worktree/remove.ts';
 import type { RestorePorts } from '../restore/ports.ts';

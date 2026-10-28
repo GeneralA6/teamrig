@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import type { Env } from '../core/home.ts';
-import { hookEndText, succeeded, type HookRunner } from '../roll/hooks.ts';
+import { hookEndText, succeeded, type HookRunner } from '../deploy/hooks.ts';
 import type { WorktreeFiles } from './files.ts';
 import type { WorktreeGit } from './git.ts';
 

@@ -14,7 +14,7 @@ import { FakeHooks } from '../testing/fake-hooks.ts';
 import { FakeMergeGit, MAIN_CHECKOUT } from '../testing/fake-merge-git.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { deployTargets, type DeployRequest } from './deploy.ts';
-import type { RollEnd } from './roll.ts';
+import type { RollEnd } from './run.ts';
 
 const PLACES: CoordinatorPlaces = {
   ledger: '/team/deploys/ledger.jsonl',

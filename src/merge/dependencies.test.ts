@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import type { HookRunner } from '../roll/hooks.ts';
+import type { HookRunner } from '../deploy/hooks.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
 import { FakeMergeGit, MAIN_CHECKOUT } from '../testing/fake-merge-git.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';

@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import type { Files } from '../core/files.ts';
 import type { Env } from '../core/home.ts';
-import type { HookEnd, HookRunner } from '../roll/hooks.ts';
+import type { HookEnd, HookRunner } from '../deploy/hooks.ts';
 import type { MergeGit } from './git.ts';
 import { installTouches, LOCKFILE, MANIFEST_FILE, packageFilesChange } from './manifest.ts';
 

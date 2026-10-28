@@ -6,7 +6,7 @@ import { coordinatorPlaces, teamPlace } from '../../coordinator/places.ts';
 import { blackoutStart, heavyCutoffSpan, type ResetTime } from '../../coordinator/schedule.ts';
 import { loadsOf, type Load } from '../../coordinator/windows.ts';
 import type { TimeZone } from '../../core/zone.ts';
-import { plural, readPending, rollRepos, short, type PendingRead } from '../../roll/pending.ts';
+import { plural, readPending, rollRepos, short, type PendingRead } from '../../deploy/pending.ts';
 import type { ParsedArgs } from '../args.ts';
 import { hostLockOf, nextResetFrom } from '../coordinator-ports.ts';
 import { openTeamKit, requireConfig, teamZone } from '../kit.ts';

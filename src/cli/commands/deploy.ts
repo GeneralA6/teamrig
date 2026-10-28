@@ -1,8 +1,8 @@
 import { snapshotDirOf } from '../../budget/snapshot.ts';
 import { coordinatorPlaces, teamPlace } from '../../coordinator/places.ts';
 import { SecretScanner } from '../../core/secrets.ts';
-import { deployTargets } from '../../roll/deploy.ts';
-import { rollRepo, type RollRequest } from '../../roll/roll.ts';
+import { deployTargets } from '../../deploy/deploy.ts';
+import { rollRepo, type RollRequest } from '../../deploy/run.ts';
 import { requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
 import { hostLockOf, logLineOf, nextResetFrom } from '../coordinator-ports.ts';
 import { callerOf, commandWordsOf, listOf } from '../inputs.ts';
@@ -31,9 +31,9 @@ function deployPartsOf(args: ParsedArgs): DeployParts | undefined {
 
 /**
  * `teamrig deploy [--repo <name>]`: brings what was pushed to a repository's default branch to the running system
- * (src/roll/roll.ts): pulls its main checkout fast-forward and runs `coordinator.repos.<name>.deploy`, its afterPull
+ * (src/deploy/run.ts): pulls its main checkout fast-forward and runs `coordinator.repos.<name>.deploy`, its afterPull
  * hooks then its command, one heavy step in the ledger, and records the deploy. With `--targets <a,b> --what "<why>"
- * -- <command>` it pulls nothing and runs that command instead, a deploy of those targets (src/roll/deploy.ts). Refused
+ * -- <command>` it pulls nothing and runs that command instead, a deploy of those targets (src/deploy/deploy.ts). Refused
  * for a main checkout it must not pull into, from `coordinator.schedule.heavyCutoffUtc` to midnight UTC, in the
  * `resetBlackoutHours` before the weekly token reset and when a check refuses; it waits up to
  * `coordinator.wait.maxMinutes` for quiet claims on its targets, its checks and the host lock. Once the shell that

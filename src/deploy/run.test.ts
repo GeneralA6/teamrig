@@ -15,7 +15,7 @@ import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
 import { FakeMergeGit, MAIN_CHECKOUT, WORKTREE } from '../testing/fake-merge-git.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { rollRepo, type RollEnd, type RollRequest, type RollSetup } from './roll.ts';
+import { rollRepo, type RollEnd, type RollRequest, type RollSetup } from './run.ts';
 
 const PLACES: CoordinatorPlaces = {
   ledger: '/team/deploys/ledger.jsonl',

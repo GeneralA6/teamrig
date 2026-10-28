@@ -24,7 +24,7 @@ import { httpPackageRegistry } from '../package-guard/registry.ts';
 import { GIT_CLI, GIT_COMMIT_LOG } from '../push-guard/git.ts';
 import { GIT_POINTER } from '../setup/pointer-git.ts';
 import { requirementsCheck } from '../requirements/requirements.ts';
-import { nodeHookRunner } from '../roll/hooks.ts';
+import { nodeHookRunner } from '../deploy/hooks.ts';
 import { nodeShellRunner } from '../test-run/shell.ts';
 import { NODE_WORKTREE_FILES } from '../worktree/files.ts';
 import { GIT_WORKTREES } from '../worktree/git.ts';

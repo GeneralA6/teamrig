@@ -25,7 +25,7 @@ import type { ShellRunner } from '../test-run/shell.ts';
 import type { HostMemory } from '../coordinator/memory.ts';
 import type { StarterWatch } from '../coordinator/starter-watch.ts';
 import type { StepRunner } from '../coordinator/steps.ts';
-import type { HookRunner } from '../roll/hooks.ts';
+import type { HookRunner } from '../deploy/hooks.ts';
 import type { MergeGit } from '../merge/git.ts';
 import type { TreeState } from '../coordinator/push-pass.ts';
 import type { PackageRegistry } from '../package-guard/registry.ts';
