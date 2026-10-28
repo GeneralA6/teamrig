@@ -15,6 +15,30 @@ export type HookSetupReport =
     }
   | { readonly kind: 'skipped'; readonly reason: HookSkipReason };
 
+export type HookCheckReport =
+  | { readonly kind: 'set' }
+  /** `hooksPath` is the value git uses instead, undefined when none is set. */
+  | { readonly kind: 'unset'; readonly hooksPath: string | undefined }
+  | { readonly kind: 'skipped'; readonly reason: HookSkipReason };
+
+/**
+ * Whether this clone's git runs the repo's hooks. A clone installed with npm's `ignore-scripts` on (a common
+ * supply-chain hardening) never ran `prepare`, so it commits and pushes with no scrub, sign-off or local gate;
+ * `npm run check` runs this first to catch it. Skips where `configureHooks` would. Reads the value git uses
+ * (local, then global), as a global core.hooksPath runs its own hooks in place of the repo's.
+ */
+export async function checkHooks(git: Git): Promise<HookCheckReport> {
+  const skip = await notCheckoutRoot(git);
+  if (skip !== undefined) {
+    return { kind: 'skipped', reason: skip };
+  }
+  const hooksPath = (await git.text(['config', '--default', '', '--get', 'core.hooksPath'])).trim();
+  if (hooksPath === HOOKS_PATH) {
+    return { kind: 'set' };
+  }
+  return { kind: 'unset', hooksPath: hooksPath === '' ? undefined : hooksPath };
+}
+
 /**
  * Points this clone's git at the repo's hooks; reports whether a private denylist is wired in.
  * npm's `prepare` runs it on every `npm install` and `npm ci`, so it skips, never fails, where this

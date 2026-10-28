@@ -2,12 +2,42 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeGit } from '../lib/fake-git.ts';
 import { GitError } from '../lib/git.ts';
-import { configureHooks, HOOKS_PATH } from './hooks.ts';
+import { checkHooks, configureHooks, HOOKS_PATH } from './hooks.ts';
 
 const WHERE = 'rev-parse --is-inside-work-tree --show-prefix';
 const AT_ROOT = 'true\n\n';
 const SET_HOOKS = `config --local core.hooksPath ${HOOKS_PATH}`;
 const GET_DENYLIST = 'config --default  --get teamrig.scrubDenylist';
+const GET_HOOKS = 'config --default  --get core.hooksPath';
+
+describe('checkHooks', () => {
+  it('passes a clone whose git runs the repo hooks', async () => {
+    const git = new FakeGit({ [WHERE]: AT_ROOT, [GET_HOOKS]: `${HOOKS_PATH}\n` });
+    assert.deepEqual(await checkHooks(git), { kind: 'set' });
+  });
+
+  it('flags a clone that never ran setup, as npm ci with ignore-scripts leaves it', async () => {
+    const git = new FakeGit({ [WHERE]: AT_ROOT, [GET_HOOKS]: '\n' });
+    assert.deepEqual(await checkHooks(git), { kind: 'unset', hooksPath: undefined });
+  });
+
+  it('flags a clone whose git runs other hooks, naming them', async () => {
+    const git = new FakeGit({ [WHERE]: 'true\r\n\r\n', [GET_HOOKS]: 'global-hooks\r\n' });
+    assert.deepEqual(await checkHooks(git), { kind: 'unset', hooksPath: 'global-hooks' });
+  });
+
+  it('skips without reading git config outside a repo, or where git is missing', async () => {
+    const git = new FakeGit({ [WHERE]: new GitError(WHERE.split(' '), 'fatal: not a git repository', 128) });
+    assert.deepEqual(await checkHooks(git), { kind: 'skipped', reason: 'not a git checkout' });
+    assert.deepEqual(git.calls, [WHERE.split(' ')]);
+  });
+
+  it("skips a copy below another repo's top", async () => {
+    const git = new FakeGit({ [WHERE]: 'true\nvendor/teamrig/\n' });
+    assert.deepEqual(await checkHooks(git), { kind: 'skipped', reason: 'not the root of its git checkout' });
+    assert.equal(git.calls.length, 1);
+  });
+});
 
 describe('configureHooks', () => {
   it('points git at the repo hooks and reports a configured denylist', async () => {
