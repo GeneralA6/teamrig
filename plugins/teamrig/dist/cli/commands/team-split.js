@@ -51,6 +51,7 @@ function planLines(plan, parent, roster, configPaths, left, live) {
         `WOULD CREATE ${configPaths.child}:`,
         ...formatConfig(plan.config).trimEnd().split('\n'),
         `PARENT ${configPaths.parent} loses sessions ${spec.sessions.join(', ')}${trim.keys.length === 0 ? '' : ` and keys ${trim.keys.join(', ')}`}`,
+        ...(plan.leftOut.length === 0 ? [] : [`LEFT OUT ${plan.leftOut.join(', ')}: the child starts without them`]),
         ...trim.leftLeads.map(({ lead, id }) => `SUB-LEAD ${lead}'s list loses ${id}, which moves`),
         ...trim.unled.map(({ lead, id }) => `UNLED ${id}: its sub-lead ${lead} moves, so the lead leads it`),
         `TASKS ${plan.moving.length} move to ${spec.team}, ${plan.staying} stay in ${parent}`,
@@ -91,7 +92,9 @@ export async function teamSplit(args, runtime) {
     }
     const snapshot = await teamRegister(runtime, kit.paths, config).snapshot();
     warnDamage(runtime, snapshot, kit.paths.events);
-    const parent = { team: kit.paths.team, config, record: await configFileJson(runtime, kit.load.path), roster };
+    const record = await configFileJson(runtime, kit.load.path);
+    const current = kit.load.status === 'loaded' ? (kit.load.pending?.migrated ?? record) : record;
+    const parent = { team: kit.paths.team, config, record, current, paths: kit.paths, roster };
     const planned = planTeamSplit(parent, spec.value, (await loadTree(runtime)).tree, snapshot.state.tasks);
     if (!planned.ok) {
         throw new RefusedError(planned.problem);
