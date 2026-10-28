@@ -144,8 +144,11 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       --pin: puts the task above every other task on its owner's list, set by the owner's leaders (the lead
       on its own tasks too); it moves the owner's earlier pin, and handing the task on clears it
       a --note from the task's owner also replaces the note show and the waiting text print
-  update <team>/<id> --note ..   the lead at a team tree's root, who asks the owner the decisions of the
-      teams under it, notes their tasks (the owner's answer), named as its batch prints them: web/T12
+  update <id> --later <date>|none --note ..   puts a card waiting on the owner off to that time, out of the
+      meeting's DECISIONS and the batches until then (its owner or a leader above it); none brings it back
+  update <team>/<id> --note .. [--later <date>|none]   the lead at a team tree's root, who asks the owner the
+      decisions of the teams under it, notes their tasks (the owner's answer) or puts a card off, named as its
+      batch prints them: web/T12
   approve <id> --note "<what you checked, or why not>" [--decline]   the lead only: answers a task waiting on
       its approval (approval:<lead>); its owner gets an inbox line to push or merge (or to fix the note's
       point and ask again), and check flags the approved task READY
