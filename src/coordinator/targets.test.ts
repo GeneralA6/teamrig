@@ -7,14 +7,14 @@ const SITE = { mainCheckout: '/repo/site', deploysOnPush: ['cloud-web', 'api'], 
 const PIPELINE = { mainCheckout: '/repo/app', deploysOnPush: ['api'], dependencyGate: false, followMainCheckout: false, deploy: DEPLOY };
 
 describe('repoTargetsOf', () => {
-  it('names what a repository deploys on push and what its roll rolls, once', () => {
+  it('names what a repository deploys on push and what its deploy block deploys, once', () => {
     assert.deepEqual(repoTargetsOf(PIPELINE), ['api', 'workers']);
     assert.deepEqual(repoTargetsOf(SITE), ['cloud-web', 'api']);
   });
 });
 
 describe('deployTargetsOf', () => {
-  it('names each target the repositories deploy on push or roll, once', () => {
+  it('names each target the repositories deploy on push or by their deploy block, once', () => {
     assert.deepEqual(deployTargetsOf({ site: SITE, pipeline: PIPELINE }), ['cloud-web', 'api', 'workers']);
   });
 });

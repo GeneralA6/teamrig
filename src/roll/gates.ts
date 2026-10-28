@@ -4,17 +4,17 @@ import type { Env } from '../core/home.ts';
 import type { SecretScanner } from '../core/secrets.ts';
 import { HOOK_WAIT_EXIT, type HookEnd, type HookRunner } from './hooks.ts';
 
-/** A gate's exit codes: go and refuse, beside every hook's wait (`HOOK_WAIT_EXIT`); any other end makes the roll wait, so a broken gate never lets it through. */
+/** A check's exit codes: go and refuse, beside every hook's wait (`HOOK_WAIT_EXIT`); any other end makes the deploy wait, so a broken check never lets it through. */
 export const GATE_GO_EXIT = 0;
 export const GATE_REFUSE_EXIT = 2;
 
-/** A stdout line that names what the roll deploys, such as an image tag; the last one wins. */
+/** A stdout line that names what the deploy brings, such as an image tag; the last one wins. */
 const TAG_LINE = /^tag=([A-Za-z0-9._:-]{1,128})$/;
 
 /** A line a hook printed, once redacted, is cut to this many characters where others read it. */
 export const HOOK_LINE_MAX_CHARS = 300;
 
-/** What a gate printed that the roll reads: its first line that is not a tag (its reason), and its last tag. */
+/** What a check printed that the deploy reads: its first line that is not a tag (its reason), and its last tag. */
 export class GateOutput {
   private first: string | undefined;
   private last: string | undefined;
@@ -45,7 +45,7 @@ export function shownLine(scanner: Pick<SecretScanner, 'redact'>, line: string):
   return shown.length <= HOOK_LINE_MAX_CHARS ? shown : `${shown.slice(0, HOOK_LINE_MAX_CHARS - 1)}…`;
 }
 
-/** What a gate's end means for the roll: its exit code read as go, wait or refuse; any other end waits. */
+/** What a check's end means for the deploy: its exit code read as go, wait or refuse; any other end waits. */
 export function gateReadiness(name: string, end: HookEnd, reason: string | undefined, timeoutSeconds: number): Readiness {
   const because = reason === undefined ? '' : `: ${reason}`;
   switch (end.kind) {
@@ -54,20 +54,20 @@ export function gateReadiness(name: string, end: HookEnd, reason: string | undef
         return { kind: 'go' };
       }
       if (end.code === GATE_REFUSE_EXIT) {
-        return { kind: 'refuse', reason: `gate ${name} refuses the roll${because}` };
+        return { kind: 'refuse', reason: `check ${name} refuses the deploy${because}` };
       }
       if (end.code === HOOK_WAIT_EXIT) {
-        return { kind: 'wait', reason: `gate ${name} holds the roll${because}` };
+        return { kind: 'wait', reason: `check ${name} holds the deploy${because}` };
       }
-      return { kind: 'wait', reason: `gate ${name} failed (exit ${end.code}), so the roll waits${because}` };
+      return { kind: 'wait', reason: `check ${name} failed (exit ${end.code}), so the deploy waits${because}` };
     case 'timedOut':
-      return { kind: 'wait', reason: `gate ${name} gave no answer within ${timeoutSeconds} s, so the roll waits` };
+      return { kind: 'wait', reason: `check ${name} gave no answer within ${timeoutSeconds} s, so the deploy waits` };
     case 'signal':
-      return { kind: 'wait', reason: `gate ${name} was stopped by ${end.signal}, so the roll waits` };
+      return { kind: 'wait', reason: `check ${name} was stopped by ${end.signal}, so the deploy waits` };
     case 'notStarted':
-      return { kind: 'wait', reason: `gate ${name} could not start (${end.error}), so the roll waits` };
+      return { kind: 'wait', reason: `check ${name} could not start (${end.error}), so the deploy waits` };
     case 'stopped':
-      return { kind: 'wait', reason: `gate ${name} was killed when its launching shell ended, so the roll waits` };
+      return { kind: 'wait', reason: `check ${name} was killed when its launching shell ended, so the deploy waits` };
   }
 }
 
@@ -75,16 +75,16 @@ export interface GateRun {
   readonly hooks: HookRunner;
   readonly scanner: Pick<SecretScanner, 'redact'>;
   readonly cwd: string;
-  /** Every hook's environment: this process's, with the roll's `TEAMRIG_*` variables. */
+  /** Every hook's environment: this process's, with the deploy's `TEAMRIG_*` variables. */
   readonly env: Env;
   readonly timeoutSeconds: number;
 }
 
-/** The gates' answer: the first that does not pass, else go with the last tag a gate printed. */
+/** The checks' answer: the first that does not pass, else go with the last tag a check printed. */
 export type GatesAnswer = { readonly readiness: Readiness; readonly tag: string | undefined };
 
 /**
- * Asks each gate in order, with `TEAMRIG_CHECK_NAME` and `TEAMRIG_CHECK_PHASE` set, and stops at the first that does
+ * Asks each check in order, with `TEAMRIG_CHECK_NAME` and `TEAMRIG_CHECK_PHASE` set, and stops at the first that does
  * not pass. Each reason is redacted, since a wait or refusal is printed and may reach the ledger.
  */
 export async function askGates(gates: readonly DeployCheckConfig[], phase: ClearancePhase, run: GateRun): Promise<GatesAnswer> {

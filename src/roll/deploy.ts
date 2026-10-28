@@ -9,10 +9,10 @@ import { short, type RollRepo } from './pending.ts';
 import { chosenRepo, scheduleReadiness, shownBy, type RollEnd, type RollPorts, type RollRequest, type RollSetup } from './roll.ts';
 
 /**
- * `teamrig roll --targets <a,b> --what "<why>" -- <command>`: a deploy that pulls nothing, such as the restart that
+ * `teamrig deploy --targets <a,b> --what "<why>" -- <command>`: a deploy that pulls nothing, such as the restart that
  * makes some of a repository's targets read a rotated secret on the same image. It goes by the rules of that
- * repository's roll: the heavy cutoff and the reset blackout refuse it, quiet claims on the targets it names hold it,
- * and the repository's gates hold or refuse it, asked again under the host lock. Then it runs the command, one heavy
+ * repository's deploy: the heavy cutoff and the reset blackout refuse it, quiet claims on the targets it names hold it,
+ * and the repository's checks hold or refuse it, asked again under the host lock. Then it runs the command, one heavy
  * step in the ledger, and records a deploy of those targets, so `teamrig windows` counts only them as disturbed.
  */
 
@@ -33,7 +33,7 @@ interface DeployRun {
   readonly lastLine: string | undefined;
 }
 
-/** The gates' and the command's environment: this process's, with the deploy's `TEAMRIG_*` variables. */
+/** The checks' and the command's environment: this process's, with the deploy's `TEAMRIG_*` variables. */
 function deployEnv(setup: RollSetup, ports: RollPorts, request: DeployRequest, repo: RollRepo): Env {
   return {
     ...ports.env,
@@ -45,7 +45,7 @@ function deployEnv(setup: RollSetup, ports: RollPorts, request: DeployRequest, r
   };
 }
 
-/** Why the request may not deploy what it names: no targets, or one the repository's roll does not deploy. */
+/** Why the request may not deploy what it names: no targets, or one not in the repository's deploy targets. */
 function targetsProblem(repo: RollRepo, targets: readonly string[]): string | undefined {
   const known = repo.deploy.targets;
   const listed = `coordinator.repos.${repo.name}.deploy.targets (${known.length === 0 ? 'none set' : known.join(', ')})`;

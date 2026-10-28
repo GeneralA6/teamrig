@@ -67,8 +67,8 @@ describe('recordHeavy', () => {
       clock.advance(30_000);
       return { failedAt: 'pull' };
     };
-    assert.deepEqual(await recordHeavy(ports, LEDGER, { session: 'po', what: 'roll app' }, work, () => 4), { failedAt: 'pull' });
-    const start = { type: 'heavy', id: 'step-1', session: 'po', what: 'roll app', kit: KIT_VERSION, startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    assert.deepEqual(await recordHeavy(ports, LEDGER, { session: 'po', what: 'deploy app' }, work, () => 4), { failedAt: 'pull' });
+    const start = { type: 'heavy', id: 'step-1', session: 'po', what: 'deploy app', kit: KIT_VERSION, startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(records(files), [start, { ...start, endedAt: '2030-01-08T10:00:30.000Z', exitCode: 4 }]);
   });
 });

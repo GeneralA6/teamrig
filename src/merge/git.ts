@@ -16,7 +16,7 @@ export interface Checkout {
 /** What updating a local branch to its remote-tracking branch did. */
 export type LocalUpdate = { readonly kind: 'updated' } | { readonly kind: 'checkedOut' } | { readonly kind: 'failed'; readonly reason: string };
 
-/** The remote a branch is pushed to, and the one a roll deploys from. */
+/** The remote a branch is pushed to, and the one a deploy pulls from. */
 export const ORIGIN = 'origin';
 
 /**

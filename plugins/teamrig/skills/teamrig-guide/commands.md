@@ -3141,7 +3141,7 @@ tree held in its latest 20 runs under the same session and `--what`, plus a quar
 is `coordinator.heavy.smallReserveMb` (2048).
 
 A step without `--small` that takes the lock holds it while it waits for the small steps to end. So builds,
-merges, rolls and full suites still run alone, and no new small step is let in meanwhile. It gives up, releasing
+merges, deploys and full suites still run alone, and no new small step is let in meanwhile. It gives up, releasing
 the lock, when no small step ended for `waitMinutes`, and its lock is renewed if it had to wait. A share whose process is gone, or that
 expired, is removed by the next step that looks. An older kit does not know shares and may take a free lock while
 small steps run.
@@ -3175,12 +3175,12 @@ nothing ran`); running, it kills the step with every process it started, records
 Everything after `--` is the command, read as `teamrig test` reads it. Run a test run as
 `teamrig heavy ... -- teamrig test -- <command>`: it then gets both the lock and the short summary.
 
-A step's processes get `$TEAMRIG_HOST_LOCK`, the lock's token, and so do `merge`'s push, `roll`'s
-afterPull hooks and command, and a `roll --targets` deploy's command. A `teamrig heavy` started under a lock that token still names runs at once, in the
+A step's processes get `$TEAMRIG_HOST_LOCK`, the lock's token, and so do `merge`'s push, `deploy`'s
+afterPull hooks and command, and a `deploy --targets` run's command. A `teamrig heavy` started under a lock that token still names runs at once, in the
 parent's session, with no cutoff check or ledger record of its own: it is part of its parent, and waiting would
 wait on its own parent. So a repository's git hooks can wrap their checks in `teamrig heavy` (no `--session`
 needed): a plain `git commit` then takes the host lock for its hook, and a commit or push under `heavy`,
-`merge` or `roll` does not wait on itself. Prefer that to `teamrig heavy ... -- git commit`, which Claude
+`merge` or `deploy` does not wait on itself. Prefer that to `teamrig heavy ... -- git commit`, which Claude
 Code's worktree guard refuses in a worktree session. A token naming no live lock (a leftover exported in a
 shell) is said and ignored.
 
@@ -3225,7 +3225,7 @@ a failed one with `FAILED exit <code>`.
 ### teamrig withdraw
 
 Takes this session's steps that wait for the host lock out of its line, so a re-ordered or abandoned `heavy`,
-`merge` or `roll` leaves it instead of running later. Each withdrawn step stops at its next look, runs nothing and
+`merge` or `deploy` leaves it instead of running later. Each withdrawn step stops at its next look, runs nothing and
 is refused (`REFUSED withdrawn from the host lock's line`). A step that took its turn first is `RUNNING`, one that left
 the line first `LEFT`; one an older teamrig queued is `KEPT`, as its step runs anyway. With neither `--what` nor
 `--all` it lists the session's waiting steps and is refused. From a tab bound to a session it withdraws only that
@@ -3268,7 +3268,7 @@ The repository is the entry of `coordinator.repos` whose `mainCheckout` is this 
 - `dependencyGate`: REFUSED when the branch changes `package-lock.json` or a `package.json` field an install reads
   (any but scripts no install hook runs, a tool's settings such as `jest`, `prettier` or `lint-staged`, and the
   package's description fields), since merging it changes, unreviewed, the `node_modules` every worktree links to;
-  with no `dependencyCheck`, push such a change by hand. `teamrig roll` holds a pushed range that changes them the same way unless
+  with no `dependencyCheck`, push such a change by hand. `teamrig deploy` holds a pushed range that changes them the same way unless
   `dependencyCheck` and `deploy.dependencyInstall` are both set.
 - `dependencyCheck`: with `dependencyGate`, the check that clears a dependency change, such as
   `["node", "tools/check-change.ts"]`: a program and its arguments, run with no shell in the branch's checkout under
@@ -3374,75 +3374,75 @@ Its push runs the pre-push hook, so checks kept in git's hooks still run before 
 the forge makes later happens outside the host lock and the quiet claims: a `deploysOnPush` deploy starts when the forge
 merges, and is recorded when the next `teamrig merge` finishes the merge.
 
-### teamrig roll
+### teamrig deploy
 
-Brings what was pushed to a repository's default branch to the running system, one roll on the host at a time, the
-same way for every session: checked, pulled under the host lock, rolled and recorded.
+Brings what was pushed to a repository's default branch to the running system, one deploy on the host at a time, the
+same way for every session: checked, pulled under the host lock, deployed and recorded.
 
-The repository is an entry of `coordinator.repos` with a `roll` block: the one `--repo` names, else the one whose
-`mainCheckout` this folder is in, else the only one with a roll block.
+The repository is an entry of `coordinator.repos` with a `deploy` block: the one `--repo` names, else the one whose
+`mainCheckout` this folder is in, else the only one with a deploy block.
 
-- `targets`: what the roll deploys, such as `["api", "workers"]`. roll waits for quiet claims on them, and its
+- `targets`: what the deploy restarts, such as `["api", "workers"]`. deploy waits for quiet claims on them, and its
   deploy record names them.
 - `checks`: up to 16 `{ "name", "command" }` checks the team's own tools answer, such as "is a batch run open?".
 - `dependencyInstall`: the install a pushed dependency change needs, such as `["npm", "ci", "--ignore-scripts"]`,
   run after the pull and before the afterPull hooks (see below).
-- `afterPull`: up to 16 commands run after the pull and before the roll command, such as a build the roll needs.
-- `command`: the roll itself, such as `["node", "tools/roll.js"]`.
+- `afterPull`: up to 16 commands run after the pull and before the deploy command, such as a build the deploy needs.
+- `command`: the deploy itself, such as `["node", "tools/deploy.js"]`.
 
 Each command is a list of words, run with no shell in the main checkout with stdin closed. Each gets `TEAMRIG_TEAM`,
 `TEAMRIG_SESSION`, `TEAMRIG_VERB=deploy`, `TEAMRIG_REPO` and `TEAMRIG_PENDING_RANGE` (`<head sha>..<origin sha>`); a
-gate also gets `TEAMRIG_CHECK_NAME` and `TEAMRIG_CHECK_PHASE` (`before` the host lock, then `locked` under it); the
-afterPull hooks and the command also get `TEAMRIG_DEPLOY_TO` (the sha pulled) and, when a gate printed a line
-`tag=<tag>`, `TEAMRIG_DEPLOY_TAG`. A gate's exit 0 lets the roll go, 75 holds it and 2 refuses it; any other end, or
+check also gets `TEAMRIG_CHECK_NAME` and `TEAMRIG_CHECK_PHASE` (`before` the host lock, then `locked` under it); the
+afterPull hooks and the command also get `TEAMRIG_DEPLOY_TO` (the sha pulled) and, when a check printed a line
+`tag=<tag>`, `TEAMRIG_DEPLOY_TAG`. A check's exit 0 lets the deploy go, 75 holds it and 2 refuses it; any other end, or
 none within `coordinator.checkTimeoutSeconds` (20), holds it. Its last line, secrets redacted, is the reason.
 
-REFUSED (exit 2) before any gate or lock for a main checkout off its default branch, with uncommitted changes or with
+REFUSED (exit 2) before any check or lock for a main checkout off its default branch, with uncommitted changes or with
 commits origin lacks, and for a range with a dependency change `dependencyGate` holds: one with no `dependencyCheck`
-or no `deploy.dependencyInstall` set, or a range roll cannot read. Also from
+or no `deploy.dependencyInstall` set, or a range deploy cannot read. Also from
 `coordinator.schedule.heavyCutoffUtc` to midnight UTC, in the `resetBlackoutHours` before the weekly token reset,
-and when a gate refuses. With nothing pending it is DONE and runs nothing. Otherwise it waits up to
-`coordinator.wait.maxMinutes` for the claims, the gates and the host lock (longer while its line moves), reads origin again under the lock and asks
-the gates again, then pulls fast-forward to the sha they judged and runs the dependency steps, the afterPull hooks
+and when a check refuses. With nothing pending it is DONE and runs nothing. Otherwise it waits up to
+`coordinator.wait.maxMinutes` for the claims, the checks and the host lock (longer while its line moves), reads origin again under the lock and asks
+the checks again, then pulls fast-forward to the sha they judged and runs the dependency steps, the afterPull hooks
 and the command, each killed after `coordinator.heavy.maxRunMinutes`, all one heavy step in the ledger. Their lines
 show as they come.
 
 A range that changes `package-lock.json`, or a `package.json` field an install reads (as `dependencyGate` judges it),
 runs `dependencyInstall` in the main checkout right after the pull; with `dependencyGate`, `dependencyCheck` runs first, its `TEAMRIG_BASELINE_LOCK` a file
 holding the old HEAD's `package-lock.json`. A failed check moves the main checkout back to its old HEAD with nothing
-installed: REFUSED, nothing rolled. A failed install moves it back and installs again, so the `node_modules` every
-worktree links to matches the checkout: FAILED, nothing rolled. When moving back or that install fails too, FAILED
-names what to run by hand. With the gate off and no `dependencyInstall`, the range rolls with no install.
+installed: REFUSED, nothing deployed. A failed install moves it back and installs again, so the `node_modules` every
+worktree links to matches the checkout: FAILED, nothing deployed. When moving back or that install fails too, FAILED
+names what to run by hand. With the gate off and no `dependencyInstall`, the range deploys with no install.
 
 A command that prints the line `no-deploy` had nothing to deploy: DONE, with no deploy record. Otherwise the deploy is
 recorded with the command's last line, and exit 0 is DONE, any other end FAILED (exit 1): its owners fix forward or
-roll back. The pull stays after a failure, so a new roll finds nothing pending: run the roll command by hand once it
-is fixed. A failed pull rolled nothing: roll again.
+roll back. The pull stays after a failure, so a new deploy finds nothing pending: run the deploy command by hand once
+it is fixed. A failed pull deployed nothing: deploy again.
 
 Like `teamrig heavy`, it watches the processes that started it. Once its launching shell ends it stops waiting
-(`STOPPED before the host lock was free: nothing ran`), or kills the hook or roll command it runs, records exit 129
+(`STOPPED before the host lock was free: nothing ran`), or kills the hook or deploy command it runs, records exit 129
 and frees the lock (FAILED).
 
-A deploy that pulls nothing: `teamrig roll --targets <a,b> --what "<why>" -- <command ...>` restarts some of the
+A deploy that pulls nothing: `teamrig deploy --targets <a,b> --what "<why>" -- <command ...>` restarts some of the
 repository's targets with a command of its own, such as a restart that makes them read a rotated secret on the same
-image. It keeps the repository's roll rules. It is REFUSED (exit 2) before any gate or lock for a target not in
+image. It keeps the repository's deploy rules. It is REFUSED (exit 2) before any check or lock for a target not in
 `deploy.targets`, since a typo would slip past the quiet claims, and also at the heavy cutoff, in the reset blackout
-and when a gate refuses. It waits for quiet claims on the targets it names, not the others, then for the gates and
-the host lock, and asks the gates again under the lock. The command runs with no shell in this folder, killed after
+and when a check refuses. It waits for quiet claims on the targets it names, not the others, then for the checks and
+the host lock, and asks the checks again under the lock. The command runs with no shell in this folder, killed after
 `coordinator.heavy.maxRunMinutes`, as one heavy step in the ledger; its lines show as they come.
 
-The gates and the command get `TEAMRIG_TEAM`, `TEAMRIG_SESSION`, `TEAMRIG_VERB=redeploy`, `TEAMRIG_REPO` and
-`TEAMRIG_DEPLOY_TARGETS` (`api,live`), and no `TEAMRIG_PENDING_RANGE`: a gate that reads the range tells a redeploy by
+The checks and the command get `TEAMRIG_TEAM`, `TEAMRIG_SESSION`, `TEAMRIG_VERB=redeploy`, `TEAMRIG_REPO` and
+`TEAMRIG_DEPLOY_TARGETS` (`api,live`), and no `TEAMRIG_PENDING_RANGE`: a check that reads the range tells a redeploy by
 its verb. The command also gets `$TEAMRIG_HOST_LOCK`. The deploy record names the targets (`"targets": ["api",
 "live"]`), so `teamrig windows` counts only them as disturbed. It is written even when the command fails (FAILED,
 exit 1), since a failed restart may have restarted some of them; a command that cannot start records no deploy.
 A quiet claim of your own on a target holds your deploy like anyone else's, so release it first: the host lock
-already keeps rolls and heavy steps out while the command runs.
+already keeps other deploys and heavy steps out while the command runs.
 
 Flags:
 
-- `--repo <name>`: the repository to roll.
-- `--session <id|name>`: the session rolling, as the ledger names it; default `$TEAMRIG_SESSION`.
+- `--repo <name>`: the repository to deploy.
+- `--session <id|name>`: the session deploying, as the ledger names it; default `$TEAMRIG_SESSION`.
 - `--targets <a,b>`: a deploy of these targets that pulls nothing, by the command after `--` (see above).
 - `--what "<why>"`: with `--targets`, why the deploy runs; the deploy record's note starts with it, secrets redacted.
 
@@ -3458,7 +3458,7 @@ Config:
         "checks": [{ "name": "flow", "command": ["node", "tools/flow-check.js"] }],
         "dependencyInstall": ["npm", "ci", "--ignore-scripts"],
         "afterPull": [["npm", "run", "build"]],
-        "command": ["node", "tools/roll.js"]
+        "command": ["node", "tools/deploy.js"]
       }
     }
   }
@@ -3468,26 +3468,26 @@ Config:
 Example:
 
 ```sh
-teamrig roll --session api
+teamrig deploy --session api
 ```
 
 Output:
 
 ```text
 2030-01-08 12:00:00 IST 2 commits pending in pipeline (4f1c2a9e..9a0b1c2d)
-2030-01-08 12:00:00 IST waiting: gate flow holds the roll: a batch run is open
+2030-01-08 12:00:00 IST waiting: check flow holds the deploy: a batch run is open
 2030-01-08 12:00:30 IST clear; pulling 2 commits (4f1c2a9e..9a0b1c2d) into /home/you/pipeline
 2030-01-08 12:00:30 IST pulled /home/you/pipeline to 9a0b1c2d
 2030-01-08 12:00:30 IST afterPull: npm run build
-2030-01-08 12:01:10 IST roll: node tools/roll.js
-2030-01-08 12:03:40 IST   rolled api, workers on sha-9a0b1c2d
-DONE 4f1c2a9e..9a0b1c2d rolled: rolled api, workers on sha-9a0b1c2d
+2030-01-08 12:01:10 IST deploy: node tools/deploy.js
+2030-01-08 12:03:40 IST   deployed api, workers on sha-9a0b1c2d
+DONE 4f1c2a9e..9a0b1c2d deployed: deployed api, workers on sha-9a0b1c2d
 ```
 
 A deploy that pulls nothing:
 
 ```sh
-teamrig roll --session sec --targets api,workers --what "rotate the db credential" -- node tools/restart.js api workers
+teamrig deploy --session sec --targets api,workers --what "rotate the db credential" -- node tools/restart.js api workers
 ```
 
 Output:
@@ -3500,7 +3500,7 @@ DONE deployed api, workers of pipeline: restarted 2 deployments
 
 ### teamrig claim
 
-A quiet claim holds the merges and rolls that deploy its targets while a session measures them, so no deploy
+A quiet claim holds the merges and deploys of its targets while a session measures them, so no deploy
 lands in the middle of a measurement. It lasts from now for `--for`: minutes, hours or both, such as `45m` or
 `1h30m`, at most `coordinator.claims.maxMinutes` (120). Each target must be one a repository deploys, in its
 `deploysOnPush` or `deploy.targets`. One claim per session. REFUSED for an unknown target, a longer span, a second
@@ -3552,11 +3552,11 @@ RELEASED api, workers (claimed until 2030-01-08 12:45 IST)
 
 The clean measurement windows of each target between `--since` and `--until` (default now; a later time is cut to
 now), so a session compares a metric over stretches no change touched. A deploy disturbs the targets of its
-repository (its `deploysOnPush` and `deploy.targets`), or only those its ledger record names (a `roll --targets`
-deploy), from its start until it settled:
+repository (its `deploysOnPush` and `deploy.targets`), or only those its ledger record names (a `deploy --targets`
+run), from its start until it settled:
 `coordinator.windows.targetSettleMinutes` for that target, else `settleMinutes` (30), or `--settle` for every
 target. The deploys are the ledger.md lines, so one a session wrote by hand counts too; a deploy with no ledger
-record of its start is taken to have rolled for `assumedDeployMinutes` (20). A heavy step disturbs the whole host. A
+record of its start is taken to have run for `assumedDeployMinutes` (20). A heavy step disturbs the whole host. A
 window shorter than `--min` (default `minMinutes`, 15) is left out. Each window names the loads (`teamrig load`) it
 overlaps: a load never cuts a window, since two windows under the same load still compare. A time is `HH:MM`
 (today), `YYYY-MM-DD HH:MM` or `YYYY-MM-DD` on the team's clock unless marked `UTC`, or an ISO time with its zone. A
@@ -3634,19 +3634,19 @@ Output:
 ENDED 3f9c1a7e at 2030-01-08 12:00 IST
 ```
 
-### teamrig deploys
+### teamrig deploy-status
 
 The deploy state now, in one read: who holds the host lock (a stale lock shows as free, since the next heavy step
 removes it) and, on a `sharing the host:` line, the small steps (`heavy --small`) sharing it, the heavy cutoff and the blackout before the weekly token reset (each marked IN FORCE while it holds),
-the quiet claims and loads still open, and what each repository with a roll block has pushed but not rolled. It
-fetches each main checkout to tell; for one a roll would refuse, it says why.
+the quiet claims and loads still open, and what each repository with a deploy block has pushed but not deployed. It
+fetches each main checkout to tell; for one a deploy would refuse, it says why.
 
 Flags: none.
 
 Example:
 
 ```sh
-teamrig deploys
+teamrig deploy-status
 ```
 
 Output:
@@ -3654,11 +3654,11 @@ Output:
 ```text
 host lock: po (heavy: build api) since 2030-01-08 11:50 IST
 heavy cutoff: 00:30-02:00 IST (no heavy step starts)
-deploy blackout: Tue 01-08 23:00 IST until Wed 01-09 03:00 IST (no merge or roll; reset from the status line)
+deploy blackout: Tue 01-08 23:00 IST until Wed 01-09 03:00 IST (no merge or deploy; reset from the status line)
 claims: 1
   quiet claim by data on cloud-api until 2030-01-08 12:30 IST (p95 latency)
 loads: none
-app: 2 commits pushed, not rolled (c1a2b3c4..d5e6f7a8)
+app: 2 commits pushed, not deployed (c1a2b3c4..d5e6f7a8)
 ```
 
 ### teamrig test

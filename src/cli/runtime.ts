@@ -92,7 +92,7 @@ export interface CliRuntime {
   readonly trees: TreeState;
   /** The git steps `teamrig merge` takes. */
   readonly mergeGit: MergeGit;
-  /** The programs `teamrig roll` runs, its gates, afterPull hooks and roll command: no shell, each with a time limit. */
+  /** The programs `teamrig deploy` runs, its checks, afterPull hooks and deploy command: no shell, each with a time limit. */
   readonly hooks: HookRunner;
   /** The registry the package guard asks about the versions an install names: their publish times and advisories. */
   readonly packageRegistry: PackageRegistry;

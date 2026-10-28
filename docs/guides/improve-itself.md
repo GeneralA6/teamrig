@@ -32,13 +32,13 @@ A skill is a `SKILL.md` in its own folder in the skills folder (by default `~/.c
 ```markdown
 ---
 name: web-deploy
-description: Use after a merge to web's main branch to roll it out and prove the new version serves.
+description: Use after a merge to web's main branch to deploy it and prove the new version serves.
 ---
 
 1. The steps, with commands batched into as few calls as possible.
 2. Then the traps.
 
-Signature: `teamrig roll --session web`
+Signature: `teamrig deploy --session web`
 Owner: web
 Last verified: 2030-01-08
 ```

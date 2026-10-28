@@ -700,7 +700,7 @@ function parseWindows(read: ConfigReader, raw: JsonRecord, knownTargets: readonl
   };
 }
 
-/** The repositories `teamrig merge` merges into and `teamrig roll` deploys, by name; one with a bad name or no main checkout is reported and left out. */
+/** The repositories `teamrig merge` merges into and `teamrig deploy` deploys, by name; one with a bad name or no main checkout is reported and left out. */
 function parseCoordinatorRepos(read: ConfigReader, raw: JsonRecord): Record<string, CoordinatorRepoConfig> {
   const repos: Record<string, CoordinatorRepoConfig> = {};
   for (const [name, value] of Object.entries(raw)) {
@@ -762,7 +762,7 @@ const isRemoteName: Check<string> = (name) =>
 const HOOK_ARGV_MAX_ITEMS = 64;
 const DEPLOY_HOOKS_MAX_ITEMS = 16;
 
-/** A repository's roll; one with no usable command is reported and left out, so the repository is not rolled. */
+/** A repository's deploy block; one with no usable command is reported and left out, so the repository is not deployed. */
 function parseDeploy(read: ConfigReader, raw: unknown, path: string): DeployConfig | undefined {
   const entry = read.objectItem(raw, path);
   if (entry === undefined) {

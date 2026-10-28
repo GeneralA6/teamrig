@@ -4,14 +4,14 @@ import { rangeInstallTouches } from '../merge/dependencies.ts';
 import { ORIGIN, type MergeGit } from '../merge/git.ts';
 
 /**
- * What a roll would pull for a repository with a roll block: its main checkout's `HEAD..origin/<default branch>` after
- * a fetch, or why a roll must not pull it. `teamrig roll` reads it before and under the host lock, `teamrig deploys`
- * to show what each repository has pushed but not rolled.
+ * What a deploy would pull for a repository with a deploy block: its main checkout's `HEAD..origin/<default branch>` after
+ * a fetch, or why a deploy must not pull it. `teamrig deploy` reads it before and under the host lock, `teamrig deploy-status`
+ * to show what each repository has pushed but not deployed.
  */
 
 export type RollGit = Pick<MergeGit, 'checkoutOf' | 'changes' | 'fetch' | 'defaultBranch' | 'sha' | 'commits' | 'isAncestor' | 'changedPaths' | 'fileAt' | 'fastForward' | 'resetTo'>;
 
-/** A repository with a roll block, and where its main checkout is. */
+/** A repository with a deploy block, and where its main checkout is. */
 export interface RollRepo {
   readonly name: string;
   readonly config: CoordinatorRepoConfig;
@@ -20,12 +20,12 @@ export interface RollRepo {
 }
 
 
-/** The repositories with a roll block, in config order, each with its main checkout as a place. */
+/** The repositories with a deploy block, in config order, each with its main checkout as a place. */
 export function rollRepos(coordinator: Pick<CoordinatorConfig, 'repos'>, inTeam: (path: string) => string): RollRepo[] {
   return Object.entries(coordinator.repos).flatMap(([name, config]) => (config.deploy === undefined ? [] : [{ name, config, deploy: config.deploy, main: inTeam(config.mainCheckout) }]));
 }
 
-/** A dependency change the roll checks and installs right after the pull, under the host lock. */
+/** A dependency change the deploy checks and installs right after the pull, under the host lock. */
 export interface DependencyStep {
   /** The package files the range changes in a way that needs an install, as `installTouches` names them. */
   readonly touches: readonly string[];
@@ -35,7 +35,7 @@ export interface DependencyStep {
   readonly install: readonly string[];
 }
 
-/** What a roll would pull: the main checkout's HEAD up to origin's default branch, and the commits between. */
+/** What a deploy would pull: the main checkout's HEAD up to origin's default branch, and the commits between. */
 export interface Pending {
   readonly head: string;
   readonly target: string;
@@ -65,7 +65,7 @@ type DependencyRead = { readonly kind: 'step'; readonly step: DependencyStep | u
 /**
  * What the range's package files need after the pull: nothing, an install (checked first when `dependencyGate` is on)
  * or a hold. The gate holds a dependency change unless `dependencyCheck` and `deploy.dependencyInstall` are both set;
- * with the gate off, an install set runs unchecked, and with neither the range rolls as it is.
+ * with the gate off, an install set runs unchecked, and with neither the range deploys as it is.
  */
 async function dependencyStep(git: RollGit, repo: RollRepo, head: string, target: string): Promise<DependencyRead> {
   const { name, main, config, deploy } = repo;
@@ -75,7 +75,7 @@ async function dependencyStep(git: RollGit, repo: RollRepo, head: string, target
   }
   const touches = await rangeInstallTouches(git, main, head, target);
   if (touches === undefined) {
-    return { kind: 'held', reason: `could not read what ${short(head)}..${short(target)} changes, so the roll cannot tell whether it changes the dependencies` };
+    return { kind: 'held', reason: `could not read what ${short(head)}..${short(target)} changes, so the deploy cannot tell whether it changes the dependencies` };
   }
   if (touches.length === 0) {
     return { kind: 'step', step: undefined };
@@ -87,11 +87,11 @@ async function dependencyStep(git: RollGit, repo: RollRepo, head: string, target
   const unset = [...(check === undefined ? ['dependencyCheck'] : []), ...(install === undefined ? ['deploy.dependencyInstall'] : [])].map((key) => `coordinator.repos.${name}.${key}`);
   return {
     kind: 'held',
-    reason: `deps changed (${touches.join(', ')}): coordinator.repos.${name}.dependencyGate holds a dependency change, since pulling it changes, unreviewed, the node_modules every worktree links to; set ${unset.join(' and ')} to roll one, or pull and install by hand`,
+    reason: `deps changed (${touches.join(', ')}): coordinator.repos.${name}.dependencyGate holds a dependency change, since pulling it changes, unreviewed, the node_modules every worktree links to; set ${unset.join(' and ')} to deploy one, or pull and install by hand`,
   };
 }
 
-/** Fetches and reads what a roll would pull now, refusing a main checkout it must not pull into. */
+/** Fetches and reads what a deploy would pull now, refusing a main checkout it must not pull into. */
 export async function readPending(git: RollGit, repo: RollRepo): Promise<PendingRead> {
   const { main, name } = repo;
   const checkout = git.checkoutOf(main);
@@ -111,7 +111,7 @@ export async function readPending(git: RollGit, repo: RollRepo): Promise<Pending
     return { kind: 'failed', reason: `git status failed in ${main}` };
   }
   if (changes.length > 0) {
-    return { kind: 'refused', reason: `the ${name} main checkout ${main} has ${plural(changes.length, 'uncommitted change')}: a roll pulls only into a clean checkout` };
+    return { kind: 'refused', reason: `the ${name} main checkout ${main} has ${plural(changes.length, 'uncommitted change')}: a deploy pulls only into a clean checkout` };
   }
   const head = git.sha(main, 'HEAD');
   const target = git.sha(main, `origin/${defaultBranch}`);
@@ -122,7 +122,7 @@ export async function readPending(git: RollGit, repo: RollRepo): Promise<Pending
     return { kind: 'none', head };
   }
   if (!git.isAncestor(main, head, target)) {
-    return { kind: 'refused', reason: `the ${name} main checkout ${main} has commits that are not on origin/${defaultBranch}: a roll only pulls fast-forward` };
+    return { kind: 'refused', reason: `the ${name} main checkout ${main} has commits that are not on origin/${defaultBranch}: a deploy only pulls fast-forward` };
   }
   const deps = await dependencyStep(git, repo, head, target);
   if (deps.kind === 'held') {

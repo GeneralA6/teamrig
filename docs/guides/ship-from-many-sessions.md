@@ -3,12 +3,12 @@
 Many sessions on one host each build, run tests and deploy whenever their change is ready. Left alone, two full test
 suites starve each other of memory, a deploy lands in the middle of another session's measurement, and each session
 ships its own way. teamrig's deploy coordinator puts these steps in one line: heavy steps take turns under a host
-lock, every branch merges and rolls out the same checked way, and each step goes to a ledger, so a session can find
+lock, every branch merges and deploys the same checked way, and each step goes to a ledger, so a session can find
 the stretches no change touched. The `coordinator` keys in the [team config](../configuration.md) set it.
 
 - [One host lock](#one-host-lock)
 - [Merging a branch](#merging-a-branch)
-- [Rolling it out](#rolling-it-out)
+- [Deploying it](#deploying-it)
 - [When a step holds back](#when-a-step-holds-back)
 - [Clean measurements](#clean-measurements)
 - [The deploy state in one read](#the-deploy-state-in-one-read)
@@ -46,7 +46,7 @@ ones hold, leaves
 `coordinator.heavy.memoryFloorMb` (4096) plus its own. A step's own is the most its process tree held in its latest
 20 runs under the same session and `--what`, plus a quarter, or `smallReserveMb` (2048) before it has a run. A small
 step is killed after `smallMaxRunMinutes` (10), since a hung one holds back every step waiting for the lock. A step
-that takes the lock waits for the small steps to end, so builds, merges, rolls and full suites still run alone.
+that takes the lock waits for the small steps to end, so builds, merges, deploys and full suites still run alone.
 
 A repository's git hooks can wrap their checks in `teamrig heavy`, so a plain `git commit` takes the host lock for
 its hook. A step started under the lock (a hook run by a merge's push, say) runs at once, as part of its
@@ -63,7 +63,7 @@ host had.
 ## Merging a branch
 
 `teamrig merge`, run in a branch's worktree, merges the branch into origin's default branch, so every session merges
-its work one way: checked, pushed under the host lock and recorded. `teamrig roll` then brings it to the running
+its work one way: checked, pushed under the host lock and recorded. `teamrig deploy` then brings it to the running
 system.
 
 ```mermaid
@@ -77,8 +77,8 @@ flowchart TD
   merge -- "75: waits on checks or review" --> later["Run teamrig merge again later"]
   merge -- "0: merged" --> merged["Merged: the branch deleted, the push recorded"]
   push --> merged
-  merged --> roll["teamrig roll: claims, gates and the host lock, then pull and roll"]
-  roll --> recorded["The deploy recorded in the ledger"]
+  merged --> deploy["teamrig deploy: claims, checks and the host lock, then pull and deploy"]
+  deploy --> recorded["The deploy recorded in the ledger"]
 ```
 
 ```sh
@@ -133,10 +133,10 @@ of these:
   [commands](../../plugins/teamrig/skills/teamrig-guide/commands.md#teamrig-merge) has a sketch of one for
   GitHub pull requests.
 
-## Rolling it out
+## Deploying it
 
-`teamrig roll` brings what was pushed to a repository's default branch to the running system, one roll on the host
-at a time: checked, pulled under the host lock, rolled and recorded. A repository gets a roll block:
+`teamrig deploy` brings what was pushed to a repository's default branch to the running system, one deploy on the host
+at a time: checked, pulled under the host lock, deployed and recorded. A repository gets a deploy block:
 
 ```json
 "coordinator": {
@@ -148,65 +148,65 @@ at a time: checked, pulled under the host lock, rolled and recorded. A repositor
         "checks": [{ "name": "flow", "command": ["node", "tools/flow-check.js"] }],
         "dependencyInstall": ["npm", "ci", "--ignore-scripts"],
         "afterPull": [["npm", "run", "build"]],
-        "command": ["node", "tools/roll.js"]
+        "command": ["node", "tools/deploy.js"]
       }
     }
   }
 }
 ```
 
-- `targets`: what the roll deploys; quiet claims on them hold it.
-- `checks`: up to 16 checks your own tools answer, such as "is a batch run open?". Exit 0 lets the roll go, 75 holds
+- `targets`: what the deploy restarts; quiet claims on them hold it.
+- `checks`: up to 16 checks your own tools answer, such as "is a batch run open?". Exit 0 lets the deploy go, 75 holds
   it and 2 refuses it; anything else, or no answer within `coordinator.checkTimeoutSeconds` (20), holds it, its last
   line the reason.
 - `dependencyInstall`: the install a pulled dependency change needs, run right after the pull. A failed install
   moves the main checkout back and installs again, so the `node_modules` every worktree links to matches it.
-- `afterPull`: up to 16 commands run after the pull and before the roll, such as a build it needs.
-- `command`: the roll itself. A line `no-deploy` means nothing needed deploying; otherwise its last line is the deploy
+- `afterPull`: up to 16 commands run after the pull and before the deploy command, such as a build it needs.
+- `command`: the deploy itself. A line `no-deploy` means nothing needed deploying; otherwise its last line is the deploy
   record's note.
 
 ```sh
-teamrig roll --session api
+teamrig deploy --session api
 ```
 
 ```text
 2030-01-08 12:00:00 IST 2 commits pending in pipeline (4f1c2a9e..9a0b1c2d)
-2030-01-08 12:00:00 IST waiting: gate flow holds the roll: a batch run is open
+2030-01-08 12:00:00 IST waiting: check flow holds the deploy: a batch run is open
 2030-01-08 12:00:30 IST clear; pulling 2 commits (4f1c2a9e..9a0b1c2d) into /home/you/pipeline
 2030-01-08 12:00:30 IST pulled /home/you/pipeline to 9a0b1c2d
 2030-01-08 12:00:30 IST afterPull: npm run build
-2030-01-08 12:01:10 IST roll: node tools/roll.js
-2030-01-08 12:03:40 IST   rolled api, workers on sha-9a0b1c2d
-DONE 4f1c2a9e..9a0b1c2d rolled: rolled api, workers on sha-9a0b1c2d
+2030-01-08 12:01:10 IST deploy: node tools/deploy.js
+2030-01-08 12:03:40 IST   deployed api, workers on sha-9a0b1c2d
+DONE 4f1c2a9e..9a0b1c2d deployed: deployed api, workers on sha-9a0b1c2d
 ```
 
-roll is refused before any gate or lock when the main checkout is off its default branch, has uncommitted changes or
+deploy is refused before any check or lock when the main checkout is off its default branch, has uncommitted changes or
 holds commits origin lacks. With nothing pending it is DONE and runs nothing. Otherwise it waits for the claims, the
-gates and the lock, reads origin again under the lock and asks the gates again, then pulls to the commit they judged
-and runs the dependency steps a dependency change needs, the afterPull commands and the roll, each killed after `coordinator.heavy.maxRunMinutes`, all
-one heavy step in the ledger. A failed roll is recorded too, and its owners fix forward or roll back; the pull stays,
-so run the roll command by hand once it is fixed.
+checks and the lock, reads origin again under the lock and asks the checks again, then pulls to the commit they judged
+and runs the dependency steps a dependency change needs, the afterPull commands and the deploy command, each killed after `coordinator.heavy.maxRunMinutes`, all
+one heavy step in the ledger. A failed deploy is recorded too, and its owners fix forward or roll back; the pull stays,
+so run the deploy command by hand once it is fixed.
 
 A deploy that pulls nothing, such as a restart that makes services read a rotated secret on the same image, names its
 targets and its own command:
 
 ```sh
-teamrig roll --session sec --targets api,workers --what "rotate the db credential" -- node tools/restart.js api workers
+teamrig deploy --session sec --targets api,workers --what "rotate the db credential" -- node tools/restart.js api workers
 ```
 
-It keeps the repository's gates and claims for the targets it names, and is refused for a target not in
+It keeps the repository's checks and claims for the targets it names, and is refused for a target not in
 `deploy.targets`, since a typo would slip past the quiet claims. A quiet claim of your own on a target holds it too, so
 release it first.
 
 ## When a step holds back
 
-- **The heavy cutoff:** no heavy step, merge or roll starts from `coordinator.schedule.heavyCutoffUtc` until
+- **The heavy cutoff:** no heavy step, merge or deploy starts from `coordinator.schedule.heavyCutoffUtc` until
   midnight UTC, nor runs a heavy step whose wait for the lock ran past it; set it to keep a nightly stretch free of
   builds.
-- **The reset blackout:** no merge or roll starts in the `coordinator.schedule.resetBlackoutHours` before the
+- **The reset blackout:** no merge or deploy starts in the `coordinator.schedule.resetBlackoutHours` before the
   weekly token reset, the one the status line last reported, else the one `budget.reset` sets; unset, there is none.
 - **A wait that ran out:** a heavy step is refused once its line has not moved for `waitMinutes`, a merge or a
-  roll after `coordinator.wait.maxMinutes`, unless its line keeps moving.
+  deploy after `coordinator.wait.maxMinutes`, unless its line keeps moving.
 - **A step taken out of line:** `teamrig withdraw` takes a session's steps still waiting for the lock out of the line,
   so a re-ordered or abandoned step never runs:
 
@@ -225,7 +225,7 @@ release it first.
 ## Clean measurements
 
 A session measuring a change, say its effect on latency, needs a stretch no deploy or build disturbed. A quiet claim
-holds the merges and rolls that deploy its targets while it measures:
+holds the merges and deploys of its targets while it measures:
 
 ```sh
 teamrig claim --session api --targets api,workers --metric "p95 latency" --why "cache probe" --for 45m
@@ -253,10 +253,10 @@ api (settle 30m): 2 clean windows of at least 15m
     under load 3f9c1a7e by data: backfill prices (from 2030-01-08 10:30 IST, still running)
 ```
 
-A deploy disturbs its repository's targets, or only those a `roll --targets` deploy named, from its start until they
+A deploy disturbs its repository's targets, or only those a `deploy --targets` run named, from its start until they
 settled: `coordinator.windows.settleMinutes` (30), a target's own in `targetSettleMinutes`, or `--settle` for one
 run. A deploy line a session wrote by hand in `ledger.md` counts too; one with no record of its start is taken to
-have rolled for `assumedDeployMinutes` (20) before its line. A heavy step disturbs the whole host. A window shorter than `minMinutes` (15) is left out.
+have run for `assumedDeployMinutes` (20) before its line. A heavy step disturbs the whole host. A window shorter than `minMinutes` (15) is left out.
 
 A background load, such as a long data script or a backfill, is declared with `teamrig load` (`teamrig load end`
 ends it). A load never cuts a window, since two windows under the same load still compare: each window names the
@@ -272,20 +272,20 @@ LOAD 3f9c1a7e on the whole host from 2030-01-08 10:30 IST (end it: teamrig load 
 
 ## The deploy state in one read
 
-`teamrig deploys` prints the state now: who holds the host lock and which small steps share the host, the heavy
+`teamrig deploy-status` prints the state now: who holds the host lock and which small steps share the host, the heavy
 cutoff and the reset blackout (each marked IN FORCE while it holds), the quiet claims and loads still open, and what
-each repository with a roll block has pushed but not rolled, with why a roll would refuse it.
+each repository with a deploy block has pushed but not deployed, with why a deploy would refuse it.
 
 ```sh
-teamrig deploys
+teamrig deploy-status
 ```
 
 ```text
 host lock: po (heavy: build api) since 2030-01-08 11:50 IST
 heavy cutoff: 00:30-02:00 IST (no heavy step starts)
-deploy blackout: Tue 01-08 23:00 IST until Wed 01-09 03:00 IST (no merge or roll; reset from the status line)
+deploy blackout: Tue 01-08 23:00 IST until Wed 01-09 03:00 IST (no merge or deploy; reset from the status line)
 claims: 1
   quiet claim by data on cloud-api until 2030-01-08 12:30 IST (p95 latency)
 loads: none
-app: 2 commits pushed, not rolled (c1a2b3c4..d5e6f7a8)
+app: 2 commits pushed, not deployed (c1a2b3c4..d5e6f7a8)
 ```

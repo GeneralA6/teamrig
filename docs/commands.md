@@ -326,7 +326,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       129); REFUSED from coordinator.schedule.heavyCutoffUtc to midnight UTC and once its line has not
       moved for coordinator.heavy.waitMinutes; exit 0 when the command passed, 1 when it failed or was killed. Its
       processes get $TEAMRIG_HOST_LOCK: a heavy step started under a live lock (a git hook's checks
-      under heavy, merge or roll) runs at once under it. No --session: $TEAMRIG_SESSION, the
+      under heavy, merge or deploy) runs at once under it. No --session: $TEAMRIG_SESSION, the
       parent step's session, else the session this Claude Code tab is bound to. --small (a spec run, a
       lint): shares the host with other small steps while it keeps coordinator.heavy.memoryFloorMb free
       besides the MB held for them (its ledger peak and a quarter, else coordinator.heavy.smallReserveMb)
@@ -337,7 +337,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       when they pass; when they waited over a minute for the lock it declines the push (REFUSED), whose
       connection may have closed meanwhile: push again, it reuses the pass
   withdraw (--what <text> | --all) [--session <id|name>]   takes this session's steps waiting for the
-      host lock (heavy, merge, roll) out of its line, so a re-ordered or abandoned step leaves it:
+      host lock (heavy, merge, deploy) out of its line, so a re-ordered or abandoned step leaves it:
       --what picks those whose purpose holds the text. Each stops at its next look and runs nothing;
       RUNNING when it took its turn first, LEFT when it left the line first, KEPT when an older
       teamrig queued it (its step runs anyway). With neither flag: lists them, REFUSED. No --session:
@@ -356,35 +356,35 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       and here (--keep-remote, --no-delete-local keep them) and, where followMainCheckout, fast-forwards
       the main checkout; once the shell that started it ends, it stops waiting, or kills the push
       and frees the lock (exit 129); exit 0 merged, 1 failed or stopped, 75 the merge waits
-  roll [--repo <name>] [--session <id|name>]   brings what was pushed to a repository's default
+  deploy [--repo <name>] [--session <id|name>]   brings what was pushed to a repository's default
       branch to the running system: pulls its main checkout fast-forward to origin, runs its
       coordinator.repos.<name>.deploy dependencyInstall for a dependency change (after its
       dependencyCheck), its afterPull hooks and command (one heavy step in the ledger) and records
-      the deploy; --repo defaults to the repository of this folder, else the only one with a roll
+      the deploy; --repo defaults to the repository of this folder, else the only one with a deploy
       block. REFUSED for a main checkout off its default branch, dirty or ahead of origin, a
-      dependency change dependencyGate holds or a gate that refuses, from
+      dependency change dependencyGate holds or a check that refuses, from
       coordinator.schedule.heavyCutoffUtc to midnight UTC and in the resetBlackoutHours before the
       weekly token reset; waits up to coordinator.wait.maxMinutes for quiet claims on its targets,
-      its gates and the host lock (longer while its line moves); nothing pending is DONE with nothing run. A failed check or
-      install moves the main checkout back; a failed afterPull hook or roll command leaves nothing
-      pending, so its roll command is then run by hand; once the shell that started it ends, it
-      stops waiting, or kills its hook and frees the lock (exit 129); exit 0 rolled, 1 failed or stopped
-  roll --targets <a,b> --what "<why>" [--repo <name>] [--session <id|name>] -- <command ...>   a deploy
-      that pulls nothing, such as a restart onto a rotated secret: runs the command in this folder (one
-      heavy step in the ledger) and records a deploy of those targets only. REFUSED for a target not in
-      the repository's deploy.targets, when a gate refuses, from coordinator.schedule.heavyCutoffUtc to
-      midnight UTC and in the resetBlackoutHours before the weekly token reset; waits as a roll does,
-      for quiet claims on those targets only; its gates and command see TEAMRIG_VERB=redeploy and
+      its checks and the host lock (longer while its line moves); nothing pending is DONE with nothing run. A failed dependency
+      check or install moves the main checkout back; a failed afterPull hook or deploy command leaves
+      nothing pending, so its deploy command is then run by hand; once the shell that started it ends,
+      it stops waiting, or kills its hook and frees the lock (exit 129); exit 0 deployed, 1 failed or stopped
+  deploy --targets <a,b> --what "<why>" [--repo <name>] [--session <id|name>] -- <command ...>   a
+      deploy that pulls nothing, such as a restart onto a rotated secret: runs the command in this folder
+      (one heavy step in the ledger) and records a deploy of those targets only. REFUSED for a target not
+      in the repository's deploy.targets, when a check refuses, from coordinator.schedule.heavyCutoffUtc
+      to midnight UTC and in the resetBlackoutHours before the weekly token reset; waits as a deploy
+      does, for quiet claims on those targets only; its checks and command see TEAMRIG_VERB=redeploy and
       TEAMRIG_DEPLOY_TARGETS; exit 0 deployed, 1 failed or stopped
   claim --targets <a,b> --metric <m> --why "<why>" --for <span> [--session <id|name>]   a quiet
-      claim: merge and roll wait while it holds a target they deploy, from now for the span (45m,
+      claim: merge and deploy wait while it holds a target they deploy, from now for the span (45m,
       1h30m; at most coordinator.claims.maxMinutes); one per session; REFUSED for a target no
       repository deploys or a secret in the metric or reason
   release [--session <id|name>]   ends this session's quiet claim before its time
   windows --targets <a,b> --since <time> [--until <time>] [--settle <span>] [--min <span>]   the clean
       measurement windows of each target from --since to --until (default now): the stretches no deploy
-      of it touched (one of its repository, or a roll --targets deploy naming it; from its start until
-      coordinator.windows settle minutes after it rolled; --settle for every target) and no heavy step,
+      of it touched (one of its repository, or a deploy --targets naming it; from its start until
+      coordinator.windows settle minutes after it deployed; --settle for every target) and no heavy step,
       each at least --min (default
       coordinator.windows.minMinutes) long, each with the declared loads it overlaps. A time is HH:MM
       (today), YYYY-MM-DD HH:MM or YYYY-MM-DD on the team's clock unless marked UTC, or an ISO time with
@@ -395,9 +395,9 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       no repository deploys or a secret in what it is
   load end --id <id> [--at <time>] [--session <id|name>]   ends this session's load at --at (default
       now); REFUSED for no such open load, another session's, or an end in the future or before its start
-  deploys                      the deploy state now: the host lock's holder, the heavy cutoff and the
-      reset blackout, the quiet claims and loads still open, and what each repository with a roll block
-      has pushed but not rolled (it fetches each main checkout)
+  deploy-status                the deploy state now: the host lock's holder, the heavy cutoff and the
+      reset blackout, the quiet claims and loads still open, and what each repository with a deploy block
+      has pushed but not deployed (it fetches each main checkout)
   test [--session <id|name>] -- <command ...>   runs a test command in the shell, writes all it printed
       to a log (each session keeps its newest 20) and prints one PASS or FAIL line, then each failing
       test within tests.maxFailureChars; exit 0 when the command passed, 1 otherwise

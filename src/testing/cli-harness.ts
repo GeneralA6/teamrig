@@ -117,7 +117,7 @@ export interface RunOptions {
   readonly mergeGit?: MergeGit;
   /** The working tree `teamrig heavy --pre-push` reads; default no repository. */
   readonly trees?: TreeState;
-  /** The runner `teamrig roll` runs its gates, afterPull hooks and roll command in; default one whose programs print nothing and exit 0. */
+  /** The runner `teamrig deploy` runs its checks, afterPull hooks and deploy command in; default one whose programs print nothing and exit 0. */
   readonly hooks?: HookRunner;
   /** The registry the package guard asks about an install; default one that holds no package. */
   readonly packageRegistry?: PackageRegistry;

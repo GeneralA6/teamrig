@@ -20,7 +20,7 @@ function request(script: string, overrides: Partial<HookRequest> = {}): { readon
   const lines: string[] = [];
   return {
     lines,
-    request: { argv: [process.execPath, '-e', script], cwd: process.cwd(), env: { ...process.env, ROLL_PROBE: 'set' }, timeoutMs: 10_000, onLine: (line) => lines.push(line), ...overrides },
+    request: { argv: [process.execPath, '-e', script], cwd: process.cwd(), env: { ...process.env, HOOK_PROBE: 'set' }, timeoutMs: 10_000, onLine: (line) => lines.push(line), ...overrides },
   };
 }
 
@@ -28,7 +28,7 @@ describe('nodeHookRunner', () => {
   const runner = nodeHookRunner(process.platform);
 
   it('streams each stdout line, the last one without a newline too, and ends with the exit code', async () => {
-    const { lines, request: run } = request('process.stdout.write("first\\r\\nsecond\\n" + process.env.ROLL_PROBE); process.exitCode = 75;');
+    const { lines, request: run } = request('process.stdout.write("first\\r\\nsecond\\n" + process.env.HOOK_PROBE); process.exitCode = 75;');
     assert.deepEqual(await runner.run(run), { kind: 'exited', code: 75 });
     assert.deepEqual(lines, ['first', 'second', 'set']);
   });

@@ -24,8 +24,8 @@ function line(time: string, session: string, repo: string): LedgerMdDeploy {
   return { rolledAt: at(time), session, repo, kind: 'deploy' };
 }
 
-function deploy(started: string, rolled: string, session: string, repo: string): DeployRecord {
-  return { type: 'deploy', kind: 'deploy', session, repo, range: 'aaaaaaaa..bbbbbbbb', what: 'roll', note: '', startedAt: iso(started), rolledAt: new Date(at(rolled) + 20_000).toISOString() };
+function deploy(started: string, deployed: string, session: string, repo: string): DeployRecord {
+  return { type: 'deploy', kind: 'deploy', session, repo, range: 'aaaaaaaa..bbbbbbbb', what: 'deploy', note: '', startedAt: iso(started), rolledAt: new Date(at(deployed) + 20_000).toISOString() };
 }
 
 function heavy(id: string, started: string, ended: string | null): LedgerRecord {
@@ -37,7 +37,7 @@ function load(id: string, started: string, ended: string | null, targets: LoadRe
 }
 
 describe('disruptions', () => {
-  it('starts a deploy at its record of the same session and repository, else assumes its roll, and lets its targets settle', () => {
+  it('starts a deploy at its record of the same session and repository, else assumes how long it ran, and lets its targets settle', () => {
     const md = [line('10:00', 'ops', 'pipeline'), line('12:00', 'web', 'site'), line('14:00', 'ops', 'other')];
     const records = [deploy('09:50', '10:00', 'ops', 'pipeline'), deploy('11:00', '12:00', 'ops', 'site'), deploy('11:30', '12:00', 'web', 'pipeline')];
     assert.deepEqual(disruptions(inputs(md, records)), [
