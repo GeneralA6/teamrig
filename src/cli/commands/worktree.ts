@@ -1,12 +1,13 @@
 import { resolve } from 'node:path';
 import { LeadTree } from '../../config/lead-tree.ts';
+import type { KitConfig } from '../../config/types.ts';
 import { ENV } from '../../core/home.ts';
 import { resolveTeam } from '../../core/team.ts';
 import { JsonlEventLog } from '../../register/store.ts';
 import { removalRefusal } from '../../worktree/owner.ts';
 import { carryOut, describePlan, planRemoval } from '../../worktree/remove.ts';
 import { onePositional, UsageError, type ParsedArgs } from '../args.ts';
-import { openKit, requireConfig, rosterOf, teamFolders } from '../kit.ts';
+import { openKit, requireConfig, rosterOf, teamFolders, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { tabSessionOf } from './tab-session.ts';
 
@@ -51,6 +52,22 @@ export async function remove(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
  * terminal outside Claude Code who names no session; a Claude Code tab bound to no session must name one.
  */
 async function callerRefusal(args: ParsedArgs, runtime: CliRuntime, branch: string | undefined): Promise<string | undefined> {
+  const team = await teamAt(runtime);
+  if (team === undefined) {
+    return undefined;
+  }
+  const { kit, config } = team;
+  const caller = await tabSessionOf(args, runtime, kit, await rosterOf(runtime, kit, config), 'removes worktrees only as itself');
+  if (caller === undefined) {
+    const inClaudeCode = (runtime.env[ENV.claudeSession]?.trim() ?? '') !== '';
+    return inClaudeCode ? `this Claude Code tab is bound to no session of team ${team.name}: give --session <id|name>` : undefined;
+  }
+  const { state } = await new JsonlEventLog(runtime.files, kit.paths.events).read();
+  return removalRefusal({ caller, branch, ownerOf: (task) => state.tasks.get(task)?.owner, tree: new LeadTree(config) });
+}
+
+/** The team the folder the command runs in belongs to, with its kit and config; undefined outside a team. */
+async function teamAt(runtime: CliRuntime): Promise<{ readonly name: string; readonly kit: Kit; readonly config: KitConfig } | undefined> {
   const found = await resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [runtime.cwd]));
   if (found.kind === 'none') {
     return undefined;
@@ -59,12 +76,5 @@ async function callerRefusal(args: ParsedArgs, runtime: CliRuntime, branch: stri
     throw new RefusedError(`${found.from} ${found.problem}`);
   }
   const kit = await openKit(runtime, found.team);
-  const config = requireConfig(kit, runtime, 'read');
-  const caller = await tabSessionOf(args, runtime, kit, await rosterOf(runtime, kit, config), 'removes worktrees only as itself');
-  if (caller === undefined) {
-    const inClaudeCode = (runtime.env[ENV.claudeSession]?.trim() ?? '') !== '';
-    return inClaudeCode ? `this Claude Code tab is bound to no session of team ${found.team}: give --session <id|name>` : undefined;
-  }
-  const { state } = await new JsonlEventLog(runtime.files, kit.paths.events).read();
-  return removalRefusal({ caller, branch, ownerOf: (task) => state.tasks.get(task)?.owner, tree: new LeadTree(config) });
+  return { name: found.team, kit, config: requireConfig(kit, runtime, 'read') };
 }
