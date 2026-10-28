@@ -31,6 +31,11 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       with no terminal it prints the command; a rehired session reads the handover it left first, or,
       with --resume, goes on in its last Claude Code session when that is small and recent enough;
       a session teamrig close ended goes on in its last one by those limits, else opens fresh
+  meet <id|name> [--terminal <name>] [--project <dir>]   the owner meets one session on its cards
+      waiting on them: a running one gets an inbox line that wakes it, any other opens fresh in a new
+      tab; refused when none waits on the owner now (it names those put off with update --later)
+  meet --cards [--session <id|name>]   the session's cards due on the owner, as card facts, and how
+      to bring them one at a time and record each answer
   restore                      what a restore would do now with each Claude Code session this machine
       recorded: RESTORE (how it comes back, at which effort), KEEP or DISCARD, and why; it only reads
   restore run [--since <time>] [--terminal <name>] [--home <dir>] [--tab]   reopens the Claude Code
