@@ -10,12 +10,13 @@ describe('helper default', () => {
     assert.equal(formatWeight(0.1), '0.1');
   });
 
-  it('names the factor and its key when a helper costs more than the session', () => {
+  it('names the factor and its key, and keeps helpers to parallel work or a review, when a helper costs more than the session', () => {
     assert.equal(
       helperDefaultClause(2.15),
-      "a helper's tokens cost 2.15x yours [budget.subagentWeight], so start one only when it keeps far more than that out of your context" +
-        ' or truly runs in parallel, never for a build or test whose result you need',
+      "a helper's tokens cost 2.15x yours [budget.subagentWeight], so start one only for truly parallel work or an independent review," +
+        ' never to save tokens or for a build or test whose result you need',
     );
+    assert.doesNotMatch(helperDefaultClause(2.15), /keeps far more/);
   });
 
   it('asks only that a helper keep more out than it uses when it costs no more than the session', () => {
@@ -29,7 +30,8 @@ describe('helper default', () => {
   it('says the default at a helper launch, for the next one', () => {
     assert.equal(
       helperLaunchReminder(2.15),
-      `teamrig rule 8: work in your own session: ${helperDefaultClause(2.15)}. A broad read that returns a short answer is the case that pays; weigh the next helper the same way.`,
+      `teamrig rule 8: work in your own session: ${helperDefaultClause(2.15)}. Weigh the next helper the same way.`,
     );
+    assert.doesNotMatch(helperLaunchReminder(2.15), /pays/);
   });
 });
