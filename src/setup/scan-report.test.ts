@@ -53,6 +53,7 @@ const SCAN: SetupScan = {
   settings: [WIDE],
   usage: { used: new Set(['alpha']), transcripts: 3, bytes: 1.5 * 1024 * 1024, unread: 0, since: NOW - 30 * DAY_MS },
   recent: new Set(),
+  doctor: { kind: 'skipped', why: 'Claude Code is not on PATH' },
 };
 
 describe('tokensOf', () => {
