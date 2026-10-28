@@ -62,6 +62,8 @@ function scan(harness: CliHarness, argv: readonly string[] = [], source: MemoryT
 /** Claude Code on the PATH {@link CLAUDE_PATH} names, as the harness's Linux finds it. */
 const CLAUDE = '/opt/claude/bin/claude';
 const CLAUDE_PATH: Env = { PATH: '/opt/claude/bin' };
+/** The UNUSED header's end when the harness's empty PATH holds no Claude Code. */
+const NO_DOCTOR = '; /skill-doctor skipped: Claude Code is not on PATH';
 
 function okLines(result: CliResult): readonly string[] {
   assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
@@ -80,7 +82,7 @@ describe('setup scan', () => {
     );
     assert.ok(lines.includes('OVERRIDE 1 line(s) in 1 file(s) may override a core rule: claude-md 1; 0 recorded'), lines.join('\n'));
     assert.ok(lines.includes('NEXT teamrig rules scan, to judge each line with the user'));
-    assert.ok(lines.includes(`UNUSED 1 of 2 skill(s) not used in ${DEFAULT_SCAN_DAYS} day(s) (read 1 transcript(s), 0.0 MB)`), lines.join('\n'));
+    assert.ok(lines.includes(`UNUSED 1 of 2 skill(s) not used in ${DEFAULT_SCAN_DAYS} day(s) (read 1 transcript(s), 0.0 MB)${NO_DOCTOR}`), lines.join('\n'));
     assert.match(lines.find((line) => line.startsWith('U1 ')) ?? '', /^U1 unused-skill .*beta-run.*: no Skill call or \/beta-run in 30 day\(s\)/);
     assert.match(lines.at(-1) ?? '', /^SAVINGS ~\d+ tokens\/turn/);
   });
@@ -164,7 +166,7 @@ describe('setup scan', () => {
     await harness.files.write(join(SKILLS_DIR, 'gamma-new', 'SKILL.md'), skill('gamma-new', 'New gamma.'));
     const lines = okLines(await scan(harness, [], transcripts(HOUR_MS)));
     assert.ok(
-      lines.includes(`UNUSED 1 of 3 skill(s) not used in ${DEFAULT_SCAN_DAYS} day(s) (read 1 transcript(s), 0.0 MB); 1 more changed in that time, too new to judge`),
+      lines.includes(`UNUSED 1 of 3 skill(s) not used in ${DEFAULT_SCAN_DAYS} day(s) (read 1 transcript(s), 0.0 MB); 1 more changed in that time, too new to judge${NO_DOCTOR}`),
       lines.join('\n'),
     );
     assert.deepEqual(
@@ -181,12 +183,12 @@ describe('setup scan', () => {
     const bounded = okLines(await scan(harness, ['--max-mb', '1'], source));
     assert.ok(
       bounded.includes(
-        'UNUSED 1 of 2 skill(s) not used in the newest 0.5 day(s) (read 1 transcript(s), 1.1 MB, newest first; 1 older one(s) of 30 day(s) left unread past the 1 MB bound, --max-mb raises it)',
+        `UNUSED 1 of 2 skill(s) not used in the newest 0.5 day(s) (read 1 transcript(s), 1.1 MB, newest first; 1 older one(s) of 30 day(s) left unread past the 1 MB bound, --max-mb raises it)${NO_DOCTOR}`,
       ),
       bounded.join('\n'),
     );
     assert.match(bounded.find((line) => line.startsWith('U1 ')) ?? '', /beta-run.*: no Skill call or \/beta-run in the newest 0\.5 day\(s\)/);
-    assert.ok(okLines(await scan(harness, [], source)).includes(`UNUSED 0 of 2 skill(s) not used in ${DEFAULT_SCAN_DAYS} day(s) (read 2 transcript(s), 1.1 MB)`));
+    assert.ok(okLines(await scan(harness, [], source)).includes(`UNUSED 0 of 2 skill(s) not used in ${DEFAULT_SCAN_DAYS} day(s) (read 2 transcript(s), 1.1 MB)${NO_DOCTOR}`));
   });
 
   it('refuses a --days or --max-mb that is not a whole number of 1 or more, a positional and a broken team pointer', async () => {
