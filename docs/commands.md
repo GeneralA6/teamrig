@@ -374,7 +374,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       heavy step in the ledger) and records a deploy of those targets only. REFUSED for a target not in
       the repository's deploy.targets, when a gate refuses, from coordinator.schedule.heavyCutoffUtc to
       midnight UTC and in the resetBlackoutHours before the weekly token reset; waits as a roll does,
-      for quiet claims on those targets only; its gates and command see TEAMRIG_VERB=deploy and
+      for quiet claims on those targets only; its gates and command see TEAMRIG_VERB=redeploy and
       TEAMRIG_DEPLOY_TARGETS; exit 0 deployed, 1 failed or stopped
   claim --targets <a,b> --metric <m> --why "<why>" --for <span> [--session <id|name>]   a quiet
       claim: merge and roll wait while it holds a target they deploy, from now for the span (45m,

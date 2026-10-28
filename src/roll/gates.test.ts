@@ -8,7 +8,7 @@ const FLOW = { name: 'flow', command: ['node', 'gates/flow.js'] };
 const REGISTRY = { name: 'registry', command: ['node', 'gates/registry.js'] };
 
 function run(hooks: FakeHooks): GateRun {
-  return { hooks, scanner: new SecretScanner(), cwd: '/repo/app', env: { PATH: '/bin', TEAMRIG_VERB: 'roll' }, timeoutSeconds: 20 };
+  return { hooks, scanner: new SecretScanner(), cwd: '/repo/app', env: { PATH: '/bin', TEAMRIG_VERB: 'deploy' }, timeoutSeconds: 20 };
 }
 
 describe('GateOutput', () => {
@@ -65,10 +65,10 @@ describe('askGates', () => {
     assert.deepEqual(answer, { readiness: { kind: 'go' }, tag: 'sha-0f8e2c4a' });
     assert.deepEqual(hooks.commands, ['node gates/flow.js', 'node gates/registry.js']);
     assert.deepEqual(
-      hooks.ran.map((request) => [request.cwd, request.env['TEAMRIG_GATE_NAME'], request.env['TEAMRIG_GATE_PHASE'], request.env['TEAMRIG_VERB'], request.timeoutMs]),
+      hooks.ran.map((request) => [request.cwd, request.env['TEAMRIG_CHECK_NAME'], request.env['TEAMRIG_CHECK_PHASE'], request.env['TEAMRIG_VERB'], request.timeoutMs]),
       [
-        ['/repo/app', 'flow', 'locked', 'roll', 20_000],
-        ['/repo/app', 'registry', 'locked', 'roll', 20_000],
+        ['/repo/app', 'flow', 'locked', 'deploy', 20_000],
+        ['/repo/app', 'registry', 'locked', 'deploy', 20_000],
       ],
     );
   });

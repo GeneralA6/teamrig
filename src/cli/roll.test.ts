@@ -126,7 +126,7 @@ describe('teamrig roll', () => {
       stdout: ['2030-01-08 10:00:00 UTC clear; deploying api of app: node tools/restart.js api', '2030-01-08 10:00:00 UTC   restarted api', 'DONE deployed api of app: restarted api'],
       stderr: [],
     });
-    assert.deepEqual([hooks.commands, hooks.ran[0]?.cwd, hooks.ran[0]?.env['TEAMRIG_VERB'], git.heads.get(MAIN_CHECKOUT)], [[restart.join(' ')], '/elsewhere', 'deploy', 'base']);
+    assert.deepEqual([hooks.commands, hooks.ran[0]?.cwd, hooks.ran[0]?.env['TEAMRIG_VERB'], git.heads.get(MAIN_CHECKOUT)], [[restart.join(' ')], '/elsewhere', 'redeploy', 'base']);
     assert.deepEqual(ledgerOf(kit).at(-1), {
       type: 'deploy',
       kind: 'deploy',

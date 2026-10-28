@@ -31,8 +31,8 @@ import { plural, readPending, rollRepos, short, type DependencyStep, type Pendin
  */
 
 const MINUTE_MS = 60_000;
-/** The line a roll command prints when nothing needed rolling: the pull stays, and no deploy is recorded. */
-export const NO_ROLL_LINE = 'no-roll';
+/** The line a deploy command prints when nothing needed deploying: the pull stays, and no deploy is recorded. */
+export const NO_DEPLOY_LINE = 'no-deploy';
 
 export interface RollRequest {
   readonly session: string;
@@ -91,7 +91,7 @@ type RollRun =
   | { readonly kind: 'checkFailed'; readonly touches: readonly string[]; readonly argv: readonly string[]; readonly end: HookEnd; readonly back: GitOutcome }
   | { readonly kind: 'installFailed'; readonly touches: readonly string[]; readonly argv: readonly string[]; readonly end: HookEnd; readonly undo: InstallUndo }
   | { readonly kind: 'afterPullFailed'; readonly argv: readonly string[]; readonly end: HookEnd }
-  | { readonly kind: 'ran'; readonly end: HookEnd; readonly lastLine: string | undefined; readonly noRoll: boolean };
+  | { readonly kind: 'ran'; readonly end: HookEnd; readonly lastLine: string | undefined; readonly noDeploy: boolean };
 
 function runExitCode(run: RollRun): number {
   switch (run.kind) {
@@ -135,7 +135,7 @@ function hookEnv(setup: RollSetup, ports: RollPorts, request: RollRequest, repo:
     ...ports.env,
     TEAMRIG_TEAM: setup.team,
     TEAMRIG_SESSION: request.session,
-    TEAMRIG_VERB: 'roll',
+    TEAMRIG_VERB: 'deploy',
     TEAMRIG_REPO: repo.name,
     TEAMRIG_PENDING_RANGE: `${pending.head}..${pending.target}`,
     ...extra,
@@ -254,7 +254,7 @@ async function pullAndRoll(setup: RollSetup, ports: RollPorts, request: RollRequ
     return { kind: 'notPulled', reason: pulled.reason };
   }
   ports.say(`pulled ${repo.main} to ${short(pending.target)}`);
-  const env = underLock(hookEnv(setup, ports, request, repo, pending, { TEAMRIG_ROLL_TO: pending.target, ...(tag === undefined ? {} : { TEAMRIG_ROLL_TAG: tag }) }), lock);
+  const env = underLock(hookEnv(setup, ports, request, repo, pending, { TEAMRIG_DEPLOY_TO: pending.target, ...(tag === undefined ? {} : { TEAMRIG_DEPLOY_TAG: tag }) }), lock);
   const timeoutMs = setup.coordinator.heavy.maxRunMinutes * MINUTE_MS;
   const show = shownBy(ports);
   if (pending.deps !== undefined) {
@@ -272,7 +272,7 @@ async function pullAndRoll(setup: RollSetup, ports: RollPorts, request: RollRequ
   }
   ports.say(`roll: ${repo.deploy.command.join(' ')}`);
   let lastLine: string | undefined;
-  let noRoll = false;
+  let noDeploy = false;
   const end = await ports.hooks.run({
     argv: repo.deploy.command,
     cwd: repo.main,
@@ -280,13 +280,13 @@ async function pullAndRoll(setup: RollSetup, ports: RollPorts, request: RollRequ
     timeoutMs,
     onLine: (line) => {
       const shown = show(line);
-      noRoll ||= line.trim() === NO_ROLL_LINE;
+      noDeploy ||= line.trim() === NO_DEPLOY_LINE;
       if (shown.trim() !== '') {
         lastLine = shown.trim();
       }
     },
   });
-  return { kind: 'ran', end, lastLine, noRoll };
+  return { kind: 'ran', end, lastLine, noDeploy };
 }
 
 /** What a pulled range ends as, and its deploy record when the roll command rolled something or failed trying. */
@@ -305,8 +305,8 @@ async function settle(setup: RollSetup, ports: RollPorts, request: RollRequest, 
       break;
   }
   const ok = succeeded(run.end);
-  const said = run.lastLine === undefined || run.lastLine === NO_ROLL_LINE ? '' : `: ${run.lastLine}`;
-  if (ok && run.noRoll) {
+  const said = run.lastLine === undefined || run.lastLine === NO_DEPLOY_LINE ? '' : `: ${run.lastLine}`;
+  if (ok && run.noDeploy) {
     return { kind: 'done', summary: `${range} pulled; nothing needed rolling${said}` };
   }
   const carried = plural(commits.length, 'commit');
