@@ -1712,14 +1712,22 @@ owner: the owner's daily meeting is app/lead's, whose agenda lists web's waits o
 (`web/T2`), each carded by its own team's rule; its hints add `--team <team>` to ask a question of a team under it
 and `<team>/<id>` to record an answer there. `UNGATED`, `LATE` and `DONE` stay the root team's own.
 
+With a meeting id, `meeting start M3` starts a scheduled meeting instead, one booked with `meeting schedule`: any
+session runs it, as the owner starts it from whichever tab is at hand. The session met gets the opening prompt (the
+topic, its tasks, its brief, those joining and the `meeting end` to run after) as an inbox line, and its tab takes it
+without a keystroke typed into it: a running tab is woken at its next check once idle (a running turn ends first), a
+closed one is opened with the prompt ahead of its own first prompt, as `open` does. Those joining are told by one
+inbox line where it is held. Messages to the lead are not held.
+
 Flags:
 
-- `--session <area>`: who you are: the lead.
+- `--session <area>`: who you are: the lead, or for a scheduled meeting any session.
 
 Example:
 
 ```sh
 teamrig meeting start --session lead
+teamrig meeting start M3 --session lead
 ```
 
 Output:
@@ -1750,6 +1758,21 @@ Week: 31.0% used at 11:00 IDT (status line); the pace line is at 28.6%: 2.4 poin
   fits: p1 40% · p2 22% (left 68.5% of the week)
 END teamrig meeting end --session lead: tells each session the decisions recorded on its tasks
 ```
+
+A scheduled meeting's start prints its line, who was told and how its tab takes the prompt:
+
+```text
+STARTED M3 started, Thu 10-15 14:00 IDT, 30 min, web with api, tasks T7 | the pricing tiers
+TOLD web
+TOLD api
+WAKES shop-web with the meeting's opening prompt once its tab is idle, within about 15 s (a running turn ends first)
+```
+
+A session with no tab running prints `OPENED shop-web (session web) in a new Windows Terminal tab ...; its first
+prompt opens the meeting`. Where no terminal can open it prints `MANUAL` and the command to run; with no room on the
+host, `NOT OPENED shop-web: <why>`; with `wake.enabled` false, `NOT WOKEN shop-web: <why>`. Each leaves the prompt
+waiting for the session's next tab or prompt. A meeting not scheduled is refused: `REFUSED M3 is done: meeting start
+takes a scheduled meeting`.
 
 ### teamrig meeting agenda
 
