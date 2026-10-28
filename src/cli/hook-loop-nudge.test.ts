@@ -33,36 +33,37 @@ async function kitWithRun(count: number, config = TEAM): Promise<CliHarness> {
 }
 
 describe('the loop-nudge hook', () => {
-  it('hands the model one line as the run reaches the threshold, and nothing before or after', async () => {
-    const at = await nudge(await kitWithRun(6));
+  it('hands the model one line as the run reaches the default 3 calls, and nothing before or after', async () => {
+    const at = await nudge(await kitWithRun(3));
     assert.equal(at.code, 0);
     assert.deepEqual(JSON.parse(at.stdout.join('')), {
       hookSpecificOutput: {
         hookEventName: 'PostToolUse',
         additionalContext:
-          'teamrig: 6 single-step calls in a row this turn (about 50k W of re-reads at this context); put independent reads in one message, and an edit with its re-test.',
+          'teamrig: 3 single-step calls in a row this turn (about 20k W of re-reads at this context); send independent reads and lookups as several tool calls in one message, join shell steps into one command, and send an edit with its re-test.',
       },
     });
-    assert.deepEqual((await nudge(await kitWithRun(5))).stdout, []);
-    assert.deepEqual((await nudge(await kitWithRun(7))).stdout, []);
+    assert.deepEqual((await nudge(await kitWithRun(2))).stdout, []);
+    assert.deepEqual((await nudge(await kitWithRun(4))).stdout, []);
   });
 
   it('follows loops.chainNudgeAt, and 0 turns it off', async () => {
-    assert.equal((await nudge(await kitWithRun(3, { ...TEAM, loops: { chainNudgeAt: 3 } }))).stdout.length, 1);
-    assert.deepEqual((await nudge(await kitWithRun(6, { ...TEAM, loops: { chainNudgeAt: 0 } }))).stdout, []);
+    assert.equal((await nudge(await kitWithRun(5, { ...TEAM, loops: { chainNudgeAt: 5 } }))).stdout.length, 1);
+    assert.deepEqual((await nudge(await kitWithRun(3, { ...TEAM, loops: { chainNudgeAt: 5 } }))).stdout, []);
+    assert.deepEqual((await nudge(await kitWithRun(3, { ...TEAM, loops: { chainNudgeAt: 0 } }))).stdout, []);
   });
 
   it("skips a helper's call, which carries agent_id", async () => {
-    assert.deepEqual((await nudge(await kitWithRun(6), payload({ agent_id: 'helper-1' }))).stdout, []);
+    assert.deepEqual((await nudge(await kitWithRun(3), payload({ agent_id: 'helper-1' }))).stdout, []);
   });
 
   it('prints nothing outside a team, without a transcript, for bad input or when the transcript cannot be read', async () => {
     const noTeam = new CliHarness(TEAM, null);
-    await noTeam.files.write(TRANSCRIPT, readRun(6));
+    await noTeam.files.write(TRANSCRIPT, readRun(3));
     assert.deepEqual((await nudge(noTeam)).stdout, []);
     assert.deepEqual((await nudge(new CliHarness(TEAM))).stdout, []);
-    assert.deepEqual((await nudge(await kitWithRun(6), 'not json')).stdout, []);
-    const kit = await kitWithRun(6);
+    assert.deepEqual((await nudge(await kitWithRun(3), 'not json')).stdout, []);
+    const kit = await kitWithRun(3);
     const failing = await kit.run(['hook', 'loop-nudge'], { stdin: payload(), files: new FaultyFiles(kit.files).fail('readTail', TRANSCRIPT, systemError('EIO')) });
     assert.equal(failing.code, 0);
     assert.deepEqual(failing.stdout, []);

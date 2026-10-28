@@ -20,7 +20,7 @@ describe('parseConfig', () => {
     assert.equal(config.configVersion, 1);
     assert.equal(config.messages.maxLines, 10);
     assert.equal(config.messages.coldAfterMinutes, 60);
-    assert.deepEqual(config.loops, { chainNudgeAt: 6 });
+    assert.deepEqual(config.loops, { chainNudgeAt: 3 });
     assert.deepEqual(config.leadBoundary, { enabled: true, ownPaths: [], searchNudgeAt: 3 });
     assert.deepEqual(config.turnLog, { enabled: true, keepHours: 24 });
     assert.deepEqual(config.tests, { maxFailureChars: 4000 });
@@ -241,7 +241,7 @@ describe('parseConfig', () => {
     assert.equal(parseConfig({ ...ROSTER, loops: { chainNudgeAt: 0 } }).config.loops.chainNudgeAt, 0);
     const { config, issues } = parseConfig({ ...ROSTER, loops: { chainNudgeAt: 51 } });
     assert.deepEqual(paths(issues), ['loops.chainNudgeAt']);
-    assert.equal(config.loops.chainNudgeAt, 6);
+    assert.equal(config.loops.chainNudgeAt, 3);
   });
 
   it('reads wake, on for p1 by default, and refuses a priority under 1 or waits past their bounds', () => {

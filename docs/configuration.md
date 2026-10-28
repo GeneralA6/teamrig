@@ -448,7 +448,7 @@ Loop discipline inside a turn.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
-| `chainNudgeAt` | integer (0 to 50) | `6` | After this many single-tool calls in a row in one turn, the session gets one line asking it to put independent steps, and an edit with its re-test, in one message; 0 never asks. |
+| `chainNudgeAt` | integer (0 to 50) | `3` | After this many single-tool calls in a row in one turn, the session gets one line asking it to send independent steps as several tool calls in one message, and an edit with its re-test; 0 never asks. |
 
 ## `wake`
 

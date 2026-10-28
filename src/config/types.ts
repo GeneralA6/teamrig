@@ -410,8 +410,8 @@ export interface LeadBoundaryConfig {
 /** Loop discipline inside a turn. */
 export interface LoopsConfig {
   /**
-   * After this many single-tool calls in a row in one turn, the session gets one line asking it to batch
-   * independent steps into one message; 0 never asks.
+   * After this many single-tool calls in a row in one turn, the session gets one line asking it to send
+   * independent steps as several tool calls in one message; 0 never asks.
    */
   readonly chainNudgeAt: number;
 }
