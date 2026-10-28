@@ -147,6 +147,11 @@ export async function open(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   const project = await sessionProjectOf(runtime, config, id, args.flags.get('project'), found.from);
   const prompt = args.flags.get('prompt');
   const opened = await openSession(runtime, kit, config, roster, { team, id, project, terminal, asked: args.switches.has('resume'), ...(prompt === undefined ? {} : { prompt }) });
+  return printOpenResult(runtime, project, opened);
+}
+
+/** Prints what an open did: its OPENED line, or, when no terminal opened, why and the command to run in `project` (exit 3). */
+export function printOpenResult(runtime: CliRuntime, project: string, opened: OpenResult): ExitCode {
   if (opened.kind === 'opened') {
     runtime.out.stdout(opened.line);
     return EXIT.ok;
@@ -168,6 +173,8 @@ export interface OpenRequest {
   readonly asked: boolean;
   /** Urgent lines posted while the session was closed, quoted ahead of its first prompt (the idle pass's reopen). */
   readonly urgent?: readonly WakeAsk[];
+  /** A new Claude Code session whatever the session's state, never a resumed one: `meet`'s small context (T1295). */
+  readonly fresh?: boolean;
 }
 
 /** A tab that opened, with its OPENED line, or no terminal, with why and the command line to run instead. */
@@ -177,8 +184,8 @@ export type OpenResult =
 
 /**
  * Opens the session's tab as `open` describes: a rehired one on its handover, a closed one in its last Claude Code
- * session or fresh, refused (`RefusedError`) while it runs in a Claude Code and, for any session but the lead, when
- * the host has no room, and a closed one's reopen logged once its tab opened.
+ * session or fresh (always fresh with `fresh`), refused (`RefusedError`) while it runs in a Claude Code and, for any
+ * session but the lead, when the host has no room, and a closed one's reopen logged once its tab opened.
  */
 export async function openSession(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, request: OpenRequest): Promise<OpenResult> {
   const { team, id, project, terminal, asked } = request;
@@ -187,8 +194,10 @@ export async function openSession(runtime: CliRuntime, kit: Kit, config: KitConf
   const from = rehiredFrom((await new HiringLog(runtime.files, kit.paths.hires).read()).records, id);
   const sessionLog = new SessionLog(runtime.files, kit.paths.sessionLog);
   const closed = closedOf((await sessionLog.read()).records, id);
-  const reopen = closed === undefined ? undefined : await claudeSessionVerdict(runtime, config.hiring, closed.claudeSession, project);
-  const resume = await resumeOf(runtime, kit.paths, config, { id, project, from, reopen, asked });
+  const fresh = request.fresh === true;
+  const reopen = closed === undefined || fresh ? undefined : await claudeSessionVerdict(runtime, config.hiring, closed.claudeSession, project);
+  // A closed session opened fresh still logs its reopen below, so the idle pass knows it runs again.
+  const resume = fresh ? undefined : await resumeOf(runtime, kit.paths, config, { id, project, from, reopen, asked });
   const own = request.prompt ?? firstPromptOf(team, id, from, resume, reopen);
   const prompt = checkedPrompt(urgentFirstPrompt(request.urgent ?? [], own, teamZone(config, runtime), PROMPT_MAX));
   // The lead opens whatever the room: it is the session that decides which others run.

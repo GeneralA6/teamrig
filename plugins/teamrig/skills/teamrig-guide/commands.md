@@ -2106,6 +2106,37 @@ model `opus` at `xhigh` effort, and `launch.<lead id>` in the config changes eit
 When no terminal can be opened (or `--terminal print`), it prints `MANUAL no terminal opened (<why>); open a
 new terminal and run this:` and the command, and exits 3. Show the user that command.
 
+### teamrig meet
+
+The owner meets one session on its own cards waiting on them (`teamrig meet <id|name>`), so the session that holds a
+decision brings it, not the lead's agenda. A running session gets an inbox line from the owner that wakes its tab;
+any other opens in a new tab as [teamrig open](#teamrig-open) does, but always fresh, never resumed, so its context
+holds only the meeting. Either way it is asked to run `teamrig meet --cards`. It refuses when no card of the session
+waits on the owner now, naming those the owner put off (`update --later`) and until when, and when the host's
+processes cannot be listed.
+
+`teamrig meet --cards` prints the caller's due cards as card facts, then how to bring them one at a time, ask with
+`decisions.askWith`, record each answer with `set --note "<owner> decided: ..."`, and put one off with `--later`.
+
+Flags:
+
+- `--cards`: print the caller's cards instead; takes no `<id|name>`.
+- `--session <id|name>`: the caller, for `--cards`.
+- `--terminal <name>`: as `open` takes it, for a session that opens.
+- `--project <dir>`: as `open` takes it, for a session that opens.
+
+Example:
+
+```sh
+teamrig meet web
+```
+
+Output:
+
+```text
+WOKE shop-web (session web): 2 card(s) waiting on owner; an inbox line asks it to bring them now
+```
+
 ### teamrig launch
 
 What a tab started by `open` runs: it sets the session's variables and starts Claude Code under the session's
