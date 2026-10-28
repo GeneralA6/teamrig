@@ -1,6 +1,6 @@
 import { errorMessage } from "../../core/guards.js";
 import { SessionAskStore } from "../../core/session-asks.js";
-import { wakeRestOf } from "../../wake/decide.js";
+import { WARM_WAKE_W, wakeRestOf } from "../../wake/decide.js";
 import { keepWorkingOf, keepWorkingReason } from "../../wake/keep-working.js";
 import { teamZone } from "../kit.js";
 import { teamRegister } from "../team-register.js";
@@ -34,7 +34,8 @@ export async function keepWorkingReasonOf(runtime, scope) {
     }
     await store.clear(id);
     const now = runtime.clock.now();
-    const rest = wakeRestOf(await budgetFactsOf(runtime, scope, undefined), config.budget.quietHours, now);
+    // The blocked stop goes on at once, so its next call reads the warm cache.
+    const rest = wakeRestOf(await budgetFactsOf(runtime, scope, undefined), config.budget.quietHours, now, WARM_WAKE_W);
     const { snapshot, elsewhere } = await teamRegister(runtime, kit.paths, config).snapshotWithElsewhere();
     const zone = teamZone(config, runtime);
     const work = keepWorkingOf({ tasks: snapshot.state.tasks, elsewhere, session: id, ask, now, zone, rest });

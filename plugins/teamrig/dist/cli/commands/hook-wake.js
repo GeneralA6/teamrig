@@ -56,6 +56,10 @@ export async function wakeScopeOf(runtime, payload, needsWake) {
     const id = await teamSessionOf(runtime, kit, roster, tab);
     return id === undefined ? { kind: 'off', why: 'this tab is not a team session' } : { kind: 'found', kit, config, roster, id, tab, from: found.from };
 }
+/** The W of the turn a wake would start in a tab whose last turn was at `lastTurnAt` (undefined: unknown, counted cold). */
+function wakeWOf(config, lastTurnAt, now) {
+    return wakeCost(lastTurnAt === undefined ? undefined : now - lastTurnAt, config.messages.coldAfterMinutes, undefined).w;
+}
 /** The ids of the tasks a verdict wakes the session for, now or later. */
 function dueIdsOf(verdict) {
     return new Set(verdict.kind === 'wake' ? verdict.tasks.map((task) => task.id) : verdict.kind === 'later' ? verdict.ids : []);
@@ -76,7 +80,9 @@ async function restCappedDecision(runtime, scope, input) {
         return decision;
     }
     const facts = await budgetFactsOf(runtime, { kit: scope.kit, config, roster: scope.roster, id: scope.id }, undefined);
-    const maxPriority = effectivePriority(input.maxPriority, wakeRestOf(facts, config.budget.quietHours, input.now));
+    const lastTurnAt = await lastWriteOf(runtime.transcripts, claudeProjectsDir(runtime.env, runtime.userHome), [scope.tab]);
+    const rest = wakeRestOf(facts, config.budget.quietHours, input.now, wakeWOf(config, lastTurnAt, input.now));
+    const maxPriority = effectivePriority(input.maxPriority, rest);
     const cut = new Set(dueTasks.filter((task) => task.priority > maxPriority).map((task) => task.id));
     if (cut.size === 0) {
         return decision;
@@ -140,7 +146,7 @@ async function momentsOf(runtime, scope, tasks, elsewhere, state, now) {
         due: dueMoments(now, dayStartUtc, facts === undefined ? inBurst : facts.burst, state.settled),
         startable,
         lastTurnAt,
-        rest: wakeRestOf(facts, config.budget.quietHours, now),
+        rest: wakeRestOf(facts, config.budget.quietHours, now, wakeWOf(config, lastTurnAt, now)),
         now,
         lastWakeAt: state.lastWakeAt,
         minGapMs: config.wake.minGapMinutes * MINUTE_MS,

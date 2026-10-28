@@ -102,6 +102,7 @@ export async function budgetFactsOf(runtime, scope, transcript) {
         id,
         name: roster.nameOf(id) ?? id,
         usedTodayPct: todayW / todayWPerPct,
+        todayWPerPct,
         budgetPct,
         lift,
         ...liftNamesOf(split, roster, id, lift),

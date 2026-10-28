@@ -30,12 +30,16 @@ function stateFor(state, now) {
     const { quietFrom, liftAt, burstAt, modelBurstAt, surplusShown } = state;
     return { ...emptyWarnState(day), quietFrom, liftAt, burstAt, modelBurstAt, surplusShown };
 }
-/** The session's use today in % of its daily budget; any use counts as past a budget of 0. */
-function budgetUsePct(facts) {
+/**
+ * The session's use today, with `extraPct` more of the week spent, in % of its daily budget; any use counts as past a
+ * budget of 0.
+ */
+function budgetUsePct(facts, extraPct = 0) {
+    const usedPct = facts.usedTodayPct + extraPct;
     if (facts.budgetPct > 0) {
-        return (facts.usedTodayPct / facts.budgetPct) * 100;
+        return (usedPct / facts.budgetPct) * 100;
     }
-    return facts.usedTodayPct > 0 ? Number.POSITIVE_INFINITY : 0;
+    return usedPct > 0 ? Number.POSITIVE_INFINITY : 0;
 }
 /**
  * The highest warning level reached: one of `warnAtPct`, or past the last of them a further step of
@@ -69,18 +73,22 @@ export function quietSpanOf(quiet, now) {
     const from = (minute >= start ? dayStart : dayStart - MS_PER_DAY) + start * MS_PER_MINUTE;
     return { from, to: from + ((end - start + MINUTES_PER_DAY) % MINUTES_PER_DAY) * MS_PER_MINUTE };
 }
-/** True when the session's use today is past its daily budget (its lift's while lifted). */
-export function isPastDailyBudget(facts) {
-    return budgetUsePct(facts) > 100;
+/**
+ * True when the session's use today is past its daily budget (its lift's while lifted), or would be once it spends
+ * `extraPct` more of the week.
+ */
+export function isPastDailyBudget(facts, extraPct = 0) {
+    return budgetUsePct(facts, extraPct) > 100;
 }
 /**
  * True when the session is past its daily budget while the team has no room today (its use at or past its in-day
  * pace, `hasRoom`): only then is it held, woken for urgent work alone and escalated as `budget.escalate` says.
  * While the team has room, a session past its part uses room the others left, so no session waits while the week
- * has room.
+ * has room. A turn about to start counts as spent (`extraPct`, in % of the week): a session with next to nothing
+ * left, idle since the night, is held before its wake, not after the wake's own turn spent it (T1322).
  */
-export function isHeld(facts) {
-    return isPastDailyBudget(facts) && !hasRoom(facts.teamDay);
+export function isHeld(facts, extraPct = 0) {
+    return isPastDailyBudget(facts, extraPct) && !hasRoom(facts.teamDay);
 }
 /** The quiet hours the session is in; undefined outside them, or while its lift exempts it. */
 export function sessionQuietSpan(facts, quiet) {
