@@ -208,8 +208,11 @@ export const DEFAULT_REFRESH = {
  * A session quiet an hour may be closed: the owner's pick on 10-19.
  */
 export const DEFAULT_HEADROOM = { sessionMb: 1200, commitMaxPct: 92, closeIdleMinutes: 60 };
-/** No idle pass runs until the team turns it on, and then it keeps open only the sessions its roles name. */
-export const DEFAULT_IDLE = { mode: 'off', keepOpen: [] };
+/**
+ * The idle pass closes and reopens sessions unless the team sets it to dry-run or off, so an idle tab spends no tokens
+ * on any team (owner order, T1409); it keeps open only the sessions its roles name.
+ */
+export const DEFAULT_IDLE = { mode: 'on', keepOpen: [] };
 export const DEFAULT_OPEN = { terminal: 'auto', headroom: DEFAULT_HEADROOM, idle: DEFAULT_IDLE };
 /** The status line shows the session's folder, its branch and the command that resumes it, unless the team turns them off. */
 export const DEFAULT_STATUS_LINE = { folder: true, branch: true, resume: true };
