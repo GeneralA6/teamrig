@@ -148,14 +148,16 @@ export function decideWake(input) {
 }
 /**
  * Where the session stands against its budget at `now`: held (past its daily budget, its lift's while lifted, while
- * the team has no room today), and in quiet hours unless its lift exempts it. With no facts (the week's use is not
- * known yet) it is never held, and quiet hours go by the clock alone.
+ * the team has no room today), and in quiet hours unless its lift exempts it. The turn a wake would start counts as
+ * spent (`turnW`, in W), so a session with less left than that turn is held before it, not after (T1322). With no facts (the week's use is not known yet) it is never held, and quiet hours go
+ * by the clock alone.
  */
-export function wakeRestOf(facts, quietHours, now) {
+export function wakeRestOf(facts, quietHours, now, turnW) {
     if (facts === undefined) {
         return { held: false, quiet: quietSpanOf(quietHours, now) !== undefined };
     }
-    return { held: isHeld(facts), quiet: sessionQuietSpan(facts, quietHours) !== undefined };
+    const turnPct = facts.todayWPerPct > 0 ? turnW / facts.todayWPerPct : 0;
+    return { held: isHeld(facts, turnPct), quiet: sessionQuietSpan(facts, quietHours) !== undefined };
 }
 /** The least urgent priority that wakes the session now: p0 only while its budget holds it, p1 in quiet hours. */
 export function effectivePriority(configured, rest) {
