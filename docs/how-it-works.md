@@ -263,7 +263,7 @@ and reads without a prompt.
 ## Shipping from many sessions
 
 How many sessions build, merge and deploy on one host has its own guide,
-[Ship from many sessions](guides/ship-from-many-sessions.md): the host lock, merging a branch, rolling it out, when a
+[Ship from many sessions](guides/ship-from-many-sessions.md): the host lock, merging a branch, deploying it, when a
 step holds back, clean measurements and the deploy state in one read.
 
 ## Improving itself

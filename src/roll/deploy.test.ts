@@ -25,9 +25,9 @@ const PLACES: CoordinatorPlaces = {
   hostLock: '/kit/host.lock',
   pendingMerges: '/team/deploys/pending-merges',
 };
-const FLOW = { name: 'flow', command: ['node', 'gates/flow.js'] };
-const ROLL_COMMAND = ['node', 'tools/roll.js'];
-const DEPLOY: DeployConfig = { targets: ['api', 'workers', 'live'], checks: [FLOW], afterPull: [['node', 'scripts/build-cli.js']], command: ROLL_COMMAND };
+const FLOW = { name: 'flow', command: ['node', 'checks/flow.js'] };
+const DEPLOY_COMMAND = ['node', 'tools/deploy.js'];
+const DEPLOY: DeployConfig = { targets: ['api', 'workers', 'live'], checks: [FLOW], afterPull: [['node', 'scripts/build-cli.js']], command: DEPLOY_COMMAND };
 const PIPELINE: CoordinatorRepoConfig = { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], dependencyGate: false, followMainCheckout: false, deploy: DEPLOY };
 const RESTART = ['node', 'tools/restart.js', 'api', 'live'];
 const REQUEST: DeployRequest = { session: 'sec', repo: 'pipeline', dir: '/runner', targets: ['api', 'live'], why: 'rotate the db credential', argv: RESTART };
@@ -107,11 +107,11 @@ function claim(targets: readonly string[]): object {
 }
 
 describe('deployTargets', () => {
-  it('asks the gates before and under the lock, runs the command with the lock, and records one heavy step and a deploy of its targets', async () => {
+  it('asks the checks before and under the lock, runs the command with the lock, and records one heavy step and a deploy of its targets', async () => {
     const world = new World();
     world.hooks.answer(RESTART, { lines: ['restarting api, live', 'restarted 2 deployments'], takesMs: 90_000 });
     assert.deepEqual(await world.run(), { kind: 'done', summary: 'deployed api, live of pipeline: restarted 2 deployments' });
-    assert.deepEqual(world.hooks.commands, ['node gates/flow.js', 'node gates/flow.js', RESTART.join(' ')], 'nothing is pulled, built or rolled');
+    assert.deepEqual(world.hooks.commands, ['node checks/flow.js', 'node checks/flow.js', RESTART.join(' ')], 'nothing is pulled, built or deployed');
     const base = { TEAMRIG_TEAM: 'app', TEAMRIG_SESSION: 'sec', TEAMRIG_VERB: 'redeploy', TEAMRIG_REPO: 'pipeline', TEAMRIG_DEPLOY_TARGETS: 'api,live' };
     const [before, locked, command] = world.hooks.ran;
     assert.deepEqual(teamrigEnv(before?.env ?? {}), { ...base, TEAMRIG_CHECK_NAME: 'flow', TEAMRIG_CHECK_PHASE: 'before' });
@@ -138,17 +138,17 @@ describe('deployTargets', () => {
     assert.ok(world.lockFree());
   });
 
-  it('refuses targets its repository does not deploy, or none, before any gate or lock', async () => {
+  it('refuses targets its repository does not deploy, or none, before any check or lock', async () => {
     const world = new World();
     const listed = 'coordinator.repos.pipeline.deploy.targets (api, workers, live)';
     assert.deepEqual(await world.run({ ...REQUEST, targets: ['api', 'apii', 'cron'] }), { kind: 'refused', reason: `apii, cron are not in ${listed}: a deploy names only targets the quiet claims and windows know` });
     assert.deepEqual(await world.run({ ...REQUEST, targets: ['apii'] }), { kind: 'refused', reason: `apii is not in ${listed}: a deploy names only targets the quiet claims and windows know` });
     assert.deepEqual(await world.run({ ...REQUEST, targets: [] }), { kind: 'refused', reason: `name the targets the command restarts, from ${listed}` });
-    assert.deepEqual(await world.run({ ...REQUEST, repo: 'site' }), { kind: 'refused', reason: 'site is not in coordinator.repos (with a roll block: pipeline)' });
+    assert.deepEqual(await world.run({ ...REQUEST, repo: 'site' }), { kind: 'refused', reason: 'site is not in coordinator.repos (with a deploy block: pipeline)' });
     assert.deepEqual([world.hooks.ran.length, world.records().length, world.lockFree()], [0, 0, true]);
   });
 
-  it('refuses a main checkout with no commit at HEAD, before any gate or lock', async () => {
+  it('refuses a main checkout with no commit at HEAD, before any check or lock', async () => {
     const world = new World();
     world.git.heads.delete(MAIN_CHECKOUT);
     assert.deepEqual(await world.run(), { kind: 'refused', reason: `${MAIN_CHECKOUT} (coordinator.repos.pipeline.mainCheckout) names no commit at HEAD, so the deploy could not record what it ran on` });
@@ -175,15 +175,15 @@ describe('deployTargets', () => {
     assert.deepEqual([late.hooks.ran.length, blackout.hooks.ran.length, late.records().length, blackout.records().length], [0, 0, 0, 0]);
   });
 
-  it('waits while a gate holds it and is refused when a gate refuses, running nothing', async () => {
+  it('waits while a check holds it and is refused when a check refuses, running nothing', async () => {
     const held = new World();
     held.hooks.answer(FLOW.command, { lines: ['batch run open since 23:10 UTC'], end: 75 }, {});
     assert.equal((await held.run()).kind, 'done');
-    assert.ok(held.said.includes('waiting: gate flow holds the roll: batch run open since 23:10 UTC'));
+    assert.ok(held.said.includes('waiting: check flow holds the deploy: batch run open since 23:10 UTC'));
     const frozen = new World();
     frozen.hooks.answer(FLOW.command, { lines: ['frozen for the release'], end: 2 });
-    assert.deepEqual(await frozen.run(), { kind: 'refused', reason: 'gate flow refuses the roll: frozen for the release' });
-    assert.deepEqual([frozen.hooks.commands, frozen.records().length, frozen.lockFree()], [['node gates/flow.js'], 0, true]);
+    assert.deepEqual(await frozen.run(), { kind: 'refused', reason: 'check flow refuses the deploy: frozen for the release' });
+    assert.deepEqual([frozen.hooks.commands, frozen.records().length, frozen.lockFree()], [['node checks/flow.js'], 0, true]);
   });
 
   it('records the deploy and fails when the command fails, its lines and reason redacted', async () => {

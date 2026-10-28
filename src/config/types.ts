@@ -630,7 +630,7 @@ export interface HeavyConfig {
 export interface CoordinatorWaitConfig {
   /** A waiting step looks again after this many seconds; the first in line for the host lock every 2 at most. */
   readonly pollSeconds: number;
-  /** A deploy step (`teamrig merge`, `roll`) waits this many minutes at most for quiet claims and the host lock, then is refused; a wait in a line for the lock that keeps moving goes on past them. */
+  /** A deploy step (`teamrig merge`, `deploy`) waits this many minutes at most for quiet claims and the host lock, then is refused; a wait in a line for the lock that keeps moving goes on past them. */
   readonly maxMinutes: number;
 }
 
@@ -653,7 +653,7 @@ export interface CoordinatorRepoConfig {
    * With `dependencyGate`, what clears a dependency change: a program and its arguments, run without a shell under the
    * host lock with the base's package-lock.json in the file `TEAMRIG_BASELINE_LOCK` names (unset when the base has
    * none). `teamrig merge` runs it in the branch's checkout after the rebase and before the push, the default
-   * branch its base; `teamrig roll` in the main checkout after the pull, its old HEAD the base. Exit 0 lets the
+   * branch its base; `teamrig deploy` in the main checkout after the pull, its old HEAD the base. Exit 0 lets the
    * change go, anything else refuses it. Unset: the gate refuses every dependency change.
    */
   readonly dependencyCheck?: readonly string[];
@@ -672,7 +672,7 @@ export interface CoordinatorRepoConfig {
   readonly worktreeSetup?: readonly string[];
   /** How `teamrig merge` merges a branch through the team's own flow, such as a pull request; unset: it pushes the branch to the default branch. */
   readonly merge?: MergeConfig;
-  /** How `teamrig roll` deploys what merged into the default branch; unset: the repository is not deployed. */
+  /** How `teamrig deploy` deploys what merged into the default branch; unset: the repository is not deployed. */
   readonly deploy?: DeployConfig;
 }
 
@@ -694,7 +694,7 @@ export interface MergeConfig {
   readonly remote: string;
 }
 
-/** A check `teamrig roll` asks before it deploys: a program and its arguments, run without a shell from the main checkout. */
+/** A check `teamrig deploy` asks before it deploys: a program and its arguments, run without a shell from the main checkout. */
 export interface DeployCheckConfig {
   /** Names the check in a wait or refusal, such as `flow`. */
   readonly name: string;
@@ -702,7 +702,7 @@ export interface DeployCheckConfig {
   readonly command: readonly string[];
 }
 
-/** How `teamrig roll` deploys a repository's default branch from its main checkout, each command run without a shell. */
+/** How `teamrig deploy` deploys a repository's default branch from its main checkout, each command run without a shell. */
 export interface DeployConfig {
   /** The deploy targets it deploys: quiet claims on them hold it. */
   readonly targets: readonly string[];
@@ -741,7 +741,7 @@ export interface WindowsConfig {
 
 /**
  * The deploy coordinator: its folder, the heavy-step cutoff and the reset blackout, the host lock, how a step waits,
- * quiet claims, clean measurement windows, and the repositories whose branches `teamrig merge` merges and `teamrig roll` deploys.
+ * quiet claims, clean measurement windows, and the repositories whose branches `teamrig merge` merges and `teamrig deploy` deploys.
  */
 export interface CoordinatorConfig {
   /** The coordinator's folder, which holds its ledger; a relative path is in the team's folder. Unset: `<state>/deploys`. */

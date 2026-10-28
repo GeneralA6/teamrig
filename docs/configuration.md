@@ -33,7 +33,7 @@ Team settings for the teamrig plugin. Only the roster (sessions, roles.lead) is 
 | `prompts` | [object](#prompts) |  | The permission prompts teamrig's own hooks raise. |
 | `secretGuard` | [object](#secretguard) |  | Refuses a Bash, PowerShell, Read or Grep call that would print a secret into the session, where it stays in the transcript and every later prompt: a secret file's content, the whole environment, a secret variable's value, or a Kubernetes secret's data. A value handed to the tool that needs it (a pipe into docker login --password-stdin, a redirect into a file) stays allowed, and the read-only shell hook never lets such a line run without a prompt. |
 | `commits` | [object](#commits) |  | The small-commits rule: one logical change per commit; a commit over either bound needs a reason line. |
-| `coordinator` | [object](#coordinator) |  | The deploy coordinator: teamrig heavy runs one heavy step on the host at a time, under the host lock, teamrig merge merges a branch into its repository's default branch, teamrig roll deploys it and teamrig claim holds deploys while a session measures; each step is recorded in the ledger. |
+| `coordinator` | [object](#coordinator) |  | The deploy coordinator: teamrig heavy runs one heavy step on the host at a time, under the host lock, teamrig merge merges a branch into its repository's default branch, teamrig deploy deploys it and teamrig claim holds deploys while a session measures; each step is recorded in the ledger. |
 | `budget` | [object](#budget) |  | The weekly token budget: the pace line the team is measured against and each session's daily part of it. Usage is in weighted tokens (W) read from the session transcripts, and in % of the week from the status line when there is one. The defaults only measure and show; nothing blocks or acts. |
 | `leadBoundary` | [object](#leadboundary) |  | How teamrig keeps the lead leading: its own edits, tests and code searches are nudged and shown, never blocked. |
 | `loops` | [object](#loops) |  | Loop discipline inside a turn. |
@@ -259,7 +259,7 @@ The small-commits rule: one logical change per commit; a commit over either boun
 
 ## `coordinator`
 
-The deploy coordinator: teamrig heavy runs one heavy step on the host at a time, under the host lock, teamrig merge merges a branch into its repository's default branch, teamrig roll deploys it and teamrig claim holds deploys while a session measures; each step is recorded in the ledger.
+The deploy coordinator: teamrig heavy runs one heavy step on the host at a time, under the host lock, teamrig merge merges a branch into its repository's default branch, teamrig deploy deploys it and teamrig claim holds deploys while a session measures; each step is recorded in the ledger.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
@@ -281,12 +281,12 @@ The repositories whose branches teamrig merge merges into their default branch, 
 | `mainCheckout` (required) | string (at least 1 character) |  | The repository's main checkout; a branch merges from any worktree of it. A relative path is in the team's folder. |
 | `deploysOnPush` | array of string (matching `^[a-z0-9][a-z0-9._-]*$`) |  | The deploy targets a push to the default branch deploys by itself (a host that builds on push): quiet claims on them hold the merge, and the push is recorded as their deploy. |
 | `dependencyGate` | boolean |  | Refuse a branch (merge) or a pushed range (deploy) whose package files need a dependency install, so the main checkout node\_modules, which its worktrees link to, never changes unreviewed; dependencyCheck clears one for merge, and with deploy.dependencyInstall for a deploy. |
-| `dependencyCheck` | array (1 to 64 items) of string (at least 1 character) |  | With dependencyGate, what clears a dependency change: a program and its arguments, run without a shell under the host lock with the base package-lock.json in the file TEAMRIG\_BASELINE\_LOCK names (unset when the base has none). teamrig merge runs it in the branch checkout after the rebase and before the push, the default branch its base; teamrig roll in the main checkout after the pull, its old HEAD the base. Exit 0 lets the change go, anything else refuses it. |
+| `dependencyCheck` | array (1 to 64 items) of string (at least 1 character) |  | With dependencyGate, what clears a dependency change: a program and its arguments, run without a shell under the host lock with the base package-lock.json in the file TEAMRIG\_BASELINE\_LOCK names (unset when the base has none). teamrig merge runs it in the branch checkout after the rebase and before the push, the default branch its base; teamrig deploy in the main checkout after the pull, its old HEAD the base. Exit 0 lets the change go, anything else refuses it. |
 | `followMainCheckout` | boolean |  | After the push, fast-forward the main checkout to it: only a fast-forward, only on the default branch with no tracked changes. |
 | `worktreeFolder` | string (at least 1 character) | `".claude/worktrees"` | The folder teamrig worktree add makes each new worktree in, one folder per branch named after it with each / as -. A relative path is in the main checkout. |
 | `worktreeSetup` | array (1 to 64 items) of string (at least 1 character) |  | What teamrig worktree add runs in a new worktree, such as a link to the main checkout node\_modules: a program and its arguments, run without a shell, with the main checkout folder in TEAMRIG\_MAIN\_CHECKOUT. Anything but exit 0 leaves the worktree in place and fails the add. Unset: nothing runs. |
 | `merge` | [object](#coordinatorreposmerge) |  | How teamrig merge merges a branch through the team's own flow, such as a pull request the forge merges. Unset: it pushes the branch to the default branch. |
-| `deploy` | [object](#coordinatorreposdeploy) |  | How teamrig roll deploys what merged into the default branch, each command a program and its arguments run without a shell from the main checkout. Unset: the repository is not deployed. |
+| `deploy` | [object](#coordinatorreposdeploy) |  | How teamrig deploy deploys what merged into the default branch, each command a program and its arguments run without a shell from the main checkout. Unset: the repository is not deployed. |
 
 ## `coordinator.repos.*.merge`
 
@@ -299,7 +299,7 @@ How teamrig merge merges a branch through the team's own flow, such as a pull re
 
 ## `coordinator.repos.*.deploy`
 
-How teamrig roll deploys what merged into the default branch, each command a program and its arguments run without a shell from the main checkout. Unset: the repository is not deployed.
+How teamrig deploy deploys what merged into the default branch, each command a program and its arguments run without a shell from the main checkout. Unset: the repository is not deployed.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
@@ -359,7 +359,7 @@ How a coordinator step waits.
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `pollSeconds` | integer (1 to 600) | `30` | A waiting step looks again after this many seconds; the first in line for the host lock every 2 at most. |
-| `maxMinutes` | integer (0 to 1440) | `60` | A deploy step (teamrig merge, roll) waits this many minutes at most for quiet claims and the host lock, then is refused; a wait in a line for the lock that keeps moving goes on past them. |
+| `maxMinutes` | integer (0 to 1440) | `60` | A deploy step (teamrig merge, deploy) waits this many minutes at most for quiet claims and the host lock, then is refused; a wait in a line for the lock that keeps moving goes on past them. |
 
 ## `coordinator.schedule`
 

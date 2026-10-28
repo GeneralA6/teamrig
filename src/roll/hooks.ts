@@ -8,11 +8,11 @@ import { endOf } from '../test-run/shell.ts';
 
 /**
  * Every hook's exit codes say the same: 0 done, this one (`EX_TEMPFAIL`) wait and come back later, anything else
- * failed; a roll gate also reads 2 as a refusal.
+ * failed; a deploy check also reads 2 as a refusal.
  */
 export const HOOK_WAIT_EXIT = 75;
 
-/** One hook a roll or merge runs: a gate, a dependency check, an afterPull command or the roll command. */
+/** One hook a deploy or merge runs: a deploy check, a dependency check, an afterPull command or the deploy command. */
 export interface HookRequest {
   /**
    * A program and its arguments, run without a shell, so no word is read twice: the program is an executable on the

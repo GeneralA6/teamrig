@@ -23,8 +23,8 @@ import {
 } from './pack.ts';
 
 const COMMAND = 'teamrig';
-/** A coordinator repository that `teamrig roll` deploys. */
-const ROLLED_REPO = { mainCheckout: 'C:/src/app', deploy: { targets: ['api'], command: ['node', 'roll.js'] } };
+/** A coordinator repository that `teamrig deploy` deploys. */
+const DEPLOYED_REPO = { mainCheckout: 'C:/src/app', deploy: { targets: ['api'], command: ['node', 'deploy.js'] } };
 const longest = (letter: string, length: number) => letter.repeat(length);
 const filled = (limit: { readonly maxItems: number; readonly maxLength: number }, letter: string) =>
   Array.from({ length: limit.maxItems }, () => longest(letter, limit.maxLength));
@@ -68,7 +68,7 @@ function worstCaseConfig(wording: Wording = { pushToProtected: 'ask', hookAsks: 
     prompts: { hookAsks: wording.hookAsks },
     wake: { enabled: wording.wakeEnabled },
     commits: { maxLines: CONFIG_LIMITS.commitMaxLines.max, maxFiles: CONFIG_LIMITS.commitMaxFiles.max, largeCommitTrailer: 'T'.repeat(40), gate: 'refuse' },
-    coordinator: { schedule: { heavyCutoffUtc: '22:30' }, repos: { app: ROLLED_REPO } },
+    coordinator: { schedule: { heavyCutoffUtc: '22:30' }, repos: { app: DEPLOYED_REPO } },
     // Both round to their longest two-decimal form (two digits before the point), and together stay within 100%.
     budget: { enabled: true, targetPct: 50.98765432109876, reservePct: 48.98765432109876, subagentWeight: 9.87654321 },
     alerts: { persistentFailureHours: CONFIG_LIMITS.persistentFailureHours.max },
@@ -326,27 +326,27 @@ describe('renderCorePack', () => {
     assert.doesNotMatch(pack, /coordinatorOwner|securityReviewer|heavyCutoffUtc|teamrig heavy|coordinator\.repos|Pace the week|\[budget\]/);
   });
 
-  it('gives a team with a coordinator repository the heavy, test, merge and roll commands, all in the background', () => {
+  it('gives a team with a coordinator repository the heavy, test, merge and deploy commands, all in the background', () => {
     const pack = renderCorePack(
-      testConfig({ coordinator: { schedule: { heavyCutoffUtc: '22:30' }, repos: { app: ROLLED_REPO } } }),
+      testConfig({ coordinator: { schedule: { heavyCutoffUtc: '22:30' }, repos: { app: DEPLOYED_REPO } } }),
       COMMAND,
       'win32',
       RULES_CLOCK,
     );
     assert.match(
       pack,
-      /^7\. .*before then\. Run heavy steps \(builds, test runs, data scripts\) in the background through `teamrig heavy`, a test run inside `teamrig test`, none starting 22:30-00:00 UTC \[coordinator\.schedule\.heavyCutoffUtc\]; a commit stays a plain `git commit`\. Merge a tested branch with `teamrig merge` and run it with `teamrig roll`, also in the background \[coordinator\.repos\]\.$/m,
+      /^7\. .*before then\. Run heavy steps \(builds, test runs, data scripts\) in the background through `teamrig heavy`, a test run inside `teamrig test`, none starting 22:30-00:00 UTC \[coordinator\.schedule\.heavyCutoffUtc\]; a commit stays a plain `git commit`\. Merge a tested branch with `teamrig merge` and run it with `teamrig deploy`, also in the background \[coordinator\.repos\]\.$/m,
     );
     assert.doesNotMatch(pack, /No heavy step/);
   });
 
-  it('names roll only when a coordinator repository rolls, and the cutoff only when set', () => {
+  it('names deploy only when a coordinator repository has a deploy block, and the cutoff only when set', () => {
     const pack = renderCorePack(testConfig({ coordinator: { repos: { app: { mainCheckout: 'C:/src/app' } } } }), COMMAND, 'win32', RULES_CLOCK);
     assert.match(
       pack,
       / a test run inside `teamrig test`; a commit stays a plain `git commit`\. Merge a tested branch with `teamrig merge`, also in the background \[coordinator\.repos\]\.$/m,
     );
-    assert.doesNotMatch(pack, /teamrig roll|heavyCutoffUtc/);
+    assert.doesNotMatch(pack, /teamrig deploy|heavyCutoffUtc/);
   });
 
   it('adds the coordinator owner, security reviewer, heavy cutoff and budget pacing only when configured', () => {

@@ -17,7 +17,7 @@ interface DeployParts {
   readonly argv: readonly string[];
 }
 
-/** The deploy `--targets` asks for, with its `--what` and the command after `--`; undefined for a plain roll. */
+/** The deploy `--targets` asks for, with its `--what` and the command after `--`; undefined for a plain deploy. */
 function deployPartsOf(args: ParsedArgs): DeployParts | undefined {
   const targets = args.flags.get('targets');
   if (targets === undefined) {
@@ -30,14 +30,14 @@ function deployPartsOf(args: ParsedArgs): DeployParts | undefined {
 }
 
 /**
- * `teamrig roll [--repo <name>]`: brings what was pushed to a repository's default branch to the running system
+ * `teamrig deploy [--repo <name>]`: brings what was pushed to a repository's default branch to the running system
  * (src/roll/roll.ts): pulls its main checkout fast-forward and runs `coordinator.repos.<name>.deploy`, its afterPull
  * hooks then its command, one heavy step in the ledger, and records the deploy. With `--targets <a,b> --what "<why>"
  * -- <command>` it pulls nothing and runs that command instead, a deploy of those targets (src/roll/deploy.ts). Refused
  * for a main checkout it must not pull into, from `coordinator.schedule.heavyCutoffUtc` to midnight UTC, in the
- * `resetBlackoutHours` before the weekly token reset and when a gate refuses; it waits up to
- * `coordinator.wait.maxMinutes` for quiet claims on its targets, its gates and the host lock. Once the shell that
- * started it ends, it stops waiting, or kills the hook it runs (exit 129) and frees the lock. Exit 0 rolled or nothing
+ * `resetBlackoutHours` before the weekly token reset and when a check refuses; it waits up to
+ * `coordinator.wait.maxMinutes` for quiet claims on its targets, its checks and the host lock. Once the shell that
+ * started it ends, it stops waiting, or kills the hook it runs (exit 129) and frees the lock. Exit 0 deployed or nothing
  * pending, 1 failed or stopped, 2 refused.
  */
 export async function roll(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {

@@ -11,7 +11,8 @@ import { COMMAND_EFFECTS } from '../../src/cli/run.ts';
  */
 
 const FEATURES = readFileSync(fileURLToPath(new URL('../../docs/features.md', import.meta.url)), 'utf8');
-const WORD = /^[a-z]+$/;
+/** A command word: lower-case words joined by hyphens (`deploy-status`), none of them a regular-expression character. */
+const WORD = /^[a-z]+(-[a-z]+)*$/;
 
 /** Each command's first word, and whether every command under it is internal. */
 function topLevelCommands(): ReadonlyMap<string, boolean> {

@@ -64,7 +64,7 @@ export function withdrawalText(withdrawal: Withdrawal, zone: TimeZone): string {
 
 /**
  * `teamrig withdraw (--what <text> | --all)`: takes this session's steps that wait for the host lock (heavy, merge,
- * roll) out of its line, so a re-ordered or abandoned step leaves it; each stops at its next look and runs nothing.
+ * deploy) out of its line, so a re-ordered or abandoned step leaves it; each stops at its next look and runs nothing.
  * With neither flag it lists them and is refused. Exit 0 when each chosen step was withdrawn or none waits, 1 when
  * one went first or was queued by an older teamrig, 2 refused.
  */

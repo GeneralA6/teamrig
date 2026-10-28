@@ -495,7 +495,7 @@
       }
     },
     "coordinator": {
-      "description": "The deploy coordinator: teamrig heavy runs one heavy step on the host at a time, under the host lock, teamrig merge merges a branch into its repository's default branch, teamrig roll deploys it and teamrig claim holds deploys while a session measures; each step is recorded in the ledger.",
+      "description": "The deploy coordinator: teamrig heavy runs one heavy step on the host at a time, under the host lock, teamrig merge merges a branch into its repository's default branch, teamrig deploy deploys it and teamrig claim holds deploys while a session measures; each step is recorded in the ledger.",
       "type": "object",
       "properties": {
         "dir": {
@@ -526,7 +526,7 @@
                 "type": "boolean"
               },
               "dependencyCheck": {
-                "description": "With dependencyGate, what clears a dependency change: a program and its arguments, run without a shell under the host lock with the base package-lock.json in the file TEAMRIG_BASELINE_LOCK names (unset when the base has none). teamrig merge runs it in the branch checkout after the rebase and before the push, the default branch its base; teamrig roll in the main checkout after the pull, its old HEAD the base. Exit 0 lets the change go, anything else refuses it.",
+                "description": "With dependencyGate, what clears a dependency change: a program and its arguments, run without a shell under the host lock with the base package-lock.json in the file TEAMRIG_BASELINE_LOCK names (unset when the base has none). teamrig merge runs it in the branch checkout after the rebase and before the push, the default branch its base; teamrig deploy in the main checkout after the pull, its old HEAD the base. Exit 0 lets the change go, anything else refuses it.",
                 "type": "array",
                 "minItems": 1,
                 "maxItems": 64,
@@ -570,7 +570,7 @@
                 }
               },
               "deploy": {
-                "description": "How teamrig roll deploys what merged into the default branch, each command a program and its arguments run without a shell from the main checkout. Unset: the repository is not deployed.",
+                "description": "How teamrig deploy deploys what merged into the default branch, each command a program and its arguments run without a shell from the main checkout. Unset: the repository is not deployed.",
                 "type": "object",
                 "required": ["command"],
                 "properties": {
@@ -757,7 +757,7 @@
               "default": 30
             },
             "maxMinutes": {
-              "description": "A deploy step (teamrig merge, roll) waits this many minutes at most for quiet claims and the host lock, then is refused; a wait in a line for the lock that keeps moving goes on past them.",
+              "description": "A deploy step (teamrig merge, deploy) waits this many minutes at most for quiet claims and the host lock, then is refused; a wait in a line for the lock that keeps moving goes on past them.",
               "type": "integer",
               "minimum": 0,
               "maximum": 1440,

@@ -11,7 +11,7 @@ import { stoppableHooks, stoppableLock, stoppableSleep, stoppableSteps, unlessSt
 
 const HELD: HostLockInfo = { token: 't1', pid: 4242, session: 'alpha', purpose: 'merge app', kit: KIT_VERSION, acquiredAt: '2030-01-08T10:00:00.000Z', expiresAt: '2030-01-08T12:30:00.000Z' };
 const STEP: StepRequest = { command: 'npm test', cwd: '/repo', env: {}, timeoutMs: 60_000 };
-const HOOK: HookRequest = { argv: ['node', 'roll.js'], cwd: '/repo', env: {}, timeoutMs: 60_000, onLine: () => undefined };
+const HOOK: HookRequest = { argv: ['node', 'deploy.js'], cwd: '/repo', env: {}, timeoutMs: 60_000, onLine: () => undefined };
 
 /** A lock that takes at once and keeps the stop each wait was given and each lock released. */
 class SeenLock implements Pick<HostLock, 'acquire' | 'release'> {
@@ -35,8 +35,8 @@ describe('stoppable ports', () => {
     const stop = new AbortController();
     const own = new AbortController();
     const stoppable = stoppableLock(lock, stop.signal);
-    await stoppable.acquire('alpha', 'roll app', 60_000, 30_000, () => undefined);
-    await stoppable.acquire('alpha', 'roll app', 60_000, 30_000, () => undefined, undefined, own.signal);
+    await stoppable.acquire('alpha', 'deploy app', 60_000, 30_000, () => undefined);
+    await stoppable.acquire('alpha', 'deploy app', 60_000, 30_000, () => undefined, undefined, own.signal);
     await stoppable.release(HELD);
     assert.equal(lock.stops[0], stop.signal);
     own.abort();

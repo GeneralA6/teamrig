@@ -21,7 +21,7 @@ function deploy(overrides: Partial<DeployRecord> = {}): DeployRecord {
 }
 
 describe('ledgerLine', () => {
-  it('writes the deploy as one ledger.md line, by its rolled-at minute', () => {
+  it('writes the deploy as one ledger.md line, by the minute it deployed', () => {
     assert.equal(ledgerLine(deploy()), '- 2030-01-08 10:04 | api | api | 1a2b3c4d..5e6f7a8b | Cloud api (deploys on push; not observed here) | deploy | pushed');
   });
 

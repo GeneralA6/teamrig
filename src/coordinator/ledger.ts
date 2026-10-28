@@ -10,7 +10,7 @@ export const LEDGER_FILE = 'ledger.jsonl';
 export const LEDGER_MD_FILE = 'ledger.md';
 
 /** The first line of a ledger.md teamrig starts. */
-export const LEDGER_MD_HEADER = '# Deploy ledger: one line a deploy: rolled at (UTC) | session | repo | range | what | kind | note';
+export const LEDGER_MD_HEADER = '# Deploy ledger: one line a deploy: deployed at (UTC) | session | repo | range | what | kind | note';
 
 /**
  * A heavy step in the ledger, in the format a team's own coordinator writes too: once when it starts (`endedAt`
@@ -56,7 +56,7 @@ export interface DeployRecord {
   readonly startedAt: string;
   /** An ISO time. */
   readonly rolledAt: string;
-  /** The targets a deploy of only some of its repository's targets restarted (`teamrig roll --targets`); unset, all of them. */
+  /** The targets a deploy of only some of its repository's targets restarted (`teamrig deploy --targets`); unset, all of them. */
   readonly targets?: readonly string[];
 }
 
@@ -112,7 +112,7 @@ export async function appendRecord(files: Pick<Files, 'append'>, ledger: string,
   await files.append(ledger, `${JSON.stringify(record)}\n`);
 }
 
-/** A deploy's ledger.md line, `- <rolled at> | session | repo | range | what | kind | note`; a `|` or line break in a field becomes `/`. */
+/** A deploy's ledger.md line, `- <deployed at> | session | repo | range | what | kind | note`; a `|` or line break in a field becomes `/`. */
 export function ledgerLine(record: DeployRecord): string {
   const fields = [record.session, record.repo, record.range, record.what, record.kind, record.note].map((field) => field.replace(/[|\r\n]/g, '/'));
   return `- ${formatUtcMinute(new Date(record.rolledAt))} | ${fields.join(' | ')}`;
