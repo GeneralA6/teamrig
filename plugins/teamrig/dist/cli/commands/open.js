@@ -20,6 +20,7 @@ import { urgentFirstPrompt } from "../../wake/asks.js";
 import { onePositional, requiredFlag, UsageError } from "../args.js";
 import { headroomOf } from "../headroom.js";
 import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
+import { liveRunOf, liveRunText } from "../live-run.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { launchListing } from "../skill-listing.js";
 import { loadTree } from "../tree.js";
@@ -125,11 +126,13 @@ export async function open(args, runtime) {
 }
 /**
  * Opens the session's tab as `open` describes: a rehired one on its handover, a closed one in its last Claude Code
- * session or fresh, refused (`RefusedError`) for any session but the lead when the host has no room, and a closed
- * one's reopen logged once its tab opened.
+ * session or fresh, refused (`RefusedError`) while it runs in a Claude Code and, for any session but the lead, when
+ * the host has no room, and a closed one's reopen logged once its tab opened.
  */
 export async function openSession(runtime, kit, config, roster, request) {
     const { team, id, project, terminal, asked } = request;
+    const name = roster.nameOf(id) ?? id;
+    await refuseLiveRun(runtime, kit, roster, id, name);
     const from = rehiredFrom((await new HiringLog(runtime.files, kit.paths.hires).read()).records, id);
     const sessionLog = new SessionLog(runtime.files, kit.paths.sessionLog);
     const closed = closedOf((await sessionLog.read()).records, id);
@@ -137,7 +140,6 @@ export async function openSession(runtime, kit, config, roster, request) {
     const resume = await resumeOf(runtime, kit.paths, config, { id, project, from, reopen, asked });
     const own = request.prompt ?? firstPromptOf(team, id, from, resume, reopen);
     const prompt = checkedPrompt(urgentFirstPrompt(request.urgent ?? [], own, teamZone(config, runtime), PROMPT_MAX));
-    const name = roster.nameOf(id) ?? id;
     // The lead opens whatever the room: it is the session that decides which others run.
     if (id !== roster.holderOf('lead')) {
         const headroom = await headroomOf(runtime, kit.paths, config, roster.ids);
@@ -153,6 +155,13 @@ export async function openSession(runtime, kit, config, roster, request) {
         await sessionLog.append({ kind: 'reopen', session: id, at: new Date(runtime.clock.now()).toISOString(), ...(resume === undefined ? {} : { resumed: resume }) });
     }
     return { kind: 'opened', line: `OPENED ${name} (session ${id}) in a new ${TERMINAL_LABELS[outcome.terminal]} in ${project}, on ${describeLaunch(launchOf(config, id))}${startNoteOf(resume, reopen)}` };
+}
+/** Refuses a second Claude Code of session `id`, named `name`, while it runs in one (src/cli/live-run.ts). */
+async function refuseLiveRun(runtime, kit, roster, id, name) {
+    const live = await liveRunOf(runtime, kit.paths, roster.ids, id);
+    if (live !== undefined) {
+        throw new RefusedError(liveRunText(name, id, live));
+    }
 }
 /**
  * The Claude Code session the tab resumes, undefined for a new one. A closed session resumes its last one when that
@@ -254,6 +263,30 @@ async function restartTaken(store, id) {
     await store.clearRestart(id);
     return true;
 }
+/** How long launch looks for the close of a Claude Code that ended with an error: its closer logs it once it sees it gone. */
+export const CLOSE_LOG_WAIT_MS = 5_000;
+const CLOSE_LOG_POLL_MS = 500;
+/**
+ * The close teamrig logged for `id` since `since`, when Claude Code ended with an error: `teamrig close` and the idle
+ * pass end it (src/cli/close-session.ts), so it exits nonzero, and log the close once they see it gone, so launch
+ * looks for it until `CLOSE_LOG_WAIT_MS`. Undefined after a clean exit, or when no close came.
+ */
+async function closeSince(runtime, log, id, result, since) {
+    if (result.kind !== 'exited' || result.code === 0) {
+        return undefined;
+    }
+    const deadline = runtime.clock.now() + CLOSE_LOG_WAIT_MS;
+    for (;;) {
+        const close = closedOf((await log.read()).records, id);
+        if (close !== undefined && Date.parse(close.at) >= since) {
+            return close;
+        }
+        if (runtime.clock.now() >= deadline) {
+            return undefined;
+        }
+        await runtime.sleep(CLOSE_LOG_POLL_MS);
+    }
+}
 /** How to start Claude Code in `env`; refused when it is not on that PATH. */
 export async function claudeProgramOf(runtime, env) {
     const claude = await findClaude({ env, platform: runtime.platform, probe: runtime.probe, files: runtime.files, node: runtime.self.node });
@@ -289,6 +322,9 @@ export function claudeExit(runtime, command, result) {
  * this tab with the default prompt, and the new session reads its handover first. `--resume` resumes that
  * Claude Code session on the first start only: a restart is always fresh. `--effort` overrides the configured
  * effort and `--no-prompt` starts with no first prompt, as the restore after a reboot reopens an idle session.
+ * When `teamrig close` or the idle pass ended Claude Code, launch says so and exits 0, so the tab closes: a tab left
+ * open on the error offers to run this line again, starting a stale launch beside the session's next one. A start or
+ * restart while the session runs in another Claude Code is refused.
  */
 export async function launch(args, runtime) {
     const id = idFlag('session', onePositional(args, 'id'));
@@ -315,14 +351,22 @@ export async function launch(args, runtime) {
     let listing = await launchListing(sessionRuntime, kit, config, roster, id);
     runtime.out.stdout(`Starting Claude Code as ${name} (session ${id} of team ${team}) in ${project}, on ${describeLaunch(settings)}${resumed}${listing.note}`);
     const store = new RefreshStore(runtime.files, kit.paths);
+    const closes = new SessionLog(runtime.files, kit.paths.sessionLog);
     let first = prompt;
     let resuming = resume;
     for (;;) {
+        await refuseLiveRun(runtime, kit, roster, id, name);
         const resumeArgs = resuming === undefined ? [] : ['--resume', resuming];
         const args = [...prefix, ...launchFlags(settings), ...listing.args, ...resumeArgs, '--name', name, ...(first === undefined ? [] : [first])];
+        const startedAt = runtime.clock.now();
         const result = await runtime.processes.run({ command, args, cwd: project, env });
         if (!(await restartTaken(store, id))) {
-            return claudeExit(runtime, command, result);
+            const close = await closeSince(runtime, closes, id, result, startedAt);
+            if (close === undefined) {
+                return claudeExit(runtime, command, result);
+            }
+            runtime.out.stdout(`Claude Code was closed by ${close.by} after ${close.idleMinutes} min idle (${close.freedMb} MB freed): \`${KIT_NAME} open ${id}\` resumes it`);
+            return EXIT.ok;
         }
         runtime.out.stdout(`Starting Claude Code again as ${name} with a fresh context: it reads its handover first`);
         first = refreshPrompt(team, id, store.handoverPath(id));

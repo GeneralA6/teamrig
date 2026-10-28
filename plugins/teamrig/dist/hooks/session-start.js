@@ -99,6 +99,9 @@ export function sessionStartContext(input) {
     const roster = new Roster(load.config, input.team, input.renames);
     const notes = identityLines(roster, new LeadTree(load.config), input);
     // In the core part, so the size budget that may cut the team's rules.md never cuts it.
+    if (input.duplicateNote !== undefined) {
+        notes.push(input.duplicateNote);
+    }
     if (input.refreshNote !== undefined) {
         notes.push(input.refreshNote);
     }
