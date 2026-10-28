@@ -80,8 +80,8 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   meeting move <id> --at <time> [--note "<why>"]   a new time for a scheduled meeting; those it meets
       are told
   meeting start <id>   the owner starts a scheduled meeting, from any session: the session met gets its
-      opening prompt (the topic, tasks, brief and those joining), its running tab woken once idle or a
-      closed one opened, and those joining are told by one inbox line
+      opening prompt (the topic, tasks, brief and those joining), its running tab brought to the front
+      and woken once idle or a closed one opened, and those joining are told by one inbox line
   meeting end <id> [--note "<what came of it>"] | meeting drop <id> --note "<why>"   the meeting was
       held, or will not be (those it meets are told why)
   decisions | decisions asked [--session <id|name>]   the owner's decisions the lead asks in batches:
