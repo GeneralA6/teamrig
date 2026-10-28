@@ -4,8 +4,8 @@
 
 ```sh
 npm ci                # also points git at .githooks (scrub + DCO sign-off checks, the local gate before each push, no push to main)
-npm run setup         # the same hook setup, for a clone installed with --ignore-scripts
-npm run check         # CI's gates on your tree: typecheck, tests with the coverage gate, build, dist checks, pictures, config reference, doc links, scrub
+npm run setup         # the same hook setup, for a clone installed with --ignore-scripts (npm run check fails until it runs)
+npm run check         # that git runs the repo hooks, then CI's gates on your tree: typecheck, tests with the coverage gate, build, dist checks, pictures, config reference, doc links, scrub
 npm run docs:images   # redraws the pictures in docs/images
 npm run docs:config   # redraws docs/configuration.md from the config schema
 npm run docs:check    # checks relative links, anchors and Mermaid diagram types in the top-level and docs/ Markdown
