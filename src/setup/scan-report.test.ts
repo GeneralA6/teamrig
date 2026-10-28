@@ -8,6 +8,7 @@ import { listingLineOf, type ListedSkill } from './scan-context.ts';
 import { scanReport, tokensOf, type ScanReportContext } from './scan-report.ts';
 import type { SettingsFinding } from './scan-settings.ts';
 import type { SetupScan } from './scan.ts';
+import type { DoctorSkill } from './skill-doctor.ts';
 
 const CLAUDE_MD = '/u/.claude/CLAUDE.md';
 const TEAM_RULES = '/kit/teams/app/rules.md';
@@ -53,8 +54,17 @@ const SCAN: SetupScan = {
   settings: [WIDE],
   usage: { used: new Set(['alpha']), transcripts: 3, bytes: 1.5 * 1024 * 1024, unread: 0, since: NOW - 30 * DAY_MS },
   recent: new Set(),
-  doctor: { kind: 'skipped', why: 'Claude Code is not on PATH' },
+  doctor: { kind: 'read', skills: [] },
 };
+const PROMPT_AUDIT = "NEXT /doctor prompt-audit in a session of the project: Claude Code's model-run check for outdated or conflicting instructions";
+
+function row(name: string, source: string, listed: number, uses: number, lastUsedDays: number | undefined): DoctorSkill {
+  return { name, source, listed, uses, lastUsedDays };
+}
+
+function unusedLines(scan: SetupScan, at: ScanReportContext = AT): string[] {
+  return scanReport(scan, at).filter((line) => /^(U(NUSED|\d)|SAVINGS)/.test(line));
+}
 
 describe('tokensOf', () => {
   it('counts a token per four characters, rounding up', () => {
@@ -78,6 +88,7 @@ describe('scanReport', () => {
       `D1 duplicate ~/.claude/CLAUDE.md:3: "${RULE}" repeats ${shown(TEAM_RULES)}:1 (~15 tokens/turn)`,
       'OVERRIDE 3 line(s) in 2 file(s) may override a core rule: claude-md 2, rules 1; 1 recorded',
       'NEXT teamrig rules scan, to judge each line with the user',
+      PROMPT_AUDIT,
       'SETTINGS 1 finding(s)',
       'S1 wide-allow ~/.claude/settings.json: 2 allow rule(s) approve a whole tool',
       'NEXT teamrig permissions trim',
@@ -115,6 +126,7 @@ describe('scanReport', () => {
       'D1 duplicate ~/.claude/CLAUDE.md:2: "Use the key [redacted secret pattern from the team config..." repeats ~/.claude/CLAUDE.md:1 (~13 tokens/turn)',
       'OVERRIDE 1 line(s) in 1 file(s) may override a core rule: rules 1; 0 recorded',
       'NEXT teamrig rules scan, after teamrig team create, to judge each line with the user',
+      PROMPT_AUDIT,
       'SETTINGS 1 finding(s)',
       'S1 wide-allow ~/.claude/settings.json: 2 allow rule(s) approve a whole tool',
       'NEXT teamrig permissions trim, after teamrig team create',
@@ -153,8 +165,47 @@ describe('scanReport', () => {
     const lines = scanReport(scan, AT);
     assert.deepEqual(
       lines.filter((line) => /^(DUPLICATE|OVERRIDE|SETTINGS|NEXT)/.test(line)),
-      ['DUPLICATE none', 'OVERRIDE none to judge; 2 recorded', 'SETTINGS none'],
+      ['DUPLICATE none', 'OVERRIDE none to judge; 2 recorded', PROMPT_AUDIT, 'SETTINGS none'],
     );
+  });
+
+  it('counts a skill /skill-doctor saw run in --days as used, though the transcripts read past --max-mb missed it', () => {
+    const scan: SetupScan = { ...SCAN, usage: { ...SCAN.usage, unread: 4, since: NOW - 2.5 * DAY_MS }, doctor: { kind: 'read', skills: [row('beta', 'userSettings', 80, 3, 30)] } };
+    assert.deepEqual(unusedLines(scan), [
+      'UNUSED 0 of 2 skill(s) not used in the newest 2.5 day(s) (read 3 transcript(s), 1.5 MB, newest first; 4 older one(s) of 30 day(s) left unread past the 1024 MB bound, --max-mb raises it); 1 more not in the transcripts read ran in 30 day(s) per /skill-doctor',
+      'SAVINGS ~291 tokens/turn if every CONTEXT, DUPLICATE and UNUSED finding is applied',
+    ]);
+  });
+
+  it("adds /skill-doctor's word to an unused skill, and the listed skills only it knows that never or long ago ran", () => {
+    const skills = [
+      row('alpha', 'userSettings', 80, 0, undefined),
+      row('beta', 'userSettings', 80, 0, undefined),
+      row('kit:guide', 'kit', 60, 0, undefined),
+      row('kit:old', 'kit', 40, 2, 45),
+      row('kit:hire', 'kit', 50, 1, 9),
+      row('kit:weeks', 'kit', 40, 3, undefined),
+      row('kit:called', 'kit', 40, 0, undefined),
+      row('anthropic-skills:pdf', 'claude.ai sync', 0, 0, undefined),
+    ];
+    const scan: SetupScan = { ...SCAN, usage: { ...SCAN.usage, used: new Set(['alpha', 'kit:called']) }, doctor: { kind: 'read', skills } };
+    assert.deepEqual(unusedLines(scan), [
+      'UNUSED 1 of 2 skill(s) not used in 30 day(s) (read 3 transcript(s), 1.5 MB); and 2 skill(s) only /skill-doctor lists',
+      'U1 unused-skill ~/.claude/skills/beta/SKILL.md: no Skill call or /beta in 30 day(s); /skill-doctor: never used on this machine (~78 tokens/turn)',
+      'U2 unused-skill kit:guide (kit): never used on this machine per /skill-doctor; turn it off in /skills (~60 tokens/turn)',
+      'U3 unused-skill kit:old (kit): last used 45 day(s) ago per /skill-doctor; turn it off in /skills (~40 tokens/turn)',
+      'SAVINGS ~456 tokens/turn if every CONTEXT, DUPLICATE and UNUSED finding is applied',
+    ]);
+    const old: SetupScan = { ...scan, doctor: { kind: 'read', skills: [row('beta', 'userSettings', 80, 1, 45)] } };
+    assert.match(unusedLines(old)[1] ?? '', /: no Skill call or \/beta in 30 day\(s\); \/skill-doctor: last used 45 day\(s\) ago \(/);
+  });
+
+  it('judges nothing by /skill-doctor with no transcript to tell, and says why it was skipped', () => {
+    const doctor: SetupScan['doctor'] = { kind: 'read', skills: [row('kit:guide', 'kit', 60, 0, undefined)] };
+    const none: SetupScan = { ...SCAN, usage: { ...SCAN.usage, transcripts: 0 }, doctor };
+    assert.deepEqual(unusedLines(none), ['UNUSED not checked: no transcript on this machine in 30 day(s)', 'SAVINGS ~291 tokens/turn if every CONTEXT, DUPLICATE and UNUSED finding is applied']);
+    const skipped: SetupScan = { ...SCAN, doctor: { kind: 'skipped', why: 'Claude Code is not on PATH' } };
+    assert.equal(unusedLines(skipped)[0], 'UNUSED 1 of 2 skill(s) not used in 30 day(s) (read 3 transcript(s), 1.5 MB); /skill-doctor skipped: Claude Code is not on PATH');
   });
 
   it('tells how old the newest backup is, from under a minute to days', () => {
