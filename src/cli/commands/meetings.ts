@@ -1,6 +1,7 @@
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { KIT_NAME } from '../../core/home.ts';
+import { sessionDisplay } from '../../core/ids.ts';
 import { FileLock } from '../../core/lock.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import type { TimeZone } from '../../core/zone.ts';
@@ -20,6 +21,7 @@ import {
   type ScheduledMeeting,
 } from '../../meeting/schedule.ts';
 import { WAKE_TICK_MS } from '../../mod/wake-hand.ts';
+import { focusTab, type FocusOutcome } from '../../open/focus.ts';
 import { shellCommand } from '../../open/quote.ts';
 import { WakeAsks, type WakeAsk } from '../../wake/asks.ts';
 import { noPositionals, onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
@@ -28,7 +30,7 @@ import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf, teamZone, type
 import { liveRunOf } from '../live-run.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { inboxDepsOf } from './inbox.ts';
-import { openSession } from './open.ts';
+import { openSession, TERMINAL_LABELS } from './open.ts';
 import { ownRegister } from './register.ts';
 import { sessionProjectOf } from './setup.ts';
 
@@ -297,11 +299,24 @@ function openingAsk(mk: MeetingsKit, text: string, posted: boolean): WakeAsk {
   return posted ? { ...ask, by: { at: mk.now, line: lineHash(inboxLineOf(new Date(mk.now), mk.caller, text)) } } : ask;
 }
 
+/** What bringing the running tab of session `name`, titled `title`, to the front prints. */
+function focusLine(outcome: FocusOutcome, name: string, title: string): string {
+  switch (outcome.kind) {
+    case 'focused':
+      return `FOCUSED ${name}'s ${TERMINAL_LABELS[outcome.terminal]}, ${title}`;
+    case 'behind':
+      return `SELECTED ${name}'s ${TERMINAL_LABELS[outcome.terminal]}, ${title}, in its window; Windows kept another app's window in front`;
+    case 'none':
+      return `NOT FOCUSED ${name}'s tab, ${title}: ${outcome.reasons.join('; ')}`;
+  }
+}
+
 /**
- * Brings the opening prompt to the session met and returns what that prints. While its tab runs, an urgent line its
- * idle tab wakes on, a running turn ending first; with `wake.enabled` false, nothing beyond its inbox line. With no
- * tab, a new one opens with the prompt ahead of its own first prompt, as the idle pass reopens a closed session;
- * when none can open (no terminal, no room), the ask waits for its next tab.
+ * Brings the opening prompt to the session met and returns what that prints. While its tab runs, the tab is brought
+ * to the front, and gets an urgent line it wakes on once idle, a running turn ending first; with `wake.enabled`
+ * false, nothing beyond its inbox line. With no tab, a new one opens, in front, with the prompt ahead of its own first
+ * prompt, as the idle pass reopens a closed session; when none can open (no terminal, no room), the ask waits for its
+ * next tab.
  */
 async function deliver(runtime: CliRuntime, mk: MeetingsKit, meeting: ScheduledMeeting, posted: boolean): Promise<string[]> {
   const id = meeting.session;
@@ -309,12 +324,14 @@ async function deliver(runtime: CliRuntime, mk: MeetingsKit, meeting: ScheduledM
   const ask = openingAsk(mk, openingPrompt(meeting), posted);
   const asks = new WakeAsks(runtime.files, mk.kit.paths.wakeAsks);
   if ((await liveRunOf(runtime, mk.kit.paths, mk.roster.ids, id)) !== undefined) {
+    const title = sessionDisplay(mk.kit.paths.team, name);
+    const focused = focusLine(await focusTab(runtime, mk.config.open.terminal, title, runtime.cwd), name, title);
     if (!mk.config.wake.enabled) {
-      return [`NOT WOKEN ${name}: wake.enabled is false on the team, so the meeting waits in its inbox for its next prompt`];
+      return [focused, `NOT WOKEN ${name}: wake.enabled is false on the team, so the meeting waits in its inbox for its next prompt`];
     }
     await asks.post(id, ask);
     const within = posted ? `within about ${Math.ceil(WAKE_TICK_MS / SECOND_MS)} s` : `within about ${mk.config.wake.batchSeconds + Math.ceil(WAKE_TICK_MS / SECOND_MS)} s`;
-    return [`WAKES ${name} with the meeting's opening prompt once its tab is idle, ${within} (a running turn ends first)`];
+    return [focused, `WAKES ${name} with the meeting's opening prompt once its tab is idle, ${within} (a running turn ends first)`];
   }
   const project = await sessionProjectOf(runtime, mk.config, id, undefined, mk.from);
   try {

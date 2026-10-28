@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { MS_PER_MINUTE } from '../core/time.ts';
 import { readMeetings, type ScheduledMeeting } from '../meeting/schedule.ts';
+import { FOCUS_EXIT, FOCUS_TITLE_VAR } from '../open/focus.ts';
 import { decodePrompt } from '../open/prompt.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
 import { APP, CliHarness, TEAM, TEAM_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
@@ -221,6 +222,7 @@ describe('runCli: meeting start <id>', () => {
       'STARTED M1 started, Tue 01-08 14:00 UTC, 30 min, alpha with bravo, tasks T1 | the release plan',
       'TOLD alpha',
       'TOLD bravo',
+      "NOT FOCUSED app-alpha's tab, [app] alpha: gnome-terminal, konsole, x-terminal-emulator cannot select a tab by its title",
       'WAKES app-alpha with the meeting\'s opening prompt once its tab is idle, within about 15 s (a running turn ends first)',
     ]);
     assert.deepEqual(await asksOf(kit, 'alpha'), [OPENING]);
@@ -229,6 +231,23 @@ describe('runCli: meeting start <id>', () => {
     assert.equal((await stored(kit, 'M1'))?.status, 'started');
     assert.ok((await inboxOf(kit, 'alpha')).some((line) => line.endsWith(`lead: ${OPENING}`)));
     assert.ok((await inboxOf(kit, 'bravo')).some((line) => line.endsWith("lead: Meeting M1 with the owner started in alpha's tab: the release plan")));
+  });
+
+  it("brings the session met's running tab to the front in Windows Terminal, by its title", async () => {
+    const kit = await team();
+    await booked(kit, '--session', 'lead');
+    const processes = new FakeProcesses().onRun('powershell.exe', { kind: 'exited', code: FOCUS_EXIT.behind });
+    const behind = await kit.run(['meeting', 'start', 'M1', '--session', 'lead'], { ...(await alphaRuns(kit)), platform: 'win32', processes });
+    assert.equal(behind.code, EXIT.ok, said(behind));
+    assert.equal(behind.stdout[2], "SELECTED app-alpha's Windows Terminal tab, [app] alpha, in its window; Windows kept another app's window in front");
+    assert.equal(processes.ran[0]?.env[FOCUS_TITLE_VAR], '[app] alpha');
+    await booked(kit, '--session', 'lead');
+    processes.onRun('powershell.exe', { kind: 'exited', code: 0 });
+    const focused = await kit.run(['meeting', 'start', 'M2', '--session', 'lead'], { ...(await alphaRuns(kit)), platform: 'win32', processes });
+    assert.deepEqual(focused.stdout.slice(2), [
+      "FOCUSED app-alpha's Windows Terminal tab, [app] alpha",
+      "WAKES app-alpha with the meeting's opening prompt once its tab is idle, within about 15 s (a running turn ends first)",
+    ]);
   });
 
   it('opens the tab of a session that runs none, the opening prompt ahead of its own first prompt, and leaves no ask behind', async () => {
