@@ -119,10 +119,10 @@ function decisionCards(tasks: readonly Task[], tree: TaskTree, ownerMarker: stri
 }
 
 /**
- * How the lead asks the owner the cards it read: in plain text, the owner answering in their own words, unless the
- * team asks for the question picker (`decisions.askWith`, T1278).
+ * How the lead, or a session `meet` brings to the owner (src/meeting/meet.ts), asks the owner the cards it read: in
+ * plain text, the owner answering in their own words, unless the team asks for the question picker (`decisions.askWith`, T1278).
  */
-function askLine(askWith: AskWith, ownerMarker: string): string {
+export function askLine(askWith: AskWith, ownerMarker: string): string {
   return askWith === 'picker'
     ? "  Ask the choices with the question picker (AskUserQuestion), at most 4 a call: each card's options as its choices, your recommendation first."
     : `  Ask in plain text, never with the question picker: each card's options numbered, your recommendation first; ${ownerMarker} answers in their own words.`;
