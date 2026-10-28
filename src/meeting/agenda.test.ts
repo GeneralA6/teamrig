@@ -6,7 +6,7 @@ import type { Task } from '../register/fold.ts';
 import { TaskTree } from '../register/tree.ts';
 import { TEST_CARD, TEST_OWNER_CARD } from '../testing/card.ts';
 import { testTask } from '../testing/task.ts';
-import { AGENDA_ROWS, agendaLines, agendaSince, asksOwner, cardFacts, DESCRIPTION_CHARS, DONE_WINDOW_DAYS, oneLine, waitsOnOwner, type AgendaInput, type AgendaTeam } from './agenda.ts';
+import { AGENDA_ROWS, agendaLines, agendaSince, cardFacts, DESCRIPTION_CHARS, DONE_WINDOW_DAYS, oneLine, type AgendaInput, type AgendaTeam } from './agenda.ts';
 import { TimeZone } from '../core/zone.ts';
 
 const NOW = Date.parse('2030-01-08T10:00:00Z');
@@ -56,26 +56,6 @@ describe('the meeting agenda', () => {
     assert.equal(agendaSince(undefined, NOW), NOW - MS_PER_DAY);
     assert.equal(agendaSince(NOW - 3 * MS_PER_DAY, NOW), NOW - 3 * MS_PER_DAY);
     assert.equal(agendaSince(NOW - 30 * MS_PER_DAY, NOW), NOW - DONE_WINDOW_DAYS * MS_PER_DAY);
-  });
-
-  it("knows a task waiting, or a verifying task's proof waiting, on the owner's decision or approval, and no other wait", () => {
-    assert.equal(waitsOnOwner(DECIDE, 'owner'), true);
-    assert.equal(waitsOnOwner(testTask({ status: 'waiting', waits: [{ kind: 'approval', who: 'owner' }] }), 'owner'), true);
-    assert.equal(waitsOnOwner(testTask({ status: 'waiting', waits: [{ kind: 'decision', who: 'alpha' }] }), 'owner'), false);
-    assert.equal(waitsOnOwner(testTask({ status: 'waiting', waits: [{ kind: 'task', id: 'T1' }] }), 'owner'), false);
-    assert.equal(waitsOnOwner(testTask({ status: 'verifying', proof: 'the run', waits: [{ kind: 'approval', who: 'owner' }] }), 'owner'), true, "a verifying task's proof");
-  });
-
-  it("asks the owner a wait on the owner unless gates are required and its decision's card names none", () => {
-    const approval = testTask({ status: 'waiting', waits: [{ kind: 'approval', who: 'owner' }], card: TEST_CARD });
-    const uncarded = testTask({ status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }] });
-    assert.deepEqual(
-      [DECIDE, UNGATED, approval, uncarded].map((task) => asksOwner(task, 'owner', true)),
-      [true, false, true, true],
-      'an approval names no gate, and a missing card is NO-CARD',
-    );
-    assert.equal(asksOwner(UNGATED, 'owner', false), true, 'while gates are not required');
-    assert.equal(asksOwner(testTask(), 'owner', true), false);
   });
 
   it('puts text on one line', () => {
@@ -175,6 +155,30 @@ describe('the meeting agenda', () => {
     const all = agendaLines(inputOf([DECIDE, UNGATED], NOW - MS_PER_DAY, false));
     assert.equal(all[0], 'DECISIONS 2 waiting on owner (decision or approval)');
     assert.ok(!all.some((line) => line.startsWith('UNGATED')), all.join('\n'));
+  });
+
+  // T1295: a card the owner put off waits on a time beside the owner, and comes back once that time passed.
+  it('moves a card the owner put off out of DECISIONS, into LATER with its time, own team first', () => {
+    const later = { ...DECIDE, id: 'T9', waits: [...DECIDE.waits, { kind: 'time' as const, at: '2030-01-09 12:00' }] };
+    const webLater = { ...later, id: 'T7' };
+    const web: AgendaTeam = { team: 'web', tasks: [webLater], tree: treeOf([webLater]), ownerMarker: 'owner', requireGate: true };
+    const all = agendaLines(inputOf([DECIDE, later], NOW - MS_PER_DAY, true, [web]));
+    assert.equal(section(all, 'DECISIONS')[0], 'DECISIONS 1 waiting on owner (decision or approval)');
+    assert.ok(!section(all, 'DECISIONS').some((line) => /\bT[79]\b/.test(line)), all.join('\n'));
+    assert.deepEqual(section(all, 'LATER'), [
+      'LATER 2 put off by owner: asked once their time passed, never read out before',
+      '  T9 waiting, p2, owner alpha | Pick the pricing tier (waiting: decision owner · until Wed 01-09 12:00 UTC)',
+      '  web/T7 waiting, p2, owner alpha | Pick the pricing tier (waiting: decision owner · until Wed 01-09 12:00 UTC)',
+    ]);
+    const heads = all.filter((line) => /^[A-Z]+ /.test(line)).map((line) => line.split(' ')[0]);
+    assert.deepEqual(heads, ['DECISIONS', 'LATER', 'LATE', 'DONE']);
+  });
+
+  it('asks a card put off once its time passed, and shows no LATER block then', () => {
+    const back = { ...DECIDE, id: 'T9', waits: [...DECIDE.waits, { kind: 'time' as const, at: '2030-01-08 09:00' }] };
+    const all = agendaLines(inputOf([back]));
+    assert.equal(all[0], 'DECISIONS 1 waiting on owner (decision or approval)');
+    assert.ok(!all.some((line) => line.startsWith('LATER')), all.join('\n'));
   });
 
   it('cuts a long description', () => {

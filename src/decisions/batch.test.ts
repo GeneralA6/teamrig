@@ -120,4 +120,21 @@ describe('the decision batch', () => {
     const askedSince = decisionBatch(inputOf([overdue], '2030-01-07T20:00:00.000Z'));
     assert.deepEqual([ids(askedSince.overdue), askedSince.trigger], [['T1'], undefined]);
   });
+
+  // T1295: the owner puts a card off (Later) with a time wait beside its wait on the owner.
+  it('leaves out a card the owner put off until its time passed, overdue or not', () => {
+    const later = (id: string, at: string): Task => ownerWait(id, '2030-01-06T09:00:00.000Z', { due: '2030-01-07', waits: [{ kind: 'decision', who: 'owner' }, { kind: 'time', at }] });
+    const batch = decisionBatch(inputOf([later('T1', '2030-01-09 12:00')], undefined));
+    assert.deepEqual([ids(batch.pending), ids(batch.overdue), batch.trigger], [[], [], undefined]);
+  });
+
+  it('asks a card put off again once its time passed after the last batch, counting from that time', () => {
+    const back = ownerWait('T1', '2030-01-06T09:00:00.000Z', { waits: [{ kind: 'decision', who: 'owner' }, { kind: 'time', at: '2030-01-08 09:00' }] });
+    const batch = decisionBatch(inputOf([back], '2030-01-07T12:00:00.000Z'));
+    assert.deepEqual([ids(batch.pending), batch.trigger], [['T1'], undefined], 'back after the last batch time: no time trigger yet');
+    const missed = decisionBatch({ ...inputOf([back], '2030-01-07T12:00:00.000Z'), now: Date.parse('2030-01-08T14:00:00Z') });
+    assert.deepEqual(missed.trigger, { kind: 'time', at: Date.parse('2030-01-08T13:03:00Z') }, 'a batch time passed over it');
+    const askedSince = decisionBatch(inputOf([back], '2030-01-08T09:30:00.000Z'));
+    assert.deepEqual(ids(askedSince.pending), [], 'asked after its time passed');
+  });
 });

@@ -1,8 +1,8 @@
 import type { DecisionsConfig } from '../config/types.ts';
 import { MS_PER_DAY } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
-import { asksOwner } from '../meeting/agenda.ts';
 import type { Task } from '../register/fold.ts';
+import { askableSince, asksOwner } from '../register/owner-waits.ts';
 import type { TaskTree } from '../register/tree.ts';
 import { taskLabel } from '../register/views.ts';
 
@@ -12,7 +12,8 @@ import { taskLabel } from '../register/views.ts';
  * batch times (`decisions.batchTimesUtc`), at the daily meeting, or once `decisions.batchAt` of them wait unasked,
  * and at once only for one due before the next batch. A wait counts as asked when it was set at or before the last
  * batch the lead asked (`decisions asked`, or a meeting's start): a task's `statusAt` stays put while it stays
- * waiting, so setting it waiting again with a new card does not ask it again.
+ * waiting, so setting it waiting again with a new card does not ask it again. A wait the owner put off (Later, T1295)
+ * stays out of the batch until its time passed, and then counts from that time (askableSince), so it is asked again.
  */
 
 /** Milliseconds after midnight UTC of a valid `HH:MM`. */
@@ -92,7 +93,7 @@ export interface BatchInput {
 export function decisionBatch(input: BatchInput): DecisionBatch {
   const { now, askedAt } = input;
   const waiting = input.registers.flatMap(ownerWaitsOf);
-  const asked = (wait: OwnerWait): boolean => askedAt !== undefined && Date.parse(wait.task.statusAt) <= askedAt;
+  const asked = (wait: OwnerWait): boolean => askedAt !== undefined && askableSince(wait.task, wait.tree.context) <= askedAt;
   const pending = waiting.filter((wait) => !asked(wait));
   const overdue = waiting.filter((wait) => asked(wait) && (wait.tree.dueTime(wait.task) ?? Number.POSITIVE_INFINITY) < now);
   const nextAt = nextBatchTime(now, input.config.batchTimesUtc);
@@ -108,9 +109,9 @@ export function waitsOfTeams(batch: DecisionBatch, teams: readonly string[]): De
   return { ...batch, pending: batch.pending.filter(held), overdue: batch.overdue.filter(held) };
 }
 
-/** A register's waits the lead asks the owner (asksOwner), in its plan order. */
+/** A register's waits the lead asks the owner now (asksOwner), in its plan order. */
 function ownerWaitsOf({ team, tasks, tree, ownerMarker, requireGate }: BatchRegister): OwnerWait[] {
-  return tree.inPlanOrder([...tasks].filter((task) => asksOwner(task, ownerMarker, requireGate))).map((task) => ({ task, team, tree }));
+  return tree.inPlanOrder([...tasks].filter((task) => asksOwner(task, ownerMarker, requireGate, tree.context))).map((task) => ({ task, team, tree }));
 }
 
 /**
@@ -141,7 +142,7 @@ function triggerOf(input: BatchInput, pending: readonly OwnerWait[], overdue: re
   if (last === undefined) {
     return undefined;
   }
-  const missed = pending.some((wait) => Date.parse(wait.task.statusAt) <= last) || (overdue.length > 0 && (input.askedAt ?? Number.NEGATIVE_INFINITY) < last);
+  const missed = pending.some((wait) => askableSince(wait.task, wait.tree.context) <= last) || (overdue.length > 0 && (input.askedAt ?? Number.NEGATIVE_INFINITY) < last);
   return missed ? { kind: 'time', at: last } : undefined;
 }
 
