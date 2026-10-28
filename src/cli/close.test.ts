@@ -34,9 +34,10 @@ const ROWS = [
   { pid: 8101, parent: CLAUDE.pid, bytes: 200 * MB },
 ];
 
-/** A transcript line the way Claude Code writes an assistant reply, with `tokens` of context. */
-function reply(tokens: number): string {
-  return `${JSON.stringify({ type: 'assistant', isSidechain: false, message: { role: 'assistant', usage: { input_tokens: 2, cache_read_input_tokens: tokens - 2, output_tokens: 50 } } })}\n`;
+/** A transcript line the way Claude Code writes an assistant reply, with `tokens` of context, stamped `minutesAgo` when given. */
+function reply(tokens: number, minutesAgo?: number): string {
+  const stamp = minutesAgo === undefined ? {} : { timestamp: new Date(NOW - minutesAgo * MINUTE_MS).toISOString() };
+  return `${JSON.stringify({ type: 'assistant', isSidechain: false, ...stamp, message: { role: 'assistant', usage: { input_tokens: 2, cache_read_input_tokens: tokens - 2, output_tokens: 50 } } })}\n`;
 }
 
 /** A subagent started in the background `minutesAgo`, with no notification that it ended. */
@@ -169,6 +170,15 @@ describe('teamrig close', () => {
       assert.deepEqual(kept.processes.ends, []);
       assert.deepEqual(kept.processes.described, [], 'a session the cheap checks keep costs no look at its process');
     }
+  });
+
+  it("measures the quiet time from the tab's last own entry, not the file, which changes with none (T1417)", async () => {
+    const away = `${JSON.stringify({ type: 'system', subtype: 'away_summary', timestamp: new Date(NOW - 50 * MINUTE_MS).toISOString() })}\n`;
+    const touched = await runningAlpha(2, `${reply(40_000, 75)}${away}`);
+    const preview = await close(touched, ['alpha', '--session', 'lead']);
+    assert.equal(preview.code, 0, [...preview.stdout, ...preview.stderr].join('\n'));
+    assert.match(preview.stdout[0] ?? '', /^CLOSE app-alpha \(session alpha\): quiet 75 min, /);
+    assertRefused(await close(await runningAlpha(2, `${reply(40_000, 30)}${away}`), ['alpha', '--yes', '--session', 'lead']), /quiet 30 min; it closes after 60/);
   });
 
   it('weighs work as its budget lets it start it: one the budget holds closes with p1 work, and stays open for p0 (T1159)', async () => {

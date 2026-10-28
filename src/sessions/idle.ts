@@ -90,6 +90,19 @@ export function tabActivityOf(text: string, cut: boolean): TabActivity {
   return asksDecision(replyOf(lines.slice(0, index + 1).join('\n'), undefined, !cut)?.text) ? 'question' : 'idle';
 }
 
+/**
+ * When the tab's last own entry was written, epoch ms, from its transcript's tail (`cut` as for `tabActivityOf`): what
+ * a session is quiet since. The file's last change is no measure of it: slash commands, away summaries and meta
+ * entries start no turn, and an idle tab's file changes with no entry at all (five idle tabs' transcripts moved
+ * together, an hour apart, their sizes unchanged: T1417). Undefined with no own entry in the tail, or a last one with
+ * no time.
+ */
+export function lastTurnAtOf(text: string, cut: boolean): number | undefined {
+  const stamp = lastTurnEntryOf(tailLines(text, cut))?.entry['timestamp'];
+  const at = typeof stamp === 'string' ? Date.parse(stamp) : Number.NaN;
+  return Number.isNaN(at) ? undefined : at;
+}
+
 /** A time wait of the session's own that ends soon, and its task. */
 export interface SoonTimeWait {
   readonly task: Task;

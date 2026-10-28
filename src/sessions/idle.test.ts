@@ -6,7 +6,7 @@ import type { Task } from '../register/fold.ts';
 import { NO_TASKS_ELSEWHERE, type TasksElsewhere } from '../register/tree.ts';
 import { DECISION_MARKER } from '../tabs/status.ts';
 import { testTask } from '../testing/task.ts';
-import { reopenVerdict, soonTimeWaitOf, tabActivityOf, TIME_WAIT_GUARD_MINUTES, type ReopenInput, type ReopenVerdict } from './idle.ts';
+import { lastTurnAtOf, reopenVerdict, soonTimeWaitOf, tabActivityOf, TIME_WAIT_GUARD_MINUTES, type ReopenInput, type ReopenVerdict } from './idle.ts';
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -104,6 +104,28 @@ describe('tabActivityOf', () => {
   it("skips a cut tail's first line, which may be partial", () => {
     assert.equal(tabActivityOf(transcript(call()), true), 'idle');
     assert.equal(tabActivityOf(transcript(call()), false), 'call');
+  });
+});
+
+describe('lastTurnAtOf', () => {
+  const stamp = (minutesAgo: number): JsonRecord => ({ timestamp: new Date(NOW - minutesAgo * MINUTE).toISOString() });
+
+  it("reads the time of the tab's last own entry, past slash commands, away summaries and meta entries (T1417)", () => {
+    const command = { type: 'user', ...stamp(10), message: { role: 'user', content: '<command-name>/reload-plugins</command-name>' } };
+    const meta = { type: 'user', isMeta: true, ...stamp(10), message: { role: 'user', content: 'Caveat: the messages below' } };
+    const away = { type: 'system', subtype: 'away_summary', ...stamp(5) };
+    const helper = call({ isSidechain: true, ...stamp(20) });
+    const text = transcript({ ...prompt('fix it'), ...stamp(80) }, said('Fixed.', stamp(75)), helper, command, meta, away);
+    assert.equal(lastTurnAtOf(text, false), NOW - 75 * MINUTE);
+    assert.equal(lastTurnAtOf(transcript(said('Fixed.', stamp(75)), { ...prompt('next'), ...stamp(3) }), false), NOW - 3 * MINUTE);
+  });
+
+  it('reads none with no own entry, a last one with no time, or only the partial first line of a cut tail', () => {
+    assert.equal(lastTurnAtOf('', false), undefined);
+    assert.equal(lastTurnAtOf(transcript({ type: 'system', subtype: 'away_summary', ...stamp(5) }), false), undefined);
+    assert.equal(lastTurnAtOf(transcript(said('Old.', stamp(90)), said('Fixed.')), false), undefined);
+    assert.equal(lastTurnAtOf(transcript(said('Fixed.', { timestamp: 'soon' })), false), undefined);
+    assert.equal(lastTurnAtOf(transcript(said('Fixed.', stamp(75))), true), undefined);
   });
 });
 
