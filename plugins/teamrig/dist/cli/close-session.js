@@ -20,6 +20,7 @@ export async function closeSession(runtime, paths, closing) {
         claudeSession: closable.record.claudeSession,
         idleMinutes: closable.idleMinutes,
         freedMb: closable.heldMb,
+        folder: closable.folder,
     });
     return undefined;
 }

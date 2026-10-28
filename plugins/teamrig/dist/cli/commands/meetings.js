@@ -320,7 +320,7 @@ async function deliver(runtime, mk, meeting, posted) {
         }
         await asks.post(id, ask);
         const shell = runtime.platform === 'win32' ? ' in PowerShell' : '';
-        return [`MANUAL no terminal opened (${opened.reasons.join('; ')}); the meeting waits as an urgent line: open a new terminal and run this${shell}:`, shellCommand(runtime.platform, project, opened.argv)];
+        return [`MANUAL no terminal opened (${opened.reasons.join('; ')}); the meeting waits as an urgent line: open a new terminal and run this${shell}:`, shellCommand(runtime.platform, opened.folder, opened.argv)];
     }
     catch (error) {
         if (!(error instanceof RefusedError)) {
