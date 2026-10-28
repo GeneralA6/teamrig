@@ -1,0 +1,3 @@
+# Every path needs the maintainer's approving review before a pull request merges into main
+# (.github/rulesets/main-review.json); the maintainer's own pull requests skip that one rule.
+* @GeneralA6
