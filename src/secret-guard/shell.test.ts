@@ -36,6 +36,8 @@ describe('shellFindings', () => {
       'echo "$GITHUB_TOKEN" | docker login ghcr.io -u me --password-stdin',
       'node -e "fetch(u, {headers: {a: process.env.NPM_TOKEN}})"',
       'ssh host "cat .env | sha256sum"',
+      'kubectl config view --raw > kube.bak',
+      'kubectl config view',
     ];
     assert.deepEqual(lines.filter((line) => printed(line).length > 0), []);
     assert.deepEqual(printed('[Environment]::GetEnvironmentVariable("NPM_TOKEN") | Set-Clipboard; if ($env:GH_TOKEN) { "set" }', 'powershell'), []);
@@ -44,6 +46,7 @@ describe('shellFindings', () => {
   it('reads the lines a container or a remote host runs, to a depth', () => {
     assert.deepEqual(printed("kubectl exec p -- sh -c 'cat .env'"), ['the content of .env']);
     assert.deepEqual(printed('kubectl get secret app -o yaml'), ["a Kubernetes secret's data"]);
+    assert.deepEqual(printed('ssh a kubectl config view --raw'), ["the secrets in this kubectl command's output"]);
     assert.deepEqual(printed('ssh a ssh b ssh c ssh d cat .env'), ['the content of .env']);
     assert.deepEqual(printed('ssh a ssh b ssh c ssh d ssh e cat .env'), []);
   });
