@@ -122,6 +122,15 @@ describe('ClientInstalls', () => {
     assert.equal(linux.rootOf('/u/cache/teamrig/0.155.1/BIN/teamrig'), undefined);
   });
 
+  it('knows its own bash launcher, ignoring case and slashes on Windows, and no other version or entry', () => {
+    assert.equal(cached.isOwnLauncher(`${CACHE}/0.155.1/bin/teamrig`), true);
+    assert.equal(cached.isOwnLauncher('C:\\U\\.claude\\plugins\\cache\\teamrig\\teamrig\\0.155.1\\BIN\\.\\teamrig'), true);
+    for (const file of [`${CACHE}/0.152.0/bin/teamrig`, `${CACHE}/0.155.1/bin/teamrig.cmd`, `${CACHE}/0.155.1/bin/teamrig.exe`, `${CACHE}/0.155.1/dist/cli/main.js`, 'C:/u/bin/teamrig']) {
+      assert.equal(cached.isOwnLauncher(file), false, file);
+    }
+    assert.equal(new ClientInstalls('/u/cache/teamrig/0.155.1', 'linux').isOwnLauncher('/u/cache/teamrig/0.155.1/BIN/teamrig'), false);
+  });
+
   it('names only entries the build hashes, so a changed entry fails the client check', async () => {
     const text = await readFile(new URL('../../plugins/teamrig/dist/integrity.json', import.meta.url), 'utf8');
     const listed = parseClientManifest(text);

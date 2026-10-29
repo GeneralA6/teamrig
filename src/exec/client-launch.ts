@@ -10,8 +10,11 @@ import { bashDrivePath } from '../secret-guard/paths.ts';
  * folder the program starts in, a bare name by the shell's own PATH search, which an agent's `~/bin/teamrig` wins.
  */
 
+/** The launcher a bash line starts, from a plugin root. */
+export const BASH_LAUNCHER = 'bin/teamrig';
+
 /** The files of a plugin root a call may start its client by, from that root: its launchers and its CLI entry. */
-export const CLIENT_ENTRIES: readonly string[] = ['bin/teamrig', 'bin/teamrig.cmd', 'dist/cli/main.js'];
+export const CLIENT_ENTRIES: readonly string[] = [BASH_LAUNCHER, 'bin/teamrig.cmd', 'dist/cli/main.js'];
 
 /** A version folder of the plugin cache, such as `0.155.1`. */
 const VERSION_FOLDER = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
@@ -136,6 +139,11 @@ export class ClientInstalls {
   /** True when `root` is the install the hook runs from. */
   isOwn(root: string): boolean {
     return this.key(this.normal(root)) === this.key(this.install);
+  }
+
+  /** True when `file` is the bash launcher of the install the hook runs from: no other version, no other entry. */
+  isOwnLauncher(file: string): boolean {
+    return this.key(this.normal(file)) === this.key(`${this.install}/${BASH_LAUNCHER}`);
   }
 
   private installed(root: string): boolean {
