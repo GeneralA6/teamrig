@@ -83,7 +83,7 @@ describe('pushGuardOutput', () => {
     assert.equal(
       PUSH_TO_PROTECTED_HINT,
       "To stop asking about normal pushes, set pushGuard.pushToProtected in the team's config.json to allow, to lead to have the lead approve them, " +
-        'or to gated to have teamrig integrate land the changes that hold its gates.',
+        'or to gated to let teamrig merge take the changes that hold its gates.',
     );
     const denied = await pushGuardOutput(payload('git push -f origin main'), env());
     assert.equal(decisionOf(denied), 'deny');
@@ -235,7 +235,7 @@ describe('pushGuardOutput: pushToProtected gated (T858)', () => {
     assert.match(noteOf(await pushGuardOutput(payload('git push origin main'), gated({ kind: 'approved', by: 'boss', task: 'T7' }))), /: boss approved T7; .* \[pushGuard\.pushToProtected: gated\]\.$/);
   });
 
-  it('refuses an uncleared push, pointing at teamrig integrate, and never asks the human, whatever hookAsks says', async () => {
+  it('refuses an uncleared push, pointing at teamrig merge, and never asks the human, whatever hookAsks says', async () => {
     const asks: readonly HookAsks[] = ['ask', 'refuse'];
     for (const hookAsks of asks) {
       const { decision, reason } = hookOutput(await pushGuardOutput(payload('git push origin main'), { ...gated(NONE), hookAsks }));
@@ -244,7 +244,7 @@ describe('pushGuardOutput: pushToProtected gated (T858)', () => {
     assert.equal(
       unclearedPushReason(NONE, ['main'], 'gated'),
       "This push to a protected branch (main) needs a lead's approval, not the human's: boss has approved no waiting task of alpha's. " +
-        'Land the branch with `teamrig integrate` instead: a change that holds the self-merge gates lands with no approval, ' +
+        'Merge the branch with `teamrig merge` instead: a change that holds the self-merge gates merges with no approval, ' +
         "and one that misses a gate is held for a leader's, saying how to ask. [pushGuard.pushToProtected: gated]",
     );
   });

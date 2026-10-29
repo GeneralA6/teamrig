@@ -355,7 +355,7 @@
           "default": ["main", "master"]
         },
         "pushToProtected": {
-          "description": "A normal push to a protected branch: ask asks the human, allow lets it through with a note, lead lets the lead's own through and another session's once the lead approved its waiting task (teamrig approve), else refuses it with how to ask, never asking the human. gated clears a hand push as lead does, and teamrig integrate lands a change that holds the self-merge gates (its own live task, a pass record of the rebased tree, commit sizes, tests with source, the repo's review gate) with no approval, logging it in merges.jsonl, and holds one that misses a gate for its session's leader. Force-push, mirror and deletion stay refused; a --force-with-lease push and a command the guard cannot read still ask.",
+          "description": "A normal push to a protected branch: ask asks the human, allow lets it through with a note, lead lets the lead's own through and another session's once the lead approved its waiting task (teamrig approve), else refuses it with how to ask, never asking the human. gated clears a hand push as lead does, and teamrig merge merges a change that holds the self-merge gates (its own live task, a pass record of the rebased tree, commit sizes, tests with source, the repo's review gate) with no approval, logging it in merges.jsonl, and holds one that misses a gate for its session's leader. Force-push, mirror and deletion stay refused; a --force-with-lease push and a command the guard cannot read still ask.",
           "type": "string",
           "enum": ["ask", "allow", "lead", "gated"],
           "default": "ask"

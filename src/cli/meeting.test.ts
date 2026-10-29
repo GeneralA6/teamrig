@@ -244,7 +244,7 @@ describe('runCli: the daily meeting', () => {
     assert.equal(stdout[week + 1], '  fits: p2 20% (left 69.5% of the week)', stdout.join('\n'));
   });
 
-  it("lists integrate's self-merges since the meeting before under pushToProtected gated, check-clean ones marked", async () => {
+  it("lists merge's self-merges since the meeting before under pushToProtected gated, check-clean ones marked", async () => {
     const landed: SelfMerge = {
       at: '2030-01-08T09:00:00.000Z',
       session: 'alpha',
@@ -265,7 +265,7 @@ describe('runCli: the daily meeting', () => {
     const { stdout } = await gated.run(['meeting', 'agenda', '--session', 'lead']);
     const merges = stdout.findIndex((line) => line.startsWith('MERGES '));
     assert.deepEqual(stdout.slice(merges, merges + 2), [
-      'MERGES 1 landed with no approval since Mon 01-07 10:00 UTC, 1 CHECK-CLEAN (security samples those weekly)',
+      'MERGES 1 merged with no approval since Mon 01-07 10:00 UTC, 1 CHECK-CLEAN (security samples those weekly)',
       '  Tue 01-08 09:00 UTC alpha app t1-auth bbbbbbbb..hhhhhhhh: 1 files, 6 lines, checks unit, CHECK-CLEAN',
     ]);
     assert.ok(stdout.indexOf('DONE 0 done or dropped since Mon 01-07 10:00 UTC') < merges, stdout.join('\n'));

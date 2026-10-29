@@ -3,7 +3,7 @@ import type { MergeLogRead, MergeRecord, SelfMerge } from '../merge/merge-log.ts
 import { listed } from './agenda.ts';
 
 /**
- * The meeting's digest of self-merges (T800 §2.2, T858): what `teamrig integrate` landed with no approval since the
+ * The meeting's digest of self-merges (T800 §2.2, T858): what `teamrig merge` merged with no approval since the
  * meeting before, read from the team's merges log. A self-merge only the review check looked at (`review: checked`)
  * is marked CHECK-CLEAN, as security samples those weekly; those list first, so the row cap never hides one. A change
  * a leader approved is left out: a leader saw it already.
@@ -32,15 +32,15 @@ function rowOf(merge: SelfMerge, zone: TimeZone): string {
 /** MERGES: the self-merges since the agenda's start, check-clean ones first and marked, each group oldest first. */
 export function mergeDigestLines(input: MergeDigestInput): string[] {
   const { log, since, zone } = input;
-  const landed = log.records.filter(isSelfMerge).filter((merge) => Date.parse(merge.at) >= since);
-  if (!input.gated && landed.length === 0) {
+  const merged = log.records.filter(isSelfMerge).filter((merge) => Date.parse(merge.at) >= since);
+  if (!input.gated && merged.length === 0) {
     return [];
   }
-  const checked = landed.filter((merge) => merge.review === 'checked');
-  const rest = landed.filter((merge) => merge.review !== 'checked');
+  const checked = merged.filter((merge) => merge.review === 'checked');
+  const rest = merged.filter((merge) => merge.review !== 'checked');
   const skipped = log.skipped === 0 ? '' : `; ${log.skipped} unreadable line(s) skipped in ${input.path}`;
   return listed(
-    `MERGES ${landed.length} landed with no approval since ${zone.weekdayMinute(new Date(since))}, ${checked.length} CHECK-CLEAN (security samples those weekly)${skipped}`,
+    `MERGES ${merged.length} merged with no approval since ${zone.weekdayMinute(new Date(since))}, ${checked.length} CHECK-CLEAN (security samples those weekly)${skipped}`,
     [...checked, ...rest].map((merge) => rowOf(merge, zone)),
     input.path,
   );

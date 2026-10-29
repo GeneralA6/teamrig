@@ -58,7 +58,7 @@ describe('selfMergeMisses', () => {
 
   it('needs a pass record of the rebased tree', () => {
     assert.deepEqual(selfMergeMisses(change({ pass: undefined }), RULE), [
-      { gate: 'pass', why: "no pass record proves the rebased tree eeeeeeee: run the repo's local checks on the rebased branch, then integrate again" },
+      { gate: 'pass', why: "no pass record proves the rebased tree eeeeeeee: run the repo's local checks on the rebased branch, then merge again" },
     ]);
   });
 
@@ -121,6 +121,6 @@ describe('selfMergeMisses', () => {
 describe('missesText', () => {
   it('names each miss by its gate on one line', () => {
     const text = missesText(selfMergeMisses(change({ task: { owner: 'alpha', status: 'done' }, pass: undefined }), RULE));
-    assert.equal(text, "task: T7 is done; pass: no pass record proves the rebased tree eeeeeeee: run the repo's local checks on the rebased branch, then integrate again");
+    assert.equal(text, "task: T7 is done; pass: no pass record proves the rebased tree eeeeeeee: run the repo's local checks on the rebased branch, then merge again");
   });
 });
