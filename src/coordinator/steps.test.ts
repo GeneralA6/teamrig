@@ -2,9 +2,10 @@ import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { constants, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
+import { STEP_PRIORITY } from './priority.ts';
 import { exitCodeOf, nodeStepRunner, STOPPED_EXIT, TIMED_OUT_EXIT } from './steps.ts';
 import { nodeTreeKill, type TreeKill } from './tree-kill.ts';
 import { livenessOf, parseWrittenProcess, WRITE_PROCESS_SCRIPT, type WrittenProcess } from '../testing/process-liveness.ts';
@@ -151,5 +152,24 @@ describe('nodeStepRunner', () => {
 
   it('rejects when the step cannot start', async () => {
     await assert.rejects(runner.run({ command: 'node -e "0"', cwd: join(dir, 'missing'), env: process.env, timeoutMs: 30_000 }));
+  });
+
+  it('lowers the step it started to below-normal priority', async () => {
+    const lowered: Array<readonly [number, number]> = [];
+    const recording = nodeStepRunner(process.platform, nodeTreeKill(process.platform), {
+      of: () => constants.priority.PRIORITY_NORMAL,
+      set: (pid, priority) => lowered.push([pid, priority]),
+    });
+    await recording.run({ command: 'node -e "0"', cwd: dir, env: process.env, timeoutMs: 30_000 });
+    assert.equal(lowered.length, 1);
+    assert.equal(lowered[0]?.[1], STEP_PRIORITY);
+  });
+
+  it('runs the processes its step starts at below-normal priority on this host', async () => {
+    const seen = join(dir, 'priority-seen');
+    await writeFile(join(dir, 'priority.cjs'), 'require("node:fs").writeFileSync(process.argv[2], String(require("node:os").getPriority()))');
+    const end = await runner.run({ command: `node priority.cjs "${seen}"`, cwd: dir, env: process.env, timeoutMs: 30_000 });
+    assert.deepEqual(end, { kind: 'exited', code: 0 });
+    assert.equal(Number(await readFile(seen, 'utf8')), STEP_PRIORITY);
   });
 });

@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import type { Env } from '../core/home.ts';
 import { endOf, type ShellEnd } from '../test-run/shell.ts';
+import { lowerStep, NODE_PRIORITIES, type Priorities } from './priority.ts';
 import { nodeTreeKill, type RunKill, type TreeKill } from './tree-kill.ts';
 
 export interface StepRequest {
@@ -46,10 +47,11 @@ export function exitCodeOf(end: StepEnd): number {
 }
 
 /**
- * The real runner: Node's `spawn` in the platform's shell, with inherited stdio; its time limit or its `stop` kills
- * the tree. A killed step is reported once the kill is done, so the next holder never shares the host with it.
+ * The real runner: Node's `spawn` in the platform's shell, with inherited stdio, lowered to below-normal priority as
+ * it starts, before its shell starts anything; its time limit or its `stop` kills the tree. A killed step is reported
+ * once the kill is done, so the next holder never shares the host with it.
  */
-export function nodeStepRunner(platform: NodeJS.Platform, kill: TreeKill = nodeTreeKill(platform)): StepRunner {
+export function nodeStepRunner(platform: NodeJS.Platform, kill: TreeKill = nodeTreeKill(platform), priorities: Priorities = NODE_PRIORITIES): StepRunner {
   return {
     run: (request) =>
       new Promise((resolve, reject) => {
@@ -61,6 +63,9 @@ export function nodeStepRunner(platform: NodeJS.Platform, kill: TreeKill = nodeT
           windowsHide: true,
           detached: platform !== 'win32',
         });
+        if (child.pid !== undefined) {
+          lowerStep(priorities, child.pid);
+        }
         let killed: RunKill | undefined;
         const killAs = (why: RunKill['why']): void => {
           if (killed !== undefined) {
