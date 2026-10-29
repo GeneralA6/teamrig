@@ -1037,12 +1037,12 @@ describe('mergeBranch under pushToProtected: gated', () => {
     });
   }
 
-  it('lands a change that holds every gate with no approval, and logs it as a self-merge', async () => {
+  it('merges a change that holds every gate with no approval, and logs it as a self-merge', async () => {
     const world = gatedWorld();
     await passed(world);
     assert.equal((await world.run(ALPHA)).kind, 'done');
     assert.equal(world.steps.ran.length, 1);
-    assert.ok(world.said.includes('self-merge gates of t9-feat: every gate holds, so it lands with no approval'), world.said.join('\n'));
+    assert.ok(world.said.includes('self-merge gates of t9-feat: every gate holds, so it merges with no approval'), world.said.join('\n'));
     assert.deepEqual(await mergeRows(world), [{ ...LANDED, checks: ['unit', 'lint'], review: 'untouched', route: 'self' }]);
     assert.equal(await world.gateHolds.read('app', 't9-feat'), undefined);
   });

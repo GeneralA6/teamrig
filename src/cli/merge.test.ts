@@ -229,13 +229,13 @@ describe('teamrig merge under pushToProtected gated (T858)', () => {
     return made;
   }
 
-  it('lands a change that holds every gate with no approval and logs it in merges.jsonl', async () => {
+  it('merges a change that holds every gate with no approval and logs it in merges.jsonl', async () => {
     const { kit, git, steps } = await gatedWorld();
     const pass = { tree: 'tree-rebased', commit: 'rebased', checks: ['unit'], passedAt: '2030-01-08T09:30:00.000Z', node: 'v24.0.0' };
     await kit.files.write(passRecordPath(WORKTREE, `${MAIN_CHECKOUT}/.git`, pass.tree), JSON.stringify(pass));
     const result = await kit.run(MERGE_RUN, { ...IN_WORKTREE, mergeGit: git, steps, commitLog: { between: () => COMMITS } });
     assert.equal(result.code, 0, result.stdout.join('\n'));
-    assert.ok(result.stdout.includes('2030-01-08 10:00:00 UTC self-merge gates of t1-feat: every gate holds, so it lands with no approval'), result.stdout.join('\n'));
+    assert.ok(result.stdout.includes('2030-01-08 10:00:00 UTC self-merge gates of t1-feat: every gate holds, so it merges with no approval'), result.stdout.join('\n'));
     const [row, ...more] = (kit.files.get(join(DEPLOYS, 'merges.jsonl')) ?? '').split('\n').filter((line) => line !== '');
     assert.deepEqual(more, []);
     assert.match(row ?? '', /"session":"alpha","repo":"app","branch":"t1-feat","task":"T1","base":"base","head":"rebased","tree":"tree-rebased","files":2,"lines":14,"checks":\["unit"\],"review":"untouched","route":"self"\}$/);
