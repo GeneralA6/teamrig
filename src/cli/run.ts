@@ -582,8 +582,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       leads, the lead any. --delete-branch: deletes its branch too, once every commit of it is on --base
       (default the branch origin/HEAD names); --dry-run: prints the steps
   heavy --what <label> [--session <id|name>] [--max-minutes <n>] [--small] [--pre-push] -- <command ...>   runs one heavy step
-      (a build, a test run, a database script) under the host lock, so the host runs one at a time:
-      waits in line for the lock, kills the step and every process it started after
+      (a build, a test run, a database script) under the host lock, so the host runs one at a time, and at
+      below-normal CPU priority (nice 10 on POSIX), which every process it starts inherits, so your
+      terminal and apps win the CPU: waits in line for the lock, kills the step and every process it started after
       coordinator.heavy.maxRunMinutes (--max-minutes) and records its start and end in the coordinator's
       ledger; once the shell that started it ends, it stops waiting for the lock or kills the step (exit
       129); REFUSED from coordinator.schedule.heavyCutoffUtc to midnight UTC and once its line has not

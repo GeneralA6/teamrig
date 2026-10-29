@@ -40,6 +40,10 @@ above, gets both the lock and the short summary. The lock is `host.lock` in the 
 host, unless `coordinator.heavy.lockPath` names another; a lock past `lockTtlMinutes` (150), or whose process is
 gone, is taken over.
 
+A step runs at below-normal CPU priority (nice 10 on POSIX), and every process it starts inherits it, as do a merge's
+and a deploy's commands and checks: your terminal and apps win the CPU while it runs, and it takes what they leave,
+so a build on a busy host no longer freezes your screen.
+
 A small step, such as a spec run or a lint, runs with `--small`: it shares the host with other small steps instead
 of taking the lock: at once when no other small step runs, else while the host's free memory, less what the running
 ones hold, leaves
