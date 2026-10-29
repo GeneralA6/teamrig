@@ -86,7 +86,3 @@ function parentRoute(command, session, parentLead) {
         ` \`${command} inbox add --to ${to} --text "T<id> waits on the owner's decision: <what is decided>" --session ${session}\`, and it carries the decision up.` +
         " The user talks only to the root team's lead, so the picker never opens for a sub-team's lead, and its tab never asks the owner: with no task left, end your turn.");
 }
-/** The hook's stdout for a refusal: a PreToolUse deny with the reason. */
-export function pickerGuardOutput(reason) {
-    return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } });
-}

@@ -1,4 +1,16 @@
 /**
+ * Who answers a wait on a task of `owner`'s: its leaders (`LeadTree.approversOf`) a decision or an approval, and the
+ * team's security reviewer (`roles.securityReviewer`) an approval too, which is how the review gate holds a change
+ * for it (T828), but never one on its own task. A push to a protected branch still reads only the leaders' approvals
+ * (`approvedTaskOf`).
+ */
+export function waitAnswerersOf(tree, roles, owner) {
+    const leaders = tree.approversOf(owner);
+    const reviewer = roles.securityReviewer;
+    const reviews = reviewer !== undefined && reviewer !== owner && !leaders.includes(reviewer);
+    return { decision: leaders, approval: reviews ? [...leaders, reviewer] : leaders };
+}
+/**
  * The task's answer to `reason` when it is an approval wait its giver answered, either way (`approve`, T684);
  * undefined otherwise. A new status clears the answer with the waits (fold.ts), so an answer covers only the step its
  * task asked about.

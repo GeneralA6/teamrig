@@ -1,5 +1,6 @@
 import { KIT_NAME } from "../../core/home.js";
-import { holdOutput, sendTargetOf, sendTextOf } from "../../hooks/cold-send.js";
+import { sendTargetOf, sendTextOf } from "../../hooks/cold-send.js";
+import { refusalOutput } from "../../hooks/permission.js";
 import { indexMarks, RECEIVER_TABS, tabsOf } from "../../inbox/marks.js";
 import { closedOf, SessionLog } from "../../sessions/log.js";
 import { SessionRecordStore } from "../../sessions/record.js";
@@ -42,7 +43,7 @@ export async function closedSendHold(runtime, kit, config, roster, payload, clau
     const why = `${roster.nameOf(receiver.id) ?? receiver.id} is closed (${closed.by} closed it at ${teamZone(config, runtime).clock(new Date(closed.at))}), so this message cannot reach it`;
     const unposted = await postUrgentLine(runtime, kit, config, { to: receiver.id, from, text });
     const line = `${KIT_NAME} inbox add --to ${receiver.id} --text "..."${config.wake.enabled ? ' --wake now' : ''}`;
-    return holdOutput(unposted === undefined
+    return refusalOutput(unposted === undefined
         ? `${why}; ${KIT_NAME} posted it as an urgent line in its inbox, and the idle pass reopens it within about a minute with the line quoted in its first prompt. Do not send it again.` +
             (config.wake.enabled ? ` Next time post it yourself: ${line}.` : '')
         : `${why}, and ${KIT_NAME} could not post it as an urgent line: ${unposted}. Tell the lead the urgent line failed; unless that says it is in the inbox, leave it with ${line} once that is fixed.`);

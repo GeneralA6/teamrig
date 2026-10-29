@@ -1,7 +1,8 @@
 import { isRecord } from "../../core/guards.js";
 import { KIT_NAME } from "../../core/home.js";
 import { helperOf } from "../../hooks/helper-start.js";
-import { askerOf, guardsPicker, pickerGuardOutput, pickerReason, refusesAsker } from "../../hooks/picker-guard.js";
+import { refusalOutput } from "../../hooks/permission.js";
+import { askerOf, guardsPicker, pickerReason, refusesAsker } from "../../hooks/picker-guard.js";
 import { sessionIdOf } from "../../inbox/inbox.js";
 import { MeetingStore, phaseOf } from "../../meeting/state.js";
 import { noPositionals } from "../args.js";
@@ -51,7 +52,7 @@ async function pickerGuardOutputOf(runtime, payload) {
         return '';
     }
     const reason = await pickerRefusal(runtime, kit, kit.load.config, payload);
-    return reason === undefined ? '' : pickerGuardOutput(reason);
+    return reason === undefined ? '' : refusalOutput(reason);
 }
 /**
  * PreToolUse on AskUserQuestion: with `pickerGuard.enabled`, refuses the question picker in every team session and

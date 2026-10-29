@@ -1,6 +1,6 @@
 import { MS_PER_DAY, MS_PER_HOUR, parseDayStart, showStored } from "../core/time.js";
 import { NOW_PRIORITY, topPriority } from "../config/priorities.js";
-import { approvalCleared } from "./approval.js";
+import { approvalCleared, waitAnswerersOf } from "./approval.js";
 import { CARD_FLAGS, GATE_FLAG, whyAskUsage } from "./card.js";
 import { taskNumber } from "./fold.js";
 import { ACTIVE_STATUSES, priorityText } from "./model.js";
@@ -142,10 +142,10 @@ export function formatFlag(flag, team, tree) {
  * task owner's leaders and the owner), as a line from an older teamrig reads: a peer's work is a task, waited on by its id, which
  * clears by itself once that task finishes. Apart from {@link checkTasks}, whose register config does not name the lead.
  */
-export function peerWaitFlags(tasks, tree, ownerSource) {
+export function peerWaitFlags(tasks, tree, roles, ownerSource) {
     return [...tasks].flatMap((task) => {
-        const approvers = tree.approversOf(task.owner);
-        const peer = task.waits.find((reason) => isPeerWait(reason, approvers, ownerSource));
+        const answerers = waitAnswerersOf(tree, roles, task.owner);
+        const peer = task.waits.find((reason) => isPeerWait(reason, answerers, ownerSource));
         return peer === undefined
             ? []
             : [{ kind: 'PEER-WAIT', task, detail: `${waitSpelling(peer)} is a peer's work: wait on it by its task (set ${task.id} --status waiting --ask ${peer.who} --text "<the work>")` }];

@@ -25,6 +25,14 @@ export const PUSH_TO_PROTECTED = ['ask', 'allow', 'lead'];
 export function isPushToProtected(value) {
     return PUSH_TO_PROTECTED.some((choice) => choice === value);
 }
+export const REVIEW_PATH_MODES = ['always', 'check'];
+export function isReviewPathMode(value) {
+    return REVIEW_PATH_MODES.some((mode) => mode === value);
+}
+export const REVIEW_CLASSES = ['security', 'leader'];
+export function isReviewClass(value) {
+    return REVIEW_CLASSES.some((reviewer) => reviewer === value);
+}
 export const AD_HOC_RUNNERS = ['deny', 'ask', 'allow'];
 export function isAdHocRunners(value) {
     return AD_HOC_RUNNERS.some((choice) => choice === value);

@@ -205,6 +205,7 @@ const COMMANDS = {
     'hook package-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).packageGuard },
     'hook secret-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).secretGuard },
     'hook exec-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).execGuard },
+    'hook pass-record-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).passRecordGuard },
     'hook cold-send': { effect: 'internal', flags: [], load: async () => (await hookCommands()).coldSend },
     'hook failed-send': { effect: 'internal', flags: [], load: async () => (await hookCommands()).failedSend },
     'hook missing-cli': { effect: 'internal', flags: [], load: async () => (await missingCliCommand()).missingCli },
@@ -590,13 +591,15 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       no dependencyCheck may clear, from coordinator.schedule.heavyCutoffUtc to midnight UTC and in the
       resetBlackoutHours before the weekly token reset; waits up to coordinator.wait.maxMinutes for
       quiet claims on its deploysOnPush targets and for the host lock (longer while its line moves), rebases, runs the
-      dependencyCheck on a dependency change (REFUSED unless it exits 0) and pushes (each a heavy step
+      dependencyCheck on a dependency change (REFUSED unless it exits 0), where reviewGate holds a
+      change of a review path until its reviewer approves the branch's t<n> task (REFUSED with the
+      set command that asks; reviewCheck clears a check path) and pushes (each a heavy step
       in the ledger; again when origin moved meanwhile), or, where coordinator.repos.<name>.merge is
       set, runs its command in place of the push (0 merged, once origin holds it; 75 WAITING, say on a
       pull request's checks: run merge again once it merged), records the merge as a deploy of deploysOnPush, deletes the branch on origin
       and here (--keep-remote, --no-delete-local keep them) and, where followMainCheckout, fast-forwards
       the main checkout; once the shell that started it ends, it stops waiting, or kills the push
-      and frees the lock (exit 129); exit 0 merged, 1 failed or stopped, 75 the merge waits
+      and frees the lock (exit 129); exit 0 merged, 1 failed or stopped, 2 refused, 75 the merge waits
   deploy [--repo <name>] [--session <id|name>]   brings what was pushed to a repository's default
       branch to the running system: pulls its main checkout fast-forward to origin, runs its
       coordinator.repos.<name>.deploy dependencyInstall for a dependency change (after its
@@ -642,7 +645,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   test [--session <id|name>] -- <command ...>   runs a test command in the shell, writes all it printed
       to a log (each session keeps its newest 20) and prints one PASS or FAIL line, then each failing
       test within tests.maxFailureChars; exit 0 when the command passed, 1 otherwise
-  hook push-guard | hook package-guard | hook secret-guard | hook exec-guard | hook cold-send | hook failed-send | hook missing-cli | hook route-reminder | hook loop-nudge | hook helper-gate | hook inbox-reminder | hook session-start | hook stop | hook subagent-start | hook subagent-stop | hook refresh-wake | hook restore-track | hook tab-status | hook tool-end | hook readonly-allow | hook picker-guard | hook prompt-refuse
+  hook push-guard | hook package-guard | hook secret-guard | hook exec-guard | hook pass-record-guard | hook cold-send | hook failed-send | hook missing-cli | hook route-reminder | hook loop-nudge | hook helper-gate | hook inbox-reminder | hook session-start | hook stop | hook subagent-start | hook subagent-stop | hook refresh-wake | hook restore-track | hook tab-status | hook tool-end | hook readonly-allow | hook picker-guard | hook prompt-refuse
       (run by Claude Code, hook JSON on stdin)
   hook clear-dir | hook clear-claim [--hold [--why <reason>]]
       (run by the plugin's mod: the automatic restart's /clear in the tab)
