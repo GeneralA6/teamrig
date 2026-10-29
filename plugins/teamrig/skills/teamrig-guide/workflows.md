@@ -233,15 +233,15 @@ count with `refresh.everyTasks: 0`. A `/clear`, a new process or a compaction st
 Work in your own session by default. A helper (a subagent) keeps file dumps and long output out of your context,
 but its tokens cost `budget.subagentWeight` times yours (one team measured about 2.2). At that weight a helper does
 not save tokens: in one team's week no helper kept more than 1.65 times its own tokens out of its caller's context.
-So start one only for truly parallel work or an independent review; never to save tokens, nor for a build or test
-whose result you need. Pick who does a job, and on which model, by fit for the
-task, never by its length. A helper starts with the team rules and knows it is yours: it
-leaves task statuses, register entries and messages to you unless its brief asks for them, so say so in the brief
-when it should.
+So start one only for parallel work or an independent review; never to save tokens, nor for a build or test you
+wait on. Pick who does a job, and on which model, by fit for the task, never by its length. A helper starts with
+the team rules and knows it is yours: it leaves task statuses, register entries and messages to you unless its brief
+asks for them, so say so in the brief when it should.
 
 1. Run the helper on your own model and effort: a cheaper one misses things the caller then builds on.
-2. When others will build on its results, have it write its full findings (raw numbers, file and line, what it
-   could not check) to a file, and return the path and a short summary, so nobody runs it again.
+2. Its start line tells it to save its full findings (raw numbers, file and line, what it could not check) in the
+   task's folder (`teamrig files T<id>`, or your notes folder with `teamrig files --notes`) and return the path and a
+   short summary, so nobody runs it again; name the task in the brief.
 3. Let a helper start helpers of its own only when the task splits cleanly: a fan-out multiplies the cost.
 4. Read only the lines you need from its file, never the whole of it, and never re-read a file you just wrote.
 

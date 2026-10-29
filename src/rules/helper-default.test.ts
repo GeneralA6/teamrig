@@ -13,8 +13,8 @@ describe('helper default', () => {
   it('names the factor and its key, and keeps helpers to parallel work or a review, when a helper costs more than the session', () => {
     assert.equal(
       helperDefaultClause(2.15),
-      "a helper's tokens cost 2.15x yours [budget.subagentWeight], so start one only for truly parallel work or an independent review," +
-        ' never to save tokens or for a build or test whose result you need',
+      "a helper's tokens cost 2.15x yours [budget.subagentWeight], so start one only for parallel work or an independent review," +
+        ' never to save tokens or for a build or test you wait on',
     );
     assert.doesNotMatch(helperDefaultClause(2.15), /keeps far more/);
   });

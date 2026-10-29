@@ -91,6 +91,9 @@ current folder or above it, else in `$CLAUDE_PROJECT_DIR` or above. Everything e
   rules.md               the team's own rules, injected after the core rules and the teams' above (optional)
   backups/               old configs kept by teamrig config migrate
   handover/<id>.md       a session's handover, written before a context refresh
+  tasks/T<id>/           a task's files: design.md, build.md, plan.md, review.md, evidence/, scripts/, out/
+                         (teamrig files T<id> prints and makes it, in the team that holds the task)
+  notes/<id>/            a session's notes that belong to no task (teamrig files --notes)
   state/
     events.jsonl         the task register, one event per line, append-only
     inbox/<id>.md        one inbox per session id

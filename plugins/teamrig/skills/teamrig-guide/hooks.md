@@ -128,8 +128,11 @@ Claude Code starts a helper (a subagent) with the CLAUDE.md files but without it
 before your team's `rules.md`), then one line on whose helper it is:
 
 ```text
-You are a helper (`general-purpose`) of the `web` session of team `shop` (name `shop-web`). The rules above bind you as they bind it, but your brief is your task: leave `teamrig start`, task statuses, register entries, inbox lines and messages to it unless your brief asks for them, and return what it needs. $TEAMRIG_SESSION is not set here, so pass --session web to any `teamrig` command your brief asks for.
+You are a helper (`general-purpose`) of the `web` session of team `shop` (name `shop-web`). The rules above bind you as they bind it, but your brief is your task: leave `teamrig start`, task statuses, register entries, inbox lines and messages to it unless your brief asks for them. Save your full findings in the folder of the task you work on (`teamrig files T<id>`; with no task, `teamrig files --notes`) and return their path and what it needs. $TEAMRIG_SESSION is not set here, so pass --session web to any `teamrig` command your brief asks for.
 ```
+
+So a helper's full findings land on disk, where its session reads what it needs, and its reply stays short (see
+[`teamrig files`](commands.md#teamrig-files)).
 
 The session is found the way its own start finds it (a helper's hooks carry its session's id); when none is known
 the line says `of a session of team shop`. A helper never gets a session's identity ("You are the `web` session"),
@@ -902,9 +905,9 @@ the tabs it named; a hook that finds the check running skips it.
 
 At each helper launch of a team session, with the budget on or off, the model gets rule 8's helper default. Claude
 Code hands it over with the launch's result, so it speaks of the next helper: `teamrig rule 8: work in your own
-session: a helper's tokens cost 2.2x yours [budget.subagentWeight], so start one only for truly parallel work or an
-independent review, never to save tokens or for a build or test whose result you need. Weigh the next helper the
-same way.` With `budget.subagentWeight` at 1 or less it names no factor and allows a helper that keeps far more
+session: a helper's tokens cost 2.2x yours [budget.subagentWeight], so start one only for parallel work or an
+independent review, never to save tokens or for a build or test you wait on. Weigh the next helper the same
+way.` With `budget.subagentWeight` at 1 or less it names no factor and allows a helper that keeps far more
 tokens out of your context than it uses.
 
 With `budget.enabled` on and the week's use known (from the [status line](commands.md#teamrig-statusline) or

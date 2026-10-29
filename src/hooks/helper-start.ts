@@ -65,7 +65,11 @@ function helperLine(roster: Roster, input: HelperStartInput): string {
   const known = found !== undefined && found.ok ? found.id : undefined;
   const parent = known === undefined ? 'a session' : `the \`${known}\` session`;
   const name = known === undefined ? '' : ` (name \`${roster.nameOf(known) ?? known}\`)`;
-  const duty = `The rules above bind you as they bind it, but your brief is your task: leave \`${command} start\`, task statuses, register entries, inbox lines and messages to it unless your brief asks for them, and return what it needs.`;
+  // T1457 (T348's aim): the full findings land in the task's folder and the reply stays short, so a helper saves
+  // its caller's context the tokens it was started to keep out.
+  const duty =
+    `The rules above bind you as they bind it, but your brief is your task: leave \`${command} start\`, task statuses, register entries, inbox lines and messages to it unless your brief asks for them.` +
+    ` Save your full findings in the folder of the task you work on (\`${command} files T<id>\`; with no task, \`${command} files --notes\`) and return their path and what it needs.`;
   const pass = known === undefined || input.sessionInEnv ? '' : ` $${ENV.session} is not set here, so pass --session ${known} to any \`${command}\` command your brief asks for.`;
   return `You are ${kind} of ${parent} of team \`${input.team}\`${name}. ${duty}${pass}`;
 }
