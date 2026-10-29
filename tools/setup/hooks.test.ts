@@ -1,5 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { callsSecretScan, SECRET_HOOKS } from '../../src/cli/secret-hook-check.ts';
 import { FakeGit } from '../lib/fake-git.ts';
 import { GitError } from '../lib/git.ts';
 import { checkHooks, configureHooks, HOOKS_PATH } from './hooks.ts';
@@ -70,5 +73,14 @@ describe('configureHooks', () => {
 
   it('lets an error that is not a git failure through', async () => {
     await assert.rejects(configureHooks(new FakeGit({})), /unexpected git call: rev-parse/);
+  });
+});
+
+describe('the repo hooks', () => {
+  it('run the secret scan in each hook teamrig asks every repository to run it in (T1480)', () => {
+    for (const hook of SECRET_HOOKS) {
+      const script = readFileSync(fileURLToPath(new URL(`../../${HOOKS_PATH}/${hook.hook}`, import.meta.url)), 'utf8');
+      assert.ok(callsSecretScan(script, hook), `${HOOKS_PATH}/${hook.hook} runs no secrets ${hook.sub}`);
+    }
   });
 });
