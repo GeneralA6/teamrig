@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { resolve } from 'node:path';
 import { QUERY_TIMEOUT_MS } from '../core/git-run.ts';
 import { COMMIT_FORMAT, PATCH_FLAGS, commitsOf, patchAdds, type CommitAdds, type PatchAdds } from './git-adds.ts';
 import { rangeArgs, type PushRange } from './push-range.ts';
@@ -13,6 +14,8 @@ export interface SecretsGit {
   isCommit(dir: string, sha: string): boolean;
   /** The commits of `range`, newest first, each with what its patch adds; a merge adds nothing its parents did not. */
   commits(dir: string, range: PushRange): CommitAdds[] | undefined;
+  /** The folder git runs the hooks of the repository `dir` is in from: `core.hooksPath`, else its git folder's `hooks`. */
+  hooksDir(dir: string): string | undefined;
 }
 
 /** A patch or a log of a whole push takes longer than a query, within what a hook waits. */
@@ -43,6 +46,11 @@ export function gitSecrets(env: NodeJS.ProcessEnv): SecretsGit {
     commits: (dir, range) => {
       const log = run(dir, ['log', '--no-show-signature', '--root', COMMIT_FORMAT, '-p', ...PATCH_FLAGS, ...rangeArgs(range), '--'], PATCH_TIMEOUT_MS);
       return log === undefined ? undefined : commitsOf(log);
+    },
+    // --git-path prints the path from `dir`, a relative core.hooksPath already taken from the top folder.
+    hooksDir: (dir) => {
+      const path = run(dir, ['rev-parse', '--git-path', 'hooks'], QUERY_TIMEOUT_MS)?.trim();
+      return path === undefined || path === '' ? undefined : resolve(dir, path);
     },
   };
 }

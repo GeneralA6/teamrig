@@ -5,12 +5,14 @@ import type { SecretsGit } from '../secret-guard/secrets-git.ts';
 /**
  * A repository for `teamrig secrets`, in memory, with its top folder at `top` (undefined: no repository). Its index adds `index` (undefined: git
  * cannot read it); it holds the commits in `known`; the log of a range lists `logs` under its `git log` arguments joined
- * by spaces (none when not listed), unless `logFails`. Each range read is kept in `read`, as that key.
+ * by spaces (none when not listed), unless `logFails`. Each range read is kept in `read`, as that key. The hooks
+ * folder of a repository folder is its entry in `hookDirs` (none: git reads no repository there).
  */
 export class FakeSecretsGit implements SecretsGit {
   index: PatchAdds | undefined = { paths: [], lines: [] };
   readonly known = new Set<string>();
   readonly logs = new Map<string, readonly CommitAdds[]>();
+  readonly hookDirs = new Map<string, string>();
   readonly read: string[] = [];
   logFails = false;
   private readonly top: string | undefined;
@@ -35,5 +37,9 @@ export class FakeSecretsGit implements SecretsGit {
     const key = rangeArgs(range).join(' ');
     this.read.push(key);
     return this.logFails ? undefined : [...(this.logs.get(key) ?? [])];
+  }
+
+  hooksDir(dir: string): string | undefined {
+    return this.hookDirs.get(dir);
   }
 }
