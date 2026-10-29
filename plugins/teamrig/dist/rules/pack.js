@@ -310,13 +310,13 @@ function rulesTitleOf(rules) {
     return rules.ancestor === undefined ? "Your team's rules" : `Team ${rules.ancestor}'s rules (a team above yours; they win over a lower team's)`;
 }
 /**
- * The SessionStart context: the core pack, then each team rules file in the order given (the teams above the
+ * The team rules files that follow a start context `used` characters long, in the order given (the teams above the
  * session's, root first, then its own). Each comes in full while the files shown so far fit TEAM_RULES_MAX_CHARS and
  * the context CONTEXT_MAX_CHARS, else as a pointer saying how much room was left, so a long file further up takes no
  * room a shorter one below could use.
  */
-export function renderSessionContext(core, files, command) {
-    let context = core;
+export function teamRulesPart(files, used, command) {
+    let part = '';
     let shown = 0;
     for (const rules of files) {
         const text = rules.text.trim();
@@ -324,19 +324,24 @@ export function renderSessionContext(core, files, command) {
             continue;
         }
         const title = rulesTitleOf(rules);
-        const before = `${context}\n\n# ${title}\n`;
-        if (shown + text.length <= TEAM_RULES_MAX_CHARS && before.length + text.length <= CONTEXT_MAX_CHARS) {
-            context = `${before}${text}`;
+        const heading = `\n\n# ${title}\n`;
+        const before = used + part.length + heading.length;
+        if (shown + text.length <= TEAM_RULES_MAX_CHARS && before + text.length <= CONTEXT_MAX_CHARS) {
+            part = `${part}${heading}${text}`;
             shown += text.length;
             continue;
         }
-        const room = Math.max(0, Math.min(TEAM_RULES_MAX_CHARS - shown, CONTEXT_MAX_CHARS - before.length));
-        const pointer = `${context}\n\n${title} are in ${rules.path} (${text.length} characters; this start has room for ${room}): read them now.`;
-        if (pointer.length > CONTEXT_MAX_CHARS) {
-            const tooLong = `${context}\n\nYour team rules files are too long to show or point to here; run \`${command} doctor\`.`;
-            return tooLong.length <= CONTEXT_MAX_CHARS ? tooLong : context;
+        const room = Math.max(0, Math.min(TEAM_RULES_MAX_CHARS - shown, CONTEXT_MAX_CHARS - before));
+        const pointer = `\n\n${title} are in ${rules.path} (${text.length} characters; this start has room for ${room}): read them now.`;
+        if (used + part.length + pointer.length > CONTEXT_MAX_CHARS) {
+            const tooLong = `\n\nYour team rules files are too long to show or point to here; run \`${command} doctor\`.`;
+            return used + part.length + tooLong.length <= CONTEXT_MAX_CHARS ? `${part}${tooLong}` : part;
         }
-        context = pointer;
+        part = `${part}${pointer}`;
     }
-    return context;
+    return part;
+}
+/** The SessionStart context: the core pack, then the team rules files that fit beside it (`teamRulesPart`). */
+export function renderSessionContext(core, files, command) {
+    return `${core}${teamRulesPart(files, core.length, command)}`;
 }

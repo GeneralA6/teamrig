@@ -88,6 +88,10 @@ export function formatVerifySummary(queue, watched, owner, command) {
     const more = left > 0 ? [`  +${left} more: ${listed}`] : [];
     return [`VERIFY ${queue.length}, oldest first:`, ...rows, ...more, ...watch].join('\n');
 }
+/** formatVerifySummary's one line when a start note has no room for its rows (T1376): the command that lists them. */
+export function verifySummaryPointer(owner, command) {
+    return `VERIFY: this start has no room for your verifying and watched tasks; \`${command} verify --session ${owner}\` lists them.`;
+}
 /** A row of `verify`, times in the team's `zone`: `T1 since 01-07 12:00 IST, verify by 01-09 | <title> (proof: ...)`. */
 export function formatVerifyRow(task, zone) {
     const by = task.due === null ? 'no verify-by date' : `verify by ${showStored(task.due, zone)}`;

@@ -3,7 +3,7 @@ import { Roster } from "../config/roster.js";
 import { formatAddress } from "../core/address.js";
 import { ENV, KIT_NAME } from "../core/home.js";
 import { isReservedName, RESERVED_RULE } from "../core/ids.js";
-import { renderCorePack, renderLeadRules, renderSessionContext } from "../rules/pack.js";
+import { CONTEXT_MAX_CHARS, renderCorePack, renderLeadRules, teamRulesPart } from "../rules/pack.js";
 /** Whether the session the input names holds the team's lead role. */
 function isLeadSession(roster, session) {
     const found = session === undefined ? undefined : roster.lookup(session);
@@ -87,9 +87,35 @@ function treeLine(place, input, isLead) {
     return up + down;
 }
 /**
+ * The context, within CONTEXT_MAX_CHARS: past it Claude Code shows the session only a preview of the start and saves
+ * the rest to a file (T1376). The rules and each short note always come; the team rules files fit next, beside each
+ * long note's pointer (`teamRulesPart`); then each long note, in order, takes its full text while the room left
+ * holds it. A team rules file wins over a long note: a rules pointer costs a read of the file, while a long note's
+ * pointer names the `start` the session runs at each work block anyway.
+ */
+function fitContext(rules, notes, files, command) {
+    const withNotes = (lines) => `${rules}\n\n${lines.join('\n')}`;
+    const pointers = withNotes(notes.map((note) => (typeof note === 'string' ? note : note.pointer)));
+    const team = teamRulesPart(files, pointers.length, command);
+    let room = CONTEXT_MAX_CHARS - pointers.length - team.length;
+    const shown = [];
+    for (const note of notes) {
+        if (typeof note === 'string') {
+            shown.push(note);
+            continue;
+        }
+        const grows = note.text.length - note.pointer.length;
+        const fits = grows <= room;
+        shown.push(fits ? note.text : note.pointer);
+        room -= fits ? grows : 0;
+    }
+    return `${withNotes(shown)}${team}`;
+}
+/**
  * The SessionStart context: the core rules from the team config, the lead's own lines for the lead, who the
  * session is, where its team sits in a tree of teams, its notes (after a refresh its handover, after a refresh or a
- * compaction its live tasks), and the team's own rules. Without a usable config it says why no rules are loaded, in one line.
+ * compaction its live tasks), and the team's own rules, fitted to Claude Code's cap (`fitContext`). Without a usable
+ * config it says why no rules are loaded, in one line.
  */
 export function sessionStartContext(input) {
     const { load, command } = input;
@@ -98,7 +124,7 @@ export function sessionStartContext(input) {
     }
     const roster = new Roster(load.config, input.team, input.renames);
     const notes = identityLines(roster, new LeadTree(load.config), input);
-    // In the core part, so the size budget that may cut the team's rules.md never cuts it.
+    // A short note, so the size budget that may cut the team's rules.md or a long note never cuts it.
     if (input.duplicateNote !== undefined) {
         notes.push(input.duplicateNote);
     }
@@ -128,7 +154,7 @@ export function sessionStartContext(input) {
     }
     const core = renderCorePack(load.config, command, input.platform, input.clock, input.keptRulesAbove);
     const rules = isLeadSession(roster, input.session) ? `${core}\n\n${renderLeadRules(load.config, command)}` : core;
-    return renderSessionContext(`${rules}\n\n${notes.join('\n')}`, input.teamRules, command);
+    return fitContext(rules, notes, input.teamRules, command);
 }
 /**
  * The hook's stdout: Claude Code adds `additionalContext` to the session's context and shows the

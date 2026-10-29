@@ -26,7 +26,7 @@ import { secretRulesOf } from "../../secret-guard/rules.js";
 import { commitsOf, protectedBranchesOf, pushGuardOutput, pushToProtectedOf, skipHooksOf } from "../../hooks/push-guard.js";
 import { JsonlHintLog } from "../../hooks/hint-log.js";
 import { promptOutput } from "../../hooks/prompt-output.js";
-import { showsLiveTasks } from "../../hooks/live-tasks.js";
+import { liveTasksPointer, showsLiveTasks } from "../../hooks/live-tasks.js";
 import { requirementsNoteOnce } from "../../hooks/requirements-note.js";
 import { helperOf } from "../../hooks/helper-start.js";
 import { sessionStartContext, sessionStartOutput } from "../../hooks/session-start.js";
@@ -70,7 +70,7 @@ import { tabStatusOn, tabTitleOf } from "./hook-tab-status.js";
 import { logPrompt, logReply, logStart } from "./hook-turn-log.js";
 import { keepWorkingReasonOf } from "./keep-working.js";
 import { retireAskReasonOf } from "./retire-ask.js";
-import { verifyByLinesOf, verifyNoteOf } from "./verify-queue.js";
+import { verifyByLinesOf, verifyStartNoteOf } from "./verify-queue.js";
 /**
  * Claude Code hooks. Each reads the hook's JSON from stdin and prints only what Claude Code
  * should act on, and never refuses: a refusal exits 2, which would block the tool call. A plugin
@@ -536,7 +536,7 @@ async function teamPartsOf(runtime, kit, config, payload) {
         refreshNote: refresh.note,
         liveTasksNote: await liveTasksPartOf(runtime, kit, config, id, payload, refresh),
         modelNote: modelNoteOf(config, roster, id, payload),
-        verifyNote: await verifyNoteOf(runtime, kit.paths, id),
+        verifyNote: await verifyStartNoteOf(runtime, kit.paths, id),
         worktreeNote: worktreeNoteOf(isRecord(payload) ? stringField(payload, 'cwd') : undefined),
         session,
         sessionInEnv: fromEnv !== undefined,
@@ -688,10 +688,16 @@ async function refreshStartOf(runtime, kit, config, roster, payload) {
         return { note: `${KIT_NAME} could not check for a refresh handover (${errorMessage(error)}); if you wrote one before a /clear, read it first.`, refreshed: false };
     }
 }
-/** The live-task block (hooks/live-tasks.ts) at the fresh start after a refresh and after a compaction; none at another start or for no session. */
+/**
+ * The live-task block (hooks/live-tasks.ts) at the fresh start after a refresh and after a compaction, with its pointer
+ * for a start that has no room for it; none at another start or for no session.
+ */
 async function liveTasksPartOf(runtime, kit, config, id, payload, refresh) {
     const source = isRecord(payload) ? stringField(payload, 'source') : undefined;
-    return id !== undefined && showsLiveTasks(source, refresh.refreshed) ? liveTasksNoteOf(runtime, kit.paths, id, teamZone(config, runtime)) : undefined;
+    if (id === undefined || !showsLiveTasks(source, refresh.refreshed)) {
+        return undefined;
+    }
+    return { text: await liveTasksNoteOf(runtime, kit.paths, id, teamZone(config, runtime)), pointer: liveTasksPointer(id, KIT_NAME) };
 }
 /** The refresh facts every turn end may need: the lead's request, the context size from the transcript's tail, and the open meeting. */
 async function stopFactsOf(runtime, scope, store, payload) {
