@@ -3,7 +3,7 @@ import { globRegExp } from '../secret-guard/glob.ts';
 
 /**
  * The review gate's path half (T800 §2.2): the review entries the paths of a change hit. The paths are git's
- * `--name-only --no-renames` list (`IntegrateGit.changedPaths`), which names a rename at its old and its new path and a
+ * `--name-only --no-renames` list (`MergeGit.changedPaths`), which names a rename at its old and its new path and a
  * deletion at its path, so moving or removing a file cannot slip past an entry.
  */
 
