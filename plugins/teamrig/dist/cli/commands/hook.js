@@ -64,7 +64,7 @@ import { helperContextOf } from "./hook-helper-start.js";
 import { checkHooklessTabs } from "./hook-hookless.js";
 import { dueFactsAt, inMeetingNow } from "./hook-refresh-mod.js";
 import { recordSessionStart } from "./hook-session-record.js";
-import { envSession, hookScopeOf, leadPathsOf, parseJson, sessionScopeOf, sessionTeam, startSessionOf, teamScopeOf, teamSessionOf } from "./hook-input.js";
+import { envSession, hookScopeOf, parseJson, sessionScopeOf, sessionTeam, startSessionOf, teamScopeOf, teamSessionOf, turnLeadPathsOf } from "./hook-input.js";
 import { tabStatusOn, tabTitleOf } from "./hook-tab-status.js";
 import { logPrompt, logReply, logStart } from "./hook-turn-log.js";
 import { keepWorkingReasonOf } from "./keep-working.js";
@@ -705,7 +705,7 @@ async function leadStopLines(runtime, scope, transcript) {
         return [];
     }
     const turn = turnToolsOf(text, Buffer.byteLength(text, 'utf8') >= TRANSCRIPT_TAIL_BYTES, undefined);
-    const line = leadStopLine(leadTallyOf(turn, leadPathsOf(runtime, kit, config, await loadTree(runtime))), config.leadBoundary.searchNudgeAt);
+    const line = leadStopLine(leadTallyOf(turn, await turnLeadPathsOf(runtime, kit, config, await loadTree(runtime), turn)), config.leadBoundary.searchNudgeAt);
     return line === undefined ? [] : [line];
 }
 /** The refresh decision for this turn's end; none with refresh off. */

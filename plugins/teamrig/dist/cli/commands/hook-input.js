@@ -4,9 +4,10 @@ import { formatAddress } from "../../core/address.js";
 import { isRecord, stringField } from "../../core/guards.js";
 import { claudeConfigDir, claudeTempDir, ENV } from "../../core/home.js";
 import { resolveTeam } from "../../core/team.js";
-import { OwnPaths, TeamFolders } from "../../hooks/lead-boundary.js";
+import { OwnPaths, tasksSearched, TeamFolders } from "../../hooks/lead-boundary.js";
 import { sessionIdOf } from "../../inbox/inbox.js";
 import { indexMarks } from "../../inbox/marks.js";
+import { JsonlEventLog } from "../../register/store.js";
 import { openKit, rosterOf, teamFolders } from "../kit.js";
 import { inboxDepsOf } from "./inbox.js";
 /** A hook's stdin as JSON; undefined when it is not JSON, which every hook treats as nothing to do. */
@@ -113,18 +114,43 @@ export function subTeamPlacesOf({ tree, teams }, team) {
 /**
  * Where the lead's calls land in this team. Its own paths: its teamrig folder, Claude Code's memory folders, its
  * session scratchpads (notes and command input it keeps for itself, never work to hand off), its sub-teams' configs,
- * rules and states, and `leadBoundary.ownPaths`. In the teamrig folder, a search outside the config, the rules, the register's state and
- * the places named for the lead is research (T736), and so is one in a sub-team's folder outside its config, rules
- * and state, read from `tree` (T1019).
+ * rules and states, and `leadBoundary.ownPaths`. In the teamrig folder, a search outside the config, the rules, the register's state,
+ * the places named for the lead and the folders of the tasks `taskOwners` gives the lead is research (T736, T1467),
+ * and so is one in a sub-team's folder outside its config, rules and state, read from `tree` (T1019).
  */
-export function leadPathsOf(runtime, kit, config, tree) {
+export function leadPathsOf(runtime, kit, config, tree, taskOwners = new Map()) {
     const memory = join(claudeConfigDir(runtime.env, runtime.userHome), 'projects', '*', 'memory');
     const scratchpads = join(claudeTempDir(runtime.env, tmpdir()), 'claude', '*', '*', 'scratchpad');
-    const { home, config: configFile, teamRules, state } = kit.paths;
+    const { home, config: configFile, teamRules, state, tasks } = kit.paths;
     const subTeams = subTeamPlacesOf(tree, kit.paths.team);
-    const places = { home, own: [configFile, teamRules, state], lead: config.roles.lead, sessions: config.sessions, subTeams };
+    const places = { home, own: [configFile, teamRules, state], lead: config.roles.lead, sessions: config.sessions, subTeams, tasks, taskOwners };
     return {
         own: new OwnPaths([home, memory, scratchpads, ...subTeams.flatMap((sub) => sub.own), ...config.leadBoundary.ownPaths], runtime.userHome),
         team: new TeamFolders(places, runtime.userHome),
     };
+}
+/**
+ * `leadPathsOf` for a turn's calls, with the owners of the tasks whose folders they search (T1467). The register is
+ * read only when a call searches a task folder; an unreadable one leaves those folders research with no owner.
+ */
+export async function turnLeadPathsOf(runtime, kit, config, tree, turn) {
+    const paths = leadPathsOf(runtime, kit, config, tree);
+    const searched = tasksSearched(turn, paths);
+    if (searched.length === 0) {
+        return paths;
+    }
+    const owners = await registerOwnersOf(runtime, kit, searched).catch(() => new Map());
+    return leadPathsOf(runtime, kit, config, tree, owners);
+}
+/** The owner of each of `ids` the register's working set holds, by task id. */
+async function registerOwnersOf(runtime, kit, ids) {
+    const { state } = await new JsonlEventLog(runtime.files, kit.paths.events).read();
+    const owners = new Map();
+    for (const id of ids) {
+        const owner = state.tasks.get(id)?.owner;
+        if (owner !== undefined) {
+            owners.set(id, owner);
+        }
+    }
+    return owners;
 }
