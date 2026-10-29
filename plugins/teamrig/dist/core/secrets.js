@@ -1,4 +1,12 @@
 import { SECRET_TEXT_PATTERNS, SECRET_TOKEN_PATTERNS } from "./secret-patterns.js";
+/** A team's own secret patterns (`register.secretPatterns`): regular expression sources, matched case-insensitively. */
+export function configuredPatterns(extra) {
+    return extra.map((source, index) => ({
+        id: `config-${index + 1}`,
+        description: 'secret pattern from the team config',
+        pattern: new RegExp(source, 'iu'),
+    }));
+}
 /**
  * Refuses text that looks like it carries a secret, before it lands in a shared file, or redacts it. Every write path that
  * checks for secrets (inbox lines; task titles, descriptions, refs, notes and evidence) goes through this one class, which
@@ -8,12 +16,7 @@ export class SecretScanner {
     patterns;
     /** `extra` are regular expression sources from the config, matched case-insensitively. */
     constructor(extra = []) {
-        const configured = extra.map((source, index) => ({
-            id: `config-${index + 1}`,
-            description: 'secret pattern from the team config',
-            pattern: new RegExp(source, 'iu'),
-        }));
-        this.patterns = [...SECRET_TOKEN_PATTERNS, ...SECRET_TEXT_PATTERNS, ...configured];
+        this.patterns = [...SECRET_TOKEN_PATTERNS, ...SECRET_TEXT_PATTERNS, ...configuredPatterns(extra)];
     }
     /** The first secret shape `text` matches; undefined when it matches none. */
     find(text) {
