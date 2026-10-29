@@ -46,6 +46,7 @@ const teamCommands = () => import('./commands/team.ts');
 const sessionsCommands = () => import('./commands/sessions.ts');
 const closeCommands = () => import('./commands/close.ts');
 const commitsCommands = () => import('./commands/commits.ts');
+const secretsCommands = () => import('./commands/secrets.ts');
 const doctorCommands = () => import('./commands/doctor.ts');
 const filesCommands = () => import('./commands/files.ts');
 const worktreeCommands = () => import('./commands/worktree.ts');
@@ -207,6 +208,9 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'config validate': { effect: 'read', flags: [], load: async () => (await configCommands()).validate },
   'config migrate': { effect: 'write', flags: [], switches: ['yes'], load: async () => (await configCommands()).migrate },
   'commits check': { effect: 'read', flags: ['base', 'tip'], load: async () => (await commitsCommands()).check },
+  'secrets staged': { effect: 'read', flags: [], load: async () => (await secretsCommands()).staged },
+  'secrets message': { effect: 'read', flags: [], load: async () => (await secretsCommands()).message },
+  'secrets pushed': { effect: 'read', flags: [], load: async () => (await secretsCommands()).pushed },
   'worktree add': { effect: 'write', flags: ['repo'], load: async () => (await worktreeCommands()).add },
   'worktree remove': { effect: 'write', flags: ['base', 'session'], switches: ['delete-branch', 'dry-run'], load: async () => (await worktreeCommands()).remove },
   test: { effect: 'write', flags: ['session'], rest: true, load: async () => (await testCommand()).test },
@@ -571,6 +575,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       the first teamrig that reads it, as a tab on an older one refuses every write after; --yes writes it
   commits check --base <ref> [--tip <ref>]   commits in base..tip (default HEAD) over the size rule
       with no reason line; any is REFUSED, for a merge script or CI
+  secrets staged | secrets message <file> | secrets pushed <remote>   for git's pre-commit, commit-msg and
+      pre-push hooks: a secret the staged change, the message or the pushed commits add is REFUSED, named by
+      place and shape, never by value; default shapes and paths outside a team, plus the team's own inside one
   worktree add <branch> [--repo <name>]   makes a session's new worktree the same way every time: fetches
       the default branch origin/HEAD names, adds the worktree on the new branch from it, in a folder
       named after the branch (each / as -) in coordinator.repos.<name>.worktreeFolder (default

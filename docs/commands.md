@@ -306,6 +306,9 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       the first teamrig that reads it, as a tab on an older one refuses every write after; --yes writes it
   commits check --base <ref> [--tip <ref>]   commits in base..tip (default HEAD) over the size rule
       with no reason line; any is REFUSED, for a merge script or CI
+  secrets staged | secrets message <file> | secrets pushed <remote>   for git's pre-commit, commit-msg and
+      pre-push hooks: a secret the staged change, the message or the pushed commits add is REFUSED, named by
+      place and shape, never by value; default shapes and paths outside a team, plus the team's own inside one
   worktree add <branch> [--repo <name>]   makes a session's new worktree the same way every time: fetches
       the default branch origin/HEAD names, adds the worktree on the new branch from it, in a folder
       named after the branch (each / as -) in coordinator.repos.<name>.worktreeFolder (default
