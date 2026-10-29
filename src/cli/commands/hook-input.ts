@@ -1,14 +1,16 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { ToolUse } from '../../budget/line.ts';
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { formatAddress } from '../../core/address.ts';
 import { isRecord, stringField, type JsonRecord } from '../../core/guards.ts';
 import { claudeConfigDir, claudeTempDir, ENV } from '../../core/home.ts';
 import { resolveTeam, type TeamResolution } from '../../core/team.ts';
-import { OwnPaths, TeamFolders, type LeadPaths, type SubTeamPlace } from '../../hooks/lead-boundary.ts';
+import { OwnPaths, tasksSearched, TeamFolders, type LeadPaths, type SubTeamPlace } from '../../hooks/lead-boundary.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
 import { indexMarks } from '../../inbox/marks.ts';
+import { JsonlEventLog } from '../../register/store.ts';
 import { openKit, rosterOf, teamFolders, type Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
 import type { KitTree } from '../tree.ts';
@@ -138,18 +140,45 @@ export function subTeamPlacesOf({ tree, teams }: KitTree, team: string): SubTeam
 /**
  * Where the lead's calls land in this team. Its own paths: its teamrig folder, Claude Code's memory folders, its
  * session scratchpads (notes and command input it keeps for itself, never work to hand off), its sub-teams' configs,
- * rules and states, and `leadBoundary.ownPaths`. In the teamrig folder, a search outside the config, the rules, the register's state and
- * the places named for the lead is research (T736), and so is one in a sub-team's folder outside its config, rules
- * and state, read from `tree` (T1019).
+ * rules and states, and `leadBoundary.ownPaths`. In the teamrig folder, a search outside the config, the rules, the register's state,
+ * the places named for the lead and the folders of the tasks `taskOwners` gives the lead is research (T736, T1467),
+ * and so is one in a sub-team's folder outside its config, rules and state, read from `tree` (T1019).
  */
-export function leadPathsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, tree: KitTree): LeadPaths {
+export function leadPathsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, tree: KitTree, taskOwners: ReadonlyMap<string, string> = new Map()): LeadPaths {
   const memory = join(claudeConfigDir(runtime.env, runtime.userHome), 'projects', '*', 'memory');
   const scratchpads = join(claudeTempDir(runtime.env, tmpdir()), 'claude', '*', '*', 'scratchpad');
-  const { home, config: configFile, teamRules, state } = kit.paths;
+  const { home, config: configFile, teamRules, state, tasks } = kit.paths;
   const subTeams = subTeamPlacesOf(tree, kit.paths.team);
-  const places = { home, own: [configFile, teamRules, state], lead: config.roles.lead, sessions: config.sessions, subTeams };
+  const places = { home, own: [configFile, teamRules, state], lead: config.roles.lead, sessions: config.sessions, subTeams, tasks, taskOwners };
   return {
     own: new OwnPaths([home, memory, scratchpads, ...subTeams.flatMap((sub) => sub.own), ...config.leadBoundary.ownPaths], runtime.userHome),
     team: new TeamFolders(places, runtime.userHome),
   };
+}
+
+/**
+ * `leadPathsOf` for a turn's calls, with the owners of the tasks whose folders they search (T1467). The register is
+ * read only when a call searches a task folder; an unreadable one leaves those folders research with no owner.
+ */
+export async function turnLeadPathsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, tree: KitTree, turn: readonly ToolUse[]): Promise<LeadPaths> {
+  const paths = leadPathsOf(runtime, kit, config, tree);
+  const searched = tasksSearched(turn, paths);
+  if (searched.length === 0) {
+    return paths;
+  }
+  const owners = await registerOwnersOf(runtime, kit, searched).catch((): ReadonlyMap<string, string> => new Map());
+  return leadPathsOf(runtime, kit, config, tree, owners);
+}
+
+/** The owner of each of `ids` the register's working set holds, by task id. */
+async function registerOwnersOf(runtime: CliRuntime, kit: Kit, ids: readonly string[]): Promise<ReadonlyMap<string, string>> {
+  const { state } = await new JsonlEventLog(runtime.files, kit.paths.events).read();
+  const owners = new Map<string, string>();
+  for (const id of ids) {
+    const owner = state.tasks.get(id)?.owner;
+    if (owner !== undefined) {
+      owners.set(id, owner);
+    }
+  }
+  return owners;
 }

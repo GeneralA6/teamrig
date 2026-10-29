@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { Files } from '../core/files.ts';
 import type { JsonRecord } from '../core/guards.ts';
-import { APP, CLAUDE_SESSION, CliHarness, EVENTS_PATH, TEAM, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
+import { APP, CLAUDE_SESSION, CliHarness, EVENTS_PATH, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { teamHomeOf, treeHarness } from '../testing/team-tree.ts';
 import { promptLine, replyLine, resultsLine, transcript, type FixtureTool } from '../testing/transcript-lines.ts';
@@ -80,6 +80,21 @@ describe('the lead boundary hooks', () => {
     const out = (await afterTool(kit, fetch, AS_LEAD, unreadable)).stdout.join('');
     assert.match(out, /research itself \(vendor\.example\)\. Send the question to the session that owns it/);
     assert.doesNotMatch(out, /alpha/);
+  });
+
+  it("leave a search of the lead's own task folder alone and send one of another session's to it, by the register (T1467)", async () => {
+    const own: FixtureTool = { id: 'last', name: 'Grep', path: join(TEAM_HOME, 'tasks', 'T1') };
+    const kit = await withTurn(new CliHarness(TEAM), own);
+    await kit.run(['add', '--title', 'Lead design', '--description', 'what and why', '--priority', 'p2', '--owner', 'lead', '--session', 'lead']);
+    await kit.run(['add', '--title', 'Alpha design', '--description', 'what and why', '--priority', 'p2', '--owner', 'alpha', '--session', 'lead']);
+    assert.deepEqual((await afterTool(kit, own, AS_LEAD)).stdout, []);
+    const stdin = JSON.stringify({ session_id: CLAUDE_SESSION, cwd: APP, transcript_path: TRANSCRIPT });
+    assert.doesNotMatch((await kit.run(['hook', 'stop'], { stdin, env: AS_LEAD })).stdout.join(''), /Lead boundary/);
+    const alpha: FixtureTool = { id: 'last', name: 'Grep', path: join(TEAM_HOME, 'tasks', 'T2', 'notes.md') };
+    assert.match((await afterTool(await withTurn(kit, alpha), alpha, AS_LEAD)).stdout.join(''), /research itself \(tasks\/t2\)\. Send the question to alpha as/);
+    const unreadable = new FaultyFiles(kit.files).fail('read', EVENTS_PATH, systemError('EACCES', 'EACCES: permission denied'));
+    const unread = await withTurn(kit, own);
+    assert.match((await afterTool(unread, own, AS_LEAD, unreadable)).stdout.join(''), /research itself \(tasks\/t1\)\. Send the question to the session that owns it/, 'an unreadable register knows no owner');
   });
 
   it('show the owner the lead own work at the turn end, on the lead tab only', async () => {
