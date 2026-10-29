@@ -158,6 +158,15 @@ describe('isPastDailyBudget and sessionQuietSpan', () => {
     assert.equal(isHeld(facts(0.95, AHEAD, DAY, { teamDay: ROOM }), 0.1), false);
   });
 
+  it('holds a session past its budget when the turn about to start spends the team room left (T1322)', () => {
+    // Seconds after the quiet hours end the in-day pace is the night's use and a hair more.
+    const dayStart: TeamDay = { usedPct: 0.9, pacePct: 0.9005 };
+    assert.equal(isHeld(facts(1.1, AHEAD, DAY, { teamDay: dayStart })), false);
+    assert.equal(isHeld(facts(1.1, AHEAD, DAY, { teamDay: dayStart }), 0.003), true);
+    assert.equal(isHeld(facts(0.5, AHEAD, DAY, { teamDay: dayStart }), 0.003), false);
+    assert.equal(isHeld(facts(1.1, AHEAD, DAY, { teamDay: ROOM }), 0.003), false);
+  });
+
   it('finds the quiet hours the session is in, unless its lift exempts it', () => {
     assert.deepEqual(sessionQuietSpan(facts(0, BEHIND, NIGHT), QUIET), QUIET_NIGHT);
     assert.equal(sessionQuietSpan(facts(0, BEHIND, NIGHT, { lift: lift() }), QUIET), undefined);

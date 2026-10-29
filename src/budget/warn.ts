@@ -179,11 +179,13 @@ export function isPastDailyBudget(facts: BudgetFacts, extraPct = 0): boolean {
  * True when the session is past its daily budget while the team has no room today (its use at or past its in-day
  * pace, `hasRoom`): only then is it held, woken for urgent work alone and escalated as `budget.escalate` says.
  * While the team has room, a session past its part uses room the others left, so no session waits while the week
- * has room. A turn about to start counts as spent (`extraPct`, in % of the week): a session with next to nothing
- * left, idle since the night, is held before its wake, not after the wake's own turn spent it (T1322).
+ * has room. A turn about to start counts as spent (`extraPct`, in % of the week), for the session and for the
+ * team: a session with next to nothing left, idle since the night, is held before its wake, not after the wake's own
+ * turn spent it; and as the quiet hours end the in-day pace is the night's use alone, so the team's room is a few
+ * seconds of pace, which the wake's turn would spend at once (T1322).
  */
 export function isHeld(facts: BudgetFacts, extraPct = 0): boolean {
-  return isPastDailyBudget(facts, extraPct) && !hasRoom(facts.teamDay);
+  return isPastDailyBudget(facts, extraPct) && !hasRoom({ ...facts.teamDay, usedPct: facts.teamDay.usedPct + extraPct });
 }
 
 /** The quiet hours the session is in; undefined outside them, or while its lift exempts it. */
