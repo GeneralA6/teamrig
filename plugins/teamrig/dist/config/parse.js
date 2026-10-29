@@ -1005,6 +1005,7 @@ function parseCommits(read, raw) {
         maxFiles: read.integer(raw, 'maxFiles', path, defaults.maxFiles, CONFIG_LIMITS.commitMaxFiles),
         largeCommitTrailer: read.string(raw, 'largeCommitTrailer', path, defaults.largeCommitTrailer, isTrailerKey),
         testPatterns: read.stringList(raw, 'testPatterns', path, defaults.testPatterns, shortLine(CONFIG_LIMITS.testPatterns.maxLength, isValidRegex), CONFIG_LIMITS.testPatterns.maxItems),
+        sourcePatterns: read.stringList(raw, 'sourcePatterns', path, defaults.sourcePatterns, shortLine(CONFIG_LIMITS.sourcePatterns.maxLength, isValidRegex), CONFIG_LIMITS.sourcePatterns.maxItems),
         gate: isCommitGate(gate) ? gate : defaults.gate,
     };
 }

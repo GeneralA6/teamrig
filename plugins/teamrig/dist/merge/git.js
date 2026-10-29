@@ -47,6 +47,7 @@ export const GIT_MERGE = {
             linked: !samePlace(gitDir, commonDir),
         };
     },
+    commonDir: (dir) => queryLine(dir, ['rev-parse', '--path-format=absolute', '--git-common-dir']),
     changes(dir, untracked) {
         const text = query(dir, ['status', '--porcelain', `--untracked-files=${untracked ? 'normal' : 'no'}`]);
         return text === undefined ? undefined : lines(text);

@@ -13,8 +13,8 @@ export function renamedPath(path) {
     const arrow = path.indexOf(' => ');
     return arrow === -1 ? path : path.slice(arrow + ' => '.length);
 }
-/** Whether a path is a test, by the team's patterns, read with forward slashes. */
-export function testMatcher(patterns) {
+/** Whether a path matches one of the patterns (the team's tests or sources), read with forward slashes where a rename ends. */
+export function pathMatcher(patterns) {
     const compiled = patterns.map((pattern) => new RegExp(pattern, 'u'));
     return (path) => {
         const normal = renamedPath(path).replace(/\\/g, '/');
@@ -36,7 +36,7 @@ export function hasLargeReason(body, trailer) {
 }
 /** The commits over either bound with no reason line, in the order given. */
 export function largeCommits(commits, rule) {
-    const isTest = testMatcher(rule.testPatterns);
+    const isTest = pathMatcher(rule.testPatterns);
     return commits.flatMap((commit) => {
         const weight = weighCommit(commit, isTest);
         const large = weight.lines > rule.maxLines || weight.files > rule.maxFiles;

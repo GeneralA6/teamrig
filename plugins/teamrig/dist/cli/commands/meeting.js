@@ -1,11 +1,14 @@
+import { coordinatorPlaces } from "../../coordinator/places.js";
 import { formatAddress } from "../../core/address.js";
 import { KIT_NAME } from "../../core/home.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { postLine } from "../../inbox/inbox.js";
 import { agendaLines, agendaSince } from "../../meeting/agenda.js";
+import { mergeDigestLines } from "../../meeting/merges.js";
 import { decisionsByOwner, endNotice } from "../../meeting/notices.js";
 import { MeetingSchedule } from "../../meeting/schedule.js";
 import { MeetingStore, phaseOf, stoppedAt } from "../../meeting/state.js";
+import { MergeLog } from "../../merge/merge-log.js";
 import { currentWeekOf } from "../../register/week.js";
 import { fitLines } from "../../register/fit.js";
 import { noPositionals, UsageError } from "../args.js";
@@ -98,19 +101,26 @@ function phaseLine(phase, mk) {
             return `MEETING none open, the last ended ${mk.zone.weekdayMinute(new Date(phase.until))}; the agenda for the next (${KIT_NAME} meeting start opens it)`;
     }
 }
+/** The self-merges digest's input: the team's merges log, read once, from the agenda's start. */
+async function mergeDigestOf(runtime, mk, since) {
+    const { merges } = coordinatorPlaces(mk.config.coordinator, mk.kit.paths);
+    const gated = mk.config.pushGuard.pushToProtected === 'gated';
+    return { log: await new MergeLog(runtime.files, merges).read(), since, zone: mk.zone, gated, path: merges };
+}
 /**
  * The agenda: the register's part (decisions, with those of every team under the lead's, then late and done), today's
- * scheduled meetings and the missed ones, the lead's inbox marked read, then the week's use and, under it, the planned
- * week's fit (as `plan` gives it).
+ * scheduled meetings and the missed ones, the self-merges since the meeting before, the lead's inbox marked read, then
+ * the week's use and, under it, the planned week's fit (as `plan` gives it).
  */
 async function printAgenda(args, runtime, mk, phase) {
     const { own, teams } = await meetingRegisters(runtime, mk);
     const { snapshot } = own;
+    const since = agendaSince(previousEnd(phase), mk.now);
     const lines = agendaLines({
         tasks: [...snapshot.state.tasks.values()],
         tree: taskTreeOf(own, runtime),
         now: mk.now,
-        since: agendaSince(previousEnd(phase), mk.now),
+        since,
         ownerMarker: mk.config.register.ownerSource,
         requireGate: mk.config.register.requireDecisionCard,
         below: teams
@@ -129,6 +139,7 @@ async function printAgenda(args, runtime, mk, phase) {
     lines.forEach((line) => runtime.out.stdout(line));
     const scheduled = await new MeetingSchedule(runtime.files, mk.kit.paths.meetings).read();
     agendaMeetingLines(scheduled.meetings, mk.zone, mk.now).forEach((line) => runtime.out.stdout(line));
+    mergeDigestLines(await mergeDigestOf(runtime, mk, since)).forEach((line) => runtime.out.stdout(line));
     await read({ ...args, flags: new Map([['session', mk.lead]]) }, runtime);
     runtime.out.stdout(await weekLineOf(runtime, mk.kit, mk.config, mk.roster));
     const week = currentWeekOf(snapshot, new Date(mk.now), mk.zone);

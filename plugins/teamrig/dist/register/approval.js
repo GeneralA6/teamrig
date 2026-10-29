@@ -24,7 +24,8 @@ export function approvalCleared(task, reason) {
 }
 /**
  * The first task of `owner`'s, in register order, that waits on the approval of one of `approvers` (its leaders,
- * `LeadTree.chainOf`) and has it: what lets `owner` push to a protected branch under `pushGuard.pushToProtected: lead`.
+ * `LeadTree.chainOf`) and has it: what lets `owner` push to a protected branch under `pushGuard.pushToProtected: lead`
+ * or `gated`.
  * Undefined when it holds none.
  */
 export function approvedTaskOf(tasks, owner, approvers) {

@@ -44,6 +44,9 @@ function normalPush(mode, lead) {
         case 'lead':
             return (`A normal push to one goes through only for the lead (session ${lead}) or for a session whose waiting task the ` +
                 'lead approved with `teamrig approve`; any other session is refused.');
+        case 'gated':
+            return (`A normal push to one goes through only for the lead (session ${lead}) or for a session whose waiting task the ` +
+                "lead approved with `teamrig approve`; any other session merges with `teamrig merge`, which merges a change that holds the self-merge gates with no approval and holds one that misses a gate for a leader's.");
     }
 }
 function registerLine({ team, home }) {
