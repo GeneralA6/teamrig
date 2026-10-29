@@ -111,6 +111,15 @@ describe('nodeFiles', () => {
     assert.equal(await files.read(path), undefined);
   });
 
+  it('makes a folder with the folders above it, again without harm, and throws when a file is in the way', async () => {
+    const folder = join(root, 'made', 'T12');
+    await files.makeFolder(folder);
+    await files.makeFolder(folder);
+    assert.deepEqual([await files.list(join(root, 'made')), await files.list(folder)], [['T12'], []]);
+    await files.write(join(root, 'plain.txt'), 'x');
+    await assert.rejects(files.makeFolder(join(root, 'plain.txt')), /EEXIST/);
+  });
+
   it('moves a file and a folder with what it holds, creating folders, and never replaces what is there', async () => {
     await files.write(join(root, 'one.txt'), 'x');
     await files.write(join(root, 'box', 'inner', 'two.txt'), 'y');

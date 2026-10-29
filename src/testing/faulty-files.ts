@@ -65,6 +65,11 @@ export class FaultyFiles implements Files {
     return this.inner.list(dir);
   }
 
+  async makeFolder(path: string): Promise<void> {
+    await this.check('makeFolder', path);
+    return this.inner.makeFolder(path);
+  }
+
   async remove(path: string): Promise<boolean> {
     await this.check('remove', path);
     return this.inner.remove(path);
