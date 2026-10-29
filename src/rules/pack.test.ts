@@ -18,6 +18,7 @@ import {
   renderLeadRules,
   renderSessionContext,
   TEAM_RULES_MAX_CHARS,
+  teamRulesPart,
   type KeptRule,
   type TeamRules,
 } from './pack.ts';
@@ -593,5 +594,23 @@ describe('renderSessionContext', () => {
   it('ends without a pointer when even the doctor line no longer fits', () => {
     const full = 'c'.repeat(CONTEXT_MAX_CHARS - 10);
     assert.equal(renderSessionContext(full, [own('x', `/${'p'.repeat(CONTEXT_MAX_CHARS)}`)], COMMAND), full);
+  });
+});
+
+describe('teamRulesPart', () => {
+  const own = (text: string): TeamRules => ({ ancestor: undefined, path: 'rules.md', text });
+  const HEADING = "\n\n# Your team's rules\n";
+
+  it('is only the text that follows a start of the given length, empty without team rules (T1376)', () => {
+    assert.equal(teamRulesPart([own('- Own rule.')], 100, COMMAND), `${HEADING}- Own rule.`);
+    assert.equal(teamRulesPart([], 100, COMMAND), '');
+  });
+
+  it('counts the room it names from the length of the start before it', () => {
+    const used = CONTEXT_MAX_CHARS - 1_000;
+    assert.equal(
+      teamRulesPart([own('x'.repeat(2_000))], used, COMMAND),
+      `\n\nYour team's rules are in rules.md (2000 characters; this start has room for ${1_000 - HEADING.length}): read them now.`,
+    );
   });
 });
