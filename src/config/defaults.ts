@@ -281,7 +281,7 @@ export const DEFAULT_HEADROOM: HeadroomConfig = { sessionMb: 1200, commitMaxPct:
  */
 export const DEFAULT_IDLE: IdleConfig = { mode: 'on', keepOpen: [] };
 
-export const DEFAULT_OPEN: OpenConfig = { terminal: 'auto', headroom: DEFAULT_HEADROOM, idle: DEFAULT_IDLE };
+export const DEFAULT_OPEN: OpenConfig = { terminal: 'auto', teamWindow: false, headroom: DEFAULT_HEADROOM, idle: DEFAULT_IDLE };
 
 /** The status line shows the session's folder, its branch and the command that resumes it, unless the team turns them off. */
 export const DEFAULT_STATUS_LINE: StatusLineConfig = { folder: true, branch: true, resume: true };
