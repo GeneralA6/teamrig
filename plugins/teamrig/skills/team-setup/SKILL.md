@@ -56,8 +56,9 @@ teamrig setup backup --project "<project>" && teamrig setup scan --project "<pro
     move rules that matter only in some folders into `.claude/rules/<topic>.md` with a `paths:` frontmatter, or
     into the `CLAUDE.md` of the sub-folder they are about, so they load only there.
   - `DUPLICATE` (`D<n>`), a line that repeats one loaded before: keep the first, remove the repeat.
-  - `UNUSED` (`U<n>`), a skill no transcript used in 30 days: park its folder in `skills-parked/` beside the
-    `skills/` folder it is in. Claude Code no longer lists it; moving it back brings it back.
+  - `UNUSED` (`U<n>`), a skill no transcript or `/skill-doctor` saw used in 30 days: park its folder in
+    `skills-parked/` beside the `skills/` folder it is in. Claude Code no longer lists it; moving it back brings it
+    back. A `U` line naming `plugin:skill (source)` has no folder to park: the user turns it off in `/skills`.
   - `OVERRIDE` and `SETTINGS` need the team: step 7 settles those rule lines and the wide allow rules. Name them
     now and change nothing yet.
 - Ask one yes or no per group in AskUserQuestion (up to 4 per call): what changes, in which files, and the tokens
