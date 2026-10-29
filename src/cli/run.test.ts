@@ -666,11 +666,11 @@ describe('runCli: hook push-guard', () => {
     assert.equal(decisionOf(await push({ TEAMRIG_SESSION: 'bravo' })), 'deny', "alpha's approval is not bravo's");
   });
 
-  it('under pushToProtected gated, clears a hand push as lead does and points an uncleared one at integrate (T858)', async () => {
+  it('under pushToProtected gated, clears a hand push as lead does and points an uncleared one at merge (T858)', async () => {
     const kit = new CliHarness({ ...TEAM, pushGuard: { pushToProtected: 'gated' } });
     const push = (session: string) => kit.run(['hook', 'push-guard'], { stdin: bash('git push origin main'), env: { TEAMRIG_SESSION: session } });
     assert.match((await push('lead')).stdout[0] ?? '', /pushes unasked \[pushGuard\.pushToProtected: gated\]/);
-    assert.match(reasonOf(await push('alpha')) ?? '', /: lead has approved no waiting task of alpha's\. Land the branch with `teamrig integrate` instead/);
+    assert.match(reasonOf(await push('alpha')) ?? '', /: lead has approved no waiting task of alpha's\. Merge the branch with `teamrig merge` instead/);
   });
 
   it("under pushToProtected lead, lets a sub-lead's approval clear its member's push (T781)", async () => {

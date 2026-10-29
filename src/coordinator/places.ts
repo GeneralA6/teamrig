@@ -28,7 +28,7 @@ export interface CoordinatorPlaces {
   readonly reviewHolds: string;
   /** The self-merge gates' holds under `pushToProtected: gated`, one file per branch in flight (`GateHolds`). */
   readonly gateHolds: string;
-  /** What integrate landed under `pushToProtected: gated` (`MergeLog`). */
+  /** What `teamrig merge` merged under `pushToProtected: gated` (`MergeLog`). */
   readonly merges: string;
 }
 

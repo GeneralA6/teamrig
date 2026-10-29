@@ -76,11 +76,11 @@ function reasonOf(verdict: GatedVerdict): string {
 }
 
 describe('gatedVerdict: a change that holds every gate', () => {
-  it('lands with no approval and no hold, with what the merges log keeps of it', async () => {
+  it('merges with no approval and no hold, with what the merges log keeps of it', async () => {
     const step = new Step();
     assert.deepEqual(await step.run(), { kind: 'self', facts: FACTS });
     assert.equal(await step.holds.read('app', 't9-gate'), undefined);
-    assert.deepEqual(step.said, ['self-merge gates of t9-gate: every gate holds, so it lands with no approval']);
+    assert.deepEqual(step.said, ['self-merge gates of t9-gate: every gate holds, so it merges with no approval']);
   });
 
   it('is held when git cannot read its tree or its commits', async () => {
@@ -125,18 +125,18 @@ describe('gatedVerdict: a held change', () => {
       task: 'T9',
       session: 'alpha',
       reviewer: 'lead',
-      misses: [{ gate: 'pass', why: "no pass record proves the rebased tree eeeeeeee: run the repo's local checks on the rebased branch, then integrate again" }],
+      misses: [{ gate: 'pass', why: "no pass record proves the rebased tree eeeeeeee: run the repo's local checks on the rebased branch, then merge again" }],
       createdAt: '2030-01-08T10:00:00.000Z',
     });
     assert.equal(
       reason,
       `gate hold ${hold.id} keeps t9-gate (bbbbbbbb..hhhhhhhh) off the default branch: ${`pass: ${hold.misses[0]?.why ?? ''}`}. lead answers it: ` +
-        `teamrig set T9 --status waiting --waits approval:lead --note "gate hold ${hold.id} of t9-gate bbbbbbbb..hhhhhhhh" --session alpha; integrate again once it is approved`,
+        `teamrig set T9 --status waiting --waits approval:lead --note "gate hold ${hold.id} of t9-gate bbbbbbbb..hhhhhhhh" --session alpha; merge again once it is approved`,
     );
     assert.deepEqual(step.said, [`gate hold ${hold.id} of app t9-gate: waits on lead`]);
   });
 
-  it('lands once its leader approved it after the hold, naming the gates it missed', async () => {
+  it('merges once its leader approved it after the hold, naming the gates it missed', async () => {
     const step = new Step();
     step.pass = undefined;
     await step.run();
@@ -166,7 +166,7 @@ describe('gatedVerdict: a held change', () => {
     const { id } = await step.hold();
     step.clock.advance(MINUTE_MS);
     step.answer('declined', 'lead', 'split it\nfirst');
-    assert.equal(reasonOf(await step.run()), `gate hold ${id}: lead declined T9 (split it first); change t9-gate, then integrate again for a new hold`);
+    assert.equal(reasonOf(await step.run()), `gate hold ${id}: lead declined T9 (split it first); change t9-gate, then merge again for a new hold`);
   });
 
   it('gets a new hold for any other change of the branch', async () => {
@@ -183,7 +183,7 @@ describe('gatedVerdict: a held change', () => {
     assert.equal(made.head, 'n'.repeat(40));
   });
 
-  it('lands on an approval when it misses fewer gates than its hold named, and is held anew when it misses more', async () => {
+  it('merges on an approval when it misses fewer gates than its hold named, and is held anew when it misses more', async () => {
     const step = new Step();
     step.pass = undefined;
     await step.run({ reviewGate: false });

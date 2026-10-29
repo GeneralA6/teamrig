@@ -515,7 +515,7 @@ async function mergeByCommand(setup: MergeSetup, ports: MergePorts, plan: Plan, 
   if (pending !== undefined && merged !== undefined) {
     ports.say(`${branch} (${short(pending.head)}) is merged into ${defaultBranch}: ${onto} at ${short(merged)} holds it`);
     // The run that gave the command the change ran the self-merge gates; a pending merge does not keep their verdict,
-    // so a merge finished here writes no merges row (T1513).
+    // so a merge finished here writes no merges row (T1514).
     return { kind: 'merged', via: 'command', range: rangeText(git.commits(top, pending.base, merged), merged), after: merged, startedAt: pending.since, endedAt: startedAt, merge: undefined };
   }
   const before = git.sha(top, onto);

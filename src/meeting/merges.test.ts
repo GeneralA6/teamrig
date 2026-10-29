@@ -7,7 +7,7 @@ import { mergeDigestLines, type MergeDigestInput } from './merges.ts';
 
 const SINCE = Date.parse('2030-01-07T10:00:00Z');
 const PATH = '/team/deploys/merges.jsonl';
-const HEAD = 'MERGES 1 landed with no approval since Mon 01-07 10:00 UTC, 0 CHECK-CLEAN (security samples those weekly)';
+const HEAD = 'MERGES 1 merged with no approval since Mon 01-07 10:00 UTC, 0 CHECK-CLEAN (security samples those weekly)';
 const SELF: SelfMerge = {
   at: '2030-01-07T12:00:00.000Z',
   session: 'alpha',
@@ -35,14 +35,14 @@ describe('mergeDigestLines', () => {
   it('lists the self-merges since the meeting before, check-clean ones first and marked, and no approved merge', () => {
     const older: SelfMerge = { ...SELF, at: '2030-01-07T09:59:00.000Z', branch: 't3-old' };
     assert.deepEqual(mergeDigestLines(inputOf([older, SELF, APPROVED, CHECKED])), [
-      'MERGES 2 landed with no approval since Mon 01-07 10:00 UTC, 1 CHECK-CLEAN (security samples those weekly)',
+      'MERGES 2 merged with no approval since Mon 01-07 10:00 UTC, 1 CHECK-CLEAN (security samples those weekly)',
       '  Mon 01-07 13:00 UTC bravo app t7-auth bbbbbbbb..hhhhhhhh: 2 files, 32 lines, checks unit, lint, CHECK-CLEAN',
       ROW,
     ]);
   });
 
-  it('says none landed under gated, and prints nothing off it unless its window holds a self-merge', () => {
-    assert.deepEqual(mergeDigestLines(inputOf([APPROVED])), ['MERGES 0 landed with no approval since Mon 01-07 10:00 UTC, 0 CHECK-CLEAN (security samples those weekly)']);
+  it('says none merged under gated, and prints nothing off it unless its window holds a self-merge', () => {
+    assert.deepEqual(mergeDigestLines(inputOf([APPROVED])), ['MERGES 0 merged with no approval since Mon 01-07 10:00 UTC, 0 CHECK-CLEAN (security samples those weekly)']);
     assert.deepEqual(mergeDigestLines(inputOf([], { gated: false })), []);
     assert.deepEqual(mergeDigestLines(inputOf([{ ...SELF, at: '2030-01-06T12:00:00.000Z' }], { gated: false })), []);
     assert.deepEqual(mergeDigestLines(inputOf([SELF], { gated: false })), [HEAD, ROW]);

@@ -103,7 +103,7 @@ function largeCommitsIn(updates: readonly ProtectedUpdate[], env: PushGuardEnv):
 /** Ends the question about a normal push to a protected branch, naming the switch that stops it. */
 export const PUSH_TO_PROTECTED_HINT =
   "To stop asking about normal pushes, set pushGuard.pushToProtected in the team's config.json to allow, to lead to have the lead approve them, " +
-  'or to gated to have teamrig integrate land the changes that hold its gates.';
+  'or to gated to let teamrig merge take the changes that hold its gates.';
 
 /** The note shown when `pushToProtected: allow` lets a normal push to a protected branch through. */
 export function allowedPushNote(protectedBranches: readonly string[]): string {
@@ -121,12 +121,12 @@ export function clearedPushNote(clearance: Exclude<PushClearance, { readonly kin
 
 /**
  * Why `pushToProtected: lead` or `gated` refuses a normal push to a protected branch, never asking the human: under
- * `lead`, how to ask the lead for it; under `gated`, that `teamrig integrate` lands the branch instead (T858).
+ * `lead`, how to ask the lead for it; under `gated`, that `teamrig merge` merges the branch instead (T858).
  */
 export function unclearedPushReason(clearance: Extract<PushClearance, { readonly kind: 'none' }>, protectedBranches: readonly string[], choice: ClearedChoice): string {
   const refused = `This push to a protected branch (${protectedBranches.join(', ')}) needs a lead's approval, not the human's: ${clearance.why}. `;
   return choice === 'gated'
-    ? `${refused}Land the branch with \`teamrig integrate\` instead: a change that holds the self-merge gates lands with no approval, ` +
+    ? `${refused}Merge the branch with \`teamrig merge\` instead: a change that holds the self-merge gates merges with no approval, ` +
         "and one that misses a gate is held for a leader's, saying how to ask. [pushGuard.pushToProtected: gated]"
     : `${refused}Ask on the register: \`teamrig set <task> --status waiting --waits approval:${clearance.approver} --note "<branch, what it lands, its tests>"\`, ` +
         `take your next task, and push once ${clearance.approver} approves it (\`teamrig approve\`). [pushGuard.pushToProtected]`;

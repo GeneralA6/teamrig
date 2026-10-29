@@ -11,9 +11,9 @@ import { taskOfBranch } from './review-gate-step.ts';
 import { missesText, selfMergeMisses, type GateMiss, type SelfMergeGate, type SelfMergeRule } from './self-merge.ts';
 
 /**
- * The self-merge step of `teamrig integrate` under `pushGuard.pushToProtected: gated` (T800 §2.1, T858), run under the
- * host lock after the rebase and the review gate. A change that holds every gate lands with no click; a change that
- * misses one is held for the session's nearest leader, bound to `base..head` and its tree, and lands once that leader
+ * The self-merge step of `teamrig merge` under `pushGuard.pushToProtected: gated` (T800 §2.1, T858), run under the
+ * host lock after the rebase and the review gate. A change that holds every gate merges with no click; a change that
+ * misses one is held for the session's nearest leader, bound to `base..head` and its tree, and merges once that leader
  * approved the branch's task after the hold was made, as long as it misses no gate the hold did not name. The task gate
  * is never held: an approval waits on the session's own live task, so a branch must name one first.
  */
@@ -27,7 +27,7 @@ export interface GatedSetup {
 /** A task as the step reads it: whose it is, how far it is, and the latest answer to its approval wait. */
 export type GatedTask = Pick<Task, 'owner' | 'status' | 'answer'>;
 
-/** What the step reads, bound to the checkout it lands from. */
+/** What the step reads, bound to the checkout it merges from. */
 export interface GatedPorts {
   readonly holds: Pick<GateHolds, 'read' | 'write'>;
   readonly clock: Clock;
@@ -53,7 +53,7 @@ export interface GatedChange {
   readonly head: string;
 }
 
-/** What the merges log keeps of a change the step lets land. */
+/** What the merges log keeps of a change the step lets merge. */
 export interface LandedFacts {
   readonly task: string | undefined;
   readonly tree: string;
@@ -86,7 +86,7 @@ function holdRefusal(hold: GateHold): string {
   return (
     `gate hold ${hold.id} keeps ${hold.branch} (${range}) off the default branch: ${missesText(hold.misses)}. ${hold.reviewer} answers it: ` +
     `teamrig set ${hold.task} --status waiting --waits approval:${hold.reviewer} --note "${note}" --session ${hold.session}; ` +
-    'integrate again once it is approved'
+    'merge again once it is approved'
   );
 }
 
@@ -95,7 +95,7 @@ function coveredBy(hold: GateHold, misses: readonly GateMiss[]): boolean {
   return misses.every((miss) => hold.misses.some((named) => named.gate === miss.gate));
 }
 
-/** A change that misses gates: its approved hold lets it land, else it is held, by its existing hold or a new one. */
+/** A change that misses gates: its approved hold lets it merge, else it is held, by its existing hold or a new one. */
 async function heldVerdict(setup: GatedSetup, ports: GatedPorts, change: GatedChange, held: HeldChange, task: string, misses: readonly GateMiss[], facts: LandedFacts): Promise<GatedVerdict> {
   const { session, repo, branch } = change;
   const hold = await ports.holds.read(repo, branch);
@@ -108,7 +108,7 @@ async function heldVerdict(setup: GatedSetup, ports: GatedPorts, change: GatedCh
     }
     if (answer?.verdict === 'declined' && Date.parse(answer.at) > createdAt) {
       const note = answer.note === null ? '' : ` (${answer.note.replace(/\s+/g, ' ')})`;
-      return { kind: 'held', reason: `gate hold ${hold.id}: ${answer.by} declined ${task}${note}; change ${branch}, then integrate again for a new hold` };
+      return { kind: 'held', reason: `gate hold ${hold.id}: ${answer.by} declined ${task}${note}; change ${branch}, then merge again for a new hold` };
     }
     return { kind: 'held', reason: holdRefusal(hold) };
   }
@@ -122,7 +122,7 @@ async function heldVerdict(setup: GatedSetup, ports: GatedPorts, change: GatedCh
   return { kind: 'held', reason: holdRefusal(made) };
 }
 
-/** The step on one change (see the module comment): land it with no click, land it as approved, or why it is held. */
+/** The step on one change (see the module comment): merge it with no click, merge it as approved, or why it is held. */
 export async function gatedVerdict(setup: GatedSetup, ports: GatedPorts, change: GatedChange): Promise<GatedVerdict> {
   const { session, repo, branch, base, head } = change;
   const tree = ports.treeOf(head);
@@ -139,7 +139,7 @@ export async function gatedVerdict(setup: GatedSetup, ports: GatedPorts, change:
   const misses = selfMergeMisses({ session, repo, reviewGate: change.reviewGate, branch, taskId, task, tree, pass, commits }, setup.commits);
   const facts: LandedFacts = { task: taskId, tree, ...sizeOf(commits), checks: pass?.checks ?? [] };
   if (misses.length === 0) {
-    ports.say(`self-merge gates of ${branch}: every gate holds, so it lands with no approval`);
+    ports.say(`self-merge gates of ${branch}: every gate holds, so it merges with no approval`);
     return { kind: 'self', facts };
   }
   if (taskId === undefined || misses.some((miss) => miss.gate === 'task')) {
