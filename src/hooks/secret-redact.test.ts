@@ -1,34 +1,24 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ConfigLoad } from '../config/load.ts';
-import type { SecretShapeHit } from '../core/secret-shapes.ts';
-import { ToolOutputRedactor, type SecretFinder } from '../secret-guard/redactor.ts';
 import { testConfig } from '../testing/config.ts';
-import { redactableResultOf, redactedLine, rotatorOf, secretRedactOutput } from './secret-redact.ts';
+import { redactableResultOf, redactedLine, rotationText, rotatorOf } from './secret-redact.ts';
 
 const join = (...parts: string[]): string => parts.join('');
 const TOKEN = join('gh', 'p_', 'a1'.repeat(18));
-
-/** Finds `TOKEN` and nothing else, so these specs judge the hook, not the shapes. */
-class TokenFinder implements SecretFinder {
-  hitsIn(text: string): readonly SecretShapeHit[] {
-    return text.includes(TOKEN) ? [{ id: 'github-token', description: 'GitHub token', value: TOKEN }] : [];
-  }
-}
-
-const REDACTOR = new ToolOutputRedactor([new TokenFinder()]);
 
 const bashResult = (stdout: string): { stdout: string; stderr: string; interrupted: boolean; isImage: boolean } => ({ stdout, stderr: '', interrupted: false, isImage: false });
 
 const loaded = (roles: { lead: string; securityReviewer?: string }): ConfigLoad => ({ status: 'loaded', path: 'c.json', config: testConfig({ roles }), issues: [] });
 
 describe('redactableResultOf', () => {
-  it('gives the result of a Bash, PowerShell or Grep call, and of a Read of a text file', () => {
+  it('gives the result of a Bash, PowerShell or Grep call, and of a Read of a text file, with its tool and payload', () => {
     for (const tool_name of ['Bash', 'PowerShell', 'Grep']) {
-      assert.deepEqual(redactableResultOf({ tool_name, tool_response: bashResult(TOKEN) }), bashResult(TOKEN));
+      const payload = { tool_name, tool_response: bashResult(TOKEN) };
+      assert.deepEqual(redactableResultOf(payload), { payload, tool: tool_name, response: bashResult(TOKEN) });
     }
     const text = { type: 'text', file: { filePath: 'a.txt', content: TOKEN } };
-    assert.deepEqual(redactableResultOf({ tool_name: 'Read', tool_response: text }), text);
+    assert.deepEqual(redactableResultOf({ tool_name: 'Read', tool_response: text })?.response, text);
   });
 
   it('leaves a tool not probed, a Read of an image, a result that is no object and a payload that is none alone', () => {
@@ -50,30 +40,29 @@ describe('rotatorOf', () => {
   });
 });
 
-describe('redactedLine', () => {
-  it('names each kind found and who rotates it, never a value, and says when part of the result went unscanned', () => {
-    const whole = redactedLine({ response: {}, classes: ['GitHub token', 'secret variable value'], cut: false }, 'bravo');
-    assert.match(whole, /\(GitHub token, secret variable value\)/);
-    assert.match(whole, /ask bravo to rotate it/);
-    assert.doesNotMatch(whole, /cap/);
-    assert.match(redactedLine({ response: {}, classes: ['GitHub token'], cut: true }, 'bravo'), /past the scan's cap and was not checked\.$/);
+describe('rotationText', () => {
+  it('names each rotation task once when every kind has one', () => {
+    assert.equal(rotationText('bravo', [{ kind: 'GitHub token', task: 'T7' }, { kind: 'AWS key', task: 'T8' }, { kind: 'npm token', task: 'T7' }]), 'bravo rotates it in T7, T8.');
+  });
+
+  it('asks the model to file the task when no kind has one, naming each problem once', () => {
+    const failed = [{ kind: 'GitHub token', problem: 'the register is locked' }, { kind: 'AWS key', problem: 'the register is locked' }];
+    assert.equal(rotationText('bravo', failed), 'ask bravo to rotate it with a register task (filing one failed: the register is locked).');
+  });
+
+  it('names the tasks filed and asks for the rest when only some kinds have one', () => {
+    assert.equal(
+      rotationText('app/security', [{ kind: 'GitHub token', task: 'app/T3' }, { kind: 'AWS key', problem: 'no route' }]),
+      'app/security rotates it in app/T3; ask app/security to rotate the rest with a register task (filing one failed: no route).',
+    );
   });
 });
 
-describe('secretRedactOutput', () => {
-  it('hands back the result with its secret replaced, every other key kept, and the line as context', () => {
-    const output = secretRedactOutput({ tool_name: 'Bash', tool_response: bashResult(join('token ', TOKEN)) }, REDACTOR, 'bravo');
-    assert.deepEqual(JSON.parse(output ?? ''), {
-      hookSpecificOutput: {
-        hookEventName: 'PostToolUse',
-        updatedToolOutput: bashResult('token [redacted GitHub token]'),
-        additionalContext: redactedLine({ response: {}, classes: ['GitHub token'], cut: false }, 'bravo'),
-      },
-    });
-  });
-
-  it('prints nothing for a result that holds no secret or that it does not redact', () => {
-    assert.equal(secretRedactOutput({ tool_name: 'Bash', tool_response: bashResult('all clear') }, REDACTOR, 'bravo'), undefined);
-    assert.equal(secretRedactOutput({ tool_name: 'WebFetch', tool_response: { result: TOKEN } }, REDACTOR, 'bravo'), undefined);
+describe('redactedLine', () => {
+  it('names each kind found and what becomes of it, never a value, and says when part of the result went unscanned', () => {
+    const whole = redactedLine({ response: {}, classes: ['GitHub token', 'secret variable value'], cut: false }, 'bravo rotates it in T7.');
+    assert.match(whole, /\(GitHub token, secret variable value\)/);
+    assert.match(whole, /Treat it as leaked: bravo rotates it in T7\. Do not print it again\.$/);
+    assert.match(redactedLine({ response: {}, classes: ['GitHub token'], cut: true }, 'bravo rotates it in T7.'), /past the scan's cap and was not checked\.$/);
   });
 });
