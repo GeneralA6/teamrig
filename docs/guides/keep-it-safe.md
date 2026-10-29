@@ -11,6 +11,7 @@ your main branch on your git host too.
 - [Skipped hooks](#skipped-hooks)
 - [Unvetted packages](#unvetted-packages)
 - [Secrets kept out of the conversation](#secrets-kept-out-of-the-conversation)
+- [Secrets kept out of commits](#secrets-kept-out-of-commits)
 - [Privileged commands on review](#privileged-commands-on-review)
 - [Reads without a prompt](#reads-without-a-prompt)
 
@@ -185,6 +186,24 @@ credentials in a URL, an Authorization or API key header, a quoted literal given
 Claude Code's prompt history and paste cache. A placeholder (`${TOKEN}`, `<token>`, `changeme`) or a name given to a
 secret-like key (`TOKEN="SOME_READ_TOKEN"`) passes, judged on the value alone. The reason says to send the secret's name or the file it is kept in instead, and to rotate it
 ([Each prompt](../../plugins/teamrig/skills/teamrig-guide/hooks.md#each-prompt)).
+
+## Secrets kept out of commits
+
+A secret committed stays in the repository's history, and once pushed, on its host too, whoever made the commit.
+`teamrig secrets` scans what git is about to record, for a repository's own git hooks to call:
+
+```sh
+teamrig secrets staged || exit 1         # pre-commit: the staged lines and files
+teamrig secrets message "$1" || exit 1   # commit-msg: the commit message
+teamrig secrets pushed "$1" || exit 1    # pre-push: each pushed commit's patch and message
+```
+
+Each refuses a line in a secret shape (the shapes the secret guard and the redactor use) and a file the secret paths
+list (`.env`, `*.pem`...) whatever it holds, named by place and shape, never by value. The push scan also catches a
+commit made before the hooks were there, or past them. Outside a team the default shapes and paths still scan; inside
+one, the team's `register.secretPatterns` and `secretGuard.paths` are added. `teamrig check` warns the lead
+(SECRET-HOOK) of each repository in `coordinator.repos` whose hooks skip one of the three, with the line to add
+([the commands](../../plugins/teamrig/skills/teamrig-guide/commands.md#teamrig-secrets-staged)).
 
 ## Privileged commands on review
 
