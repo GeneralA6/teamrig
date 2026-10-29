@@ -290,10 +290,10 @@ export function formatEvent(event, zone) {
 }
 /**
  * `show`: the task line, its description (what and why, its later lines indented two spaces), its status details,
- * then its history; `tree` reads the task line as {@link formatTask} does, and `sizeCost` words its size's cost
- * beside the percent.
+ * its files, then its history; `tree` reads the task line as {@link formatTask} does, and `extras.sizeCost` words its
+ * size's cost beside the percent.
  */
-export function formatTaskDetail(task, events, tree, sizeCost = () => undefined) {
+export function formatTaskDetail(task, events, tree, extras = {}) {
     const lines = [formatTask(task, undefined, tree)];
     if (task.description !== null) {
         const [first = '', ...rest] = task.description.split('\n');
@@ -306,7 +306,7 @@ export function formatTaskDetail(task, events, tree, sizeCost = () => undefined)
         lines.push(`pinned by ${task.pin}: above every other task of ${task.owner}`);
     }
     if (task.size !== null) {
-        const cost = sizeCost(task.size);
+        const cost = extras.sizeCost?.(task.size);
         lines.push(`size: ${sizeText(task.size)} of the weekly limit${cost === undefined ? '' : `, ${cost}`}`);
     }
     if (task.note !== null) {
@@ -336,6 +336,9 @@ export function formatTaskDetail(task, events, tree, sizeCost = () => undefined)
     const review = reviewLines(task.review, '  ');
     if (review.length > 0) {
         lines.push('review:', ...review);
+    }
+    if (extras.files !== undefined) {
+        lines.push(extras.files);
     }
     lines.push('history:', ...events.filter((event) => event.id === task.id).map((event) => `  ${formatEvent(event, tree.zone)}`));
     return lines.join('\n');

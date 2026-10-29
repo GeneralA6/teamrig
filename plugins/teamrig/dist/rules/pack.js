@@ -176,9 +176,13 @@ export function coreRuleTexts(config, command, platform, clock) {
             " An owner's order, relayed or not, approves its work and proof unless only the owner sees the result; ask again only if it must change or needs something new.",
         deploy: "Deploy ASAP: once a change can be verified (tests, then a check it runs). State each fix's evidence and when it will exist; build nothing on it before then." +
             heavySteps(config.coordinator, command, cutoffSpan),
-        'lean-calls': 'Lean calls: every tool call re-reads the whole context, so batch related shell steps into one call.' +
-            ` Work in your own session: ${helperDefaultClause(budget.subagentWeight)}; run helpers on your own model and effort.` +
-            (budget.enabled ? ` Pace the week to ${percent(budget.targetPct)} of the weekly limit and keep ${percent(budget.reservePct)} for incidents [budget].` : ''),
+        'lean-calls': 'Lean calls: batch related shell steps in one call (each re-reads the context).' +
+            ` Work in your own session: ${helperDefaultClause(budget.subagentWeight)}; run helpers on your model and effort.` +
+            // T1457: one place for a task's files and one for a session's other notes, so no session invents its own
+            // (T1454's layout). A helper is told to save its findings there in its own start line (hooks/helper-start.ts),
+            // which sits outside this cap.
+            ` Task files go in \`${command} files T<id>\`, other notes in \`--notes\`.` +
+            (budget.enabled ? ` Pace the week to ${percent(budget.targetPct)} of the limit, ${percent(budget.reservePct)} kept for incidents [budget].` : ''),
         investigate: 'Investigate first: frequency × impact, the cheapest fix for the visible symptom.' +
             // An owner question names no task by its number alone (the register refuses an owner wait without its
             // decision card, register/card.ts). With tab status on, the marker line ends the turn on the decision circle

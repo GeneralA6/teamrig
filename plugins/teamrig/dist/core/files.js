@@ -154,6 +154,9 @@ export function nodeFiles(sleep) {
                 throw error;
             }
         },
+        async makeFolder(path) {
+            await mkdir(path, { recursive: true });
+        },
         async remove(path) {
             return removeFile(path, sleep);
         },
