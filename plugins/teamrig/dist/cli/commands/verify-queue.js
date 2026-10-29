@@ -2,7 +2,7 @@ import { JsonlDailyLog } from "../../core/daily-log.js";
 import { KIT_NAME } from "../../core/home.js";
 import { JsonlEventLog } from "../../register/store.js";
 import { verifyByArrived, verifyQueue, watchQueue } from "../../register/verify.js";
-import { formatVerifyByLine, formatVerifySummary } from "../../register/views.js";
+import { formatVerifyByLine, formatVerifySummary, verifySummaryPointer } from "../../register/views.js";
 /**
  * The tasks of the team's register log's working set alone: no lock and no archive (a compaction retires only
  * finished tasks with no watch), so a hook can afford it.
@@ -27,6 +27,11 @@ export async function verifyNoteOf(runtime, paths, id) {
     catch {
         return undefined;
     }
+}
+/** verifyNoteOf for the start note, with the pointer a start shows when it has no room for the rows (T1376). */
+export async function verifyStartNoteOf(runtime, paths, id) {
+    const text = await verifyNoteOf(runtime, paths, id);
+    return text === undefined || id === undefined ? undefined : { text, pointer: verifySummaryPointer(id, KIT_NAME) };
 }
 /**
  * The Stop hook's lines for session `id`'s verifying tasks whose verify-by day has come, overdue ones
