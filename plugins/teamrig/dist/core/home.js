@@ -146,6 +146,8 @@ export function teamPaths(kitHome, team, claudeDir, overrides = {}) {
         turnLog: join(state, 'turn-log'),
         sessions: join(state, 'sessions'),
         sessionLog: join(state, 'session-log.jsonl'),
+        secretIncidents: join(state, 'secret-incidents.jsonl'),
+        secretIncidentsLock: join(state, 'secret-incidents.lock'),
         execAudit: join(home, 'exec', 'audit.jsonl'),
         execAuditLock: join(home, 'exec', 'audit.lock'),
         execOut: join(home, 'exec', 'out'),
