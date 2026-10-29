@@ -345,12 +345,18 @@ export function formatEvent(event: RegisterEvent, zone: TimeZone): string {
 /** What a size, in percent of the weekly limit, costs in other words (such as `about 9.75M W`); undefined when unknown. */
 export type SizeCost = (pct: number) => string | undefined;
 
+/** What `show` adds to a task's own fields: its size's cost in other words, and its files line (T1457). */
+export interface DetailExtras {
+  readonly sizeCost?: SizeCost;
+  readonly files?: string;
+}
+
 /**
  * `show`: the task line, its description (what and why, its later lines indented two spaces), its status details,
- * then its history; `tree` reads the task line as {@link formatTask} does, and `sizeCost` words its size's cost
- * beside the percent.
+ * its files, then its history; `tree` reads the task line as {@link formatTask} does, and `extras.sizeCost` words its
+ * size's cost beside the percent.
  */
-export function formatTaskDetail(task: Task, events: readonly RegisterEvent[], tree: TaskTree, sizeCost: SizeCost = () => undefined): string {
+export function formatTaskDetail(task: Task, events: readonly RegisterEvent[], tree: TaskTree, extras: DetailExtras = {}): string {
   const lines = [formatTask(task, undefined, tree)];
   if (task.description !== null) {
     const [first = '', ...rest] = task.description.split('\n');
@@ -363,7 +369,7 @@ export function formatTaskDetail(task: Task, events: readonly RegisterEvent[], t
     lines.push(`pinned by ${task.pin}: above every other task of ${task.owner}`);
   }
   if (task.size !== null) {
-    const cost = sizeCost(task.size);
+    const cost = extras.sizeCost?.(task.size);
     lines.push(`size: ${sizeText(task.size)} of the weekly limit${cost === undefined ? '' : `, ${cost}`}`);
   }
   if (task.note !== null) {
@@ -393,6 +399,9 @@ export function formatTaskDetail(task: Task, events: readonly RegisterEvent[], t
   const review = reviewLines(task.review, '  ');
   if (review.length > 0) {
     lines.push('review:', ...review);
+  }
+  if (extras.files !== undefined) {
+    lines.push(extras.files);
   }
   lines.push('history:', ...events.filter((event) => event.id === task.id).map((event) => `  ${formatEvent(event, tree.zone)}`));
   return lines.join('\n');

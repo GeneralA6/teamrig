@@ -58,6 +58,7 @@ import { readBursts } from '../burst-reading.ts';
 import { readScaleOutBudget } from '../hire-cost.ts';
 import { readWPerPct } from '../stored-week.ts';
 import { readTaskSpend } from '../task-spend.ts';
+import { taskFilesLine } from '../task-files.ts';
 import { readContextInput } from './doctor.ts';
 import { inboxDepsOf } from './inbox.ts';
 import { markBoundary } from './refresh.ts';
@@ -849,10 +850,10 @@ export async function list(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
 }
 
 /**
- * `show <id> [--tree]`: every field of the task, its history and the team's inbox lines that name it (T1196); with
- * `--tree`, its line, then what it needs and what
- * needs it, each node with its owner, status and due, then who moves next (views.ts formatTaskTree). A task another
- * register of the team tree holds shows read-only ({@link elsewhereLines}).
+ * `show <id> [--tree]`: every field of the task, its history, its files ({@link taskFilesLine}, T1457) and the team's
+ * inbox lines that name it (T1196); with `--tree`, its line, then what it needs and what needs it, each node with its
+ * owner, status and due, then who moves next (views.ts formatTaskTree). A task another register of the team tree
+ * holds shows read-only ({@link elsewhereLines}), with its files in that team.
  */
 export async function show(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const id = taskIdOf(onePositional(args, 'id'));
@@ -865,6 +866,9 @@ export async function show(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
       throw new RefusedError(`no task ${id}`);
     }
     elsewhereLines(away, own, args.switches.has('tree'), runtime).forEach((line) => runtime.out.stdout(line));
+    if (!args.switches.has('tree')) {
+      runtime.out.stdout(await taskFilesLine(runtime, own.paths.kitHome, away.team, id));
+    }
     return EXIT.ok;
   }
   const tree = taskTreeOf(own, runtime);
@@ -874,7 +878,9 @@ export async function show(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   }
   const events = snapshot.read.events.filter((event) => event.id === id);
   const wPerPct = task.size === null ? undefined : await readWPerPct(runtime, own.paths, own.config, runtime.clock.now());
-  runtime.out.stdout(formatTaskDetail(task, events, tree, (pct) => (wPerPct === undefined ? undefined : `about ${formatW(pct * wPerPct)} W`)));
+  const sizeCost = (pct: number) => (wPerPct === undefined ? undefined : `about ${formatW(pct * wPerPct)} W`);
+  const files = await taskFilesLine(runtime, own.paths.kitHome, own.team, id);
+  runtime.out.stdout(formatTaskDetail(task, events, tree, { sizeCost, files }));
   const named = await taskLinesOf(inboxDepsOf(runtime, own.paths).inboxes, id);
   formatTaskLines(id, named, tree.zone).forEach((line) => runtime.out.stdout(line));
   return EXIT.ok;

@@ -511,6 +511,13 @@ describe('formatEvent and formatTaskDetail', () => {
     assert.ok(!formatTaskDetail(testTask(), [], TREE).includes('followups'), 'a task with none prints no line');
   });
 
+  it('prints the files line after the fields, above the history, so a long history never buries it (T1457)', () => {
+    const task = testTask({ id: 'T3', status: 'done', note: 'ok', evidence: 'abc1234', skill: 'none' });
+    const files = 'files in /kit/teams/app/tasks/T3: design.md';
+    assert.deepEqual(formatTaskDetail(task, [], TREE, { files }).split('\n').slice(3, 6), ['skill: none', files, 'history:']);
+    assert.ok(!formatTaskDetail(task, [], TREE).includes('files in'), 'no line unless show gives one');
+  });
+
   it("prints a bug's review in show, a line per part given, and the parts a status line gave in the history", () => {
     const review = { cause: 'the parser skipped blank rows', missedLog: 'the skip logged nothing at all' };
     const reviewed: RegisterEvent = { v: 2, type: 'status', id: 'T3', at: '2030-01-07T14:00:00.000Z', by: 'alpha', status: 'in-progress', note: null, evidence: null, skill: null, review };
@@ -543,8 +550,8 @@ describe('formatEvent and formatTaskDetail', () => {
     assert.equal(formatEvent(resized(0.5), TimeZone.UTC), '2030-01-07 09:00 UTC lead update size=0.5%');
     assert.equal(formatEvent(resized(null), TimeZone.UTC), '2030-01-07 09:00 UTC lead update size=none');
     assert.ok(formatTaskDetail(sized, [], TREE).split('\n').includes('size: 1.25% of the weekly limit'));
-    assert.ok(formatTaskDetail(sized, [], TREE, (pct) => `about ${pct * 2}M W`).split('\n').includes('size: 1.25% of the weekly limit, about 2.51M W'));
-    assert.ok(formatTaskDetail(sized, [], TREE, () => undefined).split('\n').includes('size: 1.25% of the weekly limit'));
+    assert.ok(formatTaskDetail(sized, [], TREE, { sizeCost: (pct) => `about ${pct * 2}M W` }).split('\n').includes('size: 1.25% of the weekly limit, about 2.51M W'));
+    assert.ok(formatTaskDetail(sized, [], TREE, { sizeCost: () => undefined }).split('\n').includes('size: 1.25% of the weekly limit'));
     assert.ok(!formatTaskDetail(testTask(), [], TREE).includes('size'), 'a task with none prints no line');
     assert.deepEqual([sizeText(2), sizeText(0.125), sizeText(33.333)], ['2%', '0.13%', '33.33%']);
   });
