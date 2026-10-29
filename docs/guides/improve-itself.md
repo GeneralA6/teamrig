@@ -242,21 +242,26 @@ DUPLICATE 1 line(s) or sentence(s) repeat one loaded before
 D1 duplicate ~/work/shop/CLAUDE.md:12: "Run the full test suite before every commit." repeats ~/.claude/CLAUDE.md:4 (~11 tokens/turn)
 OVERRIDE 6 line(s) in 2 file(s) may override a core rule: claude-md 4, skill 2; 0 recorded
 NEXT teamrig rules scan, after teamrig team create, to judge each line with the user
+NEXT /doctor prompt-audit in a session of the project: Claude Code's model-run check for outdated or conflicting instructions
 SETTINGS 1 finding(s)
 S1 wide-allow ~/work/shop/.claude/settings.local.json: 14 allow rule(s) approve a whole tool or hold a credential: Bash wide 14
 NEXT teamrig permissions trim, after teamrig team create
-UNUSED 1 of 22 skill(s) not used in 30 day(s) (read 210 transcript(s), 380.4 MB)
-U1 unused-skill ~/.claude/skills/old-deploy/SKILL.md: no Skill call or /old-deploy in 30 day(s) (~45 tokens/turn)
-SAVINGS ~356 tokens/turn if every CONTEXT, DUPLICATE and UNUSED finding is applied
+UNUSED 1 of 22 skill(s) not used in 30 day(s) (read 210 transcript(s), 380.4 MB); and 1 skill(s) only /skill-doctor lists
+U1 unused-skill ~/.claude/skills/old-deploy/SKILL.md: no Skill call or /old-deploy in 30 day(s); /skill-doctor: last used 64 day(s) ago (~45 tokens/turn)
+U2 unused-skill review-kit:pr-notes (review-kit): never used on this machine per /skill-doctor; turn it off in /skills (~60 tokens/turn)
+SAVINGS ~416 tokens/turn if every CONTEXT, DUPLICATE and UNUSED finding is applied
 ```
 
 - `CONTEXT`: a file over 6,000 chars, or a skill description over 250. Shorten it, or move rules that matter only in
   some folders into a `.claude/rules` file with a `paths:` frontmatter, or the CLAUDE.md of that folder.
 - `DUPLICATE`: a line or sentence of 40 chars or more that repeats one loaded before. Keep the first.
-- `UNUSED`: a skill with no `Skill` call or `/<skill>` in the last 30 days of transcripts (`--days`). Park its folder
-  in `skills-parked/` beside its skills folder: Claude Code no longer lists it, and moving it back brings it back.
+- `UNUSED`: a skill with no `Skill` call or `/<skill>` in the last 30 days of transcripts (`--days`), and that Claude
+  Code's own `/skill-doctor` did not see run either. Park its folder in `skills-parked/` beside its skills folder:
+  Claude Code no longer lists it, and moving it back brings it back. A skill only `/skill-doctor` lists, such as a
+  plugin's, has no folder of yours to park: turn it off in `/skills`.
 - `OVERRIDE` counts the lines [`rules scan`](#local-rules-that-say-otherwise) lists to judge, and `SETTINGS` the wide
-  allow rules `teamrig permissions trim` removes.
+  allow rules `teamrig permissions trim` removes. Claude Code's `/doctor prompt-audit`, run in a session of the
+  project, has a model look for outdated or conflicting instructions too.
 
 The scan only reads, and its second line names the newest backup of the setup. Change nothing in the setup before
 there is one: `teamrig setup backup` makes it, and `teamrig setup restore <stamp>` shows what putting it back writes;

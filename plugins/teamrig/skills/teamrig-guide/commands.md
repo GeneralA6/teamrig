@@ -2867,7 +2867,9 @@ tokens a turn applying it saves:
 - DUPLICATE (`D1`...): a line or sentence of 40 chars or more that repeats one loaded before, in another file or the
   same one; its excerpt has text in a secret's shape replaced.
 - OVERRIDE: how many rule lines, in how many files and of which kind, may override a core rule; never the lines.
-  Lines a recorded verdict clears are left out. `teamrig rules scan` lists them to judge.
+  Lines a recorded verdict clears are left out. `teamrig rules scan` lists them to judge, and the next NEXT line
+  names Claude Code's `/doctor prompt-audit`, a check a model runs in a session of the project for outdated or
+  conflicting instructions.
 - SETTINGS (`S1`...): allow rules that approve a whole tool or program (`teamrig permissions trim` removes them), no
   deny rule, `defaultMode: bypassPermissions`, and hooks whose output enters the context, each with the command
   and the `args` it runs. A finding a file's copies under `.claude/worktrees` repeat is one line that counts them.
@@ -2875,7 +2877,11 @@ tokens a turn applying it saves:
   `--days` days of this machine's transcripts; not checked when there is no transcript. A skill whose file changed
   within those days has not had them all to be used, so it is not judged; the UNUSED line counts it as too new.
   The transcripts are read newest first up to `--max-mb` MB: past it the older ones are left unread, and the UNUSED
-  lines say how many, and judge only the newest days read.
+  lines say how many, and judge only the newest days read. Claude Code's own `/skill-doctor` runs beside that read,
+  headless in the project (30 to 60 s, no model call, no hook): a skill it saw run in `--days` counts as used though
+  the transcripts read missed it, a U line adds when it last ran, and a skill only it lists (a plugin's, a synced
+  one) that never or long ago ran is a U line too, to turn off in `/skills`. When it cannot run, the UNUSED line
+  ends `/skill-doctor skipped: <why>` and the transcripts judge alone.
 
 Under the SCAN line, `BACKUP <stamp>, made <age> ago` names the newest finished `setup backup` of the same setup
 (Claude Code's folder, the project and the team's own skills folder) and the `setup restore` that previews putting it
@@ -2911,12 +2917,14 @@ DUPLICATE 1 line(s) or sentence(s) repeat one loaded before
 D1 duplicate ~/work/shop/CLAUDE.md:12: "Run the full test suite before every commit." repeats ~/.claude/CLAUDE.md:4 (~11 tokens/turn)
 OVERRIDE 6 line(s) in 2 file(s) may override a core rule: claude-md 4, skill 2; 0 recorded
 NEXT teamrig rules scan, after teamrig team create, to judge each line with the user
+NEXT /doctor prompt-audit in a session of the project: Claude Code's model-run check for outdated or conflicting instructions
 SETTINGS 1 finding(s)
 S1 wide-allow ~/work/shop/.claude/settings.local.json: 14 allow rule(s) approve a whole tool or hold a credential: Bash wide 14
 NEXT teamrig permissions trim, after teamrig team create
-UNUSED 1 of 22 skill(s) not used in 30 day(s) (read 210 transcript(s), 380.4 MB)
-U1 unused-skill ~/.claude/skills/old-deploy/SKILL.md: no Skill call or /old-deploy in 30 day(s) (~45 tokens/turn)
-SAVINGS ~356 tokens/turn if every CONTEXT, DUPLICATE and UNUSED finding is applied
+UNUSED 1 of 22 skill(s) not used in 30 day(s) (read 210 transcript(s), 380.4 MB); and 1 skill(s) only /skill-doctor lists
+U1 unused-skill ~/.claude/skills/old-deploy/SKILL.md: no Skill call or /old-deploy in 30 day(s); /skill-doctor: last used 64 day(s) ago (~45 tokens/turn)
+U2 unused-skill review-kit:pr-notes (review-kit): never used on this machine per /skill-doctor; turn it off in /skills (~60 tokens/turn)
+SAVINGS ~416 tokens/turn if every CONTEXT, DUPLICATE and UNUSED finding is applied
 ```
 
 ### teamrig setup backup

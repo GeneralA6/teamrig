@@ -298,8 +298,8 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       over 250, repeated lines, rule lines that may override a core rule, wide allow rules, no deny rule,
       bypassed prompts, hooks writing into the context, and skills unused in --days (default 30) days of
       this machine's transcripts, read newest first up to --max-mb (default 1024) MB (one changed within
-      them is not judged); it names the newest setup backup, or NO BACKUP; works before a team exists;
-      it only reads
+      them is not judged), and by Claude Code's /skill-doctor, which also counts plugins' skills; it names
+      the newest setup backup, or NO BACKUP; works before a team exists; it only reads
   config validate | config migrate [--yes]   migrate shows an older config rewritten in this format and
       the first teamrig that reads it, as a tab on an older one refuses every write after; --yes writes it
   commits check --base <ref> [--tip <ref>]   commits in base..tip (default HEAD) over the size rule
