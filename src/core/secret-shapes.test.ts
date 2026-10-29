@@ -86,6 +86,12 @@ describe('SecretShapes', () => {
     }
   });
 
+  it('lets a search for a URL password and a query string built in code through', () => {
+    for (const text of ["grep -E 'postgres://[^:]+:[^@]+@' app.log", join("fetch('https://api.local/v1?api_", "key='+process.env.API_KEY+'&q=1')")]) {
+      assert.deepEqual(shapes.hitsIn(text), [], text);
+    }
+  });
+
   it('lets a prose assignment through', () => {
     assert.deepEqual(shapes.hitsIn(join('the db pass', 'word: ', 'hunter22', ' is in the vault runbook')), []);
   });
@@ -111,8 +117,14 @@ describe('isPlaceholderValue', () => {
     }
   });
 
+  it('judges a regex class and a spliced variable a placeholder: a search or code, not a secret', () => {
+    for (const value of [']+:[^', '[^\\s/@]+', 'ab]{8,}', '+process.env.API_KEY+', '+cfg.token+']) {
+      assert.equal(isPlaceholderValue(value), true, value);
+    }
+  });
+
   it('judges the value alone: a symbol inside or a percent-encoded start is still a secret', () => {
-    for (const value of [PASSWORD, join('pa$$', 'w0rd', '99'), join('Xy7', '<kq>', 'z9!'), join('%40', 'bc12', '3xyz'), join('example', 'Pass', '42')]) {
+    for (const value of [PASSWORD, join('pa$$', 'w0rd', '99'), join('Xy7', '<kq>', 'z9!'), join('%40', 'bc12', '3xyz'), join('example', 'Pass', '42'), join('+Qx7', '/mRt9+')]) {
       assert.equal(isPlaceholderValue(value), false, value);
     }
   });

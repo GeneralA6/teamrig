@@ -34,6 +34,10 @@ const REFERENCE = /^(?:[<{[]|\$[{(A-Za-z_]|%[A-Za-z_]\w*%)/;
 const MASKED = /\*{3}|\.{3}|…|^(.)\1+$/;
 /** A word that stands in for a secret: `password`, `changeme`, `your_token`, `put-key-here`. */
 const PLACEHOLDER_WORD = /^(?:pass(?:word|wd)?|pwd|secret|token|user(?:name)?|changeme|example|sample|dummy|placeholder|redacted|your[\w-]*|[\w-]*[_-]here)$/i;
+/** A search for a secret's shape: a regex class inside the value, as `postgres://[^:]+:[^@]+@` frames `]+:[^`. */
+const REGEX_SOURCE = /\[\^|\][+*?{]/;
+/** Code that splices a variable into a string, its quotes closing one string and opening the next: `'+process.env.API_KEY+'`. */
+const SPLICE = /^\+[A-Za-z_$][\w$.]*\+$/;
 /**
  * The SHA-256 of sample tokens every tutorial prints, held as hashes because the scrub refuses their shape: jwt.io's
  * HS256 samples, the classic one and the one with `"admin": true`.
@@ -44,11 +48,20 @@ const SAMPLE_HASHES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * True when a framing shape's `value` only stands in for a secret. The value alone is judged, never the host or the
- * whole match (T1099 gap 1): a real password on `localhost` or a host named `example` is still a credential.
+ * True when a framing shape's `value` only stands in for a secret, or is the text of a search or of code around one. The
+ * value alone is judged, never the host or the whole match (T1099 gap 1): a real password on `localhost` or a host
+ * named `example` is still a credential.
  */
 export function isPlaceholderValue(value: string): boolean {
-  return value.length < MIN_FRAMED_SECRET || REFERENCE.test(value) || MASKED.test(value) || PLACEHOLDER_WORD.test(value) || isSample(value);
+  return (
+    value.length < MIN_FRAMED_SECRET ||
+    REFERENCE.test(value) ||
+    MASKED.test(value) ||
+    PLACEHOLDER_WORD.test(value) ||
+    REGEX_SOURCE.test(value) ||
+    SPLICE.test(value) ||
+    isSample(value)
+  );
 }
 
 /** True when the value a framing `shape` caught is not a secret: a placeholder, or a value the shape itself allows. */
