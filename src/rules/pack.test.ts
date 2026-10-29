@@ -367,7 +367,7 @@ describe('renderCorePack', () => {
     assert.match(inIsrael, /starts 00:30-02:00 IST \[/, "on the machine's clock, in winter");
     const summer = { ...RULES_CLOCK, now: new Date('2030-07-08T10:00:00.000Z') };
     assert.match(renderCorePack(testConfig({ ...cutoff, timeZone: 'Asia/Jerusalem' }), COMMAND, 'win32', summer), /starts 01:30-03:00 IDT \[/, "on the team's clock, in summer");
-    assert.match(pack, /Pace the week to 99\.5% of the weekly limit and keep 0\.5% for incidents \[budget\]\./);
+    assert.match(pack, /Pace the week to 99\.5% of the limit, 0\.5% kept for incidents \[budget\]\./);
   });
 
   it('has owner questions stand alone, and carry the decision marker line only while tab status shows it', () => {
@@ -396,14 +396,14 @@ describe('renderCorePack', () => {
       'win32',
       RULES_CLOCK,
     );
-    assert.match(pack, /Pace the week to 1% of the weekly limit and keep 0% for incidents/);
+    assert.match(pack, /Pace the week to 1% of the limit, 0% kept for incidents/);
   });
 
   it('keeps work in the session and prices a helper by budget.subagentWeight', () => {
     const weighted = renderCorePack(testConfig({ budget: { subagentWeight: 2.15 } }), COMMAND, 'win32', RULES_CLOCK);
     assert.match(
       weighted,
-      /^8\. Lean calls: every tool call re-reads the whole context, so batch related shell steps into one call\. Work in your own session: a helper's tokens cost 2\.15x yours \[budget\.subagentWeight\], so start one only for truly parallel work or an independent review, never to save tokens or for a build or test whose result you need; run helpers on your own model and effort\.$/m,
+      /^8\. Lean calls: batch related shell steps in one call \(each re-reads the context\)\. Work in your own session: a helper's tokens cost 2\.15x yours \[budget\.subagentWeight\], so start one only for parallel work or an independent review, never to save tokens or for a build or test you wait on; run helpers on your model and effort\. Task files go in `teamrig files T<id>`, other notes in `--notes`\.$/m,
     );
     const even = renderCorePack(testConfig({ budget: { subagentWeight: 1 } }), COMMAND, 'win32', RULES_CLOCK);
     assert.match(even, /^8\. .* Work in your own session: start a helper only when it keeps far more tokens out of your context than it uses or truly runs in parallel,/m);

@@ -10,7 +10,8 @@ import { helperOf, helperStartContext, subagentStartOutput, type HelperStartInpu
 const PATH = '/kit/teams/app/config.json';
 const COMMAND = 'teamrig';
 const DUTY =
-  'The rules above bind you as they bind it, but your brief is your task: leave `teamrig start`, task statuses, register entries, inbox lines and messages to it unless your brief asks for them, and return what it needs.';
+  'The rules above bind you as they bind it, but your brief is your task: leave `teamrig start`, task statuses, register entries, inbox lines and messages to it unless your brief asks for them.' +
+  ' Save your full findings in the folder of the task you work on (`teamrig files T<id>`; with no task, `teamrig files --notes`) and return their path and what it needs.';
 
 function loaded(): ConfigLoad {
   return { status: 'loaded', path: PATH, config: testConfig({ names: { lead: 'captain' } }), issues: [] };
