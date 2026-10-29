@@ -11,7 +11,8 @@ import { parseJson } from './hook-input.ts';
 /**
  * PostToolUse on Bash, PowerShell, Read and Grep (T1369 R7): replaces each secret the tool's result holds before the
  * model and the transcript see it, by the write-time shapes, the team's own patterns and the value of a secret variable.
- * A helper's calls are redacted too. A broken config keeps the defaults; outside a team's projects it prints nothing.
+ * A helper's calls are redacted too. A broken config keeps the defaults; outside a team's projects, or with
+ * `secretGuard.redact` off, it prints nothing.
  */
 export async function secretRedact(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
@@ -20,7 +21,11 @@ export async function secretRedact(args: ParsedArgs, runtime: CliRuntime): Promi
   if (guard === undefined) {
     return EXIT.ok;
   }
-  const rules = secretRulesOf(secretGuardOf(guard.load), runtime.userHome, runtime.platform, secretPatternsOf(guard.load));
+  const config = secretGuardOf(guard.load);
+  if (!config.redact) {
+    return EXIT.ok;
+  }
+  const rules = secretRulesOf(config, runtime.userHome, runtime.platform, secretPatternsOf(guard.load));
   const output = secretRedactOutput(payload, new ToolOutputRedactor([rules.shapes, new EnvAssignments(rules.names)]), rotatorOf(guard.load));
   if (output !== undefined) {
     runtime.out.stdout(output);

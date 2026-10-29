@@ -807,8 +807,10 @@ describe('runCli: hook secret-redact', () => {
     }
   });
 
-  it("prints nothing for a clean result, outside a team's projects or for input that is not a hook payload", async () => {
+  it("prints nothing for a clean result, with redaction off, outside a team's projects or for input that is not a hook payload", async () => {
     assert.deepEqual(await new CliHarness().run(['hook', 'secret-redact'], { stdin: ran('all clear') }), { code: EXIT.ok, stdout: [], stderr: [] });
+    const off = new CliHarness({ ...TEAM, secretGuard: { redact: false } });
+    assert.deepEqual(await off.run(['hook', 'secret-redact'], { stdin: ran(token) }), { code: EXIT.ok, stdout: [], stderr: [] });
     assert.deepEqual(await new CliHarness(null, null).run(['hook', 'secret-redact'], { stdin: ran(token) }), { code: EXIT.ok, stdout: [], stderr: [] });
     assert.deepEqual(await new CliHarness().run(['hook', 'secret-redact'], { stdin: 'not json' }), { code: EXIT.ok, stdout: [], stderr: [] });
   });
