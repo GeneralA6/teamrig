@@ -20,6 +20,7 @@ import type { Processes } from '../open/processes.ts';
 import type { SessionProcesses } from '../open/session-processes.ts';
 import type { CommitLog } from '../push-guard/commit-size.ts';
 import type { RepoState } from '../push-guard/push.ts';
+import type { SecretsGit } from '../secret-guard/secrets-git.ts';
 import type { CredentialStore } from '../github/credentials.ts';
 import type { GhRunner } from '../github/gh.ts';
 import type { ShellRunner } from '../test-run/shell.ts';
@@ -91,6 +92,8 @@ export interface RunOptions {
   readonly cmdShimLine?: string;
   /** The commits git lists for any range; default none. */
   readonly commitLog?: CommitLog;
+  /** The repository `teamrig secrets` scans, such as a `FakeSecretsGit`; default none it can read. */
+  readonly secretsGit?: SecretsGit;
   /** The operating system the CLI sees; default Linux. */
   readonly platform?: NodeJS.Platform;
   /** The machine's time zone; default UTC. */
@@ -174,6 +177,7 @@ export class CliHarness {
       ...(options.git === undefined ? {} : { git: options.git }),
       ...(options.pointerGit === undefined ? {} : { pointerGit: options.pointerGit }),
       ...(options.commitLog === undefined ? {} : { commitLog: options.commitLog }),
+      ...(options.secretsGit === undefined ? {} : { secretsGit: options.secretsGit }),
       ...(options.platform === undefined ? {} : { platform: options.platform }),
       ...(options.processes === undefined ? {} : { processes: options.processes }),
       ...(options.sessionProcesses === undefined ? {} : { sessionProcesses: options.sessionProcesses }),

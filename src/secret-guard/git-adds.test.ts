@@ -92,7 +92,7 @@ const LOG = [
 
 describe('PATCH_FLAGS and COMMIT_FORMAT', () => {
   it('ask git for bare added lines with no prefix, and keep every commit of a log', () => {
-    assert.deepEqual(PATCH_FLAGS, ['-U0', '--no-color', '--no-ext-diff', '--no-textconv', '--no-prefix', '-M']);
+    assert.deepEqual(PATCH_FLAGS, ['-U0', '--no-color', '--no-ext-diff', '--no-textconv', '--no-prefix', '--no-relative', '-M']);
     assert.equal(PATCH_FLAGS.some((flag) => flag.startsWith('--diff-filter')), false);
     assert.equal(COMMIT_FORMAT, '--format=%x00%H%x00%B%x00');
   });

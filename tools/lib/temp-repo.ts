@@ -30,7 +30,8 @@ export class TempRepo {
   /** A folder beside `dir`, for files that must stay out of the repo, such as a CI event payload. */
   readonly outside: string;
   private readonly root: string;
-  private readonly env: Readonly<Record<string, string>>;
+  /** The environment git and the CLIs run in here, for a git adapter under test to run its own git in. */
+  readonly env: Readonly<Record<string, string>>;
 
   constructor(prefix: string) {
     this.root = mkdtempSync(join(realpathSync(tmpdir()), `teamrig-${prefix}-`));

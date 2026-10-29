@@ -23,6 +23,7 @@ import type { Processes } from '../open/processes.ts';
 import type { SessionProcesses } from '../open/session-processes.ts';
 import type { CommitLog } from '../push-guard/commit-size.ts';
 import type { RepoState } from '../push-guard/push.ts';
+import type { SecretsGit } from '../secret-guard/secrets-git.ts';
 import type { PointerGit } from '../setup/pointer-ignore.ts';
 import type { ShellRunner } from '../test-run/shell.ts';
 
@@ -57,6 +58,8 @@ export interface CliRuntime {
   readonly pointerGit: PointerGit;
   /** The commits of a range, for the small-commits rule. */
   readonly commitLog: CommitLog;
+  /** The staged change and the pushed commits `teamrig secrets` scans, read as the git hook that runs it sees them. */
+  readonly secretsGit: SecretsGit;
   readonly out: Output;
   readonly platform: NodeJS.Platform;
   /** Terminal launchers and Claude Code, for `teamrig open` and `teamrig launch`. */
