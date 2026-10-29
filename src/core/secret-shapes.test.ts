@@ -10,12 +10,36 @@ const TOKEN = join('gh', 'p_', 'a1'.repeat(18));
 const PASSWORD = join('s3', 'cret', 'Value9');
 
 describe('WRITE_TIME_SHAPES', () => {
-  it('holds every token shape and the framed text shapes, not the prose assignment', () => {
+  it('holds every token shape, the framed text shapes and the literal ones, not the prose assignment', () => {
     const ids = WRITE_TIME_SHAPES.map(({ id }) => id);
     for (const { id } of SECRET_TOKEN_PATTERNS) assert.ok(ids.includes(id), id);
-    assert.ok(ids.includes('url-credentials'));
-    assert.ok(ids.includes('auth-header'));
+    for (const id of ['url-credentials', 'auth-header', 'api-key-header', 'assigned-secret']) assert.ok(ids.includes(id), id);
     assert.equal(ids.includes('secret-assignment'), false);
+  });
+});
+
+describe('SecretShapes literal shapes', () => {
+  const shapes = new SecretShapes();
+  const KEY = join('k3Y', 'q8'.repeat(8));
+  const found = (text: string): Array<{ id: string; value: string }> => shapes.hitsIn(text).map(({ id, value }) => ({ id, value }));
+
+  it('finds an API key header value, any x- spelling, quoted or not', () => {
+    for (const text of [join('curl -H "x-api-key: ', KEY, '" https://x'), join("-H 'X-Goog-Api-Key: ", KEY, "'"), join('api-key: ', KEY)]) {
+      assert.deepEqual(found(text), [{ id: 'api-key-header', value: KEY }], text);
+    }
+  });
+
+  it('lets an API key header through when it names a reference, a short word or no key', () => {
+    for (const text of ['curl -H "x-api-key: $API_KEY" https://x', 'x-api-key: <your-key>', 'x-api-key: ${KEY}', 'set the x-api-key: header on each call', 'x-api-key: documentation']) {
+      assert.deepEqual(found(text), [], text);
+    }
+  });
+
+  it('finds a quoted literal given to a secret-like name, and lets a reference or a spaced phrase through', () => {
+    assert.deepEqual(found(join('DB_PASS', 'WORD="', KEY, '"')), [{ id: 'assigned-secret', value: KEY }]);
+    for (const text of [join('DB_PASS', 'WORD="${DB_PASSWORD}"'), join('api_', 'token: "', 'not a secret at all', '"'), join('pass', 'word: ', KEY)]) {
+      assert.deepEqual(found(text), [], text);
+    }
   });
 });
 
