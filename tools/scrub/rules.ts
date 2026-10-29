@@ -1,5 +1,5 @@
 import { ASSIGNED_SECRET, SECRET_TOKEN_PATTERNS, type SecretPattern } from '../../src/core/secret-patterns.ts';
-import { isPlaceholderValue } from '../../src/core/secret-shapes.ts';
+import { isFramedPlaceholder } from '../../src/core/secret-shapes.ts';
 
 export interface ScrubRule {
   readonly id: string;
@@ -62,6 +62,6 @@ export const GENERIC_RULES: readonly ScrubRule[] = [
     revealMatch: false,
   },
   ...SECRET_TOKEN_PATTERNS.map(secret),
-  // The write-time set's own placeholder judge, so a value the guard lets through (`${VAULT}`, `<token>`) passes here too.
-  { ...secret(ASSIGNED_SECRET), isAllowed: (match) => match[1] !== undefined && isPlaceholderValue(match[1]) },
+  // The write-time set's own judge, so a value the guard lets through (`${VAULT}`, `<token>`, `SOME_READ_TOKEN`) passes here too.
+  { ...secret(ASSIGNED_SECRET), isAllowed: (match) => match[1] !== undefined && isFramedPlaceholder(ASSIGNED_SECRET, match[1]) },
 ];

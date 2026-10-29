@@ -98,6 +98,13 @@ describe('generic scrub rules', () => {
     }
   });
 
+  it("accepts a secret-like name bound to an identifier's name, and refuses a mixed-case value", () => {
+    for (const name of ['SOME_READ_TOKEN', 'app-api-secrets', 'v2.prod.signing']) {
+      assert.deepEqual(ruleIds(join('secret', ': "', name, '"')), [], name);
+    }
+    assert.deepEqual(ruleIds(join('secret', ': "', 'Qx7mRt', '_Lp4wZn', '"')), ['assigned-secret']);
+  });
+
   it('refuses a percent-encoded password that only starts with a percent sign', () => {
     assert.deepEqual(ruleIds(join('pass', 'word', ': "', '%40bc', '123xyz9', '"')), ['assigned-secret']);
   });

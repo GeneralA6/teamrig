@@ -41,6 +41,22 @@ describe('SecretShapes literal shapes', () => {
       assert.deepEqual(found(text), [], text);
     }
   });
+
+  it("lets an identifier's name given to a secret-like key through: it names the secret", () => {
+    for (const name of ['SOME_READ_TOKEN', 'app-api-secrets', 'prod_db_password', 'GH_APP_KEY2_FOR_CI', 'v2.prod.signing', 'release-2026-10']) {
+      assert.deepEqual(found(join('TOK', 'EN="', name, '"')), [], name);
+    }
+  });
+
+  it('finds a mixed-case, digit-inside or one-word value given to a secret-like key', () => {
+    for (const value of [join('Qx7mRt', '_Lp4wZn'), join('3f9a8b7c', '-1d2e-4f5a'), join('SOMEREAD', 'TOKENVALUE')]) {
+      assert.deepEqual(found(join('TOK', 'EN="', value, '"')), [{ id: 'assigned-secret', value }], value);
+    }
+  });
+
+  it("still finds a name-shaped password in a URL: only the assignment shape lets a name through", () => {
+    assert.deepEqual(found(join('https://app:', 'SOME_READ_TOKEN', '@queue', '.local')), [{ id: 'url-credentials', value: 'SOME_READ_TOKEN' }]);
+  });
 });
 
 describe('SecretShapes', () => {
@@ -89,7 +105,7 @@ function jwtSample(payload: string, key: string): string {
 
 describe('isPlaceholderValue', () => {
   it('judges a short word, a reference, a masked value and a stand-in word a placeholder', () => {
-    const placeholders = ['p', 'short', '<db_password>', '${PASS}', '$PASS', '$(cat key)', '%PASS%', '{password}', '[token]', '*****', 'ab***yz', 'xxxxxxxx', '00000000'];
+    const placeholders = ['p', 'short', '<db_password>', '${PASS}', '$PASS', '$(cat key)', '%PASS%', '{password}', '[token]', '*****', 'ab***yz', 'ab12cd...', 'ab12cd…', 'xxxxxxxx', '00000000'];
     for (const value of [...placeholders, 'changeme', 'redacted', 'Password', 'placeholder', 'your_api_key', 'put-key-here']) {
       assert.equal(isPlaceholderValue(value), true, value);
     }
