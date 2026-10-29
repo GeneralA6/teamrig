@@ -223,7 +223,8 @@ turns this off: `register.autoArchive: false` in the team's `config.json`, after
   same way.
   The week's use in percent comes from status line snapshots (`teamrig statusline install` sets the status line
   up), else from the metered W at the week's W per percent: learned from `state/usage/meter-log.jsonl` (a line
-  each time the status line passes a whole percent, fitted once 8 weeks of lines span 10 points), else
+  each time the status line passes a whole percent, fitted once 8 weeks of lines span 10 points; a child team on
+  its parent's account reads and writes the one of the highest team above it on that account), else
   `budget.weeklyLimitW`. Today's use is the use now less the use at today's start, each read between the meter
   log's lines by the W metered and held to the status line's percent, so the fitted rate prices only the part past
   the last line; once that use spans 2 points, the sessions' W today counts at today's own W per percent, so their
