@@ -1,5 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { constants } from 'node:os';
+import { STEP_PRIORITY } from '../coordinator/priority.ts';
+import { nodeTreeKill } from '../coordinator/tree-kill.ts';
 import { hookEndText, hookExitCode, nodeHookRunner, succeeded, type HookEnd, type HookRequest } from './hooks.ts';
 
 const ENDS: readonly HookEnd[] = [{ kind: 'exited', code: 3 }, { kind: 'timedOut' }, { kind: 'signal', signal: 'SIGKILL' }, { kind: 'notStarted', error: 'ENOENT' }, { kind: 'stopped' }];
@@ -64,5 +67,22 @@ describe('nodeHookRunner', () => {
     const missing = await runner.run({ ...run, argv: ['teamrig-no-such-program-0f8e2c4a'] });
     assert.equal(missing.kind, 'notStarted');
     assert.deepEqual(await runner.run({ ...run, argv: [] }), { kind: 'notStarted', error: 'no program to run' });
+  });
+
+  it('lowers the hook it started to below-normal priority', async () => {
+    const lowered: Array<readonly [number, number]> = [];
+    const recording = nodeHookRunner(process.platform, nodeTreeKill(process.platform), {
+      of: () => constants.priority.PRIORITY_NORMAL,
+      set: (pid, priority) => lowered.push([pid, priority]),
+    });
+    assert.deepEqual(await recording.run(request('').request), { kind: 'exited', code: 0 });
+    assert.equal(lowered.length, 1);
+    assert.equal(lowered[0]?.[1], STEP_PRIORITY);
+  });
+
+  it('runs its hook at below-normal priority on this host', async () => {
+    const { lines, request: run } = request('console.log(require("node:os").getPriority())');
+    assert.deepEqual(await runner.run(run), { kind: 'exited', code: 0 });
+    assert.deepEqual(lines, [String(STEP_PRIORITY)]);
   });
 });
