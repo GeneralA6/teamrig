@@ -79,12 +79,25 @@ function addsContext(event: string): Check {
   return (stdout) => (outputField(stdout, 'hookEventName') === event ? undefined : `expected ${event} additionalContext`);
 }
 
+/** The hook replaced the tool's result with one that no longer holds `value`. */
+function redacts(value: string): Check {
+  return (stdout) => {
+    const parsed = parseJson(stdout);
+    const output = isRecord(parsed) ? parsed['hookSpecificOutput'] : undefined;
+    const updated = isRecord(output) ? output['updatedToolOutput'] : undefined;
+    return isRecord(updated) && !JSON.stringify(updated).includes(value) ? undefined : 'expected the result back with its secret redacted';
+  };
+}
+
 const SESSION_ID = '0123abcd-0000-4000-8000-00000000000a';
+
+/** A token the write-time shapes know, built at run time so no file holds one. */
+const SMOKE_TOKEN = ['gh', 'p_', 'a1'.repeat(18)].join('');
 
 /**
  * One payload per hook the plugin runs, by its command (one event can run several), run inside team
  * `smoke`, which has no config: session start and a helper's start say so, the push guard still refuses a force-push of
- * main, the package guard refuses an npx of a tool not installed, the secret guard refuses a read of .env, the exec guard refuses a review it cannot tie to a session, the cold-send hook lets a message go, the failed-send hook stays quiet, the missing-cli hook answers a shell that did not find the bare command, the route reminder, the loop nudge and the reminder stay quiet, the Stop and
+ * main, the package guard refuses an npx of a tool not installed, the secret guard refuses a read of .env, the exec guard refuses a review it cannot tie to a session, the cold-send hook lets a message go, the failed-send hook stays quiet, the missing-cli hook answers a shell that did not find the bare command, the route reminder, the loop nudge and the reminder stay quiet, the secret redactor gives a Bash result back without the token it held, the Stop and
  * SubagentStop hooks print nothing (any output there would block the turn), the refresh wake wakes nothing, and the
  * restore tracker prints nothing, and so do tab status, the read-only allow and the picker guard, all off without a config.
  */
@@ -153,6 +166,17 @@ const SAMPLES: Readonly<Record<string, Sample>> = {
   'hook loop-nudge': {
     payload: { hook_event_name: 'PostToolUse', session_id: SESSION_ID, tool_name: 'Read', tool_use_id: 'toolu_1', tool_input: { file_path: 'a.ts' } },
     check: quiet(),
+  },
+  'hook secret-redact': {
+    payload: {
+      hook_event_name: 'PostToolUse',
+      session_id: SESSION_ID,
+      tool_name: 'Bash',
+      tool_use_id: 'toolu_5',
+      tool_input: { command: 'gh auth token' },
+      tool_response: { stdout: SMOKE_TOKEN, stderr: '', interrupted: false, isImage: false },
+    },
+    check: redacts(SMOKE_TOKEN),
   },
   'hook helper-gate': {
     payload: { hook_event_name: 'PreToolUse', session_id: SESSION_ID, tool_name: 'Agent', tool_input: { description: 'search', prompt: 'find it' } },

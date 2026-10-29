@@ -59,6 +59,8 @@ class FakeRunner {
         return { ...OK, stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'SubagentStart', additionalContext: 'rules' } }) };
       case 'missing-cli':
         return { ...OK, stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUseFailure', additionalContext: 'path' } }) };
+      case 'secret-redact':
+        return { ...OK, stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', updatedToolOutput: { stdout: '[redacted GitHub token]' } } }) };
       case 'push-guard':
       case 'package-guard':
       case 'secret-guard':
