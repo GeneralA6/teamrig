@@ -860,6 +860,7 @@ function parseOpen(read, raw, sessions) {
     const terminal = read.string(raw, 'terminal', 'open', DEFAULT_OPEN.terminal, (value) => isTerminalChoice(value) ? undefined : `expected one of ${TERMINALS.join(', ')}`);
     return {
         terminal: isTerminalChoice(terminal) ? terminal : DEFAULT_OPEN.terminal,
+        teamWindow: read.boolean(raw, 'teamWindow', 'open', DEFAULT_OPEN.teamWindow),
         headroom: parseHeadroom(read, read.section(raw, 'headroom', 'open')),
         idle: parseIdle(read, read.section(raw, 'idle', 'open'), sessions),
     };

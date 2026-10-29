@@ -17,6 +17,7 @@ import { sessionEnv } from "../../open/session-env.js";
 import { RefreshStore } from "../../refresh/store.js";
 import { noRoomText } from "../../sessions/headroom.js";
 import { closedOf, SessionLog } from "../../sessions/log.js";
+import { teamWindowOf } from "../../open/terminals.js";
 import { urgentFirstPrompt } from "../../wake/asks.js";
 import { onePositional, requiredFlag, UsageError } from "../args.js";
 import { headroomOf } from "../headroom.js";
@@ -91,7 +92,8 @@ export async function openSessionTab(runtime, tab) {
         ...(tab.effort === undefined ? [] : ['--effort', tab.effort]),
         ...(tab.prompt === undefined ? ['--no-prompt'] : ['--encoded-prompt', encodePrompt(tab.prompt)]),
     ];
-    return { outcome: await openTab(runtime, tab.terminal, { title: sessionDisplay(tab.team, tab.name), folder: tab.project, argv }), argv };
+    const window = teamWindowOf(tab.teamWindow, tab.team);
+    return { outcome: await openTab(runtime, tab.terminal, { title: sessionDisplay(tab.team, tab.name), folder: tab.project, argv, window }), argv };
 }
 /**
  * `open <id|name> [--prompt <text>] [--terminal <name>] [--project <dir>] [--resume]`: a new terminal tab in
@@ -157,7 +159,7 @@ export async function openSession(runtime, kit, config, roster, request) {
             throw new RefusedError(noRoomText(`open ${name} (session ${id})`, headroom));
         }
     }
-    const { outcome, argv } = await openSessionTab(runtime, { team, id, name, project: folder, prompt, terminal, ...(resume === undefined ? {} : { resume }) });
+    const { outcome, argv } = await openSessionTab(runtime, { team, id, name, project: folder, prompt, terminal, teamWindow: config.open.teamWindow, ...(resume === undefined ? {} : { resume }) });
     if (outcome.kind !== 'opened') {
         return { kind: 'manual', reasons: outcome.reasons, argv, folder };
     }
