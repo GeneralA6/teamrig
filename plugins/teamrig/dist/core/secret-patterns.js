@@ -43,3 +43,38 @@ export const SECRET_TEXT_PATTERNS = [
     },
     { id: 'secret-assignment', description: 'password or key assignment', pattern: /(?:password|passwd|secret|api[_-]?key)(?<!\/[\w.-]*)["']?\s*[=:]\s*\S/i },
 ];
+/**
+ * An identifier's name rather than a secret: two or more parts joined by `_`, `-` or `.`, each all lower-case or all
+ * upper-case letters with optional trailing digits, or digits alone (`SOME_READ_TOKEN`, `app-api-secrets`, `v2.prod`).
+ * A single word, a mixed-case part or a part with a digit inside (`3f9a8b7c-...`) still reads as a secret. Its own
+ * case-sensitive pattern, as `ASSIGNED_SECRET`'s `i` flag would let a mixed-case part pass.
+ */
+const IDENTIFIER_NAME = /^(?:[a-z]+\d*|[A-Z]+\d*|\d+)(?:[._-](?:[a-z]+\d*|[A-Z]+\d*|\d+))+$/;
+/**
+ * A quoted literal of 12 or more characters given to a secret-like name: the scrub's rule in the repository and part of
+ * the write-time set. Stricter than `secret-assignment`, so documentation and prose pass. The key word may end a longer
+ * name (`DB_PASSWORD`, `clientSecret`, `GITHUB_TOKEN`): no word boundary comes before it, since an underscore is a word
+ * character. A value that is a name (`TOKEN="SOME_READ_TOKEN"`, `secret: "app-api-secrets"`) names the secret, it does
+ * not hold it.
+ */
+export const ASSIGNED_SECRET = {
+    id: 'assigned-secret',
+    description: 'literal value assigned to a secret-like name',
+    pattern: /(?:password|passwd|secret|token|api[_-]?key|access[_-]?key)\b["']?\s*[:=]\s*["']([^"'\s]{12,})["']/i,
+    secretGroup: 1,
+    isAllowedValue: (value) => IDENTIFIER_NAME.test(value),
+};
+/**
+ * Literal secrets the write-time set (`secret-shapes.ts`) adds to the tokens and the text frames: an API key header's
+ * value (`x-api-key: ...`, `api-key: ...`) and `ASSIGNED_SECRET`. A header value needs 12 characters and a digit, as a
+ * random key has, so a sentence naming the header (`set the x-api-key: header`) passes.
+ */
+export const SECRET_LITERAL_PATTERNS = [
+    {
+        id: 'api-key-header',
+        description: 'key in an API key header',
+        pattern: /\b(?:x-(?:[a-z0-9]+-)*)?api-key["']?\s*:\s*["']?(?=[^\s"']*\d)([^\s"']{12,})/i,
+        secretGroup: 1,
+    },
+    ASSIGNED_SECRET,
+];
