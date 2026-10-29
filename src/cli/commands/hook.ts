@@ -1,13 +1,11 @@
 import { tmpdir } from 'node:os';
 import { launchOf } from '../../config/launch.ts';
 import { LeadTree } from '../../config/lead-tree.ts';
-import type { ConfigLoad } from '../../config/load.ts';
 import { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { formatAddress } from '../../core/address.ts';
 import { errorMessage, isRecord, stringField, type JsonRecord } from '../../core/guards.ts';
 import { claudeConfigDir, claudeTempDir, KIT_NAME, resolveKitHome } from '../../core/home.ts';
-import { resolveTeam, type TeamResolution } from '../../core/team.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
 import { routeReminderOf } from '../../inbox/route.ts';
@@ -59,7 +57,7 @@ import { approvedTaskOf } from '../../register/approval.ts';
 import { JsonlEventLog } from '../../register/store.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { hookLogOf } from '../hook-logs.ts';
-import { openKit, renameDepsOf, rosterOf, rulesClockOf, teamFolders, teamZone, type Kit } from '../kit.ts';
+import { openKit, renameDepsOf, rosterOf, rulesClockOf, teamZone, type Kit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { keptRulesAboveOf, readTeamRules } from '../team-rules.ts';
 import { leadAboveOf, loadTree } from '../tree.ts';
@@ -74,6 +72,7 @@ import { meetingHold } from './hook-meeting.ts';
 import { armRestart, restartTargetOf } from './hook-restart.ts';
 import { helperContextOf } from './hook-helper-start.ts';
 import { promptSecretBlock } from './hook-prompt-secret.ts';
+import { guardLoadOf, hookTeam } from './hook-guard-load.ts';
 import { checkHooklessTabs } from './hook-hookless.ts';
 import { dueFactsAt, inMeetingNow } from './hook-refresh-mod.ts';
 import { recordSessionStart } from './hook-session-record.ts';
@@ -90,28 +89,6 @@ import { verifyByLinesOf, verifyStartNoteOf } from './verify-queue.ts';
  * enabled for the user fires in every project, so outside a team's projects each hook prints
  * nothing at all.
  */
-
-/** The payload's folder first: Claude Code may start the hook process somewhere else. */
-function hookTeam(payload: unknown, runtime: CliRuntime): Promise<TeamResolution> {
-  const cwd = isRecord(payload) ? stringField(payload, 'cwd') : undefined;
-  return resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [cwd, runtime.cwd]));
-}
-
-/**
- * The config a guard hook reads, or undefined outside a team's projects, where the guard prints nothing. A broken
- * pointer, or a config that cannot even be opened, gives no load, so the guard keeps its defaults: neither turns it off.
- */
-async function guardLoadOf(
-  payload: unknown,
-  runtime: CliRuntime,
-): Promise<{ readonly kit: Kit | undefined; readonly load: ConfigLoad | undefined } | undefined> {
-  const found = await hookTeam(payload, runtime);
-  if (found.kind === 'none') {
-    return undefined;
-  }
-  const kit = found.kind === 'team' ? await openKit(runtime, found.team).catch(() => undefined) : undefined;
-  return { kit, load: kit?.load };
-}
 
 /**
  * Under `pushToProtected: lead` or `gated`, what lets this tab's normal push to a protected branch through (T684): the
