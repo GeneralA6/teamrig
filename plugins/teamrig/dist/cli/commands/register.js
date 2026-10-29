@@ -29,7 +29,7 @@ import { ACTIVE_STATUSES } from "../../register/model.js";
 import { readStopgapTags, stopgapFlags, stopgapTags } from "../../register/stopgap.js";
 import { dueStartHolds, dueVerifyHold, heldStart, heldStartNotice, metStartNotice, startHolds, verifyQueue, watchQueue } from "../../register/verify.js";
 import { readAs, TaskTree } from "../../register/tree.js";
-import { approvalNotice, askedNotice, assignedNotice, endedNotice, formatTask, formatTaskDetail, formatTaskTree, formatVerifyRow, formatWatchRow, personWaitNotice, selectTasks } from "../../register/views.js";
+import { approvalNotice, endedNotice, formatTask, formatTaskDetail, formatTaskTree, formatVerifyRow, formatWatchRow, personWaitNotice, selectTasks } from "../../register/views.js";
 import { isPeerWait, sameWait } from "../../register/waits.js";
 import { lintSkills } from "../../skills/lint.js";
 import { SKILL_FILE, SkillDir } from "../../skills/store.js";
@@ -37,15 +37,14 @@ import { weekUseOnAccount } from "../account-teams.js";
 import { readWideAllow } from "../allow-scope.js";
 import { noPositionals, onePositional, requiredFlag, UsageError } from "../args.js";
 import { addInputOf, callerOf, changesOf, criticalOf, deadlineOf, listFilterOf, NONE, pinOf, setInputOf, taskIdOf, taskRefOf, weekOf } from "../inputs.js";
-import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, projectFolder, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
+import { findTeam, openKit, pastOrPresentIdOf, projectFolder, sessionIdOf, teamZone } from "../kit.js";
 import { checkLines, listLines, SHORT_TITLE_CHARS, waitingOnLines } from "../reports.js";
 import { idlePassWarnings } from "../idle-pass-check.js";
 import { ownerBatchOf } from "../owner-batch.js";
 import { rollUp } from "../roll-up.js";
 import { splitUnowned } from "../unowned.js";
 import { EXIT, RefusedError } from "../runtime.js";
-import { leadAboveOf, loadTree, skillOwnersElsewhere } from "../tree.js";
-import { teamRegister } from "../team-register.js";
+import { loadTree, skillOwnersElsewhere } from "../tree.js";
 import { readBursts } from "../burst-reading.js";
 import { readScaleOutBudget } from "../hire-cost.js";
 import { readWPerPct } from "../stored-week.js";
@@ -56,17 +55,11 @@ import { inboxDepsOf } from "./inbox.js";
 import { markBoundary } from "./refresh.js";
 import { markKeepWorkingAsk } from "./keep-working.js";
 import { markRetireAsk } from "./retire-ask.js";
+import { openTeam, postNamed, teamOf, tellAssigned, tellLine } from "./register-team.js";
+import { askTeam, treeCallerOf } from "./team-ask.js";
 /** What a time the caller types is read against: this moment and the zone of the caller's own team. */
 function typedTimes(runtime, zone) {
     return { nowMs: runtime.clock.now(), zone };
-}
-async function teamOf(runtime, kit, access) {
-    const config = requireConfig(kit, runtime, access);
-    const above = await leadAboveOf(runtime, kit.paths.team, config);
-    return { config, paths: kit.paths, register: teamRegister(runtime, kit.paths, config, above), roster: await rosterOf(runtime, kit, config), zone: teamZone(config, runtime), above };
-}
-async function openTeam(runtime, access) {
-    return teamOf(runtime, await openTeamKit(runtime), access);
 }
 /** The owner as an id; a source naming a session becomes its id, the owner's marker or a past session's id stays. */
 function addInputIds(team, input) {
@@ -136,24 +129,9 @@ export function warnDamage(runtime, snapshot, path) {
         runtime.out.stderr(`WARN ${path}: ${unreadable} unreadable line(s), ${newer} line(s) from a newer teamrig, ${orphans} event(s) naming no task`);
     }
 }
-/** The caller, a session of team `team`, as `<team>/<id>` and the team tree it writes across; refused when team `target` has no config here. */
-async function treeCallerOf(runtime, team, caller, target) {
-    const kit = await openKit(runtime, team);
-    const config = requireConfig(kit, runtime, 'read');
-    const from = { team, id: sessionIdOf(await rosterOf(runtime, kit, config), caller) };
-    const { tree } = await loadTree(runtime);
-    const targetLead = tree.leadOf(target);
-    if (targetLead === undefined) {
-        throw new RefusedError(`no team ${target} with a config in this kit home`);
-    }
-    return { from, config, tree, targetLead };
-}
 /**
- * `add --team <team>`: a session asks another team of its tree for work (T1141). The task lands in that team's
- * register only, as an event by the asker's `<team>/<id>`, which is also its source, owned by `--owner` (a session of
- * that team, by name or id), else by that team's lead. The owner gets an inbox line from the asker's address, and the
- * team's lead, when it is not the owner, a copy line, as it sets its team's work order and may reorder or reassign
- * it. A team outside the caller's tree is refused; `--team` naming the caller's own team is a plain add.
+ * `add --team <team>`: a session asks another team of its tree for work (askTeam), owned by `--owner` (a session of
+ * that team, by name or id), else by that team's lead. `--team` naming the caller's own team is a plain add.
  */
 async function addToTeam(args, runtime, caller, asked) {
     const { team } = await findTeam(runtime);
@@ -163,30 +141,10 @@ async function addToTeam(args, runtime, caller, asked) {
     if (args.flags.has('source')) {
         throw new UsageError("--team adds the task from you: it takes no --source, unless it names your own team");
     }
-    const { from: address, config, tree, targetLead: lead } = await treeCallerOf(runtime, team, caller, asked);
-    const from = formatAddress(address);
-    if (!tree.sameTree(team, asked)) {
-        throw new RefusedError(`team ${asked} is not in ${team}'s team tree, so ${from} may not add its tasks`);
-    }
-    const target = await teamOf(runtime, await openKit(runtime, asked), 'write');
-    const named = args.flags.get('owner');
-    const found = named === undefined ? { ok: true, id: lead } : target.roster.lookup(named);
-    if (!found.ok) {
-        throw new RefusedError(`team ${asked}: ${found.error}`);
-    }
-    const owner = found.id;
-    const input = { ...addInputOf(args.flags, caller, typedTimes(runtime, teamZone(config, runtime))), ...criticalOf(args.switches), owner, source: from };
-    const verdict = await target.register.addFromTeam(from, input);
-    const code = report(runtime, verdict, 'ADDED', target, asked);
-    if (verdict.ok) {
-        const { task } = verdict.value;
-        await tellAssigned(runtime, target, from, task, formatAddress({ team: asked, id: task.owner }));
-        if (task.owner !== lead) {
-            const shown = formatAddress({ team: asked, id: lead });
-            await tellLine(runtime, target, from, lead, askedNotice(task, target.zone), `${shown} was not told of ${task.id}`, shown);
-        }
-    }
-    return code;
+    const from = await treeCallerOf(runtime, team, caller, asked);
+    const input = { ...addInputOf(args.flags, caller, typedTimes(runtime, teamZone(from.config, runtime))), ...criticalOf(args.switches) };
+    const { verdict, target } = await askTeam(runtime, from, { asked, owner: args.flags.get('owner') }, input);
+    return report(runtime, verdict, 'ADDED', target, asked);
 }
 export async function add(args, runtime) {
     noPositionals(args);
@@ -239,10 +197,6 @@ async function tellNewOwner(runtime, team, by, verdict) {
         return;
     }
     await tellAssigned(runtime, team, by, task);
-}
-/** One inbox line telling a task's owner the task is its own; `shown` names the owner in the NOTE (another team's by address). */
-async function tellAssigned(runtime, team, by, task, shown = task.owner) {
-    await tellLine(runtime, team, by, task.owner, assignedNotice(task, team.zone), `${shown} was not told of ${task.id}`, shown);
 }
 /**
  * One inbox line to each leader that a write set a task waiting on, or a verifying task's proof, for a decision or an
@@ -383,17 +337,6 @@ async function ownerWaitOf(runtime, team, { task, state, elsewhere }) {
     const home = askedBy === undefined ? undefined : loaded.teams.get(askedBy.team);
     const timing = waitTiming(batch, task, new TaskTree(state.tasks, new Date(now), team.zone, undefined, elsewhere), now);
     return { timing, askedBy: askedBy === undefined || home === undefined ? undefined : { address: askedBy, home } };
-}
-/** Posts one inbox line, naming it on stderr, or naming `unsent` and why: a line that cannot be posted is never thrown. */
-async function tellLine(runtime, team, by, to, text, unsent, shown = to) {
-    return postNamed(runtime, team.paths, new SecretScanner(team.config.register.secretPatterns), { to, from: by, text }, unsent, shown);
-}
-/** Posts one line to an inbox of the team at `paths`, naming it on stderr as `shown`, or naming `unsent` and why; true when posted. */
-async function postNamed(runtime, paths, secrets, line, unsent, shown) {
-    const { inboxes } = inboxDepsOf(runtime, paths);
-    const problem = await postLine(inboxes, secrets, { ...line, now: new Date(runtime.clock.now()) });
-    runtime.out.stderr(problem === undefined ? `NOTE ${shown} has an inbox line: ${line.text}` : `WARN ${unsent}: ${problem}`);
-    return problem === undefined;
 }
 /**
  * One inbox line to the session that asked this team for a task (`add --team`, its source `<team>/<id>`) when the
