@@ -184,6 +184,37 @@ describe('secretGuardOutput on what a command line holds (T1369 acceptance)', ()
   });
 });
 
+describe("secretGuardOutput on Claude Code's stores and the shells' histories (T1369 acceptance)", () => {
+  const decisionOf = (payload: JsonRecord): string | undefined => verdictOf(secretGuardOutput(payload, env()))?.decision;
+  const PSREADLINE = 'C:/u/AppData/Roaming/Microsoft/Windows/PowerShell/PSReadLine/ConsoleHost_history.txt';
+
+  it('refuses a call that shows their lines, and a Grep with content inside a secret file', () => {
+    for (const payload of [
+      call('Read', { file_path: 'C:/u/.claude/.credentials.json' }),
+      call('Read', { file_path: 'C:/w/app/.claude/settings.local.json' }),
+      call('Bash', { command: 'tail -n 20 ~/.claude/history.jsonl' }),
+      call('Bash', { command: 'grep -i token ~/.bash_history ~/.zsh_history' }),
+      call('PowerShell', { command: `Get-Content ${PSREADLINE} -Tail 50` }),
+      call('Grep', { pattern: 'token', path: 'C:/u/.kube/config', output_mode: 'content' }),
+      call('Grep', { pattern: 'allow', path: 'C:/w/app', glob: '.claude/settings.local.json', output_mode: 'content' }),
+    ]) {
+      assert.equal(decisionOf(payload), 'deny', JSON.stringify(payload));
+    }
+  });
+
+  it('lets counts, the shared settings and the project transcripts pass', () => {
+    for (const payload of [
+      call('Bash', { command: "grep -cE 'tok_[a-z0-9]{8}' ~/.claude/history.jsonl" }),
+      call('Bash', { command: 'wc -l ~/.claude/history.jsonl' }),
+      call('Grep', { pattern: 'token', path: 'C:/u/.claude/history.jsonl', output_mode: 'count' }),
+      call('Read', { file_path: 'C:/w/app/.claude/settings.json' }),
+      call('Read', { file_path: 'C:/u/.claude/settings.json' }),
+    ]) {
+      assert.equal(decisionOf(payload), undefined, JSON.stringify(payload));
+    }
+  });
+});
+
 describe('secretReason', () => {
   it('names one secret alone, and joins several', () => {
     assert.match(secretReason([{ kind: 'environment' }]), /would print the whole environment into/);
