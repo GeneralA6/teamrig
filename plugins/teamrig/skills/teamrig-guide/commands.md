@@ -3116,6 +3116,15 @@ OK no secret in the 2 commit(s) pushed to origin
 A secret is `REFUSED` (exit 2), named by the commit's short id, file and line; a stdin line git would not write, or a
 range git cannot list, is `FAILED` (exit 1).
 
+It reads stdin to its end, so run by hand it waits for the lines on stdin. A pre-push hook with another step that
+reads them too (`git lfs pre-push`, a CI gate) reads them once and gives each step its copy:
+
+```sh
+updates=$(cat)
+printf '%s\n' "$updates" | teamrig secrets pushed "$1" || exit 1
+printf '%s\n' "$updates" | git lfs pre-push "$@"
+```
+
 ### teamrig worktree add
 
 Makes a session's new worktree the same way every time, so each session starts from the same ready checkout. It
