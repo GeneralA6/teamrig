@@ -13,7 +13,7 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | `PreToolUse` on `Bash` and `PowerShell` | `hook push-guard` | Asks before a push to a protected branch; refuses a force-push or delete of one, and a git command run without the repository's hooks ([the commit guard](#before-a-shell-command-the-commit-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook package-guard` | Refuses a package runner that would fetch and run a package outside the project's lockfile, an install of a version the registry does not vouch for, an `npx --no <bin>` that hands the bin's flag to npm, and an install that would rewrite a `node_modules` linked to another checkout's ([the package guard](#before-a-shell-command-the-package-guard)) |
 | `PreToolUse` on `Bash`, `PowerShell`, `Read` and `Grep` | `hook secret-guard` | Refuses a call that would print a secret file, a secret variable, the whole environment, a Kubernetes secret's data or a dump command's output into the conversation, or whose command line holds a secret as text ([the secret guard](#before-a-shell-command-or-a-read-the-secret-guard)) |
-| `PostToolUse` on `Bash`, `PowerShell`, `Read` and `Grep` | `hook secret-redact` | Replaces each secret a call's result holds before Claude and the transcript see it, and tells the session which kinds it held and who rotates them ([the secret redactor](#after-a-tool-call-the-secret-redactor)) |
+| `PostToolUse` on `Bash`, `PowerShell`, `Read` and `Grep` | `hook secret-redact` | Replaces each secret a call's result holds before Claude and the transcript see it, and tells the session which kinds it held and the task it filed to rotate each ([the secret redactor](#after-a-tool-call-the-secret-redactor)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook exec-guard` | Refuses a privileged command's review run as another session or the owner, and any `exec` call through a client that is no install of the plugin, or one changed after its build ([the exec guard](#before-a-shell-command-the-exec-guard)) |
 | `PreToolUse` on `Bash`, `PowerShell`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook pass-record-guard` | Refuses a session's own write of a tree's pass record, the proof that lets a push or a merge skip the checks the tree passed ([the pass-record guard](#before-a-write-or-a-shell-command-the-pass-record-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook readonly-allow` | With `readonlyShell.enabled`, lets a line whose every command provably only reads run without a permission prompt ([the read-only allow](#before-a-shell-command-the-read-only-allow)) |
@@ -478,10 +478,18 @@ only names or points to a secret stays: a placeholder or a reference, a number (
 such assignment. The model then gets one line naming the kinds, never a value:
 
 ```text
-teamrig: this result held a secret (GitHub token); it was redacted before you saw it. Treat it as leaked: ask security to rotate it (a register task), and do not print it again.
+teamrig: this result held a secret (GitHub token); it was redacted before you saw it. Treat it as leaked: security rotates it in T42. Do not print it again.
 ```
 
-The session it names is the team's `roles.securityReviewer`, else its lead. A result is scanned up to 1,000,000
+Each kind found gets a priority 1 task to rotate it, filed by the session for the team's `roles.securityReviewer`,
+else its lead, who gets an inbox line ("Rotate the GitHub token a Bash result showed web on 2026-10-29"). A reviewer
+in a team above (`app/security`) gets the task in that team's register as the session's ask, and the line names it
+`app/T42`. It is one task per kind, session and day on the team's clock: the day's next leak of that kind names the
+same task. Each kind found is also a line in the team's `state/secret-incidents.jsonl` (the time, the session, the
+tool, the kind and the task), never the value; it is audit data, and nothing trims it. When the tab's session is not
+known, its team's config did not load or the register refuses the task, the line says why and asks the model to have
+it filed instead ("ask security to rotate it with a register task (filing one failed: ...)"). The redaction is sent
+either way, and waits at most 3 seconds for another tab filing at that moment. A result is scanned up to 1,000,000
 characters; past them the line adds "Part of the result was past the scan's cap and was not checked.", and a value
 found before the cap still goes from the rest. A helper's calls are redacted too. Outside a team's projects it does
 nothing, and a broken config keeps the default shapes. `secretGuard.redact` (`true` by default) turns it off: `false`
