@@ -53,6 +53,9 @@ is not on the PATH unless you add that folder. Each change to the plugin raises 
 | Linux | `gnome-terminal`, then `konsole`, then `x-terminal-emulator` | the first one found |
 
 When none works, or with `--terminal print`, `open` prints the command to run in a new terminal and exits 3.
+With [open.teamWindow] on, each tab of the team's sessions (`open`, a meeting start, a refresh restart, the idle
+pass's reopen, a restore after a reboot) opens in a Windows Terminal window of the team's own, `teamrig-<team>`, made
+when none is open, so each team's tabs stay apart; the other terminals open as before.
 The new tab runs `claude`, so Claude Code must be on that terminal's PATH.
 
 ## The status line (optional)
