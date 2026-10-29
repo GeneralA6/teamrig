@@ -12,6 +12,7 @@ import { teamSkillsOf } from "../../setup/backup-places.js";
 import { latestBackupOf, listBackups, setupBackupsDir } from "../../setup/backup.js";
 import { BYTES_PER_MB, scanReport } from "../../setup/scan-report.js";
 import { scanSetup } from "../../setup/scan.js";
+import { claudeSkillDoctor } from "../../setup/skill-doctor.js";
 import { teamSettingsScope } from "../allow-scope.js";
 import { noPositionals, UsageError } from "../args.js";
 import { teamFolders, teamProjectOf } from "../kit.js";
@@ -22,7 +23,7 @@ import { setupTeamOf } from "./setup.js";
  * `setup scan [--project <dir>] [--days <n>] [--max-mb <n>]`: what the user's Claude Code setup costs every turn in a project, and
  * what to slim (src/setup/scan.ts, its lines src/setup/scan-report.ts). It runs before a team exists too, the first
  * step of the team-setup skill; with a team it reads the team's skills folder, its rules file and those of the teams
- * above it, recorded conflicts and rule verdicts. It only reads.
+ * above it, recorded conflicts and rule verdicts, and runs Claude Code's `/skill-doctor` read only. It only reads.
  */
 /** The days of transcripts that tell which skills are in use, unless --days says otherwise. */
 export const DEFAULT_SCAN_DAYS = 30;
@@ -69,7 +70,8 @@ export async function scan(args, runtime) {
     const project = asked ?? (team === undefined ? undefined : teamProjectOf(team.config, team.from)) ?? teamFolders(runtime.env, [])[0] ?? runtime.cwd;
     const claudeDir = claudeConfigDir(runtime.env, runtime.userHome);
     const secrets = new SecretScanner(team?.config.register.secretPatterns);
-    const found = await scanSetup(runtime, {
+    const doctor = claudeSkillDoctor({ env: runtime.env, platform: runtime.platform, probe: runtime.probe, files: runtime.files, node: runtime.self.node, hooks: runtime.hooks });
+    const found = await scanSetup({ files: runtime.files, probe: runtime.probe, transcripts: runtime.transcripts, doctor }, {
         claudeDir,
         userHome: runtime.userHome,
         project,
