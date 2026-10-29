@@ -633,16 +633,18 @@ the lead's tab (`roles.lead`), the same hook counts the turn's calls that are wo
   the like);
 - a test run or a build;
 - research: a `WebFetch` or `WebSearch`, or a search (a `Grep` or `Glob`, a shell `grep`, `rg` or `find`) of another
-  session's place in the team's teamrig folder (`notes/<session>`, `handover/<session>.md`) or of a shared folder
-  there, such as all the notes, or of a sub-team's folder, whose questions go to the lead of the child team it hangs
-  under (`web/lead`, for a grandchild team `ui` under `web` too);
+  session's place in the team's teamrig folder (`notes/<session>`, `handover/<session>.md`, the folder `tasks/T<id>`
+  of a task the register gives another owner) or of a shared folder there, such as all the notes, or of a sub-team's
+  folder, whose questions go to the lead of the child team it hangs under (`web/lead`, for a grandchild team `ui`
+  under `web` too);
 - a code search: a `Read` of a source file, a `Grep` or `Glob`, a shell `grep`, `rg` or `find`.
 
 Its own files are the team's teamrig folder, Claude Code's memory folders and session scratchpads, its sub-teams'
 configs, rules and states, and `leadBoundary.ownPaths` (`~` is your home, `*` one folder name), so its board, notes, agenda and scratch files never
 count, nor does reading results, boards and docs. In the teamrig folder only a search of the config, the rules, the
-register's state or a place named for the lead is the lead's own; another search there looks for an answer another
-session owns.
+register's state, a place named for the lead or the folder of a task the lead owns is the lead's own; another search
+there looks for an answer another session owns. A task folder the register cannot tell the owner of (it cannot be
+read, or holds no such task) counts as research too.
 At the turn's first edit, its first test or build, its first research and its `leadBoundary.searchNudgeAt`-th code
 search (3 by default; 0 never), the lead's model gets one line:
 
@@ -650,7 +652,8 @@ search (3 by default; 0 never), the lead's model gets one line:
 teamrig: the lead edited hook.ts itself. The lead hands such work to the owning session (a register task), a helper or a temporary session, and keeps to deciding and briefing [leadBoundary].
 ```
 
-The research line names whom to ask: the session whose place the search looked through, else the owners of the
+The research line names whom to ask: the session whose place the search looked through (for a task folder, the
+task's owner), else the owners of the
 tasks the turn's prompt names (`T123`, read from the register), else the session that owns the question:
 
 ```text
