@@ -61,6 +61,7 @@ export const GIT_MERGE = {
         return DEFAULT_BRANCHES.find((name) => runGit(dir, ['show-ref', '--verify', '--quiet', `${refs}${name}`]).status === 0) ?? 'main';
     },
     sha: (dir, ref) => queryLine(dir, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${ref}^{commit}`]),
+    treeOf: (dir, ref) => queryLine(dir, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${ref}^{commit}^{tree}`]),
     remoteHead(dir, remote, branch) {
         const ref = `refs/heads/${branch}`;
         const run = runGit(dir, ['ls-remote', '--end-of-options', remote, ref], LONG_TIMEOUT_MS);

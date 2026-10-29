@@ -10,9 +10,9 @@ import { PREFIX_PATTERN } from "../readonly-shell/rules.js";
 import { CORE_RULE_KEYS, isCoreRuleKey } from "../rules/keys.js";
 import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT_CONTEXT_FILES, DEFAULT_CLAIMS, DEFAULT_DECISIONS, DEFAULT_COORDINATOR_WAIT, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_GITHUB, DEFAULT_HEAVY, DEFAULT_HIRING, DEFAULT_EXEC, DEFAULT_LOCK, DEFAULT_LEAD_BOUNDARY, DEFAULT_TURN_LOG, DEFAULT_LOOPS, DEFAULT_MERGE_REMOTE, DEFAULT_MESSAGES, DEFAULT_HEADROOM, DEFAULT_IDLE, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_COMMIT_GUARD, DEFAULT_SECRET_GUARD, DEFAULT_PACKAGE_GUARD, DEFAULT_PERMISSIONS, DEFAULT_PROMPTS, DEFAULT_PUSH_GUARD, DEFAULT_READONLY_SHELL, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SCALE_OUT, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_STATUS_LINE, DEFAULT_TESTS, DEFAULT_WAKE, DEFAULT_WINDOWS, HEAVY_TTL_MARGIN_MINUTES, } from "./defaults.js";
 import { isEffort, isModel } from "./launch.js";
-import { BUDGET_ACCOUNT_MAX_LENGTH, CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from "./limits.js";
+import { BUDGET_ACCOUNT_MAX_LENGTH, CONFIG_LIMITS, REVIEW_PATH_LIMITS, RULE_CONFLICT_LIMITS } from "./limits.js";
 import { ConfigReader, describe, isValidRegex, shortLine } from "./reader.js";
-import { AD_HOC_RUNNERS, ASK_WITH, PACKAGE_INSTALLS, BURST_POLICIES, CAP_RAISERS, CONFLICT_WINNERS, ESCALATIONS, HIRING_POLICIES, isAdHocRunners, isAskWith, isPackageInstalls, isBurstPolicy, isCapRaiser, isCommitGate, isConflictWinner, isEffortLevel, isEscalation, isHiringPolicy, isOverAction, isHookAsks, isIdleMode, isOtherAreaListing, isPushToProtected, isSecretReads, isSkipHooks, isTerminalChoice, isReviewMode, isVerifyGate, isWeekday, HOOK_ASKS, IDLE_MODES, OTHER_AREA_LISTINGS, OVER_ACTIONS, PUSH_TO_PROTECTED, SECRET_READS, SKIP_HOOKS, TERMINALS, REVIEW_MODES, VERIFY_GATES, WEEKDAYS, } from "./types.js";
+import { AD_HOC_RUNNERS, ASK_WITH, PACKAGE_INSTALLS, BURST_POLICIES, CAP_RAISERS, CONFLICT_WINNERS, ESCALATIONS, HIRING_POLICIES, isAdHocRunners, isAskWith, isPackageInstalls, isBurstPolicy, isCapRaiser, isCommitGate, isConflictWinner, isEffortLevel, isEscalation, isHiringPolicy, isOverAction, isHookAsks, isIdleMode, isOtherAreaListing, isPushToProtected, isReviewClass, isReviewPathMode, isSecretReads, isSkipHooks, isTerminalChoice, isReviewMode, isVerifyGate, isWeekday, HOOK_ASKS, IDLE_MODES, OTHER_AREA_LISTINGS, OVER_ACTIONS, PUSH_TO_PROTECTED, REVIEW_CLASSES, REVIEW_PATH_MODES, SECRET_READS, SKIP_HOOKS, TERMINALS, REVIEW_MODES, VERIFY_GATES, WEEKDAYS, } from "./types.js";
 const isSessionName = (name) => SESSION_NAME.test(name) ? undefined : 'expected a lowercase name: a letter, then letters, digits or -, at most 32';
 /** A role a team may leave to a team above it (ANCESTOR_ROLES): one of its sessions, or `<team>/<id>` (T1143). */
 const isRoleHolder = (holder) => SESSION_NAME.test(holder) || ADDRESS_PATTERN.test(holder) ? undefined : 'expected a session id of the team, or <team>/<id> of a team above it';
@@ -275,6 +275,7 @@ export function parseConfig(raw) {
         pushGuard: {
             protectedBranches: read.stringList(pushGuard, 'protectedBranches', 'pushGuard', DEFAULT_PUSH_GUARD.protectedBranches, shortLine(CONFIG_LIMITS.protectedBranches.maxLength, BRANCH_NAME), CONFIG_LIMITS.protectedBranches.maxItems),
             pushToProtected: parsePushToProtected(read, pushGuard),
+            reviewPaths: read.list(pushGuard, 'reviewPaths', 'pushGuard', DEFAULT_PUSH_GUARD.reviewPaths, (value, itemPath) => parseReviewPath(read, value, itemPath), CONFIG_LIMITS.reviewPaths.maxItems),
         },
         packageGuard: parsePackageGuard(read, read.section(raw, 'packageGuard', '')),
         commitGuard: { skipHooks: parseSkipHooks(read, read.section(raw, 'commitGuard', '')) },
@@ -534,6 +535,11 @@ function parseCoordinatorRepos(read, raw) {
         if (dependencyCheck !== undefined && !dependencyGate) {
             read.report(`${path}.dependencyCheck`, 'runs only with dependencyGate true, so it never runs');
         }
+        const reviewGate = read.boolean(entry, 'reviewGate', path, false);
+        const reviewCheck = entry['reviewCheck'] === undefined ? undefined : read.stringListItem(entry['reviewCheck'], `${path}.reviewCheck`, HOOK_ARGV_MAX_ITEMS);
+        if (reviewCheck !== undefined && !reviewGate) {
+            read.report(`${path}.reviewCheck`, 'runs only with reviewGate true, so it never runs');
+        }
         const worktreeFolder = read.optionalString(entry, 'worktreeFolder', path, isPathText);
         const worktreeSetup = entry['worktreeSetup'] === undefined ? undefined : read.stringListItem(entry['worktreeSetup'], `${path}.worktreeSetup`, HOOK_ARGV_MAX_ITEMS);
         repos[name] = {
@@ -541,6 +547,8 @@ function parseCoordinatorRepos(read, raw) {
             deploysOnPush: read.stringList(entry, 'deploysOnPush', path, [], isCoordinatorName),
             dependencyGate,
             ...(dependencyCheck === undefined ? {} : { dependencyCheck }),
+            reviewGate,
+            ...(reviewCheck === undefined ? {} : { reviewCheck }),
             followMainCheckout: read.boolean(entry, 'followMainCheckout', path, false),
             ...(worktreeFolder === undefined ? {} : { worktreeFolder }),
             ...(worktreeSetup === undefined ? {} : { worktreeSetup }),
@@ -918,6 +926,23 @@ function parsePushToProtected(read, raw) {
     const fallback = DEFAULT_PUSH_GUARD.pushToProtected;
     const value = read.string(raw, 'pushToProtected', 'pushGuard', fallback, oneOf(PUSH_TO_PROTECTED));
     return isPushToProtected(value) ? value : fallback;
+}
+/**
+ * One `pushGuard.reviewPaths` entry: one with no usable glob is reported and left out; a bad mode or class is reported
+ * and read as the strictest, `always` and `security`, so a typo never weakens the gate.
+ */
+function parseReviewPath(read, value, path) {
+    const entry = read.objectItem(value, path);
+    if (entry === undefined) {
+        return undefined;
+    }
+    const glob = read.requiredString(entry, 'glob', path, shortLine(REVIEW_PATH_LIMITS.globMaxLength));
+    if (glob === '') {
+        return undefined;
+    }
+    const mode = read.string(entry, 'mode', path, 'always', oneOf(REVIEW_PATH_MODES));
+    const reviewer = read.string(entry, 'class', path, 'security', oneOf(REVIEW_CLASSES));
+    return { glob, mode: isReviewPathMode(mode) ? mode : 'always', class: isReviewClass(reviewer) ? reviewer : 'security' };
 }
 function parsePackageGuard(read, raw) {
     const path = 'packageGuard';

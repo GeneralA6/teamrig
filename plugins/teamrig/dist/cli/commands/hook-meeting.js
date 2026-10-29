@@ -1,5 +1,6 @@
 import { KIT_NAME } from "../../core/home.js";
-import { holdOutput, sendTargetOf, sendTextOf } from "../../hooks/cold-send.js";
+import { sendTargetOf, sendTextOf } from "../../hooks/cold-send.js";
+import { refusalOutput } from "../../hooks/permission.js";
 import { quietHoldReason } from "../../meeting/quiet.js";
 import { MeetingStore, phaseOf } from "../../meeting/state.js";
 import { teamZone } from "../kit.js";
@@ -30,5 +31,5 @@ export async function meetingHold(runtime, kit, config, roster, payload, claudeS
         command: KIT_NAME,
         zone: teamZone(config, runtime),
     });
-    return reason === undefined ? undefined : holdOutput(reason);
+    return reason === undefined ? undefined : refusalOutput(reason);
 }

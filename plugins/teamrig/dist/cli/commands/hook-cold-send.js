@@ -1,6 +1,7 @@
 import { claudeProjectsDir, lastWriteOf } from "../../budget/discover.js";
 import { KIT_NAME } from "../../core/home.js";
-import { decideColdSend, holdOutput, JsonlColdSendLog, sendTargetOf } from "../../hooks/cold-send.js";
+import { decideColdSend, JsonlColdSendLog, sendTargetOf } from "../../hooks/cold-send.js";
+import { refusalOutput } from "../../hooks/permission.js";
 import { RECEIVER_TABS, tabsOf } from "../../inbox/marks.js";
 import { inboxDepsOf } from "./inbox.js";
 /**
@@ -40,5 +41,5 @@ export async function coldSendHold(runtime, kit, config, roster, payload, claude
         command: KIT_NAME,
         wakeNow: config.wake.enabled,
     });
-    return verdict.kind === 'hold' ? holdOutput(verdict.reason) : undefined;
+    return verdict.kind === 'hold' ? refusalOutput(verdict.reason) : undefined;
 }

@@ -17,6 +17,10 @@ export function holdBack(decision, reason, asks) {
         ? { permissionDecision: 'deny', permissionDecisionReason: `${reason} ${ASK_REFUSED_NOTE}` }
         : { permissionDecision: decision, permissionDecisionReason: reason };
 }
+/** The PreToolUse output of a call a hook refuses whatever `prompts.hookAsks` says. */
+export function refusalOutput(reason) {
+    return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } });
+}
 /** The PreToolUse output of a call a hook holds back (see `holdBack`). */
 export function holdBackOutput(decision, reason, asks) {
     return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', ...holdBack(decision, reason, asks) } });
