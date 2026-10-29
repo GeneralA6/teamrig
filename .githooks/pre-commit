@@ -1,3 +1,5 @@
 #!/bin/sh
-# Blocks a commit whose staged files or paths match the generic scrub rules or the private denylist.
+# Refuses a staged line in a secret shape or a staged secret file (teamrig secrets staged), then blocks a commit whose
+# staged files or paths match the generic scrub rules or the private denylist.
+node src/cli/main.ts secrets staged || exit 1
 exec node tools/scrub/cli.ts --staged
