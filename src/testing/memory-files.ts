@@ -6,10 +6,11 @@ import type { PathKind, PathProbe } from '../core/path-probe.ts';
 /**
  * In-memory `Files` for tests. Paths are compared after normalising separators to `/`. A file's stamp is its
  * size in bytes and the number of the change that last set it, counted over every file; it was modified at the
- * clock's time of that change (the epoch, without a clock).
+ * clock's time of that change (the epoch, without a clock). A folder exists while files are below it, or once made.
  */
 export class MemoryFiles implements Files {
   private readonly contents = new Map<string, string>();
+  private readonly folders = new Set<string>();
   private readonly changedBy = new Map<string, number>();
   private readonly changedAt = new Map<string, number>();
   private readonly clock: Clock;
@@ -62,10 +63,15 @@ export class MemoryFiles implements Files {
     return true;
   }
 
+  /** Whether the folder was made with `makeFolder`, for a folder no file is below yet. */
+  madeFolder(path: string): boolean {
+    return this.folders.has(normalisePath(path).replace(/\/$/, ''));
+  }
+
   async list(dir: string): Promise<string[]> {
     const prefix = `${normalisePath(dir).replace(/\/$/, '')}/`;
     const names = new Set<string>();
-    for (const key of this.contents.keys()) {
+    for (const key of [...this.contents.keys(), ...this.folders]) {
       if (key.startsWith(prefix)) {
         const first = key.slice(prefix.length).split('/')[0];
         if (first !== undefined && first !== '') {
@@ -74,6 +80,15 @@ export class MemoryFiles implements Files {
       }
     }
     return [...names].sort();
+  }
+
+  async makeFolder(path: string): Promise<void> {
+    const key = normalisePath(path).replace(/\/$/, '');
+    const blocking = [...this.contents.keys()].find((file) => file === key || key.startsWith(`${file}/`));
+    if (blocking !== undefined) {
+      throw new Error(`${blocking} is a file, so ${path} cannot be a folder`);
+    }
+    this.folders.add(key);
   }
 
   async remove(path: string): Promise<boolean> {
@@ -87,15 +102,20 @@ export class MemoryFiles implements Files {
     const source = normalisePath(from);
     const target = normalisePath(to);
     const moving = [...this.contents].filter(([key]) => isAtOrBelow(key, source));
-    if (moving.length === 0) {
+    const folders = [...this.folders].filter((folder) => isAtOrBelow(folder, source));
+    if (moving.length === 0 && folders.length === 0) {
       return false;
     }
-    if ([...this.contents.keys()].some((key) => isAtOrBelow(key, target))) {
+    if ([...this.contents.keys(), ...this.folders].some((key) => isAtOrBelow(key, target))) {
       throw new Error(`${to} exists already; a move never replaces it`);
     }
     for (const [key, text] of moving) {
       await this.remove(key);
       this.put(`${target}${key.slice(source.length)}`, text);
+    }
+    for (const folder of folders) {
+      this.folders.delete(folder);
+      this.folders.add(`${target}${folder.slice(source.length)}`);
     }
     return true;
   }
@@ -126,7 +146,7 @@ function isAtOrBelow(key: string, path: string): boolean {
 /** A clock that stays at the epoch, for files whose change times no test reads. */
 const EPOCH: Clock = { now: () => 0 };
 
-/** A `PathProbe` over a `MemoryFiles`: a path that holds text is a file, a path with files below it is a folder. */
+/** A `PathProbe` over a `MemoryFiles`: a path that holds text is a file, a made path or one with files below it a folder. */
 export class MemoryPathProbe implements PathProbe {
   private readonly files: MemoryFiles;
 
@@ -138,7 +158,7 @@ export class MemoryPathProbe implements PathProbe {
     if (this.files.get(path) !== undefined) {
       return 'file';
     }
-    return (await this.files.list(path)).length > 0 ? 'folder' : 'none';
+    return this.files.madeFolder(path) || (await this.files.list(path)).length > 0 ? 'folder' : 'none';
   }
 }
 

@@ -112,6 +112,8 @@ export interface Files {
   createExclusive(path: string, text: string): Promise<boolean>;
   /** Entry names in a folder; empty when the folder does not exist. */
   list(dir: string): Promise<string[]>;
+  /** Creates the folder and the folders above it; nothing when it exists. Throws when a file is in the way. */
+  makeFolder(path: string): Promise<void>;
   /**
    * Removes a file: true when this call removed it, false when it was missing, which is no error. Of two processes
    * removing one file, only one is told true, so a removal can settle which of them acted first.
@@ -191,6 +193,9 @@ export function nodeFiles(sleep: Sleep): Files {
         }
         throw error;
       }
+    },
+    async makeFolder(path) {
+      await mkdir(path, { recursive: true });
     },
     async remove(path) {
       return removeFile(path, sleep);
