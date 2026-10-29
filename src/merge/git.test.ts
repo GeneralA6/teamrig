@@ -161,7 +161,7 @@ describe('GIT_MERGE reading origin and a range', () => {
   });
 
   it('reads the tree a commit makes, the same for two commits of the same files', () => {
-    const { repo } = repoWithOrigin('integrate-tree');
+    const { repo } = repoWithOrigin('merge-tree');
     try {
       const tree = git.treeOf(repo.dir, 'HEAD');
       assert.equal(tree, repo.git('rev-parse', 'HEAD^{tree}').trim());
