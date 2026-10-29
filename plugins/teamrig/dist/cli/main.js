@@ -22,6 +22,7 @@ import { nodeProcesses } from "../open/processes.js";
 import { nodeSessionProcesses } from "../open/session-processes.js";
 import { httpPackageRegistry } from "../package-guard/registry.js";
 import { GIT_CLI, GIT_COMMIT_LOG } from "../push-guard/git.js";
+import { gitSecrets } from "../secret-guard/secrets-git.js";
 import { GIT_POINTER } from "../setup/pointer-git.js";
 import { requirementsCheck } from "../requirements/requirements.js";
 import { nodeHookRunner } from "../deploy/hooks.js";
@@ -53,6 +54,7 @@ process.exitCode = await runCli(process.argv.slice(2), {
     git: GIT_CLI,
     pointerGit: GIT_POINTER,
     commitLog: GIT_COMMIT_LOG,
+    secretsGit: gitSecrets(process.env),
     out: {
         stdout: (line) => process.stdout.write(`${line}\n`),
         stderr: (line) => process.stderr.write(`${line}\n`),
