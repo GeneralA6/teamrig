@@ -45,7 +45,7 @@ export type SlashPlan =
 export const SESSION_FLAG = 'session';
 
 /** The line as the CLI will read it, with the CLI's own table; undefined when the CLI refuses it. */
-function readable(argv: readonly string[], table: CommandTable): ParsedArgs | undefined {
+export function readable(argv: readonly string[], table: CommandTable): ParsedArgs | undefined {
   try {
     return parseArgs(argv, table.flags, table.switches, table.renamed, table.rest);
   } catch (error) {
