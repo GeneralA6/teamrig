@@ -127,6 +127,10 @@ export interface TeamPaths {
   readonly refresh: string;
   /** The handover notes a session writes before a refresh, `<id>.md` each. */
   readonly handover: string;
+  /** Each task's files (design, build notes, plan, evidence), `T<id>/` each: see {@link taskFolder} (T1457). */
+  readonly tasks: string;
+  /** Each session's notes that belong to no task (research, boards, drafts), `<session>/` each (T1457). */
+  readonly notes: string;
   /** The verify-loop notices given today (a held start's inbox line, a verify-by reminder), so each is given once a day. */
   readonly verifyNotices: string;
   /** The model notices each session's Stop hook already showed, `<id>.json` each. */
@@ -212,6 +216,16 @@ export function teamHome(kitHome: string, team: string): string {
   return join(kitHome, 'teams', team);
 }
 
+const TASKS_FOLDER = 'tasks';
+
+/**
+ * The folder of one task's files, in the team whose register holds the task (T1457): its files move with it, and a
+ * task's design is found by its id, never by a search.
+ */
+export function taskFolder(kitHome: string, team: string, id: string): string {
+  return join(teamHome(kitHome, team), TASKS_FOLDER, id);
+}
+
 /** The team's paths; `claudeDir` is Claude Code's own folder (`claudeConfigDir`), whose `skills` is the default skills folder. */
 export function teamPaths(kitHome: string, team: string, claudeDir: string, overrides: PathOverrides = {}): TeamPaths {
   const home = teamHome(kitHome, team);
@@ -247,6 +261,8 @@ export function teamPaths(kitHome: string, team: string, claudeDir: string, over
     skills: inHome(overrides.skills) ?? join(claudeDir, 'skills'),
     refresh: join(state, 'refresh'),
     handover: inHome(overrides.handover) ?? join(home, 'handover'),
+    tasks: join(home, TASKS_FOLDER),
+    notes: join(home, 'notes'),
     verifyNotices: join(state, 'verify-notices.jsonl'),
     modelNotices: join(state, 'model-notices'),
     unownedNotices: join(state, 'unowned-notices.json'),
