@@ -1,0 +1,83 @@
+import type { SecretShapes } from '../core/secret-shapes.ts';
+import type { AddedLine, CommitAdds, PatchAdds } from './git-adds.ts';
+import type { SecretPaths } from './paths.ts';
+
+/** A secret a change adds: where it sits and its shape, never its value (the finding lands in a transcript). */
+export interface CommitFinding {
+  readonly where: string;
+  readonly description: string;
+}
+
+/** The finding of a file the secret paths list: its content is a secret whatever it holds. */
+export const DECLARED_FILE = 'a declared secret file';
+
+/** How many characters of a commit's id name it in a finding, as `git log --oneline` shows it. */
+const SHORT_SHA = 7;
+
+/**
+ * Finds the secrets a commit adds (T1480): a line in one of the write-time shapes (the set the guard and the redactor
+ * use, so all three agree), a file the secret paths list, by name, whatever it holds (`.credentials.json` holds no
+ * shape), and a message line in a shape. No allow marker and no test-folder exemption (T1099 §5): a test fixture is
+ * built at run time.
+ */
+export class CommitScanner {
+  private readonly shapes: Pick<SecretShapes, 'hitsIn'>;
+  private readonly paths: Pick<SecretPaths, 'listed'>;
+  private readonly root: string;
+
+  /** `root` is the repo's top folder: a repo-relative path is matched as `<root>/<path>`. */
+  constructor(shapes: Pick<SecretShapes, 'hitsIn'>, paths: Pick<SecretPaths, 'listed'>, root: string) {
+    this.shapes = shapes;
+    this.paths = paths;
+    this.root = root;
+  }
+
+  /** The secrets a staged change adds: its declared secret files, then its lines, each once. */
+  staged(adds: PatchAdds): CommitFinding[] {
+    return unique([...this.files(adds.paths, ''), ...this.lines(adds.lines, '')]);
+  }
+
+  /** The secrets a commit message holds, each named by its line, the first being line 1. */
+  message(lines: readonly string[]): CommitFinding[] {
+    return unique(this.messageFindings(lines, ''));
+  }
+
+  /** The secrets each pushed commit adds, in its patch and its message, each named by the commit's short id. */
+  pushed(commits: readonly CommitAdds[]): CommitFinding[] {
+    return unique(
+      commits.flatMap((commit) => {
+        const prefix = `${commit.sha.slice(0, SHORT_SHA)} `;
+        return [...this.files(commit.paths, prefix), ...this.lines(commit.lines, prefix), ...this.messageFindings(commit.message.split('\n'), prefix)];
+      }),
+    );
+  }
+
+  private files(paths: readonly string[], prefix: string): CommitFinding[] {
+    return paths.filter((path) => this.paths.listed(`${this.root}/${path}`)).map((path) => ({ where: `${prefix}${path}`, description: DECLARED_FILE }));
+  }
+
+  private lines(lines: readonly AddedLine[], prefix: string): CommitFinding[] {
+    return lines.flatMap(({ file, line, text }) => this.hits(`${prefix}${file}:${line}`, text));
+  }
+
+  private messageFindings(lines: readonly string[], prefix: string): CommitFinding[] {
+    return lines.flatMap((text, at) => this.hits(`${prefix}commit message line ${at + 1}`, text));
+  }
+
+  private hits(where: string, text: string): CommitFinding[] {
+    return this.shapes.hitsIn(text).map(({ description }) => ({ where, description }));
+  }
+}
+
+/** `findings` without repeats, in order: a secret twice on one line is one finding. */
+function unique(findings: readonly CommitFinding[]): CommitFinding[] {
+  const seen = new Set<string>();
+  return findings.filter(({ where, description }) => {
+    const key = `${where}\n${description}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
