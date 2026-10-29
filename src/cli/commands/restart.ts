@@ -88,7 +88,7 @@ export async function restart(args: ParsedArgs, runtime: CliRuntime): Promise<Ex
       asks: new ClearAsks(runtime.files, clearAskDir(kit.paths.kitHome)),
       restore: new RestoreRegistry(runtime.files, restoreSessionsDir(kit.paths.kitHome)),
       openTab: async () => {
-        const tab = { team, id, name, project, prompt: refreshPrompt(team, id, store.handoverPath(id)), terminal: config.open.terminal };
+        const tab = { team, id, name, project, prompt: refreshPrompt(team, id, store.handoverPath(id)), terminal: config.open.terminal, teamWindow: config.open.teamWindow };
         const { outcome } = await openSessionTab(runtime, tab);
         return outcome.kind === 'opened' ? { kind: 'opened' } : outcome;
       },

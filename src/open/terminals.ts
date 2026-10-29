@@ -6,11 +6,18 @@ import { shellCommand } from './quote.ts';
 /** A terminal `teamrig open` can start a tab in. */
 export type Terminal = Exclude<TerminalChoice, 'auto' | 'print'>;
 
-/** The tab to open: its title, its folder, and the command it runs, as an argument list. */
+/** The tab to open: its title, its folder, the command it runs, as an argument list, and the window it opens in. */
 export interface TabRequest {
   readonly title: string;
   readonly folder: string;
   readonly argv: readonly string[];
+  /** The named window the tab opens in, made when none of that name is open (`teamWindowOf`); undefined: the most recent one. Windows Terminal alone names windows; the others open as before. */
+  readonly window: string | undefined;
+}
+
+/** The window of a team's own its tabs open in when `open.teamWindow` is on, apart from other teams' tabs (T1427). */
+export function teamWindowOf(teamWindow: boolean, team: string): string | undefined {
+  return teamWindow ? `teamrig-${team}` : undefined;
 }
 
 export type TabCommand = { readonly kind: 'command'; readonly request: StartRequest } | { readonly kind: 'unusable'; readonly why: string };
@@ -31,17 +38,18 @@ function command(command: string, args: readonly string[], folder: string, mode:
  * to AppleScript as a run argument, never inside the script.
  */
 export function tabCommand(terminal: Terminal, tab: TabRequest): TabCommand {
-  const { title, folder, argv } = tab;
+  const { title, folder, argv, window } = tab;
   switch (terminal) {
     case 'tmux':
       // tmux 3.0 and later run a command given as several arguments without a shell.
       return command('tmux', ['new-window', '-c', folder, '-n', title, ...argv], folder, 'exit');
     case 'windows-terminal': {
-      const unsafe = [title, folder, ...argv].find((arg) => WINDOWS_TERMINAL_UNSAFE.test(arg));
+      const unsafe = [title, folder, ...(window === undefined ? [] : [window]), ...argv].find((arg) => WINDOWS_TERMINAL_UNSAFE.test(arg));
       if (unsafe !== undefined) {
         return { kind: 'unusable', why: `Windows Terminal would misread ${JSON.stringify(unsafe)} (it holds ; " % or a control character)` };
       }
-      return command('wt.exe', ['-w', '0', 'new-tab', '--title', title, '-d', folder, '--', ...argv], folder, 'exit');
+      // `-w 0` is the most recent window; a name is the window of that name, made when none is open.
+      return command('wt.exe', ['-w', window ?? '0', 'new-tab', '--title', title, '-d', folder, '--', ...argv], folder, 'exit');
     }
     case 'macos-terminal':
       return command(

@@ -7,6 +7,7 @@ import { PlainLogFile } from '../../core/log-file.ts';
 import { indexMarks } from '../../inbox/marks.ts';
 import { JsonlMarkLog } from '../../inbox/store.ts';
 import { openTab, type OpenOutcome } from '../../open/open-tab.ts';
+import { teamWindowOf } from '../../open/terminals.ts';
 import { encodePrompt } from '../../open/prompt.ts';
 import { shellCommand } from '../../open/quote.ts';
 import { plainSessionEnv } from '../../open/session-env.ts';
@@ -49,6 +50,7 @@ async function restoreTeamsOf(runtime: CliRuntime): Promise<RestoreTeam[]> {
       lead: config.roles.lead,
       names: new Map(roster.ids.map((id) => [id, roster.nameOf(id) ?? id])),
       terminal: config.open.terminal,
+      teamWindow: config.open.teamWindow,
       areaBySession: indexMarks(marks).areaBySession,
     });
   }
@@ -76,6 +78,7 @@ async function reopen(runtime: CliRuntime, tab: ReopenTab, terminal: TerminalCho
       project: tab.folder,
       prompt: tab.prompt,
       terminal: terminal ?? team.terminal,
+      teamWindow: team.teamWindow,
       resume: tab.claudeSession,
       ...(tab.effort === undefined ? {} : { effort: tab.effort }),
     });
@@ -93,7 +96,8 @@ async function reopen(runtime: CliRuntime, tab: ReopenTab, terminal: TerminalCho
     ...(tab.effort === undefined ? [] : ['--effort', tab.effort]),
     ...(tab.prompt === undefined ? [] : ['--encoded-prompt', encodePrompt(tab.prompt)]),
   ];
-  const outcome = await openTab(runtime, terminal ?? team?.terminal ?? 'auto', { title: tab.title, folder: tab.folder, argv });
+  const window = team === undefined ? undefined : teamWindowOf(team.teamWindow, team.team);
+  const outcome = await openTab(runtime, terminal ?? team?.terminal ?? 'auto', { title: tab.title, folder: tab.folder, argv, window });
   return reopenOutcomeOf(runtime, outcome, tab.folder, argv);
 }
 
@@ -159,7 +163,7 @@ export async function restoreCheck(args: ParsedArgs, runtime: CliRuntime): Promi
     ...(terminal === undefined ? [] : ['--terminal', terminal]),
     ...homeArgs(homeRuntime),
   ];
-  const outcome = await openTab(runtime, terminal ?? 'auto', { title: RESTORE_TAB_TITLE, folder: runtime.userHome, argv });
+  const outcome = await openTab(runtime, terminal ?? 'auto', { title: RESTORE_TAB_TITLE, folder: runtime.userHome, argv, window: undefined });
   if (outcome.kind === 'opened') {
     runtime.out.stdout(`OPENED the restore of ${count} Claude Code session${count === 1 ? '' : 's'} in a new ${TERMINAL_LABELS[outcome.terminal]}`);
     return EXIT.ok;

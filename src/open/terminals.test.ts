@@ -1,9 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { autoTerminals, tabCommand, type TabRequest } from './terminals.ts';
+import { autoTerminals, tabCommand, teamWindowOf, type TabRequest } from './terminals.ts';
 
 const ARGV = ['/usr/bin/node', '/opt/teamrig/dist/cli/main.js', 'launch', 'api', '--team', 'shop', '--project', '/w/shop', '--encoded-prompt', 'SGk'];
-const TAB: TabRequest = { title: 'shop-api', folder: '/w/shop', argv: ARGV };
+const TAB: TabRequest = { title: 'shop-api', folder: '/w/shop', argv: ARGV, window: undefined };
 
 describe('tabCommand', () => {
   it('opens a tmux window in the folder, the command as separate arguments', () => {
@@ -14,7 +14,7 @@ describe('tabCommand', () => {
   });
 
   it('opens a Windows Terminal tab in the current window, the command after --', () => {
-    const tab: TabRequest = { title: 'shop-api', folder: 'C:\\w\\shop', argv: ['C:\\node\\node.exe', 'C:\\kit\\main.js', 'launch', 'api'] };
+    const tab: TabRequest = { title: 'shop-api', folder: 'C:\\w\\shop', argv: ['C:\\node\\node.exe', 'C:\\kit\\main.js', 'launch', 'api'], window: undefined };
     assert.deepEqual(tabCommand('windows-terminal', tab), {
       kind: 'command',
       request: {
@@ -26,6 +26,22 @@ describe('tabCommand', () => {
     });
   });
 
+  it("opens a Windows Terminal tab in the team's own window when the tab names one, made by that name when none is open (T1427)", () => {
+    const planned = tabCommand('windows-terminal', { ...TAB, window: teamWindowOf(true, 'shop') });
+    assert.deepEqual(planned.kind === 'command' ? planned.request.args.slice(0, 3) : [], ['-w', 'teamrig-shop', 'new-tab']);
+  });
+
+  it('names no window for a team that keeps its tabs with the others', () => {
+    assert.equal(teamWindowOf(false, 'shop'), undefined);
+  });
+
+  it('opens the tab as before in a terminal that names no windows', () => {
+    const named = { ...TAB, window: teamWindowOf(true, 'shop') };
+    for (const terminal of ['tmux', 'macos-terminal', 'gnome-terminal', 'konsole', 'x-terminal-emulator'] as const) {
+      assert.deepEqual(tabCommand(terminal, named), tabCommand(terminal, TAB), terminal);
+    }
+  });
+
   it('will not hand Windows Terminal an argument it would split or expand', () => {
     for (const folder of ['C:\\a;b', 'C:\\%TEMP%', 'C:\\"x"', 'C:\\a\nb']) {
       const planned = tabCommand('windows-terminal', { ...TAB, folder });
@@ -35,7 +51,7 @@ describe('tabCommand', () => {
   });
 
   it('gives macOS Terminal the quoted shell command as a run argument, never inside the script', () => {
-    const hostile: TabRequest = { title: 't', folder: '/w/a "b"; $(id)', argv: ['/n', "it's `x`"] };
+    const hostile: TabRequest = { title: 't', folder: '/w/a "b"; $(id)', argv: ['/n', "it's `x`"], window: undefined };
     const planned = tabCommand('macos-terminal', hostile);
     assert.deepEqual(planned, {
       kind: 'command',
