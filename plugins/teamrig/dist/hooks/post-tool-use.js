@@ -17,3 +17,10 @@ export function toolResponseOf(value) {
 export function postToolUseContext(line) {
     return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: line } });
 }
+/**
+ * A PostToolUse hook's stdout that replaces the tool's result, for the model and the transcript alike, with `response`
+ * (every key the tool's result has, or Claude Code keeps the original), and the line as context after it.
+ */
+export function postToolUseReplace(response, line) {
+    return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', updatedToolOutput: response, additionalContext: line } });
+}

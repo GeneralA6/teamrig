@@ -976,6 +976,7 @@ function parseSecretGuard(read, raw) {
         paths: read.stringList(raw, 'paths', path, defaults.paths, shortLine(secretPaths.maxLength, isSecretGlob), secretPaths.maxItems),
         envNames: read.stringList(raw, 'envNames', path, defaults.envNames, shortLine(secretEnvNames.maxLength, keepablePattern('keep a variable printable')), secretEnvNames.maxItems),
         commands: read.stringList(raw, 'commands', path, defaults.commands, shortLine(secretCommands.maxLength, keepablePattern('let a command print')), secretCommands.maxItems),
+        redact: read.boolean(raw, 'redact', path, defaults.redact),
     };
 }
 /** A glob with something to match after its `!`. */
