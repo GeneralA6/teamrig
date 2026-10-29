@@ -165,7 +165,8 @@ unvetted package (`npx` of a tool not installed, `pnpm dlx`) is refused, and so 
 in the last two weeks or with a known advisory, or one that would rewrite a worktree's `node_modules` linked to the
 main checkout's. A call that would print a secret file, the whole environment or a
 Kubernetes secret, or whose command line holds a token or a password as text, is refused before it runs, and a secret
-a call prints anyway is redacted before Claude sees it. Each helper a member starts gets the same team rules and knows whose
+a call prints anyway is redacted before Claude sees it. A repository's git hooks call `teamrig secrets`, which refuses
+a commit or a push that adds a token or a secret file, whoever makes it. Each helper a member starts gets the same team rules and knows whose
 helper it is. Everything runs on your machine, with no account and no cloud bill.
 
 ## Also in the box
