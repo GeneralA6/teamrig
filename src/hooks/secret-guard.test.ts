@@ -161,7 +161,7 @@ describe('secretReason', () => {
     ]);
     assert.match(
       reason,
-      /^teamrig secret guard: this call would print the content of \.env into the conversation\. .*secretGuard\.envNames\. Its command line holds a secret as text \(GitHub token, JSON web token\)\. Pass it by reference .*never as text\. \[secretGuard\.secretReads\]$/,
+      /^teamrig secret guard: this call would print the content of \.env into the conversation\. .*secretGuard\.envNames or secretGuard\.commands\. Its command line holds a secret as text \(GitHub token, JSON web token\)\. Pass it by reference .*never as text\. \[secretGuard\.secretReads\]$/,
     );
   });
 });

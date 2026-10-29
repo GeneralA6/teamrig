@@ -329,6 +329,12 @@ export interface SecretGuardConfig {
    * `!pattern` keeps a variable printable.
    */
   readonly envNames: readonly string[];
+  /**
+   * The team's own commands whose output is a secret whatever they name, regular expressions over a run's line
+   * (`<program> <args>`, case ignored) read after the guard's defaults (`kubectl config view --raw`). The last pattern
+   * that matches a line decides, so `!pattern` lets a command print.
+   */
+  readonly commands: readonly string[];
 }
 
 /**

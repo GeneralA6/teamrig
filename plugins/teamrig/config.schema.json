@@ -467,6 +467,13 @@
           "maxItems": 16,
           "items": { "type": "string", "maxLength": 120 },
           "default": []
+        },
+        "commands": {
+          "description": "The team's own commands whose output is a secret whatever file or variable they name, regular expressions over a command's program and arguments with case ignored, read after the default (kubectl config view --raw). The last pattern that matches a command decides: !pattern lets it print.",
+          "type": "array",
+          "maxItems": 16,
+          "items": { "type": "string", "maxLength": 200 },
+          "default": []
         }
       }
     },
