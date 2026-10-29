@@ -199,7 +199,8 @@ export async function pushGuard(args: ParsedArgs, runtime: CliRuntime): Promise<
 
 /**
  * PreToolUse on Bash and PowerShell: refuses, or asks about, a package runner that would fetch and run a package ad hoc,
- * and an install of a version the registry does not vouch for (too young, with an advisory, or not exact).
+ * and an install of a version the registry does not vouch for (too young, with an advisory, or not exact); refuses a
+ * package-manager call that would rewrite node_modules through a link (a worktree's junction to the main checkout's).
  */
 export async function packageGuard(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
@@ -213,6 +214,7 @@ export async function packageGuard(args: ParsedArgs, runtime: CliRuntime): Promi
     cwd: runtime.cwd,
     home: runtime.userHome,
     files: runtime.files,
+    tree: runtime.worktrees.files,
     registry: runtime.packageRegistry,
     clock: runtime.clock,
     hookAsks: hookAsksOf(guard.load),
