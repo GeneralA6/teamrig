@@ -4,7 +4,7 @@ import { LeadTree } from "../../config/lead-tree.js";
 import { Roster } from "../../config/roster.js";
 import { formatAddress } from "../../core/address.js";
 import { errorMessage, isRecord, stringField } from "../../core/guards.js";
-import { claudeConfigDir, claudeTempDir, KIT_NAME } from "../../core/home.js";
+import { claudeConfigDir, claudeTempDir, KIT_NAME, resolveKitHome } from "../../core/home.js";
 import { resolveTeam } from "../../core/team.js";
 import { sessionIdOf } from "../../inbox/inbox.js";
 import { routeReminderOf } from "../../inbox/route.js";
@@ -61,6 +61,7 @@ import { droppedEditReasonOf } from "./hook-dropped-edit.js";
 import { meetingHold } from "./hook-meeting.js";
 import { armRestart, restartTargetOf } from "./hook-restart.js";
 import { helperContextOf } from "./hook-helper-start.js";
+import { promptSecretBlock } from "./hook-prompt-secret.js";
 import { checkHooklessTabs } from "./hook-hookless.js";
 import { dueFactsAt, inMeetingNow } from "./hook-refresh-mod.js";
 import { recordSessionStart } from "./hook-session-record.js";
@@ -320,7 +321,9 @@ async function cancelledRestartLine(runtime, kit, id, growth) {
     return `${KIT_NAME}: the user typed, so the automatic restart is cancelled and you keep this context; a new handover is asked at your next task end, or once your context grew ${thousands(growth)} more`;
 }
 /**
- * UserPromptSubmit: logs a team session's prompt for the task pane (hook-turn-log.ts), cancels a pending
+ * UserPromptSubmit: first stops a prompt that holds a secret, in a team or under a broken pointer, and cleans it out
+ * of Claude Code's prompt history (hook-prompt-secret.ts); a stopped prompt gets nothing below. Else it
+ * logs a team session's prompt for the task pane (hook-turn-log.ts), cancels a pending
  * automatic restart, binds a hand-started tab by its title, notes a Claude Code rename of the session, titles a
  * bound tab that has no title after its session (so a /clear keeps it bound), says once how to bind a tab that is
  * not bound, shows the session's new inbox lines and, once per level while it is past its daily budget and the
@@ -338,13 +341,23 @@ export async function inboxReminder(args, runtime) {
     switch (found.kind) {
         case 'none':
             return EXIT.ok;
-        case 'broken':
-            runtime.out.stdout(`${KIT_NAME}: no team, so no inbox reminder: ${found.from} ${found.problem}`);
+        case 'broken': {
+            // A broken pointer still guards the prompt, with the shipped secret shapes only.
+            const block = await promptSecretBlock(runtime, { kitHome: resolveKitHome(runtime.env, runtime.userHome), patterns: [] }, claudeSession, payload);
+            runtime.out.stdout(block ?? `${KIT_NAME}: no team, so no inbox reminder: ${found.from} ${found.problem}`);
             return EXIT.ok;
+        }
         case 'team':
             break;
     }
     const kit = await openKit(runtime, found.team);
+    const patterns = kit.load.status === 'loaded' ? kit.load.config.register.secretPatterns : [];
+    // Before anything reads the prompt: a stopped prompt is neither logged nor shown its inbox lines, which stay unshown.
+    const block = await promptSecretBlock(runtime, { kitHome: kit.paths.kitHome, patterns }, claudeSession, payload);
+    if (block !== undefined) {
+        runtime.out.stdout(block);
+        return EXIT.ok;
+    }
     if (kit.load.status !== 'loaded') {
         return EXIT.ok;
     }
