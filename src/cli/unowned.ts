@@ -10,8 +10,9 @@ import { formatIdlePassTrouble, type IdlePassTrouble } from './idle-pass-log.ts'
  * one area's; a wide allow rule sits in settings every session runs under, and a permissions change is the owner's
  * gate, which the lead takes to the owner; a skill flag goes to its skill's `Owner:`, which may be missing or name no
  * session on the team; the idle pass (T1100) closes and reopens the team's sessions, so a pass that stopped or fails
- * is the whole team's. Such a warning goes to the team's lead, with the check it came from, so it never reaches no
- * one: the lead fixes it, hands it on or settles the check.
+ * is the whole team's; a repository's git hooks (SECRET-HOOK, T1480) are its own, not one session's area. Such a
+ * warning goes to the team's lead, with the check it came from, so it never reaches no one: the lead fixes it, hands
+ * it on or settles the check.
  */
 
 /** The most of a warning's text its inbox line carries; `check --all` prints it in full. */
