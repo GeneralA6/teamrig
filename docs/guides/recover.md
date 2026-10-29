@@ -16,16 +16,18 @@ Every command is in [commands](../../plugins/teamrig/skills/teamrig-guide/comman
 
 A shutdown, a reboot or a crash kills every Claude Code tab at once. teamrig puts them back: the `hook restore-track`
 hook records every Claude Code session on the machine, in a team or not, and `teamrig restore run` reopens each one
-the shutdown interrupted, in its folder and at its last effort.
+the shutdown interrupted, in its folder (the worktree it went into, where Claude Code files its transcript) and at
+its last effort.
 
 ```sh
 teamrig restore          # what a restore would do now: RESTORE, KEEP or DISCARD for each session, and why
 teamrig restore run      # reopen the sessions the last shutdown killed
 ```
 
-- Which come back: a session killed without exiting. One that ended on purpose (`/exit`, `/clear`), still runs, was
-  active since logon, was not a terminal session (`claude -p`, a background job Claude Code resumes itself), was
-  continued in another session, has no transcript left, is too old or failed to resume too often stays closed.
+- Which come back: a session killed without exiting. One that ended on purpose (`/exit`, `/clear`, `teamrig close`
+  or the idle pass), still runs, was active since logon, was not a terminal session (`claude -p`, a background job
+  Claude Code resumes itself), was continued in another session, has no transcript left, is too old or failed to
+  resume too often stays closed.
 - How they come back: `restore run` lists them and counts down 60 seconds (Enter starts at once, `i` reopens every
   one with no prompt, `q` cancels). A team session started by `teamrig open` comes back through `launch` as itself;
   any other resumes as it ran. One that was mid-turn, hit an API error or had background jobs, cron jobs or a
