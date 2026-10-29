@@ -132,6 +132,14 @@ export function parseHeldText(held: string): ShellParse {
   return new Scanner(held, 'bash', { nesting: 0, subshells: [], ids: { next: 0 } }).parseExpandable();
 }
 
+/** Characters bash expands in unquoted text: a glob, or `~` for a home folder. */
+const EXPANDS = /[*?[~]/;
+
+/** A bash word whose text is its value: nothing in it is only known when it runs, and no unquoted text expands. */
+export function isStaticWord(word: ShellWord): boolean {
+  return !word.dynamic && word.parts !== undefined && word.parts.every((part) => part.kind === 'text' && (part.quoted || !EXPANDS.test(part.text)));
+}
+
 /** How a piece of a word was written: unquoted text, quoted or escaped text, or something only known when it runs. */
 type Piece = 'unquoted' | 'quoted' | 'dynamic';
 

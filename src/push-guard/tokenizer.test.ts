@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseHeldText, parseShell, type ShellDialect, type ShellWord } from './tokenizer.ts';
+import { isStaticWord, parseHeldText, parseShell, type ShellDialect, type ShellWord } from './tokenizer.ts';
 
 const show = (word: ShellWord): string => (word.dynamic ? `~${word.text}` : word.text);
 
@@ -455,5 +455,19 @@ describe('parseShell: bindings the commands may not show', () => {
 
   it('reads $[...] as one dynamic word', () => {
     assert.deepEqual(words('echo $[a[1] + 2]x y'), [['echo', '~$[a[1] + 2]x', 'y']]);
+  });
+});
+
+describe('isStaticWord', () => {
+  /** Each word of the line's own command: the last one, after the commands of its substitutions. */
+  const statics = (line: string): boolean[] => (parseShell(line, 'bash').commands.at(-1)?.words ?? []).map(isStaticWord);
+
+  it('takes text, quoted or not, whose value is its text', () => {
+    assert.deepEqual(statics(`git -C /w 'a b' "c*" '~' x=1`), [true, true, true, true, true, true, true]);
+  });
+
+  it('refuses a word only known when it runs, or unquoted text bash expands', () => {
+    assert.deepEqual(statics('echo $B "$B" $(x) {a,b} *.ts a?b [ab] ~/x'), [true, false, false, false, false, false, false, false, false]);
+    assert.equal(isStaticWord({ text: 'a', dynamic: false }), false);
   });
 });

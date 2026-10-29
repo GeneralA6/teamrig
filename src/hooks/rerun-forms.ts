@@ -1,5 +1,5 @@
 import { KIT_NAME } from '../core/home.ts';
-import { parseShell, type Redirection, type ShellCommand, type ShellWord } from '../push-guard/tokenizer.ts';
+import { isStaticWord, parseShell, type Redirection, type ShellCommand } from '../push-guard/tokenizer.ts';
 import { posixWord } from '../test-run/shell.ts';
 
 /**
@@ -31,9 +31,6 @@ const SHELL_ONLY: ReadonlySet<string> = new Set([
 /** A leading `NAME=value` word, which sets a variable for the command instead of naming its program. */
 const ASSIGNMENT = /^[A-Za-z_]\w*=/;
 
-/** Characters bash expands in unquoted text: a glob, or `~` for a home folder. */
-const EXPANDS = /[*?[~]/;
-
 /** The exact line to rerun a Bash `command` as, or undefined when no rule gives one or any doubt remains. */
 export function rerunForm(tool: string | undefined, command: string): string | undefined {
   if (tool !== 'Bash') {
@@ -64,14 +61,9 @@ function isPlain(command: ShellCommand): boolean {
     command.subshells.length === 0 &&
     command.stdin === undefined &&
     command.words.length > 0 &&
-    command.words.every(isStatic) &&
-    command.redirections.every((redirection) => !redirection.operator.startsWith('<<') && (redirection.target === undefined || isStatic(redirection.target)))
+    command.words.every(isStaticWord) &&
+    command.redirections.every((redirection) => !redirection.operator.startsWith('<<') && (redirection.target === undefined || isStaticWord(redirection.target)))
   );
-}
-
-/** A word whose text is its value: nothing in it is only known when it runs, and no unquoted text expands. */
-function isStatic(word: ShellWord): boolean {
-  return !word.dynamic && word.parts !== undefined && word.parts.every((part) => part.kind === 'text' && (part.quoted || !EXPANDS.test(part.text)));
 }
 
 /** Every separator keeps the commands in one folder and in order; the last command may end in `;` only. */
