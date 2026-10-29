@@ -1,11 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ConfigLoad } from '../config/load.ts';
-import { CONTEXT_MAX_CHARS, renderCorePack } from '../rules/pack.ts';
+import { CONTEXT_MAX_CHARS, renderCorePack, TEAM_RULES_MAX_CHARS, type TeamRules } from '../rules/pack.ts';
 import { testConfig } from '../testing/config.ts';
 import { RULES_CLOCK } from '../testing/zone.ts';
 import { renameOf } from '../testing/rename.ts';
-import { sessionStartContext, sessionStartOutput, type SessionStartInput } from './session-start.ts';
+import { sessionStartContext, sessionStartOutput, type CuttableNote, type SessionStartInput } from './session-start.ts';
 
 const PATH = '/kit/teams/app/config.json';
 const COMMAND = 'teamrig';
@@ -119,10 +119,10 @@ describe('sessionStartContext', () => {
   });
 
   it('lists the live tasks right after the handover pointer, before the title note', () => {
-    const live = 'LIVE TASKS of alpha, read from the register at this start (1 active; the register wins):\n  T1 in-progress, p2 | Ship it';
+    const live = { text: 'LIVE TASKS of alpha, read from the register at this start (1 active; the register wins):\n  T1 in-progress, p2 | Ship it', pointer: 'LIVE pointer.' };
     const text = context({ refreshNote: 'Read your handover.', liveTasksNote: live, titleNote: 'Title note.' });
-    assert.ok(text.endsWith(`Message the lead as \`captain\`.\n${NAMES}\nRead your handover.\n${live}\nTitle note.`));
-    assert.ok(context({ liveTasksNote: live }).endsWith(`${NAMES}\n${live}`), 'after a compaction, with no handover');
+    assert.ok(text.endsWith(`Message the lead as \`captain\`.\n${NAMES}\nRead your handover.\n${live.text}\nTitle note.`));
+    assert.ok(context({ liveTasksNote: live }).endsWith(`${NAMES}\n${live.text}`), 'after a compaction, with no handover');
   });
 
   it('says the model line after the title note', () => {
@@ -133,7 +133,7 @@ MODEL app-alpha runs model claude-haiku-5-5.`));
   });
 
   it('says the verify queue after the model line', () => {
-    const text = context({ modelNote: 'MODEL line.', verifyNote: 'VERIFY 1, oldest first:\n  T1 (proof: the nightly run)' });
+    const text = context({ modelNote: 'MODEL line.', verifyNote: { text: 'VERIFY 1, oldest first:\n  T1 (proof: the nightly run)', pointer: 'VERIFY pointer.' } });
     assert.ok(text.endsWith(`${NAMES}
 MODEL line.
 VERIFY 1, oldest first:
@@ -141,7 +141,7 @@ VERIFY 1, oldest first:
   });
 
   it('says the worktree line after the verify queue', () => {
-    const text = context({ verifyNote: 'VERIFY 1, oldest first:\n  T1 (proof: the nightly run)', worktreeNote: 'WORKTREE line.' });
+    const text = context({ verifyNote: { text: 'VERIFY 1, oldest first:\n  T1 (proof: the nightly run)', pointer: 'VERIFY pointer.' }, worktreeNote: 'WORKTREE line.' });
     assert.ok(text.endsWith(`${NAMES}
 VERIFY 1, oldest first:
   T1 (proof: the nightly run)
@@ -216,6 +216,60 @@ WORKTREE line.`));
     const text = context({ teamRules: [{ ancestor: undefined, path: '/kit/teams/app/rules.md', text: 'x'.repeat(CONTEXT_MAX_CHARS) }] });
     assert.ok(text.length <= CONTEXT_MAX_CHARS);
     assert.match(text, /Your team's rules are in \/kit\/teams\/app\/rules\.md/);
+  });
+});
+
+describe('sessionStartContext: long notes within the context cap (T1376)', () => {
+  /** A parent team's rules file the size of a real one: past the cap it was the part a session lost first. */
+  const ROOT_RULES: TeamRules = { ancestor: 'root', path: '/kit/teams/root/rules.md', text: '- Root rule.\n'.repeat(180).trim() };
+  const ROOT_HEADING = "\n\n# Team root's rules (a team above yours; they win over a lower team's)\n";
+  const note = (head: string, length: number): CuttableNote => ({ text: `${head}${'t'.repeat(length - head.length)}`, pointer: `${head} pointer.` });
+  /** The room `fitContext` leaves the long notes: the cap less the context with each at its pointer. */
+  const roomBeside = (input: Partial<SessionStartInput>) => CONTEXT_MAX_CHARS - context(input).length;
+
+  it('gives a long note as its pointer when it would push the context past the cap, and the team rules in full', () => {
+    const live = note('LIVE', 8_000);
+    const text = context({ refreshNote: 'Read your handover.', liveTasksNote: live, titleNote: 'Title note.', teamRules: [ROOT_RULES] });
+    assert.ok(text.length <= CONTEXT_MAX_CHARS, String(text.length));
+    assert.ok(text.endsWith(`\nRead your handover.\n${live.pointer}\nTitle note.${ROOT_HEADING}${ROOT_RULES.text}`), text.slice(-200));
+  });
+
+  it('shows a long note in full while the room left holds it, up to the cap exactly', () => {
+    const pointer = 'LIVE pointer.';
+    const room = roomBeside({ liveTasksNote: { text: pointer, pointer }, teamRules: [ROOT_RULES] });
+    const exact = { text: `${pointer}${'t'.repeat(room)}`, pointer };
+    const fitted = context({ liveTasksNote: exact, teamRules: [ROOT_RULES] });
+    assert.equal(fitted.length, CONTEXT_MAX_CHARS);
+    assert.ok(fitted.endsWith(`\n${exact.text}${ROOT_HEADING}${ROOT_RULES.text}`));
+    const over = context({ liveTasksNote: { text: `${exact.text}t`, pointer }, teamRules: [ROOT_RULES] });
+    assert.ok(over.endsWith(`\n${pointer}${ROOT_HEADING}${ROOT_RULES.text}`), over.slice(-200));
+  });
+
+  it('gives the room to the long notes in order, a later one still fitting the room an earlier one left', () => {
+    const room = roomBeside({ liveTasksNote: { text: 'L', pointer: 'L' }, verifyNote: { text: 'V', pointer: 'V' } });
+    const live = { text: `L${'l'.repeat(room - 1)}`, pointer: 'L' };
+    const verify = { text: 'VV', pointer: 'V' };
+    assert.ok(context({ liveTasksNote: live, verifyNote: { ...verify, text: 'VVV' } }).endsWith(`\n${live.text}\nV`), 'the verify rows no longer fit');
+    const tooLong = { text: `${live.text}ll`, pointer: 'L' };
+    assert.ok(context({ liveTasksNote: tooLong, verifyNote: verify }).endsWith(`\nL\nVV`), 'a long note that does not fit leaves its room to the next');
+  });
+
+  it('keeps the worst start a lead gets inside the cap: every note, a long live and verify note and a full rules file', () => {
+    const own: TeamRules = { ancestor: undefined, path: '/kit/teams/app/rules.md', text: 'x'.repeat(TEAM_RULES_MAX_CHARS) };
+    const text = context({
+      session: 'captain',
+      refreshNote: 'Read your handover.',
+      liveTasksNote: note('LIVE', 20_000),
+      titleNote: 'Title note.',
+      modelNote: 'MODEL line.',
+      verifyNote: note('VERIFY', 20_000),
+      worktreeNote: 'WORKTREE line.',
+      tree: { root: 'root', parentLead: { team: 'root', id: 'lead', name: 'root-lead' }, children: ['ui'] },
+      teamRules: [ROOT_RULES, own],
+    });
+    assert.ok(text.length <= CONTEXT_MAX_CHARS, String(text.length));
+    assert.ok(text.includes('\nLIVE pointer.\nTitle note.\nMODEL line.\nVERIFY pointer.\nWORKTREE line.'), text.slice(-400));
+    assert.ok(text.includes(`${ROOT_HEADING}${ROOT_RULES.text}`), 'the parent team rules in full');
   });
 });
 

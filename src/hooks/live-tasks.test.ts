@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import type { Task } from '../register/fold.ts';
 import { TaskTree } from '../register/tree.ts';
 import { testTask } from '../testing/task.ts';
-import { COMPACT_SOURCE, LIVE_TASK_ROWS, LIVE_TITLE_CHARS, LIVE_WAITING_ROWS, liveTasksNote, showsLiveTasks } from './live-tasks.ts';
+import { COMPACT_SOURCE, LIVE_TASK_ROWS, LIVE_TITLE_CHARS, LIVE_WAITING_ROWS, liveTasksNote, liveTasksPointer, showsLiveTasks } from './live-tasks.ts';
 import { TimeZone } from '../core/zone.ts';
 
 const NOW = new Date('2030-01-08T10:00:00.000Z');
@@ -25,6 +25,12 @@ describe('showsLiveTasks', () => {
     for (const source of ['clear', 'startup', 'resume', undefined]) {
       assert.equal(showsLiveTasks(source, false), false, String(source));
     }
+  });
+});
+
+describe('liveTasksPointer', () => {
+  it('names the start command that lists the tasks, and that the register wins (T1376)', () => {
+    assert.equal(liveTasksPointer('alpha', 'teamrig'), `LIVE TASKS of alpha: this start has no room for them; run \`teamrig start --session alpha\` first, and ${WINS}.`);
   });
 });
 

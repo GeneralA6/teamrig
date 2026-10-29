@@ -28,6 +28,7 @@ import {
   selectTasks,
   sizeText,
   SUMMARY_VERIFY_ROWS,
+  verifySummaryPointer,
 } from './views.ts';
 import type { Task } from './fold.ts';
 import { TaskTree } from './tree.ts';
@@ -389,6 +390,10 @@ describe('the verify queue lines', () => {
       '  T1 (proof: the nightly run)',
       'WATCH 2 done, waiting on a sighting: `kit verify --session alpha`',
     ]);
+  });
+
+  it('points a start with no room for the rows to the command that lists them (T1376)', () => {
+    assert.equal(verifySummaryPointer('alpha', 'kit'), 'VERIFY: this start has no room for your verifying and watched tasks; `kit verify --session alpha` lists them.');
   });
 
   it('prints a watched row with when it was closed and the sighting to watch for (T1306)', () => {

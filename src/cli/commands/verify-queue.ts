@@ -1,10 +1,11 @@
 import { JsonlDailyLog } from '../../core/daily-log.ts';
 import { KIT_NAME, type TeamPaths } from '../../core/home.ts';
 import type { TimeZone } from '../../core/zone.ts';
+import type { CuttableNote } from '../../hooks/session-start.ts';
 import type { Task } from '../../register/fold.ts';
 import { JsonlEventLog } from '../../register/store.ts';
 import { verifyByArrived, verifyQueue, watchQueue } from '../../register/verify.ts';
-import { formatVerifyByLine, formatVerifySummary } from '../../register/views.ts';
+import { formatVerifyByLine, formatVerifySummary, verifySummaryPointer } from '../../register/views.ts';
 import type { CliRuntime } from '../runtime.ts';
 
 /**
@@ -31,6 +32,12 @@ export async function verifyNoteOf(runtime: CliRuntime, paths: TeamPaths, id: st
   } catch {
     return undefined;
   }
+}
+
+/** verifyNoteOf for the start note, with the pointer a start shows when it has no room for the rows (T1376). */
+export async function verifyStartNoteOf(runtime: CliRuntime, paths: TeamPaths, id: string | undefined): Promise<CuttableNote | undefined> {
+  const text = await verifyNoteOf(runtime, paths, id);
+  return text === undefined || id === undefined ? undefined : { text, pointer: verifySummaryPointer(id, KIT_NAME) };
 }
 
 /**
