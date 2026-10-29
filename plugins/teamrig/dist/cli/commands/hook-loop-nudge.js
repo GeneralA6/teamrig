@@ -10,7 +10,7 @@ import { noPositionals } from "../args.js";
 import { openKit, rosterOf } from "../kit.js";
 import { EXIT } from "../runtime.js";
 import { loadTree } from "../tree.js";
-import { leadPathsOf, parseJson, sessionTeam, teamSessionOf } from "./hook-input.js";
+import { parseJson, sessionTeam, teamSessionOf, turnLeadPathsOf } from "./hook-input.js";
 /** The tool the hook fires for, from its payload; undefined without an id or a name. */
 function currentToolOf(payload) {
     const id = stringField(payload, 'tool_use_id');
@@ -34,15 +34,17 @@ async function promptTaskOwners(runtime, kit, config, tasks) {
     return taskOwnersOf(tasks, state.tasks, config.roles.lead);
 }
 /**
- * The lead-boundary line after `current`, with the team tree read for its sub-teams' folders. Only a research call
- * reads the register, for the owners of the tasks the turn's prompt names, whom the line asks the lead to send the
- * question to; an unreadable register leaves it generic.
+ * The lead-boundary line after `current`, with the team tree read for its sub-teams' folders and the register for
+ * the owners of the task folders the turn searches. Only a research call reads the register for the owners of the
+ * tasks the turn's prompt names, whom the line asks the lead to send the question to; an unreadable register leaves
+ * it generic.
  */
 async function leadBoundaryLine(runtime, kit, config, text, cut, current) {
-    const paths = leadPathsOf(runtime, kit, config, await loadTree(runtime));
+    const turn = turnToolsOf(text, cut, current);
+    const paths = await turnLeadPathsOf(runtime, kit, config, await loadTree(runtime), turn);
     const research = leadWorkOf(current, paths) === 'research';
     const owners = research ? await promptTaskOwners(runtime, kit, config, turnTasksOf(text, cut)).catch(() => []) : [];
-    return leadNudgeLine(turnToolsOf(text, cut, current), current, paths, config.leadBoundary.searchNudgeAt, owners);
+    return leadNudgeLine(turn, current, paths, config.leadBoundary.searchNudgeAt, owners);
 }
 /**
  * The lines for this payload: the chain nudge and, on the lead's tab, the lead-boundary nudge; none for a
