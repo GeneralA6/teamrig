@@ -9,7 +9,7 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | `SessionStart` (startup, resume, `/clear`, compact) | `hook session-start` | Injects the team rules and who you are, and records the session's Claude Code process (`state/sessions/<id>.json`); while the session runs in another Claude Code it keeps that record and tells this second one, and the user, to stop |
 | `SubagentStart` (each helper) | `hook subagent-start` | Gives the helper the team rules and whose helper it is ([A helper's start](#a-helpers-start)) |
 | `SessionStart` (`/clear`), in the background | `hook refresh-wake` | Wakes a session that `/clear` started from its context refresh, so it carries on without a prompt |
-| `UserPromptSubmit` (each prompt) | `hook inbox-reminder` | Cancels a waiting automatic restart; shows new inbox lines; binds a tab started by hand by its title; records a Claude Code rename; tells the model when its budget holds it |
+| `UserPromptSubmit` (each prompt) | `hook inbox-reminder` | Stops a prompt that holds a secret and cleans it out of Claude Code's prompt history ([Each prompt](#each-prompt)); cancels a waiting automatic restart; shows new inbox lines; binds a tab started by hand by its title; records a Claude Code rename; tells the model when its budget holds it |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook push-guard` | Asks before a push to a protected branch; refuses a force-push or delete of one, and a git command run without the repository's hooks ([the commit guard](#before-a-shell-command-the-commit-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook package-guard` | Refuses a package runner that would fetch and run a package outside the project's lockfile, an install of a version the registry does not vouch for, and an `npx --no <bin>` that hands the bin's flag to npm ([the package guard](#before-a-shell-command-the-package-guard)) |
 | `PreToolUse` on `Bash`, `PowerShell`, `Read` and `Grep` | `hook secret-guard` | Refuses a call that would print a secret file, a secret variable, the whole environment or a Kubernetes secret's data into the conversation ([the secret guard](#before-a-shell-command-or-a-read-the-secret-guard)) |
@@ -142,6 +142,17 @@ helper fires `SessionStart` under its session's id: teamrig tells it apart by th
 helper's hooks and gives it this same context, binding, renaming and refreshing nothing.
 
 ## Each prompt
+
+First, a prompt that looks like it holds a secret (a token such as a GitHub or Anthropic key, credentials in a URL,
+an Authorization header, or a match of the team's `register.secretPatterns`) is stopped before Claude reads it and
+kept out of the transcript. The reason names only the secret's shape, says to send its name or the file it is kept in
+instead, and that the value counts as leaked: rotate it. A `password: x` in prose is not stopped. The hook removes
+every line of Claude Code's prompt history (`history.jsonl`) and every pasted text (`paste-cache/`) that holds the
+value, and records the stopped prompt in `~/.teamrig/history-clean/pending/`, so each later prompt cleans again until
+its line is found or a clean runs 10 minutes after the stop (a day at most). Only the value's hash is kept, and
+`history-clean/log.jsonl` logs counts, never a value. A stopped prompt is not written to the turn log and is shown no
+inbox lines: they come at the next prompt. Under a broken `.teamrig.json` it stops prompts too, with the shipped
+shapes only. Transcripts of earlier prompts are not cleaned.
 
 When your inbox has lines this Claude Code session has not been shown, they are added to your prompt, at most 5
 lines and 1,500 characters at a time:
