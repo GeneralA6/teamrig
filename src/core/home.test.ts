@@ -95,6 +95,8 @@ describe('teamPaths', () => {
     assert.equal(paths.launchSettings, join(TEAM_HOME, 'state', 'launch'));
     assert.equal(paths.sessions, join(TEAM_HOME, 'state', 'sessions'));
     assert.equal(paths.sessionLog, join(TEAM_HOME, 'state', 'session-log.jsonl'));
+    assert.equal(paths.secretIncidents, join(TEAM_HOME, 'state', 'secret-incidents.jsonl'));
+    assert.equal(paths.secretIncidentsLock, join(TEAM_HOME, 'state', 'secret-incidents.lock'));
   });
 
   it('never shares a file between two teams', () => {
