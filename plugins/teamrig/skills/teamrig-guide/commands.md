@@ -3044,6 +3044,74 @@ OK 3 commit(s) in origin/main..HEAD, none over 400 non-test lines or 15 files wi
 
 A commit over the rule without the reason line is `REFUSED` (exit 2).
 
+### teamrig secrets staged
+
+For a git pre-commit hook: finds the secrets the staged change adds, a line in a secret shape (the shapes the secret
+guard and the redactor use, plus the team's `register.secretPatterns`) or a file the secret paths list (`.env`,
+`*.pem`, plus the team's `secretGuard.paths`) whatever it holds. Outside a team, or with a config it cannot read, the
+default shapes and paths still scan. It reads the index the commit is made from, the hook's `GIT_INDEX_FILE` too.
+
+Flags: none.
+
+Example (the hook line; a missing CLI blocks the commit too):
+
+```sh
+teamrig secrets staged || exit 1
+```
+
+Output:
+
+```text
+OK no secret in the staged change (3 file(s))
+```
+
+A secret is `REFUSED` (exit 2), named by file and line and its shape, never by value, with how to read it by
+reference instead; a folder outside a repository, or an index git cannot read, is `FAILED` (exit 1).
+
+### teamrig secrets message
+
+For a git commit-msg hook: finds the secrets the commit message file holds, above a verbose commit's cut line, in the
+same shapes as `secrets staged`. It needs no repository.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig secrets message "$1" || exit 1
+```
+
+Output:
+
+```text
+OK no secret in the commit message
+```
+
+A secret is `REFUSED` (exit 2), named by its message line; a message file that is not there is `FAILED` (exit 1).
+
+### teamrig secrets pushed
+
+For a git pre-push hook: finds the secrets the pushed commits add, in their patches and messages, from the lines git
+writes to the hook's stdin. A ref's commits are those after the remote's commit, or, for a new ref, every commit no
+ref of `<remote>` holds yet; a delete sends none. It catches commits made before the hooks were there, or past them.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig secrets pushed "$1" || exit 1
+```
+
+Output:
+
+```text
+OK no secret in the 2 commit(s) pushed to origin
+```
+
+A secret is `REFUSED` (exit 2), named by the commit's short id, file and line; a stdin line git would not write, or a
+range git cannot list, is `FAILED` (exit 1).
+
 ### teamrig worktree add
 
 Makes a session's new worktree the same way every time, so each session starts from the same ready checkout. It

@@ -3,7 +3,7 @@ import { rangeArgs, type PushRange } from '../secret-guard/push-range.ts';
 import type { SecretsGit } from '../secret-guard/secrets-git.ts';
 
 /**
- * A repository for `teamrig secrets`, in memory, with its top folder at `top`. Its index adds `index` (undefined: git
+ * A repository for `teamrig secrets`, in memory, with its top folder at `top` (undefined: no repository). Its index adds `index` (undefined: git
  * cannot read it); it holds the commits in `known`; the log of a range lists `logs` under its `git log` arguments joined
  * by spaces (none when not listed), unless `logFails`. Each range read is kept in `read`, as that key.
  */
@@ -13,13 +13,13 @@ export class FakeSecretsGit implements SecretsGit {
   readonly logs = new Map<string, readonly CommitAdds[]>();
   readonly read: string[] = [];
   logFails = false;
-  private readonly top: string;
+  private readonly top: string | undefined;
 
-  constructor(top: string) {
+  constructor(top: string | undefined) {
     this.top = top;
   }
 
-  root(): string {
+  root(): string | undefined {
     return this.top;
   }
 
