@@ -468,7 +468,11 @@ findings while the CLAUDE.md files, memory index, skill listing or the newest se
 `contextFiles` budgets (every session on the machine re-reads that text, so it is no one area's), the flags of a
 skill whose `Owner:` line is missing or names no session on the team, and FLEET-STALE: while `open.idle.mode` is not
 `off`, the [idle pass](hooks.md#the-idle-pass) has not run for 15 minutes since its last run or that run failed, so it
-closes and reopens no one. Each row names the check it came from; the
+closes and reopens no one, and SECRET-HOOK: a repository in `coordinator.repos` whose pre-commit, commit-msg or
+pre-push hook (in the folder `core.hooksPath` names, else `.git/hooks`; husky's scripts in `.husky`) does not call
+`teamrig secrets staged`, `teamrig secrets message` or `teamrig secrets pushed`, so a secret there can be committed or
+pushed, with the line to add to each (a new hook file starts `#!/bin/sh` and must be executable), or one git cannot
+read. Each row names the check it came from; the
 lead fixes it, hands it on (`teamrig add --owner <session>`) or settles the check. The lead's `start` shows them
 too, and any session's `start` posts the lead one inbox line per warning it was not told of yet, at most 5 per
 start; `state/unowned-notices.json` remembers which and when a start last saw each, so a warning is told again only
