@@ -474,6 +474,11 @@
           "maxItems": 16,
           "items": { "type": "string", "maxLength": 200 },
           "default": []
+        },
+        "redact": {
+          "description": "After a Bash, PowerShell, Read or Grep call runs, replace each secret its result holds (a token by its shape, a match of register.secretPatterns, the value of a secret variable) before the model and the transcript see it, and tell the session which kinds it held and who rotates them. false shows results whole; turning it off is the owner's call.",
+          "type": "boolean",
+          "default": true
         }
       }
     },

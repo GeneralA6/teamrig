@@ -924,14 +924,14 @@ describe('parseConfig', () => {
     assert.equal(bad.config.prompts.hookAsks, 'ask');
   });
 
-  it('reads the secret guard, refusing with the default secrets alone unless the team says otherwise', () => {
-    const none = { secretReads: 'deny', paths: [], envNames: [], commands: [] };
+  it('reads the secret guard, refusing with the default secrets alone and redacting unless the team says otherwise', () => {
+    const none = { secretReads: 'deny', paths: [], envNames: [], commands: [], redact: true };
     assert.deepEqual(parseConfig(ROSTER).config.secretGuard, none);
-    const own = { secretReads: 'ask', paths: ['k8s/secrets/*.yaml', '!**/fixtures/*.pem'], envNames: ['^STRIPE_', '!^GIT_AUTHOR'], commands: ['^vault\\s+read\\s', '!--minify'] };
+    const own = { secretReads: 'ask', paths: ['k8s/secrets/*.yaml', '!**/fixtures/*.pem'], envNames: ['^STRIPE_', '!^GIT_AUTHOR'], commands: ['^vault\\s+read\\s', '!--minify'], redact: false };
     const set = parseConfig({ ...ROSTER, secretGuard: own });
     assert.deepEqual(set.issues, []);
     assert.deepEqual(set.config.secretGuard, own);
-    const bad = parseConfig({ ...ROSTER, secretGuard: { secretReads: 'never', paths: ['!'], envNames: ['(', '!'], commands: ['!', '[', 'x'.repeat(201)] } });
+    const bad = parseConfig({ ...ROSTER, secretGuard: { secretReads: 'never', paths: ['!'], envNames: ['(', '!'], commands: ['!', '[', 'x'.repeat(201)], redact: 'off' } });
     assert.deepEqual(paths(bad.issues), [
       'secretGuard.secretReads',
       'secretGuard.paths[0]',
@@ -940,6 +940,7 @@ describe('parseConfig', () => {
       'secretGuard.commands[0]',
       'secretGuard.commands[1]',
       'secretGuard.commands[2]',
+      'secretGuard.redact',
     ]);
     assert.match(bad.issues.find(({ path }) => path === 'secretGuard.commands[0]')?.message ?? '', /leading ! to let a command print/);
     assert.deepEqual(bad.config.secretGuard, none);

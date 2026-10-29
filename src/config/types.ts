@@ -335,6 +335,11 @@ export interface SecretGuardConfig {
    * that matches a line decides, so `!pattern` lets a command print.
    */
   readonly commands: readonly string[];
+  /**
+   * Whether a Bash, PowerShell, Read or Grep result reaches the model and the transcript with each secret it holds
+   * replaced (hooks/secret-redact.ts); turning it off is the owner's call (T1369).
+   */
+  readonly redact: boolean;
 }
 
 /**
