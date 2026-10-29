@@ -549,6 +549,7 @@ How teamrig open starts a session in a new terminal tab.
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `terminal` | one of `"auto"`, `"tmux"`, `"windows-terminal"`, `"macos-terminal"`, `"gnome-terminal"`, `"konsole"`, `"x-terminal-emulator"`, `"print"` | `"auto"` | The terminal to open the tab in. auto takes tmux inside tmux, else Windows Terminal on Windows, Terminal on macOS, or the first of gnome-terminal, konsole and x-terminal-emulator on Linux; print opens nothing and prints the command to run. teamrig open --terminal wins over it. |
+| `teamWindow` | boolean | `false` | Opens each tab of the team's sessions (teamrig open, a meeting start, a refresh restart, the idle pass's reopen and a restore after a reboot) in a Windows Terminal window of the team's own, named teamrig-\<team>, made when none is open, so each team's tabs stay apart from other teams'. Off opens them in the most recent window. Other terminals open as before. |
 | `headroom` | [object](#openheadroom) |  | The room teamrig open and teamrig hire --yes need on the host before they add a session: free memory over coordinator.heavy.memoryFloorMb with the session, and the commit charge within commitMaxPct. The lead opens whatever the room. |
 | `idle` | [object](#openidle) |  | The idle pass: it would close a session the wake check would not wake once it has been quiet open.headroom.closeIdleMinutes, and reopen it when the wake check would wake it. The lead and the coordinator owner are never closed. |
 

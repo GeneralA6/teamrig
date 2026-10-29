@@ -973,6 +973,8 @@ export interface IdleConfig {
 
 export interface OpenConfig {
   readonly terminal: TerminalChoice;
+  /** Each tab of the team's sessions opens in a window of the team's own, apart from other teams' (Windows Terminal). */
+  readonly teamWindow: boolean;
   readonly headroom: HeadroomConfig;
   readonly idle: IdleConfig;
 }

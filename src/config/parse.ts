@@ -1120,6 +1120,7 @@ function parseOpen(read: ConfigReader, raw: JsonRecord, sessions: readonly strin
   );
   return {
     terminal: isTerminalChoice(terminal) ? terminal : DEFAULT_OPEN.terminal,
+    teamWindow: read.boolean(raw, 'teamWindow', 'open', DEFAULT_OPEN.teamWindow),
     headroom: parseHeadroom(read, read.section(raw, 'headroom', 'open')),
     idle: parseIdle(read, read.section(raw, 'idle', 'open'), sessions),
   };
