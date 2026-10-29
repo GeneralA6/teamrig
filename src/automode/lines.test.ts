@@ -41,6 +41,7 @@ describe('kitLines', () => {
       kitLines({ ...FACTS, pushGuard: { ...FACTS.pushGuard, pushToProtected } })[0] ?? '';
     assert.match(first('allow'), /A normal push to one goes through with a note\./);
     assert.match(first('lead'), /goes through only for the lead \(session boss\) or for a session whose waiting task the lead approved with `teamrig approve`; any other session is refused\./);
+    assert.match(first('gated'), /goes through only for the lead \(session boss\) .*; any other session merges with `teamrig merge`, which merges a change that holds the self-merge gates with no approval/);
   });
 });
 
