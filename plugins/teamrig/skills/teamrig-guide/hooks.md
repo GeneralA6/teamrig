@@ -118,6 +118,17 @@ The injected context holds:
 11. **What teamrig lacks**: shown to the user only, once per Claude Code session, when git is not on the PATH or
    Claude Code or Node.js is too old ([the requirements check](requirements.md#the-requirements-check)).
 
+Claude Code shows a session a start context of at most 10,000 characters whole; a longer one it saves to a file and
+shows only its first 2 KB, so the team rules and the lines after them never reach the session. teamrig keeps the whole
+start within that cap. The team rules files take their room first, then the live tasks, then the verify queue, each
+whole while it fits in the room left. One that does not fit leaves that room to the next and comes as one line naming
+the command that prints it:
+
+```text
+LIVE TASKS of web: this start has no room for them; run `teamrig start --session web` first, and where your handover or a compaction summary says otherwise, the register wins.
+VERIFY: this start has no room for your verifying and watched tasks; `teamrig verify --session web` lists them.
+```
+
 The session is found from `$TEAMRIG_SESSION`, else from the area this Claude Code session last ran
 `teamrig inbox read --session <area>` as, else from the tab's Claude Code title (see [Each prompt](#each-prompt)). A
 brand-new tab teamrig did not open, with no title naming a session, has none of these, so it is told to ask.
