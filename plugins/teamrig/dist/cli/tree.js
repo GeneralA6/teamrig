@@ -1,4 +1,4 @@
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { TeamTree, teamNodeOf } from "../config/tree.js";
 import { resolveKitHome } from "../core/home.js";
 import { ID_PATTERN } from "../core/ids.js";
@@ -20,6 +20,16 @@ export async function loadTree(runtime) {
     }
     const nodes = [...teams].map(([team, { config, roster }]) => teamNodeOf(team, config, roster));
     return { tree: new TeamTree(nodes), teams };
+}
+/**
+ * The sessions of the other teams of a team's tree that read its skills folder too: each such team's own `check` lints
+ * the skills its sessions own there, so the team's lints leave those out (T1473). A team whose `paths.skills` names
+ * another folder never lints this one, so its sessions are not counted.
+ */
+export function skillOwnersElsewhere(loaded, paths) {
+    const { tree, teams } = loaded;
+    const shares = ([other, { kit }]) => other !== paths.team && tree.sameTree(other, paths.team) && resolve(kit.paths.skills) === resolve(paths.skills);
+    return new Set([...teams].filter(shares).flatMap(([, { config }]) => config.sessions));
 }
 /**
  * The parent team's lead, who approves the team's lead's own work (T1140); undefined for a root team, read without the

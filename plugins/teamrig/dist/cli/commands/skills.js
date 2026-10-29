@@ -9,6 +9,7 @@ import { SkillDir } from "../../skills/store.js";
 import { noPositionals, UsageError } from "../args.js";
 import { openTeamKit, requireConfig } from "../kit.js";
 import { EXIT } from "../runtime.js";
+import { loadTree, skillOwnersElsewhere } from "../tree.js";
 /** The window's length when `--from` is not given: a week, today included. */
 const WINDOW_DAYS = 7;
 /**
@@ -34,7 +35,8 @@ export async function scorecard(args, runtime) {
         since: startOf(baseline.from < window.from ? baseline.from : window.from),
         maxBytes: SCAN_MAX_BYTES,
     });
-    const rows = scorecardRows({ days: result.state.days, skills, signatures, lint: lintSkills(skills, new Date(now), config) }, window, baseline);
+    const lint = lintSkills(skills, new Date(now), config, skillOwnersElsewhere(await loadTree(runtime), kit.paths));
+    const rows = scorecardRows({ days: result.state.days, skills, signatures, lint }, window, baseline);
     const footer = { window, baseline, since: result.state.since, files: result.files, bytesRead: result.bytesRead, catchingUp: result.catchingUp };
     for (const line of renderScorecard(rows, footer)) {
         runtime.out.stdout(line);
