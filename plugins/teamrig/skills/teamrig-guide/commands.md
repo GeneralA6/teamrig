@@ -2098,7 +2098,8 @@ Flags:
   it is gone, over `hiring.resumeMaxTokens` or idle over `hiring.resumeMaxIdleDays`. A closed session needs no
   `--resume`; with it, it refuses rather than open fresh.
 - `--terminal <name>`: `auto`, `tmux`, `windows-terminal`, `macos-terminal`, `gnome-terminal`, `konsole`,
-  `x-terminal-emulator` or `print`; default the config's `open.terminal` (`auto`).
+  `x-terminal-emulator` or `print`; default the config's `open.terminal` (`auto`). With [open.teamWindow] on, a
+  Windows Terminal tab opens in the team's own window, `teamrig-<team>`.
 - `--project <dir>`: the folder to open in; default the config's `launch.<id>.project`, else `team.project`, else
   the folder holding the team's `.teamrig.json`.
 

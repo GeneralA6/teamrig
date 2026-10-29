@@ -174,6 +174,8 @@ sequenceDiagram
   hook's answer); a tab with a title keeps it.
 - `teamrig open <session>` opens a tab in tmux (when run inside tmux), Windows Terminal, macOS Terminal, GNOME
   Terminal, Konsole or x-terminal-emulator, in that order; `open.terminal` in the config or `--terminal` picks one.
+  With `open.teamWindow: true`, each tab of the team's sessions opens in a Windows Terminal window of the team's
+  own (`teamrig-<team>`), apart from other teams' tabs, a restore after a reboot included.
   It refuses any session but the lead, and `hire --yes` refuses a hire, when the host has no room for one more:
   free memory over `coordinator.heavy.memoryFloorMb` and the commit charge within `open.headroom.commitMaxPct` (92%),
   with the session counted at the median running one (what it holds resident against free memory, what it
