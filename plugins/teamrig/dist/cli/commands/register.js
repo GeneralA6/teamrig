@@ -40,6 +40,7 @@ import { addInputOf, callerOf, changesOf, criticalOf, deadlineOf, listFilterOf, 
 import { findTeam, openKit, pastOrPresentIdOf, projectFolder, sessionIdOf, teamZone } from "../kit.js";
 import { checkLines, listLines, SHORT_TITLE_CHARS, waitingOnLines } from "../reports.js";
 import { idlePassWarnings } from "../idle-pass-check.js";
+import { secretHookWarnings } from "../secret-hook-check.js";
 import { ownerBatchOf } from "../owner-batch.js";
 import { rollUp } from "../roll-up.js";
 import { splitUnowned } from "../unowned.js";
@@ -799,8 +800,9 @@ function withOverLimit(sections, fit) {
  * The `stopgap T<id>` tags in those skills and in the team's `register.check.stopgapFiles` add a STOPGAP-DONE flag
  * per finished task they name. Last, doctor's context-size and context-lists findings against the own team's
  * `contextFiles` budgets: the text every call of a session on this machine re-reads (T393). Those findings, the
- * skill flags no session on the team owns and the own team's idle pass gone stale or failing (FLEET-STALE,
- * src/cli/idle-pass-check.ts) are the unowned warnings, which go to the lead (src/cli/unowned.ts, T951).
+ * skill flags no session on the team owns, the own team's idle pass gone stale or failing (FLEET-STALE,
+ * src/cli/idle-pass-check.ts) and each of its repositories whose git hooks skip the secret scan (SECRET-HOOK,
+ * src/cli/secret-hook-check.ts) are the unowned warnings, which go to the lead (src/cli/unowned.ts, T951).
  */
 export async function checkReport(args, runtime) {
     const now = new Date(runtime.clock.now());
@@ -848,8 +850,9 @@ export async function checkReport(args, runtime) {
     const lint = lintSkills(skillFiles, now, own.config, skillOwnersElsewhere(loaded, own.paths));
     const { skills, unowned } = splitUnowned([...context, ...allow], lint, new Set(own.config.sessions), own.paths.skills);
     const idle = await idlePassWarnings(runtime.files, own.paths, own.config.open.idle.mode, now.getTime());
+    const hooks = await secretHookWarnings(runtime.files, runtime.secretsGit, own.paths, own.config.coordinator.repos);
     const lead = own.config.roles.lead;
-    return { sections, scope, skills, skillsDir: own.paths.skills, hires, unowned: [...unowned, ...idle], lead, decisions };
+    return { sections, scope, skills, skillsDir: own.paths.skills, hires, unowned: [...unowned, ...idle, ...hooks], lead, decisions };
 }
 /**
  * The batch of the owner's decisions a root team's lead asks next, over its register and every register under it; none
