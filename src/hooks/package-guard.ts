@@ -6,6 +6,7 @@ import { isRecord, recordField, stringField } from '../core/guards.ts';
 import type { Clock } from '../core/lock.ts';
 import { adHocCallsOf } from '../package-guard/ad-hoc.ts';
 import { installCallsOf } from '../package-guard/installs.ts';
+import { linkedModulesWritesOf, type LinkedModulesWrite, type LinkReader } from '../package-guard/linked-modules.ts';
 import { lostFlagsOf, type LostFlag } from '../package-guard/lost-flags.ts';
 import type { ProgramsContext } from '../package-guard/programs.ts';
 import type { PackageRegistry } from '../package-guard/registry.ts';
@@ -24,6 +25,8 @@ export interface PackageGuardEnv extends PackageGuardConfig {
   readonly home: string;
   /** Where the guard looks for each bin a runner would run (`node_modules/.bin`). */
   readonly files: Files;
+  /** Where the guard tells a node_modules link (a symlink or a junction) from a real folder, and where it points. */
+  readonly tree: LinkReader;
   /** Where the guard reads each version an install names: its publish time and advisories. */
   readonly registry: PackageRegistry;
   readonly clock: Clock;
@@ -61,6 +64,16 @@ export function installReason(unvetted: readonly string[], cooldownDays: number)
   );
 }
 
+/** Why a call is refused: each node_modules link it would write through, and the two safe ways to install. */
+export function linkedModulesReason(writes: readonly LinkedModulesWrite[]): string {
+  const named = writes.map(({ call, modules, target }) => `\`${call}\` would write through ${modules}, a link to ${target}`);
+  return (
+    `teamrig package guard: ${named.join('; ')}. A package manager rewrites the folder a link points to (npm ci empties it first), ` +
+    'breaking every checkout that shares it. Remove the link itself first (Bash `rm <link>` or `cmd /c rmdir <link>`; a recursive delete ' +
+    'empties its target too), then install a copy here; or install in the checkout that owns the folder.'
+  );
+}
+
 /** What the guard decides on a line. */
 interface Verdict {
   readonly decision: Exclude<AdHocRunners | PackageInstalls, 'allow'>;
@@ -95,12 +108,19 @@ function lostFlagVerdict(command: string, context: ProgramsContext): Verdict | u
   return lost.length === 0 ? undefined : { decision: 'deny', reason: lostFlagReason(lost) };
 }
 
+/** The calls in a line that would write through a node_modules link: refused whatever the config says, as no answer makes them safe. */
+async function linkedModulesVerdict(command: string, context: ProgramsContext, tree: LinkReader): Promise<Verdict | undefined> {
+  const writes = await linkedModulesWritesOf(command, context, tree);
+  return writes.length === 0 ? undefined : { decision: 'deny', reason: linkedModulesReason(writes) };
+}
+
 /**
  * The PreToolUse output for a Bash or PowerShell call: a refusal (or a question, as `packageGuard.adHocRunners` and
  * `packageGuard.installs` say) when the line runs a package ad hoc or installs a version the registry does not vouch
- * for, and a refusal whatever the config says when an npx call hands its bin's flag to npm; else nothing, so the normal
- * permission flow decides. One refusal among them refuses the line, naming every reason. Under `hookAsks: refuse` the
- * question is a refusal instead, its reason saying what to do (see `holdBack`).
+ * for, and a refusal whatever the config says when an npx call hands its bin's flag to npm or a package manager would
+ * rewrite node_modules through a link; else nothing, so the normal permission flow decides. One refusal among them
+ * refuses the line, naming every reason. Under `hookAsks: refuse` the question is a refusal instead, its reason saying
+ * what to do (see `holdBack`).
  */
 export async function packageGuardOutput(payload: unknown, env: PackageGuardEnv): Promise<string> {
   if (!isRecord(payload)) {
@@ -115,8 +135,12 @@ export async function packageGuardOutput(payload: unknown, env: PackageGuardEnv)
     home: env.home,
     dialect: stringField(payload, 'tool_name') === 'PowerShell' ? 'powershell' : 'bash',
   };
-  const [adHoc, install] = await Promise.all([adHocVerdict(command, context, env), installVerdict(command, context, env)]);
-  const verdicts = [lostFlagVerdict(command, context), adHoc, install].filter((verdict) => verdict !== undefined);
+  const [adHoc, install, linked] = await Promise.all([
+    adHocVerdict(command, context, env),
+    installVerdict(command, context, env),
+    linkedModulesVerdict(command, context, env.tree),
+  ]);
+  const verdicts = [lostFlagVerdict(command, context), linked, adHoc, install].filter((verdict) => verdict !== undefined);
   if (verdicts.length === 0) {
     return '';
   }

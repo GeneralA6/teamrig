@@ -6,8 +6,9 @@ import { isRecord, stringField } from '../core/guards.ts';
 import { testConfig } from '../testing/config.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { FakePackageRegistry } from '../testing/fake-package-registry.ts';
+import { FakeWorktreeFiles } from '../testing/fake-worktrees.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { adHocReason, installReason, lostFlagReason, packageGuardOf, packageGuardOutput, type PackageGuardEnv } from './package-guard.ts';
+import { adHocReason, installReason, linkedModulesReason, lostFlagReason, packageGuardOf, packageGuardOutput, type PackageGuardEnv } from './package-guard.ts';
 import { ASK_REFUSED_NOTE } from './permission.ts';
 
 const APP = resolve('/', 'work', 'app');
@@ -26,6 +27,7 @@ function env(overrides: Partial<PackageGuardEnv> = {}): PackageGuardEnv {
     cwd: APP,
     home: resolve('/', 'u'),
     files: new MemoryFiles(),
+    tree: new FakeWorktreeFiles(),
     registry: new FakePackageRegistry(PACKAGES),
     clock: new FakeClock('2026-10-20T12:00:00Z'),
     hookAsks: 'ask',
@@ -130,6 +132,30 @@ describe('packageGuardOutput', () => {
     const denied = verdictOf(await packageGuardOutput(line, env({ adHocRunners: 'ask' })));
     assert.deepEqual(denied, { decision: 'deny', reason: `${adHocReason(['npx eslint'])} ${installReason([YOUNG_TYPESCRIPT], 14)}` });
     assert.equal(verdictOf(await packageGuardOutput(line, env({ adHocRunners: 'ask', installs: 'ask' })))?.decision, 'ask');
+  });
+
+  it('refuses an install from the lockfile in a folder whose node_modules links to another, whatever the config says', async () => {
+    const main = resolve('/', 'work', 'main', 'node_modules');
+    const tree = new FakeWorktreeFiles({ [join(APP, 'node_modules')]: { kind: 'link', target: main } });
+    const allowAll = { adHocRunners: 'allow', installs: 'allow', tree } as const;
+    const verdict = verdictOf(await packageGuardOutput(payload('npm ci'), env(allowAll)));
+    assert.deepEqual(verdict, { decision: 'deny', reason: linkedModulesReason([{ call: 'npm ci', modules: join(APP, 'node_modules'), target: main }]) });
+    assert.equal(verdictOf(await packageGuardOutput(payload('npm ci', { cwd: OTHER }), env(allowAll))), undefined);
+  });
+});
+
+describe('linkedModulesReason', () => {
+  it('names each call with its link and target, and how to remove the link without emptying its target', () => {
+    assert.equal(
+      linkedModulesReason([
+        { call: 'npm ci', modules: 'W/node_modules', target: 'M/node_modules' },
+        { call: 'yarn', modules: 'V/node_modules', target: 'M/node_modules' },
+      ]),
+      'teamrig package guard: `npm ci` would write through W/node_modules, a link to M/node_modules; `yarn` would write through ' +
+        'V/node_modules, a link to M/node_modules. A package manager rewrites the folder a link points to (npm ci empties it first), ' +
+        'breaking every checkout that shares it. Remove the link itself first (Bash `rm <link>` or `cmd /c rmdir <link>`; a recursive ' +
+        'delete empties its target too), then install a copy here; or install in the checkout that owns the folder.',
+    );
   });
 });
 
