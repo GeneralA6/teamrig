@@ -3159,7 +3159,10 @@ the lock, when no small step ended for `waitMinutes`, and its lock is renewed if
 expired, is removed by the next step that looks. An older kit does not know shares and may take a free lock while
 small steps run.
 
-Then it runs the command in the shell, its output streaming as it comes, and kills it with every process it started
+Then it runs the command in the shell at below-normal CPU priority (nice 10 on POSIX), which every process it starts
+inherits, so the owner's terminal and apps win the CPU and the step takes what they leave; a step started at a lower
+priority keeps it. A merge's or deploy's commands and checks run at that priority too. Its output streams as it
+comes, and it kills the command with every process it started
 after `coordinator.heavy.maxRunMinutes` (45), a `--small` step after `coordinator.heavy.smallMaxRunMinutes` (10): a
 step that shares the host holds back every step waiting for the lock, so a hung one is cut short. The step ends, and frees the lock, only once that kill is done; on
 Windows the kill lists the host's processes again after each round and ends any process the step started while it was
