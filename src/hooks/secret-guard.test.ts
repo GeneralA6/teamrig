@@ -147,6 +147,43 @@ describe('secretGuardOutput', () => {
   });
 });
 
+describe('secretGuardOutput on what a command line holds (T1369 acceptance)', () => {
+  const decisionOf = (tool: string, command: string): string | undefined => verdictOf(secretGuardOutput(call(tool, { command }), env()))?.decision;
+  const BEARER = join('k9Qz', '7Lm4xR2tVb8nW3');
+  const API_KEY = join('a7f3', 'c9e1b5d2');
+
+  it('refuses a secret written into the line, a command that dumps credentials and a secret file git would show', () => {
+    for (const [tool, command] of [
+      ['Bash', join('psql postgres://app:', PASSWORD, '@db.local/app -c "select 1"')],
+      ['Bash', join('curl -H "Authorization: Bearer ', BEARER, '" https://api.local/v1')],
+      ['PowerShell', join('Invoke-RestMethod https://api.local/v1 -Headers @{ Authorization = "Bearer ', BEARER, '" }')],
+      ['Bash', join('curl -H "x-api-key: ', API_KEY, '" https://api.local/v1')],
+      ['Bash', 'kubectl config view --raw'],
+      ['Bash', 'kubectl --raw config view'],
+      ['PowerShell', 'kubectl --context prod config view --minify --raw=true'],
+      ['Bash', 'git show HEAD~1:.env'],
+      ['Bash', 'git diff -- .env'],
+    ] as const) {
+      assert.equal(decisionOf(tool, command), 'deny', command);
+    }
+  });
+
+  it('lets a placeholder, a reference, a search for a shape, a plain view and a quiet dump pass', () => {
+    for (const [tool, command] of [
+      ['Bash', 'psql postgres://user:password@localhost/app'],
+      ['Bash', 'psql "${DB_URI}"'],
+      ['PowerShell', 'psql $env:DB_URI'],
+      ['Bash', 'psql postgres://app:<db_password>@localhost/app'],
+      ['Bash', "grep -rE 'postgres://[^:]+:[^@]+@' src"],
+      ['Bash', 'git log -p -- src/'],
+      ['Bash', 'kubectl config view'],
+      ['Bash', 'kubectl config view --raw > kubeconfig.yaml'],
+    ] as const) {
+      assert.equal(decisionOf(tool, command), undefined, command);
+    }
+  });
+});
+
 describe('secretReason', () => {
   it('names one secret alone, and joins several', () => {
     assert.match(secretReason([{ kind: 'environment' }]), /would print the whole environment into/);
