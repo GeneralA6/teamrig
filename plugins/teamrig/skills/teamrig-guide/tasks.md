@@ -291,7 +291,8 @@ A session's own `start` shows the flags on itself.
 | `RETIRE-DUE` | a hired session has had no open task for 4 h [hiring.idleHours], counted from its hire or from its newest task's last status change | The lead gives it its next task, or retires it (`teamrig retire <id>`); under `hiring.policy` `automatic` it is asked to retire itself once its last open task closes. |
 | `REVIEW-DUE` | a hired session's review day has passed | The lead decides whether its job goes on; when it is done, retires it. |
 
-`check` then lints the skills folder: `SKILL <KIND> (<detail>) <owner|-> <skill>`.
+`check` then lints the skills folder: `SKILL <KIND> (<detail>) <owner|-> <skill>`. A skill a session of another team of
+the tree owns, when that team reads the same folder, is left to that team's `check`, so each flag shows once.
 
 | Skill flag | Detail | Fix |
 | --- | --- | --- |
