@@ -103,7 +103,7 @@ export function secretReason(findings: readonly SecretFinding[]): string {
       ? []
       : [
           `${what.length === 0 ? "this call's" : 'Its'} command line holds a secret as text (${shapes.join(', ')}). Pass it by ` +
-            'reference (its env var name, a file path, stdin, `teamrig exec`), never as text.',
+            'reference (its env var name, a file path, stdin, `teamrig exec request`), never as text.',
         ];
   return `teamrig secret guard: ${[...printed, ...written].join(' ')} [secretGuard.secretReads]`;
 }

@@ -121,7 +121,7 @@ describe('secretGuardOutput', () => {
     assert.equal(
       verdict?.reason,
       "teamrig secret guard: this call's command line holds a secret as text (credentials in a URL). Pass it by reference " +
-        '(its env var name, a file path, stdin, `teamrig exec`), never as text. [secretGuard.secretReads]',
+        '(its env var name, a file path, stdin, `teamrig exec request`), never as text. [secretGuard.secretReads]',
     );
   });
 
