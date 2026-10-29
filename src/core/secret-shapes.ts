@@ -30,8 +30,8 @@ const MIN_FRAMED_SECRET = 6;
  * `[token]`. A `%` must close the name, as a percent-encoded password (`%40bc...`) is a real one.
  */
 const REFERENCE = /^(?:[<{[]|\$[{(A-Za-z_]|%[A-Za-z_]\w*%)/;
-/** A value masked or redacted: `*****`, `ab***yz`, one character repeated (`xxxxxxxx`, `00000000`). */
-const MASKED = /\*{3}|^(.)\1+$/;
+/** A value masked, redacted or cut short: `*****`, `ab***yz`, `ab12...`, `ab12…`, one character repeated (`xxxxxxxx`, `00000000`). */
+const MASKED = /\*{3}|\.{3}|…|^(.)\1+$/;
 /** A word that stands in for a secret: `password`, `changeme`, `your_token`, `put-key-here`. */
 const PLACEHOLDER_WORD = /^(?:pass(?:word|wd)?|pwd|secret|token|user(?:name)?|changeme|example|sample|dummy|placeholder|redacted|your[\w-]*|[\w-]*[_-]here)$/i;
 /**
@@ -49,6 +49,11 @@ const SAMPLE_HASHES: ReadonlySet<string> = new Set([
  */
 export function isPlaceholderValue(value: string): boolean {
   return value.length < MIN_FRAMED_SECRET || REFERENCE.test(value) || MASKED.test(value) || PLACEHOLDER_WORD.test(value) || isSample(value);
+}
+
+/** True when the value a framing `shape` caught is not a secret: a placeholder, or a value the shape itself allows. */
+export function isFramedPlaceholder(shape: SecretPattern, value: string): boolean {
+  return isPlaceholderValue(value) || (shape.isAllowedValue?.(value) ?? false);
 }
 
 /** True when `value` is a published sample token rather than anyone's secret. */
@@ -80,7 +85,7 @@ export class SecretShapes {
     for (const { shape, global } of this.patterns) {
       for (const match of text.matchAll(global)) {
         const value = shape.secretGroup === undefined ? match[0] : match[shape.secretGroup];
-        if (value === undefined || value === '' || (shape.secretGroup === undefined ? isSample(value) : isPlaceholderValue(value))) continue;
+        if (value === undefined || value === '' || (shape.secretGroup === undefined ? isSample(value) : isFramedPlaceholder(shape, value))) continue;
         hits.push({ id: shape.id, description: shape.description, value });
       }
     }

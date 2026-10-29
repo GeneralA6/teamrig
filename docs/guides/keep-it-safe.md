@@ -168,8 +168,8 @@ printable. The read-only allow never lets such a line skip the prompt
 A secret typed or pasted into a prompt goes the same way: the prompt hook stops a prompt that holds a token,
 credentials in a URL, an Authorization or API key header, a quoted literal given to a secret-like name or a
 `register.secretPatterns` match before Claude reads it, keeps it out of the transcript and removes the value from
-Claude Code's prompt history and paste cache. A placeholder (`${TOKEN}`, `<token>`, `changeme`) passes, judged on the
-value alone. The reason says to send the secret's name or the file it is kept in instead, and to rotate it
+Claude Code's prompt history and paste cache. A placeholder (`${TOKEN}`, `<token>`, `changeme`) or a name given to a
+secret-like key (`TOKEN="SOME_READ_TOKEN"`) passes, judged on the value alone. The reason says to send the secret's name or the file it is kept in instead, and to rotate it
 ([Each prompt](../../plugins/teamrig/skills/teamrig-guide/hooks.md#each-prompt)).
 
 ## Privileged commands on review
