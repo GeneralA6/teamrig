@@ -155,12 +155,15 @@ helper's hooks and gives it this same context, binding, renaming and refreshing 
 ## Each prompt
 
 First, a prompt that looks like it holds a secret (a token such as a GitHub or Anthropic key, credentials in a URL,
-an Authorization header, or a match of the team's `register.secretPatterns`) is stopped before Claude reads it and
-kept out of the transcript. The reason names only the secret's shape, says to send its name or the file it is kept in
-instead, and that the value counts as leaked: rotate it. A `password: x` in prose is not stopped. The hook removes
-every line of Claude Code's prompt history (`history.jsonl`) and every pasted text (`paste-cache/`) that holds the
-value, and records the stopped prompt in `~/.teamrig/history-clean/pending/`, so each later prompt cleans again until
-its line is found or a clean runs 10 minutes after the stop (a day at most). Only the value's hash is kept, and
+an Authorization or API key header, a quoted literal given to a secret-like name (`DB_PASSWORD="..."`), or a match of
+the team's `register.secretPatterns`) is stopped before Claude reads it and kept out of the transcript. The reason
+names only the secret's shape, says to send its name or the file it is kept in instead, and that the value counts as
+leaked: rotate it. A `password: x` in prose is not stopped, nor a value that only stands in for a secret, judged on
+the value alone: a reference (`${TOKEN}`, `<token>`, `%TOKEN%`), a masked value (`*****`), a stand-in word
+(`changeme`, `your_token`) or jwt.io's sample token. A real password on `localhost` is still a secret. The hook
+removes every line of Claude Code's prompt history (`history.jsonl`) and every pasted text (`paste-cache/`) that holds
+the value, and records the stopped prompt in `~/.teamrig/history-clean/pending/`, so each later prompt cleans again
+until its line is found or a clean runs 10 minutes after the stop (a day at most). Only the value's hash is kept, and
 `history-clean/log.jsonl` logs counts, never a value. A stopped prompt is not written to the turn log and is shown no
 inbox lines: they come at the next prompt. Under a broken `.teamrig.json` it stops prompts too, with the shipped
 shapes only. Transcripts of earlier prompts are not cleaned.

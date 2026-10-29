@@ -166,9 +166,10 @@ printable. The read-only allow never lets such a line skip the prompt
 ([what it cannot see](../../plugins/teamrig/skills/teamrig-guide/hooks.md#before-a-shell-command-or-a-read-the-secret-guard)).
 
 A secret typed or pasted into a prompt goes the same way: the prompt hook stops a prompt that holds a token,
-credentials in a URL, an Authorization header or a `register.secretPatterns` match before Claude reads it, keeps it
-out of the transcript and removes the value from Claude Code's prompt history and paste cache. The reason says to send
-the secret's name or the file it is kept in instead, and to rotate it
+credentials in a URL, an Authorization or API key header, a quoted literal given to a secret-like name or a
+`register.secretPatterns` match before Claude reads it, keeps it out of the transcript and removes the value from
+Claude Code's prompt history and paste cache. A placeholder (`${TOKEN}`, `<token>`, `changeme`) passes, judged on the
+value alone. The reason says to send the secret's name or the file it is kept in instead, and to rotate it
 ([Each prompt](../../plugins/teamrig/skills/teamrig-guide/hooks.md#each-prompt)).
 
 ## Privileged commands on review
