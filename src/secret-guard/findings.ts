@@ -4,6 +4,7 @@ export type SecretFinding =
   | { readonly kind: 'environment' }
   | { readonly kind: 'variable'; readonly name: string }
   | { readonly kind: 'kube-secret' }
+  | { readonly kind: 'command'; readonly program: string }
   | { readonly kind: 'literal'; readonly id: string; readonly description: string };
 
 /** What the call would print, or the shape of the secret its line holds, as the refusal names it. */
@@ -19,6 +20,8 @@ export function describeFinding(finding: SecretFinding): string {
       return `the value of $${finding.name}`;
     case 'kube-secret':
       return "a Kubernetes secret's data";
+    case 'command':
+      return `the secrets in this ${finding.program} command's output`;
   }
 }
 
