@@ -4,7 +4,7 @@ import { FakeProcesses } from '../testing/fake-processes.ts';
 import { openTab } from './open-tab.ts';
 import type { TabRequest } from './terminals.ts';
 
-const TAB: TabRequest = { title: 'shop-api', folder: '/w/shop', argv: ['/usr/bin/node', '/kit/main.js', 'launch', 'api'] };
+const TAB: TabRequest = { title: 'shop-api', folder: '/w/shop', argv: ['/usr/bin/node', '/kit/main.js', 'launch', 'api'], window: undefined };
 
 describe('openTab', () => {
   it('opens in the first terminal auto finds, after one that is missing', async () => {

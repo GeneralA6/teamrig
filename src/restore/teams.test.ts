@@ -35,6 +35,7 @@ const APP: RestoreTeam = {
     ['alpha', 'app-alpha'],
   ]),
   terminal: 'windows-terminal',
+  teamWindow: true,
   areaBySession: new Map([[OTHER, 'alpha']]),
 };
 
@@ -43,6 +44,7 @@ const WEB: RestoreTeam = {
   lead: 'boss',
   names: new Map([['front', 'web-front']]),
   terminal: 'auto',
+  teamWindow: false,
   areaBySession: new Map([
     [SESSION, 'front'],
     [OTHER, 'gone'],
@@ -57,6 +59,7 @@ describe('teamSessionOf', () => {
       name: 'app-lead',
       isLead: true,
       terminal: 'windows-terminal',
+      teamWindow: true,
       launched: true,
     });
   });
@@ -68,6 +71,7 @@ describe('teamSessionOf', () => {
       name: 'web-front',
       isLead: false,
       terminal: 'auto',
+      teamWindow: false,
       launched: false,
     });
   });

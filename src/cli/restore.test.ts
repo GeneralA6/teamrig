@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
+import type { JsonRecord } from '../core/guards.ts';
 import { encodePrompt } from '../open/prompt.ts';
 import { shellCommand } from '../open/quote.ts';
 import type { RestoreChoice } from '../restore/countdown.ts';
@@ -55,8 +56,11 @@ function entry(claudeSession: string, createdAt: number, overrides: Partial<Rest
  * Team `app` with three sessions the shutdown met: alpha, which `launch` ran, idle at high effort; `notes`, outside
  * any team, mid-turn, whose pid the system gave another program since; and one whose Claude Code still runs.
  */
-async function restoreKit(entries: readonly RestoreEntry[] = [entry(ALPHA, 1, { team: 'app', session: 'alpha' }), entry(NOTES, 2, { state: 'working', pid: REUSED_PID }), entry(LIVE, 3, { pid: LIVE_PID })]): Promise<CliHarness> {
-  const kit = new CliHarness(TEAM);
+async function restoreKit(
+  entries: readonly RestoreEntry[] = [entry(ALPHA, 1, { team: 'app', session: 'alpha' }), entry(NOTES, 2, { state: 'working', pid: REUSED_PID }), entry(LIVE, 3, { pid: LIVE_PID })],
+  config: JsonRecord = TEAM,
+): Promise<CliHarness> {
+  const kit = new CliHarness(config);
   await kit.files.write(transcriptOf(ALPHA), `${turn('high')}\n`);
   await kit.files.write(transcriptOf(NOTES), `${JSON.stringify({ type: 'custom-title', customTitle: 'notes', sessionId: NOTES })}\n`);
   await kit.files.write(transcriptOf(LIVE), `${turn('low')}\n`);
@@ -153,6 +157,19 @@ describe('teamrig restore run', () => {
     assert.ok(result.stdout.includes('Opened notes (continue: mid-turn)'));
     assert.equal((await new RestoreRegistry(kit.files, restoreSessionsDir(KIT)).read(ALPHA))?.restoreAttempts, 1);
     assert.match(await logOf(kit), new RegExp(`run: opened ${ALPHA} \\(idle\\) at effort high\n`));
+  });
+
+  it("reopens a team's session in the team's own Windows Terminal window when open.teamWindow is on, and one outside any team as before (T1427)", async () => {
+    const kit = await restoreKit(undefined, { ...TEAM, open: { teamWindow: true } });
+    const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started' });
+    okResult(await kit.run(['restore', 'run'], machine(kit, processes)));
+    assert.deepEqual(
+      processes.started.map((request) => request.args.slice(0, 2)),
+      [
+        ['-w', 'teamrig-app'],
+        ['-w', '0'],
+      ],
+    );
   });
 
   it('in its own tab, stays a moment once all are open and longer, exiting 1, when one did not open', async () => {

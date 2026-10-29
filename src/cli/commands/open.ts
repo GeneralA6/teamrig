@@ -20,7 +20,7 @@ import type { RunOutcome } from '../../open/processes.ts';
 import { RefreshStore } from '../../refresh/store.ts';
 import { noRoomText } from '../../sessions/headroom.ts';
 import { closedOf, SessionLog, type CloseRecord } from '../../sessions/log.ts';
-import type { Terminal } from '../../open/terminals.ts';
+import { teamWindowOf, type Terminal } from '../../open/terminals.ts';
 import { urgentFirstPrompt, type WakeAsk } from '../../wake/asks.ts';
 import { onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
 import { headroomOf } from '../headroom.ts';
@@ -91,6 +91,8 @@ export interface SessionTab {
   /** The first prompt; undefined starts Claude Code with none. */
   readonly prompt: string | undefined;
   readonly terminal: TerminalChoice;
+  /** The tab opens in a window of the team's own (`open.teamWindow`). */
+  readonly teamWindow: boolean;
   /** The Claude Code session to resume (`open --resume`); the automatic restart never resumes one. */
   readonly resume?: string;
   /** The effort to start on instead of the configured one: the restore after a reboot reopens a session at its last. */
@@ -122,7 +124,8 @@ export async function openSessionTab(runtime: CliRuntime, tab: SessionTab): Prom
     ...(tab.effort === undefined ? [] : ['--effort', tab.effort]),
     ...(tab.prompt === undefined ? ['--no-prompt'] : ['--encoded-prompt', encodePrompt(tab.prompt)]),
   ];
-  return { outcome: await openTab(runtime, tab.terminal, { title: sessionDisplay(tab.team, tab.name), folder: tab.project, argv }), argv };
+  const window = teamWindowOf(tab.teamWindow, tab.team);
+  return { outcome: await openTab(runtime, tab.terminal, { title: sessionDisplay(tab.team, tab.name), folder: tab.project, argv, window }), argv };
 }
 
 /**
@@ -211,7 +214,7 @@ export async function openSession(runtime: CliRuntime, kit: Kit, config: KitConf
       throw new RefusedError(noRoomText(`open ${name} (session ${id})`, headroom));
     }
   }
-  const { outcome, argv } = await openSessionTab(runtime, { team, id, name, project: folder, prompt, terminal, ...(resume === undefined ? {} : { resume }) });
+  const { outcome, argv } = await openSessionTab(runtime, { team, id, name, project: folder, prompt, terminal, teamWindow: config.open.teamWindow, ...(resume === undefined ? {} : { resume }) });
   if (outcome.kind !== 'opened') {
     return { kind: 'manual', reasons: outcome.reasons, argv, folder };
   }

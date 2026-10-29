@@ -61,6 +61,7 @@ const APP: RestoreTeam = {
     ['alpha', 'app-alpha'],
   ]),
   terminal: 'auto',
+  teamWindow: false,
   areaBySession: new Map(),
 };
 
@@ -194,7 +195,7 @@ describe('runRestore', () => {
         claudeSession: LEAD,
         title: 'app-lead',
         folder: '/work/app',
-        team: { team: 'app', session: 'lead', name: 'app-lead', isLead: true, terminal: 'auto', launched: true },
+        team: { team: 'app', session: 'lead', name: 'app-lead', isLead: true, terminal: 'auto', teamWindow: false, launched: true },
         effort: 'high',
         prompt: continuePrompt(NOTHING_LOST, 'app-alpha continue (mid-turn)'),
       },
@@ -202,7 +203,7 @@ describe('runRestore', () => {
         claudeSession: ALPHA,
         title: 'app-alpha',
         folder: '/work/app',
-        team: { team: 'app', session: 'alpha', name: 'app-alpha', isLead: false, terminal: 'auto', launched: true },
+        team: { team: 'app', session: 'alpha', name: 'app-alpha', isLead: false, terminal: 'auto', teamWindow: false, launched: true },
         effort: 'max',
         prompt: continuePrompt(NOTHING_LOST, undefined),
       },

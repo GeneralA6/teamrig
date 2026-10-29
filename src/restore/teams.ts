@@ -8,6 +8,8 @@ export interface RestoreTeam {
   /** Each current session's id and name. */
   readonly names: ReadonlyMap<string, string>;
   readonly terminal: TerminalChoice;
+  /** Its sessions' tabs open in a window of the team's own (`open.teamWindow`). */
+  readonly teamWindow: boolean;
   /** The session each Claude Code session last read the inbox of, from the team's inbox marks. */
   readonly areaBySession: ReadonlyMap<string, string>;
 }
@@ -19,6 +21,8 @@ export interface TeamSession {
   readonly name: string;
   readonly isLead: boolean;
   readonly terminal: TerminalChoice;
+  /** Its sessions' tabs open in a window of the team's own (`open.teamWindow`). */
+  readonly teamWindow: boolean;
   /**
    * It ran under its team's variables, as `teamrig launch` starts one, so the restore reopens it through
    * launch. One known only from the inbox it read was started by hand, and is resumed as it was.
@@ -28,7 +32,7 @@ export interface TeamSession {
 
 function sessionOf(team: RestoreTeam, session: string, launched: boolean): TeamSession | undefined {
   const name = team.names.get(session);
-  return name === undefined ? undefined : { team: team.team, session, name, isLead: session === team.lead, terminal: team.terminal, launched };
+  return name === undefined ? undefined : { team: team.team, session, name, isLead: session === team.lead, terminal: team.terminal, teamWindow: team.teamWindow, launched };
 }
 
 /**

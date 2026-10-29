@@ -78,6 +78,14 @@ describe('teamrig restart', () => {
     assert.equal(await store.restart('alpha'), undefined);
   });
 
+  it("opens the new tab in the team's own Windows Terminal window when open.teamWindow is on (T1427)", async () => {
+    const { kit, processes } = await armed(false, { ...AUTO_RESTART_TEAM, open: { teamWindow: true } });
+    const tabs = new FakeProcesses().onStart('wt.exe', { kind: 'started' });
+    const result = await kit.run(RESTART_ALPHA, { sessionProcesses: processes, processes: tabs, platform: 'win32' });
+    assert.deepEqual(result, { code: EXIT.ok, stdout: ['RESTARTED app-alpha in a new tab'], stderr: [] });
+    assert.deepEqual(tabs.started[0]?.args.slice(0, 3), ['-w', 'teamrig-app', 'new-tab']);
+  });
+
   it('tells the session in its inbox when no restart happened, and exits 1', async () => {
     const { kit, processes } = await armed(false);
     const result = await kit.run(RESTART_ALPHA, { sessionProcesses: processes, processes: new FakeProcesses(), platform: 'win32' });

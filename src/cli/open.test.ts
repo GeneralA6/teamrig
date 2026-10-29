@@ -60,6 +60,13 @@ describe('teamrig open', () => {
     ]);
   });
 
+  it("opens the tab in the team's own Windows Terminal window when open.teamWindow is on (T1427)", async () => {
+    const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started' });
+    const result = await new CliHarness({ ...TEAM, open: { teamWindow: true } }).run(['open', 'alpha'], { probe: FOLDERS, processes, platform: 'win32' });
+    assert.equal(result.code, EXIT.ok, result.stdout.join('\n'));
+    assert.deepEqual(processes.started[0]?.args.slice(0, 3), ['-w', 'teamrig-app', 'new-tab']);
+  });
+
   it('refuses a session the host has no room for, and opens the lead whatever the room', async () => {
     const memory = new FakeHostMemory();
     memory.free = 5000;
