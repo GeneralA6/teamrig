@@ -2,7 +2,7 @@ import * as nodePath from 'node:path';
 /** The names a bin has in `node_modules/.bin`: bare on Linux and macOS, with `.cmd` and `.ps1` shims on Windows. */
 const BIN_ENDINGS = ['', '.cmd', '.ps1', '.exe'];
 /** Windows rules for a folder with a drive letter on every host, as the push guard's `Location` resolves it. */
-function pathRules(dir) {
+export function pathRules(dir) {
     return /^[A-Za-z]:/.test(dir) ? nodePath.win32 : nodePath;
 }
 /**

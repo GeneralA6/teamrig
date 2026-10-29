@@ -2,6 +2,7 @@ import { DEFAULT_PACKAGE_GUARD } from "../config/defaults.js";
 import { isRecord, recordField, stringField } from "../core/guards.js";
 import { adHocCallsOf } from "../package-guard/ad-hoc.js";
 import { installCallsOf } from "../package-guard/installs.js";
+import { linkedModulesWritesOf } from "../package-guard/linked-modules.js";
 import { lostFlagsOf } from "../package-guard/lost-flags.js";
 import { unvettedOf } from "../package-guard/vet.js";
 import { holdBackOutput } from "./permission.js";
@@ -32,6 +33,13 @@ export function installReason(unvetted, cooldownDays) {
     return (`teamrig package guard: this install is not vetted: ${unvetted.join('; ')}. Install an exact version${age} with no known advisory ` +
         '(`npm view <name> time` lists when each version was published). [packageGuard.installs]');
 }
+/** Why a call is refused: each node_modules link it would write through, and the two safe ways to install. */
+export function linkedModulesReason(writes) {
+    const named = writes.map(({ call, modules, target }) => `\`${call}\` would write through ${modules}, a link to ${target}`);
+    return (`teamrig package guard: ${named.join('; ')}. A package manager rewrites the folder a link points to (npm ci empties it first), ` +
+        'breaking every checkout that shares it. Remove the link itself first (Bash `rm <link>` or `cmd /c rmdir <link>`; a recursive delete ' +
+        'empties its target too), then install a copy here; or install in the checkout that owns the folder.');
+}
 /** The ad-hoc runs in a line, refused or asked about as the team set, or undefined for none. */
 async function adHocVerdict(command, context, env) {
     if (env.adHocRunners === 'allow') {
@@ -57,12 +65,18 @@ function lostFlagVerdict(command, context) {
     const lost = lostFlagsOf(command, context);
     return lost.length === 0 ? undefined : { decision: 'deny', reason: lostFlagReason(lost) };
 }
+/** The calls in a line that would write through a node_modules link: refused whatever the config says, as no answer makes them safe. */
+async function linkedModulesVerdict(command, context, tree) {
+    const writes = await linkedModulesWritesOf(command, context, tree);
+    return writes.length === 0 ? undefined : { decision: 'deny', reason: linkedModulesReason(writes) };
+}
 /**
  * The PreToolUse output for a Bash or PowerShell call: a refusal (or a question, as `packageGuard.adHocRunners` and
  * `packageGuard.installs` say) when the line runs a package ad hoc or installs a version the registry does not vouch
- * for, and a refusal whatever the config says when an npx call hands its bin's flag to npm; else nothing, so the normal
- * permission flow decides. One refusal among them refuses the line, naming every reason. Under `hookAsks: refuse` the
- * question is a refusal instead, its reason saying what to do (see `holdBack`).
+ * for, and a refusal whatever the config says when an npx call hands its bin's flag to npm or a package manager would
+ * rewrite node_modules through a link; else nothing, so the normal permission flow decides. One refusal among them
+ * refuses the line, naming every reason. Under `hookAsks: refuse` the question is a refusal instead, its reason saying
+ * what to do (see `holdBack`).
  */
 export async function packageGuardOutput(payload, env) {
     if (!isRecord(payload)) {
@@ -77,8 +91,12 @@ export async function packageGuardOutput(payload, env) {
         home: env.home,
         dialect: stringField(payload, 'tool_name') === 'PowerShell' ? 'powershell' : 'bash',
     };
-    const [adHoc, install] = await Promise.all([adHocVerdict(command, context, env), installVerdict(command, context, env)]);
-    const verdicts = [lostFlagVerdict(command, context), adHoc, install].filter((verdict) => verdict !== undefined);
+    const [adHoc, install, linked] = await Promise.all([
+        adHocVerdict(command, context, env),
+        installVerdict(command, context, env),
+        linkedModulesVerdict(command, context, env.tree),
+    ]);
+    const verdicts = [lostFlagVerdict(command, context), linked, adHoc, install].filter((verdict) => verdict !== undefined);
     if (verdicts.length === 0) {
         return '';
     }
