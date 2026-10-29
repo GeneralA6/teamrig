@@ -1,7 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { join } from 'node:path';
 import type { CliHarness, CliResult, RunOptions } from '../testing/cli-harness.ts';
-import { teamEventsOf, treeHarness } from '../testing/team-tree.ts';
+import { teamEventsOf, teamHomeOf, treeHarness } from '../testing/team-tree.ts';
 import { EXIT } from './runtime.ts';
 
 const WEB: RunOptions = { env: { TEAMRIG_TEAM: 'web' } };
@@ -103,9 +104,10 @@ describe('show of a task another register of the tree holds (T1139)', () => {
   it('shows its row read-only, named by the team that holds it', async () => {
     const kit = await seeded();
     const shown = await ok(kit, ['show', 'T1', '--session', 'front'], WEB);
-    assert.equal(shown.stdout.length, 2, shown.stdout.join('\n'));
+    assert.equal(shown.stdout.length, 3, shown.stdout.join('\n'));
     assert.match(shown.stdout[0] ?? '', /^app\/T1 open, p2, owner lead\b.*\| Root task$/);
     assert.equal(shown.stdout[1], held);
+    assert.equal(shown.stdout[2], `files in ${join(teamHomeOf('app'), 'tasks', 'T1')}: none yet`, 'its files are in the team that holds it');
   });
 
   it("walks its tree in that team's register, naming that team in each row and move", async () => {

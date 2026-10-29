@@ -389,12 +389,14 @@ marked `ready` has cleared: its task is done or dropped, or its time has passed.
 
 ### teamrig show
 
-Prints one task with its description, pointer, latest note, decision card (while it waits), evidence, skill and
-full history. The description
-comes right under the task line; its later lines are indented two spaces. The history prints a changed
-description on one line, cut to 80 characters. Last come the team's inbox lines that name the task, read or not, in
-the order posted, each once with the sessions that got it. A correction sent by line (`T1: the password needs 12
-characters`) stays with the task, even after the handover of the session that read it is rewritten.
+Prints one task with its description, pointer, latest note, decision card (while it waits), evidence, skill, its
+files and full history. The description comes right under the task line; its later lines are indented two spaces.
+The files line names the task's folder (the one [`teamrig files`](#teamrig-files) gives) and what it holds, a folder
+marked with a slash, or `none yet`; for a task another team of your tree holds, the folder is in that team. The
+history prints a changed description on one line, cut to 80 characters. Last come the team's inbox lines that name
+the task, read or not, in the order posted, each once with the sessions that got it. A correction sent by line (`T1:
+the password needs 12 characters`) stays with the task, even after the handover of the session that read it is
+rewritten.
 
 Flags:
 
@@ -417,6 +419,7 @@ ref: signup spec, section 2
 note: endpoint merged
 evidence: PR #4, 12 tests
 skill: none
+files in /home/you/.teamrig/teams/shop/tasks/T1: design.md, evidence/
 history:
   2026-10-15 08:58 lead create owner=api source=lead priority=p2 ref=signup spec, section 2 due=2026-10-17 goals=G1
   2026-10-15 08:58 api status in-progress
@@ -610,7 +613,8 @@ The folder is `tasks/T<id>` in the folder of the team whose task list holds the 
 tree holds has its folder in that team. With `--notes` it prints your folder for notes that belong to no task
 (research, boards, drafts), `notes/<session>` in your team's folder. It prints the path alone, so a shell line can
 use it: `cp report.tsv "$(teamrig files T12)/evidence/"`. Scratch output (ship logs, probe dumps) stays in your
-scratchpad; copy into the folder only what the task must keep.
+scratchpad; copy into the folder only what the task must keep. [`teamrig show`](#teamrig-show) lists what the folder
+holds.
 
 Refusals: an id no task list of your tree holds (`REFUSED no task T9`), so a typo makes no folder; a word that is not
 a task id; a session not on the team with `--notes`.

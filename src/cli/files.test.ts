@@ -4,8 +4,10 @@ import { join } from 'node:path';
 import { MS_PER_DAY } from '../core/time.ts';
 import { RETAIN_DAYS } from '../register/compaction.ts';
 import { CliHarness, TEAM_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
+import { MemoryPathProbe } from '../testing/memory-files.ts';
 import { teamHomeOf, treeHarness } from '../testing/team-tree.ts';
 import { EXIT } from './runtime.ts';
+import { FILES_LINE_MAX_NAMES } from './task-files.ts';
 
 const AS_ALPHA: RunOptions = { env: { TEAMRIG_SESSION: 'alpha' } };
 const WEB: RunOptions = { env: { TEAMRIG_TEAM: 'web', TEAMRIG_SESSION: 'front' } };
@@ -85,5 +87,42 @@ describe("files --notes: a session's notes that belong to no task (T1457)", () =
     const both = await kit.run(['files', 'T1', '--notes'], AS_ALPHA);
     assert.equal(both.code, EXIT.usage);
     assert.match(both.stderr[0] ?? '', /unexpected "T1"/);
+  });
+});
+
+describe("show: a task's files line (T1457)", () => {
+  const filesLine = (shown: CliResult) => shown.stdout.join('\n').split('\n').find((line) => line.startsWith('files in '));
+
+  it('names the folder and none yet while nothing is in it, and makes no folder', async () => {
+    const kit = new CliHarness();
+    await ok(kit, add('Plan the layout'));
+    const folder = join(TEAM_HOME, 'tasks', 'T1');
+    assert.equal(filesLine(await ok(kit, ['show', 'T1'])), `files in ${folder}: none yet`);
+    assert.equal(kit.files.madeFolder(folder), false);
+  });
+
+  it('lists what the folder holds in name order, a folder with a slash, above the history', async () => {
+    const kit = new CliHarness();
+    await ok(kit, add('Plan the layout'));
+    const folder = join(TEAM_HOME, 'tasks', 'T1');
+    await kit.files.write(join(folder, 'design.md'), '# design');
+    await kit.files.write(join(folder, 'build.md'), '# build');
+    await kit.files.write(join(folder, 'evidence', 'run.log'), 'ok');
+    const shown = await ok(kit, ['show', 'T1'], { ...AS_ALPHA, probe: new MemoryPathProbe(kit.files) });
+    const lines = shown.stdout.join('\n').split('\n');
+    const at = lines.indexOf(`files in ${folder}: build.md, design.md, evidence/`);
+    assert.ok(at > 0, lines.join('\n'));
+    assert.equal(lines[at + 1], 'history:');
+  });
+
+  it(`names the first ${FILES_LINE_MAX_NAMES} and counts the rest`, async () => {
+    const kit = new CliHarness();
+    await ok(kit, add('Plan the layout'));
+    const folder = join(TEAM_HOME, 'tasks', 'T1');
+    const names = Array.from({ length: FILES_LINE_MAX_NAMES + 2 }, (_, at) => `n${String(at).padStart(2, '0')}.md`);
+    await Promise.all(names.map((name) => kit.files.write(join(folder, name), 'x')));
+    const line = filesLine(await ok(kit, ['show', 'T1'])) ?? '';
+    assert.ok(line.endsWith(`${names[FILES_LINE_MAX_NAMES - 1]}, and 2 more`), line);
+    assert.ok(!line.includes(names[FILES_LINE_MAX_NAMES] ?? ''), line);
   });
 });
