@@ -30,6 +30,7 @@ const sessionsCommands = () => import("./commands/sessions.js");
 const closeCommands = () => import("./commands/close.js");
 const commitsCommands = () => import("./commands/commits.js");
 const doctorCommands = () => import("./commands/doctor.js");
+const filesCommands = () => import("./commands/files.js");
 const worktreeCommands = () => import("./commands/worktree.js");
 const refreshCommands = () => import("./commands/refresh.js");
 const setupCommands = () => import("./commands/setup.js");
@@ -90,6 +91,7 @@ const COMMANDS = {
     check: { effect: 'read', flags: ['session', 'week'], switches: ['tree', 'all'], load: async () => (await registerCommands()).check },
     plan: { effect: 'read', flags: ['session', 'week'], switches: ['tree'], load: async () => (await registerCommands()).plan },
     verify: { effect: 'read', flags: ['session'], load: async () => (await registerCommands()).verify },
+    files: { effect: 'write', flags: ['session'], switches: ['notes'], load: async () => (await filesCommands()).files },
     'inbox read': { effect: 'write', flags: ['session'], load: async () => (await inboxCommands()).read },
     'inbox status': { effect: 'read', flags: ['session'], load: async () => (await inboxCommands()).status },
     'inbox add': { effect: 'write', flags: ['session', 'to', 'text', 'wake', 'wake-by'], load: async () => (await inboxCommands()).add },
@@ -406,6 +408,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       --tree (the lead only): also every team under it, read-only, ids as <team>/T<n>
   verify [--session <id|name>]   the session's verifying tasks, oldest first, each with its proof and
       the date to verify by, then its done tasks still watched for a sighting (--watch)
+  files <id> | files --notes [--session <id|name>]   prints the folder for a task's files (design.md,
+      build.md, plan.md, review.md, evidence/, scripts/, out/) in the team that holds it, or for your notes
+      that belong to no task; makes it when missing
   inbox read [--session <area>]     prints the unread lines and marks them read
   inbox status [--session <area>]   unread lines per area
   inbox add --to <id|name|team/id|all|leads|group:<leader>|team:<team>|tree:leads|task:T<n>>[,...] --text "<one line>" [--wake now | --wake-by <time>]

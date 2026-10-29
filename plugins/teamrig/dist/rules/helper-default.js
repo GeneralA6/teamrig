@@ -12,8 +12,8 @@ export function formatWeight(weight) {
 /** When a helper pays, as the clause after "work in your own session:", with the config key it reads. */
 export function helperDefaultClause(weight) {
     return weight > 1
-        ? `a helper's tokens cost ${formatWeight(weight)}x yours [budget.subagentWeight], so start one only for truly parallel work or an independent review, never to save tokens or for a build or test whose result you need`
-        : 'start a helper only when it keeps far more tokens out of your context than it uses or truly runs in parallel, never for a build or test whose result you need';
+        ? `a helper's tokens cost ${formatWeight(weight)}x yours [budget.subagentWeight], so start one only for parallel work or an independent review, never to save tokens or for a build or test you wait on`
+        : 'start a helper only when it keeps far more tokens out of your context than it uses or truly runs in parallel, never for a build or test you wait on';
 }
 /**
  * The line the model gets at each helper launch (PreToolUse on the Agent tool). Claude Code hands it over with the

@@ -69,6 +69,14 @@ export function teamHome(kitHome, team) {
     }
     return join(kitHome, 'teams', team);
 }
+const TASKS_FOLDER = 'tasks';
+/**
+ * The folder of one task's files, in the team whose register holds the task (T1457): its files move with it, and a
+ * task's design is found by its id, never by a search.
+ */
+export function taskFolder(kitHome, team, id) {
+    return join(teamHome(kitHome, team), TASKS_FOLDER, id);
+}
 /** The team's paths; `claudeDir` is Claude Code's own folder (`claudeConfigDir`), whose `skills` is the default skills folder. */
 export function teamPaths(kitHome, team, claudeDir, overrides = {}) {
     const home = teamHome(kitHome, team);
@@ -103,6 +111,8 @@ export function teamPaths(kitHome, team, claudeDir, overrides = {}) {
         skills: inHome(overrides.skills) ?? join(claudeDir, 'skills'),
         refresh: join(state, 'refresh'),
         handover: inHome(overrides.handover) ?? join(home, 'handover'),
+        tasks: join(home, TASKS_FOLDER),
+        notes: join(home, 'notes'),
         verifyNotices: join(state, 'verify-notices.jsonl'),
         modelNotices: join(state, 'model-notices'),
         unownedNotices: join(state, 'unowned-notices.json'),
