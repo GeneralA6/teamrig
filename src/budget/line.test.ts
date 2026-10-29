@@ -124,6 +124,21 @@ describe('parseTranscriptLine', () => {
     assert.deepEqual(prompt?.kind === 'prompt' ? prompt.commands : undefined, ['alpha-check', 'clear']);
   });
 
+  it('names the agent type an Agent call runs, general-purpose when it names none (T1232)', () => {
+    const call = parseTranscriptLine(
+      replyLine({
+        id: 'm',
+        usage: { input: 1, output: 1 },
+        tools: [
+          { id: 'a', name: 'Agent', agent: 'code-reader' },
+          { id: 'g', name: 'Agent' },
+          { id: 'b', name: 'Bash', command: 'ls', agent: 'not-a-start' },
+        ],
+      }),
+    );
+    assert.deepEqual(call?.kind === 'call' ? call.tools.map((tool) => tool.agent) : undefined, ['code-reader', 'general-purpose', undefined]);
+  });
+
   it('keeps the address a WebFetch call reads, and the task ids a prompt names (T736)', () => {
     const reply = JSON.stringify({
       isSidechain: false,

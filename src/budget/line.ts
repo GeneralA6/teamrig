@@ -11,6 +11,8 @@ export interface ToolUse {
   readonly path?: string;
   /** The skill a `Skill` call loads. */
   readonly skill?: string;
+  /** The agent type an `Agent` call runs: its `subagent_type`, else Claude Code's default, `general-purpose`. */
+  readonly agent?: string;
   /** The address a `WebFetch` call reads. */
   readonly url?: string;
   /** True for a call run in the background (`run_in_background`), whose end a task notification reports. */
@@ -101,12 +103,14 @@ export function toolUseFrom(id: string, name: string, input: JsonRecord | undefi
   const path = input === undefined ? undefined : toolPathOf(input);
   const skill = name === SKILL_TOOL && input !== undefined ? stringField(input, 'skill') : undefined;
   const url = name === WEB_FETCH_TOOL && input !== undefined ? stringField(input, 'url') : undefined;
+  const agent = name === AGENT_TOOL ? ((input === undefined ? undefined : stringField(input, 'subagent_type')) ?? DEFAULT_AGENT) : undefined;
   return {
     id,
     name,
     command: input === undefined ? undefined : stringField(input, 'command'),
     ...(path === undefined ? {} : { path }),
     ...(skill === undefined ? {} : { skill }),
+    ...(agent === undefined ? {} : { agent }),
     ...(url === undefined ? {} : { url }),
     ...(input?.['run_in_background'] === true ? { background: true } : {}),
   };
@@ -114,6 +118,10 @@ export function toolUseFrom(id: string, name: string, input: JsonRecord | undefi
 
 /** The tool that loads a skill: its input's `skill` names it. */
 export const SKILL_TOOL = 'Skill';
+/** The tool that starts a subagent: its input's `subagent_type` names the agent type. */
+export const AGENT_TOOL = 'Agent';
+/** The agent type an `Agent` call with no `subagent_type` runs. */
+const DEFAULT_AGENT = 'general-purpose';
 /** The tool that reads a web page: its input's `url` names it. */
 export const WEB_FETCH_TOOL = 'WebFetch';
 
