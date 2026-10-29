@@ -4373,8 +4373,10 @@ instead.
 
 Before a Bash, PowerShell, Read or Grep call, refuses (or asks about, as `secretGuard.secretReads` says) a call that
 would print a secret into the conversation: a secret file's content (`cat .env`, the Read tool on `~/.npmrc`), the
-whole environment (`env`, `Get-ChildItem Env:`), a secret variable (`echo $GITHUB_TOKEN`) or a Kubernetes secret's
-data. Output piped or redirected away from the screen passes. See
+whole environment (`env`, `Get-ChildItem Env:`), a secret variable (`echo $GITHUB_TOKEN`), a Kubernetes secret's
+data or a dump command's output (`kubectl config view --raw`), and a Bash or PowerShell line that holds a secret as
+text (a token, credentials in a URL or an `Authorization` header). Output piped or redirected away from the screen
+passes, and so does a reference or a placeholder (`${DB_URI}`, `<db_password>`). See
 [Hooks and permissions](hooks.md#before-a-shell-command-or-a-read-the-secret-guard).
 
 Flags: none.
