@@ -5,8 +5,8 @@ import type { MeterReading } from './calibration.ts';
 
 /**
  * The extra-usage pool (T531 case c): dollars the user adds once the week reads 100%, a pool apart from the week,
- * spent on purpose and never read as a new week. `teamrig budget extra` appends one line to the team's extra log,
- * `<state>/usage/extra-log.jsonl`: an `add` of dollars to the pool, or a `spent` reading of the dollars claude.ai
+ * spent on purpose and never read as a new week. `teamrig budget extra` appends one line to the account's extra log,
+ * `<state>/usage/extra-log.jsonl` of the team that keeps the account's week files (`accountHolderOf`): an `add` of dollars to the pool, or a `spent` reading of the dollars claude.ai
  * shows spent from it so far, each with the week's use and the W metered since the period's start. Successive spent
  * readings of one period past 100% teach the pool's W per dollar; until a pair exists a configured rate stands in,
  * else the pool is known in dollars only. Instants are stored as ISO strings, like the meter log.

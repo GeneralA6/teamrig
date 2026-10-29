@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import type { TeamTree } from '../config/tree.ts';
 import type { BudgetConfig, KitConfig } from '../config/types.ts';
 import type { Files } from '../core/files.ts';
 import type { TeamPaths } from '../core/home.ts';
@@ -11,6 +12,24 @@ import { cachedWork } from './work.ts';
 /** The Claude account a team's week is on: its `budget.account`, else the Claude config dir, which signs in one account. */
 export function accountOf(budget: Pick<BudgetConfig, 'account'>, configDir: string): string {
   return budget.account ?? configDir;
+}
+
+/**
+ * The team that keeps the week's files of a team's account (its period, meter log and extra-usage log, budget/team-week.ts):
+ * the highest team above it reached through teams all on `account`, else the team itself. A child team on its parent's
+ * account so reads and writes its parent's files, and learns the account's W per percent from them; a team on another
+ * account than its parent, a root, a team whose parents go round a loop and a separate tree on the same account each keep
+ * their own. `accountOfTeam` gives each loaded team's account (`accountOf`), undefined for a team with no config.
+ */
+export function accountHolderOf(tree: Pick<TeamTree, 'ancestorsOf'>, team: string, account: string, accountOfTeam: (team: string) => string | undefined): string {
+  let holder = team;
+  for (const above of tree.ancestorsOf(team).reverse()) {
+    if (accountOfTeam(above) !== account) {
+      break;
+    }
+    holder = above;
+  }
+  return holder;
 }
 
 /** A team of the kit home as `accountTeamsOf` reads it; `loadTree` gives one for each team. */
@@ -27,7 +46,7 @@ export interface AccountScope {
   readonly account: string;
   /** The Claude config dir: the account of a team that sets none. */
   readonly configDir: string;
-  /** Its usage folder, which keeps the other teams' work caches: nothing is written in another team's folder. */
+  /** Its usage folder, which keeps the other teams' work caches, so reading them writes nothing in their folders. */
   readonly usageDir: string;
   readonly now: number;
   readonly usedPct: number | undefined;

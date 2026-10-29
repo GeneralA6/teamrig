@@ -1,6 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import { Roster } from '../config/roster.ts';
+import { TeamTree, teamNodeOf, type TeamNode } from '../config/tree.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { TimeZone } from '../core/zone.ts';
 import { OWN_NUMBERS } from '../register/numbering.ts';
@@ -12,7 +14,7 @@ import { FakeClock } from '../testing/fake-clock.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { InlineMutex } from '../testing/inline-mutex.ts';
 import { MemoryFiles, normalisePath } from '../testing/memory-files.ts';
-import { accountOf, accountTeamsOf, accountWeekOf, workCacheFileOf, type AccountScope, type AccountTeamSource, type SnapshotDirSource } from './account.ts';
+import { accountHolderOf, accountOf, accountTeamsOf, accountWeekOf, workCacheFileOf, type AccountScope, type AccountTeamSource, type SnapshotDirSource } from './account.ts';
 import { LiftLog, type Lift } from './lift.ts';
 import { formatSnapshot, snapshotOfStatus } from './snapshot.ts';
 
@@ -66,6 +68,42 @@ describe('accountOf', () => {
   it("takes the team's account, else the Claude config dir", () => {
     assert.equal(accountOf({ account: 'work' }, CONFIG_DIR), 'work');
     assert.equal(accountOf({}, CONFIG_DIR), CONFIG_DIR);
+  });
+});
+
+describe('accountHolderOf', () => {
+  /** A team led by `lead`, under `parent` when given. */
+  function node(team: string, parent?: string): TeamNode {
+    const config = testConfig({ sessions: ['lead'], team: parent === undefined ? { id: team } : { id: team, parent } });
+    return teamNodeOf(team, config, new Roster(config, team));
+  }
+
+  /** `app` at the root, `web` under it, `ui` under `web`; `lab` a root of its own. */
+  const TREE = new TeamTree([node('app'), node('web', 'app'), node('ui', 'web'), node('lab')]);
+  const onOne = (): string => CONFIG_DIR;
+
+  it('is the highest team above it on its account, through every level', () => {
+    assert.equal(accountHolderOf(TREE, 'ui', CONFIG_DIR, onOne), 'app');
+    assert.equal(accountHolderOf(TREE, 'web', CONFIG_DIR, onOne), 'app');
+  });
+
+  it('is the team itself at a root, and for a separate tree on the same account', () => {
+    assert.equal(accountHolderOf(TREE, 'app', CONFIG_DIR, onOne), 'app');
+    assert.equal(accountHolderOf(TREE, 'lab', CONFIG_DIR, onOne), 'lab');
+  });
+
+  it('stops below the first team above on another account, or with no config', () => {
+    const appElsewhere = (team: string): string | undefined => (team === 'app' ? 'home' : CONFIG_DIR);
+    assert.equal(accountHolderOf(TREE, 'ui', CONFIG_DIR, appElsewhere), 'web');
+    assert.equal(accountHolderOf(TREE, 'web', CONFIG_DIR, appElsewhere), 'web');
+    const webElsewhere = (team: string): string | undefined => (team === 'web' ? 'home' : CONFIG_DIR);
+    assert.equal(accountHolderOf(TREE, 'ui', CONFIG_DIR, webElsewhere), 'ui', "app is on ui's account, but the chain to it leaves it at web");
+    assert.equal(accountHolderOf(TREE, 'ui', CONFIG_DIR, (team) => (team === 'web' ? undefined : CONFIG_DIR)), 'ui');
+  });
+
+  it('is the team itself when its parents go round a loop', () => {
+    const loop = new TeamTree([node('a', 'b'), node('b', 'a')]);
+    assert.equal(accountHolderOf(loop, 'a', CONFIG_DIR, () => CONFIG_DIR), 'a');
   });
 });
 
