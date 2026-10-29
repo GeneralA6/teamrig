@@ -2,9 +2,10 @@ import type { BurstRecord } from '../budget/burst.ts';
 import { BurstLog } from '../budget/burst-log.ts';
 import { weekWindow, type WeekWindow } from '../budget/pace.ts';
 import { PeriodStore } from '../budget/period.ts';
+import type { TeamWeekPaths } from '../budget/team-week.ts';
 import type { BudgetConfig } from '../config/types.ts';
 import type { TeamPaths } from '../core/home.ts';
-import { weekUseOnAccount } from './account-teams.ts';
+import { accountWeekOn } from './account-teams.ts';
 import type { CliRuntime } from './runtime.ts';
 
 /**
@@ -22,9 +23,15 @@ export interface BurstReading {
   readonly window: WeekWindow | undefined;
 }
 
-export async function readBursts(runtime: CliRuntime, paths: Pick<TeamPaths, 'bursts' | 'period' | 'home' | 'kitHome'>, budget: BudgetConfig, now: number): Promise<BurstReading> {
+export async function readBursts(
+  runtime: CliRuntime,
+  paths: Pick<TeamPaths, 'team' | 'bursts' | 'home' | 'kitHome'> & TeamWeekPaths,
+  budget: BudgetConfig,
+  now: number,
+): Promise<BurstReading> {
   const { records } = await new BurstLog(runtime.files, paths.bursts).read();
-  const use = await weekUseOnAccount(runtime, budget, paths, now);
-  const period = await new PeriodStore(runtime.files, paths.period).periodAt(budget, use, now);
+  const account = await accountWeekOn(runtime, budget, paths, now);
+  const use = account.statusUse;
+  const period = await new PeriodStore(runtime.files, account.paths.period).periodAt(budget, use, now);
   return { records, usedPct: use?.usedPct, window: period === undefined ? undefined : weekWindow(period.end, budget.paceEndHoursBeforeReset, period.start) };
 }

@@ -1,6 +1,7 @@
 import { describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { basename, join } from 'node:path';
+import { MeterLog } from '../budget/calibration.ts';
 import { parsePeriod } from '../budget/period.ts';
 import { W_EXPLAINED } from '../budget/report.ts';
 import { formatSnapshot, parseSnapshot, snapshotOfStatus, SNAPSHOT_PRUNED_FILE } from '../budget/snapshot.ts';
@@ -11,7 +12,7 @@ import { MS_PER_DAY } from '../core/time.ts';
 import { APP, CliHarness, KIT, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
-import { teamConfigOf } from '../testing/team-tree.ts';
+import { teamConfigOf, teamHomeOf } from '../testing/team-tree.ts';
 import { promptLine, replyLine, transcript, type FixtureTool } from '../testing/transcript-lines.ts';
 import type { RepoState } from '../push-guard/push.ts';
 import { EXIT } from './runtime.ts';
@@ -485,6 +486,43 @@ describe('teamrig budget extra', () => {
     usageError(await run(['budget', 'extra', '--add', 'ten', ...as]), /--add "ten" is not a dollar amount above 0/);
     usageError(await run(['budget', 'extra', '--spent', ' ', ...as]), /--spent " " is not a dollar amount of 0 or more/);
     usageError(await run(['budget', 'extra', 'alpha']), /unexpected "alpha"/);
+  });
+});
+
+describe("teamrig budget in a child team on its parent's account", () => {
+  const HOUR = MS_PER_DAY / 24;
+  const ORG_USAGE = join(teamHomeOf('org'), 'state', 'usage');
+  const APP_USAGE = join(TEAM_HOME, 'state', 'usage');
+
+  /** The harness's team `app` under `org` (whose config adds `org`), and org's meter log at 20M W per percent from 2 readings. */
+  async function childWorld(org: JsonRecord = {}): Promise<World> {
+    const child = await world({ ...LIMITED, team: { id: 'app', parent: 'org' } }, false);
+    const { kit, run } = child;
+    await kit.files.write(teamConfigOf('org'), formatConfig({ configVersion: 1, team: { id: 'org' }, sessions: ['lead'], roles: { lead: 'lead' }, ...org }));
+    const now = kit.clock.now();
+    const period = { start: now - MS_PER_DAY, end: now + 6 * MS_PER_DAY, forecastPct: undefined };
+    const log = new MeterLog(kit.files, join(ORG_USAGE, 'meter-log.jsonl'));
+    await log.append({ ...period, at: now - 2 * HOUR, usedPct: 5, w: 100_000_000 }, now);
+    await log.append({ ...period, at: now - HOUR, usedPct: 15, w: 300_000_000 }, now);
+    ok(await run(['statusline'], { stdin: status(APP) }));
+    return child;
+  }
+
+  it("reads and writes the week's files of the highest team above it on the account, so it learns the account's W per percent", async () => {
+    const { kit, run } = await childWorld();
+    assert.match(ok(await run(['budget'])).at(-1) ?? '', /1% of the week is about 20\.00M W, learned from 2 meter readings/);
+    assert.notEqual(kit.files.get(join(ORG_USAGE, 'period.json')), undefined);
+    assert.equal(kit.files.get(join(APP_USAGE, 'period.json')), undefined);
+    ok(await run(['budget', 'extra', '--add', '10', '--session', 'lead']));
+    assert.match(kit.files.get(join(ORG_USAGE, 'extra-log.jsonl')) ?? '', /"kind":"add"/);
+    assert.equal(kit.files.get(join(APP_USAGE, 'extra-log.jsonl')), undefined);
+  });
+
+  it('keeps its own below a parent on another account', async () => {
+    const { kit, run } = await childWorld({ budget: { account: 'work' } });
+    assert.equal(ok(await run(['budget'])).at(-1), W_EXPLAINED);
+    assert.notEqual(kit.files.get(join(APP_USAGE, 'period.json')), undefined);
+    assert.equal(kit.files.get(join(ORG_USAGE, 'period.json')), undefined);
   });
 });
 

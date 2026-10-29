@@ -48,7 +48,7 @@ import {
 } from '../../budget/snapshot.ts';
 import { CURSOR_DAYS_KEPT, DAYS_KEPT, EMPTY_USAGE, MemoryUsageStore, UsageStore, type UsageState } from '../../budget/store.ts';
 import { attributedW, taskUseOf } from '../../budget/task-use.ts';
-import { teamWeekOf } from '../../budget/team-week.ts';
+import { teamWeekOf, type TeamWeekPaths } from '../../budget/team-week.ts';
 import { foldIntoWeekSummary } from '../../budget/week-summary.ts';
 import { readWeek, wSince, type WeekReading } from '../../budget/week.ts';
 import { NO_WORK, readWork } from '../../budget/work.ts';
@@ -57,7 +57,7 @@ import { indexMarks } from '../../inbox/marks.ts';
 import type { RepoState } from '../../push-guard/push.ts';
 import { customTitleOf, TRANSCRIPT_TAIL_BYTES } from '../../names/title.ts';
 import { TASK_ID } from '../../register/model.ts';
-import { otherTeamsOnAccount, weekUseOnAccount } from '../account-teams.ts';
+import { accountWeekOn, otherTeamsOnAccount } from '../account-teams.ts';
 import { UsageError, onePositional, requiredFlag, type Flags, type ParsedArgs } from '../args.ts';
 import { callerOf, type TypedTimes } from '../inputs.ts';
 import { leadOnly, openKit, openTeamKit, requireConfig, rosterOf, sessionIdOf, teamFolders, teamZone, type Kit } from '../kit.ts';
@@ -89,6 +89,8 @@ interface Reading {
   readonly now: number;
   readonly measured: Measured;
   readonly week: WeekReading;
+  /** The account's week files the week was read in (`accountWeekOn`); a recount reads none, and names the team's own. */
+  readonly weekPaths: TeamWeekPaths;
   readonly lifts: readonly Lift[];
   readonly bursts: readonly BurstRecord[];
 }
@@ -124,16 +126,17 @@ async function readBudget(runtime: CliRuntime, kit: Kit, config: KitConfig, rost
       maxRuns: MAX_RUNS_PER_SESSION,
     },
   );
-  const statusUse = recount ? undefined : await weekUseOnAccount(runtime, config.budget, kit.paths, now);
+  const account = recount ? undefined : await accountWeekOn(runtime, config.budget, kit.paths, now);
   const states = [...measured.bySession.values(), measured.outside];
-  const input = { budget: config.budget, now, statusUse, states };
+  const input = { budget: config.budget, now, statusUse: account?.statusUse, states };
   // A recount reads no team state, the meter log included: its rate is the configured one.
-  const week = recount
-    ? readWeek({ ...input, period: recountPeriodOf(config.budget, now), calibration: calibrationOf([]), readings: [] })
-    : await teamWeekOf(files, kit.paths, input);
+  const week =
+    account === undefined
+      ? readWeek({ ...input, period: recountPeriodOf(config.budget, now), calibration: calibrationOf([]), readings: [] })
+      : await teamWeekOf(files, account.paths, input);
   const lifts = recount ? [] : (await new LiftLog(files, kit.paths.lifts).read()).lifts;
   const bursts = recount ? [] : (await new BurstLog(files, kit.paths.bursts).read()).records;
-  return { now, measured, week, lifts, bursts };
+  return { now, measured, week, weekPaths: account?.paths ?? kit.paths, lifts, bursts };
 }
 
 /** The week now and each team session's usage, measured up to now as `budget` measures them. */
@@ -463,7 +466,7 @@ export async function extra(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const roster = await rosterOf(runtime, kit, config);
   if (caller !== undefined) {
     leadOnly(roster, caller, 'enters the extra-usage pool');
-    const { week, measured, now } = await readBudget(runtime, kit, config, roster, { recountDay: undefined });
+    const { week, measured, now, weekPaths } = await readBudget(runtime, kit, config, roster, { recountDay: undefined });
     const window = week.window;
     if (window === undefined) {
       throw new RefusedError("the week's period is unknown (no status line reading and no budget.weeklyLimitW), so the entry has no period to belong to");
@@ -475,7 +478,7 @@ export async function extra(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
       end: window.reset,
       w: wSince([...measured.bySession.values(), measured.outside], window.start, now),
     };
-    const log = new ExtraLog(runtime.files, kit.paths.extraLog);
+    const log = new ExtraLog(runtime.files, weekPaths.extraLog);
     const logged: string[] = [];
     if (added !== undefined) {
       await log.append({ ...entry, kind: 'add', usd: added });
