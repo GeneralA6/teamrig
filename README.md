@@ -139,10 +139,10 @@ once and Claude Code refuses the later edit, that member is sent back to redo it
 ### Survives a crash, a reboot and a full context
 
 Tasks, notes and inboxes live on disk, so nothing is lost with a tab. After a reboot, `teamrig restore run` reopens
-each session the shutdown killed, in its folder and at its last effort, and prompts the ones that were mid-turn to
-carry on; `teamrig restore install` runs it at each logon on Windows. When a member's context runs long, it writes a
-handover; once it is idle and you're away, teamrig restarts it after a 20-second countdown you can hold, and it carries
-on from the handover by itself.
+each session the shutdown killed, in its folder and at its last effort, never one you or teamrig closed on purpose,
+and prompts the ones that were mid-turn to carry on; `teamrig restore install` runs it at each logon on Windows. When
+a member's context runs long, it writes a handover; once it is idle and you're away, teamrig restarts it after a
+20-second countdown you can hold, and it carries on from the handover by itself.
 
 *Coming: reopening sessions at logon on macOS and Linux.*
 

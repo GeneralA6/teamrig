@@ -33,6 +33,9 @@ teamrig restore run      # reopen the sessions the last shutdown killed
   any other resumes as it ran. One that was mid-turn, hit an API error or had background jobs, cron jobs or a
   wake-up live at the shutdown gets a prompt to re-check the state and carry on, and so does each lead, told how its
   team's sessions came back; the others reopen idle. Each step is written to `restore/restore.log` in the kit home.
+- Where they come back: with `open.teamWindow: true` in a team's config, its sessions reopen in a Windows Terminal
+  window of the team's own (`teamrig-<team>`), so two teams' tabs never mix; without it, and for sessions outside a
+  team, they open in the most recent window.
 - By itself at logon: on Windows, `teamrig restore install --yes` has the system run `teamrig restore check` at
   each logon of this user, through a small launcher that finds the installed plugin each time, so a plugin update
   needs no new install. When the shutdown killed sessions, the check opens a tab titled `Restore Claude sessions`
