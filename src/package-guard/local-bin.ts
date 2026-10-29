@@ -5,7 +5,7 @@ import type { Files } from '../core/files.ts';
 const BIN_ENDINGS: readonly string[] = ['', '.cmd', '.ps1', '.exe'];
 
 /** Windows rules for a folder with a drive letter on every host, as the push guard's `Location` resolves it. */
-function pathRules(dir: string): nodePath.PlatformPath {
+export function pathRules(dir: string): nodePath.PlatformPath {
   return /^[A-Za-z]:/.test(dir) ? nodePath.win32 : nodePath;
 }
 
