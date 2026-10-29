@@ -314,7 +314,7 @@ export interface PromptsConfig {
 export type HookAsks = 'ask' | 'refuse';
 
 export interface SecretGuardConfig {
-  /** What a Bash, PowerShell, Read or Grep call that would print a secret does. */
+  /** What a Bash, PowerShell, Read or Grep call that would print a secret, or whose command line holds one as text, does. */
   readonly secretReads: SecretReads;
   /**
    * The team's own secret files, globs read after the guard's defaults (`.env`, `~/.npmrc`, `~/.ssh/**`...): `~/`
@@ -339,8 +339,10 @@ export interface SecretGuardConfig {
 
 /**
  * A call that would print a secret: a secret file's content (`cat .env`, `Get-Content ~/.npmrc`, the Read tool), the
- * whole environment (`env`, `printenv`, `Get-ChildItem Env:`), a secret variable (`echo $GITHUB_TOKEN`), or a
- * Kubernetes secret's data: `deny` refuses it, `ask` asks the human, `allow` lets it run.
+ * whole environment (`env`, `printenv`, `Get-ChildItem Env:`), a secret variable (`echo $GITHUB_TOKEN`), a
+ * Kubernetes secret's data or a dump command's output (`kubectl config view --raw`); or a Bash or PowerShell line that
+ * holds a secret as text (a token, credentials in a URL or an `Authorization` header): `deny` refuses it, `ask` asks
+ * the human, `allow` lets it run.
  */
 export type SecretReads = 'deny' | 'ask' | 'allow';
 
@@ -1136,7 +1138,7 @@ export interface KitConfig {
   readonly packageGuard: PackageGuardConfig;
   readonly commitGuard: CommitGuardConfig;
   readonly prompts: PromptsConfig;
-  /** Refuses a call that would print a secret file, the environment or a secret variable (hook-secret-guard). */
+  /** Refuses a call that would print a secret file, the environment or a secret variable, or whose line holds a secret as text (hook-secret-guard). */
   readonly secretGuard: SecretGuardConfig;
   readonly commits: CommitsConfig;
   readonly coordinator: CoordinatorConfig;

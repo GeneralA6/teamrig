@@ -115,8 +115,8 @@ export function secretPatternsOf(load: ConfigLoad | undefined): readonly string[
 
 /**
  * The PreToolUse output for a Bash, PowerShell, Read or Grep call: a refusal (or a question, as
- * `secretGuard.secretReads` says) when the call would print a secret into the conversation; else nothing, so the
- * normal permission flow decides. Under `hookAsks: refuse` the question is a refusal instead, its reason saying what
+ * `secretGuard.secretReads` says) when the call would print a secret into the conversation or its command line holds
+ * one as text; else nothing, so the normal permission flow decides. Under `hookAsks: refuse` the question is a refusal instead, its reason saying what
  * to do (see `holdBack`).
  */
 export function secretGuardOutput(payload: unknown, env: SecretGuardEnv): string {
