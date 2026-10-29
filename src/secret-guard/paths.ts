@@ -6,6 +6,7 @@ import { globRegExp, hasWildcard, type GlobOptions } from './glob.ts';
 /**
  * The files whose content is a secret, and how a word on a command line names one. A team's own globs come after
  * these, in order, and the last glob that matches a path decides, as in a `.gitignore`: `!glob` keeps a path readable.
+ * Claude Code's own stores and the shells' histories are among them: a secret typed or allowed once stays in them.
  */
 export const DEFAULT_SECRET_PATHS: readonly string[] = [
   '**/.env',
@@ -20,6 +21,12 @@ export const DEFAULT_SECRET_PATHS: readonly string[] = [
   '~/.docker/config.json',
   '~/.git-credentials',
   '~/.config/gh/hosts.yml',
+  '~/.claude/.credentials.json',
+  '~/.claude/history.jsonl',
+  '**/.claude/settings.local.json',
+  '~/.bash_history',
+  '~/.zsh_history',
+  '**/PSReadLine/*_history.txt',
   '**/*.pem',
   '**/*.key',
 ];
