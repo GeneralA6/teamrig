@@ -134,6 +134,23 @@ describe('secret patterns', () => {
     });
   }
 
+  it('captures the secret itself in the secretGroup of a pattern that frames it', () => {
+    const framed = [
+      { id: 'url-credentials', text: join('amqp://', 'app', ':', 's3cret', '@', 'queue.local:5672'), value: 's3cret' },
+      { id: 'auth-header', text: join('curl -H "Authorization: ', 'Bearer ', 'q7Wd'.repeat(5), '" https://x'), value: 'q7Wd'.repeat(5) },
+    ];
+    assert.deepEqual(
+      ALL.filter(({ secretGroup }) => secretGroup !== undefined).map(({ id }) => id),
+      framed.map(({ id }) => id),
+    );
+    for (const { id, text, value } of framed) {
+      const found = ALL.find((candidate) => candidate.id === id);
+      const group = found?.secretGroup;
+      assert.ok(found !== undefined && group !== undefined, id);
+      assert.equal(found.pattern.exec(text)?.[group], value, id);
+    }
+  });
+
   it('lets commit shas, ids and ordinary prose through every pattern', () => {
     const clean = ['3f9a1c0e7b2d4f6a8c0e2b4d6f8a0c2e4b6d8f0a', '83b3049', 'T249 push guard', 'the skeleton key opens nothing', 'ask before a push to main'];
     for (const text of clean) {

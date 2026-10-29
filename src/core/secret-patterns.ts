@@ -12,6 +12,8 @@ export interface SecretPattern {
   readonly description: string;
   /** Has no `g` flag, so `test` keeps no state between calls; the scrub adds `g` when it scans for every match. */
   readonly pattern: RegExp;
+  /** The group holding the secret itself, for a shape that frames it (a URL's password); unset, the whole match is the secret. */
+  readonly secretGroup?: number;
 }
 
 /**
@@ -46,11 +48,12 @@ export const SECRET_TOKEN_PATTERNS: readonly SecretPattern[] = [
  * (`$TOKEN`, `${TOKEN}`, `<token>`, `%TOKEN%`) or a word under 8 characters is not one.
  */
 export const SECRET_TEXT_PATTERNS: readonly SecretPattern[] = [
-  { id: 'url-credentials', description: 'credentials in a URL', pattern: /\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]+:[^\s/@]+@/i },
+  { id: 'url-credentials', description: 'credentials in a URL', pattern: /\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]+:([^\s/@]+)@/i, secretGroup: 1 },
   {
     id: 'auth-header',
     description: 'credentials in an Authorization header',
-    pattern: /\bauthorization["']?\s*[:=]\s*["']?(?:bearer|basic|token|digest)\s+(?![$<{%])[^\s"']{8,}/i,
+    pattern: /\bauthorization["']?\s*[:=]\s*["']?(?:bearer|basic|token|digest)\s+((?![$<{%])[^\s"']{8,})/i,
+    secretGroup: 1,
   },
   { id: 'secret-assignment', description: 'password or key assignment', pattern: /(?:password|passwd|secret|api[_-]?key)(?<!\/[\w.-]*)["']?\s*[=:]\s*\S/i },
 ];
