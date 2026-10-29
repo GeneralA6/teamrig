@@ -4,7 +4,7 @@ import type { KitConfig } from '../../config/types.ts';
 import type { TeamTree } from '../../config/tree.ts';
 import { formatAddress, splitAddress, type SessionAddress } from '../../core/address.ts';
 import { errorMessage } from '../../core/guards.ts';
-import { KIT_NAME, type TeamPaths } from '../../core/home.ts';
+import { KIT_NAME } from '../../core/home.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import { JsonlDailyLog } from '../../core/daily-log.ts';
 import { SecretScanner } from '../../core/secrets.ts';
@@ -38,7 +38,7 @@ import type { RegisterSnapshot, RetiredTasks } from '../../register/snapshot.ts'
 import { readStopgapTags, stopgapFlags, stopgapTags } from '../../register/stopgap.ts';
 import { dueStartHolds, dueVerifyHold, heldStart, heldStartNotice, metStartNotice, startHolds, verifyQueue, watchQueue, type DueVerify } from '../../register/verify.ts';
 import { readAs, TaskTree, type TaskElsewhere } from '../../register/tree.ts';
-import { approvalNotice, askedNotice, assignedNotice, endedNotice, formatTask, formatTaskDetail, formatTaskTree, formatVerifyRow, formatWatchRow, personWaitNotice, selectTasks, type ListFilter } from '../../register/views.ts';
+import { approvalNotice, askedNotice, endedNotice, formatTask, formatTaskDetail, formatTaskTree, formatVerifyRow, formatWatchRow, personWaitNotice, selectTasks, type ListFilter } from '../../register/views.ts';
 import { isPeerWait, sameWait, type PersonWait } from '../../register/waits.ts';
 import { lintSkills } from '../../skills/lint.ts';
 import { SKILL_FILE, SkillDir } from '../../skills/store.ts';
@@ -46,15 +46,14 @@ import { weekUseOnAccount } from '../account-teams.ts';
 import { readWideAllow } from '../allow-scope.ts';
 import { noPositionals, onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
 import { addInputOf, callerOf, changesOf, criticalOf, deadlineOf, listFilterOf, NONE, pinOf, setInputOf, taskIdOf, taskRefOf, weekOf, type TypedTimes } from '../inputs.ts';
-import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, projectFolder, requireConfig, rosterOf, sessionIdOf, teamZone, type Access, type Kit } from '../kit.ts';
+import { findTeam, openKit, pastOrPresentIdOf, projectFolder, requireConfig, rosterOf, sessionIdOf, teamZone } from '../kit.ts';
 import { checkLines, listLines, SHORT_TITLE_CHARS, waitingOnLines, type CheckReport, type CheckSection, type LeadDecisions, type TaskRow } from '../reports.ts';
 import { idlePassWarnings } from '../idle-pass-check.ts';
 import { ownerBatchOf, type BatchedTeam } from '../owner-batch.ts';
 import { rollUp, type RolledTeam, type RollUp } from '../roll-up.ts';
 import { splitUnowned } from '../unowned.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { leadAboveOf, loadTree, skillOwnersElsewhere, type KitTree, type TreeTeam } from '../tree.ts';
-import { teamRegister } from '../team-register.ts';
+import { loadTree, skillOwnersElsewhere, type KitTree, type TreeTeam } from '../tree.ts';
 import { readBursts } from '../burst-reading.ts';
 import { readScaleOutBudget } from '../hire-cost.ts';
 import { readWPerPct } from '../stored-week.ts';
@@ -65,31 +64,11 @@ import { inboxDepsOf } from './inbox.ts';
 import { markBoundary } from './refresh.ts';
 import { markKeepWorkingAsk } from './keep-working.ts';
 import { markRetireAsk } from './retire-ask.ts';
-
-interface Team {
-  readonly config: KitConfig;
-  readonly paths: TeamPaths;
-  readonly register: Register;
-  readonly roster: Roster;
-  /** The zone the team's people read and type times in. */
-  readonly zone: TimeZone;
-  /** The parent team's lead, who approves the lead's own work (T1140); undefined on a root team. */
-  readonly above: SessionAddress | undefined;
-}
+import { openTeam, postNamed, teamOf, tellAssigned, tellLine, type Team } from './register-team.ts';
 
 /** What a time the caller types is read against: this moment and the zone of the caller's own team. */
 function typedTimes(runtime: CliRuntime, zone: TimeZone): TypedTimes {
   return { nowMs: runtime.clock.now(), zone };
-}
-
-async function teamOf(runtime: CliRuntime, kit: Kit, access: Access): Promise<Team> {
-  const config = requireConfig(kit, runtime, access);
-  const above = await leadAboveOf(runtime, kit.paths.team, config);
-  return { config, paths: kit.paths, register: teamRegister(runtime, kit.paths, config, above), roster: await rosterOf(runtime, kit, config), zone: teamZone(config, runtime), above };
-}
-
-async function openTeam(runtime: CliRuntime, access: Access): Promise<Team> {
-  return teamOf(runtime, await openTeamKit(runtime), access);
 }
 
 /** The owner as an id; a source naming a session becomes its id, the owner's marker or a past session's id stays. */
@@ -289,11 +268,6 @@ async function tellNewOwner(runtime: CliRuntime, team: Team, by: string, verdict
   await tellAssigned(runtime, team, by, task);
 }
 
-/** One inbox line telling a task's owner the task is its own; `shown` names the owner in the NOTE (another team's by address). */
-async function tellAssigned(runtime: CliRuntime, team: Team, by: string, task: Task, shown = task.owner): Promise<void> {
-  await tellLine(runtime, team, by, task.owner, assignedNotice(task, team.zone), `${shown} was not told of ${task.id}`, shown);
-}
-
 /**
  * One inbox line to each leader that a write set a task waiting on, or a verifying task's proof, for a decision or an
  * approval it did not wait on before: a wait on one of the task owner's leaders (the lead, or a sub-lead, T781) goes
@@ -451,26 +425,6 @@ async function ownerWaitOf(runtime: CliRuntime, team: Team, { task, state, elsew
   const home = askedBy === undefined ? undefined : loaded.teams.get(askedBy.team);
   const timing = waitTiming(batch, task, new TaskTree(state.tasks, new Date(now), team.zone, undefined, elsewhere), now);
   return { timing, askedBy: askedBy === undefined || home === undefined ? undefined : { address: askedBy, home } };
-}
-
-/** Posts one inbox line, naming it on stderr, or naming `unsent` and why: a line that cannot be posted is never thrown. */
-async function tellLine(runtime: CliRuntime, team: Team, by: string, to: string, text: string, unsent: string, shown = to): Promise<boolean> {
-  return postNamed(runtime, team.paths, new SecretScanner(team.config.register.secretPatterns), { to, from: by, text }, unsent, shown);
-}
-
-/** Posts one line to an inbox of the team at `paths`, naming it on stderr as `shown`, or naming `unsent` and why; true when posted. */
-async function postNamed(
-  runtime: CliRuntime,
-  paths: TeamPaths,
-  secrets: SecretScanner,
-  line: { readonly to: string; readonly from: string; readonly text: string },
-  unsent: string,
-  shown: string,
-): Promise<boolean> {
-  const { inboxes } = inboxDepsOf(runtime, paths);
-  const problem = await postLine(inboxes, secrets, { ...line, now: new Date(runtime.clock.now()) });
-  runtime.out.stderr(problem === undefined ? `NOTE ${shown} has an inbox line: ${line.text}` : `WARN ${unsent}: ${problem}`);
-  return problem === undefined;
 }
 
 /**
