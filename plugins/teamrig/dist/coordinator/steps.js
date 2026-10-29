@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { endOf } from "../test-run/shell.js";
+import { lowerStep, NODE_PRIORITIES } from "./priority.js";
 import { nodeTreeKill } from "./tree-kill.js";
 /** The exit code recorded for a step killed at its time limit, as `timeout(1)` reports one. */
 export const TIMED_OUT_EXIT = 124;
@@ -19,10 +20,11 @@ export function exitCodeOf(end) {
     }
 }
 /**
- * The real runner: Node's `spawn` in the platform's shell, with inherited stdio; its time limit or its `stop` kills
- * the tree. A killed step is reported once the kill is done, so the next holder never shares the host with it.
+ * The real runner: Node's `spawn` in the platform's shell, with inherited stdio, lowered to below-normal priority as
+ * it starts, before its shell starts anything; its time limit or its `stop` kills the tree. A killed step is reported
+ * once the kill is done, so the next holder never shares the host with it.
  */
-export function nodeStepRunner(platform, kill = nodeTreeKill(platform)) {
+export function nodeStepRunner(platform, kill = nodeTreeKill(platform), priorities = NODE_PRIORITIES) {
     return {
         run: (request) => new Promise((resolve, reject) => {
             const child = spawn(request.command, {
@@ -33,6 +35,9 @@ export function nodeStepRunner(platform, kill = nodeTreeKill(platform)) {
                 windowsHide: true,
                 detached: platform !== 'win32',
             });
+            if (child.pid !== undefined) {
+                lowerStep(priorities, child.pid);
+            }
             let killed;
             const killAs = (why) => {
                 if (killed !== undefined) {
