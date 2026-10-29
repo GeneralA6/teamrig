@@ -2271,7 +2271,9 @@ in the folder Claude Code files its transcript under, the worktree it went into 
 prints `resumed in <folder>` then), else the folder it started in, or the nearest existing parent of a folder that
 is gone. With [open.teamWindow] on, a team's sessions reopen in the team's own Windows Terminal window; the
 restore's own tab, and sessions outside a team, open in the most recent one. Each step is written to
-`<home>/restore/restore.log`. A tab that did not open is printed with the command to run, and the command exits 1.
+`<home>/restore/restore.log`, between a `run: started, <n> to reopen` line and a `run: done, ... of <n>` line; a
+run its tab's closing or Ctrl+C stops writes `run: interrupted by <signal>` and how far it got instead. A tab that
+did not open is printed with the command to run, and the command exits 1.
 
 Flags:
 

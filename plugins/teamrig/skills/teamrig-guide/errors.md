@@ -205,6 +205,7 @@ From `teamrig restore install` and `uninstall` ([commands.md](commands.md#teamri
 | `REFUSED teamrig can set up the logon check on Windows only so far, not on linux; ...` | Run `teamrig restore run` after a crash or reboot. |
 | `FAILED SET <entry>: ...: PowerShell ended with exit 1: ...` (exit 1) | The steps done before it are listed under it: fix the reason it names, then run install again, which redoes only what is missing. |
 | A `logon:` line in `<kit home>/restore/restore.log` | The check at logon did not run or failed, and the line says why; `teamrig restore run` reopens the sessions by hand. |
+| `run: interrupted by <signal> after <counts>` in `<kit home>/restore/restore.log`, or a `run: started` line with no `run: done` after it | The restore's tab was closed (or the run was killed) before every session reopened; `teamrig restore` lists those still to reopen and `teamrig restore run` reopens them. |
 
 ## Usage errors (exit 64)
 
