@@ -7,7 +7,7 @@ import { planScope, wideAllowOf } from "../permissions/trim.js";
 /**
  * The Claude Code settings files a team's sessions run under, for `permissions trim` and its flag in doctor and `check`
  * (which `start` shows the lead): the person's user settings, the project folder and each repository the coordinator
- * integrates (`coordinator.repos`), each with the worktrees Claude Code made in it.
+ * merges into (`coordinator.repos`), each with the worktrees Claude Code made in it.
  */
 export async function teamSettingsScope(runtime, { paths, config, project }) {
     const repos = Object.values(config.coordinator.repos).map((repo) => teamPlace(paths, repo.mainCheckout));

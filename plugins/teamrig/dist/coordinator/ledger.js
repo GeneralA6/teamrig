@@ -6,7 +6,7 @@ export const LEDGER_FILE = 'ledger.jsonl';
 /** The people's ledger beside it: one line a deploy, appended. */
 export const LEDGER_MD_FILE = 'ledger.md';
 /** The first line of a ledger.md teamrig starts. */
-export const LEDGER_MD_HEADER = '# Deploy ledger: one line a deploy: rolled at (UTC) | session | repo | range | what | kind | note';
+export const LEDGER_MD_HEADER = '# Deploy ledger: one line a deploy: deployed at (UTC) | session | repo | range | what | kind | note';
 function short(sha) {
     return sha.slice(0, 8);
 }
@@ -23,7 +23,7 @@ export function rangeText(commits, fallback) {
 export async function appendRecord(files, ledger, record) {
     await files.append(ledger, `${JSON.stringify(record)}\n`);
 }
-/** A deploy's ledger.md line, `- <rolled at> | session | repo | range | what | kind | note`; a `|` or line break in a field becomes `/`. */
+/** A deploy's ledger.md line, `- <deployed at> | session | repo | range | what | kind | note`; a `|` or line break in a field becomes `/`. */
 export function ledgerLine(record) {
     const fields = [record.session, record.repo, record.range, record.what, record.kind, record.note].map((field) => field.replace(/[|\r\n]/g, '/'));
     return `- ${formatUtcMinute(new Date(record.rolledAt))} | ${fields.join(' | ')}`;

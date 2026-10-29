@@ -1,6 +1,6 @@
 import { basename, dirname, resolve } from 'node:path';
 import { outcome, query, queryLine, runGit } from "../core/git-run.js";
-/** The remote a branch is pushed to, and the one a roll deploys from. */
+/** The remote a branch is pushed to, and the one a deploy pulls from. */
 export const ORIGIN = 'origin';
 /** A fetch, a push of a deleted branch or a rebase talks to a remote or rewrites commits: allow it far longer than a query. */
 const LONG_TIMEOUT_MS = 120_000;
@@ -34,7 +34,7 @@ function refusedAsOption(name, what) {
     return name.startsWith('-') ? { ok: false, reason: `${what} refused "${name}": a branch or commit name never starts with "-"` } : undefined;
 }
 /** The git CLI. */
-export const GIT_INTEGRATE = {
+export const GIT_MERGE = {
     checkoutOf(dir) {
         const [top, gitDir, commonDir] = lines(query(dir, ['rev-parse', '--path-format=absolute', '--show-toplevel', '--git-dir', '--git-common-dir']));
         if (top === undefined || gitDir === undefined || commonDir === undefined) {

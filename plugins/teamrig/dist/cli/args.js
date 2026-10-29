@@ -13,7 +13,7 @@ export const HELP_FLAGS = new Set(['--help', '-h']);
 /** Ends a command's own flags: every word after it belongs to the command line it runs. */
 export const REST_MARKER = '--';
 /** The command a line names: two words when they form a command (`inbox read`), else one; a group word before `--help`. */
-function commandOf(argv, commandFlags) {
+function commandOf(argv, commandFlags, renamedCommands) {
     const [first = '', second] = argv;
     const pair = `${first} ${second ?? ''}`;
     if (second !== undefined && commandFlags[pair] !== undefined) {
@@ -29,7 +29,8 @@ function commandOf(argv, commandFlags) {
         .filter((name) => name.startsWith(`${first} `))
         .map((name) => name.slice(first.length + 1));
     if (actions.length === 0) {
-        throw new UsageError(`unknown command "${first}"`);
+        const renamed = renamedCommands[first];
+        throw new UsageError(renamed === undefined ? `unknown command "${first}"` : `${first} was renamed: use ${renamed}`);
     }
     if (second !== undefined && HELP_FLAGS.has(second)) {
         return { command: first, tail: argv.slice(1) };
@@ -39,12 +40,13 @@ function commandOf(argv, commandFlags) {
 /**
  * Splits `<command> [words] [--name value] [--switch]...`. Only the command's own flags are
  * accepted, so a typo is refused instead of silently meaning nothing; every flag takes exactly one
- * value, except the command's switches, which take none. A renamed flag is refused with its new name.
- * `--help` or `-h` after the command stops the reading: the line asks for that command's help. On a
- * command that takes a command line, `--` ends the reading too: the words after it are its `rest`.
+ * value, except the command's switches, which take none. A renamed flag or command is refused with its
+ * new name. `--help` or `-h` after the command stops the reading: the line asks for that command's help.
+ * On a command that takes a command line, `--` ends the reading too: the words after it are its `rest`.
  */
-export function parseArgs(argv, commandFlags, commandSwitches = {}, renamedFlags = {}, restCommands = new Set()) {
-    const { command, tail } = commandOf(argv, commandFlags);
+export function parseArgs(argv, commandFlags, commandSwitches = {}, renamed = {}, restCommands = new Set()) {
+    const renamedFlags = renamed.flags ?? {};
+    const { command, tail } = commandOf(argv, commandFlags, renamed.commands ?? {});
     const allowed = commandFlags[command] ?? [];
     const switchable = commandSwitches[command] ?? [];
     const positionals = [];

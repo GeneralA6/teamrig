@@ -14,8 +14,8 @@ function touches(targets, target) {
 /**
  * The deploys and heavy steps of the ledger as disruptions. A deploy comes from its ledger.md line, which a session
  * may write by hand; a deploy record of the same session and repository in the same minute gives its real start, else
- * it is taken to have rolled for `assumedRollMs`. It disturbs the targets that record names, else its repository's,
- * until `settleMs` after it rolled. A heavy step loads the whole host. One with no end record is still running, or was killed before it could
+ * it is taken to have run for `assumedDeployMs`. It disturbs the targets that record names, else its repository's,
+ * until `settleMs` after it deployed. A heavy step loads the whole host. One with no end record is still running, or was killed before it could
  * write one: it ends at the first of now, the next heavy step's start (the host lock is exclusive, so it was free by
  * then) and its start plus the lock's time to live.
  */
@@ -25,7 +25,7 @@ export function disruptions(input) {
         const minute = Math.floor(line.rolledAt / MINUTE_MS);
         const twin = deploys.find((record) => record.session === line.session && record.repo === line.repo && Math.floor(Date.parse(record.rolledAt) / MINUTE_MS) === minute);
         return {
-            from: twin === undefined ? line.rolledAt - input.assumedRollMs : Date.parse(twin.startedAt),
+            from: twin === undefined ? line.rolledAt - input.assumedDeployMs : Date.parse(twin.startedAt),
             to: line.rolledAt + input.settleMs,
             targets: twin?.targets ?? input.targetsOf(line.repo),
         };

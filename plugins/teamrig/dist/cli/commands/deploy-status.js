@@ -5,7 +5,7 @@ import { parseLedger } from "../../coordinator/ledger.js";
 import { coordinatorPlaces, teamPlace } from "../../coordinator/places.js";
 import { blackoutStart, heavyCutoffSpan } from "../../coordinator/schedule.js";
 import { loadsOf } from "../../coordinator/windows.js";
-import { plural, readPending, rollRepos, short } from "../../roll/pending.js";
+import { deployRepos, plural, readPending, short } from "../../deploy/pending.js";
 import { hostLockOf, nextResetFrom } from "../coordinator-ports.js";
 import { openTeamKit, requireConfig, teamZone } from "../kit.js";
 import { EXIT } from "../runtime.js";
@@ -37,7 +37,7 @@ function blackoutText(nowMs, reset, hours, zone) {
     }
     const from = blackoutStart(reset, hours);
     const inForce = nowMs >= from ? 'IN FORCE ' : '';
-    return `${inForce}${zone.weekdayMinute(new Date(from))} until ${zone.weekdayMinute(new Date(reset.at))} (no integrate or roll; reset from the ${reset.source})`;
+    return `${inForce}${zone.weekdayMinute(new Date(from))} until ${zone.weekdayMinute(new Date(reset.at))} (no merge or deploy; reset from the ${reset.source})`;
 }
 function loadText(load, zone) {
     const on = load.targets === 'host' ? 'the whole host' : load.targets.join(',');
@@ -46,21 +46,21 @@ function loadText(load, zone) {
 function pendingText(read) {
     switch (read.kind) {
         case 'pending':
-            return `${plural(read.pending.commits.length, 'commit')} pushed, not rolled (${read.pending.range})`;
+            return `${plural(read.pending.commits.length, 'commit')} pushed, not deployed (${read.pending.range})`;
         case 'none':
-            return `nothing to roll: the main checkout is at origin (${short(read.head)})`;
+            return `nothing to deploy: the main checkout is at origin (${short(read.head)})`;
         case 'refused':
-            return `a roll would refuse: ${read.reason}`;
+            return `a deploy would refuse: ${read.reason}`;
         case 'failed':
             return `cannot read what is pending: ${read.reason}`;
     }
 }
 /**
- * `teamrig deploys`: the deploy state now, in one read. The host lock's holder (a stale lock is free, since the next
+ * `teamrig deploy-status`: the deploy state now, in one read. The host lock's holder (a stale lock is free, since the next
  * heavy step removes it), the heavy cutoff and the reset blackout, the quiet claims and loads still open, and what each
- * repository with a roll block has pushed but not rolled; it fetches each main checkout to tell. Exit 0.
+ * repository with a deploy block has pushed but not deployed; it fetches each main checkout to tell. Exit 0.
  */
-export async function deploys(_args, runtime) {
+export async function deployStatus(_args, runtime) {
     const nowMs = runtime.clock.now();
     const kit = await openTeamKit(runtime);
     const config = requireConfig(kit, runtime, 'read');
@@ -89,12 +89,12 @@ export async function deploys(_args, runtime) {
     const loads = loadsOf(parseLedger((await runtime.files.read(places.ledger)) ?? ''), nowMs).filter((load) => load.open);
     say(`loads: ${loads.length === 0 ? 'none' : loads.length}`);
     loads.forEach((load) => say(loadText(load, zone)));
-    const repos = rollRepos(coordinator, (path) => teamPlace(kit.paths, path));
+    const repos = deployRepos(coordinator, (path) => teamPlace(kit.paths, path));
     if (repos.length === 0) {
-        say('rolls: no repository in coordinator.repos has a roll block');
+        say('deploys: no repository in coordinator.repos has a deploy block');
     }
     for (const repo of repos) {
-        say(`${repo.name}: ${pendingText(await readPending(runtime.integrateGit, repo))}`);
+        say(`${repo.name}: ${pendingText(await readPending(runtime.mergeGit, repo))}`);
     }
     return EXIT.ok;
 }

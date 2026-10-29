@@ -60,7 +60,7 @@ function askOf(flags, coordinator, times) {
  * `teamrig windows --targets <a,b> --since <time> [--until <time>] [--settle <span>] [--min <span>]`: the clean
  * measurement windows of each target, so a session compares a metric over stretches no change touched. A deploy of a
  * repository that deploys the target disturbs it from the deploy's start until it settled, unless its record names
- * other targets (`roll --targets`); a heavy step disturbs the whole host. Each window names the declared loads (`teamrig load`) it overlaps. `--until` is cut to now.
+ * other targets (`deploy --targets`); a heavy step disturbs the whole host. Each window names the declared loads (`teamrig load`) it overlaps. `--until` is cut to now.
  */
 export async function windows(args, runtime) {
     const nowMs = runtime.clock.now();
@@ -81,7 +81,7 @@ export async function windows(args, runtime) {
             records,
             targetsOf: (repo) => repoTargets.get(repo) ?? [],
             settleMs: settle * MINUTE_MS,
-            assumedRollMs: coordinator.windows.assumedRollMinutes * MINUTE_MS,
+            assumedDeployMs: coordinator.windows.assumedDeployMinutes * MINUTE_MS,
             lockTtlMs: coordinator.heavy.lockTtlMinutes * MINUTE_MS,
             nowMs,
         });

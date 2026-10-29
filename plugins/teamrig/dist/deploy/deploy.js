@@ -2,33 +2,33 @@ import { takeWhenClear } from "../coordinator/clearance.js";
 import { underLock } from "../coordinator/host-lock.js";
 import { appendDeploy } from "../coordinator/ledger.js";
 import { recordHeavy } from "../coordinator/recorded-step.js";
-import { askGates, shownLine } from "./gates.js";
+import { askChecks, shownLine } from "./checks.js";
 import { hookEndText, hookExitCode, succeeded } from "./hooks.js";
 import { short } from "./pending.js";
-import { chosenRepo, scheduleReadiness, shownBy } from "./roll.js";
+import { chosenRepo, scheduleReadiness, shownBy } from "./run.js";
 /**
- * `teamrig roll --targets <a,b> --what "<why>" -- <command>`: a deploy that pulls nothing, such as the restart that
+ * `teamrig deploy --targets <a,b> --what "<why>" -- <command>`: a deploy that pulls nothing, such as the restart that
  * makes some of a repository's targets read a rotated secret on the same image. It goes by the rules of that
- * repository's roll: the heavy cutoff and the reset blackout refuse it, quiet claims on the targets it names hold it,
- * and the repository's gates hold or refuse it, asked again under the host lock. Then it runs the command, one heavy
+ * repository's deploy: the heavy cutoff and the reset blackout refuse it, quiet claims on the targets it names hold it,
+ * and the repository's checks hold or refuse it, asked again under the host lock. Then it runs the command, one heavy
  * step in the ledger, and records a deploy of those targets, so `teamrig windows` counts only them as disturbed.
  */
 const MINUTE_MS = 60_000;
-/** The gates' and the command's environment: this process's, with the deploy's `TEAMRIG_*` variables. */
-function deployEnv(setup, ports, request, repo) {
+/** The checks' and the command's environment: this process's, with the deploy's `TEAMRIG_*` variables. */
+function redeployEnv(setup, ports, request, repo) {
     return {
         ...ports.env,
         TEAMRIG_TEAM: setup.team,
         TEAMRIG_SESSION: request.session,
-        TEAMRIG_VERB: 'deploy',
+        TEAMRIG_VERB: 'redeploy',
         TEAMRIG_REPO: repo.name,
         TEAMRIG_DEPLOY_TARGETS: request.targets.join(','),
     };
 }
-/** Why the request may not deploy what it names: no targets, or one the repository's roll does not deploy. */
+/** Why the request may not deploy what it names: no targets, or one not in the repository's deploy targets. */
 function targetsProblem(repo, targets) {
-    const known = repo.roll.targets;
-    const listed = `coordinator.repos.${repo.name}.roll.targets (${known.length === 0 ? 'none set' : known.join(', ')})`;
+    const known = repo.deploy.targets;
+    const listed = `coordinator.repos.${repo.name}.deploy.targets (${known.length === 0 ? 'none set' : known.join(', ')})`;
     if (targets.length === 0) {
         return `name the targets the command restarts, from ${listed}`;
     }
@@ -57,7 +57,7 @@ async function runCommand(setup, ports, request, env) {
     return { end, lastLine };
 }
 /** Deploys some of a repository's targets with a command that pulls nothing (see the module comment). */
-export async function deployTargets(setup, ports, request) {
+export async function redeployTargets(setup, ports, request) {
     const chosen = chosenRepo(setup, ports, request);
     if (chosen.kind === 'refused') {
         return chosen;
@@ -72,13 +72,13 @@ export async function deployTargets(setup, ports, request) {
         return { kind: 'refused', reason: `${repo.main} (coordinator.repos.${repo.name}.mainCheckout) names no commit at HEAD, so the deploy could not record what it ran on` };
     }
     const targets = request.targets.join(', ');
-    const env = deployEnv(setup, ports, request, repo);
+    const env = redeployEnv(setup, ports, request, repo);
     const readiness = async (phase) => {
         const stopped = await scheduleReadiness(setup, ports, request.targets);
         if (stopped !== undefined) {
             return stopped;
         }
-        const answer = await askGates(repo.roll.gates, phase, { hooks: ports.hooks, scanner: ports.scanner, cwd: repo.main, env, timeoutSeconds: setup.coordinator.gateTimeoutSeconds });
+        const answer = await askChecks(repo.deploy.checks, phase, { hooks: ports.hooks, scanner: ports.scanner, cwd: repo.main, env, timeoutSeconds: setup.coordinator.checkTimeoutSeconds });
         return answer.readiness;
     };
     const { wait } = setup.coordinator;
