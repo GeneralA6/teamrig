@@ -34,7 +34,7 @@ function lineReads(tool: string | undefined, command: string, rules: ReadonlyRul
   }
 }
 
-/** True when the call would print a secret into the conversation (hooks/secret-guard.ts). */
+/** True when the call would print a secret into the conversation or its line holds one as text (hooks/secret-guard.ts). */
 export type PrintsSecret = (payload: JsonRecord) => boolean;
 
 /** True when the call is a Bash or PowerShell line whose every command provably only reads, and none prints a secret. */
