@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
+import { lowerStep, NODE_PRIORITIES, type Priorities } from '../coordinator/priority.ts';
 import { NOT_STARTED_EXIT } from '../coordinator/recorded-step.ts';
 import { exitCodeOf, type StepEnd } from '../coordinator/steps.ts';
 import { nodeTreeKill, type RunKill, type TreeKill } from '../coordinator/tree-kill.ts';
@@ -63,10 +64,11 @@ export function hookEndText(end: HookEnd): string {
 }
 
 /**
- * The real runner: Node's `spawn` with no shell, stdout read line by line; its time limit or its `stop` kills the
- * tree. A killed hook is reported once the kill is done.
+ * The real runner: Node's `spawn` with no shell, stdout read line by line, lowered to below-normal priority as it
+ * starts, as a heavy step is (a merge or deploy command is one); its time limit or its `stop` kills the tree. A killed
+ * hook is reported once the kill is done.
  */
-export function nodeHookRunner(platform: NodeJS.Platform, kill: TreeKill = nodeTreeKill(platform)): HookRunner {
+export function nodeHookRunner(platform: NodeJS.Platform, kill: TreeKill = nodeTreeKill(platform), priorities: Priorities = NODE_PRIORITIES): HookRunner {
   return {
     run: (request) =>
       new Promise((resolve) => {
@@ -90,6 +92,9 @@ export function nodeHookRunner(platform: NodeJS.Platform, kill: TreeKill = nodeT
           windowsHide: true,
           detached: platform !== 'win32',
         });
+        if (child.pid !== undefined) {
+          lowerStep(priorities, child.pid);
+        }
         let killed: RunKill | undefined;
         const killAs = (why: RunKill['why']): void => {
           if (killed !== undefined) {
