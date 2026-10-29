@@ -82,6 +82,11 @@ log, both in `src/core/jsonl.ts`); a store without that check needs one first. A
 current format with `fieldPaths` (`src/testing/field-paths.ts`), as `src/budget/store.test.ts` does for the
 usage files.
 
+The task pane (teamrig-pane) reads through a copy of the modules `src/read/index.ts` reaches, kept in its
+`hooks/core`. A raise of a format among them needs that copy re-synced (the pane's `dev-sync-core` skill): until
+then the pane counts each line of the new format as one from a newer teamrig and skips it. The pane's gate
+(`scripts/sync-core.ts --formats`) fails while its copy trails `main`, so the pane cannot ship behind it.
+
 ## The local gate
 CI (`.github/workflows/ci.yml`) runs on each pull request and each push to `main`, but every job skips while the
 repository is private, where GitHub Actions minutes bill, so it checks only once the repository is public. Its
