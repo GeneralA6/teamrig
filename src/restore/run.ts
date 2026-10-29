@@ -2,8 +2,10 @@ import type { EffortLevel } from '../config/types.ts';
 import { errorMessage } from '../core/guards.ts';
 import type { Clock, Sleep } from '../core/lock.ts';
 import type { PathProbe } from '../core/path-probe.ts';
+import { samePath } from '../core/paths.ts';
 import { customTitleOf } from '../names/title.ts';
 import { CARRY_TAIL_BYTES } from '../refresh/carry.ts';
+import { resumeFolderOf } from '../sessions/resume-folder.ts';
 import type { Countdown } from './countdown.ts';
 import type { RestoreEntry } from './entry.ts';
 import {
@@ -37,7 +39,7 @@ export const TAB_STAGGER_MS = 4_000;
 export interface ReopenTab {
   readonly claudeSession: string;
   readonly title: string;
-  /** Its own folder, or the nearest existing parent when that is gone. */
+  /** The folder `claude --resume` finds its transcript from, else its own folder or the nearest existing parent of it. */
   readonly folder: string;
   readonly team: TeamSession | undefined;
   readonly effort: EffortLevel | undefined;
@@ -58,6 +60,9 @@ export interface RestoreDeps {
   readonly teams: readonly RestoreTeam[];
   /** Where a session whose folder and every parent of it are gone reopens: the person's home folder. */
   readonly home: string;
+  /** Claude Code's folder of project transcripts, whose subfolder holding a transcript names the folder it resumes from. */
+  readonly projectsDir: string;
+  readonly platform: NodeJS.Platform;
   /** Whether the session's recorded process still runs Claude Code. */
   stillRunning(entry: RestoreEntry): Promise<boolean>;
   /** Where the session's transcript is now; undefined when none is left. */
@@ -71,6 +76,8 @@ export interface RestoreDeps {
 /** A session the restore reopens: why, as which team session or title, and how it comes back. */
 export interface RestoreItem extends Judged {
   readonly transcript: string | undefined;
+  /** The folder `claude --resume` finds its transcript from (`resumeFolderOf`); undefined when no folder it ran in does. */
+  readonly resumeFolder: string | undefined;
   readonly label: string;
   readonly team: TeamSession | undefined;
   readonly lost: LostWork;
@@ -109,7 +116,29 @@ async function itemOf(deps: RestoreDeps, facts: JudgeFacts, judged: Judged): Pro
   const lost = lostWorkOf(text, Buffer.byteLength(text, 'utf8') >= CARRY_TAIL_BYTES, diedAt(entry, facts.shutdownStart));
   const team = teamSessionOf(entry, deps.teams);
   const label = team?.name ?? customTitleOf(text) ?? `Claude ${entry.claudeSession.slice(0, 8)}`;
-  return { ...judged, transcript, label, team, lost, effort: lastRecordedEffort(text), ...chooseMode(entry, lost, team?.isLead === true) };
+  const resumeFolder = transcript === undefined ? undefined : resumeFolderOf(transcript, text, entry.projectDir, deps.projectsDir, deps.platform);
+  return { ...judged, transcript, resumeFolder, label, team, lost, effort: lastRecordedEffort(text), ...chooseMode(entry, lost, team?.isLead === true) };
+}
+
+/** Where a restored session reopens, and why there when that is not the folder it started in. */
+interface ReopenFolder {
+  readonly folder: string;
+  readonly note: string | undefined;
+}
+
+/**
+ * The folder a restored session reopens in: the one `claude --resume` finds its transcript from, since Claude Code
+ * files a session that went into a worktree under that worktree's project folder and resumes it from there alone
+ * (T1426); else the folder it started in, or the nearest existing parent of it when that is gone, or the home folder.
+ */
+async function reopenFolderOf(deps: RestoreDeps, item: RestoreItem): Promise<ReopenFolder> {
+  const { resumeFolder, entry } = item;
+  if (resumeFolder !== undefined && (await deps.probe.kind(resumeFolder)) === 'folder') {
+    const moved = !samePath(resumeFolder, entry.projectDir, deps.platform);
+    return { folder: resumeFolder, note: moved ? `resumed in ${resumeFolder}, the folder its transcript is filed under` : undefined };
+  }
+  const folder = (await nearestExistingFolder(entry.projectDir, deps.probe)) ?? deps.home;
+  return { folder, note: folder === entry.projectDir ? undefined : `${entry.projectDir} is gone; opened in ${folder}` };
 }
 
 async function itemsOf(deps: RestoreDeps, facts: JudgeFacts, restore: readonly Judged[]): Promise<RestoreItem[]> {
@@ -243,7 +272,7 @@ async function reopenItem(deps: RestoreDeps, facts: JudgeFacts, item: RestoreIte
     await deps.log(`run: skipped ${id} (${recheck.reason})`);
     return 'skipped';
   }
-  const folder = (await nearestExistingFolder(item.entry.projectDir, deps.probe)) ?? deps.home;
+  const { folder, note } = await reopenFolderOf(deps, item);
   const prompt = item.mode === 'idle' ? undefined : continuePrompt(item.lost, item.team?.isLead === true ? leadSummaryOf(item, items) : undefined);
   await deps.registry.write({ ...current, transcriptPath: item.transcript ?? current.transcriptPath, restoreAttempts: current.restoreAttempts + 1, restoredAt: deps.clock.now() });
   let outcome: ReopenOutcome;
@@ -258,8 +287,8 @@ async function reopenItem(deps: RestoreDeps, facts: JudgeFacts, item: RestoreIte
     await deps.log(`run: failed ${id} (${outcome.why})`);
     return 'failed';
   }
-  if (folder !== item.entry.projectDir) {
-    deps.print(`  (${item.entry.projectDir} is gone; opened in ${folder})`);
+  if (note !== undefined) {
+    deps.print(`  (${note})`);
   }
   deps.print(`Opened ${item.label} (${modeWords(item)})`);
   await deps.log(`run: opened ${id} (${modeWords(item)}) at effort ${item.effort ?? 'default'}`);
