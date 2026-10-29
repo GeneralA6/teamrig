@@ -91,7 +91,8 @@ async function reopen(runtime, tab, terminal) {
 /** The restore over this machine: the kit home's sessions folder, every team on it, its processes and terminals. */
 async function restoreDepsOf(runtime, terminal) {
     const kitHome = resolveKitHome(runtime.env, runtime.userHome);
-    const finder = new TranscriptFinder(runtime.files, runtime.probe, claudeProjectsDir(runtime.env, runtime.userHome));
+    const projectsDir = claudeProjectsDir(runtime.env, runtime.userHome);
+    const finder = new TranscriptFinder(runtime.files, runtime.probe, projectsDir);
     const logPath = restoreLogPath(kitHome);
     return {
         registry: new RestoreRegistry(runtime.files, restoreSessionsDir(kitHome)),
@@ -102,6 +103,8 @@ async function restoreDepsOf(runtime, terminal) {
         countdown: runtime.restore.countdown,
         teams: await restoreTeamsOf(runtime),
         home: runtime.userHome,
+        projectsDir,
+        platform: runtime.platform,
         stillRunning: (entry) => runsClaude(runtime.sessionProcesses, entry.pid),
         transcriptOf: (entry) => finder.find(entry),
         readTail: (path, maxBytes) => runtime.files.readTail(path, maxBytes),
