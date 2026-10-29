@@ -4274,8 +4274,9 @@ Output: a JSON object whose `hookSpecificOutput.additionalContext` holds the rul
 
 ### teamrig hook inbox-reminder
 
-At each prompt, shows the inbox lines this Claude Code session has not been shown yet (at most 5 lines and 1,500
-characters, each once), binds a tab started by hand to the session its Claude Code title names, records a
+At each prompt, first stops a prompt that holds a secret and cleans it out of Claude Code's prompt history; else
+shows the inbox lines this Claude Code session has not been shown yet (at most 5 lines and 1,500 characters, each
+once), binds a tab started by hand to the session its Claude Code title names, records a
 rename, and tells the model once per level when it is past its daily budget while the team has no room today and,
 by default, is ahead of its pace line. See [Hooks and permissions](hooks.md#each-prompt).
 
