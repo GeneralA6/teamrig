@@ -18,6 +18,8 @@ export interface FixtureTool {
   readonly url?: string;
   /** Written as the input's `skill`, as a `Skill` call has it. */
   readonly skill?: string;
+  /** Written as the input's `subagent_type`, as an `Agent` call has it. */
+  readonly agent?: string;
   /** Written as the input's `run_in_background`. */
   readonly background?: boolean;
 }
@@ -61,7 +63,14 @@ export function replyLine(reply: FixtureReply): string {
     type: 'tool_use',
     id: tool.id,
     name: tool.name,
-    input: definedEntries({ command: tool.command, file_path: tool.path, url: tool.url, skill: tool.skill, run_in_background: tool.background }),
+    input: definedEntries({
+      command: tool.command,
+      file_path: tool.path,
+      url: tool.url,
+      skill: tool.skill,
+      subagent_type: tool.agent,
+      run_in_background: tool.background,
+    }),
   }));
   return JSON.stringify(
     definedEntries({
