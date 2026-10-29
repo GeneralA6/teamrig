@@ -3911,17 +3911,22 @@ shows the week against the pace line: the week's use and reset from the newest s
 statusline](#teamrig-statusline)) in the team's folder or in that of any team of the kit home on its Claude account
 (`budget.account`), so a team whose tabs are idle still reads the account's week, else from `budget.weeklyLimitW`
 and `budget.reset`. A reading taken before today's start gives its day: `at 10-24 21:46 IDT`. The use counts
-in the period kept in the team's `state/usage/period.json`: from the last reset to the next, each week opening
+in the period kept in `state/usage/period.json`: from the last reset to the next, each week opening
 where the last one ended, and a moved reset keeping its start. A reading 2 points or more below the latest one,
 its reset unchanged, is a reset inside the week: a new budget runs from that latest reading to the reset, and the
 pace line and today's use start there. With no period kept yet, the week before the reset is taken, unless the W
 metered since its start (at the week's W per percent) is 1.5 times the status line's use and 10 points over it:
 the use was reset inside the week before any period was kept, so the period starts at the latest hour from which
 the metered W reaches that use. After a reset inside the week, the week line says where the use counts from.
+The period, the meter log (below) and the extra-usage log ([teamrig budget extra](#teamrig-budget-extra)) are the
+account's: a team under a parent on its Claude
+account reads and writes them in the folder of the highest team above it reached through teams all on that account,
+so a child team learns the account's W per percent with its parent; a root team, or one whose parent is on another
+account, keeps its own.
 
 The week's W per percent is learned from the meter (since 0.136.0). Each time the status line passes a whole
 percent in a period whose start was seen (a weekly reset or a reset inside the week), within 10 minutes of the
-reading and with the usage stores reaching back to that start, the team's `state/usage/meter-log.jsonl` gets one
+reading and with the usage stores reaching back to that start, the account's `state/usage/meter-log.jsonl` gets one
 line: the use, the period and the W metered since its start. Once the last 8 weeks' readings span 10 points, a fit
 of W per percent through 0 over them sets the rate, ahead of `budget.weeklyLimitW` (a starting guess until then),
 ahead of the status line's own estimate (the week's W over its use, once the meter counted the whole week). The
@@ -4126,7 +4131,8 @@ lift that gives more), a week already at the stop % or an unknown week (no statu
 Past 100% of the week, claude.ai can go on with extra usage: dollars the person puts in a pool apart from the
 week. The status line never shows it (its weekly % stops at 100), so the lead enters it (since 0.152.0): `--add`
 the dollars put in the pool, `--spent` the dollars claude.ai shows spent from it so far. Each entry goes to the
-team's `state/usage/extra-log.jsonl` with the week's use on the status line and the W metered since the period's
+account's `state/usage/extra-log.jsonl` (in the folder of the highest team above on the account, see [teamrig
+budget](#teamrig-budget)) with the week's use on the status line and the W metered since the period's
 start. Two successive spent readings in one period, the week at 100% or more at both, teach the pool's W per dollar
 (a fit through 0 over every such pair, like the meter's W per percent); until then `budget.extraWPerUsd` stands in,
 else the pool is known in dollars only. What is left is the dollars added, less the last spent reading, less the W
