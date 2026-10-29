@@ -145,6 +145,13 @@ default) or with a known advisory, and any install it cannot vet: a range, a git
 exact version. A registry it cannot ask within 10 s vouches for nothing. `packageGuard.installs` (`deny` by default,
 `ask` or `allow`) sets what such a line gets; a team on a private registry sets `ask` or `allow`.
 
+A worktree's `node_modules` is often a link to the main checkout's (`teamrig worktree add` makes one), so an install
+there rewrites the folder every checkout shares, and `npm ci` empties it first: one `npm ci` in a worktree once left a
+main checkout without its packages for 49 minutes. The guard refuses, whatever its config says, an npm, pnpm, yarn or
+bun call that would rewrite a `node_modules` that is a link, in the folder it installs into or one above it, and names
+the two safe routes: remove the link itself (`rm <link>`, never a recursive delete, which empties its target), then
+install a copy; or install in the checkout that owns the folder.
+
 ## Secrets kept out of the conversation
 
 A secret printed into a session stays in its transcript and in every prompt after it. Before each Bash, PowerShell,

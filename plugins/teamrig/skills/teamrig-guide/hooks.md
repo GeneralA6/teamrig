@@ -11,7 +11,7 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | `SessionStart` (`/clear`), in the background | `hook refresh-wake` | Wakes a session that `/clear` started from its context refresh, so it carries on without a prompt |
 | `UserPromptSubmit` (each prompt) | `hook inbox-reminder` | Stops a prompt that holds a secret and cleans it out of Claude Code's prompt history ([Each prompt](#each-prompt)); cancels a waiting automatic restart; shows new inbox lines; binds a tab started by hand by its title; records a Claude Code rename; tells the model when its budget holds it |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook push-guard` | Asks before a push to a protected branch; refuses a force-push or delete of one, and a git command run without the repository's hooks ([the commit guard](#before-a-shell-command-the-commit-guard)) |
-| `PreToolUse` on `Bash` and `PowerShell` | `hook package-guard` | Refuses a package runner that would fetch and run a package outside the project's lockfile, an install of a version the registry does not vouch for, and an `npx --no <bin>` that hands the bin's flag to npm ([the package guard](#before-a-shell-command-the-package-guard)) |
+| `PreToolUse` on `Bash` and `PowerShell` | `hook package-guard` | Refuses a package runner that would fetch and run a package outside the project's lockfile, an install of a version the registry does not vouch for, an `npx --no <bin>` that hands the bin's flag to npm, and an install that would rewrite a `node_modules` linked to another checkout's ([the package guard](#before-a-shell-command-the-package-guard)) |
 | `PreToolUse` on `Bash`, `PowerShell`, `Read` and `Grep` | `hook secret-guard` | Refuses a call that would print a secret file, a secret variable, the whole environment or a Kubernetes secret's data into the conversation ([the secret guard](#before-a-shell-command-or-a-read-the-secret-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook exec-guard` | Refuses a privileged command's review run as another session or the owner, and any `exec` call through a client that is no install of the plugin, or one changed after its build ([the exec guard](#before-a-shell-command-the-exec-guard)) |
 | `PreToolUse` on `Bash`, `PowerShell`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook pass-record-guard` | Refuses a session's own write of a tree's pass record, the proof that lets a push or a merge skip the checks the tree passed ([the pass-record guard](#before-a-write-or-a-shell-command-the-pass-record-guard)) |
@@ -315,6 +315,19 @@ request together, inside the hook's 15 s; a registry it cannot ask in time vouch
 refused. The reason: "teamrig package guard: this install is not vetted: typescript@5.9.3: published 2 days ago
 (2026-10-18), inside the 14-day cooldown. Install an exact version published at least 14 days ago with no known
 advisory (`npm view <name> time` lists when each version was published). [packageGuard.installs]"
+
+A worktree whose `node_modules` is a link to another checkout's (a junction on Windows, as `teamrig worktree add`
+makes it) shares that folder with every checkout linked to it. A package manager writes through the link, and `npm ci`
+empties the folder first, so one install there breaks every checkout at once (an `npm ci` under `teamrig heavy` once
+left a main checkout without its packages for 49 minutes). So the guard refuses, whatever `packageGuard` says, an npm,
+pnpm, yarn or bun call that rewrites `node_modules` (`ci`, `install`, `add`, `update`, `uninstall`, `prune`, `dedupe`,
+a bare `yarn`) when the folder it installs into (`--prefix`, `-C`/`--dir` or `--cwd` names another) or a folder above
+it holds a `node_modules` that is a link. A global install, a real `node_modules` folder, and a subcommand or folder
+only known when the line runs pass. The reason: "teamrig package guard: `npm ci` would write through
+<worktree>/node_modules, a link to <main>/node_modules. A package manager rewrites the folder a link points to (npm ci
+empties it first), breaking every checkout that shares it. Remove the link itself first (Bash `rm <link>` or `cmd /c
+rmdir <link>`; a recursive delete empties its target too), then install a copy here; or install in the checkout that
+owns the folder."
 
 `packageGuard.adHocRunners` sets what an ad-hoc line gets, and `packageGuard.installs` what an unvetted install gets:
 `deny` (the default), `ask` the human, or `allow`. A team on a private registry sets `installs` to `ask` or `allow`, as
@@ -1106,7 +1119,8 @@ read-only allow lets a call skip the prompt, and only a shell line it proves onl
 - **The commit guard** refuses a git command run without the repository's hooks on its own, whatever the mode,
   unless `commitGuard.skipHooks` is `ask` or `allow`.
 - **The package guard** refuses an ad-hoc package run or an unvetted install on its own, whatever the mode, unless
-  `packageGuard.adHocRunners` or `packageGuard.installs` is `ask` or `allow`.
+  `packageGuard.adHocRunners` or `packageGuard.installs` is `ask` or `allow`; an install through a linked
+  `node_modules` whatever they say.
 - **The secret guard** refuses a call that would print a secret on its own, whatever the mode, unless
   `secretGuard.secretReads` is `ask` or `allow`.
 - **The exec guard** refuses a privileged command's review run as another session or the owner, and any

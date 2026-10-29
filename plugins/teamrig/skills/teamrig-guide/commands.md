@@ -4349,8 +4349,10 @@ Before a Bash or PowerShell command, refuses (or asks about, as `packageGuard.ad
 that would fetch and run a package outside the project's lockfile: `npx`, `npm exec`, `pnpx` or `bunx` of a tool
 not in `node_modules/.bin`, `npm create`, `npm init <initializer>`, `pnpm dlx`, `yarn dlx` and the like; refuses (or
 asks about, as `packageGuard.installs` says) an install that names a version the npm registry does not vouch for:
-published inside `packageGuard.cooldownDays`, with a known advisory, or not an exact version or dist-tag; and
-refuses `npx --no <bin> -<flag>`, which hands the flag to npm (`npx --no -- <bin> -<flag>` keeps it). See
+published inside `packageGuard.cooldownDays`, with a known advisory, or not an exact version or dist-tag; refuses
+`npx --no <bin> -<flag>`, which hands the flag to npm (`npx --no -- <bin> -<flag>` keeps it); and refuses an npm,
+pnpm, yarn or bun call that would rewrite a `node_modules` that is a link to another checkout's (`npm ci` in a
+worktree), in the folder it installs into or one above it. See
 [Hooks and permissions](hooks.md#before-a-shell-command-the-package-guard).
 
 Flags: none.
