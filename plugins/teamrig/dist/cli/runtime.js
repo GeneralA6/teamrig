@@ -1,7 +1,7 @@
 /**
  * Exit codes: 0 done, 1 failed, 2 refused by a team rule, 3 `teamrig open` found no terminal to open and
  * printed the command to run instead, 4 `/teamrig` printed the line the person must agree to before it runs
- * (`hook slash-command`, src/mod/slash-hand.ts asks), 64 a command line it cannot read, 75 `teamrig integrate`'s merge
+ * (`hook slash-command`, src/mod/slash-hand.ts asks), 64 a command line it cannot read, 75 `teamrig merge`'s merge
  * command waits (run it again once the branch is merged).
  */
 /** `wake` is a background hook's exit 2: with `asyncRewake`, Claude Code gives the model what it printed to stderr as a new turn. */

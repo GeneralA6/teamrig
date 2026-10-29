@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { hookEndText, succeeded } from "../roll/hooks.js";
+import { hookEndText, succeeded } from "../deploy/hooks.js";
 /**
  * `teamrig worktree add`: a session's new worktree, made the same way every time. The new branch starts from the
  * remote's newest default branch, fetched first, in a folder named after the branch, and the repository's setup

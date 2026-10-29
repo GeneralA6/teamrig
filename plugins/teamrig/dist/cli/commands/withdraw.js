@@ -30,7 +30,7 @@ function chosenOf(args) {
         return undefined;
     }
     if (what.trim() === '') {
-        throw new UsageError("--what names text in the step's purpose, such as its heavy label or integrate's repository");
+        throw new UsageError("--what names text in the step's purpose, such as its heavy label or a merge's repository");
     }
     return { picks: (waiter) => waiter.purpose.includes(what), text: what };
 }
@@ -55,8 +55,8 @@ export function withdrawalText(withdrawal, zone) {
     }
 }
 /**
- * `teamrig withdraw (--what <text> | --all)`: takes this session's steps that wait for the host lock (heavy, integrate,
- * roll) out of its line, so a re-ordered or abandoned step leaves it; each stops at its next look and runs nothing.
+ * `teamrig withdraw (--what <text> | --all)`: takes this session's steps that wait for the host lock (heavy, merge,
+ * deploy) out of its line, so a re-ordered or abandoned step leaves it; each stops at its next look and runs nothing.
  * With neither flag it lists them and is refused. Exit 0 when each chosen step was withdrawn or none waits, 1 when
  * one went first or was queued by an older teamrig, 2 refused.
  */

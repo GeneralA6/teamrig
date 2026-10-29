@@ -1,9 +1,9 @@
 import { rangeText } from "../coordinator/ledger.js";
-import { rangeInstallTouches } from "../integrate/dependencies.js";
-import { ORIGIN } from "../integrate/git.js";
-/** The repositories with a roll block, in config order, each with its main checkout as a place. */
-export function rollRepos(coordinator, inTeam) {
-    return Object.entries(coordinator.repos).flatMap(([name, config]) => (config.roll === undefined ? [] : [{ name, config, roll: config.roll, main: inTeam(config.mainCheckout) }]));
+import { rangeInstallTouches } from "../merge/dependencies.js";
+import { ORIGIN } from "../merge/git.js";
+/** The repositories with a deploy block, in config order, each with its main checkout as a place. */
+export function deployRepos(coordinator, inTeam) {
+    return Object.entries(coordinator.repos).flatMap(([name, config]) => (config.deploy === undefined ? [] : [{ name, config, deploy: config.deploy, main: inTeam(config.mainCheckout) }]));
 }
 export function short(sha) {
     return sha.slice(0, 8);
@@ -13,18 +13,18 @@ export function plural(count, word) {
 }
 /**
  * What the range's package files need after the pull: nothing, an install (checked first when `dependencyGate` is on)
- * or a hold. The gate holds a dependency change unless `dependencyCheck` and `roll.dependencyInstall` are both set;
- * with the gate off, an install set runs unchecked, and with neither the range rolls as it is.
+ * or a hold. The gate holds a dependency change unless `dependencyCheck` and `deploy.dependencyInstall` are both set;
+ * with the gate off, an install set runs unchecked, and with neither the range deploys as it is.
  */
 async function dependencyStep(git, repo, head, target) {
-    const { name, main, config, roll } = repo;
-    const install = roll.dependencyInstall;
+    const { name, main, config, deploy } = repo;
+    const install = deploy.dependencyInstall;
     if (!config.dependencyGate && install === undefined) {
         return { kind: 'step', step: undefined };
     }
     const touches = await rangeInstallTouches(git, main, head, target);
     if (touches === undefined) {
-        return { kind: 'held', reason: `could not read what ${short(head)}..${short(target)} changes, so the roll cannot tell whether it changes the dependencies` };
+        return { kind: 'held', reason: `could not read what ${short(head)}..${short(target)} changes, so the deploy cannot tell whether it changes the dependencies` };
     }
     if (touches.length === 0) {
         return { kind: 'step', step: undefined };
@@ -33,13 +33,13 @@ async function dependencyStep(git, repo, head, target) {
     if (install !== undefined && (check !== undefined || !config.dependencyGate)) {
         return { kind: 'step', step: { touches, check, install } };
     }
-    const unset = [...(check === undefined ? ['dependencyCheck'] : []), ...(install === undefined ? ['roll.dependencyInstall'] : [])].map((key) => `coordinator.repos.${name}.${key}`);
+    const unset = [...(check === undefined ? ['dependencyCheck'] : []), ...(install === undefined ? ['deploy.dependencyInstall'] : [])].map((key) => `coordinator.repos.${name}.${key}`);
     return {
         kind: 'held',
-        reason: `deps changed (${touches.join(', ')}): coordinator.repos.${name}.dependencyGate holds a dependency change, since pulling it changes, unreviewed, the node_modules every worktree links to; set ${unset.join(' and ')} to roll one, or pull and install by hand`,
+        reason: `deps changed (${touches.join(', ')}): coordinator.repos.${name}.dependencyGate holds a dependency change, since pulling it changes, unreviewed, the node_modules every worktree links to; set ${unset.join(' and ')} to deploy one, or pull and install by hand`,
     };
 }
-/** Fetches and reads what a roll would pull now, refusing a main checkout it must not pull into. */
+/** Fetches and reads what a deploy would pull now, refusing a main checkout it must not pull into. */
 export async function readPending(git, repo) {
     const { main, name } = repo;
     const checkout = git.checkoutOf(main);
@@ -59,7 +59,7 @@ export async function readPending(git, repo) {
         return { kind: 'failed', reason: `git status failed in ${main}` };
     }
     if (changes.length > 0) {
-        return { kind: 'refused', reason: `the ${name} main checkout ${main} has ${plural(changes.length, 'uncommitted change')}: a roll pulls only into a clean checkout` };
+        return { kind: 'refused', reason: `the ${name} main checkout ${main} has ${plural(changes.length, 'uncommitted change')}: a deploy pulls only into a clean checkout` };
     }
     const head = git.sha(main, 'HEAD');
     const target = git.sha(main, `origin/${defaultBranch}`);
@@ -70,7 +70,7 @@ export async function readPending(git, repo) {
         return { kind: 'none', head };
     }
     if (!git.isAncestor(main, head, target)) {
-        return { kind: 'refused', reason: `the ${name} main checkout ${main} has commits that are not on origin/${defaultBranch}: a roll only pulls fast-forward` };
+        return { kind: 'refused', reason: `the ${name} main checkout ${main} has commits that are not on origin/${defaultBranch}: a deploy only pulls fast-forward` };
     }
     const deps = await dependencyStep(git, repo, head, target);
     if (deps.kind === 'held') {

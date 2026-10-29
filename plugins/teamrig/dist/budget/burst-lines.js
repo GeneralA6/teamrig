@@ -73,7 +73,7 @@ function burstModelLine(burst, zone) {
     const first = burst.tasks.length === 0 ? '' : ` Work its tasks first: ${burst.tasks.join(', ')}.`;
     const hires = burst.hires === 0 ? '' : ` The lead may hire up to ${plural(burst.hires, 'session')} for it (${KIT_NAME} hire --burst).`;
     return (`${BURST_COMMAND}: a ${burst.kind} burst runs ${endText(burst, zone)}.${first} ` +
-        `Run up to ${plural(burst.helpers, 'helper')} at once, on independent tasks only; give each edit in a repo its own worktree, and integrate one change at a time. ` +
+        `Run up to ${plural(burst.helpers, 'helper')} at once, on independent tasks only; give each edit in a repo its own worktree, and merge one change at a time. ` +
         `Helpers run on your model and effort, never a cheaper model or lower effort, and never skip a test or check.${hires} ${MORE_BURST}`);
 }
 const BURST_END_LINE = `${BURST_COMMAND}: the burst has ended. Finish the step in hand and start no new helpers; ` +

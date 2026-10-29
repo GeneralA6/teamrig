@@ -6,7 +6,7 @@ import { nodeTreeKill } from "../coordinator/tree-kill.js";
 import { endOf } from "../test-run/shell.js";
 /**
  * Every hook's exit codes say the same: 0 done, this one (`EX_TEMPFAIL`) wait and come back later, anything else
- * failed; a roll gate also reads 2 as a refusal.
+ * failed; a deploy check also reads 2 as a refusal.
  */
 export const HOOK_WAIT_EXIT = 75;
 /** True when the hook exited 0. */

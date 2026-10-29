@@ -6,23 +6,23 @@ import { appendDeploy } from "../coordinator/ledger.js";
 import { NOT_STARTED_EXIT, recordHeavy } from "../coordinator/recorded-step.js";
 import { heavyCutoffReason, resetBlackoutReason } from "../coordinator/schedule.js";
 import { samePath } from "../core/paths.js";
-import { runDependencyCheck } from "../integrate/dependencies.js";
-import { LOCKFILE } from "../integrate/manifest.js";
-import { askGates, shownLine } from "./gates.js";
+import { runDependencyCheck } from "../merge/dependencies.js";
+import { LOCKFILE } from "../merge/manifest.js";
+import { askChecks, shownLine } from "./checks.js";
 import { hookEndText, hookExitCode, succeeded } from "./hooks.js";
-import { plural, readPending, rollRepos, short } from "./pending.js";
+import { deployRepos, plural, readPending, short } from "./pending.js";
 /**
- * `teamrig roll`: brings what was pushed to a repository's default branch to the running system, one roll on the host
+ * `teamrig deploy`: brings what was pushed to a repository's default branch to the running system, one deploy on the host
  * at a time. It reads what is pending (the main checkout's `HEAD..origin/<default branch>`), refuses what it must not
  * pull (a main checkout off its default branch, with tracked changes or commits origin lacks, a dependency change the
- * gate holds), waits out the heavy cutoff's refusal, quiet claims on the roll's targets and the team's gates, takes the
+ * gate holds), waits out the heavy cutoff's refusal, quiet claims on the deploy's targets and the team's checks, takes the
  * host lock, asks again, then pulls fast-forward to the sha it checked, checks and installs a dependency change, runs
- * the afterPull hooks and the roll command, all one heavy step in the ledger, and records the deploy. Nothing pending
+ * the afterPull hooks and the deploy command, all one heavy step in the ledger, and records the deploy. Nothing pending
  * is done with nothing run.
  */
 const MINUTE_MS = 60_000;
-/** The line a roll command prints when nothing needed rolling: the pull stays, and no deploy is recorded. */
-export const NO_ROLL_LINE = 'no-roll';
+/** The line a deploy command prints when nothing needed deploying: the pull stays, and no deploy is recorded. */
+export const NO_DEPLOY_LINE = 'no-deploy';
 function runExitCode(run) {
     switch (run.kind) {
         case 'notPulled':
@@ -34,43 +34,43 @@ function runExitCode(run) {
             return hookExitCode(run.end);
     }
 }
-/** The repository to roll: the one named, else the one the folder is in, else the only one with a roll block. */
+/** The repository to deploy: the one named, else the one the folder is in, else the only one with a deploy block. */
 export function chosenRepo(setup, ports, request) {
     const repos = Object.entries(setup.coordinator.repos);
-    const rolled = rollRepos(setup.coordinator, (path) => setup.inTeam(path));
-    const names = rolled.length === 0 ? 'none has a roll block' : `with a roll block: ${rolled.map((repo) => repo.name).join(', ')}`;
+    const deployable = deployRepos(setup.coordinator, (path) => setup.inTeam(path));
+    const names = deployable.length === 0 ? 'none has a deploy block' : `with a deploy block: ${deployable.map((repo) => repo.name).join(', ')}`;
     if (request.repo !== undefined) {
-        const named = rolled.find((repo) => repo.name === request.repo);
+        const named = deployable.find((repo) => repo.name === request.repo);
         if (named !== undefined) {
             return { kind: 'chosen', repo: named };
         }
         const listed = repos.some(([name]) => name === request.repo);
-        return { kind: 'refused', reason: listed ? `coordinator.repos.${request.repo} has no roll block, so there is nothing to roll it with (${names})` : `${request.repo} is not in coordinator.repos (${names})` };
+        return { kind: 'refused', reason: listed ? `coordinator.repos.${request.repo} has no deploy block, so there is nothing to deploy it with (${names})` : `${request.repo} is not in coordinator.repos (${names})` };
     }
     const here = ports.git.checkoutOf(request.dir);
     const folderMain = here === undefined ? undefined : (here.mainCheckout ?? here.top);
-    const inFolder = folderMain === undefined ? undefined : rolled.find((repo) => samePath(repo.main, folderMain, ports.platform));
-    const only = rolled.length === 1 ? rolled[0] : undefined;
+    const inFolder = folderMain === undefined ? undefined : deployable.find((repo) => samePath(repo.main, folderMain, ports.platform));
+    const only = deployable.length === 1 ? deployable[0] : undefined;
     const chosen = inFolder ?? only;
     if (chosen !== undefined) {
         return { kind: 'chosen', repo: chosen };
     }
-    return { kind: 'refused', reason: rolled.length === 0 ? 'no repository in coordinator.repos has a roll block' : `name the repository to roll with --repo (${names})` };
+    return { kind: 'refused', reason: deployable.length === 0 ? 'no repository in coordinator.repos has a deploy block' : `name the repository to deploy with --repo (${names})` };
 }
-/** Every hook's environment: this process's, with the roll's `TEAMRIG_*` variables and `extra`. */
+/** Every hook's environment: this process's, with the deploy's `TEAMRIG_*` variables and `extra`. */
 function hookEnv(setup, ports, request, repo, pending, extra = {}) {
     return {
         ...ports.env,
         TEAMRIG_TEAM: setup.team,
         TEAMRIG_SESSION: request.session,
-        TEAMRIG_VERB: 'roll',
+        TEAMRIG_VERB: 'deploy',
         TEAMRIG_REPO: repo.name,
         TEAMRIG_PENDING_RANGE: `${pending.head}..${pending.target}`,
         ...extra,
     };
 }
 /**
- * What stops any change to `targets` before its gates are asked: the heavy cutoff and the reset blackout refuse it, a
+ * What stops any change to `targets` before its checks are asked: the heavy cutoff and the reset blackout refuse it, a
  * quiet claim on one of them holds it; undefined when none does.
  */
 export async function scheduleReadiness(setup, ports, targets) {
@@ -101,12 +101,12 @@ export function shownBy(ports) {
     };
 }
 /**
- * Whether the roll may start: {@link scheduleReadiness} for its targets, then its gates. Under the lock the pending
- * range is read again, so the gates judge what is pulled; a range with nothing left, refused or unreadable is not the
- * gates' to judge, so the check passes and the roll ends under the lock.
+ * Whether the deploy may start: {@link scheduleReadiness} for its targets, then its checks. Under the lock the pending
+ * range is read again, so the checks judge what is pulled; a range with nothing left, refused or unreadable is not the
+ * checks' to judge, so the readiness check passes and the deploy ends under the lock.
  */
 function readinessOf(setup, ports, request, repo, view) {
-    const { targets, gates } = repo.roll;
+    const { targets, checks } = repo.deploy;
     return async (phase) => {
         const stopped = await scheduleReadiness(setup, ports, targets);
         if (stopped !== undefined) {
@@ -120,12 +120,12 @@ function readinessOf(setup, ports, request, repo, view) {
             }
             view.range = view.read.pending;
         }
-        const answer = await askGates(gates, phase, {
+        const answer = await askChecks(checks, phase, {
             hooks: ports.hooks,
             scanner: ports.scanner,
             cwd: repo.main,
             env: hookEnv(setup, ports, request, repo, view.range),
-            timeoutSeconds: setup.coordinator.gateTimeoutSeconds,
+            timeoutSeconds: setup.coordinator.checkTimeoutSeconds,
         });
         if (phase === 'locked') {
             view.tag = answer.tag;
@@ -167,16 +167,16 @@ async function installDeps(setup, ports, repo, head, deps, env, show) {
 }
 /**
  * Under the host lock `lock`: pulls fast-forward to the checked sha, checks and installs a dependency change (see
- * {@link installDeps}), then runs the afterPull hooks and the roll command, each line shown redacted. They get the
+ * {@link installDeps}), then runs the afterPull hooks and the deploy command, each line shown redacted. They get the
  * lock's token, so a `teamrig heavy` they start runs under this lock.
  */
-async function pullAndRoll(setup, ports, request, repo, pending, tag, lock) {
+async function pullAndDeploy(setup, ports, request, repo, pending, tag, lock) {
     const pulled = ports.git.fastForward(repo.main, pending.target);
     if (!pulled.ok) {
         return { kind: 'notPulled', reason: pulled.reason };
     }
     ports.say(`pulled ${repo.main} to ${short(pending.target)}`);
-    const env = underLock(hookEnv(setup, ports, request, repo, pending, { TEAMRIG_ROLL_TO: pending.target, ...(tag === undefined ? {} : { TEAMRIG_ROLL_TAG: tag }) }), lock);
+    const env = underLock(hookEnv(setup, ports, request, repo, pending, { TEAMRIG_DEPLOY_TO: pending.target, ...(tag === undefined ? {} : { TEAMRIG_DEPLOY_TAG: tag }) }), lock);
     const timeoutMs = setup.coordinator.heavy.maxRunMinutes * MINUTE_MS;
     const show = shownBy(ports);
     if (pending.deps !== undefined) {
@@ -185,53 +185,53 @@ async function pullAndRoll(setup, ports, request, repo, pending, tag, lock) {
             return failed;
         }
     }
-    for (const argv of repo.roll.afterPull) {
+    for (const argv of repo.deploy.afterPull) {
         ports.say(`afterPull: ${argv.join(' ')}`);
         const end = await ports.hooks.run({ argv, cwd: repo.main, env, timeoutMs, onLine: show });
         if (!succeeded(end)) {
             return { kind: 'afterPullFailed', argv, end };
         }
     }
-    ports.say(`roll: ${repo.roll.command.join(' ')}`);
+    ports.say(`deploy: ${repo.deploy.command.join(' ')}`);
     let lastLine;
-    let noRoll = false;
+    let noDeploy = false;
     const end = await ports.hooks.run({
-        argv: repo.roll.command,
+        argv: repo.deploy.command,
         cwd: repo.main,
         env,
         timeoutMs,
         onLine: (line) => {
             const shown = show(line);
-            noRoll ||= line.trim() === NO_ROLL_LINE;
+            noDeploy ||= line.trim() === NO_DEPLOY_LINE;
             if (shown.trim() !== '') {
                 lastLine = shown.trim();
             }
         },
     });
-    return { kind: 'ran', end, lastLine, noRoll };
+    return { kind: 'ran', end, lastLine, noDeploy };
 }
-/** What a pulled range ends as, and its deploy record when the roll command rolled something or failed trying. */
+/** What a pulled range ends as, and its deploy record when the deploy command deployed something or failed trying. */
 async function settle(setup, ports, request, repo, pending, tag, startedAt, run) {
     const { range, commits } = pending;
-    const byHand = `a new roll finds nothing pending, so run \`${repo.roll.command.join(' ')}\` in ${repo.main} by hand once it is fixed`;
+    const byHand = `a new deploy finds nothing pending, so run \`${repo.deploy.command.join(' ')}\` in ${repo.main} by hand once it is fixed`;
     switch (run.kind) {
         case 'notPulled':
-            return { kind: 'failed', reason: `the pull of ${range} into ${repo.main} failed (${run.reason}): nothing pulled, nothing rolled; roll again` };
+            return { kind: 'failed', reason: `the pull of ${range} into ${repo.main} failed (${run.reason}): nothing pulled, nothing deployed; deploy again` };
         case 'checkFailed':
         case 'installFailed':
             return dependencyEnd(repo, pending, run);
         case 'afterPullFailed':
-            return { kind: 'failed', reason: `${range} pulled, but afterPull \`${run.argv.join(' ')}\` ${hookEndText(run.end)}, so nothing rolled; ${byHand}` };
+            return { kind: 'failed', reason: `${range} pulled, but afterPull \`${run.argv.join(' ')}\` ${hookEndText(run.end)}, so nothing deployed; ${byHand}` };
         case 'ran':
             break;
     }
     const ok = succeeded(run.end);
-    const said = run.lastLine === undefined || run.lastLine === NO_ROLL_LINE ? '' : `: ${run.lastLine}`;
-    if (ok && run.noRoll) {
-        return { kind: 'done', summary: `${range} pulled; nothing needed rolling${said}` };
+    const said = run.lastLine === undefined || run.lastLine === NO_DEPLOY_LINE ? '' : `: ${run.lastLine}`;
+    if (ok && run.noDeploy) {
+        return { kind: 'done', summary: `${range} pulled; nothing needed deploying${said}` };
     }
     const carried = plural(commits.length, 'commit');
-    const what = `roll ${repo.roll.targets.length > 0 ? repo.roll.targets.join(', ') : repo.name}${tag === undefined ? '' : ` (${tag})`}`;
+    const what = `deploy ${repo.deploy.targets.length > 0 ? repo.deploy.targets.join(', ') : repo.name}${tag === undefined ? '' : ` (${tag})`}`;
     await appendDeploy(ports.files, setup.places, {
         type: 'deploy',
         kind: 'deploy',
@@ -239,24 +239,24 @@ async function settle(setup, ports, request, repo, pending, tag, startedAt, run)
         repo: repo.name,
         range,
         what,
-        note: ok ? `${carried}; ${run.lastLine ?? 'rolled'}` : `${carried}; the roll command ${hookEndText(run.end)}${said}`,
+        note: ok ? `${carried}; ${run.lastLine ?? 'deployed'}` : `${carried}; the deploy command ${hookEndText(run.end)}${said}`,
         startedAt,
         rolledAt: new Date(ports.clock.now()).toISOString(),
     });
     if (ok) {
-        return { kind: 'done', summary: `${range} rolled${said}` };
+        return { kind: 'done', summary: `${range} deployed${said}` };
     }
-    return { kind: 'failed', reason: `${range} pulled, but the roll command ${hookEndText(run.end)}${said}; its owners fix forward or roll back, and ${byHand}` };
+    return { kind: 'failed', reason: `${range} pulled, but the deploy command ${hookEndText(run.end)}${said}; its owners fix forward or roll back, and ${byHand}` };
 }
-/** How a range whose dependency check or install failed ends: nothing rolled, and the main checkout back at its old HEAD or what to do by hand. */
+/** How a range whose dependency check or install failed ends: nothing deployed, and the main checkout back at its old HEAD or what to do by hand. */
 function dependencyEnd(repo, pending, run) {
     const { main } = repo;
     const head = short(pending.head);
     const step = `deps changed (${run.touches.join(', ')}): the dependency ${run.kind === 'checkFailed' ? 'check' : 'install'} \`${run.argv.join(' ')}\` ${hookEndText(run.end)}`;
     if (run.kind === 'checkFailed') {
         return run.back.ok
-            ? { kind: 'refused', reason: `${step}, so ${main} is back at ${head} and nothing rolled; its output is above` }
-            : { kind: 'failed', reason: `${step}, and moving ${main} back to ${head} failed (${run.back.reason}): it is at ${short(pending.target)} with the old dependencies, so reset it to ${pending.head} by hand, else a new roll finds nothing pending` };
+            ? { kind: 'refused', reason: `${step}, so ${main} is back at ${head} and nothing deployed; its output is above` }
+            : { kind: 'failed', reason: `${step}, and moving ${main} back to ${head} failed (${run.back.reason}): it is at ${short(pending.target)} with the old dependencies, so reset it to ${pending.head} by hand, else a new deploy finds nothing pending` };
     }
     const byHand = `run \`${run.argv.join(' ')}\` in ${main} by hand`;
     switch (run.undo.kind) {
@@ -264,18 +264,18 @@ function dependencyEnd(repo, pending, run) {
             return { kind: 'failed', reason: `${step}, and moving ${main} back to ${head} failed (${run.undo.reason}): the node_modules every worktree links to may be broken; reset it to ${pending.head} and ${byHand}` };
         case 'reinstalled':
             return succeeded(run.undo.end)
-                ? { kind: 'failed', reason: `${step}, so ${main} is back at ${head} with its dependencies installed again and nothing rolled; fix the install and roll again` }
+                ? { kind: 'failed', reason: `${step}, so ${main} is back at ${head} with its dependencies installed again and nothing deployed; fix the install and deploy again` }
                 : { kind: 'failed', reason: `${step}, and installing ${head}'s dependencies again ${hookEndText(run.undo.end)}: the node_modules every worktree links to may be broken; ${byHand}` };
     }
 }
-/** Rolls what was pushed to a repository's default branch (see the module comment). */
-export async function rollRepo(setup, ports, request) {
+/** Deploys what was pushed to a repository's default branch (see the module comment). */
+export async function deployRepo(setup, ports, request) {
     const chosen = chosenRepo(setup, ports, request);
     if (chosen.kind === 'refused') {
         return chosen;
     }
     const { repo } = chosen;
-    const nothing = (head) => ({ kind: 'done', summary: `nothing to roll: the ${repo.name} main checkout is at its origin's default branch (${short(head)})` });
+    const nothing = (head) => ({ kind: 'done', summary: `nothing to deploy: the ${repo.name} main checkout is at its origin's default branch (${short(head)})` });
     const early = await readPending(ports.git, repo);
     if (early.kind === 'none') {
         return nothing(early.head);
@@ -289,7 +289,7 @@ export async function rollRepo(setup, ports, request) {
     const queuedAt = ports.clock.now();
     const clearance = await takeWhenClear(readinessOf(setup, ports, request, repo, view), ports, {
         session: request.session,
-        purpose: `roll ${repo.name}`,
+        purpose: `deploy ${repo.name}`,
         maxWaitMs: wait.maxMinutes * MINUTE_MS,
         pollMs: wait.pollSeconds * 1_000,
         zone: setup.zone,
@@ -310,7 +310,7 @@ export async function rollRepo(setup, ports, request) {
         const { tag } = view;
         const startedAt = new Date(ports.clock.now()).toISOString();
         ports.say(`clear; pulling ${plural(pending.commits.length, 'commit')} (${pending.range}) into ${repo.main}`);
-        const run = await recordHeavy(ports, setup.places.ledger, { session: request.session, what: `roll ${repo.name} ${pending.range}`, queuedAt }, () => pullAndRoll(setup, ports, request, repo, pending, tag, clearance.lock), runExitCode);
+        const run = await recordHeavy(ports, setup.places.ledger, { session: request.session, what: `deploy ${repo.name} ${pending.range}`, queuedAt }, () => pullAndDeploy(setup, ports, request, repo, pending, tag, clearance.lock), runExitCode);
         return await settle(setup, ports, request, repo, pending, tag, startedAt, run);
     }
     finally {

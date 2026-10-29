@@ -37,8 +37,8 @@ function writtenOrExit(runtime, outcome) {
     }
 }
 /**
- * `teamrig claim --targets <a,b> --metric <m> --why "<why>" --for <span>`: a quiet claim, which holds the integrates and
- * rolls that deploy its targets while this session measures, from now for the span (`45m`, `1h30m`; at most
+ * `teamrig claim --targets <a,b> --metric <m> --why "<why>" --for <span>`: a quiet claim, which holds the merges and
+ * deploys of its targets while this session measures, from now for the span (`45m`, `1h30m`; at most
  * `coordinator.claims.maxMinutes`). One per session; refused for a target no repository deploys and for a secret in the
  * metric or reason. Exit 0 claimed, 1 when the claims stayed busy, 2 refused.
  */

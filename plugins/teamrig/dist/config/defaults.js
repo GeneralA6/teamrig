@@ -228,12 +228,12 @@ export const HEAVY_TTL_MARGIN_MINUTES = 10;
 export const DEFAULT_HEAVY = { lockTtlMinutes: 150, maxRunMinutes: 45, smallMaxRunMinutes: 10, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048 };
 /** A waiting coordinator step looks again every 30 seconds; a deploy step waits up to an hour for claims and the host lock. */
 export const DEFAULT_COORDINATOR_WAIT = { pollSeconds: 30, maxMinutes: 60 };
-/** A roll's gate answers within 20 seconds, else the roll waits. */
-export const DEFAULT_GATE_TIMEOUT_SECONDS = 20;
+/** A deploy's check answers within 20 seconds, else the deploy waits. */
+export const DEFAULT_CHECK_TIMEOUT_SECONDS = 20;
 /** A quiet claim lasts at most two hours. */
 export const DEFAULT_CLAIMS = { maxMinutes: 120 };
-/** A target measures cleanly 30 minutes after a deploy; a deploy the ledger knows only by its ledger.md line rolled for 20 minutes; a window under 15 minutes is left out. */
-export const DEFAULT_WINDOWS = { settleMinutes: 30, targetSettleMinutes: {}, assumedRollMinutes: 20, minMinutes: 15 };
+/** A target measures cleanly 30 minutes after a deploy; a deploy the ledger knows only by its ledger.md line ran for 20 minutes; a window under 15 minutes is left out. */
+export const DEFAULT_WINDOWS = { settleMinutes: 30, targetSettleMinutes: {}, assumedDeployMinutes: 20, minMinutes: 15 };
 /**
  * A burst spends more of the week, so the owner approves each one. A surplus burst may start from 48 hours before
  * the reset once at least 5% of the week is projected unused; each burst session runs at most 3 helpers at once,

@@ -17,14 +17,14 @@ import { GIT_CHECKOUT } from "../exec/binding.js";
 import { nodeExecSpawner } from "../exec/runner.js";
 import { httpWebhook } from "../exec/webhook.js";
 import { nodeGhRunner } from "../github/gh.js";
-import { GIT_INTEGRATE } from "../integrate/git.js";
+import { GIT_MERGE } from "../merge/git.js";
 import { nodeProcesses } from "../open/processes.js";
 import { nodeSessionProcesses } from "../open/session-processes.js";
 import { httpPackageRegistry } from "../package-guard/registry.js";
 import { GIT_CLI, GIT_COMMIT_LOG } from "../push-guard/git.js";
 import { GIT_POINTER } from "../setup/pointer-git.js";
 import { requirementsCheck } from "../requirements/requirements.js";
-import { nodeHookRunner } from "../roll/hooks.js";
+import { nodeHookRunner } from "../deploy/hooks.js";
 import { nodeShellRunner } from "../test-run/shell.js";
 import { NODE_WORKTREE_FILES } from "../worktree/files.js";
 import { GIT_WORKTREES } from "../worktree/git.js";
@@ -76,7 +76,7 @@ process.exitCode = await runCli(process.argv.slice(2), {
         countdown: terminalCountdown(stdioCountdownTerminal(process.stdin, process.stdout)),
         logon: systemLogonEntry(process.platform, process.env['SystemRoot'], nodeProgramRunner(LOGON_QUERY_TIMEOUT_MS)),
     },
-    integrateGit: GIT_INTEGRATE,
+    mergeGit: GIT_MERGE,
     trees: GIT_TREES,
     hooks: nodeHookRunner(process.platform),
     packageRegistry: httpPackageRegistry(),
