@@ -32,13 +32,13 @@ const DYNAMIC_TEXT = '<a value only known when it runs>';
 const UNKNOWN_WORD: ShellWord = { text: '', dynamic: true };
 
 /** npm's install subcommands, with the misspellings npm takes for them. */
-const NPM_INSTALLS: ReadonlySet<string> = new Set(['install', 'i', 'in', 'ins', 'inst', 'insta', 'instal', 'isnt', 'isnta', 'isntal', 'isntall', 'add', 'it', 'install-test']);
-const NPM_UPDATES: ReadonlySet<string> = new Set(['update', 'up', 'upgrade', 'udpate']);
+export const NPM_INSTALLS: ReadonlySet<string> = new Set(['install', 'i', 'in', 'ins', 'inst', 'insta', 'instal', 'isnt', 'isnta', 'isntal', 'isntall', 'add', 'it', 'install-test']);
+export const NPM_UPDATES: ReadonlySet<string> = new Set(['update', 'up', 'upgrade', 'udpate']);
 /** npm install's options that take a value, so the word after one is not a package. */
-const NPM_INSTALL_VALUED: ReadonlySet<string> = new Set([...NPM_VALUED, '--tag', '--omit', '--include', '--install-strategy', '--save-prefix', '--before', '--otp', '--cpu', '--os', '--libc', '--location']);
-const PNPM_INSTALL_VALUED: ReadonlySet<string> = new Set([...PNPM_VALUED, '--reporter', '--loglevel', '--registry', '--store-dir', '--virtual-store-dir', '--modules-dir', '--workspace-concurrency', '--allow-build']);
-const YARN_INSTALL_VALUED: ReadonlySet<string> = new Set([...YARN_VALUED, '--mode', '--modules-folder', '--cache-folder', '--registry', '--network-timeout']);
-const BUN_INSTALL_VALUED: ReadonlySet<string> = new Set([...BUN_VALUED, '--registry', '--cache-dir', '--backend', '--omit', '--filter', '-F', '--cpu', '--os', '--linker']);
+export const NPM_INSTALL_VALUED: ReadonlySet<string> = new Set([...NPM_VALUED, '--tag', '--omit', '--include', '--install-strategy', '--save-prefix', '--before', '--otp', '--cpu', '--os', '--libc', '--location']);
+export const PNPM_INSTALL_VALUED: ReadonlySet<string> = new Set([...PNPM_VALUED, '--reporter', '--loglevel', '--registry', '--store-dir', '--virtual-store-dir', '--modules-dir', '--workspace-concurrency', '--allow-build']);
+export const YARN_INSTALL_VALUED: ReadonlySet<string> = new Set([...YARN_VALUED, '--mode', '--modules-folder', '--cache-folder', '--registry', '--network-timeout']);
+export const BUN_INSTALL_VALUED: ReadonlySet<string> = new Set([...BUN_VALUED, '--registry', '--cache-dir', '--backend', '--omit', '--filter', '-F', '--cpu', '--os', '--linker']);
 
 /** A spec of a local folder, file or workspace package, which the registry has no part in. */
 const LOCAL_SPEC = /^(?:file|link|workspace|portal):|\.(?:tgz|tar|tar\.gz)$/i;
@@ -119,13 +119,16 @@ function targetOf(word: ShellWord, reading: Reading): InstallTarget | undefined 
 }
 
 /** An install's package words and options, read anywhere among them: `--` ends the options and a valued option takes the next word. */
-interface InstallWords {
+export interface InstallWords {
   readonly specs: readonly ShellWord[];
+  /** Every option given, by name (`--prefix` for `--prefix=x`). */
+  readonly flags: ReadonlySet<string>;
   readonly values: ReadonlyMap<string, ShellWord>;
 }
 
-function installWordsOf(args: readonly ShellWord[], valued: ReadonlySet<string>): InstallWords {
+export function installWordsOf(args: readonly ShellWord[], valued: ReadonlySet<string>): InstallWords {
   const specs: ShellWord[] = [];
+  const flags = new Set<string>();
   const values = new Map<string, ShellWord>();
   let options = true;
   let index = 0;
@@ -139,6 +142,7 @@ function installWordsOf(args: readonly ShellWord[], valued: ReadonlySet<string>)
     } else {
       const equals = word.text.startsWith('--') ? word.text.indexOf('=') : -1;
       const name = equals === -1 ? word.text : word.text.slice(0, equals);
+      flags.add(name);
       if (equals !== -1) {
         values.set(name, staticWord(word.text.slice(equals + 1)));
       } else if (valued.has(name)) {
@@ -147,7 +151,7 @@ function installWordsOf(args: readonly ShellWord[], valued: ReadonlySet<string>)
       }
     }
   }
-  return { specs, values };
+  return { specs, flags, values };
 }
 
 /** An install that adds what it names; a bare one installs from the lockfile and is not one. `npm` reads `--tag` and `--before`. */
