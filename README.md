@@ -162,7 +162,8 @@ you still talk to one lead.
 
 A push to main asks you first, and a force-push to it is refused. A package runner that would fetch and run an
 unvetted package (`npx` of a tool not installed, `pnpm dlx`) is refused, and so is an install of a version published
-in the last two weeks or with a known advisory. A call that would print a secret file, the whole environment or a
+in the last two weeks or with a known advisory, or one that would rewrite a worktree's `node_modules` linked to the
+main checkout's. A call that would print a secret file, the whole environment or a
 Kubernetes secret is refused before it runs. Each helper a member starts gets the same team rules and knows whose
 helper it is. Everything runs on your machine, with no account and no cloud bill.
 
