@@ -19,11 +19,12 @@ export interface CommitAdds extends PatchAdds {
 
 /**
  * How git prints the patches these parsers read: no context, no colour, no external diff or textconv (a textconv could
- * print a file's content other than it is stored), no `a/`/`b/` prefix and renames found. No `--diff-filter`: in a log
- * it drops whole commits (a merge, a commit that only deletes), and their messages with them; a deleted file adds
- * nothing here. Run with `-c core.quotePath=false`, so a non-ASCII name is printed as itself.
+ * print a file's content other than it is stored), no `a/`/`b/` prefix, every path from the repo's top folder (a
+ * `diff.relative` config would hide the changes outside the folder git runs in) and renames found. No `--diff-filter`:
+ * in a log it drops whole commits (a merge, a commit that only deletes), and their messages with them; a deleted file
+ * adds nothing here. Run with `-c core.quotePath=false`, so a non-ASCII name is printed as itself.
  */
-export const PATCH_FLAGS: readonly string[] = ['-U0', '--no-color', '--no-ext-diff', '--no-textconv', '--no-prefix', '-M'];
+export const PATCH_FLAGS: readonly string[] = ['-U0', '--no-color', '--no-ext-diff', '--no-textconv', '--no-prefix', '--no-relative', '-M'];
 
 /** The `git log` format `commitsOf` splits: NUL, id, NUL, message, NUL, then the commit's patch. A message holds no NUL. */
 export const COMMIT_FORMAT = '--format=%x00%H%x00%B%x00';
