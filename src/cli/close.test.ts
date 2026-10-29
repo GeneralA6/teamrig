@@ -3,11 +3,13 @@ import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { projectTranscriptPath } from '../budget/discover.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
+import type { RestoreEntry } from '../restore/entry.ts';
+import { RestoreRegistry, restoreSessionsDir } from '../restore/registry.ts';
 import { SessionLog } from '../sessions/log.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
 import { HOLDING_BUDGET, holdAlpha } from '../testing/budget-hold.ts';
 import { TEST_CARD_FLAGS, TEST_OWNER_CARD_FLAGS } from '../testing/card.ts';
-import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
+import { APP, CLAUDE_SESSION, CliHarness, KIT, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { ok } from '../testing/hired-team.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakePathProbe } from '../testing/fake-processes.ts';
@@ -86,6 +88,34 @@ async function runningAlpha(idleMinutes = 75, transcript = reply(40_000), record
 
 function close(alpha: Alpha, args: readonly string[]): Promise<CliResult> {
   return alpha.kit.run(['close', ...args], alpha.options);
+}
+
+const OTHER_SESSION = '0123abcd-0000-4000-8000-0000000000e5';
+
+/** The kit home's restore registry, holding an entry for alpha's Claude Code session and one for another session. */
+async function recordedForRestore(alpha: Alpha): Promise<RestoreRegistry> {
+  const registry = new RestoreRegistry(alpha.kit.files, restoreSessionsDir(KIT));
+  for (const claudeSession of [CLAUDE_SESSION, OTHER_SESSION]) {
+    const entry: RestoreEntry = {
+      claudeSession,
+      projectDir: APP,
+      transcriptPath: undefined,
+      entrypoint: 'cli',
+      sessionKind: undefined,
+      pid: undefined,
+      team: 'app',
+      session: undefined,
+      state: 'ready',
+      createdAt: NOW - 120 * MINUTE_MS,
+      updatedAt: NOW - 75 * MINUTE_MS,
+      restoreAttempts: 0,
+      restoredAt: undefined,
+      endedAt: undefined,
+      endReason: undefined,
+    };
+    await registry.write(entry);
+  }
+  return registry;
 }
 
 /** A refusal prints `REFUSED <why>` and exits 2. */
@@ -252,11 +282,32 @@ describe('teamrig close', () => {
     assert.deepEqual(shelled.processes.ends, []);
   });
 
-  it('logs nothing when its tab outlives the end', async () => {
+  it("drops the closed session's restore entry, so a reboot's restore does not reopen it, and keeps every other (T1425)", async () => {
     const alpha = await runningAlpha();
+    const registry = await recordedForRestore(alpha);
+    const closed = await close(alpha, ['alpha', '--yes', '--session', 'lead']);
+    assert.equal(closed.code, 0, closed.stderr.join('\n'));
+    assert.equal(await registry.read(CLAUDE_SESSION), undefined);
+    assert.equal((await registry.read(OTHER_SESSION))?.claudeSession, OTHER_SESSION);
+  });
+
+  it('still closes, and warns, when the restore entry cannot be dropped (T1425)', async () => {
+    const alpha = await runningAlpha();
+    const registry = await recordedForRestore(alpha);
+    const files = new FaultyFiles(alpha.kit.files).fail('remove', registry.pathOf(CLAUDE_SESSION), systemError('EACCES', 'EACCES: permission denied'));
+    const closed = await alpha.kit.run(['close', 'alpha', '--yes', '--session', 'lead'], { ...alpha.options, files });
+    assert.equal(closed.code, 0, closed.stderr.join('\n'));
+    assert.deepEqual(closed.stderr, ["WARN the restore entry of alpha was not dropped, so a reboot's restore may reopen it: EACCES: permission denied"]);
+    assert.ok(alpha.kit.files.get(LOG) !== undefined, 'the close is logged');
+  });
+
+  it('logs nothing and keeps its restore entry when its tab outlives the end', async () => {
+    const alpha = await runningAlpha();
+    const registry = await recordedForRestore(alpha);
     alpha.processes.failEnd(TAB.pid, 'access denied');
     assertRefused(await close(alpha, ['alpha', '--yes', '--session', 'lead']), /alpha \(session alpha\) was not closed: could not end process 8000: access denied/);
     assert.equal(alpha.kit.files.get(LOG), undefined);
+    assert.equal((await registry.read(CLAUDE_SESSION))?.claudeSession, CLAUDE_SESSION);
   });
 });
 
@@ -301,6 +352,15 @@ describe('teamrig idle-close', () => {
       { kind: 'close', session: 'alpha', by: 'idle-pass', at: new Date(alpha.kit.clock.now()).toISOString(), claudeSession: CLAUDE_SESSION, idleMinutes: 75, freedMb: 1300, folder: APP },
     ]);
     assert.deepEqual(actsOf(alpha), [{ v: 1, kind: 'act', mode: 'on', act: 'close', id: 'alpha', outcome: 'done', line, before: CHARGE, after: CHARGE }]);
+  });
+
+  it("drops the closed session's restore entry, as teamrig close does (T1425)", async () => {
+    const alpha = await runningAlpha(75, reply(40_000), undefined, WAKES_P1);
+    const registry = await recordedForRestore(alpha);
+    const closed = await idleClose(alpha);
+    assert.equal(closed.code, 0, closed.stderr.join('\n'));
+    assert.equal(await registry.read(CLAUDE_SESSION), undefined);
+    assert.equal((await registry.read(OTHER_SESSION))?.claudeSession, OTHER_SESSION);
   });
 
   it('tells the lead with an urgent line: the inbox line and the wake ask that wakes it', async () => {
