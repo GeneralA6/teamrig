@@ -14,7 +14,8 @@ export interface AutoModeFacts {
   /** The team's home folder as the person reads it (`~/.teamrig/teams/<team>`), where the register commands write. */
   readonly home: string;
   readonly lead: string;
-  readonly pushGuard: PushGuardConfig;
+  /** Only the keys the lines name: the protected branches and how a push to one goes. */
+  readonly pushGuard: Pick<PushGuardConfig, 'protectedBranches' | 'pushToProtected'>;
 }
 
 /**
