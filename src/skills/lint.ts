@@ -45,14 +45,15 @@ function frontmatterKeys(front: string): Set<string> {
   return new Set(Array.from(front.matchAll(TOP_LEVEL_KEY), (match) => match[1] ?? ''));
 }
 
-/** The frontmatter `description`, inline (quoted or not) or as a YAML block scalar (`>` / `|`). */
-export function descriptionOf(front: string): string | null {
+/** A top-level frontmatter key's text value, inline (quoted or not) or as a YAML block scalar (`>` / `|`); `key` is a plain word. */
+export function frontmatterValue(front: string, key: string): string | null {
   const lines = front.split(/\r?\n/);
-  const at = lines.findIndex((line) => /^description\s*:/.test(line));
+  const named = new RegExp(`^${key}\\s*:\\s*`);
+  const at = lines.findIndex((line) => named.test(line));
   if (at === -1) {
     return null;
   }
-  const inline = (lines[at] ?? '').replace(/^description\s*:\s*/, '').trim();
+  const inline = (lines[at] ?? '').replace(named, '').trim();
   if (/^[>|][+-]?$/.test(inline)) {
     const block: string[] = [];
     for (const line of lines.slice(at + 1)) {
@@ -66,6 +67,11 @@ export function descriptionOf(front: string): string | null {
   }
   const text = inline.replace(/^(["'])(.*)\1$/, '$2').trim();
   return text === '' ? null : text;
+}
+
+/** The frontmatter `description` (`frontmatterValue`). */
+export function descriptionOf(front: string): string | null {
+  return frontmatterValue(front, 'description');
 }
 
 /** A skill's area: the longest session id (or shared prefix) it starts with, else its first word. */
