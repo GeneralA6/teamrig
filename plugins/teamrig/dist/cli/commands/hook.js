@@ -21,7 +21,7 @@ import { execGuardOutput } from "../../hooks/exec-guard.js";
 import { packageGuardOf, packageGuardOutput } from "../../hooks/package-guard.js";
 import { passRecordGuardOutput } from "../../hooks/pass-record-guard.js";
 import { hookAsksOf } from "../../hooks/permission.js";
-import { secretGuardOf, secretGuardOutput } from "../../hooks/secret-guard.js";
+import { secretGuardOf, secretGuardOutput, secretPatternsOf } from "../../hooks/secret-guard.js";
 import { secretRulesOf } from "../../secret-guard/rules.js";
 import { commitsOf, protectedBranchesOf, pushGuardOutput, pushToProtectedOf, skipHooksOf } from "../../hooks/push-guard.js";
 import { JsonlHintLog } from "../../hooks/hint-log.js";
@@ -203,7 +203,7 @@ export async function packageGuard(args, runtime) {
     }
     return EXIT.ok;
 }
-/** PreToolUse on Bash, PowerShell, Read and Grep: refuses, or asks about, a call that would print a secret into the conversation. */
+/** PreToolUse on Bash, PowerShell, Read and Grep: refuses, or asks about, a call that would print a secret into the conversation or whose line holds one as text. */
 export async function secretGuard(args, runtime) {
     noPositionals(args);
     const payload = parseJson(await runtime.readStdin());
@@ -214,7 +214,7 @@ export async function secretGuard(args, runtime) {
     const config = secretGuardOf(guard.load);
     const output = secretGuardOutput(payload, {
         cwd: runtime.cwd,
-        rules: secretRulesOf(config, runtime.userHome, runtime.platform),
+        rules: secretRulesOf(config, runtime.userHome, runtime.platform, secretPatternsOf(guard.load)),
         secretReads: config.secretReads,
         hookAsks: hookAsksOf(guard.load),
     });

@@ -1,6 +1,8 @@
-/** What the call would print, as the refusal names it. */
+/** What the call would print, or the shape of the secret its line holds, as the refusal names it. */
 export function describeFinding(finding) {
     switch (finding.kind) {
+        case 'literal':
+            return finding.description;
         case 'file':
             return `the content of ${finding.path}`;
         case 'environment':
@@ -9,6 +11,8 @@ export function describeFinding(finding) {
             return `the value of $${finding.name}`;
         case 'kube-secret':
             return "a Kubernetes secret's data";
+        case 'command':
+            return `the secrets in this ${finding.program} command's output`;
     }
 }
 /** `findings` without repeats, in order. */
