@@ -3,6 +3,7 @@ import type { Sleep } from '../core/lock.ts';
 import { join, resolve } from 'node:path';
 import { runCli } from '../cli/run.ts';
 import type { ExitCode } from '../cli/runtime.ts';
+import { CONFIG_LIMITS } from '../config/limits.ts';
 import { formatConfig } from '../config/load.ts';
 import type { ConfigFormat } from '../config/migrate.ts';
 import type { FileBytes } from '../core/file-bytes.ts';
@@ -53,6 +54,17 @@ export const CLAUDE_SESSION = '0123abcd-0000-4000-8000-00000000000a';
 export const TEAM: JsonRecord = { sessions: ['lead', 'alpha', 'bravo'], roles: { lead: 'lead' } };
 /** {@link TEAM} with the context refresh's automatic restart on (`refresh.autoRestart`, off by default). */
 export const AUTO_RESTART_TEAM: JsonRecord = { ...TEAM, refresh: { autoRestart: true } };
+const longestList = (limit: { readonly maxItems: number; readonly maxLength: number }, letter: string) =>
+  Array.from({ length: limit.maxItems }, () => letter.repeat(limit.maxLength));
+/**
+ * {@link TEAM} with the owner gates and protected branches at their longest, both printed in the core rules: the
+ * lead's start then nears the context cap, so a full team rules file pushes its long notes out.
+ */
+export const LONG_RULES_TEAM: JsonRecord = {
+  ...TEAM,
+  ownerGates: longestList(CONFIG_LIMITS.ownerGates, 'g'),
+  pushGuard: { protectedBranches: longestList(CONFIG_LIMITS.protectedBranches, 'b') },
+};
 
 export interface CliResult {
   readonly code: ExitCode;

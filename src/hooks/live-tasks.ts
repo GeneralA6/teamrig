@@ -116,3 +116,8 @@ export function liveTasksNote({ tasks, owner, tree, command }: LiveTasksInput): 
   const more = left > 0 ? [`  +${left} more: \`${command} list --session ${owner}\``] : [];
   return [`${source} (${active.length} active; ${wins}):`, ...rows, ...more, ...waiting].join('\n');
 }
+
+/** The block's one line when the start note has no room for it (T1376): the command that prints it, run first. */
+export function liveTasksPointer(owner: string, command: string): string {
+  return `LIVE TASKS of ${owner}: this start has no room for them; run \`${command} start --session ${owner}\` first, and where your handover or a compaction summary says otherwise, the register wins.`;
+}

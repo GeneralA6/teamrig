@@ -29,10 +29,10 @@ import { secretRulesOf } from '../../secret-guard/rules.ts';
 import { commitsOf, protectedBranchesOf, pushGuardOutput, pushToProtectedOf, skipHooksOf, type PushClearance } from '../../hooks/push-guard.ts';
 import { JsonlHintLog } from '../../hooks/hint-log.ts';
 import { promptOutput } from '../../hooks/prompt-output.ts';
-import { showsLiveTasks } from '../../hooks/live-tasks.ts';
+import { liveTasksPointer, showsLiveTasks } from '../../hooks/live-tasks.ts';
 import { requirementsNoteOnce } from '../../hooks/requirements-note.ts';
 import { helperOf } from '../../hooks/helper-start.ts';
-import { sessionStartContext, sessionStartOutput, type SessionStartInput } from '../../hooks/session-start.ts';
+import { sessionStartContext, sessionStartOutput, type CuttableNote, type SessionStartInput } from '../../hooks/session-start.ts';
 import { worktreeNoteOf } from '../../hooks/worktree-note.ts';
 import { stopModelNotices } from '../../hooks/stop-model.ts';
 import { leadStopLine, leadTallyOf } from '../../hooks/lead-boundary.ts';
@@ -82,7 +82,7 @@ import { tabStatusOn, tabTitleOf } from './hook-tab-status.ts';
 import { logPrompt, logReply, logStart } from './hook-turn-log.ts';
 import { keepWorkingReasonOf } from './keep-working.ts';
 import { retireAskReasonOf } from './retire-ask.ts';
-import { verifyByLinesOf, verifyNoteOf } from './verify-queue.ts';
+import { verifyByLinesOf, verifyStartNoteOf } from './verify-queue.ts';
 
 /**
  * Claude Code hooks. Each reads the hook's JSON from stdin and prints only what Claude Code
@@ -577,7 +577,7 @@ async function teamPartsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, pay
     refreshNote: refresh.note,
     liveTasksNote: await liveTasksPartOf(runtime, kit, config, id, payload, refresh),
     modelNote: modelNoteOf(config, roster, id, payload),
-    verifyNote: await verifyNoteOf(runtime, kit.paths, id),
+    verifyNote: await verifyStartNoteOf(runtime, kit.paths, id),
     worktreeNote: worktreeNoteOf(isRecord(payload) ? stringField(payload, 'cwd') : undefined),
     session,
     sessionInEnv: fromEnv !== undefined,
@@ -750,10 +750,16 @@ async function refreshStartOf(runtime: CliRuntime, kit: Kit, config: KitConfig, 
   }
 }
 
-/** The live-task block (hooks/live-tasks.ts) at the fresh start after a refresh and after a compaction; none at another start or for no session. */
-async function liveTasksPartOf(runtime: CliRuntime, kit: Kit, config: KitConfig, id: string | undefined, payload: unknown, refresh: RefreshStart): Promise<string | undefined> {
+/**
+ * The live-task block (hooks/live-tasks.ts) at the fresh start after a refresh and after a compaction, with its pointer
+ * for a start that has no room for it; none at another start or for no session.
+ */
+async function liveTasksPartOf(runtime: CliRuntime, kit: Kit, config: KitConfig, id: string | undefined, payload: unknown, refresh: RefreshStart): Promise<CuttableNote | undefined> {
   const source = isRecord(payload) ? stringField(payload, 'source') : undefined;
-  return id !== undefined && showsLiveTasks(source, refresh.refreshed) ? liveTasksNoteOf(runtime, kit.paths, id, teamZone(config, runtime)) : undefined;
+  if (id === undefined || !showsLiveTasks(source, refresh.refreshed)) {
+    return undefined;
+  }
+  return { text: await liveTasksNoteOf(runtime, kit.paths, id, teamZone(config, runtime)), pointer: liveTasksPointer(id, KIT_NAME) };
 }
 
 /** The refresh facts every turn end may need: the lead's request, the context size from the transcript's tail, and the open meeting. */

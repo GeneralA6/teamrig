@@ -2,8 +2,9 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { isRecord } from '../core/guards.ts';
+import { CONTEXT_MAX_CHARS, TEAM_RULES_MAX_CHARS } from '../rules/pack.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
-import { APP, CLAUDE_SESSION, CliHarness, contextOf, EVENTS_PATH, TEAM, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
+import { APP, CLAUDE_SESSION, CliHarness, contextOf, EVENTS_PATH, LONG_RULES_TEAM, TEAM, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
 
 /** A harness holding T1, owned by alpha and in progress. */
@@ -105,6 +106,27 @@ describe('the verify queue reaches its session', () => {
 ${queue}`), context);
     const other = contextOf(await kit.run(['hook', 'session-start'], { stdin: start, env: { TEAMRIG_SESSION: 'bravo' } }));
     assert.ok(!other.includes('VERIFY'));
+  });
+
+  it('as its pointer when the rows and a full team rules file would overflow the context cap (T1376)', async () => {
+    const kit = new CliHarness(LONG_RULES_TEAM);
+    for (const id of ['T1', 'T2', 'T3', 'T4', 'T5', 'T6']) {
+      await kit.run(['add', '--title', `Ship part ${id}`, '--description', 'what and why', '--priority', 'p2', '--session', 'lead']);
+      await kit.run(['set', id, '--status', 'in-progress', '--session', 'lead']);
+      const set = await kit.run(['set', id, '--status', 'verifying', '--waits', 'time:2030-02-01 09:00', '--note', 'shipped', '--followups', 'none', '--proof', 'the nightly run of the whole pipeline is green', '--session', 'lead']);
+      assert.equal(set.code, EXIT.ok, set.stdout.join('\n'));
+    }
+    const asLead = { stdin: start, env: { TEAMRIG_SESSION: 'lead' } };
+    const roomy = contextOf(await kit.run(['hook', 'session-start'], asLead));
+    assert.ok(roomy.includes('\nVERIFY 6, oldest first:\n'), roomy);
+    const rules = 'x'.repeat(TEAM_RULES_MAX_CHARS);
+    assert.ok(roomy.length + rules.length > CONTEXT_MAX_CHARS, `the rows fit beside the rules: ${roomy.length}`);
+
+    await kit.files.write(join(TEAM_HOME, 'rules.md'), rules);
+    const cut = contextOf(await kit.run(['hook', 'session-start'], asLead));
+    assert.ok(cut.length <= CONTEXT_MAX_CHARS, String(cut.length));
+    assert.ok(cut.endsWith(`# Your team's rules\n${rules}`));
+    assert.ok(cut.includes('\nVERIFY: this start has no room for your verifying and watched tasks; `teamrig verify --session lead` lists them.'), cut.slice(0, -rules.length).slice(-600));
   });
 
   it('starts the session without it when the register cannot be read', async () => {

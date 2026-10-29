@@ -6,7 +6,19 @@ import { formatAddress } from '../core/address.ts';
 import { ENV, KIT_NAME } from '../core/home.ts';
 import { isReservedName, RESERVED_RULE } from '../core/ids.ts';
 import type { Rename } from '../names/rename.ts';
-import { renderCorePack, renderLeadRules, renderSessionContext, type KeptRule, type RulesClock, type TeamRules } from '../rules/pack.ts';
+import { CONTEXT_MAX_CHARS, renderCorePack, renderLeadRules, teamRulesPart, type KeptRule, type RulesClock, type TeamRules } from '../rules/pack.ts';
+
+/**
+ * A long start note: shown in full when the context has room for it, else as `pointer`, one line naming the command
+ * that prints it, so the context stays inside CONTEXT_MAX_CHARS (T1376).
+ */
+export interface CuttableNote {
+  readonly text: string;
+  readonly pointer: string;
+}
+
+/** A line of the start's notes: a short one always shown, or a long one that may come as its pointer. */
+type StartNote = string | CuttableNote;
 
 export interface SessionStartInput {
   readonly team: string;
@@ -25,11 +37,11 @@ export interface SessionStartInput {
    * After a context refresh or a compaction: the session's active tasks as the register holds them at this start
    * (hooks/live-tasks.ts), since its handover or the compaction summary may be older.
    */
-  readonly liveTasksNote: string | undefined;
+  readonly liveTasksNote: CuttableNote | undefined;
   /** When the session runs on another model or effort than the team config asks: the line that says so. */
   readonly modelNote: string | undefined;
   /** When the session holds verifying tasks: `VERIFY <n>, oldest first:` and a row each (the first few), so it proves them. */
-  readonly verifyNote: string | undefined;
+  readonly verifyNote: CuttableNote | undefined;
   /** When the session already runs in another Claude Code: the line that tells this second one to stop. */
   readonly duplicateNote: string | undefined;
   /** When the session starts in a Claude Code worktree: the shell forms its isolation refuses (hooks/worktree-note.ts). */
@@ -145,9 +157,36 @@ function treeLine(place: TreePlace, input: SessionStartInput, isLead: boolean): 
 }
 
 /**
+ * The context, within CONTEXT_MAX_CHARS: past it Claude Code shows the session only a preview of the start and saves
+ * the rest to a file (T1376). The rules and each short note always come; the team rules files fit next, beside each
+ * long note's pointer (`teamRulesPart`); then each long note, in order, takes its full text while the room left
+ * holds it. A team rules file wins over a long note: a rules pointer costs a read of the file, while a long note's
+ * pointer names the `start` the session runs at each work block anyway.
+ */
+function fitContext(rules: string, notes: readonly StartNote[], files: readonly TeamRules[], command: string): string {
+  const withNotes = (lines: readonly string[]): string => `${rules}\n\n${lines.join('\n')}`;
+  const pointers = withNotes(notes.map((note) => (typeof note === 'string' ? note : note.pointer)));
+  const team = teamRulesPart(files, pointers.length, command);
+  let room = CONTEXT_MAX_CHARS - pointers.length - team.length;
+  const shown: string[] = [];
+  for (const note of notes) {
+    if (typeof note === 'string') {
+      shown.push(note);
+      continue;
+    }
+    const grows = note.text.length - note.pointer.length;
+    const fits = grows <= room;
+    shown.push(fits ? note.text : note.pointer);
+    room -= fits ? grows : 0;
+  }
+  return `${withNotes(shown)}${team}`;
+}
+
+/**
  * The SessionStart context: the core rules from the team config, the lead's own lines for the lead, who the
  * session is, where its team sits in a tree of teams, its notes (after a refresh its handover, after a refresh or a
- * compaction its live tasks), and the team's own rules. Without a usable config it says why no rules are loaded, in one line.
+ * compaction its live tasks), and the team's own rules, fitted to Claude Code's cap (`fitContext`). Without a usable
+ * config it says why no rules are loaded, in one line.
  */
 export function sessionStartContext(input: SessionStartInput): string {
   const { load, command } = input;
@@ -155,8 +194,8 @@ export function sessionStartContext(input: SessionStartInput): string {
     return unloadedContext(input.team, load, command);
   }
   const roster = new Roster(load.config, input.team, input.renames);
-  const notes = identityLines(roster, new LeadTree(load.config), input);
-  // In the core part, so the size budget that may cut the team's rules.md never cuts it.
+  const notes: StartNote[] = identityLines(roster, new LeadTree(load.config), input);
+  // A short note, so the size budget that may cut the team's rules.md or a long note never cuts it.
   if (input.duplicateNote !== undefined) {
     notes.push(input.duplicateNote);
   }
@@ -186,7 +225,7 @@ export function sessionStartContext(input: SessionStartInput): string {
   }
   const core = renderCorePack(load.config, command, input.platform, input.clock, input.keptRulesAbove);
   const rules = isLeadSession(roster, input.session) ? `${core}\n\n${renderLeadRules(load.config, command)}` : core;
-  return renderSessionContext(`${rules}\n\n${notes.join('\n')}`, input.teamRules, command);
+  return fitContext(rules, notes, input.teamRules, command);
 }
 
 /**
