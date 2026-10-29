@@ -8,6 +8,7 @@ import { EXIT } from './runtime.ts';
 
 const HISTORY = join(USER_HOME, '.claude', 'history.jsonl');
 const PENDING = join(KIT, 'history-clean', 'pending');
+const CLEAN_LOG = join(KIT, 'history-clean', 'log.jsonl');
 const ALPHA = { TEAMRIG_SESSION: 'alpha' };
 const TEN_MINUTES = 10 * 60 * 1000;
 
@@ -83,6 +84,24 @@ describe('hook inbox-reminder: a prompt that holds a secret', () => {
     assert.match(blockReason(await kit.run(['hook', 'inbox-reminder'], { stdin: prompt(`push with ${TOKEN}`), env: ALPHA, files })), /failed; your next prompt tries again\.$/);
     await kit.run(['hook', 'inbox-reminder'], { stdin: prompt('go on'), env: ALPHA });
     assert.equal(kit.files.get(HISTORY), '');
+  });
+
+  it('is stopped when its clean cannot be recorded, saying an earlier prompt may stay in the history', async () => {
+    const kit = new CliHarness(TEAM);
+    const files = new FaultyFiles(kit.files).fail('append', CLEAN_LOG, systemError('EPERM'));
+    assert.match(blockReason(await kit.run(['hook', 'inbox-reminder'], { stdin: prompt(`push with ${TOKEN}`), env: ALPHA, files })), /may stay in history\.jsonl\.$/);
+  });
+});
+
+describe('hook inbox-reminder: a prompt with no secret', () => {
+  it('goes through with its inbox lines when the sweep of earlier blocked prompts fails', async () => {
+    const kit = new CliHarness(TEAM);
+    await kit.run(['inbox', 'add', '--to', 'alpha', '--text', 'T7 is yours', '--session', 'lead']);
+    const files = new FaultyFiles(kit.files).fail('list', PENDING, systemError('EACCES'));
+    const result = await kit.run(['hook', 'inbox-reminder'], { stdin: prompt('go on'), env: ALPHA, files });
+    assert.equal(result.code, EXIT.ok);
+    assert.match(result.stdout.join('\n'), /lead: T7 is yours/);
+    assert.doesNotMatch(result.stdout.join('\n'), /"decision"/);
   });
 
   it('is stopped under a broken team pointer too, and left alone outside a team', async () => {
