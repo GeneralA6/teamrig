@@ -181,3 +181,35 @@ describe('teamrig merge', () => {
     assert.deepEqual([steps.ran, git.log, kit.files.get(LEDGER)], [[], [], undefined]);
   });
 });
+
+describe('teamrig merge with the review gate', () => {
+  const GATED = {
+    ...TEAM,
+    roles: { lead: 'lead', securityReviewer: 'bravo' },
+    coordinator: { repos: { app: { mainCheckout: MAIN_CHECKOUT, reviewGate: true } } },
+  };
+
+  it("holds a lockfile change of alpha's task for the security reviewer, then merges it once the reviewer approved", async () => {
+    const { kit, git, steps } = world(GATED);
+    git.checkouts.set(WORKTREE, { top: WORKTREE, branch: 't1-feat', mainCheckout: MAIN_CHECKOUT, linked: true });
+    git.paths = ['package-lock.json'];
+    const added = await kit.run(['add', '--title', 'Pin the lockfile', '--description', 'what and why', '--priority', 'p1', '--session', 'alpha']);
+    assert.equal(added.code, EXIT.ok, added.stderr.join('\n'));
+
+    const held = await kit.run(MERGE_RUN, { ...IN_WORKTREE, mergeGit: git, steps });
+    assert.equal(held.code, EXIT.refused, held.stderr.join('\n'));
+    assert.match(held.stdout.at(-1) ?? '', /^REFUSED review hold H\w+ keeps t1-feat \(base\.\.rebased\) off the default branch: it changes package-lock\.json\. .*--waits approval:bravo /);
+    assert.deepEqual(steps.ran, []);
+
+    kit.clock.advance(MINUTE);
+    const asked = await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'approval:bravo', '--note', 'review hold of t1-feat', '--session', 'alpha']);
+    assert.equal(asked.code, EXIT.ok, asked.stderr.join('\n'));
+    const approved = await kit.run(['approve', 'T1', '--note', 'the pin resolves as audited', '--session', 'bravo']);
+    assert.equal(approved.code, EXIT.ok, approved.stderr.join('\n'));
+    kit.clock.advance(MINUTE);
+
+    const merged = await kit.run(MERGE_RUN, { ...IN_WORKTREE, mergeGit: git, steps });
+    assert.equal(merged.code, EXIT.ok, merged.stdout.join('\n'));
+    assert.equal(steps.ran.length, 1);
+  });
+});
