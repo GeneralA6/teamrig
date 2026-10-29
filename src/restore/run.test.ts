@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { claudeProjectSlug } from '../budget/discover.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
-import { FakeCountdown, FakeShutdownLog } from '../testing/fake-restore.ts';
+import { FakeCountdown, FakeShutdownLog, FakeStopWatch } from '../testing/fake-restore.ts';
 import { MemoryFiles, MemoryPathProbe } from '../testing/memory-files.ts';
 import type { RestoreChoice } from './countdown.ts';
 import type { RestoreEntry } from './entry.ts';
@@ -72,6 +72,7 @@ interface World {
   readonly registry: RestoreRegistry;
   readonly clock: FakeClock;
   readonly countdown: FakeCountdown;
+  readonly stops: FakeStopWatch;
   readonly reopened: ReopenTab[];
   readonly printed: string[];
   readonly logged: string[];
@@ -105,6 +106,7 @@ async function world(
   }
   const clock = new FakeClock('2030-01-08T09:05:00Z');
   const countdown = new FakeCountdown(choice);
+  const stops = new FakeStopWatch();
   const reopened: ReopenTab[] = [];
   const printed: string[] = [];
   const logged: string[] = [];
@@ -112,6 +114,7 @@ async function world(
     registry,
     clock,
     countdown,
+    stops,
     reopened,
     printed,
     logged,
@@ -122,6 +125,7 @@ async function world(
       probe,
       shutdowns: new FakeShutdownLog(SHUTDOWN),
       countdown,
+      stops,
       teams: [APP],
       home: '/home/me',
       projectsDir: PROJECTS,
@@ -300,5 +304,63 @@ describe('runRestore', () => {
     assert.deepEqual(await runRestore(deps, LOGON), { opened: 0, failed: 0 });
     assert.deepEqual(countdown.counted, []);
     assert.deepEqual(printed, ['No Claude Code sessions to restore.']);
+  });
+
+  it('logs when the reopening starts and ends, so a run that stopped short shows (T1439)', async () => {
+    const { deps, logged, stops } = await world();
+    await runRestore(deps, LOGON);
+    assert.deepEqual(logged, [
+      `discarded ${SDK} (not a terminal session (sdk-cli))`,
+      'run: started, 3 to reopen',
+      `run: opened ${LEAD} (continue: lead) at effort high`,
+      `run: opened ${ALPHA} (continue: mid-turn) at effort max`,
+      `run: opened ${LONE} (idle) at effort default`,
+      'run: done, 3 opened, 0 skipped, 0 failed of 3',
+    ]);
+    assert.equal(stops.watching, 0);
+  });
+
+  it('counts the skipped and failed sessions in its last line, and says when all reopen idle', async () => {
+    const { deps, logged } = await world('idle', async (tab, self) => {
+      if (tab.claudeSession === LEAD) {
+        await self.registry.remove(LONE);
+        return { kind: 'failed', why: 'no terminal' };
+      }
+      return { kind: 'opened' };
+    });
+    await runRestore(deps, LOGON);
+    assert.equal(logged[1], 'run: started, 3 to reopen, all idle');
+    assert.equal(logged.at(-1), 'run: done, 1 opened, 1 skipped, 1 failed of 3');
+  });
+
+  it('logs how far it got when its tab is closed while it reopens', async () => {
+    const { deps, logged, stops } = await world('go', async (tab) => {
+      if (tab.claudeSession === ALPHA) {
+        await stops.stop('SIGHUP');
+      }
+      return { kind: 'opened' };
+    });
+    await runRestore(deps, LOGON);
+    assert.ok(logged.includes('run: interrupted by SIGHUP after 1 opened, 0 skipped, 0 failed of 3'), logged.join('\n'));
+    assert.equal(stops.watching, 0);
+  });
+
+  it('logs a stop at the countdown, before anything opened', async () => {
+    const { deps, logged, stops } = await world();
+    const countdown = {
+      choose: async (): Promise<RestoreChoice> => {
+        await stops.stop('SIGINT');
+        return 'cancel';
+      },
+    };
+    await runRestore({ ...deps, countdown }, LOGON);
+    assert.deepEqual(logged.slice(-2), ['run: interrupted by SIGINT at the countdown', 'run: cancelled']);
+    assert.equal(stops.watching, 0);
+  });
+
+  it('stops watching when a reopen throws past it', async () => {
+    const { deps, stops } = await world();
+    await assert.rejects(runRestore({ ...deps, sleep: async () => Promise.reject(new Error('sleep broke')) }, LOGON), /sleep broke/);
+    assert.equal(stops.watching, 0);
   });
 });

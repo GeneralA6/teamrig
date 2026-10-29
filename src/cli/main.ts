@@ -31,6 +31,7 @@ import { GIT_WORKTREES } from '../worktree/git.ts';
 import { stdioCountdownTerminal, terminalCountdown } from '../restore/countdown.ts';
 import { LOGON_QUERY_TIMEOUT_MS, systemLogonEntry } from '../restore/logon.ts';
 import { SHUTDOWN_QUERY_TIMEOUT_MS, systemShutdownLog } from '../restore/shutdowns.ts';
+import { processStopWatch } from '../restore/stops.ts';
 import { CMD_SHIM_LINE_ENV } from './cmd-shim.ts';
 import { runCli } from './run.ts';
 
@@ -76,6 +77,7 @@ process.exitCode = await runCli(process.argv.slice(2), {
   restore: {
     shutdowns: systemShutdownLog(process.platform, nodeProgramRunner(SHUTDOWN_QUERY_TIMEOUT_MS)),
     countdown: terminalCountdown(stdioCountdownTerminal(process.stdin, process.stdout)),
+    stops: processStopWatch(process),
     logon: systemLogonEntry(process.platform, process.env['SystemRoot'], nodeProgramRunner(LOGON_QUERY_TIMEOUT_MS)),
   },
   mergeGit: GIT_MERGE,

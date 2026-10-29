@@ -27,6 +27,7 @@ import {
 } from './plan.ts';
 import type { RestoreRegistry } from './registry.ts';
 import type { ShutdownLog } from './shutdowns.ts';
+import type { StopWatch } from './stops.ts';
 import { teamSessionOf, type RestoreTeam, type TeamSession } from './teams.ts';
 import { KIND_TAIL_BYTES, transcriptKindOf, type TranscriptKind } from './transcript-kind.ts';
 
@@ -57,6 +58,7 @@ export interface RestoreDeps {
   readonly probe: PathProbe;
   readonly shutdowns: ShutdownLog;
   readonly countdown: Countdown;
+  readonly stops: StopWatch;
   readonly teams: readonly RestoreTeam[];
   /** Where a session whose folder and every parent of it are gone reopens: the person's home folder. */
   readonly home: string;
@@ -217,11 +219,25 @@ export interface RestoreRun {
   readonly failed: number;
 }
 
+/** How far a run got: whether its countdown ended, and what became of each session it took so far. */
+interface Progress {
+  started: boolean;
+  opened: number;
+  skipped: number;
+  failed: number;
+}
+
+function progressWords({ opened, skipped, failed }: Progress, total: number): string {
+  return `${opened} opened, ${skipped} skipped, ${failed} failed of ${total}`;
+}
+
 /**
  * Reopens the sessions the last shutdown killed, after a countdown the person may cut short, turn into an
  * idle reopen of all, or cancel. Each is judged again just before its tab opens, since a second run or the
  * person may have reopened it meanwhile. Its entry counts the attempt before the tab opens, so a session that
  * keeps failing to resume is dropped after MAX_RESTORE_ATTEMPTS; a tab that did not open takes the count back.
+ * The log says when the reopening starts and ends, and how far it got when its tab is closed meanwhile, so a
+ * run that stopped short is never mistaken for one that finished (T1439).
  */
 export async function runRestore(deps: RestoreDeps, since: number): Promise<RestoreRun> {
   const { facts, plan } = await planOf(deps, since);
@@ -240,27 +256,36 @@ export async function runRestore(deps: RestoreDeps, since: number): Promise<Rest
     'Sessions marked "continue" resume with a message to re-check the state and carry on (mid-turn, an API error, ' +
       'work live at the shutdown, or the lead); the others reopen idle, with no prompt.',
   );
+  const progress: Progress = { started: false, opened: 0, skipped: 0, failed: 0 };
+  const unwatch = deps.stops.watch((signal) =>
+    deps.log(`run: interrupted by ${signal} ${progress.started ? `after ${progressWords(progress, items.length)}` : 'at the countdown'}`),
+  );
+  try {
+    await reopenAll(deps, facts, items, progress);
+  } finally {
+    unwatch();
+  }
+  return { opened: progress.opened, failed: progress.failed };
+}
+
+async function reopenAll(deps: RestoreDeps, facts: JudgeFacts, items: readonly RestoreItem[], progress: Progress): Promise<void> {
   const choice = await deps.countdown.choose(COUNTDOWN_SECONDS);
   if (choice === 'cancel') {
     deps.print('Cancelled: nothing was reopened. Run "teamrig restore run" to try again.');
     await deps.log('run: cancelled');
-    return { opened: 0, failed: 0 };
+    return;
   }
   const chosen = choice === 'idle' ? items.map((item): RestoreItem => ({ ...item, mode: 'idle', why: 'reopened idle' })) : items;
-  let opened = 0;
-  let failed = 0;
+  progress.started = true;
+  await deps.log(`run: started, ${chosen.length} to reopen${choice === 'idle' ? ', all idle' : ''}`);
   for (const [index, item] of chosen.entries()) {
     const outcome = await reopenItem(deps, facts, item, chosen);
-    if (outcome === 'opened') {
-      opened += 1;
-      if (index < chosen.length - 1) {
-        await deps.sleep(TAB_STAGGER_MS);
-      }
-    } else if (outcome === 'failed') {
-      failed += 1;
+    progress[outcome] += 1;
+    if (outcome === 'opened' && index < chosen.length - 1) {
+      await deps.sleep(TAB_STAGGER_MS);
     }
   }
-  return { opened, failed };
+  await deps.log(`run: done, ${progressWords(progress, chosen.length)}`);
 }
 
 async function reopenItem(deps: RestoreDeps, facts: JudgeFacts, item: RestoreItem, items: readonly RestoreItem[]): Promise<'opened' | 'skipped' | 'failed'> {

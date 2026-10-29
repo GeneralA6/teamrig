@@ -11,7 +11,7 @@ import { RestoreRegistry, restoreSessionsDir } from '../restore/registry.ts';
 import { TAB_STAGGER_MS } from '../restore/run.ts';
 import { APP, CliHarness, KIT, TEAM, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
-import { FakeCountdown, FakeShutdownLog } from '../testing/fake-restore.ts';
+import { FakeCountdown, FakeShutdownLog, FakeStopWatch } from '../testing/fake-restore.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { MemoryPathProbe } from '../testing/memory-files.ts';
 import { RESTORE_TAB_TITLE, restoreLogPath, TAB_CLOSE_DELAY_MS, TAB_SETTLE_MS } from './commands/restore.ts';
@@ -76,7 +76,7 @@ function machine(kit: CliHarness, processes: FakeProcesses, choice: RestoreChoic
   const sessionProcesses = new FakeSessionProcesses()
     .add({ pid: LIVE_PID, parentPid: 1, name: 'claude.exe', commandLine: 'claude' })
     .add({ pid: REUSED_PID, parentPid: 1, name: 'notepad.exe', commandLine: 'notepad.exe' });
-  return { platform: 'win32', processes, probe: new MemoryPathProbe(kit.files), sessionProcesses, restore: { shutdowns: new FakeShutdownLog(SHUTDOWN), countdown, logon: undefined }, countdown };
+  return { platform: 'win32', processes, probe: new MemoryPathProbe(kit.files), sessionProcesses, restore: { shutdowns: new FakeShutdownLog(SHUTDOWN), countdown, stops: new FakeStopWatch(), logon: undefined }, countdown };
 }
 
 function windowsTab(title: string, folder: string, argv: readonly string[]): string[] {

@@ -2,6 +2,7 @@ import type { Countdown, RestoreChoice } from '../restore/countdown.ts';
 import { RESTORE_RUN_VALUE, WINDOWS_RUN_KEY, type LogonEntry } from '../restore/logon.ts';
 import type { RestorePorts } from '../restore/ports.ts';
 import type { ShutdownLog } from '../restore/shutdowns.ts';
+import type { StopSignal, StopWatch } from '../restore/stops.ts';
 
 /** A logon entry held in memory: `command` is what it runs now; with `failWith` set, each write and remove throws it. */
 export class FakeLogonEntry implements LogonEntry {
@@ -66,7 +67,30 @@ export class FakeCountdown implements Countdown {
   }
 }
 
-/** No clean shutdown on record, a countdown that goes at once, and no logon entry, as off Windows. */
+/** A stop watch the test stops by hand: `stop` runs each watcher still watching, as a closed tab would, and ends nothing. */
+export class FakeStopWatch implements StopWatch {
+  private readonly watchers = new Set<(signal: StopSignal) => Promise<void>>();
+
+  /** How many watchers are still watching. */
+  get watching(): number {
+    return this.watchers.size;
+  }
+
+  watch(onStop: (signal: StopSignal) => Promise<void>): () => void {
+    this.watchers.add(onStop);
+    return () => {
+      this.watchers.delete(onStop);
+    };
+  }
+
+  async stop(signal: StopSignal): Promise<void> {
+    for (const watcher of [...this.watchers]) {
+      await watcher(signal);
+    }
+  }
+}
+
+/** No clean shutdown on record, a countdown that goes at once, no stop, and no logon entry, as off Windows. */
 export function quietRestore(): RestorePorts {
-  return { shutdowns: new FakeShutdownLog(), countdown: new FakeCountdown(), logon: undefined };
+  return { shutdowns: new FakeShutdownLog(), countdown: new FakeCountdown(), stops: new FakeStopWatch(), logon: undefined };
 }
