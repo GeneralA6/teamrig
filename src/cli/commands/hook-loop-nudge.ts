@@ -11,7 +11,7 @@ import { noPositionals, type ParsedArgs } from '../args.ts';
 import { openKit, rosterOf, type Kit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
-import { leadPathsOf, parseJson, sessionTeam, teamSessionOf } from './hook-input.ts';
+import { parseJson, sessionTeam, teamSessionOf, turnLeadPathsOf } from './hook-input.ts';
 
 /** The tool the hook fires for, from its payload; undefined without an id or a name. */
 function currentToolOf(payload: JsonRecord): ToolUse | undefined {
@@ -39,15 +39,17 @@ async function promptTaskOwners(runtime: CliRuntime, kit: Kit, config: KitConfig
 }
 
 /**
- * The lead-boundary line after `current`, with the team tree read for its sub-teams' folders. Only a research call
- * reads the register, for the owners of the tasks the turn's prompt names, whom the line asks the lead to send the
- * question to; an unreadable register leaves it generic.
+ * The lead-boundary line after `current`, with the team tree read for its sub-teams' folders and the register for
+ * the owners of the task folders the turn searches. Only a research call reads the register for the owners of the
+ * tasks the turn's prompt names, whom the line asks the lead to send the question to; an unreadable register leaves
+ * it generic.
  */
 async function leadBoundaryLine(runtime: CliRuntime, kit: Kit, config: KitConfig, text: string, cut: boolean, current: ToolUse): Promise<string | undefined> {
-  const paths = leadPathsOf(runtime, kit, config, await loadTree(runtime));
+  const turn = turnToolsOf(text, cut, current);
+  const paths = await turnLeadPathsOf(runtime, kit, config, await loadTree(runtime), turn);
   const research = leadWorkOf(current, paths) === 'research';
   const owners = research ? await promptTaskOwners(runtime, kit, config, turnTasksOf(text, cut)).catch((): readonly string[] => []) : [];
-  return leadNudgeLine(turnToolsOf(text, cut, current), current, paths, config.leadBoundary.searchNudgeAt, owners);
+  return leadNudgeLine(turn, current, paths, config.leadBoundary.searchNudgeAt, owners);
 }
 
 /**

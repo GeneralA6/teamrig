@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ToolUse } from '../budget/line.ts';
 import { promptLine, replyLine, resultsLine, transcript } from '../testing/transcript-lines.ts';
-import { leadNudgeLine, leadStopLine, leadTallyOf, leadWorkOf, OwnPaths, taskOwnersOf, TeamFolders, type LeadPaths, type SubTeamPlace } from './lead-boundary.ts';
+import { leadNudgeLine, leadStopLine, leadTallyOf, leadWorkOf, OwnPaths, taskOwnersOf, tasksSearched, TeamFolders, type LeadPaths, type SubTeamPlace } from './lead-boundary.ts';
 import { turnTasksOf, turnToolsOf } from './loop-nudge.ts';
 
 const TEAM_HOME = '~/.teamrig/teams/app';
@@ -14,16 +14,28 @@ function subTeam(team: string): SubTeamPlace {
   return { team, home, own: [`${home}/config.json`, `${home}/rules.md`, `${home}/state`], owner: 'web/lead' };
 }
 
-const TEAM = new TeamFolders(
-  {
-    home: TEAM_HOME,
-    own: [`${TEAM_HOME}/config.json`, `${TEAM_HOME}/rules.md`, `${TEAM_HOME}/state`],
-    lead: 'lead',
-    sessions: ['lead', 'alpha', 'bravo'],
-    subTeams: [subTeam('web'), subTeam('ui')],
-  },
-  'D:\\team\\lee',
-);
+/** The register's owners of the tasks whose folders the tests search: T1 is the lead's, T2 alpha's. */
+const TASK_OWNERS: ReadonlyMap<string, string> = new Map([
+  ['T1', 'lead'],
+  ['T2', 'alpha'],
+]);
+
+function teamFolders(taskOwners: ReadonlyMap<string, string>): TeamFolders {
+  return new TeamFolders(
+    {
+      home: TEAM_HOME,
+      own: [`${TEAM_HOME}/config.json`, `${TEAM_HOME}/rules.md`, `${TEAM_HOME}/state`],
+      lead: 'lead',
+      sessions: ['lead', 'alpha', 'bravo'],
+      subTeams: [subTeam('web'), subTeam('ui')],
+      tasks: `${TEAM_HOME}/tasks`,
+      taskOwners,
+    },
+    'D:\\team\\lee',
+  );
+}
+
+const TEAM = teamFolders(TASK_OWNERS);
 const PATHS: LeadPaths = { own: OWN, team: TEAM };
 
 function tool(name: string, input: { readonly path?: string; readonly command?: string; readonly url?: string } = {}, id = 'x'): ToolUse {
@@ -159,10 +171,39 @@ describe('the lead boundary', () => {
 
   it('reads a sub-team folder nested in the lead own folder as the sub-team, and the lead own folder nested in it as its own', () => {
     const nested = (home: string, sub: string): TeamFolders =>
-      new TeamFolders({ home, own: [`${home}/state`], lead: 'lead', sessions: ['lead', 'alpha'], subTeams: [{ team: 'web', home: sub, own: [`${sub}/state`], owner: 'web/lead' }] }, 'D:\\team\\lee');
+      new TeamFolders(
+        { home, own: [`${home}/state`], lead: 'lead', sessions: ['lead', 'alpha'], subTeams: [{ team: 'web', home: sub, own: [`${sub}/state`], owner: 'web/lead' }], tasks: `${home}/tasks`, taskOwners: new Map() },
+        'D:\\team\\lee',
+      );
     assert.deepEqual(nested('~/teams/app', '~/teams/app/web').researchOf('~/teams/app/web/notes'), { name: 'web/notes', owner: 'web/lead' });
     assert.deepEqual(nested('~/teams/web/app', '~/teams/web').researchOf('~/teams/web/app/notes/alpha'), { name: 'notes/alpha', owner: 'alpha' });
     assert.equal(nested('~/teams/web/app', '~/teams/web').researchOf('~/teams/web/app/state'), undefined);
+  });
+
+  it("reads the lead's own task's folder as its place and another session's as that session's research (T1467)", () => {
+    assert.equal(leadWorkOf(tool('Grep', { path: '~/.teamrig/teams/app/tasks/T1' }), PATHS), undefined, 'the lead own task');
+    assert.equal(leadWorkOf(tool('Bash', { command: 'grep -rn x D:/team/lee/.teamrig/teams/app/tasks/T1/design.md' }), PATHS), undefined);
+    assert.deepEqual(TEAM.researchOf('~/.teamrig/teams/app/tasks/T2/notes.md'), { name: 'tasks/t2', owner: 'alpha', task: 'T2' });
+    const alpha = tool('Glob', { path: 'D:\\team\\lee\\.teamrig\\teams\\app\\tasks\\T2' }, 'a1');
+    assert.match(leadNudgeLine([alpha], alpha, PATHS, 3, ['bravo']) ?? '', /research itself \(tasks\/t2\)\. Send the question to alpha as/);
+    assert.deepEqual(TEAM.researchOf('~/.teamrig/teams/app/tasks/T9'), { name: 'tasks/t9', owner: undefined, task: 'T9' }, 'a task the register does not hold');
+    assert.deepEqual(TEAM.researchOf('~/.teamrig/teams/app/tasks'), { name: 'tasks', owner: undefined }, 'every task folder');
+    assert.deepEqual(TEAM.researchOf('~/.teamrig/teams/app/tasks/old/T1'), { name: 'tasks/old', owner: undefined }, 'no task id');
+    assert.deepEqual(TEAM.researchOf('~/.teamrig/teams/app/tasks/T01'), { name: 'tasks/t01', owner: undefined }, 'no register id');
+  });
+
+  it('names the tasks whose folders a turn searches, each once, before their owners are known (T1467)', () => {
+    const turn = [
+      tool('Grep', { path: '~/.teamrig/teams/app/tasks/T1' }, 'k1'),
+      tool('Bash', { command: 'grep -rn x ~/.teamrig/teams/app/tasks/T2/a.md' }, 'k2'),
+      tool('Grep', { path: '~/.teamrig/teams/app/tasks/T1/b.md' }, 'k3'),
+      tool('Grep', { path: '~/.teamrig/teams/app/notes/alpha' }, 'k4'),
+      tool('Read', { path: '~/.teamrig/teams/app/tasks/T3/c.md' }, 'k5'),
+    ];
+    const unknown: LeadPaths = { own: OWN, team: teamFolders(new Map()) };
+    assert.deepEqual(tasksSearched(turn, unknown), ['T1', 'T2'], 'a read is no search');
+    assert.deepEqual(tasksSearched(turn, PATHS), ['T2'], "the lead's own task's folder is no research once its owner is known");
+    assert.equal(leadTallyOf(turn, PATHS).research, 2);
   });
 
   it('asks the lead once a turn to send research to the session that owns it', () => {

@@ -4,6 +4,7 @@ import { kindOf } from '../budget/patterns.ts';
 import { runWorkOf, SHELL_DIALECTS } from '../budget/run-work.ts';
 import { programsOf, type ProgramRun } from '../package-guard/programs.ts';
 import type { ShellDialect } from '../push-guard/tokenizer.ts';
+import { TASK_ID } from '../register/model.ts';
 
 /**
  * Work the lead hands off instead of doing (T320): an edit outside its own files, a test or a build, a
@@ -80,6 +81,8 @@ export interface TeamResearch {
    * of the child team's lead it hangs under; undefined for a shared folder of the lead's own team.
    */
   readonly owner: string | undefined;
+  /** The task whose folder the search looks through (`tasks/T<id>`, T1467), whose owner `owner` is when the register holds it. */
+  readonly task?: string;
 }
 
 /** A team below the lead's own in the team tree, whose folder a search of is research for its child team's lead (T1019). */
@@ -108,6 +111,13 @@ export interface TeamPlaces {
   readonly sessions: readonly string[];
   /** Every team below this one in the team tree; none for a team with no child team. */
   readonly subTeams: readonly SubTeamPlace[];
+  /** The folder holding the team's task folders, `tasks/T<id>` (T1457). */
+  readonly tasks: string;
+  /**
+   * The owner of each task by its id, from the register, for the task folders the lead searches (T1467): the lead's
+   * own task's folder is its place, another session's is that session's; a task it does not hold has no owner.
+   */
+  readonly taskOwners: ReadonlyMap<string, string>;
 }
 
 const PATH_END = `(?=/|$|[\\s"';|&)])`;
@@ -132,10 +142,10 @@ function segmentsBelow(target: string, root: string): string[] {
 
 /**
  * The team's teamrig folder as the lead boundary reads a search of it (T736). The lead's own places there are its
- * config, its rules, the register's state and anything named for the lead; a search anywhere else there (another
- * session's notes or handover, or a shared folder such as all the notes) is research, which the session that owns
- * the question does. So is a search of a sub-team's folder outside its config, rules and state (T1019), which the
- * child team's lead it hangs under answers.
+ * config, its rules, the register's state, anything named for the lead and the folders of its own tasks (T1467); a
+ * search anywhere else there (another session's notes, handover or task folder, or a shared folder such as all the
+ * notes) is research, which the session that owns the question does. So is a search of a sub-team's folder outside
+ * its config, rules and state (T1019), which the child team's lead it hangs under answers.
  */
 export class TeamFolders {
   private readonly root: string;
@@ -143,6 +153,8 @@ export class TeamFolders {
   private readonly lead: string;
   private readonly others: ReadonlySet<string>;
   private readonly subTeams: readonly SubTeamFolder[];
+  private readonly tasks: string;
+  private readonly taskOwners: ReadonlyMap<string, string>;
   private readonly home: string;
   private readonly mentioned: RegExp;
 
@@ -153,6 +165,8 @@ export class TeamFolders {
     this.lead = places.lead.toLowerCase();
     this.others = new Set(places.sessions.map((id) => id.toLowerCase()).filter((id) => id !== this.lead));
     this.subTeams = places.subTeams.map(({ team, home, own, owner }) => ({ team, root: this.placeOf(home), own: own.map((place) => this.placeOf(place)), owner }));
+    this.tasks = this.placeOf(places.tasks);
+    this.taskOwners = places.taskOwners;
     const roots = [this.root, ...this.subTeams.map((sub) => sub.root)].map((root) => root.replace(/[.+?^${}()|[\]\\*]/g, '\\$&'));
     this.mentioned = new RegExp(`(?:${roots.join('|')})${PATH_END}(?:/[^\\s"';|&)]*)?`, 'g');
   }
@@ -169,9 +183,15 @@ export class TeamFolders {
     return holder !== undefined && !(within(target, this.root) && this.root.length > holder.root.length) ? holder : undefined;
   }
 
+  /** The task whose folder holds the path, in the register's spelling (`T12`); undefined outside a task folder. */
+  private taskOf(target: string): string | undefined {
+    const id = within(target, this.tasks) ? segmentsBelow(target, this.tasks)[0]?.toUpperCase() : undefined;
+    return id !== undefined && TASK_ID.test(id) ? id : undefined;
+  }
+
   /**
    * The research a search of `path` is; undefined outside the team's and its sub-teams' folders, in the lead's own
-   * places and in a sub-team's config, rules and state.
+   * places, in its own task's folder and in a sub-team's config, rules and state.
    */
   researchOf(path: string): TeamResearch | undefined {
     const target = this.placeOf(path);
@@ -183,6 +203,11 @@ export class TeamFolders {
       return undefined;
     }
     const segments = segmentsBelow(target, this.root);
+    const task = this.taskOf(target);
+    if (task !== undefined) {
+      const owner = this.taskOwners.get(task);
+      return owner?.toLowerCase() === this.lead ? undefined : { name: segments.slice(0, 2).join('/'), owner, task };
+    }
     const named = segments.map((segment) => segment.replace(/\.md$/, ''));
     if (named.includes(this.lead)) {
       return undefined;
@@ -229,16 +254,18 @@ function leadRunWorkOf(run: ProgramRun): LeadRunWork | undefined {
 
 /**
  * A call's hand-off work, with the name the turn-end line gives it: an edit's file, else `git` or `shell`; research's
- * web host, `a web search` or team folder. `owner` is the session whose place a team-folder search looks through.
+ * web host, `a web search` or team folder. `owner` is the session whose place a team-folder search looks through, and
+ * `task` the task whose folder it is.
  */
 interface CallWork {
   readonly work: LeadWork;
   readonly name: string;
   readonly owner?: string;
+  readonly task?: string;
 }
 
-function researchWork(research: TeamResearch): CallWork {
-  return { work: 'research', name: research.name, ...(research.owner === undefined ? {} : { owner: research.owner }) };
+function researchWork({ name, owner, task }: TeamResearch): CallWork {
+  return { work: 'research', name, ...(owner === undefined ? {} : { owner }), ...(task === undefined ? {} : { task }) };
 }
 
 /**
@@ -302,6 +329,21 @@ function callWorkOf(tool: ToolUse, paths: LeadPaths): CallWork | undefined {
 /** What one of the lead's calls did that it hands off; undefined for its own job. */
 export function leadWorkOf(tool: ToolUse, paths: LeadPaths): LeadWork | undefined {
   return callWorkOf(tool, paths)?.work;
+}
+
+/**
+ * The tasks whose folders the calls search as research, each once: the register is read for their owners only when
+ * there are some (T1467), since `paths` without an owner reads the lead's own task's folder as research too.
+ */
+export function tasksSearched(turn: readonly ToolUse[], paths: LeadPaths): string[] {
+  const tasks: string[] = [];
+  for (const tool of turn) {
+    const task = callWorkOf(tool, paths)?.task;
+    if (task !== undefined) {
+      addOnce(tasks, task);
+    }
+  }
+  return tasks;
 }
 
 /** The lead's hand-off work in one turn. */

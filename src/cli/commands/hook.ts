@@ -76,7 +76,7 @@ import { helperContextOf } from './hook-helper-start.ts';
 import { checkHooklessTabs } from './hook-hookless.ts';
 import { dueFactsAt, inMeetingNow } from './hook-refresh-mod.ts';
 import { recordSessionStart } from './hook-session-record.ts';
-import { envSession, hookScopeOf, leadPathsOf, parseJson, sessionScopeOf, sessionTeam, startSessionOf, teamScopeOf, teamSessionOf, type SessionScope, type TeamScope } from './hook-input.ts';
+import { envSession, hookScopeOf, parseJson, sessionScopeOf, sessionTeam, startSessionOf, teamScopeOf, teamSessionOf, turnLeadPathsOf, type SessionScope, type TeamScope } from './hook-input.ts';
 import { tabStatusOn, tabTitleOf } from './hook-tab-status.ts';
 import { logPrompt, logReply, logStart } from './hook-turn-log.ts';
 import { keepWorkingReasonOf } from './keep-working.ts';
@@ -770,7 +770,7 @@ async function leadStopLines(runtime: CliRuntime, scope: SessionScope, transcrip
     return [];
   }
   const turn = turnToolsOf(text, Buffer.byteLength(text, 'utf8') >= TRANSCRIPT_TAIL_BYTES, undefined);
-  const line = leadStopLine(leadTallyOf(turn, leadPathsOf(runtime, kit, config, await loadTree(runtime))), config.leadBoundary.searchNudgeAt);
+  const line = leadStopLine(leadTallyOf(turn, await turnLeadPathsOf(runtime, kit, config, await loadTree(runtime), turn)), config.leadBoundary.searchNudgeAt);
   return line === undefined ? [] : [line];
 }
 
