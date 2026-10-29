@@ -4,6 +4,7 @@ import type { HookAsks, SecretGuardConfig, SecretReads } from '../config/types.t
 import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import { resolveDir } from '../push-guard/location.ts';
 import { describeFinding, type SecretFinding } from '../secret-guard/findings.ts';
+import { literalFindings } from '../secret-guard/literals.ts';
 import type { SecretRules } from '../secret-guard/rules.ts';
 import { shellFindings } from '../secret-guard/shell.ts';
 import { holdBackOutput } from './permission.ts';
@@ -22,9 +23,9 @@ export function secretGuardOf(load: ConfigLoad | undefined): SecretGuardConfig {
 }
 
 /**
- * The secrets a tool call would print into the conversation: what a Bash or PowerShell line prints, the file a Read
- * opens, and the file or glob a Grep shows matching lines of. A Grep that lists file names or counts prints no
- * content; one over a folder with no glob, or only `!globs`, may still show a secret file's lines: a gap.
+ * The secrets a tool call would print into the conversation: what a Bash or PowerShell line holds as text and what it
+ * prints, the file a Read opens, and the file or glob a Grep shows matching lines of. A Grep that lists file names or
+ * counts prints no content; one over a folder with no glob, or only `!globs`, may still show a secret file's lines: a gap.
  */
 export function secretFindingsOf(payload: JsonRecord, cwd: string, rules: SecretRules): SecretFinding[] {
   const input = recordField(payload, 'tool_input') ?? {};
@@ -34,7 +35,9 @@ export function secretFindingsOf(payload: JsonRecord, cwd: string, rules: Secret
     case 'Bash':
     case 'PowerShell': {
       const command = stringField(input, 'command');
-      return command === undefined ? [] : shellFindings(command, { cwd: dir, home: rules.home, dialect: tool === 'PowerShell' ? 'powershell' : 'bash' }, rules);
+      return command === undefined
+        ? []
+        : [...literalFindings(command, rules.shapes), ...shellFindings(command, { cwd: dir, home: rules.home, dialect: tool === 'PowerShell' ? 'powershell' : 'bash' }, rules)];
     }
     case 'Read': {
       const path = stringField(input, 'file_path');
@@ -78,16 +81,35 @@ function toolPath(text: string, dir: string, home: string): string {
   return resolveDir(dir, text, home) ?? text;
 }
 
-/** Why the call is refused or asked about, with the ways to use or check a secret that never print it. */
+/**
+ * Why the call is refused or asked about: what it would print, with the ways to use or check a secret that never print
+ * it, then the secrets its command line holds as text, with the ways to pass one by reference.
+ */
 export function secretReason(findings: readonly SecretFinding[]): string {
-  const what = findings.map(describeFinding);
+  const what = findings.filter(({ kind }) => kind !== 'literal').map(describeFinding);
+  const shapes = findings.filter(({ kind }) => kind === 'literal').map(describeFinding);
   const named = what.length < 2 ? what.join('') : `${what.slice(0, -1).join(', ')} and ${what.at(-1) ?? ''}`;
-  return (
-    `teamrig secret guard: this call would print ${named} into the conversation. Hand a secret to the tool that needs ` +
-    'it (stdin, an env file option, a pipe), check it without printing it (grep -q, wc -c, a hash), or ask the owner to ' +
-    'look in their own terminal. A false match: add its !glob to secretGuard.paths or its !pattern to secretGuard.envNames. ' +
-    '[secretGuard.secretReads]'
-  );
+  const printed =
+    what.length === 0
+      ? []
+      : [
+          `this call would print ${named} into the conversation. Hand a secret to the tool that needs it (stdin, an env ` +
+            'file option, a pipe), check it without printing it (grep -q, wc -c, a hash), or ask the owner to look in ' +
+            'their own terminal. A false match: add its !glob to secretGuard.paths or its !pattern to secretGuard.envNames.',
+        ];
+  const written =
+    shapes.length === 0
+      ? []
+      : [
+          `${what.length === 0 ? "this call's" : 'Its'} command line holds a secret as text (${shapes.join(', ')}). Pass it by ` +
+            'reference (its env var name, a file path, stdin, `teamrig exec`), never as text.',
+        ];
+  return `teamrig secret guard: ${[...printed, ...written].join(' ')} [secretGuard.secretReads]`;
+}
+
+/** The team's own secret patterns (`register.secretPatterns`); none when the config is missing or unreadable. */
+export function secretPatternsOf(load: ConfigLoad | undefined): readonly string[] {
+  return load?.status === 'loaded' ? load.config.register.secretPatterns : [];
 }
 
 /**

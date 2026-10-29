@@ -4,9 +4,12 @@ import { DEFAULT_SECRET_GUARD } from '../config/defaults.ts';
 import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
 import { secretRulesOf } from '../secret-guard/rules.ts';
 import { testConfig } from '../testing/config.ts';
-import { secretFindingsOf, secretGuardOf, secretGuardOutput, secretReason, type SecretGuardEnv } from './secret-guard.ts';
+import { secretFindingsOf, secretGuardOf, secretGuardOutput, secretPatternsOf, secretReason, type SecretGuardEnv } from './secret-guard.ts';
 
 const RULES = secretRulesOf(DEFAULT_SECRET_GUARD, 'C:/u', 'win32');
+const join = (...parts: string[]): string => parts.join('');
+const TOKEN = join('gh', 'p_', 'a1'.repeat(18));
+const PASSWORD = join('s3', 'cret', 'Value9');
 
 function env(overrides: Partial<SecretGuardEnv> = {}): SecretGuardEnv {
   return { cwd: 'C:/w', rules: RULES, secretReads: 'deny', hookAsks: 'ask', ...overrides };
@@ -16,8 +19,17 @@ function call(tool_name: string, tool_input: JsonRecord, extra: JsonRecord = {})
   return { tool_name, tool_input, ...extra };
 }
 
-function findings(payload: JsonRecord): string[] {
-  return secretFindingsOf(payload, 'C:/w', RULES).map((finding) => (finding.kind === 'file' ? finding.path : finding.kind));
+function findings(payload: JsonRecord, rules = RULES): string[] {
+  return secretFindingsOf(payload, 'C:/w', rules).map((finding) => {
+    switch (finding.kind) {
+      case 'file':
+        return finding.path;
+      case 'literal':
+        return finding.id;
+      default:
+        return finding.kind;
+    }
+  });
 }
 
 /** The decision and reason the output carries, or undefined for no output. */
@@ -39,6 +51,18 @@ describe('secretFindingsOf', () => {
     assert.deepEqual(findings(call('Bash', { command: 'cat ../u/.npmrc' }, { cwd: 'C:/w' })), ['../u/.npmrc']);
     assert.deepEqual(findings(call('Bash', { command: 'cat ../u/.npmrc' }, { cwd: 'C:/x/y' })), []);
     assert.deepEqual(findings(call('Bash', { command: 7 })), []);
+  });
+
+  it('finds a secret a Bash or PowerShell line holds as text, a quiet run too, before what the line prints', () => {
+    assert.deepEqual(findings(call('Bash', { command: join('curl -s https://app:', PASSWORD, '@queue.local/q > /dev/null') })), ['url-credentials']);
+    assert.deepEqual(findings(call('PowerShell', { command: join('Get-Content .env; gh auth status --token ', TOKEN) })), ['github-token', '.env']);
+    assert.deepEqual(findings(call('Bash', { command: 'curl -H "Authorization: Bearer $GH_TOKEN" https://api.local' })), []);
+  });
+
+  it("finds a line's text by the team's own secret patterns", () => {
+    const rules = secretRulesOf(DEFAULT_SECRET_GUARD, 'C:/u', 'win32', ['tok_[a-z0-9]{8}']);
+    assert.deepEqual(findings(call('Bash', { command: join('deploy --key tok_', 'q8r7s6t5') }), rules), ['config-1']);
+    assert.deepEqual(findings(call('Bash', { command: join('deploy --key tok_', 'q8r7s6t5') })), []);
   });
 
   it('reads the file a Read opens, a relative one from the call folder', () => {
@@ -91,6 +115,16 @@ describe('secretGuardOutput', () => {
     assert.match(verdict?.reason ?? '', /would print the content of \.env and the value of \$NPM_TOKEN into the conversation\. .*grep -q/);
   });
 
+  it('refuses a line that holds a secret as text, naming its shape and the ways to pass it by reference, never its value', () => {
+    const verdict = verdictOf(secretGuardOutput(call('Bash', { command: join('curl -s https://app:', PASSWORD, '@queue.local/q > /dev/null') }), env()));
+    assert.equal(verdict?.decision, 'deny');
+    assert.equal(
+      verdict?.reason,
+      "teamrig secret guard: this call's command line holds a secret as text (credentials in a URL). Pass it by reference " +
+        '(its env var name, a file path, stdin, `teamrig exec`), never as text. [secretGuard.secretReads]',
+    );
+  });
+
   it('asks instead when the team set ask, and prints nothing when it set allow', () => {
     const read = call('Read', { file_path: 'C:/w/.env' });
     assert.equal(verdictOf(secretGuardOutput(read, env({ secretReads: 'ask' })))?.decision, 'ask');
@@ -117,6 +151,28 @@ describe('secretReason', () => {
   it('names one secret alone, and joins several', () => {
     assert.match(secretReason([{ kind: 'environment' }]), /would print the whole environment into/);
     assert.match(secretReason([{ kind: 'environment' }, { kind: 'kube-secret' }, { kind: 'file', path: 'a.pem' }]), /environment, a Kubernetes secret's data and the content of a\.pem into/);
+  });
+
+  it('says what the call prints, then the secrets its line holds as text', () => {
+    const reason = secretReason([
+      { kind: 'literal', id: 'github-token', description: 'GitHub token' },
+      { kind: 'file', path: '.env' },
+      { kind: 'literal', id: 'jwt', description: 'JSON web token' },
+    ]);
+    assert.match(
+      reason,
+      /^teamrig secret guard: this call would print the content of \.env into the conversation\. .*secretGuard\.envNames\. Its command line holds a secret as text \(GitHub token, JSON web token\)\. Pass it by reference .*never as text\. \[secretGuard\.secretReads\]$/,
+    );
+  });
+});
+
+describe('secretPatternsOf', () => {
+  it("reads the team's own secret patterns, and none when the config is missing or unreadable", () => {
+    const config = testConfig({ register: { secretPatterns: ['tok_[a-z0-9]{8}'] } });
+    assert.deepEqual(secretPatternsOf({ status: 'loaded', path: 'c.json', config, issues: [] }), ['tok_[a-z0-9]{8}']);
+    for (const load of [undefined, { status: 'missing', path: 'c.json' } as const]) {
+      assert.deepEqual(secretPatternsOf(load), []);
+    }
   });
 });
 

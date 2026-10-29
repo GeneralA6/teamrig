@@ -21,7 +21,7 @@ export interface ReadonlyCheck {
 /** The team's read-only check, built whether `readonlyShell.enabled` is on or not: each hook decides when it applies. */
 export async function readonlyCheckOf(runtime: CliRuntime, config: KitConfig): Promise<ReadonlyCheck> {
   const snapshot = await newestSnapshotExports(runtime.files, join(claudeConfigDir(runtime.env, runtime.userHome), 'shell-snapshots'));
-  const secrets = secretRulesOf(config.secretGuard, runtime.userHome, runtime.platform);
+  const secrets = secretRulesOf(config.secretGuard, runtime.userHome, runtime.platform, config.register.secretPatterns);
   return {
     rules: readonlyRulesOf(config.readonlyShell, runtime.env, snapshot),
     printsSecret: (call) => secretFindingsOf(call, runtime.cwd, secrets).length > 0,
