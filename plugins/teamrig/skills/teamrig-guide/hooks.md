@@ -1,6 +1,6 @@
 # Hooks and permissions
 
-The plugin's `hooks/hooks.json` registers twenty-three Claude Code hooks and one mod ([the /teamrig command](#the-mod-the-teamrig-command), [the refresh's /clear](#the-mod-the-refreshs-clear), [the reload after an install](#the-mod-the-reload-after-an-install), [the wake on urgent work](#the-mod-the-wake-on-urgent-work)). Each runs
+The plugin's `hooks/hooks.json` registers twenty-four Claude Code hooks and one mod ([the /teamrig command](#the-mod-the-teamrig-command), [the refresh's /clear](#the-mod-the-refreshs-clear), [the reload after an install](#the-mod-the-reload-after-an-install), [the wake on urgent work](#the-mod-the-wake-on-urgent-work)). Each runs
 `node <plugin>/dist/cli/main.js hook <name>` with a 15 second timeout (`hook refresh-wake` 30, `hook tab-status` and `hook tool-end` 5). Outside a project tied to a team (no `$TEAMRIG_TEAM` and no `.teamrig.json`)
 they all stay silent, but `hook restore-track` and `hook tool-end` still record the session ([the restore tracker](#every-session-the-restore-tracker)) and `hook missing-cli` still answers a shell that [no longer finds the bare command](#after-a-shell-call-the-cli-by-its-path).
 
@@ -13,6 +13,7 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | `PreToolUse` on `Bash` and `PowerShell` | `hook push-guard` | Asks before a push to a protected branch; refuses a force-push or delete of one, and a git command run without the repository's hooks ([the commit guard](#before-a-shell-command-the-commit-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook package-guard` | Refuses a package runner that would fetch and run a package outside the project's lockfile, an install of a version the registry does not vouch for, an `npx --no <bin>` that hands the bin's flag to npm, and an install that would rewrite a `node_modules` linked to another checkout's ([the package guard](#before-a-shell-command-the-package-guard)) |
 | `PreToolUse` on `Bash`, `PowerShell`, `Read` and `Grep` | `hook secret-guard` | Refuses a call that would print a secret file, a secret variable, the whole environment, a Kubernetes secret's data or a dump command's output into the conversation, or whose command line holds a secret as text ([the secret guard](#before-a-shell-command-or-a-read-the-secret-guard)) |
+| `PostToolUse` on `Bash`, `PowerShell`, `Read` and `Grep` | `hook secret-redact` | Replaces each secret a call's result holds before Claude and the transcript see it, and tells the session which kinds it held and who rotates them ([the secret redactor](#after-a-tool-call-the-secret-redactor)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook exec-guard` | Refuses a privileged command's review run as another session or the owner, and any `exec` call through a client that is no install of the plugin, or one changed after its build ([the exec guard](#before-a-shell-command-the-exec-guard)) |
 | `PreToolUse` on `Bash`, `PowerShell`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook pass-record-guard` | Refuses a session's own write of a tree's pass record, the proof that lets a push or a merge skip the checks the tree passed ([the pass-record guard](#before-a-write-or-a-shell-command-the-pass-record-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook readonly-allow` | With `readonlyShell.enabled`, lets a line whose every command provably only reads run without a permission prompt ([the read-only allow](#before-a-shell-command-the-read-only-allow)) |
@@ -452,7 +453,8 @@ defaults name a store's URL by its kind, never by its product: a team adds its o
 (`ACME\w*_URL`). `secretGuard.commands` adds the team's own dump commands: regular expressions over a command's
 program and arguments (case ignored), the last that matches deciding, so `!pattern` lets one print. The read-only
 allow never lets a line that prints or holds a secret run without a prompt, whatever `secretReads` says. The guard
-reads only the call, so it cannot see:
+reads only the call, so it cannot see the cases below; what such a call prints goes through
+[the secret redactor](#after-a-tool-call-the-secret-redactor):
 
 - a value kept in a variable and printed later (`t=$(cat .env); echo "$t"`), or a path built when the line runs
   (`cat $(ls .env*)`, `Get-Content (Join-Path ~ .npmrc)`);
@@ -460,6 +462,36 @@ reads only the call, so it cannot see:
   `!globs`), or one a Grep glob picks through `{a,b}` alternatives (`*.{ts,pem}`);
 - a script or program the line starts (`node print-env.js`), `docker inspect`, or `docker run -e`;
 - a secret written with no shape or frame it knows (`mysql -p<the password>`, `--password <the value>`).
+
+## After a tool call: the secret redactor
+
+The secret guard reads only the call, so a script, a log or a file can still print a secret it could not see. After
+each Bash, PowerShell, Read (of a text file) or Grep call, `hook secret-redact` scans the call's result and replaces
+each secret it holds with `[redacted <kind>]` before Claude and the transcript see it: a token by its shape (the
+guard's shapes: GitHub, Anthropic, `sk-`, AWS, Slack, Google, Stripe live, a JSON web token, a private key block),
+credentials in a URL, the credentials of an `Authorization` or API key header, a quoted literal given to a
+secret-like name, a match of `register.secretPatterns`, and the value of a secret variable as an environment dump, a
+`.env` file or `docker inspect` prints it: `NAME=value`, an upper-case name the guard's names judge secret, with no
+space around `=`. A value found once goes from every part of the result, `stdout` and `stderr` alike. A value that
+only names or points to a secret stays: a placeholder or a reference, a number (`TOKEN_LIMIT=200000`), a path
+(`KEY_FILE=~/.ssh/id`) or one lower-case word (`AUTH_MODE=oauth`); source code (`token = x`, `token: string`) is no
+such assignment. The model then gets one line naming the kinds, never a value:
+
+```text
+teamrig: this result held a secret (GitHub token); it was redacted before you saw it. Treat it as leaked: ask security to rotate it (a register task), and do not print it again.
+```
+
+The session it names is the team's `roles.securityReviewer`, else its lead. A result is scanned up to 1,000,000
+characters; past them the line adds "Part of the result was past the scan's cap and was not checked.", and a value
+found before the cap still goes from the rest. A helper's calls are redacted too. Outside a team's projects it does
+nothing, and a broken config keeps the default shapes. `secretGuard.redact` (`true` by default) turns it off: `false`
+shows results whole, the owner's call. It does not cover:
+
+- a big shell output Claude Code keeps in a file of its own (`tool-results/*.txt` in the session's folder): the model
+  sees the redacted result, but the file on disk keeps the original (a Read of that file is redacted);
+- any other tool's result (WebFetch, WebSearch, an MCP tool), a Read of an image or a notebook, and a result Claude
+  Code hands as plain text instead of an object: not yet probed, so they pass as they are;
+- a secret with no shape or frame it knows, as for the guard.
 
 ## Before a shell command: the exec guard
 
@@ -1160,6 +1192,8 @@ read-only allow lets a call skip the prompt, and only a shell line it proves onl
   `node_modules` whatever they say.
 - **The secret guard** refuses a call that would print a secret on its own, whatever the mode, unless
   `secretGuard.secretReads` is `ask` or `allow`.
+- **The secret redactor** replaces a secret in a call's result on its own, whatever the mode, unless
+  `secretGuard.redact` is `false`.
 - **The exec guard** refuses a privileged command's review run as another session or the owner, and any
   `exec` call through a client that is no install of the plugin or was changed, on its own, whatever the mode, so `Bash(teamrig:*)` stays safe for
   `exec` too. A team that wants each review asked as well allows the rest by name (`Bash(teamrig exec request:*)`,
