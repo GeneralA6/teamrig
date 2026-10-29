@@ -32,7 +32,9 @@ teamrig restore run      # reopen the sessions the last shutdown killed
   one with no prompt, `q` cancels). A team session started by `teamrig open` comes back through `launch` as itself;
   any other resumes as it ran. One that was mid-turn, hit an API error or had background jobs, cron jobs or a
   wake-up live at the shutdown gets a prompt to re-check the state and carry on, and so does each lead, told how its
-  team's sessions came back; the others reopen idle. Each step is written to `restore/restore.log` in the kit home.
+  team's sessions came back; the others reopen idle. Each step is written to `restore/restore.log` in the kit home,
+  from a `run: started` line to a `run: done` line with the counts; a run whose tab was closed meanwhile ends with
+  `run: interrupted by <signal>` and how far it got.
 - Where they come back: with `open.teamWindow: true` in a team's config, its sessions reopen in a Windows Terminal
   window of the team's own (`teamrig-<team>`), so two teams' tabs never mix; without it, and for sessions outside a
   team, they open in the most recent window.
