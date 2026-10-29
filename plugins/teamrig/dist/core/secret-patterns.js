@@ -50,6 +50,10 @@ export const SECRET_TEXT_PATTERNS = [
  * case-sensitive pattern, as `ASSIGNED_SECRET`'s `i` flag would let a mixed-case part pass.
  */
 const IDENTIFIER_NAME = /^(?:[a-z]+\d*|[A-Z]+\d*|\d+)(?:[._-](?:[a-z]+\d*|[A-Z]+\d*|\d+))+$/;
+/** True when `value` is an identifier's name (`SOME_READ_TOKEN`), which names a secret rather than holds it. */
+export function isIdentifierName(value) {
+    return IDENTIFIER_NAME.test(value);
+}
 /**
  * A quoted literal of 12 or more characters given to a secret-like name: the scrub's rule in the repository and part of
  * the write-time set. Stricter than `secret-assignment`, so documentation and prose pass. The key word may end a longer
@@ -62,7 +66,7 @@ export const ASSIGNED_SECRET = {
     description: 'literal value assigned to a secret-like name',
     pattern: /(?:password|passwd|secret|token|api[_-]?key|access[_-]?key)\b["']?\s*[:=]\s*["']([^"'\s]{12,})["']/i,
     secretGroup: 1,
-    isAllowedValue: (value) => IDENTIFIER_NAME.test(value),
+    isAllowedValue: isIdentifierName,
 };
 /**
  * Literal secrets the write-time set (`secret-shapes.ts`) adds to the tokens and the text frames: an API key header's

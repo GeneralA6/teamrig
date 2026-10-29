@@ -5,7 +5,6 @@ import { Roster } from "../../config/roster.js";
 import { formatAddress } from "../../core/address.js";
 import { errorMessage, isRecord, stringField } from "../../core/guards.js";
 import { claudeConfigDir, claudeTempDir, KIT_NAME, resolveKitHome } from "../../core/home.js";
-import { resolveTeam } from "../../core/team.js";
 import { sessionIdOf } from "../../inbox/inbox.js";
 import { routeReminderOf } from "../../inbox/route.js";
 import { boundPromptNote, boundStartNote, tabTitleFor } from "../../hooks/bind.js";
@@ -47,7 +46,7 @@ import { approvedTaskOf } from "../../register/approval.js";
 import { JsonlEventLog } from "../../register/store.js";
 import { noPositionals } from "../args.js";
 import { hookLogOf } from "../hook-logs.js";
-import { openKit, renameDepsOf, rosterOf, rulesClockOf, teamFolders, teamZone } from "../kit.js";
+import { openKit, renameDepsOf, rosterOf, rulesClockOf, teamZone } from "../kit.js";
 import { EXIT } from "../runtime.js";
 import { keptRulesAboveOf, readTeamRules } from "../team-rules.js";
 import { leadAboveOf, loadTree } from "../tree.js";
@@ -62,6 +61,7 @@ import { meetingHold } from "./hook-meeting.js";
 import { armRestart, restartTargetOf } from "./hook-restart.js";
 import { helperContextOf } from "./hook-helper-start.js";
 import { promptSecretBlock } from "./hook-prompt-secret.js";
+import { guardLoadOf, hookTeam } from "./hook-guard-load.js";
 import { checkHooklessTabs } from "./hook-hookless.js";
 import { dueFactsAt, inMeetingNow } from "./hook-refresh-mod.js";
 import { recordSessionStart } from "./hook-session-record.js";
@@ -77,23 +77,6 @@ import { verifyByLinesOf, verifyStartNoteOf } from "./verify-queue.js";
  * enabled for the user fires in every project, so outside a team's projects each hook prints
  * nothing at all.
  */
-/** The payload's folder first: Claude Code may start the hook process somewhere else. */
-function hookTeam(payload, runtime) {
-    const cwd = isRecord(payload) ? stringField(payload, 'cwd') : undefined;
-    return resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [cwd, runtime.cwd]));
-}
-/**
- * The config a guard hook reads, or undefined outside a team's projects, where the guard prints nothing. A broken
- * pointer, or a config that cannot even be opened, gives no load, so the guard keeps its defaults: neither turns it off.
- */
-async function guardLoadOf(payload, runtime) {
-    const found = await hookTeam(payload, runtime);
-    if (found.kind === 'none') {
-        return undefined;
-    }
-    const kit = found.kind === 'team' ? await openKit(runtime, found.team).catch(() => undefined) : undefined;
-    return { kit, load: kit?.load };
-}
 /**
  * Under `pushToProtected: lead` or `gated`, what lets this tab's normal push to a protected branch through (T684): the
  * lead's own push, else a waiting task of its session's that a leader above it approved (T781), read lock-free from the
