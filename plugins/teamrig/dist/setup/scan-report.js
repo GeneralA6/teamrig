@@ -10,6 +10,7 @@ import { MEMORY_INDEX_LINES } from "./scan-context.js";
  * line each, `<id> <kind> <path>: <what> (~<tokens> tokens/turn)`, numbered per section (C, D, S, U), and what
  * applying the CONTEXT, DUPLICATE and UNUSED ones saves. Rule lines and settings values are counted, never printed;
  * override lines only by kind, since a setup holds hundreds of them and `rules scan` lists them a kind at a time.
+ * UNUSED judges by the transcripts read and Claude Code's own `/skill-doctor` count, which also covers plugins' skills.
  */
 /** An always-loaded file longer than this is worth slimming. */
 export const LARGE_FILE_CHARS = 6000;
@@ -91,10 +92,12 @@ function duplicateFindings(scan, at, show) {
         saves: tokensOf(duplicate.text.length),
     }));
 }
+/** Claude Code's in-session check of the instructions themselves: it runs a model, so the scan suggests it, never runs it. */
+const PROMPT_AUDIT = "NEXT /doctor prompt-audit in a session of the project: Claude Code's model-run check for outdated or conflicting instructions";
 function overrideLines(scan, at) {
     const recorded = `${scan.recorded} recorded`;
     if (scan.overrides.length === 0) {
-        return [`OVERRIDE none to judge; ${recorded}`];
+        return [`OVERRIDE none to judge; ${recorded}`, PROMPT_AUDIT];
     }
     const files = new Set(scan.overrides.map((candidate) => candidate.place.path));
     const kinds = PLACE_KINDS.flatMap((kind) => {
@@ -104,6 +107,7 @@ function overrideLines(scan, at) {
     return [
         `OVERRIDE ${scan.overrides.length} line(s) in ${files.size} file(s) may override a core rule: ${kinds.join(', ')}; ${recorded}`,
         `NEXT ${KIT_NAME} rules scan${afterTeam(at)}, to judge each line with the user`,
+        PROMPT_AUDIT,
     ];
 }
 function settingsLines(scan, at, show) {
@@ -123,39 +127,81 @@ function settingsLines(scan, at, show) {
 function windowOf(scan, at) {
     return scan.usage.unread === 0 ? `${at.days} day(s)` : `the newest ${((at.now - scan.usage.since) / DAY_MS).toFixed(1)} day(s)`;
 }
-function unusedFindings(unused, window, show) {
-    return unused.map((skill) => ({
-        kind: 'unused-skill',
-        where: show(skill.path),
-        what: `no Skill call or /${skill.name} in ${window}`,
-        saves: tokensOf(skill.line.length),
-    }));
+/** `/skill-doctor`'s rows by skill name; none when it was skipped. */
+function doctorRows(scan) {
+    return new Map(scan.doctor.kind === 'read' ? scan.doctor.skills.map((row) => [row.name, row]) : []);
 }
-function unusedHeader(scan, unused, at) {
+/** True when `/skill-doctor` saw the skill run on this machine in the last `days` days. */
+function ranIn(row, days) {
+    return row !== undefined && row.uses > 0 && row.lastUsedDays !== undefined && row.lastUsedDays <= days;
+}
+/** What `/skill-doctor` tells of a skill's use: never, or how long ago; undefined when it has no row or no day count. */
+function doctorNote(row) {
+    if (row?.uses === 0) {
+        return 'never used on this machine';
+    }
+    return row?.lastUsedDays === undefined ? undefined : `last used ${row.lastUsedDays} day(s) ago`;
+}
+function unusedFindings(unused, rows, window, show) {
+    return unused.map((skill) => {
+        const note = doctorNote(rows.get(skill.name));
+        return {
+            kind: 'unused-skill',
+            where: show(skill.path),
+            what: `no Skill call or /${skill.name} in ${window}${note === undefined ? '' : `; /skill-doctor: ${note}`}`,
+            saves: tokensOf(skill.line.length),
+        };
+    });
+}
+/**
+ * The skills only `/skill-doctor` lists (plugins', synced ones, any outside the skill folders read) that cost a listing
+ * line every turn and neither it nor a transcript saw run in `--days`. None when there is no transcript to tell.
+ */
+function doctorOnlyFindings(scan, at) {
+    if (scan.usage.transcripts === 0 || scan.doctor.kind === 'skipped') {
+        return [];
+    }
+    const folders = new Set(scan.context.skills.map((skill) => skill.name));
+    return scan.doctor.skills.flatMap((row) => {
+        const note = doctorNote(row);
+        const judged = row.listed > 0 && !folders.has(row.name) && !scan.usage.used.has(row.name) && !ranIn(row, at.days);
+        return !judged || note === undefined ? [] : [{ kind: 'unused-skill', where: `${row.name} (${row.source})`, what: `${note} per /skill-doctor; turn it off in /skills`, saves: row.listed }];
+    });
+}
+function unusedHeader(scan, unused, doctorOnly, at) {
     const { transcripts, bytes, unread } = scan.usage;
-    const young = notUsed(scan).filter((skill) => scan.recent.has(skill.path)).length;
+    const rows = doctorRows(scan);
+    const old = notUsed(scan).filter((skill) => !scan.recent.has(skill.path));
+    const young = notUsed(scan).length - old.length;
     const unjudged = young === 0 ? '' : `; ${young} more changed in that time, too new to judge`;
+    const ran = old.filter((skill) => ranIn(rows.get(skill.name), at.days)).length;
+    const confirmed = ran === 0 ? '' : `; ${ran} more not in the transcripts read ran in ${at.days} day(s) per /skill-doctor`;
+    const only = doctorOnly === 0 ? '' : `; and ${doctorOnly} skill(s) only /skill-doctor lists`;
+    const skipped = scan.doctor.kind === 'skipped' ? `; /skill-doctor skipped: ${scan.doctor.why}` : '';
     const bound = unread === 0 ? '' : `, newest first; ${unread} older one(s) of ${at.days} day(s) left unread past the ${at.maxMb} MB bound, --max-mb raises it`;
     const read = `read ${transcripts} transcript(s), ${(bytes / BYTES_PER_MB).toFixed(1)} MB${bound}`;
-    return `UNUSED ${unused.length} of ${scan.context.skills.length} skill(s) not used in ${windowOf(scan, at)} (${read})${unjudged}`;
+    return `UNUSED ${unused.length} of ${scan.context.skills.length} skill(s) not used in ${windowOf(scan, at)} (${read})${unjudged}${confirmed}${only}${skipped}`;
 }
 function notUsed(scan) {
     return scan.context.skills.filter((skill) => !scan.usage.used.has(skill.name));
 }
 /**
  * The skills no transcript used, of those whose file is older than the window: a skill written or changed inside it
- * has not had the whole window to be used. None when there is no transcript to tell, since then every skill would
+ * has not had the whole window to be used, and one `/skill-doctor` saw run in `--days` is used, though the transcripts
+ * read past `--max-mb` may cover fewer days. None when there is no transcript to tell, since then every skill would
  * look unused.
  */
-function unusedSkills(scan) {
-    return scan.usage.transcripts === 0 ? [] : notUsed(scan).filter((skill) => !scan.recent.has(skill.path));
+function unusedSkills(scan, at) {
+    const rows = doctorRows(scan);
+    return scan.usage.transcripts === 0 ? [] : notUsed(scan).filter((skill) => !scan.recent.has(skill.path) && !ranIn(rows.get(skill.name), at.days));
 }
 export function scanReport(scan, at) {
     const show = (path) => homeRelative(path, at.userHome);
-    const unused = unusedSkills(scan);
+    const unused = unusedSkills(scan, at);
     const context = contextFindings(scan, new Set(unused), show);
     const duplicates = duplicateFindings(scan, at, show);
-    const parked = unusedFindings(unused, windowOf(scan, at), show);
+    const doctorOnly = doctorOnlyFindings(scan, at);
+    const parked = [...unusedFindings(unused, doctorRows(scan), windowOf(scan, at), show), ...doctorOnly];
     const loaded = scan.context.files.reduce((sum, file) => sum + file.text.length, 0) + scan.listing.chars;
     const savings = [...context, ...duplicates, ...parked].reduce((sum, finding) => sum + finding.saves, 0);
     return [
@@ -169,7 +215,7 @@ export function scanReport(scan, at) {
         ...findingLines('D', duplicates),
         ...overrideLines(scan, at),
         ...settingsLines(scan, at, show),
-        scan.usage.transcripts === 0 ? `UNUSED not checked: no transcript on this machine in ${at.days} day(s)` : unusedHeader(scan, unused, at),
+        scan.usage.transcripts === 0 ? `UNUSED not checked: no transcript on this machine in ${at.days} day(s)` : unusedHeader(scan, unused, doctorOnly.length, at),
         ...findingLines('U', parked),
         `SAVINGS ${perTurn(savings)} if every CONTEXT, DUPLICATE and UNUSED finding is applied`,
     ];
