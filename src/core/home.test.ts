@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { claudeConfigDir, claudeTempDir, resolveKitHome, teamHome, teamPaths } from './home.ts';
+import { claudeConfigDir, claudeTempDir, resolveKitHome, taskFolder, teamHome, teamPaths } from './home.ts';
 
 const USER_HOME = join('/', 'u');
 const KIT = join('/', 'kit');
@@ -52,6 +52,17 @@ describe('teamHome', () => {
   });
 });
 
+describe('taskFolder', () => {
+  it("puts a task's files in the tasks folder of the team that holds it, the same folder teamPaths names", () => {
+    assert.equal(taskFolder(KIT, 'app', 'T12'), join(TEAM_HOME, 'tasks', 'T12'));
+    assert.equal(taskFolder(KIT, 'site', 'T12'), join(teamPaths(KIT, 'site', CLAUDE_DIR).tasks, 'T12'));
+  });
+
+  it('refuses a team that is not an id', () => {
+    assert.throws(() => taskFolder(KIT, '../other', 'T12'), /is not a team id/);
+  });
+});
+
 describe('teamPaths', () => {
   it("keeps everything under the team's folder by default, except the skills folder of Claude Code's folder", () => {
     const paths = teamPaths(KIT, 'app', CLAUDE_DIR);
@@ -66,6 +77,8 @@ describe('teamPaths', () => {
     assert.equal(paths.skills, join(CLAUDE_DIR, 'skills'));
     assert.equal(paths.refresh, join(TEAM_HOME, 'state', 'refresh'));
     assert.equal(paths.handover, join(TEAM_HOME, 'handover'));
+    assert.equal(paths.tasks, join(TEAM_HOME, 'tasks'));
+    assert.equal(paths.notes, join(TEAM_HOME, 'notes'));
     assert.equal(paths.verifyNotices, join(TEAM_HOME, 'state', 'verify-notices.jsonl'));
     assert.equal(paths.modelNotices, join(TEAM_HOME, 'state', 'model-notices'));
     assert.equal(paths.unownedNotices, join(TEAM_HOME, 'state', 'unowned-notices.json'));
