@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { SECRET_TEXT_PATTERNS, SECRET_TOKEN_PATTERNS, type SecretPattern } from './secret-patterns.ts';
+import { SECRET_LITERAL_PATTERNS, SECRET_TEXT_PATTERNS, SECRET_TOKEN_PATTERNS, type SecretPattern } from './secret-patterns.ts';
 import { configuredPatterns } from './secrets.ts';
 
 /** One secret a text holds: its shape and its value. The caller hashes or drops the value; nothing prints it. */
@@ -14,9 +14,14 @@ const PROSE_SHAPES: ReadonlySet<string> = new Set(['secret-assignment']);
 
 /**
  * The write-time set (T1369 R11): the shapes a secret a session writes (a prompt, a command line, a file) is found by,
- * so every check that refuses one agrees. The broad `SecretScanner` set stays for register and inbox text.
+ * so every check that refuses one agrees: the tokens, the framed text shapes, an API key header and a quoted literal
+ * given to a secret-like name. The broad `SecretScanner` set stays for register and inbox text.
  */
-export const WRITE_TIME_SHAPES: readonly SecretPattern[] = [...SECRET_TOKEN_PATTERNS, ...SECRET_TEXT_PATTERNS.filter(({ id }) => !PROSE_SHAPES.has(id))];
+export const WRITE_TIME_SHAPES: readonly SecretPattern[] = [
+  ...SECRET_TOKEN_PATTERNS,
+  ...SECRET_TEXT_PATTERNS.filter(({ id }) => !PROSE_SHAPES.has(id)),
+  ...SECRET_LITERAL_PATTERNS,
+];
 
 /** A framed value shorter than this is a word, not a secret (`https://u:p@host` in an example); security's tools skip them too. */
 const MIN_FRAMED_SECRET = 6;

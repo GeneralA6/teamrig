@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { SECRET_TOKEN_PATTERNS } from '../../src/core/secret-patterns.ts';
+import { ASSIGNED_SECRET, SECRET_TOKEN_PATTERNS } from '../../src/core/secret-patterns.ts';
 import { GENERIC_RULES } from './rules.ts';
 import { scanText } from './scan.ts';
 
@@ -74,10 +74,10 @@ describe('generic scrub rules', () => {
       ['google-key', join('AIza', 'e'.repeat(35))],
       ['stripe-key', join('sk', '_live_', 'j5'.repeat(12))],
       ['jwt', join('eyJ', 'f'.repeat(10), '.eyJ', 'g'.repeat(10), '.', 'h'.repeat(10))],
-      ['assigned-secret', join('password', ': "', 'i'.repeat(16), '"')],
-      ['assigned-secret', join('DB_', 'PASSWORD', ' = "', 'k'.repeat(16), '"')],
-      ['assigned-secret', join('client', 'Secret', ": '", 'm'.repeat(16), "'")],
-      ['assigned-secret', join('GITHUB_', 'TOKEN', '="', 'n'.repeat(16), '"')],
+      ['assigned-secret', join('password', ': "', 'i9'.repeat(8), '"')],
+      ['assigned-secret', join('DB_', 'PASSWORD', ' = "', 'k8'.repeat(8), '"')],
+      ['assigned-secret', join('client', 'Secret', ": '", 'm7'.repeat(8), "'")],
+      ['assigned-secret', join('GITHUB_', 'TOKEN', '="', 'n6'.repeat(8), '"')],
     ];
     for (const [rule, text] of cases) {
       assert.deepEqual(ruleIds(text), [rule], rule);
@@ -85,15 +85,21 @@ describe('generic scrub rules', () => {
   });
 
   it('takes every credential shape from the shared secret patterns, unrevealed', () => {
-    for (const shared of SECRET_TOKEN_PATTERNS) {
+    for (const shared of [...SECRET_TOKEN_PATTERNS, ASSIGNED_SECRET]) {
       const rule = GENERIC_RULES.find((candidate) => candidate.id === shared.id);
       assert.equal(rule?.pattern, shared.pattern, shared.id);
       assert.equal(rule?.revealMatch, false, shared.id);
     }
   });
 
-  it('accepts a secret-like name bound to a placeholder', () => {
-    assert.deepEqual(ruleIds(join('token', ': "', '${user_config.TOKEN}', '"')), []);
+  it('accepts a secret-like name bound to a placeholder, judged as the write-time set judges it', () => {
+    for (const value of ['${user_config.TOKEN}', '<your-api-token>', '%DB_PASSWORD%', 'xxxxxxxxxxxxxxxx', 'your_api_key_goes_in_env']) {
+      assert.deepEqual(ruleIds(join('token', ': "', value, '"')), [], value);
+    }
+  });
+
+  it('refuses a percent-encoded password that only starts with a percent sign', () => {
+    assert.deepEqual(ruleIds(join('pass', 'word', ': "', '%40bc', '123xyz9', '"')), ['assigned-secret']);
   });
 
   it('accepts a secret-like name bound to words with spaces, as no credential has', () => {

@@ -1,4 +1,5 @@
-import { SECRET_TOKEN_PATTERNS, type SecretPattern } from '../../src/core/secret-patterns.ts';
+import { ASSIGNED_SECRET, SECRET_TOKEN_PATTERNS, type SecretPattern } from '../../src/core/secret-patterns.ts';
+import { isPlaceholderValue } from '../../src/core/secret-shapes.ts';
 
 export interface ScrubRule {
   readonly id: string;
@@ -61,14 +62,6 @@ export const GENERIC_RULES: readonly ScrubRule[] = [
     revealMatch: false,
   },
   ...SECRET_TOKEN_PATTERNS.map(secret),
-  {
-    id: 'assigned-secret',
-    description: 'literal value assigned to a secret-like name',
-    // The key word may end a longer name (`DB_PASSWORD`, `clientSecret`, `GITHUB_TOKEN`): no word boundary comes
-    // before it, since an underscore is a word character.
-    pattern:
-      /(?:password|passwd|secret|token|api[_-]?key|access[_-]?key)\b["']?\s*[:=]\s*["']([^"'\s]{12,})["']/gi,
-    isAllowed: (match) => /^[$<%{]/.test(match[1] ?? ''),
-    revealMatch: false,
-  },
+  // The write-time set's own placeholder judge, so a value the guard lets through (`${VAULT}`, `<token>`) passes here too.
+  { ...secret(ASSIGNED_SECRET), isAllowed: (match) => match[1] !== undefined && isPlaceholderValue(match[1]) },
 ];

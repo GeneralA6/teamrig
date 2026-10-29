@@ -57,3 +57,31 @@ export const SECRET_TEXT_PATTERNS: readonly SecretPattern[] = [
   },
   { id: 'secret-assignment', description: 'password or key assignment', pattern: /(?:password|passwd|secret|api[_-]?key)(?<!\/[\w.-]*)["']?\s*[=:]\s*\S/i },
 ];
+
+/**
+ * A quoted literal of 12 or more characters given to a secret-like name: the scrub's rule in the repository and part of
+ * the write-time set. Stricter than `secret-assignment`, so documentation and prose pass. The key word may end a longer
+ * name (`DB_PASSWORD`, `clientSecret`, `GITHUB_TOKEN`): no word boundary comes before it, since an underscore is a word
+ * character.
+ */
+export const ASSIGNED_SECRET: SecretPattern = {
+  id: 'assigned-secret',
+  description: 'literal value assigned to a secret-like name',
+  pattern: /(?:password|passwd|secret|token|api[_-]?key|access[_-]?key)\b["']?\s*[:=]\s*["']([^"'\s]{12,})["']/i,
+  secretGroup: 1,
+};
+
+/**
+ * Literal secrets the write-time set (`secret-shapes.ts`) adds to the tokens and the text frames: an API key header's
+ * value (`x-api-key: ...`, `api-key: ...`) and `ASSIGNED_SECRET`. A header value needs 12 characters and a digit, as a
+ * random key has, so a sentence naming the header (`set the x-api-key: header`) passes.
+ */
+export const SECRET_LITERAL_PATTERNS: readonly SecretPattern[] = [
+  {
+    id: 'api-key-header',
+    description: 'key in an API key header',
+    pattern: /\b(?:x-(?:[a-z0-9]+-)*)?api-key["']?\s*:\s*["']?(?=[^\s"']*\d)([^\s"']{12,})/i,
+    secretGroup: 1,
+  },
+  ASSIGNED_SECRET,
+];
