@@ -45,7 +45,7 @@ function fake(options: FakeOptions = {}): Fake {
       return args[0] === 'diff' ? (options.numstat ?? '') : 'abc1234 core: a\n';
     },
     log: (line) => logs.push(line),
-    sync: () => options.sync ?? { kind: 'current' },
+    sync: () => options.sync ?? { kind: 'current', sets: '0.134.0' },
     buildSteps: () => [['tools/build/bundle.ts']],
     proveTree: () => {
       events.push('prove');
@@ -96,17 +96,31 @@ test('commits a rebuilt dist apart, with a Large-commit line only when it goes o
   assert.ok(large.logs.includes('dist: 1 file(s), 401 line(s), over the size rule'));
 });
 
+/** A plan whose last chunk raises the version, named in its subject as SKILL.md writes it. */
+const RAISING: readonly Chunk[] = [
+  { files: ['src/a.ts'], subject: 'core: a', body: 'why a, since 0.134.0' },
+  { files: ['plugins/teamrig/.claude-plugin/plugin.json', 'src/core/version.ts'], subject: 'plugin: version 0.134.0, a', body: 'raises 0.134.0' },
+];
+
 test('sets the version raise again in the chunks when the sync rebased onto a main with a newer version', async () => {
-  const { deps, events } = fake({ sync: { kind: 'rebased', onto: 'def5678', version: { from: '0.134.0', to: '0.135.0' } } });
-  await shipCommits(ARGS, CHUNKS, deps);
-  assert.ok(events.includes(committed('release: 0.135.0', 'raises 0.135.0')));
+  const { deps, events } = fake({ sync: { kind: 'rebased', onto: 'def5678', sets: '0.135.0' } });
+  await shipCommits(ARGS, RAISING, deps);
+  assert.ok(events.includes(committed('core: a', 'why a, since 0.135.0')));
+  assert.ok(events.includes(committed('plugin: version 0.135.0, a', 'raises 0.135.0')));
   assert.ok(!events.some((event) => event.includes('0.134.0')));
 });
 
-test('keeps the plan as written when the rebase found no version raise to move', async () => {
-  const { deps, events } = fake({ sync: { kind: 'rebased', onto: 'def5678', version: null } });
-  await shipCommits(ARGS, CHUNKS, deps);
-  assert.ok(events.includes(committed('release: 0.134.0', 'raises 0.134.0')));
+test('a rerun on an unmoved main commits the version its failed run already set, not the plan\'s (T1472)', async () => {
+  const { deps, events } = fake({ sync: { kind: 'current', sets: '0.135.0' } });
+  await shipCommits(ARGS, RAISING, deps);
+  assert.ok(events.includes(committed('plugin: version 0.135.0, a', 'raises 0.135.0')));
+  assert.ok(!events.some((event) => event.includes('0.134.0')));
+});
+
+test('keeps the plan as written when the files set the version it names', async () => {
+  const { deps, events } = fake({ sync: { kind: 'rebased', onto: 'def5678', sets: '0.134.0' } });
+  await shipCommits(ARGS, RAISING, deps);
+  assert.ok(events.includes(committed('plugin: version 0.134.0, a', 'raises 0.134.0')));
 });
 
 test('a failed typecheck or coverage gate stops before any commit', async () => {

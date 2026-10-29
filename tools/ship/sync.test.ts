@@ -81,14 +81,14 @@ function sceneDeps(scene: Scene): { deps: SyncDeps; calls: string[]; files: Map<
 
 test('a branch that already contains main\'s tip is left as it is', () => {
   const { deps, calls, files } = sceneDeps({ mergeBase: TIP });
-  assert.deepEqual(syncToMain(deps, OPTIONS), { kind: 'current' });
+  assert.deepEqual(syncToMain(deps, OPTIONS), { kind: 'current', sets: '0.88.1' });
   assert.deepEqual(calls, ['fetch --quiet origin main', 'rev-parse refs/remotes/origin/main', `merge-base HEAD ${TIP}`]);
   assert.equal(files.get(JSON_PATH), pluginJson('0.88.1'));
 });
 
 test('rebases onto the moved main with the plan set aside, then sets the change\'s patch raise on main\'s version', () => {
   const { deps, calls, files, logged } = sceneDeps({});
-  assert.deepEqual(syncToMain(deps, OPTIONS), { kind: 'rebased', onto: TIP, version: { from: '0.88.1', to: '0.89.1' } });
+  assert.deepEqual(syncToMain(deps, OPTIONS), { kind: 'rebased', onto: TIP, sets: '0.89.1' });
   assert.equal(files.get(JSON_PATH), pluginJson('0.89.1'));
   assert.equal(files.get(KIT_PATH), kitVersion('0.89.1'));
   const order = ['checkout', 'stash push', 'rebase', 'stash pop'].map((verb) => calls.findIndex((call) => call.startsWith(verb)));
@@ -99,7 +99,7 @@ test('rebases onto the moved main with the plan set aside, then sets the change\
 
 test('a minor raise stays a minor raise on main\'s version', () => {
   const { deps, files } = sceneDeps({ setVersion: '0.89.0', tipVersion: '0.89.2' });
-  assert.deepEqual(syncToMain(deps, OPTIONS), { kind: 'rebased', onto: TIP, version: { from: '0.89.0', to: '0.90.0' } });
+  assert.deepEqual(syncToMain(deps, OPTIONS), { kind: 'rebased', onto: TIP, sets: '0.90.0' });
   assert.equal(files.get(KIT_PATH), kitVersion('0.90.0'));
 });
 
@@ -111,14 +111,14 @@ test('skips the stash when the plan has no uncommitted change besides the versio
 
 test('a change that does not raise the version is rebased and its files left alone', () => {
   const { deps, calls, files } = sceneDeps({ setVersion: '0.88.0' });
-  assert.deepEqual(syncToMain(deps, OPTIONS), { kind: 'rebased', onto: TIP, version: null });
+  assert.deepEqual(syncToMain(deps, OPTIONS), { kind: 'rebased', onto: TIP, sets: '0.88.0' });
   assert.equal(files.get(JSON_PATH), pluginJson('0.88.0'));
   assert.ok(!calls.some((call) => call.startsWith('diff --unified')));
 });
 
 test('main that moved without a raise of its own keeps the change\'s version, with no search for the old one', () => {
   const { deps, calls } = sceneDeps({ tipVersion: '0.88.0' });
-  assert.deepEqual(syncToMain(deps, OPTIONS), { kind: 'rebased', onto: TIP, version: { from: '0.88.1', to: '0.88.1' } });
+  assert.deepEqual(syncToMain(deps, OPTIONS), { kind: 'rebased', onto: TIP, sets: '0.88.1' });
   assert.ok(!calls.some((call) => call.startsWith('diff --unified')));
 });
 

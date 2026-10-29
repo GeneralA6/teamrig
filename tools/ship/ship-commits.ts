@@ -2,8 +2,9 @@ import { DEFAULT_COMMITS } from '../../src/config/defaults.ts';
 import { pathMatcher, weighCommit, type CommitWeight, type FileChange } from '../../src/push-guard/commit-size.ts';
 import type { BuildStep } from './build-steps.ts';
 import type { GateVerdict } from './local-gate.ts';
-import { withPlanVersion, type Chunk, type ShipArgs } from './ship-plan.ts';
+import { withRaisedVersion, type Chunk, type ShipArgs } from './ship-plan.ts';
 import type { SyncResult } from './sync.ts';
+import { TEAMRIG_VERSION_FILES } from './version-bump.ts';
 
 /** The folder `npm run build` writes, committed apart from the plan's chunks. */
 export const DIST = 'plugins/teamrig/dist';
@@ -63,7 +64,8 @@ function commit(deps: ShipDeps, files: readonly string[], subject: string, body:
  * run inside `teamrig heavy` (T629: other ships merge while one waits for the lock, so whatever it settled
  * before the wait goes stale):
  *   1. sync.ts: when origin/main moved past the branch, rebase onto it and set the plan's version raise again
- *      on main's version (the plan's subjects and bodies follow); a conflict stops before any check;
+ *      on main's version; a conflict stops before any check. On every run the plan's subjects and bodies
+ *      follow the version the files set, which a rerun after a failed run finds set already (T1472);
  *   2. typecheck and the coverage gate (stops before any commit when either fails);
  *   3. one signed-off commit per chunk of the plan, in order;
  *   4. the steps of the repo's `npm run build` (build-steps.ts) and a `build: rebuild the plugin dist` commit (with a Large-commit line when the
@@ -75,8 +77,7 @@ function commit(deps: ShipDeps, files: readonly string[], subject: string, body:
  * A refusal throws `REFUSED <reason>`; a failed step throws its own error.
  */
 export async function shipCommits(args: ShipArgs, written: readonly Chunk[], deps: ShipDeps): Promise<number> {
-  const sync = deps.sync();
-  const chunks = sync.kind === 'rebased' && sync.version !== null ? withPlanVersion(written, sync.version) : written;
+  const chunks = withRaisedVersion(written, TEAMRIG_VERSION_FILES.map((file) => file.path), deps.sync().sets);
 
   deps.node(['node_modules/typescript/bin/tsc', '-p', 'tsconfig.json']);
   deps.node(['tools/ci/coverage-cli.ts']);

@@ -23,7 +23,7 @@ function shipDeps(verdict: GateVerdict, mergeExit: number): ShipDeps {
     node: () => undefined,
     git: () => '',
     log: () => undefined,
-    sync: () => ({ kind: 'current' }),
+    sync: () => ({ kind: 'current', sets: '0.1.0' }),
     buildSteps: () => [],
     proveTree: () => verdict,
     push: () => 't827-ship-tool',

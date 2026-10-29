@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { parsePlan, parseShipArgs, withPlanVersion } from './ship-plan.ts';
+import { parsePlan, parseShipArgs, withPlanVersion, withRaisedVersion } from './ship-plan.ts';
 
 test('reads a ship\'s repo, plan and base, merging only when asked', () => {
   assert.deepEqual(parseShipArgs(['C:/w', 'C:/s/plan.json']), { repo: 'C:/w', plan: 'C:/s/plan.json', base: 'origin/main', merge: false, noteFile: null });
@@ -35,4 +35,26 @@ test('moves the plan\'s subjects and bodies to the version the ship set, leaving
     { files: ['docs/a.md'], subject: 'docs: a', body: 'Needs 0.88.12.' },
     { files: ['plugins/teamrig/.claude-plugin/plugin.json'], subject: 'plugin: version 0.89.1, a fix', body: 'From 0.89.1 on (0.89.1).' },
   ]);
+});
+
+const VERSION_PATHS = ['plugins/teamrig/.claude-plugin/plugin.json', 'src/core/version.ts'];
+
+test('sets the version the raise chunk\'s subject names to the one the files set, in every subject and body', () => {
+  const chunks = [
+    { files: ['docs/a.md'], subject: 'docs: a', body: 'Since 0.88.1, not 0.88.12.' },
+    { files: ['src/core/version.ts', 'plugins/teamrig/.claude-plugin/plugin.json'], subject: 'plugin: version 0.88.1, a fix since 0.80.0', body: 'Raises to 0.88.1.' },
+  ];
+  assert.deepEqual(withRaisedVersion(chunks, VERSION_PATHS, '0.89.1'), [
+    { files: ['docs/a.md'], subject: 'docs: a', body: 'Since 0.89.1, not 0.88.12.' },
+    { files: ['src/core/version.ts', 'plugins/teamrig/.claude-plugin/plugin.json'], subject: 'plugin: version 0.89.1, a fix since 0.80.0', body: 'Raises to 0.89.1.' },
+  ]);
+});
+
+test('keeps the plan when it names the version the files set, raises no version, or its raise subject names none', () => {
+  const raise = { files: ['src/core/version.ts'], subject: 'plugin: version 0.89.1, a fix', body: '0.89.1' };
+  assert.deepEqual(withRaisedVersion([raise], VERSION_PATHS, '0.89.1'), [raise]);
+  const noRaise = { files: ['docs/a.md'], subject: 'docs: since 0.88.1', body: '0.88.1' };
+  assert.deepEqual(withRaisedVersion([noRaise], VERSION_PATHS, '0.89.1'), [noRaise]);
+  const unnamed = { files: ['src/core/version.ts'], subject: 'plugin: raise the version', body: 'from 0.88.1' };
+  assert.deepEqual(withRaisedVersion([unnamed], VERSION_PATHS, '0.89.1'), [unnamed]);
 });

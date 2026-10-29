@@ -62,8 +62,23 @@ export function parsePlan(text: string, path: string): Chunk[] {
 
 export const readPlan = (path: string): Chunk[] => parsePlan(readFileSync(path, 'utf8'), path);
 
-/** The plan with the version the ship set from main (sync.ts) where it names the one it was written with. */
+/** The plan naming version `to` wherever it named `from`, in every subject and body. */
 export function withPlanVersion(chunks: readonly Chunk[], version: { readonly from: string; readonly to: string }): Chunk[] {
   const mention = versionMention(version.from, 'g');
   return chunks.map((chunk) => ({ files: chunk.files, subject: chunk.subject.replace(mention, version.to), body: chunk.body.replace(mention, version.to) }));
+}
+
+/** The first version written in a text, never part of a longer one. */
+const FIRST_VERSION = /(?<![\d.])\d+\.\d+\.\d+(?!\d|\.\d)/;
+
+/**
+ * The plan naming the version the change's version files set (`sets`, sync.ts) where it named its raise. The
+ * chunk that commits a version file names the raise in its subject (`plugin: version X.Y.Z, <why>`, SKILL.md),
+ * read there on every run: a sync onto main sets the files again, and a rerun after a failed run finds them
+ * set already while the plan still names the raise it was written with (T1472).
+ */
+export function withRaisedVersion(chunks: readonly Chunk[], versionPaths: readonly string[], sets: string): Chunk[] {
+  const raise = chunks.find((chunk) => chunk.files.some((path) => versionPaths.includes(path)));
+  const named = raise === undefined ? undefined : FIRST_VERSION.exec(raise.subject)?.[0];
+  return named === undefined || named === sets ? [...chunks] : withPlanVersion(chunks, { from: named, to: sets });
 }

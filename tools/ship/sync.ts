@@ -30,9 +30,8 @@ export interface SyncOptions {
   readonly generated: readonly string[];
 }
 
-export type SyncResult =
-  | { readonly kind: 'current' }
-  | { readonly kind: 'rebased'; readonly onto: string; readonly version: { readonly from: string; readonly to: string } | null };
+/** `sets`: the version the change's version files set once the sync ran, which the plan's commits follow (T1472). */
+export type SyncResult = { readonly kind: 'current'; readonly sets: string } | { readonly kind: 'rebased'; readonly onto: string; readonly sets: string };
 
 const refuse = (reason: string): never => {
   throw new Error(`REFUSED ${reason}`);
@@ -43,10 +42,11 @@ export function syncToMain(deps: SyncDeps, options: SyncOptions): SyncResult {
   const { main, files } = options;
   const [primary] = files;
   if (primary === undefined) throw new Error('syncToMain needs at least one version file');
+  const setNow = (): string => formatVersion(versionIn(deps.readText(primary.path), primary));
   git('fetch', '--quiet', 'origin', main);
   const tip = git('rev-parse', `refs/remotes/origin/${main}`);
   const base = git('merge-base', 'HEAD', tip);
-  if (base === tip) return { kind: 'current' };
+  if (base === tip) return { kind: 'current', sets: setNow() };
   const short = tip.slice(0, 7);
   deps.log(`origin/${main} moved to ${short} since the branch was cut: rebasing onto it`);
 
@@ -82,18 +82,18 @@ export function syncToMain(deps: SyncDeps, options: SyncOptions): SyncResult {
       refuse(`the plan's uncommitted changes conflict with origin/${main} ${short}: they stay in git stash; resolve the conflict, then ship again`);
     }
   }
-  if (kind === null) return { kind: 'rebased', onto: tip, version: null };
+  if (kind === null) return { kind: 'rebased', onto: tip, sets: setNow() };
 
   const to = bumped(versionAt(tip, primary), kind);
   for (const file of files) deps.writeText(file.path, withVersion(deps.readText(file.path), file, to));
   const from = formatVersion(set);
-  const version = { from, to: formatVersion(to) };
-  deps.log(`version ${from} -> ${version.to}: origin/${main} is at ${formatVersion(versionAt(tip, primary))}, the change raises its ${kind}`);
-  if (from !== version.to) {
+  const sets = formatVersion(to);
+  deps.log(`version ${from} -> ${sets}: origin/${main} is at ${formatVersion(versionAt(tip, primary))}, the change raises its ${kind}`);
+  if (from !== sets) {
     const named = filesNaming(git, tip, from, [...files.map((file) => file.path), ...options.generated]);
-    if (named.length > 0) refuse(`the change names its old version ${from} in ${named.join(', ')}: set it to ${version.to} there, then ship again`);
+    if (named.length > 0) refuse(`the change names its old version ${from} in ${named.join(', ')}: set it to ${sets} there, then ship again`);
   }
-  return { kind: 'rebased', onto: tip, version };
+  return { kind: 'rebased', onto: tip, sets };
 }
 
 /** The files whose lines added since `rev` (working tree included) contain `text`, outside `skipped`. */
