@@ -591,6 +591,47 @@ WATCH 1 done task of api waiting on a sighting: once it shows, set it done again
 T2 done 10-12 10:05 | Log the signup errors (watch: the night's log lists a signup error)
 ```
 
+### teamrig files
+
+Prints the folder where a task's files go, and makes it when it is missing. Write every file a task produces there,
+under these names, so anyone finds a task's design by its id without searching:
+
+| Name | Holds |
+| --- | --- |
+| `design.md` | the design note, revised in place; an approved version kept as `design-approved-<date>.md` |
+| `build.md` | what was built and decided, and the proofs |
+| `plan.md`, `plan.json` | the plan, and a ship plan |
+| `review.md` | a review's findings |
+| `evidence/` | the files a task's `--evidence` points at: logs, tables, screenshots |
+| `scripts/` | the scripts the task ran or hands the owner |
+| `out/` | bulky generated output |
+
+The folder is `tasks/T<id>` in the folder of the team whose task list holds the task, so a task another team of your
+tree holds has its folder in that team. With `--notes` it prints your folder for notes that belong to no task
+(research, boards, drafts), `notes/<session>` in your team's folder. It prints the path alone, so a shell line can
+use it: `cp report.tsv "$(teamrig files T12)/evidence/"`. Scratch output (ship logs, probe dumps) stays in your
+scratchpad; copy into the folder only what the task must keep.
+
+Refusals: an id no task list of your tree holds (`REFUSED no task T9`), so a typo makes no folder; a word that is not
+a task id; a session not on the team with `--notes`.
+
+Flags:
+
+- `--notes`: your notes folder instead of a task's.
+- `--session <id|name>`: the caller, whose notes folder `--notes` prints.
+
+Example:
+
+```sh
+teamrig files T12
+```
+
+Output:
+
+```text
+/home/you/.teamrig/teams/web/tasks/T12
+```
+
 ### teamrig gh sync
 
 Imports GitHub issues into the task list, inbound only. For each repository in `github.repos` it lists the open
