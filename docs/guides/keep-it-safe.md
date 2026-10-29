@@ -171,6 +171,13 @@ files, names and dump commands, and a `!` entry keeps one printable. The read-on
 the prompt
 ([what it cannot see](../../plugins/teamrig/skills/teamrig-guide/hooks.md#before-a-shell-command-or-a-read-the-secret-guard)).
 
+A secret a call prints anyway, from a script, a log or a file the guard could not see, is redacted before Claude reads
+it: after each Bash, PowerShell, Read or Grep call, the secret redactor replaces each token, credential and secret
+variable's value in the result with `[redacted <kind>]`, so it stays out of the transcript too, and tells the session
+which kinds it held, never a value, and to ask the security reviewer, else the lead, to rotate them.
+`secretGuard.redact: false` turns it off
+([what it does not cover](../../plugins/teamrig/skills/teamrig-guide/hooks.md#after-a-tool-call-the-secret-redactor)).
+
 A secret typed or pasted into a prompt goes the same way: the prompt hook stops a prompt that holds a token,
 credentials in a URL, an Authorization or API key header, a quoted literal given to a secret-like name or a
 `register.secretPatterns` match before Claude reads it, keeps it out of the transcript and removes the value from
