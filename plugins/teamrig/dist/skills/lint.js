@@ -44,8 +44,12 @@ export function areaOf(name, areas) {
     const match = areas.filter((area) => name.startsWith(`${area}-`)).sort((a, b) => b.length - a.length)[0];
     return match ?? name.split('-')[0] ?? name;
 }
-/** Lints every skill against the team's rules; the flags come in skill order, area flags last. */
-export function lintSkills(skills, now, team) {
+/**
+ * Lints every skill against the team's rules; the flags come in skill order, area flags last. `elsewhere` holds the
+ * sessions of the other teams of the team's tree that read the same skills folder: a skill one of them owns, and no
+ * session of the team, is linted by its owner's team's check, so it gets no flag here and counts in no area (T1473).
+ */
+export function lintSkills(skills, now, team, elsewhere) {
     const rules = team.skills;
     const sessions = new Set(team.sessions);
     const areas = [...team.sessions, rules.sharedPrefix];
@@ -55,6 +59,9 @@ export function lintSkills(skills, now, team) {
         const { front, body } = splitFrontmatter(skill.text);
         // A trailing . , or ; ends the sentence, not the name ("Owner: alpha.").
         const owner = /^Owner:\s*(\S+?)[.,;]?(?=\s|$)/m.exec(body)?.[1] ?? null;
+        if (owner !== null && !sessions.has(owner) && elsewhere.has(owner)) {
+            continue;
+        }
         const flag = (kind, detail) => {
             flags.push({ kind, skill: skill.name, owner, detail });
         };
