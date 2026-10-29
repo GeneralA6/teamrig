@@ -1,7 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { constants } from 'node:os';
-import { lowerStep, STEP_PRIORITY, type Priorities } from './priority.ts';
+import { lowerStep, NODE_PRIORITIES, STEP_PRIORITY, type Priorities } from './priority.ts';
 
 /** Priorities held in a map, each `set` recorded; `fail` makes a read or a set throw as the system does. */
 class FakePriorities implements Priorities {
@@ -52,6 +54,23 @@ describe('lowerStep', () => {
       priorities.failing = failing;
       assert.doesNotThrow(() => lowerStep(priorities, 41));
       assert.deepEqual(priorities.sets, []);
+    }
+  });
+});
+
+describe('NODE_PRIORITIES', () => {
+  // A run that starts below normal (under `teamrig heavy`) hands that priority to every step, so lowerStep never sets
+  // one there: this spec sets and reads a real process's priority whatever the run starts at.
+  it('sets and reads back the priority of a process on this host', async () => {
+    const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30_000)'], { stdio: 'ignore' });
+    await once(child, 'spawn');
+    try {
+      const pid = child.pid;
+      assert.ok(pid !== undefined);
+      NODE_PRIORITIES.set(pid, constants.priority.PRIORITY_LOW);
+      assert.equal(NODE_PRIORITIES.of(pid), constants.priority.PRIORITY_LOW);
+    } finally {
+      child.kill();
     }
   });
 });
