@@ -8,6 +8,7 @@ the stretches no change touched. The `coordinator` keys in the [team config](../
 
 - [One host lock](#one-host-lock)
 - [Merging a branch](#merging-a-branch)
+- [The self-merge gates](#the-self-merge-gates)
 - [Deploying it](#deploying-it)
 - [When a step holds back](#when-a-step-holds-back)
 - [Clean measurements](#clean-measurements)
