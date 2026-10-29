@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { postToolUseContext, toolResponseOf } from './post-tool-use.ts';
+import { postToolUseContext, postToolUseReplace, toolResponseOf } from './post-tool-use.ts';
 
 describe('toolResponseOf', () => {
   it('reads the result as the object or as its JSON text', () => {
@@ -18,5 +18,13 @@ describe('toolResponseOf', () => {
 describe('postToolUseContext', () => {
   it('hands the line to the model as PostToolUse context', () => {
     assert.deepEqual(JSON.parse(postToolUseContext('the line')), { hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: 'the line' } });
+  });
+});
+
+describe('postToolUseReplace', () => {
+  it("replaces the tool's result with the one given and hands the line to the model as context", () => {
+    assert.deepEqual(JSON.parse(postToolUseReplace({ stdout: 'kept', interrupted: false }, 'the line')), {
+      hookSpecificOutput: { hookEventName: 'PostToolUse', updatedToolOutput: { stdout: 'kept', interrupted: false }, additionalContext: 'the line' },
+    });
   });
 });

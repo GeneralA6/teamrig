@@ -6,7 +6,7 @@ import { CONFIG_VERSION } from '../config/types.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { FakePackageRegistry } from '../testing/fake-package-registry.ts';
 import { KEPT_PUSH_RULE, keptPushLineOf, teamHomeOf, teamInboxOf, treeHarness } from '../testing/team-tree.ts';
-import type { JsonRecord } from '../core/guards.ts';
+import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { ENV } from '../core/home.ts';
 import { CLIENT_MANIFEST, clientFileHash, clientManifestText, clientRootOf } from '../exec/client-integrity.ts';
 import { quietWorld } from '../testing/quiet-world.ts';
@@ -767,6 +767,50 @@ describe('runCli: hook secret-guard', () => {
   it("prints nothing outside a team's projects or for input that is not a hook payload", async () => {
     assert.deepEqual(await new CliHarness(null, null).run(['hook', 'secret-guard'], { stdin: bash('cat .env') }), { code: EXIT.ok, stdout: [], stderr: [] });
     assert.deepEqual(await new CliHarness().run(['hook', 'secret-guard'], { stdin: 'not json' }), { code: EXIT.ok, stdout: [], stderr: [] });
+  });
+});
+
+describe('runCli: hook secret-redact', () => {
+  const token = ['gh', 'p_', 'a1'.repeat(18)].join('');
+  const ran = (stdout: string, extra: JsonRecord = {}): string =>
+    JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'run it' }, tool_response: { stdout, stderr: '', interrupted: false, isImage: false }, cwd: APP, ...extra });
+  /** The replaced result's stdout, which must no longer hold `secret`, and the line for the model. */
+  const redactedOf = (result: CliResult, secret: string): { readonly stdout: string; readonly line: string } => {
+    assert.equal(result.code, EXIT.ok);
+    const parsed: unknown = JSON.parse(result.stdout[0] ?? '');
+    const output = isRecord(parsed) ? parsed['hookSpecificOutput'] : undefined;
+    const updated = isRecord(output) ? output['updatedToolOutput'] : undefined;
+    assert.ok(isRecord(updated));
+    assert.ok(!JSON.stringify(updated).includes(secret), `the result still holds ${secret}`);
+    return { stdout: String(updated['stdout']), line: contextOf(result) };
+  };
+
+  it("replaces a token in a session's or a helper's result and names the lead to rotate it", async () => {
+    const kit = new CliHarness();
+    const own = redactedOf(await kit.run(['hook', 'secret-redact'], { stdin: ran(`token ${token}`) }), token);
+    assert.equal(own.stdout, 'token [redacted GitHub token]');
+    assert.match(own.line, /\(GitHub token\).*ask lead to rotate it/);
+    assert.equal(redactedOf(await kit.run(['hook', 'secret-redact'], { stdin: ran(token, { agent_id: 'a1' }) }), token).stdout, '[redacted GitHub token]');
+  });
+
+  it("replaces a secret variable's value and a match of the team's own patterns, and names its security reviewer", async () => {
+    const kit = new CliHarness({ ...TEAM, roles: { lead: 'lead', securityReviewer: 'bravo' }, register: { secretPatterns: ['hush-[0-9]+'] } });
+    const password = ['s3', 'cret', 'Value9'].join('');
+    const variable = redactedOf(await kit.run(['hook', 'secret-redact'], { stdin: ran(`DB_PASSWORD=${password}`) }), password);
+    assert.match(variable.line, /value of a secret variable.*ask bravo to rotate it/);
+    assert.match(redactedOf(await kit.run(['hook', 'secret-redact'], { stdin: ran('code hush-4821') }), 'hush-4821').stdout, /^code \[redacted [^\]]+\]$/);
+  });
+
+  it('still redacts when the config is missing or unreadable, naming the lead in words', async () => {
+    for (const kit of [new CliHarness(null), new CliHarness('{ not json')]) {
+      assert.match(redactedOf(await kit.run(['hook', 'secret-redact'], { stdin: ran(token) }), token).line, /ask the lead to rotate it/);
+    }
+  });
+
+  it("prints nothing for a clean result, outside a team's projects or for input that is not a hook payload", async () => {
+    assert.deepEqual(await new CliHarness().run(['hook', 'secret-redact'], { stdin: ran('all clear') }), { code: EXIT.ok, stdout: [], stderr: [] });
+    assert.deepEqual(await new CliHarness(null, null).run(['hook', 'secret-redact'], { stdin: ran(token) }), { code: EXIT.ok, stdout: [], stderr: [] });
+    assert.deepEqual(await new CliHarness().run(['hook', 'secret-redact'], { stdin: 'not json' }), { code: EXIT.ok, stdout: [], stderr: [] });
   });
 });
 
