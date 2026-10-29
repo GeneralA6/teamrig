@@ -105,6 +105,7 @@ async function restoreDepsOf(runtime, terminal) {
         probe: runtime.probe,
         shutdowns: runtime.restore.shutdowns,
         countdown: runtime.restore.countdown,
+        stops: runtime.restore.stops,
         teams: await restoreTeamsOf(runtime),
         home: runtime.userHome,
         projectsDir,

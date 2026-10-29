@@ -31,6 +31,7 @@ import { GIT_WORKTREES } from "../worktree/git.js";
 import { stdioCountdownTerminal, terminalCountdown } from "../restore/countdown.js";
 import { LOGON_QUERY_TIMEOUT_MS, systemLogonEntry } from "../restore/logon.js";
 import { SHUTDOWN_QUERY_TIMEOUT_MS, systemShutdownLog } from "../restore/shutdowns.js";
+import { processStopWatch } from "../restore/stops.js";
 import { CMD_SHIM_LINE_ENV } from "./cmd-shim.js";
 import { runCli } from "./run.js";
 // The shim's command line is this run's alone: the steps, hooks and commands it starts take `process.env`, and a
@@ -74,6 +75,7 @@ process.exitCode = await runCli(process.argv.slice(2), {
     restore: {
         shutdowns: systemShutdownLog(process.platform, nodeProgramRunner(SHUTDOWN_QUERY_TIMEOUT_MS)),
         countdown: terminalCountdown(stdioCountdownTerminal(process.stdin, process.stdout)),
+        stops: processStopWatch(process),
         logon: systemLogonEntry(process.platform, process.env['SystemRoot'], nodeProgramRunner(LOGON_QUERY_TIMEOUT_MS)),
     },
     mergeGit: GIT_MERGE,
