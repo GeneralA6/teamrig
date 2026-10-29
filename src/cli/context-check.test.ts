@@ -1,7 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import { formatConfig } from '../config/load.ts';
 import { APP, CliHarness, SKILLS_DIR, TEAM, TEAM_HOME, type RunOptions } from '../testing/cli-harness.ts';
+import { SUB_TEAMS, teamConfigOf, treeHarness } from '../testing/team-tree.ts';
 import { EXIT } from './runtime.ts';
 import { UNOWNED_FORGET_AFTER_MS } from './unowned-notices.ts';
 
@@ -134,6 +136,30 @@ describe("the skill and context checks read the skills of Claude Code's folder (
     assert.equal(lead.stdout.includes(`SKILLS 0 flag(s) in ${join(moved, 'skills')}`), true, out);
     assert.match(out, /SKILL OWNER \(owner ghost is not a session on the team\) ghost in-moved/);
     assert.equal(out.includes('at-home'), false, out);
+  });
+});
+
+describe('the skill check of teams of one tree that read one skills folder (T1473)', () => {
+  it("leaves a skill another team's session owns to that team's check, and flags one whose team reads another folder", async () => {
+    const kit = await treeHarness();
+    await kit.files.write(teamConfigOf('ops'), formatConfig({ ...SUB_TEAMS['ops'], paths: { skills: join('/', 'ops-skills') } }));
+    const unverified = (name: string, owner: string): string => `---\nname: ${name}\ndescription: A skill never verified.\n---\nOwner: ${owner}\n`;
+    await kit.files.write(join(SKILLS_DIR, 'front-deploy', 'SKILL.md'), unverified('front-deploy', 'front'));
+    await kit.files.write(join(SKILLS_DIR, 'run-restart', 'SKILL.md'), unverified('run-restart', 'run'));
+    const root = await kit.run(['check', '--all'], AS_LEAD);
+    assert.equal(root.code, EXIT.ok, root.stderr.join('\n'));
+    const rootOut = root.stdout.join('\n');
+    assert.equal(rootOut.includes('front-deploy'), false, rootOut);
+    assert.match(rootOut, /SKILL OWNER \(owner run is not a session on the team\) run run-restart/);
+    const web = await kit.run(['check', '--all', '--session', 'lead'], { env: { TEAMRIG_TEAM: 'web' } });
+    assert.equal(web.code, EXIT.ok, web.stderr.join('\n'));
+    const webOut = web.stdout.join('\n');
+    assert.match(webOut, /SKILL UNVERIFIED \(no "Last verified: YYYY-MM-DD"\) front front-deploy/);
+    assert.equal(
+      web.stdout.some((line) => line.includes('from the skill check') && line.includes('front-deploy')),
+      false,
+      webOut,
+    );
   });
 });
 

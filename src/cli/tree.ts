@@ -1,9 +1,9 @@
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import type { Roster } from '../config/roster.ts';
 import { TeamTree, teamNodeOf } from '../config/tree.ts';
 import type { KitConfig } from '../config/types.ts';
 import type { SessionAddress } from '../core/address.ts';
-import { resolveKitHome } from '../core/home.ts';
+import { resolveKitHome, type TeamPaths } from '../core/home.ts';
 import { ID_PATTERN } from '../core/ids.ts';
 import { openKit, rosterOf, type Kit } from './kit.ts';
 import type { CliRuntime } from './runtime.ts';
@@ -38,6 +38,18 @@ export async function loadTree(runtime: CliRuntime): Promise<KitTree> {
   }
   const nodes = [...teams].map(([team, { config, roster }]) => teamNodeOf(team, config, roster));
   return { tree: new TeamTree(nodes), teams };
+}
+
+/**
+ * The sessions of the other teams of a team's tree that read its skills folder too: each such team's own `check` lints
+ * the skills its sessions own there, so the team's lints leave those out (T1473). A team whose `paths.skills` names
+ * another folder never lints this one, so its sessions are not counted.
+ */
+export function skillOwnersElsewhere(loaded: KitTree, paths: Pick<TeamPaths, 'team' | 'skills'>): Set<string> {
+  const { tree, teams } = loaded;
+  const shares = ([other, { kit }]: readonly [string, TreeTeam]): boolean =>
+    other !== paths.team && tree.sameTree(other, paths.team) && resolve(kit.paths.skills) === resolve(paths.skills);
+  return new Set([...teams].filter(shares).flatMap(([, { config }]) => config.sessions));
 }
 
 /**

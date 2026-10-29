@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { EXIT } from './runtime.ts';
 import { CLAUDE_SESSION, CliHarness, SKILLS_DIR, TEAM_HOME, USER_HOME } from '../testing/cli-harness.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
+import { treeHarness } from '../testing/team-tree.ts';
 import { promptLine, replyLine, transcript } from '../testing/transcript-lines.ts';
 
 const PROJECT = join(USER_HOME, '.claude', 'projects', 'app');
@@ -60,6 +61,18 @@ describe('teamrig skills scorecard', () => {
     const explicit = await kit.run(['skills', 'scorecard', '--baseline-from', '2029-12-01', '--baseline-to', '2029-12-02'], { transcripts: transcripts() });
     assert.equal(explicit.stdout[0], 'Skills scorecard 2030-01-02 to 2030-01-08, baseline 2029-12-01 to 2029-12-02');
     assert.ok(explicit.stdout.includes("Days before 2030-01-03 are not counted: the scorecard's first read started there."));
+  });
+
+  it("leaves the lint flags of a skill another team of the tree owns to that team's scorecard (T1473)", async () => {
+    const kit = await treeHarness();
+    await kit.files.write(join(SKILLS_DIR, 'front-deploy', 'SKILL.md'), '---\nname: front-deploy\ndescription: Deploy the web front.\n---\nOwner: front\n');
+    const rowIn = async (team: string): Promise<string | undefined> => {
+      const result = await kit.run(['skills', 'scorecard'], { transcripts: transcripts(), env: { TEAMRIG_TEAM: team, TEAMRIG_SESSION: 'lead' } });
+      assert.equal(result.code, EXIT.ok, result.stderr.join('\n'));
+      return result.stdout.find((line) => line.startsWith('| front-deploy'));
+    };
+    assert.equal(await rowIn('app'), '| front-deploy | 0 | 0 | - | - | - | - | 0 | 0 | - | 4 | not loaded, no signature |');
+    assert.equal(await rowIn('web'), '| front-deploy | 0 | 0 | - | - | - | - | 0 | 0 | - | 4 | not loaded, no signature, UNVERIFIED |');
   });
 
   it('refuses a day that is not a YYYY-MM-DD day, and a range that ends before it starts', async () => {

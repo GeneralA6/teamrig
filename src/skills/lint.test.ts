@@ -6,6 +6,8 @@ import { areaOf, descriptionOf, formatSkillFlag, lintSkills, type SkillFile } fr
 
 const NOW = new Date('2030-03-01T12:00:00Z');
 const team = testConfig({ sessions: ['lead', 'alpha', 'alpha-ops', 'bravo'] });
+/** No other team of the tree reads the skills folder. */
+const NONE: ReadonlySet<string> = new Set();
 
 interface SkillParts {
   readonly front?: string;
@@ -25,7 +27,7 @@ function skill(name: string, parts: SkillParts = {}): SkillFile {
 }
 
 function lint(...skills: SkillFile[]): string[] {
-  return lintSkills(skills, NOW, team).map(formatSkillFlag);
+  return lintSkills(skills, NOW, team, NONE).map(formatSkillFlag);
 }
 
 describe('lintSkills', () => {
@@ -36,6 +38,17 @@ describe('lintSkills', () => {
   it('flags a missing or unknown owner', () => {
     assert.deepEqual(lint(skill('alpha-a', { owner: null }), skill('alpha-b', { owner: 'zulu' })), [
       'SKILL OWNER (no "Owner: <session>" line) - alpha-a',
+      'SKILL OWNER (owner zulu is not a session on the team) zulu alpha-b',
+    ]);
+  });
+
+  it("leaves a skill another tree team's session owns to that team's check: no flag here, no count in an area", () => {
+    // T1473: the root team's check flagged a child team session's skill, which the child team's own check lints too.
+    const elsewhere = new Set(['pixel', 'alpha']);
+    const pixel = Array.from({ length: 9 }, (_, index) => skill(`pixel-s${index}`, { owner: 'pixel', verified: null }));
+    const flags = lintSkills([...pixel, skill('alpha-a', { verified: null }), skill('alpha-b', { owner: 'zulu' })], NOW, team, elsewhere).map(formatSkillFlag);
+    assert.deepEqual(flags, [
+      'SKILL UNVERIFIED (no "Last verified: YYYY-MM-DD") alpha alpha-a',
       'SKILL OWNER (owner zulu is not a session on the team) zulu alpha-b',
     ]);
   });
@@ -59,7 +72,7 @@ describe('lintSkills', () => {
     assert.deepEqual(lint(logged, sentence, bold), [
       'SKILL VERIFIED-NOTE (text after the "Last verified:" date: keep the date alone, a lesson on its own line) alpha alpha-a',
     ]);
-    const stale = lintSkills([skill('alpha-d', { verified: '2030-01-01 by bravo' })], NOW, team).map((flag) => flag.kind);
+    const stale = lintSkills([skill('alpha-d', { verified: '2030-01-01 by bravo' })], NOW, team, NONE).map((flag) => flag.kind);
     assert.deepEqual(stale, ['UNVERIFIED', 'VERIFIED-NOTE']);
   });
 
@@ -119,7 +132,7 @@ describe('lintSkills', () => {
   it('takes its limits from the config', () => {
     const strict = testConfig({ skills: { maxDescriptionWords: 5, forbidFrontmatter: ['model'] } });
     const front = 'description: one two three four five six\nmodel: haiku';
-    const flags = lintSkills([skill('alpha-a', { front })], NOW, strict).map((flag) => flag.kind);
+    const flags = lintSkills([skill('alpha-a', { front })], NOW, strict, NONE).map((flag) => flag.kind);
     assert.deepEqual(flags, ['FORBIDDEN-KEY', 'DESCRIPTION']);
   });
 });

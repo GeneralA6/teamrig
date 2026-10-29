@@ -53,7 +53,7 @@ import { ownerBatchOf, type BatchedTeam } from '../owner-batch.ts';
 import { rollUp, type RolledTeam, type RollUp } from '../roll-up.ts';
 import { splitUnowned } from '../unowned.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { leadAboveOf, loadTree, type TreeTeam } from '../tree.ts';
+import { leadAboveOf, loadTree, skillOwnersElsewhere, type KitTree, type TreeTeam } from '../tree.ts';
 import { teamRegister } from '../team-register.ts';
 import { readBursts } from '../burst-reading.ts';
 import { readScaleOutBudget } from '../hire-cost.ts';
@@ -991,7 +991,8 @@ function withOverLimit(sections: readonly CheckSection[], fit: WeekFit): CheckSe
 /**
  * What `check` reports: the task flags, then the skill flags of the Claude Code skills folder. With `--tree`,
  * the task flags of the lead's team and each team under it, against the lead's week; the skills are the lead's
- * team's only, as teams on one machine share that folder, and so are the flags on hired sessions (src/hiring/due.ts)
+ * team's only, as teams on one machine share that folder, less the skills another team of its tree reading that folder
+ * owns, which that team's check lints (T1473), and so are the flags on hired sessions (src/hiring/due.ts)
  * and the batch of the owner's decisions its lead asks next (src/decisions/batch.ts), over its register and every
  * register under it, in a root team only (leadDecisionsOf).
  * The `stopgap T<id>` tags in those skills and in the team's `register.check.stopgapFiles` add a STOPGAP-DONE flag
@@ -1040,10 +1041,12 @@ export async function checkReport(args: ParsedArgs, runtime: CliRuntime): Promis
   const scaleOut = scaleOutFlags({ ...input, tree: new TaskTree(own.snapshot.state.tasks, now, zone, week, own.elsewhere), spare, hirePct });
   const hires = [...scaleOut.flags, ...hireFlags(input, scaleOut.busy)];
   const scope = week === null ? 'no week plan tagged yet, so the week checks are skipped' : `week ${week}`;
-  const decisions = await leadDecisionsOf(runtime, own, now.getTime(), zone);
+  const loaded = await loadTree(runtime);
+  const decisions = await leadDecisionsOf(runtime, own, loaded, now.getTime(), zone);
   const context = contextSizeFindings(await readContextInput(runtime, project, own.paths.skills, own.config.contextFiles));
   const allow = allowFindings(await readWideAllow(runtime, { paths: own.paths, config: own.config, project }));
-  const { skills, unowned } = splitUnowned([...context, ...allow], lintSkills(skillFiles, now, own.config), new Set(own.config.sessions), own.paths.skills);
+  const lint = lintSkills(skillFiles, now, own.config, skillOwnersElsewhere(loaded, own.paths));
+  const { skills, unowned } = splitUnowned([...context, ...allow], lint, new Set(own.config.sessions), own.paths.skills);
   const idle = await idlePassWarnings(runtime.files, own.paths, own.config.open.idle.mode, now.getTime());
   const lead = own.config.roles.lead;
   return { sections, scope, skills, skillsDir: own.paths.skills, hires, unowned: [...unowned, ...idle], lead, decisions };
@@ -1053,8 +1056,7 @@ export async function checkReport(args: ParsedArgs, runtime: CliRuntime): Promis
  * The batch of the owner's decisions a root team's lead asks next, over its register and every register under it; none
  * in a child team, whose waits the lead at its tree's root asks (T1018).
  */
-async function leadDecisionsOf(runtime: CliRuntime, own: RolledTeam, now: number, zone: TimeZone): Promise<LeadDecisions | undefined> {
-  const loaded = await loadTree(runtime);
+async function leadDecisionsOf(runtime: CliRuntime, own: RolledTeam, loaded: KitTree, now: number, zone: TimeZone): Promise<LeadDecisions | undefined> {
   if (loaded.tree.ownerLeadAbove(own.team) !== undefined) {
     return undefined;
   }
