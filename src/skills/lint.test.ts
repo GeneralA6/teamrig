@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { testConfig } from '../testing/config.ts';
 import type { SkillScript } from './grants.ts';
-import { areaOf, descriptionOf, formatSkillFlag, lintSkills, type SkillFile } from './lint.ts';
+import { areaOf, descriptionOf, formatSkillFlag, frontmatterValue, lintSkills, type SkillFile } from './lint.ts';
 
 const NOW = new Date('2030-03-01T12:00:00Z');
 const team = testConfig({ sessions: ['lead', 'alpha', 'alpha-ops', 'bravo'] });
@@ -144,6 +144,13 @@ describe('descriptionOf', () => {
     assert.equal(descriptionOf('description: >\n  folded\n  lines\nname: x'), 'folded lines');
     assert.equal(descriptionOf('description: |-\n'), null);
     assert.equal(descriptionOf('name: x'), null);
+  });
+});
+
+describe('frontmatterValue', () => {
+  it("reads the named key's value, never one whose name only starts with it", () => {
+    const front = 'names: many\nname: code-reader\ntools: Read, Grep\ndescription: >\n  reads';
+    assert.deepEqual(['name', 'tools', 'description', 'model'].map((key) => frontmatterValue(front, key)), ['code-reader', 'Read, Grep', 'reads', null]);
   });
 });
 
