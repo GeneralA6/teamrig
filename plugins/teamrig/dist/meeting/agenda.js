@@ -32,7 +32,7 @@ function rowOf(task, tree, team) {
     return `  ${formatShortTask(task, TITLE_CHARS, team, tree)}`;
 }
 /** A list's heading, its first AGENDA_ROWS rows and a `+N more` line naming the command that lists them all. */
-function listed(head, rows, all) {
+export function listed(head, rows, all) {
     const more = rows.length > AGENDA_ROWS ? [`  +${rows.length - AGENDA_ROWS} more: ${all}`] : [];
     return [head, ...rows.slice(0, AGENDA_ROWS), ...more];
 }

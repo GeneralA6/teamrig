@@ -21,7 +21,7 @@ export const OTHER_AREA_LISTINGS = ['on', 'name-only', 'user-invocable-only', 'o
 export function isOtherAreaListing(value) {
     return OTHER_AREA_LISTINGS.some((listing) => listing === value);
 }
-export const PUSH_TO_PROTECTED = ['ask', 'allow', 'lead'];
+export const PUSH_TO_PROTECTED = ['ask', 'allow', 'lead', 'gated'];
 export function isPushToProtected(value) {
     return PUSH_TO_PROTECTED.some((choice) => choice === value);
 }

@@ -313,10 +313,11 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   meeting start | meeting agenda | meeting end [--session <id|name>]   the lead's daily meeting with
       the owner: start holds messages to the lead until its end (one starting CRITICAL goes; the hook
       tells each sender, so no session is told) and prints the agenda: the owner's decisions as card
-      facts, the late tasks, what finished since the last meeting, the lead's inbox and the week's use
-      and fit; agenda prints it again; end tells each session the decisions recorded on its tasks
-      (update --note) by one inbox line, and no other session; in a tree of teams only the root team's
-      lead holds it, and its decisions and end cover every team under it
+      facts, the late tasks, what finished since the last meeting, the branches merged with no approval
+      (under pushToProtected gated), the lead's inbox and the week's use and fit; agenda prints it
+      again; end tells each session the decisions recorded on its tasks (update --note) by one inbox
+      line, and no other session; in a tree of teams only the root team's lead holds it, and its
+      decisions and end cover every team under it
   meeting schedule --meets <id|name> --at <time> --about "<one line>" [--minutes <n>] [--with a,b]
       [--tasks T1,T2] [--brief <path>]   books the owner's meeting with one session at a set time, apart
       from the daily one: it prints its id (M3) and tells the session met and those joining by one inbox
@@ -396,7 +397,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   update <team>/<id> --note .. [--later <date>|none]   the lead at a team tree's root, who asks the owner the
       decisions of the teams under it, notes their tasks (the owner's answer) or puts a card off, named as its
       batch prints them: web/T12
-  approve <id> --note "<what you checked, or why not>" [--decline]   the lead only: answers a task waiting on
+  approve <id> --note "<what you checked, or why not>" [--decline]   a leader above the task's owner (the
+      lead or a sub-lead), or roles.securityReviewer on a task not its own: answers a task waiting on
       its approval (approval:<lead>); its owner gets an inbox line to push or merge (or to fix the note's
       point and ask again), and check flags the approved task READY
   approve <team>/<id> --note .. [--decline]   the lead of a team's parent team answers a task of that
@@ -594,7 +596,11 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       quiet claims on its deploysOnPush targets and for the host lock (longer while its line moves), rebases, runs the
       dependencyCheck on a dependency change (REFUSED unless it exits 0), where reviewGate holds a
       change of a review path until its reviewer approves the branch's t<n> task (REFUSED with the
-      set command that asks; reviewCheck clears a check path) and pushes (each a heavy step
+      set command that asks; reviewCheck clears a check path), under pushGuard.pushToProtected gated
+      checks the self-merge gates (a live task of its own, a pass record of the rebased tree, commit
+      sizes, a test changed with source, reviewGate on: REFUSED on a miss, held for the session's leader
+      with the set command that asks, except a task miss; each merge is a line in merges.jsonl)
+      and pushes (each a heavy step
       in the ledger; again when origin moved meanwhile), or, where coordinator.repos.<name>.merge is
       set, runs its command in place of the push (0 merged, once origin holds it; 75 WAITING, say on a
       pull request's checks: run merge again once it merged), records the merge as a deploy of deploysOnPush, deletes the branch on origin

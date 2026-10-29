@@ -315,7 +315,7 @@ class PushJudge {
  * main && git push`) is followed (see `BranchMoves`). When part of the line cannot be read with confidence, the
  * guard asks: always for a push it cannot read, and for anything else it cannot read when the line says `push`.
  * With no protected branch there is nothing to guard, so every line is allowed, mirrors and doubts included.
- * Under `pushToProtected: allow` or `lead` a normal push to a protected branch is allowed and marked; a refusal, a
+ * Under `pushToProtected: allow`, `lead` or `gated` a normal push to a protected branch is allowed and marked; a refusal, a
  * leased push and a doubt are not changed by it.
  */
 export function evaluatePushes(command, context) {
@@ -370,7 +370,7 @@ export function decisionReason(decision, protectedBranches) {
         ? `Force-pushing, mirroring or deleting a protected branch (${branches}) is refused: it can overwrite other sessions' commits. Push your own branch, or use --force-with-lease if you truly mean it.`
         : `This push updates a protected branch (${branches}) while other sessions may be working. Confirm, or push your own branch and rebase it onto the current one.`;
 }
-/** Why the guard asks about a `--force-with-lease` push to a protected branch, which neither `pushToProtected: allow` nor `lead` covers. */
+/** Why the guard asks about a `--force-with-lease` push to a protected branch, which no `pushToProtected` choice covers. */
 export function leasedReason(protectedBranches) {
     return `This --force-with-lease push may rewrite the history of a protected branch (${protectedBranches.join(', ')}) while other sessions may be working. Confirm, or push your own branch instead.`;
 }

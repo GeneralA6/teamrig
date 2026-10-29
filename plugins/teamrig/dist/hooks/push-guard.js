@@ -45,33 +45,40 @@ function largeCommitsIn(updates, env) {
     return largeCommits([...commits.values()], env.commits);
 }
 /** Ends the question about a normal push to a protected branch, naming the switch that stops it. */
-export const PUSH_TO_PROTECTED_HINT = "To stop asking about normal pushes, set pushGuard.pushToProtected in the team's config.json to allow, or to lead to have the lead approve them.";
+export const PUSH_TO_PROTECTED_HINT = "To stop asking about normal pushes, set pushGuard.pushToProtected in the team's config.json to allow, to lead to have the lead approve them, " +
+    'or to gated to let teamrig merge take the changes that hold its gates.';
 /** The note shown when `pushToProtected: allow` lets a normal push to a protected branch through. */
 export function allowedPushNote(protectedBranches) {
     return `teamrig did not ask about this push to a protected branch (${protectedBranches.join(', ')}): pushGuard.pushToProtected is allow.`;
 }
-/** The note shown when `pushToProtected: lead` lets a normal push to a protected branch through. */
-export function clearedPushNote(clearance, protectedBranches) {
+/** The note shown when `pushToProtected: lead` or `gated` lets a normal push to a protected branch through. */
+export function clearedPushNote(clearance, protectedBranches, choice) {
     const why = clearance.kind === 'lead'
         ? `the lead (${clearance.lead}) pushes unasked`
         : `${clearance.by} approved ${clearance.task}; set its next status once pushed, as the approval covers this push only`;
-    return `teamrig let this push to a protected branch (${protectedBranches.join(', ')}) through: ${why} [pushGuard.pushToProtected: lead].`;
+    return `teamrig let this push to a protected branch (${protectedBranches.join(', ')}) through: ${why} [pushGuard.pushToProtected: ${choice}].`;
 }
-/** Why `pushToProtected: lead` refuses a normal push to a protected branch, and how to ask the lead for it, never the human. */
-export function unclearedPushReason(clearance, protectedBranches) {
-    return (`This push to a protected branch (${protectedBranches.join(', ')}) needs a lead's approval, not the human's: ${clearance.why}. ` +
-        `Ask on the register: \`teamrig set <task> --status waiting --waits approval:${clearance.approver} --note "<branch, what it lands, its tests>"\`, ` +
-        `take your next task, and push once ${clearance.approver} approves it (\`teamrig approve\`). [pushGuard.pushToProtected]`);
+/**
+ * Why `pushToProtected: lead` or `gated` refuses a normal push to a protected branch, never asking the human: under
+ * `lead`, how to ask the lead for it; under `gated`, that `teamrig merge` merges the branch instead (T858).
+ */
+export function unclearedPushReason(clearance, protectedBranches, choice) {
+    const refused = `This push to a protected branch (${protectedBranches.join(', ')}) needs a lead's approval, not the human's: ${clearance.why}. `;
+    return choice === 'gated'
+        ? `${refused}Merge the branch with \`teamrig merge\` instead: a change that holds the self-merge gates merges with no approval, ` +
+            "and one that misses a gate is held for a leader's, saying how to ask. [pushGuard.pushToProtected: gated]"
+        : `${refused}Ask on the register: \`teamrig set <task> --status waiting --waits approval:${clearance.approver} --note "<branch, what it lands, its tests>"\`, ` +
+            `take your next task, and push once ${clearance.approver} approves it (\`teamrig approve\`). [pushGuard.pushToProtected]`;
 }
-/** Under `pushToProtected: lead`: the note when the push is cleared, else a refusal saying how to ask, whatever `hookAsks` says. */
-function leadPushOutput(clearance, listing, env) {
+/** Under `pushToProtected: lead` or `gated`: the note when the push is cleared, else a refusal, whatever `hookAsks` says. */
+function clearedPushOutput(clearance, listing, env, choice) {
     return clearance.kind === 'none'
-        ? holdBackOutput('deny', `${unclearedPushReason(clearance, env.protectedBranches)}${listing}`, env.hookAsks)
-        : JSON.stringify({ systemMessage: `${clearedPushNote(clearance, env.protectedBranches)}${listing}` });
+        ? holdBackOutput('deny', `${unclearedPushReason(clearance, env.protectedBranches, choice)}${listing}`, env.hookAsks)
+        : JSON.stringify({ systemMessage: `${clearedPushNote(clearance, env.protectedBranches, choice)}${listing}` });
 }
 /**
  * Why the guard stops the line. Only the question about a normal push names the switch: a leased push and a line the
- * guard cannot read still ask under `allow` and `lead`, since either may rewrite or delete the branch.
+ * guard cannot read still ask under every choice, since either may rewrite or delete the branch.
  */
 function stopReason(verdict, decision, protectedBranches) {
     if (verdict.doubt !== undefined) {
@@ -83,8 +90,8 @@ function stopReason(verdict, decision, protectedBranches) {
  * The PreToolUse hook's stdout for one Bash or PowerShell call: a permission decision when the
  * command pushes to a protected branch, else nothing, so the normal permission flow decides.
  * Under `pushToProtected: allow` a normal push to a protected branch gets a note (`systemMessage`)
- * instead of a question, and the normal permission flow still decides; under `lead` it gets that note only when
- * cleared (`PushClearance`), else a refusal saying how to ask the lead. Under the commits gate, an
+ * instead of a question, and the normal permission flow still decides; under `lead` and `gated` it gets that note only
+ * when cleared (`PushClearance`), else a refusal saying what to do instead. Under the commits gate, an
  * asked or allowed push also lists the large commits it sends (`warn`) or is refused for them
  * (`refuse`). A command the guard cannot read with confidence is asked about, with a reason that
  * says what it could not read. A line that runs git without the repository's hooks (see `hookSkips`) is refused or
@@ -124,8 +131,9 @@ export async function pushGuardOutput(payload, env) {
         return holdBackOutput('deny', `This push to a protected branch (${env.protectedBranches.join(', ')}) is refused: ${describeLargeCommits(large, env.commits)}`, env.hookAsks);
     }
     if (verdict.decision === 'allow') {
-        return env.pushToProtected === 'lead'
-            ? leadPushOutput(await env.clearance(), listing, env)
+        const choice = env.pushToProtected;
+        return choice === 'lead' || choice === 'gated'
+            ? clearedPushOutput(await env.clearance(), listing, env, choice)
             : JSON.stringify({ systemMessage: `${allowedPushNote(env.protectedBranches)}${listing}` });
     }
     const asked = verdict.decision === 'ask' && verdict.protectedPush === 'normal' && env.hookAsks === 'ask';

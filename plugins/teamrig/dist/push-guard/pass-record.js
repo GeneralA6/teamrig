@@ -25,3 +25,7 @@ export function parsePassRecord(text, tree) {
         return undefined;
     return { tree, commit, checks, passedAt, node };
 }
+/** The pass record of `tree` in its file (see {@link passRecordPath}); undefined when none proves it. */
+export async function readPassRecord(files, root, gitCommonDir, tree) {
+    return parsePassRecord(await files.read(passRecordPath(root, gitCommonDir, tree)), tree);
+}

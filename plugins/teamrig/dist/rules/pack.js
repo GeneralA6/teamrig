@@ -56,15 +56,21 @@ function pushRule(pushGuard, hookAsks) {
     if (branches === '') {
         return 'No branch is protected, so the push guard stops no push [pushGuard.protectedBranches].';
     }
-    // Under `lead` the guard's refusal names the session's direct leader to ask (src/hooks/push-guard.ts, T781), so the
-    // rule stays short.
-    return pushGuard.pushToProtected === 'lead'
-        ? `Pushes to ${branches} ask your leader; force-pushing or deleting them is refused ${keys}.`
-        : pushGuard.pushToProtected === 'allow'
-            ? `Pushes to ${branches} go unasked; force-pushing or deleting them is refused ${keys}.`
-            : hookAsks === 'refuse'
+    // Under `lead` and `gated` the guard's refusal names the session's direct leader to ask (src/hooks/push-guard.ts,
+    // T781), and under `gated` merge's hold says which gates a change missed (src/merge/gated-step.ts), so the rule stays
+    // short.
+    switch (pushGuard.pushToProtected) {
+        case 'gated':
+            return `Pushes to ${branches} use teamrig merge; force-pushing or deleting them is refused ${keys}.`;
+        case 'lead':
+            return `Pushes to ${branches} ask your leader; force-pushing or deleting them is refused ${keys}.`;
+        case 'allow':
+            return `Pushes to ${branches} go unasked; force-pushing or deleting them is refused ${keys}.`;
+        case 'ask':
+            return hookAsks === 'refuse'
                 ? `Every push to ${branches} is refused [pushGuard, prompts.hookAsks].`
                 : `Pushes to ${branches} ask the human; force-pushing or deleting them is refused ${keys}.`;
+    }
 }
 /**
  * What a session does with a refused or blocked route. With hook asks off nobody answers a prompt, so the route waits

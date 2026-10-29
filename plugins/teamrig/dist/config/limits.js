@@ -21,6 +21,7 @@ export const CONFIG_LIMITS = {
     commitMaxLines: { min: 50, max: 5000 },
     commitMaxFiles: { min: 2, max: 500 },
     testPatterns: { maxItems: 8, maxLength: 100 },
+    sourcePatterns: { maxItems: 8, maxLength: 100 },
     forbidFrontmatter: { maxItems: 8, maxLength: 32 },
     requireNoteOn: { maxItems: 5 },
     requireFollowupsOn: { maxItems: 3 },

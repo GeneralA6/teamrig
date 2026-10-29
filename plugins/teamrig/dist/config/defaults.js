@@ -125,12 +125,16 @@ export const DEFAULT_PERMISSIONS = {
         'WebSearch',
     ],
 };
-/** Tests: a test folder, `*.test.*` and `*.spec.*` files, and pytest's `test_*.py`. `warn` only adds to a push the guard already asks about. */
+/**
+ * Tests: a test folder, `*.test.*` and `*.spec.*` files, and pytest's `test_*.py`. Source: code files by extension, so
+ * docs, config and data are not. `warn` only adds to a push the guard already asks about.
+ */
 export const DEFAULT_COMMITS = {
     maxLines: 400,
     maxFiles: 15,
     largeCommitTrailer: 'Large-commit',
     testPatterns: ['(^|/)(tests?|__tests__|spec)/', '\\.(test|spec)\\.[^/]+$', '(^|/)test_[^/]+\\.py$'],
+    sourcePatterns: ['\\.([cm]?[jt]sx?|py|go|rs|java|kt|cs|c|cc|cpp|h|hpp|rb|swift|vue|svelte|sh|ps1)$'],
     gate: 'warn',
 };
 /**

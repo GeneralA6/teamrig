@@ -2,10 +2,14 @@ import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { isReviewClass } from "../config/types.js";
 import { isRecord, recordField, stringField } from "../core/guards.js";
+/** 12 hex digits of the change's hash: the same change always gets the same ones. */
+export function changeHash(change) {
+    const { repo, branch, base, head, tree } = change;
+    return createHash('sha256').update([repo, branch, base, head, tree].join('\0')).digest('hex').slice(0, 12);
+}
 /** The hold's id: the same change always gets the same one. */
 export function holdId(change) {
-    const { repo, branch, base, head, tree } = change;
-    return `H${createHash('sha256').update([repo, branch, base, head, tree].join('\0')).digest('hex').slice(0, 12)}`;
+    return `H${changeHash(change)}`;
 }
 /** Whether the hold binds this very change: the same commits on the same branch, making the same tree. */
 export function holdBinds(hold, change) {
