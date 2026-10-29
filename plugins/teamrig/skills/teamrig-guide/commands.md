@@ -1249,6 +1249,9 @@ folder it started in, whose project folder holds its transcript: the project, or
 transcript's entries ran in. The close logs that folder for the reopen, and refuses a session whose transcript is
 filed under no such folder. Without `--yes` it shows the close and ends nothing. A tab [teamrig open](#teamrig-open) started closes with it: its launch finds the close in the log, says
 why and exits 0, so the tab is never left on an error that offers to run its old launch again.
+A close also takes the session off the restore list, so a reboot's [restore](#teamrig-restore-run) leaves it closed.
+When it cannot (`WARN the restore entry of <id> was not dropped`), the session is still closed, but the next restore
+may reopen it: close it again then.
 
 Flags:
 
@@ -2218,9 +2221,12 @@ Reopens the Claude Code sessions the last shutdown killed. It lists them and cou
 at once, `i` reopens every one with no prompt, `q` (or Esc, Ctrl+C) cancels. A team session started by `open` comes
 back through `launch` as itself; any other is resumed as it ran (`restore resume`). One that was mid-turn, hit an
 API error or had background jobs, cron jobs or a wake-up live at the shutdown gets a prompt to re-check the state
-and carry on, and so does each lead, told how its team's sessions came back; the others reopen idle. Each step is
-written to `<home>/restore/restore.log`. A tab that did not open is printed with the command to run, and the
-command exits 1.
+and carry on, and so does each lead, told how its team's sessions came back; the others reopen idle. Each reopens
+in the folder Claude Code files its transcript under, the worktree it went into when it went into one (the run
+prints `resumed in <folder>` then), else the folder it started in, or the nearest existing parent of a folder that
+is gone. With [open.teamWindow] on, a team's sessions reopen in the team's own Windows Terminal window; the
+restore's own tab, and sessions outside a team, open in the most recent one. Each step is written to
+`<home>/restore/restore.log`. A tab that did not open is printed with the command to run, and the command exits 1.
 
 Flags:
 
