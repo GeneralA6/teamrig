@@ -12,7 +12,7 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | `UserPromptSubmit` (each prompt) | `hook inbox-reminder` | Stops a prompt that holds a secret and cleans it out of Claude Code's prompt history ([Each prompt](#each-prompt)); cancels a waiting automatic restart; shows new inbox lines; binds a tab started by hand by its title; records a Claude Code rename; tells the model when its budget holds it |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook push-guard` | Asks before a push to a protected branch; refuses a force-push or delete of one, and a git command run without the repository's hooks ([the commit guard](#before-a-shell-command-the-commit-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook package-guard` | Refuses a package runner that would fetch and run a package outside the project's lockfile, an install of a version the registry does not vouch for, an `npx --no <bin>` that hands the bin's flag to npm, and an install that would rewrite a `node_modules` linked to another checkout's ([the package guard](#before-a-shell-command-the-package-guard)) |
-| `PreToolUse` on `Bash`, `PowerShell`, `Read` and `Grep` | `hook secret-guard` | Refuses a call that would print a secret file, a secret variable, the whole environment or a Kubernetes secret's data into the conversation ([the secret guard](#before-a-shell-command-or-a-read-the-secret-guard)) |
+| `PreToolUse` on `Bash`, `PowerShell`, `Read` and `Grep` | `hook secret-guard` | Refuses a call that would print a secret file, a secret variable, the whole environment, a Kubernetes secret's data or a dump command's output into the conversation, or whose command line holds a secret as text ([the secret guard](#before-a-shell-command-or-a-read-the-secret-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook exec-guard` | Refuses a privileged command's review run as another session or the owner, and any `exec` call through a client that is no install of the plugin, or one changed after its build ([the exec guard](#before-a-shell-command-the-exec-guard)) |
 | `PreToolUse` on `Bash`, `PowerShell`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook pass-record-guard` | Refuses a session's own write of a tree's pass record, the proof that lets a push or a merge skip the checks the tree passed ([the pass-record guard](#before-a-write-or-a-shell-command-the-pass-record-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook readonly-allow` | With `readonlyShell.enabled`, lets a line whose every command provably only reads run without a permission prompt ([the read-only allow](#before-a-shell-command-the-read-only-allow)) |
@@ -417,27 +417,44 @@ nested shells, `cd`, pipes and substitutions) and refuses a call that would prin
   `BROKER_URL`, `CONNECTION_STRING`).
 - **a Kubernetes secret's data**: `kubectl get secret` with `-o yaml`, `json`, `jsonpath` or a template,
   `kubectl edit secret`, `kubectl view-secret`, and `kubectl create secret ... -o yaml`.
+- **a dump command's output**: a command that prints credentials whatever it names: `kubectl config view --raw`
+  (a plain `view` redacts them), and the team's own `secretGuard.commands`.
+
+It also refuses a Bash or PowerShell line that holds a secret as text, a quiet one too, since the line itself stays in
+the transcript: a token by its shape (GitHub, Anthropic, `sk-`, AWS, Slack, Google, Stripe live, a JSON web token, a
+private key block), credentials in a URL (`postgres://app:<the password>@db`), the credentials of an `Authorization`
+header, the key of an API key header (`x-api-key: ...`), a quoted literal of 12 or more characters given to a
+secret-like name (`api_key = "..."`), and the team's own `register.secretPatterns`. A value that only stands in for a
+secret passes: a reference (`${DB_URI}`, `$env:DB_URI`, `<db_password>`, `%TOKEN%`), a placeholder word
+(`postgres://user:password@localhost`, `changeme`, `your_token`), a masked or cut value (`ab***yz`, `ab12...`), a
+framed value under 6 characters, a regex that searches for the shape (`postgres://[^:]+:[^@]+@`), and a published
+sample token. The reason names the shape, never the value: "teamrig secret guard: this call's command line holds a
+secret as text (credentials in a URL). Pass it by reference (its env var name, a file path, stdin,
+`teamrig exec request`), never as text. [secretGuard.secretReads]"
 
 The line a container or a host runs is read as a line of its own, four levels deep: `kubectl exec ... --`,
 `docker exec`, `docker compose exec`, `ssh host '...'`. Output that never reaches the screen passes: a redirect into
 a file, a pipe into a program that passes it on unprinted (`wc`, `sha256sum`, `Set-Clipboard`, `ssh-add`,
 `docker login --password-stdin`, `gh secret set`...), a quiet search (`grep -q`, `-c`, `-l`), an in-place edit, a
 PowerShell assignment or condition, and a substitution whose command prints nothing of it (`curl -H "Authorization:
-Bearer $(cat ~/.token)"`). The reason: "teamrig secret guard: this call would print the content of .env into the conversation. Hand a secret to the tool that needs it (stdin, an env file option, a pipe), check it without printing it (grep -q, wc -c, a hash), or ask the owner to look in their own terminal. A false match: add its !glob to secretGuard.paths or its !pattern to secretGuard.envNames. [secretGuard.secretReads]"
+Bearer $(cat ~/.token)"`). The reason: "teamrig secret guard: this call would print the content of .env into the conversation. Hand a secret to the tool that needs it (stdin, an env file option, a pipe), check it without printing it (grep -q, wc -c, a hash), or ask the owner to look in their own terminal. A false match: add its !glob to secretGuard.paths or its !pattern to secretGuard.envNames or secretGuard.commands. [secretGuard.secretReads]"
 
 `secretGuard.secretReads` sets what such a call gets: `deny` (the default), `ask` the human, or `allow`. A missing
 or broken config keeps `deny`. `secretGuard.paths` adds the team's own files: globs where `~/` starts at home, one
 with no leading `/` or drive matches at any depth, and the last glob that matches decides, so `!glob` keeps a file
 readable. `secretGuard.envNames` adds the team's own name patterns, and `!pattern` keeps a variable printable. The
 defaults name a store's URL by its kind, never by its product: a team adds its own stack's names
-(`ACME\w*_URL`). The read-only allow never lets a line that prints a secret run without a prompt, whatever
-`secretReads` says. The guard reads only the call, so it cannot see:
+(`ACME\w*_URL`). `secretGuard.commands` adds the team's own dump commands: regular expressions over a command's
+program and arguments (case ignored), the last that matches deciding, so `!pattern` lets one print. The read-only
+allow never lets a line that prints or holds a secret run without a prompt, whatever `secretReads` says. The guard
+reads only the call, so it cannot see:
 
 - a value kept in a variable and printed later (`t=$(cat .env); echo "$t"`), or a path built when the line runs
   (`cat $(ls .env*)`, `Get-Content (Join-Path ~ .npmrc)`);
 - a secret file inside a folder a search walks (`grep -r x .`, a Grep over a folder with no glob or only
   `!globs`), or one a Grep glob picks through `{a,b}` alternatives (`*.{ts,pem}`);
-- a script or program the line starts (`node print-env.js`), `docker inspect`, or `docker run -e`.
+- a script or program the line starts (`node print-env.js`), `docker inspect`, or `docker run -e`;
+- a secret written with no shape or frame it knows (`mysql -p<the password>`, `--password <the value>`).
 
 ## Before a shell command: the exec guard
 
