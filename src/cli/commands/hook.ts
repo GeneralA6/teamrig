@@ -6,7 +6,7 @@ import { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { formatAddress } from '../../core/address.ts';
 import { errorMessage, isRecord, stringField, type JsonRecord } from '../../core/guards.ts';
-import { claudeConfigDir, claudeTempDir, KIT_NAME } from '../../core/home.ts';
+import { claudeConfigDir, claudeTempDir, KIT_NAME, resolveKitHome } from '../../core/home.ts';
 import { resolveTeam, type TeamResolution } from '../../core/team.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
@@ -73,6 +73,7 @@ import { droppedEditReasonOf } from './hook-dropped-edit.ts';
 import { meetingHold } from './hook-meeting.ts';
 import { armRestart, restartTargetOf } from './hook-restart.ts';
 import { helperContextOf } from './hook-helper-start.ts';
+import { promptSecretBlock } from './hook-prompt-secret.ts';
 import { checkHooklessTabs } from './hook-hookless.ts';
 import { dueFactsAt, inMeetingNow } from './hook-refresh-mod.ts';
 import { recordSessionStart } from './hook-session-record.ts';
@@ -346,7 +347,9 @@ async function cancelledRestartLine(runtime: CliRuntime, kit: Kit, id: string, g
 }
 
 /**
- * UserPromptSubmit: logs a team session's prompt for the task pane (hook-turn-log.ts), cancels a pending
+ * UserPromptSubmit: first stops a prompt that holds a secret, in a team or under a broken pointer, and cleans it out
+ * of Claude Code's prompt history (hook-prompt-secret.ts); a stopped prompt gets nothing below. Else it
+ * logs a team session's prompt for the task pane (hook-turn-log.ts), cancels a pending
  * automatic restart, binds a hand-started tab by its title, notes a Claude Code rename of the session, titles a
  * bound tab that has no title after its session (so a /clear keeps it bound), says once how to bind a tab that is
  * not bound, shows the session's new inbox lines and, once per level while it is past its daily budget and the
@@ -364,13 +367,23 @@ export async function inboxReminder(args: ParsedArgs, runtime: CliRuntime): Prom
   switch (found.kind) {
     case 'none':
       return EXIT.ok;
-    case 'broken':
-      runtime.out.stdout(`${KIT_NAME}: no team, so no inbox reminder: ${found.from} ${found.problem}`);
+    case 'broken': {
+      // A broken pointer still guards the prompt, with the shipped secret shapes only.
+      const block = await promptSecretBlock(runtime, { kitHome: resolveKitHome(runtime.env, runtime.userHome), patterns: [] }, claudeSession, payload);
+      runtime.out.stdout(block ?? `${KIT_NAME}: no team, so no inbox reminder: ${found.from} ${found.problem}`);
       return EXIT.ok;
+    }
     case 'team':
       break;
   }
   const kit = await openKit(runtime, found.team);
+  const patterns = kit.load.status === 'loaded' ? kit.load.config.register.secretPatterns : [];
+  // Before anything reads the prompt: a stopped prompt is neither logged nor shown its inbox lines, which stay unshown.
+  const block = await promptSecretBlock(runtime, { kitHome: kit.paths.kitHome, patterns }, claudeSession, payload);
+  if (block !== undefined) {
+    runtime.out.stdout(block);
+    return EXIT.ok;
+  }
   if (kit.load.status !== 'loaded') {
     return EXIT.ok;
   }
