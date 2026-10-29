@@ -24,7 +24,7 @@ import { execGuardOutput, type TabIdentity } from '../../hooks/exec-guard.ts';
 import { packageGuardOf, packageGuardOutput } from '../../hooks/package-guard.ts';
 import { passRecordGuardOutput } from '../../hooks/pass-record-guard.ts';
 import { hookAsksOf } from '../../hooks/permission.ts';
-import { secretGuardOf, secretGuardOutput } from '../../hooks/secret-guard.ts';
+import { secretGuardOf, secretGuardOutput, secretPatternsOf } from '../../hooks/secret-guard.ts';
 import { secretRulesOf } from '../../secret-guard/rules.ts';
 import { commitsOf, protectedBranchesOf, pushGuardOutput, pushToProtectedOf, skipHooksOf, type PushClearance } from '../../hooks/push-guard.ts';
 import { JsonlHintLog } from '../../hooks/hint-log.ts';
@@ -236,7 +236,7 @@ export async function secretGuard(args: ParsedArgs, runtime: CliRuntime): Promis
   const config = secretGuardOf(guard.load);
   const output = secretGuardOutput(payload, {
     cwd: runtime.cwd,
-    rules: secretRulesOf(config, runtime.userHome, runtime.platform),
+    rules: secretRulesOf(config, runtime.userHome, runtime.platform, secretPatternsOf(guard.load)),
     secretReads: config.secretReads,
     hookAsks: hookAsksOf(guard.load),
   });
