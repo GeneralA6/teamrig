@@ -95,7 +95,8 @@ export function secretReason(findings: readonly SecretFinding[]): string {
       : [
           `this call would print ${named} into the conversation. Hand a secret to the tool that needs it (stdin, an env ` +
             'file option, a pipe), check it without printing it (grep -q, wc -c, a hash), or ask the owner to look in ' +
-            'their own terminal. A false match: add its !glob to secretGuard.paths or its !pattern to secretGuard.envNames.',
+            'their own terminal. A false match: add its !glob to secretGuard.paths or its !pattern to secretGuard.envNames or ' +
+            'secretGuard.commands.',
         ];
   const written =
     shapes.length === 0

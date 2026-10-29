@@ -50,10 +50,18 @@ describe('SecretNames', () => {
 
 describe('secretRulesOf', () => {
   it('puts the team globs after the defaults, and ignores case only where the host does', () => {
-    const config: SecretGuardConfig = { secretReads: 'deny', paths: ['!**/fixtures/*.pem'], envNames: [] };
+    const config: SecretGuardConfig = { secretReads: 'deny', paths: ['!**/fixtures/*.pem'], envNames: [], commands: [] };
     const windows = secretRulesOf(config, 'C:/u', 'win32');
     assert.equal(windows.paths.listed('C:/r/test/fixtures/a.pem'), false);
     assert.equal(windows.paths.listed('C:/r/A.PEM'), true);
     assert.equal(secretRulesOf(config, '/u', 'linux').paths.listed('/r/A.PEM'), false);
+  });
+
+  it('puts the team commands after the default ones, so a !pattern lets a default command print', () => {
+    const config: SecretGuardConfig = { secretReads: 'deny', paths: [], envNames: [], commands: ['^vault\\s+read\\s', '!--minify'] };
+    const { commands } = secretRulesOf(config, 'C:/u', 'win32');
+    assert.equal(commands.matches('kubectl config view --raw'), true);
+    assert.equal(commands.matches('vault read secret/app'), true);
+    assert.equal(commands.matches('kubectl config view --minify --raw'), false);
   });
 });

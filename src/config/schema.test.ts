@@ -133,6 +133,7 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   keepAllow: 'permissions.keepAllow',
   secretPaths: 'secretGuard.paths',
   secretEnvNames: 'secretGuard.envNames',
+  secretCommands: 'secretGuard.commands',
   packageCooldownDays: 'packageGuard.cooldownDays',
   searchNudgeAt: 'leadBoundary.searchNudgeAt',
   turnLogKeepHours: 'turnLog.keepHours',

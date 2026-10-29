@@ -1255,22 +1255,25 @@ function parseSecretGuard(read: ConfigReader, raw: JsonRecord): SecretGuardConfi
   const path = 'secretGuard';
   const defaults = DEFAULT_SECRET_GUARD;
   const secretReads = read.string(raw, 'secretReads', path, defaults.secretReads, oneOf(SECRET_READS));
-  const { secretPaths, secretEnvNames } = CONFIG_LIMITS;
+  const { secretPaths, secretEnvNames, secretCommands } = CONFIG_LIMITS;
   return {
     secretReads: isSecretReads(secretReads) ? secretReads : defaults.secretReads,
     paths: read.stringList(raw, 'paths', path, defaults.paths, shortLine(secretPaths.maxLength, isSecretGlob), secretPaths.maxItems),
-    envNames: read.stringList(raw, 'envNames', path, defaults.envNames, shortLine(secretEnvNames.maxLength, isSecretNamePattern), secretEnvNames.maxItems),
+    envNames: read.stringList(raw, 'envNames', path, defaults.envNames, shortLine(secretEnvNames.maxLength, keepablePattern('keep a variable printable')), secretEnvNames.maxItems),
+    commands: read.stringList(raw, 'commands', path, defaults.commands, shortLine(secretCommands.maxLength, keepablePattern('let a command print')), secretCommands.maxItems),
   };
 }
 
 /** A glob with something to match after its `!`. */
 const isSecretGlob: Check<string> = (value) => (value.replace(/^!/, '').trim() === '' ? 'expected a glob, with a leading ! to keep a path readable' : undefined);
 
-/** A regular expression with something to match after its `!`. */
-const isSecretNamePattern: Check<string> = (value) => {
-  const body = value.replace(/^!/, '');
-  return body === '' ? 'expected a regular expression, with a leading ! to keep a variable printable' : isValidRegex(body);
-};
+/** A regular expression with something to match after its `!`, which does what `keeps` says. */
+function keepablePattern(keeps: string): Check<string> {
+  return (value) => {
+    const body = value.replace(/^!/, '');
+    return body === '' ? `expected a regular expression, with a leading ! to ${keeps}` : isValidRegex(body);
+  };
+}
 
 function parseReadonlyShell(read: ConfigReader, raw: JsonRecord): ReadonlyShellConfig {
   const { maxItems, maxLength } = CONFIG_LIMITS.readonlyShellPrefixes;

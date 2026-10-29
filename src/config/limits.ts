@@ -43,6 +43,7 @@ export const CONFIG_LIMITS = {
   keepAllow: { maxItems: 64, maxLength: 120 },
   secretPaths: { maxItems: 32, maxLength: 200 },
   secretEnvNames: { maxItems: 16, maxLength: 120 },
+  secretCommands: { maxItems: 16, maxLength: 200 },
   packageCooldownDays: { min: 0, max: 365 },
   searchNudgeAt: { min: 0, max: 50 },
   turnLogKeepHours: { min: 1, max: 168 },

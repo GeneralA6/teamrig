@@ -18,7 +18,7 @@ export interface SecretRules {
 }
 
 /**
- * The defaults, then the team's own globs and patterns; file names ignore case on Windows and macOS hosts.
+ * The defaults, then the team's own globs, names and commands; file names ignore case on Windows and macOS hosts.
  * `secretPatterns` are the team's `register.secretPatterns`, added to the write-time shapes.
  */
 export function secretRulesOf(config: SecretGuardConfig, home: string, platform: NodeJS.Platform, secretPatterns: readonly string[] = []): SecretRules {
@@ -26,7 +26,7 @@ export function secretRulesOf(config: SecretGuardConfig, home: string, platform:
   return {
     paths: new SecretPaths([...DEFAULT_SECRET_PATHS, ...config.paths], home, ignoreCase),
     names: new SecretNames([...DEFAULT_SECRET_ENV_NAMES, ...config.envNames]),
-    commands: new PatternList(DEFAULT_SECRET_COMMANDS),
+    commands: new PatternList([...DEFAULT_SECRET_COMMANDS, ...config.commands]),
     shapes: new SecretShapes(secretPatterns),
     home,
   };
