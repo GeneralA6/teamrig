@@ -87,12 +87,30 @@ describe('gitSecrets', () => {
     }
   });
 
+  it("finds the hooks folder from any folder of the repository: the git folder's, or core.hooksPath from the top folder", () => {
+    const repo = new TempRepo('secrets-hooks').init();
+    try {
+      const git = gitSecrets(repo.env);
+      repo.write('src/app.txt', 'one\n');
+      const sub = join(repo.dir, 'src');
+      assert.equal(slashed(git.hooksDir(sub)), slashed(join(repo.dir, '.git', 'hooks')));
+      repo.git('config', 'core.hooksPath', '.githooks');
+      assert.equal(slashed(git.hooksDir(sub)), slashed(join(repo.dir, '.githooks')));
+      const shared = join(repo.outside, 'shared-hooks');
+      repo.git('config', 'core.hooksPath', shared);
+      assert.equal(slashed(git.hooksDir(sub)), slashed(shared));
+    } finally {
+      repo.remove();
+    }
+  });
+
   it('reads nothing outside a repository, so the scan fails closed', () => {
     const repo = new TempRepo('secrets-none');
     try {
       const git = gitSecrets(repo.env);
       assert.equal(git.root(repo.outside), undefined);
       assert.equal(git.staged(repo.outside), undefined);
+      assert.equal(git.hooksDir(repo.outside), undefined);
       assert.equal(git.commits(repo.outside, { kind: 'unpushed', tip: 'f'.repeat(40), remote: 'origin' }), undefined);
     } finally {
       repo.remove();
