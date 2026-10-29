@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { claudeProjectSlug } from '../budget/discover.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeCountdown, FakeShutdownLog } from '../testing/fake-restore.ts';
 import { MemoryFiles, MemoryPathProbe } from '../testing/memory-files.ts';
@@ -19,6 +20,9 @@ const SDK = '40000000-2222-4333-8444-555555555555';
 const LIVE = '50000000-2222-4333-8444-555555555555';
 const JOB = '60000000-2222-4333-8444-555555555555';
 const MOVED = '70000000-2222-4333-8444-555555555555';
+const WENT_IN = '80000000-2222-4333-8444-555555555555';
+const PROJECTS = '/p';
+const WORKTREE = '/work/app/.claude/worktrees/fix';
 const NOTHING_LOST: LostWork = { background: 0, crons: 0, wake: false };
 
 const turn = (effort: string): string => JSON.stringify({ type: 'assistant', effort, message: { model: 'claude-opus-5-5' } });
@@ -72,8 +76,14 @@ interface World {
   readonly logged: string[];
 }
 
-async function world(choice: RestoreChoice = 'go', reopen: Reopen = async () => ({ kind: 'opened' }), entries: readonly RestoreEntry[] = ENTRIES): Promise<World> {
+async function world(
+  choice: RestoreChoice = 'go',
+  reopen: Reopen = async () => ({ kind: 'opened' }),
+  entries: readonly RestoreEntry[] = ENTRIES,
+  more: Readonly<Record<string, string>> = {},
+): Promise<World> {
   const files = new MemoryFiles({
+    ...more,
     '/work/app/README.md': '',
     [`/t/${LEAD}.jsonl`]: `${turn('high')}\n`,
     [`/t/${ALPHA}.jsonl`]: `${turn('max')}\n`,
@@ -113,6 +123,8 @@ async function world(choice: RestoreChoice = 'go', reopen: Reopen = async () => 
       countdown,
       teams: [APP],
       home: '/home/me',
+      projectsDir: PROJECTS,
+      platform: 'linux',
       stillRunning: async (recorded) => recorded.claudeSession === LIVE,
       transcriptOf: async ({ transcriptPath }) => (transcriptPath !== undefined && (await probe.kind(transcriptPath)) === 'file' ? transcriptPath : undefined),
       readTail: (path, maxBytes) => files.readTail(path, maxBytes),
@@ -202,6 +214,32 @@ describe('runRestore', () => {
     assert.equal(await registry.read(SDK), undefined);
     assert.ok(printed.includes('Opened app-lead (continue: lead)'));
     assert.ok(printed.includes('  (/work/removed/wt is gone; opened in /work)'));
+  });
+
+  it('resumes a session that went into a worktree there, where Claude Code filed its transcript, not where it started (T1426)', async () => {
+    const transcript = `${PROJECTS}/${claudeProjectSlug(WORKTREE)}/${WENT_IN}.jsonl`;
+    const { deps, reopened, printed } = await world('go', undefined, [entry(WENT_IN, 3, { transcriptPath: transcript })], {
+      [`${WORKTREE}/README.md`]: '',
+      [transcript]: `${JSON.stringify({ type: 'assistant', cwd: WORKTREE, sessionId: WENT_IN })}\n`,
+    });
+    assert.deepEqual(await runRestore(deps, LOGON), { opened: 1, failed: 0 });
+    assert.deepEqual(
+      reopened.map(({ folder }) => folder),
+      [WORKTREE],
+    );
+    assert.ok(printed.includes(`  (resumed in ${WORKTREE}, the folder its transcript is filed under)`), printed.join('\n'));
+  });
+
+  it('opens a session whose worktree is gone in the folder it started in', async () => {
+    const transcript = `${PROJECTS}/${claudeProjectSlug(WORKTREE)}/${WENT_IN}.jsonl`;
+    const { deps, reopened } = await world('go', undefined, [entry(WENT_IN, 3, { transcriptPath: transcript })], {
+      [transcript]: `${JSON.stringify({ type: 'assistant', cwd: WORKTREE, sessionId: WENT_IN })}\n`,
+    });
+    assert.deepEqual(await runRestore(deps, LOGON), { opened: 1, failed: 0 });
+    assert.deepEqual(
+      reopened.map(({ folder }) => folder),
+      ['/work/app'],
+    );
   });
 
   it('reopens every session with no prompt when the person picks idle', async () => {

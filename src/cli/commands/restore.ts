@@ -100,7 +100,8 @@ async function reopen(runtime: CliRuntime, tab: ReopenTab, terminal: TerminalCho
 /** The restore over this machine: the kit home's sessions folder, every team on it, its processes and terminals. */
 async function restoreDepsOf(runtime: CliRuntime, terminal: TerminalChoice | undefined): Promise<RestoreDeps> {
   const kitHome = resolveKitHome(runtime.env, runtime.userHome);
-  const finder = new TranscriptFinder(runtime.files, runtime.probe, claudeProjectsDir(runtime.env, runtime.userHome));
+  const projectsDir = claudeProjectsDir(runtime.env, runtime.userHome);
+  const finder = new TranscriptFinder(runtime.files, runtime.probe, projectsDir);
   const logPath = restoreLogPath(kitHome);
   return {
     registry: new RestoreRegistry(runtime.files, restoreSessionsDir(kitHome)),
@@ -111,6 +112,8 @@ async function restoreDepsOf(runtime: CliRuntime, terminal: TerminalChoice | und
     countdown: runtime.restore.countdown,
     teams: await restoreTeamsOf(runtime),
     home: runtime.userHome,
+    projectsDir,
+    platform: runtime.platform,
     stillRunning: (entry) => runsClaude(runtime.sessionProcesses, entry.pid),
     transcriptOf: (entry) => finder.find(entry),
     readTail: (path, maxBytes) => runtime.files.readTail(path, maxBytes),
