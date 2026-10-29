@@ -404,8 +404,12 @@ nested shells, `cd`, pipes and substitutions) and refuses a call that would prin
   content`) of one by its path or glob (each glob of the input apart, as ripgrep gets them; a `!glob` skips files,
   so it names none). The defaults: `**/.env`, `**/.env.*`, `~/.npmrc`, `~/.ssh/**`,
   `~/.aws/credentials`, `~/.kube/config`, `~/.docker/config.json`, `~/.git-credentials`, `~/.config/gh/hosts.yml`,
+  `~/.claude/.credentials.json`, `~/.claude/history.jsonl` (the prompt history), `**/.claude/settings.local.json`
+  (its allow rules can hold a credential), `~/.bash_history`, `~/.zsh_history`, `**/PSReadLine/*_history.txt`,
   `**/*.pem` and `**/*.key`; `.env.example`, `.env.sample` and `~/.ssh/*.pub` stay readable. A word with
-  wildcards counts when a secret name fits them (`cat .env*`).
+  wildcards counts when a secret name fits them (`cat .env*`). So a session no longer reads, nor edits, a
+  `settings.local.json` (its permissions are the owner's to change), while a count over one of these files
+  (`grep -c`, `wc -l`, a Grep count) still passes.
 - **the whole environment**: `env`, `printenv`, `export -p`, `declare -x`, cmd's `set`, `Get-ChildItem Env:`,
   `[Environment]::GetEnvironmentVariables()`, `/proc/<pid>/environ`, and inline code that prints `process.env` or
   `os.environ`.

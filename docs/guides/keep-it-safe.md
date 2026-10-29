@@ -156,7 +156,8 @@ install a copy; or install in the checkout that owns the folder.
 
 A secret printed into a session stays in its transcript and in every prompt after it. Before each Bash, PowerShell,
 Read or Grep call, the secret guard reads the call (a shell line with the push guard's parser) and refuses one that
-would print a secret file's content (`.env`, `~/.npmrc`, `~/.ssh/**`, `*.pem`...), the whole environment, a
+would print a secret file's content (`.env`, `~/.npmrc`, `~/.ssh/**`, `*.pem`, Claude Code's prompt history and
+`settings.local.json`, the shells' histories...), the whole environment, a
 secret variable's value (by name: `TOKEN`, `SECRET`, `PASSW`, `KEY`, a store's URL by its kind...), a Kubernetes
 secret's data or a dump command's output (`kubectl config view --raw`), and reads the line a container or a host runs
 too. Output piped or redirected away from the screen passes (`cat .env | wc -c`, `echo "$T" | docker login
