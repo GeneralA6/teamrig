@@ -200,6 +200,10 @@ export interface TeamPaths {
   readonly sessions: string;
   /** Each session `teamrig close` ended and `teamrig open` started again, an append-only log (src/sessions/log.ts). */
   readonly sessionLog: string;
+  /** Each kind of secret a tool's result held and the task that has it rotated, an append-only audit log nothing trims (src/secret-guard/incidents.ts). */
+  readonly secretIncidents: string;
+  /** Held while the secret redactor reads the incident log, files a rotation task and appends the incident. */
+  readonly secretIncidentsLock: string;
   /** Every privileged command's request, review and run, a hash-chained append-only log (src/exec/audit.ts); kept in the team folder, out of reach of a state override. */
   readonly execAudit: string;
   /** Held while a command appends to the exec audit log. */
@@ -296,6 +300,8 @@ export function teamPaths(kitHome: string, team: string, claudeDir: string, over
     turnLog: join(state, 'turn-log'),
     sessions: join(state, 'sessions'),
     sessionLog: join(state, 'session-log.jsonl'),
+    secretIncidents: join(state, 'secret-incidents.jsonl'),
+    secretIncidentsLock: join(state, 'secret-incidents.lock'),
     execAudit: join(home, 'exec', 'audit.jsonl'),
     execAuditLock: join(home, 'exec', 'audit.lock'),
     execOut: join(home, 'exec', 'out'),
