@@ -6,13 +6,13 @@ const DYNAMIC_TEXT = '<a value only known when it runs>';
 /** A word only known when the line runs, for an option whose value is missing. */
 const UNKNOWN_WORD = { text: '', dynamic: true };
 /** npm's install subcommands, with the misspellings npm takes for them. */
-const NPM_INSTALLS = new Set(['install', 'i', 'in', 'ins', 'inst', 'insta', 'instal', 'isnt', 'isnta', 'isntal', 'isntall', 'add', 'it', 'install-test']);
-const NPM_UPDATES = new Set(['update', 'up', 'upgrade', 'udpate']);
+export const NPM_INSTALLS = new Set(['install', 'i', 'in', 'ins', 'inst', 'insta', 'instal', 'isnt', 'isnta', 'isntal', 'isntall', 'add', 'it', 'install-test']);
+export const NPM_UPDATES = new Set(['update', 'up', 'upgrade', 'udpate']);
 /** npm install's options that take a value, so the word after one is not a package. */
-const NPM_INSTALL_VALUED = new Set([...NPM_VALUED, '--tag', '--omit', '--include', '--install-strategy', '--save-prefix', '--before', '--otp', '--cpu', '--os', '--libc', '--location']);
-const PNPM_INSTALL_VALUED = new Set([...PNPM_VALUED, '--reporter', '--loglevel', '--registry', '--store-dir', '--virtual-store-dir', '--modules-dir', '--workspace-concurrency', '--allow-build']);
-const YARN_INSTALL_VALUED = new Set([...YARN_VALUED, '--mode', '--modules-folder', '--cache-folder', '--registry', '--network-timeout']);
-const BUN_INSTALL_VALUED = new Set([...BUN_VALUED, '--registry', '--cache-dir', '--backend', '--omit', '--filter', '-F', '--cpu', '--os', '--linker']);
+export const NPM_INSTALL_VALUED = new Set([...NPM_VALUED, '--tag', '--omit', '--include', '--install-strategy', '--save-prefix', '--before', '--otp', '--cpu', '--os', '--libc', '--location']);
+export const PNPM_INSTALL_VALUED = new Set([...PNPM_VALUED, '--reporter', '--loglevel', '--registry', '--store-dir', '--virtual-store-dir', '--modules-dir', '--workspace-concurrency', '--allow-build']);
+export const YARN_INSTALL_VALUED = new Set([...YARN_VALUED, '--mode', '--modules-folder', '--cache-folder', '--registry', '--network-timeout']);
+export const BUN_INSTALL_VALUED = new Set([...BUN_VALUED, '--registry', '--cache-dir', '--backend', '--omit', '--filter', '-F', '--cpu', '--os', '--linker']);
 /** A spec of a local folder, file or workspace package, which the registry has no part in. */
 const LOCAL_SPEC = /^(?:file|link|workspace|portal):|\.(?:tgz|tar|tar\.gz)$/i;
 /** A spec fetched from git or a URL rather than the registry. */
@@ -79,8 +79,9 @@ function targetOf(word, reading) {
     }
     return registryTarget(spec, name, range, reading);
 }
-function installWordsOf(args, valued) {
+export function installWordsOf(args, valued) {
     const specs = [];
+    const flags = new Set();
     const values = new Map();
     let options = true;
     let index = 0;
@@ -96,6 +97,7 @@ function installWordsOf(args, valued) {
         else {
             const equals = word.text.startsWith('--') ? word.text.indexOf('=') : -1;
             const name = equals === -1 ? word.text : word.text.slice(0, equals);
+            flags.add(name);
             if (equals !== -1) {
                 values.set(name, staticWord(word.text.slice(equals + 1)));
             }
@@ -105,7 +107,7 @@ function installWordsOf(args, valued) {
             }
         }
     }
-    return { specs, values };
+    return { specs, flags, values };
 }
 /** An install that adds what it names; a bare one installs from the lockfile and is not one. `npm` reads `--tag` and `--before`. */
 function addCall(call, args, valued, npm) {
