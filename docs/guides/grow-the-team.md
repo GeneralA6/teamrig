@@ -69,6 +69,9 @@ a new one ([Setting up a team](#setting-up-a-team)). You still talk to one lead:
   child team leaves to a team above names that team's holder as `<team>/<id>` (`"securityReviewer":
   "your-team/security"`), so its exec requests go to that reviewer; `teamrig doctor` names one that does not hold
   the role there.
+- A child team paces the same week as the team above: each budget key of the account's week it leaves unset
+  (`account`, `enabled`, `weeklyLimitW`, `subagentWeight`, `extraWPerUsd`, `reset`) is the team above's, so it needs
+  no budget block of its own. A child team that names another `budget.account` keeps its own week.
 - Claude Code session names are machine-wide, so two teams never share one: `team create` refuses a clash and
   `teamrig doctor` names one, along with a broken link in the tree.
 - `teamrig team tree` prints the tree with each team's lead and sessions.

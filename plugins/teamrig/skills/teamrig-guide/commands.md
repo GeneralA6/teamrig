@@ -3932,7 +3932,10 @@ The period, the meter log (below) and the extra-usage log ([teamrig budget extra
 account's: a team under a parent on its Claude
 account reads and writes them in the folder of the highest team above it reached through teams all on that account,
 so a child team learns the account's W per percent with its parent; a root team, or one whose parent is on another
-account, keeps its own.
+account, keeps its own. A team under another takes the team above's `budget.account` when it names none, and its
+`enabled`, `weeklyLimitW`, `subagentWeight`, `extraWPerUsd` and `reset` for each it leaves unset, so a team made
+with `team create --parent` paces the root's week with no copy of these keys; one that names another account takes
+none of them.
 
 The week's W per percent is learned from the meter (since 0.136.0). Each time the status line passes a whole
 percent in a period whose start was seen (a weekly reset or a reset inside the week), within 10 minutes of the

@@ -840,38 +840,38 @@
       "type": "object",
       "properties": {
         "enabled": {
-          "description": "Turns on the live warning and the core rules' pacing sentence; teamrig budget shows usage either way.",
+          "description": "Turns on the live warning and the core rules' pacing sentence; teamrig budget shows usage either way. Unset in a team under another on its account: the team above's.",
           "type": "boolean",
           "default": false
         },
         "account": {
-          "description": "The Claude account the team's week is on: teams with the same account share one week and split its daily budget. Unset: the Claude config dir, since one config dir signs in one account.",
+          "description": "The Claude account the team's week is on: teams with the same account share one week and split its daily budget. Unset: the team above's, else the Claude config dir, since one config dir signs in one account. A team that names an account other than the team above's takes none of the keys of the account's week from it (enabled, weeklyLimitW, subagentWeight, extraWPerUsd, reset).",
           "type": "string",
           "minLength": 1,
           "maxLength": 100,
           "pattern": "^[^\\r\\n]+$"
         },
         "weeklyLimitW": {
-          "description": "The weekly limit in weighted tokens. Unset: derived from the status line's weekly %.",
+          "description": "The weekly limit in weighted tokens. Unset: the team above's, in a team under another on its account; else derived from the status line's weekly %.",
           "type": "integer",
           "minimum": 1000000,
           "maximum": 1000000000000
         },
         "subagentWeight": {
-          "description": "What one W of a subagent's transcript costs against the weekly limit, in W of a main session. The meter multiplies each subagent call's W by it, so weeklyLimitW is in main-session W. 1: both cost alike.",
+          "description": "What one W of a subagent's transcript costs against the weekly limit, in W of a main session. The meter multiplies each subagent call's W by it, so weeklyLimitW is in main-session W. 1: both cost alike. Unset in a team under another on its account: the team above's.",
           "type": "number",
           "minimum": 0.1,
           "maximum": 10,
           "default": 1
         },
         "extraWPerUsd": {
-          "description": "W per US dollar of extra usage, standing in until two spent readings past 100% of the week teach the rate. Unset: the extra-usage pool shows in dollars only until then, with no allowance.",
+          "description": "W per US dollar of extra usage, standing in until two spent readings past 100% of the week teach the rate. Unset: the team above's, in a team under another on its account; else the extra-usage pool shows in dollars only until then, with no allowance.",
           "type": "integer",
           "minimum": 1000,
           "maximum": 1000000000
         },
         "reset": {
-          "description": "When the weekly limit resets, for a team without a status line. Unset: the reset time the status line reports.",
+          "description": "When the weekly limit resets, for a team without a status line. Unset: the team above's, in a team under another on its account; else the reset time the status line reports.",
           "type": "object",
           "required": ["weekday", "timeUtc"],
           "properties": {

@@ -393,12 +393,12 @@ The weekly token budget: the pace line the team is measured against and each ses
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
-| `enabled` | boolean | `false` | Turns on the live warning and the core rules' pacing sentence; teamrig budget shows usage either way. |
-| `account` | string (1 to 100 characters, matching `^[^\r\n]+$`) |  | The Claude account the team's week is on: teams with the same account share one week and split its daily budget. Unset: the Claude config dir, since one config dir signs in one account. |
-| `weeklyLimitW` | integer (1000000 to 1000000000000) |  | The weekly limit in weighted tokens. Unset: derived from the status line's weekly %. |
-| `subagentWeight` | number (0.1 to 10) | `1` | What one W of a subagent's transcript costs against the weekly limit, in W of a main session. The meter multiplies each subagent call's W by it, so weeklyLimitW is in main-session W. 1: both cost alike. |
-| `extraWPerUsd` | integer (1000 to 1000000000) |  | W per US dollar of extra usage, standing in until two spent readings past 100% of the week teach the rate. Unset: the extra-usage pool shows in dollars only until then, with no allowance. |
-| `reset` | [object](#budgetreset) |  | When the weekly limit resets, for a team without a status line. Unset: the reset time the status line reports. |
+| `enabled` | boolean | `false` | Turns on the live warning and the core rules' pacing sentence; teamrig budget shows usage either way. Unset in a team under another on its account: the team above's. |
+| `account` | string (1 to 100 characters, matching `^[^\r\n]+$`) |  | The Claude account the team's week is on: teams with the same account share one week and split its daily budget. Unset: the team above's, else the Claude config dir, since one config dir signs in one account. A team that names an account other than the team above's takes none of the keys of the account's week from it (enabled, weeklyLimitW, subagentWeight, extraWPerUsd, reset). |
+| `weeklyLimitW` | integer (1000000 to 1000000000000) |  | The weekly limit in weighted tokens. Unset: the team above's, in a team under another on its account; else derived from the status line's weekly %. |
+| `subagentWeight` | number (0.1 to 10) | `1` | What one W of a subagent's transcript costs against the weekly limit, in W of a main session. The meter multiplies each subagent call's W by it, so weeklyLimitW is in main-session W. 1: both cost alike. Unset in a team under another on its account: the team above's. |
+| `extraWPerUsd` | integer (1000 to 1000000000) |  | W per US dollar of extra usage, standing in until two spent readings past 100% of the week teach the rate. Unset: the team above's, in a team under another on its account; else the extra-usage pool shows in dollars only until then, with no allowance. |
+| `reset` | [object](#budgetreset) |  | When the weekly limit resets, for a team without a status line. Unset: the team above's, in a team under another on its account; else the reset time the status line reports. |
 | `targetPct` | number (1 to 100) | `99.5` | Use the week up to this share of the weekly limit. |
 | `reservePct` | number (0 to 50) | `0.5` | Kept back for incidents until shortly before the reset; targetPct plus reservePct is at most 100. |
 | `paceEndHoursBeforeReset` | number (0 to 48) | `1` | The pace line reaches targetPct this many hours before the reset. |
@@ -415,7 +415,7 @@ The weekly token budget: the pace line the team is measured against and each ses
 
 ## `budget.reset`
 
-When the weekly limit resets, for a team without a status line. Unset: the reset time the status line reports.
+When the weekly limit resets, for a team without a status line. Unset: the team above's, in a team under another on its account; else the reset time the status line reports.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
