@@ -80,6 +80,7 @@ import {
   isReviewClass,
   isReviewPathMode,
   isSecretReads,
+  isSecretWrites,
   isSkipHooks,
   isTerminalChoice,
   isReviewMode,
@@ -93,6 +94,7 @@ import {
   REVIEW_CLASSES,
   REVIEW_PATH_MODES,
   SECRET_READS,
+  SECRET_WRITES,
   SKIP_HOOKS,
   TERMINALS,
   type AskWith,
@@ -1255,9 +1257,11 @@ function parseSecretGuard(read: ConfigReader, raw: JsonRecord): SecretGuardConfi
   const path = 'secretGuard';
   const defaults = DEFAULT_SECRET_GUARD;
   const secretReads = read.string(raw, 'secretReads', path, defaults.secretReads, oneOf(SECRET_READS));
+  const writes = read.string(raw, 'writes', path, defaults.writes, oneOf(SECRET_WRITES));
   const { secretPaths, secretEnvNames, secretCommands } = CONFIG_LIMITS;
   return {
     secretReads: isSecretReads(secretReads) ? secretReads : defaults.secretReads,
+    writes: isSecretWrites(writes) ? writes : defaults.writes,
     paths: read.stringList(raw, 'paths', path, defaults.paths, shortLine(secretPaths.maxLength, isSecretGlob), secretPaths.maxItems),
     envNames: read.stringList(raw, 'envNames', path, defaults.envNames, shortLine(secretEnvNames.maxLength, keepablePattern('keep a variable printable')), secretEnvNames.maxItems),
     commands: read.stringList(raw, 'commands', path, defaults.commands, shortLine(secretCommands.maxLength, keepablePattern('let a command print')), secretCommands.maxItems),

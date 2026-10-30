@@ -1,6 +1,6 @@
 import { DEFAULT_SECRET_GUARD } from '../config/defaults.ts';
 import type { ConfigLoad } from '../config/load.ts';
-import type { HookAsks, SecretGuardConfig, SecretReads } from '../config/types.ts';
+import type { HookAsks, SecretGuardConfig, SecretReads, SecretWrites } from '../config/types.ts';
 import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import { resolveDir } from '../push-guard/location.ts';
 import { describeFinding, type SecretFinding } from '../secret-guard/findings.ts';
@@ -13,7 +13,10 @@ export interface SecretGuardEnv {
   /** The folder to judge from when the payload names none. */
   readonly cwd: string;
   readonly rules: SecretRules;
+  /** What a call that would print a secret gets. */
   readonly secretReads: SecretReads;
+  /** What a call whose command line or written text holds a secret gets. */
+  readonly writes: SecretWrites;
   readonly hookAsks: HookAsks;
 }
 
@@ -104,10 +107,19 @@ function toolPath(text: string, dir: string, home: string): string {
   return resolveDir(dir, text, home) ?? text;
 }
 
+/** A secret held as text, in a command line or a written file, is `secretGuard.writes`' to settle; one printed, `secretGuard.secretReads`'. */
+function holdsAsText(finding: SecretFinding): boolean {
+  return finding.kind === 'literal' || finding.kind === 'written';
+}
+
+function actionOf(finding: SecretFinding, env: SecretGuardEnv): SecretReads | SecretWrites {
+  return holdsAsText(finding) ? env.writes : env.secretReads;
+}
+
 /**
  * Why the call is refused or asked about: what it would print, with the ways to use or check a secret that never print
  * it, then the secrets its command line holds as text, with the ways to pass one by reference, then the secrets the
- * text it writes holds, with where a real one belongs and how a test builds one.
+ * text it writes holds, with where a real one belongs and how a test builds one; last, the keys that set it.
  */
 export function secretReason(findings: readonly SecretFinding[]): string {
   const what = findings.filter(({ kind }) => kind !== 'literal' && kind !== 'written').map(describeFinding);
@@ -138,7 +150,8 @@ export function secretReason(findings: readonly SecretFinding[]): string {
             'a real one in a secret file (secretGuard.paths, such as .env) and name it by its env var or path; a test ' +
             "builds a secret-shaped value at run time from parts (join('gh', 'p_', ...)), so no file holds it whole.",
         ];
-  return `teamrig secret guard: ${[...printed, ...written, ...writing].join(' ')} [secretGuard.secretReads]`;
+  const keys = [...(what.length === 0 ? [] : ['secretGuard.secretReads']), ...(shapes.length + writes.length === 0 ? [] : ['secretGuard.writes'])];
+  return `teamrig secret guard: ${[...printed, ...written, ...writing].join(' ')} [${keys.join(', ')}]`;
 }
 
 /** The team's own secret patterns (`register.secretPatterns`); none when the config is missing or unreadable. */
@@ -147,19 +160,20 @@ export function secretPatternsOf(load: ConfigLoad | undefined): readonly string[
 }
 
 /**
- * The PreToolUse output for a Bash, PowerShell, Read, Grep or file-writing call: a refusal (or a question, as
- * `secretGuard.secretReads` says) when the call would print a secret into the conversation, or its command line or
- * the text it writes holds one; else nothing, so the normal permission flow decides. Under `hookAsks: refuse` the question is a refusal instead, its reason saying what
- * to do (see `holdBack`).
+ * The PreToolUse output for a Bash, PowerShell, Read, Grep or file-writing call: a refusal (or a question) when the call
+ * would print a secret into the conversation, as `secretGuard.secretReads` says, or its command line or the text it
+ * writes holds one, as `secretGuard.writes` says; a refusal when either refuses, naming only the findings a key does
+ * not allow. Else nothing, so the normal permission flow decides. Under `hookAsks: refuse` the question is a refusal
+ * instead, its reason saying what to do (see `holdBack`).
  */
 export function secretGuardOutput(payload: unknown, env: SecretGuardEnv): string {
-  const reads = env.secretReads;
-  if (reads === 'allow' || !isRecord(payload)) {
+  if ((env.secretReads === 'allow' && env.writes === 'allow') || !isRecord(payload)) {
     return '';
   }
-  const findings = secretFindingsOf(payload, env.cwd, env.rules);
+  const findings = secretFindingsOf(payload, env.cwd, env.rules).filter((finding) => actionOf(finding, env) !== 'allow');
   if (findings.length === 0) {
     return '';
   }
-  return holdBackOutput(reads, secretReason(findings), env.hookAsks);
+  const decision = findings.some((finding) => actionOf(finding, env) === 'deny') ? 'deny' : 'ask';
+  return holdBackOutput(decision, secretReason(findings), env.hookAsks);
 }

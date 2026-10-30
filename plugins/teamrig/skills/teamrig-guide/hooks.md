@@ -436,7 +436,7 @@ secret passes: a reference (`${DB_URI}`, `$env:DB_URI`, `<db_password>`, `%TOKEN
 framed value under 6 characters, a regex that searches for the shape (`postgres://[^:]+:[^@]+@`), and a published
 sample token. The reason names the shape, never the value: "teamrig secret guard: this call's command line holds a
 secret as text (credentials in a URL). Pass it by reference (its env var name, a file path, stdin,
-`teamrig exec request`), never as text. [secretGuard.secretReads]"
+`teamrig exec request`), never as text. [secretGuard.writes]"
 
 The same shapes hold for the text a Write, Edit, MultiEdit or NotebookEdit call writes (a Write's `content`, an Edit's
 `new_string`, each of a MultiEdit's edits, a NotebookEdit's `new_source`), since the call's input stays in the
@@ -446,7 +446,7 @@ an Edit replaces is not read, so a call that swaps a secret for its env var name
 secret-shaped value builds it at run time from parts, so no file holds it whole. The reason: "teamrig secret guard:
 the text this call writes holds a secret (GitHub token). Keep a real one in a secret file (secretGuard.paths, such as
 .env) and name it by its env var or path; a test builds a secret-shaped value at run time from parts (join('gh',
-'p_', ...)), so no file holds it whole. [secretGuard.secretReads]"
+'p_', ...)), so no file holds it whole. [secretGuard.writes]"
 
 The line a container or a host runs is read as a line of its own, four levels deep: `kubectl exec ... --`,
 `docker exec`, `docker compose exec`, `ssh host '...'`. Output that never reaches the screen passes: a redirect into
@@ -455,14 +455,16 @@ a file, a pipe into a program that passes it on unprinted (`wc`, `sha256sum`, `S
 PowerShell assignment or condition, and a substitution whose command prints nothing of it (`curl -H "Authorization:
 Bearer $(cat ~/.token)"`). The reason: "teamrig secret guard: this call would print the content of .env into the conversation. Hand a secret to the tool that needs it (stdin, an env file option, a pipe), check it without printing it (grep -q, wc -c, a hash), or ask the owner to look in their own terminal. A false match: add its !glob to secretGuard.paths or its !pattern to secretGuard.envNames or secretGuard.commands. [secretGuard.secretReads]"
 
-`secretGuard.secretReads` sets what such a call gets: `deny` (the default), `ask` the human, or `allow`. A missing
-or broken config keeps `deny`. `secretGuard.paths` adds the team's own files: globs where `~/` starts at home, one
+`secretGuard.secretReads` sets what a call that would print a secret gets, and `secretGuard.writes` what a call that
+holds one as text gets (in its command line or the text it writes): `deny` (the default), `ask` the human, or
+`allow`. A call caught by both is refused when either refuses, and its reason names only what its key does not allow,
+with that key. A missing or broken config keeps `deny`. `secretGuard.paths` adds the team's own files: globs where `~/` starts at home, one
 with no leading `/` or drive matches at any depth, and the last glob that matches decides, so `!glob` keeps a file
 readable. `secretGuard.envNames` adds the team's own name patterns, and `!pattern` keeps a variable printable. The
 defaults name a store's URL by its kind, never by its product: a team adds its own stack's names
 (`ACME\w*_URL`). `secretGuard.commands` adds the team's own dump commands: regular expressions over a command's
 program and arguments (case ignored), the last that matches deciding, so `!pattern` lets one print. The read-only
-allow never lets a line that prints or holds a secret run without a prompt, whatever `secretReads` says. The guard
+allow never lets a line that prints or holds a secret run without a prompt, whatever `secretReads` and `writes` say. The guard
 reads only the call, so it cannot see the cases below; what such a call prints goes through
 [the secret redactor](#after-a-tool-call-the-secret-redactor):
 
@@ -601,8 +603,8 @@ It only ever allows: a line it cannot prove reads prints nothing, and Claude Cod
 as without the hook; so it does outside a team, with a missing or broken config, or on any error. Claude Code ranks
 one hook's `deny` over another's `ask` over an `allow`, and its settings' deny and ask rules still apply under an
 allow, so the push guard's question and the package, secret and pass-record guards' refusals always win. It never allows a line
-that prints a secret ([the secret guard](#before-a-shell-command-or-a-read-the-secret-guard)), even when
-`secretGuard.secretReads` is `allow`. The hook reads the session's team
+that prints or holds a secret ([the secret guard](#before-a-shell-command-or-a-read-the-secret-guard)), even when
+`secretGuard.secretReads` or `secretGuard.writes` is `allow`. The hook reads the session's team
 (`$TEAMRIG_TEAM`, else the project's), never the team of a folder the line moves into. Like the guards, it reads only
 the line, so it cannot see:
 
@@ -1208,8 +1210,8 @@ read-only allow lets a call skip the prompt, and only a shell line it proves onl
 - **The package guard** refuses an ad-hoc package run or an unvetted install on its own, whatever the mode, unless
   `packageGuard.adHocRunners` or `packageGuard.installs` is `ask` or `allow`; an install through a linked
   `node_modules` whatever they say.
-- **The secret guard** refuses a call that would print a secret on its own, whatever the mode, unless
-  `secretGuard.secretReads` is `ask` or `allow`.
+- **The secret guard** refuses a call that would print a secret, or holds one as text, on its own, whatever the mode,
+  unless `secretGuard.secretReads` (a print) or `secretGuard.writes` (text) is `ask` or `allow`.
 - **The secret redactor** replaces a secret in a call's result on its own, whatever the mode, unless
   `secretGuard.redact` is `false`.
 - **The exec guard** refuses a privileged command's review run as another session or the owner, and any

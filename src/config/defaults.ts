@@ -140,7 +140,7 @@ export const DEFAULT_COMMIT_GUARD: CommitGuardConfig = { skipHooks: 'deny' };
 export const DEFAULT_PROMPTS: PromptsConfig = { hookAsks: 'ask' };
 
 /** Refused by default: a secret printed into a session lands in its transcript and every later prompt (T660, 10-19). */
-export const DEFAULT_SECRET_GUARD: SecretGuardConfig = { secretReads: 'deny', paths: [], envNames: [], commands: [], redact: true };
+export const DEFAULT_SECRET_GUARD: SecretGuardConfig = { secretReads: 'deny', writes: 'deny', paths: [], envNames: [], commands: [], redact: true };
 
 /** Off, and trusting no prefix, until a team opts in. */
 export const DEFAULT_READONLY_SHELL: ReadonlyShellConfig = { enabled: false, allowPrefixes: [] };

@@ -12,7 +12,7 @@ const TOKEN = join('gh', 'p_', 'a1'.repeat(18));
 const PASSWORD = join('s3', 'cret', 'Value9');
 
 function env(overrides: Partial<SecretGuardEnv> = {}): SecretGuardEnv {
-  return { cwd: 'C:/w', rules: RULES, secretReads: 'deny', hookAsks: 'ask', ...overrides };
+  return { cwd: 'C:/w', rules: RULES, secretReads: 'deny', writes: 'deny', hookAsks: 'ask', ...overrides };
 }
 
 function call(tool_name: string, tool_input: JsonRecord, extra: JsonRecord = {}): JsonRecord {
@@ -155,7 +155,7 @@ describe('secretGuardOutput', () => {
     assert.equal(
       verdict?.reason,
       "teamrig secret guard: this call's command line holds a secret as text (credentials in a URL). Pass it by reference " +
-        '(its env var name, a file path, stdin, `teamrig exec request`), never as text. [secretGuard.secretReads]',
+        '(its env var name, a file path, stdin, `teamrig exec request`), never as text. [secretGuard.writes]',
     );
   });
 
@@ -166,7 +166,7 @@ describe('secretGuardOutput', () => {
       verdict?.reason,
       'teamrig secret guard: the text this call writes holds a secret (GitHub token). Keep a real one in a secret file ' +
         '(secretGuard.paths, such as .env) and name it by its env var or path; a test builds a secret-shaped value at run ' +
-        "time from parts (join('gh', 'p_', ...)), so no file holds it whole. [secretGuard.secretReads]",
+        "time from parts (join('gh', 'p_', ...)), so no file holds it whole. [secretGuard.writes]",
     );
     assert.doesNotMatch(verdict?.reason ?? '', new RegExp(TOKEN));
   });
@@ -175,6 +175,24 @@ describe('secretGuardOutput', () => {
     const read = call('Read', { file_path: 'C:/w/.env' });
     assert.equal(verdictOf(secretGuardOutput(read, env({ secretReads: 'ask' })))?.decision, 'ask');
     assert.equal(secretGuardOutput(read, env({ secretReads: 'allow' })), '');
+    const write = call('Write', { file_path: 'C:/w/src/a.ts', content: TOKEN });
+    assert.equal(verdictOf(secretGuardOutput(write, env({ writes: 'ask' })))?.decision, 'ask');
+    assert.equal(secretGuardOutput(write, env({ writes: 'allow' })), '');
+  });
+
+  it('settles a printed secret by secretReads and one held as text by writes, naming only what a key does not allow', () => {
+    const write = call('Write', { file_path: 'C:/w/src/a.ts', content: TOKEN });
+    assert.equal(verdictOf(secretGuardOutput(write, env({ secretReads: 'allow' })))?.decision, 'deny');
+    assert.equal(verdictOf(secretGuardOutput(call('Read', { file_path: 'C:/w/.env' }), env({ writes: 'allow' })))?.decision, 'deny');
+    const both = call('Bash', { command: join('cat .env; gh auth status --token ', TOKEN) });
+    const denied = verdictOf(secretGuardOutput(both, env({ secretReads: 'ask' })));
+    assert.equal(denied?.decision, 'deny');
+    assert.match(denied?.reason ?? '', /would print the content of \.env .*command line holds a secret as text \(GitHub token\).*\[secretGuard\.secretReads, secretGuard\.writes\]$/);
+    const asked = verdictOf(secretGuardOutput(both, env({ secretReads: 'ask', writes: 'allow' })));
+    assert.equal(asked?.decision, 'ask');
+    assert.match(asked?.reason ?? '', /would print the content of \.env .*\[secretGuard\.secretReads\]$/);
+    assert.doesNotMatch(asked?.reason ?? '', /holds a secret as text/);
+    assert.equal(secretGuardOutput(both, env({ secretReads: 'allow', writes: 'allow' })), '');
   });
 
   it('refuses with the note on what to do instead of asking when asks are off, and keeps a refusal as it was', () => {
@@ -275,7 +293,7 @@ describe('secretReason', () => {
     ]);
     assert.match(
       reason,
-      /^teamrig secret guard: this call would print the content of \.env into the conversation\. .*secretGuard\.envNames or secretGuard\.commands\. Its command line holds a secret as text \(GitHub token, JSON web token\)\. Pass it by reference .*never as text\. \[secretGuard\.secretReads\]$/,
+      /^teamrig secret guard: this call would print the content of \.env into the conversation\. .*secretGuard\.envNames or secretGuard\.commands\. Its command line holds a secret as text \(GitHub token, JSON web token\)\. Pass it by reference .*never as text\. \[secretGuard\.secretReads, secretGuard\.writes\]$/,
     );
   });
 
@@ -284,7 +302,7 @@ describe('secretReason', () => {
       { kind: 'written', id: 'jwt', description: 'JSON web token' },
       { kind: 'literal', id: 'github-token', description: 'GitHub token' },
     ]);
-    assert.match(reason, /^teamrig secret guard: this call's command line holds a secret as text \(GitHub token\)\. .*never as text\. The text this call writes holds a secret \(JSON web token\)\. Keep a real one .*so no file holds it whole\. \[secretGuard\.secretReads\]$/);
+    assert.match(reason, /^teamrig secret guard: this call's command line holds a secret as text \(GitHub token\)\. .*never as text\. The text this call writes holds a secret \(JSON web token\)\. Keep a real one .*so no file holds it whole\. \[secretGuard\.writes\]$/);
   });
 });
 
