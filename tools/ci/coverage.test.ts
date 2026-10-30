@@ -49,7 +49,7 @@ function file(path: string, lines: number, branches = 100, functions = 100): Fil
   return { path, lines: { found: 100, hit: lines }, branches: { found: 100, hit: branches }, functions: { found: 100, hit: functions } };
 }
 
-const PASSED: TestSummary = { tests: 3, fail: 0, cancelled: 0, skipped: 0, todo: 0, notOk: [] };
+const PASSED: TestSummary = { tests: 3, fail: 0, cancelled: 0, skipped: 0, todo: 0, notOk: [], exits: [] };
 
 /** A run of the listed files; by default every test passed and the runner exited 0. */
 function run(report: readonly FileCoverage[], listing: readonly string[], outcome: Partial<Pick<CoverageRun, 'summary' | 'status'>> = {}): CoverageRun {
@@ -210,11 +210,11 @@ describe('parseLcov', () => {
 describe('parseTapSummary', () => {
   it('reads the totals the run prints last', () => {
     const tap = ['TAP version 13', '# Subtest: a', 'ok 1 - a', '1..1', '# tests 12', '# suites 2', '# pass 9', '# fail 1', '# cancelled 0', '# skipped 1', '# todo 1', '# duration_ms 40'].join('\n');
-    assert.deepEqual(parseTapSummary(tap), { tests: 12, fail: 1, cancelled: 0, skipped: 1, todo: 1, notOk: [] });
+    assert.deepEqual(parseTapSummary(tap), { tests: 12, fail: 1, cancelled: 0, skipped: 1, todo: 1, notOk: [], exits: [] });
   });
 
   it('defaults absent counts to zero and returns nothing without a test count', () => {
-    assert.deepEqual(parseTapSummary('# tests 2\n'), { tests: 2, fail: 0, cancelled: 0, skipped: 0, todo: 0, notOk: [] });
+    assert.deepEqual(parseTapSummary('# tests 2\n'), { tests: 2, fail: 0, cancelled: 0, skipped: 0, todo: 0, notOk: [], exits: [] });
     assert.equal(parseTapSummary('TAP version 13\n'), undefined);
   });
 
@@ -236,6 +236,33 @@ describe('parseTapSummary', () => {
     ].join('\n');
     assert.deepEqual(parseTapSummary(tap)?.notOk, ['breaks', 'a \\# in its name', 'outer', 'thrown while built']);
   });
+
+  it('reads how each test file whose process failed with no failing test ended, and no other `not ok` entry', () => {
+    // As node 22 prints them: a file killed before its first test, one that wrote to stderr and exited 4, one a signal
+    // ended, and a file with a failing test of its own, which says so instead.
+    const fileEntry = (index: number, name: string, fields: readonly string[]): string[] => [`# Subtest: ${name}`, `not ok ${index} - ${name}`, '  ---', ...fields.map((field) => `  ${field}`), '  ...'];
+    const tap = [
+      'TAP version 13',
+      ...fileEntry(1, 'killed.test.mjs', ['duration_ms: 54.9368', "type: 'test'", "failureType: 'testCodeFailure'", 'exitCode: 1', 'signal: ~', "error: 'test failed'"]),
+      '# boom on stderr',
+      ...fileEntry(2, 'noisy.test.mjs', ['duration_ms: 57.5054', "failureType: 'testCodeFailure'", 'exitCode: 4', 'signal: ~']),
+      ...fileEntry(3, 'signalled.test.mjs', ['duration_ms: 12', "failureType: 'testCodeFailure'", 'exitCode: ~', "signal: 'SIGKILL'"]),
+      '# Subtest: failing.test.mjs',
+      '    # Subtest: breaks',
+      '    not ok 1 - breaks',
+      '      ---',
+      "      failureType: 'testCodeFailure'",
+      '      ...',
+      ...fileEntry(4, 'failing.test.mjs', ['duration_ms: 80', "failureType: 'subtestsFailed'", 'exitCode: 1', 'signal: ~']),
+      '# tests 5',
+      '# fail 4',
+    ].join('\r\n');
+    assert.deepEqual(parseTapSummary(tap)?.exits, [
+      { name: 'killed.test.mjs', exitCode: 1, signal: undefined, durationMs: 54.9368 },
+      { name: 'noisy.test.mjs', exitCode: 4, signal: undefined, durationMs: 57.5054 },
+      { name: 'signalled.test.mjs', exitCode: undefined, signal: 'SIGKILL', durationMs: 12 },
+    ]);
+  });
 });
 
 describe('coverageRun', () => {
@@ -245,7 +272,7 @@ describe('coverageRun', () => {
     assert.deepEqual(run, {
       report: [{ path: 'src/a.ts', lines: { found: 4, hit: 3 }, branches: { found: 0, hit: 0 }, functions: { found: 0, hit: 0 } }],
       listing: ['src/a.ts'],
-      summary: { tests: 2, fail: 0, cancelled: 0, skipped: 0, todo: 0, notOk: [] },
+      summary: { tests: 2, fail: 0, cancelled: 0, skipped: 0, todo: 0, notOk: [], exits: [] },
       status: 0,
     });
   });
@@ -352,6 +379,22 @@ describe('coverageFindings', () => {
     // Counted failures say so first; their suites' `not ok` lines add no second finding.
     assert.deepEqual(coverageFindings(run(report, ['src/a.ts'], { summary: { ...PASSED, fail: 1, notOk: ['breaks', 'outer'] }, status: 1 }), POLICY), [
       '1 failing and 0 cancelled test(s)',
+    ]);
+  });
+
+  it('names how each test file whose process failed with no failing test ended', () => {
+    const exits = [
+      { name: 'src/log.test.ts', exitCode: 1, signal: undefined, durationMs: 134.2 },
+      { name: 'src/noisy.test.ts', exitCode: 4, signal: undefined, durationMs: undefined },
+      { name: 'src/signalled.test.ts', exitCode: undefined, signal: 'SIGKILL', durationMs: 12 },
+      { name: 'src/odd.test.ts', exitCode: undefined, signal: undefined, durationMs: undefined },
+    ];
+    assert.deepEqual(coverageFindings(run([file('src/a.ts', 100)], ['src/a.ts'], { summary: { ...PASSED, fail: 4, exits }, status: 1 }), POLICY), [
+      '4 failing and 0 cancelled test(s)',
+      'src/log.test.ts: its process ended with exit code 1 and no signal after 134 ms, with no failing test to show for it; its own output, if any, is above its ✖ line, and exit code 1 with no output is how Windows shows a kill from outside',
+      'src/noisy.test.ts: its process ended with exit code 4 and no signal, with no failing test to show for it; its own output, if any, is above its ✖ line',
+      'src/signalled.test.ts: its process ended by signal SIGKILL after 12 ms, with no failing test to show for it; its own output, if any, is above its ✖ line',
+      'src/odd.test.ts: its process ended with no exit code or signal, with no failing test to show for it; its own output, if any, is above its ✖ line',
     ]);
   });
 
