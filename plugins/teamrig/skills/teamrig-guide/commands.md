@@ -1366,11 +1366,13 @@ names are machine-wide.
 - `hiring.policy`: `off` refuses every hire; `owner` (the default) needs `--approved-by "<who>"`, after you ask
   the owner; `lead` lets the lead hire; `automatic` is `lead`, and a hired session whose last
   open task closes is asked once, at its next turn end, to write its handover, never to retire.
-- No cap counts hires: the host's room bounds them (below). A hire has no fixed daily budget: like any
+- No cap counts hires; one the host has no room for starts home (below). A hire has no fixed daily budget: like any
   session, its part of the team's follows its share and queued work ([teamrig budget](#teamrig-budget)).
 - Its review day is `--review`, else `hiring.reviewDays` (7) days on.
-- With `--yes` it refuses when the host has no room for one more session, as [teamrig open](#teamrig-open) measures
-  it; without, it says so.
+- With no room on the host for one more session, as [teamrig open](#teamrig-open) measures it, `--yes` hires it
+  home: a close with no Claude Code session in `state/session-log.jsonl` keeps it closed until the idle pass opens it
+  once it has work and the host has room (`open.idle.mode` `on`), or `teamrig open <id>` does, as a new hire (a rehire
+  on its handover); without `--yes` it says so.
 - When its job is done, retire it (`teamrig retire`).
 - Past its review day, `check` flags it REVIEW-DUE. While the team still needs it, keep it to a new review day: the
   same command on the session already on the team, `teamrig hire <id> --review <YYYY-MM-DD> --reason "<why>"`. Only

@@ -216,6 +216,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       (a lead: the lead, or a sub-lead into its own group) adds a worker the leader is sure the team needs,
       or hires a retired one back, within hiring.policy, on the lead's model and effort unless given;
       without --yes it shows the hire and writes nothing;
+      with no room on the host for one more session it is hired home, left closed until there is room;
       --burst: a hire for the burst in force, within its hires, never a cheaper model or lower effort, due to
       retire when the burst is over (under hiring.policy owner the burst's approver approves it);
       on a hired session already on the team, --review <YYYY-MM-DD> --reason "<why>" keeps it to that new

@@ -79,7 +79,7 @@ child team's lead hires the same way into its own team:
 - `policy`: `off` (no hires by command), `owner` (the default: each hire names who approved it), `lead`, or
   `automatic` (the lead decides, and a hired session whose last open task closes is asked at its next turn end to
   write its handover). Under every policy only a lead over a session retires it, never the session itself.
-- No cap counts hires: `hire --yes` refuses only while the host has no room for one more tab; each gets its part of the team's daily budget by its share and queued
+- No cap counts hires: with no room on the host for one more tab, `hire --yes` hires it home, closed until the idle pass opens it once it has work and room; each gets its part of the team's daily budget by its share and queued
   work, like any session; `reviewDays` (7) sets a hire's review day.
 - Each hire is logged in `state/hires.jsonl` with its job, reason, approver, model, effort and review day. A hire with no task
   is never due to retire for it: the idle pass deactivates it. `teamrig check` flags a hired session past its
@@ -178,7 +178,7 @@ sequenceDiagram
   Terminal, Konsole or x-terminal-emulator, in that order; `open.terminal` in the config or `--terminal` picks one.
   With `open.teamWindow: true`, each tab of the team's sessions opens in a Windows Terminal window of the team's
   own (`teamrig-<team>`), apart from other teams' tabs, a restore after a reboot included.
-  It refuses any session but the lead, and `hire --yes` refuses a hire, when the host has no room for one more:
+  It refuses any session but the lead when the host has no room for one more (`hire --yes` then hires it home):
   free memory over `coordinator.heavy.memoryFloorMb` and the commit charge within `open.headroom.commitMaxPct` (92%),
   with the session counted at the median running one (what it holds resident against free memory, what it
   committed against the commit charge), else `open.headroom.sessionMb` (1200 MB). A session
