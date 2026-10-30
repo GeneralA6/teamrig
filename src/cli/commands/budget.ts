@@ -18,6 +18,7 @@ import { formatPct, formatUsd } from '../../budget/format.ts';
 import { activeGroupLift, activeLift, decideLift, LiftLog, liftText, parentBudgetText, type Lift, type LiftNames } from '../../budget/lift.ts';
 import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID, type Measured } from '../../budget/measure.ts';
 import { budgetSplitOf, dailyBudgetOf, groupPartsOf, liftPlaceOf, teamPartOf, type BudgetSplit } from '../../budget/parts.ts';
+import { pausableOf } from '../../budget/pause.ts';
 import { nextPeriod, sightOf, type Period } from '../../budget/period.ts';
 import {
   burnLines,
@@ -156,9 +157,9 @@ export async function weekLineOf(runtime: CliRuntime, kit: Kit, config: KitConfi
   return weekLine((await usageReadingOf(runtime, kit, config, roster)).week, teamZone(config, runtime));
 }
 
-/** How the team's part of the day is split among its sessions: down its lead tree, by their queued work (`work`) and the lifts in force. */
-function splitOf(reading: Reading, team: string, roster: Roster, config: Pick<KitConfig, 'budget' | 'leads'>, work: ReadonlyMap<string, WorkByPriority>): BudgetSplit {
-  return budgetSplitOf({ team, ids: roster.ids, sessions: config.budget.sessions, leads: config.leads, work, lifts: reading.lifts, now: reading.now, usedPct: reading.week.usedPct });
+/** How the team's part of the day is split among its sessions: down its lead tree, by their queued work (`work`), the lifts in force and the sessions a short day may pause. */
+function splitOf(reading: Reading, team: string, roster: Roster, config: Pick<KitConfig, 'budget' | 'leads' | 'roles'>, work: ReadonlyMap<string, WorkByPriority>): BudgetSplit {
+  return budgetSplitOf({ team, ids: roster.ids, sessions: config.budget.sessions, leads: config.leads, work, pausable: pausableOf(config, team, roster.ids), lifts: reading.lifts, now: reading.now, usedPct: reading.week.usedPct });
 }
 
 /** Each session today: its use, and its part (`split`) of the team's part of the account's daily budget beside the `others` on it, its lift and the burst. */

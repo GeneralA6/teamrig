@@ -1,6 +1,7 @@
 import { accountHolderOf, accountOf, accountTeamsOf, accountWeekOf, type AccountScope } from '../budget/account.ts';
 import { LiftLog } from '../budget/lift.ts';
 import { budgetSplitOf, type BudgetSplit, type TeamsOnAccount } from '../budget/parts.ts';
+import { pausableOf } from '../budget/pause.ts';
 import { snapshotDirOf, weekUseAt, type WeekUse } from '../budget/snapshot.ts';
 import type { TeamWeekPaths } from '../budget/team-week.ts';
 import type { WorkByPriority } from '../budget/work.ts';
@@ -33,8 +34,10 @@ export async function otherTeamsOnAccount(runtime: CliRuntime, asking: AskingTea
   });
 }
 
-/** The team that asks with what splits it: its roster, its lift log and each session's queued work. */
+/** The team that asks with what splits it: its roster, its roles, its lift log and each session's queued work. */
 export interface AskingRoster extends AskingTeam {
+  /** Its config's budget, lead tree and roles, whose holders a short day never pauses (src/budget/pause.ts `pausableOf`). */
+  readonly config: Pick<KitConfig, 'budget' | 'leads' | 'roles'>;
   readonly ids: readonly string[];
   readonly liftsPath: string;
   /** Each session's queued work by priority (src/budget/work.ts `workWeights` or `cachedWork`). */
@@ -47,7 +50,7 @@ export interface AskingRoster extends AskingTeam {
  */
 export async function teamsOnAccountOf(runtime: CliRuntime, asking: AskingRoster, now: number, usedPct: number | undefined): Promise<TeamsOnAccount> {
   const { lifts } = await new LiftLog(runtime.files, asking.liftsPath).read();
-  const split = budgetSplitOf({ team: asking.team, ids: asking.ids, sessions: asking.config.budget.sessions, leads: asking.config.leads, work: asking.work, lifts, now, usedPct });
+  const split = budgetSplitOf({ team: asking.team, ids: asking.ids, sessions: asking.config.budget.sessions, leads: asking.config.leads, work: asking.work, pausable: pausableOf(asking.config, asking.team, asking.ids), lifts, now, usedPct });
   return { split, others: await otherTeamsOnAccount(runtime, asking, now, usedPct) };
 }
 

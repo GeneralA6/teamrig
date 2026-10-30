@@ -11,7 +11,7 @@ const NOW = Date.parse('2030-01-08T10:00:00Z');
 const MINUTE = 60_000;
 
 function split(sessions: Readonly<Record<string, SessionBudget>> = {}, extra: Partial<BudgetSplit> = {}): BudgetSplit {
-  return { team: 'app', ids: IDS, sessions, leads: {}, work: new Map(), lifted: new Map(), liftedGroups: new Map(), ...extra };
+  return { team: 'app', ids: IDS, sessions, leads: {}, work: new Map(), lifted: new Map(), liftedGroups: new Map(), pausable: new Set(), ...extra };
 }
 
 /** Each session's queued work as one weight, all of it at p1. */
@@ -21,7 +21,7 @@ function workOf(weights: Readonly<Record<string, number>>): ReadonlyMap<string, 
 
 /** Another team on the account, its sessions at the default share with no queued work unless `extra` says so. */
 function otherTeam(team: string, ids: readonly string[], extra: Partial<BudgetSplit> = {}): BudgetSplit {
-  return { team, ids, sessions: {}, leads: {}, work: new Map(), lifted: new Map(), liftedGroups: new Map(), ...extra };
+  return { team, ids, sessions: {}, leads: {}, work: new Map(), lifted: new Map(), liftedGroups: new Map(), pausable: new Set(), ...extra };
 }
 
 /** A team led as lead > alpha > bravo > charlie, with delta beside alpha under the lead, every session at weight 1. */
@@ -125,7 +125,7 @@ describe('dailyBudgetOf', () => {
     const next = sequence(940);
     const ids = ['lead', 'alpha', 'bravo', 'charlie', 'delta'];
     for (let round = 0; round < 500; round++) {
-      const each: BudgetSplit = { team: 'app', ids, ...randomParts(next, ids, () => true), leads: {}, liftedGroups: new Map() };
+      const each: BudgetSplit = { team: 'app', ids, ...randomParts(next, ids, () => true), leads: {}, liftedGroups: new Map(), pausable: new Set() };
       const allowancePct = next() * 20;
       for (const id of ids) {
         assert.equal(dailyBudgetOf(allowancePct, id, each), flatSplitPct(allowancePct, id, each), `round ${round}, ${id}`);
@@ -147,7 +147,7 @@ describe('dailyBudgetOf', () => {
         }
       }
       const inGroups = new Set([...Object.keys(leads), ...Object.values(leads).flat()]);
-      const each: BudgetSplit = { team: 'app', ids, ...randomParts(next, ids, (id) => !inGroups.has(id)), leads, liftedGroups: new Map() };
+      const each: BudgetSplit = { team: 'app', ids, ...randomParts(next, ids, (id) => !inGroups.has(id)), leads, liftedGroups: new Map(), pausable: new Set() };
       const allowancePct = next() * 20;
       for (const id of ids) {
         near(dailyBudgetOf(allowancePct, id, each), flatSplitPct(allowancePct, id, each), `round ${round}, ${id}, leads ${JSON.stringify(leads)}`);
@@ -391,9 +391,9 @@ describe('liftPlaceOf', () => {
 });
 
 describe('budgetSplitOf', () => {
-  const source = { team: 'app', ids: IDS, sessions: {}, leads: { alpha: ['bravo'] }, work: workOf({ bravo: 2 }), now: NOW };
+  const source = { team: 'app', ids: IDS, sessions: {}, leads: { alpha: ['bravo'] }, work: workOf({ bravo: 2 }), pausable: new Set(['bravo']), now: NOW };
 
-  it("maps each session's and each on-roster sub-lead's group's lift in force to its part", () => {
+  it("maps each session's and each on-roster sub-lead's group's lift in force to its part, and keeps the sessions a short day may pause", () => {
     const lifts = [
       lift(),
       lift({ session: 'bravo', partPct: 20, endsAt: NOW }),
@@ -407,6 +407,7 @@ describe('budgetSplitOf', () => {
       sessions: {},
       leads: { alpha: ['bravo'] },
       work: workOf({ bravo: 2 }),
+      pausable: new Set(['bravo']),
       lifted: new Map([['alpha', 50]]),
       liftedGroups: new Map([['alpha', 40]]),
     });

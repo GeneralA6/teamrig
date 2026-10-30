@@ -157,6 +157,17 @@ describe('accountTeamsOf', () => {
     assert.deepEqual([[...(only?.work ?? [])], [...(only?.lifted ?? [])]], [[['front', new Map([[1, 5]])]], []]);
   });
 
+  it("lets a short day pause another team's sessions by its own config, never its lead or coordinator owner", async () => {
+    const teams = new Map([
+      ['ui', sourceOf('ui')],
+      ['web', sourceOf('web', { budget: { pauseByPriority: true }, roles: { lead: 'lead', coordinatorOwner: 'back' } })],
+    ]);
+
+    const others = await accountTeamsOf(new MemoryFiles(), teams, SCOPE);
+
+    assert.deepEqual(others.map((split) => [split.team, [...split.pausable]]), [['ui', []], ['web', ['front']]]);
+  });
+
   it('finds no other team when the kit home holds only the asking one', async () => {
     assert.deepEqual(await accountTeamsOf(new MemoryFiles(), new Map([['app', sourceOf('app')]]), SCOPE), []);
   });

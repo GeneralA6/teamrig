@@ -12,6 +12,7 @@ import { activeLift, LiftLog } from '../../budget/lift.ts';
 import { OUTSIDE_ID } from '../../budget/measure.ts';
 import { runMeter } from '../../budget/meter.ts';
 import { budgetSplitOf, dailyBudgetOf } from '../../budget/parts.ts';
+import { pausableOf } from '../../budget/pause.ts';
 import { UsageStore, type UsageState } from '../../budget/store.ts';
 import { teamWeekOf } from '../../budget/team-week.ts';
 import { helperGate, promptWarning, stopWarning, type BudgetFacts, type BudgetLeader, type HelperGate } from '../../budget/warn.ts';
@@ -100,7 +101,7 @@ export async function budgetFactsOf(runtime: CliRuntime, scope: BudgetScope, tra
   const { lifts } = await new LiftLog(files, kit.paths.lifts).read();
   const lift = activeLift(lifts, id, now, week.usedPct);
   const work = await cachedWork(files, kit.paths.events, join(kit.paths.usage, WORK_CACHE_FILE), config.register.priorities);
-  const split = budgetSplitOf({ team: kit.paths.team, ids: roster.ids, sessions: budget.sessions, leads: config.leads, work: work.weights, lifts, now, usedPct: week.usedPct });
+  const split = budgetSplitOf({ team: kit.paths.team, ids: roster.ids, sessions: budget.sessions, leads: config.leads, work: work.weights, pausable: pausableOf(config, kit.paths.team, roster.ids), lifts, now, usedPct: week.usedPct });
   const others = await otherTeamsOnAccount(runtime, { team: kit.paths.team, config, usageDir: kit.paths.usage }, now, week.usedPct);
   const shared = dailyBudgetOf(week.allowancePct, id, split, others);
   const inForce = activeBurst((await new BurstLog(files, kit.paths.bursts).read()).records, now, week.usedPct);

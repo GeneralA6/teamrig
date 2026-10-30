@@ -18,6 +18,8 @@ export interface BudgetSplit {
   readonly lifted: ReadonlyMap<string, number>;
   /** The group lifts in force, as each lifted sub-lead's group's part of its parent's budget in percent. */
   readonly liftedGroups: ReadonlyMap<string, number>;
+  /** The sessions a short day may pause (src/budget/pause.ts `pausableOf`): none while the team's `budget.pauseByPriority` is off. */
+  readonly pausable: ReadonlySet<string>;
 }
 
 /** The team that asks (`split`) and the other teams on its Claude account (`accountTeamsOf`), which share the account's week. */
@@ -243,7 +245,7 @@ export function liftPlaceOf(split: BudgetSplit, id: string, group: boolean): Lif
   return { parent: path.at(-2), liftedPct };
 }
 
-/** What `budgetSplitOf` splits by: the team's roster, shares, lead tree and queued work, and its lift log. */
+/** What `budgetSplitOf` splits by: the team's roster, shares, lead tree, queued work and pausable sessions, and its lift log. */
 export interface SplitSource extends Omit<BudgetSplit, 'lifted' | 'liftedGroups'> {
   readonly lifts: readonly Lift[];
   /** The lifts in force at `now` with the week's use at `usedPct` (`activeLift`) count. */
