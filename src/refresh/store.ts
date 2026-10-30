@@ -3,12 +3,15 @@ import type { Files } from '../core/files.ts';
 import type { TeamPaths } from '../core/home.ts';
 import { formatCarriedJobs, parseCarriedJobs, type CarriedJobs } from './carry.ts';
 import {
+  formatParkedRestart,
   formatRefreshRequest,
   formatRefreshState,
   formatRestartRequest,
+  parseParkedRestart,
   parseRefreshRequest,
   parseRefreshState,
   parseRestartRequest,
+  type ParkedRestart,
   type RefreshRequest,
   type RefreshState,
   type RestartRequest,
@@ -18,7 +21,8 @@ import {
  * Each session's refresh files. The state (`<id>.json`) is written only by the session itself, from
  * its commands and hooks; the lead's request (`<id>.request.json`) is a file of its own, so neither
  * write ever overwrites the other's; so is the automatic restart (`<id>.restart.json`), which the
- * session's hooks, its restart and `teamrig launch` share. The jobs a /clear left live in the session's process
+ * session's hooks, its restart and `teamrig launch` share, and the restart held back until work comes
+ * (`<id>.parked.json`), which its Stop hook writes and its wake check arms. The jobs a /clear left live in the session's process
  * (`<id>.carried.json`) are written by its SessionStart hook. Ids are session ids, checked by the roster, so they
  * are safe in a path.
  */
@@ -77,6 +81,20 @@ export class RefreshStore {
     await this.files.remove(this.restartPath(id));
   }
 
+  /** The restart held back until work comes; undefined when none, or the file is damaged. */
+  async parked(id: string): Promise<ParkedRestart | undefined> {
+    const text = await this.files.read(this.parkedPath(id));
+    return text === undefined ? undefined : parseParkedRestart(text);
+  }
+
+  setParked(id: string, parked: ParkedRestart): Promise<void> {
+    return this.files.write(this.parkedPath(id), formatParkedRestart(parked));
+  }
+
+  async clearParked(id: string): Promise<void> {
+    await this.files.remove(this.parkedPath(id));
+  }
+
   /** The jobs the last /clear left live in the session's process; undefined when none, or the file is damaged. */
   async carried(id: string): Promise<CarriedJobs | undefined> {
     const text = await this.files.read(this.carriedPath(id));
@@ -101,6 +119,10 @@ export class RefreshStore {
 
   private restartPath(id: string): string {
     return join(this.paths.refresh, `${id}.restart.json`);
+  }
+
+  private parkedPath(id: string): string {
+    return join(this.paths.refresh, `${id}.parked.json`);
   }
 
   private carriedPath(id: string): string {

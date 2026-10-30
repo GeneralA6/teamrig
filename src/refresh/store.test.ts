@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import type { RestartRequest } from './state.ts';
+import type { ParkedRestart, RestartRequest } from './state.ts';
 import { RefreshStore } from './store.ts';
 
 const PATHS = { refresh: join('/', 'team', 'state', 'refresh'), handover: join('/', 'team', 'handover') };
@@ -53,6 +53,24 @@ describe('RefreshStore', () => {
     await store.clearRestart('alpha');
     await store.clearRestart('alpha');
     assert.equal(await store.restart('alpha'), undefined);
+  });
+
+  it('keeps the restart held back until work comes in a file of its own, and reads a damaged one as none (T1383)', async () => {
+    const files = new MemoryFiles();
+    const store = new RefreshStore(files, PATHS);
+    const parked: ParkedRestart = { at: AT, claudeSession: 'c-1', transcript: '/t/c-1.jsonl', cwd: null, supervised: false };
+    assert.equal(await store.parked('alpha'), undefined);
+    await store.setParked('alpha', parked);
+    assert.deepEqual(await store.parked('alpha'), parked);
+    assert.deepEqual([files.paths().length, await store.restart('alpha')], [1, undefined], 'the pending restart is another file');
+    assert.match(files.get(join(PATHS.refresh, 'alpha.parked.json')) ?? '', /"claudeSession":"c-1"/);
+    for (const bad of [{ at: 3 }, { claudeSession: null }, { transcript: 3 }, { cwd: false }, { supervised: 'no' }, { v: 2 }]) {
+      await files.write(join(PATHS.refresh, 'alpha.parked.json'), JSON.stringify({ v: 1, ...parked, ...bad }));
+      assert.equal(await store.parked('alpha'), undefined, JSON.stringify(bad));
+    }
+    await store.clearParked('alpha');
+    await store.clearParked('alpha');
+    assert.equal(await store.parked('alpha'), undefined);
   });
 
   it('keeps the jobs a /clear left live in a file of its own, reads a damaged one as none, and clears it', async () => {
