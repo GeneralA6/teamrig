@@ -2,7 +2,7 @@ import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { errorMessage } from '../../core/guards.ts';
 import { KIT_NAME } from '../../core/home.ts';
-import { FileLock, LockBusyError } from '../../core/lock.ts';
+import { LockBusyError } from '../../core/lock.ts';
 import type { StartOutcome } from '../../open/processes.ts';
 import { hooklessReader } from '../../restore/hookless.ts';
 import { SessionLog } from '../../sessions/log.ts';
@@ -30,6 +30,7 @@ import { teamZone, type Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
 import { postUrgentLine } from '../urgent-line.ts';
 import { sessionFoldersOf } from './setup.ts';
+import { fileLockOf } from '../file-locks.ts';
 
 /** The pass's steps and the hookless reopens now, or the error it failed with. */
 type PassRun =
@@ -162,8 +163,8 @@ export async function runIdlePass(runtime: CliRuntime, kit: Kit, config: KitConf
   if (!isPassDue(await readIdlePassState(runtime.files, kit.paths), now)) {
     return;
   }
-  const { files, clock, sleep, pid } = runtime;
-  const lock = new FileLock(kit.paths.idlePassLock, { ...config.lock, waitMs: 0 }, { files, clock, sleep, pid });
+  const { files } = runtime;
+  const lock = fileLockOf(runtime, kit.paths.idlePassLock, { ...config.lock, waitMs: 0 });
   try {
     await lock.run(async () => {
       const previous = await readIdlePassState(runtime.files, kit.paths);

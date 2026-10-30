@@ -3,7 +3,6 @@ import { roleHolderOf } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { formatAddress, type SessionAddress } from '../../core/address.ts';
 import { errorMessage } from '../../core/guards.ts';
-import { FileLock } from '../../core/lock.ts';
 import type { PathSearchDeps } from '../../core/path-search.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import {
@@ -31,6 +30,7 @@ import { callerOf } from '../inputs.ts';
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, type Access, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
+import { fileLockOf } from '../file-locks.ts';
 
 /** What every exec command works on: the team's kit and config, its exec audit log, and the exec PATH. */
 interface ExecTeam {
@@ -49,8 +49,8 @@ async function openExec(runtime: CliRuntime, access: Access): Promise<ExecTeam> 
 }
 
 function execTeamOf(runtime: CliRuntime, kit: Kit, config: KitConfig): ExecTeam {
-  const { files, clock, sleep, pid, platform } = runtime;
-  const lock = new FileLock(kit.paths.execAuditLock, config.lock, { files, clock, sleep, pid });
+  const { files, clock, platform } = runtime;
+  const lock = fileLockOf(runtime, kit.paths.execAuditLock, config.lock);
   const execPath = config.exec.path.join(platform === 'win32' ? ';' : ':');
   return {
     kit,

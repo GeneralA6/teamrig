@@ -1,8 +1,9 @@
-import { FileLock, type LockTimings } from '../core/lock.ts';
+import type { LockTimings } from '../core/lock.ts';
 import { LogNumbers, OWN_NUMBERS, TreeNumbering, type TaskNumbering } from '../register/numbering.ts';
 import { JsonlEventLog } from '../register/store.ts';
 import type { CliRuntime } from './runtime.ts';
 import { loadTree } from './tree.ts';
+import { fileLockOf } from './file-locks.ts';
 
 /**
  * A team's numbering as its kit home's tree stands at the write (T1139): one across every register of the tree,
@@ -38,8 +39,8 @@ export class KitTreeNumbering implements TaskNumbering {
     if (others.length === 0) {
       return OWN_NUMBERS;
     }
-    const { files, clock, sleep, pid } = this.runtime;
-    const lock = new FileLock(root.kit.paths.idsLock, this.timings, { files, clock, sleep, pid });
+    const { files } = this.runtime;
+    const lock = fileLockOf(this.runtime, root.kit.paths.idsLock, this.timings);
     return new TreeNumbering(lock, others.map((other) => new LogNumbers(new JsonlEventLog(files, other.kit.paths.events))));
   }
 }

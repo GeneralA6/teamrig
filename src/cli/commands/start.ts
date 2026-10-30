@@ -1,7 +1,7 @@
 import { LeadTree } from '../../config/lead-tree.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { KIT_NAME } from '../../core/home.ts';
-import { FileLock, LockBusyError } from '../../core/lock.ts';
+import { LockBusyError } from '../../core/lock.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { postLine } from '../../inbox/inbox.ts';
 import { MeetingSchedule } from '../../meeting/schedule.ts';
@@ -16,6 +16,7 @@ import { weekLineOf } from './budget.ts';
 import { inboxDepsOf, read } from './inbox.ts';
 import { startMeetingLine } from './meetings.ts';
 import { checkReport, list, waitingReport } from './register.ts';
+import { fileLockOf } from '../file-locks.ts';
 
 /** The most inbox lines one start posts the lead on warnings no session owns; the rest wait for the next start. */
 export const MAX_UNOWNED_NOTICES = 5;
@@ -62,8 +63,8 @@ export async function start(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
  * lead even when the lead does not start. A refused line or a busy lock is a stderr line; the next start tries again.
  */
 async function tellLead(runtime: CliRuntime, kit: Kit, config: KitConfig, report: CheckReport): Promise<void> {
-  const { files, clock, sleep, pid } = runtime;
-  const notices = new UnownedNotices(files, kit.paths.unownedNotices, new FileLock(kit.paths.unownedNoticesLock, config.lock, { files, clock, sleep, pid }));
+  const { files, clock } = runtime;
+  const notices = new UnownedNotices(files, kit.paths.unownedNotices, fileLockOf(runtime, kit.paths.unownedNoticesLock, config.lock));
   const { inboxes } = inboxDepsOf(runtime, kit.paths);
   const secrets = new SecretScanner(config.register.secretPatterns);
   const now = new Date(clock.now());

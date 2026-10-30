@@ -3,7 +3,6 @@ import { writeConfigWithBackup } from '../../config/load.ts';
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import type { JsonRecord } from '../../core/guards.ts';
-import { FileLock } from '../../core/lock.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { postLine } from '../../inbox/inbox.ts';
 import type { Checked } from '../../setup/team-create.ts';
@@ -12,6 +11,7 @@ import { callerOf, listOf } from '../inputs.ts';
 import { checkedNextConfig, configFileJson, openTeamKit, requireConfig, rosterOf, sessionIdOf } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { inboxDepsOf } from './inbox.ts';
+import { fileLockOf } from '../file-locks.ts';
 
 /**
  * `promote` and `demote` (T781): a leader (the lead, or a sub-lead) makes one of the sessions it leads directly the
@@ -64,9 +64,9 @@ async function changeLeads(args: ParsedArgs, runtime: CliRuntime, verb: 'promote
   const by = sessionIdOf(roster, caller);
   const subLead = sessionIdOf(roster, onePositional(args, 'sub-lead'));
   const change = changeOf(roster);
-  const { files, clock, sleep, pid } = runtime;
+  const { files, clock } = runtime;
   // The hire log's lock: hire and retire also rewrite the team's shape, retire `leads` too.
-  const mutex = new FileLock(kit.paths.hiresLock, config.lock, { files, clock, sleep, pid });
+  const mutex = fileLockOf(runtime, kit.paths.hiresLock, config.lock);
   return mutex.run(async () => {
     const file = await configFileJson(runtime, kit.load.path);
     // Planned on the file as it is under the lock, so a retire that just rewrote `leads` is not undone.

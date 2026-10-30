@@ -1,8 +1,8 @@
 import { DEFAULT_LOCK } from '../config/defaults.ts';
 import { AgedLogFile } from '../core/aged-log.ts';
 import type { TeamPaths } from '../core/home.ts';
-import { FileLock } from '../core/lock.ts';
 import type { CliRuntime } from './runtime.ts';
+import { fileLockOf } from './file-locks.ts';
 
 /**
  * The hooks' aged logs: what they showed each Claude Code session, so each inbox line or hint is shown once
@@ -28,7 +28,7 @@ function filesOf(paths: TeamPaths, log: HookLog): { readonly live: string; reado
  * of one lock must agree on when a held lock is stale.
  */
 export function hookLogOf(runtime: CliRuntime, paths: TeamPaths, log: HookLog): AgedLogFile {
-  const { files, clock, sleep, pid } = runtime;
+  const { files, clock } = runtime;
   const { live, lock } = filesOf(paths, log);
-  return new AgedLogFile({ files, clock, mutex: new FileLock(lock, DEFAULT_LOCK, { files, clock, sleep, pid }) }, { live, archive: paths.archive, name: log });
+  return new AgedLogFile({ files, clock, mutex: fileLockOf(runtime, lock, DEFAULT_LOCK) }, { live, archive: paths.archive, name: log });
 }
