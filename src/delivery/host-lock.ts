@@ -7,7 +7,7 @@ import { KIT_VERSION } from '../core/version.ts';
 import type { TimeZone } from '../core/zone.ts';
 
 /**
- * The host lock's file. Its fields are the ones a team's own coordinator writes too, so both take the same
+ * The host lock's file. Its fields are the ones a team's own deploy tool writes too, so both take the same
  * lock while a team moves its callers to teamrig; a field either adds is ignored.
  */
 export interface HostLockInfo {
@@ -17,7 +17,7 @@ export interface HostLockInfo {
   readonly pid: number;
   readonly session: string;
   readonly purpose: string;
-  /** The teamrig version that took it; an older teamrig or a team's own coordinator leaves it out. */
+  /** The teamrig version that took it; an older teamrig or a team's own deploy tool leaves it out. */
   readonly kit?: string;
   /** An ISO time. */
   readonly acquiredAt: string;
@@ -174,7 +174,7 @@ function isKit(value: unknown): value is string | undefined {
 }
 
 /**
- * `value` without a `kit` that is not a version: a team's own coordinator may write a field of that name for its own
+ * `value` without a `kit` that is not a version: a team's own deploy tool may write a field of that name for its own
  * use, and a field another writer adds is ignored, never a reason to read its lock as damaged and remove it.
  */
 function withoutForeignKit(value: unknown): unknown {
@@ -184,7 +184,7 @@ function withoutForeignKit(value: unknown): unknown {
 /**
  * The name a lock's, a share's and a ticket's id is stored under: `token` until every reader takes `id` (T1544). The
  * secret redactor reads a quoted literal given to `token` as a secret, so a session that shows the lock files a
- * rotation task; but an older teamrig, and a team's own coordinator, read a lock without `token` as damaged and remove
+ * rotation task; but an older teamrig, and a team's own deploy tool, read a lock without `token` as damaged and remove
  * it once it is old enough, and two steps would run at once. So the stored name changes only in a later release, and a
  * reader takes either.
  */
@@ -284,7 +284,7 @@ export function holderText(holder: LockWait, zone: TimeZone): string {
 
 /**
  * Nothing for a holder this teamrig took the lock with, else which one did: a version, or none named by a teamrig
- * older than the `kit` field or a team's own coordinator, which may take a free lock without joining the line.
+ * older than the `kit` field or a team's own deploy tool, which may take a free lock without joining the line.
  */
 function kitText(kit: string | undefined): string {
   if (kit === KIT_VERSION) {
@@ -403,7 +403,7 @@ class Patience {
  * take the lock; a ticket whose process is gone or whose wait ran out is removed by the next waiter that sees it.
  * A wait runs out only once the line has not moved for its whole length (see `Patience`), so a step far back in a line
  * that keeps moving is not refused; its ticket's expiry moves on with its wait each time the line moves.
- * A step that does not join the line (an older kit, a team's own coordinator) may still take a free lock first.
+ * A step that does not join the line (an older kit, a team's own deploy tool) may still take a free lock first.
  * A session may withdraw its waiting steps (`withdraw`): each one's ticket is removed, and a step whose ticket is gone
  * stops at its next look. A step that took its turn removes its own ticket to run, so of the two removals only one
  * succeeds, and a withdrawn step never runs.
@@ -467,7 +467,7 @@ export class HostLock {
 
   /**
    * The holder `info` names, with the small steps sharing the host, which a holder that names its teamrig waits to end
-   * before its step runs (`drain`); one without a `kit` (an older teamrig or a team's own coordinator) runs beside them.
+   * before its step runs (`drain`); one without a `kit` (an older teamrig or a team's own deploy tool) runs beside them.
    */
   private async heldBy(info: HostLockInfo): Promise<LockHolder> {
     if (info.kit === undefined) {

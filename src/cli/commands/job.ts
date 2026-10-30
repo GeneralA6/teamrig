@@ -10,7 +10,7 @@ import { callerOf, instantOf, listOf, type TypedTimes } from '../inputs.ts';
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 
-/** What a job command works on: the session, the coordinator's config, the ledger and the jobs' ports. */
+/** What a job command works on: the session, the delivery config, the ledger and the jobs' ports. */
 interface JobContext {
   readonly session: string;
   readonly delivery: DeliveryConfig;

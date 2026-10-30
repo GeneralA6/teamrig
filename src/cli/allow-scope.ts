@@ -16,7 +16,7 @@ export interface AllowScopeInput {
 
 /**
  * The Claude Code settings files a team's sessions run under, for `permissions trim` and its flag in doctor and `check`
- * (which `start` shows the lead): the person's user settings, the project folder and each repository the coordinator
+ * (which `start` shows the lead): the person's user settings, the project folder and each repository teamrig
  * merges into (`delivery.repos`), each with the worktrees Claude Code made in it.
  */
 export async function teamSettingsScope(runtime: CliRuntime, { paths, config, project }: AllowScopeInput): Promise<SettingsFile[]> {

@@ -2,12 +2,12 @@ import type { Files } from '../core/files.ts';
 import { isRecord, isStringArray, stringField } from '../core/guards.ts';
 import type { TimeZone } from '../core/zone.ts';
 
-/** The deploy freezes' file in the coordinator's folder, named for their old name, quiet claims: one JSON array, written whole. */
+/** The deploy freezes' file in the delivery folder, named for their old name, quiet claims: one JSON array, written whole. */
 export const CLAIMS_FILE = 'claims.json';
 
 /**
  * A deploy freeze: a session measuring `metric` on `targets` until `until`, so a deploy touching one of them waits for
- * its end. Its fields are the ones a team's own coordinator writes too.
+ * its end. Its fields are the ones a team's own deploy tool writes too.
  */
 export interface Freeze {
   readonly session: string;

@@ -161,7 +161,7 @@ function fileOf(files: MemoryFiles): unknown {
 }
 
 describe('HostLock.tryTake', () => {
-  it('takes a free lock, writing the file a team coordinator writes too', async () => {
+  it("takes a free lock, writing the file a team's own deploy tool writes too", async () => {
     const { files, lock } = world();
     const taking = await lock.tryTake('alpha', 'heavy: build api');
     const expected = { id: 't1', pid: ME, session: 'alpha', purpose: 'heavy: build api', kit: KIT_VERSION, acquiredAt: '2030-01-08T10:00:00.000Z', expiresAt: '2030-01-08T12:30:00.000Z' };

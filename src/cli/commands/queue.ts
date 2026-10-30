@@ -223,7 +223,7 @@ interface Step {
  * under the host lock, so the host's queued steps run one at a time. Refused from `delivery.schedule.queueCutoffUtc`
  * to midnight UTC, also when the wait for the lock ran past it, and once its line for the lock has not moved for
  * `delivery.queue.waitMinutes`. The step is killed with every process it started after `maxRunMinutes`
- * (`--max-minutes`), and its start and end go to the coordinator's ledger, with when it began to wait and, sampled
+ * (`--max-minutes`), and its start and end go to the delivery ledger, with when it began to wait and, sampled
  * every `memorySampleSeconds`, the most its process tree held and the least free memory the host had. Its processes get `$TEAMRIG_HOST_LOCK`,
  * so a `queue` among them (a git hook's checks) runs at once under this lock. With `--small` (a spec run, a lint) the
  * step shares the host with other small steps instead, while the host keeps `memoryFloorMb` free besides the MB held

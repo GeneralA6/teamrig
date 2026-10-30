@@ -15,7 +15,7 @@ export const FREEZES_LOCK_TTL_MS = 60_000;
 const FREEZES_LOCK_WAIT_MS = 15_000;
 const FREEZES_LOCK_POLL_MS = 500;
 
-/** The first line of `claims.md`, as the team's own coordinator writes it, in the old name of a deploy freeze. */
+/** The first line of `claims.md`, as a team's own deploy tool writes it, in the old name of a deploy freeze. */
 export const CLAIMS_MD_HEADER = '# Quiet claims: active only until their end time (see README.md, rule 3)';
 
 export interface FreezePlaces {
@@ -29,7 +29,7 @@ export interface FreezePorts {
   readonly clock: Clock;
   /** The team's clock, for the times a refusal names. */
   readonly zone: TimeZone;
-  /** The lock on the freezes file, which a team's own coordinator takes too. */
+  /** The lock on the freezes file, which a team's own deploy tool takes too. */
   readonly lock: Pick<HostLock, 'acquire' | 'release'>;
 }
 
@@ -43,7 +43,7 @@ export interface FreezeRequest {
 
 export interface FreezeRules {
   readonly maxMinutes: number;
-  /** The deploy targets a freeze may name: the ones the coordinator's repositories deploy. */
+  /** The deploy targets a freeze may name: the ones the repositories in `delivery.repos` deploy. */
   readonly knownTargets: readonly string[];
   readonly scanner: Pick<SecretScanner, 'refusal'>;
 }

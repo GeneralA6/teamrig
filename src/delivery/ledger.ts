@@ -3,7 +3,7 @@ import { isStringArray, stringField, type JsonRecord } from '../core/guards.ts';
 import { parseJsonl } from '../core/jsonl.ts';
 import { formatUtcMinute } from '../core/time.ts';
 
-/** The ledger's file name in the coordinator's folder: one JSON record a line, appended. */
+/** The ledger's file name in the delivery folder: one JSON record a line, appended. */
 export const LEDGER_FILE = 'ledger.jsonl';
 
 /** The people's ledger beside it: one line a deploy, appended. */
@@ -13,7 +13,7 @@ export const LEDGER_MD_FILE = 'ledger.md';
 export const LEDGER_MD_HEADER = '# Deploy ledger: one line a deploy: deployed at (UTC) | session | repo | range | what | kind | note';
 
 /**
- * A queued step in the ledger, stored under its old type name `heavy`, in the format a team's own coordinator writes
+ * A queued step in the ledger, stored under its old type name `heavy`, in the format a team's own deploy tool writes
  * too: once when it starts (`endedAt` and `exitCode` null), and again with both when it ends, under the same `id`.
  * The optional fields are teamrig's own; a record without them is still read.
  */
@@ -22,7 +22,7 @@ export interface QueuedStepRecord {
   readonly id: string;
   readonly session: string;
   readonly what: string;
-  /** The teamrig version that ran the step; an older teamrig or a team's own coordinator leaves it out. */
+  /** The teamrig version that ran the step; an older teamrig or a team's own deploy tool leaves it out. */
   readonly kit?: string;
   /** An ISO time: when the step began to wait for the host lock, so its wait is `startedAt` less this. */
   readonly queuedAt?: string;
@@ -39,13 +39,13 @@ export interface QueuedStepRecord {
 }
 
 /**
- * A deploy in the ledger, in the format a team's own coordinator writes too. `range` is the commits it landed,
+ * A deploy in the ledger, in the format a team's own deploy tool writes too. `range` is the commits it landed,
  * `<first>..<last>` by 8-character sha; `rolledAt` is when it went live, for a host that deploys on push when the push
  * ended.
  */
 export interface DeployRecord {
   readonly type: 'deploy';
-  /** `rollback` is written by a team's own coordinator only, so far. */
+  /** `rollback` is written by a team's own deploy tool only, so far. */
   readonly kind: 'deploy' | 'rollback';
   readonly session: string;
   readonly repo: string;
@@ -62,7 +62,7 @@ export interface DeployRecord {
 
 /**
  * A background job a session declared (`teamrig job`), stored under its old name as a `load` record, in the format a
- * team's own coordinator writes too: once when it starts (`endedAt` null), and again when it ends, under the same `id`.
+ * team's own deploy tool writes too: once when it starts (`endedAt` null), and again when it ends, under the same `id`.
  */
 export interface JobRecord {
   readonly type: 'load';

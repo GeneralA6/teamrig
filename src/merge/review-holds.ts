@@ -7,7 +7,7 @@ import type { Reviewer } from '../push-guard/review-gate.ts';
 
 /**
  * The review gate's holds (T800 §2.2, T828): a change the gate held, kept until its reviewer approves it or the branch
- * lands. One file per repository and branch, in the coordinator's folder (`DeliveryPlaces.reviewHolds`), so their
+ * lands. One file per repository and branch, in the delivery folder (`DeliveryPlaces.reviewHolds`), so their
  * count stays the branches in flight; a new hold of a branch replaces its old one, as the change it bound moved on.
  */
 
