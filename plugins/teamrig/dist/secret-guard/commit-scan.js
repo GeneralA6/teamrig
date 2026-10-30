@@ -24,14 +24,18 @@ export class CommitScanner {
     }
     /** The secrets a commit message holds, each named by its line, the first being line 1. */
     message(lines) {
-        return unique(this.messageFindings(lines, ''));
+        return unique(this.textFindings(lines, 'commit message'));
     }
     /** The secrets each pushed commit adds, in its patch and its message, each named by the commit's short id. */
     pushed(commits) {
         return unique(commits.flatMap((commit) => {
             const prefix = `${commit.sha.slice(0, SHORT_SHA)} `;
-            return [...this.files(commit.paths, prefix), ...this.lines(commit.lines, prefix), ...this.messageFindings(commit.message.split('\n'), prefix)];
+            return [...this.files(commit.paths, prefix), ...this.lines(commit.lines, prefix), ...this.textFindings(commit.message.split('\n'), `${prefix}commit message`)];
         }));
+    }
+    /** The secrets each pushed annotated tag's message holds, each named by the tag's short id and its message line. */
+    tags(tags) {
+        return unique(tags.flatMap((tag) => this.textFindings(tag.message.split('\n'), `${tag.sha.slice(0, SHORT_SHA)} tag message`)));
     }
     files(paths, prefix) {
         return paths.filter((path) => this.paths.listed(`${this.root}/${path}`)).map((path) => ({ where: `${prefix}${path}`, description: DECLARED_FILE }));
@@ -39,8 +43,9 @@ export class CommitScanner {
     lines(lines, prefix) {
         return lines.flatMap(({ file, line, text }) => this.hits(`${prefix}${file}:${line}`, text));
     }
-    messageFindings(lines, prefix) {
-        return lines.flatMap((text, at) => this.hits(`${prefix}commit message line ${at + 1}`, text));
+    /** A message's findings, each named `<label> line <n>`, the first line being 1. */
+    textFindings(lines, label) {
+        return lines.flatMap((text, at) => this.hits(`${label} line ${at + 1}`, text));
     }
     hits(where, text) {
         return this.shapes.hitsIn(text).map(({ description }) => ({ where, description }));

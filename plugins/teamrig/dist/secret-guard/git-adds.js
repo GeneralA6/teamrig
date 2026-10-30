@@ -126,6 +126,18 @@ export function commitsOf(log) {
     }
     return commits;
 }
+const TAG_OBJECT = /^object ([0-9a-f]+)$/;
+/**
+ * A tag as `git cat-file tag` prints it: header lines up to the first blank line, one of them `object <id>`, then the
+ * message, a signature trailing it kept (it holds no secret, and scanning it costs nothing). Undefined without an
+ * `object` line, which no tag git wrote lacks.
+ */
+export function tagOf(text) {
+    const end = text.indexOf('\n\n');
+    const headers = (end === -1 ? text : text.slice(0, end)).split('\n');
+    const object = headers.map((line) => TAG_OBJECT.exec(line)?.[1]).find((sha) => sha !== undefined);
+    return object === undefined ? undefined : { object, message: end === -1 ? '' : text.slice(end + 2) };
+}
 /** A commit message's lines as the commit will hold them: a verbose commit's diff below the scissors line is left out. */
 export function messageLines(message) {
     const lines = message.split('\n');
