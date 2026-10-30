@@ -251,7 +251,8 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       session, or by day for one; --day: a past day recounted
   budget --task <T<n>>
       each session's W on that task by UTC day; a turn's W splits equally over the task ids its calls
-      name: T<n> in a command, t<n>- in a branch or path
+      name: T<n> in a command, t<n>- in a branch or path, not one a teamrig text, note, proof or
+      follow-up only mentions
   budget lift <id|name|team/id> [--group] --part <pct> --stop-pct <pct> --reason "<why>"
       [--until <HH:MM|date>] [--reserve]
       (its leaders; a sub-lead its own too) that session's part of its parent's daily budget (the team's, or its

@@ -3995,7 +3995,8 @@ Flags:
 - `--day <YYYY-MM-DD>`: a past UTC day recounted from the transcripts; nothing is written.
 - `--task <T<n>>`: each session's W on that task by UTC day over the 8 days kept, the outside's too, then the
   share of today's W that went to some task. A turn's W goes to the task ids its calls name (`T734` in a command,
-  `t734-` in a branch, worktree or file path, never what a call's output printed), split equally over them when
+  `t734-` in a branch, worktree or file path, never what a call's output printed nor an id a teamrig text, note,
+  proof, review part or follow-up only mentions, as `--text "T5 is done"` does), split equally over them when
   the next prompt ends the turn; a turn still open counts its share at once. Helpers' W goes to no task. Reads
   alone: no session, table, `--day` or `--all` with it.
 - `--all`: every session, idle ones too, every outside title, and with `--loops`, `--burn` or `--misses` all 8 days.
