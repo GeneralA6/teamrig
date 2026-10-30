@@ -28,7 +28,7 @@ const SESSION = '0123abcd-0000-4000-8000-00000000000a';
 const AT = '2030-01-08T09:59:59.000Z';
 /** No hold for the person: the hand claims each ask it is free to. */
 const NO_HOLD: PersonHold = { countdownMs: 0, afterActivityMs: 0 };
-/** The config's defaults: a 20 s count, and 5 min after the person's last key. */
+/** A 20 s count, and 5 min after the person's last key: a shorter wait than the config's default, for these specs to count. */
 const HOLD: PersonHold = { countdownMs: 20_000, afterActivityMs: 300_000 };
 
 /** The runner's ask as it posts it: `n` makes each one new, `at` names the restart request, `askEveryMs` is its quiet delay. */
@@ -393,6 +393,22 @@ describe('ClearHand: the person at the tab', () => {
     host.ask(askOf(3, HOLD));
     assert.deepEqual(await hand.tick(), { kind: 'held', why: 'the band counts down: 20 s left' });
     assert.deepEqual(hand.band(), { kind: 'counting', secondsLeft: 20 });
+  });
+
+  it("keeps the context, by default, while the person reads a reply or thinks it over: 30 min after their last prompt", async () => {
+    const { host, hand } = personHand();
+    const hold = personHoldOf(DEFAULT_REFRESH);
+    hand.promptSent();
+    host.time = 10 * 60_000;
+    host.ask(askOf(1, hold));
+    assert.deepEqual(await hand.tick(), { kind: 'held', why: 'the person was active in this tab 600 s ago' }, 'still reading the reply');
+    host.time = 29 * 60_000;
+    host.ask(askOf(2, hold));
+    assert.deepEqual(await hand.tick(), { kind: 'held', why: 'the person was active in this tab 1740 s ago' });
+    host.time = 30 * 60_000;
+    host.ask(askOf(3, hold));
+    assert.deepEqual(await hand.tick(), { kind: 'held', why: 'the band counts down: 20 s left' }, 'away that long: the count starts');
+    assert.equal(host.clears, 0);
   });
 
   it("shows the band when the person's activity holds the restart's first ask, before any count", async () => {

@@ -50,8 +50,8 @@ export interface PersonHold {
   readonly afterActivityMs: number;
 }
 
-/** The hold of an ask that carries none (a restart older than the hold): the config's defaults, 20 s and 5 min. */
-export const DEFAULT_PERSON_HOLD: PersonHold = { countdownMs: 20_000, afterActivityMs: 5 * 60_000 };
+/** The hold of an ask that carries none (a restart older than the hold): the config's defaults, 20 s and 30 min. */
+export const DEFAULT_PERSON_HOLD: PersonHold = { countdownMs: 20_000, afterActivityMs: 30 * 60_000 };
 /** How long the band's "Hold" button holds the /clear. */
 export const HOLD_BUTTON_MS = 10 * 60_000;
 /**

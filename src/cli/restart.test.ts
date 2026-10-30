@@ -56,7 +56,7 @@ describe('teamrig restart', () => {
     };
     const result = await kit.run(RESTART_ALPHA, { sessionProcesses: processes, platform: 'win32', sleep });
     assert.deepEqual(result, { code: EXIT.ok, stdout: ['CLEARED app-alpha: its tab ran /clear'], stderr: [] });
-    assert.deepEqual(isRecord(posted) ? posted['hold'] : undefined, { countdownMs: 20_000, afterActivityMs: 300_000 }, "the team's default hold, for the tab's mod");
+    assert.deepEqual(isRecord(posted) ? posted['hold'] : undefined, { countdownMs: 20_000, afterActivityMs: 1_800_000 }, "the team's default hold, for the tab's mod");
     assert.equal(isRecord(posted) ? posted['askEveryMs'] : undefined, 15_000, "the team's default quiet delay, for the tab's band");
     assert.deepEqual(processes.ends, []);
     assert.equal(await store.restart('alpha'), undefined);
