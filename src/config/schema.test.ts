@@ -24,16 +24,16 @@ const EVERY_KEY = {
   names: { alpha: 'captain' },
   ruleConflicts: [{ file: '~/CLAUDE.md', text: 'Commit straight to main.', rule: 'worktrees', wins: 'local', reason: 'solo repo' }],
   launch: { alpha: { model: 'best', effort: 'xhigh' } },
-  roles: { lead: 'alpha', coordinatorOwner: 'bravo', securityReviewer: 'bravo' },
+  roles: { lead: 'alpha', deliveryOwner: 'bravo', securityReviewer: 'bravo' },
   register: { goalPattern: '^G\\d+$' },
-  coordinator: {
+  delivery: {
     dir: 'data/deploys',
-    schedule: { heavyCutoffUtc: '22:30', resetBlackoutHours: 4 },
-    heavy: { lockPath: 'data/deploys/host.lock', lockTtlMinutes: 150, maxRunMinutes: 45, waitMinutes: 60 },
+    schedule: { queueCutoffUtc: '22:30', resetBlackoutHours: 4 },
+    queue: { lockPath: 'data/deploys/host.lock', lockTtlMinutes: 150, maxRunMinutes: 45, waitMinutes: 60 },
     wait: { pollSeconds: 30, maxMinutes: 60 },
     checkTimeoutSeconds: 20,
-    claims: { maxMinutes: 120 },
-    windows: { settleMinutes: 30, targetSettleMinutes: { 'cloud-api': 10 }, assumedDeployMinutes: 20, minMinutes: 15 },
+    freezes: { maxMinutes: 120 },
+    stablePeriods: { settleMinutes: 30, targetSettleMinutes: { 'cloud-api': 10 }, assumedDeployMinutes: 20, minMinutes: 15 },
     repos: {
       api: {
         mainCheckout: 'C:/src/api',
@@ -41,7 +41,7 @@ const EVERY_KEY = {
         dependencyGate: true,
         reviewGate: true,
         reviewCheck: ['node', 'review.js'],
-        followMainCheckout: true,
+        updateMainCheckout: true,
         deploy: { targets: ['cloud-api'], checks: [{ name: 'flow', command: ['node', 'checks/flow.js'] }], afterPull: [['node', 'pulled.js']], command: ['node', 'deploy.js'] },
       },
     },
@@ -167,24 +167,24 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   burstMinSparePct: 'burst.minSparePct',
   burstMaxHelpers: 'burst.maxHelpers',
   burstMaxHires: 'burst.maxHires',
-  heavyLockTtlMinutes: 'coordinator.heavy.lockTtlMinutes',
-  heavyMaxRunMinutes: 'coordinator.heavy.maxRunMinutes',
-  heavySmallMaxRunMinutes: 'coordinator.heavy.smallMaxRunMinutes',
-  heavyWaitMinutes: 'coordinator.heavy.waitMinutes',
-  heavyMemorySampleSeconds: 'coordinator.heavy.memorySampleSeconds',
-  heavyMemoryFloorMb: 'coordinator.heavy.memoryFloorMb',
-  heavySmallReserveMb: 'coordinator.heavy.smallReserveMb',
+  heavyLockTtlMinutes: 'delivery.queue.lockTtlMinutes',
+  heavyMaxRunMinutes: 'delivery.queue.maxRunMinutes',
+  heavySmallMaxRunMinutes: 'delivery.queue.smallMaxRunMinutes',
+  heavyWaitMinutes: 'delivery.queue.waitMinutes',
+  heavyMemorySampleSeconds: 'delivery.queue.memorySampleSeconds',
+  heavyMemoryFloorMb: 'delivery.queue.memoryFloorMb',
+  heavySmallReserveMb: 'delivery.queue.smallReserveMb',
   headroomSessionMb: 'open.headroom.sessionMb',
   headroomCommitMaxPct: 'open.headroom.commitMaxPct',
   headroomCloseIdleMinutes: 'open.headroom.closeIdleMinutes',
-  coordinatorPollSeconds: 'coordinator.wait.pollSeconds',
-  coordinatorWaitMaxMinutes: 'coordinator.wait.maxMinutes',
-  checkTimeoutSeconds: 'coordinator.checkTimeoutSeconds',
-  claimMaxMinutes: 'coordinator.claims.maxMinutes',
-  settleMinutes: 'coordinator.windows.settleMinutes',
-  assumedDeployMinutes: 'coordinator.windows.assumedDeployMinutes',
-  windowMinMinutes: 'coordinator.windows.minMinutes',
-  resetBlackoutHours: 'coordinator.schedule.resetBlackoutHours',
+  coordinatorPollSeconds: 'delivery.wait.pollSeconds',
+  coordinatorWaitMaxMinutes: 'delivery.wait.maxMinutes',
+  checkTimeoutSeconds: 'delivery.checkTimeoutSeconds',
+  claimMaxMinutes: 'delivery.freezes.maxMinutes',
+  settleMinutes: 'delivery.stablePeriods.settleMinutes',
+  assumedDeployMinutes: 'delivery.stablePeriods.assumedDeployMinutes',
+  windowMinMinutes: 'delivery.stablePeriods.minMinutes',
+  resetBlackoutHours: 'delivery.schedule.resetBlackoutHours',
   execPath: 'exec.path',
 };
 
@@ -367,7 +367,7 @@ describe('config.schema.json', () => {
     const defs = schema['$defs'];
     const holder = isRecord(defs) ? defs['roleHolder'] : undefined;
     assert.ok(isRecord(holder));
-    for (const role of ['coordinatorOwner', 'securityReviewer']) {
+    for (const role of ['deliveryOwner', 'securityReviewer']) {
       assert.equal(nodeAt(schema, `roles.${role}`)['$ref'], '#/$defs/roleHolder');
     }
     const pattern = new RegExp(String(holder['pattern']));

@@ -17,8 +17,8 @@ import { stoppableHooks, stoppableLock, stoppableSleep, stoppableSteps, stoppedW
 /**
  * `teamrig merge [--keep-remote] [--no-delete-local]`: merges the branch checked out in the current folder into origin's
  * default branch (src/merge/merge.ts). Refused for a branch it must not merge, from
- * `coordinator.schedule.heavyCutoffUtc` to midnight UTC and in the `resetBlackoutHours` before the weekly token reset;
- * it waits up to `coordinator.wait.maxMinutes` for quiet claims on what the push deploys and for the host lock, then
+ * `delivery.schedule.queueCutoffUtc` to midnight UTC and in the `resetBlackoutHours` before the weekly token reset;
+ * it waits up to `delivery.wait.maxMinutes` for quiet claims on what the push deploys and for the host lock, then
  * rebases, runs the repo's dependency check and review gate and, under `pushGuard.pushToProtected: gated`, the
  * self-merge gates, and pushes, each a heavy step in the ledger. Once the shell that started it ends, it stops waiting,
  * or kills the step it runs (exit 129) and frees the lock. A repository with a merge command runs it in place of the
@@ -31,8 +31,8 @@ export async function merge(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const config = requireConfig(kit, runtime, 'read');
   const zone = teamZone(config, runtime);
   const session = sessionIdOf(await rosterOf(runtime, kit, config), caller);
-  const { coordinator, budget } = config;
-  const places = coordinatorPlaces(coordinator, kit.paths);
+  const { delivery, budget } = config;
+  const places = coordinatorPlaces(delivery, kit.paths);
   const say = logLineOf(runtime, zone);
   const tree = new LeadTree(config);
   const watching = await watchStarters(runtime, say);
@@ -42,7 +42,7 @@ export async function merge(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
       stop,
       mergeBranch(
         {
-          coordinator,
+          delivery,
           places,
           zone,
           inTeam: (path) => teamPlace(kit.paths, path),
@@ -62,7 +62,7 @@ export async function merge(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
           taskOf: async (id) => (await new JsonlEventLog(runtime.files, kit.paths.events).read()).state.tasks.get(id),
           clock: runtime.clock,
           sleep: stoppableSleep(runtime.sleep, stop),
-          lock: stoppableLock(hostLockOf(runtime, places.hostLock, coordinator.heavy), stop),
+          lock: stoppableLock(hostLockOf(runtime, places.hostLock, delivery.queue), stop),
           env: runtime.env,
           platform: runtime.platform,
           nextReset: nextResetFrom(runtime, budget, snapshotDirOf(budget, kit.paths)),

@@ -37,7 +37,7 @@ export type SelfMergeTask = Pick<Task, 'owner' | 'status'>;
 export interface SelfMergeChange {
   readonly session: string;
   readonly repo: string;
-  /** Whether the repo's review gate looked at the change (`coordinator.repos.<name>.reviewGate`). */
+  /** Whether the repo's review gate looked at the change (`delivery.repos.<name>.reviewGate`). */
   readonly reviewGate: boolean;
   readonly branch: string;
   /** The task the branch names (`taskOfBranch`); undefined when it names none. */
@@ -106,7 +106,7 @@ function testsMiss(change: SelfMergeChange, rule: SelfMergeRule): GateMiss | und
 
 /** With no review gate, nothing held the change's review paths for their reviewer, so it is no clean review. */
 function reviewMiss(change: SelfMergeChange): GateMiss | undefined {
-  return change.reviewGate ? undefined : { gate: 'review', why: `coordinator.repos.${change.repo}.reviewGate is off, so no review gate looked at its paths` };
+  return change.reviewGate ? undefined : { gate: 'review', why: `delivery.repos.${change.repo}.reviewGate is off, so no review gate looked at its paths` };
 }
 
 /** The gates the change misses, in gate order; none lets it merge with no approval. */

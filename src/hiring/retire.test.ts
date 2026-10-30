@@ -96,7 +96,7 @@ describe('planRetire', () => {
   it('refuses a session off the team, or one a role or github still names', () => {
     assert.match(problem(FILE, { id: 'ghost' }), /ghost is not on the team/);
     assert.match(problem(FILE, { id: 'lead' }), /lead holds roles\.lead/);
-    assert.match(problem({ ...FILE, roles: { lead: 'lead', coordinatorOwner: 'helper' } }), /holds roles\.coordinatorOwner/);
+    assert.match(problem({ ...FILE, roles: { lead: 'lead', deliveryOwner: 'helper' } }), /holds roles\.deliveryOwner/);
     const github = { repos: ['acme/app'], owners: { octo: 'helper' } };
     assert.match(problem({ ...FILE, github }), /github\.owners names helper for octo/);
     assert.match(problem({ ...FILE, github: { repos: ['acme/app'], sessions: { 'acme/app': 'helper' } } }), /github\.sessions names helper for acme\/app/);

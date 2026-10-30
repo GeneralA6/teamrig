@@ -138,7 +138,7 @@ describe('renderConfigReference', () => {
     assert.ok(page.startsWith('# Configuration reference\n\n'));
     assert.ok(page.endsWith('|\n') && !page.endsWith('\n\n'), 'the page ends in one newline');
     const drawn = new Set(headings(page));
-    for (const heading of ['Top level', '`ruleConflicts[]`', '`coordinator.repos.*.deploy.checks[]`', '`budget.sessions.*`', '`launch.*`', 'Shared types']) {
+    for (const heading of ['Top level', '`ruleConflicts[]`', '`delivery.repos.*.deploy.checks[]`', '`budget.sessions.*`', '`launch.*`', 'Shared types']) {
       assert.ok(drawn.has(heading), `no section ${heading}`);
     }
     assert.match(rows(page, 'Top level').join('\n'), /^\| `sessions` \(required\) \| array \(unique\) of \[session name\]\(#shared-types\) \|/m);

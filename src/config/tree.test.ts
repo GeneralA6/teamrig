@@ -129,15 +129,15 @@ describe('TeamTree', () => {
       return teamNodeOf(id, config, new Roster(config, id));
     };
     const tree = new TeamTree([
-      roled('app', undefined, { lead: 'lead', coordinatorOwner: 'dev', securityReviewer: 'dev' }),
-      roled('web', 'app', { lead: 'lead', coordinatorOwner: 'app/dev', securityReviewer: 'app/dev' }),
-      roled('ui', 'web', { lead: 'lead', coordinatorOwner: 'web/dev', securityReviewer: 'app/dev' }),
+      roled('app', undefined, { lead: 'lead', deliveryOwner: 'dev', securityReviewer: 'dev' }),
+      roled('web', 'app', { lead: 'lead', deliveryOwner: 'app/dev', securityReviewer: 'app/dev' }),
+      roled('ui', 'web', { lead: 'lead', deliveryOwner: 'web/dev', securityReviewer: 'app/dev' }),
       roled('ops', 'app', { lead: 'lead', securityReviewer: 'web/dev' }),
     ]);
     assert.deepEqual(tree.ancestorsOf('ui'), ['app', 'web']);
     assert.deepEqual(tree.problems(), [
       { kind: 'tree-role', team: 'ops', role: 'securityReviewer', holder: { team: 'web', id: 'dev' }, reason: 'not-above' },
-      { kind: 'tree-role', team: 'ui', role: 'coordinatorOwner', holder: { team: 'web', id: 'dev' }, reason: 'not-holder' },
+      { kind: 'tree-role', team: 'ui', role: 'deliveryOwner', holder: { team: 'web', id: 'dev' }, reason: 'not-holder' },
     ]);
   });
 
@@ -175,11 +175,11 @@ describe('describeTreeProblem', () => {
       { kind: 'tree-depth', team: 'deep', level: 4 },
       { kind: 'tree-children', team: 'app', children: ['a', 'b'] },
       { kind: 'tree-role', team: 'ops', role: 'securityReviewer', holder: { team: 'web', id: 'dev' }, reason: 'not-above' },
-      { kind: 'tree-role', team: 'ui', role: 'coordinatorOwner', holder: { team: 'web', id: 'dev' }, reason: 'not-holder' },
+      { kind: 'tree-role', team: 'ui', role: 'deliveryOwner', holder: { team: 'web', id: 'dev' }, reason: 'not-holder' },
     ];
     const lines = problems.map((problem) => describeTreeProblem(problem, 'teamrig'));
     assert.match(lines[5] ?? '', /roles\.securityReviewer names web\/dev, but team web is not above ops: name the holder on a team above it/);
-    assert.match(lines[6] ?? '', /names web\/dev, which does not hold roles\.coordinatorOwner on team web: name the session that does/);
+    assert.match(lines[6] ?? '', /names web\/dev, which does not hold roles\.deliveryOwner on team web: name the session that does/);
     assert.match(lines[0] ?? '', /team\.id "webby", but its folder is web: set team\.id to web/);
     assert.match(lines[1] ?? '', /`teamrig team create gone`/);
     assert.match(lines[2] ?? '', /teams a, b name each other as parents in a loop/);

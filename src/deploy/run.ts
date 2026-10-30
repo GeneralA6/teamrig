@@ -36,7 +36,7 @@ export const NO_DEPLOY_LINE = 'no-deploy';
 
 export interface DeployRequest {
   readonly session: string;
-  /** A key of `coordinator.repos`; undefined picks the repository the folder is in, else the only one with a deploy block. */
+  /** A key of `delivery.repos`; undefined picks the repository the folder is in, else the only one with a deploy block. */
   readonly repo: string | undefined;
   /** The folder the command runs in. */
   readonly dir: string;
@@ -45,7 +45,7 @@ export interface DeployRequest {
 export interface DeploySetup {
   /** The team's name, given to every hook as `TEAMRIG_TEAM`. */
   readonly team: string;
-  readonly coordinator: CoordinatorConfig;
+  readonly delivery: CoordinatorConfig;
   readonly places: CoordinatorPlaces;
   /** The team's clock, for the times its refusals and waits name. */
   readonly zone: TimeZone;
@@ -107,8 +107,8 @@ function runExitCode(run: DeployRun): number {
 
 /** The repository to deploy: the one named, else the one the folder is in, else the only one with a deploy block. */
 export function chosenRepo(setup: DeploySetup, ports: DeployPorts, request: DeployRequest): { readonly kind: 'chosen'; readonly repo: DeployRepo } | { readonly kind: 'refused'; readonly reason: string } {
-  const repos = Object.entries(setup.coordinator.repos);
-  const deployable = deployRepos(setup.coordinator, (path) => setup.inTeam(path));
+  const repos = Object.entries(setup.delivery.repos);
+  const deployable = deployRepos(setup.delivery, (path) => setup.inTeam(path));
   const names = deployable.length === 0 ? 'none has a deploy block' : `with a deploy block: ${deployable.map((repo) => repo.name).join(', ')}`;
   if (request.repo !== undefined) {
     const named = deployable.find((repo) => repo.name === request.repo);
@@ -116,7 +116,7 @@ export function chosenRepo(setup: DeploySetup, ports: DeployPorts, request: Depl
       return { kind: 'chosen', repo: named };
     }
     const listed = repos.some(([name]) => name === request.repo);
-    return { kind: 'refused', reason: listed ? `coordinator.repos.${request.repo} has no deploy block, so there is nothing to deploy it with (${names})` : `${request.repo} is not in coordinator.repos (${names})` };
+    return { kind: 'refused', reason: listed ? `delivery.repos.${request.repo} has no deploy block, so there is nothing to deploy it with (${names})` : `${request.repo} is not in delivery.repos (${names})` };
   }
   const here = ports.git.checkoutOf(request.dir);
   const folderMain = here === undefined ? undefined : (here.mainCheckout ?? here.top);
@@ -126,7 +126,7 @@ export function chosenRepo(setup: DeploySetup, ports: DeployPorts, request: Depl
   if (chosen !== undefined) {
     return { kind: 'chosen', repo: chosen };
   }
-  return { kind: 'refused', reason: deployable.length === 0 ? 'no repository in coordinator.repos has a deploy block' : `name the repository to deploy with --repo (${names})` };
+  return { kind: 'refused', reason: deployable.length === 0 ? 'no repository in delivery.repos has a deploy block' : `name the repository to deploy with --repo (${names})` };
 }
 
 /** Every hook's environment: this process's, with the deploy's `TEAMRIG_*` variables and `extra`. */
@@ -147,11 +147,11 @@ function hookEnv(setup: DeploySetup, ports: DeployPorts, request: DeployRequest,
  * quiet claim on one of them holds it; undefined when none does.
  */
 export async function scheduleReadiness(setup: DeploySetup, ports: DeployPorts, targets: readonly string[]): Promise<Readiness | undefined> {
-  const { schedule } = setup.coordinator;
+  const { schedule } = setup.delivery;
   const now = ports.clock.now();
   const hours = schedule.resetBlackoutHours;
   const refusal =
-    heavyCutoffReason(now, schedule.heavyCutoffUtc, setup.zone) ??
+    heavyCutoffReason(now, schedule.queueCutoffUtc, setup.zone) ??
     (hours === undefined ? undefined : resetBlackoutReason(now, await ports.nextReset(now), hours, setup.zone));
   if (refusal !== undefined) {
     return { kind: 'refuse', reason: refusal };
@@ -201,7 +201,7 @@ function readinessOf(setup: DeploySetup, ports: DeployPorts, request: DeployRequ
       scanner: ports.scanner,
       cwd: repo.main,
       env: hookEnv(setup, ports, request, repo, view.range),
-      timeoutSeconds: setup.coordinator.checkTimeoutSeconds,
+      timeoutSeconds: setup.delivery.checkTimeoutSeconds,
     });
     if (phase === 'locked') {
       view.tag = answer.tag;
@@ -218,7 +218,7 @@ function readinessOf(setup: DeploySetup, ports: DeployPorts, request: DeployRequ
  */
 async function installDeps(setup: DeploySetup, ports: DeployPorts, repo: DeployRepo, head: string, deps: DependencyStep, env: Env, show: (line: string) => string): Promise<DeployRun | undefined> {
   const { touches, check } = deps;
-  const timeoutMs = setup.coordinator.heavy.maxRunMinutes * MINUTE_MS;
+  const timeoutMs = setup.delivery.queue.maxRunMinutes * MINUTE_MS;
   const changed = `deps changed (${touches.join(', ')})`;
   if (check !== undefined) {
     ports.say(`${changed}: dependency check ${check.join(' ')}`);
@@ -255,7 +255,7 @@ async function pullAndDeploy(setup: DeploySetup, ports: DeployPorts, request: De
   }
   ports.say(`pulled ${repo.main} to ${short(pending.target)}`);
   const env = underLock(hookEnv(setup, ports, request, repo, pending, { TEAMRIG_DEPLOY_TO: pending.target, ...(tag === undefined ? {} : { TEAMRIG_DEPLOY_TAG: tag }) }), lock);
-  const timeoutMs = setup.coordinator.heavy.maxRunMinutes * MINUTE_MS;
+  const timeoutMs = setup.delivery.queue.maxRunMinutes * MINUTE_MS;
   const show = shownBy(ports);
   if (pending.deps !== undefined) {
     const failed = await installDeps(setup, ports, repo, pending.head, pending.deps, env, show);
@@ -366,7 +366,7 @@ export async function deployRepo(setup: DeploySetup, ports: DeployPorts, request
   }
   ports.say(`${plural(early.pending.commits.length, 'commit')} pending in ${repo.name} (${early.pending.range})`);
   const view: LockedView = { read: undefined, tag: undefined, range: early.pending };
-  const { wait } = setup.coordinator;
+  const { wait } = setup.delivery;
   const queuedAt = ports.clock.now();
   const clearance = await takeWhenClear(readinessOf(setup, ports, request, repo, view), ports, {
     session: request.session,

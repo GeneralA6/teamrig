@@ -483,7 +483,7 @@ describe('runCli: config', () => {
 });
 
 describe('runCli: session names', () => {
-  const NAMED: JsonRecord = { ...TEAM, names: { lead: 'captain' }, roles: { lead: 'lead', coordinatorOwner: 'alpha' } };
+  const NAMED: JsonRecord = { ...TEAM, names: { lead: 'captain' }, roles: { lead: 'lead', deliveryOwner: 'alpha' } };
 
   it('takes a name wherever it takes a session, and keys everything by id', async () => {
     const kit = new CliHarness(NAMED);
@@ -520,18 +520,18 @@ describe('runCli: session names', () => {
 
   it('prints who to message, by id, name or role, or the whole roster', async () => {
     const kit = new CliHarness(NAMED);
-    const names = await Promise.all(['lead', 'captain', 'coordinatorOwner', 'bravo'].map((text) => kit.run(['who', text])));
+    const names = await Promise.all(['lead', 'captain', 'deliveryOwner', 'bravo'].map((text) => kit.run(['who', text])));
     assert.deepEqual(
       names.map((result) => result.stdout),
       [['captain'], ['captain'], ['app-alpha'], ['app-bravo']],
     );
-    assert.deepEqual((await kit.run(['who'])).stdout, ['lead captain (lead)', 'alpha app-alpha (coordinatorOwner)', 'bravo app-bravo']);
+    assert.deepEqual((await kit.run(['who'])).stdout, ['lead captain (lead)', 'alpha app-alpha (deliveryOwner)', 'bravo app-bravo']);
   });
 
   it('refuses who for a role nobody holds or a stranger', async () => {
     const kit = new CliHarness();
-    const role = await kit.run(['who', 'coordinatorOwner']);
-    assert.deepEqual([role.code, role.stdout[0]], [EXIT.refused, 'REFUSED no session holds the coordinatorOwner role']);
+    const role = await kit.run(['who', 'deliveryOwner']);
+    assert.deepEqual([role.code, role.stdout[0]], [EXIT.refused, 'REFUSED no session holds the deliveryOwner role']);
     assert.equal((await kit.run(['who', 'zulu'])).code, EXIT.refused);
     assert.equal((await kit.run(['who', 'a', 'b'])).code, EXIT.usage);
   });

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_COMMITS, DEFAULT_HIRING, DEFAULT_IDLE, DEFAULT_OPEN, DEFAULT_PERMISSIONS, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_STATUS_LINE, DEFAULT_WAKE, DEFAULT_WINDOWS } from './defaults.ts';
+import { DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_CLAIMS, DEFAULT_COMMITS, DEFAULT_HEAVY, DEFAULT_HIRING, DEFAULT_IDLE, DEFAULT_OPEN, DEFAULT_PERMISSIONS, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_STATUS_LINE, DEFAULT_WAKE, DEFAULT_WINDOWS } from './defaults.ts';
 import { HIRE_CAP_DROPPED, IDLE_RETIRE_DROPPED } from './migrate.ts';
 import { parseConfig } from './parse.ts';
 import { CONFIG_VERSION, type AccountBudget } from './types.ts';
@@ -28,13 +28,13 @@ describe('parseConfig', () => {
     assert.deepEqual(config.github, { repos: [], owners: {}, sessions: {}, closedDays: 14, everyMinutes: 15 });
     assert.deepEqual(config.register, DEFAULT_REGISTER);
     assert.deepEqual(config.budget, DEFAULT_BUDGET);
-    assert.deepEqual(config.coordinator, {
+    assert.deepEqual(config.delivery, {
       schedule: {},
-      heavy: { lockTtlMinutes: 150, maxRunMinutes: 45, smallMaxRunMinutes: 10, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048 },
+      queue: { lockTtlMinutes: 150, maxRunMinutes: 45, smallMaxRunMinutes: 10, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048 },
       wait: { pollSeconds: 30, maxMinutes: 60 },
       checkTimeoutSeconds: 20,
-      claims: { maxMinutes: 120 },
-      windows: { settleMinutes: 30, targetSettleMinutes: {}, assumedDeployMinutes: 20, minMinutes: 15 },
+      freezes: { maxMinutes: 120 },
+      stablePeriods: { settleMinutes: 30, targetSettleMinutes: {}, assumedDeployMinutes: 20, minMinutes: 15 },
       repos: {},
     });
     assert.deepEqual(config.pushGuard.protectedBranches, ['main', 'master']);
@@ -48,20 +48,20 @@ describe('parseConfig', () => {
   });
 
   it('requires every role holder to be a session on the team', () => {
-    const { config, issues } = parseConfig({ sessions: ['alpha'], roles: { lead: 'bravo', coordinatorOwner: 'charlie', securityReviewer: 'delta' } });
-    assert.deepEqual(paths(issues), ['roles.lead', 'roles.coordinatorOwner', 'roles.securityReviewer']);
-    assert.equal(config.roles.coordinatorOwner, 'charlie');
+    const { config, issues } = parseConfig({ sessions: ['alpha'], roles: { lead: 'bravo', deliveryOwner: 'charlie', securityReviewer: 'delta' } });
+    assert.deepEqual(paths(issues), ['roles.lead', 'roles.deliveryOwner', 'roles.securityReviewer']);
+    assert.equal(config.roles.deliveryOwner, 'charlie');
     assert.equal(config.roles.securityReviewer, 'delta');
   });
 
-  it('takes a reviewer or coordinator of a team above as <team>/<id>, never its own team so, nor a qualified lead (T1143)', () => {
-    const above = parseConfig({ sessions: ['alpha'], roles: { lead: 'alpha', coordinatorOwner: 'root/po', securityReviewer: 'root/security' }, team: { id: 'web', parent: 'root' } });
+  it('takes a reviewer or delivery owner of a team above as <team>/<id>, never its own team so, nor a qualified lead (T1143)', () => {
+    const above = parseConfig({ sessions: ['alpha'], roles: { lead: 'alpha', deliveryOwner: 'root/po', securityReviewer: 'root/security' }, team: { id: 'web', parent: 'root' } });
     assert.deepEqual(above.issues, []);
-    assert.deepEqual(above.config.roles, { lead: 'alpha', coordinatorOwner: 'root/po', securityReviewer: 'root/security' });
+    assert.deepEqual(above.config.roles, { lead: 'alpha', deliveryOwner: 'root/po', securityReviewer: 'root/security' });
     const own = parseConfig({ sessions: ['alpha'], roles: { lead: 'alpha', securityReviewer: 'web/alpha' }, team: { id: 'web', parent: 'root' } });
     assert.deepEqual(own.issues, [{ path: 'roles.securityReviewer', message: 'names its own team web: write the bare id' }]);
-    const bad = parseConfig({ sessions: ['alpha'], roles: { lead: 'root/alpha', coordinatorOwner: 'Root/po', securityReviewer: 'a/b/c' } });
-    assert.deepEqual(paths(bad.issues), ['roles.lead', 'roles.coordinatorOwner', 'roles.securityReviewer']);
+    const bad = parseConfig({ sessions: ['alpha'], roles: { lead: 'root/alpha', deliveryOwner: 'Root/po', securityReviewer: 'a/b/c' } });
+    assert.deepEqual(paths(bad.issues), ['roles.lead', 'roles.deliveryOwner', 'roles.securityReviewer']);
   });
 
   it('leaves the optional roles out when the config does not assign them', () => {
@@ -340,11 +340,11 @@ describe('parseConfig', () => {
       lock: { ttlMs: 10 },
       skills: 'none',
       budget: { enabled: 'yes' },
-      coordinator: { schedule: { heavyCutoffUtc: '24:00' } },
+      delivery: { schedule: { queueCutoffUtc: '24:00' } },
     });
     assert.deepEqual(paths(issues).sort(), [
       'budget.enabled',
-      'coordinator.schedule.heavyCutoffUtc',
+      'delivery.schedule.queueCutoffUtc',
       'lock.ttlMs',
       'messages.maxLines',
       'skills',
@@ -380,14 +380,14 @@ describe('parseConfig', () => {
   it('keeps valid overrides', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,
-      roles: { lead: 'alpha', coordinatorOwner: 'bravo', securityReviewer: 'bravo' },
+      roles: { lead: 'alpha', deliveryOwner: 'bravo', securityReviewer: 'bravo' },
       register: { priorities: [{ id: 1, name: 'now' }], goalPattern: '^G\\d+$', requireNoteOn: ['waiting'], check: { prioritySkipAfterHours: 12, maxSelfMadePerDay: 0, goalProgressDays: 2, overSizeMultiple: 1.5 } },
-      coordinator: { schedule: { heavyCutoffUtc: '22:30' } },
+      delivery: { schedule: { queueCutoffUtc: '22:30' } },
       budget: { enabled: true, targetPct: 95 },
       paths: { inbox: '/srv/team/inbox' },
     });
     assert.deepEqual(issues, []);
-    assert.deepEqual(config.roles, { lead: 'alpha', coordinatorOwner: 'bravo', securityReviewer: 'bravo' });
+    assert.deepEqual(config.roles, { lead: 'alpha', deliveryOwner: 'bravo', securityReviewer: 'bravo' });
     assert.deepEqual(config.register.priorities, [{ id: 1, name: 'now' }]);
     assert.equal(config.register.goalPattern, '^G\\d+$');
     assert.deepEqual(config.register.requireNoteOn, ['waiting']);
@@ -401,63 +401,63 @@ describe('parseConfig', () => {
       weekLengthDays: 7,
       stopgapFiles: ['CLAUDE.md', '.claude/rules'],
     });
-    assert.deepEqual(config.coordinator.schedule, { heavyCutoffUtc: '22:30' });
+    assert.deepEqual(config.delivery.schedule, { queueCutoffUtc: '22:30' });
     assert.deepEqual(config.budget, { ...DEFAULT_BUDGET, enabled: true, targetPct: 95 });
     assert.deepEqual(config.paths, { inbox: '/srv/team/inbox' });
   });
 
-  it('keeps the coordinator folder, host lock and heavy step limits', () => {
-    const coordinator = {
+  it('keeps the delivery folder, host lock and heavy step limits', () => {
+    const delivery = {
       dir: 'data/deploys',
-      heavy: { lockPath: 'data/deploys/host.lock', lockTtlMinutes: 90, maxRunMinutes: 80, smallMaxRunMinutes: 80, waitMinutes: 0, memorySampleSeconds: 0, memoryFloorMb: 0, smallReserveMb: 512 },
+      queue: { lockPath: 'data/deploys/host.lock', lockTtlMinutes: 90, maxRunMinutes: 80, smallMaxRunMinutes: 80, waitMinutes: 0, memorySampleSeconds: 0, memoryFloorMb: 0, smallReserveMb: 512 },
       wait: { pollSeconds: 5, maxMinutes: 0 },
       checkTimeoutSeconds: 45,
-      claims: { maxMinutes: 90 },
-      windows: { settleMinutes: 10, targetSettleMinutes: {}, assumedDeployMinutes: 5, minMinutes: 30 },
+      freezes: { maxMinutes: 90 },
+      stablePeriods: { settleMinutes: 10, targetSettleMinutes: {}, assumedDeployMinutes: 5, minMinutes: 30 },
     };
-    const { config, issues } = parseConfig({ ...ROSTER, coordinator });
+    const { config, issues } = parseConfig({ ...ROSTER, delivery });
     assert.deepEqual(issues, []);
-    assert.deepEqual(config.coordinator, { ...coordinator, schedule: {}, repos: {} });
+    assert.deepEqual(config.delivery, { ...delivery, schedule: {}, repos: {} });
   });
 
   it('cuts a heavy step longer than its lock less 10 minutes to fit, and says so', () => {
-    const { config, issues } = parseConfig({ ...ROSTER, coordinator: { heavy: { lockTtlMinutes: 60, maxRunMinutes: 55 } } });
-    assert.deepEqual(paths(issues), ['coordinator.heavy.maxRunMinutes']);
-    assert.equal(config.coordinator.heavy.maxRunMinutes, 50);
+    const { config, issues } = parseConfig({ ...ROSTER, delivery: { queue: { lockTtlMinutes: 60, maxRunMinutes: 55 } } });
+    assert.deepEqual(paths(issues), ['delivery.queue.maxRunMinutes']);
+    assert.equal(config.delivery.queue.maxRunMinutes, 50);
   });
 
   it('fits the default heavy step limit to a short lock without an issue', () => {
-    const { config, issues } = parseConfig({ ...ROSTER, coordinator: { heavy: { lockTtlMinutes: 30 } } });
+    const { config, issues } = parseConfig({ ...ROSTER, delivery: { queue: { lockTtlMinutes: 30 } } });
     assert.deepEqual(issues, []);
-    assert.equal(config.coordinator.heavy.maxRunMinutes, 20);
+    assert.equal(config.delivery.queue.maxRunMinutes, 20);
   });
 
   it('cuts a small step limit longer than a step to it, and says so', () => {
-    const { config, issues } = parseConfig({ ...ROSTER, coordinator: { heavy: { maxRunMinutes: 30, smallMaxRunMinutes: 40 } } });
-    assert.deepEqual(paths(issues), ['coordinator.heavy.smallMaxRunMinutes']);
-    assert.equal(config.coordinator.heavy.smallMaxRunMinutes, 30);
+    const { config, issues } = parseConfig({ ...ROSTER, delivery: { queue: { maxRunMinutes: 30, smallMaxRunMinutes: 40 } } });
+    assert.deepEqual(paths(issues), ['delivery.queue.smallMaxRunMinutes']);
+    assert.equal(config.delivery.queue.smallMaxRunMinutes, 30);
   });
 
   it('fits the default small step limit to a short step limit without an issue', () => {
-    const { config, issues } = parseConfig({ ...ROSTER, coordinator: { heavy: { maxRunMinutes: 5 } } });
+    const { config, issues } = parseConfig({ ...ROSTER, delivery: { queue: { maxRunMinutes: 5 } } });
     assert.deepEqual(issues, []);
-    assert.equal(config.coordinator.heavy.smallMaxRunMinutes, 5);
+    assert.equal(config.delivery.queue.smallMaxRunMinutes, 5);
   });
 
   it('reads the reset blackout and the repositories teamrig merge merges into, each repository from its defaults', () => {
-    const coordinator = {
-      schedule: { heavyCutoffUtc: '22:30', resetBlackoutHours: 4 },
+    const delivery = {
+      schedule: { queueCutoffUtc: '22:30', resetBlackoutHours: 4 },
       repos: {
-        api: { mainCheckout: 'C:/src/api', deploysOnPush: ['cloud-api'], followMainCheckout: true },
+        api: { mainCheckout: 'C:/src/api', deploysOnPush: ['cloud-api'], updateMainCheckout: true },
         web: { mainCheckout: 'repos/web', dependencyGate: true },
       },
     };
-    const { config, issues } = parseConfig({ ...ROSTER, coordinator });
+    const { config, issues } = parseConfig({ ...ROSTER, delivery });
     assert.deepEqual(issues, []);
-    assert.deepEqual(config.coordinator.schedule, coordinator.schedule);
-    assert.deepEqual(config.coordinator.repos, {
-      api: { mainCheckout: 'C:/src/api', deploysOnPush: ['cloud-api'], dependencyGate: false, reviewGate: false, followMainCheckout: true },
-      web: { mainCheckout: 'repos/web', deploysOnPush: [], dependencyGate: true, reviewGate: false, followMainCheckout: false },
+    assert.deepEqual(config.delivery.schedule, delivery.schedule);
+    assert.deepEqual(config.delivery.repos, {
+      api: { mainCheckout: 'C:/src/api', deploysOnPush: ['cloud-api'], dependencyGate: false, reviewGate: false, updateMainCheckout: true },
+      web: { mainCheckout: 'repos/web', deploysOnPush: [], dependencyGate: true, reviewGate: false, updateMainCheckout: false },
     });
   });
 
@@ -468,11 +468,11 @@ describe('parseConfig', () => {
       open: { mainCheckout: 'repos/open', dependencyCheck: check },
       bad: { mainCheckout: 'repos/bad', dependencyGate: true, dependencyCheck: 'node check.ts' },
     };
-    const { config, issues } = parseConfig({ ...ROSTER, coordinator: { repos } });
-    assert.deepEqual(paths(issues).sort(), ['coordinator.repos.bad.dependencyCheck', 'coordinator.repos.open.dependencyCheck']);
-    assert.match(issues.find((issue) => issue.path === 'coordinator.repos.open.dependencyCheck')?.message ?? '', /runs only with dependencyGate true/);
-    assert.deepEqual(config.coordinator.repos['gated'], { mainCheckout: 'repos/gated', deploysOnPush: [], dependencyGate: true, dependencyCheck: check, reviewGate: false, followMainCheckout: false });
-    assert.equal(config.coordinator.repos['bad']?.dependencyCheck, undefined);
+    const { config, issues } = parseConfig({ ...ROSTER, delivery: { repos } });
+    assert.deepEqual(paths(issues).sort(), ['delivery.repos.bad.dependencyCheck', 'delivery.repos.open.dependencyCheck']);
+    assert.match(issues.find((issue) => issue.path === 'delivery.repos.open.dependencyCheck')?.message ?? '', /runs only with dependencyGate true/);
+    assert.deepEqual(config.delivery.repos['gated'], { mainCheckout: 'repos/gated', deploysOnPush: [], dependencyGate: true, dependencyCheck: check, reviewGate: false, updateMainCheckout: false });
+    assert.equal(config.delivery.repos['bad']?.dependencyCheck, undefined);
   });
 
   it('reads the review check a gated repository runs, and reports one that never runs or is no program', () => {
@@ -482,12 +482,12 @@ describe('parseConfig', () => {
       open: { mainCheckout: 'repos/open', reviewCheck: check },
       bad: { mainCheckout: 'repos/bad', reviewGate: true, reviewCheck: 'node review.ts' },
     };
-    const { config, issues } = parseConfig({ ...ROSTER, coordinator: { repos } });
-    assert.deepEqual(paths(issues).sort(), ['coordinator.repos.bad.reviewCheck', 'coordinator.repos.open.reviewCheck']);
-    assert.match(issues.find((issue) => issue.path === 'coordinator.repos.open.reviewCheck')?.message ?? '', /runs only with reviewGate true/);
-    assert.deepEqual(config.coordinator.repos['gated'], { mainCheckout: 'repos/gated', deploysOnPush: [], dependencyGate: false, reviewGate: true, reviewCheck: check, followMainCheckout: false });
-    assert.equal(config.coordinator.repos['bad']?.reviewGate, true);
-    assert.equal(config.coordinator.repos['bad']?.reviewCheck, undefined);
+    const { config, issues } = parseConfig({ ...ROSTER, delivery: { repos } });
+    assert.deepEqual(paths(issues).sort(), ['delivery.repos.bad.reviewCheck', 'delivery.repos.open.reviewCheck']);
+    assert.match(issues.find((issue) => issue.path === 'delivery.repos.open.reviewCheck')?.message ?? '', /runs only with reviewGate true/);
+    assert.deepEqual(config.delivery.repos['gated'], { mainCheckout: 'repos/gated', deploysOnPush: [], dependencyGate: false, reviewGate: true, reviewCheck: check, updateMainCheckout: false });
+    assert.equal(config.delivery.repos['bad']?.reviewGate, true);
+    assert.equal(config.delivery.repos['bad']?.reviewCheck, undefined);
   });
 
   it('reads where a repository’s new worktrees go and their setup, and reports a blank folder or a setup that is no program (T1305)', () => {
@@ -498,12 +498,12 @@ describe('parseConfig', () => {
       bad: { mainCheckout: 'repos/bad', worktreeFolder: ' ', worktreeSetup: 'node link.ts' },
       empty: { mainCheckout: 'repos/empty', worktreeSetup: [] },
     };
-    const { config, issues } = parseConfig({ ...ROSTER, coordinator: { repos } });
-    assert.deepEqual(paths(issues).sort(), ['coordinator.repos.bad.worktreeFolder', 'coordinator.repos.bad.worktreeSetup', 'coordinator.repos.empty.worktreeSetup']);
-    assert.deepEqual(config.coordinator.repos['set'], { mainCheckout: 'repos/set', deploysOnPush: [], dependencyGate: false, reviewGate: false, followMainCheckout: false, worktreeFolder: '../worktrees', worktreeSetup: setup });
-    assert.deepEqual(config.coordinator.repos['unset'], { mainCheckout: 'repos/unset', deploysOnPush: [], dependencyGate: false, reviewGate: false, followMainCheckout: false });
-    assert.equal(config.coordinator.repos['bad']?.worktreeFolder, undefined);
-    assert.equal(config.coordinator.repos['bad']?.worktreeSetup, undefined);
+    const { config, issues } = parseConfig({ ...ROSTER, delivery: { repos } });
+    assert.deepEqual(paths(issues).sort(), ['delivery.repos.bad.worktreeFolder', 'delivery.repos.bad.worktreeSetup', 'delivery.repos.empty.worktreeSetup']);
+    assert.deepEqual(config.delivery.repos['set'], { mainCheckout: 'repos/set', deploysOnPush: [], dependencyGate: false, reviewGate: false, updateMainCheckout: false, worktreeFolder: '../worktrees', worktreeSetup: setup });
+    assert.deepEqual(config.delivery.repos['unset'], { mainCheckout: 'repos/unset', deploysOnPush: [], dependencyGate: false, reviewGate: false, updateMainCheckout: false });
+    assert.equal(config.delivery.repos['bad']?.worktreeFolder, undefined);
+    assert.equal(config.delivery.repos['bad']?.worktreeSetup, undefined);
   });
 
   it('reads a repository’s merge command, and leaves out one that is not a program with its arguments', () => {
@@ -515,13 +515,13 @@ describe('parseConfig', () => {
       empty: { mainCheckout: 'repos/empty', merge: {} },
       bare: { mainCheckout: 'repos/bare', merge: ['node', 'merge.ts'] },
     };
-    const { config, issues } = parseConfig({ ...ROSTER, coordinator: { repos } });
-    assert.deepEqual(paths(issues).sort(), ['coordinator.repos.bare.merge', 'coordinator.repos.empty.merge.command', 'coordinator.repos.text.merge.command']);
-    assert.deepEqual(config.coordinator.repos['forge'], { mainCheckout: 'repos/forge', deploysOnPush: [], dependencyGate: false, reviewGate: false, followMainCheckout: false, merge: { command, remote: 'origin' } });
-    assert.equal(config.coordinator.repos['push']?.merge, undefined);
-    assert.equal(config.coordinator.repos['text']?.merge, undefined);
-    assert.equal(config.coordinator.repos['empty']?.merge, undefined);
-    assert.equal(config.coordinator.repos['bare']?.merge, undefined);
+    const { config, issues } = parseConfig({ ...ROSTER, delivery: { repos } });
+    assert.deepEqual(paths(issues).sort(), ['delivery.repos.bare.merge', 'delivery.repos.empty.merge.command', 'delivery.repos.text.merge.command']);
+    assert.deepEqual(config.delivery.repos['forge'], { mainCheckout: 'repos/forge', deploysOnPush: [], dependencyGate: false, reviewGate: false, updateMainCheckout: false, merge: { command, remote: 'origin' } });
+    assert.equal(config.delivery.repos['push']?.merge, undefined);
+    assert.equal(config.delivery.repos['text']?.merge, undefined);
+    assert.equal(config.delivery.repos['empty']?.merge, undefined);
+    assert.equal(config.delivery.repos['bare']?.merge, undefined);
   });
 
   it('reads the remote a merge command merges into, and refuses one git could read as an option or a range', () => {
@@ -533,39 +533,39 @@ describe('parseConfig', () => {
       spaced: { mainCheckout: 'repos/spaced', merge: { command, remote: 'a b' } },
       range: { mainCheckout: 'repos/range', merge: { command, remote: 'a..b' } },
     };
-    const { config, issues } = parseConfig({ ...ROSTER, coordinator: { repos } });
-    assert.deepEqual(paths(issues).sort(), ['coordinator.repos.option.merge.remote', 'coordinator.repos.range.merge.remote', 'coordinator.repos.spaced.merge.remote']);
-    assert.match(issues.find((issue) => issue.path === 'coordinator.repos.option.merge.remote')?.message ?? '', /expected a git remote name/);
-    assert.deepEqual(config.coordinator.repos['fork']?.merge, { command, remote: 'upstream' });
-    assert.deepEqual(config.coordinator.repos['dotted']?.merge, { command, remote: 'my.Remote_2' });
-    assert.deepEqual(config.coordinator.repos['option']?.merge, { command, remote: 'origin' });
+    const { config, issues } = parseConfig({ ...ROSTER, delivery: { repos } });
+    assert.deepEqual(paths(issues).sort(), ['delivery.repos.option.merge.remote', 'delivery.repos.range.merge.remote', 'delivery.repos.spaced.merge.remote']);
+    assert.match(issues.find((issue) => issue.path === 'delivery.repos.option.merge.remote')?.message ?? '', /expected a git remote name/);
+    assert.deepEqual(config.delivery.repos['fork']?.merge, { command, remote: 'upstream' });
+    assert.deepEqual(config.delivery.repos['dotted']?.merge, { command, remote: 'my.Remote_2' });
+    assert.deepEqual(config.delivery.repos['option']?.merge, { command, remote: 'origin' });
   });
 
   it('reads a repository’s deploy, its checks and afterPull hooks from their defaults', () => {
     const deploy = { targets: ['cloud-api'], checks: [{ name: 'flow', command: ['node', 'checks/flow.js', '--quiet'] }], command: ['node', 'deploy.js'] };
-    const { config, issues } = parseConfig({ ...ROSTER, coordinator: { repos: { api: { mainCheckout: 'C:/src/api', deploy }, web: { mainCheckout: 'C:/src/web', deploy: { command: ['npm', 'run', 'deploy'] } } } } });
+    const { config, issues } = parseConfig({ ...ROSTER, delivery: { repos: { api: { mainCheckout: 'C:/src/api', deploy }, web: { mainCheckout: 'C:/src/web', deploy: { command: ['npm', 'run', 'deploy'] } } } } });
     assert.deepEqual(issues, []);
-    assert.deepEqual(config.coordinator.repos['api']?.deploy, { ...deploy, afterPull: [] });
-    assert.deepEqual(config.coordinator.repos['web']?.deploy, { targets: [], checks: [], afterPull: [], command: ['npm', 'run', 'deploy'] });
+    assert.deepEqual(config.delivery.repos['api']?.deploy, { ...deploy, afterPull: [] });
+    assert.deepEqual(config.delivery.repos['web']?.deploy, { targets: [], checks: [], afterPull: [], command: ['npm', 'run', 'deploy'] });
   });
 
   it('reads a deploy’s dependency install, and leaves out one that is not a program with its arguments', () => {
     const install = ['npm', 'ci', '--ignore-scripts'];
     const { config, issues } = parseConfig({
       ...ROSTER,
-      coordinator: { repos: { api: { mainCheckout: 'C:/src/api', deploy: { dependencyInstall: install, command: ['node', 'deploy.js'] } }, web: { mainCheckout: 'C:/src/web', deploy: { dependencyInstall: 'npm ci', command: ['node', 'deploy.js'] } } } },
+      delivery: { repos: { api: { mainCheckout: 'C:/src/api', deploy: { dependencyInstall: install, command: ['node', 'deploy.js'] } }, web: { mainCheckout: 'C:/src/web', deploy: { dependencyInstall: 'npm ci', command: ['node', 'deploy.js'] } } } },
     });
-    assert.deepEqual(paths(issues), ['coordinator.repos.web.deploy.dependencyInstall']);
-    assert.deepEqual(config.coordinator.repos['api']?.deploy?.dependencyInstall, install);
-    assert.deepEqual(config.coordinator.repos['web']?.deploy, { targets: [], checks: [], afterPull: [], command: ['node', 'deploy.js'] });
+    assert.deepEqual(paths(issues), ['delivery.repos.web.deploy.dependencyInstall']);
+    assert.deepEqual(config.delivery.repos['api']?.deploy?.dependencyInstall, install);
+    assert.deepEqual(config.delivery.repos['web']?.deploy, { targets: [], checks: [], afterPull: [], command: ['node', 'deploy.js'] });
   });
 
   it('leaves out a deploy with no command, and a check or hook that is not a program with its arguments', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,
-      coordinator: {
+      delivery: {
         checkTimeoutSeconds: 0,
-        claims: { maxMinutes: 1441 },
+        freezes: { maxMinutes: 1441 },
         repos: {
           api: { mainCheckout: 'C:/src/api', deploy: { targets: ['cloud-api'] } },
           web: {
@@ -576,83 +576,83 @@ describe('parseConfig', () => {
       },
     });
     assert.deepEqual(paths(issues).sort(), [
-      'coordinator.checkTimeoutSeconds',
-      'coordinator.claims.maxMinutes',
-      'coordinator.repos.api.deploy.command',
-      'coordinator.repos.web.deploy.afterPull[0][1]',
-      'coordinator.repos.web.deploy.afterPull[1]',
-      'coordinator.repos.web.deploy.checks[0].name',
-      'coordinator.repos.web.deploy.checks[1].command',
-      'coordinator.repos.web.deploy.checks[2]',
+      'delivery.checkTimeoutSeconds',
+      'delivery.freezes.maxMinutes',
+      'delivery.repos.api.deploy.command',
+      'delivery.repos.web.deploy.afterPull[0][1]',
+      'delivery.repos.web.deploy.afterPull[1]',
+      'delivery.repos.web.deploy.checks[0].name',
+      'delivery.repos.web.deploy.checks[1].command',
+      'delivery.repos.web.deploy.checks[2]',
     ]);
-    assert.equal(config.coordinator.repos['api']?.deploy, undefined);
-    assert.deepEqual(config.coordinator.repos['web']?.deploy, { targets: [], checks: [], afterPull: [], command: ['node', 'deploy.js'] });
-    assert.equal(config.coordinator.checkTimeoutSeconds, 20);
-    assert.equal(config.coordinator.claims.maxMinutes, 120);
+    assert.equal(config.delivery.repos['api']?.deploy, undefined);
+    assert.deepEqual(config.delivery.repos['web']?.deploy, { targets: [], checks: [], afterPull: [], command: ['node', 'deploy.js'] });
+    assert.equal(config.delivery.checkTimeoutSeconds, 20);
+    assert.equal(config.delivery.freezes.maxMinutes, 120);
   });
 
   it('reads a settle time for each target a repository deploys, and reports the rest', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,
-      coordinator: {
-        windows: { settleMinutes: 1441, minMinutes: 0, targetSettleMinutes: { 'cloud-api': 10, workers: 45, Bad: 5, 'cloud-web': -1 } },
+      delivery: {
+        stablePeriods: { settleMinutes: 1441, minMinutes: 0, targetSettleMinutes: { 'cloud-api': 10, workers: 45, Bad: 5, 'cloud-web': -1 } },
         repos: { api: { mainCheckout: 'C:/src/api', deploysOnPush: ['cloud-api', 'cloud-web'] } },
       },
     });
     assert.deepEqual(paths(issues).sort(), [
-      'coordinator.windows.minMinutes',
-      'coordinator.windows.settleMinutes',
-      'coordinator.windows.targetSettleMinutes.Bad',
-      'coordinator.windows.targetSettleMinutes.cloud-web',
-      'coordinator.windows.targetSettleMinutes.workers',
+      'delivery.stablePeriods.minMinutes',
+      'delivery.stablePeriods.settleMinutes',
+      'delivery.stablePeriods.targetSettleMinutes.Bad',
+      'delivery.stablePeriods.targetSettleMinutes.cloud-web',
+      'delivery.stablePeriods.targetSettleMinutes.workers',
     ]);
-    assert.deepEqual(config.coordinator.windows, { settleMinutes: 30, targetSettleMinutes: { 'cloud-api': 10 }, assumedDeployMinutes: 20, minMinutes: 15 });
+    assert.deepEqual(config.delivery.stablePeriods, { settleMinutes: 30, targetSettleMinutes: { 'cloud-api': 10 }, assumedDeployMinutes: 20, minMinutes: 15 });
   });
 
   it('leaves out a repository with no main checkout or a bad name, and reports a bad target, blackout or deploy wait', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,
-      coordinator: {
+      delivery: {
         schedule: { resetBlackoutHours: 0 },
         wait: { maxMinutes: 1441 },
         repos: { api: { deploysOnPush: ['cloud-api'] }, 'My Repo': { mainCheckout: '/src/x' }, web: 'C:/src/web', ok: { mainCheckout: '/src/ok', deploysOnPush: ['Cloud API'] } },
       },
     });
     assert.deepEqual(paths(issues).sort(), [
-      'coordinator.repos.My Repo',
-      'coordinator.repos.api.mainCheckout',
-      'coordinator.repos.ok.deploysOnPush[0]',
-      'coordinator.repos.web',
-      'coordinator.schedule.resetBlackoutHours',
-      'coordinator.wait.maxMinutes',
+      'delivery.repos.My Repo',
+      'delivery.repos.api.mainCheckout',
+      'delivery.repos.ok.deploysOnPush[0]',
+      'delivery.repos.web',
+      'delivery.schedule.resetBlackoutHours',
+      'delivery.wait.maxMinutes',
     ]);
-    assert.deepEqual(config.coordinator.repos, { ok: { mainCheckout: '/src/ok', deploysOnPush: [], dependencyGate: false, reviewGate: false, followMainCheckout: false } });
-    assert.deepEqual(config.coordinator.schedule, {});
-    assert.equal(config.coordinator.wait.maxMinutes, 60);
+    assert.deepEqual(config.delivery.repos, { ok: { mainCheckout: '/src/ok', deploysOnPush: [], dependencyGate: false, reviewGate: false, updateMainCheckout: false } });
+    assert.deepEqual(config.delivery.schedule, {});
+    assert.equal(config.delivery.wait.maxMinutes, 60);
   });
 
-  it('reports an empty coordinator folder or lock path and limits out of range', () => {
+  it('reports an empty delivery folder or lock path and limits out of range', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,
-      coordinator: { dir: ' ', heavy: { lockPath: '', lockTtlMinutes: 5, waitMinutes: -1, memorySampleSeconds: 601, memoryFloorMb: -1, smallReserveMb: 1_048_577 }, wait: { pollSeconds: 0 } },
+      delivery: { dir: ' ', queue: { lockPath: '', lockTtlMinutes: 5, waitMinutes: -1, memorySampleSeconds: 601, memoryFloorMb: -1, smallReserveMb: 1_048_577 }, wait: { pollSeconds: 0 } },
     });
     assert.deepEqual(paths(issues).sort(), [
-      'coordinator.dir',
-      'coordinator.heavy.lockPath',
-      'coordinator.heavy.lockTtlMinutes',
-      'coordinator.heavy.memoryFloorMb',
-      'coordinator.heavy.memorySampleSeconds',
-      'coordinator.heavy.smallReserveMb',
-      'coordinator.heavy.waitMinutes',
-      'coordinator.wait.pollSeconds',
+      'delivery.dir',
+      'delivery.queue.lockPath',
+      'delivery.queue.lockTtlMinutes',
+      'delivery.queue.memoryFloorMb',
+      'delivery.queue.memorySampleSeconds',
+      'delivery.queue.smallReserveMb',
+      'delivery.queue.waitMinutes',
+      'delivery.wait.pollSeconds',
     ]);
-    assert.deepEqual(config.coordinator, {
+    assert.deepEqual(config.delivery, {
       schedule: {},
-      heavy: { lockTtlMinutes: 150, maxRunMinutes: 45, smallMaxRunMinutes: 10, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048 },
+      queue: { lockTtlMinutes: 150, maxRunMinutes: 45, smallMaxRunMinutes: 10, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048 },
       wait: { pollSeconds: 30, maxMinutes: 60 },
       checkTimeoutSeconds: 20,
-      claims: { maxMinutes: 120 },
-      windows: { settleMinutes: 30, targetSettleMinutes: {}, assumedDeployMinutes: 20, minMinutes: 15 },
+      freezes: { maxMinutes: 120 },
+      stablePeriods: { settleMinutes: 30, targetSettleMinutes: {}, assumedDeployMinutes: 20, minMinutes: 15 },
       repos: {},
     });
   });
@@ -702,9 +702,9 @@ describe('parseConfig', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,
       configVersion: CONFIG_VERSION,
-      coordinator: {
+      delivery: {
         gateTimeoutSeconds: 45,
-        windows: { assumedRollMinutes: 5 },
+        stablePeriods: { assumedRollMinutes: 5 },
         repos: {
           api: { mainCheckout: 'C:/src/api', roll: { command: ['node', 'deploy.js'] } },
           web: { mainCheckout: 'C:/src/web', deploy: { gates: [{ name: 'flow', command: ['node', 'flow.js'] }], command: ['node', 'deploy.js'] } },
@@ -712,15 +712,47 @@ describe('parseConfig', () => {
       },
     });
     assert.deepEqual(issues, [
-      { path: 'coordinator.gateTimeoutSeconds', message: 'was renamed: use coordinator.checkTimeoutSeconds' },
-      { path: 'coordinator.repos.api.roll', message: 'was renamed: use coordinator.repos.api.deploy' },
-      { path: 'coordinator.repos.web.deploy.gates', message: 'was renamed: use coordinator.repos.web.deploy.checks' },
-      { path: 'coordinator.windows.assumedRollMinutes', message: 'was renamed: use coordinator.windows.assumedDeployMinutes' },
+      { path: 'delivery.gateTimeoutSeconds', message: 'was renamed: use delivery.checkTimeoutSeconds' },
+      { path: 'delivery.repos.api.roll', message: 'was renamed: use delivery.repos.api.deploy' },
+      { path: 'delivery.repos.web.deploy.gates', message: 'was renamed: use delivery.repos.web.deploy.checks' },
+      { path: 'delivery.stablePeriods.assumedRollMinutes', message: 'was renamed: use delivery.stablePeriods.assumedDeployMinutes' },
     ]);
-    assert.equal(config.coordinator.repos['api']?.deploy, undefined);
-    assert.deepEqual(config.coordinator.repos['web']?.deploy?.checks, []);
-    assert.equal(config.coordinator.checkTimeoutSeconds, DEFAULT_CHECK_TIMEOUT_SECONDS);
-    assert.equal(config.coordinator.windows.assumedDeployMinutes, DEFAULT_WINDOWS.assumedDeployMinutes);
+    assert.equal(config.delivery.repos['api']?.deploy, undefined);
+    assert.deepEqual(config.delivery.repos['web']?.deploy?.checks, []);
+    assert.equal(config.delivery.checkTimeoutSeconds, DEFAULT_CHECK_TIMEOUT_SECONDS);
+    assert.equal(config.delivery.stablePeriods.assumedDeployMinutes, DEFAULT_WINDOWS.assumedDeployMinutes);
+  });
+
+  it('names each version-5 delivery key in a current file with its new name, and reads none of them', () => {
+    const { config, issues } = parseConfig({
+      sessions: ['alpha', 'bravo'],
+      roles: { lead: 'alpha', coordinatorOwner: 'bravo' },
+      configVersion: CONFIG_VERSION,
+      coordinator: { dir: 'data/old-deploys' },
+      delivery: {
+        schedule: { heavyCutoffUtc: '22:30' },
+        heavy: { maxRunMinutes: 30 },
+        claims: { maxMinutes: 60 },
+        windows: { settleMinutes: 10 },
+        repos: { api: { mainCheckout: 'C:/src/api', followMainCheckout: true } },
+      },
+    });
+    assert.deepEqual(issues, [
+      { path: 'roles.coordinatorOwner', message: 'was renamed: use roles.deliveryOwner' },
+      { path: 'coordinator', message: 'was renamed: use delivery' },
+      { path: 'delivery.heavy', message: 'was renamed: use delivery.queue' },
+      { path: 'delivery.claims', message: 'was renamed: use delivery.freezes' },
+      { path: 'delivery.windows', message: 'was renamed: use delivery.stablePeriods' },
+      { path: 'delivery.schedule.heavyCutoffUtc', message: 'was renamed: use delivery.schedule.queueCutoffUtc' },
+      { path: 'delivery.repos.api.followMainCheckout', message: 'was renamed: use delivery.repos.api.updateMainCheckout' },
+    ]);
+    assert.equal(config.roles.deliveryOwner, undefined);
+    assert.equal(config.delivery.dir, undefined);
+    assert.deepEqual(config.delivery.schedule, {});
+    assert.deepEqual(config.delivery.queue, DEFAULT_HEAVY);
+    assert.deepEqual(config.delivery.freezes, DEFAULT_CLAIMS);
+    assert.deepEqual(config.delivery.stablePeriods, DEFAULT_WINDOWS);
+    assert.equal(config.delivery.repos['api']?.updateMainCheckout, false);
   });
 
   it('validates regular expressions and statuses', () => {
@@ -1453,9 +1485,9 @@ describe('parseConfig budget', () => {
     assert.equal(config.budget.quietHours, undefined);
   });
 
-  it('refuses the old coordinator.budget block and points at its new place', () => {
-    const { config, issues } = parseConfig({ ...ROSTER, coordinator: { budget: { enabled: true } } });
-    assert.deepEqual(issues, [{ path: 'coordinator.budget', message: 'was moved: use the top-level budget block' }]);
+  it('refuses a budget block in the delivery block, its old place, and points at its new place', () => {
+    const { config, issues } = parseConfig({ ...ROSTER, delivery: { budget: { enabled: true } } });
+    assert.deepEqual(issues, [{ path: 'delivery.budget', message: 'was moved: use the top-level budget block' }]);
     assert.equal(config.budget.enabled, false);
   });
 });

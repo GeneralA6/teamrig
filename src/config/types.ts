@@ -2,16 +2,16 @@ import type { TaskStatus } from '../register/model.ts';
 import type { CoreRuleKey } from '../rules/keys.ts';
 
 /** The config format this code reads and writes. Older files are migrated in memory on load. */
-export const CONFIG_VERSION = 7;
+export const CONFIG_VERSION = 8;
 
 export interface RolesConfig {
   /** Owns priorities, team rules and the owner's decision queue; may re-prioritize and reassign tasks; hands the work itself to others (`leadBoundary`). */
   readonly lead: string;
   /**
    * Owns deploy coordination and fleet health, when the team has that role: a session id of the team, or `<team>/<id>`,
-   * the holder of the same role on a team above it (T1143), for a child team with no coordinator of its own.
+   * the holder of the same role on a team above it (T1143), for a child team with no delivery owner of its own.
    */
-  readonly coordinatorOwner?: string;
+  readonly deliveryOwner?: string;
   /**
    * Reviews the privileged commands sessions ask to run (`exec`), when the team has that role; the owner always may too.
    * A session id of the team, or `<team>/<id>`, the reviewer of a team above it (T1143).
@@ -653,7 +653,7 @@ export interface BudgetConfig {
   readonly sessions: Readonly<Record<string, SessionBudget>>;
   /**
    * On a short day (what is left of the week gives less than the pace line plans for the day), fund the team's
-   * sessions' queued work in priority order and pause the sessions none of it reaches. The lead, the coordinator owner
+   * sessions' queued work in priority order and pause the sessions none of it reaches. The lead, the delivery owner
    * held in the team and lifted sessions are never paused. Off: no session of the team is paused.
    */
   readonly pauseByPriority: boolean;
@@ -673,7 +673,7 @@ export interface BudgetConfig {
 
 export interface ScheduleConfig {
   /** No heavy step starts on the host after this UTC time (HH:MM) until midnight. */
-  readonly heavyCutoffUtc?: string;
+  readonly queueCutoffUtc?: string;
   /**
    * No deploy (`teamrig merge`) starts from this many hours before the weekly token reset until the reset, so
    * nothing that may need a fix lands while the week has no budget left to fix it. Unset: no blackout.
@@ -711,7 +711,7 @@ export interface HeavyConfig {
   readonly smallReserveMb: number;
 }
 
-/** How a coordinator step waits. */
+/** How a delivery step waits. */
 export interface CoordinatorWaitConfig {
   /** A waiting step looks again after this many seconds; the first in line for the host lock every 2 at most. */
   readonly pollSeconds: number;
@@ -755,7 +755,7 @@ export interface CoordinatorRepoConfig {
    */
   readonly reviewCheck?: readonly string[];
   /** After the push, fast-forward the main checkout to it: only a fast-forward, only on the default branch with no tracked changes. */
-  readonly followMainCheckout: boolean;
+  readonly updateMainCheckout: boolean;
   /**
    * The folder `teamrig worktree add` makes each new worktree in, one folder per branch named after it with each `/`
    * as `-`. A relative path is in the main checkout; unset: `.claude/worktrees` there.
@@ -837,19 +837,19 @@ export interface WindowsConfig {
 }
 
 /**
- * The deploy coordinator: its folder, the heavy-step cutoff and the reset blackout, the host lock, how a step waits,
+ * The delivery flow: its folder, the heavy-step cutoff and the reset blackout, the host lock, how a step waits,
  * quiet claims, clean measurement windows, and the repositories whose branches `teamrig merge` merges and `teamrig deploy` deploys.
  */
 export interface CoordinatorConfig {
-  /** The coordinator's folder, which holds its ledger; a relative path is in the team's folder. Unset: `<state>/deploys`. */
+  /** The delivery folder, which holds its ledger; a relative path is in the team's folder. Unset: `<state>/deploys`. */
   readonly dir?: string;
   readonly schedule: ScheduleConfig;
-  readonly heavy: HeavyConfig;
+  readonly queue: HeavyConfig;
   readonly wait: CoordinatorWaitConfig;
   /** A deploy's check still running after this many seconds is stopped, and the deploy waits. */
   readonly checkTimeoutSeconds: number;
-  readonly claims: ClaimsConfig;
-  readonly windows: WindowsConfig;
+  readonly freezes: ClaimsConfig;
+  readonly stablePeriods: WindowsConfig;
   /** By name, such as `api`. */
   readonly repos: Readonly<Record<string, CoordinatorRepoConfig>>;
 }
@@ -1052,7 +1052,7 @@ export function isIdleMode(value: unknown): value is IdleMode {
 /** The idle pass: it closes a session the wake check would not wake once it is quiet, and reopens it when work arrives. */
 export interface IdleConfig {
   readonly mode: IdleMode;
-  /** Sessions never closed for being quiet (by the pass or `teamrig close`), on top of the lead and the coordinator owner. */
+  /** Sessions never closed for being quiet (by the pass or `teamrig close`), on top of the lead and the delivery owner. */
   readonly keepOpen: readonly string[];
 }
 
@@ -1169,7 +1169,7 @@ export interface KitConfig {
   /** Refuses a call that would print a secret file, the environment or a secret variable, or whose line holds a secret as text (hook-secret-guard). */
   readonly secretGuard: SecretGuardConfig;
   readonly commits: CommitsConfig;
-  readonly coordinator: CoordinatorConfig;
+  readonly delivery: CoordinatorConfig;
   readonly budget: BudgetConfig;
   readonly leadBoundary: LeadBoundaryConfig;
   readonly loops: LoopsConfig;

@@ -36,7 +36,7 @@ export function hookScriptsDir(hooksDir: string): string {
 }
 
 function warning(name: string, text: string): UnownedWarning {
-  return { key: `secret-hook ${name}`, source: 'the secret hook check [coordinator.repos]', text: `SECRET-HOOK ${name} ${text}` };
+  return { key: `secret-hook ${name}`, source: 'the secret hook check [delivery.repos]', text: `SECRET-HOOK ${name} ${text}` };
 }
 
 /** The repository's warning: the hooks that lack the scan and the line to add to each; none when all three run it. */
@@ -60,7 +60,7 @@ async function repoWarning(files: Files, git: SecretsGit, name: string, main: st
 }
 
 /**
- * SECRET-HOOK (T1480), for `check`: each repository the team merges into (`coordinator.repos`) whose pre-commit,
+ * SECRET-HOOK (T1480), for `check`: each repository the team merges into (`delivery.repos`) whose pre-commit,
  * commit-msg or pre-push script does not call `teamrig secrets`, or which git cannot read. A repository's hooks are
  * its own, not one session's area, so it is a warning no session owns and goes to the lead. One git call per
  * repository, then a read of its three scripts.

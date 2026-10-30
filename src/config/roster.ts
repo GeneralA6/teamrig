@@ -3,12 +3,12 @@ import type { Rename } from '../names/rename.ts';
 import type { KitConfig, RolesConfig } from './types.ts';
 
 /** The roles a config can assign, by their key under `roles`. */
-export const ROLES = ['lead', 'coordinatorOwner', 'securityReviewer'] as const satisfies readonly (keyof RolesConfig)[];
+export const ROLES = ['lead', 'deliveryOwner', 'securityReviewer'] as const satisfies readonly (keyof RolesConfig)[];
 
 export type Role = (typeof ROLES)[number];
 
 /** The roles a child team may leave to a team above it, naming that team's holder as `<team>/<id>` (T1143); never the lead. */
-export const ANCESTOR_ROLES = ['coordinatorOwner', 'securityReviewer'] as const satisfies readonly Role[];
+export const ANCESTOR_ROLES = ['deliveryOwner', 'securityReviewer'] as const satisfies readonly Role[];
 
 export type AncestorRole = (typeof ANCESTOR_ROLES)[number];
 

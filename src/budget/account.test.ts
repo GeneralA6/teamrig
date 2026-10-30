@@ -157,10 +157,10 @@ describe('accountTeamsOf', () => {
     assert.deepEqual([[...(only?.work ?? [])], [...(only?.lifted ?? [])]], [[['front', new Map([[1, 5]])]], []]);
   });
 
-  it("lets a short day pause another team's sessions by its own config, never its lead or coordinator owner", async () => {
+  it("lets a short day pause another team's sessions by its own config, never its lead or delivery owner", async () => {
     const teams = new Map([
       ['ui', sourceOf('ui')],
-      ['web', sourceOf('web', { budget: { pauseByPriority: true }, roles: { lead: 'lead', coordinatorOwner: 'back' } })],
+      ['web', sourceOf('web', { budget: { pauseByPriority: true }, roles: { lead: 'lead', deliveryOwner: 'back' } })],
     ]);
 
     const others = await accountTeamsOf(new MemoryFiles(), teams, SCOPE);

@@ -223,6 +223,29 @@ export const DROP_IDLE_RETIRE: ConfigMigration = {
   },
 };
 
+/**
+ * The keys v8 renamed into plain words (T1308): the `coordinator` block became `delivery`, and inside it `heavy` the
+ * `queue`, `claims` the `freezes`, `windows` the `stablePeriods`, `schedule.heavyCutoffUtc` the `queueCutoffUtc` and a
+ * repository's `followMainCheckout` its `updateMainCheckout`; `roles.coordinatorOwner` became `deliveryOwner`. Applied
+ * in order, so each rename inside the block comes before the block's own.
+ */
+const DELIVERY_RENAMES: readonly KeyRename[] = [
+  { at: ['coordinator', 'repos', '*'], from: 'followMainCheckout', to: 'updateMainCheckout' },
+  { at: ['coordinator', 'schedule'], from: 'heavyCutoffUtc', to: 'queueCutoffUtc' },
+  { at: ['coordinator'], from: 'heavy', to: 'queue' },
+  { at: ['coordinator'], from: 'claims', to: 'freezes' },
+  { at: ['coordinator'], from: 'windows', to: 'stablePeriods' },
+  { at: [], from: 'coordinator', to: 'delivery' },
+  { at: ['roles'], from: 'coordinatorOwner', to: 'deliveryOwner' },
+];
+
+/** v7 to v8: the delivery flow's keys in plain words, DELIVERY_RENAMES; every value is kept as it was. */
+export const RENAME_TO_DELIVERY: ConfigMigration = {
+  from: 7,
+  firstRelease: '0.238.0',
+  apply: (config) => renameKeys(config, DELIVERY_RENAMES, 7),
+};
+
 /** The shipped chain, in order: each step reads `from` and produces `from + 1`. */
 export const CONFIG_MIGRATIONS: readonly ConfigMigration[] = [
   RENAME_TIERS_TO_PRIORITIES,
@@ -231,6 +254,7 @@ export const CONFIG_MIGRATIONS: readonly ConfigMigration[] = [
   RENAME_TO_PLAIN_WORDS,
   DROP_HIRE_CAP,
   DROP_IDLE_RETIRE,
+  RENAME_TO_DELIVERY,
 ];
 
 /** The config format a release reads and writes: its version and the migration chain that reaches it. */

@@ -31,7 +31,7 @@ Approve only when every line holds:
 - One logical change per commit, each within the size rule or with a `Large-commit:` reason [commits].
 - No unaudited dependency change: a changed manifest or lockfile names the exact versions it resolves and the
   advisories checked.
-- The time: before the team's heavy-step cutoff [coordinator.schedule.heavyCutoffUtc] when the change needs a
+- The time: before the team's heavy-step cutoff [delivery.schedule.queueCutoffUtc] when the change needs a
   build or a test run, and outside any no-merge window in the team's rules.
 - Nothing owner-gated inside [ownerGates]: destructive data operations, permissions, budget, resource changes,
   product or design decisions.

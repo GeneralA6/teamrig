@@ -67,7 +67,7 @@ describe('planTeamSplit', () => {
     assert.deepEqual(valueOf(plan(new Map(), parentOf(), spec)).config, {
       ...configRecordOf(spec),
       timeZone: 'Asia/Jerusalem',
-      coordinator: SHARED_COORDINATOR,
+      delivery: SHARED_COORDINATOR,
       names: { alpha: 'alfa', bravo: 'app-bravo', carol: 'app-carol' },
       roles: { lead: 'alpha', securityReviewer: 'app/dave' },
       leads: { bravo: ['carol'] },
@@ -76,17 +76,17 @@ describe('planTeamSplit', () => {
   });
 
   it('keeps a role the parent leaves to a team above as that team holds it, and adds only the shared coordinator', () => {
-    const record: JsonRecord = { team: { id: 'app', parent: 'org' }, sessions: ['lead', 'alpha', 'bravo'], roles: { lead: 'lead', coordinatorOwner: 'org/po' } };
+    const record: JsonRecord = { team: { id: 'app', parent: 'org' }, sessions: ['lead', 'alpha', 'bravo'], roles: { lead: 'lead', deliveryOwner: 'org/po' } };
     const parent = parentOf(record);
     const org = teamNodeOfSpec({ team: 'org', lead: 'lead', sessions: ['lead', 'po'], parent: undefined });
-    const holder = { ...org, roles: { lead: 'lead', coordinatorOwner: 'po' } };
+    const holder = { ...org, roles: { lead: 'lead', deliveryOwner: 'po' } };
     const spec = specOf('bravo');
     const { config } = valueOf(planTeamSplit(parent, spec, treeOf(parent, holder), new Map()));
     assert.deepEqual(config, {
       ...configRecordOf(spec),
-      coordinator: SHARED_COORDINATOR,
+      delivery: SHARED_COORDINATOR,
       names: { alpha: 'app-alpha', bravo: 'app-bravo' },
-      roles: { lead: 'alpha', coordinatorOwner: 'org/po' },
+      roles: { lead: 'alpha', deliveryOwner: 'org/po' },
     });
   });
 
@@ -113,13 +113,13 @@ describe('planTeamSplit', () => {
   it("shares the parent's coordinator folder, host lock and main checkouts, each relative path made absolute to the parent", () => {
     const record: JsonRecord = {
       ...RECORD,
-      coordinator: { dir: 'deploys', heavy: { lockPath: 'heavy.lock' }, repos: { app: { mainCheckout: 'app', deploysOnPush: [] } } },
+      delivery: { dir: 'deploys', queue: { lockPath: 'heavy.lock' }, repos: { app: { mainCheckout: 'app', deploysOnPush: [] } } },
       budget: { statusSnapshotDir: 'status' },
     };
     const { config } = valueOf(plan(new Map(), parentOf(record)));
-    assert.deepEqual(config['coordinator'], {
+    assert.deepEqual(config['delivery'], {
       dir: join(PATHS.home, 'deploys'),
-      heavy: { lockPath: join(PATHS.home, 'heavy.lock') },
+      queue: { lockPath: join(PATHS.home, 'heavy.lock') },
       repos: { app: { mainCheckout: join(PATHS.home, 'app'), deploysOnPush: [] } },
     });
     assert.deepEqual(config['budget'], { statusSnapshotDir: join(PATHS.home, 'status') });
@@ -128,8 +128,8 @@ describe('planTeamSplit', () => {
   it('keeps an absolute coordinator folder and host lock as the parent wrote them', () => {
     const dir = resolve('shared', 'deploys');
     const lockPath = resolve('shared', 'heavy.lock');
-    const { config } = valueOf(plan(new Map(), parentOf({ ...RECORD, coordinator: { dir, heavy: { lockPath } } })));
-    assert.deepEqual(config['coordinator'], { dir, heavy: { lockPath } });
+    const { config } = valueOf(plan(new Map(), parentOf({ ...RECORD, delivery: { dir, queue: { lockPath } } })));
+    assert.deepEqual(config['delivery'], { dir, queue: { lockPath } });
   });
 
   it("gives the child the moved sessions' budget shares and idle keep-open entries, and trims them from the parent", () => {

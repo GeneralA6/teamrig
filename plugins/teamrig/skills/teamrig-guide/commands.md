@@ -469,13 +469,13 @@ findings while the CLAUDE.md files, memory index, skill listing or the newest se
 `contextFiles` budgets (every session on the machine re-reads that text, so it is no one area's), the flags of a
 skill whose `Owner:` line is missing or names no session on the team, and FLEET-STALE: while `open.idle.mode` is not
 `off`, the [idle pass](hooks.md#the-idle-pass) has not run for 15 minutes since its last run or that run failed, so it
-closes and reopens no one, and SECRET-HOOK: a repository in `coordinator.repos` whose pre-commit, commit-msg or
+closes and reopens no one, and SECRET-HOOK: a repository in `delivery.repos` whose pre-commit, commit-msg or
 pre-push hook (in the folder `core.hooksPath` names, else `.git/hooks`; husky's scripts in `.husky`) does not call
 `teamrig secrets staged`, `teamrig secrets message` or `teamrig secrets pushed`, so a secret there can be committed or
 pushed, with the line to add to each (a new hook file starts `#!/bin/sh` and must be executable), or one git cannot
 read, and SECRET-GUARD-OFF: a secret check turned off, which is the owner's call: `secretGuard.secretReads` or
 `secretGuard.writes` at `allow`, `secretGuard.redact` at `false`, or a Claude Code settings file the team's sessions
-run under (the user's, the project folder's, each `coordinator.repos` repository's and its worktrees') that sets
+run under (the user's, the project folder's, each `delivery.repos` repository's and its worktrees') that sets
 `disableAllHooks`, which stops every teamrig hook, the secret guard's included. Each row names the check it came from; the
 lead fixes it, hands it on (`teamrig add --owner <session>`) or settles the check. The lead's `start` shows them
 too, and any session's `start` posts the lead one inbox line per warning it was not told of yet, at most 5 per
@@ -1296,7 +1296,7 @@ PASS 3 session(s): 0 to close, 1 to reopen, 0 to reopen later, 1 kept open, 0 cl
 
 Ends an idle session's Claude Code and its tab to free the host, and logs it in `state/session-log.jsonl`, so
 [teamrig open](#teamrig-open) goes on in that Claude Code session later (`teamrig close <id|name>`; the lead only).
-It refuses the lead, the coordinator owner and a session listed in `open.idle.keepOpen`, a session not running, one
+It refuses the lead, the delivery owner and a session listed in `open.idle.keepOpen`, a session not running, one
 with work it can start or a time wait of its own ending within 30 minutes, one quiet under
 `open.headroom.closeIdleMinutes` (60) since its transcript's last entry of the person or the model (a slash command,
 an away summary or a file change with no entry is no activity), in a turn, at a tool call (running, or waiting on a permission or an answer), waiting on a decision it put to the
@@ -1447,7 +1447,7 @@ the hire log (`state/hires.jsonl`). Its tasks, inbox and records stay where they
 - It refuses while the session owns open tasks, unless `--to <heir>` hands them over.
 - It refuses without the session's handover (`<handover>/<id>.md`, the file a refresh writes: open work, next
   steps, branches, traps), unless `--no-handover "<why>"` says why there is none.
-- It refuses while a role (`roles.lead`, `roles.coordinatorOwner`, `roles.securityReviewer`), `github.owners` or `github.sessions` names
+- It refuses while a role (`roles.lead`, `roles.deliveryOwner`, `roles.securityReviewer`), `github.owners` or `github.sessions` names
   the session: point those at another session first.
 - `check` flags a burst hire to retire once its burst is over (RETIRE-DUE), and each hired session past its review
   day (REVIEW-DUE), which a keep clears ([teamrig hire](#teamrig-hire)). A hire with no task is never due to retire
@@ -1791,7 +1791,7 @@ as an inbox line. So no session is told the meeting started, and none is woken. 
   (`due 10-14 (from T9)`);
 - `DONE`: what finished since the last meeting ended (a day back for the first, 7 days at most);
 - `MERGES`: under `pushGuard.pushToProtected: gated`, the branches merged with no approval since then (from
-  `merges.jsonl` in `coordinator.dir`), check-clean ones first, marked `CHECK-CLEAN` for security's weekly sample;
+  `merges.jsonl` in `delivery.dir`), check-clean ones first, marked `CHECK-CLEAN` for security's weekly sample;
 - `MEETINGS`: today's scheduled meetings and the missed ones, as `meeting list` shows them, and how the owner starts
   one or a missed one is moved;
 - the lead's unread inbox lines, marked read;
@@ -2152,7 +2152,7 @@ team and name, `[shop] web`; Claude Code's own session name stays `shop-web`, th
 and list. A rehired session's first prompt reads the handover its retire left first.
 
 It refuses any session but the lead when the host has no room for one more: its free memory must stay over
-`coordinator.heavy.memoryFloorMb` with the session counted, and its commit charge within `open.headroom.commitMaxPct`
+`delivery.queue.memoryFloorMb` with the session counted, and its commit charge within `open.headroom.commitMaxPct`
 (92%; Windows and Linux). A session is counted at the median running session's Claude Code process tree, else at
 `open.headroom.sessionMb` (1200 MB): what it holds resident against free memory, and what it committed (about twice
 that) against the commit charge. [teamrig sessions](#teamrig-sessions) shows what each one holds and committed.
@@ -2606,7 +2606,7 @@ Claude Code or Node.js, [the check](requirements.md#the-requirements-check)), `n
 `name-shared`, `name-config`, `name-reserved` (a name Claude Code keeps for itself: `main`, `team-lead`, `user`,
 `system`), `rename-log`, `inbox-orphan`, `inbox-unread`, `rules-long`, `context-size`,
 `context-lists`, `tree-id`, `tree-parent`, `tree-loop`, `tree-depth`, `tree-children`, `tree-role` (a
-`roles.securityReviewer` or `roles.coordinatorOwner` of `<team>/<id>` whose team is not above this one, or whose
+`roles.securityReviewer` or `roles.deliveryOwner` of `<team>/<id>` whose team is not above this one, or whose
 session does not hold that role there), `name-two-teams`, `effort-env`, `model-env`, `settings-json`, `launch-effort`,
 `allow-wide`, `project-missing`, `shell-history`.
 
@@ -2848,7 +2848,7 @@ Removes local allow rules from the Claude Code settings the team's sessions run 
 before auto mode's classifier sees it, so a rule for a whole tool or program (`Bash`, `Bash(node:*)`,
 `Read(//c/**)`) lets every such call run unchecked. Claude Code also saves an approved command whole, so a rule can
 hold a credential typed into it, such as a database URI with its password. The files are your user `settings.json`, then the project
-folder's and each `coordinator.repos` checkout's `.claude/settings.json` and `.claude/settings.local.json`, and the
+folder's and each `delivery.repos` checkout's `.claude/settings.json` and `.claude/settings.local.json`, and the
 same two in each worktree Claude Code made under `.claude/worktrees`. A rule on the config's `permissions.keepAllow`
 stays (`:*` and ` *` read the same, a kept `Bash(x *)` keeps `Bash(x)` too, and a shell rule's leading
 `MSYS_NO_PATHCONV=1 ` reads as absent); by default only the rules off it that approve a whole tool or program or
@@ -3172,13 +3172,13 @@ printf '%s\n' "$updates" | git lfs pre-push "$@"
 Makes a session's new worktree the same way every time, so each session starts from the same ready checkout. It
 fetches the default branch `origin/HEAD` names, adds the worktree on a new branch `<branch>` from it, with no
 upstream, then runs the repository's setup in it, such as a link to the main checkout's `node_modules`. The
-worktree's folder is the branch's name with each `/` as `-`, in [coordinator.repos.<name>.worktreeFolder] (default
+worktree's folder is the branch's name with each `/` as `-`, in [delivery.repos.<name>.worktreeFolder] (default
 `.claude/worktrees` in the main checkout; a relative folder is in the main checkout). The setup, a program and its
-arguments in [coordinator.repos.<name>.worktreeSetup], runs without a shell in the new worktree, with the main
+arguments in [delivery.repos.<name>.worktreeSetup], runs without a shell in the new worktree, with the main
 checkout's folder in `TEAMRIG_MAIN_CHECKOUT`, and is killed after 10 minutes; exit 0 is a success.
 
 The repository is the one `--repo` names, else the one the current folder belongs to, with the folder and setup of
-the coordinator.repos entry whose `mainCheckout` is its main checkout; outside a team, or with no entry, it uses the
+the delivery.repos entry whose `mainCheckout` is its main checkout; outside a team, or with no entry, it uses the
 default folder and runs no setup.
 
 It refuses (exit 2) before any change for: a name that is no branch name; a folder already there; an `origin/HEAD`
@@ -3189,7 +3189,7 @@ so you can finish its setup by hand or remove it with `teamrig worktree remove <
 
 Flags:
 
-- `--repo <name>`: the repository in the team's coordinator.repos to add it to, from any folder.
+- `--repo <name>`: the repository in the team's delivery.repos to add it to, from any folder.
 
 Example:
 
@@ -3264,8 +3264,8 @@ to link again by hand.
 
 Runs one heavy step (a build, a test run, a database script) under the host lock, so the host's heavy steps run one
 at a time instead of competing for its CPU and memory. It waits for the lock until its line has not moved
-for `coordinator.heavy.waitMinutes` (60 by default). Waiters take it in arrival order: each joins a line of tickets in `<lock>.queue` and only the
-first live one may take the lock, looking every 2 s; the rest look every `coordinator.wait.pollSeconds` (30). It
+for `delivery.queue.waitMinutes` (60 by default). Waiters take it in arrival order: each joins a line of tickets in `<lock>.queue` and only the
+first live one may take the lock, looking every 2 s; the rest look every `delivery.wait.pollSeconds` (30). It
 prints a line for each new holder or place in line (`...; 2 ahead in line`). A ticket whose process is gone or whose
 wait ran out is removed by the next waiter. The line moved when a step it stood behind (a waiter ahead, the lock's
 holder, a small step sharing the host) ended or left, so a step far back in a line that keeps moving is not refused;
@@ -3275,10 +3275,10 @@ coordinator) may still take a free lock first.
 With `--small` (a spec run, a lint) the step shares the host with other small steps instead of taking the lock.
 In its turn, while the lock is not held, it writes a share in `<lock>.shared` and runs. It is let in at once when
 no other small step runs. Otherwise it is let in only while the host's free memory, less the MB held for the
-running small steps, leaves `coordinator.heavy.memoryFloorMb` (4096) plus its own. Until then it waits first in
+running small steps, leaves `delivery.queue.memoryFloorMb` (4096) plus its own. Until then it waits first in
 line (`...; 7000 MB free, 4096 MB held for them, 6144 MB needed`). The MB held for a step is the most its process
 tree held in its latest 20 runs under the same session and `--what`, plus a quarter. With no run measured yet, it
-is `coordinator.heavy.smallReserveMb` (2048).
+is `delivery.queue.smallReserveMb` (2048).
 
 A step without `--small` that takes the lock holds it while it waits for the small steps to end. So builds,
 merges, deploys and full suites still run alone, and no new small step is let in meanwhile. It gives up, releasing
@@ -3290,19 +3290,19 @@ Then it runs the command in the shell at below-normal CPU priority (nice 10 on P
 inherits, so the owner's terminal and apps win the CPU and the step takes what they leave; a step started at a lower
 priority keeps it. A merge's or deploy's commands and checks run at that priority too. Its output streams as it
 comes, and it kills the command with every process it started
-after `coordinator.heavy.maxRunMinutes` (45), a `--small` step after `coordinator.heavy.smallMaxRunMinutes` (10): a
+after `delivery.queue.maxRunMinutes` (45), a `--small` step after `delivery.queue.smallMaxRunMinutes` (10): a
 step that shares the host holds back every step waiting for the lock, so a hung one is cut short. The step ends, and frees the lock, only once that kill is done; on
 Windows the kill lists the host's processes again after each round and ends any process the step started while it was
 being killed. The step's start and end go to the coordinator's ledger,
-`ledger.jsonl` in `coordinator.dir` (default `deploys` in the team's state folder), with the teamrig version that ran
-it (`kit`), when it began to wait (`queuedAt`) and, sampled every `coordinator.heavy.memorySampleSeconds` (15; 0 samples nothing), the most memory its
+`ledger.jsonl` in `delivery.dir` (default `deploys` in the team's state folder), with the teamrig version that ran
+it (`kit`), when it began to wait (`queuedAt`) and, sampled every `delivery.queue.memorySampleSeconds` (15; 0 samples nothing), the most memory its
 process tree held at once (`peakTreeMb`) and the least free memory the host had (`lowFreeMb`), and `shared: true` for
 a small step. Exit 0 when the command passed, 1 when it failed or was killed. REFUSED (exit 2) from
-`coordinator.schedule.heavyCutoffUtc` to midnight UTC, also when the wait for the lock ran past it, and when the lock
+`delivery.schedule.queueCutoffUtc` to midnight UTC, also when the wait for the lock ran past it, and when the lock
 (or, for a small step, the memory it needs) is still held after the wait.
 
-The lock is `host.lock` in the kit home, one for every team on the host, unless `coordinator.heavy.lockPath` names
-another. It lasts `coordinator.heavy.lockTtlMinutes` (150); a lock past that, or one whose process is gone, is
+The lock is `host.lock` in the kit home, one for every team on the host, unless `delivery.queue.lockPath` names
+another. It lasts `delivery.queue.lockTtlMinutes` (150); a lock past that, or one whose process is gone, is
 taken over. Only the step that took it releases it. The lock, each share and each ticket name the teamrig version
 that wrote them (`kit`, since 0.119.0). A wait line names a holder on another version (`..., on teamrig
 0.85.0`), or on none (`..., on an older teamrig or another coordinator`): such a step may take a free lock
@@ -3340,7 +3340,7 @@ Flags:
 - `--what <label>`: what the step is, as the lock, the ledger and a waiting session name it; required.
 - `--session <id|name>`: the session running it; default `$TEAMRIG_SESSION`, else the parent step's session, else
   the session this Claude Code tab is bound to (`$CLAUDE_CODE_SESSION_ID`).
-- `--max-minutes <n>`: kill the step after this many minutes instead of `coordinator.heavy.maxRunMinutes`; a
+- `--max-minutes <n>`: kill the step after this many minutes instead of `delivery.queue.maxRunMinutes`; a
   whole number from 1 to `lockTtlMinutes` less 10, so the step never outlives its lock; with `--small`, from 1 to
   `smallMaxRunMinutes` (a longer step runs without `--small`).
 - `--small`: share the host with other small steps while memory allows, instead of taking the lock (see above).
@@ -3400,11 +3400,11 @@ Its old name, integrate, is refused with this one (exit 64).
 
 REFUSED (exit 2) before any change for a folder outside git, a detached HEAD, uncommitted changes, the default branch
 itself (or `main`, `master`) and a branch with nothing that is not on origin already. Also from
-`coordinator.schedule.heavyCutoffUtc` to midnight UTC, and in the `coordinator.schedule.resetBlackoutHours` before
+`delivery.schedule.queueCutoffUtc` to midnight UTC, and in the `delivery.schedule.resetBlackoutHours` before
 the weekly token reset: the reset the status line last reported, else the one `budget.reset` sets (unset: no
 blackout).
 
-The repository is the entry of `coordinator.repos` whose `mainCheckout` is this checkout's main one:
+The repository is the entry of `delivery.repos` whose `mainCheckout` is this checkout's main one:
 
 - `deploysOnPush`: what a push to the default branch deploys, such as `["cloud-api"]`. It waits for quiet
   claims on these targets, and records the push in the ledger as a deploy of them, which teamrig does not watch.
@@ -3416,7 +3416,7 @@ The repository is the entry of `coordinator.repos` whose `mainCheckout` is this 
 - `dependencyCheck`: with `dependencyGate`, the check that clears a dependency change, such as
   `["node", "tools/check-change.ts"]`: a program and its arguments, run with no shell in the branch's checkout under
   the host lock, after each rebase and before the push, its stdout shown with secrets redacted, killed after
-  `coordinator.heavy.maxRunMinutes`, a heavy step in the ledger. It gets `TEAMRIG_BASELINE_LOCK`, a file holding the
+  `delivery.queue.maxRunMinutes`, a heavy step in the ledger. It gets `TEAMRIG_BASELINE_LOCK`, a file holding the
   default branch's `package-lock.json` (unset when that branch has none), removed after. Exit 0 lets the change through;
   any other end, or a range it cannot read, is REFUSED and nothing is pushed.
 - `reviewGate`: hold a change whose paths hit a review entry until its reviewer approves it (see Review holds
@@ -3432,7 +3432,7 @@ The repository is the entry of `coordinator.repos` whose `mainCheckout` is this 
 - `worktreeSetup`: what `teamrig worktree add` runs in each new worktree, such as
   `["node", "tools/link-modules.ts"]`: a program and its arguments, run with no shell, with `TEAMRIG_MAIN_CHECKOUT`
   set to the main checkout's folder.
-- `followMainCheckout`: after a merge from a linked worktree, fast-forward the main checkout too, when it is on
+- `updateMainCheckout`: after a merge from a linked worktree, fast-forward the main checkout too, when it is on
   the default branch with no uncommitted changes; a NOTE says when it was left as it is, or needs `npm ci`.
 - `merge`: a merge command run in place of the push, such as `{ "command": ["node", "tools/merge.ts"] }` for a
   repository that merges through pull requests (a sketch below). It runs like the `dependencyCheck`, after it and the
@@ -3443,13 +3443,13 @@ The repository is the entry of `coordinator.repos` whose `mainCheckout` is this 
   merge commit all do), else FAILED and the branch is kept. 75: the merge waits, say on the pull request's checks or
   review: WAITING with its last line, exit 75, the branch kept and the lock freed; run `teamrig merge` again later, and once
   origin holds the merge it finishes without running the command again (a branch with new commits is a new merge).
-  Any other end: FAILED, the branch kept. `merge.remote` [coordinator.repos.<name>.merge.remote] names the remote it
+  Any other end: FAILED, the branch kept. `merge.remote` [delivery.repos.<name>.merge.remote] names the remote it
   merges into, origin unless set: where origin is your fork and pull requests merge into the project's repository,
   set `"remote": "upstream"`. `teamrig merge` then fetches and rebases onto upstream's default branch, confirms the merge
   there and moves the local default branch to upstream's; the branch is still pushed to and deleted from origin.
 
-A repository not listed gets a NOTE and none of these. Then `teamrig merge` waits up to `coordinator.wait.maxMinutes` (60),
-looking every `coordinator.wait.pollSeconds` (30), for the claims and the host lock (see `teamrig heavy`; longer while its line moves), fetches,
+A repository not listed gets a NOTE and none of these. Then `teamrig merge` waits up to `delivery.wait.maxMinutes` (60),
+looking every `delivery.wait.pollSeconds` (30), for the claims and the host lock (see `teamrig heavy`; longer while its line moves), fetches,
 rebases onto origin's default branch, runs the `dependencyCheck` on a dependency change, the review gate and, under
 `pushGuard.pushToProtected: gated`, the self-merge gates (see Gate holds below), and pushes there (or runs the
 `merge` command), the push a heavy step in the ledger that runs the pre-push
@@ -3495,7 +3495,7 @@ over the size rule without a `Large-commit:` line. tests: a change of source (`c
 test too. review: the repository sets `reviewGate`. A change that holds every gate merges with no approval. A task
 miss is refused with no hold, since a hold waits on the approval of the branch's task. Any other miss is REFUSED
 with a gate hold for the session's nearest leader (the lead's own change goes to security), kept in `gate-holds/`
-in `coordinator.dir`:
+in `delivery.dir`:
 
 ```text
 REFUSED gate hold G3f2a9c0d1e7b keeps t12-retry (4f1c2a9e..9a0b1c2d) off the default branch: tests: it changes
@@ -3506,7 +3506,7 @@ merge again once it is approved
 
 The leader answers with `teamrig approve <task>`; `teamrig merge` again merges the change. Like a review hold, a
 gate hold binds the base, the head and the tree, and an approval counts only for the gates its hold named. Each
-change merged under `gated` is one line in `merges.jsonl` in `coordinator.dir`: route `self`, or `approved` with the
+change merged under `gated` is one line in `merges.jsonl` in `delivery.dir`: route `self`, or `approved` with the
 gates it missed and who approved them. A merge the `merge` command finishes on a later run writes no line yet.
 
 Flags:
@@ -3579,7 +3579,7 @@ merges, and is recorded when the next `teamrig merge` finishes the merge.
 Brings what was pushed to a repository's default branch to the running system, one deploy on the host at a time, the
 same way for every session: checked, pulled under the host lock, deployed and recorded.
 
-The repository is an entry of `coordinator.repos` with a `deploy` block: the one `--repo` names, else the one whose
+The repository is an entry of `delivery.repos` with a `deploy` block: the one `--repo` names, else the one whose
 `mainCheckout` this folder is in, else the only one with a deploy block.
 
 - `targets`: what the deploy restarts, such as `["api", "workers"]`. deploy waits for quiet claims on them, and its
@@ -3595,16 +3595,16 @@ Each command is a list of words, run with no shell in the main checkout with std
 check also gets `TEAMRIG_CHECK_NAME` and `TEAMRIG_CHECK_PHASE` (`before` the host lock, then `locked` under it); the
 afterPull hooks and the command also get `TEAMRIG_DEPLOY_TO` (the sha pulled) and, when a check printed a line
 `tag=<tag>`, `TEAMRIG_DEPLOY_TAG`. A check's exit 0 lets the deploy go, 75 holds it and 2 refuses it; any other end, or
-none within `coordinator.checkTimeoutSeconds` (20), holds it. Its last line, secrets redacted, is the reason.
+none within `delivery.checkTimeoutSeconds` (20), holds it. Its last line, secrets redacted, is the reason.
 
 REFUSED (exit 2) before any check or lock for a main checkout off its default branch, with uncommitted changes or with
 commits origin lacks, and for a range with a dependency change `dependencyGate` holds: one with no `dependencyCheck`
 or no `deploy.dependencyInstall` set, or a range deploy cannot read. Also from
-`coordinator.schedule.heavyCutoffUtc` to midnight UTC, in the `resetBlackoutHours` before the weekly token reset,
+`delivery.schedule.queueCutoffUtc` to midnight UTC, in the `resetBlackoutHours` before the weekly token reset,
 and when a check refuses. With nothing pending it is DONE and runs nothing. Otherwise it waits up to
-`coordinator.wait.maxMinutes` for the claims, the checks and the host lock (longer while its line moves), reads origin again under the lock and asks
+`delivery.wait.maxMinutes` for the claims, the checks and the host lock (longer while its line moves), reads origin again under the lock and asks
 the checks again, then pulls fast-forward to the sha they judged and runs the dependency steps, the afterPull hooks
-and the command, each killed after `coordinator.heavy.maxRunMinutes`, all one heavy step in the ledger. Their lines
+and the command, each killed after `delivery.queue.maxRunMinutes`, all one heavy step in the ledger. Their lines
 show as they come.
 
 A range that changes `package-lock.json`, or a `package.json` field an install reads (as `dependencyGate` judges it),
@@ -3629,7 +3629,7 @@ image. It keeps the repository's deploy rules. It is REFUSED (exit 2) before any
 `deploy.targets`, since a typo would slip past the quiet claims, and also at the heavy cutoff, in the reset blackout
 and when a check refuses. It waits for quiet claims on the targets it names, not the others, then for the checks and
 the host lock, and asks the checks again under the lock. The command runs with no shell in this folder, killed after
-`coordinator.heavy.maxRunMinutes`, as one heavy step in the ledger; its lines show as they come.
+`delivery.queue.maxRunMinutes`, as one heavy step in the ledger; its lines show as they come.
 
 The checks and the command get `TEAMRIG_TEAM`, `TEAMRIG_SESSION`, `TEAMRIG_VERB=redeploy`, `TEAMRIG_REPO` and
 `TEAMRIG_DEPLOY_TARGETS` (`api,live`), and no `TEAMRIG_PENDING_RANGE`: a check that reads the range tells a redeploy by
@@ -3649,7 +3649,7 @@ Flags:
 Config:
 
 ```json
-"coordinator": {
+"delivery": {
   "repos": {
     "pipeline": {
       "mainCheckout": "../pipeline",
@@ -3702,7 +3702,7 @@ DONE deployed api, workers of pipeline: restarted 2 deployments
 
 A quiet claim holds the merges and deploys of its targets while a session measures them, so no deploy
 lands in the middle of a measurement. It lasts from now for `--for`: minutes, hours or both, such as `45m` or
-`1h30m`, at most `coordinator.claims.maxMinutes` (120). Each target must be one a repository deploys, in its
+`1h30m`, at most `delivery.freezes.maxMinutes` (120). Each target must be one a repository deploys, in its
 `deploysOnPush` or `deploy.targets`. One claim per session. REFUSED for an unknown target, a longer span, a second
 claim, or a secret in the metric or reason, since the claims are shared files: `claims.json` beside the ledger, and
 `claims.md` for people, both written under their own lock. A claim ends at its time, or with `teamrig release`.
@@ -3754,7 +3754,7 @@ The clean measurement windows of each target between `--since` and `--until` (de
 now), so a session compares a metric over stretches no change touched. A deploy disturbs the targets of its
 repository (its `deploysOnPush` and `deploy.targets`), or only those its ledger record names (a `deploy --targets`
 run), from its start until it settled:
-`coordinator.windows.targetSettleMinutes` for that target, else `settleMinutes` (30), or `--settle` for every
+`delivery.stablePeriods.targetSettleMinutes` for that target, else `settleMinutes` (30), or `--settle` for every
 target. The deploys are the ledger.md lines, so one a session wrote by hand counts too; a deploy with no ledger
 record of its start is taken to have run for `assumedDeployMinutes` (20). A heavy step disturbs the whole host. A
 window shorter than `--min` (default `minMinutes`, 15) is left out. Each window names the loads (`teamrig load`) it

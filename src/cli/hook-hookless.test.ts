@@ -16,10 +16,10 @@ import { teamConfigOf, teamInboxOf } from '../testing/team-tree.ts';
 import { promptLine, replyLine, systemLine, transcript } from '../testing/transcript-lines.ts';
 import { EXIT } from './runtime.ts';
 
-const ROLES_TEAM: JsonRecord = { ...TEAM, roles: { lead: 'lead', coordinatorOwner: 'bravo' } };
-/** A child team of root that leaves its coordinator's owner to root's po (T1143), and root's config. */
-const CHILD_TEAM: JsonRecord = { ...TEAM, team: { id: 'app', parent: 'root' }, roles: { lead: 'lead', coordinatorOwner: 'root/po' } };
-const ROOT_TEAM: JsonRecord = { configVersion: 1, team: { id: 'root' }, sessions: ['lead', 'po'], roles: { lead: 'lead', coordinatorOwner: 'po' } };
+const ROLES_TEAM: JsonRecord = { ...TEAM, roles: { lead: 'lead', deliveryOwner: 'bravo' } };
+/** A child team of root that leaves its delivery owner to root's po (T1143), and root's config. */
+const CHILD_TEAM: JsonRecord = { ...TEAM, team: { id: 'app', parent: 'root' }, roles: { lead: 'lead', deliveryOwner: 'root/po' } };
+const ROOT_TEAM: JsonRecord = { configVersion: 1, team: { id: 'root' }, sessions: ['lead', 'po'], roles: { lead: 'lead', deliveryOwner: 'po' } };
 const STATE = join(TEAM_HOME, 'state', 'hookless.json');
 const TAB = '0123abcd-0000-4000-8000-0000000000b1';
 const TAB_TRANSCRIPT = join(USER_HOME, '.claude', 'projects', 'work-app', `${TAB}.jsonl`);
@@ -126,7 +126,7 @@ describe('the Stop hook checks for tabs that run without their hooks', () => {
     assert.deepEqual(hooklessLines(unread, 'lead'), [], 'a tab started by hand that read no inbox of the team is not its to tell');
   });
 
-  it("tells the coordinator's owner of the lead's own tab", async () => {
+  it("tells the delivery owner of the lead's own tab", async () => {
     const kit = new CliHarness(ROLES_TEAM);
     await writeTab(kit, 'lead', 2 * HOOKLESS_MS);
     await stop(kit, tabTranscript(kit, [reply(kit, 0)]));
@@ -134,7 +134,7 @@ describe('the Stop hook checks for tabs that run without their hooks', () => {
     assert.equal(hooklessLines(kit, 'bravo').length, 1);
   });
 
-  it("tells the coordinator's owner on a team above of the lead's own tab, naming the tab's session by its address (T1143)", async () => {
+  it("tells the delivery owner on a team above of the lead's own tab, naming the tab's session by its address (T1143)", async () => {
     const kit = new CliHarness(CHILD_TEAM);
     await kit.files.write(teamConfigOf('root'), formatConfig(ROOT_TEAM));
     await writeTab(kit, 'lead', 2 * HOOKLESS_MS);

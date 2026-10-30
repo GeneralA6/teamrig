@@ -69,7 +69,7 @@
           "description": "Owns priorities, team rules and the owner's decision queue.",
           "$ref": "#/$defs/sessionName"
         },
-        "coordinatorOwner": {
+        "deliveryOwner": {
           "description": "Owns deploy coordination and fleet health, when the team has that role; a child team may leave it to a team above.",
           "$ref": "#/$defs/roleHolder"
         },
@@ -534,12 +534,12 @@
         }
       }
     },
-    "coordinator": {
-      "description": "The deploy coordinator: teamrig heavy runs one heavy step on the host at a time, under the host lock, teamrig merge merges a branch into its repository's default branch, teamrig deploy deploys it and teamrig claim holds deploys while a session measures; each step is recorded in the ledger.",
+    "delivery": {
+      "description": "The delivery flow: teamrig heavy runs one heavy step on the host at a time, under the host lock, teamrig merge merges a branch into its repository's default branch, teamrig deploy deploys it and teamrig claim holds deploys while a session measures; each step is recorded in the ledger.",
       "type": "object",
       "properties": {
         "dir": {
-          "description": "The coordinator's folder, which holds its ledger (ledger.jsonl); a relative path is in the team's folder. Unset: deploys in the state folder.",
+          "description": "The delivery folder, which holds its ledger (ledger.jsonl); a relative path is in the team's folder. Unset: deploys in the state folder.",
           "type": "string",
           "minLength": 1
         },
@@ -583,7 +583,7 @@
                 "maxItems": 64,
                 "items": { "type": "string", "minLength": 1 }
               },
-              "followMainCheckout": {
+              "updateMainCheckout": {
                 "description": "After the push, fast-forward the main checkout to it: only a fast-forward, only on the default branch with no tracked changes.",
                 "type": "boolean"
               },
@@ -680,7 +680,7 @@
             }
           }
         },
-        "heavy": {
+        "queue": {
           "description": "The host lock and the limits of one heavy step.",
           "type": "object",
           "properties": {
@@ -747,7 +747,7 @@
           "maximum": 600,
           "default": 20
         },
-        "claims": {
+        "freezes": {
           "description": "Quiet claims (teamrig claim), which hold deploys of their targets while a session measures them.",
           "type": "object",
           "properties": {
@@ -760,7 +760,7 @@
             }
           }
         },
-        "windows": {
+        "stablePeriods": {
           "description": "teamrig windows: when a measurement of a deploy target is clean, between the deploys and heavy steps that disturb it.",
           "type": "object",
           "properties": {
@@ -797,7 +797,7 @@
           }
         },
         "wait": {
-          "description": "How a coordinator step waits.",
+          "description": "How a delivery step waits.",
           "type": "object",
           "properties": {
             "pollSeconds": {
@@ -826,7 +826,7 @@
               "minimum": 1,
               "maximum": 48
             },
-            "heavyCutoffUtc": {
+            "queueCutoffUtc": {
               "description": "No heavy step starts on the host after this UTC time until midnight.",
               "type": "string",
               "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
@@ -913,7 +913,7 @@
           "default": {}
         },
         "pauseByPriority": {
-          "description": "On a short day, when what is left of the week gives less than the pace line plans for the day, fund the team's sessions' queued work in priority order (p0 first, idle sessions last) and pause the sessions none of it reaches, so the top work keeps its pace. The lead, the coordinator owner held in the team and lifted sessions are never paused. Off: no session of the team is paused.",
+          "description": "On a short day, when what is left of the week gives less than the pace line plans for the day, fund the team's sessions' queued work in priority order (p0 first, idle sessions last) and pause the sessions none of it reaches, so the top work keeps its pace. The lead, the delivery owner held in the team and lifted sessions are never paused. Off: no session of the team is paused.",
           "type": "boolean",
           "default": false
         },
@@ -1295,7 +1295,7 @@
           "default": false
         },
         "headroom": {
-          "description": "The room teamrig open and teamrig hire --yes need on the host before they add a session: free memory over coordinator.heavy.memoryFloorMb with the session, and the commit charge within commitMaxPct. The lead opens whatever the room.",
+          "description": "The room teamrig open and teamrig hire --yes need on the host before they add a session: free memory over delivery.queue.memoryFloorMb with the session, and the commit charge within commitMaxPct. The lead opens whatever the room.",
           "type": "object",
           "properties": {
             "sessionMb": { "description": "The MB a new session is counted to need while no session runs to measure; else the median running session's Claude Code process tree.", "type": "integer", "minimum": 100, "maximum": 65536, "default": 1200 },
@@ -1304,7 +1304,7 @@
           }
         },
         "idle": {
-          "description": "The idle pass: it would close a session the wake check would not wake once it has been quiet open.headroom.closeIdleMinutes, and reopen it when the wake check would wake it. The lead and the coordinator owner are never closed.",
+          "description": "The idle pass: it would close a session the wake check would not wake once it has been quiet open.headroom.closeIdleMinutes, and reopen it when the wake check would wake it. The lead and the delivery owner are never closed.",
           "type": "object",
           "properties": {
             "mode": {
@@ -1314,7 +1314,7 @@
               "default": "on"
             },
             "keepOpen": {
-              "description": "Sessions the idle pass and teamrig close never close for being quiet, on top of the lead and the coordinator owner.",
+              "description": "Sessions the idle pass and teamrig close never close for being quiet, on top of the lead and the delivery owner.",
               "type": "array",
               "items": { "$ref": "#/$defs/sessionName" },
               "default": []
@@ -1483,7 +1483,7 @@
       "description": "Folders moved from their defaults; a relative path is resolved against the team's folder (<kit home>/teams/<team>). Unset, state and inbox stay under the team's folder and skills is the skills folder of Claude Code's folder ($CLAUDE_CONFIG_DIR, else ~/.claude).",
       "type": "object",
       "properties": {
-        "state": { "description": "The team's state folder: the task list's log, the inboxes, the coordinator's ledger and the logs. Unset: state in the team's folder.", "type": "string", "minLength": 1 },
+        "state": { "description": "The team's state folder: the task list's log, the inboxes, the delivery ledger and the logs. Unset: state in the team's folder.", "type": "string", "minLength": 1 },
         "inbox": { "description": "The folder of the sessions' inbox files. Unset: inbox in the state folder.", "type": "string", "minLength": 1 },
         "skills": { "description": "The Claude Code skills folder teamrig check and doctor read. Unset: skills in Claude Code's folder ($CLAUDE_CONFIG_DIR, else ~/.claude).", "type": "string", "minLength": 1 }
       }

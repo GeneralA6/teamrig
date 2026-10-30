@@ -197,13 +197,13 @@ describe('hooklessNews and checkedState', () => {
 });
 
 describe('hooklessReader and hooklessLine', () => {
-  it("tells the lead, or the coordinator's owner of the lead's own tab, one on a team above too (T1143)", () => {
-    const roles = { lead: 'lead', coordinatorOwner: 'po' };
+  it("tells the lead, or the delivery owner of the lead's own tab, one on a team above too (T1143)", () => {
+    const roles = { lead: 'lead', deliveryOwner: 'po' };
     assert.deepEqual(hooklessReader(TAB, roles, 'app'), { team: 'app', id: 'lead' });
     const lead: HooklessTab = { ...TAB, session: 'lead' };
     assert.deepEqual(hooklessReader(lead, roles, 'app'), { team: 'app', id: 'po' });
     assert.deepEqual(hooklessReader(lead, { lead: 'lead' }, 'app'), { team: 'app', id: 'lead' });
-    assert.deepEqual(hooklessReader(lead, { lead: 'lead', coordinatorOwner: 'root/po' }, 'app'), { team: 'root', id: 'po' });
+    assert.deepEqual(hooklessReader(lead, { lead: 'lead', deliveryOwner: 'root/po' }, 'app'), { team: 'root', id: 'po' });
   });
 
   it('names the session, its Claude session, the gap, both times and a restart in its folder, never a reload', () => {

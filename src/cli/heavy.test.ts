@@ -124,20 +124,20 @@ describe('teamrig heavy', () => {
       const { kit, steps } = harness();
       const result = await kit.run(['heavy', '--session', 'alpha', '--what', 'replay', '--max-minutes', minutes, '--', 'npm', 'test'], { steps });
       assert.equal(result.code, 64);
-      assert.match(result.stderr.join('\n'), /--max-minutes is a whole number from 1 to 140 \(coordinator\.heavy\.lockTtlMinutes less 10\)/);
+      assert.match(result.stderr.join('\n'), /--max-minutes is a whole number from 1 to 140 \(delivery\.queue\.lockTtlMinutes less 10\)/);
       assert.deepEqual([steps.ran, kit.files.get(LOCK)], [[], undefined]);
     });
   }
 
   it('refuses from the heavy cutoff on, before taking the lock', async () => {
-    const { kit, steps } = harness({ ...TEAM, coordinator: { schedule: { heavyCutoffUtc: '09:30' } } });
+    const { kit, steps } = harness({ ...TEAM, delivery: { schedule: { queueCutoffUtc: '09:30' } } });
     const result = await kit.run(BUILD, { steps });
     assert.deepEqual(result, { code: 2, stdout: ['REFUSED nothing heavy 09:30-00:00 UTC (now 10:00 UTC)'], stderr: [] });
     assert.deepEqual([steps.ran, kit.files.get(LOCK), kit.files.get(LEDGER)], [[], undefined, undefined]);
   });
 
   it("names the cutoff on the team's clock", async () => {
-    const { kit, steps } = harness({ ...TEAM, coordinator: { schedule: { heavyCutoffUtc: '09:30' } } });
+    const { kit, steps } = harness({ ...TEAM, delivery: { schedule: { queueCutoffUtc: '09:30' } } });
     const result = await kit.run(BUILD, { steps, timeZone: 'Asia/Jerusalem' });
     assert.deepEqual(result, { code: 2, stdout: ['REFUSED nothing heavy 11:30-02:00 IST (now 12:00 IST)'], stderr: [] });
   });
@@ -150,7 +150,7 @@ describe('teamrig heavy', () => {
   });
 
   it('waits for a held lock, and refuses when the wait ran past the cutoff', async () => {
-    const { kit, steps } = harness({ ...TEAM, coordinator: { schedule: { heavyCutoffUtc: '10:30' } } });
+    const { kit, steps } = harness({ ...TEAM, delivery: { schedule: { queueCutoffUtc: '10:30' } } });
     await kit.files.write(LOCK, heldBy('2030-01-08T10:40:00.000Z'));
     const result = await kit.run(BUILD, { steps, sessionProcesses: otherRuns() });
     assert.deepEqual(result, {
@@ -162,7 +162,7 @@ describe('teamrig heavy', () => {
   });
 
   it('refuses when the lock is still held after the wait, leaving it to its holder', async () => {
-    const { kit, steps } = harness({ ...TEAM, coordinator: { heavy: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
+    const { kit, steps } = harness({ ...TEAM, delivery: { queue: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
     await kit.files.write(LOCK, heldBy());
     const result = await kit.run(BUILD, { steps, sessionProcesses: otherRuns() });
     assert.deepEqual(result, {
@@ -205,7 +205,7 @@ describe('teamrig heavy', () => {
   });
 
   it('watches no memory when the config samples it every 0 seconds', async () => {
-    const { kit, steps } = harness({ ...TEAM, coordinator: { heavy: { memorySampleSeconds: 0 } } });
+    const { kit, steps } = harness({ ...TEAM, delivery: { queue: { memorySampleSeconds: 0 } } });
     const memory = new FakeHostMemory().measures({ peakTreeMb: 1900, lowFreeMb: 6400 });
     assert.equal((await kit.run(BUILD, { steps, memory })).code, 0);
     assert.deepEqual(memory.watches, []);
@@ -213,7 +213,7 @@ describe('teamrig heavy', () => {
   });
 
   it('stops waiting for the lock once the shell that started it ended, leaving the lock to its holder', async () => {
-    const { kit, steps } = harness({ ...TEAM, coordinator: { wait: { pollSeconds: 30 } } });
+    const { kit, steps } = harness({ ...TEAM, delivery: { wait: { pollSeconds: 30 } } });
     await kit.files.write(LOCK, heldBy());
     const starters = new FakeStarterWatch();
     const sleep = async (ms: number): Promise<void> => {
@@ -307,7 +307,7 @@ describe('teamrig heavy', () => {
   });
 
   it('runs under a parent lock even from the heavy cutoff on, since its parent started before it', async () => {
-    const { kit, steps } = harness({ ...TEAM, coordinator: { schedule: { heavyCutoffUtc: '09:30' } } });
+    const { kit, steps } = harness({ ...TEAM, delivery: { schedule: { queueCutoffUtc: '09:30' } } });
     await kit.files.write(LOCK, heldBy());
     const result = await kit.run(BUILD, { steps, sessionProcesses: otherRuns(), env: { TEAMRIG_HOST_LOCK: 'other' } });
     assert.deepEqual([result.code, steps.ran.length], [0, 1]);
@@ -333,7 +333,7 @@ describe('teamrig heavy', () => {
   }
 
   it('waits for a live lock whose id is not the one in $TEAMRIG_HOST_LOCK', async () => {
-    const { kit, steps } = harness({ ...TEAM, coordinator: { heavy: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
+    const { kit, steps } = harness({ ...TEAM, delivery: { queue: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
     await kit.files.write(LOCK, heldBy());
     const result = await kit.run(BUILD, { steps, sessionProcesses: otherRuns(), env: { TEAMRIG_HOST_LOCK: 'someone-else' } });
     assert.deepEqual([result.code, steps.ran, kit.files.get(LOCK)], [2, [], heldBy()]);
@@ -358,7 +358,7 @@ describe('teamrig heavy', () => {
   });
 
   it("keeps the lock and ledger where the team's config puts them", async () => {
-    const { kit, steps } = harness({ ...TEAM, coordinator: { dir: 'data/deploys', heavy: { lockPath: 'data/deploys/host.lock' } } });
+    const { kit, steps } = harness({ ...TEAM, delivery: { dir: 'data/deploys', queue: { lockPath: 'data/deploys/host.lock' } } });
     const lock = join(TEAM_HOME, 'data', 'deploys', 'host.lock');
     let lockWhileRunning: string | undefined;
     steps.whileRunning(async () => {
@@ -408,20 +408,20 @@ describe('teamrig heavy --small', () => {
     assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:05:00.000Z', exitCode: 0 }]);
   });
 
-  it('kills it after coordinator.heavy.smallMaxRunMinutes, or a shorter --max-minutes', async () => {
-    const { kit, steps } = harness({ ...TEAM, coordinator: { heavy: { smallMaxRunMinutes: 12 } } });
+  it('kills it after delivery.queue.smallMaxRunMinutes, or a shorter --max-minutes', async () => {
+    const { kit, steps } = harness({ ...TEAM, delivery: { queue: { smallMaxRunMinutes: 12 } } });
     assert.equal((await kit.run(SPECS, { steps })).stdout[1], '2030-01-08 10:00:00 UTC running: specs (killed after 12m)');
     const shorter = ['heavy', '--session', 'alpha', '--what', 'specs', '--small', '--max-minutes', '5', '--', 'npm', 'test'];
     assert.equal((await kit.run(shorter, { steps })).stdout[1], '2030-01-08 10:00:00 UTC running: specs (killed after 5m)');
     assert.deepEqual(steps.ran.map((request) => request.timeoutMs), [12 * MINUTE, 5 * MINUTE]);
   });
 
-  it('refuses a --max-minutes past coordinator.heavy.smallMaxRunMinutes before sharing the host', async () => {
+  it('refuses a --max-minutes past delivery.queue.smallMaxRunMinutes before sharing the host', async () => {
     const { kit, steps } = harness();
     const longer = ['heavy', '--session', 'alpha', '--what', 'specs', '--small', '--max-minutes', '11', '--', 'npm', 'test'];
     const result = await kit.run(longer, { steps });
     assert.equal(result.code, 64);
-    assert.match(result.stderr.join('\n'), /--max-minutes with --small is a whole number from 1 to 10 \(coordinator\.heavy\.smallMaxRunMinutes\): a longer step runs without --small/);
+    assert.match(result.stderr.join('\n'), /--max-minutes with --small is a whole number from 1 to 10 \(delivery\.queue\.smallMaxRunMinutes\): a longer step runs without --small/);
     assert.deepEqual([steps.ran, kit.files.get(`${SHARED}/id-1.json`), kit.files.get(LOCK)], [[], undefined, undefined]);
   });
 
@@ -435,7 +435,7 @@ describe('teamrig heavy --small', () => {
   });
 
   it('joins a small step sharing the host while the memory allows it', async () => {
-    const { kit, steps } = harness({ ...TEAM, coordinator: { heavy: { smallReserveMb: 1000, memoryFloorMb: 4000 } } });
+    const { kit, steps } = harness({ ...TEAM, delivery: { queue: { smallReserveMb: 1000, memoryFloorMb: 4000 } } });
     await kit.files.append(`${SHARED}/other.json`, sharedBy());
     steps.ends(0, MINUTE);
     const { stdout } = await kit.run(SPECS, { steps, sessionProcesses: otherRuns() });
@@ -443,7 +443,7 @@ describe('teamrig heavy --small', () => {
   });
 
   it('waits while the small steps sharing the host hold the memory it needs, then refuses', async () => {
-    const { kit, steps } = harness({ ...TEAM, coordinator: { heavy: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
+    const { kit, steps } = harness({ ...TEAM, delivery: { queue: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
     await kit.files.append(`${SHARED}/other.json`, sharedBy());
     const memory = new FakeHostMemory();
     memory.free = 6000;
@@ -454,7 +454,7 @@ describe('teamrig heavy --small', () => {
   });
 
   it('makes a step without it wait for the small steps sharing the host, then refuse, leaving no lock', async () => {
-    const { kit, steps } = harness({ ...TEAM, coordinator: { heavy: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
+    const { kit, steps } = harness({ ...TEAM, delivery: { queue: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
     await kit.files.append(`${SHARED}/other.json`, sharedBy());
     const result = await kit.run(BUILD, { steps, sessionProcesses: otherRuns() });
     const held = '1 small step: po (heavy: specs) since 2030-01-08 09:50 UTC';
@@ -486,7 +486,7 @@ describe('teamrig heavy --pre-push', () => {
   });
 
   it('reuses a pass from the heavy cutoff on, since nothing heavy runs', async () => {
-    const { kit, steps } = harness({ ...TEAM, coordinator: { schedule: { heavyCutoffUtc: '09:30' } } });
+    const { kit, steps } = harness({ ...TEAM, delivery: { schedule: { queueCutoffUtc: '09:30' } } });
     await recordPass(kit.files, cleanTree(), 'npm test', 'pre-push checks', Date.parse('2030-01-08T09:00:00Z'));
     const result = await kit.run(PRE_PUSH, { steps, trees: new FakeTrees(cleanTree()) });
     assert.deepEqual([result.code, result.stdout.at(-1), steps.ran], [0, 'DONE exit 0', []]);

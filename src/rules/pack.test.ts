@@ -24,7 +24,7 @@ import {
 } from './pack.ts';
 
 const COMMAND = 'teamrig';
-/** A coordinator repository that `teamrig deploy` deploys. */
+/** A delivery repository that `teamrig deploy` deploys. */
 const DEPLOYED_REPO = { mainCheckout: 'C:/src/app', deploy: { targets: ['api'], command: ['node', 'deploy.js'] } };
 const longest = (letter: string, length: number) => letter.repeat(length);
 const filled = (limit: { readonly maxItems: number; readonly maxLength: number }, letter: string) =>
@@ -43,12 +43,12 @@ interface Wording {
 /** Every printed value at its longest: names, lists, numbers and the optional rules all on. */
 function worstCaseConfig(wording: Wording = { pushToProtected: 'ask', hookAsks: 'refuse', wakeEnabled: true }) {
   const lead = longest('l', 32);
-  const coordinator = longest('c', 32);
+  const delivery = longest('c', 32);
   return testConfig({
     // Its mark and offset, `ACWST` and `UTC+8:45`, print widest of every zone's, in either season.
     timeZone: 'Australia/Eucla',
-    sessions: [lead, coordinator],
-    roles: { lead, coordinatorOwner: coordinator },
+    sessions: [lead, delivery],
+    roles: { lead, deliveryOwner: delivery },
     ownerGates: filled(CONFIG_LIMITS.ownerGates, 'g'),
     messages: { maxLines: CONFIG_LIMITS.maxLines.max },
     register: {
@@ -69,7 +69,7 @@ function worstCaseConfig(wording: Wording = { pushToProtected: 'ask', hookAsks: 
     prompts: { hookAsks: wording.hookAsks },
     wake: { enabled: wording.wakeEnabled },
     commits: { maxLines: CONFIG_LIMITS.commitMaxLines.max, maxFiles: CONFIG_LIMITS.commitMaxFiles.max, largeCommitTrailer: 'T'.repeat(40), gate: 'refuse' },
-    coordinator: { schedule: { heavyCutoffUtc: '22:30' }, repos: { app: DEPLOYED_REPO } },
+    delivery: { schedule: { queueCutoffUtc: '22:30' }, repos: { app: DEPLOYED_REPO } },
     // Both round to their longest two-decimal form (two digits before the point), and together stay within 100%.
     budget: { enabled: true, targetPct: 50.98765432109876, reservePct: 48.98765432109876, subagentWeight: 9.87654321 },
     alerts: { persistentFailureHours: CONFIG_LIMITS.persistentFailureHours.max },
@@ -324,46 +324,46 @@ describe('renderCorePack', () => {
     assert.match(pack, /--followups <tasks it leaves>\|none on verifying, done \[register\]\. Wait on a peer by its task\./);
     assert.match(pack, /A shipped change is verifying until its proof exists \(`teamrig verify`\)\.$/m);
     assert.match(pack, /`teamrig start --session <you>`/);
-    assert.doesNotMatch(pack, /coordinatorOwner|securityReviewer|heavyCutoffUtc|teamrig heavy|coordinator\.repos|Pace the week|\[budget\]/);
+    assert.doesNotMatch(pack, /deliveryOwner|securityReviewer|queueCutoffUtc|teamrig heavy|delivery\.repos|Pace the week|\[budget\]/);
   });
 
-  it('gives a team with a coordinator repository the heavy, test, merge and deploy commands, all in the background', () => {
+  it('gives a team with a delivery repository the heavy, test, merge and deploy commands, all in the background', () => {
     const pack = renderCorePack(
-      testConfig({ coordinator: { schedule: { heavyCutoffUtc: '22:30' }, repos: { app: DEPLOYED_REPO } } }),
+      testConfig({ delivery: { schedule: { queueCutoffUtc: '22:30' }, repos: { app: DEPLOYED_REPO } } }),
       COMMAND,
       'win32',
       RULES_CLOCK,
     );
     assert.match(
       pack,
-      /^7\. .*before then\. Run heavy steps \(builds, test runs, data scripts\) in the background through `teamrig heavy`, a test run inside `teamrig test`, none starting 22:30-00:00 UTC \[coordinator\.schedule\.heavyCutoffUtc\]; a commit stays a plain `git commit`\. Merge a tested branch with `teamrig merge` and run it with `teamrig deploy`, also in the background \[coordinator\.repos\]\.$/m,
+      /^7\. .*before then\. Run heavy steps \(builds, test runs, data scripts\) in the background through `teamrig heavy`, a test run inside `teamrig test`, none starting 22:30-00:00 UTC \[delivery\.schedule\.queueCutoffUtc\]; a commit stays a plain `git commit`\. Merge a tested branch with `teamrig merge` and run it with `teamrig deploy`, also in the background \[delivery\.repos\]\.$/m,
     );
     assert.doesNotMatch(pack, /No heavy step/);
   });
 
-  it('names deploy only when a coordinator repository has a deploy block, and the cutoff only when set', () => {
-    const pack = renderCorePack(testConfig({ coordinator: { repos: { app: { mainCheckout: 'C:/src/app' } } } }), COMMAND, 'win32', RULES_CLOCK);
+  it('names deploy only when a delivery repository has a deploy block, and the cutoff only when set', () => {
+    const pack = renderCorePack(testConfig({ delivery: { repos: { app: { mainCheckout: 'C:/src/app' } } } }), COMMAND, 'win32', RULES_CLOCK);
     assert.match(
       pack,
-      / a test run inside `teamrig test`; a commit stays a plain `git commit`\. Merge a tested branch with `teamrig merge`, also in the background \[coordinator\.repos\]\.$/m,
+      / a test run inside `teamrig test`; a commit stays a plain `git commit`\. Merge a tested branch with `teamrig merge`, also in the background \[delivery\.repos\]\.$/m,
     );
-    assert.doesNotMatch(pack, /teamrig deploy|heavyCutoffUtc/);
+    assert.doesNotMatch(pack, /teamrig deploy|queueCutoffUtc/);
   });
 
-  it('adds the coordinator owner, security reviewer, heavy cutoff and budget pacing only when configured', () => {
+  it('adds the delivery owner, security reviewer, heavy cutoff and budget pacing only when configured', () => {
     const pack = renderCorePack(
       testConfig({
-        roles: { lead: 'lead', coordinatorOwner: 'bravo', securityReviewer: 'alpha' },
-        coordinator: { schedule: { heavyCutoffUtc: '22:30' } },
+        roles: { lead: 'lead', deliveryOwner: 'bravo', securityReviewer: 'alpha' },
+        delivery: { schedule: { queueCutoffUtc: '22:30' } },
         budget: { enabled: true },
       }),
       COMMAND,
       'win32',
       RULES_CLOCK,
     );
-    assert.match(pack, /bravo owns deploy coordination and fleet health \[roles\.coordinatorOwner\]\. alpha reviews privileged commands \(`teamrig exec`\) \[roles\.securityReviewer\]\. Other sessions own/);
-    assert.match(pack, /No heavy step \(builds, test runs, data scripts\) starts 22:30-00:00 UTC \[coordinator\.schedule\.heavyCutoffUtc\]\./);
-    const cutoff = { coordinator: { schedule: { heavyCutoffUtc: '22:30' } } };
+    assert.match(pack, /bravo owns deploy coordination and fleet health \[roles\.deliveryOwner\]\. alpha reviews privileged commands \(`teamrig exec`\) \[roles\.securityReviewer\]\. Other sessions own/);
+    assert.match(pack, /No heavy step \(builds, test runs, data scripts\) starts 22:30-00:00 UTC \[delivery\.schedule\.queueCutoffUtc\]\./);
+    const cutoff = { delivery: { schedule: { queueCutoffUtc: '22:30' } } };
     const inIsrael = renderCorePack(testConfig(cutoff), COMMAND, 'win32', { ...RULES_CLOCK, machineZone: 'Asia/Jerusalem' });
     assert.match(inIsrael, /starts 00:30-02:00 IST \[/, "on the machine's clock, in winter");
     const summer = { ...RULES_CLOCK, now: new Date('2030-07-08T10:00:00.000Z') };

@@ -135,7 +135,7 @@ export async function idleVerdictOf(runtime: CliRuntime, config: KitConfig, rost
   const label = `${roster.nameOf(id) ?? id} (session ${id})`;
   const keep = (why: string): IdleVerdict => ({ kind: 'keep', why: `${label} ${why}` });
   const notRunning = 'is not running: nothing to close';
-  const kept = roster.rolesOf(id).filter((role) => role === 'lead' || role === 'coordinatorOwner');
+  const kept = roster.rolesOf(id).filter((role) => role === 'lead' || role === 'deliveryOwner');
   if (kept.length > 0) {
     return keep(`holds the ${kept.join(' and ')} role: ${KIT_NAME} never closes it`);
   }

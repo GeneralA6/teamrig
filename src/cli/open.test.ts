@@ -75,7 +75,7 @@ describe('teamrig open', () => {
     assert.equal(refused.code, EXIT.refused);
     assert.deepEqual(refused.stdout, [
       'REFUSED no room on the host to open app-alpha (session alpha), counted at 1200 MB resident and 1200 MB committed: 5000 MB free, under the 4096 MB heavy ' +
-        'steps keep free (coordinator.heavy.memoryFloorMb) plus 1200 MB for it. Close a session first: teamrig sessions lists what each one holds',
+        'steps keep free (delivery.queue.memoryFloorMb) plus 1200 MB for it. Close a session first: teamrig sessions lists what each one holds',
     ]);
     assert.deepEqual(processes.started, []);
     const lead = await new CliHarness(TEAM).run(['open', 'lead'], { probe: FOLDERS, processes, platform: 'win32', memory });
@@ -96,7 +96,7 @@ describe('teamrig open', () => {
     const refused = await kit.run(['open', 'alpha'], { probe: FOLDERS, processes, platform: 'win32', memory: resident });
     assert.deepEqual(refused.stdout, [
       'REFUSED no room on the host to open app-alpha (session alpha), counted at 3000 MB resident and 1200 MB committed: 6000 MB free, under the 4096 MB heavy ' +
-        'steps keep free (coordinator.heavy.memoryFloorMb) plus 3000 MB for it. Close a session first: teamrig sessions lists what each one holds',
+        'steps keep free (delivery.queue.memoryFloorMb) plus 3000 MB for it. Close a session first: teamrig sessions lists what each one holds',
     ]);
     const unlisted = new FakeHostMemory().lists(undefined);
     unlisted.free = 6000;

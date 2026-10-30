@@ -5,8 +5,8 @@ import { sessionWeightOf, shareOf, teamTreeOf, type BudgetSplit, type TeamsOnAcc
 import type { WeekReading } from './week.ts';
 import { workWeightOf, type WorkByPriority } from './work.ts';
 
-/** The roles whose holder a short day never pauses: the lead leads the cut, the coordinator owner keeps the fleet up. */
-const KEPT_ROLES: readonly Role[] = ['lead', 'coordinatorOwner'];
+/** The roles whose holder a short day never pauses: the lead leads the cut, the delivery owner keeps the fleet up. */
+const KEPT_ROLES: readonly Role[] = ['lead', 'deliveryOwner'];
 
 /**
  * The sessions of `team` (its roster `ids`) a short day may pause: none while its `budget.pauseByPriority` is off,

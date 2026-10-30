@@ -9,7 +9,7 @@ import type { MergeGit } from './git.ts';
 import { holdBinds, holdId, type HeldChange, type HoldHit, type ReviewHold, type ReviewHolds } from './review-holds.ts';
 
 /**
- * The review gate's step in `teamrig merge` (T800 §2.2, T828). With `coordinator.repos.<name>.reviewGate` on, it runs
+ * The review gate's step in `teamrig merge` (T800 §2.2, T828). With `delivery.repos.<name>.reviewGate` on, it runs
  * under the host lock after the rebase. It holds a change whose paths hit a review entry (the generic ones, then
  * `pushGuard.reviewPaths`) until its reviewer approves the branch's task; a `check` hit runs the repo's review check
  * first, and a clean check lets it go. A hold binds `base..head` and the tree they make: the same change lands once

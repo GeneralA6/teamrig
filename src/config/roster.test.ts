@@ -6,7 +6,7 @@ import { isRole, roleHolderOf, Roster } from './roster.ts';
 const CONFIG = {
   sessions: ['lead', 'alpha', 'bravo'],
   names: { lead: 'captain' },
-  roles: { lead: 'lead', coordinatorOwner: 'alpha' },
+  roles: { lead: 'lead', deliveryOwner: 'alpha' },
 };
 
 describe('Roster', () => {
@@ -51,9 +51,9 @@ describe('Roster', () => {
   });
 
   it('knows who holds each role', () => {
-    assert.deepEqual([roster.holderOf('lead'), roster.holderOf('coordinatorOwner')], ['lead', 'alpha']);
-    assert.deepEqual([roster.rolesOf('alpha'), roster.rolesOf('bravo')], [['coordinatorOwner'], []]);
-    assert.equal(new Roster({ ...CONFIG, roles: { lead: 'lead' } }, 'app').holderOf('coordinatorOwner'), undefined);
+    assert.deepEqual([roster.holderOf('lead'), roster.holderOf('deliveryOwner')], ['lead', 'alpha']);
+    assert.deepEqual([roster.rolesOf('alpha'), roster.rolesOf('bravo')], [['deliveryOwner'], []]);
+    assert.equal(new Roster({ ...CONFIG, roles: { lead: 'lead' } }, 'app').holderOf('deliveryOwner'), undefined);
     const reviewed = new Roster({ ...CONFIG, roles: { ...CONFIG.roles, securityReviewer: 'bravo' } }, 'app');
     assert.deepEqual([reviewed.holderOf('securityReviewer'), reviewed.rolesOf('bravo')], ['bravo', ['securityReviewer']]);
   });
@@ -111,8 +111,8 @@ describe('Roster with renames', () => {
 
 describe('roleHolderOf (T1143)', () => {
   it('reads a bare holder as a session of the team, and <team>/<id> as one of a team above', () => {
-    const roles = { lead: 'lead', coordinatorOwner: 'alpha', securityReviewer: 'root/security' };
-    assert.deepEqual(roleHolderOf(roles, 'coordinatorOwner', 'web'), { team: 'web', id: 'alpha' });
+    const roles = { lead: 'lead', deliveryOwner: 'alpha', securityReviewer: 'root/security' };
+    assert.deepEqual(roleHolderOf(roles, 'deliveryOwner', 'web'), { team: 'web', id: 'alpha' });
     assert.deepEqual(roleHolderOf(roles, 'securityReviewer', 'web'), { team: 'root', id: 'security' });
     assert.equal(roleHolderOf({ lead: 'lead' }, 'securityReviewer', 'web'), undefined);
   });
@@ -120,6 +120,6 @@ describe('roleHolderOf (T1143)', () => {
 
 describe('isRole', () => {
   it('accepts only the role keys', () => {
-    assert.deepEqual(['lead', 'coordinatorOwner', 'securityReviewer', 'owner', 'toString'].map(isRole), [true, true, true, false, false]);
+    assert.deepEqual(['lead', 'deliveryOwner', 'securityReviewer', 'owner', 'toString'].map(isRole), [true, true, true, false, false]);
   });
 });

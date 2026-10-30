@@ -31,12 +31,12 @@ function redeployPartsOf(args: ParsedArgs): RedeployParts | undefined {
 
 /**
  * `teamrig deploy [--repo <name>]`: brings what was pushed to a repository's default branch to the running system
- * (src/deploy/run.ts): pulls its main checkout fast-forward and runs `coordinator.repos.<name>.deploy`, its afterPull
+ * (src/deploy/run.ts): pulls its main checkout fast-forward and runs `delivery.repos.<name>.deploy`, its afterPull
  * hooks then its command, one heavy step in the ledger, and records the deploy. With `--targets <a,b> --what "<why>"
  * -- <command>` it pulls nothing and runs that command instead, a deploy of those targets (src/deploy/deploy.ts). Refused
- * for a main checkout it must not pull into, from `coordinator.schedule.heavyCutoffUtc` to midnight UTC, in the
+ * for a main checkout it must not pull into, from `delivery.schedule.queueCutoffUtc` to midnight UTC, in the
  * `resetBlackoutHours` before the weekly token reset and when a check refuses; it waits up to
- * `coordinator.wait.maxMinutes` for quiet claims on its targets, its checks and the host lock. Once the shell that
+ * `delivery.wait.maxMinutes` for quiet claims on its targets, its checks and the host lock. Once the shell that
  * started it ends, it stops waiting, or kills the hook it runs (exit 129) and frees the lock. Exit 0 deployed or nothing
  * pending, 1 failed or stopped, 2 refused.
  */
@@ -48,20 +48,20 @@ export async function deploy(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   const config = requireConfig(kit, runtime, 'read');
   const zone = teamZone(config, runtime);
   const session = sessionIdOf(await rosterOf(runtime, kit, config), caller);
-  const { coordinator, budget } = config;
-  const places = coordinatorPlaces(coordinator, kit.paths);
+  const { delivery, budget } = config;
+  const places = coordinatorPlaces(delivery, kit.paths);
   const say = logLineOf(runtime, zone);
   const watching = await watchStarters(runtime, say);
   try {
     const { stop } = watching;
-    const setup = { team, coordinator, places, zone, inTeam: (path: string) => teamPlace(kit.paths, path) };
+    const setup = { team, delivery, places, zone, inTeam: (path: string) => teamPlace(kit.paths, path) };
     const ports = {
       git: runtime.mergeGit,
       hooks: stoppableHooks(runtime.hooks, stop),
       files: runtime.files,
       clock: runtime.clock,
       sleep: stoppableSleep(runtime.sleep, stop),
-      lock: stoppableLock(hostLockOf(runtime, places.hostLock, coordinator.heavy), stop),
+      lock: stoppableLock(hostLockOf(runtime, places.hostLock, delivery.queue), stop),
       env: runtime.env,
       platform: runtime.platform,
       scanner: new SecretScanner(config.register.secretPatterns),

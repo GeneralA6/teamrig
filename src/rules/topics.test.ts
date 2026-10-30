@@ -34,6 +34,11 @@ describe('topicsOf', () => {
     assert.ok(topicsOf('Any session may integrate a finished branch for another one.')?.rules.includes('own-change'));
   });
 
+  it('ties a line that names the delivery owner, or still the coordinator, to the roles', () => {
+    assert.ok(topicsOf('The api session is the delivery owner of this repository.')?.rules.includes('roles'));
+    assert.ok(topicsOf('The api session is the coordinator of this repository.')?.rules.includes('roles'));
+  });
+
   it('tags a line that says which rule wins or names teamrig, whatever its topic', () => {
     assert.deepEqual(topicsOf('Where these notes say otherwise, they win.'), { rules: [], tags: ['precedence'] });
     assert.deepEqual(topicsOf('The teamrig rules do not apply in this repo.')?.tags, ['teamrig']);

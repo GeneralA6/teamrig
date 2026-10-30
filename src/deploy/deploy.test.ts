@@ -31,7 +31,7 @@ const PLACES: CoordinatorPlaces = {
 const FLOW = { name: 'flow', command: ['node', 'checks/flow.js'] };
 const DEPLOY_COMMAND = ['node', 'tools/deploy.js'];
 const DEPLOY: DeployConfig = { targets: ['api', 'workers', 'live'], checks: [FLOW], afterPull: [['node', 'scripts/build-cli.js']], command: DEPLOY_COMMAND };
-const PIPELINE: CoordinatorRepoConfig = { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], dependencyGate: false, reviewGate: false, followMainCheckout: false, deploy: DEPLOY };
+const PIPELINE: CoordinatorRepoConfig = { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], dependencyGate: false, reviewGate: false, updateMainCheckout: false, deploy: DEPLOY };
 const RESTART = ['node', 'tools/restart.js', 'api', 'live'];
 const REQUEST: RedeployRequest = { session: 'sec', repo: 'pipeline', dir: '/runner', targets: ['api', 'live'], why: 'rotate the db credential', argv: RESTART };
 const SECRET = ['db password', '=', 'hunter2'].join('');
@@ -50,26 +50,26 @@ class World {
   readonly hooks = new FakeHooks(this.clock);
   readonly lock: HostLock;
   readonly said: string[] = [];
-  private readonly coordinator: CoordinatorConfig;
+  private readonly delivery: CoordinatorConfig;
   private readonly reset: ResetTime | undefined;
 
   constructor(options: Options = {}) {
     this.files = new MemoryFiles(options.claims === undefined ? {} : { [PLACES.claims]: options.claims });
     this.lock = new HostLock(PLACES.hostLock, 150 * 60_000, { files: this.files, clock: this.clock, sleep: this.clock.sleep, pid: 7, alive: () => true, newId: () => 'lock-1' });
     this.reset = options.reset;
-    this.coordinator = {
+    this.delivery = {
       schedule: options.schedule ?? {},
-      heavy: DEFAULT_HEAVY,
+      queue: DEFAULT_HEAVY,
       wait: DEFAULT_COORDINATOR_WAIT,
       checkTimeoutSeconds: DEFAULT_CHECK_TIMEOUT_SECONDS,
-      claims: DEFAULT_CLAIMS,
-      windows: DEFAULT_WINDOWS,
+      freezes: DEFAULT_CLAIMS,
+      stablePeriods: DEFAULT_WINDOWS,
       repos: { pipeline: PIPELINE },
     };
   }
 
   run(request: RedeployRequest = REQUEST): Promise<DeployEnd> {
-    const setup = { team: 'app', coordinator: this.coordinator, places: PLACES, zone: TimeZone.UTC, inTeam: (path: string) => path };
+    const setup = { team: 'app', delivery: this.delivery, places: PLACES, zone: TimeZone.UTC, inTeam: (path: string) => path };
     return redeployTargets(setup, {
       git: this.git,
       hooks: this.hooks,
@@ -143,18 +143,18 @@ describe('redeployTargets', () => {
 
   it('refuses targets its repository does not deploy, or none, before any check or lock', async () => {
     const world = new World();
-    const listed = 'coordinator.repos.pipeline.deploy.targets (api, workers, live)';
+    const listed = 'delivery.repos.pipeline.deploy.targets (api, workers, live)';
     assert.deepEqual(await world.run({ ...REQUEST, targets: ['api', 'apii', 'cron'] }), { kind: 'refused', reason: `apii, cron are not in ${listed}: a deploy names only targets the quiet claims and windows know` });
     assert.deepEqual(await world.run({ ...REQUEST, targets: ['apii'] }), { kind: 'refused', reason: `apii is not in ${listed}: a deploy names only targets the quiet claims and windows know` });
     assert.deepEqual(await world.run({ ...REQUEST, targets: [] }), { kind: 'refused', reason: `name the targets the command restarts, from ${listed}` });
-    assert.deepEqual(await world.run({ ...REQUEST, repo: 'site' }), { kind: 'refused', reason: 'site is not in coordinator.repos (with a deploy block: pipeline)' });
+    assert.deepEqual(await world.run({ ...REQUEST, repo: 'site' }), { kind: 'refused', reason: 'site is not in delivery.repos (with a deploy block: pipeline)' });
     assert.deepEqual([world.hooks.ran.length, world.records().length, world.lockFree()], [0, 0, true]);
   });
 
   it('refuses a main checkout with no commit at HEAD, before any check or lock', async () => {
     const world = new World();
     world.git.heads.delete(MAIN_CHECKOUT);
-    assert.deepEqual(await world.run(), { kind: 'refused', reason: `${MAIN_CHECKOUT} (coordinator.repos.pipeline.mainCheckout) names no commit at HEAD, so the deploy could not record what it ran on` });
+    assert.deepEqual(await world.run(), { kind: 'refused', reason: `${MAIN_CHECKOUT} (delivery.repos.pipeline.mainCheckout) names no commit at HEAD, so the deploy could not record what it ran on` });
     assert.equal(world.hooks.ran.length, 0);
   });
 
@@ -169,7 +169,7 @@ describe('redeployTargets', () => {
   });
 
   it('is refused at the heavy cutoff and in the blackout before the token reset, running nothing', async () => {
-    const late = new World({ schedule: { heavyCutoffUtc: '09:00' } });
+    const late = new World({ schedule: { queueCutoffUtc: '09:00' } });
     assert.deepEqual(await late.run(), { kind: 'refused', reason: 'nothing heavy 09:00-00:00 UTC (now 10:00 UTC)' });
     const blackout = new World({ schedule: { resetBlackoutHours: 2 }, reset: { at: Date.parse('2030-01-08T11:00:00Z'), source: 'usage snapshot' } });
     const end = await blackout.run();

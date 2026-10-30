@@ -42,7 +42,7 @@ const PLACES: CoordinatorPlaces = {
 };
 const REQUEST: MergeRequest = { session: 'api', dir: WORKTREE, keepRemote: false, keepLocal: false };
 const NO_REVIEW: ReviewGateSetup = { reviewPaths: [], tree: new LeadTree(testConfig()), roles: {} };
-const PLAIN: CoordinatorRepoConfig = { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], dependencyGate: false, reviewGate: false, followMainCheckout: false };
+const PLAIN: CoordinatorRepoConfig = { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], dependencyGate: false, reviewGate: false, updateMainCheckout: false };
 /** A commit of a source file with its test, under the size limits. */
 const COMMIT: CommitStat = { sha: 'rebased', subject: 'Add the feature', body: '', files: [{ path: 'src/app.ts', added: 10, deleted: 2 }, { path: 'src/app.test.ts', added: 20, deleted: 0 }] };
 
@@ -88,17 +88,17 @@ class World {
     this.reviewHolds = new ReviewHolds(this.files, PLACES.reviewHolds);
     this.gateHolds = new GateHolds(this.files, PLACES.gateHolds);
     this.merges = new MergeLog(this.files, PLACES.merges);
-    const coordinator: CoordinatorConfig = {
+    const delivery: CoordinatorConfig = {
       schedule: options.schedule ?? {},
-      heavy: DEFAULT_HEAVY,
+      queue: DEFAULT_HEAVY,
       wait: { ...DEFAULT_COORDINATOR_WAIT, maxMinutes: options.waitMinutes ?? DEFAULT_COORDINATOR_WAIT.maxMinutes },
       checkTimeoutSeconds: DEFAULT_CHECK_TIMEOUT_SECONDS,
-      claims: DEFAULT_CLAIMS,
-      windows: DEFAULT_WINDOWS,
+      freezes: DEFAULT_CLAIMS,
+      stablePeriods: DEFAULT_WINDOWS,
       repos: options.repos ?? {},
     };
     this.setup = {
-      coordinator,
+      delivery,
       places: PLACES,
       zone: TimeZone.UTC,
       inTeam: (path) => (path.startsWith('/') ? path : `/repo/${path}`),
@@ -221,7 +221,7 @@ describe('merge holds a dependency change where the repository asks for it', () 
   it('refuses a lockfile change and names the setting that holds it', async () => {
     const world = new World({ repos: gated });
     world.git.paths = ['src/app.ts', 'package-lock.json'];
-    refused(await world.run(), /deps changed \(package-lock\.json\): coordinator\.repos\.app\.dependencyGate/);
+    refused(await world.run(), /deps changed \(package-lock\.json\): delivery\.repos\.app\.dependencyGate/);
     assert.deepEqual(world.steps.ran, []);
   });
 
@@ -264,7 +264,7 @@ describe('merge holds a dependency change where the repository asks for it', () 
   it('says which setting clears a change it holds', async () => {
     const world = new World({ repos: gated });
     world.git.paths = ['package-lock.json'];
-    refused(await world.run(), /set coordinator\.repos\.app\.dependencyCheck to the check that clears one/);
+    refused(await world.run(), /set delivery\.repos\.app\.dependencyCheck to the check that clears one/);
   });
 });
 
@@ -387,7 +387,7 @@ describe('merge pushes a branch to the default branch', () => {
     assert.deepEqual(world.records(PLACES.ledger), [start, { ...start, endedAt: '2030-01-08T10:01:30.000Z', exitCode: 0 }]);
     assert.equal(world.files.get(PLACES.ledgerMd), undefined);
     assert.ok(world.lockFree());
-    assert.ok(world.said.includes('NOTE app is not in coordinator.repos: no deploy targets, no dependency gate, no main checkout to follow'));
+    assert.ok(world.said.includes('NOTE app is not in delivery.repos: no deploy targets, no dependency gate, no main checkout to follow'));
     assert.equal(world.said.at(-1), `next: teamrig worktree remove "${WORKTREE}"`);
   });
 
@@ -698,7 +698,7 @@ describe('merge goes through the repository’s merge command, where one is set'
   const holds: readonly { readonly name: string; readonly options: Options; readonly arrange: (world: World) => void; readonly end: (end: MergeEnd) => void }[] = [
     {
       name: 'after the heavy cutoff',
-      options: { repos: { app: MERGING }, start: '2030-01-08T22:45:00Z', schedule: { heavyCutoffUtc: '22:30' } },
+      options: { repos: { app: MERGING }, start: '2030-01-08T22:45:00Z', schedule: { queueCutoffUtc: '22:30' } },
       arrange: () => undefined,
       end: (end) => refused(end, /nothing heavy 22:30-00:00 UTC/),
     },
@@ -708,7 +708,7 @@ describe('merge goes through the repository’s merge command, where one is set'
       arrange: (world) => {
         world.git.paths = ['package-lock.json'];
       },
-      end: (end) => refused(end, /deps changed \(package-lock\.json\): coordinator\.repos\.app\.dependencyGate/),
+      end: (end) => refused(end, /deps changed \(package-lock\.json\): delivery\.repos\.app\.dependencyGate/),
     },
     {
       name: 'a rebase conflict',
@@ -875,7 +875,7 @@ describe('merge waits for what may hold a deploy, and refuses what forbids one',
   });
 
   it('refuses after the heavy cutoff', async () => {
-    const world = new World({ start: '2030-01-08T22:45:00Z', schedule: { heavyCutoffUtc: '22:30' } });
+    const world = new World({ start: '2030-01-08T22:45:00Z', schedule: { queueCutoffUtc: '22:30' } });
     refused(await world.run(), /nothing heavy 22:30-00:00 UTC/);
     assert.deepEqual(world.steps.ran, []);
   });
@@ -893,7 +893,7 @@ describe('merge waits for what may hold a deploy, and refuses what forbids one',
 });
 
 describe('merge follows the main checkout where the repository asks for it', () => {
-  const following = { app: { ...PLAIN, followMainCheckout: true } };
+  const following = { app: { ...PLAIN, updateMainCheckout: true } };
 
   it('fast-forwards a clean main checkout on the default branch to what merged', async () => {
     const world = new World({ repos: following });
@@ -1082,7 +1082,7 @@ describe('mergeBranch under pushToProtected: gated', () => {
   it('counts a repo with its review gate off as a missed review', async () => {
     const world = gatedWorld({ reviewGate: false });
     await passed(world);
-    refused(await world.run(ALPHA), /off the default branch: review: coordinator\.repos\.app\.reviewGate is off/);
+    refused(await world.run(ALPHA), /off the default branch: review: delivery\.repos\.app\.reviewGate is off/);
     assert.deepEqual(world.steps.ran, []);
   });
 

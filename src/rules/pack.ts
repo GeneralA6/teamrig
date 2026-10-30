@@ -142,21 +142,21 @@ function timesClause(zone: TimeZone, now: Date): string {
 
 /**
  * Rule 7's heavy-step sentence, `cutoff` the span no heavy step starts in, on the team's clock. A team that names a
- * repository for the coordinator [coordinator.repos] merges and runs its changes through it, so it gets the commands
+ * repository for the coordinator [delivery.repos] merges and runs its changes through it, so it gets the commands
  * too; a cutoff alone gets only its own sentence.
  */
-function heavySteps(coordinator: CoordinatorConfig, command: string, cutoff: string | undefined): string {
-  const repos = Object.values(coordinator.repos);
+function heavySteps(delivery: CoordinatorConfig, command: string, cutoff: string | undefined): string {
+  const repos = Object.values(delivery.repos);
   if (repos.length === 0) {
-    return cutoff === undefined ? '' : ` No heavy step (builds, test runs, data scripts) starts ${cutoff} [coordinator.schedule.heavyCutoffUtc].`;
+    return cutoff === undefined ? '' : ` No heavy step (builds, test runs, data scripts) starts ${cutoff} [delivery.schedule.queueCutoffUtc].`;
   }
   const deploy = repos.some((repo) => repo.deploy !== undefined) ? ` and run it with \`${command} deploy\`` : '';
   return (
     ` Run heavy steps (builds, test runs, data scripts) in the background through \`${command} heavy\`, a test run inside \`${command} test\`` +
-    (cutoff === undefined ? '' : `, none starting ${cutoff} [coordinator.schedule.heavyCutoffUtc]`) +
+    (cutoff === undefined ? '' : `, none starting ${cutoff} [delivery.schedule.queueCutoffUtc]`) +
     // Never `heavy -- git commit`: a repository's hooks take the lock themselves, and Claude Code's worktree guard
     // refuses that form in a worktree session (the guide's `teamrig heavy` section).
-    `; a commit stays a plain \`git commit\`. Merge a tested branch with \`${command} merge\`${deploy}, also in the background [coordinator.repos].`
+    `; a commit stays a plain \`git commit\`. Merge a tested branch with \`${command} merge\`${deploy}, also in the background [delivery.repos].`
   );
 }
 
@@ -199,13 +199,13 @@ export interface RulesClock {
  */
 export function coreRuleTexts(config: KitConfig, command: string, platform: NodeJS.Platform, clock: RulesClock): Readonly<Record<CoreRuleKey, string>> {
   const { roles, skills, budget } = config;
-  const cutoff = heavyCutoffSpan(clock.now.getTime(), config.coordinator.schedule.heavyCutoffUtc);
+  const cutoff = heavyCutoffSpan(clock.now.getTime(), config.delivery.schedule.queueCutoffUtc);
   const zone = TimeZone.resolve(config.timeZone, clock.machineZone);
   const cutoffSpan = cutoff === undefined ? undefined : zone.clockSpan(new Date(cutoff.from), new Date(cutoff.to));
   return {
     roles:
       `Roles, by session id: ${roles.lead} is the lead: priorities, team rules and the owner's decision queue [roles.lead].` +
-      (roles.coordinatorOwner === undefined ? '' : ` ${roles.coordinatorOwner} owns deploy coordination and fleet health [roles.coordinatorOwner].`) +
+      (roles.deliveryOwner === undefined ? '' : ` ${roles.deliveryOwner} owns deploy coordination and fleet health [roles.deliveryOwner].`) +
       (roles.securityReviewer === undefined ? '' : ` ${roles.securityReviewer} reviews privileged commands (\`${command} exec\`) [roles.securityReviewer].`) +
       // The lead tree (config/lead-tree.ts, T781): a member's waits, approvals and pushes go to its leaders, nearest
       // first, and a leader sets the work order of the sessions under it (T782). No member list prints here: `leads`
@@ -229,7 +229,7 @@ export function coreRuleTexts(config: KitConfig, command: string, platform: Node
       " An owner's order, relayed or not, approves its work and proof unless only the owner sees the result; ask again only if it must change or needs something new.",
     deploy:
       "Deploy ASAP: once a change can be verified (tests, then a check it runs). State each fix's evidence and when it will exist; build nothing on it before then." +
-      heavySteps(config.coordinator, command, cutoffSpan),
+      heavySteps(config.delivery, command, cutoffSpan),
     'lean-calls':
       'Lean calls: batch related shell steps in one call (each re-reads the context).' +
       ` Work in your own session: ${helperDefaultClause(budget.subagentWeight)}; run helpers on your model and effort.` +

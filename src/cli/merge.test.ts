@@ -17,7 +17,7 @@ const LEDGER = join(TEAM_HOME, 'state', 'deploys', 'ledger.jsonl');
 const LOCK = join(KIT, 'host.lock');
 const MINUTE = 60_000;
 const SESSION_ID = '0f8e2c4a-1b3d-4e5f-8a9b-0c1d2e3f4a5b';
-const DEPLOYING = { ...TEAM, coordinator: { repos: { app: { mainCheckout: MAIN_CHECKOUT, deploysOnPush: ['cloud-api'] } } } };
+const DEPLOYING = { ...TEAM, delivery: { repos: { app: { mainCheckout: MAIN_CHECKOUT, deploysOnPush: ['cloud-api'] } } } };
 const MERGE_RUN = ['merge', '--session', 'alpha'];
 /** A run in the worktree, outside the project folder: its team comes from $TEAMRIG_TEAM. */
 const IN_WORKTREE = { cwd: WORKTREE, env: { TEAMRIG_TEAM: 'app' } };
@@ -128,7 +128,7 @@ describe('teamrig merge', () => {
 
   it('prints WAITING with the merge command’s last line and exits 75 when the command waits, pushing nothing', async () => {
     const MERGE = ['node', 'merge.ts'];
-    const { kit, git, steps } = world({ ...TEAM, coordinator: { repos: { app: { mainCheckout: MAIN_CHECKOUT, merge: { command: MERGE } } } } });
+    const { kit, git, steps } = world({ ...TEAM, delivery: { repos: { app: { mainCheckout: MAIN_CHECKOUT, merge: { command: MERGE } } } } });
     const hooks = new FakeHooks(kit.clock).answer(MERGE, { end: 75, lines: ['https://forge/pr/7'] });
     const result = await kit.run(MERGE_RUN, { ...IN_WORKTREE, mergeGit: git, steps, hooks });
     assert.equal(result.code, 75);
@@ -144,7 +144,7 @@ describe('teamrig merge', () => {
   });
 
   it('refuses in the blackout before the reset the status line last reported', async () => {
-    const { kit, git, steps } = world({ ...DEPLOYING, budget: { statusSnapshotDir: 'live' }, coordinator: { ...DEPLOYING.coordinator, schedule: { resetBlackoutHours: 4 } } });
+    const { kit, git, steps } = world({ ...DEPLOYING, budget: { statusSnapshotDir: 'live' }, delivery: { ...DEPLOYING.delivery, schedule: { resetBlackoutHours: 4 } } });
     const snapshot = formatSnapshot({
       ts: '2030-01-08T09:55:00.000Z',
       sessionId: SESSION_ID,
@@ -165,13 +165,13 @@ describe('teamrig merge', () => {
   });
 
   it('merges in a blackout window when neither the status line nor budget.reset names the reset', async () => {
-    const { kit, git, steps } = world({ ...DEPLOYING, coordinator: { ...DEPLOYING.coordinator, schedule: { resetBlackoutHours: 24 } } });
+    const { kit, git, steps } = world({ ...DEPLOYING, delivery: { ...DEPLOYING.delivery, schedule: { resetBlackoutHours: 24 } } });
     const result = await kit.run(MERGE_RUN, { ...IN_WORKTREE, mergeGit: git, steps });
     assert.equal(result.code, 0);
   });
 
   it('takes the reset from budget.reset when no status line reported one', async () => {
-    const { kit, git, steps } = world({ ...DEPLOYING, budget: { reset: { weekday: 'tue', timeUtc: '11:00' } }, coordinator: { ...DEPLOYING.coordinator, schedule: { resetBlackoutHours: 2 } } });
+    const { kit, git, steps } = world({ ...DEPLOYING, budget: { reset: { weekday: 'tue', timeUtc: '11:00' } }, delivery: { ...DEPLOYING.delivery, schedule: { resetBlackoutHours: 2 } } });
     const result = await kit.run(MERGE_RUN, { ...IN_WORKTREE, mergeGit: git, steps });
     assert.deepEqual(result.stdout, ['REFUSED deploy blackout before the weekly token reset: no deploy from Tue 01-08 09:00 UTC until Tue 01-08 11:00 UTC (reset from the budget.reset config)']);
   });
@@ -188,7 +188,7 @@ describe('teamrig merge with the review gate', () => {
   const GATED = {
     ...TEAM,
     roles: { lead: 'lead', securityReviewer: 'bravo' },
-    coordinator: { repos: { app: { mainCheckout: MAIN_CHECKOUT, reviewGate: true } } },
+    delivery: { repos: { app: { mainCheckout: MAIN_CHECKOUT, reviewGate: true } } },
   };
 
   it("holds a lockfile change of alpha's task for the security reviewer, then merges it once the reviewer approved", async () => {
@@ -217,7 +217,7 @@ describe('teamrig merge with the review gate', () => {
 });
 
 describe('teamrig merge under pushToProtected gated (T858)', () => {
-  const GATED = { ...TEAM, pushGuard: { pushToProtected: 'gated' }, coordinator: { repos: { app: { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], reviewGate: true } } } };
+  const GATED = { ...TEAM, pushGuard: { pushToProtected: 'gated' }, delivery: { repos: { app: { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], reviewGate: true } } } };
   const DEPLOYS = join(TEAM_HOME, 'state', 'deploys');
   const COMMITS: readonly CommitStat[] = [{ sha: 'rebased', subject: 'Add the feature', body: '', files: [{ path: 'src/app.ts', added: 4, deleted: 1 }, { path: 'src/app.test.ts', added: 9, deleted: 0 }] }];
 

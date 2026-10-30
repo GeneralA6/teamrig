@@ -35,7 +35,7 @@ describe('headroomFor', () => {
 
   it('is short one MB under the floor plus the session', () => {
     assert.deepEqual(headroomFor({ freeMb: 5295, commit: undefined, ...NONE_RUNNING }, FLOOR, CONFIG).short, [
-      '5295 MB free, under the 4096 MB heavy steps keep free (coordinator.heavy.memoryFloorMb) plus 1200 MB for it',
+      '5295 MB free, under the 4096 MB heavy steps keep free (delivery.queue.memoryFloorMb) plus 1200 MB for it',
     ]);
   });
 
@@ -51,7 +51,7 @@ describe('headroomFor', () => {
     assert.equal(
       noRoomText('open web', headroomFor(room, FLOOR, CONFIG)),
       'no room on the host to open web, counted at 1500 MB resident and 1700 MB committed: 3000 MB free, under the 4096 MB ' +
-        'heavy steps keep free (coordinator.heavy.memoryFloorMb) plus 1500 MB for it; with it the commit charge would be ' +
+        'heavy steps keep free (delivery.queue.memoryFloorMb) plus 1500 MB for it; with it the commit charge would be ' +
         '100700 MB, over 92% of its 100700 MB limit (open.headroom.commitMaxPct). Close a session first: teamrig sessions ' +
         'lists what each one holds',
     );

@@ -759,9 +759,9 @@ describe('hook wake-check runs the idle pass', () => {
     }
   });
 
-  it("in mode on names a reopened lead tab to the coordinator's owner on a team above, with a wake there (T1143)", async () => {
-    const kit = await idleTeam({ ...ON, team: { id: 'app', parent: 'root' }, roles: { lead: 'lead', coordinatorOwner: 'root/po' } });
-    await kit.files.write(teamConfigOf('root'), formatConfig({ configVersion: 1, team: { id: 'root' }, sessions: ['lead', 'po'], roles: { lead: 'lead', coordinatorOwner: 'po' } }));
+  it("in mode on names a reopened lead tab to the delivery owner on a team above, with a wake there (T1143)", async () => {
+    const kit = await idleTeam({ ...ON, team: { id: 'app', parent: 'root' }, roles: { lead: 'lead', deliveryOwner: 'root/po' } });
+    await kit.files.write(teamConfigOf('root'), formatConfig({ configVersion: 1, team: { id: 'root' }, sessions: ['lead', 'po'], roles: { lead: 'lead', deliveryOwner: 'po' } }));
     await new SessionLog(kit.files, SESSION_LOG).append({ kind: 'reopen', session: 'lead', at: new Date(kit.clock.now()).toISOString(), resumed: 'claude-lead' });
     kit.clock.advance(5 * MINUTE);
     await passCheck(kit);

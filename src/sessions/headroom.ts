@@ -44,7 +44,7 @@ export function headroomFor(room: HostRoom, floorMb: number, config: HeadroomCon
   const needCommittedMb = medianOf(room.runningCommittedMb) ?? config.sessionMb;
   const short: string[] = [];
   if (room.freeMb < floorMb + needMb) {
-    short.push(`${room.freeMb} MB free, under the ${floorMb} MB heavy steps keep free (coordinator.heavy.memoryFloorMb) plus ${needMb} MB for it`);
+    short.push(`${room.freeMb} MB free, under the ${floorMb} MB heavy steps keep free (delivery.queue.memoryFloorMb) plus ${needMb} MB for it`);
   }
   const { commit } = room;
   if (commit !== undefined && (commit.usedMb + needCommittedMb) * 100 > config.commitMaxPct * commit.limitMb) {
