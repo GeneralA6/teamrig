@@ -20,6 +20,11 @@ export interface BudgetSplit {
   readonly liftedGroups: ReadonlyMap<string, number>;
   /** The sessions a short day may pause (src/budget/pause.ts `pausableOf`): none while the team's `budget.pauseByPriority` is off. */
   readonly pausable: ReadonlySet<string>;
+  /**
+   * Each session's funded part of its weight on a short day, 0 to 1 (src/budget/pause.ts `fundByPriority`), 0 pausing
+   * it; a session not in it is funded whole, as every session is on any other day.
+   */
+  readonly funded: ReadonlyMap<string, number>;
 }
 
 /** The team that asks (`split`) and the other teams on its Claude account (`accountTeamsOf`), which share the account's week. */
@@ -33,7 +38,7 @@ export interface SplitLeaf {
   readonly id: string;
   /** Its lift in force, as its part of its parent's budget in percent; undefined when not lifted. */
   readonly liftedPct: number | undefined;
-  /** Its `share` times its queued work, at least 1 so a session with none still gets a part. */
+  /** Its weight (`sessionWeightOf`) times its funded part on a short day. */
   readonly weight: number;
 }
 
@@ -101,9 +106,19 @@ function nodesAt(nodes: readonly SplitNode[], path: readonly string[]): readonly
   return level;
 }
 
-/** A session as a split-tree leaf, weighed by its `share` and queued work, with its session lift in force. */
+/** A session's `share`: the default for a session `budget.sessions` does not list. */
+export function shareOf(split: Pick<BudgetSplit, 'sessions'>, id: string): number {
+  return split.sessions[id]?.share ?? DEFAULT_SESSION_SHARE;
+}
+
+/** A session's weight in the split: its `share` times its queued work, the work at least 1 so a session with none still gets a part. */
+export function sessionWeightOf(split: Pick<BudgetSplit, 'sessions' | 'work'>, id: string): number {
+  return shareOf(split, id) * Math.max(1, workWeightOf(split.work.get(id)));
+}
+
+/** A session as a split-tree leaf, weighed by its weight and funded part (`funded`), with its session lift in force. */
 function leafOf(split: BudgetSplit, id: string): SplitLeaf {
-  return { id, liftedPct: split.lifted.get(id), weight: (split.sessions[id]?.share ?? DEFAULT_SESSION_SHARE) * Math.max(1, workWeightOf(split.work.get(id))) };
+  return { id, liftedPct: split.lifted.get(id), weight: sessionWeightOf(split, id) * (split.funded.get(id) ?? 1) };
 }
 
 /** The team's split tree, and where each session and each sub-lead's group sits in it: its ids from the top down. */
@@ -246,14 +261,14 @@ export function liftPlaceOf(split: BudgetSplit, id: string, group: boolean): Lif
 }
 
 /** What `budgetSplitOf` splits by: the team's roster, shares, lead tree, queued work and pausable sessions, and its lift log. */
-export interface SplitSource extends Omit<BudgetSplit, 'lifted' | 'liftedGroups'> {
+export interface SplitSource extends Omit<BudgetSplit, 'lifted' | 'liftedGroups' | 'funded'> {
   readonly lifts: readonly Lift[];
   /** The lifts in force at `now` with the week's use at `usedPct` (`activeLift`) count. */
   readonly now: number;
   readonly usedPct: number | undefined;
 }
 
-/** The team's split, with the session and group lifts in force (`activeLift`, `activeGroupLift`) as their parts. */
+/** The team's split, with the session and group lifts in force (`activeLift`, `activeGroupLift`) as their parts, every session funded whole. */
 export function budgetSplitOf(source: SplitSource): BudgetSplit {
   const { lifts, now, usedPct, ...split } = source;
   const subLeads = Object.keys(split.leads).filter((id) => split.ids.includes(id));
@@ -261,6 +276,7 @@ export function budgetSplitOf(source: SplitSource): BudgetSplit {
     ...split,
     lifted: partsInForce(split.ids, (id) => activeLift(lifts, id, now, usedPct)),
     liftedGroups: partsInForce(subLeads, (id) => activeGroupLift(lifts, id, now, usedPct)),
+    funded: new Map(),
   };
 }
 

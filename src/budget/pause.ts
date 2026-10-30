@@ -1,5 +1,7 @@
 import { roleHolderOf, type Role } from '../config/roster.ts';
 import type { KitConfig } from '../config/types.ts';
+import { sessionWeightOf, shareOf, teamTreeOf, type BudgetSplit, type TeamsOnAccount } from './parts.ts';
+import { workWeightOf, type WorkByPriority } from './work.ts';
 
 /** The roles whose holder a short day never pauses: the lead leads the cut, the coordinator owner keeps the fleet up. */
 const KEPT_ROLES: readonly Role[] = ['lead', 'coordinatorOwner'];
@@ -20,4 +22,98 @@ export function pausableOf(config: Pick<KitConfig, 'budget' | 'roles'>, team: st
     }
   }
   return new Set(ids.filter((id) => !kept.has(id)));
+}
+
+/** The account's day as a short day weighs it, in percent of the week. */
+export interface DayPlan {
+  /** What is left of the week gives the day: the account's daily budget (`WeekReading.allowancePct`). */
+  readonly allowancePct: number;
+  /** What the pace line plans for the day: its rise over the UTC day (`WeekReading.plannedPct`). */
+  readonly plannedPct: number;
+}
+
+/** A short day: what is left of the week gives the day less than the pace line plans for it, as when the week's use is past the line. */
+export function isShortDay(day: DayPlan): boolean {
+  return day.plannedPct > 0 && day.allowancePct < day.plannedPct;
+}
+
+/** A session as the waterfall weighs it: its team, share and queued work, its weight in the split, and whether a short day may cut it. */
+interface FundedLeaf {
+  readonly team: string;
+  readonly id: string;
+  readonly share: number;
+  readonly work: WorkByPriority;
+  readonly weight: number;
+  readonly kept: boolean;
+}
+
+/** The sessions the teams' trees hold, each kept unless its team may pause it and no lift, its own or its group's, is in force. */
+function leavesOf(splits: readonly BudgetSplit[]): FundedLeaf[] {
+  return splits.flatMap((split) =>
+    [...teamTreeOf(split).sessionPaths].map(([id, path]): FundedLeaf => {
+      const lifted = split.lifted.has(id) || path.slice(0, -1).some((group) => split.liftedGroups.has(group));
+      return { team: split.team, id, share: shareOf(split, id), work: split.work.get(id) ?? new Map(), weight: sessionWeightOf(split, id), kept: lifted || !split.pausable.has(id) };
+    }),
+  );
+}
+
+function weightOfAll(leaves: readonly FundedLeaf[]): number {
+  return leaves.reduce((sum, leaf) => sum + leaf.weight, 0);
+}
+
+/**
+ * The teams on the account with their sessions funded in priority order on a short day (`isShortDay`), account-wide
+ * so every team's view reads the same cut. The day funds `T × allowance / planned` of the sessions' summed weight `T`:
+ * the weight the pace line's rate gives the day. The kept sessions (not `pausable`, or under a lift in force) come off
+ * it first and whole, then each priority's queued work, p0 first, then the idle sessions; the tier the funding runs
+ * out in is funded in part, the tiers after it not at all. A session's funded part is its funded work over its whole
+ * work, so while no lift is in force a funded session gets the part the pace line's rate gives it, and one none of the
+ * funding reaches gets 0: paused (`isPaused`). Any other day every session is funded whole.
+ */
+export function fundByPriority(teams: TeamsOnAccount, day: DayPlan): TeamsOnAccount {
+  const funded = isShortDay(day) ? fundedParts([teams.split, ...teams.others], day) : new Map<string, ReadonlyMap<string, number>>();
+  const fundedSplit = (split: BudgetSplit): BudgetSplit => ({ ...split, funded: funded.get(split.team) ?? new Map() });
+  return { split: fundedSplit(teams.split), others: teams.others.map(fundedSplit) };
+}
+
+/** Each cut session's funded part (`fundByPriority`) of a short day, by team; a team with none cut is not in it. */
+function fundedParts(splits: readonly BudgetSplit[], day: DayPlan): ReadonlyMap<string, ReadonlyMap<string, number>> {
+  const leaves = leavesOf(splits);
+  const cut = leaves.filter((leaf) => !leaf.kept);
+  let left = Math.max(0, (weightOfAll(leaves) * day.allowancePct) / day.plannedPct - weightOfAll(leaves.filter((leaf) => leaf.kept)));
+  /** The part of a tier weighing `weight` that what is left of the day's funding reaches, taken from it. */
+  const fund = (weight: number): number => {
+    if (weight <= left) {
+      left -= weight;
+      return 1;
+    }
+    const part = left / weight;
+    left = 0;
+    return part;
+  };
+  const tiers = new Map<number, number>();
+  for (const leaf of cut) {
+    for (const [priority, weight] of leaf.work) {
+      tiers.set(priority, (tiers.get(priority) ?? 0) + leaf.share * weight);
+    }
+  }
+  const tierParts = new Map([...tiers].sort(([a], [b]) => a - b).map(([priority, weight]) => [priority, fund(weight)]));
+  const idlePart = fund(weightOfAll(cut.filter((leaf) => workWeightOf(leaf.work) === 0)));
+  const byTeam = new Map<string, Map<string, number>>();
+  for (const leaf of cut) {
+    const whole = workWeightOf(leaf.work);
+    let reached = 0;
+    for (const [priority, weight] of leaf.work) {
+      reached += (tierParts.get(priority) ?? 0) * weight;
+    }
+    const parts = byTeam.get(leaf.team) ?? new Map<string, number>();
+    parts.set(leaf.id, whole === 0 ? idlePart : reached / whole);
+    byTeam.set(leaf.team, parts);
+  }
+  return byTeam;
+}
+
+/** A session a short day pauses (`fundByPriority`): none of the day's funding reaches its work, so its part is 0. */
+export function isPaused(split: Pick<BudgetSplit, 'funded'>, id: string): boolean {
+  return split.funded.get(id) === 0;
 }
