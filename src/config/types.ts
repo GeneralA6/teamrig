@@ -625,7 +625,7 @@ export interface BudgetConfig {
    * account.
    */
   readonly account?: string;
-  /** The weekly limit in weighted tokens (W). Unset: derived from the status line's weekly %. */
+  /** The weekly limit in weighted tokens (W). Unset: the team above's (`AccountBudget`), else derived from the status line's weekly %. */
   readonly weeklyLimitW?: number;
   /**
    * What one W of a subagent's transcript costs against the weekly limit, in W of a main session. The meter
@@ -634,10 +634,11 @@ export interface BudgetConfig {
   readonly subagentWeight: number;
   /**
    * W per US dollar of extra usage, standing in until two spent readings past 100% of the week teach the rate
-   * (src/budget/extra.ts). Unset: the extra-usage pool shows in dollars only until then, with no allowance.
+   * (src/budget/extra.ts). Unset: the team above's (`AccountBudget`), else the extra-usage pool shows in dollars only
+   * until then, with no allowance.
    */
   readonly extraWPerUsd?: number;
-  /** Unset: the reset time the status line reports. */
+  /** Unset: the team above's (`AccountBudget`), else the reset time the status line reports. */
   readonly reset?: BudgetReset;
   /** Use the week up to this share of the weekly limit. */
   readonly targetPct: number;
