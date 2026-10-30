@@ -487,7 +487,10 @@ secret-like name, a match of `register.secretPatterns`, and the value of a secre
 space around `=`. A value found once goes from every part of the result, `stdout` and `stderr` alike. A value that
 only names or points to a secret stays: a placeholder or a reference, a number (`TOKEN_LIMIT=200000`), a path
 (`KEY_FILE=~/.ssh/id`) or one lower-case word (`AUTH_MODE=oauth`); source code (`token = x`, `token: string`) is no
-such assignment. The model then gets one line naming the kinds, never a value:
+such assignment. A URL value (`DB_URL=scheme://...`) is judged by the parts that carry a secret: a login or password,
+a parameter with a secret name (`?access_token=`) or a token-shaped path segment (a webhook's) takes the whole URL,
+and one with none of them (a connection string naming only a certificate file) stays. The model then gets one line
+naming the kinds, never a value:
 
 ```text
 teamrig: this result held a secret (GitHub token); it was redacted before you saw it. Treat it as leaked: security rotates it in T42. Do not print it again.
@@ -498,9 +501,12 @@ else its lead, who gets an inbox line ("Rotate the GitHub token a Bash result sh
 in a team above (`app/security`) gets the task in that team's register as the session's ask, and the line names it
 `app/T42`. It is one task per kind, session and day on the team's clock while that task is open: the day's next leak
 of that kind names the same task, and once it is closed (a false positive, say) the next leak gets a new task, so a
-real leak is never folded into a task no one works. Each kind found is also a line in the team's
-`state/secret-incidents.jsonl` (the time, the session, the tool, the call's `tool_use_id`, the session's transcript, a
-helper's `agent_id` for a helper's call, the kind and the task), never the value, so the call is found in the
+real leak is never folded into a task no one works. For credentials in a URL the task also names the accounts they
+were for, at most five: the login and the host's last two labels (`login app at example.com`), never the port, path or
+query, and `a login` when the login is itself a secret or a stand-in, so security knows what to rotate without the
+value. Each kind found is also a line in the team's `state/secret-incidents.jsonl` (the time, the session, the tool,
+the call's `tool_use_id`, the session's transcript, a helper's `agent_id` for a helper's call, the kind, the accounts
+and the task), never the value, so the call is found in the
 transcript with one search; it is audit data, and nothing trims it. When the tab's session is not
 known, its team's config did not load or the register refuses the task, the line says why and asks the model to have
 it filed instead ("ask security to rotate it with a register task (filing one failed: ...)"). The redaction is sent
