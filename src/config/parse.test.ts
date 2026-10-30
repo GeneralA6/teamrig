@@ -352,7 +352,7 @@ describe('parseConfig', () => {
     const maxLines = issues.find((issue) => issue.path === 'messages.maxLines');
     assert.equal(maxLines?.message, 'expected an integer from 3 to 50, got "ten"');
     assert.equal(config.messages.maxLines, 10);
-    assert.equal(config.lock.ttlMs, 30_000);
+    assert.equal(config.lock.ttlMs, 300_000);
     assert.equal(config.skills.maxPerArea, 8);
     assert.equal(config.budget.enabled, false);
   });
