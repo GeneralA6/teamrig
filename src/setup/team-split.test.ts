@@ -147,6 +147,26 @@ describe('planTeamSplit', () => {
     assert.deepEqual(trimmed['open'], { idle: { mode: 'on', keepOpen: ['erin'] } });
   });
 
+  it("leaves the budget keys of the account's week out of the child, which reads them from the parent", () => {
+    const budget: JsonRecord = {
+      enabled: true,
+      account: 'work',
+      weeklyLimitW: 9_000_000,
+      subagentWeight: 2,
+      extraWPerUsd: 40_000,
+      reset: { weekday: 'wed', timeUtc: '01:00' },
+      targetPct: 90,
+      sessions: { bravo: { share: 2 }, dave: { share: 3 } },
+    };
+    const split = valueOf(plan(new Map(), parentOf({ ...RECORD, budget })));
+    assert.deepEqual(split.config['budget'], { targetPct: 90, sessions: { bravo: { share: 2 } } });
+  });
+
+  it("gives the child no budget block when the parent's holds only keys of the account's week", () => {
+    const split = valueOf(plan(new Map(), parentOf({ ...RECORD, budget: { enabled: true, weeklyLimitW: 9_000_000 } })));
+    assert.equal(split.config['budget'], undefined);
+  });
+
   it("lists the keys the child starts without: the parent's own GitHub import and folders, and keys this teamrig does not know", () => {
     const record: JsonRecord = { ...RECORD, github: { repos: ['org/app'] }, paths: { inbox: 'mail' } };
     const split = valueOf(plan(new Map(), parentOf(record, record, { ...record, future: { kept: true } })));
