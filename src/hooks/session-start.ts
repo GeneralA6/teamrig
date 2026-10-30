@@ -140,7 +140,7 @@ export function unloadedContext(team: string, load: UnloadedConfig, command: str
 function treeLine(place: TreePlace, input: SessionStartInput, isLead: boolean): string {
   const { team, command } = input;
   if (!isLead) {
-    return `Team \`${team}\` is part of the tree of teams under \`${place.root}\`: take anything outside your team to your lead, never to another team's sessions (\`${command} inbox add\` refuses a note to them).`;
+    return `Team \`${team}\` is part of the tree of teams under \`${place.root}\`: take anything outside your team to your lead, never to another team's sessions (\`${command} inbox add\` reaches every session of the tree, so keeping to your lead is up to you).`;
   }
   const { parentLead } = place;
   const up =
