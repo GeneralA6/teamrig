@@ -468,7 +468,7 @@
           "default": []
         },
         "envNames": {
-          "description": "The team's own patterns for environment variables whose values are secrets, regular expressions over the name with case ignored, read after the defaults (TOKEN, SECRET, PASSW, PASS, CRED, AUTH except AUTHOR, PRIVATE, KEY, DSN, WEBHOOK, COOKIE, PAT, SALT, and a store's connection URL or string by its kind: DB_URL, DATABASE_URL, PG_URI, CACHE_URL, BROKER_URL, CONNECTION_STRING). A store named by its product is the team's to add. The last pattern that matches a name decides: !pattern keeps a variable printable.",
+          "description": "The team's own patterns for environment variables whose values are secrets, regular expressions over the name with case ignored, read after the defaults (TOKEN, SECRET, PASSW, PASS, CRED, AUTH except AUTHOR and an auth mechanism or source, PRIVATE, KEY, DSN, WEBHOOK, COOKIE, PAT, SALT, and a store's connection URL or string by its kind: DB_URL, DATABASE_URL, PG_URI, CACHE_URL, BROKER_URL, CONNECTION_STRING). A store named by its product is the team's to add. The last pattern that matches a name decides: !pattern keeps a variable printable.",
           "type": "array",
           "maxItems": 16,
           "items": { "type": "string", "maxLength": 120 },
