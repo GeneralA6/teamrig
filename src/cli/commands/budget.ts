@@ -18,7 +18,7 @@ import { formatPct, formatUsd } from '../../budget/format.ts';
 import { activeGroupLift, activeLift, decideLift, LiftLog, liftText, parentBudgetText, type Lift, type LiftNames } from '../../budget/lift.ts';
 import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID, type Measured } from '../../budget/measure.ts';
 import { budgetSplitOf, dailyBudgetOf, groupPartsOf, liftPlaceOf, teamPartOf, type BudgetSplit } from '../../budget/parts.ts';
-import { fundForDay, pausableOf } from '../../budget/pause.ts';
+import { fundForDay, isPaused, pausableOf } from '../../budget/pause.ts';
 import { nextPeriod, sightOf, type Period } from '../../budget/period.ts';
 import {
   burnLines,
@@ -174,7 +174,7 @@ function sessionsToday(reading: Reading, roster: Roster, budget: BudgetConfig, s
     const lift = activeLift(reading.lifts, id, reading.now, reading.week.usedPct);
     const inBurst = burstNow !== undefined && burstNow.burst.sessions.includes(id) ? burstNow : undefined;
     const budgetPct = withBurst(dailyBudgetOf(reading.week.allowancePct, id, split, others), inBurst?.floorPct);
-    return { id, name: roster.nameOf(id) ?? id, w, calls: state?.byDay[today]?.calls ?? 0, budgetPct, lift, ...liftNamesOf(split, roster, id, lift), inBurst };
+    return { id, name: roster.nameOf(id) ?? id, w, calls: state?.byDay[today]?.calls ?? 0, budgetPct, lift, ...liftNamesOf(split, roster, id, lift), inBurst, paused: isPaused(split, id) };
   });
 }
 

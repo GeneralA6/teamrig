@@ -42,6 +42,7 @@ function facts(usedTodayPct: number, weekUsedPct: number, now = DAY, extra: Part
     liftBy: undefined,
     liftParent: undefined,
     burst: undefined,
+    paused: false,
     surplus: undefined,
     weekUsedPct,
     pace: readPace(WINDOW, PACE, now, weekUsedPct, DailyProfile.even()),
@@ -305,6 +306,11 @@ describe('stopWarning', () => {
   it("names the sub-lead that lifted the session and whose group's daily budget the lift is a part of", () => {
     const lifted = stopWarning(facts(0.5, AHEAD, DAY, { lift: lift({ by: 'bravo' }), liftBy: 'app-bravo', liftParent: 'app-bravo', budgetPct: 2, leader: SUB_LEAD }), BUDGET, undefined);
     assert.match(lifted.lines[0] ?? '', /^Budget: app-bravo lifted alpha to 40\.0% of app-bravo's group's daily budget today /);
+  });
+
+  it('marks the budget of a session a short day pauses', () => {
+    const paused = stopWarning(facts(0.5, AHEAD, DAY, { budgetPct: 0, paused: true }), BUDGET, undefined);
+    assert.match(paused.lines.join('\n'), /its daily budget is 0\.0% \(paused\)\./);
   });
 
   it('shows a burst starting and ending, and marks the budget it sets', () => {

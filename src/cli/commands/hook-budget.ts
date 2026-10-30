@@ -12,7 +12,7 @@ import { activeLift, LiftLog } from '../../budget/lift.ts';
 import { OUTSIDE_ID } from '../../budget/measure.ts';
 import { runMeter } from '../../budget/meter.ts';
 import { budgetSplitOf, dailyBudgetOf } from '../../budget/parts.ts';
-import { fundForDay, pausableOf } from '../../budget/pause.ts';
+import { fundForDay, isPaused, pausableOf } from '../../budget/pause.ts';
 import { UsageStore, type UsageState } from '../../budget/store.ts';
 import { teamWeekOf } from '../../budget/team-week.ts';
 import { helperGate, promptWarning, stopWarning, type BudgetFacts, type BudgetLeader, type HelperGate } from '../../budget/warn.ts';
@@ -122,6 +122,7 @@ export async function budgetFactsOf(runtime: CliRuntime, scope: BudgetScope, tra
           now,
           usedPct: week.usedPct,
           targetPct: budget.targetPct,
+          // The week's spare, not a short day's cut: the teams unfunded.
           teams: { split, others },
           ownerAsk: ownerAsk(config),
         })
@@ -136,6 +137,7 @@ export async function budgetFactsOf(runtime: CliRuntime, scope: BudgetScope, tra
     lift,
     ...liftNamesOf(split, roster, id, lift),
     burst,
+    paused: isPaused(funded.split, id),
     surplus,
     weekUsedPct: week.usedPct,
     pace: week.pace,
