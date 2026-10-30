@@ -4456,8 +4456,9 @@ Before a Bash, PowerShell, Read or Grep call, refuses (or asks about, as `secret
 would print a secret into the conversation: a secret file's content (`cat .env`, the Read tool on `~/.npmrc`), the
 whole environment (`env`, `Get-ChildItem Env:`), a secret variable (`echo $GITHUB_TOKEN`), a Kubernetes secret's
 data or a dump command's output (`kubectl config view --raw`), and a Bash or PowerShell line that holds a secret as
-text (a token, credentials in a URL or an `Authorization` header). Output piped or redirected away from the screen
-passes, and so does a reference or a placeholder (`${DB_URI}`, `<db_password>`). See
+text (a token, credentials in a URL or an `Authorization` header). Before a Write, Edit, MultiEdit or NotebookEdit
+call, it refuses one whose written text holds a secret, unless it writes a secret file (`.env`). Output piped or
+redirected away from the screen passes, and so does a reference or a placeholder (`${DB_URI}`, `<db_password>`). See
 [Hooks and permissions](hooks.md#before-a-shell-command-or-a-read-the-secret-guard).
 
 Flags: none.
