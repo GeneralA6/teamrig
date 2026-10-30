@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_COMMITS, DEFAULT_HIRING, DEFAULT_IDLE, DEFAULT_OPEN, DEFAULT_PERMISSIONS, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_STATUS_LINE, DEFAULT_WAKE, DEFAULT_WINDOWS } from './defaults.ts';
-import { HIRE_CAP_DROPPED } from './migrate.ts';
+import { HIRE_CAP_DROPPED, IDLE_RETIRE_DROPPED } from './migrate.ts';
 import { parseConfig } from './parse.ts';
 import { CONFIG_VERSION } from './types.ts';
 import type { ConfigIssue } from './reader.ts';
@@ -1122,17 +1122,16 @@ describe('parseConfig', () => {
   it('reads the hiring settings, defaulting each and refusing a bad policy or scale-out measure', () => {
     assert.deepEqual(parseConfig(ROSTER).config.hiring, DEFAULT_HIRING);
     const scaleOut = { windowDays: 5, minDone: 2, topPriorities: 1 };
-    const chosen = { policy: 'lead', idleHours: 2, reviewDays: 14, resumeMaxTokens: 120_000, resumeMaxIdleDays: 3, scaleOut };
+    const chosen = { policy: 'lead', reviewDays: 14, resumeMaxTokens: 120_000, resumeMaxIdleDays: 3, scaleOut };
     const set = parseConfig({ ...ROSTER, hiring: chosen });
     assert.deepEqual(set.issues, []);
     assert.deepEqual(set.config.hiring, chosen);
     const badScaleOut = { windowDays: 9, minDone: 0, topPriorities: 11 };
     const bad = parseConfig({
       ...ROSTER,
-      hiring: { policy: 'auto', idleHours: 169, reviewDays: 91, resumeMaxTokens: 9_999, resumeMaxIdleDays: 91, scaleOut: badScaleOut },
+      hiring: { policy: 'auto', reviewDays: 91, resumeMaxTokens: 9_999, resumeMaxIdleDays: 91, scaleOut: badScaleOut },
     });
     assert.deepEqual(paths(bad.issues).sort(), [
-      'hiring.idleHours',
       'hiring.policy',
       'hiring.resumeMaxIdleDays',
       'hiring.resumeMaxTokens',
@@ -1167,6 +1166,13 @@ describe('parseConfig', () => {
     const { config, issues } = parseConfig({ ...ROSTER, hiring: { maxSessions: 4, capRaisedBy: 'lead' } });
     assert.deepEqual(paths(issues), ['hiring.maxSessions', 'hiring.capRaisedBy']);
     issues.forEach((issue) => assert.equal(issue.message, `is no longer read: ${HIRE_CAP_DROPPED}; delete it`));
+    assert.deepEqual(config.hiring, DEFAULT_HIRING);
+  });
+
+  it('flags hiring.idleHours a current-format file still holds, as no hire retires for being idle', () => {
+    const { config, issues } = parseConfig({ ...ROSTER, hiring: { idleHours: 4 } });
+    assert.deepEqual(paths(issues), ['hiring.idleHours']);
+    assert.equal(issues[0]?.message, `is no longer read: ${IDLE_RETIRE_DROPPED}; delete it`);
     assert.deepEqual(config.hiring, DEFAULT_HIRING);
   });
 

@@ -206,8 +206,32 @@ export const DROP_HIRE_CAP: ConfigMigration = {
   },
 };
 
+/** Why v7 reads no idle hours; the parser flags a hand-written one with the same words. */
+export const IDLE_RETIRE_DROPPED = 'a hire with no task stays hired, and the idle pass deactivates it';
+
+/** v6 to v7: a hire is no longer due to retire for being idle (T1364), so `hiring.idleHours` goes. */
+export const DROP_IDLE_RETIRE: ConfigMigration = {
+  from: 6,
+  firstRelease: '0.233.0',
+  apply: (config) => {
+    const hiring = config['hiring'];
+    if (!isRecord(hiring)) {
+      return { config, changes: [] };
+    }
+    const step = withoutKeys(hiring, ['idleHours'], 'hiring', IDLE_RETIRE_DROPPED);
+    return step.changes.length === 0 ? { config, changes: [] } : { config: { ...config, hiring: step.config }, changes: step.changes };
+  },
+};
+
 /** The shipped chain, in order: each step reads `from` and produces `from + 1`. */
-export const CONFIG_MIGRATIONS: readonly ConfigMigration[] = [RENAME_TIERS_TO_PRIORITIES, RENAME_BLOCKED_TO_WAITING, DROP_FIXED_DAILY_BUDGETS, RENAME_TO_PLAIN_WORDS, DROP_HIRE_CAP];
+export const CONFIG_MIGRATIONS: readonly ConfigMigration[] = [
+  RENAME_TIERS_TO_PRIORITIES,
+  RENAME_BLOCKED_TO_WAITING,
+  DROP_FIXED_DAILY_BUDGETS,
+  RENAME_TO_PLAIN_WORDS,
+  DROP_HIRE_CAP,
+  DROP_IDLE_RETIRE,
+];
 
 /** The config format a release reads and writes: its version and the migration chain that reaches it. */
 export interface ConfigFormat {

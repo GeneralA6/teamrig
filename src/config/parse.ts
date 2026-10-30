@@ -52,7 +52,7 @@ import {
 } from './defaults.ts';
 import { isEffort, isModel } from './launch.ts';
 import { BUDGET_ACCOUNT_MAX_LENGTH, CONFIG_LIMITS, REVIEW_PATH_LIMITS, RULE_CONFLICT_LIMITS } from './limits.ts';
-import { HIRE_CAP_DROPPED } from './migrate.ts';
+import { HIRE_CAP_DROPPED, IDLE_RETIRE_DROPPED } from './migrate.ts';
 import { ConfigReader, describe, isValidRegex, shortLine, type Check, type ConfigIssue } from './reader.ts';
 import {
   AD_HOC_RUNNERS,
@@ -1361,7 +1361,7 @@ function parseRefresh(read: ConfigReader, raw: JsonRecord): RefreshConfig {
   };
 }
 
-/** `hiring`: who decides, idle and review days, and when a rehire resumes. */
+/** `hiring`: who decides, review days, and when a rehire resumes. */
 function parseHiring(read: ConfigReader, raw: JsonRecord): HiringConfig {
   const path = 'hiring';
   const defaults = DEFAULT_HIRING;
@@ -1371,9 +1371,9 @@ function parseHiring(read: ConfigReader, raw: JsonRecord): HiringConfig {
   read.dropped(raw, 'maxDailyPct', path, budgetWhy);
   read.dropped(raw, 'maxSessions', path, HIRE_CAP_DROPPED);
   read.dropped(raw, 'capRaisedBy', path, HIRE_CAP_DROPPED);
+  read.dropped(raw, 'idleHours', path, IDLE_RETIRE_DROPPED);
   return {
     policy: isHiringPolicy(policy) ? policy : defaults.policy,
-    idleHours: read.integer(raw, 'idleHours', path, defaults.idleHours, CONFIG_LIMITS.hiringIdleHours),
     reviewDays: read.integer(raw, 'reviewDays', path, defaults.reviewDays, CONFIG_LIMITS.hiringReviewDays),
     resumeMaxTokens: read.integer(raw, 'resumeMaxTokens', path, defaults.resumeMaxTokens, CONFIG_LIMITS.hiringResumeMaxTokens),
     resumeMaxIdleDays: read.integer(raw, 'resumeMaxIdleDays', path, defaults.resumeMaxIdleDays, CONFIG_LIMITS.hiringResumeMaxIdleDays),

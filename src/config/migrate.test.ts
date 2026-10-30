@@ -5,7 +5,9 @@ import {
   CONFIG_MIGRATIONS,
   DROP_FIXED_DAILY_BUDGETS,
   DROP_HIRE_CAP,
+  DROP_IDLE_RETIRE,
   HIRE_CAP_DROPPED,
+  IDLE_RETIRE_DROPPED,
   migrateConfig,
   RENAME_BLOCKED_TO_WAITING,
   RENAME_TIERS_TO_PRIORITIES,
@@ -284,6 +286,26 @@ describe('the shipped migrations', () => {
       assert.deepEqual(DROP_HIRE_CAP.apply(config), { config, changes: [] }, JSON.stringify(config));
     }
     assert.equal(DROP_HIRE_CAP.from, 5);
+  });
+
+  it('v6 to v7 drops hiring.idleHours, and keeps every other key', () => {
+    const raw: JsonRecord = { configVersion: 6, hiring: { policy: 'lead', idleHours: 2, scaleOut: { minDone: 2 } }, custom: true };
+    assert.deepEqual(migrateConfig(raw, 7), {
+      kind: 'migrated',
+      fromVersion: 6,
+      version: 7,
+      config: { configVersion: 7, hiring: { policy: 'lead', scaleOut: { minDone: 2 } }, custom: true },
+      changes: [`v6→v7: hiring.idleHours removed: ${IDLE_RETIRE_DROPPED}`],
+      firstRelease: '0.233.0',
+    });
+  });
+
+  it('v6 to v7 changes nothing but the version when no idle hours are set', () => {
+    const configs: JsonRecord[] = [{}, { hiring: 'not an object' }, { hiring: { policy: 'lead' } }, { idleHours: 2 }];
+    for (const config of configs) {
+      assert.deepEqual(DROP_IDLE_RETIRE.apply(config), { config, changes: [] }, JSON.stringify(config));
+    }
+    assert.equal(DROP_IDLE_RETIRE.from, 6);
   });
 
   it('a version-1 file reaches the current version through every step', () => {

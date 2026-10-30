@@ -2,7 +2,7 @@ import type { TaskStatus } from '../register/model.ts';
 import type { CoreRuleKey } from '../rules/keys.ts';
 
 /** The config format this code reads and writes. Older files are migrated in memory on load. */
-export const CONFIG_VERSION = 6;
+export const CONFIG_VERSION = 7;
 
 export interface RolesConfig {
   /** Owns priorities, team rules and the owner's decision queue; may re-prioritize and reassign tasks; hands the work itself to others (`leadBoundary`). */
@@ -951,14 +951,13 @@ export interface ScaleOutConfig {
 }
 
 /**
- * Hiring temporary sessions: who decides, and when an area needs one. No cap counts hires: the host's room bounds
- * who is at the office, and the leader decides who is hired. A hire has no fixed daily budget: its part of the
- * team's follows its share and queued work, like any session's.
+ * Hiring the workers a team needs: who decides, and when an area needs one. No cap counts hires: the host's room
+ * bounds who is at the office, and the leader decides who is hired. A hire with no task stays hired: the idle pass
+ * deactivates it. A hire has no fixed daily budget: its part of the team's follows its share and queued work, like
+ * any session's.
  */
 export interface HiringConfig {
   readonly policy: HiringPolicy;
-  /** Hours a hired session may hold no open task before it is due to retire. */
-  readonly idleHours: number;
   /** Days from a hire to its review date, unless the hire names one. */
   readonly reviewDays: number;
   /** The most context tokens a rehired session's last Claude Code session may hold for `open --resume` to resume it. */
