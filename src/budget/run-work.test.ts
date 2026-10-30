@@ -53,10 +53,47 @@ describe('runWorkOf', () => {
     assert.deepEqual(worksOf('npm ci; npm run dev; npm run; npm run $SCRIPT; npm $CMD; npm'), ['-', '-', '-', '-', '-', '-']);
   });
 
+  it('reads an npm test given files, before or after --, as the tests it names, and one given only options as the suite', () => {
+    assert.deepEqual(worksOf('npm test -- src/a.spec.ts; npm run test:unit -- --runInBand src/a.spec.ts; npm t src/a.spec.ts'), [
+      'testTargeted',
+      'testTargeted',
+      'testTargeted',
+    ]);
+    assert.deepEqual(worksOf('npm test -- --runInBand; npm run test:unit --silent; npm test --prefix app; npm test -- -t adds'), [
+      'testFull',
+      'testFull',
+      'testFull',
+      'testFull',
+    ]);
+  });
+
   it('reads jest, vitest and tsc wherever they start: on the path, through npx, or as the script node runs', () => {
     assert.deepEqual(worksOf('jest; vitest run; tsc -p .'), ['testFull', 'testFull', 'build']);
     assert.deepEqual(worksOf('npx --package typescript tsc --noEmit; npx jest; npx eslint .; npx'), ['build', 'testFull', '-', '-']);
     assert.deepEqual(worksOf('node node_modules/typescript/bin/tsc -p .; node C:/app/node_modules/vitest/vitest.mjs run'), ['build', 'testFull']);
+  });
+
+  it('reads jest or vitest given files, a folder or a path filter as the tests it names, and one given only options as the suite', () => {
+    assert.deepEqual(worksOf('npx jest src/a.spec.ts; npx --no -- jest src/a src/b; npx jest -c cli/jest.config.ts cli/x.spec.ts; jest --runInBand src/x.spec.ts'), [
+      'testTargeted',
+      'testTargeted',
+      'testTargeted',
+      'testTargeted',
+    ]);
+    assert.deepEqual(worksOf('vitest run src/a.test.ts; npx vitest src/a; npx jest --testPathPattern=spec/a; npx jest $SPECS'), [
+      'testTargeted',
+      'testTargeted',
+      'testTargeted',
+      'testTargeted',
+    ]);
+    assert.deepEqual(worksOf('npx jest --config j.config.ts --maxWorkers 1; npx jest -c jest.config.ts; vitest run; npx vitest --config v.config.ts run; jest -t adds'), [
+      'testFull',
+      'testFull',
+      'testFull',
+      'testFull',
+      'testFull',
+    ]);
+    assert.deepEqual(worksOf('node node_modules/jest/bin/jest.js src/a.spec.ts; node C:/app/node_modules/vitest/vitest.mjs run src/a.test.ts'), ['testTargeted', 'testTargeted']);
   });
 
   it('reads node --test: the full suite with no files or over a whole source folder, else the files it names', () => {
