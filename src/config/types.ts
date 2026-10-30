@@ -639,6 +639,12 @@ export interface BudgetConfig {
   readonly paceEndHoursBeforeReset: number;
   /** Each session's part, by id; a session not listed has a share of 1. */
   readonly sessions: Readonly<Record<string, SessionBudget>>;
+  /**
+   * On a short day (what is left of the week gives less than the pace line plans for the day), fund the team's
+   * sessions' queued work in priority order and pause the sessions none of it reaches. The lead, the coordinator owner
+   * held in the team and lifted sessions are never paused. Off: no session of the team is paused.
+   */
+  readonly pauseByPriority: boolean;
   /** The live warning shows a line as a session passes each of these % of its daily budget. */
   readonly warnAtPct: readonly number[];
   /** The team is ahead of its pace line once its used % is more than this many points above it. */

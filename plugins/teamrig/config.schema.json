@@ -912,6 +912,11 @@
           },
           "default": {}
         },
+        "pauseByPriority": {
+          "description": "On a short day, when what is left of the week gives less than the pace line plans for the day, fund the team's sessions' queued work in priority order (p0 first, idle sessions last) and pause the sessions none of it reaches, so the top work keeps its pace. The lead, the coordinator owner held in the team and lifted sessions are never paused. Off: no session of the team is paused.",
+          "type": "boolean",
+          "default": false
+        },
         "warnAtPct": {
           "description": "The live warning shows a line as a session passes each of these % of its daily budget.",
           "type": "array",

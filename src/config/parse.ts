@@ -875,6 +875,7 @@ function parseBudget(read: ConfigReader, raw: JsonRecord, sessions: readonly str
     reservePct,
     paceEndHoursBeforeReset: read.number(raw, 'paceEndHoursBeforeReset', path, defaults.paceEndHoursBeforeReset, CONFIG_LIMITS.paceEndHoursBeforeReset),
     sessions: parseSessionBudgets(read, read.section(raw, 'sessions', path), sessions),
+    pauseByPriority: read.boolean(raw, 'pauseByPriority', path, defaults.pauseByPriority),
     warnAtPct: read.list(
       raw,
       'warnAtPct',
