@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { MAIN_CHECKOUT } from '../testing/fake-merge-git.ts';
+import { EXIT } from './runtime.ts';
 
 const LEDGER = join(TEAM_HOME, 'state', 'deploys', 'ledger.jsonl');
 const LEDGER_MD = join(TEAM_HOME, 'state', 'deploys', 'ledger.md');
@@ -21,20 +22,20 @@ async function ledgered(kit: CliHarness): Promise<void> {
   await kit.files.append(LEDGER, `${JSON.stringify(heavy)}\n${JSON.stringify({ ...heavy, endedAt: '2030-01-08T08:20:00.000Z', exitCode: 0 })}\n`);
 }
 
-describe('teamrig windows', () => {
-  it('lists each target’s clean windows, with its settle time and the loads each overlaps', async () => {
+describe('teamrig stable-periods', () => {
+  it('lists each target’s stable periods, with its settle time and the loads each overlaps', async () => {
     const kit = new CliHarness(DEPLOYING);
     await ledgered(kit);
     assert.equal((await kit.run(['load', '--session', 'bravo', '--what', 'db trim', '--at', '08:30'])).code, 0);
-    assert.deepEqual(await kit.run(['windows', '--targets', 'cloud-api,cloud-web', '--since', '06:00']), {
+    assert.deepEqual(await kit.run(['stable-periods', '--targets', 'cloud-api,cloud-web', '--since', '06:00']), {
       code: 0,
       stdout: [
-        'cloud-api (settle 30m): 3 clean windows of at least 15m',
+        'cloud-api (settle 30m): 3 stable periods of at least 15m',
         '  2030-01-08 06:00 UTC to 2030-01-08 06:40 UTC (40m)',
         '  2030-01-08 07:30 UTC to 2030-01-08 08:00 UTC (30m)',
         '  2030-01-08 08:20 UTC to 2030-01-08 10:00 UTC (1h40m)',
         '    under load id-1 by bravo: db trim (from 2030-01-08 08:30 UTC, still running)',
-        'cloud-web (settle 10m): 3 clean windows of at least 15m',
+        'cloud-web (settle 10m): 3 stable periods of at least 15m',
         '  2030-01-08 06:00 UTC to 2030-01-08 06:40 UTC (40m)',
         '  2030-01-08 07:10 UTC to 2030-01-08 08:00 UTC (50m)',
         '  2030-01-08 08:20 UTC to 2030-01-08 10:00 UTC (1h40m)',
@@ -47,13 +48,13 @@ describe('teamrig windows', () => {
   it('takes --settle for every target, --min and an --until cut to now', async () => {
     const kit = new CliHarness(DEPLOYING);
     await ledgered(kit);
-    assert.deepEqual(await kit.run(['windows', '--targets', 'cloud-web', '--since', '2030-01-08', '--until', '2030-01-09', '--settle', '1h', '--min', '1h']), {
+    assert.deepEqual(await kit.run(['stable-periods', '--targets', 'cloud-web', '--since', '2030-01-08', '--until', '2030-01-09', '--settle', '1h', '--min', '1h']), {
       code: 0,
-      stdout: ['cloud-web (settle 1h00m): 2 clean windows of at least 1h00m', '  2030-01-08 00:00 UTC to 2030-01-08 06:40 UTC (6h40m)', '  2030-01-08 08:20 UTC to 2030-01-08 10:00 UTC (1h40m)'],
+      stdout: ['cloud-web (settle 1h00m): 2 stable periods of at least 1h00m', '  2030-01-08 00:00 UTC to 2030-01-08 06:40 UTC (6h40m)', '  2030-01-08 08:20 UTC to 2030-01-08 10:00 UTC (1h40m)'],
       stderr: [],
     });
-    assert.deepEqual((await kit.run(['windows', '--targets', 'cloud-web', '--since', '07:00', '--until', '07:30', '--settle', '1h'])).stdout, [
-      'cloud-web (settle 1h00m): no clean window of at least 15m',
+    assert.deepEqual((await kit.run(['stable-periods', '--targets', 'cloud-web', '--since', '07:00', '--until', '07:30', '--settle', '1h'])).stdout, [
+      'cloud-web (settle 1h00m): no stable period of at least 15m',
     ]);
   });
 
@@ -65,10 +66,17 @@ describe('teamrig windows', () => {
       [['--targets', 'cloud-api', '--since', '09:00', '--until', '08:00'], '--since 2030-01-08 09:00 UTC is not before --until (2030-01-08 08:00 UTC)'],
       [['--targets', 'cloud-api', '--since', '06:00', '--min', '5s'], '--min "5s" is not a span'],
     ] as const) {
-      const result = await kit.run(['windows', ...flags]);
+      const result = await kit.run(['stable-periods', ...flags]);
       assert.equal(result.code, 64, JSON.stringify(result));
       assert.ok([...result.stdout, ...result.stderr].some((line) => line.includes(expected)), JSON.stringify(result));
     }
+  });
+
+  it('refuses teamrig windows, its old name, with the new one and exit 64', async () => {
+    const kit = new CliHarness(DEPLOYING);
+    await ledgered(kit);
+    const result = await kit.run(['windows', '--targets', 'cloud-api', '--since', '06:00']);
+    assert.deepEqual([result.code, result.stdout, result.stderr[0]?.split('\n')[0]], [EXIT.usage, [], 'windows was renamed: use stable-periods']);
   });
 });
 

@@ -761,7 +761,7 @@
           }
         },
         "stablePeriods": {
-          "description": "teamrig windows: when a measurement of a deploy target is clean, between the deploys and queued steps that disturb it.",
+          "description": "teamrig stable-periods: when a measurement of a deploy target is clean, between the deploys and queued steps that disturb it.",
           "type": "object",
           "properties": {
             "settleMinutes": {
@@ -788,7 +788,7 @@
               "default": 20
             },
             "minMinutes": {
-              "description": "The shortest clean window worth listing.",
+              "description": "The shortest stable period worth listing.",
               "type": "integer",
               "minimum": 1,
               "maximum": 1440,

@@ -31,7 +31,7 @@ function spanFlag(flags: Flags, name: string): number | undefined {
 }
 
 function countText(count: number): string {
-  return count === 0 ? 'no clean window' : `${count} clean window${count === 1 ? '' : 's'}`;
+  return count === 0 ? 'no stable period' : `${count} stable period${count === 1 ? '' : 's'}`;
 }
 
 function windowLine(window: Span, zone: TimeZone): string {
@@ -42,7 +42,7 @@ function loadLine(load: Load, zone: TimeZone): string {
   return `    under load ${load.id} by ${load.session}: ${load.what} (from ${minuteText(load.from, zone)}, ${load.open ? 'still running' : `ended ${minuteText(load.to, zone)}`})`;
 }
 
-/** What `windows` measures in: the span, each target's settle time and the shortest window worth naming. */
+/** What `stable-periods` measures in: the span, each target's settle time and the shortest period worth naming. */
 interface WindowAsk {
   readonly targets: readonly string[];
   readonly span: Span;
@@ -75,12 +75,13 @@ function askOf(flags: Flags, delivery: CoordinatorConfig, times: TypedTimes): Wi
 }
 
 /**
- * `teamrig windows --targets <a,b> --since <time> [--until <time>] [--settle <span>] [--min <span>]`: the clean
- * measurement windows of each target, so a session compares a metric over stretches no change touched. A deploy of a
+ * `teamrig stable-periods --targets <a,b> --since <time> [--until <time>] [--settle <span>] [--min <span>]`: the
+ * stable periods of each target, so a session compares a metric over stretches no change touched. A deploy of a
  * repository that deploys the target disturbs it from the deploy's start until it settled, unless its record names
- * other targets (`deploy --targets`); a queued step disturbs the whole host. Each window names the declared loads (`teamrig load`) it overlaps. `--until` is cut to now.
+ * other targets (`deploy --targets`); a queued step disturbs the whole host. Each period names the declared loads
+ * (`teamrig load`) it overlaps. `--until` is cut to now.
  */
-export async function windows(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+export async function stablePeriods(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const nowMs = runtime.clock.now();
   const kit = await openTeamKit(runtime);
   const config = requireConfig(kit, runtime, 'read');

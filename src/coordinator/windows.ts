@@ -28,8 +28,8 @@ export interface DisruptionInputs {
 }
 
 /**
- * A background load a session declared (`teamrig load`). It never cuts a window: it may run for days, and a window
- * inside it still compares with another under the same load, so a window only names the loads it overlaps.
+ * A background load a session declared (`teamrig load`). It never cuts a stable period: it may run for days, and a
+ * period inside it still compares with another under the same load, so a period only names the loads it overlaps.
  */
 export interface Load extends Span {
   readonly id: string;
