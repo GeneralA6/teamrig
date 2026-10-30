@@ -1,6 +1,6 @@
 import type { DeliveryConfig } from '../../config/types.ts';
-import type { LoadRecord } from '../../delivery/ledger.ts';
-import { endLoad, startLoad, type LoadOutcome, type LoadPorts } from '../../delivery/jobs.ts';
+import type { JobRecord } from '../../delivery/ledger.ts';
+import { endJob, startJob, type JobOutcome, type JobPorts } from '../../delivery/jobs.ts';
 import { deliveryPlaces } from '../../delivery/places.ts';
 import { deployTargetsOf } from '../../delivery/targets.ts';
 import { SecretScanner } from '../../core/secrets.ts';
@@ -11,17 +11,17 @@ import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from '../
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 
 /** What a job command works on: the session, the coordinator's config, the ledger and the jobs' ports. */
-interface LoadContext {
+interface JobContext {
   readonly session: string;
   readonly delivery: DeliveryConfig;
   readonly ledger: string;
   readonly scanner: SecretScanner;
-  readonly ports: LoadPorts;
+  readonly ports: JobPorts;
   /** The team's zone, which a typed `--at` is read in and a time is printed in. */
   readonly zone: TimeZone;
 }
 
-async function loadContextOf(args: ParsedArgs, runtime: CliRuntime): Promise<LoadContext> {
+async function jobContextOf(args: ParsedArgs, runtime: CliRuntime): Promise<JobContext> {
   const caller = callerOf(args.flags, runtime.env);
   const kit = await openTeamKit(runtime);
   const config = requireConfig(kit, runtime, 'read');
@@ -37,7 +37,7 @@ async function loadContextOf(args: ParsedArgs, runtime: CliRuntime): Promise<Loa
 }
 
 /** `--targets a,b`: the deploy targets a job disturbs; absent, or naming `host`, the whole host. */
-function loadTargetsOf(text: string | undefined): readonly string[] | 'host' {
+function jobTargetsOf(text: string | undefined): readonly string[] | 'host' {
   if (text === undefined) {
     return 'host';
   }
@@ -45,7 +45,7 @@ function loadTargetsOf(text: string | undefined): readonly string[] | 'host' {
   return targets.includes('host') ? 'host' : targets;
 }
 
-function recordOf(outcome: LoadOutcome): LoadRecord {
+function recordOf(outcome: JobOutcome): JobRecord {
   if (outcome.kind === 'refused') {
     throw new RefusedError(outcome.reason);
   }
@@ -65,12 +65,12 @@ function atOf(args: ParsedArgs, times: TypedTimes): number {
  */
 export async function job(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const what = requiredFlag(args.flags, 'what');
-  const targets = loadTargetsOf(args.flags.get('targets'));
+  const targets = jobTargetsOf(args.flags.get('targets'));
   const nowMs = runtime.clock.now();
-  const context = await loadContextOf(args, runtime);
+  const context = await jobContextOf(args, runtime);
   const startedAt = atOf(args, { nowMs, zone: context.zone });
   const rules = { knownTargets: deployTargetsOf(context.delivery.repos), scanner: context.scanner, nowMs, zone: context.zone };
-  const record = recordOf(await startLoad(context.ports, context.ledger, rules, { session: context.session, what, targets, startedAt }));
+  const record = recordOf(await startJob(context.ports, context.ledger, rules, { session: context.session, what, targets, startedAt }));
   const on = record.targets === 'host' ? 'the whole host' : record.targets.join(', ');
   runtime.out.stdout(`JOB ${record.id} on ${on} from ${context.zone.minute(new Date(startedAt))} (end it: teamrig job end --id ${record.id})`);
   return EXIT.ok;
@@ -83,9 +83,9 @@ export async function job(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
 export async function jobEnd(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const id = requiredFlag(args.flags, 'id');
   const nowMs = runtime.clock.now();
-  const context = await loadContextOf(args, runtime);
+  const context = await jobContextOf(args, runtime);
   const endedAt = atOf(args, { nowMs, zone: context.zone });
-  const record = recordOf(await endLoad(context.ports, context.ledger, { session: context.session, id, endedAt, nowMs, zone: context.zone }));
+  const record = recordOf(await endJob(context.ports, context.ledger, { session: context.session, id, endedAt, nowMs, zone: context.zone }));
   runtime.out.stdout(`ENDED ${record.id} at ${context.zone.minute(new Date(endedAt))}`);
   return EXIT.ok;
 }

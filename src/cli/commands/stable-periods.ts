@@ -3,7 +3,7 @@ import { parseLedger, parseLedgerMd } from '../../delivery/ledger.ts';
 import { deliveryPlaces } from '../../delivery/places.ts';
 import { minutesText, parseSpanMinutes } from '../../delivery/schedule.ts';
 import { deployTargetsOf, repoTargetsOf } from '../../delivery/targets.ts';
-import { cleanWindows, disruptions, loadsDuring, loadsOf, type Load, type Span } from '../../delivery/stable-periods.ts';
+import { stablePeriodsOf, disruptions, jobsDuring, jobsOf, type Job, type Span } from '../../delivery/stable-periods.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import { requiredFlag, UsageError, type Flags, type ParsedArgs } from '../args.ts';
 import { instantOf, listOf, type TypedTimes } from '../inputs.ts';
@@ -34,23 +34,23 @@ function countText(count: number): string {
   return count === 0 ? 'no stable period' : `${count} stable period${count === 1 ? '' : 's'}`;
 }
 
-function windowLine(window: Span, zone: TimeZone): string {
-  return `  ${minuteText(window.from, zone)} to ${minuteText(window.to, zone)} (${minutesText(Math.round((window.to - window.from) / MINUTE_MS))})`;
+function periodLine(period: Span, zone: TimeZone): string {
+  return `  ${minuteText(period.from, zone)} to ${minuteText(period.to, zone)} (${minutesText(Math.round((period.to - period.from) / MINUTE_MS))})`;
 }
 
-function loadLine(load: Load, zone: TimeZone): string {
-  return `    under job ${load.id} by ${load.session}: ${load.what} (from ${minuteText(load.from, zone)}, ${load.open ? 'still running' : `ended ${minuteText(load.to, zone)}`})`;
+function jobLine(job: Job, zone: TimeZone): string {
+  return `    under job ${job.id} by ${job.session}: ${job.what} (from ${minuteText(job.from, zone)}, ${job.open ? 'still running' : `ended ${minuteText(job.to, zone)}`})`;
 }
 
 /** What `stable-periods` measures in: the span, each target's settle time and the shortest period worth naming. */
-interface WindowAsk {
+interface PeriodAsk {
   readonly targets: readonly string[];
   readonly span: Span;
   readonly settleMinutes: (target: string) => number;
   readonly minMinutes: number;
 }
 
-function askOf(flags: Flags, delivery: DeliveryConfig, times: TypedTimes): WindowAsk {
+function askOf(flags: Flags, delivery: DeliveryConfig, times: TypedTimes): PeriodAsk {
   const { nowMs } = times;
   const targets = listOf('--targets', requiredFlag(flags, 'targets'));
   const known = deployTargetsOf(delivery.repos);
@@ -92,7 +92,7 @@ export async function stablePeriods(args: ParsedArgs, runtime: CliRuntime): Prom
   const records = parseLedger((await runtime.files.read(places.ledger)) ?? '');
   const md = parseLedgerMd((await runtime.files.read(places.ledgerMd)) ?? '');
   const repoTargets = new Map(Object.entries(delivery.repos).map(([name, repo]) => [name, repoTargetsOf(repo)]));
-  const loads = loadsOf(records, nowMs);
+  const jobs = jobsOf(records, nowMs);
   for (const target of ask.targets) {
     const settle = ask.settleMinutes(target);
     const all = disruptions({
@@ -104,11 +104,11 @@ export async function stablePeriods(args: ParsedArgs, runtime: CliRuntime): Prom
       lockTtlMs: delivery.queue.lockTtlMinutes * MINUTE_MS,
       nowMs,
     });
-    const found = cleanWindows(all, target, ask.span, ask.minMinutes * MINUTE_MS);
+    const found = stablePeriodsOf(all, target, ask.span, ask.minMinutes * MINUTE_MS);
     runtime.out.stdout(`${target} (settle ${minutesText(settle)}): ${countText(found.length)} of at least ${minutesText(ask.minMinutes)}`);
-    for (const window of found) {
-      runtime.out.stdout(windowLine(window, zone));
-      loadsDuring(loads, target, window).forEach((load) => runtime.out.stdout(loadLine(load, zone)));
+    for (const period of found) {
+      runtime.out.stdout(periodLine(period, zone));
+      jobsDuring(jobs, target, period).forEach((job) => runtime.out.stdout(jobLine(job, zone)));
     }
   }
   return EXIT.ok;
