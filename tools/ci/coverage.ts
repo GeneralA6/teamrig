@@ -61,6 +61,17 @@ export interface TestSummary {
   readonly todo: number;
   /** The names on the run's `not ok` lines: a failing test, the suites holding it, and a suite failed outside any test. */
   readonly notOk: readonly string[];
+  /** The test files whose process ended unsuccessfully with no failing test of their own to show for it. */
+  readonly exits: readonly FileExit[];
+}
+
+/** How a test file's process ended, as node's TAP reports it on the file's `not ok` line. */
+export interface FileExit {
+  readonly name: string;
+  /** Undefined when a signal ended it. */
+  readonly exitCode: number | undefined;
+  readonly signal: string | undefined;
+  readonly durationMs: number | undefined;
 }
 
 type Parsed<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly problem: string };
@@ -292,7 +303,40 @@ export function parseTapSummary(text: string): TestSummary | undefined {
         skipped: counts.get('skipped') ?? 0,
         todo: counts.get('todo') ?? 0,
         notOk: notOkNames(text),
+        exits: fileExits(text),
       };
+}
+
+/** A YAML scalar as node's TAP writes it: `~` is none, and a quoted string loses its quotes. */
+function yamlScalar(raw: string | undefined): string | undefined {
+  return raw === undefined || raw === '~' ? undefined : raw.replace(/^'(.*)'$/, '$1');
+}
+
+/**
+ * The top-level `not ok` entries whose YAML block says the file's own process failed: `failureType: 'testCodeFailure'`
+ * with an `exitCode` key, which node writes when a test file's process ends unsuccessfully with no failing test to
+ * show for it (a file with a failing test says `subtestsFailed` instead).
+ */
+function fileExits(text: string): FileExit[] {
+  return [...text.matchAll(/^not ok \d+ - (.*?)\r?\n {2}---\r?\n([\s\S]*?)^ {2}\.\.\.\r?$/gm)].flatMap(([, name, block]) => {
+    if (name === undefined || block === undefined) {
+      return [];
+    }
+    const fields = new Map([...block.matchAll(/^ {2}(\w+): (.*?)\r?$/gm)].flatMap(([, key, value]) => (key === undefined || value === undefined ? [] : [[key, value]])));
+    if (yamlScalar(fields.get('failureType')) !== 'testCodeFailure' || !fields.has('exitCode')) {
+      return [];
+    }
+    const exitCode = yamlScalar(fields.get('exitCode'));
+    const durationMs = yamlScalar(fields.get('duration_ms'));
+    return [
+      {
+        name,
+        exitCode: exitCode === undefined ? undefined : Number(exitCode),
+        signal: yamlScalar(fields.get('signal')),
+        durationMs: durationMs === undefined ? undefined : Number(durationMs),
+      },
+    ];
+  });
 }
 
 /**
@@ -343,10 +387,23 @@ function runFindings(summary: TestSummary | undefined, status: number | null): s
   } else if (status !== 0) {
     findings.push(`the test run exited with status ${String(status)} with no failing test`);
   }
+  findings.push(...summary.exits.map(exitFinding));
   if (summary.skipped > 0 || summary.todo > 0) {
     findings.push(`${summary.skipped} skipped and ${summary.todo} todo test(s): a test that does not run cannot catch a regression; fix it or delete it`);
   }
   return findings;
+}
+
+/**
+ * Names how a test file's process ended with no failing test to show for it. Its own output, if any, is above its ✖
+ * line; on Windows a process killed from outside (taskkill, `process.kill`) ends with exit code 1 and writes nothing,
+ * as a file did that a sweep's kill of a reused id ended (T1562).
+ */
+function exitFinding(exit: FileExit): string {
+  const how = exit.signal !== undefined ? `by signal ${exit.signal}` : exit.exitCode !== undefined ? `with exit code ${exit.exitCode} and no signal` : 'with no exit code or signal';
+  const after = exit.durationMs === undefined ? '' : ` after ${Math.round(exit.durationMs)} ms`;
+  const killHint = exit.signal === undefined && exit.exitCode === 1 ? ', and exit code 1 with no output is how Windows shows a kill from outside' : '';
+  return `${exit.name}: its process ended ${how}${after}, with no failing test to show for it; its own output, if any, is above its ✖ line${killHint}`;
 }
 
 export interface CoverageRun {
