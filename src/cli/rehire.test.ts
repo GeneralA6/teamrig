@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { projectTranscriptPath } from '../budget/discover.ts';
 import { decodePrompt, rehirePrompt, resumePrompt } from '../open/prompt.ts';
 import { APP, CLAUDE_SESSION, USER_HOME, type CliHarness, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
+import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { HELPER_HANDOVER, LEAD_TEAM, ok, teamWithHelper } from '../testing/hired-team.ts';
@@ -108,6 +109,20 @@ describe('a rehire', () => {
     const transcripts = await lastSession(kit, 1000, 1);
     const files = new FaultyFiles(kit.files).fail('readTail', TRANSCRIPT, systemError('EACCES'));
     assert.match(rehireLines(ok(await hire(kit, [], { transcripts, files })))[1] ?? '', /^ {2}it opens fresh \(not resumed: its last Claude Code session could not be measured: .*EACCES/);
+  });
+
+  it('hired home with no room on the host, opens on its handover, not resumed (T1364)', async () => {
+    const kit = await retiredHelper();
+    const transcripts = await lastSession(kit, 120_000, 2);
+    const memory = new FakeHostMemory();
+    memory.free = 100;
+    const hired = ok(await hire(kit, ['--yes'], { transcripts, memory }));
+    const resumable = 'resume its last Claude Code session: teamrig open helper --resume, or open it fresh on its handover: teamrig open helper';
+    assert.ok(hired.stdout.at(-1)?.endsWith(`; or, once the host has room, ${resumable}`), hired.stdout.at(-1));
+    const { result, argv } = await open(kit, ['helper'], { transcripts });
+    ok(result);
+    assert.equal(argv.includes('--resume'), false);
+    assert.equal(promptOf(argv), rehirePrompt('app', 'helper', HELPER_HANDOVER));
   });
 
   it('is the only open --resume takes, and a given prompt wins over the rehire prompt', async () => {

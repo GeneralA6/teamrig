@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { formatConfig } from '../config/load.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
+import { homeCloseOf, SessionLog } from '../sessions/log.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { CliHarness, CONFIG_PATH, KIT, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
@@ -10,6 +11,7 @@ import { EXIT } from './runtime.ts';
 
 const BACKUP = join(TEAM_HOME, 'backups', 'config.hire.json');
 const HIRES = join(TEAM_HOME, 'state', 'hires.jsonl');
+const SESSION_LOG = join(TEAM_HOME, 'state', 'session-log.jsonl');
 const LEAD_TEAM: JsonRecord = { sessions: ['lead', 'alpha'], roles: { lead: 'lead' }, hiring: { policy: 'lead' }, launch: { lead: { model: 'opus', effort: 'high' } } };
 const JOB = ['--scope', 'port the importer', '--reason', 'release week'];
 
@@ -22,6 +24,17 @@ function configOf(kit: CliHarness): JsonRecord {
   const config: unknown = text === undefined ? undefined : JSON.parse(text);
   assert.ok(isRecord(config));
   return config;
+}
+
+/** A team on a host with no room for one more session: its lead holds 2000 MB of a commit charge near its limit. */
+async function fullHost(team: JsonRecord): Promise<{ readonly kit: CliHarness; readonly memory: FakeHostMemory }> {
+  const kit = new CliHarness(team);
+  const records = new SessionRecordStore(kit.files, { sessions: join(TEAM_HOME, 'state', 'sessions') });
+  await records.write('lead', { claudePid: 6900, claudeSession: 'claude-lead', at: '2030-01-08T09:00:00.000Z' });
+  const lead = { pid: 6900, parent: 1, bytes: 800 * 2 ** 20, committed: 2000 * 2 ** 20 };
+  const memory = new FakeHostMemory().lists([lead], { usedMb: 91_000, limitMb: 100_000 });
+  memory.free = 20_000;
+  return { kit, memory };
 }
 
 function refusal(result: CliResult): string {
@@ -61,22 +74,28 @@ describe('hire', () => {
     assert.equal(read.code, EXIT.ok, read.stdout.join('\n'));
   });
 
-  it('refuses a hire with --yes when the host has no room for one more session, and only says so without', async () => {
-    const kit = new CliHarness(LEAD_TEAM);
-    const records = new SessionRecordStore(kit.files, { sessions: join(TEAM_HOME, 'state', 'sessions') });
-    await records.write('lead', { claudePid: 6900, claudeSession: 'claude-lead', at: '2030-01-08T09:00:00.000Z' });
-    const lead = { pid: 6900, parent: 1, bytes: 800 * 2 ** 20, committed: 2000 * 2 ** 20 };
-    const memory = new FakeHostMemory().lists([lead], { usedMb: 91_000, limitMb: 100_000 });
-    memory.free = 20_000;
+  it('hires a session home with --yes when the host has no room for one more, and says so first (T1364)', async () => {
     const short =
-      'no room on the host to hire helper, counted at 800 MB resident and 2000 MB committed: with it the commit charge would be 93000 MB, over 92% of its ' +
+      'no room on the host to open helper, counted at 800 MB resident and 2000 MB committed: with it the commit charge would be 93000 MB, over 92% of its ' +
       '100000 MB limit (open.headroom.commitMaxPct). Close a session first: teamrig sessions lists what each one holds';
+    const next = 'NEXT give it its first task: teamrig add --owner helper --title "<task>" --description "<what and why>" --session lead; ';
+    const { kit, memory } = await fullHost(LEAD_TEAM);
     const preview = await kit.run(['hire', 'helper', ...JOB, '--session', 'lead'], { memory });
     assert.equal(preview.code, EXIT.ok, preview.stderr.join('\n'));
-    assert.equal(preview.stdout.at(-1), `NOTE ${short}; --yes refuses until there is room`);
-    assert.equal(refusal(await kit.run(['hire', 'helper', ...JOB, '--yes', '--session', 'lead'], { memory })), `REFUSED ${short}`);
-    assert.equal(kit.files.get(CONFIG_PATH), formatConfig(LEAD_TEAM));
-    assert.equal(kit.files.get(HIRES), undefined);
+    assert.equal(preview.stdout.at(-1), `NOTE ${short}; with --yes it is hired home, closed until there is room`);
+    assert.equal(kit.files.get(SESSION_LOG), undefined);
+
+    const hired = await kit.run(['hire', 'helper', ...JOB, '--yes', '--session', 'lead'], { memory });
+    assert.equal(hired.code, EXIT.ok, hired.stdout.join('\n'));
+    assert.match(hired.stdout[0] ?? '', /^HIRED helper \(name app-helper\) for "port the importer": .*, home until the host has room; the old config is at /);
+    assert.deepEqual(hired.stdout.slice(1), [`NOTE ${short}`, `${next}the idle pass opens it once it has work and the host has room; or, once the host has room, open it: teamrig open helper`]);
+    assert.deepEqual(configOf(kit)['sessions'], ['lead', 'alpha', 'helper']);
+    const home = homeCloseOf('helper', 'lead', new Date(kit.clock.now()).toISOString());
+    assert.deepEqual(await new SessionLog(kit.files, SESSION_LOG).read(), { records: [home], skipped: 0 });
+
+    const idleOff = await fullHost({ ...LEAD_TEAM, open: { idle: { mode: 'dry-run' } } });
+    const byHand = await idleOff.kit.run(['hire', 'helper', ...JOB, '--yes', '--session', 'lead'], { memory: idleOff.memory });
+    assert.equal(byHand.stdout.at(-1), `${next}once the host has room, open it: teamrig open helper`, 'with the idle pass not on, it is opened by hand');
   });
 
   it('hires a third session beside two earlier hires: no cap bounds hiring', async () => {
