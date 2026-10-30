@@ -3,7 +3,7 @@ import { discoverTranscripts, type TranscriptSource } from '../budget/discover.t
 import { AGENT_TOOL, parseTranscriptLine, SKILL_TOOL } from '../budget/line.ts';
 import { stringField } from '../core/guards.ts';
 import { parseObject } from '../core/jsonl.ts';
-import { isAtOrBelow } from '../core/paths.ts';
+import { isAtOrBelow, pathKey } from '../core/paths.ts';
 
 /** Each name in use, with the folders the sessions that used it started in (empty when no transcript said). */
 export type UsedIn = ReadonlyMap<string, ReadonlySet<string>>;
@@ -157,6 +157,12 @@ export async function readTranscriptUse(source: TranscriptSource, projectsDir: s
 function usedBelow(usedIn: UsedIn, project: string, platform: NodeJS.Platform): Set<string> {
   const names = [...usedIn].filter(([, folders]) => [...folders].some((folder) => isAtOrBelow(folder, project, platform)));
   return new Set(names.map(([name]) => name));
+}
+
+/** The folders none of the others holds, one spelling of each (the last), sorted: where a name was used, without the subfolders. */
+export function outermostFolders(folders: Iterable<string>, platform: NodeJS.Platform = process.platform): string[] {
+  const unique = [...new Map([...folders].map((folder) => [pathKey(folder, platform), folder])).values()].sort();
+  return unique.filter((folder) => !unique.some((other) => other !== folder && isAtOrBelow(folder, other, platform)));
 }
 
 /** What the sessions started in `project` or a folder below it used, out of what the transcripts read show. */

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { promptLine, replyLine, type FixtureTool } from '../testing/transcript-lines.ts';
-import { projectUse, readTranscriptUse, type UsedIn } from './scan-usage.ts';
+import { outermostFolders, projectUse, readTranscriptUse, type UsedIn } from './scan-usage.ts';
 
 const PROJECTS = resolve('/', 'u', '.claude', 'projects');
 const AT = '2030-01-08T10:00:00Z';
@@ -134,5 +134,17 @@ describe('projectUse', () => {
   it('keeps nothing for a folder inside a start folder, nor for a sibling whose name only begins the same', () => {
     assert.deepEqual(projectUse(use, join(DASH_B_WEB, 'src')), { transcripts: 0, skills: new Set(), agents: new Set() });
     assert.deepEqual(projectUse(use, resolve('/', 'work', 'a')), { transcripts: 2, skills: new Set(['alpha-check']), agents: new Set(['code-reader']) });
+  });
+});
+
+describe('outermostFolders', () => {
+  it('drops each folder another one holds, keeps siblings whose names only begin the same, and sorts them', () => {
+    assert.deepEqual(outermostFolders([DASH_B_WEB, SLASH_C, DASH_B, join(DASH_B, 'web-2')]), [DASH_B, SLASH_C].sort());
+    assert.deepEqual(outermostFolders([DASH_B_WEB, join(DASH_B, 'web-2')]), [DASH_B_WEB, join(DASH_B, 'web-2')]);
+  });
+
+  it('keeps one spelling of a folder named twice on Windows, where case does not matter', () => {
+    assert.deepEqual(outermostFolders(['C:\\Work\\App', 'c:\\work\\app', 'C:\\Work\\App\\web'], 'win32'), ['c:\\work\\app']);
+    assert.deepEqual(outermostFolders(['/work/App', '/work/app'], 'linux'), ['/work/App', '/work/app']);
   });
 });

@@ -9,7 +9,7 @@ import { backupStamp } from '../permissions/trim.ts';
 import { MemoryPathProbe } from '../testing/memory-files.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { teamHomeOf, treeHarness } from '../testing/team-tree.ts';
-import { promptLine, replyLine } from '../testing/transcript-lines.ts';
+import { promptLine, replyLine, type FixtureTool } from '../testing/transcript-lines.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
 import { SKILL_DOCTOR_ARGS } from '../setup/skill-doctor.ts';
 import { DEFAULT_SCAN_DAYS } from './commands/setup-scan.ts';
@@ -26,6 +26,10 @@ const OTHER = resolve('/', 'work', 'other');
 
 function skill(name: string, description: string): string {
   return `---\nname: ${name}\ndescription: ${description}\n---\nBody.\n`;
+}
+
+function agentFile(name: string, description: string): string {
+  return `---\nname: ${name}\ndescription: ${description}\n---\nPrompt.\n`;
 }
 
 /** The user's and the project's files, with skills written {@link SKILLS_AGE_MS} before the clock then stands. */
@@ -78,13 +82,42 @@ describe('setup scan', () => {
     assert.match(lines[0] ?? '', / \(team app\)$/);
     assert.deepEqual(
       lines.filter((line) => line.startsWith('CONTEXT')).map((line) => line.split(' ').slice(0, 2).join(' ')),
-      ['CONTEXT claude-md', 'CONTEXT claude-md', 'CONTEXT team-rules', 'CONTEXT skills'],
+      ['CONTEXT claude-md', 'CONTEXT claude-md', 'CONTEXT team-rules', 'CONTEXT skills', 'CONTEXT agents'],
     );
     assert.ok(lines.includes('OVERRIDE 1 line(s) in 1 file(s) may override a core rule: claude-md 1; 0 recorded'), lines.join('\n'));
     assert.ok(lines.includes('NEXT teamrig rules scan, to judge each line with the user'));
     assert.ok(lines.includes(`UNUSED 1 of 2 skill(s) not used in ${DEFAULT_SCAN_DAYS} day(s) (read 1 transcript(s), 0.0 MB)${NO_DOCTOR}`), lines.join('\n'));
     assert.match(lines.find((line) => line.startsWith('U1 ')) ?? '', /^U1 unused-skill .*beta-run.*: no Skill call or \/beta-run in 30 day\(s\)/);
     assert.match(lines.at(-1) ?? '', /^SAVINGS ~\d+ tokens\/turn/);
+  });
+
+  it('judges the user-level skills and agent types by the projects whose sessions used them', async () => {
+    const harness = new CliHarness();
+    await harness.files.write(join(CLAUDE_DIR, 'agents', 'scout.md'), agentFile('scout', 'Scouts the code.'));
+    await harness.files.write(join(CLAUDE_DIR, 'agents', 'idle.md'), agentFile('idle', 'Never runs.'));
+    await world(harness);
+    const call = (cwd: string, tool: FixtureTool): string => replyLine({ id: tool.id, at: LINE_AT, cwd, usage: { input: 1, output: 1 }, tools: [tool] });
+    const other = join(CLAUDE_DIR, 'projects', claudeProjectSlug(OTHER), '0123abcd-0000-4000-8000-00000000000b.jsonl');
+    const source = new MemoryTranscripts(
+      {
+        [transcriptPath('a')]: `${call(APP, { id: 't', name: 'Skill', skill: 'alpha-check' })}\n`,
+        [other]: `${call(OTHER, { id: 'u', name: 'Skill', skill: 'beta-run' })}\n${call(OTHER, { id: 'v', name: 'Agent', agent: 'scout' })}\n`,
+      },
+      NOW - HOUR_MS,
+    );
+    const lines = okLines(await scan(harness, [], source));
+    assert.ok(
+      lines.includes(
+        "CONTEXT agents 2 agent type(s) listed: 68 chars (~17 tokens/turn); summed from the user's and the project's agent folders (built-in and plugins' agent types not counted: no transcript of this project yet)",
+      ),
+      lines.join('\n'),
+    );
+    assert.deepEqual(lines.filter((line) => /^U(NUSED|\d)/.test(line)), [
+      `UNUSED 0 of 2 skill(s) and 1 of 2 agent type(s) not used in ${DEFAULT_SCAN_DAYS} day(s) (read 2 transcript(s), 0.0 MB); 2 user-level one(s) used only in other projects${NO_DOCTOR}`,
+      'U1 unused-agent ~/.claude/agents/idle.md: no Agent call ran idle in 30 day(s) (~8 tokens/turn)',
+      `U2 other-project-skill ~/.claude/skills/beta-run/SKILL.md: used only in other projects in 30 day(s): ${OTHER}; move it to their .claude/skills (~6 tokens/turn)`,
+      `U3 other-project-agent ~/.claude/agents/scout.md: used only in other projects in 30 day(s): ${OTHER}; move it to their .claude/agents (~10 tokens/turn)`,
+    ]);
   });
 
   it('before a team exists: the user skills folder, no team rules, and the NEXT steps after team create', async () => {
