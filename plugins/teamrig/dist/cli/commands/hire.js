@@ -11,6 +11,7 @@ import { HiringLog } from "../../hiring/log.js";
 import { activeHires, retiredSessions } from "../../hiring/record.js";
 import { hirerProblem, planHire } from "../../hiring/plan.js";
 import { noRoomText } from "../../sessions/headroom.js";
+import { homeCloseOf, SessionLog } from "../../sessions/log.js";
 import { onePositional, requiredFlag, UsageError } from "../args.js";
 import { readBursts } from "../burst-reading.js";
 import { headroomOf } from "../headroom.js";
@@ -29,7 +30,9 @@ import { sessionProjectOf } from "./setup.js";
  * A retired id is hired back: it shows the retire and its handover, and whether its last Claude Code session
  * can be resumed (`open --resume`) or it opens fresh on that handover. With --burst it is a hire for the burst in
  * force, within the burst's hires and on the lead's model and effort (src/hiring/burst-hire.ts).
- * With --yes it refuses when the host has no room for one more session (`open.headroom`); the preview says so.
+ * With no room on the host for one more session (`open.headroom`) it is hired home (T1364): a home close in the session
+ * log (src/sessions/log.ts) keeps it closed until the idle pass opens it once it has work and the host has room, or
+ * `open` does; the preview says so.
  * On a hired session already on the team, `--review <day> --reason` keeps it to that new review day instead, which
  * clears its REVIEW-DUE (src/hiring/keep.ts): only the hire log changes, so it takes no room check.
  */
@@ -93,12 +96,21 @@ function rehireLines({ from, verdict }, zone) {
 function openStepOf(id, rehire) {
     const fresh = `${KIT_NAME} open ${id}`;
     if (rehire === undefined) {
-        return `then open it: ${fresh}`;
+        return `open it: ${fresh}`;
     }
     if (rehire.verdict.kind === 'resume') {
-        return `then resume its last Claude Code session: ${fresh} --resume, or ${freshOpenOf(rehire.from)}: ${fresh}`;
+        return `resume its last Claude Code session: ${fresh} --resume, or ${freshOpenOf(rehire.from)}: ${fresh}`;
     }
-    return `then ${freshOpenOf(rehire.from)}: ${fresh}`;
+    return `${freshOpenOf(rehire.from)}: ${fresh}`;
+}
+/** When it opens: now, or, hired home, once the host has room, by the idle pass when it is on and work is handed to it. */
+function whenOpensOf(id, rehire, home, idle) {
+    const step = openStepOf(id, rehire);
+    if (!home) {
+        return `then ${step}`;
+    }
+    const byHand = `once the host has room, ${step}`;
+    return idle === 'on' ? `the idle pass opens it once it has work and the host has room; or, ${byHand}` : byHand;
 }
 /** The flags a keep refuses: it changes only the review day, the job and launch stay as hired. */
 const HIRE_ONLY_FLAGS = ['scope', 'name', 'model', 'effort', 'approved-by'];
@@ -184,23 +196,30 @@ export async function hire(args, runtime) {
         if (skipped > 0) {
             runtime.out.stdout(`NOTE ${skipped} damaged or newer line(s) in ${log.path} were skipped, so a burst's hires may count too few`);
         }
+        const home = headroom.short.length > 0;
+        const noRoom = noRoomText(`open ${request.id}`, headroom);
         if (!args.switches.has('yes')) {
             runtime.out.stdout(`PREVIEW hire ${what}; nothing written (add --yes to write)`);
             rehireText.forEach((line) => runtime.out.stdout(line));
-            if (headroom.short.length > 0) {
-                runtime.out.stdout(`NOTE ${noRoomText(`hire ${request.id}`, headroom)}; --yes refuses until there is room`);
+            if (home) {
+                runtime.out.stdout(`NOTE ${noRoom}; with --yes it is hired home, closed until there is room`);
             }
             return EXIT.ok;
-        }
-        if (headroom.short.length > 0) {
-            throw new RefusedError(noRoomText(`hire ${request.id}`, headroom));
         }
         // The log first: a hire logged for a session the config does not hold counts toward no burst's hires.
         await log.append(record);
         const backup = await writeConfigWithBackup(files, { configPath: load.path, backupsDir: kit.paths.backups, backupName: HIRE_BACKUP_NAME }, plan.value.config, clock);
-        runtime.out.stdout(`HIRED ${what}; the old config is at ${backup}`);
+        // After the config: a home close of a session the config does not hold keeps nothing closed.
+        if (home) {
+            await new SessionLog(files, kit.paths.sessionLog).append(homeCloseOf(record.session, by, new Date(request.now).toISOString()));
+        }
+        runtime.out.stdout(`HIRED ${what}${home ? ', home until the host has room' : ''}; the old config is at ${backup}`);
         rehireText.forEach((line) => runtime.out.stdout(line));
-        runtime.out.stdout(`NEXT give it its first task: ${KIT_NAME} add --owner ${record.session} --title "<task>" --description "<what and why>" --session ${by}; ${openStepOf(record.session, rehire)}`);
+        if (home) {
+            runtime.out.stdout(`NOTE ${noRoom}`);
+        }
+        const opens = whenOpensOf(record.session, rehire, home, config.open.idle.mode);
+        runtime.out.stdout(`NEXT give it its first task: ${KIT_NAME} add --owner ${record.session} --title "<task>" --description "<what and why>" --session ${by}; ${opens}`);
         return EXIT.ok;
     });
 }
