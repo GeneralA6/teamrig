@@ -3,8 +3,8 @@ import { assertWritable, parseJsonl, toJsonlLine, VERSION_FIELD } from "../core/
 import { MS_PER_MINUTE, MS_PER_WEEK } from "../core/time.js";
 /**
  * The week's W per percent, learned from the meter (T531). Each time the status line's week use passes a whole
- * percent, the team's meter log, `<state>/usage/meter-log.jsonl`, gets one line: the use, the period and the W
- * metered since its start. A fit of W per percent through 0 over the recent lines stands in for the configured
+ * percent, the account's meter log, `<state>/usage/meter-log.jsonl` of the team that keeps the account's week files
+ * (`accountHolderOf`, budget/account.ts), gets one line: the use, the period and the W metered since its start. A fit of W per percent through 0 over the recent lines stands in for the configured
  * guess once they span `FIT_SPREAD_PTS` points. Each line also keeps the use the fit before it forecast for its W,
  * so the forecast's error shows week by week. Instants are stored as ISO strings, like the burst log.
  */

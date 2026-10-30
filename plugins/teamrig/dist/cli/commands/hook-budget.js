@@ -18,7 +18,7 @@ import { cachedWork, WORK_CACHE_FILE } from "../../budget/work.js";
 import { postLine } from "../../inbox/inbox.js";
 import { holdBack } from "../../hooks/permission.js";
 import { helperLaunchReminder } from "../../rules/helper-default.js";
-import { otherTeamsOnAccount, weekUseOnAccount } from "../account-teams.js";
+import { accountWeekOn, otherTeamsOnAccount } from "../account-teams.js";
 import { teamZone } from "../kit.js";
 import { liftNamesOf } from "./budget.js";
 import { inboxDepsOf } from "./inbox.js";
@@ -64,9 +64,9 @@ export async function budgetFactsOf(runtime, scope, transcript) {
         byId.set(each, (await team.load(each)).state);
     }
     const outside = (await new UsageStore(files, join(kit.paths.usage, 'outside')).load(OUTSIDE_ID)).state;
-    const statusUse = await weekUseOnAccount(runtime, budget, kit.paths, now);
+    const { statusUse, paths: weekPaths } = await accountWeekOn(runtime, budget, kit.paths, now);
     const states = [...byId.values(), outside];
-    const week = await teamWeekOf(files, kit.paths, { budget, now, statusUse, states });
+    const week = await teamWeekOf(files, weekPaths, { budget, now, statusUse, states });
     const { teamDay, todayWPerPct } = week;
     if (week.usedPct === undefined || todayWPerPct === undefined || teamDay === undefined) {
         return undefined;
