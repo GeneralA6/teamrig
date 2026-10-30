@@ -929,7 +929,9 @@ the lead is not woken; the work waits for the first check after it.
 
 Tasks handed within `wake.batchSeconds` (120) of the first wake it once, each task wakes it once, and wakes of one
 session are `wake.minGapMinutes` (15) apart. Work there when the tab started or before a `/clear` is seen at its
-first prompt. The mod sends the prompt through Claude Code's own call for one (`$.prompt.submit`), as the teamrig
+first prompt. A closed session that [teamrig open](commands.md#teamrig-open) resumes in its last Claude Code session,
+with teamrig's own first prompt to read its list, counts the open as its wake: only work handed after it wakes that
+tab, `wake.minGapMinutes` after the open at the soonest. The mod sends the prompt through Claude Code's own call for one (`$.prompt.submit`), as the teamrig
 plugin, so the session takes a turn of its own: nothing is typed into the terminal, and the prompt box and any draft
 in it are left alone. The prompt and a toast name the tasks and the cost: about 27k W while the cache is warm, about
 210k W once idle `messages.coldAfterMinutes` (60) or more, with its share of the week. Each wake is a line in

@@ -2165,7 +2165,11 @@ A session the lead closed while idle ([teamrig close](#teamrig-close)) goes on i
 recent enough by the `--resume` limits below, with a first prompt to read its inbox and list again; else it opens
 fresh and the OPENED line says why. It resumes in the folder its close logged, where Claude Code filed its transcript
 (a worktree or subfolder it started in, else the project), and opens fresh in the project once that folder is gone.
-The reopen is logged in `state/session-log.jsonl` beside the close.
+The reopen is logged in `state/session-log.jsonl` beside the close. A resumed reopen with teamrig's own first prompt
+(no `--prompt`) also counts as the session's wake ([the wake](hooks.md#the-mod-the-wake-on-urgent-work)): the work it
+reads then never wakes it again, and its next wake is `wake.minGapMinutes` away at the soonest. When that wake state
+cannot be written, the open stands and its OPENED line ends `; its wake state was not written, so its tab may wake
+once more for work it reads now: <why>`.
 
 Flags:
 
