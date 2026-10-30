@@ -93,6 +93,23 @@ function checkUnder(kit: CliHarness, processes: FakeProcesses, sessionProcesses 
   return kit.run(['hook', 'wake-check'], { stdin: payload(), transcripts: new MemoryTranscripts(), processes, sessionProcesses });
 }
 
+/** The automatic restart on, and work woken for as soon as it is handed. */
+const PARKED_TEAM: JsonRecord = { ...AUTO_RESTART_TEAM, wake: { batchSeconds: 0 } };
+
+/**
+ * A team whose alpha, past its first check, wrote its handover with no work to follow, so its Stop hook held the
+ * restart back for work in `tab` (T1383). `ready`: alpha still waits for that fresh start.
+ */
+async function parkedRestart(config: JsonRecord, tab = ALPHA_TAB, ready = true): Promise<{ readonly kit: CliHarness; readonly store: RefreshStore }> {
+  const kit = await teamWithAlphaTab(config);
+  const store = new RefreshStore(kit.files, { refresh: join(TEAM_HOME, 'state', 'refresh'), handover: join(TEAM_HOME, 'handover') });
+  await check(kit);
+  const at = new Date(kit.clock.now()).toISOString();
+  await store.setParked('alpha', { at, claudeSession: tab, transcript: null, cwd: null, supervised: true });
+  await store.setState('alpha', ready ? READY : { phase: 'refreshed', task: 'T1', at });
+  return { kit, store };
+}
+
 /** The wake prompt kept for alpha's turn log (src/wake/prompts.ts). */
 function keptPrompt(kit: CliHarness): Promise<WakePrompt | undefined> {
   return new WakePrompts(kit.files, join(TEAM_HOME, 'state', 'wake')).read('alpha');
@@ -379,6 +396,60 @@ describe('hook wake-check', () => {
     assert.deepEqual([await unseen.store.restart('alpha'), processes.hidden], [undefined, []]);
   });
 
+  it('starts a session whose restart waits for work fresh once work is handed, the work left to wake the fresh session (T1383)', async () => {
+    const { kit, store } = await parkedRestart(PARKED_TEAM);
+    const processes = new FakeProcesses();
+    assert.deepEqual(answerOf(await checkUnder(kit, processes)), { kind: 'wait', watch: watchOf(), recheckAt: null }, 'no work: it waits');
+    assert.deepEqual([processes.hidden, (await store.parked('alpha'))?.claudeSession], [[], ALPHA_TAB]);
+    await hand(kit, 'Fix the login', 'p1');
+    const underClaude = UNDER_CLAUDE();
+    assert.deepEqual(answerOf(await checkUnder(kit, processes, underClaude)), { kind: 'wait', watch: watchOf(), recheckAt: kit.clock.now() + RESTART_RECHECK_MS });
+    const at = new Date(kit.clock.now()).toISOString();
+    assert.deepEqual(await store.restart('alpha'), { phase: 'pending', at, pid: 6900, claudeSession: ALPHA_TAB, transcript: null, cwd: null, supervised: true });
+    assert.deepEqual([await store.parked('alpha'), underClaude.lineages, await logLines(kit)], [undefined, [7000], []], 'armed once, no wake logged');
+    const runners = processes.hidden.filter((run) => run.args[1] === 'restart').map((run) => [run.command, run.cwd, ...run.args]);
+    assert.deepEqual(runners, [['/usr/bin/node', APP, '/opt/teamrig/dist/cli/main.js', 'restart', 'alpha', '--team', 'app', '--at', at, '--project', APP]]);
+
+    // The restart's /clear: the fresh session is woken for the work.
+    await store.clearRestart('alpha');
+    await store.setState('alpha', { phase: 'refreshed', task: 'T1', at });
+    assert.equal((await check(kit)).stdout[0]?.includes('"kind":"wake","ids":["T1"]'), true);
+  });
+
+  it('keeps an urgent line for the fresh start of a session whose restart waits for work (T1383)', async () => {
+    const { kit, store } = await parkedRestart(PARKED_TEAM);
+    const asks = new WakeAsks(kit.files, ASKS);
+    await asks.post('alpha', { from: 'teamrig', text: 'The idle pass closed bravo.', at: kit.clock.now() });
+    assert.deepEqual(answerOf(await checkUnder(kit, new FakeProcesses())), { kind: 'wait', watch: watchOf(), recheckAt: kit.clock.now() + RESTART_RECHECK_MS });
+    assert.deepEqual([(await store.restart('alpha'))?.phase, (await asks.read('alpha')).length], ['pending', 1]);
+  });
+
+  it('leaves a restart held back for work alone for another tab or with the automatic restart off, drops it once the session refreshed, and wakes it (T1383)', async () => {
+    const cases: readonly { readonly name: string; readonly config: JsonRecord; readonly tab: string; readonly ready: boolean; readonly left: boolean }[] = [
+      { name: 'held back for another tab', config: PARKED_TEAM, tab: OTHER_TAB, ready: true, left: true },
+      { name: 'the automatic restart off', config: { ...TEAM, wake: { batchSeconds: 0 } }, tab: ALPHA_TAB, ready: true, left: true },
+      { name: 'the session refreshed since', config: PARKED_TEAM, tab: ALPHA_TAB, ready: false, left: false },
+    ];
+    for (const { name, config, tab, ready, left } of cases) {
+      const { kit, store } = await parkedRestart(config, tab, ready);
+      await hand(kit, 'Fix the login', 'p1');
+      const processes = new FakeProcesses();
+      const underClaude = UNDER_CLAUDE();
+      assert.equal((await checkUnder(kit, processes, underClaude)).stdout[0]?.includes('"kind":"wake","ids":["T1"]'), true, name);
+      assert.deepEqual([processes.hidden, underClaude.lineages], [[], []], `${name}: nothing started or looked up`);
+      assert.equal((await store.parked('alpha')) !== undefined, left, `${name}: ${left ? 'left' : 'dropped'}`);
+    }
+  });
+
+  it('wakes the session for the work with its context when the restart held back for work cannot start (T1383)', async () => {
+    const { kit, store } = await parkedRestart(PARKED_TEAM);
+    await hand(kit, 'Fix the login', 'p1');
+    const missing = new FakeProcesses().onStart('/usr/bin/node', { kind: 'missing' });
+    assert.equal((await checkUnder(kit, missing)).stdout[0]?.includes('"kind":"wake","ids":["T1"]'), true);
+    assert.deepEqual([await store.restart('alpha'), await store.parked('alpha'), missing.hidden.length], [undefined, undefined, 1]);
+    assert.deepEqual(answerOf(await check(kit)), { kind: 'wait', watch: watchOf(), recheckAt: null }, 'woken once');
+  });
+
   it('answers a recheck now while another tab of the session holds its lock', async () => {
     const kit = await teamWithAlphaTab();
     await holdFileLock(kit, ALPHA_LOCK);
@@ -447,6 +518,16 @@ describe('hook wake-check at the day start and a burst', () => {
     assert.deepEqual(answerOf(await otherCheck()), waitTill(TOMORROW_SIX), 'nor in a new tab of the session');
     kit.clock.advance(TOMORROW_SIX - kit.clock.now());
     assert.match((await otherCheck()).stdout[0] ?? '', /"toast":"teamrig woke this tab for the day start: T1 \(about 210k W, cold\)"/);
+  });
+
+  it('starts a session whose restart waits for work fresh at the day start, the day start left to wake the fresh session (T1383)', async () => {
+    const { kit, store } = await parkedRestart({ ...DAY_START, refresh: { autoRestart: true } });
+    await hand(kit, 'Tidy the docs', 'p3');
+    assert.deepEqual(answerOf(await checkUnder(kit, new FakeProcesses())), waitTill(kit.clock.now() + RESTART_RECHECK_MS));
+    assert.equal((await store.restart('alpha'))?.phase, 'pending');
+    await store.clearRestart('alpha');
+    await store.setState('alpha', { phase: 'refreshed', task: 'T1', at: new Date(kit.clock.now()).toISOString() });
+    assert.match((await check(kit)).stdout[0] ?? '', /"toast":"teamrig woke this tab for the day start: T1 /);
   });
 
   it('settles the day start with no wake for a tab that had a turn after it', async () => {

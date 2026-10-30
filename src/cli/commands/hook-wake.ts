@@ -25,7 +25,7 @@ import { budgetFactsOf } from './hook-budget.ts';
 import { inboxDepsOf } from './inbox.ts';
 import { runIdlePass } from './hook-idle-pass.ts';
 import { parseJson, sessionTeam, teamSessionOf } from './hook-input.ts';
-import { rearmDeadRestart } from './hook-restart.ts';
+import { armParkedRestart, parkedHere, rearmDeadRestart, type RearmScope } from './hook-restart.ts';
 import { fileLockOf } from '../file-locks.ts';
 
 /**
@@ -140,21 +140,20 @@ export const RESTART_RECHECK_MS = MINUTE_MS;
  * fresh start. The work handed meanwhile stays new, so it wakes the fresh session. A restart whose runner died is
  * re-armed from this tab first (`rearmDeadRestart`), and holds the wake the same way once it is.
  */
-async function restartHoldsWake(runtime: CliRuntime, scope: Extract<WakeScope, { kind: 'found' }>, cwd: string | undefined): Promise<boolean> {
-  const { kit, config, id, tab } = scope;
-  const store = new RefreshStore(runtime.files, kit.paths);
-  const request = await store.restart(id);
-  return restartMayAct(request, runtime.clock.now()) || (await rearmDeadRestart(runtime, store, { team: kit.paths.team, id, tab, refresh: config.refresh, cwd }, request));
+async function restartHoldsWake(runtime: CliRuntime, store: RefreshStore, rearm: RearmScope): Promise<boolean> {
+  const request = await store.restart(rearm.id);
+  return restartMayAct(request, runtime.clock.now()) || (await rearmDeadRestart(runtime, store, rearm, request));
 }
 
 /**
  * What the check decided under the lock: a wake for work handed to the session or urgent lines posted for it (either
- * may be empty, not both), one for the day's moments (with the tab's last turn it read), or when to check again
- * (null: no time set).
+ * may be empty, not both), one for the day's moments (with the tab's last turn it read), the restart held back for
+ * work armed in its place (`fresh`), or when to check again (null: no time set).
  */
 type CheckVerdict =
   | { readonly kind: 'handed'; readonly tasks: readonly Task[]; readonly asks: readonly WakeAsk[] }
   | { readonly kind: 'moments'; readonly moments: readonly DayMoment[]; readonly tasks: readonly Task[]; readonly lastTurnAt: number | undefined }
+  | { readonly kind: 'fresh' }
   | { readonly kind: 'wait'; readonly recheckAt: number | null };
 
 /** The day's moments checked: the verdict, the state to keep, and the next day start (undefined: none set). */
@@ -216,9 +215,16 @@ async function momentsOf(
 /**
  * Decides under the session's wake lock, so two tabs of one session never wake it twice. Urgent lines due wake it
  * with any work due as well; the asks a wake takes, and spent ones (damaged, or timed with their line seen), are
- * removed under the lock. A timed ask stays until its time.
+ * removed under the lock. A timed ask stays until its time. With a restart held back for work in this tab (`fresh`
+ * arms it), a wake starts the session fresh instead: nothing is recorded as woken and no ask taken, so the work wakes
+ * the fresh session (T1383); a restart that cannot start lets the wake go ahead.
  */
-async function decide(runtime: CliRuntime, scope: Extract<WakeScope, { kind: 'found' }>, store: WakeStore): Promise<CheckVerdict> {
+async function decide(
+  runtime: CliRuntime,
+  scope: Extract<WakeScope, { kind: 'found' }>,
+  store: WakeStore,
+  fresh: (() => Promise<boolean>) | undefined,
+): Promise<CheckVerdict> {
   const { config, kit, id, tab } = scope;
   const { files, clock } = runtime;
   const lock = fileLockOf(runtime, store.lockOf(id), { ...config.lock, waitMs: 0 });
@@ -242,12 +248,20 @@ async function decide(runtime: CliRuntime, scope: Extract<WakeScope, { kind: 'fo
       minGapMs: config.wake.minGapMinutes * MINUTE_MS,
       previous: await store.read(id),
     });
-    await asks.remove(id, asked.kind === 'wake' ? found.taken : found.spent);
-    if (decision.verdict.kind === 'wake' || asked.kind === 'wake') {
+    const handed = decision.verdict.kind === 'wake' || asked.kind === 'wake';
+    const started = handed && fresh !== undefined && (await fresh());
+    await asks.remove(id, asked.kind === 'wake' && !started ? found.taken : found.spent);
+    if (started) {
+      return { kind: 'fresh' };
+    }
+    if (handed) {
       await store.write(id, decision.state);
       return { kind: 'handed', tasks: decision.verdict.kind === 'wake' ? decision.verdict.tasks : [], asks: asked.kind === 'wake' ? asked.asks : [] };
     }
     const day = await momentsOf(runtime, scope, tasks, elsewhere, decision.state, now);
+    if (day.verdict.kind === 'wake' && fresh !== undefined && (await fresh())) {
+      return { kind: 'fresh' };
+    }
     await store.write(id, day.state);
     if (day.verdict.kind === 'wake') {
       return { kind: 'moments', moments: day.verdict.moments, tasks: day.verdict.tasks, lastTurnAt: day.lastTurnAt };
@@ -265,8 +279,9 @@ async function decide(runtime: CliRuntime, scope: Extract<WakeScope, { kind: 'fo
  * wake it logs the wake and its cost to the team's wake log and answers the prompt to submit, keeping its text for
  * the turn log (src/wake/prompts.ts); a busy lock (another
  * tab of the session checking) answers a recheck now. The lead is not woken while the owner's daily meeting is open,
- * nor any session while its automatic restart may still act; one whose restart died is restarted again instead. It
- * also runs the team's idle pass, at most once a minute across the team (hook-idle-pass.ts).
+ * nor any session while its automatic restart may still act; one whose restart died is restarted again instead, and
+ * one whose restart waits for work is restarted for the work that would wake it (T1383). It also runs the team's idle
+ * pass, at most once a minute across the team (hook-idle-pass.ts).
  */
 export async function wakeCheck(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
@@ -281,13 +296,17 @@ export async function wakeCheck(args: ParsedArgs, runtime: CliRuntime): Promise<
   if (await meetingHoldsWake(runtime, scope)) {
     return answer(runtime, waitAnswer(scope, null));
   }
-  if (await restartHoldsWake(runtime, scope, isRecord(payload) ? stringField(payload, 'cwd') : undefined)) {
+  const restarts = new RefreshStore(runtime.files, kit.paths);
+  const rearm: RearmScope = { team: kit.paths.team, id, tab, refresh: config.refresh, cwd: isRecord(payload) ? stringField(payload, 'cwd') : undefined };
+  if (await restartHoldsWake(runtime, restarts, rearm)) {
     return answer(runtime, waitAnswer(scope, runtime.clock.now() + RESTART_RECHECK_MS));
   }
+  const parked = await parkedHere(restarts, rearm);
+  const fresh = parked === undefined ? undefined : (): Promise<boolean> => armParkedRestart(runtime, restarts, rearm, parked);
   const store = new WakeStore(runtime.files, kit.paths.wake);
   let verdict: CheckVerdict;
   try {
-    verdict = await decide(runtime, scope, store);
+    verdict = await decide(runtime, scope, store, fresh);
   } catch (error) {
     if (error instanceof LockBusyError) {
       return answer(runtime, waitAnswer(scope, runtime.clock.now()));
@@ -296,6 +315,9 @@ export async function wakeCheck(args: ParsedArgs, runtime: CliRuntime): Promise<
   }
   if (verdict.kind === 'wait') {
     return answer(runtime, waitAnswer(scope, verdict.recheckAt));
+  }
+  if (verdict.kind === 'fresh') {
+    return answer(runtime, waitAnswer(scope, runtime.clock.now() + RESTART_RECHECK_MS));
   }
   const now = runtime.clock.now();
   const last = verdict.kind === 'moments' ? verdict.lastTurnAt : await lastWriteOf(runtime.transcripts, claudeProjectsDir(runtime.env, runtime.userHome), [tab]);

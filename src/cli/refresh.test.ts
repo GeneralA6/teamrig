@@ -59,6 +59,12 @@ async function finishTask(kit: CliHarness, session: string): Promise<CliResult> 
   return kit.run(['set', id, '--status', 'done', '--note', 'shipped', '--evidence', 'abc1234', '--skill', 'none', '--followups', 'none', '--session', session]);
 }
 
+/** Adds an open task owned by `session`: work a fresh start carries on with (T1383). */
+async function openTask(kit: CliHarness, session: string): Promise<void> {
+  const added = await kit.run(['add', '--title', 'Next one', '--description', 'what and why', '--priority', 'p2', '--session', session]);
+  assert.equal(added.code, EXIT.ok, added.stdout.join('\n'));
+}
+
 const AS_ALPHA = { env: { TEAMRIG_SESSION: 'alpha' } };
 
 /** Alpha's handover written after the Stop hook asked for it, so the next stop announces the fresh start. */
@@ -225,9 +231,10 @@ describe('runCli: context refresh', () => {
     assert.match(JSON.stringify(stopJson(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload() }))), /wrote its handover; type \/clear/);
   });
 
-  it('arms the automatic restart once the handover is written, for the Claude Code the hook runs under', async () => {
+  it('arms the automatic restart once the handover is written and work follows, for the Claude Code the hook runs under', async () => {
     const kit = new CliHarness(AUTO_RESTART_TEAM);
     const store = await handoverWritten(kit);
+    await openTask(kit, 'alpha');
     const processes = new FakeProcesses();
     const env = { TEAMRIG_SESSION: 'alpha', CLAUDE_PROJECT_DIR: APP, TEAMRIG_LAUNCHED: 'alpha' };
     const underClaude = UNDER_CLAUDE();
@@ -253,6 +260,7 @@ describe('runCli: context refresh', () => {
   it('asks for /clear instead, leaving nothing armed, when the restart cannot start or is off (the default)', async () => {
     const missing = new CliHarness(AUTO_RESTART_TEAM);
     const store = await handoverWritten(missing);
+    await openTask(missing, 'alpha');
     const processes = new FakeProcesses().onStart('/usr/bin/node', { kind: 'missing' });
     const clear = {
       systemMessage: 'teamrig: app-alpha finished T1 and wrote its handover; type /clear for a fresh start',
@@ -268,9 +276,51 @@ describe('runCli: context refresh', () => {
     assert.deepEqual([await offStore.restart('alpha'), none.hidden.filter((run) => run.args[1] === 'restart')], [undefined, []]);
   });
 
+  it('holds the restart back when no work of its own follows the handover, for the wake that brings some to arm (T1383)', async () => {
+    const kit = new CliHarness(AUTO_RESTART_TEAM);
+    const store = await handoverWritten(kit);
+    await openTask(kit, 'bravo');
+    const processes = new FakeProcesses();
+    const env = { TEAMRIG_SESSION: 'alpha', CLAUDE_PROJECT_DIR: APP, TEAMRIG_LAUNCHED: 'alpha' };
+    assert.deepEqual(stopJson(await kit.run(['hook', 'stop'], { env, stdin: stopPayload(true), sessionProcesses: UNDER_CLAUDE(), processes })), {
+      systemMessage:
+        'teamrig: app-alpha finished T1 and wrote its handover; it has no work it can start now, so teamrig starts it fresh once a wake brings it some (type anything to keep this context)',
+      terminalSequence: '\u001b]0;[app] alpha: waits for work\u0007',
+    });
+    const parked = await store.parked('alpha');
+    assert.ok(parked);
+    assert.deepEqual(parked, { at: parked.at, claudeSession: CLAUDE_SESSION, transcript: TRANSCRIPT, cwd: APP, supervised: true });
+    assert.deepEqual([await store.restart('alpha'), processes.hidden.filter((run) => run.args[1] === 'restart')], [undefined, []], 'no fresh start to sit idle');
+    assert.match((await kit.files.read(STATE('alpha'))) ?? '', /"noticed":true.*"claudePid":6900/);
+  });
+
+  it('drops the restart held back once the session goes on from its context: a typed prompt, or a later turn end (T1383)', async () => {
+    const env = { TEAMRIG_SESSION: 'alpha', CLAUDE_PROJECT_DIR: APP };
+    const parkedKit = async (): Promise<{ readonly kit: CliHarness; readonly store: RefreshStore }> => {
+      const kit = new CliHarness(AUTO_RESTART_TEAM);
+      const store = await handoverWritten(kit);
+      stopJson(await kit.run(['hook', 'stop'], { env, stdin: stopPayload(true), sessionProcesses: UNDER_CLAUDE(), processes: new FakeProcesses() }));
+      assert.ok(await store.parked('alpha'));
+      return { kit, store };
+    };
+    const typedIn = await parkedKit();
+    const typed = JSON.stringify({ session_id: CLAUDE_SESSION, cwd: APP, prompt: 'one more thing', session_title: 'app-alpha' });
+    const cancelled = await typedIn.kit.run(['hook', 'inbox-reminder'], { env, stdin: typed });
+    assert.ok(
+      cancelled.stdout.includes('teamrig: the user typed, so the automatic restart is cancelled and you keep this context; a new handover is asked at your next task end, or once your context grew 24k more'),
+      cancelled.stdout.join('\n'),
+    );
+    assert.equal(await typedIn.store.parked('alpha'), undefined);
+
+    const wentOn = await parkedKit();
+    assert.deepEqual(await wentOn.kit.run(['hook', 'stop'], { env, stdin: stopPayload(), sessionProcesses: UNDER_CLAUDE() }), SILENT);
+    assert.equal(await wentOn.store.parked('alpha'), undefined);
+  });
+
   it('cancels the armed restart when the user types, keeping the context until a later task end or more growth', async () => {
     const kit = new CliHarness(AUTO_RESTART_TEAM);
     const store = await handoverWritten(kit);
+    await openTask(kit, 'alpha');
     const env = { TEAMRIG_SESSION: 'alpha', CLAUDE_PROJECT_DIR: APP };
     stopJson(await kit.run(['hook', 'stop'], { env, stdin: stopPayload(true), sessionProcesses: UNDER_CLAUDE(), processes: new FakeProcesses() }));
     assert.equal((await store.restart('alpha'))?.phase, 'pending');
@@ -285,7 +335,7 @@ describe('runCli: context refresh', () => {
     assert.deepEqual(await kit.run(['hook', 'stop'], { env, stdin: stopPayload(), sessionProcesses: UNDER_CLAUDE() }), SILENT, 'not announced again');
 
     await finishTask(kit, 'alpha');
-    assert.match(JSON.stringify(stopJson(await kit.run(['hook', 'stop'], { env, stdin: stopPayload() }))), /"decision":"block".*you just finished T2/);
+    assert.match(JSON.stringify(stopJson(await kit.run(['hook', 'stop'], { env, stdin: stopPayload() }))), /"decision":"block".*you just finished T3/);
   });
 
   it('leaves a restart that is already ending the session alone', async () => {
@@ -359,6 +409,7 @@ describe('runCli: context refresh', () => {
   it('holds the notice of a handover written in the meeting, and so its restart, until the meeting ends', async () => {
     const kit = new CliHarness({ ...AUTO_RESTART_TEAM, roles: { lead: 'alpha' } });
     const store = await handoverWritten(kit);
+    await openTask(kit, 'alpha');
     const processes = new FakeProcesses();
     const env = { TEAMRIG_SESSION: 'alpha', CLAUDE_PROJECT_DIR: APP, TEAMRIG_LAUNCHED: 'alpha' };
     const stop = (): Promise<CliResult> => kit.run(['hook', 'stop'], { env, stdin: stopPayload(true), sessionProcesses: UNDER_CLAUDE(), processes });
