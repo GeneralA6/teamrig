@@ -36,7 +36,6 @@ describe('hire', () => {
     assert.equal(result.code, EXIT.ok, result.stderr.join('\n'));
     assert.deepEqual(result.stdout, [
       'PREVIEW hire helper (name app-helper) for "port the importer": model opus at high effort, review by 2030-01-15; nothing written (add --yes to write)',
-      '  hired sessions with it: 1 of 2',
     ]);
     assert.equal(kit.files.get(CONFIG_PATH), formatConfig(LEAD_TEAM));
     assert.equal(kit.files.get(HIRES), undefined);
@@ -47,7 +46,7 @@ describe('hire', () => {
     const result = await hire(kit, 'helper', ...JOB, '--name', 'hand', '--effort', 'xhigh', '--review', '2030-01-10', '--yes');
     assert.equal(result.code, EXIT.ok, result.stderr.join('\n'));
     assert.match(result.stdout[0] ?? '', /^HIRED helper \(name hand\) for "port the importer": model opus at xhigh effort, review by 2030-01-10; the old config is at .*config\.hire\.json$/);
-    assert.match(result.stdout[2] ?? '', /^NEXT give it its first task: teamrig add --owner helper --title "<task>" --description "<what and why>" --session lead; then open it: teamrig open helper$/);
+    assert.match(result.stdout[1] ?? '', /^NEXT give it its first task: teamrig add --owner helper --title "<task>" --description "<what and why>" --session lead; then open it: teamrig open helper$/);
     const config = configOf(kit);
     assert.deepEqual(config['sessions'], ['lead', 'alpha', 'helper']);
     assert.deepEqual(config['names'], { helper: 'hand' });
@@ -80,10 +79,13 @@ describe('hire', () => {
     assert.equal(kit.files.get(HIRES), undefined);
   });
 
-  it('counts earlier hires toward the caps', async () => {
-    const kit = new CliHarness({ ...LEAD_TEAM, hiring: { policy: 'lead', maxSessions: 1 } });
-    assert.equal((await hire(kit, 'helper', ...JOB, '--yes')).code, EXIT.ok);
-    assert.match(refusal(await hire(kit, 'second', ...JOB)), /already has 1 hired session\(s\), the most hiring\.maxSessions allows/);
+  it('hires a third session beside two earlier hires: no cap bounds hiring', async () => {
+    const kit = new CliHarness(LEAD_TEAM);
+    for (const id of ['helper', 'second', 'third']) {
+      const result = await hire(kit, id, ...JOB, '--yes');
+      assert.equal(result.code, EXIT.ok, `${id}: ${result.stdout.join('\n')}`);
+    }
+    assert.deepEqual(configOf(kit)['sessions'], ['lead', 'alpha', 'helper', 'second', 'third']);
   });
 
   it("lets a sub-lead hire into its own group, on the lead's launch", async () => {

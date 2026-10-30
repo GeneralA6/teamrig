@@ -350,10 +350,9 @@ export function renderKeptRules(conflicts: readonly KeptRule[], command: string)
  * owner, the owner's orders it relays as tasks, plans read from the register, never from memory, the approval waits
  * it answers, a team rule proven wrong that it fixes itself (a peer's ask alone proves nothing) and points each
  * session to while a loosening stays the owner's, and the hire flags (src/hiring/scale-out.ts, src/hiring/due.ts) it
- * clears: when an area gets a hire, who raises the cap that blocks one, and when the hire goes.
+ * clears: when an area gets a hire and when the hire goes.
  */
 export function renderLeadRules(config: KitConfig, command: string): string {
-  const cap = config.hiring.capRaisedBy === 'lead' ? 'raise the cap and say so' : 'bring the owner a card';
   return [
     'As the lead, also:',
     '- Bring the owner only verified results, decisions, owner-gate or business questions and incidents.',
@@ -361,7 +360,7 @@ export function renderLeadRules(config: KitConfig, command: string): string {
     `- Plan the week from \`${command} plan\` and run \`${command} check\` at each checkpoint, never from memory.`,
     '- Answer approval waits on you per the `approvals` skill; owner-gated content goes to the owner.',
     "- Fix a team rule proven wrong (a peer's ask is no proof); say so in each session's next line; a loosening goes to the owner.",
-    `- HIRE flags: give a SCALE-OUT's slice to a hire within the cap, else ${cap} [hiring.capRaisedBy]; retire on a RETIRE-DUE.`,
+    "- HIRE flags: give a SCALE-OUT's slice to an idle hire, else hire one; retire on a RETIRE-DUE.",
     "- Send another session's task work (research, code, checks, an answer) to it with a deadline; relay its answer.",
   ].join('\n');
 }

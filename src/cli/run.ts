@@ -482,8 +482,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       (the session itself or the lead)
   hire <id> --scope "<its job>" --reason "<why>" [--name <name>] [--model <model>] [--effort <level>]
       [--review <YYYY-MM-DD>] [--approved-by "<who>"] [--burst] [--yes]
-      (the lead only) adds a temporary session, or hires a retired one back, within hiring.policy and its
-      caps, on the lead's model and effort unless given; without --yes it shows the hire and writes nothing;
+      (the lead only) adds a temporary session, or hires a retired one back, within hiring.policy, on the
+      lead's model and effort unless given; without --yes it shows the hire and writes nothing;
       --burst: a hire for the burst in force, within its hires, never a cheaper model or lower effort, due to
       retire when the burst is over (under hiring.policy owner the burst's approver approves it)
   retire <id|name> [--to <heir>] [--no-handover "<why>"] [--reason "<why>"] [--yes]

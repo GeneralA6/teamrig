@@ -2,8 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseConfig } from '../config/parse.ts';
 import type { JsonRecord } from '../core/guards.ts';
-import type { HireRecord } from './record.ts';
-import { hireCapProblem, hiresOnTeam, planHire, type HirePlan, type HireRequest } from './plan.ts';
+import { planHire, type HirePlan, type HireRequest } from './plan.ts';
 
 const NOW = Date.parse('2030-01-08T10:00:00Z');
 
@@ -11,24 +10,20 @@ const FILE: JsonRecord = { sessions: ['lead', 'alpha'], roles: { lead: 'lead' },
 
 const REQUEST: HireRequest = { id: 'helper', scope: 'port the importer', reason: 'release week', by: 'lead', now: NOW };
 
-function hired(session: string): HireRecord {
-  return { kind: 'hire', session, scope: 'x', reason: 'y', reviewBy: '2030-01-15', by: 'lead', at: NOW - 1000 };
-}
-
-function plan(file: JsonRecord, request: Partial<HireRequest> = {}, active: readonly HireRecord[] = []): ReturnType<typeof planHire> {
+function plan(file: JsonRecord, request: Partial<HireRequest> = {}): ReturnType<typeof planHire> {
   const { config, issues } = parseConfig(file);
   assert.deepEqual(issues, [], 'the test file must be valid');
-  return planHire(file, config, active, { ...REQUEST, ...request });
+  return planHire(file, config, { ...REQUEST, ...request });
 }
 
-function planned(file: JsonRecord, request: Partial<HireRequest> = {}, active: readonly HireRecord[] = []): HirePlan {
-  const result = plan(file, request, active);
+function planned(file: JsonRecord, request: Partial<HireRequest> = {}): HirePlan {
+  const result = plan(file, request);
   assert.ok(result.ok, result.ok ? '' : result.problem);
   return result.value;
 }
 
-function problem(file: JsonRecord, request: Partial<HireRequest> = {}, active: readonly HireRecord[] = []): string {
-  const result = plan(file, request, active);
+function problem(file: JsonRecord, request: Partial<HireRequest> = {}): string {
+  const result = plan(file, request);
   assert.equal(result.ok, false);
   return result.ok ? '' : result.problem;
 }
@@ -43,7 +38,6 @@ describe('planHire', () => {
       sessions: ['lead', 'alpha', 'helper'],
     });
     assert.deepEqual(result.hire, { kind: 'hire', session: 'helper', scope: 'port the importer', reason: 'release week', model: 'opus', effort: 'high', reviewBy: '2030-01-15', by: 'lead', at: NOW });
-    assert.equal(result.hired, 1);
   });
 
   it('takes the name, model, effort, review day and approver it is given', () => {
@@ -102,29 +96,14 @@ describe('planHire', () => {
     assert.match(problem(FILE, { model: 'gpt' }), /--model gpt/);
   });
 
-  it("stays within hiring.maxSessions, counting only hires still on the team", () => {
-    const file = { ...FILE, sessions: ['lead', 'alpha', 'one', 'two'], hiring: { policy: 'lead', maxSessions: 2 } };
-    assert.match(problem(file, {}, [hired('one'), hired('two')]), /already has 2 hired session\(s\), the most hiring\.maxSessions allows/);
-    assert.equal(planned(file, {}, [hired('one'), hired('gone')]).hired, 2);
+  it('hires past any count of sessions: no cap bounds hiring, the host room and the leader do', () => {
+    const file = { ...FILE, sessions: ['lead', 'alpha', 'one', 'two', 'three'] };
+    assert.deepEqual(planned(file).config['sessions'], ['lead', 'alpha', 'one', 'two', 'three', 'helper']);
   });
 
   it('refuses a review day that is not a date or has passed', () => {
     assert.match(problem(FILE, { reviewBy: 'next week' }), /not a YYYY-MM-DD date/);
     assert.match(problem(FILE, { reviewBy: '2030-01-07' }), /has passed/);
     assert.equal(planned(FILE, { reviewBy: '2030-01-08' }).hire.reviewBy, '2030-01-08');
-  });
-});
-
-describe('hiresOnTeam', () => {
-  it('counts the active hires still on the team', () => {
-    const { config } = parseConfig({ ...FILE, sessions: ['lead', 'alpha', 'one', 'two'] });
-    assert.equal(hiresOnTeam(config, [hired('one'), hired('two'), hired('gone')]), 2);
-  });
-});
-
-describe('hireCapProblem', () => {
-  it('refuses one more hire at hiring.maxSessions', () => {
-    assert.equal(hireCapProblem({ maxSessions: 2 }, 2), 'the team already has 2 hired session(s), the most hiring.maxSessions allows');
-    assert.equal(hireCapProblem({ maxSessions: 2 }, 1), undefined);
   });
 });
