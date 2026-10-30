@@ -139,21 +139,45 @@ describe('teamrig secrets pushed', () => {
     assert.equal(result.code, 2);
     assert.match(output(result), /^REFUSED the push to origin adds 1 secret\(s\)/);
     assert.match(output(result), /\n {2}2d2d2d2 a\.ts:2: GitHub token\n/);
-    assert.match(output(result), /Fix: rewrite those commits without it before the push, /);
+    assert.match(output(result), /Fix: rewrite those commits or tags without it before the push, /);
     assert.equal(output(result).includes(TOKEN), false);
   });
 
-  it('fails on a range git cannot list, a line git would not write, and outside a repository', async () => {
+  it("refuses a secret in a pushed annotated tag's message by the tag's short id and line, and counts a clean push's tags once", async () => {
+    const tag = '4f'.repeat(20);
+    const git = new FakeSecretsGit(APP);
+    git.logs.set(`${tag} --not --remotes=origin`, [commit(TIP, 'tagged\n')]);
+    git.tags.set(tag, [{ sha: tag, message: `v1\n\nsee ${TOKEN}\n` }]);
+    const line = `refs/tags/v1 ${tag} refs/tags/v1 ${ZERO}\n`;
+
+    const refused = await new CliHarness().run(['secrets', 'pushed', 'origin'], { secretsGit: git, stdin: line });
+    git.tags.set(tag, [{ sha: tag, message: 'v1\n' }]);
+    const passed = await new CliHarness().run(['secrets', 'pushed', 'origin'], { secretsGit: git, stdin: `${line}refs/tags/copy ${tag} refs/tags/copy ${ZERO}\n` });
+
+    assert.equal(refused.code, 2);
+    assert.match(output(refused), /^REFUSED the push to origin adds 1 secret\(s\)/);
+    assert.match(output(refused), /\n {2}4f4f4f4 tag message line 3: GitHub token\n/);
+    assert.equal(output(refused).includes(TOKEN), false);
+    assert.equal(passed.code, 0, output(passed));
+    assert.deepEqual(passed.stdout, ['OK no secret in the 1 commit(s) and 1 tag message(s) pushed to origin']);
+  });
+
+  it('fails on a range git cannot list, a tag git cannot read, a line git would not write, and outside a repository', async () => {
     const listing = new FakeSecretsGit(APP);
     listing.logFails = true;
+    const tagging = new FakeSecretsGit(APP);
+    tagging.tagFails = true;
     const line = `refs/heads/main ${TIP} refs/heads/main ${ZERO}\n`;
 
     const unlisted = await new CliHarness().run(['secrets', 'pushed', 'origin'], { secretsGit: listing, stdin: line });
+    const untagged = await new CliHarness().run(['secrets', 'pushed', 'origin'], { secretsGit: tagging, stdin: line });
     const garbled = await new CliHarness().run(['secrets', 'pushed', 'origin'], { secretsGit: new FakeSecretsGit(APP), stdin: 'refs/heads/main HEAD\n' });
     const outside = await new CliHarness().run(['secrets', 'pushed', 'origin'], { secretsGit: new FakeSecretsGit(undefined), stdin: line });
 
     assert.equal(unlisted.code, 1);
     assert.match(output(unlisted), new RegExp(`git cannot list the commits ${TIP} --not --remotes=origin in .*needs git 2\\.36 or later`));
+    assert.equal(untagged.code, 1);
+    assert.match(output(untagged), new RegExp(`git cannot read the object ${TIP} in .*, or it is a tag of more than 8 tags`));
     assert.equal(garbled.code, 1);
     assert.match(output(garbled), /pre-push line 1 is not/);
     assert.equal(outside.code, 1);

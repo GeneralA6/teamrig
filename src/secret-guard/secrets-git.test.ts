@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { TempRepo } from '../../tools/lib/temp-repo.ts';
-import { gitSecrets } from './secrets-git.ts';
+import { MAX_TAG_DEPTH, gitSecrets } from './secrets-git.ts';
 
 /** Runs git in the repo under `env`, as a hook's git would, and fails the test when it fails. */
 function gitIn(repo: TempRepo, env: NodeJS.ProcessEnv, ...args: readonly string[]): void {
@@ -126,6 +126,38 @@ describe('gitSecrets', () => {
     }
   });
 
+  it("reads a tag's message and each tag it points through, outermost first, none for a commit, and fails past the depth", () => {
+    const repo = new TempRepo('secrets-tags').init();
+    try {
+      const git = gitSecrets(repo.env);
+      const tag = (name: string, target: string, message: string): string => {
+        repo.git('-c', 'advice.nestedTag=false', 'tag', '-a', name, target, '-m', message);
+        return repo.git('rev-parse', name).trim();
+      };
+      repo.write('a.txt', 'one\n');
+      repo.git('add', 'a.txt');
+      repo.git('commit', '-q', '-m', 'first');
+      const head = repo.git('rev-parse', 'HEAD').trim();
+      const inner = tag('v1', head, 'release one\n\nbody line');
+      const outer = tag('outer', 'v1', 'outer');
+      assert.deepEqual(git.tagMessages(repo.dir, outer), [
+        { sha: outer, message: 'outer\n' },
+        { sha: inner, message: 'release one\n\nbody line\n' },
+      ]);
+      assert.deepEqual(git.tagMessages(repo.dir, head), []);
+      let top = outer;
+      for (let depth = 3; depth <= MAX_TAG_DEPTH; depth += 1) {
+        top = tag(`t${depth}`, top, `t${depth}`);
+      }
+      assert.equal(git.tagMessages(repo.dir, top)?.length, MAX_TAG_DEPTH);
+      assert.equal(git.tagMessages(repo.dir, tag('deepest', top, 'deepest')), undefined);
+      assert.equal(git.tagMessages(repo.dir, 'f'.repeat(40)), undefined);
+      assert.equal(git.tagMessages(repo.dir, '--all'), undefined);
+    } finally {
+      repo.remove();
+    }
+  });
+
   it("finds the hooks folder from any folder of the repository: the git folder's, or core.hooksPath from the top folder", () => {
     const repo = new TempRepo('secrets-hooks').init();
     try {
@@ -151,6 +183,7 @@ describe('gitSecrets', () => {
       assert.equal(git.staged(repo.outside), undefined);
       assert.equal(git.hooksDir(repo.outside), undefined);
       assert.equal(git.commits(repo.outside, { kind: 'unpushed', tip: 'f'.repeat(40), remote: 'origin' }), undefined);
+      assert.equal(git.tagMessages(repo.outside, 'f'.repeat(40)), undefined);
     } finally {
       repo.remove();
     }

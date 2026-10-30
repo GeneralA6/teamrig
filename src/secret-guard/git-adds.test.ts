@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { COMMIT_FORMAT, PATCH_FLAGS, commitsOf, gitPath, messageLines, patchAdds } from './git-adds.ts';
+import { COMMIT_FORMAT, PATCH_FLAGS, commitsOf, gitPath, messageLines, patchAdds, tagOf } from './git-adds.ts';
 
 const NUL = '\0';
 const MERGE = '2a11ce333750631efa84d21a82649ca9d32d8b17';
@@ -268,6 +268,20 @@ describe('commitsOf', () => {
 
   it('reads no commit from an empty log', () => {
     assert.deepEqual(commitsOf(''), []);
+  });
+});
+
+describe('tagOf', () => {
+  it('reads the object a tag points at and the message below its headers, a trailing signature kept', () => {
+    const text = [`object ${FIRST}`, 'type commit', 'tag v1', 'tagger A U Thor <thor> 1700000000 +0000', '', 'release one', '', 'body', '-----BEGIN PGP SIGNATURE-----', 'sig', '-----END PGP SIGNATURE-----', ''];
+    assert.deepEqual(tagOf(text.join('\n')), { object: FIRST, message: 'release one\n\nbody\n-----BEGIN PGP SIGNATURE-----\nsig\n-----END PGP SIGNATURE-----\n' });
+  });
+
+  it('reads a tag of a tag and an empty message, and no tag without an object header', () => {
+    assert.deepEqual(tagOf(`object ${SIDE}\ntype tag\ntag outer\n\n`), { object: SIDE, message: '' });
+    assert.deepEqual(tagOf(`object ${SIDE}\ntype commit\ntag bare`), { object: SIDE, message: '' });
+    assert.equal(tagOf(`type commit\ntag v1\n\nobject ${FIRST}\n`), undefined);
+    assert.equal(tagOf(''), undefined);
   });
 });
 
