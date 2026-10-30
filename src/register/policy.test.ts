@@ -1323,3 +1323,43 @@ describe('RegisterPolicy.defer: a Later (T1295)', () => {
     assert.equal(error(policy.defer(asking, 'alpha', '2030-01-08', 'n', { ...late, zone: TimeZone.UTC })), 'allowed', 'UTC is at 01-08 22:30');
   });
 });
+
+describe("RegisterPolicy: the owner's Note and Next from the pane (T1298)", () => {
+  const policy = new RegisterPolicy(testConfig());
+
+  it('writes a Note as the owner on a task still to finish, changing no field, the text trimmed', () => {
+    assert.deepEqual(policy.ownerNote(testTask(), ' after the demo '), { ok: true, value: { by: 'owner', changes: {}, note: 'after the demo' } });
+    for (const status of ['in-progress', 'waiting', 'verifying'] as const) {
+      assert.equal(error(policy.ownerNote(testTask({ status }), 'n')), 'allowed', status);
+    }
+  });
+
+  it('refuses a Note on a finished task, one with no text, and text the scan refuses', () => {
+    assert.equal(error(policy.ownerNote(testTask({ status: 'done' }), 'n')), "T1 is done: owner's Note goes to a task still to finish");
+    assert.equal(error(policy.ownerNote(testTask({ status: 'dropped' }), 'n')), "T1 is dropped: owner's Note goes to a task still to finish");
+    assert.equal(error(policy.ownerNote(testTask(), undefined)), 'a Note needs --text: what owner tells alpha');
+    assert.equal(error(policy.ownerNote(testTask(), '  ')), 'a Note needs --text: what owner tells alpha');
+    assert.notEqual(error(policy.ownerNote(testTask(), credentialUrl())), 'allowed');
+  });
+
+  it("pins a task as the owner's with Next, moving a leader's pin, on an open, waiting or verifying task", () => {
+    assert.deepEqual(policy.ownerNext(testTask()), { ok: true, value: { by: 'owner', changes: { pin: 'owner' }, note: null } });
+    assert.equal(error(policy.ownerNext(testTask({ pin: 'lead' }))), 'allowed', "a leader's pin");
+    for (const status of ['waiting', 'verifying'] as const) {
+      assert.equal(error(policy.ownerNext(testTask({ status }))), 'allowed', status);
+    }
+  });
+
+  it('refuses Next on a finished task, one in hand already, and one the owner put next already', () => {
+    assert.equal(error(policy.ownerNext(testTask({ status: 'done' }))), 'T1 is done: only a task still to finish goes next');
+    assert.equal(error(policy.ownerNext(testTask({ status: 'dropped' }))), 'T1 is dropped: only a task still to finish goes next');
+    assert.equal(error(policy.ownerNext(TASK)), 'T1 is in progress: alpha has it in hand already');
+    assert.equal(error(policy.ownerNext(testTask({ pin: 'owner' }))), 'T1 is next already: owner put it there; a Note tells alpha more');
+  });
+
+  it("acts as the team's own ownerSource", () => {
+    const named = new RegisterPolicy(testConfig({ register: { ownerSource: 'human' } }));
+    assert.deepEqual(named.ownerNext(testTask()), { ok: true, value: { by: 'human', changes: { pin: 'human' }, note: null } });
+    assert.equal(error(named.ownerNote(testTask(), undefined)), 'a Note needs --text: what human tells alpha');
+  });
+});
