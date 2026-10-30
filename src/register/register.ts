@@ -4,7 +4,7 @@ import type { Clock, Mutex } from '../core/lock.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { EVENT_VERSION, TASK_LINE_VERSION, type ApprovalVerdict, type CreateEvent, type RegisterEvent, type StatusEvent, type TaskFields, type UpdateEvent } from './events.ts';
 import { foldEvents, taskNumber, type RegisterState, type Task } from './fold.ts';
-import { GITHUB_ACTOR, NO_SKILL, type AddInput, type AskInput, type DeferChange, type ImportChanges, type ImportInput, type RegisterPolicy, type StatusContext, type StatusInput, type Verdict } from './policy.ts';
+import { GITHUB_ACTOR, NO_SKILL, type AddInput, type AskInput, type DeferChange, type ImportChanges, type ImportInput, type OwnerChange, type RegisterPolicy, type StatusContext, type StatusInput, type Verdict } from './policy.ts';
 import { ACTIVE_STATUSES } from './model.ts';
 import type { TaskNumbering } from './numbering.ts';
 import { isWritable, type RegisterSnapshot } from './snapshot.ts';
@@ -67,6 +67,12 @@ export interface WriteResult {
   /** Every event written, oldest first, ending with {@link event}. */
   readonly events: readonly RegisterEvent[];
   readonly rotation: RotationOutcome;
+}
+
+/** What the owner's Next would do now (T1298): the task it pins, and the pinned tasks of its owner it moves down. */
+export interface OwnerNextPreview {
+  readonly task: Task;
+  readonly moves: readonly Task[];
 }
 
 /** A `set --ask`: the caller's task, now waiting, and the task the ask created. */
@@ -229,9 +235,42 @@ export class Register {
    * is leave to move that owner's pin (T637).
    */
   private unpins(pinned: Task, owner: string, caller: string, state: RegisterState): UpdateEvent[] {
-    return [...state.tasks.values()]
-      .filter((task) => task.id !== pinned.id && task.owner === owner && task.pin !== null && ACTIVE_STATUSES.includes(task.status))
-      .map((task): UpdateEvent => ({ ...this.base(task.id, caller), type: 'update', changes: { pin: null }, note: `the pin moved to ${pinned.id}` }));
+    return otherPins(pinned, owner, state).map((task): UpdateEvent => ({ ...this.base(task.id, caller), type: 'update', changes: { pin: null }, note: `the pin moved to ${pinned.id}` }));
+  }
+
+  /**
+   * The owner's Note from the pane (T1298), written as the team's register.ownerSource, on no roster: the CLI writes it
+   * only for the owner (a hook refuses it from an agent's tool call), so the roster check is skipped, as in noteFrom.
+   */
+  ownerNote(id: string, note: string): Promise<Verdict<WriteResult>> {
+    return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.ownerEvent(task, this.deps.policy.ownerNote(task, note)))));
+  }
+
+  /** The owner's Next from the pane (T1298): the owner's pin after the unpins it moves down, in one append, written as in ownerNote. */
+  ownerNext(id: string): Promise<Verdict<WriteResult>> {
+    return this.write((snapshot, elsewhere) =>
+      onTask(snapshot, elsewhere, id, (task) => {
+        const event = this.ownerEvent(task, this.deps.policy.ownerNext(task));
+        return event.ok ? { ok: true, value: [...this.unpins(task, task.owner, event.value.by, snapshot.state), event.value] } : event;
+      }),
+    );
+  }
+
+  /** What ownerNext would do now, judged alike on a read without the lock, writing nothing: for the pane's confirm step. */
+  async ownerNextPreview(id: string): Promise<Verdict<OwnerNextPreview>> {
+    const snapshot = await this.snapshot();
+    return onTask(snapshot, await this.elsewhere(), id, (task) => {
+      const change = this.deps.policy.ownerNext(task);
+      return change.ok ? { ok: true, value: { task, moves: otherPins(task, task.owner, snapshot.state) } } : change;
+    });
+  }
+
+  private ownerEvent(task: Task, change: Verdict<OwnerChange>): Verdict<UpdateEvent> {
+    if (!change.ok) {
+      return change;
+    }
+    const { by, ...update } = change.value;
+    return { ok: true, value: { ...this.base(task.id, by), type: 'update', ...update } };
   }
 
   /** `approve`: the lead's answer to a task's approval wait, an update that changes no field (T684). */
@@ -423,6 +462,11 @@ export class Register {
       return { kind: 'failed', error: errorMessage(error) };
     }
   }
+}
+
+/** The other active pinned tasks of `owner`, which a pin on `pinned` moves down: one pin per owner (T637). */
+function otherPins(pinned: Task, owner: string, state: RegisterState): Task[] {
+  return [...state.tasks.values()].filter((task) => task.id !== pinned.id && task.owner === owner && task.pin !== null && ACTIVE_STATUSES.includes(task.status));
 }
 
 /** One event, as the list a write takes. */

@@ -584,3 +584,66 @@ describe('Register.defer and deferFrom: a Later (T1295)', () => {
     assert.equal(files.get(LOG), before);
   });
 });
+
+describe("Register: the owner's Note and Next from the pane (T1298)", () => {
+  async function threeOfAlpha() {
+    const kit = setup();
+    for (const title of ['First', 'Second', 'Third']) {
+      written(await kit.register.add('lead', { title, description: 'what and why', owner: 'alpha', source: 'lead', priority: 2 }));
+    }
+    written(await kit.register.add('lead', { title: 'Elsewhere', description: 'what and why', owner: 'bravo', source: 'lead', priority: 2 }));
+    written(await kit.register.update('lead', 'T1', { pin: 'lead' }, undefined));
+    written(await kit.register.update('lead', 'T4', { pin: 'lead' }, undefined));
+    return kit;
+  }
+
+  it('writes a Note as the owner, on no roster here, as one update line that changes no field', async () => {
+    const { files, register } = await threeOfAlpha();
+    assert.match(errorOf(await register.update('owner', 'T2', {}, 'x')), /owner is not a session on this team/);
+    const appended = files.get(LOG)?.length ?? 0;
+    const { task, before, event } = written(await register.ownerNote('T2', 'look at the export first'));
+    assert.deepEqual(readEvents((files.get(LOG) ?? '').slice(appended)).events, [event]);
+    assert.deepEqual(event, { v: TASK_LINE_VERSION, type: 'update', id: 'T2', at: START, by: 'owner', changes: {}, note: 'look at the export first' });
+    assert.deepEqual([task.status, task.pin, task.note, task.updatedBy], [before?.status, before?.pin, before?.note, 'owner'], "the Note stays in the history; the task's note is its session's");
+  });
+
+  it("pins a task as the owner's after unpinning its owner's earlier pin, in one append, leaving other owners' pins", async () => {
+    const { files, register } = await threeOfAlpha();
+    const appended = files.get(LOG)?.length ?? 0;
+    const { task, state, event } = written(await register.ownerNext('T2'));
+    const lines = readEvents((files.get(LOG) ?? '').slice(appended)).events;
+    assert.deepEqual(
+      lines.map((line) => (line.type === 'update' ? [line.id, line.by, line.changes, line.note] : [line.id])),
+      [['T1', 'owner', { pin: null }, 'the pin moved to T2'], ['T2', 'owner', { pin: 'owner' }, null]],
+    );
+    assert.deepEqual(lines[1], event);
+    assert.deepEqual([task.pin, state.tasks.get('T1')?.pin, state.tasks.get('T4')?.pin], ['owner', null, 'lead']);
+  });
+
+  it('writes nothing when the policy refuses a Note or a Next, or the task is not here', async () => {
+    const { files, register } = await threeOfAlpha();
+    written(await register.ownerNext('T2'));
+    written(await register.setStatus('alpha', 'T3', { status: 'in-progress' }));
+    const before = files.get(LOG);
+    assert.equal(errorOf(await register.ownerNext('T2')), 'T2 is next already: owner put it there; a Note tells alpha more');
+    assert.equal(errorOf(await register.ownerNext('T3')), 'T3 is in progress: alpha has it in hand already');
+    assert.equal(errorOf(await register.ownerNote('T2', ' ')), 'a Note needs --text: what owner tells alpha');
+    assert.equal(errorOf(await register.ownerNote('T9', 'x')), 'no task T9');
+    assert.equal(files.get(LOG), before);
+  });
+
+  it("previews a Next without the lock or a write: the task and its owner's pins it moves down, or the same refusal", async () => {
+    const { files, mutex, register } = await threeOfAlpha();
+    const before = files.get(LOG);
+    const runs = mutex.runs;
+    const preview = await register.ownerNextPreview('T2');
+    assert.ok(preview.ok, preview.ok ? '' : preview.error);
+    assert.deepEqual([preview.value.task.id, preview.value.moves.map((task) => task.id)], ['T2', ['T1']]);
+    const alone = await register.ownerNextPreview('T4');
+    assert.deepEqual(alone.ok ? alone.value.moves : undefined, [], "bravo's only pin is the task itself");
+    written(await register.setStatus('alpha', 'T3', { status: 'in-progress' }));
+    const afterStart = files.get(LOG);
+    assert.equal(errorOf(await register.ownerNextPreview('T3')), 'T3 is in progress: alpha has it in hand already');
+    assert.deepEqual([files.get(LOG) === afterStart, before !== afterStart, mutex.runs], [true, true, runs + 1], 'only the start took the lock');
+  });
+});
