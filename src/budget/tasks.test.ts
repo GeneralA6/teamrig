@@ -31,6 +31,27 @@ describe('tasksNamedBy', () => {
   it('reads no T<n> in a path, where a file like T5.md is no task', () => {
     assert.deepEqual(tasksNamedBy([edit('/notes/T5.md')]), []);
   });
+
+  it("names no task a teamrig flag's value only mentions: a message, a note, a proof, a review part or a pointer", () => {
+    assert.deepEqual(tasksNamedBy([bash('teamrig inbox add --to lead --text "T5 is done" --session a')]), []);
+    assert.deepEqual(tasksNamedBy([bash('teamrig set T7 --status done --note "after T5" --followups T8 --evidence "T7 tests pass"')]), ['T7']);
+    assert.deepEqual(tasksNamedBy([bash('teamrig set T7 --status waiting --waits task:T5 --note "waits on T5"')]), ['T7']);
+    assert.deepEqual(tasksNamedBy([bash('teamrig set T7 --note "worktree t5-x removed"')]), ['T7']);
+    assert.deepEqual(tasksNamedBy([bash('teamrig set T7 --cause "T5 broke it" --missed-test "T6 adds the test"')]), ['T7']);
+    assert.deepEqual(tasksNamedBy([bash('node C:/kit/plugins/teamrig/dist/cli/main.js set T7 --note T5')]), ['T7']);
+    assert.deepEqual(tasksNamedBy([{ id: 'toolu_3', name: 'PowerShell', command: "teamrig.cmd inbox add --to lead --text 'T5 is done'" }]), []);
+  });
+
+  it('names no task a heredoc built into a teamrig message mentions', () => {
+    assert.deepEqual(tasksNamedBy([bash("teamrig inbox add --to lead --text \"$(cat <<'EOF'\nT5 shipped, t5-x removed\nEOF\n)\"")]), []);
+  });
+
+  it('still names a task the command names besides a mention: the task a teamrig command acts on, a commit, a label, any other program', () => {
+    assert.deepEqual(tasksNamedBy([bash('teamrig set T5 --note "T5 started"')]), ['T5']);
+    assert.deepEqual(tasksNamedBy([bash('teamrig inbox add --text "T5 is done" && git commit -m "fix (T5)"')]), ['T5']);
+    assert.deepEqual(tasksNamedBy([bash('teamrig heavy --what "T5 gate" -- npm run check')]), ['T5']);
+    assert.deepEqual(tasksNamedBy([bash('echo --text T5; git -C .worktrees/t6-x log --note T6')]), ['T5', 'T6']);
+  });
 });
 
 describe('TurnTasks', () => {

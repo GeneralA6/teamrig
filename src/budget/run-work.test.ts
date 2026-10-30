@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { runWorkOf, shellRunsOf, type RunWork } from './run-work.ts';
+import { runWorkOf, shellRunsOf, teamrigArgsOf, type RunWork } from './run-work.ts';
 
 /** What each program a Bash line starts does, in order; `-` for a program that does none of it. */
 function worksOf(command: string, name = 'Bash'): readonly (RunWork | '-')[] {
@@ -19,6 +19,17 @@ describe('shellRunsOf', () => {
     );
     assert.deepEqual(shellRunsOf({ name: 'Read', command: 'git status' }), []);
     assert.deepEqual(shellRunsOf({ name: 'Bash', command: undefined }), []);
+  });
+});
+
+describe('teamrigArgsOf', () => {
+  it("reads a teamrig command's own arguments, through node and teamrig's build too, and none of any other program", () => {
+    const argsOf = (command: string) => shellRunsOf({ name: 'Bash', command }).map((run) => teamrigArgsOf(run)?.map((word) => word.text) ?? '-');
+    assert.deepEqual(argsOf('teamrig.cmd set T1 --note "a b"; node "C:\\kit\\dist\\cli\\main.js" show T2'), [
+      ['set', 'T1', '--note', 'a b'],
+      ['show', 'T2'],
+    ]);
+    assert.deepEqual(argsOf('node cli.js show T3; node "$KIT" show T4; echo teamrig; git log'), ['-', '-', '-', '-']);
   });
 });
 
