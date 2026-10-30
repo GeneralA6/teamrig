@@ -189,7 +189,8 @@ export type OpenResult =
 /**
  * Opens the session's tab as `open` describes: a rehired one on its handover, a closed one in its last Claude Code
  * session or fresh (always fresh with `fresh`), refused (`RefusedError`) while it runs in a Claude Code and, for any
- * session but the lead, when the host has no room, and a closed one's reopen logged once its tab opened.
+ * session but the lead, when the host has no room, and a closed one's reopen logged once its tab opened. A home close
+ * (a hire that never ran, T1364) opens as a new hire does, its reopen logged too.
  */
 export async function openSession(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, request: OpenRequest): Promise<OpenResult> {
   const { team, id, project, terminal, asked } = request;
@@ -199,7 +200,7 @@ export async function openSession(runtime: CliRuntime, kit: Kit, config: KitConf
   const sessionLog = new SessionLog(runtime.files, kit.paths.sessionLog);
   const closed = closedOf((await sessionLog.read()).records, id);
   const fresh = request.fresh === true;
-  const closedIn = closed === undefined || fresh ? undefined : await reopenOf(runtime, config, closed, project);
+  const closedIn = closed?.claudeSession === undefined || fresh ? undefined : await reopenOf(runtime, config, closed, project);
   const reopen = closedIn?.verdict;
   // A closed session opened fresh still logs its reopen below, so the idle pass knows it runs again.
   const resume = fresh ? undefined : await resumeOf(runtime, kit.paths, config, { id, project, from, reopen, asked });

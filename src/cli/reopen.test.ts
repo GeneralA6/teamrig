@@ -9,7 +9,7 @@ import { MS_PER_MINUTE } from '../core/time.ts';
 import { inboxLineOf } from '../inbox/inbox.ts';
 import { lineHash } from '../inbox/line-hash.ts';
 import { decodePrompt, defaultPrompt, reopenPrompt } from '../open/prompt.ts';
-import { SessionLog, type CloseRecord } from '../sessions/log.ts';
+import { homeCloseOf, SessionLog, type CloseRecord } from '../sessions/log.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
@@ -42,6 +42,16 @@ async function closedAlpha(tokens: number, config: JsonRecord = TEAM): Promise<C
   await kit.files.write(TRANSCRIPT, reply(tokens));
   const transcripts = new MemoryTranscripts({ [TRANSCRIPT]: reply(tokens) }, kit.clock.now() - 2 * HOUR_MS);
   return { kit, options: { platform: 'win32', probe: new FakePathProbe({ folders: [APP] }), transcripts } };
+}
+
+/** Alpha, hired by the lead with no room on the host, so it started home (T1364). */
+const HOME: CloseRecord = homeCloseOf('alpha', 'lead', '2030-01-08T08:00:00.000Z');
+
+/** A team whose alpha was hired home: it never ran, so no transcript of it is anywhere. */
+async function homeAlpha(): Promise<ClosedAlpha> {
+  const kit = new CliHarness(TEAM);
+  await new SessionLog(kit.files, LOG).append(HOME);
+  return { kit, options: { platform: 'win32', probe: new FakePathProbe({ folders: [APP] }) } };
 }
 
 /** Opens alpha in a Windows Terminal tab; returns the run and what the tab runs. */
@@ -125,6 +135,20 @@ describe('opening a session teamrig closed', () => {
     assert.equal(projectOf(gone.argv), APP);
   });
 
+  it('opens a hire that started home as a new hire, never resumed, and logs its reopen (T1364)', async () => {
+    const alpha = await homeAlpha();
+    const refused = await open(alpha, ['--resume']);
+    assert.equal(refused.result.code, EXIT.refused, 'a hire that never ran has no Claude Code session to resume');
+    assert.deepEqual(await logOf(alpha), [HOME]);
+
+    const { result, argv } = await open(alpha);
+    const [line = ''] = ok(result).stdout;
+    assert.ok(!line.includes('fresh') && !line.includes('resuming'), line);
+    assert.equal(resumedOf(argv), undefined);
+    assert.equal(promptOf(argv), defaultPrompt('app', 'alpha'));
+    assert.deepEqual(await logOf(alpha), [HOME, { kind: 'reopen', session: 'alpha', at: new Date(alpha.kit.clock.now()).toISOString() }]);
+  });
+
   it('logs no reopen when no terminal opens', async () => {
     const alpha = await closedAlpha(40_000);
     const result = await alpha.kit.run(['open', 'alpha', '--terminal', 'print'], alpha.options);
@@ -183,6 +207,19 @@ describe('teamrig idle-open', () => {
     assert.equal(promptOf(argv), reopenPrompt('app', 'alpha'));
     assert.deepEqual(await logOf(alpha), [CLOSED, { kind: 'reopen', session: 'alpha', at: new Date(alpha.kit.clock.now()).toISOString(), resumed: CLAUDE_SESSION }]);
     assert.deepEqual(actsOf(alpha), [{ v: 1, kind: 'act', mode: 'on', act: 'reopen', id: 'alpha', outcome: 'done', line, before: CHARGE }]);
+  });
+
+  it('opens a hire that started home once work is handed to it, as a new hire (T1364)', async () => {
+    const alpha = await homeAlpha();
+    const idle = await idleOpen(alpha);
+    assert.deepEqual(idle.result.stdout, ['KEPT app-alpha (session alpha): still closed, nothing it can start']);
+    await handWork(alpha);
+    const { result, argv } = await idleOpen(alpha);
+    assert.equal(result.code, 0, [...result.stdout, ...result.stderr].join('\n'));
+    assert.match(result.stdout[0] ?? '', /^REOPENED app-alpha \(session alpha\) for work handed to it since its close: T1: OPENED app-alpha \(session alpha\) in a new Windows Terminal tab in /);
+    assert.equal(resumedOf(argv), undefined);
+    assert.equal(promptOf(argv), defaultPrompt('app', 'alpha'));
+    assert.deepEqual(await logOf(alpha), [HOME, { kind: 'reopen', session: 'alpha', at: new Date(alpha.kit.clock.now()).toISOString() }]);
   });
 
   it('keeps closed a session with nothing it can start, and opens nothing for one teamrig no longer holds closed', async () => {

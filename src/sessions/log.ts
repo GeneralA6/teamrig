@@ -10,21 +10,26 @@ import { assertWritable, parseJsonl, toJsonlLine, VERSION_FIELD } from '../core/
  * A close's `folder` (T1408) is no new format, as the register's optional fields are none (src/register/events.ts):
  * no teamrig rewrites this log, and an older one ignores it and reopens the session in the project, fresh when its
  * transcript is not there. A new format would instead fail an older tab's close after its tab ended, unlogged.
+ * A home close (no `claudeSession`, T1364) is no new format either: an older teamrig skips it as damaged and sees its
+ * session as never closed, so only its idle pass leaves it home.
  */
 export const SESSION_LOG_FORMAT = 1;
 
 export interface CloseRecord {
   readonly kind: 'close';
   readonly session: string;
-  /** Who closed it: the lead's session id, or `idle-pass` for the idle pass. */
+  /** Who closed it: the lead's session id, `idle-pass` for the idle pass, or for a home close the leader who hired it. */
   readonly by: string;
   /** ISO instant. */
   readonly at: string;
-  /** The Claude Code session it ran, which its reopen resumes. */
-  readonly claudeSession: string;
-  /** How long its transcript had been quiet, in whole minutes. */
+  /**
+   * The Claude Code session it ran, which its reopen resumes; absent in a home close (T1364): a session hired with no
+   * room on the host, which starts home, never having run, and opens as a new hire does.
+   */
+  readonly claudeSession?: string;
+  /** How long its transcript had been quiet, in whole minutes; 0 in a home close. */
   readonly idleMinutes: number;
-  /** What its Claude Code's process tree held, freed by the close. */
+  /** What its Claude Code's process tree held, freed by the close; 0 in a home close. */
   readonly freedMb: number;
   /**
    * The folder its reopen resumes it in, the one whose project folder holds its transcript (T1408); absent in a close
@@ -75,11 +80,16 @@ export function parseSessionLogRecord(record: JsonRecord): SessionLogRecord | un
   const claudeSession = stringField(record, 'claudeSession');
   const idleMinutes = integerField(record, 'idleMinutes');
   const freedMb = integerField(record, 'freedMb');
-  if (record['kind'] !== 'close' || by === undefined || claudeSession === undefined || idleMinutes === undefined || freedMb === undefined) {
+  if (record['kind'] !== 'close' || by === undefined || idleMinutes === undefined || freedMb === undefined) {
     return undefined;
   }
   const folder = stringField(record, 'folder');
-  return { kind: 'close', session, by, at, claudeSession, idleMinutes, freedMb, ...(folder === undefined ? {} : { folder }) };
+  return { kind: 'close', session, by, at, ...(claudeSession === undefined ? {} : { claudeSession }), idleMinutes, freedMb, ...(folder === undefined ? {} : { folder }) };
+}
+
+/** The close that keeps a session hired with no room home until it has work and the host has room (T1364). */
+export function homeCloseOf(session: string, by: string, at: string): CloseRecord {
+  return { kind: 'close', session, by, at, idleMinutes: 0, freedMb: 0 };
 }
 
 function recordOf(record: SessionLogRecord): JsonRecord {

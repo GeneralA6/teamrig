@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { NewerDataError } from '../core/jsonl.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { closedOf, SESSION_LOG_FORMAT, SessionLog, type CloseRecord, type ReopenRecord } from './log.ts';
+import { closedOf, homeCloseOf, SESSION_LOG_FORMAT, SessionLog, type CloseRecord, type ReopenRecord } from './log.ts';
 
 const PATH = '/team/state/session-log.jsonl';
 const CLOSE: CloseRecord = { kind: 'close', session: 'alpha', by: 'lead', at: '2030-01-08T10:00:00.000Z', claudeSession: 'claude-1', idleMinutes: 75, freedMb: 1300 };
@@ -26,6 +26,16 @@ describe('the session log', () => {
     await new SessionLog(files, PATH).append(inWorktree);
     await files.append(PATH, `${JSON.stringify({ v: SESSION_LOG_FORMAT, ...CLOSE, folder: 7 })}\n`);
     assert.deepEqual(await new SessionLog(files, PATH).read(), { records: [inWorktree, CLOSE], skipped: 0 });
+  });
+
+  it('keeps a home close, which names no Claude Code session, and reads one with a damaged session as one (T1364)', async () => {
+    const files = new MemoryFiles();
+    const home = homeCloseOf('bravo', 'lead', '2030-01-08T11:00:00.000Z');
+    assert.deepEqual(home, { kind: 'close', session: 'bravo', by: 'lead', at: '2030-01-08T11:00:00.000Z', idleMinutes: 0, freedMb: 0 });
+    await new SessionLog(files, PATH).append(home);
+    await files.append(PATH, `${JSON.stringify({ v: SESSION_LOG_FORMAT, ...home, claudeSession: 7 })}\n`);
+    assert.deepEqual(await new SessionLog(files, PATH).read(), { records: [home, home], skipped: 0 });
+    assert.equal(closedOf([home], 'bravo'), home);
   });
 
   it('tells a session teamrig closed until it is reopened', () => {
