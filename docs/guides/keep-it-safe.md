@@ -179,7 +179,9 @@ it: after each Bash, PowerShell, Read or Grep call, the secret redactor replaces
 variable's value in the result with `[redacted <kind>]`, so it stays out of the transcript too, and tells the session
 which kinds it held, never a value. It files a task for the security reviewer, else the lead, to rotate each kind,
 one per kind, session and day while that task is open (once it is closed, a later leak that day gets a new one), and
-names it to the session.
+names it to the session. For credentials in a URL the task names the account they were for (`login app at
+example.com`), never the value. A secret variable's URL value goes only when it carries a login, a password, a
+secret-named parameter or a token-shaped path segment; a connection string without them stays.
 `secretGuard.redact: false` turns it off
 ([what it does not cover](../../plugins/teamrig/skills/teamrig-guide/hooks.md#after-a-tool-call-the-secret-redactor)).
 
