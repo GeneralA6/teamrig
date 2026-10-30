@@ -64,7 +64,7 @@ export interface DeployRecord {
  * A background job a session declared (`teamrig job`), stored under its old name as a `load` record, in the format a
  * team's own coordinator writes too: once when it starts (`endedAt` null), and again when it ends, under the same `id`.
  */
-export interface LoadRecord {
+export interface JobRecord {
   readonly type: 'load';
   readonly id: string;
   readonly session: string;
@@ -76,7 +76,7 @@ export interface LoadRecord {
   readonly endedAt: string | null;
 }
 
-export type LedgerRecord = QueuedStepRecord | DeployRecord | LoadRecord;
+export type LedgerRecord = QueuedStepRecord | DeployRecord | JobRecord;
 
 /** A deploy as its ledger.md line names it; a session may write one by hand. */
 export interface LedgerMdDeploy {
@@ -178,24 +178,24 @@ function deployOf(record: JsonRecord): DeployRecord | undefined {
   return { type: 'deploy', kind, session, repo, range, what, note, startedAt, rolledAt, ...(isStringArray(targets) ? { targets } : {}) };
 }
 
-function loadOf(record: JsonRecord): LoadRecord | undefined {
+function jobOf(record: JsonRecord): JobRecord | undefined {
   const [id, session, what] = [stringField(record, 'id'), stringField(record, 'session'), stringField(record, 'what')];
   const [startedAt, endedAt] = [timeField(record, 'startedAt'), endField(record, 'endedAt')];
   const targets = record['targets'];
-  const loaded = targets === 'host' || isStringArray(targets) ? targets : undefined;
-  if (id === undefined || session === undefined || what === undefined || startedAt === undefined || endedAt === undefined || loaded === undefined) {
+  const jobTargets = targets === 'host' || isStringArray(targets) ? targets : undefined;
+  if (id === undefined || session === undefined || what === undefined || startedAt === undefined || endedAt === undefined || jobTargets === undefined) {
     return undefined;
   }
-  return { type: 'load', id, session, what, targets: loaded, startedAt, endedAt };
+  return { type: 'load', id, session, what, targets: jobTargets, startedAt, endedAt };
 }
 
-const READERS: Readonly<Record<LedgerRecord['type'], (record: JsonRecord) => LedgerRecord | undefined>> = { heavy: queuedStepOf, deploy: deployOf, load: loadOf };
+const READERS: Readonly<Record<LedgerRecord['type'], (record: JsonRecord) => LedgerRecord | undefined>> = { heavy: queuedStepOf, deploy: deployOf, load: jobOf };
 
 function isLedgerType(type: unknown): type is LedgerRecord['type'] {
   return type === 'heavy' || type === 'deploy' || type === 'load';
 }
 
-/** The ledger's heavy, deploy and load records, in file order; a damaged line, a record of another type or one with a bad field is left out. */
+/** The ledger's queued step, deploy and job records, in file order; a damaged line, a record of another type or one with a bad field is left out. */
 export function parseLedger(text: string): LedgerRecord[] {
   return parseJsonl(text).records.flatMap(({ record }) => {
     const type = record['type'];

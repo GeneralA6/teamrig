@@ -4,7 +4,7 @@ import { holderText, sharesText, type LockState } from '../../delivery/host-lock
 import { parseLedger } from '../../delivery/ledger.ts';
 import { deliveryPlaces, teamPlace } from '../../delivery/places.ts';
 import { blackoutStart, queueCutoffSpan, type ResetTime } from '../../delivery/schedule.ts';
-import { loadsOf, type Load } from '../../delivery/stable-periods.ts';
+import { jobsOf, type Job } from '../../delivery/stable-periods.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import { deployRepos, plural, readPending, short, type PendingRead } from '../../deploy/pending.ts';
 import type { ParsedArgs } from '../args.ts';
@@ -45,9 +45,9 @@ function blackoutText(nowMs: number, reset: ResetTime | undefined, hours: number
   return `${inForce}${zone.weekdayMinute(new Date(from))} until ${zone.weekdayMinute(new Date(reset.at))} (no merge or deploy; reset from the ${reset.source})`;
 }
 
-function loadText(load: Load, zone: TimeZone): string {
-  const on = load.targets === 'host' ? 'the whole host' : load.targets.join(',');
-  return `  ${load.id} by ${load.session}: ${load.what} on ${on} since ${zone.minute(new Date(load.from))}`;
+function jobText(job: Job, zone: TimeZone): string {
+  const on = job.targets === 'host' ? 'the whole host' : job.targets.join(',');
+  return `  ${job.id} by ${job.session}: ${job.what} on ${on} since ${zone.minute(new Date(job.from))}`;
 }
 
 function pendingText(read: PendingRead): string {
@@ -94,9 +94,9 @@ export async function deployStatus(_args: ParsedArgs, runtime: CliRuntime): Prom
     say(`claims: ${open.length === 0 ? 'none' : open.length}`);
     open.forEach((freeze) => say(`  ${quietClaimText(freeze, zone)}`));
   }
-  const loads = loadsOf(parseLedger((await runtime.files.read(places.ledger)) ?? ''), nowMs).filter((load) => load.open);
-  say(`loads: ${loads.length === 0 ? 'none' : loads.length}`);
-  loads.forEach((load) => say(loadText(load, zone)));
+  const jobs = jobsOf(parseLedger((await runtime.files.read(places.ledger)) ?? ''), nowMs).filter((job) => job.open);
+  say(`loads: ${jobs.length === 0 ? 'none' : jobs.length}`);
+  jobs.forEach((job) => say(jobText(job, zone)));
   const repos = deployRepos(delivery, (path) => teamPlace(kit.paths, path));
   if (repos.length === 0) {
     say('deploys: no repository in delivery.repos has a deploy block');

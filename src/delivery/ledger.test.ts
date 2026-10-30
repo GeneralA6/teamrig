@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { appendDeploy, appendRecord, ledgerLine, LEDGER_MD_HEADER, parseLedger, parseLedgerMd, type DeployRecord, type LoadRecord, rangeText } from './ledger.ts';
+import { appendDeploy, appendRecord, ledgerLine, LEDGER_MD_HEADER, parseLedger, parseLedgerMd, type DeployRecord, type JobRecord, rangeText } from './ledger.ts';
 
 const PLACES = { ledger: '/team/data/deploys/ledger.jsonl', ledgerMd: '/team/data/deploys/ledger.md' };
 
@@ -55,16 +55,16 @@ describe('rangeText', () => {
 });
 
 describe('parseLedger', () => {
-  const load: LoadRecord = { type: 'load', id: 'b425c3c9', session: 'ops', what: 'db trim', targets: 'host', startedAt: '2030-01-08T09:00:00.000Z', endedAt: null };
+  const job: JobRecord = { type: 'load', id: 'b425c3c9', session: 'ops', what: 'db trim', targets: 'host', startedAt: '2030-01-08T09:00:00.000Z', endedAt: null };
   const heavy = { type: 'heavy', id: 'h1', session: 'dev', what: 'tests', startedAt: '2030-01-08T09:10:00.000Z', endedAt: '2030-01-08T09:12:00.000Z', exitCode: 0 };
 
   it('reads what appendRecord writes, each type in file order', async () => {
     const files = new MemoryFiles();
-    for (const record of [load, deploy(), { ...load, targets: ['api'], endedAt: '2030-01-08T11:00:00.000Z' }]) {
+    for (const record of [job, deploy(), { ...job, targets: ['api'], endedAt: '2030-01-08T11:00:00.000Z' }]) {
       await appendRecord(files, PLACES.ledger, record);
     }
     await files.append(PLACES.ledger, `${JSON.stringify(heavy)}\n`);
-    assert.deepEqual(parseLedger((await files.read(PLACES.ledger)) ?? ''), [load, deploy(), { ...load, targets: ['api'], endedAt: '2030-01-08T11:00:00.000Z' }, heavy]);
+    assert.deepEqual(parseLedger((await files.read(PLACES.ledger)) ?? ''), [job, deploy(), { ...job, targets: ['api'], endedAt: '2030-01-08T11:00:00.000Z' }, heavy]);
   });
 
   it('leaves out damaged lines, other types and records with a bad field', () => {
@@ -73,8 +73,8 @@ describe('parseLedger', () => {
       JSON.stringify({ type: 'claim', id: 'c1' }),
       JSON.stringify({ ...heavy, startedAt: 'yesterday' }),
       JSON.stringify({ ...heavy, exitCode: 'ok' }),
-      JSON.stringify({ ...load, targets: 'api' }),
-      JSON.stringify({ ...load, endedAt: 5 }),
+      JSON.stringify({ ...job, targets: 'api' }),
+      JSON.stringify({ ...job, endedAt: 5 }),
       JSON.stringify({ ...deploy(), kind: 'revert' }),
       JSON.stringify({ ...deploy(), note: undefined }),
     ];

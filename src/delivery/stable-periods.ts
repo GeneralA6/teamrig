@@ -1,4 +1,4 @@
-import type { DeployRecord, QueuedStepRecord, LedgerMdDeploy, LedgerRecord, LoadRecord } from './ledger.ts';
+import type { DeployRecord, QueuedStepRecord, LedgerMdDeploy, LedgerRecord, JobRecord } from './ledger.ts';
 
 const MINUTE_MS = 60_000;
 
@@ -31,7 +31,7 @@ export interface DisruptionInputs {
  * A background job a session declared (`teamrig job`). It never cuts a stable period: it may run for days, and a
  * period inside it still compares with another under the same job, so a period only names the jobs it overlaps.
  */
-export interface Load extends Span {
+export interface Job extends Span {
   readonly id: string;
   readonly session: string;
   readonly what: string;
@@ -48,7 +48,7 @@ function isQueuedStep(record: LedgerRecord): record is QueuedStepRecord {
   return record.type === 'heavy';
 }
 
-function isLoad(record: LedgerRecord): record is LoadRecord {
+function isJob(record: LedgerRecord): record is JobRecord {
   return record.type === 'load';
 }
 
@@ -93,9 +93,9 @@ function unfinishedEnd(from: number, starts: readonly number[], input: Pick<Disr
 }
 
 /** One job per id, its end record winning; one with no end record runs until now. */
-export function loadsOf(records: readonly LedgerRecord[], nowMs: number): Load[] {
-  const byId = new Map<string, Load>();
-  for (const record of records.filter(isLoad)) {
+export function jobsOf(records: readonly LedgerRecord[], nowMs: number): Job[] {
+  const byId = new Map<string, Job>();
+  for (const record of records.filter(isJob)) {
     if (byId.has(record.id) && record.endedAt === null) {
       continue;
     }
@@ -113,12 +113,12 @@ export function loadsOf(records: readonly LedgerRecord[], nowMs: number): Load[]
 }
 
 /** The jobs on `target` that overlap `span`. */
-export function loadsDuring(loads: readonly Load[], target: string, span: Span): Load[] {
-  return loads.filter((load) => touches(load.targets, target) && load.to > span.from && load.from < span.to);
+export function jobsDuring(jobs: readonly Job[], target: string, span: Span): Job[] {
+  return jobs.filter((job) => touches(job.targets, target) && job.to > span.from && job.from < span.to);
 }
 
 /** The parts of `span` that no disruption of `target` covers, each at least `minMs` long. */
-export function cleanWindows(all: readonly Disruption[], target: string, span: Span, minMs: number): Span[] {
+export function stablePeriodsOf(all: readonly Disruption[], target: string, span: Span, minMs: number): Span[] {
   const relevant = all.filter((disruption) => touches(disruption.targets, target) && disruption.to > span.from && disruption.from < span.to).sort((a, b) => a.from - b.from);
   const found: Span[] = [];
   let cursor = span.from;
@@ -131,5 +131,5 @@ export function cleanWindows(all: readonly Disruption[], target: string, span: S
   if (cursor < span.to) {
     found.push({ from: cursor, to: span.to });
   }
-  return found.filter((window) => window.to - window.from >= minMs);
+  return found.filter((period) => period.to - period.from >= minMs);
 }

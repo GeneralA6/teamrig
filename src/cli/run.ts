@@ -74,8 +74,8 @@ const withdrawCommand = () => import('./commands/withdraw.ts');
 const mergeCommand = () => import('./commands/merge.ts');
 const deployCommand = () => import('./commands/deploy.ts');
 const freezeCommands = () => import('./commands/freeze.ts');
-const windowsCommand = () => import('./commands/stable-periods.ts');
-const loadCommands = () => import('./commands/job.ts');
+const stablePeriodsCommand = () => import('./commands/stable-periods.ts');
+const jobCommands = () => import('./commands/job.ts');
 const deployStatusCommand = () => import('./commands/deploy-status.ts');
 const ghCommands = () => import('./commands/gh.ts');
 const startCommands = () => import('./commands/start.ts');
@@ -220,9 +220,9 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   deploy: { effect: 'write', flags: ['session', 'repo', 'targets', 'what'], rest: true, load: async () => (await deployCommand()).deploy },
   freeze: { effect: 'write', flags: ['session', 'targets', 'metric', 'why', 'for'], load: async () => (await freezeCommands()).freeze },
   unfreeze: { effect: 'write', flags: ['session'], load: async () => (await freezeCommands()).unfreeze },
-  'stable-periods': { effect: 'read', flags: ['targets', 'since', 'until', 'settle', 'min'], load: async () => (await windowsCommand()).stablePeriods },
-  job: { effect: 'write', flags: ['session', 'what', 'targets', 'at'], load: async () => (await loadCommands()).job },
-  'job end': { effect: 'write', flags: ['session', 'id', 'at'], load: async () => (await loadCommands()).jobEnd },
+  'stable-periods': { effect: 'read', flags: ['targets', 'since', 'until', 'settle', 'min'], load: async () => (await stablePeriodsCommand()).stablePeriods },
+  job: { effect: 'write', flags: ['session', 'what', 'targets', 'at'], load: async () => (await jobCommands()).job },
+  'job end': { effect: 'write', flags: ['session', 'id', 'at'], load: async () => (await jobCommands()).jobEnd },
   'deploy-status': { effect: 'read', flags: [], load: async () => (await deployStatusCommand()).deployStatus },
   'hook push-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).pushGuard },
   'hook package-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).packageGuard },

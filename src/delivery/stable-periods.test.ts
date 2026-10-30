@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import type { DeployRecord, LedgerMdDeploy, LedgerRecord, LoadRecord } from './ledger.ts';
-import { cleanWindows, disruptions, loadsDuring, loadsOf, type Disruption, type DisruptionInputs, type Load } from './stable-periods.ts';
+import type { DeployRecord, LedgerMdDeploy, LedgerRecord, JobRecord } from './ledger.ts';
+import { stablePeriodsOf, disruptions, jobsDuring, jobsOf, type Disruption, type DisruptionInputs, type Job } from './stable-periods.ts';
 
 const MINUTE = 60_000;
 
@@ -32,7 +32,7 @@ function heavy(id: string, started: string, ended: string | null): LedgerRecord 
   return { type: 'heavy', id, session: 'dev', what: 'tests', startedAt: iso(started), endedAt: ended === null ? null : iso(ended), exitCode: ended === null ? null : 0 };
 }
 
-function load(id: string, started: string, ended: string | null, targets: LoadRecord['targets'] = 'host'): LoadRecord {
+function job(id: string, started: string, ended: string | null, targets: JobRecord['targets'] = 'host'): JobRecord {
   return { type: 'load', id, session: 'ops', what: 'db trim', targets, startedAt: iso(started), endedAt: ended === null ? null : iso(ended) };
 }
 
@@ -71,27 +71,27 @@ describe('disruptions', () => {
   });
 });
 
-describe('loadsOf', () => {
+describe('jobsOf', () => {
   it('reads one job per id, its end record winning, and runs an open one until now', () => {
-    const records = [load('l1', '09:00', null), heavy('h1', '09:30', '09:40'), load('l2', '10:00', null, ['api']), load('l1', '09:00', '11:00')];
-    assert.deepEqual(loadsOf(records, at('18:00')), [
+    const records = [job('l1', '09:00', null), heavy('h1', '09:30', '09:40'), job('l2', '10:00', null, ['api']), job('l1', '09:00', '11:00')];
+    assert.deepEqual(jobsOf(records, at('18:00')), [
       { id: 'l1', session: 'ops', what: 'db trim', targets: 'host', from: at('09:00'), to: at('11:00'), open: false },
       { id: 'l2', session: 'ops', what: 'db trim', targets: ['api'], from: at('10:00'), to: at('18:00'), open: true },
     ]);
   });
 });
 
-describe('loadsDuring', () => {
-  it('names the jobs on the target, or on the whole host, that overlap the window', () => {
-    const loads: Load[] = loadsOf([load('host', '08:00', '10:30'), load('api', '11:00', null, ['api']), load('workers', '10:00', null, ['workers']), load('early', '08:00', '09:00', ['api'])], at('18:00'));
+describe('jobsDuring', () => {
+  it('names the jobs on the target, or on the whole host, that overlap the period', () => {
+    const jobs: Job[] = jobsOf([job('host', '08:00', '10:30'), job('api', '11:00', null, ['api']), job('workers', '10:00', null, ['workers']), job('early', '08:00', '09:00', ['api'])], at('18:00'));
     assert.deepEqual(
-      loadsDuring(loads, 'api', { from: at('10:00'), to: at('12:00') }).map((found) => found.id),
+      jobsDuring(jobs, 'api', { from: at('10:00'), to: at('12:00') }).map((found) => found.id),
       ['host', 'api'],
     );
   });
 });
 
-describe('cleanWindows', () => {
+describe('stablePeriodsOf', () => {
   function disruption(from: string, to: string, targets: Disruption['targets']): Disruption {
     return { from: at(from), to: at(to), targets };
   }
@@ -107,18 +107,18 @@ describe('cleanWindows', () => {
 
   it('lists the stretches of the span no disruption of the target covers, each at least the minimum', () => {
     const span = { from: at('09:00'), to: at('17:00') };
-    assert.deepEqual(cleanWindows(ALL, 'api', span, 15 * MINUTE), [
+    assert.deepEqual(stablePeriodsOf(ALL, 'api', span, 15 * MINUTE), [
       { from: at('09:00'), to: at('10:00') },
       { from: at('11:00'), to: at('13:00') },
       { from: at('13:05'), to: at('16:00') },
     ]);
-    assert.deepEqual(cleanWindows(ALL, 'api', span, 90 * MINUTE), [
+    assert.deepEqual(stablePeriodsOf(ALL, 'api', span, 90 * MINUTE), [
       { from: at('11:00'), to: at('13:00') },
       { from: at('13:05'), to: at('16:00') },
     ]);
   });
 
   it('is the whole span when nothing disturbs the target in it', () => {
-    assert.deepEqual(cleanWindows(ALL, 'cloud-web', { from: at('13:00'), to: at('14:00') }, 15 * MINUTE), [{ from: at('13:00'), to: at('14:00') }]);
+    assert.deepEqual(stablePeriodsOf(ALL, 'cloud-web', { from: at('13:00'), to: at('14:00') }, 15 * MINUTE), [{ from: at('13:00'), to: at('14:00') }]);
   });
 });
