@@ -1,8 +1,8 @@
 import type { CoordinatorConfig } from '../../config/types.ts';
-import type { LoadRecord } from '../../coordinator/ledger.ts';
-import { endLoad, startLoad, type LoadOutcome, type LoadPorts } from '../../coordinator/loads.ts';
-import { coordinatorPlaces } from '../../coordinator/places.ts';
-import { deployTargetsOf } from '../../coordinator/targets.ts';
+import type { LoadRecord } from '../../delivery/ledger.ts';
+import { endLoad, startLoad, type LoadOutcome, type LoadPorts } from '../../delivery/jobs.ts';
+import { coordinatorPlaces } from '../../delivery/places.ts';
+import { deployTargetsOf } from '../../delivery/targets.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import { requiredFlag, type ParsedArgs } from '../args.ts';

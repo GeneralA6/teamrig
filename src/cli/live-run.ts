@@ -1,4 +1,4 @@
-import { treeOf } from '../coordinator/processes.ts';
+import { treeOf } from '../delivery/processes.ts';
 import { KIT_NAME, type TeamPaths } from '../core/home.ts';
 import { runsClaude } from '../open/session-processes.ts';
 import { measureSessions, runningPlaces } from '../sessions/measure.ts';

@@ -1,9 +1,9 @@
 import type { CoordinatorConfig } from '../../config/types.ts';
-import { parseLedger, parseLedgerMd } from '../../coordinator/ledger.ts';
-import { coordinatorPlaces } from '../../coordinator/places.ts';
-import { minutesText, parseSpanMinutes } from '../../coordinator/schedule.ts';
-import { deployTargetsOf, repoTargetsOf } from '../../coordinator/targets.ts';
-import { cleanWindows, disruptions, loadsDuring, loadsOf, type Load, type Span } from '../../coordinator/windows.ts';
+import { parseLedger, parseLedgerMd } from '../../delivery/ledger.ts';
+import { coordinatorPlaces } from '../../delivery/places.ts';
+import { minutesText, parseSpanMinutes } from '../../delivery/schedule.ts';
+import { deployTargetsOf, repoTargetsOf } from '../../delivery/targets.ts';
+import { cleanWindows, disruptions, loadsDuring, loadsOf, type Load, type Span } from '../../delivery/stable-periods.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import { requiredFlag, UsageError, type Flags, type ParsedArgs } from '../args.ts';
 import { instantOf, listOf, type TypedTimes } from '../inputs.ts';

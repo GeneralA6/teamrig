@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import type { CheckedTree, CleanTree, TreeState } from '../coordinator/push-pass.ts';
+import type { CheckedTree, CleanTree, TreeState } from '../delivery/push-pass.ts';
 
 /** The git folder of {@link cleanTree}'s repository, where its passes are kept. */
 export const GIT_DIR = join('/', 'work', 'app', '.git');

@@ -1,14 +1,14 @@
 import { snapshotDirOf } from '../../budget/snapshot.ts';
-import { quietClaimText, readClaims } from '../../coordinator/claims.ts';
-import { holderText, sharesText, type LockState } from '../../coordinator/host-lock.ts';
-import { parseLedger } from '../../coordinator/ledger.ts';
-import { coordinatorPlaces, teamPlace } from '../../coordinator/places.ts';
-import { blackoutStart, heavyCutoffSpan, type ResetTime } from '../../coordinator/schedule.ts';
-import { loadsOf, type Load } from '../../coordinator/windows.ts';
+import { quietClaimText, readClaims } from '../../delivery/freezes.ts';
+import { holderText, sharesText, type LockState } from '../../delivery/host-lock.ts';
+import { parseLedger } from '../../delivery/ledger.ts';
+import { coordinatorPlaces, teamPlace } from '../../delivery/places.ts';
+import { blackoutStart, heavyCutoffSpan, type ResetTime } from '../../delivery/schedule.ts';
+import { loadsOf, type Load } from '../../delivery/stable-periods.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import { deployRepos, plural, readPending, short, type PendingRead } from '../../deploy/pending.ts';
 import type { ParsedArgs } from '../args.ts';
-import { hostLockOf, nextResetFrom } from '../coordinator-ports.ts';
+import { hostLockOf, nextResetFrom } from '../delivery-ports.ts';
 import { openTeamKit, requireConfig, teamZone } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 

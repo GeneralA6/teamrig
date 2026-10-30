@@ -1,5 +1,5 @@
 import type { DeployCheckConfig } from '../config/types.ts';
-import type { ClearancePhase, Readiness } from '../coordinator/clearance.ts';
+import type { ClearancePhase, Readiness } from '../delivery/clearance.ts';
 import type { Env } from '../core/home.ts';
 import type { SecretScanner } from '../core/secrets.ts';
 import { HOOK_WAIT_EXIT, type HookEnd, type HookRunner } from './hooks.ts';

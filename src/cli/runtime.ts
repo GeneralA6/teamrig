@@ -1,9 +1,9 @@
 import type { TranscriptSource } from '../budget/discover.ts';
 import type { ConfigFormat } from '../config/migrate.ts';
-import type { HostMemory } from '../coordinator/memory.ts';
-import type { TreeState } from '../coordinator/push-pass.ts';
-import type { StarterWatch } from '../coordinator/starter-watch.ts';
-import type { StepRunner } from '../coordinator/steps.ts';
+import type { HostMemory } from '../delivery/memory.ts';
+import type { TreeState } from '../delivery/push-pass.ts';
+import type { StarterWatch } from '../delivery/starter-watch.ts';
+import type { StepRunner } from '../delivery/steps.ts';
 import type { FileBytes } from '../core/file-bytes.ts';
 import type { Files } from '../core/files.ts';
 import type { Env } from '../core/home.ts';

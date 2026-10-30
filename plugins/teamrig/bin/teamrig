@@ -2,7 +2,7 @@
 # The teamrig CLI. Claude Code adds this folder to the Bash tool PATH while the plugin is enabled.
 # Under Git Bash the shell that ran this script is in no Windows process listing above it (it ran the script in a
 # forked copy that ends once the script starts), so its Windows id and this script's go to the CLI, whose starter
-# watch ends a step once that shell is gone (src/coordinator/starter-watch.ts, launchingShellOf).
+# watch ends a step once that shell is gone (src/delivery/starter-watch.ts, launchingShellOf).
 if [ -r "/proc/$PPID/winpid" ] && [ -r "/proc/$$/winpid" ]; then
   read -r TEAMRIG_SHELL_WINPID < "/proc/$PPID/winpid"
   read -r TEAMRIG_LAUNCHER_WINPID < "/proc/$$/winpid"

@@ -1,10 +1,10 @@
 import type { Roster } from '../../config/roster.ts';
-import type { LockWaiter, Withdrawal } from '../../coordinator/host-lock.ts';
-import { coordinatorPlaces } from '../../coordinator/places.ts';
+import type { LockWaiter, Withdrawal } from '../../delivery/host-lock.ts';
+import { coordinatorPlaces } from '../../delivery/places.ts';
 import { ENV } from '../../core/home.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import { UsageError, type ParsedArgs } from '../args.ts';
-import { hostLockOf } from '../coordinator-ports.ts';
+import { hostLockOf } from '../delivery-ports.ts';
 import { openTeamKit, requireConfig, rosterOf, teamZone, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { tabSessionOf } from './tab-session.ts';

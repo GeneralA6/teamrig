@@ -1,9 +1,9 @@
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
-import { lowerStep, NODE_PRIORITIES, type Priorities } from '../coordinator/priority.ts';
-import { NOT_STARTED_EXIT } from '../coordinator/recorded-step.ts';
-import { exitCodeOf, type StepEnd } from '../coordinator/steps.ts';
-import { nodeTreeKill, type RunKill, type TreeKill } from '../coordinator/tree-kill.ts';
+import { lowerStep, NODE_PRIORITIES, type Priorities } from '../delivery/priority.ts';
+import { NOT_STARTED_EXIT } from '../delivery/recorded-step.ts';
+import { exitCodeOf, type StepEnd } from '../delivery/steps.ts';
+import { nodeTreeKill, type RunKill, type TreeKill } from '../delivery/tree-kill.ts';
 import type { Env } from '../core/home.ts';
 import { endOf } from '../test-run/shell.ts';
 

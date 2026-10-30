@@ -1,8 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { constants } from 'node:os';
-import { STEP_PRIORITY } from '../coordinator/priority.ts';
-import { nodeTreeKill } from '../coordinator/tree-kill.ts';
+import { STEP_PRIORITY } from '../delivery/priority.ts';
+import { nodeTreeKill } from '../delivery/tree-kill.ts';
 import { hookEndText, hookExitCode, nodeHookRunner, succeeded, type HookEnd, type HookRequest } from './hooks.ts';
 
 const ENDS: readonly HookEnd[] = [{ kind: 'exited', code: 3 }, { kind: 'timedOut' }, { kind: 'signal', signal: 'SIGKILL' }, { kind: 'notStarted', error: 'ENOENT' }, { kind: 'stopped' }];

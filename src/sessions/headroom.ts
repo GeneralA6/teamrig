@@ -1,5 +1,5 @@
 import type { HeadroomConfig } from '../config/types.ts';
-import type { CommitCharge } from '../coordinator/memory.ts';
+import type { CommitCharge } from '../delivery/memory.ts';
 import { KIT_NAME } from '../core/home.ts';
 
 /** What the host holds as one more session is about to be added. */

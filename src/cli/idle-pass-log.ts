@@ -1,5 +1,5 @@
 import type { IdleMode } from '../config/types.ts';
-import type { CommitCharge } from '../coordinator/memory.ts';
+import type { CommitCharge } from '../delivery/memory.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
 import { MS_PER_HOUR, MS_PER_MINUTE } from '../core/time.ts';

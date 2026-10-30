@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { projectTranscriptPath } from '../budget/discover.ts';
-import type { CommitCharge } from '../coordinator/memory.ts';
+import type { CommitCharge } from '../delivery/memory.ts';
 import { decodePrompt, meetAsk, meetPrompt } from '../open/prompt.ts';
 import { SessionLog, type CloseRecord } from '../sessions/log.ts';
 import { SessionRecordStore } from '../sessions/record.ts';

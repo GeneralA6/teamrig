@@ -1,5 +1,5 @@
 import type { Roster } from '../../config/roster.ts';
-import type { CommitCharge } from '../../coordinator/memory.ts';
+import type { CommitCharge } from '../../delivery/memory.ts';
 import { KIT_NAME } from '../../core/home.ts';
 import { measureSessions, runningPlaces, type SessionPlace } from '../../sessions/measure.ts';
 import { SessionRecordStore } from '../../sessions/record.ts';

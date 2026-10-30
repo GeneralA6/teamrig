@@ -1,6 +1,6 @@
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
-import { coordinatorPlaces } from '../../coordinator/places.ts';
+import { coordinatorPlaces } from '../../delivery/places.ts';
 import { formatAddress } from '../../core/address.ts';
 import { KIT_NAME } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';

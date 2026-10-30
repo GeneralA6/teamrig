@@ -5,7 +5,7 @@ import { KIT_VERSION } from '../core/version.ts';
 import { TimeZone } from '../core/zone.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { addClaim, CLAIMS_LOCK_TTL_MS, claimRefusal, releaseClaim, renderClaimsMd, type ClaimPorts, type ClaimRequest, type ClaimRules } from './claim-store.ts';
+import { addClaim, CLAIMS_LOCK_TTL_MS, claimRefusal, releaseClaim, renderClaimsMd, type ClaimPorts, type ClaimRequest, type ClaimRules } from './freeze-store.ts';
 import { withdrawnLock } from '../testing/withdrawn-lock.ts';
 import { HostLock, type HostLockInfo } from './host-lock.ts';
 

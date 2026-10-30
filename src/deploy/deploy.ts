@@ -1,7 +1,7 @@
-import { takeWhenClear, type ClearancePhase, type Readiness } from '../coordinator/clearance.ts';
-import { underLock } from '../coordinator/host-lock.ts';
-import { appendDeploy } from '../coordinator/ledger.ts';
-import { recordHeavy } from '../coordinator/recorded-step.ts';
+import { takeWhenClear, type ClearancePhase, type Readiness } from '../delivery/clearance.ts';
+import { underLock } from '../delivery/host-lock.ts';
+import { appendDeploy } from '../delivery/ledger.ts';
+import { recordHeavy } from '../delivery/recorded-step.ts';
 import type { Env } from '../core/home.ts';
 import { askChecks, shownLine } from './checks.ts';
 import { hookEndText, hookExitCode, succeeded, type HookEnd } from './hooks.ts';

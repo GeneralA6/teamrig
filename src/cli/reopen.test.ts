@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { projectTranscriptPath } from '../budget/discover.ts';
-import type { CommitCharge } from '../coordinator/memory.ts';
+import type { CommitCharge } from '../delivery/memory.ts';
 import type { Files } from '../core/files.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { MS_PER_MINUTE } from '../core/time.ts';

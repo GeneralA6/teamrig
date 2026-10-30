@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import type { LockWaiter } from '../coordinator/host-lock.ts';
+import type { LockWaiter } from '../delivery/host-lock.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { CliHarness, KIT, TEAM } from '../testing/cli-harness.ts';
 import { JERUSALEM } from '../testing/zone.ts';
