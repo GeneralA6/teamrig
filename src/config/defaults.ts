@@ -266,7 +266,7 @@ export const DEFAULT_REFRESH: RefreshConfig = {
   tabTitle: true,
   autoRestart: false,
   restartDelaySeconds: 15,
-  holdAfterActivityMinutes: 5,
+  holdAfterActivityMinutes: 30,
   countdownSeconds: 20,
   compactCeilingTokens: 185_000,
   handoverMaxBytes: 20_000,

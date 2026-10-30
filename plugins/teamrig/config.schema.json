@@ -1398,11 +1398,11 @@
           "default": 15
         },
         "holdAfterActivityMinutes": {
-          "description": "The plugin's mod holds the automatic /clear while the person typed in the tab's prompt (a key, a paste) or sent a prompt there this recently, and while the prompt holds a draft: a /clear never lands under the person. 0: only a draft holds it.",
+          "description": "The plugin's mod holds the automatic /clear while the person typed in the tab's prompt (a key, a paste) or sent a prompt there this recently, and while the prompt holds a draft: a /clear never lands under the person. The default 30 min keeps the context through the person's talk in the tab (reading a reply, thinking it over), the restart coming once they have been away that long. 0: only a draft holds it.",
           "type": "integer",
           "minimum": 0,
           "maximum": 60,
-          "default": 5
+          "default": 30
         },
         "countdownSeconds": {
           "description": "Before the plugin's mod runs the automatic /clear, a band above the prompt counts down this many seconds, with Refresh now and Hold 10 min; a key in the prompt holds it too. 0: no count, the /clear runs once nothing else holds it.",

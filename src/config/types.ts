@@ -914,8 +914,9 @@ export interface RefreshConfig {
   readonly restartDelaySeconds: number;
   /**
    * The plugin's mod holds the automatic /clear while the person typed in the tab's prompt (a key, a paste) or sent
-   * a prompt there this recently, and while the prompt holds a draft: a /clear never lands under the person. 0: only
-   * a draft holds it.
+   * a prompt there this recently, and while the prompt holds a draft: a /clear never lands under the person. The
+   * default 30 min keeps the context through the person's talk in the tab (reading a reply, thinking it over), the
+   * restart coming once they have been away that long (T1383). 0: only a draft holds it.
    */
   readonly holdAfterActivityMinutes: number;
   /**
