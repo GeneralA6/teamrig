@@ -40,7 +40,10 @@ export async function closedSendHold(runtime, kit, config, roster, payload, clau
         return undefined;
     }
     const from = indexMarks(marks).areaBySession.get(claudeSession) ?? KIT_NAME;
-    const why = `${roster.nameOf(receiver.id) ?? receiver.id} is closed (${closed.by} closed it at ${teamZone(config, runtime).clock(new Date(closed.at))}), so this message cannot reach it`;
+    const at = teamZone(config, runtime).clock(new Date(closed.at));
+    // A home close (T1364) is of a session hired with no room, which never ran.
+    const state = closed.claudeSession === undefined ? `home (${closed.by} hired it at ${at} with no room on the host)` : `closed (${closed.by} closed it at ${at})`;
+    const why = `${roster.nameOf(receiver.id) ?? receiver.id} is ${state}, so this message cannot reach it`;
     const unposted = await postUrgentLine(runtime, kit, config, { to: receiver.id, from, text });
     const line = `${KIT_NAME} inbox add --to ${receiver.id} --text "..."${config.wake.enabled ? ' --wake now' : ''}`;
     return refusalOutput(unposted === undefined

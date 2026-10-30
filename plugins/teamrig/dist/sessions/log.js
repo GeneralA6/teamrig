@@ -8,6 +8,8 @@ import { assertWritable, parseJsonl, toJsonlLine, VERSION_FIELD } from "../core/
  * A close's `folder` (T1408) is no new format, as the register's optional fields are none (src/register/events.ts):
  * no teamrig rewrites this log, and an older one ignores it and reopens the session in the project, fresh when its
  * transcript is not there. A new format would instead fail an older tab's close after its tab ended, unlogged.
+ * A home close (no `claudeSession`, T1364) is no new format either: an older teamrig skips it as damaged and sees its
+ * session as never closed, so only its idle pass leaves it home.
  */
 export const SESSION_LOG_FORMAT = 1;
 function instantField(record, key) {
@@ -33,11 +35,15 @@ export function parseSessionLogRecord(record) {
     const claudeSession = stringField(record, 'claudeSession');
     const idleMinutes = integerField(record, 'idleMinutes');
     const freedMb = integerField(record, 'freedMb');
-    if (record['kind'] !== 'close' || by === undefined || claudeSession === undefined || idleMinutes === undefined || freedMb === undefined) {
+    if (record['kind'] !== 'close' || by === undefined || idleMinutes === undefined || freedMb === undefined) {
         return undefined;
     }
     const folder = stringField(record, 'folder');
-    return { kind: 'close', session, by, at, claudeSession, idleMinutes, freedMb, ...(folder === undefined ? {} : { folder }) };
+    return { kind: 'close', session, by, at, ...(claudeSession === undefined ? {} : { claudeSession }), idleMinutes, freedMb, ...(folder === undefined ? {} : { folder }) };
+}
+/** The close that keeps a session hired with no room home until it has work and the host has room (T1364). */
+export function homeCloseOf(session, by, at) {
+    return { kind: 'close', session, by, at, idleMinutes: 0, freedMb: 0 };
 }
 function recordOf(record) {
     return { [VERSION_FIELD]: SESSION_LOG_FORMAT, ...record };
