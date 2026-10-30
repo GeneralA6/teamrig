@@ -5,7 +5,7 @@ import { SecretScanner } from '../core/secrets.ts';
 import type { PlaceKind } from '../rules/places.ts';
 import type { Candidate } from '../rules/scan.ts';
 import { listingLineOf, type ListedSkill } from './scan-context.ts';
-import { scanReport, tokensOf, type ScanReportContext } from './scan-report.ts';
+import { scanReport, type ScanReportContext } from './scan-report.ts';
 import type { SettingsFinding } from './scan-settings.ts';
 import type { UsedIn } from './scan-usage.ts';
 import type { SetupScan } from './scan.ts';
@@ -72,12 +72,6 @@ function row(name: string, source: string, listed: number, uses: number, lastUse
 function unusedLines(scan: SetupScan, at: ScanReportContext = AT): string[] {
   return scanReport(scan, at).filter((line) => /^(U(NUSED|\d)|SAVINGS)/.test(line));
 }
-
-describe('tokensOf', () => {
-  it('counts a token per four characters, rounding up', () => {
-    assert.deepEqual([tokensOf(0), tokensOf(1), tokensOf(8), tokensOf(9)], [0, 1, 2, 3]);
-  });
-});
 
 describe('scanReport', () => {
   it('sizes each loaded file and the listing, then numbers the findings by section and sums what they save', () => {

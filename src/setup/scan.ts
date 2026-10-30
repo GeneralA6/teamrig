@@ -3,21 +3,21 @@ import type { RuleConflict } from '../config/types.ts';
 import type { Files } from '../core/files.ts';
 import type { PathProbe } from '../core/path-probe.ts';
 import type { SecretScanner } from '../core/secrets.ts';
-import { readSessionLists, type SessionListSource } from '../doctor/session-lists.ts';
+import { readSessionLists, type SessionListKind, type SessionLists, type SessionListSource } from '../doctor/session-lists.ts';
 import type { KeepList } from '../permissions/allow-rules.ts';
 import type { SettingsFile } from '../permissions/settings-scope.ts';
 import { scanRules, type Candidate } from '../rules/scan.ts';
-import { readSessionContext, type ListedSkill, type SessionContext, type SessionContextLocations } from './scan-context.ts';
+import { readSessionContext, type Listed, type ListedSkill, type SessionContext, type SessionContextLocations } from './scan-context.ts';
 import { findDuplicates, type Duplicate } from './scan-duplicates.ts';
 import { scanSettings, type SettingsFinding } from './scan-settings.ts';
 import { readTranscriptUse, type TranscriptUse } from './scan-usage.ts';
 import type { SkillDoctor, SkillDoctorRead } from './skill-doctor.ts';
 
 /**
- * The skill listing every call carries: as the project's newest transcript recorded it (plugins' and built-in skills
- * too), else summed from the user's and project's skill folders.
+ * A listing every call carries, the skills' or the agent types': as the project's newest transcript recorded it
+ * (plugins' and built-in ones too), else summed from the user's and project's folders.
  */
-export interface SkillListing {
+export interface Listing {
   readonly count: number;
   readonly chars: number;
   /** Each source's share, when a transcript recorded the listing; undefined when summed from the folders. */
@@ -51,7 +51,7 @@ export interface SetupScanInput extends SessionContextLocations {
 
 export interface SetupScan {
   readonly context: SessionContext;
-  readonly listing: SkillListing;
+  readonly listing: Listing;
   readonly duplicates: readonly Duplicate[];
   /** The rule lines whose words touch a core rule's topic and no verdict clears. */
   readonly overrides: readonly Candidate[];
@@ -70,14 +70,17 @@ async function recentSkills(files: Files, skills: readonly ListedSkill[], since:
   return new Set(changed.filter(({ at }) => at !== undefined && at >= since).map(({ path }) => path));
 }
 
-function folderListing(skills: readonly ListedSkill[]): SkillListing {
-  return { count: skills.length, chars: skills.reduce((sum, skill) => sum + skill.line.length, 0), sources: undefined };
+/** The listings the scan sizes. */
+type ListingKind = Extract<SessionListKind, 'skills' | 'agents'>;
+
+function folderListing(entries: readonly Listed[]): Listing {
+  return { count: entries.length, chars: entries.reduce((sum, entry) => sum + entry.line.length, 0), sources: undefined };
 }
 
-async function readListing(transcripts: TranscriptSource, at: SetupScanInput, skills: readonly ListedSkill[]): Promise<SkillListing> {
-  const recorded = await readSessionLists(transcripts, at.projectsDir, at.project);
-  const list = recorded?.lists.find((one) => one.kind === 'skills');
-  return list === undefined || list.count === 0 ? folderListing(skills) : { count: list.count, chars: list.chars, sources: list.sources };
+/** The `kind` listing as `recorded` holds it, else summed from the `entries` the folders list. */
+function listingOf(recorded: SessionLists | undefined, kind: ListingKind, entries: readonly Listed[]): Listing {
+  const list = recorded?.lists.find((one) => one.kind === kind);
+  return list === undefined || list.count === 0 ? folderListing(entries) : { count: list.count, chars: list.chars, sources: list.sources };
 }
 
 /**
@@ -94,9 +97,10 @@ export async function scanSetup(ports: SetupScanPorts, at: SetupScanInput): Prom
     readTranscriptUse(ports.transcripts, at.projectsDir, { since: at.since, maxBytes: at.maxBytes }),
     ports.doctor.read(at.project),
   ]);
+  const recorded = await readSessionLists(ports.transcripts, at.projectsDir, at.project);
   return {
     context,
-    listing: await readListing(ports.transcripts, at, context.skills),
+    listing: listingOf(recorded, 'skills', context.skills),
     duplicates: findDuplicates(context.files),
     overrides: rules.candidates.filter((candidate) => !at.cleared(candidate)),
     recorded: rules.recorded.length,
