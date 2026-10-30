@@ -111,7 +111,7 @@ describe('decideStop', () => {
       const asked = decideStop(state, stopContext(), facts({ tokens: 250_000 }));
       assert.deepEqual(asked.kind === 'block' ? asked.state : undefined, { phase: 'asked', task: null, at: NOW, tokens: 250_000, handoverHash: null, midTurn: false }, state.phase);
     }
-    assert.deepEqual(decideStop(undefined, stopContext(), facts({ tokens: 262_144, running: 1 })), { kind: 'none' }, 'waits for running work');
+    assert.equal(decideStop(undefined, stopContext(), facts({ tokens: 262_144, running: 1 })).kind, 'block', 'asks while work runs');
   });
 
   it('asks mid-task once the lead asked, whatever the size', () => {
@@ -178,10 +178,17 @@ describe('decideStop', () => {
     assert.deepEqual(unknown.kind === 'block' ? unknown.state : undefined, { phase: 'asked', task: 'T12', at: NOW, tokens: null, handoverHash: null, midTurn: false });
   });
 
-  it('waits while background work runs: a due refresh leaves the boundary for a later stop', () => {
-    assert.deepEqual(decideStop(BOUNDARY, stopContext(), facts({ tokens: 262_144, running: 1 })), { kind: 'none' });
-    assert.deepEqual(decideStop(BOUNDARY, stopContext(), facts({ requestedBy: 'boss', running: 2 })), { kind: 'none' });
-    assert.equal(decideStop(BOUNDARY, stopContext(), facts({ tokens: 262_144, running: 0 })).kind, 'block', 'asks once the work ended');
+  it('asks while background work runs, naming it, so a session busy with background steps refreshes before Claude Code compacts it', () => {
+    const one = decideStop(BOUNDARY, stopContext(), facts({ tokens: 262_144, running: 1 }));
+    assert.deepEqual(one.kind === 'block' ? one.state : undefined, { phase: 'asked', task: 'T12', at: NOW, tokens: 262_144, handoverHash: null, midTurn: false });
+    assert.match(
+      one.kind === 'block' ? one.reason : '',
+      /from the register\. A background task you started still runs: say in the handover what its result still needs; the fresh start waits until it reports back\. Then run `teamrig refresh --ready --session alpha`\. Do not start new work\.$/,
+    );
+    const two = decideStop(BOUNDARY, stopContext(), facts({ requestedBy: 'boss', running: 2 }));
+    assert.match(two.kind === 'block' ? two.reason : '', /\. 2 background tasks you started still run: say in the handover what each result still needs; the fresh start waits until they report back\. Then run /);
+    const none = decideStop(BOUNDARY, stopContext(), facts({ tokens: 262_144, running: 0 }));
+    assert.match(none.kind === 'block' ? none.reason : '', /from the register\. Then run `teamrig refresh --ready/, 'nothing running, no such line');
   });
 
   it('records a boundary with no refresh due as judged even while background work runs', () => {
@@ -213,7 +220,7 @@ describe('decideStop', () => {
     assert.equal(decideStop(third, stopContext({ settings: COUNTED }), facts({ tokens: 79_999 })).kind, 'write', 'under the floor');
     assert.equal(decideStop(third, stopContext({ settings: COUNTED }), facts({ tokens: undefined })).kind, 'write', 'size unknown');
     assert.equal(decideStop(third, stopContext({ settings: SIZE_ONLY }), facts({ tokens: 95_000 })).kind, 'write', 'count off');
-    assert.deepEqual(decideStop(third, stopContext({ settings: COUNTED }), facts({ tokens: 95_000, running: 1 })), { kind: 'none' }, 'waits for running work');
+    assert.equal(decideStop(third, stopContext({ settings: COUNTED }), facts({ tokens: 95_000, running: 1 })).kind, 'block', 'asks while work runs');
   });
 
   it('names the size when the size and the count are both due', () => {
@@ -271,8 +278,9 @@ describe('decideStop', () => {
     assert.match(reason, /Then run `teamrig refresh --ready --session alpha`\. Do not start new work\.$/);
   });
 
-  it('holds the second ask while background work runs, and never asks in a turn a Stop hook continued', () => {
-    assert.deepEqual(decideStop(MID_TURN, stopContext(), facts({ running: 1 })), { kind: 'none' });
+  it('asks the second time while background work runs, and never in a turn a Stop hook continued', () => {
+    const again = decideStop(MID_TURN, stopContext(), facts({ running: 1 }));
+    assert.match(again.kind === 'block' ? again.reason : '', /\. A background task you started still runs: .+ Then run /);
     assert.deepEqual(decideStop(MID_TURN, stopContext({ stopHookActive: true }), facts()), { kind: 'none' });
   });
 
@@ -343,9 +351,14 @@ describe('decideMidTurn', () => {
     assert.deepEqual(decideMidTurn(ASKED, askContext(), sizeOnly(300_000)), { kind: 'none', nextAt: 312_144 });
   });
 
-  it('reads the due facts only at the threshold, and holds the ask while background work runs', () => {
+  it('reads the due facts only at the threshold, and asks while background work runs, naming it', () => {
     assert.deepEqual(decideMidTurn(undefined, askContext(), sizeOnly(250_000)), { kind: 'measure' });
-    assert.deepEqual(decideMidTurn(undefined, askContext(), midTurnFacts(250_000, { running: 2 })), { kind: 'none', nextAt: 250_000 });
+    const decision = decideMidTurn(undefined, askContext(), midTurnFacts(250_000, { running: 2 }));
+    assert.equal(decision.kind, 'ask');
+    assert.match(
+      decision.kind === 'ask' ? decision.reason : '',
+      /\. 2 background tasks you started still run: say in the handover what each result still needs; the fresh start waits until they report back\. Then run `teamrig refresh --ready --session alpha` and end your turn: the fresh start follows it\.$/,
+    );
   });
 
   it('asks within the turn at the threshold, to finish the step, write the handover and end the turn', () => {
