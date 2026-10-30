@@ -8,3 +8,11 @@ import { uniqueFindings, type SecretFinding } from './findings.ts';
 export function literalFindings(command: string, shapes: SecretShapes): SecretFinding[] {
   return uniqueFindings(shapes.hitsIn(command).map(({ id, description }): SecretFinding => ({ kind: 'literal', id, description })));
 }
+
+/**
+ * The secrets the texts a file-writing call writes hold (T1369 R3), by the same shapes: the call's input lands in the
+ * transcript and its text in the file. Each names the shape, never the value.
+ */
+export function writtenFindings(texts: readonly string[], shapes: SecretShapes): SecretFinding[] {
+  return uniqueFindings(texts.flatMap((text) => shapes.hitsIn(text)).map(({ id, description }): SecretFinding => ({ kind: 'written', id, description })));
+}

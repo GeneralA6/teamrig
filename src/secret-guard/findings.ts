@@ -1,16 +1,21 @@
-/** A secret a call would print into the conversation, or one its command line holds as text (`literal`: its shape, never its value). */
+/**
+ * A secret a call would print into the conversation, one its command line holds as text (`literal`), or one the text a
+ * file-writing call writes holds (`written`); the last two by their shape, never their value.
+ */
 export type SecretFinding =
   | { readonly kind: 'file'; readonly path: string }
   | { readonly kind: 'environment' }
   | { readonly kind: 'variable'; readonly name: string }
   | { readonly kind: 'kube-secret' }
   | { readonly kind: 'command'; readonly program: string }
-  | { readonly kind: 'literal'; readonly id: string; readonly description: string };
+  | { readonly kind: 'literal'; readonly id: string; readonly description: string }
+  | { readonly kind: 'written'; readonly id: string; readonly description: string };
 
-/** What the call would print, or the shape of the secret its line holds, as the refusal names it. */
+/** What the call would print, or the shape of the secret its line or its written text holds, as the refusal names it. */
 export function describeFinding(finding: SecretFinding): string {
   switch (finding.kind) {
     case 'literal':
+    case 'written':
       return finding.description;
     case 'file':
       return `the content of ${finding.path}`;

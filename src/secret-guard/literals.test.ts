@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { SecretShapes } from '../core/secret-shapes.ts';
-import { literalFindings } from './literals.ts';
+import { literalFindings, writtenFindings } from './literals.ts';
 
 const join = (...parts: string[]): string => parts.join('');
 const TOKEN = join('gh', 'p_', 'a1'.repeat(18));
@@ -25,5 +25,20 @@ describe('literalFindings', () => {
     assert.deepEqual(literalFindings(join('deploy --key tok_', 'q8r7s6t5'), new SecretShapes(['tok_[a-z0-9]{8}'])), [
       { kind: 'literal', id: 'config-1', description: 'secret pattern from the team config' },
     ]);
+  });
+});
+
+describe('writtenFindings', () => {
+  it('names each shape the written texts hold once, across texts, by its shape and never its value', () => {
+    const findings = writtenFindings([join('const a = "', TOKEN, '";'), join('url: https://app:', PASSWORD, '@queue.local/q'), TOKEN], new SecretShapes());
+    assert.deepEqual(findings, [
+      { kind: 'written', id: 'github-token', description: 'GitHub token' },
+      { kind: 'written', id: 'url-credentials', description: 'credentials in a URL' },
+    ]);
+    assert.doesNotMatch(JSON.stringify(findings), new RegExp(`${TOKEN}|${PASSWORD}`));
+  });
+
+  it('finds none in text that builds a fixture from parts or refers to a secret kept elsewhere', () => {
+    assert.deepEqual(writtenFindings(["const token = join('gh', 'p_', 'a1'.repeat(18));", 'url: postgres://user:password@localhost/app', ''], new SecretShapes()), []);
   });
 });
