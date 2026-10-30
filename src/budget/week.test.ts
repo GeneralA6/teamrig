@@ -59,6 +59,7 @@ describe('readWeek', () => {
       covered: false,
       pace: undefined,
       allowancePct: undefined,
+      plannedPct: undefined,
       todayFrom: Date.parse('2026-10-15T00:00:00Z'),
       todayW: 500,
       todayWPerPct: undefined,
@@ -75,6 +76,13 @@ describe('readWeek', () => {
     assert.equal(week.pace?.state, 'ahead');
     // 57% now: the 42.5% left over the 132 hours to the pace end, a 24-hour day of it.
     assert.equal(round(week.allowancePct), round((42.5 * 24) / 132));
+    // The pace line plans 24 of its 167 hours for the day: ahead of it, the allowance is below that, a short day.
+    assert.equal(round(week.plannedPct), round((99.5 * 24) / 167));
+  });
+
+  it('plans nothing for the day once the pace end is past', () => {
+    const late = readWeek({ readings: [], calibration: NONE, budget: DEFAULT_BUDGET, now: Date.parse('2026-10-21T00:30:00Z'), statusUse: undefined, period: PERIOD, states: COVERED });
+    assert.equal(late.plannedPct, 0);
   });
 
   it("counts the week from its reset's hour: the use before it that day is the last week's", () => {
@@ -85,6 +93,7 @@ describe('readWeek', () => {
     const week = readWeek({ readings: [], calibration: NONE, budget: DEFAULT_BUDGET, now: resetDay, statusUse: status, period: PERIOD, states: [hours] });
     assert.deepEqual([week.window?.start, week.todayFrom], [lastReset, lastReset]);
     assert.deepEqual([week.todayW, week.wPerPct, week.teamDay?.usedPct], [400, 200, 2]);
+    assert.equal(round(week.plannedPct), round((99.5 * 23) / 167), "the day's 23 hours inside the week");
   });
 
   it("counts a store whose hours were lost with its whole first day, as before hours were kept", () => {
@@ -102,6 +111,7 @@ describe('readWeek', () => {
     assert.deepEqual([week.window?.start, week.periodKind, week.todayFrom, week.todayW, week.wPerPct, week.covered], [reset, 'reset', reset, 100, 100, true]);
     // 2 of the 134 hours from the reset to the pace end, an hour before the week's.
     assert.equal(round(week.pace?.linePct), round((99.5 * 2) / 134));
+    assert.equal(round(week.plannedPct), round((99.5 * 14) / 134), "the day's 14 hours from the reset");
   });
 
   it('has no limit estimate while the stores start after the week did', () => {

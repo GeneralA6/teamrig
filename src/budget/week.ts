@@ -6,6 +6,7 @@ import { pastLimitOf, poolOf, type ExtraEntry, type ExtraPool } from './extra.ts
 import {
   dailyAllowancePct,
   dayPacePct,
+  paceLinePct,
   readPace,
   spanAllowancePct,
   weekWindow,
@@ -56,6 +57,12 @@ export interface WeekReading {
   readonly pace: PaceReading | undefined;
   /** The team's allowance for today, in percent of the week; undefined while the week's use or limit is unknown. */
   readonly allowancePct: number | undefined;
+  /**
+   * What the pace line plans for today, in percent of the week: its rise over the UTC day inside the week, which is
+   * the allowance on pace; an allowance below it is a short day (src/budget/pause.ts `isShortDay`). Undefined with
+   * the window.
+   */
+  readonly plannedPct: number | undefined;
   /**
    * Where today's use is counted from: 00:00 UTC, or on the day the period began (the weekly reset, or one inside
    * the week) that instant, so the use before it that day is not today's (`wSince` counts from its hour).
@@ -249,6 +256,8 @@ export function readWeek(input: WeekInput): WeekReading {
   const todayWPerPct = statusToday !== undefined && statusToday >= TODAY_RATE_SPAN_PTS ? todayW / statusToday : wPerPct;
   const profile = DailyProfile.ofQuietHours(budget.quietHours);
   const pace = window === undefined || usedPct === undefined ? undefined : readPace(window, budget, now, usedPct, profile);
+  const plannedPct =
+    window === undefined ? undefined : paceLinePct(window, budget.targetPct, dayStart + MS_PER_DAY, profile) - paceLinePct(window, budget.targetPct, todayFrom, profile);
   const pool =
     extra === undefined || window === undefined || usedPct === undefined
       ? undefined
@@ -278,6 +287,7 @@ export function readWeek(input: WeekInput): WeekReading {
     covered,
     pace,
     allowancePct,
+    plannedPct,
     todayFrom,
     todayW,
     todayWPerPct,
