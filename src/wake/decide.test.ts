@@ -14,6 +14,7 @@ import {
   isNews,
   isWakeWorthy,
   NO_SETTLED_MOMENTS,
+  openedWakeState,
   taskListText,
   WAKE_TITLE_MAX,
   wakeCost,
@@ -21,6 +22,7 @@ import {
   wakeRestOf,
   wakeToast,
   WARM_WAKE_W,
+  type OpenedTab,
   type WakeInput,
   type WakeState,
 } from './decide.ts';
@@ -249,6 +251,27 @@ describe('decideWake', () => {
     const own = p1({ createdBy: 'alpha', ownerSeenAt: '2030-01-07T09:00:00.000Z' });
     assert.deepEqual(decideWake(input(tasksOf(own, testTask({ id: 'T2' })), QUIET)).verdict, { kind: 'none' });
     assert.equal(decideWake(input(tasksOf(testTask({ id: 'T2' })), QUIET, { maxPriority: 2 })).verdict.kind, 'later');
+  });
+});
+
+describe('openedWakeState', () => {
+  function opened(tasks: ReadonlyMap<string, Task>, previous: WakeState | undefined): OpenedTab {
+    return { tasks, elsewhere: NO_TASKS_ELSEWHERE, session: 'alpha', tab: TAB, now: NOW, zone: TimeZone.UTC, maxPriority: 1, previous };
+  }
+
+  it('knows what could wake the resumed tab now and counts the open as its wake, keeping the settled moments (T1616)', () => {
+    const settled = { dayStart: NOW - 60 * MINUTE, burst: NOW - 120 * MINUTE };
+    const previous: WakeState = { tab: TAB, known: ['T7'], pending: { since: NOW - MINUTE, ids: ['T7'] }, lastWakeAt: NOW - 90 * MINUTE, settled };
+    const tasks = tasksOf(p1(), testTask({ id: 'T2' }), p1({ id: 'T3', owner: 'bravo' }));
+    assert.deepEqual(openedWakeState(opened(tasks, previous)), { tab: TAB, known: ['T1'], pending: undefined, lastWakeAt: NOW, settled });
+    assert.deepEqual(openedWakeState(opened(tasks, undefined)).settled, NO_SETTLED_MOMENTS);
+  });
+
+  it('wakes the resumed tab only for work handed after the open, and not within the least gap of it', () => {
+    const state = openedWakeState(opened(tasksOf(p1()), QUIET));
+    assert.deepEqual(decideWake(input(tasksOf(p1()), state, { now: NOW + 60 * MINUTE, batchMs: 0 })).verdict, { kind: 'none' });
+    const handed = tasksOf(p1(), p1({ id: 'T2' }));
+    assert.deepEqual(decideWake(input(handed, state, { now: NOW + MINUTE, batchMs: 0 })).verdict, { kind: 'later', at: NOW + GAP_MS, ids: ['T2'] });
   });
 });
 

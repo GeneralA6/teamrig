@@ -29,6 +29,7 @@ import { liveRunOf, liveRunText } from '../live-run.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { launchListing } from '../skill-listing.ts';
 import { loadTree } from '../tree.ts';
+import { noteResumedTab } from '../wake-opened.ts';
 import { claudeSessionVerdict, freshOpenOf, resumeVerdictOf } from './rehire.ts';
 import { sessionProjectOf } from './setup.ts';
 
@@ -222,7 +223,10 @@ export async function openSession(runtime: CliRuntime, kit: Kit, config: KitConf
   if (closed !== undefined) {
     await sessionLog.append({ kind: 'reopen', session: id, at: new Date(runtime.clock.now()).toISOString(), ...(resume === undefined ? {} : { resumed: resume }) });
   }
-  return { kind: 'opened', line: `OPENED ${name} (session ${id}) in a new ${TERMINAL_LABELS[outcome.terminal]} in ${folder}, on ${describeLaunch(launchOf(config, id))}${startNoteOf(resume, reopen)}` };
+  // teamrig's own first prompt has a resumed session read its list; a --prompt one may not, so its wake check decides.
+  const unnoted = resume !== undefined && request.prompt === undefined ? await noteResumedTab(runtime, kit, config, id, resume) : undefined;
+  const wakeNote = unnoted === undefined ? '' : `; its wake state was not written, so its tab may wake once more for work it reads now: ${unnoted}`;
+  return { kind: 'opened', line: `OPENED ${name} (session ${id}) in a new ${TERMINAL_LABELS[outcome.terminal]} in ${folder}, on ${describeLaunch(launchOf(config, id))}${startNoteOf(resume, reopen)}${wakeNote}` };
 }
 
 /** Whether a closed session resumes, and in which folder: the one its close recorded, else the project. */
