@@ -242,7 +242,7 @@ const DELIVERY_RENAMES: readonly KeyRename[] = [
 /** v7 to v8: the delivery flow's keys in plain words, DELIVERY_RENAMES; every value is kept as it was. */
 export const RENAME_TO_DELIVERY: ConfigMigration = {
   from: 7,
-  firstRelease: '0.238.0',
+  firstRelease: '0.243.0',
   apply: (config) => renameKeys(config, DELIVERY_RENAMES, 7),
 };
 
