@@ -43,6 +43,33 @@ describe('EnvAssignments', () => {
     assert.deepEqual(plain.filter((text) => assignments.hitsIn(text).length > 0), []);
   });
 
+  it("judges a URL by its login, password, secret-named parameters and token-shaped path segments, and keeps the whole URL", () => {
+    const hook = join('Qx7mRt9w', 'Lp4wZn2kV8');
+    const urls = [
+      join('DB_URL=db://app:', PASSWORD, '@db.example.net:5432/app'),
+      join('DB_URL=https://', KEY, '@git.example.com/o/r.git'),
+      join('DB_URL=https://api.example.com/v1/items?page=2&access_', 'token=', KEY, '&sort=asc'),
+      join('DB_URL=https://app.example.com/callback#state=s1&access_', 'token=', KEY),
+      join('SLACK_WEBHOOK_URL=https://hooks.example.com/services/T0A1B2C3/', hook),
+    ];
+    for (const assignment of urls) {
+      assert.deepEqual(values(assignments, join(assignment, ' more')), [assignment.slice(assignment.indexOf('=') + 1)], assignment);
+    }
+  });
+
+  it('passes a URL with no login, password or secret in its parameters or path, as a connection string with a certificate file', () => {
+    const plain = [
+      'DB_URL=db+srv://cluster0.ab12c.example.net/?authMechanism=GSSAPI&authSource=$external&tls=true&tlsCertificateKeyFile=pem',
+      'DB_URL=db://db.example.net:5432/app_2024?sslmode=require',
+      join('DB_URL=db://app', '@db.example.net/app'),
+      'CACHE_URL=cache://kv.local:6379/0',
+      'DB_URL=https://api.example.com/v2/user-profile-settings-v2',
+      'DB_URL=https://x.example.com/?token=${TOKEN}&password=<password>',
+      join('DB_URL=https://api.example.com/items?cursor=', KEY),
+    ];
+    assert.deepEqual(plain.filter((text) => assignments.hitsIn(text).length > 0), []);
+  });
+
   it('passes a variable whose name is not a secret one', () => {
     assert.deepEqual(values(assignments, join('HOME=/c/u\nBUILD_ID=', KEY)), []);
   });
