@@ -5,7 +5,7 @@ Two small files, one minute.
 1. Install the plugin (the install commands in the [README](../README.md#get-started)). Claude Code puts the `teamrig` command on the path of each session's Bash and PowerShell tools.
 2. Describe your team in `~/.teamrig/teams/<team>/config.json`:
    ```json
-   { "configVersion": 6, "sessions": ["lead", "api", "web", "data"], "roles": { "lead": "lead" } }
+   { "configVersion": 8, "sessions": ["lead", "api", "web", "data"], "roles": { "lead": "lead" } }
    ```
 3. Tie your project to the team: put `{"team": "<team>"}` in a `.teamrig.json` at the project's root. It names a team
    on your machine only, so keep it out of git: add the line `.teamrig.json` to the repository's `.git/info/exclude`.
