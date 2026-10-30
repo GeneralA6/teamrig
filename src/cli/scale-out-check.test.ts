@@ -46,7 +46,7 @@ async function hireLines(kit: CliHarness): Promise<string[]> {
 }
 
 describe('check SCALE-OUT', () => {
-  it('flags an area behind its dated work, gives the slice to the hire made for it, then retires the hire once idle', async () => {
+  it('flags an area behind its dated work, gives the slice to the hire made for it, then keeps the hire once idle', async () => {
     const kit = await behindTeam();
     const [heading, flag] = await hireLines(kit);
     assert.equal(heading, 'HIRES 1 flag(s)');
@@ -58,7 +58,7 @@ describe('check SCALE-OUT', () => {
     kit.clock.advance(5 * HOUR_MS);
     const [, move, ...rest] = await hireLines(kit);
     assert.match(move ?? '', /^HIRE SCALE-OUT .* alpha: the lead moves the slice to helper, an idle hire \(teamrig update <id> --owner helper, for each\)$/);
-    assert.deepEqual(rest, [], 'the idle hire holding a slice is not due to retire');
+    assert.deepEqual(rest, [], 'no other hire flag');
 
     ok(await lead(kit, 'update', 'T9', '--owner', 'helper'));
     ok(await lead(kit, 'update', 'T10', '--owner', 'helper'));
@@ -66,7 +66,7 @@ describe('check SCALE-OUT', () => {
     await finish(kit, 'T9', 'helper');
     await finish(kit, 'T10', 'helper');
     kit.clock.advance(5 * HOUR_MS);
-    assert.deepEqual(await hireLines(kit), ['HIRES 1 flag(s)', 'HIRE RETIRE-DUE (no open task for 5 h, hiring.idleHours 4) helper: retire it (teamrig retire helper)']);
+    assert.deepEqual(await hireLines(kit), [], 'the idle hire stays on the team: no RETIRE-DUE');
   });
 
   it("prices the slice at a new hire's part of the team's daily budget, smaller beside a session of a bigger share", async () => {

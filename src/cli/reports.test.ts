@@ -163,9 +163,9 @@ describe('checkLines', () => {
   });
 
   it('prints the hire flags before the skills, in both forms, and counts them toward the hint', () => {
-    const hires: readonly HireFlag[] = [{ kind: 'RETIRE-DUE', session: 'helper', detail: 'no open task for 5 h, hiring.idleHours 4', action: 'retire it (teamrig retire helper)' }];
+    const hires: readonly HireFlag[] = [{ kind: 'RETIRE-DUE', session: 'helper', detail: 'the burst it was hired for is over', action: 'retire it (teamrig retire helper)' }];
     const flagged = report({ sections: [{ team: undefined, tree: TREE, flags: [] }], hires });
-    const line = 'HIRE RETIRE-DUE (no open task for 5 h, hiring.idleHours 4) helper: retire it (teamrig retire helper)';
+    const line = 'HIRE RETIRE-DUE (the burst it was hired for is over) helper: retire it (teamrig retire helper)';
     assert.deepEqual(checkLines(flagged, true), ['CHECK 0 flag(s), week 2030-01-07', 'HIRES 1 flag(s)', line, 'SKILLS 0 flag(s) in skills-dir']);
     assert.deepEqual(checkLines(flagged, false), [
       'CHECK 0 flag(s), week 2030-01-07 (short form; --all for every flag in full)',
@@ -296,7 +296,7 @@ describe('ownCheck', () => {
     assert.deepEqual(narrowed.skills.map((each) => each.skill), ['alpha-deploy']);
     const hires: readonly HireFlag[] = [
       { kind: 'REVIEW-DUE', session: 'alpha', detail: 'review day 2030-01-07 passed', action: 'decide' },
-      { kind: 'RETIRE-DUE', session: 'bravo', detail: 'no open task for 5 h, hiring.idleHours 4', action: 'retire it' },
+      { kind: 'RETIRE-DUE', session: 'bravo', detail: 'the burst it was hired for is over', action: 'retire it' },
     ];
     assert.deepEqual(ownCheck(report({ hires }), 'alpha', []).hires.map((each) => each.session), ['alpha']);
     const unowned: readonly UnownedWarning[] = [{ key: 'context maxSessionListsChars', source: 'the context check', text: 'WARN context-lists lists over their budget' }];
@@ -308,7 +308,7 @@ describe('ownCheck', () => {
   it("adds a sub-lead's group's task flags, not their skills or hires, and names the group in the scope (T782)", () => {
     const flags = [flag('OVERDUE', { id: 'T1', owner: 'alpha' }), flag('OVERDUE', { id: 'T2', owner: 'bravo' }), flag('OVERDUE', { id: 'T3', owner: 'charlie' })];
     const skills = [skillFlag('alpha-deploy'), { ...skillFlag('bravo-sync'), owner: 'bravo' }];
-    const hires: readonly HireFlag[] = [{ kind: 'RETIRE-DUE', session: 'bravo', detail: 'no open task for 5 h, hiring.idleHours 4', action: 'retire it' }];
+    const hires: readonly HireFlag[] = [{ kind: 'RETIRE-DUE', session: 'bravo', detail: 'the burst it was hired for is over', action: 'retire it' }];
     const narrowed = ownCheck(report({ sections: [{ team: undefined, flags, tree: TREE }], skills, hires }), 'alpha', ['bravo']);
     assert.deepEqual(
       narrowed.sections.map((section) => section.flags.map((each) => each.task.id)),

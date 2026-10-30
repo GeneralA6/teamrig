@@ -21,12 +21,14 @@ import { ownerAsk } from '../config/tree.ts';
  * its last due or the week's pace end, whichever comes first (a day at least), and goes to an idle hire first, else to
  * a new hire (`hire --yes` checks the host has room for it). No flag while the team's
  * part of the week's projected spare cannot pay the cost (the areas furthest behind pay first), with no reading of the week or of the
- * team's daily budget, under `hiring.policy` off, or for the lead or a hired session. Its retire is RETIRE-DUE
- * (src/hiring/due.ts): a hire whose slice is done, or that got none, sits idle. Pure: it takes the team's tasks and
+ * team's daily budget, under `hiring.policy` off, or for the lead or a hired session. A hire whose slice is done, or
+ * that got none, stays on the team, idle, for the next slice: the idle pass (src/cli/idle-pass.ts) deactivates it, and
+ * only a burst hire is due to retire, once its burst is over (src/hiring/due.ts). Pure: it takes the team's tasks and
  * tree, the hires still active, the week's surplus, a hire's daily part and now.
  */
 
 export interface ScaleOutInput extends HireCheckInput {
+  readonly tasks: Iterable<Task>;
   readonly tree: TaskTree;
   readonly config: Pick<KitConfig, 'sessions' | 'roles' | 'hiring' | 'register' | 'team'>;
   /** The week's projected surplus, its spare the team's part of the account's (src/budget/burst.ts `surplusOf`); undefined with no reading of the week. */
@@ -36,13 +38,6 @@ export interface ScaleOutInput extends HireCheckInput {
    * `addedSessionPct`): what a slice costs a day. Undefined while the team's daily budget is unknown.
    */
   readonly hirePct: number | undefined;
-}
-
-export interface ScaleOutResult {
-  /** SCALE-OUT on each area to scale out, the one furthest behind first. */
-  readonly flags: readonly HireFlag[];
-  /** The idle hires a flag gives a slice, which are not due to retire for being idle. */
-  readonly busy: ReadonlySet<string>;
 }
 
 /** Statuses of work under way: a task such work needs stays with its area. */
@@ -195,11 +190,11 @@ function hireAction(config: ScaleOutInput['config']): string {
   return `the lead ${owner ? `asks ${ownerAsk(config)}, then ` : ''}hires for it (${hire}), then ${KIT_NAME} update <id> --owner <new id>, for each`;
 }
 
-/** SCALE-OUT on each area that needs one, within the spare, and the idle hires given a slice. */
-export function scaleOutFlags(input: ScaleOutInput): ScaleOutResult {
+/** SCALE-OUT on each area that needs one, within the spare, the one furthest behind first; an idle hire takes one slice. */
+export function scaleOutFlags(input: ScaleOutInput): HireFlag[] {
   const { config, hirePct } = input;
   if (config.hiring.policy === 'off') {
-    return { flags: [], busy: new Set() };
+    return [];
   }
   const tasks = [...input.tasks];
   const hiredOnTeam = new Set(input.hires.filter((hire) => config.sessions.includes(hire.session)).map((hire) => hire.session));
@@ -211,7 +206,7 @@ export function scaleOutFlags(input: ScaleOutInput): ScaleOutResult {
   const busy = new Set<string>();
   const flags: HireFlag[] = [];
   if (input.spare === undefined || hirePct === undefined) {
-    return { flags: [], busy };
+    return [];
   }
   const { paceEnd } = input.spare;
   let spare = input.spare.sparePct;
@@ -231,5 +226,5 @@ export function scaleOutFlags(input: ScaleOutInput): ScaleOutResult {
     }
     flags.push({ kind: 'SCALE-OUT', session: need.area, detail, action: hireAction(config) });
   }
-  return { flags, busy };
+  return flags;
 }
