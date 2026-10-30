@@ -67,18 +67,18 @@ describe('SecretShapes', () => {
     const text = join(TOKEN, ' then https://app:', PASSWORD, '@queue.local and -H "Authorization: Bearer ', header, '"');
     assert.deepEqual(shapes.hitsIn(text), [
       { id: 'github-token', description: 'GitHub token', value: TOKEN },
-      { id: 'url-credentials', description: 'credentials in a URL', value: PASSWORD },
+      { id: 'url-credentials', description: 'credentials in a URL', value: PASSWORD, account: 'login app at queue.local' },
       { id: 'auth-header', description: 'credentials in an Authorization header', value: header },
     ]);
   });
 
   it('finds the password of a URL with an empty login, as a password-only server takes it', () => {
-    assert.deepEqual(shapes.hitsIn(join('cache://:', PASSWORD, '@kv.local:6379/0')), [{ id: 'url-credentials', description: 'credentials in a URL', value: PASSWORD }]);
+    assert.deepEqual(shapes.hitsIn(join('cache://:', PASSWORD, '@kv.local:6379/0')), [{ id: 'url-credentials', description: 'credentials in a URL', value: PASSWORD, account: 'no login at kv.local' }]);
   });
 
   it("finds the token a URL gives as its login before GitHub's fixed x-oauth-basic password, and not that word", () => {
     const login = join('Qx7m', 'Rt9w'.repeat(6));
-    assert.deepEqual(shapes.hitsIn(join('git clone https://', login, ':x-oauth-', 'basic', '@github.com/o/r.git')),[{ id: 'url-login-token', description: 'credentials in a URL', value: login }]);
+    assert.deepEqual(shapes.hitsIn(join('git clone https://', login, ':x-oauth-', 'basic', '@github.com/o/r.git')), [{ id: 'url-login-token', description: 'credentials in a URL', value: login, account: 'a login at github.com' }]);
     assert.deepEqual(
       shapes.hitsIn(join('https://', TOKEN, ':X-OAuth-', 'Basic', '@github.com/o/r')).map(({ id, value }) => ({ id, value })),
       [
@@ -124,6 +124,40 @@ describe('SecretShapes', () => {
     const configured = join('TOK', '_ABCD1234');
     assert.deepEqual(shapes.hitsIn(configured), [{ id: 'config-1', description: 'secret pattern from the team config', value: configured }]);
     assert.deepEqual(new SecretShapes().hitsIn(configured), []);
+  });
+});
+
+describe('SecretShapes accounts', () => {
+  const shapes = new SecretShapes(['tok_[a-z0-9]{8}']);
+  const accountsIn = (text: string): Array<string | undefined> =>
+    shapes
+      .hitsIn(text)
+      .filter(({ id }) => id.startsWith('url-'))
+      .map(({ account }) => account);
+
+  it("names a URL's login, a short one too, and its host's last two labels lower-cased, never the port, path or query", () => {
+    assert.deepEqual(accountsIn(join('postgres://app:', PASSWORD, '@DB.Prod.Example.COM:5432/app?sslmode=require#top')), ['login app at example.com']);
+    assert.deepEqual(accountsIn(join('amqp://u:', PASSWORD, '@localhost/')), ['login u at localhost']);
+  });
+
+  it('says an IP address or an unnamed host rather than naming one', () => {
+    for (const host of ['127.0.0.1:5432', '[::1]:6379']) {
+      assert.deepEqual(accountsIn(join('postgres://app:', PASSWORD, '@', host, '/app')), ['login app at an IP address'], host);
+    }
+    assert.deepEqual(accountsIn(join('file://app:', PASSWORD, '@/srv/app')), ['login app at an unnamed host']);
+  });
+
+  it('writes "a login" for a login that is a token, a configured shape or a stand-in, so no secret reaches a task', () => {
+    for (const login of [TOKEN, join('tok_', 'abcd1234'), '<user>', '${USER}', 'username']) {
+      assert.deepEqual(accountsIn(join('https://', login, ':', PASSWORD, '@github.com/o/r')), ['a login at github.com'], login);
+    }
+  });
+
+  it('gives no account to a shape without login and host groups', () => {
+    assert.deepEqual(
+      shapes.hitsIn(join(TOKEN, ' and Authorization: Bearer ', 'q7Wd'.repeat(5))).map((hit) => 'account' in hit),
+      [false, false],
+    );
   });
 });
 

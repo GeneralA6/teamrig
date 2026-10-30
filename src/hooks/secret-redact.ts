@@ -57,7 +57,7 @@ export function rotationText(rotator: string, rotations: readonly Rotation[]): s
 }
 
 /** The line for the model: the kinds found, never a value, what becomes of them, and whether part of the result went unscanned. */
-export function redactedLine(redaction: Redaction, rotation: string): string {
+export function redactedLine(redaction: Pick<Redaction, 'classes' | 'cut'>, rotation: string): string {
   const line = `${KIT_NAME}: this result held a secret (${redaction.classes.join(', ')}); it was redacted before you saw it. Treat it as leaked: ${rotation} Do not print it again.`;
   return redaction.cut ? `${line} Part of the result was past the scan's cap and was not checked.` : line;
 }

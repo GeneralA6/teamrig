@@ -61,9 +61,23 @@ describe('teamrig hook secret-redact: rotation tasks', () => {
     });
     assert.deepEqual(createdIn(kit.files.get(EVENTS_PATH)), [['T1', 'bravo', 'alpha', 1, 'Rotate the GitHub token a Bash result showed alpha on 2030-01-08']]);
     assert.equal(kit.files.get(teamInboxOf('app', 'bravo')), '- 2030-01-08 10:00 alpha: T1 is yours (p1): Rotate the GitHub token a Bash result showed alpha on 2030-01-08\n');
-    assert.deepEqual(incidentsIn(kit.files.get(INCIDENTS)), [{ v: 2, at: '2030-01-08T10:00:00.000Z', session: 'alpha', tool: 'Bash', ...CALL_FIELDS, kind: 'GitHub token', task: 'T1' }]);
+    assert.deepEqual(incidentsIn(kit.files.get(INCIDENTS)), [{ v: 3, at: '2030-01-08T10:00:00.000Z', session: 'alpha', tool: 'Bash', ...CALL_FIELDS, kind: 'GitHub token', task: 'T1' }]);
     for (const path of [EVENTS_PATH, INCIDENTS, teamInboxOf('app', 'bravo')]) {
       assert.ok(!(kit.files.get(path) ?? '').includes(TOKEN), `${path} holds the token`);
+    }
+  });
+
+  it("names a URL credential's account in the task and the incident line, never the value, port, path or query", async () => {
+    const kit = new CliHarness(REVIEWED);
+    lineOf(await kit.run(['hook', 'secret-redact'], { stdin: ran(`remote https://app:${PASSWORD}@git.Example.com:8443/o/r.git?ref=main`), ...AS_ALPHA }));
+    const descriptions = readEvents(kit.files.get(EVENTS_PATH) ?? '').events.flatMap((event) => (event.type === 'create' ? [event.task.description ?? ''] : []));
+    assert.equal(descriptions.length, 1);
+    assert.match(descriptions[0] ?? '', /found a credentials in a URL \(login app at example\.com\) in a Bash result of session alpha/);
+    assert.deepEqual(incidentsIn(kit.files.get(INCIDENTS)), [
+      { v: 3, at: '2030-01-08T10:00:00.000Z', session: 'alpha', tool: 'Bash', ...CALL_FIELDS, kind: 'credentials in a URL', accounts: ['login app at example.com'], task: 'T1' },
+    ]);
+    for (const path of [EVENTS_PATH, INCIDENTS]) {
+      assert.ok(!(kit.files.get(path) ?? '').includes(PASSWORD), `${path} holds the password`);
     }
   });
 
@@ -129,7 +143,7 @@ describe('teamrig hook secret-redact: rotation tasks', () => {
     const line = lineOf(await kit.run(['hook', 'secret-redact'], { stdin: ran(TOKEN) }));
     assert.equal(line, leakLine("ask bravo to rotate it with a register task (filing one failed: this tab's session is not known)."));
     assert.equal(kit.files.get(EVENTS_PATH), undefined);
-    assert.deepEqual(incidentsIn(kit.files.get(INCIDENTS)), [{ v: 2, at: '2030-01-08T10:00:00.000Z', tool: 'Bash', ...CALL_FIELDS, kind: 'GitHub token' }]);
+    assert.deepEqual(incidentsIn(kit.files.get(INCIDENTS)), [{ v: 3, at: '2030-01-08T10:00:00.000Z', tool: 'Bash', ...CALL_FIELDS, kind: 'GitHub token' }]);
   });
 
   it("names a helper's call by the helper's id, and a call its payload does not name by nothing", async () => {
@@ -137,8 +151,8 @@ describe('teamrig hook secret-redact: rotation tasks', () => {
     lineOf(await kit.run(['hook', 'secret-redact'], { stdin: ran(TOKEN, { ...CALL, agent_id: 'a1b2' }), ...AS_ALPHA }));
     lineOf(await kit.run(['hook', 'secret-redact'], { stdin: ran(TOKEN, {}), ...AS_ALPHA }));
     assert.deepEqual(incidentsIn(kit.files.get(INCIDENTS)), [
-      { v: 2, at: '2030-01-08T10:00:00.000Z', session: 'alpha', tool: 'Bash', ...CALL_FIELDS, agent: 'a1b2', kind: 'GitHub token', task: 'T1' },
-      { v: 2, at: '2030-01-08T10:00:00.000Z', session: 'alpha', tool: 'Bash', kind: 'GitHub token', task: 'T1' },
+      { v: 3, at: '2030-01-08T10:00:00.000Z', session: 'alpha', tool: 'Bash', ...CALL_FIELDS, agent: 'a1b2', kind: 'GitHub token', task: 'T1' },
+      { v: 3, at: '2030-01-08T10:00:00.000Z', session: 'alpha', tool: 'Bash', kind: 'GitHub token', task: 'T1' },
     ]);
   });
 
