@@ -110,6 +110,11 @@ or take it to the lead.
 | `REFUSED github.owners names <id> for <login>: point it at another session first` | Point that login (or the repository in `github.sessions`) at another session, then retire it. |
 | `REFUSED only a lead over the session retires it (the lead, or its sub-lead): the leader decides which workers the team needs` | Ask the session's leader (its sub-lead, else the lead) to retire it. |
 | `REFUSED <sub-lead> hands work only within its group: the heir <id> is not led by <sub-lead>; the lead (<id>) moves work between groups` | Pass an heir in your group (or yourself), or ask the lead to retire it. |
+| `REFUSED <id> is already on the team: a hired session is kept with --review <YYYY-MM-DD> --reason "<why>"` | To keep a hired session to a new review day, pass both; to hire another session, give a new id. |
+| `REFUSED only a lead over the session keeps it (the lead, or its sub-lead): the leader decides which workers the team needs` | Ask the session's leader (its sub-lead, else the lead) to keep it. |
+| `REFUSED <id> is set up with the team, not hired: it has no review day to keep` | Nothing to keep: only a hired session has a review day. |
+| `REFUSED the review day <day> has passed` (or `is not a YYYY-MM-DD date`) | Give a future day, `YYYY-MM-DD`. |
+| `--scope: a keep of <id> changes only its review day` (exit 2; also `--name`, `--model`, `--effort`, `--approved-by`, `--burst`) | Drop the flag: a keep leaves the hire's job and launch as they are. |
 | `REFUSED <id> was not hired back after a retire: --resume resumes only a rehired session's last Claude Code session` | Open it without `--resume`. |
 | `REFUSED not resumed: <why>; open it fresh on its handover: teamrig open <id>` | Its last Claude Code session is gone, too big or too long idle: open it fresh with the command shown. |
 | `--resume "<value>" is not a Claude Code session id` (exit 2) | `launch` was given something other than a session id; open the session again with `teamrig open <id>`. |

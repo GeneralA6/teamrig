@@ -82,7 +82,8 @@ child team's lead hires the same way into its own team:
 - No cap counts hires: `hire --yes` refuses only while the host has no room for one more tab; each gets its part of the team's daily budget by its share and queued
   work, like any session; `reviewDays` (7) sets a hire's review day.
 - Each hire is logged in `state/hires.jsonl` with its job, reason, approver, model, effort and review day. `teamrig check` flags a hired session with no open task for `idleHours` (4) as RETIRE-DUE, and one past its
-  review day as REVIEW-DUE.
+  review day as REVIEW-DUE: a lead over it keeps it to a new review day while the team still needs it (`teamrig hire
+  <id> --review <YYYY-MM-DD> --reason "<why>" --yes`, which changes only the hire log), else retires it.
 - `teamrig hire --burst` hires for the burst in force ([Bursts](plan-the-week.md#bursts)), within its hires,
   on the lead's model and at least its effort; the burst's approver approves it. Once the burst is over, `check`
   flags the hire RETIRE-DUE.

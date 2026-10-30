@@ -216,7 +216,9 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       (the lead only) adds a temporary session, or hires a retired one back, within hiring.policy, on the
       lead's model and effort unless given; without --yes it shows the hire and writes nothing;
       --burst: a hire for the burst in force, within its hires, never a cheaper model or lower effort, due to
-      retire when the burst is over (under hiring.policy owner the burst's approver approves it)
+      retire when the burst is over (under hiring.policy owner the burst's approver approves it);
+      on a hired session already on the team, --review <YYYY-MM-DD> --reason "<why>" keeps it to that new
+      review day instead (a lead over it), which clears its REVIEW-DUE
   retire <id|name> [--to <heir>] [--no-handover "<why>"] [--reason "<why>"] [--yes]
       (a lead over it: the lead, or its sub-lead; never the session itself) takes a session the team no longer
       needs off the team; its open tasks go to --to, and it needs its handover unless --no-handover; its
