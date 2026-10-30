@@ -4,7 +4,8 @@ import { PatternList } from './pattern-list.ts';
  * The environment variables whose value is a secret, as regular expressions over the name, case ignored. A team's
  * own patterns come after these, in order, and the last pattern that matches a name decides: `!pattern` keeps a
  * variable printable, as `!^TOKENIZERS_` would. A store's connection URL is matched by its kind (`DB_URL`, `CACHE_URL`),
- * never by vendor: a team adds the names of its own stack.
+ * never by vendor: a team adds the names of its own stack. An auth mechanism or source (`DB_AUTH_MECHANISM=GSSAPI`, a
+ * connection string's `authSource=appDb`) names how one signs in, never the secret (T1549).
  */
 export const DEFAULT_SECRET_ENV_NAMES: readonly string[] = [
   'TOKEN',
@@ -13,7 +14,7 @@ export const DEFAULT_SECRET_ENV_NAMES: readonly string[] = [
   'PASSPHRASE',
   '(?:^|_)PASS(?:_|$)',
   'CRED',
-  'AUTH(?!OR|_SOCK)',
+  'AUTH(?!OR|_SOCK|_?(?:MECH|SOURCE))',
   'PRIVATE',
   '(?:^|_)(?:API_?)?KEY(?:_|$)',
   'ACCESS_?KEY',

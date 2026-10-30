@@ -418,9 +418,9 @@ nested shells, `cd`, pipes and substitutions) and refuses a call that would prin
 - **a secret variable's value**: `echo $GITHUB_TOKEN`, `printenv NPM_TOKEN`, a bare `$env:GH_TOKEN`,
   `[Environment]::GetEnvironmentVariable("X")`, and inline code (`node -e`, `python -c`, `ruby -e`, `perl -e`,
   `php -r`) that prints one. A name is secret when a default pattern matches it (case ignored): `TOKEN`, `SECRET`,
-  `PASSW`, `PASS`, `CRED`, `AUTH` (not `AUTHOR`), `PRIVATE`, `KEY`, `DSN`, `WEBHOOK`, `COOKIE`, `PAT`, `SALT`,
-  and a store's connection URL or string by its kind (`DB_URL`, `DATABASE_URL`, `PG_URI`, `CACHE_URL`,
-  `BROKER_URL`, `CONNECTION_STRING`).
+  `PASSW`, `PASS`, `CRED`, `AUTH` (not `AUTHOR`, nor an auth mechanism or source), `PRIVATE`, `KEY`, `DSN`, `WEBHOOK`,
+  `COOKIE`, `PAT`, `SALT`, and a store's connection URL or string by its kind (`DB_URL`, `DATABASE_URL`, `PG_URI`,
+  `CACHE_URL`, `BROKER_URL`, `CONNECTION_STRING`).
 - **a Kubernetes secret's data**: `kubectl get secret` with `-o yaml`, `json`, `jsonpath` or a template,
   `kubectl edit secret`, `kubectl view-secret`, and `kubectl create secret ... -o yaml`.
 - **a dump command's output**: a command that prints credentials whatever it names: `kubectl config view --raw`

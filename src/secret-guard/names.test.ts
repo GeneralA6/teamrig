@@ -40,6 +40,11 @@ describe('SecretNames', () => {
     assert.deepEqual(plain.filter((name) => names.secret(name)), []);
   });
 
+  it('keeps the name of an auth mechanism or source printable, which says how one signs in', () => {
+    const plain = ['DB_AUTH_MECHANISM', 'authMechanism', 'authMechanismProperties', 'AUTH_SOURCE', 'authSource'];
+    assert.deepEqual(plain.filter((name) => names.secret(name)), []);
+  });
+
   it('lets a team add a name, and keep one printable with a later !pattern', () => {
     const team = new SecretNames([...DEFAULT_SECRET_ENV_NAMES, '^STRIPE_', '!^TOKENIZERS_']);
     assert.equal(team.secret('STRIPE_LIVE'), true);
