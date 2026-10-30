@@ -10,6 +10,10 @@ import { formatEndTime, formatPct } from "./format.js";
  * whichever comes first. The reserve release (`--reserve`) is the one lift above `lift.maxStopPct`: only in the last
  * hour before the reset, up to `lift.reserveStopPct`, and always over 15 minutes before the reset. A session's lift
  * also exempts it from quiet hours, which the live warning reads; a group's lift is a share, so it does not.
+ *
+ * A team's lead also lifts a session of a team under its own, at any depth (`<team>/<id>`, a cross-team lift): a part
+ * of its own team's daily budget, logged in its own team's log, which tops the session's own budget up. It exempts no
+ * quiet hours: the lifted team's live warning reads its own log only.
  */
 /**
  * The format of the lift log's records; any other is skipped on read, and a newer one refuses a write. Format 1
@@ -25,6 +29,10 @@ export const RESERVE_ENDS_BEFORE_RESET_MS = 15 * 60_000;
 /** The daily budget a lift is a part of: the team's, or the group's of the sub-lead that holds the lifted node. */
 export function parentBudgetText(subLeadName) {
     return subLeadName === undefined ? "the team's daily budget" : `${subLeadName}'s group's daily budget`;
+}
+/** Whether a lift is of a session of a team below the lifter's (`<team>/<id>`): no id or name holds a `/`. */
+export function isCrossTeamLift(lift) {
+    return lift.session.includes('/');
 }
 function refused(reason) {
     return { kind: 'refused', reason };
@@ -78,7 +86,7 @@ export function decideLift(request, context) {
             stopPct,
             endsAt,
             reserve,
-            quietHoursExempt: !request.group,
+            quietHoursExempt: !request.group && !isCrossTeamLift(request),
             reason: request.reason,
             by: request.by,
             at: now,
@@ -106,12 +114,14 @@ export function activeGroupLift(lifts, subLead, now, usedPct) {
 }
 /**
  * What a lift gives, after "lifted", on the team's clock, `parent` from `parentBudgetText`:
- * `teamrig to 40% of the team's daily budget today until 18:00 IDT or 97.0% of the week, ...`.
+ * `teamrig to 40% of the team's daily budget today until 18:00 IDT or 97.0% of the week, ...`; a cross-team lift's
+ * part is on top of the session's own budget.
  */
 export function liftText(lift, name, parent, zone) {
     const who = lift.group ? `${name}'s group` : name;
+    const onTop = isCrossTeamLift(lift) ? ' on top of its own budget' : '';
     const quiet = lift.quietHoursExempt ? '; quiet hours do not apply to it' : '';
-    return (`${who} to ${formatPct(lift.partPct)} of ${parent} today${lift.reserve ? ' from the reserve' : ''} until ` +
+    return (`${who} to ${formatPct(lift.partPct)} of ${parent}${onTop} today${lift.reserve ? ' from the reserve' : ''} until ` +
         `${formatEndTime(lift.endsAt, zone)} or ${formatPct(lift.stopPct)} of the week, whichever comes first${quiet}.`);
 }
 /** `Budget: <leader> lifted <session> to ...`, the line that shows a session's lift in force. */

@@ -500,11 +500,12 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   budget --task <T<n>>
       each session's W on that task by UTC day; a turn's W splits equally over the task ids its calls
       name: T<n> in a command, t<n>- in a branch or path
-  budget lift <id|name> [--group] --part <pct> --stop-pct <pct> --reason "<why>"
+  budget lift <id|name|team/id> [--group] --part <pct> --stop-pct <pct> --reason "<why>"
       [--until <HH:MM|date>] [--reserve]
       (its leaders; a sub-lead its own too) that session's part of its parent's daily budget (the team's, or its
       sub-lead's group's), in %, today, until --until, the day's end or the week reaching --stop-pct; --group: the
-      sub-lead's whole group's part; --reserve: above budget.lift.maxStopPct, in the last hour before the reset
+      sub-lead's whole group's part; --reserve: above budget.lift.maxStopPct, in the last hour before the reset;
+      team/id: (the lead) a session of a team under its own, topped up by a part of its own team's daily budget
   budget extra [--add <usd>] [--spent <usd>]
       the extra-usage pool past 100% of the week: what is left, in dollars and W; (the lead only) --add: dollars
       put in it, --spent: the dollars claude.ai shows spent from it so far, which teach its W per dollar
