@@ -39,8 +39,13 @@ interface CompiledGlob {
   readonly pattern: RegExp;
   /** A name the glob's last part matches, to try a word with wildcards against: `x.pem` for `**\/*.pem`. */
   readonly sampleName: string;
-  /** What the glob's last part is: a plain name (`.env`), a name with wildcards (`*.pem`), or every name in a folder (`**`). */
-  readonly sampleKind: 'name' | 'pattern' | 'tree';
+  /**
+   * True when a word whose last name is wildcards alone (`dir/*`) is tried against the glob: a secret folder
+   * (`~/.ssh/**`), or a name spelled out in a folder spelled out (`~/.aws/credentials`) or starting with a dot
+   * (`**\/.env`, which only wildcards that match dots reach). Never a name with wildcards (`*.pem`) or a plain name at
+   * any depth (`id_rsa`), else every `grep x *` would name one it cannot see.
+   */
+  readonly wildcardAlone: boolean;
 }
 
 /** The secret files of a team: the defaults, then its own globs. */
@@ -63,8 +68,8 @@ export class SecretPaths {
   /**
    * True when a word naming `path` may name a secret file: the path itself is one, or, when it holds wildcards, one
    * of the secret names fits them (`.env*` fits `.env`). A last name of wildcards alone (`dir/*`) is tried only
-   * against secret names spelled out and secret folders, else every `grep x *` would name a `*.pem` it cannot see.
-   * `dotfiles` is false for a bash word, whose wildcards never match a leading dot.
+   * against the globs that let it (see `CompiledGlob.wildcardAlone`), else every `grep x *` would name a `*.pem` it
+   * cannot see. `dotfiles` is false for a bash word, whose wildcards never match a leading dot.
    */
   mayName(path: string, dotfiles: boolean): boolean {
     const normal = normalisePath(path);
@@ -77,7 +82,7 @@ export class SecretPaths {
     const onlyWildcards = /^(?:[*?]|\[[^\]/]+\])+$/.test(normal.slice(normal.lastIndexOf('/') + 1));
     return this.globs.some((glob) => {
       const candidate = `${folder}${glob.sampleName}`;
-      const tried = !onlyWildcards || glob.sampleKind !== 'pattern';
+      const tried = !onlyWildcards || glob.wildcardAlone;
       return tried && !glob.keep && word.test(candidate) && this.decide(candidate);
     });
   }
@@ -100,11 +105,15 @@ function compileGlob(glob: string, home: string, ignoreCase: boolean): CompiledG
   const options: GlobOptions = { ignoreCase, dotfiles: true };
   const anchored = body === '~' || body.startsWith('~/') ? `${escapeGlob(home)}${body.slice(1)}` : isAbsolute(body) ? body : `**/${body.replace(/^\*\*\//, '')}`;
   const last = anchored.slice(anchored.lastIndexOf('/') + 1);
+  const folderSpelled = anchored
+    .slice(0, anchored.lastIndexOf('/'))
+    .split('/')
+    .some((part) => part !== '' && !hasWildcard(part));
   return {
     keep,
     pattern: globRegExp(anchored, options),
     sampleName: last.replace(/\*\*?|\?/g, 'x').replace(/\[[^\]]*\]/g, 'x'),
-    sampleKind: last === '**' ? 'tree' : hasWildcard(last) ? 'pattern' : 'name',
+    wildcardAlone: last === '**' || (!hasWildcard(last) && (folderSpelled || last.startsWith('.'))),
   };
 }
 
