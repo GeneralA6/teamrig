@@ -50,6 +50,14 @@ describe('CommitScanner.staged', () => {
     ]);
   });
 
+  it('names a staged key store, private key or Terraform state, but not a public key', () => {
+    const staged = ['certs/client.p12', 'deploy/id_ed25519', 'deploy/id_ed25519.pub', 'infra/terraform.tfstate', 'infra/main.tf'];
+    assert.deepEqual(
+      scanner.staged({ paths: staged, lines: [] }).map(({ where }) => where),
+      ['certs/client.p12', 'deploy/id_ed25519', 'infra/terraform.tfstate'],
+    );
+  });
+
   it('names both the file and the secret it holds, and a secret twice on one line once', () => {
     const findings = scanner.staged({
       paths: ['.env'],

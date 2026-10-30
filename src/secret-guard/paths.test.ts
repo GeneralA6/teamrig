@@ -28,6 +28,17 @@ describe('SecretPaths.listed', () => {
       `${HOME}/.local/share/powershell/PSReadLine/ConsoleHost_history.txt`,
       `${REPO}/certs/tls.pem`,
       `${REPO}/certs/tls.key`,
+      `${REPO}/certs/client.p12`,
+      `${REPO}/certs/client.pfx`,
+      `${REPO}/android/release.jks`,
+      `${HOME}/.android/debug.keystore`,
+      `${REPO}/deploy/id_rsa`,
+      `${REPO}/deploy/id_ecdsa`,
+      `${REPO}/deploy/id_ed25519`,
+      `${REPO}/ops/.kube/config`,
+      `${REPO}/.git-credentials`,
+      `${REPO}/infra/terraform.tfstate`,
+      `${REPO}/infra/terraform.tfstate.backup`,
       `${REPO}/infra/k8s/secrets/secrets.yaml`,
       `${HOME}/.teamrig/teams/solo/tools/probe/secrets/a.json`,
     ];
@@ -39,6 +50,10 @@ describe('SecretPaths.listed', () => {
       `${REPO}/.env.example`,
       `${REPO}/.env.sample`,
       `${HOME}/.ssh/id_ed25519.pub`,
+      `${REPO}/deploy/id_rsa.pub`,
+      `${REPO}/src/keystore.ts`,
+      `${REPO}/infra/main.tf`,
+      `${REPO}/docs/id_rsa.md`,
       `${REPO}/.npmrc`,
       `${REPO}/k8s/secrets/secrets.yaml.example`,
       `${REPO}/.claude/settings.json`,
@@ -79,6 +94,8 @@ describe('SecretPaths.mayName', () => {
     assert.equal(team.mayName(`${REPO}/src/*`, false), false, 'else every grep x * would name a deploy_key');
     assert.equal(team.mayName(`${REPO}/src/deploy*`, false), true);
     assert.equal(team.mayName(`${REPO}/ops/*`, false), true);
+    assert.equal(secrets.mayName(`${REPO}/deploy/*`, false), false);
+    assert.equal(secrets.mayName(`${REPO}/deploy/id_*`, false), true);
   });
 
   it('never lets a bash wildcard reach a dot file, as bash does not', () => {
