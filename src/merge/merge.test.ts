@@ -31,9 +31,9 @@ import { ReviewHolds } from './review-holds.ts';
 const PLACES: DeliveryPlaces = {
   ledger: '/team/deploys/ledger.jsonl',
   ledgerMd: '/team/deploys/ledger.md',
-  claims: '/team/deploys/claims.json',
-  claimsMd: '/team/deploys/claims.md',
-  claimsLock: '/team/deploys/claims.lock',
+  freezes: '/team/deploys/claims.json',
+  freezesMd: '/team/deploys/claims.md',
+  freezesLock: '/team/deploys/claims.lock',
   hostLock: '/kit/host.lock',
   pendingMerges: '/team/deploys/pending-merges',
   reviewHolds: '/team/deploys/review-holds',
@@ -53,7 +53,7 @@ interface Options {
   readonly start?: string;
   readonly reset?: ResetTime;
   /** The deploy freezes file's text. */
-  readonly claims?: string;
+  readonly freezes?: string;
   readonly review?: ReviewGateSetup;
   readonly gated?: GatedSetup;
 }
@@ -79,7 +79,7 @@ class World {
   private readonly reset: ResetTime | undefined;
 
   constructor(options: Options = {}) {
-    this.files = new MemoryFiles(options.claims === undefined ? {} : { [PLACES.claims]: options.claims });
+    this.files = new MemoryFiles(options.freezes === undefined ? {} : { [PLACES.freezes]: options.freezes });
     this.clock = new FakeClock(options.start ?? '2030-01-08T10:00:00Z');
     this.steps = new FakeSteps(this.clock).ends(0, 90_000);
     this.hooks = new FakeHooks(this.clock);
@@ -841,11 +841,11 @@ describe('merge under the lock, when the push does not go through', () => {
 
 describe('merge waits for what may hold a deploy, and refuses what forbids one', () => {
   const deploying = { app: { ...PLAIN, deploysOnPush: ['cloud-api'] } };
-  const claim = (until: string, targets: readonly string[] = ['cloud-api']): string =>
+  const freeze = (until: string, targets: readonly string[] = ['cloud-api']): string =>
     JSON.stringify([{ session: 'po', targets, metric: 'p95 latency', why: 'baseline', from: '2030-01-08T09:00:00Z', until }]);
 
   it('waits out a deploy freeze on what the push deploys, then merges', async () => {
-    const world = new World({ repos: deploying, claims: claim('2030-01-08T10:05:00Z') });
+    const world = new World({ repos: deploying, freezes: freeze('2030-01-08T10:05:00Z') });
     assert.equal((await world.run()).kind, 'done');
     assert.ok(world.said.includes('waiting: deploy freeze by po on cloud-api until 2030-01-08 10:05 UTC (p95 latency)'));
     assert.equal(world.steps.ran.length, 1);
@@ -855,22 +855,22 @@ describe('merge waits for what may hold a deploy, and refuses what forbids one',
   });
 
   it('ignores a freeze on other targets, and freezes at all for a repository that deploys nothing', async () => {
-    const other = new World({ repos: deploying, claims: claim('2030-01-08T12:00:00Z', ['cloud-web']) });
+    const other = new World({ repos: deploying, freezes: freeze('2030-01-08T12:00:00Z', ['cloud-web']) });
     assert.equal((await other.run()).kind, 'done');
-    const quiet = new World({ claims: 'not json' });
+    const quiet = new World({ freezes: 'not json' });
     assert.equal((await quiet.run()).kind, 'done');
     assert.ok(!quiet.said.some((line) => line.startsWith('waiting')));
   });
 
   it('gives up on a freeze that outlasts the wait, without pushing', async () => {
-    const world = new World({ repos: deploying, waitMinutes: 5, claims: claim('2030-01-08T12:00:00Z') });
+    const world = new World({ repos: deploying, waitMinutes: 5, freezes: freeze('2030-01-08T12:00:00Z') });
     refused(await world.run(), /deploy freeze by po on cloud-api/);
     assert.deepEqual(world.steps.ran, []);
     assert.ok(world.lockFree());
   });
 
   it('waits on unreadable freezes, since they may hold the deploy', async () => {
-    const world = new World({ repos: deploying, waitMinutes: 1, claims: '{' });
+    const world = new World({ repos: deploying, waitMinutes: 1, freezes: '{' });
     refused(await world.run(), /deploy freezes in \/team\/deploys\/claims\.json are unreadable \(not JSON\)/);
   });
 

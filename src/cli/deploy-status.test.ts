@@ -44,8 +44,8 @@ describe('teamrig deploy-status', () => {
   it('shows the lock holder, the cutoff and blackout, the open freezes and jobs, and what each repository with a deploy block has pushed', async () => {
     const kit = new CliHarness(DEPLOYING);
     await kit.files.append(LOCK, heldBy());
-    const claim = ['freeze', '--session', 'bravo', '--targets', 'cloud-api', '--metric', 'p95', '--why', 'cache probe', '--for', '30m'];
-    assert.equal((await kit.run(claim)).code, 0);
+    const freeze = ['freeze', '--session', 'bravo', '--targets', 'cloud-api', '--metric', 'p95', '--why', 'cache probe', '--for', '30m'];
+    assert.equal((await kit.run(freeze)).code, 0);
     assert.equal((await kit.run(['job', '--session', 'alpha', '--what', 'trim', '--at', '08:00'])).code, 0);
     const ended = (await kit.run(['job', '--session', 'alpha', '--what', 'backfill', '--at', '08:30'])).stdout.join('');
     assert.equal((await kit.run(['job', 'end', '--session', 'alpha', '--id', /JOB (\S+)/.exec(ended)?.[1] ?? '', '--at', '09:00'])).code, 0);
@@ -70,8 +70,8 @@ describe('teamrig deploy-status', () => {
     const kit = new CliHarness(DEPLOYING);
     const inIsrael = { timeZone: 'Asia/Jerusalem' };
     await kit.files.append(LOCK, heldBy());
-    const claim = ['freeze', '--session', 'bravo', '--targets', 'cloud-api', '--metric', 'p95', '--why', 'cache probe', '--for', '30m'];
-    assert.deepEqual((await kit.run(claim, inIsrael)).stdout, ['FROZEN cloud-api until 2030-01-08 12:30 IST']);
+    const freeze = ['freeze', '--session', 'bravo', '--targets', 'cloud-api', '--metric', 'p95', '--why', 'cache probe', '--for', '30m'];
+    assert.deepEqual((await kit.run(freeze, inIsrael)).stdout, ['FROZEN cloud-api until 2030-01-08 12:30 IST']);
     assert.equal((await kit.run(['job', '--session', 'alpha', '--what', 'trim', '--at', '11:00'], inIsrael)).code, 0);
     const result = await kit.run(['deploy-status'], { mergeGit: behind(), sessionProcesses: otherRuns(), ...inIsrael });
     assert.deepEqual(result.stdout.slice(0, 6), [

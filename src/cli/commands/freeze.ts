@@ -1,26 +1,26 @@
 import type { DeliveryConfig } from '../../config/types.ts';
-import { addClaim, releaseClaim, type ClaimOutcome, type ClaimPorts } from '../../delivery/freeze-store.ts';
-import { claimEndText } from '../../delivery/freezes.ts';
+import { addFreeze, endFreeze, type FreezeOutcome, type FreezePorts } from '../../delivery/freeze-store.ts';
+import { freezeEndText } from '../../delivery/freezes.ts';
 import { deliveryPlaces, type DeliveryPlaces } from '../../delivery/places.ts';
 import { parseSpanMinutes } from '../../delivery/schedule.ts';
 import { deployTargetsOf } from '../../delivery/targets.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
-import { claimsLockOf } from '../delivery-ports.ts';
+import { freezesLockOf } from '../delivery-ports.ts';
 import { callerOf, listOf } from '../inputs.ts';
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 
 /** What a freeze command works on: the session, the coordinator's config and places, and the freezes' ports. */
-interface ClaimContext {
+interface FreezeContext {
   readonly session: string;
   readonly delivery: DeliveryConfig;
   readonly places: DeliveryPlaces;
   readonly secretPatterns: readonly string[];
-  readonly ports: ClaimPorts;
+  readonly ports: FreezePorts;
 }
 
-async function claimContextOf(args: ParsedArgs, runtime: CliRuntime): Promise<ClaimContext> {
+async function freezeContextOf(args: ParsedArgs, runtime: CliRuntime): Promise<FreezeContext> {
   const caller = callerOf(args.flags, runtime.env);
   const kit = await openTeamKit(runtime);
   const config = requireConfig(kit, runtime, 'read');
@@ -32,12 +32,12 @@ async function claimContextOf(args: ParsedArgs, runtime: CliRuntime): Promise<Cl
     delivery,
     places,
     secretPatterns: config.register.secretPatterns,
-    ports: { files: runtime.files, clock: runtime.clock, zone: teamZone(config, runtime), lock: claimsLockOf(runtime, places.claimsLock) },
+    ports: { files: runtime.files, clock: runtime.clock, zone: teamZone(config, runtime), lock: freezesLockOf(runtime, places.freezesLock) },
   };
 }
 
 /** The freeze a write returned; a refusal is REFUSED, and a write another writer held up past the wait is FAILED. */
-function writtenOrExit<T>(runtime: CliRuntime, outcome: ClaimOutcome<T>): { readonly kind: 'written'; readonly value: T } | { readonly kind: 'exit'; readonly code: ExitCode } {
+function writtenOrExit<T>(runtime: CliRuntime, outcome: FreezeOutcome<T>): { readonly kind: 'written'; readonly value: T } | { readonly kind: 'exit'; readonly code: ExitCode } {
   switch (outcome.kind) {
     case 'done':
       return { kind: 'written', value: outcome.value };
@@ -64,25 +64,25 @@ export async function freeze(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   if (minutes === undefined) {
     throw new UsageError(`--for "${span}" is not a span: minutes, hours or both, such as 45m, 2h or 1h30m`);
   }
-  const context = await claimContextOf(args, runtime);
+  const context = await freezeContextOf(args, runtime);
   const { delivery } = context;
   const rules = { maxMinutes: delivery.freezes.maxMinutes, knownTargets: deployTargetsOf(delivery.repos), scanner: new SecretScanner(context.secretPatterns) };
-  const written = writtenOrExit(runtime, await addClaim(context.ports, context.places, rules, { session: context.session, targets, metric, why, minutes }));
+  const written = writtenOrExit(runtime, await addFreeze(context.ports, context.places, rules, { session: context.session, targets, metric, why, minutes }));
   if (written.kind === 'exit') {
     return written.code;
   }
-  runtime.out.stdout(`FROZEN ${written.value.targets.join(', ')} until ${claimEndText(written.value.until, context.ports.zone)}`);
+  runtime.out.stdout(`FROZEN ${written.value.targets.join(', ')} until ${freezeEndText(written.value.until, context.ports.zone)}`);
   return EXIT.ok;
 }
 
 /** `teamrig unfreeze`: ends this session's deploy freeze before its time. Exit 0 ended or none held, 1 when the freezes stayed busy, 2 refused. */
 export async function unfreeze(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
-  const context = await claimContextOf(args, runtime);
-  const written = writtenOrExit(runtime, await releaseClaim(context.ports, context.places, context.session));
+  const context = await freezeContextOf(args, runtime);
+  const written = writtenOrExit(runtime, await endFreeze(context.ports, context.places, context.session));
   if (written.kind === 'exit') {
     return written.code;
   }
   const ended = written.value;
-  runtime.out.stdout(ended === undefined ? 'NONE this session held no freeze' : `UNFROZEN ${ended.targets.join(', ')} (frozen until ${claimEndText(ended.until, context.ports.zone)})`);
+  runtime.out.stdout(ended === undefined ? 'NONE this session held no freeze' : `UNFROZEN ${ended.targets.join(', ')} (frozen until ${freezeEndText(ended.until, context.ports.zone)})`);
   return EXIT.ok;
 }

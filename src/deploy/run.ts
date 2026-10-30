@@ -1,6 +1,6 @@
 import { dirname } from 'node:path';
 import type { DeliveryConfig } from '../config/types.ts';
-import { coveringClaims, freezeText, readClaims } from '../delivery/freezes.ts';
+import { coveringFreezes, freezeText, readFreezes } from '../delivery/freezes.ts';
 import { takeWhenClear, type ClearancePhase, type Readiness } from '../delivery/clearance.ts';
 import { underLock, type HostLock, type HostLockInfo } from '../delivery/host-lock.ts';
 import { appendDeploy } from '../delivery/ledger.ts';
@@ -159,12 +159,12 @@ export async function scheduleReadiness(setup: DeploySetup, ports: DeployPorts, 
   if (targets.length === 0) {
     return undefined;
   }
-  const read = await readClaims(ports.files, setup.places.claims);
+  const read = await readFreezes(ports.files, setup.places.freezes);
   if (read.kind === 'unreadable') {
-    return { kind: 'wait', reason: `the deploy freezes in ${setup.places.claims} are unreadable (${read.reason})` };
+    return { kind: 'wait', reason: `the deploy freezes in ${setup.places.freezes} are unreadable (${read.reason})` };
   }
-  const covering = coveringClaims(read.claims, targets, now);
-  return covering.length === 0 ? undefined : { kind: 'wait', reason: covering.map((claim) => freezeText(claim, setup.zone)).join('; ') };
+  const covering = coveringFreezes(read.freezes, targets, now);
+  return covering.length === 0 ? undefined : { kind: 'wait', reason: covering.map((freeze) => freezeText(freeze, setup.zone)).join('; ') };
 }
 
 /** A hook's line as it is shown and recorded: redacted, and said as it comes. */

@@ -18,9 +18,9 @@ export const MERGES_FILE = 'merges.jsonl';
 export interface DeliveryPlaces {
   readonly ledger: string;
   readonly ledgerMd: string;
-  readonly claims: string;
-  readonly claimsMd: string;
-  readonly claimsLock: string;
+  readonly freezes: string;
+  readonly freezesMd: string;
+  readonly freezesLock: string;
   readonly hostLock: string;
   /** The folder of the branches whose merge command waits, one file each (src/merge/pending-merges.ts). */
   readonly pendingMerges: string;
@@ -53,9 +53,9 @@ export function deliveryPlaces(config: DeliveryConfig, paths: TeamPaths): Delive
   return {
     ledger: join(dir, LEDGER_FILE),
     ledgerMd: join(dir, LEDGER_MD_FILE),
-    claims: join(dir, CLAIMS_FILE),
-    claimsMd: join(dir, CLAIMS_MD_FILE),
-    claimsLock: join(dir, CLAIMS_LOCK_FILE),
+    freezes: join(dir, CLAIMS_FILE),
+    freezesMd: join(dir, CLAIMS_MD_FILE),
+    freezesLock: join(dir, CLAIMS_LOCK_FILE),
     hostLock: config.queue.lockPath === undefined ? join(paths.kitHome, HOST_LOCK_FILE) : inTeam(config.queue.lockPath),
     pendingMerges: join(dir, 'pending-merges'),
     reviewHolds: join(dir, REVIEW_HOLDS_DIR),

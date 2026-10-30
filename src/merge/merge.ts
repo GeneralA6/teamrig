@@ -1,6 +1,6 @@
 import { basename, dirname } from 'node:path';
 import type { DeliveryConfig, DeliveryRepoConfig } from '../config/types.ts';
-import { coveringClaims, freezeText, readClaims } from '../delivery/freezes.ts';
+import { coveringFreezes, freezeText, readFreezes } from '../delivery/freezes.ts';
 import { takeWhenClear, type Readiness } from '../delivery/clearance.ts';
 import { underLock, type HostLock, type HostLockInfo } from '../delivery/host-lock.ts';
 import { appendDeploy, rangeText } from '../delivery/ledger.ts';
@@ -403,12 +403,12 @@ function readinessOf(setup: MergeSetup, ports: MergePorts, repo: RepoMatch): () 
     if (targets.length === 0) {
       return { kind: 'go' };
     }
-    const read = await readClaims(ports.files, setup.places.claims);
+    const read = await readFreezes(ports.files, setup.places.freezes);
     if (read.kind === 'unreadable') {
-      return { kind: 'wait', reason: `the deploy freezes in ${setup.places.claims} are unreadable (${read.reason})` };
+      return { kind: 'wait', reason: `the deploy freezes in ${setup.places.freezes} are unreadable (${read.reason})` };
     }
-    const covering = coveringClaims(read.claims, targets, now);
-    return covering.length === 0 ? { kind: 'go' } : { kind: 'wait', reason: covering.map((claim) => freezeText(claim, setup.zone)).join('; ') };
+    const covering = coveringFreezes(read.freezes, targets, now);
+    return covering.length === 0 ? { kind: 'go' } : { kind: 'wait', reason: covering.map((freeze) => freezeText(freeze, setup.zone)).join('; ') };
   };
 }
 

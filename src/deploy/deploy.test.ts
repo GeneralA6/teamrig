@@ -19,9 +19,9 @@ import type { DeployEnd } from './run.ts';
 const PLACES: DeliveryPlaces = {
   ledger: '/team/deploys/ledger.jsonl',
   ledgerMd: '/team/deploys/ledger.md',
-  claims: '/team/deploys/claims.json',
-  claimsMd: '/team/deploys/claims.md',
-  claimsLock: '/team/deploys/claims.lock',
+  freezes: '/team/deploys/claims.json',
+  freezesMd: '/team/deploys/claims.md',
+  freezesLock: '/team/deploys/claims.lock',
   hostLock: '/kit/host.lock',
   pendingMerges: '/team/deploys/pending-merges',
   reviewHolds: '/team/deploys/review-holds',
@@ -39,7 +39,7 @@ const REDACTED = 'db [redacted password or key assignment]';
 
 interface Options {
   readonly schedule?: ScheduleConfig;
-  readonly claims?: string;
+  readonly freezes?: string;
   readonly reset?: ResetTime;
 }
 
@@ -54,7 +54,7 @@ class World {
   private readonly reset: ResetTime | undefined;
 
   constructor(options: Options = {}) {
-    this.files = new MemoryFiles(options.claims === undefined ? {} : { [PLACES.claims]: options.claims });
+    this.files = new MemoryFiles(options.freezes === undefined ? {} : { [PLACES.freezes]: options.freezes });
     this.lock = new HostLock(PLACES.hostLock, 150 * 60_000, { files: this.files, clock: this.clock, sleep: this.clock.sleep, pid: 7, alive: () => true, newId: () => 'lock-1' });
     this.reset = options.reset;
     this.delivery = {
@@ -105,7 +105,7 @@ function teamrigEnv(env: Env): Record<string, string | undefined> {
   return Object.fromEntries(Object.entries(env).filter(([name]) => name.startsWith('TEAMRIG_')));
 }
 
-function claim(targets: readonly string[]): object {
+function freeze(targets: readonly string[]): object {
   return { session: 'ops', targets, metric: 'p95', why: 'latency probe', from: '2030-01-08T09:50:00.000Z', until: '2030-01-08T10:05:00.000Z' };
 }
 
@@ -159,13 +159,13 @@ describe('redeployTargets', () => {
   });
 
   it('waits out a deploy freeze on a target it names, and not one on a target it leaves alone', async () => {
-    const held = new World({ claims: JSON.stringify([claim(['live'])]) });
+    const held = new World({ freezes: JSON.stringify([freeze(['live'])]) });
     assert.equal((await held.run()).kind, 'done');
     assert.ok(held.said.includes('waiting: deploy freeze by ops on live until 2030-01-08 10:05 UTC (p95)'));
     assert.ok(held.clock.now() >= Date.parse('2030-01-08T10:05:00Z'));
-    const free = new World({ claims: JSON.stringify([claim(['workers'])]) });
+    const free = new World({ freezes: JSON.stringify([freeze(['workers'])]) });
     assert.equal((await free.run()).kind, 'done');
-    assert.ok(!free.said.some((line) => line.startsWith('waiting:')), 'a claim on workers does not hold a restart of api and live');
+    assert.ok(!free.said.some((line) => line.startsWith('waiting:')), 'a freeze on workers does not hold a restart of api and live');
   });
 
   it('is refused at the queue cutoff and in the blackout before the token reset, running nothing', async () => {

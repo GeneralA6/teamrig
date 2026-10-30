@@ -84,12 +84,12 @@ describe('teamrig deploy', () => {
 
   it('waits out a deploy freeze another session made with teamrig freeze', async () => {
     const { kit, git, hooks } = world();
-    const claim = ['freeze', '--session', 'bravo', '--targets', 'api', '--metric', 'p95', '--why', 'cache probe', '--for', '5m'];
-    assert.deepEqual(await kit.run(claim, ELSEWHERE), { code: 0, stdout: ['FROZEN api until 2030-01-08 10:05 UTC'], stderr: [] });
+    const freeze = ['freeze', '--session', 'bravo', '--targets', 'api', '--metric', 'p95', '--why', 'cache probe', '--for', '5m'];
+    assert.deepEqual(await kit.run(freeze, ELSEWHERE), { code: 0, stdout: ['FROZEN api until 2030-01-08 10:05 UTC'], stderr: [] });
     const result = await kit.run(DEPLOY, { ...ELSEWHERE, mergeGit: git, hooks });
     assert.equal(result.code, 0, result.stdout.join('\n'));
     assert.ok(result.stdout.includes('2030-01-08 10:00:00 UTC waiting: deploy freeze by bravo on api until 2030-01-08 10:05 UTC (p95)'));
-    assert.ok(kit.clock.now() >= Date.parse('2030-01-08T10:05:00Z'), 'it deployed once the claim ended');
+    assert.ok(kit.clock.now() >= Date.parse('2030-01-08T10:05:00Z'), 'it deployed once the freeze ended');
   });
 
   it('prints REFUSED for a repository it cannot deploy and FAILED when the deploy command fails', async () => {

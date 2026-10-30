@@ -2,7 +2,7 @@ import { resolveReset } from '../budget/pace.ts';
 import { weekUseAt } from '../budget/snapshot.ts';
 import { readFolderWeek } from '../budget/week-summary.ts';
 import type { BudgetConfig, QueueConfig } from '../config/types.ts';
-import { CLAIMS_LOCK_TTL_MS } from '../delivery/freeze-store.ts';
+import { FREEZES_LOCK_TTL_MS } from '../delivery/freeze-store.ts';
 import { HostLock } from '../delivery/host-lock.ts';
 import type { ResetTime } from '../delivery/schedule.ts';
 import type { TimeZone } from '../core/zone.ts';
@@ -29,8 +29,8 @@ export function hostLockOf(runtime: LockRuntime, path: string, queue: Pick<Queue
 }
 
 /** The lock the deploy freezes' writers share at `path`, held for a minute, since a write takes moments. */
-export function claimsLockOf(runtime: LockRuntime, path: string): HostLock {
-  return lockAt(runtime, path, CLAIMS_LOCK_TTL_MS);
+export function freezesLockOf(runtime: LockRuntime, path: string): HostLock {
+  return lockAt(runtime, path, FREEZES_LOCK_TTL_MS);
 }
 
 function lockAt(runtime: LockRuntime, path: string, ttlMs: number): HostLock {

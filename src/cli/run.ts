@@ -73,7 +73,7 @@ const queueCommand = () => import('./commands/queue.ts');
 const withdrawCommand = () => import('./commands/withdraw.ts');
 const mergeCommand = () => import('./commands/merge.ts');
 const deployCommand = () => import('./commands/deploy.ts');
-const claimCommands = () => import('./commands/freeze.ts');
+const freezeCommands = () => import('./commands/freeze.ts');
 const windowsCommand = () => import('./commands/stable-periods.ts');
 const loadCommands = () => import('./commands/job.ts');
 const deployStatusCommand = () => import('./commands/deploy-status.ts');
@@ -218,8 +218,8 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   withdraw: { effect: 'write', flags: ['session', 'what'], switches: ['all'], load: async () => (await withdrawCommand()).withdraw },
   merge: { effect: 'write', flags: ['session'], switches: ['keep-remote', 'no-delete-local'], load: async () => (await mergeCommand()).merge },
   deploy: { effect: 'write', flags: ['session', 'repo', 'targets', 'what'], rest: true, load: async () => (await deployCommand()).deploy },
-  freeze: { effect: 'write', flags: ['session', 'targets', 'metric', 'why', 'for'], load: async () => (await claimCommands()).freeze },
-  unfreeze: { effect: 'write', flags: ['session'], load: async () => (await claimCommands()).unfreeze },
+  freeze: { effect: 'write', flags: ['session', 'targets', 'metric', 'why', 'for'], load: async () => (await freezeCommands()).freeze },
+  unfreeze: { effect: 'write', flags: ['session'], load: async () => (await freezeCommands()).unfreeze },
   'stable-periods': { effect: 'read', flags: ['targets', 'since', 'until', 'settle', 'min'], load: async () => (await windowsCommand()).stablePeriods },
   job: { effect: 'write', flags: ['session', 'what', 'targets', 'at'], load: async () => (await loadCommands()).job },
   'job end': { effect: 'write', flags: ['session', 'id', 'at'], load: async () => (await loadCommands()).jobEnd },
