@@ -4,6 +4,7 @@ import { DEFAULT_SESSION_SHARE } from '../config/defaults.ts';
 import type { SessionBudget } from '../config/types.ts';
 import type { Lift } from './lift.ts';
 import { addedSessionPct, budgetSplitOf, dailyBudgetOf, groupPartsOf, liftPlaceOf, partOf, teamPartOf, teamShareOf, teamTreeOf, type BudgetSplit, type GroupPart, type SplitNode } from './parts.ts';
+import { workWeightOf, type WorkByPriority } from './work.ts';
 
 const IDS = ['lead', 'alpha', 'bravo'];
 const NOW = Date.parse('2030-01-08T10:00:00Z');
@@ -11,6 +12,11 @@ const MINUTE = 60_000;
 
 function split(sessions: Readonly<Record<string, SessionBudget>> = {}, extra: Partial<BudgetSplit> = {}): BudgetSplit {
   return { team: 'app', ids: IDS, sessions, leads: {}, work: new Map(), lifted: new Map(), liftedGroups: new Map(), ...extra };
+}
+
+/** Each session's queued work as one weight, all of it at p1. */
+function workOf(weights: Readonly<Record<string, number>>): ReadonlyMap<string, WorkByPriority> {
+  return new Map(Object.entries(weights).map(([id, weight]) => [id, new Map([[1, weight]])]));
 }
 
 /** Another team on the account, its sessions at the default share with no queued work unless `extra` says so. */
@@ -34,7 +40,7 @@ function near(actual: number | undefined, expected: number, message: string): vo
 
 /** The flat split `dailyBudgetOf` replaced (teamrig 0.152.0 `sessionBudgetPct`), kept to pin the tree to it. */
 function flatSplitPct(allowancePct: number, session: string, split: BudgetSplit): number {
-  const weightOf = (id: string): number => (split.sessions[id]?.share ?? DEFAULT_SESSION_SHARE) * Math.max(1, split.work.get(id) ?? 0);
+  const weightOf = (id: string): number => (split.sessions[id]?.share ?? DEFAULT_SESSION_SHARE) * Math.max(1, workWeightOf(split.work.get(id)));
   const liftedPart = split.lifted.get(session);
   if (liftedPart !== undefined) {
     return (allowancePct * liftedPart) / 100;
@@ -65,14 +71,14 @@ function sequence(seed: number): () => number {
 /** Random shares, queued work and lifts (on the `liftable` sessions only) for `ids`, drawn in the first regression's order. */
 function randomParts(next: () => number, ids: readonly string[], liftable: (id: string) => boolean): Pick<BudgetSplit, 'sessions' | 'work' | 'lifted'> {
   const sessions: Record<string, SessionBudget> = {};
-  const work = new Map<string, number>();
+  const work = new Map<string, WorkByPriority>();
   const lifted = new Map<string, number>();
   for (const id of ids) {
     if (next() < 0.5) {
       sessions[id] = { share: Math.floor(next() * 4) + (next() < 0.5 ? 0.5 : 0) };
     }
     if (next() < 0.6) {
-      work.set(id, Math.floor(next() * 12));
+      work.set(id, new Map([[1, Math.floor(next() * 12)]]));
     }
     if (liftable(id) && next() < 0.15) {
       lifted.set(id, Math.floor(next() * 70) + 5);
@@ -92,7 +98,7 @@ describe('dailyBudgetOf', () => {
   });
 
   it('splits by queued work times share, a session with none counting 1', () => {
-    const work = new Map([['alpha', 6], ['bravo', 2]]);
+    const work = workOf({ alpha: 6, bravo: 2 });
     // Weights lead 1, alpha 6, bravo 2: 9 in all.
     assert.equal(dailyBudgetOf(9, 'alpha', split({}, { work })), 6);
     assert.equal(dailyBudgetOf(9, 'lead', split({}, { work })), 1);
@@ -191,7 +197,7 @@ describe('dailyBudgetOf', () => {
 
   it("splits the team's part among its sessions by share, queued work and lifts, as it split the whole day", () => {
     const app = split({ alpha: { share: 2 } });
-    const web = otherTeam('web', ['lead', 'front'], { work: new Map([['front', 4]]) });
+    const web = otherTeam('web', ['lead', 'front'], { work: workOf({ front: 4 }) });
     // Team weights app 4 (lead 1, alpha 2, bravo 1) and web 5 (lead 1, front 4): parts 8 and 10 of 18.
     assert.equal(dailyBudgetOf(18, 'alpha', app, [web]), 4);
     assert.equal(dailyBudgetOf(18, 'bravo', app, [web]), 2);
@@ -277,7 +283,7 @@ describe('teamPartOf', () => {
   it("splits the account's day among its teams by their sessions' weights summed, the parts adding up to the day", () => {
     const app = split();
     const web = otherTeam('web', ['lead', 'front'], { sessions: { front: { share: 2 } } });
-    const ops = otherTeam('ops', ['run'], { work: new Map([['run', 4]]) });
+    const ops = otherTeam('ops', ['run'], { work: workOf({ run: 4 }) });
     // Weights app 3, web 3, ops 4.
     assert.equal(teamPartOf(15, app, [web, ops]), 4.5);
     assert.equal(teamPartOf(15, web, [app, ops]), 4.5);
@@ -334,7 +340,7 @@ describe('partOf', () => {
 
 describe('teamTreeOf', () => {
   it("puts every session at the top while no sub-lead leads, weighed by its share times its queued work, at least 1, with its lift's part", () => {
-    const tree = teamTreeOf(split({ alpha: { share: 2 } }, { work: new Map([['alpha', 3], ['bravo', 0]]), lifted: new Map([['bravo', 30]]) }));
+    const tree = teamTreeOf(split({ alpha: { share: 2 } }, { work: workOf({ alpha: 3, bravo: 0 }), lifted: new Map([['bravo', 30]]) }));
     assert.deepEqual(tree.nodes, [
       { id: 'lead', liftedPct: undefined, weight: 1 },
       { id: 'alpha', liftedPct: undefined, weight: 6 },
@@ -385,7 +391,7 @@ describe('liftPlaceOf', () => {
 });
 
 describe('budgetSplitOf', () => {
-  const source = { team: 'app', ids: IDS, sessions: {}, leads: { alpha: ['bravo'] }, work: new Map([['bravo', 2]]), now: NOW };
+  const source = { team: 'app', ids: IDS, sessions: {}, leads: { alpha: ['bravo'] }, work: workOf({ bravo: 2 }), now: NOW };
 
   it("maps each session's and each on-roster sub-lead's group's lift in force to its part", () => {
     const lifts = [
@@ -400,7 +406,7 @@ describe('budgetSplitOf', () => {
       ids: IDS,
       sessions: {},
       leads: { alpha: ['bravo'] },
-      work: new Map([['bravo', 2]]),
+      work: workOf({ bravo: 2 }),
       lifted: new Map([['alpha', 50]]),
       liftedGroups: new Map([['alpha', 40]]),
     });
@@ -410,7 +416,7 @@ describe('budgetSplitOf', () => {
 
 describe('addedSessionPct', () => {
   it('gives one more session at the default weight its part beside the shares, queued work and lifts', () => {
-    const weighted = split({ lead: { share: 2 } }, { work: new Map([['alpha', 3]]) });
+    const weighted = split({ lead: { share: 2 } }, { work: workOf({ alpha: 3 }) });
     assert.equal(addedSessionPct(10, weighted), 10 / 7, 'weights lead 2, alpha 3, bravo 1, the added session 1');
     assert.equal(addedSessionPct(10, { ...weighted, lifted: new Map([['bravo', 30]]) }), 7 / 6, "bravo's lift takes 30% first");
     assert.equal(addedSessionPct(9, split()), 9 / 4);

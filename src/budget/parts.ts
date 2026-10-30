@@ -1,6 +1,7 @@
 import { DEFAULT_SESSION_SHARE } from '../config/defaults.ts';
 import type { KitConfig, SessionBudget } from '../config/types.ts';
 import { activeGroupLift, activeLift, type Lift } from './lift.ts';
+import { workWeightOf, type WorkByPriority } from './work.ts';
 
 /** How the team's daily budget is split among its sessions; every part moves with the budget it splits. */
 export interface BudgetSplit {
@@ -11,8 +12,8 @@ export interface BudgetSplit {
   readonly sessions: Readonly<Record<string, SessionBudget>>;
   /** The sub-leads over the sessions they list (T781): the split tree follows this lead tree (`teamTreeOf`). */
   readonly leads: KitConfig['leads'];
-  /** Each session's queued work (`workWeights`); a session not in it counts 1. */
-  readonly work: ReadonlyMap<string, number>;
+  /** Each session's queued work by priority (`workWeights`); a session not in it counts 1. */
+  readonly work: ReadonlyMap<string, WorkByPriority>;
   /** The session lifts in force, as each lifted session's part of its parent's budget in percent (`budgetSplitOf`). */
   readonly lifted: ReadonlyMap<string, number>;
   /** The group lifts in force, as each lifted sub-lead's group's part of its parent's budget in percent. */
@@ -100,7 +101,7 @@ function nodesAt(nodes: readonly SplitNode[], path: readonly string[]): readonly
 
 /** A session as a split-tree leaf, weighed by its `share` and queued work, with its session lift in force. */
 function leafOf(split: BudgetSplit, id: string): SplitLeaf {
-  return { id, liftedPct: split.lifted.get(id), weight: (split.sessions[id]?.share ?? DEFAULT_SESSION_SHARE) * Math.max(1, split.work.get(id) ?? 0) };
+  return { id, liftedPct: split.lifted.get(id), weight: (split.sessions[id]?.share ?? DEFAULT_SESSION_SHARE) * Math.max(1, workWeightOf(split.work.get(id))) };
 }
 
 /** The team's split tree, and where each session and each sub-lead's group sits in it: its ids from the top down. */
