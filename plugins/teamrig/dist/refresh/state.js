@@ -101,22 +101,36 @@ export function parseRestartRequest(text) {
     const phase = record['phase'];
     const at = stringField(record, 'at');
     const pid = record['pid'];
+    const tab = restartTabOf(record);
+    if ((phase !== 'pending' && phase !== 'ending') || at === undefined || !isNonNegativeInteger(pid) || pid === 0 || tab === undefined) {
+        return undefined;
+    }
+    return { phase, at, pid, ...tab };
+}
+export function formatRestartRequest(request) {
+    return toJsonlLine({ [VERSION_FIELD]: REFRESH_FORMAT, ...request });
+}
+/** A parked restart file's content; undefined when it is damaged or from another format. */
+export function parseParkedRestart(text) {
+    const record = recordOf(text);
+    if (record === undefined) {
+        return undefined;
+    }
+    const at = stringField(record, 'at');
+    const tab = restartTabOf(record);
+    return at === undefined || tab === undefined ? undefined : { at, ...tab };
+}
+export function formatParkedRestart(parked) {
+    return toJsonlLine({ [VERSION_FIELD]: REFRESH_FORMAT, ...parked });
+}
+/** The tab fields of a restart file; undefined when one is missing or of the wrong type. */
+function restartTabOf(record) {
     const claudeSession = stringField(record, 'claudeSession');
     const transcript = nullableString(record, 'transcript');
     const cwd = nullableString(record, 'cwd');
     const supervised = record['supervised'];
-    if ((phase !== 'pending' && phase !== 'ending') ||
-        at === undefined ||
-        !isNonNegativeInteger(pid) ||
-        pid === 0 ||
-        claudeSession === undefined ||
-        transcript === undefined ||
-        cwd === undefined ||
-        typeof supervised !== 'boolean') {
+    if (claudeSession === undefined || transcript === undefined || cwd === undefined || typeof supervised !== 'boolean') {
         return undefined;
     }
-    return { phase, at, pid, claudeSession, transcript, cwd, supervised };
-}
-export function formatRestartRequest(request) {
-    return toJsonlLine({ [VERSION_FIELD]: REFRESH_FORMAT, ...request });
+    return { claudeSession, transcript, cwd, supervised };
 }
