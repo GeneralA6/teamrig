@@ -48,7 +48,7 @@ export async function sweepTree(root, host, rounds = SWEEP_ROUNDS) {
         for (const target of targets) {
             members.set(target.pid, target.startedMs);
         }
-        await host.kill(targets.map((target) => target.pid));
+        await host.kill(targets);
         const killedAtMs = host.now();
         const rows = await host.list();
         if (rows === undefined) {
@@ -69,16 +69,38 @@ const runOnHost = (file, args) => new Promise((resolve) => {
 });
 /** `/PID <id>` for each process, as taskkill takes them. */
 const pidArgs = (pids) => pids.flatMap((pid) => ['/PID', String(pid)]);
-/** The Windows host over `run`: PowerShell lists the processes, `taskkill /F` ends them; a failed call ends nothing. */
+/**
+ * Ends each target only while its id still names the process the list saw. Windows hands a freed id to the next new
+ * process within milliseconds and a list takes about a second, so a listed process that ended by itself meanwhile (a
+ * console host whose shell was just killed) can be another program by the kill, which `taskkill /PID` would end
+ * (T1562). The script first opens a handle to each target, which holds its id, then reads their starts through the
+ * list's own Win32_Process query and ends, through that handle, only a held process whose start is the listed one; a
+ * process with no start is never ended. A target that ended or cannot be opened is skipped; the next list finds any
+ * member it missed.
+ */
+export function killScript(targets) {
+    const wanted = targets.map((target) => `${target.pid} = ${target.startedMs}`).join('; ');
+    return (`$want = @{ ${wanted} }; $held = @{}; ` +
+        'foreach ($id in @($want.Keys)) { try { $p = Get-Process -Id $id -ErrorAction Stop; $null = $p.Handle; $held[$id] = $p } catch {} }; ' +
+        'if ($held.Count -gt 0) { ' +
+        "Get-CimInstance Win32_Process -Filter ((@($held.Keys) | ForEach-Object { \"ProcessId=$_\" }) -join ' OR ') | ForEach-Object { " +
+        '$id = [int]$_.ProcessId; ' +
+        'if ($_.CreationDate -and ([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds() -eq $want[$id]) { try { $held[$id].Kill() } catch {} } } }');
+}
+/**
+ * The Windows host over `run`: PowerShell lists the processes and ends listed ones by id and start (`killScript`);
+ * `taskkill /F /T` is only the fallback with no list. A failed call ends nothing.
+ */
 export function windowsSweepHostOf(run, now = () => Date.now()) {
     return {
         list: async () => {
             const printed = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', LIST_SCRIPT]);
             return printed === undefined ? undefined : parseStartedProcesses(printed);
         },
-        // taskkill exits non-zero when one of the processes had already ended; the next list finds any it missed.
-        kill: async (pids) => {
-            await run('taskkill', ['/F', ...pidArgs(pids)]);
+        kill: async (targets) => {
+            if (targets.length > 0) {
+                await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', killScript(targets)]);
+            }
         },
         killTree: async (root) => {
             await run('taskkill', ['/F', '/T', ...pidArgs([root])]);
