@@ -180,6 +180,11 @@ export interface DeferChange extends UpdateChange {
   readonly waits: readonly WaitReason[];
 }
 
+/** An owner's action from the pane (T1298): an update written as `by`, the team's register.ownerSource. */
+export interface OwnerChange extends UpdateChange {
+  readonly by: string;
+}
+
 function ok<T>(value: T): Verdict<T> {
   return { ok: true, value };
 }
@@ -704,6 +709,42 @@ export class RegisterPolicy {
     }
     const waits: readonly WaitReason[] = until === null ? untimed : [...untimed, { kind: 'time', at: until }];
     return ok({ changes: {}, note: text, waits });
+  }
+
+  /**
+   * The owner's Note from the pane (T1298): free text for the task's session, kept in its history as the owner's and
+   * changing no field. A finished task takes none, as its session has moved on.
+   */
+  ownerNote(task: Task, note: string | undefined): Verdict<OwnerChange> {
+    const by = this.config.register.ownerSource;
+    if (!ACTIVE_STATUSES.includes(task.status)) {
+      return refuse(`${task.id} is ${task.status}: ${by}'s Note goes to a task still to finish`);
+    }
+    const text = blankToNull(note);
+    if (text === null) {
+      return refuse(`a Note needs --text: what ${by} tells ${task.owner}`);
+    }
+    const problem = this.checkText('note', text);
+    return problem === undefined ? ok({ by, changes: {}, note: text }) : refuse(problem);
+  }
+
+  /**
+   * The owner's Next from the pane (T1298): the owner's pin, above every other task of the task's owner (the register
+   * moves that owner's earlier pin down). Not on a finished task, one in progress (in hand already), or one the owner
+   * put next already, whose session was told then.
+   */
+  ownerNext(task: Task): Verdict<OwnerChange> {
+    const by = this.config.register.ownerSource;
+    if (!ACTIVE_STATUSES.includes(task.status)) {
+      return refuse(`${task.id} is ${task.status}: only a task still to finish goes next`);
+    }
+    if (task.status === 'in-progress') {
+      return refuse(`${task.id} is in progress: ${task.owner} has it in hand already`);
+    }
+    if (task.pin === by) {
+      return refuse(`${task.id} is next already: ${by} put it there; a Note tells ${task.owner} more`);
+    }
+    return ok({ by, changes: { pin: by }, note: null });
   }
 
   /** `elsewhere`: the tasks the team tree's other registers hold, which `--after` may name. */
