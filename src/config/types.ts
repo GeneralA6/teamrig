@@ -610,7 +610,10 @@ export interface BudgetLiftConfig {
  * leaves one unset takes the team above's, unless it names another account (src/cli/kit.ts openKit), so the teams of
  * a tree read one week alike without a copy that drifts.
  */
-export type AccountBudget = Pick<BudgetConfig, 'enabled' | 'account' | 'weeklyLimitW' | 'subagentWeight' | 'extraWPerUsd' | 'reset'>;
+export const ACCOUNT_BUDGET_KEYS = ['enabled', 'account', 'weeklyLimitW', 'subagentWeight', 'extraWPerUsd', 'reset'] as const satisfies readonly (keyof BudgetConfig)[];
+
+/** The keys of ACCOUNT_BUDGET_KEYS as a team reads them, its own or the team above's. */
+export type AccountBudget = Pick<BudgetConfig, (typeof ACCOUNT_BUDGET_KEYS)[number]>;
 
 /**
  * The weekly token budget: the pace line the team is measured against and each session's daily part
