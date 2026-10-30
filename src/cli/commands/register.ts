@@ -951,9 +951,9 @@ export async function checkReport(args: ParsedArgs, runtime: CliRuntime): Promis
   const over = burstsOver(bursts.records, now.getTime(), usedPct);
   const tasks = [...own.snapshot.state.tasks.values()];
   const { spare, hirePct } = await readScaleOutBudget(runtime, own.paths, own.config, tasks, bursts, now.getTime());
-  const input = { hires: activeHires(records), tasks, config: own.config, burstsOver: over, now };
-  const scaleOut = scaleOutFlags({ ...input, tree: new TaskTree(own.snapshot.state.tasks, now, zone, week, own.elsewhere), spare, hirePct });
-  const hires = [...scaleOut.flags, ...hireFlags(input, scaleOut.busy)];
+  const input = { hires: activeHires(records), config: own.config, burstsOver: over, now };
+  const scaleOut = scaleOutFlags({ ...input, tasks, tree: new TaskTree(own.snapshot.state.tasks, now, zone, week, own.elsewhere), spare, hirePct });
+  const hires = [...scaleOut, ...hireFlags(input)];
   const scope = week === null ? 'no week plan tagged yet, so the week checks are skipped' : `week ${week}`;
   const loaded = await loadTree(runtime);
   const decisions = await leadDecisionsOf(runtime, own, loaded, now.getTime(), zone);
