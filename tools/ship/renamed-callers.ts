@@ -1,9 +1,8 @@
 import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { parseConfigText } from '../../src/config/text.ts';
-import { claudeConfigDir, resolveKitHome } from '../../src/core/home.ts';
+import { type Env, claudeConfigDir, resolveKitHome } from '../../src/core/home.ts';
 import { teamPlace } from '../../src/delivery/places.ts';
 import { slugOf } from './repos.ts';
 
@@ -285,8 +284,21 @@ export function realRenamedCallersDeps(dir: string, log: (line: string) => void)
   };
 }
 
+/** The change `ship.ts merge` asks about: main as fetched, the sha merged and the repo's GitHub slug. */
+export interface RenamedChange {
+  base: string;
+  tip: string;
+  repo: string;
+}
+
+/** Where consumers live: the kit home and Claude Code's folder, found from these as every teamrig command finds them. */
+export interface ConsumerHome {
+  env: Env;
+  userHome: string;
+}
+
 /** The gate as `ship.ts merge` runs it: the refusal, or null when no consumer calls only a newly renamed command. */
-export function renamedCallersRefusal(base: string, tip: string, repo: string, deps: RenamedCallersDeps): string | null {
-  const home = homedir();
-  return refusalOf(scanRenamedCallers({ base, tip, repo, kitHome: resolveKitHome(process.env, home), claudeDir: claudeConfigDir(process.env, home) }, deps));
+export function renamedCallersRefusal(change: RenamedChange, home: ConsumerHome, deps: RenamedCallersDeps): string | null {
+  const kitHome = resolveKitHome(home.env, home.userHome);
+  return refusalOf(scanRenamedCallers({ ...change, kitHome, claudeDir: claudeConfigDir(home.env, home.userHome) }, deps));
 }
