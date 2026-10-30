@@ -196,6 +196,12 @@ Claude Code's prompt history and paste cache. A placeholder (`${TOKEN}`, `<token
 secret-like key (`TOKEN="SOME_READ_TOKEN"`) passes, judged on the value alone. The reason says to send the secret's name or the file it is kept in instead, and to rotate it
 ([Each prompt](../../plugins/teamrig/skills/teamrig-guide/hooks.md#each-prompt)).
 
+Your own terminal keeps what you type too: PowerShell saves each line typed in its console to its history file, a
+credential in a URL or a token too. `teamrig doctor` flags that file (`shell-history`) while no PowerShell profile
+of yours sets a history handler, and the guide gives the handler to paste into your profile, with the ways a session
+uses a secret by its name or file instead of its value
+([Use a secret by reference](../../plugins/teamrig/skills/teamrig-guide/workflows.md#use-a-secret-by-reference)).
+
 ## Secrets kept out of commits
 
 A secret committed stays in the repository's history, and once pushed, on its host too, whoever made the commit.

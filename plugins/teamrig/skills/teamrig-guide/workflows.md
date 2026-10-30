@@ -245,6 +245,52 @@ asks for them, so say so in the brief when it should.
 3. Let a helper start helpers of its own only when the task splits cleanly: a fan-out multiplies the cost.
 4. Read only the lines you need from its file, never the whole of it, and never re-read a file you just wrote.
 
+## Use a secret by reference
+
+A secret a session reads, prints or types stays in its transcript and in every prompt after it, so the secret guard
+refuses such a call ([the secret guard](hooks.md#before-a-shell-command-or-a-read-the-secret-guard)). Hand the
+session the secret's name or its file, never its value:
+
+1. In a command, name the variable that holds it: `curl -H "Authorization: Bearer $API_TOKEN" ...`. The shell puts
+   the value in, and the line the transcript keeps holds only the name.
+2. Give a tool the file or stdin: `--password-file`, `--env-file`, `docker login --password-stdin < token.txt`.
+3. Check a secret without printing it: `test -n "$API_TOKEN" && echo set`, `wc -c < .env`, `grep -c '^DB_URL=' .env`,
+   or compare a hash.
+4. A script that needs the value resolves it itself and prints only counts, a status or `HTTP <code>`.
+5. A test that needs a secret-shaped value builds it at run time from parts, so no file holds the whole shape.
+6. A privileged command whose secret the session must not hold goes through
+   [`teamrig exec request`](commands.md#teamrig-exec-request): the executor holds the value and redacts its output.
+7. A secret only a human has: they type it in their own terminal, into a file or a variable, and give the session its
+   name or path.
+
+### Your own shell's history
+
+PowerShell's PSReadLine saves each line typed in its console to `ConsoleHost_history.txt` (on Windows in
+`%APPDATA%\Microsoft\Windows\PowerShell\PSReadLine`), a credential in a URL or a token too, where any program you
+run can read it. This handler keeps a line holding credentials in a URL (a password before the host's `@`) or a JWT
+out of that file and out of the Up-arrow list:
+
+```powershell
+try {
+    Set-PSReadLineOption -AddToHistoryHandler {
+        param([string]$line)
+        return -not ($line -match '://[^\s/:@]*:[^\s/@]+@' -or $line -match 'eyJ[\w-]{8,}\.eyJ[\w-]{8,}\.[\w-]{16,}')
+    }
+} catch {
+    Write-Warning "history handler not set: $($_.Exception.Message)"
+}
+```
+
+Add it to your profile yourself, since Claude Code refuses an agent's write there: run
+`if (-not (Test-Path $PROFILE)) { New-Item -ItemType File -Path $PROFILE -Force }`, then `notepad $PROFILE`, paste
+it, save, and open a new console. Lines saved before stay in the file: open it with
+`notepad (Get-PSReadLineOption).HistorySavePath`, delete each one holding a credential, and rotate that credential.
+`teamrig doctor` flags `shell-history` while the history file exists and no profile sets `-AddToHistoryHandler` or
+`-HistorySaveStyle SaveNothing`.
+
+In bash, `HISTCONTROL=ignorespace` in `~/.bashrc` (in zsh, `setopt HIST_IGNORE_SPACE` in `~/.zshrc`) keeps a line
+that starts with a space out of the history: start a line holding a secret with a space.
+
 ## Lead checkpoint
 
 At the start of each work block, and whenever the human asks for status:
