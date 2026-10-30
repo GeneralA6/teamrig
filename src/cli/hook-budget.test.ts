@@ -345,6 +345,6 @@ describe('the budget in the hooks', () => {
     assert.deepEqual(workCached(), {});
     ok(await kit.run(['add', '--title', 'Ship the release', '--description', 'what and why', '--priority', 'p1', '--owner', 'alpha', '--session', 'lead']));
     await hook('stop', ALPHA_TAB);
-    assert.deepEqual(workCached(), { alpha: 5 });
+    assert.deepEqual(workCached(), { alpha: { 1: 5 } });
   });
 });

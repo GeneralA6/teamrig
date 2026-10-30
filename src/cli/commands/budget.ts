@@ -51,7 +51,7 @@ import { attributedW, taskUseOf } from '../../budget/task-use.ts';
 import { teamWeekOf, type TeamWeekPaths } from '../../budget/team-week.ts';
 import { foldIntoWeekSummary } from '../../budget/week-summary.ts';
 import { readWeek, wSince, type WeekReading } from '../../budget/week.ts';
-import { NO_WORK, readWork } from '../../budget/work.ts';
+import { NO_WORK, readWork, type WorkByPriority } from '../../budget/work.ts';
 import { JsonlMarkLog } from '../../inbox/store.ts';
 import { indexMarks } from '../../inbox/marks.ts';
 import type { RepoState } from '../../push-guard/push.ts';
@@ -157,7 +157,7 @@ export async function weekLineOf(runtime: CliRuntime, kit: Kit, config: KitConfi
 }
 
 /** How the team's part of the day is split among its sessions: down its lead tree, by their queued work (`work`) and the lifts in force. */
-function splitOf(reading: Reading, team: string, roster: Roster, config: Pick<KitConfig, 'budget' | 'leads'>, work: ReadonlyMap<string, number>): BudgetSplit {
+function splitOf(reading: Reading, team: string, roster: Roster, config: Pick<KitConfig, 'budget' | 'leads'>, work: ReadonlyMap<string, WorkByPriority>): BudgetSplit {
   return budgetSplitOf({ team, ids: roster.ids, sessions: config.budget.sessions, leads: config.leads, work, lifts: reading.lifts, now: reading.now, usedPct: reading.week.usedPct });
 }
 

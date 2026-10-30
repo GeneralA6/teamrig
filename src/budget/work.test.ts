@@ -15,12 +15,17 @@ import { InlineMutex } from '../testing/inline-mutex.ts';
 import { MemoryFiles, normalisePath } from '../testing/memory-files.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { rotateRegister } from '../testing/rotation.ts';
-import { cachedWork, queuedWork, readWork, WORK_CACHE_FILE, workWeights } from './work.ts';
+import { cachedWork, queuedWork, readWork, WORK_CACHE_FILE, workWeightOf, workWeights, type WorkByPriority } from './work.ts';
 
 const { priorities } = DEFAULT_REGISTER;
 
+/** Each session's weights by priority id, as `workWeights` maps them. */
+function byPriority(weights: Readonly<Record<string, Readonly<Record<number, number>>>>): ReadonlyMap<string, WorkByPriority> {
+  return new Map(Object.entries(weights).map(([session, each]) => [session, new Map(Object.entries(each).map(([id, weight]) => [Number(id), weight]))]));
+}
+
 describe('workWeights', () => {
-  it('sums the open and in-progress tasks of each owner, weighed by priority', () => {
+  it('sums the open and in-progress tasks of each owner by priority, weighed by priority', () => {
     const weights = workWeights(
       [
         { owner: 'alpha', status: 'open', priority: 1 },
@@ -34,17 +39,39 @@ describe('workWeights', () => {
       priorities,
     );
     // p1..p5 weigh 5..1; an unlisted priority weighs 1.
-    assert.deepEqual([...weights], [['alpha', 8], ['charlie', 2]]);
+    assert.deepEqual(weights, byPriority({ alpha: { 1: 5, 3: 3 }, charlie: { 5: 1, 9: 1 } }));
+  });
+
+  it('sums two tasks of one priority into one weight', () => {
+    const weights = workWeights(
+      [
+        { owner: 'alpha', status: 'open', priority: 2 },
+        { owner: 'alpha', status: 'in-progress', priority: 2 },
+      ],
+      priorities,
+    );
+    assert.deepEqual(weights, byPriority({ alpha: { 2: 8 } }));
   });
 
   it("weighs teamrig's p0 above the configured top level, whatever levels the config lists", () => {
-    assert.equal(workWeights([{ owner: 'alpha', status: 'open', priority: 0 }], priorities).get('alpha'), 6);
-    assert.equal(workWeights([{ owner: 'alpha', status: 'open', priority: 0 }], [{ id: 2, name: 'b' }]).get('alpha'), 2);
+    assert.deepEqual(workWeights([{ owner: 'alpha', status: 'open', priority: 0 }], priorities), byPriority({ alpha: { 0: 6 } }));
+    assert.deepEqual(workWeights([{ owner: 'alpha', status: 'open', priority: 0 }], [{ id: 2, name: 'b' }]), byPriority({ alpha: { 0: 2 } }));
   });
 
   it('ranks the priorities by id whatever their order in the config', () => {
     const weights = workWeights([{ owner: 'alpha', status: 'open', priority: 2 }], [{ id: 3, name: 'c' }, { id: 1, name: 'a' }, { id: 2, name: 'b' }]);
-    assert.equal(weights.get('alpha'), 2);
+    assert.deepEqual(weights, byPriority({ alpha: { 2: 2 } }));
+  });
+});
+
+describe('workWeightOf', () => {
+  it("weighs a session's work whole, summed over its priorities", () => {
+    assert.equal(workWeightOf(new Map([[1, 5], [3, 3]])), 8);
+  });
+
+  it('is 0 for a session with no queued work', () => {
+    assert.equal(workWeightOf(undefined), 0);
+    assert.equal(workWeightOf(new Map()), 0);
   });
 });
 
@@ -63,7 +90,7 @@ describe('queuedWork', () => {
     );
     assert.deepEqual([...work.urgent], [['alpha', ['T1', 'T2']]]);
     // p0..p5 weigh 6..1.
-    assert.deepEqual([...work.weights], [['alpha', 17], ['charlie', 4]]);
+    assert.deepEqual(work.weights, byPriority({ alpha: { 0: 12, 1: 5 }, charlie: { 2: 4 } }));
   });
 });
 
@@ -84,7 +111,8 @@ describe('cachedWork', () => {
   const PATH = '/kit/teams/app/state/events.jsonl';
   const CACHE = `/kit/teams/app/state/usage/${WORK_CACHE_FILE}`;
   const { tail, snapshot } = layoutPaths(PATH);
-  const BOTH = [['alpha', 5], ['bravo', 3]];
+  const BOTH = [['alpha', new Map([[1, 5]])], ['bravo', new Map([[3, 3]])]];
+  const CHARLIE = ['charlie', new Map([[2, 4]])];
 
   class NoSkills implements SkillCatalog {
     async exists(): Promise<boolean> {
@@ -145,9 +173,9 @@ describe('cachedWork', () => {
     const { files } = await team();
     assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities)).weights], BOTH);
     assert.deepEqual(cacheIn(files), {
-      [VERSION_FIELD]: 2,
+      [VERSION_FIELD]: 3,
       key: { tail: await files.stamp(tail), snapshot: null, priorities: [1, 2, 3, 4, 5] },
-      work: { alpha: 5, bravo: 3 },
+      work: { alpha: { 1: 5 }, bravo: { 3: 3 } },
       urgent: {},
     });
   });
@@ -170,7 +198,7 @@ describe('cachedWork', () => {
     const { files, add } = await team();
     await cachedWork(files, PATH, CACHE, priorities);
     await add('charlie', 2);
-    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities)).weights], [...BOTH, ['charlie', 4]]);
+    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities)).weights], [...BOTH, CHARLIE]);
   });
 
   it('reads the register again after a rotation, which rewrites its tail and its snapshot', async () => {
@@ -187,20 +215,24 @@ describe('cachedWork', () => {
     const { files } = await team();
     await cachedWork(files, PATH, CACHE, priorities);
     const three = [{ id: 1, name: 'high' }, { id: 2, name: 'medium' }, { id: 3, name: 'low' }];
-    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, three)).weights], [['alpha', 3], ['bravo', 1]]);
+    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, three)).weights], [['alpha', new Map([[1, 3]])], ['bravo', new Map([[3, 1]])]]);
   });
 
   /** The cache a call just wrote, its key matching the register, made over by `damage`. */
   type Damage = (cache: JsonRecord, key: JsonRecord) => string;
   const DAMAGES: readonly (readonly [string, Damage])[] = [
     ['damaged', (cache) => JSON.stringify(cache).slice(0, -2)],
-    ['in another format', (cache) => JSON.stringify({ ...cache, [VERSION_FIELD]: 3, work: {} })],
+    ['in another format', (cache) => JSON.stringify({ ...cache, [VERSION_FIELD]: 4, work: {} })],
+    ['in the second format, one weight per session', (cache) => JSON.stringify({ ...cache, [VERSION_FIELD]: 2, work: { alpha: 5, bravo: 3 } })],
     ['in the first format, with no p0 ids', (cache) => JSON.stringify({ [VERSION_FIELD]: 1, key: cache['key'], work: {} })],
     ['without its p0 ids', (cache) => JSON.stringify({ ...cache, urgent: 'none' })],
     ['with p0 ids that are not text', (cache) => JSON.stringify({ ...cache, urgent: { alpha: [5] } })],
     ['without its key', (cache) => JSON.stringify({ ...cache, key: 'none' })],
     ['without its work', (cache) => JSON.stringify({ ...cache, work: 'none' })],
-    ['with a weight that is not a number', (cache) => JSON.stringify({ ...cache, work: { alpha: 'five' } })],
+    ['with one weight for a session, not one per priority', (cache) => JSON.stringify({ ...cache, work: { alpha: 5 } })],
+    ['with a weight that is not a number', (cache) => JSON.stringify({ ...cache, work: { alpha: { 1: 'five' } } })],
+    ['with a priority id that is not a whole number', (cache) => JSON.stringify({ ...cache, work: { alpha: { p1: 5 } } })],
+    ['with a priority id written other than as its number', (cache) => JSON.stringify({ ...cache, work: { alpha: { '01': 5 } } })],
     ['with a tail stamp that is not text', (cache, key) => JSON.stringify({ ...cache, key: { ...key, tail: 7 } })],
     ['with a snapshot stamp that is not text', (cache, key) => JSON.stringify({ ...cache, key: { ...key, snapshot: 7 } })],
     ['with priorities that are not numbers', (cache, key) => JSON.stringify({ ...cache, key: { ...key, priorities: ['p1'] } })],
@@ -211,7 +243,7 @@ describe('cachedWork', () => {
       await cachedWork(files, PATH, CACHE, priorities);
       await files.write(CACHE, damage(cacheIn(files), keyIn(files)));
       assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities)).weights], BOTH);
-      assert.deepEqual(cacheIn(files)['work'], { alpha: 5, bravo: 3 });
+      assert.deepEqual(cacheIn(files)['work'], { alpha: { 1: 5 }, bravo: { 3: 3 } });
     });
   }
 
@@ -238,7 +270,7 @@ describe('cachedWork', () => {
     const { add } = await team(files);
     files.afterNextTailRead(() => add('charlie', 2));
     assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities)).weights], BOTH);
-    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities)).weights], [...BOTH, ['charlie', 4]]);
+    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities)).weights], [...BOTH, CHARLIE]);
   });
 
   it('is empty and caches nothing when the register cannot be read', async () => {

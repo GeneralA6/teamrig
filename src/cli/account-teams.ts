@@ -3,6 +3,7 @@ import { LiftLog } from '../budget/lift.ts';
 import { budgetSplitOf, type BudgetSplit, type TeamsOnAccount } from '../budget/parts.ts';
 import { snapshotDirOf, weekUseAt, type WeekUse } from '../budget/snapshot.ts';
 import type { TeamWeekPaths } from '../budget/team-week.ts';
+import type { WorkByPriority } from '../budget/work.ts';
 import type { BudgetConfig, KitConfig } from '../config/types.ts';
 import { claudeConfigDir, type TeamPaths } from '../core/home.ts';
 import type { CliRuntime } from './runtime.ts';
@@ -36,8 +37,8 @@ export async function otherTeamsOnAccount(runtime: CliRuntime, asking: AskingTea
 export interface AskingRoster extends AskingTeam {
   readonly ids: readonly string[];
   readonly liftsPath: string;
-  /** Each session's queued work (src/budget/work.ts `workWeights` or `cachedWork`). */
-  readonly work: ReadonlyMap<string, number>;
+  /** Each session's queued work by priority (src/budget/work.ts `workWeights` or `cachedWork`). */
+  readonly work: ReadonlyMap<string, WorkByPriority>;
 }
 
 /**

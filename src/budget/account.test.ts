@@ -128,7 +128,7 @@ describe('accountTeamsOf', () => {
       others.map((split) => [split.team, split.ids, split.sessions, [...split.work], [...split.lifted]]),
       [
         ['ui', ['lead', 'front', 'back'], {}, [], []],
-        ['web', ['lead', 'front', 'back'], { front: { share: 2 } }, [['front', 5]], [['back', 40]]],
+        ['web', ['lead', 'front', 'back'], { front: { share: 2 } }, [['front', new Map([[1, 5]])]], [['back', 40]]],
       ],
     );
   });
@@ -154,7 +154,7 @@ describe('accountTeamsOf', () => {
 
     const [only] = await accountTeamsOf(files, new Map([['web', web]]), SCOPE);
 
-    assert.deepEqual([[...(only?.work ?? [])], [...(only?.lifted ?? [])]], [[['front', 5]], []]);
+    assert.deepEqual([[...(only?.work ?? [])], [...(only?.lifted ?? [])]], [[['front', new Map([[1, 5]])]], []]);
   });
 
   it('finds no other team when the kit home holds only the asking one', async () => {
