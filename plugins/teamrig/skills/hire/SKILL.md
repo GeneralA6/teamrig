@@ -22,7 +22,8 @@ started work needs), its cost (a new hire's part of the team's daily budget toda
 or the week's pace end) and the week's spare; no flag is raised while the spare cannot pay. Do what the action says:
 - it names an idle hire: move the slice to it, `teamrig update <task> --owner <hire> --session lead` for each task;
 - else hire for the slice (the steps below, `--scope` the slice's task ids, `--reason "SCALE-OUT"`), then move it;
-- the host has no room (`hire --yes` refuses): move the slice to another area.
+- the host has no room (the preview's `NOTE`): `--yes` hires it home, closed until the idle pass opens it once the host
+  has room; when the slice cannot wait for that, move it to another area.
 
 1. Decide its job in one line (`--scope`), why the team needs it now (`--reason`) and a short id
    (lowercase letters, digits and dashes, not on the team yet).
