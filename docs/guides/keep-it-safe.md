@@ -182,6 +182,10 @@ one per kind, session and day, and names it to the session.
 `secretGuard.redact: false` turns it off
 ([what it does not cover](../../plugins/teamrig/skills/teamrig-guide/hooks.md#after-a-tool-call-the-secret-redactor)).
 
+Turning a secret check off is the owner's call: `teamrig check` warns the lead (SECRET-GUARD-OFF) while
+`secretGuard.secretReads` or `secretGuard.writes` is `allow`, `secretGuard.redact` is `false`, or a Claude Code
+settings file the team's sessions run under sets `disableAllHooks`, which stops every teamrig hook.
+
 A secret typed or pasted into a prompt goes the same way: the prompt hook stops a prompt that holds a token,
 credentials in a URL, an Authorization or API key header, a quoted literal given to a secret-like name or a
 `register.secretPatterns` match before Claude reads it, keeps it out of the transcript and removes the value from
