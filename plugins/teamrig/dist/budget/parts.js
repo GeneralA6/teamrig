@@ -193,6 +193,22 @@ export function liftPlaceOf(split, id, group) {
     return { parent: path.at(-2), liftedPct };
 }
 /**
+ * What a lift of `partPct` of its parent's daily budget comes to now, in percent of the week (T1637): that part of the
+ * budget of `parent` (`LiftPlace.parent`: a sub-lead's group, or for undefined the team's part, `teamShareOf`, of the
+ * account's day `allowancePct` beside the `others`), as `partAmong` gives a lifted node. A cross-team lift is a part of
+ * the lifting team's, so of its `split` with no `parent`. Moves with the budget it is a part of; undefined while the
+ * account's day is unknown, or for a group the tree does not hold.
+ */
+export function liftWeekPctOf(allowancePct, parent, partPct, split, others = []) {
+    if (allowancePct === undefined) {
+        return undefined;
+    }
+    const tree = teamTreeOf(split);
+    const path = parent === undefined ? undefined : tree.groupPaths.get(parent);
+    const parentPct = parent === undefined ? teamShareOf(allowancePct, split, others) : path === undefined ? undefined : budgetAt(allowancePct, path, split, tree, others);
+    return parentPct === undefined ? undefined : (parentPct * partPct) / 100;
+}
+/**
  * The place (`LiftPlace`) of a cross-team lift of the session at `address` (`<team>/<id>`): a part of the team's
  * budget, beside its other lifts at the top of its tree, cross-team ones included; the one `address` has is not counted.
  */
