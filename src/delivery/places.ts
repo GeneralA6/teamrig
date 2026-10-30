@@ -14,7 +14,7 @@ export const GATE_HOLDS_DIR = 'gate-holds';
 /** The merges log's file name in `delivery.dir`. */
 export const MERGES_FILE = 'merges.jsonl';
 
-/** The files the coordinator keeps. */
+/** The files the delivery commands keep. */
 export interface DeliveryPlaces {
   readonly ledger: string;
   readonly ledgerMd: string;
@@ -37,13 +37,13 @@ export function teamPlace(paths: Pick<TeamPaths, 'home'>, path: string): string 
   return isAbsolute(path) ? path : join(paths.home, path);
 }
 
-/** The coordinator's folder: `delivery.dir`, a relative one in the team's folder; unset, `<state>/deploys`. */
+/** The delivery folder: `delivery.dir`, a relative one in the team's folder; unset, `<state>/deploys`. */
 export function coordinatorDirOf(config: Pick<DeliveryConfig, 'dir'>, paths: Pick<TeamPaths, 'home' | 'state'>): string {
   return config.dir === undefined ? join(paths.state, 'deploys') : teamPlace(paths, config.dir);
 }
 
 /**
- * Where the coordinator's files are: the ledgers, the deploy freezes and their lock, the pending merges, the review and
+ * Where the delivery files are: the ledgers, the deploy freezes and their lock, the pending merges, the review and
  * gate holds and the merges log in `delivery.dir` (default `<state>/deploys`); the host lock at
  * `delivery.queue.lockPath` (default the kit home's, one for the host). A relative path is in the team's folder.
  */

@@ -96,7 +96,7 @@ describe('teamrig permissions trim', () => {
     assert.ok(result.stdout.every((line) => !line.includes('hush-42')));
   });
 
-  it("checks the settings of each repository the coordinator merges into, and keeps the team's own keep-list", async () => {
+  it("checks the settings of each repository teamrig merges into, and keeps the team's own keep-list", async () => {
     const repo = join('/', 'work', 'api');
     const kit = new CliHarness({ sessions: ['lead'], roles: { lead: 'lead' }, delivery: { repos: { api: { mainCheckout: repo } } }, permissions: { keepAllow: ['Bash'] } });
     await kit.files.write(join(repo, '.claude', 'settings.local.json'), formatConfig({ permissions: { allow: ['Bash', 'Edit'] } }));

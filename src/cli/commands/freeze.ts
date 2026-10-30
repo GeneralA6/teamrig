@@ -11,7 +11,7 @@ import { callerOf, listOf } from '../inputs.ts';
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 
-/** What a freeze command works on: the session, the coordinator's config and places, and the freezes' ports. */
+/** What a freeze command works on: the session, the delivery config and places, and the freezes' ports. */
 interface FreezeContext {
   readonly session: string;
   readonly delivery: DeliveryConfig;

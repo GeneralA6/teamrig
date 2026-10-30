@@ -59,7 +59,7 @@ describe('freezeRefusal', () => {
 });
 
 describe('addFreeze', () => {
-  it('adds the freeze from now, drops ended ones, and writes both files in the coordinator’s format', async () => {
+  it('adds the freeze from now, drops ended ones, and writes both files in the format a team’s own deploy tool reads too', async () => {
     const { files, ports } = world({ [PLACES.freezes]: JSON.stringify(HELD) });
     const outcome = await addFreeze(ports, PLACES, RULES, REQUEST);
     const freeze = { session: 'po', targets: ['api', 'discovery'], metric: 'p95 latency', why: 'measuring the new cache', from: '2030-01-08T10:00:00.000Z', until: '2030-01-08T10:45:00.000Z' };

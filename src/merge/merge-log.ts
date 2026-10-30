@@ -6,7 +6,7 @@ import { isSelfMergeGate, type SelfMergeGate } from './self-merge.ts';
 
 /**
  * The team's append-only log of what `teamrig merge` merged under `pushGuard.pushToProtected: gated` (T800 §2.1,
- * T858), `merges.jsonl` in the coordinator's folder, oldest first: one record a merged change, whether every gate held
+ * T858), `merges.jsonl` in the delivery folder, oldest first: one record a merged change, whether every gate held
  * or a leader approved the gates it missed, so the meeting digest and an audit read what merged with no click.
  */
 

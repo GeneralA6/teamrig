@@ -18,7 +18,7 @@ export function isRole(text: string): text is Role {
 
 /**
  * The session holding a role, if the team assigns it: a bare id is a session of `team` itself, and `<team>/<id>` one of
- * a team above it (T1143), as a child team with no reviewer or coordinator of its own names its parent's.
+ * a team above it (T1143), as a child team with no reviewer or delivery owner of its own names its parent's.
  */
 export function roleHolderOf(roles: RolesConfig, role: Role, team: string): SessionAddress | undefined {
   const holder = roles[role];

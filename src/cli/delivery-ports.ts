@@ -15,7 +15,7 @@ export type Say = (text: string) => void;
 
 /**
  * Progress lines, each stamped with the time on the team's clock to the second (`2030-01-08 12:00:05 IST running: …`),
- * since a coordinator command mostly runs in the background with its output in a log.
+ * since a delivery command mostly runs in the background with its output in a log.
  */
 export function logLineOf(runtime: Pick<CliRuntime, 'out' | 'clock'>, zone: TimeZone): Say {
   return (text) => runtime.out.stdout(`${zone.second(new Date(runtime.clock.now()))} ${text}`);

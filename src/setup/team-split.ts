@@ -44,7 +44,7 @@ interface SplitScope {
 type Rework = (block: JsonRecord | undefined, scope: SplitScope) => JsonRecord | undefined;
 
 /**
- * The blocks the child takes changed: one coordinator per host, so its folder, host lock and main checkouts stay the
+ * The blocks the child takes changed: one delivery flow per host, so its folder, host lock and main checkouts stay the
  * parent's and two queued steps never overlap; the budget and the idle pass hold only the moved sessions' entries, and the
  * budget none of the keys of the account's week, which the child reads from the parent.
  */
@@ -244,8 +244,9 @@ function placedAt(record: JsonRecord, key: string, parent: SplitParent): JsonRec
 }
 
 /**
- * The parent's coordinator, written even when the parent leaves it to its defaults: the child keeps its ledger, deploy
- * freezes and pending merges in the parent's folder, and a relative host lock or main checkout is made absolute to it.
+ * The parent's delivery config, written even when the parent leaves it to its defaults: the child keeps its ledger,
+ * deploy freezes and pending merges in the parent's folder, and a relative host lock or main checkout is made
+ * absolute to it.
  */
 function sharedCoordinatorOf(block: JsonRecord | undefined, { parent }: SplitScope): JsonRecord {
   const raw = block ?? {};
