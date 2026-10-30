@@ -83,12 +83,23 @@ function fileLine(file: LoadedFile, show: (path: string) => string): string {
   return `CONTEXT ${file.kind} ${show(file.path)}: ${sized(file.text.length)}${memory}`;
 }
 
-function listingLine(listing: Listing): string {
+/** How a listing's CONTEXT line names it, its entries, its folders and the entries summing them misses. */
+interface ListingNames {
+  readonly kind: string;
+  readonly entries: string;
+  readonly folders: string;
+  readonly missed: string;
+}
+
+const SKILL_NAMES: ListingNames = { kind: 'skills', entries: 'skill(s)', folders: 'skill folders', missed: "plugins' skills" };
+const AGENT_NAMES: ListingNames = { kind: 'agents', entries: 'agent type(s)', folders: 'agent folders', missed: "built-in and plugins' agent types" };
+
+function listingLine(names: ListingNames, listing: Listing): string {
   const from =
     listing.sources === undefined
-      ? "summed from the user's and the project's skill folders (plugins' skills not counted: no transcript of this project yet)"
+      ? `summed from the user's and the project's ${names.folders} (${names.missed} not counted: no transcript of this project yet)`
       : `as this project's newest transcript lists them: ${listing.sources.map((source) => `${source.name} ${source.count} (${formatCount(source.chars)} chars)`).join(', ')}`;
-  return `CONTEXT skills ${listing.count} skill(s) listed: ${sized(listing.chars)}; ${from}`;
+  return `CONTEXT ${names.kind} ${listing.count} ${names.entries} listed: ${sized(listing.chars)}; ${from}`;
 }
 
 function contextFindings(scan: SetupScan, unused: ReadonlySet<ListedSkill>, show: (path: string) => string): Finding[] {
@@ -159,15 +170,16 @@ function settingsLines(scan: SetupScan, at: ScanReportContext, show: (path: stri
 export function scanReport(scan: SetupScan, at: ScanReportContext): string[] {
   const show = (path: string): string => homeRelative(path, at.userHome);
   const unused = unusedSection(scan, at, show);
-  const context = contextFindings(scan, new Set(unused.skills), show);
+  const context = contextFindings(scan, unused.skills, show);
   const duplicates = duplicateFindings(scan, at, show);
-  const loaded = scan.context.files.reduce((sum, file) => sum + file.text.length, 0) + scan.listing.chars;
+  const loaded = scan.context.files.reduce((sum, file) => sum + file.text.length, 0) + scan.listing.chars + scan.agentListing.chars;
   const savings = [...context, ...duplicates, ...unused.findings].reduce((sum, finding) => sum + finding.saves, 0);
   return [
     `SCAN ${show(at.project)} (${at.team === undefined ? 'no team yet' : `team ${at.team}`})`,
     backupLine(at.backup, at.now),
     ...scan.context.files.map((file) => fileLine(file, show)),
-    listingLine(scan.listing),
+    listingLine(SKILL_NAMES, scan.listing),
+    listingLine(AGENT_NAMES, scan.agentListing),
     `TOTAL ${sized(loaded)} at every session start`,
     ...findingLines('C', context),
     duplicates.length === 0 ? 'DUPLICATE none' : `DUPLICATE ${duplicates.length} line(s) or sentence(s) repeat one loaded before`,

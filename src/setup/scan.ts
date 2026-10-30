@@ -7,7 +7,7 @@ import { readSessionLists, type SessionListKind, type SessionLists, type Session
 import type { KeepList } from '../permissions/allow-rules.ts';
 import type { SettingsFile } from '../permissions/settings-scope.ts';
 import { scanRules, type Candidate } from '../rules/scan.ts';
-import { readSessionContext, type Listed, type ListedSkill, type SessionContext, type SessionContextLocations } from './scan-context.ts';
+import { readSessionContext, type Listed, type SessionContext, type SessionContextLocations } from './scan-context.ts';
 import { findDuplicates, type Duplicate } from './scan-duplicates.ts';
 import { scanSettings, type SettingsFinding } from './scan-settings.ts';
 import { readTranscriptUse, type TranscriptUse } from './scan-usage.ts';
@@ -52,6 +52,7 @@ export interface SetupScanInput extends SessionContextLocations {
 export interface SetupScan {
   readonly context: SessionContext;
   readonly listing: Listing;
+  readonly agentListing: Listing;
   readonly duplicates: readonly Duplicate[];
   /** The rule lines whose words touch a core rule's topic and no verdict clears. */
   readonly overrides: readonly Candidate[];
@@ -59,14 +60,14 @@ export interface SetupScan {
   readonly recorded: number;
   readonly settings: readonly SettingsFinding[];
   readonly usage: TranscriptUse;
-  /** The paths of the listed skills whose file changed since `usage.since`: too new for the transcripts to show unused. */
+  /** The paths of the listed skills and agent types whose file changed since `usage.since`: too new for the transcripts to show unused. */
   readonly recent: ReadonlySet<string>;
   /** Claude Code's own count of each skill's uses on this machine, or why it was not read. */
   readonly doctor: SkillDoctorRead;
 }
 
-async function recentSkills(files: Files, skills: readonly ListedSkill[], since: number): Promise<ReadonlySet<string>> {
-  const changed = await Promise.all(skills.map(async (skill) => ({ path: skill.path, at: await files.modifiedAt(skill.path) })));
+async function changedSince(files: Files, listed: readonly Listed[], since: number): Promise<ReadonlySet<string>> {
+  const changed = await Promise.all(listed.map(async (entry) => ({ path: entry.path, at: await files.modifiedAt(entry.path) })));
   return new Set(changed.filter(({ at }) => at !== undefined && at >= since).map(({ path }) => path));
 }
 
@@ -84,10 +85,11 @@ function listingOf(recorded: SessionLists | undefined, kind: ListingKind, entrie
 }
 
 /**
- * What the user's Claude Code setup costs every turn in `at.project`, and what to slim: the files and skill listing
- * each session loads, the lines they repeat, the rule lines that may override a core rule, the settings findings and
- * the skills no transcript used since `at.since` (or, past `at.maxBytes` of transcripts, in the newest ones read), and
- * which skills changed since the read window starts, with Claude Code's `/skill-doctor` run beside the transcript read.
+ * What the user's Claude Code setup costs every turn in `at.project`, and what to slim: the files and the skill and
+ * agent type listings each session loads, the lines they repeat, the rule lines that may override a core rule, the
+ * settings findings, where each skill and agent type was used since `at.since` (or, past `at.maxBytes` of transcripts,
+ * in the newest ones read), and which of them changed since the read window starts, with Claude Code's
+ * `/skill-doctor` run beside the transcript read.
  * It only reads.
  */
 export async function scanSetup(ports: SetupScanPorts, at: SetupScanInput): Promise<SetupScan> {
@@ -101,12 +103,13 @@ export async function scanSetup(ports: SetupScanPorts, at: SetupScanInput): Prom
   return {
     context,
     listing: listingOf(recorded, 'skills', context.skills),
+    agentListing: listingOf(recorded, 'agents', context.agents),
     duplicates: findDuplicates(context.files),
     overrides: rules.candidates.filter((candidate) => !at.cleared(candidate)),
     recorded: rules.recorded.length,
     settings: await scanSettings(ports.files, at.claudeDir, at.settings, at.keep, at.secrets),
     usage,
-    recent: await recentSkills(ports.files, context.skills, usage.since),
+    recent: await changedSince(ports.files, [...context.skills, ...context.agents], usage.since),
     doctor,
   };
 }

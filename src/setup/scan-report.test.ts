@@ -4,7 +4,7 @@ import { homeRelative } from '../core/paths.ts';
 import { SecretScanner } from '../core/secrets.ts';
 import type { PlaceKind } from '../rules/places.ts';
 import type { Candidate } from '../rules/scan.ts';
-import { listingLineOf, type ListedSkill } from './scan-context.ts';
+import { agentLineOf, listingLineOf, type ListedAgent, type ListedSkill } from './scan-context.ts';
 import { scanReport, type ScanReportContext } from './scan-report.ts';
 import type { SettingsFinding } from './scan-settings.ts';
 import type { UsedIn } from './scan-usage.ts';
@@ -31,9 +31,18 @@ function skill(name: string, description: string): ListedSkill {
   return { name, path: `/u/.claude/skills/${name}/SKILL.md`, description, line: listingLineOf(name, description), scope: 'user' };
 }
 
+function agent(name: string, description: string): ListedAgent {
+  return { name, path: `/u/.claude/agents/${name}.md`, description, line: agentLineOf(name, description, undefined), scope: 'user' };
+}
+
 /** Names the transcripts show in use, in sessions whose start folder they did not say. */
 function usedIn(...names: string[]): UsedIn {
   return new Map(names.map((name) => [name, new Set<string>()]));
+}
+
+/** Names the transcripts show in use, each with the folders its sessions started in. */
+function usedAt(uses: Readonly<Record<string, readonly string[]>>): UsedIn {
+  return new Map(Object.entries(uses).map(([name, folders]) => [name, new Set(folders)]));
 }
 
 function candidate(kind: PlaceKind, path: string, line: number): Candidate {
@@ -42,6 +51,10 @@ function candidate(kind: PlaceKind, path: string, line: number): Candidate {
 
 const ALPHA = skill('alpha', 'a'.repeat(300));
 const BETA = skill('beta', 'b'.repeat(300));
+const SCOUT = agent('scout', 's'.repeat(100));
+const REVIEWER = agent('reviewer', 'r'.repeat(100));
+const AGENTS_LINE =
+  "CONTEXT agents 0 agent type(s) listed: 0 chars (~0 tokens/turn); summed from the user's and the project's agent folders (built-in and plugins' agent types not counted: no transcript of this project yet)";
 const WIDE: SettingsFinding = { kind: 'wide-allow', path: USER_SETTINGS, what: '2 allow rule(s) approve a whole tool', copies: 0 };
 
 const SCAN: SetupScan = {
@@ -55,6 +68,7 @@ const SCAN: SetupScan = {
     agents: [],
   },
   listing: { count: 2, chars: ALPHA.line.length + BETA.line.length, sources: undefined },
+  agentListing: { count: 0, chars: 0, sources: undefined },
   duplicates: [{ path: CLAUDE_MD, line: 3, text: RULE, firstPath: TEAM_RULES, firstLine: 1 }],
   overrides: [candidate('claude-md', CLAUDE_MD, 4), candidate('rules', PROJECT_RULE, 2), candidate('claude-md', CLAUDE_MD, 9)],
   recorded: 1,
@@ -82,6 +96,7 @@ describe('scanReport', () => {
       'CONTEXT memory ~/.claude/projects/app/memory/MEMORY.md: 400 chars (~100 tokens/turn), the first 200 lines Claude Code loads',
       `CONTEXT team-rules ${shown(TEAM_RULES)}: 100 chars (~25 tokens/turn)`,
       "CONTEXT skills 2 skill(s) listed: 619 chars (~155 tokens/turn); summed from the user's and the project's skill folders (plugins' skills not counted: no transcript of this project yet)",
+      AGENTS_LINE,
       'TOTAL 8,119 chars (~2,030 tokens/turn) at every session start',
       'C1 large-file ~/.claude/CLAUDE.md: 7,000 chars, over the 6,000 an always-loaded file should keep to (~250 tokens/turn)',
       "C2 long-description ~/.claude/skills/alpha/SKILL.md: skill alpha's description is 300 chars, over 250 (~13 tokens/turn)",
@@ -121,6 +136,7 @@ describe('scanReport', () => {
       `SCAN ${shown(AT.project)} (no team yet)`,
       'BACKUP 20300108T080000Z, made 2 h ago: teamrig setup restore 20300108T080000Z previews putting the setup back',
       "CONTEXT skills 7 skill(s) listed: 1,200 chars (~300 tokens/turn); as this project's newest transcript lists them: skills folders and built-in 5 (1,000 chars), tr 2 (200 chars)",
+      AGENTS_LINE,
       'TOTAL 1,200 chars (~300 tokens/turn) at every session start',
       "C1 long-description ~/.claude/skills/beta/SKILL.md: skill beta's description is 300 chars, over 250 (~13 tokens/turn)",
       'DUPLICATE 1 line(s) or sentence(s) repeat one loaded before',
@@ -207,6 +223,44 @@ describe('scanReport', () => {
     assert.deepEqual(unusedLines(none), ['UNUSED not checked: no transcript on this machine in 30 day(s)', 'SAVINGS ~291 tokens/turn if every CONTEXT, DUPLICATE and UNUSED finding is applied']);
     const skipped: SetupScan = { ...SCAN, doctor: { kind: 'skipped', why: 'Claude Code is not on PATH' } };
     assert.equal(unusedLines(skipped)[0], 'UNUSED 1 of 2 skill(s) not used in 30 day(s) (read 3 transcript(s), 1.5 MB); /skill-doctor skipped: Claude Code is not on PATH');
+  });
+
+  it('names the agent types no Agent call ran, and judges none whose file changed inside the window', () => {
+    const scan: SetupScan = { ...SCAN, context: { ...SCAN.context, agents: [SCOUT, REVIEWER] }, usage: { ...SCAN.usage, agents: usedIn('scout') } };
+    assert.deepEqual(unusedLines(scan), [
+      'UNUSED 1 of 2 skill(s) and 1 of 2 agent type(s) not used in 30 day(s) (read 3 transcript(s), 1.5 MB)',
+      'U1 unused-skill ~/.claude/skills/beta/SKILL.md: no Skill call or /beta in 30 day(s) (~78 tokens/turn)',
+      'U2 unused-agent ~/.claude/agents/reviewer.md: no Agent call ran reviewer in 30 day(s) (~31 tokens/turn)',
+      'SAVINGS ~387 tokens/turn if every CONTEXT, DUPLICATE and UNUSED finding is applied',
+    ]);
+    assert.equal(
+      unusedLines({ ...scan, recent: new Set([REVIEWER.path]) })[0],
+      'UNUSED 1 of 2 skill(s) and 0 of 2 agent type(s) not used in 30 day(s) (read 3 transcript(s), 1.5 MB); 1 more changed in that time, too new to judge',
+    );
+  });
+
+  it("moves a user-level skill or agent type used only in other projects to theirs, once a transcript read started in this one", () => {
+    const gamma: ListedSkill = { ...skill('gamma', 'Gamma.'), path: '/work/app/.claude/skills/gamma/SKILL.md', scope: 'project' };
+    const usage: SetupScan['usage'] = {
+      ...SCAN.usage,
+      skills: usedAt({ alpha: [], beta: ['/u/src/two', '/u/src/one/pkg', '/u/src/one', '/u/src/three'], gamma: ['/u/src/one'] }),
+      agents: usedAt({ scout: ['/u/src/two'] }),
+      folders: new Map([['/work/app/web', 1], ['/u/src/one', 1], ['/u/src/two', 1]]),
+    };
+    const scan: SetupScan = { ...SCAN, context: { ...SCAN.context, skills: [ALPHA, BETA, gamma], agents: [SCOUT] }, usage };
+    const lines = scanReport(scan, AT);
+    assert.deepEqual(unusedLines(scan), [
+      'UNUSED 0 of 3 skill(s) and 0 of 1 agent type(s) not used in 30 day(s) (read 3 transcript(s), 1.5 MB); 2 user-level one(s) used only in other projects',
+      'U1 other-project-skill ~/.claude/skills/beta/SKILL.md: used only in other projects in 30 day(s): ~/src/one, ~/src/three and 1 more; move it to their .claude/skills (~78 tokens/turn)',
+      'U2 other-project-agent ~/.claude/agents/scout.md: used only in other projects in 30 day(s): ~/src/two; move it to their .claude/agents (~31 tokens/turn)',
+      'SAVINGS ~387 tokens/turn if every CONTEXT, DUPLICATE and UNUSED finding is applied',
+    ]);
+    assert.equal(lines.filter((line) => /^C\d long-description/.test(line)).length, 1, 'a moved skill is not counted again for its long description');
+    const notHere: SetupScan = { ...scan, usage: { ...usage, folders: new Map([['/u/src/one', 3]]) } };
+    assert.deepEqual(unusedLines(notHere), [
+      'UNUSED 0 of 3 skill(s) and 0 of 1 agent type(s) not used in 30 day(s) (read 3 transcript(s), 1.5 MB); 2 user-level one(s) used only in other projects, not judged: no transcript read started in this project',
+      'SAVINGS ~291 tokens/turn if every CONTEXT, DUPLICATE and UNUSED finding is applied',
+    ]);
   });
 
   it('tells how old the newest backup is, from under a minute to days', () => {
