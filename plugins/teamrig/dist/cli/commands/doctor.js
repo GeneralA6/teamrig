@@ -6,6 +6,7 @@ import { readContextFiles } from "../../doctor/context-files.js";
 import { doctorFindings, formatFinding } from "../../doctor/doctor.js";
 import { readSessionLists } from "../../doctor/session-lists.js";
 import { claudeSettingsFiles, readSettingsEnv } from "../../doctor/settings-env.js";
+import { readShellHistory } from "../../doctor/shell-history.js";
 import { HiringLog } from "../../hiring/log.js";
 import { retiredSessions } from "../../hiring/record.js";
 import { inboxStatus } from "../../inbox/inbox.js";
@@ -51,8 +52,10 @@ async function configuredProjects(probe, config, ids) {
  * `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` in doctor's own environment or in the `env` block of the user's or the
  * project's Claude Code settings, a session whose `launch` names a model but no effort, and a `team.project` or
  * `launch.<id>.project` that is no folder on this machine; and the local allow rules off `permissions.keepAllow` that
- * approve a whole tool or program or hold a credential (src/cli/allow-scope.ts). It reads only and
- * exits 0 like `check`: a finding is advice, and each line says the fix. `check` prints the context and allow findings too.
+ * approve a whole tool or program or hold a credential (src/cli/allow-scope.ts); and the user's PowerShell history
+ * file when no PowerShell profile keeps credentials out of it (src/doctor/shell-history.ts; the history is probed, never
+ * read). It reads only and exits 0 like `check`: a finding is advice, and each line says the fix. `check` prints the
+ * context and allow findings too.
  */
 export async function doctor(args, runtime) {
     noPositionals(args);
@@ -81,6 +84,7 @@ export async function doctor(args, runtime) {
         wideAllow: await readWideAllow(runtime, { paths, config, project }),
         launches: roster.ids.map((id) => ({ id, launch: launchOf(config, id) })),
         projects: await configuredProjects(runtime.probe, config, roster.ids),
+        shellHistory: await readShellHistory(runtime.files, runtime.probe, { env: runtime.env, userHome: runtime.userHome, platform: runtime.platform }),
         now: new Date(runtime.clock.now()),
         zone: teamZone(config, runtime),
         command: KIT_NAME,
