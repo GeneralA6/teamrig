@@ -10,7 +10,7 @@ import { scanRules, type Candidate } from '../rules/scan.ts';
 import { readSessionContext, type ListedSkill, type SessionContext, type SessionContextLocations } from './scan-context.ts';
 import { findDuplicates, type Duplicate } from './scan-duplicates.ts';
 import { scanSettings, type SettingsFinding } from './scan-settings.ts';
-import { readSkillUse, type SkillUse } from './scan-usage.ts';
+import { readTranscriptUse, type TranscriptUse } from './scan-usage.ts';
 import type { SkillDoctor, SkillDoctorRead } from './skill-doctor.ts';
 
 /**
@@ -58,7 +58,7 @@ export interface SetupScan {
   /** How many conflicts the team recorded. */
   readonly recorded: number;
   readonly settings: readonly SettingsFinding[];
-  readonly usage: SkillUse;
+  readonly usage: TranscriptUse;
   /** The paths of the listed skills whose file changed since `usage.since`: too new for the transcripts to show unused. */
   readonly recent: ReadonlySet<string>;
   /** Claude Code's own count of each skill's uses on this machine, or why it was not read. */
@@ -91,7 +91,7 @@ export async function scanSetup(ports: SetupScanPorts, at: SetupScanInput): Prom
   const context = await readSessionContext(ports.files, ports.probe, at);
   const rules = await scanRules(ports.files, ports.probe, at, at.conflicts);
   const [usage, doctor] = await Promise.all([
-    readSkillUse(ports.transcripts, at.projectsDir, { since: at.since, maxBytes: at.maxBytes }),
+    readTranscriptUse(ports.transcripts, at.projectsDir, { since: at.since, maxBytes: at.maxBytes }),
     ports.doctor.read(at.project),
   ]);
   return {

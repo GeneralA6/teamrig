@@ -29,6 +29,8 @@ export interface FixtureReply {
   readonly requestId?: string;
   readonly at?: string;
   readonly sidechain?: boolean;
+  /** Written as the line's `cwd`, the folder the session works in. */
+  readonly cwd?: string;
   readonly usage: FixtureUsage;
   readonly tools?: readonly FixtureTool[];
 }
@@ -76,6 +78,7 @@ export function replyLine(reply: FixtureReply): string {
     definedEntries({
       parentUuid: null,
       isSidechain: reply.sidechain ?? false,
+      cwd: reply.cwd,
       type: 'assistant',
       message: definedEntries({ id: reply.id, role: 'assistant', content: tools, usage: usageJson(reply.usage) }),
       requestId: reply.requestId,

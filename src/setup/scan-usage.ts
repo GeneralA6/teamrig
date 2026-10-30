@@ -1,11 +1,21 @@
 import { readLines } from '../budget/cursor.ts';
 import { discoverTranscripts, type TranscriptSource } from '../budget/discover.ts';
-import { parseTranscriptLine, SKILL_TOOL } from '../budget/line.ts';
+import { AGENT_TOOL, parseTranscriptLine, SKILL_TOOL } from '../budget/line.ts';
+import { stringField } from '../core/guards.ts';
+import { parseObject } from '../core/jsonl.ts';
+import { isAtOrBelow } from '../core/paths.ts';
 
-/** The skills the transcripts show in use, and how much was read to find them. */
-export interface SkillUse {
+/** Each name in use, with the folders the sessions that used it started in (empty when no transcript said). */
+export type UsedIn = ReadonlyMap<string, ReadonlySet<string>>;
+
+/** The skills and agent types the transcripts show in use, where the sessions started, and how much was read. */
+export interface TranscriptUse {
   /** Each skill a `Skill` call loaded or a `/<name>` command ran, by name as called (`plugin:name` for a plugin's). */
-  readonly used: ReadonlySet<string>;
+  readonly skills: UsedIn;
+  /** Each agent type an `Agent` call ran. */
+  readonly agents: UsedIn;
+  /** Each folder a session read started in (a transcript's first `cwd`), and how many transcripts started there. */
+  readonly folders: ReadonlyMap<string, number>;
   readonly transcripts: number;
   readonly bytes: number;
   /** The older transcripts of the window left unread once the bound was reached. */
@@ -17,6 +27,14 @@ export interface SkillUse {
   readonly since: number;
 }
 
+/** What the transcripts of one project's sessions show in use. */
+export interface ProjectUse {
+  /** The transcripts read that started in the project's folder or below it. */
+  readonly transcripts: number;
+  readonly skills: ReadonlySet<string>;
+  readonly agents: ReadonlySet<string>;
+}
+
 /** Which transcripts to read: those changed since `since`, newest first, until `maxBytes` are read. */
 export interface UsageWindow {
   readonly since: number;
@@ -26,42 +44,74 @@ export interface UsageWindow {
 }
 
 /** The bytes read at a time: a transcript runs to hundreds of MB, and is never held whole. */
-export const SKILL_USE_CHUNK_BYTES = 8 * 1024 * 1024;
+export const USE_CHUNK_BYTES = 8 * 1024 * 1024;
 
 interface DatedTranscript {
   readonly path: string;
   readonly changedAt: number;
 }
 
-/** A cheap test before parsing: only a line naming the Skill tool or a slash command can show a skill in use. */
-function mayNameSkill(line: string): boolean {
-  return line.includes(`"${SKILL_TOOL}"`) || line.includes('<command-name>');
+/** What one transcript shows: its first `cwd`, and the skills and agent types it used. */
+interface OneTranscript {
+  cwd: string | undefined;
+  readonly skills: Set<string>;
+  readonly agents: Set<string>;
 }
 
-function addUses(line: string, used: Set<string>): void {
+/** A cheap test before parsing: only a line naming the Skill or Agent tool or a slash command can show a use. */
+function mayNameUse(line: string): boolean {
+  return line.includes(`"${SKILL_TOOL}"`) || line.includes(`"${AGENT_TOOL}"`) || line.includes('<command-name>');
+}
+
+function addCwd(line: string, one: OneTranscript): void {
+  if (one.cwd === undefined && line.includes('"cwd"')) {
+    const entry = parseObject(line);
+    one.cwd = entry === undefined ? undefined : stringField(entry, 'cwd');
+  }
+}
+
+function addUses(line: string, one: OneTranscript): void {
   const parsed = parseTranscriptLine(line);
   if (parsed?.kind === 'call') {
     for (const tool of parsed.tools) {
       if (tool.skill !== undefined) {
-        used.add(tool.skill);
+        one.skills.add(tool.skill);
+      }
+      if (tool.agent !== undefined) {
+        one.agents.add(tool.agent);
       }
     }
   } else if (parsed?.kind === 'prompt') {
-    parsed.commands.forEach((command) => used.add(command));
+    parsed.commands.forEach((command) => one.skills.add(command));
   }
 }
 
-async function readUses(source: TranscriptSource, path: string, used: Set<string>, chunkBytes: number): Promise<number> {
+async function readOne(source: TranscriptSource, path: string, one: OneTranscript, chunkBytes: number): Promise<number> {
   const size = (await source.size(path)) ?? 0;
   for (let offset = 0; offset < size; ) {
     const batch = await readLines(source, path, offset, size, chunkBytes);
-    batch.lines.filter(mayNameSkill).forEach((line) => addUses(line, used));
+    for (const line of batch.lines) {
+      addCwd(line, one);
+      if (mayNameUse(line)) {
+        addUses(line, one);
+      }
+    }
     if (batch.end === offset) {
       break;
     }
     offset = batch.end;
   }
   return size;
+}
+
+function addUsedIn(usedIn: Map<string, Set<string>>, names: ReadonlySet<string>, cwd: string | undefined): void {
+  for (const name of names) {
+    const folders = usedIn.get(name) ?? new Set<string>();
+    if (cwd !== undefined) {
+      folders.add(cwd);
+    }
+    usedIn.set(name, folders);
+  }
 }
 
 /** The transcripts (sessions' and their subagents') changed since `since`, newest first, ties by path. */
@@ -72,12 +122,16 @@ async function newestFirst(source: TranscriptSource, projectsDir: string, since:
 }
 
 /**
- * The skills used in the transcripts (sessions' and their subagents') written since `window.since` in any project on
- * this machine, read newest first until `window.maxBytes`: a month of a busy machine's transcripts runs to gigabytes.
- * It reads each transcript `chunkBytes` at a time and parses only the lines that can name a skill.
+ * The skills and agent types used in the transcripts (sessions' and their subagents') written since `window.since` in
+ * any project on this machine, read newest first until `window.maxBytes`: a month of a busy machine's transcripts runs
+ * to gigabytes. It reads each transcript `chunkBytes` at a time and parses only the lines that can name a use, and
+ * the first one carrying a `cwd`, the folder the session started in: a project folder's name in `projectsDir` is a
+ * lossy slug (`a/b-c` and `a-b/c` share one), so it cannot say where.
  */
-export async function readSkillUse(source: TranscriptSource, projectsDir: string, window: UsageWindow): Promise<SkillUse> {
-  const used = new Set<string>();
+export async function readTranscriptUse(source: TranscriptSource, projectsDir: string, window: UsageWindow): Promise<TranscriptUse> {
+  const skills = new Map<string, Set<string>>();
+  const agents = new Map<string, Set<string>>();
+  const folders = new Map<string, number>();
   const dated = await newestFirst(source, projectsDir, window.since);
   let transcripts = 0;
   let bytes = 0;
@@ -85,10 +139,28 @@ export async function readSkillUse(source: TranscriptSource, projectsDir: string
     if (bytes >= window.maxBytes) {
       break;
     }
-    bytes += await readUses(source, path, used, window.chunkBytes ?? SKILL_USE_CHUNK_BYTES);
+    const one: OneTranscript = { cwd: undefined, skills: new Set(), agents: new Set() };
+    bytes += await readOne(source, path, one, window.chunkBytes ?? USE_CHUNK_BYTES);
     transcripts += 1;
+    addUsedIn(skills, one.skills, one.cwd);
+    addUsedIn(agents, one.agents, one.cwd);
+    if (one.cwd !== undefined) {
+      folders.set(one.cwd, (folders.get(one.cwd) ?? 0) + 1);
+    }
   }
   const unread = dated.length - transcripts;
   const oldestRead = dated[transcripts - 1];
-  return { used, transcripts, bytes, unread, since: unread === 0 || oldestRead === undefined ? window.since : oldestRead.changedAt };
+  const since = unread === 0 || oldestRead === undefined ? window.since : oldestRead.changedAt;
+  return { skills, agents, folders, transcripts, bytes, unread, since };
+}
+
+function usedBelow(usedIn: UsedIn, project: string, platform: NodeJS.Platform): Set<string> {
+  const names = [...usedIn].filter(([, folders]) => [...folders].some((folder) => isAtOrBelow(folder, project, platform)));
+  return new Set(names.map(([name]) => name));
+}
+
+/** What the sessions started in `project` or a folder below it used, out of what the transcripts read show. */
+export function projectUse(use: TranscriptUse, project: string, platform: NodeJS.Platform = process.platform): ProjectUse {
+  const transcripts = [...use.folders].reduce((sum, [folder, count]) => sum + (isAtOrBelow(folder, project, platform) ? count : 0), 0);
+  return { transcripts, skills: usedBelow(use.skills, project, platform), agents: usedBelow(use.agents, project, platform) };
 }

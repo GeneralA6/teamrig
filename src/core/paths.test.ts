@@ -1,6 +1,23 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { expandHome, homeRelative, pathKey, samePath } from './paths.ts';
+import { expandHome, homeRelative, isAtOrBelow, pathKey, samePath } from './paths.ts';
+
+describe('isAtOrBelow', () => {
+  it('holds for the folder itself and any place inside it, ignoring case and separators on Windows (T1232)', () => {
+    assert.ok(isAtOrBelow('C:\\Work\\App\\', 'c:/work/app', 'win32'));
+    assert.ok(isAtOrBelow('C:\\Work\\App\\src\\web', 'c:/work/app', 'win32'));
+    assert.ok(isAtOrBelow('C:\\work', 'C:\\', 'win32'));
+    assert.ok(!isAtOrBelow('C:\\work\\app-api', 'C:\\work\\app', 'win32'));
+    assert.ok(!isAtOrBelow('C:\\work', 'C:\\work\\app', 'win32'));
+  });
+
+  it('keeps case on Linux', () => {
+    assert.ok(isAtOrBelow('/srv/app/src', '/srv/app/', 'linux'));
+    assert.ok(isAtOrBelow('/srv', '/', 'linux'));
+    assert.ok(!isAtOrBelow('/srv/App/src', '/srv/app', 'linux'));
+    assert.ok(!isAtOrBelow('/srv/application', '/srv/app', 'linux'));
+  });
+});
 
 describe('samePath', () => {
   it('ignores case, separators and a trailing separator on Windows', () => {

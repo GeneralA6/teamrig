@@ -217,7 +217,7 @@ function doctorOnlyFindings(scan: SetupScan, at: ScanReportContext): Finding[] {
   const folders = new Set(scan.context.skills.map((skill) => skill.name));
   return scan.doctor.skills.flatMap((row) => {
     const note = doctorNote(row);
-    const judged = row.listed > 0 && !folders.has(row.name) && !scan.usage.used.has(row.name) && !ranIn(row, at.days);
+    const judged = row.listed > 0 && !folders.has(row.name) && !scan.usage.skills.has(row.name) && !ranIn(row, at.days);
     return !judged || note === undefined ? [] : [{ kind: 'unused-skill', where: `${row.name} (${row.source})`, what: `${note} per /skill-doctor; turn it off in /skills`, saves: row.listed }];
   });
 }
@@ -238,7 +238,7 @@ function unusedHeader(scan: SetupScan, unused: readonly ListedSkill[], doctorOnl
 }
 
 function notUsed(scan: SetupScan): ListedSkill[] {
-  return scan.context.skills.filter((skill) => !scan.usage.used.has(skill.name));
+  return scan.context.skills.filter((skill) => !scan.usage.skills.has(skill.name));
 }
 
 /**

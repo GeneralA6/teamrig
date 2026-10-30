@@ -7,6 +7,7 @@ import type { Candidate } from '../rules/scan.ts';
 import { listingLineOf, type ListedSkill } from './scan-context.ts';
 import { scanReport, tokensOf, type ScanReportContext } from './scan-report.ts';
 import type { SettingsFinding } from './scan-settings.ts';
+import type { UsedIn } from './scan-usage.ts';
 import type { SetupScan } from './scan.ts';
 import type { DoctorSkill } from './skill-doctor.ts';
 
@@ -28,6 +29,11 @@ function shown(path: string): string {
 
 function skill(name: string, description: string): ListedSkill {
   return { name, path: `/u/.claude/skills/${name}/SKILL.md`, description, line: listingLineOf(name, description) };
+}
+
+/** Names the transcripts show in use, in sessions whose start folder they did not say. */
+function usedIn(...names: string[]): UsedIn {
+  return new Map(names.map((name) => [name, new Set<string>()]));
 }
 
 function candidate(kind: PlaceKind, path: string, line: number): Candidate {
@@ -52,7 +58,7 @@ const SCAN: SetupScan = {
   overrides: [candidate('claude-md', CLAUDE_MD, 4), candidate('rules', PROJECT_RULE, 2), candidate('claude-md', CLAUDE_MD, 9)],
   recorded: 1,
   settings: [WIDE],
-  usage: { used: new Set(['alpha']), transcripts: 3, bytes: 1.5 * 1024 * 1024, unread: 0, since: NOW - 30 * DAY_MS },
+  usage: { skills: usedIn('alpha'), agents: usedIn(), folders: new Map<string, number>(), transcripts: 3, bytes: 1.5 * 1024 * 1024, unread: 0, since: NOW - 30 * DAY_MS },
   recent: new Set(),
   doctor: { kind: 'read', skills: [] },
 };
@@ -113,7 +119,7 @@ describe('scanReport', () => {
       duplicates: [{ path: CLAUDE_MD, line: 2, text: 'Use the key hunter2-abcdef for the staging API only.', firstPath: CLAUDE_MD, firstLine: 1 }],
       overrides: [candidate('rules', PROJECT_RULE, 2)],
       recorded: 0,
-      usage: { used: new Set(), transcripts: 0, bytes: 0, unread: 0, since: NOW - 7 * DAY_MS },
+      usage: { skills: usedIn(), agents: usedIn(), folders: new Map<string, number>(), transcripts: 0, bytes: 0, unread: 0, since: NOW - 7 * DAY_MS },
     };
     const lines = scanReport(scan, { ...AT, team: undefined, days: 7, backup: { stamp: '20300108T080000Z', madeAt: NOW - 2 * HOUR_MS } });
     assert.deepEqual(lines, [
@@ -188,7 +194,7 @@ describe('scanReport', () => {
       row('kit:called', 'kit', 40, 0, undefined),
       row('anthropic-skills:pdf', 'claude.ai sync', 0, 0, undefined),
     ];
-    const scan: SetupScan = { ...SCAN, usage: { ...SCAN.usage, used: new Set(['alpha', 'kit:called']) }, doctor: { kind: 'read', skills } };
+    const scan: SetupScan = { ...SCAN, usage: { ...SCAN.usage, skills: usedIn('alpha', 'kit:called') }, doctor: { kind: 'read', skills } };
     assert.deepEqual(unusedLines(scan), [
       'UNUSED 1 of 2 skill(s) not used in 30 day(s) (read 3 transcript(s), 1.5 MB); and 2 skill(s) only /skill-doctor lists',
       'U1 unused-skill ~/.claude/skills/beta/SKILL.md: no Skill call or /beta in 30 day(s); /skill-doctor: never used on this machine (~78 tokens/turn)',

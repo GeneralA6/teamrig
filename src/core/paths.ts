@@ -19,6 +19,14 @@ export function samePath(a: string, b: string, platform: NodeJS.Platform = proce
   return pathKey(a, platform) === pathKey(b, platform);
 }
 
+/** Whether `path` is `folder` or a place inside it, on the platform's rules (see `pathKey`). */
+export function isAtOrBelow(path: string, folder: string, platform: NodeJS.Platform = process.platform): boolean {
+  const key = pathKey(path, platform);
+  const base = pathKey(folder, platform);
+  const sep = (platform === 'win32' ? win32 : posix).sep;
+  return key === base || key.startsWith(base.endsWith(sep) ? base : `${base}${sep}`);
+}
+
 /**
  * The path as people write it in shared text: `~/` and forward slashes below the user's home folder, so it reads the
  * same on every machine of the same user; the resolved path elsewhere.
