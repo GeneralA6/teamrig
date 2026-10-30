@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { join, sep } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, sep } from 'node:path';
 import { test } from 'node:test';
 import { RENAMED } from '../../src/cli/renamed.ts';
 import { CONFIG_VERSION } from '../../src/config/types.ts';
@@ -15,7 +17,9 @@ import {
   newlyRenamed,
   parseGrep,
   parseRenamedCommands,
+  realRenamedCallersDeps,
   refusalOf,
+  renamedCallersRefusal,
   scanRenamedCallers,
 } from './renamed-callers.ts';
 
@@ -236,6 +240,61 @@ test('the refusal names the renames called, counts files and lists the first cal
       '  ... and 1 more',
     ].join('\n'),
   );
+});
+
+test('the real gate reads git repos, a kit home and a Claude Code folder found from the user home', t => {
+  const root = mkdtempSync(join(tmpdir(), 'renamed-callers-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const put = (path: string, text: string): void => {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, text);
+  };
+  const git = (dir: string, ...args: string[]): string => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8' }).trim();
+  const commit = (dir: string, message: string): string => {
+    git(dir, 'add', '-A');
+    git(dir, '-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', message);
+    return git(dir, 'rev-parse', 'HEAD');
+  };
+  const repo = (name: string, files: Readonly<Record<string, string>>): string => {
+    const dir = join(root, name);
+    mkdirSync(dir);
+    git(dir, 'init', '-q');
+    for (const [path, text] of Object.entries(files)) put(join(dir, path), text);
+    return dir;
+  };
+
+  const shipped = repo('teamrig', { [RENAMED_FILE]: BASE_TEXT });
+  git(shipped, 'remote', 'add', 'origin', 'https://github.com/Owner/teamrig.git');
+  const base = commit(shipped, 'base');
+  put(join(shipped, RENAMED_FILE), TIP_TEXT);
+  put(join(shipped, 'docs', 'old.md'), 'teamrig heavy\n');
+  const tip = commit(shipped, 'tip');
+
+  const api = repo('api', { '.husky/run-checks.sh': 'teamrig heavy -- npm test\n' });
+  commit(api, 'hooks');
+  put(join(api, '.git', 'hooks', 'pre-push'), '#!/bin/sh\nteamrig claim api\n');
+  const quiet = repo('quiet', { 'README.md': 'no teamrig here\n' });
+  commit(quiet, 'readme');
+  const gone = join(root, 'gone');
+  const repos = { api: { mainCheckout: api }, gone: { mainCheckout: gone }, quiet: { mainCheckout: quiet }, teamrig: { mainCheckout: shipped } };
+  put(join(root, '.teamrig', 'teams', 'shop', 'config.json'), JSON.stringify({ configVersion: CONFIG_VERSION, delivery: { repos } }));
+  mkdirSync(join(root, '.teamrig', 'teams', 'empty'));
+  put(join(root, '.claude', 'skills', 'ship', 'SKILL.md'), 'teamrig heavy\n');
+
+  const logs: string[] = [];
+  const deps = realRenamedCallersDeps(shipped, line => logs.push(line));
+  const home = { env: {}, userHome: root };
+  assert.equal(
+    renamedCallersRefusal({ base, tip, repo: 'owner/Teamrig' }, home, deps),
+    [
+      'this change renames teamrig heavy to queue, teamrig claim to freeze while 3 consumer file(s) still call only the old name: move them (or name both) and merge again',
+      `  ${join(api, '.husky', 'run-checks.sh')}:1 teamrig heavy -> queue`,
+      `  ${join(api, '.git', 'hooks', 'pre-push')}:2 teamrig claim -> freeze`,
+      `  ${join(root, '.claude', 'skills', 'ship', 'SKILL.md')}:1 teamrig heavy -> queue`,
+    ].join('\n'),
+  );
+  assert.deepEqual(logs.slice(1), [`renamed callers: git grep failed in ${gone}: its files are not scanned`]);
+  assert.equal(renamedCallersRefusal({ base: tip, tip, repo: 'owner/teamrig' }, home, deps), null);
 });
 
 test('reads git grep -n -z output: path, line and the line text, which may hold a NUL', () => {

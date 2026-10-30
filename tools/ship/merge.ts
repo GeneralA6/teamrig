@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { homedir } from 'node:os';
 import { type CheckOutcome, type Gh, ghWithToken, readChecks, verdictOf } from './github.ts';
 import { type Credential, SHIP_TOKEN_TARGET, readCredential, windowsPowerShell } from './keychain.ts';
 import { type MergeOutcome, type PullRequest, findOpenPull, openPull, rebaseMerge } from './pulls.ts';
@@ -310,7 +311,7 @@ export function realMergeDeps(dir: string): MergeDeps {
     ghFor: token => ghWithToken(token),
     waiter: { now: () => Date.now(), sleep: ms => new Promise(done => setTimeout(done, ms)) },
     gate: realGateDeps(dir, out),
-    renamedCallers: (base, tip, repo) => renamedCallersRefusal(base, tip, repo, realRenamedCallersDeps(dir, out)),
+    renamedCallers: (base, tip, repo) => renamedCallersRefusal({ base, tip, repo }, { env: process.env, userHome: homedir() }, realRenamedCallersDeps(dir, out)),
     out,
     err: line => console.error(line),
   };
