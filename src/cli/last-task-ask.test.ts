@@ -7,7 +7,7 @@ import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { HELPER_HANDOVER, LEAD_TEAM, ok, teamWithHelper } from '../testing/hired-team.ts';
 
 const AUTOMATIC: JsonRecord = { ...LEAD_TEAM, hiring: { policy: 'automatic' } };
-const ASK = join(TEAM_HOME, 'state', 'retire-asks', 'helper.json');
+const ASK = join(TEAM_HOME, 'state', 'last-task-asks', 'helper.json');
 const STALE = '{"v":1,"task":"T1","at":"2030-01-08T10:00:00.000Z"}\n';
 
 function close(kit: CliHarness, id: string, status: 'done' | 'dropped' = 'done', files?: FaultyFiles): Promise<CliResult> {
@@ -26,7 +26,7 @@ function blockReason(result: CliResult): string | undefined {
   return isRecord(parsed) && parsed['decision'] === 'block' && typeof parsed['reason'] === 'string' ? parsed['reason'] : undefined;
 }
 
-describe('the automatic retire ask', () => {
+describe('the automatic last-task ask', () => {
   it('asks a hired session whose last open task closed to write its handover and retire, at one stop only', async () => {
     const kit = await teamWithHelper(AUTOMATIC, ['port it', 'test it'], false);
     ok(await close(kit, 'T1'));

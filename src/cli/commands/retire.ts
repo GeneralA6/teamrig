@@ -120,7 +120,7 @@ export async function retire(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     await log.append(plan.value.retire);
     const session = plan.value.retire.session;
     // A due ask to write its handover is done with, and would ask the session again if it were hired back.
-    await new SessionAskStore(files, kit.paths.retireAsks).clear(session);
+    await new SessionAskStore(files, kit.paths.lastTaskAsks).clear(session);
     runtime.out.stdout(`RETIRED ${what}; the old config is at ${backup}`);
     runtime.out.stdout(`NEXT its records stay readable by its id (${KIT_NAME} list --session ${session} --all); close its tab if it is open`);
     return EXIT.ok;

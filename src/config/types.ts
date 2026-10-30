@@ -931,7 +931,7 @@ export interface RefreshConfig {
 /**
  * Who may hire a session onto the team (`teamrig hire`): `off` nobody; `owner` a lead (the lead, or a sub-lead
  * into its own group), once the owner approved (`--approved-by`, kept with the hire); `lead` a lead; `automatic` as
- * `lead`, and a hired session whose last open task closes is asked to write its handover (hiring/retire-ask.ts).
+ * `lead`, and a hired session whose last open task closes is asked to write its handover (hiring/last-task-ask.ts).
  * Under every policy only a lead over a session retires it (`teamrig retire`).
  */
 export const HIRING_POLICIES = ['off', 'owner', 'lead', 'automatic'] as const;
