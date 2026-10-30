@@ -58,12 +58,15 @@ teamrig setup backup --project "<project>" && teamrig setup scan --project "<pro
   - `DUPLICATE` (`D<n>`), a line that repeats one loaded before: keep the first, remove the repeat.
   - `UNUSED` (`U<n>`), a skill no transcript or `/skill-doctor` saw used in 30 days: park its folder in
     `skills-parked/` beside the `skills/` folder it is in. Claude Code no longer lists it; moving it back brings it
-    back. A `U` line naming `plugin:skill (source)` has no folder to park: the user turns it off in `/skills`.
+    back. A `U` line naming `plugin:skill (source)` has no folder to park: the user turns it off in `/skills`. An
+    `unused-agent` line: park the agent file in `agents-parked/` beside its `agents/` folder. An
+    `other-project-skill` or `other-project-agent` line names the projects whose sessions used it: move it out of
+    the user's folder into their `.claude/skills` or `.claude/agents` (a copy in each).
   - `OVERRIDE` and `SETTINGS` need the team: step 7 settles those rule lines and the wide allow rules. Name them
     now and change nothing yet.
 - Ask one yes or no per group in AskUserQuestion (up to 4 per call): what changes, in which files, and the tokens
   a turn it saves. No `CONTEXT`, `DUPLICATE` or `UNUSED` finding: say so in one line and go on to step 4.
-- Carry out each yes: write the shortened or moved text with the Edit tool, and park a skill with one Bash `mv`.
+- Carry out each yes: write the shortened or moved text with the Edit tool, and park or move a skill or agent type with Bash `mv` (`cp` first for each extra project).
   Change only the files its findings name, and never a settings file's `autoMode` line.
 - Run `teamrig setup scan --project "<project>"` again and tell the user, in two lines, the `TOTAL` before and
   after, and that `teamrig setup restore <stamp>` shows what undoing it writes and the same with `--yes` puts every

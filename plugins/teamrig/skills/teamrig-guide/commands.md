@@ -2898,9 +2898,9 @@ working folder. With `--project`, the team is the one that folder's `.teamrig.js
 
 It lists each file a session loads, with its chars and tokens (about four chars a token): your user and the
 project's `CLAUDE.md` with their `@` imports, `CLAUDE.local.md`, the `.claude/rules/*.md` files without a `paths:`
-frontmatter, the first 200 lines of the memory index, the team's rules file with those of the teams above it, and
-the skill listing (each skill's
-name and description), then a TOTAL line. The findings follow, one line each, `<id> <kind> <path>: <what>`, with the
+frontmatter, the first 200 lines of the memory index, the team's rules file with those of the teams above it, the
+skill listing (each skill's name and description) and the agent type listing (each agent type's name, description
+and tools), then a TOTAL line. The findings follow, one line each, `<id> <kind> <path>: <what>`, with the
 tokens a turn applying it saves:
 
 - CONTEXT (`C1`...): a file over 6,000 chars, a skill description over 250.
@@ -2921,7 +2921,12 @@ tokens a turn applying it saves:
   headless in the project (30 to 60 s, no model call, no hook): a skill it saw run in `--days` counts as used though
   the transcripts read missed it, a U line adds when it last ran, and a skill only it lists (a plugin's, a synced
   one) that never or long ago ran is a U line too, to turn off in `/skills`. When it cannot run, the UNUSED line
-  ends `/skill-doctor skipped: <why>` and the transcripts judge alone.
+  ends `/skill-doctor skipped: <why>` and the transcripts judge alone. An agent type in your user or project agent
+  folders that no `Agent` call ran is judged the same way (`unused-agent`), by the transcripts alone. A skill or
+  agent type in your user folders that only sessions started in other projects used is a U line too
+  (`other-project-skill`, `other-project-agent`): every session here lists it for nothing, so the line names up to
+  two of those projects' folders, to move it into their `.claude/skills` or `.claude/agents`. It is judged only once
+  a transcript read started in this project or a folder below it; until then the UNUSED line counts it as not judged.
 
 Under the SCAN line, `BACKUP <stamp>, made <age> ago` names the newest finished `setup backup` of the same setup
 (Claude Code's folder, the project and the team's own skills folder) and the `setup restore` that previews putting it
@@ -2934,7 +2939,7 @@ near a minute and a half.
 Flags:
 
 - `--project <dir>`: the project to scan.
-- `--days <n>`: the days of transcripts that tell which skills are in use (default 30).
+- `--days <n>`: the days of transcripts that tell which skills and agent types are in use, and where (default 30).
 - `--max-mb <n>`: the MB of those transcripts to read, newest first (default 1024).
 
 Example:
@@ -2951,7 +2956,8 @@ BACKUP 20261025T120000Z, made 3 min ago: teamrig setup restore 20261025T120000Z 
 CONTEXT claude-md ~/.claude/CLAUDE.md: 2,100 chars (~525 tokens/turn)
 CONTEXT claude-md ~/work/shop/CLAUDE.md: 7,200 chars (~1,800 tokens/turn)
 CONTEXT skills 30 skill(s) listed: 7,400 chars (~1,850 tokens/turn); as this project's newest transcript lists them: skills folders and built-in 30 (7,400 chars)
-TOTAL 16,700 chars (~4,175 tokens/turn) at every session start
+CONTEXT agents 6 agent type(s) listed: 1,800 chars (~450 tokens/turn); as this project's newest transcript lists them: built-in 4 (1,400 chars), agents folders 2 (400 chars)
+TOTAL 18,500 chars (~4,625 tokens/turn) at every session start
 C1 large-file ~/work/shop/CLAUDE.md: 7,200 chars, over the 6,000 an always-loaded file should keep to (~300 tokens/turn)
 DUPLICATE 1 line(s) or sentence(s) repeat one loaded before
 D1 duplicate ~/work/shop/CLAUDE.md:12: "Run the full test suite before every commit." repeats ~/.claude/CLAUDE.md:4 (~11 tokens/turn)
@@ -2961,10 +2967,11 @@ NEXT /doctor prompt-audit in a session of the project: Claude Code's model-run c
 SETTINGS 1 finding(s)
 S1 wide-allow ~/work/shop/.claude/settings.local.json: 14 allow rule(s) approve a whole tool or hold a credential: Bash wide 14
 NEXT teamrig permissions trim, after teamrig team create
-UNUSED 1 of 22 skill(s) not used in 30 day(s) (read 210 transcript(s), 380.4 MB); and 1 skill(s) only /skill-doctor lists
+UNUSED 1 of 22 skill(s) and 0 of 2 agent type(s) not used in 30 day(s) (read 210 transcript(s), 380.4 MB); 1 user-level one(s) used only in other projects; and 1 skill(s) only /skill-doctor lists
 U1 unused-skill ~/.claude/skills/old-deploy/SKILL.md: no Skill call or /old-deploy in 30 day(s); /skill-doctor: last used 64 day(s) ago (~45 tokens/turn)
 U2 unused-skill review-kit:pr-notes (review-kit): never used on this machine per /skill-doctor; turn it off in /skills (~60 tokens/turn)
-SAVINGS ~416 tokens/turn if every CONTEXT, DUPLICATE and UNUSED finding is applied
+U3 other-project-agent ~/.claude/agents/sql-tuner.md: used only in other projects in 30 day(s): ~/work/billing; move it to their .claude/agents (~35 tokens/turn)
+SAVINGS ~451 tokens/turn if every CONTEXT, DUPLICATE and UNUSED finding is applied
 ```
 
 ### teamrig setup backup
