@@ -1,9 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import type { CoordinatorConfig, CoordinatorRepoConfig, DeployConfig, ScheduleConfig } from '../config/types.ts';
-import { DEFAULT_CLAIMS, DEFAULT_COORDINATOR_WAIT, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_HEAVY, DEFAULT_WINDOWS } from '../config/defaults.ts';
+import type { DeliveryConfig, DeliveryRepoConfig, DeployConfig, ScheduleConfig } from '../config/types.ts';
+import { DEFAULT_FREEZES, DEFAULT_DELIVERY_WAIT, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_QUEUE, DEFAULT_STABLE_PERIODS } from '../config/defaults.ts';
 import { HostLock } from '../delivery/host-lock.ts';
-import type { CoordinatorPlaces } from '../delivery/places.ts';
+import type { DeliveryPlaces } from '../delivery/places.ts';
 import type { ResetTime } from '../delivery/schedule.ts';
 import type { Env } from '../core/home.ts';
 import { SecretScanner } from '../core/secrets.ts';
@@ -16,7 +16,7 @@ import { MemoryFiles } from '../testing/memory-files.ts';
 import { redeployTargets, type RedeployRequest } from './deploy.ts';
 import type { DeployEnd } from './run.ts';
 
-const PLACES: CoordinatorPlaces = {
+const PLACES: DeliveryPlaces = {
   ledger: '/team/deploys/ledger.jsonl',
   ledgerMd: '/team/deploys/ledger.md',
   claims: '/team/deploys/claims.json',
@@ -31,7 +31,7 @@ const PLACES: CoordinatorPlaces = {
 const FLOW = { name: 'flow', command: ['node', 'checks/flow.js'] };
 const DEPLOY_COMMAND = ['node', 'tools/deploy.js'];
 const DEPLOY: DeployConfig = { targets: ['api', 'workers', 'live'], checks: [FLOW], afterPull: [['node', 'scripts/build-cli.js']], command: DEPLOY_COMMAND };
-const PIPELINE: CoordinatorRepoConfig = { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], dependencyGate: false, reviewGate: false, updateMainCheckout: false, deploy: DEPLOY };
+const PIPELINE: DeliveryRepoConfig = { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], dependencyGate: false, reviewGate: false, updateMainCheckout: false, deploy: DEPLOY };
 const RESTART = ['node', 'tools/restart.js', 'api', 'live'];
 const REQUEST: RedeployRequest = { session: 'sec', repo: 'pipeline', dir: '/runner', targets: ['api', 'live'], why: 'rotate the db credential', argv: RESTART };
 const SECRET = ['db password', '=', 'hunter2'].join('');
@@ -50,7 +50,7 @@ class World {
   readonly hooks = new FakeHooks(this.clock);
   readonly lock: HostLock;
   readonly said: string[] = [];
-  private readonly delivery: CoordinatorConfig;
+  private readonly delivery: DeliveryConfig;
   private readonly reset: ResetTime | undefined;
 
   constructor(options: Options = {}) {
@@ -59,11 +59,11 @@ class World {
     this.reset = options.reset;
     this.delivery = {
       schedule: options.schedule ?? {},
-      queue: DEFAULT_HEAVY,
-      wait: DEFAULT_COORDINATOR_WAIT,
+      queue: DEFAULT_QUEUE,
+      wait: DEFAULT_DELIVERY_WAIT,
       checkTimeoutSeconds: DEFAULT_CHECK_TIMEOUT_SECONDS,
-      freezes: DEFAULT_CLAIMS,
-      stablePeriods: DEFAULT_WINDOWS,
+      freezes: DEFAULT_FREEZES,
+      stablePeriods: DEFAULT_STABLE_PERIODS,
       repos: { pipeline: PIPELINE },
     };
   }
@@ -120,7 +120,7 @@ describe('redeployTargets', () => {
     assert.deepEqual(teamrigEnv(before?.env ?? {}), { ...base, TEAMRIG_CHECK_NAME: 'flow', TEAMRIG_CHECK_PHASE: 'before' });
     assert.deepEqual(teamrigEnv(locked?.env ?? {}), { ...base, TEAMRIG_CHECK_NAME: 'flow', TEAMRIG_CHECK_PHASE: 'locked' });
     assert.deepEqual(teamrigEnv(command?.env ?? {}), { ...base, TEAMRIG_HOST_LOCK: 'lock-1' });
-    assert.deepEqual([before?.cwd, command?.cwd, command?.timeoutMs, command?.env['PATH']], [MAIN_CHECKOUT, '/runner', DEFAULT_HEAVY.maxRunMinutes * 60_000, '/bin']);
+    assert.deepEqual([before?.cwd, command?.cwd, command?.timeoutMs, command?.env['PATH']], [MAIN_CHECKOUT, '/runner', DEFAULT_QUEUE.maxRunMinutes * 60_000, '/bin']);
     assert.deepEqual(world.records(), [
       ...world.heavy(0, '2030-01-08T10:00:00.000Z', '2030-01-08T10:01:30.000Z'),
       {

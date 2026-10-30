@@ -1,6 +1,6 @@
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
-import { coordinatorPlaces } from '../../delivery/places.ts';
+import { deliveryPlaces } from '../../delivery/places.ts';
 import { formatAddress } from '../../core/address.ts';
 import { KIT_NAME } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';
@@ -145,7 +145,7 @@ function phaseLine(phase: MeetingPhase, mk: MeetingKit): string {
 
 /** The self-merges digest's input: the team's merges log, read once, from the agenda's start. */
 async function mergeDigestOf(runtime: CliRuntime, mk: MeetingKit, since: number): Promise<MergeDigestInput> {
-  const { merges } = coordinatorPlaces(mk.config.delivery, mk.kit.paths);
+  const { merges } = deliveryPlaces(mk.config.delivery, mk.kit.paths);
   const gated = mk.config.pushGuard.pushToProtected === 'gated';
   return { log: await new MergeLog(runtime.files, merges).read(), since, zone: mk.zone, gated, path: merges };
 }

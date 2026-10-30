@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_CLAIMS, DEFAULT_COMMITS, DEFAULT_HEAVY, DEFAULT_HIRING, DEFAULT_IDLE, DEFAULT_OPEN, DEFAULT_PERMISSIONS, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_STATUS_LINE, DEFAULT_WAKE, DEFAULT_WINDOWS } from './defaults.ts';
+import { DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_FREEZES, DEFAULT_COMMITS, DEFAULT_QUEUE, DEFAULT_HIRING, DEFAULT_IDLE, DEFAULT_OPEN, DEFAULT_PERMISSIONS, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_STATUS_LINE, DEFAULT_WAKE, DEFAULT_STABLE_PERIODS } from './defaults.ts';
 import { HIRE_CAP_DROPPED, IDLE_RETIRE_DROPPED } from './migrate.ts';
 import { parseConfig } from './parse.ts';
 import { CONFIG_VERSION, type AccountBudget } from './types.ts';
@@ -720,7 +720,7 @@ describe('parseConfig', () => {
     assert.equal(config.delivery.repos['api']?.deploy, undefined);
     assert.deepEqual(config.delivery.repos['web']?.deploy?.checks, []);
     assert.equal(config.delivery.checkTimeoutSeconds, DEFAULT_CHECK_TIMEOUT_SECONDS);
-    assert.equal(config.delivery.stablePeriods.assumedDeployMinutes, DEFAULT_WINDOWS.assumedDeployMinutes);
+    assert.equal(config.delivery.stablePeriods.assumedDeployMinutes, DEFAULT_STABLE_PERIODS.assumedDeployMinutes);
   });
 
   it('names each version-5 delivery key in a current file with its new name, and reads none of them', () => {
@@ -749,9 +749,9 @@ describe('parseConfig', () => {
     assert.equal(config.roles.deliveryOwner, undefined);
     assert.equal(config.delivery.dir, undefined);
     assert.deepEqual(config.delivery.schedule, {});
-    assert.deepEqual(config.delivery.queue, DEFAULT_HEAVY);
-    assert.deepEqual(config.delivery.freezes, DEFAULT_CLAIMS);
-    assert.deepEqual(config.delivery.stablePeriods, DEFAULT_WINDOWS);
+    assert.deepEqual(config.delivery.queue, DEFAULT_QUEUE);
+    assert.deepEqual(config.delivery.freezes, DEFAULT_FREEZES);
+    assert.deepEqual(config.delivery.stablePeriods, DEFAULT_STABLE_PERIODS);
     assert.equal(config.delivery.repos['api']?.updateMainCheckout, false);
   });
 

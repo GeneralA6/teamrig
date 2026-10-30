@@ -1,10 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
-import { DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_CLAIMS, DEFAULT_COORDINATOR_WAIT, DEFAULT_HEAVY, DEFAULT_WINDOWS } from '../config/defaults.ts';
-import type { CoordinatorConfig } from '../config/types.ts';
+import { DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_DELIVERY_WAIT, DEFAULT_FREEZES, DEFAULT_QUEUE, DEFAULT_STABLE_PERIODS } from '../config/defaults.ts';
+import type { DeliveryConfig } from '../config/types.ts';
 import { teamPaths } from '../core/home.ts';
-import { coordinatorDirOf, coordinatorPlaces, GATE_HOLDS_DIR, HOST_LOCK_FILE, MERGES_FILE, REVIEW_HOLDS_DIR, teamPlace } from './places.ts';
+import { coordinatorDirOf, deliveryPlaces, GATE_HOLDS_DIR, HOST_LOCK_FILE, MERGES_FILE, REVIEW_HOLDS_DIR, teamPlace } from './places.ts';
 
 const HOME = resolve('kit', 'teams', 'app');
 const STATE = join(HOME, 'state');
@@ -28,19 +28,19 @@ describe('coordinatorDirOf', () => {
 
 const KIT = join('/', 'kit');
 const PATHS = teamPaths(KIT, 'app', join('/', 'user'));
-const CONFIG: CoordinatorConfig = {
+const CONFIG: DeliveryConfig = {
   schedule: {},
-  queue: DEFAULT_HEAVY,
-  wait: DEFAULT_COORDINATOR_WAIT,
+  queue: DEFAULT_QUEUE,
+  wait: DEFAULT_DELIVERY_WAIT,
   checkTimeoutSeconds: DEFAULT_CHECK_TIMEOUT_SECONDS,
-  freezes: DEFAULT_CLAIMS,
-  stablePeriods: DEFAULT_WINDOWS,
+  freezes: DEFAULT_FREEZES,
+  stablePeriods: DEFAULT_STABLE_PERIODS,
   repos: {},
 };
 
-describe('coordinatorPlaces', () => {
+describe('deliveryPlaces', () => {
   it("keeps the holds and the merges log beside the ledger in the state's deploys folder, and the host lock in the kit home", () => {
-    const places = coordinatorPlaces(CONFIG, PATHS);
+    const places = deliveryPlaces(CONFIG, PATHS);
     const dir = join(PATHS.state, 'deploys');
     assert.equal(places.reviewHolds, join(dir, REVIEW_HOLDS_DIR));
     assert.equal(places.gateHolds, join(dir, GATE_HOLDS_DIR));
@@ -50,7 +50,7 @@ describe('coordinatorPlaces', () => {
   });
 
   it("moves them with delivery.dir, a relative one in the team's folder", () => {
-    const places = coordinatorPlaces({ ...CONFIG, dir: 'deploys' }, PATHS);
+    const places = deliveryPlaces({ ...CONFIG, dir: 'deploys' }, PATHS);
     assert.equal(places.reviewHolds, join(PATHS.home, 'deploys', REVIEW_HOLDS_DIR));
     assert.equal(places.gateHolds, join(PATHS.home, 'deploys', GATE_HOLDS_DIR));
     assert.equal(places.merges, join(PATHS.home, 'deploys', MERGES_FILE));

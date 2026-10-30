@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 import { DEFAULT_WORKTREE_FOLDER } from '../../config/defaults.ts';
 import { LeadTree } from '../../config/lead-tree.ts';
-import type { CoordinatorRepoConfig, KitConfig } from '../../config/types.ts';
+import type { DeliveryRepoConfig, KitConfig } from '../../config/types.ts';
 import { teamPlace } from '../../delivery/places.ts';
 import { ENV } from '../../core/home.ts';
 import { samePath } from '../../core/paths.ts';
@@ -64,7 +64,7 @@ async function addPlace(repo: string | undefined, runtime: CliRuntime): Promise<
 }
 
 /** A repository's place by its main checkout, with its delivery.repos entry's folder and setup; the default folder and no setup without one. */
-function placeOf(mainCheckout: string, config: CoordinatorRepoConfig | undefined): AddPlace {
+function placeOf(mainCheckout: string, config: DeliveryRepoConfig | undefined): AddPlace {
   const mainDir = resolve(mainCheckout);
   return { mainDir, folder: resolve(mainDir, config?.worktreeFolder ?? DEFAULT_WORKTREE_FOLDER), setup: config?.worktreeSetup };
 }

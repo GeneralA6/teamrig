@@ -1,4 +1,4 @@
-import type { CoordinatorConfig, CoordinatorRepoConfig, DeployConfig } from '../config/types.ts';
+import type { DeliveryConfig, DeliveryRepoConfig, DeployConfig } from '../config/types.ts';
 import { rangeText } from '../delivery/ledger.ts';
 import { rangeInstallTouches } from '../merge/dependencies.ts';
 import { ORIGIN, type MergeGit } from '../merge/git.ts';
@@ -14,14 +14,14 @@ export type DeployGit = Pick<MergeGit, 'checkoutOf' | 'changes' | 'fetch' | 'def
 /** A repository with a deploy block, and where its main checkout is. */
 export interface DeployRepo {
   readonly name: string;
-  readonly config: CoordinatorRepoConfig;
+  readonly config: DeliveryRepoConfig;
   readonly deploy: DeployConfig;
   readonly main: string;
 }
 
 
 /** The repositories with a deploy block, in config order, each with its main checkout as a place. */
-export function deployRepos(delivery: Pick<CoordinatorConfig, 'repos'>, inTeam: (path: string) => string): DeployRepo[] {
+export function deployRepos(delivery: Pick<DeliveryConfig, 'repos'>, inTeam: (path: string) => string): DeployRepo[] {
   return Object.entries(delivery.repos).flatMap(([name, config]) => (config.deploy === undefined ? [] : [{ name, config, deploy: config.deploy, main: inTeam(config.mainCheckout) }]));
 }
 

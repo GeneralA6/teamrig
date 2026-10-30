@@ -1,5 +1,5 @@
 import type { LeadTree } from '../config/lead-tree.ts';
-import type { CoordinatorRepoConfig, ReviewPath, RolesConfig } from '../config/types.ts';
+import type { DeliveryRepoConfig, ReviewPath, RolesConfig } from '../config/types.ts';
 import type { Clock } from '../core/lock.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { fallbackOpen, holdApproved, holdClassOf, needsCheck, REVIEW_FALLBACK_MS, reviewRoute, type CheckOutcome } from '../push-guard/review-gate.ts';
@@ -42,7 +42,7 @@ export interface ReviewGatePorts {
 export interface GatedChange {
   readonly session: string;
   readonly repo: string;
-  readonly config: Pick<CoordinatorRepoConfig, 'reviewGate' | 'reviewCheck'>;
+  readonly config: Pick<DeliveryRepoConfig, 'reviewGate' | 'reviewCheck'>;
   readonly top: string;
   readonly branch: string;
   readonly base: string;

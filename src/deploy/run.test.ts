@@ -1,10 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { dirname, join } from 'node:path';
-import type { CoordinatorConfig, CoordinatorRepoConfig, DeployConfig, ScheduleConfig } from '../config/types.ts';
-import { DEFAULT_CLAIMS, DEFAULT_COORDINATOR_WAIT, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_HEAVY, DEFAULT_WINDOWS } from '../config/defaults.ts';
+import type { DeliveryConfig, DeliveryRepoConfig, DeployConfig, ScheduleConfig } from '../config/types.ts';
+import { DEFAULT_FREEZES, DEFAULT_DELIVERY_WAIT, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_QUEUE, DEFAULT_STABLE_PERIODS } from '../config/defaults.ts';
 import { HostLock } from '../delivery/host-lock.ts';
-import type { CoordinatorPlaces } from '../delivery/places.ts';
+import type { DeliveryPlaces } from '../delivery/places.ts';
 import type { Env } from '../core/home.ts';
 import { SecretScanner } from '../core/secrets.ts';
 import { KIT_VERSION } from '../core/version.ts';
@@ -17,7 +17,7 @@ import { FakeMergeGit, MAIN_CHECKOUT, WORKTREE } from '../testing/fake-merge-git
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { deployRepo, type DeployEnd, type DeployRequest, type DeploySetup } from './run.ts';
 
-const PLACES: CoordinatorPlaces = {
+const PLACES: DeliveryPlaces = {
   ledger: '/team/deploys/ledger.jsonl',
   ledgerMd: '/team/deploys/ledger.md',
   claims: '/team/deploys/claims.json',
@@ -33,15 +33,15 @@ const FLOW = { name: 'flow', command: ['node', 'checks/flow.js'] };
 const AFTER_PULL = ['node', 'scripts/build-cli.js'];
 const COMMAND = ['node', 'tools/deploy.js'];
 const DEPLOY: DeployConfig = { targets: ['api', 'workers'], checks: [FLOW], afterPull: [AFTER_PULL], command: COMMAND };
-const PIPELINE: CoordinatorRepoConfig = { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], dependencyGate: false, reviewGate: false, updateMainCheckout: false, deploy: DEPLOY };
+const PIPELINE: DeliveryRepoConfig = { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], dependencyGate: false, reviewGate: false, updateMainCheckout: false, deploy: DEPLOY };
 const REQUEST: DeployRequest = { session: 'po', repo: undefined, dir: '/elsewhere' };
-const HEAVY_MS = DEFAULT_HEAVY.maxRunMinutes * 60_000;
+const HEAVY_MS = DEFAULT_QUEUE.maxRunMinutes * 60_000;
 const SECRET = ['db password', '=', 'hunter2'].join('');
 const REDACTED = 'db [redacted password or key assignment]';
 const BY_HAND = 'a new deploy finds nothing pending, so run `node tools/deploy.js` in /repo/app by hand once it is fixed';
 
 interface Options {
-  readonly repos?: Readonly<Record<string, CoordinatorRepoConfig>>;
+  readonly repos?: Readonly<Record<string, DeliveryRepoConfig>>;
   readonly schedule?: ScheduleConfig;
   readonly claims?: string;
 }
@@ -58,13 +58,13 @@ class World {
   constructor(options: Options = {}) {
     this.files = new MemoryFiles(options.claims === undefined ? {} : { [PLACES.claims]: options.claims });
     this.lock = new HostLock(PLACES.hostLock, 150 * 60_000, { files: this.files, clock: this.clock, sleep: this.clock.sleep, pid: 7, alive: () => true, newId: () => 'lock-1' });
-    const delivery: CoordinatorConfig = {
+    const delivery: DeliveryConfig = {
       schedule: options.schedule ?? {},
-      queue: DEFAULT_HEAVY,
-      wait: DEFAULT_COORDINATOR_WAIT,
+      queue: DEFAULT_QUEUE,
+      wait: DEFAULT_DELIVERY_WAIT,
       checkTimeoutSeconds: DEFAULT_CHECK_TIMEOUT_SECONDS,
-      freezes: DEFAULT_CLAIMS,
-      stablePeriods: DEFAULT_WINDOWS,
+      freezes: DEFAULT_FREEZES,
+      stablePeriods: DEFAULT_STABLE_PERIODS,
       repos: options.repos ?? { pipeline: PIPELINE },
     };
     this.setup = { team: 'app', delivery, places: PLACES, zone: TimeZone.UTC, inTeam: (path) => (path.startsWith('/') ? path : `/repo/${path}`) };
@@ -184,7 +184,7 @@ describe('deployRepo', () => {
     world.hooks.answer(FLOW.command, { lines: ['batch run open since 23:10 UTC'], end: 75, during: moved }, {});
     assert.deepEqual(await world.run(), { kind: 'done', summary: 'c1..c3 deployed' });
     assert.ok(world.said.includes('waiting: check flow holds the deploy: batch run open since 23:10 UTC'));
-    assert.equal(world.clock.now(), Date.parse('2030-01-08T10:00:00Z') + DEFAULT_COORDINATOR_WAIT.pollSeconds * 1_000);
+    assert.equal(world.clock.now(), Date.parse('2030-01-08T10:00:00Z') + DEFAULT_DELIVERY_WAIT.pollSeconds * 1_000);
     const start = { type: 'heavy', id: 'step-1', session: 'po', what: 'deploy pipeline c1..c3', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: new Date(world.clock.now()).toISOString(), endedAt: null, exitCode: null };
     assert.deepEqual(world.records()[0], start, 'its record shows the wait from its first look');
     assert.equal(teamrigEnv(world.hooks.ran[2]?.env ?? {})['TEAMRIG_PENDING_RANGE'], 'base..c3', 'the check under the lock judges the range pulled');
@@ -300,8 +300,8 @@ describe('deployRepo', () => {
   });
 
   it('deploys the repository named, else the one the folder is in, else the only one with a deploy block', async () => {
-    const CONSOLE: CoordinatorRepoConfig = { ...PIPELINE, mainCheckout: '/repo/console' };
-    const SITE: CoordinatorRepoConfig = { mainCheckout: '/repo/site', deploysOnPush: ['cloud-web'], dependencyGate: false, reviewGate: false, updateMainCheckout: false };
+    const CONSOLE: DeliveryRepoConfig = { ...PIPELINE, mainCheckout: '/repo/console' };
+    const SITE: DeliveryRepoConfig = { mainCheckout: '/repo/site', deploysOnPush: ['cloud-web'], dependencyGate: false, reviewGate: false, updateMainCheckout: false };
     const two = { pipeline: PIPELINE, console: CONSOLE, site: SITE };
     refused(await new World({ repos: two }).run({ ...REQUEST, repo: 'nope' }), 'nope is not in delivery.repos (with a deploy block: pipeline, console)');
     refused(await new World({ repos: two }).run({ ...REQUEST, repo: 'site' }), 'delivery.repos.site has no deploy block, so there is nothing to deploy it with (with a deploy block: pipeline, console)');

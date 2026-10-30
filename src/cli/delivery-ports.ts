@@ -1,7 +1,7 @@
 import { resolveReset } from '../budget/pace.ts';
 import { weekUseAt } from '../budget/snapshot.ts';
 import { readFolderWeek } from '../budget/week-summary.ts';
-import type { BudgetConfig, HeavyConfig } from '../config/types.ts';
+import type { BudgetConfig, QueueConfig } from '../config/types.ts';
 import { CLAIMS_LOCK_TTL_MS } from '../delivery/freeze-store.ts';
 import { HostLock } from '../delivery/host-lock.ts';
 import type { ResetTime } from '../delivery/schedule.ts';
@@ -24,7 +24,7 @@ export function logLineOf(runtime: Pick<CliRuntime, 'out' | 'clock'>, zone: Time
 type LockRuntime = Pick<CliRuntime, 'files' | 'clock' | 'sleep' | 'pid' | 'sessionProcesses' | 'newId'>;
 
 /** The host lock at `path`, held by this process for `delivery.queue.lockTtlMinutes`; a holder whose process ended is stale. */
-export function hostLockOf(runtime: LockRuntime, path: string, heavy: Pick<HeavyConfig, 'lockTtlMinutes'>): HostLock {
+export function hostLockOf(runtime: LockRuntime, path: string, heavy: Pick<QueueConfig, 'lockTtlMinutes'>): HostLock {
   return lockAt(runtime, path, heavy.lockTtlMinutes * MINUTE_MS);
 }
 

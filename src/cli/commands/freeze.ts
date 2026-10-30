@@ -1,7 +1,7 @@
-import type { CoordinatorConfig } from '../../config/types.ts';
+import type { DeliveryConfig } from '../../config/types.ts';
 import { addClaim, releaseClaim, type ClaimOutcome, type ClaimPorts } from '../../delivery/freeze-store.ts';
 import { claimEndText } from '../../delivery/freezes.ts';
-import { coordinatorPlaces, type CoordinatorPlaces } from '../../delivery/places.ts';
+import { deliveryPlaces, type DeliveryPlaces } from '../../delivery/places.ts';
 import { parseSpanMinutes } from '../../delivery/schedule.ts';
 import { deployTargetsOf } from '../../delivery/targets.ts';
 import { SecretScanner } from '../../core/secrets.ts';
@@ -14,8 +14,8 @@ import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.t
 /** What a freeze command works on: the session, the coordinator's config and places, and the freezes' ports. */
 interface ClaimContext {
   readonly session: string;
-  readonly delivery: CoordinatorConfig;
-  readonly places: CoordinatorPlaces;
+  readonly delivery: DeliveryConfig;
+  readonly places: DeliveryPlaces;
   readonly secretPatterns: readonly string[];
   readonly ports: ClaimPorts;
 }
@@ -26,7 +26,7 @@ async function claimContextOf(args: ParsedArgs, runtime: CliRuntime): Promise<Cl
   const config = requireConfig(kit, runtime, 'read');
   const session = sessionIdOf(await rosterOf(runtime, kit, config), caller);
   const { delivery } = config;
-  const places = coordinatorPlaces(delivery, kit.paths);
+  const places = deliveryPlaces(delivery, kit.paths);
   return {
     session,
     delivery,
