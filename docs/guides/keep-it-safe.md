@@ -178,7 +178,8 @@ A secret a call prints anyway, from a script, a log or a file the guard could no
 it: after each Bash, PowerShell, Read or Grep call, the secret redactor replaces each token, credential and secret
 variable's value in the result with `[redacted <kind>]`, so it stays out of the transcript too, and tells the session
 which kinds it held, never a value. It files a task for the security reviewer, else the lead, to rotate each kind,
-one per kind, session and day, and names it to the session.
+one per kind, session and day while that task is open (once it is closed, a later leak that day gets a new one), and
+names it to the session.
 `secretGuard.redact: false` turns it off
 ([what it does not cover](../../plugins/teamrig/skills/teamrig-guide/hooks.md#after-a-tool-call-the-secret-redactor)).
 

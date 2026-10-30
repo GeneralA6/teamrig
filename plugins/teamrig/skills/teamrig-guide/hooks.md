@@ -496,9 +496,12 @@ teamrig: this result held a secret (GitHub token); it was redacted before you sa
 Each kind found gets a priority 1 task to rotate it, filed by the session for the team's `roles.securityReviewer`,
 else its lead, who gets an inbox line ("Rotate the GitHub token a Bash result showed web on 2026-10-29"). A reviewer
 in a team above (`app/security`) gets the task in that team's register as the session's ask, and the line names it
-`app/T42`. It is one task per kind, session and day on the team's clock: the day's next leak of that kind names the
-same task. Each kind found is also a line in the team's `state/secret-incidents.jsonl` (the time, the session, the
-tool, the kind and the task), never the value; it is audit data, and nothing trims it. When the tab's session is not
+`app/T42`. It is one task per kind, session and day on the team's clock while that task is open: the day's next leak
+of that kind names the same task, and once it is closed (a false positive, say) the next leak gets a new task, so a
+real leak is never folded into a task no one works. Each kind found is also a line in the team's
+`state/secret-incidents.jsonl` (the time, the session, the tool, the call's `tool_use_id`, the session's transcript, a
+helper's `agent_id` for a helper's call, the kind and the task), never the value, so the call is found in the
+transcript with one search; it is audit data, and nothing trims it. When the tab's session is not
 known, its team's config did not load or the register refuses the task, the line says why and asks the model to have
 it filed instead ("ask security to rotate it with a register task (filing one failed: ...)"). The redaction is sent
 either way, and waits at most 3 seconds for another tab filing at that moment. A result is scanned up to 1,000,000
