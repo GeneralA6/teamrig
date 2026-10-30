@@ -224,7 +224,7 @@ With sub-teams, run `teamrig check --tree --session lead` too. Act on each flag:
 - `HIRE SCALE-OUT`: an area cannot finish its dated work in time, and the week's spare pays for help. Do what it
   says: move its slice to the idle hire it names, else hire for the slice and move it, else bring the owner a card
   for the cap that blocks (the `hire` skill).
-- `HIRE RETIRE-DUE`: a hired session has had no open task for `hiring.idleHours`. Give it its next task, or retire
+- `HIRE RETIRE-DUE`: the burst a hired session was hired for is over. Give it its next task, or retire
   it: `teamrig retire <id> --session lead` (`--to <heir>` for any open task). To bring a retired one back, hire
   its id again: the hire shows whether its last Claude Code session can be resumed (`teamrig open <id> --resume`).
 - `HIRE REVIEW-DUE`: a hired session's review day passed. While the team still needs it, keep it to a new review

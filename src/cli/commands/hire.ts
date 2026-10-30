@@ -25,7 +25,7 @@ import { freshOpenOf, resumeVerdictOf } from './rehire.ts';
 import { sessionProjectOf } from './setup.ts';
 
 /**
- * `hire`: a lead adds a temporary session to the team within `hiring`'s policy: the team's lead, or a
+ * `hire`: a lead adds a worker it is sure the team needs within `hiring`'s policy: the team's lead, or a
  * sub-lead, whose hire joins its own group (T509). Without
  * --yes it only shows the hire; with it, the old config is kept in the backups folder, the hire is
  * logged in the hire log, then the session and its launch are written to the config. A hire gets no fixed daily

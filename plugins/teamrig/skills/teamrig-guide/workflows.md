@@ -315,7 +315,7 @@ With sub-teams, run `teamrig check --tree --session lead` too. Then act on each 
 - `NOT-PICKED-UP`: the owner is idle and reads no inbox: wake it with `teamrig open <id>`, or tell the human.
 - `HIRE SCALE-OUT`: an area cannot finish its dated work in time, and the week's spare pays for help: move its slice
   to the idle hire it names, else hire for the slice and move it (`hire --yes` refuses while the host has no room).
-- `HIRE RETIRE-DUE`: a hired session has had no open task for `hiring.idleHours`: give it its next task, or retire
+- `HIRE RETIRE-DUE`: the burst a hired session was hired for is over: give it its next task, or retire
   it (`teamrig retire <id> --session lead`, `--to <heir>` for any open task). Hiring, retiring and rehiring: the
   `hire` skill.
 - `HIRE REVIEW-DUE`: a hired session's review day passed: while the team still needs it, keep it to a new review day
