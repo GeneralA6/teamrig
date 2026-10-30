@@ -6,7 +6,7 @@ import { KIT_NAME } from "../core/home.js";
  * least the lead's effort, never a cheaper model or a lower effort, and tied to the burst so `check` flags it
  * RETIRE-DUE once the burst is over. Under `hiring.policy` owner the burst's approver approves it unless the
  * line names one: the owner approved the burst's hires with the burst. Pure: it takes the request, the burst
- * in force, the hires still active and the config; `planHire` then applies `hiring`'s own policy and caps.
+ * in force, the hires still active and the config; `planHire` then applies `hiring`'s own policy.
  */
 function plural(count, word) {
     return `${count} ${word}${count === 1 ? '' : 's'}`;
