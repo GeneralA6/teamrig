@@ -10,13 +10,14 @@ import { inboxLineOf } from '../inbox/inbox.ts';
 import { lineHash } from '../inbox/line-hash.ts';
 import { decodePrompt, defaultPrompt, reopenPrompt } from '../open/prompt.ts';
 import { homeCloseOf, SessionLog, type CloseRecord } from '../sessions/log.ts';
-import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
+import { APP, CLAUDE_SESSION, CliHarness, EVENTS_PATH, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
 import { ok } from '../testing/hired-team.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { WakeAsks } from '../wake/asks.ts';
+import { WakeStore } from '../wake/store.ts';
 import { EXIT } from './runtime.ts';
 
 const HOUR_MS = 3_600_000;
@@ -182,6 +183,27 @@ async function urgentLine(alpha: ClosedAlpha): Promise<WakeAsks> {
   return asks;
 }
 
+const WAKES = join(TEAM_HOME, 'state', 'wake');
+const WAKE_STATE = join(WAKES, 'alpha.json');
+const WAKE_LOG = join(TEAM_HOME, 'state', 'wakes.jsonl');
+/** A wake check's answer while it waits for news: nothing to wake for, so no recheck. */
+const WAITING = { kind: 'wait', watch: [EVENTS_PATH, join(ASKS, 'alpha')], recheckAt: null };
+
+/** Alpha's wake check in its tab, the Claude Code session a reopen resumes; returns its answer. */
+async function wakeCheck(alpha: ClosedAlpha): Promise<unknown> {
+  const result = await alpha.kit.run(['hook', 'wake-check'], { stdin: JSON.stringify({ session_id: CLAUDE_SESSION, cwd: APP }), transcripts: new MemoryTranscripts() });
+  assert.equal(result.code, 0, result.stderr.join('\n'));
+  return JSON.parse(result.stdout[0] ?? '');
+}
+
+/** A closed alpha whose tab, CLAUDE_SESSION, last checked for wakes before work was handed to it. */
+async function checkedBeforeWork(): Promise<ClosedAlpha> {
+  const alpha = await closedAlpha(40_000);
+  await alpha.kit.run(['inbox', 'read', '--session', 'alpha'], { env: { CLAUDE_CODE_SESSION_ID: CLAUDE_SESSION } });
+  assert.deepEqual(await wakeCheck(alpha), WAITING);
+  return alpha;
+}
+
 /** The pass log's act lines, without their time. */
 function actsOf(alpha: ClosedAlpha): JsonRecord[] {
   return (alpha.kit.files.get(PASS_LOG) ?? '')
@@ -325,5 +347,37 @@ describe('teamrig idle-open', () => {
     assert.equal(result.code, 0, result.stdout.join('\n'));
     assert.match(result.stdout[0] ?? '', /^REOPENED .*; its urgent lines were not taken, so its tab wakes on them once more: EACCES: permission denied$/);
     assert.equal(actsOf(alpha)[0]?.['outcome'], 'done');
+  });
+
+  it("counts the reopen as the resumed tab's wake, so its wake check never wakes it again for the work it reads (T1616)", async () => {
+    const alpha = await checkedBeforeWork();
+    await handWork(alpha);
+    const { result, argv } = await idleOpen(alpha);
+    assert.equal(result.code, 0, [...result.stdout, ...result.stderr].join('\n'));
+    assert.equal(resumedOf(argv), CLAUDE_SESSION);
+    const state = await new WakeStore(alpha.kit.files, WAKES).read('alpha');
+    assert.ok(state !== undefined);
+    assert.deepEqual([state.tab, state.known, state.pending, state.lastWakeAt], [CLAUDE_SESSION, ['T1'], undefined, alpha.kit.clock.now()]);
+    assert.deepEqual(await wakeCheck(alpha), WAITING);
+    alpha.kit.clock.advance(2 * MS_PER_MINUTE);
+    assert.deepEqual(await wakeCheck(alpha), WAITING, 'past the batch, still no wake for T1');
+    assert.equal(alpha.kit.files.get(WAKE_LOG), undefined);
+  });
+
+  it('leaves the wake state to the wake check after a --prompt resume, and says when it could not write it', async () => {
+    const prompted = await checkedBeforeWork();
+    const before = prompted.kit.files.get(WAKE_STATE);
+    await handWork(prompted);
+    const opened = await open(prompted, ['--prompt', 'Answer the review on T1.']);
+    ok(opened.result);
+    assert.equal(resumedOf(opened.argv), CLAUDE_SESSION);
+    assert.equal(prompted.kit.files.get(WAKE_STATE), before, 'its own first prompt may not read its list');
+
+    const alpha = await checkedBeforeWork();
+    await handWork(alpha);
+    const files = new FaultyFiles(alpha.kit.files).fail('write', WAKE_STATE, systemError('EACCES', 'EACCES: permission denied'));
+    const { result } = await idleOpen(alpha, undefined, files);
+    assert.equal(result.code, 0, result.stdout.join('\n'));
+    assert.match(result.stdout[0] ?? '', /^REOPENED .*; its wake state was not written, so its tab may wake once more for work it reads now: EACCES: permission denied$/);
   });
 });

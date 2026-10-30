@@ -194,6 +194,23 @@ export function worthyTasksOf(input: WorthyInput): Task[] {
   return [...input.tasks.values()].filter((task) => isWakeWorthy(task, input.session, input.maxPriority, context));
 }
 
+/** A tab teamrig opened on a Claude Code session the session ran in before, and the session's last wake state. */
+export interface OpenedTab extends WorthyInput {
+  readonly tab: string;
+  readonly previous: WakeState | undefined;
+}
+
+/**
+ * The wake state of a tab teamrig opened on a Claude Code session it resumed: its first prompt has the session read
+ * its list, so the open counts as its wake. What could wake it now is known, so only work handed after the open wakes
+ * it, and the open is its last wake for `wake.minGapMinutes`. A resumed tab keeps the id it had before its close, so
+ * without this the check went on from the state before the close and woke it again for the work it reads (T1616).
+ */
+export function openedWakeState(opened: OpenedTab): WakeState {
+  const known = worthyTasksOf(opened).map((task) => task.id);
+  return { tab: opened.tab, known, pending: undefined, lastWakeAt: opened.now, settled: opened.previous?.settled ?? NO_SETTLED_MOMENTS };
+}
+
 /**
  * Whether to wake the session now, later or not, and the state to keep. A first check in a tab takes what is
  * there as known: work from before the tab started is seen at its first prompt, as it always was.
