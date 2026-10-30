@@ -12,7 +12,7 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | `UserPromptSubmit` (each prompt) | `hook inbox-reminder` | Stops a prompt that holds a secret and cleans it out of Claude Code's prompt history ([Each prompt](#each-prompt)); cancels a waiting automatic restart; shows new inbox lines; binds a tab started by hand by its title; records a Claude Code rename; tells the model when its budget holds it |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook push-guard` | Asks before a push to a protected branch; refuses a force-push or delete of one, and a git command run without the repository's hooks ([the commit guard](#before-a-shell-command-the-commit-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook package-guard` | Refuses a package runner that would fetch and run a package outside the project's lockfile, an install of a version the registry does not vouch for, an `npx --no <bin>` that hands the bin's flag to npm, and an install that would rewrite a `node_modules` linked to another checkout's ([the package guard](#before-a-shell-command-the-package-guard)) |
-| `PreToolUse` on `Bash`, `PowerShell`, `Read` and `Grep` | `hook secret-guard` | Refuses a call that would print a secret file, a secret variable, the whole environment, a Kubernetes secret's data or a dump command's output into the conversation, or whose command line holds a secret as text ([the secret guard](#before-a-shell-command-or-a-read-the-secret-guard)) |
+| `PreToolUse` on `Bash`, `PowerShell`, `Read`, `Grep`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook secret-guard` | Refuses a call that would print a secret file, a secret variable, the whole environment, a Kubernetes secret's data or a dump command's output into the conversation, or whose command line or written text holds a secret ([the secret guard](#before-a-shell-command-or-a-read-the-secret-guard)) |
 | `PostToolUse` on `Bash`, `PowerShell`, `Read` and `Grep` | `hook secret-redact` | Replaces each secret a call's result holds before Claude and the transcript see it, and tells the session which kinds it held and the task it filed to rotate each ([the secret redactor](#after-a-tool-call-the-secret-redactor)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook exec-guard` | Refuses a privileged command's review run as another session or the owner, and any `exec` call through a client that is no install of the plugin, or one changed after its build ([the exec guard](#before-a-shell-command-the-exec-guard)) |
 | `PreToolUse` on `Bash`, `PowerShell`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook pass-record-guard` | Refuses a session's own write of a tree's pass record, the proof that lets a push or a merge skip the checks the tree passed ([the pass-record guard](#before-a-write-or-a-shell-command-the-pass-record-guard)) |
@@ -437,6 +437,16 @@ framed value under 6 characters, a regex that searches for the shape (`postgres:
 sample token. The reason names the shape, never the value: "teamrig secret guard: this call's command line holds a
 secret as text (credentials in a URL). Pass it by reference (its env var name, a file path, stdin,
 `teamrig exec request`), never as text. [secretGuard.secretReads]"
+
+The same shapes hold for the text a Write, Edit, MultiEdit or NotebookEdit call writes (a Write's `content`, an Edit's
+`new_string`, each of a MultiEdit's edits, a NotebookEdit's `new_source`), since the call's input stays in the
+transcript and its text in the file. A write to a secret file (`secretGuard.paths`: `.env`, `~/.npmrc`...) passes,
+as that is where a real secret belongs; every other file is read, a test or a committed `.env.example` too. The text
+an Edit replaces is not read, so a call that swaps a secret for its env var name passes. A test that needs a
+secret-shaped value builds it at run time from parts, so no file holds it whole. The reason: "teamrig secret guard:
+the text this call writes holds a secret (GitHub token). Keep a real one in a secret file (secretGuard.paths, such as
+.env) and name it by its env var or path; a test builds a secret-shaped value at run time from parts (join('gh',
+'p_', ...)), so no file holds it whole. [secretGuard.secretReads]"
 
 The line a container or a host runs is read as a line of its own, four levels deep: `kubectl exec ... --`,
 `docker exec`, `docker compose exec`, `ssh host '...'`. Output that never reaches the screen passes: a redirect into
