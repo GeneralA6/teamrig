@@ -135,7 +135,7 @@ export async function budgetFactsOf(runtime: CliRuntime, scope: BudgetScope, tra
     todayWPerPct,
     budgetPct,
     lift,
-    ...liftNamesOf(split, roster, id, lift),
+    ...liftNamesOf(funded, week.allowancePct, roster, id, lift),
     burst,
     paused: isPaused(funded.split, id),
     surplus,

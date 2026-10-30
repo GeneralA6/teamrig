@@ -180,31 +180,35 @@ export function activeGroupLift(lifts: readonly Lift[], subLead: string, now: nu
 }
 
 /**
- * What a lift gives, after "lifted", on the team's clock, `parent` from `parentBudgetText`:
- * `teamrig to 40% of the team's daily budget today until 18:00 IDT or 97.0% of the week, ...`; a cross-team lift's
- * part is on top of the session's own budget.
+ * What a lift gives, after "lifted", on the team's clock, `parent` from `parentBudgetText` and `weekPct` the share of
+ * the week its part comes to now (src/budget/parts.ts `liftWeekPctOf`), left out while unknown:
+ * `teamrig to 40% of the team's daily budget (2.1% of the week now) today until 18:00 IDT or 97.0% of the week, ...`;
+ * a cross-team lift's part is on top of the session's own budget.
  */
-export function liftText(lift: Lift, name: string, parent: string, zone: TimeZone): string {
+export function liftText(lift: Lift, name: string, parent: string, weekPct: number | undefined, zone: TimeZone): string {
   const who = lift.group ? `${name}'s group` : name;
+  const week = weekPct === undefined ? '' : ` (${formatPct(weekPct)} of the week now)`;
   const onTop = isCrossTeamLift(lift) ? ' on top of its own budget' : '';
   const quiet = lift.quietHoursExempt ? '; quiet hours do not apply to it' : '';
   return (
-    `${who} to ${formatPct(lift.partPct)} of ${parent}${onTop} today${lift.reserve ? ' from the reserve' : ''} until ` +
+    `${who} to ${formatPct(lift.partPct)} of ${parent}${week}${onTop} today${lift.reserve ? ' from the reserve' : ''} until ` +
     `${formatEndTime(lift.endsAt, zone)} or ${formatPct(lift.stopPct)} of the week, whichever comes first${quiet}.`
   );
 }
 
-/** A session's lift in force, by name for its lines; both undefined while it is not lifted. */
+/** A session's lift in force, by name for its lines; all undefined while it is not lifted. */
 export interface LiftNames {
   /** The leader that gave the lift ({@link Lift.by}). */
   readonly liftBy: string | undefined;
   /** The sub-lead whose group's daily budget the lift is a part of; undefined for the team's. */
   readonly liftParent: string | undefined;
+  /** The share of the week the lift's part comes to now (src/budget/parts.ts `liftWeekPctOf`); undefined while unknown. */
+  readonly liftWeekPct: number | undefined;
 }
 
 /** `Budget: <leader> lifted <session> to ...`, the line that shows a session's lift in force. */
 export function liftedLine(lift: Lift, name: string, names: LiftNames, zone: TimeZone): string {
-  return `Budget: ${names.liftBy ?? lift.by} lifted ${liftText(lift, name, parentBudgetText(names.liftParent), zone)}`;
+  return `Budget: ${names.liftBy ?? lift.by} lifted ${liftText(lift, name, parentBudgetText(names.liftParent), names.liftWeekPct, zone)}`;
 }
 
 function liftRecord(lift: Lift): JsonRecord {

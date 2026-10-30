@@ -41,6 +41,7 @@ function facts(usedTodayPct: number, weekUsedPct: number, now = DAY, extra: Part
     lift: undefined,
     liftBy: undefined,
     liftParent: undefined,
+    liftWeekPct: undefined,
     burst: undefined,
     paused: false,
     surplus: undefined,
@@ -306,6 +307,11 @@ describe('stopWarning', () => {
   it("names the sub-lead that lifted the session and whose group's daily budget the lift is a part of", () => {
     const lifted = stopWarning(facts(0.5, AHEAD, DAY, { lift: lift({ by: 'bravo' }), liftBy: 'app-bravo', liftParent: 'app-bravo', budgetPct: 2, leader: SUB_LEAD }), BUDGET, undefined);
     assert.match(lifted.lines[0] ?? '', /^Budget: app-bravo lifted alpha to 40\.0% of app-bravo's group's daily budget today /);
+  });
+
+  it('gives the share of the week the lift comes to now beside its part', () => {
+    const lifted = stopWarning(facts(0.5, AHEAD, DAY, { lift: lift(), liftBy: 'commander', liftWeekPct: 2.1, budgetPct: 2 }), BUDGET, undefined);
+    assert.match(lifted.lines[0] ?? '', /^Budget: commander lifted alpha to 40\.0% of the team's daily budget \(2\.1% of the week now\) today until /);
   });
 
   it('marks the budget of a session a short day pauses', () => {

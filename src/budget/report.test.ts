@@ -93,7 +93,7 @@ const LIFT_HEADING =
 const LIFT_BLOCK = [LIFT_HEADING, '  session   part      until  stop at', '  bravo    40.0%  00:00 UTC    97.0%', '  00:00 UTC is the end of the budget day.'];
 
 function session(id: string, w: number, calls: number, budgetPct: number | undefined = 10.25 / 3, lift: Lift | undefined = undefined): SessionToday {
-  return { id, name: id === 'lead' ? 'commander' : id, w, calls, budgetPct, lift, liftBy: lift === undefined ? undefined : 'commander', liftParent: undefined, inBurst: undefined, paused: false };
+  return { id, name: id === 'lead' ? 'commander' : id, w, calls, budgetPct, lift, liftBy: lift === undefined ? undefined : 'commander', liftParent: undefined, liftWeekPct: undefined, inBurst: undefined, paused: false };
 }
 
 /** A surplus burst for alpha and bravo until the pace end, Wed 10-21 00:00 UTC, started at a 12.5% floor that is 9.5% now. */
@@ -266,7 +266,7 @@ describe('todayLines', () => {
     const GROUP_LIFT: Lift = { ...LIFT, group: true, partPct: 60, quietHoursExempt: false };
     const ALPHA_LIFT: Lift = { ...LIFT, session: 'alpha', partPct: 50, by: 'bravo' };
     const MEMBERS: readonly SessionToday[] = [session('lead', 7_500_000, 310), { ...session('alpha', 30_000_000, 1_000, 3, ALPHA_LIFT), liftBy: 'bravo', liftParent: 'bravo' }, session('bravo', 0, 0, 3)];
-    const GROUP: GroupToday = { id: 'bravo', name: 'bravo', sessions: ['bravo', 'alpha'], budgetPct: 6, lift: GROUP_LIFT, liftBy: 'commander', liftParent: undefined };
+    const GROUP: GroupToday = { id: 'bravo', name: 'bravo', sessions: ['bravo', 'alpha'], budgetPct: 6, lift: GROUP_LIFT, liftBy: 'commander', liftParent: undefined, liftWeekPct: undefined };
 
     it("gives the group a row after the team's: its sessions' use summed against its part of the day", () => {
       const lines = todayLines({ ...REPORT, sessions: MEMBERS, groups: [GROUP] });
@@ -382,7 +382,7 @@ describe('sessionLines', () => {
   });
 
   it('says when there is no use and no budget', () => {
-    const unbudgeted: SessionToday = { id: 'lead', name: 'commander', w: 0, calls: 0, budgetPct: undefined, lift: undefined, liftBy: undefined, liftParent: undefined, inBurst: undefined, paused: false };
+    const unbudgeted: SessionToday = { id: 'lead', name: 'commander', w: 0, calls: 0, budgetPct: undefined, lift: undefined, liftBy: undefined, liftParent: undefined, liftWeekPct: undefined, inBurst: undefined, paused: false };
     assert.deepEqual(sessionLines(unbudgeted, state({}), UNKNOWN, TimeZone.UTC), ['commander (lead), by UTC day:', '  no use in the last 8 days', W_EXPLAINED]);
     assert.deepEqual(sessionLines(unbudgeted, state({ '2026-10-15': usage(500, 2) }), UNKNOWN, TimeZone.UTC).slice(1, 2), ['  2026-10-15  500 W in 2 calls']);
   });
