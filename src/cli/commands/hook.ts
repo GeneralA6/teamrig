@@ -843,7 +843,7 @@ async function modelNoticesOf(runtime: CliRuntime, scope: SessionScope, payload:
 }
 
 /**
- * The one-time ask that sends the session back at this turn's end: for a hired session, to retire itself
+ * The one-time ask that sends the session back at this turn's end: for a hired session, to write its handover
  * (retire-ask.ts), else, while a task of it waits, to work its other tasks (keep-working.ts). None on a stop the
  * hook already blocked, or while the refresh blocks or waits for its restart, so the asks wait for a later stop.
  */

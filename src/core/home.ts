@@ -157,7 +157,7 @@ export interface TeamPaths {
   readonly hires: string;
   /** Held while a hire or a retire writes the config and the hire log, so two never interleave. */
   readonly hiresLock: string;
-  /** Each hired session's due ask to retire itself (hiring/retire-ask.ts), `<id>.json` each. */
+  /** Each hired session's due ask to write its handover (hiring/retire-ask.ts), `<id>.json` each. */
   readonly retireAsks: string;
   /** Each session's due ask to keep working while a task of it waits (wake/keep-working.ts), `<id>.json` each. */
   readonly keepWorkingAsks: string;

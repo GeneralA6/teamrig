@@ -50,8 +50,8 @@ take a slice is not flagged RETIRE-DUE meanwhile.
 3. Close its tab.
 
 Under `hiring.policy` `automatic`, a hired session whose last open task closes is asked once, at its next turn end,
-to write its handover and retire itself (`teamrig retire <id> --session <id> --yes`). It says so and goes on when its
-job goes on, or when a new task came in first.
+to write its handover, never to retire itself: you decide which workers the team needs, and the idle pass
+deactivates one with no task. It says so and goes on when a new task came in first.
 
 ## 3. Rehire
 

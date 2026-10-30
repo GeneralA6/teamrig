@@ -73,25 +73,14 @@ function withoutLeader(file: JsonRecord, config: KitConfig, id: string): { reado
 }
 
 /**
- * The refusal for who asked, or undefined: a lead over the session (the lead, or a sub-lead it is under, T509), or a
- * hired session itself under `automatic` once its tasks are closed.
+ * The refusal for who asked, or undefined: only a lead over the session (the lead, or a sub-lead it is under, T509)
+ * retires it, as the leader decides which workers the team needs; a session never retires itself.
  */
-function callerProblem(config: KitConfig, tree: LeadTree, request: RetireRequest, hired: boolean): string | undefined {
+function callerProblem(config: KitConfig, tree: LeadTree, request: RetireRequest): string | undefined {
   if (request.by === config.roles.lead || tree.leads(request.by, request.id)) {
     return undefined;
   }
-  if (request.by !== request.id) {
-    return 'only a lead over the session retires it (the lead, or its sub-lead), or a hired session itself under hiring.policy automatic';
-  }
-  if (config.hiring.policy !== 'automatic' || !hired) {
-    return `only a lead over ${request.id} retires it: a session retires itself only when hired, under hiring.policy automatic`;
-  }
-  if (request.openTasks.length > 0 || request.heir !== undefined) {
-    const leader = tree.leaderOf(request.id) ?? tree.lead;
-    const ask = leader === tree.lead ? `the lead (${leader})` : `its sub-lead ${leader}`;
-    return `${request.id} still owns open task(s) ${request.openTasks.join(', ')}: close them first, or ask ${ask} to retire it with --to <heir>`;
-  }
-  return undefined;
+  return 'only a lead over the session retires it (the lead, or its sub-lead): the leader decides which workers the team needs';
 }
 
 /** The refusal while another part of the config names the session, or undefined. */
@@ -159,7 +148,7 @@ export function planRetire(file: JsonRecord, config: KitConfig, active: readonly
   }
   const hired = active.some((hire) => hire.session === id);
   const tree = new LeadTree(config);
-  const problem = callerProblem(config, tree, request, hired) ?? namedProblem(config, id) ?? heirProblem(config, tree, request) ?? handoverProblem(request);
+  const problem = callerProblem(config, tree, request) ?? namedProblem(config, id) ?? heirProblem(config, tree, request) ?? handoverProblem(request);
   if (problem !== undefined) {
     return { ok: false, problem };
   }

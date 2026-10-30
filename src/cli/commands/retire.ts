@@ -19,12 +19,11 @@ import { teamRegister } from '../team-register.ts';
 import { inboxDepsOf } from './inbox.ts';
 
 /**
- * `retire`: a lead over a session takes it off the team once its work is done or handed over: the lead, or a
- * sub-lead the session is under, who hands its tasks only within its group (T509); or a hired session
- * retires itself under `hiring.policy` automatic, once its tasks are closed. Without --yes it only shows the
- * retire; with it, its open tasks go to the heir (who gets one inbox line), the old config is kept in the
- * backups folder, the session's keys leave the config, then the retire is logged in the hire log. Its
- * tasks, inbox and records stay where they are, readable by its id.
+ * `retire`: a lead over a session takes it off the team once the team no longer needs it: the lead, or a
+ * sub-lead the session is under, who hands its tasks only within its group (T509); a session never retires
+ * itself. Without --yes it only shows the retire; with it, its open tasks go to the heir (who gets one inbox line),
+ * the old config is kept in the backups folder, the session's keys leave the config, then the retire is logged in
+ * the hire log. Its tasks, inbox and records stay where they are, readable by its id.
  */
 
 /** The backup name of a config before `retire` changed it. */
@@ -120,10 +119,10 @@ export async function retire(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     // The config first: a retire logged for a session still on the team would leave it out of the active hires.
     await log.append(plan.value.retire);
     const session = plan.value.retire.session;
-    // A due ask to retire is done with, and would ask the session again if it were hired back.
+    // A due ask to write its handover is done with, and would ask the session again if it were hired back.
     await new SessionAskStore(files, kit.paths.retireAsks).clear(session);
     runtime.out.stdout(`RETIRED ${what}; the old config is at ${backup}`);
-    runtime.out.stdout(`NEXT its records stay readable by its id (${KIT_NAME} list --session ${session} --all)${by === session ? '; finish this turn and close the tab' : '; close its tab if it is open'}`);
+    runtime.out.stdout(`NEXT its records stay readable by its id (${KIT_NAME} list --session ${session} --all); close its tab if it is open`);
     return EXIT.ok;
   });
 }

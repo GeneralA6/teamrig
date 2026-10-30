@@ -1364,7 +1364,7 @@ names are machine-wide.
 
 - `hiring.policy`: `off` refuses every hire; `owner` (the default) needs `--approved-by "<who>"`, after you ask
   the owner; `lead` lets the lead hire; `automatic` is `lead`, and a hired session whose last
-  open task closes is asked once, at its next turn end, to write its handover and retire itself.
+  open task closes is asked once, at its next turn end, to write its handover, never to retire.
 - No cap counts hires: the host's room bounds them (below). A hire has no fixed daily budget: like any
   session, its part of the team's follows its share and queued work ([teamrig budget](#teamrig-budget)).
 - Its review day is `--review`, else `hiring.reviewDays` (7) days on.
@@ -1422,10 +1422,9 @@ a resumed session re-reads its whole old context on every call.
 
 ### teamrig retire
 
-Takes a session off the team once its job is done (`teamrig retire <id|name>`): a lead over it (the lead, or a
-sub-lead it is under, who hands its tasks only to itself or a session it leads), or a hired session
-itself under `hiring.policy` `automatic` once its tasks are all closed. Without `--yes` it shows the retire and
-writes nothing. With it, the session's open tasks go to the heir (`--to`), who gets one inbox line; the old
+Takes a session the team no longer needs off the team (`teamrig retire <id|name>`): only a lead over it (the lead,
+or a sub-lead it is under, who hands its tasks only to itself or a session it leads) decides that; a session never
+retires itself. Without `--yes` it shows the retire and writes nothing. With it, the session's open tasks go to the heir (`--to`), who gets one inbox line; the old
 config goes into the backups folder; the session leaves `sessions`, `names`, `launch`, `budget.sessions` and
 `leads`, a retired sub-lead's members going to its own leader (the preview names them); and the retire goes into
 the hire log (`state/hires.jsonl`). Its tasks, inbox and records stay where they are, readable by its id.
@@ -1438,11 +1437,12 @@ the hire log (`state/hires.jsonl`). Its tasks, inbox and records stay where they
 - `check` flags each hired session to retire (RETIRE-DUE) and each one past its review day (REVIEW-DUE); a hire a
   SCALE-OUT names to take a slice is not flagged idle meanwhile.
 - Under `hiring.policy` `automatic`, closing a hired session's last open task (`set` done or dropped) asks it, once,
-  at its next turn end, to write its handover and retire itself; it says so and goes on when its job goes on.
+  at its next turn end, to write its handover and end its turn, never to retire: its leader decides which workers
+  the team needs, and the idle pass deactivates one with no task. It says so and goes on when a task came in.
 
 Flags:
 
-- `--session <id|name>`: the caller, the lead or the session itself.
+- `--session <id|name>`: the caller, a lead over the session.
 - `--to <id|name>`: the heir its open tasks go to.
 - `--no-handover "<why>"`: retire without a handover, recording why.
 - `--reason "<why>"`: why it leaves; by default, that its job is done.

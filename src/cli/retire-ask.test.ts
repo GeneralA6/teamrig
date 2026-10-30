@@ -36,18 +36,20 @@ describe('the automatic retire ask', () => {
     assert.equal(blockReason(await stop(kit, 'helper', true)), undefined, 'a stop the hook already blocked keeps the ask');
     assert.equal(blockReason(await stop(kit, 'alpha')), undefined);
     const reason = blockReason(await stop(kit));
-    assert.ok(reason?.startsWith('Your last open task T2 is closed and hiring.policy is automatic'), reason);
-    assert.ok(reason?.includes(`Write your handover to ${HELPER_HANDOVER}`), reason);
+    assert.ok(reason?.startsWith(`Your last open task T2 is closed. Write your handover to ${HELPER_HANDOVER} `), reason);
+    assert.ok(reason?.includes('Do not retire: your leader decides which workers the team needs'), reason);
     assert.equal(kit.files.get(ASK), undefined);
     assert.deepEqual((await stop(kit)).stdout, []);
   });
 
-  it('lets the session retire itself once its handover is written, which clears any ask left', async () => {
+  it('refuses the session retiring itself, and a lead\'s retire clears any ask left', async () => {
     const kit = await teamWithHelper(AUTOMATIC, ['port it']);
     ok(await close(kit, 'T1'));
-    ok(await kit.run(['retire', 'helper', '--yes', '--session', 'helper']));
+    const self = await kit.run(['retire', 'helper', '--yes', '--session', 'helper']);
+    assert.match(self.stdout.join('\n'), /^REFUSED only a lead over the session retires it/);
+    assert.match(kit.files.get(ASK) ?? '', /"task":"T1"/);
+    ok(await kit.run(['retire', 'helper', '--yes', '--session', 'lead']));
     assert.equal(kit.files.get(ASK), undefined);
-    assert.equal(blockReason(await stop(kit)), undefined);
   });
 
   it('drops the ask when a task came in before the stop, and asks no session off the team', async () => {
@@ -74,7 +76,7 @@ describe('the automatic retire ask', () => {
     const kit = await teamWithHelper(AUTOMATIC, ['port it']);
     const files = new FaultyFiles(kit.files).fail('write', ASK, systemError('EACCES'));
     const result = ok(await close(kit, 'T1', 'done', files));
-    assert.ok(result.stderr.some((line) => line.startsWith('WARN T1 is closed, but the ask for helper to retire was not recorded: ')), result.stderr.join('\n'));
+    assert.ok(result.stderr.some((line) => line.startsWith('WARN T1 is closed, but the ask for helper to write its handover was not recorded: ')), result.stderr.join('\n'));
     assert.match(ok(await kit.run(['show', 'T1', '--session', 'lead'])).stdout.join('\n'), /done/);
   });
 

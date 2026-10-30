@@ -635,7 +635,7 @@ Hiring temporary sessions with teamrig hire: who decides. No cap counts hires: t
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
-| `policy` | one of `"off"`, `"owner"`, `"lead"`, `"automatic"` | `"owner"` | off: no hires. owner: a lead (the lead, or a sub-lead into its own group) hires once the owner approved (--approved-by, kept with the hire). lead: a lead hires. automatic: as lead, and a hired session whose tasks are all closed may retire itself (teamrig retire). |
+| `policy` | one of `"off"`, `"owner"`, `"lead"`, `"automatic"` | `"owner"` | off: no hires. owner: a lead (the lead, or a sub-lead into its own group) hires once the owner approved (--approved-by, kept with the hire). lead: a lead hires. automatic: as lead, and a hired session whose last open task closes is asked to write its handover. Under every policy only a lead over a session retires it (teamrig retire). |
 | `reviewDays` | integer (1 to 90) | `7` | Days from a hire to its review date, unless teamrig hire --review names one. |
 | `resumeMaxTokens` | integer (10000 to 1000000) | `250000` | The most context tokens a rehired session's last Claude Code session may hold for teamrig open --resume to resume it; past it the session starts fresh on its handover. |
 | `resumeMaxIdleDays` | integer (1 to 90) | `7` | The most days a rehired session's last Claude Code session may have gone unwritten for teamrig open --resume to resume it; past it the session starts fresh on its handover. |

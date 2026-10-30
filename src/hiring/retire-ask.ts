@@ -1,5 +1,4 @@
 import type { KitConfig } from '../config/types.ts';
-import { KIT_NAME } from '../core/home.ts';
 import type { SessionAsk } from '../core/session-asks.ts';
 import type { Task } from '../register/fold.ts';
 import { ACTIVE_STATUSES } from '../register/model.ts';
@@ -7,8 +6,9 @@ import type { HireRecord } from './record.ts';
 
 /**
  * Under `hiring.policy` `automatic`, a hired session whose last open task closes is asked at its next turn
- * end to write its handover and retire itself. `set` records the ask (a `SessionAsk` in `paths.retireAsks`); the
- * Stop hook takes it, checks the session still has no open task, and blocks once with `retireAskReason`.
+ * end to write its handover, never to retire: its leader decides which workers the team needs, and the idle pass
+ * deactivates a worker with no task. `set` records the ask (a `SessionAsk` in `paths.retireAsks`); the Stop hook
+ * takes it, checks the session still has no open task, and blocks once with `retireAskReason`.
  */
 
 /** Whether `session` owns a task that is not closed. */
@@ -31,7 +31,7 @@ export interface RetireAskInput {
   readonly tasks: Iterable<Task>;
 }
 
-/** Whether closing the task asks its owner to retire: a hired session on the team, under `automatic`, left with no open task. */
+/** Whether closing the task asks its owner for its handover: a hired session on the team, under `automatic`, left with no open task. */
 export function retireAskDue(input: RetireAskInput): boolean {
   const { config, task } = input;
   return (
@@ -42,11 +42,12 @@ export function retireAskDue(input: RetireAskInput): boolean {
   );
 }
 
-/** The Stop hook's block reason: write the handover, then retire, unless the job goes on. */
-export function retireAskReason(id: string, ask: SessionAsk, handoverPath: string): string {
+/** The Stop hook's block reason: write the handover and end the turn, never retire, unless a task came in. */
+export function retireAskReason(ask: SessionAsk, handoverPath: string): string {
   return (
-    `Your last open task ${ask.task} is closed and hiring.policy is automatic, so your job here may be done. ` +
-    `Write your handover to ${handoverPath} (what you did, where it lives, what is left), then retire: ` +
-    `\`${KIT_NAME} retire ${id} --session ${id} --yes\`. If your job goes on, or retire refuses because a task came in, say so in one line and carry on.`
+    `Your last open task ${ask.task} is closed. Write your handover to ${handoverPath} (what you did, where it lives, ` +
+    'what is left), so you can start from it when work comes, then end your turn. Do not retire: your leader decides ' +
+    'which workers the team needs, and a worker with no task is deactivated instead (under open.idle.mode on, the idle ' +
+    'pass closes a quiet tab and reopens it when work comes). If a task came in, say so in one line and carry on.'
   );
 }

@@ -757,7 +757,7 @@ and so do its closed tasks and those still waiting or verifying on a reason not 
 refresh is under way (the ask then waits for a later stop), and never in the budget's quiet hours or while its
 budget holds it (the day-start wake brings it back to its work). With nothing it can start, the turn ends as
 it would, and a turn that asks the user to decide shows [the decision circle](#every-event-tab-status). A hired
-session asked to retire itself is asked that first.
+session asked to write its handover is asked that first.
 
 ## After a tool call: the lead boundary
 
