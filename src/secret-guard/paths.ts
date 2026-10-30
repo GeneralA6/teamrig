@@ -17,9 +17,9 @@ export const DEFAULT_SECRET_PATHS: readonly string[] = [
   '~/.ssh/**',
   '!~/.ssh/*.pub',
   '~/.aws/credentials',
-  '~/.kube/config',
+  '**/.kube/config',
   '~/.docker/config.json',
-  '~/.git-credentials',
+  '**/.git-credentials',
   '~/.config/gh/hosts.yml',
   '~/.claude/.credentials.json',
   '~/.claude/history.jsonl',
@@ -29,6 +29,16 @@ export const DEFAULT_SECRET_PATHS: readonly string[] = [
   '**/PSReadLine/*_history.txt',
   '**/*.pem',
   '**/*.key',
+  '**/*.p12',
+  '**/*.pfx',
+  '**/*.jks',
+  '**/*.keystore',
+  '**/id_rsa',
+  '**/id_ecdsa',
+  '**/id_ed25519',
+  // Terraform's state holds the secrets it creates in plain text.
+  '**/*.tfstate',
+  '**/*.tfstate.backup',
 ];
 
 /** Stands for a part of a path only known when the line runs: it matches inside a `*` or `**`, never a name a glob spells out. */
