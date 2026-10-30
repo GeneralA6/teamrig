@@ -185,14 +185,22 @@ export function byUrgency(a: Task, b: Task): number {
   return a.priority - b.priority || taskNumber(a.id) - taskNumber(b.id);
 }
 
+/** What picks the tasks that could wake a session at a moment. */
+export type WorthyInput = Pick<WakeInput, 'tasks' | 'elsewhere' | 'session' | 'now' | 'zone' | 'maxPriority'>;
+
+/** The session's tasks that could wake it at `now` ({@link isWakeWorthy}), in the register's order. */
+export function worthyTasksOf(input: WorthyInput): Task[] {
+  const context = waitContext(input.tasks, new Date(input.now), input.zone, input.elsewhere);
+  return [...input.tasks.values()].filter((task) => isWakeWorthy(task, input.session, input.maxPriority, context));
+}
+
 /**
  * Whether to wake the session now, later or not, and the state to keep. A first check in a tab takes what is
  * there as known: work from before the tab started is seen at its first prompt, as it always was.
  */
 export function decideWake(input: WakeInput): WakeDecision {
   const { tasks, elsewhere, session, tab, now, previous } = input;
-  const context = waitContext(tasks, new Date(now), input.zone, elsewhere);
-  const worthy = [...tasks.values()].filter((task) => isWakeWorthy(task, session, input.maxPriority, context));
+  const worthy = worthyTasksOf(input);
   const known = worthy.map((task) => task.id);
   const none: WakeVerdict = { kind: 'none' };
   const settled = previous?.settled ?? NO_SETTLED_MOMENTS;
