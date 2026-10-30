@@ -11,7 +11,7 @@ import { chosenRepo, scheduleReadiness, shownBy, type DeployEnd, type DeployPort
 /**
  * `teamrig deploy --targets <a,b> --what "<why>" -- <command>`: a deploy that pulls nothing, such as the restart that
  * makes some of a repository's targets read a rotated secret on the same image. It goes by the rules of that
- * repository's deploy: the queue cutoff and the reset blackout refuse it, quiet claims on the targets it names hold it,
+ * repository's deploy: the queue cutoff and the reset blackout refuse it, deploy freezes on the targets it names hold it,
  * and the repository's checks hold or refuse it, asked again under the host lock. Then it runs the command, one queued
  * step in the ledger, and records a deploy of those targets, so `teamrig windows` counts only them as disturbed.
  */
@@ -56,7 +56,7 @@ function targetsProblem(repo: DeployRepo, targets: readonly string[]): string | 
   if (unknown.length === 0) {
     return undefined;
   }
-  return `${unknown.join(', ')} ${unknown.length === 1 ? 'is' : 'are'} not in ${listed}: a deploy names only targets the quiet claims and windows know`;
+  return `${unknown.join(', ')} ${unknown.length === 1 ? 'is' : 'are'} not in ${listed}: a deploy names only targets the deploy freezes and windows know`;
 }
 
 /** Under the host lock: runs the command with the lock's token in its environment, each line shown redacted. */

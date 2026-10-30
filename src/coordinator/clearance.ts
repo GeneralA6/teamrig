@@ -2,7 +2,7 @@ import type { Clock, Sleep } from '../core/lock.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { holderText, waitText, type HostLock, type HostLockInfo } from './host-lock.ts';
 
-/** Whether a deploy step may start: at once, never (a cutoff or blackout), or after a wait (a quiet claim). */
+/** Whether a deploy step may start: at once, never (a cutoff or blackout), or after a wait (a deploy freeze). */
 export type Readiness = { readonly kind: 'go' } | { readonly kind: 'refuse'; readonly reason: string } | { readonly kind: 'wait'; readonly reason: string };
 
 /** When readiness is asked: before the host lock is taken, or under it, the answer the step goes on. */
@@ -18,7 +18,7 @@ export interface ClearanceRequest {
   readonly session: string;
   /** What the lock names as its holder's purpose, such as `merge api`. */
   readonly purpose: string;
-  /** The whole wait, for claims and the lock together; the lock's goes on past it while its line moves. */
+  /** The whole wait, for freezes and the lock together; the lock's goes on past it while its line moves. */
   readonly maxWaitMs: number;
   readonly pollMs: number;
   /** Hears each new reason to wait once, so a long wait logs a line a change. */
@@ -36,7 +36,7 @@ export interface ClearancePorts {
 /**
  * Takes the host lock once nothing holds the step back. A refusal ends the wait at once; a reason to wait and a busy
  * lock are waited out, for at most `maxWaitMs` in all, the lock longer while its line moves (see `HostLock.acquire`).
- * Readiness is asked again under the lock, since a claim may start while the step waited for the lock: then the lock
+ * Readiness is asked again under the lock, since a freeze may start while the step waited for the lock: then the lock
  * is released and the wait goes on. Each ask names its phase, so a check that costs or changes something can run
  * only under the lock.
  */

@@ -209,11 +209,11 @@ describe('deployRepo', () => {
     assert.deepEqual([world.records().length, world.pulled(), world.lockFree()], [0, false, true]);
   });
 
-  it('waits out a quiet claim on its targets, and is refused at the queue cutoff', async () => {
+  it('waits out a deploy freeze on its targets, and is refused at the queue cutoff', async () => {
     const claim = { session: 'ops', targets: ['workers'], metric: 'p95', why: 'latency probe', from: '2030-01-08T09:50:00.000Z', until: '2030-01-08T10:05:00.000Z' };
     const world = new World({ claims: JSON.stringify([claim]) });
     assert.deepEqual(await world.run(), { kind: 'done', summary: 'c1..c2 deployed' });
-    assert.ok(world.said.includes('waiting: quiet claim by ops on workers until 2030-01-08 10:05 UTC (p95)'));
+    assert.ok(world.said.includes('waiting: deploy freeze by ops on workers until 2030-01-08 10:05 UTC (p95)'));
     assert.ok(world.clock.now() >= Date.parse('2030-01-08T10:05:00Z'));
     const late = new World({ schedule: { queueCutoffUtc: '09:00' } });
     refused(await late.run(), 'queue cutoff 09:00-00:00 UTC (now 10:00 UTC)');

@@ -3406,8 +3406,8 @@ blackout).
 
 The repository is the entry of `delivery.repos` whose `mainCheckout` is this checkout's main one:
 
-- `deploysOnPush`: what a push to the default branch deploys, such as `["cloud-api"]`. It waits for quiet
-  claims on these targets, and records the push in the ledger as a deploy of them, which teamrig does not watch.
+- `deploysOnPush`: what a push to the default branch deploys, such as `["cloud-api"]`. It waits for deploy
+  freezes on these targets, and records the push in the ledger as a deploy of them, which teamrig does not watch.
 - `dependencyGate`: REFUSED when the branch changes `package-lock.json` or a `package.json` field an install reads
   (any but scripts no install hook runs, a tool's settings such as `jest`, `prettier` or `lint-staged`, and the
   package's description fields), since merging it changes, unreviewed, the `node_modules` every worktree links to;
@@ -3449,7 +3449,7 @@ The repository is the entry of `delivery.repos` whose `mainCheckout` is this che
   there and moves the local default branch to upstream's; the branch is still pushed to and deleted from origin.
 
 A repository not listed gets a NOTE and none of these. Then `teamrig merge` waits up to `delivery.wait.maxMinutes` (60),
-looking every `delivery.wait.pollSeconds` (30), for the claims and the host lock (see `teamrig queue`; longer while its line moves), fetches,
+looking every `delivery.wait.pollSeconds` (30), for the freezes and the host lock (see `teamrig queue`; longer while its line moves), fetches,
 rebases onto origin's default branch, runs the `dependencyCheck` on a dependency change, the review gate and, under
 `pushGuard.pushToProtected: gated`, the self-merge gates (see Gate holds below), and pushes there (or runs the
 `merge` command), the push a queued step in the ledger that runs the pre-push
@@ -3531,7 +3531,7 @@ Output:
 DONE pushed 9a0b1c2d..4f1c2a9e to main; cloud-api deploy on push
 ```
 
-A wait prints `waiting: <reason>` lines first, such as a quiet claim or the host lock's holder. A merge command that
+A wait prints `waiting: <reason>` lines first, such as a deploy freeze or the host lock's holder. A merge command that
 waits:
 
 ```text
@@ -3571,7 +3571,7 @@ process.exit(state === 'MERGED' ? 0 : state === 'OPEN' && review !== 'CHANGES_RE
 ```
 
 Its push runs the pre-push hook, so checks kept in git's hooks still run before the forge sees the branch. A merge
-the forge makes later happens outside the host lock and the quiet claims: a `deploysOnPush` deploy starts when the forge
+the forge makes later happens outside the host lock and the deploy freezes: a `deploysOnPush` deploy starts when the forge
 merges, and is recorded when the next `teamrig merge` finishes the merge.
 
 ### teamrig deploy
@@ -3582,7 +3582,7 @@ same way for every session: checked, pulled under the host lock, deployed and re
 The repository is an entry of `delivery.repos` with a `deploy` block: the one `--repo` names, else the one whose
 `mainCheckout` this folder is in, else the only one with a deploy block.
 
-- `targets`: what the deploy restarts, such as `["api", "workers"]`. deploy waits for quiet claims on them, and its
+- `targets`: what the deploy restarts, such as `["api", "workers"]`. deploy waits for deploy freezes on them, and its
   deploy record names them.
 - `checks`: up to 16 `{ "name", "command" }` checks the team's own tools answer, such as "is a batch run open?".
 - `dependencyInstall`: the install a pushed dependency change needs, such as `["npm", "ci", "--ignore-scripts"]`,
@@ -3602,7 +3602,7 @@ commits origin lacks, and for a range with a dependency change `dependencyGate` 
 or no `deploy.dependencyInstall` set, or a range deploy cannot read. Also from
 `delivery.schedule.queueCutoffUtc` to midnight UTC, in the `resetBlackoutHours` before the weekly token reset,
 and when a check refuses. With nothing pending it is DONE and runs nothing. Otherwise it waits up to
-`delivery.wait.maxMinutes` for the claims, the checks and the host lock (longer while its line moves), reads origin again under the lock and asks
+`delivery.wait.maxMinutes` for the freezes, the checks and the host lock (longer while its line moves), reads origin again under the lock and asks
 the checks again, then pulls fast-forward to the sha they judged and runs the dependency steps, the afterPull hooks
 and the command, each killed after `delivery.queue.maxRunMinutes`, all one queued step in the ledger. Their lines
 show as they come.
@@ -3626,8 +3626,8 @@ and frees the lock (FAILED).
 A deploy that pulls nothing: `teamrig deploy --targets <a,b> --what "<why>" -- <command ...>` restarts some of the
 repository's targets with a command of its own, such as a restart that makes them read a rotated secret on the same
 image. It keeps the repository's deploy rules. It is REFUSED (exit 2) before any check or lock for a target not in
-`deploy.targets`, since a typo would slip past the quiet claims, and also at the queue cutoff, in the reset blackout
-and when a check refuses. It waits for quiet claims on the targets it names, not the others, then for the checks and
+`deploy.targets`, since a typo would slip past the deploy freezes, and also at the queue cutoff, in the reset blackout
+and when a check refuses. It waits for deploy freezes on the targets it names, not the others, then for the checks and
 the host lock, and asks the checks again under the lock. The command runs with no shell in this folder, killed after
 `delivery.queue.maxRunMinutes`, as one queued step in the ledger; its lines show as they come.
 
@@ -3636,7 +3636,7 @@ The checks and the command get `TEAMRIG_TEAM`, `TEAMRIG_SESSION`, `TEAMRIG_VERB=
 its verb. The command also gets `$TEAMRIG_HOST_LOCK`. The deploy record names the targets (`"targets": ["api",
 "live"]`), so `teamrig windows` counts only them as disturbed. It is written even when the command fails (FAILED,
 exit 1), since a failed restart may have restarted some of them; a command that cannot start records no deploy.
-A quiet claim of your own on a target holds your deploy like anyone else's, so release it first: the host lock
+A deploy freeze of your own on a target holds your deploy like anyone else's, so unfreeze it first: the host lock
 already keeps other deploys and queued steps out while the command runs.
 
 Flags:
@@ -3698,54 +3698,54 @@ Output:
 DONE deployed api, workers of pipeline: restarted 2 deployments
 ```
 
-### teamrig claim
+### teamrig freeze
 
-A quiet claim holds the merges and deploys of its targets while a session measures them, so no deploy
+A deploy freeze holds the merges and deploys of its targets while a session measures them, so no deploy
 lands in the middle of a measurement. It lasts from now for `--for`: minutes, hours or both, such as `45m` or
 `1h30m`, at most `delivery.freezes.maxMinutes` (120). Each target must be one a repository deploys, in its
-`deploysOnPush` or `deploy.targets`. One claim per session. REFUSED for an unknown target, a longer span, a second
-claim, or a secret in the metric or reason, since the claims are shared files: `claims.json` beside the ledger, and
-`claims.md` for people, both written under their own lock. A claim ends at its time, or with `teamrig release`.
-Nothing else holds a deploy: a measurement without a claim adapts to the deploys, and no deploy waits for it.
+`deploysOnPush` or `deploy.targets`. One freeze per session. REFUSED for an unknown target, a longer span, a second
+freeze, or a secret in the metric or reason, since the freezes are shared files: `claims.json` beside the ledger, and
+`claims.md` for people, both written under their own lock. A freeze ends at its time, or with `teamrig unfreeze`.
+Nothing else holds a deploy: a measurement without a freeze adapts to the deploys, and no deploy waits for it.
 
 Flags:
 
-- `--targets <a,b>`: the deploy targets the claim holds.
+- `--targets <a,b>`: the deploy targets the freeze holds.
 - `--metric <m>`: what is being measured, shown to the deploys it holds.
 - `--why "<why>"`: why it must not move meanwhile.
 - `--for <span>`: how long, such as `45m`, `2h` or `1h30m`.
-- `--session <id|name>`: the session claiming; default `$TEAMRIG_SESSION`.
+- `--session <id|name>`: the session that freezes; default `$TEAMRIG_SESSION`.
 
 Example:
 
 ```sh
-teamrig claim --session api --targets api,workers --metric "p95 latency" --why "cache probe" --for 45m
+teamrig freeze --session api --targets api,workers --metric "p95 latency" --why "cache probe" --for 45m
 ```
 
 Output:
 
 ```text
-CLAIMED api, workers until 2030-01-08 12:45 IST
+FROZEN api, workers until 2030-01-08 12:45 IST
 ```
 
-### teamrig release
+### teamrig unfreeze
 
-Ends this session's quiet claim before its time, so the deploys it held can go. NONE when the session held none.
+Ends this session's deploy freeze before its time, so the deploys it held can go. NONE when the session held none.
 
 Flags:
 
-- `--session <id|name>`: the session whose claim ends; default `$TEAMRIG_SESSION`.
+- `--session <id|name>`: the session whose freeze ends; default `$TEAMRIG_SESSION`.
 
 Example:
 
 ```sh
-teamrig release --session api
+teamrig unfreeze --session api
 ```
 
 Output:
 
 ```text
-RELEASED api, workers (claimed until 2030-01-08 12:45 IST)
+UNFROZEN api, workers (frozen until 2030-01-08 12:45 IST)
 ```
 
 ### teamrig windows
@@ -3838,7 +3838,7 @@ ENDED 3f9c1a7e at 2030-01-08 12:00 IST
 
 The deploy state now, in one read: who holds the host lock (a stale lock shows as free, since the next queued step
 removes it) and, on a `sharing the host:` line, the small steps (`queue --small`) sharing it, the queue cutoff (its `heavy cutoff:` line) and the blackout before the weekly token reset (each marked IN FORCE while it holds),
-the quiet claims and loads still open, and what each repository with a deploy block has pushed but not deployed. It
+the deploy freezes (its `claims:` lines) and loads still open, and what each repository with a deploy block has pushed but not deployed. It
 fetches each main checkout to tell; for one a deploy would refuse, it says why.
 
 Flags: none.

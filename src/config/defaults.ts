@@ -303,13 +303,13 @@ export const HEAVY_TTL_MARGIN_MINUTES = 10;
  */
 export const DEFAULT_HEAVY: HeavyConfig = { lockTtlMinutes: 150, maxRunMinutes: 45, smallMaxRunMinutes: 10, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048 };
 
-/** A waiting delivery step looks again every 30 seconds; a deploy step waits up to an hour for claims and the host lock. */
+/** A waiting delivery step looks again every 30 seconds; a deploy step waits up to an hour for freezes and the host lock. */
 export const DEFAULT_COORDINATOR_WAIT: CoordinatorWaitConfig = { pollSeconds: 30, maxMinutes: 60 };
 
 /** A deploy's check answers within 20 seconds, else the deploy waits. */
 export const DEFAULT_CHECK_TIMEOUT_SECONDS = 20;
 
-/** A quiet claim lasts at most two hours. */
+/** A deploy freeze lasts at most two hours. */
 export const DEFAULT_CLAIMS: ClaimsConfig = { maxMinutes: 120 };
 
 /** A target measures cleanly 30 minutes after a deploy; a deploy the ledger knows only by its ledger.md line ran for 20 minutes; a window under 15 minutes is left out. */

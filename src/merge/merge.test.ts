@@ -52,7 +52,7 @@ interface Options {
   readonly waitMinutes?: number;
   readonly start?: string;
   readonly reset?: ResetTime;
-  /** The quiet claims file's text. */
+  /** The deploy freezes file's text. */
   readonly claims?: string;
   readonly review?: ReviewGateSetup;
   readonly gated?: GatedSetup;
@@ -844,17 +844,17 @@ describe('merge waits for what may hold a deploy, and refuses what forbids one',
   const claim = (until: string, targets: readonly string[] = ['cloud-api']): string =>
     JSON.stringify([{ session: 'po', targets, metric: 'p95 latency', why: 'baseline', from: '2030-01-08T09:00:00Z', until }]);
 
-  it('waits out a quiet claim on what the push deploys, then merges', async () => {
+  it('waits out a deploy freeze on what the push deploys, then merges', async () => {
     const world = new World({ repos: deploying, claims: claim('2030-01-08T10:05:00Z') });
     assert.equal((await world.run()).kind, 'done');
-    assert.ok(world.said.includes('waiting: quiet claim by po on cloud-api until 2030-01-08 10:05 UTC (p95 latency)'));
+    assert.ok(world.said.includes('waiting: deploy freeze by po on cloud-api until 2030-01-08 10:05 UTC (p95 latency)'));
     assert.equal(world.steps.ran.length, 1);
     assert.ok(world.clock.now() >= Date.parse('2030-01-08T10:05:00Z'));
     const [start] = world.records(PLACES.ledger);
     assert.match(JSON.stringify(start), /"queuedAt":"2030-01-08T10:00:00\.000Z","startedAt":"2030-01-08T10:0[5-9]:/, 'its record shows the wait from its first look');
   });
 
-  it('ignores a claim on other targets, and claims at all for a repository that deploys nothing', async () => {
+  it('ignores a freeze on other targets, and freezes at all for a repository that deploys nothing', async () => {
     const other = new World({ repos: deploying, claims: claim('2030-01-08T12:00:00Z', ['cloud-web']) });
     assert.equal((await other.run()).kind, 'done');
     const quiet = new World({ claims: 'not json' });
@@ -862,16 +862,16 @@ describe('merge waits for what may hold a deploy, and refuses what forbids one',
     assert.ok(!quiet.said.some((line) => line.startsWith('waiting')));
   });
 
-  it('gives up on a claim that outlasts the wait, without pushing', async () => {
+  it('gives up on a freeze that outlasts the wait, without pushing', async () => {
     const world = new World({ repos: deploying, waitMinutes: 5, claims: claim('2030-01-08T12:00:00Z') });
-    refused(await world.run(), /quiet claim by po on cloud-api/);
+    refused(await world.run(), /deploy freeze by po on cloud-api/);
     assert.deepEqual(world.steps.ran, []);
     assert.ok(world.lockFree());
   });
 
-  it('waits on unreadable claims, since they may hold the deploy', async () => {
+  it('waits on unreadable freezes, since they may hold the deploy', async () => {
     const world = new World({ repos: deploying, waitMinutes: 1, claims: '{' });
-    refused(await world.run(), /quiet claims in \/team\/deploys\/claims\.json are unreadable \(not JSON\)/);
+    refused(await world.run(), /deploy freezes in \/team\/deploys\/claims\.json are unreadable \(not JSON\)/);
   });
 
   it('refuses after the queue cutoff', async () => {

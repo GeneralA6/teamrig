@@ -144,8 +144,8 @@ describe('redeployTargets', () => {
   it('refuses targets its repository does not deploy, or none, before any check or lock', async () => {
     const world = new World();
     const listed = 'delivery.repos.pipeline.deploy.targets (api, workers, live)';
-    assert.deepEqual(await world.run({ ...REQUEST, targets: ['api', 'apii', 'cron'] }), { kind: 'refused', reason: `apii, cron are not in ${listed}: a deploy names only targets the quiet claims and windows know` });
-    assert.deepEqual(await world.run({ ...REQUEST, targets: ['apii'] }), { kind: 'refused', reason: `apii is not in ${listed}: a deploy names only targets the quiet claims and windows know` });
+    assert.deepEqual(await world.run({ ...REQUEST, targets: ['api', 'apii', 'cron'] }), { kind: 'refused', reason: `apii, cron are not in ${listed}: a deploy names only targets the deploy freezes and windows know` });
+    assert.deepEqual(await world.run({ ...REQUEST, targets: ['apii'] }), { kind: 'refused', reason: `apii is not in ${listed}: a deploy names only targets the deploy freezes and windows know` });
     assert.deepEqual(await world.run({ ...REQUEST, targets: [] }), { kind: 'refused', reason: `name the targets the command restarts, from ${listed}` });
     assert.deepEqual(await world.run({ ...REQUEST, repo: 'site' }), { kind: 'refused', reason: 'site is not in delivery.repos (with a deploy block: pipeline)' });
     assert.deepEqual([world.hooks.ran.length, world.records().length, world.lockFree()], [0, 0, true]);
@@ -158,10 +158,10 @@ describe('redeployTargets', () => {
     assert.equal(world.hooks.ran.length, 0);
   });
 
-  it('waits out a quiet claim on a target it names, and not one on a target it leaves alone', async () => {
+  it('waits out a deploy freeze on a target it names, and not one on a target it leaves alone', async () => {
     const held = new World({ claims: JSON.stringify([claim(['live'])]) });
     assert.equal((await held.run()).kind, 'done');
-    assert.ok(held.said.includes('waiting: quiet claim by ops on live until 2030-01-08 10:05 UTC (p95)'));
+    assert.ok(held.said.includes('waiting: deploy freeze by ops on live until 2030-01-08 10:05 UTC (p95)'));
     assert.ok(held.clock.now() >= Date.parse('2030-01-08T10:05:00Z'));
     const free = new World({ claims: JSON.stringify([claim(['workers'])]) });
     assert.equal((await free.run()).kind, 'done');

@@ -535,7 +535,7 @@
       }
     },
     "delivery": {
-      "description": "The delivery flow: teamrig queue runs one queued step on the host at a time, under the host lock, teamrig merge merges a branch into its repository's default branch, teamrig deploy deploys it and teamrig claim holds deploys while a session measures; each step is recorded in the ledger.",
+      "description": "The delivery flow: teamrig queue runs one queued step on the host at a time, under the host lock, teamrig merge merges a branch into its repository's default branch, teamrig deploy deploys it and teamrig freeze holds deploys while a session measures; each step is recorded in the ledger.",
       "type": "object",
       "properties": {
         "dir": {
@@ -557,7 +557,7 @@
                 "minLength": 1
               },
               "deploysOnPush": {
-                "description": "The deploy targets a push to the default branch deploys by itself (a host that builds on push): quiet claims on them hold the merge, and the push is recorded as their deploy.",
+                "description": "The deploy targets a push to the default branch deploys by itself (a host that builds on push): deploy freezes on them hold the merge, and the push is recorded as their deploy.",
                 "type": "array",
                 "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" }
               },
@@ -626,7 +626,7 @@
                 "required": ["command"],
                 "properties": {
                   "targets": {
-                    "description": "The deploy targets it deploys: quiet claims on them hold it.",
+                    "description": "The deploy targets it deploys: deploy freezes on them hold it.",
                     "type": "array",
                     "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" }
                   },
@@ -748,11 +748,11 @@
           "default": 20
         },
         "freezes": {
-          "description": "Quiet claims (teamrig claim), which hold deploys of their targets while a session measures them.",
+          "description": "Deploy freezes (teamrig freeze), which hold deploys of their targets while a session measures them.",
           "type": "object",
           "properties": {
             "maxMinutes": {
-              "description": "A claim lasts at most this many minutes.",
+              "description": "A freeze lasts at most this many minutes.",
               "type": "integer",
               "minimum": 1,
               "maximum": 1440,
@@ -808,7 +808,7 @@
               "default": 30
             },
             "maxMinutes": {
-              "description": "A deploy step (teamrig merge, deploy) waits this many minutes at most for quiet claims and the host lock, then is refused; a wait in a line for the lock that keeps moving goes on past them.",
+              "description": "A deploy step (teamrig merge, deploy) waits this many minutes at most for deploy freezes and the host lock, then is refused; a wait in a line for the lock that keeps moving goes on past them.",
               "type": "integer",
               "minimum": 0,
               "maximum": 1440,

@@ -1,6 +1,6 @@
 import { basename, dirname } from 'node:path';
 import type { CoordinatorConfig, CoordinatorRepoConfig } from '../config/types.ts';
-import { claimText, coveringClaims, readClaims } from '../coordinator/claims.ts';
+import { coveringClaims, freezeText, readClaims } from '../coordinator/claims.ts';
 import { takeWhenClear, type Readiness } from '../coordinator/clearance.ts';
 import { underLock, type HostLock, type HostLockInfo } from '../coordinator/host-lock.ts';
 import { appendDeploy, rangeText } from '../coordinator/ledger.ts';
@@ -34,7 +34,7 @@ import type { ReviewHolds } from './review-holds.ts';
 /**
  * `teamrig merge`: merges a finished branch into origin's default branch, one push on the host at a time. It refuses
  * a branch it must not merge (detached, the default branch, uncommitted changes, nothing new, a dependency change the
- * gate holds and no dependency check clears), waits out quiet claims on what the push deploys, takes the host lock,
+ * gate holds and no dependency check clears), waits out deploy freezes on what the push deploys, takes the host lock,
  * rebases onto the fresh default branch, runs the dependency check when the branch changes the package files, the
  * review gate when the repo has one (a change of a review path waits for its reviewer) and, under
  * `pushGuard.pushToProtected: gated`, the self-merge gates (a change that misses one waits for a leader's approval), and
@@ -387,7 +387,7 @@ function mergeOf(cleared: Cleared, plan: Plan, at: string, base: string, head: s
   return verdict.kind === 'self' ? { ...merged, route: 'self' } : { ...merged, route: 'approved', missed: verdict.missed, approvedBy: verdict.approvedBy };
 }
 
-/** Whether the push may start now: the queue cutoff and the reset blackout refuse it, a quiet claim on what it deploys holds it. */
+/** Whether the push may start now: the queue cutoff and the reset blackout refuse it, a deploy freeze on what it deploys holds it. */
 function readinessOf(setup: MergeSetup, ports: MergePorts, repo: RepoMatch): () => Promise<Readiness> {
   const { schedule } = setup.delivery;
   const targets = repo.config.deploysOnPush;
@@ -405,10 +405,10 @@ function readinessOf(setup: MergeSetup, ports: MergePorts, repo: RepoMatch): () 
     }
     const read = await readClaims(ports.files, setup.places.claims);
     if (read.kind === 'unreadable') {
-      return { kind: 'wait', reason: `the quiet claims in ${setup.places.claims} are unreadable (${read.reason})` };
+      return { kind: 'wait', reason: `the deploy freezes in ${setup.places.claims} are unreadable (${read.reason})` };
     }
     const covering = coveringClaims(read.claims, targets, now);
-    return covering.length === 0 ? { kind: 'go' } : { kind: 'wait', reason: covering.map((claim) => claimText(claim, setup.zone)).join('; ') };
+    return covering.length === 0 ? { kind: 'go' } : { kind: 'wait', reason: covering.map((claim) => freezeText(claim, setup.zone)).join('; ') };
   };
 }
 

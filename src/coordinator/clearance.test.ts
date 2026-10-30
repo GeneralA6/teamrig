@@ -59,7 +59,7 @@ function answers(...replies: readonly Readiness[]): () => Promise<Readiness> {
 }
 
 const GO: Readiness = { kind: 'go' };
-const CLAIMED: Readiness = { kind: 'wait', reason: 'quiet claim by po on cloud-api until 2030-01-08 10:02 UTC (p95)' };
+const FROZEN: Readiness = { kind: 'wait', reason: 'deploy freeze by po on cloud-api until 2030-01-08 10:02 UTC (p95)' };
 
 describe('takeWhenClear', () => {
   it('takes the lock at once when nothing holds the step', async () => {
@@ -78,18 +78,18 @@ describe('takeWhenClear', () => {
     assert.deepEqual(clock.sleeps, []);
   });
 
-  it('waits out a claim, logging its reason once, then takes the lock', async () => {
+  it('waits out a freeze, logging its reason once, then takes the lock', async () => {
     const { clock, lock, waits, request } = world();
-    const clearance = await takeWhenClear(answers(CLAIMED, CLAIMED, CLAIMED, GO), { lock, clock, sleep: clock.sleep }, request);
+    const clearance = await takeWhenClear(answers(FROZEN, FROZEN, FROZEN, GO), { lock, clock, sleep: clock.sleep }, request);
     assert.equal(clearance.kind, 'taken');
-    assert.deepEqual(waits, [CLAIMED.reason]);
+    assert.deepEqual(waits, [FROZEN.reason]);
     assert.deepEqual(clock.sleeps, [POLL_MS, POLL_MS, POLL_MS]);
   });
 
-  it('gives up when a claim outlasts the wait, sleeping no further than its end', async () => {
+  it('gives up when a freeze outlasts the wait, sleeping no further than its end', async () => {
     const { files, clock, lock, request } = world({}, 45_000);
-    const clearance = await takeWhenClear(answers(CLAIMED), { lock, clock, sleep: clock.sleep }, request);
-    assert.deepEqual(clearance, { kind: 'gaveUp', reason: CLAIMED.reason });
+    const clearance = await takeWhenClear(answers(FROZEN), { lock, clock, sleep: clock.sleep }, request);
+    assert.deepEqual(clearance, { kind: 'gaveUp', reason: FROZEN.reason });
     assert.deepEqual(clock.sleeps, [POLL_MS, 15_000]);
     assert.equal(files.get(LOCK_PATH), undefined);
   });
@@ -113,7 +113,7 @@ describe('takeWhenClear', () => {
   it('names the phase of each ask: before the lock, then under it', async () => {
     const { clock, lock, request } = world();
     const asked: ClearancePhase[] = [];
-    const reply = answers(GO, CLAIMED, GO, GO);
+    const reply = answers(GO, FROZEN, GO, GO);
     const clearance = await takeWhenClear(
       async (phase) => {
         asked.push(phase);
@@ -126,11 +126,11 @@ describe('takeWhenClear', () => {
     assert.deepEqual(asked, ['before', 'locked', 'before', 'locked']);
   });
 
-  it('releases the lock and waits again when a claim started while it waited for the lock', async () => {
+  it('releases the lock and waits again when a freeze started while it waited for the lock', async () => {
     const { files, clock, lock, waits, request } = world();
-    const clearance = await takeWhenClear(answers(GO, CLAIMED, CLAIMED, GO, GO), { lock, clock, sleep: clock.sleep }, request);
+    const clearance = await takeWhenClear(answers(GO, FROZEN, FROZEN, GO, GO), { lock, clock, sleep: clock.sleep }, request);
     assert.equal(clearance.kind, 'taken');
-    assert.deepEqual(waits, [CLAIMED.reason]);
+    assert.deepEqual(waits, [FROZEN.reason]);
     assert.deepEqual(clock.sleeps, [POLL_MS, POLL_MS]);
     assert.match(files.get(LOCK_PATH) ?? '', /"session":"api"/);
   });
@@ -142,10 +142,10 @@ describe('takeWhenClear', () => {
     assert.equal(files.get(LOCK_PATH), undefined);
   });
 
-  it('releases the lock and gives up when a claim found under the lock outlasts the wait', async () => {
+  it('releases the lock and gives up when a freeze found under the lock outlasts the wait', async () => {
     const { files, clock, lock, request } = world({}, 0);
-    const clearance = await takeWhenClear(answers(GO, CLAIMED), { lock, clock, sleep: clock.sleep }, request);
-    assert.deepEqual(clearance, { kind: 'gaveUp', reason: CLAIMED.reason });
+    const clearance = await takeWhenClear(answers(GO, FROZEN), { lock, clock, sleep: clock.sleep }, request);
+    assert.deepEqual(clearance, { kind: 'gaveUp', reason: FROZEN.reason });
     assert.equal(files.get(LOCK_PATH), undefined);
   });
 });
