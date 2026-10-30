@@ -35,6 +35,7 @@ import { CONTEXT_MAX_CHARS, TEAM_RULES_MAX_CHARS } from '../rules/pack.ts';
 import type { ExecPorts } from '../exec/ports.ts';
 import type { PointerGit } from '../setup/pointer-ignore.ts';
 import { FakeClock } from './fake-clock.ts';
+import { FakeSessionProcesses } from './fake-session-processes.ts';
 import { MemoryFiles } from './memory-files.ts';
 import { quietWorld } from './quiet-world.ts';
 import { textFileBytes } from './text-file-bytes.ts';
@@ -53,6 +54,8 @@ export const SKILLS_DIR = join(USER_HOME, '.claude', 'skills');
 export const APP = resolve('/', 'work', 'app');
 export const POINTER = join(APP, '.teamrig.json');
 export const CLAUDE_SESSION = '0123abcd-0000-4000-8000-00000000000a';
+/** The pid of every run of the CLI. */
+export const CLI_PID = 4242;
 export const TEAM: JsonRecord = { sessions: ['lead', 'alpha', 'bravo'], roles: { lead: 'lead' } };
 /** {@link TEAM} with the context refresh's automatic restart on (`refresh.autoRestart`, off by default). */
 export const AUTO_RESTART_TEAM: JsonRecord = { ...TEAM, refresh: { autoRestart: true } };
@@ -121,7 +124,7 @@ export interface RunOptions {
   readonly timeZone?: string;
   /** The programs the CLI starts; default none is installed. */
   readonly processes?: Processes;
-  /** The running session's processes; default none runs. */
+  /** The running session's processes; default the kit's own (`CliHarness.sessionProcesses`). */
   readonly sessionProcesses?: SessionProcesses;
   /** How the CLI waits, such as one that changes the world mid-wait; default the clock's, which only moves time. */
   readonly sleep?: Sleep;
@@ -168,6 +171,8 @@ export interface RunOptions {
 export class CliHarness {
   readonly files: MemoryFiles;
   readonly clock = new FakeClock('2030-01-08T10:00:00Z');
+  /** The processes a run sees unless it brings its own: none runs until a spec adds one, such as a lock's holder. */
+  readonly sessionProcesses = new FakeSessionProcesses();
 
   /** `null` leaves out the team config or the project's team pointer; `undefined` takes the default. */
   constructor(config: JsonRecord | string | null = TEAM, pointer: string | null = '{"team": "app"}') {
@@ -188,7 +193,7 @@ export class CliHarness {
       env: { TEAMRIG_HOME: KIT, ...options.env },
       userHome: USER_HOME,
       cwd: options.cwd ?? APP,
-      pid: 4242,
+      pid: CLI_PID,
       files: options.files ?? this.files,
       fileBytes: options.fileBytes ?? textFileBytes(options.files ?? this.files),
       clock: this.clock,
@@ -201,7 +206,7 @@ export class CliHarness {
       ...(options.secretsGit === undefined ? {} : { secretsGit: options.secretsGit }),
       ...(options.platform === undefined ? {} : { platform: options.platform }),
       ...(options.processes === undefined ? {} : { processes: options.processes }),
-      ...(options.sessionProcesses === undefined ? {} : { sessionProcesses: options.sessionProcesses }),
+      sessionProcesses: options.sessionProcesses ?? this.sessionProcesses,
       ...(options.shell === undefined ? {} : { shell: options.shell }),
       ...(options.gh === undefined ? {} : { gh: options.gh }),
       ...(options.credentials === undefined ? {} : { credentials: options.credentials }),

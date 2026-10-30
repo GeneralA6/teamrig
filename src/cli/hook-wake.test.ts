@@ -21,6 +21,7 @@ import type { RefreshState, RestartRequest } from '../refresh/state.ts';
 import { RefreshStore } from '../refresh/store.ts';
 import { HOLDING_BUDGET, holdAlpha, meterDearDay, meterToday } from '../testing/budget-hold.ts';
 import { APP, AUTO_RESTART_TEAM, CliHarness, EVENTS_PATH, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
+import { holdFileLock } from '../testing/held-file-lock.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
@@ -380,7 +381,7 @@ describe('hook wake-check', () => {
 
   it('answers a recheck now while another tab of the session holds its lock', async () => {
     const kit = await teamWithAlphaTab();
-    await kit.files.write(ALPHA_LOCK, JSON.stringify({ pid: 7, at: kit.clock.now() }));
+    await holdFileLock(kit, ALPHA_LOCK);
     assert.deepEqual(answerOf(await check(kit)), { kind: 'wait', watch: watchOf(), recheckAt: kit.clock.now() });
   });
 
@@ -692,7 +693,7 @@ describe('hook wake-check runs the idle pass', () => {
 
   it("skips the pass while another tab's check holds its lock, and reads nothing with open.idle.mode off", async () => {
     const kit = await idleTeam();
-    await kit.files.write(join(STATE, 'idle-pass.lock'), JSON.stringify({ pid: 7, at: kit.clock.now() }));
+    await holdFileLock(kit, join(STATE, 'idle-pass.lock'));
     assert.deepEqual(answerOf(await passCheck(kit)), WAIT);
     const off = await idleTeam({ ...TEAM, open: { idle: { mode: 'off' } } });
     const unreadable = new FaultyFiles(off.files).fail('read', PASS_STATE, systemError('EACCES'));
