@@ -74,6 +74,20 @@ export interface RestartRequest {
   readonly supervised: boolean;
 }
 
+/** What a restart keeps of the tab it is for, from the Stop hook that asked for it. */
+export type RestartTab = Pick<RestartRequest, 'claudeSession' | 'transcript' | 'cwd' | 'supervised'>;
+
+/**
+ * The automatic restart the Stop hook held back once the handover was written (T1383): the session had no work it
+ * could start, so a fresh start then would only read the handover and sit idle. The next wake that brings it work
+ * (`hook wake-check`, in the tab named) arms the restart from this record instead of waking the session; a prompt or a
+ * later turn end drops it, the session having gone on from its context.
+ */
+export interface ParkedRestart extends RestartTab {
+  /** When the Stop hook held it back. */
+  readonly at: string;
+}
+
 /** A file of this format as an object; undefined for a damaged file or one in another format. */
 function recordOf(text: string): JsonRecord | undefined {
   const record = parseObject(text.trim());
@@ -183,25 +197,40 @@ export function parseRestartRequest(text: string): RestartRequest | undefined {
   const phase = record['phase'];
   const at = stringField(record, 'at');
   const pid = record['pid'];
-  const claudeSession = stringField(record, 'claudeSession');
-  const transcript = nullableString(record, 'transcript');
-  const cwd = nullableString(record, 'cwd');
-  const supervised = record['supervised'];
-  if (
-    (phase !== 'pending' && phase !== 'ending') ||
-    at === undefined ||
-    !isNonNegativeInteger(pid) ||
-    pid === 0 ||
-    claudeSession === undefined ||
-    transcript === undefined ||
-    cwd === undefined ||
-    typeof supervised !== 'boolean'
-  ) {
+  const tab = restartTabOf(record);
+  if ((phase !== 'pending' && phase !== 'ending') || at === undefined || !isNonNegativeInteger(pid) || pid === 0 || tab === undefined) {
     return undefined;
   }
-  return { phase, at, pid, claudeSession, transcript, cwd, supervised };
+  return { phase, at, pid, ...tab };
 }
 
 export function formatRestartRequest(request: RestartRequest): string {
   return toJsonlLine({ [VERSION_FIELD]: REFRESH_FORMAT, ...request });
+}
+
+/** A parked restart file's content; undefined when it is damaged or from another format. */
+export function parseParkedRestart(text: string): ParkedRestart | undefined {
+  const record = recordOf(text);
+  if (record === undefined) {
+    return undefined;
+  }
+  const at = stringField(record, 'at');
+  const tab = restartTabOf(record);
+  return at === undefined || tab === undefined ? undefined : { at, ...tab };
+}
+
+export function formatParkedRestart(parked: ParkedRestart): string {
+  return toJsonlLine({ [VERSION_FIELD]: REFRESH_FORMAT, ...parked });
+}
+
+/** The tab fields of a restart file; undefined when one is missing or of the wrong type. */
+function restartTabOf(record: JsonRecord): RestartTab | undefined {
+  const claudeSession = stringField(record, 'claudeSession');
+  const transcript = nullableString(record, 'transcript');
+  const cwd = nullableString(record, 'cwd');
+  const supervised = record['supervised'];
+  if (claudeSession === undefined || transcript === undefined || cwd === undefined || typeof supervised !== 'boolean') {
+    return undefined;
+  }
+  return { claudeSession, transcript, cwd, supervised };
 }
