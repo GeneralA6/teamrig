@@ -48,7 +48,7 @@ export interface HelperStartInput {
   /** Whether `$TEAMRIG_SESSION` holds `session`, so commands find it without `--session`. */
   readonly sessionInEnv: boolean;
   readonly platform: NodeJS.Platform;
-  /** When the rules are read and the machine's zone, which name the heavy cutoff on the team's clock. */
+  /** When the rules are read and the machine's zone, which name the queue cutoff on the team's clock. */
   readonly clock: RulesClock;
   /** The CLI name the rules tell the helper to run. */
   readonly command: string;

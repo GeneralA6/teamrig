@@ -115,7 +115,7 @@ describe('runWorkOf', () => {
   it('reads a teamrig command on the register, not the words it quotes, nor its other commands', () => {
     assert.deepEqual(worksOf('teamrig add --description "npm ci, jest and build"; teamrig.cmd set T1 --note "git commit"'), ['teamrig', 'teamrig']);
     assert.deepEqual(worksOf('teamrig start --session a; teamrig'), ['-', '-']);
-    assert.deepEqual(worksOf('teamrig heavy --what t -- teamrig test -- npm test'), ['testFull']);
+    assert.deepEqual(worksOf('teamrig queue --what t -- teamrig test -- npm test'), ['testFull']);
   });
 
   it('reads a search over files, but not one that filters a pipe or has nothing to search', () => {

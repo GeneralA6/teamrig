@@ -587,7 +587,7 @@ export const MISS_ROWS: readonly MissRow[] = [
     cell: ratioCell('missGitWorktreeRemove', 'worktreeRemoves'),
   },
   { short: `${ruleNumberOf('lean-calls')} helpers`, label: `${ruleLabel('lean-calls')}: helpers' share of W`, cell: helperShare },
-  { short: 'heavy', label: 'tests and builds outside teamrig heavy', cell: ratioCell('missHeavyOutside', 'heavySteps') },
+  { short: 'queue', label: 'tests and builds outside teamrig queue', cell: ratioCell('missHeavyOutside', 'heavySteps') },
   { short: 'npx', label: 'npx or dlx that fetches a package', cell: (usage) => formatCount(usage.patterns.missAdHocFetch) },
 ];
 

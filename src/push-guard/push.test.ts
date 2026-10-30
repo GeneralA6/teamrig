@@ -328,15 +328,23 @@ describe('evaluatePushes: where a push hides', () => {
     ]);
   });
 
-  it('reads the command teamrig heavy and teamrig test run after their --, but not a teamrig note', () => {
+  it('reads the command teamrig queue and teamrig test run after their --, but not a teamrig note', () => {
+    expectRows([
+      ['teamrig queue --session po --what "ship it" -- git push origin main', 'ask'],
+      ['teamrig test --session po -- git push -f origin main', 'deny'],
+      ['teamrig.cmd queue --what x -- teamrig test -- git push origin main', 'ask'],
+      ['teamrig queue --what x -- "git push origin main"', 'ask'],
+      ['teamrig queue --what x -- git push origin feature', 'allow'],
+      ['teamrig add --description "it ran teamrig queue -- git push -f origin main"', 'allow'],
+      ['teamrig $SUB -- git push origin main', 'ask', 'doubt'],
+    ]);
+  });
+
+  it('still reads the command under teamrig heavy, the old name of queue, which an older teamrig runs', () => {
     expectRows([
       ['teamrig heavy --session po --what "ship it" -- git push origin main', 'ask'],
-      ['teamrig test --session po -- git push -f origin main', 'deny'],
-      ['teamrig.cmd heavy --what x -- teamrig test -- git push origin main', 'ask'],
-      ['teamrig heavy --what x -- "git push origin main"', 'ask'],
+      ['teamrig heavy --what x -- git push -f origin main', 'deny'],
       ['teamrig heavy --what x -- git push origin feature', 'allow'],
-      ['teamrig add --description "it ran teamrig heavy -- git push -f origin main"', 'allow'],
-      ['teamrig $SUB -- git push origin main', 'ask', 'doubt'],
     ]);
   });
 
@@ -528,7 +536,7 @@ describe('evaluatePushes: where a push hides', () => {
       ['A="origin topic"; git push $A', 'allow'],
       ['P="node probe.ts"; $P "$l"', 'allow'],
       [
-        'S=/tmp/s; C=~/tools/cli.ts; W=/work/t; H="node --disable-warning=ExperimentalWarning $C heavy --session s"\n' +
+        'S=/tmp/s; C=~/tools/cli.ts; W=/work/t; H="node --disable-warning=ExperimentalWarning $C queue --session s"\n' +
           '$H --what "push topic" --max-minutes 20 -- git -C $W push -u origin topic > $S/x.log 2>&1; echo push=$?; grep -E "error" $S/x.log',
         'allow',
       ],

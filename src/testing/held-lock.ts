@@ -11,5 +11,5 @@ export function heldBy(expiresAt: string = '2030-01-08T12:20:00.000Z'): string {
 
 /** `OTHER` runs, so its lock is live until it expires. */
 export function otherRuns(): FakeSessionProcesses {
-  return new FakeSessionProcesses().add({ pid: OTHER, parentPid: 1, name: 'node', commandLine: 'node cli.ts heavy' });
+  return new FakeSessionProcesses().add({ pid: OTHER, parentPid: 1, name: 'node', commandLine: 'node cli.ts queue' });
 }

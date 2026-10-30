@@ -75,7 +75,7 @@ describe('the lead boundary', () => {
   it('counts a git step that changes a repository, also behind a wrapper, but not the words in a note', () => {
     assert.equal(leadWorkOf(tool('Bash', { command: 'cd D:/work/app && git commit -m x' }), PATHS), 'edit');
     assert.equal(leadWorkOf(tool('Bash', { command: 'git -C D:/work/app -c core.x=1 rebase origin/main' }), PATHS), 'edit');
-    assert.equal(leadWorkOf(tool('Bash', { command: 'teamrig heavy --session lead --what ship -- git push origin main' }), PATHS), 'edit');
+    assert.equal(leadWorkOf(tool('Bash', { command: 'teamrig queue --session lead --what ship -- git push origin main' }), PATHS), 'edit');
     assert.equal(leadWorkOf(tool('Bash', { command: 'bash -c "git commit -m x"' }), PATHS), 'edit');
     assert.equal(leadWorkOf(tool('Bash', { command: 'git log --oneline -3' }), PATHS), undefined);
     assert.equal(leadWorkOf(tool('Bash', { command: 'node teamrig.js set T1 --note "after git commit"' }), PATHS), undefined);
@@ -95,7 +95,7 @@ describe('the lead boundary', () => {
     assert.equal(leadWorkOf(tool('Bash', { command: 'node --disable-warning=X --test src/a.test.ts' }), PATHS), 'check');
     assert.equal(leadWorkOf(tool('Bash', { command: 'node node_modules/typescript/bin/tsc -p tsconfig.json' }), PATHS), 'check');
     assert.equal(leadWorkOf(tool('Bash', { command: 'teamrig list --session lead && node dist/cli/main.js show T1' }), PATHS), undefined);
-    assert.equal(leadWorkOf(tool('Bash', { command: 'teamrig heavy --what t -- teamrig test -- npm test' }), PATHS), 'check');
+    assert.equal(leadWorkOf(tool('Bash', { command: 'teamrig queue --what t -- teamrig test -- npm test' }), PATHS), 'check');
     assert.equal(leadWorkOf(tool('Bash', { command: 'npm ci && npm run dev' }), PATHS), undefined);
     assert.equal(leadWorkOf(tool('Bash', { command: 'node cli.js --test-mode' }), PATHS), undefined);
     assert.equal(leadWorkOf(tool('Bash', { command: 'teamrig add --description "time npm ci, jest and build, then npx tsc"' }), PATHS), undefined);

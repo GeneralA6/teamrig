@@ -60,10 +60,10 @@ describe('main', () => {
     assert.match(result.stdout, /"permissionDecision":"deny"/);
   });
 
-  it('runs a heavy step under the host lock, releases it and ledgers the step under a fresh id', () => {
+  it('runs a queued step under the host lock, releases it and ledgers the step under a fresh id', () => {
     inTempHome((home) => {
       assert.equal(cliIn(home, ['team', 'create', 'app', '--sessions', 'api', '--project', home]).status, 0);
-      const run = cliIn(home, ['heavy', '--session', 'api', '--what', 'probe', '--', process.execPath, '-e', 'process.exit(0)']);
+      const run = cliIn(home, ['queue', '--session', 'api', '--what', 'probe', '--', process.execPath, '-e', 'process.exit(0)']);
       assert.equal(run.status, 0);
       assert.match(run.stdout, /running: probe \(killed after 45m\)\nDONE exit 0\n$/);
       assert.equal(existsSync(join(home, 'host.lock')), false, 'the lock is released');

@@ -535,7 +535,7 @@
       }
     },
     "delivery": {
-      "description": "The delivery flow: teamrig heavy runs one heavy step on the host at a time, under the host lock, teamrig merge merges a branch into its repository's default branch, teamrig deploy deploys it and teamrig claim holds deploys while a session measures; each step is recorded in the ledger.",
+      "description": "The delivery flow: teamrig queue runs one queued step on the host at a time, under the host lock, teamrig merge merges a branch into its repository's default branch, teamrig deploy deploys it and teamrig claim holds deploys while a session measures; each step is recorded in the ledger.",
       "type": "object",
       "properties": {
         "dir": {
@@ -681,11 +681,11 @@
           }
         },
         "queue": {
-          "description": "The host lock and the limits of one heavy step.",
+          "description": "The host lock and the limits of one queued step.",
           "type": "object",
           "properties": {
             "lockPath": {
-              "description": "The host lock file every heavy step takes; a relative path is in the team's folder. Unset: host.lock in the kit home, one lock for every team on the host.",
+              "description": "The host lock file every queued step takes; a relative path is in the team's folder. Unset: host.lock in the kit home, one lock for every team on the host.",
               "type": "string",
               "minLength": 1
             },
@@ -697,35 +697,35 @@
               "default": 150
             },
             "maxRunMinutes": {
-              "description": "A heavy step still running after this many minutes is killed with every process it started. At most lockTtlMinutes less 10.",
+              "description": "A queued step still running after this many minutes is killed with every process it started. At most lockTtlMinutes less 10.",
               "type": "integer",
               "minimum": 1,
               "maximum": 1430,
               "default": 45
             },
             "smallMaxRunMinutes": {
-              "description": "A small step (heavy --small) still running after this many minutes is killed the same way, so a hung one does not hold back the steps waiting for the lock; a longer step runs without --small. At most maxRunMinutes.",
+              "description": "A small step (queue --small) still running after this many minutes is killed the same way, so a hung one does not hold back the steps waiting for the lock; a longer step runs without --small. At most maxRunMinutes.",
               "type": "integer",
               "minimum": 1,
               "maximum": 1430,
               "default": 10
             },
             "waitMinutes": {
-              "description": "A heavy step is refused once its line for the host lock has not moved for this many minutes: no step ahead of it, holding the lock or sharing the host ended meanwhile.",
+              "description": "A queued step is refused once its line for the host lock has not moved for this many minutes: no step ahead of it, holding the lock or sharing the host ended meanwhile.",
               "type": "integer",
               "minimum": 0,
               "maximum": 1440,
               "default": 60
             },
             "memorySampleSeconds": {
-              "description": "While a heavy step runs, its process tree's memory and the host's free memory are sampled this often, for its ledger record's peakTreeMb and lowFreeMb; 0 samples nothing.",
+              "description": "While a queued step runs, its process tree's memory and the host's free memory are sampled this often, for its ledger record's peakTreeMb and lowFreeMb; 0 samples nothing.",
               "type": "integer",
               "minimum": 0,
               "maximum": 600,
               "default": 15
             },
             "memoryFloorMb": {
-              "description": "A small step (heavy --small) shares the host only while it keeps this many MB free besides those held for the small steps.",
+              "description": "A small step (queue --small) shares the host only while it keeps this many MB free besides those held for the small steps.",
               "type": "integer",
               "minimum": 0,
               "maximum": 1048576,
@@ -761,7 +761,7 @@
           }
         },
         "stablePeriods": {
-          "description": "teamrig windows: when a measurement of a deploy target is clean, between the deploys and heavy steps that disturb it.",
+          "description": "teamrig windows: when a measurement of a deploy target is clean, between the deploys and queued steps that disturb it.",
           "type": "object",
           "properties": {
             "settleMinutes": {
@@ -817,7 +817,7 @@
           }
         },
         "schedule": {
-          "description": "When heavy steps and deploys may start on the host.",
+          "description": "When queued steps and deploys may start on the host.",
           "type": "object",
           "properties": {
             "resetBlackoutHours": {
@@ -827,7 +827,7 @@
               "maximum": 48
             },
             "queueCutoffUtc": {
-              "description": "No heavy step starts on the host after this UTC time until midnight.",
+              "description": "No queued step starts on the host after this UTC time until midnight.",
               "type": "string",
               "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
             }

@@ -68,11 +68,11 @@ export interface CliRuntime {
   readonly sessionProcesses: SessionProcesses;
   /** The shell `teamrig test` runs its command line in. */
   readonly shell: ShellRunner;
-  /** The shell `teamrig heavy` runs its step in, with this process's stdio and a time limit. */
+  /** The shell `teamrig queue` runs its step in, with this process's stdio and a time limit. */
   readonly steps: StepRunner;
-  /** The host's free memory, processes and commit charge, and a watch of a heavy step's process tree (its ledger record). */
+  /** The host's free memory, processes and commit charge, and a watch of a queued step's process tree (its ledger record). */
   readonly memory: HostMemory;
-  /** The processes that started this one, so a heavy step whose launching shell was ended stops too. */
+  /** The processes that started this one, so a queued step whose launching shell was ended stops too. */
   readonly starters: StarterWatch;
   /** The GitHub CLI, for `teamrig gh sync`; it runs reads only (github/gh.ts). */
   readonly gh: GhRunner;
@@ -91,7 +91,7 @@ export interface CliRuntime {
   readonly worktrees: WorktreePorts;
   /** The shutdown log and the countdown of the restore after a reboot. */
   readonly restore: RestorePorts;
-  /** The working tree `teamrig heavy --pre-push` checks: clean or changed, and HEAD's tree. */
+  /** The working tree `teamrig queue --pre-push` checks: clean or changed, and HEAD's tree. */
   readonly trees: TreeState;
   /** The git steps `teamrig merge` takes. */
   readonly mergeGit: MergeGit;

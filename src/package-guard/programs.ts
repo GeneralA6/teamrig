@@ -27,7 +27,7 @@ export interface ProgramRun {
   readonly stdin: ShellWord | undefined;
   /** True when the command that starts it reads the output of the command before it through a pipe. */
   readonly piped: boolean;
-  /** True when `teamrig heavy` or `teamrig test` starts it, at any depth, so it runs under the host lock. */
+  /** True when `teamrig queue` or `teamrig test` starts it, at any depth, so it runs under the host lock. */
   readonly runner: boolean;
   /** Set when the command that starts it pipes its output on: `echo "$T" | docker login --password-stdin`. */
   readonly pipe: PipeOut | undefined;

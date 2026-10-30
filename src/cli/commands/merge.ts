@@ -20,7 +20,7 @@ import { stoppableHooks, stoppableLock, stoppableSleep, stoppableSteps, stoppedW
  * `delivery.schedule.queueCutoffUtc` to midnight UTC and in the `resetBlackoutHours` before the weekly token reset;
  * it waits up to `delivery.wait.maxMinutes` for quiet claims on what the push deploys and for the host lock, then
  * rebases, runs the repo's dependency check and review gate and, under `pushGuard.pushToProtected: gated`, the
- * self-merge gates, and pushes, each a heavy step in the ledger. Once the shell that started it ends, it stops waiting,
+ * self-merge gates, and pushes, each a queued step in the ledger. Once the shell that started it ends, it stops waiting,
  * or kills the step it runs (exit 129) and frees the lock. A repository with a merge command runs it in place of the
  * push. Exit 0 merged, 1 failed or stopped, 2 refused, 75 the merge command waits: run it again once the branch is
  * merged.

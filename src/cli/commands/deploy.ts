@@ -32,7 +32,7 @@ function redeployPartsOf(args: ParsedArgs): RedeployParts | undefined {
 /**
  * `teamrig deploy [--repo <name>]`: brings what was pushed to a repository's default branch to the running system
  * (src/deploy/run.ts): pulls its main checkout fast-forward and runs `delivery.repos.<name>.deploy`, its afterPull
- * hooks then its command, one heavy step in the ledger, and records the deploy. With `--targets <a,b> --what "<why>"
+ * hooks then its command, one queued step in the ledger, and records the deploy. With `--targets <a,b> --what "<why>"
  * -- <command>` it pulls nothing and runs that command instead, a deploy of those targets (src/deploy/deploy.ts). Refused
  * for a main checkout it must not pull into, from `delivery.schedule.queueCutoffUtc` to midnight UTC, in the
  * `resetBlackoutHours` before the weekly token reset and when a check refuses; it waits up to

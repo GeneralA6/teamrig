@@ -55,7 +55,7 @@ export interface SessionStartInput {
   readonly sessionInEnv: boolean;
   /** Where the hook runs, so the rules print the steps only that platform needs. */
   readonly platform: NodeJS.Platform;
-  /** When the rules are read and the machine's zone, which name the heavy cutoff on the team's clock. */
+  /** When the rules are read and the machine's zone, which name the queue cutoff on the team's clock. */
   readonly clock: RulesClock;
   /** Where the team sits in a tree of teams; undefined for a team on its own. */
   readonly tree: TreePlace | undefined;

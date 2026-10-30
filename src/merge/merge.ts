@@ -38,7 +38,7 @@ import type { ReviewHolds } from './review-holds.ts';
  * rebases onto the fresh default branch, runs the dependency check when the branch changes the package files, the
  * review gate when the repo has one (a change of a review path waits for its reviewer) and, under
  * `pushGuard.pushToProtected: gated`, the self-merge gates (a change that misses one waits for a leader's approval), and
- * pushes (the pre-push hook runs as a heavy step), then logs what the self-merge gates let merge, tidies the branch away
+ * pushes (the pre-push hook runs as a queued step), then logs what the self-merge gates let merge, tidies the branch away
  * and, when configured, fast-forwards the main checkout. It never deploys: a push a host deploys by itself is recorded
  * as that deploy. A repository with a merge command (`delivery.repos.<name>.merge`, say one that merges through a
  * pull request) runs it in place of the push: exit 0 merged, once its remote shows it; 75 waits, and the next `teamrig
@@ -305,7 +305,7 @@ async function dependencyCheckRefusal(setup: MergeSetup, ports: MergePorts, plan
   return { kind: 'refused', reason: `${changed}: the dependency check \`${argv.join(' ')}\` ${hookEndText(end)}, so ${branch} stays off ${defaultBranch}; its output is above` };
 }
 
-/** The review gate's ports: its check runs under the lock `taking` holds, recorded as a heavy step, its lines redacted. */
+/** The review gate's ports: its check runs under the lock `taking` holds, recorded as a queued step, its lines redacted. */
 function reviewGatePorts(setup: MergeSetup, ports: MergePorts, plan: Plan, taking: Taking): ReviewGatePorts {
   const { top, branch, repo } = plan;
   return {
@@ -387,7 +387,7 @@ function mergeOf(cleared: Cleared, plan: Plan, at: string, base: string, head: s
   return verdict.kind === 'self' ? { ...merged, route: 'self' } : { ...merged, route: 'approved', missed: verdict.missed, approvedBy: verdict.approvedBy };
 }
 
-/** Whether the push may start now: the heavy cutoff and the reset blackout refuse it, a quiet claim on what it deploys holds it. */
+/** Whether the push may start now: the queue cutoff and the reset blackout refuse it, a quiet claim on what it deploys holds it. */
 function readinessOf(setup: MergeSetup, ports: MergePorts, repo: RepoMatch): () => Promise<Readiness> {
   const { schedule } = setup.delivery;
   const targets = repo.config.deploysOnPush;
@@ -416,7 +416,7 @@ function readinessOf(setup: MergeSetup, ports: MergePorts, repo: RepoMatch): () 
  * Under the host lock `taking` holds: rebases onto the fresh default branch, runs the checks on what the rebase made
  * (see {@link checksOf}) and pushes, again from the rebase when origin moved meanwhile, unless the push was killed as
  * its launching shell ended (no one waits for it any more). The checks and the push get the lock's token, so a
- * pre-push hook that wraps its checks in `teamrig heavy` runs them under this lock.
+ * pre-push hook that wraps its checks in `teamrig queue` runs them under this lock.
  */
 async function mergeByPush(setup: MergeSetup, ports: MergePorts, plan: Plan, taking: Taking): Promise<MergeOutcome> {
   const { git } = ports;

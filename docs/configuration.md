@@ -33,7 +33,7 @@ Team settings for the teamrig plugin. Only the roster (sessions, roles.lead) is 
 | `prompts` | [object](#prompts) |  | The permission prompts teamrig's own hooks raise. |
 | `secretGuard` | [object](#secretguard) |  | Refuses a Bash, PowerShell, Read or Grep call that would print a secret into the session, where it stays in the transcript and every later prompt: a secret file's content, the whole environment, a secret variable's value, a Kubernetes secret's data or a dump command's output (kubectl config view --raw); and a Bash or PowerShell line that holds a secret as text (a token, credentials in a URL or an Authorization header), as the line itself stays in the transcript; and a Write, Edit, MultiEdit or NotebookEdit whose written text holds one, unless it writes a secret file (paths). A value handed to the tool that needs it (a pipe into docker login --password-stdin, a redirect into a file) stays allowed, and the read-only shell hook never lets such a line run without a prompt. |
 | `commits` | [object](#commits) |  | The small-commits rule: one logical change per commit; a commit over either bound needs a reason line. |
-| `delivery` | [object](#delivery) |  | The delivery flow: teamrig heavy runs one heavy step on the host at a time, under the host lock, teamrig merge merges a branch into its repository's default branch, teamrig deploy deploys it and teamrig claim holds deploys while a session measures; each step is recorded in the ledger. |
+| `delivery` | [object](#delivery) |  | The delivery flow: teamrig queue runs one queued step on the host at a time, under the host lock, teamrig merge merges a branch into its repository's default branch, teamrig deploy deploys it and teamrig claim holds deploys while a session measures; each step is recorded in the ledger. |
 | `budget` | [object](#budget) |  | The weekly token budget: the pace line the team is measured against and each session's daily part of it. Usage is in weighted tokens (W) read from the session transcripts, and in % of the week from the status line when there is one. The defaults only measure and show; nothing blocks or acts. |
 | `leadBoundary` | [object](#leadboundary) |  | How teamrig keeps the lead leading: its own edits, tests and code searches are nudged and shown, never blocked. |
 | `loops` | [object](#loops) |  | Loop discipline inside a turn. |
@@ -274,18 +274,18 @@ The small-commits rule: one logical change per commit; a commit over either boun
 
 ## `delivery`
 
-The delivery flow: teamrig heavy runs one heavy step on the host at a time, under the host lock, teamrig merge merges a branch into its repository's default branch, teamrig deploy deploys it and teamrig claim holds deploys while a session measures; each step is recorded in the ledger.
+The delivery flow: teamrig queue runs one queued step on the host at a time, under the host lock, teamrig merge merges a branch into its repository's default branch, teamrig deploy deploys it and teamrig claim holds deploys while a session measures; each step is recorded in the ledger.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `dir` | string (at least 1 character) |  | The delivery folder, which holds its ledger (ledger.jsonl); a relative path is in the team's folder. Unset: deploys in the state folder. |
 | `repos` | map from string (matching `^[a-z0-9][a-z0-9._-]*$`) to [object](#deliveryrepos) |  | The repositories whose branches teamrig merge merges into their default branch, by name. |
-| `queue` | [object](#deliveryqueue) |  | The host lock and the limits of one heavy step. |
+| `queue` | [object](#deliveryqueue) |  | The host lock and the limits of one queued step. |
 | `checkTimeoutSeconds` | integer (1 to 600) | `20` | A deploy's check still running after this many seconds is stopped, and the deploy waits. |
 | `freezes` | [object](#deliveryfreezes) |  | Quiet claims (teamrig claim), which hold deploys of their targets while a session measures them. |
-| `stablePeriods` | [object](#deliverystableperiods) |  | teamrig windows: when a measurement of a deploy target is clean, between the deploys and heavy steps that disturb it. |
+| `stablePeriods` | [object](#deliverystableperiods) |  | teamrig windows: when a measurement of a deploy target is clean, between the deploys and queued steps that disturb it. |
 | `wait` | [object](#deliverywait) |  | How a delivery step waits. |
-| `schedule` | [object](#deliveryschedule) |  | When heavy steps and deploys may start on the host. |
+| `schedule` | [object](#deliveryschedule) |  | When queued steps and deploys may start on the host. |
 
 ## `delivery.repos.*`
 
@@ -337,17 +337,17 @@ Checks asked in order before the host lock and again under it; the first that do
 
 ## `delivery.queue`
 
-The host lock and the limits of one heavy step.
+The host lock and the limits of one queued step.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
-| `lockPath` | string (at least 1 character) |  | The host lock file every heavy step takes; a relative path is in the team's folder. Unset: host.lock in the kit home, one lock for every team on the host. |
+| `lockPath` | string (at least 1 character) |  | The host lock file every queued step takes; a relative path is in the team's folder. Unset: host.lock in the kit home, one lock for every team on the host. |
 | `lockTtlMinutes` | integer (11 to 1440) | `150` | A taken host lock lasts this many minutes; past it, or once its process is gone, another step takes it over. |
-| `maxRunMinutes` | integer (1 to 1430) | `45` | A heavy step still running after this many minutes is killed with every process it started. At most lockTtlMinutes less 10. |
-| `smallMaxRunMinutes` | integer (1 to 1430) | `10` | A small step (heavy --small) still running after this many minutes is killed the same way, so a hung one does not hold back the steps waiting for the lock; a longer step runs without --small. At most maxRunMinutes. |
-| `waitMinutes` | integer (0 to 1440) | `60` | A heavy step is refused once its line for the host lock has not moved for this many minutes: no step ahead of it, holding the lock or sharing the host ended meanwhile. |
-| `memorySampleSeconds` | integer (0 to 600) | `15` | While a heavy step runs, its process tree's memory and the host's free memory are sampled this often, for its ledger record's peakTreeMb and lowFreeMb; 0 samples nothing. |
-| `memoryFloorMb` | integer (0 to 1048576) | `4096` | A small step (heavy --small) shares the host only while it keeps this many MB free besides those held for the small steps. |
+| `maxRunMinutes` | integer (1 to 1430) | `45` | A queued step still running after this many minutes is killed with every process it started. At most lockTtlMinutes less 10. |
+| `smallMaxRunMinutes` | integer (1 to 1430) | `10` | A small step (queue --small) still running after this many minutes is killed the same way, so a hung one does not hold back the steps waiting for the lock; a longer step runs without --small. At most maxRunMinutes. |
+| `waitMinutes` | integer (0 to 1440) | `60` | A queued step is refused once its line for the host lock has not moved for this many minutes: no step ahead of it, holding the lock or sharing the host ended meanwhile. |
+| `memorySampleSeconds` | integer (0 to 600) | `15` | While a queued step runs, its process tree's memory and the host's free memory are sampled this often, for its ledger record's peakTreeMb and lowFreeMb; 0 samples nothing. |
+| `memoryFloorMb` | integer (0 to 1048576) | `4096` | A small step (queue --small) shares the host only while it keeps this many MB free besides those held for the small steps. |
 | `smallReserveMb` | integer (0 to 1048576) | `2048` | The MB held for a small step with no ledger record of its peak yet. |
 
 ## `delivery.freezes`
@@ -360,7 +360,7 @@ Quiet claims (teamrig claim), which hold deploys of their targets while a sessio
 
 ## `delivery.stablePeriods`
 
-teamrig windows: when a measurement of a deploy target is clean, between the deploys and heavy steps that disturb it.
+teamrig windows: when a measurement of a deploy target is clean, between the deploys and queued steps that disturb it.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
@@ -380,12 +380,12 @@ How a delivery step waits.
 
 ## `delivery.schedule`
 
-When heavy steps and deploys may start on the host.
+When queued steps and deploys may start on the host.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `resetBlackoutHours` | integer (1 to 48) |  | No deploy (teamrig merge) starts from this many hours before the weekly token reset until the reset. Unset: no blackout. |
-| `queueCutoffUtc` | string (matching `^([01]\d\|2[0-3]):[0-5]\d$`) |  | No heavy step starts on the host after this UTC time until midnight. |
+| `queueCutoffUtc` | string (matching `^([01]\d\|2[0-3]):[0-5]\d$`) |  | No queued step starts on the host after this UTC time until midnight. |
 
 ## `budget`
 

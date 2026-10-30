@@ -100,7 +100,7 @@ class World {
     return (this.files.get(PLACES.ledger) ?? '').split('\n').filter((line) => line !== '').map((line): unknown => JSON.parse(line));
   }
 
-  /** The heavy step's two records, its end with `exitCode`. */
+  /** The queued step's two records, its end with `exitCode`. */
   heavy(exitCode: number, endedAt: string, what = 'deploy pipeline c1..c2'): unknown[] {
     const start = { type: 'heavy', id: 'step-1', session: 'po', what, kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
     return [start, { ...start, endedAt, exitCode }];
@@ -139,7 +139,7 @@ function depsWorld({ gate = true, check = true, install = true }: { readonly gat
 }
 
 describe('deployRepo', () => {
-  it('pulls the pending range, runs afterPull then the deploy command, and records one heavy step and the deploy', async () => {
+  it('pulls the pending range, runs afterPull then the deploy command, and records one queued step and the deploy', async () => {
     const world = new World();
     world.hooks.answer(FLOW.command, { lines: ['no flow open', 'tag=sha-0f8e'] }).answer(COMMAND, { lines: ['building', 'deployed api, workers on sha-0f8e'], takesMs: 120_000 });
     assert.deepEqual(await world.run(), { kind: 'done', summary: 'c1..c2 deployed: deployed api, workers on sha-0f8e' });
@@ -209,14 +209,14 @@ describe('deployRepo', () => {
     assert.deepEqual([world.records().length, world.pulled(), world.lockFree()], [0, false, true]);
   });
 
-  it('waits out a quiet claim on its targets, and is refused at the heavy cutoff', async () => {
+  it('waits out a quiet claim on its targets, and is refused at the queue cutoff', async () => {
     const claim = { session: 'ops', targets: ['workers'], metric: 'p95', why: 'latency probe', from: '2030-01-08T09:50:00.000Z', until: '2030-01-08T10:05:00.000Z' };
     const world = new World({ claims: JSON.stringify([claim]) });
     assert.deepEqual(await world.run(), { kind: 'done', summary: 'c1..c2 deployed' });
     assert.ok(world.said.includes('waiting: quiet claim by ops on workers until 2030-01-08 10:05 UTC (p95)'));
     assert.ok(world.clock.now() >= Date.parse('2030-01-08T10:05:00Z'));
     const late = new World({ schedule: { queueCutoffUtc: '09:00' } });
-    refused(await late.run(), 'nothing heavy 09:00-00:00 UTC (now 10:00 UTC)');
+    refused(await late.run(), 'queue cutoff 09:00-00:00 UTC (now 10:00 UTC)');
     assert.deepEqual([late.hooks.ran.length, late.pulled()], [0, false]);
   });
 
@@ -258,7 +258,7 @@ describe('deployRepo', () => {
     const old = new World();
     old.hooks.answer(COMMAND, { lines: ['no-roll'] });
     assert.deepEqual(await old.run(), { kind: 'done', summary: 'c1..c2 deployed: no-roll' });
-    assert.equal(old.records().length, 3, 'the heavy step and a deploy are recorded');
+    assert.equal(old.records().length, 3, 'the queued step and a deploy are recorded');
   });
 
   it('fails without running the deploy command when an afterPull hook fails', async () => {
@@ -335,7 +335,7 @@ describe('deployRepo of a range that changes the dependencies', () => {
     for (const line of [`${DEPS_CHANGED}: dependency check node checks/deps-check.js`, '  1 package added, no advisories', `${DEPS_CHANGED}: dependency install npm ci --ignore-scripts`, 'installed: the worktrees that link to the node_modules in /repo/app have the new dependencies now']) {
       assert.ok(world.said.includes(line), line);
     }
-    assert.deepEqual(world.records().slice(0, 2), world.heavy(0, '2030-01-08T10:00:00.000Z'), 'the check and the install are inside the roll’s one heavy step');
+    assert.deepEqual(world.records().slice(0, 2), world.heavy(0, '2030-01-08T10:00:00.000Z'), 'the check and the install are inside the roll’s one queued step');
     assert.deepEqual([world.records().length, world.lockFree()], [3, true]);
   });
 

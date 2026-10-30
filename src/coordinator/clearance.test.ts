@@ -72,8 +72,8 @@ describe('takeWhenClear', () => {
 
   it('refuses at once, without the lock, on a cutoff or blackout', async () => {
     const { files, clock, lock, request } = world();
-    const clearance = await takeWhenClear(answers({ kind: 'refuse', reason: 'nothing heavy after 22:30 UTC' }), { lock, clock, sleep: clock.sleep }, request);
-    assert.deepEqual(clearance, { kind: 'refused', reason: 'nothing heavy after 22:30 UTC' });
+    const clearance = await takeWhenClear(answers({ kind: 'refuse', reason: 'queue cutoff after 22:30 UTC' }), { lock, clock, sleep: clock.sleep }, request);
+    assert.deepEqual(clearance, { kind: 'refused', reason: 'queue cutoff after 22:30 UTC' });
     assert.equal(files.get(LOCK_PATH), undefined);
     assert.deepEqual(clock.sleeps, []);
   });

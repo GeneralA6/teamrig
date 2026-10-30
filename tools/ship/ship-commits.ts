@@ -61,7 +61,7 @@ function commit(deps: ShipDeps, files: readonly string[], subject: string, body:
 
 /**
  * Ships a finished teamrig change from a tested working tree, all in one run so in one host-lock hold when
- * run inside `teamrig heavy` (T629: other ships merge while one waits for the lock, so whatever it settled
+ * run inside `teamrig queue` (T629: other ships merge while one waits for the lock, so whatever it settled
  * before the wait goes stale):
  *   1. sync.ts: when origin/main moved past the branch, rebase onto it and set the plan's version raise again
  *      on main's version; a conflict stops before any check. On every run the plan's subjects and bodies

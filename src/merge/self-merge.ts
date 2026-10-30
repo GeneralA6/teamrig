@@ -8,7 +8,7 @@ import { ACTIVE_STATUSES } from '../register/model.ts';
  * The self-merge gates of `teamrig merge` under `pushGuard.pushToProtected: gated` (T800 §2.1, T858), read after
  * the rebase onto the default branch. A session's change merges with no approval when its branch names an active task
  * of the session's, a pass record proves the rebased tree, no commit goes over the size bounds without a reason line,
- * a change of source changes a test too, and the repo's review gate looked at it. The review gate's holds, the heavy
+ * a change of source changes a test too, and the repo's review gate looked at it. The review gate's holds, the queue
  * cutoff and the reset blackout stay the merge command's own steps; a miss here sends the change to a leader's approval instead.
  */
 

@@ -14,7 +14,7 @@ const DEPLOYING = {
   },
 };
 
-/** A deploy of app at 07:00 by alpha, with no record of its start; a heavy step 08:00 to 08:20. The clock is at 10:00. */
+/** A deploy of app at 07:00 by alpha, with no record of its start; a queued step 08:00 to 08:20. The clock is at 10:00. */
 async function ledgered(kit: CliHarness): Promise<void> {
   await kit.files.append(LEDGER_MD, '- 2030-01-08 07:00 | alpha | app | 1a2b3c4d | app | deploy | pushed\n');
   const heavy = { type: 'heavy', id: 'h1', session: 'alpha', what: 'tests', startedAt: '2030-01-08T08:00:00.000Z', endedAt: null, exitCode: null };

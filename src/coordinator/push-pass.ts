@@ -37,7 +37,7 @@ export interface PushPass {
   readonly commit: string;
   /** The checks' command line, as the shell ran it. */
   readonly command: string;
-  /** The checks' label (`heavy --what`). */
+  /** The checks' label (`queue --what`). */
   readonly what: string;
   /** When they passed, as an ISO time. */
   readonly passedAt: string;

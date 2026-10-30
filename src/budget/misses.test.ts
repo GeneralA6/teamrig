@@ -52,7 +52,7 @@ describe('toolMissesOf', () => {
     });
   });
 
-  it('counts tests and builds, and a miss when no teamrig heavy or test runs them', () => {
+  it('counts tests and builds, and a miss when no teamrig queue or test runs them', () => {
     expectMisses({
       'npm test': 'heavySteps missHeavyOutside',
       'npm run build': 'heavySteps missHeavyOutside',
@@ -61,14 +61,21 @@ describe('toolMissesOf', () => {
       'npx vitest run src/a.test.ts': 'heavySteps missHeavyOutside',
       'node --test src/a.test.ts': 'heavySteps missHeavyOutside',
       'cd app && tsc --noEmit': 'heavySteps missHeavyOutside',
-      'teamrig heavy --session a --what "checks" -- npm run check': 'heavySteps',
-      'teamrig heavy --session a --what "tests" -- teamrig test --session a -- npm test': 'heavySteps',
+      'teamrig queue --session a --what "checks" -- npm run check': 'heavySteps',
+      'teamrig queue --session a --what "tests" -- teamrig test --session a -- npm test': 'heavySteps',
       'teamrig test --session a -- node --test src/a.test.ts': 'heavySteps',
-      'teamrig heavy --session a --what "x" -- "npm run lint && npm test"': 'heavySteps',
-      'teamrig heavy --session a --what "x" -- npm test && npm run build': 'heavySteps missHeavyOutside',
+      'teamrig queue --session a --what "x" -- "npm run lint && npm test"': 'heavySteps',
+      'teamrig queue --session a --what "x" -- npm test && npm run build': 'heavySteps missHeavyOutside',
       'npm install': '',
       'npm run dev': '',
       'node scripts/build-report.ts': '',
+    });
+  });
+
+  it('counts a test run under teamrig heavy, the old name of queue in transcripts from before the rename, as no miss', () => {
+    expectMisses({
+      'teamrig heavy --session a --what "checks" -- npm run check': 'heavySteps',
+      'teamrig heavy --session a --what "x" -- npm test && npm run build': 'heavySteps missHeavyOutside',
     });
   });
 

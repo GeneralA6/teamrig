@@ -39,6 +39,11 @@ describe('topicsOf', () => {
     assert.ok(topicsOf('The api session is the coordinator of this repository.')?.rules.includes('roles'));
   });
 
+  it('ties a line about queued steps, or still heavy ones, to deploying', () => {
+    assert.ok(topicsOf('Run every build as a queued step, never by hand.')?.rules.includes('deploy'));
+    assert.ok(topicsOf('Run every build as a heavy step, never by hand.')?.rules.includes('deploy'));
+  });
+
   it('tags a line that says which rule wins or names teamrig, whatever its topic', () => {
     assert.deepEqual(topicsOf('Where these notes say otherwise, they win.'), { rules: [], tags: ['precedence'] });
     assert.deepEqual(topicsOf('The teamrig rules do not apply in this repo.')?.tags, ['teamrig']);
