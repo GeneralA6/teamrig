@@ -4,7 +4,8 @@ import { TEAM_POINTER } from '../core/team.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { cutLineMessage, shimArgs } from './cmd-shim.ts';
 import { CommandHelp } from './help.ts';
-import { parseArgs, UsageError, type CommandEffect, type CommandEffects, type CommandFlags, type CommandRest, type CommandSwitches, type ParsedArgs, type Renamed } from './args.ts';
+import { parseArgs, UsageError, type CommandEffect, type CommandEffects, type CommandFlags, type CommandRest, type CommandSwitches, type ParsedArgs } from './args.ts';
+import { RENAMED } from './renamed.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from './runtime.ts';
 import type { CommandTable } from '../slash/plan.ts';
 
@@ -275,26 +276,6 @@ export const COMMAND_SWITCHES: CommandSwitches = Object.fromEntries(Object.entri
 export const COMMAND_EFFECTS: CommandEffects = Object.fromEntries(Object.entries(COMMANDS).map(([name, spec]) => [name, spec.effect]));
 /** The commands that take a command line after `--`. */
 export const COMMAND_REST: CommandRest = new Set(Object.entries(COMMANDS).flatMap(([name, spec]) => (spec.rest === true ? [name] : [])));
-/**
- * Renamed flags and commands, refused everywhere with the new name, never an alias: `--tier` became `--priority`
- * (levels p1, p2, ...), and for plain words (T1308) `teamrig integrate` became `teamrig merge`, `teamrig roll` became
- * `teamrig deploy`, `teamrig deploys` became `teamrig deploy-status`, `teamrig heavy` became `teamrig queue`, `teamrig
- * claim` became `teamrig freeze`, `teamrig release` became `teamrig unfreeze`, `teamrig windows` became `teamrig
- * stable-periods` and `teamrig load` became `teamrig job` (`load end` with it).
- */
-const RENAMED: Renamed = {
-  flags: { tier: 'priority', problem: 'type bug [--critical] (or --type task)' },
-  commands: {
-    integrate: 'merge',
-    roll: 'deploy',
-    deploys: 'deploy-status',
-    heavy: 'queue',
-    claim: 'freeze',
-    release: 'unfreeze',
-    windows: 'stable-periods',
-    load: 'job',
-  },
-};
 /** The table a line is read with, and each command's effect: what `/teamrig` plans a line from (src/slash/plan.ts). */
 export const COMMAND_TABLE: CommandTable = { flags: COMMAND_FLAGS, switches: COMMAND_SWITCHES, renamed: RENAMED, rest: COMMAND_REST, effects: COMMAND_EFFECTS };
 
