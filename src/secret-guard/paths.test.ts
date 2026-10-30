@@ -73,6 +73,14 @@ describe('SecretPaths.mayName', () => {
     assert.equal(secrets.mayName(`${HOME}/.aws/*`, false), true);
   });
 
+  it('tries a name of wildcards alone against a plain name only where the glob spells out its folder', () => {
+    const team = new SecretPaths([...DEFAULT_SECRET_PATHS, 'deploy_key', 'ops/vault_key'], HOME, true);
+    assert.equal(team.listed(`${REPO}/src/deploy_key`), true);
+    assert.equal(team.mayName(`${REPO}/src/*`, false), false, 'else every grep x * would name a deploy_key');
+    assert.equal(team.mayName(`${REPO}/src/deploy*`, false), true);
+    assert.equal(team.mayName(`${REPO}/ops/*`, false), true);
+  });
+
   it('never lets a bash wildcard reach a dot file, as bash does not', () => {
     assert.equal(secrets.mayName(`${REPO}/*`, false), false);
     assert.equal(secrets.mayName(`${REPO}/*`, true), true);
