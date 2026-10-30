@@ -16,18 +16,22 @@ function recordAt(record, key) {
     const value = record[key];
     return isRecord(value) ? value : {};
 }
+/** A review day given on the command line, `YYYY-MM-DD` (UTC), as written back; refused when it has passed. */
+export function checkedReviewDay(text, now) {
+    const day = parseUtcDay(text);
+    if (day === undefined) {
+        return { ok: false, problem: `the review day "${text}" is not a YYYY-MM-DD date` };
+    }
+    if (formatUtcDay(day) < formatUtcDay(new Date(now))) {
+        return { ok: false, problem: `the review day ${text} has passed` };
+    }
+    return { ok: true, value: formatUtcDay(day) };
+}
 function reviewDayOf(request, config) {
     if (request.reviewBy === undefined) {
         return { ok: true, value: formatUtcDay(new Date(request.now + config.hiring.reviewDays * DAY_MS)) };
     }
-    const day = parseUtcDay(request.reviewBy);
-    if (day === undefined) {
-        return { ok: false, problem: `the review day "${request.reviewBy}" is not a YYYY-MM-DD date` };
-    }
-    if (formatUtcDay(day) < formatUtcDay(new Date(request.now))) {
-        return { ok: false, problem: `the review day ${request.reviewBy} has passed` };
-    }
-    return { ok: true, value: formatUtcDay(day) };
+    return checkedReviewDay(request.reviewBy, request.now);
 }
 /**
  * Why `by` may not hire, or undefined when it may: a lead hires, the team's lead or a sub-lead (T781), and a

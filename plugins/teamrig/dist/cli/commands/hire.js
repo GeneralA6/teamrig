@@ -6,6 +6,7 @@ import { activeBurst } from "../../budget/burst.js";
 import { KIT_NAME } from "../../core/home.js";
 import { FileLock } from "../../core/lock.js";
 import { burstHireOf } from "../../hiring/burst-hire.js";
+import { planKeep } from "../../hiring/keep.js";
 import { HiringLog } from "../../hiring/log.js";
 import { activeHires, retiredSessions } from "../../hiring/record.js";
 import { hirerProblem, planHire } from "../../hiring/plan.js";
@@ -20,7 +21,7 @@ import { loadTree } from "../tree.js";
 import { freshOpenOf, resumeVerdictOf } from "./rehire.js";
 import { sessionProjectOf } from "./setup.js";
 /**
- * `hire`: a lead adds a temporary session to the team within `hiring`'s policy: the team's lead, or a
+ * `hire`: a lead adds a worker it is sure the team needs within `hiring`'s policy: the team's lead, or a
  * sub-lead, whose hire joins its own group (T509). Without
  * --yes it only shows the hire; with it, the old config is kept in the backups folder, the hire is
  * logged in the hire log, then the session and its launch are written to the config. A hire gets no fixed daily
@@ -29,6 +30,8 @@ import { sessionProjectOf } from "./setup.js";
  * can be resumed (`open --resume`) or it opens fresh on that handover. With --burst it is a hire for the burst in
  * force, within the burst's hires and on the lead's model and effort (src/hiring/burst-hire.ts).
  * With --yes it refuses when the host has no room for one more session (`open.headroom`); the preview says so.
+ * On a hired session already on the team, `--review <day> --reason` keeps it to that new review day instead, which
+ * clears its REVIEW-DUE (src/hiring/keep.ts): only the hire log changes, so it takes no room check.
  */
 /** The backup name of a config before `hire` changed it. */
 export const HIRE_BACKUP_NAME = 'config.hire';
@@ -40,7 +43,7 @@ function effortFlag(flags) {
     return text;
 }
 /** The request the command line makes, by the caller, at the clock's now. */
-function requestOf(args, runtime, by) {
+function requestOf(args, runtime, id, by) {
     const { flags } = args;
     const name = flags.get('name');
     const model = flags.get('model');
@@ -48,7 +51,7 @@ function requestOf(args, runtime, by) {
     const approvedBy = flags.get('approved-by');
     const effort = effortFlag(flags);
     return {
-        id: onePositional(args, 'id'),
+        id,
         scope: requiredFlag(flags, 'scope'),
         reason: requiredFlag(flags, 'reason'),
         ...(name === undefined ? {} : { name }),
@@ -97,7 +100,47 @@ function openStepOf(id, rehire) {
     }
     return `then ${freshOpenOf(rehire.from)}: ${fresh}`;
 }
-/** `hire <id> --scope "<its job>" --reason "<why>" [--name] [--model] [--effort] [--review] [--approved-by] [--burst] [--yes]`. */
+/** The flags a keep refuses: it changes only the review day, the job and launch stay as hired. */
+const HIRE_ONLY_FLAGS = ['scope', 'name', 'model', 'effort', 'approved-by'];
+/** `hire <id> --review <YYYY-MM-DD> --reason "<why>" [--yes]` on a session already on the team: keep its hire. */
+async function keep(args, runtime, kit, config, id, by) {
+    const { flags } = args;
+    const reviewBy = flags.get('review');
+    if (reviewBy === undefined) {
+        throw new RefusedError(`${id} is already on the team: a hired session is kept with --review <YYYY-MM-DD> --reason "<why>"`);
+    }
+    const extra = HIRE_ONLY_FLAGS.find((flag) => flags.has(flag)) ?? (args.switches.has('burst') ? 'burst' : undefined);
+    if (extra !== undefined) {
+        throw new UsageError(`--${extra}: a keep of ${id} changes only its review day`);
+    }
+    const reason = requiredFlag(flags, 'reason');
+    const { files, clock, sleep, pid } = runtime;
+    const log = new HiringLog(files, kit.paths.hires);
+    const mutex = new FileLock(kit.paths.hiresLock, config.lock, { files, clock, sleep, pid });
+    return mutex.run(async () => {
+        const { records, skipped } = await log.read();
+        const plan = planKeep(config, activeHires(records), { id, reviewBy, reason, by, now: clock.now() });
+        if (!plan.ok) {
+            throw new RefusedError(plan.problem);
+        }
+        const { keep: record, hire: kept } = plan.value;
+        const what = `${id} on the team, review by ${record.reviewBy} (was ${kept.reviewBy})`;
+        if (skipped > 0) {
+            runtime.out.stdout(`NOTE ${skipped} damaged or newer line(s) in ${log.path} were skipped, so its review day may read older than logged`);
+        }
+        if (!args.switches.has('yes')) {
+            runtime.out.stdout(`PREVIEW keep ${what}: "${record.reason}"; nothing written (add --yes to write)`);
+            return EXIT.ok;
+        }
+        await log.append(record);
+        runtime.out.stdout(`KEPT ${what}`);
+        return EXIT.ok;
+    });
+}
+/**
+ * `hire <id> --scope "<its job>" --reason "<why>" [--name] [--model] [--effort] [--review] [--approved-by] [--burst] [--yes]`;
+ * on a session already on the team, a keep.
+ */
 export async function hire(args, runtime) {
     const caller = callerOf(args.flags, runtime.env);
     const found = await findTeam(runtime);
@@ -105,11 +148,15 @@ export async function hire(args, runtime) {
     const config = requireConfig(kit, runtime, 'write');
     const roster = await rosterOf(runtime, kit, config);
     const by = sessionIdOf(roster, caller);
+    const id = onePositional(args, 'id');
+    if (config.sessions.includes(id)) {
+        return keep(args, runtime, kit, config, id, by);
+    }
     const refusal = hirerProblem(config, by);
     if (refusal !== undefined) {
         throw new RefusedError(refusal);
     }
-    const asked = requestOf(args, runtime, by);
+    const asked = requestOf(args, runtime, id, by);
     // Outside the hire lock: listing the host's processes takes about a second.
     const headroom = await headroomOf(runtime, kit.paths, config, roster.ids);
     const { files, clock, sleep, pid } = runtime;
