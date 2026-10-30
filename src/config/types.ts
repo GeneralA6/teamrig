@@ -314,7 +314,10 @@ export interface PromptsConfig {
 export type HookAsks = 'ask' | 'refuse';
 
 export interface SecretGuardConfig {
-  /** What a Bash, PowerShell, Read or Grep call that would print a secret, or whose command line holds one as text, does. */
+  /**
+   * What a Bash, PowerShell, Read or Grep call that would print a secret, or whose command line holds one as text, does;
+   * and a file-writing call whose written text holds one outside a secret file.
+   */
   readonly secretReads: SecretReads;
   /**
    * The team's own secret files, globs read after the guard's defaults (`.env`, `~/.npmrc`, `~/.ssh/**`...): `~/`
