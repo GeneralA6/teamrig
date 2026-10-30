@@ -286,8 +286,8 @@ describe('teamrig budget lift', () => {
     // Half the team's 12.4% to alpha; the other half split between lead and bravo.
     assert.match(lines[4] ?? '', /^ {2}app-alpha +2\.0% +6\.2% +\(lifted\) +20\.00M +2$/);
     assert.match(lines[5] ?? '', /^ {2}app-bravo +0\.50% +3\.1% +5\.00M +1$/);
-    assert.match(lines[6] ?? '', /^Lifts, today only: a part of the team's daily budget /);
-    assert.match(lines[8] ?? '', /^ {2}app-alpha +50\.0% +00:00 UTC +97\.0%$/);
+    assert.match(lines[6] ?? '', /^Lifts, today only: a part of the team's daily budget, the share of the week it comes to now beside it, /);
+    assert.match(lines[8] ?? '', /^ {2}app-alpha +50\.0% +6\.2% +00:00 UTC +97\.0%$/);
     assert.equal(lines[9], '  00:00 UTC is the end of the budget day.');
     assert.deepEqual(ok(await run([...LIFT, '--until', '18:00', '--session', 'lead'])), [
       "LIFTED app-alpha to 50.0% of the team's daily budget (6.2% of the week now) today until 18:00 UTC or 97.0% of the week, whichever comes first; quiet hours do not apply to it.",
@@ -340,7 +340,7 @@ describe('teamrig budget lift', () => {
     ]);
     const lines = ok(await run(['budget'], JERUSALEM));
     assert.match(lines[0] ?? '', / Resets \w{3} \d{2}-\d{2} \d{2}:\d{2} IST\.$/);
-    assert.match(lines[8] ?? '', /^ {2}app-alpha +50\.0% +14:00 IST +97\.0%$/);
+    assert.match(lines[8] ?? '', /^ {2}app-alpha +50\.0% +6\.2% +14:00 IST +97\.0%$/);
     assert.ok(!lines.some((line) => line.includes('end of the budget day')), lines.join('\n'));
     const passed = await run([...LIFT, '--until', '11:00', '--session', 'lead'], JERUSALEM);
     assert.equal(passed.code, EXIT.refused);
@@ -394,9 +394,9 @@ describe('teamrig budget lift', () => {
       // The lead gave bravo's group half the team's 12.4%, and bravo gave alpha half of that; at 10M W per percent.
       assert.match(lines[4] ?? '', /^ {2}group app-bravo \(2\) +2\.5% +6\.2% +\(lifted\) +25\.00M +3$/);
       assert.match(lines[5] ?? '', /^ {2}app-alpha +2\.0% +3\.1% +\(lifted\) +20\.00M +2$/);
-      const heading = lines.findIndex((line) => line.startsWith("Lifts, today only: a part of the team's or a group's daily budget "));
-      assert.match(lines[heading + 2] ?? '', /^ {2}group app-bravo +the team +50\.0% +00:00 UTC +97\.0%$/);
-      assert.match(lines[heading + 3] ?? '', /^ {2}app-alpha +group app-bravo +50\.0% +00:00 UTC +97\.0%$/);
+      const heading = lines.findIndex((line) => line.startsWith("Lifts, today only: a part of the team's or a group's daily budget, the share of the week it comes to now beside it, "));
+      assert.match(lines[heading + 2] ?? '', /^ {2}group app-bravo +the team +50\.0% +6\.2% +00:00 UTC +97\.0%$/);
+      assert.match(lines[heading + 3] ?? '', /^ {2}app-alpha +group app-bravo +50\.0% +3\.1% +00:00 UTC +97\.0%$/);
     });
 
     it("refuses --group on a session that leads no group, on the lead, and to the sub-lead itself", async () => {
