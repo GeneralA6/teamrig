@@ -1,11 +1,13 @@
 import { basename, join } from 'node:path';
 import { DEFAULT_STATUS_LINE } from "../../config/defaults.js";
 import { LeadTree } from "../../config/lead-tree.js";
+import { formatAddress, splitAddress } from "../../core/address.js";
 import { errorMessage } from "../../core/guards.js";
-import { resolveKitHome } from "../../core/home.js";
+import { claudeConfigDir, resolveKitHome } from "../../core/home.js";
 import { PlainLogFile } from "../../core/log-file.js";
 import { resolveTeam } from "../../core/team.js";
 import { formatUtcDay, MS_PER_DAY, parseUtcDay, typedDeadline, typedTimeHint } from "../../core/time.js";
+import { accountOf } from "../../budget/account.js";
 import { activeBurst, burstFloorOf, withBurst } from "../../budget/burst.js";
 import { BurstLog } from "../../budget/burst-log.js";
 import { calibrationOf } from "../../budget/calibration.js";
@@ -14,7 +16,7 @@ import { ExtraLog } from "../../budget/extra.js";
 import { formatPct, formatUsd } from "../../budget/format.js";
 import { activeGroupLift, activeLift, decideLift, LiftLog, liftText, parentBudgetText } from "../../budget/lift.js";
 import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID } from "../../budget/measure.js";
-import { budgetSplitOf, dailyBudgetOf, groupPartsOf, liftPlaceOf, teamPartOf } from "../../budget/parts.js";
+import { budgetSplitOf, crossLiftPlaceOf, dailyBudgetOf, groupPartsOf, liftPlaceOf, teamPartOf } from "../../budget/parts.js";
 import { fundForDay, isPaused, pausableOf } from "../../budget/pause.js";
 import { nextPeriod, sightOf } from "../../budget/period.js";
 import { burnLines, loopLines, missLines, missMatrixLines, recountLines, sessionLines, sumDays, sumUsage, taskLines, todayLines, weekLine, } from "../../budget/report.js";
@@ -34,11 +36,12 @@ import { UsageError, onePositional, requiredFlag } from "../args.js";
 import { callerOf } from "../inputs.js";
 import { leadOnly, openKit, openTeamKit, requireConfig, rosterOf, sessionIdOf, teamFolders, teamZone } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
+import { loadTree } from "../tree.js";
 /**
  * The weekly budget from the command line: `budget` measures every session's use from the Claude Code
  * transcripts and shows it against the week's pace, or with `--task` what each session spent on one task;
  * `budget lift` is a leader's lift of one session's, or a sub-lead's group's,
- * daily budget; `statusline` is a status line that saves the plan's own reading for `budget`. Measuring
+ * daily budget, or the lead's top-up of a session of a team below from its own team's; `statusline` is a status line that saves the plan's own reading for `budget`. Measuring
  * and showing only: nothing here blocks or stops a session.
  */
 /** Days the loop table shows by default; `--all` shows every stored day. */
@@ -300,7 +303,8 @@ function beyondGroupText(group, leader, budgetPct, usedPct) {
 }
 /**
  * `budget lift <session> [--group] --part <pct> --stop-pct <n> [--until <time>] [--reserve] --reason "<text>"`: a
- * leader lifts a session under it, or with `--group` the group of a sub-lead under it (`liftRefusalOf`).
+ * leader lifts a session under it, or with `--group` the group of a sub-lead under it (`liftRefusalOf`); the lead
+ * also lifts `<team>/<session>`, a session of a team under its own (`crossTeamLift`).
  */
 export async function lift(args, runtime) {
     const caller = callerOf(args.flags, runtime.env);
@@ -320,10 +324,15 @@ export async function lift(args, runtime) {
     const zone = teamZone(config, runtime);
     const until = timeFlag(args.flags, 'until', { nowMs: now, zone });
     const roster = await rosterOf(runtime, kit, config);
+    const group = args.switches.has('group');
+    const address = splitAddress(target);
+    if (address?.team !== undefined && address.team !== kit.paths.team) {
+        const ask = { caller, group, partPct, stopPct, until, reserve: args.switches.has('reserve'), reason, now };
+        return crossTeamLift(runtime, { kit, config, roster, zone }, { team: address.team, session: address.session }, ask);
+    }
     const nameOf = (each) => roster.nameOf(each) ?? each;
     const by = sessionIdOf(roster, caller);
-    const id = sessionIdOf(roster, target);
-    const group = args.switches.has('group');
+    const id = sessionIdOf(roster, address?.session ?? target);
     const tree = new LeadTree(config);
     const refusal = liftRefusalOf(tree, nameOf, by, id, group);
     if (refusal !== undefined) {
@@ -354,6 +363,45 @@ export async function lift(args, runtime) {
     }
     await new LiftLog(runtime.files, kit.paths.lifts).append(decision.lift);
     runtime.out.stdout(`LIFTED ${liftText(decision.lift, name, parent, zone)}`);
+    return EXIT.ok;
+}
+/**
+ * `budget lift <team>/<session>`: the team's lead lifts a session of a team under its own, at any depth, on the same
+ * Claude account, by a part of its own team's daily budget (src/budget/lift.ts). It is logged in its own team's lift
+ * log, which the lifted team reads beside the other teams on the account, and refused past what its team's other
+ * lifts leave of that budget; a group of the team below is not lifted this way.
+ */
+async function crossTeamLift(runtime, lifting, target, ask) {
+    const { kit, config, roster, zone } = lifting;
+    const own = kit.paths.team;
+    const by = leadOnly(roster, ask.caller, 'lifts a session of a team under its own');
+    if (ask.group) {
+        throw new UsageError(`--group lifts a sub-lead's group of team ${own}; a session of a team under it is lifted alone`);
+    }
+    const { tree, teams } = await loadTree(runtime);
+    const below = teams.get(target.team);
+    if (below === undefined || !tree.ancestorsOf(target.team).includes(own)) {
+        throw new RefusedError(`team ${target.team} is not a team under team ${own}`);
+    }
+    const configDir = claudeConfigDir(runtime.env, runtime.userHome);
+    if (accountOf(below.config.budget, configDir) !== accountOf(config.budget, configDir)) {
+        throw new RefusedError(`team ${target.team} is on another Claude account than team ${own}, so team ${own}'s daily budget cannot top its sessions up`);
+    }
+    const found = below.roster.lookup(target.session);
+    if (!found.ok) {
+        throw new RefusedError(`on team ${target.team}, ${found.error}`);
+    }
+    const address = formatAddress({ team: target.team, id: found.id });
+    const reading = await readBudget(runtime, kit, config, roster, { recountDay: undefined });
+    const { weights: work } = await readWork(runtime.files, kit.paths.events, config.register.priorities);
+    const place = crossLiftPlaceOf(splitOf(reading, own, roster, config, work), address);
+    const parent = `team ${own}'s daily budget`;
+    const decision = decideLift({ session: address, group: false, partPct: ask.partPct, stopPct: ask.stopPct, until: ask.until, reserve: ask.reserve, reason: ask.reason, by, now: ask.now }, { usedPct: reading.week.usedPct, reset: reading.week.reset, limits: config.budget.lift, liftedPct: place.liftedPct, parent, beyondParent: undefined, zone });
+    if (decision.kind === 'refused') {
+        throw new RefusedError(decision.reason);
+    }
+    await new LiftLog(runtime.files, kit.paths.lifts).append(decision.lift);
+    runtime.out.stdout(`LIFTED ${liftText(decision.lift, `${target.team}/${below.roster.nameOf(found.id) ?? found.id}`, parent, zone)}`);
     return EXIT.ok;
 }
 /** A dollar flag: `--add` above 0, `--spent` 0 or more; undefined when it is not given. */

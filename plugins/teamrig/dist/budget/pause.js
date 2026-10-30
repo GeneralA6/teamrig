@@ -1,4 +1,5 @@
 import { roleHolderOf } from "../config/roster.js";
+import { formatAddress } from "../core/address.js";
 import { sessionWeightOf, shareOf, teamTreeOf } from "./parts.js";
 import { workWeightOf } from "./work.js";
 /** The roles whose holder a short day never pauses: the lead leads the cut, the coordinator owner keeps the fleet up. */
@@ -24,10 +25,14 @@ export function pausableOf(config, team, ids) {
 export function isShortDay(day) {
     return day.plannedPct > 0 && day.allowancePct < day.plannedPct;
 }
-/** The sessions the teams' trees hold, each kept unless its team may pause it and no lift, its own or its group's, is in force. */
+/**
+ * The sessions the teams' trees hold, each kept unless its team may pause it and no lift, its own, its group's or a
+ * team above's (`crossLifted`), is in force.
+ */
 function leavesOf(splits) {
+    const crossLifted = new Set(splits.flatMap((split) => [...split.crossLifted.keys()]));
     return splits.flatMap((split) => [...teamTreeOf(split).sessionPaths].map(([id, path]) => {
-        const lifted = split.lifted.has(id) || path.slice(0, -1).some((group) => split.liftedGroups.has(group));
+        const lifted = split.lifted.has(id) || crossLifted.has(formatAddress({ team: split.team, id })) || path.slice(0, -1).some((group) => split.liftedGroups.has(group));
         return { team: split.team, id, share: shareOf(split, id), work: split.work.get(id) ?? new Map(), weight: sessionWeightOf(split, id), kept: lifted || !split.pausable.has(id) };
     }));
 }
