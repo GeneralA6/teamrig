@@ -4,7 +4,7 @@ import type { HookAsks, SecretGuardConfig, SecretReads } from '../config/types.t
 import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import { resolveDir } from '../push-guard/location.ts';
 import { describeFinding, type SecretFinding } from '../secret-guard/findings.ts';
-import { literalFindings } from '../secret-guard/literals.ts';
+import { literalFindings, writtenFindings } from '../secret-guard/literals.ts';
 import type { SecretRules } from '../secret-guard/rules.ts';
 import { shellFindings } from '../secret-guard/shell.ts';
 import { holdBackOutput } from './permission.ts';
@@ -26,6 +26,7 @@ export function secretGuardOf(load: ConfigLoad | undefined): SecretGuardConfig {
  * The secrets a tool call would print into the conversation: what a Bash or PowerShell line holds as text and what it
  * prints, the file a Read opens, and the file or glob a Grep shows matching lines of. A Grep that lists file names or
  * counts prints no content; one over a folder with no glob, or only `!globs`, may still show a secret file's lines: a gap.
+ * Also the secrets a Write, Edit, MultiEdit or NotebookEdit call writes as text (T1369 R3), unless it writes a secret file.
  */
 export function secretFindingsOf(payload: JsonRecord, cwd: string, rules: SecretRules): SecretFinding[] {
   const input = recordField(payload, 'tool_input') ?? {};
@@ -45,9 +46,31 @@ export function secretFindingsOf(payload: JsonRecord, cwd: string, rules: Secret
     }
     case 'Grep':
       return grepFindings(input, dir, rules);
+    case 'Write':
+    case 'Edit':
+    case 'MultiEdit':
+    case 'NotebookEdit':
+      return writeFindings(input, dir, rules);
     default:
       return [];
   }
+}
+
+/**
+ * The secrets a file-writing call writes as text: a Write's `content`, an Edit's `new_string`, each of a MultiEdit's
+ * `edits`, a NotebookEdit's `new_source`. A secret file (`secretGuard.paths`) is where a secret belongs, so a call that
+ * writes one passes; every other folder, tests too, is read.
+ */
+function writeFindings(input: JsonRecord, dir: string, rules: SecretRules): SecretFinding[] {
+  const path = stringField(input, 'file_path') ?? stringField(input, 'notebook_path');
+  if (path !== undefined && rules.paths.listed(toolPath(path, dir, rules.home))) {
+    return [];
+  }
+  const edits = input['edits'];
+  const texts = [input, ...(Array.isArray(edits) ? edits.filter(isRecord) : [])].flatMap((record) =>
+    ['content', 'new_string', 'new_source'].flatMap((key) => stringField(record, key) ?? []),
+  );
+  return writtenFindings(texts, rules.shapes);
 }
 
 /** The secret file a Grep that shows content searches, named by its path or by a glob that picks the files it reads. */
@@ -83,11 +106,13 @@ function toolPath(text: string, dir: string, home: string): string {
 
 /**
  * Why the call is refused or asked about: what it would print, with the ways to use or check a secret that never print
- * it, then the secrets its command line holds as text, with the ways to pass one by reference.
+ * it, then the secrets its command line holds as text, with the ways to pass one by reference, then the secrets the
+ * text it writes holds, with where a real one belongs and how a test builds one.
  */
 export function secretReason(findings: readonly SecretFinding[]): string {
-  const what = findings.filter(({ kind }) => kind !== 'literal').map(describeFinding);
+  const what = findings.filter(({ kind }) => kind !== 'literal' && kind !== 'written').map(describeFinding);
   const shapes = findings.filter(({ kind }) => kind === 'literal').map(describeFinding);
+  const writes = findings.filter(({ kind }) => kind === 'written').map(describeFinding);
   const named = what.length < 2 ? what.join('') : `${what.slice(0, -1).join(', ')} and ${what.at(-1) ?? ''}`;
   const printed =
     what.length === 0
@@ -105,7 +130,15 @@ export function secretReason(findings: readonly SecretFinding[]): string {
           `${what.length === 0 ? "this call's" : 'Its'} command line holds a secret as text (${shapes.join(', ')}). Pass it by ` +
             'reference (its env var name, a file path, stdin, `teamrig exec request`), never as text.',
         ];
-  return `teamrig secret guard: ${[...printed, ...written].join(' ')} [secretGuard.secretReads]`;
+  const writing =
+    writes.length === 0
+      ? []
+      : [
+          `${what.length + shapes.length === 0 ? 'the' : 'The'} text this call writes holds a secret (${writes.join(', ')}). Keep ` +
+            'a real one in a secret file (secretGuard.paths, such as .env) and name it by its env var or path; a test ' +
+            "builds a secret-shaped value at run time from parts (join('gh', 'p_', ...)), so no file holds it whole.",
+        ];
+  return `teamrig secret guard: ${[...printed, ...written, ...writing].join(' ')} [secretGuard.secretReads]`;
 }
 
 /** The team's own secret patterns (`register.secretPatterns`); none when the config is missing or unreadable. */
@@ -114,9 +147,9 @@ export function secretPatternsOf(load: ConfigLoad | undefined): readonly string[
 }
 
 /**
- * The PreToolUse output for a Bash, PowerShell, Read or Grep call: a refusal (or a question, as
- * `secretGuard.secretReads` says) when the call would print a secret into the conversation or its command line holds
- * one as text; else nothing, so the normal permission flow decides. Under `hookAsks: refuse` the question is a refusal instead, its reason saying what
+ * The PreToolUse output for a Bash, PowerShell, Read, Grep or file-writing call: a refusal (or a question, as
+ * `secretGuard.secretReads` says) when the call would print a secret into the conversation, or its command line or
+ * the text it writes holds one; else nothing, so the normal permission flow decides. Under `hookAsks: refuse` the question is a refusal instead, its reason saying what
  * to do (see `holdBack`).
  */
 export function secretGuardOutput(payload: unknown, env: SecretGuardEnv): string {

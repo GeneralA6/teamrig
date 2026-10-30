@@ -749,6 +749,14 @@ describe('runCli: hook secret-guard', () => {
     assert.deepEqual((await kit.run(['hook', 'secret-guard'], { stdin: bash('cat .env | wc -c') })).stdout, []);
   });
 
+  it('refuses a Write whose text holds a secret, and lets one that writes a secret file run', async () => {
+    const kit = new CliHarness();
+    const token = ['gh', 'p_', 'a1'.repeat(18)].join('');
+    const write = (file_path: string): string => JSON.stringify({ tool_name: 'Write', tool_input: { file_path, content: `send("${token}");` }, cwd: APP });
+    assert.equal(decisionOf(await kit.run(['hook', 'secret-guard'], { stdin: write(join(APP, 'src', 'a.ts')) })), 'deny');
+    assert.deepEqual((await kit.run(['hook', 'secret-guard'], { stdin: write(join(APP, '.env')) })).stdout, []);
+  });
+
   it("asks or lets it run as the team config says, adds the team's own files, and refuses when the config is missing or unreadable", async () => {
     assert.equal(decisionOf(await new CliHarness({ ...TEAM, secretGuard: { secretReads: 'ask' } }).run(['hook', 'secret-guard'], { stdin: bash('cat .env') })), 'ask');
     const asksOff = new CliHarness({ ...TEAM, secretGuard: { secretReads: 'ask' }, prompts: { hookAsks: 'refuse' } });

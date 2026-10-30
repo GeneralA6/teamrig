@@ -25,6 +25,7 @@ function findings(payload: JsonRecord, rules = RULES): string[] {
       case 'file':
         return finding.path;
       case 'literal':
+      case 'written':
         return finding.id;
       default:
         return finding.kind;
@@ -97,7 +98,40 @@ describe('secretFindingsOf', () => {
 
   it('reads no other tool', () => {
     assert.deepEqual(findings(call('Glob', { pattern: '**/.env' })), []);
-    assert.deepEqual(findings(call('Write', { file_path: '.env', content: 'A=1' })), []);
+  });
+});
+
+describe('secretFindingsOf on the text a file-writing call writes (T1369 R3)', () => {
+  it('finds a secret a Write, Edit, MultiEdit or NotebookEdit writes, in a test file or a committed example too', () => {
+    assert.deepEqual(findings(call('Write', { file_path: 'C:/w/src/a.ts', content: join('send("', TOKEN, '");') })), ['github-token']);
+    assert.deepEqual(findings(call('Write', { file_path: 'C:/w/src/a.test.ts', content: TOKEN })), ['github-token']);
+    assert.deepEqual(findings(call('Write', { file_path: 'C:/w/.env.example', content: join('GH=', TOKEN) })), ['github-token']);
+    assert.deepEqual(findings(call('Write', { content: TOKEN })), ['github-token']);
+    assert.deepEqual(findings(call('Edit', { file_path: 'C:/w/src/a.ts', old_string: 'x', new_string: TOKEN })), ['github-token']);
+    assert.deepEqual(
+      findings(call('MultiEdit', { file_path: 'C:/w/q.yaml', edits: [{ old_string: 'a', new_string: 'b' }, 'not an edit', { old_string: 'c', new_string: join('url: https://app:', PASSWORD, '@queue.local/q') }] })),
+      ['url-credentials'],
+    );
+    assert.deepEqual(findings(call('NotebookEdit', { notebook_path: 'C:/w/nb.ipynb', new_source: join('key = "', TOKEN, '"') })), ['github-token']);
+  });
+
+  it("finds a written text by the team's own secret patterns", () => {
+    const rules = secretRulesOf(DEFAULT_SECRET_GUARD, 'C:/u', 'win32', ['tok_[a-z0-9]{8}']);
+    assert.deepEqual(findings(call('Write', { file_path: 'C:/w/deploy.sh', content: join('deploy --key tok_', 'q8r7s6t5') }), rules), ['config-1']);
+  });
+
+  it('lets a write to a secret file, text it replaces, a placeholder, a reference and a fixture built from parts pass', () => {
+    assert.deepEqual(findings(call('Write', { file_path: 'C:/w/.env', content: join('GH=', TOKEN) })), []);
+    assert.deepEqual(findings(call('Write', { file_path: '.env', content: join('GH=', TOKEN) }, { cwd: 'C:/w/app' })), []);
+    assert.deepEqual(findings(call('Edit', { file_path: 'C:/u/.npmrc', old_string: 'x', new_string: TOKEN })), []);
+    assert.deepEqual(findings(call('Edit', { file_path: 'C:/w/src/a.ts', old_string: TOKEN, new_string: 'process.env.GH_TOKEN' })), []);
+    for (const content of [
+      'url: postgres://user:password@localhost/app',
+      'curl -H "Authorization: Bearer $GH_TOKEN" https://api.local',
+      "const token = join('gh', 'p_', 'a1'.repeat(18));",
+    ]) {
+      assert.deepEqual(findings(call('Write', { file_path: 'C:/w/src/a.ts', content })), [], content);
+    }
   });
 });
 
@@ -123,6 +157,18 @@ describe('secretGuardOutput', () => {
       "teamrig secret guard: this call's command line holds a secret as text (credentials in a URL). Pass it by reference " +
         '(its env var name, a file path, stdin, `teamrig exec request`), never as text. [secretGuard.secretReads]',
     );
+  });
+
+  it('refuses a write whose text holds a secret, naming its shape, where a real one belongs and how a test builds one', () => {
+    const verdict = verdictOf(secretGuardOutput(call('Edit', { file_path: 'C:/w/src/a.ts', old_string: 'x', new_string: TOKEN }), env()));
+    assert.equal(verdict?.decision, 'deny');
+    assert.equal(
+      verdict?.reason,
+      'teamrig secret guard: the text this call writes holds a secret (GitHub token). Keep a real one in a secret file ' +
+        '(secretGuard.paths, such as .env) and name it by its env var or path; a test builds a secret-shaped value at run ' +
+        "time from parts (join('gh', 'p_', ...)), so no file holds it whole. [secretGuard.secretReads]",
+    );
+    assert.doesNotMatch(verdict?.reason ?? '', new RegExp(TOKEN));
   });
 
   it('asks instead when the team set ask, and prints nothing when it set allow', () => {
@@ -231,6 +277,14 @@ describe('secretReason', () => {
       reason,
       /^teamrig secret guard: this call would print the content of \.env into the conversation\. .*secretGuard\.envNames or secretGuard\.commands\. Its command line holds a secret as text \(GitHub token, JSON web token\)\. Pass it by reference .*never as text\. \[secretGuard\.secretReads\]$/,
     );
+  });
+
+  it('says the secrets the written text holds last, after the other groups', () => {
+    const reason = secretReason([
+      { kind: 'written', id: 'jwt', description: 'JSON web token' },
+      { kind: 'literal', id: 'github-token', description: 'GitHub token' },
+    ]);
+    assert.match(reason, /^teamrig secret guard: this call's command line holds a secret as text \(GitHub token\)\. .*never as text\. The text this call writes holds a secret \(JSON web token\)\. Keep a real one .*so no file holds it whole\. \[secretGuard\.secretReads\]$/);
   });
 });
 

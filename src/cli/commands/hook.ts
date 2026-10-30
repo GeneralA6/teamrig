@@ -202,7 +202,10 @@ export async function packageGuard(args: ParsedArgs, runtime: CliRuntime): Promi
   return EXIT.ok;
 }
 
-/** PreToolUse on Bash, PowerShell, Read and Grep: refuses, or asks about, a call that would print a secret into the conversation or whose line holds one as text. */
+/**
+ * PreToolUse on Bash, PowerShell, Read, Grep and the file-writing tools: refuses, or asks about, a call that would print
+ * a secret into the conversation, or whose line or written text holds one.
+ */
 export async function secretGuard(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
   const payload = parseJson(await runtime.readStdin());
