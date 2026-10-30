@@ -91,7 +91,7 @@ class World {
   }
 
   /** The queued step's two records, its end with `exitCode`. */
-  heavy(exitCode: number, startedAt: string, endedAt: string): unknown[] {
+  queuedStep(exitCode: number, startedAt: string, endedAt: string): unknown[] {
     const start = { type: 'heavy', id: 'step-1', session: 'sec', what: 'deploy api,live of pipeline', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt, endedAt: null, exitCode: null };
     return [start, { ...start, endedAt, exitCode }];
   }
@@ -122,7 +122,7 @@ describe('redeployTargets', () => {
     assert.deepEqual(teamrigEnv(command?.env ?? {}), { ...base, TEAMRIG_HOST_LOCK: 'lock-1' });
     assert.deepEqual([before?.cwd, command?.cwd, command?.timeoutMs, command?.env['PATH']], [MAIN_CHECKOUT, '/runner', DEFAULT_QUEUE.maxRunMinutes * 60_000, '/bin']);
     assert.deepEqual(world.records(), [
-      ...world.heavy(0, '2030-01-08T10:00:00.000Z', '2030-01-08T10:01:30.000Z'),
+      ...world.queuedStep(0, '2030-01-08T10:00:00.000Z', '2030-01-08T10:01:30.000Z'),
       {
         type: 'deploy',
         kind: 'deploy',
@@ -209,7 +209,7 @@ describe('redeployTargets', () => {
       rolledAt: '2030-01-08T10:00:00.000Z',
       targets: ['api', 'live'],
     });
-    assert.deepEqual(world.records().slice(0, 2), world.heavy(3, '2030-01-08T10:00:00.000Z', '2030-01-08T10:00:00.000Z'));
+    assert.deepEqual(world.records().slice(0, 2), world.queuedStep(3, '2030-01-08T10:00:00.000Z', '2030-01-08T10:00:00.000Z'));
     assert.ok(world.lockFree());
   });
 

@@ -28,7 +28,7 @@ function deploy(started: string, deployed: string, session: string, repo: string
   return { type: 'deploy', kind: 'deploy', session, repo, range: 'aaaaaaaa..bbbbbbbb', what: 'deploy', note: '', startedAt: iso(started), rolledAt: new Date(at(deployed) + 20_000).toISOString() };
 }
 
-function heavy(id: string, started: string, ended: string | null): LedgerRecord {
+function queuedStep(id: string, started: string, ended: string | null): LedgerRecord {
   return { type: 'heavy', id, session: 'dev', what: 'tests', startedAt: iso(started), endedAt: ended === null ? null : iso(ended), exitCode: ended === null ? null : 0 };
 }
 
@@ -53,11 +53,11 @@ describe('disruptions', () => {
   });
 
   it('reads a queued step as the whole host, its end record winning', () => {
-    assert.deepEqual(disruptions(inputs([], [heavy('h1', '09:00', null), heavy('h1', '09:00', '09:20'), heavy('h1', '09:00', null)])), [{ from: at('09:00'), to: at('09:20'), targets: 'host' }]);
+    assert.deepEqual(disruptions(inputs([], [queuedStep('h1', '09:00', null), queuedStep('h1', '09:00', '09:20'), queuedStep('h1', '09:00', null)])), [{ from: at('09:00'), to: at('09:20'), targets: 'host' }]);
   });
 
   it('ends an unfinished queued step at the next one’s start, now or its lock’s time to live, whichever comes first', () => {
-    const records = [heavy('a', '09:00', null), heavy('b', '09:30', '09:40'), heavy('c', '15:00', null), heavy('d', '17:00', null)];
+    const records = [queuedStep('a', '09:00', null), queuedStep('b', '09:30', '09:40'), queuedStep('c', '15:00', null), queuedStep('d', '17:00', null)];
     assert.deepEqual(
       disruptions(inputs([], records)).map((found) => [found.from, found.to]),
       [
@@ -67,13 +67,13 @@ describe('disruptions', () => {
         [at('17:00'), at('18:00')],
       ],
     );
-    assert.deepEqual(disruptions(inputs([], [heavy('a', '09:00', null)])), [{ from: at('09:00'), to: at('11:30'), targets: 'host' }]);
+    assert.deepEqual(disruptions(inputs([], [queuedStep('a', '09:00', null)])), [{ from: at('09:00'), to: at('11:30'), targets: 'host' }]);
   });
 });
 
 describe('jobsOf', () => {
   it('reads one job per id, its end record winning, and runs an open one until now', () => {
-    const records = [job('l1', '09:00', null), heavy('h1', '09:30', '09:40'), job('l2', '10:00', null, ['api']), job('l1', '09:00', '11:00')];
+    const records = [job('l1', '09:00', null), queuedStep('h1', '09:30', '09:40'), job('l2', '10:00', null, ['api']), job('l1', '09:00', '11:00')];
     assert.deepEqual(jobsOf(records, at('18:00')), [
       { id: 'l1', session: 'ops', what: 'db trim', targets: 'host', from: at('09:00'), to: at('11:00'), open: false },
       { id: 'l2', session: 'ops', what: 'db trim', targets: ['api'], from: at('10:00'), to: at('18:00'), open: true },

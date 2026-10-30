@@ -101,7 +101,7 @@ class World {
   }
 
   /** The queued step's two records, its end with `exitCode`. */
-  heavy(exitCode: number, endedAt: string, what = 'deploy pipeline c1..c2'): unknown[] {
+  queuedStep(exitCode: number, endedAt: string, what = 'deploy pipeline c1..c2'): unknown[] {
     const start = { type: 'heavy', id: 'step-1', session: 'po', what, kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
     return [start, { ...start, endedAt, exitCode }];
   }
@@ -154,7 +154,7 @@ describe('deployRepo', () => {
     assert.deepEqual([command?.cwd, command?.timeoutMs, command?.env['PATH']], [MAIN_CHECKOUT, QUEUE_MAX_MS, '/bin']);
     assert.equal(world.git.heads.get(MAIN_CHECKOUT), 'c2');
     assert.deepEqual(world.records(), [
-      ...world.heavy(0, '2030-01-08T10:02:00.000Z'),
+      ...world.queuedStep(0, '2030-01-08T10:02:00.000Z'),
       {
         type: 'deploy',
         kind: 'deploy',
@@ -228,7 +228,7 @@ describe('deployRepo', () => {
       reason: `c1..c2 pulled, but the deploy command exited 1: orchestrator CRASH: ${REDACTED}; its owners fix forward or roll back, and ${BY_HAND}`,
     });
     const [, end, deploy] = world.records();
-    assert.deepEqual(end, world.heavy(1, '2030-01-08T10:00:00.000Z')[1]);
+    assert.deepEqual(end, world.queuedStep(1, '2030-01-08T10:00:00.000Z')[1]);
     assert.deepEqual(deploy, {
       type: 'deploy',
       kind: 'deploy',
@@ -247,14 +247,14 @@ describe('deployRepo', () => {
     const world = new World();
     world.hooks.answer(COMMAND, { lines: ['no image change', 'no-deploy'] });
     assert.deepEqual(await world.run(), { kind: 'done', summary: 'c1..c2 pulled; nothing needed deploying' });
-    assert.deepEqual(world.records(), world.heavy(0, '2030-01-08T10:00:00.000Z'));
+    assert.deepEqual(world.records(), world.queuedStep(0, '2030-01-08T10:00:00.000Z'));
   });
 
   it('reads the no-deploy line wherever the command prints it, and the old no-roll line as any other', async () => {
     const early = new World();
     early.hooks.answer(COMMAND, { lines: ['no-deploy', 'image unchanged'] });
     assert.deepEqual(await early.run(), { kind: 'done', summary: 'c1..c2 pulled; nothing needed deploying: image unchanged' });
-    assert.deepEqual(early.records(), early.heavy(0, '2030-01-08T10:00:00.000Z'));
+    assert.deepEqual(early.records(), early.queuedStep(0, '2030-01-08T10:00:00.000Z'));
     const old = new World();
     old.hooks.answer(COMMAND, { lines: ['no-roll'] });
     assert.deepEqual(await old.run(), { kind: 'done', summary: 'c1..c2 deployed: no-roll' });
@@ -266,7 +266,7 @@ describe('deployRepo', () => {
     world.hooks.answer(AFTER_PULL, { end: 3 });
     assert.deepEqual(await world.run(), { kind: 'failed', reason: `c1..c2 pulled, but afterPull \`node scripts/build-cli.js\` exited 3, so nothing deployed; ${BY_HAND}` });
     assert.ok(!world.hooks.commands.includes('node tools/deploy.js'));
-    assert.deepEqual(world.records(), world.heavy(3, '2030-01-08T10:00:00.000Z'));
+    assert.deepEqual(world.records(), world.queuedStep(3, '2030-01-08T10:00:00.000Z'));
   });
 
   it('fails, running nothing after the checks, when the pull fails', async () => {
@@ -274,7 +274,7 @@ describe('deployRepo', () => {
     world.git.fastForwardFails = 'Not possible to fast-forward, aborting.';
     assert.deepEqual(await world.run(), { kind: 'failed', reason: 'the pull of c1..c2 into /repo/app failed (Not possible to fast-forward, aborting.): nothing pulled, nothing deployed; deploy again' });
     assert.deepEqual(world.hooks.commands, ['node checks/flow.js', 'node checks/flow.js']);
-    assert.deepEqual(world.records(), world.heavy(1, '2030-01-08T10:00:00.000Z'));
+    assert.deepEqual(world.records(), world.queuedStep(1, '2030-01-08T10:00:00.000Z'));
     assert.ok(world.lockFree());
   });
 
@@ -335,7 +335,7 @@ describe('deployRepo of a range that changes the dependencies', () => {
     for (const line of [`${DEPS_CHANGED}: dependency check node checks/deps-check.js`, '  1 package added, no advisories', `${DEPS_CHANGED}: dependency install npm ci --ignore-scripts`, 'installed: the worktrees that link to the node_modules in /repo/app have the new dependencies now']) {
       assert.ok(world.said.includes(line), line);
     }
-    assert.deepEqual(world.records().slice(0, 2), world.heavy(0, '2030-01-08T10:00:00.000Z'), 'the check and the install are inside the roll’s one queued step');
+    assert.deepEqual(world.records().slice(0, 2), world.queuedStep(0, '2030-01-08T10:00:00.000Z'), 'the check and the install are inside the roll’s one queued step');
     assert.deepEqual([world.records().length, world.lockFree()], [3, true]);
   });
 
@@ -345,7 +345,7 @@ describe('deployRepo of a range that changes the dependencies', () => {
     refused(await world.run(), `${DEPS_CHANGED}: the dependency check \`node checks/deps-check.js\` exited 1, so /repo/app is back at base and nothing deployed; its output is above`);
     assert.deepEqual(world.hooks.commands, ['node checks/flow.js', 'node checks/flow.js', 'node checks/deps-check.js']);
     assert.deepEqual([world.git.heads.get(MAIN_CHECKOUT), world.git.log.includes('resetTo /repo/app base')], ['base', true]);
-    assert.deepEqual(world.records(), world.heavy(1, '2030-01-08T10:00:00.000Z'), 'no deploy is recorded');
+    assert.deepEqual(world.records(), world.queuedStep(1, '2030-01-08T10:00:00.000Z'), 'no deploy is recorded');
     assert.deepEqual([world.files.get(BASELINE), world.lockFree()], [undefined, true]);
   });
 
@@ -375,7 +375,7 @@ describe('deployRepo of a range that changes the dependencies', () => {
     assert.deepEqual(world.hooks.commands, ['node checks/flow.js', 'node checks/flow.js', 'node checks/deps-check.js', 'npm ci --ignore-scripts', 'npm ci --ignore-scripts']);
     assert.deepEqual(reinstalledAt, ['base'], 'the second install runs on the old HEAD');
     assert.ok(world.said.includes('moved /repo/app back to base; installing its dependencies again'));
-    assert.deepEqual(world.records(), world.heavy(1, '2030-01-08T10:00:00.000Z'));
+    assert.deepEqual(world.records(), world.queuedStep(1, '2030-01-08T10:00:00.000Z'));
   });
 
   it('fails loudly, naming what to run by hand, when the old dependencies cannot be restored', async () => {

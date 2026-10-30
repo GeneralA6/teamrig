@@ -406,7 +406,7 @@ describe('parseConfig', () => {
     assert.deepEqual(config.paths, { inbox: '/srv/team/inbox' });
   });
 
-  it('keeps the delivery folder, host lock and heavy step limits', () => {
+  it('keeps the delivery folder, host lock and queued step limits', () => {
     const delivery = {
       dir: 'data/deploys',
       queue: { lockPath: 'data/deploys/host.lock', lockTtlMinutes: 90, maxRunMinutes: 80, smallMaxRunMinutes: 80, waitMinutes: 0, memorySampleSeconds: 0, memoryFloorMb: 0, smallReserveMb: 512 },
@@ -420,13 +420,13 @@ describe('parseConfig', () => {
     assert.deepEqual(config.delivery, { ...delivery, schedule: {}, repos: {} });
   });
 
-  it('cuts a heavy step longer than its lock less 10 minutes to fit, and says so', () => {
+  it('cuts a queued step longer than its lock less 10 minutes to fit, and says so', () => {
     const { config, issues } = parseConfig({ ...ROSTER, delivery: { queue: { lockTtlMinutes: 60, maxRunMinutes: 55 } } });
     assert.deepEqual(paths(issues), ['delivery.queue.maxRunMinutes']);
     assert.equal(config.delivery.queue.maxRunMinutes, 50);
   });
 
-  it('fits the default heavy step limit to a short lock without an issue', () => {
+  it('fits the default queued step limit to a short lock without an issue', () => {
     const { config, issues } = parseConfig({ ...ROSTER, delivery: { queue: { lockTtlMinutes: 30 } } });
     assert.deepEqual(issues, []);
     assert.equal(config.delivery.queue.maxRunMinutes, 20);

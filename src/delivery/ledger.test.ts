@@ -56,35 +56,35 @@ describe('rangeText', () => {
 
 describe('parseLedger', () => {
   const job: JobRecord = { type: 'load', id: 'b425c3c9', session: 'ops', what: 'db trim', targets: 'host', startedAt: '2030-01-08T09:00:00.000Z', endedAt: null };
-  const heavy = { type: 'heavy', id: 'h1', session: 'dev', what: 'tests', startedAt: '2030-01-08T09:10:00.000Z', endedAt: '2030-01-08T09:12:00.000Z', exitCode: 0 };
+  const queuedStep = { type: 'heavy', id: 'h1', session: 'dev', what: 'tests', startedAt: '2030-01-08T09:10:00.000Z', endedAt: '2030-01-08T09:12:00.000Z', exitCode: 0 };
 
   it('reads what appendRecord writes, each type in file order', async () => {
     const files = new MemoryFiles();
     for (const record of [job, deploy(), { ...job, targets: ['api'], endedAt: '2030-01-08T11:00:00.000Z' }]) {
       await appendRecord(files, PLACES.ledger, record);
     }
-    await files.append(PLACES.ledger, `${JSON.stringify(heavy)}\n`);
-    assert.deepEqual(parseLedger((await files.read(PLACES.ledger)) ?? ''), [job, deploy(), { ...job, targets: ['api'], endedAt: '2030-01-08T11:00:00.000Z' }, heavy]);
+    await files.append(PLACES.ledger, `${JSON.stringify(queuedStep)}\n`);
+    assert.deepEqual(parseLedger((await files.read(PLACES.ledger)) ?? ''), [job, deploy(), { ...job, targets: ['api'], endedAt: '2030-01-08T11:00:00.000Z' }, queuedStep]);
   });
 
   it('leaves out damaged lines, other types and records with a bad field', () => {
     const bad = [
       '{"type":"heavy"',
       JSON.stringify({ type: 'claim', id: 'c1' }),
-      JSON.stringify({ ...heavy, startedAt: 'yesterday' }),
-      JSON.stringify({ ...heavy, exitCode: 'ok' }),
+      JSON.stringify({ ...queuedStep, startedAt: 'yesterday' }),
+      JSON.stringify({ ...queuedStep, exitCode: 'ok' }),
       JSON.stringify({ ...job, targets: 'api' }),
       JSON.stringify({ ...job, endedAt: 5 }),
       JSON.stringify({ ...deploy(), kind: 'revert' }),
       JSON.stringify({ ...deploy(), note: undefined }),
     ];
-    assert.deepEqual(parseLedger([...bad, JSON.stringify(heavy)].join('\r\n')), [heavy]);
+    assert.deepEqual(parseLedger([...bad, JSON.stringify(queuedStep)].join('\r\n')), [queuedStep]);
   });
 
   it("reads a queued step's kit, wait, sharing and memory, and leaves out only a bad optional field", () => {
-    const measured = { ...heavy, kit: '0.113.0', queuedAt: '2030-01-08T09:01:00.000Z', shared: true, peakTreeMb: 1800, lowFreeMb: 6200 };
-    const damaged = { ...heavy, kit: 113, queuedAt: 'soon', shared: 'yes', peakTreeMb: -1, lowFreeMb: 1.5 };
-    assert.deepEqual(parseLedger([JSON.stringify(measured), JSON.stringify(damaged)].join('\n')), [measured, heavy]);
+    const measured = { ...queuedStep, kit: '0.113.0', queuedAt: '2030-01-08T09:01:00.000Z', shared: true, peakTreeMb: 1800, lowFreeMb: 6200 };
+    const damaged = { ...queuedStep, kit: 113, queuedAt: 'soon', shared: 'yes', peakTreeMb: -1, lowFreeMb: 1.5 };
+    assert.deepEqual(parseLedger([JSON.stringify(measured), JSON.stringify(damaged)].join('\n')), [measured, queuedStep]);
   });
 
   it("reads the targets a deploy of some of its repository's targets names, and leaves out only bad ones", () => {
