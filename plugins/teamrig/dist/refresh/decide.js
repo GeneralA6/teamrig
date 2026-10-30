@@ -30,19 +30,29 @@ export function reaskGrowth(settings) {
 export function thousands(tokens) {
     return `${Math.round(tokens / 1000)}k`;
 }
-/** The notice that `state`'s handover is written: the restart to come when `restart`, else the /clear to type. */
-export function noticeOf(state, context, restart) {
+/** What the notice says comes next, and the tab mark for it. */
+const NEXT_TEXT = {
+    restart: (context) => ({
+        text: `${context.command} starts it fresh once it has been idle ${context.settings.restartDelaySeconds} s (type anything to keep this context)`,
+        mark: 'restarting',
+    }),
+    park: (context) => ({
+        text: `it has no work it can start now, so ${context.command} starts it fresh once a wake brings it some (type anything to keep this context)`,
+        mark: 'waits for work',
+    }),
+    clear: () => ({ text: 'type /clear for a fresh start', mark: 'type /clear' }),
+};
+/** The notice that `state`'s handover is written, and what comes `next`. */
+export function noticeOf(state, context, next) {
     const { name } = context.session;
-    const next = restart
-        ? `${context.command} starts it fresh once it has been idle ${context.settings.restartDelaySeconds} s (type anything to keep this context)`
-        : 'type /clear for a fresh start';
+    const { text, mark } = NEXT_TEXT[next](context);
     const finished = state.task === null ? '' : ` finished ${state.task} and`;
     return {
         kind: 'notice',
         state: { ...state, noticed: true, transcript: context.transcript },
-        message: `${context.command}: ${name}${finished} wrote its handover; ${next}`,
-        title: context.settings.tabTitle ? `${sessionDisplay(context.session.team, name)}: ${restart ? 'restarting' : 'type /clear'}` : undefined,
-        restart,
+        message: `${context.command}: ${name}${finished} wrote its handover; ${text}`,
+        title: context.settings.tabTitle ? `${sessionDisplay(context.session.team, name)}: ${mark}` : undefined,
+        restart: next === 'restart',
     };
 }
 /** The command that tells the kit the handover is written; `--session` so it works without `$TEAMRIG_SESSION`. */
@@ -161,7 +171,7 @@ export function decideStop(state, context, facts) {
             return MEASURE;
         }
         // A fresh start now would cut the running work off: the notice waits for a stop after it ends.
-        return facts.due.running > 0 ? NONE : noticeOf(state, context, context.canRestart);
+        return facts.due.running > 0 ? NONE : noticeOf(state, context, context.canRestart ? 'restart' : 'clear');
     }
     if (context.stopHookActive) {
         return NONE;
