@@ -1,16 +1,16 @@
 ---
 name: hire
-description: Use when the lead needs a temporary session for one job (check flags SCALE-OUT), when a hired session's work is done, or to rehire a retired one.
+description: Use when the lead needs one more worker (check flags SCALE-OUT), when check flags a hire RETIRE-DUE or REVIEW-DUE, or to rehire a retired one.
 ---
 
 # Hire, retire and rehire a session
 
-A hired session is a temporary member for one job. You, the lead, hire it within the team config's `hiring` policy,
-give it tasks, and retire it once its job is done. A sub-lead hires the same way (`--session <sub-lead>`):
+A hired session is a worker you are sure the team needs. You, the lead, hire it within the team config's `hiring`
+policy, give it tasks, and retire it once the team no longer needs it. A sub-lead hires the same way (`--session <sub-lead>`):
 its hire joins its own group, and it retires only sessions it leads, handing their tasks within its group. Its tasks,
 inbox and records stay readable by its id.
 `check` says when: `HIRE SCALE-OUT` on an area that cannot finish its dated work in time, `HIRE RETIRE-DUE` on a
-hire with no work left.
+burst hire once its burst is over, `HIRE REVIEW-DUE` on a hire past its review day.
 
 ## 1. Hire
 
@@ -40,9 +40,8 @@ or the week's pace end) and the week's spare; no flag is raised while the spare 
 
 ## 2. Retire
 
-When `check` flags `HIRE RETIRE-DUE` (no open task for `hiring.idleHours`, as when a SCALE-OUT hire's slice is done),
-give it its next task or retire it. An idle hire a SCALE-OUT names to take a slice is not flagged RETIRE-DUE
-meanwhile. When it flags `HIRE REVIEW-DUE` (its review day passed), decide whether the team still needs it: keep it
+When `check` flags `HIRE RETIRE-DUE` (a burst hire whose burst is over), give it its next task or retire it. A hire
+with no task is never due to retire for it: the idle pass deactivates it. When it flags `HIRE REVIEW-DUE` (its review day passed), decide whether the team still needs it: keep it
 to a new review day, `teamrig hire <id> --review <YYYY-MM-DD> --reason "<why>" --session lead` (a preview; add
 `--yes` to write it), else retire it.
 

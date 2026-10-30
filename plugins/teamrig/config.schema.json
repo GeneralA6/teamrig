@@ -1431,7 +1431,7 @@
       }
     },
     "hiring": {
-      "description": "Hiring temporary sessions with teamrig hire: who decides. No cap counts hires: the host's room bounds who is at the office, and the leader decides who is hired. A hire is written into sessions, names and launch, and logged with its reason and review date; its part of the team's daily budget follows its share and queued work, like any session's.",
+      "description": "Hiring sessions with teamrig hire, each a worker the leader is sure the team needs: who decides. No cap counts hires: the host's room bounds who is at the office, and the leader decides who is hired. A hire is written into sessions, names and launch, and logged with its reason and review date; its part of the team's daily budget follows its share and queued work, like any session's.",
       "type": "object",
       "properties": {
         "policy": {

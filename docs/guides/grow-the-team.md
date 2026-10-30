@@ -1,8 +1,8 @@
 # Grow the team
 
 A team starts in one tab: you say what you want done, the tab proposes the sessions, and on your yes it becomes the
-lead, writes the team and opens a tab for each session. The team grows from there: the lead hires a temporary member
-for one job and retires it once the job is done, and a part of the work that needs a lead of its own splits off as a
+lead, writes the team and opens a tab for each session. The team grows from there: the lead hires a worker it is sure
+the team needs and retires it once the team no longer needs it, and a part of the work that needs a lead of its own splits off as a
 child team under the lead, while you still talk to one lead. The `hiring` and `open` keys in the
 [team config](../configuration.md) set how far and how fast it grows.
 
@@ -73,7 +73,7 @@ a new one ([Setting up a team](#setting-up-a-team)). You still talk to one lead:
   `teamrig doctor` names one, along with a broken link in the tree.
 - `teamrig team tree` prints the tree with each team's lead and sessions.
 
-The lead hires a temporary member for one job with `teamrig hire`, within the team config's `hiring` block; a
+The lead hires a worker it is sure the team needs with `teamrig hire`, within the team config's `hiring` block; a
 child team's lead hires the same way into its own team:
 
 - `policy`: `off` (no hires by command), `owner` (the default: each hire names who approved it), `lead`, or
@@ -81,7 +81,8 @@ child team's lead hires the same way into its own team:
   write its handover). Under every policy only a lead over a session retires it, never the session itself.
 - No cap counts hires: `hire --yes` refuses only while the host has no room for one more tab; each gets its part of the team's daily budget by its share and queued
   work, like any session; `reviewDays` (7) sets a hire's review day.
-- Each hire is logged in `state/hires.jsonl` with its job, reason, approver, model, effort and review day. `teamrig check` flags a hired session with no open task for `idleHours` (4) as RETIRE-DUE, and one past its
+- Each hire is logged in `state/hires.jsonl` with its job, reason, approver, model, effort and review day. A hire with no task
+  is never due to retire for it: the idle pass deactivates it. `teamrig check` flags a hired session past its
   review day as REVIEW-DUE: a lead over it keeps it to a new review day while the team still needs it (`teamrig hire
   <id> --review <YYYY-MM-DD> --reason "<why>" --yes`, which changes only the hire log), else retires it.
 - `teamrig hire --burst` hires for the burst in force ([Bursts](plan-the-week.md#bursts)), within its hires,
@@ -95,8 +96,8 @@ child team's lead hires the same way into its own team:
   due or the week's pace end; the areas furthest behind are paid first, out of the team's part of the week's projected
   spare (as for a surplus burst, below), and none
   once it cannot pay or the team's daily budget is unknown. Its action moves the slice to an idle hire, else hires
-  for it. The hire retires as RETIRE-DUE once its slice is
-  done.
+  for it. Once its slice is done, the hire stays on the team for the next one until a lead
+  over it retires it.
 
 When its job is done, the lead retires it with `teamrig retire <id>`. It refuses while the session owns open tasks
 unless `--to <heir>` takes them, and without its handover note (`handover/<id>.md`) unless `--no-handover "<why>"`.

@@ -462,7 +462,8 @@ Lists the tasks and skills that break a team rule. The lead runs it at each chec
 each flag means and what to do about it: [tasks.md](tasks.md#check-flags). It also reads the `stopgap T<id>` tags in
 your skills and in `CLAUDE.md` and `.claude/rules` [register.check.stopgapFiles], and flags STOPGAP-DONE for each
 done or dropped task they still name, flags an area that cannot finish its dated work in time when the week's spare
-pays for help (SCALE-OUT), and flags hired sessions to retire (RETIRE-DUE) or to review (REVIEW-DUE).
+pays for help (SCALE-OUT), and flags a burst hire to retire once its burst is over (RETIRE-DUE) and a hired session past its review day
+(REVIEW-DUE).
 Warnings no session owns print under UNOWNED, addressed to the lead: doctor's context-size and context-lists
 findings while the CLAUDE.md files, memory index, skill listing or the newest session's lists run over their
 `contextFiles` budgets (every session on the machine re-reads that text, so it is no one area's), the flags of a
@@ -1353,7 +1354,7 @@ NOTE shop-web still finds web in every teamrig command; teamrig never edits perm
 
 ### teamrig hire
 
-Adds a temporary session to the team for one job (`teamrig hire <id> --scope "<its job>" --reason "<why>"`), by a
+Adds a worker the leader is sure the team needs (`teamrig hire <id> --scope "<its job>" --reason "<why>"`), by a
 lead only: the team's lead, or a sub-lead, whose hire joins its own group (`leads`, the preview says "led by"), within
 the team's `hiring` policy. Without `--yes` it shows the hire and writes
 nothing. With it, the hire goes into the hire log (`state/hires.jsonl`), the old config into the backups folder, and
@@ -1444,8 +1445,9 @@ the hire log (`state/hires.jsonl`). Its tasks, inbox and records stay where they
   steps, branches, traps), unless `--no-handover "<why>"` says why there is none.
 - It refuses while a role (`roles.lead`, `roles.coordinatorOwner`, `roles.securityReviewer`), `github.owners` or `github.sessions` names
   the session: point those at another session first.
-- `check` flags each hired session to retire (RETIRE-DUE) and each one past its review day (REVIEW-DUE); a hire a
-  SCALE-OUT names to take a slice is not flagged idle meanwhile.
+- `check` flags a burst hire to retire once its burst is over (RETIRE-DUE), and each hired session past its review
+  day (REVIEW-DUE), which a keep clears ([teamrig hire](#teamrig-hire)). A hire with no task is never due to retire
+  for it: the idle pass deactivates it.
 - Under `hiring.policy` `automatic`, closing a hired session's last open task (`set` done or dropped) asks it, once,
   at its next turn end, to write its handover and end its turn, never to retire: its leader decides which workers
   the team needs, and the idle pass deactivates one with no task. It says so and goes on when a task came in.
