@@ -9,7 +9,7 @@ import { FakeStarterWatch } from '../testing/fake-starter-watch.ts';
 import { FakeSteps } from '../testing/fake-steps.ts';
 import { stoppableHooks, stoppableLock, stoppableSleep, stoppableSteps, unlessStopped, watchStarters } from './stoppable.ts';
 
-const HELD: HostLockInfo = { token: 't1', pid: 4242, session: 'alpha', purpose: 'merge app', kit: KIT_VERSION, acquiredAt: '2030-01-08T10:00:00.000Z', expiresAt: '2030-01-08T12:30:00.000Z' };
+const HELD: HostLockInfo = { id: 't1', pid: 4242, session: 'alpha', purpose: 'merge app', kit: KIT_VERSION, acquiredAt: '2030-01-08T10:00:00.000Z', expiresAt: '2030-01-08T12:30:00.000Z' };
 const STEP: StepRequest = { command: 'npm test', cwd: '/repo', env: {}, timeoutMs: 60_000 };
 const HOOK: HookRequest = { argv: ['node', 'deploy.js'], cwd: '/repo', env: {}, timeoutMs: 60_000, onLine: () => undefined };
 

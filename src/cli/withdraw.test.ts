@@ -24,7 +24,7 @@ function running(): FakeSessionProcesses {
 
 /** A step of alpha's in `OTHER` waiting since `arrivedAt`, as an older teamrig queued it: it never looks for its ticket. */
 function olderWaiterOf(arrivedAt: string, overrides: Partial<LockWaiter> = {}): LockWaiter {
-  return { token: `w${Date.parse(arrivedAt)}`, pid: OTHER, session: 'alpha', purpose: 'heavy: build api', arrivedAt, expiresAt: '2030-01-08T11:00:10.000Z', ...overrides };
+  return { id: `w${Date.parse(arrivedAt)}`, pid: OTHER, session: 'alpha', purpose: 'heavy: build api', arrivedAt, expiresAt: '2030-01-08T11:00:10.000Z', ...overrides };
 }
 
 /** {@link olderWaiterOf} as this teamrig queues it: it names its kit and stops once its ticket is withdrawn. */
@@ -33,12 +33,14 @@ function waiterOf(arrivedAt: string, overrides: Partial<LockWaiter> = {}): LockW
 }
 
 function nameOf(waiter: LockWaiter): string {
-  return `${String(Date.parse(waiter.arrivedAt)).padStart(15, '0')}-${waiter.token}.json`;
+  return `${String(Date.parse(waiter.arrivedAt)).padStart(15, '0')}-${waiter.id}.json`;
 }
 
+/** Writes each waiter's ticket as teamrig, and an older one, stores it: the id under `token` (T1544). */
 async function queued(kit: CliHarness, ...waiters: readonly LockWaiter[]): Promise<void> {
   for (const waiter of waiters) {
-    await kit.files.write(join(QUEUE, nameOf(waiter)), JSON.stringify(waiter));
+    const { id, ...rest } = waiter;
+    await kit.files.write(join(QUEUE, nameOf(waiter)), JSON.stringify({ token: id, ...rest }));
   }
 }
 

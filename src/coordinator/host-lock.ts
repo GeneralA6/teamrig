@@ -11,8 +11,8 @@ import type { TimeZone } from '../core/zone.ts';
  * lock while a team moves its callers to teamrig; a field either adds is ignored.
  */
 export interface HostLockInfo {
-  /** Unique to one taking: only the step that took the lock releases it. */
-  readonly token: string;
+  /** Unique to one taking: only the step that took the lock releases it. Stored as `token` for now ({@link STORED_ID}). */
+  readonly id: string;
   /** The process holding it; once that process is gone, the lock is stale. */
   readonly pid: number;
   readonly session: string;
@@ -32,11 +32,11 @@ export interface HostLockInfo {
 export type LockHolder = { readonly kind: 'held'; readonly info: HostLockInfo; readonly waitsFor?: readonly HostShare[] } | { readonly kind: 'unknown' };
 
 /**
- * A step waiting for the lock, as its ticket in the line says: the file `<lock>.queue/<arrival ms>-<token>.json`, the
+ * A step waiting for the lock, as its ticket in the line says: the file `<lock>.queue/<arrival ms>-<id>.json`, the
  * arrival in 15 digits so the folder's names sort in arrival order.
  */
 export interface LockWaiter {
-  readonly token: string;
+  readonly id: string;
   /** The waiting process; once it is gone, the ticket is stale. */
   readonly pid: number;
   readonly session: string;
@@ -61,8 +61,8 @@ interface Ticket {
 }
 
 /**
- * A small step sharing the host (`teamrig heavy --small`): a lock's fields under its own token, in the file
- * `<lock>.shared/<token>.json`, with the memory held for it while it runs.
+ * A small step sharing the host (`teamrig heavy --small`): a lock's fields under its own id, in the file
+ * `<lock>.shared/<id>.json`, with the memory held for it while it runs.
  */
 export interface HostShare extends HostLockInfo {
   /** The MB held for it: another small step is let in only while the host has this free besides. */
@@ -125,7 +125,7 @@ export interface HostLockPorts {
   readonly pid: number;
   /** Whether a process still runs. */
   alive(pid: number): boolean;
-  /** A new unique token. */
+  /** A new unique id. */
   newId(): string;
 }
 
@@ -157,7 +157,7 @@ const ARRIVAL_DIGITS = 15;
 /** A ticket's name; a writer's temporary sibling (`<name>.<pid>.<n>.tmp`) does not match. */
 const TICKET_NAME = /^\d{15}-[^/\\]+\.json$/;
 
-/** A share's name, its token's; a writer's temporary sibling does not match. */
+/** A share's name, its id's; a writer's temporary sibling does not match. */
 const SHARE_NAME = /^[^/\\]+\.json$/;
 
 function byAcquiredAt(a: HostLockInfo, b: HostLockInfo): number {
@@ -181,10 +181,37 @@ function withoutForeignKit(value: unknown): unknown {
   return isRecord(value) && !isKit(value['kit']) ? Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'kit')) : value;
 }
 
+/**
+ * The name a lock's, a share's and a ticket's id is stored under: `token` until every reader takes `id` (T1544). The
+ * secret redactor reads a quoted literal given to `token` as a secret, so a session that shows the lock files a
+ * rotation task; but an older teamrig, and a team's own coordinator, read a lock without `token` as damaged and remove
+ * it once it is old enough, and two steps would run at once. So the stored name changes only in a later release, and a
+ * reader takes either.
+ */
+const STORED_ID = 'token';
+
+/**
+ * `value` with its id under `id` alone, whichever name its writer stored it under ({@link STORED_ID}); `id` wins in a
+ * file holding both. No `token` stays, so a record read and written back (a renewed ticket) stores its id once.
+ */
+function withId(value: unknown): unknown {
+  if (!isRecord(value) || !('token' in value)) {
+    return value;
+  }
+  const { token, ...rest } = value;
+  return typeof rest['id'] === 'string' || typeof token !== 'string' ? rest : { id: token, ...rest };
+}
+
+/** `record` as its file holds it: its id under {@link STORED_ID}. */
+function stored<T extends { readonly id: string }>(record: T): string {
+  const { id, ...rest } = record;
+  return JSON.stringify({ [STORED_ID]: id, ...rest });
+}
+
 function isHostLockInfo(value: unknown): value is HostLockInfo {
   return (
     isRecord(value) &&
-    typeof value['token'] === 'string' &&
+    typeof value['id'] === 'string' &&
     typeof value['pid'] === 'number' &&
     typeof value['session'] === 'string' &&
     typeof value['purpose'] === 'string' &&
@@ -197,7 +224,7 @@ function isHostLockInfo(value: unknown): value is HostLockInfo {
 function isLockWaiter(value: unknown): value is LockWaiter {
   return (
     isRecord(value) &&
-    typeof value['token'] === 'string' &&
+    typeof value['id'] === 'string' &&
     typeof value['pid'] === 'number' &&
     typeof value['session'] === 'string' &&
     typeof value['purpose'] === 'string' &&
@@ -214,7 +241,7 @@ function isHostShare(value: unknown): value is HostShare {
 
 function parseAs<T>(text: string, is: (value: unknown) => value is T): T | undefined {
   try {
-    const value = withoutForeignKit(JSON.parse(text));
+    const value = withId(withoutForeignKit(JSON.parse(text)));
     return is(value) ? value : undefined;
   } catch {
     return undefined;
@@ -230,7 +257,7 @@ function parseLock(text: string): HostLockInfo | undefined {
  * under a commit or a push) runs at once under the same lock, since waiting for it would wait on its own parent.
  */
 export function underLock(env: Env, lock: HostLockInfo): Env {
-  return { ...env, [ENV.hostLock]: lock.token };
+  return { ...env, [ENV.hostLock]: lock.id };
 }
 
 /**
@@ -277,23 +304,23 @@ export function waitText(holder: LockWait, ahead: number, zone: TimeZone): strin
   return ahead === 0 ? holderText(holder, zone) : `${holderText(holder, zone)}; ${ahead} ahead in line`;
 }
 
-/** The tokens of `shares`, joined. */
-function tokensOf(shares: readonly HostShare[]): string {
-  return shares.map((share) => share.token).join(',');
+/** The ids of `shares`, joined. */
+function idsOf(shares: readonly HostShare[]): string {
+  return shares.map((share) => share.id).join(',');
 }
 
 /** Tells one report apart from the last: a new holder, a small step its holder waits for ending, or a new place in line. */
 function waitKey(holder: LockWait, ahead: number): string {
   switch (holder.kind) {
     case 'held':
-      return `held ${holder.info.token} ${tokensOf(holder.waitsFor ?? [])} ${ahead}`;
+      return `held ${holder.info.id} ${idsOf(holder.waitsFor ?? [])} ${ahead}`;
     case 'queued':
-      return `queued ${holder.first.token} ${ahead}`;
+      return `queued ${holder.first.id} ${ahead}`;
     case 'unknown':
       return `unknown ${ahead}`;
     case 'draining':
     case 'memory':
-      return `${holder.kind} ${tokensOf(holder.shares)} ${ahead}`;
+      return `${holder.kind} ${idsOf(holder.shares)} ${ahead}`;
   }
 }
 
@@ -310,31 +337,31 @@ function tellingChanges(onWait: Tell): Tell {
 }
 
 /**
- * The tokens of the steps a waiter stands behind at one look: the waiters ahead, the lock's holder and the small steps
+ * The ids of the steps a waiter stands behind at one look: the waiters ahead, the lock's holder and the small steps
  * it waits for, the small steps sharing the host.
  */
 function standingBehind(ahead: readonly LockWaiter[], holder: LockWait): Set<string> {
-  const tokens = new Set(ahead.map((waiter) => waiter.token));
+  const ids = new Set(ahead.map((waiter) => waiter.id));
   switch (holder.kind) {
     case 'held':
-      tokens.add(holder.info.token);
+      ids.add(holder.info.id);
       for (const share of holder.waitsFor ?? []) {
-        tokens.add(share.token);
+        ids.add(share.id);
       }
       break;
     case 'queued':
-      tokens.add(holder.first.token);
+      ids.add(holder.first.id);
       break;
     case 'draining':
     case 'memory':
       for (const share of holder.shares) {
-        tokens.add(share.token);
+        ids.add(share.id);
       }
       break;
     case 'unknown':
       break;
   }
-  return tokens;
+  return ids;
 }
 
 /**
@@ -358,7 +385,7 @@ class Patience {
 
   /** Takes in one look at `now`, the steps this one stands behind then; true when the line moved since the last look. */
   look(behind: ReadonlySet<string>, now: number): boolean {
-    const moved = [...this.behind].some((token) => !behind.has(token));
+    const moved = [...this.behind].some((id) => !behind.has(id));
     this.behind = behind;
     if (moved) {
       this.movedAt = now;
@@ -381,7 +408,7 @@ class Patience {
  * stops at its next look. A step that took its turn removes its own ticket to run, so of the two removals only one
  * succeeds, and a withdrawn step never runs.
  * Small steps (`teamrig heavy --small`: a spec run, a lint) share the host instead: in its turn, while the lock is not
- * held, a small step writes its share, `<lock>.shared/<token>.json`, before it leaves the line, so the next in line
+ * held, a small step writes its share, `<lock>.shared/<id>.json`, before it leaves the line, so the next in line
  * sees it. It is let in at once when no other small step runs, else only while the host's free memory less the MB
  * held for those leaves `floorMb` plus its own. A step that takes the lock waits, holding it, for the shares to end,
  * so none is let in meanwhile. A share whose process is gone, that expired or that cannot be read is removed by the
@@ -412,12 +439,12 @@ export class HostLock {
     return this.take(session, purpose, removeUnknown, undefined);
   }
 
-  /** {@link tryTake}, the lock carrying `token` when given (a waiter's ticket token), else a new one each attempt. */
-  private async take(session: string, purpose: string, removeUnknown: boolean, token: string | undefined): Promise<Look> {
+  /** {@link tryTake}, the lock carrying `id` when given (a waiter's ticket id), else a new one each attempt. */
+  private async take(session: string, purpose: string, removeUnknown: boolean, id: string | undefined): Promise<Look> {
     let mayRemoveUnknown = removeUnknown;
     for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
-      const lock = this.newLock(session, purpose, token ?? this.ports.newId());
-      if (await this.ports.files.createExclusive(this.path, JSON.stringify(lock))) {
+      const lock = this.newLock(session, purpose, id ?? this.ports.newId());
+      if (await this.ports.files.createExclusive(this.path, stored(lock))) {
         return { kind: 'taken', lock };
       }
       const seen = await this.read();
@@ -431,7 +458,7 @@ export class HostLock {
         if (!this.isStale(seen.info)) {
           return { kind: 'busy', holder: await this.heldBy(seen.info) };
         }
-        await this.removeIf((text) => parseLock(text)?.token === seen.info.token);
+        await this.removeIf((text) => parseLock(text)?.id === seen.info.id);
       }
     }
     const last = await this.read();
@@ -474,10 +501,10 @@ export class HostLock {
 
   /** Releases a lock or share this step took; false when it is no longer the holder (it expired and another step took it). */
   async release(lock: HostLockInfo): Promise<boolean> {
-    if (await this.removeIf((text) => parseLock(text)?.token === lock.token)) {
+    if (await this.removeIf((text) => parseLock(text)?.id === lock.id)) {
       return true;
     }
-    const share = await this.shareWith(lock.token);
+    const share = await this.shareWith(lock.id);
     if (share === undefined) {
       return false;
     }
@@ -485,13 +512,13 @@ export class HostLock {
     return true;
   }
 
-  /** The lock or share while the taking with `token` holds it and it is not stale; undefined otherwise. Takes and removes nothing. */
-  async heldWith(token: string): Promise<HostLockInfo | undefined> {
+  /** The lock or share while the taking with `id` holds it and it is not stale; undefined otherwise. Takes and removes nothing. */
+  async heldWith(id: string): Promise<HostLockInfo | undefined> {
     const seen = await this.read();
-    if (seen.kind === 'held' && seen.info.token === token) {
+    if (seen.kind === 'held' && seen.info.id === id) {
       return this.isStale(seen.info) ? undefined : seen.info;
     }
-    const share = (await this.shareWith(token))?.share;
+    const share = (await this.shareWith(id))?.share;
     return share === undefined || this.isStale(share) ? undefined : share;
   }
 
@@ -516,7 +543,7 @@ export class HostLock {
       } else if (await this.removeTicket(name)) {
         done.push({ kind: 'withdrawn', waiter });
       } else {
-        done.push({ kind: (await this.heldWith(waiter.token)) === undefined ? 'left' : 'running', waiter });
+        done.push({ kind: (await this.heldWith(waiter.id)) === undefined ? 'left' : 'running', waiter });
       }
     }
     return done;
@@ -639,7 +666,7 @@ export class HostLock {
     if (!(await this.ports.files.remove(path))) {
       return false;
     }
-    await this.ports.files.write(path, JSON.stringify({ ...ticket.waiter, expiresAt: ticketExpiry(deadline) }));
+    await this.ports.files.write(path, stored({ ...ticket.waiter, expiresAt: ticketExpiry(deadline) }));
     return true;
   }
 
@@ -653,13 +680,13 @@ export class HostLock {
   /** The lock this step holds, its expiry moved to a whole TTL from now. */
   private async renew(lock: HostLockInfo): Promise<HostLockInfo> {
     const renewed: HostLockInfo = { ...lock, expiresAt: new Date(this.ports.clock.now() + this.ttlMs).toISOString() };
-    await this.ports.files.write(this.path, JSON.stringify(renewed));
+    await this.ports.files.write(this.path, stored(renewed));
     return renewed;
   }
 
   /**
    * One look in line for a small step. A live lock is waited on, and so is an earlier waiter. Else the step shares the
-   * host, under its ticket's token, at once when no other small step runs, else while the host's free memory less the
+   * host, under its ticket's id, at once when no other small step runs, else while the host's free memory less the
    * MB held for those leaves `floorMb` plus its own; a stale lock is left for the next step that takes the lock.
    */
   private async shareInTurn(waiter: LockWaiter, ahead: readonly LockWaiter[], removeUnknown: boolean, request: ShareRequest): Promise<Look> {
@@ -684,8 +711,8 @@ export class HostLock {
     if (others.length > 0 && freeMb - heldMb < needMb) {
       return { kind: 'busy', holder: { kind: 'memory', freeMb, heldMb, needMb, shares: others } };
     }
-    const share: HostShare = { ...this.newLock(waiter.session, waiter.purpose, waiter.token), reserveMb: request.reserveMb };
-    await this.ports.files.write(join(this.shared, `${share.token}.json`), JSON.stringify(share));
+    const share: HostShare = { ...this.newLock(waiter.session, waiter.purpose, waiter.id), reserveMb: request.reserveMb };
+    await this.ports.files.write(join(this.shared, `${share.id}.json`), stored(share));
     return { kind: 'taken', lock: share, sharing: { freeMb, others } };
   }
 
@@ -716,21 +743,21 @@ export class HostLock {
     return live.sort(byAcquiredAt);
   }
 
-  /** The share the taking with `token` wrote, and its file; undefined when there is none or the token is no file name. */
-  private async shareWith(token: string): Promise<{ readonly path: string; readonly share: HostShare } | undefined> {
-    const name = `${token}.json`;
+  /** The share the taking with `id` wrote, and its file; undefined when there is none or the id is no file name. */
+  private async shareWith(id: string): Promise<{ readonly path: string; readonly share: HostShare } | undefined> {
+    const name = `${id}.json`;
     if (!SHARE_NAME.test(name)) {
       return undefined;
     }
     const path = join(this.shared, name);
     const text = await this.ports.files.read(path);
     const share = text === undefined ? undefined : parseAs(text, isHostShare);
-    return share?.token === token ? { path, share } : undefined;
+    return share?.id === id ? { path, share } : undefined;
   }
 
   /**
    * One look in line. A live holder is named without a write. Else the first in line tries to take the lock, under
-   * its ticket's token so the step keeps one identity from joining the line to releasing the lock, and a later
+   * its ticket's id so the step keeps one identity from joining the line to releasing the lock, and a later
    * waiter names the waiter first in line, which the lock goes to next.
    */
   private async takeInTurn(waiter: LockWaiter, ahead: readonly LockWaiter[], removeUnknown: boolean): Promise<Look> {
@@ -740,7 +767,7 @@ export class HostLock {
     }
     const [first] = ahead;
     if (first === undefined) {
-      return this.take(waiter.session, waiter.purpose, removeUnknown, waiter.token);
+      return this.take(waiter.session, waiter.purpose, removeUnknown, waiter.id);
     }
     return { kind: 'busy', holder: seen.kind === 'unknown' ? { kind: 'unknown' } : { kind: 'queued', first } };
   }
@@ -749,7 +776,7 @@ export class HostLock {
   private async joinLine(session: string, purpose: string, deadline: number): Promise<Ticket> {
     const now = this.ports.clock.now();
     const waiter: LockWaiter = {
-      token: this.ports.newId(),
+      id: this.ports.newId(),
       pid: this.ports.pid,
       session,
       purpose,
@@ -758,8 +785,8 @@ export class HostLock {
       expiresAt: ticketExpiry(deadline),
       stopsOnWithdraw: true,
     };
-    const name = `${String(now).padStart(ARRIVAL_DIGITS, '0')}-${waiter.token}.json`;
-    await this.ports.files.write(join(this.queue, name), JSON.stringify(waiter));
+    const name = `${String(now).padStart(ARRIVAL_DIGITS, '0')}-${waiter.id}.json`;
+    await this.ports.files.write(join(this.queue, name), stored(waiter));
     return { name, waiter };
   }
 
@@ -810,10 +837,10 @@ export class HostLock {
     return Date.parse(entry.expiresAt) <= this.ports.clock.now() || !this.ports.alive(entry.pid);
   }
 
-  private newLock(session: string, purpose: string, token: string): HostLockInfo {
+  private newLock(session: string, purpose: string, id: string): HostLockInfo {
     const now = this.ports.clock.now();
     return {
-      token,
+      id,
       pid: this.ports.pid,
       session,
       purpose,
