@@ -79,11 +79,11 @@ child team's lead hires the same way into its own team:
 - `policy`: `off` (no hires by command), `owner` (the default: each hire names who approved it), `lead`, or
   `automatic` (the lead decides, and a hired session whose last open task closes is asked at its next turn end to
   write its handover and retire itself).
-- `maxSessions` (2) hired members at once; each gets its part of the team's daily budget by its share and queued
+- No cap counts hires: `hire --yes` refuses only while the host has no room for one more tab; each gets its part of the team's daily budget by its share and queued
   work, like any session; `reviewDays` (7) sets a hire's review day.
 - Each hire is logged in `state/hires.jsonl` with its job, reason, approver, model, effort and review day. `teamrig check` flags a hired session with no open task for `idleHours` (4) as RETIRE-DUE, and one past its
   review day as REVIEW-DUE.
-- `teamrig hire --burst` hires for the burst in force ([Bursts](plan-the-week.md#bursts)), within its hires as well as these caps,
+- `teamrig hire --burst` hires for the burst in force ([Bursts](plan-the-week.md#bursts)), within its hires,
   on the lead's model and at least its effort; the burst's approver approves it. Once the burst is over, `check`
   flags the hire RETIRE-DUE.
 - `scaleOut` says when to hire: `check` flags SCALE-OUT on an area (never the lead or a hire) when more of its dated
@@ -94,7 +94,7 @@ child team's lead hires the same way into its own team:
   due or the week's pace end; the areas furthest behind are paid first, out of the team's part of the week's projected
   spare (as for a surplus burst, below), and none
   once it cannot pay or the team's daily budget is unknown. Its action moves the slice to an idle hire, else hires
-  within `maxSessions`, else brings the owner a card to raise it (a child team's lead asks its parent team's lead to), or under `hiring.capRaisedBy` `lead` raises it itself and says so in its next report. The hire retires as RETIRE-DUE once its slice is
+  for it. The hire retires as RETIRE-DUE once its slice is
   done.
 
 When its job is done, the lead retires it with `teamrig retire <id>`. It refuses while the session owns open tasks

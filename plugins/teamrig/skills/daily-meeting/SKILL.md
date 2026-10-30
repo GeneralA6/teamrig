@@ -34,7 +34,7 @@ Then it prints the agenda:
 - the week's use, and under it what of the planned week fits the weekly limit.
 
 Sort `DECISIONS` before you bring them: a card stays the human's only when the owner gate or business decision it
-names truly applies. Any other, a route, a merge or staffing (who does a job, a reviewer, a hire within caps), is yours however
+names truly applies. Any other, a route, a merge or staffing (who does a job, a reviewer, a hire), is yours however
 many good answers it has: decide it now, send its owner the answer as an inbox line so it sets the task's next
 status, and tell the human in the meeting as an FYI.
 

@@ -5,8 +5,8 @@ description: Use when the lead needs a temporary session for one job (check flag
 
 # Hire, retire and rehire a session
 
-A hired session is a temporary member for one job. You, the lead, hire it within the team config's `hiring` policy
-and caps, give it tasks, and retire it once its job is done. A sub-lead hires the same way (`--session <sub-lead>`):
+A hired session is a temporary member for one job. You, the lead, hire it within the team config's `hiring` policy,
+give it tasks, and retire it once its job is done. A sub-lead hires the same way (`--session <sub-lead>`):
 its hire joins its own group, and it retires only sessions it leads, handing their tasks within its group. Its tasks,
 inbox and records stay readable by its id.
 `check` says when: `HIRE SCALE-OUT` on an area that cannot finish its dated work in time, `HIRE RETIRE-DUE` on a
@@ -22,18 +22,16 @@ started work needs), its cost (a new hire's part of the team's daily budget toda
 or the week's pace end) and the week's spare; no flag is raised while the spare cannot pay. Do what the action says:
 - it names an idle hire: move the slice to it, `teamrig update <task> --owner <hire> --session lead` for each task;
 - else hire for the slice (the steps below, `--scope` the slice's task ids, `--reason "SCALE-OUT"`), then move it;
-- the cap (`hiring.maxSessions`) blocks: bring the owner a card to raise it (under `hiring.capRaisedBy` `lead`, raise it
-  in the team config yourself and say so in your next report), or move the slice to another area.
+- the host has no room (`hire --yes` refuses): move the slice to another area.
 
 1. Decide its job in one line (`--scope`), why the team needs it now (`--reason`) and a short id
    (lowercase letters, digits and dashes, not on the team yet).
 2. Preview it, which writes nothing:
    `teamrig hire <id> --scope "<its job>" --reason "<why>" --session lead`
-   It shows its name, model and effort (yours unless `--model` or `--effort`), its review day, and how many hired
-   sessions the team would have with it, of `hiring.maxSessions`. It gets no fixed daily budget: its part of the
-   team's follows its share and queued work, like any session's.
+   It shows its name, model and effort (yours unless `--model` or `--effort`) and its review day. It gets no fixed
+   daily budget: its part of the team's follows its share and queued work, like any session's.
 3. Under `hiring.policy` `owner`, show the user the preview and ask; on a yes, add `--approved-by "<who>"`. Under
-   `lead` or `automatic`, decide yourself: a hire within the caps is staffing, your call, never a question for the
+   `lead` or `automatic`, decide yourself: a hire is staffing, your call, never a question for the
    owner.
 4. Write it: the same command with `--yes`.
 5. Give it its first task before you open it, so its first `list` has work:
