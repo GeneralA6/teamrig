@@ -20,6 +20,8 @@ import { askTeam, treeCallerOf } from './team-ask.ts';
 export interface Leak {
   readonly tool: string;
   readonly kinds: readonly string[];
+  /** The accounts each kind's secrets belong to, by kind (see `Redaction.accounts`); a kind with none is absent. */
+  readonly accounts: ReadonlyMap<string, readonly string[]>;
 }
 
 /** How long the redactor waits for another tab's rotation filing: the hook has 15 s, and its redaction must not wait on this. */
@@ -30,7 +32,8 @@ const every = (leak: Leak, problem: string): readonly Rotation[] => leak.kinds.m
 /**
  * Has each kind of secret a tool's result held rotated (T1369 R8): one register task for the team's security reviewer,
  * else its lead, per kind, session and day on the team's clock, and one line per kind in the team's incident log, with
- * the call that showed it (its id, the session's transcript and a helper's id), never the value. A reviewer of a team
+ * the call that showed it (its id, the session's transcript and a helper's id) and the accounts a URL's credentials
+ * named, which the task names too; never the value. A reviewer of a team
  * above (`<team>/<id>`) gets the task in that team's register, as an ask of the session's. A kind its session was given
  * a task for that day names that task again while it is still active; a closed one (a false positive, say) gets a new
  * task, so a real leak later that day is never folded into a task no one works (T1545). Nothing here throws: a filing
@@ -68,9 +71,11 @@ async function rotateEach(runtime: CliRuntime, team: TeamScope, session: string 
   const zone = teamZone(team.config, runtime);
   const rotations: Rotation[] = [];
   for (const kind of leak.kinds) {
-    const rotation = session === undefined ? { kind, problem: "this tab's session is not known" } : await rotationOf(runtime, team, { session, tool: leak.tool, kind }, incidents, zone);
+    const accounts = leak.accounts.get(kind);
+    const named = accounts === undefined ? {} : { accounts };
+    const rotation = session === undefined ? { kind, problem: "this tab's session is not known" } : await rotationOf(runtime, team, { session, tool: leak.tool, kind, ...named }, incidents, zone);
     rotations.push(rotation);
-    const incident: SecretIncident = { at: now.toISOString(), ...(session === undefined ? {} : { session }), tool: leak.tool, ...call, kind, ...('task' in rotation ? { task: rotation.task } : {}) };
+    const incident: SecretIncident = { at: now.toISOString(), ...(session === undefined ? {} : { session }), tool: leak.tool, ...call, kind, ...named, ...('task' in rotation ? { task: rotation.task } : {}) };
     // The task is filed either way; a lost line only lets the next incident that day try again, which the register
     // refuses as a copy of the open task.
     await log.append(incident).catch(() => undefined);
@@ -82,6 +87,8 @@ interface Sighting {
   readonly session: string;
   readonly tool: string;
   readonly kind: string;
+  /** Whose secrets they were (`login app at github.com`); absent for a kind that names none. */
+  readonly accounts?: readonly string[];
 }
 
 async function rotationOf(runtime: CliRuntime, team: TeamScope, sighting: Sighting, incidents: readonly SecretIncident[], zone: TimeZone): Promise<Rotation> {
@@ -117,15 +124,16 @@ function heldBy(elsewhere: TasksElsewhere, holder: string, id: string): Task | u
 }
 
 /**
- * The task: what leaked where and on which day, in plain words, and never the value or a file's path. The day keeps a
- * later day's task from being refused as a copy of an earlier one still open.
+ * The task: what leaked where and on which day, with whose accounts, in plain words, and never the value or a file's
+ * path. The day keeps a later day's task from being refused as a copy of an earlier one still open.
  */
 function rotationInput(sighting: Sighting, day: string, maxTitle: number): Omit<AddInput, 'owner' | 'source'> {
-  const { session, tool, kind } = sighting;
+  const { session, tool, kind, accounts } = sighting;
   const title = `Rotate the ${kind} a ${tool} result showed ${session} on ${day}`;
+  const whose = accounts === undefined ? '' : ` (${accounts.join('; ')})`;
   return {
     title: title.length <= maxTitle ? title : `Rotate the secret a ${tool} result showed ${session} on ${day}`,
-    description: `The secret redactor found a ${kind} in a ${tool} result of session ${session} and replaced it before the model saw it. Treat it as leaked: rotate it where it was issued, then close this task. The team's secret incident log names the kind, session and tool; no log holds the value.`,
+    description: `The secret redactor found a ${kind}${whose} in a ${tool} result of session ${session} and replaced it before the model saw it. Treat it as leaked: rotate it where it was issued, then close this task. The team's secret incident log names the kind, accounts, session, tool and call; no log holds the value.`,
     priority: 1,
   };
 }

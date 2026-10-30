@@ -10,7 +10,10 @@ export interface SecretPattern {
   readonly id: string;
   /** What the shape is, as a refusal names it. A refusal names the shape, never the matched text. */
   readonly description: string;
-  /** Has no `g` flag, so `test` keeps no state between calls; the scrub adds `g` when it scans for every match. */
+  /**
+   * Has no `g` flag, so `test` keeps no state between calls; the scrub adds `g` when it scans for every match. A URL
+   * shape names its `login` and `host` groups, from which a hit names the account a secret belongs to (T1545).
+   */
   readonly pattern: RegExp;
   /** The group holding the secret itself, for a shape that frames it (a URL's password); unset, the whole match is the secret. */
   readonly secretGroup?: number;
@@ -54,11 +57,16 @@ export const SECRET_TEXT_PATTERNS: readonly SecretPattern[] = [
   {
     id: 'url-credentials',
     description: 'credentials in a URL',
-    pattern: /\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]*:([^\s/@]+)@/i,
-    secretGroup: 1,
+    pattern: /\b[a-z][a-z0-9+.-]*:\/\/(?<login>[^\s/:@]*):([^\s/@]+)@(?=(?<host>\[[0-9a-f:.]*\]|[a-z0-9._-]*))/i,
+    secretGroup: 2,
     isAllowedValue: isOauthBasicWord,
   },
-  { id: 'url-login-token', description: 'credentials in a URL', pattern: /\b[a-z][a-z0-9+.-]*:\/\/([^\s/:@]+):x-oauth-basic@/i, secretGroup: 1 },
+  {
+    id: 'url-login-token',
+    description: 'credentials in a URL',
+    pattern: /\b[a-z][a-z0-9+.-]*:\/\/(?<login>[^\s/:@]+):x-oauth-basic@(?=(?<host>\[[0-9a-f:.]*\]|[a-z0-9._-]*))/i,
+    secretGroup: 1,
+  },
   {
     id: 'auth-header',
     description: 'credentials in an Authorization header',

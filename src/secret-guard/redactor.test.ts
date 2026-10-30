@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { SecretShapes } from '../core/secret-shapes.ts';
 import { EnvAssignments } from './env-assignments.ts';
 import { DEFAULT_SECRET_ENV_NAMES, SecretNames } from './names.ts';
-import { ToolOutputRedactor, type SecretFinder } from './redactor.ts';
+import { MAX_ACCOUNTS, ToolOutputRedactor, type SecretFinder } from './redactor.ts';
 
 const join = (...parts: string[]): string => parts.join('');
 const TOKEN = join('gh', 'p_', 'a1'.repeat(18));
@@ -20,6 +20,7 @@ describe('ToolOutputRedactor', () => {
     assert.deepEqual(redactor.redact(response), {
       response: { stdout: join('token ', GITHUB, '\n'), stderr: join('auth with ', GITHUB, ' failed'), interrupted: false, isImage: false, noOutputExpected: false },
       classes: ['GitHub token'],
+      accounts: new Map(),
       cut: false,
     });
   });
@@ -58,8 +59,22 @@ describe('ToolOutputRedactor', () => {
     assert.deepEqual(redactor.redact({ stdout: join('origin https://', login, ':x-oauth-', 'basic', '@github.com/o/r.git (fetch)') }), {
       response: { stdout: join('origin https://[redacted credentials in a URL]:x-oauth-basic', '@github.com/o/r.git (fetch)') },
       classes: ['credentials in a URL'],
+      accounts: new Map([['credentials in a URL', ['a login at github.com']]]),
       cut: false,
     });
+  });
+
+  it('names the accounts of each kind once and at most five, under the kind a value was kept as', () => {
+    const urls = ['one', 'two', 'one', 'three', 'four', 'five', 'six'].map((host, index) => join('https://app:', PASSWORD, String(index), '@', host, '.local/'));
+    const { accounts } = redactor.redact({ stdout: [...urls, join('https://app:', TOKEN, '@github.com/o/r')].join('\n') });
+    assert.equal(MAX_ACCOUNTS, 5);
+    assert.deepEqual(
+      accounts,
+      new Map([
+        ['credentials in a URL', ['one', 'two', 'three', 'four', 'five'].map((host) => `login app at ${host}.local`)],
+        ['GitHub token', ['login app at github.com']],
+      ]),
+    );
   });
 
   it('leaves a placeholder and gives back the same result when nothing was found', () => {

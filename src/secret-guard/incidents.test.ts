@@ -16,6 +16,7 @@ const FILED: SecretIncident = {
   transcript: join('/', 'projects', 'app', 'session.jsonl'),
   agent: 'a1b2',
   kind: 'GitHub token',
+  accounts: ['login app at github.com'],
   task: 'T12',
 };
 const UNKNOWN: SecretIncident = { at: '2030-01-08T10:05:00.000Z', tool: 'Read', kind: 'GitHub token' };
@@ -40,6 +41,7 @@ describe('the secret incident log', () => {
     const written: Readonly<Record<number, readonly string[]>> = {
       1: ['at', 'kind', 'session', 'task', 'tool', 'v'],
       2: ['agent', 'at', 'kind', 'session', 'task', 'tool', 'toolUseId', 'transcript', 'v'],
+      3: ['accounts[]', 'agent', 'at', 'kind', 'session', 'task', 'tool', 'toolUseId', 'transcript', 'v'],
     };
     const files = new MemoryFiles();
     await new SecretIncidentLog(files, PATH).append(FILED);
@@ -47,14 +49,22 @@ describe('the secret incident log', () => {
     assert.deepEqual(fieldPaths(line), written[SECRET_INCIDENTS_FORMAT]);
   });
 
-  it("reads a format 1 line, from before the call's fields, and appends the current format beside it", async () => {
+  it("reads format 1 and 2 lines, from before the call's fields and the accounts, and appends the current format beside them", async () => {
     const files = new MemoryFiles();
     const old: SecretIncident = { at: '2030-01-08T09:00:00.000Z', session: 'alpha', tool: 'Read', kind: 'GitHub token', task: 'T11' };
-    await files.write(PATH, `${JSON.stringify({ v: 1, ...old })}\n`);
+    const { accounts, ...noAccounts } = FILED;
+    assert.ok(accounts !== undefined);
+    await files.write(PATH, `${JSON.stringify({ v: 1, ...old })}\n${JSON.stringify({ v: 2, ...noAccounts })}\n`);
     const log = new SecretIncidentLog(files, PATH);
     await log.append(FILED);
-    assert.deepEqual(await log.read(), { incidents: [old, FILED], skipped: 0 });
-    assert.equal(files.get(PATH)?.split('\n')[1], JSON.stringify({ v: SECRET_INCIDENTS_FORMAT, ...FILED }));
+    assert.deepEqual(await log.read(), { incidents: [old, noAccounts, FILED], skipped: 0 });
+    assert.equal(files.get(PATH)?.split('\n')[2], JSON.stringify({ v: SECRET_INCIDENTS_FORMAT, ...FILED }));
+  });
+
+  it('reads accounts that are not a list of strings as none', async () => {
+    const files = new MemoryFiles();
+    await files.write(PATH, `${JSON.stringify({ v: SECRET_INCIDENTS_FORMAT, ...UNKNOWN, accounts: 'login app at github.com' })}\n`);
+    assert.deepEqual(await new SecretIncidentLog(files, PATH).read(), { incidents: [UNKNOWN], skipped: 0 });
   });
 
   it('skips damaged lines and lines from a newer teamrig, and starts a line after a torn last one', async () => {

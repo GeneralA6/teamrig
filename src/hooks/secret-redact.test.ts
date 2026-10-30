@@ -60,9 +60,9 @@ describe('rotationText', () => {
 
 describe('redactedLine', () => {
   it('names each kind found and what becomes of it, never a value, and says when part of the result went unscanned', () => {
-    const whole = redactedLine({ response: {}, classes: ['GitHub token', 'secret variable value'], cut: false }, 'bravo rotates it in T7.');
+    const whole = redactedLine({ classes: ['GitHub token', 'secret variable value'], cut: false }, 'bravo rotates it in T7.');
     assert.match(whole, /\(GitHub token, secret variable value\)/);
     assert.match(whole, /Treat it as leaked: bravo rotates it in T7\. Do not print it again\.$/);
-    assert.match(redactedLine({ response: {}, classes: ['GitHub token'], cut: true }, 'bravo rotates it in T7.'), /past the scan's cap and was not checked\.$/);
+    assert.match(redactedLine({ classes: ['GitHub token'], cut: true },'bravo rotates it in T7.'), /past the scan's cap and was not checked\.$/);
   });
 });

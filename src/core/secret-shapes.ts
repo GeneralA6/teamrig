@@ -7,6 +7,12 @@ export interface SecretShapeHit {
   readonly id: string;
   readonly description: string;
   readonly value: string;
+  /**
+   * Whose secret it is, for a shape with `login` and `host` groups (a URL's credentials): `login app at github.com`,
+   * `a login at github.com` when the login is a secret or stands in for one, `no login at kv.local`; never the path,
+   * query or port. Absent for every other shape.
+   */
+  readonly account?: string;
 }
 
 /** `password: x` is ordinary prose in a prompt or a note, so the broad assignment shape stays out of the write-time set. */
@@ -53,15 +59,12 @@ const SAMPLE_HASHES: ReadonlySet<string> = new Set([
  * named `example` is still a credential.
  */
 export function isPlaceholderValue(value: string): boolean {
-  return (
-    value.length < MIN_FRAMED_SECRET ||
-    REFERENCE.test(value) ||
-    MASKED.test(value) ||
-    PLACEHOLDER_WORD.test(value) ||
-    REGEX_SOURCE.test(value) ||
-    SPLICE.test(value) ||
-    isSample(value)
-  );
+  return value.length < MIN_FRAMED_SECRET || standsInForSecret(value);
+}
+
+/** True when `value` refers to, masks or stands in for a secret, or is the text of a search or of code around one, whatever its length. */
+function standsInForSecret(value: string): boolean {
+  return REFERENCE.test(value) || MASKED.test(value) || PLACEHOLDER_WORD.test(value) || REGEX_SOURCE.test(value) || SPLICE.test(value) || isSample(value);
 }
 
 /** True when the value a framing `shape` caught is not a secret: a placeholder, or a value the shape itself allows. */
@@ -83,10 +86,14 @@ interface ScanPattern {
 /** Finds the secrets a text holds by the write-time set plus a team's own patterns. */
 export class SecretShapes {
   private readonly patterns: readonly ScanPattern[];
+  /** The shapes whose whole match is the secret, the tokens and the team's own, which a URL's login is judged by. */
+  private readonly tokenShapes: readonly SecretPattern[];
 
   /** `extra` are the team config's `secretPatterns` sources, matched case-insensitively. */
   constructor(extra: readonly string[] = []) {
-    this.patterns = [...WRITE_TIME_SHAPES, ...configuredPatterns(extra)].map((shape) => ({ shape, global: new RegExp(shape.pattern.source, `${shape.pattern.flags}g`) }));
+    const shapes = [...WRITE_TIME_SHAPES, ...configuredPatterns(extra)];
+    this.patterns = shapes.map((shape) => ({ shape, global: new RegExp(shape.pattern.source, `${shape.pattern.flags}g`) }));
+    this.tokenShapes = shapes.filter(({ secretGroup }) => secretGroup === undefined);
   }
 
   /**
@@ -99,9 +106,34 @@ export class SecretShapes {
       for (const match of text.matchAll(global)) {
         const value = shape.secretGroup === undefined ? match[0] : match[shape.secretGroup];
         if (value === undefined || value === '' || (shape.secretGroup === undefined ? isSample(value) : isFramedPlaceholder(shape, value))) continue;
-        hits.push({ id: shape.id, description: shape.description, value });
+        const account = this.accountOf(match.groups, value);
+        hits.push({ id: shape.id, description: shape.description, value, ...(account === undefined ? {} : { account }) });
       }
     }
     return hits;
   }
+
+  /**
+   * The account a framed `value` belongs to, from its shape's `login` and `host` groups; undefined for a shape without
+   * them. A login is named only when it is no secret by the token shapes and the stand-in judge (security, T1545 B3), so
+   * an account never carries a secret into a task. A short login is named: the length floor is for values.
+   */
+  private accountOf(groups: RegExpMatchArray['groups'], value: string): string | undefined {
+    const login = groups?.['login'];
+    const host = groups?.['host'];
+    if (login === undefined || host === undefined) return undefined;
+    const secretLike = login === value || standsInForSecret(login) || this.tokenShapes.some(({ pattern }) => pattern.test(login));
+    const named = login === '' ? 'no login' : secretLike ? 'a login' : `login ${login}`;
+    return `${named} at ${hostOf(host)}`;
+  }
+}
+
+/** A dotted IPv4 address. */
+const IPV4 = /^\d{1,3}(?:\.\d{1,3}){3}$/;
+
+/** A URL's host as an account names it: its last two labels, lower-cased (`github.com`); an address or no name says so. */
+function hostOf(host: string): string {
+  if (host.startsWith('[') || IPV4.test(host)) return 'an IP address';
+  const labels = host.toLowerCase().split('.').filter((label) => label !== '');
+  return labels.length === 0 ? 'an unnamed host' : labels.slice(-2).join('.');
 }
