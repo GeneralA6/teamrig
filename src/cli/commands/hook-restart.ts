@@ -1,12 +1,15 @@
-import type { RefreshConfig } from '../../config/types.ts';
+import type { KitConfig, RefreshConfig } from '../../config/types.ts';
 import { stringField, type JsonRecord } from '../../core/guards.ts';
-import { ENV } from '../../core/home.ts';
+import { ENV, type TeamPaths } from '../../core/home.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
 import { noticeOf, type NoticeDecision, type StopContext } from '../../refresh/decide.ts';
 import { claudeProcessOf, restartMayAct } from '../../refresh/restart.ts';
-import type { RestartRequest } from '../../refresh/state.ts';
+import type { ParkedRestart, RestartRequest, RestartTab } from '../../refresh/state.ts';
 import type { RefreshStore } from '../../refresh/store.ts';
+import { startableTasks } from '../../wake/day-start.ts';
+import { teamZone } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
+import { teamRegister } from '../team-register.ts';
 
 /** What the automatic restart needs from the Stop hook's payload and environment. */
 export interface RestartTarget {
@@ -50,6 +53,20 @@ async function startRunner(runtime: CliRuntime, team: string, id: string, at: st
   return started.kind === 'started';
 }
 
+/** What a restart keeps of the Stop hook's tab, the process it runs under aside. */
+function restartTabOf(runtime: CliRuntime, id: string, target: RestartTarget): RestartTab {
+  return { claudeSession: target.claudeSession, transcript: target.transcript, cwd: target.cwd, supervised: runtime.env[ENV.launched] === id };
+}
+
+/**
+ * Whether the session has work it can start now (`startableTasks`, at any priority): a fresh start carries on with
+ * it, while one without would only read its handover and sit idle until a wake, read everything again then (T1383).
+ */
+export async function workFollows(runtime: CliRuntime, paths: TeamPaths, config: KitConfig, id: string): Promise<boolean> {
+  const { snapshot, elsewhere } = await teamRegister(runtime, paths, config).snapshotWithElsewhere();
+  return startableTasks(snapshot.state.tasks, elsewhere, id, runtime.clock.now(), teamZone(config, runtime)).length > 0;
+}
+
 /**
  * Arms the restart a notice announces: records the pending request for the Claude Code the hook runs
  * under, then starts `restart` hidden to wait until the session is idle. When that Claude Code is not
@@ -58,15 +75,7 @@ async function startRunner(runtime: CliRuntime, team: string, id: string, at: st
 export async function armRestart(runtime: CliRuntime, store: RefreshStore, scope: RestartScope, notice: NoticeDecision): Promise<NoticeDecision> {
   const { team, id, context, target, claude } = scope;
   if (claude !== undefined) {
-    await store.setRestart(id, {
-      phase: 'pending',
-      at: context.now,
-      pid: claude,
-      claudeSession: target.claudeSession,
-      transcript: target.transcript,
-      cwd: target.cwd,
-      supervised: runtime.env[ENV.launched] === id,
-    });
+    await store.setRestart(id, { ...restartTabOf(runtime, id, target), phase: 'pending', at: context.now, pid: claude });
     if (await startRunner(runtime, team, id, context.now, target.project)) {
       return notice;
     }
@@ -75,7 +84,31 @@ export async function armRestart(runtime: CliRuntime, store: RefreshStore, scope
   return noticeOf(notice.state, context, 'clear');
 }
 
-/** The tab a dead restart is re-armed from (`rearmDeadRestart`). */
+/**
+ * Holds back the restart a notice announces when no work follows the handover (`workFollows`): records it parked for
+ * the tab, for the wake that brings the session work to arm (`armParkedRestart`), and says so in the notice.
+ */
+export async function parkRestart(runtime: CliRuntime, store: RefreshStore, scope: Omit<RestartScope, 'claude'>, notice: NoticeDecision): Promise<NoticeDecision> {
+  const { id, context, target } = scope;
+  await store.setParked(id, { ...restartTabOf(runtime, id, target), at: context.now });
+  return noticeOf(notice.state, context, 'park');
+}
+
+/**
+ * Arms the restart a notice announces when work follows the handover (`workFollows`) in the team at `register`; else
+ * parks it for the wake that brings the session work (T1383).
+ */
+export async function restartOrPark(
+  runtime: CliRuntime,
+  store: RefreshStore,
+  scope: RestartScope,
+  notice: NoticeDecision,
+  register: { readonly paths: TeamPaths; readonly config: KitConfig },
+): Promise<NoticeDecision> {
+  return (await workFollows(runtime, register.paths, register.config, scope.id)) ? armRestart(runtime, store, scope, notice) : parkRestart(runtime, store, scope, notice);
+}
+
+/** The tab a dead or parked restart is armed from (`rearmDeadRestart`, `armParkedRestart`). */
 export interface RearmScope {
   readonly team: string;
   readonly id: string;
@@ -87,6 +120,54 @@ export interface RearmScope {
 }
 
 /**
+ * Records a pending restart for `tab` from now, for the Claude Code the check runs under, and starts its `restart`;
+ * whether one started. One that cannot start leaves no request.
+ */
+async function armFromTab(runtime: CliRuntime, store: RefreshStore, scope: RearmScope, tab: RestartTab): Promise<boolean> {
+  const { team, id, cwd } = scope;
+  // Looked up on this rare path only: each look at a process starts a PowerShell on Windows.
+  const claude = await claudeProcessOf(runtime.sessionProcesses, runtime.sessionProcesses.parentPid);
+  const project = runtime.env[ENV.claudeProjectDir] ?? tab.cwd ?? cwd;
+  if (claude !== undefined && project !== undefined) {
+    const at = new Date(runtime.clock.now()).toISOString();
+    await store.setRestart(id, { ...tab, phase: 'pending', at, pid: claude });
+    if (await startRunner(runtime, team, id, at, project)) {
+      return true;
+    }
+  }
+  await store.clearRestart(id);
+  return false;
+}
+
+/**
+ * The restart parked for this tab that a wake bringing work may arm (`armParkedRestart`); undefined when none is, the
+ * automatic restart being off or the record another tab's. One left after the session was refreshed some other way
+ * (by hand, or a compaction that started its count over) is cleared.
+ */
+export async function parkedHere(store: RefreshStore, scope: RearmScope): Promise<ParkedRestart | undefined> {
+  const { id, tab, refresh } = scope;
+  const parked = await store.parked(id);
+  if (parked === undefined || parked.claudeSession !== tab || !refresh.enabled || !refresh.autoRestart) {
+    return undefined;
+  }
+  if ((await store.state(id))?.phase !== 'ready') {
+    await store.clearParked(id);
+    return undefined;
+  }
+  return parked;
+}
+
+/**
+ * Arms the restart parked for this tab (`parkedHere`) now that a wake brings the session work: the fresh start comes
+ * first, and the work, left new, wakes the fresh session (T1383). The parked record is spent either way, so a restart
+ * that cannot start leaves the wake to go ahead with the context; whether one started.
+ */
+export async function armParkedRestart(runtime: CliRuntime, store: RefreshStore, scope: RearmScope, parked: ParkedRestart): Promise<boolean> {
+  await store.clearParked(scope.id);
+  return armFromTab(runtime, store, scope, parked);
+}
+
+/**
  * Re-arms a restart whose runner died (T1088): a runner that gives up or is cancelled clears its request, so a
  * request no runner may act on any more (`restartMayAct`) was left by one that ended without a word, and the
  * session sits with its handover written and no fresh start. When that request was made for this tab and the
@@ -95,24 +176,12 @@ export interface RearmScope {
  * so a failing re-arm is tried once, and a runner that dies again is re-armed at most once per give-up window.
  */
 export async function rearmDeadRestart(runtime: CliRuntime, store: RefreshStore, scope: RearmScope, request: RestartRequest | undefined): Promise<boolean> {
-  const { team, id, tab, refresh, cwd } = scope;
-  const now = runtime.clock.now();
-  if (request === undefined || restartMayAct(request, now) || request.claudeSession !== tab || !refresh.enabled || !refresh.autoRestart) {
+  const { id, tab, refresh } = scope;
+  if (request === undefined || restartMayAct(request, runtime.clock.now()) || request.claudeSession !== tab || !refresh.enabled || !refresh.autoRestart) {
     return false;
   }
   if ((await store.state(id))?.phase !== 'ready') {
     return false;
   }
-  // Looked up on this rare path only: each look at a process starts a PowerShell on Windows.
-  const claude = await claudeProcessOf(runtime.sessionProcesses, runtime.sessionProcesses.parentPid);
-  const project = runtime.env[ENV.claudeProjectDir] ?? request.cwd ?? cwd;
-  if (claude !== undefined && project !== undefined) {
-    const at = new Date(now).toISOString();
-    await store.setRestart(id, { ...request, phase: 'pending', at, pid: claude });
-    if (await startRunner(runtime, team, id, at, project)) {
-      return true;
-    }
-  }
-  await store.clearRestart(id);
-  return false;
+  return armFromTab(runtime, store, scope, request);
 }

@@ -69,7 +69,7 @@ import { coldSendHold } from './hook-cold-send.ts';
 import { liveTasksNoteOf } from './live-tasks.ts';
 import { droppedEditReasonOf } from './hook-dropped-edit.ts';
 import { meetingHold } from './hook-meeting.ts';
-import { armRestart, restartTargetOf } from './hook-restart.ts';
+import { restartOrPark, restartTargetOf } from './hook-restart.ts';
 import { helperContextOf } from './hook-helper-start.ts';
 import { promptSecretBlock } from './hook-prompt-secret.ts';
 import { guardLoadOf, hookTeam } from './hook-guard-load.ts';
@@ -316,17 +316,23 @@ async function titleOutcome(runtime: CliRuntime, kit: Kit, config: KitConfig, pa
 }
 
 /**
- * A prompt typed while the automatic restart waits for the session to be idle cancels it, so the
- * session keeps its context; one line tells the model, with the context growth (`growth` tokens) that asks
- * again. None when no restart waits, or one is already ending the session.
+ * A prompt typed while the automatic restart waits for the session to be idle, or is held back until a wake brings it
+ * work (T1383), cancels it, so the session keeps its context; one line tells the model, with the context growth
+ * (`growth` tokens) that asks again. None when no restart waits, or one is already ending the session.
  */
 async function cancelledRestartLine(runtime: CliRuntime, kit: Kit, id: string, growth: number): Promise<string | undefined> {
   const store = new RefreshStore(runtime.files, kit.paths);
-  if ((await store.restart(id))?.phase !== 'pending') {
-    return undefined;
+  const parked = (await store.parked(id)) !== undefined;
+  const pending = (await store.restart(id))?.phase === 'pending';
+  if (parked) {
+    await store.clearParked(id);
   }
-  await store.clearRestart(id);
-  return `${KIT_NAME}: the user typed, so the automatic restart is cancelled and you keep this context; a new handover is asked at your next task end, or once your context grew ${thousands(growth)} more`;
+  if (pending) {
+    await store.clearRestart(id);
+  }
+  return parked || pending
+    ? `${KIT_NAME}: the user typed, so the automatic restart is cancelled and you keep this context; a new handover is asked at your next task end, or once your context grew ${thousands(growth)} more`
+    : undefined;
 }
 
 /**
@@ -784,6 +790,10 @@ async function refreshDecisionOf(runtime: CliRuntime, scope: SessionScope, paylo
   }
   const store = new RefreshStore(runtime.files, kit.paths);
   const state = await store.state(id);
+  if (state?.phase === 'ready' && state.noticed) {
+    // A turn after the notice: the session went on from its context, so a restart held back for work is stale (T1383).
+    await store.clearParked(id);
+  }
   const target = restartTargetOf(runtime, payload);
   const context: StopContext = {
     stopHookActive: payload['stop_hook_active'] === true,
@@ -806,7 +816,7 @@ async function refreshDecisionOf(runtime: CliRuntime, scope: SessionScope, paylo
   const claude = decided.kind === 'notice' ? await claudeProcessOf(runtime.sessionProcesses, runtime.sessionProcesses.parentPid) : undefined;
   const decision =
     decided.kind === 'notice' && decided.restart && target !== undefined
-      ? await armRestart(runtime, store, { team: kit.paths.team, id, context, target, claude }, decided)
+      ? await restartOrPark(runtime, store, { team: kit.paths.team, id, context, target, claude }, decided, { paths: kit.paths, config })
       : decided;
   switch (decision.kind) {
     case 'write':
