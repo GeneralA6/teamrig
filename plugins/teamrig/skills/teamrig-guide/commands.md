@@ -1092,7 +1092,9 @@ tasks that move, what crosses the new border and what blocks the split. The chil
 launch block and sub-lead list, so no tab title changes, and a role it has no holder for names your team's holder as
 `<team>/<id>`. It starts with a copy of your team's settings, so it runs as your team does, and shares your deploy
 coordinator (its folder, host lock and main checkouts, written as absolute paths), so two teams' heavy steps never
-overlap; your budget shares and idle keep-open list go with the sessions they name. Your GitHub import and your
+overlap; your budget shares and idle keep-open list go with the sessions they name, and the budget keys of the
+account's week (`enabled`, `account`, `weeklyLimitW`, `subagentWeight`, `extraWPerUsd`, `reset`) are not copied: the
+child reads them from your team, so they never drift. Your GitHub import and your
 folders (`paths`) stay yours. A moved task's lines go to the child's register with each session that stays, as who wrote a line, the
 owner, the source, the pin or a decision or approval wait, named `<team>/<id>`; a task that stays and names a moved
 session as its source or pin gets an update that names it `<team>/<id>`.
