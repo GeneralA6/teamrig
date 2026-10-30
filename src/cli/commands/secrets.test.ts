@@ -153,7 +153,7 @@ describe('teamrig secrets pushed', () => {
     const outside = await new CliHarness().run(['secrets', 'pushed', 'origin'], { secretsGit: new FakeSecretsGit(undefined), stdin: line });
 
     assert.equal(unlisted.code, 1);
-    assert.match(output(unlisted), new RegExp(`git cannot list the commits ${TIP} --not --remotes=origin in `));
+    assert.match(output(unlisted), new RegExp(`git cannot list the commits ${TIP} --not --remotes=origin in .*needs git 2\\.36 or later`));
     assert.equal(garbled.code, 1);
     assert.match(output(garbled), /pre-push line 1 is not/);
     assert.equal(outside.code, 1);

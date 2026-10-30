@@ -87,6 +87,45 @@ describe('gitSecrets', () => {
     }
   });
 
+  it("lists what a merge's resolution added past git's own merge of its parents, and nothing for a clean merge", () => {
+    const repo = new TempRepo('secrets-merge').init();
+    try {
+      const git = gitSecrets(repo.env);
+      repo.write('a.txt', 'base\n');
+      repo.git('add', 'a.txt');
+      repo.git('commit', '-q', '-m', 'base');
+      const base = repo.git('rev-parse', 'HEAD').trim();
+      repo.git('checkout', '-q', '-b', 'side');
+      repo.write('a.txt', 'side\n');
+      repo.git('commit', '-q', '-a', '-m', 'side');
+      repo.git('checkout', '-q', '-');
+      repo.write('a.txt', 'main\n');
+      repo.git('commit', '-q', '-a', '-m', 'main');
+      const conflict = spawnSync('git', ['merge', '-q', 'side'], { cwd: repo.dir, env: repo.env, encoding: 'utf8' });
+      assert.equal(conflict.status, 1, 'the two sides conflict');
+      repo.write('a.txt', 'main\nside\nresolved extra\n');
+      repo.git('commit', '-q', '-a', '--no-edit');
+      const evil = repo.git('rev-parse', 'HEAD').trim();
+      repo.git('checkout', '-q', '-b', 'clean');
+      repo.write('c.txt', 'clean side\n');
+      repo.git('add', 'c.txt');
+      repo.git('commit', '-q', '-m', 'clean side');
+      repo.git('checkout', '-q', '-');
+      repo.git('merge', '-q', '--no-ff', '--no-edit', 'clean');
+      const clean = repo.git('rev-parse', 'HEAD').trim();
+      const merges = git.commits(repo.dir, { kind: 'after', base, tip: clean })?.filter(({ sha }) => sha === evil || sha === clean);
+      assert.deepEqual(
+        merges?.map(({ sha, paths, lines }) => ({ sha, paths, lines })),
+        [
+          { sha: clean, paths: [], lines: [] },
+          { sha: evil, paths: ['a.txt'], lines: [{ file: 'a.txt', line: 3, text: 'resolved extra' }] },
+        ],
+      );
+    } finally {
+      repo.remove();
+    }
+  });
+
   it("finds the hooks folder from any folder of the repository: the git folder's, or core.hooksPath from the top folder", () => {
     const repo = new TempRepo('secrets-hooks').init();
     try {
