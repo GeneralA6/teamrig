@@ -207,7 +207,7 @@ so it never loses work to a compaction.
    wipes. With `refresh.autoRestart: true` the title reads `[shop] web: restarting` instead: once the tab has been
    idle 15 s (`refresh.restartDelaySeconds`), teamrig's
    mod runs `/clear` in this tab, after asking Claude Code that no helper of yours still runs (it waits while one does),
-   and once the user is away: it waits while the prompt box holds a draft and for 5 minutes after their last key or
+   and once the user is away: it waits while the prompt box holds a draft and for 30 minutes after their last key or
    prompt, which a band above the prompt shows with the time left, then counts 20 s down there with
    `1: Refresh now` and `2: Hold 10 min`
    (`refresh.holdAfterActivityMinutes`, `refresh.countdownSeconds`); where it cannot, teamrig ends this Claude Code and starts it again, in the same
