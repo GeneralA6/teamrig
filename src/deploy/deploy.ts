@@ -48,7 +48,7 @@ function redeployEnv(setup: DeploySetup, ports: DeployPorts, request: RedeployRe
 /** Why the request may not deploy what it names: no targets, or one not in the repository's deploy targets. */
 function targetsProblem(repo: DeployRepo, targets: readonly string[]): string | undefined {
   const known = repo.deploy.targets;
-  const listed = `coordinator.repos.${repo.name}.deploy.targets (${known.length === 0 ? 'none set' : known.join(', ')})`;
+  const listed = `delivery.repos.${repo.name}.deploy.targets (${known.length === 0 ? 'none set' : known.join(', ')})`;
   if (targets.length === 0) {
     return `name the targets the command restarts, from ${listed}`;
   }
@@ -67,7 +67,7 @@ async function runCommand(setup: DeploySetup, ports: DeployPorts, request: Redep
     argv: request.argv,
     cwd: request.dir,
     env,
-    timeoutMs: setup.coordinator.heavy.maxRunMinutes * MINUTE_MS,
+    timeoutMs: setup.delivery.queue.maxRunMinutes * MINUTE_MS,
     onLine: (line) => {
       const shown = show(line).trim();
       if (shown !== '') {
@@ -91,7 +91,7 @@ export async function redeployTargets(setup: DeploySetup, ports: DeployPorts, re
   }
   const early = ports.git.sha(repo.main, 'HEAD');
   if (early === undefined) {
-    return { kind: 'refused', reason: `${repo.main} (coordinator.repos.${repo.name}.mainCheckout) names no commit at HEAD, so the deploy could not record what it ran on` };
+    return { kind: 'refused', reason: `${repo.main} (delivery.repos.${repo.name}.mainCheckout) names no commit at HEAD, so the deploy could not record what it ran on` };
   }
   const targets = request.targets.join(', ');
   const env = redeployEnv(setup, ports, request, repo);
@@ -100,10 +100,10 @@ export async function redeployTargets(setup: DeploySetup, ports: DeployPorts, re
     if (stopped !== undefined) {
       return stopped;
     }
-    const answer = await askChecks(repo.deploy.checks, phase, { hooks: ports.hooks, scanner: ports.scanner, cwd: repo.main, env, timeoutSeconds: setup.coordinator.checkTimeoutSeconds });
+    const answer = await askChecks(repo.deploy.checks, phase, { hooks: ports.hooks, scanner: ports.scanner, cwd: repo.main, env, timeoutSeconds: setup.delivery.checkTimeoutSeconds });
     return answer.readiness;
   };
-  const { wait } = setup.coordinator;
+  const { wait } = setup.delivery;
   const queuedAt = ports.clock.now();
   const clearance = await takeWhenClear(readiness, ports, {
     session: request.session,

@@ -14,7 +14,7 @@ import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.t
 /** What a claim command works on: the session, the coordinator's config and places, and the claims' ports. */
 interface ClaimContext {
   readonly session: string;
-  readonly coordinator: CoordinatorConfig;
+  readonly delivery: CoordinatorConfig;
   readonly places: CoordinatorPlaces;
   readonly secretPatterns: readonly string[];
   readonly ports: ClaimPorts;
@@ -25,11 +25,11 @@ async function claimContextOf(args: ParsedArgs, runtime: CliRuntime): Promise<Cl
   const kit = await openTeamKit(runtime);
   const config = requireConfig(kit, runtime, 'read');
   const session = sessionIdOf(await rosterOf(runtime, kit, config), caller);
-  const { coordinator } = config;
-  const places = coordinatorPlaces(coordinator, kit.paths);
+  const { delivery } = config;
+  const places = coordinatorPlaces(delivery, kit.paths);
   return {
     session,
-    coordinator,
+    delivery,
     places,
     secretPatterns: config.register.secretPatterns,
     ports: { files: runtime.files, clock: runtime.clock, zone: teamZone(config, runtime), lock: claimsLockOf(runtime, places.claimsLock) },
@@ -52,7 +52,7 @@ function writtenOrExit<T>(runtime: CliRuntime, outcome: ClaimOutcome<T>): { read
 /**
  * `teamrig claim --targets <a,b> --metric <m> --why "<why>" --for <span>`: a quiet claim, which holds the merges and
  * deploys of its targets while this session measures, from now for the span (`45m`, `1h30m`; at most
- * `coordinator.claims.maxMinutes`). One per session; refused for a target no repository deploys and for a secret in the
+ * `delivery.freezes.maxMinutes`). One per session; refused for a target no repository deploys and for a secret in the
  * metric or reason. Exit 0 claimed, 1 when the claims stayed busy, 2 refused.
  */
 export async function claim(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
@@ -65,8 +65,8 @@ export async function claim(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
     throw new UsageError(`--for "${span}" is not a span: minutes, hours or both, such as 45m, 2h or 1h30m`);
   }
   const context = await claimContextOf(args, runtime);
-  const { coordinator } = context;
-  const rules = { maxMinutes: coordinator.claims.maxMinutes, knownTargets: deployTargetsOf(coordinator.repos), scanner: new SecretScanner(context.secretPatterns) };
+  const { delivery } = context;
+  const rules = { maxMinutes: delivery.freezes.maxMinutes, knownTargets: deployTargetsOf(delivery.repos), scanner: new SecretScanner(context.secretPatterns) };
   const written = writtenOrExit(runtime, await addClaim(context.ports, context.places, rules, { session: context.session, targets, metric, why, minutes }));
   if (written.kind === 'exit') {
     return written.code;

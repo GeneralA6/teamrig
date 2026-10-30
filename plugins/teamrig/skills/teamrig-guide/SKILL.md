@@ -143,7 +143,7 @@ teamrig prints `10-19 16:40 IDT`, and core rule 3 names the zone and its offset 
 - Write times the same way in task text, notes, inbox lines and messages: `04:00 IDT`, never a bare `04:00`.
 - Type them the same way: `--due 2026-10-21`, `--waits "time:2026-10-21 09:00"` and `HH:MM` are read on the
   team's clock; add ` UTC` to give one in UTC.
-- Use UTC only where it is the subject: a config key kept in UTC (`heavyCutoffUtc`, `quietHours`), a stamp quoted
+- Use UTC only where it is the subject: a config key kept in UTC (`queueCutoffUtc`, `quietHours`), a stamp quoted
   from a log or a file (stored stamps stay ISO UTC, ending `Z`), a protocol or format that is UTC.
 - Name a time that repeats by what it is (the weekly reset, the heavy cutoff) and its config key: a clock time
   moves when daylight saving starts or ends.

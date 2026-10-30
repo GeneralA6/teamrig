@@ -108,7 +108,7 @@ describe('selfMergeMisses', () => {
 
   it("needs the repo's review gate on", () => {
     assert.deepEqual(selfMergeMisses(change({ reviewGate: false }), RULE), [
-      { gate: 'review', why: 'coordinator.repos.app.reviewGate is off, so no review gate looked at its paths' },
+      { gate: 'review', why: 'delivery.repos.app.reviewGate is off, so no review gate looked at its paths' },
     ]);
   });
 

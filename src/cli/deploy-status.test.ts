@@ -15,12 +15,12 @@ const DEPLOY = { targets: ['cloud-api'], command: ['node', 'tools/deploy.js'] };
 const DEPLOYING = {
   ...TEAM,
   budget: { reset: { weekday: 'tue', timeUtc: '12:00' } },
-  coordinator: {
-    schedule: { resetBlackoutHours: 4, heavyCutoffUtc: '22:30' },
+  delivery: {
+    schedule: { resetBlackoutHours: 4, queueCutoffUtc: '22:30' },
     repos: { app: { mainCheckout: MAIN_CHECKOUT, deploy: DEPLOY }, web: { mainCheckout: '/repo/web', deploysOnPush: ['cloud-web'] } },
   },
 };
-const PLAIN = { ...TEAM, coordinator: { repos: { app: { mainCheckout: MAIN_CHECKOUT, deploy: DEPLOY } } } };
+const PLAIN = { ...TEAM, delivery: { repos: { app: { mainCheckout: MAIN_CHECKOUT, deploy: DEPLOY } } } };
 
 /** A lock po's build took at 09:50, lasting to `expiresAt`. */
 function heldBy(expiresAt: string = '2030-01-08T12:20:00.000Z'): string {
@@ -93,8 +93,8 @@ describe('teamrig deploy-status', () => {
       code: 0,
       stdout: [
         'host lock: free: the lock of po (heavy: build) since 2030-01-08 09:50 UTC is stale, and the next heavy step removes it',
-        'heavy cutoff: none (coordinator.schedule.heavyCutoffUtc is not set)',
-        'deploy blackout: none (coordinator.schedule.resetBlackoutHours is not set)',
+        'heavy cutoff: none (delivery.schedule.queueCutoffUtc is not set)',
+        'deploy blackout: none (delivery.schedule.resetBlackoutHours is not set)',
         'claims: none',
         'loads: none',
         'app: nothing to deploy: the main checkout is at origin (base)',
@@ -113,7 +113,7 @@ describe('teamrig deploy-status', () => {
   });
 
   it('says what it cannot tell: a lock being written, an unknown reset, unreadable claims, a refused or failed read and no deploy block', async () => {
-    const kit = new CliHarness({ ...PLAIN, coordinator: { ...PLAIN.coordinator, schedule: { resetBlackoutHours: 4, heavyCutoffUtc: '09:30' } } });
+    const kit = new CliHarness({ ...PLAIN, delivery: { ...PLAIN.delivery, schedule: { resetBlackoutHours: 4, queueCutoffUtc: '09:30' } } });
     await kit.files.append(LOCK, '{"tok');
     await kit.files.append(CLAIMS, 'not json');
     const offBranch = new FakeMergeGit();
@@ -129,8 +129,8 @@ describe('teamrig deploy-status', () => {
     const offline = new FakeMergeGit();
     offline.fetchFails = 'no network';
     assert.equal((await kit.run(['deploy-status'], { mergeGit: offline })).stdout.at(-1), `app: cannot read what is pending: git fetch failed in ${MAIN_CHECKOUT}: no network`);
-    const pushOnly = new CliHarness({ ...TEAM, coordinator: { repos: { web: { mainCheckout: '/repo/web', deploysOnPush: ['cloud-web'] } } } });
-    assert.equal((await pushOnly.run(['deploy-status'])).stdout.at(-1), 'deploys: no repository in coordinator.repos has a deploy block');
+    const pushOnly = new CliHarness({ ...TEAM, delivery: { repos: { web: { mainCheckout: '/repo/web', deploysOnPush: ['cloud-web'] } } } });
+    assert.equal((await pushOnly.run(['deploy-status'])).stdout.at(-1), 'deploys: no repository in delivery.repos has a deploy block');
   });
 
   it('refuses teamrig deploys, its old name, with the new one and exit 64, reading nothing', async () => {

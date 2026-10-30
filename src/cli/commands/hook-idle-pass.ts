@@ -59,7 +59,7 @@ async function runPass(runtime: CliRuntime, kit: Kit, config: KitConfig, roster:
 
 /**
  * Tells of each hookless reopen once: in mode `on` as an urgent line (src/cli/urgent-line.ts) from teamrig to the
- * lead, or the coordinator's owner for the lead's own tab (`hooklessReader`), on its team, a team above included,
+ * lead, or the delivery owner for the lead's own tab (`hooklessReader`), on its team, a team above included,
  * and in both modes as a log record, with why the line was not posted. One not posted is still marked told, so a
  * refusing inbox gets no line a minute. Returns each hookless reopen's time by session, for the next pass to skip.
  */

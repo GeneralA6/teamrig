@@ -7,7 +7,7 @@ import { CORE_RULE_KEYS, type CoreRuleKey } from './keys.ts';
  * local rules that overrode the core did).
  */
 const RULE_TOPICS: Readonly<Record<CoreRuleKey, RegExp>> = {
-  roles: /\b(lead|coordinator|fleet health|re-?prioriti\w*|reassign\w*|owns?)\b/i,
+  roles: /\b(lead|coordinator|delivery owner|fleet health|re-?prioriti\w*|reassign\w*|owns?)\b/i,
   'own-change': /\b(merg\w*|integrat\w*|roll(s|ed)? (it |them )?back|another session|own change|end to end)\b/i,
   messages: /\b(messag\w*|inbox\w*|pings?|acks?|SendMessage|reply|notify)\b/i,
   register: /\b(status|boards?|blockers?|deadlines?|register|task ?ids?|tasks?|work block|verifying|handoff|handover|findings)\b/i,

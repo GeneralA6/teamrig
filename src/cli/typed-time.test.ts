@@ -9,7 +9,7 @@ import { EXIT } from './runtime.ts';
 const JERUSALEM = { timeZone: 'Asia/Jerusalem' };
 const LEDGER = join(TEAM_HOME, 'state', 'deploys', 'ledger.jsonl');
 /** A team whose app repository deploys cloud-web on push, so windows has a target to read. */
-const DEPLOYING = { ...TEAM, coordinator: { repos: { app: { mainCheckout: MAIN_CHECKOUT, deploysOnPush: ['cloud-web'] } } } };
+const DEPLOYING = { ...TEAM, delivery: { repos: { app: { mainCheckout: MAIN_CHECKOUT, deploysOnPush: ['cloud-web'] } } } };
 
 describe("runCli: a time typed on the team's clock", () => {
   it('stores a typed due minute in UTC, so it prints back as typed, zone-marked', async () => {

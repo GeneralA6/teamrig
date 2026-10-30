@@ -50,10 +50,10 @@ interface WindowAsk {
   readonly minMinutes: number;
 }
 
-function askOf(flags: Flags, coordinator: CoordinatorConfig, times: TypedTimes): WindowAsk {
+function askOf(flags: Flags, delivery: CoordinatorConfig, times: TypedTimes): WindowAsk {
   const { nowMs } = times;
   const targets = listOf('--targets', requiredFlag(flags, 'targets'));
-  const known = deployTargetsOf(coordinator.repos);
+  const known = deployTargetsOf(delivery.repos);
   const unknown = targets.filter((target) => !known.includes(target));
   if (unknown.length > 0) {
     throw new UsageError(`--targets: ${unknown.join(', ')} ${unknown.length === 1 ? 'is' : 'are'} not a deploy target of this team (known: ${known.join(', ')})`);
@@ -65,12 +65,12 @@ function askOf(flags: Flags, coordinator: CoordinatorConfig, times: TypedTimes):
     throw new UsageError(`--since ${minuteText(since, times.zone)} is not before ${untilText === undefined ? 'now' : '--until'} (${minuteText(until, times.zone)})`);
   }
   const settle = spanFlag(flags, 'settle');
-  const perTarget = new Map(Object.entries(coordinator.windows.targetSettleMinutes));
+  const perTarget = new Map(Object.entries(delivery.stablePeriods.targetSettleMinutes));
   return {
     targets,
     span: { from: since, to: until },
-    settleMinutes: (target) => settle ?? perTarget.get(target) ?? coordinator.windows.settleMinutes,
-    minMinutes: spanFlag(flags, 'min') ?? coordinator.windows.minMinutes,
+    settleMinutes: (target) => settle ?? perTarget.get(target) ?? delivery.stablePeriods.settleMinutes,
+    minMinutes: spanFlag(flags, 'min') ?? delivery.stablePeriods.minMinutes,
   };
 }
 
@@ -84,13 +84,13 @@ export async function windows(args: ParsedArgs, runtime: CliRuntime): Promise<Ex
   const nowMs = runtime.clock.now();
   const kit = await openTeamKit(runtime);
   const config = requireConfig(kit, runtime, 'read');
-  const { coordinator } = config;
+  const { delivery } = config;
   const zone = teamZone(config, runtime);
-  const ask = askOf(args.flags, coordinator, { nowMs, zone });
-  const places = coordinatorPlaces(coordinator, kit.paths);
+  const ask = askOf(args.flags, delivery, { nowMs, zone });
+  const places = coordinatorPlaces(delivery, kit.paths);
   const records = parseLedger((await runtime.files.read(places.ledger)) ?? '');
   const md = parseLedgerMd((await runtime.files.read(places.ledgerMd)) ?? '');
-  const repoTargets = new Map(Object.entries(coordinator.repos).map(([name, repo]) => [name, repoTargetsOf(repo)]));
+  const repoTargets = new Map(Object.entries(delivery.repos).map(([name, repo]) => [name, repoTargetsOf(repo)]));
   const loads = loadsOf(records, nowMs);
   for (const target of ask.targets) {
     const settle = ask.settleMinutes(target);
@@ -99,8 +99,8 @@ export async function windows(args: ParsedArgs, runtime: CliRuntime): Promise<Ex
       records,
       targetsOf: (repo) => repoTargets.get(repo) ?? [],
       settleMs: settle * MINUTE_MS,
-      assumedDeployMs: coordinator.windows.assumedDeployMinutes * MINUTE_MS,
-      lockTtlMs: coordinator.heavy.lockTtlMinutes * MINUTE_MS,
+      assumedDeployMs: delivery.stablePeriods.assumedDeployMinutes * MINUTE_MS,
+      lockTtlMs: delivery.queue.lockTtlMinutes * MINUTE_MS,
       nowMs,
     });
     const found = cleanWindows(all, target, ask.span, ask.minMinutes * MINUTE_MS);

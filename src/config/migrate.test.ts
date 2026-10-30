@@ -11,7 +11,7 @@ import {
   migrateConfig,
   RENAME_BLOCKED_TO_WAITING,
   RENAME_TIERS_TO_PRIORITIES,
-  RENAME_TO_PLAIN_WORDS,
+  RENAME_TO_DELIVERY, RENAME_TO_PLAIN_WORDS,
   type ConfigMigration,
 } from './migrate.ts';
 import { CONFIG_VERSION } from './types.ts';
@@ -308,18 +308,102 @@ describe('the shipped migrations', () => {
     assert.equal(DROP_IDLE_RETIRE.from, 6);
   });
 
+  it('v7 to v8 renames the delivery keys into plain words, each in its place, and keeps every value', () => {
+    const coordinator: JsonRecord = {
+      dir: 'coordinator',
+      schedule: { heavyCutoffUtc: '22:30', resetBlackoutHours: 6 },
+      heavy: { maxRunMinutes: 45 },
+      wait: { pollSeconds: 30 },
+      claims: { maxMinutes: 120 },
+      windows: { settleMinutes: 30 },
+      repos: { api: { mainCheckout: '/repo/api', followMainCheckout: true, worktreeFolder: 'trees' }, web: { mainCheckout: '/repo/web' } },
+    };
+    const raw: JsonRecord = { configVersion: 7, roles: { lead: 'lead', coordinatorOwner: 'ops', securityReviewer: 'sec' }, coordinator, custom: true };
+    const result = migrateConfig(raw, 8);
+    assert.deepEqual(result, {
+      kind: 'migrated',
+      fromVersion: 7,
+      version: 8,
+      config: {
+        configVersion: 8,
+        roles: { lead: 'lead', deliveryOwner: 'ops', securityReviewer: 'sec' },
+        delivery: {
+          dir: 'coordinator',
+          schedule: { queueCutoffUtc: '22:30', resetBlackoutHours: 6 },
+          queue: { maxRunMinutes: 45 },
+          wait: { pollSeconds: 30 },
+          freezes: { maxMinutes: 120 },
+          stablePeriods: { settleMinutes: 30 },
+          repos: { api: { mainCheckout: '/repo/api', updateMainCheckout: true, worktreeFolder: 'trees' }, web: { mainCheckout: '/repo/web' } },
+        },
+        custom: true,
+      },
+      changes: [
+        'v7→v8: coordinator.repos.api.followMainCheckout → coordinator.repos.api.updateMainCheckout',
+        'v7→v8: coordinator.schedule.heavyCutoffUtc → coordinator.schedule.queueCutoffUtc',
+        'v7→v8: coordinator.heavy → coordinator.queue',
+        'v7→v8: coordinator.claims → coordinator.freezes',
+        'v7→v8: coordinator.windows → coordinator.stablePeriods',
+        'v7→v8: coordinator → delivery',
+        'v7→v8: roles.coordinatorOwner → roles.deliveryOwner',
+      ],
+      firstRelease: RENAME_TO_DELIVERY.firstRelease,
+    });
+    const written: JsonRecord = result.kind === 'migrated' ? result.config : {};
+    assert.deepEqual(Object.keys(written), ['configVersion', 'roles', 'delivery', 'custom'], 'a renamed key keeps its place');
+    const delivery = written['delivery'];
+    assert.ok(isRecord(delivery));
+    assert.deepEqual(Object.keys(delivery), ['dir', 'schedule', 'queue', 'wait', 'freezes', 'stablePeriods', 'repos']);
+    assert.deepEqual(raw['coordinator'], coordinator, 'the input is not mutated');
+    assert.deepEqual(coordinator['repos'], { api: { mainCheckout: '/repo/api', followMainCheckout: true, worktreeFolder: 'trees' }, web: { mainCheckout: '/repo/web' } });
+  });
+
+  it('v7 to v8 keeps the old key where both are set, as version 7 read only it, and says the new one was replaced', () => {
+    const raw: JsonRecord = {
+      roles: { lead: 'lead', coordinatorOwner: 'ops', deliveryOwner: 'web' },
+      coordinator: { heavy: { maxRunMinutes: 45 }, queue: { maxRunMinutes: 5 }, repos: { api: { followMainCheckout: false, updateMainCheckout: true } } },
+      delivery: { dir: 'unread' },
+    };
+    assert.deepEqual(RENAME_TO_DELIVERY.apply(raw), {
+      config: {
+        roles: { lead: 'lead', deliveryOwner: 'ops' },
+        delivery: { queue: { maxRunMinutes: 45 }, repos: { api: { updateMainCheckout: false } } },
+      },
+      changes: [
+        'coordinator.repos.api.followMainCheckout → coordinator.repos.api.updateMainCheckout, replacing the coordinator.repos.api.updateMainCheckout version 7 did not read',
+        'coordinator.heavy → coordinator.queue, replacing the coordinator.queue version 7 did not read',
+        'coordinator → delivery, replacing the delivery version 7 did not read',
+        'roles.coordinatorOwner → roles.deliveryOwner, replacing the roles.deliveryOwner version 7 did not read',
+      ],
+    });
+  });
+
+  it('v7 to v8 changes nothing but the version when no old key is set', () => {
+    const configs: JsonRecord[] = [
+      {},
+      { roles: 'not an object', delivery: 'not an object' },
+      { roles: { lead: 'lead', deliveryOwner: 'ops' }, delivery: { queue: {}, freezes: {}, stablePeriods: {}, schedule: { queueCutoffUtc: '22:30' } } },
+      { delivery: { repos: { api: { updateMainCheckout: true }, web: 'odd' } } },
+      { heavy: {}, claims: {}, windows: {}, coordinatorOwner: 'ops', followMainCheckout: true },
+    ];
+    for (const config of configs) {
+      assert.deepEqual(RENAME_TO_DELIVERY.apply(config), { config, changes: [] }, JSON.stringify(config));
+    }
+    assert.equal(RENAME_TO_DELIVERY.from, 7);
+  });
+
   it('a version-1 file reaches the current version through every step', () => {
     const result = migrateConfig({
       configVersion: 1,
       register: { tiers: [], requireNoteOn: ['blocked'] },
-      coordinator: { gateTimeoutSeconds: 30 },
+      coordinator: { gateTimeoutSeconds: 30, heavy: { maxRunMinutes: 45 } },
       hiring: { policy: 'lead', maxSessions: 3 },
     });
     assert.equal(result.kind, 'migrated');
     if (result.kind === 'migrated') {
       assert.equal(result.config['configVersion'], CONFIG_VERSION);
       assert.deepEqual(result.config['register'], { priorities: [], requireNoteOn: ['waiting'] });
-      assert.deepEqual(result.config['coordinator'], { checkTimeoutSeconds: 30 });
+      assert.deepEqual(result.config['delivery'], { checkTimeoutSeconds: 30, queue: { maxRunMinutes: 45 } });
       assert.deepEqual(result.config['hiring'], { policy: 'lead' });
     }
   });

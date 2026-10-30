@@ -40,7 +40,7 @@ import type { ReviewHolds } from './review-holds.ts';
  * `pushGuard.pushToProtected: gated`, the self-merge gates (a change that misses one waits for a leader's approval), and
  * pushes (the pre-push hook runs as a heavy step), then logs what the self-merge gates let merge, tidies the branch away
  * and, when configured, fast-forwards the main checkout. It never deploys: a push a host deploys by itself is recorded
- * as that deploy. A repository with a merge command (`coordinator.repos.<name>.merge`, say one that merges through a
+ * as that deploy. A repository with a merge command (`delivery.repos.<name>.merge`, say one that merges through a
  * pull request) runs it in place of the push: exit 0 merged, once its remote shows it; 75 waits, and the next `teamrig
  * merge` finishes it once it merged; else failed. That remote is origin unless `merge.remote` names another, say the
  * upstream a fork's pull request merges into: the branch is rebased onto its default branch, and the local default
@@ -66,7 +66,7 @@ export interface MergeRequest {
 }
 
 export interface MergeSetup {
-  readonly coordinator: CoordinatorConfig;
+  readonly delivery: CoordinatorConfig;
   readonly places: CoordinatorPlaces;
   /** The team's clock, for the times its refusals and waits name. */
   readonly zone: TimeZone;
@@ -114,7 +114,7 @@ export type MergeEnd =
   | { readonly kind: 'refused'; readonly reason: string }
   | { readonly kind: 'waiting'; readonly reason: string };
 
-/** The repository a checkout belongs to: its `coordinator.repos` entry, else one named after its main checkout's folder with nothing configured. */
+/** The repository a checkout belongs to: its `delivery.repos` entry, else one named after its main checkout's folder with nothing configured. */
 export interface RepoMatch {
   readonly name: string;
   readonly config: CoordinatorRepoConfig;
@@ -123,12 +123,12 @@ export interface RepoMatch {
 
 export function repoOf(checkout: Checkout, setup: MergeSetup, platform: NodeJS.Platform): RepoMatch {
   const main = checkout.mainCheckout ?? checkout.top;
-  const listed = Object.entries(setup.coordinator.repos).find(([, config]) => samePath(setup.inTeam(config.mainCheckout), main, platform));
+  const listed = Object.entries(setup.delivery.repos).find(([, config]) => samePath(setup.inTeam(config.mainCheckout), main, platform));
   if (listed !== undefined) {
     const [name, config] = listed;
     return { name, config, listed: true };
   }
-  return { name: basename(main), config: { mainCheckout: main, deploysOnPush: [], dependencyGate: false, reviewGate: false, followMainCheckout: false }, listed: false };
+  return { name: basename(main), config: { mainCheckout: main, deploysOnPush: [], dependencyGate: false, reviewGate: false, updateMainCheckout: false }, listed: false };
 }
 
 /** What `teamrig merge` merges: a branch of a checkout, into its remote's default branch. */
@@ -250,8 +250,8 @@ async function dependencyHold(git: MergeGit, top: string, onto: string, repo: st
     return undefined;
   }
   return (
-    `deps changed (${touches.join(', ')}): coordinator.repos.${repo}.dependencyGate holds a dependency change, since merging it changes, unreviewed, ` +
-    `the node_modules every worktree links to; set coordinator.repos.${repo}.dependencyCheck to the check that clears one, or push it and install by hand`
+    `deps changed (${touches.join(', ')}): delivery.repos.${repo}.dependencyGate holds a dependency change, since merging it changes, unreviewed, ` +
+    `the node_modules every worktree links to; set delivery.repos.${repo}.dependencyCheck to the check that clears one, or push it and install by hand`
   );
 }
 
@@ -294,7 +294,7 @@ async function dependencyCheckRefusal(setup: MergeSetup, ports: MergePorts, plan
         baseline: ports.git.fileAt(top, base, LOCKFILE),
         folder: dirname(setup.places.ledger),
         env: underLock(gitEnvironment(ports.env), taking.lock),
-        timeoutMs: setup.coordinator.heavy.maxRunMinutes * MINUTE_MS,
+        timeoutMs: setup.delivery.queue.maxRunMinutes * MINUTE_MS,
         onLine: (line) => ports.say(`  ${shownLine(ports.scanner, line)}`),
       }),
     hookExitCode,
@@ -325,7 +325,7 @@ function reviewGatePorts(setup: MergeSetup, ports: MergePorts, plan: Plan, takin
             cwd: top,
             base,
             env: underLock(gitEnvironment(ports.env), taking.lock),
-            timeoutMs: setup.coordinator.heavy.maxRunMinutes * MINUTE_MS,
+            timeoutMs: setup.delivery.queue.maxRunMinutes * MINUTE_MS,
             redact: (line) => shownLine(ports.scanner, line),
             onLine: (line) => ports.say(`  ${line}`),
           }),
@@ -389,13 +389,13 @@ function mergeOf(cleared: Cleared, plan: Plan, at: string, base: string, head: s
 
 /** Whether the push may start now: the heavy cutoff and the reset blackout refuse it, a quiet claim on what it deploys holds it. */
 function readinessOf(setup: MergeSetup, ports: MergePorts, repo: RepoMatch): () => Promise<Readiness> {
-  const { schedule } = setup.coordinator;
+  const { schedule } = setup.delivery;
   const targets = repo.config.deploysOnPush;
   return async () => {
     const now = ports.clock.now();
     const hours = schedule.resetBlackoutHours;
     const refusal =
-      heavyCutoffReason(now, schedule.heavyCutoffUtc, setup.zone) ??
+      heavyCutoffReason(now, schedule.queueCutoffUtc, setup.zone) ??
       (hours === undefined ? undefined : resetBlackoutReason(now, await ports.nextReset(now), hours, setup.zone));
     if (refusal !== undefined) {
       return { kind: 'refuse', reason: refusal };
@@ -451,7 +451,7 @@ async function mergeByPush(setup: MergeSetup, ports: MergePorts, plan: Plan, tak
         command: commandLine(['git', 'push', 'origin', `HEAD:refs/heads/${defaultBranch}`], ports.platform),
         cwd: top,
         env: underLock(gitEnvironment(ports.env), taking.lock),
-        timeoutMs: setup.coordinator.heavy.maxRunMinutes * MINUTE_MS,
+        timeoutMs: setup.delivery.queue.maxRunMinutes * MINUTE_MS,
       },
     });
     const endedAt = new Date(ports.clock.now()).toISOString();
@@ -546,7 +546,7 @@ async function mergeByCommand(setup: MergeSetup, ports: MergePorts, plan: Plan, 
         argv,
         cwd: top,
         env: { ...underLock(gitEnvironment(ports.env), taking.lock), [MERGE_ENV.branch]: branch, [MERGE_ENV.base]: defaultBranch, [MERGE_ENV.head]: head, [ENV.session]: taking.session },
-        timeoutMs: setup.coordinator.heavy.maxRunMinutes * MINUTE_MS,
+        timeoutMs: setup.delivery.queue.maxRunMinutes * MINUTE_MS,
         onLine: (line) => {
           const shown = shownLine(ports.scanner, line);
           ports.say(`  ${shown}`);
@@ -612,10 +612,10 @@ function tidy(ports: MergePorts, request: MergeRequest, plan: Plan): void {
 }
 
 /** Fast-forwards the main checkout to what merged, only on the default branch with no tracked changes; it never fails the merge. */
-async function followMainCheckout(ports: MergePorts, plan: Plan, merged: string): Promise<void> {
+async function updateMainCheckout(ports: MergePorts, plan: Plan, merged: string): Promise<void> {
   const { git, say } = ports;
   const main = plan.mainCheckout;
-  if (!plan.repo.config.followMainCheckout || main === undefined || !plan.linked) {
+  if (!plan.repo.config.updateMainCheckout || main === undefined || !plan.linked) {
     return;
   }
   const note = (why: string): void => say(`NOTE left the main checkout ${main} as it is: ${why}`);
@@ -667,9 +667,9 @@ export async function mergeBranch(setup: MergeSetup, ports: MergePorts, request:
   const { plan } = planned;
   const { repo, defaultBranch } = plan;
   if (!repo.listed) {
-    ports.say(`NOTE ${repo.name} is not in coordinator.repos: no deploy targets, no dependency gate, no main checkout to follow`);
+    ports.say(`NOTE ${repo.name} is not in delivery.repos: no deploy targets, no dependency gate, no main checkout to follow`);
   }
-  const { wait } = setup.coordinator;
+  const { wait } = setup.delivery;
   const queuedAt = ports.clock.now();
   const clearance = await takeWhenClear(readinessOf(setup, ports, repo), ports, {
     session: request.session,
@@ -721,7 +721,7 @@ export async function mergeBranch(setup: MergeSetup, ports: MergePorts, request:
     await ports.gateHolds.remove(repo.name, plan.branch);
   }
   tidy(ports, request, plan);
-  await followMainCheckout(ports, plan, outcome.after);
+  await updateMainCheckout(ports, plan, outcome.after);
   const next = nextStep(request, plan);
   if (next !== undefined) {
     ports.say(next);

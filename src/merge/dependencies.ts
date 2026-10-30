@@ -23,7 +23,7 @@ export async function rangeInstallTouches(git: RangeReader, dir: string, from: s
   return installTouches(await packageFilesChange(paths, async (end) => git.fileAt(dir, end === 'before' ? from : to, MANIFEST_FILE)));
 }
 
-/** A dependency check to run on a change: `coordinator.repos.<name>.dependencyCheck` in the checkout at the change. */
+/** A dependency check to run on a change: `delivery.repos.<name>.dependencyCheck` in the checkout at the change. */
 export interface DependencyCheck {
   readonly argv: readonly string[];
   readonly cwd: string;

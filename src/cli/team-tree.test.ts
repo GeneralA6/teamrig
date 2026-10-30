@@ -55,10 +55,10 @@ describe('teamrig who <role> in a team tree (T1143)', () => {
   it("names a role's holder on a team above by that team's name for it, else its address", async () => {
     const kit = await treeHarness({ roles: { lead: 'lead', securityReviewer: 'alpha' } });
     const web = SUB_TEAMS['web'] ?? {};
-    await kit.files.write(teamConfigOf('web'), formatConfig({ ...web, roles: { lead: 'lead', securityReviewer: 'app/alpha', coordinatorOwner: 'gone/po' } }));
+    await kit.files.write(teamConfigOf('web'), formatConfig({ ...web, roles: { lead: 'lead', securityReviewer: 'app/alpha', deliveryOwner: 'gone/po' } }));
     const fromWeb = { env: { TEAMRIG_TEAM: 'web' } };
     assert.deepEqual((await kit.run(['who', 'securityReviewer'], fromWeb)).stdout, ['app-alpha']);
-    assert.deepEqual((await kit.run(['who', 'coordinatorOwner'], fromWeb)).stdout, ['gone/po'], 'a team with no config to read');
+    assert.deepEqual((await kit.run(['who', 'deliveryOwner'], fromWeb)).stdout, ['gone/po'], 'a team with no config to read');
     assert.deepEqual((await kit.run(['who', 'securityReviewer'])).stdout, ['app-alpha'], "the holder's own team");
     const none = await kit.run(['who', 'securityReviewer'], { env: { TEAMRIG_TEAM: 'ops' } });
     assert.deepEqual([none.code, none.stdout], [EXIT.refused, ['REFUSED no session holds the securityReviewer role']]);

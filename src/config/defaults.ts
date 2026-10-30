@@ -303,7 +303,7 @@ export const HEAVY_TTL_MARGIN_MINUTES = 10;
  */
 export const DEFAULT_HEAVY: HeavyConfig = { lockTtlMinutes: 150, maxRunMinutes: 45, smallMaxRunMinutes: 10, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048 };
 
-/** A waiting coordinator step looks again every 30 seconds; a deploy step waits up to an hour for claims and the host lock. */
+/** A waiting delivery step looks again every 30 seconds; a deploy step waits up to an hour for claims and the host lock. */
 export const DEFAULT_COORDINATOR_WAIT: CoordinatorWaitConfig = { pollSeconds: 30, maxMinutes: 60 };
 
 /** A deploy's check answers within 20 seconds, else the deploy waits. */

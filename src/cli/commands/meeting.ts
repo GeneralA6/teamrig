@@ -145,7 +145,7 @@ function phaseLine(phase: MeetingPhase, mk: MeetingKit): string {
 
 /** The self-merges digest's input: the team's merges log, read once, from the agenda's start. */
 async function mergeDigestOf(runtime: CliRuntime, mk: MeetingKit, since: number): Promise<MergeDigestInput> {
-  const { merges } = coordinatorPlaces(mk.config.coordinator, mk.kit.paths);
+  const { merges } = coordinatorPlaces(mk.config.delivery, mk.kit.paths);
   const gated = mk.config.pushGuard.pushToProtected === 'gated';
   return { log: await new MergeLog(runtime.files, merges).read(), since, zone: mk.zone, gated, path: merges };
 }

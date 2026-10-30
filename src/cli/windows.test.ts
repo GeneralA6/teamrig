@@ -8,8 +8,8 @@ const LEDGER = join(TEAM_HOME, 'state', 'deploys', 'ledger.jsonl');
 const LEDGER_MD = join(TEAM_HOME, 'state', 'deploys', 'ledger.md');
 const DEPLOYING = {
   ...TEAM,
-  coordinator: {
-    windows: { targetSettleMinutes: { 'cloud-web': 10 } },
+  delivery: {
+    stablePeriods: { targetSettleMinutes: { 'cloud-web': 10 } },
     repos: { app: { mainCheckout: MAIN_CHECKOUT, deploysOnPush: ['cloud-api', 'cloud-web'] } },
   },
 };

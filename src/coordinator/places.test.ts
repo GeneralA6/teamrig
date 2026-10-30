@@ -18,7 +18,7 @@ describe('teamPlace', () => {
 });
 
 describe('coordinatorDirOf', () => {
-  it("is <state>/deploys when coordinator.dir is unset, and coordinator.dir in the team's folder when set", () => {
+  it("is <state>/deploys when delivery.dir is unset, and delivery.dir in the team's folder when set", () => {
     assert.equal(coordinatorDirOf({}, { home: HOME, state: STATE }), join(STATE, 'deploys'));
     assert.equal(coordinatorDirOf({ dir: 'ledger' }, { home: HOME, state: STATE }), join(HOME, 'ledger'));
     const absolute = resolve('shared', 'deploys');
@@ -30,11 +30,11 @@ const KIT = join('/', 'kit');
 const PATHS = teamPaths(KIT, 'app', join('/', 'user'));
 const CONFIG: CoordinatorConfig = {
   schedule: {},
-  heavy: DEFAULT_HEAVY,
+  queue: DEFAULT_HEAVY,
   wait: DEFAULT_COORDINATOR_WAIT,
   checkTimeoutSeconds: DEFAULT_CHECK_TIMEOUT_SECONDS,
-  claims: DEFAULT_CLAIMS,
-  windows: DEFAULT_WINDOWS,
+  freezes: DEFAULT_CLAIMS,
+  stablePeriods: DEFAULT_WINDOWS,
   repos: {},
 };
 
@@ -49,7 +49,7 @@ describe('coordinatorPlaces', () => {
     assert.equal(places.hostLock, join(KIT, HOST_LOCK_FILE));
   });
 
-  it("moves them with coordinator.dir, a relative one in the team's folder", () => {
+  it("moves them with delivery.dir, a relative one in the team's folder", () => {
     const places = coordinatorPlaces({ ...CONFIG, dir: 'deploys' }, PATHS);
     assert.equal(places.reviewHolds, join(PATHS.home, 'deploys', REVIEW_HOLDS_DIR));
     assert.equal(places.gateHolds, join(PATHS.home, 'deploys', GATE_HOLDS_DIR));

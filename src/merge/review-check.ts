@@ -11,7 +11,7 @@ export const REVIEW_FINDINGS_LIMITS = {
   maxLineLength: 500,
 } as const;
 
-/** A review check to run on a change: `coordinator.repos.<name>.reviewCheck` in the checkout at the change. */
+/** A review check to run on a change: `delivery.repos.<name>.reviewCheck` in the checkout at the change. */
 export interface ReviewCheck {
   readonly argv: readonly string[];
   readonly cwd: string;

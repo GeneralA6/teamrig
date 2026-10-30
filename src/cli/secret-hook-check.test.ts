@@ -8,8 +8,8 @@ import { callsSecretScan, hookScriptsDir, SECRET_HOOKS } from './secret-hook-che
 
 const API = resolve('/', 'r', 'api');
 const WEB = resolve('/', 'r', 'web');
-const REPOS = { ...TEAM, coordinator: { repos: { api: { mainCheckout: API }, web: { mainCheckout: WEB } } } };
-const SOURCE = 'from the secret hook check [coordinator.repos]: SECRET-HOOK';
+const REPOS = { ...TEAM, delivery: { repos: { api: { mainCheckout: API }, web: { mainCheckout: WEB } } } };
+const SOURCE = 'from the secret hook check [delivery.repos]: SECRET-HOOK';
 const LINES = {
   'pre-commit': '`teamrig secrets staged || exit 1` to pre-commit',
   'commit-msg': '`teamrig secrets message "$1" || exit 1` to commit-msg',
@@ -81,13 +81,13 @@ describe('check SECRET-HOOK (T1480)', () => {
   });
 
   it("tells the lead once from any session's start, while the hooks still lack the scan", async () => {
-    const kit = new CliHarness({ ...TEAM, coordinator: { repos: { api: { mainCheckout: API } } } });
+    const kit = new CliHarness({ ...TEAM, delivery: { repos: { api: { mainCheckout: API } } } });
     const options: RunOptions = { env: { TEAMRIG_SESSION: 'alpha' }, secretsGit: gitWithHooks({ [API]: join(API, '.git', 'hooks') }) };
     for (let run = 0; run < 2; run += 1) {
       assert.equal((await kit.run(['start'], options)).code, EXIT.ok);
     }
     const inbox = (await kit.files.read(join(TEAM_HOME, 'state', 'inbox', 'lead.md'))) ?? '';
-    const lines = inbox.split('\n').filter((line) => line.includes('the secret hook check [coordinator.repos] raised a warning no session owns'));
+    const lines = inbox.split('\n').filter((line) => line.includes('the secret hook check [delivery.repos] raised a warning no session owns'));
     assert.equal(lines.length, 1, inbox);
     assert.match(lines[0] ?? '', /so it is yours as lead: SECRET-HOOK api \(/);
   });

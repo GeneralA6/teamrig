@@ -33,7 +33,7 @@ const FLOW = { name: 'flow', command: ['node', 'checks/flow.js'] };
 const AFTER_PULL = ['node', 'scripts/build-cli.js'];
 const COMMAND = ['node', 'tools/deploy.js'];
 const DEPLOY: DeployConfig = { targets: ['api', 'workers'], checks: [FLOW], afterPull: [AFTER_PULL], command: COMMAND };
-const PIPELINE: CoordinatorRepoConfig = { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], dependencyGate: false, reviewGate: false, followMainCheckout: false, deploy: DEPLOY };
+const PIPELINE: CoordinatorRepoConfig = { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], dependencyGate: false, reviewGate: false, updateMainCheckout: false, deploy: DEPLOY };
 const REQUEST: DeployRequest = { session: 'po', repo: undefined, dir: '/elsewhere' };
 const HEAVY_MS = DEFAULT_HEAVY.maxRunMinutes * 60_000;
 const SECRET = ['db password', '=', 'hunter2'].join('');
@@ -58,16 +58,16 @@ class World {
   constructor(options: Options = {}) {
     this.files = new MemoryFiles(options.claims === undefined ? {} : { [PLACES.claims]: options.claims });
     this.lock = new HostLock(PLACES.hostLock, 150 * 60_000, { files: this.files, clock: this.clock, sleep: this.clock.sleep, pid: 7, alive: () => true, newId: () => 'lock-1' });
-    const coordinator: CoordinatorConfig = {
+    const delivery: CoordinatorConfig = {
       schedule: options.schedule ?? {},
-      heavy: DEFAULT_HEAVY,
+      queue: DEFAULT_HEAVY,
       wait: DEFAULT_COORDINATOR_WAIT,
       checkTimeoutSeconds: DEFAULT_CHECK_TIMEOUT_SECONDS,
-      claims: DEFAULT_CLAIMS,
-      windows: DEFAULT_WINDOWS,
+      freezes: DEFAULT_CLAIMS,
+      stablePeriods: DEFAULT_WINDOWS,
       repos: options.repos ?? { pipeline: PIPELINE },
     };
-    this.setup = { team: 'app', coordinator, places: PLACES, zone: TimeZone.UTC, inTeam: (path) => (path.startsWith('/') ? path : `/repo/${path}`) };
+    this.setup = { team: 'app', delivery, places: PLACES, zone: TimeZone.UTC, inTeam: (path) => (path.startsWith('/') ? path : `/repo/${path}`) };
     this.pushed('c1', 'c2');
   }
 
@@ -215,7 +215,7 @@ describe('deployRepo', () => {
     assert.deepEqual(await world.run(), { kind: 'done', summary: 'c1..c2 deployed' });
     assert.ok(world.said.includes('waiting: quiet claim by ops on workers until 2030-01-08 10:05 UTC (p95)'));
     assert.ok(world.clock.now() >= Date.parse('2030-01-08T10:05:00Z'));
-    const late = new World({ schedule: { heavyCutoffUtc: '09:00' } });
+    const late = new World({ schedule: { queueCutoffUtc: '09:00' } });
     refused(await late.run(), 'nothing heavy 09:00-00:00 UTC (now 10:00 UTC)');
     assert.deepEqual([late.hooks.ran.length, late.pulled()], [0, false]);
   });
@@ -292,7 +292,7 @@ describe('deployRepo', () => {
     held.git.paths = ['package-lock.json', 'src/app.ts'];
     refused(
       await held.run(),
-      'deps changed (package-lock.json): coordinator.repos.pipeline.dependencyGate holds a dependency change, since pulling it changes, unreviewed, the node_modules every worktree links to; set coordinator.repos.pipeline.dependencyCheck and coordinator.repos.pipeline.deploy.dependencyInstall to deploy one, or pull and install by hand',
+      'deps changed (package-lock.json): delivery.repos.pipeline.dependencyGate holds a dependency change, since pulling it changes, unreviewed, the node_modules every worktree links to; set delivery.repos.pipeline.dependencyCheck and delivery.repos.pipeline.deploy.dependencyInstall to deploy one, or pull and install by hand',
     );
     for (const world of [offBranch, dirty, diverged, held]) {
       assert.deepEqual([world.hooks.ran.length, world.files.get(PLACES.hostLock), world.pulled()], [0, undefined, false]);
@@ -301,12 +301,12 @@ describe('deployRepo', () => {
 
   it('deploys the repository named, else the one the folder is in, else the only one with a deploy block', async () => {
     const CONSOLE: CoordinatorRepoConfig = { ...PIPELINE, mainCheckout: '/repo/console' };
-    const SITE: CoordinatorRepoConfig = { mainCheckout: '/repo/site', deploysOnPush: ['cloud-web'], dependencyGate: false, reviewGate: false, followMainCheckout: false };
+    const SITE: CoordinatorRepoConfig = { mainCheckout: '/repo/site', deploysOnPush: ['cloud-web'], dependencyGate: false, reviewGate: false, updateMainCheckout: false };
     const two = { pipeline: PIPELINE, console: CONSOLE, site: SITE };
-    refused(await new World({ repos: two }).run({ ...REQUEST, repo: 'nope' }), 'nope is not in coordinator.repos (with a deploy block: pipeline, console)');
-    refused(await new World({ repos: two }).run({ ...REQUEST, repo: 'site' }), 'coordinator.repos.site has no deploy block, so there is nothing to deploy it with (with a deploy block: pipeline, console)');
+    refused(await new World({ repos: two }).run({ ...REQUEST, repo: 'nope' }), 'nope is not in delivery.repos (with a deploy block: pipeline, console)');
+    refused(await new World({ repos: two }).run({ ...REQUEST, repo: 'site' }), 'delivery.repos.site has no deploy block, so there is nothing to deploy it with (with a deploy block: pipeline, console)');
     refused(await new World({ repos: two }).run(), 'name the repository to deploy with --repo (with a deploy block: pipeline, console)');
-    refused(await new World({ repos: { site: SITE } }).run(), 'no repository in coordinator.repos has a deploy block');
+    refused(await new World({ repos: { site: SITE } }).run(), 'no repository in delivery.repos has a deploy block');
     const inFolder = new World({ repos: two });
     assert.equal((await inFolder.run({ ...REQUEST, dir: WORKTREE })).kind, 'done');
     assert.equal(inFolder.git.heads.get(MAIN_CHECKOUT), 'c2');
@@ -405,11 +405,11 @@ describe('deployRepo of a range that changes the dependencies', () => {
   });
 
   it('holds the range, before any check or lock, while the dependency gate lacks the check or the install, or cannot read the range', async () => {
-    const hold = 'deps changed (package-lock.json): coordinator.repos.pipeline.dependencyGate holds a dependency change, since pulling it changes, unreviewed, the node_modules every worktree links to; set';
+    const hold = 'deps changed (package-lock.json): delivery.repos.pipeline.dependencyGate holds a dependency change, since pulling it changes, unreviewed, the node_modules every worktree links to; set';
     const noInstall = depsWorld({ install: false });
-    refused(await noInstall.run(), `${hold} coordinator.repos.pipeline.deploy.dependencyInstall to deploy one, or pull and install by hand`);
+    refused(await noInstall.run(), `${hold} delivery.repos.pipeline.deploy.dependencyInstall to deploy one, or pull and install by hand`);
     const noCheck = depsWorld({ check: false });
-    refused(await noCheck.run(), `${hold} coordinator.repos.pipeline.dependencyCheck to deploy one, or pull and install by hand`);
+    refused(await noCheck.run(), `${hold} delivery.repos.pipeline.dependencyCheck to deploy one, or pull and install by hand`);
     const unreadable = depsWorld();
     unreadable.git.paths = undefined;
     refused(await unreadable.run(), 'could not read what base..c2 changes, so the deploy cannot tell whether it changes the dependencies');

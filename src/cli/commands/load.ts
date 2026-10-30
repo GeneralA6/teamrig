@@ -13,7 +13,7 @@ import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.t
 /** What a load command works on: the session, the coordinator's config, the ledger and the loads' ports. */
 interface LoadContext {
   readonly session: string;
-  readonly coordinator: CoordinatorConfig;
+  readonly delivery: CoordinatorConfig;
   readonly ledger: string;
   readonly scanner: SecretScanner;
   readonly ports: LoadPorts;
@@ -28,8 +28,8 @@ async function loadContextOf(args: ParsedArgs, runtime: CliRuntime): Promise<Loa
   const session = sessionIdOf(await rosterOf(runtime, kit, config), caller);
   return {
     session,
-    coordinator: config.coordinator,
-    ledger: coordinatorPlaces(config.coordinator, kit.paths).ledger,
+    delivery: config.delivery,
+    ledger: coordinatorPlaces(config.delivery, kit.paths).ledger,
     scanner: new SecretScanner(config.register.secretPatterns),
     ports: { files: runtime.files, newId: () => runtime.newId() },
     zone: teamZone(config, runtime),
@@ -69,7 +69,7 @@ export async function load(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   const nowMs = runtime.clock.now();
   const context = await loadContextOf(args, runtime);
   const startedAt = atOf(args, { nowMs, zone: context.zone });
-  const rules = { knownTargets: deployTargetsOf(context.coordinator.repos), scanner: context.scanner, nowMs, zone: context.zone };
+  const rules = { knownTargets: deployTargetsOf(context.delivery.repos), scanner: context.scanner, nowMs, zone: context.zone };
   const record = recordOf(await startLoad(context.ports, context.ledger, rules, { session: context.session, what, targets, startedAt }));
   const on = record.targets === 'host' ? 'the whole host' : record.targets.join(', ');
   runtime.out.stdout(`LOAD ${record.id} on ${on} from ${context.zone.minute(new Date(startedAt))} (end it: teamrig load end --id ${record.id})`);

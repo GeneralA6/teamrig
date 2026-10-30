@@ -5,7 +5,7 @@ import { CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { MAIN_CHECKOUT } from '../testing/fake-merge-git.ts';
 
 const CLAIMS = join(TEAM_HOME, 'state', 'deploys', 'claims.json');
-const DEPLOYING = { ...TEAM, coordinator: { claims: { maxMinutes: 120 }, repos: { app: { mainCheckout: MAIN_CHECKOUT, deploysOnPush: ['cloud-api'] } } } };
+const DEPLOYING = { ...TEAM, delivery: { freezes: { maxMinutes: 120 }, repos: { app: { mainCheckout: MAIN_CHECKOUT, deploysOnPush: ['cloud-api'] } } } };
 
 /** `teamrig claim` by alpha on cloud-api for 1h30m, with `flags` instead. */
 function claimArgs(flags: Readonly<Record<string, string>> = {}): string[] {
@@ -26,8 +26,8 @@ describe('teamrig claim', () => {
     ]);
   });
 
-  it('refuses a target no repository deploys, a span past coordinator.claims.maxMinutes and a second claim', async () => {
-    const kit = new CliHarness({ ...DEPLOYING, coordinator: { ...DEPLOYING.coordinator, claims: { maxMinutes: 60 } } });
+  it('refuses a target no repository deploys, a span past delivery.freezes.maxMinutes and a second claim', async () => {
+    const kit = new CliHarness({ ...DEPLOYING, delivery: { ...DEPLOYING.delivery, freezes: { maxMinutes: 60 } } });
     assert.deepEqual(await kit.run(claimArgs({ targets: 'api', for: '45m' })), { code: 2, stdout: ['REFUSED api is not a deploy target of this team (known: cloud-api)'], stderr: [] });
     assert.deepEqual(await kit.run(claimArgs()), { code: 2, stdout: ['REFUSED a claim lasts 1 to 60 minutes (asked 90)'], stderr: [] });
     assert.equal(kit.files.get(CLAIMS), undefined, 'nothing is written');

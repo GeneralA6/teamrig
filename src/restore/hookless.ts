@@ -174,14 +174,14 @@ export function checkedState(now: number, tabs: readonly HooklessTab[]): Hookles
 }
 
 /**
- * Who of team `team` hears of a hookless tab: its lead, or the coordinator's owner when the lead's own tab is
+ * Who of team `team` hears of a hookless tab: its lead, or the delivery owner when the lead's own tab is
  * hookless, since the lead's inbox reminder is one of the hooks it lacks; that owner may sit on a team above, which a
- * child team leaves the role to (roleHolderOf, T1143). With no coordinator's owner, the lead still. The idle pass asks
+ * child team leaves the role to (roleHolderOf, T1143). With no delivery owner, the lead still. The idle pass asks
  * it too, for a reopened tab no hook started in (src/cli/hookless-reopen.ts), which has no entry.
  */
 export function hooklessReader(tab: Pick<HooklessTab, 'session'>, roles: RolesConfig, team: string): SessionAddress {
-  const coordinatorOwner = roleHolderOf(roles, 'coordinatorOwner', team);
-  return tab.session === roles.lead && coordinatorOwner !== undefined ? coordinatorOwner : { team, id: roles.lead };
+  const deliveryOwner = roleHolderOf(roles, 'deliveryOwner', team);
+  return tab.session === roles.lead && deliveryOwner !== undefined ? deliveryOwner : { team, id: roles.lead };
 }
 
 /**

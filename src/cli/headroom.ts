@@ -12,7 +12,7 @@ import type { CliRuntime } from './runtime.ts';
 export async function headroomOf(
   runtime: CliRuntime,
   paths: Pick<TeamPaths, 'sessions'>,
-  config: Pick<KitConfig, 'coordinator' | 'open'>,
+  config: Pick<KitConfig, 'delivery' | 'open'>,
   ids: readonly string[],
 ): Promise<Headroom> {
   const records = await new SessionRecordStore(runtime.files, paths).readEach(ids);
@@ -24,5 +24,5 @@ export async function headroomOf(
     runningMb: running.map((place) => place.treeMb),
     runningCommittedMb: running.flatMap((place) => (place.committedMb === undefined ? [] : [place.committedMb])),
   };
-  return headroomFor(room, config.coordinator.heavy.memoryFloorMb, config.open.headroom);
+  return headroomFor(room, config.delivery.queue.memoryFloorMb, config.open.headroom);
 }

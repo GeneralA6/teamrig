@@ -40,13 +40,13 @@ function maxRunMinutesOf(args: ParsedArgs, heavy: HeavyConfig, small: boolean): 
   const minutes = /^\d+$/.test(text) ? Number(text) : Number.NaN;
   if (small) {
     if (!(minutes >= 1 && minutes <= heavy.smallMaxRunMinutes)) {
-      throw new UsageError(`--max-minutes with --small is a whole number from 1 to ${heavy.smallMaxRunMinutes} (coordinator.heavy.smallMaxRunMinutes): a longer step runs without --small`);
+      throw new UsageError(`--max-minutes with --small is a whole number from 1 to ${heavy.smallMaxRunMinutes} (delivery.queue.smallMaxRunMinutes): a longer step runs without --small`);
     }
     return minutes;
   }
   const longest = heavy.lockTtlMinutes - HEAVY_TTL_MARGIN_MINUTES;
   if (!(minutes >= 1 && minutes <= longest)) {
-    throw new UsageError(`--max-minutes is a whole number from 1 to ${longest} (coordinator.heavy.lockTtlMinutes less ${HEAVY_TTL_MARGIN_MINUTES})`);
+    throw new UsageError(`--max-minutes is a whole number from 1 to ${longest} (delivery.queue.lockTtlMinutes less ${HEAVY_TTL_MARGIN_MINUTES})`);
   }
   return minutes;
 }
@@ -220,9 +220,9 @@ interface Step {
 
 /**
  * `teamrig heavy --what <label> -- <command ...>`: runs one heavy step (a build, a test run, a database script)
- * under the host lock, so the host's heavy steps run one at a time. Refused from `coordinator.schedule.heavyCutoffUtc`
+ * under the host lock, so the host's heavy steps run one at a time. Refused from `delivery.schedule.queueCutoffUtc`
  * to midnight UTC, also when the wait for the lock ran past it, and once its line for the lock has not moved for
- * `coordinator.heavy.waitMinutes`. The step is killed with every process it started after `maxRunMinutes`
+ * `delivery.queue.waitMinutes`. The step is killed with every process it started after `maxRunMinutes`
  * (`--max-minutes`), and its start and end go to the coordinator's ledger, with when it began to wait and, sampled
  * every `memorySampleSeconds`, the most its process tree held and the least free memory the host had. Its processes get `$TEAMRIG_HOST_LOCK`,
  * so a `heavy` among them (a git hook's checks) runs at once under this lock. With `--small` (a spec run, a lint) the
@@ -239,13 +239,13 @@ export async function heavy(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const what = requiredFlag(args.flags, 'what');
   const kit = await openTeamKit(runtime);
   const config = requireConfig(kit, runtime, 'read');
-  const { coordinator } = config;
+  const { delivery } = config;
   const zone = teamZone(config, runtime);
   const say = logLineOf(runtime, zone);
   const small = args.switches.has('small');
-  const maxRunMinutes = maxRunMinutesOf(args, coordinator.heavy, small);
-  const places = coordinatorPlaces(coordinator, kit.paths);
-  const lock = hostLockOf(runtime, places.hostLock, coordinator.heavy);
+  const maxRunMinutes = maxRunMinutesOf(args, delivery.queue, small);
+  const places = coordinatorPlaces(delivery, kit.paths);
+  const lock = hostLockOf(runtime, places.hostLock, delivery.queue);
   const parent = await parentLockOf(runtime, lock, say);
   const session = await sessionOf(args, runtime, kit, await rosterOf(runtime, kit, config), parent);
   const watching = await watchStarters(runtime, say);
@@ -259,10 +259,10 @@ export async function heavy(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
       const code = await runUnderParent(runtime, say, holderText({ kind: 'held', info: parent }, zone), step);
       return prePush === undefined ? code : await afterPrePush(runtime, prePush, what, code, 0);
     }
-    refuseAfterCutoff(runtime, coordinator.schedule.heavyCutoffUtc, zone);
+    refuseAfterCutoff(runtime, delivery.schedule.queueCutoffUtc, zone);
     const queuedAt = runtime.clock.now();
     const share: ShareRequest | undefined = small
-      ? { reserveMb: await reserveMbOf(runtime, places.ledger, session, what, coordinator.heavy), floorMb: coordinator.heavy.memoryFloorMb, freeMb: () => runtime.memory.freeMb() }
+      ? { reserveMb: await reserveMbOf(runtime, places.ledger, session, what, delivery.queue), floorMb: delivery.queue.memoryFloorMb, freeMb: () => runtime.memory.freeMb() }
       : undefined;
     const waiting = small ? 'waiting to share the host' : 'waiting for the host lock';
     const taking = await unlessStopped(
@@ -270,8 +270,8 @@ export async function heavy(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
       lock.acquire(
         session,
         `heavy: ${what}`,
-        coordinator.heavy.waitMinutes * MINUTE_MS,
-        coordinator.wait.pollSeconds * 1_000,
+        delivery.queue.waitMinutes * MINUTE_MS,
+        delivery.wait.pollSeconds * 1_000,
         (holder, ahead) => say(`${waiting}: ${waitText(holder, ahead, zone)}`),
         share,
         watching.stop,
@@ -288,7 +288,7 @@ export async function heavy(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
     }
     const waitedMs = runtime.clock.now() - queuedAt;
     try {
-      refuseAfterCutoff(runtime, coordinator.schedule.heavyCutoffUtc, zone);
+      refuseAfterCutoff(runtime, delivery.schedule.queueCutoffUtc, zone);
       const sharing = share === undefined ? undefined : sharingText(share, taking);
       if (sharing !== undefined) {
         say(sharing);
@@ -296,7 +296,7 @@ export async function heavy(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
       say(`running: ${what} (killed after ${minutesText(maxRunMinutes)})`);
       const request = { command: commandLine(words, runtime.platform), cwd: runtime.cwd, env: underLock(runtime.env, taking.lock), timeoutMs: maxRunMinutes * MINUTE_MS, stop: watching.stop };
       const mark = { session, what, queuedAt, ...(taking.sharing === undefined ? {} : { shared: true as const }), request };
-      const end = await runRecorded(runtime, places.ledger, mark, watchOf(runtime, coordinator.heavy));
+      const end = await runRecorded(runtime, places.ledger, mark, watchOf(runtime, delivery.queue));
       const code = report(runtime, say, end, maxRunMinutes, watching);
       return prePush === undefined ? code : await afterPrePush(runtime, prePush, what, code, waitedMs);
     } finally {

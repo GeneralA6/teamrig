@@ -46,7 +46,7 @@ export interface GatedPorts {
 export interface GatedChange {
   readonly session: string;
   readonly repo: string;
-  /** Whether the review gate looked at it (`coordinator.repos.<name>.reviewGate`). */
+  /** Whether the review gate looked at it (`delivery.repos.<name>.reviewGate`). */
   readonly reviewGate: boolean;
   readonly branch: string;
   readonly base: string;

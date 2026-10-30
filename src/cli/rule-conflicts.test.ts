@@ -214,7 +214,7 @@ describe('rules clear', () => {
   });
 
   it('keeps a line cleared across a daylight-saving change of the times the rules print', async () => {
-    const kit = await world({ ...TEAM, timeZone: 'Asia/Jerusalem', coordinator: { schedule: { heavyCutoffUtc: '22:30' } } });
+    const kit = await world({ ...TEAM, timeZone: 'Asia/Jerusalem', delivery: { schedule: { queueCutoffUtc: '22:30' } } });
     await kit.files.write(PROJECT_CLAUDE_MD, '# Project\nDeploy once the nightly build is green.');
     const scan = (): Promise<CliResult> => run(kit, 'scan', '--kind', 'claude-md');
     ok(await clear(kit, '--kind', 'claude-md', '--seen', seenOf(ok(await scan())), '--yes'));

@@ -218,7 +218,7 @@ list (`.env`, `*.pem`...) whatever it holds, named by place and shape, never by 
 commit made before the hooks were there, or past them, a value added only in a merge's conflict resolution (git 2.36
 or later) and one in a pushed annotated tag's message. Outside a team the default shapes and paths still scan; inside
 one, the team's `register.secretPatterns` and `secretGuard.paths` are added. `teamrig check` warns the lead
-(SECRET-HOOK) of each repository in `coordinator.repos` whose hooks skip one of the three, with the line to add
+(SECRET-HOOK) of each repository in `delivery.repos` whose hooks skip one of the three, with the line to add
 ([the commands](../../plugins/teamrig/skills/teamrig-guide/commands.md#teamrig-secrets-staged)).
 
 ## Privileged commands on review

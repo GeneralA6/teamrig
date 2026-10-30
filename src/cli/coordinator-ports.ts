@@ -23,7 +23,7 @@ export function logLineOf(runtime: Pick<CliRuntime, 'out' | 'clock'>, zone: Time
 
 type LockRuntime = Pick<CliRuntime, 'files' | 'clock' | 'sleep' | 'pid' | 'sessionProcesses' | 'newId'>;
 
-/** The host lock at `path`, held by this process for `coordinator.heavy.lockTtlMinutes`; a holder whose process ended is stale. */
+/** The host lock at `path`, held by this process for `delivery.queue.lockTtlMinutes`; a holder whose process ended is stale. */
 export function hostLockOf(runtime: LockRuntime, path: string, heavy: Pick<HeavyConfig, 'lockTtlMinutes'>): HostLock {
   return lockAt(runtime, path, heavy.lockTtlMinutes * MINUTE_MS);
 }

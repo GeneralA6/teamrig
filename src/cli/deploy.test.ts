@@ -11,7 +11,7 @@ import { EXIT } from './runtime.ts';
 const LEDGER = join(TEAM_HOME, 'state', 'deploys', 'ledger.jsonl');
 const LOCK = join(KIT, 'host.lock');
 const COMMAND = ['node', 'tools/deploy.js'];
-const DEPLOYING = { ...TEAM, coordinator: { repos: { app: { mainCheckout: MAIN_CHECKOUT, deploy: { targets: ['api'], command: COMMAND } } } } };
+const DEPLOYING = { ...TEAM, delivery: { repos: { app: { mainCheckout: MAIN_CHECKOUT, deploy: { targets: ['api'], command: COMMAND } } } } };
 const DEPLOY = ['deploy', '--session', 'alpha'];
 /** A run outside the project folder and any checkout: its team comes from $TEAMRIG_TEAM. */
 const ELSEWHERE = { cwd: '/elsewhere', env: { TEAMRIG_TEAM: 'app' } };
@@ -96,7 +96,7 @@ describe('teamrig deploy', () => {
     const refused = world();
     assert.deepEqual(await refused.kit.run([...DEPLOY, '--repo', 'site'], { ...ELSEWHERE, mergeGit: refused.git, hooks: refused.hooks }), {
       code: 2,
-      stdout: ['REFUSED site is not in coordinator.repos (with a deploy block: app)'],
+      stdout: ['REFUSED site is not in delivery.repos (with a deploy block: app)'],
       stderr: [],
     });
     const failing = world();

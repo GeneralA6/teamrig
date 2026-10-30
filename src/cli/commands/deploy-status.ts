@@ -27,7 +27,7 @@ function lockText(state: LockState, zone: TimeZone): string {
 function cutoffText(nowMs: number, cutoffUtc: string | undefined, zone: TimeZone): string {
   const span = heavyCutoffSpan(nowMs, cutoffUtc);
   if (span === undefined) {
-    return 'none (coordinator.schedule.heavyCutoffUtc is not set)';
+    return 'none (delivery.schedule.queueCutoffUtc is not set)';
   }
   const inForce = nowMs >= span.from ? 'IN FORCE ' : '';
   return `${inForce}${zone.clockSpan(new Date(span.from), new Date(span.to))} (no heavy step starts)`;
@@ -35,7 +35,7 @@ function cutoffText(nowMs: number, cutoffUtc: string | undefined, zone: TimeZone
 
 function blackoutText(nowMs: number, reset: ResetTime | undefined, hours: number | undefined, zone: TimeZone): string {
   if (hours === undefined) {
-    return 'none (coordinator.schedule.resetBlackoutHours is not set)';
+    return 'none (delivery.schedule.resetBlackoutHours is not set)';
   }
   if (reset === undefined) {
     return 'unknown: neither the status line nor budget.reset names the weekly token reset';
@@ -72,19 +72,19 @@ export async function deployStatus(_args: ParsedArgs, runtime: CliRuntime): Prom
   const nowMs = runtime.clock.now();
   const kit = await openTeamKit(runtime);
   const config = requireConfig(kit, runtime, 'read');
-  const { coordinator, budget } = config;
+  const { delivery, budget } = config;
   const zone = teamZone(config, runtime);
-  const places = coordinatorPlaces(coordinator, kit.paths);
+  const places = coordinatorPlaces(delivery, kit.paths);
   const say = (line: string): void => runtime.out.stdout(line);
-  const lock = hostLockOf(runtime, places.hostLock, coordinator.heavy);
+  const lock = hostLockOf(runtime, places.hostLock, delivery.queue);
   say(`host lock: ${lockText(await lock.state(), zone)}`);
   const shares = await lock.shares();
   if (shares.length > 0) {
     say(`sharing the host: ${sharesText(shares, zone)}`);
   }
-  say(`heavy cutoff: ${cutoffText(nowMs, coordinator.schedule.heavyCutoffUtc, zone)}`);
+  say(`heavy cutoff: ${cutoffText(nowMs, delivery.schedule.queueCutoffUtc, zone)}`);
   const reset = await nextResetFrom(runtime, budget, snapshotDirOf(budget, kit.paths))(nowMs);
-  say(`deploy blackout: ${blackoutText(nowMs, reset, coordinator.schedule.resetBlackoutHours, zone)}`);
+  say(`deploy blackout: ${blackoutText(nowMs, reset, delivery.schedule.resetBlackoutHours, zone)}`);
   const claims = await readClaims(runtime.files, places.claims);
   if (claims.kind === 'unreadable') {
     say(`claims: unreadable (${claims.reason})`);
@@ -96,9 +96,9 @@ export async function deployStatus(_args: ParsedArgs, runtime: CliRuntime): Prom
   const loads = loadsOf(parseLedger((await runtime.files.read(places.ledger)) ?? ''), nowMs).filter((load) => load.open);
   say(`loads: ${loads.length === 0 ? 'none' : loads.length}`);
   loads.forEach((load) => say(loadText(load, zone)));
-  const repos = deployRepos(coordinator, (path) => teamPlace(kit.paths, path));
+  const repos = deployRepos(delivery, (path) => teamPlace(kit.paths, path));
   if (repos.length === 0) {
-    say('deploys: no repository in coordinator.repos has a deploy block');
+    say('deploys: no repository in delivery.repos has a deploy block');
   }
   for (const repo of repos) {
     say(`${repo.name}: ${pendingText(await readPending(runtime.mergeGit, repo))}`);

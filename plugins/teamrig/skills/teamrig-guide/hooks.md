@@ -988,7 +988,7 @@ FLEET-STALE, a warning for the lead; a pass that never ran shows nothing, as a n
 A reopened tab whose SessionStart hook has not written its session's record 5 minutes after the reopen loaded no
 teamrig, as one opened while an install was copied, and [the hookless-tab check](#end-of-a-turn-hookless-tabs) cannot
 see it. The pass logs each such reopen once as a `"kind": "hookless"` line in `state/idle-pass.jsonl` and, in `on`,
-tells the lead with an [urgent line](#urgent-lines) (the coordinator's owner for the lead's own tab): `HOOKLESS api
+tells the lead with an [urgent line](#urgent-lines) (the delivery owner for the lead's own tab): `HOOKLESS api
 (session alpha): reopened 01-08 10:00 UTC, and no teamrig hook has started in its tab in the 7 min since, so it gets no
 inbox, guards or tab status: /exit that tab and run claude --resume <id> in its terminal` (`run teamrig open alpha`
 for a tab that opened fresh). A line the inbox refused is logged with why, and not tried again;
@@ -1050,7 +1050,7 @@ team session reads the [restore files](#every-session-the-restore-tracker) of th
 `teamrig launch` started names its session; one started by hand is the session whose inbox it last read) whose
 hooks last wrote over 30 minutes ago and checks their transcripts: one that changed in the last 30 minutes, and
 over 30 minutes after that last write, is a tab working without its hooks. Each such tab gets one inbox line from teamrig to the lead, or to
-the coordinator's owner (`roles.coordinatorOwner`, on a team above when it names `<team>/<id>`) when it is the lead's own tab: `HOOKLESS alpha: its tab (Claude
+the delivery owner (`roles.deliveryOwner`, on a team above when it names `<team>/<id>`) when it is the lead's own tab: `HOOKLESS alpha: its tab (Claude
 session 0123abcd) worked 59 min past its last teamrig hook (hook 09:00 IDT, last reply 09:59 IDT), so it gets no
 inbox, guards or tab status: /exit that tab and run claude --resume <id> in <folder>`, with the tab's full Claude
 session id and the folder it started in; a time not on the line's day carries its date (`hook 10-20 16:37 IDT`).
@@ -1093,7 +1093,7 @@ the pace.
 With `budget.pauseByPriority` on, a short day (what is left of the week gives the day less than the pace line plans)
 funds the queued work in priority order, and a session none of it reaches has a daily budget of 0: its line reads
 `its daily budget is 0.0% (paused)`, and once the team has no room it is held like any session past its part. The
-lead, the coordinator owner and lifted sessions are never paused, and a burst's floor still holds a paused session up.
+lead, the delivery owner and lifted sessions are never paused, and a burst's floor still holds a paused session up.
 Past its part while the team has room, a session is not held, and its line says so: `The team has room today: 2.0%
 of the week used, below its in-day pace of 4.0%, so nothing more happens.` Past its part once the team has no room,
 it is held: only p0 work wakes it or keeps its idle tab open, and it is escalated when `budget.escalate` is `session`, or, with

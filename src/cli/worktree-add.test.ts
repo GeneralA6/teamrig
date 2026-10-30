@@ -12,7 +12,7 @@ const MAIN = resolve('/w/main');
 /** A session's project folder, where its team's pointer is, as a session in the team runs with. */
 const IN_TEAM = { CLAUDE_PROJECT_DIR: APP };
 /** The team's app repository, its worktrees in /w/wt and linked to its modules by SETUP. */
-const LISTED = { ...TEAM, coordinator: { repos: { app: { mainCheckout: '/w/main', worktreeFolder: '../wt', worktreeSetup: SETUP }, web: { mainCheckout: '/w/web' } } } };
+const LISTED = { ...TEAM, delivery: { repos: { app: { mainCheckout: '/w/main', worktreeFolder: '../wt', worktreeSetup: SETUP }, web: { mainCheckout: '/w/web' } } } };
 
 /** A repository whose main checkout is /w/main, run from its worktree /w/t4, with origin/HEAD naming origin/main. */
 function world(answers: FakeGitAnswers = {}): { git: FakeWorktreeGit; ports: WorktreePorts } {
@@ -38,7 +38,7 @@ describe('runCli: worktree add (T1305)', () => {
     assert.deepEqual(git.steps, [`fetch origin main in ${MAIN}`, `worktree add -b t9/parser ${path} origin/main in ${MAIN}`]);
   });
 
-  it('takes the folder and setup of the repository coordinator.repos lists by its main checkout', async () => {
+  it('takes the folder and setup of the repository delivery.repos lists by its main checkout', async () => {
     const { git, ports } = world();
     const hooks = new FakeHooks().answer(SETUP, { lines: ['linked node_modules'] });
     const path = resolve('/w/wt', 't9-parser');
@@ -58,14 +58,14 @@ describe('runCli: worktree add (T1305)', () => {
     assert.deepEqual(git.steps.slice(1), [`worktree add -b t9-page ${join(resolve('/w/web'), '.claude', 'worktrees', 't9-page')} origin/main in ${resolve('/w/web')}`]);
     const unknown = await kit.run(['worktree', 'add', 't9-page', '--repo', 'docs'], { worktrees: ports, cwd: '/elsewhere', env: IN_TEAM });
     assert.equal(unknown.code, EXIT.refused);
-    assert.deepEqual(unknown.stdout, ['REFUSED team app has no coordinator.repos.docs: it lists app, web']);
+    assert.deepEqual(unknown.stdout, ['REFUSED team app has no delivery.repos.docs: it lists app, web']);
   });
 
   it('refuses --repo outside a team, and a folder in no repository without it', async () => {
     const { git, ports } = world({ worktrees: undefined });
     const outside = await new CliHarness(null, null).run(['worktree', 'add', 't9-page', '--repo', 'web'], { worktrees: ports, cwd: '/elsewhere' });
     assert.equal(outside.code, EXIT.refused);
-    assert.match(outside.stdout[0] ?? '', /^REFUSED --repo names a repository in a team's coordinator.repos, and .* is in no team: run it in the repository instead$/);
+    assert.match(outside.stdout[0] ?? '', /^REFUSED --repo names a repository in a team's delivery.repos, and .* is in no team: run it in the repository instead$/);
     const loose = await new CliHarness(LISTED).run(['worktree', 'add', 't9-page'], { worktrees: ports, cwd: '/elsewhere', env: IN_TEAM });
     assert.equal(loose.code, EXIT.refused);
     assert.match(loose.stdout[0] ?? '', /^REFUSED .* is in no git repository: run it in one, or give --repo <name>$/);

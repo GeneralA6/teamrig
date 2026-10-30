@@ -33,7 +33,7 @@ Team settings for the teamrig plugin. Only the roster (sessions, roles.lead) is 
 | `prompts` | [object](#prompts) |  | The permission prompts teamrig's own hooks raise. |
 | `secretGuard` | [object](#secretguard) |  | Refuses a Bash, PowerShell, Read or Grep call that would print a secret into the session, where it stays in the transcript and every later prompt: a secret file's content, the whole environment, a secret variable's value, a Kubernetes secret's data or a dump command's output (kubectl config view --raw); and a Bash or PowerShell line that holds a secret as text (a token, credentials in a URL or an Authorization header), as the line itself stays in the transcript; and a Write, Edit, MultiEdit or NotebookEdit whose written text holds one, unless it writes a secret file (paths). A value handed to the tool that needs it (a pipe into docker login --password-stdin, a redirect into a file) stays allowed, and the read-only shell hook never lets such a line run without a prompt. |
 | `commits` | [object](#commits) |  | The small-commits rule: one logical change per commit; a commit over either bound needs a reason line. |
-| `coordinator` | [object](#coordinator) |  | The deploy coordinator: teamrig heavy runs one heavy step on the host at a time, under the host lock, teamrig merge merges a branch into its repository's default branch, teamrig deploy deploys it and teamrig claim holds deploys while a session measures; each step is recorded in the ledger. |
+| `delivery` | [object](#delivery) |  | The delivery flow: teamrig heavy runs one heavy step on the host at a time, under the host lock, teamrig merge merges a branch into its repository's default branch, teamrig deploy deploys it and teamrig claim holds deploys while a session measures; each step is recorded in the ledger. |
 | `budget` | [object](#budget) |  | The weekly token budget: the pace line the team is measured against and each session's daily part of it. Usage is in weighted tokens (W) read from the session transcripts, and in % of the week from the status line when there is one. The defaults only measure and show; nothing blocks or acts. |
 | `leadBoundary` | [object](#leadboundary) |  | How teamrig keeps the lead leading: its own edits, tests and code searches are nudged and shown, never blocked. |
 | `loops` | [object](#loops) |  | Loop discipline inside a turn. |
@@ -72,7 +72,7 @@ Each role's session, by id.
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `lead` (required) | [session name](#shared-types) |  | Owns priorities, team rules and the owner's decision queue. |
-| `coordinatorOwner` | [role holder](#shared-types) |  | Owns deploy coordination and fleet health, when the team has that role; a child team may leave it to a team above. |
+| `deliveryOwner` | [role holder](#shared-types) |  | Owns deploy coordination and fleet health, when the team has that role; a child team may leave it to a team above. |
 | `securityReviewer` | [role holder](#shared-types) |  | Reviews the privileged commands sessions ask to run (exec), when the team has that role; the owner always may too. A child team may leave it to a team above. |
 
 ## `ruleConflicts[]`
@@ -272,22 +272,22 @@ The small-commits rule: one logical change per commit; a commit over either boun
 | `sourcePatterns` | array (at most 8 items) of string (at most 100 characters) | `["\\.([cm]?[jt]sx?\|py\|go\|rs\|java\|kt\|cs\|c\|cc\|cpp\|h\|hpp\|rb\|swift\|vue\|svelte\|sh\|ps1)$"]` | Regular expressions over /-separated paths; a non-test file that matches one is source. A change of source with no test changed misses the self-merge gate (pushGuard.pushToProtected gated). |
 | `gate` | one of `"off"`, `"warn"`, `"refuse"` | `"warn"` | A push to a protected branch: off ignores large commits, warn lists them when it asks the human, refuse refuses the push. |
 
-## `coordinator`
+## `delivery`
 
-The deploy coordinator: teamrig heavy runs one heavy step on the host at a time, under the host lock, teamrig merge merges a branch into its repository's default branch, teamrig deploy deploys it and teamrig claim holds deploys while a session measures; each step is recorded in the ledger.
+The delivery flow: teamrig heavy runs one heavy step on the host at a time, under the host lock, teamrig merge merges a branch into its repository's default branch, teamrig deploy deploys it and teamrig claim holds deploys while a session measures; each step is recorded in the ledger.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
-| `dir` | string (at least 1 character) |  | The coordinator's folder, which holds its ledger (ledger.jsonl); a relative path is in the team's folder. Unset: deploys in the state folder. |
-| `repos` | map from string (matching `^[a-z0-9][a-z0-9._-]*$`) to [object](#coordinatorrepos) |  | The repositories whose branches teamrig merge merges into their default branch, by name. |
-| `heavy` | [object](#coordinatorheavy) |  | The host lock and the limits of one heavy step. |
+| `dir` | string (at least 1 character) |  | The delivery folder, which holds its ledger (ledger.jsonl); a relative path is in the team's folder. Unset: deploys in the state folder. |
+| `repos` | map from string (matching `^[a-z0-9][a-z0-9._-]*$`) to [object](#deliveryrepos) |  | The repositories whose branches teamrig merge merges into their default branch, by name. |
+| `queue` | [object](#deliveryqueue) |  | The host lock and the limits of one heavy step. |
 | `checkTimeoutSeconds` | integer (1 to 600) | `20` | A deploy's check still running after this many seconds is stopped, and the deploy waits. |
-| `claims` | [object](#coordinatorclaims) |  | Quiet claims (teamrig claim), which hold deploys of their targets while a session measures them. |
-| `windows` | [object](#coordinatorwindows) |  | teamrig windows: when a measurement of a deploy target is clean, between the deploys and heavy steps that disturb it. |
-| `wait` | [object](#coordinatorwait) |  | How a coordinator step waits. |
-| `schedule` | [object](#coordinatorschedule) |  | When heavy steps and deploys may start on the host. |
+| `freezes` | [object](#deliveryfreezes) |  | Quiet claims (teamrig claim), which hold deploys of their targets while a session measures them. |
+| `stablePeriods` | [object](#deliverystableperiods) |  | teamrig windows: when a measurement of a deploy target is clean, between the deploys and heavy steps that disturb it. |
+| `wait` | [object](#deliverywait) |  | How a delivery step waits. |
+| `schedule` | [object](#deliveryschedule) |  | When heavy steps and deploys may start on the host. |
 
-## `coordinator.repos.*`
+## `delivery.repos.*`
 
 The repositories whose branches teamrig merge merges into their default branch, by name.
 
@@ -299,13 +299,13 @@ The repositories whose branches teamrig merge merges into their default branch, 
 | `dependencyCheck` | array (1 to 64 items) of string (at least 1 character) |  | With dependencyGate, what clears a dependency change: a program and its arguments, run without a shell under the host lock with the base package-lock.json in the file TEAMRIG\_BASELINE\_LOCK names (unset when the base has none). teamrig merge runs it in the branch checkout after the rebase and before the push, the default branch its base; teamrig deploy in the main checkout after the pull, its old HEAD the base. Exit 0 lets the change go, anything else refuses it. |
 | `reviewGate` | boolean |  | Hold a branch (merge) whose changed paths hit a review entry (teamrig's generic list and pushGuard.reviewPaths) until its reviewer approves it, or reviewCheck clears its check hits. |
 | `reviewCheck` | array (1 to 64 items) of string (at least 1 character) |  | With reviewGate, what a check hit runs: a program and its arguments, run without a shell under the host lock in the branch checkout after the rebase, with the base commit in TEAMRIG\_REVIEW\_BASE. Exit 0 clears the change, 3 holds it for the entry's reviewer with the findings it prints, anything else for that reviewer too. Unset: a check hit is held like an always one. |
-| `followMainCheckout` | boolean |  | After the push, fast-forward the main checkout to it: only a fast-forward, only on the default branch with no tracked changes. |
+| `updateMainCheckout` | boolean |  | After the push, fast-forward the main checkout to it: only a fast-forward, only on the default branch with no tracked changes. |
 | `worktreeFolder` | string (at least 1 character) | `".claude/worktrees"` | The folder teamrig worktree add makes each new worktree in, one folder per branch named after it with each / as -. A relative path is in the main checkout. |
 | `worktreeSetup` | array (1 to 64 items) of string (at least 1 character) |  | What teamrig worktree add runs in a new worktree, such as a link to the main checkout node\_modules: a program and its arguments, run without a shell, with the main checkout folder in TEAMRIG\_MAIN\_CHECKOUT. Anything but exit 0 leaves the worktree in place and fails the add. Unset: nothing runs. |
-| `merge` | [object](#coordinatorreposmerge) |  | How teamrig merge merges a branch through the team's own flow, such as a pull request the forge merges. Unset: it pushes the branch to the default branch. |
-| `deploy` | [object](#coordinatorreposdeploy) |  | How teamrig deploy deploys what merged into the default branch, each command a program and its arguments run without a shell from the main checkout. Unset: the repository is not deployed. |
+| `merge` | [object](#deliveryreposmerge) |  | How teamrig merge merges a branch through the team's own flow, such as a pull request the forge merges. Unset: it pushes the branch to the default branch. |
+| `deploy` | [object](#deliveryreposdeploy) |  | How teamrig deploy deploys what merged into the default branch, each command a program and its arguments run without a shell from the main checkout. Unset: the repository is not deployed. |
 
-## `coordinator.repos.*.merge`
+## `delivery.repos.*.merge`
 
 How teamrig merge merges a branch through the team's own flow, such as a pull request the forge merges. Unset: it pushes the branch to the default branch.
 
@@ -314,19 +314,19 @@ How teamrig merge merges a branch through the team's own flow, such as a pull re
 | `command` (required) | array (1 to 64 items) of string (at least 1 character) |  | A program and its arguments, run without a shell in the branch checkout under the host lock after the rebase and the dependency check, with TEAMRIG\_MERGE\_BRANCH, TEAMRIG\_MERGE\_BASE (the default branch), TEAMRIG\_MERGE\_HEAD and TEAMRIG\_SESSION set. Exit 0: the branch merged, which teamrig merge confirms on the remote; 75: it waits (say a pull request waits on its checks or review), and running teamrig merge again finishes it once it merges; anything else fails it. Its last output line is shown as the reason. |
 | `remote` | string (matching `^[A-Za-z0-9][A-Za-z0-9._-]*$`) | `"origin"` | The git remote whose default branch the command merges into: teamrig merge rebases onto it, confirms the merge on it and moves the local default branch to it. Set upstream where origin is a contributor's fork; the branch itself is pushed to and deleted from origin either way. |
 
-## `coordinator.repos.*.deploy`
+## `delivery.repos.*.deploy`
 
 How teamrig deploy deploys what merged into the default branch, each command a program and its arguments run without a shell from the main checkout. Unset: the repository is not deployed.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `targets` | array of string (matching `^[a-z0-9][a-z0-9._-]*$`) |  | The deploy targets it deploys: quiet claims on them hold it. |
-| `checks` | array (at most 16 items) of [object](#coordinatorreposdeploychecks) |  | Checks asked in order before the host lock and again under it; the first that does not pass holds the deploy. Exit 0 lets it go, 75 makes it wait, 2 refuses it; anything else, or no answer within checkTimeoutSeconds, makes it wait. |
+| `checks` | array (at most 16 items) of [object](#deliveryreposdeploychecks) |  | Checks asked in order before the host lock and again under it; the first that does not pass holds the deploy. Exit 0 lets it go, 75 makes it wait, 2 refuses it; anything else, or no answer within checkTimeoutSeconds, makes it wait. |
 | `dependencyInstall` | array (1 to 64 items) of string (at least 1 character) |  | Installs a pulled range's dependency change (package-lock.json, or package.json fields an install reads), such as npm ci --ignore-scripts: run after the pull and the dependencyCheck, before afterPull. A failed install moves the main checkout back and runs again to restore its dependencies. With dependencyGate, a dependency change deploys only when this and dependencyCheck are set. |
 | `afterPull` | array (at most 16 items) of array (1 to 64 items) of string (at least 1 character) |  | Run in order after the pull, before command; one that fails ends the deploy before its command runs. |
 | `command` (required) | array (1 to 64 items) of string (at least 1 character) |  | Deploys what the pull brought: exit 0 deployed (a stdout line no-deploy: nothing needed deploying), else failed. Its last stdout line is the ledger note. |
 
-## `coordinator.repos.*.deploy.checks[]`
+## `delivery.repos.*.deploy.checks[]`
 
 Checks asked in order before the host lock and again under it; the first that does not pass holds the deploy. Exit 0 lets it go, 75 makes it wait, 2 refuses it; anything else, or no answer within checkTimeoutSeconds, makes it wait.
 
@@ -335,7 +335,7 @@ Checks asked in order before the host lock and again under it; the first that do
 | `name` (required) | string (matching `^[a-z0-9][a-z0-9._-]*$`) |  | Names the check in a wait or refusal. |
 | `command` (required) | array (1 to 64 items) of string (at least 1 character) |  | The check: a program and its arguments. |
 
-## `coordinator.heavy`
+## `delivery.queue`
 
 The host lock and the limits of one heavy step.
 
@@ -350,7 +350,7 @@ The host lock and the limits of one heavy step.
 | `memoryFloorMb` | integer (0 to 1048576) | `4096` | A small step (heavy --small) shares the host only while it keeps this many MB free besides those held for the small steps. |
 | `smallReserveMb` | integer (0 to 1048576) | `2048` | The MB held for a small step with no ledger record of its peak yet. |
 
-## `coordinator.claims`
+## `delivery.freezes`
 
 Quiet claims (teamrig claim), which hold deploys of their targets while a session measures them.
 
@@ -358,7 +358,7 @@ Quiet claims (teamrig claim), which hold deploys of their targets while a sessio
 | --- | --- | --- | --- |
 | `maxMinutes` | integer (1 to 1440) | `120` | A claim lasts at most this many minutes. |
 
-## `coordinator.windows`
+## `delivery.stablePeriods`
 
 teamrig windows: when a measurement of a deploy target is clean, between the deploys and heavy steps that disturb it.
 
@@ -369,23 +369,23 @@ teamrig windows: when a measurement of a deploy target is clean, between the dep
 | `assumedDeployMinutes` | integer (0 to 1440) | `20` | How long a deploy is taken to have run before its ledger.md line when the ledger has no record of its start. |
 | `minMinutes` | integer (1 to 1440) | `15` | The shortest clean window worth listing. |
 
-## `coordinator.wait`
+## `delivery.wait`
 
-How a coordinator step waits.
+How a delivery step waits.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `pollSeconds` | integer (1 to 600) | `30` | A waiting step looks again after this many seconds; the first in line for the host lock every 2 at most. |
 | `maxMinutes` | integer (0 to 1440) | `60` | A deploy step (teamrig merge, deploy) waits this many minutes at most for quiet claims and the host lock, then is refused; a wait in a line for the lock that keeps moving goes on past them. |
 
-## `coordinator.schedule`
+## `delivery.schedule`
 
 When heavy steps and deploys may start on the host.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `resetBlackoutHours` | integer (1 to 48) |  | No deploy (teamrig merge) starts from this many hours before the weekly token reset until the reset. Unset: no blackout. |
-| `heavyCutoffUtc` | string (matching `^([01]\d\|2[0-3]):[0-5]\d$`) |  | No heavy step starts on the host after this UTC time until midnight. |
+| `queueCutoffUtc` | string (matching `^([01]\d\|2[0-3]):[0-5]\d$`) |  | No heavy step starts on the host after this UTC time until midnight. |
 
 ## `budget`
 
@@ -403,7 +403,7 @@ The weekly token budget: the pace line the team is measured against and each ses
 | `reservePct` | number (0 to 50) | `0.5` | Kept back for incidents until shortly before the reset; targetPct plus reservePct is at most 100. |
 | `paceEndHoursBeforeReset` | number (0 to 48) | `1` | The pace line reaches targetPct this many hours before the reset. |
 | `sessions` | map from [session name](#shared-types) to [object](#budgetsessions) | `{}` | Each session's weight in the split of the team's daily budget, by id: its part is the budget × share × its queued work / the sum over the sessions, recomputed at every reading. A session not listed has a share of 1. |
-| `pauseByPriority` | boolean | `false` | On a short day, when what is left of the week gives less than the pace line plans for the day, fund the team's sessions' queued work in priority order (p0 first, idle sessions last) and pause the sessions none of it reaches, so the top work keeps its pace. The lead, the coordinator owner held in the team and lifted sessions are never paused. Off: no session of the team is paused. |
+| `pauseByPriority` | boolean | `false` | On a short day, when what is left of the week gives less than the pace line plans for the day, fund the team's sessions' queued work in priority order (p0 first, idle sessions last) and pause the sessions none of it reaches, so the top work keeps its pace. The lead, the delivery owner held in the team and lifted sessions are never paused. Off: no session of the team is paused. |
 | `warnAtPct` | array (at most 8 items) of number (1 to 1000) | `[80,100]` | The live warning shows a line as a session passes each of these % of its daily budget. |
 | `paceTolerancePct` | number (0 to 10) | `0.5` | The team is ahead of its pace line once its used % is more than this many points above it. |
 | `overAction` | one of `"warn"`, `"ask-lead"`, `"ask"`, `"block"` | `"warn"` | Past a session's daily budget: warn shows the lines only; ask-lead also writes the lead an inbox line; ask also asks the person before a helper launch; block refuses helper launches. |
@@ -568,12 +568,12 @@ How teamrig open starts a session in a new terminal tab.
 | --- | --- | --- | --- |
 | `terminal` | one of `"auto"`, `"tmux"`, `"windows-terminal"`, `"macos-terminal"`, `"gnome-terminal"`, `"konsole"`, `"x-terminal-emulator"`, `"print"` | `"auto"` | The terminal to open the tab in. auto takes tmux inside tmux, else Windows Terminal on Windows, Terminal on macOS, or the first of gnome-terminal, konsole and x-terminal-emulator on Linux; print opens nothing and prints the command to run. teamrig open --terminal wins over it. |
 | `teamWindow` | boolean | `false` | Opens each tab of the team's sessions (teamrig open, a meeting start, a refresh restart, the idle pass's reopen and a restore after a reboot) in a Windows Terminal window of the team's own, named teamrig-\<team>, made when none is open, so each team's tabs stay apart from other teams'. Off opens them in the most recent window. Other terminals open as before. |
-| `headroom` | [object](#openheadroom) |  | The room teamrig open and teamrig hire --yes need on the host before they add a session: free memory over coordinator.heavy.memoryFloorMb with the session, and the commit charge within commitMaxPct. The lead opens whatever the room. |
-| `idle` | [object](#openidle) |  | The idle pass: it would close a session the wake check would not wake once it has been quiet open.headroom.closeIdleMinutes, and reopen it when the wake check would wake it. The lead and the coordinator owner are never closed. |
+| `headroom` | [object](#openheadroom) |  | The room teamrig open and teamrig hire --yes need on the host before they add a session: free memory over delivery.queue.memoryFloorMb with the session, and the commit charge within commitMaxPct. The lead opens whatever the room. |
+| `idle` | [object](#openidle) |  | The idle pass: it would close a session the wake check would not wake once it has been quiet open.headroom.closeIdleMinutes, and reopen it when the wake check would wake it. The lead and the delivery owner are never closed. |
 
 ## `open.headroom`
 
-The room teamrig open and teamrig hire --yes need on the host before they add a session: free memory over coordinator.heavy.memoryFloorMb with the session, and the commit charge within commitMaxPct. The lead opens whatever the room.
+The room teamrig open and teamrig hire --yes need on the host before they add a session: free memory over delivery.queue.memoryFloorMb with the session, and the commit charge within commitMaxPct. The lead opens whatever the room.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
@@ -583,12 +583,12 @@ The room teamrig open and teamrig hire --yes need on the host before they add a 
 
 ## `open.idle`
 
-The idle pass: it would close a session the wake check would not wake once it has been quiet open.headroom.closeIdleMinutes, and reopen it when the wake check would wake it. The lead and the coordinator owner are never closed.
+The idle pass: it would close a session the wake check would not wake once it has been quiet open.headroom.closeIdleMinutes, and reopen it when the wake check would wake it. The lead and the delivery owner are never closed.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `mode` | one of `"off"`, `"dry-run"`, `"on"` | `"on"` | off runs no pass; dry-run runs it and logs each close or reopen it would make, with its reason, and makes none; on, the default, also starts each of those closes and reopens, hidden, and logs its outcome. |
-| `keepOpen` | array of [session name](#shared-types) | `[]` | Sessions the idle pass and teamrig close never close for being quiet, on top of the lead and the coordinator owner. |
+| `keepOpen` | array of [session name](#shared-types) | `[]` | Sessions the idle pass and teamrig close never close for being quiet, on top of the lead and the delivery owner. |
 
 ## `statusLine`
 
@@ -670,7 +670,7 @@ Folders moved from their defaults; a relative path is resolved against the team'
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
-| `state` | string (at least 1 character) |  | The team's state folder: the task list's log, the inboxes, the coordinator's ledger and the logs. Unset: state in the team's folder. |
+| `state` | string (at least 1 character) |  | The team's state folder: the task list's log, the inboxes, the delivery ledger and the logs. Unset: state in the team's folder. |
 | `inbox` | string (at least 1 character) |  | The folder of the sessions' inbox files. Unset: inbox in the state folder. |
 | `skills` | string (at least 1 character) |  | The Claude Code skills folder teamrig check and doctor read. Unset: skills in Claude Code's folder ($CLAUDE\_CONFIG\_DIR, else \~/.claude). |
 

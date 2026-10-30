@@ -4,7 +4,7 @@ Many sessions on one host each build, run tests and deploy whenever their change
 suites starve each other of memory, a deploy lands in the middle of another session's measurement, and each session
 ships its own way. teamrig's deploy coordinator puts these steps in one line: heavy steps take turns under a host
 lock, every branch merges and deploys the same checked way, and each step goes to a ledger, so a session can find
-the stretches no change touched. The `coordinator` keys in the [team config](../configuration.md) set it.
+the stretches no change touched. The `delivery` keys in the [team config](../configuration.md) set it.
 
 - [One host lock](#one-host-lock)
 - [Merging a branch](#merging-a-branch)
@@ -35,10 +35,10 @@ DONE exit 0
 ```
 
 Waiting steps take the lock in arrival order, each told its place in line. A step is refused once its line has not
-moved for `coordinator.heavy.waitMinutes` (60), and one that runs is killed, with every process it started, after
-`coordinator.heavy.maxRunMinutes` (45; `--max-minutes` for one step). A test run wrapped in `teamrig test`, as
+moved for `delivery.queue.waitMinutes` (60), and one that runs is killed, with every process it started, after
+`delivery.queue.maxRunMinutes` (45; `--max-minutes` for one step). A test run wrapped in `teamrig test`, as
 above, gets both the lock and the short summary. The lock is `host.lock` in the kit home, one for every team on the
-host, unless `coordinator.heavy.lockPath` names another; a lock past `lockTtlMinutes` (150), or whose process is
+host, unless `delivery.queue.lockPath` names another; a lock past `lockTtlMinutes` (150), or whose process is
 gone, is taken over.
 
 A step runs at below-normal CPU priority (nice 10 on POSIX), and every process it starts inherits it, as do a merge's
@@ -48,7 +48,7 @@ so a build on a busy host no longer freezes your screen.
 A small step, such as a spec run or a lint, runs with `--small`: it shares the host with other small steps instead
 of taking the lock: at once when no other small step runs, else while the host's free memory, less what the running
 ones hold, leaves
-`coordinator.heavy.memoryFloorMb` (4096) plus its own. A step's own is the most its process tree held in its latest
+`delivery.queue.memoryFloorMb` (4096) plus its own. A step's own is the most its process tree held in its latest
 20 runs under the same session and `--what`, plus a quarter, or `smallReserveMb` (2048) before it has a run. A small
 step is killed after `smallMaxRunMinutes` (10), since a hung one holds back every step waiting for the lock. A step
 that takes the lock waits for the small steps to end, so builds, merges, deploys and full suites still run alone.
@@ -61,7 +61,7 @@ tree is recorded, and a push of the same tree with the same command line reuses 
 checks waited over a minute for the lock, it declines the push once they pass, since its connection may have closed:
 push again, and it reuses their pass.
 
-Each step's start and end go to the ledger, `ledger.jsonl` in `coordinator.dir` (by default `deploys` in the team's
+Each step's start and end go to the ledger, `ledger.jsonl` in `delivery.dir` (by default `deploys` in the team's
 state folder), with how long it waited, the most memory its processes held at once and the least free memory the
 host had.
 
@@ -99,25 +99,25 @@ DONE pushed 9a0b1c2d..4f1c2a9e to main; cloud-api deploy on push
 ```
 
 It is refused before any change in a detached HEAD, with uncommitted changes, on the default branch itself and for a
-branch with nothing new. Otherwise it waits up to `coordinator.wait.maxMinutes` (60) for the claims and the lock
+branch with nothing new. Otherwise it waits up to `delivery.wait.maxMinutes` (60) for the claims and the lock
 (longer while its line moves), fetches, rebases and pushes, the push a heavy step that runs the pre-push hook. When
 origin moved meanwhile, it rebases and pushes again, 3 times in all. Once merged, it deletes the branch on origin and
 here (`--keep-remote` and `--no-delete-local` keep them) and prints the `teamrig worktree remove` that ends the
 worktree. Exit 0 merged, 1 failed with the branch kept, 2 when the dependency check refused it, 75 when the merge
 command waits.
 
-Each repository is an entry of `coordinator.repos`, found by its main checkout; one not listed gets a NOTE and none
+Each repository is an entry of `delivery.repos`, found by its main checkout; one not listed gets a NOTE and none
 of these:
 
 ```json
-"coordinator": {
+"delivery": {
   "repos": {
     "api": {
       "mainCheckout": "../api",
       "deploysOnPush": ["cloud-api"],
       "dependencyGate": true,
       "dependencyCheck": ["node", "tools/check-change.ts"],
-      "followMainCheckout": true,
+      "updateMainCheckout": true,
       "merge": { "command": ["node", "tools/merge.ts"] }
     }
   }
@@ -129,7 +129,7 @@ of these:
 - `dependencyGate`: refuses a branch that changes `package-lock.json`, or a `package.json` field an install reads,
   since merging it changes, unreviewed, the `node_modules` every worktree links to. `dependencyCheck` is the check
   that clears one, run under the lock after each rebase and before the push.
-- `followMainCheckout`: after a merge from a worktree, fast-forwards the main checkout too, when it is on the
+- `updateMainCheckout`: after a merge from a worktree, fast-forwards the main checkout too, when it is on the
   default branch with no uncommitted changes.
 - `merge`: a command run in place of the push, for a repository that merges through pull requests. Exit 0: it merged,
   and `teamrig merge` confirms it on origin. 75: the merge waits, say on the pull request's checks or review; the
@@ -149,15 +149,15 @@ Under `pushGuard.pushToProtected: gated`, `teamrig merge` checks five self-merge
   count;
 - size: no commit is over the size rule without a `Large-commit:` line;
 - tests: a change of source (`commits.sourcePatterns`) changes a test too;
-- review: the repo's `coordinator.repos` entry sets `reviewGate` (a repo not listed there always misses it).
+- review: the repo's `delivery.repos` entry sets `reviewGate` (a repo not listed there always misses it).
 
 A change that holds every gate merges with no approval. A task miss is refused and writes no hold: name the branch
-after your task first. Any other miss writes a gate hold (`gate-holds/` in `coordinator.dir`) for the session's
+after your task first. Any other miss writes a gate hold (`gate-holds/` in `delivery.dir`) for the session's
 nearest leader, or for `roles.securityReviewer` on the lead's own change, and is refused with the `teamrig set`
 command that asks. The reviewer answers with `teamrig approve`, and `teamrig merge` again merges it, but only for the
 gates the hold named. A hold binds the base, the head and the tree, so a new commit or any rebase onto a moved
 default branch, the push's own retry included, needs a new hold. Each merge, with an approval or not, is a line in
-`merges.jsonl` in `coordinator.dir`, and the meeting agenda lists those merged with no approval (`MERGES`).
+`merges.jsonl` in `delivery.dir`, and the meeting agenda lists those merged with no approval (`MERGES`).
 
 ```mermaid
 flowchart TD
@@ -176,7 +176,7 @@ flowchart TD
 at a time: checked, pulled under the host lock, deployed and recorded. A repository gets a deploy block:
 
 ```json
-"coordinator": {
+"delivery": {
   "repos": {
     "pipeline": {
       "mainCheckout": "../pipeline",
@@ -194,7 +194,7 @@ at a time: checked, pulled under the host lock, deployed and recorded. A reposit
 
 - `targets`: what the deploy restarts; quiet claims on them hold it.
 - `checks`: up to 16 checks your own tools answer, such as "is a batch run open?". Exit 0 lets the deploy go, 75 holds
-  it and 2 refuses it; anything else, or no answer within `coordinator.checkTimeoutSeconds` (20), holds it, its last
+  it and 2 refuses it; anything else, or no answer within `delivery.checkTimeoutSeconds` (20), holds it, its last
   line the reason.
 - `dependencyInstall`: the install a pulled dependency change needs, run right after the pull. A failed install
   moves the main checkout back and installs again, so the `node_modules` every worktree links to matches it.
@@ -220,7 +220,7 @@ DONE 4f1c2a9e..9a0b1c2d deployed: deployed api, workers on sha-9a0b1c2d
 deploy is refused before any check or lock when the main checkout is off its default branch, has uncommitted changes or
 holds commits origin lacks. With nothing pending it is DONE and runs nothing. Otherwise it waits for the claims, the
 checks and the lock, reads origin again under the lock and asks the checks again, then pulls to the commit they judged
-and runs the dependency steps a dependency change needs, the afterPull commands and the deploy command, each killed after `coordinator.heavy.maxRunMinutes`, all
+and runs the dependency steps a dependency change needs, the afterPull commands and the deploy command, each killed after `delivery.queue.maxRunMinutes`, all
 one heavy step in the ledger. A failed deploy is recorded too, and its owners fix forward or roll back; the pull stays,
 so run the deploy command by hand once it is fixed.
 
@@ -237,13 +237,13 @@ release it first.
 
 ## When a step holds back
 
-- **The heavy cutoff:** no heavy step, merge or deploy starts from `coordinator.schedule.heavyCutoffUtc` until
+- **The heavy cutoff:** no heavy step, merge or deploy starts from `delivery.schedule.queueCutoffUtc` until
   midnight UTC, nor runs a heavy step whose wait for the lock ran past it; set it to keep a nightly stretch free of
   builds.
-- **The reset blackout:** no merge or deploy starts in the `coordinator.schedule.resetBlackoutHours` before the
+- **The reset blackout:** no merge or deploy starts in the `delivery.schedule.resetBlackoutHours` before the
   weekly token reset, the one the status line last reported, else the one `budget.reset` sets; unset, there is none.
 - **A wait that ran out:** a heavy step is refused once its line has not moved for `waitMinutes`, a merge or a
-  deploy after `coordinator.wait.maxMinutes`, unless its line keeps moving.
+  deploy after `delivery.wait.maxMinutes`, unless its line keeps moving.
 - **A step taken out of line:** `teamrig withdraw` takes a session's steps still waiting for the lock out of the line,
   so a re-ordered or abandoned step never runs:
 
@@ -272,7 +272,7 @@ teamrig claim --session api --targets api,workers --metric "p95 latency" --why "
 CLAIMED api, workers until 2030-01-08 12:45 IST
 ```
 
-A claim lasts at most `coordinator.claims.maxMinutes` (120), one per session, on targets a repository deploys. It
+A claim lasts at most `delivery.freezes.maxMinutes` (120), one per session, on targets a repository deploys. It
 ends at its time, or early with `teamrig release`. Claims are shared files, so a secret in the metric or reason is
 refused. Nothing else holds a deploy: a measurement without a claim adapts to the deploys.
 
@@ -291,7 +291,7 @@ api (settle 30m): 2 clean windows of at least 15m
 ```
 
 A deploy disturbs its repository's targets, or only those a `deploy --targets` run named, from its start until they
-settled: `coordinator.windows.settleMinutes` (30), a target's own in `targetSettleMinutes`, or `--settle` for one
+settled: `delivery.stablePeriods.settleMinutes` (30), a target's own in `targetSettleMinutes`, or `--settle` for one
 run. A deploy line a session wrote by hand in `ledger.md` counts too; one with no record of its start is taken to
 have run for `assumedDeployMinutes` (20) before its line. A heavy step disturbs the whole host. A window shorter than `minMinutes` (15) is left out.
 

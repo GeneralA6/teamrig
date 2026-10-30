@@ -7,11 +7,11 @@ import { LEDGER_FILE, LEDGER_MD_FILE } from './ledger.ts';
 
 /** The host lock's file name in the kit home, where every team on the host shares it. */
 export const HOST_LOCK_FILE = 'host.lock';
-/** The review holds' folder in `coordinator.dir`. */
+/** The review holds' folder in `delivery.dir`. */
 export const REVIEW_HOLDS_DIR = 'review-holds';
-/** The gate holds' folder in `coordinator.dir`. */
+/** The gate holds' folder in `delivery.dir`. */
 export const GATE_HOLDS_DIR = 'gate-holds';
-/** The merges log's file name in `coordinator.dir`. */
+/** The merges log's file name in `delivery.dir`. */
 export const MERGES_FILE = 'merges.jsonl';
 
 /** The files the coordinator keeps. */
@@ -37,15 +37,15 @@ export function teamPlace(paths: Pick<TeamPaths, 'home'>, path: string): string 
   return isAbsolute(path) ? path : join(paths.home, path);
 }
 
-/** The coordinator's folder: `coordinator.dir`, a relative one in the team's folder; unset, `<state>/deploys`. */
+/** The coordinator's folder: `delivery.dir`, a relative one in the team's folder; unset, `<state>/deploys`. */
 export function coordinatorDirOf(config: Pick<CoordinatorConfig, 'dir'>, paths: Pick<TeamPaths, 'home' | 'state'>): string {
   return config.dir === undefined ? join(paths.state, 'deploys') : teamPlace(paths, config.dir);
 }
 
 /**
  * Where the coordinator's files are: the ledgers, the quiet claims and their lock, the pending merges, the review and
- * gate holds and the merges log in `coordinator.dir` (default `<state>/deploys`); the host lock at
- * `coordinator.heavy.lockPath` (default the kit home's, one for the host). A relative path is in the team's folder.
+ * gate holds and the merges log in `delivery.dir` (default `<state>/deploys`); the host lock at
+ * `delivery.queue.lockPath` (default the kit home's, one for the host). A relative path is in the team's folder.
  */
 export function coordinatorPlaces(config: CoordinatorConfig, paths: TeamPaths): CoordinatorPlaces {
   const inTeam = (path: string): string => teamPlace(paths, path);
@@ -56,7 +56,7 @@ export function coordinatorPlaces(config: CoordinatorConfig, paths: TeamPaths): 
     claims: join(dir, CLAIMS_FILE),
     claimsMd: join(dir, CLAIMS_MD_FILE),
     claimsLock: join(dir, CLAIMS_LOCK_FILE),
-    hostLock: config.heavy.lockPath === undefined ? join(paths.kitHome, HOST_LOCK_FILE) : inTeam(config.heavy.lockPath),
+    hostLock: config.queue.lockPath === undefined ? join(paths.kitHome, HOST_LOCK_FILE) : inTeam(config.queue.lockPath),
     pendingMerges: join(dir, 'pending-merges'),
     reviewHolds: join(dir, REVIEW_HOLDS_DIR),
     gateHolds: join(dir, GATE_HOLDS_DIR),

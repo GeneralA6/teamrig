@@ -17,10 +17,10 @@ export interface AllowScopeInput {
 /**
  * The Claude Code settings files a team's sessions run under, for `permissions trim` and its flag in doctor and `check`
  * (which `start` shows the lead): the person's user settings, the project folder and each repository the coordinator
- * merges into (`coordinator.repos`), each with the worktrees Claude Code made in it.
+ * merges into (`delivery.repos`), each with the worktrees Claude Code made in it.
  */
 export async function teamSettingsScope(runtime: CliRuntime, { paths, config, project }: AllowScopeInput): Promise<SettingsFile[]> {
-  const repos = Object.values(config.coordinator.repos).map((repo) => teamPlace(paths, repo.mainCheckout));
+  const repos = Object.values(config.delivery.repos).map((repo) => teamPlace(paths, repo.mainCheckout));
   return settingsScope(runtime.files, claudeConfigDir(runtime.env, runtime.userHome), [project, ...repos], runtime.platform);
 }
 
