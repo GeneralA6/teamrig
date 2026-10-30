@@ -42,21 +42,26 @@ describe('refusedTool', () => {
 });
 
 describe('promptAnswerOf', () => {
+  it('runs a sanctioned route first, before the read-only check and any rerun form', () => {
+    assert.deepEqual(promptAnswerOf('Bash', bashRequest('teamrig merge --session alpha'), WRITES, 'merge'), { kind: 'route', route: 'merge' });
+    assert.deepEqual(promptAnswerOf('Bash', bashRequest('cd /w && git status'), READS, 'merge'), { kind: 'route', route: 'merge' });
+  });
+
   it('runs a line the read-only check proves reads, before any rerun form', () => {
-    assert.deepEqual(promptAnswerOf('Bash', bashRequest('cat f'), READS), { kind: 'readonly' });
-    assert.deepEqual(promptAnswerOf('Bash', bashRequest('cd /w && git status'), READS), { kind: 'readonly' });
+    assert.deepEqual(promptAnswerOf('Bash', bashRequest('cat f'), READS, undefined), { kind: 'readonly' });
+    assert.deepEqual(promptAnswerOf('Bash', bashRequest('cd /w && git status'), READS, undefined), { kind: 'readonly' });
   });
 
   it('refuses a line with a rerun form quoting it, and anything else plainly', () => {
-    assert.deepEqual(promptAnswerOf('Bash', bashRequest('cd /w && git status'), WRITES), { kind: 'rerun', form: 'git -C /w status' });
-    assert.deepEqual(promptAnswerOf('Bash', bashRequest('rm -rf x'), WRITES), { kind: 'refused' });
-    assert.deepEqual(promptAnswerOf('Edit', request('Edit', { tool_input: { file_path: '/w/a.ts' } }), WRITES), { kind: 'refused' });
+    assert.deepEqual(promptAnswerOf('Bash', bashRequest('cd /w && git status'), WRITES, undefined), { kind: 'rerun', form: 'git -C /w status' });
+    assert.deepEqual(promptAnswerOf('Bash', bashRequest('rm -rf x'), WRITES, undefined), { kind: 'refused' });
+    assert.deepEqual(promptAnswerOf('Edit', request('Edit', { tool_input: { file_path: '/w/a.ts' } }), WRITES, undefined), { kind: 'refused' });
   });
 
   it('hands the check the whole call', () => {
     const seen: JsonRecord[] = [];
     const call = bashRequest('cat f');
-    promptAnswerOf('Bash', call, (each) => seen.push(each) > 0);
+    promptAnswerOf('Bash', call, (each) => seen.push(each) > 0, undefined);
     assert.deepEqual(seen, [call]);
   });
 });
@@ -70,7 +75,8 @@ describe('promptAnswerOutput', () => {
     return hook?.['decision'];
   }
 
-  it('allows a read-only line, which runs it with no prompt', () => {
+  it('allows a sanctioned route and a read-only line, which runs it with no prompt', () => {
+    assert.deepEqual(decisionOf(promptAnswerOutput('Bash', { kind: 'route', route: 'merge' })), { behavior: 'allow' });
     assert.deepEqual(decisionOf(promptAnswerOutput('Bash', { kind: 'readonly' })), { behavior: 'allow' });
   });
 
@@ -90,6 +96,13 @@ describe('promptAnswerRecord', () => {
   it('keeps who answered, the tool, the answer and the command', () => {
     const record = promptAnswerRecord({ at: AT, session: 'alpha', claudeSession: 'c1', tool: 'Bash', answer: { kind: 'rerun', form: 'git -C /w status' }, payload: bashRequest('cd /w && git status') }, SCANNER);
     assert.deepEqual(record, { v: 1, at: '2030-01-08T10:00:00.000Z', session: 'alpha', claudeSession: 'c1', tool: 'Bash', answer: 'rerun', command: 'cd /w && git status' });
+  });
+
+  it("keeps a route's id and never its command, whose commit message is free text", () => {
+    const message = join('ship ', 'ghp', '_', 'a1'.repeat(18), ' private words');
+    const record = promptAnswerRecord({ at: AT, session: 'alpha', claudeSession: 'c1', tool: 'Bash', answer: { kind: 'route', route: 'git-commit' }, payload: bashRequest(`git commit -s -m "${message}"`) }, SCANNER);
+    assert.deepEqual(record, { v: 1, at: '2030-01-08T10:00:00.000Z', session: 'alpha', claudeSession: 'c1', tool: 'Bash', answer: 'route', route: 'git-commit', command: null });
+    assert.doesNotMatch(JSON.stringify(record), /private words|ghp_/);
   });
 
   it(`keeps only the first ${LOGGED_COMMAND_CHARS} characters of the command and none of the rest of the input`, () => {

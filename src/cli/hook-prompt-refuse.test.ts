@@ -2,10 +2,11 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { isRecord, recordField, type JsonRecord } from '../core/guards.ts';
+import type { Env } from '../core/home.ts';
 import { toJsonlLine } from '../core/jsonl.ts';
 import { ASK_REFUSED_NOTE } from '../hooks/permission.ts';
 import { rerunReason } from '../hooks/prompt-refuse.ts';
-import { APP, CLAUDE_SESSION, CliHarness, CONFIG_PATH, TEAM, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
+import { APP, CLAUDE_SESSION, CliHarness, CONFIG_PATH, TEAM, TEAM_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { EXIT } from './runtime.ts';
 
@@ -54,6 +55,51 @@ describe('hook prompt-refuse', () => {
     assert.deepEqual(permissionOf(await kit.run(HOOK, { stdin: bashRequest('cd /w && npm test') })), { behavior: 'deny', message: rerunReason('Bash', 'env -C /w npm test') });
     assert.deepEqual(permissionOf(await kit.run(HOOK, { stdin: bashRequest('rm -rf x') })), REFUSED('Bash'));
     assert.deepEqual(permissionOf(await kit.run(HOOK, { stdin: request('Write', { tool_input: { file_path: '/w/a', content: 'x' } }) })), REFUSED('Write'));
+  });
+
+  it("runs a sanctioned route's line, logging only its route, never its command", async () => {
+    const kit = new CliHarness(ASKS_OFF);
+    assert.deepEqual(permissionOf(await kit.run(HOOK, { stdin: bashRequest('teamrig merge --session alpha') })), { behavior: 'allow' });
+    assert.deepEqual(await answersOf(kit), [
+      { v: 1, at: '2030-01-08T10:00:00.000Z', session: null, claudeSession: CLAUDE_SESSION, tool: 'Bash', answer: 'route', route: 'merge', command: null },
+    ]);
+  });
+
+  it('runs a push of the caller\'s own task branch to a remote of the repository, and refuses it for anyone else', async () => {
+    const kit = new CliHarness(ASKS_OFF);
+    await kit.run(['add', '--title', 'Ship the CLI', '--description', 'what and why', '--priority', 'p1', '--session', 'alpha']);
+    const git: RunOptions['git'] = {
+      branch: () => 'dev',
+      head: () => undefined,
+      pushTarget: () => undefined,
+      config: (_dir, key) => (key === 'remote.origin.url' ? { kind: 'set', value: 'u' } : { kind: 'unset' }),
+    };
+    const push = (command: string, env: Env): Promise<CliResult> => kit.run(HOOK, { stdin: bashRequest(command), env, git });
+    assert.deepEqual(permissionOf(await push('git push -u origin t1-x', { TEAMRIG_SESSION: 'alpha' })), { behavior: 'allow' });
+    assert.deepEqual(permissionOf(await push('git push -u origin t1-x', { TEAMRIG_SESSION: 'bravo' })), REFUSED('Bash'));
+    assert.deepEqual(permissionOf(await push('git push -u origin t1-x', {})), REFUSED('Bash'));
+    assert.deepEqual(permissionOf(await push('git push -u upstream t1-x', { TEAMRIG_SESSION: 'alpha' })), REFUSED('Bash'));
+  });
+
+  it("refuses a route's line whose lookup fails, as a line it does not know", async () => {
+    const kit = new CliHarness(ASKS_OFF);
+    await kit.run(['add', '--title', 'Ship the CLI', '--description', 'what and why', '--priority', 'p1', '--session', 'alpha']);
+    const git: RunOptions['git'] = {
+      branch: () => 'dev',
+      head: () => undefined,
+      pushTarget: () => undefined,
+      config: () => {
+        throw new Error('git is gone');
+      },
+    };
+    const result = await kit.run(HOOK, { stdin: bashRequest('git push -u origin t1-x'), env: { TEAMRIG_SESSION: 'alpha' }, git });
+    assert.deepEqual(permissionOf(result), REFUSED('Bash'));
+  });
+
+  it("refuses a route's line from another shell or through a program it does not place", async () => {
+    const kit = new CliHarness(ASKS_OFF);
+    assert.deepEqual(permissionOf(await kit.run(HOOK, { stdin: request('PowerShell', { tool_input: { command: 'teamrig merge --session alpha' } }) })), REFUSED('PowerShell'));
+    assert.deepEqual(permissionOf(await kit.run(HOOK, { stdin: bashRequest('./teamrig merge --session alpha') })), REFUSED('Bash'));
   });
 
   it('refuses a line that only reads but would print a secret', async () => {
