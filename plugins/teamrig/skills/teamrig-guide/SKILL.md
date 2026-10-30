@@ -145,7 +145,7 @@ teamrig prints `10-19 16:40 IDT`, and core rule 3 names the zone and its offset 
   team's clock; add ` UTC` to give one in UTC.
 - Use UTC only where it is the subject: a config key kept in UTC (`queueCutoffUtc`, `quietHours`), a stamp quoted
   from a log or a file (stored stamps stay ISO UTC, ending `Z`), a protocol or format that is UTC.
-- Name a time that repeats by what it is (the weekly reset, the heavy cutoff) and its config key: a clock time
+- Name a time that repeats by what it is (the weekly reset, the queue cutoff) and its config key: a clock time
   moves when daylight saving starts or ends.
 
 ## How to read what teamrig prints

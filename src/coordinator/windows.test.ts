@@ -52,11 +52,11 @@ describe('disruptions', () => {
     assert.deepEqual(disruptions(inputs([line('10:00', 'sec', 'pipeline')], [some])), [{ from: at('09:55'), to: at('10:30'), targets: ['workers'] }]);
   });
 
-  it('reads a heavy step as the whole host, its end record winning', () => {
+  it('reads a queued step as the whole host, its end record winning', () => {
     assert.deepEqual(disruptions(inputs([], [heavy('h1', '09:00', null), heavy('h1', '09:00', '09:20'), heavy('h1', '09:00', null)])), [{ from: at('09:00'), to: at('09:20'), targets: 'host' }]);
   });
 
-  it('ends an unfinished heavy step at the next one’s start, now or its lock’s time to live, whichever comes first', () => {
+  it('ends an unfinished queued step at the next one’s start, now or its lock’s time to live, whichever comes first', () => {
     const records = [heavy('a', '09:00', null), heavy('b', '09:30', '09:40'), heavy('c', '15:00', null), heavy('d', '17:00', null)];
     assert.deepEqual(
       disruptions(inputs([], records)).map((found) => [found.from, found.to]),

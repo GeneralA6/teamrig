@@ -255,7 +255,7 @@ function runningLine(running: number): string {
  * The ask to write the handover. It asks only for what the register lacks: the fresh start lists the session's
  * tasks live from the register (hooks/live-tasks.ts), so a status restated here could only go stale. Within a turn
  * it ends the turn after `refresh --ready`, since the fresh start comes only once the turn has ended. It never waits
- * for `running` background work (T1378): a session that runs its heavy steps in the background would reach Claude
+ * for `running` background work (T1378): a session that runs its queued steps in the background would reach Claude
  * Code's compaction unasked; only the fresh start, which would cut that work off, waits for it.
  */
 function handoverAsk(moment: AskMoment, cause: Cause, context: AskContext, running: number): string {

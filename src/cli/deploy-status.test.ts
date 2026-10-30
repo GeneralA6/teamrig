@@ -28,7 +28,7 @@ function heldBy(expiresAt: string = '2030-01-08T12:20:00.000Z'): string {
 }
 
 function otherRuns(): FakeSessionProcesses {
-  return new FakeSessionProcesses().add({ pid: OTHER, parentPid: 1, name: 'node', commandLine: 'node cli.ts heavy' });
+  return new FakeSessionProcesses().add({ pid: OTHER, parentPid: 1, name: 'node', commandLine: 'node cli.ts queue' });
 }
 
 /** A main checkout two commits behind origin. */

@@ -124,7 +124,7 @@ export const BURN_FIELDS = [
  * - `worktreeRemoves`, `missGitWorktreeRemove`: worktree removals, and those made with a plain
  *   `git worktree remove` instead of `teamrig worktree remove` (rule 16).
  * - `missAdHocFetch`: an npx, `npm exec`, `npm create` or `pnpm dlx` that fetches the package it names.
- * - `heavySteps`, `missHeavyOutside`: test runs and builds, and those not run under `teamrig heavy` or `teamrig test`.
+ * - `heavySteps`, `missHeavyOutside`: test runs and builds, and those not run under `teamrig queue` or `teamrig test`.
  */
 export const MISS_FIELDS = [
   'missCalls',

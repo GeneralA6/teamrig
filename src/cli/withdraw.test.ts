@@ -18,8 +18,8 @@ const TAB = { CLAUDE_CODE_SESSION_ID: '9f8e7d6c-1111-2222-3333-444455556666' };
 /** This process and `OTHER` run, so their tickets are live. */
 function running(): FakeSessionProcesses {
   return new FakeSessionProcesses()
-    .add({ pid: ME, parentPid: 1, name: 'node', commandLine: 'node cli.ts heavy' })
-    .add({ pid: OTHER, parentPid: 1, name: 'node', commandLine: 'node cli.ts heavy' });
+    .add({ pid: ME, parentPid: 1, name: 'node', commandLine: 'node cli.ts queue' })
+    .add({ pid: OTHER, parentPid: 1, name: 'node', commandLine: 'node cli.ts queue' });
 }
 
 /** A step of alpha's in `OTHER` waiting since `arrivedAt`, as an older teamrig queued it: it never looks for its ticket. */
@@ -127,7 +127,7 @@ describe('teamrig withdraw', () => {
     assert.deepEqual(codes, [64, 64, 64]);
   });
 
-  it('stops a heavy step waiting for the lock, which then runs and records nothing', async () => {
+  it('stops a queued step waiting for the lock, which then runs and records nothing', async () => {
     const kit = new CliHarness(TEAM);
     const steps = new FakeSteps(kit.clock);
     const held = JSON.stringify({ token: 'other', pid: OTHER, session: 'bravo', purpose: 'heavy: build web', kit: KIT_VERSION, acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z' });
@@ -139,7 +139,7 @@ describe('teamrig withdraw', () => {
         withdrew = (await kit.run(['withdraw', '--session', 'alpha', '--what', 'build api'], { sessionProcesses: running() })).stdout;
       }
     };
-    const result = await kit.run(['heavy', '--session', 'alpha', '--what', 'build api', '--', 'npm', 'run', 'build'], { steps, sessionProcesses: running(), sleep });
+    const result = await kit.run(['queue', '--session', 'alpha', '--what', 'build api', '--', 'npm', 'run', 'build'], { steps, sessionProcesses: running(), sleep });
     assert.deepEqual(withdrew, ['WITHDRAWN heavy: build api, waiting since 2030-01-08 10:00 UTC: it stops at its next look']);
     assert.deepEqual([result.code, result.stdout.at(-1), steps.ran, kit.files.get(LOCK), await kit.files.list(QUEUE)], [
       2,

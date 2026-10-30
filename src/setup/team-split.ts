@@ -45,7 +45,7 @@ type Rework = (block: JsonRecord | undefined, scope: SplitScope) => JsonRecord |
 
 /**
  * The blocks the child takes changed: one coordinator per host, so its folder, host lock and main checkouts stay the
- * parent's and two heavy steps never overlap; the budget and the idle pass hold only the moved sessions' entries, and the
+ * parent's and two queued steps never overlap; the budget and the idle pass hold only the moved sessions' entries, and the
  * budget none of the keys of the account's week, which the child reads from the parent.
  */
 const REWORKED = { delivery: sharedCoordinatorOf, budget: movedBudgetOf, open: movedOpenOf } satisfies Partial<Record<keyof KitConfig, Rework>>;

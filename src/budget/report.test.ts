@@ -500,7 +500,7 @@ describe('missLines', () => {
       row('4 register: --followups none, work left named', '1/3'),
       row('16 worktrees: plain git worktree remove', '0/2'),
       row("8 lean-calls: helpers' share of W", '20.0%'),
-      row('tests and builds outside teamrig heavy', '3/4'),
+      row('tests and builds outside teamrig queue', '3/4'),
       row('npx or dlx that fetches a package', '1'),
       row('calls read for misses', '20/20'),
       row('all calls', '20 5k'),
@@ -533,7 +533,7 @@ describe('missMatrixLines', () => {
     ]);
     assert.deepEqual(lines.slice(0, 4), [
       'Rule misses per session, misses/chances, 2026-10-13 to 2026-10-14 (UTC)',
-      row('', '4 start', '4 followups', '16 worktree', '8 helpers', 'heavy', 'npx', 'read'),
+      row('', '4 start', '4 followups', '16 worktree', '8 helpers', 'queue', 'npx', 'read'),
       row('lead', '1/1', '0/0', '0/0', '50.0%', '0/0', '0', '10/10'),
       row('alpha', '0/0', '0/0', '0/0', '0.0%', '0/2', '0', '4/8'),
     ]);

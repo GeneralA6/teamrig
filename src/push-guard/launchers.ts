@@ -13,7 +13,7 @@ interface Surroundings {
   readonly env: readonly Assignment[];
   /** Folders it starts in, in order, such as `env -C dir` or `sudo -D dir`. */
   readonly chdirs: readonly ShellWord[];
-  /** True when `teamrig heavy` or `teamrig test` starts it, so it runs under the host lock. */
+  /** True when `teamrig queue` or `teamrig test` starts it, so it runs under the host lock. */
   readonly runner: boolean;
   /** True when a PowerShell assignment takes its output, as in `$x = Get-Content f`, so it never reaches the screen. */
   readonly captured: boolean;
@@ -149,8 +149,12 @@ const START_PROCESS_PARAMETERS: ReadonlyMap<string, readonly string[]> = new Map
 const START_PROCESS_FLAGS: ReadonlySet<string> = new Set(['loaduserprofile', 'nonewwindow', 'passthru', 'wait', 'usenewenvironment']);
 /** `start` options in cmd that take the next word as their value. */
 const CMD_START_VALUED: ReadonlySet<string> = new Set(['/node', '/affinity', '/machine']);
-/** teamrig's subcommands that run the command line after their `--`: `teamrig heavy ... -- git push`. */
-const TEAMRIG_RUNNERS: ReadonlySet<string> = new Set(['heavy', 'test']);
+/**
+ * teamrig's subcommands that run the command line after their `--`: `teamrig queue ... -- git push`. `heavy`, the old
+ * name of `queue` (T1308), stays: teamrig refuses it now, but the week's transcripts the budget reads for misses still
+ * hold it, and an older teamrig on the path would still run what it wraps, so the guards keep reading that command.
+ */
+const TEAMRIG_RUNNERS: ReadonlySet<string> = new Set(['queue', 'heavy', 'test']);
 /** The shell Node's `spawn` starts with `shell: true`, which runs a teamrig runner's command given as one word. */
 const SPAWN_SHELL: ShellDialect = process.platform === 'win32' ? 'cmd' : 'bash';
 
@@ -195,7 +199,7 @@ type Step = Launch | { readonly kind: 'next'; readonly words: readonly ShellWord
  * Reads what one simple command starts, seeing through keywords (`if`, `do`, `then`), environment prefixes,
  * wrappers (`command`, `env`, `sudo`, `nohup`, `timeout`, `xargs`, `wsl`, ...), the PowerShell call operator
  * and `Start-Process`, shells handed a command line (`bash -c`, `pwsh -Command` or `-EncodedCommand`,
- * `cmd /c`, `eval`, `Invoke-Expression`) and teamrig's runners (`teamrig heavy -- ...`). One reader per command, since it collects that command's
+ * `cmd /c`, `eval`, `Invoke-Expression`) and teamrig's runners (`teamrig queue -- ...`). One reader per command, since it collects that command's
  * environment and folders.
  */
 class LaunchReader {
@@ -557,7 +561,7 @@ class LaunchReader {
   }
 
   /**
-   * `teamrig heavy` and `teamrig test` run the words after their first `--` as `commandLine` (test-run/shell.ts)
+   * `teamrig queue` and `teamrig test` run the words after their first `--` as `commandLine` (test-run/shell.ts)
    * joins them: one word as a command line for the shell `spawn` starts, several as a program and its arguments.
    * What they start is marked `runner`. Any other subcommand is teamrig itself.
    */

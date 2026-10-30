@@ -24,7 +24,7 @@ export interface CommitCharge {
   readonly limitMb: number;
 }
 
-/** The host's memory as a heavy step reads it. */
+/** The host's memory as a queued step reads it. */
 export interface MemoryProbe {
   /** The memory the host can hand out now without paging, in MB (free plus standby on Windows). */
   freeMb(): number;
@@ -47,7 +47,7 @@ export interface MemoryWatch {
   stop(): Promise<MemoryPeaks>;
 }
 
-/** The host's memory: its probe, and a watch of one process tree while a heavy step runs. */
+/** The host's memory: its probe, and a watch of one process tree while a queued step runs. */
 export interface HostMemory extends MemoryProbe {
   /** Samples the tree of `root` and the host's free memory now and every `intervalMs` until stopped. */
   watch(root: number, intervalMs: number): MemoryWatch;

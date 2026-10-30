@@ -672,7 +672,7 @@ export interface BudgetConfig {
 }
 
 export interface ScheduleConfig {
-  /** No heavy step starts on the host after this UTC time (HH:MM) until midnight. */
+  /** No queued step starts on the host after this UTC time (HH:MM) until midnight. */
   readonly queueCutoffUtc?: string;
   /**
    * No deploy (`teamrig merge`) starts from this many hours before the weekly token reset until the reset, so
@@ -681,31 +681,31 @@ export interface ScheduleConfig {
   readonly resetBlackoutHours?: number;
 }
 
-/** `teamrig heavy`: one heavy step on the host at a time, each under the host lock. */
+/** `teamrig queue`: one queued step on the host at a time, each under the host lock. */
 export interface HeavyConfig {
   /**
-   * The host lock file every heavy step takes; a relative path is in the team's folder. Unset: `<kit home>/host.lock`,
+   * The host lock file every queued step takes; a relative path is in the team's folder. Unset: `<kit home>/host.lock`,
    * one lock for every team on the host.
    */
   readonly lockPath?: string;
   /** A taken host lock lasts this many minutes; past it, another step takes it over. */
   readonly lockTtlMinutes: number;
-  /** A heavy step still running after this many minutes is killed with every process it started. */
+  /** A queued step still running after this many minutes is killed with every process it started. */
   readonly maxRunMinutes: number;
   /**
-   * A small step (`heavy --small`) still running after this many minutes is killed the same way; at most
+   * A small step (`queue --small`) still running after this many minutes is killed the same way; at most
    * maxRunMinutes. A small step shares the host beside others and holds back any step waiting for the lock, so a hung
    * one is cut short; a longer step runs without --small.
    */
   readonly smallMaxRunMinutes: number;
-  /** A heavy step is refused once its line for the host lock has not moved for this many minutes: no step ahead of it, holding the lock or sharing the host ended meanwhile. */
+  /** A queued step is refused once its line for the host lock has not moved for this many minutes: no step ahead of it, holding the lock or sharing the host ended meanwhile. */
   readonly waitMinutes: number;
   /**
-   * While a heavy step runs, its process tree's memory and the host's free memory are sampled this often, for its
+   * While a queued step runs, its process tree's memory and the host's free memory are sampled this often, for its
    * ledger record's `peakTreeMb` and `lowFreeMb`; 0 samples nothing.
    */
   readonly memorySampleSeconds: number;
-  /** A small step (`heavy --small`) shares the host only while it keeps this many MB free besides those held for the small steps. */
+  /** A small step (`queue --small`) shares the host only while it keeps this many MB free besides those held for the small steps. */
   readonly memoryFloorMb: number;
   /** The MB held for a small step with no ledger record of its peak yet. */
   readonly smallReserveMb: number;
@@ -824,7 +824,7 @@ export interface ClaimsConfig {
   readonly maxMinutes: number;
 }
 
-/** `teamrig windows`: when a measurement of a deploy target is clean, between the deploys and heavy steps that disturb it. */
+/** `teamrig windows`: when a measurement of a deploy target is clean, between the deploys and queued steps that disturb it. */
 export interface WindowsConfig {
   /** A target measures cleanly this many minutes after a deploy reached it. */
   readonly settleMinutes: number;
@@ -837,7 +837,7 @@ export interface WindowsConfig {
 }
 
 /**
- * The delivery flow: its folder, the heavy-step cutoff and the reset blackout, the host lock, how a step waits,
+ * The delivery flow: its folder, the queue cutoff and the reset blackout, the host lock, how a step waits,
  * quiet claims, clean measurement windows, and the repositories whose branches `teamrig merge` merges and `teamrig deploy` deploys.
  */
 export interface CoordinatorConfig {

@@ -1091,7 +1091,7 @@ Moves sessions of your team, with the tasks they own, into a new child team unde
 tasks that move, what crosses the new border and what blocks the split. The child keeps each moved session's name,
 launch block and sub-lead list, so no tab title changes, and a role it has no holder for names your team's holder as
 `<team>/<id>`. It starts with a copy of your team's settings, so it runs as your team does, and shares your deploy
-coordinator (its folder, host lock and main checkouts, written as absolute paths), so two teams' heavy steps never
+coordinator (its folder, host lock and main checkouts, written as absolute paths), so two teams' queued steps never
 overlap; your budget shares and idle keep-open list go with the sessions they name, and the budget keys of the
 account's week (`enabled`, `account`, `weeklyLimitW`, `subagentWeight`, `extraWPerUsd`, `reset`) are not copied: the
 child reads them from your team, so they never drift. Your GitHub import and your
@@ -2773,7 +2773,7 @@ Writes the team's lines into Claude Code's `autoMode.environment` setting on thi
 classifier takes as true when it decides whether a tool call may run without asking. There are five, each starting
 with the team's tag `[teamrig <team>] `: the protected branches and what a push to one does (from the config's
 `pushGuard` and `roles.lead`), the register commands every session runs (they write only under the team's folder),
-what `teamrig heavy` and `teamrig test` wrap (nothing is granted: the command after `--` is judged on its own),
+what `teamrig queue` and `teamrig test` wrap (nothing is granted: the command after `--` is judged on its own),
 that every session may run `teamrig worktree remove`, which removes only the worktrees the session may remove, and
 that every session may rebase its own branch in its own worktree onto the fresh default branch and push it back to
 that branch with `--force-with-lease` (a protected branch is never rebased). A plugin cannot ship these (its settings take only `agent` and `subagentStatusLine`), so this writes them into your
@@ -2803,7 +2803,7 @@ WROTE the changes below; the old settings file is at /home/me/.teamrig/backups/c
   ADD /home/me/.claude/settings.json autoMode.environment: $defaults
   ADD /home/me/.claude/settings.json autoMode.environment: [teamrig shop] Protected branches: main, master. A normal push to one asks the person. A force-push, a --mirror push or deleting one is refused, and a --force-with-lease push asks. Every session edits on its own branch in its own git worktree, never in a repo's main checkout.
   ADD /home/me/.claude/settings.json autoMode.environment: [teamrig shop] The task register: every session may run teamrig start, teamrig add, teamrig set, teamrig update, teamrig verify, teamrig list, teamrig show, teamrig check, teamrig plan, teamrig budget, teamrig rules, teamrig refresh, teamrig inbox read, teamrig inbox status, teamrig inbox add, teamrig who, teamrig rename for team shop; they write only under ~/.teamrig/teams/shop/.
-  ADD /home/me/.claude/settings.json autoMode.environment: [teamrig shop] `teamrig heavy ... -- <cmd>` and `teamrig test ... -- <cmd>` run the session's own build, test or script on this host (heavy waits for the host lock, test records the result); neither grants anything, so judge the command after `--` as if it ran alone.
+  ADD /home/me/.claude/settings.json autoMode.environment: [teamrig shop] `teamrig queue ... -- <cmd>` and `teamrig test ... -- <cmd>` run the session's own build, test or script on this host (queue waits for the host lock, test records the result); neither grants anything, so judge the command after `--` as if it ran alone.
   ADD /home/me/.claude/settings.json autoMode.environment: [teamrig shop] `teamrig worktree remove <path> [--delete-branch]` is how a session removes its finished worktree, and every session may run it: teamrig itself removes only a worktree whose t<id>- branch names a task the session owns or one of a session it leads (any for the lead, session lead), and refuses the main checkout, uncommitted work and a branch with a commit not on its base.
   ADD /home/me/.claude/settings.json autoMode.environment: [teamrig shop] Every session may rebase its own branch in its own git worktree onto the fresh default branch (`git fetch`, then `git rebase origin/<branch>` or `git pull --rebase`, and `git rebase --continue` or `--abort` to settle a stopped one): it rewrites only that session's own commits not yet merged. A branch it pushed before goes back with `git push --force-with-lease` to that same branch. A protected branch (main, master) is never rebased, nor a repo's main checkout.
 ```
@@ -2835,7 +2835,7 @@ Output:
 PREVIEW nothing written (add --yes to write)
   REMOVE /home/me/.claude/settings.json autoMode.environment: [teamrig shop] Protected branches: main, master. A normal push to one asks the person. A force-push, a --mirror push or deleting one is refused, and a --force-with-lease push asks. Every session edits on its own branch in its own git worktree, never in a repo's main checkout.
   REMOVE /home/me/.claude/settings.json autoMode.environment: [teamrig shop] The task register: every session may run teamrig start, teamrig add, teamrig set, teamrig update, teamrig verify, teamrig list, teamrig show, teamrig check, teamrig plan, teamrig budget, teamrig rules, teamrig refresh, teamrig inbox read, teamrig inbox status, teamrig inbox add, teamrig who, teamrig rename for team shop; they write only under ~/.teamrig/teams/shop/.
-  REMOVE /home/me/.claude/settings.json autoMode.environment: [teamrig shop] `teamrig heavy ... -- <cmd>` and `teamrig test ... -- <cmd>` run the session's own build, test or script on this host (heavy waits for the host lock, test records the result); neither grants anything, so judge the command after `--` as if it ran alone.
+  REMOVE /home/me/.claude/settings.json autoMode.environment: [teamrig shop] `teamrig queue ... -- <cmd>` and `teamrig test ... -- <cmd>` run the session's own build, test or script on this host (queue waits for the host lock, test records the result); neither grants anything, so judge the command after `--` as if it ran alone.
   REMOVE /home/me/.claude/settings.json autoMode.environment: [teamrig shop] `teamrig worktree remove <path> [--delete-branch]` is how a session removes its finished worktree, and every session may run it: teamrig itself removes only a worktree whose t<id>- branch names a task the session owns or one of a session it leads (any for the lead, session lead), and refuses the main checkout, uncommitted work and a branch with a commit not on its base.
   REMOVE /home/me/.claude/settings.json autoMode.environment: [teamrig shop] Every session may rebase its own branch in its own git worktree onto the fresh default branch (`git fetch`, then `git rebase origin/<branch>` or `git pull --rebase`, and `git rebase --continue` or `--abort` to settle a stopped one): it rewrites only that session's own commits not yet merged. A branch it pushed before goes back with `git push --force-with-lease` to that same branch. A protected branch (main, master) is never rebased, nor a repo's main checkout.
 ```
@@ -3260,9 +3260,9 @@ link that would not go, or git refusing the removal) first puts each link it unl
 `(its links are back: node_modules)`, so the worktree still builds; a link it cannot put back is named with its target,
 to link again by hand.
 
-### teamrig heavy
+### teamrig queue
 
-Runs one heavy step (a build, a test run, a database script) under the host lock, so the host's heavy steps run one
+Runs one queued step (a build, a test run, a database script) under the host lock, so the host's queued steps run one
 at a time instead of competing for its CPU and memory. It waits for the lock until its line has not moved
 for `delivery.queue.waitMinutes` (60 by default). Waiters take it in arrival order: each joins a line of tickets in `<lock>.queue` and only the
 first live one may take the lock, looking every 2 s; the rest look every `delivery.wait.pollSeconds` (30). It
@@ -3316,20 +3316,20 @@ nothing ran`); running, it kills the step with every process it started, records
 (`STOPPED killed, recorded as exit 129`). When the system will not list them, it says so and the step runs on.
 
 Everything after `--` is the command, read as `teamrig test` reads it. Run a test run as
-`teamrig heavy ... -- teamrig test -- <command>`: it then gets both the lock and the short summary.
+`teamrig queue ... -- teamrig test -- <command>`: it then gets both the lock and the short summary.
 
 A step's processes get `$TEAMRIG_HOST_LOCK`, the lock's token, and so do `merge`'s push, `deploy`'s
-afterPull hooks and command, and a `deploy --targets` run's command. A `teamrig heavy` started under a lock that token still names runs at once, in the
+afterPull hooks and command, and a `deploy --targets` run's command. A `teamrig queue` started under a lock that token still names runs at once, in the
 parent's session, with no cutoff check or ledger record of its own: it is part of its parent, and waiting would
-wait on its own parent. So a repository's git hooks can wrap their checks in `teamrig heavy` (no `--session`
-needed): a plain `git commit` then takes the host lock for its hook, and a commit or push under `heavy`,
-`merge` or `deploy` does not wait on itself. Prefer that to `teamrig heavy ... -- git commit`, which Claude
+wait on its own parent. So a repository's git hooks can wrap their checks in `teamrig queue` (no `--session`
+needed): a plain `git commit` then takes the host lock for its hook, and a commit or push under `queue`,
+`merge` or `deploy` does not wait on itself. Prefer that to `teamrig queue ... -- git commit`, which Claude
 Code's worktree guard refuses in a worktree session. A token naming no live lock (a leftover exported in a
 shell) is said and ignored.
 
 A pre-push hook needs one more thing: git opens the push's connection before the hook runs, so checks waiting in the
 lock's line keep it idle, and a host such as GitHub drops it; the push then fails after its checks passed. Give such
-a hook's `heavy` `--pre-push`. On a clean tree (nothing uncommitted or untracked) it records the checks' pass in the
+a hook's `queue` `--pre-push`. On a clean tree (nothing uncommitted or untracked) it records the checks' pass in the
 repository's git folder (`teamrig/pre-push/`, shared by its worktrees, kept 24 hours), and a push of the same tree
 with the same command line reuses it: DONE at once, with no lock, even from the cutoff on. When the checks waited
 more than a minute for the lock, it declines the push once they pass (REFUSED, exit 2), since its connection may
@@ -3350,7 +3350,7 @@ Flags:
 Example:
 
 ```sh
-teamrig heavy --session api --what "build api" -- npm run build
+teamrig queue --session api --what "build api" -- npm run build
 ```
 
 Output:
@@ -3367,7 +3367,7 @@ a failed one with `FAILED exit <code>`.
 
 ### teamrig withdraw
 
-Takes this session's steps that wait for the host lock out of its line, so a re-ordered or abandoned `heavy`,
+Takes this session's steps that wait for the host lock out of its line, so a re-ordered or abandoned `queue`,
 `merge` or `deploy` leaves it instead of running later. Each withdrawn step stops at its next look, runs nothing and
 is refused (`REFUSED withdrawn from the host lock's line`). A step that took its turn first is `RUNNING`, one that left
 the line first `LEFT`; one an older teamrig queued is `KEPT`, as its step runs anyway. With neither `--what` nor
@@ -3376,7 +3376,7 @@ session's steps. Exit 0 when each chosen step was withdrawn or none waits, 1 whe
 
 Flags:
 
-- `--what <text>`: withdraws the steps whose purpose holds the text (`heavy: <label>`, `merge <repo>`).
+- `--what <text>`: withdraws the steps whose purpose holds the text (a queued step's `heavy: <label>`, a merge's `merge <repo>`).
 - `--all`: withdraws every waiting step of the session.
 - `--session <id|name>`: the session; default `$TEAMRIG_SESSION`, else the session the tab is bound to.
 
@@ -3416,7 +3416,7 @@ The repository is the entry of `delivery.repos` whose `mainCheckout` is this che
 - `dependencyCheck`: with `dependencyGate`, the check that clears a dependency change, such as
   `["node", "tools/check-change.ts"]`: a program and its arguments, run with no shell in the branch's checkout under
   the host lock, after each rebase and before the push, its stdout shown with secrets redacted, killed after
-  `delivery.queue.maxRunMinutes`, a heavy step in the ledger. It gets `TEAMRIG_BASELINE_LOCK`, a file holding the
+  `delivery.queue.maxRunMinutes`, a queued step in the ledger. It gets `TEAMRIG_BASELINE_LOCK`, a file holding the
   default branch's `package-lock.json` (unset when that branch has none), removed after. Exit 0 lets the change through;
   any other end, or a range it cannot read, is REFUSED and nothing is pushed.
 - `reviewGate`: hold a change whose paths hit a review entry until its reviewer approves it (see Review holds
@@ -3424,7 +3424,7 @@ The repository is the entry of `delivery.repos` whose `mainCheckout` is this che
   off, or not listed, misses the self-merge review gate, so each change it merges waits on a leader.
 - `reviewCheck`: with `reviewGate`, the check a `check` entry's hit runs, such as `["node", "tools/review.ts"]`: a
   program and its arguments, run with no shell in the branch's checkout under the host lock after the rebase, with
-  the base commit in `TEAMRIG_REVIEW_BASE`, a heavy step in the ledger, its lines redacted. Exit 0 clears the
+  the base commit in `TEAMRIG_REVIEW_BASE`, a queued step in the ledger, its lines redacted. Exit 0 clears the
   change, 3 holds it for the entry's reviewer with the findings it prints, and anything else holds it for that
   reviewer too, since a broken check is no pass. Unset: a `check` hit is held like an `always` one.
 - `worktreeFolder`: the folder `teamrig worktree add` makes each new worktree in, default `.claude/worktrees`; a
@@ -3449,14 +3449,14 @@ The repository is the entry of `delivery.repos` whose `mainCheckout` is this che
   there and moves the local default branch to upstream's; the branch is still pushed to and deleted from origin.
 
 A repository not listed gets a NOTE and none of these. Then `teamrig merge` waits up to `delivery.wait.maxMinutes` (60),
-looking every `delivery.wait.pollSeconds` (30), for the claims and the host lock (see `teamrig heavy`; longer while its line moves), fetches,
+looking every `delivery.wait.pollSeconds` (30), for the claims and the host lock (see `teamrig queue`; longer while its line moves), fetches,
 rebases onto origin's default branch, runs the `dependencyCheck` on a dependency change, the review gate and, under
 `pushGuard.pushToProtected: gated`, the self-merge gates (see Gate holds below), and pushes there (or runs the
-`merge` command), the push a heavy step in the ledger that runs the pre-push
+`merge` command), the push a queued step in the ledger that runs the pre-push
 hook. It merged when origin's default branch is at the rebased commit, whatever the push's exit code. When origin
 moved meanwhile, it rebases and pushes again, 3 times in all. After a merge it deletes the branch on origin and
 here, moves the local default branch to origin's and prints the `teamrig worktree remove` that ends a worktree.
-Like `teamrig heavy`, it watches the processes that started it. Once its launching shell ends it stops waiting
+Like `teamrig queue`, it watches the processes that started it. Once its launching shell ends it stops waiting
 (`STOPPED before the host lock was free: nothing ran`), or kills the push it runs, records exit 129, frees the lock
 and pushes no more (FAILED).
 Exit 0 merged, 1 failed (FAILED and the reason; the branch is kept), 2 when the dependency check, the review gate
@@ -3604,7 +3604,7 @@ or no `deploy.dependencyInstall` set, or a range deploy cannot read. Also from
 and when a check refuses. With nothing pending it is DONE and runs nothing. Otherwise it waits up to
 `delivery.wait.maxMinutes` for the claims, the checks and the host lock (longer while its line moves), reads origin again under the lock and asks
 the checks again, then pulls fast-forward to the sha they judged and runs the dependency steps, the afterPull hooks
-and the command, each killed after `delivery.queue.maxRunMinutes`, all one heavy step in the ledger. Their lines
+and the command, each killed after `delivery.queue.maxRunMinutes`, all one queued step in the ledger. Their lines
 show as they come.
 
 A range that changes `package-lock.json`, or a `package.json` field an install reads (as `dependencyGate` judges it),
@@ -3619,17 +3619,17 @@ recorded with the command's last line, and exit 0 is DONE, any other end FAILED 
 roll back. The pull stays after a failure, so a new deploy finds nothing pending: run the deploy command by hand once
 it is fixed. A failed pull deployed nothing: deploy again.
 
-Like `teamrig heavy`, it watches the processes that started it. Once its launching shell ends it stops waiting
+Like `teamrig queue`, it watches the processes that started it. Once its launching shell ends it stops waiting
 (`STOPPED before the host lock was free: nothing ran`), or kills the hook or deploy command it runs, records exit 129
 and frees the lock (FAILED).
 
 A deploy that pulls nothing: `teamrig deploy --targets <a,b> --what "<why>" -- <command ...>` restarts some of the
 repository's targets with a command of its own, such as a restart that makes them read a rotated secret on the same
 image. It keeps the repository's deploy rules. It is REFUSED (exit 2) before any check or lock for a target not in
-`deploy.targets`, since a typo would slip past the quiet claims, and also at the heavy cutoff, in the reset blackout
+`deploy.targets`, since a typo would slip past the quiet claims, and also at the queue cutoff, in the reset blackout
 and when a check refuses. It waits for quiet claims on the targets it names, not the others, then for the checks and
 the host lock, and asks the checks again under the lock. The command runs with no shell in this folder, killed after
-`delivery.queue.maxRunMinutes`, as one heavy step in the ledger; its lines show as they come.
+`delivery.queue.maxRunMinutes`, as one queued step in the ledger; its lines show as they come.
 
 The checks and the command get `TEAMRIG_TEAM`, `TEAMRIG_SESSION`, `TEAMRIG_VERB=redeploy`, `TEAMRIG_REPO` and
 `TEAMRIG_DEPLOY_TARGETS` (`api,live`), and no `TEAMRIG_PENDING_RANGE`: a check that reads the range tells a redeploy by
@@ -3637,7 +3637,7 @@ its verb. The command also gets `$TEAMRIG_HOST_LOCK`. The deploy record names th
 "live"]`), so `teamrig windows` counts only them as disturbed. It is written even when the command fails (FAILED,
 exit 1), since a failed restart may have restarted some of them; a command that cannot start records no deploy.
 A quiet claim of your own on a target holds your deploy like anyone else's, so release it first: the host lock
-already keeps other deploys and heavy steps out while the command runs.
+already keeps other deploys and queued steps out while the command runs.
 
 Flags:
 
@@ -3756,7 +3756,7 @@ repository (its `deploysOnPush` and `deploy.targets`), or only those its ledger 
 run), from its start until it settled:
 `delivery.stablePeriods.targetSettleMinutes` for that target, else `settleMinutes` (30), or `--settle` for every
 target. The deploys are the ledger.md lines, so one a session wrote by hand counts too; a deploy with no ledger
-record of its start is taken to have run for `assumedDeployMinutes` (20). A heavy step disturbs the whole host. A
+record of its start is taken to have run for `assumedDeployMinutes` (20). A queued step disturbs the whole host. A
 window shorter than `--min` (default `minMinutes`, 15) is left out. Each window names the loads (`teamrig load`) it
 overlaps: a load never cuts a window, since two windows under the same load still compare. A time is `HH:MM`
 (today), `YYYY-MM-DD HH:MM` or `YYYY-MM-DD` on the team's clock unless marked `UTC`, or an ISO time with its zone. A
@@ -3836,8 +3836,8 @@ ENDED 3f9c1a7e at 2030-01-08 12:00 IST
 
 ### teamrig deploy-status
 
-The deploy state now, in one read: who holds the host lock (a stale lock shows as free, since the next heavy step
-removes it) and, on a `sharing the host:` line, the small steps (`heavy --small`) sharing it, the heavy cutoff and the blackout before the weekly token reset (each marked IN FORCE while it holds),
+The deploy state now, in one read: who holds the host lock (a stale lock shows as free, since the next queued step
+removes it) and, on a `sharing the host:` line, the small steps (`queue --small`) sharing it, the queue cutoff (its `heavy cutoff:` line) and the blackout before the weekly token reset (each marked IN FORCE while it holds),
 the quiet claims and loads still open, and what each repository with a deploy block has pushed but not deployed. It
 fetches each main checkout to tell; for one a deploy would refuse, it says why.
 
@@ -3986,7 +3986,7 @@ Flags:
     names work left (follow-up, todo, not yet, left for, still to, next step);
   - rule 16: a worktree removed with a plain `git worktree remove`;
   - rule 8: the helpers' share of the W;
-  - a test run or build (`npm test`, `npm run build`, `node --test`, `tsc`, ...) outside `teamrig heavy` or
+  - a test run or build (`npm test`, `npm run build`, `node --test`, `tsc`, ...) outside `teamrig queue` or
     `teamrig test`, and an npx, `npm exec`, `npm create` or `pnpm dlx` that fetches the package it names.
 
   A day metered before teamrig 0.87.0 has no misses counted: the day table leaves it out and names it, and the

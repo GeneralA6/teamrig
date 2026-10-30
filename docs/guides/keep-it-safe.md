@@ -115,7 +115,7 @@ It is a guard against mistakes, not a sandbox; protect the branch on your git ho
 - commands from tools other than Bash and PowerShell, and pushes you run in your own terminal.
 
 Many sessions merge their branches one at a time through the deploy coordinator: `teamrig merge` and
-`teamrig deploy` run under the host lock `teamrig heavy` takes for builds and test runs
+`teamrig deploy` run under the host lock `teamrig queue` takes for builds and test runs
 ([Ship from many sessions](ship-from-many-sessions.md)).
 
 ## Skipped hooks

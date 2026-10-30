@@ -10,6 +10,7 @@ import { cleanTree, FakeTrees, GIT_DIR } from '../testing/fake-trees.ts';
 import { FakeStarterWatch, SHELL } from '../testing/fake-starter-watch.ts';
 import { FakeSteps } from '../testing/fake-steps.ts';
 import { heldBy, OTHER, otherRuns } from '../testing/held-lock.ts';
+import { EXIT } from './runtime.ts';
 
 const LEDGER = join(TEAM_HOME, 'state', 'deploys', 'ledger.jsonl');
 const LOCK = join(KIT, 'host.lock');
@@ -28,9 +29,9 @@ function harness(config: Readonly<Record<string, unknown>> = TEAM): { kit: CliHa
   return { kit, steps: new FakeSteps(kit.clock) };
 }
 
-const BUILD = ['heavy', '--session', 'alpha', '--what', 'build api', '--', 'npm', 'run', 'build'];
+const BUILD = ['queue', '--session', 'alpha', '--what', 'build api', '--', 'npm', 'run', 'build'];
 
-const SPECS = ['heavy', '--session', 'alpha', '--what', 'specs', '--small', '--', 'npm', 'test'];
+const SPECS = ['queue', '--session', 'alpha', '--what', 'specs', '--small', '--', 'npm', 'test'];
 
 /** A small step sharing the host: po's spec run, taken at 09:50 by `OTHER`, 2048 MB held for it. */
 function sharedBy(): string {
@@ -42,7 +43,7 @@ function ranBefore(session: string, what: string, peakTreeMb: number): string {
   return JSON.stringify({ type: 'heavy', id: `${session}-${peakTreeMb}`, session, what, startedAt: '2030-01-07T10:00:00.000Z', endedAt: '2030-01-07T10:05:00.000Z', exitCode: 0, peakTreeMb });
 }
 
-describe('teamrig heavy', () => {
+describe('teamrig queue', () => {
   it('runs the command under the host lock, records its start and end, and prints DONE', async () => {
     const { kit, steps } = harness();
     let lockWhileRunning: unknown;
@@ -67,7 +68,7 @@ describe('teamrig heavy', () => {
 
   it('runs the command line in the shell, in the current folder with the environment as it is, limited to 45 minutes', async () => {
     const { kit, steps } = harness();
-    await kit.run(['heavy', '--session', 'alpha', '--what', 'tests', '--', 'node', '--test', 'src/**/*.test.ts'], { steps, env: { PROBE: 'yes' } });
+    await kit.run(['queue', '--session', 'alpha', '--what', 'tests', '--', 'node', '--test', 'src/**/*.test.ts'], { steps, env: { PROBE: 'yes' } });
     const [request] = steps.ran;
     assert.equal(request?.command, "node --test 'src/**/*.test.ts'");
     assert.equal(request?.cwd, APP);
@@ -114,7 +115,7 @@ describe('teamrig heavy', () => {
 
   it('kills the step after --max-minutes', async () => {
     const { kit, steps } = harness();
-    const result = await kit.run(['heavy', '--session', 'alpha', '--what', 'replay', '--max-minutes', '90', '--', 'npm', 'run', 'replay'], { steps });
+    const result = await kit.run(['queue', '--session', 'alpha', '--what', 'replay', '--max-minutes', '90', '--', 'npm', 'run', 'replay'], { steps });
     assert.equal(result.stdout[0], '2030-01-08 10:00:00 UTC running: replay (killed after 1h30m)');
     assert.equal(steps.ran[0]?.timeoutMs, 90 * MINUTE);
   });
@@ -122,24 +123,24 @@ describe('teamrig heavy', () => {
   for (const minutes of ['0', '141', '1.5', 'soon']) {
     it(`refuses --max-minutes ${minutes} before taking the lock`, async () => {
       const { kit, steps } = harness();
-      const result = await kit.run(['heavy', '--session', 'alpha', '--what', 'replay', '--max-minutes', minutes, '--', 'npm', 'test'], { steps });
+      const result = await kit.run(['queue', '--session', 'alpha', '--what', 'replay', '--max-minutes', minutes, '--', 'npm', 'test'], { steps });
       assert.equal(result.code, 64);
       assert.match(result.stderr.join('\n'), /--max-minutes is a whole number from 1 to 140 \(delivery\.queue\.lockTtlMinutes less 10\)/);
       assert.deepEqual([steps.ran, kit.files.get(LOCK)], [[], undefined]);
     });
   }
 
-  it('refuses from the heavy cutoff on, before taking the lock', async () => {
+  it('refuses from the queue cutoff on, before taking the lock', async () => {
     const { kit, steps } = harness({ ...TEAM, delivery: { schedule: { queueCutoffUtc: '09:30' } } });
     const result = await kit.run(BUILD, { steps });
-    assert.deepEqual(result, { code: 2, stdout: ['REFUSED nothing heavy 09:30-00:00 UTC (now 10:00 UTC)'], stderr: [] });
+    assert.deepEqual(result, { code: 2, stdout: ['REFUSED queue cutoff 09:30-00:00 UTC (now 10:00 UTC)'], stderr: [] });
     assert.deepEqual([steps.ran, kit.files.get(LOCK), kit.files.get(LEDGER)], [[], undefined, undefined]);
   });
 
   it("names the cutoff on the team's clock", async () => {
     const { kit, steps } = harness({ ...TEAM, delivery: { schedule: { queueCutoffUtc: '09:30' } } });
     const result = await kit.run(BUILD, { steps, timeZone: 'Asia/Jerusalem' });
-    assert.deepEqual(result, { code: 2, stdout: ['REFUSED nothing heavy 11:30-02:00 IST (now 12:00 IST)'], stderr: [] });
+    assert.deepEqual(result, { code: 2, stdout: ['REFUSED queue cutoff 11:30-02:00 IST (now 12:00 IST)'], stderr: [] });
   });
 
   it("stamps its progress lines on the team's clock", async () => {
@@ -155,7 +156,7 @@ describe('teamrig heavy', () => {
     const result = await kit.run(BUILD, { steps, sessionProcesses: otherRuns() });
     assert.deepEqual(result, {
       code: 2,
-      stdout: ['2030-01-08 10:00:00 UTC waiting for the host lock: po (heavy: build) since 2030-01-08 09:50 UTC', 'REFUSED nothing heavy 10:30-00:00 UTC (now 10:40 UTC)'],
+      stdout: ['2030-01-08 10:00:00 UTC waiting for the host lock: po (heavy: build) since 2030-01-08 09:50 UTC', 'REFUSED queue cutoff 10:30-00:00 UTC (now 10:40 UTC)'],
       stderr: [],
     });
     assert.deepEqual([steps.ran, kit.files.get(LOCK), kit.files.get(LEDGER)], [[], undefined, undefined]);
@@ -257,7 +258,7 @@ describe('teamrig heavy', () => {
     const { kit, steps } = harness();
     await kit.files.write(LOCK, heldBy());
     const starters = new FakeStarterWatch([SHELL]);
-    const result = await kit.run(['heavy', '--session', 'alpha', '--what', 'pre-commit checks', '--', 'npm', 'test'], {
+    const result = await kit.run(['queue', '--session', 'alpha', '--what', 'pre-commit checks', '--', 'npm', 'test'], {
       steps: steps.whileRunning(async () => starters.end(SHELL)),
       starters,
       sessionProcesses: otherRuns(),
@@ -283,7 +284,7 @@ describe('teamrig heavy', () => {
     assert.deepEqual([result.code, result.stdout.at(-1), kit.files.get(LOCK)], [0, 'DONE exit 0', undefined]);
   });
 
-  it("gives its command the lock's id, so a heavy step the command starts runs under this lock", async () => {
+  it("gives its command the lock's id, so a queued step the command starts runs under this lock", async () => {
     const { kit, steps } = harness();
     await kit.run(BUILD, { steps });
     assert.equal(steps.ran[0]?.env['TEAMRIG_HOST_LOCK'], 'id-1');
@@ -292,7 +293,7 @@ describe('teamrig heavy', () => {
   it("runs a step its parent's live lock covers at once, in the parent's session, without a ledger record", async () => {
     const { kit, steps } = harness();
     await kit.files.write(LOCK, heldBy());
-    const result = await kit.run(['heavy', '--what', 'pre-commit checks', '--', 'npm', 'test'], {
+    const result = await kit.run(['queue', '--what', 'pre-commit checks', '--', 'npm', 'test'], {
       steps: steps.ends(0, MINUTE),
       sessionProcesses: otherRuns(),
       env: { TEAMRIG_HOST_LOCK: 'other' },
@@ -306,7 +307,7 @@ describe('teamrig heavy', () => {
     assert.deepEqual([kit.files.get(LOCK), kit.files.get(LEDGER)], [heldBy(), undefined], "the parent's lock stays, and its record covers the step");
   });
 
-  it('runs under a parent lock even from the heavy cutoff on, since its parent started before it', async () => {
+  it('runs under a parent lock even from the queue cutoff on, since its parent started before it', async () => {
     const { kit, steps } = harness({ ...TEAM, delivery: { schedule: { queueCutoffUtc: '09:30' } } });
     await kit.files.write(LOCK, heldBy());
     const result = await kit.run(BUILD, { steps, sessionProcesses: otherRuns(), env: { TEAMRIG_HOST_LOCK: 'other' } });
@@ -343,7 +344,7 @@ describe('teamrig heavy', () => {
     const { kit, steps } = harness();
     const tab = { CLAUDE_CODE_SESSION_ID: '9f8e7d6c-1111-2222-3333-444455556666' };
     await kit.run(['inbox', 'read', '--session', 'alpha'], { env: tab });
-    const result = await kit.run(['heavy', '--what', 'pre-commit checks', '--', 'npm', 'test'], { steps, env: tab });
+    const result = await kit.run(['queue', '--what', 'pre-commit checks', '--', 'npm', 'test'], { steps, env: tab });
     assert.equal(result.code, 0);
     assert.deepEqual(
       ledgerOf(kit).map((record) => JSON.stringify(record).includes('"session":"alpha"')),
@@ -353,7 +354,7 @@ describe('teamrig heavy', () => {
 
   it('prints the usage when no session is named and the tab is bound to none', async () => {
     const { kit, steps } = harness();
-    const result = await kit.run(['heavy', '--what', 'build', '--', 'npm', 'test'], { steps, env: { CLAUDE_CODE_SESSION_ID: '9f8e7d6c-1111-2222-3333-444455556666' } });
+    const result = await kit.run(['queue', '--what', 'build', '--', 'npm', 'test'], { steps, env: { CLAUDE_CODE_SESSION_ID: '9f8e7d6c-1111-2222-3333-444455556666' } });
     assert.deepEqual([result.code, steps.ran], [64, []]);
   });
 
@@ -371,16 +372,23 @@ describe('teamrig heavy', () => {
 
   it('refuses a session not on the team', async () => {
     const { kit, steps } = harness();
-    const result = await kit.run(['heavy', '--session', 'zulu', '--what', 'build', '--', 'npm', 'test'], { steps });
+    const result = await kit.run(['queue', '--session', 'zulu', '--what', 'build', '--', 'npm', 'test'], { steps });
     assert.equal(result.code, 2);
     assert.deepEqual([steps.ran, kit.files.get(LOCK)], [[], undefined]);
   });
 
+  it('refuses teamrig heavy, its old name, with the new one and exit 64, running nothing', async () => {
+    const { kit, steps } = harness();
+    const result = await kit.run(['heavy', '--session', 'alpha', '--what', 'build', '--', 'npm', 'test'], { steps });
+    assert.deepEqual([result.code, result.stdout, result.stderr[0]?.split('\n')[0]], [EXIT.usage, [], 'heavy was renamed: use queue']);
+    assert.deepEqual([steps.ran, kit.files.get(LOCK)], [[], undefined]);
+  });
+
   for (const [label, argv] of [
-    ['no session', ['heavy', '--what', 'build', '--', 'npm', 'test']],
-    ['no label', ['heavy', '--session', 'alpha', '--', 'npm', 'test']],
-    ['no command', ['heavy', '--session', 'alpha', '--what', 'build', '--']],
-    ['a word before --', ['heavy', '--session', 'alpha', '--what', 'build', 'npm', '--', 'test']],
+    ['no session', ['queue', '--what', 'build', '--', 'npm', 'test']],
+    ['no label', ['queue', '--session', 'alpha', '--', 'npm', 'test']],
+    ['no command', ['queue', '--session', 'alpha', '--what', 'build', '--']],
+    ['a word before --', ['queue', '--session', 'alpha', '--what', 'build', 'npm', '--', 'test']],
   ] as const) {
     it(`prints the usage for ${label}`, async () => {
       const { kit, steps } = harness();
@@ -391,7 +399,7 @@ describe('teamrig heavy', () => {
   }
 });
 
-describe('teamrig heavy --small', () => {
+describe('teamrig queue --small', () => {
   it('shares the host instead of taking the lock, holds its share while it runs and records it as shared', async () => {
     const { kit, steps } = harness();
     let whileRunning: unknown[] = [];
@@ -411,14 +419,14 @@ describe('teamrig heavy --small', () => {
   it('kills it after delivery.queue.smallMaxRunMinutes, or a shorter --max-minutes', async () => {
     const { kit, steps } = harness({ ...TEAM, delivery: { queue: { smallMaxRunMinutes: 12 } } });
     assert.equal((await kit.run(SPECS, { steps })).stdout[1], '2030-01-08 10:00:00 UTC running: specs (killed after 12m)');
-    const shorter = ['heavy', '--session', 'alpha', '--what', 'specs', '--small', '--max-minutes', '5', '--', 'npm', 'test'];
+    const shorter = ['queue', '--session', 'alpha', '--what', 'specs', '--small', '--max-minutes', '5', '--', 'npm', 'test'];
     assert.equal((await kit.run(shorter, { steps })).stdout[1], '2030-01-08 10:00:00 UTC running: specs (killed after 5m)');
     assert.deepEqual(steps.ran.map((request) => request.timeoutMs), [12 * MINUTE, 5 * MINUTE]);
   });
 
   it('refuses a --max-minutes past delivery.queue.smallMaxRunMinutes before sharing the host', async () => {
     const { kit, steps } = harness();
-    const longer = ['heavy', '--session', 'alpha', '--what', 'specs', '--small', '--max-minutes', '11', '--', 'npm', 'test'];
+    const longer = ['queue', '--session', 'alpha', '--what', 'specs', '--small', '--max-minutes', '11', '--', 'npm', 'test'];
     const result = await kit.run(longer, { steps });
     assert.equal(result.code, 64);
     assert.match(result.stderr.join('\n'), /--max-minutes with --small is a whole number from 1 to 10 \(delivery\.queue\.smallMaxRunMinutes\): a longer step runs without --small/);
@@ -464,8 +472,8 @@ describe('teamrig heavy --small', () => {
 });
 
 
-describe('teamrig heavy --pre-push', () => {
-  const PRE_PUSH = ['heavy', '--session', 'alpha', '--what', 'pre-push checks', '--pre-push', '--', 'npm', 'test'];
+describe('teamrig queue --pre-push', () => {
+  const PRE_PUSH = ['queue', '--session', 'alpha', '--what', 'pre-push checks', '--pre-push', '--', 'npm', 'test'];
   const PASSES = join(GIT_DIR, 'teamrig', 'pre-push');
   const DECLINED = 'REFUSED push declined: its checks waited 3m for the host lock, long enough for its connection to close;';
 
@@ -485,7 +493,7 @@ describe('teamrig heavy --pre-push', () => {
     assert.deepEqual(trees.looks, [APP, APP, APP], 'the tree before and after the checks, then before the next push');
   });
 
-  it('reuses a pass from the heavy cutoff on, since nothing heavy runs', async () => {
+  it('reuses a pass from the queue cutoff on, since it runs nothing', async () => {
     const { kit, steps } = harness({ ...TEAM, delivery: { schedule: { queueCutoffUtc: '09:30' } } });
     await recordPass(kit.files, cleanTree(), 'npm test', 'pre-push checks', Date.parse('2030-01-08T09:00:00Z'));
     const result = await kit.run(PRE_PUSH, { steps, trees: new FakeTrees(cleanTree()) });

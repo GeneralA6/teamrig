@@ -62,19 +62,23 @@ describe('programsOf', () => {
     const marked = (command: string): string[] =>
       programsOf(command, { cwd: APP, home: HOME, dialect: 'bash' }).map((run) => `${run.name}${run.runner ? ' runner' : ''}`);
     assert.deepEqual(marked('npm test'), ['npm']);
-    assert.deepEqual(marked('teamrig heavy --what x -- npm test && npm run build'), ['npm runner', 'npm']);
-    assert.deepEqual(marked('teamrig heavy --what x -- "tsc && bash -c \'node --test\'"'), ['tsc runner', 'node runner']);
-    assert.deepEqual(marked('teamrig test -- teamrig heavy --what x -- npx jest'), ['npx runner']);
-    assert.deepEqual(marked('teamrig start --session a; teamrig heavy --what x'), ['teamrig', 'teamrig']);
+    assert.deepEqual(marked('teamrig queue --what x -- npm test && npm run build'), ['npm runner', 'npm']);
+    assert.deepEqual(marked('teamrig queue --what x -- "tsc && bash -c \'node --test\'"'), ['tsc runner', 'node runner']);
+    assert.deepEqual(marked('teamrig test -- teamrig queue --what x -- npx jest'), ['npx runner']);
+    assert.deepEqual(marked('teamrig start --session a; teamrig queue --what x'), ['teamrig', 'teamrig']);
   });
 
-  it('runs the command teamrig heavy and teamrig test start after their --', () => {
-    assert.deepEqual(runs('teamrig heavy --session a --what "x y" -- npx tsc -p .'), [`npx tsc -p . @ ${APP}`]);
-    assert.deepEqual(runs('teamrig test -- teamrig heavy --what x -- npx jest'), [`npx jest @ ${APP}`]);
-    assert.deepEqual(runs('teamrig heavy --what x -- "npx eslint ."'), [`npx eslint . @ ${APP}`]);
-    assert.deepEqual(runs('teamrig add --description "teamrig heavy -- npx x"'), [`teamrig add --description teamrig heavy -- npx x @ ${APP}`]);
-    assert.deepEqual(runs('teamrig heavy --what x --'), []);
+  it('runs the command teamrig queue and teamrig test start after their --', () => {
+    assert.deepEqual(runs('teamrig queue --session a --what "x y" -- npx tsc -p .'), [`npx tsc -p . @ ${APP}`]);
+    assert.deepEqual(runs('teamrig test -- teamrig queue --what x -- npx jest'), [`npx jest @ ${APP}`]);
+    assert.deepEqual(runs('teamrig queue --what x -- "npx eslint ."'), [`npx eslint . @ ${APP}`]);
+    assert.deepEqual(runs('teamrig add --description "teamrig queue -- npx x"'), [`teamrig add --description teamrig queue -- npx x @ ${APP}`]);
+    assert.deepEqual(runs('teamrig queue --what x --'), []);
     assert.deepEqual(runs('teamrig $SUB -- npx x'), []);
+  });
+
+  it('still runs the command teamrig heavy, the old name of queue, starts after its --', () => {
+    assert.deepEqual(runs('teamrig heavy --what x -- npx tsc -p .'), [`npx tsc -p . @ ${APP}`]);
   });
 
   it('names a program under the home folder that $HOME or a leading ~ in a value names', () => {

@@ -829,7 +829,7 @@ function parseDeployCheck(read: ConfigReader, value: unknown, path: string): Dep
 }
 
 /**
- * The host lock and a heavy step's limits; a step longer than the lock less its margin is cut to fit, so it never
+ * The host lock and a queued step's limits; a step longer than the lock less its margin is cut to fit, so it never
  * outlives its lock, and a small step's limit longer than a step's is cut to it.
  */
 function parseHeavy(read: ConfigReader, raw: JsonRecord): HeavyConfig {

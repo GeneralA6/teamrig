@@ -126,8 +126,8 @@ async function parentLockOf(runtime: CliRuntime, lock: HostLock, say: Say): Prom
 
 /**
  * The step's session: `--session`, else `$TEAMRIG_SESSION`, else the parent step's (a git hook's checks under
- * `heavy -- git commit` or a merge's push), else the session this Claude Code tab is bound to, so a hook
- * that wraps its checks in `heavy` needs no session of its own.
+ * `queue -- git commit` or a merge's push), else the session this Claude Code tab is bound to, so a hook
+ * that wraps its checks in `queue` needs no session of its own.
  */
 async function sessionOf(args: ParsedArgs, runtime: CliRuntime, kit: Kit, roster: Roster, parent: HostLockInfo | undefined): Promise<string> {
   const named = args.flags.get('session') ?? envSession(runtime);
@@ -161,7 +161,7 @@ interface PrePush {
 
 /**
  * True, having said so and printed DONE, when these checks already passed on this clean tree, so a push declined after
- * a long wait for the lock goes at once the next time: even from the heavy cutoff on, since nothing heavy runs.
+ * a long wait for the lock goes at once the next time: even from the queue cutoff on, since it runs nothing.
  */
 async function reusedPass(runtime: CliRuntime, say: Say, prePush: PrePush, zone: TimeZone): Promise<boolean> {
   if (prePush.before.kind !== 'clean') {
@@ -210,7 +210,7 @@ async function afterPrePush(runtime: CliRuntime, prePush: PrePush, what: string,
   throw new RefusedError(`push declined: its checks waited ${minutesText(Math.round(waitedMs / MINUTE_MS))} for the host lock, long enough for its connection to close; ${next}`);
 }
 
-/** One heavy step as asked: its label, its command's words, its time limit and the watch on the shell that started it. */
+/** One queued step as asked: its label, its command's words, its time limit and the watch on the shell that started it. */
 interface Step {
   readonly what: string;
   readonly words: readonly string[];
@@ -219,13 +219,13 @@ interface Step {
 }
 
 /**
- * `teamrig heavy --what <label> -- <command ...>`: runs one heavy step (a build, a test run, a database script)
- * under the host lock, so the host's heavy steps run one at a time. Refused from `delivery.schedule.queueCutoffUtc`
+ * `teamrig queue --what <label> -- <command ...>`: runs one queued step (a build, a test run, a database script)
+ * under the host lock, so the host's queued steps run one at a time. Refused from `delivery.schedule.queueCutoffUtc`
  * to midnight UTC, also when the wait for the lock ran past it, and once its line for the lock has not moved for
  * `delivery.queue.waitMinutes`. The step is killed with every process it started after `maxRunMinutes`
  * (`--max-minutes`), and its start and end go to the coordinator's ledger, with when it began to wait and, sampled
  * every `memorySampleSeconds`, the most its process tree held and the least free memory the host had. Its processes get `$TEAMRIG_HOST_LOCK`,
- * so a `heavy` among them (a git hook's checks) runs at once under this lock. With `--small` (a spec run, a lint) the
+ * so a `queue` among them (a git hook's checks) runs at once under this lock. With `--small` (a spec run, a lint) the
  * step shares the host with other small steps instead, while the host keeps `memoryFloorMb` free besides the MB held
  * for them (`reserveMbOf`); a step without it waits for them to end. A small step is killed after `smallMaxRunMinutes`
  * instead, and its `--max-minutes` goes no higher. Once the shell that started it ends (Claude Code's
@@ -234,7 +234,7 @@ interface Step {
  * one when they pass, and declines a push whose checks waited past PRE_PUSH_MAX_WAIT_MS for the lock (push-pass.ts).
  * Exit 0 when the command passed, 1 when it failed, was killed or was stopped, 2 refused.
  */
-export async function heavy(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const words = commandWordsOf(args);
   const what = requiredFlag(args.flags, 'what');
   const kit = await openTeamKit(runtime);

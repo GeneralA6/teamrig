@@ -285,7 +285,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   statusline install [--yes]   makes teamrig statusline Claude Code's status line, in front of the one
       already there; without --yes it shows the change and writes nothing
   statusline uninstall [--yes] takes it back out: the status line before it returns
-  automode install [--yes]     writes the team's lines (protected branches, the register commands, heavy and
+  automode install [--yes]     writes the team's lines (protected branches, the register commands, queue and
       test, who removes a worktree, rebasing one's own branch) into Claude Code's autoMode.environment, the
       facts auto mode trusts; run it again after a config change or an upgrade; without --yes it shows the
       change and writes nothing
@@ -332,7 +332,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       a session removes its own (its t<id>- branch names a task it owns) and those of the sessions it
       leads, the lead any. --delete-branch: deletes its branch too, once every commit of it is on --base
       (default the branch origin/HEAD names); --dry-run: prints the steps
-  heavy --what <label> [--session <id|name>] [--max-minutes <n>] [--small] [--pre-push] -- <command ...>   runs one heavy step
+  queue --what <label> [--session <id|name>] [--max-minutes <n>] [--small] [--pre-push] -- <command ...>   runs one queued step
       (a build, a test run, a database script) under the host lock, so the host runs one at a time, and at
       below-normal CPU priority (nice 10 on POSIX), which every process it starts inherits, so your
       terminal and apps win the CPU: waits in line for the lock, kills the step and every process it started after
@@ -340,8 +340,8 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       ledger; once the shell that started it ends, it stops waiting for the lock or kills the step (exit
       129); REFUSED from delivery.schedule.queueCutoffUtc to midnight UTC and once its line has not
       moved for delivery.queue.waitMinutes; exit 0 when the command passed, 1 when it failed or was killed. Its
-      processes get $TEAMRIG_HOST_LOCK: a heavy step started under a live lock (a git hook's checks
-      under heavy, merge or deploy) runs at once under it. No --session: $TEAMRIG_SESSION, the
+      processes get $TEAMRIG_HOST_LOCK: a queued step started under a live lock (a git hook's checks
+      under queue, merge or deploy) runs at once under it. No --session: $TEAMRIG_SESSION, the
       parent step's session, else the session this Claude Code tab is bound to. --small (a spec run, a
       lint): shares the host with other small steps while it keeps delivery.queue.memoryFloorMb free
       besides the MB held for them (its ledger peak and a quarter, else delivery.queue.smallReserveMb)
@@ -352,7 +352,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       when they pass; when they waited over a minute for the lock it declines the push (REFUSED), whose
       connection may have closed meanwhile: push again, it reuses the pass
   withdraw (--what <text> | --all) [--session <id|name>]   takes this session's steps waiting for the
-      host lock (heavy, merge, deploy) out of its line, so a re-ordered or abandoned step leaves it:
+      host lock (queue, merge, deploy) out of its line, so a re-ordered or abandoned step leaves it:
       --what picks those whose purpose holds the text. Each stops at its next look and runs nothing;
       RUNNING when it took its turn first, LEFT when it left the line first, KEPT when an older
       teamrig queued it (its step runs anyway). With neither flag: lists them, REFUSED. No --session:
@@ -370,7 +370,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       checks the self-merge gates (a live task of its own, a pass record of the rebased tree, commit
       sizes, a test changed with source, reviewGate on: REFUSED on a miss, held for the session's leader
       with the set command that asks, except a task miss; each merge is a line in merges.jsonl)
-      and pushes (each a heavy step
+      and pushes (each a queued step
       in the ledger; again when origin moved meanwhile), or, where delivery.repos.<name>.merge is
       set, runs its command in place of the push (0 merged, once origin holds it; 75 WAITING, say on a
       pull request's checks: run merge again once it merged), records the merge as a deploy of deploysOnPush, deletes the branch on origin
@@ -380,7 +380,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   deploy [--repo <name>] [--session <id|name>]   brings what was pushed to a repository's default
       branch to the running system: pulls its main checkout fast-forward to origin, runs its
       delivery.repos.<name>.deploy dependencyInstall for a dependency change (after its
-      dependencyCheck), its afterPull hooks and command (one heavy step in the ledger) and records
+      dependencyCheck), its afterPull hooks and command (one queued step in the ledger) and records
       the deploy; --repo defaults to the repository of this folder, else the only one with a deploy
       block. REFUSED for a main checkout off its default branch, dirty or ahead of origin, a
       dependency change dependencyGate holds or a check that refuses, from
@@ -392,7 +392,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       it stops waiting, or kills its hook and frees the lock (exit 129); exit 0 deployed, 1 failed or stopped
   deploy --targets <a,b> --what "<why>" [--repo <name>] [--session <id|name>] -- <command ...>   a
       deploy that pulls nothing, such as a restart onto a rotated secret: runs the command in this folder
-      (one heavy step in the ledger) and records a deploy of those targets only. REFUSED for a target not
+      (one queued step in the ledger) and records a deploy of those targets only. REFUSED for a target not
       in the repository's deploy.targets, when a check refuses, from delivery.schedule.queueCutoffUtc
       to midnight UTC and in the resetBlackoutHours before the weekly token reset; waits as a deploy
       does, for quiet claims on those targets only; its checks and command see TEAMRIG_VERB=redeploy and
@@ -405,7 +405,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   windows --targets <a,b> --since <time> [--until <time>] [--settle <span>] [--min <span>]   the clean
       measurement windows of each target from --since to --until (default now): the stretches no deploy
       of it touched (one of its repository, or a deploy --targets naming it; from its start until
-      delivery.stablePeriods settle minutes after it deployed; --settle for every target) and no heavy step,
+      delivery.stablePeriods settle minutes after it deployed; --settle for every target) and no queued step,
       each at least --min (default
       delivery.stablePeriods.minMinutes) long, each with the declared loads it overlaps. A time is HH:MM
       (today), YYYY-MM-DD HH:MM or YYYY-MM-DD on the team's clock unless marked UTC, or an ISO time with
@@ -416,7 +416,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       no repository deploys or a secret in what it is
   load end --id <id> [--at <time>] [--session <id|name>]   ends this session's load at --at (default
       now); REFUSED for no such open load, another session's, or an end in the future or before its start
-  deploy-status                the deploy state now: the host lock's holder, the heavy cutoff and the
+  deploy-status                the deploy state now: the host lock's holder, the queue cutoff and the
       reset blackout, the quiet claims and loads still open, and what each repository with a deploy block
       has pushed but not deployed (it fetches each main checkout)
   test [--session <id|name>] -- <command ...>   runs a test command in the shell, writes all it printed

@@ -36,7 +36,7 @@ function medianOf(values: readonly number[]): number | undefined {
  * Whether the host has room for one more session. It is counted at the median running session's tree (what a
  * session holds on this host), else at `sessionMb`: its resident MB against free memory, and its committed MB
  * against the commit charge (a session commits about twice what it holds resident). Free memory must stay over
- * `floorMb` (what heavy steps keep free) with it, and the commit charge at most `commitMaxPct` of the limit; a host
+ * `floorMb` (what queued steps keep free) with it, and the commit charge at most `commitMaxPct` of the limit; a host
  * that gives no commit charge is checked on free memory only.
  */
 export function headroomFor(room: HostRoom, floorMb: number, config: HeadroomConfig): Headroom {
@@ -44,7 +44,7 @@ export function headroomFor(room: HostRoom, floorMb: number, config: HeadroomCon
   const needCommittedMb = medianOf(room.runningCommittedMb) ?? config.sessionMb;
   const short: string[] = [];
   if (room.freeMb < floorMb + needMb) {
-    short.push(`${room.freeMb} MB free, under the ${floorMb} MB heavy steps keep free (delivery.queue.memoryFloorMb) plus ${needMb} MB for it`);
+    short.push(`${room.freeMb} MB free, under the ${floorMb} MB queued steps keep free (delivery.queue.memoryFloorMb) plus ${needMb} MB for it`);
   }
   const { commit } = room;
   if (commit !== undefined && (commit.usedMb + needCommittedMb) * 100 > config.commitMaxPct * commit.limitMb) {

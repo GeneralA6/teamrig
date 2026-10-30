@@ -2,7 +2,7 @@
 
 Many sessions on one host each build, run tests and deploy whenever their change is ready. Left alone, two full test
 suites starve each other of memory, a deploy lands in the middle of another session's measurement, and each session
-ships its own way. teamrig's deploy coordinator puts these steps in one line: heavy steps take turns under a host
+ships its own way. teamrig's deploy coordinator puts these steps in one line: queued steps take turns under a host
 lock, every branch merges and deploys the same checked way, and each step goes to a ledger, so a session can find
 the stretches no change touched. The `delivery` keys in the [team config](../configuration.md) set it.
 
@@ -20,12 +20,12 @@ in, from its worktree to the task's proof, in
 
 ## One host lock
 
-`teamrig heavy` runs one heavy step, such as a build, a test run or a database script, under the host lock, so the
-host's heavy steps run one at a time instead of competing for its CPU and memory:
+`teamrig queue` runs one queued step, such as a build, a test run or a database script, under the host lock, so the
+host's queued steps run one at a time instead of competing for its CPU and memory:
 
 ```sh
-teamrig heavy --session api --what "build api" -- npm run build
-teamrig heavy --session api --what "test api" -- teamrig test -- npm test
+teamrig queue --session api --what "build api" -- npm run build
+teamrig queue --session api --what "test api" -- teamrig test -- npm test
 ```
 
 ```text
@@ -53,9 +53,9 @@ ones hold, leaves
 step is killed after `smallMaxRunMinutes` (10), since a hung one holds back every step waiting for the lock. A step
 that takes the lock waits for the small steps to end, so builds, merges, deploys and full suites still run alone.
 
-A repository's git hooks can wrap their checks in `teamrig heavy`, so a plain `git commit` takes the host lock for
+A repository's git hooks can wrap their checks in `teamrig queue`, so a plain `git commit` takes the host lock for
 its hook. A step started under the lock (a hook run by a merge's push, say) runs at once, as part of its
-parent, instead of waiting on itself. A pre-push hook's `heavy` takes `--pre-push`: git opens the push's connection
+parent, instead of waiting on itself. A pre-push hook's `queue` takes `--pre-push`: git opens the push's connection
 before the hook runs, and a host such as GitHub drops it while the checks wait. With it, the checks' pass on a clean
 tree is recorded, and a push of the same tree with the same command line reuses it at once, with no lock. When the
 checks waited over a minute for the lock, it declines the push once they pass, since its connection may have closed:
@@ -100,7 +100,7 @@ DONE pushed 9a0b1c2d..4f1c2a9e to main; cloud-api deploy on push
 
 It is refused before any change in a detached HEAD, with uncommitted changes, on the default branch itself and for a
 branch with nothing new. Otherwise it waits up to `delivery.wait.maxMinutes` (60) for the claims and the lock
-(longer while its line moves), fetches, rebases and pushes, the push a heavy step that runs the pre-push hook. When
+(longer while its line moves), fetches, rebases and pushes, the push a queued step that runs the pre-push hook. When
 origin moved meanwhile, it rebases and pushes again, 3 times in all. Once merged, it deletes the branch on origin and
 here (`--keep-remote` and `--no-delete-local` keep them) and prints the `teamrig worktree remove` that ends the
 worktree. Exit 0 merged, 1 failed with the branch kept, 2 when the dependency check refused it, 75 when the merge
@@ -145,7 +145,7 @@ Under `pushGuard.pushToProtected: gated`, `teamrig merge` checks five self-merge
 - task: the branch is named `t<n>-…` after a live task (open, in progress, verifying or waiting) of the session
   that merges it;
 - pass: the repo's own local runner wrote a pass record for the rebased tree (`<git common dir>/local-ci/<tree>.json`),
-  so run the checks on the rebased branch first; `teamrig heavy --pre-push` keeps its passes elsewhere and does not
+  so run the checks on the rebased branch first; `teamrig queue --pre-push` keeps its passes elsewhere and does not
   count;
 - size: no commit is over the size rule without a `Large-commit:` line;
 - tests: a change of source (`commits.sourcePatterns`) changes a test too;
@@ -221,7 +221,7 @@ deploy is refused before any check or lock when the main checkout is off its def
 holds commits origin lacks. With nothing pending it is DONE and runs nothing. Otherwise it waits for the claims, the
 checks and the lock, reads origin again under the lock and asks the checks again, then pulls to the commit they judged
 and runs the dependency steps a dependency change needs, the afterPull commands and the deploy command, each killed after `delivery.queue.maxRunMinutes`, all
-one heavy step in the ledger. A failed deploy is recorded too, and its owners fix forward or roll back; the pull stays,
+one queued step in the ledger. A failed deploy is recorded too, and its owners fix forward or roll back; the pull stays,
 so run the deploy command by hand once it is fixed.
 
 A deploy that pulls nothing, such as a restart that makes services read a rotated secret on the same image, names its
@@ -237,12 +237,12 @@ release it first.
 
 ## When a step holds back
 
-- **The heavy cutoff:** no heavy step, merge or deploy starts from `delivery.schedule.queueCutoffUtc` until
-  midnight UTC, nor runs a heavy step whose wait for the lock ran past it; set it to keep a nightly stretch free of
+- **The queue cutoff:** no queued step, merge or deploy starts from `delivery.schedule.queueCutoffUtc` until
+  midnight UTC, nor runs a queued step whose wait for the lock ran past it; set it to keep a nightly stretch free of
   builds.
 - **The reset blackout:** no merge or deploy starts in the `delivery.schedule.resetBlackoutHours` before the
   weekly token reset, the one the status line last reported, else the one `budget.reset` sets; unset, there is none.
-- **A wait that ran out:** a heavy step is refused once its line has not moved for `waitMinutes`, a merge or a
+- **A wait that ran out:** a queued step is refused once its line has not moved for `waitMinutes`, a merge or a
   deploy after `delivery.wait.maxMinutes`, unless its line keeps moving.
 - **A step taken out of line:** `teamrig withdraw` takes a session's steps still waiting for the lock out of the line,
   so a re-ordered or abandoned step never runs:
@@ -293,7 +293,7 @@ api (settle 30m): 2 clean windows of at least 15m
 A deploy disturbs its repository's targets, or only those a `deploy --targets` run named, from its start until they
 settled: `delivery.stablePeriods.settleMinutes` (30), a target's own in `targetSettleMinutes`, or `--settle` for one
 run. A deploy line a session wrote by hand in `ledger.md` counts too; one with no record of its start is taken to
-have run for `assumedDeployMinutes` (20) before its line. A heavy step disturbs the whole host. A window shorter than `minMinutes` (15) is left out.
+have run for `assumedDeployMinutes` (20) before its line. A queued step disturbs the whole host. A window shorter than `minMinutes` (15) is left out.
 
 A background load, such as a long data script or a backfill, is declared with `teamrig load` (`teamrig load end`
 ends it). A load never cuts a window, since two windows under the same load still compare: each window names the
@@ -309,8 +309,8 @@ LOAD 3f9c1a7e on the whole host from 2030-01-08 10:30 IST (end it: teamrig load 
 
 ## The deploy state in one read
 
-`teamrig deploy-status` prints the state now: who holds the host lock and which small steps share the host, the heavy
-cutoff and the reset blackout (each marked IN FORCE while it holds), the quiet claims and loads still open, and what
+`teamrig deploy-status` prints the state now: who holds the host lock and which small steps share the host, the queue
+cutoff (its `heavy cutoff:` line) and the reset blackout (each marked IN FORCE while it holds), the quiet claims and loads still open, and what
 each repository with a deploy block has pushed but not deployed, with why a deploy would refuse it.
 
 ```sh

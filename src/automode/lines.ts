@@ -3,7 +3,7 @@ import type { PushGuardConfig, PushToProtected } from '../config/types.ts';
 /**
  * The lines teamrig adds to Claude Code's `autoMode.environment` setting: what auto mode's classifier should take as
  * the trusted ground truth of a teamrig team (its protected branches, the register commands every session runs, what
- * `heavy` and `test` wrap, who removes a worktree, and that a session may rebase its own branch). A plugin cannot ship them (a plugin's settings take only `agent` and
+ * `queue` and `test` wrap, who removes a worktree, and that a session may rebase its own branch). A plugin cannot ship them (a plugin's settings take only `agent` and
  * `subagentStatusLine`), so `teamrig automode install` writes them into the person's own settings. Each line starts
  * with the team's tag, which is how install and uninstall find their own lines and leave every other one alone.
  */
@@ -47,7 +47,7 @@ export function kitTag(team: string): string {
   return `[teamrig ${team}] `;
 }
 
-/** The team's lines, in order: protected branches, the register, heavy and test, worktree removal, rebasing. */
+/** The team's lines, in order: protected branches, the register, queue and test, worktree removal, rebasing. */
 export function kitLines(facts: AutoModeFacts): string[] {
   const tag = kitTag(facts.team);
   return [branchesLine(facts), registerLine(facts), wrappersLine(), worktreeLine(facts), rebaseLine(facts)].map((line) => `${tag}${line}`);
@@ -87,8 +87,8 @@ function registerLine({ team, home }: AutoModeFacts): string {
 
 function wrappersLine(): string {
   return (
-    '`teamrig heavy ... -- <cmd>` and `teamrig test ... -- <cmd>` run the session\'s own build, test or script on this ' +
-    'host (heavy waits for the host lock, test records the result); neither grants anything, so judge the command ' +
+    '`teamrig queue ... -- <cmd>` and `teamrig test ... -- <cmd>` run the session\'s own build, test or script on this ' +
+    'host (queue waits for the host lock, test records the result); neither grants anything, so judge the command ' +
     'after `--` as if it ran alone.'
   );
 }

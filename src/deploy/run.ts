@@ -24,9 +24,9 @@ import { deployRepos, plural, readPending, short, type DependencyStep, type Depl
  * `teamrig deploy`: brings what was pushed to a repository's default branch to the running system, one deploy on the host
  * at a time. It reads what is pending (the main checkout's `HEAD..origin/<default branch>`), refuses what it must not
  * pull (a main checkout off its default branch, with tracked changes or commits origin lacks, a dependency change the
- * gate holds), waits out the heavy cutoff's refusal, quiet claims on the deploy's targets and the team's checks, takes the
+ * gate holds), waits out the queue cutoff's refusal, quiet claims on the deploy's targets and the team's checks, takes the
  * host lock, asks again, then pulls fast-forward to the sha it checked, checks and installs a dependency change, runs
- * the afterPull hooks and the deploy command, all one heavy step in the ledger, and records the deploy. Nothing pending
+ * the afterPull hooks and the deploy command, all one queued step in the ledger, and records the deploy. Nothing pending
  * is done with nothing run.
  */
 
@@ -143,7 +143,7 @@ function hookEnv(setup: DeploySetup, ports: DeployPorts, request: DeployRequest,
 }
 
 /**
- * What stops any change to `targets` before its checks are asked: the heavy cutoff and the reset blackout refuse it, a
+ * What stops any change to `targets` before its checks are asked: the queue cutoff and the reset blackout refuse it, a
  * quiet claim on one of them holds it; undefined when none does.
  */
 export async function scheduleReadiness(setup: DeploySetup, ports: DeployPorts, targets: readonly string[]): Promise<Readiness | undefined> {
@@ -246,7 +246,7 @@ async function installDeps(setup: DeploySetup, ports: DeployPorts, repo: DeployR
 /**
  * Under the host lock `lock`: pulls fast-forward to the checked sha, checks and installs a dependency change (see
  * {@link installDeps}), then runs the afterPull hooks and the deploy command, each line shown redacted. They get the
- * lock's token, so a `teamrig heavy` they start runs under this lock.
+ * lock's token, so a `teamrig queue` they start runs under this lock.
  */
 async function pullAndDeploy(setup: DeploySetup, ports: DeployPorts, request: DeployRequest, repo: DeployRepo, pending: Pending, tag: string | undefined, lock: HostLockInfo): Promise<DeployRun> {
   const pulled = ports.git.fastForward(repo.main, pending.target);

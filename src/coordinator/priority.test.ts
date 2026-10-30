@@ -59,7 +59,7 @@ describe('lowerStep', () => {
 });
 
 describe('NODE_PRIORITIES', () => {
-  // A run that starts below normal (under `teamrig heavy`) hands that priority to every step, so lowerStep never sets
+  // A run that starts below normal (under `teamrig queue`) hands that priority to every step, so lowerStep never sets
   // one there: this spec sets and reads a real process's priority whatever the run starts at.
   it('sets and reads back the priority of a process on this host', async () => {
     const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30_000)'], { stdio: 'ignore' });

@@ -367,7 +367,7 @@ describe('merge runs the dependency check, where one is set, on what the rebase 
 });
 
 describe('merge pushes a branch to the default branch', () => {
-  it('rebases, pushes HEAD to the default branch as a recorded heavy step, then tidies the branch away', async () => {
+  it('rebases, pushes HEAD to the default branch as a recorded queued step, then tidies the branch away', async () => {
     const world = new World();
     world.git.landed = ['aaaaaaaa1111', 'bbbbbbbb2222'];
     assert.deepEqual(await world.run(), { kind: 'done', summary: 'pushed aaaaaaaa..bbbbbbbb to main' });
@@ -458,7 +458,7 @@ describe('merge goes through the repository’s merge command, where one is set'
     return world.git.log.some((line) => line.startsWith('deleteRemoteBranch') || line.startsWith('detach') || line.startsWith('deleteBranch'));
   }
 
-  it('rebases, runs the command under the host lock as a recorded heavy step, finds the merge on origin, then tidies the branch away', async () => {
+  it('rebases, runs the command under the host lock as a recorded queued step, finds the merge on origin, then tidies the branch away', async () => {
     const world = new World({ repos: { app: { ...MERGING, deploysOnPush: ['cloud-api'] } } });
     const during: { head?: string | undefined; lockHeld?: boolean } = {};
     world.hooks.answer(MERGE, {
@@ -697,10 +697,10 @@ describe('merge goes through the repository’s merge command, where one is set'
 
   const holds: readonly { readonly name: string; readonly options: Options; readonly arrange: (world: World) => void; readonly end: (end: MergeEnd) => void }[] = [
     {
-      name: 'after the heavy cutoff',
+      name: 'after the queue cutoff',
       options: { repos: { app: MERGING }, start: '2030-01-08T22:45:00Z', schedule: { queueCutoffUtc: '22:30' } },
       arrange: () => undefined,
-      end: (end) => refused(end, /nothing heavy 22:30-00:00 UTC/),
+      end: (end) => refused(end, /queue cutoff 22:30-00:00 UTC/),
     },
     {
       name: 'a lockfile change the dependency gate holds',
@@ -874,9 +874,9 @@ describe('merge waits for what may hold a deploy, and refuses what forbids one',
     refused(await world.run(), /quiet claims in \/team\/deploys\/claims\.json are unreadable \(not JSON\)/);
   });
 
-  it('refuses after the heavy cutoff', async () => {
+  it('refuses after the queue cutoff', async () => {
     const world = new World({ start: '2030-01-08T22:45:00Z', schedule: { queueCutoffUtc: '22:30' } });
-    refused(await world.run(), /nothing heavy 22:30-00:00 UTC/);
+    refused(await world.run(), /queue cutoff 22:30-00:00 UTC/);
     assert.deepEqual(world.steps.ran, []);
   });
 
@@ -977,7 +977,7 @@ describe('mergeBranch with the review gate', () => {
     assert.equal(await world.reviewHolds.read('app', 't9-feat'), undefined);
   });
 
-  it('runs the review check as a heavy step under the host lock, against the base it rebased onto, its lines redacted', async () => {
+  it('runs the review check as a queued step under the host lock, against the base it rebased onto, its lines redacted', async () => {
     const world = gatedWorld({ reviewCheck: REVIEW_CHECK });
     world.git.paths = ['src/app.ts'];
     world.hooks.answer(REVIEW_CHECK, { lines: ['token s3cret looks fine'] });

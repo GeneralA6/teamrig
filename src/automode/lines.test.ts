@@ -25,7 +25,7 @@ describe('kitLines', () => {
       '[teamrig alpha] The task register: every session may run teamrig start, teamrig add, teamrig set, teamrig update, teamrig verify, teamrig list, teamrig show, teamrig check, ' +
         'teamrig plan, teamrig budget, teamrig rules, teamrig refresh, teamrig inbox read, teamrig inbox status, teamrig inbox add, teamrig who, teamrig rename for team alpha; ' +
         'they write only under ~/.teamrig/teams/alpha/.',
-      "[teamrig alpha] `teamrig heavy ... -- <cmd>` and `teamrig test ... -- <cmd>` run the session's own build, test or script on this host (heavy waits for the host lock, " +
+      "[teamrig alpha] `teamrig queue ... -- <cmd>` and `teamrig test ... -- <cmd>` run the session's own build, test or script on this host (queue waits for the host lock, " +
         'test records the result); neither grants anything, so judge the command after `--` as if it ran alone.',
       '[teamrig alpha] `teamrig worktree remove <path> [--delete-branch]` is how a session removes its finished worktree, and every session may run it: teamrig itself removes ' +
         'only a worktree whose t<id>- branch names a task the session owns or one of a session it leads (any for the lead, session boss), and refuses the main checkout, ' +

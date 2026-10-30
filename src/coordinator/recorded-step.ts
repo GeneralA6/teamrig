@@ -18,7 +18,7 @@ export interface RecordedStepPorts extends HeavyRecordPorts {
   readonly steps: StepRunner;
 }
 
-/** A heavy step as the ledger names it. */
+/** A queued step as the ledger names it. */
 export interface HeavyMark {
   readonly session: string;
   readonly what: string;
@@ -36,7 +36,7 @@ export interface StepWatch {
 }
 
 /**
- * Marks for the heavy steps one taking of the host lock runs, in order: only the first carries `queuedAt`, when the
+ * Marks for the queued steps one taking of the host lock runs, in order: only the first carries `queuedAt`, when the
  * taking began to wait, since a later step's wait would count the steps before it.
  */
 export function marksOfTaking(session: string, queuedAt: number): (what: string) => HeavyMark {
@@ -48,13 +48,13 @@ export function marksOfTaking(session: string, queuedAt: number): (what: string)
   };
 }
 
-/** One heavy step as the ledger names it, and how to run it. */
+/** One queued step as the ledger names it, and how to run it. */
 export interface RecordedStep extends HeavyMark {
   readonly request: StepRequest;
 }
 
 /**
- * Runs `work` as one heavy step, its start and its end each a ledger record naming this teamrig's version, the end
+ * Runs `work` as one queued step, its start and its end each a ledger record naming this teamrig's version, the end
  * with the exit code `exitOf` reads from its result; work that throws is recorded as exit 1 and its error rethrown.
  * With `watch`, the end record carries the most the step's process tree held and the least free memory the host had
  * while it ran.
@@ -87,7 +87,7 @@ export async function recordHeavy<T>(ports: HeavyRecordPorts, ledger: string, ma
 }
 
 /**
- * Runs a heavy step, its start and its end each a ledger record, its memory watched with `watch`; a step that could
+ * Runs a queued step, its start and its end each a ledger record, its memory watched with `watch`; a step that could
  * not start is recorded as exit 1 and its error rethrown.
  */
 export async function runRecorded(ports: RecordedStepPorts, ledger: string, step: RecordedStep, watch?: StepWatch): Promise<StepEnd> {

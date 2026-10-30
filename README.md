@@ -188,7 +188,7 @@ helper it is. Everything runs on your machine, with no account and no cloud bill
 - **A model per session:** each session starts on its own model and effort, and you're told when one runs on another.
 - **GitHub issues in the task list:** `teamrig gh sync` reads your repositories' open issues every 15 minutes, one way
   only ([GitHub sync](docs/github-sync.md)).
-- **Shipping from many sessions:** `teamrig heavy` runs builds and test runs under one host lock, `teamrig merge`
+- **Shipping from many sessions:** `teamrig queue` runs builds and test runs under one host lock, `teamrig merge`
   merges a finished branch (by a push, or through your own merge command such as a pull request), `teamrig deploy` brings it to the running system (or, with `--targets`, restarts some services onto new config with
   nothing pulled), and `teamrig deploy-status` shows it all in one read
   ([Ship from many sessions](docs/guides/ship-from-many-sessions.md)).

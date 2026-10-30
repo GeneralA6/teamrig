@@ -90,7 +90,7 @@ class World {
     return (this.files.get(PLACES.ledger) ?? '').split('\n').filter((line) => line !== '').map((line): unknown => JSON.parse(line));
   }
 
-  /** The heavy step's two records, its end with `exitCode`. */
+  /** The queued step's two records, its end with `exitCode`. */
   heavy(exitCode: number, startedAt: string, endedAt: string): unknown[] {
     const start = { type: 'heavy', id: 'step-1', session: 'sec', what: 'deploy api,live of pipeline', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt, endedAt: null, exitCode: null };
     return [start, { ...start, endedAt, exitCode }];
@@ -110,7 +110,7 @@ function claim(targets: readonly string[]): object {
 }
 
 describe('redeployTargets', () => {
-  it('asks the checks before and under the lock, runs the command with the lock, and records one heavy step and a deploy of its targets', async () => {
+  it('asks the checks before and under the lock, runs the command with the lock, and records one queued step and a deploy of its targets', async () => {
     const world = new World();
     world.hooks.answer(RESTART, { lines: ['restarting api, live', 'restarted 2 deployments'], takesMs: 90_000 });
     assert.deepEqual(await world.run(), { kind: 'done', summary: 'deployed api, live of pipeline: restarted 2 deployments' });
@@ -168,9 +168,9 @@ describe('redeployTargets', () => {
     assert.ok(!free.said.some((line) => line.startsWith('waiting:')), 'a claim on workers does not hold a restart of api and live');
   });
 
-  it('is refused at the heavy cutoff and in the blackout before the token reset, running nothing', async () => {
+  it('is refused at the queue cutoff and in the blackout before the token reset, running nothing', async () => {
     const late = new World({ schedule: { queueCutoffUtc: '09:00' } });
-    assert.deepEqual(await late.run(), { kind: 'refused', reason: 'nothing heavy 09:00-00:00 UTC (now 10:00 UTC)' });
+    assert.deepEqual(await late.run(), { kind: 'refused', reason: 'queue cutoff 09:00-00:00 UTC (now 10:00 UTC)' });
     const blackout = new World({ schedule: { resetBlackoutHours: 2 }, reset: { at: Date.parse('2030-01-08T11:00:00Z'), source: 'usage snapshot' } });
     const end = await blackout.run();
     assert.equal(end.kind, 'refused');

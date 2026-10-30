@@ -21,7 +21,7 @@ export type LimitedEnd = ShellEnd | { readonly kind: 'timedOut' };
 /** How a step ended: as a limited program does, or killed when its `stop` aborted. */
 export type StepEnd = LimitedEnd | { readonly kind: 'stopped' };
 
-/** Runs a heavy step with this process's stdin, stdout and stderr, so its output streams as it comes. */
+/** Runs a queued step with this process's stdin, stdout and stderr, so its output streams as it comes. */
 export interface StepRunner {
   run(request: StepRequest): Promise<StepEnd>;
 }

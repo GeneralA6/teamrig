@@ -141,21 +141,21 @@ function timesClause(zone: TimeZone, now: Date): string {
 }
 
 /**
- * Rule 7's heavy-step sentence, `cutoff` the span no heavy step starts in, on the team's clock. A team that names a
+ * Rule 7's queued-step sentence, `cutoff` the span no queued step starts in, on the team's clock. A team that names a
  * repository for the coordinator [delivery.repos] merges and runs its changes through it, so it gets the commands
  * too; a cutoff alone gets only its own sentence.
  */
 function heavySteps(delivery: CoordinatorConfig, command: string, cutoff: string | undefined): string {
   const repos = Object.values(delivery.repos);
   if (repos.length === 0) {
-    return cutoff === undefined ? '' : ` No heavy step (builds, test runs, data scripts) starts ${cutoff} [delivery.schedule.queueCutoffUtc].`;
+    return cutoff === undefined ? '' : ` No queued step (builds, test runs, data scripts) starts ${cutoff} [delivery.schedule.queueCutoffUtc].`;
   }
   const deploy = repos.some((repo) => repo.deploy !== undefined) ? ` and run it with \`${command} deploy\`` : '';
   return (
-    ` Run heavy steps (builds, test runs, data scripts) in the background through \`${command} heavy\`, a test run inside \`${command} test\`` +
+    ` Run queued steps (builds, test runs, data scripts) in the background through \`${command} queue\`, a test run inside \`${command} test\`` +
     (cutoff === undefined ? '' : `, none starting ${cutoff} [delivery.schedule.queueCutoffUtc]`) +
-    // Never `heavy -- git commit`: a repository's hooks take the lock themselves, and Claude Code's worktree guard
-    // refuses that form in a worktree session (the guide's `teamrig heavy` section).
+    // Never `queue -- git commit`: a repository's hooks take the lock themselves, and Claude Code's worktree guard
+    // refuses that form in a worktree session (the guide's `teamrig queue` section).
     `; a commit stays a plain \`git commit\`. Merge a tested branch with \`${command} merge\`${deploy}, also in the background [delivery.repos].`
   );
 }
@@ -195,7 +195,7 @@ export interface RulesClock {
  * Each core rule's text, filled from the team's config. Each rule names the config key
  * behind any value it prints, so a team changes a number without forking the text. A step only one
  * platform needs, like removing a worktree without following its node_modules junction on Windows, prints on that platform alone.
- * The heavy cutoff is named on the team's clock, for the day `clock.now` falls on.
+ * The queue cutoff is named on the team's clock, for the day `clock.now` falls on.
  */
 export function coreRuleTexts(config: KitConfig, command: string, platform: NodeJS.Platform, clock: RulesClock): Readonly<Record<CoreRuleKey, string>> {
   const { roles, skills, budget } = config;

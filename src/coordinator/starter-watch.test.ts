@@ -12,11 +12,11 @@ import { endedText, LAUNCHER_PID_ENV, launchingShellOf, nodeEvery, SHELL_PID_ENV
 
 const TERMINAL: ProcessInfo = { pid: 10, parentPid: 1, name: 'WindowsTerminal.exe', commandLine: 'wt' };
 const CLAUDE: ProcessInfo = { pid: 11, parentPid: 10, name: 'claude.exe', commandLine: 'claude' };
-const SHELL: ProcessInfo = { pid: 12, parentPid: 11, name: 'bash.exe', commandLine: 'bash -c teamrig heavy' };
-const SELF: ProcessInfo = { pid: 13, parentPid: 12, name: 'node.exe', commandLine: 'teamrig heavy' };
+const SHELL: ProcessInfo = { pid: 12, parentPid: 11, name: 'bash.exe', commandLine: 'bash -c teamrig queue' };
+const SELF: ProcessInfo = { pid: 13, parentPid: 12, name: 'node.exe', commandLine: 'teamrig queue' };
 /** Under Git Bash: the launcher's `sh` stub, started by a forked copy of SHELL (pid 15) that has ended, and the CLI it runs. */
-const STUB: ProcessInfo = { pid: 14, parentPid: 15, name: 'sh.exe', commandLine: 'sh teamrig heavy' };
-const LAUNCHED: ProcessInfo = { pid: 16, parentPid: 14, name: 'node.exe', commandLine: 'node main.js heavy' };
+const STUB: ProcessInfo = { pid: 14, parentPid: 15, name: 'sh.exe', commandLine: 'sh teamrig queue' };
+const LAUNCHED: ProcessInfo = { pid: 16, parentPid: 14, name: 'node.exe', commandLine: 'node main.js queue' };
 
 /** An `Every` the test runs by hand: it keeps the check and each period asked, and whether its stop was called. */
 class ManualEvery {

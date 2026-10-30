@@ -292,13 +292,13 @@ export const DEFAULT_OPEN: OpenConfig = { terminal: 'auto', teamWindow: false, h
 export const DEFAULT_STATUS_LINE: StatusLineConfig = { folder: true, branch: true, resume: true };
 
 /**
- * A host lock outlives the longest heavy step it may hold by this many minutes, so the step is killed
+ * A host lock outlives the longest queued step it may hold by this many minutes, so the step is killed
  * before its lock runs out and no second step starts beside it.
  */
 export const HEAVY_TTL_MARGIN_MINUTES = 10;
 
 /**
- * A host lock lasts 150 minutes and a heavy step at most 45 of them, a small step at most 10; a step waits up to an hour
+ * A host lock lasts 150 minutes and a queued step at most 45 of them, a small step at most 10; a step waits up to an hour
  * for the lock, and its memory is sampled every 15 seconds while it runs.
  */
 export const DEFAULT_HEAVY: HeavyConfig = { lockTtlMinutes: 150, maxRunMinutes: 45, smallMaxRunMinutes: 10, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048 };

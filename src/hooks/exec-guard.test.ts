@@ -89,7 +89,7 @@ describe('execGuardOutput', () => {
       'teamrig exec approve R1 --session bravo',
       'git status && teamrig exec approve R1 --session bravo',
       "bash -c 'teamrig exec approve R1 --session bravo'",
-      'teamrig heavy -- teamrig exec approve R1 --session bravo',
+      'teamrig queue -- teamrig exec approve R1 --session bravo',
       `${INSTALL}/bin/teamrig.cmd exec approve R1 --session bravo`,
       `node --disable-warning=ExperimentalWarning ${INSTALL}/dist/cli/main.js exec approve R1 --session bravo`,
       `T=${INSTALL}/bin/teamrig; $T exec approve R1 --session bravo`,

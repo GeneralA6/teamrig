@@ -335,7 +335,7 @@ advisory (`npm view <name> time` lists when each version was published). [packag
 
 A worktree whose `node_modules` is a link to another checkout's (a junction on Windows, as `teamrig worktree add`
 makes it) shares that folder with every checkout linked to it. A package manager writes through the link, and `npm ci`
-empties the folder first, so one install there breaks every checkout at once (an `npm ci` under `teamrig heavy` once
+empties the folder first, so one install there breaks every checkout at once (an `npm ci` under `teamrig queue` once
 left a main checkout without its packages for 49 minutes). So the guard refuses, whatever `packageGuard` says, an npm,
 pnpm, yarn or bun call that rewrites `node_modules` (`ci`, `install`, `add`, `update`, `uninstall`, `prune`, `dedupe`,
 a bare `yarn`) when the folder it installs into (`--prefix`, `-C`/`--dir` or `--cwd` names another) or a folder above

@@ -146,15 +146,15 @@ export interface RunOptions {
   readonly worktrees?: WorktreePorts;
   /** The shutdown log and countdown `restore` sees; default no shutdown on record and a countdown that goes at once. */
   readonly restore?: RestorePorts;
-  /** The runner `teamrig heavy` runs its step in; default one whose steps exit 0 at once. */
+  /** The runner `teamrig queue` runs its step in; default one whose steps exit 0 at once. */
   readonly steps?: StepRunner;
-  /** The host memory (heavy's watch, `teamrig sessions`); default one that lists no process and measures nothing. */
+  /** The host memory (queue's watch, `teamrig sessions`); default one that lists no process and measures nothing. */
   readonly memory?: HostMemory;
-  /** The processes that started a `teamrig heavy` run; default a shell and its Claude Code, which never end. */
+  /** The processes that started a `teamrig queue` run; default a shell and its Claude Code, which never end. */
   readonly starters?: StarterWatch;
   /** The git `teamrig merge` drives; default the fake repository at /w/feat (testing/fake-merge-git.ts). */
   readonly mergeGit?: MergeGit;
-  /** The working tree `teamrig heavy --pre-push` reads; default no repository. */
+  /** The working tree `teamrig queue --pre-push` reads; default no repository. */
   readonly trees?: TreeState;
   /** The runner `teamrig deploy` runs its checks, afterPull hooks and deploy command in; default one whose programs print nothing and exit 0. */
   readonly hooks?: HookRunner;

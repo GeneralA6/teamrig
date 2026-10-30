@@ -324,10 +324,10 @@ describe('renderCorePack', () => {
     assert.match(pack, /--followups <tasks it leaves>\|none on verifying, done \[register\]\. Wait on a peer by its task\./);
     assert.match(pack, /A shipped change is verifying until its proof exists \(`teamrig verify`\)\.$/m);
     assert.match(pack, /`teamrig start --session <you>`/);
-    assert.doesNotMatch(pack, /deliveryOwner|securityReviewer|queueCutoffUtc|teamrig heavy|delivery\.repos|Pace the week|\[budget\]/);
+    assert.doesNotMatch(pack, /deliveryOwner|securityReviewer|queueCutoffUtc|teamrig queue|delivery\.repos|Pace the week|\[budget\]/);
   });
 
-  it('gives a team with a delivery repository the heavy, test, merge and deploy commands, all in the background', () => {
+  it('gives a team with a delivery repository the queue, test, merge and deploy commands, all in the background', () => {
     const pack = renderCorePack(
       testConfig({ delivery: { schedule: { queueCutoffUtc: '22:30' }, repos: { app: DEPLOYED_REPO } } }),
       COMMAND,
@@ -336,9 +336,9 @@ describe('renderCorePack', () => {
     );
     assert.match(
       pack,
-      /^7\. .*before then\. Run heavy steps \(builds, test runs, data scripts\) in the background through `teamrig heavy`, a test run inside `teamrig test`, none starting 22:30-00:00 UTC \[delivery\.schedule\.queueCutoffUtc\]; a commit stays a plain `git commit`\. Merge a tested branch with `teamrig merge` and run it with `teamrig deploy`, also in the background \[delivery\.repos\]\.$/m,
+      /^7\. .*before then\. Run queued steps \(builds, test runs, data scripts\) in the background through `teamrig queue`, a test run inside `teamrig test`, none starting 22:30-00:00 UTC \[delivery\.schedule\.queueCutoffUtc\]; a commit stays a plain `git commit`\. Merge a tested branch with `teamrig merge` and run it with `teamrig deploy`, also in the background \[delivery\.repos\]\.$/m,
     );
-    assert.doesNotMatch(pack, /No heavy step/);
+    assert.doesNotMatch(pack, /No queued step/);
   });
 
   it('names deploy only when a delivery repository has a deploy block, and the cutoff only when set', () => {
@@ -350,7 +350,7 @@ describe('renderCorePack', () => {
     assert.doesNotMatch(pack, /teamrig deploy|queueCutoffUtc/);
   });
 
-  it('adds the delivery owner, security reviewer, heavy cutoff and budget pacing only when configured', () => {
+  it('adds the delivery owner, security reviewer, queue cutoff and budget pacing only when configured', () => {
     const pack = renderCorePack(
       testConfig({
         roles: { lead: 'lead', deliveryOwner: 'bravo', securityReviewer: 'alpha' },
@@ -362,7 +362,7 @@ describe('renderCorePack', () => {
       RULES_CLOCK,
     );
     assert.match(pack, /bravo owns deploy coordination and fleet health \[roles\.deliveryOwner\]\. alpha reviews privileged commands \(`teamrig exec`\) \[roles\.securityReviewer\]\. Other sessions own/);
-    assert.match(pack, /No heavy step \(builds, test runs, data scripts\) starts 22:30-00:00 UTC \[delivery\.schedule\.queueCutoffUtc\]\./);
+    assert.match(pack, /No queued step \(builds, test runs, data scripts\) starts 22:30-00:00 UTC \[delivery\.schedule\.queueCutoffUtc\]\./);
     const cutoff = { delivery: { schedule: { queueCutoffUtc: '22:30' } } };
     const inIsrael = renderCorePack(testConfig(cutoff), COMMAND, 'win32', { ...RULES_CLOCK, machineZone: 'Asia/Jerusalem' });
     assert.match(inIsrael, /starts 00:30-02:00 IST \[/, "on the machine's clock, in winter");

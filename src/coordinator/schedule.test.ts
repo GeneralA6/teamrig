@@ -64,12 +64,12 @@ describe('heavyCutoffReason', () => {
   });
 
   it('refuses from the cutoff to midnight UTC, naming the span and the time', () => {
-    assert.equal(heavyCutoffReason(Date.parse('2030-01-08T22:30:00Z'), '22:30', UTC), 'nothing heavy 22:30-00:00 UTC (now 22:30 UTC)');
-    assert.equal(heavyCutoffReason(Date.parse('2030-01-08T23:59:59Z'), '22:30', UTC), 'nothing heavy 22:30-00:00 UTC (now 23:59 UTC)');
+    assert.equal(heavyCutoffReason(Date.parse('2030-01-08T22:30:00Z'), '22:30', UTC), 'queue cutoff 22:30-00:00 UTC (now 22:30 UTC)');
+    assert.equal(heavyCutoffReason(Date.parse('2030-01-08T23:59:59Z'), '22:30', UTC), 'queue cutoff 22:30-00:00 UTC (now 23:59 UTC)');
   });
 
   it("names the span and the time on the team's clock", () => {
-    assert.equal(heavyCutoffReason(Date.parse('2030-01-08T22:45:00Z'), '22:30', JERUSALEM), 'nothing heavy 00:30-02:00 IST (now 00:45 IST)');
+    assert.equal(heavyCutoffReason(Date.parse('2030-01-08T22:45:00Z'), '22:30', JERUSALEM), 'queue cutoff 00:30-02:00 IST (now 00:45 IST)');
   });
 });
 

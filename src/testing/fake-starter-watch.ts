@@ -2,7 +2,7 @@ import type { StarterWatch, StarterWatching } from '../coordinator/starter-watch
 import type { ProcessInfo } from '../open/session-processes.ts';
 
 /** The Bash tool's shell a tab's step runs in. */
-export const SHELL: ProcessInfo = { pid: 4100, parentPid: 4000, name: 'bash.exe', commandLine: 'bash -c teamrig heavy' };
+export const SHELL: ProcessInfo = { pid: 4100, parentPid: 4000, name: 'bash.exe', commandLine: 'bash -c teamrig queue' };
 /** The tab's Claude Code, which started `SHELL`. */
 export const CLAUDE: ProcessInfo = { pid: 4000, parentPid: 3000, name: 'claude.exe', commandLine: 'claude' };
 

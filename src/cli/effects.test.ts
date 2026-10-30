@@ -63,7 +63,7 @@ const EXPECTED = {
   sessions: 'read',
   close: 'write',
   rename: 'write',
-  heavy: 'write',
+  queue: 'write',
   withdraw: 'write',
   merge: 'write',
   deploy: 'write',

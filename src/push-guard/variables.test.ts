@@ -135,8 +135,8 @@ describe('resolveLiteralVariables: what resolves', () => {
   it('keeps a variable a value names but the line does not know as one dynamic piece', () => {
     const rows: readonly (readonly [line: string, expected: string])[] = [
       ['B="feat$C"; git push origin $B', 'git push origin ~feat${C}'],
-      ['H="node --flag $C heavy --session s"\n$H --what "x" -- git push -u origin topic', 'node --flag ~${C} heavy --session s --what x -- git push -u origin topic'],
-      ['C=~/cli.ts; H="node $C heavy"; $H -- git push', 'node ~${HOME}/cli.ts heavy -- git push'],
+      ['H="node --flag $C queue --session s"\n$H --what "x" -- git push -u origin topic', 'node --flag ~${C} queue --session s --what x -- git push -u origin topic'],
+      ['C=~/cli.ts; H="node $C queue"; $H -- git push', 'node ~${HOME}/cli.ts queue -- git push'],
       ['false && C=x; H="git $C"; $H push', 'git ~${C} push'],
       ['B="x$B"; git push origin $B', 'git push origin ~x${B}'],
     ];

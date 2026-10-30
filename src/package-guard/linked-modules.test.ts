@@ -61,6 +61,7 @@ describe('linkedModulesWritesOf', () => {
   it('counts each call of a line, under a teamrig runner or a nested shell too', async () => {
     const link = join(APP, 'node_modules');
     assert.deepEqual(await writesOf('npm ci && yarn'), [`npm ci @ ${link}`, `yarn @ ${link}`]);
+    assert.deepEqual(await writesOf('teamrig queue --session s --what w -- npm ci'), [`npm ci @ ${link}`]);
     assert.deepEqual(await writesOf('teamrig heavy --session s --what w -- npm ci'), [`npm ci @ ${link}`]);
     assert.deepEqual(await writesOf('sh -c "cd app && npm ci"', WORK), [`npm ci @ ${link}`]);
     assert.deepEqual(await linkedModulesWritesOf('npm ci', context(APP, 'powershell'), linkedTree()), [{ call: 'npm ci', modules: link, target: MAIN }]);

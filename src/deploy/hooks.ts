@@ -65,7 +65,7 @@ export function hookEndText(end: HookEnd): string {
 
 /**
  * The real runner: Node's `spawn` with no shell, stdout read line by line, lowered to below-normal priority as it
- * starts, as a heavy step is (a merge or deploy command is one); its time limit or its `stop` kills the tree. A killed
+ * starts, as a queued step is (a merge or deploy command is one); its time limit or its `stop` kills the tree. A killed
  * hook is reported once the kill is done.
  */
 export function nodeHookRunner(platform: NodeJS.Platform, kill: TreeKill = nodeTreeKill(platform), priorities: Priorities = NODE_PRIORITIES): HookRunner {

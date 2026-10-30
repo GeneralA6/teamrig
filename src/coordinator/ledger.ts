@@ -13,7 +13,7 @@ export const LEDGER_MD_FILE = 'ledger.md';
 export const LEDGER_MD_HEADER = '# Deploy ledger: one line a deploy: deployed at (UTC) | session | repo | range | what | kind | note';
 
 /**
- * A heavy step in the ledger, in the format a team's own coordinator writes too: once when it starts (`endedAt`
+ * A queued step in the ledger, in the format a team's own coordinator writes too: once when it starts (`endedAt`
  * and `exitCode` null), and again with both when it ends, under the same `id`. The optional fields are teamrig's
  * own; a record without them is still read.
  */
@@ -26,7 +26,7 @@ export interface HeavyRecord {
   readonly kit?: string;
   /** An ISO time: when the step began to wait for the host lock, so its wait is `startedAt` less this. */
   readonly queuedAt?: string;
-  /** Set when the step was a small one sharing the host (`heavy --small`), not holding the host lock. */
+  /** Set when the step was a small one sharing the host (`queue --small`), not holding the host lock. */
   readonly shared?: true;
   /** An ISO time: when it took the host lock and started. */
   readonly startedAt: string;
