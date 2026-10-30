@@ -53,6 +53,10 @@ export const SECRET_READS = ['deny', 'ask', 'allow'];
 export function isSecretReads(value) {
     return SECRET_READS.some((choice) => choice === value);
 }
+export const SECRET_WRITES = ['deny', 'ask', 'allow'];
+export function isSecretWrites(value) {
+    return SECRET_WRITES.some((choice) => choice === value);
+}
 export const COMMIT_GATES = ['off', 'warn', 'refuse'];
 export function isCommitGate(value) {
     return COMMIT_GATES.some((gate) => gate === value);
