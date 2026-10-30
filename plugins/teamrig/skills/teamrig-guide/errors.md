@@ -251,7 +251,7 @@ Not refusals: `WARN` lines from `team create`, `requirement` findings from `doct
 | --- | --- |
 | `FAILED git cannot list the commits in X..HEAD from <dir>` | Run `commits check` inside a git repository, with a base ref that exists (`git fetch` first). |
 | `INVALID <config path>: N problem(s), each read as its default until fixed` | Fix each listed problem in the config, then run `config validate` again. |
-| `FAILED <path> is held by another process (waited 20000 ms); retry` | Another teamrig command holds the lock: run it again. A lock left by a crashed command is cleared after 30 s. |
+| `FAILED <path> is held by another process (waited 20000 ms); retry` | Another teamrig command holds the lock: run it again. A lock whose command crashed is taken over at once; one older than `lock.ttlMs` (5 min) is taken over even if its pid runs again. |
 | Any other `FAILED` about a file | Run `teamrig doctor`, and report what it prints to the lead. |
 
 ## Traps outside teamrig
