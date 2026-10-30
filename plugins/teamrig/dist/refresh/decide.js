@@ -104,17 +104,31 @@ function whenOf(moment) {
     return moment.task === null ? ', so refresh now rather than at a task end' : ` and you just finished ${moment.task}`;
 }
 /**
+ * What the ask adds while background work the session started still runs: the handover says what each result still
+ * needs, since the fresh start, which waits for the work to report back, does not see that result.
+ */
+function runningLine(running) {
+    if (running === 0) {
+        return '';
+    }
+    return running === 1
+        ? 'A background task you started still runs: say in the handover what its result still needs; the fresh start waits until it reports back. '
+        : `${running} background tasks you started still run: say in the handover what each result still needs; the fresh start waits until they report back. `;
+}
+/**
  * The ask to write the handover. It asks only for what the register lacks: the fresh start lists the session's
  * tasks live from the register (hooks/live-tasks.ts), so a status restated here could only go stale. Within a turn
- * it ends the turn after `refresh --ready`, since the fresh start comes only once the turn has ended.
+ * it ends the turn after `refresh --ready`, since the fresh start comes only once the turn has ended. It never waits
+ * for `running` background work (T1378): a session that runs its heavy steps in the background would reach Claude
+ * Code's compaction unasked; only the fresh start, which would cut that work off, waits for it.
  */
-function handoverAsk(moment, cause, context) {
+function handoverAsk(moment, cause, context, running) {
     const why = whyOf(cause, context.settings);
     const after = moment.kind === 'midTurn' ? ' and end your turn: the fresh start follows it.' : '. Do not start new work.';
     return (`${context.command}: ${why}${whenOf(moment)}. Write your handover to ${context.handoverPath}, replacing the whole file (your fresh start reads all of it): what the register lacks ` +
         '(the next step of each task in progress; what to check later, and when; questions still open with the user; ' +
         'the scratchpad files, plan file and scheduled jobs the next session still needs; where things are), not task statuses, ' +
-        `which your fresh start reads live from the register. Then run \`${readyCommand(context.command, context.session.id)}\`${after}`);
+        `which your fresh start reads live from the register. ${runningLine(running)}Then run \`${readyCommand(context.command, context.session.id)}\`${after}`);
 }
 /**
  * The Stop hook, at the end of every turn. A turn end with the context at the threshold, or after the lead
@@ -123,9 +137,9 @@ function handoverAsk(moment, cause, context) {
  * is recorded as judged when none is due. A session that went on after an ask (the user typed, or never typed
  * /clear) is asked again only once its context grew `reaskGrowth` past that ask, or at its next task end. Once
  * the handover is written it tells the user, once, that the session restarts by itself when it can, else that
- * it waits for /clear. While background work the session started still runs, a due refresh and the notice wait
- * for a later stop, since a fresh start would cut that work off; so do they while the owner's daily meeting the
- * session is in is open (`meetingHolds`). A stop that ends a turn a Stop hook continued
+ * it waits for /clear. While background work the session started still runs, the notice waits for a later stop,
+ * since a fresh start would cut that work off; a due refresh asks anyway and names the work (`handoverAsk`). Both
+ * wait while the owner's daily meeting the session is in is open (`meetingHolds`). A stop that ends a turn a Stop hook continued
  * never asks, so the kit never loops; the notice that the handover is written does show there, since that is
  * the turn that runs `refresh --ready`. A turn that ends after a tool result asked within it (`decideMidTurn`),
  * with no handover marked ready, is asked once more, as a due refresh. The facts are read cheapest first: the
@@ -171,41 +185,33 @@ export function decideStop(state, context, facts) {
     if (facts.due === undefined) {
         return MEASURE;
     }
-    // A refresh would cut the running work off: a boundary stays unjudged, so a stop after the work ends asks.
-    if (facts.due.running > 0) {
-        return NONE;
-    }
     const task = state?.phase === 'boundary' ? state.task : null;
     return {
         kind: 'block',
         state: { phase: 'asked', task, at: context.now, tokens, handoverHash: facts.due.handoverHash, midTurn: false },
-        reason: handoverAsk({ kind: 'turnEnd', task }, cause, context),
+        reason: handoverAsk({ kind: 'turnEnd', task }, cause, context, facts.due.running),
     };
 }
 /**
  * The turn end after a tool result asked within the turn, the handover not marked ready: asked once more, as the
- * Stop hook's own ask. It keeps the first ask's fingerprint, so a handover written since still counts as new; it
- * waits while background work runs, as any due refresh does.
+ * Stop hook's own ask. It keeps the first ask's fingerprint, so a handover written since still counts as new.
  */
 function pendingAsk(state, context, due) {
     if (due === undefined) {
         return MEASURE;
     }
-    if (due.running > 0) {
-        return NONE;
-    }
     return {
         kind: 'block',
         state: { ...state, midTurn: false },
-        reason: handoverAsk({ kind: 'turnEnd', task: state.task }, { kind: 'pending', tokens: state.tokens }, context),
+        reason: handoverAsk({ kind: 'turnEnd', task: state.task }, { kind: 'pending', tokens: state.tokens }, context, due.running),
     };
 }
 /**
  * The plugin's mod, at a tool result of the main conversation: once the context Claude Code reported reaches
  * `askAt` (the threshold, or well past an ask the session went on from), it asks for the handover within the
  * turn, so a long busy turn refreshes before Claude Code compacts it rather than after. Only the size asks here:
- * the lead's request and the task count stay with the turn's end. Background work still running holds the ask,
- * as at a turn end, and so does the open meeting the session is in (`meetingHolds`). `nextAt` tells the mod the
+ * the lead's request and the task count stay with the turn's end. The open meeting the session is in holds the
+ * ask (`meetingHolds`); background work still running does not, and the ask names it. `nextAt` tells the mod the
  * context to look again at, so it calls the CLI only then; a held ask it looks at again a while later.
  */
 export function decideMidTurn(state, context, facts) {
@@ -220,12 +226,10 @@ export function decideMidTurn(state, context, facts) {
     if (facts.due === undefined) {
         return { kind: 'measure' };
     }
-    if (facts.due.running > 0) {
-        return { kind: 'none', nextAt };
-    }
     const task = state?.phase === 'boundary' ? state.task : null;
     const asked = { phase: 'asked', task, at: context.now, tokens: facts.tokens, handoverHash: facts.due.handoverHash, midTurn: true };
-    return { kind: 'ask', state: asked, reason: handoverAsk({ kind: 'midTurn' }, { kind: 'size', tokens: facts.tokens }, context), nextAt: askAt(asked, settings) };
+    const reason = handoverAsk({ kind: 'midTurn' }, { kind: 'size', tokens: facts.tokens }, context, facts.due.running);
+    return { kind: 'ask', state: asked, reason, nextAt: askAt(asked, settings) };
 }
 /**
  * A compaction Claude Code is about to run on its own (trigger `auto`) on the main conversation: skipped while the
