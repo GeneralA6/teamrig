@@ -1,6 +1,6 @@
 {
   "name": "teamrig",
-  "version": "0.238.0",
+  "version": "0.239.0",
   "description": "Coordinate a team of Claude Code sessions: a task register, inboxes, always-loaded team rules, skill hygiene and safety hooks.",
   "author": { "name": "GeneralA6" },
   "repository": "https://github.com/GeneralA6/teamrig",
