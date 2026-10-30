@@ -80,6 +80,22 @@ describe('teamrig hook secret-redact: rotation tasks', () => {
     assert.equal(incidentsIn(kit.files.get(INCIDENTS)).length, 4);
   });
 
+  it("files a new task the same day once the day's task is closed, so a real leak is not folded into a false positive", async () => {
+    const kit = new CliHarness(REVIEWED);
+    const leak = (): Promise<CliResult> => kit.run(['hook', 'secret-redact'], { stdin: ran(TOKEN), ...AS_ALPHA });
+    assert.equal(lineOf(await leak()), leakLine('bravo rotates it in T1.'));
+    assert.equal((await kit.run(['set', 'T1', '--status', 'dropped', '--note', 'a false positive', '--session', 'bravo'])).code, EXIT.ok);
+    assert.equal(lineOf(await leak()), leakLine('bravo rotates it in T2.'));
+    assert.equal(lineOf(await leak()), leakLine('bravo rotates it in T2.'));
+    assert.deepEqual(createdIn(kit.files.get(EVENTS_PATH)).map(([id]) => id), ['T1', 'T2']);
+  });
+
+  it('files a new task when the task the log names is in no register', async () => {
+    const kit = new CliHarness(REVIEWED);
+    await kit.files.write(INCIDENTS, `${JSON.stringify({ v: 1, at: '2030-01-08T09:00:00.000Z', session: 'alpha', tool: 'Bash', kind: 'GitHub token', task: 'T9' })}\n`);
+    assert.equal(lineOf(await kit.run(['hook', 'secret-redact'], { stdin: ran(TOKEN), ...AS_ALPHA })), leakLine('bravo rotates it in T1.'));
+  });
+
   it("asks a reviewer in the team above for the task in that team's register, by its address", async () => {
     const kit = await treeHarness();
     await kit.files.write(teamConfigOf('web'), formatConfig({ ...SUB_TEAMS['web'], roles: { lead: 'lead', securityReviewer: 'app/bravo' } }));
@@ -88,6 +104,16 @@ describe('teamrig hook secret-redact: rotation tasks', () => {
     assert.deepEqual(createdIn(kit.files.get(EVENTS_PATH)), [['T1', 'bravo', 'web/front', 1, 'Rotate the GitHub token a Bash result showed front on 2030-01-08']]);
     assert.match(kit.files.get(teamInboxOf('app', 'bravo')) ?? '', /web\/front: T1 is yours \(p1\)/);
     assert.deepEqual(incidentsIn(kit.files.get(join(teamHomeOf('web'), 'state', 'secret-incidents.jsonl'))).map((incident) => (incident instanceof Object && 'task' in incident ? incident.task : undefined)), ['app/T1']);
+  });
+
+  it("names the team above's task again while it is open there, and asks anew once it is closed", async () => {
+    const kit = await treeHarness();
+    await kit.files.write(teamConfigOf('web'), formatConfig({ ...SUB_TEAMS['web'], roles: { lead: 'lead', securityReviewer: 'app/bravo' } }));
+    const leak = async (): Promise<string> => lineOf(await kit.run(['hook', 'secret-redact'], { stdin: ran(TOKEN), env: { TEAMRIG_TEAM: 'web', TEAMRIG_SESSION: 'front' } }));
+    assert.equal(await leak(), leakLine('app/bravo rotates it in app/T1.'));
+    assert.equal(await leak(), leakLine('app/bravo rotates it in app/T1.'));
+    assert.equal((await kit.run(['set', 'T1', '--status', 'dropped', '--note', 'a false positive'], { env: { TEAMRIG_TEAM: 'app', TEAMRIG_SESSION: 'bravo' } })).code, EXIT.ok);
+    assert.equal(await leak(), leakLine('app/bravo rotates it in app/T2.'));
   });
 
   it("redacts and asks the model to have the secret rotated when the tab's session is not known", async () => {

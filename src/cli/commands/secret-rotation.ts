@@ -4,8 +4,12 @@ import { errorMessage, type JsonRecord } from '../../core/guards.ts';
 import { FileLock } from '../../core/lock.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import type { Rotation } from '../../hooks/secret-redact.ts';
+import type { Task } from '../../register/fold.ts';
+import { ACTIVE_STATUSES } from '../../register/model.ts';
 import type { AddInput } from '../../register/policy.ts';
+import type { TasksElsewhere } from '../../register/tree.ts';
 import { filedToday, SecretIncidentLog, type SecretIncident } from '../../secret-guard/incidents.ts';
+import { taskRefOf } from '../inputs.ts';
 import { teamZone } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
 import { sessionScopeOf, teamScopeOf, type TeamScope } from './hook-input.ts';
@@ -27,8 +31,10 @@ const every = (leak: Leak, problem: string): readonly Rotation[] => leak.kinds.m
  * Has each kind of secret a tool's result held rotated (T1369 R8): one register task for the team's security reviewer,
  * else its lead, per kind, session and day on the team's clock, and one line per kind in the team's incident log,
  * never the value. A reviewer of a team above (`<team>/<id>`) gets the task in that team's register, as an ask of the
- * session's. A kind its session was given a task for that day names that task again. Nothing here throws: a filing
- * that fails is that kind's problem, and the redaction is sent either way.
+ * session's. A kind its session was given a task for that day names that task again while it is still active; a
+ * closed one (a false positive, say) gets a new task, so a real leak later that day is never folded into a task no
+ * one works (T1545). Nothing here throws: a filing that fails is that kind's problem, and the redaction is sent either
+ * way.
  */
 export async function fileRotations(runtime: CliRuntime, payload: JsonRecord, leak: Leak): Promise<readonly Rotation[]> {
   try {
@@ -72,15 +78,32 @@ async function rotationOf(runtime: CliRuntime, team: TeamScope, sighting: Sighti
   const { kind } = sighting;
   const now = new Date(runtime.clock.now());
   const filed = filedToday(incidents, kind, sighting.session, now, zone);
-  if (filed !== undefined) {
-    return { kind, task: filed };
-  }
   try {
+    if (filed !== undefined && (await stillActive(runtime, team, filed))) {
+      return { kind, task: filed };
+    }
     const reviewer = roleHolderOf(team.config.roles, 'securityReviewer', team.kit.paths.team) ?? { team: team.kit.paths.team, id: team.config.roles.lead };
     return await fileRotation(runtime, team, reviewer, sighting, rotationInput(sighting, zone.day(now), team.config.register.maxTitle));
   } catch (error) {
     return { kind, problem: errorMessage(error) };
   }
+}
+
+/**
+ * Whether the task a kind was given, `T12` in the team's register or `web/T12` in another of its tree, is still open,
+ * in progress, waiting or verifying; a task the named register no longer holds is not. The tree's other registers are
+ * read outright: the register's own tasks need not wait on any of them.
+ */
+async function stillActive(runtime: CliRuntime, team: TeamScope, filed: string): Promise<boolean> {
+  const ref = taskRefOf(filed);
+  const { register } = await teamOf(runtime, team.kit, 'read');
+  const held = ref.team === undefined ? (await register.snapshot()).state.tasks.get(ref.id) : heldBy(await register.elsewhere(), ref.team, ref.id);
+  return held !== undefined && ACTIVE_STATUSES.includes(held.status);
+}
+
+function heldBy(elsewhere: TasksElsewhere, holder: string, id: string): Task | undefined {
+  const found = elsewhere.get(id);
+  return found?.team === holder ? found.task : undefined;
 }
 
 /**
