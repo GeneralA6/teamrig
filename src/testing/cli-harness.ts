@@ -3,7 +3,7 @@ import type { Sleep } from '../core/lock.ts';
 import { join, resolve } from 'node:path';
 import { runCli } from '../cli/run.ts';
 import type { ExitCode } from '../cli/runtime.ts';
-import { CONFIG_LIMITS } from '../config/limits.ts';
+import { CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from '../config/limits.ts';
 import { formatConfig } from '../config/load.ts';
 import type { ConfigFormat } from '../config/migrate.ts';
 import type { FileBytes } from '../core/file-bytes.ts';
@@ -31,6 +31,7 @@ import type { HookRunner } from '../deploy/hooks.ts';
 import type { MergeGit } from '../merge/git.ts';
 import type { TreeState } from '../coordinator/push-pass.ts';
 import type { PackageRegistry } from '../package-guard/registry.ts';
+import { CONTEXT_MAX_CHARS, TEAM_RULES_MAX_CHARS } from '../rules/pack.ts';
 import type { ExecPorts } from '../exec/ports.ts';
 import type { PointerGit } from '../setup/pointer-ignore.ts';
 import { FakeClock } from './fake-clock.ts';
@@ -58,14 +59,34 @@ export const AUTO_RESTART_TEAM: JsonRecord = { ...TEAM, refresh: { autoRestart: 
 const longestList = (limit: { readonly maxItems: number; readonly maxLength: number }, letter: string) =>
   Array.from({ length: limit.maxItems }, () => letter.repeat(limit.maxLength));
 /**
- * {@link TEAM} with the owner gates and protected branches at their longest, both printed in the core rules: the
- * lead's start then nears the context cap, so a full team rules file pushes its long notes out.
+ * {@link TEAM} with the owner gates, protected branches and kept local rules at their longest, all printed in the core
+ * rules: the lead's start then nears the context cap, so a team rules file ({@link rulesToOverflow}) pushes its long
+ * notes out.
  */
 export const LONG_RULES_TEAM: JsonRecord = {
   ...TEAM,
   ownerGates: longestList(CONFIG_LIMITS.ownerGates, 'g'),
   pushGuard: { protectedBranches: longestList(CONFIG_LIMITS.protectedBranches, 'b') },
+  ruleConflicts: Array.from({ length: CONFIG_LIMITS.ruleConflicts.maxItems }, (_, index) => ({
+    file: 'f'.repeat(RULE_CONFLICT_LIMITS.fileMaxLength),
+    text: String(index).padStart(RULE_CONFLICT_LIMITS.textMaxLength, 't'),
+    rule: 'worktrees',
+    wins: 'teamrig',
+  })),
 };
+/** The heading a session's own team rules file comes under in its start context (`teamRulesPart`). */
+const OWN_RULES_HEADING = "\n\n# Your team's rules\n";
+
+/**
+ * A team rules file one character too long to fit beside `roomy`, a start context with its long notes in full and no
+ * rules file, so the rules file fits only once a long note comes as its pointer (T1376). Sized from the start itself,
+ * its margin hangs on no rule's length; it asserts the start leaves such a file within TEAM_RULES_MAX_CHARS.
+ */
+export function rulesToOverflow(roomy: string): string {
+  const length = CONTEXT_MAX_CHARS - roomy.length - OWN_RULES_HEADING.length + 1;
+  assert.ok(length > 0 && length <= TEAM_RULES_MAX_CHARS, `a start ${roomy.length} characters long needs a rules file ${length} long`);
+  return 'x'.repeat(length);
+}
 
 export interface CliResult {
   readonly code: ExitCode;

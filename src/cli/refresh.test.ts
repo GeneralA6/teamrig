@@ -4,11 +4,11 @@ import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
 import type { RestartRequest } from '../refresh/state.ts';
 import { RefreshStore } from '../refresh/store.ts';
-import { CONTEXT_MAX_CHARS, TEAM_RULES_MAX_CHARS } from '../rules/pack.ts';
+import { CONTEXT_MAX_CHARS } from '../rules/pack.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { FakeProcesses } from '../testing/fake-processes.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
-import { APP, AUTO_RESTART_TEAM, CLAUDE_SESSION, CliHarness, contextOf, EVENTS_PATH, LONG_RULES_TEAM, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
+import { APP, AUTO_RESTART_TEAM, CLAUDE_SESSION, CliHarness, contextOf, EVENTS_PATH, LONG_RULES_TEAM, rulesToOverflow, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
 
 const STATE = (id: string): string => join(TEAM_HOME, 'state', 'refresh', `${id}.json`);
@@ -573,7 +573,7 @@ describe('runCli: live tasks in the start note', () => {
     assert.ok(lead.endsWith('LIVE TASKS of lead, read from the register at this start: none active; where your handover or a compaction summary says otherwise, the register wins.'), lead);
   });
 
-  it('gives them as a pointer when they and a full team rules file would overflow the context cap (T1376)', async () => {
+  it('gives them as a pointer when they and a team rules file would overflow the context cap (T1376)', async () => {
     const kit = new CliHarness(LONG_RULES_TEAM);
     for (const title of ['Write the docs of the long start note', 'Ship the docs of the long start note', 'Plan the week around the release', 'Review the plan of the long start note', 'Merge the fix of the long start note', 'Prove the fix of the long start note']) {
       const added = await kit.run(['add', '--title', title, '--description', 'what and why', '--priority', 'p2', '--session', 'lead']);
@@ -582,8 +582,7 @@ describe('runCli: live tasks in the start note', () => {
     const asLead = { env: { TEAMRIG_SESSION: 'lead' }, stdin: startPayload('compact') };
     const roomy = contextOf(await kit.run(['hook', 'session-start'], asLead));
     assert.ok(roomy.includes('\nLIVE TASKS of lead, read from the register at this start (6 active;'), roomy);
-    const rules = 'x'.repeat(TEAM_RULES_MAX_CHARS);
-    assert.ok(roomy.length + rules.length > CONTEXT_MAX_CHARS, `the block fits beside the rules: ${roomy.length}`);
+    const rules = rulesToOverflow(roomy);
 
     await kit.files.write(join(TEAM_HOME, 'rules.md'), rules);
     const cut = contextOf(await kit.run(['hook', 'session-start'], asLead));
