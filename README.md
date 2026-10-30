@@ -149,8 +149,8 @@ a member's context runs long, it writes a handover; once it is idle and you're a
 ### Grows with your project
 
 Start with one lead and a few members. When a job needs one more pair of hands, the lead hires a temporary member
-(`teamrig hire`) within the caps you set: how many at once, how much of the week they may use a day, and whether you
-approve each hire. The lead's checks say when. Once the job is done, `teamrig retire` hands its open tasks to a member
+(`teamrig hire`) when the host has room for one more tab, under the policy you set: whether you approve each hire. The
+lead's checks say when. Once the job is done, `teamrig retire` hands its open tasks to a member
 you name and leaves a handover note, and hiring it back picks up where it left off. When one team isn't enough, it
 becomes teams of teams: `teamrig team split` moves a few members, with the tasks they own, into a child team with its
 own lead, task list and rules. A task keeps its number across the tree, any member asks any team of it for work, and
