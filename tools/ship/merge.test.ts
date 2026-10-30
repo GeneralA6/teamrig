@@ -255,6 +255,8 @@ interface RunFixture {
   mergedTree?: string;
   /** Merge on the `local` gate: what the repo dir has checked out, its changes, a stored pass record and the check's exit. */
   local?: { checkedOut?: string; status?: string; record?: string; exit?: number };
+  /** What the renamed-callers gate refuses with; null (the default) lets the merge go on. */
+  renamedCallers?: string;
 }
 
 /** The git folder as git names it for a linked worktree: absolute on every OS ('C:/repo/.git' is relative on POSIX). */
@@ -299,7 +301,16 @@ function fakeGate(local: NonNullable<RunFixture['local']>, log: (line: string) =
 
 const BRANCH = 't9-change';
 
-function runFixture(fixture: RunFixture = {}): { deps: MergeDeps; gitCalls: string[]; out: string[]; err: string[]; ghFor: ReturnType<typeof mock.fn<(token: string) => Gh>>; ghWrites: string[][]; local: FakeGate } {
+function runFixture(fixture: RunFixture = {}): {
+  deps: MergeDeps;
+  gitCalls: string[];
+  out: string[];
+  err: string[];
+  ghFor: ReturnType<typeof mock.fn<(token: string) => Gh>>;
+  ghWrites: string[][];
+  local: FakeGate;
+  renamedCallers: ReturnType<typeof mock.fn<MergeDeps['renamedCallers']>>;
+} {
   const gitCalls: string[] = [];
   const answers: Record<string, string> = {
     'remote get-url origin': fixture.remote ?? `git@github.com:${REPO}.git`,
@@ -320,6 +331,7 @@ function runFixture(fixture: RunFixture = {}): { deps: MergeDeps; gitCalls: stri
   const { gh, writes } = fakeGitHub({ rounds: fixture.rounds ?? [green] });
   const local = fakeGate(fixture.local ?? {}, line => out.push(line));
   const ghFor = mock.fn((_token: string): Gh => gh);
+  const renamedCallers = mock.fn((_base: string, _tip: string, _repo: string): string | null => fixture.renamedCallers ?? null);
   const deps: MergeDeps = {
     git: (...args) => {
       const key = args.join(' ');
@@ -333,10 +345,11 @@ function runFixture(fixture: RunFixture = {}): { deps: MergeDeps; gitCalls: stri
     ghFor,
     waiter: fakeWaiter(),
     gate: local.gate,
+    renamedCallers,
     out: line => out.push(line),
     err: line => err.push(line),
   };
-  return { deps, gitCalls, out, err, ghFor, ghWrites: writes, local };
+  return { deps, gitCalls, out, err, ghFor, ghWrites: writes, local, renamedCallers };
 }
 
 const ARGS: MergeArgs = { dir: 'C:/repo', head: BRANCH, timeoutMin: 10, intervalS: 60, noteFile: null };
@@ -381,6 +394,33 @@ test('refuses main itself or a detached HEAD as the head, before any fetch or Gi
     assert.ok(!gitCalls.some(call => call.startsWith('fetch')));
     assert.equal(ghFor.mock.callCount(), 0);
   }
+});
+
+test('asks the renamed-callers gate about main as fetched and the pushed head of the repo merged', async () => {
+  const { deps, renamedCallers } = runFixture();
+  assert.equal(await runMerge(ARGS, deps), 0);
+  assert.deepEqual(
+    renamedCallers.mock.calls.map(call => call.arguments),
+    [['refs/remotes/origin/main', SHA, REPO]],
+  );
+});
+
+test('a renamed command a consumer still calls is refused before the token is read or any GitHub call', async () => {
+  const refusal = 'this change renames teamrig heavy to queue while 1 consumer file(s) still call only the old name: move them (or name both) and merge again\n  C:/api/.husky/run-checks.sh:4 teamrig heavy -> queue';
+  let tokenReads = 0;
+  const { deps, out, err, ghFor } = runFixture({ renamedCallers: refusal });
+  const counted: MergeDeps = {
+    ...deps,
+    credential: () => {
+      tokenReads += 1;
+      return deps.credential();
+    },
+  };
+  assert.equal(await runMerge(ARGS, counted), 1);
+  assert.deepEqual(err, [`REFUSED ${refusal}`]);
+  assert.deepEqual(out, []);
+  assert.equal(tokenReads, 0);
+  assert.equal(ghFor.mock.callCount(), 0);
 });
 
 test('without a stored token it says how to store one and makes no GitHub call', async () => {

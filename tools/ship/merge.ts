@@ -3,6 +3,7 @@ import { type CheckOutcome, type Gh, ghWithToken, readChecks, verdictOf } from '
 import { type Credential, SHIP_TOKEN_TARGET, readCredential, windowsPowerShell } from './keychain.ts';
 import { type MergeOutcome, type PullRequest, findOpenPull, openPull, rebaseMerge } from './pulls.ts';
 import { type GateDeps, proveTree, realGateDeps } from './local-gate.ts';
+import { realRenamedCallersDeps, renamedCallersRefusal } from './renamed-callers.ts';
 import { type LocalChecks, type RepoProfile, profileFor, readProfiles, slugOf } from './repos.ts';
 import { describeCredential } from './token-check.ts';
 
@@ -14,7 +15,8 @@ import { describeCredential } from './token-check.ts';
  * pinned to that sha and confirm main's new tree is the tree the checks ran on. The gate is `ci` (wait until
  * every listed check passed on GitHub; a failed one stops at once, a missing or running one at the deadline
  * is a fail) or `local` (the head checked out clean in the repo dir, with a pass record for its tree, else
- * the local checks run there; see local-gate.ts).
+ * the local checks run there; see local-gate.ts). Before any GitHub call it refuses a change that renames a teamrig
+ * command while a consumer on this machine still calls only the old name (see renamed-callers.ts).
  *
  * A rebase merge replays the branch onto main as it is at merge time, and GitHub merges a stale branch
  * whenever it does not conflict: what lands is then a tree no check ran on, and a commit that repeats one
@@ -237,6 +239,8 @@ export interface MergeDeps {
   waiter: Waiter;
   /** The repo dir's files and processes, for a repo whose gate is `local`. */
   gate: GateDeps;
+  /** Why the change from main (`base`) to `tip` may not merge for a renamed command a consumer still calls, or null. */
+  renamedCallers: (base: string, tip: string, repo: string) => string | null;
   out: (line: string) => void;
   err: (line: string) => void;
 }
@@ -261,6 +265,11 @@ export async function runMerge(args: MergeArgs, deps: MergeDeps): Promise<number
   if (subjects.length === 0) throw new Error(`${head} has nothing that ${profile.main} lacks`);
   const note = args.noteFile === null ? null : deps.gate.readText(args.noteFile);
   if (args.noteFile !== null && note === null) throw new Error(`--note-file ${args.noteFile}: no such file`);
+  const callers = deps.renamedCallers(`refs/remotes/origin/${profile.main}`, sha, repo);
+  if (callers !== null) {
+    deps.err(`REFUSED ${callers}`);
+    return 1;
+  }
 
   const credential = deps.credential();
   if (credential.kind !== 'found') {
@@ -301,6 +310,7 @@ export function realMergeDeps(dir: string): MergeDeps {
     ghFor: token => ghWithToken(token),
     waiter: { now: () => Date.now(), sleep: ms => new Promise(done => setTimeout(done, ms)) },
     gate: realGateDeps(dir, out),
+    renamedCallers: (base, tip, repo) => renamedCallersRefusal(base, tip, repo, realRenamedCallersDeps(dir, out)),
     out,
     err: line => console.error(line),
   };
