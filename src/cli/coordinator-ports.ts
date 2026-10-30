@@ -28,7 +28,7 @@ export function hostLockOf(runtime: LockRuntime, path: string, heavy: Pick<Heavy
   return lockAt(runtime, path, heavy.lockTtlMinutes * MINUTE_MS);
 }
 
-/** The lock the quiet claims' writers share at `path`, held for a minute, since a write takes moments. */
+/** The lock the deploy freezes' writers share at `path`, held for a minute, since a write takes moments. */
 export function claimsLockOf(runtime: LockRuntime, path: string): HostLock {
   return lockAt(runtime, path, CLAIMS_LOCK_TTL_MS);
 }

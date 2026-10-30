@@ -244,8 +244,8 @@ function placedAt(record: JsonRecord, key: string, parent: SplitParent): JsonRec
 }
 
 /**
- * The parent's coordinator, written even when the parent leaves it to its defaults: the child keeps its ledger, claims
- * and pending merges in the parent's folder, and a relative host lock or main checkout is made absolute to it.
+ * The parent's coordinator, written even when the parent leaves it to its defaults: the child keeps its ledger, deploy
+ * freezes and pending merges in the parent's folder, and a relative host lock or main checkout is made absolute to it.
  */
 function sharedCoordinatorOf(block: JsonRecord | undefined, { parent }: SplitScope): JsonRecord {
   const raw = block ?? {};

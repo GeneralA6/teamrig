@@ -2,11 +2,11 @@ import type { Files } from '../core/files.ts';
 import { isRecord, isStringArray, stringField } from '../core/guards.ts';
 import type { TimeZone } from '../core/zone.ts';
 
-/** The quiet claims' file name in the coordinator's folder: one JSON array, written whole. */
+/** The deploy freezes' file in the coordinator's folder, named for their old name, quiet claims: one JSON array, written whole. */
 export const CLAIMS_FILE = 'claims.json';
 
 /**
- * A quiet claim: a session measuring `metric` on `targets` until `until`, so a deploy touching one of them waits for
+ * A deploy freeze: a session measuring `metric` on `targets` until `until`, so a deploy touching one of them waits for
  * its end. Its fields are the ones a team's own coordinator writes too.
  */
 export interface Claim {
@@ -16,11 +16,11 @@ export interface Claim {
   readonly why: string;
   /** An ISO time. */
   readonly from: string;
-  /** An ISO time; the claim holds until then. */
+  /** An ISO time; the freeze holds until then. */
   readonly until: string;
 }
 
-/** The claims file as read: its claims (none when it does not exist), or why it could not be read. */
+/** The freezes file as read: its freezes (none when it does not exist), or why it could not be read. */
 export type ClaimsRead = { readonly kind: 'read'; readonly claims: readonly Claim[] } | { readonly kind: 'unreadable'; readonly reason: string };
 
 function claimOf(value: unknown): Claim | undefined {
@@ -35,8 +35,8 @@ function claimOf(value: unknown): Claim | undefined {
 }
 
 /**
- * The claims in the file's text; an entry missing a field is skipped, as its writer skips one. Text that is no JSON
- * array (a file caught mid-write) is unreadable, never "no claims", so a deploy waits rather than runs through a claim.
+ * The freezes in the file's text; an entry missing a field is skipped, as its writer skips one. Text that is no JSON
+ * array (a file caught mid-write) is unreadable, never "no freezes", so a deploy waits rather than runs through a freeze.
  */
 export function parseClaims(text: string | undefined): ClaimsRead {
   if (text === undefined) {
@@ -58,18 +58,32 @@ export async function readClaims(files: Pick<Files, 'read'>, path: string): Prom
   return parseClaims(await files.read(path));
 }
 
-/** The claims still holding at `nowMs` that name one of `targets`. */
+/** The freezes still holding at `nowMs` that name one of `targets`. */
 export function coveringClaims(claims: readonly Claim[], targets: readonly string[], nowMs: number): Claim[] {
   return claims.filter((claim) => Date.parse(claim.until) > nowMs && claim.targets.some((target) => targets.includes(target)));
 }
 
-/** When a claim ends, on `zone`'s clock; a stored end that is not a time is shown as written. */
+/** When a freeze ends, on `zone`'s clock; a stored end that is not a time is shown as written. */
 export function claimEndText(until: string, zone: TimeZone): string {
   const at = Date.parse(until);
   return Number.isNaN(at) ? until : zone.minute(new Date(at));
 }
 
-/** `quiet claim by po on cloud-api until 2030-01-08 12:00 UTC (p95 latency)`, the end on `zone`'s clock. */
-export function claimText(claim: Claim, zone: TimeZone): string {
-  return `quiet claim by ${claim.session} on ${claim.targets.join(',')} until ${claimEndText(claim.until, zone)} (${claim.metric})`;
+/** `by po on cloud-api until 2030-01-08 12:00 UTC (p95 latency)`: who holds a freeze, on what, until when (on `zone`'s clock) and for what. */
+function heldText(claim: Claim, zone: TimeZone): string {
+  return `by ${claim.session} on ${claim.targets.join(',')} until ${claimEndText(claim.until, zone)} (${claim.metric})`;
+}
+
+/** `deploy freeze by po on cloud-api until 2030-01-08 12:00 UTC (p95 latency)`, the reason a merge or a deploy waits. */
+export function freezeText(claim: Claim, zone: TimeZone): string {
+  return `deploy freeze ${heldText(claim, zone)}`;
+}
+
+/**
+ * `quiet claim by po on cloud-api until 2030-01-08 12:00 UTC (p95 latency)`, a freeze's line in `teamrig deploy-status`,
+ * which keeps the old name of a deploy freeze (T1308): outside tools read that page, and its lines change only after
+ * they are told.
+ */
+export function quietClaimText(claim: Claim, zone: TimeZone): string {
+  return `quiet claim ${heldText(claim, zone)}`;
 }

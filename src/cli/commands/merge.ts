@@ -18,7 +18,7 @@ import { stoppableHooks, stoppableLock, stoppableSleep, stoppableSteps, stoppedW
  * `teamrig merge [--keep-remote] [--no-delete-local]`: merges the branch checked out in the current folder into origin's
  * default branch (src/merge/merge.ts). Refused for a branch it must not merge, from
  * `delivery.schedule.queueCutoffUtc` to midnight UTC and in the `resetBlackoutHours` before the weekly token reset;
- * it waits up to `delivery.wait.maxMinutes` for quiet claims on what the push deploys and for the host lock, then
+ * it waits up to `delivery.wait.maxMinutes` for deploy freezes on what the push deploys and for the host lock, then
  * rebases, runs the repo's dependency check and review gate and, under `pushGuard.pushToProtected: gated`, the
  * self-merge gates, and pushes, each a queued step in the ledger. Once the shell that started it ends, it stops waiting,
  * or kills the step it runs (exit 129) and frees the lock. A repository with a merge command runs it in place of the

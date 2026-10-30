@@ -218,8 +218,8 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   withdraw: { effect: 'write', flags: ['session', 'what'], switches: ['all'], load: async () => (await withdrawCommand()).withdraw },
   merge: { effect: 'write', flags: ['session'], switches: ['keep-remote', 'no-delete-local'], load: async () => (await mergeCommand()).merge },
   deploy: { effect: 'write', flags: ['session', 'repo', 'targets', 'what'], rest: true, load: async () => (await deployCommand()).deploy },
-  claim: { effect: 'write', flags: ['session', 'targets', 'metric', 'why', 'for'], load: async () => (await claimCommands()).claim },
-  release: { effect: 'write', flags: ['session'], load: async () => (await claimCommands()).release },
+  freeze: { effect: 'write', flags: ['session', 'targets', 'metric', 'why', 'for'], load: async () => (await claimCommands()).freeze },
+  unfreeze: { effect: 'write', flags: ['session'], load: async () => (await claimCommands()).unfreeze },
   windows: { effect: 'read', flags: ['targets', 'since', 'until', 'settle', 'min'], load: async () => (await windowsCommand()).windows },
   load: { effect: 'write', flags: ['session', 'what', 'targets', 'at'], load: async () => (await loadCommands()).load },
   'load end': { effect: 'write', flags: ['session', 'id', 'at'], load: async () => (await loadCommands()).loadEnd },
@@ -278,9 +278,10 @@ export const COMMAND_REST: CommandRest = new Set(Object.entries(COMMANDS).flatMa
 /**
  * Renamed flags and commands, refused everywhere with the new name, never an alias: `--tier` became `--priority`
  * (levels p1, p2, ...), and for plain words (T1308) `teamrig integrate` became `teamrig merge`, `teamrig roll` became
- * `teamrig deploy`, `teamrig deploys` became `teamrig deploy-status` and `teamrig heavy` became `teamrig queue`.
+ * `teamrig deploy`, `teamrig deploys` became `teamrig deploy-status`, `teamrig heavy` became `teamrig queue`, `teamrig
+ * claim` became `teamrig freeze` and `teamrig release` became `teamrig unfreeze`.
  */
-const RENAMED: Renamed = { flags: { tier: 'priority', problem: 'type bug [--critical] (or --type task)' }, commands: { integrate: 'merge', roll: 'deploy', deploys: 'deploy-status', heavy: 'queue' } };
+const RENAMED: Renamed = { flags: { tier: 'priority', problem: 'type bug [--critical] (or --type task)' }, commands: { integrate: 'merge', roll: 'deploy', deploys: 'deploy-status', heavy: 'queue', claim: 'freeze', release: 'unfreeze' } };
 /** The table a line is read with, and each command's effect: what `/teamrig` plans a line from (src/slash/plan.ts). */
 export const COMMAND_TABLE: CommandTable = { flags: COMMAND_FLAGS, switches: COMMAND_SWITCHES, renamed: RENAMED, rest: COMMAND_REST, effects: COMMAND_EFFECTS };
 
@@ -632,7 +633,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       changes, nothing new or a dependency change delivery.repos.<name>.dependencyGate holds and
       no dependencyCheck may clear, from delivery.schedule.queueCutoffUtc to midnight UTC and in the
       resetBlackoutHours before the weekly token reset; waits up to delivery.wait.maxMinutes for
-      quiet claims on its deploysOnPush targets and for the host lock (longer while its line moves), rebases, runs the
+      deploy freezes on its deploysOnPush targets and for the host lock (longer while its line moves), rebases, runs the
       dependencyCheck on a dependency change (REFUSED unless it exits 0), where reviewGate holds a
       change of a review path until its reviewer approves the branch's t<n> task (REFUSED with the
       set command that asks; reviewCheck clears a check path), under pushGuard.pushToProtected gated
@@ -654,7 +655,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       block. REFUSED for a main checkout off its default branch, dirty or ahead of origin, a
       dependency change dependencyGate holds or a check that refuses, from
       delivery.schedule.queueCutoffUtc to midnight UTC and in the resetBlackoutHours before the
-      weekly token reset; waits up to delivery.wait.maxMinutes for quiet claims on its targets,
+      weekly token reset; waits up to delivery.wait.maxMinutes for deploy freezes on its targets,
       its checks and the host lock (longer while its line moves); nothing pending is DONE with nothing run. A failed dependency
       check or install moves the main checkout back; a failed afterPull hook or deploy command leaves
       nothing pending, so its deploy command is then run by hand; once the shell that started it ends,
@@ -664,13 +665,13 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       (one queued step in the ledger) and records a deploy of those targets only. REFUSED for a target not
       in the repository's deploy.targets, when a check refuses, from delivery.schedule.queueCutoffUtc
       to midnight UTC and in the resetBlackoutHours before the weekly token reset; waits as a deploy
-      does, for quiet claims on those targets only; its checks and command see TEAMRIG_VERB=redeploy and
+      does, for deploy freezes on those targets only; its checks and command see TEAMRIG_VERB=redeploy and
       TEAMRIG_DEPLOY_TARGETS; exit 0 deployed, 1 failed or stopped
-  claim --targets <a,b> --metric <m> --why "<why>" --for <span> [--session <id|name>]   a quiet
-      claim: merge and deploy wait while it holds a target they deploy, from now for the span (45m,
+  freeze --targets <a,b> --metric <m> --why "<why>" --for <span> [--session <id|name>]   a deploy
+      freeze: merge and deploy wait while it holds a target they deploy, from now for the span (45m,
       1h30m; at most delivery.freezes.maxMinutes); one per session; REFUSED for a target no
       repository deploys or a secret in the metric or reason
-  release [--session <id|name>]   ends this session's quiet claim before its time
+  unfreeze [--session <id|name>]   ends this session's deploy freeze before its time
   windows --targets <a,b> --since <time> [--until <time>] [--settle <span>] [--min <span>]   the clean
       measurement windows of each target from --since to --until (default now): the stretches no deploy
       of it touched (one of its repository, or a deploy --targets naming it; from its start until
@@ -686,7 +687,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   load end --id <id> [--at <time>] [--session <id|name>]   ends this session's load at --at (default
       now); REFUSED for no such open load, another session's, or an end in the future or before its start
   deploy-status                the deploy state now: the host lock's holder, the queue cutoff and the
-      reset blackout, the quiet claims and loads still open, and what each repository with a deploy block
+      reset blackout, the deploy freezes and loads still open, and what each repository with a deploy block
       has pushed but not deployed (it fetches each main checkout)
   test [--session <id|name>] -- <command ...>   runs a test command in the shell, writes all it printed
       to a log (each session keeps its newest 20) and prints one PASS or FAIL line, then each failing

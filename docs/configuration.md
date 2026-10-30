@@ -33,7 +33,7 @@ Team settings for the teamrig plugin. Only the roster (sessions, roles.lead) is 
 | `prompts` | [object](#prompts) |  | The permission prompts teamrig's own hooks raise. |
 | `secretGuard` | [object](#secretguard) |  | Refuses a Bash, PowerShell, Read or Grep call that would print a secret into the session, where it stays in the transcript and every later prompt: a secret file's content, the whole environment, a secret variable's value, a Kubernetes secret's data or a dump command's output (kubectl config view --raw); and a Bash or PowerShell line that holds a secret as text (a token, credentials in a URL or an Authorization header), as the line itself stays in the transcript; and a Write, Edit, MultiEdit or NotebookEdit whose written text holds one, unless it writes a secret file (paths). A value handed to the tool that needs it (a pipe into docker login --password-stdin, a redirect into a file) stays allowed, and the read-only shell hook never lets such a line run without a prompt. |
 | `commits` | [object](#commits) |  | The small-commits rule: one logical change per commit; a commit over either bound needs a reason line. |
-| `delivery` | [object](#delivery) |  | The delivery flow: teamrig queue runs one queued step on the host at a time, under the host lock, teamrig merge merges a branch into its repository's default branch, teamrig deploy deploys it and teamrig claim holds deploys while a session measures; each step is recorded in the ledger. |
+| `delivery` | [object](#delivery) |  | The delivery flow: teamrig queue runs one queued step on the host at a time, under the host lock, teamrig merge merges a branch into its repository's default branch, teamrig deploy deploys it and teamrig freeze holds deploys while a session measures; each step is recorded in the ledger. |
 | `budget` | [object](#budget) |  | The weekly token budget: the pace line the team is measured against and each session's daily part of it. Usage is in weighted tokens (W) read from the session transcripts, and in % of the week from the status line when there is one. The defaults only measure and show; nothing blocks or acts. |
 | `leadBoundary` | [object](#leadboundary) |  | How teamrig keeps the lead leading: its own edits, tests and code searches are nudged and shown, never blocked. |
 | `loops` | [object](#loops) |  | Loop discipline inside a turn. |
@@ -274,7 +274,7 @@ The small-commits rule: one logical change per commit; a commit over either boun
 
 ## `delivery`
 
-The delivery flow: teamrig queue runs one queued step on the host at a time, under the host lock, teamrig merge merges a branch into its repository's default branch, teamrig deploy deploys it and teamrig claim holds deploys while a session measures; each step is recorded in the ledger.
+The delivery flow: teamrig queue runs one queued step on the host at a time, under the host lock, teamrig merge merges a branch into its repository's default branch, teamrig deploy deploys it and teamrig freeze holds deploys while a session measures; each step is recorded in the ledger.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
@@ -282,7 +282,7 @@ The delivery flow: teamrig queue runs one queued step on the host at a time, und
 | `repos` | map from string (matching `^[a-z0-9][a-z0-9._-]*$`) to [object](#deliveryrepos) |  | The repositories whose branches teamrig merge merges into their default branch, by name. |
 | `queue` | [object](#deliveryqueue) |  | The host lock and the limits of one queued step. |
 | `checkTimeoutSeconds` | integer (1 to 600) | `20` | A deploy's check still running after this many seconds is stopped, and the deploy waits. |
-| `freezes` | [object](#deliveryfreezes) |  | Quiet claims (teamrig claim), which hold deploys of their targets while a session measures them. |
+| `freezes` | [object](#deliveryfreezes) |  | Deploy freezes (teamrig freeze), which hold deploys of their targets while a session measures them. |
 | `stablePeriods` | [object](#deliverystableperiods) |  | teamrig windows: when a measurement of a deploy target is clean, between the deploys and queued steps that disturb it. |
 | `wait` | [object](#deliverywait) |  | How a delivery step waits. |
 | `schedule` | [object](#deliveryschedule) |  | When queued steps and deploys may start on the host. |
@@ -294,7 +294,7 @@ The repositories whose branches teamrig merge merges into their default branch, 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `mainCheckout` (required) | string (at least 1 character) |  | The repository's main checkout; a branch merges from any worktree of it. A relative path is in the team's folder. |
-| `deploysOnPush` | array of string (matching `^[a-z0-9][a-z0-9._-]*$`) |  | The deploy targets a push to the default branch deploys by itself (a host that builds on push): quiet claims on them hold the merge, and the push is recorded as their deploy. |
+| `deploysOnPush` | array of string (matching `^[a-z0-9][a-z0-9._-]*$`) |  | The deploy targets a push to the default branch deploys by itself (a host that builds on push): deploy freezes on them hold the merge, and the push is recorded as their deploy. |
 | `dependencyGate` | boolean |  | Refuse a branch (merge) or a pushed range (deploy) whose package files need a dependency install, so the main checkout node\_modules, which its worktrees link to, never changes unreviewed; dependencyCheck clears one for merge, and with deploy.dependencyInstall for a deploy. |
 | `dependencyCheck` | array (1 to 64 items) of string (at least 1 character) |  | With dependencyGate, what clears a dependency change: a program and its arguments, run without a shell under the host lock with the base package-lock.json in the file TEAMRIG\_BASELINE\_LOCK names (unset when the base has none). teamrig merge runs it in the branch checkout after the rebase and before the push, the default branch its base; teamrig deploy in the main checkout after the pull, its old HEAD the base. Exit 0 lets the change go, anything else refuses it. |
 | `reviewGate` | boolean |  | Hold a branch (merge) whose changed paths hit a review entry (teamrig's generic list and pushGuard.reviewPaths) until its reviewer approves it, or reviewCheck clears its check hits. |
@@ -320,7 +320,7 @@ How teamrig deploy deploys what merged into the default branch, each command a p
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
-| `targets` | array of string (matching `^[a-z0-9][a-z0-9._-]*$`) |  | The deploy targets it deploys: quiet claims on them hold it. |
+| `targets` | array of string (matching `^[a-z0-9][a-z0-9._-]*$`) |  | The deploy targets it deploys: deploy freezes on them hold it. |
 | `checks` | array (at most 16 items) of [object](#deliveryreposdeploychecks) |  | Checks asked in order before the host lock and again under it; the first that does not pass holds the deploy. Exit 0 lets it go, 75 makes it wait, 2 refuses it; anything else, or no answer within checkTimeoutSeconds, makes it wait. |
 | `dependencyInstall` | array (1 to 64 items) of string (at least 1 character) |  | Installs a pulled range's dependency change (package-lock.json, or package.json fields an install reads), such as npm ci --ignore-scripts: run after the pull and the dependencyCheck, before afterPull. A failed install moves the main checkout back and runs again to restore its dependencies. With dependencyGate, a dependency change deploys only when this and dependencyCheck are set. |
 | `afterPull` | array (at most 16 items) of array (1 to 64 items) of string (at least 1 character) |  | Run in order after the pull, before command; one that fails ends the deploy before its command runs. |
@@ -352,11 +352,11 @@ The host lock and the limits of one queued step.
 
 ## `delivery.freezes`
 
-Quiet claims (teamrig claim), which hold deploys of their targets while a session measures them.
+Deploy freezes (teamrig freeze), which hold deploys of their targets while a session measures them.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
-| `maxMinutes` | integer (1 to 1440) | `120` | A claim lasts at most this many minutes. |
+| `maxMinutes` | integer (1 to 1440) | `120` | A freeze lasts at most this many minutes. |
 
 ## `delivery.stablePeriods`
 
@@ -376,7 +376,7 @@ How a delivery step waits.
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `pollSeconds` | integer (1 to 600) | `30` | A waiting step looks again after this many seconds; the first in line for the host lock every 2 at most. |
-| `maxMinutes` | integer (0 to 1440) | `60` | A deploy step (teamrig merge, deploy) waits this many minutes at most for quiet claims and the host lock, then is refused; a wait in a line for the lock that keeps moving goes on past them. |
+| `maxMinutes` | integer (0 to 1440) | `60` | A deploy step (teamrig merge, deploy) waits this many minutes at most for deploy freezes and the host lock, then is refused; a wait in a line for the lock that keeps moving goes on past them. |
 
 ## `delivery.schedule`
 

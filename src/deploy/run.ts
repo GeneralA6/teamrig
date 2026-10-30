@@ -1,6 +1,6 @@
 import { dirname } from 'node:path';
 import type { CoordinatorConfig } from '../config/types.ts';
-import { claimText, coveringClaims, readClaims } from '../coordinator/claims.ts';
+import { coveringClaims, freezeText, readClaims } from '../coordinator/claims.ts';
 import { takeWhenClear, type ClearancePhase, type Readiness } from '../coordinator/clearance.ts';
 import { underLock, type HostLock, type HostLockInfo } from '../coordinator/host-lock.ts';
 import { appendDeploy } from '../coordinator/ledger.ts';
@@ -24,7 +24,7 @@ import { deployRepos, plural, readPending, short, type DependencyStep, type Depl
  * `teamrig deploy`: brings what was pushed to a repository's default branch to the running system, one deploy on the host
  * at a time. It reads what is pending (the main checkout's `HEAD..origin/<default branch>`), refuses what it must not
  * pull (a main checkout off its default branch, with tracked changes or commits origin lacks, a dependency change the
- * gate holds), waits out the queue cutoff's refusal, quiet claims on the deploy's targets and the team's checks, takes the
+ * gate holds), waits out the queue cutoff's refusal, deploy freezes on the deploy's targets and the team's checks, takes the
  * host lock, asks again, then pulls fast-forward to the sha it checked, checks and installs a dependency change, runs
  * the afterPull hooks and the deploy command, all one queued step in the ledger, and records the deploy. Nothing pending
  * is done with nothing run.
@@ -144,7 +144,7 @@ function hookEnv(setup: DeploySetup, ports: DeployPorts, request: DeployRequest,
 
 /**
  * What stops any change to `targets` before its checks are asked: the queue cutoff and the reset blackout refuse it, a
- * quiet claim on one of them holds it; undefined when none does.
+ * deploy freeze on one of them holds it; undefined when none does.
  */
 export async function scheduleReadiness(setup: DeploySetup, ports: DeployPorts, targets: readonly string[]): Promise<Readiness | undefined> {
   const { schedule } = setup.delivery;
@@ -161,10 +161,10 @@ export async function scheduleReadiness(setup: DeploySetup, ports: DeployPorts, 
   }
   const read = await readClaims(ports.files, setup.places.claims);
   if (read.kind === 'unreadable') {
-    return { kind: 'wait', reason: `the quiet claims in ${setup.places.claims} are unreadable (${read.reason})` };
+    return { kind: 'wait', reason: `the deploy freezes in ${setup.places.claims} are unreadable (${read.reason})` };
   }
   const covering = coveringClaims(read.claims, targets, now);
-  return covering.length === 0 ? undefined : { kind: 'wait', reason: covering.map((claim) => claimText(claim, setup.zone)).join('; ') };
+  return covering.length === 0 ? undefined : { kind: 'wait', reason: covering.map((claim) => freezeText(claim, setup.zone)).join('; ') };
 }
 
 /** A hook's line as it is shown and recorded: redacted, and said as it comes. */

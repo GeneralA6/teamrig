@@ -11,7 +11,7 @@ import { callerOf, listOf } from '../inputs.ts';
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 
-/** What a claim command works on: the session, the coordinator's config and places, and the claims' ports. */
+/** What a freeze command works on: the session, the coordinator's config and places, and the freezes' ports. */
 interface ClaimContext {
   readonly session: string;
   readonly delivery: CoordinatorConfig;
@@ -36,7 +36,7 @@ async function claimContextOf(args: ParsedArgs, runtime: CliRuntime): Promise<Cl
   };
 }
 
-/** The claim a write returned; a refusal is REFUSED, and a write another writer held up past the wait is FAILED. */
+/** The freeze a write returned; a refusal is REFUSED, and a write another writer held up past the wait is FAILED. */
 function writtenOrExit<T>(runtime: CliRuntime, outcome: ClaimOutcome<T>): { readonly kind: 'written'; readonly value: T } | { readonly kind: 'exit'; readonly code: ExitCode } {
   switch (outcome.kind) {
     case 'done':
@@ -50,12 +50,12 @@ function writtenOrExit<T>(runtime: CliRuntime, outcome: ClaimOutcome<T>): { read
 }
 
 /**
- * `teamrig claim --targets <a,b> --metric <m> --why "<why>" --for <span>`: a quiet claim, which holds the merges and
+ * `teamrig freeze --targets <a,b> --metric <m> --why "<why>" --for <span>`: a deploy freeze, which holds the merges and
  * deploys of its targets while this session measures, from now for the span (`45m`, `1h30m`; at most
  * `delivery.freezes.maxMinutes`). One per session; refused for a target no repository deploys and for a secret in the
- * metric or reason. Exit 0 claimed, 1 when the claims stayed busy, 2 refused.
+ * metric or reason. Exit 0 frozen, 1 when the freezes stayed busy, 2 refused.
  */
-export async function claim(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+export async function freeze(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const targets = listOf('--targets', requiredFlag(args.flags, 'targets'));
   const metric = requiredFlag(args.flags, 'metric');
   const why = requiredFlag(args.flags, 'why');
@@ -71,18 +71,18 @@ export async function claim(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   if (written.kind === 'exit') {
     return written.code;
   }
-  runtime.out.stdout(`CLAIMED ${written.value.targets.join(', ')} until ${claimEndText(written.value.until, context.ports.zone)}`);
+  runtime.out.stdout(`FROZEN ${written.value.targets.join(', ')} until ${claimEndText(written.value.until, context.ports.zone)}`);
   return EXIT.ok;
 }
 
-/** `teamrig release`: ends this session's quiet claim before its time. Exit 0 ended or none held, 1 when the claims stayed busy, 2 refused. */
-export async function release(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+/** `teamrig unfreeze`: ends this session's deploy freeze before its time. Exit 0 ended or none held, 1 when the freezes stayed busy, 2 refused. */
+export async function unfreeze(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const context = await claimContextOf(args, runtime);
   const written = writtenOrExit(runtime, await releaseClaim(context.ports, context.places, context.session));
   if (written.kind === 'exit') {
     return written.code;
   }
   const ended = written.value;
-  runtime.out.stdout(ended === undefined ? 'NONE this session held no claim' : `RELEASED ${ended.targets.join(', ')} (claimed until ${claimEndText(ended.until, context.ports.zone)})`);
+  runtime.out.stdout(ended === undefined ? 'NONE this session held no freeze' : `UNFROZEN ${ended.targets.join(', ')} (frozen until ${claimEndText(ended.until, context.ports.zone)})`);
   return EXIT.ok;
 }

@@ -43,7 +43,7 @@ export function coordinatorDirOf(config: Pick<CoordinatorConfig, 'dir'>, paths: 
 }
 
 /**
- * Where the coordinator's files are: the ledgers, the quiet claims and their lock, the pending merges, the review and
+ * Where the coordinator's files are: the ledgers, the deploy freezes and their lock, the pending merges, the review and
  * gate holds and the merges log in `delivery.dir` (default `<state>/deploys`); the host lock at
  * `delivery.queue.lockPath` (default the kit home's, one for the host). A relative path is in the team's folder.
  */

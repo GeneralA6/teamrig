@@ -715,7 +715,7 @@ export interface HeavyConfig {
 export interface CoordinatorWaitConfig {
   /** A waiting step looks again after this many seconds; the first in line for the host lock every 2 at most. */
   readonly pollSeconds: number;
-  /** A deploy step (`teamrig merge`, `deploy`) waits this many minutes at most for quiet claims and the host lock, then is refused; a wait in a line for the lock that keeps moving goes on past them. */
+  /** A deploy step (`teamrig merge`, `deploy`) waits this many minutes at most for deploy freezes and the host lock, then is refused; a wait in a line for the lock that keeps moving goes on past them. */
   readonly maxMinutes: number;
 }
 
@@ -724,7 +724,7 @@ export interface CoordinatorRepoConfig {
   /** The repository's main checkout; a branch merges from any worktree of it. A relative path is in the team's folder. */
   readonly mainCheckout: string;
   /**
-   * The deploy targets a push to the default branch deploys by itself (a host that builds on push): quiet claims on
+   * The deploy targets a push to the default branch deploys by itself (a host that builds on push): deploy freezes on
    * them hold the merge, and the push is recorded as their deploy.
    */
   readonly deploysOnPush: readonly string[];
@@ -801,7 +801,7 @@ export interface DeployCheckConfig {
 
 /** How `teamrig deploy` deploys a repository's default branch from its main checkout, each command run without a shell. */
 export interface DeployConfig {
-  /** The deploy targets it deploys: quiet claims on them hold it. */
+  /** The deploy targets it deploys: deploy freezes on them hold it. */
   readonly targets: readonly string[];
   /** Asked in order before the host lock and again under it; the first that does not pass holds the deploy. */
   readonly checks: readonly DeployCheckConfig[];
@@ -818,9 +818,9 @@ export interface DeployConfig {
   readonly command: readonly string[];
 }
 
-/** `teamrig claim`: quiet claims, which hold deploys of their targets while a session measures them. */
+/** `teamrig freeze`: deploy freezes, which hold deploys of their targets while a session measures them. */
 export interface ClaimsConfig {
-  /** A claim lasts at most this many minutes. */
+  /** A freeze lasts at most this many minutes. */
   readonly maxMinutes: number;
 }
 
@@ -838,7 +838,7 @@ export interface WindowsConfig {
 
 /**
  * The delivery flow: its folder, the queue cutoff and the reset blackout, the host lock, how a step waits,
- * quiet claims, clean measurement windows, and the repositories whose branches `teamrig merge` merges and `teamrig deploy` deploys.
+ * deploy freezes, clean measurement windows, and the repositories whose branches `teamrig merge` merges and `teamrig deploy` deploys.
  */
 export interface CoordinatorConfig {
   /** The delivery folder, which holds its ledger; a relative path is in the team's folder. Unset: `<state>/deploys`. */

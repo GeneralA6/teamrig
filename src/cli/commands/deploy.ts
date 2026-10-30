@@ -36,7 +36,7 @@ function redeployPartsOf(args: ParsedArgs): RedeployParts | undefined {
  * -- <command>` it pulls nothing and runs that command instead, a deploy of those targets (src/deploy/deploy.ts). Refused
  * for a main checkout it must not pull into, from `delivery.schedule.queueCutoffUtc` to midnight UTC, in the
  * `resetBlackoutHours` before the weekly token reset and when a check refuses; it waits up to
- * `delivery.wait.maxMinutes` for quiet claims on its targets, its checks and the host lock. Once the shell that
+ * `delivery.wait.maxMinutes` for deploy freezes on its targets, its checks and the host lock. Once the shell that
  * started it ends, it stops waiting, or kills the hook it runs (exit 129) and frees the lock. Exit 0 deployed or nothing
  * pending, 1 failed or stopped, 2 refused.
  */

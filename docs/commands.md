@@ -363,7 +363,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       changes, nothing new or a dependency change delivery.repos.<name>.dependencyGate holds and
       no dependencyCheck may clear, from delivery.schedule.queueCutoffUtc to midnight UTC and in the
       resetBlackoutHours before the weekly token reset; waits up to delivery.wait.maxMinutes for
-      quiet claims on its deploysOnPush targets and for the host lock (longer while its line moves), rebases, runs the
+      deploy freezes on its deploysOnPush targets and for the host lock (longer while its line moves), rebases, runs the
       dependencyCheck on a dependency change (REFUSED unless it exits 0), where reviewGate holds a
       change of a review path until its reviewer approves the branch's t<n> task (REFUSED with the
       set command that asks; reviewCheck clears a check path), under pushGuard.pushToProtected gated
@@ -385,7 +385,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       block. REFUSED for a main checkout off its default branch, dirty or ahead of origin, a
       dependency change dependencyGate holds or a check that refuses, from
       delivery.schedule.queueCutoffUtc to midnight UTC and in the resetBlackoutHours before the
-      weekly token reset; waits up to delivery.wait.maxMinutes for quiet claims on its targets,
+      weekly token reset; waits up to delivery.wait.maxMinutes for deploy freezes on its targets,
       its checks and the host lock (longer while its line moves); nothing pending is DONE with nothing run. A failed dependency
       check or install moves the main checkout back; a failed afterPull hook or deploy command leaves
       nothing pending, so its deploy command is then run by hand; once the shell that started it ends,
@@ -395,13 +395,13 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       (one queued step in the ledger) and records a deploy of those targets only. REFUSED for a target not
       in the repository's deploy.targets, when a check refuses, from delivery.schedule.queueCutoffUtc
       to midnight UTC and in the resetBlackoutHours before the weekly token reset; waits as a deploy
-      does, for quiet claims on those targets only; its checks and command see TEAMRIG_VERB=redeploy and
+      does, for deploy freezes on those targets only; its checks and command see TEAMRIG_VERB=redeploy and
       TEAMRIG_DEPLOY_TARGETS; exit 0 deployed, 1 failed or stopped
-  claim --targets <a,b> --metric <m> --why "<why>" --for <span> [--session <id|name>]   a quiet
-      claim: merge and deploy wait while it holds a target they deploy, from now for the span (45m,
+  freeze --targets <a,b> --metric <m> --why "<why>" --for <span> [--session <id|name>]   a deploy
+      freeze: merge and deploy wait while it holds a target they deploy, from now for the span (45m,
       1h30m; at most delivery.freezes.maxMinutes); one per session; REFUSED for a target no
       repository deploys or a secret in the metric or reason
-  release [--session <id|name>]   ends this session's quiet claim before its time
+  unfreeze [--session <id|name>]   ends this session's deploy freeze before its time
   windows --targets <a,b> --since <time> [--until <time>] [--settle <span>] [--min <span>]   the clean
       measurement windows of each target from --since to --until (default now): the stretches no deploy
       of it touched (one of its repository, or a deploy --targets naming it; from its start until
@@ -417,7 +417,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   load end --id <id> [--at <time>] [--session <id|name>]   ends this session's load at --at (default
       now); REFUSED for no such open load, another session's, or an end in the future or before its start
   deploy-status                the deploy state now: the host lock's holder, the queue cutoff and the
-      reset blackout, the quiet claims and loads still open, and what each repository with a deploy block
+      reset blackout, the deploy freezes and loads still open, and what each repository with a deploy block
       has pushed but not deployed (it fetches each main checkout)
   test [--session <id|name>] -- <command ...>   runs a test command in the shell, writes all it printed
       to a log (each session keeps its newest 20) and prints one PASS or FAIL line, then each failing

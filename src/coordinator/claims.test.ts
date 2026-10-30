@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { TimeZone } from '../core/zone.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { JERUSALEM } from '../testing/zone.ts';
-import { claimText, coveringClaims, parseClaims, readClaims, type Claim } from './claims.ts';
+import { coveringClaims, freezeText, parseClaims, quietClaimText, readClaims, type Claim } from './claims.ts';
 
 const NOW = Date.parse('2030-01-08T10:00:00Z');
 
@@ -20,7 +20,7 @@ function claim(overrides: Partial<Claim> = {}): Claim {
 }
 
 describe('parseClaims', () => {
-  it('reads no claims from a missing file and every claim from a written one', () => {
+  it('reads no freezes from a missing file and every freeze from a written one', () => {
     assert.deepEqual(parseClaims(undefined), { kind: 'read', claims: [] });
     assert.deepEqual(parseClaims(JSON.stringify([claim()])), { kind: 'read', claims: [claim()] });
   });
@@ -36,14 +36,14 @@ describe('parseClaims', () => {
     assert.deepEqual(parseClaims('{}'), { kind: 'unreadable', reason: 'not a JSON array' });
   });
 
-  it('reads the claims file through the file port', async () => {
+  it('reads the freezes file through the file port', async () => {
     const files = new MemoryFiles({ '/team/data/deploys/claims.json': JSON.stringify([claim()]) });
     assert.deepEqual(await readClaims(files, '/team/data/deploys/claims.json'), { kind: 'read', claims: [claim()] });
   });
 });
 
 describe('coveringClaims', () => {
-  it('keeps the claims still holding that name one of the targets', () => {
+  it('keeps the freezes still holding that name one of the targets', () => {
     const ended = claim({ until: '2030-01-08T10:00:00.000Z' });
     const elsewhere = claim({ targets: ['pipeline'] });
     const shared = claim({ session: 'jobs', targets: ['pipeline', 'cloud-api'] });
@@ -52,16 +52,22 @@ describe('coveringClaims', () => {
   });
 });
 
-describe('claimText', () => {
-  it('names the session, targets, end and metric', () => {
-    assert.equal(claimText(claim({ targets: ['cloud-api', 'cloud-web'] }), TimeZone.UTC), 'quiet claim by po on cloud-api,cloud-web until 2030-01-08 11:00 UTC (p95 latency)');
+describe('freezeText', () => {
+  it('names the session, targets, end and metric of a deploy freeze', () => {
+    assert.equal(freezeText(claim({ targets: ['cloud-api', 'cloud-web'] }), TimeZone.UTC), 'deploy freeze by po on cloud-api,cloud-web until 2030-01-08 11:00 UTC (p95 latency)');
   });
 
   it('shows an end it cannot read as written', () => {
-    assert.equal(claimText(claim({ until: 'soon' }), TimeZone.UTC), 'quiet claim by po on cloud-api until soon (p95 latency)');
+    assert.equal(freezeText(claim({ until: 'soon' }), TimeZone.UTC), 'deploy freeze by po on cloud-api until soon (p95 latency)');
   });
 
   it("names the end on the team's clock", () => {
-    assert.equal(claimText(claim(), JERUSALEM), 'quiet claim by po on cloud-api until 2030-01-08 13:00 IST (p95 latency)');
+    assert.equal(freezeText(claim(), JERUSALEM), 'deploy freeze by po on cloud-api until 2030-01-08 13:00 IST (p95 latency)');
+  });
+});
+
+describe('quietClaimText', () => {
+  it('keeps the old name for the deploy-status line outside tools read', () => {
+    assert.equal(quietClaimText(claim(), JERUSALEM), 'quiet claim by po on cloud-api until 2030-01-08 13:00 IST (p95 latency)');
   });
 });
