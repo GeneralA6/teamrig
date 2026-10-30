@@ -39,6 +39,8 @@ describe('kindOf', () => {
     ['Bash', 'npx vitest run', 'testFull'],
     ['Bash', 'node --test "src/**/*.test.ts"', 'testFull'],
     ['Bash', 'node --disable-warning=ExperimentalWarning --test src/budget/meter.test.ts', 'testTargeted'],
+    ['Bash', 'npx jest src/budget/meter.spec.ts', 'testTargeted'],
+    ['Bash', 'npm test -- src/budget/meter.spec.ts', 'testTargeted'],
     ['Bash', 'npm run typecheck', 'build'],
     ['Bash', 'tsc -p tsconfig.json', 'build'],
     ['Bash', 'teamrig list --session lead', 'teamrigCli'],
