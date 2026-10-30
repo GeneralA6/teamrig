@@ -180,8 +180,9 @@ so it never loses work to a compaction.
 1. At the end of every turn, the Stop hook measures your context. When it is at or over
    `refresh.contextTokens` (120,000 by default), at a task end after every third finished task with the context at 80,000 or more
    (`refresh.everyTasks`, `refresh.everyTasksMinTokens`), or the lead asked for a refresh (`teamrig refresh <id>`), it
-   keeps you going with this instruction, once the background work you started (subagents, background commands,
-   monitors, workflows) has all reported back:
+   keeps you going with this instruction. While background work you started (subagents, background commands,
+   monitors, workflows) still runs, it adds before `Then run` how many still run, asks the handover to say what
+   their results still need, and the fresh start waits until they all reported back:
 
    ```text
    teamrig: your context is 132k (refresh at 120k) and you just finished T2. Write your handover to <home>/teams/shop/handover/web.md, replacing the whole file (your fresh start reads all of it): what the register lacks (the next step of each task in progress; what to check later, and when; questions still open with the user; the scratchpad files, plan file and scheduled jobs the next session still needs; where things are), not task statuses, which your fresh start reads live from the register. Then run `teamrig refresh --ready --session web`. Do not start new work.

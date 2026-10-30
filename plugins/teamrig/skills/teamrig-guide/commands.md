@@ -4931,7 +4931,7 @@ Output: `taken` (the mod then runs `/clear`), `held` (with `--hold`) or `decline
 
 Run by the plugin's mod after a tool result of the main conversation, once the context the last reply read
 reached the size this hook last named. It asks for the handover within the turn the way the Stop hook asks at a
-turn's end, for the context's size only, and holds the ask while background work the session started still runs
+turn's end, for the context's size only, and names the background work the session started that still runs
 ([hooks.md](hooks.md#the-mod-the-refresh-within-a-turn)). Stdin: `{"session_id", "cwd", "tokens"}`.
 
 Flags: none.
