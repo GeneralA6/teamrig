@@ -150,6 +150,10 @@ From `teamrig budget lift` ([commands.md](commands.md#teamrig-budget-lift)), `te
 | `REFUSED web's group's budget is lifted only by lead` | A sub-lead does not lift its own group: ask a leader it names. |
 | `REFUSED --group lifts a sub-lead's group, and api leads none` | Lift the session without `--group`, or name its sub-lead. |
 | `REFUSED --group lifts a sub-lead's group; lead is the lead, whose group is the whole team` | No lift takes a part of the whole team: lift a session, or a sub-lead's group. |
+| `REFUSED only the lead (lead) lifts a session of a team under its own` | A `<team>/<session>` lift is the lead's: ask it. |
+| `REFUSED team ops is not a team under team web` | The lead lifts only sessions of teams below its own: ask the lead of a team above both. |
+| `REFUSED team web is on another Claude account than team app, so team app's daily budget cannot top its sessions up` | The teams' weeks are separate: web's own lead lifts its session. |
+| `REFUSED on team web, ...` | The session is not on that team: check its id with `teamrig who`. |
 | `REFUSED the other lifts in force give 60.0% of web's group's daily budget, so --part 60 would give more than all of it; the most this lift may give is 40.0%. web's group gets 6.0% of the week today and has used 2.5%; lead can lift it: ...` | Lift by at most the part it names, or ask the leader it names to lift the whole group with the command it gives. Outside a group, the line ends after the most this lift may give. |
 | `REFUSED only the lead (lead) sets the team's budget` | Ask the lead to run it. |
 | `REFUSED nothing written: budget.quietHours.startUtc: ...` | The line names the value the config checks reject: give the flag another one. |

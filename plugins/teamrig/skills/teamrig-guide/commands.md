@@ -4094,6 +4094,11 @@ apply to a lifted session while it runs; a group lift keeps them. The stop % is 
 (99.9), only with `--reserve` and only in the last hour before the reset; a reserve lift ends 15 minutes before
 the reset. Lifts are kept in the team's `state/usage/lifts.jsonl`.
 
+The lead also lifts `<team>/<session>`, a session of a team under its own at any depth, on the same Claude account:
+the session gets `--part` % of the lead's own team's daily budget on top of its own budget. It is kept in the lead's
+team's lift log, comes out of that team's budget like its other lifts, and the team below reads it beside the other
+teams on the account. Quiet hours still apply to it, and `--group` does not lift a group of a team below.
+
 Flags:
 
 - `--session <id|name>`: the caller; a leader over the session (the lead, or a sub-lead whose group holds it), or
@@ -4130,6 +4135,18 @@ Output:
 ```text
 LIFTED web's group to 40.0% of the team's daily budget today until 03:00 IDT (the end of the budget day) or 97.0% of the week, whichever comes first.
 LIFTED api to 50.0% of web's group's daily budget today until 03:00 IDT (the end of the budget day) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.
+```
+
+With `docs` a team under the lead's team `app`, the lead tops up docs's session `writer`:
+
+```sh
+teamrig budget lift docs/writer --session lead --part 18 --stop-pct 50 --reason "the docs release"
+```
+
+Output:
+
+```text
+LIFTED docs/docs-writer to 18.0% of team app's daily budget on top of its own budget today until 03:00 IDT (the end of the budget day) or 50.0% of the week, whichever comes first.
 ```
 
 A caller that leads no group over the session, a `--group` of the lead or of a session that leads no group, a

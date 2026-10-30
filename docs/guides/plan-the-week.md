@@ -53,7 +53,8 @@ Week: 31.0% used at 12:00 IDT (status line); the pace line is at 28.6%: 2.4 poin
 - Past its part once the team has no room, a session is held: only p0 work wakes it or keeps its idle tab open, and
   its helper launches can be held too ([the daily budget](../../plugins/teamrig/skills/teamrig-guide/hooks.md#the-daily-budget-warnings-and-the-helper-gate)).
 - A leader moves budget for a day: `teamrig budget lift` gives one session, or a sub-lead's group, a part of its
-  parent's daily budget until a stop % (at most `budget.lift.maxStopPct`, 99.3), the end of the day or `--until`.
+  parent's daily budget until a stop % (at most `budget.lift.maxStopPct`, 99.3), the end of the day or `--until`;
+  the lead also tops up a session of a team under its own, `<team>/<session>`, from its own team's daily budget.
 - On a short day, when the week's use is past its pace line so what is left gives the day less than the line plans,
   every session keeps its part by default. With `budget.pauseByPriority` on, the day funds the work in priority order
   instead, across every team on the Claude account: the lead, the coordinator owner and lifted sessions first, then
