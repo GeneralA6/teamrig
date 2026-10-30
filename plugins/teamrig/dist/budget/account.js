@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { LiftLog } from "./lift.js";
 import { budgetSplitOf } from "./parts.js";
+import { pausableOf } from "./pause.js";
 import { mergeWeekFolds, snapshotDirOf } from "./snapshot.js";
 import { readFolderWeek } from "./week-summary.js";
 import { cachedWork } from "./work.js";
@@ -31,7 +32,8 @@ export function workCacheFileOf(team) {
 }
 /**
  * The other teams of the kit home on the asking team's account, in the order of `teams`, each split by its roster,
- * `budget.sessions`, lifts in force and queued work, read-only. A register that cannot be read counts each of its
+ * `budget.sessions`, lifts in force, queued work and the sessions its own `budget.pauseByPriority` may pause (`pausableOf`),
+ * read-only. A register that cannot be read counts each of its
  * sessions at weight 1 (`cachedWork`) and a lift log that cannot be read holds no lift, so another team's folder
  * never stops this team's budget.
  */
@@ -43,7 +45,7 @@ export async function accountTeamsOf(files, teams, scope) {
         }
         const lifts = await liftsOf(files, kit.paths.lifts);
         const { weights: work } = await cachedWork(files, kit.paths.events, join(scope.usageDir, workCacheFileOf(team)), config.register.priorities);
-        others.push(budgetSplitOf({ team, ids: roster.ids, sessions: config.budget.sessions, leads: config.leads, work, lifts, now: scope.now, usedPct: scope.usedPct }));
+        others.push(budgetSplitOf({ team, ids: roster.ids, sessions: config.budget.sessions, leads: config.leads, work, pausable: pausableOf(config, team, roster.ids), lifts, now: scope.now, usedPct: scope.usedPct }));
     }
     return others;
 }

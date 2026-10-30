@@ -663,6 +663,7 @@ function parseBudget(read, raw, sessions) {
         reservePct,
         paceEndHoursBeforeReset: read.number(raw, 'paceEndHoursBeforeReset', path, defaults.paceEndHoursBeforeReset, CONFIG_LIMITS.paceEndHoursBeforeReset),
         sessions: parseSessionBudgets(read, read.section(raw, 'sessions', path), sessions),
+        pauseByPriority: read.boolean(raw, 'pauseByPriority', path, defaults.pauseByPriority),
         warnAtPct: read.list(raw, 'warnAtPct', path, defaults.warnAtPct, (value, itemPath) => read.numberItem(value, itemPath, { min: CONFIG_LIMITS.warnAtPct.itemMin, max: CONFIG_LIMITS.warnAtPct.itemMax }), CONFIG_LIMITS.warnAtPct.maxItems),
         paceTolerancePct: read.number(raw, 'paceTolerancePct', path, defaults.paceTolerancePct, CONFIG_LIMITS.paceTolerancePct),
         overAction: isOverAction(overAction) ? overAction : defaults.overAction,

@@ -9,6 +9,7 @@ import { activeLift, LiftLog } from "../../budget/lift.js";
 import { OUTSIDE_ID } from "../../budget/measure.js";
 import { runMeter } from "../../budget/meter.js";
 import { budgetSplitOf, dailyBudgetOf } from "../../budget/parts.js";
+import { fundForDay, isPaused, pausableOf } from "../../budget/pause.js";
 import { UsageStore } from "../../budget/store.js";
 import { teamWeekOf } from "../../budget/team-week.js";
 import { helperGate, promptWarning, stopWarning } from "../../budget/warn.js";
@@ -74,9 +75,10 @@ export async function budgetFactsOf(runtime, scope, transcript) {
     const { lifts } = await new LiftLog(files, kit.paths.lifts).read();
     const lift = activeLift(lifts, id, now, week.usedPct);
     const work = await cachedWork(files, kit.paths.events, join(kit.paths.usage, WORK_CACHE_FILE), config.register.priorities);
-    const split = budgetSplitOf({ team: kit.paths.team, ids: roster.ids, sessions: budget.sessions, leads: config.leads, work: work.weights, lifts, now, usedPct: week.usedPct });
+    const split = budgetSplitOf({ team: kit.paths.team, ids: roster.ids, sessions: budget.sessions, leads: config.leads, work: work.weights, pausable: pausableOf(config, kit.paths.team, roster.ids), lifts, now, usedPct: week.usedPct });
     const others = await otherTeamsOnAccount(runtime, { team: kit.paths.team, config, usageDir: kit.paths.usage }, now, week.usedPct);
-    const shared = dailyBudgetOf(week.allowancePct, id, split, others);
+    const funded = fundForDay({ split, others }, week);
+    const shared = dailyBudgetOf(week.allowancePct, id, funded.split, funded.others);
     const inForce = activeBurst((await new BurstLog(files, kit.paths.bursts).read()).records, now, week.usedPct);
     const burst = inForce !== undefined && inForce.sessions.includes(id) ? inForce : undefined;
     const budgetPct = withBurst(shared, burst === undefined ? undefined : burstFloorOf(burst, week, byId, budget, now));
@@ -93,6 +95,7 @@ export async function budgetFactsOf(runtime, scope, transcript) {
             now,
             usedPct: week.usedPct,
             targetPct: budget.targetPct,
+            // The week's spare, not a short day's cut: the teams unfunded.
             teams: { split, others },
             ownerAsk: ownerAsk(config),
         })
@@ -107,6 +110,7 @@ export async function budgetFactsOf(runtime, scope, transcript) {
         lift,
         ...liftNamesOf(split, roster, id, lift),
         burst,
+        paused: isPaused(funded.split, id),
         surplus,
         weekUsedPct: week.usedPct,
         pace: week.pace,

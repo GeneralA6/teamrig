@@ -15,6 +15,7 @@ import { formatPct, formatUsd } from "../../budget/format.js";
 import { activeGroupLift, activeLift, decideLift, LiftLog, liftText, parentBudgetText } from "../../budget/lift.js";
 import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID } from "../../budget/measure.js";
 import { budgetSplitOf, dailyBudgetOf, groupPartsOf, liftPlaceOf, teamPartOf } from "../../budget/parts.js";
+import { fundForDay, isPaused, pausableOf } from "../../budget/pause.js";
 import { nextPeriod, sightOf } from "../../budget/period.js";
 import { burnLines, loopLines, missLines, missMatrixLines, recountLines, sessionLines, sumDays, sumUsage, taskLines, todayLines, weekLine, } from "../../budget/report.js";
 import { datedSnapshot, defaultSnapshotDir, formatSnapshot, parseSnapshot, pruneSnapshots, snapshotDirOf, snapshotOfStatus, statusLineText, } from "../../budget/snapshot.js";
@@ -94,9 +95,9 @@ export async function usageReadingOf(runtime, kit, config, roster) {
 export async function weekLineOf(runtime, kit, config, roster) {
     return weekLine((await usageReadingOf(runtime, kit, config, roster)).week, teamZone(config, runtime));
 }
-/** How the team's part of the day is split among its sessions: down its lead tree, by their queued work (`work`) and the lifts in force. */
+/** How the team's part of the day is split among its sessions: down its lead tree, by their queued work (`work`), the lifts in force and the sessions a short day may pause. */
 function splitOf(reading, team, roster, config, work) {
-    return budgetSplitOf({ team, ids: roster.ids, sessions: config.budget.sessions, leads: config.leads, work, lifts: reading.lifts, now: reading.now, usedPct: reading.week.usedPct });
+    return budgetSplitOf({ team, ids: roster.ids, sessions: config.budget.sessions, leads: config.leads, work, pausable: pausableOf(config, team, roster.ids), lifts: reading.lifts, now: reading.now, usedPct: reading.week.usedPct });
 }
 /** Each session today: its use, and its part (`split`) of the team's part of the account's daily budget beside the `others` on it, its lift and the burst. */
 function sessionsToday(reading, roster, budget, split, others) {
@@ -109,7 +110,7 @@ function sessionsToday(reading, roster, budget, split, others) {
         const lift = activeLift(reading.lifts, id, reading.now, reading.week.usedPct);
         const inBurst = burstNow !== undefined && burstNow.burst.sessions.includes(id) ? burstNow : undefined;
         const budgetPct = withBurst(dailyBudgetOf(reading.week.allowancePct, id, split, others), inBurst?.floorPct);
-        return { id, name: roster.nameOf(id) ?? id, w, calls: state?.byDay[today]?.calls ?? 0, budgetPct, lift, ...liftNamesOf(split, roster, id, lift), inBurst };
+        return { id, name: roster.nameOf(id) ?? id, w, calls: state?.byDay[today]?.calls ?? 0, budgetPct, lift, ...liftNamesOf(split, roster, id, lift), inBurst, paused: isPaused(split, id) };
     });
 }
 /** Each sub-lead's group today: its part of the day (`groupPartsOf`) and its group lift by name. */
@@ -202,9 +203,9 @@ export async function budget(args, runtime) {
         return EXIT.ok;
     }
     const { weights: work } = recountDay === undefined ? await readWork(runtime.files, kit.paths.events, config.register.priorities) : NO_WORK;
-    const split = splitOf(reading, kit.paths.team, roster, config, work);
     // A recount shows no budgets, so it reads no other team.
-    const others = recountDay === undefined ? await otherTeamsOnAccount(runtime, { team: kit.paths.team, config, usageDir: kit.paths.usage }, reading.now, reading.week.usedPct) : [];
+    const onAccount = recountDay === undefined ? await otherTeamsOnAccount(runtime, { team: kit.paths.team, config, usageDir: kit.paths.usage }, reading.now, reading.week.usedPct) : [];
+    const { split, others } = fundForDay({ split: splitOf(reading, kit.paths.team, roster, config, work), others: onAccount }, reading.week);
     const sessions = sessionsToday(reading, roster, config.budget, split, others);
     const teamPct = teamPartOf(reading.week.allowancePct, split, others);
     const { measured, week, now } = reading;
@@ -341,7 +342,8 @@ export async function lift(args, runtime) {
     let beyondParent;
     if (place.parent !== undefined) {
         const others = await otherTeamsOnAccount(runtime, { team: kit.paths.team, config, usageDir: kit.paths.usage }, reading.now, week.usedPct);
-        const part = groupPartsOf(week.allowancePct, split, others).find((each) => each.id === place.parent);
+        const funded = fundForDay({ split, others }, week);
+        const part = groupPartsOf(week.allowancePct, funded.split, funded.others).find((each) => each.id === place.parent);
         const states = (part?.sessions ?? []).flatMap((each) => reading.measured.bySession.get(each) ?? []);
         const usedPct = week.todayWPerPct === undefined || part === undefined ? undefined : wSince(states, week.todayFrom, reading.now) / week.todayWPerPct;
         beyondParent = beyondGroupText(nameOf(place.parent), nameOf(tree.leaderOf(place.parent) ?? tree.lead), part?.budgetPct, usedPct);

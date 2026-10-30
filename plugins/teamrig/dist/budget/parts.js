@@ -1,5 +1,6 @@
 import { DEFAULT_SESSION_SHARE } from "../config/defaults.js";
 import { activeGroupLift, activeLift } from "./lift.js";
+import { workWeightOf } from "./work.js";
 function weightOf(node) {
     return 'nodes' in node ? node.nodes.reduce((sum, each) => sum + weightOf(each), 0) : node.weight;
 }
@@ -52,9 +53,17 @@ function nodesAt(nodes, path) {
     }
     return level;
 }
-/** A session as a split-tree leaf, weighed by its `share` and queued work, with its session lift in force. */
+/** A session's `share`: the default for a session `budget.sessions` does not list. */
+export function shareOf(split, id) {
+    return split.sessions[id]?.share ?? DEFAULT_SESSION_SHARE;
+}
+/** A session's weight in the split: its `share` times its queued work, the work at least 1 so a session with none still gets a part. */
+export function sessionWeightOf(split, id) {
+    return shareOf(split, id) * Math.max(1, workWeightOf(split.work.get(id)));
+}
+/** A session as a split-tree leaf, weighed by its weight and funded part (`funded`), with its session lift in force. */
 function leafOf(split, id) {
-    return { id, liftedPct: split.lifted.get(id), weight: (split.sessions[id]?.share ?? DEFAULT_SESSION_SHARE) * Math.max(1, split.work.get(id) ?? 0) };
+    return { id, liftedPct: split.lifted.get(id), weight: sessionWeightOf(split, id) * (split.funded.get(id) ?? 1) };
 }
 /**
  * The team as a split tree that follows its lead tree (`leads`): the lead and the sessions no sub-lead lists at the
@@ -155,7 +164,7 @@ export function liftPlaceOf(split, id, group) {
     const liftedPct = nodesAt(tree.nodes, path.slice(0, -1)).reduce((sum, each) => (each.id === id ? sum : sum + (each.liftedPct ?? 0)), 0);
     return { parent: path.at(-2), liftedPct };
 }
-/** The team's split, with the session and group lifts in force (`activeLift`, `activeGroupLift`) as their parts. */
+/** The team's split, with the session and group lifts in force (`activeLift`, `activeGroupLift`) as their parts, every session funded whole. */
 export function budgetSplitOf(source) {
     const { lifts, now, usedPct, ...split } = source;
     const subLeads = Object.keys(split.leads).filter((id) => split.ids.includes(id));
@@ -163,6 +172,7 @@ export function budgetSplitOf(source) {
         ...split,
         lifted: partsInForce(split.ids, (id) => activeLift(lifts, id, now, usedPct)),
         liftedGroups: partsInForce(subLeads, (id) => activeGroupLift(lifts, id, now, usedPct)),
+        funded: new Map(),
     };
 }
 function partsInForce(ids, liftOf) {
