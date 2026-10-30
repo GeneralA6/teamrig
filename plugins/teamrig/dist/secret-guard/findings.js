@@ -1,7 +1,8 @@
-/** What the call would print, or the shape of the secret its line holds, as the refusal names it. */
+/** What the call would print, or the shape of the secret its line or its written text holds, as the refusal names it. */
 export function describeFinding(finding) {
     switch (finding.kind) {
         case 'literal':
+        case 'written':
             return finding.description;
         case 'file':
             return `the content of ${finding.path}`;
