@@ -63,10 +63,16 @@ export type StopDecision =
   | { readonly kind: 'write'; readonly state: RefreshState }
   /** Keep the session going with `reason` as its next instruction: write the handover. */
   | { readonly kind: 'block'; readonly state: RefreshState; readonly reason: string }
-  /** Tell the user the session restarts by itself once idle (`restart`), or waits for /clear; `title` marks the tab when the team wants it. */
+  /** Tell the user the session restarts by itself once idle (`restart`), once work comes, or waits for /clear; `title` marks the tab when the team wants it. */
   | { readonly kind: 'notice'; readonly state: ReadyState; readonly message: string; readonly title: string | undefined; readonly restart: boolean };
 
 export type NoticeDecision = Extract<StopDecision, { readonly kind: 'notice' }>;
+
+/**
+ * What follows a written handover: the automatic restart once the session is idle, the restart held back until a
+ * wake brings the session work (T1383), or the user's /clear.
+ */
+export type NoticeNext = 'restart' | 'park' | 'clear';
 
 /** What the plugin's mod gives at a tool result of the main conversation, the context Claude Code last reported, and the due facts once a refresh is due. */
 export interface MidTurnFacts {
@@ -127,19 +133,30 @@ export function thousands(tokens: number): string {
   return `${Math.round(tokens / 1000)}k`;
 }
 
-/** The notice that `state`'s handover is written: the restart to come when `restart`, else the /clear to type. */
-export function noticeOf(state: ReadyState, context: StopContext, restart: boolean): NoticeDecision {
+/** What the notice says comes next, and the tab mark for it. */
+const NEXT_TEXT: Readonly<Record<NoticeNext, (context: StopContext) => { readonly text: string; readonly mark: string }>> = {
+  restart: (context) => ({
+    text: `${context.command} starts it fresh once it has been idle ${context.settings.restartDelaySeconds} s (type anything to keep this context)`,
+    mark: 'restarting',
+  }),
+  park: (context) => ({
+    text: `it has no work it can start now, so ${context.command} starts it fresh once a wake brings it some (type anything to keep this context)`,
+    mark: 'waits for work',
+  }),
+  clear: () => ({ text: 'type /clear for a fresh start', mark: 'type /clear' }),
+};
+
+/** The notice that `state`'s handover is written, and what comes `next`. */
+export function noticeOf(state: ReadyState, context: StopContext, next: NoticeNext): NoticeDecision {
   const { name } = context.session;
-  const next = restart
-    ? `${context.command} starts it fresh once it has been idle ${context.settings.restartDelaySeconds} s (type anything to keep this context)`
-    : 'type /clear for a fresh start';
+  const { text, mark } = NEXT_TEXT[next](context);
   const finished = state.task === null ? '' : ` finished ${state.task} and`;
   return {
     kind: 'notice',
     state: { ...state, noticed: true, transcript: context.transcript },
-    message: `${context.command}: ${name}${finished} wrote its handover; ${next}`,
-    title: context.settings.tabTitle ? `${sessionDisplay(context.session.team, name)}: ${restart ? 'restarting' : 'type /clear'}` : undefined,
-    restart,
+    message: `${context.command}: ${name}${finished} wrote its handover; ${text}`,
+    title: context.settings.tabTitle ? `${sessionDisplay(context.session.team, name)}: ${mark}` : undefined,
+    restart: next === 'restart',
   };
 }
 
@@ -283,7 +300,7 @@ export function decideStop(state: RefreshState | undefined, context: StopContext
       return MEASURE;
     }
     // A fresh start now would cut the running work off: the notice waits for a stop after it ends.
-    return facts.due.running > 0 ? NONE : noticeOf(state, context, context.canRestart);
+    return facts.due.running > 0 ? NONE : noticeOf(state, context, context.canRestart ? 'restart' : 'clear');
   }
   if (context.stopHookActive) {
     return NONE;
