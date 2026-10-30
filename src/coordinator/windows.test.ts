@@ -72,7 +72,7 @@ describe('disruptions', () => {
 });
 
 describe('loadsOf', () => {
-  it('reads one load per id, its end record winning, and runs an open one until now', () => {
+  it('reads one job per id, its end record winning, and runs an open one until now', () => {
     const records = [load('l1', '09:00', null), heavy('h1', '09:30', '09:40'), load('l2', '10:00', null, ['api']), load('l1', '09:00', '11:00')];
     assert.deepEqual(loadsOf(records, at('18:00')), [
       { id: 'l1', session: 'ops', what: 'db trim', targets: 'host', from: at('09:00'), to: at('11:00'), open: false },
@@ -82,7 +82,7 @@ describe('loadsOf', () => {
 });
 
 describe('loadsDuring', () => {
-  it('names the loads on the target, or on the whole host, that overlap the window', () => {
+  it('names the jobs on the target, or on the whole host, that overlap the window', () => {
     const loads: Load[] = loadsOf([load('host', '08:00', '10:30'), load('api', '11:00', null, ['api']), load('workers', '10:00', null, ['workers']), load('early', '08:00', '09:00', ['api'])], at('18:00'));
     assert.deepEqual(
       loadsDuring(loads, 'api', { from: at('10:00'), to: at('12:00') }).map((found) => found.id),

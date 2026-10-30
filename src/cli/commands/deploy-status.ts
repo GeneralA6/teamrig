@@ -65,9 +65,9 @@ function pendingText(read: PendingRead): string {
 
 /**
  * `teamrig deploy-status`: the deploy state now, in one read. The host lock's holder (a stale lock is free, since the next
- * queued step removes it), the queue cutoff and the reset blackout, the deploy freezes (its `claims:` lines) and loads
- * still open, and what each repository with a deploy block has pushed but not deployed; it fetches each main checkout
- * to tell. Exit 0.
+ * queued step removes it), the queue cutoff and the reset blackout, the deploy freezes and background jobs still open
+ * (its `claims:` and `loads:` lines, which keep their old names for the tools that read them), and what each repository
+ * with a deploy block has pushed but not deployed; it fetches each main checkout to tell. Exit 0.
  */
 export async function deployStatus(_args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const nowMs = runtime.clock.now();

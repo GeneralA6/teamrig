@@ -36,9 +36,9 @@ describe("runCli: a time typed on the team's clock", () => {
     assert.equal((await listed('2030-01-08 15:30')).length, 0, '15:30 IST is before the due');
   });
 
-  it('starts a load at a typed --at on the zone clock', async () => {
+  it('starts a job at a typed --at on the zone clock', async () => {
     const kit = new CliHarness(TEAM);
-    const started = await kit.run(['load', '--session', 'alpha', '--what', 'backfill', '--at', '09:00'], JERUSALEM);
+    const started = await kit.run(['job', '--session', 'alpha', '--what', 'backfill', '--at', '09:00'], JERUSALEM);
     assert.equal(started.code, EXIT.ok, started.stderr.join('\n'));
     const records = (kit.files.get(LEDGER) ?? '').trim().split('\n').map((line): unknown => JSON.parse(line));
     assert.deepEqual(

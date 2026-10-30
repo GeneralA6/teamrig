@@ -3757,8 +3757,8 @@ run), from its start until it settled:
 `delivery.stablePeriods.targetSettleMinutes` for that target, else `settleMinutes` (30), or `--settle` for every
 target. The deploys are the ledger.md lines, so one a session wrote by hand counts too; a deploy with no ledger
 record of its start is taken to have run for `assumedDeployMinutes` (20). A queued step disturbs the whole host. A
-period shorter than `--min` (default `minMinutes`, 15) is left out. Each period names the loads (`teamrig load`) it
-overlaps: a load never cuts a period, since two periods under the same load still compare. A time is `HH:MM`
+period shorter than `--min` (default `minMinutes`, 15) is left out. Each period names the jobs (`teamrig job`) it
+overlaps: a job never cuts a period, since two periods under the same job still compare. A time is `HH:MM`
 (today), `YYYY-MM-DD HH:MM` or `YYYY-MM-DD` on the team's clock unless marked `UTC`, or an ISO time with its zone. A
 target no repository deploys is a usage error.
 
@@ -3782,50 +3782,50 @@ Output:
 api (settle 30m): 2 stable periods of at least 15m
   2030-01-08 08:00 IST to 2030-01-08 08:40 IST (40m)
   2030-01-08 10:20 IST to 2030-01-08 12:00 IST (1h40m)
-    under load 3f9c1a7e by data: backfill prices (from 2030-01-08 10:30 IST, still running)
+    under job 3f9c1a7e by data: backfill prices (from 2030-01-08 10:30 IST, still running)
 ```
 
-### teamrig load
+### teamrig job
 
-Declares a background load, such as a long data script or a backfill, in the ledger from `--at` (default now), so
-`teamrig stable-periods` names it on every period it overlaps. It loads its `--targets`, or the whole host. It runs until
-`teamrig load end`. REFUSED for a start in the future, a target no repository deploys, or a secret in what it is,
+Declares a background job, such as a long data script or a backfill, in the ledger from `--at` (default now), so
+`teamrig stable-periods` names it on every period it overlaps. It covers its `--targets`, or the whole host, until
+`teamrig job end`. REFUSED for a start in the future, a target no repository deploys, or a secret in what it is,
 since the ledger is shared.
 
 Flags:
 
-- `--what "<what>"`: what the load is.
-- `--targets <a,b>|host`: the deploy targets it loads; default `host`, every one.
+- `--what "<what>"`: what the job is.
+- `--targets <a,b>|host`: the deploy targets it runs on; default `host`, every one.
 - `--at <time>`: when it started; default now.
 - `--session <id|name>`: the session declaring it; default `$TEAMRIG_SESSION`.
 
 Example:
 
 ```sh
-teamrig load --session data --what "backfill prices" --at 10:30
+teamrig job --session data --what "backfill prices" --at 10:30
 ```
 
 Output:
 
 ```text
-LOAD 3f9c1a7e on the whole host from 2030-01-08 10:30 IST (end it: teamrig load end --id 3f9c1a7e)
+JOB 3f9c1a7e on the whole host from 2030-01-08 10:30 IST (end it: teamrig job end --id 3f9c1a7e)
 ```
 
-### teamrig load end
+### teamrig job end
 
-Ends this session's load at `--at` (default now). REFUSED for no such open load, another session's, or an end in the
+Ends this session's job at `--at` (default now). REFUSED for no such open job, another session's, or an end in the
 future or before its start.
 
 Flags:
 
-- `--id <id>`: the load's id, as `teamrig load` printed it.
+- `--id <id>`: the job's id, as `teamrig job` printed it.
 - `--at <time>`: when it ended; default now.
-- `--session <id|name>`: the session whose load ends; default `$TEAMRIG_SESSION`.
+- `--session <id|name>`: the session whose job ends; default `$TEAMRIG_SESSION`.
 
 Example:
 
 ```sh
-teamrig load end --session data --id 3f9c1a7e
+teamrig job end --session data --id 3f9c1a7e
 ```
 
 Output:
@@ -3838,7 +3838,7 @@ ENDED 3f9c1a7e at 2030-01-08 12:00 IST
 
 The deploy state now, in one read: who holds the host lock (a stale lock shows as free, since the next queued step
 removes it) and, on a `sharing the host:` line, the small steps (`queue --small`) sharing it, the queue cutoff (its `heavy cutoff:` line) and the blackout before the weekly token reset (each marked IN FORCE while it holds),
-the deploy freezes (its `claims:` lines) and loads still open, and what each repository with a deploy block has pushed but not deployed. It
+the deploy freezes and background jobs still open (its `claims:` and `loads:` lines), and what each repository with a deploy block has pushed but not deployed. It
 fetches each main checkout to tell; for one a deploy would refuse, it says why.
 
 Flags: none.

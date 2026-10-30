@@ -29,7 +29,7 @@ async function ledgerOf(files: MemoryFiles): Promise<ReturnType<typeof parseLedg
 }
 
 describe('startLoad', () => {
-  it('writes an open load under the first 8 characters of a new id no other load has', async () => {
+  it('writes an open job under the first 8 characters of a new id no other job has', async () => {
     const files = new MemoryFiles();
     const taken: LoadRecord = { type: 'load', id: 'aaaaaaaa', session: 'dev', what: 'reindex', targets: ['api'], startedAt: '2030-01-07T09:00:00.000Z', endedAt: '2030-01-07T10:00:00.000Z' };
     await appendRecord(files, LEDGER, taken);
@@ -49,9 +49,9 @@ describe('startLoad', () => {
       ].map(async (start) => startLoad(ports(files, []), LEDGER, RULES, start)),
     );
     const [future, unknown, secret] = refusals.map((outcome) => (outcome.kind === 'refused' ? outcome.reason : outcome.kind));
-    assert.equal(future, 'a load cannot start in the future (2030-01-08 12:01 UTC)');
+    assert.equal(future, 'a job cannot start in the future (2030-01-08 12:01 UTC)');
     assert.equal(unknown, 'db, cache are not a deploy target of this team (known: api, workers, host)');
-    assert.match(secret ?? '', /^what the load is looks like it holds a secret \(/);
+    assert.match(secret ?? '', /^what the job is looks like it holds a secret \(/);
     assert.equal(files.get(LEDGER), undefined);
   });
 });
@@ -64,7 +64,7 @@ describe('endLoad', () => {
     return { files, record: outcome.kind === 'done' ? outcome.record : assert.fail('not started') };
   }
 
-  it('writes the end record of the session’s open load', async () => {
+  it('writes the end record of the session’s open job', async () => {
     const { files, record } = await started();
     const outcome = await endLoad(ports(files, []), LEDGER, { session: 'ops', id: 'cafe0001', endedAt: NOW - 600_000, nowMs: NOW, zone: TimeZone.UTC });
     const ended: LoadRecord = { ...record, endedAt: '2030-01-08T11:50:00.000Z' };
@@ -72,7 +72,7 @@ describe('endLoad', () => {
     assert.deepEqual(await ledgerOf(files), [record, ended]);
   });
 
-  it('refuses an unknown or ended load, another session’s, and an end in the future or before its start', async () => {
+  it('refuses an unknown or ended job, another session’s, and an end in the future or before its start', async () => {
     const { files } = await started();
     const end = { session: 'ops', id: 'cafe0001', endedAt: NOW, nowMs: NOW, zone: TimeZone.UTC };
     const reasons = [];
@@ -81,29 +81,29 @@ describe('endLoad', () => {
       reasons.push(outcome.kind === 'refused' ? outcome.reason : outcome.kind);
     }
     assert.deepEqual(reasons, [
-      'no open load "beef0002"',
-      'load "cafe0001" belongs to ops',
-      'a load cannot end in the future (2030-01-08 12:01 UTC)',
-      'load "cafe0001" started at 2030-01-08 11:00 UTC, after 2030-01-08 10:00 UTC',
+      'no open job "beef0002"',
+      'job "cafe0001" belongs to ops',
+      'a job cannot end in the future (2030-01-08 12:01 UTC)',
+      'job "cafe0001" started at 2030-01-08 11:00 UTC, after 2030-01-08 10:00 UTC',
     ]);
     assert.equal((await endLoad(ports(files, []), LEDGER, end)).kind, 'done');
-    assert.deepEqual(await endLoad(ports(files, []), LEDGER, end), { kind: 'refused', reason: 'no open load "cafe0001"' });
+    assert.deepEqual(await endLoad(ports(files, []), LEDGER, end), { kind: 'refused', reason: 'no open job "cafe0001"' });
   });
 });
 
-describe("the load refusals in the team's zone", () => {
+describe("the job refusals in the team's zone", () => {
   it('print their times there, zone-marked', async () => {
     const files = new MemoryFiles();
     const rules = { ...RULES, zone: JERUSALEM };
     assert.deepEqual(await startLoad(ports(files, ['cafe0001-x']), LEDGER, rules, { ...START, startedAt: NOW + 60_000 }), {
       kind: 'refused',
-      reason: 'a load cannot start in the future (2030-01-08 14:01 IST)',
+      reason: 'a job cannot start in the future (2030-01-08 14:01 IST)',
     });
     assert.equal((await startLoad(ports(files, ['cafe0001-x']), LEDGER, rules, START)).kind, 'done');
     const end = { session: 'ops', id: 'cafe0001', nowMs: NOW, zone: JERUSALEM };
     assert.deepEqual(await endLoad(ports(files, []), LEDGER, { ...end, endedAt: NOW - 7_200_000 }), {
       kind: 'refused',
-      reason: 'load "cafe0001" started at 2030-01-08 13:00 IST, after 2030-01-08 12:00 IST',
+      reason: 'job "cafe0001" started at 2030-01-08 13:00 IST, after 2030-01-08 12:00 IST',
     });
   });
 });

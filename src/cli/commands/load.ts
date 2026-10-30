@@ -10,7 +10,7 @@ import { callerOf, instantOf, listOf, type TypedTimes } from '../inputs.ts';
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 
-/** What a load command works on: the session, the coordinator's config, the ledger and the loads' ports. */
+/** What a job command works on: the session, the coordinator's config, the ledger and the jobs' ports. */
 interface LoadContext {
   readonly session: string;
   readonly delivery: CoordinatorConfig;
@@ -36,7 +36,7 @@ async function loadContextOf(args: ParsedArgs, runtime: CliRuntime): Promise<Loa
   };
 }
 
-/** `--targets a,b`: the deploy targets a load disturbs; absent, or naming `host`, the whole host. */
+/** `--targets a,b`: the deploy targets a job disturbs; absent, or naming `host`, the whole host. */
 function loadTargetsOf(text: string | undefined): readonly string[] | 'host' {
   if (text === undefined) {
     return 'host';
@@ -59,11 +59,11 @@ function atOf(args: ParsedArgs, times: TypedTimes): number {
 }
 
 /**
- * `teamrig load --what "<what>" [--targets <a,b>|host] [--at <time>]`: declares a background load (a long data
+ * `teamrig job --what "<what>" [--targets <a,b>|host] [--at <time>]`: declares a background job (a long data
  * script, a backfill) in the ledger from `--at` (default now), so `teamrig stable-periods` names it on the stable periods it overlaps.
  * Refused for a start in the future, a target no repository deploys or a secret in what it is. Exit 0, 2 refused.
  */
-export async function load(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+export async function job(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const what = requiredFlag(args.flags, 'what');
   const targets = loadTargetsOf(args.flags.get('targets'));
   const nowMs = runtime.clock.now();
@@ -72,15 +72,15 @@ export async function load(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   const rules = { knownTargets: deployTargetsOf(context.delivery.repos), scanner: context.scanner, nowMs, zone: context.zone };
   const record = recordOf(await startLoad(context.ports, context.ledger, rules, { session: context.session, what, targets, startedAt }));
   const on = record.targets === 'host' ? 'the whole host' : record.targets.join(', ');
-  runtime.out.stdout(`LOAD ${record.id} on ${on} from ${context.zone.minute(new Date(startedAt))} (end it: teamrig load end --id ${record.id})`);
+  runtime.out.stdout(`JOB ${record.id} on ${on} from ${context.zone.minute(new Date(startedAt))} (end it: teamrig job end --id ${record.id})`);
   return EXIT.ok;
 }
 
 /**
- * `teamrig load end --id <id> [--at <time>]`: ends this session's load at `--at` (default now). Refused for no such
- * open load, another session's, or an end in the future or before its start. Exit 0, 2 refused.
+ * `teamrig job end --id <id> [--at <time>]`: ends this session's job at `--at` (default now). Refused for no such
+ * open job, another session's, or an end in the future or before its start. Exit 0, 2 refused.
  */
-export async function loadEnd(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+export async function jobEnd(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const id = requiredFlag(args.flags, 'id');
   const nowMs = runtime.clock.now();
   const context = await loadContextOf(args, runtime);

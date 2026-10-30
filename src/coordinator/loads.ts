@@ -3,7 +3,7 @@ import type { SecretScanner } from '../core/secrets.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { appendRecord, parseLedger, type LedgerRecord, type LoadRecord } from './ledger.ts';
 
-/** A load's id is the start of a new id, unique among the ledger's loads: short enough to type into `teamrig load end`. */
+/** A job's id is the start of a new id, unique among the ledger's jobs: short enough to type into `teamrig job end`. */
 const ID_LENGTH = 8;
 
 /** New ids tried before giving up; with random ids, one clash is already rare. */
@@ -16,7 +16,7 @@ export interface LoadPorts {
 
 export type LoadOutcome = { readonly kind: 'done'; readonly record: LoadRecord } | { readonly kind: 'refused'; readonly reason: string };
 
-/** A load a session declares, from `startedAt` (ms). */
+/** A job a session declares, from `startedAt` (ms). */
 export interface LoadStart {
   readonly session: string;
   readonly what: string;
@@ -33,7 +33,7 @@ export interface LoadRules {
   readonly zone: TimeZone;
 }
 
-/** A session ending its load `id` at `endedAt` (ms). */
+/** A session ending its job `id` at `endedAt` (ms). */
 export interface LoadEnd {
   readonly session: string;
   readonly id: string;
@@ -58,7 +58,7 @@ function refused(reason: string): LoadOutcome {
 
 function startRefusal(rules: LoadRules, start: LoadStart): string | undefined {
   if (start.startedAt > rules.nowMs) {
-    return `a load cannot start in the future (${minuteText(start.startedAt, rules.zone)})`;
+    return `a job cannot start in the future (${minuteText(start.startedAt, rules.zone)})`;
   }
   if (start.targets !== 'host') {
     const unknown = start.targets.filter((target) => !rules.knownTargets.includes(target));
@@ -66,7 +66,7 @@ function startRefusal(rules: LoadRules, start: LoadStart): string | undefined {
       return `${unknown.join(', ')} ${unknown.length === 1 ? 'is' : 'are'} not a deploy target of this team (known: ${[...rules.knownTargets, 'host'].join(', ')})`;
     }
   }
-  return rules.scanner.refusal('what the load is', start.what);
+  return rules.scanner.refusal('what the job is', start.what);
 }
 
 function freshId(ports: LoadPorts, taken: ReadonlySet<string>): string {
@@ -76,11 +76,11 @@ function freshId(ports: LoadPorts, taken: ReadonlySet<string>): string {
       return id;
     }
   }
-  throw new Error(`no free load id after ${ID_TRIES} tries`);
+  throw new Error(`no free job id after ${ID_TRIES} tries`);
 }
 
 /**
- * Declares a background load from `start.startedAt` with a new id, written to the ledger. Refused for a start in the
+ * Declares a background job from `start.startedAt` with a new id, written to the ledger. Refused for a start in the
  * future, a target no repository deploys, or a secret in what it is, since the ledger is shared.
  */
 export async function startLoad(ports: LoadPorts, ledger: string, rules: LoadRules, start: LoadStart): Promise<LoadOutcome> {
@@ -102,22 +102,22 @@ export async function startLoad(ports: LoadPorts, ledger: string, rules: LoadRul
   return { kind: 'done', record };
 }
 
-/** Ends the session's open load `end.id`. Refused for no such open load, another session's, or an end in the future or before its start. */
+/** Ends the session's open job `end.id`. Refused for no such open job, another session's, or an end in the future or before its start. */
 export async function endLoad(ports: LoadPorts, ledger: string, end: LoadEnd): Promise<LoadOutcome> {
   const records = parseLedger((await ports.files.read(ledger)) ?? '').filter((record): record is LoadRecord => isLoad(record) && record.id === end.id);
   const started = records.find((record) => record.endedAt === null);
   if (started === undefined || records.some((record) => record.endedAt !== null)) {
-    return refused(`no open load "${end.id}"`);
+    return refused(`no open job "${end.id}"`);
   }
   if (started.session !== end.session) {
-    return refused(`load "${end.id}" belongs to ${started.session}`);
+    return refused(`job "${end.id}" belongs to ${started.session}`);
   }
   if (end.endedAt > end.nowMs) {
-    return refused(`a load cannot end in the future (${minuteText(end.endedAt, end.zone)})`);
+    return refused(`a job cannot end in the future (${minuteText(end.endedAt, end.zone)})`);
   }
   const startedAt = Date.parse(started.startedAt);
   if (end.endedAt < startedAt) {
-    return refused(`load "${end.id}" started at ${minuteText(startedAt, end.zone)}, after ${minuteText(end.endedAt, end.zone)}`);
+    return refused(`job "${end.id}" started at ${minuteText(startedAt, end.zone)}, after ${minuteText(end.endedAt, end.zone)}`);
   }
   const record: LoadRecord = { ...started, endedAt: new Date(end.endedAt).toISOString() };
   await appendRecord(ports.files, ledger, record);
