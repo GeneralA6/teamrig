@@ -50,7 +50,7 @@ export const SECRET_TOKEN_PATTERNS: readonly SecretPattern[] = [
  * (`$TOKEN`, `${TOKEN}`, `<token>`, `%TOKEN%`) or a word under 8 characters is not one.
  */
 export const SECRET_TEXT_PATTERNS: readonly SecretPattern[] = [
-  { id: 'url-credentials', description: 'credentials in a URL', pattern: /\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]+:([^\s/@]+)@/i, secretGroup: 1 },
+  { id: 'url-credentials', description: 'credentials in a URL', pattern: /\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]*:([^\s/@]+)@/i, secretGroup: 1 },
   {
     id: 'auth-header',
     description: 'credentials in an Authorization header',

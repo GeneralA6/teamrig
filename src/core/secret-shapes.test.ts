@@ -72,6 +72,10 @@ describe('SecretShapes', () => {
     ]);
   });
 
+  it('finds the password of a URL with an empty login, as a password-only server takes it', () => {
+    assert.deepEqual(shapes.hitsIn(join('cache://:', PASSWORD, '@kv.local:6379/0')), [{ id: 'url-credentials', description: 'credentials in a URL', value: PASSWORD }]);
+  });
+
   it('yields every match, a repeated one too', () => {
     const text = join('https://a:', PASSWORD, '@one and amqp://b:', PASSWORD, '@two');
     assert.deepEqual(
