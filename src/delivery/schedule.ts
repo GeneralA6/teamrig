@@ -8,7 +8,7 @@ export interface ResetTime {
 }
 
 /** The part of `nowMs`'s UTC day when no queued step starts: from `cutoffUtc` (`HH:MM`, UTC) until midnight UTC. Unset: none. */
-export function heavyCutoffSpan(nowMs: number, cutoffUtc: string | undefined): { readonly from: number; readonly to: number } | undefined {
+export function queueCutoffSpan(nowMs: number, cutoffUtc: string | undefined): { readonly from: number; readonly to: number } | undefined {
   const cutoff = cutoffUtc === undefined ? undefined : utcMinuteOf(cutoffUtc);
   if (cutoff === undefined) {
     return undefined;
@@ -21,8 +21,8 @@ export function heavyCutoffSpan(nowMs: number, cutoffUtc: string | undefined): {
  * Why no queued step may start at `nowMs`, or undefined when one may: none starts from `cutoffUtc` (`HH:MM`, UTC) until
  * midnight UTC. Unset: no cutoff. The reason names the span and the time on `zone`'s clock.
  */
-export function heavyCutoffReason(nowMs: number, cutoffUtc: string | undefined, zone: TimeZone): string | undefined {
-  const span = heavyCutoffSpan(nowMs, cutoffUtc);
+export function queueCutoffReason(nowMs: number, cutoffUtc: string | undefined, zone: TimeZone): string | undefined {
+  const span = queueCutoffSpan(nowMs, cutoffUtc);
   return span !== undefined && nowMs >= span.from ? `queue cutoff ${zone.clockSpan(new Date(span.from), new Date(span.to))} (now ${zone.clock(new Date(nowMs))})` : undefined;
 }
 

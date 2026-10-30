@@ -35,7 +35,7 @@ const COMMAND = ['node', 'tools/deploy.js'];
 const DEPLOY: DeployConfig = { targets: ['api', 'workers'], checks: [FLOW], afterPull: [AFTER_PULL], command: COMMAND };
 const PIPELINE: DeliveryRepoConfig = { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], dependencyGate: false, reviewGate: false, updateMainCheckout: false, deploy: DEPLOY };
 const REQUEST: DeployRequest = { session: 'po', repo: undefined, dir: '/elsewhere' };
-const HEAVY_MS = DEFAULT_QUEUE.maxRunMinutes * 60_000;
+const QUEUE_MAX_MS = DEFAULT_QUEUE.maxRunMinutes * 60_000;
 const SECRET = ['db password', '=', 'hunter2'].join('');
 const REDACTED = 'db [redacted password or key assignment]';
 const BY_HAND = 'a new deploy finds nothing pending, so run `node tools/deploy.js` in /repo/app by hand once it is fixed';
@@ -151,7 +151,7 @@ describe('deployRepo', () => {
     const deploying = { ...base, TEAMRIG_DEPLOY_TO: 'c2', TEAMRIG_DEPLOY_TAG: 'sha-0f8e', TEAMRIG_HOST_LOCK: 'lock-1' };
     assert.deepEqual(teamrigEnv(afterPull?.env ?? {}), deploying);
     assert.deepEqual(teamrigEnv(command?.env ?? {}), deploying);
-    assert.deepEqual([command?.cwd, command?.timeoutMs, command?.env['PATH']], [MAIN_CHECKOUT, HEAVY_MS, '/bin']);
+    assert.deepEqual([command?.cwd, command?.timeoutMs, command?.env['PATH']], [MAIN_CHECKOUT, QUEUE_MAX_MS, '/bin']);
     assert.equal(world.git.heads.get(MAIN_CHECKOUT), 'c2');
     assert.deepEqual(world.records(), [
       ...world.heavy(0, '2030-01-08T10:02:00.000Z'),
@@ -329,8 +329,8 @@ describe('deployRepo of a range that changes the dependencies', () => {
     assert.deepEqual(world.hooks.commands, ['node checks/flow.js', 'node checks/flow.js', 'node checks/deps-check.js', 'npm ci --ignore-scripts', 'node scripts/build-cli.js', 'node tools/deploy.js']);
     assert.deepEqual(atCheck, ['c2', OLD_LOCK], 'the check judges what was pulled against the old HEAD’s lock');
     const [, , check, install] = world.hooks.ran;
-    assert.deepEqual([check?.cwd, check?.timeoutMs, check?.env[BASELINE_LOCK_ENV], check?.env['TEAMRIG_HOST_LOCK']], [MAIN_CHECKOUT, HEAVY_MS, BASELINE, 'lock-1']);
-    assert.deepEqual([install?.cwd, install?.timeoutMs, install?.env[BASELINE_LOCK_ENV], install?.env['TEAMRIG_HOST_LOCK'], install?.env['TEAMRIG_DEPLOY_TO']], [MAIN_CHECKOUT, HEAVY_MS, undefined, 'lock-1', 'c2']);
+    assert.deepEqual([check?.cwd, check?.timeoutMs, check?.env[BASELINE_LOCK_ENV], check?.env['TEAMRIG_HOST_LOCK']], [MAIN_CHECKOUT, QUEUE_MAX_MS, BASELINE, 'lock-1']);
+    assert.deepEqual([install?.cwd, install?.timeoutMs, install?.env[BASELINE_LOCK_ENV], install?.env['TEAMRIG_HOST_LOCK'], install?.env['TEAMRIG_DEPLOY_TO']], [MAIN_CHECKOUT, QUEUE_MAX_MS, undefined, 'lock-1', 'c2']);
     assert.equal(world.files.get(BASELINE), undefined, 'the baseline copy is removed');
     for (const line of [`${DEPS_CHANGED}: dependency check node checks/deps-check.js`, '  1 package added, no advisories', `${DEPS_CHANGED}: dependency install npm ci --ignore-scripts`, 'installed: the worktrees that link to the node_modules in /repo/app have the new dependencies now']) {
       assert.ok(world.said.includes(line), line);

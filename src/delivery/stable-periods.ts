@@ -1,4 +1,4 @@
-import type { DeployRecord, HeavyRecord, LedgerMdDeploy, LedgerRecord, LoadRecord } from './ledger.ts';
+import type { DeployRecord, QueuedStepRecord, LedgerMdDeploy, LedgerRecord, LoadRecord } from './ledger.ts';
 
 const MINUTE_MS = 60_000;
 
@@ -44,7 +44,7 @@ function isDeploy(record: LedgerRecord): record is DeployRecord {
   return record.type === 'deploy';
 }
 
-function isHeavy(record: LedgerRecord): record is HeavyRecord {
+function isQueuedStep(record: LedgerRecord): record is QueuedStepRecord {
   return record.type === 'heavy';
 }
 
@@ -75,7 +75,7 @@ export function disruptions(input: DisruptionInputs): Disruption[] {
       targets: twin?.targets ?? input.targetsOf(line.repo),
     };
   });
-  const steps = input.records.filter(isHeavy);
+  const steps = input.records.filter(isQueuedStep);
   const starts = steps.map((step) => Date.parse(step.startedAt));
   const byId = new Map<string, Disruption>();
   for (const step of steps) {

@@ -13,11 +13,11 @@ export const LEDGER_MD_FILE = 'ledger.md';
 export const LEDGER_MD_HEADER = '# Deploy ledger: one line a deploy: deployed at (UTC) | session | repo | range | what | kind | note';
 
 /**
- * A queued step in the ledger, in the format a team's own coordinator writes too: once when it starts (`endedAt`
- * and `exitCode` null), and again with both when it ends, under the same `id`. The optional fields are teamrig's
- * own; a record without them is still read.
+ * A queued step in the ledger, stored under its old type name `heavy`, in the format a team's own coordinator writes
+ * too: once when it starts (`endedAt` and `exitCode` null), and again with both when it ends, under the same `id`.
+ * The optional fields are teamrig's own; a record without them is still read.
  */
-export interface HeavyRecord {
+export interface QueuedStepRecord {
   readonly type: 'heavy';
   readonly id: string;
   readonly session: string;
@@ -76,7 +76,7 @@ export interface LoadRecord {
   readonly endedAt: string | null;
 }
 
-export type LedgerRecord = HeavyRecord | DeployRecord | LoadRecord;
+export type LedgerRecord = QueuedStepRecord | DeployRecord | LoadRecord;
 
 /** A deploy as its ledger.md line names it; a session may write one by hand. */
 export interface LedgerMdDeploy {
@@ -138,7 +138,7 @@ function mbField(record: JsonRecord, key: string): number | undefined {
 }
 
 /** The optional fields a record carries, each left out when it is missing or bad, since they only add to it. */
-function heavyExtrasOf(record: JsonRecord): Pick<HeavyRecord, 'kit' | 'queuedAt' | 'shared' | 'peakTreeMb' | 'lowFreeMb'> {
+function queuedStepExtrasOf(record: JsonRecord): Pick<QueuedStepRecord, 'kit' | 'queuedAt' | 'shared' | 'peakTreeMb' | 'lowFreeMb'> {
   const [kit, queuedAt] = [stringField(record, 'kit'), timeField(record, 'queuedAt')];
   const [peakTreeMb, lowFreeMb] = [mbField(record, 'peakTreeMb'), mbField(record, 'lowFreeMb')];
   return {
@@ -155,7 +155,7 @@ function endField(record: JsonRecord, key: string): string | null | undefined {
   return record[key] === null ? null : timeField(record, key);
 }
 
-function heavyOf(record: JsonRecord): HeavyRecord | undefined {
+function queuedStepOf(record: JsonRecord): QueuedStepRecord | undefined {
   const [id, session, what] = [stringField(record, 'id'), stringField(record, 'session'), stringField(record, 'what')];
   const [startedAt, endedAt] = [timeField(record, 'startedAt'), endField(record, 'endedAt')];
   const exitCode = record['exitCode'];
@@ -163,7 +163,7 @@ function heavyOf(record: JsonRecord): HeavyRecord | undefined {
   if (id === undefined || session === undefined || what === undefined || startedAt === undefined || endedAt === undefined || exit === undefined) {
     return undefined;
   }
-  return { type: 'heavy', id, session, what, startedAt, endedAt, exitCode: exit, ...heavyExtrasOf(record) };
+  return { type: 'heavy', id, session, what, startedAt, endedAt, exitCode: exit, ...queuedStepExtrasOf(record) };
 }
 
 function deployOf(record: JsonRecord): DeployRecord | undefined {
@@ -189,7 +189,7 @@ function loadOf(record: JsonRecord): LoadRecord | undefined {
   return { type: 'load', id, session, what, targets: loaded, startedAt, endedAt };
 }
 
-const READERS: Readonly<Record<LedgerRecord['type'], (record: JsonRecord) => LedgerRecord | undefined>> = { heavy: heavyOf, deploy: deployOf, load: loadOf };
+const READERS: Readonly<Record<LedgerRecord['type'], (record: JsonRecord) => LedgerRecord | undefined>> = { heavy: queuedStepOf, deploy: deployOf, load: loadOf };
 
 function isLedgerType(type: unknown): type is LedgerRecord['type'] {
   return type === 'heavy' || type === 'deploy' || type === 'load';

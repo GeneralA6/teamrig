@@ -295,7 +295,7 @@ export const DEFAULT_STATUS_LINE: StatusLineConfig = { folder: true, branch: tru
  * A host lock outlives the longest queued step it may hold by this many minutes, so the step is killed
  * before its lock runs out and no second step starts beside it.
  */
-export const HEAVY_TTL_MARGIN_MINUTES = 10;
+export const QUEUE_TTL_MARGIN_MINUTES = 10;
 
 /**
  * A host lock lasts 150 minutes and a queued step at most 45 of them, a small step at most 10; a step waits up to an hour

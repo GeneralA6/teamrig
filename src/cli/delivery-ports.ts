@@ -24,8 +24,8 @@ export function logLineOf(runtime: Pick<CliRuntime, 'out' | 'clock'>, zone: Time
 type LockRuntime = Pick<CliRuntime, 'files' | 'clock' | 'sleep' | 'pid' | 'sessionProcesses' | 'newId'>;
 
 /** The host lock at `path`, held by this process for `delivery.queue.lockTtlMinutes`; a holder whose process ended is stale. */
-export function hostLockOf(runtime: LockRuntime, path: string, heavy: Pick<QueueConfig, 'lockTtlMinutes'>): HostLock {
-  return lockAt(runtime, path, heavy.lockTtlMinutes * MINUTE_MS);
+export function hostLockOf(runtime: LockRuntime, path: string, queue: Pick<QueueConfig, 'lockTtlMinutes'>): HostLock {
+  return lockAt(runtime, path, queue.lockTtlMinutes * MINUTE_MS);
 }
 
 /** The lock the deploy freezes' writers share at `path`, held for a minute, since a write takes moments. */

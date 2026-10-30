@@ -3,7 +3,7 @@ import { quietClaimText, readClaims } from '../../delivery/freezes.ts';
 import { holderText, sharesText, type LockState } from '../../delivery/host-lock.ts';
 import { parseLedger } from '../../delivery/ledger.ts';
 import { deliveryPlaces, teamPlace } from '../../delivery/places.ts';
-import { blackoutStart, heavyCutoffSpan, type ResetTime } from '../../delivery/schedule.ts';
+import { blackoutStart, queueCutoffSpan, type ResetTime } from '../../delivery/schedule.ts';
 import { loadsOf, type Load } from '../../delivery/stable-periods.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import { deployRepos, plural, readPending, short, type PendingRead } from '../../deploy/pending.ts';
@@ -25,7 +25,7 @@ function lockText(state: LockState, zone: TimeZone): string {
 }
 
 function cutoffText(nowMs: number, cutoffUtc: string | undefined, zone: TimeZone): string {
-  const span = heavyCutoffSpan(nowMs, cutoffUtc);
+  const span = queueCutoffSpan(nowMs, cutoffUtc);
   if (span === undefined) {
     return 'none (delivery.schedule.queueCutoffUtc is not set)';
   }
