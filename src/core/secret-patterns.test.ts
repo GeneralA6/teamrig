@@ -57,8 +57,8 @@ const CASES: ReadonlyArray<{ readonly id: string; readonly hits: readonly string
   },
   {
     id: 'url-credentials',
-    hits: [join('amqp://', 'app', ':', 's3cret', '@', 'queue.local:5672'), join('HTTPS://', 'u', ':', 'p', '@', 'host')],
-    misses: ['https://example.test/path?a=1', 'mail me at someone@example.com', 'ssh://git@github.com/o/r'],
+    hits: [join('amqp://', 'app', ':', 's3cret', '@', 'queue.local:5672'), join('HTTPS://', 'u', ':', 'p', '@', 'host'), join('cache://', ':', 's3cret', '@', 'kv.local:6379')],
+    misses: ['https://example.test/path?a=1', 'mail me at someone@example.com', 'ssh://git@github.com/o/r', 'tcp://:8080/health'],
   },
   {
     id: 'auth-header',
