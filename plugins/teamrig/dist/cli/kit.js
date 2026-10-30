@@ -6,17 +6,17 @@ import { parseConfigText } from "../config/text.js";
 import { isRecord } from "../core/guards.js";
 import { claudeConfigDir, ENV, KIT_NAME, resolveKitHome, teamPaths } from "../core/home.js";
 import { ID_PATTERN } from "../core/ids.js";
-import { FileLock } from "../core/lock.js";
 import { resolveTeam, TEAM_POINTER } from "../core/team.js";
 import { TimeZone } from "../core/zone.js";
 import { JsonlRenameLog } from "../names/log.js";
 import { RefusedError } from "./runtime.js";
+import { fileLockOf } from "./file-locks.js";
 /** The rename log, its lock and the roster it gives, for recording a rename. */
 export function renameDepsOf(runtime, kit, config) {
-    const { files, clock, sleep, pid } = runtime;
+    const { files, clock } = runtime;
     return {
         log: new JsonlRenameLog(files, kit.paths.renames),
-        mutex: new FileLock(kit.paths.renamesLock, config.lock, { files, clock, sleep, pid }),
+        mutex: fileLockOf(runtime, kit.paths.renamesLock, config.lock),
         clock,
         rosterOf: (renames) => new Roster(config, kit.paths.team, renames),
     };

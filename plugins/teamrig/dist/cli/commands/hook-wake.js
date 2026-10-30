@@ -2,7 +2,7 @@ import { activeBurst } from "../../budget/burst.js";
 import { BurstLog } from "../../budget/burst-log.js";
 import { claudeProjectsDir, lastWriteOf } from "../../budget/discover.js";
 import { isRecord, stringField } from "../../core/guards.js";
-import { FileLock, LockBusyError } from "../../core/lock.js";
+import { LockBusyError } from "../../core/lock.js";
 import { MeetingStore, phaseOf } from "../../meeting/state.js";
 import { restartMayAct } from "../../refresh/restart.js";
 import { RefreshStore } from "../../refresh/store.js";
@@ -22,6 +22,7 @@ import { inboxDepsOf } from "./inbox.js";
 import { runIdlePass } from "./hook-idle-pass.js";
 import { parseJson, sessionTeam, teamSessionOf } from "./hook-input.js";
 import { rearmDeadRestart } from "./hook-restart.js";
+import { fileLockOf } from "../file-locks.js";
 const SECOND_MS = 1000;
 const MINUTE_MS = 60 * SECOND_MS;
 function answer(runtime, value) {
@@ -162,8 +163,8 @@ async function momentsOf(runtime, scope, tasks, elsewhere, state, now) {
  */
 async function decide(runtime, scope, store) {
     const { config, kit, id, tab } = scope;
-    const { files, clock, sleep, pid } = runtime;
-    const lock = new FileLock(store.lockOf(id), { ...config.lock, waitMs: 0 }, { files, clock, sleep, pid });
+    const { files, clock } = runtime;
+    const lock = fileLockOf(runtime, store.lockOf(id), { ...config.lock, waitMs: 0 });
     return lock.run(async () => {
         const { snapshot, elsewhere } = await teamRegister(runtime, kit.paths, config).snapshotWithElsewhere();
         const { tasks } = snapshot.state;

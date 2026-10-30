@@ -1,6 +1,5 @@
 import { demoted, promoted } from "../../config/lead-edits.js";
 import { writeConfigWithBackup } from "../../config/load.js";
-import { FileLock } from "../../core/lock.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { postLine } from "../../inbox/inbox.js";
 import { onePositional, UsageError } from "../args.js";
@@ -8,6 +7,7 @@ import { callerOf, listOf } from "../inputs.js";
 import { checkedNextConfig, configFileJson, openTeamKit, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { inboxDepsOf } from "./inbox.js";
+import { fileLockOf } from "../file-locks.js";
 /**
  * `promote` and `demote` (T781): a leader (the lead, or a sub-lead) makes one of the sessions it leads directly the
  * sub-lead of others it leads directly, or takes a sub-lead's group back. A sub-lead answers its members' decision and
@@ -43,9 +43,9 @@ async function changeLeads(args, runtime, verb, changeOf) {
     const by = sessionIdOf(roster, caller);
     const subLead = sessionIdOf(roster, onePositional(args, 'sub-lead'));
     const change = changeOf(roster);
-    const { files, clock, sleep, pid } = runtime;
+    const { files, clock } = runtime;
     // The hire log's lock: hire and retire also rewrite the team's shape, retire `leads` too.
-    const mutex = new FileLock(kit.paths.hiresLock, config.lock, { files, clock, sleep, pid });
+    const mutex = fileLockOf(runtime, kit.paths.hiresLock, config.lock);
     return mutex.run(async () => {
         const file = await configFileJson(runtime, kit.load.path);
         // Planned on the file as it is under the lock, so a retire that just rewrote `leads` is not undone.

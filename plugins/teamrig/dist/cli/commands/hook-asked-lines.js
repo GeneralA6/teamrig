@@ -1,6 +1,6 @@
 import { stringField } from "../../core/guards.js";
 import { KIT_NAME } from "../../core/home.js";
-import { FileLock, LockBusyError } from "../../core/lock.js";
+import { LockBusyError } from "../../core/lock.js";
 import { injectFor } from "../../inbox/inject.js";
 import { unseenLinesOf } from "../../inbox/inbox.js";
 import { asksNowOf, WakeAsks } from "../../wake/asks.js";
@@ -8,6 +8,7 @@ import { WakeStore } from "../../wake/store.js";
 import { teamZone } from "../kit.js";
 import { wakeScopeOf } from "./hook-wake.js";
 import { inboxDepsOf } from "./inbox.js";
+import { fileLockOf } from "../file-locks.js";
 /**
  * A busy session's side of a wake ask (src/wake/asks.ts): at a tool's end on its main thread, once an ask waits for
  * it, the session's new inbox lines (src/inbox/inject.ts), recorded as shown so the prompt hook never repeats them.
@@ -28,7 +29,7 @@ export async function askedLinesOf(runtime, payload) {
         return undefined;
     }
     const { kit, config, id, tab } = scope;
-    const { files, clock, sleep, pid } = runtime;
+    const { files, clock } = runtime;
     const asks = new WakeAsks(files, kit.paths.wakeAsks);
     const unseen = () => unseenLinesOf(inboxDepsOf(runtime, kit.paths), id);
     // Read first without the lock: at nearly every tool end none is due, and the lock is a file write.
@@ -36,7 +37,7 @@ export async function askedLinesOf(runtime, payload) {
     if (first.asks.length === 0 && first.spent.length === 0) {
         return undefined;
     }
-    const lock = new FileLock(new WakeStore(files, kit.paths.wake).lockOf(id), { ...config.lock, waitMs: 0 }, { files, clock, sleep, pid });
+    const lock = fileLockOf(runtime, new WakeStore(files, kit.paths.wake).lockOf(id), { ...config.lock, waitMs: 0 });
     try {
         return await lock.run(async () => {
             const found = await asksNowOf(await asks.read(id), clock.now(), unseen);

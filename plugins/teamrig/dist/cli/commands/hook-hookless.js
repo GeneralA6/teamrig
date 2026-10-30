@@ -1,12 +1,12 @@
 import { readLines } from "../../budget/cursor.js";
 import { KIT_NAME, resolveKitHome } from "../../core/home.js";
-import { FileLock } from "../../core/lock.js";
 import { indexMarks } from "../../inbox/marks.js";
 import { checkedState, formatHooklessState, HOOKLESS_TAIL_BYTES, hooklessLine, hooklessNews, hooklessReader, hooklessTabs, isCheckDue, lastReplyAt, parseHooklessState, staleEntries, workedPastHook, } from "../../restore/hookless.js";
 import { RestoreRegistry, restoreSessionsDir } from "../../restore/registry.js";
 import { postToHolder, sessionNameOn } from "../holder-team.js";
 import { teamZone } from "../kit.js";
 import { inboxDepsOf } from "./inbox.js";
+import { fileLockOf } from "../file-locks.js";
 async function readState(runtime, kit) {
     return parseHooklessState((await runtime.files.read(kit.paths.hookless)) ?? '');
 }
@@ -58,8 +58,7 @@ export async function checkHooklessTabs(runtime, kit, config) {
     if (!isCheckDue(await readState(runtime, kit), now)) {
         return [];
     }
-    const { files, clock, sleep, pid } = runtime;
-    const lock = new FileLock(kit.paths.hooklessLock, { ...config.lock, waitMs: 0 }, { files, clock, sleep, pid });
+    const lock = fileLockOf(runtime, kit.paths.hooklessLock, { ...config.lock, waitMs: 0 });
     const news = await lock.run(async () => {
         const state = await readState(runtime, kit);
         if (!isCheckDue(state, now)) {

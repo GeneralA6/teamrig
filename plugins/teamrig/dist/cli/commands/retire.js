@@ -1,6 +1,5 @@
 import { writeConfigWithBackup } from "../../config/load.js";
 import { KIT_NAME } from "../../core/home.js";
-import { FileLock } from "../../core/lock.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { HiringLog } from "../../hiring/log.js";
 import { activeHires } from "../../hiring/record.js";
@@ -15,6 +14,7 @@ import { checkedNextConfig, configFileJson, openTeamKit, requireConfig, rosterOf
 import { EXIT, RefusedError } from "../runtime.js";
 import { teamRegister } from "../team-register.js";
 import { inboxDepsOf } from "./inbox.js";
+import { fileLockOf } from "../file-locks.js";
 /**
  * `retire`: a lead over a session takes it off the team once the team no longer needs it: the lead, or a
  * sub-lead the session is under, who hands its tasks only within its group (T509); a session never retires
@@ -85,10 +85,10 @@ export async function retire(args, runtime) {
     const roster = await rosterOf(runtime, kit, config);
     const by = sessionIdOf(roster, caller);
     const register = teamRegister(runtime, kit.paths, config);
-    const { files, clock, sleep, pid } = runtime;
+    const { files, clock } = runtime;
     const { load } = kit;
     const log = new HiringLog(files, kit.paths.hires);
-    const mutex = new FileLock(kit.paths.hiresLock, config.lock, { files, clock, sleep, pid });
+    const mutex = fileLockOf(runtime, kit.paths.hiresLock, config.lock);
     return mutex.run(async () => {
         const request = await requestOf(args, runtime, kit, roster, register, by);
         const { records, skipped } = await log.read();
