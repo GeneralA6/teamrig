@@ -3305,7 +3305,7 @@ The lock is `host.lock` in the kit home, one for every team on the host, unless 
 another. It lasts `delivery.queue.lockTtlMinutes` (150); a lock past that, or one whose process is gone, is
 taken over. Only the step that took it releases it. The lock, each share and each ticket name the teamrig version
 that wrote them (`kit`, since 0.119.0). A wait line names a holder on another version (`..., on teamrig
-0.85.0`), or on none (`..., on an older teamrig or another coordinator`): such a step may take a free lock
+0.85.0`), or on none (`..., on an older teamrig or another deploy tool`): such a step may take a free lock
 without joining the line, or while small steps share the host. A `kit` that is not a version, written by a team's own
 deploy tool for its own use, is read as none.
 

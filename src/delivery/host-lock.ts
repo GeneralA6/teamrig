@@ -290,7 +290,7 @@ function kitText(kit: string | undefined): string {
   if (kit === KIT_VERSION) {
     return '';
   }
-  return kit === undefined ? ', on an older teamrig or another coordinator' : `, on teamrig ${kit}`;
+  return kit === undefined ? ', on an older teamrig or another deploy tool' : `, on teamrig ${kit}`;
 }
 
 /** The small steps sharing the host: `2 small steps: <session> (<purpose>) since <minute on zone's clock>, ...`. */

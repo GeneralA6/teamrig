@@ -184,7 +184,7 @@ describe('HostLock.tryTake', () => {
       return taking.kind === 'busy' ? holderText(taking.holder, TimeZone.UTC) : '';
     };
     const older = { token: 'other', pid: OTHER, session: 'po', purpose: 'heavy: build', acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z' };
-    const unnamed = 'po (heavy: build) since 2030-01-08 09:50 UTC, on an older teamrig or another coordinator';
+    const unnamed = 'po (heavy: build) since 2030-01-08 09:50 UTC, on an older teamrig or another deploy tool';
     assert.deepEqual(await Promise.all([heldBy(), heldBy({ kit: '0.85.0' }), JSON.stringify(older), JSON.stringify({ ...older, kit: { build: 7 } })].map(said)), [
       'po (heavy: build) since 2030-01-08 09:50 UTC',
       'po (heavy: build) since 2030-01-08 09:50 UTC, on teamrig 0.85.0',
@@ -823,7 +823,7 @@ describe('HostLock ids, stored as token until every reader takes id (T1544)', ()
     assert.deepEqual([behind.kind === 'busy' && behind.holder.kind === 'queued' ? behind.holder.first : undefined, queued.files.get(early)], [waiter, ticketText]);
   });
 
-  it('stores the id of each lock, ticket and share it writes under token alone, first, as an older teamrig and a team coordinator read it', async () => {
+  it("stores the id of each lock, ticket and share it writes under token alone, first, as an older teamrig and a team's own deploy tool read it", async () => {
     const tickets: string[] = [];
     const { files, lock } = world({ [PATH]: heldBy() }, (time, store) => async (ms) => {
       for (const name of await store.list(QUEUE)) {
