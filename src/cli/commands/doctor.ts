@@ -8,6 +8,7 @@ import { readContextFiles } from '../../doctor/context-files.ts';
 import { doctorFindings, formatFinding, type ConfiguredProject, type ContextInput } from '../../doctor/doctor.ts';
 import { readSessionLists } from '../../doctor/session-lists.ts';
 import { claudeSettingsFiles, readSettingsEnv } from '../../doctor/settings-env.ts';
+import { readShellHistory } from '../../doctor/shell-history.ts';
 import { HiringLog } from '../../hiring/log.ts';
 import { retiredSessions } from '../../hiring/record.ts';
 import { inboxStatus } from '../../inbox/inbox.ts';
@@ -56,8 +57,10 @@ async function configuredProjects(probe: PathProbe, config: KitConfig, ids: read
  * `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` in doctor's own environment or in the `env` block of the user's or the
  * project's Claude Code settings, a session whose `launch` names a model but no effort, and a `team.project` or
  * `launch.<id>.project` that is no folder on this machine; and the local allow rules off `permissions.keepAllow` that
- * approve a whole tool or program or hold a credential (src/cli/allow-scope.ts). It reads only and
- * exits 0 like `check`: a finding is advice, and each line says the fix. `check` prints the context and allow findings too.
+ * approve a whole tool or program or hold a credential (src/cli/allow-scope.ts); and the user's PowerShell history
+ * file when no PowerShell profile keeps credentials out of it (src/doctor/shell-history.ts; the history is probed, never
+ * read). It reads only and exits 0 like `check`: a finding is advice, and each line says the fix. `check` prints the
+ * context and allow findings too.
  */
 export async function doctor(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
@@ -86,6 +89,7 @@ export async function doctor(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     wideAllow: await readWideAllow(runtime, { paths, config, project }),
     launches: roster.ids.map((id) => ({ id, launch: launchOf(config, id) })),
     projects: await configuredProjects(runtime.probe, config, roster.ids),
+    shellHistory: await readShellHistory(runtime.files, runtime.probe, { env: runtime.env, userHome: runtime.userHome, platform: runtime.platform }),
     now: new Date(runtime.clock.now()),
     zone: teamZone(config, runtime),
     command: KIT_NAME,

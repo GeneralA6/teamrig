@@ -39,6 +39,7 @@ function input(overrides: Partial<DoctorInput> & { readonly names?: Record<strin
     wideAllow: { files: 0, counts: [] },
     launches: [],
     projects: [],
+    shellHistory: { history: undefined, profiles: [], gated: false },
     now: NOW,
     zone: TimeZone.UTC,
     command: 'teamrig',
@@ -340,5 +341,25 @@ describe('doctorFindings of configured project folders', () => {
   it('is quiet when every configured project is a folder, or none is configured', () => {
     assert.deepEqual(lines(input({ projects: [{ session: 'alpha', path: '/srv/app', kind: 'folder' }] })), []);
     assert.deepEqual(lines(input()), []);
+  });
+});
+
+describe('doctorFindings of the PowerShell history', () => {
+  const history = '/u/history.txt';
+  const fix = "add the history handler from the teamrig guide (workflows: Use a secret by reference) to your profile ($PROFILE) yourself; Claude Code refuses an agent's write to it";
+
+  it('flags a history file no profile gates, naming the profiles read, or that none exists', () => {
+    const profiles = ['/u/Documents/PowerShell/profile.ps1', '/u/Documents/WindowsPowerShell/profile.ps1'];
+    assert.deepEqual(lines(input({ shellHistory: { history, profiles, gated: false } })), [
+      `WARN shell-history PowerShell keeps each line typed in its console in ${history}, a credential in a URL too, and no profile sets -AddToHistoryHandler or -HistorySaveStyle SaveNothing (profiles read: ${profiles.join(', ')}): ${fix}`,
+    ]);
+    assert.deepEqual(lines(input({ shellHistory: { history, profiles: [], gated: false } })), [
+      `WARN shell-history PowerShell keeps each line typed in its console in ${history}, a credential in a URL too, and no profile sets -AddToHistoryHandler or -HistorySaveStyle SaveNothing (none of the usual profile paths exists): ${fix}`,
+    ]);
+  });
+
+  it('is quiet when a profile gates the history, or there is no history file', () => {
+    assert.deepEqual(lines(input({ shellHistory: { history, profiles: ['/u/profile.ps1'], gated: true } })), []);
+    assert.deepEqual(lines(input({ shellHistory: { history: undefined, profiles: [], gated: false } })), []);
   });
 });

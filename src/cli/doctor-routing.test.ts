@@ -79,3 +79,26 @@ describe('teamrig doctor: the lists a session holds in its context', () => {
     assert.deepEqual((await new CliHarness(TEAM).run(['doctor'], { transcripts })).stdout, ['DOCTOR clean, team app']);
   });
 });
+
+describe("teamrig doctor: the user's PowerShell history", () => {
+  const roaming = join(USER_HOME, 'Roaming');
+  const history = join(roaming, 'Microsoft', 'Windows', 'PowerShell', 'PSReadLine', 'ConsoleHost_history.txt');
+  const oneDrive = join(USER_HOME, 'OneDrive - Work');
+  const profile = join(oneDrive, 'Documents', 'WindowsPowerShell', 'Microsoft.PowerShell_profile.ps1');
+  const env = { APPDATA: roaming, OneDriveCommercial: oneDrive };
+  const probe = new FakePathProbe({ files: [history] });
+
+  it('flags a history file when no profile exists', async () => {
+    const result = await new CliHarness(TEAM).run(['doctor'], { platform: 'win32', env, probe });
+    assert.deepEqual(kinds(result.stdout), ['DOCTOR 1', 'WARN shell-history']);
+    assert.ok(result.stdout[1]?.includes(`in its console in ${history}, `), result.stdout[1]);
+    assert.ok(result.stdout[1]?.includes('(none of the usual profile paths exists)'), result.stdout[1]);
+  });
+
+  it("stays clean with a history handler in the profile under OneDrive's Documents, or no history file", async () => {
+    const kit = new CliHarness(TEAM);
+    await kit.files.write(profile, 'try { Set-PSReadLineOption -AddToHistoryHandler { param([string]$line) $true } } catch { }');
+    assert.deepEqual((await kit.run(['doctor'], { platform: 'win32', env, probe })).stdout, ['DOCTOR clean, team app']);
+    assert.deepEqual((await new CliHarness(TEAM).run(['doctor'], { platform: 'win32', env })).stdout, ['DOCTOR clean, team app']);
+  });
+});
