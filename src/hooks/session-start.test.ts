@@ -206,7 +206,7 @@ WORKTREE line.`));
   it('keeps every other session of a tree inside its team, known or not', () => {
     const tree = { root: 'app', parentLead: { team: 'app', id: 'lead', name: 'app-lead' }, children: ['ui'] };
     const member =
-      "Team `web` is part of the tree of teams under `app`: take anything outside your team to your lead, never to another team's sessions (`teamrig inbox add` refuses a note to them).";
+      "Team `web` is part of the tree of teams under `app`: take anything outside your team to your lead, never to another team's sessions (`teamrig inbox add` reaches every session of the tree, so keeping to your lead is up to you).";
     for (const session of ['alpha', 'zulu', undefined]) {
       assert.ok(context({ team: 'web', session, tree }).endsWith(`${NAMES}\n${member}`), String(session));
     }
