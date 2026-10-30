@@ -1,14 +1,14 @@
-import { stringField } from "../core/guards.js";
+import { isStringArray, stringField } from "../core/guards.js";
 import { assertWritable, parseJsonl, toJsonlLine, VERSION_FIELD } from "../core/jsonl.js";
 /**
  * The team's secret incidents, an append-only log (`<state>/secret-incidents.jsonl`): each kind of secret a tool's
  * result held, which the secret redactor kept from the model (T1369 R8), with the session, the tool, the call (its id,
- * the session's transcript and the helper that made it) and the task that has it rotated; never the value. It is audit
- * data: nothing trims it. A newer format is skipped on read and refuses a write; format 1, before the call's fields
- * (T1545), is read.
+ * the session's transcript and the helper that made it), the accounts a URL's credentials named and the task that has it
+ * rotated; never the value. It is audit data: nothing trims it. A newer format is skipped on read and refuses a write;
+ * format 1, before the call's fields, and format 2, before the accounts (both T1545), are read.
  */
-export const SECRET_INCIDENTS_FORMAT = 2;
-const READ_FORMATS = new Set([1, SECRET_INCIDENTS_FORMAT]);
+export const SECRET_INCIDENTS_FORMAT = 3;
+const READ_FORMATS = new Set([1, 2, SECRET_INCIDENTS_FORMAT]);
 /** One incident as written; undefined for a line that is not one. */
 export function parseSecretIncident(record) {
     const at = stringField(record, 'at');
@@ -21,6 +21,7 @@ export function parseSecretIncident(record) {
     const toolUseId = stringField(record, 'toolUseId');
     const transcript = stringField(record, 'transcript');
     const agent = stringField(record, 'agent');
+    const accounts = record['accounts'];
     const task = stringField(record, 'task');
     return {
         at,
@@ -30,6 +31,7 @@ export function parseSecretIncident(record) {
         ...(transcript === undefined ? {} : { transcript }),
         ...(agent === undefined ? {} : { agent }),
         kind,
+        ...(isStringArray(accounts) ? { accounts } : {}),
         ...(task === undefined ? {} : { task }),
     };
 }

@@ -33,7 +33,7 @@ export async function secretRedact(args, runtime) {
     if (redaction.classes.length === 0) {
         return EXIT.ok;
     }
-    const rotations = await fileRotations(runtime, result.payload, { tool: result.tool, kinds: redaction.classes });
+    const rotations = await fileRotations(runtime, result.payload, { tool: result.tool, kinds: redaction.classes, accounts: redaction.accounts });
     runtime.out.stdout(postToolUseReplace(redaction.response, redactedLine(redaction, rotationText(rotatorOf(guard.load), rotations))));
     return EXIT.ok;
 }
