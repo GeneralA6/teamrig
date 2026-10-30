@@ -8,7 +8,7 @@ export interface RolesConfig {
   /** Owns priorities, team rules and the owner's decision queue; may re-prioritize and reassign tasks; hands the work itself to others (`leadBoundary`). */
   readonly lead: string;
   /**
-   * Owns deploy coordination and fleet health, when the team has that role: a session id of the team, or `<team>/<id>`,
+   * Owns the delivery flow and fleet health, when the team has that role: a session id of the team, or `<team>/<id>`,
    * the holder of the same role on a team above it (T1143), for a child team with no delivery owner of its own.
    */
   readonly deliveryOwner?: string;
