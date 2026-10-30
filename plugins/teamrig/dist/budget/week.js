@@ -2,7 +2,7 @@ import { formatUtcDay, formatUtcHour, MS_PER_DAY, MS_PER_HOUR } from "../core/ti
 import { DailyProfile } from "./active-time.js";
 import { FRESH_READING_MS, useAtW } from "./calibration.js";
 import { pastLimitOf, poolOf } from "./extra.js";
-import { dailyAllowancePct, dayPacePct, readPace, spanAllowancePct, weekWindow, } from "./pace.js";
+import { dailyAllowancePct, dayPacePct, paceLinePct, readPace, spanAllowancePct, weekWindow, } from "./pace.js";
 /**
  * The points of the week today's use must span, read from the status line, before its own W per percent prices the
  * sessions' parts of it (`WeekReading.todayWPerPct`): over a narrower span, a small error in it would swing that rate.
@@ -130,6 +130,7 @@ export function readWeek(input) {
     const todayWPerPct = statusToday !== undefined && statusToday >= TODAY_RATE_SPAN_PTS ? todayW / statusToday : wPerPct;
     const profile = DailyProfile.ofQuietHours(budget.quietHours);
     const pace = window === undefined || usedPct === undefined ? undefined : readPace(window, budget, now, usedPct, profile);
+    const plannedPct = window === undefined ? undefined : paceLinePct(window, budget.targetPct, dayStart + MS_PER_DAY, profile) - paceLinePct(window, budget.targetPct, todayFrom, profile);
     const pool = extra === undefined || window === undefined || usedPct === undefined
         ? undefined
         : poolOf(extra.entries, { start: window.start, w: weekW, usedPct, wAtFull: extra.wAtFull, configuredWPerUsd: budget.extraWPerUsd });
@@ -156,6 +157,7 @@ export function readWeek(input) {
         covered,
         pace,
         allowancePct,
+        plannedPct,
         todayFrom,
         todayW,
         todayWPerPct,

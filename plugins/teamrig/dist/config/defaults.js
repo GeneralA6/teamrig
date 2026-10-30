@@ -149,6 +149,7 @@ export const DEFAULT_BUDGET = {
     reservePct: 0.5,
     paceEndHoursBeforeReset: 1,
     sessions: {},
+    pauseByPriority: false,
     warnAtPct: [80, 100],
     paceTolerancePct: 0.5,
     overAction: 'warn',
