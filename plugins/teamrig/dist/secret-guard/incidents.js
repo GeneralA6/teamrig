@@ -2,11 +2,13 @@ import { stringField } from "../core/guards.js";
 import { assertWritable, parseJsonl, toJsonlLine, VERSION_FIELD } from "../core/jsonl.js";
 /**
  * The team's secret incidents, an append-only log (`<state>/secret-incidents.jsonl`): each kind of secret a tool's
- * result held, which the secret redactor kept from the model (T1369 R8), with the session, the tool and the task that
- * has it rotated; never the value. It is audit data: nothing trims it. A newer format is skipped on read and refuses a
- * write.
+ * result held, which the secret redactor kept from the model (T1369 R8), with the session, the tool, the call (its id,
+ * the session's transcript and the helper that made it) and the task that has it rotated; never the value. It is audit
+ * data: nothing trims it. A newer format is skipped on read and refuses a write; format 1, before the call's fields
+ * (T1545), is read.
  */
-export const SECRET_INCIDENTS_FORMAT = 1;
+export const SECRET_INCIDENTS_FORMAT = 2;
+const READ_FORMATS = new Set([1, SECRET_INCIDENTS_FORMAT]);
 /** One incident as written; undefined for a line that is not one. */
 export function parseSecretIncident(record) {
     const at = stringField(record, 'at');
@@ -16,8 +18,20 @@ export function parseSecretIncident(record) {
         return undefined;
     }
     const session = stringField(record, 'session');
+    const toolUseId = stringField(record, 'toolUseId');
+    const transcript = stringField(record, 'transcript');
+    const agent = stringField(record, 'agent');
     const task = stringField(record, 'task');
-    return { at, ...(session === undefined ? {} : { session }), tool, kind, ...(task === undefined ? {} : { task }) };
+    return {
+        at,
+        ...(session === undefined ? {} : { session }),
+        tool,
+        ...(toolUseId === undefined ? {} : { toolUseId }),
+        ...(transcript === undefined ? {} : { transcript }),
+        ...(agent === undefined ? {} : { agent }),
+        kind,
+        ...(task === undefined ? {} : { task }),
+    };
 }
 /**
  * The task a session's incident of this kind was given on the zone's day of `now`, the newest one; undefined when
@@ -39,7 +53,7 @@ export class SecretIncidentLog {
         const parse = parseJsonl((await this.files.read(this.path)) ?? '');
         const incidents = [];
         for (const { record, version } of parse.records) {
-            const parsed = version === SECRET_INCIDENTS_FORMAT ? parseSecretIncident(record) : undefined;
+            const parsed = READ_FORMATS.has(version) ? parseSecretIncident(record) : undefined;
             if (parsed !== undefined) {
                 incidents.push(parsed);
             }
