@@ -264,11 +264,24 @@ function projectFindings({ projects, roster, command }) {
     });
 }
 /**
+ * A PowerShell history file no profile gates: PSReadLine saves each typed line to it, a credential in a URL too, where
+ * any local process can read it. The fix is the user's own, as Claude Code refuses an agent's write to a profile.
+ */
+function shellHistoryFindings({ shellHistory: { history, profiles, gated } }) {
+    if (history === undefined || gated) {
+        return [];
+    }
+    const read = profiles.length === 0 ? 'none of the usual profile paths exists' : `profiles read: ${profiles.join(', ')}`;
+    const detail = `PowerShell keeps each line typed in its console in ${history}, a credential in a URL too, and no profile sets -AddToHistoryHandler or -HistorySaveStyle SaveNothing (${read}): ` +
+        "add the history handler from the teamrig guide (workflows: Use a secret by reference) to your profile ($PROFILE) yourself; Claude Code refuses an agent's write to it";
+    return [{ kind: 'shell-history', detail }];
+}
+/**
  * The team's health checks: names that find the wrong session or none, a damaged rename log,
  * inboxes nobody reads, rules too long to show, text every call re-reads over its budget (files, and the lists the newest
  * session holds), a broken tree of teams or a session name two teams use, a variable that overrides every model or effort
- * choice, a launch with a model but no effort, local allow rules that approve a whole tool or program or hold a credential, and a
- * configured project folder that is no folder here.
+ * choice, a launch with a model but no effort, local allow rules that approve a whole tool or program or hold a credential, a
+ * configured project folder that is no folder here, and a PowerShell history no profile keeps credentials out of.
  * It reads only; every fix is the user's.
  */
 export function doctorFindings(input) {
@@ -285,6 +298,7 @@ export function doctorFindings(input) {
         ...launchFindings(input),
         ...allowFindings(input.wideAllow),
         ...projectFindings(input),
+        ...shellHistoryFindings(input),
     ];
 }
 export function formatFinding(finding) {
