@@ -27,6 +27,11 @@ function notification(id: string, status: string): string {
   return JSON.stringify({ type: 'queue-operation', operation: 'enqueue', content: text });
 }
 
+/** A TaskStop call and its result as Claude Code writes them when it stopped `task`. */
+function stop(id: string, task: string, taskType = 'local_bash'): readonly string[] {
+  return [call(id, 'TaskStop'), result(id, { message: `Successfully stopped task: ${task} (npm test)`, task_id: task, task_type: taskType, command: 'npm test' })];
+}
+
 const BASH = [call('toolu_bash', 'Bash'), result('toolu_bash', { stdout: '', backgroundTaskId: 'b1' })];
 const AGENT = [call('toolu_agent', 'Agent'), result('toolu_agent', { isAsync: true, status: 'async_launched', agentId: 'a1' })];
 const MONITOR = [call('toolu_monitor', 'Monitor'), result('toolu_monitor', { taskId: 'm1', timeoutMs: 900_000, persistent: false })];
@@ -60,6 +65,27 @@ describe('runningWorkOf', () => {
     const stop = [call('toolu_stop', 'TaskStop'), result('toolu_stop', { taskId: 'b1', message: 'stopped' })];
     const foreground = [call('toolu_ls', 'Bash'), result('toolu_ls', { stdout: 'a\nb', interrupted: false })];
     assert.equal(runningWorkOf(text([...stop, ...foreground]), false, NOW), 0);
+  });
+
+  it('drops work that TaskStop stopped, which gets no notification', () => {
+    const lines = [...BASH, ...AGENT, ...MONITOR, ...WORKFLOW, ...stop('toolu_s1', 'b1'), ...stop('toolu_s2', 'a1', 'local_agent'), ...stop('toolu_s3', 'm1')];
+    assert.deepEqual(runningKindsOf(text(lines), false, NOW), ['workflow']);
+  });
+
+  it('keeps work running after a TaskStop that failed or stopped another task', () => {
+    const failed = JSON.stringify({
+      type: 'user',
+      timestamp: new Date(NOW - 30_000).toISOString(),
+      message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_s1', content: 'Error: No task found with ID: b1', is_error: true }] },
+      toolUseResult: 'Error: No task found with ID: b1',
+    });
+    const lines = [...BASH, call('toolu_s1', 'TaskStop'), failed, ...stop('toolu_s2', 'b7')];
+    assert.equal(runningWorkOf(text(lines), false, NOW), 1);
+  });
+
+  it('ends nothing on a result naming a task_id that does not answer a TaskStop', () => {
+    const output = [call('toolu_out', 'TaskOutput'), result('toolu_out', { task_id: 'b1', status: 'running' })];
+    assert.equal(runningWorkOf(text([...BASH, ...output]), false, NOW), 1);
   });
 
   it('takes work started longer ago than the age limit as gone', () => {
