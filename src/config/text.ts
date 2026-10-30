@@ -2,7 +2,7 @@ import { errorMessage, isRecord, type JsonRecord } from '../core/guards.ts';
 import { CONFIG_MIGRATIONS, migrateConfig, type ConfigMigration } from './migrate.ts';
 import { parseConfig } from './parse.ts';
 import type { ConfigIssue } from './reader.ts';
-import { CONFIG_VERSION, type KitConfig } from './types.ts';
+import { CONFIG_VERSION, type AccountBudget, type KitConfig } from './types.ts';
 
 export interface PendingMigration {
   readonly fromVersion: number;
@@ -29,11 +29,15 @@ export type ConfigRead =
       readonly pending?: PendingMigration;
     };
 
-/** Parses, migrates in memory and validates the text of a config file, the way every teamrig command reads it. */
+/**
+ * Parses, migrates in memory and validates the text of a config file, the way every teamrig command reads it; `above`
+ * is the team above's budget keys of the account's week, for those the file leaves unset (`AccountBudget`).
+ */
 export function parseConfigText(
   text: string,
   migrations: readonly ConfigMigration[] = CONFIG_MIGRATIONS,
   target: number = CONFIG_VERSION,
+  above?: AccountBudget,
 ): ConfigRead {
   let raw: unknown;
   try {
@@ -49,15 +53,15 @@ export function parseConfigText(
     case 'invalid':
       return { status: 'unreadable', issue: { path: 'configVersion', message: migration.message } };
     case 'newer': {
-      const { config, issues } = parseConfig(raw);
+      const { config, issues } = parseConfig(raw, above);
       return { status: 'loaded', config, issues, newerVersion: migration.version };
     }
     case 'current': {
-      const { config, issues } = parseConfig(migration.config);
+      const { config, issues } = parseConfig(migration.config, above);
       return { status: 'loaded', config, issues };
     }
     case 'migrated': {
-      const { config, issues } = parseConfig(migration.config);
+      const { config, issues } = parseConfig(migration.config, above);
       const pending = {
         fromVersion: migration.fromVersion,
         toVersion: migration.version,

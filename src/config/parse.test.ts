@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_COMMITS, DEFAULT_HIRING, DEFAULT_IDLE, DEFAULT_OPEN, DEFAULT_PERMISSIONS, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_STATUS_LINE, DEFAULT_WAKE, DEFAULT_WINDOWS } from './defaults.ts';
 import { HIRE_CAP_DROPPED, IDLE_RETIRE_DROPPED } from './migrate.ts';
 import { parseConfig } from './parse.ts';
-import { CONFIG_VERSION } from './types.ts';
+import { CONFIG_VERSION, type AccountBudget } from './types.ts';
 import type { ConfigIssue } from './reader.ts';
 
 const ROSTER = { sessions: ['alpha', 'bravo'], roles: { lead: 'alpha' } };
@@ -1317,6 +1317,41 @@ describe('parseConfig budget', () => {
       lift: { maxStopPct: 98, reserveStopPct: 99.5 },
       statusSnapshotDir: '/srv/usage/live',
       maxBytesPerHook: 2_000_000,
+    });
+  });
+
+  describe('under a team above', () => {
+    /** The keys of the account's week the team above reads, all set and none the default. */
+    const ABOVE: AccountBudget = {
+      enabled: true,
+      account: 'work',
+      weeklyLimitW: 680_000_000,
+      subagentWeight: 2.15,
+      extraWPerUsd: 120_000,
+      reset: { weekday: 'wed', timeUtc: '01:00' },
+    };
+
+    it("takes the team above's keys of the account's week for those it leaves unset", () => {
+      const { config, issues } = parseConfig({ ...ROSTER, budget: { targetPct: 90 } }, ABOVE);
+      assert.deepEqual(issues, []);
+      assert.deepEqual(config.budget, { ...DEFAULT_BUDGET, ...ABOVE, targetPct: 90 });
+    });
+
+    it('keeps the keys it states, a budget turned off among them, and takes the rest from above', () => {
+      const { config, issues } = parseConfig({ ...ROSTER, budget: { enabled: false, account: 'work', weeklyLimitW: 500_000_000 } }, ABOVE);
+      assert.deepEqual(issues, []);
+      assert.deepEqual(config.budget, { ...DEFAULT_BUDGET, ...ABOVE, enabled: false, weeklyLimitW: 500_000_000 });
+    });
+
+    it("reports a key it sets wrong and takes the team above's instead", () => {
+      const { config, issues } = parseConfig({ ...ROSTER, budget: { weeklyLimitW: -1 } }, ABOVE);
+      assert.deepEqual(paths(issues), ['budget.weeklyLimitW']);
+      assert.equal(config.budget.weeklyLimitW, ABOVE.weeklyLimitW);
+    });
+
+    it('takes none of them when it names another account', () => {
+      const own = { ...ROSTER, budget: { account: 'home' } };
+      assert.deepEqual(parseConfig(own, ABOVE).config.budget, parseConfig(own).config.budget);
     });
   });
 

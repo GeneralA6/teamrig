@@ -606,6 +606,13 @@ export interface BudgetLiftConfig {
 }
 
 /**
+ * The budget keys of the account's week, and whether the budget is on: a team under another (`team.parent`) that
+ * leaves one unset takes the team above's, unless it names another account (src/cli/kit.ts openKit), so the teams of
+ * a tree read one week alike without a copy that drifts.
+ */
+export type AccountBudget = Pick<BudgetConfig, 'enabled' | 'account' | 'weeklyLimitW' | 'subagentWeight' | 'extraWPerUsd' | 'reset'>;
+
+/**
  * The weekly token budget: the pace line the team is measured against and each session's daily part
  * of it. Off by default, and the defaults only measure and show: nothing blocks or acts.
  */
@@ -614,7 +621,8 @@ export interface BudgetConfig {
   readonly enabled: boolean;
   /**
    * The Claude account the team's week is on: teams with the same account share one week and split its daily
-   * budget. Unset: the Claude config dir, since one config dir signs in one account.
+   * budget. Unset: the team above's (`AccountBudget`), else the Claude config dir, since one config dir signs in one
+   * account.
    */
   readonly account?: string;
   /** The weekly limit in weighted tokens (W). Unset: derived from the status line's weekly %. */

@@ -104,6 +104,7 @@ import {
   VERIFY_GATES,
   WEEKDAYS,
   type PackageGuardConfig,
+  type AccountBudget,
   type BudgetConfig,
   type BudgetLiftConfig,
   type BudgetReset,
@@ -362,8 +363,11 @@ function readTeam(read: ConfigReader, raw: JsonRecord): TeamLink | undefined {
   return { id, ...(parent === undefined ? {} : { parent }), ...where };
 }
 
-/** Validates a migrated config object against the current format. */
-export function parseConfig(raw: JsonRecord): ConfigParse {
+/**
+ * Validates a migrated config object against the current format; `above` is the team above's budget keys of the
+ * account's week, for those it leaves unset (`AccountBudget`).
+ */
+export function parseConfig(raw: JsonRecord, above?: AccountBudget): ConfigParse {
   const read = new ConfigReader();
   const sessions = read.list(raw, 'sessions', '', [], (value, path) => read.stringItem(value, path, isSessionName));
   if (raw['sessions'] === undefined) {
@@ -407,7 +411,7 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
   const lock = read.section(raw, 'lock', '');
   const tabStatus = read.section(raw, 'tabStatus', '');
   const pickerGuard = read.section(raw, 'pickerGuard', '');
-  const budget = parseBudget(read, read.section(raw, 'budget', ''), sessions);
+  const budget = parseBudget(read, read.section(raw, 'budget', ''), sessions, above);
   const decisions = read.section(raw, 'decisions', '');
 
   const config: KitConfig = {
@@ -845,7 +849,8 @@ function parseHeavy(read: ConfigReader, raw: JsonRecord): HeavyConfig {
   };
 }
 
-function parseBudget(read: ConfigReader, raw: JsonRecord, sessions: readonly string[]): BudgetConfig {
+/** The budget block; a key of the account's week it leaves unset is `above`'s, the team above's (`AccountBudget`). */
+function parseBudget(read: ConfigReader, raw: JsonRecord, sessions: readonly string[], above: AccountBudget | undefined): BudgetConfig {
   const path = 'budget';
   const defaults = DEFAULT_BUDGET;
   const targetPct = read.number(raw, 'targetPct', path, defaults.targetPct, CONFIG_LIMITS.budgetTargetPct);
@@ -853,10 +858,13 @@ function parseBudget(read: ConfigReader, raw: JsonRecord, sessions: readonly str
   if (targetPct + reservePct > 100) {
     read.report(`${path}.reservePct`, `with targetPct it passes 100% of the week (${targetPct} + ${reservePct})`);
   }
-  const account = read.optionalString(raw, 'account', path, shortLine(BUDGET_ACCOUNT_MAX_LENGTH));
-  const weeklyLimitW = read.optionalInteger(raw, 'weeklyLimitW', path, CONFIG_LIMITS.weeklyLimitW);
-  const extraWPerUsd = read.optionalInteger(raw, 'extraWPerUsd', path, CONFIG_LIMITS.extraWPerUsd);
-  const reset = parseBudgetReset(read, raw);
+  const stated = read.optionalString(raw, 'account', path, shortLine(BUDGET_ACCOUNT_MAX_LENGTH));
+  // The team above's keys describe its account's week: a team that names another account takes none of them.
+  const inherited = stated === undefined || stated === above?.account ? above : undefined;
+  const account = stated ?? inherited?.account;
+  const weeklyLimitW = read.optionalInteger(raw, 'weeklyLimitW', path, CONFIG_LIMITS.weeklyLimitW) ?? inherited?.weeklyLimitW;
+  const extraWPerUsd = read.optionalInteger(raw, 'extraWPerUsd', path, CONFIG_LIMITS.extraWPerUsd) ?? inherited?.extraWPerUsd;
+  const reset = parseBudgetReset(read, raw) ?? inherited?.reset;
   const why = "the team's daily budget is the pace, recomputed at every reading from what is left of the week";
   read.dropped(raw, 'dailyPct', path, why);
   read.dropped(raw, 'maxDailyPct', path, why);
@@ -865,10 +873,10 @@ function parseBudget(read: ConfigReader, raw: JsonRecord, sessions: readonly str
   const quietHours = parseQuietHours(read, raw);
   const statusSnapshotDir = read.optionalString(raw, 'statusSnapshotDir', path);
   return {
-    enabled: read.boolean(raw, 'enabled', path, defaults.enabled),
+    enabled: read.boolean(raw, 'enabled', path, inherited?.enabled ?? defaults.enabled),
     ...(account === undefined ? {} : { account }),
     ...(weeklyLimitW === undefined ? {} : { weeklyLimitW }),
-    subagentWeight: read.number(raw, 'subagentWeight', path, defaults.subagentWeight, CONFIG_LIMITS.subagentWeight),
+    subagentWeight: read.number(raw, 'subagentWeight', path, inherited?.subagentWeight ?? defaults.subagentWeight, CONFIG_LIMITS.subagentWeight),
     ...(extraWPerUsd === undefined ? {} : { extraWPerUsd }),
     ...(reset === undefined ? {} : { reset }),
     targetPct,

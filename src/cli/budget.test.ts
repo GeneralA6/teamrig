@@ -582,9 +582,12 @@ describe("teamrig budget in a child team on its parent's account", () => {
   const ORG_USAGE = join(teamHomeOf('org'), 'state', 'usage');
   const APP_USAGE = join(TEAM_HOME, 'state', 'usage');
 
-  /** The harness's team `app` under `org` (whose config adds `org`), and org's meter log at 20M W per percent from 2 readings. */
-  async function childWorld(org: JsonRecord = {}): Promise<World> {
-    const child = await world({ ...LIMITED, team: { id: 'app', parent: 'org' } }, false);
+  /**
+   * The harness's team `app` under `org` (whose config adds `org`), its budget block `app`'s, and org's meter log at
+   * 20M W per percent from 2 readings.
+   */
+  async function childWorld(org: JsonRecord = {}, app: JsonRecord = {}): Promise<World> {
+    const child = await world({ ...LIMITED, team: { id: 'app', parent: 'org' }, budget: { weeklyLimitW: 1_000_000_000, ...app } }, false);
     const { kit, run } = child;
     await kit.files.write(teamConfigOf('org'), formatConfig({ configVersion: 1, team: { id: 'org' }, sessions: ['lead'], roles: { lead: 'lead' }, ...org }));
     const now = kit.clock.now();
@@ -606,11 +609,42 @@ describe("teamrig budget in a child team on its parent's account", () => {
     assert.equal(kit.files.get(join(APP_USAGE, 'extra-log.jsonl')), undefined);
   });
 
-  it('keeps its own below a parent on another account', async () => {
-    const { kit, run } = await childWorld({ budget: { account: 'work' } });
+  it("keeps its own when it names an account other than its parent's", async () => {
+    const { kit, run } = await childWorld({ budget: { account: 'work' } }, { account: 'home' });
     assert.equal(ok(await run(['budget'])).at(-1), W_EXPLAINED);
     assert.notEqual(kit.files.get(join(APP_USAGE, 'period.json')), undefined);
     assert.equal(kit.files.get(join(ORG_USAGE, 'period.json')), undefined);
+  });
+
+  it("is on its parent's account when it names none, though the parent names one", async () => {
+    const { kit, run } = await childWorld({ budget: { account: 'work' } });
+    assert.match(ok(await run(['budget'])).at(-1) ?? '', /learned from 2 meter readings/);
+    assert.equal(kit.files.get(join(APP_USAGE, 'period.json')), undefined);
+  });
+});
+
+describe('the budget of a team without a budget block under teams with one', () => {
+  /** The harness's team `app`, the root of SUB_TEAMS, with the budget on and its weekly limit set, and a status line reading saved. */
+  async function rootWorld(): Promise<World> {
+    const team = await world({ ...TEAM, team: { id: 'app' }, budget: { enabled: true, weeklyLimitW: 1_000_000_000 } });
+    for (const [id, config] of Object.entries(SUB_TEAMS)) {
+      await team.kit.files.write(teamConfigOf(id), formatConfig(config));
+    }
+    return team;
+  }
+  const AS_UI = { env: { TEAMRIG_TEAM: 'ui' } };
+
+  it("is on and reads the week by the root's weekly limit, two levels down", async () => {
+    const { run } = await rootWorld();
+    assert.match(ok(await run(['rules'], AS_UI)).join('\n'), /Pace the week to 99\.5% of the limit/);
+    assert.equal(ok(await run(['budget'], AS_UI)).at(-1), W_EXPLAINED, 'the configured weekly limit, not an estimate from the status line');
+  });
+
+  it('stops at the first team met again when the parent links go round in a loop, off the root', async () => {
+    const { kit, run } = await rootWorld();
+    await kit.files.write(teamConfigOf('web'), formatConfig({ ...SUB_TEAMS['web'], team: { id: 'web', parent: 'ui' } }));
+    assert.doesNotMatch(ok(await run(['rules'], AS_UI)).join('\n'), /Pace the week to/);
+    ok(await run(['budget'], AS_UI));
   });
 });
 
