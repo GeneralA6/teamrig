@@ -2547,7 +2547,8 @@ or `FAILED to reopen shop-web (session web): <why>` (exit 1) when it could not w
 
 Context refresh. The lead asks a session for one (`teamrig refresh <id|name>`): after that session's next
 `set ... --status done` it writes a handover, and the user types `/clear` for the fresh start once done with its
-screen (with `refresh.autoRestart` on, teamrig starts it fresh once it is idle). A session whose handover is
+screen (with `refresh.autoRestart` on, teamrig starts it fresh once it is idle, and one with no work it can start
+once a wake brings it some). A session whose handover is
 written runs `teamrig refresh --ready`, which refuses a handover over `refresh.handoverMaxBytes` (20,000 bytes;
 0: no cap), since the fresh start reads all of it. With the automatic restart, the Stop hook runs `teamrig restart` hidden
 for the fresh start; you never run it. See
@@ -4978,7 +4979,9 @@ is `wake.batchSeconds` old, held by neither that gap nor its budget, and the wak
 that day, and a burst it is in wakes it once when it starts; quiet hours or a spent daily budget only delay these.
 They are logged with `moments`. No session is woken while its automatic restart may still act (`refresh.autoRestart`),
 since the wake's prompt would cancel it as a typed one does: the check looks again each minute, and the work handed
-meanwhile wakes the fresh session. A restart that ended without a word (its process was killed) leaves its request
+meanwhile wakes the fresh session. A session whose restart waits for work (its handover written with nothing it could
+start) is not woken with its old context either: the check that finds work for it starts its restart and looks again
+each minute, and the work wakes the fresh session; a restart that cannot start lets the wake go ahead. A restart that ended without a word (its process was killed) leaves its request
 behind; once no restart could act on it any more (70 minutes after it was asked), the check in the tab it was asked
 for starts `teamrig restart` again while the session still waits for its fresh start, and holds the wake the same
 way. One that cannot start is dropped, and the work wakes the session. Unless `open.idle.mode` is `off`, it also runs
