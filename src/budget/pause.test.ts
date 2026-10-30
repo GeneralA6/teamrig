@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { testConfig } from '../testing/config.ts';
 import { dailyBudgetOf, type BudgetSplit, type TeamsOnAccount } from './parts.ts';
-import { fundByPriority, isPaused, isShortDay, pausableOf, type DayPlan } from './pause.ts';
+import { fundByPriority, fundForDay, isPaused, isShortDay, pausableOf, type DayPlan } from './pause.ts';
 import type { WorkByPriority } from './work.ts';
 
 const IDS = ['lead', 'alpha', 'bravo'];
@@ -128,6 +128,15 @@ describe('fundByPriority', () => {
     };
     const funded = fundByPriority(teams, { allowancePct: 8, plannedPct: 13 });
     assert.deepEqual([partsOf(funded.split), funded.others.map(partsOf)], [[['alpha', 0]], [[['echo', 1]]]]);
+  });
+});
+
+describe('fundForDay', () => {
+  it("funds the teams for the week's day, and leaves them as they are while its allowance or plan is unknown", () => {
+    const teams: TeamsOnAccount = { split: app(), others: [] };
+    assert.deepEqual(partsOf(fundForDay(teams, { allowancePct: 6, plannedPct: 10 }).split), [['alpha', 1], ['bravo', 0], ['charlie', 0]]);
+    assert.equal(fundForDay(teams, { allowancePct: undefined, plannedPct: 10 }), teams);
+    assert.equal(fundForDay(teams, { allowancePct: 6, plannedPct: undefined }), teams);
   });
 });
 

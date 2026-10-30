@@ -18,7 +18,7 @@ import { formatPct, formatUsd } from '../../budget/format.ts';
 import { activeGroupLift, activeLift, decideLift, LiftLog, liftText, parentBudgetText, type Lift, type LiftNames } from '../../budget/lift.ts';
 import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID, type Measured } from '../../budget/measure.ts';
 import { budgetSplitOf, dailyBudgetOf, groupPartsOf, liftPlaceOf, teamPartOf, type BudgetSplit } from '../../budget/parts.ts';
-import { pausableOf } from '../../budget/pause.ts';
+import { fundForDay, pausableOf } from '../../budget/pause.ts';
 import { nextPeriod, sightOf, type Period } from '../../budget/period.ts';
 import {
   burnLines,
@@ -275,9 +275,9 @@ export async function budget(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     return EXIT.ok;
   }
   const { weights: work } = recountDay === undefined ? await readWork(runtime.files, kit.paths.events, config.register.priorities) : NO_WORK;
-  const split = splitOf(reading, kit.paths.team, roster, config, work);
   // A recount shows no budgets, so it reads no other team.
-  const others = recountDay === undefined ? await otherTeamsOnAccount(runtime, { team: kit.paths.team, config, usageDir: kit.paths.usage }, reading.now, reading.week.usedPct) : [];
+  const onAccount = recountDay === undefined ? await otherTeamsOnAccount(runtime, { team: kit.paths.team, config, usageDir: kit.paths.usage }, reading.now, reading.week.usedPct) : [];
+  const { split, others } = fundForDay({ split: splitOf(reading, kit.paths.team, roster, config, work), others: onAccount }, reading.week);
   const sessions = sessionsToday(reading, roster, config.budget, split, others);
   const teamPct = teamPartOf(reading.week.allowancePct, split, others);
   const { measured, week, now } = reading;
@@ -417,7 +417,8 @@ export async function lift(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   let beyondParent: string | undefined;
   if (place.parent !== undefined) {
     const others = await otherTeamsOnAccount(runtime, { team: kit.paths.team, config, usageDir: kit.paths.usage }, reading.now, week.usedPct);
-    const part = groupPartsOf(week.allowancePct, split, others).find((each) => each.id === place.parent);
+    const funded = fundForDay({ split, others }, week);
+    const part = groupPartsOf(week.allowancePct, funded.split, funded.others).find((each) => each.id === place.parent);
     const states = (part?.sessions ?? []).flatMap((each) => reading.measured.bySession.get(each) ?? []);
     const usedPct = week.todayWPerPct === undefined || part === undefined ? undefined : wSince(states, week.todayFrom, reading.now) / week.todayWPerPct;
     beyondParent = beyondGroupText(nameOf(place.parent), nameOf(tree.leaderOf(place.parent) ?? tree.lead), part?.budgetPct, usedPct);

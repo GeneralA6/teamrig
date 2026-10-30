@@ -338,6 +338,19 @@ describe('the budget in the hooks', () => {
     remindedOnly(await kit.run(['hook', 'helper-gate'], { stdin: JSON.stringify({ session_id: ALPHA_TAB, cwd: elsewhere, ...AGENT }) }));
   });
 
+  it('holds a session a short day does not fund, with budget.pauseByPriority on, once the team has no room', async () => {
+    // At 30% the day has 12.4% of the 14.3% the pace line plans: of the 6.1 weights' 5.3, the lead's 1 first, then 4.3 of bravo's p1 5, none for idle alpha.
+    const team = await world({ overAction: 'block', pauseByPriority: true }, 10_000_000, 30);
+    const { kit, hook } = team;
+    ok(await kit.run(['add', '--title', 'Ship the release', '--description', 'what and why', '--priority', 'p1', '--owner', 'bravo', '--session', 'lead']));
+    await meterLead(team);
+    assert.match(
+      messageOf(await hook('stop', ALPHA_TAB)),
+      /^Budget: app-alpha has used 1\.1% of the week today; its daily budget is 0\.0%\. The team has used 6\.1% of the week today, at or past its in-day pace of 5\.2%, .* New helpers are refused;/,
+    );
+    assert.equal(decisionOf(await hook('helper-gate', ALPHA_TAB, AGENT)), 'deny');
+  });
+
   it("keeps the register's work in the team's usage folder, and reads the register again once it changes", async () => {
     const { kit, hook } = await world({}, 10_000_000, 30);
     const workCached = (): unknown => parseObject(kit.files.get(join(TEAM_HOME, 'state', 'usage', WORK_CACHE_FILE)) ?? '')?.['work'];

@@ -1,6 +1,7 @@
 import { roleHolderOf, type Role } from '../config/roster.ts';
 import type { KitConfig } from '../config/types.ts';
 import { sessionWeightOf, shareOf, teamTreeOf, type BudgetSplit, type TeamsOnAccount } from './parts.ts';
+import type { WeekReading } from './week.ts';
 import { workWeightOf, type WorkByPriority } from './work.ts';
 
 /** The roles whose holder a short day never pauses: the lead leads the cut, the coordinator owner keeps the fleet up. */
@@ -74,6 +75,12 @@ export function fundByPriority(teams: TeamsOnAccount, day: DayPlan): TeamsOnAcco
   const funded = isShortDay(day) ? fundedParts([teams.split, ...teams.others], day) : new Map<string, ReadonlyMap<string, number>>();
   const fundedSplit = (split: BudgetSplit): BudgetSplit => ({ ...split, funded: funded.get(split.team) ?? new Map() });
   return { split: fundedSplit(teams.split), others: teams.others.map(fundedSplit) };
+}
+
+/** The teams on the account funded for the week's day (`fundByPriority`); as they are while its allowance or plan is unknown. */
+export function fundForDay(teams: TeamsOnAccount, week: Pick<WeekReading, 'allowancePct' | 'plannedPct'>): TeamsOnAccount {
+  const { allowancePct, plannedPct } = week;
+  return allowancePct === undefined || plannedPct === undefined ? teams : fundByPriority(teams, { allowancePct, plannedPct });
 }
 
 /** Each cut session's funded part (`fundByPriority`) of a short day, by team; a team with none cut is not in it. */
