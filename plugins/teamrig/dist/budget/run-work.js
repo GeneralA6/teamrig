@@ -152,6 +152,14 @@ function gitWork(run) {
     }
     return subcommand === 'grep' && !run.piped ? 'search' : undefined;
 }
+/** A teamrig command's own arguments: `teamrig`'s, or those after teamrig's build when node runs it; undefined for any other program. */
+export function teamrigArgsOf(run) {
+    if (run.name === 'teamrig') {
+        return run.args;
+    }
+    const script = run.name === 'node' ? firstOperand(run.args, NO_VALUED) : undefined;
+    return script !== undefined && !script.word.dynamic && TEAMRIG_BUILD.test(script.word.text.replace(/\\/g, '/')) ? run.args.slice(script.index + 1) : undefined;
+}
 /** What one program a shell call starts does (`RunWork`); undefined for anything else, a plain read among them. */
 export function runWorkOf(run) {
     switch (run.name) {
