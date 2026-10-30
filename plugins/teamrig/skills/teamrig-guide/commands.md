@@ -2592,7 +2592,7 @@ Claude Code or Node.js, [the check](requirements.md#the-requirements-check)), `n
 `context-lists`, `tree-id`, `tree-parent`, `tree-loop`, `tree-depth`, `tree-children`, `tree-role` (a
 `roles.securityReviewer` or `roles.coordinatorOwner` of `<team>/<id>` whose team is not above this one, or whose
 session does not hold that role there), `name-two-teams`, `effort-env`, `model-env`, `settings-json`, `launch-effort`,
-`allow-wide`, `project-missing`.
+`allow-wide`, `project-missing`, `shell-history`.
 
 `context-size` weighs, in characters (about 4 per token), the user's CLAUDE.md with the project folder's and each
 parent's (`CLAUDE.md`, `CLAUDE.local.md`, `.claude/CLAUDE.md`), the project's memory index (`MEMORY.md`) and the
@@ -2635,6 +2635,17 @@ WARN allow-wide 3 local allow rule(s) in 2 settings file(s) approve a whole tool
 
 ```text
 WARN project-missing launch.web.project names /home/you/web, which is missing on this machine, so a tab teamrig open starts for shop-web (session web) refuses to launch: create the folder or fix launch.web.project in the team config
+```
+
+`shell-history` is a PowerShell history file (PSReadLine's `ConsoleHost_history.txt`) that exists while no profile of
+the current user sets `-AddToHistoryHandler` or `-HistorySaveStyle SaveNothing`: each line typed in the console, a
+credential in a URL too, stays in that file. Doctor checks only that the file exists, never reads it, and reads the
+profiles of Windows PowerShell and PowerShell 7 (in Documents, or OneDrive's Documents), comments left out. The fix is
+the handler in [Use a secret by reference](workflows.md#use-a-secret-by-reference), added to the profile by hand,
+since Claude Code refuses an agent's write there.
+
+```text
+WARN shell-history PowerShell keeps each line typed in its console in C:\Users\you\AppData\Roaming\Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt, a credential in a URL too, and no profile sets -AddToHistoryHandler or -HistorySaveStyle SaveNothing (none of the usual profile paths exists): add the history handler from the teamrig guide (workflows: Use a secret by reference) to your profile ($PROFILE) yourself; Claude Code refuses an agent's write to it
 ```
 
 ### teamrig compact
