@@ -19,8 +19,8 @@ class FakeHost implements SweepHost {
     return Promise.resolve(this.lists.shift());
   }
 
-  kill(pids: readonly number[]): Promise<void> {
-    this.kills.push(pids);
+  kill(targets: readonly StartedProcess[]): Promise<void> {
+    this.kills.push(targets.map((target) => target.pid));
     return Promise.resolve();
   }
 
@@ -36,13 +36,23 @@ class FakeHost implements SweepHost {
 
 const proc = (pid: number, parent: number, startedMs: number): StartedProcess => ({ pid, parent, startedMs });
 
+/** The `<id> = <start>` pairs of a kill script's `$want` table. */
+function killTargets(script: string): StartedProcess[] {
+  const table = /\$want = @\{([^}]*)\}/.exec(script)?.[1] ?? '';
+  return [...table.matchAll(/(\d+) = (\d+)/g)].map((pair) => proc(Number(pair[1]), 0, Number(pair[2])));
+}
+
 /**
  * A process table behind fake `powershell.exe` and `taskkill` runs. A run reads the table first, then the processes
- * born during it join: a list misses them, and so does a kill's walk of a tree. taskkill ends the processes it names
- * and, with /T, the rest of their trees as its walk found them.
+ * born during it join: a list misses them, and so does a kill. A born process whose id a listed one holds replaces it:
+ * that one ended, and Windows gave its id to the newcomer. A kill script ends each process it names whose start is the
+ * named one; taskkill ends the processes it names by id alone and, with /T, the rest of their trees as its walk found
+ * them.
  */
 class ProcessTable {
   readonly runs: (readonly string[])[] = [];
+  /** The ids each kill script named, in order. */
+  readonly kills: (readonly number[])[] = [];
   private rows: StartedProcess[];
   private readonly births: ReadonlyMap<number, readonly StartedProcess[]>;
 
@@ -57,16 +67,33 @@ class ProcessTable {
     this.runs.push([file, ...args]);
     if (file === 'taskkill') {
       const ended = this.walk(args);
-      this.rows = [...this.rows, ...born].filter((row) => !ended.has(row.pid));
+      this.rows = this.rows.filter((row) => !ended.has(row.pid));
+      this.join(born);
+      return Promise.resolve('');
+    }
+    const script = args.at(-1) ?? '';
+    if (script.includes('.Kill()')) {
+      const targets = killTargets(script);
+      this.kills.push(targets.map((target) => target.pid));
+      this.rows = this.rows.filter((row) => !targets.some((target) => target.pid === row.pid && target.startedMs === row.startedMs));
+      this.join(born);
       return Promise.resolve('');
     }
     const printed = this.rows.map((row) => `${row.pid},${row.parent},${row.startedMs}`).join('\r\n');
-    this.rows = [...this.rows, ...born];
+    this.join(born);
     return Promise.resolve(printed);
   };
 
+  now(): readonly StartedProcess[] {
+    return this.rows;
+  }
+
   pids(): number[] {
     return this.rows.map((row) => row.pid);
+  }
+
+  private join(born: readonly StartedProcess[]): void {
+    this.rows = [...this.rows.filter((row) => !born.some((newcomer) => newcomer.pid === row.pid)), ...born];
   }
 
   /** The ids a taskkill run ends: those it names, and with /T their trees as they stand now. */
@@ -140,13 +167,15 @@ describe('sweepTree on the Windows host', () => {
     );
     await sweepTree(10, windowsSweepHostOf(table.run, () => 1_000));
     assert.deepEqual(table.pids(), [1]);
-    assert.deepEqual(
-      table.runs.filter(([file]) => file === 'taskkill'),
-      [
-        ['taskkill', '/F', '/PID', '10'],
-        ['taskkill', '/F', '/PID', '12', '/PID', '13'],
-      ],
-    );
+    assert.deepEqual(table.kills, [[10], [12, 13]]);
+  });
+
+  it('leaves alone a stranger that took the id of a member ended during the list (T1562)', async () => {
+    // The list sees shell 10 and its console 11; 11 ends by itself while the list runs, and Windows hands its id to
+    // stranger 11, born under process 1 just before the kill.
+    const table = new ProcessTable([proc(1, 0, 0), proc(10, 1, 100), proc(11, 10, 150)], new Map([[0, [proc(11, 1, 960)]]]));
+    await sweepTree(10, windowsSweepHostOf(table.run, () => 1_000));
+    assert.deepEqual(table.now(), [proc(1, 0, 0), proc(11, 1, 960)]);
   });
 
   it('leaves a process beside the tree running', async () => {
@@ -157,22 +186,36 @@ describe('sweepTree on the Windows host', () => {
 });
 
 describe('windowsSweepHostOf', () => {
-  /** A run that records each call; taskkill prints nothing and PowerShell fails. */
+  /** A run that records each call; taskkill and a kill script print nothing, and a list fails. */
   function recorder(): { runs: (readonly string[])[]; run: HostRun } {
     const runs: (readonly string[])[] = [];
     return {
       runs,
       run: (file, args) => {
         runs.push([file, ...args]);
-        return Promise.resolve(file === 'taskkill' ? '' : undefined);
+        return Promise.resolve(file === 'taskkill' || (args.at(-1) ?? '').includes('.Kill()') ? '' : undefined);
       },
     };
   }
 
-  it('ends exactly the processes it is given, without /T', async () => {
+  it('ends exactly the processes it is given, each by id and start in one PowerShell run, without taskkill', async () => {
     const { runs, run } = recorder();
-    await windowsSweepHostOf(run).kill([10, 11]);
-    assert.deepEqual(runs, [['taskkill', '/F', '/PID', '10', '/PID', '11']]);
+    await windowsSweepHostOf(run).kill([proc(10, 1, 100), proc(11, 10, 200)]);
+    assert.equal(runs.length, 1);
+    const [file, ...args] = runs[0] ?? [];
+    assert.equal(file, 'powershell.exe');
+    assert.deepEqual(args.slice(0, 3), ['-NoProfile', '-NonInteractive', '-Command']);
+    const script = args[3] ?? '';
+    assert.match(script, /\$want = @\{ 10 = 100; 11 = 200 \}/);
+    assert.ok(script.indexOf('.Handle') < script.indexOf('Get-CimInstance'), 'it holds each id before it reads the starts');
+    assert.match(script, /\.Kill\(\)/);
+    assert.doesNotMatch(script, /taskkill/);
+  });
+
+  it('runs nothing for no targets', async () => {
+    const { runs, run } = recorder();
+    await windowsSweepHostOf(run).kill([]);
+    assert.deepEqual(runs, []);
   });
 
   it('ends a whole tree with /T only for the fallback', async () => {
