@@ -1,4 +1,4 @@
-import { treeCommittedMb, treeMb } from "../coordinator/memory.js";
+import { treeCommittedMb, treeMb } from "../delivery/memory.js";
 /** The places that are running, in their order. */
 export function runningPlaces(places) {
     return places.flatMap((place) => (place.state === 'running' ? [place] : []));

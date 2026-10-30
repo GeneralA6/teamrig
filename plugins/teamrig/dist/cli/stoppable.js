@@ -1,4 +1,4 @@
-import { endedText } from "../coordinator/starter-watch.js";
+import { endedText } from "../delivery/starter-watch.js";
 import { EXIT } from "./runtime.js";
 /**
  * Watches the processes that started this one, so a run whose launching shell ends (Claude Code's reaper ends a Bash

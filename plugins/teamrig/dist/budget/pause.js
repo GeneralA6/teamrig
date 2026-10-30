@@ -2,8 +2,8 @@ import { roleHolderOf } from "../config/roster.js";
 import { formatAddress } from "../core/address.js";
 import { sessionWeightOf, shareOf, teamTreeOf } from "./parts.js";
 import { workWeightOf } from "./work.js";
-/** The roles whose holder a short day never pauses: the lead leads the cut, the coordinator owner keeps the fleet up. */
-const KEPT_ROLES = ['lead', 'coordinatorOwner'];
+/** The roles whose holder a short day never pauses: the lead leads the cut, the delivery owner keeps the fleet up. */
+const KEPT_ROLES = ['lead', 'deliveryOwner'];
 /**
  * The sessions of `team` (its roster `ids`) a short day may pause: none while its `budget.pauseByPriority` is off,
  * else all but the holders of the kept roles that the team holds itself (a `<team>/<id>` holder is a team above's).

@@ -1,9 +1,9 @@
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
-import { lowerStep, NODE_PRIORITIES } from "../coordinator/priority.js";
-import { NOT_STARTED_EXIT } from "../coordinator/recorded-step.js";
-import { exitCodeOf } from "../coordinator/steps.js";
-import { nodeTreeKill } from "../coordinator/tree-kill.js";
+import { lowerStep, NODE_PRIORITIES } from "../delivery/priority.js";
+import { NOT_STARTED_EXIT } from "../delivery/recorded-step.js";
+import { exitCodeOf } from "../delivery/steps.js";
+import { nodeTreeKill } from "../delivery/tree-kill.js";
 import { endOf } from "../test-run/shell.js";
 /**
  * Every hook's exit codes say the same: 0 done, this one (`EX_TEMPFAIL`) wait and come back later, anything else
@@ -35,7 +35,7 @@ export function hookEndText(end) {
 }
 /**
  * The real runner: Node's `spawn` with no shell, stdout read line by line, lowered to below-normal priority as it
- * starts, as a heavy step is (a merge or deploy command is one); its time limit or its `stop` kills the tree. A killed
+ * starts, as a queued step is (a merge or deploy command is one); its time limit or its `stop` kills the tree. A killed
  * hook is reported once the kill is done.
  */
 export function nodeHookRunner(platform, kill = nodeTreeKill(platform), priorities = NODE_PRIORITIES) {

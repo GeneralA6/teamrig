@@ -1,7 +1,7 @@
 import { isStringArray, stringField } from "../core/guards.js";
 import { parseJsonl } from "../core/jsonl.js";
 import { formatUtcMinute } from "../core/time.js";
-/** The ledger's file name in the coordinator's folder: one JSON record a line, appended. */
+/** The ledger's file name in the delivery folder: one JSON record a line, appended. */
 export const LEDGER_FILE = 'ledger.jsonl';
 /** The people's ledger beside it: one line a deploy, appended. */
 export const LEDGER_MD_FILE = 'ledger.md';
@@ -45,7 +45,7 @@ function mbField(record, key) {
     return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }
 /** The optional fields a record carries, each left out when it is missing or bad, since they only add to it. */
-function heavyExtrasOf(record) {
+function queuedStepExtrasOf(record) {
     const [kit, queuedAt] = [stringField(record, 'kit'), timeField(record, 'queuedAt')];
     const [peakTreeMb, lowFreeMb] = [mbField(record, 'peakTreeMb'), mbField(record, 'lowFreeMb')];
     return {
@@ -60,7 +60,7 @@ function heavyExtrasOf(record) {
 function endField(record, key) {
     return record[key] === null ? null : timeField(record, key);
 }
-function heavyOf(record) {
+function queuedStepOf(record) {
     const [id, session, what] = [stringField(record, 'id'), stringField(record, 'session'), stringField(record, 'what')];
     const [startedAt, endedAt] = [timeField(record, 'startedAt'), endField(record, 'endedAt')];
     const exitCode = record['exitCode'];
@@ -68,7 +68,7 @@ function heavyOf(record) {
     if (id === undefined || session === undefined || what === undefined || startedAt === undefined || endedAt === undefined || exit === undefined) {
         return undefined;
     }
-    return { type: 'heavy', id, session, what, startedAt, endedAt, exitCode: exit, ...heavyExtrasOf(record) };
+    return { type: 'heavy', id, session, what, startedAt, endedAt, exitCode: exit, ...queuedStepExtrasOf(record) };
 }
 function deployOf(record) {
     const kind = record['kind'];
@@ -81,21 +81,21 @@ function deployOf(record) {
     }
     return { type: 'deploy', kind, session, repo, range, what, note, startedAt, rolledAt, ...(isStringArray(targets) ? { targets } : {}) };
 }
-function loadOf(record) {
+function jobOf(record) {
     const [id, session, what] = [stringField(record, 'id'), stringField(record, 'session'), stringField(record, 'what')];
     const [startedAt, endedAt] = [timeField(record, 'startedAt'), endField(record, 'endedAt')];
     const targets = record['targets'];
-    const loaded = targets === 'host' || isStringArray(targets) ? targets : undefined;
-    if (id === undefined || session === undefined || what === undefined || startedAt === undefined || endedAt === undefined || loaded === undefined) {
+    const jobTargets = targets === 'host' || isStringArray(targets) ? targets : undefined;
+    if (id === undefined || session === undefined || what === undefined || startedAt === undefined || endedAt === undefined || jobTargets === undefined) {
         return undefined;
     }
-    return { type: 'load', id, session, what, targets: loaded, startedAt, endedAt };
+    return { type: 'load', id, session, what, targets: jobTargets, startedAt, endedAt };
 }
-const READERS = { heavy: heavyOf, deploy: deployOf, load: loadOf };
+const READERS = { heavy: queuedStepOf, deploy: deployOf, load: jobOf };
 function isLedgerType(type) {
     return type === 'heavy' || type === 'deploy' || type === 'load';
 }
-/** The ledger's heavy, deploy and load records, in file order; a damaged line, a record of another type or one with a bad field is left out. */
+/** The ledger's queued step, deploy and job records, in file order; a damaged line, a record of another type or one with a bad field is left out. */
 export function parseLedger(text) {
     return parseJsonl(text).records.flatMap(({ record }) => {
         const type = record['type'];

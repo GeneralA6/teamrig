@@ -6,13 +6,13 @@ import { CORE_RULE_KEYS } from "./keys.js";
  * local rules that overrode the core did).
  */
 const RULE_TOPICS = {
-    roles: /\b(lead|coordinator|fleet health|re-?prioriti\w*|reassign\w*|owns?)\b/i,
+    roles: /\b(lead|coordinator|delivery owner|fleet health|re-?prioriti\w*|reassign\w*|owns?)\b/i,
     'own-change': /\b(merg\w*|integrat\w*|roll(s|ed)? (it |them )?back|another session|own change|end to end)\b/i,
     messages: /\b(messag\w*|inbox\w*|pings?|acks?|SendMessage|reply|notify)\b/i,
     register: /\b(status|boards?|blockers?|deadlines?|register|task ?ids?|tasks?|work block|verifying|handoff|handover|findings)\b/i,
     'task-order': /\b(priority order|top task|loops?|cron\w*|wake-?ups?|self-made|ScheduleWakeup)\b/i,
     'owner-gates': /\b(owner|approv\w*|consent|gated|silence)\b/i,
-    deploy: /\b(deploy\w*|ASAP|heavy|cut-?off|roll(s|ing)?)\b/i,
+    deploy: /\b(deploy\w*|ASAP|heavy|queu\w*|cut-?off|roll(s|ing)?)\b/i,
     'lean-calls': /\b(sub-?agents?|helpers?|cheaper|haiku|sonnet|opus|effort|weekly limit|budget|tokens?|batch)\b/i,
     investigate: /\b(investigat\w*|recommendation|options)\b/i,
     resources: /\b(limits?|stopgap|root cause|memory use|cpu)\b/i,

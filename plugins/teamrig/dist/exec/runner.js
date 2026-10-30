@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
-import { nodeTreeKill } from "../coordinator/tree-kill.js";
+import { nodeTreeKill } from "../delivery/tree-kill.js";
 import { envVariable } from "../core/path-search.js";
 import { bindingProblems, stageCommand } from "./binding.js";
 import { sha256Hex } from "./digest.js";

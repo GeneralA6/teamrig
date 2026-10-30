@@ -1,4 +1,4 @@
-import { heavyCutoffSpan } from "../coordinator/schedule.js";
+import { queueCutoffSpan } from "../delivery/schedule.js";
 import { clipEnd, clipStart } from "../core/clip.js";
 import { TimeZone } from "../core/zone.js";
 import { CORE_RULE_KEYS, ruleNumberOf } from "./keys.js";
@@ -114,21 +114,21 @@ function timesClause(zone, now) {
     return ` Write times on the team's clock, zone-marked (\`04:00 ${label}\`, ${zone.utcOffset(now)} now); UTC only when UTC is the subject [timeZone].`;
 }
 /**
- * Rule 7's heavy-step sentence, `cutoff` the span no heavy step starts in, on the team's clock. A team that names a
- * repository for the coordinator [coordinator.repos] merges and runs its changes through it, so it gets the commands
+ * Rule 7's queued-step sentence, `cutoff` the span no queued step starts in, on the team's clock. A team that names a
+ * repository in [delivery.repos] merges and runs its changes through it, so it gets the commands
  * too; a cutoff alone gets only its own sentence.
  */
-function heavySteps(coordinator, command, cutoff) {
-    const repos = Object.values(coordinator.repos);
+function queuedSteps(delivery, command, cutoff) {
+    const repos = Object.values(delivery.repos);
     if (repos.length === 0) {
-        return cutoff === undefined ? '' : ` No heavy step (builds, test runs, data scripts) starts ${cutoff} [coordinator.schedule.heavyCutoffUtc].`;
+        return cutoff === undefined ? '' : ` No queued step (builds, test runs, data scripts) starts ${cutoff} [delivery.schedule.queueCutoffUtc].`;
     }
     const deploy = repos.some((repo) => repo.deploy !== undefined) ? ` and run it with \`${command} deploy\`` : '';
-    return (` Run heavy steps (builds, test runs, data scripts) in the background through \`${command} heavy\`, a test run inside \`${command} test\`` +
-        (cutoff === undefined ? '' : `, none starting ${cutoff} [coordinator.schedule.heavyCutoffUtc]`) +
-        // Never `heavy -- git commit`: a repository's hooks take the lock themselves, and Claude Code's worktree guard
-        // refuses that form in a worktree session (the guide's `teamrig heavy` section).
-        `; a commit stays a plain \`git commit\`. Merge a tested branch with \`${command} merge\`${deploy}, also in the background [coordinator.repos].`);
+    return (` Run queued steps (builds, test runs, data scripts) in the background through \`${command} queue\`, a test run inside \`${command} test\`` +
+        (cutoff === undefined ? '' : `, none starting ${cutoff} [delivery.schedule.queueCutoffUtc]`) +
+        // Never `queue -- git commit`: a repository's hooks take the lock themselves, and Claude Code's worktree guard
+        // refuses that form in a worktree session (the guide's `teamrig queue` section).
+        `; a commit stays a plain \`git commit\`. Merge a tested branch with \`${command} merge\`${deploy}, also in the background [delivery.repos].`);
 }
 /** What a message or an urgent inbox line says, in rule 3's order. */
 const REPORT_PARTS = 'what happened, evidence (numbers, ids, paths), the exact ask and deadline, your default, then "No reply needed" or "Reply needed: <one question>"';
@@ -153,16 +153,16 @@ function messagesRule(config, command) {
  * Each core rule's text, filled from the team's config. Each rule names the config key
  * behind any value it prints, so a team changes a number without forking the text. A step only one
  * platform needs, like removing a worktree without following its node_modules junction on Windows, prints on that platform alone.
- * The heavy cutoff is named on the team's clock, for the day `clock.now` falls on.
+ * The queue cutoff is named on the team's clock, for the day `clock.now` falls on.
  */
 export function coreRuleTexts(config, command, platform, clock) {
     const { roles, skills, budget } = config;
-    const cutoff = heavyCutoffSpan(clock.now.getTime(), config.coordinator.schedule.heavyCutoffUtc);
+    const cutoff = queueCutoffSpan(clock.now.getTime(), config.delivery.schedule.queueCutoffUtc);
     const zone = TimeZone.resolve(config.timeZone, clock.machineZone);
     const cutoffSpan = cutoff === undefined ? undefined : zone.clockSpan(new Date(cutoff.from), new Date(cutoff.to));
     return {
         roles: `Roles, by session id: ${roles.lead} is the lead: priorities, team rules and the owner's decision queue [roles.lead].` +
-            (roles.coordinatorOwner === undefined ? '' : ` ${roles.coordinatorOwner} owns deploy coordination and fleet health [roles.coordinatorOwner].`) +
+            (roles.deliveryOwner === undefined ? '' : ` ${roles.deliveryOwner} owns the delivery flow and fleet health [roles.deliveryOwner].`) +
             (roles.securityReviewer === undefined ? '' : ` ${roles.securityReviewer} reviews privileged commands (\`${command} exec\`) [roles.securityReviewer].`) +
             // The lead tree (config/lead-tree.ts, T781): a member's waits, approvals and pushes go to its leaders, nearest
             // first, and a leader sets the work order of the sessions under it (T782). No member list prints here: `leads`
@@ -181,7 +181,7 @@ export function coreRuleTexts(config, command, platform, clock) {
         'owner-gates': `Silence is consent only within the sender's authority, never for owner gates: ${list(config.ownerGates)} [ownerGates].` +
             " An owner's order, relayed or not, approves its work and proof unless only the owner sees the result; ask again only if it must change or needs something new.",
         deploy: "Deploy ASAP: once a change can be verified (tests, then a check it runs). State each fix's evidence and when it will exist; build nothing on it before then." +
-            heavySteps(config.coordinator, command, cutoffSpan),
+            queuedSteps(config.delivery, command, cutoffSpan),
         'lean-calls': 'Lean calls: batch related shell steps in one call (each re-reads the context).' +
             ` Work in your own session: ${helperDefaultClause(budget.subagentWeight)}; run helpers on your model and effort.` +
             // T1457: one place for a task's files and one for a session's other notes, so no session invents its own

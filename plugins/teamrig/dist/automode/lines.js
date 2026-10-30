@@ -25,7 +25,7 @@ export const REGISTER_COMMANDS = [
 export function kitTag(team) {
     return `[teamrig ${team}] `;
 }
-/** The team's lines, in order: protected branches, the register, heavy and test, worktree removal, rebasing. */
+/** The team's lines, in order: protected branches, the register, queue and test, worktree removal, rebasing. */
 export function kitLines(facts) {
     const tag = kitTag(facts.team);
     return [branchesLine(facts), registerLine(facts), wrappersLine(), worktreeLine(facts), rebaseLine(facts)].map((line) => `${tag}${line}`);
@@ -54,8 +54,8 @@ function registerLine({ team, home }) {
     return `The task register: every session may run ${names} for team ${team}; they write only under ${home}/.`;
 }
 function wrappersLine() {
-    return ('`teamrig heavy ... -- <cmd>` and `teamrig test ... -- <cmd>` run the session\'s own build, test or script on this ' +
-        'host (heavy waits for the host lock, test records the result); neither grants anything, so judge the command ' +
+    return ('`teamrig queue ... -- <cmd>` and `teamrig test ... -- <cmd>` run the session\'s own build, test or script on this ' +
+        'host (queue waits for the host lock, test records the result); neither grants anything, so judge the command ' +
         'after `--` as if it ran alone.');
 }
 function worktreeLine({ lead }) {

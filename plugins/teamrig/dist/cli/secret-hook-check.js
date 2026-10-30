@@ -1,5 +1,5 @@
 import { basename, dirname, join } from 'node:path';
-import { teamPlace } from "../coordinator/places.js";
+import { teamPlace } from "../delivery/places.js";
 import { KIT_NAME } from "../core/home.js";
 /** The hooks every repository the team merges into runs the secret scan in, in the order git runs them. */
 export const SECRET_HOOKS = [
@@ -21,7 +21,7 @@ export function hookScriptsDir(hooksDir) {
     return basename(hooksDir) === '_' && basename(parent) === '.husky' ? parent : hooksDir;
 }
 function warning(name, text) {
-    return { key: `secret-hook ${name}`, source: 'the secret hook check [coordinator.repos]', text: `SECRET-HOOK ${name} ${text}` };
+    return { key: `secret-hook ${name}`, source: 'the secret hook check [delivery.repos]', text: `SECRET-HOOK ${name} ${text}` };
 }
 /** The repository's warning: the hooks that lack the scan and the line to add to each; none when all three run it. */
 async function repoWarning(files, git, name, main) {
@@ -43,7 +43,7 @@ async function repoWarning(files, git, name, main) {
     return warning(name, `(${scripts}) runs no secret scan in ${missing.map((hook) => hook.hook).join(', ')}, so a secret there can be committed or pushed: add ${adds}`);
 }
 /**
- * SECRET-HOOK (T1480), for `check`: each repository the team merges into (`coordinator.repos`) whose pre-commit,
+ * SECRET-HOOK (T1480), for `check`: each repository the team merges into (`delivery.repos`) whose pre-commit,
  * commit-msg or pre-push script does not call `teamrig secrets`, or which git cannot read. A repository's hooks are
  * its own, not one session's area, so it is a warning no session owns and goes to the lead. One git call per
  * repository, then a read of its three scripts.
