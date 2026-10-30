@@ -76,6 +76,26 @@ describe('SecretShapes', () => {
     assert.deepEqual(shapes.hitsIn(join('cache://:', PASSWORD, '@kv.local:6379/0')), [{ id: 'url-credentials', description: 'credentials in a URL', value: PASSWORD }]);
   });
 
+  it("finds the token a URL gives as its login before GitHub's fixed x-oauth-basic password, and not that word", () => {
+    const login = join('Qx7m', 'Rt9w'.repeat(6));
+    assert.deepEqual(shapes.hitsIn(join('git clone https://', login, ':x-oauth-', 'basic', '@github.com/o/r.git')),[{ id: 'url-login-token', description: 'credentials in a URL', value: login }]);
+    assert.deepEqual(
+      shapes.hitsIn(join('https://', TOKEN, ':X-OAuth-', 'Basic', '@github.com/o/r')).map(({ id, value }) => ({ id, value })),
+      [
+        { id: 'github-token', value: TOKEN },
+        { id: 'url-login-token', value: TOKEN },
+      ],
+    );
+    assert.deepEqual(shapes.hitsIn(join('https://<token>:x-oauth-', 'basic', '@github.com/o/r')), []);
+  });
+
+  it('finds the password after an x-access-token login: there the password is the token', () => {
+    assert.deepEqual(
+      shapes.hitsIn(join('https://x-access-', 'token:', PASSWORD, '@github.com/o/r')).map(({ id, value }) => ({ id, value })),
+      [{ id: 'url-credentials', value: PASSWORD }],
+    );
+  });
+
   it('yields every match, a repeated one too', () => {
     const text = join('https://a:', PASSWORD, '@one and amqp://b:', PASSWORD, '@two');
     assert.deepEqual(
