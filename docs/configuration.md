@@ -187,7 +187,7 @@ The file lock each write of the team's state files takes (the task list, the exe
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
-| `ttlMs` | integer (at least 1000) | `30000` | A lock older than this, in ms, is presumed abandoned by a crashed holder and is taken over. |
+| `ttlMs` | integer (at least 1000) | `300000` | The longest, in ms, a holder keeps a lock: one older than this is taken over even while a process with its pid runs, since that pid may be another process's by then. A lock whose process is gone is taken over at once. |
 | `pollMs` | integer (at least 10) | `50` | How often, in ms, a waiter retries. |
 | `waitMs` | integer (at least 0) | `20000` | How long, in ms, a waiter tries before it gives up. |
 
