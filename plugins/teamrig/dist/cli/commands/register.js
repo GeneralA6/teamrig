@@ -34,12 +34,13 @@ import { isPeerWait, sameWait } from "../../register/waits.js";
 import { lintSkills } from "../../skills/lint.js";
 import { SKILL_FILE, SkillDir } from "../../skills/store.js";
 import { weekUseOnAccount } from "../account-teams.js";
-import { readWideAllow } from "../allow-scope.js";
+import { readWideAllow, teamSettingsScope } from "../allow-scope.js";
 import { noPositionals, onePositional, requiredFlag, UsageError } from "../args.js";
 import { addInputOf, callerOf, changesOf, criticalOf, deadlineOf, listFilterOf, NONE, pinOf, setInputOf, taskIdOf, taskRefOf, weekOf } from "../inputs.js";
 import { findTeam, openKit, pastOrPresentIdOf, projectFolder, sessionIdOf, teamZone } from "../kit.js";
 import { checkLines, listLines, SHORT_TITLE_CHARS, waitingOnLines } from "../reports.js";
 import { idlePassWarnings } from "../idle-pass-check.js";
+import { secretGuardOffWarnings } from "../secret-guard-off-check.js";
 import { secretHookWarnings } from "../secret-hook-check.js";
 import { ownerBatchOf } from "../owner-batch.js";
 import { rollUp } from "../roll-up.js";
@@ -801,8 +802,10 @@ function withOverLimit(sections, fit) {
  * per finished task they name. Last, doctor's context-size and context-lists findings against the own team's
  * `contextFiles` budgets: the text every call of a session on this machine re-reads (T393). Those findings, the
  * skill flags no session on the team owns, the own team's idle pass gone stale or failing (FLEET-STALE,
- * src/cli/idle-pass-check.ts) and each of its repositories whose git hooks skip the secret scan (SECRET-HOOK,
- * src/cli/secret-hook-check.ts) are the unowned warnings, which go to the lead (src/cli/unowned.ts, T951).
+ * src/cli/idle-pass-check.ts), each of its repositories whose git hooks skip the secret scan (SECRET-HOOK,
+ * src/cli/secret-hook-check.ts) and each secret guard key or settings file that turns a secret check off
+ * (SECRET-GUARD-OFF, src/cli/secret-guard-off-check.ts) are the unowned warnings, which go to the lead
+ * (src/cli/unowned.ts, T951).
  */
 export async function checkReport(args, runtime) {
     const now = new Date(runtime.clock.now());
@@ -851,8 +854,10 @@ export async function checkReport(args, runtime) {
     const { skills, unowned } = splitUnowned([...context, ...allow], lint, new Set(own.config.sessions), own.paths.skills);
     const idle = await idlePassWarnings(runtime.files, own.paths, own.config.open.idle.mode, now.getTime());
     const hooks = await secretHookWarnings(runtime.files, runtime.secretsGit, own.paths, own.config.coordinator.repos);
+    const settings = await teamSettingsScope(runtime, { paths: own.paths, config: own.config, project });
+    const off = await secretGuardOffWarnings(runtime.files, own.config.secretGuard, settings);
     const lead = own.config.roles.lead;
-    return { sections, scope, skills, skillsDir: own.paths.skills, hires, unowned: [...unowned, ...idle, ...hooks], lead, decisions };
+    return { sections, scope, skills, skillsDir: own.paths.skills, hires, unowned: [...unowned, ...idle, ...hooks, ...off], lead, decisions };
 }
 /**
  * The batch of the owner's decisions a root team's lead asks next, over its register and every register under it; none
