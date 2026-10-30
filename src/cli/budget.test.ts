@@ -279,7 +279,7 @@ describe('teamrig budget lift', () => {
   it("lifts a session to a part of the team's daily budget for today, logged and shown by budget", async () => {
     const { kit, run } = await world();
     assert.deepEqual(ok(await run([...LIFT, '--session', 'lead'])), [
-      "LIFTED app-alpha to 50.0% of the team's daily budget today until 00:00 UTC (the end of the budget day) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.",
+      "LIFTED app-alpha to 50.0% of the team's daily budget (6.2% of the week now) today until 00:00 UTC (the end of the budget day) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.",
     ]);
     assert.equal((kit.files.get(join(TEAM_HOME, 'state', 'usage', 'lifts.jsonl')) ?? '').split('\n').filter((line) => line !== '').length, 1);
     const lines = ok(await run(['budget']));
@@ -290,14 +290,15 @@ describe('teamrig budget lift', () => {
     assert.match(lines[8] ?? '', /^ {2}app-alpha +50\.0% +00:00 UTC +97\.0%$/);
     assert.equal(lines[9], '  00:00 UTC is the end of the budget day.');
     assert.deepEqual(ok(await run([...LIFT, '--until', '18:00', '--session', 'lead'])), [
-      "LIFTED app-alpha to 50.0% of the team's daily budget today until 18:00 UTC or 97.0% of the week, whichever comes first; quiet hours do not apply to it.",
+      "LIFTED app-alpha to 50.0% of the team's daily budget (6.2% of the week now) today until 18:00 UTC or 97.0% of the week, whichever comes first; quiet hours do not apply to it.",
     ]);
   });
 
   it("lifts a sub-lead's member to a part of its group's daily budget, which budget names", async () => {
     const { run } = await world({ ...LIMITED, leads: { bravo: ['alpha'] } });
+    // Bravo's group of 2 gets 2/3 of the team's 12.4%, half of that is 4.1% of the week.
     const LIFTED =
-      "app-alpha to 50.0% of app-bravo's group's daily budget today until 00:00 UTC (the end of the budget day) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.";
+      "app-alpha to 50.0% of app-bravo's group's daily budget (4.1% of the week now) today until 00:00 UTC (the end of the budget day) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.";
     assert.deepEqual(ok(await run([...LIFT, '--session', 'lead'])), [`LIFTED ${LIFTED}`]);
     assert.ok(ok(await run(['budget', 'alpha'])).includes(`Budget: app-lead lifted ${LIFTED}`));
   });
@@ -335,7 +336,7 @@ describe('teamrig budget lift', () => {
     const { run } = await world();
     const JERUSALEM = { timeZone: 'Asia/Jerusalem' };
     assert.deepEqual(ok(await run([...LIFT, '--until', '14:00', '--session', 'lead'], JERUSALEM)), [
-      "LIFTED app-alpha to 50.0% of the team's daily budget today until 14:00 IST or 97.0% of the week, whichever comes first; quiet hours do not apply to it.",
+      "LIFTED app-alpha to 50.0% of the team's daily budget (6.2% of the week now) today until 14:00 IST or 97.0% of the week, whichever comes first; quiet hours do not apply to it.",
     ]);
     const lines = ok(await run(['budget'], JERUSALEM));
     assert.match(lines[0] ?? '', / Resets \w{3} \d{2}-\d{2} \d{2}:\d{2} IST\.$/);
@@ -357,14 +358,15 @@ describe('teamrig budget lift', () => {
   describe('in a lead tree', () => {
     /** Bravo leads alpha; the lead leads bravo's group and itself. */
     const TREE: JsonRecord = { ...LIMITED, leads: { bravo: ['alpha'] } };
-    const lifted = (who: string, parent: string, quiet = '; quiet hours do not apply to it'): string =>
-      `LIFTED ${who} to 50.0% of ${parent} today until 00:00 UTC (the end of the budget day) or 97.0% of the week, whichever comes first${quiet}.`;
+    const lifted = (who: string, parent: string, week: string, quiet = '; quiet hours do not apply to it'): string =>
+      `LIFTED ${who} to 50.0% of ${parent} (${week} of the week now) today until 00:00 UTC (the end of the budget day) or 97.0% of the week, whichever comes first${quiet}.`;
 
     it('lets a sub-lead lift its members and its own session, parts of its group\'s budget', async () => {
       const { run } = await world(TREE);
-      assert.deepEqual(ok(await run([...LIFT, '--session', 'bravo'])), [lifted('app-alpha', "app-bravo's group's daily budget")]);
+      // Half of the group's 2/3 of the team's 12.4%.
+      assert.deepEqual(ok(await run([...LIFT, '--session', 'bravo'])), [lifted('app-alpha', "app-bravo's group's daily budget", '4.1%')]);
       assert.deepEqual(ok(await run(['budget', 'lift', 'bravo', '--part', '50', '--stop-pct', '97', '--reason', 'release', '--session', 'bravo'])), [
-        lifted('app-bravo', "app-bravo's group's daily budget"),
+        lifted('app-bravo', "app-bravo's group's daily budget", '4.1%'),
       ]);
     });
 
@@ -380,7 +382,7 @@ describe('teamrig budget lift', () => {
     it("lets the lead lift a sub-lead's group to a part of the team's budget, which exempts no quiet hours", async () => {
       const { run } = await world(TREE);
       assert.deepEqual(ok(await run(['budget', 'lift', 'bravo', '--group', '--part', '50', '--stop-pct', '97', '--reason', 'release', '--session', 'lead'])), [
-        lifted("app-bravo's group", "the team's daily budget", ''),
+        lifted("app-bravo's group", "the team's daily budget", '6.2%', ''),
       ]);
     });
 
@@ -426,8 +428,8 @@ describe('teamrig budget lift', () => {
     const crossLift = (target: string, part: string, by = 'lead'): readonly string[] => [
       'budget', 'lift', target, '--part', part, '--stop-pct', '97', '--reason', 'release', '--session', by,
     ];
-    const lifted = (who: string, part: string): string =>
-      `LIFTED ${who} to ${part}% of team app's daily budget on top of its own budget today until 00:00 UTC (the end of the budget day) or 97.0% of the week, whichever comes first.`;
+    const lifted = (who: string, part: string, week: string): string =>
+      `LIFTED ${who} to ${part}% of team app's daily budget (${week}% of the week now) on top of its own budget today until 00:00 UTC (the end of the budget day) or 97.0% of the week, whichever comes first.`;
 
     /** The harness's team as `app`, the root of SUB_TEAMS, with `web`'s config replaced by `web` when given. */
     async function tree(web?: JsonRecord): Promise<World> {
@@ -453,14 +455,22 @@ describe('teamrig budget lift', () => {
         return Number(pct);
       };
       const before = await webBudget();
-      assert.deepEqual(ok(await run(crossLift('web/front', '18'))), [lifted('web/web-front', '18.0')]);
+      const out = ok(await run(crossLift('web/front', '18')));
+      const week = /\((\d+\.\d+)% of the week now\)/.exec(out[0] ?? '')?.[1];
+      assert.ok(week !== undefined, out.join('\n'));
+      assert.deepEqual(out, [lifted('web/web-front', '18.0', week)]);
       assert.equal(liftsLogged(kit), 1);
-      assert.ok((await webBudget()) > before, "web's budget takes the top-up from app's lift log");
+      // The share of the week the lift said is what web's budget takes from app's lift log, both rounded to 0.1.
+      const rise = (await webBudget()) - before;
+      assert.ok(Math.abs(rise - Number(week)) <= 0.15, `web's budget rose ${rise.toFixed(2)}, the lift said ${week}%`);
     });
 
     it('lifts a session of a team two levels below', async () => {
       const { run } = await tree();
-      assert.deepEqual(ok(await run(crossLift('ui/pixel', '10'))), [lifted('ui/ui-pixel', '10.0')]);
+      // 10% of app's part of the account's day beside the teams under it, 3.7% as its team row shows it.
+      const lines = ok(await run(['budget']));
+      assert.ok(lines.some((line) => /^ {2}the team +\S+ +3\.7%/.test(line)), lines.join('\n'));
+      assert.deepEqual(ok(await run(crossLift('ui/pixel', '10'))), [lifted('ui/ui-pixel', '10.0', '0.37')]);
     });
 
     it("refuses a top-up past what the team's other lifts leave of its daily budget", async () => {

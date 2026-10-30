@@ -265,6 +265,7 @@ describe('wakeRestOf', () => {
     lift: undefined,
     liftBy: undefined,
     liftParent: undefined,
+    liftWeekPct: undefined,
     burst: undefined,
     paused: false,
     surplus: undefined,

@@ -128,11 +128,14 @@ describe('the budget in the hooks', () => {
     assert.doesNotMatch(await leadInbox(kit), /past its daily budget/);
   });
 
-  it("names the group's daily budget a sub-lead's member's lift is a part of", async () => {
+  it("names the group's daily budget a sub-lead's member's lift is a part of, and the share of the week it comes to as budget lift gave it", async () => {
     const { kit, hook } = await world({}, 10_000_000, 30, { leads: { bravo: ['alpha'] } });
     const lifted = await kit.run(['budget', 'lift', 'alpha', '--part', '50', '--stop-pct', '97', '--reason', 'release', '--session', 'lead']);
     assert.equal(lifted.code, EXIT.ok, lifted.stderr.join('\n'));
-    assert.match(messageOf(await hook('stop', ALPHA_TAB)), /^Budget: app-lead lifted app-alpha to 50\.0% of app-bravo's group's daily budget today /);
+    const [line = ''] = lifted.stdout;
+    assert.match(line, /^LIFTED app-alpha to 50\.0% of app-bravo's group's daily budget \(\d+\.\d+% of the week now\) today /);
+    const message = messageOf(await hook('stop', ALPHA_TAB));
+    assert.ok(message.startsWith(`Budget: app-lead lifted ${line.slice('LIFTED '.length)}`), message);
   });
 
   it("counts the subagent's W at budget.subagentWeight", async () => {

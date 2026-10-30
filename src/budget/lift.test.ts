@@ -136,42 +136,53 @@ describe('activeLift', () => {
 describe('liftText', () => {
   it('says what the lift gives and when it ends', () => {
     assert.equal(
-      liftText(lift(), 'alpha', TEAM, TimeZone.UTC),
+      liftText(lift(), 'alpha', TEAM, undefined, TimeZone.UTC),
       "alpha to 40.0% of the team's daily budget today until 00:00 UTC (the end of the budget day) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.",
     );
     assert.equal(
-      liftText(lift({ partPct: 100, reserve: true, endsAt: RESET - 15 * MINUTE, stopPct: 99.9 }), 'alpha', TEAM, TimeZone.UTC),
+      liftText(lift({ partPct: 100, reserve: true, endsAt: RESET - 15 * MINUTE, stopPct: 99.9 }), 'alpha', TEAM, undefined, TimeZone.UTC),
       "alpha to 100.0% of the team's daily budget today from the reserve until 00:45 UTC or 99.9% of the week, whichever comes first; quiet hours do not apply to it.",
     );
   });
 
   it("names a group and a group parent; a group lift leaves quiet hours in place", () => {
     assert.equal(
-      liftText(lift({ group: true, quietHoursExempt: false }), 'alpha', TEAM, TimeZone.UTC),
+      liftText(lift({ group: true, quietHoursExempt: false }), 'alpha', TEAM, undefined, TimeZone.UTC),
       "alpha's group to 40.0% of the team's daily budget today until 00:00 UTC (the end of the budget day) or 97.0% of the week, whichever comes first.",
     );
-    assert.match(liftText(lift(), 'bravo', parentBudgetText('alpha'), TimeZone.UTC), /^bravo to 40\.0% of alpha's group's daily budget today until /);
+    assert.match(liftText(lift(), 'bravo', parentBudgetText('alpha'), undefined, TimeZone.UTC), /^bravo to 40\.0% of alpha's group's daily budget today until /);
+  });
+
+  it('gives the share of the week its part comes to now right after the budget it is a part of', () => {
+    assert.match(liftText(lift(), 'alpha', TEAM, 0.05, TimeZone.UTC), /^alpha to 40\.0% of the team's daily budget \(0\.05% of the week now\) today until 00:00 UTC /);
   });
 
   it("gives a cross-team lift's part on top of the session's own budget", () => {
     assert.equal(
-      liftText(lift({ session: 'web/front', quietHoursExempt: false }), 'web/front', "team app's daily budget", TimeZone.UTC),
+      liftText(lift({ session: 'web/front', quietHoursExempt: false }), 'web/front', "team app's daily budget", undefined, TimeZone.UTC),
       "web/front to 40.0% of team app's daily budget on top of its own budget today until 00:00 UTC (the end of the budget day) or 97.0% of the week, whichever comes first.",
+    );
+    assert.match(
+      liftText(lift({ session: 'web/front', quietHoursExempt: false }), 'web/front', "team app's daily budget", 1.2, TimeZone.UTC),
+      /^web\/front to 40\.0% of team app's daily budget \(1\.2% of the week now\) on top of its own budget today until /,
     );
   });
 
   it("says when it ends on the team's clock", () => {
-    assert.match(liftText(lift(), 'alpha', TEAM, JERUSALEM), /^alpha to 40\.0% of the team's daily budget today until 02:00 IST \(the end of the budget day\) or 97\.0% of the week, /);
+    assert.match(liftText(lift(), 'alpha', TEAM, undefined, JERUSALEM), /^alpha to 40\.0% of the team's daily budget today until 02:00 IST \(the end of the budget day\) or 97\.0% of the week, /);
   });
 });
 
 describe('liftedLine', () => {
-  it('names the leader that lifted the session and the budget the lift is a part of', () => {
-    assert.match(liftedLine(lift({ by: 'bravo' }), 'charlie', { liftBy: 'app-bravo', liftParent: 'app-bravo' }, TimeZone.UTC), /^Budget: app-bravo lifted charlie to 40\.0% of app-bravo's group's daily budget today /);
+  it('names the leader that lifted the session, the budget the lift is a part of and the share of the week it comes to', () => {
+    assert.match(
+      liftedLine(lift({ by: 'bravo' }), 'charlie', { liftBy: 'app-bravo', liftParent: 'app-bravo', liftWeekPct: 4.1 }, TimeZone.UTC),
+      /^Budget: app-bravo lifted charlie to 40\.0% of app-bravo's group's daily budget \(4\.1% of the week now\) today /,
+    );
   });
 
   it('names the leader by its id when its name is not known', () => {
-    assert.match(liftedLine(lift({ by: 'bravo' }), 'charlie', { liftBy: undefined, liftParent: undefined }, TimeZone.UTC), /^Budget: bravo lifted charlie to 40\.0% of the team's daily budget today /);
+    assert.match(liftedLine(lift({ by: 'bravo' }), 'charlie', { liftBy: undefined, liftParent: undefined, liftWeekPct: undefined }, TimeZone.UTC), /^Budget: bravo lifted charlie to 40\.0% of the team's daily budget today /);
   });
 });
 
