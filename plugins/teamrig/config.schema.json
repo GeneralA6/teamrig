@@ -70,7 +70,7 @@
           "$ref": "#/$defs/sessionName"
         },
         "deliveryOwner": {
-          "description": "Owns deploy coordination and fleet health, when the team has that role; a child team may leave it to a team above.",
+          "description": "Owns the delivery flow and fleet health, when the team has that role; a child team may leave it to a team above.",
           "$ref": "#/$defs/roleHolder"
         },
         "securityReviewer": {

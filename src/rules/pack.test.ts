@@ -361,7 +361,7 @@ describe('renderCorePack', () => {
       'win32',
       RULES_CLOCK,
     );
-    assert.match(pack, /bravo owns deploy coordination and fleet health \[roles\.deliveryOwner\]\. alpha reviews privileged commands \(`teamrig exec`\) \[roles\.securityReviewer\]\. Other sessions own/);
+    assert.match(pack, /bravo owns the delivery flow and fleet health \[roles\.deliveryOwner\]\. alpha reviews privileged commands \(`teamrig exec`\) \[roles\.securityReviewer\]\. Other sessions own/);
     assert.match(pack, /No queued step \(builds, test runs, data scripts\) starts 22:30-00:00 UTC \[delivery\.schedule\.queueCutoffUtc\]\./);
     const cutoff = { delivery: { schedule: { queueCutoffUtc: '22:30' } } };
     const inIsrael = renderCorePack(testConfig(cutoff), COMMAND, 'win32', { ...RULES_CLOCK, machineZone: 'Asia/Jerusalem' });

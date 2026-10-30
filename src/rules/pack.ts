@@ -142,7 +142,7 @@ function timesClause(zone: TimeZone, now: Date): string {
 
 /**
  * Rule 7's queued-step sentence, `cutoff` the span no queued step starts in, on the team's clock. A team that names a
- * repository for the coordinator [delivery.repos] merges and runs its changes through it, so it gets the commands
+ * repository in [delivery.repos] merges and runs its changes through it, so it gets the commands
  * too; a cutoff alone gets only its own sentence.
  */
 function queuedSteps(delivery: DeliveryConfig, command: string, cutoff: string | undefined): string {
@@ -205,7 +205,7 @@ export function coreRuleTexts(config: KitConfig, command: string, platform: Node
   return {
     roles:
       `Roles, by session id: ${roles.lead} is the lead: priorities, team rules and the owner's decision queue [roles.lead].` +
-      (roles.deliveryOwner === undefined ? '' : ` ${roles.deliveryOwner} owns deploy coordination and fleet health [roles.deliveryOwner].`) +
+      (roles.deliveryOwner === undefined ? '' : ` ${roles.deliveryOwner} owns the delivery flow and fleet health [roles.deliveryOwner].`) +
       (roles.securityReviewer === undefined ? '' : ` ${roles.securityReviewer} reviews privileged commands (\`${command} exec\`) [roles.securityReviewer].`) +
       // The lead tree (config/lead-tree.ts, T781): a member's waits, approvals and pushes go to its leaders, nearest
       // first, and a leader sets the work order of the sessions under it (T782). No member list prints here: `leads`
