@@ -210,16 +210,12 @@ describe('runCli: context refresh', () => {
     assert.match((await kit.files.read(STATE('alpha'))) ?? '', /"phase":"refreshed"/);
   });
 
-  it('waits for background work the session started before asking for the handover and before the notice', async () => {
+  it('asks for the handover while background work the session started runs, naming it, and holds the notice until it reported back', async () => {
     const kit = new CliHarness();
     await kit.files.write(TRANSCRIPT, `${BACKGROUND_START}${transcript(300_000)}`);
     await finishTask(kit, 'alpha');
-    assert.deepEqual(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload() }), SILENT, 'a refresh would cut the command off');
-    assert.match((await kit.files.read(STATE('alpha'))) ?? '', /"phase":"boundary","task":"T1"/, 'left for a later stop');
-
-    await kit.files.write(TRANSCRIPT, `${BACKGROUND_START}${BACKGROUND_END}${transcript(300_000)}`);
     const asked = stopJson(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload() }));
-    assert.match(JSON.stringify(asked), /"decision":"block".*you just finished T1/);
+    assert.match(JSON.stringify(asked), /"decision":"block".*you just finished T1.*A background task you started still runs: .*Then run `teamrig refresh --ready/);
 
     await kit.files.write(HANDOVER('alpha'), '# In progress\n');
     await kit.files.write(TRANSCRIPT, `${BACKGROUND_START}${BACKGROUND_END}${BACKGROUND_START.replaceAll('toolu_bg', 'toolu_bg2')}${transcript(300_000)}`);

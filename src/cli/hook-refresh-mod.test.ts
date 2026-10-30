@@ -101,13 +101,14 @@ describe('runCli: hook refresh-mid', () => {
     });
   });
 
-  it('waits while background work the session started still runs, and asks once it reported back', async () => {
-    const tab = new Tab();
-    await tab.transcript(BACKGROUND_START);
-    assert.deepEqual(await tab.mid(130_000), { kind: 'wait', nextAt: 120_000 });
-    assert.equal(await tab.state(), undefined);
-    await tab.transcript(BACKGROUND_START + BACKGROUND_END);
-    assert.deepEqual(await tab.mid(130_000), { kind: 'ask', text: ASK_130K, nextAt: 154_000 });
+  it('asks while background work the session started still runs, naming it, and plainly once it reported back', async () => {
+    const running = new Tab();
+    await running.transcript(BACKGROUND_START);
+    const line = 'A background task you started still runs: say in the handover what its result still needs; the fresh start waits until it reports back. ';
+    assert.deepEqual(await running.mid(130_000), { kind: 'ask', text: ASK_130K.replace('Then run', `${line}Then run`), nextAt: 154_000 });
+    const ended = new Tab();
+    await ended.transcript(BACKGROUND_START + BACKGROUND_END);
+    assert.deepEqual(await ended.mid(130_000), { kind: 'ask', text: ASK_130K, nextAt: 154_000 });
   });
 
   it('asks for nothing outside a team session, with refresh off, or on input it cannot read', async () => {
