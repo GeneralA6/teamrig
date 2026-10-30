@@ -1439,7 +1439,6 @@
           "enum": ["off", "owner", "lead", "automatic"],
           "default": "owner"
         },
-        "idleHours": { "description": "Hours a hired session may hold no open task before it is due to retire.", "type": "integer", "minimum": 1, "maximum": 168, "default": 4 },
         "reviewDays": { "description": "Days from a hire to its review date, unless teamrig hire --review names one.", "type": "integer", "minimum": 1, "maximum": 90, "default": 7 },
         "resumeMaxTokens": { "description": "The most context tokens a rehired session's last Claude Code session may hold for teamrig open --resume to resume it; past it the session starts fresh on its handover.", "type": "integer", "minimum": 10000, "maximum": 1000000, "default": 250000 },
         "resumeMaxIdleDays": { "description": "The most days a rehired session's last Claude Code session may have gone unwritten for teamrig open --resume to resume it; past it the session starts fresh on its handover.", "type": "integer", "minimum": 1, "maximum": 90, "default": 7 },

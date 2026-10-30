@@ -329,12 +329,11 @@ export const DEFAULT_SCALE_OUT: ScaleOutConfig = { windowDays: 7, minDone: 3, to
 
 /**
  * A hire spends the week's budget, so it waits for the owner's yes, each spending its part of the team's daily
- * budget, reviewed after a week and due to retire after 4 hours with no open task. A rehire resumes its last Claude
- * Code session only when it holds at most 250k tokens of context and was idle at most a week.
+ * budget, and reviewed after a week. A rehire resumes its last Claude Code session only when it holds at most 250k
+ * tokens of context and was idle at most a week.
  */
 export const DEFAULT_HIRING: HiringConfig = {
   policy: 'owner',
-  idleHours: 4,
   reviewDays: 7,
   resumeMaxTokens: 250_000,
   resumeMaxIdleDays: 7,
