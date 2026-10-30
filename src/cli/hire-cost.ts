@@ -28,7 +28,7 @@ export interface ScaleOutBudget {
 export async function readScaleOutBudget(
   runtime: CliRuntime,
   paths: StoredWeekPaths & Pick<TeamPaths, 'team' | 'lifts'>,
-  config: Pick<KitConfig, 'sessions' | 'budget' | 'leads' | 'register' | 'burst'>,
+  config: Pick<KitConfig, 'sessions' | 'budget' | 'leads' | 'roles' | 'register' | 'burst'>,
   tasks: Iterable<Task>,
   week: { readonly usedPct: number | undefined; readonly window: WeekWindow | undefined },
   now: number,
