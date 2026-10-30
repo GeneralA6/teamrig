@@ -283,7 +283,7 @@ describe('teamrig heavy', () => {
     assert.deepEqual([result.code, result.stdout.at(-1), kit.files.get(LOCK)], [0, 'DONE exit 0', undefined]);
   });
 
-  it("gives its command the lock's token, so a heavy step the command starts runs under this lock", async () => {
+  it("gives its command the lock's id, so a heavy step the command starts runs under this lock", async () => {
     const { kit, steps } = harness();
     await kit.run(BUILD, { steps });
     assert.equal(steps.ran[0]?.env['TEAMRIG_HOST_LOCK'], 'id-1');
@@ -313,7 +313,7 @@ describe('teamrig heavy', () => {
     assert.deepEqual([result.code, steps.ran.length], [0, 1]);
   });
 
-  /** The lock taken carries its ticket's token, also when taking it first removes a lock left behind. */
+  /** The lock taken carries its ticket's id, also when taking it first removes a lock left behind. */
   for (const [label, lock] of [
     ['a lock its process left behind', heldBy()],
     ['no lock at all', undefined],
@@ -332,7 +332,7 @@ describe('teamrig heavy', () => {
     });
   }
 
-  it('waits for a live lock whose token is not the one in $TEAMRIG_HOST_LOCK', async () => {
+  it('waits for a live lock whose id is not the one in $TEAMRIG_HOST_LOCK', async () => {
     const { kit, steps } = harness({ ...TEAM, coordinator: { heavy: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
     await kit.files.write(LOCK, heldBy());
     const result = await kit.run(BUILD, { steps, sessionProcesses: otherRuns(), env: { TEAMRIG_HOST_LOCK: 'someone-else' } });

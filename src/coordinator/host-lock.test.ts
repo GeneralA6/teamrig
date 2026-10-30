@@ -16,18 +16,25 @@ const TTL_MS = 150 * 60_000;
 const ME = 4242;
 const OTHER = 9001;
 
-/** A lock another step holds: taken at 09:50, lasting to 12:20, by a process that runs. */
+/** `record` as this teamrig stores it: its id under `token`, the name every reader takes until a later release (T1544). */
+function onDisk<T extends { readonly id: string }>(record: T): { readonly token: string } & Omit<T, 'id'> {
+  const { id, ...rest } = record;
+  return { token: id, ...rest };
+}
+
+/** The text of {@link onDisk}. */
+function storedText<T extends { readonly id: string }>(record: T): string {
+  return JSON.stringify(onDisk(record));
+}
+
+/** Another step's lock: taken at 09:50, lasting to 12:20, by a process that runs. */
+function infoOf(overrides: Partial<HostLockInfo> = {}): HostLockInfo {
+  return { id: 'other', pid: OTHER, session: 'po', purpose: 'heavy: build', kit: KIT_VERSION, acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z', ...overrides };
+}
+
+/** The file of a lock another step holds ({@link infoOf}). */
 function heldBy(overrides: Partial<HostLockInfo> = {}): string {
-  return JSON.stringify({
-    token: 'other',
-    pid: OTHER,
-    session: 'po',
-    purpose: 'heavy: build',
-    kit: KIT_VERSION,
-    acquiredAt: '2030-01-08T09:50:00.000Z',
-    expiresAt: '2030-01-08T12:20:00.000Z',
-    ...overrides,
-  });
+  return storedText(infoOf(overrides));
 }
 
 interface World {
@@ -59,12 +66,12 @@ function world(initial: Readonly<Record<string, string>> = {}, sleep?: (clock: F
 
 /** A waiter in the line: bravo, run by `OTHER`, its wait lasting to 11:00. */
 function waiterOf(arrivedAt: string, overrides: Partial<LockWaiter> = {}): LockWaiter {
-  return { token: 'bravo', pid: OTHER, session: 'bravo', purpose: 'heavy: lint', kit: KIT_VERSION, arrivedAt, expiresAt: '2030-01-08T11:00:00.000Z', ...overrides };
+  return { id: 'bravo', pid: OTHER, session: 'bravo', purpose: 'heavy: lint', kit: KIT_VERSION, arrivedAt, expiresAt: '2030-01-08T11:00:00.000Z', ...overrides };
 }
 
-/** A waiter's ticket in the line, `[path, text]`. */
-function ticket(waiter: LockWaiter): [string, string] {
-  return [`${QUEUE}/${String(Date.parse(waiter.arrivedAt)).padStart(15, '0')}-${waiter.token}.json`, JSON.stringify(waiter)];
+/** A waiter's ticket in the line, `[path, text]`, its text `stores` (default {@link storedText}). */
+function ticket(waiter: LockWaiter, stores: (waiter: LockWaiter) => string = storedText): [string, string] {
+  return [`${QUEUE}/${String(Date.parse(waiter.arrivedAt)).padStart(15, '0')}-${waiter.id}.json`, stores(waiter)];
 }
 
 /** The tickets in the line, by name. */
@@ -157,9 +164,9 @@ describe('HostLock.tryTake', () => {
   it('takes a free lock, writing the file a team coordinator writes too', async () => {
     const { files, lock } = world();
     const taking = await lock.tryTake('alpha', 'heavy: build api');
-    const expected = { token: 't1', pid: ME, session: 'alpha', purpose: 'heavy: build api', kit: KIT_VERSION, acquiredAt: '2030-01-08T10:00:00.000Z', expiresAt: '2030-01-08T12:30:00.000Z' };
+    const expected = { id: 't1', pid: ME, session: 'alpha', purpose: 'heavy: build api', kit: KIT_VERSION, acquiredAt: '2030-01-08T10:00:00.000Z', expiresAt: '2030-01-08T12:30:00.000Z' };
     assert.deepEqual(taking, { kind: 'taken', lock: expected });
-    assert.deepEqual(fileOf(files), expected);
+    assert.deepEqual(fileOf(files), onDisk(expected));
   });
 
   it('names the holder of a live lock and leaves its file', async () => {
@@ -190,7 +197,7 @@ describe('HostLock.tryTake', () => {
     const { files, lock } = world({ [PATH]: heldBy({ expiresAt: '2030-01-08T10:00:00.000Z' }) });
     const taking = await lock.tryTake('alpha', 'heavy: test');
     assert.equal(taking.kind, 'taken');
-    assert.deepEqual(fileOf(files), taking.kind === 'taken' ? taking.lock : undefined);
+    assert.deepEqual(fileOf(files), taking.kind === 'taken' ? onDisk(taking.lock) : undefined);
   });
 
   it('takes over a lock whose process is gone', async () => {
@@ -199,19 +206,22 @@ describe('HostLock.tryTake', () => {
     const taking = await lock.tryTake('alpha', 'heavy: test');
     assert.equal(taking.kind, 'taken');
     assert.equal(taking.kind === 'taken' ? taking.lock.session : '', 'alpha');
-    assert.deepEqual(fileOf(files), taking.kind === 'taken' ? taking.lock : undefined);
+    assert.deepEqual(fileOf(files), taking.kind === 'taken' ? onDisk(taking.lock) : undefined);
   });
 
   it('reads extra fields as the same lock', async () => {
     const { lock } = world({ [PATH]: JSON.stringify({ ...JSON.parse(heldBy()), host: 'box' }) });
     const taking = await lock.tryTake('alpha', 'heavy: test');
-    assert.equal(taking.kind === 'busy' && taking.holder.kind === 'held' ? taking.holder.info.token : '', 'other');
+    assert.equal(taking.kind === 'busy' && taking.holder.kind === 'held' ? taking.holder.info.id : '', 'other');
   });
 
+  const idless = Object.fromEntries(Object.entries(infoOf()).filter(([key]) => key !== 'id'));
   for (const [label, text] of [
     ['an empty file', ''],
     ['half a file', '{"token":"other","pid":90'],
     ['a time that is not one', heldBy({ expiresAt: 'soon' })],
+    ['a file holding null', 'null'],
+    ['a lock with no id under either name', JSON.stringify(idless)],
   ] as const) {
     it(`leaves ${label} to its writer and names no holder`, async () => {
       const { files, lock } = world({ [PATH]: text });
@@ -252,7 +262,7 @@ describe('HostLock.acquire', () => {
   it('tells of each new holder', async () => {
     const { lock } = world({ [PATH]: heldBy() }, (time, store) => async (ms) => {
       await time.sleep(ms);
-      await store.write(PATH, heldBy({ token: 'third', session: 'bravo' }));
+      await store.write(PATH, heldBy({ id: 'third', session: 'bravo' }));
     });
     const told: string[] = [];
     await lock.acquire('alpha', 'heavy: test', 60_000, 30_000, (holder) => told.push(holderText(holder, TimeZone.UTC)));
@@ -328,7 +338,7 @@ describe('HostLock.acquire in arrival order', () => {
     });
     await lock.acquire('alpha', 'heavy: test', 2_000, 30_000, () => undefined);
     const mine = waiterOf('2030-01-08T10:00:00.000Z', {
-      token: 't1',
+      id: 't1',
       pid: ME,
       session: 'alpha',
       purpose: 'heavy: test',
@@ -349,7 +359,7 @@ describe('HostLock.acquire in arrival order', () => {
       if (sleeps === 1) {
         await store.remove(PATH);
       } else if (sleeps === 2) {
-        await store.write(PATH, heldBy({ token: 'bravo-lock', session: 'bravo' }));
+        await store.write(PATH, heldBy({ id: 'bravo-lock', session: 'bravo' }));
         await store.remove(early);
       } else {
         await store.remove(PATH);
@@ -364,10 +374,10 @@ describe('HostLock.acquire in arrival order', () => {
       'bravo (heavy: build) since 2030-01-08 09:50 UTC',
     ]);
     assert.deepEqual(clock.sleeps, [30_000, 30_000, FIRST_IN_LINE_POLL_MS], 'behind a waiter it looks every poll, first in line every 2 s');
-    assert.deepEqual([fileOf(files), taking.kind === 'taken' ? taking.lock.token : ''], [
+    assert.deepEqual([fileOf(files), taking.kind === 'taken' ? taking.lock.id : ''], [
       { token: 't1', pid: ME, session: 'alpha', purpose: 'heavy: test', kit: KIT_VERSION, acquiredAt: '2030-01-08T10:01:02.000Z', expiresAt: '2030-01-08T12:31:02.000Z' },
       't1',
-    ], "the lock carries its ticket's token: one step, one token, from joining the line to releasing");
+    ], "the lock carries its ticket's id: one step, one id, from joining the line to releasing");
     assert.deepEqual(await lineOf(files), []);
   });
 
@@ -380,9 +390,9 @@ describe('HostLock.acquire in arrival order', () => {
   });
 
   it('removes the ticket of a waiter whose process is gone, whose wait ran out or that it cannot read', async () => {
-    const gone = ticket(waiterOf('2030-01-08T09:57:00.000Z', { token: 'gone', pid: 7 }));
-    const late = ticket(waiterOf('2030-01-08T09:58:00.000Z', { token: 'late', expiresAt: '2030-01-08T10:00:00.000Z' }));
-    const [damaged] = ticket(waiterOf('2030-01-08T09:59:00.000Z', { token: 'damaged' }));
+    const gone = ticket(waiterOf('2030-01-08T09:57:00.000Z', { id: 'gone', pid: 7 }));
+    const late = ticket(waiterOf('2030-01-08T09:58:00.000Z', { id: 'late', expiresAt: '2030-01-08T10:00:00.000Z' }));
+    const [damaged] = ticket(waiterOf('2030-01-08T09:59:00.000Z', { id: 'damaged' }));
     const sibling = `${damaged}.4242.1.tmp`;
     const { clock, files, lock } = world(Object.fromEntries([gone, late, [damaged, '{"tok'], [sibling, 'partial']]));
     const taking = await lock.acquire('alpha', 'heavy: test', 60_000, 30_000, () => undefined);
@@ -410,7 +420,7 @@ describe('HostLock.acquire in arrival order', () => {
 
 describe('HostLock.acquire in a moving line', () => {
   it('waits on while its line moves, giving up once it has not moved for its whole wait, its ticket lasting as long', async () => {
-    const [early, text] = ticket(waiterOf('2030-01-08T09:58:00.000Z', { token: 'early' }));
+    const [early, text] = ticket(waiterOf('2030-01-08T09:58:00.000Z', { id: 'early' }));
     const expiries: string[] = [];
     let sleeps = 0;
     const { clock, files, lock } = world({ [PATH]: heldBy(), [early]: text }, (time, store) => async (ms) => {
@@ -433,19 +443,19 @@ describe('HostLock.acquire in a moving line', () => {
   });
 
   for (const [label, initial, change] of [
-    ['a new holder of the lock', { [PATH]: heldBy() }, (store: MemoryFiles) => store.write(PATH, heldBy({ token: 'third', session: 'bravo' }))],
+    ['a new holder of the lock', { [PATH]: heldBy() }, (store: MemoryFiles) => store.write(PATH, heldBy({ id: 'third', session: 'bravo' }))],
     [
       'a small step that ended while it held the lock for them',
-      Object.fromEntries([shareFile(shareOf()), shareFile(shareOf({ token: 'second' }))]),
+      Object.fromEntries([shareFile(shareOf()), shareFile(shareOf({ id: 'second' }))]),
       async (store: MemoryFiles) => {
         await store.remove(shareFile(shareOf())[0]);
       },
     ],
     [
       'a small step that ended while the holder waited for it',
-      Object.fromEntries([[PATH, heldBy()], shareFile(shareOf({ token: 's1' })), shareFile(shareOf({ token: 's2' }))]),
+      Object.fromEntries([[PATH, heldBy()], shareFile(shareOf({ id: 's1' })), shareFile(shareOf({ id: 's2' }))]),
       async (store: MemoryFiles) => {
-        await store.remove(shareFile(shareOf({ token: 's1' }))[0]);
+        await store.remove(shareFile(shareOf({ id: 's1' }))[0]);
       },
     ],
   ] as const) {
@@ -472,7 +482,7 @@ describe('HostLock.acquire in a moving line', () => {
     });
     const sleep: Sleep = async (ms) => {
       await clock.sleep(ms);
-      await files.write(PATH, heldBy({ token: 'third', session: 'bravo' }));
+      await files.write(PATH, heldBy({ id: 'third', session: 'bravo' }));
     };
     const taking = await lockOver(files, clock, ME, sleep).acquire('alpha', 'heavy: test', 60_000, 30_000, () => undefined);
     assert.deepEqual([taking, done.map((withdrawal) => withdrawal.kind), await lineOf(files)], [{ kind: 'withdrawn' }, ['withdrawn'], []]);
@@ -538,7 +548,7 @@ describe('HostLock.withdraw', () => {
       const files = new Interleaved({ [path]: text }, 'read', (read) => read.endsWith('-bravo.json'), async (store) => {
         await store.remove(path);
         if (took) {
-          await store.write(PATH, heldBy({ token: 'bravo', session: 'alpha' }));
+          await store.write(PATH, heldBy({ id: 'bravo', session: 'alpha' }));
         }
       });
       assert.deepEqual(await lockOver(files, clock, 77).withdraw('alpha', () => true), [{ kind, waiter }]);
@@ -546,23 +556,23 @@ describe('HostLock.withdraw', () => {
   }
 
   it("keeps an older kit's ticket, as its step runs anyway, and leaves other sessions', stale and unchosen tickets", async () => {
-    const old = ticket(waiterOf('2030-01-08T09:55:00.000Z', { token: 'old', session: 'alpha' }));
-    const lint = ticket(waiterOf('2030-01-08T09:56:00.000Z', { token: 'lint', session: 'alpha', stopsOnWithdraw: true }));
-    const build = ticket(waiterOf('2030-01-08T09:57:00.000Z', { token: 'build', session: 'alpha', purpose: 'heavy: build', stopsOnWithdraw: true }));
-    const theirs = ticket(waiterOf('2030-01-08T09:58:00.000Z', { token: 'theirs', stopsOnWithdraw: true }));
-    const gone = ticket(waiterOf('2030-01-08T09:59:00.000Z', { token: 'gone', session: 'alpha', pid: 7, stopsOnWithdraw: true }));
+    const old = ticket(waiterOf('2030-01-08T09:55:00.000Z', { id: 'old', session: 'alpha' }));
+    const lint = ticket(waiterOf('2030-01-08T09:56:00.000Z', { id: 'lint', session: 'alpha', stopsOnWithdraw: true }));
+    const build = ticket(waiterOf('2030-01-08T09:57:00.000Z', { id: 'build', session: 'alpha', purpose: 'heavy: build', stopsOnWithdraw: true }));
+    const theirs = ticket(waiterOf('2030-01-08T09:58:00.000Z', { id: 'theirs', stopsOnWithdraw: true }));
+    const gone = ticket(waiterOf('2030-01-08T09:59:00.000Z', { id: 'gone', session: 'alpha', pid: 7, stopsOnWithdraw: true }));
     const { files, lock } = world(Object.fromEntries([old, lint, build, theirs, gone]));
     const done = await lock.withdraw('alpha', (waiter) => waiter.purpose.includes('lint'));
-    assert.deepEqual(done.map((withdrawal) => `${withdrawal.kind} ${withdrawal.waiter.token}`), ['kept old', 'withdrawn lint']);
+    assert.deepEqual(done.map((withdrawal) => `${withdrawal.kind} ${withdrawal.waiter.id}`), ['kept old', 'withdrawn lint']);
     assert.deepEqual(await lineOf(files), [old, build, theirs, gone].map(([path]) => path.slice(QUEUE.length + 1)));
   });
 
   it('lists the live waiters oldest first, leaving a stale or unreadable ticket to the next waiter', async () => {
-    const first = waiterOf('2030-01-08T09:58:00.000Z', { token: 'first' });
-    const second = waiterOf('2030-01-08T09:59:00.000Z', { token: 'second', session: 'alpha', stopsOnWithdraw: true });
-    const gone = ticket(waiterOf('2030-01-08T09:57:00.000Z', { token: 'gone', pid: 7 }));
-    const [odd] = ticket(waiterOf('2030-01-08T09:56:00.000Z', { token: 'odd' }));
-    const { files, lock } = world(Object.fromEntries([ticket(second), ticket(first), gone, [odd, JSON.stringify({ ...first, stopsOnWithdraw: 'yes' })]]));
+    const first = waiterOf('2030-01-08T09:58:00.000Z', { id: 'first' });
+    const second = waiterOf('2030-01-08T09:59:00.000Z', { id: 'second', session: 'alpha', stopsOnWithdraw: true });
+    const gone = ticket(waiterOf('2030-01-08T09:57:00.000Z', { id: 'gone', pid: 7 }));
+    const [odd] = ticket(waiterOf('2030-01-08T09:56:00.000Z', { id: 'odd' }));
+    const { files, lock } = world(Object.fromEntries([ticket(second), ticket(first), gone, [odd, storedText({ ...first, stopsOnWithdraw: 'yes' })]]));
     assert.deepEqual(await lock.line(), [first, second]);
     assert.equal((await lineOf(files)).length, 4);
   });
@@ -586,7 +596,7 @@ describe('HostLock.release', () => {
 });
 
 describe('HostLock.state', () => {
-  const OTHERS: HostLockInfo = { token: 'other', pid: OTHER, session: 'po', purpose: 'heavy: build', kit: KIT_VERSION, acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z' };
+  const OTHERS: HostLockInfo = { id: 'other', pid: OTHER, session: 'po', purpose: 'heavy: build', kit: KIT_VERSION, acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z' };
 
   it('reads a free, held or unreadable lock without taking it', async () => {
     assert.deepEqual(await world().lock.state(), { kind: 'free' });
@@ -610,12 +620,12 @@ describe('HostLock.state', () => {
 
 /** A small step sharing the host: po's spec run since 09:50, lasting to 12:20, by `OTHER`, 2048 MB held for it. */
 function shareOf(overrides: Partial<HostShare> = {}): HostShare {
-  return { token: 'other', pid: OTHER, session: 'po', purpose: 'heavy: specs', kit: KIT_VERSION, acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z', reserveMb: 2048, ...overrides };
+  return { id: 'other', pid: OTHER, session: 'po', purpose: 'heavy: specs', kit: KIT_VERSION, acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z', reserveMb: 2048, ...overrides };
 }
 
-/** A share's file, `[path, text]`. */
-function shareFile(share: HostShare): [string, string] {
-  return [`${SHARED}/${share.token}.json`, JSON.stringify(share)];
+/** A share's file, `[path, text]`, its text `stores` (default {@link storedText}). */
+function shareFile(share: HostShare, stores: (share: HostShare) => string = storedText): [string, string] {
+  return [`${SHARED}/${share.id}.json`, stores(share)];
 }
 
 /** A small step asking for 2048 MB with 4096 kept free, on a host with `freeMb` free. */
@@ -627,9 +637,9 @@ describe('HostLock shares', () => {
   it('lets a small step share a free host at once, alone whatever the free memory, leaving the lock and the line', async () => {
     const { files, lock } = world();
     const taking = await lock.acquire('alpha', 'heavy: specs', 60_000, 30_000, () => undefined, small(1000));
-    const share = { token: 't1', pid: ME, session: 'alpha', purpose: 'heavy: specs', kit: KIT_VERSION, acquiredAt: '2030-01-08T10:00:00.000Z', expiresAt: '2030-01-08T12:30:00.000Z', reserveMb: 2048 };
+    const share = { id: 't1', pid: ME, session: 'alpha', purpose: 'heavy: specs', kit: KIT_VERSION, acquiredAt: '2030-01-08T10:00:00.000Z', expiresAt: '2030-01-08T12:30:00.000Z', reserveMb: 2048 };
     assert.deepEqual(taking, { kind: 'taken', lock: share, sharing: { freeMb: 1000, others: [] } });
-    assert.deepEqual([files.get(PATH), files.get(`${SHARED}/t1.json`), await lineOf(files)], [undefined, JSON.stringify(share), []]);
+    assert.deepEqual([files.get(PATH), files.get(`${SHARED}/t1.json`), await lineOf(files)], [undefined, storedText(share), []]);
   });
 
   it('lets another small step in while the free memory less the MB held for the others leaves the floor and its own', async () => {
@@ -704,8 +714,8 @@ describe('HostLock shares', () => {
     const taking = await lock.acquire('alpha', 'heavy: build', 60 * 60_000, 30_000, (holder) => told.push(holderText(holder, TimeZone.UTC)));
     assert.deepEqual(told, ['1 small step: po (heavy: specs) since 2030-01-08 09:50 UTC']);
     assert.deepEqual([clock.sleeps, holders], [[FIRST_IN_LINE_POLL_MS, FIRST_IN_LINE_POLL_MS], ['alpha', 'alpha']], 'it holds the lock while it waits');
-    const renewed = { token: 't1', pid: ME, session: 'alpha', purpose: 'heavy: build', kit: KIT_VERSION, acquiredAt: '2030-01-08T10:00:00.000Z', expiresAt: '2030-01-08T12:30:04.000Z' };
-    assert.deepEqual([taking, fileOf(files)], [{ kind: 'taken', lock: renewed }, renewed]);
+    const renewed = { id: 't1', pid: ME, session: 'alpha', purpose: 'heavy: build', kit: KIT_VERSION, acquiredAt: '2030-01-08T10:00:00.000Z', expiresAt: '2030-01-08T12:30:04.000Z' };
+    assert.deepEqual([taking, fileOf(files)], [{ kind: 'taken', lock: renewed }, onDisk(renewed)]);
   });
 
   it('gives up when the shares outlast its wait, releasing the lock it took', async () => {
@@ -736,8 +746,8 @@ describe('HostLock shares', () => {
   });
 
   it("removes a share whose process is gone, that expired or that cannot be read, and keeps a writer's temporary file", async () => {
-    const gone = shareFile(shareOf({ token: 'gone', pid: 7 }));
-    const late = shareFile(shareOf({ token: 'late', expiresAt: '2030-01-08T10:00:00.000Z' }));
+    const gone = shareFile(shareOf({ id: 'gone', pid: 7 }));
+    const late = shareFile(shareOf({ id: 'late', expiresAt: '2030-01-08T10:00:00.000Z' }));
     const { clock, files, lock } = world(
       Object.fromEntries([gone, late, [`${SHARED}/damaged.json`, '{"tok'], [`${SHARED}/fresh.json.9001.1.tmp`, '{"tok']]),
     );
@@ -745,9 +755,9 @@ describe('HostLock shares', () => {
     assert.deepEqual([clock.sleeps, await files.list(SHARED)], [[], ['fresh.json.9001.1.tmp']]);
   });
 
-  it('finds a live share by its token and releases it; lists the live shares oldest first, removing none', async () => {
-    const later = shareOf({ token: 'a-later', session: 'web', acquiredAt: '2030-01-08T09:55:00.000Z' });
-    const stale = shareFile(shareOf({ token: 'stale', pid: 7 }));
+  it('finds a live share by its id and releases it; lists the live shares oldest first, removing none', async () => {
+    const later = shareOf({ id: 'a-later', session: 'web', acquiredAt: '2030-01-08T09:55:00.000Z' });
+    const stale = shareFile(shareOf({ id: 'stale', pid: 7 }));
     const { files, lock } = world(Object.fromEntries([shareFile(shareOf()), shareFile(later), stale]));
     assert.deepEqual(await lock.heldWith('other'), shareOf());
     assert.deepEqual([await lock.heldWith('stale'), await lock.heldWith('../other'), await lock.heldWith('missing')], [undefined, undefined, undefined]);
@@ -757,18 +767,18 @@ describe('HostLock shares', () => {
   });
 
   it('names the small steps, and the memory they leave, as a waiter reads them', () => {
-    const shares = [shareOf(), shareOf({ token: 'b', session: 'web', purpose: 'heavy: lint', kit: KIT_VERSION, acquiredAt: '2030-01-08T09:55:00.000Z' })];
+    const shares = [shareOf(), shareOf({ id: 'b', session: 'web', purpose: 'heavy: lint', kit: KIT_VERSION, acquiredAt: '2030-01-08T09:55:00.000Z' })];
     const steps = '2 small steps: po (heavy: specs) since 2030-01-08 09:50 UTC, web (heavy: lint) since 2030-01-08 09:55 UTC';
     assert.equal(holderText({ kind: 'draining', shares }, TimeZone.UTC), steps);
     assert.equal(holderText({ kind: 'memory', freeMb: 7000, heldMb: 4096, needMb: 6144, shares }, TimeZone.UTC), `${steps}; 7000 MB free, 4096 MB held for them, 6144 MB needed`);
-    const holder = shareOf({ token: 'h', purpose: 'heavy: build', kit: '0.1.0' });
+    const holder = shareOf({ id: 'h', purpose: 'heavy: build', kit: '0.1.0' });
     assert.equal(holderText({ kind: 'held', info: holder, waitsFor: shares }, TimeZone.UTC), `po (heavy: build) since 2030-01-08 09:50 UTC, on teamrig 0.1.0, waiting for ${steps}`);
   });
 
   it('names the small steps a holder still waits for, to a step and to a small step waiting behind it', async () => {
-    const info: HostLockInfo = { token: 'other', pid: OTHER, session: 'po', purpose: 'heavy: build', kit: KIT_VERSION, acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z' };
-    const web = shareOf({ token: 's1', session: 'web', acquiredAt: '2030-01-08T09:55:00.000Z' });
-    const initial = Object.fromEntries([[PATH, JSON.stringify(info)], shareFile(web), shareFile(shareOf({ token: 'gone', pid: 7 }))]);
+    const info: HostLockInfo = { id: 'other', pid: OTHER, session: 'po', purpose: 'heavy: build', kit: KIT_VERSION, acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z' };
+    const web = shareOf({ id: 's1', session: 'web', acquiredAt: '2030-01-08T09:55:00.000Z' });
+    const initial = Object.fromEntries([[PATH, storedText(info)], shareFile(web), shareFile(shareOf({ id: 'gone', pid: 7 }))]);
     const told: string[] = [];
     const step = await world(initial).lock.acquire('alpha', 'heavy: build', 0, 30_000, (holder) => told.push(holderText(holder, TimeZone.UTC)));
     const smallStep = await world(initial).lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, small(64_000));
@@ -778,8 +788,8 @@ describe('HostLock shares', () => {
   });
 
   it('names no small step for a holder without a kit, which runs beside them, nor for one with none sharing the host', async () => {
-    const older: HostLockInfo = { token: 'other', pid: OTHER, session: 'po', purpose: 'heavy: build', acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z' };
-    const kitless = world(Object.fromEntries([[PATH, JSON.stringify(older)], shareFile(shareOf({ token: 's1' }))]));
+    const older: HostLockInfo = { id: 'other', pid: OTHER, session: 'po', purpose: 'heavy: build', acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z' };
+    const kitless = world(Object.fromEntries([[PATH, storedText(older)], shareFile(shareOf({ id: 's1' }))]));
     const alone = world({ [PATH]: heldBy() });
     const takings = [await kitless.lock.acquire('alpha', 'heavy: build', 0, 30_000, () => undefined), await alone.lock.acquire('alpha', 'heavy: build', 0, 30_000, () => undefined)];
     assert.deepEqual(
@@ -789,5 +799,56 @@ describe('HostLock shares', () => {
         ['kind', 'info'],
       ],
     );
+  });
+});
+
+describe('HostLock ids, stored as token until every reader takes id (T1544)', () => {
+  /** `record` as a newer teamrig stores it: its id under `id`. */
+  const newer = (record: { readonly id: string }): string => JSON.stringify(record);
+
+  it("respects a newer teamrig's lock, share and ticket stored under id: busy, named, none removed", async () => {
+    const held = world({ [PATH]: newer(infoOf()) });
+    const taking = await held.lock.tryTake('alpha', 'heavy: test');
+    assert.deepEqual([taking, held.files.get(PATH)], [{ kind: 'busy', holder: { kind: 'held', info: infoOf() } }, newer(infoOf())]);
+
+    const [path, text] = shareFile(shareOf(), newer);
+    const shared = world({ [path]: text });
+    const build = await shared.lock.acquire('alpha', 'heavy: build', 5_000, 30_000, () => undefined);
+    assert.deepEqual([build.kind === 'busy' ? build.holder.kind : '', shared.files.get(path), await shared.lock.heldWith('other')], ['draining', text, shareOf()]);
+
+    const waiter = waiterOf('2030-01-08T09:59:00.000Z');
+    const [early, ticketText] = ticket(waiter, newer);
+    const queued = world({ [early]: ticketText });
+    const behind = await queued.lock.acquire('alpha', 'heavy: test', 0, 30_000, () => undefined);
+    assert.deepEqual([behind.kind === 'busy' && behind.holder.kind === 'queued' ? behind.holder.first : undefined, queued.files.get(early)], [waiter, ticketText]);
+  });
+
+  it('stores the id of each lock, ticket and share it writes under token alone, first, as an older teamrig and a team coordinator read it', async () => {
+    const tickets: string[] = [];
+    const { files, lock } = world({ [PATH]: heldBy() }, (time, store) => async (ms) => {
+      for (const name of await store.list(QUEUE)) {
+        tickets.push(store.get(`${QUEUE}/${name}`) ?? '{}');
+      }
+      await time.sleep(ms);
+      await store.remove(PATH);
+    });
+    assert.equal((await lock.acquire('alpha', 'heavy: test', 60_000, 30_000, () => undefined)).kind, 'taken');
+    const sharing = world();
+    assert.equal((await sharing.lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, small(1000))).kind, 'taken');
+    const texts = [tickets[0], files.get(PATH), sharing.files.get(`${SHARED}/t1.json`)];
+    assert.deepEqual(
+      texts.map((text) => Object.keys(JSON.parse(text ?? '{}'))).map((keys) => [keys[0], keys.includes('id')]),
+      [
+        ['token', false],
+        ['token', false],
+        ['token', false],
+      ],
+    );
+  });
+
+  it('reads the id under id alone when a file holds both names, keeping no token to write back', async () => {
+    const { lock } = world({ [PATH]: JSON.stringify({ ...onDisk(infoOf({ id: 'older-name' })), id: 'other' }) });
+    const state = await lock.state();
+    assert.deepEqual(state.kind === 'held' ? state.info : undefined, infoOf());
   });
 });
