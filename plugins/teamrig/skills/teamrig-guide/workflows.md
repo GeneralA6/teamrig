@@ -212,7 +212,9 @@ so it never loses work to a compaction.
    `1: Refresh now` and `2: Hold 10 min`
    (`refresh.holdAfterActivityMinutes`, `refresh.countdownSeconds`); where it cannot, teamrig ends this Claude Code and starts it again, in the same
    tab when `teamrig open` started it, else in a new tab. While a background shell runs (a background command or
-   a monitor), it ends nothing and your inbox says to type `/clear`, which keeps the shell.
+   a monitor), it ends nothing and your inbox says to type `/clear`, which keeps the shell. With no work you can
+   start, the title reads `[shop] web: waits for work`: the restart waits for a wake that brings you some, and that
+   work wakes the fresh session.
    If the user sends a prompt first, the restart is cancelled and you keep this context. When the restart
    cannot start, the title reads `[shop] web: type /clear`: ask the user to type `/clear`.
 5. After the fresh start, the session-start context says `You were refreshed after T2; read your handover first:
