@@ -93,7 +93,7 @@ const LIFT_HEADING =
 const LIFT_BLOCK = [LIFT_HEADING, '  session   part      until  stop at', '  bravo    40.0%  00:00 UTC    97.0%', '  00:00 UTC is the end of the budget day.'];
 
 function session(id: string, w: number, calls: number, budgetPct: number | undefined = 10.25 / 3, lift: Lift | undefined = undefined): SessionToday {
-  return { id, name: id === 'lead' ? 'commander' : id, w, calls, budgetPct, lift, liftBy: lift === undefined ? undefined : 'commander', liftParent: undefined, inBurst: undefined };
+  return { id, name: id === 'lead' ? 'commander' : id, w, calls, budgetPct, lift, liftBy: lift === undefined ? undefined : 'commander', liftParent: undefined, inBurst: undefined, paused: false };
 }
 
 /** A surplus burst for alpha and bravo until the pace end, Wed 10-21 00:00 UTC, started at a 12.5% floor that is 9.5% now. */
@@ -204,6 +204,16 @@ describe('todayLines', () => {
     assert.equal(burstLines.length, 1, lines.join('\n'));
     assert.match(burstLines[0] ?? '', /: alpha, bravo each have a daily budget of at least 9\.5%, up to 3 helpers at once\. More: teamrig burst$/);
     assert.ok(burstLines[0]?.startsWith(BURST_LINE), burstLines[0]);
+  });
+
+  it('marks a paused budget, and names the paused sessions once, idle ones too, but not one a burst holds up', () => {
+    const paused = (each: SessionToday): SessionToday => ({ ...each, budgetPct: 0, paused: true });
+    const sessions = [session('lead', 7_500_000, 310), paused(session('alpha', 1_000_000, 40)), paused(session('bravo', 0, 0)), paused(inBurst('charlie', 2_000_000))];
+    const lines = todayLines({ ...REPORT, sessions });
+    assert.match(lines.find((line) => line.startsWith('  alpha')) ?? '', /^ {2}alpha +\S+% +0\.0% +\(paused\) +1\.00M +40$/);
+    assert.match(lines.find((line) => line.startsWith('  charlie')) ?? '', / \(burst\) /);
+    const pausedLines = lines.filter((line) => line.startsWith('Paused today'));
+    assert.deepEqual(pausedLines, ["Paused today, funded by priority as the week's use is past its pace line (budget.pauseByPriority): alpha, bravo."]);
   });
 
   it('marks a lifted budget and names the idle sessions with --all', () => {
@@ -372,7 +382,7 @@ describe('sessionLines', () => {
   });
 
   it('says when there is no use and no budget', () => {
-    const unbudgeted: SessionToday = { id: 'lead', name: 'commander', w: 0, calls: 0, budgetPct: undefined, lift: undefined, liftBy: undefined, liftParent: undefined, inBurst: undefined };
+    const unbudgeted: SessionToday = { id: 'lead', name: 'commander', w: 0, calls: 0, budgetPct: undefined, lift: undefined, liftBy: undefined, liftParent: undefined, inBurst: undefined, paused: false };
     assert.deepEqual(sessionLines(unbudgeted, state({}), UNKNOWN, TimeZone.UTC), ['commander (lead), by UTC day:', '  no use in the last 8 days', W_EXPLAINED]);
     assert.deepEqual(sessionLines(unbudgeted, state({ '2026-10-15': usage(500, 2) }), UNKNOWN, TimeZone.UTC).slice(1, 2), ['  2026-10-15  500 W in 2 calls']);
   });

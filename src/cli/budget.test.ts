@@ -327,7 +327,8 @@ describe('teamrig budget lift', () => {
     const lines = ok(await run(['budget']));
     // At 30% the day has 12.4% of the 14.3% the pace line plans: of the 8 weights' 6.96, the lead's 1 first, then 5.96 of alpha's p0 6, none for idle bravo.
     assert.match(lines[4] ?? '', /^ {2}app-alpha +2\.0% +10\.7% +20\.00M +2$/);
-    assert.match(lines[5] ?? '', /^ {2}app-bravo +0\.50% +0\.0% +5\.00M +1$/);
+    assert.match(lines[5] ?? '', /^ {2}app-bravo +0\.50% +0\.0% +\(paused\) +5\.00M +1$/);
+    assert.ok(lines.includes("Paused today, funded by priority as the week's use is past its pace line (budget.pauseByPriority): app-bravo."), lines.join('\n'));
   });
 
   it("reads --until on the team's clock, and prints the lift's end and the week on it", async () => {

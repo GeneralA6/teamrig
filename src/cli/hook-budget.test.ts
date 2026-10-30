@@ -346,7 +346,7 @@ describe('the budget in the hooks', () => {
     await meterLead(team);
     assert.match(
       messageOf(await hook('stop', ALPHA_TAB)),
-      /^Budget: app-alpha has used 1\.1% of the week today; its daily budget is 0\.0%\. The team has used 6\.1% of the week today, at or past its in-day pace of 5\.2%, .* New helpers are refused;/,
+      /^Budget: app-alpha has used 1\.1% of the week today; its daily budget is 0\.0% \(paused\)\. The team has used 6\.1% of the week today, at or past its in-day pace of 5\.2%, .* New helpers are refused;/,
     );
     assert.equal(decisionOf(await hook('helper-gate', ALPHA_TAB, AGENT)), 'deny');
   });

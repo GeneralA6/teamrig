@@ -38,6 +38,8 @@ export interface SessionToday extends LiftNames {
   readonly lift: Lift | undefined;
   /** The burst in force and its floor now, when the session is in it. */
   readonly inBurst: InBurst | undefined;
+  /** A short day funds none of its work (src/budget/pause.ts `isPaused`), so its part is 0 unless a burst holds it up. */
+  readonly paused: boolean;
 }
 
 /** A sub-lead's group today (src/budget/parts.ts `groupPartsOf`): its sessions' use against its part of the day, and its group lift. */
@@ -183,7 +185,7 @@ function indented(lines: readonly string[]): string[] {
 
 /**
  * Today's use as a table: the team, each sub-lead's group (its sessions' use summed), then each session, with its use
- * and daily budget in % of the week, its mark (lifted, burst), its W and calls; W and calls alone while the week's W
+ * and daily budget in % of the week, its mark (lifted, burst, paused), its W and calls; W and calls alone while the week's W
  * is unknown.
  */
 function todayTable(report: TodayReport, teamW: number, teamCalls: number): string[] {
@@ -193,13 +195,13 @@ function todayTable(report: TodayReport, teamW: number, teamCalls: number): stri
     const used = todayPctOf(w, week);
     return used === undefined ? [who, ...use] : [who, formatPct(used), budgetPct === undefined ? '-' : formatPct(budgetPct), mark.trim(), ...use];
   };
-  const { rows, notes } = sessionRows(sessions, all, 'today', (session) => row(session.name, session.w, session.calls, session.budgetPct, budgetMarkOf(session.lift, session.inBurst !== undefined)));
+  const { rows, notes } = sessionRows(sessions, all, 'today', (session) => row(session.name, session.w, session.calls, session.budgetPct, budgetMarkOf(session.lift, session.inBurst !== undefined, session.paused)));
   const team = row('the team', teamW, teamCalls, report.teamPct, '');
   const groupRows = groups.map((group) => {
     const members = sessions.filter((session) => group.sessions.includes(session.id));
     const w = members.reduce((sum, session) => sum + session.w, 0);
     const calls = members.reduce((sum, session) => sum + session.calls, 0);
-    return row(`group ${group.name} (${group.sessions.length})`, w, calls, group.budgetPct, budgetMarkOf(group.lift, false));
+    return row(`group ${group.name} (${group.sessions.length})`, w, calls, group.budgetPct, budgetMarkOf(group.lift, false, false));
   });
   if (week.wPerPct === undefined) {
     return ['Today (UTC day):', ...indented([...aligned([['session', 'W', 'calls'], team, ...groupRows, ...rows]), ...notes])];
@@ -282,7 +284,13 @@ function pastLines(report: TodayReport, teamPast: boolean): string[] {
   return past.length > 0 ? [`Past the daily budget: ${past.join(', ')}${why}. ${OVER_BUDGET_ADVICE}`] : [];
 }
 
-/** `teamrig budget`: the week, the team and each session today, lifts, use outside the team, and who is past budget. */
+/** The sessions a short day pauses and no burst holds up, named even when idle, as `--all` alone shows their rows. */
+function pausedLine(sessions: readonly SessionToday[]): string | undefined {
+  const paused = sessions.filter((session) => session.paused && session.inBurst === undefined).map((session) => session.name);
+  return paused.length > 0 ? `Paused today, funded by priority as the week's use is past its pace line (budget.pauseByPriority): ${paused.join(', ')}.` : undefined;
+}
+
+/** `teamrig budget`: the week, the team and each session today, lifts, who a short day pauses, use outside the team, and who is past budget. */
 export function todayLines(report: TodayReport): string[] {
   const { week, sessions, outside, all, zone } = report;
   const teamW = sessions.reduce((sum, session) => sum + session.w, 0);
@@ -292,6 +300,10 @@ export function todayLines(report: TodayReport): string[] {
   const first = inBurst[0]?.inBurst;
   if (first !== undefined) {
     lines.push(`Budget: the lead started ${burstText(first.burst, inBurst.map((session) => session.name), zone, first.floorPct)} ${MORE_BURST}`);
+  }
+  const paused = pausedLine(sessions);
+  if (paused !== undefined) {
+    lines.push(paused);
   }
   const outsideText = outsideLine(outside, all);
   if (outsideText !== undefined) {
@@ -359,7 +371,7 @@ export function sessionLines(session: SessionToday, state: UsageState, week: Wee
     lines.push('  no use in the last 8 days');
   }
   if (session.budgetPct !== undefined) {
-    lines.push(`Its daily budget today is ${formatPct(session.budgetPct)} of the week${budgetMarkOf(session.lift, session.inBurst !== undefined)}.`);
+    lines.push(`Its daily budget today is ${formatPct(session.budgetPct)} of the week${budgetMarkOf(session.lift, session.inBurst !== undefined, session.paused)}.`);
   }
   if (session.lift !== undefined) {
     lines.push(liftedLine(session.lift, session.name, session, zone));

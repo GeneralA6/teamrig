@@ -112,12 +112,18 @@ export function burstText(burst: Burst, names: readonly string[], zone: TimeZone
   return `a ${burst.kind} burst${tasksText(burst, zone)} ${endText(burst, zone)}: ${whose} ${formatPct(floorPct)}, up to ${plural(burst.helpers, 'helper')} at once${hires}.`;
 }
 
-/** Why a session's daily budget is not the shared one: " (lifted)" (a lift sets its part), " (burst)", or ''. */
-export function budgetMarkOf(lift: Lift | undefined, inBurst: boolean): string {
+/**
+ * Why a session's daily budget is not the shared one: " (lifted)" (a lift sets its part), " (burst)" (a burst's floor
+ * holds it up, a paused one too), " (paused)" (a short day funds none of its work), or ''.
+ */
+export function budgetMarkOf(lift: Lift | undefined, inBurst: boolean, paused: boolean): string {
   if (lift !== undefined) {
     return ' (lifted)';
   }
-  return inBurst ? ' (burst)' : '';
+  if (inBurst) {
+    return ' (burst)';
+  }
+  return paused ? ' (paused)' : '';
 }
 
 /** The person's line at a turn's end when the session's burst starts or ends, and the mark to keep. */

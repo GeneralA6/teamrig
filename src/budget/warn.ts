@@ -37,6 +37,8 @@ export interface BudgetFacts extends LiftNames {
   readonly lift: Lift | undefined;
   /** The burst in force, when the session is in it. */
   readonly burst: Burst | undefined;
+  /** A short day funds none of its work (src/budget/pause.ts `isPaused`), so its budget is 0 unless a burst holds it up. */
+  readonly paused: boolean;
   /** For the lead only, with no burst in force: a surplus worth one. */
   readonly surplus: SurplusHint | undefined;
   /** The week's use, in %. */
@@ -281,7 +283,7 @@ function joined(parts: readonly string[]): string {
 
 /** The line at a new warning level. */
 function levelLine(facts: BudgetFacts, budget: WarnBudget, standing: Standing): string {
-  const use = `${facts.name} has used ${formatPct(facts.usedTodayPct)} of the week today; its daily budget is ${formatPct(facts.budgetPct)}${budgetMarkOf(facts.lift, facts.burst !== undefined)}.`;
+  const use = `${facts.name} has used ${formatPct(facts.usedTodayPct)} of the week today; its daily budget is ${formatPct(facts.budgetPct)}${budgetMarkOf(facts.lift, facts.burst !== undefined, facts.paused)}.`;
   if (!standing.over) {
     return joined([`Budget: ${use}`, teamText(facts), MORE]);
   }
