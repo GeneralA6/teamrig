@@ -402,18 +402,17 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       1h30m; at most delivery.freezes.maxMinutes); one per session; REFUSED for a target no
       repository deploys or a secret in the metric or reason
   unfreeze [--session <id|name>]   ends this session's deploy freeze before its time
-  windows --targets <a,b> --since <time> [--until <time>] [--settle <span>] [--min <span>]   the clean
-      measurement windows of each target from --since to --until (default now): the stretches no deploy
-      of it touched (one of its repository, or a deploy --targets naming it; from its start until
-      delivery.stablePeriods settle minutes after it deployed; --settle for every target) and no queued step,
-      each at least --min (default
-      delivery.stablePeriods.minMinutes) long, each with the declared loads it overlaps. A time is HH:MM
-      (today), YYYY-MM-DD HH:MM or YYYY-MM-DD on the team's clock unless marked UTC, or an ISO time with
-      its zone
+  stable-periods --targets <a,b> --since <time> [--until <time>] [--settle <span>] [--min <span>]   the
+      stable periods of each target from --since to --until (default now): the stretches no deploy of it
+      touched (one of its repository, or a deploy --targets naming it; from its start until
+      delivery.stablePeriods settle minutes after it deployed; --settle for every target) and no queued
+      step, each at least --min (default delivery.stablePeriods.minMinutes) long, each with the declared
+      loads it overlaps. A time is HH:MM (today), YYYY-MM-DD HH:MM or YYYY-MM-DD on the team's clock unless
+      marked UTC, or an ISO time with its zone
   load --what "<what>" [--targets <a,b>|host] [--at <time>] [--session <id|name>]   declares a
       background load (a long data script, a backfill) on its targets (default the whole host) in the
-      ledger from --at (default now), so windows names it; REFUSED for a start in the future, a target
-      no repository deploys or a secret in what it is
+      ledger from --at (default now), so stable-periods names it; REFUSED for a start in the future, a
+      target no repository deploys or a secret in what it is
   load end --id <id> [--at <time>] [--session <id|name>]   ends this session's load at --at (default
       now); REFUSED for no such open load, another session's, or an end in the future or before its start
   deploy-status                the deploy state now: the host lock's holder, the queue cutoff and the

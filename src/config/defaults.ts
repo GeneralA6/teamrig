@@ -312,7 +312,7 @@ export const DEFAULT_CHECK_TIMEOUT_SECONDS = 20;
 /** A deploy freeze lasts at most two hours. */
 export const DEFAULT_CLAIMS: ClaimsConfig = { maxMinutes: 120 };
 
-/** A target measures cleanly 30 minutes after a deploy; a deploy the ledger knows only by its ledger.md line ran for 20 minutes; a window under 15 minutes is left out. */
+/** A target measures cleanly 30 minutes after a deploy; a deploy the ledger knows only by its ledger.md line ran for 20 minutes; a stable period under 15 minutes is left out. */
 export const DEFAULT_WINDOWS: WindowsConfig = { settleMinutes: 30, targetSettleMinutes: {}, assumedDeployMinutes: 20, minMinutes: 15 };
 
 /**

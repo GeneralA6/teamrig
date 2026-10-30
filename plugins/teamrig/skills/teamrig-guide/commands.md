@@ -3634,7 +3634,7 @@ the host lock, and asks the checks again under the lock. The command runs with n
 The checks and the command get `TEAMRIG_TEAM`, `TEAMRIG_SESSION`, `TEAMRIG_VERB=redeploy`, `TEAMRIG_REPO` and
 `TEAMRIG_DEPLOY_TARGETS` (`api,live`), and no `TEAMRIG_PENDING_RANGE`: a check that reads the range tells a redeploy by
 its verb. The command also gets `$TEAMRIG_HOST_LOCK`. The deploy record names the targets (`"targets": ["api",
-"live"]`), so `teamrig windows` counts only them as disturbed. It is written even when the command fails (FAILED,
+"live"]`), so `teamrig stable-periods` counts only them as disturbed. It is written even when the command fails (FAILED,
 exit 1), since a failed restart may have restarted some of them; a command that cannot start records no deploy.
 A deploy freeze of your own on a target holds your deploy like anyone else's, so unfreeze it first: the host lock
 already keeps other deploys and queued steps out while the command runs.
@@ -3748,38 +3748,38 @@ Output:
 UNFROZEN api, workers (frozen until 2030-01-08 12:45 IST)
 ```
 
-### teamrig windows
+### teamrig stable-periods
 
-The clean measurement windows of each target between `--since` and `--until` (default now; a later time is cut to
-now), so a session compares a metric over stretches no change touched. A deploy disturbs the targets of its
+The stable periods of each target between `--since` and `--until` (default now; a later time is cut to now), so a
+session compares a metric over stretches no change touched. A deploy disturbs the targets of its
 repository (its `deploysOnPush` and `deploy.targets`), or only those its ledger record names (a `deploy --targets`
 run), from its start until it settled:
 `delivery.stablePeriods.targetSettleMinutes` for that target, else `settleMinutes` (30), or `--settle` for every
 target. The deploys are the ledger.md lines, so one a session wrote by hand counts too; a deploy with no ledger
 record of its start is taken to have run for `assumedDeployMinutes` (20). A queued step disturbs the whole host. A
-window shorter than `--min` (default `minMinutes`, 15) is left out. Each window names the loads (`teamrig load`) it
-overlaps: a load never cuts a window, since two windows under the same load still compare. A time is `HH:MM`
+period shorter than `--min` (default `minMinutes`, 15) is left out. Each period names the loads (`teamrig load`) it
+overlaps: a load never cuts a period, since two periods under the same load still compare. A time is `HH:MM`
 (today), `YYYY-MM-DD HH:MM` or `YYYY-MM-DD` on the team's clock unless marked `UTC`, or an ISO time with its zone. A
 target no repository deploys is a usage error.
 
 Flags:
 
-- `--targets <a,b>`: the deploy targets to find windows for.
+- `--targets <a,b>`: the deploy targets to find stable periods for.
 - `--since <time>`: where the search starts.
 - `--until <time>`: where it ends; default now.
 - `--settle <span>`: the settle time for every target, such as `45m` or `1h`, in place of the config's.
-- `--min <span>`: the shortest window worth naming.
+- `--min <span>`: the shortest period worth naming.
 
 Example:
 
 ```sh
-teamrig windows --targets api --since 08:00
+teamrig stable-periods --targets api --since 08:00
 ```
 
 Output:
 
 ```text
-api (settle 30m): 2 clean windows of at least 15m
+api (settle 30m): 2 stable periods of at least 15m
   2030-01-08 08:00 IST to 2030-01-08 08:40 IST (40m)
   2030-01-08 10:20 IST to 2030-01-08 12:00 IST (1h40m)
     under load 3f9c1a7e by data: backfill prices (from 2030-01-08 10:30 IST, still running)
@@ -3788,7 +3788,7 @@ api (settle 30m): 2 clean windows of at least 15m
 ### teamrig load
 
 Declares a background load, such as a long data script or a backfill, in the ledger from `--at` (default now), so
-`teamrig windows` names it on every window it overlaps. It loads its `--targets`, or the whole host. It runs until
+`teamrig stable-periods` names it on every period it overlaps. It loads its `--targets`, or the whole host. It runs until
 `teamrig load end`. REFUSED for a start in the future, a target no repository deploys, or a secret in what it is,
 since the ledger is shared.
 

@@ -220,7 +220,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   deploy: { effect: 'write', flags: ['session', 'repo', 'targets', 'what'], rest: true, load: async () => (await deployCommand()).deploy },
   freeze: { effect: 'write', flags: ['session', 'targets', 'metric', 'why', 'for'], load: async () => (await claimCommands()).freeze },
   unfreeze: { effect: 'write', flags: ['session'], load: async () => (await claimCommands()).unfreeze },
-  windows: { effect: 'read', flags: ['targets', 'since', 'until', 'settle', 'min'], load: async () => (await windowsCommand()).windows },
+  'stable-periods': { effect: 'read', flags: ['targets', 'since', 'until', 'settle', 'min'], load: async () => (await windowsCommand()).stablePeriods },
   load: { effect: 'write', flags: ['session', 'what', 'targets', 'at'], load: async () => (await loadCommands()).load },
   'load end': { effect: 'write', flags: ['session', 'id', 'at'], load: async () => (await loadCommands()).loadEnd },
   'deploy-status': { effect: 'read', flags: [], load: async () => (await deployStatusCommand()).deployStatus },
@@ -279,9 +279,13 @@ export const COMMAND_REST: CommandRest = new Set(Object.entries(COMMANDS).flatMa
  * Renamed flags and commands, refused everywhere with the new name, never an alias: `--tier` became `--priority`
  * (levels p1, p2, ...), and for plain words (T1308) `teamrig integrate` became `teamrig merge`, `teamrig roll` became
  * `teamrig deploy`, `teamrig deploys` became `teamrig deploy-status`, `teamrig heavy` became `teamrig queue`, `teamrig
- * claim` became `teamrig freeze` and `teamrig release` became `teamrig unfreeze`.
+ * claim` became `teamrig freeze`, `teamrig release` became `teamrig unfreeze` and `teamrig windows` became `teamrig
+ * stable-periods`.
  */
-const RENAMED: Renamed = { flags: { tier: 'priority', problem: 'type bug [--critical] (or --type task)' }, commands: { integrate: 'merge', roll: 'deploy', deploys: 'deploy-status', heavy: 'queue', claim: 'freeze', release: 'unfreeze' } };
+const RENAMED: Renamed = {
+  flags: { tier: 'priority', problem: 'type bug [--critical] (or --type task)' },
+  commands: { integrate: 'merge', roll: 'deploy', deploys: 'deploy-status', heavy: 'queue', claim: 'freeze', release: 'unfreeze', windows: 'stable-periods' },
+};
 /** The table a line is read with, and each command's effect: what `/teamrig` plans a line from (src/slash/plan.ts). */
 export const COMMAND_TABLE: CommandTable = { flags: COMMAND_FLAGS, switches: COMMAND_SWITCHES, renamed: RENAMED, rest: COMMAND_REST, effects: COMMAND_EFFECTS };
 
@@ -672,18 +676,17 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       1h30m; at most delivery.freezes.maxMinutes); one per session; REFUSED for a target no
       repository deploys or a secret in the metric or reason
   unfreeze [--session <id|name>]   ends this session's deploy freeze before its time
-  windows --targets <a,b> --since <time> [--until <time>] [--settle <span>] [--min <span>]   the clean
-      measurement windows of each target from --since to --until (default now): the stretches no deploy
-      of it touched (one of its repository, or a deploy --targets naming it; from its start until
-      delivery.stablePeriods settle minutes after it deployed; --settle for every target) and no queued step,
-      each at least --min (default
-      delivery.stablePeriods.minMinutes) long, each with the declared loads it overlaps. A time is HH:MM
-      (today), YYYY-MM-DD HH:MM or YYYY-MM-DD on the team's clock unless marked UTC, or an ISO time with
-      its zone
+  stable-periods --targets <a,b> --since <time> [--until <time>] [--settle <span>] [--min <span>]   the
+      stable periods of each target from --since to --until (default now): the stretches no deploy of it
+      touched (one of its repository, or a deploy --targets naming it; from its start until
+      delivery.stablePeriods settle minutes after it deployed; --settle for every target) and no queued
+      step, each at least --min (default delivery.stablePeriods.minMinutes) long, each with the declared
+      loads it overlaps. A time is HH:MM (today), YYYY-MM-DD HH:MM or YYYY-MM-DD on the team's clock unless
+      marked UTC, or an ISO time with its zone
   load --what "<what>" [--targets <a,b>|host] [--at <time>] [--session <id|name>]   declares a
       background load (a long data script, a backfill) on its targets (default the whole host) in the
-      ledger from --at (default now), so windows names it; REFUSED for a start in the future, a target
-      no repository deploys or a secret in what it is
+      ledger from --at (default now), so stable-periods names it; REFUSED for a start in the future, a
+      target no repository deploys or a secret in what it is
   load end --id <id> [--at <time>] [--session <id|name>]   ends this session's load at --at (default
       now); REFUSED for no such open load, another session's, or an end in the future or before its start
   deploy-status                the deploy state now: the host lock's holder, the queue cutoff and the

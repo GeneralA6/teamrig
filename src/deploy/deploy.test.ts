@@ -144,8 +144,8 @@ describe('redeployTargets', () => {
   it('refuses targets its repository does not deploy, or none, before any check or lock', async () => {
     const world = new World();
     const listed = 'delivery.repos.pipeline.deploy.targets (api, workers, live)';
-    assert.deepEqual(await world.run({ ...REQUEST, targets: ['api', 'apii', 'cron'] }), { kind: 'refused', reason: `apii, cron are not in ${listed}: a deploy names only targets the deploy freezes and windows know` });
-    assert.deepEqual(await world.run({ ...REQUEST, targets: ['apii'] }), { kind: 'refused', reason: `apii is not in ${listed}: a deploy names only targets the deploy freezes and windows know` });
+    assert.deepEqual(await world.run({ ...REQUEST, targets: ['api', 'apii', 'cron'] }), { kind: 'refused', reason: `apii, cron are not in ${listed}: a deploy names only targets the deploy freezes and stable periods know` });
+    assert.deepEqual(await world.run({ ...REQUEST, targets: ['apii'] }), { kind: 'refused', reason: `apii is not in ${listed}: a deploy names only targets the deploy freezes and stable periods know` });
     assert.deepEqual(await world.run({ ...REQUEST, targets: [] }), { kind: 'refused', reason: `name the targets the command restarts, from ${listed}` });
     assert.deepEqual(await world.run({ ...REQUEST, repo: 'site' }), { kind: 'refused', reason: 'site is not in delivery.repos (with a deploy block: pipeline)' });
     assert.deepEqual([world.hooks.ran.length, world.records().length, world.lockFree()], [0, 0, true]);

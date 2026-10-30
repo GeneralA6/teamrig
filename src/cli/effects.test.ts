@@ -69,7 +69,7 @@ const EXPECTED = {
   deploy: 'write',
   freeze: 'write',
   unfreeze: 'write',
-  windows: 'read',
+  'stable-periods': 'read',
   load: 'write',
   'load end': 'write',
   'deploy-status': 'read',

@@ -276,15 +276,15 @@ A freeze lasts at most `delivery.freezes.maxMinutes` (120), one per session, on 
 ends at its time, or early with `teamrig unfreeze`. Freezes are shared files, so a secret in the metric or reason is
 refused. Nothing else holds a deploy: a measurement without a freeze adapts to the deploys.
 
-Afterwards, `teamrig windows` lists each target's clean stretches, so a session compares a metric over windows no
-change touched:
+Afterwards, `teamrig stable-periods` lists each target's stable periods, so a session compares a metric over
+stretches no change touched:
 
 ```sh
-teamrig windows --targets api --since 08:00
+teamrig stable-periods --targets api --since 08:00
 ```
 
 ```text
-api (settle 30m): 2 clean windows of at least 15m
+api (settle 30m): 2 stable periods of at least 15m
   2030-01-08 08:00 IST to 2030-01-08 08:40 IST (40m)
   2030-01-08 10:20 IST to 2030-01-08 12:00 IST (1h40m)
     under load 3f9c1a7e by data: backfill prices (from 2030-01-08 10:30 IST, still running)
@@ -293,11 +293,12 @@ api (settle 30m): 2 clean windows of at least 15m
 A deploy disturbs its repository's targets, or only those a `deploy --targets` run named, from its start until they
 settled: `delivery.stablePeriods.settleMinutes` (30), a target's own in `targetSettleMinutes`, or `--settle` for one
 run. A deploy line a session wrote by hand in `ledger.md` counts too; one with no record of its start is taken to
-have run for `assumedDeployMinutes` (20) before its line. A queued step disturbs the whole host. A window shorter than `minMinutes` (15) is left out.
+have run for `assumedDeployMinutes` (20) before its line. A queued step disturbs the whole host. A stable period
+shorter than `minMinutes` (15) is left out.
 
 A background load, such as a long data script or a backfill, is declared with `teamrig load` (`teamrig load end`
-ends it). A load never cuts a window, since two windows under the same load still compare: each window names the
-loads it overlaps.
+ends it). A load never cuts a stable period, since two periods under the same load still compare: each period names
+the loads it overlaps.
 
 ```sh
 teamrig load --session data --what "backfill prices" --at 10:30

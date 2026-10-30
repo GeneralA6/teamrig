@@ -60,7 +60,7 @@ function atOf(args: ParsedArgs, times: TypedTimes): number {
 
 /**
  * `teamrig load --what "<what>" [--targets <a,b>|host] [--at <time>]`: declares a background load (a long data
- * script, a backfill) in the ledger from `--at` (default now), so `teamrig windows` names it on the windows it overlaps.
+ * script, a backfill) in the ledger from `--at` (default now), so `teamrig stable-periods` names it on the stable periods it overlaps.
  * Refused for a start in the future, a target no repository deploys or a secret in what it is. Exit 0, 2 refused.
  */
 export async function load(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
