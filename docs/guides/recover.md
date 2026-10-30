@@ -79,8 +79,9 @@ sequenceDiagram
   that grows slowly still gets a fresh start; a `/clear`, a new process or a compaction starts the count over.
 - The lead can ask for a refresh at any size: `teamrig refresh web` applies at web's next turn end.
 - It waits while work the session started in the background still runs (subagents, background commands,
-  monitors, workflows): a fresh start would cut it off, so the hook asks for the handover, and later restarts
-  the session, only at a turn end after the last of it reported back. The restart also waits while a turn still
+  monitors, workflows): a fresh start would cut it off, so the hook asks for the handover at once, naming that work
+  so the handover says what its results still need, but restarts the session only at a turn end after the last of
+  it reported back. The restart also waits while a turn still
   runs (a turn stopped with Escape counts as ended). Both read that from the transcript (helpers started within
   the last 6 hours); with teamrig's mod on, the tab also asks Claude Code itself before each `/clear`, so a refresh
   waits while the session still runs a helper the transcript no longer shows.
