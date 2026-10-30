@@ -25,6 +25,37 @@ const CHECK_PROGRAMS = new Map([
     ['vitest', 'testFull'],
     ['tsc', 'build'],
 ]);
+/** jest's and vitest's options that take the next word as their value, so that word names no test file. */
+const TEST_RUNNER_VALUED = new Set([
+    '-c',
+    '--config',
+    '-r',
+    '--root',
+    '--rootDir',
+    '--dir',
+    '-t',
+    '--testNamePattern',
+    '-w',
+    '--maxWorkers',
+    '--project',
+    '--selectProjects',
+    '--reporter',
+    '--reporters',
+    '--outputFile',
+    '--shard',
+    '--testTimeout',
+    '--env',
+    '--environment',
+    '--testEnvironment',
+    '--pool',
+    '--mode',
+    '--seed',
+    '--changedSince',
+]);
+/** vitest's commands, before the file filters each takes (`vitest run src/a.test.ts`). */
+const VITEST_COMMANDS = new Set(['run', 'watch', 'dev', 'related', 'bench', 'typecheck']);
+/** A jest option whose own value filters the test files by path. */
+const PATH_FILTER = /^--testPathPatterns?=/;
 /** node's options whose value is a script it runs. */
 const NODE_EVAL = new Set(['-e', '--eval', '-p', '--print']);
 /** A `node --test` file pattern over a whole source folder: the full suite. */
@@ -67,31 +98,53 @@ function operandText(args, valued) {
     const operand = firstOperand(args, valued)?.word;
     return operand === undefined || operand.dynamic ? undefined : operand.text;
 }
-/** npm: `npm test` (`t`, `tst`) and `npm run` of a test script run tests; `npm run` of a build script builds. */
+/** A test run names the tests it runs: a file, folder or pattern among its operands, or a jest path filter. */
+function namesTests(args) {
+    return firstOperand(args, TEST_RUNNER_VALUED) !== undefined || args.some((arg) => !arg.dynamic && PATH_FILTER.test(arg.text));
+}
+/** vitest's words without its command, or all of them when it is given none. */
+function withoutCommand(args) {
+    const found = firstOperand(args, TEST_RUNNER_VALUED);
+    return found !== undefined && !found.word.dynamic && VITEST_COMMANDS.has(found.word.text) ? [...args.slice(0, found.index), ...args.slice(found.index + 1)] : args;
+}
+/** A test or build program by its name (`CHECK_PROGRAMS`): jest or vitest given its tests (`namesTests`) runs only those. */
+function checkWork(program, args) {
+    const work = CHECK_PROGRAMS.get(program);
+    return work === 'testFull' && namesTests(program === 'vitest' ? withoutCommand(args) : args) ? 'testTargeted' : work;
+}
+/** An npm test's words after its command or script: files given to the script, before or after `--`, run only those tests. */
+function npmTestWork(rest) {
+    const marker = rest.findIndex((word) => !word.dynamic && word.text === '--');
+    const own = marker === -1 ? rest : rest.slice(0, marker);
+    const passed = marker === -1 ? [] : rest.slice(marker + 1);
+    return firstOperand(own, NPM_VALUED) !== undefined || namesTests(passed) ? 'testTargeted' : 'testFull';
+}
+/** npm: `npm test` (`t`, `tst`) and `npm run` of a test script run tests (`npmTestWork`); `npm run` of a build script builds. */
 function npmWork(args) {
     const found = firstOperand(args, NPM_VALUED);
     if (found === undefined || found.word.dynamic) {
         return undefined;
     }
     if (NPM_TESTS.has(found.word.text)) {
-        return 'testFull';
+        return npmTestWork(args.slice(found.index + 1));
     }
-    const script = NPM_RUN.has(found.word.text) ? operandText(args.slice(found.index + 1), NPM_VALUED) : undefined;
-    if (script === undefined) {
+    const rest = args.slice(found.index + 1);
+    const script = NPM_RUN.has(found.word.text) ? firstOperand(rest, NPM_VALUED) : undefined;
+    if (script === undefined || script.word.dynamic) {
         return undefined;
     }
-    if (TEST_SCRIPT.test(script)) {
-        return 'testFull';
+    if (TEST_SCRIPT.test(script.word.text)) {
+        return npmTestWork(rest.slice(script.index + 1));
     }
-    return BUILD_SCRIPT.test(script) ? 'build' : undefined;
+    return BUILD_SCRIPT.test(script.word.text) ? 'build' : undefined;
 }
-/** A script node runs from a file: a test or build program's own (`node_modules/typescript/bin/tsc`), or teamrig's build. */
-function nodeScriptWork(script) {
+/** A script node runs from a file: a test or build program's own (`node_modules/typescript/bin/tsc`) given `args`, or teamrig's build. */
+function nodeScriptWork(script, args) {
     if (script.dynamic) {
         return undefined;
     }
     const path = script.text.replace(/\\/g, '/');
-    return TEAMRIG_BUILD.test(path) ? 'teamrig' : CHECK_PROGRAMS.get(programName(path).replace(SCRIPT_EXTENSION, ''));
+    return TEAMRIG_BUILD.test(path) ? 'teamrig' : checkWork(programName(path).replace(SCRIPT_EXTENSION, ''), args);
 }
 /** A script node reads on stdin, such as a heredoc's body, edits when it calls `writeFileSync`. */
 function stdinScriptWork(stdin) {
@@ -122,7 +175,7 @@ function nodeWork(args, stdin) {
             if (evaluates) {
                 return undefined;
             }
-            return text === '-' ? stdinScriptWork(stdin) : nodeScriptWork(word);
+            return text === '-' ? stdinScriptWork(stdin) : nodeScriptWork(word, args.slice(index + 1));
         }
         const equals = text.indexOf('=');
         const option = equals === -1 ? text : text.slice(0, equals);
@@ -175,8 +228,8 @@ export function runWorkOf(run) {
         case 'npm':
             return npmWork(run.args);
         case 'npx': {
-            const bin = operandText(run.args, EXEC_VALUED);
-            return bin === undefined ? undefined : CHECK_PROGRAMS.get(programName(bin));
+            const bin = firstOperand(run.args, EXEC_VALUED);
+            return bin === undefined || bin.word.dynamic ? undefined : checkWork(programName(bin.word.text), run.args.slice(bin.index + 1));
         }
         case 'node':
             return nodeWork(run.args, run.stdin);
@@ -188,6 +241,6 @@ export function runWorkOf(run) {
             if (WRITE_CMDLETS.has(run.name)) {
                 return 'edit';
             }
-            return CHECK_PROGRAMS.get(run.name) ?? (SEARCHES.has(run.name) && run.args.length > 0 && !run.piped ? 'search' : undefined);
+            return checkWork(run.name, run.args) ?? (SEARCHES.has(run.name) && run.args.length > 0 && !run.piped ? 'search' : undefined);
     }
 }
