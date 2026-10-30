@@ -9,6 +9,7 @@ import {
   decideStart,
   decideStop,
   handoverHashOf,
+  noticeOf,
   REASK_SHARE,
   reaskGrowth,
   thousands,
@@ -245,6 +246,16 @@ describe('decideStop', () => {
       message: 'teamrig: api finished T12 and wrote its handover; teamrig starts it fresh once it has been idle 15 s (type anything to keep this context)',
       title: '[app] api: restarting',
       restart: true,
+    });
+  });
+
+  it('says a restart held back waits for a wake that brings work, keeping the context to whoever types (T1383)', () => {
+    assert.deepEqual(noticeOf(READY, stopContext({ canRestart: true }), 'park'), {
+      kind: 'notice',
+      state: { ...READY, noticed: true },
+      message: 'teamrig: api finished T12 and wrote its handover; it has no work it can start now, so teamrig starts it fresh once a wake brings it some (type anything to keep this context)',
+      title: '[app] api: waits for work',
+      restart: false,
     });
   });
 

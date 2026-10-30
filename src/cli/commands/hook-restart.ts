@@ -72,7 +72,7 @@ export async function armRestart(runtime: CliRuntime, store: RefreshStore, scope
     }
     await store.clearRestart(id);
   }
-  return noticeOf(notice.state, context, false);
+  return noticeOf(notice.state, context, 'clear');
 }
 
 /** The tab a dead restart is re-armed from (`rearmDeadRestart`). */
