@@ -112,11 +112,11 @@ function hireAction(config) {
     const hire = `${KIT_NAME} hire <new id> --scope "<the slice>" --reason "SCALE-OUT"${owner ? ' --approved-by "<who>"' : ''}`;
     return `the lead ${owner ? `asks ${ownerAsk(config)}, then ` : ''}hires for it (${hire}), then ${KIT_NAME} update <id> --owner <new id>, for each`;
 }
-/** SCALE-OUT on each area that needs one, within the spare, and the idle hires given a slice. */
+/** SCALE-OUT on each area that needs one, within the spare, the one furthest behind first; an idle hire takes one slice. */
 export function scaleOutFlags(input) {
     const { config, hirePct } = input;
     if (config.hiring.policy === 'off') {
-        return { flags: [], busy: new Set() };
+        return [];
     }
     const tasks = [...input.tasks];
     const hiredOnTeam = new Set(input.hires.filter((hire) => config.sessions.includes(hire.session)).map((hire) => hire.session));
@@ -128,7 +128,7 @@ export function scaleOutFlags(input) {
     const busy = new Set();
     const flags = [];
     if (input.spare === undefined || hirePct === undefined) {
-        return { flags: [], busy };
+        return [];
     }
     const { paceEnd } = input.spare;
     let spare = input.spare.sparePct;
@@ -148,5 +148,5 @@ export function scaleOutFlags(input) {
         }
         flags.push({ kind: 'SCALE-OUT', session: need.area, detail, action: hireAction(config) });
     }
-    return { flags, busy };
+    return flags;
 }

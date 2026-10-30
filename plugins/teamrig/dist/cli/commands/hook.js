@@ -69,7 +69,7 @@ import { envSession, hookScopeOf, parseJson, sessionScopeOf, sessionTeam, startS
 import { tabStatusOn, tabTitleOf } from "./hook-tab-status.js";
 import { logPrompt, logReply, logStart } from "./hook-turn-log.js";
 import { keepWorkingReasonOf } from "./keep-working.js";
-import { retireAskReasonOf } from "./retire-ask.js";
+import { lastTaskAskReasonOf } from "./last-task-ask.js";
 import { verifyByLinesOf, verifyStartNoteOf } from "./verify-queue.js";
 /**
  * Claude Code hooks. Each reads the hook's JSON from stdin and prints only what Claude Code
@@ -779,15 +779,15 @@ async function modelNoticesOf(runtime, scope, payload) {
     });
 }
 /**
- * The one-time ask that sends the session back at this turn's end: for a hired session, to retire itself
- * (retire-ask.ts), else, while a task of it waits, to work its other tasks (keep-working.ts). None on a stop the
+ * The one-time ask that sends the session back at this turn's end: for a hired session, to write its handover
+ * (last-task-ask.ts), else, while a task of it waits, to work its other tasks (keep-working.ts). None on a stop the
  * hook already blocked, or while the refresh blocks or waits for its restart, so the asks wait for a later stop.
  */
 async function askBlockOf(runtime, scope, payload, decision) {
     if (payload['stop_hook_active'] === true || decision.kind === 'block' || decision.kind === 'notice') {
         return undefined;
     }
-    return (await retireAskReasonOf(runtime, scope.config, scope.kit.paths, scope.id)) ?? keepWorkingReasonOf(runtime, scope);
+    return (await lastTaskAskReasonOf(runtime, scope.config, scope.kit.paths, scope.id)) ?? keepWorkingReasonOf(runtime, scope);
 }
 /**
  * The tab's title at this turn's end with tab status on (hook-tab-status.ts): a circle before the refresh

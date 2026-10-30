@@ -19,7 +19,7 @@ export function sessionFilesOf(paths, id) {
         join(paths.usage, `${id}.json`),
         join(paths.warn, `${id}.json`),
         // SessionAskStore, src/core/session-asks.ts
-        join(paths.retireAsks, `${id}.json`),
+        join(paths.lastTaskAsks, `${id}.json`),
         join(paths.keepWorkingAsks, `${id}.json`),
         // WakeStore and its lock, src/wake/store.ts, and WakePrompts, src/wake/prompts.ts
         ...['json', 'lock', 'prompt.json'].map((suffix) => join(paths.wake, `${id}.${suffix}`)),

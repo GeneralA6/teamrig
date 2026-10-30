@@ -56,7 +56,7 @@ import { readContextInput } from "./doctor.js";
 import { inboxDepsOf } from "./inbox.js";
 import { markBoundary } from "./refresh.js";
 import { markKeepWorkingAsk } from "./keep-working.js";
-import { markRetireAsk } from "./retire-ask.js";
+import { markLastTaskAsk } from "./last-task-ask.js";
 import { openTeam, postNamed, teamOf, tellAssigned, tellLine } from "./register-team.js";
 import { askTeam, treeCallerOf } from "./team-ask.js";
 /** What a time the caller types is read against: this moment and the zone of the caller's own team. */
@@ -405,7 +405,7 @@ export async function set(args, runtime) {
         await markBoundary(runtime, config, paths, by, id);
     }
     if (verdict.ok && (input.status === 'done' || input.status === 'dropped')) {
-        await markRetireAsk(runtime, config, paths, verdict.value);
+        await markLastTaskAsk(runtime, config, paths, verdict.value);
     }
     if (verdict.ok && input.status === 'waiting') {
         await markKeepWorkingAsk(runtime, paths, verdict.value);
@@ -842,9 +842,9 @@ export async function checkReport(args, runtime) {
     const over = burstsOver(bursts.records, now.getTime(), usedPct);
     const tasks = [...own.snapshot.state.tasks.values()];
     const { spare, hirePct } = await readScaleOutBudget(runtime, own.paths, own.config, tasks, bursts, now.getTime());
-    const input = { hires: activeHires(records), tasks, config: own.config, burstsOver: over, now };
-    const scaleOut = scaleOutFlags({ ...input, tree: new TaskTree(own.snapshot.state.tasks, now, zone, week, own.elsewhere), spare, hirePct });
-    const hires = [...scaleOut.flags, ...hireFlags(input, scaleOut.busy)];
+    const input = { hires: activeHires(records), config: own.config, burstsOver: over, now };
+    const scaleOut = scaleOutFlags({ ...input, tasks, tree: new TaskTree(own.snapshot.state.tasks, now, zone, week, own.elsewhere), spare, hirePct });
+    const hires = [...scaleOut, ...hireFlags(input)];
     const scope = week === null ? 'no week plan tagged yet, so the week checks are skipped' : `week ${week}`;
     const loaded = await loadTree(runtime);
     const decisions = await leadDecisionsOf(runtime, own, loaded, now.getTime(), zone);

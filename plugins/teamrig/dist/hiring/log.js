@@ -1,26 +1,30 @@
 import { assertWritable, parseJsonl, toJsonlLine, VERSION_FIELD } from "../core/jsonl.js";
-import { HIRE_FORMAT, isHire, readHiringLog } from "./record.js";
+import { HIRE_FORMAT, readHiringLog } from "./record.js";
 function recordOf(record) {
     const base = { [VERSION_FIELD]: HIRE_FORMAT, kind: record.kind, session: record.session, reason: record.reason, by: record.by, at: new Date(record.at).toISOString() };
-    if (!isHire(record)) {
-        return {
-            ...base,
-            ...(record.handover === undefined ? {} : { handover: record.handover }),
-            ...(record.noHandover === undefined ? {} : { noHandover: record.noHandover }),
-            ...(record.heir === undefined ? {} : { heir: record.heir }),
-        };
+    switch (record.kind) {
+        case 'retire':
+            return {
+                ...base,
+                ...(record.handover === undefined ? {} : { handover: record.handover }),
+                ...(record.noHandover === undefined ? {} : { noHandover: record.noHandover }),
+                ...(record.heir === undefined ? {} : { heir: record.heir }),
+            };
+        case 'keep':
+            return { ...base, reviewBy: record.reviewBy };
+        case 'hire':
+            return {
+                ...base,
+                scope: record.scope,
+                ...(record.approvedBy === undefined ? {} : { approvedBy: record.approvedBy }),
+                ...(record.model === undefined ? {} : { model: record.model }),
+                ...(record.effort === undefined ? {} : { effort: record.effort }),
+                reviewBy: record.reviewBy,
+                ...(record.burst === undefined ? {} : { burst: new Date(record.burst).toISOString() }),
+            };
     }
-    return {
-        ...base,
-        scope: record.scope,
-        ...(record.approvedBy === undefined ? {} : { approvedBy: record.approvedBy }),
-        ...(record.model === undefined ? {} : { model: record.model }),
-        ...(record.effort === undefined ? {} : { effort: record.effort }),
-        reviewBy: record.reviewBy,
-        ...(record.burst === undefined ? {} : { burst: new Date(record.burst).toISOString() }),
-    };
 }
-/** The team's append-only log of hires and retires, `<state>/hires.jsonl`, oldest first. */
+/** The team's append-only log of hires, keeps and retires, `<state>/hires.jsonl`, oldest first. */
 export class HiringLog {
     files;
     path;
