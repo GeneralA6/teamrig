@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { claudeMemoryDir } from '../doctor/context-files.ts';
 import { MemoryFiles, MemoryPathProbe } from '../testing/memory-files.ts';
-import { importsOf, IMPORT_DEPTH, listingLineOf, MEMORY_INDEX_LINES, readSessionContext, type SessionContextLocations } from './scan-context.ts';
+import { agentLineOf, importsOf, IMPORT_DEPTH, listingLineOf, MEMORY_INDEX_LINES, readSessionContext, type SessionContextLocations } from './scan-context.ts';
 
 const USER_HOME = resolve('/', 'u');
 const CLAUDE_DIR = join(USER_HOME, '.claude');
@@ -37,6 +37,11 @@ describe('importsOf', () => {
 describe('listingLineOf', () => {
   it('lists a skill as Claude Code does, one line per skill', () => {
     assert.equal(listingLineOf('alpha-check', 'Checks alpha.'), '- alpha-check: Checks alpha.\n');
+  });
+
+  it('lists an agent type with the tools it may use, every tool when it names none (T1232)', () => {
+    assert.equal(agentLineOf('code-reader', 'Reads code.', 'Read, Grep'), '- code-reader: Reads code. (Tools: Read, Grep)\n');
+    assert.equal(agentLineOf('runner', 'Runs checks.', undefined), '- runner: Runs checks. (Tools: *)\n');
   });
 });
 
@@ -89,11 +94,36 @@ describe('readSessionContext', () => {
     const { files, probe } = world();
     const context = await readSessionContext(files, probe, AT);
     assert.deepEqual(
-      context.skills.map((skill) => [skill.name, skill.path, skill.description, skill.line]),
+      context.skills.map((skill) => [skill.name, skill.path, skill.description, skill.line, skill.scope]),
       [
-        ['alpha-check', join(CLAUDE_DIR, 'skills', 'alpha-check', 'SKILL.md').replaceAll('\\', '/'), 'Checks alpha.', '- alpha-check: Checks alpha.\n'],
-        ['beta-run', join(PROJECT, '.claude', 'skills', 'beta-run', 'SKILL.md').replaceAll('\\', '/'), 'Runs beta.', '- beta-run: Runs beta.\n'],
+        ['alpha-check', join(CLAUDE_DIR, 'skills', 'alpha-check', 'SKILL.md').replaceAll('\\', '/'), 'Checks alpha.', '- alpha-check: Checks alpha.\n', 'user'],
+        ['beta-run', join(PROJECT, '.claude', 'skills', 'beta-run', 'SKILL.md').replaceAll('\\', '/'), 'Runs beta.', '- beta-run: Runs beta.\n', 'project'],
       ],
+    );
+  });
+
+  it("lists the user's agent types and then the project's, by frontmatter name, else file name (T1232)", async () => {
+    const { files, probe } = world({
+      [join(CLAUDE_DIR, 'agents', 'reader.md')]: '---\nname: code-reader\ndescription: Reads code.\ntools: Read, Grep\n---\nBody.\n',
+      [join(CLAUDE_DIR, 'agents', 'notes.txt')]: 'Not an agent type.\n',
+      [join(PROJECT, '.claude', 'agents', 'runner.md')]: '---\ndescription: Runs checks.\n---\nBody.\n',
+    });
+    const context = await readSessionContext(files, probe, AT);
+    assert.deepEqual(
+      context.agents.map((agent) => [agent.name, agent.path, agent.description, agent.line, agent.scope]),
+      [
+        ['code-reader', join(CLAUDE_DIR, 'agents', 'reader.md'), 'Reads code.', '- code-reader: Reads code. (Tools: Read, Grep)\n', 'user'],
+        ['runner', join(PROJECT, '.claude', 'agents', 'runner.md'), 'Runs checks.', '- runner: Runs checks. (Tools: *)\n', 'project'],
+      ],
+    );
+  });
+
+  it('reads the agent types once when the project is the home folder, as the user\'s', async () => {
+    const { files, probe } = world({ [join(CLAUDE_DIR, 'agents', 'runner.md')]: '---\ndescription: Runs checks.\n---\n' });
+    const context = await readSessionContext(files, probe, { ...AT, project: USER_HOME });
+    assert.deepEqual(
+      context.agents.map((agent) => [agent.name, agent.scope]),
+      [['runner', 'user']],
     );
   });
 

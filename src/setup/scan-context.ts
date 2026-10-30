@@ -1,10 +1,10 @@
-import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import type { Files } from '../core/files.ts';
 import type { PathProbe } from '../core/path-probe.ts';
-import { expandHome, pathKey } from '../core/paths.ts';
+import { expandHome, pathKey, samePath } from '../core/paths.ts';
 import { claudeMdPaths, claudeMemoryDir, skillFolders } from '../doctor/context-files.ts';
 import { markdownBelow } from '../rules/places.ts';
-import { descriptionOf, splitFrontmatter } from '../skills/lint.ts';
+import { descriptionOf, frontmatterValue, splitFrontmatter } from '../skills/lint.ts';
 import { SkillDir } from '../skills/store.ts';
 
 /** Where a file every session loads comes from: a CLAUDE.md, a file one imports, an unconditional rule, the memory index or the team's rules. */
@@ -17,18 +17,28 @@ export interface LoadedFile {
   readonly text: string;
 }
 
-/** A user or project skill, and the line Claude Code lists it by in every call's context. */
-export interface ListedSkill {
+/** Where a listed skill or agent type comes from: the user's folder, listed in every project, or the project's own. */
+export type ListedScope = 'user' | 'project';
+
+/** A user or project skill or agent type, and the line Claude Code lists it by in every call's context. */
+export interface Listed {
   readonly name: string;
   readonly path: string;
   readonly description: string;
   readonly line: string;
+  readonly scope: ListedScope;
 }
 
-/** The files and skills a session in a project loads at its start. */
+/** A skill, listed in the Skill tool's listing. */
+export type ListedSkill = Listed;
+/** An agent type, listed in the Agent tool's listing. */
+export type ListedAgent = Listed;
+
+/** The files, skills and agent types a session in a project loads at its start. */
 export interface SessionContext {
   readonly files: readonly LoadedFile[];
   readonly skills: readonly ListedSkill[];
+  readonly agents: readonly ListedAgent[];
 }
 
 export interface SessionContextLocations {
@@ -54,6 +64,8 @@ const CODE = /```[\s\S]*?```|`[^`\n]*`/g;
 const IMPORT = /(?:^|\s)@(\S+)/g;
 /** A frontmatter `paths:` key: the rule loads only when a session works on a matching file. */
 const PATHS_KEY = /^paths\s*:/m;
+/** The extension of an agent type's file. */
+const AGENT_FILE = '.md';
 
 /** The files `text` imports, as absolute paths: `~/` from the home folder, a relative one from the importing file's folder. */
 export function importsOf(text: string, importer: string, userHome: string): string[] {
@@ -67,6 +79,14 @@ export function importsOf(text: string, importer: string, userHome: string): str
 /** The listing line of a skill: `- name: description`, as Claude Code lists it. */
 export function listingLineOf(name: string, description: string): string {
   return `- ${name}: ${description}\n`;
+}
+
+/**
+ * The listing line of an agent type: its description and the tools its frontmatter `tools` names, `*` with no `tools`
+ * key. A `tools` key written as a YAML list reads as none, so its line lists `*`: a few characters short.
+ */
+export function agentLineOf(name: string, description: string, tools: string | undefined): string {
+  return listingLineOf(name, `${description} (Tools: ${tools ?? '*'})`);
 }
 
 /** Reads each path once, in order, as `kind`, skipping a missing file and one already loaded. */
@@ -116,18 +136,43 @@ async function readSkills(files: Files, at: SessionContextLocations): Promise<Li
   const listed: ListedSkill[] = [];
   for (const folder of skillFolders(at.skills, at.project)) {
     const dir = new SkillDir(files, folder);
+    const scope: ListedScope = samePath(folder, at.skills) ? 'user' : 'project';
     for (const skill of await dir.readAll()) {
       const description = descriptionOf(splitFrontmatter(skill.text).front) ?? '';
-      listed.push({ name: skill.name, path: dir.pathOf(skill.name), description, line: listingLineOf(skill.name, description) });
+      listed.push({ name: skill.name, path: dir.pathOf(skill.name), description, line: listingLineOf(skill.name, description), scope });
     }
   }
   return listed;
 }
 
+/** The agent types of the `.md` files directly in `folder`: each named by its frontmatter `name`, else its file name. */
+async function readAgentFolder(files: Files, folder: string, scope: ListedScope): Promise<ListedAgent[]> {
+  const listed: ListedAgent[] = [];
+  for (const file of (await files.list(folder)).filter((name) => name.endsWith(AGENT_FILE)).sort()) {
+    const path = join(folder, file);
+    const text = await files.read(path);
+    if (text !== undefined) {
+      const front = splitFrontmatter(text).front;
+      const name = frontmatterValue(front, 'name') ?? basename(file, AGENT_FILE);
+      const description = frontmatterValue(front, 'description') ?? '';
+      listed.push({ name, path, description, line: agentLineOf(name, description, frontmatterValue(front, 'tools') ?? undefined), scope });
+    }
+  }
+  return listed;
+}
+
+/** The user's agent types (`<claudeDir>/agents`), then the project's (`.claude/agents`), each folder read once. */
+async function readAgents(files: Files, at: SessionContextLocations): Promise<ListedAgent[]> {
+  const user = join(at.claudeDir, 'agents');
+  const project = join(at.project, '.claude', 'agents');
+  const own = samePath(user, project) ? [] : await readAgentFolder(files, project, 'project');
+  return [...(await readAgentFolder(files, user, 'user')), ...own];
+}
+
 /**
  * What every session in `at.project` loads at its start: the user's and the project's CLAUDE.md files and the files
  * they import with `@path`, the `.claude/rules` files without a `paths:` frontmatter, the first lines of the memory
- * index, the team's rules, and the listing of the user's and project's skills. It only reads.
+ * index, the team's rules, and the listings of the user's and project's skills and agent types. It only reads.
  */
 export async function readSessionContext(files: Files, probe: PathProbe, at: SessionContextLocations): Promise<SessionContext> {
   const loaded = new LoadedFiles(files);
@@ -148,5 +193,5 @@ export async function readSessionContext(files: Files, probe: PathProbe, at: Ses
   for (const path of at.teamRules) {
     await loaded.add('team-rules', path);
   }
-  return { files: loaded.files, skills: await readSkills(files, at) };
+  return { files: loaded.files, skills: await readSkills(files, at), agents: await readAgents(files, at) };
 }

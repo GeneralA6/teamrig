@@ -28,7 +28,7 @@ function shown(path: string): string {
 }
 
 function skill(name: string, description: string): ListedSkill {
-  return { name, path: `/u/.claude/skills/${name}/SKILL.md`, description, line: listingLineOf(name, description) };
+  return { name, path: `/u/.claude/skills/${name}/SKILL.md`, description, line: listingLineOf(name, description), scope: 'user' };
 }
 
 /** Names the transcripts show in use, in sessions whose start folder they did not say. */
@@ -52,6 +52,7 @@ const SCAN: SetupScan = {
       { kind: 'team-rules', path: TEAM_RULES, text: 'r'.repeat(100) },
     ],
     skills: [ALPHA, BETA],
+    agents: [],
   },
   listing: { count: 2, chars: ALPHA.line.length + BETA.line.length, sources: undefined },
   duplicates: [{ path: CLAUDE_MD, line: 3, text: RULE, firstPath: TEAM_RULES, firstLine: 1 }],
@@ -107,7 +108,7 @@ describe('scanReport', () => {
   it('before a team and its transcripts: the recorded listing, NEXT steps after team create, no skill judged unused, secrets redacted', () => {
     const scan: SetupScan = {
       ...SCAN,
-      context: { files: [], skills: [BETA] },
+      context: { files: [], skills: [BETA], agents: [] },
       listing: {
         count: 7,
         chars: 1200,
