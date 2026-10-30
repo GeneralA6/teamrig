@@ -1,5 +1,5 @@
 import { snapshotDirOf } from '../../budget/snapshot.ts';
-import { quietClaimText, readClaims } from '../../delivery/freezes.ts';
+import { quietClaimText, readFreezes } from '../../delivery/freezes.ts';
 import { holderText, sharesText, type LockState } from '../../delivery/host-lock.ts';
 import { parseLedger } from '../../delivery/ledger.ts';
 import { deliveryPlaces, teamPlace } from '../../delivery/places.ts';
@@ -86,13 +86,13 @@ export async function deployStatus(_args: ParsedArgs, runtime: CliRuntime): Prom
   say(`heavy cutoff: ${cutoffText(nowMs, delivery.schedule.queueCutoffUtc, zone)}`);
   const reset = await nextResetFrom(runtime, budget, snapshotDirOf(budget, kit.paths))(nowMs);
   say(`deploy blackout: ${blackoutText(nowMs, reset, delivery.schedule.resetBlackoutHours, zone)}`);
-  const claims = await readClaims(runtime.files, places.claims);
-  if (claims.kind === 'unreadable') {
-    say(`claims: unreadable (${claims.reason})`);
+  const freezes = await readFreezes(runtime.files, places.freezes);
+  if (freezes.kind === 'unreadable') {
+    say(`claims: unreadable (${freezes.reason})`);
   } else {
-    const open = claims.claims.filter((claim) => Date.parse(claim.until) > nowMs);
+    const open = freezes.freezes.filter((freeze) => Date.parse(freeze.until) > nowMs);
     say(`claims: ${open.length === 0 ? 'none' : open.length}`);
-    open.forEach((claim) => say(`  ${quietClaimText(claim, zone)}`));
+    open.forEach((freeze) => say(`  ${quietClaimText(freeze, zone)}`));
   }
   const loads = loadsOf(parseLedger((await runtime.files.read(places.ledger)) ?? ''), nowMs).filter((load) => load.open);
   say(`loads: ${loads.length === 0 ? 'none' : loads.length}`);

@@ -3,7 +3,7 @@ import type { Clock } from '../core/lock.ts';
 import type { SecretScanner } from '../core/secrets.ts';
 import { formatUtcMinute } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
-import { claimEndText, parseClaims, type Claim } from './freezes.ts';
+import { freezeEndText, parseFreezes, type Freeze } from './freezes.ts';
 import { holderText, type HostLock } from './host-lock.ts';
 
 /** The freezes for people to read, beside `claims.json`, and the lock their writers share. */
@@ -11,20 +11,20 @@ export const CLAIMS_MD_FILE = 'claims.md';
 export const CLAIMS_LOCK_FILE = 'claims.lock';
 
 /** The freezes are written under their own lock, held for one read and write: it lasts 60 s and is waited for 15 s. */
-export const CLAIMS_LOCK_TTL_MS = 60_000;
-const CLAIMS_LOCK_WAIT_MS = 15_000;
-const CLAIMS_LOCK_POLL_MS = 500;
+export const FREEZES_LOCK_TTL_MS = 60_000;
+const FREEZES_LOCK_WAIT_MS = 15_000;
+const FREEZES_LOCK_POLL_MS = 500;
 
 /** The first line of `claims.md`, as the team's own coordinator writes it, in the old name of a deploy freeze. */
 export const CLAIMS_MD_HEADER = '# Quiet claims: active only until their end time (see README.md, rule 3)';
 
-export interface ClaimPlaces {
-  readonly claims: string;
-  /** The freezes for people to read, rewritten with `claims` each time. */
-  readonly claimsMd: string;
+export interface FreezePlaces {
+  readonly freezes: string;
+  /** The freezes for people to read, rewritten with `freezes` each time. */
+  readonly freezesMd: string;
 }
 
-export interface ClaimPorts {
+export interface FreezePorts {
   readonly files: Pick<Files, 'read' | 'write'>;
   readonly clock: Clock;
   /** The team's clock, for the times a refusal names. */
@@ -33,7 +33,7 @@ export interface ClaimPorts {
   readonly lock: Pick<HostLock, 'acquire' | 'release'>;
 }
 
-export interface ClaimRequest {
+export interface FreezeRequest {
   readonly session: string;
   readonly targets: readonly string[];
   readonly metric: string;
@@ -41,7 +41,7 @@ export interface ClaimRequest {
   readonly minutes: number;
 }
 
-export interface ClaimRules {
+export interface FreezeRules {
   readonly maxMinutes: number;
   /** The deploy targets a freeze may name: the ones the coordinator's repositories deploy. */
   readonly knownTargets: readonly string[];
@@ -49,9 +49,9 @@ export interface ClaimRules {
 }
 
 /** How a change to the freezes ended: done, refused for good, or not made because another writer held the freezes. */
-export type ClaimOutcome<T> = { readonly kind: 'done'; readonly value: T } | { readonly kind: 'refused'; readonly reason: string } | { readonly kind: 'busy'; readonly reason: string };
+export type FreezeOutcome<T> = { readonly kind: 'done'; readonly value: T } | { readonly kind: 'refused'; readonly reason: string } | { readonly kind: 'busy'; readonly reason: string };
 
-type ClaimsChange<T> = { readonly kind: 'write'; readonly claims: readonly Claim[]; readonly value: T } | { readonly kind: 'refused'; readonly reason: string };
+type FreezesChange<T> = { readonly kind: 'write'; readonly freezes: readonly Freeze[]; readonly value: T } | { readonly kind: 'refused'; readonly reason: string };
 
 /** Text on one line, its runs of whitespace one space, since each freeze is one line of `claims.md`. */
 function oneLine(text: string): string {
@@ -59,7 +59,7 @@ function oneLine(text: string): string {
 }
 
 /** Why a freeze cannot be made whatever the freezes file holds; undefined when it can. */
-export function claimRefusal(request: ClaimRequest, rules: ClaimRules): string | undefined {
+export function freezeRefusal(request: FreezeRequest, rules: FreezeRules): string | undefined {
   if (!Number.isInteger(request.minutes) || request.minutes <= 0 || request.minutes > rules.maxMinutes) {
     return `a freeze lasts 1 to ${rules.maxMinutes} minutes (asked ${request.minutes})`;
   }
@@ -87,8 +87,8 @@ function shownTime(iso: string): string {
 }
 
 /** `claims.md`: its header, then `- <from> → <until> | <session> | <targets> | <metric> | <why>` a freeze, times in UTC. */
-export function renderClaimsMd(claims: readonly Claim[]): string {
-  const lines = claims.map((claim) => `- ${shownTime(claim.from)} → ${shownTime(claim.until)} | ${claim.session} | ${claim.targets.join(',')} | ${claim.metric} | ${claim.why}`);
+export function renderClaimsMd(freezes: readonly Freeze[]): string {
+  const lines = freezes.map((freeze) => `- ${shownTime(freeze.from)} → ${shownTime(freeze.until)} | ${freeze.session} | ${freeze.targets.join(',')} | ${freeze.metric} | ${freeze.why}`);
   return `${[CLAIMS_MD_HEADER, ...lines].join('\n')}\n`;
 }
 
@@ -96,8 +96,8 @@ export function renderClaimsMd(claims: readonly Claim[]): string {
  * Reads the freezes under their lock, drops the ended ones, applies `change` and writes both files. An unreadable
  * freezes file is left as it is and the change refused, since writing over it would drop the freezes it holds.
  */
-async function changeClaims<T>(ports: ClaimPorts, places: ClaimPlaces, session: string, change: (active: readonly Claim[]) => ClaimsChange<T>): Promise<ClaimOutcome<T>> {
-  const taking = await ports.lock.acquire(session, 'claims write', CLAIMS_LOCK_WAIT_MS, CLAIMS_LOCK_POLL_MS, () => undefined);
+async function changeFreezes<T>(ports: FreezePorts, places: FreezePlaces, session: string, change: (active: readonly Freeze[]) => FreezesChange<T>): Promise<FreezeOutcome<T>> {
+  const taking = await ports.lock.acquire(session, 'claims write', FREEZES_LOCK_WAIT_MS, FREEZES_LOCK_POLL_MS, () => undefined);
   if (taking.kind === 'busy') {
     return { kind: 'busy', reason: `the freezes are being written (${holderText(taking.holder, ports.zone)}); try again` };
   }
@@ -105,17 +105,17 @@ async function changeClaims<T>(ports: ClaimPorts, places: ClaimPlaces, session: 
     return { kind: 'busy', reason: 'its place in line for the freezes was withdrawn; try again' };
   }
   try {
-    const read = parseClaims(await ports.files.read(places.claims));
+    const read = parseFreezes(await ports.files.read(places.freezes));
     if (read.kind === 'unreadable') {
-      return { kind: 'refused', reason: `${places.claims} is unreadable (${read.reason}), so it is left as it is` };
+      return { kind: 'refused', reason: `${places.freezes} is unreadable (${read.reason}), so it is left as it is` };
     }
     const now = ports.clock.now();
-    const changed = change(read.claims.filter((claim) => Date.parse(claim.until) > now));
+    const changed = change(read.freezes.filter((freeze) => Date.parse(freeze.until) > now));
     if (changed.kind === 'refused') {
       return changed;
     }
-    await ports.files.write(places.claims, `${JSON.stringify(changed.claims, null, 2)}\n`);
-    await ports.files.write(places.claimsMd, renderClaimsMd(changed.claims));
+    await ports.files.write(places.freezes, `${JSON.stringify(changed.freezes, null, 2)}\n`);
+    await ports.files.write(places.freezesMd, renderClaimsMd(changed.freezes));
     return { kind: 'done', value: changed.value };
   } finally {
     await ports.lock.release(taking.lock);
@@ -123,18 +123,18 @@ async function changeClaims<T>(ports: ClaimPorts, places: ClaimPlaces, session: 
 }
 
 /** Adds the session's freeze, from now for `minutes`: one freeze a session at a time. */
-export async function addClaim(ports: ClaimPorts, places: ClaimPlaces, rules: ClaimRules, request: ClaimRequest): Promise<ClaimOutcome<Claim>> {
-  const refusal = claimRefusal(request, rules);
+export async function addFreeze(ports: FreezePorts, places: FreezePlaces, rules: FreezeRules, request: FreezeRequest): Promise<FreezeOutcome<Freeze>> {
+  const refusal = freezeRefusal(request, rules);
   if (refusal !== undefined) {
     return { kind: 'refused', reason: refusal };
   }
-  return changeClaims(ports, places, request.session, (active) => {
-    const own = active.find((claim) => claim.session === request.session);
+  return changeFreezes(ports, places, request.session, (active) => {
+    const own = active.find((freeze) => freeze.session === request.session);
     if (own !== undefined) {
-      return { kind: 'refused', reason: `${request.session} already holds a freeze until ${claimEndText(own.until, ports.zone)}; unfreeze it first (one per session)` };
+      return { kind: 'refused', reason: `${request.session} already holds a freeze until ${freezeEndText(own.until, ports.zone)}; unfreeze it first (one per session)` };
     }
     const now = ports.clock.now();
-    const claim: Claim = {
+    const freeze: Freeze = {
       session: request.session,
       targets: [...request.targets],
       metric: oneLine(request.metric),
@@ -142,15 +142,15 @@ export async function addClaim(ports: ClaimPorts, places: ClaimPlaces, rules: Cl
       from: new Date(now).toISOString(),
       until: new Date(now + request.minutes * 60_000).toISOString(),
     };
-    return { kind: 'write', claims: [...active, claim], value: claim };
+    return { kind: 'write', freezes: [...active, freeze], value: freeze };
   });
 }
 
 /** Ends the session's freeze; done with the freeze it ended, or undefined when it held none. */
-export async function releaseClaim(ports: ClaimPorts, places: ClaimPlaces, session: string): Promise<ClaimOutcome<Claim | undefined>> {
-  return changeClaims(ports, places, session, (active) => ({
+export async function endFreeze(ports: FreezePorts, places: FreezePlaces, session: string): Promise<FreezeOutcome<Freeze | undefined>> {
+  return changeFreezes(ports, places, session, (active) => ({
     kind: 'write',
-    claims: active.filter((claim) => claim.session !== session),
-    value: active.find((claim) => claim.session === session),
+    freezes: active.filter((freeze) => freeze.session !== session),
+    value: active.find((freeze) => freeze.session === session),
   }));
 }

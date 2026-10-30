@@ -20,9 +20,9 @@ import { deployRepo, type DeployEnd, type DeployRequest, type DeploySetup } from
 const PLACES: DeliveryPlaces = {
   ledger: '/team/deploys/ledger.jsonl',
   ledgerMd: '/team/deploys/ledger.md',
-  claims: '/team/deploys/claims.json',
-  claimsMd: '/team/deploys/claims.md',
-  claimsLock: '/team/deploys/claims.lock',
+  freezes: '/team/deploys/claims.json',
+  freezesMd: '/team/deploys/claims.md',
+  freezesLock: '/team/deploys/claims.lock',
   hostLock: '/kit/host.lock',
   pendingMerges: '/team/deploys/pending-merges',
   reviewHolds: '/team/deploys/review-holds',
@@ -43,7 +43,7 @@ const BY_HAND = 'a new deploy finds nothing pending, so run `node tools/deploy.j
 interface Options {
   readonly repos?: Readonly<Record<string, DeliveryRepoConfig>>;
   readonly schedule?: ScheduleConfig;
-  readonly claims?: string;
+  readonly freezes?: string;
 }
 
 class World {
@@ -56,7 +56,7 @@ class World {
   readonly setup: DeploySetup;
 
   constructor(options: Options = {}) {
-    this.files = new MemoryFiles(options.claims === undefined ? {} : { [PLACES.claims]: options.claims });
+    this.files = new MemoryFiles(options.freezes === undefined ? {} : { [PLACES.freezes]: options.freezes });
     this.lock = new HostLock(PLACES.hostLock, 150 * 60_000, { files: this.files, clock: this.clock, sleep: this.clock.sleep, pid: 7, alive: () => true, newId: () => 'lock-1' });
     const delivery: DeliveryConfig = {
       schedule: options.schedule ?? {},
@@ -210,8 +210,8 @@ describe('deployRepo', () => {
   });
 
   it('waits out a deploy freeze on its targets, and is refused at the queue cutoff', async () => {
-    const claim = { session: 'ops', targets: ['workers'], metric: 'p95', why: 'latency probe', from: '2030-01-08T09:50:00.000Z', until: '2030-01-08T10:05:00.000Z' };
-    const world = new World({ claims: JSON.stringify([claim]) });
+    const freeze = { session: 'ops', targets: ['workers'], metric: 'p95', why: 'latency probe', from: '2030-01-08T09:50:00.000Z', until: '2030-01-08T10:05:00.000Z' };
+    const world = new World({ freezes: JSON.stringify([freeze]) });
     assert.deepEqual(await world.run(), { kind: 'done', summary: 'c1..c2 deployed' });
     assert.ok(world.said.includes('waiting: deploy freeze by ops on workers until 2030-01-08 10:05 UTC (p95)'));
     assert.ok(world.clock.now() >= Date.parse('2030-01-08T10:05:00Z'));
