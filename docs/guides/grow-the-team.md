@@ -50,7 +50,8 @@ a new one ([Setting up a team](#setting-up-a-team)). You still talk to one lead:
 - Each team keeps its own folder, config, task list and inboxes. Its config names its parent team
   (`"team": {"id": "web", "parent": "your-team"}`), so the tree is read from the configs, with no other file to keep
   in step. A tree has at most 3 levels and a team at most 8 child teams. A child made by `team split` starts with a
-  copy of its parent's settings and shares its deploy coordinator, so heavy steps of both teams take turns.
+  copy of its parent's settings, but for the budget keys of the account's week, which it reads from the parent, and
+  shares its deploy coordinator, so heavy steps of both teams take turns.
 - The tree numbers its tasks from one count, so `T12` names one task in every team of it and a moved task keeps its
   number; a wait or an `after` may name another team's task. Work crosses teams as a task: `teamrig add --team web`
   puts it in that team's list, its lead gets a copy line, and the asker hears when it is done or dropped
