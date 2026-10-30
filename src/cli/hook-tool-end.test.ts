@@ -9,6 +9,7 @@ import { TOOL_END_WRITE_MS, type RestoreEntry } from '../restore/entry.ts';
 import { RestoreRegistry, restoreSessionsDir } from '../restore/registry.ts';
 import { TAB_CIRCLES } from '../tabs/status.ts';
 import { APP, CLAUDE_SESSION, CliHarness, KIT, TEAM, TEAM_HOME, titledPromptOf, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
+import { holdFileLock } from '../testing/held-file-lock.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { promptLine, transcript } from '../testing/transcript-lines.ts';
 import { WakeAsks } from '../wake/asks.ts';
@@ -156,7 +157,7 @@ describe('hook tool-end: a busy session sees its --wake now lines', () => {
     ] as const) {
       const kit = await alphaWithLine(true);
       if (locked) {
-        await kit.files.write(ALPHA_LOCK, JSON.stringify({ pid: 7, at: kit.clock.now() }));
+        await holdFileLock(kit, ALPHA_LOCK);
       }
       assert.deepEqual(await kit.run(['hook', 'tool-end'], { stdin, env: TITLE_ON }), NO_OUTPUT);
       assert.equal((await asksOf(kit)).length, 1);

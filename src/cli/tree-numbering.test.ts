@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { formatConfig } from '../config/load.ts';
 import type { Sleep } from '../core/lock.ts';
-import { CliHarness, TEAM_HOME } from '../testing/cli-harness.ts';
+import { CLI_PID, CliHarness, TEAM_HOME } from '../testing/cli-harness.ts';
+import { holdFileLock } from '../testing/held-file-lock.ts';
 import type { CliResult, RunOptions } from '../testing/cli-harness.ts';
 import { SUB_TEAMS, teamConfigOf, teamEventsOf, teamHomeOf, treeHarness } from '../testing/team-tree.ts';
 import { EXIT } from './runtime.ts';
@@ -23,9 +24,9 @@ function addedId(result: CliResult): string | undefined {
   return /^ADDED (\S+) /.exec(result.stdout[0] ?? '')?.[1];
 }
 
-/** A lock on the tree's numbering that another process took a moment ago, still well inside its TTL. */
+/** A lock on the tree's numbering that another running process took a moment ago. */
 async function holdRootIdsLock(kit: CliHarness, path = ROOT_IDS_LOCK): Promise<void> {
-  await kit.files.write(path, JSON.stringify({ pid: 9999, at: kit.clock.now() }));
+  await holdFileLock(kit, path);
 }
 
 /** A wait that lets every other run in flight go as far as it can first, as another process would. */
@@ -95,6 +96,8 @@ describe('one task numbering across a team tree (T1139)', () => {
 
   it('gives two adds started at once in two teams of the tree different numbers', async () => {
     const kit = await treeHarness();
+    // Both adds run as the kit's one pid, which runs, so each waits while the other holds the tree's lock.
+    kit.sessionProcesses.add({ pid: CLI_PID, parentPid: 1, name: 'node', commandLine: 'node teamrig add' });
     const results = await Promise.all([
       kit.run(add('Root task'), { sleep: yieldToOthers }),
       kit.run(add('Web task', '--owner', 'front'), inTeam('web', { sleep: yieldToOthers })),

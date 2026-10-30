@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { formatConfig } from '../config/load.ts';
 import { readEvents } from '../register/snapshot.ts';
 import { APP, CLAUDE_SESSION, CliHarness, contextOf, EVENTS_PATH, TEAM, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
+import { holdFileLock } from '../testing/held-file-lock.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { SUB_TEAMS, teamConfigOf, teamHomeOf, teamInboxOf, treeHarness } from '../testing/team-tree.ts';
 import { EXIT } from './runtime.ts';
@@ -161,7 +162,7 @@ describe('teamrig hook secret-redact: rotation tasks', () => {
     const files = new FaultyFiles(kit.files).fail('append', EVENTS_PATH, systemError('EACCES', 'EACCES: permission denied'));
     const refused = lineOf(await kit.run(['hook', 'secret-redact'], { stdin: ran(TOKEN), files, ...AS_ALPHA }));
     assert.match(refused, /Treat it as leaked: ask bravo to rotate it with a register task \(filing one failed: .*EACCES: permission denied.*\)\. Do not print it again\.$/);
-    await kit.files.write(join(TEAM_HOME, 'state', 'secret-incidents.lock'), JSON.stringify({ pid: 9001, at: kit.clock.now() }));
+    await holdFileLock(kit, join(TEAM_HOME, 'state', 'secret-incidents.lock'));
     const busy = lineOf(await kit.run(['hook', 'secret-redact'], { stdin: ran(TOKEN), ...AS_ALPHA }));
     assert.match(busy, /ask bravo to rotate it with a register task \(filing one failed: .+\)\./);
     assert.equal(createdIn(kit.files.get(EVENTS_PATH)).length, 0);

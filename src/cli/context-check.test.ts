@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { formatConfig } from '../config/load.ts';
 import { APP, CliHarness, SKILLS_DIR, TEAM, TEAM_HOME, type RunOptions } from '../testing/cli-harness.ts';
+import { holdFileLock } from '../testing/held-file-lock.ts';
 import { SUB_TEAMS, teamConfigOf, treeHarness } from '../testing/team-tree.ts';
 import { EXIT } from './runtime.ts';
 import { UNOWNED_FORGET_AFTER_MS } from './unowned-notices.ts';
@@ -100,7 +101,7 @@ describe('the warnings no session owns go to the lead (T951)', () => {
   it('warns and goes on when another start holds the lock, so the next start tells the lead', async () => {
     const kit = new CliHarness({ ...TEAM, contextFiles: { maxClaudeMdChars: BUDGET } });
     await kit.files.write(join(APP, 'CLAUDE.md'), 'x'.repeat(BUDGET + 1));
-    await kit.files.write(join(TEAM_HOME, 'state', 'unowned-notices.lock'), JSON.stringify({ pid: 99, at: kit.clock.now() }));
+    await holdFileLock(kit, join(TEAM_HOME, 'state', 'unowned-notices.lock'));
     const held = await kit.run(['start'], AS_ALPHA);
     assert.equal(held.code, EXIT.ok, held.stderr.join('\n'));
     assert.match(held.stderr.join('\n'), /^WARN lead was not told of the warnings no session owns: .*unowned-notices\.lock is held by another process/m);

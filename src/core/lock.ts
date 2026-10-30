@@ -13,7 +13,10 @@ export type Sleep = (ms: number) => Promise<void>;
 export const realSleep: Sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export interface LockTimings {
-  /** A lock older than this is presumed abandoned by a crashed holder and is taken over. */
+  /**
+   * The longest a holder keeps the lock: one older than this is taken over even while a process with its pid runs,
+   * since that pid may be another process's by then. A lock whose process is gone is taken over at once.
+   */
   readonly ttlMs: number;
   /** How often a waiter retries. */
   readonly pollMs: number;
@@ -38,6 +41,8 @@ export interface FileLockDeps {
   readonly clock: Clock;
   readonly sleep: Sleep;
   readonly pid: number;
+  /** Whether a process with this pid runs. */
+  alive(pid: number): boolean;
   /** A new id, unique to each taking of a lock. */
   newId(): string;
 }
@@ -50,18 +55,23 @@ interface Holder {
 }
 
 /**
- * A cross-process lock: an exclusively created file holding `{pid, at, id}`, the id new at each taking. A holder
- * that crashed leaves the file behind, so a lock older than `ttlMs` is removed and retried. Tasks must finish
- * well inside `ttlMs`; the kit's own writes take milliseconds. A holder releases the lock only while it still
- * holds its own taking, so a lock another process took over meanwhile stays.
+ * A cross-process lock: an exclusively created file holding `{pid, at, id}`, the id new at each taking; the file
+ * appears whole or not at all (`Files.createExclusive`). A lock is stale once its process is gone, it is older than
+ * `ttlMs` or it cannot be read, and a waiter then takes it over; a live holder is waited for. Waiters take over one at
+ * a time, each while it holds `<lock>.takeover`, and remove the lock only while it still reads as the one they
+ * judged, so a lock another waiter took meanwhile stays. A holder releases the lock only while it still holds its own
+ * taking. A takeover guard is stale as a lock is; it is held for milliseconds, so one is stale only when its waiter
+ * died mid-takeover.
  */
 export class FileLock implements Mutex {
   private readonly path: string;
+  private readonly guard: string;
   private readonly timings: LockTimings;
   private readonly deps: FileLockDeps;
 
   constructor(path: string, timings: LockTimings, deps: FileLockDeps) {
     this.path = path;
+    this.guard = `${path}.takeover`;
     this.timings = timings;
     this.deps = deps;
   }
@@ -71,21 +81,21 @@ export class FileLock implements Mutex {
     try {
       return await task();
     } finally {
-      await this.release(id);
+      await this.removeIf(this.path, (text) => holderOf(text)?.id === id);
     }
   }
 
   /** Takes the lock, waiting while another holds it; the id of this taking. */
   private async acquire(): Promise<string> {
-    const { files, clock, sleep, pid } = this.deps;
+    const { files, clock, sleep } = this.deps;
     const id = this.deps.newId();
     const deadline = clock.now() + this.timings.waitMs;
     for (;;) {
-      if (await files.createExclusive(this.path, JSON.stringify({ pid, at: clock.now(), id }))) {
+      if (await this.create(this.path, id)) {
         return id;
       }
-      if (this.isStale(await files.read(this.path), clock.now())) {
-        await files.remove(this.path);
+      const seen = await files.read(this.path);
+      if (seen !== undefined && this.isStale(seen) && (await this.takeOver(seen, id))) {
         continue;
       }
       if (clock.now() >= deadline) {
@@ -95,21 +105,51 @@ export class FileLock implements Mutex {
     }
   }
 
-  /** Removes the lock while it is still the taking `id`; a lock another process took meanwhile stays. */
-  private async release(id: string): Promise<void> {
-    const text = await this.deps.files.read(this.path);
-    if (text !== undefined && holderOf(text)?.id === id) {
-      await this.deps.files.remove(this.path);
+  /**
+   * Removes the stale lock `seen` while this waiter holds the takeover guard, and only while the lock still reads
+   * `seen`. False when another waiter holds the guard; a stale guard is cleared for the next try.
+   */
+  private async takeOver(seen: string, id: string): Promise<boolean> {
+    if (!(await this.create(this.guard, id))) {
+      const held = await this.deps.files.read(this.guard);
+      if (held !== undefined && this.isStale(held)) {
+        await this.removeIf(this.guard, (text) => text === held);
+      }
+      return false;
+    }
+    try {
+      await this.removeIf(this.path, (text) => text === seen);
+      return true;
+    } finally {
+      await this.removeIf(this.guard, (text) => holderOf(text)?.id === id);
     }
   }
 
-  /** A lock that is unreadable or older than the TTL no longer protects anyone; a vanished one is simply retried. */
-  private isStale(text: string | undefined, now: number): boolean {
-    if (text === undefined) {
-      return false;
+  /** Creates the file `path` naming this process and the taking `id`; false when it exists. */
+  private async create(path: string, id: string): Promise<boolean> {
+    const { files, clock, pid } = this.deps;
+    return files.createExclusive(path, JSON.stringify({ pid, at: clock.now(), id }));
+  }
+
+  /** Removes the file `path` while its text still passes `still`, so a file another process wrote meanwhile stays. */
+  private async removeIf(path: string, still: (text: string) => boolean): Promise<void> {
+    const text = await this.deps.files.read(path);
+    if (text !== undefined && still(text)) {
+      await this.deps.files.remove(path);
     }
+  }
+
+  /**
+   * A lock no longer protects anyone once its process is gone, it is older than `ttlMs` (its pid may be another
+   * process's by now) or it cannot be read (it appears whole, so it was damaged).
+   */
+  private isStale(text: string): boolean {
     const holder = holderOf(text);
-    return holder === undefined || now - holder.at > this.timings.ttlMs;
+    if (holder === undefined) {
+      return true;
+    }
+    const gone = holder.pid !== undefined && !this.deps.alive(holder.pid);
+    return gone || this.deps.clock.now() - holder.at > this.timings.ttlMs;
   }
 }
 

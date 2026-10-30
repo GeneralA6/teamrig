@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import { MS_PER_MINUTE } from '../core/time.ts';
 import { readMeetings, type ScheduledMeeting } from '../meeting/schedule.ts';
 import { APP, CliHarness, TEAM, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
+import { holdFileLock } from '../testing/held-file-lock.ts';
 import { FakeProcesses } from '../testing/fake-processes.ts';
 import { EXIT } from './runtime.ts';
 
@@ -88,7 +89,7 @@ describe('runCli: hook meeting-due', () => {
     const kit = await booked();
     kit.clock.advance(4 * HOUR);
     const held = kit.clock.now();
-    await kit.files.write(MEETINGS_LOCK, JSON.stringify({ pid: 99, at: held }));
+    await holdFileLock(kit, MEETINGS_LOCK, held);
     const processes = new FakeProcesses();
     assert.deepEqual(answerOf(await due(kit, processes)), { kind: 'due', notices: [], watch: [MEETINGS_PATH], recheckAt: held });
     assert.equal(processes.hidden.length, 0);
