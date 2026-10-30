@@ -1,10 +1,10 @@
 import { dirname } from 'node:path';
-import { claimText, coveringClaims, readClaims } from "../coordinator/claims.js";
-import { takeWhenClear } from "../coordinator/clearance.js";
-import { underLock } from "../coordinator/host-lock.js";
-import { appendDeploy } from "../coordinator/ledger.js";
-import { NOT_STARTED_EXIT, recordHeavy } from "../coordinator/recorded-step.js";
-import { heavyCutoffReason, resetBlackoutReason } from "../coordinator/schedule.js";
+import { coveringFreezes, freezeText, readFreezes } from "../delivery/freezes.js";
+import { takeWhenClear } from "../delivery/clearance.js";
+import { underLock } from "../delivery/host-lock.js";
+import { appendDeploy } from "../delivery/ledger.js";
+import { NOT_STARTED_EXIT, recordQueuedStep } from "../delivery/recorded-step.js";
+import { queueCutoffReason, resetBlackoutReason } from "../delivery/schedule.js";
 import { samePath } from "../core/paths.js";
 import { runDependencyCheck } from "../merge/dependencies.js";
 import { LOCKFILE } from "../merge/manifest.js";
@@ -15,9 +15,9 @@ import { deployRepos, plural, readPending, short } from "./pending.js";
  * `teamrig deploy`: brings what was pushed to a repository's default branch to the running system, one deploy on the host
  * at a time. It reads what is pending (the main checkout's `HEAD..origin/<default branch>`), refuses what it must not
  * pull (a main checkout off its default branch, with tracked changes or commits origin lacks, a dependency change the
- * gate holds), waits out the heavy cutoff's refusal, quiet claims on the deploy's targets and the team's checks, takes the
+ * gate holds), waits out the queue cutoff's refusal, deploy freezes on the deploy's targets and the team's checks, takes the
  * host lock, asks again, then pulls fast-forward to the sha it checked, checks and installs a dependency change, runs
- * the afterPull hooks and the deploy command, all one heavy step in the ledger, and records the deploy. Nothing pending
+ * the afterPull hooks and the deploy command, all one queued step in the ledger, and records the deploy. Nothing pending
  * is done with nothing run.
  */
 const MINUTE_MS = 60_000;
@@ -36,8 +36,8 @@ function runExitCode(run) {
 }
 /** The repository to deploy: the one named, else the one the folder is in, else the only one with a deploy block. */
 export function chosenRepo(setup, ports, request) {
-    const repos = Object.entries(setup.coordinator.repos);
-    const deployable = deployRepos(setup.coordinator, (path) => setup.inTeam(path));
+    const repos = Object.entries(setup.delivery.repos);
+    const deployable = deployRepos(setup.delivery, (path) => setup.inTeam(path));
     const names = deployable.length === 0 ? 'none has a deploy block' : `with a deploy block: ${deployable.map((repo) => repo.name).join(', ')}`;
     if (request.repo !== undefined) {
         const named = deployable.find((repo) => repo.name === request.repo);
@@ -45,7 +45,7 @@ export function chosenRepo(setup, ports, request) {
             return { kind: 'chosen', repo: named };
         }
         const listed = repos.some(([name]) => name === request.repo);
-        return { kind: 'refused', reason: listed ? `coordinator.repos.${request.repo} has no deploy block, so there is nothing to deploy it with (${names})` : `${request.repo} is not in coordinator.repos (${names})` };
+        return { kind: 'refused', reason: listed ? `delivery.repos.${request.repo} has no deploy block, so there is nothing to deploy it with (${names})` : `${request.repo} is not in delivery.repos (${names})` };
     }
     const here = ports.git.checkoutOf(request.dir);
     const folderMain = here === undefined ? undefined : (here.mainCheckout ?? here.top);
@@ -55,7 +55,7 @@ export function chosenRepo(setup, ports, request) {
     if (chosen !== undefined) {
         return { kind: 'chosen', repo: chosen };
     }
-    return { kind: 'refused', reason: deployable.length === 0 ? 'no repository in coordinator.repos has a deploy block' : `name the repository to deploy with --repo (${names})` };
+    return { kind: 'refused', reason: deployable.length === 0 ? 'no repository in delivery.repos has a deploy block' : `name the repository to deploy with --repo (${names})` };
 }
 /** Every hook's environment: this process's, with the deploy's `TEAMRIG_*` variables and `extra`. */
 function hookEnv(setup, ports, request, repo, pending, extra = {}) {
@@ -70,14 +70,14 @@ function hookEnv(setup, ports, request, repo, pending, extra = {}) {
     };
 }
 /**
- * What stops any change to `targets` before its checks are asked: the heavy cutoff and the reset blackout refuse it, a
- * quiet claim on one of them holds it; undefined when none does.
+ * What stops any change to `targets` before its checks are asked: the queue cutoff and the reset blackout refuse it, a
+ * deploy freeze on one of them holds it; undefined when none does.
  */
 export async function scheduleReadiness(setup, ports, targets) {
-    const { schedule } = setup.coordinator;
+    const { schedule } = setup.delivery;
     const now = ports.clock.now();
     const hours = schedule.resetBlackoutHours;
-    const refusal = heavyCutoffReason(now, schedule.heavyCutoffUtc, setup.zone) ??
+    const refusal = queueCutoffReason(now, schedule.queueCutoffUtc, setup.zone) ??
         (hours === undefined ? undefined : resetBlackoutReason(now, await ports.nextReset(now), hours, setup.zone));
     if (refusal !== undefined) {
         return { kind: 'refuse', reason: refusal };
@@ -85,12 +85,12 @@ export async function scheduleReadiness(setup, ports, targets) {
     if (targets.length === 0) {
         return undefined;
     }
-    const read = await readClaims(ports.files, setup.places.claims);
+    const read = await readFreezes(ports.files, setup.places.freezes);
     if (read.kind === 'unreadable') {
-        return { kind: 'wait', reason: `the quiet claims in ${setup.places.claims} are unreadable (${read.reason})` };
+        return { kind: 'wait', reason: `the deploy freezes in ${setup.places.freezes} are unreadable (${read.reason})` };
     }
-    const covering = coveringClaims(read.claims, targets, now);
-    return covering.length === 0 ? undefined : { kind: 'wait', reason: covering.map((claim) => claimText(claim, setup.zone)).join('; ') };
+    const covering = coveringFreezes(read.freezes, targets, now);
+    return covering.length === 0 ? undefined : { kind: 'wait', reason: covering.map((freeze) => freezeText(freeze, setup.zone)).join('; ') };
 }
 /** A hook's line as it is shown and recorded: redacted, and said as it comes. */
 export function shownBy(ports) {
@@ -125,7 +125,7 @@ function readinessOf(setup, ports, request, repo, view) {
             scanner: ports.scanner,
             cwd: repo.main,
             env: hookEnv(setup, ports, request, repo, view.range),
-            timeoutSeconds: setup.coordinator.checkTimeoutSeconds,
+            timeoutSeconds: setup.delivery.checkTimeoutSeconds,
         });
         if (phase === 'locked') {
             view.tag = answer.tag;
@@ -141,7 +141,7 @@ function readinessOf(setup, ports, request, repo, view) {
  */
 async function installDeps(setup, ports, repo, head, deps, env, show) {
     const { touches, check } = deps;
-    const timeoutMs = setup.coordinator.heavy.maxRunMinutes * MINUTE_MS;
+    const timeoutMs = setup.delivery.queue.maxRunMinutes * MINUTE_MS;
     const changed = `deps changed (${touches.join(', ')})`;
     if (check !== undefined) {
         ports.say(`${changed}: dependency check ${check.join(' ')}`);
@@ -168,7 +168,7 @@ async function installDeps(setup, ports, repo, head, deps, env, show) {
 /**
  * Under the host lock `lock`: pulls fast-forward to the checked sha, checks and installs a dependency change (see
  * {@link installDeps}), then runs the afterPull hooks and the deploy command, each line shown redacted. They get the
- * lock's token, so a `teamrig heavy` they start runs under this lock.
+ * lock's token, so a `teamrig queue` they start runs under this lock.
  */
 async function pullAndDeploy(setup, ports, request, repo, pending, tag, lock) {
     const pulled = ports.git.fastForward(repo.main, pending.target);
@@ -177,7 +177,7 @@ async function pullAndDeploy(setup, ports, request, repo, pending, tag, lock) {
     }
     ports.say(`pulled ${repo.main} to ${short(pending.target)}`);
     const env = underLock(hookEnv(setup, ports, request, repo, pending, { TEAMRIG_DEPLOY_TO: pending.target, ...(tag === undefined ? {} : { TEAMRIG_DEPLOY_TAG: tag }) }), lock);
-    const timeoutMs = setup.coordinator.heavy.maxRunMinutes * MINUTE_MS;
+    const timeoutMs = setup.delivery.queue.maxRunMinutes * MINUTE_MS;
     const show = shownBy(ports);
     if (pending.deps !== undefined) {
         const failed = await installDeps(setup, ports, repo, pending.head, pending.deps, env, show);
@@ -285,7 +285,7 @@ export async function deployRepo(setup, ports, request) {
     }
     ports.say(`${plural(early.pending.commits.length, 'commit')} pending in ${repo.name} (${early.pending.range})`);
     const view = { read: undefined, tag: undefined, range: early.pending };
-    const { wait } = setup.coordinator;
+    const { wait } = setup.delivery;
     const queuedAt = ports.clock.now();
     const clearance = await takeWhenClear(readinessOf(setup, ports, request, repo, view), ports, {
         session: request.session,
@@ -310,7 +310,7 @@ export async function deployRepo(setup, ports, request) {
         const { tag } = view;
         const startedAt = new Date(ports.clock.now()).toISOString();
         ports.say(`clear; pulling ${plural(pending.commits.length, 'commit')} (${pending.range}) into ${repo.main}`);
-        const run = await recordHeavy(ports, setup.places.ledger, { session: request.session, what: `deploy ${repo.name} ${pending.range}`, queuedAt }, () => pullAndDeploy(setup, ports, request, repo, pending, tag, clearance.lock), runExitCode);
+        const run = await recordQueuedStep(ports, setup.places.ledger, { session: request.session, what: `deploy ${repo.name} ${pending.range}`, queuedAt }, () => pullAndDeploy(setup, ports, request, repo, pending, tag, clearance.lock), runExitCode);
         return await settle(setup, ports, request, repo, pending, tag, startedAt, run);
     }
     finally {

@@ -1,7 +1,7 @@
-import { takeWhenClear } from "../coordinator/clearance.js";
-import { underLock } from "../coordinator/host-lock.js";
-import { appendDeploy } from "../coordinator/ledger.js";
-import { recordHeavy } from "../coordinator/recorded-step.js";
+import { takeWhenClear } from "../delivery/clearance.js";
+import { underLock } from "../delivery/host-lock.js";
+import { appendDeploy } from "../delivery/ledger.js";
+import { recordQueuedStep } from "../delivery/recorded-step.js";
 import { askChecks, shownLine } from "./checks.js";
 import { hookEndText, hookExitCode, succeeded } from "./hooks.js";
 import { short } from "./pending.js";
@@ -9,9 +9,9 @@ import { chosenRepo, scheduleReadiness, shownBy } from "./run.js";
 /**
  * `teamrig deploy --targets <a,b> --what "<why>" -- <command>`: a deploy that pulls nothing, such as the restart that
  * makes some of a repository's targets read a rotated secret on the same image. It goes by the rules of that
- * repository's deploy: the heavy cutoff and the reset blackout refuse it, quiet claims on the targets it names hold it,
- * and the repository's checks hold or refuse it, asked again under the host lock. Then it runs the command, one heavy
- * step in the ledger, and records a deploy of those targets, so `teamrig windows` counts only them as disturbed.
+ * repository's deploy: the queue cutoff and the reset blackout refuse it, deploy freezes on the targets it names hold it,
+ * and the repository's checks hold or refuse it, asked again under the host lock. Then it runs the command, one queued
+ * step in the ledger, and records a deploy of those targets, so `teamrig stable-periods` counts only them as disturbed.
  */
 const MINUTE_MS = 60_000;
 /** The checks' and the command's environment: this process's, with the deploy's `TEAMRIG_*` variables. */
@@ -28,7 +28,7 @@ function redeployEnv(setup, ports, request, repo) {
 /** Why the request may not deploy what it names: no targets, or one not in the repository's deploy targets. */
 function targetsProblem(repo, targets) {
     const known = repo.deploy.targets;
-    const listed = `coordinator.repos.${repo.name}.deploy.targets (${known.length === 0 ? 'none set' : known.join(', ')})`;
+    const listed = `delivery.repos.${repo.name}.deploy.targets (${known.length === 0 ? 'none set' : known.join(', ')})`;
     if (targets.length === 0) {
         return `name the targets the command restarts, from ${listed}`;
     }
@@ -36,7 +36,7 @@ function targetsProblem(repo, targets) {
     if (unknown.length === 0) {
         return undefined;
     }
-    return `${unknown.join(', ')} ${unknown.length === 1 ? 'is' : 'are'} not in ${listed}: a deploy names only targets the quiet claims and windows know`;
+    return `${unknown.join(', ')} ${unknown.length === 1 ? 'is' : 'are'} not in ${listed}: a deploy names only targets the deploy freezes and stable periods know`;
 }
 /** Under the host lock: runs the command with the lock's token in its environment, each line shown redacted. */
 async function runCommand(setup, ports, request, env) {
@@ -46,7 +46,7 @@ async function runCommand(setup, ports, request, env) {
         argv: request.argv,
         cwd: request.dir,
         env,
-        timeoutMs: setup.coordinator.heavy.maxRunMinutes * MINUTE_MS,
+        timeoutMs: setup.delivery.queue.maxRunMinutes * MINUTE_MS,
         onLine: (line) => {
             const shown = show(line).trim();
             if (shown !== '') {
@@ -69,7 +69,7 @@ export async function redeployTargets(setup, ports, request) {
     }
     const early = ports.git.sha(repo.main, 'HEAD');
     if (early === undefined) {
-        return { kind: 'refused', reason: `${repo.main} (coordinator.repos.${repo.name}.mainCheckout) names no commit at HEAD, so the deploy could not record what it ran on` };
+        return { kind: 'refused', reason: `${repo.main} (delivery.repos.${repo.name}.mainCheckout) names no commit at HEAD, so the deploy could not record what it ran on` };
     }
     const targets = request.targets.join(', ');
     const env = redeployEnv(setup, ports, request, repo);
@@ -78,10 +78,10 @@ export async function redeployTargets(setup, ports, request) {
         if (stopped !== undefined) {
             return stopped;
         }
-        const answer = await askChecks(repo.deploy.checks, phase, { hooks: ports.hooks, scanner: ports.scanner, cwd: repo.main, env, timeoutSeconds: setup.coordinator.checkTimeoutSeconds });
+        const answer = await askChecks(repo.deploy.checks, phase, { hooks: ports.hooks, scanner: ports.scanner, cwd: repo.main, env, timeoutSeconds: setup.delivery.checkTimeoutSeconds });
         return answer.readiness;
     };
-    const { wait } = setup.coordinator;
+    const { wait } = setup.delivery;
     const queuedAt = ports.clock.now();
     const clearance = await takeWhenClear(readiness, ports, {
         session: request.session,
@@ -99,7 +99,7 @@ export async function redeployTargets(setup, ports, request) {
         const head = ports.git.sha(repo.main, 'HEAD') ?? early;
         ports.say(`clear; deploying ${targets} of ${repo.name}: ${request.argv.join(' ')}`);
         const what = `deploy ${request.targets.join(',')} of ${repo.name}`;
-        const run = await recordHeavy(ports, setup.places.ledger, { session: request.session, what, queuedAt }, () => runCommand(setup, ports, request, underLock(env, clearance.lock)), (ran) => hookExitCode(ran.end));
+        const run = await recordQueuedStep(ports, setup.places.ledger, { session: request.session, what, queuedAt }, () => runCommand(setup, ports, request, underLock(env, clearance.lock)), (ran) => hookExitCode(ran.end));
         const why = shownLine(ports.scanner, request.why);
         const said = run.lastLine === undefined ? '' : `: ${run.lastLine}`;
         if (run.end.kind === 'notStarted') {

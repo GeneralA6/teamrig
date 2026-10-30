@@ -47,7 +47,7 @@ async function findHooklessTabs(runtime, kit, config, now) {
  * hook waits for, it reads the team's restore entries whose hooks last wrote over `HOOKLESS_MS` ago, stats their
  * transcripts and reads the end of each that moved since, then posts one inbox line for each tab that started
  * running turns without its hooks to the lead
- * (the coordinator's owner for the lead's own tab), from teamrig. A turn end that is not due reads one small
+ * (the delivery owner for the lead's own tab), from teamrig. A turn end that is not due reads one small
  * file. A tab with no hook since its start has no entry and is not seen (the idle pass names a reopened one,
  * src/cli/hookless-reopen.ts); nor is any tab while no tab of the team
  * has its hooks. It returns the lines not posted (a secret pattern, a reader's team above with no config), for the

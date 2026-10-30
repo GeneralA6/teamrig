@@ -4,7 +4,7 @@ import { exitCodeOf } from "./steps.js";
 /** The exit code recorded for a step that could not start, as a missing folder makes it. */
 export const NOT_STARTED_EXIT = 1;
 /**
- * Marks for the heavy steps one taking of the host lock runs, in order: only the first carries `queuedAt`, when the
+ * Marks for the queued steps one taking of the host lock runs, in order: only the first carries `queuedAt`, when the
  * taking began to wait, since a later step's wait would count the steps before it.
  */
 export function marksOfTaking(session, queuedAt) {
@@ -16,12 +16,12 @@ export function marksOfTaking(session, queuedAt) {
     };
 }
 /**
- * Runs `work` as one heavy step, its start and its end each a ledger record naming this teamrig's version, the end
+ * Runs `work` as one queued step, its start and its end each a ledger record naming this teamrig's version, the end
  * with the exit code `exitOf` reads from its result; work that throws is recorded as exit 1 and its error rethrown.
  * With `watch`, the end record carries the most the step's process tree held and the least free memory the host had
  * while it ran.
  */
-export async function recordHeavy(ports, ledger, mark, work, exitOf, watch) {
+export async function recordQueuedStep(ports, ledger, mark, work, exitOf, watch) {
     const start = {
         type: 'heavy',
         id: ports.newId(),
@@ -49,9 +49,9 @@ export async function recordHeavy(ports, ledger, mark, work, exitOf, watch) {
     }
 }
 /**
- * Runs a heavy step, its start and its end each a ledger record, its memory watched with `watch`; a step that could
+ * Runs a queued step, its start and its end each a ledger record, its memory watched with `watch`; a step that could
  * not start is recorded as exit 1 and its error rethrown.
  */
 export async function runRecorded(ports, ledger, step, watch) {
-    return recordHeavy(ports, ledger, step, () => ports.steps.run(step.request), exitCodeOf, watch);
+    return recordQueuedStep(ports, ledger, step, () => ports.steps.run(step.request), exitCodeOf, watch);
 }

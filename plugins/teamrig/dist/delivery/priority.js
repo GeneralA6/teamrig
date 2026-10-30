@@ -5,7 +5,7 @@ export const NODE_PRIORITIES = {
     set: (pid, priority) => setPriority(pid, priority),
 };
 /**
- * A heavy step's priority: below normal (Windows' class of that name, nice 10 on POSIX), so the owner's terminal and
+ * A queued step's priority: below normal (Windows' class of that name, nice 10 on POSIX), so the owner's terminal and
  * apps win the CPU while it runs and it takes what they leave (T1512). The processes it starts inherit it.
  */
 export const STEP_PRIORITY = constants.priority.PRIORITY_BELOW_NORMAL;

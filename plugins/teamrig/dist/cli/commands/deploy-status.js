@@ -1,12 +1,12 @@
 import { snapshotDirOf } from "../../budget/snapshot.js";
-import { claimText, readClaims } from "../../coordinator/claims.js";
-import { holderText, sharesText } from "../../coordinator/host-lock.js";
-import { parseLedger } from "../../coordinator/ledger.js";
-import { coordinatorPlaces, teamPlace } from "../../coordinator/places.js";
-import { blackoutStart, heavyCutoffSpan } from "../../coordinator/schedule.js";
-import { loadsOf } from "../../coordinator/windows.js";
+import { quietClaimText, readFreezes } from "../../delivery/freezes.js";
+import { holderText, sharesText } from "../../delivery/host-lock.js";
+import { parseLedger } from "../../delivery/ledger.js";
+import { deliveryPlaces, teamPlace } from "../../delivery/places.js";
+import { blackoutStart, queueCutoffSpan } from "../../delivery/schedule.js";
+import { jobsOf } from "../../delivery/stable-periods.js";
 import { deployRepos, plural, readPending, short } from "../../deploy/pending.js";
-import { hostLockOf, nextResetFrom } from "../coordinator-ports.js";
+import { hostLockOf, nextResetFrom } from "../delivery-ports.js";
 import { openTeamKit, requireConfig, teamZone } from "../kit.js";
 import { EXIT } from "../runtime.js";
 function lockText(state, zone) {
@@ -21,16 +21,16 @@ function lockText(state, zone) {
     }
 }
 function cutoffText(nowMs, cutoffUtc, zone) {
-    const span = heavyCutoffSpan(nowMs, cutoffUtc);
+    const span = queueCutoffSpan(nowMs, cutoffUtc);
     if (span === undefined) {
-        return 'none (coordinator.schedule.heavyCutoffUtc is not set)';
+        return 'none (delivery.schedule.queueCutoffUtc is not set)';
     }
     const inForce = nowMs >= span.from ? 'IN FORCE ' : '';
     return `${inForce}${zone.clockSpan(new Date(span.from), new Date(span.to))} (no heavy step starts)`;
 }
 function blackoutText(nowMs, reset, hours, zone) {
     if (hours === undefined) {
-        return 'none (coordinator.schedule.resetBlackoutHours is not set)';
+        return 'none (delivery.schedule.resetBlackoutHours is not set)';
     }
     if (reset === undefined) {
         return 'unknown: neither the status line nor budget.reset names the weekly token reset';
@@ -39,9 +39,9 @@ function blackoutText(nowMs, reset, hours, zone) {
     const inForce = nowMs >= from ? 'IN FORCE ' : '';
     return `${inForce}${zone.weekdayMinute(new Date(from))} until ${zone.weekdayMinute(new Date(reset.at))} (no merge or deploy; reset from the ${reset.source})`;
 }
-function loadText(load, zone) {
-    const on = load.targets === 'host' ? 'the whole host' : load.targets.join(',');
-    return `  ${load.id} by ${load.session}: ${load.what} on ${on} since ${zone.minute(new Date(load.from))}`;
+function jobText(job, zone) {
+    const on = job.targets === 'host' ? 'the whole host' : job.targets.join(',');
+    return `  ${job.id} by ${job.session}: ${job.what} on ${on} since ${zone.minute(new Date(job.from))}`;
 }
 function pendingText(read) {
     switch (read.kind) {
@@ -57,41 +57,42 @@ function pendingText(read) {
 }
 /**
  * `teamrig deploy-status`: the deploy state now, in one read. The host lock's holder (a stale lock is free, since the next
- * heavy step removes it), the heavy cutoff and the reset blackout, the quiet claims and loads still open, and what each
- * repository with a deploy block has pushed but not deployed; it fetches each main checkout to tell. Exit 0.
+ * queued step removes it), the queue cutoff and the reset blackout, the deploy freezes and background jobs still open
+ * (its `claims:` and `loads:` lines, which keep their old names for the tools that read them), and what each repository
+ * with a deploy block has pushed but not deployed; it fetches each main checkout to tell. Exit 0.
  */
 export async function deployStatus(_args, runtime) {
     const nowMs = runtime.clock.now();
     const kit = await openTeamKit(runtime);
     const config = requireConfig(kit, runtime, 'read');
-    const { coordinator, budget } = config;
+    const { delivery, budget } = config;
     const zone = teamZone(config, runtime);
-    const places = coordinatorPlaces(coordinator, kit.paths);
+    const places = deliveryPlaces(delivery, kit.paths);
     const say = (line) => runtime.out.stdout(line);
-    const lock = hostLockOf(runtime, places.hostLock, coordinator.heavy);
+    const lock = hostLockOf(runtime, places.hostLock, delivery.queue);
     say(`host lock: ${lockText(await lock.state(), zone)}`);
     const shares = await lock.shares();
     if (shares.length > 0) {
         say(`sharing the host: ${sharesText(shares, zone)}`);
     }
-    say(`heavy cutoff: ${cutoffText(nowMs, coordinator.schedule.heavyCutoffUtc, zone)}`);
+    say(`heavy cutoff: ${cutoffText(nowMs, delivery.schedule.queueCutoffUtc, zone)}`);
     const reset = await nextResetFrom(runtime, budget, snapshotDirOf(budget, kit.paths))(nowMs);
-    say(`deploy blackout: ${blackoutText(nowMs, reset, coordinator.schedule.resetBlackoutHours, zone)}`);
-    const claims = await readClaims(runtime.files, places.claims);
-    if (claims.kind === 'unreadable') {
-        say(`claims: unreadable (${claims.reason})`);
+    say(`deploy blackout: ${blackoutText(nowMs, reset, delivery.schedule.resetBlackoutHours, zone)}`);
+    const freezes = await readFreezes(runtime.files, places.freezes);
+    if (freezes.kind === 'unreadable') {
+        say(`claims: unreadable (${freezes.reason})`);
     }
     else {
-        const open = claims.claims.filter((claim) => Date.parse(claim.until) > nowMs);
+        const open = freezes.freezes.filter((freeze) => Date.parse(freeze.until) > nowMs);
         say(`claims: ${open.length === 0 ? 'none' : open.length}`);
-        open.forEach((claim) => say(`  ${claimText(claim, zone)}`));
+        open.forEach((freeze) => say(`  ${quietClaimText(freeze, zone)}`));
     }
-    const loads = loadsOf(parseLedger((await runtime.files.read(places.ledger)) ?? ''), nowMs).filter((load) => load.open);
-    say(`loads: ${loads.length === 0 ? 'none' : loads.length}`);
-    loads.forEach((load) => say(loadText(load, zone)));
-    const repos = deployRepos(coordinator, (path) => teamPlace(kit.paths, path));
+    const jobs = jobsOf(parseLedger((await runtime.files.read(places.ledger)) ?? ''), nowMs).filter((job) => job.open);
+    say(`loads: ${jobs.length === 0 ? 'none' : jobs.length}`);
+    jobs.forEach((job) => say(jobText(job, zone)));
+    const repos = deployRepos(delivery, (path) => teamPlace(kit.paths, path));
     if (repos.length === 0) {
-        say('deploys: no repository in coordinator.repos has a deploy block');
+        say('deploys: no repository in delivery.repos has a deploy block');
     }
     for (const repo of repos) {
         say(`${repo.name}: ${pendingText(await readPending(runtime.mergeGit, repo))}`);

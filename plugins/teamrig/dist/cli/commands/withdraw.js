@@ -1,7 +1,7 @@
-import { coordinatorPlaces } from "../../coordinator/places.js";
+import { deliveryPlaces } from "../../delivery/places.js";
 import { ENV } from "../../core/home.js";
 import { UsageError } from "../args.js";
-import { hostLockOf } from "../coordinator-ports.js";
+import { hostLockOf } from "../delivery-ports.js";
 import { openTeamKit, requireConfig, rosterOf, teamZone } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { tabSessionOf } from "./tab-session.js";
@@ -30,7 +30,7 @@ function chosenOf(args) {
         return undefined;
     }
     if (what.trim() === '') {
-        throw new UsageError("--what names text in the step's purpose, such as its heavy label or a merge's repository");
+        throw new UsageError("--what names text in the step's purpose, such as a queued step's label or a merge's repository");
     }
     return { picks: (waiter) => waiter.purpose.includes(what), text: what };
 }
@@ -55,7 +55,7 @@ export function withdrawalText(withdrawal, zone) {
     }
 }
 /**
- * `teamrig withdraw (--what <text> | --all)`: takes this session's steps that wait for the host lock (heavy, merge,
+ * `teamrig withdraw (--what <text> | --all)`: takes this session's steps that wait for the host lock (queue, merge,
  * deploy) out of its line, so a re-ordered or abandoned step leaves it; each stops at its next look and runs nothing.
  * With neither flag it lists them and is refused. Exit 0 when each chosen step was withdrawn or none waits, 1 when
  * one went first or was queued by an older teamrig, 2 refused.
@@ -66,7 +66,7 @@ export async function withdraw(args, runtime) {
     const config = requireConfig(kit, runtime, 'read');
     const session = await ownSessionOf(args, runtime, kit, await rosterOf(runtime, kit, config));
     const zone = teamZone(config, runtime);
-    const lock = hostLockOf(runtime, coordinatorPlaces(config.coordinator, kit.paths).hostLock, config.coordinator.heavy);
+    const lock = hostLockOf(runtime, deliveryPlaces(config.delivery, kit.paths).hostLock, config.delivery.queue);
     if (chosen === undefined) {
         const waiting = (await lock.line()).filter((waiter) => waiter.session === session);
         if (waiting.length === 0) {

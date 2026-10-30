@@ -1,4 +1,4 @@
-import { coordinatorPlaces } from "../../coordinator/places.js";
+import { deliveryPlaces } from "../../delivery/places.js";
 import { formatAddress } from "../../core/address.js";
 import { KIT_NAME } from "../../core/home.js";
 import { SecretScanner } from "../../core/secrets.js";
@@ -103,7 +103,7 @@ function phaseLine(phase, mk) {
 }
 /** The self-merges digest's input: the team's merges log, read once, from the agenda's start. */
 async function mergeDigestOf(runtime, mk, since) {
-    const { merges } = coordinatorPlaces(mk.config.coordinator, mk.kit.paths);
+    const { merges } = deliveryPlaces(mk.config.delivery, mk.kit.paths);
     const gated = mk.config.pushGuard.pushToProtected === 'gated';
     return { log: await new MergeLog(runtime.files, merges).read(), since, zone: mk.zone, gated, path: merges };
 }

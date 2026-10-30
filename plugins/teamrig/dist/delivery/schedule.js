@@ -1,6 +1,6 @@
 import { MS_PER_DAY, MS_PER_HOUR, MS_PER_MINUTE, utcMinuteOf } from "../core/time.js";
-/** The part of `nowMs`'s UTC day when no heavy step starts: from `cutoffUtc` (`HH:MM`, UTC) until midnight UTC. Unset: none. */
-export function heavyCutoffSpan(nowMs, cutoffUtc) {
+/** The part of `nowMs`'s UTC day when no queued step starts: from `cutoffUtc` (`HH:MM`, UTC) until midnight UTC. Unset: none. */
+export function queueCutoffSpan(nowMs, cutoffUtc) {
     const cutoff = cutoffUtc === undefined ? undefined : utcMinuteOf(cutoffUtc);
     if (cutoff === undefined) {
         return undefined;
@@ -9,12 +9,12 @@ export function heavyCutoffSpan(nowMs, cutoffUtc) {
     return { from: dayStart + cutoff * MS_PER_MINUTE, to: dayStart + MS_PER_DAY };
 }
 /**
- * Why no heavy step may start at `nowMs`, or undefined when one may: none starts from `cutoffUtc` (`HH:MM`, UTC) until
+ * Why no queued step may start at `nowMs`, or undefined when one may: none starts from `cutoffUtc` (`HH:MM`, UTC) until
  * midnight UTC. Unset: no cutoff. The reason names the span and the time on `zone`'s clock.
  */
-export function heavyCutoffReason(nowMs, cutoffUtc, zone) {
-    const span = heavyCutoffSpan(nowMs, cutoffUtc);
-    return span !== undefined && nowMs >= span.from ? `nothing heavy ${zone.clockSpan(new Date(span.from), new Date(span.to))} (now ${zone.clock(new Date(nowMs))})` : undefined;
+export function queueCutoffReason(nowMs, cutoffUtc, zone) {
+    const span = queueCutoffSpan(nowMs, cutoffUtc);
+    return span !== undefined && nowMs >= span.from ? `queue cutoff ${zone.clockSpan(new Date(span.from), new Date(span.to))} (now ${zone.clock(new Date(nowMs))})` : undefined;
 }
 /** When the blackout before `reset` starts: `hours` before it. */
 export function blackoutStart(reset, hours) {

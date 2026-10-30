@@ -2,7 +2,7 @@
 export function repoTargetsOf(repo) {
     return [...new Set([...repo.deploysOnPush, ...(repo.deploy?.targets ?? [])])];
 }
-/** Every target a claim, a load or a window may name: what the team's repositories deploy on push and what their deploy blocks deploy, each once. */
+/** Every target a freeze, a job or a stable period may name: what the team's repositories deploy on push and what their deploy blocks deploy, each once. */
 export function deployTargetsOf(repos) {
     return [...new Set(Object.values(repos).flatMap(repoTargetsOf))];
 }

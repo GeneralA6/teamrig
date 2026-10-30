@@ -1,16 +1,16 @@
-import { HEAVY_TTL_MARGIN_MINUTES } from "../../config/defaults.js";
-import { holderText, underLock, waitText } from "../../coordinator/host-lock.js";
-import { parseLedger } from "../../coordinator/ledger.js";
-import { coordinatorPlaces } from "../../coordinator/places.js";
-import { passOf, PRE_PUSH_MAX_WAIT_MS, recordPass } from "../../coordinator/push-pass.js";
-import { runRecorded } from "../../coordinator/recorded-step.js";
-import { heavyCutoffReason, minutesText } from "../../coordinator/schedule.js";
-import { endedText } from "../../coordinator/starter-watch.js";
-import { exitCodeOf, STOPPED_EXIT, TIMED_OUT_EXIT } from "../../coordinator/steps.js";
+import { QUEUE_TTL_MARGIN_MINUTES } from "../../config/defaults.js";
+import { holderText, underLock, waitText } from "../../delivery/host-lock.js";
+import { parseLedger } from "../../delivery/ledger.js";
+import { deliveryPlaces } from "../../delivery/places.js";
+import { passOf, PRE_PUSH_MAX_WAIT_MS, recordPass } from "../../delivery/push-pass.js";
+import { runRecorded } from "../../delivery/recorded-step.js";
+import { queueCutoffReason, minutesText } from "../../delivery/schedule.js";
+import { endedText } from "../../delivery/starter-watch.js";
+import { exitCodeOf, STOPPED_EXIT, TIMED_OUT_EXIT } from "../../delivery/steps.js";
 import { ENV } from "../../core/home.js";
 import { commandLine } from "../../test-run/shell.js";
 import { requiredFlag, UsageError } from "../args.js";
-import { hostLockOf, logLineOf } from "../coordinator-ports.js";
+import { hostLockOf, logLineOf } from "../delivery-ports.js";
 import { commandWordsOf, sessionRef } from "../inputs.js";
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
@@ -25,43 +25,43 @@ const RESERVE_MARGIN = 1.25;
  * `--max-minutes`: whole minutes from 1 to the lock's TTL less its margin, so the step never outlives its lock, and for
  * a small step to `smallMaxRunMinutes`, so a step that shares the host stays short; unset, the config's.
  */
-function maxRunMinutesOf(args, heavy, small) {
+function maxRunMinutesOf(args, config, small) {
     const text = args.flags.get('max-minutes');
     if (text === undefined) {
-        return small ? heavy.smallMaxRunMinutes : heavy.maxRunMinutes;
+        return small ? config.smallMaxRunMinutes : config.maxRunMinutes;
     }
     const minutes = /^\d+$/.test(text) ? Number(text) : Number.NaN;
     if (small) {
-        if (!(minutes >= 1 && minutes <= heavy.smallMaxRunMinutes)) {
-            throw new UsageError(`--max-minutes with --small is a whole number from 1 to ${heavy.smallMaxRunMinutes} (coordinator.heavy.smallMaxRunMinutes): a longer step runs without --small`);
+        if (!(minutes >= 1 && minutes <= config.smallMaxRunMinutes)) {
+            throw new UsageError(`--max-minutes with --small is a whole number from 1 to ${config.smallMaxRunMinutes} (delivery.queue.smallMaxRunMinutes): a longer step runs without --small`);
         }
         return minutes;
     }
-    const longest = heavy.lockTtlMinutes - HEAVY_TTL_MARGIN_MINUTES;
+    const longest = config.lockTtlMinutes - QUEUE_TTL_MARGIN_MINUTES;
     if (!(minutes >= 1 && minutes <= longest)) {
-        throw new UsageError(`--max-minutes is a whole number from 1 to ${longest} (coordinator.heavy.lockTtlMinutes less ${HEAVY_TTL_MARGIN_MINUTES})`);
+        throw new UsageError(`--max-minutes is a whole number from 1 to ${longest} (delivery.queue.lockTtlMinutes less ${QUEUE_TTL_MARGIN_MINUTES})`);
     }
     return minutes;
 }
 function refuseAfterCutoff(runtime, cutoffUtc, zone) {
-    const reason = heavyCutoffReason(runtime.clock.now(), cutoffUtc, zone);
+    const reason = queueCutoffReason(runtime.clock.now(), cutoffUtc, zone);
     if (reason !== undefined) {
         throw new RefusedError(reason);
     }
 }
 /** How the step's memory is watched: its own process's tree, as often as the config says; undefined when it says 0. */
-function watchOf(runtime, heavy) {
-    return heavy.memorySampleSeconds === 0 ? undefined : { memory: runtime.memory, root: runtime.pid, intervalMs: heavy.memorySampleSeconds * 1_000 };
+function watchOf(runtime, config) {
+    return config.memorySampleSeconds === 0 ? undefined : { memory: runtime.memory, root: runtime.pid, intervalMs: config.memorySampleSeconds * 1_000 };
 }
 /**
  * The MB held for a small step: the most its process tree held in its latest `RESERVE_RUNS` ended runs, under the same
  * session and label in the ledger, with a quarter more; the config's `smallReserveMb` when none was measured.
  */
-async function reserveMbOf(runtime, ledger, session, what, heavy) {
+async function reserveMbOf(runtime, ledger, session, what, config) {
     const records = parseLedger((await runtime.files.read(ledger)) ?? '');
     const peaks = records.flatMap((record) => (record.type === 'heavy' && record.session === session && record.what === what && record.peakTreeMb !== undefined ? [record.peakTreeMb] : []));
     const latest = peaks.slice(-RESERVE_RUNS);
-    return latest.length === 0 ? heavy.smallReserveMb : Math.ceil(Math.max(...latest) * RESERVE_MARGIN);
+    return latest.length === 0 ? config.smallReserveMb : Math.ceil(Math.max(...latest) * RESERVE_MARGIN);
 }
 /** Why a step was refused when its wait ran out: the lock's holder, or the small steps holding the memory it needs. */
 function busyText(taking, zone) {
@@ -111,8 +111,8 @@ async function parentLockOf(runtime, lock, say) {
 }
 /**
  * The step's session: `--session`, else `$TEAMRIG_SESSION`, else the parent step's (a git hook's checks under
- * `heavy -- git commit` or a merge's push), else the session this Claude Code tab is bound to, so a hook
- * that wraps its checks in `heavy` needs no session of its own.
+ * `queue -- git commit` or a merge's push), else the session this Claude Code tab is bound to, so a hook
+ * that wraps its checks in `queue` needs no session of its own.
  */
 async function sessionOf(args, runtime, kit, roster, parent) {
     const named = args.flags.get('session') ?? envSession(runtime);
@@ -138,7 +138,7 @@ async function runUnderParent(runtime, say, parent, step) {
 }
 /**
  * True, having said so and printed DONE, when these checks already passed on this clean tree, so a push declined after
- * a long wait for the lock goes at once the next time: even from the heavy cutoff on, since nothing heavy runs.
+ * a long wait for the lock goes at once the next time: even from the queue cutoff on, since it runs nothing.
  */
 async function reusedPass(runtime, say, prePush, zone) {
     if (prePush.before.kind !== 'clean') {
@@ -184,13 +184,13 @@ async function afterPrePush(runtime, prePush, what, code, waitedMs) {
     throw new RefusedError(`push declined: its checks waited ${minutesText(Math.round(waitedMs / MINUTE_MS))} for the host lock, long enough for its connection to close; ${next}`);
 }
 /**
- * `teamrig heavy --what <label> -- <command ...>`: runs one heavy step (a build, a test run, a database script)
- * under the host lock, so the host's heavy steps run one at a time. Refused from `coordinator.schedule.heavyCutoffUtc`
+ * `teamrig queue --what <label> -- <command ...>`: runs one queued step (a build, a test run, a database script)
+ * under the host lock, so the host's queued steps run one at a time. Refused from `delivery.schedule.queueCutoffUtc`
  * to midnight UTC, also when the wait for the lock ran past it, and once its line for the lock has not moved for
- * `coordinator.heavy.waitMinutes`. The step is killed with every process it started after `maxRunMinutes`
- * (`--max-minutes`), and its start and end go to the coordinator's ledger, with when it began to wait and, sampled
+ * `delivery.queue.waitMinutes`. The step is killed with every process it started after `maxRunMinutes`
+ * (`--max-minutes`), and its start and end go to the delivery ledger, with when it began to wait and, sampled
  * every `memorySampleSeconds`, the most its process tree held and the least free memory the host had. Its processes get `$TEAMRIG_HOST_LOCK`,
- * so a `heavy` among them (a git hook's checks) runs at once under this lock. With `--small` (a spec run, a lint) the
+ * so a `queue` among them (a git hook's checks) runs at once under this lock. With `--small` (a spec run, a lint) the
  * step shares the host with other small steps instead, while the host keeps `memoryFloorMb` free besides the MB held
  * for them (`reserveMbOf`); a step without it waits for them to end. A small step is killed after `smallMaxRunMinutes`
  * instead, and its `--max-minutes` goes no higher. Once the shell that started it ends (Claude Code's
@@ -199,18 +199,18 @@ async function afterPrePush(runtime, prePush, what, code, waitedMs) {
  * one when they pass, and declines a push whose checks waited past PRE_PUSH_MAX_WAIT_MS for the lock (push-pass.ts).
  * Exit 0 when the command passed, 1 when it failed, was killed or was stopped, 2 refused.
  */
-export async function heavy(args, runtime) {
+export async function queue(args, runtime) {
     const words = commandWordsOf(args);
     const what = requiredFlag(args.flags, 'what');
     const kit = await openTeamKit(runtime);
     const config = requireConfig(kit, runtime, 'read');
-    const { coordinator } = config;
+    const { delivery } = config;
     const zone = teamZone(config, runtime);
     const say = logLineOf(runtime, zone);
     const small = args.switches.has('small');
-    const maxRunMinutes = maxRunMinutesOf(args, coordinator.heavy, small);
-    const places = coordinatorPlaces(coordinator, kit.paths);
-    const lock = hostLockOf(runtime, places.hostLock, coordinator.heavy);
+    const maxRunMinutes = maxRunMinutesOf(args, delivery.queue, small);
+    const places = deliveryPlaces(delivery, kit.paths);
+    const lock = hostLockOf(runtime, places.hostLock, delivery.queue);
     const parent = await parentLockOf(runtime, lock, say);
     const session = await sessionOf(args, runtime, kit, await rosterOf(runtime, kit, config), parent);
     const watching = await watchStarters(runtime, say);
@@ -224,13 +224,13 @@ export async function heavy(args, runtime) {
             const code = await runUnderParent(runtime, say, holderText({ kind: 'held', info: parent }, zone), step);
             return prePush === undefined ? code : await afterPrePush(runtime, prePush, what, code, 0);
         }
-        refuseAfterCutoff(runtime, coordinator.schedule.heavyCutoffUtc, zone);
+        refuseAfterCutoff(runtime, delivery.schedule.queueCutoffUtc, zone);
         const queuedAt = runtime.clock.now();
         const share = small
-            ? { reserveMb: await reserveMbOf(runtime, places.ledger, session, what, coordinator.heavy), floorMb: coordinator.heavy.memoryFloorMb, freeMb: () => runtime.memory.freeMb() }
+            ? { reserveMb: await reserveMbOf(runtime, places.ledger, session, what, delivery.queue), floorMb: delivery.queue.memoryFloorMb, freeMb: () => runtime.memory.freeMb() }
             : undefined;
         const waiting = small ? 'waiting to share the host' : 'waiting for the host lock';
-        const taking = await unlessStopped(watching.stop, lock.acquire(session, `heavy: ${what}`, coordinator.heavy.waitMinutes * MINUTE_MS, coordinator.wait.pollSeconds * 1_000, (holder, ahead) => say(`${waiting}: ${waitText(holder, ahead, zone)}`), share, watching.stop));
+        const taking = await unlessStopped(watching.stop, lock.acquire(session, `heavy: ${what}`, delivery.queue.waitMinutes * MINUTE_MS, delivery.wait.pollSeconds * 1_000, (holder, ahead) => say(`${waiting}: ${waitText(holder, ahead, zone)}`), share, watching.stop));
         if (taking === undefined) {
             return stoppedWhileWaiting(runtime, say, watching);
         }
@@ -242,7 +242,7 @@ export async function heavy(args, runtime) {
         }
         const waitedMs = runtime.clock.now() - queuedAt;
         try {
-            refuseAfterCutoff(runtime, coordinator.schedule.heavyCutoffUtc, zone);
+            refuseAfterCutoff(runtime, delivery.schedule.queueCutoffUtc, zone);
             const sharing = share === undefined ? undefined : sharingText(share, taking);
             if (sharing !== undefined) {
                 say(sharing);
@@ -250,7 +250,7 @@ export async function heavy(args, runtime) {
             say(`running: ${what} (killed after ${minutesText(maxRunMinutes)})`);
             const request = { command: commandLine(words, runtime.platform), cwd: runtime.cwd, env: underLock(runtime.env, taking.lock), timeoutMs: maxRunMinutes * MINUTE_MS, stop: watching.stop };
             const mark = { session, what, queuedAt, ...(taking.sharing === undefined ? {} : { shared: true }), request };
-            const end = await runRecorded(runtime, places.ledger, mark, watchOf(runtime, coordinator.heavy));
+            const end = await runRecorded(runtime, places.ledger, mark, watchOf(runtime, delivery.queue));
             const code = report(runtime, say, end, maxRunMinutes, watching);
             return prePush === undefined ? code : await afterPrePush(runtime, prePush, what, code, waitedMs);
         }

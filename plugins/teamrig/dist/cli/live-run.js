@@ -1,4 +1,4 @@
-import { treeOf } from "../coordinator/processes.js";
+import { treeOf } from "../delivery/processes.js";
 import { KIT_NAME } from "../core/home.js";
 import { runsClaude } from "../open/session-processes.js";
 import { measureSessions, runningPlaces } from "../sessions/measure.js";

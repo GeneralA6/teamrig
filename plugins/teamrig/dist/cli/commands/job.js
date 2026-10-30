@@ -1,27 +1,27 @@
-import { endLoad, startLoad } from "../../coordinator/loads.js";
-import { coordinatorPlaces } from "../../coordinator/places.js";
-import { deployTargetsOf } from "../../coordinator/targets.js";
+import { endJob, startJob } from "../../delivery/jobs.js";
+import { deliveryPlaces } from "../../delivery/places.js";
+import { deployTargetsOf } from "../../delivery/targets.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { requiredFlag } from "../args.js";
 import { callerOf, instantOf, listOf } from "../inputs.js";
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
-async function loadContextOf(args, runtime) {
+async function jobContextOf(args, runtime) {
     const caller = callerOf(args.flags, runtime.env);
     const kit = await openTeamKit(runtime);
     const config = requireConfig(kit, runtime, 'read');
     const session = sessionIdOf(await rosterOf(runtime, kit, config), caller);
     return {
         session,
-        coordinator: config.coordinator,
-        ledger: coordinatorPlaces(config.coordinator, kit.paths).ledger,
+        delivery: config.delivery,
+        ledger: deliveryPlaces(config.delivery, kit.paths).ledger,
         scanner: new SecretScanner(config.register.secretPatterns),
         ports: { files: runtime.files, newId: () => runtime.newId() },
         zone: teamZone(config, runtime),
     };
 }
-/** `--targets a,b`: the deploy targets a load disturbs; absent, or naming `host`, the whole host. */
-function loadTargetsOf(text) {
+/** `--targets a,b`: the deploy targets a job disturbs; absent, or naming `host`, the whole host. */
+function jobTargetsOf(text) {
     if (text === undefined) {
         return 'host';
     }
@@ -40,32 +40,32 @@ function atOf(args, times) {
     return text === undefined ? times.nowMs : instantOf('--at', text, times);
 }
 /**
- * `teamrig load --what "<what>" [--targets <a,b>|host] [--at <time>]`: declares a background load (a long data
- * script, a backfill) in the ledger from `--at` (default now), so `teamrig windows` names it on the windows it overlaps.
+ * `teamrig job --what "<what>" [--targets <a,b>|host] [--at <time>]`: declares a background job (a long data
+ * script, a backfill) in the ledger from `--at` (default now), so `teamrig stable-periods` names it on the stable periods it overlaps.
  * Refused for a start in the future, a target no repository deploys or a secret in what it is. Exit 0, 2 refused.
  */
-export async function load(args, runtime) {
+export async function job(args, runtime) {
     const what = requiredFlag(args.flags, 'what');
-    const targets = loadTargetsOf(args.flags.get('targets'));
+    const targets = jobTargetsOf(args.flags.get('targets'));
     const nowMs = runtime.clock.now();
-    const context = await loadContextOf(args, runtime);
+    const context = await jobContextOf(args, runtime);
     const startedAt = atOf(args, { nowMs, zone: context.zone });
-    const rules = { knownTargets: deployTargetsOf(context.coordinator.repos), scanner: context.scanner, nowMs, zone: context.zone };
-    const record = recordOf(await startLoad(context.ports, context.ledger, rules, { session: context.session, what, targets, startedAt }));
+    const rules = { knownTargets: deployTargetsOf(context.delivery.repos), scanner: context.scanner, nowMs, zone: context.zone };
+    const record = recordOf(await startJob(context.ports, context.ledger, rules, { session: context.session, what, targets, startedAt }));
     const on = record.targets === 'host' ? 'the whole host' : record.targets.join(', ');
-    runtime.out.stdout(`LOAD ${record.id} on ${on} from ${context.zone.minute(new Date(startedAt))} (end it: teamrig load end --id ${record.id})`);
+    runtime.out.stdout(`JOB ${record.id} on ${on} from ${context.zone.minute(new Date(startedAt))} (end it: teamrig job end --id ${record.id})`);
     return EXIT.ok;
 }
 /**
- * `teamrig load end --id <id> [--at <time>]`: ends this session's load at `--at` (default now). Refused for no such
- * open load, another session's, or an end in the future or before its start. Exit 0, 2 refused.
+ * `teamrig job end --id <id> [--at <time>]`: ends this session's job at `--at` (default now). Refused for no such
+ * open job, another session's, or an end in the future or before its start. Exit 0, 2 refused.
  */
-export async function loadEnd(args, runtime) {
+export async function jobEnd(args, runtime) {
     const id = requiredFlag(args.flags, 'id');
     const nowMs = runtime.clock.now();
-    const context = await loadContextOf(args, runtime);
+    const context = await jobContextOf(args, runtime);
     const endedAt = atOf(args, { nowMs, zone: context.zone });
-    const record = recordOf(await endLoad(context.ports, context.ledger, { session: context.session, id, endedAt, nowMs, zone: context.zone }));
+    const record = recordOf(await endJob(context.ports, context.ledger, { session: context.session, id, endedAt, nowMs, zone: context.zone }));
     runtime.out.stdout(`ENDED ${record.id} at ${context.zone.minute(new Date(endedAt))}`);
     return EXIT.ok;
 }

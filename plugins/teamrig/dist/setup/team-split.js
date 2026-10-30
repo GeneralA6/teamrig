@@ -2,17 +2,17 @@ import { parseConfig } from "../config/parse.js";
 import { ANCESTOR_ROLES, Roster } from "../config/roster.js";
 import { describeTreeProblem, teamNodeOf } from "../config/tree.js";
 import { ACCOUNT_BUDGET_KEYS } from "../config/types.js";
-import { coordinatorDirOf, teamPlace } from "../coordinator/places.js";
+import { deliveryDirOf, teamPlace } from "../delivery/places.js";
 import { ADDRESS_PATTERN } from "../core/address.js";
 import { isRecord, isStringArray, recordField } from "../core/guards.js";
 import { KIT_NAME } from "../core/home.js";
 import { configRecordOf } from "./team-create.js";
 /**
- * The blocks the child takes changed: one coordinator per host, so its folder, host lock and main checkouts stay the
- * parent's and two heavy steps never overlap; the budget and the idle pass hold only the moved sessions' entries, and the
+ * The blocks the child takes changed: one delivery flow per host, so its folder, host lock and main checkouts stay the
+ * parent's and two queued steps never overlap; the budget and the idle pass hold only the moved sessions' entries, and the
  * budget none of the keys of the account's week, which the child reads from the parent.
  */
-const REWORKED = { coordinator: sharedCoordinatorOf, budget: movedBudgetOf, open: movedOpenOf };
+const REWORKED = { delivery: sharedDeliveryOf, budget: movedBudgetOf, open: movedOpenOf };
 /**
  * How the child takes every other key of the parent's config, so a key added to the config cannot be left out without
  * a choice here: `github` is the parent's alone, as each repository's issues go to one team, and `paths` are a team's
@@ -126,17 +126,18 @@ function placedAt(record, key, parent) {
     return typeof path === 'string' ? { ...record, [key]: teamPlace(parent.paths, path) } : record;
 }
 /**
- * The parent's coordinator, written even when the parent leaves it to its defaults: the child keeps its ledger, claims
- * and pending merges in the parent's folder, and a relative host lock or main checkout is made absolute to it.
+ * The parent's delivery config, written even when the parent leaves it to its defaults: the child keeps its ledger,
+ * deploy freezes and pending merges in the parent's folder, and a relative host lock or main checkout is made
+ * absolute to it.
  */
-function sharedCoordinatorOf(block, { parent }) {
+function sharedDeliveryOf(block, { parent }) {
     const raw = block ?? {};
-    const heavy = recordField(raw, 'heavy');
+    const queue = recordField(raw, 'queue');
     const repos = recordField(raw, 'repos');
     return {
         ...raw,
-        dir: coordinatorDirOf(parent.config.coordinator, parent.paths),
-        ...(heavy === undefined ? {} : { heavy: placedAt(heavy, 'lockPath', parent) }),
+        dir: deliveryDirOf(parent.config.delivery, parent.paths),
+        ...(queue === undefined ? {} : { queue: placedAt(queue, 'lockPath', parent) }),
         ...(repos === undefined
             ? {}
             : { repos: Object.fromEntries(Object.entries(repos).map(([name, repo]) => [name, isRecord(repo) ? placedAt(repo, 'mainCheckout', parent) : repo])) }),

@@ -1,9 +1,9 @@
-import { rangeText } from "../coordinator/ledger.js";
+import { rangeText } from "../delivery/ledger.js";
 import { rangeInstallTouches } from "../merge/dependencies.js";
 import { ORIGIN } from "../merge/git.js";
 /** The repositories with a deploy block, in config order, each with its main checkout as a place. */
-export function deployRepos(coordinator, inTeam) {
-    return Object.entries(coordinator.repos).flatMap(([name, config]) => (config.deploy === undefined ? [] : [{ name, config, deploy: config.deploy, main: inTeam(config.mainCheckout) }]));
+export function deployRepos(delivery, inTeam) {
+    return Object.entries(delivery.repos).flatMap(([name, config]) => (config.deploy === undefined ? [] : [{ name, config, deploy: config.deploy, main: inTeam(config.mainCheckout) }]));
 }
 export function short(sha) {
     return sha.slice(0, 8);
@@ -33,10 +33,10 @@ async function dependencyStep(git, repo, head, target) {
     if (install !== undefined && (check !== undefined || !config.dependencyGate)) {
         return { kind: 'step', step: { touches, check, install } };
     }
-    const unset = [...(check === undefined ? ['dependencyCheck'] : []), ...(install === undefined ? ['deploy.dependencyInstall'] : [])].map((key) => `coordinator.repos.${name}.${key}`);
+    const unset = [...(check === undefined ? ['dependencyCheck'] : []), ...(install === undefined ? ['deploy.dependencyInstall'] : [])].map((key) => `delivery.repos.${name}.${key}`);
     return {
         kind: 'held',
-        reason: `deps changed (${touches.join(', ')}): coordinator.repos.${name}.dependencyGate holds a dependency change, since pulling it changes, unreviewed, the node_modules every worktree links to; set ${unset.join(' and ')} to deploy one, or pull and install by hand`,
+        reason: `deps changed (${touches.join(', ')}): delivery.repos.${name}.dependencyGate holds a dependency change, since pulling it changes, unreviewed, the node_modules every worktree links to; set ${unset.join(' and ')} to deploy one, or pull and install by hand`,
     };
 }
 /** Fetches and reads what a deploy would pull now, refusing a main checkout it must not pull into. */
@@ -44,7 +44,7 @@ export async function readPending(git, repo) {
     const { main, name } = repo;
     const checkout = git.checkoutOf(main);
     if (checkout === undefined) {
-        return { kind: 'refused', reason: `${main} (coordinator.repos.${name}.mainCheckout) is not a git checkout` };
+        return { kind: 'refused', reason: `${main} (delivery.repos.${name}.mainCheckout) is not a git checkout` };
     }
     const fetched = git.fetch(main, ORIGIN);
     if (!fetched.ok) {

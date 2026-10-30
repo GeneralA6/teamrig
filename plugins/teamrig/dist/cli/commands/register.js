@@ -853,7 +853,7 @@ export async function checkReport(args, runtime) {
     const lint = lintSkills(skillFiles, now, own.config, skillOwnersElsewhere(loaded, own.paths));
     const { skills, unowned } = splitUnowned([...context, ...allow], lint, new Set(own.config.sessions), own.paths.skills);
     const idle = await idlePassWarnings(runtime.files, own.paths, own.config.open.idle.mode, now.getTime());
-    const hooks = await secretHookWarnings(runtime.files, runtime.secretsGit, own.paths, own.config.coordinator.repos);
+    const hooks = await secretHookWarnings(runtime.files, runtime.secretsGit, own.paths, own.config.delivery.repos);
     const settings = await teamSettingsScope(runtime, { paths: own.paths, config: own.config, project });
     const off = await secretGuardOffWarnings(runtime.files, own.config.secretGuard, settings);
     const lead = own.config.roles.lead;

@@ -35,7 +35,7 @@ function isKit(value) {
     return value === undefined || typeof value === 'string';
 }
 /**
- * `value` without a `kit` that is not a version: a team's own coordinator may write a field of that name for its own
+ * `value` without a `kit` that is not a version: a team's own deploy tool may write a field of that name for its own
  * use, and a field another writer adds is ignored, never a reason to read its lock as damaged and remove it.
  */
 function withoutForeignKit(value) {
@@ -44,7 +44,7 @@ function withoutForeignKit(value) {
 /**
  * The name a lock's, a share's and a ticket's id is stored under: `token` until every reader takes `id` (T1544). The
  * secret redactor reads a quoted literal given to `token` as a secret, so a session that shows the lock files a
- * rotation task; but an older teamrig, and a team's own coordinator, read a lock without `token` as damaged and remove
+ * rotation task; but an older teamrig, and a team's own deploy tool, read a lock without `token` as damaged and remove
  * it once it is old enough, and two steps would run at once. So the stored name changes only in a later release, and a
  * reader takes either.
  */
@@ -102,7 +102,7 @@ function parseLock(text) {
     return parseAs(text, isHostLockInfo);
 }
 /**
- * `env` for a process a step starts while it holds `lock`: a `teamrig heavy` that process starts (a git hook's checks
+ * `env` for a process a step starts while it holds `lock`: a `teamrig queue` that process starts (a git hook's checks
  * under a commit or a push) runs at once under the same lock, since waiting for it would wait on its own parent.
  */
 export function underLock(env, lock) {
@@ -131,13 +131,13 @@ export function holderText(holder, zone) {
 }
 /**
  * Nothing for a holder this teamrig took the lock with, else which one did: a version, or none named by a teamrig
- * older than the `kit` field or a team's own coordinator, which may take a free lock without joining the line.
+ * older than the `kit` field or a team's own deploy tool, which may take a free lock without joining the line.
  */
 function kitText(kit) {
     if (kit === KIT_VERSION) {
         return '';
     }
-    return kit === undefined ? ', on an older teamrig or another coordinator' : `, on teamrig ${kit}`;
+    return kit === undefined ? ', on an older teamrig or another deploy tool' : `, on teamrig ${kit}`;
 }
 /** The small steps sharing the host: `2 small steps: <session> (<purpose>) since <minute on zone's clock>, ...`. */
 export function sharesText(shares, zone) {
@@ -231,7 +231,7 @@ class Patience {
     }
 }
 /**
- * One lock for the host's heavy steps (builds, test runs, database scripts), held across the whole step. A step
+ * One lock for the host's queued steps (builds, test runs, database scripts), held across the whole step. A step
  * takes it by creating the file; the file appears whole or not at all. A lock is stale once it expires or its
  * process is gone, and the next step removes it. A file that cannot be read is removed only after a waiter has
  * seen it so for `UNREADABLE_GRACE_MS`, since a writer that creates it in two steps may not have finished.
@@ -239,11 +239,11 @@ class Patience {
  * take the lock; a ticket whose process is gone or whose wait ran out is removed by the next waiter that sees it.
  * A wait runs out only once the line has not moved for its whole length (see `Patience`), so a step far back in a line
  * that keeps moving is not refused; its ticket's expiry moves on with its wait each time the line moves.
- * A step that does not join the line (an older kit, a team's own coordinator) may still take a free lock first.
+ * A step that does not join the line (an older kit, a team's own deploy tool) may still take a free lock first.
  * A session may withdraw its waiting steps (`withdraw`): each one's ticket is removed, and a step whose ticket is gone
  * stops at its next look. A step that took its turn removes its own ticket to run, so of the two removals only one
  * succeeds, and a withdrawn step never runs.
- * Small steps (`teamrig heavy --small`: a spec run, a lint) share the host instead: in its turn, while the lock is not
+ * Small steps (`teamrig queue --small`: a spec run, a lint) share the host instead: in its turn, while the lock is not
  * held, a small step writes its share, `<lock>.shared/<id>.json`, before it leaves the line, so the next in line
  * sees it. It is let in at once when no other small step runs, else only while the host's free memory less the MB
  * held for those leaves `floorMb` plus its own. A step that takes the lock waits, holding it, for the shares to end,
@@ -299,7 +299,7 @@ export class HostLock {
     }
     /**
      * The holder `info` names, with the small steps sharing the host, which a holder that names its teamrig waits to end
-     * before its step runs (`drain`); one without a `kit` (an older teamrig or a team's own coordinator) runs beside them.
+     * before its step runs (`drain`); one without a `kit` (an older teamrig or a team's own deploy tool) runs beside them.
      */
     async heldBy(info) {
         if (info.kit === undefined) {

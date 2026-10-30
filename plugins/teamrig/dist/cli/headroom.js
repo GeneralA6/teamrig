@@ -15,5 +15,5 @@ export async function headroomOf(runtime, paths, config, ids) {
         runningMb: running.map((place) => place.treeMb),
         runningCommittedMb: running.flatMap((place) => (place.committedMb === undefined ? [] : [place.committedMb])),
     };
-    return headroomFor(room, config.coordinator.heavy.memoryFloorMb, config.open.headroom);
+    return headroomFor(room, config.delivery.queue.memoryFloorMb, config.open.headroom);
 }

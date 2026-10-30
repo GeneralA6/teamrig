@@ -53,13 +53,13 @@ const automodeCommands = () => import("./commands/automode.js");
 const permissionsCommands = () => import("./commands/permissions.js");
 const setupScanCommand = () => import("./commands/setup-scan.js");
 const testCommand = () => import("./commands/test.js");
-const heavyCommand = () => import("./commands/heavy.js");
+const queueCommand = () => import("./commands/queue.js");
 const withdrawCommand = () => import("./commands/withdraw.js");
 const mergeCommand = () => import("./commands/merge.js");
 const deployCommand = () => import("./commands/deploy.js");
-const claimCommands = () => import("./commands/claim.js");
-const windowsCommand = () => import("./commands/windows.js");
-const loadCommands = () => import("./commands/load.js");
+const freezeCommands = () => import("./commands/freeze.js");
+const stablePeriodsCommand = () => import("./commands/stable-periods.js");
+const jobCommands = () => import("./commands/job.js");
 const deployStatusCommand = () => import("./commands/deploy-status.js");
 const ghCommands = () => import("./commands/gh.js");
 const startCommands = () => import("./commands/start.js");
@@ -196,15 +196,15 @@ const COMMANDS = {
     'worktree add': { effect: 'write', flags: ['repo'], load: async () => (await worktreeCommands()).add },
     'worktree remove': { effect: 'write', flags: ['base', 'session'], switches: ['delete-branch', 'dry-run'], load: async () => (await worktreeCommands()).remove },
     test: { effect: 'write', flags: ['session'], rest: true, load: async () => (await testCommand()).test },
-    heavy: { effect: 'write', flags: ['session', 'what', 'max-minutes'], switches: ['small', 'pre-push'], rest: true, load: async () => (await heavyCommand()).heavy },
+    queue: { effect: 'write', flags: ['session', 'what', 'max-minutes'], switches: ['small', 'pre-push'], rest: true, load: async () => (await queueCommand()).queue },
     withdraw: { effect: 'write', flags: ['session', 'what'], switches: ['all'], load: async () => (await withdrawCommand()).withdraw },
     merge: { effect: 'write', flags: ['session'], switches: ['keep-remote', 'no-delete-local'], load: async () => (await mergeCommand()).merge },
     deploy: { effect: 'write', flags: ['session', 'repo', 'targets', 'what'], rest: true, load: async () => (await deployCommand()).deploy },
-    claim: { effect: 'write', flags: ['session', 'targets', 'metric', 'why', 'for'], load: async () => (await claimCommands()).claim },
-    release: { effect: 'write', flags: ['session'], load: async () => (await claimCommands()).release },
-    windows: { effect: 'read', flags: ['targets', 'since', 'until', 'settle', 'min'], load: async () => (await windowsCommand()).windows },
-    load: { effect: 'write', flags: ['session', 'what', 'targets', 'at'], load: async () => (await loadCommands()).load },
-    'load end': { effect: 'write', flags: ['session', 'id', 'at'], load: async () => (await loadCommands()).loadEnd },
+    freeze: { effect: 'write', flags: ['session', 'targets', 'metric', 'why', 'for'], load: async () => (await freezeCommands()).freeze },
+    unfreeze: { effect: 'write', flags: ['session'], load: async () => (await freezeCommands()).unfreeze },
+    'stable-periods': { effect: 'read', flags: ['targets', 'since', 'until', 'settle', 'min'], load: async () => (await stablePeriodsCommand()).stablePeriods },
+    job: { effect: 'write', flags: ['session', 'what', 'targets', 'at'], load: async () => (await jobCommands()).job },
+    'job end': { effect: 'write', flags: ['session', 'id', 'at'], load: async () => (await jobCommands()).jobEnd },
     'deploy-status': { effect: 'read', flags: [], load: async () => (await deployStatusCommand()).deployStatus },
     'hook push-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).pushGuard },
     'hook package-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).packageGuard },
@@ -258,9 +258,23 @@ export const COMMAND_REST = new Set(Object.entries(COMMANDS).flatMap(([name, spe
 /**
  * Renamed flags and commands, refused everywhere with the new name, never an alias: `--tier` became `--priority`
  * (levels p1, p2, ...), and for plain words (T1308) `teamrig integrate` became `teamrig merge`, `teamrig roll` became
- * `teamrig deploy` and `teamrig deploys` became `teamrig deploy-status`.
+ * `teamrig deploy`, `teamrig deploys` became `teamrig deploy-status`, `teamrig heavy` became `teamrig queue`, `teamrig
+ * claim` became `teamrig freeze`, `teamrig release` became `teamrig unfreeze`, `teamrig windows` became `teamrig
+ * stable-periods` and `teamrig load` became `teamrig job` (`load end` with it).
  */
-const RENAMED = { flags: { tier: 'priority', problem: 'type bug [--critical] (or --type task)' }, commands: { integrate: 'merge', roll: 'deploy', deploys: 'deploy-status' } };
+const RENAMED = {
+    flags: { tier: 'priority', problem: 'type bug [--critical] (or --type task)' },
+    commands: {
+        integrate: 'merge',
+        roll: 'deploy',
+        deploys: 'deploy-status',
+        heavy: 'queue',
+        claim: 'freeze',
+        release: 'unfreeze',
+        windows: 'stable-periods',
+        load: 'job',
+    },
+};
 /** The table a line is read with, and each command's effect: what `/teamrig` plans a line from (src/slash/plan.ts). */
 export const COMMAND_TABLE = { flags: COMMAND_FLAGS, switches: COMMAND_SWITCHES, renamed: RENAMED, rest: COMMAND_REST, effects: COMMAND_EFFECTS };
 export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|name>, else $${ENV.session})
@@ -452,7 +466,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       idle pass would close and reopen (one reopen a pass, with room on the host) and why it keeps or
       leaves each other session; it changes nothing
   close <id|name> [--project <dir>] [--yes]   (the lead) ends an idle session's Claude Code and its tab
-      to free the host, logged, so teamrig open resumes it; it refuses the lead, the coordinator owner,
+      to free the host, logged, so teamrig open resumes it; it refuses the lead, the delivery owner,
       a session with work it can start or a time wait ending within 30 min, quiet under
       open.headroom.closeIdleMinutes, in a turn, at a tool call or waiting on a decision it put to the
       person, running background work or shells, or too big or old to resume; without --yes it shows
@@ -533,7 +547,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   statusline install [--yes]   makes teamrig statusline Claude Code's status line, in front of the one
       already there; without --yes it shows the change and writes nothing
   statusline uninstall [--yes] takes it back out: the status line before it returns
-  automode install [--yes]     writes the team's lines (protected branches, the register commands, heavy and
+  automode install [--yes]     writes the team's lines (protected branches, the register commands, queue and
       test, who removes a worktree, rebasing one's own branch) into Claude Code's autoMode.environment, the
       facts auto mode trusts; run it again after a config change or an upgrade; without --yes it shows the
       change and writes nothing
@@ -568,7 +582,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       inside one
   worktree add <branch> [--repo <name>]   makes a session's new worktree the same way every time: fetches
       the default branch origin/HEAD names, adds the worktree on the new branch from it, in a folder
-      named after the branch (each / as -) in coordinator.repos.<name>.worktreeFolder (default
+      named after the branch (each / as -) in delivery.repos.<name>.worktreeFolder (default
       .claude/worktrees in the main checkout), then runs its worktreeSetup there, without a shell and
       with the main checkout's folder in TEAMRIG_MAIN_CHECKOUT; the repository is --repo's, else the
       one it runs in; REFUSED before any change for a branch or folder already there; FAILED when its
@@ -580,27 +594,27 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       a session removes its own (its t<id>- branch names a task it owns) and those of the sessions it
       leads, the lead any. --delete-branch: deletes its branch too, once every commit of it is on --base
       (default the branch origin/HEAD names); --dry-run: prints the steps
-  heavy --what <label> [--session <id|name>] [--max-minutes <n>] [--small] [--pre-push] -- <command ...>   runs one heavy step
+  queue --what <label> [--session <id|name>] [--max-minutes <n>] [--small] [--pre-push] -- <command ...>   runs one queued step
       (a build, a test run, a database script) under the host lock, so the host runs one at a time, and at
       below-normal CPU priority (nice 10 on POSIX), which every process it starts inherits, so your
       terminal and apps win the CPU: waits in line for the lock, kills the step and every process it started after
-      coordinator.heavy.maxRunMinutes (--max-minutes) and records its start and end in the coordinator's
+      delivery.queue.maxRunMinutes (--max-minutes) and records its start and end in the delivery
       ledger; once the shell that started it ends, it stops waiting for the lock or kills the step (exit
-      129); REFUSED from coordinator.schedule.heavyCutoffUtc to midnight UTC and once its line has not
-      moved for coordinator.heavy.waitMinutes; exit 0 when the command passed, 1 when it failed or was killed. Its
-      processes get $TEAMRIG_HOST_LOCK: a heavy step started under a live lock (a git hook's checks
-      under heavy, merge or deploy) runs at once under it. No --session: $TEAMRIG_SESSION, the
+      129); REFUSED from delivery.schedule.queueCutoffUtc to midnight UTC and once its line has not
+      moved for delivery.queue.waitMinutes; exit 0 when the command passed, 1 when it failed or was killed. Its
+      processes get $TEAMRIG_HOST_LOCK: a queued step started under a live lock (a git hook's checks
+      under queue, merge or deploy) runs at once under it. No --session: $TEAMRIG_SESSION, the
       parent step's session, else the session this Claude Code tab is bound to. --small (a spec run, a
-      lint): shares the host with other small steps while it keeps coordinator.heavy.memoryFloorMb free
-      besides the MB held for them (its ledger peak and a quarter, else coordinator.heavy.smallReserveMb)
-      and is killed after coordinator.heavy.smallMaxRunMinutes (--max-minutes up to it); a step without
+      lint): shares the host with other small steps while it keeps delivery.queue.memoryFloorMb free
+      besides the MB held for them (its ledger peak and a quarter, else delivery.queue.smallReserveMb)
+      and is killed after delivery.queue.smallMaxRunMinutes (--max-minutes up to it); a step without
       --small waits for them to end, and a step waiting behind it is told which. --pre-push (a git
       pre-push hook's checks): on a clean tree
       it reuses their pass of the last 24 hours (DONE at once, even from the cutoff on) and records one
       when they pass; when they waited over a minute for the lock it declines the push (REFUSED), whose
       connection may have closed meanwhile: push again, it reuses the pass
   withdraw (--what <text> | --all) [--session <id|name>]   takes this session's steps waiting for the
-      host lock (heavy, merge, deploy) out of its line, so a re-ordered or abandoned step leaves it:
+      host lock (queue, merge, deploy) out of its line, so a re-ordered or abandoned step leaves it:
       --what picks those whose purpose holds the text. Each stops at its next look and runs nothing;
       RUNNING when it took its turn first, LEFT when it left the line first, KEPT when an older
       teamrig queued it (its step runs anyway). With neither flag: lists them, REFUSED. No --session:
@@ -608,64 +622,63 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       session's steps from a bound tab. Exit 0 each withdrawn or none waits, 1 any RUNNING, LEFT, KEPT
   merge [--session <id|name>] [--keep-remote] [--no-delete-local]   merges the branch checked out
       here into origin's default branch: REFUSED for a detached HEAD, the default branch, uncommitted
-      changes, nothing new or a dependency change coordinator.repos.<name>.dependencyGate holds and
-      no dependencyCheck may clear, from coordinator.schedule.heavyCutoffUtc to midnight UTC and in the
-      resetBlackoutHours before the weekly token reset; waits up to coordinator.wait.maxMinutes for
-      quiet claims on its deploysOnPush targets and for the host lock (longer while its line moves), rebases, runs the
+      changes, nothing new or a dependency change delivery.repos.<name>.dependencyGate holds and
+      no dependencyCheck may clear, from delivery.schedule.queueCutoffUtc to midnight UTC and in the
+      resetBlackoutHours before the weekly token reset; waits up to delivery.wait.maxMinutes for
+      deploy freezes on its deploysOnPush targets and for the host lock (longer while its line moves), rebases, runs the
       dependencyCheck on a dependency change (REFUSED unless it exits 0), where reviewGate holds a
       change of a review path until its reviewer approves the branch's t<n> task (REFUSED with the
       set command that asks; reviewCheck clears a check path), under pushGuard.pushToProtected gated
       checks the self-merge gates (a live task of its own, a pass record of the rebased tree, commit
       sizes, a test changed with source, reviewGate on: REFUSED on a miss, held for the session's leader
       with the set command that asks, except a task miss; each merge is a line in merges.jsonl)
-      and pushes (each a heavy step
-      in the ledger; again when origin moved meanwhile), or, where coordinator.repos.<name>.merge is
+      and pushes (each a queued step
+      in the ledger; again when origin moved meanwhile), or, where delivery.repos.<name>.merge is
       set, runs its command in place of the push (0 merged, once origin holds it; 75 WAITING, say on a
       pull request's checks: run merge again once it merged), records the merge as a deploy of deploysOnPush, deletes the branch on origin
-      and here (--keep-remote, --no-delete-local keep them) and, where followMainCheckout, fast-forwards
+      and here (--keep-remote, --no-delete-local keep them) and, where updateMainCheckout, fast-forwards
       the main checkout; once the shell that started it ends, it stops waiting, or kills the push
       and frees the lock (exit 129); exit 0 merged, 1 failed or stopped, 2 refused, 75 the merge waits
   deploy [--repo <name>] [--session <id|name>]   brings what was pushed to a repository's default
       branch to the running system: pulls its main checkout fast-forward to origin, runs its
-      coordinator.repos.<name>.deploy dependencyInstall for a dependency change (after its
-      dependencyCheck), its afterPull hooks and command (one heavy step in the ledger) and records
+      delivery.repos.<name>.deploy dependencyInstall for a dependency change (after its
+      dependencyCheck), its afterPull hooks and command (one queued step in the ledger) and records
       the deploy; --repo defaults to the repository of this folder, else the only one with a deploy
       block. REFUSED for a main checkout off its default branch, dirty or ahead of origin, a
       dependency change dependencyGate holds or a check that refuses, from
-      coordinator.schedule.heavyCutoffUtc to midnight UTC and in the resetBlackoutHours before the
-      weekly token reset; waits up to coordinator.wait.maxMinutes for quiet claims on its targets,
+      delivery.schedule.queueCutoffUtc to midnight UTC and in the resetBlackoutHours before the
+      weekly token reset; waits up to delivery.wait.maxMinutes for deploy freezes on its targets,
       its checks and the host lock (longer while its line moves); nothing pending is DONE with nothing run. A failed dependency
       check or install moves the main checkout back; a failed afterPull hook or deploy command leaves
       nothing pending, so its deploy command is then run by hand; once the shell that started it ends,
       it stops waiting, or kills its hook and frees the lock (exit 129); exit 0 deployed, 1 failed or stopped
   deploy --targets <a,b> --what "<why>" [--repo <name>] [--session <id|name>] -- <command ...>   a
       deploy that pulls nothing, such as a restart onto a rotated secret: runs the command in this folder
-      (one heavy step in the ledger) and records a deploy of those targets only. REFUSED for a target not
-      in the repository's deploy.targets, when a check refuses, from coordinator.schedule.heavyCutoffUtc
+      (one queued step in the ledger) and records a deploy of those targets only. REFUSED for a target not
+      in the repository's deploy.targets, when a check refuses, from delivery.schedule.queueCutoffUtc
       to midnight UTC and in the resetBlackoutHours before the weekly token reset; waits as a deploy
-      does, for quiet claims on those targets only; its checks and command see TEAMRIG_VERB=redeploy and
+      does, for deploy freezes on those targets only; its checks and command see TEAMRIG_VERB=redeploy and
       TEAMRIG_DEPLOY_TARGETS; exit 0 deployed, 1 failed or stopped
-  claim --targets <a,b> --metric <m> --why "<why>" --for <span> [--session <id|name>]   a quiet
-      claim: merge and deploy wait while it holds a target they deploy, from now for the span (45m,
-      1h30m; at most coordinator.claims.maxMinutes); one per session; REFUSED for a target no
+  freeze --targets <a,b> --metric <m> --why "<why>" --for <span> [--session <id|name>]   a deploy
+      freeze: merge and deploy wait while it holds a target they deploy, from now for the span (45m,
+      1h30m; at most delivery.freezes.maxMinutes); one per session; REFUSED for a target no
       repository deploys or a secret in the metric or reason
-  release [--session <id|name>]   ends this session's quiet claim before its time
-  windows --targets <a,b> --since <time> [--until <time>] [--settle <span>] [--min <span>]   the clean
-      measurement windows of each target from --since to --until (default now): the stretches no deploy
-      of it touched (one of its repository, or a deploy --targets naming it; from its start until
-      coordinator.windows settle minutes after it deployed; --settle for every target) and no heavy step,
-      each at least --min (default
-      coordinator.windows.minMinutes) long, each with the declared loads it overlaps. A time is HH:MM
-      (today), YYYY-MM-DD HH:MM or YYYY-MM-DD on the team's clock unless marked UTC, or an ISO time with
-      its zone
-  load --what "<what>" [--targets <a,b>|host] [--at <time>] [--session <id|name>]   declares a
-      background load (a long data script, a backfill) on its targets (default the whole host) in the
-      ledger from --at (default now), so windows names it; REFUSED for a start in the future, a target
-      no repository deploys or a secret in what it is
-  load end --id <id> [--at <time>] [--session <id|name>]   ends this session's load at --at (default
-      now); REFUSED for no such open load, another session's, or an end in the future or before its start
-  deploy-status                the deploy state now: the host lock's holder, the heavy cutoff and the
-      reset blackout, the quiet claims and loads still open, and what each repository with a deploy block
+  unfreeze [--session <id|name>]   ends this session's deploy freeze before its time
+  stable-periods --targets <a,b> --since <time> [--until <time>] [--settle <span>] [--min <span>]   the
+      stable periods of each target from --since to --until (default now): the stretches no deploy of it
+      touched (one of its repository, or a deploy --targets naming it; from its start until
+      delivery.stablePeriods settle minutes after it deployed; --settle for every target) and no queued
+      step, each at least --min (default delivery.stablePeriods.minMinutes) long, each with the declared
+      jobs it overlaps. A time is HH:MM (today), YYYY-MM-DD HH:MM or YYYY-MM-DD on the team's clock unless
+      marked UTC, or an ISO time with its zone
+  job --what "<what>" [--targets <a,b>|host] [--at <time>] [--session <id|name>]   declares a
+      background job (a long data script, a backfill) on its targets (default the whole host) in the
+      ledger from --at (default now), so stable-periods names it; REFUSED for a start in the future, a
+      target no repository deploys or a secret in what it is
+  job end --id <id> [--at <time>] [--session <id|name>]   ends this session's job at --at (default
+      now); REFUSED for no such open job, another session's, or an end in the future or before its start
+  deploy-status                the deploy state now: the host lock's holder, the queue cutoff and the
+      reset blackout, the deploy freezes and jobs still open, and what each repository with a deploy block
       has pushed but not deployed (it fetches each main checkout)
   test [--session <id|name>] -- <command ...>   runs a test command in the shell, writes all it printed
       to a log (each session keeps its newest 20) and prints one PASS or FAIL line, then each failing
