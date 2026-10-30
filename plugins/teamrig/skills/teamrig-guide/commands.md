@@ -4019,7 +4019,9 @@ W = weighted tokens: input 1, cache writes 1.25 to 2, cache reads 0.1, output 5.
 ```
 
 A session's row marks a budget a lift or a burst raised: `(lifted)`, `(burst)`; a lift's part says `(reserve)` for the
-reserve release (`--reserve`). With sub-leads (`leads`), a `group <sub-lead> (<n>)` row follows the team's: the
+reserve release (`--reserve`). With `budget.pauseByPriority` on, a short day marks the 0 of a session it pauses
+`(paused)`, and a line names the paused sessions, idle ones too: `Paused today, funded by priority as the week's use is
+past its pace line (budget.pauseByPriority): web.` With sub-leads (`leads`), a `group <sub-lead> (<n>)` row follows the team's: the
 use of its n sessions, the sub-lead's own included, against the group's daily budget, marked `(lifted)` under a
 group lift. The lifts block then lists group lifts first, adds an `of` column naming the budget each lift is a part
 of (`the team` or `group <sub-lead>`), and its heading says that quiet hours do not apply to a session's lift, but do

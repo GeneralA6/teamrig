@@ -116,7 +116,8 @@ idle member wakes by itself when urgent work is handed to it.
 Your lead plans the week from the tokens you have left: it sizes each task, fills the week by priority until the plan
 reaches 99.5% of your weekly limit, keeps the last 0.5% for incidents and moves what doesn't fit to next week.
 `teamrig budget` shows each member's use against the week's pace line, and deploys hold in the last hours before the
-reset, so nothing ships half-done. When the week would end with tokens unused, a burst spends them, with your
+reset, so nothing ships half-done. On a day the week runs short, the top-priority work can keep its pace while the
+rest pauses (`budget.pauseByPriority`). When the week would end with tokens unused, a burst spends them, with your
 approval. Past your weekly limit, the extra usage you put in (`teamrig budget extra`) is spread over the days left
 the same way.
 

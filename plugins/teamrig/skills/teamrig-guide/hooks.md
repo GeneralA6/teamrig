@@ -1090,6 +1090,10 @@ gone by (quiet hours count at `budget.quietHours.paceWeight`, and the use in the
 the week starts or the pace ends, only the part inside the week counts). The quiet-hour use has already lowered the
 allowance, which is recomputed from what is left, so a night a lift worked through does not read as a morning past
 the pace.
+With `budget.pauseByPriority` on, a short day (what is left of the week gives the day less than the pace line plans)
+funds the queued work in priority order, and a session none of it reaches has a daily budget of 0: its line reads
+`its daily budget is 0.0% (paused)`, and once the team has no room it is held like any session past its part. The
+lead, the coordinator owner and lifted sessions are never paused, and a burst's floor still holds a paused session up.
 Past its part while the team has room, a session is not held, and its line says so: `The team has room today: 2.0%
 of the week used, below its in-day pace of 4.0%, so nothing more happens.` Past its part once the team has no room,
 it is held: only p0 work wakes it or keeps its idle tab open, and it is escalated when `budget.escalate` is `session`, or, with
