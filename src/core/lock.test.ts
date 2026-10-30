@@ -8,7 +8,7 @@ const TIMINGS: LockTimings = { ttlMs: 30_000, pollMs: 50, waitMs: 1_000 };
 const PATH = '/state/events.lock';
 
 function lockWith(files: MemoryFiles, clock: FakeClock): FileLock {
-  return new FileLock(PATH, TIMINGS, { files, clock, sleep: clock.sleep, pid: 42 });
+  return new FileLock(PATH, TIMINGS, { files, clock, sleep: clock.sleep, pid: 42, newId: () => 'take-1' });
 }
 
 describe('FileLock', () => {
@@ -16,11 +16,20 @@ describe('FileLock', () => {
     const files = new MemoryFiles();
     const clock = new FakeClock(1_000);
     const result = await lockWith(files, clock).run(async () => {
-      assert.deepEqual(JSON.parse(files.get(PATH) ?? ''), { pid: 42, at: 1_000 });
+      assert.deepEqual(JSON.parse(files.get(PATH) ?? ''), { pid: 42, at: 1_000, id: 'take-1' });
       return 'done';
     });
     assert.equal(result, 'done');
     assert.equal(files.get(PATH), undefined);
+  });
+
+  it('leaves a lock another process took over meanwhile (T1584)', async () => {
+    const files = new MemoryFiles();
+    const theirs = JSON.stringify({ pid: 7, at: 1_000, id: 'take-7' });
+    await lockWith(files, new FakeClock(1_000)).run(async () => {
+      await files.write(PATH, theirs);
+    });
+    assert.equal(files.get(PATH), theirs, 'the release removes only its own taking');
   });
 
   it('releases the lock when the task throws', async () => {
@@ -63,6 +72,7 @@ describe('FileLock', () => {
       files,
       clock,
       pid: 42,
+      newId: () => 'take-1',
       sleep: async (ms) => {
         polls += 1;
         if (polls === 3) {
