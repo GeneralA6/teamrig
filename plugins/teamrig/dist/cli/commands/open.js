@@ -26,6 +26,7 @@ import { liveRunOf, liveRunText } from "../live-run.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { launchListing } from "../skill-listing.js";
 import { loadTree } from "../tree.js";
+import { noteResumedTab } from "../wake-opened.js";
 import { claudeSessionVerdict, freshOpenOf, resumeVerdictOf } from "./rehire.js";
 import { sessionProjectOf } from "./setup.js";
 /** The terminal names a person reads, for the OPENED line. */
@@ -167,7 +168,10 @@ export async function openSession(runtime, kit, config, roster, request) {
     if (closed !== undefined) {
         await sessionLog.append({ kind: 'reopen', session: id, at: new Date(runtime.clock.now()).toISOString(), ...(resume === undefined ? {} : { resumed: resume }) });
     }
-    return { kind: 'opened', line: `OPENED ${name} (session ${id}) in a new ${TERMINAL_LABELS[outcome.terminal]} in ${folder}, on ${describeLaunch(launchOf(config, id))}${startNoteOf(resume, reopen)}` };
+    // teamrig's own first prompt has a resumed session read its list; a --prompt one may not, so its wake check decides.
+    const unnoted = resume !== undefined && request.prompt === undefined ? await noteResumedTab(runtime, kit, config, id, resume) : undefined;
+    const wakeNote = unnoted === undefined ? '' : `; its wake state was not written, so its tab may wake once more for work it reads now: ${unnoted}`;
+    return { kind: 'opened', line: `OPENED ${name} (session ${id}) in a new ${TERMINAL_LABELS[outcome.terminal]} in ${folder}, on ${describeLaunch(launchOf(config, id))}${startNoteOf(resume, reopen)}${wakeNote}` };
 }
 /**
  * A closed session's reopen. It resumes in the folder its close recorded, which holds its transcript (T1408), or the
