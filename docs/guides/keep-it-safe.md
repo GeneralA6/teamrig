@@ -114,7 +114,7 @@ It is a guard against mistakes, not a sandbox; protect the branch on your git ho
   mapping in the repository's own config for a push that names only its source branch;
 - commands from tools other than Bash and PowerShell, and pushes you run in your own terminal.
 
-Many sessions merge their branches one at a time through the deploy coordinator: `teamrig merge` and
+Many sessions merge their branches one at a time through teamrig's delivery commands: `teamrig merge` and
 `teamrig deploy` run under the host lock `teamrig queue` takes for builds and test runs
 ([Ship from many sessions](ship-from-many-sessions.md)).
 

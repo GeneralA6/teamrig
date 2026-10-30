@@ -1090,8 +1090,8 @@ Moves sessions of your team, with the tasks they own, into a new child team unde
 `--dry-run` first: that writes nothing and prints the plan, the child's config, what your team's config loses, the
 tasks that move, what crosses the new border and what blocks the split. The child keeps each moved session's name,
 launch block and sub-lead list, so no tab title changes, and a role it has no holder for names your team's holder as
-`<team>/<id>`. It starts with a copy of your team's settings, so it runs as your team does, and shares your deploy
-coordinator (its folder, host lock and main checkouts, written as absolute paths), so two teams' queued steps never
+`<team>/<id>`. It starts with a copy of your team's settings, so it runs as your team does, and shares your delivery
+setup (its folder, host lock and main checkouts, written as absolute paths), so two teams' queued steps never
 overlap; your budget shares and idle keep-open list go with the sessions they name, and the budget keys of the
 account's week (`enabled`, `account`, `weeklyLimitW`, `subagentWeight`, `extraWPerUsd`, `reset`) are not copied: the
 child reads them from your team, so they never drift. Your GitHub import and your
@@ -1134,7 +1134,7 @@ WOULD CREATE /home/you/.teamrig/teams/front/config.json:
   "tabStatus": {
     "enabled": true
   },
-  "coordinator": {
+  "delivery": {
     "dir": "/home/you/.teamrig/teams/shop/state/deploys"
   },
   "names": {
@@ -3270,7 +3270,7 @@ prints a line for each new holder or place in line (`...; 2 ahead in line`). A t
 wait ran out is removed by the next waiter. The line moved when a step it stood behind (a waiter ahead, the lock's
 holder, a small step sharing the host) ended or left, so a step far back in a line that keeps moving is not refused;
 each time, its ticket's expiry moves on with its wait. A step that does not join the line (an older kit, a team's own
-coordinator) may still take a free lock first.
+deploy tool) may still take a free lock first.
 
 With `--small` (a spec run, a lint) the step shares the host with other small steps instead of taking the lock.
 In its turn, while the lock is not held, it writes a share in `<lock>.shared` and runs. It is let in at once when
@@ -3293,7 +3293,7 @@ comes, and it kills the command with every process it started
 after `delivery.queue.maxRunMinutes` (45), a `--small` step after `delivery.queue.smallMaxRunMinutes` (10): a
 step that shares the host holds back every step waiting for the lock, so a hung one is cut short. The step ends, and frees the lock, only once that kill is done; on
 Windows the kill lists the host's processes again after each round and ends any process the step started while it was
-being killed. The step's start and end go to the coordinator's ledger,
+being killed. The step's start and end go to the delivery ledger,
 `ledger.jsonl` in `delivery.dir` (default `deploys` in the team's state folder), with the teamrig version that ran
 it (`kit`), when it began to wait (`queuedAt`) and, sampled every `delivery.queue.memorySampleSeconds` (15; 0 samples nothing), the most memory its
 process tree held at once (`peakTreeMb`) and the least free memory the host had (`lowFreeMb`), and `shared: true` for
@@ -3307,7 +3307,7 @@ taken over. Only the step that took it releases it. The lock, each share and eac
 that wrote them (`kit`, since 0.119.0). A wait line names a holder on another version (`..., on teamrig
 0.85.0`), or on none (`..., on an older teamrig or another coordinator`): such a step may take a free lock
 without joining the line, or while small steps share the host. A `kit` that is not a version, written by a team's own
-coordinator for its own use, is read as none.
+deploy tool for its own use, is read as none.
 
 It checks the processes that started it, up to the tab's Claude Code, every 5 seconds: Claude Code may end a Bash
 tool's shell alone (its low-memory reaper does), and on Windows what that shell started runs on. Once one of them
