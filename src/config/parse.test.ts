@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_COMMITS, DEFAULT_HIRING, DEFAULT_IDLE, DEFAULT_OPEN, DEFAULT_PERMISSIONS, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_STATUS_LINE, DEFAULT_WAKE, DEFAULT_WINDOWS } from './defaults.ts';
+import { HIRE_CAP_DROPPED } from './migrate.ts';
 import { parseConfig } from './parse.ts';
 import { CONFIG_VERSION } from './types.ts';
 import type { ConfigIssue } from './reader.ts';
@@ -1118,23 +1119,20 @@ describe('parseConfig', () => {
     assert.deepEqual(paths(parseConfig({ ...ROSTER, refresh: { contextTokens: 10_000_001 } }).issues), ['refresh.contextTokens']);
   });
 
-  it('reads the hiring settings, defaulting each and refusing a bad policy, cap, cap raiser or scale-out measure', () => {
+  it('reads the hiring settings, defaulting each and refusing a bad policy or scale-out measure', () => {
     assert.deepEqual(parseConfig(ROSTER).config.hiring, DEFAULT_HIRING);
-    assert.equal(DEFAULT_HIRING.capRaisedBy, 'owner');
     const scaleOut = { windowDays: 5, minDone: 2, topPriorities: 1 };
-    const chosen = { policy: 'lead', maxSessions: 4, capRaisedBy: 'lead', idleHours: 2, reviewDays: 14, resumeMaxTokens: 120_000, resumeMaxIdleDays: 3, scaleOut };
+    const chosen = { policy: 'lead', idleHours: 2, reviewDays: 14, resumeMaxTokens: 120_000, resumeMaxIdleDays: 3, scaleOut };
     const set = parseConfig({ ...ROSTER, hiring: chosen });
     assert.deepEqual(set.issues, []);
     assert.deepEqual(set.config.hiring, chosen);
     const badScaleOut = { windowDays: 9, minDone: 0, topPriorities: 11 };
     const bad = parseConfig({
       ...ROSTER,
-      hiring: { policy: 'auto', maxSessions: 0, capRaisedBy: 'anyone', idleHours: 169, reviewDays: 91, resumeMaxTokens: 9_999, resumeMaxIdleDays: 91, scaleOut: badScaleOut },
+      hiring: { policy: 'auto', idleHours: 169, reviewDays: 91, resumeMaxTokens: 9_999, resumeMaxIdleDays: 91, scaleOut: badScaleOut },
     });
     assert.deepEqual(paths(bad.issues).sort(), [
-      'hiring.capRaisedBy',
       'hiring.idleHours',
-      'hiring.maxSessions',
       'hiring.policy',
       'hiring.resumeMaxIdleDays',
       'hiring.resumeMaxTokens',
@@ -1161,7 +1159,14 @@ describe('parseConfig', () => {
   it('flags the fixed hiring daily budgets this format no longer reads, instead of ignoring them', () => {
     const { config, issues } = parseConfig({ ...ROSTER, hiring: { dailyPct: 4, maxDailyPct: 2 } });
     assert.deepEqual(paths(issues), ['hiring.dailyPct', 'hiring.maxDailyPct']);
-    issues.forEach((issue) => assert.match(issue.message, /^is no longer read: .*maxSessions bounds hiring; delete it$/));
+    issues.forEach((issue) => assert.match(issue.message, /^is no longer read: a hire's daily budget is its part of the team's, by its share and queued work; delete it$/));
+    assert.deepEqual(config.hiring, DEFAULT_HIRING);
+  });
+
+  it('flags a hire cap a current-format file still holds, as no cap counts hires', () => {
+    const { config, issues } = parseConfig({ ...ROSTER, hiring: { maxSessions: 4, capRaisedBy: 'lead' } });
+    assert.deepEqual(paths(issues), ['hiring.maxSessions', 'hiring.capRaisedBy']);
+    issues.forEach((issue) => assert.equal(issue.message, `is no longer read: ${HIRE_CAP_DROPPED}; delete it`));
     assert.deepEqual(config.hiring, DEFAULT_HIRING);
   });
 

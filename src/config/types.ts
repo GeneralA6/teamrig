@@ -2,7 +2,7 @@ import type { TaskStatus } from '../register/model.ts';
 import type { CoreRuleKey } from '../rules/keys.ts';
 
 /** The config format this code reads and writes. Older files are migrated in memory on load. */
-export const CONFIG_VERSION = 5;
+export const CONFIG_VERSION = 6;
 
 export interface RolesConfig {
   /** Owns priorities, team rules and the owner's decision queue; may re-prioritize and reassign tasks; hands the work itself to others (`leadBoundary`). */
@@ -930,25 +930,14 @@ export interface RefreshConfig {
 
 /**
  * Who may hire a session onto the team (`teamrig hire`): `off` nobody; `owner` a lead (the lead, or a sub-lead
- * into its own group), once the owner approved (`--approved-by`, kept with the hire); `lead` a lead, within the
- * caps; `automatic` as `lead`, and a hired session whose tasks are all closed may also retire itself (`teamrig retire`).
+ * into its own group), once the owner approved (`--approved-by`, kept with the hire); `lead` a lead; `automatic` as
+ * `lead`, and a hired session whose tasks are all closed may also retire itself (`teamrig retire`).
  */
 export const HIRING_POLICIES = ['off', 'owner', 'lead', 'automatic'] as const;
 export type HiringPolicy = (typeof HIRING_POLICIES)[number];
 
 export function isHiringPolicy(value: unknown): value is HiringPolicy {
   return HIRING_POLICIES.some((policy) => policy === value);
-}
-
-/**
- * Who raises `hiring.maxSessions` when it blocks a hire a SCALE-OUT calls for: `owner` on the lead's card, as a
- * raised cap spends more of the week; `lead` the lead itself, in the team config, saying so in its next report.
- */
-export const CAP_RAISERS = ['owner', 'lead'] as const;
-export type CapRaiser = (typeof CAP_RAISERS)[number];
-
-export function isCapRaiser(value: unknown): value is CapRaiser {
-  return CAP_RAISERS.some((raiser) => raiser === value);
 }
 
 /** How `check` measures an area against its dated work for a SCALE-OUT flag (src/hiring/scale-out.ts). */
@@ -962,15 +951,12 @@ export interface ScaleOutConfig {
 }
 
 /**
- * Hiring temporary sessions: who decides, the cap every hire stays within, and when an area needs one. A hire has
- * no fixed daily budget: its part of the team's follows its share and queued work, like any session's.
+ * Hiring temporary sessions: who decides, and when an area needs one. No cap counts hires: the host's room bounds
+ * who is at the office, and the leader decides who is hired. A hire has no fixed daily budget: its part of the
+ * team's follows its share and queued work, like any session's.
  */
 export interface HiringConfig {
   readonly policy: HiringPolicy;
-  /** Hired sessions on the team at once. */
-  readonly maxSessions: number;
-  /** Who raises `maxSessions` when it blocks a SCALE-OUT's hire. */
-  readonly capRaisedBy: CapRaiser;
   /** Hours a hired session may hold no open task before it is due to retire. */
   readonly idleHours: number;
   /** Days from a hire to its review date, unless the hire names one. */
@@ -1004,7 +990,7 @@ export interface BurstConfig {
   readonly minSparePct: number;
   /** The most helpers each burst session runs at once. */
   readonly maxHelpers: number;
-  /** The most sessions one burst may hire (`hire --burst`); `hiring`'s caps apply as well. */
+  /** The most sessions one burst may hire (`hire --burst`). */
   readonly maxHires: number;
 }
 

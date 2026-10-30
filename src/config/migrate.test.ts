@@ -1,7 +1,17 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
-import { CONFIG_MIGRATIONS, DROP_FIXED_DAILY_BUDGETS, migrateConfig, RENAME_BLOCKED_TO_WAITING, RENAME_TIERS_TO_PRIORITIES, RENAME_TO_PLAIN_WORDS, type ConfigMigration } from './migrate.ts';
+import {
+  CONFIG_MIGRATIONS,
+  DROP_FIXED_DAILY_BUDGETS,
+  DROP_HIRE_CAP,
+  HIRE_CAP_DROPPED,
+  migrateConfig,
+  RENAME_BLOCKED_TO_WAITING,
+  RENAME_TIERS_TO_PRIORITIES,
+  RENAME_TO_PLAIN_WORDS,
+  type ConfigMigration,
+} from './migrate.ts';
 import { CONFIG_VERSION } from './types.ts';
 
 /** v1→v2 renames `messages.maxLines` to `messages.lineLimit` (release 9.2.0); v2→v3 adds `newKey` (9.3.0). */
@@ -134,7 +144,7 @@ describe('the shipped migrations', () => {
     };
     const raw: JsonRecord = { configVersion: 3, budget, hiring: { policy: 'lead', maxSessions: 6, dailyPct: 1, maxDailyPct: 15 }, custom: true };
     const session = "the session's part of the team's daily budget is recomputed from its share and queued work";
-    const hiring = "a hire's daily budget is its part of the team's; hiring.maxSessions bounds hiring";
+    const hiring = "a hire's daily budget is its part of the team's";
     assert.deepEqual(migrateConfig(raw, 4), {
       kind: 'migrated',
       fromVersion: 3,
@@ -254,13 +264,41 @@ describe('the shipped migrations', () => {
     assert.equal(RENAME_TO_PLAIN_WORDS.from, 4);
   });
 
+  it('v5 to v6 drops the hire cap and who raised it, and keeps every other key', () => {
+    const hiring: JsonRecord = { policy: 'lead', maxSessions: 4, idleHours: 2, capRaisedBy: 'lead', scaleOut: { minDone: 2 } };
+    const raw: JsonRecord = { configVersion: 5, hiring, custom: true };
+    assert.deepEqual(migrateConfig(raw, 6), {
+      kind: 'migrated',
+      fromVersion: 5,
+      version: 6,
+      config: { configVersion: 6, hiring: { policy: 'lead', idleHours: 2, scaleOut: { minDone: 2 } }, custom: true },
+      changes: [`v5→v6: hiring.maxSessions removed: ${HIRE_CAP_DROPPED}`, `v5→v6: hiring.capRaisedBy removed: ${HIRE_CAP_DROPPED}`],
+      firstRelease: '0.232.0',
+    });
+    assert.deepEqual(raw['hiring'], { policy: 'lead', maxSessions: 4, idleHours: 2, capRaisedBy: 'lead', scaleOut: { minDone: 2 } }, 'the input is not mutated');
+  });
+
+  it('v5 to v6 changes nothing but the version when no hire cap is set', () => {
+    const configs: JsonRecord[] = [{}, { hiring: 'not an object' }, { hiring: { policy: 'lead', idleHours: 2 } }, { maxSessions: 2, capRaisedBy: 'owner' }];
+    for (const config of configs) {
+      assert.deepEqual(DROP_HIRE_CAP.apply(config), { config, changes: [] }, JSON.stringify(config));
+    }
+    assert.equal(DROP_HIRE_CAP.from, 5);
+  });
+
   it('a version-1 file reaches the current version through every step', () => {
-    const result = migrateConfig({ configVersion: 1, register: { tiers: [], requireNoteOn: ['blocked'] }, coordinator: { gateTimeoutSeconds: 30 } });
+    const result = migrateConfig({
+      configVersion: 1,
+      register: { tiers: [], requireNoteOn: ['blocked'] },
+      coordinator: { gateTimeoutSeconds: 30 },
+      hiring: { policy: 'lead', maxSessions: 3 },
+    });
     assert.equal(result.kind, 'migrated');
     if (result.kind === 'migrated') {
       assert.equal(result.config['configVersion'], CONFIG_VERSION);
       assert.deepEqual(result.config['register'], { priorities: [], requireNoteOn: ['waiting'] });
       assert.deepEqual(result.config['coordinator'], { checkTimeoutSeconds: 30 });
+      assert.deepEqual(result.config['hiring'], { policy: 'lead' });
     }
   });
 });

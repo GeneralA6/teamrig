@@ -157,7 +157,6 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   liftMaxStopPct: 'budget.lift.maxStopPct',
   liftReserveStopPct: 'budget.lift.reserveStopPct',
   maxBytesPerHook: 'budget.maxBytesPerHook',
-  hiringMaxSessions: 'hiring.maxSessions',
   hiringIdleHours: 'hiring.idleHours',
   hiringReviewDays: 'hiring.reviewDays',
   hiringResumeMaxTokens: 'hiring.resumeMaxTokens',
