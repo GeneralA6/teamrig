@@ -4,6 +4,7 @@ import { CommitScanner } from "../../secret-guard/commit-scan.js";
 import { messageLines } from "../../secret-guard/git-adds.js";
 import { pushRanges, rangeArgs } from "../../secret-guard/push-range.js";
 import { secretRulesOf } from "../../secret-guard/rules.js";
+import { MAX_TAG_DEPTH } from "../../secret-guard/secrets-git.js";
 import { UsageError, noPositionals, onePositional } from "../args.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { guardLoadOf } from "./hook-guard-load.js";
@@ -41,8 +42,9 @@ export async function message(args, runtime) {
     return EXIT.ok;
 }
 /**
- * `secrets pushed <remote>`: the secrets the commits a push sends add, in their patches and messages, from the lines
- * git writes to a pre-push hook's stdin. It catches commits made before the hooks were there, or past them.
+ * `secrets pushed <remote>`: the secrets the commits a push sends add, in their patches (a merge's by what its
+ * resolution added) and messages, and the messages of the annotated tags it sends, from the lines git writes to a
+ * pre-push hook's stdin. It catches commits made before the hooks were there, or past them.
  */
 export async function pushed(args, runtime) {
     const remote = onePositional(args, 'remote');
@@ -52,19 +54,30 @@ export async function pushed(args, runtime) {
     const root = repoRoot(runtime);
     const git = runtime.secretsGit;
     const ranges = pushRanges(await runtime.readStdin(), remote, (sha) => git.isCommit(runtime.cwd, sha));
-    // Two refs can send the same commit: each is scanned once.
+    // Two refs can send the same commit or tag: each is scanned once.
     const commits = new Map();
+    const tags = new Map();
     for (const range of ranges) {
         const listed = git.commits(runtime.cwd, range);
         if (listed === undefined) {
-            throw new Error(`git cannot list the commits ${rangeArgs(range).join(' ')} in ${runtime.cwd}`);
+            throw new Error(`git cannot list the commits ${rangeArgs(range).join(' ')} in ${runtime.cwd} (the scan needs git 2.36 or later, to read what a merge's resolution added)`);
         }
         for (const commit of listed) {
             commits.set(commit.sha, commit);
         }
+        const tagged = git.tagMessages(runtime.cwd, range.tip);
+        if (tagged === undefined) {
+            throw new Error(`git cannot read the object ${range.tip} in ${runtime.cwd}, or it is a tag of more than ${MAX_TAG_DEPTH} tags`);
+        }
+        for (const tag of tagged) {
+            tags.set(tag.sha, tag);
+        }
     }
-    refuseFound(`the push to ${remote} adds`, (await scannerOf(runtime, root)).pushed([...commits.values()]), `rewrite those commits without it before the push, ${BY_REFERENCE}`);
-    runtime.out.stdout(`OK no secret in the ${commits.size} commit(s) pushed to ${remote}`);
+    const scanner = await scannerOf(runtime, root);
+    const findings = [...scanner.pushed([...commits.values()]), ...scanner.tags([...tags.values()])];
+    refuseFound(`the push to ${remote} adds`, findings, `rewrite those commits or tags without it before the push, ${BY_REFERENCE}`);
+    const tagCount = tags.size === 0 ? '' : ` and ${tags.size} tag message(s)`;
+    runtime.out.stdout(`OK no secret in the ${commits.size} commit(s)${tagCount} pushed to ${remote}`);
     return EXIT.ok;
 }
 function repoRoot(runtime) {
