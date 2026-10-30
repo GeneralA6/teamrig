@@ -5,26 +5,16 @@ import { isRecord } from "../core/guards.js";
 import { ID_PATTERN } from "../core/ids.js";
 import { formatUtcDay, parseUtcDay } from "../core/time.js";
 /**
- * The plan behind `hire`: a new session written into the team config within `hiring`'s policy and
- * caps. Pure: it takes the file's JSON, the config read from it and the hires still active, and returns
- * the next JSON and the record to log, so the command can preview before it writes. The new file is
- * checked afterwards by the config parser every command reads with (the id's and name's rules live there).
+ * The plan behind `hire`: a new session written into the team config within `hiring`'s policy. No count of hires
+ * bounds it: the host's room bounds who is at the office (`hire --yes` checks it), the leader decides who is hired.
+ * Pure: it takes the file's JSON and the config read from it, and returns the next JSON and the record to log, so
+ * the command can preview before it writes. The new file is checked afterwards by the config parser every command
+ * reads with (the id's and name's rules live there).
  */
 const DAY_MS = 86_400_000;
 function recordAt(record, key) {
     const value = record[key];
     return isRecord(value) ? value : {};
-}
-/** How many of the active hires are still on the team: a retired or removed one no longer counts against the cap. */
-export function hiresOnTeam(config, active) {
-    return active.filter((hire) => config.sessions.includes(hire.session)).length;
-}
-/**
- * Why one more hire beside the `hired` hires on the team ({@link hiresOnTeam}) would pass `hiring.maxSessions`;
- * undefined when it fits. A hire has no fixed daily budget, so the count is the only cap.
- */
-export function hireCapProblem(hiring, hired) {
-    return hired >= hiring.maxSessions ? `the team already has ${hired} hired session(s), the most hiring.maxSessions allows` : undefined;
 }
 function reviewDayOf(request, config) {
     if (request.reviewBy === undefined) {
@@ -71,7 +61,7 @@ function policyProblem(config, request) {
  * it, so a burst hire stays on the lead's (src/hiring/burst-hire.ts). It gets no fixed daily budget: like any session,
  * its part of the team's daily budget follows its share and its queued work (src/budget/parts.ts).
  */
-export function planHire(file, config, active, request) {
+export function planHire(file, config, request) {
     const refusal = hirerProblem(config, request.by) ?? policyProblem(config, request);
     if (refusal !== undefined) {
         return { ok: false, problem: refusal };
@@ -92,11 +82,6 @@ export function planHire(file, config, active, request) {
     const modelProblem = request.model === undefined ? undefined : isModel(request.model);
     if (modelProblem !== undefined) {
         return { ok: false, problem: `--model ${request.model}: ${modelProblem}` };
-    }
-    const hired = hiresOnTeam(config, active);
-    const capProblem = hireCapProblem(config.hiring, hired);
-    if (capProblem !== undefined) {
-        return { ok: false, problem: capProblem };
     }
     const reviewBy = reviewDayOf(request, config);
     if (!reviewBy.ok) {
@@ -127,5 +112,5 @@ export function planHire(file, config, active, request) {
         by: request.by,
         at: request.now,
     };
-    return { ok: true, value: { config: next, hire, hired: hired + 1, leader: request.by } };
+    return { ok: true, value: { config: next, hire, leader: request.by } };
 }

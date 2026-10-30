@@ -108,7 +108,7 @@ export async function retire(args, runtime) {
         }
         await handOver(runtime, kit, register, plan.value, new SecretScanner(config.register.secretPatterns));
         const backup = await writeConfigWithBackup(files, { configPath: load.path, backupsDir: kit.paths.backups, backupName: RETIRE_BACKUP_NAME }, plan.value.config, clock);
-        // The config first: a retire logged for a session still on the team would leave it out of the caps.
+        // The config first: a retire logged for a session still on the team would leave it out of the active hires.
         await log.append(plan.value.retire);
         const session = plan.value.retire.session;
         // A due ask to retire is done with, and would ask the session again if it were hired back.

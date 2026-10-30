@@ -1,5 +1,5 @@
 /** The config format this code reads and writes. Older files are migrated in memory on load. */
-export const CONFIG_VERSION = 5;
+export const CONFIG_VERSION = 6;
 export const VERIFY_GATES = ['refuse', 'warn'];
 export function isVerifyGate(value) {
     return VERIFY_GATES.some((gate) => gate === value);
@@ -79,20 +79,12 @@ export function isAskWith(value) {
 }
 /**
  * Who may hire a session onto the team (`teamrig hire`): `off` nobody; `owner` a lead (the lead, or a sub-lead
- * into its own group), once the owner approved (`--approved-by`, kept with the hire); `lead` a lead, within the
- * caps; `automatic` as `lead`, and a hired session whose tasks are all closed may also retire itself (`teamrig retire`).
+ * into its own group), once the owner approved (`--approved-by`, kept with the hire); `lead` a lead; `automatic` as
+ * `lead`, and a hired session whose tasks are all closed may also retire itself (`teamrig retire`).
  */
 export const HIRING_POLICIES = ['off', 'owner', 'lead', 'automatic'];
 export function isHiringPolicy(value) {
     return HIRING_POLICIES.some((policy) => policy === value);
-}
-/**
- * Who raises `hiring.maxSessions` when it blocks a hire a SCALE-OUT calls for: `owner` on the lead's card, as a
- * raised cap spends more of the week; `lead` the lead itself, in the team config, saying so in its next report.
- */
-export const CAP_RAISERS = ['owner', 'lead'];
-export function isCapRaiser(value) {
-    return CAP_RAISERS.some((raiser) => raiser === value);
 }
 /**
  * Who may start a burst (`teamrig burst start`), a time-boxed scale-out onto helpers and hired sessions

@@ -11,8 +11,9 @@ import { CORE_RULE_KEYS, isCoreRuleKey } from "../rules/keys.js";
 import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT_CONTEXT_FILES, DEFAULT_CLAIMS, DEFAULT_DECISIONS, DEFAULT_COORDINATOR_WAIT, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_GITHUB, DEFAULT_HEAVY, DEFAULT_HIRING, DEFAULT_EXEC, DEFAULT_LOCK, DEFAULT_LEAD_BOUNDARY, DEFAULT_TURN_LOG, DEFAULT_LOOPS, DEFAULT_MERGE_REMOTE, DEFAULT_MESSAGES, DEFAULT_HEADROOM, DEFAULT_IDLE, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_COMMIT_GUARD, DEFAULT_SECRET_GUARD, DEFAULT_PACKAGE_GUARD, DEFAULT_PERMISSIONS, DEFAULT_PROMPTS, DEFAULT_PUSH_GUARD, DEFAULT_READONLY_SHELL, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SCALE_OUT, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_STATUS_LINE, DEFAULT_TESTS, DEFAULT_WAKE, DEFAULT_WINDOWS, HEAVY_TTL_MARGIN_MINUTES, } from "./defaults.js";
 import { isEffort, isModel } from "./launch.js";
 import { BUDGET_ACCOUNT_MAX_LENGTH, CONFIG_LIMITS, REVIEW_PATH_LIMITS, RULE_CONFLICT_LIMITS } from "./limits.js";
+import { HIRE_CAP_DROPPED } from "./migrate.js";
 import { ConfigReader, describe, isValidRegex, shortLine } from "./reader.js";
-import { AD_HOC_RUNNERS, ASK_WITH, PACKAGE_INSTALLS, BURST_POLICIES, CAP_RAISERS, CONFLICT_WINNERS, ESCALATIONS, HIRING_POLICIES, isAdHocRunners, isAskWith, isPackageInstalls, isBurstPolicy, isCapRaiser, isCommitGate, isConflictWinner, isEffortLevel, isEscalation, isHiringPolicy, isOverAction, isHookAsks, isIdleMode, isOtherAreaListing, isPushToProtected, isReviewClass, isReviewPathMode, isSecretReads, isSecretWrites, isSkipHooks, isTerminalChoice, isReviewMode, isVerifyGate, isWeekday, HOOK_ASKS, IDLE_MODES, OTHER_AREA_LISTINGS, OVER_ACTIONS, PUSH_TO_PROTECTED, REVIEW_CLASSES, REVIEW_PATH_MODES, SECRET_READS, SECRET_WRITES, SKIP_HOOKS, TERMINALS, REVIEW_MODES, VERIFY_GATES, WEEKDAYS, } from "./types.js";
+import { AD_HOC_RUNNERS, ASK_WITH, PACKAGE_INSTALLS, BURST_POLICIES, CONFLICT_WINNERS, ESCALATIONS, HIRING_POLICIES, isAdHocRunners, isAskWith, isPackageInstalls, isBurstPolicy, isCommitGate, isConflictWinner, isEffortLevel, isEscalation, isHiringPolicy, isOverAction, isHookAsks, isIdleMode, isOtherAreaListing, isPushToProtected, isReviewClass, isReviewPathMode, isSecretReads, isSecretWrites, isSkipHooks, isTerminalChoice, isReviewMode, isVerifyGate, isWeekday, HOOK_ASKS, IDLE_MODES, OTHER_AREA_LISTINGS, OVER_ACTIONS, PUSH_TO_PROTECTED, REVIEW_CLASSES, REVIEW_PATH_MODES, SECRET_READS, SECRET_WRITES, SKIP_HOOKS, TERMINALS, REVIEW_MODES, VERIFY_GATES, WEEKDAYS, } from "./types.js";
 const isSessionName = (name) => SESSION_NAME.test(name) ? undefined : 'expected a lowercase name: a letter, then letters, digits or -, at most 32';
 /** A role a team may leave to a team above it (ANCESTOR_ROLES): one of its sessions, or `<team>/<id>` (T1143). */
 const isRoleHolder = (holder) => SESSION_NAME.test(holder) || ADDRESS_PATTERN.test(holder) ? undefined : 'expected a session id of the team, or <team>/<id> of a team above it';
@@ -1051,19 +1052,18 @@ function parseRefresh(read, raw) {
         ...(handoverDir === undefined ? {} : { handoverDir }),
     };
 }
-/** `hiring`: who decides, the session cap and who raises it, idle and review days, and when a rehire resumes. */
+/** `hiring`: who decides, idle and review days, and when a rehire resumes. */
 function parseHiring(read, raw) {
     const path = 'hiring';
     const defaults = DEFAULT_HIRING;
     const policy = read.string(raw, 'policy', path, defaults.policy, oneOf(HIRING_POLICIES));
-    const capRaisedBy = read.string(raw, 'capRaisedBy', path, defaults.capRaisedBy, oneOf(CAP_RAISERS));
-    const why = "a hire's daily budget is its part of the team's, by its share and queued work; maxSessions bounds hiring";
-    read.dropped(raw, 'dailyPct', path, why);
-    read.dropped(raw, 'maxDailyPct', path, why);
+    const budgetWhy = "a hire's daily budget is its part of the team's, by its share and queued work";
+    read.dropped(raw, 'dailyPct', path, budgetWhy);
+    read.dropped(raw, 'maxDailyPct', path, budgetWhy);
+    read.dropped(raw, 'maxSessions', path, HIRE_CAP_DROPPED);
+    read.dropped(raw, 'capRaisedBy', path, HIRE_CAP_DROPPED);
     return {
         policy: isHiringPolicy(policy) ? policy : defaults.policy,
-        maxSessions: read.integer(raw, 'maxSessions', path, defaults.maxSessions, CONFIG_LIMITS.hiringMaxSessions),
-        capRaisedBy: isCapRaiser(capRaisedBy) ? capRaisedBy : defaults.capRaisedBy,
         idleHours: read.integer(raw, 'idleHours', path, defaults.idleHours, CONFIG_LIMITS.hiringIdleHours),
         reviewDays: read.integer(raw, 'reviewDays', path, defaults.reviewDays, CONFIG_LIMITS.hiringReviewDays),
         resumeMaxTokens: read.integer(raw, 'resumeMaxTokens', path, defaults.resumeMaxTokens, CONFIG_LIMITS.hiringResumeMaxTokens),
