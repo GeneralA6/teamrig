@@ -833,7 +833,8 @@ and the title are the `/clear` ones above. On Windows an ended Claude Code runs 
 program run in their place, given their input. While background work you started (subagents, background
 commands, monitors, workflows) has not reported back, the ask still comes, saying how many still run and asking the
 handover to say what their results still need; the notice, the mod's `/clear` and the restart wait for a later turn
-end, so a fresh start never cuts that work off. The hooks read that from the transcript (helpers started within the last 6 hours); the mod below
+end, so a fresh start never cuts that work off. Work you stopped with TaskStop counts as ended, though Claude Code
+sends no report for it. The hooks read that from the transcript (work started within the last 6 hours); the mod below
 also asks Claude Code before its `/clear`, and holds while a helper of this session still runs. While the owner's
 daily meeting is open (`teamrig meeting start` to `meeting end`, or its lapse 4 hours on), the lead is neither asked
 nor told its handover is written, so no restart cuts the meeting off; the end of the turn that ends the meeting asks
