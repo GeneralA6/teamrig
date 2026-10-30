@@ -28,7 +28,7 @@ import { JsonlMarkLog } from "../../inbox/store.js";
 import { indexMarks } from "../../inbox/marks.js";
 import { customTitleOf, TRANSCRIPT_TAIL_BYTES } from "../../names/title.js";
 import { TASK_ID } from "../../register/model.js";
-import { otherTeamsOnAccount, weekUseOnAccount } from "../account-teams.js";
+import { accountWeekOn, otherTeamsOnAccount } from "../account-teams.js";
 import { UsageError, onePositional, requiredFlag } from "../args.js";
 import { callerOf } from "../inputs.js";
 import { leadOnly, openKit, openTeamKit, requireConfig, rosterOf, sessionIdOf, teamFolders, teamZone } from "../kit.js";
@@ -74,16 +74,16 @@ async function readBudget(runtime, kit, config, roster, options) {
         chunkBytes: CATCH_UP_CHUNK_BYTES,
         maxRuns: MAX_RUNS_PER_SESSION,
     });
-    const statusUse = recount ? undefined : await weekUseOnAccount(runtime, config.budget, kit.paths, now);
+    const account = recount ? undefined : await accountWeekOn(runtime, config.budget, kit.paths, now);
     const states = [...measured.bySession.values(), measured.outside];
-    const input = { budget: config.budget, now, statusUse, states };
+    const input = { budget: config.budget, now, statusUse: account?.statusUse, states };
     // A recount reads no team state, the meter log included: its rate is the configured one.
-    const week = recount
+    const week = account === undefined
         ? readWeek({ ...input, period: recountPeriodOf(config.budget, now), calibration: calibrationOf([]), readings: [] })
-        : await teamWeekOf(files, kit.paths, input);
+        : await teamWeekOf(files, account.paths, input);
     const lifts = recount ? [] : (await new LiftLog(files, kit.paths.lifts).read()).lifts;
     const bursts = recount ? [] : (await new BurstLog(files, kit.paths.bursts).read()).records;
-    return { now, measured, week, lifts, bursts };
+    return { now, measured, week, weekPaths: account?.paths ?? kit.paths, lifts, bursts };
 }
 /** The week and the team's usage now, for `burst`: its floor reads its sessions' use today. */
 export async function usageReadingOf(runtime, kit, config, roster) {
@@ -386,7 +386,7 @@ export async function extra(args, runtime) {
     const roster = await rosterOf(runtime, kit, config);
     if (caller !== undefined) {
         leadOnly(roster, caller, 'enters the extra-usage pool');
-        const { week, measured, now } = await readBudget(runtime, kit, config, roster, { recountDay: undefined });
+        const { week, measured, now, weekPaths } = await readBudget(runtime, kit, config, roster, { recountDay: undefined });
         const window = week.window;
         if (window === undefined) {
             throw new RefusedError("the week's period is unknown (no status line reading and no budget.weeklyLimitW), so the entry has no period to belong to");
@@ -398,7 +398,7 @@ export async function extra(args, runtime) {
             end: window.reset,
             w: wSince([...measured.bySession.values(), measured.outside], window.start, now),
         };
-        const log = new ExtraLog(runtime.files, kit.paths.extraLog);
+        const log = new ExtraLog(runtime.files, weekPaths.extraLog);
         const logged = [];
         if (added !== undefined) {
             await log.append({ ...entry, kind: 'add', usd: added });

@@ -1,4 +1,4 @@
-import { accountOf, accountTeamsOf, accountWeekOf } from "../budget/account.js";
+import { accountHolderOf, accountOf, accountTeamsOf, accountWeekOf } from "../budget/account.js";
 import { LiftLog } from "../budget/lift.js";
 import { budgetSplitOf } from "../budget/parts.js";
 import { snapshotDirOf, weekUseAt } from "../budget/snapshot.js";
@@ -37,6 +37,21 @@ export async function teamsOnAccountOf(runtime, asking, now, usedPct) {
 export async function weekUseOnAccount(runtime, budget, paths, now) {
     const { teams } = await loadTree(runtime);
     const configDir = claudeConfigDir(runtime.env, runtime.userHome);
-    const fold = await accountWeekOf(runtime.files, teams, snapshotDirOf(budget, paths), { account: accountOf(budget, configDir), configDir, now });
-    return weekUseAt(fold, now);
+    return statusUseOf(runtime, teams, budget, paths, { account: accountOf(budget, configDir), configDir, now });
+}
+/** `weekUseOnAccount` with the week's files of the account (`AccountWeek`), from one read of every team's config. */
+export async function accountWeekOn(runtime, budget, paths, now) {
+    const { tree, teams } = await loadTree(runtime);
+    const configDir = claudeConfigDir(runtime.env, runtime.userHome);
+    const account = accountOf(budget, configDir);
+    const statusUse = await statusUseOf(runtime, teams, budget, paths, { account, configDir, now });
+    const holder = accountHolderOf(tree, paths.team, account, (team) => {
+        const loaded = teams.get(team);
+        return loaded === undefined ? undefined : accountOf(loaded.config.budget, configDir);
+    });
+    return { statusUse, paths: teams.get(holder)?.kit.paths ?? paths };
+}
+async function statusUseOf(runtime, teams, budget, paths, scope) {
+    const fold = await accountWeekOf(runtime.files, teams, snapshotDirOf(budget, paths), scope);
+    return weekUseAt(fold, scope.now);
 }
