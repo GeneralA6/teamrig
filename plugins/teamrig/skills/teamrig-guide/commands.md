@@ -4015,16 +4015,17 @@ Today (UTC day), used and daily budget in % of the week:
   the team  5.0%   10.3%  37.50M  1,310
   api       4.0%    3.4%  30.00M  1,000
   lead      1.0%    3.4%   7.50M    310
-Lifts, today only: a part of the team's daily budget until its time or its stop % of the week, whichever comes first; quiet hours do not apply to them.
-  session   part      until  stop at
-  web      40.0%  03:00 IDT    97.0%
+Lifts, today only: a part of the team's daily budget, the share of the week it comes to now beside it, until its time or its stop % of the week, whichever comes first; quiet hours do not apply to them.
+  session   part  week now      until  stop at
+  web      40.0%      4.1%  03:00 IDT    97.0%
   03:00 IDT is the end of the budget day.
 Past the daily budget: api (the team has used 5.2% of the week today, at or past its in-day pace of 4.7%). Finish the step in hand and start no new work items or helpers. Never skip a test or check to save budget. A session's leader can lift its budget.
 W = weighted tokens: input 1, cache writes 1.25 to 2, cache reads 0.1, output 5. 1% of the week is about 7.50M W, estimated from the status line.
 ```
 
 A session's row marks a budget a lift or a burst raised: `(lifted)`, `(burst)`; a lift's part says `(reserve)` for the
-reserve release (`--reserve`). With `budget.pauseByPriority` on, a short day marks the 0 of a session it pauses
+reserve release (`--reserve`), and its `week now` gives the share of the week that part comes to now, moving with the
+budget it is a part of (`-` while the week's use is unknown). With `budget.pauseByPriority` on, a short day marks the 0 of a session it pauses
 `(paused)`, and a line names the paused sessions, idle ones too: `Paused today, funded by priority as the week's use is
 past its pace line (budget.pauseByPriority): web.` With sub-leads (`leads`), a `group <sub-lead> (<n>)` row follows the team's: the
 use of its n sessions, the sub-lead's own included, against the group's daily budget, marked `(lifted)` under a
@@ -4110,7 +4111,10 @@ Flags:
   a sub-lead lifting its own session.
 - `--group`: lift the named sub-lead's whole group, a part of its parent's daily budget; only a leader above that
   sub-lead may.
-- `--part <pct>`: the part of the parent's daily budget today, in percent (above 0, up to 100).
+- `--part <pct>`: the part of the parent's daily budget today, in percent (above 0, up to 100); a percent of that
+  budget, not of the week. For X% of the week, give X divided by the parent's daily budget (its `budget` column in
+  [teamrig budget](#teamrig-budget), in % of the week) times 100. The `LIFTED` line and the lifts table give the
+  share of the week the part comes to now.
 - `--stop-pct <pct>`: required: the week's use at which the lift ends.
 - `--until <HH:MM|date>`: an earlier end: `HH:MM` today or `"YYYY-MM-DD HH:MM"`, on the team's clock unless marked `UTC`.
 - `--reason "<why>"`: required: why the session needs more today.
@@ -4125,7 +4129,7 @@ teamrig budget lift api --session lead --part 50 --stop-pct 97 --reason "release
 Output:
 
 ```text
-LIFTED api to 50.0% of the team's daily budget today until 03:00 IDT (the end of the budget day) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.
+LIFTED api to 50.0% of the team's daily budget (6.2% of the week now) today until 03:00 IDT (the end of the budget day) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.
 ```
 
 With `web` a sub-lead over `api`, the lead lifts web's whole group, and web lifts api inside it:
@@ -4138,8 +4142,8 @@ teamrig budget lift api --session web --part 50 --stop-pct 97 --reason "the rele
 Output:
 
 ```text
-LIFTED web's group to 40.0% of the team's daily budget today until 03:00 IDT (the end of the budget day) or 97.0% of the week, whichever comes first.
-LIFTED api to 50.0% of web's group's daily budget today until 03:00 IDT (the end of the budget day) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.
+LIFTED web's group to 40.0% of the team's daily budget (5.0% of the week now) today until 03:00 IDT (the end of the budget day) or 97.0% of the week, whichever comes first.
+LIFTED api to 50.0% of web's group's daily budget (2.5% of the week now) today until 03:00 IDT (the end of the budget day) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.
 ```
 
 With `docs` a team under the lead's team `app`, the lead tops up docs's session `writer`:
@@ -4151,7 +4155,7 @@ teamrig budget lift docs/writer --session lead --part 18 --stop-pct 50 --reason 
 Output:
 
 ```text
-LIFTED docs/docs-writer to 18.0% of team app's daily budget on top of its own budget today until 03:00 IDT (the end of the budget day) or 50.0% of the week, whichever comes first.
+LIFTED docs/docs-writer to 18.0% of team app's daily budget (1.8% of the week now) on top of its own budget today until 03:00 IDT (the end of the budget day) or 50.0% of the week, whichever comes first.
 ```
 
 A caller that leads no group over the session, a `--group` of the lead or of a session that leads no group, a
