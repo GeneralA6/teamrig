@@ -5,23 +5,35 @@ import type { Clock } from '../core/lock.ts';
 import { formatUtcMinute } from '../core/time.ts';
 import { CONFIG_MIGRATIONS, type ConfigMigration } from './migrate.ts';
 import { parseConfigText, type ConfigRead, type PendingMigration } from './text.ts';
-import { CONFIG_VERSION } from './types.ts';
+import { CONFIG_VERSION, type AccountBudget, type KitConfig } from './types.ts';
 
 /** What reading the config file gave: `missing`, or its parse (`parseConfigText`) with the path it was read from. */
 export type ConfigLoad = { readonly status: 'missing'; readonly path: string } | (ConfigRead & { readonly path: string });
 
-/** Reads, migrates in memory and validates the config file. Never writes. */
+/**
+ * The budget keys of the account's week a team's config takes from the team above (`AccountBudget`), given the config
+ * as it reads alone; undefined for a team with none above it.
+ */
+export type BudgetAbove = (own: KitConfig) => Promise<AccountBudget | undefined>;
+
+/**
+ * Reads, migrates in memory and validates the config file, reading it again over `above`'s keys when it has a team
+ * above. Never writes.
+ */
 export async function loadConfig(
   files: Files,
   path: string,
   migrations: readonly ConfigMigration[] = CONFIG_MIGRATIONS,
   target: number = CONFIG_VERSION,
+  above?: BudgetAbove,
 ): Promise<ConfigLoad> {
   const text = await files.read(path);
   if (text === undefined) {
     return { status: 'missing', path };
   }
-  return { ...parseConfigText(text, migrations, target), path };
+  const own = parseConfigText(text, migrations, target);
+  const inherited = own.status === 'loaded' && above !== undefined ? await above(own.config) : undefined;
+  return { ...(inherited === undefined ? own : parseConfigText(text, migrations, target, inherited)), path };
 }
 
 /**
