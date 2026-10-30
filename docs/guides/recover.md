@@ -92,7 +92,7 @@ sequenceDiagram
   `waits for work`): the wake that brings it some starts the restart instead of waking the old context. teamrig's mod (`hooks/register.ts`) looks for it each second, claims it while
   the restart is still pending and runs `/clear` in the tab, so the tab and its process stay and Claude Code runs
   its own SessionEnd and SessionStart hooks. It holds the `/clear` for you first: while the prompt box holds a draft,
-  for `refresh.holdAfterActivityMinutes` (5) after your last key or prompt, and 10 minutes after you press Hold; then
+  for `refresh.holdAfterActivityMinutes` (30) after your last key or prompt, and 10 minutes after you press Hold; then
   a band above the prompt counts `refresh.countdownSeconds` (20) down with `1: Refresh now` and `2: Hold 10 min`.
   Before that the band shows each hold: what holds the `/clear` and, for your own, how long it has left.
   While Claude Code lists a live agent of the session (`$.agent.list()`:
