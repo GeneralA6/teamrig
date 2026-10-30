@@ -2,7 +2,7 @@ import { parseConfig } from '../config/parse.ts';
 import { ANCESTOR_ROLES, Roster } from '../config/roster.ts';
 import { describeTreeProblem, teamNodeOf, type TeamNode, type TeamTree, type TreeProblem } from '../config/tree.ts';
 import { ACCOUNT_BUDGET_KEYS, type KitConfig } from '../config/types.ts';
-import { coordinatorDirOf, teamPlace } from '../delivery/places.ts';
+import { deliveryDirOf, teamPlace } from '../delivery/places.ts';
 import { ADDRESS_PATTERN } from '../core/address.ts';
 import { isRecord, isStringArray, recordField, type JsonRecord } from '../core/guards.ts';
 import { KIT_NAME, type TeamPaths } from '../core/home.ts';
@@ -48,7 +48,7 @@ type Rework = (block: JsonRecord | undefined, scope: SplitScope) => JsonRecord |
  * parent's and two queued steps never overlap; the budget and the idle pass hold only the moved sessions' entries, and the
  * budget none of the keys of the account's week, which the child reads from the parent.
  */
-const REWORKED = { delivery: sharedCoordinatorOf, budget: movedBudgetOf, open: movedOpenOf } satisfies Partial<Record<keyof KitConfig, Rework>>;
+const REWORKED = { delivery: sharedDeliveryOf, budget: movedBudgetOf, open: movedOpenOf } satisfies Partial<Record<keyof KitConfig, Rework>>;
 
 /** How the child takes a key of the parent's config: the split writes it, the child starts without it, or a copy. */
 type ChildTake = 'split' | 'own' | 'copy';
@@ -248,13 +248,13 @@ function placedAt(record: JsonRecord, key: string, parent: SplitParent): JsonRec
  * deploy freezes and pending merges in the parent's folder, and a relative host lock or main checkout is made
  * absolute to it.
  */
-function sharedCoordinatorOf(block: JsonRecord | undefined, { parent }: SplitScope): JsonRecord {
+function sharedDeliveryOf(block: JsonRecord | undefined, { parent }: SplitScope): JsonRecord {
   const raw = block ?? {};
   const queue = recordField(raw, 'queue');
   const repos = recordField(raw, 'repos');
   return {
     ...raw,
-    dir: coordinatorDirOf(parent.config.delivery, parent.paths),
+    dir: deliveryDirOf(parent.config.delivery, parent.paths),
     ...(queue === undefined ? {} : { queue: placedAt(queue, 'lockPath', parent) }),
     ...(repos === undefined
       ? {}

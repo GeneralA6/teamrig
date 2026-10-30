@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_DELIVERY_WAIT, DEFAULT_FREEZES, DEFAULT_QUEUE, DEFAULT_STABLE_PERIODS } from '../config/defaults.ts';
 import type { DeliveryConfig } from '../config/types.ts';
 import { teamPaths } from '../core/home.ts';
-import { coordinatorDirOf, deliveryPlaces, GATE_HOLDS_DIR, HOST_LOCK_FILE, MERGES_FILE, REVIEW_HOLDS_DIR, teamPlace } from './places.ts';
+import { deliveryDirOf, deliveryPlaces, GATE_HOLDS_DIR, HOST_LOCK_FILE, MERGES_FILE, REVIEW_HOLDS_DIR, teamPlace } from './places.ts';
 
 const HOME = resolve('kit', 'teams', 'app');
 const STATE = join(HOME, 'state');
@@ -17,12 +17,12 @@ describe('teamPlace', () => {
   });
 });
 
-describe('coordinatorDirOf', () => {
+describe('deliveryDirOf', () => {
   it("is <state>/deploys when delivery.dir is unset, and delivery.dir in the team's folder when set", () => {
-    assert.equal(coordinatorDirOf({}, { home: HOME, state: STATE }), join(STATE, 'deploys'));
-    assert.equal(coordinatorDirOf({ dir: 'ledger' }, { home: HOME, state: STATE }), join(HOME, 'ledger'));
+    assert.equal(deliveryDirOf({}, { home: HOME, state: STATE }), join(STATE, 'deploys'));
+    assert.equal(deliveryDirOf({ dir: 'ledger' }, { home: HOME, state: STATE }), join(HOME, 'ledger'));
     const absolute = resolve('shared', 'deploys');
-    assert.equal(coordinatorDirOf({ dir: absolute }, { home: HOME, state: STATE }), absolute);
+    assert.equal(deliveryDirOf({ dir: absolute }, { home: HOME, state: STATE }), absolute);
   });
 });
 
