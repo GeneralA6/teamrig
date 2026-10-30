@@ -7,7 +7,7 @@ import { isRecord } from '../../core/guards.ts';
 import { noPositionals, UsageError, type Flags, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
 import { checkedNextConfig, configFileJson, leadOnly, openTeamKit, requireConfig, rosterOf } from '../kit.ts';
-import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
+import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 
 /**
  * `budget setup`: the lead writes the team's budget policy into the team config. Without --yes it only

@@ -1,7 +1,7 @@
 import { isAssignment, launch, programName, staticWord, type Assignment, type Launch } from './launchers.ts';
 import { Location, resolveDir } from './location.ts';
 import { redirectsInput, stdinUse } from './stdin.ts';
-import { parseHeldText, parseShell, type ShellCommand, type ShellDialect, type ShellParse, type ShellWord } from './tokenizer.ts';
+import { parseHeldText, parseShell, type ShellDialect, type ShellParse, type ShellWord } from './tokenizer.ts';
 import { resolveLiteralVariables } from './variables.ts';
 
 /** One git config value: set, unset (git exits 1), or unreadable (git failed or is missing). */
