@@ -219,4 +219,5 @@ helper it is. Everything runs on your machine, with no account and no cloud bill
 
 ## Licence
 
-[Apache License 2.0](LICENSE).
+[Apache License 2.0](LICENSE). Every copy keeps the [NOTICE](NOTICE) file, and a changed copy you share takes a name of
+its own ([the name policy](TRADEMARKS.md)).
