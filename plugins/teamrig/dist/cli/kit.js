@@ -69,13 +69,32 @@ function overridesOf(config) {
     const { handoverDir } = config.refresh;
     return { ...config.paths, ...(handoverDir === undefined ? {} : { handover: handoverDir }) };
 }
-/** The team's folder under the kit home, its config and the paths the config moves. */
+/**
+ * The team's folder under the kit home, its config and the paths the config moves. A team under another takes the
+ * budget keys of the account's week it leaves unset from the team above (`AccountBudget`).
+ */
 export async function openKit(runtime, team) {
     const kitHome = resolveKitHome(runtime.env, runtime.userHome);
-    const format = runtime.configFormat ?? SHIPPED_CONFIG_FORMAT;
     const claudeDir = claudeConfigDir(runtime.env, runtime.userHome);
-    const load = await loadConfig(runtime.files, teamPaths(kitHome, team, claudeDir).config, format.migrations, format.version);
+    const load = await teamConfigOf(runtime, team, []);
     return { load, paths: teamPaths(kitHome, team, claudeDir, load.status === 'loaded' ? overridesOf(load.config) : {}) };
+}
+/**
+ * A team's config over the team above's (`openKit`); `below` holds the teams it is read for, so parent links that go
+ * round in a loop end at the first team met again, which `doctor` names (tree-loop).
+ */
+async function teamConfigOf(runtime, team, below) {
+    const format = runtime.configFormat ?? SHIPPED_CONFIG_FORMAT;
+    const path = teamPaths(resolveKitHome(runtime.env, runtime.userHome), team, claudeConfigDir(runtime.env, runtime.userHome)).config;
+    const chain = [...below, team];
+    return loadConfig(runtime.files, path, format.migrations, format.version, async (own) => {
+        const parent = own.team?.parent;
+        if (parent === undefined || chain.includes(parent)) {
+            return undefined;
+        }
+        const above = await teamConfigOf(runtime, parent, chain);
+        return above.status === 'loaded' ? above.config.budget : undefined;
+    });
 }
 /**
  * Where to look for a team pointer: the given folders in order, then the folder Claude Code started

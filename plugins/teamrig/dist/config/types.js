@@ -73,6 +73,12 @@ export const ESCALATIONS = ['session', 'session-and-fleet'];
 export function isEscalation(value) {
     return ESCALATIONS.some((escalation) => escalation === value);
 }
+/**
+ * The budget keys of the account's week, and whether the budget is on: a team under another (`team.parent`) that
+ * leaves one unset takes the team above's, unless it names another account (src/cli/kit.ts openKit), so the teams of
+ * a tree read one week alike without a copy that drifts.
+ */
+export const ACCOUNT_BUDGET_KEYS = ['enabled', 'account', 'weeklyLimitW', 'subagentWeight', 'extraWPerUsd', 'reset'];
 export const ASK_WITH = ['text', 'picker'];
 export function isAskWith(value) {
     return ASK_WITH.some((way) => way === value);

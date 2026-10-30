@@ -3,13 +3,18 @@ import { formatUtcMinute } from "../core/time.js";
 import { CONFIG_MIGRATIONS } from "./migrate.js";
 import { parseConfigText } from "./text.js";
 import { CONFIG_VERSION } from "./types.js";
-/** Reads, migrates in memory and validates the config file. Never writes. */
-export async function loadConfig(files, path, migrations = CONFIG_MIGRATIONS, target = CONFIG_VERSION) {
+/**
+ * Reads, migrates in memory and validates the config file, reading it again over `above`'s keys when it has a team
+ * above. Never writes.
+ */
+export async function loadConfig(files, path, migrations = CONFIG_MIGRATIONS, target = CONFIG_VERSION, above) {
     const text = await files.read(path);
     if (text === undefined) {
         return { status: 'missing', path };
     }
-    return { ...parseConfigText(text, migrations, target), path };
+    const own = parseConfigText(text, migrations, target);
+    const inherited = own.status === 'loaded' && above !== undefined ? await above(own.config) : undefined;
+    return { ...(inherited === undefined ? own : parseConfigText(text, migrations, target, inherited)), path };
 }
 /**
  * Writes a pending migration: first a backup of the original file (`config.v<N>.json`, or with a

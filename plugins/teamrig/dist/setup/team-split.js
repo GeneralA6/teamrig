@@ -1,6 +1,7 @@
 import { parseConfig } from "../config/parse.js";
 import { ANCESTOR_ROLES, Roster } from "../config/roster.js";
 import { describeTreeProblem, teamNodeOf } from "../config/tree.js";
+import { ACCOUNT_BUDGET_KEYS } from "../config/types.js";
 import { coordinatorDirOf, teamPlace } from "../coordinator/places.js";
 import { ADDRESS_PATTERN } from "../core/address.js";
 import { isRecord, isStringArray, recordField } from "../core/guards.js";
@@ -8,7 +9,8 @@ import { KIT_NAME } from "../core/home.js";
 import { configRecordOf } from "./team-create.js";
 /**
  * The blocks the child takes changed: one coordinator per host, so its folder, host lock and main checkouts stay the
- * parent's and two heavy steps never overlap; the budget and the idle pass hold only the moved sessions' entries.
+ * parent's and two heavy steps never overlap; the budget and the idle pass hold only the moved sessions' entries, and the
+ * budget none of the keys of the account's week, which the child reads from the parent.
  */
 const REWORKED = { coordinator: sharedCoordinatorOf, budget: movedBudgetOf, open: movedOpenOf };
 /**
@@ -140,9 +142,20 @@ function sharedCoordinatorOf(block, { parent }) {
             : { repos: Object.fromEntries(Object.entries(repos).map(([name, repo]) => [name, isRecord(repo) ? placedAt(repo, 'mainCheckout', parent) : repo])) }),
     };
 }
-/** The parent's budget with the moved sessions' shares only, its status line folder made absolute to the parent's. */
+/** The budget keys of the account's week, which a child reads from its parent (`AccountBudget`) and so never copies. */
+const ACCOUNT_KEYS = new Set(ACCOUNT_BUDGET_KEYS);
+/**
+ * The parent's budget with the moved sessions' shares only, its status line folder made absolute to the parent's, and
+ * without the keys of the account's week (ACCOUNT_KEYS): a copy of those would drift from the parent's. Nothing when
+ * no other key is left.
+ */
 function movedBudgetOf(block, { parent, moved }) {
-    return block === undefined ? undefined : { ...placedAt(block, 'statusSnapshotDir', parent), ...keptIn(block, 'sessions', (id) => moved.has(id)) };
+    if (block === undefined) {
+        return undefined;
+    }
+    const taken = { ...placedAt(block, 'statusSnapshotDir', parent), ...keptIn(block, 'sessions', (id) => moved.has(id)) };
+    const own = Object.entries(taken).filter(([key]) => !ACCOUNT_KEYS.has(key));
+    return own.length === 0 ? undefined : Object.fromEntries(own);
 }
 /** The parent's `open` block with its idle pass keeping open only moved sessions. */
 function movedOpenOf(block, { moved }) {
