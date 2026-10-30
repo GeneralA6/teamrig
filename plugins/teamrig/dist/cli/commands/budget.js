@@ -16,7 +16,7 @@ import { ExtraLog } from "../../budget/extra.js";
 import { formatPct, formatUsd } from "../../budget/format.js";
 import { activeGroupLift, activeLift, decideLift, LiftLog, liftText, parentBudgetText } from "../../budget/lift.js";
 import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID } from "../../budget/measure.js";
-import { budgetSplitOf, crossLiftPlaceOf, dailyBudgetOf, groupPartsOf, liftPlaceOf, teamPartOf } from "../../budget/parts.js";
+import { budgetSplitOf, crossLiftPlaceOf, dailyBudgetOf, groupPartsOf, liftPlaceOf, liftWeekPctOf, teamPartOf } from "../../budget/parts.js";
 import { fundForDay, isPaused, pausableOf } from "../../budget/pause.js";
 import { nextPeriod, sightOf } from "../../budget/period.js";
 import { burnLines, loopLines, missLines, missMatrixLines, recountLines, sessionLines, sumDays, sumUsage, taskLines, todayLines, weekLine, } from "../../budget/report.js";
@@ -113,26 +113,31 @@ function sessionsToday(reading, roster, budget, split, others) {
         const lift = activeLift(reading.lifts, id, reading.now, reading.week.usedPct);
         const inBurst = burstNow !== undefined && burstNow.burst.sessions.includes(id) ? burstNow : undefined;
         const budgetPct = withBurst(dailyBudgetOf(reading.week.allowancePct, id, split, others), inBurst?.floorPct);
-        return { id, name: roster.nameOf(id) ?? id, w, calls: state?.byDay[today]?.calls ?? 0, budgetPct, lift, ...liftNamesOf(split, roster, id, lift), inBurst, paused: isPaused(split, id) };
+        return { id, name: roster.nameOf(id) ?? id, w, calls: state?.byDay[today]?.calls ?? 0, budgetPct, lift, ...liftNamesOf({ split, others }, reading.week.allowancePct, roster, id, lift), inBurst, paused: isPaused(split, id) };
     });
 }
 /** Each sub-lead's group today: its part of the day (`groupPartsOf`) and its group lift by name. */
 function groupsToday(reading, roster, split, others) {
     return groupPartsOf(reading.week.allowancePct, split, others).map((group) => {
         const lift = activeGroupLift(reading.lifts, group.id, reading.now, reading.week.usedPct);
-        return { id: group.id, name: roster.nameOf(group.id) ?? group.id, sessions: group.sessions, budgetPct: group.budgetPct, lift, ...liftNamesOf(split, roster, group.id, lift) };
+        return { id: group.id, name: roster.nameOf(group.id) ?? group.id, sessions: group.sessions, budgetPct: group.budgetPct, lift, ...liftNamesOf({ split, others }, reading.week.allowancePct, roster, group.id, lift) };
     });
 }
 /**
- * The lift of session `id`, or of the group sub-lead `id` leads, by name: the leader that gave it and the sub-lead
- * whose group's daily budget it is a part of (`split`'s tree).
+ * The lift of session `id`, or of the group sub-lead `id` leads, by name: the leader that gave it, the sub-lead whose
+ * group's daily budget it is a part of (the team's `split` tree) and the share of the week its part comes to now, of
+ * the account's day `allowancePct` beside the `others` on it.
  */
-export function liftNamesOf(split, roster, id, lift) {
+export function liftNamesOf(teams, allowancePct, roster, id, lift) {
     if (lift === undefined) {
-        return { liftBy: undefined, liftParent: undefined };
+        return { liftBy: undefined, liftParent: undefined, liftWeekPct: undefined };
     }
-    const parent = liftPlaceOf(split, id, lift.group)?.parent;
-    return { liftBy: roster.nameOf(lift.by) ?? lift.by, liftParent: parent === undefined ? undefined : (roster.nameOf(parent) ?? parent) };
+    const parent = liftPlaceOf(teams.split, id, lift.group)?.parent;
+    return {
+        liftBy: roster.nameOf(lift.by) ?? lift.by,
+        liftParent: parent === undefined ? undefined : (roster.nameOf(parent) ?? parent),
+        liftWeekPct: liftWeekPctOf(allowancePct, parent, lift.partPct, teams.split, teams.others),
+    };
 }
 /** The days a loop table shows, oldest first, ending at `now`'s day. */
 function loopDays(now, count) {
@@ -348,10 +353,10 @@ export async function lift(args, runtime) {
         throw new RefusedError(`${group ? `${name}'s group` : name} has no daily budget to lift: \`leads\` lists it in a loop of sub-leads no leader above reaches`);
     }
     const parent = parentBudgetText(place.parent === undefined ? undefined : nameOf(place.parent));
+    const others = await otherTeamsOnAccount(runtime, { team: kit.paths.team, config, usageDir: kit.paths.usage }, reading.now, week.usedPct);
+    const funded = fundForDay({ split, others }, week);
     let beyondParent;
     if (place.parent !== undefined) {
-        const others = await otherTeamsOnAccount(runtime, { team: kit.paths.team, config, usageDir: kit.paths.usage }, reading.now, week.usedPct);
-        const funded = fundForDay({ split, others }, week);
         const part = groupPartsOf(week.allowancePct, funded.split, funded.others).find((each) => each.id === place.parent);
         const states = (part?.sessions ?? []).flatMap((each) => reading.measured.bySession.get(each) ?? []);
         const usedPct = week.todayWPerPct === undefined || part === undefined ? undefined : wSince(states, week.todayFrom, reading.now) / week.todayWPerPct;
@@ -362,7 +367,7 @@ export async function lift(args, runtime) {
         throw new RefusedError(decision.reason);
     }
     await new LiftLog(runtime.files, kit.paths.lifts).append(decision.lift);
-    runtime.out.stdout(`LIFTED ${liftText(decision.lift, name, parent, zone)}`);
+    runtime.out.stdout(`LIFTED ${liftText(decision.lift, name, parent, liftWeekPctOf(week.allowancePct, place.parent, partPct, funded.split, funded.others), zone)}`);
     return EXIT.ok;
 }
 /**
@@ -394,14 +399,18 @@ async function crossTeamLift(runtime, lifting, target, ask) {
     const address = formatAddress({ team: target.team, id: found.id });
     const reading = await readBudget(runtime, kit, config, roster, { recountDay: undefined });
     const { weights: work } = await readWork(runtime.files, kit.paths.events, config.register.priorities);
-    const place = crossLiftPlaceOf(splitOf(reading, own, roster, config, work), address);
+    const split = splitOf(reading, own, roster, config, work);
+    const place = crossLiftPlaceOf(split, address);
     const parent = `team ${own}'s daily budget`;
     const decision = decideLift({ session: address, group: false, partPct: ask.partPct, stopPct: ask.stopPct, until: ask.until, reserve: ask.reserve, reason: ask.reason, by, now: ask.now }, { usedPct: reading.week.usedPct, reset: reading.week.reset, limits: config.budget.lift, liftedPct: place.liftedPct, parent, beyondParent: undefined, zone });
     if (decision.kind === 'refused') {
         throw new RefusedError(decision.reason);
     }
     await new LiftLog(runtime.files, kit.paths.lifts).append(decision.lift);
-    runtime.out.stdout(`LIFTED ${liftText(decision.lift, `${target.team}/${below.roster.nameOf(found.id) ?? found.id}`, parent, zone)}`);
+    const others = await otherTeamsOnAccount(runtime, { team: own, config, usageDir: kit.paths.usage }, reading.now, reading.week.usedPct);
+    const funded = fundForDay({ split, others }, reading.week);
+    const weekPct = liftWeekPctOf(reading.week.allowancePct, undefined, ask.partPct, funded.split, funded.others);
+    runtime.out.stdout(`LIFTED ${liftText(decision.lift, `${target.team}/${below.roster.nameOf(found.id) ?? found.id}`, parent, weekPct, zone)}`);
     return EXIT.ok;
 }
 /** A dollar flag: `--add` above 0, `--spent` 0 or more; undefined when it is not given. */
