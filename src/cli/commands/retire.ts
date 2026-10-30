@@ -1,7 +1,6 @@
 import { writeConfigWithBackup } from '../../config/load.ts';
 import type { Roster } from '../../config/roster.ts';
 import { KIT_NAME } from '../../core/home.ts';
-import { FileLock } from '../../core/lock.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { HiringLog } from '../../hiring/log.ts';
 import { activeHires } from '../../hiring/record.ts';
@@ -17,6 +16,7 @@ import { checkedNextConfig, configFileJson, openTeamKit, requireConfig, rosterOf
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { teamRegister } from '../team-register.ts';
 import { inboxDepsOf } from './inbox.ts';
+import { fileLockOf } from '../file-locks.ts';
 
 /**
  * `retire`: a lead over a session takes it off the team once the team no longer needs it: the lead, or a
@@ -94,10 +94,10 @@ export async function retire(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   const roster = await rosterOf(runtime, kit, config);
   const by = sessionIdOf(roster, caller);
   const register = teamRegister(runtime, kit.paths, config);
-  const { files, clock, sleep, pid } = runtime;
+  const { files, clock } = runtime;
   const { load } = kit;
   const log = new HiringLog(files, kit.paths.hires);
-  const mutex = new FileLock(kit.paths.hiresLock, config.lock, { files, clock, sleep, pid });
+  const mutex = fileLockOf(runtime, kit.paths.hiresLock, config.lock);
   return mutex.run(async () => {
     const request = await requestOf(args, runtime, kit, roster, register, by);
     const { records, skipped } = await log.read();

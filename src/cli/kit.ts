@@ -8,13 +8,13 @@ import type { KitConfig } from '../config/types.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { claudeConfigDir, ENV, KIT_NAME, resolveKitHome, teamPaths, type Env, type PathOverrides, type TeamPaths } from '../core/home.ts';
 import { ID_PATTERN } from '../core/ids.ts';
-import { FileLock } from '../core/lock.ts';
 import { resolveTeam, TEAM_POINTER } from '../core/team.ts';
 import { TimeZone } from '../core/zone.ts';
 import { JsonlRenameLog } from '../names/log.ts';
 import type { RenameDeps } from '../names/record.ts';
 import type { RulesClock } from '../rules/pack.ts';
 import { RefusedError, type CliRuntime } from './runtime.ts';
+import { fileLockOf } from './file-locks.ts';
 
 export interface Kit {
   readonly paths: TeamPaths;
@@ -23,10 +23,10 @@ export interface Kit {
 
 /** The rename log, its lock and the roster it gives, for recording a rename. */
 export function renameDepsOf(runtime: CliRuntime, kit: Kit, config: KitConfig): RenameDeps {
-  const { files, clock, sleep, pid } = runtime;
+  const { files, clock } = runtime;
   return {
     log: new JsonlRenameLog(files, kit.paths.renames),
-    mutex: new FileLock(kit.paths.renamesLock, config.lock, { files, clock, sleep, pid }),
+    mutex: fileLockOf(runtime, kit.paths.renamesLock, config.lock),
     clock,
     rosterOf: (renames) => new Roster(config, kit.paths.team, renames),
   };

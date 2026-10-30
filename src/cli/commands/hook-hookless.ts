@@ -1,7 +1,6 @@
 import { readLines } from '../../budget/cursor.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { KIT_NAME, resolveKitHome } from '../../core/home.ts';
-import { FileLock } from '../../core/lock.ts';
 import { indexMarks } from '../../inbox/marks.ts';
 import {
   checkedState,
@@ -24,6 +23,7 @@ import { postToHolder, sessionNameOn } from '../holder-team.ts';
 import { teamZone, type Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
 import { inboxDepsOf } from './inbox.ts';
+import { fileLockOf } from '../file-locks.ts';
 
 async function readState(runtime: CliRuntime, kit: Kit): Promise<HooklessState | undefined> {
   return parseHooklessState((await runtime.files.read(kit.paths.hookless)) ?? '');
@@ -79,8 +79,7 @@ export async function checkHooklessTabs(runtime: CliRuntime, kit: Kit, config: K
   if (!isCheckDue(await readState(runtime, kit), now)) {
     return [];
   }
-  const { files, clock, sleep, pid } = runtime;
-  const lock = new FileLock(kit.paths.hooklessLock, { ...config.lock, waitMs: 0 }, { files, clock, sleep, pid });
+  const lock = fileLockOf(runtime, kit.paths.hooklessLock, { ...config.lock, waitMs: 0 });
   const news = await lock.run(async () => {
     const state = await readState(runtime, kit);
     if (!isCheckDue(state, now)) {

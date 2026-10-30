@@ -1,7 +1,6 @@
 import { roleHolderOf } from '../../config/roster.ts';
 import { formatAddress, type SessionAddress } from '../../core/address.ts';
 import { errorMessage, stringField, type JsonRecord } from '../../core/guards.ts';
-import { FileLock } from '../../core/lock.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import type { Rotation } from '../../hooks/secret-redact.ts';
 import type { Task } from '../../register/fold.ts';
@@ -15,6 +14,7 @@ import type { CliRuntime } from '../runtime.ts';
 import { sessionScopeOf, teamScopeOf, type TeamScope } from './hook-input.ts';
 import { teamOf, tellAssigned } from './register-team.ts';
 import { askTeam, treeCallerOf } from './team-ask.ts';
+import { fileLockOf } from '../file-locks.ts';
 
 /** What a tool's result held: the tool, and each kind of secret found, by its shape's description. */
 export interface Leak {
@@ -46,8 +46,7 @@ export async function fileRotations(runtime: CliRuntime, payload: JsonRecord, le
       return every(leak, "the tab's team has no loaded config");
     }
     const session = (await sessionScopeOf(runtime, team, payload))?.id;
-    const { files, clock, sleep, pid } = runtime;
-    const lock = new FileLock(team.kit.paths.secretIncidentsLock, { ...team.config.lock, waitMs: LOCK_WAIT_MS }, { files, clock, sleep, pid });
+    const lock = fileLockOf(runtime, team.kit.paths.secretIncidentsLock, { ...team.config.lock, waitMs: LOCK_WAIT_MS });
     return await lock.run(() => rotateEach(runtime, team, session, callOf(payload), leak));
   } catch (error) {
     return every(leak, errorMessage(error));

@@ -4,7 +4,7 @@ import { claudeProjectsDir, lastWriteOf } from '../../budget/discover.ts';
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { isRecord, stringField } from '../../core/guards.ts';
-import { FileLock, LockBusyError } from '../../core/lock.ts';
+import { LockBusyError } from '../../core/lock.ts';
 import { MeetingStore, phaseOf } from '../../meeting/state.ts';
 import { restartMayAct } from '../../refresh/restart.ts';
 import { RefreshStore } from '../../refresh/store.ts';
@@ -26,6 +26,7 @@ import { inboxDepsOf } from './inbox.ts';
 import { runIdlePass } from './hook-idle-pass.ts';
 import { parseJson, sessionTeam, teamSessionOf } from './hook-input.ts';
 import { rearmDeadRestart } from './hook-restart.ts';
+import { fileLockOf } from '../file-locks.ts';
 
 /**
  * What `hook wake-check` answers the plugin's mod, one JSON line: submit `text` as a prompt and show `toast`; or
@@ -219,8 +220,8 @@ async function momentsOf(
  */
 async function decide(runtime: CliRuntime, scope: Extract<WakeScope, { kind: 'found' }>, store: WakeStore): Promise<CheckVerdict> {
   const { config, kit, id, tab } = scope;
-  const { files, clock, sleep, pid } = runtime;
-  const lock = new FileLock(store.lockOf(id), { ...config.lock, waitMs: 0 }, { files, clock, sleep, pid });
+  const { files, clock } = runtime;
+  const lock = fileLockOf(runtime, store.lockOf(id), { ...config.lock, waitMs: 0 });
   return lock.run(async (): Promise<CheckVerdict> => {
     const { snapshot, elsewhere } = await teamRegister(runtime, kit.paths, config).snapshotWithElsewhere();
     const { tasks } = snapshot.state;

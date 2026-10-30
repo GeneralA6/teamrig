@@ -1,6 +1,6 @@
 import type { KitConfig } from '../../config/types.ts';
 import { ENV, type Env } from '../../core/home.ts';
-import { FileLock } from '../../core/lock.ts';
+import type { FileLock } from '../../core/lock.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { addedLines, claimState, failureNews, finishState, formatSyncState, isDue, parseSyncState, type AddedTask, type RepoFailure, type SyncState } from '../../github/auto.ts';
 import { postLine } from '../../inbox/inbox.ts';
@@ -8,6 +8,7 @@ import { GITHUB_ACTOR } from '../../register/policy.ts';
 import type { Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
 import { inboxDepsOf } from './inbox.ts';
+import { fileLockOf } from '../file-locks.ts';
 
 /**
  * The automatic GitHub sync: the Stop hook starts `gh sync --auto` hidden in the background once per
@@ -24,8 +25,7 @@ export function githubOff(env: Env): boolean {
 
 /** The lock around the sync state file; a hook does not wait for it, a finishing sync does. */
 function stateLock(runtime: CliRuntime, kit: Kit, config: KitConfig, waitMs: number): FileLock {
-  const { files, clock, sleep, pid } = runtime;
-  return new FileLock(kit.paths.githubSyncLock, { ...config.lock, waitMs }, { files, clock, sleep, pid });
+  return fileLockOf(runtime, kit.paths.githubSyncLock, { ...config.lock, waitMs });
 }
 
 async function readState(runtime: CliRuntime, kit: Kit): Promise<SyncState | undefined> {

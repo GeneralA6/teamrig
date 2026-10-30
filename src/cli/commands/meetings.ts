@@ -2,7 +2,7 @@ import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { KIT_NAME } from '../../core/home.ts';
 import { sessionDisplay } from '../../core/ids.ts';
-import { FileLock } from '../../core/lock.ts';
+import type { FileLock } from '../../core/lock.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import { inboxLineOf, postLines } from '../../inbox/inbox.ts';
@@ -33,6 +33,7 @@ import { inboxDepsOf } from './inbox.ts';
 import { openSession, TERMINAL_LABELS } from './open.ts';
 import { ownRegister } from './register.ts';
 import { sessionProjectOf } from './setup.ts';
+import { fileLockOf } from '../file-locks.ts';
 
 /**
  * `meeting schedule|list|move|start <id>|end <id>|drop` (T1358): the owner's meetings with one session at a set time,
@@ -66,7 +67,7 @@ async function meetingsKit(args: ParsedArgs, runtime: CliRuntime, access: Access
   const kit = await openKit(runtime, found.team);
   const config = requireConfig(kit, runtime, access);
   const roster = await rosterOf(runtime, kit, config);
-  const { files, clock, sleep, pid } = runtime;
+  const { files, clock } = runtime;
   return {
     kit,
     from: found.from,
@@ -74,7 +75,7 @@ async function meetingsKit(args: ParsedArgs, runtime: CliRuntime, access: Access
     roster,
     caller: sessionIdOf(roster, callerOf(args.flags, runtime.env)),
     schedule: new MeetingSchedule(files, kit.paths.meetings),
-    lock: new FileLock(kit.paths.meetingsLock, config.lock, { files, clock, sleep, pid }),
+    lock: fileLockOf(runtime, kit.paths.meetingsLock, config.lock),
     now: clock.now(),
     zone: teamZone(config, runtime),
   };

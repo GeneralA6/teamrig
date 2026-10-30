@@ -1,6 +1,6 @@
 import { stringField, type JsonRecord } from '../../core/guards.ts';
 import { KIT_NAME } from '../../core/home.ts';
-import { FileLock, LockBusyError } from '../../core/lock.ts';
+import { LockBusyError } from '../../core/lock.ts';
 import { injectFor } from '../../inbox/inject.ts';
 import { unseenLinesOf } from '../../inbox/inbox.ts';
 import { asksNowOf, WakeAsks } from '../../wake/asks.ts';
@@ -9,6 +9,7 @@ import { teamZone } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
 import { wakeScopeOf } from './hook-wake.ts';
 import { inboxDepsOf } from './inbox.ts';
+import { fileLockOf } from '../file-locks.ts';
 
 /**
  * A busy session's side of a wake ask (src/wake/asks.ts): at a tool's end on its main thread, once an ask waits for
@@ -30,7 +31,7 @@ export async function askedLinesOf(runtime: CliRuntime, payload: JsonRecord): Pr
     return undefined;
   }
   const { kit, config, id, tab } = scope;
-  const { files, clock, sleep, pid } = runtime;
+  const { files, clock } = runtime;
   const asks = new WakeAsks(files, kit.paths.wakeAsks);
   const unseen = (): Promise<ReadonlySet<string>> => unseenLinesOf(inboxDepsOf(runtime, kit.paths), id);
   // Read first without the lock: at nearly every tool end none is due, and the lock is a file write.
@@ -38,7 +39,7 @@ export async function askedLinesOf(runtime: CliRuntime, payload: JsonRecord): Pr
   if (first.asks.length === 0 && first.spent.length === 0) {
     return undefined;
   }
-  const lock = new FileLock(new WakeStore(files, kit.paths.wake).lockOf(id), { ...config.lock, waitMs: 0 }, { files, clock, sleep, pid });
+  const lock = fileLockOf(runtime, new WakeStore(files, kit.paths.wake).lockOf(id), { ...config.lock, waitMs: 0 });
   try {
     return await lock.run(async (): Promise<string | undefined> => {
       const found = await asksNowOf(await asks.read(id), clock.now(), unseen);

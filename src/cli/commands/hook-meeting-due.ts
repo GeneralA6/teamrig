@@ -1,10 +1,11 @@
-import { FileLock, LockBusyError } from '../../core/lock.ts';
+import { LockBusyError } from '../../core/lock.ts';
 import { noticeOf, showNotice, type MeetingNotice } from '../../meeting/notify.ts';
 import { isNotifyDue, MeetingSchedule, nextNotifyAt, type ScheduledMeeting } from '../../meeting/schedule.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { parseJson } from './hook-input.ts';
 import { wakeScopeOf } from './hook-wake.ts';
+import { fileLockOf } from '../file-locks.ts';
 
 /**
  * What `hook meeting-due` answers the plugin's mod, one JSON line: the notices it fired now, for the tab to show as
@@ -48,7 +49,7 @@ export async function meetingDue(args: ParsedArgs, runtime: CliRuntime): Promise
     return answer(runtime, scope);
   }
   const { kit, config } = scope;
-  const { files, clock, sleep, pid } = runtime;
+  const { files, clock } = runtime;
   const schedule = new MeetingSchedule(files, kit.paths.meetings);
   const watch = [kit.paths.meetings];
   const now = clock.now();
@@ -58,7 +59,7 @@ export async function meetingDue(args: ParsedArgs, runtime: CliRuntime): Promise
   }
   let marked: Marked;
   try {
-    marked = await new FileLock(kit.paths.meetingsLock, config.lock, { files, clock, sleep, pid }).run(() => markDue(schedule, now));
+    marked = await fileLockOf(runtime, kit.paths.meetingsLock, config.lock).run(() => markDue(schedule, now));
   } catch (error) {
     if (error instanceof LockBusyError) {
       return answer(runtime, { kind: 'due', notices: [], watch, recheckAt: now });
