@@ -2,9 +2,9 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { isRecord } from '../core/guards.ts';
-import { CONTEXT_MAX_CHARS, TEAM_RULES_MAX_CHARS } from '../rules/pack.ts';
+import { CONTEXT_MAX_CHARS } from '../rules/pack.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
-import { APP, CLAUDE_SESSION, CliHarness, contextOf, EVENTS_PATH, LONG_RULES_TEAM, TEAM, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
+import { APP, CLAUDE_SESSION, CliHarness, contextOf, EVENTS_PATH, LONG_RULES_TEAM, rulesToOverflow, TEAM, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
 
 /** A harness holding T1, owned by alpha and in progress. */
@@ -108,7 +108,7 @@ ${queue}`), context);
     assert.ok(!other.includes('VERIFY'));
   });
 
-  it('as its pointer when the rows and a full team rules file would overflow the context cap (T1376)', async () => {
+  it('as its pointer when the rows and a team rules file would overflow the context cap (T1376)', async () => {
     const kit = new CliHarness(LONG_RULES_TEAM);
     for (const id of ['T1', 'T2', 'T3', 'T4', 'T5', 'T6']) {
       await kit.run(['add', '--title', `Ship part ${id}`, '--description', 'what and why', '--priority', 'p2', '--session', 'lead']);
@@ -119,8 +119,7 @@ ${queue}`), context);
     const asLead = { stdin: start, env: { TEAMRIG_SESSION: 'lead' } };
     const roomy = contextOf(await kit.run(['hook', 'session-start'], asLead));
     assert.ok(roomy.includes('\nVERIFY 6, oldest first:\n'), roomy);
-    const rules = 'x'.repeat(TEAM_RULES_MAX_CHARS);
-    assert.ok(roomy.length + rules.length > CONTEXT_MAX_CHARS, `the rows fit beside the rules: ${roomy.length}`);
+    const rules = rulesToOverflow(roomy);
 
     await kit.files.write(join(TEAM_HOME, 'rules.md'), rules);
     const cut = contextOf(await kit.run(['hook', 'session-start'], asLead));
