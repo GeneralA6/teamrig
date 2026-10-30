@@ -204,12 +204,13 @@ A secret committed stays in the repository's history, and once pushed, on its ho
 ```sh
 teamrig secrets staged || exit 1         # pre-commit: the staged lines and files
 teamrig secrets message "$1" || exit 1   # commit-msg: the commit message
-teamrig secrets pushed "$1" || exit 1    # pre-push: each pushed commit's patch and message
+teamrig secrets pushed "$1" || exit 1    # pre-push: each pushed commit's patch and message, each tag's message
 ```
 
 Each refuses a line in a secret shape (the shapes the secret guard and the redactor use) and a file the secret paths
 list (`.env`, `*.pem`...) whatever it holds, named by place and shape, never by value. The push scan also catches a
-commit made before the hooks were there, or past them. Outside a team the default shapes and paths still scan; inside
+commit made before the hooks were there, or past them, a value added only in a merge's conflict resolution (git 2.36
+or later) and one in a pushed annotated tag's message. Outside a team the default shapes and paths still scan; inside
 one, the team's `register.secretPatterns` and `secretGuard.paths` are added. `teamrig check` warns the lead
 (SECRET-HOOK) of each repository in `coordinator.repos` whose hooks skip one of the three, with the line to add
 ([the commands](../../plugins/teamrig/skills/teamrig-guide/commands.md#teamrig-secrets-staged)).
