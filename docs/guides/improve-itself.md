@@ -236,7 +236,8 @@ BACKUP 20261025T120000Z, made 3 min ago: teamrig setup restore 20261025T120000Z 
 CONTEXT claude-md ~/.claude/CLAUDE.md: 2,100 chars (~525 tokens/turn)
 CONTEXT claude-md ~/work/shop/CLAUDE.md: 7,200 chars (~1,800 tokens/turn)
 CONTEXT skills 30 skill(s) listed: 7,400 chars (~1,850 tokens/turn); as this project's newest transcript lists them: skills folders and built-in 30 (7,400 chars)
-TOTAL 16,700 chars (~4,175 tokens/turn) at every session start
+CONTEXT agents 6 agent type(s) listed: 1,800 chars (~450 tokens/turn); as this project's newest transcript lists them: built-in 4 (1,400 chars), agents folders 2 (400 chars)
+TOTAL 18,500 chars (~4,625 tokens/turn) at every session start
 C1 large-file ~/work/shop/CLAUDE.md: 7,200 chars, over the 6,000 an always-loaded file should keep to (~300 tokens/turn)
 DUPLICATE 1 line(s) or sentence(s) repeat one loaded before
 D1 duplicate ~/work/shop/CLAUDE.md:12: "Run the full test suite before every commit." repeats ~/.claude/CLAUDE.md:4 (~11 tokens/turn)
@@ -246,10 +247,11 @@ NEXT /doctor prompt-audit in a session of the project: Claude Code's model-run c
 SETTINGS 1 finding(s)
 S1 wide-allow ~/work/shop/.claude/settings.local.json: 14 allow rule(s) approve a whole tool or hold a credential: Bash wide 14
 NEXT teamrig permissions trim, after teamrig team create
-UNUSED 1 of 22 skill(s) not used in 30 day(s) (read 210 transcript(s), 380.4 MB); and 1 skill(s) only /skill-doctor lists
+UNUSED 1 of 22 skill(s) and 0 of 2 agent type(s) not used in 30 day(s) (read 210 transcript(s), 380.4 MB); 1 user-level one(s) used only in other projects; and 1 skill(s) only /skill-doctor lists
 U1 unused-skill ~/.claude/skills/old-deploy/SKILL.md: no Skill call or /old-deploy in 30 day(s); /skill-doctor: last used 64 day(s) ago (~45 tokens/turn)
 U2 unused-skill review-kit:pr-notes (review-kit): never used on this machine per /skill-doctor; turn it off in /skills (~60 tokens/turn)
-SAVINGS ~416 tokens/turn if every CONTEXT, DUPLICATE and UNUSED finding is applied
+U3 other-project-agent ~/.claude/agents/sql-tuner.md: used only in other projects in 30 day(s): ~/work/billing; move it to their .claude/agents (~35 tokens/turn)
+SAVINGS ~451 tokens/turn if every CONTEXT, DUPLICATE and UNUSED finding is applied
 ```
 
 - `CONTEXT`: a file over 6,000 chars, or a skill description over 250. Shorten it, or move rules that matter only in
@@ -258,7 +260,10 @@ SAVINGS ~416 tokens/turn if every CONTEXT, DUPLICATE and UNUSED finding is appli
 - `UNUSED`: a skill with no `Skill` call or `/<skill>` in the last 30 days of transcripts (`--days`), and that Claude
   Code's own `/skill-doctor` did not see run either. Park its folder in `skills-parked/` beside its skills folder:
   Claude Code no longer lists it, and moving it back brings it back. A skill only `/skill-doctor` lists, such as a
-  plugin's, has no folder of yours to park: turn it off in `/skills`.
+  plugin's, has no folder of yours to park: turn it off in `/skills`. An agent type no `Agent` call ran is parked the
+  same way, its file in `agents-parked/` beside its agents folder. A skill or agent type in your user folders that
+  only sessions in other projects used (`other-project-skill`, `other-project-agent`) costs every session here for
+  nothing: move it into those projects' `.claude/skills` or `.claude/agents`.
 - `OVERRIDE` counts the lines [`rules scan`](#local-rules-that-say-otherwise) lists to judge, and `SETTINGS` the wide
   allow rules `teamrig permissions trim` removes. Claude Code's `/doctor prompt-audit`, run in a session of the
   project, has a model look for outdated or conflicting instructions too.
