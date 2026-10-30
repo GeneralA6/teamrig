@@ -7,14 +7,12 @@ import { branchTaskOf } from '../worktree/owner.ts';
  * call's is.
  */
 
-/** What a git route needs beyond the line's words. */
+/** What a git route needs beyond the line's words; asked only once the rest of the line matches. */
 export interface GitContext {
-  /** The session asking. */
-  readonly caller: string;
-  /** The session that owns a task; undefined for a task the register lacks. */
-  readonly ownerOf: (task: string) => string | undefined;
-  /** The remotes configured in the repository git reaches from the hook's folder through the line's `-C` folders, in order. */
-  readonly remotesOf: (folders: readonly string[]) => Promise<readonly string[]>;
+  /** True when the session asking owns the task; false for a task the register lacks, or a tab bound to no session. */
+  readonly ownsTask: (task: string) => Promise<boolean>;
+  /** True when `name` is a remote of the repository git reaches from the hook's folder through the line's `-C` folders, in order. */
+  readonly isRemote: (folders: readonly string[], name: string) => Promise<boolean>;
   readonly protectedBranches: readonly string[];
 }
 
@@ -139,10 +137,11 @@ export async function matchesGitPush(words: readonly string[], context: GitConte
     return false;
   }
   const [remote, branch, ...more] = line.args.filter((word) => !word.startsWith('-'));
-  if (remote === undefined || branch === undefined || more.length > 0 || !REMOTE_NAME.test(remote) || !isOwnBranch(branch, context)) {
+  const task = branch === undefined ? undefined : taskBranchOf(branch, context.protectedBranches);
+  if (remote === undefined || task === undefined || more.length > 0 || !REMOTE_NAME.test(remote)) {
     return false;
   }
-  return (await context.remotesOf(line.folders)).includes(remote);
+  return (await context.ownsTask(task)) && context.isRemote(line.folders, remote);
 }
 
 function isPushOption(word: string): boolean {
@@ -153,10 +152,9 @@ function isPushOption(word: string): boolean {
   return letters.length > 0 && letters.every((letter) => PUSH_FLAGS.has(letter));
 }
 
-/** A plain branch name of a task the caller owns, and no protected branch, whatever its case. */
-function isOwnBranch(branch: string, context: GitContext): boolean {
+/** The task of a plain task branch (`t<id>-...`) that is no protected branch, whatever its case; else undefined. */
+function taskBranchOf(branch: string, protectedBranches: readonly string[]): string | undefined {
   const plain = BRANCH_NAME.test(branch) && !branch.includes('..') && !branch.toLowerCase().startsWith('refs/') && branch.toLowerCase() !== 'head';
-  const unprotected = !context.protectedBranches.some((name) => name.toLowerCase() === branch.toLowerCase());
-  const task = branchTaskOf(branch);
-  return plain && unprotected && task !== undefined && context.ownerOf(task) === context.caller;
+  const unprotected = !protectedBranches.some((name) => name.toLowerCase() === branch.toLowerCase());
+  return plain && unprotected ? branchTaskOf(branch) : undefined;
 }

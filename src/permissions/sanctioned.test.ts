@@ -13,9 +13,8 @@ const NOTHING_ON_PATH: ClientSearch = { find: async () => undefined };
 const CONTEXT: RouteContext = {
   cli: COMMAND_TABLE,
   ownClient: ownClientOf(NOTHING_ON_PATH, new ClientInstalls(INSTALL, 'win32'), { dialect: 'bash', dir: 'C:/w', home: 'C:/u' }),
-  caller: 'tr-canary',
-  ownerOf: (task) => ({ T1: 'tr-canary', T2: 'tr-other' })[task],
-  remotesOf: async () => ['origin'],
+  ownsTask: async (task) => task === 'T1',
+  isRemote: async (_folders, name) => name === 'origin',
   protectedBranches: ['main', 'master'],
 };
 

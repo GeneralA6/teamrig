@@ -71,11 +71,10 @@ describe('matchesGitCommit', () => {
 });
 
 describe('matchesGitPush', () => {
-  const asked: Array<readonly string[]> = [];
+  const asked: string[] = [];
   const context: GitContext = {
-    caller: 'tr-x',
-    ownerOf: (task) => ({ T1: 'tr-x', T2: 'tr-y', T3: 'tr-x' })[task],
-    remotesOf: async (folders) => (asked.push(folders), ['origin', 'up.stream']),
+    ownsTask: async (task) => (asked.push(task), task === 'T1' || task === 'T3'),
+    isRemote: async (folders, name) => (asked.push(`${folders.join('|')} ${name}`), name === 'origin' || name === 'up.stream'),
     protectedBranches: ['main', 't3-release'],
   };
   const push = async (line: string): Promise<boolean> => matchesGitPush(words(line), context);
@@ -86,7 +85,7 @@ describe('matchesGitPush', () => {
     }
     asked.length = 0;
     assert.equal(await push('git -C C:/w -C sub push origin t1-x'), true);
-    assert.deepEqual(asked, [['C:/w', 'sub']]);
+    assert.deepEqual(asked, ['T1', 'C:/w|sub origin']);
   });
 
   it('takes no force, delete, mirror, hook skip or other option', async () => {
@@ -121,10 +120,13 @@ describe('matchesGitPush', () => {
     }
   });
 
-  it('asks for the remotes only once the rest of the line matches', async () => {
+  it('asks about the task only once the line matches, and about the remote only for an own task', async () => {
     asked.length = 0;
-    await push('git push origin t2-x');
     await push('git push -f origin t1-x');
+    await push('git push origin main');
+    await push('git push https://example.com/r.git t1-x');
     assert.deepEqual(asked, []);
+    assert.equal(await push('git push origin t2-x'), false);
+    assert.deepEqual(asked, ['T2']);
   });
 });
