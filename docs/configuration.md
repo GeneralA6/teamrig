@@ -51,7 +51,7 @@ Team settings for the teamrig plugin. Only the roster (sessions, roles.lead) is 
 | `statusLine` | [object](#statusline) |  | What teamrig statusline shows beside the model and the plan's use of the week. |
 | `launch` | map from [session name](#shared-types) to [object](#launch) | `{}` | Each session's Claude Code model and effort, and the folder it works in, by id: teamrig open starts it with claude --model and --effort; a session running on another model is told the /model to type at its start, and one at another effort the /effort to type at its first stop. A model or effort left unset is Claude Code's own choice, except for the lead, which starts on model opus at xhigh effort for each one it leaves unset. |
 | `refresh` | [object](#refresh) |  | Context refresh: when a session finishes a task (teamrig set \<id> --status done) with its context at or over contextTokens, or with everyTasks tasks finished since its context was last fresh and the context at everyTasksMinTokens or more, or after the lead ran teamrig refresh \<session>, it writes a handover; then the user types /clear, or teamrig starts it fresh on its own (autoRestart). A relative handoverDir is resolved against the team's folder; unset, it is \<team folder>/handover. |
-| `hiring` | [object](#hiring) |  | Hiring temporary sessions with teamrig hire: who decides, and the cap every hire stays within. A hire is written into sessions, names and launch, and logged with its reason and review date; its part of the team's daily budget follows its share and queued work, like any session's. |
+| `hiring` | [object](#hiring) |  | Hiring temporary sessions with teamrig hire: who decides. No cap counts hires: the host's room bounds who is at the office, and the leader decides who is hired. A hire is written into sessions, names and launch, and logged with its reason and review date; its part of the team's daily budget follows its share and queued work, like any session's. |
 | `burst` | [object](#burst) |  | Bursts with teamrig burst: a time-boxed scale-out onto helpers and hired sessions that spends more of the week, for a surplus the week would leave unused at the reset or for a deadline. A person always starts one by command; nothing starts one on its own. |
 | `paths` | [object](#paths) |  | Folders moved from their defaults; a relative path is resolved against the team's folder (\<kit home>/teams/\<team>). Unset, state and inbox stay under the team's folder and skills is the skills folder of Claude Code's folder ($CLAUDE\_CONFIG\_DIR, else \~/.claude). |
 
@@ -631,13 +631,11 @@ Context refresh: when a session finishes a task (teamrig set \<id> --status done
 
 ## `hiring`
 
-Hiring temporary sessions with teamrig hire: who decides, and the cap every hire stays within. A hire is written into sessions, names and launch, and logged with its reason and review date; its part of the team's daily budget follows its share and queued work, like any session's.
+Hiring temporary sessions with teamrig hire: who decides. No cap counts hires: the host's room bounds who is at the office, and the leader decides who is hired. A hire is written into sessions, names and launch, and logged with its reason and review date; its part of the team's daily budget follows its share and queued work, like any session's.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
-| `policy` | one of `"off"`, `"owner"`, `"lead"`, `"automatic"` | `"owner"` | off: no hires. owner: a lead (the lead, or a sub-lead into its own group) hires once the owner approved (--approved-by, kept with the hire). lead: a lead hires within maxSessions. automatic: as lead, and a hired session whose tasks are all closed may retire itself (teamrig retire). |
-| `maxSessions` | integer (1 to 20) | `2` | Hired sessions on the team at once. |
-| `capRaisedBy` | one of `"owner"`, `"lead"` | `"owner"` | Who raises maxSessions when it blocks a hire a SCALE-OUT flag calls for. owner: the lead brings the owner a card to raise it, as a higher cap spends more of the week. lead: the lead raises it in the team config itself and says so in its next report. |
+| `policy` | one of `"off"`, `"owner"`, `"lead"`, `"automatic"` | `"owner"` | off: no hires. owner: a lead (the lead, or a sub-lead into its own group) hires once the owner approved (--approved-by, kept with the hire). lead: a lead hires. automatic: as lead, and a hired session whose tasks are all closed may retire itself (teamrig retire). |
 | `idleHours` | integer (1 to 168) | `4` | Hours a hired session may hold no open task before it is due to retire. |
 | `reviewDays` | integer (1 to 90) | `7` | Days from a hire to its review date, unless teamrig hire --review names one. |
 | `resumeMaxTokens` | integer (10000 to 1000000) | `250000` | The most context tokens a rehired session's last Claude Code session may hold for teamrig open --resume to resume it; past it the session starts fresh on its handover. |
@@ -664,7 +662,7 @@ Bursts with teamrig burst: a time-boxed scale-out onto helpers and hired session
 | `surplusHours` | integer (1 to 167) | `48` | A surplus burst starts at the earliest this many hours before the week's reset. |
 | `minSparePct` | number (0.1 to 100) | `5` | The least share of the week, in %, projected unused at the pace end (at the week's mean rate so far) for a surplus burst; with other teams on the Claude account, the team's part of it (split by weight, as the daily budget is). |
 | `maxHelpers` | integer (0 to 20) | `3` | The most helpers each burst session runs at once; the burst's model line states it. |
-| `maxHires` | integer (0 to 20) | `2` | The most sessions one burst may hire (teamrig hire --burst); the hiring caps apply as well. |
+| `maxHires` | integer (0 to 20) | `2` | The most sessions one burst may hire (teamrig hire --burst). |
 
 ## `paths`
 

@@ -96,7 +96,7 @@ function withoutSessionDailyPct(budget: JsonRecord): MigrationStep {
  * v3 to v4: daily budgets are no longer fixed. The team's daily budget is recomputed at every reading from what is left
  * of the week and the active time to the reset, and each session's is its part of that, so `budget.dailyPct`,
  * `budget.maxDailyPct`, `budget.sessions.<id>.dailyPct` and the hiring caps `hiring.dailyPct` and `hiring.maxDailyPct`
- * go; `hiring.maxSessions` alone bounds hiring.
+ * go.
  */
 export const DROP_FIXED_DAILY_BUDGETS: ConfigMigration = {
   from: 3,
@@ -113,7 +113,7 @@ export const DROP_FIXED_DAILY_BUDGETS: ConfigMigration = {
     }
     const hiring = config['hiring'];
     if (isRecord(hiring)) {
-      const fixed = withoutKeys(hiring, FIXED_DAILY_KEYS, 'hiring', "a hire's daily budget is its part of the team's; hiring.maxSessions bounds hiring");
+      const fixed = withoutKeys(hiring, FIXED_DAILY_KEYS, 'hiring', "a hire's daily budget is its part of the team's");
       changes.push(...fixed.changes);
       next = { ...next, hiring: fixed.config };
     }
@@ -189,8 +189,25 @@ export const RENAME_TO_PLAIN_WORDS: ConfigMigration = {
   apply: (config) => renameKeys(config, PLAIN_WORD_RENAMES, 4),
 };
 
+/** Why v6 reads no hire cap; the parser flags a hand-written one with the same words. */
+export const HIRE_CAP_DROPPED = "the host's room bounds who is at the office, the leader decides who is hired";
+
+/** v5 to v6: no cap counts hires (T1364), so `hiring.maxSessions` and `hiring.capRaisedBy`, who raised it, go. */
+export const DROP_HIRE_CAP: ConfigMigration = {
+  from: 5,
+  firstRelease: '0.232.0',
+  apply: (config) => {
+    const hiring = config['hiring'];
+    if (!isRecord(hiring)) {
+      return { config, changes: [] };
+    }
+    const step = withoutKeys(hiring, ['maxSessions', 'capRaisedBy'], 'hiring', HIRE_CAP_DROPPED);
+    return step.changes.length === 0 ? { config, changes: [] } : { config: { ...config, hiring: step.config }, changes: step.changes };
+  },
+};
+
 /** The shipped chain, in order: each step reads `from` and produces `from + 1`. */
-export const CONFIG_MIGRATIONS: readonly ConfigMigration[] = [RENAME_TIERS_TO_PRIORITIES, RENAME_BLOCKED_TO_WAITING, DROP_FIXED_DAILY_BUDGETS, RENAME_TO_PLAIN_WORDS];
+export const CONFIG_MIGRATIONS: readonly ConfigMigration[] = [RENAME_TIERS_TO_PRIORITIES, RENAME_BLOCKED_TO_WAITING, DROP_FIXED_DAILY_BUDGETS, RENAME_TO_PLAIN_WORDS, DROP_HIRE_CAP];
 
 /** The config format a release reads and writes: its version and the migration chain that reaches it. */
 export interface ConfigFormat {

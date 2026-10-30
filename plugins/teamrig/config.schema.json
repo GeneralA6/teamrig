@@ -1431,18 +1431,12 @@
       }
     },
     "hiring": {
-      "description": "Hiring temporary sessions with teamrig hire: who decides, and the cap every hire stays within. A hire is written into sessions, names and launch, and logged with its reason and review date; its part of the team's daily budget follows its share and queued work, like any session's.",
+      "description": "Hiring temporary sessions with teamrig hire: who decides. No cap counts hires: the host's room bounds who is at the office, and the leader decides who is hired. A hire is written into sessions, names and launch, and logged with its reason and review date; its part of the team's daily budget follows its share and queued work, like any session's.",
       "type": "object",
       "properties": {
         "policy": {
-          "description": "off: no hires. owner: a lead (the lead, or a sub-lead into its own group) hires once the owner approved (--approved-by, kept with the hire). lead: a lead hires within maxSessions. automatic: as lead, and a hired session whose tasks are all closed may retire itself (teamrig retire).",
+          "description": "off: no hires. owner: a lead (the lead, or a sub-lead into its own group) hires once the owner approved (--approved-by, kept with the hire). lead: a lead hires. automatic: as lead, and a hired session whose tasks are all closed may retire itself (teamrig retire).",
           "enum": ["off", "owner", "lead", "automatic"],
-          "default": "owner"
-        },
-        "maxSessions": { "description": "Hired sessions on the team at once.", "type": "integer", "minimum": 1, "maximum": 20, "default": 2 },
-        "capRaisedBy": {
-          "description": "Who raises maxSessions when it blocks a hire a SCALE-OUT flag calls for. owner: the lead brings the owner a card to raise it, as a higher cap spends more of the week. lead: the lead raises it in the team config itself and says so in its next report.",
-          "enum": ["owner", "lead"],
           "default": "owner"
         },
         "idleHours": { "description": "Hours a hired session may hold no open task before it is due to retire.", "type": "integer", "minimum": 1, "maximum": 168, "default": 4 },
@@ -1478,7 +1472,7 @@
           "default": 5
         },
         "maxHelpers": { "description": "The most helpers each burst session runs at once; the burst's model line states it.", "type": "integer", "minimum": 0, "maximum": 20, "default": 3 },
-        "maxHires": { "description": "The most sessions one burst may hire (teamrig hire --burst); the hiring caps apply as well.", "type": "integer", "minimum": 0, "maximum": 20, "default": 2 }
+        "maxHires": { "description": "The most sessions one burst may hire (teamrig hire --burst).", "type": "integer", "minimum": 0, "maximum": 20, "default": 2 }
       }
     },
     "paths": {

@@ -52,13 +52,13 @@ import {
 } from './defaults.ts';
 import { isEffort, isModel } from './launch.ts';
 import { BUDGET_ACCOUNT_MAX_LENGTH, CONFIG_LIMITS, REVIEW_PATH_LIMITS, RULE_CONFLICT_LIMITS } from './limits.ts';
+import { HIRE_CAP_DROPPED } from './migrate.ts';
 import { ConfigReader, describe, isValidRegex, shortLine, type Check, type ConfigIssue } from './reader.ts';
 import {
   AD_HOC_RUNNERS,
   ASK_WITH,
   PACKAGE_INSTALLS,
   BURST_POLICIES,
-  CAP_RAISERS,
   CONFLICT_WINNERS,
   ESCALATIONS,
   HIRING_POLICIES,
@@ -66,7 +66,6 @@ import {
   isAskWith,
   isPackageInstalls,
   isBurstPolicy,
-  isCapRaiser,
   isCommitGate,
   isConflictWinner,
   isEffortLevel,
@@ -1362,19 +1361,18 @@ function parseRefresh(read: ConfigReader, raw: JsonRecord): RefreshConfig {
   };
 }
 
-/** `hiring`: who decides, the session cap and who raises it, idle and review days, and when a rehire resumes. */
+/** `hiring`: who decides, idle and review days, and when a rehire resumes. */
 function parseHiring(read: ConfigReader, raw: JsonRecord): HiringConfig {
   const path = 'hiring';
   const defaults = DEFAULT_HIRING;
   const policy = read.string(raw, 'policy', path, defaults.policy, oneOf(HIRING_POLICIES));
-  const capRaisedBy = read.string(raw, 'capRaisedBy', path, defaults.capRaisedBy, oneOf(CAP_RAISERS));
-  const why = "a hire's daily budget is its part of the team's, by its share and queued work; maxSessions bounds hiring";
-  read.dropped(raw, 'dailyPct', path, why);
-  read.dropped(raw, 'maxDailyPct', path, why);
+  const budgetWhy = "a hire's daily budget is its part of the team's, by its share and queued work";
+  read.dropped(raw, 'dailyPct', path, budgetWhy);
+  read.dropped(raw, 'maxDailyPct', path, budgetWhy);
+  read.dropped(raw, 'maxSessions', path, HIRE_CAP_DROPPED);
+  read.dropped(raw, 'capRaisedBy', path, HIRE_CAP_DROPPED);
   return {
     policy: isHiringPolicy(policy) ? policy : defaults.policy,
-    maxSessions: read.integer(raw, 'maxSessions', path, defaults.maxSessions, CONFIG_LIMITS.hiringMaxSessions),
-    capRaisedBy: isCapRaiser(capRaisedBy) ? capRaisedBy : defaults.capRaisedBy,
     idleHours: read.integer(raw, 'idleHours', path, defaults.idleHours, CONFIG_LIMITS.hiringIdleHours),
     reviewDays: read.integer(raw, 'reviewDays', path, defaults.reviewDays, CONFIG_LIMITS.hiringReviewDays),
     resumeMaxTokens: read.integer(raw, 'resumeMaxTokens', path, defaults.resumeMaxTokens, CONFIG_LIMITS.hiringResumeMaxTokens),
