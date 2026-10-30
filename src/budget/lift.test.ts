@@ -58,6 +58,10 @@ describe('decideLift', () => {
     assert.deepEqual(given(decideLift({ ...REQUEST, group: true }, CONTEXT)), lift({ group: true, quietHoursExempt: false }));
   });
 
+  it("lifts a session of a team below without exempting it from quiet hours, which its own team's log rules", () => {
+    assert.deepEqual(given(decideLift({ ...REQUEST, session: 'web/front' }, CONTEXT)), lift({ session: 'web/front', quietHoursExempt: false }));
+  });
+
   it('ends at --until when it comes before the end of the day', () => {
     const until = Date.parse('2030-01-08T18:00:00Z');
     assert.equal(given(decideLift({ ...REQUEST, until }, CONTEXT)).endsAt, until);
@@ -147,6 +151,13 @@ describe('liftText', () => {
       "alpha's group to 40.0% of the team's daily budget today until 00:00 UTC (the end of the budget day) or 97.0% of the week, whichever comes first.",
     );
     assert.match(liftText(lift(), 'bravo', parentBudgetText('alpha'), TimeZone.UTC), /^bravo to 40\.0% of alpha's group's daily budget today until /);
+  });
+
+  it("gives a cross-team lift's part on top of the session's own budget", () => {
+    assert.equal(
+      liftText(lift({ session: 'web/front', quietHoursExempt: false }), 'web/front', "team app's daily budget", TimeZone.UTC),
+      "web/front to 40.0% of team app's daily budget on top of its own budget today until 00:00 UTC (the end of the budget day) or 97.0% of the week, whichever comes first.",
+    );
   });
 
   it("says when it ends on the team's clock", () => {
