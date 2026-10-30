@@ -46,6 +46,12 @@ async function open(kit: CliHarness, extra: readonly string[], options: RunOptio
   return { result, argv: processes.started[0]?.args ?? [] };
 }
 
+/** The REHIRE line and the line after it (whether it resumes), wherever the hire's own lines end. */
+function rehireLines(result: CliResult): [string | undefined, string | undefined] {
+  const at = result.stdout.findIndex((line) => line.startsWith('REHIRE '));
+  return at < 0 ? [undefined, undefined] : [result.stdout[at], result.stdout[at + 1]];
+}
+
 /** The first prompt a tab's launch line carries. */
 function promptOf(argv: readonly string[]): string | undefined {
   const encoded = argv[argv.indexOf('--encoded-prompt') + 1];
@@ -56,9 +62,9 @@ describe('a rehire', () => {
   it('shows the retire and handover it comes back from, and resumes a small, recent last session', async () => {
     const kit = await retiredHelper();
     const transcripts = await lastSession(kit, 120_000, 2);
-    const preview = ok(await hire(kit, [], { transcripts }));
-    assert.equal(preview.stdout[2], `REHIRE helper retired 2030-01-08 (its job is done); its handover: ${HELPER_HANDOVER}`);
-    assert.equal(preview.stdout[3], `  its last Claude Code session can be resumed: its last Claude Code session ${CLAUDE_SESSION} holds 120000 tokens of context, idle 2.0 day(s)`);
+    const [retired, resumes] = rehireLines(ok(await hire(kit, [], { transcripts })));
+    assert.equal(retired, `REHIRE helper retired 2030-01-08 (its job is done); its handover: ${HELPER_HANDOVER}`);
+    assert.equal(resumes, `  its last Claude Code session can be resumed: its last Claude Code session ${CLAUDE_SESSION} holds 120000 tokens of context, idle 2.0 day(s)`);
     const hired = ok(await hire(kit, ['--yes'], { transcripts }));
     assert.ok(hired.stdout.at(-1)?.endsWith('then resume its last Claude Code session: teamrig open helper --resume, or open it fresh on its handover: teamrig open helper'), hired.stdout.at(-1));
     const { result, argv } = await open(kit, ['helper', '--resume'], { transcripts });
@@ -70,8 +76,7 @@ describe('a rehire', () => {
   it('opens fresh on its handover when its last session is too big, too idle, gone or not on record', async () => {
     const big = await retiredHelper();
     const transcripts = await lastSession(big, 250_001, 1);
-    const preview = ok(await hire(big, [], { transcripts }));
-    assert.match(preview.stdout[3] ?? '', /^ {2}it opens fresh \(not resumed: .* holds 250001 tokens of context, idle 1\.0 day\(s\): over hiring\.resumeMaxTokens 250000\)$/);
+    assert.match(rehireLines(ok(await hire(big, [], { transcripts })))[1] ?? '', /^ {2}it opens fresh \(not resumed: .* holds 250001 tokens of context, idle 1\.0 day\(s\): over hiring\.resumeMaxTokens 250000\)$/);
     assert.ok(ok(await hire(big, ['--yes'], { transcripts })).stdout.at(-1)?.endsWith(FRESH_NEXT));
     const refused = (await open(big, ['helper', '--resume'], { transcripts })).result;
     assert.equal(refused.code, EXIT.refused);
@@ -81,18 +86,18 @@ describe('a rehire', () => {
     assert.equal(argv.includes('--resume'), false);
 
     const idle = await retiredHelper();
-    assert.match(ok(await hire(idle, [], { transcripts: await lastSession(idle, 1000, 8) })).stdout[3] ?? '', /idle 8\.0 day\(s\): over hiring\.resumeMaxIdleDays 7\)$/);
+    assert.match(rehireLines(ok(await hire(idle, [], { transcripts: await lastSession(idle, 1000, 8) })))[1] ?? '', /idle 8\.0 day\(s\): over hiring\.resumeMaxIdleDays 7\)$/);
     const gone = await retiredHelper();
-    assert.match(ok(await hire(gone, [])).stdout[3] ?? '', /has no transcript in this project folder\)$/);
+    assert.match(rehireLines(ok(await hire(gone, [])))[1] ?? '', /has no transcript in this project folder\)$/);
     const unread = await teamWithHelper(LEAD_TEAM, ['port it']);
     ok(await unread.run(['retire', 'helper', '--to', 'alpha', '--yes', '--session', 'lead']));
-    assert.equal(ok(await hire(unread, [])).stdout[3], '  it opens fresh (not resumed: no Claude Code session of it is on record)');
+    assert.equal(rehireLines(ok(await hire(unread, [])))[1], '  it opens fresh (not resumed: no Claude Code session of it is on record)');
   });
 
   it('says why it left no handover, and then opens plainly', async () => {
     const kit = await retiredHelper(['--no-handover', 'nothing worth keeping']);
     const hired = ok(await hire(kit, ['--yes']));
-    assert.equal(hired.stdout[2], 'REHIRE helper retired 2030-01-08 (its job is done); it left no handover: nothing worth keeping');
+    assert.equal(rehireLines(hired)[0], 'REHIRE helper retired 2030-01-08 (its job is done); it left no handover: nothing worth keeping');
     assert.ok(hired.stdout.at(-1)?.endsWith('then open it fresh: teamrig open helper'), hired.stdout.at(-1));
     const { argv } = await open(kit, ['helper']);
     assert.match(promptOf(argv) ?? '', /^You are the helper session of team app\. Run `teamrig inbox read`/);
@@ -102,7 +107,7 @@ describe('a rehire', () => {
     const kit = await retiredHelper();
     const transcripts = await lastSession(kit, 1000, 1);
     const files = new FaultyFiles(kit.files).fail('readTail', TRANSCRIPT, systemError('EACCES'));
-    assert.match(ok(await hire(kit, [], { transcripts, files })).stdout[3] ?? '', /^ {2}it opens fresh \(not resumed: its last Claude Code session could not be measured: .*EACCES/);
+    assert.match(rehireLines(ok(await hire(kit, [], { transcripts, files })))[1] ?? '', /^ {2}it opens fresh \(not resumed: its last Claude Code session could not be measured: .*EACCES/);
   });
 
   it('is the only open --resume takes, and a given prompt wins over the rehire prompt', async () => {
