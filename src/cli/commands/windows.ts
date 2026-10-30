@@ -39,7 +39,7 @@ function windowLine(window: Span, zone: TimeZone): string {
 }
 
 function loadLine(load: Load, zone: TimeZone): string {
-  return `    under load ${load.id} by ${load.session}: ${load.what} (from ${minuteText(load.from, zone)}, ${load.open ? 'still running' : `ended ${minuteText(load.to, zone)}`})`;
+  return `    under job ${load.id} by ${load.session}: ${load.what} (from ${minuteText(load.from, zone)}, ${load.open ? 'still running' : `ended ${minuteText(load.to, zone)}`})`;
 }
 
 /** What `stable-periods` measures in: the span, each target's settle time and the shortest period worth naming. */
@@ -78,8 +78,8 @@ function askOf(flags: Flags, delivery: CoordinatorConfig, times: TypedTimes): Wi
  * `teamrig stable-periods --targets <a,b> --since <time> [--until <time>] [--settle <span>] [--min <span>]`: the
  * stable periods of each target, so a session compares a metric over stretches no change touched. A deploy of a
  * repository that deploys the target disturbs it from the deploy's start until it settled, unless its record names
- * other targets (`deploy --targets`); a queued step disturbs the whole host. Each period names the declared loads
- * (`teamrig load`) it overlaps. `--until` is cut to now.
+ * other targets (`deploy --targets`); a queued step disturbs the whole host. Each period names the declared jobs
+ * (`teamrig job`) it overlaps. `--until` is cut to now.
  */
 export async function stablePeriods(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const nowMs = runtime.clock.now();

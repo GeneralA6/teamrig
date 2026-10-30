@@ -221,8 +221,8 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   freeze: { effect: 'write', flags: ['session', 'targets', 'metric', 'why', 'for'], load: async () => (await claimCommands()).freeze },
   unfreeze: { effect: 'write', flags: ['session'], load: async () => (await claimCommands()).unfreeze },
   'stable-periods': { effect: 'read', flags: ['targets', 'since', 'until', 'settle', 'min'], load: async () => (await windowsCommand()).stablePeriods },
-  load: { effect: 'write', flags: ['session', 'what', 'targets', 'at'], load: async () => (await loadCommands()).load },
-  'load end': { effect: 'write', flags: ['session', 'id', 'at'], load: async () => (await loadCommands()).loadEnd },
+  job: { effect: 'write', flags: ['session', 'what', 'targets', 'at'], load: async () => (await loadCommands()).job },
+  'job end': { effect: 'write', flags: ['session', 'id', 'at'], load: async () => (await loadCommands()).jobEnd },
   'deploy-status': { effect: 'read', flags: [], load: async () => (await deployStatusCommand()).deployStatus },
   'hook push-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).pushGuard },
   'hook package-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).packageGuard },
@@ -279,12 +279,21 @@ export const COMMAND_REST: CommandRest = new Set(Object.entries(COMMANDS).flatMa
  * Renamed flags and commands, refused everywhere with the new name, never an alias: `--tier` became `--priority`
  * (levels p1, p2, ...), and for plain words (T1308) `teamrig integrate` became `teamrig merge`, `teamrig roll` became
  * `teamrig deploy`, `teamrig deploys` became `teamrig deploy-status`, `teamrig heavy` became `teamrig queue`, `teamrig
- * claim` became `teamrig freeze`, `teamrig release` became `teamrig unfreeze` and `teamrig windows` became `teamrig
- * stable-periods`.
+ * claim` became `teamrig freeze`, `teamrig release` became `teamrig unfreeze`, `teamrig windows` became `teamrig
+ * stable-periods` and `teamrig load` became `teamrig job` (`load end` with it).
  */
 const RENAMED: Renamed = {
   flags: { tier: 'priority', problem: 'type bug [--critical] (or --type task)' },
-  commands: { integrate: 'merge', roll: 'deploy', deploys: 'deploy-status', heavy: 'queue', claim: 'freeze', release: 'unfreeze', windows: 'stable-periods' },
+  commands: {
+    integrate: 'merge',
+    roll: 'deploy',
+    deploys: 'deploy-status',
+    heavy: 'queue',
+    claim: 'freeze',
+    release: 'unfreeze',
+    windows: 'stable-periods',
+    load: 'job',
+  },
 };
 /** The table a line is read with, and each command's effect: what `/teamrig` plans a line from (src/slash/plan.ts). */
 export const COMMAND_TABLE: CommandTable = { flags: COMMAND_FLAGS, switches: COMMAND_SWITCHES, renamed: RENAMED, rest: COMMAND_REST, effects: COMMAND_EFFECTS };
@@ -681,16 +690,16 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       touched (one of its repository, or a deploy --targets naming it; from its start until
       delivery.stablePeriods settle minutes after it deployed; --settle for every target) and no queued
       step, each at least --min (default delivery.stablePeriods.minMinutes) long, each with the declared
-      loads it overlaps. A time is HH:MM (today), YYYY-MM-DD HH:MM or YYYY-MM-DD on the team's clock unless
+      jobs it overlaps. A time is HH:MM (today), YYYY-MM-DD HH:MM or YYYY-MM-DD on the team's clock unless
       marked UTC, or an ISO time with its zone
-  load --what "<what>" [--targets <a,b>|host] [--at <time>] [--session <id|name>]   declares a
-      background load (a long data script, a backfill) on its targets (default the whole host) in the
+  job --what "<what>" [--targets <a,b>|host] [--at <time>] [--session <id|name>]   declares a
+      background job (a long data script, a backfill) on its targets (default the whole host) in the
       ledger from --at (default now), so stable-periods names it; REFUSED for a start in the future, a
       target no repository deploys or a secret in what it is
-  load end --id <id> [--at <time>] [--session <id|name>]   ends this session's load at --at (default
-      now); REFUSED for no such open load, another session's, or an end in the future or before its start
+  job end --id <id> [--at <time>] [--session <id|name>]   ends this session's job at --at (default
+      now); REFUSED for no such open job, another session's, or an end in the future or before its start
   deploy-status                the deploy state now: the host lock's holder, the queue cutoff and the
-      reset blackout, the deploy freezes and loads still open, and what each repository with a deploy block
+      reset blackout, the deploy freezes and jobs still open, and what each repository with a deploy block
       has pushed but not deployed (it fetches each main checkout)
   test [--session <id|name>] -- <command ...>   runs a test command in the shell, writes all it printed
       to a log (each session keeps its newest 20) and prints one PASS or FAIL line, then each failing

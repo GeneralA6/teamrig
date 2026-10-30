@@ -287,7 +287,7 @@ teamrig stable-periods --targets api --since 08:00
 api (settle 30m): 2 stable periods of at least 15m
   2030-01-08 08:00 IST to 2030-01-08 08:40 IST (40m)
   2030-01-08 10:20 IST to 2030-01-08 12:00 IST (1h40m)
-    under load 3f9c1a7e by data: backfill prices (from 2030-01-08 10:30 IST, still running)
+    under job 3f9c1a7e by data: backfill prices (from 2030-01-08 10:30 IST, still running)
 ```
 
 A deploy disturbs its repository's targets, or only those a `deploy --targets` run named, from its start until they
@@ -296,24 +296,24 @@ run. A deploy line a session wrote by hand in `ledger.md` counts too; one with n
 have run for `assumedDeployMinutes` (20) before its line. A queued step disturbs the whole host. A stable period
 shorter than `minMinutes` (15) is left out.
 
-A background load, such as a long data script or a backfill, is declared with `teamrig load` (`teamrig load end`
-ends it). A load never cuts a stable period, since two periods under the same load still compare: each period names
-the loads it overlaps.
+A background job, such as a long data script or a backfill, is declared with `teamrig job` (`teamrig job end` ends
+it). A job never cuts a stable period, since two periods under the same job still compare: each period names the
+jobs it overlaps.
 
 ```sh
-teamrig load --session data --what "backfill prices" --at 10:30
+teamrig job --session data --what "backfill prices" --at 10:30
 ```
 
 ```text
-LOAD 3f9c1a7e on the whole host from 2030-01-08 10:30 IST (end it: teamrig load end --id 3f9c1a7e)
+JOB 3f9c1a7e on the whole host from 2030-01-08 10:30 IST (end it: teamrig job end --id 3f9c1a7e)
 ```
 
 ## The deploy state in one read
 
 `teamrig deploy-status` prints the state now: who holds the host lock and which small steps share the host, the queue
 cutoff (its `heavy cutoff:` line) and the reset blackout (each marked IN FORCE while it holds), the deploy freezes
-(its `claims:` lines) and loads still open, and what each repository with a deploy block has pushed but not deployed,
-with why a deploy would refuse it.
+and background jobs still open (its `claims:` and `loads:` lines), and what each repository with a deploy block has
+pushed but not deployed, with why a deploy would refuse it.
 
 ```sh
 teamrig deploy-status

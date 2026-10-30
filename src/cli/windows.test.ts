@@ -23,10 +23,10 @@ async function ledgered(kit: CliHarness): Promise<void> {
 }
 
 describe('teamrig stable-periods', () => {
-  it('lists each target’s stable periods, with its settle time and the loads each overlaps', async () => {
+  it('lists each target’s stable periods, with its settle time and the jobs each overlaps', async () => {
     const kit = new CliHarness(DEPLOYING);
     await ledgered(kit);
-    assert.equal((await kit.run(['load', '--session', 'bravo', '--what', 'db trim', '--at', '08:30'])).code, 0);
+    assert.equal((await kit.run(['job', '--session', 'bravo', '--what', 'db trim', '--at', '08:30'])).code, 0);
     assert.deepEqual(await kit.run(['stable-periods', '--targets', 'cloud-api,cloud-web', '--since', '06:00']), {
       code: 0,
       stdout: [
@@ -34,12 +34,12 @@ describe('teamrig stable-periods', () => {
         '  2030-01-08 06:00 UTC to 2030-01-08 06:40 UTC (40m)',
         '  2030-01-08 07:30 UTC to 2030-01-08 08:00 UTC (30m)',
         '  2030-01-08 08:20 UTC to 2030-01-08 10:00 UTC (1h40m)',
-        '    under load id-1 by bravo: db trim (from 2030-01-08 08:30 UTC, still running)',
+        '    under job id-1 by bravo: db trim (from 2030-01-08 08:30 UTC, still running)',
         'cloud-web (settle 10m): 3 stable periods of at least 15m',
         '  2030-01-08 06:00 UTC to 2030-01-08 06:40 UTC (40m)',
         '  2030-01-08 07:10 UTC to 2030-01-08 08:00 UTC (50m)',
         '  2030-01-08 08:20 UTC to 2030-01-08 10:00 UTC (1h40m)',
-        '    under load id-1 by bravo: db trim (from 2030-01-08 08:30 UTC, still running)',
+        '    under job id-1 by bravo: db trim (from 2030-01-08 08:30 UTC, still running)',
       ],
       stderr: [],
     });
@@ -80,18 +80,18 @@ describe('teamrig stable-periods', () => {
   });
 });
 
-describe('teamrig load', () => {
-  it('declares a load on the whole host or on its targets, and ends it', async () => {
+describe('teamrig job', () => {
+  it('declares a job on the whole host or on its targets, and ends it', async () => {
     const kit = new CliHarness(DEPLOYING);
-    assert.deepEqual(await kit.run(['load', '--session', 'alpha', '--what', 'backfill', '--at', '09:00']), {
+    assert.deepEqual(await kit.run(['job', '--session', 'alpha', '--what', 'backfill', '--at', '09:00']), {
       code: 0,
-      stdout: ['LOAD id-1 on the whole host from 2030-01-08 09:00 UTC (end it: teamrig load end --id id-1)'],
+      stdout: ['JOB id-1 on the whole host from 2030-01-08 09:00 UTC (end it: teamrig job end --id id-1)'],
       stderr: [],
     });
-    assert.deepEqual((await kit.run(['load', '--session', 'bravo', '--what', 'reindex', '--targets', 'cloud-api'])).stdout, [
-      'LOAD id-2 on cloud-api from 2030-01-08 10:00 UTC (end it: teamrig load end --id id-2)',
+    assert.deepEqual((await kit.run(['job', '--session', 'bravo', '--what', 'reindex', '--targets', 'cloud-api'])).stdout, [
+      'JOB id-2 on cloud-api from 2030-01-08 10:00 UTC (end it: teamrig job end --id id-2)',
     ]);
-    assert.deepEqual(await kit.run(['load', 'end', '--session', 'alpha', '--id', 'id-1', '--at', '09:45']), { code: 0, stdout: ['ENDED id-1 at 2030-01-08 09:45 UTC'], stderr: [] });
+    assert.deepEqual(await kit.run(['job', 'end', '--session', 'alpha', '--id', 'id-1', '--at', '09:45']), { code: 0, stdout: ['ENDED id-1 at 2030-01-08 09:45 UTC'], stderr: [] });
     const records = (kit.files.get(LEDGER) ?? '').trim().split('\n').map((line) => JSON.parse(line));
     assert.deepEqual(records, [
       { type: 'load', id: 'id-1', session: 'alpha', what: 'backfill', targets: 'host', startedAt: '2030-01-08T09:00:00.000Z', endedAt: null },
@@ -100,18 +100,27 @@ describe('teamrig load', () => {
     ]);
   });
 
-  it('refuses a target no repository deploys, a future start, another session’s load and an ended one', async () => {
+  it('refuses a target no repository deploys, a future start, another session’s job and an ended one', async () => {
     const kit = new CliHarness(DEPLOYING);
-    assert.deepEqual(await kit.run(['load', '--session', 'alpha', '--what', 'trim', '--targets', 'db']), {
+    assert.deepEqual(await kit.run(['job', '--session', 'alpha', '--what', 'trim', '--targets', 'db']), {
       code: 2,
       stdout: ['REFUSED db is not a deploy target of this team (known: cloud-api, cloud-web, host)'],
       stderr: [],
     });
-    assert.deepEqual((await kit.run(['load', '--session', 'alpha', '--what', 'trim', '--at', '11:00'])).stdout, ['REFUSED a load cannot start in the future (2030-01-08 11:00 UTC)']);
+    assert.deepEqual((await kit.run(['job', '--session', 'alpha', '--what', 'trim', '--at', '11:00'])).stdout, ['REFUSED a job cannot start in the future (2030-01-08 11:00 UTC)']);
     assert.equal(kit.files.get(LEDGER), undefined, 'nothing is written');
-    assert.equal((await kit.run(['load', '--session', 'alpha', '--what', 'trim'])).code, 0);
-    assert.deepEqual((await kit.run(['load', 'end', '--session', 'bravo', '--id', 'id-1'])).stdout, ['REFUSED load "id-1" belongs to alpha']);
-    assert.equal((await kit.run(['load', 'end', '--session', 'alpha', '--id', 'id-1'])).code, 0);
-    assert.deepEqual(await kit.run(['load', 'end', '--session', 'alpha', '--id', 'id-1']), { code: 2, stdout: ['REFUSED no open load "id-1"'], stderr: [] });
+    assert.equal((await kit.run(['job', '--session', 'alpha', '--what', 'trim'])).code, 0);
+    assert.deepEqual((await kit.run(['job', 'end', '--session', 'bravo', '--id', 'id-1'])).stdout, ['REFUSED job "id-1" belongs to alpha']);
+    assert.equal((await kit.run(['job', 'end', '--session', 'alpha', '--id', 'id-1'])).code, 0);
+    assert.deepEqual(await kit.run(['job', 'end', '--session', 'alpha', '--id', 'id-1']), { code: 2, stdout: ['REFUSED no open job "id-1"'], stderr: [] });
+  });
+
+  it('refuses teamrig load and teamrig load end, its old names, with the new one and exit 64, writing nothing', async () => {
+    const kit = new CliHarness(DEPLOYING);
+    for (const argv of [['load', '--session', 'alpha', '--what', 'trim'], ['load', 'end', '--session', 'alpha', '--id', 'id-1']]) {
+      const result = await kit.run(argv);
+      assert.deepEqual([result.code, result.stdout, result.stderr[0]?.split('\n')[0]], [EXIT.usage, [], 'load was renamed: use job'], argv.join(' '));
+    }
+    assert.equal(kit.files.get(LEDGER), undefined, 'nothing is written');
   });
 });

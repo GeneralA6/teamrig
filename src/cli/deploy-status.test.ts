@@ -41,15 +41,15 @@ function behind(): FakeMergeGit {
 }
 
 describe('teamrig deploy-status', () => {
-  it('shows the lock holder, the cutoff and blackout, the open freezes and loads, and what each repository with a deploy block has pushed', async () => {
+  it('shows the lock holder, the cutoff and blackout, the open freezes and jobs, and what each repository with a deploy block has pushed', async () => {
     const kit = new CliHarness(DEPLOYING);
     await kit.files.append(LOCK, heldBy());
     const claim = ['freeze', '--session', 'bravo', '--targets', 'cloud-api', '--metric', 'p95', '--why', 'cache probe', '--for', '30m'];
     assert.equal((await kit.run(claim)).code, 0);
-    assert.equal((await kit.run(['load', '--session', 'alpha', '--what', 'trim', '--at', '08:00'])).code, 0);
-    const ended = (await kit.run(['load', '--session', 'alpha', '--what', 'backfill', '--at', '08:30'])).stdout.join('');
-    assert.equal((await kit.run(['load', 'end', '--session', 'alpha', '--id', /LOAD (\S+)/.exec(ended)?.[1] ?? '', '--at', '09:00'])).code, 0);
-    const open = /LOAD (\S+)/.exec((await kit.run(['load', '--session', 'bravo', '--what', 'reindex', '--targets', 'cloud-api,cloud-web'])).stdout.join(''))?.[1];
+    assert.equal((await kit.run(['job', '--session', 'alpha', '--what', 'trim', '--at', '08:00'])).code, 0);
+    const ended = (await kit.run(['job', '--session', 'alpha', '--what', 'backfill', '--at', '08:30'])).stdout.join('');
+    assert.equal((await kit.run(['job', 'end', '--session', 'alpha', '--id', /JOB (\S+)/.exec(ended)?.[1] ?? '', '--at', '09:00'])).code, 0);
+    const open = /JOB (\S+)/.exec((await kit.run(['job', '--session', 'bravo', '--what', 'reindex', '--targets', 'cloud-api,cloud-web'])).stdout.join(''))?.[1];
     const result = await kit.run(['deploy-status'], { mergeGit: behind(), sessionProcesses: otherRuns() });
     assert.equal(result.code, 0, JSON.stringify(result));
     const trim = /^ {2}(\S+) by alpha: trim/m.exec(result.stdout.join('\n'))?.[1];
@@ -72,7 +72,7 @@ describe('teamrig deploy-status', () => {
     await kit.files.append(LOCK, heldBy());
     const claim = ['freeze', '--session', 'bravo', '--targets', 'cloud-api', '--metric', 'p95', '--why', 'cache probe', '--for', '30m'];
     assert.deepEqual((await kit.run(claim, inIsrael)).stdout, ['FROZEN cloud-api until 2030-01-08 12:30 IST']);
-    assert.equal((await kit.run(['load', '--session', 'alpha', '--what', 'trim', '--at', '11:00'], inIsrael)).code, 0);
+    assert.equal((await kit.run(['job', '--session', 'alpha', '--what', 'trim', '--at', '11:00'], inIsrael)).code, 0);
     const result = await kit.run(['deploy-status'], { mergeGit: behind(), sessionProcesses: otherRuns(), ...inIsrael });
     assert.deepEqual(result.stdout.slice(0, 6), [
       'host lock: po (heavy: build) since 2030-01-08 11:50 IST',
@@ -85,7 +85,7 @@ describe('teamrig deploy-status', () => {
     assert.match(result.stdout[6] ?? '', / by alpha: trim on the whole host since 2030-01-08 11:00 IST$/);
   });
 
-  it('shows a stale lock as free, an unset cutoff and blackout, no freezes or loads, and nothing to deploy', async () => {
+  it('shows a stale lock as free, an unset cutoff and blackout, no freezes or jobs, and nothing to deploy', async () => {
     const kit = new CliHarness(PLAIN);
     await kit.files.append(LOCK, heldBy('2030-01-08T09:55:00.000Z'));
     await kit.files.append(CLAIMS, JSON.stringify([{ session: 'bravo', targets: ['cloud-api'], metric: 'p95', why: 'probe', from: '2030-01-08T09:00:00.000Z', until: '2030-01-08T09:30:00.000Z' }]));

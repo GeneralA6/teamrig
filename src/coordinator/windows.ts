@@ -28,8 +28,8 @@ export interface DisruptionInputs {
 }
 
 /**
- * A background load a session declared (`teamrig load`). It never cuts a stable period: it may run for days, and a
- * period inside it still compares with another under the same load, so a period only names the loads it overlaps.
+ * A background job a session declared (`teamrig job`). It never cuts a stable period: it may run for days, and a
+ * period inside it still compares with another under the same job, so a period only names the jobs it overlaps.
  */
 export interface Load extends Span {
   readonly id: string;
@@ -92,7 +92,7 @@ function unfinishedEnd(from: number, starts: readonly number[], input: Pick<Disr
   return starts.reduce((end, start) => (start > from && start < end ? start : end), Math.min(input.nowMs, from + input.lockTtlMs));
 }
 
-/** One load per id, its end record winning; one with no end record runs until now. */
+/** One job per id, its end record winning; one with no end record runs until now. */
 export function loadsOf(records: readonly LedgerRecord[], nowMs: number): Load[] {
   const byId = new Map<string, Load>();
   for (const record of records.filter(isLoad)) {
@@ -112,7 +112,7 @@ export function loadsOf(records: readonly LedgerRecord[], nowMs: number): Load[]
   return [...byId.values()];
 }
 
-/** The loads on `target` that overlap `span`. */
+/** The jobs on `target` that overlap `span`. */
 export function loadsDuring(loads: readonly Load[], target: string, span: Span): Load[] {
   return loads.filter((load) => touches(load.targets, target) && load.to > span.from && load.from < span.to);
 }

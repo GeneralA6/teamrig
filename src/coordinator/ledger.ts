@@ -61,15 +61,15 @@ export interface DeployRecord {
 }
 
 /**
- * A background load a session declared (`teamrig load`), in the format a team's own coordinator writes too: once when
- * it starts (`endedAt` null), and again when it ends, under the same `id`.
+ * A background job a session declared (`teamrig job`), stored under its old name as a `load` record, in the format a
+ * team's own coordinator writes too: once when it starts (`endedAt` null), and again when it ends, under the same `id`.
  */
 export interface LoadRecord {
   readonly type: 'load';
   readonly id: string;
   readonly session: string;
   readonly what: string;
-  /** The deploy targets it loads, or `host` for every one. */
+  /** The deploy targets it runs on, or `host` for every one. */
   readonly targets: readonly string[] | 'host';
   /** An ISO time. */
   readonly startedAt: string;
