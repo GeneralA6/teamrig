@@ -48,9 +48,17 @@ export const SECRET_TOKEN_PATTERNS: readonly SecretPattern[] = [
  * not at every place in a long run of word characters.
  * An Authorization header's credential is opaque, so its scheme word frames it: a placeholder in its place
  * (`$TOKEN`, `${TOKEN}`, `<token>`, `%TOKEN%`) or a word under 8 characters is not one.
+ * A URL's password is the secret, except GitHub's fixed `x-oauth-basic`: there the login is the token.
  */
 export const SECRET_TEXT_PATTERNS: readonly SecretPattern[] = [
-  { id: 'url-credentials', description: 'credentials in a URL', pattern: /\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]*:([^\s/@]+)@/i, secretGroup: 1 },
+  {
+    id: 'url-credentials',
+    description: 'credentials in a URL',
+    pattern: /\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]*:([^\s/@]+)@/i,
+    secretGroup: 1,
+    isAllowedValue: isOauthBasicWord,
+  },
+  { id: 'url-login-token', description: 'credentials in a URL', pattern: /\b[a-z][a-z0-9+.-]*:\/\/([^\s/:@]+):x-oauth-basic@/i, secretGroup: 1 },
   {
     id: 'auth-header',
     description: 'credentials in an Authorization header',
@@ -59,6 +67,11 @@ export const SECRET_TEXT_PATTERNS: readonly SecretPattern[] = [
   },
   { id: 'secret-assignment', description: 'password or key assignment', pattern: /(?:password|passwd|secret|api[_-]?key)(?<!\/[\w.-]*)["']?\s*[=:]\s*\S/i },
 ];
+
+/** True for GitHub's fixed password `x-oauth-basic`, which follows a token given as a URL's login: a word, not a secret. */
+function isOauthBasicWord(value: string): boolean {
+  return value.toLowerCase() === 'x-oauth-basic';
+}
 
 /**
  * An identifier's name rather than a secret: two or more parts joined by `_`, `-` or `.`, each all lower-case or all

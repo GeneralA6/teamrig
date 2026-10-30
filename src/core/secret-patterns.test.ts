@@ -61,6 +61,11 @@ const CASES: ReadonlyArray<{ readonly id: string; readonly hits: readonly string
     misses: ['https://example.test/path?a=1', 'mail me at someone@example.com', 'ssh://git@github.com/o/r', 'tcp://:8080/health'],
   },
   {
+    id: 'url-login-token',
+    hits: [join('https://', 'Qx7m'.repeat(8), ':x-oauth-', 'basic', '@github.com/o/r.git'), join('HTTPS://', 'k9Tz'.repeat(5), ':X-OAuth-', 'Basic@host')],
+    misses: [join('https://:x-oauth-basic', '@github.com/o/r'),join('https://', 'app', ':', 's3cret', '@', 'host'), 'set the password to x-oauth-basic'],
+  },
+  {
     id: 'auth-header',
     hits: [
       join('curl -H "Authorization: ', 'Bearer ', 'q7Wd'.repeat(5), '" https://x'),
@@ -137,6 +142,7 @@ describe('secret patterns', () => {
   it('captures the secret itself in the secretGroup of a pattern that frames it', () => {
     const framed = [
       { id: 'url-credentials', text: join('amqp://', 'app', ':', 's3cret', '@', 'queue.local:5672'), value: 's3cret' },
+      { id: 'url-login-token', text: join('https://', 'Qx7m'.repeat(8), ':x-oauth-', 'basic', '@github.com/o/r.git'), value: 'Qx7m'.repeat(8) },
       { id: 'auth-header', text: join('curl -H "Authorization: ', 'Bearer ', 'q7Wd'.repeat(5), '" https://x'), value: 'q7Wd'.repeat(5) },
     ];
     assert.deepEqual(

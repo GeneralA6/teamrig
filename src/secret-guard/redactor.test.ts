@@ -53,6 +53,15 @@ describe('ToolOutputRedactor', () => {
     assert.deepEqual([...classes].sort(), ['credentials in a URL', 'value of a secret variable']);
   });
 
+  it("replaces the token a URL gives as its login and keeps GitHub's fixed x-oauth-basic password", () => {
+    const login = join('Qx7m', 'Rt9w'.repeat(6));
+    assert.deepEqual(redactor.redact({ stdout: join('origin https://', login, ':x-oauth-', 'basic', '@github.com/o/r.git (fetch)') }), {
+      response: { stdout: join('origin https://[redacted credentials in a URL]:x-oauth-basic', '@github.com/o/r.git (fetch)') },
+      classes: ['credentials in a URL'],
+      cut: false,
+    });
+  });
+
   it('leaves a placeholder and gives back the same result when nothing was found', () => {
     const response = { stdout: 'GITHUB_TOKEN=***\nTOKEN=${TOKEN}\nhttps://user:<password>@host', stderr: '', interrupted: false };
     const redaction = redactor.redact(response);
