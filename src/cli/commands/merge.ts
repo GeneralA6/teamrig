@@ -1,6 +1,6 @@
 import { snapshotDirOf } from '../../budget/snapshot.ts';
 import { LeadTree } from '../../config/lead-tree.ts';
-import { coordinatorPlaces, teamPlace } from '../../delivery/places.ts';
+import { deliveryPlaces, teamPlace } from '../../delivery/places.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { GateHolds } from '../../merge/gate-holds.ts';
 import { mergeBranch } from '../../merge/merge.ts';
@@ -32,7 +32,7 @@ export async function merge(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const zone = teamZone(config, runtime);
   const session = sessionIdOf(await rosterOf(runtime, kit, config), caller);
   const { delivery, budget } = config;
-  const places = coordinatorPlaces(delivery, kit.paths);
+  const places = deliveryPlaces(delivery, kit.paths);
   const say = logLineOf(runtime, zone);
   const tree = new LeadTree(config);
   const watching = await watchStarters(runtime, say);

@@ -1,6 +1,6 @@
-import type { CoordinatorConfig } from '../../config/types.ts';
+import type { DeliveryConfig } from '../../config/types.ts';
 import { parseLedger, parseLedgerMd } from '../../delivery/ledger.ts';
-import { coordinatorPlaces } from '../../delivery/places.ts';
+import { deliveryPlaces } from '../../delivery/places.ts';
 import { minutesText, parseSpanMinutes } from '../../delivery/schedule.ts';
 import { deployTargetsOf, repoTargetsOf } from '../../delivery/targets.ts';
 import { cleanWindows, disruptions, loadsDuring, loadsOf, type Load, type Span } from '../../delivery/stable-periods.ts';
@@ -50,7 +50,7 @@ interface WindowAsk {
   readonly minMinutes: number;
 }
 
-function askOf(flags: Flags, delivery: CoordinatorConfig, times: TypedTimes): WindowAsk {
+function askOf(flags: Flags, delivery: DeliveryConfig, times: TypedTimes): WindowAsk {
   const { nowMs } = times;
   const targets = listOf('--targets', requiredFlag(flags, 'targets'));
   const known = deployTargetsOf(delivery.repos);
@@ -88,7 +88,7 @@ export async function stablePeriods(args: ParsedArgs, runtime: CliRuntime): Prom
   const { delivery } = config;
   const zone = teamZone(config, runtime);
   const ask = askOf(args.flags, delivery, { nowMs, zone });
-  const places = coordinatorPlaces(delivery, kit.paths);
+  const places = deliveryPlaces(delivery, kit.paths);
   const records = parseLedger((await runtime.files.read(places.ledger)) ?? '');
   const md = parseLedgerMd((await runtime.files.read(places.ledgerMd)) ?? '');
   const repoTargets = new Map(Object.entries(delivery.repos).map(([name, repo]) => [name, repoTargetsOf(repo)]));

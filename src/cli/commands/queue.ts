@@ -1,9 +1,9 @@
 import { HEAVY_TTL_MARGIN_MINUTES } from '../../config/defaults.ts';
 import type { Roster } from '../../config/roster.ts';
-import type { HeavyConfig } from '../../config/types.ts';
+import type { QueueConfig } from '../../config/types.ts';
 import { holderText, underLock, waitText, type HostLock, type HostLockInfo, type ShareRequest, type Taking } from '../../delivery/host-lock.ts';
 import { parseLedger } from '../../delivery/ledger.ts';
-import { coordinatorPlaces } from '../../delivery/places.ts';
+import { deliveryPlaces } from '../../delivery/places.ts';
 import { passOf, PRE_PUSH_MAX_WAIT_MS, recordPass, type CheckedTree, type CleanTree } from '../../delivery/push-pass.ts';
 import { runRecorded, type StepWatch } from '../../delivery/recorded-step.ts';
 import { heavyCutoffReason, minutesText } from '../../delivery/schedule.ts';
@@ -32,7 +32,7 @@ const RESERVE_MARGIN = 1.25;
  * `--max-minutes`: whole minutes from 1 to the lock's TTL less its margin, so the step never outlives its lock, and for
  * a small step to `smallMaxRunMinutes`, so a step that shares the host stays short; unset, the config's.
  */
-function maxRunMinutesOf(args: ParsedArgs, heavy: HeavyConfig, small: boolean): number {
+function maxRunMinutesOf(args: ParsedArgs, heavy: QueueConfig, small: boolean): number {
   const text = args.flags.get('max-minutes');
   if (text === undefined) {
     return small ? heavy.smallMaxRunMinutes : heavy.maxRunMinutes;
@@ -59,7 +59,7 @@ function refuseAfterCutoff(runtime: CliRuntime, cutoffUtc: string | undefined, z
 }
 
 /** How the step's memory is watched: its own process's tree, as often as the config says; undefined when it says 0. */
-function watchOf(runtime: CliRuntime, heavy: HeavyConfig): StepWatch | undefined {
+function watchOf(runtime: CliRuntime, heavy: QueueConfig): StepWatch | undefined {
   return heavy.memorySampleSeconds === 0 ? undefined : { memory: runtime.memory, root: runtime.pid, intervalMs: heavy.memorySampleSeconds * 1_000 };
 }
 
@@ -67,7 +67,7 @@ function watchOf(runtime: CliRuntime, heavy: HeavyConfig): StepWatch | undefined
  * The MB held for a small step: the most its process tree held in its latest `RESERVE_RUNS` ended runs, under the same
  * session and label in the ledger, with a quarter more; the config's `smallReserveMb` when none was measured.
  */
-async function reserveMbOf(runtime: CliRuntime, ledger: string, session: string, what: string, heavy: HeavyConfig): Promise<number> {
+async function reserveMbOf(runtime: CliRuntime, ledger: string, session: string, what: string, heavy: QueueConfig): Promise<number> {
   const records = parseLedger((await runtime.files.read(ledger)) ?? '');
   const peaks = records.flatMap((record) => (record.type === 'heavy' && record.session === session && record.what === what && record.peakTreeMb !== undefined ? [record.peakTreeMb] : []));
   const latest = peaks.slice(-RESERVE_RUNS);
@@ -244,7 +244,7 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const say = logLineOf(runtime, zone);
   const small = args.switches.has('small');
   const maxRunMinutes = maxRunMinutesOf(args, delivery.queue, small);
-  const places = coordinatorPlaces(delivery, kit.paths);
+  const places = deliveryPlaces(delivery, kit.paths);
   const lock = hostLockOf(runtime, places.hostLock, delivery.queue);
   const parent = await parentLockOf(runtime, lock, say);
   const session = await sessionOf(args, runtime, kit, await rosterOf(runtime, kit, config), parent);

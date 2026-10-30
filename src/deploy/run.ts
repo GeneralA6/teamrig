@@ -1,10 +1,10 @@
 import { dirname } from 'node:path';
-import type { CoordinatorConfig } from '../config/types.ts';
+import type { DeliveryConfig } from '../config/types.ts';
 import { coveringClaims, freezeText, readClaims } from '../delivery/freezes.ts';
 import { takeWhenClear, type ClearancePhase, type Readiness } from '../delivery/clearance.ts';
 import { underLock, type HostLock, type HostLockInfo } from '../delivery/host-lock.ts';
 import { appendDeploy } from '../delivery/ledger.ts';
-import type { CoordinatorPlaces } from '../delivery/places.ts';
+import type { DeliveryPlaces } from '../delivery/places.ts';
 import { NOT_STARTED_EXIT, recordHeavy } from '../delivery/recorded-step.ts';
 import { heavyCutoffReason, resetBlackoutReason, type ResetTime } from '../delivery/schedule.ts';
 import type { Files } from '../core/files.ts';
@@ -45,8 +45,8 @@ export interface DeployRequest {
 export interface DeploySetup {
   /** The team's name, given to every hook as `TEAMRIG_TEAM`. */
   readonly team: string;
-  readonly delivery: CoordinatorConfig;
-  readonly places: CoordinatorPlaces;
+  readonly delivery: DeliveryConfig;
+  readonly places: DeliveryPlaces;
   /** The team's clock, for the times its refusals and waits name. */
   readonly zone: TimeZone;
   /** A configured path as a place: a relative one is in the team's folder. */

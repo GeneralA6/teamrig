@@ -1,7 +1,7 @@
-import type { CoordinatorConfig } from '../../config/types.ts';
+import type { DeliveryConfig } from '../../config/types.ts';
 import type { LoadRecord } from '../../delivery/ledger.ts';
 import { endLoad, startLoad, type LoadOutcome, type LoadPorts } from '../../delivery/jobs.ts';
-import { coordinatorPlaces } from '../../delivery/places.ts';
+import { deliveryPlaces } from '../../delivery/places.ts';
 import { deployTargetsOf } from '../../delivery/targets.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import type { TimeZone } from '../../core/zone.ts';
@@ -13,7 +13,7 @@ import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.t
 /** What a job command works on: the session, the coordinator's config, the ledger and the jobs' ports. */
 interface LoadContext {
   readonly session: string;
-  readonly delivery: CoordinatorConfig;
+  readonly delivery: DeliveryConfig;
   readonly ledger: string;
   readonly scanner: SecretScanner;
   readonly ports: LoadPorts;
@@ -29,7 +29,7 @@ async function loadContextOf(args: ParsedArgs, runtime: CliRuntime): Promise<Loa
   return {
     session,
     delivery: config.delivery,
-    ledger: coordinatorPlaces(config.delivery, kit.paths).ledger,
+    ledger: deliveryPlaces(config.delivery, kit.paths).ledger,
     scanner: new SecretScanner(config.register.secretPatterns),
     ports: { files: runtime.files, newId: () => runtime.newId() },
     zone: teamZone(config, runtime),

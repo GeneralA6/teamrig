@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import type { CoordinatorPlaces } from '../delivery/places.ts';
+import type { DeliveryPlaces } from '../delivery/places.ts';
 import type { Files } from '../core/files.ts';
 import { stringField } from '../core/guards.ts';
 import { parseObject, recordVersion, VERSION_FIELD, writableObject } from '../core/jsonl.ts';
@@ -34,7 +34,7 @@ export interface PendingMerge {
 export const PENDING_MERGE_FORMAT = 1;
 
 /** The branch's file; git refuses `* ? :` and the like in branch names, so the encoded name is a file name on every OS. */
-export function pendingMergePath(places: Pick<CoordinatorPlaces, 'pendingMerges'>, repo: string, branch: string): string {
+export function pendingMergePath(places: Pick<DeliveryPlaces, 'pendingMerges'>, repo: string, branch: string): string {
   return join(places.pendingMerges, `${encodeURIComponent(`${repo}/${branch}`)}.json`);
 }
 
@@ -64,20 +64,20 @@ export function parsePendingMerge(text: string): PendingMerge | undefined {
 }
 
 /** The branch's pending merge; undefined when there is none, or its file is unreadable or names another branch. */
-export async function readPendingMerge(files: Pick<Files, 'read'>, places: Pick<CoordinatorPlaces, 'pendingMerges'>, repo: string, branch: string): Promise<PendingMerge | undefined> {
+export async function readPendingMerge(files: Pick<Files, 'read'>, places: Pick<DeliveryPlaces, 'pendingMerges'>, repo: string, branch: string): Promise<PendingMerge | undefined> {
   const text = await files.read(pendingMergePath(places, repo, branch));
   const pending = text === undefined ? undefined : parsePendingMerge(text);
   return pending?.repo === repo && pending.branch === branch ? pending : undefined;
 }
 
 /** Writes the branch's pending merge; one a newer teamrig wrote is refused (`NewerDataError`), never overwritten. */
-export async function writePendingMerge(files: Pick<Files, 'read' | 'write'>, places: Pick<CoordinatorPlaces, 'pendingMerges'>, pending: PendingMerge): Promise<void> {
+export async function writePendingMerge(files: Pick<Files, 'read' | 'write'>, places: Pick<DeliveryPlaces, 'pendingMerges'>, pending: PendingMerge): Promise<void> {
   const path = pendingMergePath(places, pending.repo, pending.branch);
   writableObject(path, await files.read(path), PENDING_MERGE_FORMAT);
   await files.write(path, formatPendingMerge(pending));
 }
 
 /** Removes the branch's pending merge; none is no error. */
-export async function removePendingMerge(files: Pick<Files, 'remove'>, places: Pick<CoordinatorPlaces, 'pendingMerges'>, repo: string, branch: string): Promise<void> {
+export async function removePendingMerge(files: Pick<Files, 'remove'>, places: Pick<DeliveryPlaces, 'pendingMerges'>, repo: string, branch: string): Promise<void> {
   await files.remove(pendingMergePath(places, repo, branch));
 }

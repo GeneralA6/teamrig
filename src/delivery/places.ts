@@ -1,6 +1,6 @@
 import { isAbsolute, join } from 'node:path';
 import type { TeamPaths } from '../core/home.ts';
-import type { CoordinatorConfig } from '../config/types.ts';
+import type { DeliveryConfig } from '../config/types.ts';
 import { CLAIMS_LOCK_FILE, CLAIMS_MD_FILE } from './freeze-store.ts';
 import { CLAIMS_FILE } from './freezes.ts';
 import { LEDGER_FILE, LEDGER_MD_FILE } from './ledger.ts';
@@ -15,7 +15,7 @@ export const GATE_HOLDS_DIR = 'gate-holds';
 export const MERGES_FILE = 'merges.jsonl';
 
 /** The files the coordinator keeps. */
-export interface CoordinatorPlaces {
+export interface DeliveryPlaces {
   readonly ledger: string;
   readonly ledgerMd: string;
   readonly claims: string;
@@ -38,7 +38,7 @@ export function teamPlace(paths: Pick<TeamPaths, 'home'>, path: string): string 
 }
 
 /** The coordinator's folder: `delivery.dir`, a relative one in the team's folder; unset, `<state>/deploys`. */
-export function coordinatorDirOf(config: Pick<CoordinatorConfig, 'dir'>, paths: Pick<TeamPaths, 'home' | 'state'>): string {
+export function coordinatorDirOf(config: Pick<DeliveryConfig, 'dir'>, paths: Pick<TeamPaths, 'home' | 'state'>): string {
   return config.dir === undefined ? join(paths.state, 'deploys') : teamPlace(paths, config.dir);
 }
 
@@ -47,7 +47,7 @@ export function coordinatorDirOf(config: Pick<CoordinatorConfig, 'dir'>, paths: 
  * gate holds and the merges log in `delivery.dir` (default `<state>/deploys`); the host lock at
  * `delivery.queue.lockPath` (default the kit home's, one for the host). A relative path is in the team's folder.
  */
-export function coordinatorPlaces(config: CoordinatorConfig, paths: TeamPaths): CoordinatorPlaces {
+export function deliveryPlaces(config: DeliveryConfig, paths: TeamPaths): DeliveryPlaces {
   const inTeam = (path: string): string => teamPlace(paths, path);
   const dir = coordinatorDirOf(config, paths);
   return {

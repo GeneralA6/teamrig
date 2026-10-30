@@ -1,10 +1,10 @@
 import { basename, dirname } from 'node:path';
-import type { CoordinatorConfig, CoordinatorRepoConfig } from '../config/types.ts';
+import type { DeliveryConfig, DeliveryRepoConfig } from '../config/types.ts';
 import { coveringClaims, freezeText, readClaims } from '../delivery/freezes.ts';
 import { takeWhenClear, type Readiness } from '../delivery/clearance.ts';
 import { underLock, type HostLock, type HostLockInfo } from '../delivery/host-lock.ts';
 import { appendDeploy, rangeText } from '../delivery/ledger.ts';
-import type { CoordinatorPlaces } from '../delivery/places.ts';
+import type { DeliveryPlaces } from '../delivery/places.ts';
 import { marksOfTaking, recordHeavy, runRecorded, type HeavyMark } from '../delivery/recorded-step.ts';
 import { heavyCutoffReason, resetBlackoutReason, type ResetTime } from '../delivery/schedule.ts';
 import { exitCodeOf, type StepEnd, type StepRunner } from '../delivery/steps.ts';
@@ -66,8 +66,8 @@ export interface MergeRequest {
 }
 
 export interface MergeSetup {
-  readonly delivery: CoordinatorConfig;
-  readonly places: CoordinatorPlaces;
+  readonly delivery: DeliveryConfig;
+  readonly places: DeliveryPlaces;
   /** The team's clock, for the times its refusals and waits name. */
   readonly zone: TimeZone;
   /** A configured path as a place: a relative one is in the team's folder. */
@@ -86,11 +86,11 @@ export interface MergePorts {
   /** Redacts the checks' lines before they show. */
   readonly scanner: Pick<SecretScanner, 'redact'>;
   readonly files: Files;
-  /** The review gate's holds (`CoordinatorPlaces.reviewHolds`). */
+  /** The review gate's holds (`DeliveryPlaces.reviewHolds`). */
   readonly reviewHolds: Pick<ReviewHolds, 'read' | 'write' | 'remove'>;
-  /** The self-merge gates' holds (`CoordinatorPlaces.gateHolds`). */
+  /** The self-merge gates' holds (`DeliveryPlaces.gateHolds`). */
   readonly gateHolds: Pick<GateHolds, 'read' | 'write' | 'remove'>;
-  /** The log of what the self-merge gates let land (`CoordinatorPlaces.merges`). */
+  /** The log of what the self-merge gates let land (`DeliveryPlaces.merges`). */
   readonly merges: Pick<MergeLog, 'append'>;
   /** The commits a change lands with their files, which the self-merge gates weigh. */
   readonly commitLog: CommitLog;
@@ -117,7 +117,7 @@ export type MergeEnd =
 /** The repository a checkout belongs to: its `delivery.repos` entry, else one named after its main checkout's folder with nothing configured. */
 export interface RepoMatch {
   readonly name: string;
-  readonly config: CoordinatorRepoConfig;
+  readonly config: DeliveryRepoConfig;
   readonly listed: boolean;
 }
 

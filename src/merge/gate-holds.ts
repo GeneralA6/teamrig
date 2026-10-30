@@ -7,7 +7,7 @@ import { isSelfMergeGate, type GateMiss } from './self-merge.ts';
 /**
  * The self-merge gates' holds (T800 §2.1, T858): a change that missed a gate under `pushToProtected: gated`, kept until
  * a leader approves its task or the branch lands. One file per repository and branch, in their own folder of the
- * coordinator's (`CoordinatorPlaces.gateHolds`), apart from the review holds, so neither replaces the other; a new hold
+ * coordinator's (`DeliveryPlaces.gateHolds`), apart from the review holds, so neither replaces the other; a new hold
  * of a branch replaces its old one, as the change it bound moved on.
  */
 

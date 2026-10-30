@@ -1,5 +1,5 @@
 import { basename, dirname, join } from 'node:path';
-import type { CoordinatorConfig } from '../config/types.ts';
+import type { DeliveryConfig } from '../config/types.ts';
 import { teamPlace } from '../delivery/places.ts';
 import type { Files } from '../core/files.ts';
 import { KIT_NAME, type TeamPaths } from '../core/home.ts';
@@ -65,7 +65,7 @@ async function repoWarning(files: Files, git: SecretsGit, name: string, main: st
  * its own, not one session's area, so it is a warning no session owns and goes to the lead. One git call per
  * repository, then a read of its three scripts.
  */
-export async function secretHookWarnings(files: Files, git: SecretsGit, paths: Pick<TeamPaths, 'home'>, repos: CoordinatorConfig['repos']): Promise<UnownedWarning[]> {
+export async function secretHookWarnings(files: Files, git: SecretsGit, paths: Pick<TeamPaths, 'home'>, repos: DeliveryConfig['repos']): Promise<UnownedWarning[]> {
   const warnings: UnownedWarning[] = [];
   for (const [name, repo] of Object.entries(repos)) {
     const found = await repoWarning(files, git, name, teamPlace(paths, repo.mainCheckout));

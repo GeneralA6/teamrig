@@ -1,6 +1,6 @@
 import type { Roster } from '../../config/roster.ts';
 import type { LockWaiter, Withdrawal } from '../../delivery/host-lock.ts';
-import { coordinatorPlaces } from '../../delivery/places.ts';
+import { deliveryPlaces } from '../../delivery/places.ts';
 import { ENV } from '../../core/home.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import { UsageError, type ParsedArgs } from '../args.ts';
@@ -74,7 +74,7 @@ export async function withdraw(args: ParsedArgs, runtime: CliRuntime): Promise<E
   const config = requireConfig(kit, runtime, 'read');
   const session = await ownSessionOf(args, runtime, kit, await rosterOf(runtime, kit, config));
   const zone = teamZone(config, runtime);
-  const lock = hostLockOf(runtime, coordinatorPlaces(config.delivery, kit.paths).hostLock, config.delivery.queue);
+  const lock = hostLockOf(runtime, deliveryPlaces(config.delivery, kit.paths).hostLock, config.delivery.queue);
   if (chosen === undefined) {
     const waiting = (await lock.line()).filter((waiter) => waiter.session === session);
     if (waiting.length === 0) {

@@ -2,10 +2,10 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { dirname, join } from 'node:path';
 import { LeadTree } from '../config/lead-tree.ts';
-import type { CoordinatorConfig, CoordinatorRepoConfig, ScheduleConfig } from '../config/types.ts';
-import { DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_CLAIMS, DEFAULT_COMMITS, DEFAULT_COORDINATOR_WAIT, DEFAULT_HEAVY, DEFAULT_WINDOWS } from '../config/defaults.ts';
+import type { DeliveryConfig, DeliveryRepoConfig, ScheduleConfig } from '../config/types.ts';
+import { DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_FREEZES, DEFAULT_COMMITS, DEFAULT_DELIVERY_WAIT, DEFAULT_QUEUE, DEFAULT_STABLE_PERIODS } from '../config/defaults.ts';
 import { HostLock } from '../delivery/host-lock.ts';
-import type { CoordinatorPlaces } from '../delivery/places.ts';
+import type { DeliveryPlaces } from '../delivery/places.ts';
 import type { ResetTime } from '../delivery/schedule.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { TimeZone } from '../core/zone.ts';
@@ -28,7 +28,7 @@ import { REVIEW_BASE_ENV } from './review-check.ts';
 import type { ReviewGateSetup } from './review-gate-step.ts';
 import { ReviewHolds } from './review-holds.ts';
 
-const PLACES: CoordinatorPlaces = {
+const PLACES: DeliveryPlaces = {
   ledger: '/team/deploys/ledger.jsonl',
   ledgerMd: '/team/deploys/ledger.md',
   claims: '/team/deploys/claims.json',
@@ -42,12 +42,12 @@ const PLACES: CoordinatorPlaces = {
 };
 const REQUEST: MergeRequest = { session: 'api', dir: WORKTREE, keepRemote: false, keepLocal: false };
 const NO_REVIEW: ReviewGateSetup = { reviewPaths: [], tree: new LeadTree(testConfig()), roles: {} };
-const PLAIN: CoordinatorRepoConfig = { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], dependencyGate: false, reviewGate: false, updateMainCheckout: false };
+const PLAIN: DeliveryRepoConfig = { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], dependencyGate: false, reviewGate: false, updateMainCheckout: false };
 /** A commit of a source file with its test, under the size limits. */
 const COMMIT: CommitStat = { sha: 'rebased', subject: 'Add the feature', body: '', files: [{ path: 'src/app.ts', added: 10, deleted: 2 }, { path: 'src/app.test.ts', added: 20, deleted: 0 }] };
 
 interface Options {
-  readonly repos?: Readonly<Record<string, CoordinatorRepoConfig>>;
+  readonly repos?: Readonly<Record<string, DeliveryRepoConfig>>;
   readonly schedule?: ScheduleConfig;
   readonly waitMinutes?: number;
   readonly start?: string;
@@ -88,13 +88,13 @@ class World {
     this.reviewHolds = new ReviewHolds(this.files, PLACES.reviewHolds);
     this.gateHolds = new GateHolds(this.files, PLACES.gateHolds);
     this.merges = new MergeLog(this.files, PLACES.merges);
-    const delivery: CoordinatorConfig = {
+    const delivery: DeliveryConfig = {
       schedule: options.schedule ?? {},
-      queue: DEFAULT_HEAVY,
-      wait: { ...DEFAULT_COORDINATOR_WAIT, maxMinutes: options.waitMinutes ?? DEFAULT_COORDINATOR_WAIT.maxMinutes },
+      queue: DEFAULT_QUEUE,
+      wait: { ...DEFAULT_DELIVERY_WAIT, maxMinutes: options.waitMinutes ?? DEFAULT_DELIVERY_WAIT.maxMinutes },
       checkTimeoutSeconds: DEFAULT_CHECK_TIMEOUT_SECONDS,
-      freezes: DEFAULT_CLAIMS,
-      stablePeriods: DEFAULT_WINDOWS,
+      freezes: DEFAULT_FREEZES,
+      stablePeriods: DEFAULT_STABLE_PERIODS,
       repos: options.repos ?? {},
     };
     this.setup = {
@@ -372,7 +372,7 @@ describe('merge pushes a branch to the default branch', () => {
     world.git.landed = ['aaaaaaaa1111', 'bbbbbbbb2222'];
     assert.deepEqual(await world.run(), { kind: 'done', summary: 'pushed aaaaaaaa..bbbbbbbb to main' });
     assert.deepEqual(world.steps.ran, [
-      { command: commandLine(['git', 'push', 'origin', 'HEAD:refs/heads/main'], 'linux'), cwd: WORKTREE, env: { PATH: '/bin', TEAMRIG_HOST_LOCK: 'lock-1' }, timeoutMs: DEFAULT_HEAVY.maxRunMinutes * 60_000 },
+      { command: commandLine(['git', 'push', 'origin', 'HEAD:refs/heads/main'], 'linux'), cwd: WORKTREE, env: { PATH: '/bin', TEAMRIG_HOST_LOCK: 'lock-1' }, timeoutMs: DEFAULT_QUEUE.maxRunMinutes * 60_000 },
     ]);
     assert.deepEqual(world.git.log, [
       `fetch ${WORKTREE} origin`,
@@ -437,7 +437,7 @@ describe('merge pushes a branch to the default branch', () => {
 
 describe('merge goes through the repository’s merge command, where one is set', () => {
   const MERGE = ['node', 'merge.ts'];
-  const MERGING: CoordinatorRepoConfig = { ...PLAIN, merge: { command: MERGE, remote: 'origin' } };
+  const MERGING: DeliveryRepoConfig = { ...PLAIN, merge: { command: MERGE, remote: 'origin' } };
   const PENDING = join(PLACES.pendingMerges, 'app%2Ffeat.json');
   const WAITED: PendingMerge = { session: 'api', repo: 'app', branch: 'feat', head: 'rebased', base: 'base', since: '2030-01-08T10:00:00.000Z', note: 'https://forge/pr/7' };
   const HALF_HOUR = 30 * 60_000;
@@ -952,7 +952,7 @@ describe('mergeBranch with the review gate', () => {
   const REVIEW: ReviewGateSetup = { reviewPaths: [{ glob: 'src/**', mode: 'check', class: 'security' }], tree: new LeadTree(testConfig()), roles: { securityReviewer: 'bravo' } };
   const ALPHA: MergeRequest = { ...REQUEST, session: 'alpha' };
 
-  function gatedWorld(config: Partial<CoordinatorRepoConfig> = {}): World {
+  function gatedWorld(config: Partial<DeliveryRepoConfig> = {}): World {
     const world = new World({ repos: { app: { ...PLAIN, reviewGate: true, ...config } }, review: REVIEW });
     world.git.checkouts.set(WORKTREE, { top: WORKTREE, branch: 't9-feat', mainCheckout: MAIN_CHECKOUT, linked: true });
     world.tasks.set('T9', { owner: 'alpha', status: 'in-progress', answer: null });
@@ -1019,7 +1019,7 @@ describe('mergeBranch under pushToProtected: gated', () => {
   const LANDED = { session: 'alpha', repo: 'app', branch: 't9-feat', task: 'T9', base: 'base', head: 'rebased', tree: 'tree-rebased', files: 2, lines: 32 };
 
   /** T9 is alpha's and in progress; its branch lands in a repo whose review gate is on, under `gated`. */
-  function gatedWorld(config: Partial<CoordinatorRepoConfig> = {}, review: ReviewGateSetup = NO_REVIEW): World {
+  function gatedWorld(config: Partial<DeliveryRepoConfig> = {}, review: ReviewGateSetup = NO_REVIEW): World {
     const world = new World({ repos: { app: { ...PLAIN, reviewGate: true, ...config } }, review, gated: GATED });
     world.git.checkouts.set(WORKTREE, { top: WORKTREE, branch: 't9-feat', mainCheckout: MAIN_CHECKOUT, linked: true });
     world.tasks.set('T9', { owner: 'alpha', status: 'in-progress', answer: null });

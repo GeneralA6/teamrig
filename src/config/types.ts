@@ -682,7 +682,7 @@ export interface ScheduleConfig {
 }
 
 /** `teamrig queue`: one queued step on the host at a time, each under the host lock. */
-export interface HeavyConfig {
+export interface QueueConfig {
   /**
    * The host lock file every queued step takes; a relative path is in the team's folder. Unset: `<kit home>/host.lock`,
    * one lock for every team on the host.
@@ -712,7 +712,7 @@ export interface HeavyConfig {
 }
 
 /** How a delivery step waits. */
-export interface CoordinatorWaitConfig {
+export interface DeliveryWaitConfig {
   /** A waiting step looks again after this many seconds; the first in line for the host lock every 2 at most. */
   readonly pollSeconds: number;
   /** A deploy step (`teamrig merge`, `deploy`) waits this many minutes at most for deploy freezes and the host lock, then is refused; a wait in a line for the lock that keeps moving goes on past them. */
@@ -720,7 +720,7 @@ export interface CoordinatorWaitConfig {
 }
 
 /** A repository whose branches `teamrig merge` merges into its default branch. */
-export interface CoordinatorRepoConfig {
+export interface DeliveryRepoConfig {
   /** The repository's main checkout; a branch merges from any worktree of it. A relative path is in the team's folder. */
   readonly mainCheckout: string;
   /**
@@ -819,13 +819,13 @@ export interface DeployConfig {
 }
 
 /** `teamrig freeze`: deploy freezes, which hold deploys of their targets while a session measures them. */
-export interface ClaimsConfig {
+export interface FreezesConfig {
   /** A freeze lasts at most this many minutes. */
   readonly maxMinutes: number;
 }
 
 /** `teamrig stable-periods`: when a measurement of a deploy target is clean, between the deploys and queued steps that disturb it. */
-export interface WindowsConfig {
+export interface StablePeriodsConfig {
   /** A target measures cleanly this many minutes after a deploy reached it. */
   readonly settleMinutes: number;
   /** Per deploy target, its own settle minutes in place of `settleMinutes`. */
@@ -840,18 +840,18 @@ export interface WindowsConfig {
  * The delivery flow: its folder, the queue cutoff and the reset blackout, the host lock, how a step waits,
  * deploy freezes, the stable periods to measure in, and the repositories whose branches `teamrig merge` merges and `teamrig deploy` deploys.
  */
-export interface CoordinatorConfig {
+export interface DeliveryConfig {
   /** The delivery folder, which holds its ledger; a relative path is in the team's folder. Unset: `<state>/deploys`. */
   readonly dir?: string;
   readonly schedule: ScheduleConfig;
-  readonly queue: HeavyConfig;
-  readonly wait: CoordinatorWaitConfig;
+  readonly queue: QueueConfig;
+  readonly wait: DeliveryWaitConfig;
   /** A deploy's check still running after this many seconds is stopped, and the deploy waits. */
   readonly checkTimeoutSeconds: number;
-  readonly freezes: ClaimsConfig;
-  readonly stablePeriods: WindowsConfig;
+  readonly freezes: FreezesConfig;
+  readonly stablePeriods: StablePeriodsConfig;
   /** By name, such as `api`. */
-  readonly repos: Readonly<Record<string, CoordinatorRepoConfig>>;
+  readonly repos: Readonly<Record<string, DeliveryRepoConfig>>;
 }
 
 export interface AlertsConfig {
@@ -1169,7 +1169,7 @@ export interface KitConfig {
   /** Refuses a call that would print a secret file, the environment or a secret variable, or whose line holds a secret as text (hook-secret-guard). */
   readonly secretGuard: SecretGuardConfig;
   readonly commits: CommitsConfig;
-  readonly delivery: CoordinatorConfig;
+  readonly delivery: DeliveryConfig;
   readonly budget: BudgetConfig;
   readonly leadBoundary: LeadBoundaryConfig;
   readonly loops: LoopsConfig;

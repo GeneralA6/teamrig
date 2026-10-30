@@ -2,7 +2,7 @@ import { snapshotDirOf } from '../../budget/snapshot.ts';
 import { quietClaimText, readClaims } from '../../delivery/freezes.ts';
 import { holderText, sharesText, type LockState } from '../../delivery/host-lock.ts';
 import { parseLedger } from '../../delivery/ledger.ts';
-import { coordinatorPlaces, teamPlace } from '../../delivery/places.ts';
+import { deliveryPlaces, teamPlace } from '../../delivery/places.ts';
 import { blackoutStart, heavyCutoffSpan, type ResetTime } from '../../delivery/schedule.ts';
 import { loadsOf, type Load } from '../../delivery/stable-periods.ts';
 import type { TimeZone } from '../../core/zone.ts';
@@ -75,7 +75,7 @@ export async function deployStatus(_args: ParsedArgs, runtime: CliRuntime): Prom
   const config = requireConfig(kit, runtime, 'read');
   const { delivery, budget } = config;
   const zone = teamZone(config, runtime);
-  const places = coordinatorPlaces(delivery, kit.paths);
+  const places = deliveryPlaces(delivery, kit.paths);
   const say = (line: string): void => runtime.out.stdout(line);
   const lock = hostLockOf(runtime, places.hostLock, delivery.queue);
   say(`host lock: ${lockText(await lock.state(), zone)}`);
