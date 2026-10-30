@@ -761,7 +761,7 @@ session asked to write its handover is asked that first.
 
 ## After a tool call: the lead boundary
 
-The lead decides, briefs and reads results; the owning session, a helper or a temporary session does the work. On
+The lead decides, briefs and reads results; the owning session, a helper or a hired worker does the work. On
 the lead's tab (`roles.lead`), the same hook counts the turn's calls that are work to hand off:
 
 - an edit outside its own files, or a git step that changes a repository (`commit`, `push`, `merge`, `rebase` and
@@ -784,7 +784,7 @@ At the turn's first edit, its first test or build, its first research and its `l
 search (3 by default; 0 never), the lead's model gets one line:
 
 ```text
-teamrig: the lead edited hook.ts itself. The lead hands such work to the owning session (a register task), a helper or a temporary session, and keeps to deciding and briefing [leadBoundary].
+teamrig: the lead edited hook.ts itself. The lead hands such work to the owning session (a register task), a helper or a hired worker, and keeps to deciding and briefing [leadBoundary].
 ```
 
 The research line names whom to ask: the session whose place the search looked through (for a task folder, the

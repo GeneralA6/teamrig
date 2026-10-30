@@ -27,7 +27,7 @@ const WEB_SEARCH_TOOL = 'WebSearch';
 /** The turn-end line names this many edited files or research lookups, then counts the rest; a research nudge names this many owners. */
 const MAX_NAMES = 3;
 const HAND_OFF =
-  'The lead hands such work to the owning session (a register task), a helper or a temporary session, and keeps to deciding and briefing [leadBoundary].';
+  'The lead hands such work to the owning session (a register task), a helper or a hired worker, and keeps to deciding and briefing [leadBoundary].';
 
 /** A path or command with forward slashes, the home spellings (`~`, `$HOME`, `$env:USERPROFILE`) and Git Bash drives (`/c/`) written out, in lower case. */
 function normalized(text: string, home: string): string {
