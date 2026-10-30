@@ -38,7 +38,7 @@ export function teamPlace(paths: Pick<TeamPaths, 'home'>, path: string): string 
 }
 
 /** The delivery folder: `delivery.dir`, a relative one in the team's folder; unset, `<state>/deploys`. */
-export function coordinatorDirOf(config: Pick<DeliveryConfig, 'dir'>, paths: Pick<TeamPaths, 'home' | 'state'>): string {
+export function deliveryDirOf(config: Pick<DeliveryConfig, 'dir'>, paths: Pick<TeamPaths, 'home' | 'state'>): string {
   return config.dir === undefined ? join(paths.state, 'deploys') : teamPlace(paths, config.dir);
 }
 
@@ -49,7 +49,7 @@ export function coordinatorDirOf(config: Pick<DeliveryConfig, 'dir'>, paths: Pic
  */
 export function deliveryPlaces(config: DeliveryConfig, paths: TeamPaths): DeliveryPlaces {
   const inTeam = (path: string): string => teamPlace(paths, path);
-  const dir = coordinatorDirOf(config, paths);
+  const dir = deliveryDirOf(config, paths);
   return {
     ledger: join(dir, LEDGER_FILE),
     ledgerMd: join(dir, LEDGER_MD_FILE),
