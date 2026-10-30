@@ -1,12 +1,13 @@
 import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { nodeSessionProcesses, type ProcessInfo } from '../open/session-processes.ts';
+import type { ProcessInfo } from '../open/session-processes.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
+import { endingOf, livenessOf } from '../testing/process-liveness.ts';
 import { endedText, LAUNCHER_PID_ENV, launchingShellOf, nodeEvery, SHELL_PID_ENV, STARTER_CHECK_MS, starterWatch, startersOf, type Every } from './starter-watch.ts';
 
 const TERMINAL: ProcessInfo = { pid: 10, parentPid: 1, name: 'WindowsTerminal.exe', commandLine: 'wt' };
@@ -53,9 +54,9 @@ const REAL_WAIT_MS = 60_000;
 /** A real watcher quits on its own after this, once the spec has stopped waiting on both of its files. */
 const REAL_QUIT_MS = 2 * REAL_WAIT_MS + 30_000;
 
-async function until(check: () => boolean, ms = 15_000): Promise<boolean> {
+async function until(check: () => boolean | Promise<boolean>, ms = 15_000): Promise<boolean> {
   const end = Date.now() + ms;
-  while (!check()) {
+  while (!(await check())) {
     if (Date.now() > end) {
       return false;
     }
@@ -70,19 +71,23 @@ function written(path: string): boolean {
 }
 
 /**
- * Ends a watcher a test started, which exits by itself once it wrote that its starter ended. As it exits under the
- * coverage gate it writes its V8 coverage file, and a kill then leaves that file cut short, which fails the whole
- * run's coverage report ("Unexpected end of JSON input"). So it gets time to exit first; only one still running after
- * that, which never saw its starter end and so writes nothing, is killed.
+ * Ends a watcher a test started, known by the `ready` file it wrote: its id first, and the file's time as when it wrote.
+ * One that wrote `ended` exits by itself, and as it exits under the coverage gate it writes its V8 coverage file, which
+ * a kill would leave cut short, failing the whole run's coverage report ("Unexpected end of JSON input"); so it gets
+ * time to exit first. One still running after that, or one that never saw its starter end, is ended by what it is,
+ * never by its bare id, which on Windows may by then be a stranger's (T1562).
  */
-async function endWatcher(pid: number | undefined): Promise<void> {
+async function endWatcher(ready: string, ended: string): Promise<void> {
+  const [pid] = written(ready) ? readFileSync(ready, 'utf8').split(',').map(Number) : [];
   if (pid === undefined) {
     return;
   }
-  const processes = nodeSessionProcesses();
-  if (!(await until(() => !processes.alive(pid), 5_000))) {
-    process.kill(pid);
+  const watcher = { pid, writtenMs: statSync(ready).mtimeMs };
+  if (written(ended)) {
+    const runs = livenessOf(process.platform);
+    await until(async () => !(await runs(watcher)), REAL_WAIT_MS);
   }
+  await endingOf(process.platform)(watcher);
 }
 
 describe('startersOf', () => {
@@ -217,8 +222,7 @@ describe('starterWatch on this machine', () => {
       assert.equal(readFileSync(ended, 'utf8'), String(parentPid));
     } finally {
       parent.kill();
-      const [watcherPid] = written(ready) ? readFileSync(ready, 'utf8').split(',').map(Number) : [];
-      await endWatcher(watcherPid);
+      await endWatcher(ready, ended);
     }
   });
 
@@ -270,8 +274,7 @@ describe('starterWatch on this machine', () => {
       assert.equal(readFileSync(ended, 'utf8'), String(target));
     } finally {
       shell.kill();
-      const [cliPid] = cliPids();
-      await endWatcher(cliPid);
+      await endWatcher(ready, ended);
     }
   });
 });

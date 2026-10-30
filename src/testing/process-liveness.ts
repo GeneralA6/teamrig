@@ -1,4 +1,4 @@
-import { windowsSweepHost, type SweepHost } from '../coordinator/tree-kill.ts';
+import { windowsSweepHost, type StartedProcess, type SweepHost } from '../coordinator/tree-kill.ts';
 
 /** A process a spec started, as it wrote itself down once it ran: `${process.pid} ${Date.now()}`. */
 export interface WrittenProcess {
@@ -31,6 +31,25 @@ export const signalPidCheck: PidCheck = (pid) => {
   }
 };
 
+/** Force-ends the process holding `pid`, by signal; one already ended is no error. */
+export type PidKill = (pid: number) => void;
+
+/** Ends the process that wrote itself down if it still runs; settles once the kill is done. */
+export type Ending = (written: WrittenProcess) => Promise<void>;
+
+export const signalPidKill: PidKill = (pid) => {
+  try {
+    process.kill(pid, 'SIGKILL');
+  } catch {
+    // It ended on its own.
+  }
+};
+
+/** The listed process that is the one that wrote itself down: it holds the id and started no later than it wrote. */
+function writerOf(rows: readonly StartedProcess[], written: WrittenProcess): StartedProcess | undefined {
+  return rows.find((row) => row.pid === written.pid && row.startedMs <= written.writtenMs);
+}
+
 /**
  * Windows hands an ended process's id to a new process within seconds under load (T990), so there a process runs only
  * while a listed process holds its id and started no later than it wrote itself down; a later start is a stranger.
@@ -45,6 +64,28 @@ export function livenessOf(platform: NodeJS.Platform, host: Pick<SweepHost, 'lis
     if (rows === undefined) {
       return pidCheck(written.pid);
     }
-    return rows.some((row) => row.pid === written.pid && row.startedMs <= written.writtenMs);
+    return writerOf(rows, written) !== undefined;
+  };
+}
+
+/**
+ * Ends a process a spec started by what it is, not by its id alone: on Windows a bare id can name a stranger given it
+ * after the process ended (T1562), so there the kill ends only the listed writer, by id and start; when the host cannot
+ * be listed it ends nothing, since a bare id may be a stranger's. On POSIX, which does not reuse ids that soon, a
+ * signal ends it.
+ */
+export function endingOf(platform: NodeJS.Platform, host: Pick<SweepHost, 'list' | 'kill'> = windowsSweepHost, pidKill: PidKill = signalPidKill): Ending {
+  if (platform !== 'win32') {
+    return (written) => {
+      pidKill(written.pid);
+      return Promise.resolve();
+    };
+  }
+  return async (written) => {
+    const rows = await host.list();
+    const writer = rows === undefined ? undefined : writerOf(rows, written);
+    if (writer !== undefined) {
+      await host.kill([writer]);
+    }
   };
 }
