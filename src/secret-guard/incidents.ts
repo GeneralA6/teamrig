@@ -5,11 +5,14 @@ import type { TimeZone } from '../core/zone.ts';
 
 /**
  * The team's secret incidents, an append-only log (`<state>/secret-incidents.jsonl`): each kind of secret a tool's
- * result held, which the secret redactor kept from the model (T1369 R8), with the session, the tool and the task that
- * has it rotated; never the value. It is audit data: nothing trims it. A newer format is skipped on read and refuses a
- * write.
+ * result held, which the secret redactor kept from the model (T1369 R8), with the session, the tool, the call (its id,
+ * the session's transcript and the helper that made it) and the task that has it rotated; never the value. It is audit
+ * data: nothing trims it. A newer format is skipped on read and refuses a write; format 1, before the call's fields
+ * (T1545), is read.
  */
-export const SECRET_INCIDENTS_FORMAT = 1;
+export const SECRET_INCIDENTS_FORMAT = 2;
+
+const READ_FORMATS: ReadonlySet<number> = new Set([1, SECRET_INCIDENTS_FORMAT]);
 
 export interface SecretIncident {
   /** ISO instant. */
@@ -18,6 +21,12 @@ export interface SecretIncident {
   readonly session?: string;
   /** The tool whose result held it: `Bash`, `Read`. */
   readonly tool: string;
+  /** The call whose result held it, its `tool_use_id`, so a rotator finds the call in a transcript in one search. */
+  readonly toolUseId?: string;
+  /** The session's transcript, its `transcript_path`. */
+  readonly transcript?: string;
+  /** The helper that made the call, its `agent_id`; absent for the session's own call. */
+  readonly agent?: string;
   /** What it was, its shape's description: `GitHub token`. */
   readonly kind: string;
   /** The task that has it rotated, filed now or earlier that day: `T12` in the team's register, `web/T12` in another's. */
@@ -39,8 +48,20 @@ export function parseSecretIncident(record: JsonRecord): SecretIncident | undefi
     return undefined;
   }
   const session = stringField(record, 'session');
+  const toolUseId = stringField(record, 'toolUseId');
+  const transcript = stringField(record, 'transcript');
+  const agent = stringField(record, 'agent');
   const task = stringField(record, 'task');
-  return { at, ...(session === undefined ? {} : { session }), tool, kind, ...(task === undefined ? {} : { task }) };
+  return {
+    at,
+    ...(session === undefined ? {} : { session }),
+    tool,
+    ...(toolUseId === undefined ? {} : { toolUseId }),
+    ...(transcript === undefined ? {} : { transcript }),
+    ...(agent === undefined ? {} : { agent }),
+    kind,
+    ...(task === undefined ? {} : { task }),
+  };
 }
 
 /**
@@ -66,7 +87,7 @@ export class SecretIncidentLog {
     const parse = parseJsonl((await this.files.read(this.path)) ?? '');
     const incidents: SecretIncident[] = [];
     for (const { record, version } of parse.records) {
-      const parsed = version === SECRET_INCIDENTS_FORMAT ? parseSecretIncident(record) : undefined;
+      const parsed = READ_FORMATS.has(version) ? parseSecretIncident(record) : undefined;
       if (parsed !== undefined) {
         incidents.push(parsed);
       }

@@ -15,10 +15,18 @@ const REVIEWED = { ...TEAM, roles: { lead: 'lead', securityReviewer: 'bravo' } }
 const AS_ALPHA = { env: { TEAMRIG_SESSION: 'alpha' } };
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** A Bash call's PostToolUse payload from the harness's Claude Code session in the project folder. */
-function ran(stdout: string): string {
-  return JSON.stringify({ session_id: CLAUDE_SESSION, cwd: APP, tool_name: 'Bash', tool_input: { command: 'run it' }, tool_response: { stdout, stderr: '', interrupted: false, isImage: false } });
+const TRANSCRIPT = join('/', 'projects', 'app', 'session.jsonl');
+
+/** The payload's fields that name the call: its id and the session's transcript. */
+const CALL: Readonly<Record<string, string>> = { tool_use_id: 'toolu_01', transcript_path: TRANSCRIPT };
+
+/** A Bash call's PostToolUse payload from the harness's Claude Code session in the project folder, `call` naming it. */
+function ran(stdout: string, call: Readonly<Record<string, string>> = CALL): string {
+  return JSON.stringify({ session_id: CLAUDE_SESSION, cwd: APP, ...call, tool_name: 'Bash', tool_input: { command: 'run it' }, tool_response: { stdout, stderr: '', interrupted: false, isImage: false } });
 }
+
+/** The incident line's fields that name the call `ran` made by default. */
+const CALL_FIELDS = { toolUseId: 'toolu_01', transcript: TRANSCRIPT };
 
 /** The line for the model, after checking the run redacted its result. */
 function lineOf(result: CliResult): string {
@@ -53,7 +61,7 @@ describe('teamrig hook secret-redact: rotation tasks', () => {
     });
     assert.deepEqual(createdIn(kit.files.get(EVENTS_PATH)), [['T1', 'bravo', 'alpha', 1, 'Rotate the GitHub token a Bash result showed alpha on 2030-01-08']]);
     assert.equal(kit.files.get(teamInboxOf('app', 'bravo')), '- 2030-01-08 10:00 alpha: T1 is yours (p1): Rotate the GitHub token a Bash result showed alpha on 2030-01-08\n');
-    assert.deepEqual(incidentsIn(kit.files.get(INCIDENTS)), [{ v: 1, at: '2030-01-08T10:00:00.000Z', session: 'alpha', tool: 'Bash', kind: 'GitHub token', task: 'T1' }]);
+    assert.deepEqual(incidentsIn(kit.files.get(INCIDENTS)), [{ v: 2, at: '2030-01-08T10:00:00.000Z', session: 'alpha', tool: 'Bash', ...CALL_FIELDS, kind: 'GitHub token', task: 'T1' }]);
     for (const path of [EVENTS_PATH, INCIDENTS, teamInboxOf('app', 'bravo')]) {
       assert.ok(!(kit.files.get(path) ?? '').includes(TOKEN), `${path} holds the token`);
     }
@@ -121,7 +129,17 @@ describe('teamrig hook secret-redact: rotation tasks', () => {
     const line = lineOf(await kit.run(['hook', 'secret-redact'], { stdin: ran(TOKEN) }));
     assert.equal(line, leakLine("ask bravo to rotate it with a register task (filing one failed: this tab's session is not known)."));
     assert.equal(kit.files.get(EVENTS_PATH), undefined);
-    assert.deepEqual(incidentsIn(kit.files.get(INCIDENTS)), [{ v: 1, at: '2030-01-08T10:00:00.000Z', tool: 'Bash', kind: 'GitHub token' }]);
+    assert.deepEqual(incidentsIn(kit.files.get(INCIDENTS)), [{ v: 2, at: '2030-01-08T10:00:00.000Z', tool: 'Bash', ...CALL_FIELDS, kind: 'GitHub token' }]);
+  });
+
+  it("names a helper's call by the helper's id, and a call its payload does not name by nothing", async () => {
+    const kit = new CliHarness(REVIEWED);
+    lineOf(await kit.run(['hook', 'secret-redact'], { stdin: ran(TOKEN, { ...CALL, agent_id: 'a1b2' }), ...AS_ALPHA }));
+    lineOf(await kit.run(['hook', 'secret-redact'], { stdin: ran(TOKEN, {}), ...AS_ALPHA }));
+    assert.deepEqual(incidentsIn(kit.files.get(INCIDENTS)), [
+      { v: 2, at: '2030-01-08T10:00:00.000Z', session: 'alpha', tool: 'Bash', ...CALL_FIELDS, agent: 'a1b2', kind: 'GitHub token', task: 'T1' },
+      { v: 2, at: '2030-01-08T10:00:00.000Z', session: 'alpha', tool: 'Bash', kind: 'GitHub token', task: 'T1' },
+    ]);
   });
 
   it('redacts and says why when the register refuses the task or another tab holds the incident lock', async () => {

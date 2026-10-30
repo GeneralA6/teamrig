@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { join } from 'node:path';
 import { NewerDataError } from '../core/jsonl.ts';
 import { TimeZone } from '../core/zone.ts';
 import { fieldPaths } from '../testing/field-paths.ts';
@@ -7,7 +8,16 @@ import { MemoryFiles } from '../testing/memory-files.ts';
 import { filedToday, SECRET_INCIDENTS_FORMAT, SecretIncidentLog, type SecretIncident } from './incidents.ts';
 
 const PATH = '/team/state/secret-incidents.jsonl';
-const FILED: SecretIncident = { at: '2030-01-08T10:00:00.000Z', session: 'alpha', tool: 'Bash', kind: 'GitHub token', task: 'T12' };
+const FILED: SecretIncident = {
+  at: '2030-01-08T10:00:00.000Z',
+  session: 'alpha',
+  tool: 'Bash',
+  toolUseId: 'toolu_01',
+  transcript: join('/', 'projects', 'app', 'session.jsonl'),
+  agent: 'a1b2',
+  kind: 'GitHub token',
+  task: 'T12',
+};
 const UNKNOWN: SecretIncident = { at: '2030-01-08T10:05:00.000Z', tool: 'Read', kind: 'GitHub token' };
 
 function zoneOf(name: string): TimeZone {
@@ -27,11 +37,24 @@ describe('the secret incident log', () => {
   });
 
   it('writes the pinned fields of its format, and never a value: a field added raises SECRET_INCIDENTS_FORMAT', async () => {
-    const written: Readonly<Record<number, readonly string[]>> = { 1: ['at', 'kind', 'session', 'task', 'tool', 'v'] };
+    const written: Readonly<Record<number, readonly string[]>> = {
+      1: ['at', 'kind', 'session', 'task', 'tool', 'v'],
+      2: ['agent', 'at', 'kind', 'session', 'task', 'tool', 'toolUseId', 'transcript', 'v'],
+    };
     const files = new MemoryFiles();
     await new SecretIncidentLog(files, PATH).append(FILED);
     const line: unknown = JSON.parse(files.get(PATH) ?? '');
     assert.deepEqual(fieldPaths(line), written[SECRET_INCIDENTS_FORMAT]);
+  });
+
+  it("reads a format 1 line, from before the call's fields, and appends the current format beside it", async () => {
+    const files = new MemoryFiles();
+    const old: SecretIncident = { at: '2030-01-08T09:00:00.000Z', session: 'alpha', tool: 'Read', kind: 'GitHub token', task: 'T11' };
+    await files.write(PATH, `${JSON.stringify({ v: 1, ...old })}\n`);
+    const log = new SecretIncidentLog(files, PATH);
+    await log.append(FILED);
+    assert.deepEqual(await log.read(), { incidents: [old, FILED], skipped: 0 });
+    assert.equal(files.get(PATH)?.split('\n')[1], JSON.stringify({ v: SECRET_INCIDENTS_FORMAT, ...FILED }));
   });
 
   it('skips damaged lines and lines from a newer teamrig, and starts a line after a torn last one', async () => {
