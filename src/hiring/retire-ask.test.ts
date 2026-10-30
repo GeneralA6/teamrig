@@ -45,11 +45,11 @@ describe('retireAskDue', () => {
 });
 
 describe('retireAskReason', () => {
-  it('names the task, the handover path, the retire command and the way out', () => {
-    const reason = retireAskReason('helper', ASK, '/team/handover/helper.md');
-    assert.match(reason, /^Your last open task T4 is closed and hiring.policy is automatic/);
-    assert.ok(reason.includes('Write your handover to /team/handover/helper.md'));
-    assert.ok(reason.includes('`teamrig retire helper --session helper --yes`'));
+  it('names the task and the handover path, and tells the session not to retire', () => {
+    const reason = retireAskReason(ASK, '/team/handover/helper.md');
+    assert.match(reason, /^Your last open task T4 is closed\. Write your handover to \/team\/handover\/helper\.md /);
+    assert.ok(reason.includes('Do not retire: your leader decides which workers the team needs'), reason);
+    assert.ok(!reason.includes('teamrig retire'), reason);
     assert.ok(reason.endsWith('say so in one line and carry on.'));
   });
 });

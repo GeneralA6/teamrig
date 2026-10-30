@@ -108,15 +108,12 @@ describe('planRetire', () => {
     assert.deepEqual(result, { ok: false, problem: 'the config has no sessions list to take it from' });
   });
 
-  it('lets a hired session retire itself only under hiring.policy automatic, once its tasks are closed', () => {
-    const automatic = { ...FILE, hiring: { policy: 'automatic' } };
-    assert.equal(planned(automatic, { by: 'helper' }).retire.by, 'helper');
-    assert.match(problem(FILE, { by: 'helper' }), /only a lead over helper retires it: a session retires itself only when hired, under hiring\.policy automatic/);
-    assert.match(problem(automatic, { by: 'helper' }, []), /only a lead over helper retires it/);
-    assert.match(problem(automatic, { by: 'helper', openTasks: ['T1'] }), /still owns open task\(s\) T1: close them first/);
-    assert.match(problem(automatic, { by: 'helper', heir: 'alpha' }), /ask the lead \(lead\) to retire it with --to/);
-    assert.match(problem({ ...automatic, leads: { alpha: ['helper'] } }, { by: 'helper', heir: 'alpha' }), /ask its sub-lead alpha to retire it with --to/);
-    assert.match(problem(automatic, { by: 'alpha' }), /^only a lead over the session retires it \(the lead, or its sub-lead\)/);
+  it('lets only a lead over the session retire it, under every policy: a hired session never retires itself', () => {
+    const refusal = /^only a lead over the session retires it \(the lead, or its sub-lead\): the leader decides which workers the team needs$/;
+    for (const file of [FILE, { ...FILE, hiring: { policy: 'automatic' } }]) {
+      assert.match(problem(file, { by: 'helper' }), refusal);
+      assert.match(problem(file, { by: 'alpha' }), refusal);
+    }
   });
 
   it('lets a sub-lead retire a session it leads, at any depth, handing its tasks only within its group (T509)', () => {

@@ -78,7 +78,7 @@ child team's lead hires the same way into its own team:
 
 - `policy`: `off` (no hires by command), `owner` (the default: each hire names who approved it), `lead`, or
   `automatic` (the lead decides, and a hired session whose last open task closes is asked at its next turn end to
-  write its handover and retire itself).
+  write its handover). Under every policy only a lead over a session retires it, never the session itself.
 - No cap counts hires: `hire --yes` refuses only while the host has no room for one more tab; each gets its part of the team's daily budget by its share and queued
   work, like any session; `reviewDays` (7) sets a hire's review day.
 - Each hire is logged in `state/hires.jsonl` with its job, reason, approver, model, effort and review day. `teamrig check` flags a hired session with no open task for `idleHours` (4) as RETIRE-DUE, and one past its

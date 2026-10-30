@@ -11,8 +11,8 @@ import { RefreshStore } from '../../refresh/store.ts';
 import type { CliRuntime } from '../runtime.ts';
 
 /**
- * The automatic retire ask (hiring/retire-ask.ts) on the command line: `set` records it when a close leaves a
- * hired session with no open task, and the session's Stop hook turns it into a one-time block.
+ * The automatic ask for a hired session's handover (hiring/retire-ask.ts) on the command line: `set` records it
+ * when a close leaves a hired session with no open task, and the session's Stop hook turns it into a one-time block.
  */
 
 /**
@@ -30,7 +30,7 @@ export async function markRetireAsk(runtime: CliRuntime, config: KitConfig, path
       await new SessionAskStore(runtime.files, paths.retireAsks).set(task.owner, { task: task.id, at: new Date(runtime.clock.now()).toISOString() });
     }
   } catch (error) {
-    runtime.out.stderr(`WARN ${task.id} is closed, but the ask for ${task.owner} to retire was not recorded: ${errorMessage(error)}`);
+    runtime.out.stderr(`WARN ${task.id} is closed, but the ask for ${task.owner} to write its handover was not recorded: ${errorMessage(error)}`);
   }
 }
 
@@ -53,5 +53,5 @@ export async function retireAskReasonOf(runtime: CliRuntime, config: KitConfig, 
   if (ownsOpenTask(snapshot.state.tasks.values(), id)) {
     return undefined;
   }
-  return retireAskReason(id, ask, new RefreshStore(runtime.files, paths).handoverPath(id));
+  return retireAskReason(ask, new RefreshStore(runtime.files, paths).handoverPath(id));
 }

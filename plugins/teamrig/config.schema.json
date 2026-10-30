@@ -1435,7 +1435,7 @@
       "type": "object",
       "properties": {
         "policy": {
-          "description": "off: no hires. owner: a lead (the lead, or a sub-lead into its own group) hires once the owner approved (--approved-by, kept with the hire). lead: a lead hires. automatic: as lead, and a hired session whose tasks are all closed may retire itself (teamrig retire).",
+          "description": "off: no hires. owner: a lead (the lead, or a sub-lead into its own group) hires once the owner approved (--approved-by, kept with the hire). lead: a lead hires. automatic: as lead, and a hired session whose last open task closes is asked to write its handover. Under every policy only a lead over a session retires it (teamrig retire).",
           "enum": ["off", "owner", "lead", "automatic"],
           "default": "owner"
         },

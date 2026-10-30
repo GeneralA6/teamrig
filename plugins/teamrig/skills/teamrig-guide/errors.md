@@ -108,7 +108,7 @@ or take it to the lead.
 | `REFUSED no handover at <path>: write it (open work, next steps, branches, traps) or pass --no-handover "<why>"` | Ask the session to write its handover there, or retire it with `--no-handover "<why>"`. |
 | `REFUSED <id> holds roles.<role>: give the role to another session first` | Set the role to another session in the team config, then retire it. |
 | `REFUSED github.owners names <id> for <login>: point it at another session first` | Point that login (or the repository in `github.sessions`) at another session, then retire it. |
-| `REFUSED only a lead over <id> retires it: a session retires itself only when hired, under hiring.policy automatic` (or `only a lead over the session retires it ...`) | Ask the session's leader (its sub-lead, else the lead) to retire it. |
+| `REFUSED only a lead over the session retires it (the lead, or its sub-lead): the leader decides which workers the team needs` | Ask the session's leader (its sub-lead, else the lead) to retire it. |
 | `REFUSED <sub-lead> hands work only within its group: the heir <id> is not led by <sub-lead>; the lead (<id>) moves work between groups` | Pass an heir in your group (or yourself), or ask the lead to retire it. |
 | `REFUSED <id> was not hired back after a retire: --resume resumes only a rehired session's last Claude Code session` | Open it without `--resume`. |
 | `REFUSED not resumed: <why>; open it fresh on its handover: teamrig open <id>` | Its last Claude Code session is gone, too big or too long idle: open it fresh with the command shown. |
