@@ -1,9 +1,10 @@
 import { resolve } from 'node:path';
 import { secretGuardOf, secretPatternsOf } from '../../hooks/secret-guard.ts';
 import { CommitScanner, type CommitFinding } from '../../secret-guard/commit-scan.ts';
-import { messageLines, type CommitAdds } from '../../secret-guard/git-adds.ts';
+import { messageLines, type CommitAdds, type TagMessage } from '../../secret-guard/git-adds.ts';
 import { pushRanges, rangeArgs } from '../../secret-guard/push-range.ts';
 import { secretRulesOf } from '../../secret-guard/rules.ts';
+import { MAX_TAG_DEPTH } from '../../secret-guard/secrets-git.ts';
 import { UsageError, noPositionals, onePositional, type ParsedArgs } from '../args.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { guardLoadOf } from './hook-guard-load.ts';
@@ -46,8 +47,9 @@ export async function message(args: ParsedArgs, runtime: CliRuntime): Promise<Ex
 }
 
 /**
- * `secrets pushed <remote>`: the secrets the commits a push sends add, in their patches and messages, from the lines
- * git writes to a pre-push hook's stdin. It catches commits made before the hooks were there, or past them.
+ * `secrets pushed <remote>`: the secrets the commits a push sends add, in their patches (a merge's by what its
+ * resolution added) and messages, and the messages of the annotated tags it sends, from the lines git writes to a
+ * pre-push hook's stdin. It catches commits made before the hooks were there, or past them.
  */
 export async function pushed(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const remote = onePositional(args, 'remote');
@@ -57,8 +59,9 @@ export async function pushed(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   const root = repoRoot(runtime);
   const git = runtime.secretsGit;
   const ranges = pushRanges(await runtime.readStdin(), remote, (sha) => git.isCommit(runtime.cwd, sha));
-  // Two refs can send the same commit: each is scanned once.
+  // Two refs can send the same commit or tag: each is scanned once.
   const commits = new Map<string, CommitAdds>();
+  const tags = new Map<string, TagMessage>();
   for (const range of ranges) {
     const listed = git.commits(runtime.cwd, range);
     if (listed === undefined) {
@@ -67,9 +70,19 @@ export async function pushed(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     for (const commit of listed) {
       commits.set(commit.sha, commit);
     }
+    const tagged = git.tagMessages(runtime.cwd, range.tip);
+    if (tagged === undefined) {
+      throw new Error(`git cannot read the object ${range.tip} in ${runtime.cwd}, or it is a tag of more than ${MAX_TAG_DEPTH} tags`);
+    }
+    for (const tag of tagged) {
+      tags.set(tag.sha, tag);
+    }
   }
-  refuseFound(`the push to ${remote} adds`, (await scannerOf(runtime, root)).pushed([...commits.values()]), `rewrite those commits without it before the push, ${BY_REFERENCE}`);
-  runtime.out.stdout(`OK no secret in the ${commits.size} commit(s) pushed to ${remote}`);
+  const scanner = await scannerOf(runtime, root);
+  const findings = [...scanner.pushed([...commits.values()]), ...scanner.tags([...tags.values()])];
+  refuseFound(`the push to ${remote} adds`, findings, `rewrite those commits or tags without it before the push, ${BY_REFERENCE}`);
+  const tagCount = tags.size === 0 ? '' : ` and ${tags.size} tag message(s)`;
+  runtime.out.stdout(`OK no secret in the ${commits.size} commit(s)${tagCount} pushed to ${remote}`);
   return EXIT.ok;
 }
 

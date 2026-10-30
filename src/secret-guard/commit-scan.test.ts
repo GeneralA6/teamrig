@@ -128,3 +128,14 @@ describe('CommitScanner.pushed', () => {
     assert.deepEqual(scanner.pushed([]), []);
   });
 });
+
+describe('CommitScanner.tags', () => {
+  it("names each annotated tag's message line in a secret shape by the tag's short id, and passes a tag without one", () => {
+    const tags = [
+      { sha: '5e0f7a1c2b3d4e5f60718293a4b5c6d7e8f90a1b', message: join('release\n\nkey ', AWS, '\n') },
+      { sha: '6f1a8b2c3d4e5f60718293a4b5c6d7e8f90a1b2c', message: 'plain\n' },
+    ];
+    assert.deepEqual(scanner.tags(tags), [{ where: '5e0f7a1 tag message line 3', description: 'AWS access key id' }]);
+    assert.deepEqual(scanner.tags([]), []);
+  });
+});

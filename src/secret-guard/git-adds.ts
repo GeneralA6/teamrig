@@ -17,6 +17,18 @@ export interface CommitAdds extends PatchAdds {
   readonly message: string;
 }
 
+/** One annotated tag a push sends: its id and its message. */
+export interface TagMessage {
+  readonly sha: string;
+  readonly message: string;
+}
+
+/** An annotated tag object: the id of the object it points at, and its message. */
+export interface TagObject {
+  readonly object: string;
+  readonly message: string;
+}
+
 /**
  * How git prints the patches these parsers read: no context, no colour, no external diff or textconv (a textconv could
  * print a file's content other than it is stored), no `a/`/`b/` prefix, every path from the repo's top folder (a
@@ -154,6 +166,20 @@ export function commitsOf(log: string): CommitAdds[] {
     }
   }
   return commits;
+}
+
+const TAG_OBJECT = /^object ([0-9a-f]+)$/;
+
+/**
+ * A tag as `git cat-file tag` prints it: header lines up to the first blank line, one of them `object <id>`, then the
+ * message, a signature trailing it kept (it holds no secret, and scanning it costs nothing). Undefined without an
+ * `object` line, which no tag git wrote lacks.
+ */
+export function tagOf(text: string): TagObject | undefined {
+  const end = text.indexOf('\n\n');
+  const headers = (end === -1 ? text : text.slice(0, end)).split('\n');
+  const object = headers.map((line) => TAG_OBJECT.exec(line)?.[1]).find((sha) => sha !== undefined);
+  return object === undefined ? undefined : { object, message: end === -1 ? '' : text.slice(end + 2) };
 }
 
 /** A commit message's lines as the commit will hold them: a verbose commit's diff below the scissors line is left out. */
