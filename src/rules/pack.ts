@@ -1,5 +1,5 @@
 import type { CoordinatorConfig, HookAsks, KitConfig, PushGuardConfig, RuleConflict } from '../config/types.ts';
-import { heavyCutoffSpan } from '../coordinator/schedule.ts';
+import { heavyCutoffSpan } from '../delivery/schedule.ts';
 import { clipEnd, clipStart } from '../core/clip.ts';
 import { TimeZone } from '../core/zone.ts';
 import { CORE_RULE_KEYS, ruleNumberOf, type CoreRuleKey } from './keys.ts';

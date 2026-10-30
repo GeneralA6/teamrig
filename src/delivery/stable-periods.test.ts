@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { DeployRecord, LedgerMdDeploy, LedgerRecord, LoadRecord } from './ledger.ts';
-import { cleanWindows, disruptions, loadsDuring, loadsOf, type Disruption, type DisruptionInputs, type Load } from './windows.ts';
+import { cleanWindows, disruptions, loadsDuring, loadsOf, type Disruption, type DisruptionInputs, type Load } from './stable-periods.ts';
 
 const MINUTE = 60_000;
 

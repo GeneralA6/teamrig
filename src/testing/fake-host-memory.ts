@@ -1,4 +1,4 @@
-import type { CommitCharge, HostMemory, MemoryPeaks, MemoryWatch, ProcessRow } from '../coordinator/memory.ts';
+import type { CommitCharge, HostMemory, MemoryPeaks, MemoryWatch, ProcessRow } from '../delivery/memory.ts';
 
 /** One watch a step started: its root and interval, and whether it was stopped. */
 export interface FakeWatch {

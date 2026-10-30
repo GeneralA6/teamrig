@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { NOT_STARTED_EXIT } from '../coordinator/recorded-step.ts';
-import { TIMED_OUT_EXIT } from '../coordinator/steps.ts';
+import { NOT_STARTED_EXIT } from '../delivery/recorded-step.ts';
+import { TIMED_OUT_EXIT } from '../delivery/steps.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
 import { REVIEW_CHECK_FLAGGED } from '../push-guard/review-gate.ts';
 import { checkExitCode, REVIEW_BASE_ENV, REVIEW_FINDINGS_LIMITS, runReviewCheck, type ReviewCheck } from './review-check.ts';

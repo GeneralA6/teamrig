@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { TimeZone } from '../core/zone.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { JERUSALEM } from '../testing/zone.ts';
-import { coveringClaims, freezeText, parseClaims, quietClaimText, readClaims, type Claim } from './claims.ts';
+import { coveringClaims, freezeText, parseClaims, quietClaimText, readClaims, type Claim } from './freezes.ts';
 
 const NOW = Date.parse('2030-01-08T10:00:00Z');
 

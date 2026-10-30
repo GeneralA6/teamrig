@@ -1,5 +1,5 @@
 import type { KitConfig } from '../config/types.ts';
-import { teamPlace } from '../coordinator/places.ts';
+import { teamPlace } from '../delivery/places.ts';
 import { claudeConfigDir, type TeamPaths } from '../core/home.ts';
 import { SecretScanner } from '../core/secrets.ts';
 import { KeepList } from '../permissions/allow-rules.ts';

@@ -1,10 +1,10 @@
 import { snapshotDirOf } from '../../budget/snapshot.ts';
-import { coordinatorPlaces, teamPlace } from '../../coordinator/places.ts';
+import { coordinatorPlaces, teamPlace } from '../../delivery/places.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { redeployTargets } from '../../deploy/deploy.ts';
 import { deployRepo, type DeployRequest } from '../../deploy/run.ts';
 import { requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
-import { hostLockOf, logLineOf, nextResetFrom } from '../coordinator-ports.ts';
+import { hostLockOf, logLineOf, nextResetFrom } from '../delivery-ports.ts';
 import { callerOf, commandWordsOf, listOf } from '../inputs.ts';
 import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf, teamZone } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';

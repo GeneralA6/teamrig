@@ -1,4 +1,4 @@
-import type { StarterWatch, StarterWatching } from '../coordinator/starter-watch.ts';
+import type { StarterWatch, StarterWatching } from '../delivery/starter-watch.ts';
 import type { ProcessInfo } from '../open/session-processes.ts';
 
 /** The Bash tool's shell a tab's step runs in. */

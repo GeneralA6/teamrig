@@ -1,8 +1,8 @@
 import { isAbsolute, join } from 'node:path';
 import type { TeamPaths } from '../core/home.ts';
 import type { CoordinatorConfig } from '../config/types.ts';
-import { CLAIMS_LOCK_FILE, CLAIMS_MD_FILE } from './claim-store.ts';
-import { CLAIMS_FILE } from './claims.ts';
+import { CLAIMS_LOCK_FILE, CLAIMS_MD_FILE } from './freeze-store.ts';
+import { CLAIMS_FILE } from './freezes.ts';
 import { LEDGER_FILE, LEDGER_MD_FILE } from './ledger.ts';
 
 /** The host lock's file name in the kit home, where every team on the host shares it. */

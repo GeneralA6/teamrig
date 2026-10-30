@@ -1,4 +1,4 @@
-import type { StepEnd, StepRequest, StepRunner } from '../coordinator/steps.ts';
+import type { StepEnd, StepRequest, StepRunner } from '../delivery/steps.ts';
 
 /** A clock a fake run moves forward, such as the harness's `FakeClock`. */
 interface Advancing {

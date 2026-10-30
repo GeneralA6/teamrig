@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import type { Readable } from 'node:stream';
-import { nodeTreeKill, type TreeKill } from '../../src/coordinator/tree-kill.ts';
+import { nodeTreeKill, type TreeKill } from '../../src/delivery/tree-kill.ts';
 
 /** How the suite run ended: it exited with this status, or printed nothing for `idleMs` and was killed with its tree. */
 export type SuiteEnd = { readonly kind: 'exited'; readonly status: number | null } | { readonly kind: 'idle'; readonly idleMs: number };

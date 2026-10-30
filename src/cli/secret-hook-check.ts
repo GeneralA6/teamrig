@@ -1,6 +1,6 @@
 import { basename, dirname, join } from 'node:path';
 import type { CoordinatorConfig } from '../config/types.ts';
-import { teamPlace } from '../coordinator/places.ts';
+import { teamPlace } from '../delivery/places.ts';
 import type { Files } from '../core/files.ts';
 import { KIT_NAME, type TeamPaths } from '../core/home.ts';
 import type { SecretsGit } from '../secret-guard/secrets-git.ts';

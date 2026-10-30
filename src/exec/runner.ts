@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
-import { nodeTreeKill, type TreeKill } from '../coordinator/tree-kill.ts';
+import { nodeTreeKill, type TreeKill } from '../delivery/tree-kill.ts';
 import type { Files } from '../core/files.ts';
 import type { Env } from '../core/home.ts';
 import { envVariable } from '../core/path-search.ts';

@@ -2,7 +2,7 @@ import { resolve } from 'node:path';
 import { DEFAULT_WORKTREE_FOLDER } from '../../config/defaults.ts';
 import { LeadTree } from '../../config/lead-tree.ts';
 import type { CoordinatorRepoConfig, KitConfig } from '../../config/types.ts';
-import { teamPlace } from '../../coordinator/places.ts';
+import { teamPlace } from '../../delivery/places.ts';
 import { ENV } from '../../core/home.ts';
 import { samePath } from '../../core/paths.ts';
 import { resolveTeam } from '../../core/team.ts';

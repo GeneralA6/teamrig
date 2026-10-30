@@ -1,4 +1,4 @@
-import { treeCommittedMb, treeMb, type ProcessRow } from '../coordinator/memory.ts';
+import { treeCommittedMb, treeMb, type ProcessRow } from '../delivery/memory.ts';
 import type { SessionRecord } from './record.ts';
 
 /**

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { nodeTreeKill } from '../coordinator/tree-kill.ts';
+import { nodeTreeKill } from '../delivery/tree-kill.ts';
 import { isStringArray } from '../core/guards.ts';
 import { SecretScanner } from '../core/secrets.ts';
 import { MS_PER_MINUTE } from '../core/time.ts';

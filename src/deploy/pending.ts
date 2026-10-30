@@ -1,5 +1,5 @@
 import type { CoordinatorConfig, CoordinatorRepoConfig, DeployConfig } from '../config/types.ts';
-import { rangeText } from '../coordinator/ledger.ts';
+import { rangeText } from '../delivery/ledger.ts';
 import { rangeInstallTouches } from '../merge/dependencies.ts';
 import { ORIGIN, type MergeGit } from '../merge/git.ts';
 

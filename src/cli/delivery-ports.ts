@@ -2,9 +2,9 @@ import { resolveReset } from '../budget/pace.ts';
 import { weekUseAt } from '../budget/snapshot.ts';
 import { readFolderWeek } from '../budget/week-summary.ts';
 import type { BudgetConfig, HeavyConfig } from '../config/types.ts';
-import { CLAIMS_LOCK_TTL_MS } from '../coordinator/claim-store.ts';
-import { HostLock } from '../coordinator/host-lock.ts';
-import type { ResetTime } from '../coordinator/schedule.ts';
+import { CLAIMS_LOCK_TTL_MS } from '../delivery/freeze-store.ts';
+import { HostLock } from '../delivery/host-lock.ts';
+import type { ResetTime } from '../delivery/schedule.ts';
 import type { TimeZone } from '../core/zone.ts';
 import type { CliRuntime } from './runtime.ts';
 

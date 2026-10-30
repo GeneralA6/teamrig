@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import type { ProcessRow } from '../coordinator/memory.ts';
+import type { ProcessRow } from '../delivery/memory.ts';
 import { measureSessions, runningPlaces } from './measure.ts';
 import type { SessionRecord } from './record.ts';
 

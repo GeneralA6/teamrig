@@ -2,7 +2,7 @@ import { parseConfig } from '../config/parse.ts';
 import { ANCESTOR_ROLES, Roster } from '../config/roster.ts';
 import { describeTreeProblem, teamNodeOf, type TeamNode, type TeamTree, type TreeProblem } from '../config/tree.ts';
 import { ACCOUNT_BUDGET_KEYS, type KitConfig } from '../config/types.ts';
-import { coordinatorDirOf, teamPlace } from '../coordinator/places.ts';
+import { coordinatorDirOf, teamPlace } from '../delivery/places.ts';
 import { ADDRESS_PATTERN } from '../core/address.ts';
 import { isRecord, isStringArray, recordField, type JsonRecord } from '../core/guards.ts';
 import { KIT_NAME, type TeamPaths } from '../core/home.ts';

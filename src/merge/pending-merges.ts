@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import type { CoordinatorPlaces } from '../coordinator/places.ts';
+import type { CoordinatorPlaces } from '../delivery/places.ts';
 import type { Files } from '../core/files.ts';
 import { stringField } from '../core/guards.ts';
 import { parseObject, recordVersion, VERSION_FIELD, writableObject } from '../core/jsonl.ts';

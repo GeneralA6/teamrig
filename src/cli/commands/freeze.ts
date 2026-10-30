@@ -1,12 +1,12 @@
 import type { CoordinatorConfig } from '../../config/types.ts';
-import { addClaim, releaseClaim, type ClaimOutcome, type ClaimPorts } from '../../coordinator/claim-store.ts';
-import { claimEndText } from '../../coordinator/claims.ts';
-import { coordinatorPlaces, type CoordinatorPlaces } from '../../coordinator/places.ts';
-import { parseSpanMinutes } from '../../coordinator/schedule.ts';
-import { deployTargetsOf } from '../../coordinator/targets.ts';
+import { addClaim, releaseClaim, type ClaimOutcome, type ClaimPorts } from '../../delivery/freeze-store.ts';
+import { claimEndText } from '../../delivery/freezes.ts';
+import { coordinatorPlaces, type CoordinatorPlaces } from '../../delivery/places.ts';
+import { parseSpanMinutes } from '../../delivery/schedule.ts';
+import { deployTargetsOf } from '../../delivery/targets.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
-import { claimsLockOf } from '../coordinator-ports.ts';
+import { claimsLockOf } from '../delivery-ports.ts';
 import { callerOf, listOf } from '../inputs.ts';
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';

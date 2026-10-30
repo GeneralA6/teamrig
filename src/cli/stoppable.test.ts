@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import type { HostLock, HostLockInfo, Taking } from '../coordinator/host-lock.ts';
-import type { StepRequest } from '../coordinator/steps.ts';
+import type { HostLock, HostLockInfo, Taking } from '../delivery/host-lock.ts';
+import type { StepRequest } from '../delivery/steps.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import type { HookRequest } from '../deploy/hooks.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';

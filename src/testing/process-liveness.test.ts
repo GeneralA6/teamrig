@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import type { StartedProcess, SweepHost } from '../coordinator/tree-kill.ts';
+import type { StartedProcess, SweepHost } from '../delivery/tree-kill.ts';
 import { endingOf, livenessOf, parseWrittenProcess, signalPidCheck, signalPidKill, type PidCheck, type PidKill } from './process-liveness.ts';
 
 /** A host that lists `rows`, or cannot list when they are undefined. */

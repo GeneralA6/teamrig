@@ -1,8 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { FIRST_IN_LINE_POLL_MS } from '../coordinator/host-lock.ts';
-import { recordPass } from '../coordinator/push-pass.ts';
+import { FIRST_IN_LINE_POLL_MS } from '../delivery/host-lock.ts';
+import { recordPass } from '../delivery/push-pass.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { APP, CliHarness, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';

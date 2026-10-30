@@ -1,6 +1,6 @@
 import { snapshotDirOf } from '../../budget/snapshot.ts';
 import { LeadTree } from '../../config/lead-tree.ts';
-import { coordinatorPlaces, teamPlace } from '../../coordinator/places.ts';
+import { coordinatorPlaces, teamPlace } from '../../delivery/places.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { GateHolds } from '../../merge/gate-holds.ts';
 import { mergeBranch } from '../../merge/merge.ts';
@@ -8,7 +8,7 @@ import { MergeLog } from '../../merge/merge-log.ts';
 import { ReviewHolds } from '../../merge/review-holds.ts';
 import { JsonlEventLog } from '../../register/store.ts';
 import type { ParsedArgs } from '../args.ts';
-import { hostLockOf, logLineOf, nextResetFrom } from '../coordinator-ports.ts';
+import { hostLockOf, logLineOf, nextResetFrom } from '../delivery-ports.ts';
 import { callerOf } from '../inputs.ts';
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';

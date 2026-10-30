@@ -3,7 +3,7 @@ import type { Clock } from '../core/lock.ts';
 import type { SecretScanner } from '../core/secrets.ts';
 import { formatUtcMinute } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
-import { claimEndText, parseClaims, type Claim } from './claims.ts';
+import { claimEndText, parseClaims, type Claim } from './freezes.ts';
 import { holderText, type HostLock } from './host-lock.ts';
 
 /** The freezes for people to read, beside `claims.json`, and the lock their writers share. */

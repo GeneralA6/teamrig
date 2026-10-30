@@ -1,4 +1,4 @@
-import { deployTargetsOf } from '../coordinator/targets.ts';
+import { deployTargetsOf } from '../delivery/targets.ts';
 import { ADDRESS_PATTERN, splitAddress } from '../core/address.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { isReservedName, NAME_PATTERN, NAME_RULE, RESERVED_NAMES } from '../core/ids.ts';

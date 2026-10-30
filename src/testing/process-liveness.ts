@@ -1,4 +1,4 @@
-import { windowsSweepHost, type StartedProcess, type SweepHost } from '../coordinator/tree-kill.ts';
+import { windowsSweepHost, type StartedProcess, type SweepHost } from '../delivery/tree-kill.ts';
 
 /** A process a spec started, as it wrote itself down once it ran: `${process.pid} ${Date.now()}`. */
 export interface WrittenProcess {

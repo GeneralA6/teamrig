@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { PassThrough, Writable } from 'node:stream';
-import { nodeTreeKill, type TreeKill } from '../../src/coordinator/tree-kill.ts';
+import { nodeTreeKill, type TreeKill } from '../../src/delivery/tree-kill.ts';
 import { hangFinding, hasRunnerHangBug, runSuite, watchSuite, type SuiteChild, type SuiteEcho, type SuiteEnd } from './suite-run.ts';
 
 /** A suite the test drives: it writes to its streams and emits `close` or `error` itself. */
