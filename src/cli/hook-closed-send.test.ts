@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { Files } from '../core/files.ts';
 import type { JsonRecord } from '../core/guards.ts';
-import { SessionLog, type CloseRecord } from '../sessions/log.ts';
+import { homeCloseOf, SessionLog, type CloseRecord } from '../sessions/log.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
 import { APP, CLAUDE_SESSION, CliHarness, decisionOf, reasonOf, TEAM, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
@@ -75,6 +75,17 @@ describe('a send to a session teamrig closed', () => {
     for (const kit of [open, byHand, own, silent]) {
       assert.equal(await asksOf(kit), 0);
     }
+  });
+
+  it('says a session hired home with no room was hired so, not closed (T1364)', async () => {
+    const kit = new CliHarness({ ...TEAM, open: { idle: { mode: 'on' } } });
+    await new SessionLog(kit.files, join(TEAM_HOME, 'state', 'session-log.jsonl')).append(homeCloseOf('alpha', 'lead', '2030-01-08T08:00:00.000Z'));
+    const read = await kit.run(['inbox', 'read', '--session', 'lead'], { env: { CLAUDE_CODE_SESSION_ID: CLAUDE_SESSION } });
+    assert.equal(read.code, 0, read.stderr.join('\n'));
+    const held = await coldSend(kit, send('alpha'));
+    assert.equal(decisionOf(held), 'deny');
+    assert.match(reasonOf(held) ?? '', /^app-alpha is home \(lead hired it at \d\d:\d\d \S+ with no room on the host\), so this message cannot reach it; teamrig posted it as an urgent line/);
+    assert.equal(await asksOf(kit), 1);
   });
 
   it('denies with why when the urgent line cannot be posted, and how to leave it instead', async () => {
