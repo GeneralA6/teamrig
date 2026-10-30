@@ -48,7 +48,7 @@ import {
   DEFAULT_TESTS,
   DEFAULT_WAKE,
   DEFAULT_STABLE_PERIODS,
-  HEAVY_TTL_MARGIN_MINUTES,
+  QUEUE_TTL_MARGIN_MINUTES,
 } from './defaults.ts';
 import { isEffort, isModel } from './launch.ts';
 import { BUDGET_ACCOUNT_MAX_LENGTH, CONFIG_LIMITS, REVIEW_PATH_LIMITS, RULE_CONFLICT_LIMITS } from './limits.ts';
@@ -836,10 +836,10 @@ function parseQueue(read: ConfigReader, raw: JsonRecord): QueueConfig {
   const path = 'delivery.queue';
   const lockPath = read.optionalString(raw, 'lockPath', path, isPathText);
   const lockTtlMinutes = read.integer(raw, 'lockTtlMinutes', path, DEFAULT_QUEUE.lockTtlMinutes, CONFIG_LIMITS.queueLockTtlMinutes);
-  const longest = lockTtlMinutes - HEAVY_TTL_MARGIN_MINUTES;
+  const longest = lockTtlMinutes - QUEUE_TTL_MARGIN_MINUTES;
   const maxRunMinutes = read.integer(raw, 'maxRunMinutes', path, Math.min(DEFAULT_QUEUE.maxRunMinutes, longest), CONFIG_LIMITS.queueMaxRunMinutes);
   if (maxRunMinutes > longest) {
-    read.report(`${path}.maxRunMinutes`, `must be at most lockTtlMinutes less ${HEAVY_TTL_MARGIN_MINUTES} (${longest})`);
+    read.report(`${path}.maxRunMinutes`, `must be at most lockTtlMinutes less ${QUEUE_TTL_MARGIN_MINUTES} (${longest})`);
   }
   const longestRun = Math.min(maxRunMinutes, longest);
   const smallMaxRunMinutes = read.integer(raw, 'smallMaxRunMinutes', path, Math.min(DEFAULT_QUEUE.smallMaxRunMinutes, longestRun), CONFIG_LIMITS.queueSmallMaxRunMinutes);

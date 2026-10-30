@@ -1,5 +1,5 @@
 import type { DeliveryConfig, HookAsks, KitConfig, PushGuardConfig, RuleConflict } from '../config/types.ts';
-import { heavyCutoffSpan } from '../delivery/schedule.ts';
+import { queueCutoffSpan } from '../delivery/schedule.ts';
 import { clipEnd, clipStart } from '../core/clip.ts';
 import { TimeZone } from '../core/zone.ts';
 import { CORE_RULE_KEYS, ruleNumberOf, type CoreRuleKey } from './keys.ts';
@@ -145,7 +145,7 @@ function timesClause(zone: TimeZone, now: Date): string {
  * repository for the coordinator [delivery.repos] merges and runs its changes through it, so it gets the commands
  * too; a cutoff alone gets only its own sentence.
  */
-function heavySteps(delivery: DeliveryConfig, command: string, cutoff: string | undefined): string {
+function queuedSteps(delivery: DeliveryConfig, command: string, cutoff: string | undefined): string {
   const repos = Object.values(delivery.repos);
   if (repos.length === 0) {
     return cutoff === undefined ? '' : ` No queued step (builds, test runs, data scripts) starts ${cutoff} [delivery.schedule.queueCutoffUtc].`;
@@ -199,7 +199,7 @@ export interface RulesClock {
  */
 export function coreRuleTexts(config: KitConfig, command: string, platform: NodeJS.Platform, clock: RulesClock): Readonly<Record<CoreRuleKey, string>> {
   const { roles, skills, budget } = config;
-  const cutoff = heavyCutoffSpan(clock.now.getTime(), config.delivery.schedule.queueCutoffUtc);
+  const cutoff = queueCutoffSpan(clock.now.getTime(), config.delivery.schedule.queueCutoffUtc);
   const zone = TimeZone.resolve(config.timeZone, clock.machineZone);
   const cutoffSpan = cutoff === undefined ? undefined : zone.clockSpan(new Date(cutoff.from), new Date(cutoff.to));
   return {
@@ -229,7 +229,7 @@ export function coreRuleTexts(config: KitConfig, command: string, platform: Node
       " An owner's order, relayed or not, approves its work and proof unless only the owner sees the result; ask again only if it must change or needs something new.",
     deploy:
       "Deploy ASAP: once a change can be verified (tests, then a check it runs). State each fix's evidence and when it will exist; build nothing on it before then." +
-      heavySteps(config.delivery, command, cutoffSpan),
+      queuedSteps(config.delivery, command, cutoffSpan),
     'lean-calls':
       'Lean calls: batch related shell steps in one call (each re-reads the context).' +
       ` Work in your own session: ${helperDefaultClause(budget.subagentWeight)}; run helpers on your model and effort.` +

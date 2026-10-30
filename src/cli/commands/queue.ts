@@ -1,4 +1,4 @@
-import { HEAVY_TTL_MARGIN_MINUTES } from '../../config/defaults.ts';
+import { QUEUE_TTL_MARGIN_MINUTES } from '../../config/defaults.ts';
 import type { Roster } from '../../config/roster.ts';
 import type { QueueConfig } from '../../config/types.ts';
 import { holderText, underLock, waitText, type HostLock, type HostLockInfo, type ShareRequest, type Taking } from '../../delivery/host-lock.ts';
@@ -6,7 +6,7 @@ import { parseLedger } from '../../delivery/ledger.ts';
 import { deliveryPlaces } from '../../delivery/places.ts';
 import { passOf, PRE_PUSH_MAX_WAIT_MS, recordPass, type CheckedTree, type CleanTree } from '../../delivery/push-pass.ts';
 import { runRecorded, type StepWatch } from '../../delivery/recorded-step.ts';
-import { heavyCutoffReason, minutesText } from '../../delivery/schedule.ts';
+import { queueCutoffReason, minutesText } from '../../delivery/schedule.ts';
 import { endedText, type StarterWatching } from '../../delivery/starter-watch.ts';
 import { exitCodeOf, STOPPED_EXIT, TIMED_OUT_EXIT, type StepEnd } from '../../delivery/steps.ts';
 import { ENV } from '../../core/home.ts';
@@ -32,46 +32,46 @@ const RESERVE_MARGIN = 1.25;
  * `--max-minutes`: whole minutes from 1 to the lock's TTL less its margin, so the step never outlives its lock, and for
  * a small step to `smallMaxRunMinutes`, so a step that shares the host stays short; unset, the config's.
  */
-function maxRunMinutesOf(args: ParsedArgs, heavy: QueueConfig, small: boolean): number {
+function maxRunMinutesOf(args: ParsedArgs, config: QueueConfig, small: boolean): number {
   const text = args.flags.get('max-minutes');
   if (text === undefined) {
-    return small ? heavy.smallMaxRunMinutes : heavy.maxRunMinutes;
+    return small ? config.smallMaxRunMinutes : config.maxRunMinutes;
   }
   const minutes = /^\d+$/.test(text) ? Number(text) : Number.NaN;
   if (small) {
-    if (!(minutes >= 1 && minutes <= heavy.smallMaxRunMinutes)) {
-      throw new UsageError(`--max-minutes with --small is a whole number from 1 to ${heavy.smallMaxRunMinutes} (delivery.queue.smallMaxRunMinutes): a longer step runs without --small`);
+    if (!(minutes >= 1 && minutes <= config.smallMaxRunMinutes)) {
+      throw new UsageError(`--max-minutes with --small is a whole number from 1 to ${config.smallMaxRunMinutes} (delivery.queue.smallMaxRunMinutes): a longer step runs without --small`);
     }
     return minutes;
   }
-  const longest = heavy.lockTtlMinutes - HEAVY_TTL_MARGIN_MINUTES;
+  const longest = config.lockTtlMinutes - QUEUE_TTL_MARGIN_MINUTES;
   if (!(minutes >= 1 && minutes <= longest)) {
-    throw new UsageError(`--max-minutes is a whole number from 1 to ${longest} (delivery.queue.lockTtlMinutes less ${HEAVY_TTL_MARGIN_MINUTES})`);
+    throw new UsageError(`--max-minutes is a whole number from 1 to ${longest} (delivery.queue.lockTtlMinutes less ${QUEUE_TTL_MARGIN_MINUTES})`);
   }
   return minutes;
 }
 
 function refuseAfterCutoff(runtime: CliRuntime, cutoffUtc: string | undefined, zone: TimeZone): void {
-  const reason = heavyCutoffReason(runtime.clock.now(), cutoffUtc, zone);
+  const reason = queueCutoffReason(runtime.clock.now(), cutoffUtc, zone);
   if (reason !== undefined) {
     throw new RefusedError(reason);
   }
 }
 
 /** How the step's memory is watched: its own process's tree, as often as the config says; undefined when it says 0. */
-function watchOf(runtime: CliRuntime, heavy: QueueConfig): StepWatch | undefined {
-  return heavy.memorySampleSeconds === 0 ? undefined : { memory: runtime.memory, root: runtime.pid, intervalMs: heavy.memorySampleSeconds * 1_000 };
+function watchOf(runtime: CliRuntime, config: QueueConfig): StepWatch | undefined {
+  return config.memorySampleSeconds === 0 ? undefined : { memory: runtime.memory, root: runtime.pid, intervalMs: config.memorySampleSeconds * 1_000 };
 }
 
 /**
  * The MB held for a small step: the most its process tree held in its latest `RESERVE_RUNS` ended runs, under the same
  * session and label in the ledger, with a quarter more; the config's `smallReserveMb` when none was measured.
  */
-async function reserveMbOf(runtime: CliRuntime, ledger: string, session: string, what: string, heavy: QueueConfig): Promise<number> {
+async function reserveMbOf(runtime: CliRuntime, ledger: string, session: string, what: string, config: QueueConfig): Promise<number> {
   const records = parseLedger((await runtime.files.read(ledger)) ?? '');
   const peaks = records.flatMap((record) => (record.type === 'heavy' && record.session === session && record.what === what && record.peakTreeMb !== undefined ? [record.peakTreeMb] : []));
   const latest = peaks.slice(-RESERVE_RUNS);
-  return latest.length === 0 ? heavy.smallReserveMb : Math.ceil(Math.max(...latest) * RESERVE_MARGIN);
+  return latest.length === 0 ? config.smallReserveMb : Math.ceil(Math.max(...latest) * RESERVE_MARGIN);
 }
 
 /** Why a step was refused when its wait ran out: the lock's holder, or the small steps holding the memory it needs. */

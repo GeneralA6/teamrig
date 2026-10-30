@@ -5,8 +5,8 @@ import { takeWhenClear, type Readiness } from '../delivery/clearance.ts';
 import { underLock, type HostLock, type HostLockInfo } from '../delivery/host-lock.ts';
 import { appendDeploy, rangeText } from '../delivery/ledger.ts';
 import type { DeliveryPlaces } from '../delivery/places.ts';
-import { marksOfTaking, recordHeavy, runRecorded, type HeavyMark } from '../delivery/recorded-step.ts';
-import { heavyCutoffReason, resetBlackoutReason, type ResetTime } from '../delivery/schedule.ts';
+import { marksOfTaking, recordQueuedStep, runRecorded, type StepMark } from '../delivery/recorded-step.ts';
+import { queueCutoffReason, resetBlackoutReason, type ResetTime } from '../delivery/schedule.ts';
 import { exitCodeOf, type StepEnd, type StepRunner } from '../delivery/steps.ts';
 import type { Files } from '../core/files.ts';
 import { gitEnvironment } from '../core/git-run.ts';
@@ -259,7 +259,7 @@ async function dependencyHold(git: MergeGit, top: string, onto: string, repo: st
 interface Taking {
   readonly lock: HostLockInfo;
   readonly session: string;
-  readonly markOf: (what: string) => HeavyMark;
+  readonly markOf: (what: string) => StepMark;
 }
 
 /**
@@ -283,7 +283,7 @@ async function dependencyCheckRefusal(setup: MergeSetup, ports: MergePorts, plan
   }
   const changed = `deps changed (${touches.join(', ')})`;
   ports.say(`${changed}: dependency check ${argv.join(' ')}`);
-  const end = await recordHeavy(
+  const end = await recordQueuedStep(
     ports,
     setup.places.ledger,
     taking.markOf(`merge ${repo.name}: dependency check of ${branch}`),
@@ -315,7 +315,7 @@ function reviewGatePorts(setup: MergeSetup, ports: MergePorts, plan: Plan, takin
     taskOf: (id) => ports.taskOf(id),
     say: (text) => ports.say(text),
     runCheck: (argv, base) =>
-      recordHeavy(
+      recordQueuedStep(
         ports,
         setup.places.ledger,
         taking.markOf(`merge ${repo.name}: review check of ${branch}`),
@@ -395,7 +395,7 @@ function readinessOf(setup: MergeSetup, ports: MergePorts, repo: RepoMatch): () 
     const now = ports.clock.now();
     const hours = schedule.resetBlackoutHours;
     const refusal =
-      heavyCutoffReason(now, schedule.queueCutoffUtc, setup.zone) ??
+      queueCutoffReason(now, schedule.queueCutoffUtc, setup.zone) ??
       (hours === undefined ? undefined : resetBlackoutReason(now, await ports.nextReset(now), hours, setup.zone));
     if (refusal !== undefined) {
       return { kind: 'refuse', reason: refusal };
@@ -537,7 +537,7 @@ async function mergeByCommand(setup: MergeSetup, ports: MergePorts, plan: Plan, 
   const command = argv.join(' ');
   ports.say(`merging ${branch} (${short(head)}) into ${defaultBranch} through the merge command ${command}`);
   let last: string | undefined;
-  const end = await recordHeavy(
+  const end = await recordQueuedStep(
     ports,
     setup.places.ledger,
     taking.markOf(`merge ${repo.name}: merge ${branch} into ${defaultBranch}`),

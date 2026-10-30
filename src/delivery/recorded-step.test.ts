@@ -5,7 +5,7 @@ import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakeSteps } from '../testing/fake-steps.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { marksOfTaking, NOT_STARTED_EXIT, recordHeavy, runRecorded, type RecordedStep } from './recorded-step.ts';
+import { marksOfTaking, NOT_STARTED_EXIT, recordQueuedStep, runRecorded, type RecordedStep } from './recorded-step.ts';
 
 const LEDGER = '/kit/deploys/ledger.jsonl';
 const STEP: RecordedStep = { session: 'po', what: 'build', request: { command: 'npm run build', cwd: '/app', env: {}, timeoutMs: 60_000 } };
@@ -60,14 +60,14 @@ describe('runRecorded', () => {
   });
 });
 
-describe('recordHeavy', () => {
+describe('recordQueuedStep', () => {
   it('records work of any kind as one step, its exit code read from what it returns', async () => {
     const { files, clock, ports } = world();
     const work = async (): Promise<{ readonly failedAt: string }> => {
       clock.advance(30_000);
       return { failedAt: 'pull' };
     };
-    assert.deepEqual(await recordHeavy(ports, LEDGER, { session: 'po', what: 'deploy app' }, work, () => 4), { failedAt: 'pull' });
+    assert.deepEqual(await recordQueuedStep(ports, LEDGER, { session: 'po', what: 'deploy app' }, work, () => 4), { failedAt: 'pull' });
     const start = { type: 'heavy', id: 'step-1', session: 'po', what: 'deploy app', kit: KIT_VERSION, startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(records(files), [start, { ...start, endedAt: '2030-01-08T10:00:30.000Z', exitCode: 4 }]);
   });

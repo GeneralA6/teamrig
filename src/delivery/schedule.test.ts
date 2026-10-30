@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TimeZone } from '../core/zone.ts';
 import { JERUSALEM } from '../testing/zone.ts';
-import { blackoutStart, heavyCutoffReason, heavyCutoffSpan, minutesText, parseSpanMinutes, resetBlackoutReason } from './schedule.ts';
+import { blackoutStart, queueCutoffReason, queueCutoffSpan, minutesText, parseSpanMinutes, resetBlackoutReason } from './schedule.ts';
 
 const { UTC } = TimeZone;
 
@@ -42,34 +42,34 @@ describe('resetBlackoutReason', () => {
   });
 });
 
-describe('heavyCutoffSpan', () => {
+describe('queueCutoffSpan', () => {
   it('runs from the cutoff to the end of the UTC day', () => {
-    assert.deepEqual(heavyCutoffSpan(Date.parse('2030-01-08T09:00:00Z'), '22:30'), { from: Date.parse('2030-01-08T22:30:00Z'), to: Date.parse('2030-01-09T00:00:00Z') });
-    assert.deepEqual(heavyCutoffSpan(Date.parse('2030-01-08T23:00:00Z'), '22:30'), { from: Date.parse('2030-01-08T22:30:00Z'), to: Date.parse('2030-01-09T00:00:00Z') });
+    assert.deepEqual(queueCutoffSpan(Date.parse('2030-01-08T09:00:00Z'), '22:30'), { from: Date.parse('2030-01-08T22:30:00Z'), to: Date.parse('2030-01-09T00:00:00Z') });
+    assert.deepEqual(queueCutoffSpan(Date.parse('2030-01-08T23:00:00Z'), '22:30'), { from: Date.parse('2030-01-08T22:30:00Z'), to: Date.parse('2030-01-09T00:00:00Z') });
   });
 
   it('has no span with no cutoff set', () => {
-    assert.equal(heavyCutoffSpan(Date.parse('2030-01-08T23:00:00Z'), undefined), undefined);
+    assert.equal(queueCutoffSpan(Date.parse('2030-01-08T23:00:00Z'), undefined), undefined);
   });
 });
 
-describe('heavyCutoffReason', () => {
+describe('queueCutoffReason', () => {
   it('lets every step start when no cutoff is set', () => {
-    assert.equal(heavyCutoffReason(Date.parse('2030-01-08T23:59:00Z'), undefined, UTC), undefined);
+    assert.equal(queueCutoffReason(Date.parse('2030-01-08T23:59:00Z'), undefined, UTC), undefined);
   });
 
   it('lets a step start before the cutoff and from midnight UTC on', () => {
-    assert.equal(heavyCutoffReason(Date.parse('2030-01-08T22:29:59Z'), '22:30', UTC), undefined);
-    assert.equal(heavyCutoffReason(Date.parse('2030-01-09T00:00:00Z'), '22:30', UTC), undefined);
+    assert.equal(queueCutoffReason(Date.parse('2030-01-08T22:29:59Z'), '22:30', UTC), undefined);
+    assert.equal(queueCutoffReason(Date.parse('2030-01-09T00:00:00Z'), '22:30', UTC), undefined);
   });
 
   it('refuses from the cutoff to midnight UTC, naming the span and the time', () => {
-    assert.equal(heavyCutoffReason(Date.parse('2030-01-08T22:30:00Z'), '22:30', UTC), 'queue cutoff 22:30-00:00 UTC (now 22:30 UTC)');
-    assert.equal(heavyCutoffReason(Date.parse('2030-01-08T23:59:59Z'), '22:30', UTC), 'queue cutoff 22:30-00:00 UTC (now 23:59 UTC)');
+    assert.equal(queueCutoffReason(Date.parse('2030-01-08T22:30:00Z'), '22:30', UTC), 'queue cutoff 22:30-00:00 UTC (now 22:30 UTC)');
+    assert.equal(queueCutoffReason(Date.parse('2030-01-08T23:59:59Z'), '22:30', UTC), 'queue cutoff 22:30-00:00 UTC (now 23:59 UTC)');
   });
 
   it("names the span and the time on the team's clock", () => {
-    assert.equal(heavyCutoffReason(Date.parse('2030-01-08T22:45:00Z'), '22:30', JERUSALEM), 'queue cutoff 00:30-02:00 IST (now 00:45 IST)');
+    assert.equal(queueCutoffReason(Date.parse('2030-01-08T22:45:00Z'), '22:30', JERUSALEM), 'queue cutoff 00:30-02:00 IST (now 00:45 IST)');
   });
 });
 
