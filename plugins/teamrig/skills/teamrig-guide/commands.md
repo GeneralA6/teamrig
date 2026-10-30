@@ -3098,9 +3098,12 @@ A secret is `REFUSED` (exit 2), named by its message line; a message file that i
 
 ### teamrig secrets pushed
 
-For a git pre-push hook: finds the secrets the pushed commits add, in their patches and messages, from the lines git
-writes to the hook's stdin. A ref's commits are those after the remote's commit, or, for a new ref, every commit no
-ref of `<remote>` holds yet; a delete sends none. It catches commits made before the hooks were there, or past them.
+For a git pre-push hook: finds the secrets the pushed commits add, in their patches and messages, and the messages of
+the annotated tags pushed, from the lines git writes to the hook's stdin. A ref's commits are those after the remote's
+commit, or, for a new ref, every commit no ref of `<remote>` holds yet; a delete sends none. A merge's patch is what
+its resolution added past git's own merge of its parents, so a value put in only while resolving a conflict is
+scanned too (git 2.36 or later). A pushed tag is read down through each tag it points at (a tag of a tag), at most 8.
+It catches commits made before the hooks were there, or past them.
 
 Flags: none.
 
@@ -3116,8 +3119,10 @@ Output:
 OK no secret in the 2 commit(s) pushed to origin
 ```
 
-A secret is `REFUSED` (exit 2), named by the commit's short id, file and line; a stdin line git would not write, or a
-range git cannot list, is `FAILED` (exit 1).
+A secret is `REFUSED` (exit 2), named by the commit's short id, file and line, or by the tag's short id and message
+line (`4f1c2a9 tag message line 3`); a stdin line git would not write, a range git cannot list (an older git) or a
+tag it cannot read is `FAILED` (exit 1). With tags pushed, the line counts them: `OK no secret in the 2 commit(s) and
+1 tag message(s) pushed to origin`.
 
 It reads stdin to its end, so run by hand it waits for the lines on stdin. A pre-push hook with another step that
 reads them too (`git lfs pre-push`, a CI gate) reads them once and gives each step its copy:
