@@ -143,7 +143,9 @@ sequenceDiagram
   daily meeting is open the lead is not woken; the work waits for the first check after the meeting.
 - How often: each task wakes a session once. The first new task starts a batch of `wake.batchSeconds` (120 s), and
   one wake names every task handed meanwhile; wakes of one session are at least `wake.minGapMinutes` (15) apart.
-  Work that was there when the tab started, or before a `/clear`, is seen at its first prompt, as before.
+  Work that was there when the tab started, or before a `/clear`, is seen at its first prompt, as before. A closed
+  session that `teamrig open` (or the idle pass) resumes counts that open as its wake: only work handed after it
+  wakes it.
 - The day start: a session idle since the night is not woken by work already on its list, so with
   `wake.dayStartUtc` set (an `HH:MM` UTC outside the budget's quiet hours; unset by default) each session with work
   it can go on with (its own, of any priority, as above) and no turn since
