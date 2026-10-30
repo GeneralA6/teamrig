@@ -12,7 +12,7 @@ import { MS_PER_DAY } from '../core/time.ts';
 import { APP, CliHarness, KIT, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
-import { teamConfigOf, teamHomeOf } from '../testing/team-tree.ts';
+import { SUB_TEAMS, teamConfigOf, teamHomeOf } from '../testing/team-tree.ts';
 import { promptLine, replyLine, transcript, type FixtureTool } from '../testing/transcript-lines.ts';
 import type { RepoState } from '../push-guard/push.ts';
 import { EXIT } from './runtime.ts';
@@ -418,6 +418,84 @@ describe('teamrig budget lift', () => {
         refused.stdout.join('\n'),
         /other lifts in force give 60\.0% of app-bravo's group's daily budget, so --part 60 would give more than all of it; the most this lift may give is 40\.0%\. app-bravo's group gets \d+\.\d% of the week today and has used 2\.5%; app-lead can lift it: `teamrig budget lift app-bravo --group --part <pct> --stop-pct <n> --reason "<why>"`$/,
       );
+    });
+  });
+
+  describe('of a session of a team under the own', () => {
+    const LIFTS = join(TEAM_HOME, 'state', 'usage', 'lifts.jsonl');
+    const crossLift = (target: string, part: string, by = 'lead'): readonly string[] => [
+      'budget', 'lift', target, '--part', part, '--stop-pct', '97', '--reason', 'release', '--session', by,
+    ];
+    const lifted = (who: string, part: string): string =>
+      `LIFTED ${who} to ${part}% of team app's daily budget on top of its own budget today until 00:00 UTC (the end of the budget day) or 97.0% of the week, whichever comes first.`;
+
+    /** The harness's team as `app`, the root of SUB_TEAMS, with `web`'s config replaced by `web` when given. */
+    async function tree(web?: JsonRecord): Promise<World> {
+      const team = await world({ ...LIMITED, team: { id: 'app' } });
+      for (const [id, config] of Object.entries({ ...SUB_TEAMS, ...(web === undefined ? {} : { web }) })) {
+        await team.kit.files.write(teamConfigOf(id), formatConfig(config));
+      }
+      return team;
+    }
+
+    function liftsLogged(kit: CliHarness): number {
+      return (kit.files.get(LIFTS) ?? '').split('\n').filter((line) => line !== '').length;
+    }
+
+    it("lets the lead top a child team's session up from its own team's daily budget, logged in its own lift log", async () => {
+      const { kit, run } = await tree({ ...SUB_TEAMS['web'], budget: { weeklyLimitW: 1_000_000_000 } });
+      const AS_WEB = { env: { TEAMRIG_TEAM: 'web' } };
+      /** Web's daily budget, in % of the week, as web's own `budget` shows it. */
+      const webBudget = async (): Promise<number> => {
+        const lines = ok(await run(['budget'], AS_WEB));
+        const pct = lines.map((each) => /^ {2}the team +\S+ +(\d+\.\d+)%/.exec(each)?.[1]).find((each) => each !== undefined);
+        assert.ok(pct !== undefined, lines.join('\n'));
+        return Number(pct);
+      };
+      const before = await webBudget();
+      assert.deepEqual(ok(await run(crossLift('web/front', '18'))), [lifted('web/web-front', '18.0')]);
+      assert.equal(liftsLogged(kit), 1);
+      assert.ok((await webBudget()) > before, "web's budget takes the top-up from app's lift log");
+    });
+
+    it('lifts a session of a team two levels below', async () => {
+      const { run } = await tree();
+      assert.deepEqual(ok(await run(crossLift('ui/pixel', '10'))), [lifted('ui/ui-pixel', '10.0')]);
+    });
+
+    it("refuses a top-up past what the team's other lifts leave of its daily budget", async () => {
+      const { kit, run } = await tree();
+      ok(await run(crossLift('alpha', '90')));
+      const refused = await run(crossLift('web/front', '20'));
+      assert.equal(refused.code, EXIT.refused);
+      assert.match(refused.stdout.join('\n'), /other lifts in force give 90\.0% of team app's daily budget, so --part 20 would give more than all of it/);
+      assert.equal(liftsLogged(kit), 1);
+    });
+
+    it('is refused to a session that is not the lead', async () => {
+      const { kit, run } = await tree();
+      const refused = await run(crossLift('web/front', '18', 'alpha'));
+      assert.equal(refused.code, EXIT.refused);
+      assert.match(refused.stdout.join('\n'), /lifts a session of a team under its own/);
+      assert.equal(liftsLogged(kit), 0);
+    });
+
+    it('is refused for a team on another Claude account, a team not under the own and a session not on the team', async () => {
+      const { run } = await tree({ ...SUB_TEAMS['web'], budget: { account: 'work' } });
+      const other = await run(crossLift('web/front', '18'));
+      assert.equal(other.code, EXIT.refused);
+      assert.match(other.stdout.join('\n'), /team web is on another Claude account than team app/);
+      const sibling = await run(crossLift('ops/run', '18'), { env: { TEAMRIG_TEAM: 'web' } });
+      assert.equal(sibling.code, EXIT.refused);
+      assert.match(sibling.stdout.join('\n'), /team ops is not a team under team web/);
+      const unknown = await run(crossLift('ops/nobody', '18'));
+      assert.equal(unknown.code, EXIT.refused);
+      assert.match(unknown.stdout.join('\n'), /^REFUSED on team ops, /);
+    });
+
+    it('takes no --group', async () => {
+      const { run } = await tree();
+      usageError(await run([...crossLift('web/lead', '18'), '--group']), /--group lifts a sub-lead's group of team app/);
     });
   });
 

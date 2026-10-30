@@ -40,7 +40,7 @@ const HINT: SurplusHint = { sparePct: 34, accountSparePct: undefined, paceEnd: P
 
 /** A team of `ids` at the default share, with no queued work or lift. */
 function plainTeam(team: string, ids: readonly string[]): BudgetSplit {
-  return { team, ids, sessions: {}, work: new Map(), leads: {}, lifted: new Map(), liftedGroups: new Map(), pausable: new Set(), funded: new Map() };
+  return { team, ids, sessions: {}, work: new Map(), leads: {}, lifted: new Map(), liftedGroups: new Map(), crossLifted: new Map(), pausable: new Set(), funded: new Map() };
 }
 
 /** The team alone on its account, and beside a team of the same weight, which takes half the account's spare. */

@@ -22,6 +22,7 @@ function app(extra: Partial<BudgetSplit> = {}): BudgetSplit {
     work: workOf({ alpha: { 1: 5 }, bravo: { 3: 3 } }),
     lifted: new Map(),
     liftedGroups: new Map(),
+    crossLifted: new Map(),
     pausable: new Set(['alpha', 'bravo', 'charlie']),
     funded: new Map(),
     ...extra,
@@ -128,6 +129,16 @@ describe('fundByPriority', () => {
     };
     const funded = fundByPriority(teams, { allowancePct: 8, plannedPct: 13 });
     assert.deepEqual([partsOf(funded.split), funded.others.map(partsOf)], [[['alpha', 0]], [[['echo', 1]]]]);
+  });
+
+  it("keeps a session a team above lifts whole, and pays it first", () => {
+    const web = app({ team: 'web', ids: ['boss', 'echo'], work: workOf({ echo: { 3: 6 } }), pausable: new Set(['echo']) });
+    const lifting = (crossLifted: ReadonlyMap<string, number>): BudgetSplit => app({ ids: ['lead', 'alpha'], work: workOf({ alpha: { 1: 5 } }), pausable: new Set(['alpha']), crossLifted });
+    const day = { allowancePct: 8, plannedPct: 13 };
+    const plain = fundByPriority({ split: lifting(new Map()), others: [web] }, day);
+    assert.deepEqual([partsOf(plain.split), plain.others.map(partsOf)], [[['alpha', 1]], [[['echo', 0.166666667]]]], 'alpha at p1 before echo at p3');
+    const lifted = fundByPriority({ split: lifting(new Map([['web/echo', 10]])), others: [web] }, day);
+    assert.deepEqual([partsOf(lifted.split), lifted.others.map(partsOf)], [[['alpha', 0]], [[]]]);
   });
 });
 
