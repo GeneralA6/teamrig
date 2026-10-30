@@ -63,7 +63,7 @@ import { readContextInput } from './doctor.ts';
 import { inboxDepsOf } from './inbox.ts';
 import { markBoundary } from './refresh.ts';
 import { markKeepWorkingAsk } from './keep-working.ts';
-import { markRetireAsk } from './retire-ask.ts';
+import { markLastTaskAsk } from './last-task-ask.ts';
 import { openTeam, postNamed, teamOf, tellAssigned, tellLine, type Team } from './register-team.ts';
 import { askTeam, treeCallerOf } from './team-ask.ts';
 
@@ -450,7 +450,7 @@ export async function set(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
     await markBoundary(runtime, config, paths, by, id);
   }
   if (verdict.ok && (input.status === 'done' || input.status === 'dropped')) {
-    await markRetireAsk(runtime, config, paths, verdict.value);
+    await markLastTaskAsk(runtime, config, paths, verdict.value);
   }
   if (verdict.ok && input.status === 'waiting') {
     await markKeepWorkingAsk(runtime, paths, verdict.value);

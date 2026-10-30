@@ -87,7 +87,7 @@ describe('teamPaths', () => {
     assert.equal(paths.lifts, join(TEAM_HOME, 'state', 'usage', 'lifts.jsonl'));
     assert.equal(paths.hires, join(TEAM_HOME, 'state', 'hires.jsonl'));
     assert.equal(paths.hiresLock, join(TEAM_HOME, 'state', 'hires.lock'));
-    assert.equal(paths.retireAsks, join(TEAM_HOME, 'state', 'retire-asks'));
+    assert.equal(paths.lastTaskAsks, join(TEAM_HOME, 'state', 'last-task-asks'));
     assert.equal(paths.keepWorkingAsks, join(TEAM_HOME, 'state', 'keep-working-asks'));
     assert.equal(paths.logs, join(TEAM_HOME, 'state', 'logs'));
     assert.equal(paths.wake, join(TEAM_HOME, 'state', 'wake'));

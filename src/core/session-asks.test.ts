@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { formatSessionAsk, parseSessionAsk, SessionAskStore } from './session-asks.ts';
 
-const FOLDER = join('/', 'team', 'state', 'retire-asks');
+const FOLDER = join('/', 'team', 'state', 'last-task-asks');
 const ASK = { task: 'T4', at: '2030-01-08T10:00:00.000Z' };
 
 describe('SessionAskStore', () => {

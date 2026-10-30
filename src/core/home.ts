@@ -157,8 +157,8 @@ export interface TeamPaths {
   readonly hires: string;
   /** Held while a hire or a retire writes the config and the hire log, so two never interleave. */
   readonly hiresLock: string;
-  /** Each hired session's due ask to write its handover (hiring/retire-ask.ts), `<id>.json` each. */
-  readonly retireAsks: string;
+  /** Each hired session's due ask to write its handover (hiring/last-task-ask.ts), `<id>.json` each. */
+  readonly lastTaskAsks: string;
   /** Each session's due ask to keep working while a task of it waits (wake/keep-working.ts), `<id>.json` each. */
   readonly keepWorkingAsks: string;
   /** What the budget warning already showed each session, `<id>.json` each. */
@@ -280,7 +280,7 @@ export function teamPaths(kitHome: string, team: string, claudeDir: string, over
     bursts: join(state, 'usage', 'bursts.jsonl'),
     hires: join(state, 'hires.jsonl'),
     hiresLock: join(state, 'hires.lock'),
-    retireAsks: join(state, 'retire-asks'),
+    lastTaskAsks: join(state, 'last-task-asks'),
     keepWorkingAsks: join(state, 'keep-working-asks'),
     warn: join(state, 'usage', 'warn'),
     logs: join(state, 'logs'),

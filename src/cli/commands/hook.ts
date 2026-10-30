@@ -80,7 +80,7 @@ import { envSession, hookScopeOf, parseJson, sessionScopeOf, sessionTeam, startS
 import { tabStatusOn, tabTitleOf } from './hook-tab-status.ts';
 import { logPrompt, logReply, logStart } from './hook-turn-log.ts';
 import { keepWorkingReasonOf } from './keep-working.ts';
-import { retireAskReasonOf } from './retire-ask.ts';
+import { lastTaskAskReasonOf } from './last-task-ask.ts';
 import { verifyByLinesOf, verifyStartNoteOf } from './verify-queue.ts';
 
 /**
@@ -844,14 +844,14 @@ async function modelNoticesOf(runtime: CliRuntime, scope: SessionScope, payload:
 
 /**
  * The one-time ask that sends the session back at this turn's end: for a hired session, to write its handover
- * (retire-ask.ts), else, while a task of it waits, to work its other tasks (keep-working.ts). None on a stop the
+ * (last-task-ask.ts), else, while a task of it waits, to work its other tasks (keep-working.ts). None on a stop the
  * hook already blocked, or while the refresh blocks or waits for its restart, so the asks wait for a later stop.
  */
 async function askBlockOf(runtime: CliRuntime, scope: SessionScope, payload: JsonRecord, decision: StopDecision): Promise<string | undefined> {
   if (payload['stop_hook_active'] === true || decision.kind === 'block' || decision.kind === 'notice') {
     return undefined;
   }
-  return (await retireAskReasonOf(runtime, scope.config, scope.kit.paths, scope.id)) ?? keepWorkingReasonOf(runtime, scope);
+  return (await lastTaskAskReasonOf(runtime, scope.config, scope.kit.paths, scope.id)) ?? keepWorkingReasonOf(runtime, scope);
 }
 
 /**

@@ -6,7 +6,7 @@ import { parseObject, toJsonlLine, VERSION_FIELD } from './jsonl.ts';
 /**
  * A one-time ask a command records for a session and that session's Stop hook turns into one block: `set` writes
  * it when a task change calls for it, the hook removes it before it asks. The ask for a hired session's handover
- * (hiring/retire-ask.ts) and the keep-working ask (wake/keep-working.ts) each keep their own folder of them.
+ * (hiring/last-task-ask.ts) and the keep-working ask (wake/keep-working.ts) each keep their own folder of them.
  */
 
 export const SESSION_ASK_FORMAT = 1;

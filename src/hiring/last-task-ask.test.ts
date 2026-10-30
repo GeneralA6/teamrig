@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { DEFAULT_HIRING } from '../config/defaults.ts';
 import { testTask } from '../testing/task.ts';
 import type { HireRecord } from './record.ts';
-import { ownsOpenTask, retireAskDue, retireAskReason, type RetireAskInput } from './retire-ask.ts';
+import { ownsOpenTask, lastTaskAskDue, lastTaskAskReason, type LastTaskAskInput } from './last-task-ask.ts';
 
 const ASK = { task: 'T4', at: '2030-01-08T10:00:00.000Z' };
 
@@ -11,7 +11,7 @@ function hire(session: string): HireRecord {
   return { kind: 'hire', session, scope: 'x', reason: 'y', reviewBy: '2030-01-15', by: 'lead', at: 0 };
 }
 
-function input(overrides: Partial<RetireAskInput> = {}): RetireAskInput {
+function input(overrides: Partial<LastTaskAskInput> = {}): LastTaskAskInput {
   const done = testTask({ id: 'T4', owner: 'helper', status: 'done' });
   return {
     config: { sessions: ['lead', 'helper'], hiring: { ...DEFAULT_HIRING, policy: 'automatic' } },
@@ -30,23 +30,23 @@ describe('ownsOpenTask', () => {
   });
 });
 
-describe('retireAskDue', () => {
+describe('lastTaskAskDue', () => {
   it('asks a hired session on the team, under automatic, left with no open task', () => {
-    assert.equal(retireAskDue(input()), true);
+    assert.equal(lastTaskAskDue(input()), true);
   });
 
   it('asks nobody under another policy, for a session not hired or not on the team, or one with a task still open', () => {
-    assert.equal(retireAskDue(input({ config: { sessions: ['lead', 'helper'], hiring: DEFAULT_HIRING } })), false);
-    assert.equal(retireAskDue(input({ hires: [hire('other')] })), false);
-    assert.equal(retireAskDue(input({ config: { sessions: ['lead'], hiring: { ...DEFAULT_HIRING, policy: 'automatic' } } })), false);
+    assert.equal(lastTaskAskDue(input({ config: { sessions: ['lead', 'helper'], hiring: DEFAULT_HIRING } })), false);
+    assert.equal(lastTaskAskDue(input({ hires: [hire('other')] })), false);
+    assert.equal(lastTaskAskDue(input({ config: { sessions: ['lead'], hiring: { ...DEFAULT_HIRING, policy: 'automatic' } } })), false);
     const open = testTask({ id: 'T6', owner: 'helper', status: 'in-progress' });
-    assert.equal(retireAskDue(input({ tasks: [input().task, open] })), false);
+    assert.equal(lastTaskAskDue(input({ tasks: [input().task, open] })), false);
   });
 });
 
-describe('retireAskReason', () => {
+describe('lastTaskAskReason', () => {
   it('names the task and the handover path, and tells the session not to retire', () => {
-    const reason = retireAskReason(ASK, '/team/handover/helper.md');
+    const reason = lastTaskAskReason(ASK, '/team/handover/helper.md');
     assert.match(reason, /^Your last open task T4 is closed\. Write your handover to \/team\/handover\/helper\.md /);
     assert.ok(reason.includes('Do not retire: your leader decides which workers the team needs'), reason);
     assert.ok(!reason.includes('teamrig retire'), reason);
