@@ -115,6 +115,52 @@ describe('hire', () => {
     assert.equal(kit.files.get(HIRES), undefined);
   });
 
+  it('keeps a hired session to a new review day: a preview first, then only the hire log changes', async () => {
+    const kit = new CliHarness(LEAD_TEAM);
+    assert.equal((await hire(kit, 'helper', ...JOB, '--yes')).code, EXIT.ok);
+    const hired = configOf(kit);
+    const keepArgs = ['helper', '--review', '2030-02-01', '--reason', 'the importer grew'];
+    const preview = await hire(kit, ...keepArgs);
+    assert.equal(preview.code, EXIT.ok, preview.stdout.join('\n'));
+    assert.deepEqual(preview.stdout, ['PREVIEW keep helper on the team, review by 2030-02-01 (was 2030-01-15): "the importer grew"; nothing written (add --yes to write)']);
+    assert.equal(kit.files.get(HIRES)?.split('\n').filter((line) => line !== '').length, 1);
+    const kept = await hire(kit, ...keepArgs, '--yes');
+    assert.equal(kept.code, EXIT.ok, kept.stdout.join('\n'));
+    assert.deepEqual(kept.stdout, ['KEPT helper on the team, review by 2030-02-01 (was 2030-01-15)']);
+    assert.deepEqual(configOf(kit), hired, 'a keep writes no config');
+    const lines = (kit.files.get(HIRES) ?? '').split('\n').filter((line) => line !== '');
+    const logged: unknown = JSON.parse(lines.at(-1) ?? '');
+    assert.ok(isRecord(logged));
+    assert.deepEqual([logged['kind'], logged['session'], logged['reviewBy'], logged['reason'], logged['by']], ['keep', 'helper', '2030-02-01', 'the importer grew', 'lead']);
+    assert.deepEqual((await hire(kit, 'helper', '--review', '2030-03-01', '--reason', 'still porting')).stdout.at(-1), 'PREVIEW keep helper on the team, review by 2030-03-01 (was 2030-02-01): "still porting"; nothing written (add --yes to write)');
+  });
+
+  it("lets a sub-lead keep its own group's hire, and refuses every other session and a set-up session", async () => {
+    const kit = new CliHarness({ ...LEAD_TEAM, sessions: ['lead', 'alpha', 'beta'], leads: { alpha: ['beta'] } });
+    assert.equal((await kit.run(['hire', 'helper', ...JOB, '--session', 'alpha', '--yes'])).code, EXIT.ok);
+    const keepArgs = ['hire', 'helper', '--review', '2030-02-01', '--reason', 'the importer grew', '--yes'];
+    assert.equal((await kit.run([...keepArgs, '--session', 'alpha'])).code, EXIT.ok);
+    const notLead = 'REFUSED only a lead over the session keeps it (the lead, or its sub-lead): the leader decides which workers the team needs';
+    assert.equal(refusal(await kit.run([...keepArgs, '--session', 'beta'])), notLead);
+    assert.equal(refusal(await kit.run([...keepArgs, '--session', 'helper'])), notLead);
+    assert.equal(refusal(await hire(kit, 'beta', '--review', '2030-02-01', '--reason', 'x')), 'REFUSED beta is set up with the team, not hired: it has no review day to keep');
+  });
+
+  it('refuses a session already on the team without --review, and a keep given a hire-only flag or no reason', async () => {
+    const kit = new CliHarness(LEAD_TEAM);
+    assert.equal((await hire(kit, 'helper', ...JOB, '--yes')).code, EXIT.ok);
+    assert.equal(refusal(await hire(kit, 'alpha', ...JOB)), 'REFUSED alpha is already on the team: a hired session is kept with --review <YYYY-MM-DD> --reason "<why>"');
+    assert.match(refusal(await hire(kit, 'helper', ...JOB)), /^REFUSED helper is already on the team: /);
+    for (const extra of [['--scope', 'x'], ['--name', 'hand'], ['--model', 'opus'], ['--effort', 'high'], ['--approved-by', 'the owner'], ['--burst']]) {
+      const result = await hire(kit, 'helper', '--review', '2030-02-01', '--reason', 'x', ...extra);
+      assert.equal(result.code, EXIT.usage, extra.join(' '));
+      assert.match(result.stderr.join('\n'), /a keep of helper changes only its review day/);
+    }
+    assert.equal((await hire(kit, 'helper', '--review', '2030-02-01')).code, EXIT.usage);
+    assert.match(refusal(await hire(kit, 'helper', '--review', '2030-01-07', '--reason', 'x')), /has passed/);
+    assert.equal(kit.files.get(HIRES)?.split('\n').filter((line) => line !== '').length, 1);
+  });
+
   it('refuses bad flags', async () => {
     const kit = new CliHarness(LEAD_TEAM);
     assert.equal((await hire(kit, 'helper', '--scope', 'x')).code, EXIT.usage);

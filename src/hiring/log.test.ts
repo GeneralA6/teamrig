@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { NewerDataError } from '../core/jsonl.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { HiringLog } from './log.ts';
-import { HIRE_FORMAT, type HireRecord, type RetireRecord } from './record.ts';
+import { HIRE_FORMAT, type HireRecord, type KeepRecord, type RetireRecord } from './record.ts';
 
 const PATH = '/kit/teams/app/state/hires.jsonl';
 const AT = Date.parse('2030-01-08T10:00:00Z');
@@ -20,10 +20,13 @@ describe('HiringLog', () => {
   it('appends whole lines and reads them back, skipping damaged ones', async () => {
     const files = new MemoryFiles({ [PATH]: '{"v":1,"kind":"hire"}' });
     const log = new HiringLog(files, PATH);
+    const keep: KeepRecord = { kind: 'keep', session: 'helper', reviewBy: '2030-02-01', reason: 'the importer grew', by: 'lead', at: AT + 500 };
     await log.append(hire({ effort: 'xhigh', burst: AT }));
+    await log.append(keep);
     await log.append(retire({ heir: 'alpha' }));
-    assert.deepEqual(await log.read(), { records: [hire({ effort: 'xhigh', burst: AT }), retire({ heir: 'alpha' })], skipped: 1 });
-    assert.equal((await files.read(PATH))?.split('\n').filter((line) => line !== '').length, 3);
+    assert.deepEqual(await log.read(), { records: [hire({ effort: 'xhigh', burst: AT }), keep, retire({ heir: 'alpha' })], skipped: 1 });
+    assert.equal((await files.read(PATH))?.split('\n').filter((line) => line !== '').length, 4);
+    assert.match(await files.read(PATH) ?? '', /\{"v":2,"kind":"keep","session":"helper","reason":"the importer grew","by":"lead","at":"2030-01-08T10:00:00\.500Z","reviewBy":"2030-02-01"\}/);
     assert.match(await files.read(PATH) ?? '', new RegExp(`\\{"v":${HIRE_FORMAT},"kind":"retire"`));
   });
 

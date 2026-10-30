@@ -1371,6 +1371,10 @@ names are machine-wide.
 - With `--yes` it refuses when the host has no room for one more session, as [teamrig open](#teamrig-open) measures
   it; without, it says so.
 - When its job is done, retire it (`teamrig retire`).
+- Past its review day, `check` flags it REVIEW-DUE. While the team still needs it, keep it to a new review day: the
+  same command on the session already on the team, `teamrig hire <id> --review <YYYY-MM-DD> --reason "<why>"`. Only
+  a lead over it (the lead, or its sub-lead) keeps it, under every `hiring.policy`, and only the hire log changes;
+  `--scope`, `--name`, `--model`, `--effort`, `--approved-by` and `--burst` are refused, as its job and launch stay.
 - A burst hire (`--burst`) is for the burst in force ([teamrig burst start](#teamrig-burst-start)), within that burst's
   `--hires`. It runs on the lead's model at no lower effort: another `--model` or a lower
   `--effort` is refused. Under `hiring.policy` `owner` the burst's approver approves it unless `--approved-by`
@@ -1391,7 +1395,7 @@ Flags:
 - `--name <name>`: its display and Claude Code session name.
 - `--model <model>`: the model it starts on; the lead's own by default.
 - `--effort <level>`: the effort it starts at; the lead's own by default.
-- `--review <YYYY-MM-DD>`: its review day.
+- `--review <YYYY-MM-DD>`: its review day, or the new one of a hired session kept.
 - `--approved-by "<who>"`: who approved it; needed under `hiring.policy` `owner`.
 - `--burst`: hire it for the burst in force.
 - `--yes`: write it.
@@ -1419,6 +1423,12 @@ NEXT ... then resume its last Claude Code session: teamrig open importer --resum
 
 Resume only when it was in the middle of something its handover does not hold and its area barely changed since:
 a resumed session re-reads its whole old context on every call.
+
+A keep (`teamrig hire importer --review 2030-01-22 --reason "the importer still has the XML half" --session lead --yes`):
+
+```text
+KEPT importer on the team, review by 2030-01-22 (was 2030-01-15)
+```
 
 ### teamrig retire
 

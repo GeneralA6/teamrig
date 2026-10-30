@@ -10,9 +10,21 @@ describe('check on hired sessions', () => {
     const lines = ok(await kit.run(['check', '--all', '--session', 'lead'])).stdout;
     assert.deepEqual(
       lines.filter((line) => line.startsWith('HIRE')),
-      ['HIRES 1 flag(s)', 'HIRE REVIEW-DUE (review day 2030-01-15 passed) helper: decide whether its job goes on, else retire it (teamrig retire helper)'],
+      [
+        'HIRES 1 flag(s)',
+        'HIRE REVIEW-DUE (review day 2030-01-15 passed) helper: keep it (teamrig hire helper --review <YYYY-MM-DD> --reason "<why>" --yes), else retire it (teamrig retire helper)',
+      ],
     );
     assert.match(ok(await kit.run(['start', '--session', 'helper'])).stdout.join('\n'), /HIRE REVIEW-DUE .* helper/);
     assert.doesNotMatch(ok(await kit.run(['start', '--session', 'alpha'])).stdout.join('\n'), /HIRE /);
+  });
+
+  it('clears REVIEW-DUE once the lead keeps the hire to a new review day, until that day passes', async () => {
+    const kit = await teamWithHelper();
+    kit.clock.advance(8 * 86_400_000);
+    ok(await kit.run(['hire', 'helper', '--review', '2030-01-20', '--reason', 'the importer grew', '--yes', '--session', 'lead']));
+    assert.doesNotMatch(ok(await kit.run(['check', '--all', '--session', 'lead'])).stdout.join('\n'), /HIRE/);
+    kit.clock.advance(5 * 86_400_000);
+    assert.match(ok(await kit.run(['check', '--all', '--session', 'lead'])).stdout.join('\n'), /HIRE REVIEW-DUE \(review day 2030-01-20 passed\) helper/);
   });
 });

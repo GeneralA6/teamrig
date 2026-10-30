@@ -7,6 +7,7 @@ import { activeBurst } from '../../budget/burst.ts';
 import { KIT_NAME } from '../../core/home.ts';
 import { FileLock } from '../../core/lock.ts';
 import { burstHireOf } from '../../hiring/burst-hire.ts';
+import { planKeep } from '../../hiring/keep.ts';
 import { HiringLog } from '../../hiring/log.ts';
 import { activeHires, retiredSessions, type HireRecord, type RetireRecord } from '../../hiring/record.ts';
 import { hirerProblem, planHire, type HireRequest } from '../../hiring/plan.ts';
@@ -33,6 +34,8 @@ import { sessionProjectOf } from './setup.ts';
  * can be resumed (`open --resume`) or it opens fresh on that handover. With --burst it is a hire for the burst in
  * force, within the burst's hires and on the lead's model and effort (src/hiring/burst-hire.ts).
  * With --yes it refuses when the host has no room for one more session (`open.headroom`); the preview says so.
+ * On a hired session already on the team, `--review <day> --reason` keeps it to that new review day instead, which
+ * clears its REVIEW-DUE (src/hiring/keep.ts): only the hire log changes, so it takes no room check.
  */
 
 /** The backup name of a config before `hire` changed it. */
@@ -47,7 +50,7 @@ function effortFlag(flags: Flags): EffortLevel | undefined {
 }
 
 /** The request the command line makes, by the caller, at the clock's now. */
-function requestOf(args: ParsedArgs, runtime: CliRuntime, by: string): HireRequest {
+function requestOf(args: ParsedArgs, runtime: CliRuntime, id: string, by: string): HireRequest {
   const { flags } = args;
   const name = flags.get('name');
   const model = flags.get('model');
@@ -55,7 +58,7 @@ function requestOf(args: ParsedArgs, runtime: CliRuntime, by: string): HireReque
   const approvedBy = flags.get('approved-by');
   const effort = effortFlag(flags);
   return {
-    id: onePositional(args, 'id'),
+    id,
     scope: requiredFlag(flags, 'scope'),
     reason: requiredFlag(flags, 'reason'),
     ...(name === undefined ? {} : { name }),
@@ -115,7 +118,49 @@ function openStepOf(id: string, rehire: Rehire | undefined): string {
   return `then ${freshOpenOf(rehire.from)}: ${fresh}`;
 }
 
-/** `hire <id> --scope "<its job>" --reason "<why>" [--name] [--model] [--effort] [--review] [--approved-by] [--burst] [--yes]`. */
+/** The flags a keep refuses: it changes only the review day, the job and launch stay as hired. */
+const HIRE_ONLY_FLAGS = ['scope', 'name', 'model', 'effort', 'approved-by'] as const;
+
+/** `hire <id> --review <YYYY-MM-DD> --reason "<why>" [--yes]` on a session already on the team: keep its hire. */
+async function keep(args: ParsedArgs, runtime: CliRuntime, kit: Kit, config: KitConfig, id: string, by: string): Promise<ExitCode> {
+  const { flags } = args;
+  const reviewBy = flags.get('review');
+  if (reviewBy === undefined) {
+    throw new RefusedError(`${id} is already on the team: a hired session is kept with --review <YYYY-MM-DD> --reason "<why>"`);
+  }
+  const extra = HIRE_ONLY_FLAGS.find((flag) => flags.has(flag)) ?? (args.switches.has('burst') ? 'burst' : undefined);
+  if (extra !== undefined) {
+    throw new UsageError(`--${extra}: a keep of ${id} changes only its review day`);
+  }
+  const reason = requiredFlag(flags, 'reason');
+  const { files, clock, sleep, pid } = runtime;
+  const log = new HiringLog(files, kit.paths.hires);
+  const mutex = new FileLock(kit.paths.hiresLock, config.lock, { files, clock, sleep, pid });
+  return mutex.run(async () => {
+    const { records, skipped } = await log.read();
+    const plan = planKeep(config, activeHires(records), { id, reviewBy, reason, by, now: clock.now() });
+    if (!plan.ok) {
+      throw new RefusedError(plan.problem);
+    }
+    const { keep: record, hire: kept } = plan.value;
+    const what = `${id} on the team, review by ${record.reviewBy} (was ${kept.reviewBy})`;
+    if (skipped > 0) {
+      runtime.out.stdout(`NOTE ${skipped} damaged or newer line(s) in ${log.path} were skipped, so its review day may read older than logged`);
+    }
+    if (!args.switches.has('yes')) {
+      runtime.out.stdout(`PREVIEW keep ${what}: "${record.reason}"; nothing written (add --yes to write)`);
+      return EXIT.ok;
+    }
+    await log.append(record);
+    runtime.out.stdout(`KEPT ${what}`);
+    return EXIT.ok;
+  });
+}
+
+/**
+ * `hire <id> --scope "<its job>" --reason "<why>" [--name] [--model] [--effort] [--review] [--approved-by] [--burst] [--yes]`;
+ * on a session already on the team, a keep.
+ */
 export async function hire(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const caller = callerOf(args.flags, runtime.env);
   const found = await findTeam(runtime);
@@ -123,11 +168,15 @@ export async function hire(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   const config = requireConfig(kit, runtime, 'write');
   const roster = await rosterOf(runtime, kit, config);
   const by = sessionIdOf(roster, caller);
+  const id = onePositional(args, 'id');
+  if (config.sessions.includes(id)) {
+    return keep(args, runtime, kit, config, id, by);
+  }
   const refusal = hirerProblem(config, by);
   if (refusal !== undefined) {
     throw new RefusedError(refusal);
   }
-  const asked = requestOf(args, runtime, by);
+  const asked = requestOf(args, runtime, id, by);
   // Outside the hire lock: listing the host's processes takes about a second.
   const headroom = await headroomOf(runtime, kit.paths, config, roster.ids);
   const { files, clock, sleep, pid } = runtime;

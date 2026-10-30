@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { activeHires, HIRE_FORMAT, parseHiringRecord, readHiringLog, rehiredFrom, retiredSessions, type HireRecord, type RetireRecord } from './record.ts';
+import { activeHires, HIRE_FORMAT, parseHiringRecord, readHiringLog, rehiredFrom, retiredSessions, type HireRecord, type KeepRecord, type RetireRecord } from './record.ts';
 
 const AT = Date.parse('2030-01-08T10:00:00Z');
 
@@ -10,6 +10,10 @@ function hire(overrides: Partial<HireRecord> = {}): HireRecord {
 
 function retire(overrides: Partial<RetireRecord> = {}): RetireRecord {
   return { kind: 'retire', session: 'helper', reason: 'its tasks are closed', by: 'lead', at: AT + 1000, ...overrides };
+}
+
+function keep(overrides: Partial<KeepRecord> = {}): KeepRecord {
+  return { kind: 'keep', session: 'helper', reviewBy: '2030-02-01', reason: 'the importer grew', by: 'lead', at: AT + 500, ...overrides };
 }
 
 describe('parseHiringRecord', () => {
@@ -39,6 +43,14 @@ describe('parseHiringRecord', () => {
       assert.equal(parseHiringRecord({ ...good, ...damage }), undefined, JSON.stringify(damage));
     }
   });
+
+  it('reads a keep, and skips one with no review day or a bad one', () => {
+    const line = { kind: 'keep', session: 'helper', reviewBy: '2030-02-01', reason: 'the importer grew', by: 'lead', at: '2030-01-08T10:00:00.500Z' };
+    assert.deepEqual(parseHiringRecord(line), keep());
+    assert.equal(parseHiringRecord({ ...line, reviewBy: undefined }), undefined);
+    assert.equal(parseHiringRecord({ ...line, reviewBy: 'next month' }), undefined);
+    assert.equal(parseHiringRecord({ ...line, reason: undefined }), undefined);
+  });
 });
 
 describe('activeHires', () => {
@@ -47,6 +59,19 @@ describe('activeHires', () => {
     const records = [hire(), hire({ session: 'other' }), retire(), rehire, hire({ session: 'gone' }), retire({ session: 'gone' })];
     assert.deepEqual(activeHires(records), [rehire, hire({ session: 'other' })]);
     assert.deepEqual(activeHires([]), []);
+  });
+
+  it("moves a hire's review day to its newest keep's, in hire order, and nothing else of it", () => {
+    const records = [hire(), hire({ session: 'other' }), keep(), keep({ reviewBy: '2030-03-01', at: AT + 600 })];
+    assert.deepEqual(activeHires(records), [hire({ reviewBy: '2030-03-01' }), hire({ session: 'other' })]);
+  });
+
+  it('keeps no one with a keep after a retire or before any hire, and a rehire takes its own review day', () => {
+    assert.deepEqual(activeHires([hire(), retire(), keep({ at: AT + 2000 })]), []);
+    assert.deepEqual(retiredSessions([hire(), retire(), keep({ at: AT + 2000 })]), [retire()]);
+    assert.deepEqual(activeHires([keep({ session: 'nobody' })]), []);
+    const rehire = hire({ at: AT + 3000, reviewBy: '2030-01-20' });
+    assert.deepEqual(activeHires([hire(), keep(), retire({ at: AT + 2000 }), rehire]), [rehire]);
   });
 });
 
@@ -67,6 +92,13 @@ describe('rehiredFrom', () => {
     assert.equal(rehiredFrom([...records, retire({ session: 'back', at: AT + 3000 })], 'back'), undefined, 'retired again');
     assert.equal(rehiredFrom(records, 'nobody'), undefined);
   });
+
+  it('reads past a keep: it neither retires nor rehires', () => {
+    const first = retire({ session: 'back', at: AT + 1000 });
+    const records = [hire({ session: 'back' }), first, hire({ session: 'back', at: AT + 2000 }), keep({ session: 'back', at: AT + 2500 })];
+    assert.deepEqual(rehiredFrom(records, 'back'), first);
+    assert.equal(rehiredFrom([hire(), keep()], 'helper'), undefined);
+  });
 });
 
 describe('readHiringLog', () => {
@@ -74,8 +106,9 @@ describe('readHiringLog', () => {
     const line = (record: object): string => `${JSON.stringify(record)}\n`;
     const hireLine = { v: HIRE_FORMAT, kind: 'hire', session: 'helper', scope: 'port the importer', reason: 'release week', reviewBy: '2030-01-15', by: 'lead', at: '2030-01-08T10:00:00.000Z' };
     const retireLine = { v: HIRE_FORMAT, kind: 'retire', session: 'helper', reason: 'its tasks are closed', by: 'lead', at: '2030-01-08T10:00:01.000Z' };
-    const text = line(hireLine) + 'not json\n' + line({ ...hireLine, v: HIRE_FORMAT + 1 }) + line({ v: HIRE_FORMAT, kind: 'hire' }) + line(retireLine);
-    assert.deepEqual(readHiringLog(text), { records: [hire(), retire()], skipped: 3 });
+    const keepLine = { v: HIRE_FORMAT, kind: 'keep', session: 'helper', reviewBy: '2030-02-01', reason: 'the importer grew', by: 'lead', at: '2030-01-08T10:00:00.500Z' };
+    const text = line(hireLine) + 'not json\n' + line({ ...hireLine, v: HIRE_FORMAT + 1 }) + line({ v: HIRE_FORMAT, kind: 'hire' }) + line(keepLine) + line(retireLine);
+    assert.deepEqual(readHiringLog(text), { records: [hire(), keep(), retire()], skipped: 3 });
     assert.deepEqual(readHiringLog(''), { records: [], skipped: 0 });
   });
 });

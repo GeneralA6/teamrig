@@ -4,14 +4,15 @@ import { parseJsonl } from '../core/jsonl.ts';
 import { parseUtcDay } from '../core/time.ts';
 
 /**
- * The team's hires and retires, an append-only log: who joined for what job, on whose say-so, until which
- * review day, for which burst if any, and who left, with which handover and to which heir. A session whose
- * newest record is a hire is a hired session.
+ * The team's hires, keeps and retires, an append-only log: who joined for what job, on whose say-so, until which
+ * review day, for which burst if any; who kept it on to a later review day, and why; and who left, with which
+ * handover and to which heir. A session whose newest hire or retire is a hire is a hired session.
  */
 
 /**
  * The format of the hire log's records; a newer one is skipped on read and refuses a write. Format 2 dropped the
- * hire's fixed `dailyPct`, so a teamrig that still requires it refuses to write beside a hire it cannot read.
+ * hire's fixed `dailyPct`, so a teamrig that still requires it refuses to write beside a hire it cannot read. A keep
+ * needs no new format: an older teamrig skips it as a damaged line, so it only misses the new review day.
  */
 export const HIRE_FORMAT = 2;
 
@@ -51,7 +52,20 @@ export interface RetireRecord {
   readonly at: number;
 }
 
-export type HiringRecord = HireRecord | RetireRecord;
+/** A hired session kept on the team to a new review day (`hire <id> --review <day>`), its job and launch unchanged. */
+export interface KeepRecord {
+  readonly kind: 'keep';
+  readonly session: string;
+  /** Its new review day, `YYYY-MM-DD` (UTC). */
+  readonly reviewBy: string;
+  /** Why the team still needs it. */
+  readonly reason: string;
+  /** The lead over it that kept it. */
+  readonly by: string;
+  readonly at: number;
+}
+
+export type HiringRecord = HireRecord | RetireRecord | KeepRecord;
 
 export function isHire(record: HiringRecord): record is HireRecord {
   return record.kind === 'hire';
@@ -61,16 +75,33 @@ function isRetire(record: HiringRecord): record is RetireRecord {
   return record.kind === 'retire';
 }
 
-/** Each session's newest record, in the order the sessions first appear. */
-function newestBySession(records: readonly HiringRecord[]): HiringRecord[] {
-  const newest = new Map<string, HiringRecord>();
+function isKeep(record: HiringRecord): record is KeepRecord {
+  return record.kind === 'keep';
+}
+
+/**
+ * Each session's newest hire or retire, in the order the sessions first appear. A keep moves the review day of the
+ * hire it follows; one after a retire, or before any hire, keeps nothing.
+ */
+function newestBySession(records: readonly HiringRecord[]): Array<HireRecord | RetireRecord> {
+  const newest = new Map<string, HireRecord | RetireRecord>();
   for (const record of records) {
-    newest.set(record.session, record);
+    if (!isKeep(record)) {
+      newest.set(record.session, record);
+      continue;
+    }
+    const kept = newest.get(record.session);
+    if (kept !== undefined && isHire(kept)) {
+      newest.set(record.session, { ...kept, reviewBy: record.reviewBy });
+    }
   }
   return [...newest.values()];
 }
 
-/** The sessions hired and not retired since, each with its newest hire, in the order they were first hired. */
+/**
+ * The sessions hired and not retired since, each with its newest hire at the review day of its newest keep, in the
+ * order they were first hired.
+ */
 export function activeHires(records: readonly HiringRecord[]): HireRecord[] {
   return newestBySession(records).filter(isHire);
 }
@@ -93,7 +124,7 @@ export function rehiredFrom(records: readonly HiringRecord[], session: string): 
     }
     if (isHire(record)) {
       from = retire;
-    } else {
+    } else if (isRetire(record)) {
       retire = record;
       from = undefined;
     }
@@ -107,7 +138,7 @@ function instantOf(record: JsonRecord, key: string): number | undefined {
   return Number.isNaN(at) ? undefined : at;
 }
 
-/** One record as a hire or a retire; undefined when it is damaged. */
+/** One record as a hire, a keep or a retire; undefined when it is damaged. */
 export function parseHiringRecord(record: JsonRecord): HiringRecord | undefined {
   const session = stringField(record, 'session');
   const reason = stringField(record, 'reason');
@@ -115,6 +146,10 @@ export function parseHiringRecord(record: JsonRecord): HiringRecord | undefined 
   const at = instantOf(record, 'at');
   if (session === undefined || reason === undefined || by === undefined || at === undefined) {
     return undefined;
+  }
+  if (record['kind'] === 'keep') {
+    const reviewBy = stringField(record, 'reviewBy');
+    return reviewBy === undefined || parseUtcDay(reviewBy) === undefined ? undefined : { kind: 'keep', session, reviewBy, reason, by, at };
   }
   if (record['kind'] === 'retire') {
     const handover = stringField(record, 'handover');

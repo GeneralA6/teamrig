@@ -41,7 +41,7 @@ function reviewDue(hire: HireRecord, now: Date): HireFlag | undefined {
   if (hire.reviewBy >= formatUtcDay(now)) {
     return undefined;
   }
-  const action = `decide whether its job goes on, else retire it (${KIT_NAME} retire ${hire.session})`;
+  const action = `keep it (${KIT_NAME} hire ${hire.session} --review <YYYY-MM-DD> --reason "<why>" --yes), else retire it (${KIT_NAME} retire ${hire.session})`;
   return { kind: 'REVIEW-DUE', session: hire.session, detail: `review day ${hire.reviewBy} passed`, action };
 }
 

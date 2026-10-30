@@ -29,7 +29,7 @@ describe('hireFlags', () => {
 
   it('flags a review day that has passed, and skips hires no longer on the team', () => {
     const late = input({ hires: [hire('helper', '2030-01-07'), hire('gone', '2030-01-07')] });
-    const action = 'decide whether its job goes on, else retire it (teamrig retire helper)';
+    const action = 'keep it (teamrig hire helper --review <YYYY-MM-DD> --reason "<why>" --yes), else retire it (teamrig retire helper)';
     assert.deepEqual(hireFlags(late), [{ kind: 'REVIEW-DUE', session: 'helper', detail: 'review day 2030-01-07 passed', action }]);
     assert.deepEqual(hireFlags(input({ hires: [hire('helper', '2030-01-08')] })), []);
   });

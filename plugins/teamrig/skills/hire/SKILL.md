@@ -40,9 +40,11 @@ or the week's pace end) and the week's spare; no flag is raised while the spare 
 
 ## 2. Retire
 
-When `check` flags `HIRE RETIRE-DUE` (no open task for `hiring.idleHours`, as when a SCALE-OUT hire's slice is done)
-or `HIRE REVIEW-DUE` (its review day passed), give it its next task or retire it. An idle hire a SCALE-OUT names to
-take a slice is not flagged RETIRE-DUE meanwhile.
+When `check` flags `HIRE RETIRE-DUE` (no open task for `hiring.idleHours`, as when a SCALE-OUT hire's slice is done),
+give it its next task or retire it. An idle hire a SCALE-OUT names to take a slice is not flagged RETIRE-DUE
+meanwhile. When it flags `HIRE REVIEW-DUE` (its review day passed), decide whether the team still needs it: keep it
+to a new review day, `teamrig hire <id> --review <YYYY-MM-DD> --reason "<why>" --session lead` (a preview; add
+`--yes` to write it), else retire it.
 
 1. Ask it to write its handover (open work, next steps, branches, traps) to `<handover>/<id>.md`.
 2. Preview, then write: `teamrig retire <id> --session lead [--to <heir>] --yes`. `--to` takes its open tasks; with

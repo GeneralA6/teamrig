@@ -51,18 +51,23 @@ function recordAt(record: JsonRecord, key: string): JsonRecord {
   return isRecord(value) ? value : {};
 }
 
+/** A review day given on the command line, `YYYY-MM-DD` (UTC), as written back; refused when it has passed. */
+export function checkedReviewDay(text: string, now: number): Checked<string> {
+  const day = parseUtcDay(text);
+  if (day === undefined) {
+    return { ok: false, problem: `the review day "${text}" is not a YYYY-MM-DD date` };
+  }
+  if (formatUtcDay(day) < formatUtcDay(new Date(now))) {
+    return { ok: false, problem: `the review day ${text} has passed` };
+  }
+  return { ok: true, value: formatUtcDay(day) };
+}
+
 function reviewDayOf(request: HireRequest, config: KitConfig): Checked<string> {
   if (request.reviewBy === undefined) {
     return { ok: true, value: formatUtcDay(new Date(request.now + config.hiring.reviewDays * DAY_MS)) };
   }
-  const day = parseUtcDay(request.reviewBy);
-  if (day === undefined) {
-    return { ok: false, problem: `the review day "${request.reviewBy}" is not a YYYY-MM-DD date` };
-  }
-  if (formatUtcDay(day) < formatUtcDay(new Date(request.now))) {
-    return { ok: false, problem: `the review day ${request.reviewBy} has passed` };
-  }
-  return { ok: true, value: formatUtcDay(day) };
+  return checkedReviewDay(request.reviewBy, request.now);
 }
 
 /**

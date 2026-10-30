@@ -227,7 +227,8 @@ With sub-teams, run `teamrig check --tree --session lead` too. Act on each flag:
 - `HIRE RETIRE-DUE`: a hired session has had no open task for `hiring.idleHours`. Give it its next task, or retire
   it: `teamrig retire <id> --session lead` (`--to <heir>` for any open task). To bring a retired one back, hire
   its id again: the hire shows whether its last Claude Code session can be resumed (`teamrig open <id> --resume`).
-- `HIRE REVIEW-DUE`: a hired session's review day passed. Decide whether its job goes on; retire it when done.
+- `HIRE REVIEW-DUE`: a hired session's review day passed. While the team still needs it, keep it to a new review
+  day (`teamrig hire <id> --review <YYYY-MM-DD> --reason "<why>" --session lead --yes`), else retire it.
 - `OVERDUE` or `STALE`: ask the owning session what blocks it, then re-date it (`--due`) or tell the user.
 - `READY`: a waiting task whose reasons have all cleared (its tasks finished, its time passed). Tell the owning
   session in one inbox line to go on.
