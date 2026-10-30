@@ -1,6 +1,6 @@
 import { roleHolderOf } from '../../config/roster.ts';
 import { formatAddress, type SessionAddress } from '../../core/address.ts';
-import { errorMessage, type JsonRecord } from '../../core/guards.ts';
+import { errorMessage, stringField, type JsonRecord } from '../../core/guards.ts';
 import { FileLock } from '../../core/lock.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import type { Rotation } from '../../hooks/secret-redact.ts';
@@ -29,12 +29,12 @@ const every = (leak: Leak, problem: string): readonly Rotation[] => leak.kinds.m
 
 /**
  * Has each kind of secret a tool's result held rotated (T1369 R8): one register task for the team's security reviewer,
- * else its lead, per kind, session and day on the team's clock, and one line per kind in the team's incident log,
- * never the value. A reviewer of a team above (`<team>/<id>`) gets the task in that team's register, as an ask of the
- * session's. A kind its session was given a task for that day names that task again while it is still active; a
- * closed one (a false positive, say) gets a new task, so a real leak later that day is never folded into a task no
- * one works (T1545). Nothing here throws: a filing that fails is that kind's problem, and the redaction is sent either
- * way.
+ * else its lead, per kind, session and day on the team's clock, and one line per kind in the team's incident log, with
+ * the call that showed it (its id, the session's transcript and a helper's id), never the value. A reviewer of a team
+ * above (`<team>/<id>`) gets the task in that team's register, as an ask of the session's. A kind its session was given
+ * a task for that day names that task again while it is still active; a closed one (a false positive, say) gets a new
+ * task, so a real leak later that day is never folded into a task no one works (T1545). Nothing here throws: a filing
+ * that fails is that kind's problem, and the redaction is sent either way.
  */
 export async function fileRotations(runtime: CliRuntime, payload: JsonRecord, leak: Leak): Promise<readonly Rotation[]> {
   try {
@@ -45,13 +45,23 @@ export async function fileRotations(runtime: CliRuntime, payload: JsonRecord, le
     const session = (await sessionScopeOf(runtime, team, payload))?.id;
     const { files, clock, sleep, pid } = runtime;
     const lock = new FileLock(team.kit.paths.secretIncidentsLock, { ...team.config.lock, waitMs: LOCK_WAIT_MS }, { files, clock, sleep, pid });
-    return await lock.run(() => rotateEach(runtime, team, session, leak));
+    return await lock.run(() => rotateEach(runtime, team, session, callOf(payload), leak));
   } catch (error) {
     return every(leak, errorMessage(error));
   }
 }
 
-async function rotateEach(runtime: CliRuntime, team: TeamScope, session: string | undefined, leak: Leak): Promise<readonly Rotation[]> {
+/** The call whose result held the leak, as the hook's payload names it, for the incident log (T1545). */
+type Call = Pick<SecretIncident, 'toolUseId' | 'transcript' | 'agent'>;
+
+function callOf(payload: JsonRecord): Call {
+  const toolUseId = stringField(payload, 'tool_use_id');
+  const transcript = stringField(payload, 'transcript_path');
+  const agent = stringField(payload, 'agent_id');
+  return { ...(toolUseId === undefined ? {} : { toolUseId }), ...(transcript === undefined ? {} : { transcript }), ...(agent === undefined ? {} : { agent }) };
+}
+
+async function rotateEach(runtime: CliRuntime, team: TeamScope, session: string | undefined, call: Call, leak: Leak): Promise<readonly Rotation[]> {
   const log = new SecretIncidentLog(runtime.files, team.kit.paths.secretIncidents);
   const { incidents } = await log.read();
   const now = new Date(runtime.clock.now());
@@ -60,7 +70,7 @@ async function rotateEach(runtime: CliRuntime, team: TeamScope, session: string 
   for (const kind of leak.kinds) {
     const rotation = session === undefined ? { kind, problem: "this tab's session is not known" } : await rotationOf(runtime, team, { session, tool: leak.tool, kind }, incidents, zone);
     rotations.push(rotation);
-    const incident: SecretIncident = { at: now.toISOString(), ...(session === undefined ? {} : { session }), tool: leak.tool, kind, ...('task' in rotation ? { task: rotation.task } : {}) };
+    const incident: SecretIncident = { at: now.toISOString(), ...(session === undefined ? {} : { session }), tool: leak.tool, ...call, kind, ...('task' in rotation ? { task: rotation.task } : {}) };
     // The task is filed either way; a lost line only lets the next incident that day try again, which the register
     // refuses as a copy of the open task.
     await log.append(incident).catch(() => undefined);
