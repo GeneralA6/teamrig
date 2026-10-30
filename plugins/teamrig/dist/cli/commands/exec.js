@@ -2,7 +2,6 @@ import { resolve } from 'node:path';
 import { roleHolderOf } from "../../config/roster.js";
 import { formatAddress } from "../../core/address.js";
 import { errorMessage } from "../../core/guards.js";
-import { FileLock } from "../../core/lock.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { AuditChainError, AuditLog, nextRequestId, REQUEST_ID, } from "../../exec/audit.js";
 import { resolveProgram } from "../../exec/binding.js";
@@ -15,13 +14,14 @@ import { callerOf } from "../inputs.js";
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { loadTree } from "../tree.js";
+import { fileLockOf } from "../file-locks.js";
 async function openExec(runtime, access) {
     const kit = await openTeamKit(runtime);
     return execTeamOf(runtime, kit, requireConfig(kit, runtime, access));
 }
 function execTeamOf(runtime, kit, config) {
-    const { files, clock, sleep, pid, platform } = runtime;
-    const lock = new FileLock(kit.paths.execAuditLock, config.lock, { files, clock, sleep, pid });
+    const { files, clock, platform } = runtime;
+    const lock = fileLockOf(runtime, kit.paths.execAuditLock, config.lock);
     const execPath = config.exec.path.join(platform === 'win32' ? ';' : ':');
     return {
         kit,

@@ -1,6 +1,5 @@
 import { KIT_NAME } from "../../core/home.js";
 import { sessionDisplay } from "../../core/ids.js";
-import { FileLock } from "../../core/lock.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { inboxLineOf, postLines } from "../../inbox/inbox.js";
 import { lineHash } from "../../inbox/line-hash.js";
@@ -18,6 +17,7 @@ import { inboxDepsOf } from "./inbox.js";
 import { openSession, TERMINAL_LABELS } from "./open.js";
 import { ownRegister } from "./register.js";
 import { sessionProjectOf } from "./setup.js";
+import { fileLockOf } from "../file-locks.js";
 /**
  * `meeting schedule|list|move|start <id>|end <id>|drop` (T1358): the owner's meetings with one session at a set time,
  * apart from the daily meeting with the lead (meeting.ts). The lead or the session met books, moves, ends and drops
@@ -34,7 +34,7 @@ async function meetingsKit(args, runtime, access) {
     const kit = await openKit(runtime, found.team);
     const config = requireConfig(kit, runtime, access);
     const roster = await rosterOf(runtime, kit, config);
-    const { files, clock, sleep, pid } = runtime;
+    const { files, clock } = runtime;
     return {
         kit,
         from: found.from,
@@ -42,7 +42,7 @@ async function meetingsKit(args, runtime, access) {
         roster,
         caller: sessionIdOf(roster, callerOf(args.flags, runtime.env)),
         schedule: new MeetingSchedule(files, kit.paths.meetings),
-        lock: new FileLock(kit.paths.meetingsLock, config.lock, { files, clock, sleep, pid }),
+        lock: fileLockOf(runtime, kit.paths.meetingsLock, config.lock),
         now: clock.now(),
         zone: teamZone(config, runtime),
     };

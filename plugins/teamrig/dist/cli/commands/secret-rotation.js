@@ -1,7 +1,6 @@
 import { roleHolderOf } from "../../config/roster.js";
 import { formatAddress } from "../../core/address.js";
 import { errorMessage, stringField } from "../../core/guards.js";
-import { FileLock } from "../../core/lock.js";
 import { ACTIVE_STATUSES } from "../../register/model.js";
 import { filedToday, SecretIncidentLog } from "../../secret-guard/incidents.js";
 import { taskRefOf } from "../inputs.js";
@@ -9,6 +8,7 @@ import { teamZone } from "../kit.js";
 import { sessionScopeOf, teamScopeOf } from "./hook-input.js";
 import { teamOf, tellAssigned } from "./register-team.js";
 import { askTeam, treeCallerOf } from "./team-ask.js";
+import { fileLockOf } from "../file-locks.js";
 /** How long the redactor waits for another tab's rotation filing: the hook has 15 s, and its redaction must not wait on this. */
 const LOCK_WAIT_MS = 3_000;
 const every = (leak, problem) => leak.kinds.map((kind) => ({ kind, problem }));
@@ -29,8 +29,7 @@ export async function fileRotations(runtime, payload, leak) {
             return every(leak, "the tab's team has no loaded config");
         }
         const session = (await sessionScopeOf(runtime, team, payload))?.id;
-        const { files, clock, sleep, pid } = runtime;
-        const lock = new FileLock(team.kit.paths.secretIncidentsLock, { ...team.config.lock, waitMs: LOCK_WAIT_MS }, { files, clock, sleep, pid });
+        const lock = fileLockOf(runtime, team.kit.paths.secretIncidentsLock, { ...team.config.lock, waitMs: LOCK_WAIT_MS });
         return await lock.run(() => rotateEach(runtime, team, session, callOf(payload), leak));
     }
     catch (error) {

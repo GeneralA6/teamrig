@@ -1,6 +1,6 @@
 import { errorMessage } from "../../core/guards.js";
 import { KIT_NAME } from "../../core/home.js";
-import { FileLock, LockBusyError } from "../../core/lock.js";
+import { LockBusyError } from "../../core/lock.js";
 import { hooklessReader } from "../../restore/hookless.js";
 import { SessionLog } from "../../sessions/log.js";
 import { SessionRecordStore } from "../../sessions/record.js";
@@ -12,6 +12,7 @@ import { actsToStart, failedState, formatIdlePassRecord, formatIdlePassState, he
 import { teamZone } from "../kit.js";
 import { postUrgentLine } from "../urgent-line.js";
 import { sessionFoldersOf } from "./setup.js";
+import { fileLockOf } from "../file-locks.js";
 /** The team's reopened tabs no teamrig hook started in, from its session log and its sessions' start records. */
 async function hooklessReopensNow(runtime, kit, roster, now) {
     const { records } = await new SessionLog(runtime.files, kit.paths.sessionLog).read();
@@ -131,8 +132,8 @@ export async function runIdlePass(runtime, kit, config, roster, from) {
     if (!isPassDue(await readIdlePassState(runtime.files, kit.paths), now)) {
         return;
     }
-    const { files, clock, sleep, pid } = runtime;
-    const lock = new FileLock(kit.paths.idlePassLock, { ...config.lock, waitMs: 0 }, { files, clock, sleep, pid });
+    const { files } = runtime;
+    const lock = fileLockOf(runtime, kit.paths.idlePassLock, { ...config.lock, waitMs: 0 });
     try {
         await lock.run(async () => {
             const previous = await readIdlePassState(runtime.files, kit.paths);

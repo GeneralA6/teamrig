@@ -1,6 +1,6 @@
 import { DEFAULT_LOCK } from "../config/defaults.js";
 import { AgedLogFile } from "../core/aged-log.js";
-import { FileLock } from "../core/lock.js";
+import { fileLockOf } from "./file-locks.js";
 /**
  * The hooks' aged logs: what they showed each Claude Code session, so each inbox line or hint is shown once
  * (inbox-shown, bind-hints), and how the prompt refusal answered each prompt (prompt-answers).
@@ -22,7 +22,7 @@ function filesOf(paths, log) {
  * of one lock must agree on when a held lock is stale.
  */
 export function hookLogOf(runtime, paths, log) {
-    const { files, clock, sleep, pid } = runtime;
+    const { files, clock } = runtime;
     const { live, lock } = filesOf(paths, log);
-    return new AgedLogFile({ files, clock, mutex: new FileLock(lock, DEFAULT_LOCK, { files, clock, sleep, pid }) }, { live, archive: paths.archive, name: log });
+    return new AgedLogFile({ files, clock, mutex: fileLockOf(runtime, lock, DEFAULT_LOCK) }, { live, archive: paths.archive, name: log });
 }

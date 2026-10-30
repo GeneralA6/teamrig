@@ -1,7 +1,7 @@
-import { FileLock } from "../core/lock.js";
 import { LogNumbers, OWN_NUMBERS, TreeNumbering } from "../register/numbering.js";
 import { JsonlEventLog } from "../register/store.js";
 import { loadTree } from "./tree.js";
+import { fileLockOf } from "./file-locks.js";
 /**
  * A team's numbering as its kit home's tree stands at the write (T1139): one across every register of the tree,
  * under the lock in the root team's state folder; the team's own when it hangs in no tree, or when its parents go
@@ -33,8 +33,8 @@ export class KitTreeNumbering {
         if (others.length === 0) {
             return OWN_NUMBERS;
         }
-        const { files, clock, sleep, pid } = this.runtime;
-        const lock = new FileLock(root.kit.paths.idsLock, this.timings, { files, clock, sleep, pid });
+        const { files } = this.runtime;
+        const lock = fileLockOf(this.runtime, root.kit.paths.idsLock, this.timings);
         return new TreeNumbering(lock, others.map((other) => new LogNumbers(new JsonlEventLog(files, other.kit.paths.events))));
     }
 }

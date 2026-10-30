@@ -76,7 +76,7 @@ export const DEFAULT_CONTEXT_FILES = {
     maxSkillListingChars: 4_000,
     maxSessionListsChars: 16_000,
 };
-export const DEFAULT_LOCK = { ttlMs: 30_000, pollMs: 50, waitMs: 20_000 };
+export const DEFAULT_LOCK = { ttlMs: 300_000, pollMs: 50, waitMs: 20_000 };
 /** No exec PATH: a privileged command names its program by absolute path until the team lists its tool folders. */
 export const DEFAULT_EXEC = { path: [] };
 export const DEFAULT_PUSH_GUARD = { protectedBranches: ['main', 'master'], pushToProtected: 'ask', reviewPaths: [] };

@@ -1,10 +1,11 @@
-import { FileLock, LockBusyError } from "../../core/lock.js";
+import { LockBusyError } from "../../core/lock.js";
 import { noticeOf, showNotice } from "../../meeting/notify.js";
 import { isNotifyDue, MeetingSchedule, nextNotifyAt } from "../../meeting/schedule.js";
 import { noPositionals } from "../args.js";
 import { EXIT } from "../runtime.js";
 import { parseJson } from "./hook-input.js";
 import { wakeScopeOf } from "./hook-wake.js";
+import { fileLockOf } from "../file-locks.js";
 function answer(runtime, value) {
     runtime.out.stdout(JSON.stringify(value));
     return EXIT.ok;
@@ -31,7 +32,7 @@ export async function meetingDue(args, runtime) {
         return answer(runtime, scope);
     }
     const { kit, config } = scope;
-    const { files, clock, sleep, pid } = runtime;
+    const { files, clock } = runtime;
     const schedule = new MeetingSchedule(files, kit.paths.meetings);
     const watch = [kit.paths.meetings];
     const now = clock.now();
@@ -41,7 +42,7 @@ export async function meetingDue(args, runtime) {
     }
     let marked;
     try {
-        marked = await new FileLock(kit.paths.meetingsLock, config.lock, { files, clock, sleep, pid }).run(() => markDue(schedule, now));
+        marked = await fileLockOf(runtime, kit.paths.meetingsLock, config.lock).run(() => markDue(schedule, now));
     }
     catch (error) {
         if (error instanceof LockBusyError) {

@@ -4,7 +4,6 @@ import { describeNameClash, teamNodeOf } from "../../config/tree.js";
 import { EFFORT_LEVELS, isEffortLevel } from "../../config/types.js";
 import { activeBurst } from "../../budget/burst.js";
 import { KIT_NAME } from "../../core/home.js";
-import { FileLock } from "../../core/lock.js";
 import { burstHireOf } from "../../hiring/burst-hire.js";
 import { planKeep } from "../../hiring/keep.js";
 import { HiringLog } from "../../hiring/log.js";
@@ -21,6 +20,7 @@ import { EXIT, RefusedError } from "../runtime.js";
 import { loadTree } from "../tree.js";
 import { freshOpenOf, resumeVerdictOf } from "./rehire.js";
 import { sessionProjectOf } from "./setup.js";
+import { fileLockOf } from "../file-locks.js";
 /**
  * `hire`: a lead adds a worker it is sure the team needs within `hiring`'s policy: the team's lead, or a
  * sub-lead, whose hire joins its own group (T509). Without
@@ -126,9 +126,9 @@ async function keep(args, runtime, kit, config, id, by) {
         throw new UsageError(`--${extra}: a keep of ${id} changes only its review day`);
     }
     const reason = requiredFlag(flags, 'reason');
-    const { files, clock, sleep, pid } = runtime;
+    const { files, clock } = runtime;
     const log = new HiringLog(files, kit.paths.hires);
-    const mutex = new FileLock(kit.paths.hiresLock, config.lock, { files, clock, sleep, pid });
+    const mutex = fileLockOf(runtime, kit.paths.hiresLock, config.lock);
     return mutex.run(async () => {
         const { records, skipped } = await log.read();
         const plan = planKeep(config, activeHires(records), { id, reviewBy, reason, by, now: clock.now() });
@@ -171,10 +171,10 @@ export async function hire(args, runtime) {
     const asked = requestOf(args, runtime, id, by);
     // Outside the hire lock: listing the host's processes takes about a second.
     const headroom = await headroomOf(runtime, kit.paths, config, roster.ids);
-    const { files, clock, sleep, pid } = runtime;
+    const { files, clock } = runtime;
     const { load } = kit;
     const log = new HiringLog(files, kit.paths.hires);
-    const mutex = new FileLock(kit.paths.hiresLock, config.lock, { files, clock, sleep, pid });
+    const mutex = fileLockOf(runtime, kit.paths.hiresLock, config.lock);
     return mutex.run(async () => {
         const { records, skipped } = await log.read();
         const active = activeHires(records);

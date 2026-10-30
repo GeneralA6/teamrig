@@ -1,10 +1,10 @@
 import { ENV } from "../../core/home.js";
-import { FileLock } from "../../core/lock.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { addedLines, claimState, failureNews, finishState, formatSyncState, isDue, parseSyncState } from "../../github/auto.js";
 import { postLine } from "../../inbox/inbox.js";
 import { GITHUB_ACTOR } from "../../register/policy.js";
 import { inboxDepsOf } from "./inbox.js";
+import { fileLockOf } from "../file-locks.js";
 /**
  * The automatic GitHub sync: the Stop hook starts `gh sync --auto` hidden in the background once per
  * `github.everyMinutes` for the whole team, claimed under one lock, and that run tells each owner's inbox
@@ -17,8 +17,7 @@ export function githubOff(env) {
 }
 /** The lock around the sync state file; a hook does not wait for it, a finishing sync does. */
 function stateLock(runtime, kit, config, waitMs) {
-    const { files, clock, sleep, pid } = runtime;
-    return new FileLock(kit.paths.githubSyncLock, { ...config.lock, waitMs }, { files, clock, sleep, pid });
+    return fileLockOf(runtime, kit.paths.githubSyncLock, { ...config.lock, waitMs });
 }
 async function readState(runtime, kit) {
     return parseSyncState((await runtime.files.read(kit.paths.githubSync)) ?? '');

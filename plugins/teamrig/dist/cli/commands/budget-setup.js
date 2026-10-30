@@ -7,7 +7,7 @@ import { isRecord } from "../../core/guards.js";
 import { noPositionals, UsageError } from "../args.js";
 import { callerOf } from "../inputs.js";
 import { checkedNextConfig, configFileJson, leadOnly, openTeamKit, requireConfig, rosterOf } from "../kit.js";
-import { EXIT, RefusedError } from "../runtime.js";
+import { EXIT } from "../runtime.js";
 /**
  * `budget setup`: the lead writes the team's budget policy into the team config. Without --yes it only
  * shows what would change; with it, the old file is kept in the backups folder first. Flags left out
