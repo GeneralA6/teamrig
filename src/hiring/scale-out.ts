@@ -10,7 +10,6 @@ import { ACTIVE_STATUSES, type TaskStatus } from '../register/model.ts';
 import type { TaskTree } from '../register/tree.ts';
 import type { HireCheckInput, HireFlag } from './due.ts';
 import { ownerAsk } from '../config/tree.ts';
-import { hireCapProblem, hiresOnTeam } from './plan.ts';
 
 /**
  * SCALE-OUT, the `check` flag on an area that cannot finish its dated work in time. Its pace is the tasks it finished
@@ -20,7 +19,7 @@ import { hireCapProblem, hiresOnTeam } from './plan.ts';
  * by then, a slice moves out: the latest open tasks due by that date that no started task needs (none mid-change),
  * until every date fits. The slice costs a new hire's part of the team's daily budget today (`hirePct`) a day until
  * its last due or the week's pace end, whichever comes first (a day at least), and goes to an idle hire first, else to
- * a new hire within `hiring.maxSessions`, else to the owner as a card when that cap blocks. No flag while the team's
+ * a new hire (`hire --yes` checks the host has room for it). No flag while the team's
  * part of the week's projected spare cannot pay the cost (the areas furthest behind pay first), with no reading of the week or of the
  * team's daily budget, under `hiring.policy` off, or for the lead or a hired session. Its retire is RETIRE-DUE
  * (src/hiring/due.ts): a hire whose slice is done, or that got none, sits idle. Pure: it takes the team's tasks and
@@ -196,20 +195,7 @@ function hireAction(config: ScaleOutInput['config']): string {
   return `the lead ${owner ? `asks ${ownerAsk(config)}, then ` : ''}hires for it (${hire}), then ${KIT_NAME} update <id> --owner <new id>, for each`;
 }
 
-/**
- * What the lead does when `hiring.maxSessions` blocks a hire: raises the cap itself under `hiring.capRaisedBy` lead,
- * else a card for the owner, through the parent team's lead in a child team.
- */
-function capAction(config: ScaleOutInput['config'], capProblem: string): string {
-  if (config.hiring.capRaisedBy === 'lead') {
-    return `${capProblem}: the lead raises it in the team config and says so in its next report [hiring.capRaisedBy], or moves the slice to another area`;
-  }
-  const parent = config.team?.parent;
-  const card = parent === undefined ? 'brings the owner a card' : `asks the lead of team ${parent} to bring the owner a card`;
-  return `${capProblem}: the lead ${card} to raise the cap, or moves the slice to another area`;
-}
-
-/** SCALE-OUT on each area that needs one, within the spare and the cap, and the idle hires given a slice. */
+/** SCALE-OUT on each area that needs one, within the spare, and the idle hires given a slice. */
 export function scaleOutFlags(input: ScaleOutInput): ScaleOutResult {
   const { config, hirePct } = input;
   if (config.hiring.policy === 'off') {
@@ -222,7 +208,6 @@ export function scaleOutFlags(input: ScaleOutInput): ScaleOutResult {
     .flatMap((area) => needOf(area, tasks, input) ?? [])
     .sort((a, b) => b.behind.count - b.behind.finishes - (a.behind.count - a.behind.finishes));
   const idle = idleHires(input, tasks);
-  let hired = hiresOnTeam(config, input.hires);
   const busy = new Set<string>();
   const flags: HireFlag[] = [];
   if (input.spare === undefined || hirePct === undefined) {
@@ -244,12 +229,6 @@ export function scaleOutFlags(input: ScaleOutInput): ScaleOutResult {
       flags.push({ kind: 'SCALE-OUT', session: need.area, detail, action: moveAction(to) });
       continue;
     }
-    const capProblem = hireCapProblem(config.hiring, hired);
-    if (capProblem !== undefined) {
-      flags.push({ kind: 'SCALE-OUT', session: need.area, detail, action: capAction(config, capProblem) });
-      continue;
-    }
-    hired += 1;
     flags.push({ kind: 'SCALE-OUT', session: need.area, detail, action: hireAction(config) });
   }
   return { flags, busy };

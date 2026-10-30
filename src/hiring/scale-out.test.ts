@@ -152,36 +152,16 @@ describe('scaleOutFlags: the budget and who takes the slice', () => {
     assert.equal(scaleOut(ALPHA_BEHIND, { config: config({ policy: 'owner' }) }).flags[0]?.action, action);
   });
 
-  it("sends a child team's lead to its parent team's lead, never the owner, for the owner's approval and for a card", () => {
-    const child = (hiring: JsonRecord, sessions: readonly string[] = ['lead', 'alpha', 'bravo']): KitConfig =>
-      testConfig({ sessions: [...sessions], team: { id: 'ui', parent: 'web' }, hiring: { policy: 'lead', ...hiring } });
-    const asked = scaleOut(ALPHA_BEHIND, { config: child({ policy: 'owner' }) }).flags[0]?.action ?? '';
+  it("sends a child team's lead to its parent team's lead, never the owner, for the owner's approval", () => {
+    const child = testConfig({ sessions: ['lead', 'alpha', 'bravo'], team: { id: 'ui', parent: 'web' }, hiring: { policy: 'owner' } });
+    const asked = scaleOut(ALPHA_BEHIND, { config: child }).flags[0]?.action ?? '';
     assert.match(asked, /^the lead asks the lead of team web, who takes it to the owner, then hires for it \(teamrig hire <new id> /);
-    const capped = scaleOut([...ALPHA_BEHIND, testTask({ id: 'T50', owner: 'helper' })], { config: child({ maxSessions: 1 }, ['lead', 'alpha', 'helper']), hires: [hire('helper')] });
-    assert.equal(
-      capped.flags[0]?.action,
-      'the team already has 1 hired session(s), the most hiring.maxSessions allows: the lead asks the lead of team web to bring the owner a card to raise the cap, or moves the slice to another area',
-    );
   });
 
-  it('brings the owner a card when hiring.maxSessions blocks, counting the hires flagged before it', () => {
-    const card = ': the lead brings the owner a card to raise the cap, or moves the slice to another area';
-    const team = config({}, ['lead', 'alpha', 'bravo', 'helper']);
-    const flags = scaleOut([...BRAVO_BEHIND, ...ALPHA_BEHIND, testTask({ id: 'T50', owner: 'helper' })], { config: team, hires: [hire('helper')] }).flags;
-    assert.deepEqual(flags.map((flag) => flag.action), [HIRE, `the team already has 2 hired session(s), the most hiring.maxSessions allows${card}`]);
-    const tight = config({ maxSessions: 1 }, ['lead', 'alpha', 'helper']);
-    const capped = scaleOut([...ALPHA_BEHIND, testTask({ id: 'T50', owner: 'helper' })], { config: tight, hires: [hire('helper')] });
-    assert.equal(capped.flags[0]?.action, `the team already has 1 hired session(s), the most hiring.maxSessions allows${card}`);
-  });
-
-  it('has the lead raise hiring.maxSessions itself under hiring.capRaisedBy lead, in a child team too', () => {
-    const raise =
-      'the team already has 1 hired session(s), the most hiring.maxSessions allows: the lead raises it in the team config and says so in its next report [hiring.capRaisedBy], or moves the slice to another area';
-    const tasks = [...ALPHA_BEHIND, testTask({ id: 'T50', owner: 'helper' })];
-    const sessions = ['lead', 'alpha', 'helper'];
-    const root = scaleOut(tasks, { config: config({ maxSessions: 1, capRaisedBy: 'lead' }, sessions), hires: [hire('helper')] });
-    assert.equal(root.flags[0]?.action, raise);
-    const child = testConfig({ sessions, team: { id: 'ui', parent: 'web' }, hiring: { policy: 'lead', maxSessions: 1, capRaisedBy: 'lead' } });
-    assert.equal(scaleOut(tasks, { config: child, hires: [hire('helper')] }).flags[0]?.action, raise);
+  it('hires for each area behind however many hires the team holds: no cap blocks a hire', () => {
+    const team = config({}, ['lead', 'alpha', 'bravo', 'helper', 'second']);
+    const busyHires = [testTask({ id: 'T50', owner: 'helper' }), testTask({ id: 'T51', owner: 'second' })];
+    const flags = scaleOut([...BRAVO_BEHIND, ...ALPHA_BEHIND, ...busyHires], { config: team, hires: [hire('helper'), hire('second')] }).flags;
+    assert.deepEqual(flags.map((flag) => [flag.session, flag.action]), [['alpha', HIRE], ['bravo', HIRE]]);
   });
 });

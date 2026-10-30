@@ -24,7 +24,7 @@ import { freshOpenOf, resumeVerdictOf } from './rehire.ts';
 import { sessionProjectOf } from './setup.ts';
 
 /**
- * `hire`: a lead adds a temporary session to the team within `hiring`'s policy and caps: the team's lead, or a
+ * `hire`: a lead adds a temporary session to the team within `hiring`'s policy: the team's lead, or a
  * sub-lead, whose hire joins its own group (T509). Without
  * --yes it only shows the hire; with it, the old config is kept in the backups folder, the hire is
  * logged in the hire log, then the session and its launch are written to the config. A hire gets no fixed daily
@@ -138,28 +138,26 @@ export async function hire(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
     const { records, skipped } = await log.read();
     const active = activeHires(records);
     const request = args.switches.has('burst') ? await burstRequestOf(runtime, kit, config, asked, active) : asked;
-    const plan = planHire(await configFileJson(runtime, load.path), config, active, request);
+    const plan = planHire(await configFileJson(runtime, load.path), config, request);
     if (!plan.ok) {
       throw new RefusedError(plan.problem);
     }
     const next = checkedNextConfig(plan.value.config);
     const nextRoster = await rosterOf(runtime, kit, next);
     await refuseNameClash(runtime, kit.paths.team, request.id, next, nextRoster);
-    const { hire: record, hired, leader } = plan.value;
+    const { hire: record, leader } = plan.value;
     const ledBy = leader === config.roles.lead ? '' : `, led by ${nextRoster.nameOf(leader) ?? leader}`;
     const what = `${record.session} (name ${nextRoster.nameOf(record.session) ?? record.session}) for "${record.scope}"${ledBy}: ${describeLaunch(record)}, review by ${record.reviewBy}${record.burst === undefined ? '' : `, for the burst started ${teamZone(config, runtime).weekdayMinute(new Date(record.burst))}`}`;
-    const caps = `  hired sessions with it: ${hired} of ${config.hiring.maxSessions}`;
     const from = retiredSessions(records).find((record) => record.session === request.id);
     // Measured before anything is written, so the preview shows it too.
     const rehire: Rehire | undefined =
       from === undefined ? undefined : { from, verdict: await resumeVerdictOf(runtime, kit.paths, config.hiring, request.id, await sessionProjectOf(runtime, config, request.id, undefined, found.from)) };
     const rehireText = rehire === undefined ? [] : rehireLines(rehire, teamZone(config, runtime));
     if (skipped > 0) {
-      runtime.out.stdout(`NOTE ${skipped} damaged or newer line(s) in ${log.path} were skipped, so the caps may count too few hires`);
+      runtime.out.stdout(`NOTE ${skipped} damaged or newer line(s) in ${log.path} were skipped, so a burst's hires may count too few`);
     }
     if (!args.switches.has('yes')) {
       runtime.out.stdout(`PREVIEW hire ${what}; nothing written (add --yes to write)`);
-      runtime.out.stdout(caps);
       rehireText.forEach((line) => runtime.out.stdout(line));
       if (headroom.short.length > 0) {
         runtime.out.stdout(`NOTE ${noRoomText(`hire ${request.id}`, headroom)}; --yes refuses until there is room`);
@@ -169,11 +167,10 @@ export async function hire(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
     if (headroom.short.length > 0) {
       throw new RefusedError(noRoomText(`hire ${request.id}`, headroom));
     }
-    // The log first: a hire logged for a session the config does not hold counts toward no cap.
+    // The log first: a hire logged for a session the config does not hold counts toward no burst's hires.
     await log.append(record);
     const backup = await writeConfigWithBackup(files, { configPath: load.path, backupsDir: kit.paths.backups, backupName: HIRE_BACKUP_NAME }, plan.value.config, clock);
     runtime.out.stdout(`HIRED ${what}; the old config is at ${backup}`);
-    runtime.out.stdout(caps);
     rehireText.forEach((line) => runtime.out.stdout(line));
     runtime.out.stdout(`NEXT give it its first task: ${KIT_NAME} add --owner ${record.session} --title "<task>" --description "<what and why>" --session ${by}; ${openStepOf(record.session, rehire)}`);
     return EXIT.ok;
