@@ -619,7 +619,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       (a build, a test run, a database script) under the host lock, so the host runs one at a time, and at
       below-normal CPU priority (nice 10 on POSIX), which every process it starts inherits, so your
       terminal and apps win the CPU: waits in line for the lock, kills the step and every process it started after
-      delivery.queue.maxRunMinutes (--max-minutes) and records its start and end in the coordinator's
+      delivery.queue.maxRunMinutes (--max-minutes) and records its start and end in the delivery
       ledger; once the shell that started it ends, it stops waiting for the lock or kills the step (exit
       129); REFUSED from delivery.schedule.queueCutoffUtc to midnight UTC and once its line has not
       moved for delivery.queue.waitMinutes; exit 0 when the command passed, 1 when it failed or was killed. Its

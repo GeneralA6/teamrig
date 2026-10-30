@@ -2,7 +2,7 @@
 
 Many sessions on one host each build, run tests and deploy whenever their change is ready. Left alone, two full test
 suites starve each other of memory, a deploy lands in the middle of another session's measurement, and each session
-ships its own way. teamrig's deploy coordinator puts these steps in one line: queued steps take turns under a host
+ships its own way. teamrig's delivery commands put these steps in one line: queued steps take turns under a host
 lock, every branch merges and deploys the same checked way, and each step goes to a ledger, so a session can find
 the stretches no change touched. The `delivery` keys in the [team config](../configuration.md) set it.
 
