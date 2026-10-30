@@ -12,7 +12,10 @@ export interface SecretsGit {
   staged(dir: string): PatchAdds | undefined;
   /** Whether the repository holds the commit `sha`, a full hex id. */
   isCommit(dir: string, sha: string): boolean;
-  /** The commits of `range`, newest first, each with what its patch adds; a merge adds nothing its parents did not. */
+  /**
+   * The commits of `range`, newest first, each with what its patch adds; a merge adds what its resolution added past
+   * git's own merge of its parents (an evil merge), so a value put in only there is scanned too.
+   */
   commits(dir: string, range: PushRange): CommitAdds[] | undefined;
   /** The folder git runs the hooks of the repository `dir` is in from: `core.hooksPath`, else its git folder's `hooks`. */
   hooksDir(dir: string): string | undefined;
@@ -42,9 +45,11 @@ export function gitSecrets(env: NodeJS.ProcessEnv): SecretsGit {
       return patch === undefined ? undefined : patchAdds(patch);
     },
     isCommit: (dir, sha) => HEX.test(sha) && run(dir, ['cat-file', '-e', `${sha}^{commit}`], QUERY_TIMEOUT_MS) !== undefined,
-    // --root: a `log.showRoot` config off would print no patch for a first commit.
+    // --root: a `log.showRoot` config off would print no patch for a first commit. --diff-merges=remerge (git 2.36+;
+    // an older git fails, so the scan does) diffs a merge against git's own merge of its parents: only what the
+    // resolution added, where a plain log prints no patch for a merge.
     commits: (dir, range) => {
-      const log = run(dir, ['log', '--no-show-signature', '--root', COMMIT_FORMAT, '-p', ...PATCH_FLAGS, ...rangeArgs(range), '--'], PATCH_TIMEOUT_MS);
+      const log = run(dir, ['log', '--no-show-signature', '--root', '--diff-merges=remerge', COMMIT_FORMAT, '-p', ...PATCH_FLAGS, ...rangeArgs(range), '--'], PATCH_TIMEOUT_MS);
       return log === undefined ? undefined : commitsOf(log);
     },
     // --git-path prints the path from `dir`, a relative core.hooksPath already taken from the top folder.

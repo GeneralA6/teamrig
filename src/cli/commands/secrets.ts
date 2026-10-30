@@ -62,7 +62,7 @@ export async function pushed(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   for (const range of ranges) {
     const listed = git.commits(runtime.cwd, range);
     if (listed === undefined) {
-      throw new Error(`git cannot list the commits ${rangeArgs(range).join(' ')} in ${runtime.cwd}`);
+      throw new Error(`git cannot list the commits ${rangeArgs(range).join(' ')} in ${runtime.cwd} (the scan needs git 2.36 or later, to read what a merge's resolution added)`);
     }
     for (const commit of listed) {
       commits.set(commit.sha, commit);
