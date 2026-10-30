@@ -314,11 +314,13 @@ export interface PromptsConfig {
 export type HookAsks = 'ask' | 'refuse';
 
 export interface SecretGuardConfig {
-  /**
-   * What a Bash, PowerShell, Read or Grep call that would print a secret, or whose command line holds one as text, does;
-   * and a file-writing call whose written text holds one outside a secret file.
-   */
+  /** What a Bash, PowerShell, Read or Grep call that would print a secret does. */
   readonly secretReads: SecretReads;
+  /**
+   * What a Bash or PowerShell call whose command line holds a secret as text does, and a file-writing call whose
+   * written text holds one outside a secret file (T1369 R12).
+   */
+  readonly writes: SecretWrites;
   /**
    * The team's own secret files, globs read after the guard's defaults (`.env`, `~/.npmrc`, `~/.ssh/**`...): `~/`
    * starts at home, a glob without a leading `/` or drive matches at any depth, and the last glob that matches a path
@@ -348,11 +350,17 @@ export interface SecretGuardConfig {
 /**
  * A call that would print a secret: a secret file's content (`cat .env`, `Get-Content ~/.npmrc`, the Read tool), the
  * whole environment (`env`, `printenv`, `Get-ChildItem Env:`), a secret variable (`echo $GITHUB_TOKEN`), a
- * Kubernetes secret's data or a dump command's output (`kubectl config view --raw`); or a Bash or PowerShell line that
- * holds a secret as text (a token, credentials in a URL or an `Authorization` header): `deny` refuses it, `ask` asks
- * the human, `allow` lets it run.
+ * Kubernetes secret's data or a dump command's output (`kubectl config view --raw`): `deny` refuses it, `ask` asks the
+ * human, `allow` lets it run.
  */
 export type SecretReads = 'deny' | 'ask' | 'allow';
+
+/**
+ * A call that holds a secret as text: a Bash or PowerShell line with a token, credentials in a URL or an
+ * `Authorization` header in it, or a Write, Edit, MultiEdit or NotebookEdit whose text holds one outside a secret file:
+ * `deny` refuses it, `ask` asks the human, `allow` lets it run.
+ */
+export type SecretWrites = 'deny' | 'ask' | 'allow';
 
 /**
  * The opt-in hook that lets a Bash or PowerShell line run without a permission prompt when every command in it
@@ -410,6 +418,12 @@ export const SECRET_READS: readonly SecretReads[] = ['deny', 'ask', 'allow'];
 
 export function isSecretReads(value: unknown): value is SecretReads {
   return SECRET_READS.some((choice) => choice === value);
+}
+
+export const SECRET_WRITES: readonly SecretWrites[] = ['deny', 'ask', 'allow'];
+
+export function isSecretWrites(value: unknown): value is SecretWrites {
+  return SECRET_WRITES.some((choice) => choice === value);
 }
 
 export const COMMIT_GATES = ['off', 'warn', 'refuse'] as const;

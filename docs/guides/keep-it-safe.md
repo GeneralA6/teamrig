@@ -169,7 +169,7 @@ placeholder (`postgres://user:password@localhost`) passes, and the reason says t
 env var name, a file path, stdin or `teamrig exec request`. A Write, Edit, MultiEdit or NotebookEdit whose text holds a
 secret is refused the same way, unless it writes a secret file (`.env`), so a real one is kept there and a test builds
 a secret-shaped value at run time from parts. `secretGuard.secretReads` (`deny` by default, `ask` or `allow`)
-sets what such a call gets; `secretGuard.paths`, `secretGuard.envNames` and `secretGuard.commands` add the team's own
+sets what a call that would print a secret gets, and `secretGuard.writes` (the same) one that holds a secret as text; `secretGuard.paths`, `secretGuard.envNames` and `secretGuard.commands` add the team's own
 files, names and dump commands, and a `!` entry keeps one printable. The read-only allow never lets such a line skip
 the prompt
 ([what it cannot see](../../plugins/teamrig/skills/teamrig-guide/hooks.md#before-a-shell-command-or-a-read-the-secret-guard)).

@@ -755,6 +755,10 @@ describe('runCli: hook secret-guard', () => {
     const write = (file_path: string): string => JSON.stringify({ tool_name: 'Write', tool_input: { file_path, content: `send("${token}");` }, cwd: APP });
     assert.equal(decisionOf(await kit.run(['hook', 'secret-guard'], { stdin: write(join(APP, 'src', 'a.ts')) })), 'deny');
     assert.deepEqual((await kit.run(['hook', 'secret-guard'], { stdin: write(join(APP, '.env')) })).stdout, []);
+    const readsOff = new CliHarness({ ...TEAM, secretGuard: { secretReads: 'allow' } });
+    assert.equal(decisionOf(await readsOff.run(['hook', 'secret-guard'], { stdin: write(join(APP, 'src', 'a.ts')) })), 'deny');
+    const writesOff = new CliHarness({ ...TEAM, secretGuard: { writes: 'allow' } });
+    assert.deepEqual((await writesOff.run(['hook', 'secret-guard'], { stdin: write(join(APP, 'src', 'a.ts')) })).stdout, []);
   });
 
   it("asks or lets it run as the team config says, adds the team's own files, and refuses when the config is missing or unreadable", async () => {
