@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { formatConfig } from '../config/load.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { APP, CliHarness, CONFIG_PATH, TEAM, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
+import { CONFIG_LOCK_PATH, configChangedMeanwhile, hired } from '../testing/config-race.ts';
 import { EXIT } from './runtime.ts';
 
 const BACKUP = join(TEAM_HOME, 'backups', 'config.budget.json');
@@ -137,5 +138,17 @@ describe('budget setup', () => {
     assert.equal(result.code, EXIT.ok, result.stdout.join('\n'));
     const text = kit.files.get(CONFIG_PATH);
     assert.deepEqual(text === undefined ? undefined : JSON.parse(text), { ...config, budget: { weeklyLimitW: 1_000_000, enabled: true, overAction: 'ask' } });
+  });
+
+  it('keeps a session hired while it waited for the config lock', async () => {
+    const kit = new CliHarness();
+    const sleep = await configChangedMeanwhile(kit, hired('dave'));
+    const result = await kit.run(['budget', 'setup', '--session', 'lead', '--over', 'ask', '--yes'], { sleep });
+    assert.equal(result.code, EXIT.ok, result.stdout.join('\n'));
+    const text = kit.files.get(CONFIG_PATH);
+    const config: unknown = text === undefined ? undefined : JSON.parse(text);
+    assert.deepEqual(isRecord(config) ? config['sessions'] : undefined, ['lead', 'alpha', 'bravo', 'dave']);
+    assert.deepEqual(budgetIn(kit), { enabled: true, overAction: 'ask' });
+    assert.equal(kit.files.get(CONFIG_LOCK_PATH), undefined);
   });
 });

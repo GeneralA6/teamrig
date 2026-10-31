@@ -1,10 +1,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import { formatConfig } from '../config/load.ts';
 import { parseObject } from '../core/jsonl.ts';
 import { readRegister } from '../register/snapshot.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
 import { CLAUDE_SESSION, CliHarness, CONFIG_PATH, EVENTS_PATH, KIT, RENAMES_PATH, TEAM_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
+import { configChangedMeanwhile, hired } from '../testing/config-race.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { MemoryPathProbe } from '../testing/memory-files.ts';
 import { EXIT } from './runtime.ts';
@@ -141,7 +143,7 @@ describe('team split', () => {
       'FILES bravo: none kept',
       'RENAMES 1 line(s) moved',
       `CREATED ${join(WEB, 'config.json')}`,
-      `TRIMMED ${CONFIG_PATH}: sessions alpha, bravo left`,
+      `TRIMMED ${CONFIG_PATH}: sessions alpha, bravo left; the old config is at ${join(TEAM_HOME, 'backups', 'config.split.json')}`,
       'VERIFIED 1 task(s) read the same in web, and app sends each there',
       'NEXT reopen each moved session from its team: teamrig open web/alpha; teamrig open web/bravo',
     ]) {
@@ -160,6 +162,16 @@ describe('team split', () => {
     assert.equal(await kit.files.read(RENAMES_PATH), '');
     assert.match((await kit.files.read(join(WEB, 'state', 'renames.jsonl'))) ?? '', /"to":"bee"/);
     assert.deepEqual(await sessionsIn(kit, CONFIG_PATH), ['lead', 'carol']);
+    assert.deepEqual(await sessionsIn(kit, join(WEB, 'config.json')), ['alpha', 'bravo']);
+    assert.equal(kit.files.get(join(TEAM_HOME, 'backups', 'config.split.json')), formatConfig(TEAM));
+  });
+
+  it("trims the parent's config as it reads under the config lock, keeping a session hired meanwhile", async () => {
+    const kit = await withTask();
+    const sleep = await configChangedMeanwhile(kit, hired('dave'));
+    const result = await split(kit, WRITE, 'lead', { sleep });
+    assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
+    assert.deepEqual(await sessionsIn(kit, CONFIG_PATH), ['lead', 'carol', 'dave']);
     assert.deepEqual(await sessionsIn(kit, join(WEB, 'config.json')), ['alpha', 'bravo']);
   });
 

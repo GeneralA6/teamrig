@@ -1,5 +1,5 @@
 import { isAbsolute, resolve } from 'node:path';
-import { writeConfigWithBackup } from '../../config/load.ts';
+import { isDeepStrictEqual } from 'node:util';
 import { CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from '../../config/limits.ts';
 import { CONFLICT_WINNERS, isConflictWinner, type ConflictWinner, type KitConfig, type RuleConflict } from '../../config/types.ts';
 import { clipEnd } from '../../core/clip.ts';
@@ -16,7 +16,7 @@ import { lineHash } from '../../inbox/line-hash.ts';
 import { formatUtcDay } from '../../core/time.ts';
 import { noPositionals, onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
 import { callerOf, listOf } from '../inputs.ts';
-import { checkedNextConfig, configFileJson, leadOnly, openTeamKit, projectFolder, requireConfig, rosterOf, type Kit } from '../kit.ts';
+import { checkedNextConfig, configFileJson, configLockOf, leadOnly, openTeamKit, projectFolder, requireConfig, rosterOf, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { keptRulesAboveOf, teamRulesFilesOf } from '../team-rules.ts';
 import { loadTree } from '../tree.ts';
@@ -233,24 +233,32 @@ async function leadConfig(args: ParsedArgs, runtime: CliRuntime, what: string): 
   return { kit, config };
 }
 
+/** A kept-rules change: the rules `config` read when it was planned, and the rules to write in their place. */
+interface ConflictsChange {
+  readonly config: KitConfig;
+  readonly conflicts: readonly RuleConflict[];
+}
+
 /**
  * Writes the next recorded rules with --yes, keeping the old config first, and says what it did; without --yes it
- * checks the next config and writes nothing.
+ * checks the next config and writes nothing. Under the config lock it reads the file again, keeping a change other
+ * keys took meanwhile (a hire), and refuses when the kept rules it was planned on changed meanwhile.
  */
-async function saveConflicts(args: ParsedArgs, runtime: CliRuntime, kit: Kit, conflicts: readonly RuleConflict[], what: string, done: string): Promise<void> {
-  const json: JsonRecord = { ...(await configFileJson(runtime, kit.load.path)), ruleConflicts: conflicts };
-  checkedNextConfig(json);
-  if (!args.switches.has('yes')) {
-    runtime.out.stdout(`PREVIEW ${what}; nothing written (add --yes to write)`);
-    return;
-  }
-  const backup = await writeConfigWithBackup(
-    runtime.files,
-    { configPath: kit.load.path, backupsDir: kit.paths.backups, backupName: RULES_BACKUP_NAME },
-    json,
-    runtime.clock,
-  );
-  runtime.out.stdout(`${done}; the old config is at ${backup}`);
+async function saveConflicts(args: ParsedArgs, runtime: CliRuntime, kit: Kit, change: ConflictsChange, what: string, done: string): Promise<void> {
+  await configLockOf(runtime, kit, change.config).run(async (writer) => {
+    const current = await configFileJson(runtime, kit.load.path);
+    if (!isDeepStrictEqual(checkedNextConfig(current).ruleConflicts, change.config.ruleConflicts)) {
+      throw new RefusedError(`the team's kept local rules changed while this ran; run \`${KIT_NAME} rules\` again`);
+    }
+    const json: JsonRecord = { ...current, ruleConflicts: change.conflicts };
+    checkedNextConfig(json);
+    if (!args.switches.has('yes')) {
+      runtime.out.stdout(`PREVIEW ${what}; nothing written (add --yes to write)`);
+      return;
+    }
+    const backup = await writer.write(json, RULES_BACKUP_NAME);
+    runtime.out.stdout(`${done}; the old config is at ${backup}`);
+  });
 }
 
 /**
@@ -301,7 +309,7 @@ export async function keep(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   }
   const next = kept === undefined ? [...conflicts, record] : conflicts.map((conflict, index) => (index === same ? record : conflict));
   const number = kept === undefined ? next.length : same + 1;
-  await saveConflicts(args, runtime, kit, next, `keep ${label}`, `KEPT ${number} ${label}`);
+  await saveConflicts(args, runtime, kit, { config, conflicts: next }, `keep ${label}`, `KEPT ${number} ${label}`);
   if (wins === 'teamrig') {
     runtime.out.stdout(
       `WARN the line stays and rule ${ruleLabel(rule)} wins over it, but a session still reads the line and may follow it: removing or rewriting it is safer`,
@@ -390,7 +398,7 @@ export async function forget(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     args,
     runtime,
     kit,
-    conflicts.filter((_, index) => index !== number - 1),
+    { config, conflicts: conflicts.filter((_, index) => index !== number - 1) },
     `forget ${label}`,
     `FORGOT ${label}`,
   );

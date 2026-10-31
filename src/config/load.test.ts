@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { formatConfig, loadConfig, writeMigration } from './load.ts';
+import { formatConfig, loadConfig, migrationBackupName, writeConfigWithBackup } from './load.ts';
 import type { ConfigMigration } from './migrate.ts';
 import { CONFIG_VERSION } from './types.ts';
 
@@ -62,13 +62,14 @@ describe('loadConfig', () => {
   });
 });
 
-describe('writeMigration', () => {
+describe('writeConfigWithBackup', () => {
   const pending = { fromVersion: 1, toVersion: 2, changes: ['added flag'], firstRelease: '9.1.0', migrated: { ...ROSTER, configVersion: 2, flag: true } };
+  const target = { configPath: CONFIG, backupsDir: BACKUPS, backupName: migrationBackupName(pending) };
 
-  it('backs up the original before writing the migrated config', async () => {
+  it('backs up the original before writing the new config', async () => {
     const original = '{"configVersion": 1}\n';
     const files = new MemoryFiles({ [CONFIG]: original });
-    const backup = await writeMigration(files, CONFIG, BACKUPS, pending, new FakeClock(0));
+    const backup = await writeConfigWithBackup(files, target, pending.migrated, new FakeClock(0));
     assert.equal(backup.replaceAll('\\', '/'), `${BACKUPS}/config.v1.json`);
     assert.equal(files.get(backup), original);
     assert.equal(files.get(CONFIG), formatConfig(pending.migrated));
@@ -77,9 +78,9 @@ describe('writeMigration', () => {
   it('never overwrites an earlier backup', async () => {
     const files = new MemoryFiles({ [CONFIG]: 'new', [`${BACKUPS}/config.v1.json`]: 'old' });
     const clock = new FakeClock(Date.UTC(2026, 0, 2, 3, 4));
-    const first = await writeMigration(files, CONFIG, BACKUPS, pending, clock);
+    const first = await writeConfigWithBackup(files, target, pending.migrated, clock);
     await files.write(CONFIG, 'newer');
-    const second = await writeMigration(files, CONFIG, BACKUPS, pending, clock);
+    const second = await writeConfigWithBackup(files, target, pending.migrated, clock);
     assert.equal(first.replaceAll('\\', '/'), `${BACKUPS}/config.v1.202601020304.json`);
     assert.equal(second.replaceAll('\\', '/'), `${BACKUPS}/config.v1.202601020304-1.json`);
     assert.equal(files.get(`${BACKUPS}/config.v1.json`), 'old');
@@ -88,6 +89,6 @@ describe('writeMigration', () => {
   });
 
   it('refuses when the file vanished', async () => {
-    await assert.rejects(writeMigration(new MemoryFiles(), CONFIG, BACKUPS, pending, new FakeClock(0)), /disappeared/);
+    await assert.rejects(writeConfigWithBackup(new MemoryFiles(), target, pending.migrated, new FakeClock(0)), /disappeared/);
   });
 });
