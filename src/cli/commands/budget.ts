@@ -20,6 +20,7 @@ import { ExtraLog, type ExtraEntry } from '../../budget/extra.ts';
 import { formatPct, formatUsd } from '../../budget/format.ts';
 import { activeGroupLift, activeLift, decideLift, LiftLog, liftText, parentBudgetText, type Lift, type LiftNames } from '../../budget/lift.ts';
 import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID, type Measured } from '../../budget/measure.ts';
+import { paceLineOfWeek } from '../../budget/pace.ts';
 import { budgetSplitOf, crossLiftPlaceOf, dailyBudgetOf, groupPartsOf, liftPlaceOf, liftWeekPctOf, teamPartOf, type BudgetSplit, type TeamsOnAccount } from '../../budget/parts.ts';
 import { fundForDay, isPaused, pausableOf } from '../../budget/pause.ts';
 import { nextPeriod, sightOf, type Period } from '../../budget/period.ts';
@@ -632,15 +633,26 @@ export async function extra(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   return EXIT.ok;
 }
 
-/** Where the status line saves its snapshot, and what it shows. */
+/** Where the status line saves its snapshot, what it shows, and the budget its pace line follows. */
 interface StatusLineSetup {
   readonly snapshotDir: string;
   readonly show: StatusLineConfig;
+  /** The team's budget; undefined outside a team, where no pace line is shown. */
+  readonly budget: BudgetConfig | undefined;
+}
+
+/** What the status line shows, and the budget its pace line follows. */
+type StatusLineShown = Pick<StatusLineSetup, 'show' | 'budget'>;
+
+/** What the status line reads beside the snapshot: the session's effort level and where the team's pace line stands. */
+interface StatusLineReading {
+  readonly effort: string | undefined;
+  readonly pacePct: number | undefined;
 }
 
 /** The status line setup of the team the session works in; outside a team, or with its config unreadable, the kit's default folder and display. */
 async function statusLineSetup(runtime: CliRuntime, cwd: string): Promise<StatusLineSetup> {
-  const fallback: StatusLineSetup = { snapshotDir: defaultSnapshotDir(resolveKitHome(runtime.env, runtime.userHome)), show: DEFAULT_STATUS_LINE };
+  const fallback: StatusLineSetup = { snapshotDir: defaultSnapshotDir(resolveKitHome(runtime.env, runtime.userHome)), show: DEFAULT_STATUS_LINE, budget: undefined };
   const found = await resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [cwd === '' ? undefined : cwd, runtime.cwd]));
   if (found.kind !== 'team') {
     return fallback;
@@ -649,22 +661,32 @@ async function statusLineSetup(runtime: CliRuntime, cwd: string): Promise<Status
   if (kit.load.status !== 'loaded') {
     return fallback;
   }
-  return { snapshotDir: snapshotDirOf(kit.load.config.budget, kit.paths), show: kit.load.config.statusLine };
+  const { budget, statusLine } = kit.load.config;
+  return { snapshotDir: snapshotDirOf(budget, kit.paths), show: statusLine, budget };
 }
 
 /**
- * The session's effort level and where the session in `dir` works, as far as `show` asks: git is asked only for a
- * branch it shows, and for the commit only on a detached HEAD.
+ * Where the team's pace line stands at `now` in the week the snapshot reads, when the team shows it: undefined outside
+ * a team, with no week reading, or once that week reset.
  */
-function statusLineView(git: Pick<RepoState, 'branch' | 'head'>, dir: string, show: StatusLineConfig, effort: string | undefined): StatusLineView {
+function pacePctOf(snapshot: StatusSnapshot, shown: StatusLineShown, now: number): number | undefined {
+  const week = snapshot.rateLimits?.sevenDay ?? null;
+  return shown.show.pace && shown.budget !== undefined && week !== null ? paceLineOfWeek(week.resetsAt, shown.budget, now) : undefined;
+}
+
+/**
+ * The session's reading and where the session in `dir` works, as far as `show` asks: git is asked only for a branch
+ * it shows, and for the commit only on a detached HEAD.
+ */
+function statusLineView(git: Pick<RepoState, 'branch' | 'head'>, dir: string, show: StatusLineConfig, reading: StatusLineReading): StatusLineView {
   const branch = show.branch ? git.branch(dir) : undefined;
   const commit = show.branch && branch === undefined ? git.head(dir) : undefined;
   return {
-    ...(effort === undefined ? {} : { effort }),
+    ...(reading.effort === undefined ? {} : { effort: reading.effort }),
     ...(show.folder ? { folder: basename(dir) } : {}),
     ...(branch === undefined ? {} : { branch }),
     ...(commit === undefined ? {} : { commit }),
-    resume: show.resume,
+    ...(reading.pacePct === undefined ? {} : { pacePct: reading.pacePct }),
   };
 }
 
@@ -692,8 +714,8 @@ async function pruneQuietly(runtime: CliRuntime, dir: string): Promise<void> {
  * session began to show it, and when it last showed another), folds it into the folder's week summary (the
  * newest reading, which readers open instead of every snapshot), removes the folder's snapshots written more
  * than 8 days ago (at most one sweep an hour), and prints a short status: the model and its effort level, the
- * session's folder and branch, the plan's use and the command that resumes the session, as the team's `statusLine`
- * config shows them. It always exits 0, so a bad input or a full disk never breaks the status bar; what
+ * session's folder and branch, and the plan's use, the week's beside where the team's pace line stands, as the
+ * team's `statusLine` config shows them. It always exits 0, so a bad input or a full disk never breaks the status bar; what
  * went wrong goes to stderr. With --pass it prints the status input again instead of its own status, for
  * the status line after it in a pipe (`statusline install` puts it in front of one already there).
  */
@@ -711,10 +733,10 @@ export async function statusline(args: ParsedArgs, runtime: CliRuntime): Promise
     runtime.out.stderr('teamrig statusline: the status input is not Claude Code status JSON with a session id; nothing saved');
     return EXIT.ok;
   }
-  let show = DEFAULT_STATUS_LINE;
+  let shown: StatusLineShown = { show: DEFAULT_STATUS_LINE, budget: undefined };
   try {
     const setup = await statusLineSetup(runtime, snapshot.cwd);
-    show = setup.show;
+    shown = setup;
     const path = join(setup.snapshotDir, `${snapshot.sessionId}.json`);
     const previous = await runtime.files.read(path);
     const dated = datedSnapshot(snapshot, previous === undefined ? undefined : parseSnapshot(previous));
@@ -725,6 +747,7 @@ export async function statusline(args: ParsedArgs, runtime: CliRuntime): Promise
     runtime.out.stderr(`teamrig statusline: the snapshot was not saved: ${errorMessage(error)}`);
   }
   const dir = snapshot.cwd === '' ? runtime.cwd : snapshot.cwd;
-  runtime.out.stdout(pass ? passed : statusLineText(snapshot, statusLineView(runtime.git, dir, show, effortOfStatus(input))));
+  const reading: StatusLineReading = { effort: effortOfStatus(input), pacePct: pacePctOf(snapshot, shown, runtime.clock.now()) };
+  runtime.out.stdout(pass ? passed : statusLineText(snapshot, statusLineView(runtime.git, dir, shown.show, reading)));
   return EXIT.ok;
 }

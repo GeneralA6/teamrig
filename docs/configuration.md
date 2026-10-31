@@ -602,7 +602,7 @@ What teamrig statusline shows beside the model and the plan's use of the week.
 | --- | --- | --- | --- |
 | `folder` | boolean | `true` | The name of the session's folder. |
 | `branch` | boolean | `true` | The branch checked out there, or the commit of a detached HEAD. |
-| `resume` | boolean | `true` | The command that resumes the session: claude --resume \<session id>. |
+| `pace` | boolean | `true` | Where the team's pace line stands now, beside the week's use, as in week 63% (pace 53%): the pace line of the seven days before the week's reset, by the team's budget.targetPct, budget.paceEndHoursBeforeReset and budget.quietHours. Outside a team, none. |
 
 ## `launch.*`
 

@@ -8,6 +8,7 @@ import {
   dayPacePct,
   hasRoom,
   nextConfiguredReset,
+  paceLineOfWeek,
   paceLinePct,
   readPace,
   resolveReset,
@@ -112,6 +113,26 @@ describe('weekWindow and paceLinePct', () => {
     const asleep = { activeMs: (): number => 0 };
     const half = window.start + (window.paceEnd - window.start) / 2;
     assert.equal(round(paceLinePct(window, 99.5, half, asleep)), 49.75);
+  });
+});
+
+describe('paceLineOfWeek', () => {
+  const window = weekWindow(RESET, 1);
+  const evening = at('2026-10-18T22:00:00Z');
+
+  it("stands where the pace line of the seven days before the reset does, by the budget's target and pace end", () => {
+    assert.equal(paceLineOfWeek(RESET, DEFAULT_BUDGET, evening), paceLinePct(window, 99.5, evening, EVEN));
+    assert.equal(paceLineOfWeek(RESET, { ...DEFAULT_BUDGET, targetPct: 80, paceEndHoursBeforeReset: 0 }, evening), paceLinePct(weekWindow(RESET, 0), 80, evening, EVEN));
+  });
+
+  it("counts only the active time outside the budget's quiet hours", () => {
+    const quietHours = { startUtc: '22:00', endUtc: '06:00', action: 'ask' } as const;
+    assert.equal(round(paceLineOfWeek(RESET, { ...DEFAULT_BUDGET, quietHours }, evening) ?? 0), round((99.5 * 80) / 112));
+  });
+
+  it('is undefined once the week reset, so a stale reading shows no pace', () => {
+    assert.equal(paceLineOfWeek(RESET, DEFAULT_BUDGET, RESET), undefined);
+    assert.equal(paceLineOfWeek(RESET, DEFAULT_BUDGET, RESET + MS_PER_HOUR), undefined);
   });
 });
 

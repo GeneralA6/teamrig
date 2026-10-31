@@ -1302,9 +1302,9 @@ describe('parseConfig', () => {
 
   it('reads what the status line shows, each part on unless turned off, refusing a value that is not true or false', () => {
     assert.deepEqual(parseConfig(ROSTER).config.statusLine, DEFAULT_STATUS_LINE);
-    const set = parseConfig({ ...ROSTER, statusLine: { resume: false } });
+    const set = parseConfig({ ...ROSTER, statusLine: { pace: false } });
     assert.deepEqual(set.issues, []);
-    assert.deepEqual(set.config.statusLine, { folder: true, branch: true, resume: false });
+    assert.deepEqual(set.config.statusLine, { folder: true, branch: true, pace: false });
     const bad = parseConfig({ ...ROSTER, statusLine: { branch: 'no' } });
     assert.deepEqual(paths(bad.issues), ['statusLine.branch']);
     assert.deepEqual(bad.config.statusLine, DEFAULT_STATUS_LINE);

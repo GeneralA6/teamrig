@@ -1352,7 +1352,7 @@
       "properties": {
         "folder": { "description": "The name of the session's folder.", "type": "boolean", "default": true },
         "branch": { "description": "The branch checked out there, or the commit of a detached HEAD.", "type": "boolean", "default": true },
-        "resume": { "description": "The command that resumes the session: claude --resume <session id>.", "type": "boolean", "default": true }
+        "pace": { "description": "Where the team's pace line stands now, beside the week's use, as in week 63% (pace 53%): the pace line of the seven days before the week's reset, by the team's budget.targetPct, budget.paceEndHoursBeforeReset and budget.quietHours. Outside a team, none.", "type": "boolean", "default": true }
       }
     },
     "launch": {

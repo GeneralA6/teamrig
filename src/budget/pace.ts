@@ -1,6 +1,6 @@
 import { WEEKDAYS, type BudgetConfig, type BudgetReset } from '../config/types.ts';
 import { MS_PER_DAY, MS_PER_HOUR, MS_PER_MINUTE, MS_PER_WEEK } from '../core/time.ts';
-import type { ActivityProfile } from './active-time.ts';
+import { DailyProfile, type ActivityProfile } from './active-time.ts';
 import type { PastLimit } from './extra.ts';
 
 /**
@@ -60,6 +60,18 @@ export function paceLinePct(window: WeekWindow, targetPct: number, at: number, p
   }
   const active = profile.activeMs(window.start, window.paceEnd);
   return active > 0 ? (targetPct * profile.activeMs(window.start, at)) / active : (targetPct * (at - window.start)) / span;
+}
+
+/**
+ * Where the pace line of the week resetting at `reset` stands at `now`, the week taken as the seven days before the
+ * reset and its active time from the budget's quiet hours: the status line's cheap reading, which needs no stored
+ * period. `teamrig budget` counts from a reset inside the week instead, once it saw one. Undefined once the week reset.
+ */
+export function paceLineOfWeek(reset: number, budget: Pick<BudgetConfig, 'targetPct' | 'paceEndHoursBeforeReset' | 'quietHours'>, now: number): number | undefined {
+  if (reset <= now) {
+    return undefined;
+  }
+  return paceLinePct(weekWindow(reset, budget.paceEndHoursBeforeReset), budget.targetPct, now, DailyProfile.ofQuietHours(budget.quietHours));
 }
 
 export type PaceBudget = Pick<BudgetConfig, 'targetPct' | 'paceEndHoursBeforeReset' | 'paceTolerancePct'>;
