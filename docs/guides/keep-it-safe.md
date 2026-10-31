@@ -193,7 +193,8 @@ A secret typed or pasted into a prompt goes the same way: the prompt hook stops 
 credentials in a URL, an Authorization or API key header, a quoted literal given to a secret-like name or a
 `register.secretPatterns` match before Claude reads it, keeps it out of the transcript and removes the value from
 Claude Code's prompt history and paste cache. A placeholder (`${TOKEN}`, `<token>`, `changeme`) or a name given to a
-secret-like key (`TOKEN="SOME_READ_TOKEN"`) passes, judged on the value alone. The reason says to send the secret's name or the file it is kept in instead, and to rotate it
+secret-like key (`TOKEN="SOME_READ_TOKEN"`) passes, judged on the value alone, and so does a uuid given to a claim,
+lock, lease or fencing token (`claimToken`). The reason says to send the secret's name or the file it is kept in instead, and to rotate it
 ([Each prompt](../../plugins/teamrig/skills/teamrig-guide/hooks.md#each-prompt)).
 
 Your own terminal keeps what you type too: PowerShell saves each line typed in its console to its history file, a

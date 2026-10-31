@@ -163,8 +163,9 @@ names only the secret's shape, says to send its name or the file it is kept in i
 leaked: rotate it. A `password: x` in prose is not stopped, nor a value that only stands in for a secret, judged on
 the value alone: a reference (`${TOKEN}`, `<token>`, `%TOKEN%`), a masked or cut-short value (`*****`, `ab12...`), a
 stand-in word (`changeme`, `your_token`), jwt.io's sample token, or a name given to a secret-like key
-(`TOKEN="SOME_READ_TOKEN"`). A real password on `localhost` is still a secret. The hook
-removes every line of Claude Code's prompt history (`history.jsonl`) and every pasted text (`paste-cache/`) that holds
+(`TOKEN="SOME_READ_TOKEN"`). Nor is a uuid, alone or after its holder's id (`worker-7#<uuid>`), given to a claim, lock,
+lease or fencing token (`claimToken`, `LOCK_TOKEN`): it marks who holds a claim and grants nothing, and under any other
+name it is still a secret. A real password on `localhost` is still a secret. The hook removes every line of Claude Code's prompt history (`history.jsonl`) and every pasted text (`paste-cache/`) that holds
 the value, and records the stopped prompt in `~/.teamrig/history-clean/pending/`, so each later prompt cleans again
 until its line is found or a clean runs 10 minutes after the stop (a day at most). Only the value's hash is kept, and
 `history-clean/log.jsonl` logs counts, never a value. A stopped prompt is not written to the turn log and is shown no
@@ -436,8 +437,8 @@ header, the key of an API key header (`x-api-key: ...`), a quoted literal of 12 
 secret-like name (`api_key = "..."`), and the team's own `register.secretPatterns`. A value that only stands in for a
 secret passes: a reference (`${DB_URI}`, `$env:DB_URI`, `<db_password>`, `%TOKEN%`), a placeholder word
 (`postgres://user:password@localhost`, `changeme`, `your_token`), a masked or cut value (`ab***yz`, `ab12...`), a
-framed value under 6 characters, a regex that searches for the shape (`postgres://[^:]+:[^@]+@`), and a published
-sample token. The reason names the shape, never the value: "teamrig secret guard: this call's command line holds a
+framed value under 6 characters, a regex that searches for the shape (`postgres://[^:]+:[^@]+@`), a uuid given to a
+claim, lock, lease or fencing token (`claimToken: "<uuid>"`), and a published sample token. The reason names the shape, never the value: "teamrig secret guard: this call's command line holds a
 secret as text (credentials in a URL). Pass it by reference (its env var name, a file path, stdin,
 `teamrig exec request`), never as text. [secretGuard.writes]"
 
