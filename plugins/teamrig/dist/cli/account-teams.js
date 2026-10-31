@@ -46,11 +46,14 @@ export async function accountWeekOn(runtime, budget, paths, now) {
     const configDir = claudeConfigDir(runtime.env, runtime.userHome);
     const account = accountOf(budget, configDir);
     const statusUse = await statusUseOf(runtime, teams, budget, paths, { account, configDir, now });
-    const holder = accountHolderOf(tree, paths.team, account, (team) => {
+    const accountOfTeam = (team) => {
         const loaded = teams.get(team);
         return loaded === undefined ? undefined : accountOf(loaded.config.budget, configDir);
-    });
-    return { statusUse, paths: teams.get(holder)?.kit.paths ?? paths };
+    };
+    const holder = accountHolderOf(tree, paths.team, account, accountOfTeam);
+    const keepsHere = (team) => team !== paths.team && accountOfTeam(team) === account && accountHolderOf(tree, team, account, accountOfTeam) === holder;
+    const peers = [...teams].filter(([team]) => keepsHere(team)).map(([team, loaded]) => ({ team, usage: loaded.kit.paths.usage, ids: loaded.roster.ids }));
+    return { statusUse, paths: teams.get(holder)?.kit.paths ?? paths, keeper: holder, peers };
 }
 async function statusUseOf(runtime, teams, budget, paths, scope) {
     const fold = await accountWeekOf(runtime.files, teams, snapshotDirOf(budget, paths), scope);

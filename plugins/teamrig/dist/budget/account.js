@@ -12,7 +12,7 @@ export function accountOf(budget, configDir) {
 /**
  * The team that keeps the week's files of a team's account (its period, meter log and extra-usage log, budget/team-week.ts):
  * the highest team above it reached through teams all on `account`, else the team itself. A child team on its parent's
- * account so reads and writes its parent's files, and learns the account's W per percent from them; a team on another
+ * account so reads and writes its parent's files, logging its own W in their meter log (T1669); a team on another
  * account than its parent, a root, a team whose parents go round a loop and a separate tree on the same account each keep
  * their own. `accountOfTeam` gives each loaded team's account (`accountOf`), undefined for a team with no config.
  */
