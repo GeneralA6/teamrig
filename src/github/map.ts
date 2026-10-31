@@ -27,6 +27,8 @@ export interface ImportRules {
   readonly lead: string;
   /** The secret shapes, the team's `register.secretPatterns` among them: a body that matches one is left out. */
   readonly secrets: SecretScanner;
+  /** The label that lets an outsider's issue in (`github.acceptLabel`, trust.ts). */
+  readonly acceptLabel: string;
 }
 
 /** The status an issue's state calls for: open, or the end it was closed with. */
@@ -54,6 +56,7 @@ export function importRules(config: KitConfig): ImportRules {
     repoSessions: new Map(Object.entries(config.github.sessions)),
     lead: config.roles.lead,
     secrets: new SecretScanner(config.register.secretPatterns),
+    acceptLabel: config.github.acceptLabel,
   };
 }
 
