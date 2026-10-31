@@ -522,6 +522,12 @@ export interface GithubConfig {
   readonly closedDays: number;
   /** How often the hooks start a sync on their own, in minutes, once for the whole team; 0 leaves it to `gh sync --yes`. */
   readonly everyMinutes: number;
+  /**
+   * The label that lets an issue by an author outside the repository (not its owner, an organization member or a
+   * collaborator) become a task: it counts when someone other than the author added it last and the title and body
+   * were not edited after that. Matched without case.
+   */
+  readonly acceptLabel: string;
 }
 
 /** The small-commits rule: one logical change per commit, and a reason line on any commit over the bounds. */

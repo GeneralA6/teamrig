@@ -1127,6 +1127,14 @@
           "minimum": 0,
           "maximum": 1440,
           "default": 15
+        },
+        "acceptLabel": {
+          "description": "The label that lets an issue by an author outside the repository (not its owner, an organization member or a collaborator) become a task: it counts when someone other than the author added it last and the title and body were not edited after that. Matched without case.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 50,
+          "pattern": "^[^\\r\\n]+$",
+          "default": "teamrig"
         }
       }
     },

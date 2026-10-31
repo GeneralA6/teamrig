@@ -25,7 +25,7 @@ describe('parseConfig', () => {
     assert.deepEqual(config.leadBoundary, { enabled: true, ownPaths: [], searchNudgeAt: 3 });
     assert.deepEqual(config.turnLog, { enabled: true, keepHours: 24 });
     assert.deepEqual(config.tests, { maxFailureChars: 4000 });
-    assert.deepEqual(config.github, { repos: [], owners: {}, sessions: {}, closedDays: 14, everyMinutes: 15 });
+    assert.deepEqual(config.github, { repos: [], owners: {}, sessions: {}, closedDays: 14, everyMinutes: 15, acceptLabel: 'teamrig' });
     assert.deepEqual(config.register, DEFAULT_REGISTER);
     assert.deepEqual(config.budget, DEFAULT_BUDGET);
     assert.deepEqual(config.delivery, {
@@ -290,7 +290,14 @@ describe('parseConfig', () => {
       github: { repos: ['Acme/Web', 'acme/docs.site'], owners: { OctoCat: 'bravo' }, closedDays: 365, everyMinutes: 0 },
     });
     assert.deepEqual(issues, []);
-    assert.deepEqual(config.github, { repos: ['acme/web', 'acme/docs.site'], owners: { octocat: 'bravo' }, sessions: {}, closedDays: 365, everyMinutes: 0 });
+    assert.deepEqual(config.github, {
+      repos: ['acme/web', 'acme/docs.site'],
+      owners: { octocat: 'bravo' },
+      sessions: {},
+      closedDays: 365,
+      everyMinutes: 0,
+      acceptLabel: 'teamrig',
+    });
     for (const wrong of [0, 366]) {
       const parsed = parseConfig({ ...ROSTER, github: { closedDays: wrong } });
       assert.deepEqual(paths(parsed.issues), ['github.closedDays']);
@@ -300,6 +307,18 @@ describe('parseConfig', () => {
       const parsed = parseConfig({ ...ROSTER, github: { everyMinutes: wrong } });
       assert.deepEqual(paths(parsed.issues), ['github.everyMinutes']);
       assert.equal(parsed.config.github.everyMinutes, 15);
+    }
+  });
+
+  it('reads the github accept label as one line of at most 50 characters, else keeps teamrig', () => {
+    const { config, issues } = parseConfig({ ...ROSTER, github: { acceptLabel: 'Accepted by triage' } });
+    assert.deepEqual(issues, []);
+    assert.equal(config.github.acceptLabel, 'Accepted by triage');
+    assert.equal(parseConfig({ ...ROSTER, github: { acceptLabel: 'x'.repeat(50) } }).config.github.acceptLabel, 'x'.repeat(50));
+    for (const wrong of ['', '  ', 'x'.repeat(51), 'a\nb', 7]) {
+      const parsed = parseConfig({ ...ROSTER, github: { acceptLabel: wrong } });
+      assert.deepEqual(paths(parsed.issues), ['github.acceptLabel'], JSON.stringify(wrong));
+      assert.equal(parsed.config.github.acceptLabel, 'teamrig');
     }
   });
 
