@@ -165,9 +165,10 @@ export function coreRuleTexts(config, command, platform, clock) {
             (roles.deliveryOwner === undefined ? '' : ` ${roles.deliveryOwner} owns the delivery flow and fleet health [roles.deliveryOwner].`) +
             (roles.securityReviewer === undefined ? '' : ` ${roles.securityReviewer} reviews privileged commands (\`${command} exec\`) [roles.securityReviewer].`) +
             // The lead tree (config/lead-tree.ts, T781): a member's waits, approvals and pushes go to its leaders, nearest
-            // first, and a leader sets the work order of the sessions under it (T782). No member list prints here: `leads`
-            // has no size limit, so the pack names the key alone.
-            ' Other sessions own their areas. Your leader (the sub-lead listing you [leads], else the lead) sets your work order and staffing, answers your waits;' +
+            // first, and a leader sets the work order of the sessions under it (T782) and lifts their budgets, a sub-lead's
+            // within the group share its own leader gives it (T784). No member list prints here: `leads` has no size limit,
+            // so the pack names the key alone.
+            ' Other sessions own their areas. Your leader (the sub-lead listing you [leads], else the lead) sets your work order, staffing and budget, answers your waits;' +
             " asks to a sub-lead's sessions go through it. Cross-area issues and clashes go to the nearest leader over both, unowned warnings to the lead.",
         'own-change': "Own your change end to end: only the session that made it merges, deploys (when it must run), verifies and fixes or rolls it back; another session's change goes to its owner.",
         messages: messagesRule(config, command) + timesClause(zone, clock.now),
