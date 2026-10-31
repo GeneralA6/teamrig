@@ -20,7 +20,7 @@ const CURSOR = {
   day: '2026-03-02',
   call: CALL,
   patterns: { ...INITIAL_PATTERN_STATE, turn: 3 },
-  misses: { lastAt: 1_700_000_000_000, block: { day: '2026-03-02', calls: 2 } },
+  misses: { lastAt: 1_700_000_000_000, block: { day: '2026-03-02', calls: 2 }, noted: false },
   turn: TURN,
 };
 const STATE: UsageState = {
@@ -123,6 +123,7 @@ describe('parseUsage', () => {
       { ...stored, cursors: { a: { ...cursor, call: 'open' } } },
       { ...stored, cursors: { a: { ...cursor, misses: 'none' } } },
       { ...stored, cursors: { a: { ...cursor, misses: { lastAt: -1, block: null } } } },
+      { ...stored, cursors: { a: { ...cursor, misses: { ...cursor.misses, noted: 'yes' } } } },
       { ...stored, cursors: { a: { ...cursor, call: { ...CALL, key: 5 } } } },
       { ...stored, cursors: { a: { ...cursor, call: { ...CALL, day: 3 } } } },
       { ...stored, cursors: { a: { ...cursor, call: { ...CALL, day: 'today' } } } },
@@ -141,6 +142,13 @@ describe('parseUsage', () => {
   it('reads a cursor stored before misses were counted as having seen none', () => {
     const { misses: _misses, ...older } = CURSOR;
     assert.deepEqual(parseUsage(JSON.stringify({ ...stored, cursors: { a: older } }))?.cursors['a'], { ...CURSOR, misses: INITIAL_MISS_STATE });
+  });
+
+  it('reads misses stored before start notes as having no note pending, and keeps a pending one (T1529)', () => {
+    const { noted: _noted, ...olderMisses } = CURSOR.misses;
+    assert.deepEqual(parseUsage(JSON.stringify({ ...stored, v: 3, cursors: { a: { ...CURSOR, misses: olderMisses } } }))?.cursors['a']?.misses, CURSOR.misses);
+    const pending: UsageState = { ...STATE, cursors: { a: { ...CURSOR, misses: { lastAt: 1_700_000_000_000, block: null, noted: true } } } };
+    assert.deepEqual(parseUsage(formatUsage(pending, 1)), pending);
   });
 
   it('reads a file and an open call stored before hours were counted as having no hours', () => {
@@ -241,9 +249,11 @@ describe('usage format', () => {
     'rev',
     'v',
   ];
+  const WRITTEN_3 = [...WRITTEN_2, 'byTask.*.*', 'cursors.*.turn.held.*', 'cursors.*.turn.tasks[]'].sort();
   const WRITTEN: Readonly<Record<number, readonly string[]>> = {
     2: WRITTEN_2,
-    3: [...WRITTEN_2, 'byTask.*.*', 'cursors.*.turn.held.*', 'cursors.*.turn.tasks[]'].sort(),
+    3: WRITTEN_3,
+    4: [...WRITTEN_3, 'cursors.*.misses.noted'].sort(),
   };
 
   /** A state with every field set, none null, so each nested field shows in its file. */

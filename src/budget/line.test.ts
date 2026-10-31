@@ -1,7 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseObject } from '../core/jsonl.ts';
-import { compactLine, promptLine, replyLine, resultsLine, systemLine } from '../testing/transcript-lines.ts';
+import { blockStartLines } from '../hooks/live-tasks.ts';
+import { compactLine, promptLine, replyLine, resultsLine, sessionStartNoteLine, systemLine } from '../testing/transcript-lines.ts';
 import { callOf, parseTranscriptLine, tasksIn } from './line.ts';
 
 const AT = '2026-03-02T10:00:00.000Z';
@@ -211,6 +212,15 @@ describe('parseTranscriptLine', () => {
 
   it('reads a compaction marker', () => {
     assert.deepEqual(parseTranscriptLine(compactLine(AT)), { kind: 'compact', at: Date.parse(AT) });
+  });
+
+  it('reads a SessionStart note holding the start note line as a work-block start, and no other note or text (T1529)', () => {
+    const start = blockStartLines('alpha', { at: 'Mon 03-02 12:00 IST', meetings: undefined, week: undefined }, 'teamrig').join('\n');
+    assert.deepEqual(parseTranscriptLine(sessionStartNoteLine(AT, ['# Team rules', `${start}\nLIVE TASKS of alpha`])), { kind: 'start-note', at: Date.parse(AT) });
+    assert.equal(parseTranscriptLine(sessionStartNoteLine(AT, ['# Team rules', 'LIVE TASKS of alpha'])), undefined, 'a note with no start line');
+    assert.equal(parseTranscriptLine(sessionStartNoteLine(AT, [start], 'UserPromptSubmit')), undefined, 'another hook');
+    assert.equal(parseTranscriptLine(sessionStartNoteLine(AT, [`quoted: ${start}`])), undefined, 'a line that only quotes it');
+    assert.equal(parseTranscriptLine(promptLine(AT, start))?.kind, 'prompt', 'a prompt that quotes it');
   });
 
   it('skips lines it does not count, damaged and torn lines, and replies without readable usage', () => {
