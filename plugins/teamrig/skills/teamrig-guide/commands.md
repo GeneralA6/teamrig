@@ -2375,8 +2375,8 @@ Flags:
 - `--since <time>`: the logon time; a session active after it is left alone (default: now).
 - `--terminal <name>`: the terminal to open the tabs in instead of the configured one.
 - `--home <dir>`: the kit home, when it is not the default.
-- `--tab`: it runs in a tab of its own, as `restore check` opens it: the tab stays 2 seconds once every session is
-  open, else 8 seconds, so you can read what failed.
+- `--tab`: it runs in a tab of its own, as `restore check` opens it: it first writes `run: tab opened` to the log,
+  and the tab stays 2 seconds once every session is open, else 8 seconds, so you can read what failed.
 
 Example:
 
@@ -2400,6 +2400,8 @@ Opened shop-web (continue: mid-turn)
 What runs at logon, once `restore install` has set it up. It drops the recorded sessions no restore needs and, when
 the shutdown killed sessions, opens a tab titled `Restore Claude sessions` that runs `restore run --tab` for them;
 that tab closes by itself once they are open. With no terminal to open, it prints the command to run and exits 3.
+It writes `check: started` to `<home>/restore/restore.log` before it reads anything, then
+`check: <n> to restore, <k> kept`.
 
 Flags:
 
