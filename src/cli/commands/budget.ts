@@ -41,6 +41,7 @@ import {
 import {
   datedSnapshot,
   defaultSnapshotDir,
+  effortOfStatus,
   formatSnapshot,
   parseSnapshot,
   pruneSnapshots,
@@ -651,11 +652,15 @@ async function statusLineSetup(runtime: CliRuntime, cwd: string): Promise<Status
   return { snapshotDir: snapshotDirOf(kit.load.config.budget, kit.paths), show: kit.load.config.statusLine };
 }
 
-/** Where the session in `dir` works, as far as `show` asks: git is asked only for a branch it shows, and for the commit only on a detached HEAD. */
-function statusLineView(git: Pick<RepoState, 'branch' | 'head'>, dir: string, show: StatusLineConfig): StatusLineView {
+/**
+ * The session's effort level and where the session in `dir` works, as far as `show` asks: git is asked only for a
+ * branch it shows, and for the commit only on a detached HEAD.
+ */
+function statusLineView(git: Pick<RepoState, 'branch' | 'head'>, dir: string, show: StatusLineConfig, effort: string | undefined): StatusLineView {
   const branch = show.branch ? git.branch(dir) : undefined;
   const commit = show.branch && branch === undefined ? git.head(dir) : undefined;
   return {
+    ...(effort === undefined ? {} : { effort }),
     ...(show.folder ? { folder: basename(dir) } : {}),
     ...(branch === undefined ? {} : { branch }),
     ...(commit === undefined ? {} : { commit }),
@@ -686,8 +691,8 @@ async function pruneQuietly(runtime: CliRuntime, dir: string): Promise<void> {
  * week and its reset) as a snapshot for `budget`, dated by the session's previous snapshot (when the
  * session began to show it, and when it last showed another), folds it into the folder's week summary (the
  * newest reading, which readers open instead of every snapshot), removes the folder's snapshots written more
- * than 8 days ago (at most one sweep an hour), and prints a short status: the model, the session's
- * folder and branch, the plan's use and the command that resumes the session, as the team's `statusLine`
+ * than 8 days ago (at most one sweep an hour), and prints a short status: the model and its effort level, the
+ * session's folder and branch, the plan's use and the command that resumes the session, as the team's `statusLine`
  * config shows them. It always exits 0, so a bad input or a full disk never breaks the status bar; what
  * went wrong goes to stderr. With --pass it prints the status input again instead of its own status, for
  * the status line after it in a pipe (`statusline install` puts it in front of one already there).
@@ -720,6 +725,6 @@ export async function statusline(args: ParsedArgs, runtime: CliRuntime): Promise
     runtime.out.stderr(`teamrig statusline: the snapshot was not saved: ${errorMessage(error)}`);
   }
   const dir = snapshot.cwd === '' ? runtime.cwd : snapshot.cwd;
-  runtime.out.stdout(pass ? passed : statusLineText(snapshot, statusLineView(runtime.git, dir, show)));
+  runtime.out.stdout(pass ? passed : statusLineText(snapshot, statusLineView(runtime.git, dir, show, effortOfStatus(input))));
   return EXIT.ok;
 }

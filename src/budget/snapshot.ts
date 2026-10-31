@@ -128,6 +128,16 @@ export function snapshotOfStatus(input: string, now: number): StatusSnapshot | u
   };
 }
 
+/**
+ * The session's effort level in Claude Code's status line input (`effort.level`, which Claude Code sends only
+ * for a model that takes one); undefined without it. The status line shows it; the snapshot does not keep it.
+ */
+export function effortOfStatus(input: string): string | undefined {
+  const status = parseObject(input.trim());
+  const effort = status === undefined ? undefined : recordField(status, 'effort');
+  return textOrNull(effort?.['level']) ?? undefined;
+}
+
 function storedWindow(window: RateWindow | null): JsonRecord | null {
   return window === null ? null : { used_percentage: window.usedPct, resets_at: Math.round(window.resetsAt / MS_PER_SECOND) };
 }
@@ -310,8 +320,10 @@ export function weekUseAt(fold: WeekFold, now: number): WeekUse | undefined {
   return best === undefined || best.resetsAt <= now ? undefined : best;
 }
 
-/** What the status line shows beside the snapshot: where the session works, and whether to show how to resume it. */
+/** What the status line shows beside the snapshot: the session's effort level, where it works, and whether to show how to resume it. */
 export interface StatusLineView {
+  /** The session's effort level, shown after the model. */
+  readonly effort?: string;
   /** The session folder's name. */
   readonly folder?: string;
   /** The branch checked out there. */
@@ -334,11 +346,12 @@ function placeText(view: StatusLineView): string {
 }
 
 /**
- * The status line text: the model, where the session works, the plan's use and the command that resumes the
- * session, such as `Opus 5.5, app on main, week 57%, 5h 6%, claude --resume <session id>`.
+ * The status line text: the model and its effort level, where the session works, the plan's use and the command
+ * that resumes the session, such as `Opus 5.5 (high), app on main, week 57%, 5h 6%, claude --resume <session id>`.
  */
 export function statusLineText(snapshot: StatusSnapshot, view: StatusLineView): string {
-  const parts = [snapshot.model ?? 'Claude'];
+  const model = snapshot.model ?? 'Claude';
+  const parts = [view.effort === undefined ? model : `${model} (${view.effort})`];
   const place = placeText(view);
   if (place !== '') {
     parts.push(place);
