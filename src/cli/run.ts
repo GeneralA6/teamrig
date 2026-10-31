@@ -593,9 +593,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       shows the burst and writes nothing
   burst end --reason "<why>"   (the lead only) ends the burst in force early; its hires are due to retire
   statusline [--pass]          Claude Code's status line (status JSON on stdin): saves the week's use
-      for budget and prints the model, folder, branch, week's use and resume command (config
-      statusLine turns parts off); --pass: prints the status JSON again instead, for the status
-      line after it in a pipe
+      for budget and prints the model and its effort, folder, branch, and week's use beside its
+      pace line (config statusLine turns parts off); --pass: prints the status JSON again
+      instead, for the status line after it in a pipe
   statusline install [--yes]   makes teamrig statusline Claude Code's status line, in front of the one
       already there; without --yes it shows the change and writes nothing
   statusline uninstall [--yes] takes it back out: the status line before it returns
