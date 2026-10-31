@@ -224,12 +224,13 @@ turns this off: `register.autoArchive: false` in the team's `config.json`, after
   The week's use in percent comes from status line snapshots (`teamrig statusline install` sets the status line
   up), else from the metered W at the week's W per percent: learned from `state/usage/meter-log.jsonl` (a line
   each time the status line passes a whole percent, fitted once 8 weeks of lines span 10 points; a child team on
-  its parent's account reads and writes the one of the highest team above it on that account), else
+  its parent's account reads and writes the one of the highest team above it on that account, each team logging
+  and fitting only its own lines, with the W its own usage stores metered), else
   `budget.weeklyLimitW`. Today's use is the use now less the use at today's start, each read between the meter
   log's lines by the W metered and held to the status line's percent, so the fitted rate prices only the part past
   the last line; once that use spans 2 points, the sessions' W today counts at today's own W per percent, so their
-  parts add up to the team's day. Past 100% of the week, what is left is the extra-usage pool the lead enters with
-  `teamrig budget extra` (its W per dollar learned from two spent readings, else `budget.extraWPerUsd`), spread the
+  parts add up to the team's day, while it is within 2 times the week's rate either way. Past 100% of the week,
+  what is left is the extra-usage pool the lead enters with `teamrig budget extra` (its W per dollar learned from two spent readings, else `budget.extraWPerUsd`), spread the
   same way. A subagent's W is multiplied by `budget.subagentWeight` (default 1), what
   one W of a helper costs in W of a main session, so all W share one price. A session past its part is held (only
   p1 work wakes it, and it escalates as `budget.escalate` says) only while the team has no room today: everyone's
