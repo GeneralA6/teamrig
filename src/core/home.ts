@@ -155,6 +155,8 @@ export interface TeamPaths {
   readonly teamWeek: string;
   /** The leaders' budget lifts, an append-only log. */
   readonly lifts: string;
+  /** The leaders' budget cuts, an append-only log (budget/cut.ts). */
+  readonly cuts: string;
   /** The lead's bursts and their ends, an append-only log. */
   readonly bursts: string;
   /** The team's hires and retires, an append-only log. */
@@ -283,6 +285,7 @@ export function teamPaths(kitHome: string, team: string, claudeDir: string, over
     extraLog: join(state, 'usage', 'extra-log.jsonl'),
     teamWeek: join(state, 'usage', 'team.week.json'),
     lifts: join(state, 'usage', 'lifts.jsonl'),
+    cuts: join(state, 'usage', 'cuts.jsonl'),
     bursts: join(state, 'usage', 'bursts.jsonl'),
     hires: join(state, 'hires.jsonl'),
     hiresLock: join(state, 'hires.lock'),
