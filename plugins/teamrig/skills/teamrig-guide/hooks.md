@@ -1109,6 +1109,13 @@ it is held: only p0 work wakes it or keeps its idle tab open, and it is escalate
 | `ask` | the leader's line, and the person is asked before each new helper launch |
 | `block` | the leader's line, and new helper launches are refused |
 
+Under a leader's cut ([teamrig budget cut](commands.md#teamrig-budget-cut)), a session is held as soon as it is past
+its part, whatever room the team has, and it is escalated whatever `budget.escalate` says: `Budget: shop-web has
+used 1.1% of the week today; its daily budget is 1.0%. The lead cut it to its own daily budget until 03:00 IDT (the
+end of the budget day). New helpers are refused. More: teamrig budget`. Its leader gets no inbox line, since a leader
+gave the cut, and the model reads `you are past today's budget and the lead cut you to it until 03:00 IDT (the end of
+the budget day)`.
+
 While escalated, the model is told with the next prompt, once per level: `teamrig budget: you are past today's
 budget and the team has no room left today, and it is ahead of its pace line. Finish the step in hand and start
 no new work items or helpers.
@@ -1120,7 +1127,7 @@ leader's line says it goes on with that work past the stop.
 In quiet hours, `budget.quietHours.action` applies to helper launches as well (`ask` or `block`; `warn` only
 says the team rests), and the stronger of the two wins. Nothing else is ever held, so a fix in hand always
 finishes. The lead's own helpers, those of a session a leader lifted (`teamrig budget lift`, always with a
-stop %; a lift of its group does not count), and those of a session with an open or in-progress p0 task always go
+stop %; a lift of its group does not count) and did not cut since, and those of a session with an open or in-progress p0 task always go
 ahead. What each session was shown is kept in `state/usage/warn/<id>.json`.
 
 A burst ([teamrig burst start](commands.md#teamrig-burst-start)) comes the same way, once each. A session in it
