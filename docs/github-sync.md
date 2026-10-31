@@ -110,6 +110,7 @@ ACCESS acme: read with the token saved as teamrig-gh-acme
 REPO acme/web: 2 to add, 0 to change, 5 unchanged
 ADD new gh:acme/web#7 p1 web: "Fix the login redirect"
 ADD new gh:acme/web#9 p2 web: "Add search to the docs"
+LEFT OUT acme/web: 1 open issue(s) by people outside the repository wait for someone to add the "teamrig" label: #12
 REPO acme/api: 0 to add, 0 to change, 3 unchanged
 ACCESS globex: read with the gh login; no token saved as teamrig-gh-globex
 REPO globex/site: 1 to add, 0 to change, 0 unchanged
@@ -118,7 +119,9 @@ PREVIEW nothing was written; teamrig gh sync --yes writes the above as github
 ```
 
 A repository that cannot be read gets a `FAILED` line saying what to fix; its tasks stay as they are and the other
-repositories are read on. `teamrig gh sync --repo acme/web` reads one repository only.
+repositories are read on. A `LEFT OUT` line names, by number only, the open issues by people outside the repository
+that no one accepted yet (at most 20, then how many more); their text is never printed. `teamrig gh sync --repo
+acme/web` reads one repository only.
 
 ## Then it runs on its own
 
@@ -132,6 +135,9 @@ while every session is idle nothing is read; the next turn that ends catches up.
 - `teamrig list` shows such a task with its issue: `T42 open, p1, owner web, from gh:acme/web#7 | Fix the login redirect`.
 - A repository that cannot be read is told to the lead's inbox once, with the `FAILED` reason, and again when every
   repository reads again; it is not repeated at every run.
+- An outsider's issue left out for the first time is told to the lead's inbox once, by ref only, for example
+  `github: GitHub sync left out 1 new open issue(s) by people outside the repository: gh:acme/web#12; add the
+  "teamrig" label to one on GitHub to make it a task at the next sync`.
 
 `"everyMinutes": 0` turns the automatic sync off, and `TEAMRIG_GITHUB=off` turns every sync off on one machine.
 `teamrig gh sync --yes` still works at any time.
