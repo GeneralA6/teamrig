@@ -2366,8 +2366,10 @@ in the folder Claude Code files its transcript under, the worktree it went into 
 prints `resumed in <folder>` then), else the folder it started in, or the nearest existing parent of a folder that
 is gone. With [open.teamWindow] on, a team's sessions reopen in the team's own Windows Terminal window; the
 restore's own tab, and sessions outside a team, open in the most recent one. Each step is written to
-`<home>/restore/restore.log`, between a `run: started, <n> to reopen` line and a `run: done, ... of <n>` line; a
-run its tab's closing or Ctrl+C stops writes `run: interrupted by <signal>` and how far it got instead. A tab that
+`<home>/restore/restore.log`, between a `run: started, <n> to reopen` line and a `run: done, ... of <n>` line; each
+`run: opened <id>` line ends with how its terminal's launch ended (`windows-terminal exited 0`, `... still running
+after 10 s` or `... started`). A run its tab's closing or Ctrl+C stops writes `run: interrupted by <signal>` and how
+far it got instead. A tab that
 did not open is printed with the command to run, and the command exits 1.
 
 Flags:
@@ -2401,7 +2403,8 @@ What runs at logon, once `restore install` has set it up. It drops the recorded 
 the shutdown killed sessions, opens a tab titled `Restore Claude sessions` that runs `restore run --tab` for them;
 that tab closes by itself once they are open. With no terminal to open, it prints the command to run and exits 3.
 It writes `check: started` to `<home>/restore/restore.log` before it reads anything, then
-`check: <n> to restore, <k> kept`.
+`check: <n> to restore, <k> kept`, and once its tab opens, `check: opened the restore tab;` with how the terminal's
+launch ended (`windows-terminal exited 0`).
 
 Flags:
 
