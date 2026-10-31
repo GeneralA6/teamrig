@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import type { Task } from '../register/fold.ts';
 import { TaskTree } from '../register/tree.ts';
 import { testTask } from '../testing/task.ts';
-import { COMPACT_SOURCE, LIVE_TASK_ROWS, LIVE_TITLE_CHARS, LIVE_WAITING_ROWS, liveTasksNote, liveTasksPointer, showsLiveTasks } from './live-tasks.ts';
+import { blockStartLines, COMPACT_SOURCE, LIVE_TASK_ROWS, LIVE_TITLE_CHARS, LIVE_WAITING_ROWS, liveTasksNote, liveTasksPointer, showsLiveTasks } from './live-tasks.ts';
 import { TimeZone } from '../core/zone.ts';
 
 const NOW = new Date('2030-01-08T10:00:00.000Z');
@@ -31,6 +31,23 @@ describe('showsLiveTasks', () => {
 describe('liveTasksPointer', () => {
   it('names the start command that lists the tasks, and that the register wins (T1376)', () => {
     assert.equal(liveTasksPointer('alpha', 'teamrig'), `LIVE TASKS of alpha: this start has no room for them; run \`teamrig start --session alpha\` first, and ${WINS}.`);
+  });
+});
+
+describe('blockStartLines', () => {
+  const START =
+    "START alpha, Tue 01-08 10:00 UTC: this note is your work block's start, so run no `teamrig start` now; it would add only the check flags and the rest of the list (run it at your next work block).";
+  const MEETINGS = 'MEETINGS today: M1 14:00 UTC alpha';
+  const WEEK = 'Week: 40% used (metered). Resets Wed 01-09 01:00 UTC.';
+
+  it("makes the note the work block's start with start's first line, then its meetings and week lines (T1529)", () => {
+    assert.deepEqual(blockStartLines('alpha', { at: 'Tue 01-08 10:00 UTC', meetings: MEETINGS, week: WEEK }, 'teamrig'), [START, MEETINGS, WEEK]);
+  });
+
+  it('leaves out the meetings line when none is due today, and the week line when the week could not be read', () => {
+    assert.deepEqual(blockStartLines('alpha', { at: 'Tue 01-08 10:00 UTC', meetings: undefined, week: WEEK }, 'teamrig'), [START, WEEK]);
+    assert.deepEqual(blockStartLines('alpha', { at: 'Tue 01-08 10:00 UTC', meetings: MEETINGS, week: undefined }, 'teamrig'), [START, MEETINGS]);
+    assert.deepEqual(blockStartLines('alpha', { at: 'Tue 01-08 10:00 UTC', meetings: undefined, week: undefined }, 'teamrig'), [START]);
   });
 });
 

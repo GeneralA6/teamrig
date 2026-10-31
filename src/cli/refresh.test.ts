@@ -573,6 +573,15 @@ describe('runCli: live tasks in the start note', () => {
     '  T3 waiting, p2 | Ship the docs (waiting: on T2)\n' +
     'WAITING ON YOU 1 task(s) of other sessions:\n' +
     '  T4 open, p2, owner bravo, due 01-10, after T2 | Not mine · needs your T2';
+  const START =
+    "START alpha, Tue 01-08 10:00 UTC: this note is your work block's start, so run no `teamrig start` now; it would add only the check flags and the rest of the list (run it at your next work block).";
+
+  /** The `count` lines right before the live-task block in `text` (T1529: `start`'s first lines). */
+  function linesBeforeLive(text: string, count: number): string[] {
+    const at = text.indexOf(`\n${LIVE}`);
+    assert.ok(at >= 0, text);
+    return text.slice(0, at).split('\n').slice(-count);
+  }
 
   /** Alpha holds T1 done, T2 in progress and T3 waiting on it; bravo holds T4, due 01-10 and planned after T2. */
   async function addTasks(kit: CliHarness): Promise<void> {
@@ -593,20 +602,36 @@ describe('runCli: live tasks in the start note', () => {
   const start = async (kit: CliHarness, source: string, files?: FaultyFiles): Promise<string> =>
     contextOf(await kit.run(['hook', 'session-start'], { ...AS_ALPHA, stdin: startPayload(source), ...(files === undefined ? {} : { files }) }));
 
-  it('lists them after a compaction and at the refresh fresh start, right after the handover pointer', async () => {
+  it("lists them after a compaction and at the refresh fresh start, after the handover pointer and start's first lines", async () => {
     const kit = new CliHarness();
     await handoverWritten(kit);
     await addTasks(kit);
-    assert.ok((await start(kit, 'compact')).endsWith(`\n${LIVE}`), 'after a compaction, the handover still waiting');
+    const compacted = await start(kit, 'compact');
+    assert.ok(compacted.endsWith(`\n${LIVE}`), 'after a compaction, the handover still waiting');
+    const [startLine, week] = linesBeforeLive(compacted, 2);
+    assert.equal(startLine, START);
+    assert.match(week ?? '', /^Week: /);
     assert.ok(!(await start(kit, 'resume')).includes('LIVE TASKS'), 'a resume keeps its context');
 
     const fresh = await start(kit, 'clear');
     const note =
       `You were refreshed after T1; read your handover first: ${HANDOVER('alpha')}. Then carry on with its next steps. ` +
       'Read a file with the Read tool before you Edit or Write it: a read by cat or sed, or one before the refresh, does not count.';
-    assert.ok(fresh.includes(`${note}\n${LIVE}`), fresh);
-    assert.ok(!(await start(kit, 'startup')).includes('LIVE TASKS'), 'once: a later start is no refresh');
-    assert.ok((await start(kit, 'compact')).endsWith(`\n${LIVE}`), 'every compaction');
+    assert.ok(fresh.includes(`${note}\n${START}\n${week ?? ''}\n${LIVE}`), fresh);
+    assert.ok(!(await start(kit, 'startup')).includes('START alpha'), 'once: a later start is no refresh');
+    assert.ok((await start(kit, 'compact')).endsWith(`\n${START}\n${week ?? ''}\n${LIVE}`), 'every compaction');
+  });
+
+  it("names today's meetings the session is met in, as start does, before the week line (T1529)", async () => {
+    const kit = new CliHarness();
+    await finishTask(kit, 'alpha');
+    await addTasks(kit);
+    const booked = await kit.run(['meeting', 'schedule', '--meets', 'alpha', '--at', '2030-01-08 14:00', '--about', 'the release plan', '--session', 'lead']);
+    assert.equal(booked.code, EXIT.ok, booked.stdout.join('\n'));
+    const [startLine, meetings, week] = linesBeforeLive(await start(kit, 'compact'), 3);
+    assert.equal(startLine, START);
+    assert.equal(meetings, 'MEETINGS today: M1 14:00 UTC alpha');
+    assert.match(week ?? '', /^Week: /);
   });
 
   it('shows none at a start that is no refresh, and says none are active when the session holds none', async () => {
@@ -636,6 +661,7 @@ describe('runCli: live tasks in the start note', () => {
     assert.ok(cut.length <= CONTEXT_MAX_CHARS, String(cut.length));
     assert.ok(cut.endsWith(`# Your team's rules\n${rules}`));
     assert.ok(cut.includes('\nLIVE TASKS of lead: this start has no room for them; run `teamrig start --session lead` first,'), cut.slice(0, -rules.length).slice(-600));
+    assert.ok(!cut.includes('\nSTART lead,'), 'the pointer names start, so the note is no work block start');
   });
 
   it('names the command that lists the tasks when the register cannot be read', async () => {
@@ -646,5 +672,6 @@ describe('runCli: live tasks in the start note', () => {
     const text = await start(kit, 'compact', files);
     assert.match(text, /^# Team rules \(teamrig core\)/);
     assert.ok(text.endsWith('LIVE TASKS: teamrig could not read the register (EACCES: simulated); run `teamrig list --session alpha` for your tasks.'), text);
+    assert.ok(!text.includes('\nSTART alpha,'), 'a note with no task list is no work block start');
   });
 });
