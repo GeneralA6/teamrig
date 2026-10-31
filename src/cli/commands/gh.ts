@@ -15,6 +15,9 @@ import { GITHUB_OFF, githubOff, reportAutoSync } from './gh-auto.ts';
 /** The rows of steps a repository prints; the rest are counted. */
 export const SHOWN_STEPS = 10;
 
+/** The left-out issue numbers a repository's LEFT OUT line names; the rest are counted. */
+export const SHOWN_LEFT_OUT = 20;
+
 /** How the sync of one repository ended, for the exit code. */
 type RepoEnd = 'ok' | 'failed' | 'refused';
 
@@ -24,7 +27,8 @@ type RepoEnd = 'ok' | 'failed' | 'refused';
  * (github/tokens.ts), else the gh login, and an ACCESS line says which. gh only ever lists issues
  * (github/gh.ts refuses any other command), and the
  * register's import writes (register.ts) touch only the tasks it added, as `github`. Without `--yes` it
- * shows what it would write and writes nothing. `--auto`, which the Stop hook starts (gh-auto.ts), writes as
+ * shows what it would write and writes nothing. Either way a LEFT OUT line names, by number only, the open
+ * issues of a repository that the trust rule kept out (github/trust.ts). `--auto`, which the Stop hook starts (gh-auto.ts), writes as
  * `--yes` does and tells each owner's inbox its new tasks and the lead's when the failing repositories change. Exit 1 when a repository could not be read (its tasks stay
  * as they are), 2 when the register refused a step, else 0.
  */
@@ -70,13 +74,14 @@ export async function ghSync(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     }
     read.notes.forEach((note) => say(`NOTE ${repo}: ${note}`));
     const plan = planSync(read.issues, importedTasks((await register.snapshot()).state.tasks.values()), rules);
+    const leftOut = leftOutLines(repo, plan.leftOut, rules.acceptLabel);
     if (!write) {
-      previewLines(repo, plan).forEach(say);
+      [...previewLines(repo, plan), ...leftOut].forEach(say);
       ends.push('ok');
       continue;
     }
     const outcomes = await applySteps(register, plan.steps);
-    resultLines(repo, plan, outcomes).forEach(say);
+    [...resultLines(repo, plan, outcomes), ...leftOut].forEach(say);
     written += outcomes.filter((outcome) => outcome.result.ok).length;
     added.push(...addedTasks(outcomes));
     const refused = refusedReason(outcomes);
@@ -137,6 +142,22 @@ function resultLines(repo: string, plan: SyncPlan, outcomes: readonly StepOutcom
     `REPO ${repo}: ${added} added, ${changed} changed, ${plan.unchanged} unchanged${refused > 0 ? `, ${refused} refused` : ''}`,
     ...shown(done.map((outcome) => stepLine(outcome.step, outcome.result.ok ? outcome.result.value : ''))),
     ...outcomes.flatMap((outcome) => (outcome.result.ok ? [] : [`SKIPPED ${outcome.step.ref}: ${outcome.result.error}`])),
+  ];
+}
+
+/**
+ * The line naming the open issues the trust rule (trust.ts) left out of a repository, and the label that lets
+ * one in: their numbers only, as their text is an outsider's, at most SHOWN_LEFT_OUT and then how many more;
+ * none when it left none out.
+ */
+function leftOutLines(repo: string, leftOut: readonly number[], acceptLabel: string): string[] {
+  if (leftOut.length === 0) {
+    return [];
+  }
+  const more = leftOut.length - SHOWN_LEFT_OUT;
+  const numbers = leftOut.slice(0, SHOWN_LEFT_OUT).map((number) => `#${number}`).join(' ');
+  return [
+    `LEFT OUT ${repo}: ${leftOut.length} open issue(s) by people outside the repository wait for someone to add the ${JSON.stringify(acceptLabel)} label: ${numbers}${more > 0 ? ` and ${more} more` : ''}`,
   ];
 }
 
