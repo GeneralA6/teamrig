@@ -2,6 +2,7 @@ import { describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { basename, join } from 'node:path';
 import { MeterLog } from '../budget/calibration.ts';
+import { recordConfigDir } from '../budget/config-dir.ts';
 import { emptyPatterns } from '../budget/patterns.ts';
 import { formatPeriod, parsePeriod } from '../budget/period.ts';
 import { W_EXPLAINED } from '../budget/report.ts';
@@ -69,6 +70,11 @@ async function saveReading(kit: CliHarness, dir: string, session: string, usedPc
   await kit.files.write(join(dir, `${session}.json`), formatSnapshot(snapshot));
 }
 
+/** Records `team`'s sessions as starting on another Claude config dir than the harness runs in: another login. */
+async function onAnotherLogin(kit: CliHarness, team: string): Promise<void> {
+  await recordConfigDir(kit.files, join(teamHomeOf(team), 'state', 'usage', 'claude-config-dir.json'), join(USER_HOME, '.claude-work'));
+}
+
 interface World {
   readonly kit: CliHarness;
   readonly source: MemoryTranscripts;
@@ -133,11 +139,26 @@ describe('teamrig budget', () => {
   it('leaves a team on another Claude account out of the split', async () => {
     const { kit, run } = await world();
     await kit.files.write(teamConfigOf('web'), formatConfig({ configVersion: 1, sessions: ['lead', 'front', 'back'], roles: { lead: 'lead' }, budget: { account: 'work' } }));
+    await onAnotherLogin(kit, 'web');
     assert.deepEqual(ok(await run(['budget'])).slice(3, 6), [
       '  the team    2.5%   12.4%  25.00M      3',
       '  app-alpha   2.0%    4.1%  20.00M      2',
       '  app-bravo  0.50%    4.1%   5.00M      1',
     ]);
+  });
+
+  it('leaves out a team that names no account but whose sessions start on another Claude config dir, another login', async () => {
+    const { kit, run } = await world();
+    await kit.files.write(teamConfigOf('web'), formatConfig({ configVersion: 1, sessions: ['lead', 'front', 'back'], roles: { lead: 'lead' } }));
+    await onAnotherLogin(kit, 'web');
+    assert.deepEqual(ok(await run(['budget'])).slice(3, 4), ['  the team    2.5%   12.4%  25.00M      3']);
+  });
+
+  it('splits with a team that names no account on the login of the one that names it', async () => {
+    const { kit, run } = await world({ ...TEAM, budget: { weeklyLimitW: 1_000_000_000, account: 'work' } });
+    await kit.files.write(teamConfigOf('web'), formatConfig({ configVersion: 1, sessions: ['lead', 'front', 'back'], roles: { lead: 'lead' } }));
+    await recordConfigDir(kit.files, join(teamHomeOf('web'), 'state', 'usage', 'claude-config-dir.json'), join(USER_HOME, '.claude'));
+    assert.deepEqual(ok(await run(['budget'])).slice(3, 4), ['  the team    2.5%    6.2%  25.00M      3']);
   });
 
   it('reads the week from the newest snapshot of any team on the account, never of a team on another account', async () => {
@@ -149,6 +170,7 @@ describe('teamrig budget', () => {
       teamConfigOf('ops'),
       formatConfig({ configVersion: 1, sessions: ['lead', 'front', 'back'], roles: { lead: 'lead' }, budget: { account: 'work', statusSnapshotDir: opsLive } }),
     );
+    await onAnotherLogin(kit, 'ops');
     kit.clock.advance(3_600_000);
     await saveReading(kit, webLive, BRAVO_TAB, 45);
     await saveReading(kit, opsLive, STRANGER, 80);
@@ -493,9 +515,10 @@ describe('teamrig budget lift', () => {
     });
 
     it('is refused for a team on another Claude account, a team not under the own and a session not on the team', async () => {
-      const { run } = await tree({ ...SUB_TEAMS['web'], budget: { account: 'work' } });
+      const { kit, run } = await tree({ ...SUB_TEAMS['web'], budget: { account: 'work' } });
+      await onAnotherLogin(kit, 'web');
       const other = await run(crossLift('web/front', '18'));
-      assert.equal(other.code, EXIT.refused);
+      assert.equal(other.code, EXIT.refused, other.stdout.join('\n'));
       assert.match(other.stdout.join('\n'), /team web is on another Claude account than team app/);
       const sibling = await run(crossLift('ops/run', '18'), { env: { TEAMRIG_TEAM: 'web' } });
       assert.equal(sibling.code, EXIT.refused);

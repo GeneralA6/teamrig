@@ -14,7 +14,7 @@ import { FakeClock } from '../testing/fake-clock.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { InlineMutex } from '../testing/inline-mutex.ts';
 import { MemoryFiles, normalisePath } from '../testing/memory-files.ts';
-import { accountHolderOf, accountOf, accountTeamsOf, accountWeekOf, workCacheFileOf, type AccountScope, type AccountTeamSource, type SnapshotDirSource } from './account.ts';
+import { accountHolderOf, accountsOf, accountTeamsOf, accountWeekOf, workCacheFileOf, type AccountScope, type AccountTeamSource, type SnapshotDirSource, type TeamAccountFacts } from './account.ts';
 import { LiftLog, type Lift } from './lift.ts';
 import { formatSnapshot, snapshotOfStatus } from './snapshot.ts';
 
@@ -35,7 +35,21 @@ function sourceOf(team: string, extra: JsonRecord = {}): AccountTeamSource {
   };
 }
 
-const SCOPE: AccountScope = { team: 'app', account: CONFIG_DIR, configDir: CONFIG_DIR, usageDir: join(stateOf('app'), 'usage'), now: NOW, usedPct: 40 };
+/** `app` asks; `ops` is on another account, every other team on `app`'s. */
+const SCOPE: AccountScope = {
+  team: 'app',
+  account: CONFIG_DIR,
+  accounts: new Map([
+    ['app', CONFIG_DIR],
+    ['ops', 'home'],
+    ['qa', CONFIG_DIR],
+    ['ui', CONFIG_DIR],
+    ['web', CONFIG_DIR],
+  ]),
+  usageDir: join(stateOf('app'), 'usage'),
+  now: NOW,
+  usedPct: 40,
+};
 
 class NoSkills implements SkillCatalog {
   async exists(): Promise<boolean> {
@@ -64,10 +78,57 @@ function liftFor(session: string, partPct: number, endsAt: number): Lift {
   return { session, group: false, partPct, stopPct: 99, endsAt, reserve: false, quietHoursExempt: false, reason: 'ship the release', by: 'lead', at: NOW - HOUR };
 }
 
-describe('accountOf', () => {
-  it("takes the team's account, else the Claude config dir", () => {
-    assert.equal(accountOf({ account: 'work' }, CONFIG_DIR), 'work');
-    assert.equal(accountOf({}, CONFIG_DIR), CONFIG_DIR);
+describe('accountsOf', () => {
+  const OTHER_DIR = join('/', 'u', '.claude-work');
+  const facts = (account: string | undefined, configDir: string | undefined): TeamAccountFacts => ({ account, configDir });
+  const teamsOf = (entries: ReadonlyArray<readonly [string, TeamAccountFacts]>): ReadonlyMap<string, TeamAccountFacts> => new Map(entries);
+
+  it("takes each team's named account, else its config dir", () => {
+    const named = accountsOf({ team: 'app', account: 'work' }, teamsOf([['ops', facts('home', OTHER_DIR)]]), CONFIG_DIR);
+    assert.equal(named.account, 'work');
+    assert.deepEqual([...named.accounts], [['ops', 'home'], ['app', 'work']]);
+    const unnamed = accountsOf({ team: 'app', account: undefined }, teamsOf([['web', facts(undefined, OTHER_DIR)]]), CONFIG_DIR);
+    assert.deepEqual([unnamed.account, [...unnamed.accounts]], [CONFIG_DIR, [['web', OTHER_DIR], ['app', CONFIG_DIR]]]);
+  });
+
+  it('reads two logins that name no account as two accounts', () => {
+    const { account, accounts } = accountsOf({ team: 'app', account: undefined }, teamsOf([['web', facts(undefined, OTHER_DIR)]]), CONFIG_DIR);
+    assert.notEqual(accounts.get('web'), account);
+  });
+
+  it('reads one login as one account when only some of its teams name it, the asking one or another', () => {
+    const askerNames = accountsOf({ team: 'app', account: 'work' }, teamsOf([['web', facts(undefined, CONFIG_DIR)]]), CONFIG_DIR);
+    assert.equal(askerNames.accounts.get('web'), 'work');
+    const otherNames = accountsOf({ team: 'app', account: undefined }, teamsOf([['web', facts('work', CONFIG_DIR)]]), CONFIG_DIR);
+    assert.equal(otherNames.account, 'work');
+  });
+
+  it('puts a team with no recorded config dir on the asking one', () => {
+    const { accounts } = accountsOf({ team: 'app', account: 'work' }, teamsOf([['web', facts(undefined, undefined)]]), CONFIG_DIR);
+    assert.equal(accounts.get('web'), 'work');
+  });
+
+  it('takes no name for the asking team from a team with no recorded config dir, whose login is a guess', () => {
+    const teams = teamsOf([
+      ['ui', facts('work', undefined)],
+      ['web', facts('work', OTHER_DIR)],
+    ]);
+    const { account, accounts } = accountsOf({ team: 'app', account: undefined }, teams, CONFIG_DIR);
+    assert.deepEqual([account, accounts.get('ui'), accounts.get('web')], [CONFIG_DIR, 'work', 'work']);
+  });
+
+  it('gives a team that names none its config dir when the teams on that dir name two accounts', () => {
+    const teams = teamsOf([
+      ['ops', facts('home', CONFIG_DIR)],
+      ['web', facts(undefined, CONFIG_DIR)],
+    ]);
+    const { account, accounts } = accountsOf({ team: 'app', account: 'work' }, teams, CONFIG_DIR);
+    assert.deepEqual([account, accounts.get('ops'), accounts.get('web')], ['work', 'home', CONFIG_DIR]);
+  });
+
+  it('reads the asking team on the config dir it runs in, whatever it recorded before', () => {
+    const { account } = accountsOf({ team: 'app', account: undefined }, teamsOf([['app', facts(undefined, OTHER_DIR)]]), CONFIG_DIR);
+    assert.equal(account, CONFIG_DIR);
   });
 });
 
@@ -117,8 +178,8 @@ describe('accountTeamsOf', () => {
     await lifts.append(liftFor('front', 30, NOW - 1));
     const teams = new Map([
       ['app', sourceOf('app')],
-      ['ops', sourceOf('ops', { budget: { account: 'home' } })],
-      ['ui', sourceOf('ui', { budget: { account: CONFIG_DIR } })],
+      ['ops', sourceOf('ops')],
+      ['ui', sourceOf('ui')],
       ['web', web],
     ]);
 
@@ -201,8 +262,8 @@ describe('accountWeekOf', () => {
     await save(files, join(KIT_HOME, 'usage', 'live'), DELTA, 46);
     const teams = new Map([
       ['app', dirSourceOf('app', { statusSnapshotDir: 'live' })],
-      ['ops', dirSourceOf('ops', { account: 'home', statusSnapshotDir: join('/', 'ops-live') })],
-      ['qa', dirSourceOf('qa', { account: CONFIG_DIR, statusSnapshotDir: join('/', 'qa-live') })],
+      ['ops', dirSourceOf('ops', { statusSnapshotDir: join('/', 'ops-live') })],
+      ['qa', dirSourceOf('qa', { statusSnapshotDir: join('/', 'qa-live') })],
       ['ui', dirSourceOf('ui')],
       ['web', dirSourceOf('web')],
     ]);
