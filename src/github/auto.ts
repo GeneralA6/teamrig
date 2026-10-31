@@ -1,27 +1,48 @@
+import { isRecord } from '../core/guards.ts';
 import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
 import { cut } from '../register/views.ts';
+import { issueRef } from './map.ts';
 import type { StepOutcome } from './sync.ts';
 
 /**
  * The automatic GitHub sync's decisions, kept pure: when the hooks start the next one (`isDue`), what the
- * owners hear about the tasks it added (`addedLines`) and what the lead hears about the repositories it
- * could not read (`failureNews`, only when that set changes, so a lasting failure is told once).
+ * owners hear about the tasks it added (`addedLines`), what the lead hears about the repositories it
+ * could not read (`failureNews`, only when that set changes, so a lasting failure is told once) and about the
+ * outsiders' issues it left out (`leftOutNews`, only for a number not left out before).
  */
 
-/** The format of the sync state file this code reads and writes; a file in another format reads as no sync yet. */
-export const SYNC_STATE_FORMAT = 1;
+/**
+ * The format of the sync state file this code writes: 2 added `leftOut`. It reads format 1 as having left
+ * nothing out; a file in another format reads as no sync yet.
+ */
+export const SYNC_STATE_FORMAT = 2;
+/** The older format this code still reads. */
+const NO_LEFT_OUT_FORMAT = 1;
 
 const MINUTE_MS = 60_000;
 /** The new tasks one inbox line names; the rest are counted. */
 const NAMED_TASKS = 5;
+/** The new left-out issues the lead's line names; the rest are counted. */
+const NAMED_LEFT_OUT = 10;
 /** How much of an issue title an inbox line repeats. */
 const TITLE_CHARS = 60;
 
-/** The team's automatic sync: when the last one started and finished, and the repositories it could not read. */
+/**
+ * The team's automatic sync: when the last one started and finished, the repositories it could not read, and by
+ * repository the numbers, lowest first, of the open issues the trust rule left out (github/trust.ts).
+ */
 export interface SyncState {
   readonly startedAt: number;
   readonly finishedAt: number | undefined;
   readonly failing: readonly string[];
+  readonly leftOut: ReadonlyMap<string, readonly number[]>;
+}
+
+/** What one `gh sync --auto` run did: the tasks it added, the repositories that failed, and the issues it left out of each repository it read. */
+export interface SyncRun {
+  readonly added: readonly AddedTask[];
+  readonly failures: readonly RepoFailure[];
+  readonly leftOut: ReadonlyMap<string, readonly number[]>;
 }
 
 /** A repository a sync could not read, or whose tasks the task list refused, and why. */
@@ -38,10 +59,14 @@ export interface AddedTask {
   readonly title: string;
 }
 
-/** The state file's content; undefined when it is damaged or from another format, which reads as no sync yet. */
+/**
+ * The state file's content; undefined when it is damaged or from another format, which reads as no sync yet. A
+ * format-1 file left nothing out.
+ */
 export function parseSyncState(text: string): SyncState | undefined {
   const record = parseObject(text.trim());
-  if (record === undefined || record[VERSION_FIELD] !== SYNC_STATE_FORMAT) {
+  const format = record?.[VERSION_FIELD];
+  if (record === undefined || (format !== SYNC_STATE_FORMAT && format !== NO_LEFT_OUT_FORMAT)) {
     return undefined;
   }
   const { startedAt, finishedAt, failing } = record;
@@ -49,7 +74,25 @@ export function parseSyncState(text: string): SyncState | undefined {
     return undefined;
   }
   const repos = failing.filter((repo): repo is string => typeof repo === 'string');
-  return repos.length === failing.length ? { startedAt, finishedAt, failing: repos } : undefined;
+  const leftOut = format === NO_LEFT_OUT_FORMAT ? new Map<string, readonly number[]>() : parseLeftOut(record['leftOut']);
+  return repos.length === failing.length && leftOut !== undefined ? { startedAt, finishedAt, failing: repos, leftOut } : undefined;
+}
+
+/** The stored `leftOut` object, which a file holds only when some issue was left out; undefined when damaged. */
+function parseLeftOut(value: unknown): Map<string, readonly number[]> | undefined {
+  if (value === undefined) {
+    return new Map();
+  }
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const entries = Object.entries(value);
+  const leftOut = new Map(entries.flatMap(([repo, numbers]) => (isIssueNumbers(numbers) ? [[repo, numbers] as const] : [])));
+  return leftOut.size === entries.length ? leftOut : undefined;
+}
+
+function isIssueNumbers(value: unknown): value is number[] {
+  return Array.isArray(value) && value.every((number) => Number.isSafeInteger(number) && number > 0);
 }
 
 export function formatSyncState(state: SyncState): string {
@@ -58,6 +101,7 @@ export function formatSyncState(state: SyncState): string {
     startedAt: state.startedAt,
     ...(state.finishedAt === undefined ? {} : { finishedAt: state.finishedAt }),
     failing: [...state.failing],
+    ...(state.leftOut.size === 0 ? {} : { leftOut: Object.fromEntries([...state.leftOut].map(([repo, numbers]) => [repo, [...numbers]])) }),
   });
 }
 
@@ -79,12 +123,28 @@ export function isDue(state: SyncState | undefined, now: number, everyMinutes: n
 
 /** What a hook writes before it starts a sync, so no other hook starts one in the same interval. */
 export function claimState(state: SyncState | undefined, now: number): SyncState {
-  return { startedAt: now, finishedAt: state?.finishedAt, failing: state?.failing ?? [] };
+  return { startedAt: now, finishedAt: state?.finishedAt, failing: state?.failing ?? [], leftOut: state?.leftOut ?? new Map() };
 }
 
-/** What a finished sync writes: its start as claimed (now, for a sync run by hand) and the repositories that failed. */
-export function finishState(state: SyncState | undefined, now: number, failures: readonly RepoFailure[]): SyncState {
-  return { startedAt: state?.startedAt ?? now, finishedAt: now, failing: failures.map((failure) => failure.repo) };
+/**
+ * What a finished sync writes: its start as claimed (now, for a sync run by hand), the repositories that failed,
+ * and the issues left out of each repository it read. A repository it could not read keeps what was left out
+ * of it before, so its issues are not told again once it reads; one that left nothing out is not kept.
+ */
+export function finishState(
+  state: SyncState | undefined,
+  now: number,
+  failures: readonly RepoFailure[],
+  leftOut: ReadonlyMap<string, readonly number[]>,
+): SyncState {
+  const failing = failures.map((failure) => failure.repo);
+  const kept = [...(state?.leftOut ?? [])].filter(([repo]) => failing.includes(repo) && !leftOut.has(repo));
+  return {
+    startedAt: state?.startedAt ?? now,
+    finishedAt: now,
+    failing,
+    leftOut: new Map([...leftOut, ...kept].filter(([, numbers]) => numbers.length > 0)),
+  };
 }
 
 /** The tasks the written steps added, each with the owner and title it was added with. */
@@ -124,4 +184,25 @@ export function failureNews(before: readonly string[], failures: readonly RepoFa
     return `GitHub sync reads every repository again (${before.join(', ')} failed before)`;
   }
   return undefined;
+}
+
+/**
+ * The lead's line when a sync left out an open issue it had not left out before (`before`, the last sync's): the
+ * new ones by ref, at most NAMED_LEFT_OUT, then how many more, and the label that lets one in. Never a title,
+ * which is the outsider's text. Undefined when no number is new.
+ */
+export function leftOutNews(
+  before: ReadonlyMap<string, readonly number[]>,
+  now: ReadonlyMap<string, readonly number[]>,
+  acceptLabel: string,
+): string | undefined {
+  const fresh = [...now].flatMap(([repo, numbers]) => numbers.filter((number) => !(before.get(repo) ?? []).includes(number)).map((number) => issueRef(repo, number)));
+  if (fresh.length === 0) {
+    return undefined;
+  }
+  const more = fresh.length - NAMED_LEFT_OUT;
+  return (
+    `GitHub sync left out ${fresh.length} new open issue(s) by people outside the repository: ${fresh.slice(0, NAMED_LEFT_OUT).join(', ')}` +
+    `${more > 0 ? `, and ${more} more` : ''}; add the ${JSON.stringify(acceptLabel)} label to one on GitHub to make it a task at the next sync`
+  );
 }
