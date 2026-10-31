@@ -34,8 +34,9 @@ export interface SessionStartInput {
   /** After a context refresh: where the session's handover is, so it reads it first. */
   readonly refreshNote: string | undefined;
   /**
-   * After a context refresh or a compaction: the session's active tasks as the register holds them at this start
-   * (hooks/live-tasks.ts), since its handover or the compaction summary may be older.
+   * After a context refresh or a compaction: `start`'s first lines, which make the note the work block's start
+   * (T1529), then the session's active tasks as the register holds them at this start (hooks/live-tasks.ts), since
+   * its handover or the compaction summary may be older.
    */
   readonly liveTasksNote: CuttableNote | undefined;
   /** When the session runs on another model or effort than the team config asks: the line that says so. */

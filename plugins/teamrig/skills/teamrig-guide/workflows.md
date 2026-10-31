@@ -13,7 +13,9 @@ teamrig start --session api
 ```
 
 It prints the time, your unread inbox lines, your task list, the other sessions' tasks waiting on yours
-(`WAITING ON YOU`, when some do), the `check` flags of your tasks and skills, and the week's use.
+(`WAITING ON YOU`, when some do), the `check` flags of your tasks and skills, and the week's use. After a context
+refresh or a compaction, the start note opens with `START <id>, <time>: this note is your work block's start` and
+holds what `start` prints first: run `start` at your next work block instead.
 
 1. Read each inbox line. A line that asks for work should name a task id; if it does not, add the task yourself
    (`teamrig add --session api --title "..." --description "<what and why>" --priority p<n> --source <asker>`).
@@ -225,8 +227,8 @@ so it never loses work to a compaction.
    `WAITING ON YOU`, at most 3; where the handover says otherwise, the register wins).
    A compaction gets the same task block, since its summary is older than the register too. The
    restart's first prompt, or after a `/clear` a turn teamrig starts by itself, asks you to read the handover and
-   carry on with its next steps. Do so, and run the start of a work block, since the fresh start is a new Claude
-   Code session.
+   carry on with its next steps. Do so; the note's `START` line makes it the work block's start, so run
+   `teamrig start` at your next work block, not now (a note with no room for the task block names it to run first).
 
 The hook judges each finished task once and never loops. A team turns this off with `refresh.enabled: false`, and the task
 count with `refresh.everyTasks: 0`. A `/clear`, a new process or a compaction starts the count over.
