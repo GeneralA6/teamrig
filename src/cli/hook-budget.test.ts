@@ -220,6 +220,18 @@ describe('the budget in the hooks', () => {
     assert.match(await leadInbox(kit), /alpha: app-alpha is past its daily budget/);
   });
 
+  it('holds a session a leader cut past its part while the team has room, with no inbox line (T1616)', async () => {
+    const { kit, hook } = await world({ overAction: 'block' }, 10_000_000, 30);
+    const cut = { v: 1, session: 'alpha', endsAt: '2030-01-09T00:00:00.000Z', reason: 'over on a p3', by: 'lead', at: '2030-01-08T09:00:00.000Z' };
+    await kit.files.write(join(TEAM_HOME, 'state', 'usage', 'cuts.jsonl'), `${JSON.stringify(cut)}\n`);
+    assert.match(
+      messageOf(await hook('stop', ALPHA_TAB)),
+      /^Budget: app-alpha has used 1\.1% of the week today; its daily budget is 0\.59%\. The lead cut it to its own daily budget until 00:00 UTC \(the end of the budget day\)\. New helpers are refused\. More: teamrig budget$/,
+    );
+    assert.equal(decisionOf(await hook('helper-gate', ALPHA_TAB, AGENT)), 'deny');
+    assert.doesNotMatch(await leadInbox(kit), /past its daily budget/);
+  });
+
   it('lets a session past its budget go on with its p0 work, helpers too, and tells its leader so', async () => {
     // Alpha's p0 task weighs 6, so its part is 0.6/2.6 of the team's 12.4%: 2.87%, which its 4.1% today is past.
     const team = await world({ overAction: 'block' }, 40_000_000, 30);
