@@ -52,9 +52,17 @@ describe('README.md', () => {
     });
   });
 
-  it('links the details: how it works, updating, every command, every config key, contributing and the guide for language models', () => {
+  it('links the details: how it works, updating, every command, every config key, every check flag, contributing and the guide for language models', () => {
     const links = targets('link');
-    for (const path of ['docs/how-it-works.md', 'docs/how-it-works.md#updating-the-plugin', 'docs/commands.md', 'docs/configuration.md', 'CONTRIBUTING.md', 'llms.txt']) {
+    for (const path of [
+      'docs/how-it-works.md',
+      'docs/how-it-works.md#updating-the-plugin',
+      'docs/commands.md',
+      'docs/configuration.md',
+      'plugins/teamrig/skills/teamrig-guide/tasks.md#check-flags',
+      'CONTRIBUTING.md',
+      'llms.txt',
+    ]) {
       assert.ok(links.includes(path), path);
     }
   });
