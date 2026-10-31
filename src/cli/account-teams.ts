@@ -70,6 +70,13 @@ export async function weekUseOnAccount(
   return statusUseOf(runtime, teams, budget, paths, { account: accountOf(budget, configDir), configDir, now });
 }
 
+/** Another team keeping its week in the account's files: its id, its usage folder and its roster's session ids. */
+export interface AccountPeer {
+  readonly team: string;
+  readonly usage: string;
+  readonly ids: readonly string[];
+}
+
 /** The week on the asking team's account as its readers take it: the status line's use and the files it is read in. */
 export interface AccountWeek {
   /** The newest status line reading's use at `now` (`weekUseOnAccount`); undefined with none this week. */
@@ -77,9 +84,17 @@ export interface AccountWeek {
   /**
    * The week's files of the account (`accountHolderOf`): its period, meter log and extra-usage log, kept in the folder
    * of the highest team above the asking one on its account, else its own. A child team reads and writes them there,
-   * so the account's W per percent is learned once for the tree; nothing else is written in another team's folder.
+   * so the tree reads one period and one extra-usage pool, each team's W per percent learned from its own lines of the
+   * one meter log; nothing else is written in another team's folder.
    */
   readonly paths: TeamWeekPaths;
+  /** The team whose folder keeps those files (`accountHolderOf`): the asking team itself, or one above it. */
+  readonly keeper: string;
+  /**
+   * The other teams on the account keeping their week in those files (the keeper's, when it is not the asking team):
+   * a crossing is logged for each on its own W scale (budget/team-week.ts `teamWeekOf`, T1669).
+   */
+  readonly peers: readonly AccountPeer[];
 }
 
 /** `weekUseOnAccount` with the week's files of the account (`AccountWeek`), from one read of every team's config. */
@@ -93,11 +108,14 @@ export async function accountWeekOn(
   const configDir = claudeConfigDir(runtime.env, runtime.userHome);
   const account = accountOf(budget, configDir);
   const statusUse = await statusUseOf(runtime, teams, budget, paths, { account, configDir, now });
-  const holder = accountHolderOf(tree, paths.team, account, (team) => {
+  const accountOfTeam = (team: string): string | undefined => {
     const loaded = teams.get(team);
     return loaded === undefined ? undefined : accountOf(loaded.config.budget, configDir);
-  });
-  return { statusUse, paths: teams.get(holder)?.kit.paths ?? paths };
+  };
+  const holder = accountHolderOf(tree, paths.team, account, accountOfTeam);
+  const keepsHere = (team: string): boolean => team !== paths.team && accountOfTeam(team) === account && accountHolderOf(tree, team, account, accountOfTeam) === holder;
+  const peers = [...teams].filter(([team]) => keepsHere(team)).map(([team, loaded]) => ({ team, usage: loaded.kit.paths.usage, ids: loaded.roster.ids }));
+  return { statusUse, paths: teams.get(holder)?.kit.paths ?? paths, keeper: holder, peers };
 }
 
 async function statusUseOf(

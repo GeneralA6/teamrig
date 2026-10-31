@@ -187,6 +187,22 @@ describe('hook wake-check', () => {
     ]);
   });
 
+  it("costs the wake at its own team's lines of the meter log, never another team's on the account (T1669)", async () => {
+    const kit = await teamWithAlphaTab({ ...TEAM, wake: { priority: 2, batchSeconds: 0 }, budget: { weeklyLimitW: 1_000_000_000 } });
+    const now = kit.clock.now();
+    const log = new MeterLog(kit.files, join(TEAM_HOME, 'state', 'usage', 'meter-log.jsonl'));
+    const period = { start: now - 24 * 60 * MINUTE, end: now + 6 * 24 * 60 * MINUTE, forecastPct: undefined };
+    for (const [team, wPerPct] of [['web', 5_000_000], ['app', 20_000_000]] as const) {
+      await log.append({ ...period, team, at: now - 120 * MINUTE, usedPct: 5, w: 5 * wPerPct }, now);
+      await log.append({ ...period, team, at: now - 60 * MINUTE, usedPct: 15, w: 15 * wPerPct }, now);
+    }
+    await check(kit);
+    await hand(kit, 'Ship the page', 'p2');
+    const woke = answerOf(await check(kit));
+    assert.ok(typeof woke === 'object' && woke !== null && 'toast' in woke);
+    assert.equal(woke.toast, 'teamrig woke this tab for T1 (about 210k W, cold, 0.01% of the week)', "web's 5M W per percent would say 0.04%");
+  });
+
   it("costs the wake at today's W per percent, as the budget table prices today's rows, on a day dearer than its week (T1138)", async () => {
     const kit = await teamWithAlphaTab({ ...TEAM, wake: { priority: 2, batchSeconds: 0 }, budget: { weeklyLimitW: 1_000_000_000 } });
     await meterDearDay(kit, 'alpha', ALPHA_TAB);

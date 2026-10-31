@@ -2,9 +2,11 @@ import { describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { basename, join } from 'node:path';
 import { MeterLog } from '../budget/calibration.ts';
-import { parsePeriod } from '../budget/period.ts';
+import { emptyPatterns } from '../budget/patterns.ts';
+import { formatPeriod, parsePeriod } from '../budget/period.ts';
 import { W_EXPLAINED } from '../budget/report.ts';
 import { formatSnapshot, parseSnapshot, snapshotOfStatus, SNAPSHOT_PRUNED_FILE } from '../budget/snapshot.ts';
+import { EMPTY_USAGE, UsageStore } from '../budget/store.ts';
 import { WEEK_SUMMARY_FILE } from '../budget/week-summary.ts';
 import { formatConfig } from '../config/load.ts';
 import type { JsonRecord } from '../core/guards.ts';
@@ -48,14 +50,14 @@ function transcripts(at: number): MemoryTranscripts {
   return source;
 }
 
-/** Claude Code's status input for a session in `cwd`: the week 30% used. */
-function status(cwd: string): string {
+/** Claude Code's status input for a session in `cwd`: the week `usedPct` used, 30% unless named. */
+function status(cwd: string, usedPct = 30): string {
   return JSON.stringify({
     session_id: ALPHA_TAB,
     cwd,
     workspace: { current_dir: cwd },
     model: { display_name: 'Opus 5.5' },
-    rate_limits: { five_hour: { used_percentage: 6, resets_at: RESET / 1000 - 86_400 }, seven_day: { used_percentage: 30, resets_at: RESET / 1000 } },
+    rate_limits: { five_hour: { used_percentage: 6, resets_at: RESET / 1000 - 86_400 }, seven_day: { used_percentage: usedPct, resets_at: RESET / 1000 } },
   });
 }
 
@@ -593,15 +595,16 @@ describe("teamrig budget in a child team on its parent's account", () => {
   const APP_USAGE = join(TEAM_HOME, 'state', 'usage');
 
   /**
-   * The harness's team `app` under `org` (whose config adds `org`), its budget block `app`'s, and org's meter log at
-   * 20M W per percent from 2 readings.
+   * The harness's team `app` under `org` (whose config adds `org`), its budget block `app`'s, and org's meter log
+   * with 2 readings at 20M W per percent, logged for `team` (`app` unless named; null logs them untagged, as before
+   * T1669).
    */
-  async function childWorld(org: JsonRecord = {}, app: JsonRecord = {}): Promise<World> {
+  async function childWorld(org: JsonRecord = {}, app: JsonRecord = {}, team: string | null = 'app'): Promise<World> {
     const child = await world({ ...LIMITED, team: { id: 'app', parent: 'org' }, budget: { weeklyLimitW: 1_000_000_000, ...app } }, false);
     const { kit, run } = child;
     await kit.files.write(teamConfigOf('org'), formatConfig({ configVersion: 1, team: { id: 'org' }, sessions: ['lead'], roles: { lead: 'lead' }, ...org }));
     const now = kit.clock.now();
-    const period = { start: now - MS_PER_DAY, end: now + 6 * MS_PER_DAY, forecastPct: undefined };
+    const period = { start: now - MS_PER_DAY, end: now + 6 * MS_PER_DAY, forecastPct: undefined, ...(team === null ? {} : { team }) };
     const log = new MeterLog(kit.files, join(ORG_USAGE, 'meter-log.jsonl'));
     await log.append({ ...period, at: now - 2 * HOUR, usedPct: 5, w: 100_000_000 }, now);
     await log.append({ ...period, at: now - HOUR, usedPct: 15, w: 300_000_000 }, now);
@@ -609,7 +612,28 @@ describe("teamrig budget in a child team on its parent's account", () => {
     return child;
   }
 
-  it("reads and writes the week's files of the highest team above it on the account, so it learns the account's W per percent", async () => {
+  /**
+   * The status line passing 31% a minute after the account's period, kept in `usage`, read 30% in a week whose start
+   * was seen (Monday 2030-01-07 01:00 UTC), with app's alpha and org's lead stored as having metered 40M and 70M W on
+   * that day, so both teams' stores reach its start; the lines `teamrig budget` then logs at 31% in the meter log
+   * there, as team and W.
+   */
+  async function crossOnePercent({ kit, run }: World, usage: string): Promise<ReadonlyArray<readonly [string | undefined, number]>> {
+    for (const [folder, id, w] of [[APP_USAGE, 'alpha', 40_000_000], [ORG_USAGE, 'lead', 70_000_000]] as const) {
+      const store = new UsageStore(kit.files, folder);
+      const byDay = { '2030-01-07': { w, calls: 1, patterns: emptyPatterns() } };
+      assert.ok(await store.save(id, { ...EMPTY_USAGE, byDay }, (await store.load(id)).rev), `${id}'s use saved`);
+    }
+    const period = { start: Date.parse('2030-01-07T01:00:00Z'), end: RESET, kind: 'week', lastPct: 30, lastAt: kit.clock.now() } as const;
+    await kit.files.write(join(usage, 'period.json'), formatPeriod(period));
+    kit.clock.advance(60_000);
+    ok(await run(['statusline'], { stdin: status(APP, 31) }));
+    ok(await run(['budget']));
+    const readings = await new MeterLog(kit.files, join(usage, 'meter-log.jsonl')).read(kit.clock.now());
+    return readings.filter((reading) => reading.usedPct === 31).map((reading) => [reading.team, reading.w] as const);
+  }
+
+  it("reads and writes the week's files of the highest team above it on the account, learning its W per percent from its own lines there", async () => {
     const { kit, run } = await childWorld();
     assert.match(ok(await run(['budget'])).at(-1) ?? '', /1% of the week is about 20\.00M W, learned from 2 meter readings/);
     assert.notEqual(kit.files.get(join(ORG_USAGE, 'period.json')), undefined);
@@ -630,6 +654,26 @@ describe("teamrig budget in a child team on its parent's account", () => {
     const { kit, run } = await childWorld({ budget: { account: 'work' } });
     assert.match(ok(await run(['budget'])).at(-1) ?? '', /learned from 2 meter readings/);
     assert.equal(kit.files.get(join(APP_USAGE, 'period.json')), undefined);
+  });
+
+  it("learns nothing from the lines its parent's stores metered, nor from untagged ones, which were on its parent's scale (T1669)", async () => {
+    for (const team of ['org', null]) {
+      const { run } = await childWorld({}, {}, team);
+      assert.equal(ok(await run(['budget'])).at(-1), W_EXPLAINED, `lines of ${team ?? 'no team'}`);
+    }
+  });
+
+  it("logs a percent the status line passed once for itself and once for its parent, each with its own stores' W (T1669)", async () => {
+    const child = await childWorld();
+    assert.deepEqual(await crossOnePercent(child, ORG_USAGE), [
+      ['app', 66_000_000],
+      ['org', 70_000_000],
+    ]);
+  });
+
+  it('logs it for itself alone in its own files when its parent is on another account', async () => {
+    const child = await childWorld({ budget: { account: 'work' } }, { account: 'home' });
+    assert.deepEqual(await crossOnePercent(child, APP_USAGE), [['app', 66_000_000]]);
   });
 });
 
