@@ -10,6 +10,7 @@ import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { ENV } from '../core/home.ts';
 import { CLIENT_MANIFEST, clientFileHash, clientManifestText, clientRootOf } from '../exec/client-integrity.ts';
 import { quietWorld } from '../testing/quiet-world.ts';
+import { configChangedMeanwhile, hired } from '../testing/config-race.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { ASK_REFUSED_NOTE } from '../hooks/permission.ts';
 import { APP, bash, CLAUDE_SESSION, CliHarness, CONFIG_PATH, contextOf, decisionOf, EVENTS_PATH, KIT, POINTER, reasonOf, SKILLS_DIR, TEAM, type CliResult } from '../testing/cli-harness.ts';
@@ -442,6 +443,17 @@ describe('runCli: config', () => {
 
     const again = await kit.run(['config', 'migrate', '--yes'], { configFormat: NEXT_FORMAT });
     assert.deepEqual(again.stdout, [`UNCHANGED ${CONFIG_PATH} needs no migration`]);
+  });
+
+  it('migrates the config as it reads under the config lock, keeping a session hired meanwhile', async () => {
+    const kit = new CliHarness(CURRENT_TEAM);
+    const sleep = await configChangedMeanwhile(kit, hired('dave'));
+    const migrated = await kit.run(['config', 'migrate', '--yes'], { configFormat: NEXT_FORMAT, sleep });
+    assert.equal(migrated.code, EXIT.ok, migrated.stdout.join('\n'));
+    const text = kit.files.get(CONFIG_PATH);
+    const config: unknown = text === undefined ? undefined : JSON.parse(text);
+    assert.ok(isRecord(config), text);
+    assert.deepEqual([config['sessions'], config['configVersion']], [['lead', 'alpha', 'bravo', 'dave'], CONFIG_VERSION + 1]);
   });
 
   it('migrates a version-1 config: its register.tiers become register.priorities', async () => {

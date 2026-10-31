@@ -1,12 +1,11 @@
 import { planBudgetSetup, type BudgetChoices, type KeyChange, type QuietWindow } from '../../budget/setup.ts';
 import { readSnapshots, snapshotDirOf } from '../../budget/snapshot.ts';
 import { DEFAULT_BUDGET } from '../../config/defaults.ts';
-import { writeConfigWithBackup } from '../../config/load.ts';
 import { ESCALATIONS, isEscalation, isOverAction, OVER_ACTIONS, type Escalation, type OverAction } from '../../config/types.ts';
 import { isRecord } from '../../core/guards.ts';
 import { noPositionals, UsageError, type Flags, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
-import { checkedNextConfig, configFileJson, leadOnly, openTeamKit, requireConfig, rosterOf } from '../kit.ts';
+import { checkedNextConfig, configFileJson, configLockOf, leadOnly, openTeamKit, requireConfig, rosterOf } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 
 /**
@@ -97,28 +96,27 @@ export async function setup(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const { load } = kit;
   const roster = await rosterOf(runtime, kit, config);
   leadOnly(roster, caller, "sets the team's budget");
-  const plan = planBudgetSetup(await configFileJson(runtime, load.path), choices);
-  if (!plan.ok) {
-    throw new UsageError(plan.problem);
-  }
-  const next = checkedNextConfig(plan.value.config);
-  const { keys } = plan.value;
-  const changed = keys.filter((key) => key.changed).length;
-  const counts = `${changed} to change, ${keys.length - changed} unchanged`;
-  if (!args.switches.has('yes')) {
-    runtime.out.stdout(`PREVIEW ${load.path}: ${counts}; nothing written (add --yes to write)`);
-  } else if (changed === 0) {
-    runtime.out.stdout(`UNCHANGED ${load.path}: the budget already reads this way`);
-  } else {
-    const backup = await writeConfigWithBackup(
-      runtime.files,
-      { configPath: load.path, backupsDir: kit.paths.backups, backupName: BUDGET_BACKUP_NAME },
-      plan.value.config,
-      runtime.clock,
-    );
-    runtime.out.stdout(`WROTE ${load.path}: ${counts}; the old file is at ${backup}`);
-  }
-  keys.forEach((key) => runtime.out.stdout(keyLine(key)));
+  const next = await configLockOf(runtime, kit, config).run(async (writer) => {
+    // Planned on the file as it reads under the lock, so a hire or retire written meanwhile is kept.
+    const plan = planBudgetSetup(await configFileJson(runtime, load.path), choices);
+    if (!plan.ok) {
+      throw new UsageError(plan.problem);
+    }
+    const planned = checkedNextConfig(plan.value.config);
+    const { keys } = plan.value;
+    const changed = keys.filter((key) => key.changed).length;
+    const counts = `${changed} to change, ${keys.length - changed} unchanged`;
+    if (!args.switches.has('yes')) {
+      runtime.out.stdout(`PREVIEW ${load.path}: ${counts}; nothing written (add --yes to write)`);
+    } else if (changed === 0) {
+      runtime.out.stdout(`UNCHANGED ${load.path}: the budget already reads this way`);
+    } else {
+      const backup = await writer.write(plan.value.config, BUDGET_BACKUP_NAME);
+      runtime.out.stdout(`WROTE ${load.path}: ${counts}; the old file is at ${backup}`);
+    }
+    keys.forEach((key) => runtime.out.stdout(keyLine(key)));
+    return planned;
+  });
   const budget = next.budget;
   if (budget.enabled && budget.weeklyLimitW === undefined && (await readSnapshots(runtime.files, snapshotDirOf(budget, kit.paths))).length === 0) {
     runtime.out.stdout(

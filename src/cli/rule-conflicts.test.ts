@@ -6,6 +6,7 @@ import { CONFIG_LIMITS } from '../config/limits.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { MS_PER_DAY } from '../core/time.ts';
 import { APP, CliHarness, CONFIG_PATH, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
+import { configChangedMeanwhile, hired } from '../testing/config-race.ts';
 import { MemoryPathProbe } from '../testing/memory-files.ts';
 import { teamHomeOf, treeHarness } from '../testing/team-tree.ts';
 import { SCAN_LIST_MAX } from './commands/rule-conflicts.ts';
@@ -351,6 +352,29 @@ describe('rules keep', () => {
     const result = await keep(kit, '~/.claude/CLAUDE.md:2', '--rule', '16', '--wins', 'local');
     assert.equal(result.code, EXIT.refused);
     assert.match(result.stdout[0] ?? '', /^REFUSED the team keeps at most 40 local rules; drop one first/);
+  });
+
+  it('keeps a session hired while it waited for the config lock', async () => {
+    const kit = await world();
+    const sleep = await configChangedMeanwhile(kit, hired('dave'));
+    const argv = ['rules', 'keep', '~/.claude/CLAUDE.md:2', '--rule', '16', '--wins', 'local', '--session', 'lead', '--yes'];
+    ok(await kit.run(argv, { probe: new MemoryPathProbe(kit.files), sleep }));
+    assert.deepEqual(keptRules(kit), ['worktrees local']);
+    const text = kit.files.get(CONFIG_PATH);
+    const config: unknown = text === undefined ? undefined : JSON.parse(text);
+    assert.deepEqual(isRecord(config) ? config['sessions'] : undefined, ['lead', 'alpha', 'bravo', 'dave']);
+  });
+
+  it('refuses when the kept rules changed while it waited for the config lock, writing nothing more', async () => {
+    const kit = await world();
+    const other = { file: '~/.claude/CLAUDE.md', text: '# My rules', rule: 'worktrees', wins: 'teamrig' };
+    const sleep = await configChangedMeanwhile(kit, (config) => ({ ...config, ruleConflicts: [other] }));
+    const argv = ['rules', 'keep', '~/.claude/CLAUDE.md:2', '--rule', '16', '--wins', 'local', '--session', 'lead', '--yes'];
+    const result = await kit.run(argv, { probe: new MemoryPathProbe(kit.files), sleep });
+    assert.equal(result.code, EXIT.refused, result.stdout.join('\n'));
+    assert.equal(result.stdout[0], "REFUSED the team's kept local rules changed while this ran; run `teamrig rules` again");
+    assert.deepEqual(conflictsIn(kit), [other]);
+    assert.equal(kit.files.get(BACKUP), undefined);
   });
 });
 
