@@ -20,6 +20,12 @@ function issue(number: number, overrides: Partial<GithubIssue> = {}): GithubIssu
     assignees: [],
     url: `https://github.com/acme/web/issues/${number}`,
     updatedAt: '2030-01-01T00:00:00Z',
+    closedAt: undefined,
+    lastEditedAt: undefined,
+    authorAssociation: 'OWNER',
+    author: 'maintainer',
+    labelEvents: [],
+    renamedAt: undefined,
     ...overrides,
   };
 }

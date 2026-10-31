@@ -1,12 +1,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { JsonRecord } from '../core/guards.ts';
-import { isReadCommand } from '../github/gh.ts';
+import { isIssueQuery } from '../github/gh.ts';
 import { foldEvents, type Task } from '../register/fold.ts';
 import { readEvents } from '../register/snapshot.ts';
 import { CliHarness, EVENTS_PATH, TEAM } from '../testing/cli-harness.ts';
 import { FakeCredentials } from '../testing/fake-credentials.ts';
-import { FakeGh, ghIssue } from '../testing/fake-gh.ts';
+import { FakeGh, ghIssue, ghRepoOf } from '../testing/fake-gh.ts';
 import { EXIT } from './runtime.ts';
 
 const GITHUB_TEAM: JsonRecord = { ...TEAM, github: { repos: ['acme/web', 'acme/api'], owners: { octocat: 'bravo' } } };
@@ -36,7 +36,7 @@ const NO_TOKEN = 'ACCESS acme: read with the gh login; no token saved as teamrig
 async function expectRun(kit: CliHarness, argv: readonly string[], gh: FakeGh, code: number, env: Readonly<Record<string, string>> = {}): Promise<string[]> {
   const result = await kit.run(argv, { gh, env });
   assert.equal(result.code, code, [...result.stdout, ...result.stderr].join('\n'));
-  assert.ok(gh.ran.every((request) => isReadCommand(request.args)), 'gh was asked for something other than a read');
+  assert.ok(gh.ran.every((request) => isIssueQuery(request.args)), 'gh was asked for something other than a shipped issue query');
   const [first, ...rest] = result.stdout;
   return first === NO_TOKEN ? rest : [...result.stdout];
 }
@@ -230,7 +230,7 @@ describe('teamrig gh sync', () => {
       ['ACCESS acme: read with the token saved as teamrig-gh-acme', 'ACCESS globex: read with the gh login; no token saved as teamrig-gh-globex'],
     );
     assert.deepEqual(
-      gh.ran.map((request) => [request.args[3], request.env['GH_TOKEN']]),
+      gh.ran.map((request) => [ghRepoOf(request.args), request.env['GH_TOKEN']]),
       [['acme/web', 'acme-read-token'], ['acme/web', 'acme-read-token'], ['acme/api', 'acme-read-token'], ['acme/api', 'acme-read-token'], ['globex/site', undefined], ['globex/site', undefined]],
     );
     assert.deepEqual(credentials.reads, ['teamrig-gh-acme', 'teamrig-gh-globex']);

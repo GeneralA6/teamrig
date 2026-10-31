@@ -2,8 +2,9 @@ import { formatUtcDay } from '../core/time.ts';
 import type { ImportChanges, ImportInput, StatusInput, Verdict } from '../register/policy.ts';
 import type { WriteResult } from '../register/register.ts';
 import type { GhRunner } from './gh.ts';
-import { ISSUE_LIMIT, listIssues, type GithubIssue, type IssueList, type IssueState } from './issues.ts';
+import { ISSUE_LIMIT, listIssues, type GithubIssue, type IssueList } from './issues.ts';
 import { latestIssues, type SyncStep } from './plan.ts';
+import type { IssueState } from './queries.ts';
 import type { RepoAccess } from './tokens.ts';
 
 const DAY_MS = 86_400_000;
@@ -32,8 +33,8 @@ export function closedSince(now: Date, closedDays: number): string {
 }
 
 /**
- * Reads a repository's open issues, then those closed on or after `since`: two `gh issue list` reads and
- * nothing else. When either fails the repository is left out whole, so its tasks are not judged on half a read.
+ * Reads a repository's open issues, then those closed on or after `since`: pages of the two shipped issue queries
+ * and nothing else. When either fails the repository is left out whole, so its tasks are not judged on half a read.
  */
 export async function readRepo(gh: GhRunner, access: RepoAccess, repo: string, since: string): Promise<RepoRead> {
   const open = await listIssues(gh, access, { repo, state: 'open', limit: ISSUE_LIMIT });
