@@ -1,8 +1,22 @@
 import type { Files } from '../core/files.ts';
-import { isRecord, stringField } from '../core/guards.ts';
+import { stringField, type JsonRecord } from '../core/guards.ts';
+import { parseObject, recordVersion, VERSION_FIELD, writableObject } from '../core/jsonl.ts';
 
-/** The record's format; a record of another format reads as none. */
-const FORMAT = 1;
+/**
+ * The record's format: `v` (this number) and `configDir`. A record of another format reads as none, and one of a
+ * newer format is never overwritten (`writableObject`).
+ */
+export const CONFIG_DIR_FORMAT = 1;
+
+/** The record's text for `configDir`. */
+export function formatConfigDirRecord(configDir: string): string {
+  return `${JSON.stringify({ [VERSION_FIELD]: CONFIG_DIR_FORMAT, configDir })}\n`;
+}
+
+/** The config dir a record of this format names; undefined for a missing, damaged or other-format record. */
+function configDirIn(record: JsonRecord | undefined): string | undefined {
+  return record !== undefined && recordVersion(record) === CONFIG_DIR_FORMAT ? stringField(record, 'configDir') : undefined;
+}
 
 /**
  * The Claude config dir a team's sessions last started in, as each start records it in the team's usage folder
@@ -12,19 +26,18 @@ const FORMAT = 1;
 export async function readConfigDir(files: Pick<Files, 'read'>, path: string): Promise<string | undefined> {
   try {
     const text = await files.read(path);
-    if (text === undefined) {
-      return undefined;
-    }
-    const parsed: unknown = JSON.parse(text);
-    return isRecord(parsed) && parsed['v'] === FORMAT ? stringField(parsed, 'configDir') : undefined;
+    return configDirIn(text === undefined ? undefined : parseObject(text.trim()));
   } catch {
     return undefined;
   }
 }
 
-/** Records `configDir` as the team's (`readConfigDir`), writing only when the record names another or none. */
+/**
+ * Records `configDir` as the team's (`readConfigDir`), writing only when the record names another or none. A record of
+ * a newer format is refused (`NewerDataError`), so an older teamrig never overwrites what a newer one wrote.
+ */
 export async function recordConfigDir(files: Pick<Files, 'read' | 'write'>, path: string, configDir: string): Promise<void> {
-  if ((await readConfigDir(files, path)) !== configDir) {
-    await files.write(path, `${JSON.stringify({ v: FORMAT, configDir })}\n`);
+  if (configDirIn(writableObject(path, await files.read(path), CONFIG_DIR_FORMAT)) !== configDir) {
+    await files.write(path, formatConfigDirRecord(configDir));
   }
 }
