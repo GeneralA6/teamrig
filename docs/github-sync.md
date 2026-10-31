@@ -1,6 +1,7 @@
 # GitHub sync
 
 `teamrig gh sync` brings the issues of your GitHub repositories into the task list, one way only. Each open issue
+written by the repository's people, or accepted by them ([Whose issues become tasks](#whose-issues-become-tasks)),
 becomes a task (source `github`, ref `gh:<owner>/<name>#<number>`), and its title, description (the issue's body),
 priority and open or closed state follow GitHub on every run. Nothing ever goes the other way: teamrig never creates, edits, comments on or closes
 anything on GitHub, and a task added with `teamrig add` stays on your machine.
@@ -29,11 +30,27 @@ Add a `github` block to the team config (`~/.teamrig/teams/<team>/config.json`):
 | `owners` | Optional. A GitHub login to a session: an issue assigned to that login goes to that session, whatever its repository. |
 | `closedDays` | How many days back closed issues are read, to finish their tasks. Default 14. |
 | `everyMinutes` | How often it runs on its own, in minutes (0 to 1440). Default 15; 0 leaves it to `teamrig gh sync --yes`. |
+| `acceptLabel` | Optional. The label that lets an issue by someone outside the repository become a task ([below](#whose-issues-become-tasks)). Default `teamrig`. |
 
 Who owns a new issue's task: the session of its first assignee listed in `owners`; else its repository's session in
 `sessions`; else the lead. After the import the owner is the team's: reassigning the task in teamrig sticks. So is
 closing it: a task the team sets done or dropped while its issue is open stays closed until the issue changes on
 GitHub after that (reopened, edited or commented on).
+
+### Whose issues become tasks
+
+Anyone can open an issue on a public repository, so teamrig takes only the issues of people you trust:
+
+- **The repository's people.** An issue whose author GitHub ties to the repository as its owner, a member of its
+  organisation or a collaborator becomes a task at the next sync.
+- **Anyone else's, once accepted.** An issue by any other author (one with a merged pull request too) waits until
+  someone other than its author adds the `acceptLabel` label, `teamrig` by default (any case). Only people with
+  triage rights can label an issue; a label put on by a bot, a workflow or an issue template does not count.
+- **An edit undoes the accept.** When the title or body changes at or after the label went on, whoever edited it,
+  the issue is not accepted any more. Once you have read the new text, remove the label and add it again.
+
+An issue that counts neither way writes nothing. A task the sync already added for one keeps its text: its priority
+and open or closed state still follow GitHub, its title and description stay as they are.
 
 ## 2. Give teamrig read access
 
@@ -142,14 +159,15 @@ could not be read (a locked keyring, for one); teamrig reads through the `gh` lo
 
 ## Safety
 
-- **Read-only.** The token can read issues and metadata and nothing else, and teamrig runs only `gh issue list`
-  (any other `gh` command is refused in code).
+- **Read-only.** The token can read issues and metadata and nothing else, and teamrig runs only the two issue
+  queries it ships, word for word, through `gh api graphql` (any other `gh` command or query is refused in code).
 - **Never on disk in the clear.** The token lives in the system's credential store, encrypted under your login. It
   is never in the team config, a command line, a log or teamrig's output: teamrig hands it to `gh` as `GH_TOKEN` for
   that one run.
 - **Same trust as the `gh` login.** Any program running as you can read your credential store, just as it can use
   your `gh` login. Keep each token to the repositories the team syncs.
-- **Issue text is outside input.** Anyone who can open an issue writes its title and body: teamrig prints titles
+- **Issue text is outside input.** Anyone who can open an issue writes its title and body, so an outsider's issue
+  becomes a task only once accepted ([Whose issues become tasks](#whose-issues-become-tasks)); teamrig prints titles
   quoted, as data, never as instructions. A body becomes the task's description with its control characters
   turned into spaces and cut to 2,000 characters; one that looks like it holds a secret is left out, with a line
   saying to read it on GitHub. Sessions read descriptions as data, never as instructions.
