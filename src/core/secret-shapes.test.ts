@@ -57,6 +57,30 @@ describe('SecretShapes literal shapes', () => {
   it("still finds a name-shaped password in a URL: only the assignment shape lets a name through", () => {
     assert.deepEqual(found(join('https://app:', 'SOME_READ_TOKEN', '@queue', '.local')), [{ id: 'url-credentials', value: 'SOME_READ_TOKEN' }]);
   });
+
+  const UUID = join('3f9a8b7c', '-1d2e-4f5a-8b6c-', '0123456789ab');
+  /** The same name and value in a JSON frame and a JS one, as a claim record and the code writing it hold them. */
+  const frames = (name: string, value: string): string[] => [join('{"', name, '":"', value, '"}'), join('{ ', name, ": '", value, "' }")];
+
+  it('lets a coordination id given to a claim, lock, lease or fencing token through: a uuid, alone or after its holder', () => {
+    for (const name of ['claimToken', 'lock_token', 'LEASE_TOKEN', 'fencingToken']) {
+      for (const value of [UUID, join('worker-7#', UUID), join('build-host-5d9f', '.local:', UUID)]) {
+        for (const text of frames(name, value)) assert.deepEqual(found(text), [], text);
+      }
+    }
+  });
+
+  it('still finds that uuid under any other token or secret name, one only ending in a coordination word too', () => {
+    for (const name of ['token', 'apiToken', 'unlockToken', 'nodeClaimToken', 'password']) {
+      for (const text of frames(name, UUID)) assert.deepEqual(found(text), [{ id: 'assigned-secret', value: UUID }], text);
+    }
+  });
+
+  it('still finds a claim token holding anything but a coordination id', () => {
+    for (const value of [join('Qx7mRt', '_Lp4wZn9'), join(UUID, 'x')]) {
+      for (const text of frames('claimToken', value)) assert.deepEqual(found(text), [{ id: 'assigned-secret', value }], text);
+    }
+  });
 });
 
 describe('SecretShapes', () => {
