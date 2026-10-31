@@ -1172,7 +1172,7 @@ FILES web: state/inbox/web.md
 FILES ui: state/inbox/ui.md
 RENAMES 0 line(s) moved
 CREATED /home/you/.teamrig/teams/front/config.json
-TRIMMED /home/you/.teamrig/teams/shop/config.json: sessions web, ui left
+TRIMMED /home/you/.teamrig/teams/shop/config.json: sessions web, ui left; the old config is at /home/you/.teamrig/teams/shop/backups/config.split.json
 VERIFIED 2 task(s) read the same in front, and shop sends each there
 NEXT reopen each moved session from its team: teamrig open front/web; teamrig open front/ui
 ```
