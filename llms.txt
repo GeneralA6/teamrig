@@ -15,6 +15,7 @@
 ## Design
 
 - [How it works](https://github.com/GeneralA6/teamrig/blob/main/docs/how-it-works.md): the design, the files, updating the plugin
+- [Start here](https://github.com/GeneralA6/teamrig/blob/main/docs/guides/start-here.md): for a new user: installing teamrig, setting up a first team from one tab, and the five words every page uses (lead, session, task, waiting, verifying)
 - [Keep it safe](https://github.com/GeneralA6/teamrig/blob/main/docs/guides/keep-it-safe.md): the guards on pushes, skipped hooks, unvetted packages and secrets, privileged commands a reviewer approves, reads without a prompt
 - [Run your day](https://github.com/GeneralA6/teamrig/blob/main/docs/guides/run-your-day.md): the owner's daily meeting and its decision cards, a question that never stops a session, no prompt while nobody answers, notes between sessions, waking on urgent work
 - [Recover from a crash or a full context](https://github.com/GeneralA6/teamrig/blob/main/docs/guides/recover.md): sessions a crash or a reboot killed reopened by `teamrig restore run` in their folder (never one closed on purpose), at each logon on Windows; a fresh context at a task boundary from the session's handover; the turn log of each session's prompts and replies

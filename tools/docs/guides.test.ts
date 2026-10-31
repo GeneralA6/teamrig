@@ -45,6 +45,7 @@ describe('docs/guides', () => {
         'recover.md',
         'run-your-day.md',
         'ship-from-many-sessions.md',
+        'start-here.md',
       ],
     );
   });

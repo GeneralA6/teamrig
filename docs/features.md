@@ -108,6 +108,7 @@ flowchart LR
   cli <--> files["~/.teamrig/teams/your-team/: plain files"]
 ```
 
+[Start here](guides/start-here.md) takes a new user from install to a first team;
 [How it works](how-it-works.md) draws each part: a task's life and room for other tools;
 [Grow the team](guides/grow-the-team.md) covers setting up a team, hires and child teams,
 [Keep it safe](guides/keep-it-safe.md) the guards, [Run your day](guides/run-your-day.md) the daily meeting,

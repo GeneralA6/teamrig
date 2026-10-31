@@ -202,6 +202,7 @@ helper it is. Everything runs on your machine, with no account and no cloud bill
 
 | Page | What's in it |
 | --- | --- |
+| [Start here](docs/guides/start-here.md) | New to teamrig: install it, set up your first team, and the five words every page uses |
 | [How it works in detail](docs/how-it-works.md) | The design, the files and [updating the plugin](docs/how-it-works.md#updating-the-plugin) |
 | [Keep it safe](docs/guides/keep-it-safe.md) | The guards: safe pushes, skipped hooks, unvetted packages, secrets, privileged commands on review |
 | [Run your day](docs/guides/run-your-day.md) | The daily meeting, a question that never stops a session, notes between sessions, waking on urgent work |
