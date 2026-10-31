@@ -624,8 +624,9 @@ export interface BudgetConfig {
   readonly enabled: boolean;
   /**
    * The Claude account the team's week is on: teams with the same account share one week and split its daily
-   * budget. Unset: the team above's (`AccountBudget`), else the Claude config dir, since one config dir signs in one
-   * account.
+   * budget. Unset: the team above's (`AccountBudget`), else the one account the teams on its Claude config dir name
+   * (the dir its sessions last started in, budget/config-dir.ts), else that dir, since one config dir signs in one
+   * account (budget/account.ts `accountsOf`).
    */
   readonly account?: string;
   /** The weekly limit in weighted tokens (W). Unset: the team above's (`AccountBudget`), else derived from the status line's weekly %. */
