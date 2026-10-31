@@ -242,7 +242,7 @@ export class Register {
    * The owner's Note from the pane (T1298), written as the team's register.ownerSource, on no roster: the CLI writes it
    * only for the owner (a hook refuses it from an agent's tool call), so the roster check is skipped, as in noteFrom.
    */
-  ownerNote(id: string, note: string): Promise<Verdict<WriteResult>> {
+  ownerNote(id: string, note: string | undefined): Promise<Verdict<WriteResult>> {
     return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.ownerEvent(task, this.deps.policy.ownerNote(task, note)))));
   }
 
