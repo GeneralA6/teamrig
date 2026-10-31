@@ -19,8 +19,15 @@ export interface StartRequest extends ProgramRequest {
   readonly mode: StartMode;
 }
 
+/**
+ * How a started program's launch ended: an `exit` launcher `exited` 0 once its tab was open, or was still `running`
+ * when the wait ended (some stay up as the window); a `spawn` launcher or a hidden program was `spawned`, which is all
+ * there is to know of it.
+ */
+export type LaunchEnd = 'exited' | 'running' | 'spawned';
+
 export type StartOutcome =
-  | { readonly kind: 'started' }
+  | { readonly kind: 'started'; readonly end: LaunchEnd }
   /** The program is not installed (or not on PATH). */
   | { readonly kind: 'missing' }
   | { readonly kind: 'failed'; readonly error: string };
@@ -91,7 +98,7 @@ function startUntilExit(request: StartRequest, waitMs: number): Promise<StartOut
     const timer = setTimeout(() => {
       child.stderr.destroy();
       child.unref();
-      resolve({ kind: 'started' });
+      resolve({ kind: 'started', end: 'running' });
     }, waitMs);
     child.once('error', (error) => {
       clearTimeout(timer);
@@ -99,7 +106,7 @@ function startUntilExit(request: StartRequest, waitMs: number): Promise<StartOut
     });
     child.once('close', (code) => {
       clearTimeout(timer);
-      resolve(code === 0 ? { kind: 'started' } : { kind: 'failed', error: exitText(code, stderr) });
+      resolve(code === 0 ? { kind: 'started', end: 'exited' } : { kind: 'failed', error: exitText(code, stderr) });
     });
   });
 }
@@ -117,7 +124,7 @@ function startDetached(request: ProgramRequest): Promise<StartOutcome> {
     child.once('error', (error) => resolve(outcomeOfError(error)));
     child.once('spawn', () => {
       child.unref();
-      resolve({ kind: 'started' });
+      resolve({ kind: 'started', end: 'spawned' });
     });
   });
 }
@@ -176,7 +183,7 @@ function startHiddenProgram(request: RunRequest): Promise<StartOutcome> {
     launcher.once('close', (code) => {
       switch (code) {
         case 0:
-          resolve({ kind: 'started' });
+          resolve({ kind: 'started', end: 'spawned' });
           break;
         case LAUNCH_MISSING:
           resolve({ kind: 'missing' });

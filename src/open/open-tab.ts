@@ -1,10 +1,24 @@
 import type { TerminalChoice } from '../config/types.ts';
 import type { Env } from '../core/home.ts';
-import type { Processes } from './processes.ts';
+import { EXIT_WAIT_MS, type LaunchEnd, type Processes } from './processes.ts';
 import { autoTerminals, tabCommand, type TabRequest, type Terminal } from './terminals.ts';
 
-/** A tab opened in `terminal`, or none, with why each terminal tried could not open it. */
-export type OpenOutcome = { readonly kind: 'opened'; readonly terminal: Terminal } | { readonly kind: 'none'; readonly reasons: readonly string[] };
+/** A tab opened in `terminal`, and how its launcher ended, or none, with why each terminal tried could not open it. */
+export type OpenOutcome =
+  | { readonly kind: 'opened'; readonly terminal: Terminal; readonly end: LaunchEnd }
+  | { readonly kind: 'none'; readonly reasons: readonly string[] };
+
+/** How an opened tab's launch ended, for a log: `windows-terminal exited 0`. */
+export function launchWords(terminal: Terminal, end: LaunchEnd): string {
+  switch (end) {
+    case 'exited':
+      return `${terminal} exited 0`;
+    case 'running':
+      return `${terminal} still running after ${EXIT_WAIT_MS / 1_000} s`;
+    case 'spawned':
+      return `${terminal} started`;
+  }
+}
 
 export interface OpenTabDeps {
   readonly processes: Processes;
@@ -36,7 +50,7 @@ export async function openTab(deps: OpenTabDeps, choice: TerminalChoice, tab: Ta
     const outcome = await deps.processes.start(planned.request);
     switch (outcome.kind) {
       case 'started':
-        return { kind: 'opened', terminal };
+        return { kind: 'opened', terminal, end: outcome.end };
       case 'missing':
         reasons.push(`${terminal} is not installed`);
         break;

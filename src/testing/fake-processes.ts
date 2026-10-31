@@ -37,7 +37,7 @@ export class FakeProcesses implements Processes {
 
   async startHidden(request: RunRequest): Promise<StartOutcome> {
     this.hidden.push(request);
-    return this.startOutcomes.get(request.command) ?? { kind: 'started' };
+    return this.startOutcomes.get(request.command) ?? { kind: 'started', end: 'spawned' };
   }
 }
 

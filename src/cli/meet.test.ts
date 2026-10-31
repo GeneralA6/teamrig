@@ -42,7 +42,7 @@ async function alphaWithACard(): Promise<CliHarness> {
 
 /** The options of a host where alpha's Claude Code is `rows`' process (none: not running) and a new tab opens. */
 function hostOf(rows: readonly { pid: number; parent: number; bytes: number }[]): { options: RunOptions; processes: FakeProcesses } {
-  const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started' });
+  const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
   const transcripts = new MemoryTranscripts({ [TRANSCRIPT]: reply(40_000) }, Date.parse(CLOSED.at) - 2 * HOUR_MS);
   return { processes, options: { platform: 'win32', probe: new FakePathProbe({ folders: [APP] }), memory: new FakeHostMemory().lists(rows, CHARGE), processes, transcripts } };
 }

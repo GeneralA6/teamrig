@@ -42,7 +42,7 @@ function hire(kit: CliHarness, extra: readonly string[], options: RunOptions = {
 
 /** Opens a session in a Windows Terminal tab; returns the run and what the tab runs. */
 async function open(kit: CliHarness, extra: readonly string[], options: RunOptions = {}): Promise<{ result: CliResult; argv: readonly string[] }> {
-  const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started' });
+  const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
   const result = await kit.run(['open', ...extra], { probe: FOLDERS, processes, platform: 'win32', ...options });
   return { result, argv: processes.started[0]?.args ?? [] };
 }
