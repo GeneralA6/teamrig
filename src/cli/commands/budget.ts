@@ -365,10 +365,18 @@ function liftRefusalOf(tree: LeadTree, nameOf: (id: string) => string, by: strin
     }
     return tree.leads(by, id) ? undefined : `${name}'s group's budget is lifted only by ${orList(tree.chainOf(id).map(nameOf))}`;
   }
+  return sessionRefusalOf(tree, nameOf, by, id, 'lifted');
+}
+
+/**
+ * Why session `by` may not lift or cut (`verb`) session `id`'s daily budget; undefined when it may. A leader may for
+ * every session under it, at any depth, and a sub-lead for its own session too.
+ */
+function sessionRefusalOf(tree: LeadTree, nameOf: (id: string) => string, by: string, id: string, verb: 'lifted' | 'cut'): string | undefined {
   if (tree.leads(by, id) || (by === id && tree.isLeader(by))) {
     return undefined;
   }
-  return `${name}'s budget is lifted only by ${orList([...(tree.isLeader(id) ? [id] : []), ...tree.chainOf(id)].map(nameOf))}`;
+  return `${nameOf(id)}'s budget is ${verb} only by ${orList([...(tree.isLeader(id) ? [id] : []), ...tree.chainOf(id)].map(nameOf))}`;
 }
 
 /**
