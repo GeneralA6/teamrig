@@ -674,4 +674,16 @@ describe('runCli: live tasks in the start note', () => {
     assert.ok(text.endsWith('LIVE TASKS: teamrig could not read the register (EACCES: simulated); run `teamrig list --session alpha` for your tasks.'), text);
     assert.ok(!text.includes('\nSTART alpha,'), 'a note with no task list is no work block start');
   });
+
+  it('leaves out the meetings and week lines it cannot read, and still starts the work block (T1529)', async () => {
+    const kit = new CliHarness();
+    await finishTask(kit, 'alpha');
+    await addTasks(kit);
+    const files = new FaultyFiles(kit.files)
+      .fail('read', join(TEAM_HOME, 'state', 'meetings.jsonl'), systemError('EACCES'))
+      .fail('read', join(TEAM_HOME, 'state', 'usage', 'alpha.json'), systemError('EACCES'));
+    const text = await start(kit, 'compact', files);
+    assert.ok(text.endsWith(`\n${START}\n${LIVE}`), text.slice(-900));
+    assert.ok(!text.includes('\nWeek: '), 'no week line from a usage store it cannot read');
+  });
 });
