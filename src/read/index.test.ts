@@ -44,7 +44,7 @@ describe('the read entry', () => {
   it('reaches no node: module and no package, so a reader without Node built-ins can run it', () => {
     const closure = importClosure(ENTRY, SRC, (file) => readFileSync(file, 'utf8'));
     assert.deepEqual(closure.outside, []);
-    for (const file of ['register/events.ts', 'register/fold.ts', 'register/layout.ts', 'register/marker.ts', 'register/stats.ts', 'register/stats-health.ts', 'inbox/unread.ts', 'config/parse.ts', 'config/tree.ts', 'hiring/record.ts', 'budget/team-week-summary.ts']) {
+    for (const file of ['register/events.ts', 'register/fold.ts', 'register/layout.ts', 'register/marker.ts', 'register/stats.ts', 'register/stats-health.ts', 'inbox/unread.ts', 'config/parse.ts', 'config/tree.ts', 'hiring/record.ts', 'budget/team-week-summary.ts', 'budget/session-week-summary.ts']) {
       assert.ok(closure.files.includes(file), `${file} is part of the read side`);
     }
     assert.ok(!closure.files.some((file) => file.endsWith('.test.ts')), 'no test file is reachable');

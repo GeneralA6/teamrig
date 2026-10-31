@@ -157,6 +157,8 @@ export interface TeamPaths {
   readonly extraLog: string;
   /** The team's used and planned part of the week, for readers that show it (budget/team-week-summary.ts `TEAM_WEEK_PATH`). */
   readonly teamWeek: string;
+  /** Each session's use of the week and its hours with work, for readers that show them (budget/session-week-summary.ts `SESSIONS_WEEK_PATH`). */
+  readonly sessionsWeek: string;
   /** The leaders' budget lifts, an append-only log. */
   readonly lifts: string;
   /** The leaders' budget cuts, an append-only log (budget/cut.ts). */
@@ -293,6 +295,7 @@ export function teamPaths(kitHome: string, team: string, claudeDir: string, over
     meterLog: join(state, 'usage', 'meter-log.jsonl'),
     extraLog: join(state, 'usage', 'extra-log.jsonl'),
     teamWeek: join(state, 'usage', 'team.week.json'),
+    sessionsWeek: join(state, 'usage', 'sessions.week.json'),
     lifts: join(state, 'usage', 'lifts.jsonl'),
     cuts: join(state, 'usage', 'cuts.jsonl'),
     bursts: join(state, 'usage', 'bursts.jsonl'),
