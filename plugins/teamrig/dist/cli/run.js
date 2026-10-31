@@ -5,6 +5,7 @@ import { KIT_VERSION } from "../core/version.js";
 import { cutLineMessage, shimArgs } from "./cmd-shim.js";
 import { CommandHelp } from "./help.js";
 import { parseArgs, UsageError } from "./args.js";
+import { RENAMED } from "./renamed.js";
 import { EXIT, RefusedError } from "./runtime.js";
 const registerCommands = () => import("./commands/register.js");
 const inboxCommands = () => import("./commands/inbox.js");
@@ -255,26 +256,6 @@ export const COMMAND_SWITCHES = Object.fromEntries(Object.entries(COMMANDS).map(
 export const COMMAND_EFFECTS = Object.fromEntries(Object.entries(COMMANDS).map(([name, spec]) => [name, spec.effect]));
 /** The commands that take a command line after `--`. */
 export const COMMAND_REST = new Set(Object.entries(COMMANDS).flatMap(([name, spec]) => (spec.rest === true ? [name] : [])));
-/**
- * Renamed flags and commands, refused everywhere with the new name, never an alias: `--tier` became `--priority`
- * (levels p1, p2, ...), and for plain words (T1308) `teamrig integrate` became `teamrig merge`, `teamrig roll` became
- * `teamrig deploy`, `teamrig deploys` became `teamrig deploy-status`, `teamrig heavy` became `teamrig queue`, `teamrig
- * claim` became `teamrig freeze`, `teamrig release` became `teamrig unfreeze`, `teamrig windows` became `teamrig
- * stable-periods` and `teamrig load` became `teamrig job` (`load end` with it).
- */
-const RENAMED = {
-    flags: { tier: 'priority', problem: 'type bug [--critical] (or --type task)' },
-    commands: {
-        integrate: 'merge',
-        roll: 'deploy',
-        deploys: 'deploy-status',
-        heavy: 'queue',
-        claim: 'freeze',
-        release: 'unfreeze',
-        windows: 'stable-periods',
-        load: 'job',
-    },
-};
 /** The table a line is read with, and each command's effect: what `/teamrig` plans a line from (src/slash/plan.ts). */
 export const COMMAND_TABLE = { flags: COMMAND_FLAGS, switches: COMMAND_SWITCHES, renamed: RENAMED, rest: COMMAND_REST, effects: COMMAND_EFFECTS };
 export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|name>, else $${ENV.session})
