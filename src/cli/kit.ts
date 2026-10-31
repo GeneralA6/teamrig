@@ -1,4 +1,5 @@
 import { basename, dirname } from 'node:path';
+import { ConfigLock } from '../config/config-lock.ts';
 import { formatConfig, loadConfig, type ConfigLoad } from '../config/load.ts';
 import { SHIPPED_CONFIG_FORMAT } from '../config/migrate.ts';
 import type { ConfigIssue } from '../config/reader.ts';
@@ -19,6 +20,12 @@ import { fileLockOf } from './file-locks.ts';
 export interface Kit {
   readonly paths: TeamPaths;
   readonly load: ConfigLoad;
+}
+
+/** The lock every change to the team's config is read and written under (config-lock.ts). */
+export function configLockOf(runtime: CliRuntime, kit: Kit, config: KitConfig): ConfigLock {
+  const place = { configPath: kit.load.path, backupsDir: kit.paths.backups };
+  return new ConfigLock(fileLockOf(runtime, kit.paths.configLock, config.lock), runtime.files, runtime.clock, place);
 }
 
 /** The rename log, its lock and the roster it gives, for recording a rename. */
@@ -94,6 +101,11 @@ export async function openKit(runtime: CliRuntime, team: string): Promise<Kit> {
   const claudeDir = claudeConfigDir(runtime.env, runtime.userHome);
   const load = await teamConfigOf(runtime, team, []);
   return { load, paths: teamPaths(kitHome, team, claudeDir, load.status === 'loaded' ? overridesOf(load.config) : {}) };
+}
+
+/** The team's config as its file reads now, read the way `openTeamKit` read it: for a change made under the config lock. */
+export function reloadTeamConfig(runtime: CliRuntime, kit: Kit): Promise<ConfigLoad> {
+  return teamConfigOf(runtime, kit.paths.team, []);
 }
 
 /**

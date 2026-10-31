@@ -1,4 +1,3 @@
-import { writeConfigWithBackup } from '../../config/load.ts';
 import type { Roster } from '../../config/roster.ts';
 import { KIT_NAME } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';
@@ -12,11 +11,10 @@ import type { Register } from '../../register/register.ts';
 import { RefreshStore } from '../../refresh/store.ts';
 import { onePositional, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
-import { checkedNextConfig, configFileJson, openTeamKit, requireConfig, rosterOf, sessionIdOf, type Kit } from '../kit.ts';
+import { checkedNextConfig, configFileJson, configLockOf, openTeamKit, requireConfig, rosterOf, sessionIdOf, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { teamRegister } from '../team-register.ts';
 import { inboxDepsOf } from './inbox.ts';
-import { fileLockOf } from '../file-locks.ts';
 
 /**
  * `retire`: a lead over a session takes it off the team once the team no longer needs it: the lead, or a
@@ -94,11 +92,10 @@ export async function retire(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   const roster = await rosterOf(runtime, kit, config);
   const by = sessionIdOf(roster, caller);
   const register = teamRegister(runtime, kit.paths, config);
-  const { files, clock } = runtime;
+  const { files } = runtime;
   const { load } = kit;
   const log = new HiringLog(files, kit.paths.hires);
-  const mutex = fileLockOf(runtime, kit.paths.hiresLock, config.lock);
-  return mutex.run(async () => {
+  return configLockOf(runtime, kit, config).run(async (writer) => {
     const request = await requestOf(args, runtime, kit, roster, register, by);
     const { records, skipped } = await log.read();
     const plan = planRetire(await configFileJson(runtime, load.path), config, activeHires(records), request);
@@ -115,7 +112,7 @@ export async function retire(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
       return EXIT.ok;
     }
     await handOver(runtime, kit, register, plan.value, new SecretScanner(config.register.secretPatterns));
-    const backup = await writeConfigWithBackup(files, { configPath: load.path, backupsDir: kit.paths.backups, backupName: RETIRE_BACKUP_NAME }, plan.value.config, clock);
+    const backup = await writer.write(plan.value.config, RETIRE_BACKUP_NAME);
     // The config first: a retire logged for a session still on the team would leave it out of the active hires.
     await log.append(plan.value.retire);
     const session = plan.value.retire.session;
