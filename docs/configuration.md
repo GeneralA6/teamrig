@@ -499,6 +499,7 @@ teamrig gh sync: GitHub issues read into the register as tasks of source github.
 | `sessions` | map from string (matching `^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}$`) to [session name](#shared-types) | `{}` | The session that owns the issues of each repository (owner/name, one of repos; matched without case) when none of their assignees is in owners. Without one, they go to the lead. |
 | `closedDays` | integer (1 to 365) | `14` | How many days back closed issues are read, to finish the tasks they were imported as. |
 | `everyMinutes` | integer (0 to 1440) | `15` | How often the hooks start a sync on their own, in minutes, once for the whole team; 0 leaves it to teamrig gh sync --yes. |
+| `acceptLabel` | string (1 to 50 characters, matching `^[^\r\n]+$`) | `"teamrig"` | The label that lets an issue by an author outside the repository (not its owner, an organization member or a collaborator) become a task: it counts when someone other than the author added it last and the title and body were not edited after that. Matched without case. |
 
 ## `alerts`
 

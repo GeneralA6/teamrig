@@ -51,7 +51,7 @@ import {
   QUEUE_TTL_MARGIN_MINUTES,
 } from './defaults.ts';
 import { isEffort, isModel } from './launch.ts';
-import { BUDGET_ACCOUNT_MAX_LENGTH, CONFIG_LIMITS, REVIEW_PATH_LIMITS, RULE_CONFLICT_LIMITS } from './limits.ts';
+import { BUDGET_ACCOUNT_MAX_LENGTH, CONFIG_LIMITS, GITHUB_LABEL_MAX_LENGTH, REVIEW_PATH_LIMITS, RULE_CONFLICT_LIMITS } from './limits.ts';
 import { HIRE_CAP_DROPPED, IDLE_RETIRE_DROPPED } from './migrate.ts';
 import { ConfigReader, describe, isValidRegex, shortLine, type Check, type ConfigIssue } from './reader.ts';
 import {
@@ -585,6 +585,7 @@ function parseGithub(read: ConfigReader, raw: JsonRecord, sessions: readonly str
     sessions: readGithubSessions(read, read.section(raw, 'sessions', 'github'), repos, sessions),
     closedDays: read.integer(raw, 'closedDays', 'github', DEFAULT_GITHUB.closedDays, CONFIG_LIMITS.closedDays),
     everyMinutes: read.integer(raw, 'everyMinutes', 'github', DEFAULT_GITHUB.everyMinutes, CONFIG_LIMITS.githubEveryMinutes),
+    acceptLabel: read.string(raw, 'acceptLabel', 'github', DEFAULT_GITHUB.acceptLabel, shortLine(GITHUB_LABEL_MAX_LENGTH)),
   };
 }
 

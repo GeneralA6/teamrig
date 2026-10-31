@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { NAME_PATTERN, RESERVED_NAMES } from '../core/ids.ts';
 import { MODEL_ALIASES, MODEL_ID_MAX_LENGTH, MODEL_ID_PATTERN } from './launch.ts';
-import { BUDGET_ACCOUNT_MAX_LENGTH, CONFIG_LIMITS, REVIEW_PATH_LIMITS, RULE_CONFLICT_LIMITS } from './limits.ts';
+import { BUDGET_ACCOUNT_MAX_LENGTH, CONFIG_LIMITS, GITHUB_LABEL_MAX_LENGTH, REVIEW_PATH_LIMITS, RULE_CONFLICT_LIMITS } from './limits.ts';
 import { parseConfig } from './parse.ts';
 import { KEEP_RULE_PATTERN } from '../permissions/allow-rules.ts';
 import { PREFIX_PATTERN } from '../readonly-shell/rules.ts';
@@ -380,6 +380,11 @@ describe('config.schema.json', () => {
   it('takes the budget account names the parser takes', async () => {
     const account = nodeAt(await loadSchema(), 'budget.account');
     assert.deepEqual([account['maxLength'], account['pattern']], [BUDGET_ACCOUNT_MAX_LENGTH, '^[^\\r\\n]+$']);
+  });
+
+  it('takes the github accept labels the parser takes', async () => {
+    const label = nodeAt(await loadSchema(), 'github.acceptLabel');
+    assert.deepEqual([label['minLength'], label['maxLength'], label['pattern']], [1, GITHUB_LABEL_MAX_LENGTH, '^[^\\r\\n]+$']);
   });
 
   it('takes the verify gate choices the parser takes', async () => {
