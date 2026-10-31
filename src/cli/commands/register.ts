@@ -123,7 +123,7 @@ function autoArchiveSwitch(configPath: string): string {
  * another team's register, so its id reads `<label>/T12`. A rotation the write ran is named on stderr, so the task
  * line stays the one line a script reads, with the switch that turns it off in the written team's config.
  */
-function report(runtime: CliRuntime, verdict: Verdict<WriteResult>, verb: string, written: Pick<Team, 'paths' | 'zone'>, label?: string): ExitCode {
+export function report(runtime: CliRuntime, verdict: Verdict<WriteResult>, verb: string, written: Pick<Team, 'paths' | 'zone'>, label?: string): ExitCode {
   if (!verdict.ok) {
     throw new RefusedError(verdict.error);
   }
