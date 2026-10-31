@@ -34,6 +34,18 @@ export function restoreLogPath(kitHome: string): string {
   return join(kitHome, 'restore', 'restore.log');
 }
 
+/** Appends a line to the restore log; a log that cannot be written is a warning on stderr, never a failed restore. */
+function restoreLogOf(runtime: CliRuntime): (line: string) => Promise<void> {
+  const logPath = restoreLogPath(resolveKitHome(runtime.env, runtime.userHome));
+  return async (line) => {
+    try {
+      await runtime.files.append(logPath, `${new Date(runtime.clock.now()).toISOString()} ${line}\n`);
+    } catch (error) {
+      runtime.out.stderr(`WARN could not write the restore log ${logPath}: ${errorMessage(error)}`);
+    }
+  };
+}
+
 /** The runtime on the kit home `--home` names, which a new tab's own environment may not carry. */
 function homeRuntimeOf(args: ParsedArgs, runtime: CliRuntime): CliRuntime {
   const home = args.flags.get('home');
@@ -107,7 +119,6 @@ async function restoreDepsOf(runtime: CliRuntime, terminal: TerminalChoice | und
   const kitHome = resolveKitHome(runtime.env, runtime.userHome);
   const projectsDir = claudeProjectsDir(runtime.env, runtime.userHome);
   const finder = new TranscriptFinder(runtime.files, runtime.probe, projectsDir);
-  const logPath = restoreLogPath(kitHome);
   return {
     registry: new RestoreRegistry(runtime.files, restoreSessionsDir(kitHome)),
     archive: new RestoreArchive(runtime.files, restoreArchiveDir(kitHome)),
@@ -126,13 +137,7 @@ async function restoreDepsOf(runtime: CliRuntime, terminal: TerminalChoice | und
     readTail: (path, maxBytes) => runtime.files.readTail(path, maxBytes),
     reopen: (tab) => reopen(runtime, tab, terminal),
     print: (line) => runtime.out.stdout(line),
-    log: async (line) => {
-      try {
-        await runtime.files.append(logPath, `${new Date(runtime.clock.now()).toISOString()} ${line}\n`);
-      } catch (error) {
-        runtime.out.stderr(`WARN could not write the restore log ${logPath}: ${errorMessage(error)}`);
-      }
-    },
+    log: restoreLogOf(runtime),
   };
 }
 
@@ -145,11 +150,13 @@ export async function restorePreview(_args: ParsedArgs, runtime: CliRuntime): Pr
 /**
  * `restore check [--terminal <name>] [--home <dir>]`, at logon: drops the recorded sessions no restore needs and,
  * when the last shutdown killed some, opens a tab that runs `restore run` for them, so the person sees the list
- * and the countdown. When no terminal opens it prints the command to run instead and exits 3.
+ * and the countdown. When no terminal opens it prints the command to run instead and exits 3. Its first log line is
+ * written before it reads the teams or probes a process, so a check that stops early still shows it ran (T1705).
  */
 export async function restoreCheck(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
-  const terminal = terminalFlag(args.flags.get('terminal'));
   const homeRuntime = homeRuntimeOf(args, runtime);
+  await restoreLogOf(homeRuntime)('check: started');
+  const terminal = terminalFlag(args.flags.get('terminal'));
   const { since, count } = await checkRestore(await restoreDepsOf(homeRuntime, terminal));
   if (count === 0) {
     runtime.out.stdout('No Claude Code sessions to restore.');
@@ -192,12 +199,17 @@ function sinceFlag(value: string | undefined, now: number): number {
 /**
  * `restore run [--since <time>] [--terminal <name>] [--home <dir>] [--tab]`: reopens the Claude Code sessions the
  * last shutdown killed, after a countdown. `--tab` is for the tab `restore check` opened: it stays a moment once
- * every session is open, and longer when nothing opened or something failed, so its lines can be read.
+ * every session is open, and longer when nothing opened or something failed, so its lines can be read. In its tab
+ * it logs `run: tab opened` first, so a tab whose terminal ended before the countdown still shows it ran (T1705).
  */
 export async function restoreRun(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+  const homeRuntime = homeRuntimeOf(args, runtime);
+  if (args.switches.has('tab')) {
+    await restoreLogOf(homeRuntime)('run: tab opened');
+  }
   const terminal = terminalFlag(args.flags.get('terminal'));
   const since = sinceFlag(args.flags.get('since'), runtime.clock.now());
-  const deps = await restoreDepsOf(homeRuntimeOf(args, runtime), terminal);
+  const deps = await restoreDepsOf(homeRuntime, terminal);
   const run = args.switches.has('tab') ? await runInTab(runtime, deps, since) : await runRestore(deps, since);
   return run.failed === 0 ? EXIT.ok : EXIT.failed;
 }

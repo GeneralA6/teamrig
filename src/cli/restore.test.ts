@@ -121,7 +121,7 @@ describe('teamrig restore check', () => {
     const result = await kit.run(['restore', 'check'], machine(kit, processes));
     assert.deepEqual(result, { code: EXIT.ok, stdout: ['OPENED the restore of 2 Claude Code sessions in a new Windows Terminal tab'], stderr: [] });
     assert.deepEqual(processes.started[0]?.args, windowsTab(RESTORE_TAB_TITLE, USER_HOME, RUN));
-    assert.equal(await logOf(kit), '2030-01-08T10:00:00.000Z check: 2 to restore, 1 kept, 0 closed\n');
+    assert.equal(await logOf(kit), '2030-01-08T10:00:00.000Z check: started\n2030-01-08T10:00:00.000Z check: 2 to restore, 1 kept, 0 closed\n');
   });
 
   it('prints the command to run, and exits 3, when no terminal opens', async () => {
@@ -129,6 +129,13 @@ describe('teamrig restore check', () => {
     const result = await kit.run(['restore', 'check'], machine(kit, new FakeProcesses()));
     assert.equal(result.code, EXIT.printed);
     assert.deepEqual(result.stdout, ['MANUAL no terminal opened (windows-terminal is not installed); open a new terminal and run this in PowerShell:', shellCommand('win32', USER_HOME, RUN)]);
+  });
+
+  it('logs that it started before a bad flag stops it (T1705)', async () => {
+    const kit = await restoreKit();
+    const result = await kit.run(['restore', 'check', '--terminal', 'nope'], machine(kit, new FakeProcesses()));
+    assert.equal(result.code, EXIT.usage);
+    assert.equal(await logOf(kit), '2030-01-08T10:00:00.000Z check: started\n');
   });
 
   it('opens nothing when no session needs a restore', async () => {
@@ -157,6 +164,7 @@ describe('teamrig restore run', () => {
     assert.ok(result.stdout.includes('Opened notes (continue: mid-turn)'));
     assert.equal((await new RestoreRegistry(kit.files, restoreSessionsDir(KIT)).read(ALPHA))?.restoreAttempts, 1);
     assert.match(await logOf(kit), new RegExp(`run: opened ${ALPHA} \\(idle\\) at effort high\n`));
+    assert.doesNotMatch(await logOf(kit), /tab opened/, 'a run by hand is not in its tab');
   });
 
   it("reopens a team's session in the team's own Windows Terminal window when open.teamWindow is on, and one outside any team as before (T1427)", async () => {
@@ -176,6 +184,7 @@ describe('teamrig restore run', () => {
     const opened = await restoreKit();
     okResult(await opened.run(['restore', 'run', '--tab'], machine(opened, new FakeProcesses().onStart('wt.exe', { kind: 'started' }))));
     assert.deepEqual(opened.clock.sleeps, [TAB_STAGGER_MS, TAB_SETTLE_MS]);
+    assert.match(await logOf(opened), /^\S+ run: tab opened\n\S+ run: started, 2 to reopen\n/);
     const failed = await restoreKit();
     const result = await failed.run(['restore', 'run', '--tab'], machine(failed, new FakeProcesses()));
     assert.equal(result.code, EXIT.failed);
