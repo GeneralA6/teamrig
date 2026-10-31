@@ -11,9 +11,10 @@ import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeGh, ghIssue } from '../testing/fake-gh.ts';
 import { InlineMutex } from '../testing/inline-mutex.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { isReadCommand, type GhRequest, type GhResult, type GhRunner } from './gh.ts';
-import { ISSUE_LIMIT } from './issues.ts';
+import { isIssueQuery, type GhRequest, type GhResult, type GhRunner } from './gh.ts';
+import { ISSUE_LIMIT, issuePageArgs } from './issues.ts';
 import type { SyncStep } from './plan.ts';
+import { CLOSED_ISSUES_QUERY } from './queries.ts';
 import { applySteps, closedSince, readRepo } from './sync.ts';
 import type { RepoAccess } from './tokens.ts';
 
@@ -21,7 +22,7 @@ import type { RepoAccess } from './tokens.ts';
 const LOGIN: RepoAccess = { via: 'login', env: { HOME: '/u' }, owner: 'acme', credential: 'teamrig-gh-acme', save: 'save teamrig-gh-acme' };
 const URL = 'https://github.com/acme/web/issues/7';
 
-/** A gh whose closed list fails, as a rate limit hit between the two reads would. */
+/** A gh whose closed read fails, as a rate limit hit between the two reads would; the open read is one page. */
 class ClosedFails implements GhRunner {
   readonly ran: GhRequest[] = [];
   private readonly open: readonly JsonRecord[];
@@ -32,9 +33,10 @@ class ClosedFails implements GhRunner {
 
   async run(request: GhRequest): Promise<GhResult> {
     this.ran.push(request);
-    return request.args.includes('closed')
+    const page = { data: { repository: { issues: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: this.open } } } };
+    return request.args.includes(`query=${CLOSED_ISSUES_QUERY}`)
       ? { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'HTTP 403: API rate limit exceeded\n' }
-      : { end: { kind: 'exited', code: 0 }, stdout: JSON.stringify(this.open), stderr: '' };
+      : { end: { kind: 'exited', code: 0 }, stdout: JSON.stringify(page), stderr: '' };
   }
 }
 
@@ -60,18 +62,25 @@ describe('closedSince', () => {
 });
 
 describe('readRepo', () => {
-  it('reads the open issues, then those closed since the day, through two reads only', async () => {
+  it('reads the open issues, then those closed since the day, a page of each shipped query when a page holds them', async () => {
     const gh = new FakeGh().holds('acme/web', [ghIssue('acme/web', 7), ghIssue('acme/web', 8, { state: 'CLOSED', stateReason: 'COMPLETED' })]);
     const read = await readRepo(gh, LOGIN, 'acme/web', '2029-12-25');
     assert.equal(read.kind, 'read');
     assert.deepEqual(read.kind === 'read' && read.issues.map((issue) => [issue.number, issue.state]), [[7, 'open'], [8, 'closed']]);
     assert.deepEqual(read.kind === 'read' && read.notes, []);
-    assert.deepEqual(gh.ran.map((request) => request.args.slice(4, 8)), [['--state', 'open', '--limit', '500'], ['--state', 'closed', '--search', 'closed:>=2029-12-25']]);
-    assert.ok(gh.ran.every((request) => isReadCommand(request.args)));
+    assert.deepEqual(
+      gh.ran.map((request) => request.args),
+      [
+        issuePageArgs({ repo: 'acme/web', state: 'open', limit: ISSUE_LIMIT }, undefined),
+        issuePageArgs({ repo: 'acme/web', state: 'closed', closedSince: '2029-12-25', limit: ISSUE_LIMIT }, undefined),
+      ],
+    );
+    assert.ok(gh.ran.every((request) => isIssueQuery(request.args)));
   });
 
   it('says when a list may be cut short, or held items it could not read', async () => {
-    const many = Array.from({ length: ISSUE_LIMIT }, (_, index) => ghIssue('acme/web', index + 1));
+    // One more open issue than the limit: the read stops at the limit with a page still on GitHub.
+    const many = Array.from({ length: ISSUE_LIMIT + 1 }, (_, index) => ghIssue('acme/web', index + 1));
     const gh = new FakeGh().holds('acme/web', [...many, { ...ghIssue('acme/web', 900, { state: 'CLOSED' }), number: 'nine hundred' }]);
     const read = await readRepo(gh, LOGIN, 'acme/web', '2029-12-25');
     assert.deepEqual(read.kind === 'read' && read.notes, [
@@ -90,7 +99,7 @@ describe('readRepo', () => {
     assert.deepEqual(await readRepo(gh, LOGIN, 'acme/web', '2029-12-25'), {
       kind: 'failed',
       repo: 'acme/web',
-      reason: 'gh issue list -R acme/web exited with code 1: HTTP 403: API rate limit exceeded',
+      reason: 'gh api graphql for the issues of acme/web exited with code 1: HTTP 403: API rate limit exceeded',
     });
     assert.equal(gh.ran.length, 2);
   });

@@ -245,7 +245,8 @@ export const DEFAULT_TESTS: TestsConfig = { maxFailureChars: 4000 };
 
 /**
  * Off until a team lists a repository; two weeks of closed issues covers a sync missed over a holiday. Every 15
- * minutes a new issue reaches its session within a working block, at two gh calls per repository each time.
+ * minutes a new issue reaches its session within a working block, at two gh calls per repository each time (one more
+ * per further hundred open, or recently changed closed, issues).
  */
 export const DEFAULT_GITHUB: GithubConfig = { repos: [], owners: {}, sessions: {}, closedDays: 14, everyMinutes: 15 };
 
