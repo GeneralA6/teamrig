@@ -108,6 +108,10 @@ export {
   type RetireRecord,
 } from '../hiring/record.ts';
 
+// Each team's week (`state/usage/team.week.json` under its home, `TEAM_WEEK_PATH`): its used and planned part of the
+// account's week, as its budget hooks last read it. One file per team; a reader adds a child team's to its parent's.
+export { parseTeamWeek, TEAM_WEEK_FORMAT, TEAM_WEEK_PATH, type TeamWeekSummary } from '../budget/team-week-summary.ts';
+
 // Each session's turn log (`turn-log/<session id>/<UTC hour>.jsonl`): its prompts, replies and clears, one parsed
 // JSON line at a time.
 export { parseEntry, TURN_LOG_VERSION, type TurnLogEntry, type TurnLogKind } from '../turn-log/entry.ts';

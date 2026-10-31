@@ -149,6 +149,8 @@ export interface TeamPaths {
   readonly meterLog: string;
   /** The extra-usage pool's adds and spent readings, an append-only log (budget/extra.ts). */
   readonly extraLog: string;
+  /** The team's used and planned part of the week, for readers that show it (budget/team-week-summary.ts `TEAM_WEEK_PATH`). */
+  readonly teamWeek: string;
   /** The leaders' budget lifts, an append-only log. */
   readonly lifts: string;
   /** The lead's bursts and their ends, an append-only log. */
@@ -276,6 +278,7 @@ export function teamPaths(kitHome: string, team: string, claudeDir: string, over
     period: join(state, 'usage', 'period.json'),
     meterLog: join(state, 'usage', 'meter-log.jsonl'),
     extraLog: join(state, 'usage', 'extra-log.jsonl'),
+    teamWeek: join(state, 'usage', 'team.week.json'),
     lifts: join(state, 'usage', 'lifts.jsonl'),
     bursts: join(state, 'usage', 'bursts.jsonl'),
     hires: join(state, 'hires.jsonl'),
