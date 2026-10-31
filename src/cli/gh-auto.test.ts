@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
-import { parseSyncState } from '../github/auto.ts';
+import { parseSyncState, SYNC_STATE_FORMAT } from '../github/auto.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { FakeGh, ghIssue } from '../testing/fake-gh.ts';
 import { FakeProcesses } from '../testing/fake-processes.ts';
@@ -86,6 +86,19 @@ describe('teamrig gh sync --auto', () => {
     assert.equal((await kit.run(['gh', 'sync', '--auto'], { gh: new FakeGh().holds('acme/web', issues).holds('acme/api', []) })).code, EXIT.ok);
     assert.equal(githubLines(kit, 'lead')[2], 'GitHub sync reads every repository again (acme/api failed before)');
     assert.deepEqual(parseSyncState(kit.files.get(STATE) ?? ''), { startedAt: first, finishedAt: kit.clock.now(), failing: [] });
+  });
+
+  it('never overwrites a state file a newer teamrig wrote: the hook starts no sync and --auto fails', async () => {
+    const kit = new CliHarness(GITHUB_TEAM);
+    const newer = `{"v":${SYNC_STATE_FORMAT + 1},"startedAt":1,"failing":[],"later":true}\n`;
+    await kit.files.write(STATE, newer);
+    const processes = new FakeProcesses();
+    await stop(kit, processes);
+    assert.deepEqual(processes.hidden, []);
+    const result = await kit.run(['gh', 'sync', '--auto'], { gh: new FakeGh().holds('acme/web', []).holds('acme/api', []) });
+    assert.notEqual(result.code, EXIT.ok);
+    assert.match([...result.stdout, ...result.stderr].join('\n'), new RegExp(`holds format v${SYNC_STATE_FORMAT + 1} records`));
+    assert.equal(kit.files.get(STATE), newer);
   });
 
   it('reads every repository, so it refuses --repo', async () => {
