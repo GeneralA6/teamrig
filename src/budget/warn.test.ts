@@ -5,6 +5,7 @@ import { TimeZone } from '../core/zone.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import type { Burst } from './burst.ts';
 import type { SurplusHint } from './burst-lines.ts';
+import type { Cut } from './cut.ts';
 import type { Lift } from './lift.ts';
 import { DailyProfile } from './active-time.ts';
 import { readPace, weekWindow, type PaceBudget, type TeamDay } from './pace.ts';
@@ -42,6 +43,8 @@ function facts(usedTodayPct: number, weekUsedPct: number, now = DAY, extra: Part
     liftBy: undefined,
     liftParent: undefined,
     liftWeekPct: undefined,
+    cut: undefined,
+    cutBy: undefined,
     burst: undefined,
     paused: false,
     surplus: undefined,
@@ -75,6 +78,14 @@ function lift(overrides: Partial<Lift> = {}): Lift {
     ...overrides,
   };
 }
+
+/** The lead's cut of alpha until the end of the budget day of 10-15. */
+function cut(): Cut {
+  return { session: 'alpha', endsAt: Date.parse('2026-10-16T00:00:00Z'), reason: 'over on a p3', by: 'lead', at: Date.parse('2026-10-15T09:00:00Z') };
+}
+
+/** The cut's clause in the lines, by the lead. */
+const CUT_BY_LEAD = 'the lead cut it to its own daily budget until 00:00 UTC (the end of the budget day)';
 
 function burst(overrides: Partial<Burst> = {}): Burst {
   return {
@@ -150,6 +161,17 @@ describe('isPastDailyBudget and sessionQuietSpan', () => {
     assert.equal(isHeld(facts(1.1, BEHIND)), true);
     assert.equal(isHeld(facts(1.1, AHEAD, DAY, { teamDay: ROOM })), false);
     assert.equal(isHeld(facts(1, AHEAD)), false);
+  });
+
+  it('holds a session a leader cut once past its own budget, whatever room the team has (T1616)', () => {
+    assert.equal(isHeld(facts(1.1, BEHIND, DAY, { teamDay: ROOM, cut: cut(), cutBy: LEAD })), true);
+    assert.equal(isHeld(facts(0.9, BEHIND, DAY, { teamDay: ROOM, cut: cut(), cutBy: LEAD })), false);
+  });
+
+  it('holds a cut session under a lift only past its lifted budget', () => {
+    const lifted = { teamDay: ROOM, lift: lift(), budgetPct: 2, cut: cut(), cutBy: LEAD };
+    assert.equal(isHeld(facts(1.5, BEHIND, DAY, lifted)), false);
+    assert.equal(isHeld(facts(2.5, BEHIND, DAY, lifted)), true);
   });
 
   it('counts a turn about to start as spent, so a session with less left than that turn is held before it (T1322)', () => {
@@ -341,6 +363,30 @@ describe('stopWarning', () => {
     assert.equal(result.state.level, 100);
     assert.ok(result.leadLine !== undefined);
   });
+
+  it('escalates a session a leader cut while the team has room, once, naming the cut and no inbox line (T1616)', () => {
+    const result = stopWarning(facts(1.1, BEHIND, DAY, { teamDay: ROOM, cut: cut(), cutBy: LEAD }), BUDGET, undefined);
+    assert.deepEqual(result.lines, ['Budget: alpha has used 1.1% of the week today; its daily budget is 1.0%. The lead cut it to its own daily budget until 00:00 UTC (the end of the budget day). More: teamrig budget']);
+    assert.equal(result.leadLine, undefined);
+    assert.equal(result.state.escalated, true);
+    assert.equal(result.state.leadTold, false);
+    assert.deepEqual(stopWarning(facts(1.1, BEHIND, DAY, { teamDay: ROOM, cut: cut(), cutBy: LEAD }), BUDGET, result.state).lines, []);
+  });
+
+  it('shows a cut given after the level was shown, with no new level', () => {
+    const room = stopWarning(facts(1.1, BEHIND, DAY, { teamDay: ROOM }), BUDGET, undefined);
+    assert.equal(room.state.escalated, false);
+    const cutNow = stopWarning(facts(1.1, BEHIND, DAY, { teamDay: ROOM, cut: cut(), cutBy: LEAD }), BUDGET, room.state);
+    assert.deepEqual(cutNow.lines, [`Budget: alpha is past its daily budget, and ${CUT_BY_LEAD}. More: teamrig budget`]);
+    assert.equal(cutNow.leadLine, undefined);
+  });
+
+  it('names the sub-lead that cut its member, and what happens to new helpers', () => {
+    const result = stopWarning(facts(1.1, BEHIND, DAY, { teamDay: ROOM, leader: SUB_LEAD, cut: { ...cut(), by: 'bravo' }, cutBy: SUB_LEAD }), { ...BUDGET, overAction: 'block' }, undefined);
+    assert.deepEqual(result.lines, [
+      'Budget: alpha has used 1.1% of the week today; its daily budget is 1.0%. Its leader app-bravo cut it to its own daily budget until 00:00 UTC (the end of the budget day). New helpers are refused. More: teamrig budget',
+    ]);
+  });
 });
 
 describe('promptWarning', () => {
@@ -370,6 +416,16 @@ describe('promptWarning', () => {
       promptWarning(facts(1.1, AHEAD, DAY, { urgent: ['T5'] }), BUDGET, undefined).line ?? '',
       /Finish the step in hand and start no new work items or helpers, except your p0 work \(T5\): it goes on past the daily stop\. Never skip a test/,
     );
+  });
+
+  it('tells a session a leader cut that the cut holds it, whatever room the team has (T1616)', () => {
+    assert.equal(
+      promptWarning(facts(1.1, BEHIND, DAY, { teamDay: ROOM, cut: cut(), cutBy: LEAD }), BUDGET, undefined).line,
+      "teamrig budget: you are past today's budget and the lead cut you to it until 00:00 UTC (the end of the budget day). Finish the step in hand and start no new work items or helpers. " +
+        'Never skip a test or check to save budget. The lead can lift it.',
+    );
+    const bySubLead = { teamDay: ROOM, leader: SUB_LEAD, cut: { ...cut(), by: 'bravo' }, cutBy: SUB_LEAD };
+    assert.match(promptWarning(facts(1.1, BEHIND, DAY, bySubLead), BUDGET, undefined).line ?? '', /past today's budget and your leader app-bravo cut you to it until 00:00 UTC/);
   });
 
   it('tells the lead to lift itself only with a stop %', () => {
@@ -447,6 +503,13 @@ describe('helperGate', () => {
     const budget: WarnBudget = { ...BUDGET, overAction: 'block', quietHours: { ...QUIET, action: 'block' } };
     assert.equal(helperGate(facts(5, AHEAD, NIGHT, { isLead: true }), budget).kind, 'allow');
     assert.equal(helperGate(facts(5, AHEAD, NIGHT, { lift: lift({ endsAt: NIGHT + 3_600_000 }) }), budget).kind, 'allow');
+  });
+
+  it('holds back the helpers of a lifted session a leader cut once past its lifted budget, whatever room the team has', () => {
+    const lifted = { teamDay: ROOM, lift: lift(), budgetPct: 2, cut: cut(), cutBy: LEAD };
+    const gate = helperGate(facts(2.5, BEHIND, DAY, lifted), { ...BUDGET, overAction: 'block' });
+    assert.equal(gate.kind === 'deny' ? gate.reason : gate.kind, `teamrig budget: alpha is past its daily budget (2.5% of the week today against 2.0%), and ${CUT_BY_LEAD}. New helpers are refused; the lead can lift it. More: teamrig budget`);
+    assert.equal(helperGate(facts(1.5, BEHIND, DAY, lifted), { ...BUDGET, overAction: 'block' }).kind, 'allow');
   });
 
   it('lets a session with p0 work launch helpers past its budget and in quiet hours', () => {

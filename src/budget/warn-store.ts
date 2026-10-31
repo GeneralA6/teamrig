@@ -5,10 +5,16 @@ import { parseObject, toJsonlLine, VERSION_FIELD, writableObject } from '../core
 import type { WarnState } from './warn.ts';
 
 /**
- * The format of the warning files this code reads and writes; a file in another format reads as nothing shown,
- * and one in a newer format refuses a write.
+ * The format of the warning files this code writes. A file in an older format it knows reads with the fields added
+ * since at their defaults; one in any other format reads as nothing shown, and one in a newer format refuses a write.
  */
-export const WARN_FORMAT = 1;
+export const WARN_FORMAT = 2;
+
+/**
+ * The format before `escalated` was kept: it reads as not escalated, so a session escalated at the upgrade sees its
+ * line once more.
+ */
+const UNESCALATED_FORMAT = 1;
 
 /** An optional epoch-ms field: absent is undefined, anything but a finite number is damage. */
 function optionalTime(record: JsonRecord, key: string): { readonly ok: boolean; readonly value: number | undefined } {
@@ -19,10 +25,11 @@ function optionalTime(record: JsonRecord, key: string): { readonly ok: boolean; 
   return { ok: value !== undefined, value };
 }
 
-/** A warning file's content; undefined when it is damaged or from another format. */
+/** A warning file's content; undefined when it is damaged or from a format this code does not read. */
 export function parseWarnState(text: string): WarnState | undefined {
   const record = parseObject(text.trim());
-  if (record === undefined || record[VERSION_FIELD] !== WARN_FORMAT) {
+  const version = record?.[VERSION_FIELD];
+  if (record === undefined || (version !== WARN_FORMAT && version !== UNESCALATED_FORMAT)) {
     return undefined;
   }
   const day = stringField(record, 'day');
@@ -31,6 +38,7 @@ export function parseWarnState(text: string): WarnState | undefined {
   const ahead = record['ahead'];
   // Absent in a file saved before teamrig kept it: not held.
   const held = record['held'] ?? false;
+  const escalated = version === UNESCALATED_FORMAT ? false : record['escalated'];
   const leadTold = record['leadTold'];
   const quietFrom = optionalTime(record, 'quietFrom');
   const marks = [optionalTime(record, 'liftAt'), optionalTime(record, 'burstAt'), optionalTime(record, 'modelBurstAt'), optionalTime(record, 'surplusShown')] as const;
@@ -41,6 +49,7 @@ export function parseWarnState(text: string): WarnState | undefined {
     modelLevel === undefined ||
     typeof ahead !== 'boolean' ||
     typeof held !== 'boolean' ||
+    typeof escalated !== 'boolean' ||
     typeof leadTold !== 'boolean' ||
     !quietFrom.ok ||
     marks.some((mark) => !mark.ok)
@@ -53,6 +62,7 @@ export function parseWarnState(text: string): WarnState | undefined {
     modelLevel,
     ahead,
     held,
+    escalated,
     leadTold,
     quietFrom: quietFrom.value,
     liftAt: liftAt.value,
@@ -70,6 +80,7 @@ export function formatWarnState(state: WarnState): string {
     modelLevel: state.modelLevel,
     ahead: state.ahead,
     held: state.held,
+    escalated: state.escalated,
     leadTold: state.leadTold,
     ...(state.quietFrom === undefined ? {} : { quietFrom: state.quietFrom }),
     ...(state.liftAt === undefined ? {} : { liftAt: state.liftAt }),
