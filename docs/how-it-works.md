@@ -2,7 +2,9 @@
 
 teamrig is one small Node program, four Claude Code hooks and a folder of plain files. Nothing runs between
 sessions: no server, no daemon, no network. Each part says, as in [what teamrig does](features.md),
-whether it works today, is being built (with its task id) or is planned. Parts not built yet are drawn dashed.
+whether it works today, is being built (with its task id) or is planned. Parts not built yet are drawn dashed. New to
+teamrig? [Start here](guides/start-here.md) first: install it, set up your first team, and the five words every page
+uses.
 
 - [The parts](#the-parts)
 - [Growing the team](#growing-the-team)
