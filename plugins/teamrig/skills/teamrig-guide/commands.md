@@ -668,7 +668,15 @@ a `FAILED` line naming the fix, and the other repositories are read on.
   Its description is the issue's body: control characters become spaces, blank lines close up, and past 2,000
   characters it is cut, ending with `…`. An empty body gives none; a body that looks like it holds a secret
   gives a line saying it was left out, to be read on GitHub.
-- On a task it added, only the title, the description, the priority and whether it is open follow GitHub, on every run. Closed as
+- Only the issues of the repository's people, or ones they accepted, become tasks. An author
+  GitHub ties to the repository as its owner, an organization member or a collaborator counts at once. Any other
+  author's issue (one with a merged pull request too) waits until someone other than the author adds the
+  `github.acceptLabel` label (`teamrig` by default, any case): a person, not a bot, a workflow or an issue template.
+  An edit of its title or body at or after that label undoes the accept, the accepter's own edit too: once the new
+  text is read, remove the label and add it again. An issue left out writes nothing.
+- On a task it added, only the title, the description, the priority and whether it is open follow GitHub, on every
+  run; the title and description only while the issue counts as above, so after an outsider's later edit the task
+  keeps the text it had. Closed as
   not planned or as a duplicate sets it `dropped`, closed any other way sets it `done` with the issue's url as its
   evidence, and open again sets it back to `open`. Its owner, notes, waits and an active status (`in-progress`,
   `waiting`, `verifying`) stay the team's, and so does a task set done or dropped while its issue is still open,
