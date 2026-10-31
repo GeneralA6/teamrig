@@ -3937,7 +3937,7 @@ the metered W reaches that use. After a reset inside the week, the week line say
 The period, the meter log (below) and the extra-usage log ([teamrig budget extra](#teamrig-budget-extra)) are the
 account's: a team under a parent on its Claude
 account reads and writes them in the folder of the highest team above it reached through teams all on that account,
-so a child team learns the account's W per percent with its parent; a root team, or one whose parent is on another
+so a child team paces the account's week with its parent; a root team, or one whose parent is on another
 account, keeps its own. A team under another takes the team above's `budget.account` when it names none, and its
 `enabled`, `weeklyLimitW`, `subagentWeight`, `extraWPerUsd` and `reset` for each it leaves unset, so a team made
 with `team create --parent` paces the root's week with no copy of these keys; one that names another account takes
@@ -3946,7 +3946,11 @@ none of them.
 The week's W per percent is learned from the meter (since 0.136.0). Each time the status line passes a whole
 percent in a period whose start was seen (a weekly reset or a reset inside the week), within 10 minutes of the
 reading and with the usage stores reaching back to that start, the account's `state/usage/meter-log.jsonl` gets one
-line: the use, the period and the W metered since its start. Once the last 8 weeks' readings span 10 points, a fit
+line for each team keeping its week there whose usage stores reach that start: the use, the period, the W that
+team's stores metered since its start, and the team. Each team reads only its own lines (since 0.246.0), so teams
+whose stores meter different W for one week never mix their scales; a line from before then names no team and
+counts only for the team keeping the log, and not in a period with a line that names one. A child team so learns
+its own rate from its own lines. Once the last 8 weeks' readings span 10 points, a fit
 of W per percent through 0 over them sets the rate, ahead of `budget.weeklyLimitW` (a starting guess until then),
 ahead of the status line's own estimate (the week's W over its use, once the meter counted the whole week). The
 last line says which rate counts, how far the fit misses its readings and, for the latest 3 periods, how far the
@@ -3954,7 +3958,9 @@ use it forecast missed the status line. Today's use is read from the meter log t
 today's start, each read between the period's lines by the W metered and held to the status line's percent, so the
 rate prices only the part of a percent past the last line, and a W per percent that drifts up through the week does
 not swell the day. Once today's use spans 2 points, a session's W today counts at today's own W per percent (today's
-W over that use), so the sessions' parts add up to the team's day; other days and tasks count at the week's.
+W over that use), so the sessions' parts add up to the team's day, while that rate is within 2 times the week's
+either way; past that, today's points and W disagree and the week's rate counts. Other days and tasks count at the
+week's.
 The team's daily
 budget is never a fixed number: at every reading, what is left to `budget.targetPct` is spread over the active
 time to the pace end (`budget.paceEndHoursBeforeReset` before the reset; quiet hours count at
