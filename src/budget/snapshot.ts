@@ -320,7 +320,7 @@ export function weekUseAt(fold: WeekFold, now: number): WeekUse | undefined {
   return best === undefined || best.resetsAt <= now ? undefined : best;
 }
 
-/** What the status line shows beside the snapshot: the session's effort level, where it works, and whether to show how to resume it. */
+/** What the status line shows beside the snapshot: the session's effort level, where it works, and where the team's pace line stands. */
 export interface StatusLineView {
   /** The session's effort level, shown after the model. */
   readonly effort?: string;
@@ -330,8 +330,8 @@ export interface StatusLineView {
   readonly branch?: string;
   /** The short id of a detached HEAD's commit, shown when there is no branch. */
   readonly commit?: string;
-  /** Show `claude --resume <session id>`. */
-  readonly resume: boolean;
+  /** Where the team's pace line stands now, in % of the week, shown beside the week's use. */
+  readonly pacePct?: number;
 }
 
 /** Where the session works, such as `app on main`, `app at 1a2b3c4` (a detached HEAD) or `app`; empty when the view names nothing. */
@@ -346,8 +346,8 @@ function placeText(view: StatusLineView): string {
 }
 
 /**
- * The status line text: the model and its effort level, where the session works, the plan's use and the command
- * that resumes the session, such as `Opus 5.5 (high), app on main, week 57%, 5h 6%, claude --resume <session id>`.
+ * The status line text: the model and its effort level, where the session works, and the plan's use, the week's
+ * beside where the pace line stands, such as `Opus 5.5 (high), app on main, week 57% (pace 53%), 5h 6%`.
  */
 export function statusLineText(snapshot: StatusSnapshot, view: StatusLineView): string {
   const model = snapshot.model ?? 'Claude';
@@ -359,13 +359,11 @@ export function statusLineText(snapshot: StatusSnapshot, view: StatusLineView): 
   const week = snapshot.rateLimits?.sevenDay ?? null;
   const fiveHour = snapshot.rateLimits?.fiveHour ?? null;
   if (week !== null) {
-    parts.push(`week ${Math.round(week.usedPct)}%`);
+    const used = `week ${Math.round(week.usedPct)}%`;
+    parts.push(view.pacePct === undefined ? used : `${used} (pace ${Math.round(view.pacePct)}%)`);
   }
   if (fiveHour !== null) {
     parts.push(`5h ${Math.round(fiveHour.usedPct)}%`);
-  }
-  if (view.resume) {
-    parts.push(`claude --resume ${snapshot.sessionId}`);
   }
   return parts.join(', ');
 }

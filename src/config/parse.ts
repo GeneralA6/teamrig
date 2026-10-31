@@ -1226,7 +1226,7 @@ function parseStatusLine(read: ConfigReader, raw: JsonRecord): StatusLineConfig 
   return {
     folder: read.boolean(raw, 'folder', path, DEFAULT_STATUS_LINE.folder),
     branch: read.boolean(raw, 'branch', path, DEFAULT_STATUS_LINE.branch),
-    resume: read.boolean(raw, 'resume', path, DEFAULT_STATUS_LINE.resume),
+    pace: read.boolean(raw, 'pace', path, DEFAULT_STATUS_LINE.pace),
   };
 }
 

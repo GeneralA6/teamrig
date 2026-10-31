@@ -291,8 +291,8 @@ export const DEFAULT_IDLE: IdleConfig = { mode: 'on', keepOpen: [] };
 
 export const DEFAULT_OPEN: OpenConfig = { terminal: 'auto', teamWindow: false, headroom: DEFAULT_HEADROOM, idle: DEFAULT_IDLE };
 
-/** The status line shows the session's folder, its branch and the command that resumes it, unless the team turns them off. */
-export const DEFAULT_STATUS_LINE: StatusLineConfig = { folder: true, branch: true, resume: true };
+/** The status line shows the session's folder, its branch and the team's pace line, unless the team turns them off. */
+export const DEFAULT_STATUS_LINE: StatusLineConfig = { folder: true, branch: true, pace: true };
 
 /**
  * A host lock outlives the longest queued step it may hold by this many minutes, so the step is killed

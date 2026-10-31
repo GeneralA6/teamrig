@@ -1102,8 +1102,8 @@ export interface StatusLineConfig {
   readonly folder: boolean;
   /** The branch checked out there, or the commit of a detached HEAD. */
   readonly branch: boolean;
-  /** The command that resumes the session: `claude --resume <session id>`. */
-  readonly resume: boolean;
+  /** Where the team's pace line stands now, beside the week's use: `week 63% (pace 53%)`. */
+  readonly pace: boolean;
 }
 
 /** Claude Code's effort levels, lowest first: what `claude --effort` and `/effort` take. */

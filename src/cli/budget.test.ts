@@ -789,8 +789,11 @@ describe('the budget of a team without a budget block under teams with one', () 
 
 describe('teamrig statusline', () => {
   const SNAPSHOT = `${ALPHA_TAB}.json`;
-  /** The status `status(APP)` prints by default: on the harness's branch `dev`. */
-  const SHOWN = `Opus 5.5, ${basename(APP)} on dev, week 30%, 5h 6%, claude --resume ${ALPHA_TAB}`;
+  /**
+   * The status `status(APP)` prints by default: on the harness's branch `dev`, the pace line 33 hours into the 167
+   * from a week before the reset to an hour before it, of 99.5%: 19.7%.
+   */
+  const SHOWN = `Opus 5.5, ${basename(APP)} on dev, week 30% (pace 20%), 5h 6%`;
 
   /** A repository whose branch and HEAD answers are counted. */
   function countedRepo(branch: string | undefined, head: string | undefined) {
@@ -814,6 +817,12 @@ describe('teamrig statusline', () => {
     const kit = new CliHarness(LIMITED);
     const input = status(APP, 30, { effort: { level: 'xhigh' } });
     assert.deepEqual(ok(await kit.run(['statusline'], { stdin: input })), [SHOWN.replace('Opus 5.5,', 'Opus 5.5 (xhigh),')]);
+  });
+
+  it('shows no pace line once the week the reading names reset', async () => {
+    const kit = new CliHarness(LIMITED);
+    kit.clock.advance(6 * MS_PER_DAY);
+    assert.deepEqual(ok(await kit.run(['statusline'], { stdin: status(APP) })), [`Opus 5.5, ${basename(APP)} on dev, week 30%, 5h 6%`]);
   });
 
   it("dates each reading by the session's previous snapshot, so a reading after a mid-week reset outranks older higher ones", async () => {
@@ -882,7 +891,7 @@ describe('teamrig statusline', () => {
     const repo = countedRepo(undefined, '1a2b3c4');
     const kit = new CliHarness(LIMITED);
     assert.deepEqual(ok(await kit.run(['statusline'], { stdin: status(APP), git: repo })), [
-      `Opus 5.5, ${basename(APP)} at 1a2b3c4, week 30%, 5h 6%, claude --resume ${ALPHA_TAB}`,
+      `Opus 5.5, ${basename(APP)} at 1a2b3c4, week 30% (pace 20%), 5h 6%`,
     ]);
     assert.deepEqual(repo.branch.mock.calls.map((call) => call.arguments), [[APP]]);
     assert.deepEqual(repo.head.mock.calls.map((call) => call.arguments), [[APP]]);
@@ -890,21 +899,19 @@ describe('teamrig statusline', () => {
 
   it("shows only what the team's statusLine config leaves on, and asks git nothing when the branch is off", async () => {
     const repo = countedRepo('main', '1a2b3c4');
-    const bare = new CliHarness({ ...LIMITED, statusLine: { folder: false, branch: false, resume: false } });
+    const bare = new CliHarness({ ...LIMITED, statusLine: { folder: false, branch: false, pace: false } });
     assert.deepEqual(ok(await bare.run(['statusline'], { stdin: status(APP), git: repo })), ['Opus 5.5, week 30%, 5h 6%']);
     assert.equal(repo.branch.mock.callCount() + repo.head.mock.callCount(), 0);
-    const branchOnly = new CliHarness({ ...LIMITED, statusLine: { folder: false, resume: false } });
-    assert.deepEqual(ok(await branchOnly.run(['statusline'], { stdin: status(APP), git: repo })), ['Opus 5.5, on main, week 30%, 5h 6%']);
+    const noFolder = new CliHarness({ ...LIMITED, statusLine: { folder: false } });
+    assert.deepEqual(ok(await noFolder.run(['statusline'], { stdin: status(APP), git: repo })), ['Opus 5.5, on main, week 30% (pace 20%), 5h 6%']);
     assert.equal(repo.head.mock.callCount(), 0);
   });
 
-  it("shows the default display outside any team, in the folder the status line runs in when the input names none", async () => {
+  it('shows the default display outside any team, with no pace line, in the folder the status line runs in when the input names none', async () => {
     const kit = new CliHarness(LIMITED, null);
     const outside = join('/', 'elsewhere');
     const input = JSON.stringify({ ...JSON.parse(status(outside)), cwd: '', workspace: {} });
-    assert.deepEqual(ok(await kit.run(['statusline'], { stdin: input, cwd: outside })), [
-      `Opus 5.5, elsewhere on dev, week 30%, 5h 6%, claude --resume ${ALPHA_TAB}`,
-    ]);
+    assert.deepEqual(ok(await kit.run(['statusline'], { stdin: input, cwd: outside })), ['Opus 5.5, elsewhere on dev, week 30%, 5h 6%']);
   });
 
   it('with --pass prints the status input again for the status line after it, and still saves the reading', async () => {

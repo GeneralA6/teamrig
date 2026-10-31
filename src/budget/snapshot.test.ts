@@ -308,20 +308,26 @@ describe('weekFoldOf, mergeWeekFolds and weekUseAt', () => {
 describe('statusLineText', () => {
   const both = snapshot({ rateLimits: { fiveHour: { usedPct: 5.6, resetsAt: NOW }, sevenDay: { usedPct: 57.2, resetsAt: NOW } } });
 
-  it('names the model, where the session works, the plan windows it knows and the command that resumes it', () => {
-    assert.equal(statusLineText(both, { folder: 'app', branch: 'main', resume: true }), `Opus 5.5, app on main, week 57%, 5h 6%, claude --resume ${SID}`);
-    assert.equal(statusLineText(snapshot({ model: null, rateLimits: null }), { resume: false }), 'Claude');
+  it('names the model, where the session works, and the plan windows it knows, the week beside where the pace line stands', () => {
+    assert.equal(statusLineText(both, { folder: 'app', branch: 'main', pacePct: 53.4 }), 'Opus 5.5, app on main, week 57% (pace 53%), 5h 6%');
+    assert.equal(statusLineText(both, { folder: 'app', branch: 'main' }), 'Opus 5.5, app on main, week 57%, 5h 6%');
+    assert.equal(statusLineText(snapshot({ model: null, rateLimits: null }), {}), 'Claude');
+  });
+
+  it('shows the pace line only beside a week reading', () => {
+    const fiveHourOnly = snapshot({ rateLimits: { fiveHour: { usedPct: 5.6, resetsAt: NOW }, sevenDay: null } });
+    assert.equal(statusLineText(fiveHourOnly, { pacePct: 53.4 }), 'Opus 5.5, 5h 6%');
   });
 
   it('shows a detached HEAD by its commit, a branch over a commit, and each part alone', () => {
-    assert.equal(statusLineText(both, { folder: 'app', commit: '1a2b3c4', resume: false }), 'Opus 5.5, app at 1a2b3c4, week 57%, 5h 6%');
-    assert.equal(statusLineText(both, { branch: 'main', commit: '1a2b3c4', resume: false }), 'Opus 5.5, on main, week 57%, 5h 6%');
-    assert.equal(statusLineText(both, { folder: 'app', resume: false }), 'Opus 5.5, app, week 57%, 5h 6%');
+    assert.equal(statusLineText(both, { folder: 'app', commit: '1a2b3c4' }), 'Opus 5.5, app at 1a2b3c4, week 57%, 5h 6%');
+    assert.equal(statusLineText(both, { branch: 'main', commit: '1a2b3c4' }), 'Opus 5.5, on main, week 57%, 5h 6%');
+    assert.equal(statusLineText(both, { folder: 'app' }), 'Opus 5.5, app, week 57%, 5h 6%');
   });
 
   it('shows the effort level right after the model, or after Claude when the input names no model', () => {
-    assert.equal(statusLineText(both, { effort: 'high', folder: 'app', branch: 'main', resume: false }), 'Opus 5.5 (high), app on main, week 57%, 5h 6%');
-    assert.equal(statusLineText(snapshot({ model: null, rateLimits: null }), { effort: 'xhigh', resume: false }), 'Claude (xhigh)');
+    assert.equal(statusLineText(both, { effort: 'high', folder: 'app', branch: 'main', pacePct: 53.4 }), 'Opus 5.5 (high), app on main, week 57% (pace 53%), 5h 6%');
+    assert.equal(statusLineText(snapshot({ model: null, rateLimits: null }), { effort: 'xhigh' }), 'Claude (xhigh)');
   });
 });
 
