@@ -214,6 +214,7 @@ helper it is. Everything runs on your machine, with no account and no cloud bill
 | [Everything teamrig does](docs/features.md) | Every feature, and whether it works today |
 | [Every command](docs/commands.md) | Each command with its flags, as `teamrig help` prints it |
 | [Every config key](docs/configuration.md) | Each key of the team config with its type, default and meaning, drawn from the schema |
+| [Every check flag](plugins/teamrig/skills/teamrig-guide/tasks.md#check-flags) | Each flag `teamrig check` raises on a task, a hire or a skill: when, and what to do about it |
 | [Set up a team by hand](docs/setup-by-hand.md) | The two small files a team needs, if you'd rather not ask the lead |
 | [GitHub sync](docs/github-sync.md) | GitHub issues in the task list: repositories, tokens and each failure's fix |
 | [llms.txt](llms.txt) | teamrig explained for language models: point your AI assistant at it |
