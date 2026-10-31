@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { fieldPaths } from '../testing/field-paths.ts';
 import { formatTeamWeek, parseTeamWeek, TEAM_WEEK_FORMAT, type TeamWeekSummary } from './team-week-summary.ts';
 
 const SUMMARY: TeamWeekSummary = {
@@ -15,6 +16,11 @@ describe('the team week summary', () => {
     const text = formatTeamWeek(SUMMARY);
     assert.equal(text, JSON.stringify({ v: TEAM_WEEK_FORMAT, ...SUMMARY }));
     assert.deepEqual(parseTeamWeek(text), SUMMARY);
+  });
+
+  it('writes the pinned fields of its format: a field added to the file raises TEAM_WEEK_FORMAT', () => {
+    const written: Readonly<Record<number, readonly string[]>> = { 1: ['accountUsedPct', 'at', 'plannedPct', 'resetsAt', 'usedPct', 'v'] };
+    assert.deepEqual(fieldPaths(JSON.parse(formatTeamWeek(SUMMARY))), written[TEAM_WEEK_FORMAT]);
   });
 
   it('reads nothing from a damaged or torn file', () => {
