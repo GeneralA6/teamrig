@@ -1,18 +1,33 @@
-import { calibrationOf, crossingOf, MeterLog } from "./calibration.js";
+import { calibrationOf, crossingOf, fitRate, MeterLog, readingsOfTeam } from "./calibration.js";
 import { ExtraLog, wAtFullOf } from "./extra.js";
 import { PeriodStore } from "./period.js";
-import { meteredOf, rateOf, readWeek, wSince } from "./week.js";
+import { coversFrom, meteredOf, rateOf, readWeek, wSince } from "./week.js";
+/**
+ * The crossing's line for each peer whose stores reach back to its period's start: the W its own stores metered since
+ * then and the use its own fit forecast for it, so each team's lines stay on its scale whichever team saw the crossing.
+ */
+function peerLinesOf(peers, crossing, logged, keeper, now) {
+    return peers
+        .filter((peer) => coversFrom(peer.states, crossing.start))
+        .map((peer) => {
+        const w = wSince(peer.states, crossing.start, now);
+        const fit = fitRate(readingsOfTeam(logged, { team: peer.team, keeper }));
+        return { ...crossing, w, forecastPct: fit === undefined ? undefined : w / fit.wPerPct, team: peer.team };
+    });
+}
 /**
  * The week now, read the one way every reader of it takes (the budget hooks, `teamrig budget`, a hire's price): the
- * meter log's fit (budget/calibration.ts), the team's period moved on from the status line's use and the W metered
- * at the fit's rate (budget/period.ts) and written when it changed, then the week read in it with the extra-usage log
- * (budget/extra.ts). A percent the status line passed since the period's previous reading is logged, with the W
- * metered for it, for the next fit.
+ * team's own lines of the meter log (`readingsOfTeam`) and their fit (budget/calibration.ts), the account's period
+ * moved on from the status line's use and the W metered at the fit's rate (budget/period.ts) and written when it
+ * changed, then the week read in it with the extra-usage log (budget/extra.ts). A percent the status line passed
+ * since the period's previous reading is logged once for each team keeping its week in these files, each with the W
+ * its own stores metered (T1669), for the next fit: the period moved on, so no other team logs that percent.
  */
-export async function teamWeekOf(files, paths, input) {
+export async function teamWeekOf(files, paths, scale, input) {
     const { budget, statusUse, states, now } = input;
     const log = new MeterLog(files, paths.meterLog);
-    const readings = await log.read(now);
+    const logged = await log.read(now);
+    const readings = readingsOfTeam(logged, scale);
     const calibration = calibrationOf(readings);
     const metered = meteredOf(rateOf(calibration, budget, undefined)?.wPerPct, states, now);
     const move = await new PeriodStore(files, paths.period).moveAt(budget, statusUse, now, metered);
@@ -23,7 +38,7 @@ export async function teamWeekOf(files, paths, input) {
     const w = period === undefined ? 0 : wSince(states, period.start, now);
     const crossing = crossingOf({ before: move?.before, period, use: statusUse, covered: week.covered, w, now }, calibration.fit);
     if (crossing !== undefined) {
-        await log.append(crossing, now);
+        await log.appendAll([{ ...crossing, team: scale.team }, ...peerLinesOf(await scale.peers(), crossing, logged, scale.keeper, now)], now);
     }
     return week;
 }

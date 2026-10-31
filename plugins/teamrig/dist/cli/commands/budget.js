@@ -36,6 +36,7 @@ import { UsageError, onePositional, requiredFlag } from "../args.js";
 import { callerOf } from "../inputs.js";
 import { leadOnly, openKit, openTeamKit, requireConfig, rosterOf, sessionIdOf, teamFolders, teamZone } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
+import { meterScaleOf } from "../stored-week.js";
 import { loadTree } from "../tree.js";
 /**
  * The weekly budget from the command line: `budget` measures every session's use from the Claude Code
@@ -84,7 +85,7 @@ async function readBudget(runtime, kit, config, roster, options) {
     // A recount reads no team state, the meter log included: its rate is the configured one.
     const week = account === undefined
         ? readWeek({ ...input, period: recountPeriodOf(config.budget, now), calibration: calibrationOf([]), readings: [] })
-        : await teamWeekOf(files, account.paths, input);
+        : await teamWeekOf(files, account.paths, meterScaleOf(runtime, kit.paths.team, account), input);
     const lifts = recount ? [] : (await new LiftLog(files, kit.paths.lifts).read()).lifts;
     const bursts = recount ? [] : (await new BurstLog(files, kit.paths.bursts).read()).records;
     return { now, measured, week, weekPaths: account?.paths ?? kit.paths, lifts, bursts };

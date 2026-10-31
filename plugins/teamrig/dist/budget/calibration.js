@@ -4,11 +4,19 @@ import { MS_PER_MINUTE, MS_PER_WEEK } from "../core/time.js";
 /**
  * The week's W per percent, learned from the meter (T531). Each time the status line's week use passes a whole
  * percent, the account's meter log, `<state>/usage/meter-log.jsonl` of the team that keeps the account's week files
- * (`accountHolderOf`, budget/account.ts), gets one line: the use, the period and the W metered since its start. A fit of W per percent through 0 over the recent lines stands in for the configured
- * guess once they span `FIT_SPREAD_PTS` points. Each line also keeps the use the fit before it forecast for its W,
- * so the forecast's error shows week by week. Instants are stored as ISO strings, like the burst log.
+ * (`accountHolderOf`, budget/account.ts), gets one line for each team keeping its week there: the use, the period, the
+ * W that team's usage stores metered since its start, and the team. Each team sums the W from its own stores, so the
+ * teams' W differ, and each reads only its own lines (`readingsOfTeam`, T1669). A fit of W per percent through 0 over
+ * a team's recent lines stands in for the configured guess once they span `FIT_SPREAD_PTS` points. Each line also
+ * keeps the use the fit before it forecast for its W, so the forecast's error shows week by week. Instants are stored
+ * as ISO strings, like the burst log.
  */
-/** The format of the meter log's records; a newer one is skipped on read and refuses a write. */
+/**
+ * The format of the meter log's records; a newer one is skipped on read and refuses a write. The optional `team`
+ * (T1669) left it at 1, so a tab still on an older teamrig keeps logging instead of refusing the log: that teamrig
+ * reads a tagged line as before, ignoring the field, and its prune keeps each kept line's text whole, so it drops no
+ * `team`; its untagged lines count only where `readingsOfTeam` says.
+ */
 export const METER_LOG_FORMAT = 1;
 /** The points of the week the readings must span before their fit is used: a narrow spread fits noise. */
 export const FIT_SPREAD_PTS = 10;
@@ -18,6 +26,16 @@ export const READINGS_KEPT_MS = 8 * MS_PER_WEEK;
 export const FRESH_READING_MS = 10 * MS_PER_MINUTE;
 /** Periods whose start was seen: a weekly reset, or one the use's fall showed. A guessed start would teach the fit its own guess. */
 const SEEN_STARTS = ['week', 'reset'];
+/**
+ * The readings on one team's W scale (T1669): only the lines its own usage stores metered, which carry its id. A line
+ * with no team was logged before the lines named one: it counts for the team keeping the log, whose scale the log was
+ * on, but not in a period that has a line naming a team, where the teams on the account logged untagged lines in turn.
+ */
+export function readingsOfTeam(logged, scale) {
+    const tagged = new Set(logged.filter((reading) => reading.team !== undefined).map((reading) => reading.start));
+    const ownUntagged = scale.team === scale.keeper;
+    return logged.filter((reading) => (reading.team === undefined ? ownUntagged && !tagged.has(reading.start) : reading.team === scale.team));
+}
 /**
  * The reading to log when the status line's use passed a whole percent since the period's previous reading:
  * the use then sits at that percent, not anywhere within it. Undefined for the first reading of a period, one in a
@@ -98,6 +116,7 @@ export function meterRecordOf(reading) {
         end: iso(reading.end),
         w: reading.w,
         ...(reading.forecastPct === undefined ? {} : { forecastPct: reading.forecastPct }),
+        ...(reading.team === undefined ? {} : { team: reading.team }),
     };
 }
 function instantOf(record, key) {
@@ -113,15 +132,16 @@ export function parseMeterRecord(record) {
     const end = instantOf(record, 'end');
     const w = numberField(record, 'w');
     const forecastPct = numberField(record, 'forecastPct');
+    const team = stringField(record, 'team');
     if (at === undefined || usedPct === undefined || usedPct <= 0 || start === undefined || end === undefined || start >= end || w === undefined || w < 0) {
         return undefined;
     }
-    if ('forecastPct' in record && forecastPct === undefined) {
+    if (('forecastPct' in record && forecastPct === undefined) || ('team' in record && (team === undefined || team === ''))) {
         return undefined;
     }
-    return { at, usedPct, start, end, w, forecastPct };
+    return { at, usedPct, start, end, w, forecastPct, ...(team === undefined ? {} : { team }) };
 }
-/** The team's append-only log of meter readings, oldest first. */
+/** The account's append-only log of meter readings, oldest first. */
 export class MeterLog {
     files;
     path;
@@ -130,8 +150,9 @@ export class MeterLog {
         this.path = path;
     }
     /**
-     * The readings that count at `now`, oldest first. Damaged lines, lines from a newer teamrig and a second line for
-     * a percent already read in its period (two readers that logged at once) are skipped.
+     * The readings that count at `now`, every team's, oldest first (`readingsOfTeam` takes one team's). Damaged lines,
+     * lines from a newer teamrig and a second line of one team for a percent already read in its period (two readers
+     * that logged at once) are skipped.
      */
     async read(now) {
         const parse = parseJsonl((await this.files.read(this.path)) ?? '');
@@ -139,7 +160,7 @@ export class MeterLog {
         const readings = [];
         for (const { record, version } of parse.records) {
             const reading = version === METER_LOG_FORMAT ? parseMeterRecord(record) : undefined;
-            const key = reading === undefined ? '' : `${reading.start}:${Math.floor(reading.usedPct)}`;
+            const key = reading === undefined ? '' : `${reading.team ?? ''}:${reading.start}:${Math.floor(reading.usedPct)}`;
             if (reading !== undefined && reading.at >= now - READINGS_KEPT_MS && !seen.has(key)) {
                 seen.add(key);
                 readings.push(reading);
@@ -147,22 +168,30 @@ export class MeterLog {
         }
         return readings;
     }
-    /**
-     * One whole line in one append; refused beside records from a newer teamrig. A log holding a line over a week
-     * past `READINGS_KEPT_MS` is first rewritten to the lines still kept, so it stays a few hundred lines at most.
-     */
+    /** One reading's line (`appendAll`). */
     async append(reading, now) {
+        await this.appendAll([reading], now);
+    }
+    /**
+     * Whole lines, one per reading, in one append; refused beside records from a newer teamrig. A log holding a line
+     * over a week past `READINGS_KEPT_MS` is first rewritten to the lines still kept, so it stays a few hundred lines at
+     * most.
+     */
+    async appendAll(readings, now) {
+        if (readings.length === 0) {
+            return;
+        }
         const text = (await this.files.read(this.path)) ?? '';
         const parse = parseJsonl(text);
         assertWritable(this.path, parse, METER_LOG_FORMAT);
-        const line = toJsonlLine(meterRecordOf(reading));
+        const lines = readings.map((reading) => toJsonlLine(meterRecordOf(reading))).join('');
         const atOf = (record) => instantOf(record, 'at') ?? 0;
         if (parse.records.some(({ record }) => atOf(record) < now - READINGS_KEPT_MS - MS_PER_WEEK)) {
             const kept = parse.records.filter(({ record }) => atOf(record) >= now - READINGS_KEPT_MS);
-            await this.files.write(this.path, `${kept.map(({ raw }) => `${raw}\n`).join('')}${line}`);
+            await this.files.write(this.path, `${kept.map(({ raw }) => `${raw}\n`).join('')}${lines}`);
             return;
         }
         const separator = text === '' || text.endsWith('\n') ? '' : '\n';
-        await this.files.append(this.path, `${separator}${line}`);
+        await this.files.append(this.path, `${separator}${lines}`);
     }
 }

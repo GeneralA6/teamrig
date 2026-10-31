@@ -21,6 +21,7 @@ import { holdBack } from "../../hooks/permission.js";
 import { helperLaunchReminder } from "../../rules/helper-default.js";
 import { accountWeekOn, otherTeamsOnAccount } from "../account-teams.js";
 import { teamZone } from "../kit.js";
+import { meterScaleOf } from "../stored-week.js";
 import { liftNamesOf } from "./budget.js";
 import { inboxDepsOf } from "./inbox.js";
 const TRANSCRIPT = '.jsonl';
@@ -65,9 +66,9 @@ export async function budgetFactsOf(runtime, scope, transcript) {
         byId.set(each, (await team.load(each)).state);
     }
     const outside = (await new UsageStore(files, join(kit.paths.usage, 'outside')).load(OUTSIDE_ID)).state;
-    const { statusUse, paths: weekPaths } = await accountWeekOn(runtime, budget, kit.paths, now);
+    const account = await accountWeekOn(runtime, budget, kit.paths, now);
     const states = [...byId.values(), outside];
-    const week = await teamWeekOf(files, weekPaths, { budget, now, statusUse, states });
+    const week = await teamWeekOf(files, account.paths, meterScaleOf(runtime, kit.paths.team, account), { budget, now, statusUse: account.statusUse, states });
     const { teamDay, todayWPerPct } = week;
     if (week.usedPct === undefined || todayWPerPct === undefined || teamDay === undefined) {
         return undefined;
