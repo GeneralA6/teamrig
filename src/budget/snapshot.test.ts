@@ -8,6 +8,7 @@ import { MemoryFiles, normalisePath } from '../testing/memory-files.ts';
 import {
   datedSnapshot,
   defaultSnapshotDir,
+  effortOfStatus,
   formatSnapshot,
   mergeWeekFolds,
   parseSnapshot,
@@ -34,7 +35,7 @@ const NOW = Date.parse('2026-10-15T12:00:50.598Z');
 const WEEK_RESET_S = 1792544400;
 
 /** Claude Code's status line input, as much of it as a snapshot keeps and some it does not. */
-const STATUS = JSON.stringify({
+const STATUS_INPUT = {
   hook_event_name: 'Status',
   session_id: SID,
   transcript_path: `/home/you/.claude/projects/p/${SID}.jsonl`,
@@ -46,7 +47,8 @@ const STATUS = JSON.stringify({
   context_window: { used_percentage: 15, total_input_tokens: 153654 },
   rate_limits: { five_hour: { used_percentage: 6, resets_at: 1792081200 }, seven_day: { used_percentage: 57, resets_at: WEEK_RESET_S } },
   agent: { name: 'reviewer' },
-});
+};
+const STATUS = JSON.stringify(STATUS_INPUT);
 
 /** The pinned file format: a status line of any make that writes this is read by `teamrig budget`. */
 const STORED =
@@ -315,6 +317,34 @@ describe('statusLineText', () => {
     assert.equal(statusLineText(both, { folder: 'app', commit: '1a2b3c4', resume: false }), 'Opus 5.5, app at 1a2b3c4, week 57%, 5h 6%');
     assert.equal(statusLineText(both, { branch: 'main', commit: '1a2b3c4', resume: false }), 'Opus 5.5, on main, week 57%, 5h 6%');
     assert.equal(statusLineText(both, { folder: 'app', resume: false }), 'Opus 5.5, app, week 57%, 5h 6%');
+  });
+
+  it('shows the effort level right after the model, or after Claude when the input names no model', () => {
+    assert.equal(statusLineText(both, { effort: 'high', folder: 'app', branch: 'main', resume: false }), 'Opus 5.5 (high), app on main, week 57%, 5h 6%');
+    assert.equal(statusLineText(snapshot({ model: null, rateLimits: null }), { effort: 'xhigh', resume: false }), 'Claude (xhigh)');
+  });
+});
+
+describe('effortOfStatus', () => {
+  const withEffort = (effort: unknown): string => JSON.stringify({ ...STATUS_INPUT, effort });
+
+  it("reads the effort level Claude Code sends for a model that takes one, kept as sent so a new level shows too", () => {
+    assert.equal(effortOfStatus(withEffort({ level: 'high' })), 'high');
+    assert.equal(effortOfStatus(`${withEffort({ level: 'turbo' })}\n`), 'turbo');
+  });
+
+  it('is undefined without a level: no effort, an empty or non-text level, or an input that is not JSON', () => {
+    assert.equal(effortOfStatus(STATUS), undefined);
+    assert.equal(effortOfStatus(withEffort({ level: ' ' })), undefined);
+    assert.equal(effortOfStatus(withEffort({ level: 3 })), undefined);
+    assert.equal(effortOfStatus(withEffort('high')), undefined);
+    assert.equal(effortOfStatus('not json'), undefined);
+  });
+
+  it('is not kept in the saved snapshot, whose format stays pinned', () => {
+    const snapshot = snapshotOfStatus(withEffort({ level: 'high' }), NOW);
+    assert.ok(snapshot);
+    assert.equal(formatSnapshot(snapshot), STORED);
   });
 });
 

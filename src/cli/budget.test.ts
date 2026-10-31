@@ -51,9 +51,10 @@ function transcripts(at: number): MemoryTranscripts {
   return source;
 }
 
-/** Claude Code's status input for a session in `cwd`: the week `usedPct` used, 30% unless named. */
-function status(cwd: string, usedPct = 30): string {
+/** Claude Code's status input for a session in `cwd`: the week `usedPct` used, 30% unless named, with `extra` fields. */
+function status(cwd: string, usedPct = 30, extra: JsonRecord = {}): string {
   return JSON.stringify({
+    ...extra,
     session_id: ALPHA_TAB,
     cwd,
     workspace: { current_dir: cwd },
@@ -807,6 +808,12 @@ describe('teamrig statusline', () => {
     assert.deepEqual([result.code, result.stdout, result.stderr], [EXIT.ok, [SHOWN], []]);
     assert.match(kit.files.get(join(LIVE, SNAPSHOT)) ?? '', /"seven_day":\{"used_percentage":30,"resets_at":1894582800\}/);
     assert.match(kit.files.get(join(LIVE, WEEK_SUMMARY_FILE)) ?? '', /^\{"v":1,"reading":\{"used_percentage":30,"resets_at":1894582800,"at":"2030-01-08T10:00:00\.000Z"\},/);
+  });
+
+  it("shows the session's effort level from the status input right after the model", async () => {
+    const kit = new CliHarness(LIMITED);
+    const input = status(APP, 30, { effort: { level: 'xhigh' } });
+    assert.deepEqual(ok(await kit.run(['statusline'], { stdin: input })), [SHOWN.replace('Opus 5.5,', 'Opus 5.5 (xhigh),')]);
   });
 
   it("dates each reading by the session's previous snapshot, so a reading after a mid-week reset outranks older higher ones", async () => {
