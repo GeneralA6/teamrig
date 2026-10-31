@@ -10,7 +10,7 @@ import type { WeekUse } from './snapshot.ts';
 import type { UsageState } from './store.ts';
 import { calibrationOf, type Calibration, type MeterReading } from './calibration.ts';
 import type { ExtraEntry } from './extra.ts';
-import { idleWSince, limitWPerPct, meteredOf, rateOf, readWeek, TODAY_RATE_SPAN_PTS, wSince } from './week.ts';
+import { coversFrom, idleWSince, limitWPerPct, meteredOf, rateOf, readWeek, TODAY_RATE_MAX_RATIO, TODAY_RATE_SPAN_PTS, wSince } from './week.ts';
 
 /** Thursday 2026-10-15 12:00 UTC; the week runs from Wednesday 10-14 01:00 to Wednesday 10-21 01:00. */
 const NOW = Date.parse('2026-10-15T12:00:00Z');
@@ -179,6 +179,17 @@ describe('readWeek', () => {
     assert.deepEqual([round(quiet.teamDay?.usedPct), quiet.todayWPerPct], [1.5, 20]);
   });
 
+  it(`prices the day's W at the week's rate when today's own strays past ${TODAY_RATE_MAX_RATIO} times it, either way`, () => {
+    const priced = (readings: readonly MeterReading[]): readonly [number | undefined, number | undefined] => {
+      const week = readWeek({ readings, calibration: LEARNED, budget: DEFAULT_BUDGET, now: NOW, statusUse: STATUS, period: PERIOD, states: COVERED });
+      return [round(week.teamDay?.usedPct), week.todayWPerPct];
+    };
+    // Today's 500 W read from 55% at 1,000 W to 58%: 3 points, 167 W per percent against the week's 20.
+    assert.deepEqual(priced([meterReading(55, 1_000), meterReading(57, 1_480)]), [3, 20]);
+    // From 5% at 1,000 W to 58%: 53 points, 9.4 W per percent.
+    assert.deepEqual(priced([meterReading(5, 1_000), meterReading(57, 1_480)]), [53, 20]);
+  });
+
   it("counts today's W at the week's rate while the period has no reading or the stores miss its start", () => {
     const older = meterReading(40, 900, PERIOD.start - MS_PER_WEEK);
     const unread = readWeek({ readings: [older], calibration: LEARNED, budget: DEFAULT_BUDGET, now: NOW, statusUse: STATUS, period: PERIOD, states: COVERED });
@@ -241,6 +252,16 @@ describe('readWeek', () => {
     assert.deepEqual(week.pool, { addedUsd: 10, spentUsd: 0, leftUsd: 10, wPerUsd: 100, learned: false, leftW: 1_000 });
     assert.equal(round(week.allowancePct), round((42.5 * 24) / 132));
     assert.deepEqual(Object.keys(week.teamDay ?? {}), ['usedPct', 'pacePct']);
+  });
+});
+
+describe('coversFrom', () => {
+  it("holds when a store counted the instant's UTC day or one before it, not while none did", () => {
+    const from = Date.parse('2026-10-14T23:00:00Z');
+    assert.deepEqual(
+      [COVERED, [state({ '2026-10-14': 1 })], [state({ '2026-10-15': 1 })], [], [state({})]].map((states) => coversFrom(states, from)),
+      [true, true, false, false, false],
+    );
   });
 });
 

@@ -1,8 +1,8 @@
 import { join } from 'node:path';
 import { OUTSIDE_ID } from '../budget/measure.ts';
 import { UsageStore, type UsageState } from '../budget/store.ts';
-import { calibrationOf, MeterLog } from '../budget/calibration.ts';
-import { teamWeekOf } from '../budget/team-week.ts';
+import { calibrationOf, MeterLog, readingsOfTeam } from '../budget/calibration.ts';
+import { teamWeekOf, type MeterScale } from '../budget/team-week.ts';
 import { rateOf, type WeekReading } from '../budget/week.ts';
 import type { KitConfig } from '../config/types.ts';
 import type { TeamPaths } from '../core/home.ts';
@@ -24,6 +24,20 @@ export async function readStoredUsage(runtime: CliRuntime, paths: Pick<TeamPaths
 }
 
 /**
+ * The asking team's scale in the account's meter log (budget/team-week.ts `MeterScale`): its own lines, the keeper's
+ * untagged ones when it is the keeper, and the other teams on the account with their usage stores as last stored,
+ * read only when a crossing is logged.
+ */
+export function meterScaleOf(runtime: CliRuntime, team: string, account: Pick<AccountWeek, 'keeper' | 'peers'>): MeterScale {
+  return {
+    team,
+    keeper: account.keeper,
+    peers: async () =>
+      Promise.all(account.peers.map(async (peer) => ({ team: peer.team, states: [...(await readStoredUsage(runtime, peer, peer.ids)).values()] }))),
+  };
+}
+
+/**
  * The week as a hook reads it: each session's use as last stored, the use outside the team and the newest
  * status-line reading on the account, in the account's week files (`accountWeekOn`), no transcript measured.
  */
@@ -38,18 +52,19 @@ export async function readStoredWeek(
 
 async function storedWeekOn(
   runtime: CliRuntime,
-  paths: Pick<TeamPaths, 'usage'>,
+  paths: Pick<TeamPaths, 'team' | 'usage'>,
   config: Pick<KitConfig, 'sessions' | 'budget'>,
   now: number,
   account: AccountWeek,
 ): Promise<WeekReading> {
   const { budget, sessions } = config;
   const states = [...(await readStoredUsage(runtime, paths, sessions)).values()];
-  return teamWeekOf(runtime.files, account.paths, { budget, now, statusUse: account.statusUse, states });
+  return teamWeekOf(runtime.files, account.paths, meterScaleOf(runtime, paths.team, account), { budget, now, statusUse: account.statusUse, states });
 }
 
 /**
- * The week's W per percent as `teamrig budget` reads it: learned from the account's meter log (`accountWeekOn`), else
+ * The week's W per percent as `teamrig budget` reads it: learned from the team's lines of the account's meter log
+ * (`accountWeekOn`, `readingsOfTeam`), else
  * from `budget.weeklyLimitW`, which read no usage store, else the stored week's estimate; undefined while none is known.
  * It prices a spend over several days (a task's size); a spend made now takes `readTodayWPerPct`.
  */
@@ -60,7 +75,8 @@ export async function readWPerPct(
   now: number,
 ): Promise<number | undefined> {
   const account = await accountWeekOn(runtime, config.budget, paths, now);
-  const calibration = calibrationOf(await new MeterLog(runtime.files, account.paths.meterLog).read(now));
+  const logged = await new MeterLog(runtime.files, account.paths.meterLog).read(now);
+  const calibration = calibrationOf(readingsOfTeam(logged, { team: paths.team, keeper: account.keeper }));
   return rateOf(calibration, config.budget, undefined)?.wPerPct ?? (await storedWeekOn(runtime, paths, config, now, account)).wPerPct;
 }
 

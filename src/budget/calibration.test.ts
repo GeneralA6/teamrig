@@ -15,7 +15,9 @@ import {
   parseMeterRecord,
   periodForecasts,
   READINGS_KEPT_MS,
+  readingsOfTeam,
   useAtW,
+  type LoggedReading,
   type MeterReading,
   type RateFit,
   type ReadingSight,
@@ -41,6 +43,11 @@ const FIT: RateFit = { wPerPct: 10_000_000, errorPts: 0.5, readings: 20 };
 
 function reading(usedPct: number, w: number, overrides: Partial<MeterReading> = {}): MeterReading {
   return { at: NOW, usedPct, start: START, end: END, w, forecastPct: undefined, ...overrides };
+}
+
+/** A line of `team`'s, whose stores metered `w`. */
+function teamLine(team: string, usedPct: number, w: number, overrides: Partial<MeterReading> = {}): LoggedReading {
+  return { ...reading(usedPct, w, overrides), team };
 }
 
 describe('crossingOf', () => {
@@ -150,18 +157,37 @@ describe('useAtW', () => {
 });
 
 describe('meter log records', () => {
-  it('round-trips a reading, with and without a forecast', () => {
-    for (const each of [reading(13, 120_000_000, { forecastPct: 12.5 }), reading(13, 120_000_000)]) {
+  it('round-trips a reading, with and without a forecast or a team', () => {
+    for (const each of [reading(13, 120_000_000, { forecastPct: 12.5 }), reading(13, 120_000_000), teamLine('app', 13, 120_000_000)]) {
       assert.deepEqual(parseMeterRecord(meterRecordOf(each)), each);
     }
     assert.deepEqual(meterRecordOf(reading(13, 5)), { v: METER_LOG_FORMAT, at: '2026-10-22T12:00:00.000Z', usedPct: 13, start: '2026-10-21T01:00:00.000Z', end: '2026-10-28T01:00:00.000Z', w: 5 });
+    assert.equal(meterRecordOf(teamLine('app', 13, 5))['team'], 'app');
   });
 
   it('reads a damaged record as nothing', () => {
     const good = meterRecordOf(reading(13, 5));
-    for (const damage of [{ at: 'soon' }, { usedPct: 0 }, { usedPct: '13' }, { w: -1 }, { end: '2026-10-20T01:00:00.000Z' }, { start: 7 }, { forecastPct: 'x' }]) {
+    const damages = [{ at: 'soon' }, { usedPct: 0 }, { usedPct: '13' }, { w: -1 }, { end: '2026-10-20T01:00:00.000Z' }, { start: 7 }, { forecastPct: 'x' }, { team: '' }, { team: 7 }];
+    for (const damage of damages) {
       assert.equal(parseMeterRecord({ ...good, ...damage }), undefined, JSON.stringify(damage));
     }
+  });
+});
+
+describe('readingsOfTeam', () => {
+  const LAST = { start: START - MS_PER_WEEK, end: START };
+
+  it("takes a team's own lines, never another team's", () => {
+    const logged = [teamLine('root', 13, 100), teamLine('app', 13, 110), teamLine('root', 14, 108), teamLine('app', 14, 119)];
+    assert.deepEqual(readingsOfTeam(logged, { team: 'app', keeper: 'root' }), [teamLine('app', 13, 110), teamLine('app', 14, 119)]);
+    assert.deepEqual(readingsOfTeam(logged, { team: 'root', keeper: 'root' }), [teamLine('root', 13, 100), teamLine('root', 14, 108)]);
+  });
+
+  it("counts a line logged before lines named a team for the log's keeper only, in a period with no named line", () => {
+    // Last week's lines name no team: the keeper's scale. This week's untagged ones were logged by both teams in turn.
+    const logged = [reading(40, 400, LAST), reading(50, 500, LAST), reading(12, 130), reading(13, 120), teamLine('root', 14, 130)];
+    assert.deepEqual(readingsOfTeam(logged, { team: 'root', keeper: 'root' }), [reading(40, 400, LAST), reading(50, 500, LAST), teamLine('root', 14, 130)]);
+    assert.deepEqual(readingsOfTeam(logged, { team: 'app', keeper: 'root' }), []);
   });
 });
 
@@ -179,6 +205,24 @@ describe('MeterLog', () => {
     await log.append(reading(13.4, 7), NOW);
     await log.append(reading(13, 9, { start: START - MS_PER_WEEK, end: START }), NOW);
     assert.deepEqual(await log.read(NOW), [reading(13, 5), reading(13, 9, { start: START - MS_PER_WEEK, end: START })]);
+  });
+
+  it("reads each team's line for a percent, and one per team when two of its readers logged at once", async () => {
+    const log = new MeterLog(new MemoryFiles(), LOG);
+    await log.appendAll([teamLine('root', 13, 5), teamLine('app', 13, 6)], NOW);
+    await log.appendAll([teamLine('app', 13.2, 7), teamLine('root', 13.2, 8)], NOW);
+    assert.deepEqual(await log.read(NOW), [teamLine('root', 13, 5), teamLine('app', 13, 6)]);
+  });
+
+  it('appends several lines in one write, and writes nothing for none, even beside a newer line', async () => {
+    const files = new MemoryFiles();
+    const log = new MeterLog(files, LOG);
+    await log.appendAll([teamLine('root', 13, 5), teamLine('app', 13, 6)], NOW);
+    assert.equal(await files.read(LOG), `${toJsonlLine(meterRecordOf(teamLine('root', 13, 5)))}${toJsonlLine(meterRecordOf(teamLine('app', 13, 6)))}`);
+    const newer = toJsonlLine({ ...meterRecordOf(reading(50, 1)), v: METER_LOG_FORMAT + 1 });
+    await files.write(LOG, newer);
+    await log.appendAll([], NOW);
+    assert.equal(await files.read(LOG), newer);
   });
 
   it(`counts only the readings of the last ${READINGS_KEPT_MS / MS_PER_WEEK} weeks, and skips damaged lines and newer formats`, async () => {

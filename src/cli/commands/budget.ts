@@ -66,6 +66,7 @@ import { UsageError, onePositional, requiredFlag, type Flags, type ParsedArgs } 
 import { callerOf, type TypedTimes } from '../inputs.ts';
 import { leadOnly, openKit, openTeamKit, requireConfig, rosterOf, sessionIdOf, teamFolders, teamZone, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
+import { meterScaleOf } from '../stored-week.ts';
 import { loadTree } from '../tree.ts';
 
 /**
@@ -138,7 +139,7 @@ async function readBudget(runtime: CliRuntime, kit: Kit, config: KitConfig, rost
   const week =
     account === undefined
       ? readWeek({ ...input, period: recountPeriodOf(config.budget, now), calibration: calibrationOf([]), readings: [] })
-      : await teamWeekOf(files, account.paths, input);
+      : await teamWeekOf(files, account.paths, meterScaleOf(runtime, kit.paths.team, account), input);
   const lifts = recount ? [] : (await new LiftLog(files, kit.paths.lifts).read()).lifts;
   const bursts = recount ? [] : (await new BurstLog(files, kit.paths.bursts).read()).records;
   return { now, measured, week, weekPaths: account?.paths ?? kit.paths, lifts, bursts };

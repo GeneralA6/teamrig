@@ -33,6 +33,13 @@ export type RateSource = 'learned' | 'limit' | 'estimate';
 export const TODAY_RATE_SPAN_PTS = 2;
 
 /**
+ * How far today's own W per percent may stray from the week's, either way, and still price the sessions' parts of
+ * today (`WeekReading.todayWPerPct`): past it, the status line's points today and the W metered today disagree, as
+ * when the day was read between readings on another team's W scale (T1669), and the week's rate prices the day.
+ */
+export const TODAY_RATE_MAX_RATIO = 2;
+
+/**
  * Where the week stands: its use in percent, from the status line (the plan's own count) or, with a
  * known limit, from the metered W; the limit in W per percent, learned from the meter log, else from
  * `weeklyLimitW`, else estimated from the status line once the meter has counted the whole week; the pace
@@ -72,8 +79,9 @@ export interface WeekReading {
   readonly todayW: number;
   /**
    * W per percent of today's use: `todayW` over that use read from the status line once it spans
-   * `TODAY_RATE_SPAN_PTS`, else `wPerPct`. A session's W today in percent of the week is its W over this, so the
-   * sessions' parts add up to the team's day; undefined with `wPerPct`.
+   * `TODAY_RATE_SPAN_PTS` and the rate is within `TODAY_RATE_MAX_RATIO` of `wPerPct`, else `wPerPct`. A session's W
+   * today in percent of the week is its W over this, so the sessions' parts add up to the team's day; undefined with
+   * `wPerPct`.
    */
   readonly todayWPerPct: number | undefined;
   /** Everyone's use today against the team's in-day pace (`hasRoom`); undefined with the allowance. */
@@ -217,9 +225,22 @@ export function rateOf(
   return estimate === undefined ? undefined : { wPerPct: estimate, from: 'estimate' };
 }
 
-function earliestDay(states: readonly UsageState[]): string | undefined {
-  const days = states.flatMap((state) => Object.keys(state.byDay)).sort();
-  return days[0];
+/** Whether the usage stores reach back to `from`: the earliest UTC day any of them counted is `from`'s day or before. */
+export function coversFrom(states: readonly UsageState[], from: number): boolean {
+  const first = states.flatMap((state) => Object.keys(state.byDay)).sort()[0];
+  return first !== undefined && first <= formatUtcDay(new Date(from));
+}
+
+/**
+ * W per percent of today's use (`WeekReading.todayWPerPct`): today's W over its points read from the status line, once
+ * they span `TODAY_RATE_SPAN_PTS` and that rate is within `TODAY_RATE_MAX_RATIO` of the week's, else the week's.
+ */
+function todayRateOf(todayW: number, statusToday: number | undefined, wPerPct: number | undefined): number | undefined {
+  if (wPerPct === undefined || statusToday === undefined || statusToday < TODAY_RATE_SPAN_PTS) {
+    return wPerPct;
+  }
+  const rate = todayW / statusToday;
+  return rate >= wPerPct / TODAY_RATE_MAX_RATIO && rate <= wPerPct * TODAY_RATE_MAX_RATIO ? rate : wPerPct;
 }
 
 /**
@@ -243,9 +264,7 @@ export function readWeek(input: WeekInput): WeekReading {
   const dayStart = now - (now % MS_PER_DAY);
   const todayFrom = window === undefined ? dayStart : Math.max(dayStart, window.start);
   const todayW = wSince(states, todayFrom, now);
-  const startDay = window === undefined ? undefined : formatUtcDay(new Date(window.start));
-  const first = earliestDay(states);
-  const covered = startDay !== undefined && first !== undefined && first <= startDay;
+  const covered = window !== undefined && coversFrom(states, window.start);
   const weekW = window === undefined ? 0 : wSince(states, window.start, now);
   const estimate = statusUse !== undefined && covered && weekW > 0 && statusUse.usedPct > 0 ? weekW / statusUse.usedPct : undefined;
   const rate = rateOf(calibration, budget, estimate);
@@ -253,7 +272,7 @@ export function readWeek(input: WeekInput): WeekReading {
   const usedPct = statusUse?.usedPct ?? (covered && wPerPct !== undefined ? weekW / wPerPct : undefined);
   const statusToday = wPerPct === undefined ? undefined : statusTodayPct({ readings, start: period?.start, covered, statusUse, weekW, todayW, wPerPct, now });
   const todayPct = statusToday ?? (wPerPct === undefined ? undefined : todayW / wPerPct);
-  const todayWPerPct = statusToday !== undefined && statusToday >= TODAY_RATE_SPAN_PTS ? todayW / statusToday : wPerPct;
+  const todayWPerPct = todayRateOf(todayW, statusToday, wPerPct);
   const profile = DailyProfile.ofQuietHours(budget.quietHours);
   const pace = window === undefined || usedPct === undefined ? undefined : readPace(window, budget, now, usedPct, profile);
   const plannedPct =
