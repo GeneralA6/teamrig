@@ -673,7 +673,8 @@ a `FAILED` line naming the fix, and the other repositories are read on.
   author's issue (one with a merged pull request too) waits until someone other than the author adds the
   `github.acceptLabel` label (`teamrig` by default, any case): a person, not a bot, a workflow or an issue template.
   An edit of its title or body at or after that label undoes the accept, the accepter's own edit too: once the new
-  text is read, remove the label and add it again. An issue left out writes nothing.
+  text is read, remove the label and add it again. An issue left out writes nothing; a `LEFT OUT` line names it
+  by its number only, never its text, at most 20 per repository and then how many more.
 - On a task it added, only the title, the description, the priority and whether it is open follow GitHub, on every
   run; the title and description only while the issue counts as above, so after an outsider's later edit the task
   keeps the text it had. Closed as
@@ -703,7 +704,8 @@ Flags:
 - `--yes`: writes. Without it the command shows what it would write and writes nothing.
 - `--auto`: what the hooks start. It writes as `--yes` does, then posts one inbox line, from `github`, to each owner
   naming the tasks added for it, and one to the lead when a repository starts failing (once, not at every run) or
-  when every repository reads again. It reads every repository, so it refuses `--repo`.
+  when every repository reads again, and one when it leaves out an outsider's issue it did not leave out before (by
+  ref only, at most ten named). It reads every repository, so it refuses `--repo`.
 
 Example:
 
@@ -719,6 +721,7 @@ REPO acme/web: 2 added, 1 changed, 5 unchanged
 ADD T41 gh:acme/web#7 p1 web: "Fix the login redirect"
 ADD T42 gh:acme/web#9 p2 lead: "Add search to the docs"
 SET T30 gh:acme/web#3 done: closed on GitHub as completed
+LEFT OUT acme/web: 1 open issue(s) by people outside the repository wait for someone to add the "teamrig" label: #12
 WROTE 3 change(s) to the task list as github; GitHub was only read
 ```
 
