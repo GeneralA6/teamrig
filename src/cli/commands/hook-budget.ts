@@ -15,6 +15,7 @@ import { budgetSplitOf, dailyBudgetOf } from '../../budget/parts.ts';
 import { fundForDay, isPaused, pausableOf } from '../../budget/pause.ts';
 import { UsageStore, type UsageState } from '../../budget/store.ts';
 import { teamWeekOf } from '../../budget/team-week.ts';
+import { keepTeamWeek, teamWeekSummaryOf } from '../../budget/team-week-file.ts';
 import { helperGate, promptWarning, stopWarning, type BudgetFacts, type BudgetLeader, type HelperGate } from '../../budget/warn.ts';
 import { WarnStore } from '../../budget/warn-store.ts';
 import { wSince } from '../../budget/week.ts';
@@ -73,7 +74,8 @@ async function meterTab(runtime: CliRuntime, store: UsageStore, id: string, tran
  * changed since the last reading (`cachedWork`), or set by a lift; a burst the session is in raises it to at least
  * the burst's. Everyone's use today against the team's in-day pace
  * (`teamDay`) says whether a session past its part is held. The lead,
- * with no burst in force, also gets the week's surplus when it is worth one.
+ * with no burst in force, also gets the week's surplus when it is worth one. On the way, it keeps the team's week
+ * summary for readers that show it (budget/team-week-file.ts), written when that changes it.
  */
 export async function budgetFactsOf(runtime: CliRuntime, scope: BudgetScope, transcript: string | undefined): Promise<BudgetFacts | undefined> {
   const { kit, config, roster, id } = scope;
@@ -104,6 +106,11 @@ export async function budgetFactsOf(runtime: CliRuntime, scope: BudgetScope, tra
   const work = await cachedWork(files, kit.paths.events, join(kit.paths.usage, WORK_CACHE_FILE), config.register.priorities);
   const split = budgetSplitOf({ team: kit.paths.team, ids: roster.ids, sessions: budget.sessions, leads: config.leads, work: work.weights, pausable: pausableOf(config, kit.paths.team, roster.ids), lifts, now, usedPct: week.usedPct });
   const others = await otherTeamsOnAccount(runtime, { team: kit.paths.team, config, usageDir: kit.paths.usage }, now, week.usedPct);
+  const teams = { split, others };
+  const summary = teamWeekSummaryOf({ window: week.window, usedPct: week.usedPct, wPerPct: week.wPerPct, targetPct: budget.targetPct, states: [...byId.values()], teams, now });
+  if (summary !== undefined) {
+    await keepTeamWeek(files, kit.paths.teamWeek, summary);
+  }
   const funded = fundForDay({ split, others }, week);
   const shared = dailyBudgetOf(week.allowancePct, id, funded.split, funded.others);
   const inForce = activeBurst((await new BurstLog(files, kit.paths.bursts).read()).records, now, week.usedPct);
@@ -124,7 +131,7 @@ export async function budgetFactsOf(runtime: CliRuntime, scope: BudgetScope, tra
           usedPct: week.usedPct,
           targetPct: budget.targetPct,
           // The week's spare, not a short day's cut: the teams unfunded.
-          teams: { split, others },
+          teams,
           ownerAsk: ownerAsk(config),
         })
       : undefined;
