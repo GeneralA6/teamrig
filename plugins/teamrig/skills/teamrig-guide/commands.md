@@ -2426,8 +2426,9 @@ launchers to `<kit home>/bin/`, `restore-check.mjs` and `restore-run.mjs`, which
 time they run, so a plugin update needs no new install. Then it points the logon entry at the check launcher: on
 Windows, the `TeamrigSessionRestore` value of the `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` key, which
 runs it with the Node that ran this command, through `conhost --headless` so no window opens. No one sees a logon's
-output, so when the plugin is not found or the check exits other than 0, the launcher writes why to
-`<kit home>/restore/restore.log` as a `logon:` line. Last, it makes the Start-menu shortcut `Restore Claude
+output, so the launcher first writes `logon: started` to `<kit home>/restore/restore.log`, which proves a logon ran
+it, and when the plugin is not found or the check exits other than 0, it writes why as another `logon:` line.
+Last, it makes the Start-menu shortcut `Restore Claude
 Sessions` start that Node on the run launcher, in your home folder: it opens a window running `restore run --tab`,
 with its list and countdown, after a crash, a reboot or a window you closed. Every other shortcut of that name on
 the desktop or pinned to the taskbar that starts something else, such as a pin made from an older shortcut, is
