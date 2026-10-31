@@ -50,7 +50,8 @@ export interface ReopenTab {
   readonly prompt: string | undefined;
 }
 
-export type ReopenOutcome = { readonly kind: 'opened' } | { readonly kind: 'failed'; readonly why: string };
+/** A tab opened, with how its launch ended in words for the log (`windows-terminal exited 0`), or why it did not. */
+export type ReopenOutcome = { readonly kind: 'opened'; readonly launch: string } | { readonly kind: 'failed'; readonly why: string };
 
 /** What the restore reads and changes outside itself. */
 export interface RestoreDeps {
@@ -370,6 +371,6 @@ async function reopenItem(deps: RestoreDeps, facts: JudgeFacts, item: RestoreIte
     deps.print(`  (${note})`);
   }
   deps.print(`Opened ${item.label} (${modeWords(item)})`);
-  await deps.log(`run: opened ${id} (${modeWords(item)}) at effort ${item.effort ?? 'default'}`);
+  await deps.log(`run: opened ${id} (${modeWords(item)}) at effort ${item.effort ?? 'default'}; ${outcome.launch}`);
   return 'opened';
 }

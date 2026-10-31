@@ -6,7 +6,7 @@ import { ENV, resolveKitHome } from '../../core/home.ts';
 import { PlainLogFile } from '../../core/log-file.ts';
 import { indexMarks } from '../../inbox/marks.ts';
 import { JsonlMarkLog } from '../../inbox/store.ts';
-import { openTab, type OpenOutcome } from '../../open/open-tab.ts';
+import { launchWords, openTab, type OpenOutcome } from '../../open/open-tab.ts';
 import { teamWindowOf } from '../../open/terminals.ts';
 import { encodePrompt } from '../../open/prompt.ts';
 import { shellCommand } from '../../open/quote.ts';
@@ -72,7 +72,7 @@ async function restoreTeamsOf(runtime: CliRuntime): Promise<RestoreTeam[]> {
 
 function reopenOutcomeOf(runtime: CliRuntime, outcome: OpenOutcome, folder: string, argv: readonly string[]): ReopenOutcome {
   if (outcome.kind === 'opened') {
-    return { kind: 'opened' };
+    return { kind: 'opened', launch: launchWords(outcome.terminal, outcome.end) };
   }
   return { kind: 'failed', why: `no terminal opened (${outcome.reasons.join('; ')}); run: ${shellCommand(runtime.platform, folder, argv)}` };
 }
@@ -175,6 +175,7 @@ export async function restoreCheck(args: ParsedArgs, runtime: CliRuntime): Promi
   ];
   const outcome = await openTab(runtime, terminal ?? 'auto', { title: RESTORE_TAB_TITLE, folder: runtime.userHome, argv, window: undefined });
   if (outcome.kind === 'opened') {
+    await restoreLogOf(homeRuntime)(`check: opened the restore tab; ${launchWords(outcome.terminal, outcome.end)}`);
     runtime.out.stdout(`OPENED the restore of ${count} Claude Code session${count === 1 ? '' : 's'} in a new ${TERMINAL_LABELS[outcome.terminal]}`);
     return EXIT.ok;
   }

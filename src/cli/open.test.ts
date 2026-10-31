@@ -52,7 +52,7 @@ function liveLine(pid: number): string {
 
 describe('teamrig open', () => {
   it('opens a Windows Terminal tab in the project that runs launch by absolute paths', async () => {
-    const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started' });
+    const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
     const result = await openAlpha(processes, { platform: 'win32' });
     assert.deepEqual(result, { code: EXIT.ok, stdout: [`OPENED app-alpha (session alpha) in a new Windows Terminal tab in ${APP}, on the default model and effort`], stderr: [] });
     assert.deepEqual(processes.started, [
@@ -61,7 +61,7 @@ describe('teamrig open', () => {
   });
 
   it("opens the tab in the team's own Windows Terminal window when open.teamWindow is on (T1427)", async () => {
-    const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started' });
+    const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
     const result = await new CliHarness({ ...TEAM, open: { teamWindow: true } }).run(['open', 'alpha'], { probe: FOLDERS, processes, platform: 'win32' });
     assert.equal(result.code, EXIT.ok, result.stdout.join('\n'));
     assert.deepEqual(processes.started[0]?.args.slice(0, 3), ['-w', 'teamrig-app', 'new-tab']);
@@ -70,7 +70,7 @@ describe('teamrig open', () => {
   it('refuses a session the host has no room for, and opens the lead whatever the room', async () => {
     const memory = new FakeHostMemory();
     memory.free = 5000;
-    const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started' });
+    const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
     const refused = await openAlpha(processes, { platform: 'win32', memory });
     assert.equal(refused.code, EXIT.refused);
     assert.deepEqual(refused.stdout, [
@@ -90,7 +90,7 @@ describe('teamrig open', () => {
       claudeSession: 'claude-lead',
       at: '2030-01-08T09:00:00.000Z',
     });
-    const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started' });
+    const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
     const resident = new FakeHostMemory().lists([{ pid: 6900, parent: 1, bytes: 3000 * MB }]);
     resident.free = 6000;
     const refused = await kit.run(['open', 'alpha'], { probe: FOLDERS, processes, platform: 'win32', memory: resident });
@@ -106,11 +106,11 @@ describe('teamrig open', () => {
   });
 
   it('opens a tmux window inside tmux, and a Terminal window on macOS', async () => {
-    const tmux = new FakeProcesses().onStart('tmux', { kind: 'started' });
+    const tmux = new FakeProcesses().onStart('tmux', { kind: 'started', end: 'exited' });
     const tmuxRun = await openAlpha(tmux, { env: { TMUX: '/tmp/tmux-1/default,1,0' } });
     assert.deepEqual(tmuxRun.stdout, [`OPENED app-alpha (session alpha) in a new tmux window in ${APP}, on the default model and effort`]);
     assert.deepEqual(tmux.started[0]?.args, ['new-window', '-c', APP, '-n', '[app] alpha', ...launchArgv()]);
-    const mac = new FakeProcesses().onStart('osascript', { kind: 'started' });
+    const mac = new FakeProcesses().onStart('osascript', { kind: 'started', end: 'exited' });
     await openAlpha(mac, { platform: 'darwin' });
     assert.equal(mac.started[0]?.args.at(-1), shellCommand('darwin', APP, launchArgv()));
   });
@@ -129,7 +129,7 @@ describe('teamrig open', () => {
 
   it('takes the terminal from the config, and the flag over it', async () => {
     const kit = new CliHarness({ ...TEAM, open: { terminal: 'print' } });
-    const processes = new FakeProcesses().onStart('konsole', { kind: 'started' });
+    const processes = new FakeProcesses().onStart('konsole', { kind: 'started', end: 'exited' });
     const configured = await kit.run(['open', 'alpha'], { probe: FOLDERS, processes });
     assert.equal(configured.code, EXIT.printed);
     const flagged = await kit.run(['open', 'alpha', '--terminal', 'konsole'], { probe: FOLDERS, processes });
@@ -140,13 +140,13 @@ describe('teamrig open', () => {
   it('carries a hostile prompt and project folder as data, never as shell text', async () => {
     const folder = resolve('/', 'w', `a "b"; $(id) & %PATH% \`x\``);
     const prompt = `Fix "it"; rm -rf / & echo $(id) | cat %PATH%\nnext`;
-    const processes = new FakeProcesses().onStart('gnome-terminal', { kind: 'started' });
+    const processes = new FakeProcesses().onStart('gnome-terminal', { kind: 'started', end: 'exited' });
     const probe = new FakePathProbe({ folders: [folder] });
     await openAlpha(processes, { probe }, ['--project', folder, '--prompt', prompt]);
     const argv = launchArgv(folder, prompt);
     assert.deepEqual(processes.started[0]?.args, ['--tab', `--working-directory=${folder}`, '--', ...argv]);
     assert.equal(decodePrompt(argv.at(-1) ?? ''), prompt);
-    const windows = new FakeProcesses().onStart('wt.exe', { kind: 'started' });
+    const windows = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
     const refused = await openAlpha(windows, { probe, platform: 'win32' }, ['--project', folder, '--prompt', prompt]);
     assert.equal(refused.code, EXIT.printed);
     assert.deepEqual(windows.started, []);
@@ -155,7 +155,7 @@ describe('teamrig open', () => {
 
   it('opens in the folder Claude Code started in when the team comes from $TEAMRIG_TEAM, and passes no kit home it was not given', async () => {
     const elsewhere = resolve('/', 'other');
-    const processes = new FakeProcesses().onStart('gnome-terminal', { kind: 'started' });
+    const processes = new FakeProcesses().onStart('gnome-terminal', { kind: 'started', end: 'exited' });
     const kit = new CliHarness(TEAM, null);
     await kit.files.write(join(USER_HOME, '.teamrig', 'teams', 'app', 'config.json'), formatConfig(TEAM));
     const result = await kit.run(['open', 'alpha'], {
@@ -178,7 +178,7 @@ describe('teamrig open', () => {
       [{ ...team, launch: { alpha: { project: own } } }, ['--project', APP], APP],
     ];
     for (const [config, extra, folder] of cases) {
-      const processes = new FakeProcesses().onStart('gnome-terminal', { kind: 'started' });
+      const processes = new FakeProcesses().onStart('gnome-terminal', { kind: 'started', end: 'exited' });
       const result = await new CliHarness(config).run(['open', 'alpha', ...extra], { probe, processes });
       assert.equal(result.code, EXIT.ok, result.stdout.join('\n'));
       assert.deepEqual(processes.started[0]?.args.slice(3), launchArgv(folder));
@@ -206,7 +206,7 @@ describe('teamrig open', () => {
     const kit = new CliHarness(TEAM);
     await recordStart(kit, 6900);
     await recordStart(kit, 6800, 'lead');
-    const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started' });
+    const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
     const refused = await kit.run(['open', 'alpha'], { probe: FOLDERS, processes, platform: 'win32', ...claudeRuns(6900) });
     assert.deepEqual([refused.code, refused.stdout], [EXIT.refused, [liveLine(6900)]]);
     const lead = await kit.run(['open', 'lead'], { probe: FOLDERS, processes, platform: 'win32', ...claudeRuns(6800) });
@@ -218,14 +218,14 @@ describe('teamrig open', () => {
 describe('teamrig open <team>/<id>', () => {
   it('says the model and effort the lead of another team starts on', async () => {
     const kit = await treeHarness();
-    const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started' });
+    const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
     const result = await kit.run(['open', 'web/lead'], { probe: FOLDERS, processes, platform: 'win32' });
     assert.deepEqual(result.stdout, [`OPENED web-lead (session lead) in a new Windows Terminal tab in ${APP}, on model opus at xhigh effort`]);
   });
 
   it('opens a session of another team of the tree in the same project, launched on its own team', async () => {
     const kit = await treeHarness();
-    const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started' });
+    const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
     const result = await kit.run(['open', 'web/front'], { probe: FOLDERS, processes, platform: 'win32' });
     assert.deepEqual(result.stdout, [`OPENED web-front (session front) in a new Windows Terminal tab in ${APP}, on the default model and effort`]);
     assert.deepEqual(processes.started[0]?.args.slice(8), [

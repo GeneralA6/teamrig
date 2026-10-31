@@ -57,7 +57,7 @@ async function homeAlpha(): Promise<ClosedAlpha> {
 
 /** Opens alpha in a Windows Terminal tab; returns the run and what the tab runs. */
 async function open(alpha: ClosedAlpha, extra: readonly string[] = []): Promise<{ result: CliResult; argv: readonly string[] }> {
-  const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started' });
+  const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
   const result = await alpha.kit.run(['open', 'alpha', ...extra], { ...alpha.options, processes });
   return { result, argv: processes.started[0]?.args ?? [] };
 }
@@ -169,7 +169,7 @@ async function handWork(alpha: ClosedAlpha): Promise<void> {
 
 /** Runs the idle pass's reopen of alpha on a host whose memory is `memory`, over `files` when given. */
 async function idleOpen(alpha: ClosedAlpha, memory = new FakeHostMemory().lists([], CHARGE), files?: Files): Promise<{ result: CliResult; argv: readonly string[] }> {
-  const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started' });
+  const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
   const result = await alpha.kit.run(['idle-open', 'alpha', '--team', 'app', '--project', APP], { ...alpha.options, processes, memory, ...(files === undefined ? {} : { files }) });
   return { result, argv: processes.started[0]?.args ?? [] };
 }

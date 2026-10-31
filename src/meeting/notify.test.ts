@@ -72,7 +72,7 @@ describe('noticeRequest', () => {
 describe('showNotice', () => {
   it('starts the notification hidden and tells how its start went', async () => {
     const processes = new FakeProcesses();
-    assert.deepEqual(await showNotice(processes, 'linux', NOTICE, ENV, '/work'), { kind: 'started' });
+    assert.deepEqual(await showNotice(processes, 'linux', NOTICE, ENV, '/work'), { kind: 'started', end: 'spawned' });
     assert.equal(processes.hidden[0]?.command, 'notify-send');
     processes.onStart('notify-send', { kind: 'missing' });
     assert.deepEqual(await showNotice(processes, 'linux', NOTICE, ENV, '/work'), { kind: 'missing' });

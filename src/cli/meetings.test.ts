@@ -253,7 +253,7 @@ describe('runCli: meeting start <id>', () => {
   it('opens the tab of a session that runs none, the opening prompt ahead of its own first prompt, and leaves no ask behind', async () => {
     const kit = await team();
     await booked(kit, '--with', 'bravo', '--tasks', 'T1', '--brief', 'notes/alpha/brief.md', '--session', 'lead');
-    const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started' });
+    const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
     const result = await kit.run(['meeting', 'start', 'M1', '--session', 'bravo'], { platform: 'win32', processes, probe: new FakePathProbe({ folders: [APP] }) });
     assert.equal(result.code, EXIT.ok, said(result));
     assert.equal(result.stdout.length, 3, 'bravo starts it, so only alpha is told');

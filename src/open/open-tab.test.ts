@@ -1,16 +1,16 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeProcesses } from '../testing/fake-processes.ts';
-import { openTab } from './open-tab.ts';
+import { launchWords, openTab } from './open-tab.ts';
 import type { TabRequest } from './terminals.ts';
 
 const TAB: TabRequest = { title: 'shop-api', folder: '/w/shop', argv: ['/usr/bin/node', '/kit/main.js', 'launch', 'api'], window: undefined };
 
 describe('openTab', () => {
   it('opens in the first terminal auto finds, after one that is missing', async () => {
-    const processes = new FakeProcesses().onStart('konsole', { kind: 'started' });
+    const processes = new FakeProcesses().onStart('konsole', { kind: 'started', end: 'running' });
     const outcome = await openTab({ processes, env: {}, platform: 'linux' }, 'auto', TAB);
-    assert.deepEqual(outcome, { kind: 'opened', terminal: 'konsole' });
+    assert.deepEqual(outcome, { kind: 'opened', terminal: 'konsole', end: 'running' }, 'it tells how the launch ended');
     assert.deepEqual(
       processes.started.map((request) => request.command),
       ['gnome-terminal', 'konsole'],
@@ -34,8 +34,17 @@ describe('openTab', () => {
   });
 
   it('starts nothing for print', async () => {
-    const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started' });
+    const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
     assert.deepEqual(await openTab({ processes, env: {}, platform: 'win32' }, 'print', TAB), { kind: 'none', reasons: ['the terminal setting is print'] });
     assert.deepEqual(processes.started, []);
+  });
+});
+
+describe('launchWords', () => {
+  it('says how each launch ended, for the restore log (T1705)', () => {
+    assert.deepEqual(
+      [launchWords('windows-terminal', 'exited'), launchWords('windows-terminal', 'running'), launchWords('tmux', 'spawned')],
+      ['windows-terminal exited 0', 'windows-terminal still running after 10 s', 'tmux started'],
+    );
   });
 });

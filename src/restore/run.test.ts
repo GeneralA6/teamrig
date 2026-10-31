@@ -86,9 +86,11 @@ interface World {
   readonly logged: string[];
 }
 
+const OPENED: ReopenOutcome = { kind: 'opened', launch: 'windows-terminal exited 0' };
+
 async function world(
   choice: RestoreChoice = 'go',
-  reopen: Reopen = async () => ({ kind: 'opened' }),
+  reopen: Reopen = async () => OPENED,
   entries: readonly RestoreEntry[] = ENTRIES,
   more: Readonly<Record<string, string>> = {},
 ): Promise<World> {
@@ -307,7 +309,7 @@ describe('runRestore', () => {
       if (tab.claudeSession === ALPHA) {
         throw new Error('spawn EACCES');
       }
-      return outcomes.shift() ?? { kind: 'opened' };
+      return outcomes.shift() ?? OPENED;
     });
     assert.deepEqual(await runRestore(deps, LOGON), { opened: 1, failed: 2 });
     assert.deepEqual(await registry.read(LEAD), LEAD_ENTRY);
@@ -324,7 +326,7 @@ describe('runRestore', () => {
         await self.registry.write({ ...ALPHA_ENTRY, updatedAt: self.clock.now() });
         await self.registry.remove(LONE);
       }
-      return { kind: 'opened' };
+      return OPENED;
     });
     assert.deepEqual(await runRestore(deps, LOGON), { opened: 1, failed: 0 });
     assert.deepEqual(
@@ -374,9 +376,9 @@ describe('runRestore', () => {
     assert.deepEqual(logged, [
       `archived ${SDK} (not a terminal session (sdk-cli))`,
       'run: started, 3 to reopen',
-      `run: opened ${LEAD} (continue: lead) at effort high`,
-      `run: opened ${ALPHA} (continue: mid-turn) at effort max`,
-      `run: opened ${LONE} (idle) at effort default`,
+      `run: opened ${LEAD} (continue: lead) at effort high; windows-terminal exited 0`,
+      `run: opened ${ALPHA} (continue: mid-turn) at effort max; windows-terminal exited 0`,
+      `run: opened ${LONE} (idle) at effort default; windows-terminal exited 0`,
       'run: done, 3 opened, 0 skipped, 0 failed of 3',
     ]);
     assert.equal(stops.watching, 0);
@@ -388,7 +390,7 @@ describe('runRestore', () => {
         await self.registry.remove(LONE);
         return { kind: 'failed', why: 'no terminal' };
       }
-      return { kind: 'opened' };
+      return OPENED;
     });
     await runRestore(deps, LOGON);
     assert.equal(logged[1], 'run: started, 3 to reopen, all idle');
@@ -400,7 +402,7 @@ describe('runRestore', () => {
       if (tab.claudeSession === ALPHA) {
         await stops.stop('SIGHUP');
       }
-      return { kind: 'opened' };
+      return OPENED;
     });
     await runRestore(deps, LOGON);
     assert.ok(logged.includes('run: interrupted by SIGHUP after 1 opened, 0 skipped, 0 failed of 3'), logged.join('\n'));

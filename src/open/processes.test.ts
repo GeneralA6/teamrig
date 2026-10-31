@@ -58,19 +58,19 @@ function killTree(pid: number): void {
 describe('nodeProcesses', () => {
   const processes = nodeProcesses();
 
-  it('starts a launcher that returns, and reports its exit code with its first error line', async () => {
-    assert.deepEqual(await processes.start({ command: NODE, args: ['-e', ''], cwd: DIR, mode: 'exit' }), { kind: 'started' });
+  it('starts a launcher that returns, as exited, and reports its exit code with its first error line', async () => {
+    assert.deepEqual(await processes.start({ command: NODE, args: ['-e', ''], cwd: DIR, mode: 'exit' }), { kind: 'started', end: 'exited' });
     const failed = await processes.start({ command: NODE, args: ['-e', 'console.error("no server running\\nmore"); process.exit(3)'], cwd: DIR, mode: 'exit' });
     assert.deepEqual(failed, { kind: 'failed', error: 'exited with code 3: no server running' });
   });
 
-  it('counts a launcher still running after the wait as started', async () => {
+  it('counts a launcher still running after the wait as started and running', async () => {
     const quick = nodeProcesses({ exitWaitMs: 50 });
-    assert.deepEqual(await quick.start({ command: NODE, args: ['-e', 'setTimeout(() => {}, 1500)'], cwd: TEMP, mode: 'exit' }), { kind: 'started' });
+    assert.deepEqual(await quick.start({ command: NODE, args: ['-e', 'setTimeout(() => {}, 1500)'], cwd: TEMP, mode: 'exit' }), { kind: 'started', end: 'running' });
   });
 
-  it('starts a terminal window detached', async () => {
-    assert.deepEqual(await processes.start({ command: NODE, args: ['-e', ''], cwd: TEMP, mode: 'spawn' }), { kind: 'started' });
+  it('starts a terminal window detached, as spawned', async () => {
+    assert.deepEqual(await processes.start({ command: NODE, args: ['-e', ''], cwd: TEMP, mode: 'spawn' }), { kind: 'started', end: 'spawned' });
   });
 
   it('starts a hidden program detached, with the given variables', async () => {
@@ -79,7 +79,7 @@ describe('nodeProcesses', () => {
     // Written beside the marker and renamed in, so the marker exists only once its whole content does.
     const script = `const fs = require("node:fs"); fs.writeFileSync(${JSON.stringify(part)}, process.env.TEAMRIG_TEAM ?? ""); fs.renameSync(${JSON.stringify(part)}, ${JSON.stringify(marker)})`;
     const outcome = await processes.startHidden({ command: NODE, args: ['-e', script], cwd: TEMP, env: { ...process.env, TEAMRIG_TEAM: 'app' } });
-    assert.deepEqual(outcome, { kind: 'started' });
+    assert.deepEqual(outcome, { kind: 'started', end: 'spawned' });
     await waitForFile(marker);
     assert.equal(readFileSync(marker, 'utf8'), 'app');
   });
