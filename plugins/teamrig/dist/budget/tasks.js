@@ -17,7 +17,7 @@ const TASK_BRANCH = /\bt([1-9]\d*)-/g;
 export const TASKS_PER_TURN = 20;
 /**
  * teamrig's flags whose value only mentions a task: a message, note or proof, a review's parts, a card's texts,
- * and the pointers to other tasks. Not `--what`: `teamrig heavy`'s label names the work it runs now.
+ * and the pointers to other tasks. Not `--what`: `teamrig queue`'s label names the work it runs now.
  */
 const MENTION_FLAGS = new Set([
     '--text',
