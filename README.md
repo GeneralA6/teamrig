@@ -190,8 +190,8 @@ helper it is. Everything runs on your machine, with no account and no cloud bill
   what you were reading.
 - **Token savers:** `teamrig doctor` weighs what every call re-reads and names the cheapest cut, and `teamrig test`
   sums up a test run in one line.
-- **Status line:** `teamrig statusline install` shows the week's use, the folder, the branch and the command that
-  resumes the session.
+- **Status line:** `teamrig statusline install` shows the model and its effort level, the folder, the branch, and
+  the week's use beside where its pace line stands.
 - **Auto mode knows the team:** `teamrig automode install` adds the team's protected branches, task commands, build
   wrappers and own-branch rebases to Claude Code's auto-mode facts, so auto mode stops asking about them.
 - **A model per session:** each session starts on its own model and effort, and you're told when one runs on another.
