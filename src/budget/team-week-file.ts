@@ -1,9 +1,8 @@
 import type { Files } from '../core/files.ts';
-import { parseObject, recordVersion } from '../core/jsonl.ts';
-import { MS_PER_MINUTE } from '../core/time.ts';
 import type { WeekWindow } from './pace.ts';
 import { teamShareOf, type TeamsOnAccount } from './parts.ts';
 import type { UsageState } from './store.ts';
+import { keepSummaryFile, summaryMinute, summaryPct } from './summary-file.ts';
 import { formatTeamWeek, TEAM_WEEK_FORMAT, type TeamWeekSummary } from './team-week-summary.ts';
 import { wSince } from './week.ts';
 
@@ -22,12 +21,6 @@ export interface TeamWeekInput {
   readonly now: number;
 }
 
-const HUNDREDTHS = 100;
-
-function hundredths(pct: number): number {
-  return Math.round(pct * HUNDREDTHS) / HUNDREDTHS;
-}
-
 /**
  * The team's week summary (src/budget/team-week-summary.ts): its sessions' W since the week began at its own rate,
  * and that plus its part of what the account has left to the target (the split as is, as a surplus reads it: no day's
@@ -41,27 +34,15 @@ export function teamWeekSummaryOf(input: TeamWeekInput): TeamWeekSummary | undef
   const teamUsedPct = wSince(input.states, window.start, now) / wPerPct;
   const leftPct = teamShareOf(Math.max(0, input.targetPct - usedPct), input.teams.split, input.teams.others);
   return {
-    usedPct: hundredths(teamUsedPct),
-    plannedPct: hundredths(teamUsedPct + leftPct),
-    accountUsedPct: hundredths(usedPct),
+    usedPct: summaryPct(teamUsedPct),
+    plannedPct: summaryPct(teamUsedPct + leftPct),
+    accountUsedPct: summaryPct(usedPct),
     resetsAt: window.reset,
-    at: now - (now % MS_PER_MINUTE),
+    at: summaryMinute(now),
   };
 }
 
-/**
- * Writes the team's week summary at `path` when that changes it; returns whether it wrote. Several tabs may write it
- * at once and the last write wins: each reads the same week, and the next hook writes it again. A summary a newer
- * teamrig wrote is left as it is, without failing the hook: the file is only for display.
- */
+/** Writes the team's week summary at `path` when that changes it, as every week summary is kept (`keepSummaryFile`); returns whether it wrote. */
 export async function keepTeamWeek(files: Pick<Files, 'read' | 'write'>, path: string, summary: TeamWeekSummary): Promise<boolean> {
-  const text = await files.read(path);
-  const stored = text === undefined ? undefined : parseObject(text);
-  const version = stored === undefined ? undefined : recordVersion(stored);
-  const next = formatTeamWeek(summary);
-  if ((version !== undefined && version > TEAM_WEEK_FORMAT) || next === text) {
-    return false;
-  }
-  await files.write(path, next);
-  return true;
+  return keepSummaryFile(files, path, formatTeamWeek(summary), TEAM_WEEK_FORMAT);
 }
