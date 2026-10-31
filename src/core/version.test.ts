@@ -14,4 +14,13 @@ describe('plugin manifest', () => {
     assert.equal(manifest['name'], KIT_NAME);
     assert.equal(manifest['version'], KIT_VERSION);
   });
+
+  // An install copies the plugin folder alone, so its license terms travel only as copies of the root files (T1555).
+  for (const name of ['LICENSE', 'NOTICE']) {
+    it(`carries the repository's ${name} unchanged`, async () => {
+      const root = await readFile(new URL(`../../${name}`, import.meta.url), 'utf8');
+      const copy = await readFile(new URL(`../../plugins/teamrig/${name}`, import.meta.url), 'utf8');
+      assert.equal(copy, root);
+    });
+  }
 });
