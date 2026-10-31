@@ -5,13 +5,12 @@ import type { Roster } from '../../config/roster.ts';
 import type { BudgetConfig, KitConfig, StatusLineConfig } from '../../config/types.ts';
 import { formatAddress, splitAddress } from '../../core/address.ts';
 import { errorMessage } from '../../core/guards.ts';
-import { claudeConfigDir, resolveKitHome } from '../../core/home.ts';
+import { resolveKitHome } from '../../core/home.ts';
 import type { Clock } from '../../core/lock.ts';
 import { PlainLogFile } from '../../core/log-file.ts';
 import { resolveTeam } from '../../core/team.ts';
 import { formatUtcDay, MS_PER_DAY, parseUtcDay, typedDeadline, typedTimeHint } from '../../core/time.ts';
 import type { TimeZone } from '../../core/zone.ts';
-import { accountOf } from '../../budget/account.ts';
 import { activeBurst, burstFloorOf, withBurst, type BurstRecord, type InBurst } from '../../budget/burst.ts';
 import { BurstLog } from '../../budget/burst-log.ts';
 import { calibrationOf } from '../../budget/calibration.ts';
@@ -61,7 +60,7 @@ import { indexMarks } from '../../inbox/marks.ts';
 import type { RepoState } from '../../push-guard/push.ts';
 import { customTitleOf, TRANSCRIPT_TAIL_BYTES } from '../../names/title.ts';
 import { TASK_ID } from '../../register/model.ts';
-import { accountWeekOn, otherTeamsOnAccount } from '../account-teams.ts';
+import { accountWeekOn, kitHomeAccountsOf, otherTeamsOnAccount } from '../account-teams.ts';
 import { UsageError, onePositional, requiredFlag, type Flags, type ParsedArgs } from '../args.ts';
 import { callerOf, type TypedTimes } from '../inputs.ts';
 import { leadOnly, openKit, openTeamKit, requireConfig, rosterOf, sessionIdOf, teamFolders, teamZone, type Kit } from '../kit.ts';
@@ -489,8 +488,8 @@ async function crossTeamLift(runtime: CliRuntime, lifting: LiftingTeam, target: 
   if (below === undefined || !tree.ancestorsOf(target.team).includes(own)) {
     throw new RefusedError(`team ${target.team} is not a team under team ${own}`);
   }
-  const configDir = claudeConfigDir(runtime.env, runtime.userHome);
-  if (accountOf(below.config.budget, configDir) !== accountOf(config.budget, configDir)) {
+  const { account, accounts } = await kitHomeAccountsOf(runtime, teams, { team: own, budget: config.budget });
+  if (accounts.get(target.team) !== account) {
     throw new RefusedError(`team ${target.team} is on another Claude account than team ${own}, so team ${own}'s daily budget cannot top its sessions up`);
   }
   const found = below.roster.lookup(target.session);
