@@ -27,6 +27,12 @@ function isAllowedEmail(match: RegExpExecArray): boolean {
   );
 }
 
+/** True when the value `ASSIGNED_SECRET` caught in `match` is one the write-time set lets through too; a match without it is not. */
+function isAssignedPlaceholder(match: RegExpExecArray): boolean {
+  const value = match[ASSIGNED_SECRET.secretGroup];
+  return value !== undefined && isFramedPlaceholder(ASSIGNED_SECRET, value, match);
+}
+
 /** A credential shape from the shared module, so the scrub and the shared-file writes refuse the same tokens. */
 function secret({ id, description, pattern }: SecretPattern): ScrubRule {
   return { id, description, pattern, revealMatch: false };
@@ -63,5 +69,5 @@ export const GENERIC_RULES: readonly ScrubRule[] = [
   },
   ...SECRET_TOKEN_PATTERNS.map(secret),
   // The write-time set's own judge, so a value the guard lets through (`${VAULT}`, `<token>`, `SOME_READ_TOKEN`) passes here too.
-  { ...secret(ASSIGNED_SECRET), isAllowed: (match) => match[1] !== undefined && isFramedPlaceholder(ASSIGNED_SECRET, match[1]) },
+  { ...secret(ASSIGNED_SECRET), isAllowed: isAssignedPlaceholder },
 ];

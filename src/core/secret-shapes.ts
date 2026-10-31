@@ -67,9 +67,9 @@ function standsInForSecret(value: string): boolean {
   return REFERENCE.test(value) || MASKED.test(value) || PLACEHOLDER_WORD.test(value) || REGEX_SOURCE.test(value) || SPLICE.test(value) || isSample(value);
 }
 
-/** True when the value a framing `shape` caught is not a secret: a placeholder, or a value the shape itself allows. */
-export function isFramedPlaceholder(shape: SecretPattern, value: string): boolean {
-  return isPlaceholderValue(value) || (shape.isAllowedValue?.(value) ?? false);
+/** True when the `value` a framing `shape` caught in `match` is not a secret: a placeholder, or a value the shape itself allows. */
+export function isFramedPlaceholder(shape: SecretPattern, value: string, match: RegExpMatchArray): boolean {
+  return isPlaceholderValue(value) || (shape.isAllowedValue?.(value, match) ?? false);
 }
 
 /** True when `value` is a published sample token rather than anyone's secret. */
@@ -105,7 +105,7 @@ export class SecretShapes {
     for (const { shape, global } of this.patterns) {
       for (const match of text.matchAll(global)) {
         const value = shape.secretGroup === undefined ? match[0] : match[shape.secretGroup];
-        if (value === undefined || value === '' || (shape.secretGroup === undefined ? isSample(value) : isFramedPlaceholder(shape, value))) continue;
+        if (value === undefined || value === '' || (shape.secretGroup === undefined ? isSample(value) : isFramedPlaceholder(shape, value, match))) continue;
         const account = this.accountOf(match.groups, value);
         hits.push({ id: shape.id, description: shape.description, value, ...(account === undefined ? {} : { account }) });
       }
