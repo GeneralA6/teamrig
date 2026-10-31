@@ -82,11 +82,13 @@ The injected context holds:
    wake-up to make again (`ScheduleWakeup`), its scratchpad and its plan file. After a `/clear`, `hook refresh-wake` then starts a turn by itself that tells the session to read that
    handover and carry on, so it does not sit idle until someone types.
 7. **Live tasks**: at that fresh start after a refresh, and at every start after a compaction (Claude Code's
-   `/compact` or its automatic one), the session's active tasks as the register holds them at that start, right
-   after the handover pointer. A handover and a compaction summary are older than the start that reads them, so
-   where they say otherwise, the register wins:
+   `/compact` or its automatic one), what `teamrig start` prints first, then the session's active tasks as the
+   register holds them at that start, right after the handover pointer. A handover and a compaction summary are
+   older than the start that reads them, so where they say otherwise, the register wins:
 
    ```text
+   START web, Tue 10-17 09:12 IST: this note is your work block's start, so run no `teamrig start` now; it would add only the check flags and the rest of the list (run it at your next work block).
+   Week: 61.0% used at 09:05 IST (status line); the pace line is at 47.3%: 13.7 points ahead. Resets Wed 10-18 03:00 IST.
    LIVE TASKS of web, read from the register at this start (8 active; where your handover or a compaction summary says otherwise, the register wins):
      T12 in-progress, p1, due 10-17 | Ship the checkout page
      T14 verifying, p2 | Cache the price list
@@ -98,6 +100,10 @@ The injected context holds:
      T21 open, p2, owner api, due 10-17, after T18 | Send the receipt from the api · needs your T18
    ```
 
+   The `START` line, a `MEETINGS` line on a day with a meeting and the week line are what `teamrig start` prints
+   first, so the note is the session's work-block start: it runs `teamrig start` at its next work block, which adds
+   only the check flags and the rest of the list, and `teamrig budget --misses` counts the note as that block's
+   start. A note that could not read the register, or has no room for the task block, has no `START` line.
    Work in hand comes first (in progress, verifying, waiting), then the tasks not started, each in plan order
    (priority, then effective due date); at most 6 rows, the rest one `+N more` line. A row names the due date (the
    earlier one of a task that needs it, as `due 10-17 (from T21)`), the plan dependencies not finished yet

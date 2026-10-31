@@ -4093,7 +4093,8 @@ Flags:
   the last days; with a session, that session by day. Each is read from a command's own words, never from text
   that only quotes one:
   - rule 4: a work block (a turn asking for work after an idle hour, or a thread's first) whose first 10 calls
-    run no `teamrig start`; a `teamrig set` to verifying or done with `--followups none` whose note or evidence
+    run no `teamrig start` (a start note opening with `START`, after a refresh or a compaction, is the block's
+    start); a `teamrig set` to verifying or done with `--followups none` whose note or evidence
     names work left (follow-up, todo, not yet, left for, still to, next step);
   - rule 16: a worktree removed with a plain `git worktree remove`;
   - rule 8: the helpers' share of the W;
