@@ -10,10 +10,10 @@ import {
   finishState,
   formatSyncState,
   isDue,
+  leftOutNews,
   parseSyncState,
   SYNC_STATE_FORMAT,
-  type AddedTask,
-  type RepoFailure,
+  type SyncRun,
   type SyncState,
 } from '../../github/auto.ts';
 import { postLine } from '../../inbox/inbox.ts';
@@ -26,7 +26,8 @@ import { fileLockOf } from '../file-locks.ts';
 /**
  * The automatic GitHub sync: the Stop hook starts `gh sync --auto` hidden in the background once per
  * `github.everyMinutes` for the whole team, claimed under one lock, and that run tells each owner's inbox
- * the tasks it added and the lead's when the failing repositories change. Nothing else keeps running.
+ * the tasks it added, and the lead's when the failing repositories change or an outsider's issue is newly left
+ * out. Nothing else keeps running.
  */
 
 /** `TEAMRIG_GITHUB=off` turns the import off on this machine, whatever the team config says. */
@@ -90,22 +91,26 @@ export async function startAutoSync(runtime: CliRuntime, kit: Kit, config: KitCo
 }
 
 /**
- * What `gh sync --auto` does once it has written: records its finish and failing repositories, then posts
- * one inbox line to each owner naming the tasks added for it, and one to the lead when the failing
- * repositories changed (`failureNews`). It gives a line for each inbox line that was refused, such as an
- * issue title that matches a secret pattern.
+ * What `gh sync --auto` does once it has written: records its finish, failing repositories and left-out issues,
+ * then posts one inbox line to each owner naming the tasks added for it, one to the lead when the failing
+ * repositories changed (`failureNews`) and one when an outsider's issue was left out that was not before
+ * (`leftOutNews`). It gives a line for each inbox line that was refused, such as an issue title that matches a
+ * secret pattern.
  */
-export async function reportAutoSync(runtime: CliRuntime, kit: Kit, config: KitConfig, added: readonly AddedTask[], failures: readonly RepoFailure[]): Promise<string[]> {
+export async function reportAutoSync(runtime: CliRuntime, kit: Kit, config: KitConfig, run: SyncRun): Promise<string[]> {
   const now = runtime.clock.now();
-  const before = await stateLock(runtime, kit, config, config.lock.waitMs).run(async () => {
+  const { before, after } = await stateLock(runtime, kit, config, config.lock.waitMs).run(async () => {
     const state = await writableState(runtime, kit);
-    await runtime.files.write(kit.paths.githubSync, formatSyncState(finishState(state, now, failures)));
-    return state?.failing ?? [];
+    const finished = finishState(state, now, run.failures, run.leftOut);
+    await runtime.files.write(kit.paths.githubSync, formatSyncState(finished));
+    return { before: state, after: finished };
   });
-  const posts = [...addedLines(added)].map(([to, text]) => ({ to, text }));
-  const news = failureNews(before, failures);
-  if (news !== undefined) {
-    posts.push({ to: config.roles.lead, text: news });
+  const posts = [...addedLines(run.added)].map(([to, text]) => ({ to, text }));
+  const news = [failureNews(before?.failing ?? [], run.failures), leftOutNews(before?.leftOut ?? new Map(), after.leftOut, config.github.acceptLabel)];
+  for (const text of news) {
+    if (text !== undefined) {
+      posts.push({ to: config.roles.lead, text });
+    }
   }
   const inboxes = inboxDepsOf(runtime, kit.paths).inboxes;
   const secrets = new SecretScanner(config.register.secretPatterns);

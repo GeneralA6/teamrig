@@ -29,7 +29,8 @@ type RepoEnd = 'ok' | 'failed' | 'refused';
  * register's import writes (register.ts) touch only the tasks it added, as `github`. Without `--yes` it
  * shows what it would write and writes nothing. Either way a LEFT OUT line names, by number only, the open
  * issues of a repository that the trust rule kept out (github/trust.ts). `--auto`, which the Stop hook starts (gh-auto.ts), writes as
- * `--yes` does and tells each owner's inbox its new tasks and the lead's when the failing repositories change. Exit 1 when a repository could not be read (its tasks stay
+ * `--yes` does and tells each owner's inbox its new tasks, and the lead's when the failing repositories change or
+ * an issue is newly left out. Exit 1 when a repository could not be read (its tasks stay
  * as they are), 2 when the register refused a step, else 0.
  */
 export async function ghSync(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
@@ -58,6 +59,7 @@ export async function ghSync(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   const ends: RepoEnd[] = [];
   const added: AddedTask[] = [];
   const failures: RepoFailure[] = [];
+  const leftOut = new Map<string, readonly number[]>();
   let written = 0;
   for (const repo of reposOf(config.github.repos, args.flags.get('repo'))) {
     const { access, note } = await tokens.accessFor(repo);
@@ -74,14 +76,15 @@ export async function ghSync(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     }
     read.notes.forEach((note) => say(`NOTE ${repo}: ${note}`));
     const plan = planSync(read.issues, importedTasks((await register.snapshot()).state.tasks.values()), rules);
-    const leftOut = leftOutLines(repo, plan.leftOut, rules.acceptLabel);
+    leftOut.set(repo, plan.leftOut);
+    const leftOutText = leftOutLines(repo, plan.leftOut, rules.acceptLabel);
     if (!write) {
-      [...previewLines(repo, plan), ...leftOut].forEach(say);
+      [...previewLines(repo, plan), ...leftOutText].forEach(say);
       ends.push('ok');
       continue;
     }
     const outcomes = await applySteps(register, plan.steps);
-    [...resultLines(repo, plan, outcomes), ...leftOut].forEach(say);
+    [...resultLines(repo, plan, outcomes), ...leftOutText].forEach(say);
     written += outcomes.filter((outcome) => outcome.result.ok).length;
     added.push(...addedTasks(outcomes));
     const refused = refusedReason(outcomes);
@@ -91,7 +94,7 @@ export async function ghSync(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     ends.push(refused === undefined ? 'ok' : 'refused');
   }
   if (auto) {
-    (await reportAutoSync(runtime, kit, config, added, failures)).forEach(say);
+    (await reportAutoSync(runtime, kit, config, { added, failures, leftOut })).forEach(say);
   }
   say(
     write

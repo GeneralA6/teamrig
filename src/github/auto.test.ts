@@ -1,34 +1,71 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { addedLines, addedTasks, claimState, failureNews, finishState, formatSyncState, isDue, parseSyncState, type AddedTask, type SyncState } from './auto.ts';
+import { fieldPaths } from '../testing/field-paths.ts';
+import {
+  addedLines,
+  addedTasks,
+  claimState,
+  failureNews,
+  finishState,
+  formatSyncState,
+  isDue,
+  leftOutNews,
+  parseSyncState,
+  SYNC_STATE_FORMAT,
+  type AddedTask,
+  type SyncState,
+} from './auto.ts';
 import type { StepOutcome } from './sync.ts';
 
 const NOW = Date.parse('2030-01-08T10:00:00Z');
 const MINUTE = 60_000;
+const NONE: ReadonlyMap<string, readonly number[]> = new Map();
 
 function task(id: string, owner: string, title = `Issue ${id}`): AddedTask {
   return { id, owner, ref: `gh:acme/web#${id.slice(1)}`, title };
 }
 
 describe('the sync state file', () => {
-  it('reads back what it wrote, with or without a finish', () => {
-    for (const state of [
-      { startedAt: NOW, finishedAt: undefined, failing: [] },
-      { startedAt: NOW, finishedAt: NOW + MINUTE, failing: ['acme/api'] },
-    ] satisfies SyncState[]) {
+  const full: SyncState = { startedAt: NOW, finishedAt: NOW + MINUTE, failing: ['acme/api'], leftOut: new Map([['acme/web', [9, 12]], ['acme/api', [3]]]) };
+
+  it('writes the pinned fields of its format: a field added to the file raises SYNC_STATE_FORMAT', () => {
+    const written: Readonly<Record<number, readonly string[]>> = {
+      2: ['failing[]', 'finishedAt', 'leftOut.*[]', 'startedAt', 'v'],
+    };
+    assert.deepEqual(fieldPaths(JSON.parse(formatSyncState(full)), new Set(['leftOut'])), written[SYNC_STATE_FORMAT]);
+  });
+
+  it('reads back what it wrote, with or without a finish or a left-out issue', () => {
+    for (const state of [{ startedAt: NOW, finishedAt: undefined, failing: [], leftOut: NONE }, full] satisfies SyncState[]) {
       assert.deepEqual(parseSyncState(formatSyncState(state)), state);
     }
+    assert.ok(!formatSyncState({ ...full, leftOut: NONE }).includes('leftOut'));
+  });
+
+  it('reads a format-1 file as having left nothing out', () => {
+    assert.deepEqual(parseSyncState('{"v":1,"startedAt":1,"failing":["acme/api"]}'), { startedAt: 1, finishedAt: undefined, failing: ['acme/api'], leftOut: NONE });
   });
 
   it('reads a damaged file or one of another format as no sync yet', () => {
-    for (const text of ['', 'not json', '{"v":2,"startedAt":1,"failing":[]}', '{"v":1,"failing":[]}', '{"v":1,"startedAt":1,"failing":[3]}', '{"v":1,"startedAt":1,"finishedAt":"x","failing":[]}']) {
+    for (const text of [
+      '',
+      'not json',
+      '{"v":3,"startedAt":1,"failing":[]}',
+      '{"v":1,"failing":[]}',
+      '{"v":1,"startedAt":1,"failing":[3]}',
+      '{"v":1,"startedAt":1,"finishedAt":"x","failing":[]}',
+      '{"v":2,"startedAt":1,"failing":[],"leftOut":[9]}',
+      '{"v":2,"startedAt":1,"failing":[],"leftOut":{"acme/web":["9"]}}',
+      '{"v":2,"startedAt":1,"failing":[],"leftOut":{"acme/web":[1.5]}}',
+      '{"v":2,"startedAt":1,"failing":[],"leftOut":{"acme/web":9}}',
+    ]) {
       assert.equal(parseSyncState(text), undefined, text);
     }
   });
 });
 
 describe('isDue', () => {
-  const state: SyncState = { startedAt: NOW, finishedAt: undefined, failing: [] };
+  const state: SyncState = { startedAt: NOW, finishedAt: undefined, failing: [], leftOut: NONE };
 
   it('starts the first sync, then the next once everyMinutes passed since the last start, finished or not', () => {
     assert.equal(isDue(undefined, NOW, 15), true);
@@ -41,12 +78,38 @@ describe('isDue', () => {
     assert.equal(isDue(state, NOW - MINUTE, 15), true);
   });
 
-  it('claims the interval keeping the last failures, and a finish keeps the claimed start', () => {
-    const before: SyncState = { startedAt: NOW - 20 * MINUTE, finishedAt: NOW - 19 * MINUTE, failing: ['acme/api'] };
+  it('claims the interval keeping the last failures and left-out issues, and a finish keeps the claimed start', () => {
+    const leftOut = new Map([['acme/web', [9]]]);
+    const before: SyncState = { startedAt: NOW - 20 * MINUTE, finishedAt: NOW - 19 * MINUTE, failing: ['acme/api'], leftOut };
     const claimed = claimState(before, NOW);
-    assert.deepEqual(claimed, { startedAt: NOW, finishedAt: NOW - 19 * MINUTE, failing: ['acme/api'] });
-    assert.deepEqual(finishState(claimed, NOW + MINUTE, []), { startedAt: NOW, finishedAt: NOW + MINUTE, failing: [] });
-    assert.deepEqual(finishState(undefined, NOW, [{ repo: 'acme/web', reason: 'gone' }]), { startedAt: NOW, finishedAt: NOW, failing: ['acme/web'] });
+    assert.deepEqual(claimed, { startedAt: NOW, finishedAt: NOW - 19 * MINUTE, failing: ['acme/api'], leftOut });
+    assert.deepEqual(finishState(claimed, NOW + MINUTE, [], NONE), { startedAt: NOW, finishedAt: NOW + MINUTE, failing: [], leftOut: NONE });
+    assert.deepEqual(finishState(undefined, NOW, [{ repo: 'acme/web', reason: 'gone' }], NONE), { startedAt: NOW, finishedAt: NOW, failing: ['acme/web'], leftOut: NONE });
+  });
+
+  it('keeps what was left out of a repository it could not read, and drops a read one that left nothing out', () => {
+    const before: SyncState = { startedAt: NOW, finishedAt: undefined, failing: [], leftOut: new Map([['acme/web', [9]], ['acme/api', [3]], ['acme/old', [1]]]) };
+    const failed = [{ repo: 'acme/web', reason: 'gone' }];
+    const finished = finishState(before, NOW + MINUTE, failed, new Map([['acme/api', []], ['acme/new', [4, 5]]]));
+    assert.deepEqual(finished.leftOut, new Map([['acme/new', [4, 5]], ['acme/web', [9]]]));
+  });
+});
+
+describe('leftOutNews', () => {
+  it('names only the issues not left out before, by ref, with the label that lets one in', () => {
+    const before = new Map([['acme/web', [9]]]);
+    assert.equal(leftOutNews(before, before, 'teamrig'), undefined);
+    assert.equal(leftOutNews(before, NONE, 'teamrig'), undefined);
+    assert.equal(
+      leftOutNews(before, new Map([['acme/web', [9, 12]], ['acme/api', [3]]]), 'triaged'),
+      'GitHub sync left out 2 new open issue(s) by people outside the repository: gh:acme/web#12, gh:acme/api#3; add the "triaged" label to one on GitHub to make it a task at the next sync',
+    );
+  });
+
+  it('names at most ten and counts the rest', () => {
+    const news = leftOutNews(NONE, new Map([['acme/web', Array.from({ length: 12 }, (_, index) => index + 1)]]), 'teamrig') ?? '';
+    assert.match(news, /^GitHub sync left out 12 new open issue\(s\) by people outside the repository: gh:acme\/web#1, .*gh:acme\/web#10, and 2 more; /);
+    assert.ok(!news.includes('#11'), news);
   });
 });
 
