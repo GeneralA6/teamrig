@@ -89,7 +89,7 @@ describe('teamPaths', () => {
     assert.equal(paths.teamWeek, join(TEAM_HOME, ...TEAM_WEEK_PATH), 'where the read side says the team week summary is');
     assert.equal(paths.cuts, join(TEAM_HOME, 'state', 'usage', 'cuts.jsonl'));
     assert.equal(paths.hires, join(TEAM_HOME, 'state', 'hires.jsonl'));
-    assert.equal(paths.hiresLock, join(TEAM_HOME, 'state', 'hires.lock'));
+    assert.equal(paths.configLock, join(TEAM_HOME, 'state', 'hires.lock'));
     assert.equal(paths.lastTaskAsks, join(TEAM_HOME, 'state', 'last-task-asks'));
     assert.equal(paths.keepWorkingAsks, join(TEAM_HOME, 'state', 'keep-working-asks'));
     assert.equal(paths.logs, join(TEAM_HOME, 'state', 'logs'));

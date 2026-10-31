@@ -1,5 +1,4 @@
 import { demoted, promoted, type Leads } from '../../config/lead-edits.ts';
-import { writeConfigWithBackup } from '../../config/load.ts';
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import type { JsonRecord } from '../../core/guards.ts';
@@ -8,10 +7,9 @@ import { postLine } from '../../inbox/inbox.ts';
 import type { Checked } from '../../setup/team-create.ts';
 import { onePositional, UsageError, type ParsedArgs } from '../args.ts';
 import { callerOf, listOf } from '../inputs.ts';
-import { checkedNextConfig, configFileJson, openTeamKit, requireConfig, rosterOf, sessionIdOf } from '../kit.ts';
+import { checkedNextConfig, configFileJson, configLockOf, openTeamKit, requireConfig, rosterOf, sessionIdOf } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { inboxDepsOf } from './inbox.ts';
-import { fileLockOf } from '../file-locks.ts';
 
 /**
  * `promote` and `demote` (T781): a leader (the lead, or a sub-lead) makes one of the sessions it leads directly the
@@ -64,10 +62,8 @@ async function changeLeads(args: ParsedArgs, runtime: CliRuntime, verb: 'promote
   const by = sessionIdOf(roster, caller);
   const subLead = sessionIdOf(roster, onePositional(args, 'sub-lead'));
   const change = changeOf(roster);
-  const { files, clock } = runtime;
-  // The hire log's lock: hire and retire also rewrite the team's shape, retire `leads` too.
-  const mutex = fileLockOf(runtime, kit.paths.hiresLock, config.lock);
-  return mutex.run(async () => {
+  const { clock } = runtime;
+  return configLockOf(runtime, kit, config).run(async (writer) => {
     const file = await configFileJson(runtime, kit.load.path);
     // Planned on the file as it is under the lock, so a retire that just rewrote `leads` is not undone.
     const current = checkedNextConfig(file);
@@ -82,7 +78,7 @@ async function changeLeads(args: ParsedArgs, runtime: CliRuntime, verb: 'promote
       runtime.out.stdout(`PREVIEW ${verb} ${what}; nothing written (add --yes to write)`);
       return EXIT.ok;
     }
-    const backup = await writeConfigWithBackup(files, { configPath: kit.load.path, backupsDir: kit.paths.backups, backupName: change.backupName }, next, clock);
+    const backup = await writer.write(next, change.backupName);
     runtime.out.stdout(`${verb === 'promote' ? 'PROMOTED' : 'DEMOTED'} ${what}; the old config is at ${backup}`);
     const text = change.tell(current, planned.value, by, subLead);
     const { inboxes } = inboxDepsOf(runtime, kit.paths);

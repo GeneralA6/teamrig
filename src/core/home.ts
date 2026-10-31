@@ -161,8 +161,11 @@ export interface TeamPaths {
   readonly bursts: string;
   /** The team's hires and retires, an append-only log. */
   readonly hires: string;
-  /** Held while a hire or a retire writes the config and the hire log, so two never interleave. */
-  readonly hiresLock: string;
+  /**
+   * The team config's lock (src/config/config-lock.ts), also held while a hire or a retire writes the hire log, so no
+   * two changes interleave. Still named `hires.lock` from when only those took it, so an older teamrig mid-run shares it.
+   */
+  readonly configLock: string;
   /** Each hired session's due ask to write its handover (hiring/last-task-ask.ts), `<id>.json` each. */
   readonly lastTaskAsks: string;
   /** Each session's due ask to keep working while a task of it waits (wake/keep-working.ts), `<id>.json` each. */
@@ -288,7 +291,7 @@ export function teamPaths(kitHome: string, team: string, claudeDir: string, over
     cuts: join(state, 'usage', 'cuts.jsonl'),
     bursts: join(state, 'usage', 'bursts.jsonl'),
     hires: join(state, 'hires.jsonl'),
-    hiresLock: join(state, 'hires.lock'),
+    configLock: join(state, 'hires.lock'),
     lastTaskAsks: join(state, 'last-task-asks'),
     keepWorkingAsks: join(state, 'keep-working-asks'),
     warn: join(state, 'usage', 'warn'),
