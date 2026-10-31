@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import { readConfigDir } from '../budget/config-dir.ts';
 import { isRecord } from '../core/guards.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
@@ -9,6 +10,7 @@ import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { APP, CLAUDE_SESSION, CliHarness, contextOf, TEAM, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
 
 const SESSIONS = join(TEAM_HOME, 'state', 'sessions');
+const CONFIG_DIR_RECORD = join(TEAM_HOME, 'state', 'usage', 'claude-config-dir.json');
 const AS_ALPHA = { TEAMRIG_SESSION: 'alpha' };
 /** The Claude Code session a /clear starts. */
 const CLEARED = '0123abcd-0000-4000-8000-00000000000b';
@@ -53,6 +55,14 @@ describe('the SessionStart hook records where the session started', () => {
     const kit = new CliHarness(TEAM);
     contextOf(await kit.run(['hook', 'session-start'], { stdin: start('startup'), sessionProcesses: UNDER_CLAUDE() }));
     assert.deepEqual(kit.files.paths().filter((path) => path.startsWith(SESSIONS)), []);
+    assert.equal(await readConfigDir(kit.files, CONFIG_DIR_RECORD), undefined);
+  });
+
+  it('records the Claude config dir the session runs in, so another team tells which login the team is on', async () => {
+    const kit = new CliHarness(TEAM);
+    const workDir = join('/', 'claude-work');
+    contextOf(await kit.run(['hook', 'session-start'], { env: { ...AS_ALPHA, CLAUDE_CONFIG_DIR: workDir }, stdin: start('startup'), sessionProcesses: UNDER_CLAUDE() }));
+    assert.equal(await readConfigDir(kit.files, CONFIG_DIR_RECORD), workDir);
   });
 
   it('still starts the session when the record cannot be written, and says why', async () => {
