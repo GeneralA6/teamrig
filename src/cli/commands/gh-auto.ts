@@ -1,8 +1,21 @@
 import type { KitConfig } from '../../config/types.ts';
 import { ENV, type Env } from '../../core/home.ts';
+import { writableObject } from '../../core/jsonl.ts';
 import type { FileLock } from '../../core/lock.ts';
 import { SecretScanner } from '../../core/secrets.ts';
-import { addedLines, claimState, failureNews, finishState, formatSyncState, isDue, parseSyncState, type AddedTask, type RepoFailure, type SyncState } from '../../github/auto.ts';
+import {
+  addedLines,
+  claimState,
+  failureNews,
+  finishState,
+  formatSyncState,
+  isDue,
+  parseSyncState,
+  SYNC_STATE_FORMAT,
+  type AddedTask,
+  type RepoFailure,
+  type SyncState,
+} from '../../github/auto.ts';
 import { postLine } from '../../inbox/inbox.ts';
 import { GITHUB_ACTOR } from '../../register/policy.ts';
 import type { Kit } from '../kit.ts';
@@ -33,6 +46,16 @@ async function readState(runtime: CliRuntime, kit: Kit): Promise<SyncState | und
 }
 
 /**
+ * The state before a write, under the lock. A file a newer teamrig wrote is refused (`NewerDataError`), so an older
+ * teamrig still running in some tab never drops its fields: its hook starts no sync, its `gh sync --auto` fails.
+ */
+async function writableState(runtime: CliRuntime, kit: Kit): Promise<SyncState | undefined> {
+  const text = await runtime.files.read(kit.paths.githubSync);
+  writableObject(kit.paths.githubSync, text, SYNC_STATE_FORMAT);
+  return parseSyncState(text ?? '');
+}
+
+/**
  * The Stop hook's part: once `github.everyMinutes` passed since the last automatic sync, claims the next one
  * and starts `gh sync --auto` hidden, for the team the hook runs for, so the hook neither prints nor waits. A
  * turn end that is not due reads one small file; the claim is checked again under the lock, which a hook
@@ -49,7 +72,7 @@ export async function startAutoSync(runtime: CliRuntime, kit: Kit, config: KitCo
     return;
   }
   const claimed = await stateLock(runtime, kit, config, 0).run(async () => {
-    const state = await readState(runtime, kit);
+    const state = await writableState(runtime, kit);
     if (!isDue(state, now, github.everyMinutes)) {
       return false;
     }
@@ -75,7 +98,7 @@ export async function startAutoSync(runtime: CliRuntime, kit: Kit, config: KitCo
 export async function reportAutoSync(runtime: CliRuntime, kit: Kit, config: KitConfig, added: readonly AddedTask[], failures: readonly RepoFailure[]): Promise<string[]> {
   const now = runtime.clock.now();
   const before = await stateLock(runtime, kit, config, config.lock.waitMs).run(async () => {
-    const state = await readState(runtime, kit);
+    const state = await writableState(runtime, kit);
     await runtime.files.write(kit.paths.githubSync, formatSyncState(finishState(state, now, failures)));
     return state?.failing ?? [];
   });
