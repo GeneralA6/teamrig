@@ -110,6 +110,17 @@ describe('SecretShapes', () => {
     }
   });
 
+  it("skips an example file's change-me password in any spelling, and still finds a real one of the same length (T1693)", () => {
+    for (const word of ['CHANGE_ME', 'change-me', 'changeme']) {
+      assert.deepEqual(shapes.hitsIn(join('postgres://app:', word, '@db.local/app')), [], word);
+    }
+    const real = join('Qx7m', '_Lp4w');
+    assert.deepEqual(
+      shapes.hitsIn(join('postgres://app:', real, '@db.local/app')).map(({ value }) => value),
+      [real],
+    );
+  });
+
   it('lets a search for a URL password and a query string built in code through', () => {
     for (const text of ["grep -E 'postgres://[^:]+:[^@]+@' app.log", join("fetch('https://api.local/v1?api_", "key='+process.env.API_KEY+'&q=1')")]) {
       assert.deepEqual(shapes.hitsIn(text), [], text);
@@ -170,7 +181,7 @@ function jwtSample(payload: string, key: string): string {
 describe('isPlaceholderValue', () => {
   it('judges a short word, a reference, a masked value and a stand-in word a placeholder', () => {
     const placeholders = ['p', 'short', '<db_password>', '${PASS}', '$PASS', '$(cat key)', '%PASS%', '{password}', '[token]', '*****', 'ab***yz', 'ab12cd...', 'ab12cd…', 'xxxxxxxx', '00000000'];
-    for (const value of [...placeholders, 'changeme', 'redacted', 'Password', 'placeholder', 'your_api_key', 'put-key-here']) {
+    for (const value of [...placeholders, 'changeme', 'CHANGE_ME', 'change-me', 'Change_Me', 'redacted', 'Password', 'placeholder', 'your_api_key', 'put-key-here']) {
       assert.equal(isPlaceholderValue(value), true, value);
     }
   });

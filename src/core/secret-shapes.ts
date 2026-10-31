@@ -38,8 +38,8 @@ const MIN_FRAMED_SECRET = 6;
 const REFERENCE = /^(?:[<{[]|\$[{(A-Za-z_]|%[A-Za-z_]\w*%)/;
 /** A value masked, redacted or cut short: `*****`, `ab***yz`, `ab12...`, `ab12…`, one character repeated (`xxxxxxxx`, `00000000`). */
 const MASKED = /\*{3}|\.{3}|…|^(.)\1+$/;
-/** A word that stands in for a secret: `password`, `changeme`, `your_token`, `put-key-here`. */
-const PLACEHOLDER_WORD = /^(?:pass(?:word|wd)?|pwd|secret|token|user(?:name)?|changeme|example|sample|dummy|placeholder|redacted|your[\w-]*|[\w-]*[_-]here)$/i;
+/** A word that stands in for a secret: `password`, `changeme` (`CHANGE_ME`, `change-me`), `your_token`, `put-key-here`. */
+const PLACEHOLDER_WORD = /^(?:pass(?:word|wd)?|pwd|secret|token|user(?:name)?|change[_-]?me|example|sample|dummy|placeholder|redacted|your[\w-]*|[\w-]*[_-]here)$/i;
 /** A search for a secret's shape: a regex class inside the value, as `postgres://[^:]+:[^@]+@` frames `]+:[^`. */
 const REGEX_SOURCE = /\[\^|\][+*?{]/;
 /** Code that splices a variable into a string, its quotes closing one string and opening the next: `'+process.env.API_KEY+'`. */
