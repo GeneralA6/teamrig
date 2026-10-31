@@ -134,18 +134,18 @@ describe('restore check launcher', () => {
     assert.equal(restoreCheckLauncherPath(join('/', 'kit')), join('/', 'kit', 'bin', 'restore-check.mjs'));
   });
 
-  it('runs restore check of the first installed kit CLI that exists, on the kit home it sits in, and logs nothing', () => {
+  it('runs restore check of the first installed kit CLI that exists, on the kit home it sits in, and logs only that it started', () => {
     const run = logon({ installs: ['gone', 'v2'], empty: ['gone'], lookalike: true });
     assert.equal(run.status, 0);
     assert.deepEqual(run.argv, ['restore', 'check', '--home', run.kitHome]);
-    assert.equal(run.log, undefined);
+    assert.match(run.log ?? '', /^\d{4}-\d\d-\d\dT[\d:.]+Z logon: started\n$/);
   });
 
-  it('logs that teamrig was not found when no plugin list or kit plugin is there', () => {
+  it('logs that it started, then that teamrig was not found, when no plugin list or kit plugin is there', () => {
     for (const fixture of [{ noPluginList: true }, { lookalike: true }] satisfies PluginListFixture[]) {
       const run = logon(fixture);
       assert.deepEqual([run.status, run.argv], [0, undefined]);
-      assert.match(run.log ?? '', /^\d{4}-\d\d-\d\dT[\d:.]+Z logon: teamrig not found in the Claude Code plugin list\n$/);
+      assert.match(run.log ?? '', /^\d{4}-\d\d-\d\dT[\d:.]+Z logon: started\n\d{4}-\d\d-\d\dT[\d:.]+Z logon: teamrig not found in the Claude Code plugin list\n$/);
     }
   });
 
@@ -155,12 +155,12 @@ describe('restore check launcher', () => {
     assert.equal(run.status, 0);
     assert.match(
       run.log ?? '',
-      / logon: teamrig restore check exited 3: MANUAL no terminal opened \(no wt\.exe\); open a new terminal and run this: \| node main\.js restore run \| WARN a team config did not load\n$/,
+      /^\S+ logon: started\n\S+ logon: teamrig restore check exited 3: MANUAL no terminal opened \(no wt\.exe\); open a new terminal and run this: \| node main\.js restore run \| WARN a team config did not load\n$/,
     );
   });
 
   it('logs the exit alone when the check printed nothing', () => {
     const run = logon({ installs: ['v2'], cliText: 'process.exit(1);\n' });
-    assert.match(run.log ?? '', / logon: teamrig restore check exited 1\n$/);
+    assert.match(run.log ?? '', /^\S+ logon: started\n\S+ logon: teamrig restore check exited 1\n$/);
   });
 });
