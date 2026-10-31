@@ -119,6 +119,11 @@ export function compactLine(at: string): string {
   return JSON.stringify({ type: 'system', subtype: 'compact_boundary', content: 'Conversation compacted', timestamp: at });
 }
 
+/** A hook's note Claude Code adds to the context, each of `texts` one part of it: by default the SessionStart note. */
+export function sessionStartNoteLine(at: string, texts: readonly string[], hookEvent = 'SessionStart'): string {
+  return JSON.stringify({ parentUuid: null, isSidechain: false, attachment: { type: 'hook_additional_context', content: texts, hookName: hookEvent, hookEvent }, type: 'attachment', timestamp: at });
+}
+
 /** A skill, agent type or tool as a listing names it, and its description. */
 export interface FixtureListing {
   readonly name: string;

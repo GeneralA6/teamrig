@@ -222,11 +222,49 @@ describe('MissTracker', () => {
     assert.deepEqual(second.counts.get(DAY), { missCalls: START_WITHIN_CALLS - 4, workBlocks: 1, missNoStart: 1 });
     assert.deepEqual(second.tracker.state(), whole.tracker.state());
   });
+
+  it('takes a start note as the start of the block the next turn opens, also across a stored state (T1529)', () => {
+    const first = tracked();
+    first.tracker.startNote();
+    assert.deepEqual(first.tracker.state(), { ...INITIAL_MISS_STATE, noted: true }, 'the note is no activity of the session');
+    const stored = parseMissState(JSON.parse(JSON.stringify(first.tracker.state())));
+    assert.ok(stored !== undefined);
+    const { tracker, counts } = tracked(stored);
+    tracker.prompt('owner', AT, DAY);
+    calls(tracker, START_WITHIN_CALLS, AT + MINUTE);
+    assert.deepEqual(counts.get(DAY), { workBlocks: 1, missCalls: START_WITHIN_CALLS });
+    assert.deepEqual(tracker.state(), { lastAt: AT + START_WITHIN_CALLS * MINUTE, block: null, noted: false });
+  });
+
+  it('takes a start note as the start of the block waiting now (T1529)', () => {
+    const { tracker, counts } = tracked();
+    tracker.prompt('peer', AT, DAY);
+    const after = calls(tracker, 2, AT + MINUTE);
+    tracker.startNote();
+    calls(tracker, START_WITHIN_CALLS, after);
+    assert.deepEqual(counts.get(DAY), { missCalls: 2 + START_WITHIN_CALLS, workBlocks: 1 });
+    assert.equal(tracker.state().block, null);
+  });
+
+  it("ends a start note's reach at the next turn, so a later block still needs its own start (T1529)", () => {
+    const { tracker, counts } = tracked({ lastAt: AT, block: null, noted: false });
+    tracker.startNote();
+    tracker.prompt('continuation', AT + MINUTE, DAY);
+    assert.equal(tracker.state().noted, false);
+    const after = calls(tracker, 1, AT + 2 * MINUTE);
+    tracker.prompt('owner', after + BLOCK_IDLE_MS, DAY);
+    calls(tracker, START_WITHIN_CALLS, after + BLOCK_IDLE_MS + MINUTE);
+    assert.deepEqual(counts.get(DAY), { missCalls: 1 + START_WITHIN_CALLS, workBlocks: 1, missNoStart: 1 });
+  });
 });
 
 describe('parseMissState', () => {
   it('reads a stored state', () => {
-    assert.deepEqual(parseMissState({ lastAt: AT, block: { day: DAY, calls: 3 } }), { lastAt: AT, block: { day: DAY, calls: 3 } });
+    assert.deepEqual(parseMissState({ lastAt: AT, block: { day: DAY, calls: 3 }, noted: false }), { lastAt: AT, block: { day: DAY, calls: 3 }, noted: false });
+    assert.deepEqual(parseMissState({ lastAt: AT, block: null, noted: true }), { lastAt: AT, block: null, noted: true });
+  });
+
+  it('reads a state stored before start notes as having no note pending (T1529)', () => {
     assert.deepEqual(parseMissState({ lastAt: 0, block: null }), INITIAL_MISS_STATE);
   });
 
@@ -242,6 +280,8 @@ describe('parseMissState', () => {
       { lastAt: AT, block: { day: 'today', calls: 1 } },
       { lastAt: AT, block: { day: DAY, calls: 1.5 } },
       { lastAt: AT, block: { day: DAY } },
+      { lastAt: AT, block: null, noted: 'yes' },
+      { lastAt: AT, block: null, noted: null },
     ];
     for (const value of damaged) {
       assert.equal(parseMissState(value), undefined, JSON.stringify(value));

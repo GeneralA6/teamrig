@@ -1,5 +1,6 @@
 import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import { parseObject } from '../core/jsonl.ts';
+import { BLOCK_START_WORDS, isBlockStartLine } from '../core/work-block.ts';
 import { usageOf, type Usage } from './weights.ts';
 
 /** A tool the model called in a reply: its id, its name and, for a shell, the command line. */
@@ -76,7 +77,16 @@ export interface CompactLine {
   readonly at: number | undefined;
 }
 
-export type TranscriptLine = CallLine | ResultsLine | PromptLine | CompactLine;
+/**
+ * A SessionStart hook's note that is the session's work-block start (core/work-block.ts, T1529): it holds what
+ * `teamrig start` prints first, so the meter takes it as the block's `start`.
+ */
+export interface StartNoteLine {
+  readonly kind: 'start-note';
+  readonly at: number | undefined;
+}
+
+export type TranscriptLine = CallLine | ResultsLine | PromptLine | CompactLine | StartNoteLine;
 
 function timeOf(entry: JsonRecord): number | undefined {
   const text = stringField(entry, 'timestamp');
@@ -248,17 +258,31 @@ function compactOf(entry: JsonRecord): CompactLine | undefined {
 }
 
 /**
+ * A SessionStart hook's note whose text holds a work-block start line (core/work-block.ts); undefined for any other
+ * entry, a prompt or a tool result that only quotes one among them.
+ */
+function startNoteOf(entry: JsonRecord): StartNoteLine | undefined {
+  const attachment = entry['type'] === 'attachment' ? recordField(entry, 'attachment') : undefined;
+  if (attachment === undefined || attachment['type'] !== 'hook_additional_context' || attachment['hookEvent'] !== 'SessionStart') {
+    return undefined;
+  }
+  const content = attachment['content'];
+  const texts = Array.isArray(content) ? content.filter((part): part is string => typeof part === 'string') : [];
+  return texts.some((text) => text.split('\n').some(isBlockStartLine)) ? { kind: 'start-note', at: timeOf(entry) } : undefined;
+}
+
+/**
  * One transcript line as what the meter counts; undefined for the many lines it ignores (system
- * notes other than a compaction, attachments, snapshots) and for a damaged or torn line. A cheap text test runs first, so
- * only a line that can be a reply or a user line is parsed.
+ * notes other than a compaction, attachments other than a work-block start note, snapshots) and for a damaged or torn
+ * line. A cheap text test runs first, so only a line that can be a reply, a user line or such a note is parsed.
  */
 export function parseTranscriptLine(raw: string): TranscriptLine | undefined {
-  if (!raw.includes('"usage"') && !raw.includes('"type":"user"') && !raw.includes('"compact_boundary"')) {
+  if (!raw.includes('"usage"') && !raw.includes('"type":"user"') && !raw.includes('"compact_boundary"') && !raw.includes(BLOCK_START_WORDS)) {
     return undefined;
   }
   const entry = parseObject(raw);
   if (entry === undefined) {
     return undefined;
   }
-  return callOf(entry) ?? userLineOf(entry) ?? compactOf(entry);
+  return callOf(entry) ?? userLineOf(entry) ?? compactOf(entry) ?? startNoteOf(entry);
 }

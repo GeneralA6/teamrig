@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { blockStartLines } from '../hooks/live-tasks.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
@@ -8,6 +9,7 @@ import {
   replyLine,
   resultsLine,
   compactLine,
+  sessionStartNoteLine,
   transcript,
   type FixtureReply,
   type FixtureResult,
@@ -344,7 +346,18 @@ describe('runMeter', () => {
     const result = await meter.run(10_000_000, { main: [MAIN], subagents: [] });
     const patterns = day(result.state, DAY)?.patterns;
     assert.deepEqual([patterns?.missCalls, patterns?.workBlocks, patterns?.missNoStart, patterns?.worktreeRemoves, patterns?.missGitWorktreeRemove], [11, 2, 1, 10, 10]);
-    assert.deepEqual(result.state.cursors[MAIN]?.misses, { lastAt: Date.parse(at(11, 10)), block: null });
+    assert.deepEqual(result.state.cursors[MAIN]?.misses, { lastAt: Date.parse(at(11, 10)), block: null, noted: false });
+  });
+
+  it("takes a fresh start's SessionStart note as its work block's teamrig start (T1529)", async () => {
+    const note = sessionStartNoteLine(at(9), ['# Team rules', blockStartLines('alpha', { at: 'Mon 03-02 09:00 UTC', meetings: undefined, week: undefined }, 'teamrig').join('\n')]);
+    const replies = Array.from({ length: 10 }, (_, index) =>
+      replyLine({ id: `n${index}`, requestId: `qn${index}`, at: at(9, index + 1), usage: { input: 1, output: 1 }, tools: [{ id: `tn${index}`, name: 'Bash', command: 'git status' }] }),
+    );
+    const meter = world(at(23), { [MAIN]: transcript([note, promptLine(at(9)), ...replies]) });
+    const result = await meter.run(10_000_000, { main: [MAIN], subagents: [] });
+    const patterns = day(result.state, DAY)?.patterns;
+    assert.deepEqual([patterns?.missCalls, patterns?.workBlocks, patterns?.missNoStart], [10, 1, 0]);
   });
 
   it('counts a results line with no reply open to the day it was written', async () => {
