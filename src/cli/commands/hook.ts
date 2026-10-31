@@ -3,6 +3,7 @@ import { launchOf } from '../../config/launch.ts';
 import { LeadTree } from '../../config/lead-tree.ts';
 import { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
+import { recordConfigDir } from '../../budget/config-dir.ts';
 import { formatAddress } from '../../core/address.ts';
 import { errorMessage, isRecord, stringField, type JsonRecord } from '../../core/guards.ts';
 import { claudeConfigDir, claudeTempDir, KIT_NAME, resolveKitHome } from '../../core/home.ts';
@@ -535,7 +536,7 @@ type TeamParts = Pick<
  * set the team up keeps its identity across a compact or resume; after a refresh or a compaction its live
  * tasks; whether it runs on its configured model and effort; its verifying tasks; and where the team sits
  * in a tree of teams, read from every team config of the kit home. It records the Claude Code process the session
- * started in, marks a /clear or a compaction in the session's turn log and prunes the log's old hours (hook-turn-log.ts).
+ * started in and the team's Claude config dir (budget/config-dir.ts), marks a /clear or a compaction in the session's turn log and prunes the log's old hours (hook-turn-log.ts).
  */
 async function teamPartsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, payload: unknown): Promise<TeamParts> {
   const title = await readTitle(runtime, payload);
@@ -552,6 +553,7 @@ async function teamPartsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, pay
   const id = rosterIdOf(roster, session);
   if (id !== undefined) {
     await logStart(runtime, { config, paths: kit.paths, id }, payload).catch(() => undefined);
+    await recordConfigDir(runtime.files, kit.paths.configDirRecord, claudeConfigDir(runtime.env, runtime.userHome)).catch(() => undefined);
   }
   const recorded = id === undefined || claudeSession === null ? undefined : await recordSessionStart(runtime, kit, roster.ids, id, claudeSession, startTranscriptOf(payload));
   return {

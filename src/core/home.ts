@@ -141,6 +141,8 @@ export interface TeamPaths {
   readonly unownedNoticesLock: string;
   /** Each session's metered use, `<id>.json` each, and `outside/` for use outside the team. */
   readonly usage: string;
+  /** The Claude config dir the team's sessions last started in, recorded at each start (budget/config-dir.ts). */
+  readonly configDirRecord: string;
   /** The skills scorecard's per-day counts and transcript positions (`teamrig skills scorecard`). */
   readonly skillsScorecard: string;
   /** The week's period: its start, its end and the latest use read in it (budget/period.ts). */
@@ -274,6 +276,7 @@ export function teamPaths(kitHome: string, team: string, claudeDir: string, over
     unownedNotices: join(state, 'unowned-notices.json'),
     unownedNoticesLock: join(state, 'unowned-notices.lock'),
     usage: join(state, 'usage'),
+    configDirRecord: join(state, 'usage', 'claude-config-dir.json'),
     skillsScorecard: join(state, 'skills-scorecard.json'),
     period: join(state, 'usage', 'period.json'),
     meterLog: join(state, 'usage', 'meter-log.jsonl'),
