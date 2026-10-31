@@ -4203,6 +4203,41 @@ give more than all of its budget (inside a group, the line names the group's bud
 lift that gives more), a week already at the stop % or an unknown week (no status line and no
 `budget.weeklyLimitW`) is `REFUSED` (exit 2); [errors.md](errors.md#budget) lists each line.
 
+### teamrig budget cut
+
+A leader cuts one session under it to its own daily budget, for today at most. Without a cut, a session past its
+daily budget uses the room the others left: it is held only once the team has no room left today. Under a cut it is
+held as soon as it is past its own budget, whatever room the team has: it wakes, and is reopened, for p0 work only,
+and `budget.overAction` holds its new helpers back as it says. Its budget lines name the cut, and its leader gets no
+inbox line about it, since a leader gave the cut. A lift in force still sets the session's budget; a lift of the
+session given after the cut ends it. A cut ends at `--until` or at the end of the budget day (a UTC day), whichever
+comes first, and a newer cut of the session replaces an older one. The leaders who may lift a session may cut it:
+the lead cuts any session, a sub-lead the sessions in its group at any depth and its own session. Cuts are kept in
+the team's `state/usage/cuts.jsonl`. A session of a team under the lead's own is cut by its own team's leaders.
+
+Flags:
+
+- `--session <id|name>`: the caller; a leader over the session (the lead, or a sub-lead whose group holds it), or
+  a sub-lead cutting its own session.
+- `--until <HH:MM|date>`: an earlier end: `HH:MM` today or `"YYYY-MM-DD HH:MM"`, on the team's clock unless marked `UTC`.
+- `--reason "<why>"`: required: why the session keeps to its own budget today.
+
+Example:
+
+```sh
+teamrig budget cut api --session lead --reason "over on a p3"
+```
+
+Output:
+
+```text
+CUT api to its own daily budget until 03:00 IDT (the end of the budget day): past it, it is held whatever room the team has, so it wakes for p0 work only and budget.overAction holds its new helpers back as it says; a lift in force still sets that budget, and a new lift of it ends the cut.
+```
+
+A caller that leads no group over the session or an `--until` already passed is `REFUSED` (exit 2); a session of
+another team (`<team>/<session>`) and a missing `--reason` are usage errors (exit 64). [errors.md](errors.md#budget) lists
+each line.
+
 ### teamrig budget extra
 
 Past 100% of the week, claude.ai can go on with extra usage: dollars the person puts in a pool apart from the

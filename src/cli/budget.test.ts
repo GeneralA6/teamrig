@@ -555,6 +555,67 @@ describe('teamrig budget lift', () => {
   });
 });
 
+describe('teamrig budget cut', () => {
+  const CUTS = join(TEAM_HOME, 'state', 'usage', 'cuts.jsonl');
+  const CUT = ['budget', 'cut', 'alpha', '--reason', 'over on a p3'];
+  const cutLine = (who: string, until: string): string =>
+    `CUT ${who} to its own daily budget until ${until}: past it, it is held whatever room the team has, so it wakes for p0 work only and budget.overAction holds its new helpers back as it says; a lift in force still sets that budget, and a new lift of it ends the cut.`;
+  const records = (text: string | undefined): unknown[] =>
+    (text ?? '')
+      .split('\n')
+      .filter((line) => line !== '')
+      .map((line): unknown => JSON.parse(line));
+
+  it("cuts a session to its own daily budget for today, logged in the team's cut log", async () => {
+    const { kit, run } = await world();
+    assert.deepEqual(ok(await run([...CUT, '--session', 'lead'])), [cutLine('app-alpha', '00:00 UTC (the end of the budget day)')]);
+    assert.deepEqual(ok(await run(['budget', 'cut', 'app/alpha', '--until', '18:00', '--reason', 'over on a p3', '--session', 'lead'])), [cutLine('app-alpha', '18:00 UTC')]);
+    assert.deepEqual(records(kit.files.get(CUTS)), [
+      { v: 1, session: 'alpha', endsAt: '2030-01-09T00:00:00.000Z', reason: 'over on a p3', by: 'lead', at: '2030-01-08T10:00:00.000Z' },
+      { v: 1, session: 'alpha', endsAt: '2030-01-08T18:00:00.000Z', reason: 'over on a p3', by: 'lead', at: '2030-01-08T10:00:00.000Z' },
+    ]);
+  });
+
+  it("reads --until on the team's clock, and refuses one that has passed, writing nothing", async () => {
+    const { kit, run } = await world();
+    const JERUSALEM = { timeZone: 'Asia/Jerusalem' };
+    assert.deepEqual(ok(await run([...CUT, '--until', '14:00', '--session', 'lead'], JERUSALEM)), [cutLine('app-alpha', '14:00 IST')]);
+    const passed = await run([...CUT, '--until', '11:00', '--session', 'lead'], JERUSALEM);
+    assert.equal(passed.code, EXIT.refused);
+    assert.match(passed.stdout.join('\n'), /--until 2030-01-08 11:00 IST has passed/);
+    assert.equal(records(kit.files.get(CUTS)).length, 1);
+  });
+
+  it('is refused to a session that leads none, naming who cuts, writing nothing', async () => {
+    const { kit, run } = await world();
+    const refused = await run([...CUT, '--session', 'bravo']);
+    assert.equal(refused.code, EXIT.refused);
+    assert.deepEqual(refused.stdout, ["REFUSED app-alpha's budget is cut only by app-lead"]);
+    assert.equal(kit.files.get(CUTS), undefined);
+  });
+
+  it('lets a sub-lead cut its members and its own session, and no session outside its group', async () => {
+    const { run } = await world({ ...LIMITED, leads: { bravo: ['alpha'] } });
+    assert.deepEqual(ok(await run([...CUT, '--session', 'bravo'])), [cutLine('app-alpha', '00:00 UTC (the end of the budget day)')]);
+    assert.deepEqual(ok(await run(['budget', 'cut', 'bravo', '--reason', 'over on a p3', '--session', 'bravo'])), [cutLine('app-bravo', '00:00 UTC (the end of the budget day)')]);
+    const outside = await run(['budget', 'cut', 'lead', '--reason', 'over on a p3', '--session', 'bravo']);
+    assert.deepEqual(outside.stdout, ["REFUSED app-lead's budget is cut only by app-lead"]);
+    const member = await run(['budget', 'cut', 'bravo', '--reason', 'over on a p3', '--session', 'alpha']);
+    assert.deepEqual(member.stdout, ["REFUSED app-bravo's budget is cut only by app-bravo or app-lead"]);
+  });
+
+  it('checks its flags, and cuts only a session of its own team', async () => {
+    const { kit, run } = await world();
+    const as = ['--session', 'lead'];
+    usageError(await run(['budget', 'cut', 'alpha', ...as]), /--reason is required/);
+    usageError(await run(['budget', 'cut', 'alpha', '--reason', '  ', ...as]), /--reason needs a reason/);
+    usageError(await run([...CUT, '--until', 'soon', ...as]), /--until "soon" is not HH:MM/);
+    usageError(await run(['budget', 'cut', '--reason', 'r', ...as]), /needs <session>/);
+    usageError(await run(['budget', 'cut', 'web/alpha', '--reason', 'r', ...as]), /budget cut cuts a session of team app; web\/alpha is cut by its own team's leaders/);
+    assert.equal(kit.files.get(CUTS), undefined);
+  });
+});
+
 describe('teamrig budget extra', () => {
   const EXTRA_LOG = join(TEAM_HOME, 'state', 'usage', 'extra-log.jsonl');
   /** The week 30% used on the status line, and $1 of extra usage worth 1M W until spent readings teach a rate. */

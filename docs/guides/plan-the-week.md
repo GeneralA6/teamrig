@@ -57,6 +57,9 @@ Week: 31.0% used at 12:00 IDT (status line); the pace line is at 28.6%: 2.4 poin
   the lead also tops up a session of a team under its own, `<team>/<session>`, from its own team's daily budget.
   `--part` is a percent of that parent's daily budget, not of the week: the `LIFTED` line and the lifts table in
   `teamrig budget` give the share of the week it comes to now.
+- A leader also holds a session to its own part for a day: `teamrig budget cut` holds it as soon as it is past its
+  own daily budget, whatever room the team has, until the end of the day or `--until`; a lift of it given later ends
+  the cut.
 - On a short day, when the week's use is past its pace line so what is left gives the day less than the line plans,
   every session keeps its part by default. With `budget.pauseByPriority` on, the day funds the work in priority order
   instead, across every team on the Claude account: the lead, the delivery owner and lifted sessions first, then

@@ -140,7 +140,8 @@ or take it to the lead.
 
 ## Budget
 
-From `teamrig budget lift` ([commands.md](commands.md#teamrig-budget-lift)), `teamrig budget extra`
+From `teamrig budget lift` ([commands.md](commands.md#teamrig-budget-lift)), `teamrig budget cut`
+([commands.md](commands.md#teamrig-budget-cut)), `teamrig budget extra`
 ([commands.md](commands.md#teamrig-budget-extra)) and `teamrig budget setup`
 ([commands.md](commands.md#teamrig-budget-setup)).
 
@@ -148,6 +149,7 @@ From `teamrig budget lift` ([commands.md](commands.md#teamrig-budget-lift)), `te
 | --- | --- |
 | `REFUSED api's budget is lifted only by web or lead` | The caller leads no group over that session: ask one of the leaders it names (nearest first) for the lift. |
 | `REFUSED web's group's budget is lifted only by lead` | A sub-lead does not lift its own group: ask a leader it names. |
+| `REFUSED api's budget is cut only by web or lead` | The caller leads no group over that session: ask one of the leaders it names (nearest first) for the cut. |
 | `REFUSED --group lifts a sub-lead's group, and api leads none` | Lift the session without `--group`, or name its sub-lead. |
 | `REFUSED --group lifts a sub-lead's group; lead is the lead, whose group is the whole team` | No lift takes a part of the whole team: lift a session, or a sub-lead's group. |
 | `REFUSED only the lead (lead) lifts a session of a team under its own` | A `<team>/<session>` lift is the lead's: ask it. |

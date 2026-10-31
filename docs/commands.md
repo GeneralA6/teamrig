@@ -263,6 +263,9 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       now), today, until --until, the day's end or the week reaching --stop-pct; --group: the sub-lead's whole
       group's part; --reserve: above budget.lift.maxStopPct, in the last hour before the reset; team/id: (the lead)
       a session of a team under its own, topped up by a part of its own team's daily budget
+  budget cut <id|name> [--until <HH:MM|date>] --reason "<why>"
+      (its leaders; a sub-lead its own too) holds that session to its own daily budget today, until --until or
+      the day's end: past it, it is held whatever room the team has; a new lift of it ends the cut
   budget extra [--add <usd>] [--spent <usd>]
       the extra-usage pool past 100% of the week: what is left, in dollars and W; (the lead only) --add: dollars
       put in it, --spent: the dollars claude.ai shows spent from it so far, which teach its W per dollar
