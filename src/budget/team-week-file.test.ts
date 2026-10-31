@@ -89,7 +89,7 @@ describe('keepTeamWeek', () => {
     assert.equal(await files.read(PATH), formatTeamWeek(summary));
   });
 
-  it('leaves a summary a newer teamrig wrote as it is, without failing', async () => {
+  it('leaves a summary a newer teamrig wrote, past TEAM_WEEK_FORMAT, as it is, without failing', async () => {
     const files = new MemoryFiles();
     const newer = JSON.stringify({ v: TEAM_WEEK_FORMAT + 1, usedPct: 1 });
     await files.write(PATH, newer);
