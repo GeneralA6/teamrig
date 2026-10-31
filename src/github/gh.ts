@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import type { Env } from '../core/home.ts';
 import { endOf, type ShellEnd } from '../test-run/shell.ts';
+import { QUERY_VARIABLES, RAW_FIELD } from './queries.ts';
 
 /**
  * The `gh` commands teamrig may run: reads only. The import never writes to GitHub (no issue, label,
@@ -8,9 +9,46 @@ import { endOf, type ShellEnd } from '../test-run/shell.ts';
  */
 export const READ_COMMANDS: readonly (readonly [string, string])[] = [['issue', 'list']];
 
-/** True when the arguments start with one of READ_COMMANDS. */
+/** True when the arguments start with one of READ_COMMANDS, or are one of the shipped issue queries. */
 export function isReadCommand(args: readonly string[]): boolean {
-  return READ_COMMANDS.some(([group, verb]) => args[0] === group && args[1] === verb);
+  return READ_COMMANDS.some(([group, verb]) => args[0] === group && args[1] === verb) || isIssueQuery(args);
+}
+
+/**
+ * True for `gh api graphql -f query=<a text of queries.ts> -f <variable>=<value> ...` and nothing more: the query
+ * word for word, each variable one it declares and given once, every field raw (`-f`). Any other flag (`-F`,
+ * `--paginate`, `-X`, `--input`, `--hostname`) is refused, so the run cannot read a file or send another request.
+ */
+export function isIssueQuery(args: readonly string[]): boolean {
+  if (args[0] !== 'api' || args[1] !== 'graphql') {
+    return false;
+  }
+  const fields = rawFields(args.slice(2));
+  const query = fields?.get('query');
+  const variables = query === undefined ? undefined : QUERY_VARIABLES.get(query);
+  if (fields === null || variables === undefined) {
+    return false;
+  }
+  return [...fields.keys()].every((key) => key === 'query' || variables.has(key));
+}
+
+/** `-f key=value` pairs by key; null when anything else is there or a key comes twice. */
+function rawFields(args: readonly string[]): Map<string, string> | null {
+  const fields = new Map<string, string>();
+  for (let at = 0; at < args.length; at += 2) {
+    const flag = args[at];
+    const field = args[at + 1];
+    const equals = field?.indexOf('=') ?? -1;
+    if (flag !== RAW_FIELD || field === undefined || equals < 1) {
+      return null;
+    }
+    const key = field.slice(0, equals);
+    if (fields.has(key)) {
+      return null;
+    }
+    fields.set(key, field.slice(equals + 1));
+  }
+  return fields;
 }
 
 /** One `gh` run: its arguments, passed as a list and never read by a shell, and the environment. */
