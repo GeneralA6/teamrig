@@ -6,6 +6,7 @@ import { samePath } from '../core/paths.ts';
 import { customTitleOf } from '../names/title.ts';
 import { CARRY_TAIL_BYTES } from '../refresh/carry.ts';
 import { resumeFolderOf } from '../sessions/resume-folder.ts';
+import { ARCHIVE_KEEP_MS, type RestoreArchive } from './archive.ts';
 import type { Countdown } from './countdown.ts';
 import type { RestoreEntry } from './entry.ts';
 import {
@@ -54,6 +55,8 @@ export type ReopenOutcome = { readonly kind: 'opened' } | { readonly kind: 'fail
 /** What the restore reads and changes outside itself. */
 export interface RestoreDeps {
   readonly registry: RestoreRegistry;
+  /** Where an entry no restore needs is moved, kept ARCHIVE_KEEP_MS. */
+  readonly archive: RestoreArchive;
   readonly clock: Clock;
   readonly sleep: Sleep;
   readonly probe: PathProbe;
@@ -162,10 +165,22 @@ function leadSummaryOf(lead: RestoreItem, items: readonly RestoreItem[]): string
   return summarizeRestore(others.map(({ label, mode, why }) => ({ label, mode, why })));
 }
 
+const ARCHIVE_KEEP_DAYS = ARCHIVE_KEEP_MS / 86_400_000;
+
+/**
+ * Moves each entry no restore needs to the archive, then deletes the archived ones past ARCHIVE_KEEP_MS. The copy is
+ * written before the entry is removed, so a run stopped between the two leaves it in both, never in neither.
+ */
 async function prune(deps: RestoreDeps, discard: readonly Judged[]): Promise<void> {
+  const now = deps.clock.now();
   for (const { entry, reason } of discard) {
+    await deps.archive.put({ entry, archivedAt: now, reason });
     await deps.registry.remove(entry.claudeSession);
-    await deps.log(`discarded ${entry.claudeSession} (${reason})`);
+    await deps.log(`archived ${entry.claudeSession} (${reason})`);
+  }
+  const purged = await deps.archive.purge(now);
+  if (purged.length > 0) {
+    await deps.log(`archive: deleted ${purged.length} archived ${ARCHIVE_KEEP_DAYS} days ago or earlier`);
   }
 }
 
