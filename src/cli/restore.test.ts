@@ -121,7 +121,7 @@ describe('teamrig restore check', () => {
     const result = await kit.run(['restore', 'check'], machine(kit, processes));
     assert.deepEqual(result, { code: EXIT.ok, stdout: ['OPENED the restore of 2 Claude Code sessions in a new Windows Terminal tab'], stderr: [] });
     assert.deepEqual(processes.started[0]?.args, windowsTab(RESTORE_TAB_TITLE, USER_HOME, RUN));
-    assert.equal(await logOf(kit), '2030-01-08T10:00:00.000Z check: 2 to restore, 1 kept\n');
+    assert.equal(await logOf(kit), '2030-01-08T10:00:00.000Z check: 2 to restore, 1 kept, 0 closed\n');
   });
 
   it('prints the command to run, and exits 3, when no terminal opens', async () => {

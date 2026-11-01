@@ -48,6 +48,10 @@ function entry(claudeSession: string, createdAt: number, overrides: Partial<Rest
   };
 }
 
+const CLOSED = '90000000-2222-4333-8444-555555555555';
+const CLOSED_AT = SHUTDOWN - 3_600_000;
+const CLOSED_ENTRY = entry(CLOSED, 6, { endedAt: CLOSED_AT, updatedAt: CLOSED_AT, endReason: 'other' });
+const CLOSED_TRANSCRIPT: Readonly<Record<string, string>> = { [`/t/${CLOSED}.jsonl`]: '' };
 const LEAD_ENTRY = entry(LEAD, 1, { team: 'app', session: 'lead' });
 const ALPHA_ENTRY = entry(ALPHA, 2, { team: 'app', session: 'alpha', state: 'working' });
 const LIVE_ENTRY = entry(LIVE, 5);
@@ -177,14 +181,21 @@ describe('checkRestore', () => {
     const { deps, registry, logged, clock } = await world();
     assert.deepEqual(await checkRestore(deps), { since: clock.now(), count: 3 });
     assert.equal(await registry.read(SDK), undefined);
-    assert.deepEqual(logged, [`discarded ${SDK} (not a terminal session (sdk-cli))`, 'check: 3 to restore, 1 kept']);
+    assert.deepEqual(logged, [`discarded ${SDK} (not a terminal session (sdk-cli))`, 'check: 3 to restore, 1 kept, 0 closed']);
+  });
+
+  it('keeps a tab closed outside the shutdown and leaves it out of the count, so it opens no restore tab (T1747)', async () => {
+    const { deps, registry, logged, clock } = await world('go', undefined, [CLOSED_ENTRY], CLOSED_TRANSCRIPT);
+    assert.deepEqual(await checkRestore(deps), { since: clock.now(), count: 0 });
+    assert.deepEqual(await registry.read(CLOSED), CLOSED_ENTRY);
+    assert.deepEqual(logged, ['check: 0 to restore, 0 kept, 1 closed']);
   });
 
   it('drops a background job and a tab continued in it, which the tracker recorded as tabs with no end', async () => {
     const { deps, registry, logged, clock } = await world('go', undefined, [LEAD_ENTRY, entry(JOB, 6), entry(MOVED, 7)]);
     assert.deepEqual(await checkRestore(deps), { since: clock.now(), count: 1 });
     assert.deepEqual((await registry.list()).map(({ claudeSession }) => claudeSession), [LEAD]);
-    assert.deepEqual(logged, [`discarded ${JOB} (background session)`, `discarded ${MOVED} (continued in 60000000)`, 'check: 1 to restore, 0 kept']);
+    assert.deepEqual(logged, [`discarded ${JOB} (background session)`, `discarded ${MOVED} (continued in 60000000)`, 'check: 1 to restore, 0 kept, 0 closed']);
   });
 });
 
@@ -297,6 +308,32 @@ describe('runRestore', () => {
     );
     assert.ok(printed.includes('Skipped app-alpha (active since logon)'));
     assert.ok(printed.includes('Skipped notes (its entry is gone)'));
+  });
+
+  it('lists a tab closed outside the shutdown apart and reopens it only with a (T1747)', async () => {
+    const entries = [...ENTRIES, CLOSED_ENTRY];
+    const went = await world('go', undefined, entries, CLOSED_TRANSCRIPT);
+    assert.deepEqual(await runRestore(went.deps, LOGON), { opened: 3, failed: 0 });
+    assert.deepEqual(went.countdown.offered, [1]);
+    assert.ok(!went.reopened.some(({ claudeSession }) => claudeSession === CLOSED));
+    assert.ok(went.printed.includes('Closed outside a shutdown in the last 48 h (1), reopened only with [a]:'), went.printed.join('\n'));
+    assert.deepEqual(await went.registry.read(CLOSED), CLOSED_ENTRY);
+    const all = await world('all', undefined, entries, CLOSED_TRANSCRIPT);
+    assert.deepEqual(await runRestore(all.deps, LOGON), { opened: 4, failed: 0 });
+    assert.equal(all.reopened.at(-1)?.claudeSession, CLOSED);
+    assert.ok(all.logged.includes('run: started, 4 to reopen, the 1 closed too'), all.logged.join('\n'));
+    assert.ok(all.logged.includes('run: done, 4 opened, 0 skipped, 0 failed of 4'), all.logged.join('\n'));
+  });
+
+  it('reopens the closed tabs on the countdown when no session is to restore, as a run the person started', async () => {
+    const { deps, countdown, reopened, printed } = await world('go', undefined, [CLOSED_ENTRY], CLOSED_TRANSCRIPT);
+    assert.deepEqual(await runRestore(deps, LOGON), { opened: 1, failed: 0 });
+    assert.deepEqual(countdown.offered, [0]);
+    assert.deepEqual(
+      reopened.map(({ claudeSession }) => claudeSession),
+      [CLOSED],
+    );
+    assert.equal(printed[0], 'Claude Code sessions closed outside a shutdown in the last 48 h (1):');
   });
 
   it('starts no countdown when nothing is to restore', async () => {

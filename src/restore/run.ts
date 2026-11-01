@@ -10,6 +10,7 @@ import type { Countdown } from './countdown.ts';
 import type { RestoreEntry } from './entry.ts';
 import {
   chooseMode,
+  CLOSED_KEEP_MS,
   continuePrompt,
   diedAt,
   judgeEntry,
@@ -186,6 +187,12 @@ function printJudged(deps: RestoreDeps, verdict: string, list: readonly Judged[]
   }
 }
 
+function printItems(deps: RestoreDeps, verdict: string, items: readonly RestoreItem[]): void {
+  for (const item of items) {
+    deps.print(`${verdict.padEnd(8)} ${item.entry.claudeSession}  ${item.label}  ${item.reason}; ${modeWords(item)}; effort ${item.effort ?? 'default'}  ${item.entry.projectDir}`);
+  }
+}
+
 /** `restore`: what a restore now would do with each recorded session, changing nothing. */
 export async function previewRestore(deps: RestoreDeps): Promise<void> {
   const { entries, facts, plan } = await planOf(deps, deps.clock.now());
@@ -194,9 +201,8 @@ export async function previewRestore(deps: RestoreDeps): Promise<void> {
     return;
   }
   const items = await itemsOf(deps, facts, plan.restore);
-  for (const item of items) {
-    deps.print(`RESTORE  ${item.entry.claudeSession}  ${item.label}  ${item.reason}; ${modeWords(item)}; effort ${item.effort ?? 'default'}  ${item.entry.projectDir}`);
-  }
+  printItems(deps, 'RESTORE', items);
+  printItems(deps, 'CLOSED', await itemsOf(deps, facts, plan.closed));
   printJudged(deps, 'KEEP', plan.keep);
   printJudged(deps, 'DISCARD', plan.discard);
   for (const lead of items.filter((item) => item.team?.isLead === true)) {
@@ -205,12 +211,16 @@ export async function previewRestore(deps: RestoreDeps): Promise<void> {
   }
 }
 
-/** `restore check` at logon: drops the entries no restore needs; the count of sessions to restore and the logon time. */
+/**
+ * `restore check` at logon: drops the entries no restore needs; the count of sessions to restore and the logon time.
+ * The count leaves out the tabs closed outside a shutdown: they are kept for a `restore run` the person starts, and
+ * open no restore tab by themselves.
+ */
 export async function checkRestore(deps: RestoreDeps): Promise<{ readonly since: number; readonly count: number }> {
   const since = deps.clock.now();
   const { plan } = await planOf(deps, since);
   await prune(deps, plan.discard);
-  await deps.log(`check: ${plan.restore.length} to restore, ${plan.keep.length} kept`);
+  await deps.log(`check: ${plan.restore.length} to restore, ${plan.keep.length} kept, ${plan.closed.length} closed`);
   return { since, count: plan.restore.length };
 }
 
@@ -219,65 +229,93 @@ export interface RestoreRun {
   readonly failed: number;
 }
 
-/** How far a run got: whether its countdown ended, and what became of each session it took so far. */
+/** How far a run got: whether its countdown ended, how many it is to reopen, and what became of each so far. */
 interface Progress {
   started: boolean;
+  total: number;
   opened: number;
   skipped: number;
   failed: number;
 }
 
-function progressWords({ opened, skipped, failed }: Progress, total: number): string {
+function progressWords({ opened, skipped, failed, total }: Progress): string {
   return `${opened} opened, ${skipped} skipped, ${failed} failed of ${total}`;
 }
 
+function printGroup(deps: RestoreDeps, heading: string, items: readonly RestoreItem[]): void {
+  deps.print(heading);
+  for (const item of items) {
+    deps.print(`  ${item.label}   [${item.reason}; ${modeWords(item)}]   ${item.entry.projectDir}`);
+  }
+}
+
+const KEEP_HOURS = CLOSED_KEEP_MS / 3_600_000;
+
 /**
  * Reopens the sessions the last shutdown killed, after a countdown the person may cut short, turn into an
- * idle reopen of all, or cancel. Each is judged again just before its tab opens, since a second run or the
- * person may have reopened it meanwhile. Its entry counts the attempt before the tab opens, so a session that
- * keeps failing to resume is dropped after MAX_RESTORE_ATTEMPTS; a tab that did not open takes the count back.
- * The log says when the reopening starts and ends, and how far it got when its tab is closed meanwhile, so a
- * run that stopped short is never mistaken for one that finished (T1439).
+ * idle reopen of all, or cancel. The tabs closed outside a shutdown are listed apart and reopen only with `a`,
+ * unless no session is to restore: then they are what the person ran it for, and the countdown takes them.
+ * Each is judged again just before its tab opens, since a second run or the person may have reopened it
+ * meanwhile. Its entry counts the attempt before the tab opens, so a session that keeps failing to resume is
+ * dropped after MAX_RESTORE_ATTEMPTS; a tab that did not open takes the count back. The log says when the
+ * reopening starts and ends, and how far it got when its tab is closed meanwhile, so a run that stopped short is
+ * never mistaken for one that finished (T1439).
  */
 export async function runRestore(deps: RestoreDeps, since: number): Promise<RestoreRun> {
   const { facts, plan } = await planOf(deps, since);
   await prune(deps, plan.discard);
-  if (plan.restore.length === 0) {
+  if (plan.restore.length === 0 && plan.closed.length === 0) {
     deps.print('No Claude Code sessions to restore.');
     await deps.log('run: nothing to restore');
     return { opened: 0, failed: 0 };
   }
-  const items = await itemsOf(deps, facts, plan.restore);
-  deps.print(`Claude Code sessions the last shutdown interrupted (${items.length}):`);
-  for (const item of items) {
-    deps.print(`  ${item.label}   [${item.reason}; ${modeWords(item)}]   ${item.entry.projectDir}`);
+  const restored = await itemsOf(deps, facts, plan.restore);
+  const closed = await itemsOf(deps, facts, plan.closed);
+  const first = restored.length > 0 ? restored : closed;
+  const extra = restored.length > 0 ? closed : [];
+  if (restored.length > 0) {
+    printGroup(deps, `Claude Code sessions the last shutdown interrupted (${restored.length}):`, restored);
+  } else {
+    printGroup(deps, `Claude Code sessions closed outside a shutdown in the last ${KEEP_HOURS} h (${closed.length}):`, closed);
+  }
+  if (extra.length > 0) {
+    printGroup(deps, `Closed outside a shutdown in the last ${KEEP_HOURS} h (${extra.length}), reopened only with [a]:`, extra);
   }
   deps.print(
     'Sessions marked "continue" resume with a message to re-check the state and carry on (mid-turn, an API error, ' +
       'work live at the shutdown, or the lead); the others reopen idle, with no prompt.',
   );
-  const progress: Progress = { started: false, opened: 0, skipped: 0, failed: 0 };
+  const progress: Progress = { started: false, total: first.length, opened: 0, skipped: 0, failed: 0 };
   const unwatch = deps.stops.watch((signal) =>
-    deps.log(`run: interrupted by ${signal} ${progress.started ? `after ${progressWords(progress, items.length)}` : 'at the countdown'}`),
+    deps.log(`run: interrupted by ${signal} ${progress.started ? `after ${progressWords(progress)}` : 'at the countdown'}`),
   );
   try {
-    await reopenAll(deps, facts, items, progress);
+    await reopenAll(deps, facts, { first, extra }, progress);
   } finally {
     unwatch();
   }
   return { opened: progress.opened, failed: progress.failed };
 }
 
-async function reopenAll(deps: RestoreDeps, facts: JudgeFacts, items: readonly RestoreItem[], progress: Progress): Promise<void> {
-  const choice = await deps.countdown.choose(COUNTDOWN_SECONDS);
+/** The sessions a run reopens on its own (`first`), and the closed tabs it adds only on `a` (`extra`). */
+interface RunGroups {
+  readonly first: readonly RestoreItem[];
+  readonly extra: readonly RestoreItem[];
+}
+
+async function reopenAll(deps: RestoreDeps, facts: JudgeFacts, { first, extra }: RunGroups, progress: Progress): Promise<void> {
+  const choice = await deps.countdown.choose(COUNTDOWN_SECONDS, extra.length);
   if (choice === 'cancel') {
     deps.print('Cancelled: nothing was reopened. Run "teamrig restore run" to try again.');
     await deps.log('run: cancelled');
     return;
   }
-  const chosen = choice === 'idle' ? items.map((item): RestoreItem => ({ ...item, mode: 'idle', why: 'reopened idle' })) : items;
+  const taken = choice === 'all' ? [...first, ...extra] : first;
+  const chosen = choice === 'idle' ? taken.map((item): RestoreItem => ({ ...item, mode: 'idle', why: 'reopened idle' })) : taken;
   progress.started = true;
-  await deps.log(`run: started, ${chosen.length} to reopen${choice === 'idle' ? ', all idle' : ''}`);
+  progress.total = chosen.length;
+  const how = choice === 'idle' ? ', all idle' : choice === 'all' ? `, the ${extra.length} closed too` : '';
+  await deps.log(`run: started, ${chosen.length} to reopen${how}`);
   for (const [index, item] of chosen.entries()) {
     const outcome = await reopenItem(deps, facts, item, chosen);
     progress[outcome] += 1;
@@ -285,14 +323,15 @@ async function reopenAll(deps: RestoreDeps, facts: JudgeFacts, items: readonly R
       await deps.sleep(TAB_STAGGER_MS);
     }
   }
-  await deps.log(`run: done, ${progressWords(progress, chosen.length)}`);
+  await deps.log(`run: done, ${progressWords(progress)}`);
 }
 
 async function reopenItem(deps: RestoreDeps, facts: JudgeFacts, item: RestoreItem, items: readonly RestoreItem[]): Promise<'opened' | 'skipped' | 'failed'> {
   const id = item.entry.claudeSession;
   const current = await deps.registry.read(id);
   const recheck: Judgement = current === undefined ? { verdict: 'discard', reason: 'its entry is gone' } : judgeEntry(current, { ...facts, now: deps.clock.now() });
-  if (current === undefined || recheck.verdict !== 'restore') {
+  // A closed tab the person chose to reopen still judges `closed`; any other verdict means it needs no reopen now.
+  if (current === undefined || (recheck.verdict !== 'restore' && recheck.verdict !== 'closed')) {
     deps.print(`Skipped ${item.label} (${recheck.reason})`);
     await deps.log(`run: skipped ${id} (${recheck.reason})`);
     return 'skipped';

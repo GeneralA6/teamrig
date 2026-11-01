@@ -52,17 +52,22 @@ export class FakeShutdownLog implements ShutdownLog {
   }
 }
 
-/** A countdown the person answers with `choice` at once; it records each length it was asked to count. */
+/**
+ * A countdown the person answers with `choice` at once; it records each length it was asked to count, and how many
+ * closed tabs each call offered.
+ */
 export class FakeCountdown implements Countdown {
   readonly counted: number[] = [];
+  readonly offered: number[] = [];
   choice: RestoreChoice;
 
   constructor(choice: RestoreChoice = 'go') {
     this.choice = choice;
   }
 
-  async choose(seconds: number): Promise<RestoreChoice> {
+  async choose(seconds: number, closed: number): Promise<RestoreChoice> {
     this.counted.push(seconds);
+    this.offered.push(closed);
     return this.choice;
   }
 }
