@@ -10,6 +10,7 @@ import {
   extraRecordOf,
   fitWPerUsd,
   FULL_PCT,
+  limitSpansOf,
   parseExtraRecord,
   pastLimitOf,
   poolOf,
@@ -127,6 +128,28 @@ describe('wAtFullOf', () => {
 
   it('is unknown before the period reached 100%, whatever an earlier period reached', () => {
     assert.equal(wAtFullOf([line(START - MS_PER_WEEK, FULL_PCT, 800_000_000), line(START, 99, 890_000_000)], START), undefined);
+  });
+});
+
+describe('limitSpansOf', () => {
+  /** A meter line of the period starting at `start`, a week long unless `end` says otherwise. */
+  function line(at: number, usedPct: number, start: number, end: number = start + MS_PER_WEEK): MeterReading {
+    return { at, usedPct, start, end, w: 0, forecastPct: undefined };
+  }
+
+  it("spans each period from its earliest line at 100%, any team's, to the period's end, oldest first", () => {
+    const lastFull = START - 2 * MS_PER_HOUR;
+    const readings = [line(FULL_AT + MS_PER_HOUR, 101, START), line(FULL_AT, FULL_PCT, START), line(lastFull, FULL_PCT, START - MS_PER_WEEK), line(FULL_AT - MS_PER_HOUR, 99, START)];
+    assert.deepEqual(limitSpansOf(readings), [
+      { start: lastFull, end: START },
+      { start: FULL_AT, end: END },
+    ]);
+  });
+
+  it('ends a stretch where the next period began sooner, and gives none for a period below 100%', () => {
+    const reset = FULL_AT + 6 * MS_PER_HOUR;
+    assert.deepEqual(limitSpansOf([line(FULL_AT, FULL_PCT, START, END), line(reset + MS_PER_HOUR, 5, reset)]), [{ start: FULL_AT, end: reset }]);
+    assert.deepEqual(limitSpansOf([line(FULL_AT, 99, START)]), []);
   });
 });
 

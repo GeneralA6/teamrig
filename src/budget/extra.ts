@@ -1,6 +1,7 @@
 import type { Files } from '../core/files.ts';
 import { numberField, stringField, type JsonRecord } from '../core/guards.ts';
 import { assertWritable, parseJsonl, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
+import type { LimitSpan } from '../register/stats.ts';
 import type { MeterReading } from './calibration.ts';
 
 /**
@@ -151,6 +152,21 @@ export function poolOf(entries: readonly ExtraEntry[], sight: PoolSight): ExtraP
  */
 export function wAtFullOf(readings: readonly MeterReading[], start: number): number | undefined {
   return readings.find((reading) => reading.start === start && reading.usedPct >= FULL_PCT)?.w;
+}
+
+/**
+ * The stretches the account's week sat at its usage limit, oldest first, for the stats' `$` days (T1771): in each
+ * period, from its earliest meter log line at or past 100% (any team's line: the use is the account's) up to the
+ * period's end, or to the start of the next period the log shows when that came sooner (a reset the use's fall
+ * showed). The log keeps `READINGS_KEPT_MS` of lines (budget/calibration.ts), so an older stretch is gone.
+ */
+export function limitSpansOf(readings: readonly MeterReading[]): LimitSpan[] {
+  const starts = [...new Set(readings.map((reading) => reading.start))].sort((a, b) => a - b);
+  return starts.flatMap((start) => {
+    const first = readings.filter((reading) => reading.start === start && reading.usedPct >= FULL_PCT).sort((a, b) => a.at - b.at)[0];
+    const end = Math.min(first?.end ?? start, starts.find((next) => next > start) ?? Number.POSITIVE_INFINITY);
+    return first !== undefined && end > first.at ? [{ start: first.at, end }] : [];
+  });
 }
 
 function iso(at: number): string {
