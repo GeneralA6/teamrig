@@ -42,7 +42,10 @@ Flags:
   characters. A task id (`T12`) links the task to that task, which may be in another team of your tree:
   `inbox add --to task:T12` then reaches this task's owner too.
 - `--due <date>`: the deadline.
-- `--goals a,b`: goal tags, such as roadmap item ids.
+- `--goals a,b|none`: the goals the task serves, by tag, or `none`: it serves none. How the tags meet the team's
+  goals ([teamrig goal add](#teamrig-goal-add)) is `register.goals`: `free` (the default) takes any tag;
+  `checked` refuses a tag that is not a goal of the team or a team above it; `required` also needs an
+  owner-asked, p0 or p1 task to name its goal, or `none`.
 - `--week <date>`: puts the task in the week plan that starts on that day.
 - `--after T5,T6`: the tasks to finish before this one starts. It stays `open`, its line shows `after T5,T6`, and
   `check` does not count it as a waiting p1 (`PRIORITY-SKIP`) until they are done or dropped. Each of them
@@ -259,7 +262,8 @@ Flags:
 - `--priority p<n>`: a new priority.
 - `--ref <where>|none`: a new pointer, or `none` to clear it.
 - `--due <date>|none`: a new deadline, or `none` to clear it.
-- `--goals a,b|none`: new goal tags, or `none` to clear them.
+- `--goals a,b|none`: new goal tags, or `none`: the task serves no goal. Under `register.goals` `checked` or
+  `required` each tag must be a goal of the team or a team above it, as on `add`.
 - `--week <date>|none`: plan it into a week, or `none` to take it out.
 - `--after T5,T6|none`: plan it after these tasks, or `none` to clear it; only while it has not started: open, or
   waiting without ever starting, say on the owner's approval (a started task waits with
@@ -690,6 +694,122 @@ DONE Wed 10-14 · 4 done · 1 dropped
     T2 done, p1, owner api | Rate-limit the signup endpoint
   Other work (1) and dropped (1): teamrig report done --day 2026-10-14 --all
 ```
+
+### teamrig goal add
+
+Adds one of the team's goals; the lead only. A goal is a tag (`A1`, `A2.1`: a letter, then letters, digits, `.` or
+`-`, at most 24 characters; never `none`), a title and its planned window, from `--start` to `--target`. Tasks name
+the goals they serve with `--goals` on `add` and `update`; under `register.goals` `checked` or `required` each tag
+they name must be a goal of their team or a team above it. The team keeps its goals in `state/goals.jsonl`, each
+change appended to it.
+
+Flags:
+
+- `--session <id|name>`: the caller: the lead.
+- `--title "<title>"`: required; at most 140 characters.
+- `--target <YYYY-MM-DD>`: required: the day the goal is planned to be met.
+- `--start <YYYY-MM-DD>`: the window's first day (default today); not after `--target`.
+- `--parent <tag>`: the goal this one is part of; add that one first.
+
+Example:
+
+```sh
+teamrig goal add A1 --title "Ship the beta" --target 2026-11-01 --session lead
+```
+
+Output:
+
+```text
+ADDED goal A1 2026-10-12 to 2026-11-01 | Ship the beta
+```
+
+Refused, writing nothing: another session (`REFUSED only the lead (shop-lead) adds and changes the team's goals`),
+a tag already added (`goal A1 already exists; move its target with goal set`), a parent not added yet (`--parent C0
+is not a goal; add it first`) and a start after the target. A bad tag, day or title is a usage error.
+
+### teamrig goal set
+
+Moves a goal's target or renames it, with a note saying why; the lead only. A moved target is a slip: the goal keeps
+the day first planned and every slip with its note, so `goal show` says how far it moved and why.
+
+Flags:
+
+- `--session <id|name>`: the caller: the lead.
+- `--target <YYYY-MM-DD>`: the new target; not before the goal's start.
+- `--title "<title>"`: a new title.
+- `--note "<why>"`: required: why it changed.
+
+Example:
+
+```sh
+teamrig goal set A1 --target 2026-11-15 --note "the vendor is late" --session lead
+```
+
+Output:
+
+```text
+SET goal A1 2026-10-12 to 2026-11-15, 1 slip | Ship the beta
+```
+
+Refused, writing nothing: another session, a goal not added (`goal B9 does not exist; add it with goal add`), a set
+naming neither field (`goal set changes --target, --title or both`) or changing nothing (`goal A1 already reads so;
+nothing to change`), and a target before the start.
+
+### teamrig goal list
+
+Prints the team's goals as a tree, each part under the goal it is part of, with its window, its slips once it
+slipped (`, 1 slip`) and its title. A line of the
+goals file it cannot read is counted in a `WARN` on stderr; the rest still list.
+
+Flags:
+
+- `--session <id|name>`: the caller.
+
+Example:
+
+```sh
+teamrig goal list
+```
+
+Output:
+
+```text
+GOALS 4 (teamrig goal show <tag> prints one with its slips)
+  A1 2026-10-12 to 2026-11-01 | Ship the beta
+    A1.1 2026-10-13 to 2026-10-24, part of A1 | Login works
+    A2 2026-10-12 to 2026-11-10, part of A1 | Billing
+  B1 2026-10-12 to 2026-11-20 | Docs site
+```
+
+With none: `GOALS 0: the lead adds one with teamrig goal add <tag> --title "<title>" --target <YYYY-MM-DD>`.
+
+### teamrig goal show
+
+Prints one goal: its window (with the target first planned, once it slipped), who added it and when, its parts or
+the goal it is part of, and each slip with its note.
+
+Flags:
+
+- `--session <id|name>`: the caller.
+
+Example:
+
+```sh
+teamrig goal show A1
+```
+
+Output:
+
+```text
+A1 | Ship the public beta
+  window 2026-10-12 to 2026-11-15 (planned 2026-11-01)
+  added Mon 10-12 09:00 IDT by lead
+  parts A1.1
+  SLIPS 1
+    Tue 10-13 09:00 IDT lead: 2026-11-01 -> 2026-11-15 | the vendor is late
+```
+
+A goal the team does not have: `REFUSED B1 is not a goal of the team: teamrig goal list lists them`.
 
 ### teamrig files
 

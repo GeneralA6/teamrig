@@ -190,6 +190,13 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   report done [--day <YYYY-MM-DD>] [--session <id|name>] [--all]   one day of the team's done work
       (default yesterday) in groups: owner asked, each goal, urgent p1, this week's plan, each row shown;
       other work and dropped as one line, or their rows with --all; --session: one owner's tasks
+  goal add <tag> --title "<title>" --target <YYYY-MM-DD> [--start <YYYY-MM-DD>] [--parent <tag>]
+      the lead adds one of the team's goals: a tag (A1, A2.1), a title and its planned window from
+      --start (default today) to --target; --parent: the goal it is part of
+  goal set <tag> [--target <YYYY-MM-DD>] [--title "<title>"] --note "<why>"   the lead moves a goal's
+      target (a slip, kept with its note) or renames it
+  goal list   the team's goals as a tree, each with its window, slips and title
+  goal show <tag>   one goal: its window, who added it and when, its parts, and each slip with its note
   files <id> | files --notes [--session <id|name>]   prints the folder for a task's files (design.md,
       build.md, plan.md, review.md, evidence/, scripts/, out/) in the team that holds it, or for your notes
       that belong to no task; makes it when missing

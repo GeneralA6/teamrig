@@ -218,7 +218,13 @@ Three shapes, split by the list:
   refused (`note looks like it holds a secret (...); refer to where it is kept instead`). Write where the secret
   is kept, never the secret. A team may add its own patterns [register.secretPatterns].
 - **Source**: who asked: a session id, or `owner` for an order from the human [register.ownerSource].
-- **Goals**: free tags such as roadmap ids. A goal or a week tag is what ties a task to the plan.
+- **Goals**: the goals the task serves, by tag (`--goals A1,B2`), or `--goals none` when it serves none. A goal or a
+  week tag is what ties a task to the plan. The lead records the team's goals, each with its window and every slip
+  of its target (`teamrig goal add`, `goal set`, `goal list`, `goal show`). How tags meet them is the
+  [register.goals] mode. `free` (the default) takes any tag, `checked` refuses a tag that is not a goal of the team or
+  a team above it (`goal B9 is not a goal record of the team or a team above`: fix the tag, or have the goal
+  added), and `required` also needs an owner-asked, p0 or p1 `add` to name its goal or say `none` (`an
+  owner-asked task names its goal: --goals <tag>, or --goals none`).
 
 ## Inbox line or message
 
