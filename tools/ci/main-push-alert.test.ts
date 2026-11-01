@@ -4,6 +4,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { AUTHOR } from '../lib/temp-repo.ts';
 import {
   alertIssue,
+  ghCreateIssue,
+  ghMergedPullOf,
   GITHUB_COMMITTER,
   mainPushFromEvent,
   mayBeOutsidePullRequest,
@@ -75,6 +77,32 @@ describe('mergedPullEndingOn', () => {
 
   it('refuses an answer that is not a JSON array', () => {
     assert.throws(() => mergedPullEndingOn({ message: 'Not Found' }, AFTER), /not a JSON array/);
+  });
+});
+
+describe('the GitHub CLI adapters', () => {
+  /** A `gh` that records each call's arguments and prints the answer. */
+  function fakeGh(answer: string): { gh: (args: readonly string[]) => Promise<string>; calls: (readonly string[])[] } {
+    const calls: (readonly string[])[] = [];
+    return {
+      calls,
+      gh: async (args) => {
+        calls.push(args);
+        return answer;
+      },
+    };
+  }
+
+  it("asks GitHub for the commit's pull requests and names the merged one ending on it", async () => {
+    const { gh, calls } = fakeGh(JSON.stringify([{ number: 418, merged_at: '2026-11-01T12:46:00Z', merge_commit_sha: AFTER }]));
+    assert.equal(await ghMergedPullOf(gh)(AFTER), 418);
+    assert.deepEqual(calls, [['api', `repos/{owner}/{repo}/commits/${AFTER}/pulls`]]);
+  });
+
+  it('opens the issue with its title and body as arguments, and resolves with what gh prints', async () => {
+    const { gh, calls } = fakeGh('https://github.com/example/repo/issues/7\n');
+    assert.equal(await ghCreateIssue(gh)({ title: 'T', body: 'B $(x)' }), 'https://github.com/example/repo/issues/7\n');
+    assert.deepEqual(calls, [['issue', 'create', '--title', 'T', '--body', 'B $(x)']]);
   });
 });
 
