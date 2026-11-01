@@ -139,6 +139,7 @@ const EXPECTED = {
   'hook readonly-allow': 'internal',
   'hook picker-guard': 'internal',
   'hook prompt-refuse': 'internal',
+  'hook route-allow': 'internal',
   'hook refresh-wake': 'internal',
   'hook clear-dir': 'internal',
   'hook clear-claim': 'internal',
