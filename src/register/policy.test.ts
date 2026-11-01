@@ -31,6 +31,10 @@ const OWNER_DECISION: readonly WaitReason[] = [{ kind: 'decision', who: 'owner' 
 const RUN_TONIGHT: readonly WaitReason[] = [{ kind: 'time', at: '2030-01-08 22:00' }];
 /** The refusal of a verifying task that names no time or task its proof runs on. */
 const PROOF_RUN_NEEDED = `verifying needs --waits saying when its proof runs: ${PROOF_WAITS_USAGE}; if tests or a dry run proved it and its proof is a sighting, close it done with ${WATCH_USAGE} instead`;
+/** The goal tags of the team's goal records and those above it, under `register.goals` checked or required (T1730). */
+const KNOWN_GOALS: ReadonlySet<string> = new Set(['A1']);
+/** The refusal of goal tag Z9, which no goal record of the team or a team above holds. */
+const UNKNOWN_Z9 = 'goal Z9 is not a goal record of the team or a team above: teamrig goal list lists them';
 
 /** A register holding these tasks, its next id after the highest. */
 function stateOf(...tasks: Task[]): RegisterState {
@@ -117,6 +121,30 @@ describe('RegisterPolicy.add', () => {
     const verdict = policy.add({ ...INPUT, noGoal: true }, EMPTY);
     assert.deepEqual(verdict.ok ? [verdict.value.goals, verdict.value.noGoal] : undefined, [[], true]);
     assert.equal(error(policy.add({ ...INPUT, goals: ['A1'], noGoal: true }, EMPTY)), 'goals none says the task serves no goal, so it names none (asked: A1)');
+  });
+
+  it('holds goal tags to the goal records under register.goals checked or required, and any tag passes under free (T1730)', () => {
+    assert.equal(error(policy.add({ ...INPUT, goals: ['Z9'] }, EMPTY, NO_TASKS_ELSEWHERE, KNOWN_GOALS)), 'allowed', 'free');
+    for (const goals of ['checked', 'required'] as const) {
+      const held = new RegisterPolicy(testConfig({ register: { goals } }));
+      assert.equal(error(held.add({ ...INPUT, goals: ['A1', 'Z9'] }, EMPTY, NO_TASKS_ELSEWHERE, KNOWN_GOALS)), UNKNOWN_Z9, goals);
+      assert.equal(error(held.add({ ...INPUT, goals: ['A1'] }, EMPTY, NO_TASKS_ELSEWHERE, KNOWN_GOALS)), 'allowed', goals);
+      assert.equal(error(held.add({ ...INPUT, goals: ['A1'] }, EMPTY)), 'goal A1 is not a goal record of the team or a team above: teamrig goal list lists them', `${goals}, no records read`);
+    }
+  });
+
+  it('has an owner-asked or p0/p1 task name its goal or say it serves none under register.goals required (T1730)', () => {
+    const required = new RegisterPolicy(testConfig({ register: { goals: 'required' } }));
+    const unnamed = (asked: string) => `${asked} task names its goal: --goals <tag>, or --goals none (register.goals is required)`;
+    assert.equal(error(required.add({ ...INPUT, source: 'owner' }, EMPTY)), unnamed('an owner-asked'));
+    assert.equal(error(required.add({ ...INPUT, source: 'owner', priority: 1 }, EMPTY)), unnamed('an owner-asked'), 'the source is named first');
+    assert.equal(error(required.add({ ...INPUT, priority: 1 }, EMPTY)), unnamed('a p1'));
+    assert.equal(error(required.add({ ...INPUT, priority: 0 }, EMPTY)), unnamed('a p0'));
+    assert.equal(error(required.add({ ...INPUT, source: 'owner', priority: 1, goals: ['A1'] }, EMPTY, NO_TASKS_ELSEWHERE, KNOWN_GOALS)), 'allowed');
+    assert.equal(error(required.add({ ...INPUT, source: 'owner', priority: 1, noGoal: true }, EMPTY)), 'allowed');
+    assert.equal(error(required.add(INPUT, EMPTY)), 'allowed', "a session's p2 task");
+    const checked = new RegisterPolicy(testConfig({ register: { goals: 'checked' } }));
+    assert.equal(error(checked.add({ ...INPUT, source: 'owner', priority: 1 }, EMPTY)), 'allowed', 'checked has no task name a goal');
   });
 
   it('refuses an active task with the same title, but not a closed one', () => {
@@ -799,6 +827,12 @@ describe('RegisterPolicy.ask', () => {
     assert.deepEqual(asked.ok ? [asked.value.goals, asked.value.noGoal] : undefined, [[], true]);
   });
 
+  it('copies the goals of the waiting task without holding them to the goal records again (T1730)', () => {
+    const checked = new RegisterPolicy(testConfig({ register: { goals: 'checked' } }));
+    const asked = checked.ask(PLANNED, 'alpha', ASK, WAITING, stateOf(PLANNED));
+    assert.deepEqual(asked.ok ? asked.value.goals : error(asked), ['launch'], 'a tag named before register.goals was checked');
+  });
+
   it('asks only for its own started task, and only to wait on it', () => {
     assert.equal(error(asking(PLANNED, 'bravo')), 'only the owner (alpha) sets the status of T1');
     assert.equal(error(policy.ask(PLANNED, 'alpha', ASK, { status: 'done' }, stateOf(PLANNED))), '--ask goes only with --status waiting');
@@ -868,6 +902,17 @@ describe('RegisterPolicy.update', () => {
     assert.deepEqual(policy.update(TASK, 'alpha', { goals: ['A1'] }, undefined, EMPTY), { ok: true, value: { changes: { goals: ['A1'] }, note: null } }, 'a task without the mark changes only its goals');
     assert.deepEqual(policy.update(TASK, 'alpha', { goals: [], noGoal: true }, undefined, EMPTY), { ok: true, value: { changes: { goals: [], noGoal: true }, note: null } });
     assert.equal(error(policy.update(TASK, 'alpha', { goals: ['A1'], noGoal: true }, undefined, EMPTY)), 'goals none says the task serves no goal, so it names none (asked: A1)');
+  });
+
+  it('holds only the goals an update names to the goal records, so a tag the task had blocks no other change (T1730)', () => {
+    const checked = new RegisterPolicy(testConfig({ register: { goals: 'checked' } }));
+    const tagged = testTask({ ...TASK, goals: ['Z9'] });
+    assert.equal(error(checked.update(tagged, 'alpha', { priority: 1 }, undefined, EMPTY)), 'allowed');
+    assert.equal(error(checked.update(tagged, 'alpha', { goals: ['A1', 'Z9'] }, undefined, EMPTY, NO_TASKS_ELSEWHERE, KNOWN_GOALS)), UNKNOWN_Z9);
+    assert.equal(error(checked.update(tagged, 'alpha', { goals: ['A1'] }, undefined, EMPTY, NO_TASKS_ELSEWHERE, KNOWN_GOALS)), 'allowed');
+    assert.equal(error(checked.update(tagged, 'alpha', { goals: [], noGoal: true }, undefined, EMPTY)), 'allowed', 'goals none names no tag');
+    const required = new RegisterPolicy(testConfig({ register: { goals: 'required' } }));
+    assert.equal(error(required.update(TASK, 'alpha', { priority: 1 }, undefined, EMPTY)), 'allowed', 'required asks a goal only of a new task');
   });
 
   it("lets a sub-lead set its group's work order and keep the work in its group, never another group's (T782)", () => {
@@ -1007,6 +1052,13 @@ describe('RegisterPolicy.addFromTeam', () => {
     assert.equal(error(policy.addFromTeam({ ...FROM_TEAM, owner: 'zulu' }, EMPTY)), 'owner zulu is not a session on this team');
     assert.equal(error(policy.addFromTeam({ ...FROM_TEAM, source: 'lead' }, EMPTY)), "source lead is not the asking session's <team>/<id>");
     assert.match(error(policy.add({ ...INPUT, source: 'app/lead' }, EMPTY)), /source app.lead is neither a session id nor owner/);
+  });
+
+  it("holds its goal tags to this team's goal records, and leaves naming a goal to the asking team (T1730)", () => {
+    const required = new RegisterPolicy(testConfig({ register: { goals: 'required' } }));
+    assert.equal(error(required.addFromTeam({ ...FROM_TEAM, goals: ['Z9'] }, EMPTY, NO_TASKS_ELSEWHERE, KNOWN_GOALS)), UNKNOWN_Z9);
+    assert.equal(error(required.addFromTeam({ ...FROM_TEAM, goals: ['A1'] }, EMPTY, NO_TASKS_ELSEWHERE, KNOWN_GOALS)), 'allowed');
+    assert.equal(error(required.addFromTeam({ ...FROM_TEAM, priority: 1 }, EMPTY)), 'allowed', 'a p1 ask without goals');
   });
 });
 

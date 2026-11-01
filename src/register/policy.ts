@@ -7,6 +7,7 @@ import { SecretScanner } from '../core/secrets.ts';
 import { parseDeadline, parseUtcDay, parseUtcDeadline, showStored } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { waitAnswerersOf } from './approval.ts';
+import { NO_GOAL_TAGS } from './goals.ts';
 import { CARD_FLAGS, cardProblem, cardTexts, GATE_FLAG, gateOf, gateUsage, keptCard, OPTION_SEPARATOR, sameCard, WHY_ASK_FLAG, whyAskUsage, type DecisionCard } from './card.ts';
 import { ITEM_TYPES, sizeProblem, type ApprovalVerdict, type ItemType, type TaskFieldName, type TaskFields } from './events.ts';
 import { isRepark, taskNumber, type RegisterState, type Task } from './fold.ts';
@@ -241,20 +242,27 @@ export class RegisterPolicy {
       : `${session} is not a session on this team (sessions: ${this.config.sessions.join(', ')})`;
   }
 
-  /** `elsewhere`: the tasks the team tree's other registers hold, which `--after` may name. */
-  add(input: AddInput, state: RegisterState, elsewhere: TasksElsewhere = NO_TASKS_ELSEWHERE): Verdict<TaskFields> {
-    return this.create(input, state, (source) => this.teamSourceProblem(source), elsewhere);
+  /**
+   * `elsewhere`: the tasks the team tree's other registers hold, which `--after` may name. `goalTags`: the tags of the
+   * goal records of the team and every team above it, which a goal tag must be under `register.goals` checked or
+   * required; under required, an owner-asked or p0/p1 task also names its goal or says it serves none (T1730).
+   */
+  add(input: AddInput, state: RegisterState, elsewhere: TasksElsewhere = NO_TASKS_ELSEWHERE, goalTags: ReadonlySet<string> = NO_GOAL_TAGS): Verdict<TaskFields> {
+    const created = this.create(input, state, (source) => this.teamSourceProblem(source), elsewhere, goalTags);
+    const unnamed = created.ok ? this.unnamedGoalProblem(created.value) : undefined;
+    return unnamed === undefined ? created : refuse(unnamed);
   }
 
   /**
    * A task a session of another team in the tree asks of this team (T1141): its source is the asker's `<team>/<id>`,
-   * and any session of this team may own it, as for a task of the team's own.
+   * and any session of this team may own it, as for a task of the team's own. Its goal tags are held to this team's
+   * goal records and those above it, as on `add`; naming a goal is left to the asking team's own rule.
    */
-  addFromTeam(input: AddInput, state: RegisterState, elsewhere: TasksElsewhere = NO_TASKS_ELSEWHERE): Verdict<TaskFields> {
-    return this.create(input, state, (source) => (ADDRESS_PATTERN.test(source) ? undefined : `source ${source} is not the asking session's <team>/<id>`), elsewhere);
+  addFromTeam(input: AddInput, state: RegisterState, elsewhere: TasksElsewhere = NO_TASKS_ELSEWHERE, goalTags: ReadonlySet<string> = NO_GOAL_TAGS): Verdict<TaskFields> {
+    return this.create(input, state, (source) => (ADDRESS_PATTERN.test(source) ? undefined : `source ${source} is not the asking session's <team>/<id>`), elsewhere, goalTags);
   }
 
-  private create(input: AddInput, state: RegisterState, sourceRule: SourceRule, elsewhere: TasksElsewhere = NO_TASKS_ELSEWHERE): Verdict<TaskFields> {
+  private create(input: AddInput, state: RegisterState, sourceRule: SourceRule, elsewhere: TasksElsewhere, goalTags: ReadonlySet<string>): Verdict<TaskFields> {
     const fields: TaskFields = {
       title: input.title.trim(),
       description: blankToNull(input.description),
@@ -275,7 +283,7 @@ export class RegisterPolicy {
     if (fields.description === null && this.config.register.requireDescription) {
       return refuse(DESCRIPTION_NEEDED);
     }
-    const problem = this.checkFields(fields, sourceRule) ?? afterProblem(null, fields.after, state, elsewhere);
+    const problem = this.checkFields(fields, sourceRule) ?? afterProblem(null, fields.after, state, elsewhere) ?? this.goalProblem(fields.goals, goalTags);
     if (problem !== undefined) {
       return refuse(problem);
     }
@@ -321,7 +329,8 @@ export class RegisterPolicy {
       noGoal: task.noGoal,
       ...(ask.due === undefined ? {} : { due: ask.due }),
     };
-    return this.create(asked, state, (source) => this.teamSourceProblem(source));
+    // The asked task carries the goals of the task that waits on it, held to the goal records when they were named.
+    return this.create(asked, state, (source) => this.teamSourceProblem(source), NO_TASKS_ELSEWHERE, new Set(task.goals));
   }
 
   setStatus(task: Task, caller: string, input: StatusInput, context: StatusContext): Verdict<StatusChange> {
@@ -751,7 +760,10 @@ export class RegisterPolicy {
     return ok({ by, changes: { pin: by }, note: null });
   }
 
-  /** `elsewhere`: the tasks the team tree's other registers hold, which `--after` may name. */
+  /**
+   * `elsewhere`: the tasks the team tree's other registers hold, which `--after` may name. `goalTags`: as on `add`,
+   * which only the goals the update names are held to, so a tag the task had before never blocks another change.
+   */
   update(
     task: Task,
     caller: string,
@@ -759,6 +771,7 @@ export class RegisterPolicy {
     note: string | undefined,
     state: RegisterState,
     elsewhere: TasksElsewhere = NO_TASKS_ELSEWHERE,
+    goalTags: ReadonlySet<string> = NO_GOAL_TAGS,
   ): Verdict<UpdateChange> {
     const changes = clearNoGoal(task, clearCritical(task, trimDescription(asked)));
     const names = Object.keys(changes).filter((name): name is TaskFieldName => name in changes);
@@ -788,8 +801,28 @@ export class RegisterPolicy {
     // A task keeps the source it was added with, even one from the parent team's lead.
     const sourceRule: SourceRule = (source) => (source === task.source ? undefined : this.teamSourceProblem(source));
     const after = changes.after === undefined ? undefined : afterChangeProblem(task, changes.after, state, elsewhere);
-    const problem = after ?? this.checkFields(merged, sourceRule) ?? this.checkText('note', text);
+    const goals = changes.goals === undefined ? undefined : this.goalProblem(changes.goals, goalTags);
+    const problem = after ?? this.checkFields(merged, sourceRule) ?? goals ?? this.checkText('note', text);
     return problem === undefined ? ok({ changes, note: text }) : refuse(problem);
+  }
+
+  /** Why `goals` cannot be named under `register.goals` checked or required: one is no tag of `goalTags`. */
+  private goalProblem(goals: readonly string[], goalTags: ReadonlySet<string>): string | undefined {
+    if (this.config.register.goals === 'free') {
+      return undefined;
+    }
+    const unknown = goals.find((goal) => !goalTags.has(goal));
+    return unknown === undefined ? undefined : `goal ${unknown} is not a goal record of the team or a team above: teamrig goal list lists them`;
+  }
+
+  /** Why a new task must name its goal under `register.goals` required: it is owner-asked or p0/p1 and names none. */
+  private unnamedGoalProblem(fields: TaskFields): string | undefined {
+    const { goals, ownerSource } = this.config.register;
+    if (goals !== 'required' || fields.goals.length > 0 || fields.noGoal) {
+      return undefined;
+    }
+    const asked = fields.source === ownerSource ? 'an owner-asked' : fields.priority <= 1 ? `a ${priorityText(fields.priority)}` : undefined;
+    return asked === undefined ? undefined : `${asked} task names its goal: --goals <tag>, or --goals none (register.goals is required)`;
   }
 
   /**
