@@ -1,6 +1,7 @@
 import { win32 } from 'node:path';
 import { powerShellRequest } from '../core/powershell.ts';
-import type { ProgramResult, ProgramRunner } from '../github/credentials.ts';
+import type { ProgramRunner } from '../github/credentials.ts';
+import { powerShellOutput } from './powershell-output.ts';
 
 /** The entry that has the system run one command at each logon of this user: the restore's check. */
 export interface LogonEntry {
@@ -61,24 +62,14 @@ function windowsRunValue(systemRoot: string, run: ProgramRunner): LogonEntry {
     where: `${WINDOWS_RUN_KEY} ${RESTORE_RUN_VALUE}`,
     commandFor: (node, script) => `"${conhost}" --headless "${node}" "${script}"`,
     async read() {
-      const printed = succeeded(await run(powerShellRequest(WINDOWS_READ_SCRIPT))).trim();
+      const printed = powerShellOutput(await run(powerShellRequest(WINDOWS_READ_SCRIPT))).trim();
       return printed === '' ? undefined : Buffer.from(printed, 'base64').toString('utf8');
     },
     async write(command) {
-      succeeded(await run(powerShellRequest(windowsWriteScript(command))));
+      powerShellOutput(await run(powerShellRequest(windowsWriteScript(command))));
     },
     async remove() {
-      succeeded(await run(powerShellRequest(WINDOWS_REMOVE_SCRIPT)));
+      powerShellOutput(await run(powerShellRequest(WINDOWS_REMOVE_SCRIPT)));
     },
   };
-}
-
-/** The output of a run that exited 0; any other end throws with the first line it printed. */
-function succeeded(result: ProgramResult): string {
-  if (result.end.kind === 'exited' && result.end.code === 0) {
-    return result.stdout;
-  }
-  const said = `${result.stderr}\n${result.stdout}`.split(/\r?\n/).find((line) => line.trim() !== '')?.trim() ?? 'no error text';
-  const end = result.end.kind === 'exited' ? `exit ${result.end.code}` : `signal ${result.end.signal}`;
-  throw new Error(`PowerShell ended with ${end}: ${said}`);
 }
