@@ -21,6 +21,7 @@ import { weekLineOf } from "./budget.js";
 import { inboxDepsOf, read } from "./inbox.js";
 import { agendaMeetingLines, meetingEndScheduled, meetingStartScheduled } from "./meetings.js";
 import { taskTreeOf, weekFitOf } from "./register.js";
+import { foldStats, statsTopLines } from "./stats.js";
 /**
  * The caller's team, refused unless the caller is its lead and the team a root team: the meeting is the lead's with the
  * owner, and a child team's waits on the owner go up to the lead at its tree's root, whose agenda lists them (T509).
@@ -107,13 +108,19 @@ async function mergeDigestOf(runtime, mk, since) {
     const gated = mk.config.pushGuard.pushToProtected === 'gated';
     return { log: await new MergeLog(runtime.files, merges).read(), since, zone: mk.zone, gated, path: merges };
 }
+/** The range of the stats the agenda opens with: the last week, as `stats` reads by default. */
+export const AGENDA_STATS_RANGE = '7d';
 /**
- * The agenda: the register's part (decisions, with those of every team under the lead's, then late and done), today's
- * scheduled meetings and the missed ones, the self-merges since the meeting before, the lead's inbox marked read, then
- * the week's use and, under it, the planned week's fit (as `plan` gives it).
+ * The agenda: the stats' top lines over the lead's tree (Health, flow, the days at the usage limit; statsTopLines, the
+ * fold `stats` and the pane's Stats tab print), the register's part (decisions, with those of every team under the
+ * lead's, then late and done), today's scheduled meetings and the missed ones, the self-merges since the meeting
+ * before, the lead's inbox marked read, then the week's use and, under it, the planned week's fit (as `plan` gives it).
  */
 async function printAgenda(args, runtime, mk, phase) {
-    const { own, teams } = await meetingRegisters(runtime, mk);
+    const rolled = await meetingRegisters(runtime, mk);
+    const { own, teams } = rolled;
+    statsTopLines(await foldStats(runtime, rolled, AGENDA_STATS_RANGE), own.team, teams.map((team) => team.team)).forEach((line) => runtime.out.stdout(line));
+    runtime.out.stdout(`  each other section: ${KIT_NAME} stats --tree --session ${mk.lead} (new work, speed, delays, waits, bugs, people)`);
     const { snapshot } = own;
     const since = agendaSince(previousEnd(phase), mk.now);
     const lines = agendaLines({
