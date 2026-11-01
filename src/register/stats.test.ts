@@ -110,6 +110,13 @@ describe('registerStats: the days', () => {
     ]);
     assert.deepEqual([stats.net, stats.recent], [0, { days: 28, net: 1 }]);
   });
+
+  it("marks each zone day a limit stretch overlaps, its end excluded, and none with no stretch", () => {
+    const limits = [{ start: Date.parse('2030-01-07T21:30:00.000Z'), end: Date.parse('2030-01-08T22:00:00.000Z') }];
+    const marked = (stats: RegisterStats): string[] => stats.days.filter((day) => day.atLimit).map((day) => day.day);
+    assert.deepEqual(marked(statsOf([], '7d', { limits })), ['2030-01-07', '2030-01-08']);
+    assert.deepEqual(marked(statsOf([])), []);
+  });
 });
 
 describe('registerStats: moved tasks', () => {

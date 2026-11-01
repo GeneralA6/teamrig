@@ -64,6 +64,14 @@ export interface StatsInput {
   /** The config's `register.ownerSource`: a task with this source is the owner's ask. */
   readonly ownerMarker: string;
   readonly session?: StatsScope;
+  /** The stretches the account's week sat at its usage limit (budget/extra.ts `limitSpansOf`); none when unread. */
+  readonly limits?: readonly LimitSpan[];
+}
+
+/** A stretch the account's week sat at its usage limit, in ms: from its 100% crossing up to, not including, `end`. */
+export interface LimitSpan {
+  readonly start: number;
+  readonly end: number;
 }
 
 export interface StatsDay {
@@ -75,6 +83,8 @@ export interface StatsDay {
   readonly dropped: number;
   /** The active tasks in each status at the day's end. */
   readonly active: ActiveCounts;
+  /** True when the week sat at its usage limit for part of the day (the `$` mark): its quiet is no slack. */
+  readonly atLimit: boolean;
 }
 
 /** Durations in days: the median and the 85th percentile, linearly interpolated; null with no durations. */
@@ -256,7 +266,7 @@ export function registerStats(input: StatsInput): RegisterStats {
   const clock: Clock = { now, zone, window: dayWindow(first, today, zone) };
   const series = new DaySeries(daySpans(first, today, zone), clock.window.end);
   const dueMoved = teams.reduce((count, team) => count + sweep(team, series, clock.window), 0);
-  const days = series.days();
+  const days = series.days(input.limits ?? []);
   const tasks = held.map((each) => each.task);
   const active = tasks.filter((task) => isActive(task.status));
   const created = held.filter((each) => within(clock.window, each.task.createdAt));
@@ -393,14 +403,16 @@ class DaySeries {
     }
   }
 
-  days(): StatsDay[] {
+  /** The days in order, each marked when one of `limits` overlaps it. */
+  days(limits: readonly LimitSpan[]): StatsDay[] {
     const running = { ...this.base };
     return this.spans.map((span, index) => {
       const day = this.counts[index];
       for (const status of STATS_ACTIVE_STATUSES) {
         running[status] += day?.moves[status] ?? 0;
       }
-      return { day: span.day, opened: day?.opened ?? 0, done: day?.done ?? 0, dropped: day?.dropped ?? 0, active: { ...running } };
+      const atLimit = limits.some((limit) => limit.start < span.end && limit.end > span.start);
+      return { day: span.day, opened: day?.opened ?? 0, done: day?.done ?? 0, dropped: day?.dropped ?? 0, active: { ...running }, atLimit };
     });
   }
 
