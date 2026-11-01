@@ -46,6 +46,8 @@ export interface AddInput {
   readonly priority: number;
   readonly due?: string;
   readonly goals?: readonly string[];
+  /** Said to serve no goal (`--goals none`); never with `goals`. */
+  readonly noGoal?: boolean;
   readonly week?: string;
   readonly after?: readonly string[];
   /** What the task costs, in percent of the weekly usage limit. */
@@ -262,6 +264,7 @@ export class RegisterPolicy {
       priority: input.priority,
       due: input.due ?? null,
       goals: input.goals ?? [],
+      noGoal: input.noGoal ?? false,
       week: input.week ?? null,
       after: input.after ?? [],
       size: input.size ?? null,
@@ -282,7 +285,7 @@ export class RegisterPolicy {
 
   /**
    * The task `set <id> --status waiting --ask <session> --text "<the work>"` creates, which `task` then waits on: the
-   * asked session's, from the caller, at `task`'s priority and with its goals (the work serves the same plan), its
+   * asked session's, from the caller, at `task`'s priority and with its goals or none (the work serves the same plan), its
    * description naming `task`. Only the owner asks for its task, only with `waiting` (the asked task starts open, and
    * a proof waits only on a task in progress or verifying, T1306) and only once started: one not started keeps its
    * status, planned after the asked task. An active task of the same title is waited on instead.
@@ -315,6 +318,7 @@ export class RegisterPolicy {
       source: caller,
       priority: task.priority,
       goals: task.goals,
+      noGoal: task.noGoal,
       ...(ask.due === undefined ? {} : { due: ask.due }),
     };
     return this.create(asked, state, (source) => this.teamSourceProblem(source));
@@ -756,7 +760,7 @@ export class RegisterPolicy {
     state: RegisterState,
     elsewhere: TasksElsewhere = NO_TASKS_ELSEWHERE,
   ): Verdict<UpdateChange> {
-    const changes = clearCritical(task, trimDescription(asked));
+    const changes = clearNoGoal(task, clearCritical(task, trimDescription(asked)));
     const names = Object.keys(changes).filter((name): name is TaskFieldName => name in changes);
     const text = blankToNull(note);
     if (names.length === 0) {
@@ -827,7 +831,7 @@ export class RegisterPolicy {
    * the duplicate-title rule does not apply.
    */
   importAdd(input: ImportInput, state: RegisterState): Verdict<TaskFields> {
-    const fields: TaskFields = { ...input, source: GITHUB_SOURCE, due: null, goals: [], week: null, after: [], size: null, type: null, critical: false, pin: null };
+    const fields: TaskFields = { ...input, source: GITHUB_SOURCE, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null };
     const holder = [...state.tasks.values()].find((task) => task.source === GITHUB_SOURCE && task.ref === input.ref);
     if (holder !== undefined) {
       return refuse(`${holder.id} already has ref ${input.ref}`);
@@ -929,6 +933,9 @@ export class RegisterPolicy {
     if (badGoal !== undefined) {
       return `goal ${badGoal} does not match ${register.goalPattern}`;
     }
+    if (fields.noGoal && fields.goals.length > 0) {
+      return `goals none says the task serves no goal, so it names none (asked: ${fields.goals.join(', ')})`;
+    }
     if (fields.description !== null && fields.description.length > MAX_DESCRIPTION) {
       return `the description has ${fields.description.length} characters; the limit is ${MAX_DESCRIPTION}`;
     }
@@ -955,8 +962,13 @@ export class RegisterPolicy {
 const OWN_LIMITS: readonly string[] = ['title', 'description'];
 
 function pickFields(task: Task): TaskFields {
-  const { title, description, owner, source, ref, priority, due, goals, week, after, size, type, critical, pin } = task;
-  return { title, description, owner, source, ref, priority, due, goals, week, after, size, type, critical, pin };
+  const { title, description, owner, source, ref, priority, due, goals, noGoal, week, after, size, type, critical, pin } = task;
+  return { title, description, owner, source, ref, priority, due, goals, noGoal, week, after, size, type, critical, pin };
+}
+
+/** An update naming goals for a task said to serve none also clears that mark, which a task with goals cannot hold. */
+function clearNoGoal(task: Task, changes: Partial<TaskFields>): Partial<TaskFields> {
+  return changes.goals !== undefined && changes.goals.length > 0 && changes.noGoal === undefined && task.noGoal ? { ...changes, noGoal: false } : changes;
 }
 
 /** The types an item can be critical in, those that give the review: `bug`, or `bug|incident`. */

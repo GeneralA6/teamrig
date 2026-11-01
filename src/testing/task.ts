@@ -12,6 +12,7 @@ export function testTask(overrides: Partial<Task> = {}): Task {
     priority: 2,
     due: null,
     goals: [],
+    noGoal: false,
     week: null,
     after: [],
     size: null,

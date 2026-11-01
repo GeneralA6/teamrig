@@ -54,7 +54,7 @@ describe('RegisterPolicy.add', () => {
     const verdict = policy.add({ ...INPUT, title: '  Add a health check ' }, EMPTY);
     assert.deepEqual(verdict, {
       ok: true,
-      value: { title: 'Add a health check', description: 'what and why', owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], week: null, after: [], size: null, type: null, critical: false, pin: null },
+      value: { title: 'Add a health check', description: 'what and why', owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null },
     });
   });
 
@@ -113,9 +113,15 @@ describe('RegisterPolicy.add', () => {
     assert.equal(strict.add({ ...INPUT, goals: ['G1'] }, EMPTY).ok, true);
   });
 
+  it('keeps a task said to serve no goal, and refuses that mark beside goals (T1730)', () => {
+    const verdict = policy.add({ ...INPUT, noGoal: true }, EMPTY);
+    assert.deepEqual(verdict.ok ? [verdict.value.goals, verdict.value.noGoal] : undefined, [[], true]);
+    assert.equal(error(policy.add({ ...INPUT, goals: ['A1'], noGoal: true }, EMPTY)), 'goals none says the task serves no goal, so it names none (asked: A1)');
+  });
+
   it('refuses an active task with the same title, but not a closed one', () => {
     const open = foldEvents([
-      { v: 1, type: 'create', id: 'T4', at: TASK.createdAt, by: 'lead', task: { ...INPUT, description: null, ref: null, due: null, goals: [], week: null, after: [], size: null, type: null, critical: false, pin: null } },
+      { v: 1, type: 'create', id: 'T4', at: TASK.createdAt, by: 'lead', task: { ...INPUT, description: null, ref: null, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null } },
     ]);
     assert.match(error(policy.add({ ...INPUT, title: 'add a  HEALTH check' }, open)), /T4 already tracks this \(open, owner alpha\)/);
     const closed = foldEvents([
@@ -774,6 +780,7 @@ describe('RegisterPolicy.ask', () => {
         priority: 1,
         due: '2030-01-10',
         goals: ['launch'],
+        noGoal: false,
         week: null,
         after: [],
         size: null,
@@ -784,6 +791,12 @@ describe('RegisterPolicy.ask', () => {
     });
     const undated = asking(PLANNED, 'alpha', { owner: 'alpha', title: 'Write the migration' });
     assert.equal(undated.ok && undated.value.due, null, 'no --due leaves the task undated; a session may ask itself');
+  });
+
+  it('copies the no-goal mark of a task said to serve no goal (T1730)', () => {
+    const offPlan = testTask({ ...PLANNED, goals: [], noGoal: true });
+    const asked = asking(offPlan);
+    assert.deepEqual(asked.ok ? [asked.value.goals, asked.value.noGoal] : undefined, [[], true]);
   });
 
   it('asks only for its own started task, and only to wait on it', () => {
@@ -847,6 +860,14 @@ describe('RegisterPolicy.update', () => {
     assert.deepEqual(policy.update(criticalBug, 'alpha', { type: 'task' }, undefined, EMPTY), { ok: true, value: { changes: { type: 'task', critical: false }, note: null } });
     assert.deepEqual(policy.update(criticalBug, 'alpha', { critical: false }, undefined, EMPTY), { ok: true, value: { changes: { critical: false }, note: null } });
     assert.equal(error(policy.update(criticalBug, 'alpha', { type: 'task', critical: true }, undefined, EMPTY)), 'critical marks only a bug: give --type bug too', 'an asked mark is never cleared');
+  });
+
+  it('clears the no-goal mark when goals are named, and refuses goals beside the mark (T1730)', () => {
+    const offPlan = testTask({ ...TASK, noGoal: true });
+    assert.deepEqual(policy.update(offPlan, 'alpha', { goals: ['A1'] }, undefined, EMPTY), { ok: true, value: { changes: { goals: ['A1'], noGoal: false }, note: null } });
+    assert.deepEqual(policy.update(TASK, 'alpha', { goals: ['A1'] }, undefined, EMPTY), { ok: true, value: { changes: { goals: ['A1'] }, note: null } }, 'a task without the mark changes only its goals');
+    assert.deepEqual(policy.update(TASK, 'alpha', { goals: [], noGoal: true }, undefined, EMPTY), { ok: true, value: { changes: { goals: [], noGoal: true }, note: null } });
+    assert.equal(error(policy.update(TASK, 'alpha', { goals: ['A1'], noGoal: true }, undefined, EMPTY)), 'goals none says the task serves no goal, so it names none (asked: A1)');
   });
 
   it("lets a sub-lead set its group's work order and keep the work in its group, never another group's (T782)", () => {
@@ -999,7 +1020,7 @@ describe('RegisterPolicy, the GitHub import', () => {
     const team = testTask({ title: 'Fix login', ref: 'gh:acme/web#7' });
     assert.deepEqual(policy.importAdd(ISSUE, stateOf(team)), {
       ok: true,
-      value: { title: 'Fix login', description: null, owner: 'bravo', source: 'github', ref: 'gh:acme/web#7', priority: 1, due: null, goals: [], week: null, after: [], size: null, type: null, critical: false, pin: null },
+      value: { title: 'Fix login', description: null, owner: 'bravo', source: 'github', ref: 'gh:acme/web#7', priority: 1, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null },
     });
     assert.equal(error(policy.importAdd(ISSUE, stateOf(team, IMPORTED))), 'T2 already has ref gh:acme/web#7');
     assert.equal(error(policy.importAdd({ ...ISSUE, owner: 'octocat' }, EMPTY)), 'owner octocat is not a session on this team');
