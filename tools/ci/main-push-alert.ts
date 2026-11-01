@@ -1,3 +1,4 @@
+import { mainPushAlertTitle } from '../../src/github/main-push-alert-title.ts';
 import { EXIT_CLEAN } from '../lib/exit.ts';
 import { isRecord, recordField, stringField } from '../lib/guards.ts';
 import type { ReadText } from './github-range.ts';
@@ -93,9 +94,8 @@ export function mergedPullEndingOn(pulls: unknown, sha: string): number | undefi
 
 /** The issue that reports the push, with what to check and how to undo it. */
 export function alertIssue(push: MainPush): AlertIssue {
-  const how = push.forced ? 'Force push' : 'Push';
   return {
-    title: `${how} to main outside a pull request, by ${push.pusher}`,
+    title: mainPushAlertTitle(push.forced, push.pusher),
     body: [
       `${push.pusher} changed main without a pull request. Every change lands on main through a pull request (CONTRIBUTING.md).`,
       '',
