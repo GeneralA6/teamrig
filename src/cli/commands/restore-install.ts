@@ -1,6 +1,6 @@
 import { errorMessage } from '../../core/guards.ts';
 import { resolveKitHome } from '../../core/home.ts';
-import { RESTORE_LAUNCHER_SCRIPT, restoreLauncherPath } from '../../restore/launcher.ts';
+import { RESTORE_CHECK_LAUNCHER_SCRIPT, restoreCheckLauncherPath } from '../../restore/launcher.ts';
 import type { LogonEntry } from '../../restore/logon.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
@@ -30,9 +30,9 @@ export async function restoreInstall(args: ParsedArgs, runtime: CliRuntime): Pro
   const { entry, launcher } = machineOf(runtime, 'set up');
   const command = entry.commandFor(runtime.self.node, launcher);
   const before = await entry.read();
-  const launcherStale = (await runtime.files.read(launcher)) !== RESTORE_LAUNCHER_SCRIPT;
+  const launcherStale = (await runtime.files.read(launcher)) !== RESTORE_CHECK_LAUNCHER_SCRIPT;
   const steps: Step[] = [
-    ...(launcherStale ? [{ line: `WRITE ${launcher}`, act: () => runtime.files.write(launcher, RESTORE_LAUNCHER_SCRIPT) }] : []),
+    ...(launcherStale ? [{ line: `WRITE ${launcher}`, act: () => runtime.files.write(launcher, RESTORE_CHECK_LAUNCHER_SCRIPT) }] : []),
     ...(before === command ? [] : [{ line: `SET ${entry.where}: ${before ?? '(none)'} -> ${command}`, act: () => entry.write(command) }]),
   ];
   return apply(args, runtime, steps, `${entry.where}: the restore check already runs at logon`);
@@ -93,5 +93,5 @@ function machineOf(runtime: CliRuntime, verb: string): Machine {
   if (entry === undefined) {
     throw new RefusedError(`teamrig can ${verb} the logon check on Windows only so far, not on ${runtime.platform}; after a crash or reboot, run teamrig restore run`);
   }
-  return { entry, launcher: restoreLauncherPath(resolveKitHome(runtime.env, runtime.userHome)) };
+  return { entry, launcher: restoreCheckLauncherPath(resolveKitHome(runtime.env, runtime.userHome)) };
 }

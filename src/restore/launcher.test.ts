@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { writePluginList, type PluginListFixture } from '../testing/plugin-list.ts';
-import { RESTORE_LAUNCHER_SCRIPT, restoreLauncherPath } from './launcher.ts';
+import { RESTORE_CHECK_LAUNCHER_SCRIPT, restoreCheckLauncherPath } from './launcher.ts';
 
 /** A stand-in CLI that writes the words it was given to the file ARGV_OUT names. */
 const RECORDING_CLI = "import { writeFileSync } from 'node:fs';\nwriteFileSync(process.env.ARGV_OUT, JSON.stringify(process.argv.slice(2)));\n";
@@ -35,9 +35,9 @@ function logon(fixture: PluginListFixture): Logon {
   try {
     const config = writePluginList(root, fixture, RECORDING_CLI);
     const kitHome = join(root, 'my kit');
-    const launcher = restoreLauncherPath(kitHome);
+    const launcher = restoreCheckLauncherPath(kitHome);
     mkdirSync(join(kitHome, 'bin'), { recursive: true });
-    writeFileSync(launcher, RESTORE_LAUNCHER_SCRIPT);
+    writeFileSync(launcher, RESTORE_CHECK_LAUNCHER_SCRIPT);
     const argvOut = join(root, 'argv.json');
     const result = spawnSync(process.execPath, [launcher], { encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: config, ARGV_OUT: argvOut }, cwd: root });
     const logPath = join(kitHome, 'restore', 'restore.log');
@@ -54,7 +54,7 @@ function logon(fixture: PluginListFixture): Logon {
 
 describe('restore launcher', () => {
   it('lives in the kit home bin folder', () => {
-    assert.equal(restoreLauncherPath(join('/', 'kit')), join('/', 'kit', 'bin', 'restore-check.mjs'));
+    assert.equal(restoreCheckLauncherPath(join('/', 'kit')), join('/', 'kit', 'bin', 'restore-check.mjs'));
   });
 
   it('runs restore check of the first installed kit CLI that exists, on the kit home it sits in, and logs nothing', () => {
