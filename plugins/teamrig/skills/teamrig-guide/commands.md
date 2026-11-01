@@ -605,6 +605,45 @@ WATCH 1 done task of api waiting on a sighting: once it shows, set it done again
 T2 done 10-12 10:05 | Log the signup errors (watch: the night's log lists a signup error)
 ```
 
+### teamrig stats
+
+Prints the register's numbers over the team's last days, as the task pane's Stats tab shows them: the Health tiles,
+each with its level, then one line per section. It reads each task list's whole history, archive included, and
+writes nothing.
+
+The tiles and their levels: close/open (tasks closed per task opened: under 0.9 `bad`, under 1 `warn`), backlog (the
+range's net growth: over 5% of the active work `bad`, any growth `warn`), overdue (a late p1 `bad`, any late task
+`warn`), owner decisions (the oldest wait on the owner: over 7 days `bad`, over 2 `warn`) and backlog clears (the
+weeks the active work takes to clear at the last 28 days' net: never, as it grows, `bad`; over 4 weeks `warn`).
+
+Flags:
+
+- `--range 7d|14d|30d|all`: the days counted on the team's clock, today included (default `7d`); `all` starts at the
+  first task's day.
+- `--session <id|name>`: one session's numbers, from the tasks it owns now. With `--tree` it names the caller instead.
+- `--tree`: the lead only: its team and every team under it, with a TEAMS line of each team's active and late tasks,
+  and a SPLIT line for each day tasks moved to another team (that team's chart before the day lacks them).
+
+Example:
+
+```sh
+teamrig stats
+```
+
+Output:
+
+```text
+STATS shop, 7 d: 10-06 to 10-12
+HEALTH close/open 0.80 [bad] · backlog +2, 14 active [bad] · overdue 1, p1 0 [warn] · owner decisions 1, oldest 1.5 d [good] · backlog clears never, at this rate [bad]
+FLOW opened 10, closed 8 (1 dropped), net +2; last 28 d net +3
+NEW WORK 10: self 4, owner 2, lead 3, github 1, session 0; 2 bug(s); goals signup 6; no goal 4
+SPEED lead time median 2.1 d, p85 4.8 d (7 done); cycle time median 0.9 d, p85 2.0 d (6 started, 1 never)
+DELAYS overdue 1, p1 0; done by due 3 of 4; late 1 by 2-3 d; due moved 2
+WAITS 3 waiting (decision 1, task 2); on the owner 1, oldest 1.5 d
+BUGS 1 active, 2 opened, 1 fixed
+PEOPLE api 5, web 2
+```
+
 ### teamrig files
 
 Prints the folder where a task's files go, and makes it when it is missing. Write every file a task produces there,
