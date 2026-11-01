@@ -8,6 +8,7 @@ import { hookCommandLine, hookCommandsOf } from '../doctor/settings-hooks.ts';
 import { countOf, formatCounts, type KeepList } from '../permissions/allow-rules.ts';
 import type { SettingsFile } from '../permissions/settings-scope.ts';
 import { planScope, type ReadPlan } from '../permissions/trim.ts';
+import { CONTEXT_HOOK_EVENTS } from './scan-hook-output.ts';
 
 /** What a settings check finds: allow rules a trim removes, no deny rule, prompts turned off, a hook that writes into the context. */
 export type SettingsFindingKind = 'wide-allow' | 'no-deny' | 'bypass' | 'context-hook';
@@ -22,9 +23,6 @@ export interface SettingsFinding {
 
 /** A file's finding, before the same one in the file's worktree copies is folded in. */
 type FileFinding = Omit<SettingsFinding, 'copies'>;
-
-/** The hook events whose command output Claude Code adds to the session's context. */
-export const CONTEXT_HOOK_EVENTS = ['SessionStart', 'UserPromptSubmit'] as const;
 
 /** A hook's command prints up to this many characters. */
 const HOOK_COMMAND_MAX_CHARS = 80;
