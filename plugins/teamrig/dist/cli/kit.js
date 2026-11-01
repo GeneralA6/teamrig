@@ -1,4 +1,5 @@
 import { basename, dirname } from 'node:path';
+import { ConfigLock } from "../config/config-lock.js";
 import { formatConfig, loadConfig } from "../config/load.js";
 import { SHIPPED_CONFIG_FORMAT } from "../config/migrate.js";
 import { Roster } from "../config/roster.js";
@@ -11,6 +12,11 @@ import { TimeZone } from "../core/zone.js";
 import { JsonlRenameLog } from "../names/log.js";
 import { RefusedError } from "./runtime.js";
 import { fileLockOf } from "./file-locks.js";
+/** The lock every change to the team's config is read and written under (config-lock.ts). */
+export function configLockOf(runtime, kit, config) {
+    const place = { configPath: kit.load.path, backupsDir: kit.paths.backups };
+    return new ConfigLock(fileLockOf(runtime, kit.paths.configLock, config.lock), runtime.files, runtime.clock, place);
+}
 /** The rename log, its lock and the roster it gives, for recording a rename. */
 export function renameDepsOf(runtime, kit, config) {
     const { files, clock } = runtime;
@@ -78,6 +84,10 @@ export async function openKit(runtime, team) {
     const claudeDir = claudeConfigDir(runtime.env, runtime.userHome);
     const load = await teamConfigOf(runtime, team, []);
     return { load, paths: teamPaths(kitHome, team, claudeDir, load.status === 'loaded' ? overridesOf(load.config) : {}) };
+}
+/** The team's config as its file reads now, read the way `openTeamKit` read it: for a change made under the config lock. */
+export function reloadTeamConfig(runtime, kit) {
+    return teamConfigOf(runtime, kit.paths.team, []);
 }
 /**
  * A team's config over the team above's (`openKit`); `below` holds the teams it is read for, so parent links that go

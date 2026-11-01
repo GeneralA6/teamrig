@@ -7,7 +7,7 @@ import { SessionRecordStore } from "../../sessions/record.js";
 import { sessionFilesOf } from "../../setup/session-files.js";
 import { childRegisterOf, parentEventsOf, splitProblems } from "../../setup/split-register.js";
 import { splitTasksOf, trimmedParentOf } from "../../setup/team-split.js";
-import { checkedNextConfig, renameDepsOf } from "../kit.js";
+import { checkedNextConfig, configFileJson, configLockOf, renameDepsOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { teamRegister } from "../team-register.js";
 /** The moved sessions whose Claude Code still runs, by the record their hook keeps. */
@@ -29,6 +29,8 @@ export function blockerText(blocker) {
 export function liveText(session) {
     return `${session.id}'s Claude Code runs (pid ${session.pid}): close its tab, then split`;
 }
+/** The name the parent's config is kept under before a split trims it (`config.split.json`). */
+export const SPLIT_BACKUP_NAME = 'config.split';
 /** Refuses a split its plan blocks, a moved session still open, or a config either team could not hold. */
 async function checkSplit(split) {
     const { runtime, kit, plan } = split;
@@ -40,9 +42,19 @@ async function checkSplit(split) {
         throw new RefusedError(live.map(liveText).join('; '));
     }
     checkedNextConfig(plan.config);
-    const trimmed = trimmedParentOf(split.record, new Set(plan.spec.sessions));
-    checkedNextConfig(trimmed);
-    return trimmed;
+    checkedNextConfig(trimmedParentOf(split.record, new Set(plan.spec.sessions)));
+}
+/**
+ * Under the config lock: the parent's config as it reads now, less the moved sessions, so a change written since the
+ * split read it (a hire) is kept; the old file is kept first, and its path returned.
+ */
+async function trimParent(split) {
+    const { runtime, kit, config, plan } = split;
+    return configLockOf(runtime, kit, config).run(async (writer) => {
+        const trimmed = trimmedParentOf(await configFileJson(runtime, kit.load.path), new Set(plan.spec.sessions));
+        checkedNextConfig(trimmed);
+        return writer.write(trimmed, SPLIT_BACKUP_NAME);
+    });
 }
 /**
  * Under the parent register's lock: the tasks as the locked working set holds them, refused when a wait there blocks;
@@ -101,7 +113,7 @@ export async function writeTeamSplit(split) {
     const out = (line) => runtime.out.stdout(line);
     const parent = kit.paths.team;
     const child = plan.spec.team;
-    const trimmed = await checkSplit(split);
+    await checkSplit(split);
     const locked = await moveTasks(split);
     out(`MOVED ${locked.moving.length} task(s) to ${childPaths.events}; ${parent}'s register sends each there`);
     for (const id of plan.spec.sessions) {
@@ -113,8 +125,8 @@ export async function writeTeamSplit(split) {
         throw new RefusedError(`${childPaths.config} exists already; a split makes a new team`);
     }
     out(`CREATED ${childPaths.config}`);
-    await runtime.files.write(kit.load.path, formatConfig(trimmed));
-    out(`TRIMMED ${kit.load.path}: sessions ${plan.spec.sessions.join(', ')} left`);
+    const backup = await trimParent(split);
+    out(`TRIMMED ${kit.load.path}: sessions ${plan.spec.sessions.join(', ')} left; the old config is at ${backup}`);
     const childState = readRegister((await runtime.files.read(childPaths.events)) ?? '').state;
     const parentState = (await teamRegister(runtime, kit.paths, split.config).snapshot()).state;
     const problems = splitProblems(locked.moving, childState, parentState, child);
