@@ -1,9 +1,8 @@
-import { errorCode, errorMessage, isRecord, stringField } from "../core/guards.js";
+import { errorCode, errorMessage, isRecord, recordField, stringField } from "../core/guards.js";
 import { exitText } from "../open/processes.js";
 import { GH_TIMEOUT_MS } from "./gh.js";
-/** The issue fields read, and nothing more; the body becomes the task's description. */
-export const ISSUE_FIELDS = ['number', 'title', 'body', 'state', 'stateReason', 'labels', 'assignees', 'url', 'updatedAt'];
-/** The most issues one list returns; a list this long may have left some out, and the sync says so. */
+import { closedPageArgs, openPageArgs } from "./queries.js";
+/** The most issues one list reads before it stops asking for pages; a list stopped with more on GitHub says so. */
 export const ISSUE_LIMIT = 500;
 /** gh's exit code when it has no login to use. */
 const GH_EXIT_NO_LOGIN = 4;
@@ -12,20 +11,53 @@ const NOT_VISIBLE = /could not resolve to a repository|HTTP 404|not found/i;
 /** A token that reaches the repository but was not given the Issues permission. */
 const NO_PERMISSION = /resource not accessible by/i;
 const URL = /^https:\/\/\S+$/;
-/** The arguments for one read: a list as JSON with only ISSUE_FIELDS, never a command that writes. */
-export function issueListArgs(request) {
-    const search = request.closedSince === undefined ? [] : ['--search', `closed:>=${request.closedSince}`];
-    return ['issue', 'list', '-R', request.repo, '--state', request.state, ...search, '--limit', String(request.limit), '--json', ISSUE_FIELDS.join(',')];
+/** The arguments for one page of `request`, starting after the cursor `after`; null when the repository is not `owner/name`. */
+export function issuePageArgs(request, after) {
+    const [owner, name, ...rest] = request.repo.split('/');
+    if (owner === undefined || owner === '' || name === undefined || name === '' || rest.length > 0) {
+        return null;
+    }
+    const page = { owner, name, after };
+    return request.state === 'open' ? openPageArgs(page) : closedPageArgs(page, sinceTime(request.closedSince));
 }
 /** Text from outside on one plain line: control and format characters (escapes, bidi overrides) become spaces. */
 export function plainLine(text) {
     return text.replace(/[\p{Cc}\p{Cf}]+/gu, ' ').replace(/\s+/g, ' ').trim();
 }
-/** Lists a repository's issues in one state through gh, as `access` reads it. Every failure comes back as one line, never thrown. */
+/**
+ * Reads a repository's issues in one state through gh, as `access` reads it: page after page until GitHub has no
+ * more or `limit` items are read. Any page failing fails the whole read, so nothing is judged on half of it. Every
+ * failure comes back as one line, never thrown.
+ */
 export async function listIssues(gh, access, request) {
+    const issues = [];
+    let unreadable = 0;
+    let items = 0;
+    let next;
+    do {
+        const args = issuePageArgs(request, next);
+        if (args === null) {
+            return { kind: 'failed', reason: `${plainLine(request.repo)} is not owner/name: check github.repos` };
+        }
+        const page = await readPage(gh, access, request, args);
+        if (page.kind === 'failed') {
+            return page;
+        }
+        issues.push(...page.issues);
+        unreadable += page.unreadable;
+        items += page.items;
+        next = page.next;
+        // A page with nothing on it ends the read even when GitHub says more follow, so a bad answer cannot loop.
+        if (page.items === 0) {
+            break;
+        }
+    } while (next !== undefined && items < request.limit);
+    return { kind: 'listed', issues, unreadable, full: next !== undefined };
+}
+async function readPage(gh, access, request, args) {
     let result;
     try {
-        result = await gh.run({ args: issueListArgs(request), env: access.env });
+        result = await gh.run({ args, env: access.env });
     }
     catch (error) {
         return { kind: 'failed', reason: startFailureText(error) };
@@ -33,7 +65,7 @@ export async function listIssues(gh, access, request) {
     if (result.end.kind !== 'exited' || result.end.code !== 0) {
         return { kind: 'failed', reason: failureText(request.repo, result, access) };
     }
-    return parseIssueList(result.stdout, request);
+    return parseIssuePage(result.stdout, request);
 }
 /** Why gh did not start: most often it is not installed. */
 export function startFailureText(error) {
@@ -66,23 +98,47 @@ export function failureText(repo, result, access) {
             ? `${repo} is not visible to ${token}: check github.repos, and on GitHub give that token this repository`
             : `${repo} is not visible to the gh login: check github.repos, or ${saveOne}`;
     }
-    return plainLine(`gh issue list -R ${repo} ${exitText(result.end.code, result.stderr)}`);
+    return plainLine(`gh api graphql for the issues of ${repo} ${exitText(result.end.code, result.stderr)}`);
 }
-/** gh's JSON list: each item that reads as an issue, and how many did not. */
-export function parseIssueList(stdout, request) {
+/**
+ * One page as `gh api graphql` prints it (`data.repository.issues`): each item that reads as an issue, how many did
+ * not, and the next page's cursor. A closed read leaves out an issue closed before its day: the query can only ask
+ * for issues changed since then.
+ */
+export function parseIssuePage(stdout, request) {
+    const failed = { kind: 'failed', reason: `gh printed no page of the issues of ${request.repo}` };
     let parsed;
     try {
         parsed = JSON.parse(stdout);
     }
     catch {
-        parsed = undefined;
+        return failed;
     }
-    if (!Array.isArray(parsed)) {
-        return { kind: 'failed', reason: `gh printed no JSON list of the issues of ${request.repo}` };
+    const data = isRecord(parsed) ? recordField(parsed, 'data') : undefined;
+    const repository = data === undefined ? undefined : recordField(data, 'repository');
+    const connection = repository === undefined ? undefined : recordField(repository, 'issues');
+    const pageInfo = connection === undefined ? undefined : recordField(connection, 'pageInfo');
+    const nodes = connection?.['nodes'];
+    if (pageInfo === undefined || !Array.isArray(nodes)) {
+        return failed;
     }
-    const items = parsed;
-    const issues = items.map((item) => issueOf(item, request.repo)).filter((issue) => issue !== null);
-    return { kind: 'listed', issues, unreadable: items.length - issues.length, full: items.length >= request.limit };
+    const more = pageInfo['hasNextPage'] === true;
+    const cursor = stringField(pageInfo, 'endCursor');
+    if (more && (cursor === undefined || cursor === '')) {
+        return failed;
+    }
+    const items = nodes;
+    const read = items.map((item) => issueOf(item, request.repo));
+    const issues = read.filter((issue) => issue !== null).filter((issue) => wanted(issue, request));
+    return { kind: 'page', issues, unreadable: read.filter((issue) => issue === null).length, items: items.length, next: more ? cursor : undefined };
+}
+/** False only for an issue a closed read asked about that closed before its day. */
+function wanted(issue, request) {
+    return request.state === 'open' || issue.closedAt === undefined || Date.parse(issue.closedAt) >= Date.parse(sinceTime(request.closedSince));
+}
+/** The first moment of a `YYYY-MM-DD` day, UTC. */
+function sinceTime(day) {
+    return `${day}T00:00:00Z`;
 }
 function issueOf(item, repo) {
     if (!isRecord(item)) {
@@ -98,6 +154,7 @@ function issueOf(item, repo) {
     if (state !== 'open' && state !== 'closed') {
         return null;
     }
+    const events = nodesOf(item['timelineItems']);
     return {
         repo,
         number,
@@ -109,20 +166,50 @@ function issueOf(item, repo) {
         assignees: namesOf(item['assignees'], 'login'),
         url,
         updatedAt: timeField(item, 'updatedAt'),
+        closedAt: timeField(item, 'closedAt'),
+        lastEditedAt: timeField(item, 'lastEditedAt'),
+        authorAssociation: stringField(item, 'authorAssociation') ?? '',
+        author: loginOf(recordField(item, 'author')),
+        labelEvents: events.flatMap(labelEventOf),
+        renamedAt: latestRename(events),
     };
 }
-/** A time gh prints (`2030-01-07T09:00:00Z`); undefined when missing or not a time. */
+/** A label event of the timeline, or nothing when the item is another kind or lacks its label or time. */
+function labelEventOf(event) {
+    const label = recordField(event, 'label');
+    const name = label === undefined ? undefined : stringField(label, 'name');
+    const at = timeField(event, 'createdAt');
+    if (event['__typename'] !== 'LabeledEvent' || name === undefined || at === undefined) {
+        return [];
+    }
+    const actor = recordField(event, 'actor');
+    return [{ label: name, at, actor: loginOf(actor), actorKind: actor === undefined ? '' : (stringField(actor, '__typename') ?? '') }];
+}
+/** The time of the newest change of title among the timeline events. */
+function latestRename(events) {
+    const times = events.filter((event) => event['__typename'] === 'RenamedTitleEvent').flatMap((event) => timeField(event, 'createdAt') ?? []);
+    return times.reduce((latest, at) => (latest === undefined || Date.parse(at) > Date.parse(latest) ? at : latest), undefined);
+}
+function loginOf(account) {
+    return account === undefined ? '' : (stringField(account, 'login') ?? '');
+}
+/** A time GitHub sends (`2030-01-07T09:00:00Z`); undefined when missing or not a time. */
 function timeField(item, key) {
     const text = stringField(item, key);
     return text !== undefined && Number.isFinite(Date.parse(text)) ? text : undefined;
 }
-/** The `key` of each object in a list, such as each label's name; anything else is left out. */
-function namesOf(value, key) {
-    if (!Array.isArray(value)) {
+/** The objects of a connection's `nodes`, such as an issue's labels; anything else is left out. */
+function nodesOf(connection) {
+    const nodes = isRecord(connection) ? connection['nodes'] : undefined;
+    if (!Array.isArray(nodes)) {
         return [];
     }
-    const items = value;
-    return items.filter(isRecord).flatMap((item) => {
+    const items = nodes;
+    return items.filter(isRecord);
+}
+/** The `key` of each node of a connection, such as each label's name; anything else is left out. */
+function namesOf(connection, key) {
+    return nodesOf(connection).flatMap((item) => {
         const name = stringField(item, key);
         return name === undefined ? [] : [name];
     });

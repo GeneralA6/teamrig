@@ -1,6 +1,7 @@
 import { ACTIVE_STATUSES } from "../register/model.js";
 import { GITHUB_SOURCE } from "../register/model.js";
 import { issueTask } from "./map.js";
+import { issueTrust } from "./trust.js";
 /** How GitHub closed an issue, in the note the sync writes; any other reason is left out. */
 const CLOSE_REASONS = new Map([
     ['COMPLETED', 'completed'],
@@ -26,24 +27,40 @@ export function importedTasks(tasks) {
 }
 /**
  * The writes that bring the register in step with a repository's issues. An open issue with no task is
- * added; a closed one with no task is not, as there is nothing left to do. On a task the import added,
- * only the title, the description, the priority and whether it is open follow GitHub: any active status
- * stands for an open issue, and its owner, notes and plans stay the team's.
+ * added when it is trusted or accepted (trust.ts), else left out by its number; a closed one with no task is
+ * not, as there is nothing left to do. On a task the import added, only the title, the description, the
+ * priority and whether it is open follow GitHub: any active status stands for an open issue, and its owner,
+ * notes and plans stay the team's. The title and description follow only while the issue is trusted or
+ * accepted, so an outsider's edit after the accept stays on GitHub until someone accepts the issue again;
+ * the task keeps the text of the last accept, and stays when its issue stops qualifying.
  */
 export function planSync(issues, imported, rules) {
     const perIssue = issues.map((issue) => issueSteps(issue, imported, rules));
     const count = (known, writes) => perIssue.filter((one) => one.known === known && (one.steps.length > 0) === writes).length;
-    return { steps: perIssue.flatMap((one) => one.steps), inserted: count(false, true), changed: count(true, true), unchanged: count(true, false) };
+    return {
+        steps: perIssue.flatMap((one) => one.steps),
+        inserted: count(false, true),
+        changed: count(true, true),
+        unchanged: count(true, false),
+        leftOut: perIssue.flatMap((one) => one.leftOut ?? []).sort((a, b) => a - b),
+    };
 }
 function issueSteps(issue, imported, rules) {
     const wanted = issueTask(issue, rules);
     const task = imported.get(wanted.ref);
+    const followsText = issueTrust(issue, rules.acceptLabel) !== 'untrusted';
     if (task === undefined) {
+        if (wanted.outcome !== 'open') {
+            return { known: false, steps: [] };
+        }
+        if (!followsText) {
+            return { known: false, steps: [], leftOut: issue.number };
+        }
         const input = { title: wanted.title, description: wanted.description, owner: wanted.owner, ref: wanted.ref, priority: wanted.priority };
-        return { known: false, steps: wanted.outcome === 'open' ? [{ kind: 'add', ref: wanted.ref, input }] : [] };
+        return { known: false, steps: [{ kind: 'add', ref: wanted.ref, input }] };
     }
     const steps = [];
-    const changes = fieldChanges(task, wanted);
+    const changes = fieldChanges(task, wanted, followsText);
     const names = Object.keys(changes);
     if (names.length > 0) {
         steps.push({ kind: 'update', ref: wanted.ref, id: task.id, changes, note: `${namesText(names)} as on GitHub` });
@@ -59,11 +76,11 @@ function namesText(names) {
     const last = names.at(-1) ?? '';
     return names.length < 2 ? last : `${names.slice(0, -1).join(', ')} and ${last}`;
 }
-/** The title, description and priority the issue now gives, where they differ from the task's. */
-function fieldChanges(task, wanted) {
+/** The priority the issue now gives, and with `followsText` its title and description, where they differ from the task's. */
+function fieldChanges(task, wanted, followsText) {
     return {
-        ...(task.title === wanted.title ? {} : { title: wanted.title }),
-        ...(task.description === wanted.description ? {} : { description: wanted.description }),
+        ...(!followsText || task.title === wanted.title ? {} : { title: wanted.title }),
+        ...(!followsText || task.description === wanted.description ? {} : { description: wanted.description }),
         ...(task.priority === wanted.priority ? {} : { priority: wanted.priority }),
     };
 }

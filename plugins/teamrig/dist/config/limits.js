@@ -109,6 +109,8 @@ export const RULE_CONFLICT_LIMITS = {
 };
 /** The longest `budget.account` name, on one line. */
 export const BUDGET_ACCOUNT_MAX_LENGTH = 100;
+/** The longest `github.acceptLabel`: GitHub caps a label name at 50 characters. */
+export const GITHUB_LABEL_MAX_LENGTH = 50;
 /** Bounds on the fields of one review gate entry (`pushGuard.reviewPaths`). */
 export const REVIEW_PATH_LIMITS = {
     globMaxLength: 200,
