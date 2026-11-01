@@ -14,7 +14,7 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | `PreToolUse` on `Bash` and `PowerShell` | `hook package-guard` | Refuses a package runner that would fetch and run a package outside the project's lockfile, an install of a version the registry does not vouch for, an `npx --no <bin>` that hands the bin's flag to npm, and an install that would rewrite a `node_modules` linked to another checkout's ([the package guard](#before-a-shell-command-the-package-guard)) |
 | `PreToolUse` on `Bash`, `PowerShell`, `Read`, `Grep`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook secret-guard` | Refuses a call that would print a secret file, a secret variable, the whole environment, a Kubernetes secret's data or a dump command's output into the conversation, or whose command line or written text holds a secret ([the secret guard](#before-a-shell-command-or-a-read-the-secret-guard)) |
 | `PostToolUse` on `Bash`, `PowerShell`, `Read` and `Grep` | `hook secret-redact` | Replaces each secret a call's result holds before Claude and the transcript see it, and tells the session which kinds it held and the task it filed to rotate each ([the secret redactor](#after-a-tool-call-the-secret-redactor)) |
-| `PreToolUse` on `Bash` and `PowerShell` | `hook exec-guard` | Refuses a privileged command's review run as another session or the owner, and any `exec` call through a client that is no install of the plugin, or one changed after its build ([the exec guard](#before-a-shell-command-the-exec-guard)) |
+| `PreToolUse` on `Bash` and `PowerShell` | `hook exec-guard` | Refuses a privileged command's review run as another session or the owner, any `exec` call through a client that is no install of the plugin, or one changed after its build, and every `owner note` or `owner next`, which act as the owner ([the exec guard](#before-a-shell-command-the-exec-guard)) |
 | `PreToolUse` on `Bash`, `PowerShell`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook pass-record-guard` | Refuses a session's own write of a tree's pass record, the proof that lets a push or a merge skip the checks the tree passed ([the pass-record guard](#before-a-write-or-a-shell-command-the-pass-record-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook readonly-allow` | With `readonlyShell.enabled`, lets a line whose every command provably only reads run without a permission prompt ([the read-only allow](#before-a-shell-command-the-read-only-allow)) |
 | `PreToolUse` on `AskUserQuestion` | `hook picker-guard` | With `pickerGuard.enabled`, refuses the question picker to every session and helper, to the lead outside the owner's daily meeting and in it unless the team asks with the picker (`decisions.askWith`), and to a sub-team's lead always, with the reason to decide it if it is the session's own, else record it on its task and go on ([the picker guard](#before-a-question-the-picker-guard)) |
@@ -555,8 +555,15 @@ runs a Bash or PowerShell call, `hook exec-guard` reads it (a shell line as the 
   differ from the SHA-256 list its build wrote (`dist/integrity.json`), or that list is missing, since an approved
   command runs inside that client. Each install a line starts is checked once; the reason names up to five changed
   files, and the install when it is not the hook's own; reinstall the plugin.
+- **the owner's actions**: any `owner` command ([owner note](commands.md#teamrig-owner-note),
+  [owner next](commands.md#teamrig-owner-next)), whatever client starts it, `$T owner next ...` too: it writes as
+  the owner whoever runs it. The owner runs it in their own terminal, or types `/teamrig owner next T<n>` in a tab,
+  which [the mod](#the-mod-the-teamrig-command) runs as a write only when the person types it.
 
 It always refuses and never asks; no config key turns it off. The guard reads only the call, so it cannot see:
+
+- a program the line starts that runs the CLI itself, such as a script the agent wrote, or a command another tool
+  runs (the Monitor tool): neither is a Bash or PowerShell call;
 
 - an older version left intact in the plugin cache: a line may start it, and it runs as that version was built;
 - the PATH a tab really has: it searches the hook's own, with `~/bin` before it for Bash, not the other folders Git
@@ -1247,8 +1254,8 @@ read-only allow lets a call skip the prompt, and only a shell line it proves onl
   unless `secretGuard.secretReads` (a print) or `secretGuard.writes` (text) is `ask` or `allow`.
 - **The secret redactor** replaces a secret in a call's result on its own, whatever the mode, unless
   `secretGuard.redact` is `false`.
-- **The exec guard** refuses a privileged command's review run as another session or the owner, and any
-  `exec` call through a client that is no install of the plugin or was changed, on its own, whatever the mode, so `Bash(teamrig:*)` stays safe for
+- **The exec guard** refuses a privileged command's review run as another session or the owner, any
+  `exec` call through a client that is no install of the plugin or was changed, and every `owner` command, on its own, whatever the mode, so `Bash(teamrig:*)` stays safe for
   `exec` too. A team that wants each review asked as well allows the rest by name (`Bash(teamrig exec request:*)`,
   `dry-run`, `status`, `run`) instead of the one rule.
 - **The read-only allow** (`readonlyShell.enabled`) lets a shell line that only reads run with no prompt in default

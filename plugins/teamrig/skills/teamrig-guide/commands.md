@@ -2233,6 +2233,60 @@ Output:
 WOKE shop-web (session web): 2 card(s) waiting on owner; an inbox line asks it to bring them now
 ```
 
+### teamrig owner note
+
+The owner tells a task's session something about that task (`teamrig owner note <[team/]T<id>> --text "..."`): the
+words are kept in the task's history as the owner's and sent to the session as an inbox line, which wakes it while
+the task is in progress; else it reads the line at its next prompt. `<team>/T<id>` names a task of another team of
+the tree. It refuses a done or dropped task, and a Note with no `--text`. It writes as the owner
+(`register.ownerSource`), so [the exec guard](hooks.md#before-a-shell-command-the-exec-guard) refuses it from an
+agent's tool call: the owner runs it in their own terminal, or types `/teamrig owner note ...` in a tab.
+
+A Note that asks to drop a task: the owning session first checks what depends on it (tasks after it or waiting on
+it, its follow-ups, other teams' tasks, work in progress), then drops it with a note, or answers the owner why not.
+
+Flags:
+
+- `--text "<what the owner tells its session>"`: required.
+
+Example:
+
+```sh
+teamrig owner note T12 --text "Keep the old checkout page until Friday"
+```
+
+Output:
+
+```text
+NOTED T12 in-progress, p2, owner web, from lead | Checkout page redesign
+```
+
+### teamrig owner next
+
+The owner puts a task next (`teamrig owner next <[team/]T<id>>`): it is pinned above every other task on its
+session's list, moving that session's earlier pin down, the session is woken to start it once its step in hand is
+done, and the lead is told. It refuses a done, dropped or in-progress task, and one the owner put next already (a
+[Note](#teamrig-owner-note) tells the session more). It writes as the owner, so the exec guard refuses it from an
+agent's tool call, as it does `owner note`.
+
+Flags:
+
+- `--preview`: print what it would do, and write nothing.
+
+Example:
+
+```sh
+teamrig owner next T14 --preview
+teamrig owner next T14
+```
+
+Output:
+
+```text
+PREVIEW owner next T14: goes to the top of web's list (the earlier pin on T9 moves down), web is woken, the lead (lead) is told; nothing written
+NEXT T14 open, p2, pinned, owner web, from lead | Saved carts survive a logout
+```
+
 ### teamrig launch
 
 What a tab started by `open` runs: it sets the session's variables and starts Claude Code under the session's
