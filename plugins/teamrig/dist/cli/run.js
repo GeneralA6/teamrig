@@ -8,6 +8,7 @@ import { parseArgs, UsageError } from "./args.js";
 import { RENAMED } from "./renamed.js";
 import { EXIT, RefusedError } from "./runtime.js";
 const registerCommands = () => import("./commands/register.js");
+const statsCommands = () => import("./commands/stats.js");
 const inboxCommands = () => import("./commands/inbox.js");
 const configCommands = () => import("./commands/config.js");
 const hookCommands = () => import("./commands/hook.js");
@@ -95,6 +96,7 @@ const COMMANDS = {
     check: { effect: 'read', flags: ['session', 'week'], switches: ['tree', 'all'], load: async () => (await registerCommands()).check },
     plan: { effect: 'read', flags: ['session', 'week'], switches: ['tree'], load: async () => (await registerCommands()).plan },
     verify: { effect: 'read', flags: ['session'], load: async () => (await registerCommands()).verify },
+    stats: { effect: 'read', flags: ['session', 'range'], switches: ['tree'], load: async () => (await statsCommands()).stats },
     files: { effect: 'write', flags: ['session'], switches: ['notes'], load: async () => (await filesCommands()).files },
     'inbox read': { effect: 'write', flags: ['session'], load: async () => (await inboxCommands()).read },
     'inbox status': { effect: 'read', flags: ['session'], load: async () => (await inboxCommands()).status },
@@ -329,12 +331,13 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       week's use; --all: the tasks and flags in full, and every task waiting on it
   meeting start | meeting agenda | meeting end [--session <id|name>]   the lead's daily meeting with
       the owner: start holds messages to the lead until its end (one starting CRITICAL goes; the hook
-      tells each sender, so no session is told) and prints the agenda: the owner's decisions as card
-      facts, the late tasks, what finished since the last meeting, the branches merged with no approval
-      (under pushToProtected gated), the lead's inbox and the week's use and fit; agenda prints it
-      again; end tells each session the decisions recorded on its tasks (update --note) by one inbox
-      line, and no other session; in a tree of teams only the root team's lead holds it, and its
-      decisions and end cover every team under it
+      tells each sender, so no session is told) and prints the agenda: the stats' Health, flow and
+      limit lines over the last 7 days, the owner's decisions as card facts, the late tasks, what
+      finished since the last meeting, the branches merged with no approval (under pushToProtected
+      gated), the lead's inbox and the week's use and fit; agenda prints it again; end tells each
+      session the decisions recorded on its tasks (update --note) by one inbox line, and no other
+      session; in a tree of teams only the root team's lead holds it, and its stats, decisions and
+      end cover every team under it
   meeting schedule --meets <id|name> --at <time> --about "<one line>" [--minutes <n>] [--with a,b]
       [--tasks T1,T2] [--brief <path>]   books the owner's meeting with one session at a set time, apart
       from the daily one: it prints its id (M3) and tells the session met and those joining by one inbox
@@ -432,6 +435,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       --tree (the lead only): also every team under it, read-only, ids as <team>/T<n>
   verify [--session <id|name>]   the session's verifying tasks, oldest first, each with its proof and
       the date to verify by, then its done tasks still watched for a sighting (--watch)
+  stats [--range 7d|14d|30d|all] [--session <id|name>] [--tree]   the register's numbers over the team's
+      last days (default 7d): the Health tiles with their levels, then flow, new work, speed, delays,
+      waits, bugs and people; --session: one session's tasks; --tree (the lead only): every team under it
   files <id> | files --notes [--session <id|name>]   prints the folder for a task's files (design.md,
       build.md, plan.md, review.md, evidence/, scripts/, out/) in the team that holds it, or for your notes
       that belong to no task; makes it when missing

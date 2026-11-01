@@ -6,7 +6,7 @@ import { cut, formatShortTask } from "../register/views.js";
 /**
  * The register's part of the daily meeting's agenda, gathered in one call so the lead spends no turn per item:
  * the owner's decisions as card facts, the late tasks and what finished since the meeting before. The CLI adds
- * the lead's inbox and the week's use and fit (src/cli/commands/meeting.ts).
+ * the stats' top lines above it, and the lead's inbox and the week's use and fit below (src/cli/commands/meeting.ts).
  */
 /** Each list shows at most this many rows, then a `+N more` line with the command that lists them all. */
 export const AGENDA_ROWS = 10;
