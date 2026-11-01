@@ -4,6 +4,7 @@ import type { Clock, Mutex } from '../core/lock.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { EVENT_VERSION, TASK_LINE_VERSION, type ApprovalVerdict, type CreateEvent, type RegisterEvent, type StatusEvent, type TaskFields, type UpdateEvent } from './events.ts';
 import { foldEvents, taskNumber, type RegisterState, type Task } from './fold.ts';
+import { NO_GOAL_TAGS } from './goals.ts';
 import { GITHUB_ACTOR, NO_SKILL, type AddInput, type AskInput, type DeferChange, type ImportChanges, type ImportInput, type OwnerChange, type RegisterPolicy, type StatusContext, type StatusInput, type Verdict } from './policy.ts';
 import { ACTIVE_STATUSES } from './model.ts';
 import type { TaskNumbering } from './numbering.ts';
@@ -28,6 +29,17 @@ export interface ElsewhereReader {
 /** The reader of a register no other register shares a tree with: nothing is held elsewhere. */
 export const NOTHING_ELSEWHERE: ElsewhereReader = { read: () => Promise.resolve(NO_TASKS_ELSEWHERE) };
 
+/**
+ * Reads the goal tags a task of the team may name under `register.goals` checked or required (T1730): those of the
+ * goal records of the team and every team above it.
+ */
+export interface GoalTagsReader {
+  read(): Promise<ReadonlySet<string>>;
+}
+
+/** The reader of a team that keeps no goal records, as under `register.goals` free: no tag is read. */
+export const NO_GOAL_RECORDS: GoalTagsReader = { read: () => Promise.resolve(NO_GOAL_TAGS) };
+
 export interface RegisterDeps {
   readonly log: EventLog;
   readonly mutex: Mutex;
@@ -35,6 +47,8 @@ export interface RegisterDeps {
   readonly numbering: TaskNumbering;
   /** The tasks of the team tree's other registers, read at each write before its lock (T1139). */
   readonly elsewhere: ElsewhereReader;
+  /** The goal tags a task may name, read before the lock by a write that names goals (T1730). */
+  readonly goals: GoalTagsReader;
   readonly clock: Clock;
   readonly policy: RegisterPolicy;
   readonly skills: SkillCatalog;
@@ -118,15 +132,19 @@ export class Register {
   }
 
   add(caller: string, input: AddInput): Promise<Verdict<WriteResult>> {
-    return this.asCaller(caller, () => this.writeNew(({ state }, id, elsewhere) => single(this.created(caller, id, this.deps.policy.add(input, state, elsewhere)))));
+    return this.asCaller(caller, async () => {
+      const goalTags = await this.goalTagsFor(input.goals);
+      return this.writeNew(({ state }, id, elsewhere) => single(this.created(caller, id, this.deps.policy.add(input, state, elsewhere, goalTags))));
+    });
   }
 
   /**
    * A task asked by a session of another team, `asker` being its `<team>/<id>`. The tree's rules decide who
    * may ask, so this team's roster check is skipped; the event names the asker as its writer.
    */
-  addFromTeam(asker: string, input: AddInput): Promise<Verdict<WriteResult>> {
-    return this.writeNew(({ state }, id, elsewhere) => single(this.created(asker, id, this.deps.policy.addFromTeam(input, state, elsewhere))));
+  async addFromTeam(asker: string, input: AddInput): Promise<Verdict<WriteResult>> {
+    const goalTags = await this.goalTagsFor(input.goals);
+    return this.writeNew(({ state }, id, elsewhere) => single(this.created(asker, id, this.deps.policy.addFromTeam(input, state, elsewhere, goalTags))));
   }
 
   /**
@@ -215,18 +233,26 @@ export class Register {
   }
 
   update(caller: string, id: string, changes: Partial<TaskFields>, note: string | undefined): Promise<Verdict<WriteResult>> {
-    return this.commit(caller, (snapshot, elsewhere) =>
-      onTask(snapshot, elsewhere, id, (task) => {
-        const change = this.deps.policy.update(task, caller, changes, note, snapshot.state, elsewhere);
-        if (!change.ok) {
-          return change;
-        }
-        const event: UpdateEvent = { ...this.base(id, caller), type: 'update', ...change.value };
-        const { pin, owner } = change.value.changes;
-        const unpins = typeof pin === 'string' ? this.unpins(task, owner ?? task.owner, caller, snapshot.state) : [];
-        return { ok: true, value: [...unpins, event] };
-      }),
-    );
+    return this.asCaller(caller, async () => {
+      const goalTags = await this.goalTagsFor(changes.goals);
+      return this.write((snapshot, elsewhere) =>
+        onTask(snapshot, elsewhere, id, (task) => {
+          const change = this.deps.policy.update(task, caller, changes, note, snapshot.state, elsewhere, goalTags);
+          if (!change.ok) {
+            return change;
+          }
+          const event: UpdateEvent = { ...this.base(id, caller), type: 'update', ...change.value };
+          const { pin, owner } = change.value.changes;
+          const unpins = typeof pin === 'string' ? this.unpins(task, owner ?? task.owner, caller, snapshot.state) : [];
+          return { ok: true, value: [...unpins, event] };
+        }),
+      );
+    });
+  }
+
+  /** The goal tags `goals` is held to: read only when a write names some, so most writes read no goal records. */
+  private async goalTagsFor(goals: readonly string[] | undefined): Promise<ReadonlySet<string>> {
+    return goals === undefined || goals.length === 0 ? NO_GOAL_TAGS : this.deps.goals.read();
   }
 
   /**

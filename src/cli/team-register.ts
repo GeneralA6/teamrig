@@ -8,6 +8,7 @@ import { SkillDir } from '../skills/store.ts';
 import { teamZone } from './kit.ts';
 import type { CliRuntime } from './runtime.ts';
 import { KitTreeNumbering } from './tree-numbering.ts';
+import { KitTreeGoals } from './tree-goals.ts';
 import { KitTreeTasks } from './tree-tasks.ts';
 import { fileLockOf } from './file-locks.ts';
 
@@ -22,6 +23,7 @@ export function teamRegister(runtime: CliRuntime, paths: TeamPaths, config: KitC
     mutex: fileLockOf(runtime, paths.eventsLock, config.lock),
     numbering: new KitTreeNumbering(runtime, paths.team, config.lock),
     elsewhere: new KitTreeTasks(runtime, paths.team),
+    goals: new KitTreeGoals(runtime, paths, config),
     clock,
     policy: new RegisterPolicy(config, above),
     skills: new SkillDir(files, paths.skills),

@@ -4,7 +4,7 @@ import { TimeZone } from '../core/zone.ts';
 import { OWN_NUMBERS } from '../register/numbering.ts';
 import type { AddInput, StatusInput, Verdict } from '../register/policy.ts';
 import { RegisterPolicy } from '../register/policy.ts';
-import { NOTHING_ELSEWHERE, Register, type WriteResult } from '../register/register.ts';
+import { NO_GOAL_RECORDS, NOTHING_ELSEWHERE, Register, type WriteResult } from '../register/register.ts';
 import type { RegisterSnapshot } from '../register/snapshot.ts';
 import { JsonlEventLog } from '../register/store.ts';
 import { testConfig } from '../testing/config.ts';
@@ -30,6 +30,7 @@ function memoryRegister(): Register {
     mutex: new InlineMutex(),
     numbering: OWN_NUMBERS,
     elsewhere: NOTHING_ELSEWHERE,
+    goals: NO_GOAL_RECORDS,
     clock: new FakeClock('2030-01-07T09:00:00.000Z'),
     zone: TimeZone.UTC,
     policy: new RegisterPolicy(testConfig()),

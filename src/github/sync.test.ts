@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import type { JsonRecord } from '../core/guards.ts';
 import { OWN_NUMBERS } from '../register/numbering.ts';
 import { RegisterPolicy } from '../register/policy.ts';
-import { NOTHING_ELSEWHERE, Register } from '../register/register.ts';
+import { NO_GOAL_RECORDS, NOTHING_ELSEWHERE, Register } from '../register/register.ts';
 import { JsonlEventLog } from '../register/store.ts';
 import { TimeZone } from '../core/zone.ts';
 import { testConfig } from '../testing/config.ts';
@@ -46,6 +46,7 @@ function register(): Register {
     mutex: new InlineMutex(),
     numbering: OWN_NUMBERS,
     elsewhere: NOTHING_ELSEWHERE,
+    goals: NO_GOAL_RECORDS,
     clock: new FakeClock('2030-01-08T10:00:00.000Z'),
     zone: TimeZone.UTC,
     policy: new RegisterPolicy(testConfig()),

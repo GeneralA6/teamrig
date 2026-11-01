@@ -93,6 +93,9 @@ export interface GoalsRead {
 
 export const NO_GOALS: GoalsRead = { goals: new Map(), unreadable: 0, newer: 0, ignored: 0 };
 
+/** No goal tags: what a task may name when no goal record is read, as under `register.goals` free. */
+export const NO_GOAL_TAGS: ReadonlySet<string> = new Set();
+
 /** True for a bare `YYYY-MM-DD` that is a real calendar day. */
 export function isGoalDay(text: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(text) && parseUtcDay(text) !== undefined;

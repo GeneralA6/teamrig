@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import type { KitConfig } from '../config/types.ts';
 import type { SessionAddress } from '../core/address.ts';
 import { NewerDataError } from '../core/jsonl.ts';
 import { TEST_OWNER_CARD } from '../testing/card.ts';
@@ -14,7 +15,7 @@ import { EVENT_VERSION, TASK_LINE_VERSION } from './events.ts';
 import { layoutPaths } from './layout.ts';
 import { OWN_NUMBERS, type TaskNumbering } from './numbering.ts';
 import { RegisterPolicy, type Verdict } from './policy.ts';
-import { NOTHING_ELSEWHERE, Register, type ElsewhereReader, type SkillCatalog, type WriteResult } from './register.ts';
+import { NO_GOAL_RECORDS, NOTHING_ELSEWHERE, Register, type ElsewhereReader, type GoalTagsReader, type SkillCatalog, type WriteResult } from './register.ts';
 import { readEvents } from './snapshot.ts';
 import { JsonlEventLog } from './store.ts';
 import { NO_TASKS_ELSEWHERE, type TasksElsewhere } from './tree.ts';
@@ -66,8 +67,37 @@ class FloorNumbering implements TaskNumbering {
   }
 }
 
+/** The goal tags of a team's goal records and those above it, fixed: counts the writes that read them (T1730). */
+class FixedGoals implements GoalTagsReader {
+  reads = 0;
+  private readonly tags: ReadonlySet<string>;
+
+  constructor(tags: readonly string[]) {
+    this.tags = new Set(tags);
+  }
+
+  async read(): Promise<ReadonlySet<string>> {
+    this.reads += 1;
+    return this.tags;
+  }
+}
+
+/** The goal records a register's writes read, and the config that says how they hold its tasks' goal tags. */
+interface GoalSetup {
+  readonly goals: GoalTagsReader;
+  readonly config: KitConfig;
+}
+
+const NO_GOAL_SETUP: GoalSetup = { goals: NO_GOAL_RECORDS, config: testConfig() };
+
 /** `above`: the parent team's lead, on a child team (T1140). */
-function setup(initial: Readonly<Record<string, string>> = {}, numbering: TaskNumbering = OWN_NUMBERS, elsewhere: ElsewhereReader = NOTHING_ELSEWHERE, above?: SessionAddress) {
+function setup(
+  initial: Readonly<Record<string, string>> = {},
+  numbering: TaskNumbering = OWN_NUMBERS,
+  elsewhere: ElsewhereReader = NOTHING_ELSEWHERE,
+  above?: SessionAddress,
+  { goals, config }: GoalSetup = NO_GOAL_SETUP,
+) {
   const files = new MemoryFiles(initial);
   const clock = new FakeClock(START);
   const mutex = new InlineMutex();
@@ -77,9 +107,10 @@ function setup(initial: Readonly<Record<string, string>> = {}, numbering: TaskNu
     mutex,
     numbering,
     elsewhere,
+    goals,
     clock,
     zone: TimeZone.UTC,
-    policy: new RegisterPolicy(testConfig(), above),
+    policy: new RegisterPolicy(config, above),
     skills,
     autoArchive: true,
   });
@@ -500,6 +531,45 @@ describe("Register beside its tree's other registers (T1139)", () => {
     assert.match(errorOf(await register.update('lead', 'T7', { priority: 1 }, undefined)), refusal);
     assert.match(errorOf(await register.approve('lead', 'T7', 'approved', undefined)), refusal);
     assert.equal(files.get(LOG), undefined);
+  });
+});
+
+describe("Register: goal tags held to the team tree's goal records (T1730)", () => {
+  const INPUT = { title: 'Ship it', description: 'what and why', owner: 'alpha', source: 'lead', priority: 2 } as const;
+  const UNKNOWN_Z9 = 'goal Z9 is not a goal record of the team or a team above: teamrig goal list lists them';
+
+  function checked(tags: readonly string[]) {
+    const goals = new FixedGoals(tags);
+    return { goals, ...setup({}, OWN_NUMBERS, NOTHING_ELSEWHERE, undefined, { goals, config: testConfig({ register: { goals: 'checked' } }) }) };
+  }
+
+  it('reads the goal records only for a write that names goals, once per write', async () => {
+    const { goals, register } = checked(['A1']);
+    written(await register.add('lead', INPUT));
+    written(await register.update('alpha', 'T1', { priority: 1 }, 'sooner'));
+    written(await register.update('alpha', 'T1', { goals: [], noGoal: true }, undefined));
+    assert.equal(goals.reads, 0);
+    written(await register.add('lead', { ...INPUT, title: 'Ship the docs', goals: ['A1'] }));
+    written(await register.update('alpha', 'T1', { goals: ['A1'] }, undefined));
+    written(await register.addFromTeam('app/lead', { ...INPUT, title: 'Ship login', source: 'app/lead', goals: ['A1'] }));
+    assert.equal(goals.reads, 3);
+  });
+
+  it('refuses a goal tag no goal record holds, on add, update and a task from another team, and writes nothing', async () => {
+    const { register, files } = checked(['A1']);
+    assert.equal(errorOf(await register.add('lead', { ...INPUT, goals: ['Z9'] })), UNKNOWN_Z9);
+    assert.equal(errorOf(await register.addFromTeam('app/lead', { ...INPUT, source: 'app/lead', goals: ['Z9'] })), UNKNOWN_Z9);
+    assert.equal(files.get(LOG), undefined);
+    written(await register.add('lead', INPUT));
+    assert.equal(errorOf(await register.update('alpha', 'T1', { goals: ['Z9'] }, undefined)), UNKNOWN_Z9);
+    assert.equal(written(await register.update('alpha', 'T1', { goals: ['A1'] }, undefined)).task.goals.join(','), 'A1');
+  });
+
+  it('reads no goal records for a caller off the roster', async () => {
+    const { goals, register } = checked(['A1']);
+    assert.match(errorOf(await register.add('mallory', { ...INPUT, goals: ['A1'] })), /mallory is not a session on this team/);
+    assert.match(errorOf(await register.update('mallory', 'T1', { goals: ['A1'] }, undefined)), /mallory is not a session on this team/);
+    assert.equal(goals.reads, 0);
   });
 });
 
