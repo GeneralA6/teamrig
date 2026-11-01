@@ -7,14 +7,14 @@ import { shellCommand } from '../open/quote.ts';
 import type { RestoreChoice } from '../restore/countdown.ts';
 import type { RestoreEntry } from '../restore/entry.ts';
 import { continuePrompt } from '../restore/plan.ts';
-import { RestoreRegistry, restoreSessionsDir } from '../restore/registry.ts';
+import { RestoreRegistry, restoreLogPath, restoreSessionsDir } from '../restore/registry.ts';
 import { TAB_STAGGER_MS } from '../restore/run.ts';
 import { APP, CliHarness, KIT, TEAM, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
 import { FakeCountdown, FakeShutdownLog, FakeStopWatch } from '../testing/fake-restore.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { MemoryPathProbe } from '../testing/memory-files.ts';
-import { RESTORE_TAB_TITLE, restoreLogPath, TAB_CLOSE_DELAY_MS, TAB_SETTLE_MS } from './commands/restore.ts';
+import { RESTORE_TAB_TITLE, TAB_CLOSE_DELAY_MS, TAB_SETTLE_MS } from './commands/restore.ts';
 import { EXIT } from './runtime.ts';
 
 const NODE = '/usr/bin/node';
