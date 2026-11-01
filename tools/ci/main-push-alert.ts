@@ -32,6 +32,19 @@ export type CreateIssue = (issue: AlertIssue) => Promise<string>;
 /** The number of the merged pull request whose merge left main at the sha (`mergedPullEndingOn`), or undefined. */
 export type MergedPullOf = (sha: string) => Promise<number | undefined>;
 
+/** Runs the GitHub CLI with the arguments, never through a shell; resolves with what it prints. */
+export type RunGh = (args: readonly string[]) => Promise<string>;
+
+/** Asks GitHub which merged pull requests brought the commit in; `gh api` fills `{owner}/{repo}` from GH_REPO. */
+export function ghMergedPullOf(gh: RunGh): MergedPullOf {
+  return async (sha) => mergedPullEndingOn(JSON.parse(await gh(['api', `repos/{owner}/{repo}/commits/${sha}/pulls`])), sha);
+}
+
+/** Opens the issue with `gh issue create`, which reads GH_TOKEN and GH_REPO; the text goes by argv. */
+export function ghCreateIssue(gh: RunGh): CreateIssue {
+  return ({ title, body }) => gh(['issue', 'create', '--title', title, '--body', body]);
+}
+
 /** The push a `push` event's payload describes. */
 export function mainPushFromEvent(payload: unknown): MainPush {
   if (!isRecord(payload)) {
