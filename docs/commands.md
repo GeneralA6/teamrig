@@ -187,6 +187,9 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   stats [--range 7d|14d|30d|all] [--session <id|name>] [--tree]   the register's numbers over the team's
       last days (default 7d): the Health tiles with their levels, then flow, new work, speed, delays,
       waits, bugs and people; --session: one session's tasks; --tree (the lead only): every team under it
+  report done [--day <YYYY-MM-DD>] [--session <id|name>] [--all]   one day of the team's done work
+      (default yesterday) in groups: owner asked, each goal, urgent p1, this week's plan, each row shown;
+      other work and dropped as one line, or their rows with --all; --session: one owner's tasks
   files <id> | files --notes [--session <id|name>]   prints the folder for a task's files (design.md,
       build.md, plan.md, review.md, evidence/, scripts/, out/) in the team that holds it, or for your notes
       that belong to no task; makes it when missing

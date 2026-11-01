@@ -30,7 +30,8 @@ Then it prints the agenda:
   in `DECISIONS`;
 - `LATE`: the active tasks past their due date, their own or the earlier one of a task that needs them
   (`due 10-14 (from T9)`);
-- `DONE`: what finished since the last meeting;
+- `DONE`: what finished since the last meeting, in groups (owner asked, each goal, urgent p1, this week's plan);
+  other work and the dropped tasks are one count line each;
 - `MERGES`: under `pushGuard.pushToProtected: gated`, the branches merged with no approval since the last
   meeting, check-clean ones first: news to read, while security samples the check-clean ones weekly;
 - your unread inbox lines, marked read;
