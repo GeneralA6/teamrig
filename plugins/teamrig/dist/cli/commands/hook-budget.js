@@ -5,6 +5,7 @@ import { SecretScanner } from "../../core/secrets.js";
 import { activeBurst, burstFloorOf, withBurst } from "../../budget/burst.js";
 import { surplusHintOf } from "../../budget/burst-lines.js";
 import { BurstLog } from "../../budget/burst-log.js";
+import { activeCut, CutLog } from "../../budget/cut.js";
 import { activeLift, LiftLog } from "../../budget/lift.js";
 import { OUTSIDE_ID } from "../../budget/measure.js";
 import { runMeter } from "../../budget/meter.js";
@@ -47,7 +48,8 @@ async function meterTab(runtime, store, id, transcript, budget) {
  * `otherTeamsOnAccount`) is weighed by its queued work in the register, replayed only when the register
  * changed since the last reading (`cachedWork`), or set by a lift; a burst the session is in raises it to at least
  * the burst's. Everyone's use today against the team's in-day pace
- * (`teamDay`) says whether a session past its part is held. The lead,
+ * (`teamDay`) says whether a session past its part is held, unless a leader's cut of it is in force (`activeCut`):
+ * then it is held past its part whatever room the team has. The lead,
  * with no burst in force, also gets the week's surplus when it is worth one. On the way, it keeps the team's week
  * summary for readers that show it (budget/team-week-file.ts), written when that changes it.
  */
@@ -77,6 +79,8 @@ export async function budgetFactsOf(runtime, scope, transcript) {
     }
     const { lifts } = await new LiftLog(files, kit.paths.lifts).read();
     const lift = activeLift(lifts, id, now, week.usedPct);
+    const { cuts } = await new CutLog(files, kit.paths.cuts).read();
+    const cut = activeCut(cuts, lifts, id, now);
     const work = await cachedWork(files, kit.paths.events, join(kit.paths.usage, WORK_CACHE_FILE), config.register.priorities);
     const split = budgetSplitOf({ team: kit.paths.team, ids: roster.ids, sessions: budget.sessions, leads: config.leads, work: work.weights, pausable: pausableOf(config, kit.paths.team, roster.ids), lifts, now, usedPct: week.usedPct });
     const others = await otherTeamsOnAccount(runtime, { team: kit.paths.team, config, usageDir: kit.paths.usage }, now, week.usedPct);
@@ -116,6 +120,8 @@ export async function budgetFactsOf(runtime, scope, transcript) {
         todayWPerPct,
         budgetPct,
         lift,
+        cut,
+        cutBy: cut === undefined ? undefined : leaderNamed(config, roster, cut.by),
         ...liftNamesOf(funded, week.allowancePct, roster, id, lift),
         burst,
         paused: isPaused(funded.split, id),
@@ -136,7 +142,11 @@ export async function budgetFactsOf(runtime, scope, transcript) {
 function budgetLeaderOf(config, roster, id) {
     const lead = config.roles.lead;
     const leader = new LeadTree(config).leaderOf(id) ?? (id === lead ? undefined : lead);
-    return leader === undefined ? undefined : { id: leader, name: roster.nameOf(leader) ?? leader, isLead: leader === lead };
+    return leader === undefined ? undefined : leaderNamed(config, roster, leader);
+}
+/** A leader by its session id, with the name its lines call it by. */
+function leaderNamed(config, roster, id) {
+    return { id, name: roster.nameOf(id) ?? id, isLead: id === config.roles.lead };
 }
 /** The leader's inbox line about the session; a refusal (a secret pattern, a bad id) comes back as a line for the person. */
 async function tellLeader(runtime, scope, leader, text, now) {
