@@ -238,6 +238,6 @@ async function reopenItem(deps, facts, item, items) {
         deps.print(`  (${note})`);
     }
     deps.print(`Opened ${item.label} (${modeWords(item)})`);
-    await deps.log(`run: opened ${id} (${modeWords(item)}) at effort ${item.effort ?? 'default'}`);
+    await deps.log(`run: opened ${id} (${modeWords(item)}) at effort ${item.effort ?? 'default'}; ${outcome.launch}`);
     return 'opened';
 }
