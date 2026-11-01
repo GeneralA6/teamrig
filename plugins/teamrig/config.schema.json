@@ -163,6 +163,11 @@
           "type": "string",
           "minLength": 1
         },
+        "goals": {
+          "description": "How teamrig add and update hold a task's goal tags to the goal records (teamrig goal) of its team and every team above it: free takes any tag; checked refuses a tag that is no such goal record; required also needs an owner-asked or p0/p1 add to name its goal, or --goals none.",
+          "enum": ["free", "checked", "required"],
+          "default": "free"
+        },
         "maxTitle": { "description": "The most characters a task title may have.", "type": "integer", "minimum": 20, "maximum": 1000, "default": 140 },
         "maxText": { "description": "The most characters of a task's other text, such as its ref and notes; the title and the description have their own limits.", "type": "integer", "minimum": 20, "maximum": 5000, "default": 300 },
         "secretPatterns": {
