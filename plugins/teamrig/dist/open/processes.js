@@ -33,7 +33,7 @@ function startUntilExit(request, waitMs) {
         const timer = setTimeout(() => {
             child.stderr.destroy();
             child.unref();
-            resolve({ kind: 'started' });
+            resolve({ kind: 'started', end: 'running' });
         }, waitMs);
         child.once('error', (error) => {
             clearTimeout(timer);
@@ -41,7 +41,7 @@ function startUntilExit(request, waitMs) {
         });
         child.once('close', (code) => {
             clearTimeout(timer);
-            resolve(code === 0 ? { kind: 'started' } : { kind: 'failed', error: exitText(code, stderr) });
+            resolve(code === 0 ? { kind: 'started', end: 'exited' } : { kind: 'failed', error: exitText(code, stderr) });
         });
     });
 }
@@ -59,7 +59,7 @@ function startDetached(request) {
         child.once('error', (error) => resolve(outcomeOfError(error)));
         child.once('spawn', () => {
             child.unref();
-            resolve({ kind: 'started' });
+            resolve({ kind: 'started', end: 'spawned' });
         });
     });
 }
@@ -116,7 +116,7 @@ function startHiddenProgram(request) {
         launcher.once('close', (code) => {
             switch (code) {
                 case 0:
-                    resolve({ kind: 'started' });
+                    resolve({ kind: 'started', end: 'spawned' });
                     break;
                 case LAUNCH_MISSING:
                     resolve({ kind: 'missing' });

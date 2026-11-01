@@ -5,7 +5,7 @@ import { ENV, resolveKitHome } from "../../core/home.js";
 import { PlainLogFile } from "../../core/log-file.js";
 import { indexMarks } from "../../inbox/marks.js";
 import { JsonlMarkLog } from "../../inbox/store.js";
-import { openTab } from "../../open/open-tab.js";
+import { launchWords, openTab } from "../../open/open-tab.js";
 import { teamWindowOf } from "../../open/terminals.js";
 import { encodePrompt } from "../../open/prompt.js";
 import { shellCommand } from "../../open/quote.js";
@@ -28,6 +28,18 @@ export const TAB_CLOSE_DELAY_MS = 8_000;
 /** The restore's log, beside its sessions folder: what each check and run decided, for the morning after. */
 export function restoreLogPath(kitHome) {
     return join(kitHome, 'restore', 'restore.log');
+}
+/** Appends a line to the restore log; a log that cannot be written is a warning on stderr, never a failed restore. */
+function restoreLogOf(runtime) {
+    const logPath = restoreLogPath(resolveKitHome(runtime.env, runtime.userHome));
+    return async (line) => {
+        try {
+            await runtime.files.append(logPath, `${new Date(runtime.clock.now()).toISOString()} ${line}\n`);
+        }
+        catch (error) {
+            runtime.out.stderr(`WARN could not write the restore log ${logPath}: ${errorMessage(error)}`);
+        }
+    };
 }
 /** The runtime on the kit home `--home` names, which a new tab's own environment may not carry. */
 function homeRuntimeOf(args, runtime) {
@@ -53,7 +65,7 @@ async function restoreTeamsOf(runtime) {
 }
 function reopenOutcomeOf(runtime, outcome, folder, argv) {
     if (outcome.kind === 'opened') {
-        return { kind: 'opened' };
+        return { kind: 'opened', launch: launchWords(outcome.terminal, outcome.end) };
     }
     return { kind: 'failed', why: `no terminal opened (${outcome.reasons.join('; ')}); run: ${shellCommand(runtime.platform, folder, argv)}` };
 }
@@ -98,7 +110,6 @@ async function restoreDepsOf(runtime, terminal) {
     const kitHome = resolveKitHome(runtime.env, runtime.userHome);
     const projectsDir = claudeProjectsDir(runtime.env, runtime.userHome);
     const finder = new TranscriptFinder(runtime.files, runtime.probe, projectsDir);
-    const logPath = restoreLogPath(kitHome);
     return {
         registry: new RestoreRegistry(runtime.files, restoreSessionsDir(kitHome)),
         archive: new RestoreArchive(runtime.files, restoreArchiveDir(kitHome)),
@@ -117,14 +128,7 @@ async function restoreDepsOf(runtime, terminal) {
         readTail: (path, maxBytes) => runtime.files.readTail(path, maxBytes),
         reopen: (tab) => reopen(runtime, tab, terminal),
         print: (line) => runtime.out.stdout(line),
-        log: async (line) => {
-            try {
-                await runtime.files.append(logPath, `${new Date(runtime.clock.now()).toISOString()} ${line}\n`);
-            }
-            catch (error) {
-                runtime.out.stderr(`WARN could not write the restore log ${logPath}: ${errorMessage(error)}`);
-            }
-        },
+        log: restoreLogOf(runtime),
     };
 }
 /** `restore`: what a restore now would do with each recorded Claude Code session, changing nothing. */
@@ -135,11 +139,13 @@ export async function restorePreview(_args, runtime) {
 /**
  * `restore check [--terminal <name>] [--home <dir>]`, at logon: drops the recorded sessions no restore needs and,
  * when the last shutdown killed some, opens a tab that runs `restore run` for them, so the person sees the list
- * and the countdown. When no terminal opens it prints the command to run instead and exits 3.
+ * and the countdown. When no terminal opens it prints the command to run instead and exits 3. Its first log line is
+ * written before it reads the teams or probes a process, so a check that stops early still shows it ran (T1705).
  */
 export async function restoreCheck(args, runtime) {
-    const terminal = terminalFlag(args.flags.get('terminal'));
     const homeRuntime = homeRuntimeOf(args, runtime);
+    await restoreLogOf(homeRuntime)('check: started');
+    const terminal = terminalFlag(args.flags.get('terminal'));
     const { since, count } = await checkRestore(await restoreDepsOf(homeRuntime, terminal));
     if (count === 0) {
         runtime.out.stdout('No Claude Code sessions to restore.');
@@ -158,6 +164,7 @@ export async function restoreCheck(args, runtime) {
     ];
     const outcome = await openTab(runtime, terminal ?? 'auto', { title: RESTORE_TAB_TITLE, folder: runtime.userHome, argv, window: undefined });
     if (outcome.kind === 'opened') {
+        await restoreLogOf(homeRuntime)(`check: opened the restore tab; ${launchWords(outcome.terminal, outcome.end)}`);
         runtime.out.stdout(`OPENED the restore of ${count} Claude Code session${count === 1 ? '' : 's'} in a new ${TERMINAL_LABELS[outcome.terminal]}`);
         return EXIT.ok;
     }
@@ -180,12 +187,17 @@ function sinceFlag(value, now) {
 /**
  * `restore run [--since <time>] [--terminal <name>] [--home <dir>] [--tab]`: reopens the Claude Code sessions the
  * last shutdown killed, after a countdown. `--tab` is for the tab `restore check` opened: it stays a moment once
- * every session is open, and longer when nothing opened or something failed, so its lines can be read.
+ * every session is open, and longer when nothing opened or something failed, so its lines can be read. In its tab
+ * it logs `run: tab opened` first, so a tab whose terminal ended before the countdown still shows it ran (T1705).
  */
 export async function restoreRun(args, runtime) {
+    const homeRuntime = homeRuntimeOf(args, runtime);
+    if (args.switches.has('tab')) {
+        await restoreLogOf(homeRuntime)('run: tab opened');
+    }
     const terminal = terminalFlag(args.flags.get('terminal'));
     const since = sinceFlag(args.flags.get('since'), runtime.clock.now());
-    const deps = await restoreDepsOf(homeRuntimeOf(args, runtime), terminal);
+    const deps = await restoreDepsOf(homeRuntime, terminal);
     const run = args.switches.has('tab') ? await runInTab(runtime, deps, since) : await runRestore(deps, since);
     return run.failed === 0 ? EXIT.ok : EXIT.failed;
 }
