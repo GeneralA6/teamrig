@@ -24,6 +24,7 @@ function issue(number: number, overrides: Partial<GithubIssue> = {}): GithubIssu
     lastEditedAt: undefined,
     authorAssociation: 'OWNER',
     author: 'maintainer',
+    authorKind: 'User',
     labelEvents: [],
     renamedAt: undefined,
     ...overrides,

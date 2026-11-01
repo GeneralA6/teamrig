@@ -67,6 +67,8 @@ export interface GithubIssue {
   readonly authorAssociation: string;
   /** The author's login, empty when GitHub no longer has that account. */
   readonly author: string;
+  /** What kind of account the author is, as GitHub names it (`User`, `Bot`, `Organization`); empty when it gives none. */
+  readonly authorKind: string;
   /** The labels put on it, in GitHub's order (oldest first), among the last timeline events the query reads. */
   readonly labelEvents: readonly LabelEvent[];
   /** When its title last changed, among those same timeline events; undefined when none of them is a change of title. */
@@ -264,6 +266,7 @@ function issueOf(item: unknown, repo: string): GithubIssue | null {
     lastEditedAt: timeField(item, 'lastEditedAt'),
     authorAssociation: stringField(item, 'authorAssociation') ?? '',
     author: loginOf(recordField(item, 'author')),
+    authorKind: kindOf(recordField(item, 'author')),
     labelEvents: events.flatMap(labelEventOf),
     renamedAt: latestRename(events),
   };
@@ -278,7 +281,7 @@ function labelEventOf(event: JsonRecord): LabelEvent[] {
     return [];
   }
   const actor = recordField(event, 'actor');
-  return [{ label: name, at, actor: loginOf(actor), actorKind: actor === undefined ? '' : (stringField(actor, '__typename') ?? '') }];
+  return [{ label: name, at, actor: loginOf(actor), actorKind: kindOf(actor) }];
 }
 
 /** The time of the newest change of title among the timeline events. */
@@ -289,6 +292,11 @@ function latestRename(events: readonly JsonRecord[]): string | undefined {
 
 function loginOf(account: JsonRecord | undefined): string {
   return account === undefined ? '' : (stringField(account, 'login') ?? '');
+}
+
+/** The account's kind (`User`, `Bot`, `Organization`), empty when GitHub gives none. */
+function kindOf(account: JsonRecord | undefined): string {
+  return account === undefined ? '' : (stringField(account, '__typename') ?? '');
 }
 
 /** A time GitHub sends (`2030-01-07T09:00:00Z`); undefined when missing or not a time. */

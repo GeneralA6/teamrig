@@ -30,6 +30,7 @@ function issue(overrides: Partial<GithubIssue> = {}): GithubIssue {
     lastEditedAt: undefined,
     authorAssociation: 'OWNER',
     author: 'maintainer',
+    authorKind: 'User',
     labelEvents: [],
     renamedAt: undefined,
     ...overrides,

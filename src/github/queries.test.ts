@@ -25,7 +25,7 @@ describe('the shipped queries', () => {
       assert.match(query, /^query\(/);
       assert.doesNotMatch(query, /mutation/i);
       assert.ok(query.includes(`first: ${ISSUE_PAGE_SIZE}`));
-      for (const field of ['body', 'authorAssociation', 'author { login }', 'lastEditedAt', 'closedAt', 'LabeledEvent', 'RenamedTitleEvent']) {
+      for (const field of ['body', 'authorAssociation', 'author { __typename login }', 'lastEditedAt', 'closedAt', 'LabeledEvent', 'RenamedTitleEvent']) {
         assert.ok(query.includes(field), field);
       }
     }

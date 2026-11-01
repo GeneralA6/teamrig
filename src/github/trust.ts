@@ -1,9 +1,11 @@
 import type { GithubIssue, LabelEvent } from './issues.ts';
+import { isMainPushAlertTitle } from './main-push-alert-title.ts';
 
 /**
- * How far the sync takes an issue's text: `trusted` for an author inside the repository, `accepted` for an outsider's
- * issue someone else labelled with the accept label after its last edit, `untrusted` for any other. Only a trusted
- * or accepted open issue becomes a task, and only their title and body follow GitHub onto a task the sync added.
+ * How far the sync takes an issue's text: `trusted` for an author inside the repository or the main-push alert's own
+ * issue, `accepted` for an outsider's issue someone else labelled with the accept label after its last edit,
+ * `untrusted` for any other. Only a trusted or accepted open issue becomes a task, and only their title and body follow
+ * GitHub onto a task the sync added.
  */
 export type IssueTrust = 'trusted' | 'accepted' | 'untrusted';
 
@@ -17,6 +19,16 @@ const TRUSTED_ASSOCIATIONS: ReadonlySet<string> = new Set(['OWNER', 'MEMBER', 'C
 /** The account kind of a person on GitHub; a `Bot` (an app or a workflow) or an `Organization` never accepts. */
 const PERSON = 'User';
 
+/** The account kind of an app on GitHub, GitHub Actions among them. */
+const BOT = 'Bot';
+
+/**
+ * The login GitHub Actions writes as with a workflow's own token. That token writes only to the repository its
+ * workflow runs in, and a fork's pull request gets a read-only one, so an issue by it comes from a workflow file of
+ * this repository.
+ */
+const ACTIONS_BOT = 'github-actions';
+
 /**
  * How far the sync takes `issue`'s text. Only someone with triage rights can label an issue, so a label needs no
  * rights lookup; the two other ways a label lands are refused by its actor: an issue template applies it with the
@@ -24,7 +36,7 @@ const PERSON = 'User';
  * (the person who accepted read the older text), until someone adds the label again.
  */
 export function issueTrust(issue: GithubIssue, acceptLabel: string): IssueTrust {
-  if (TRUSTED_ASSOCIATIONS.has(issue.authorAssociation.toUpperCase())) {
+  if (TRUSTED_ASSOCIATIONS.has(issue.authorAssociation.toUpperCase()) || isOwnMainPushAlert(issue)) {
     return 'trusted';
   }
   if (!issue.labels.some((label) => sameLabel(label, acceptLabel))) {
@@ -32,6 +44,16 @@ export function issueTrust(issue: GithubIssue, acceptLabel: string): IssueTrust 
   }
   const accept = issue.labelEvents.filter((event) => sameLabel(event.label, acceptLabel)).at(-1);
   return accept !== undefined && byAnotherPerson(accept, issue.author) && !editedSince(issue, accept.at) ? 'accepted' : 'untrusted';
+}
+
+/**
+ * The main-push alert's issue: opened by the repository's own Actions bot under the alert's title. Its text is the
+ * workflow's own (the pusher's login, two commits, a compare link), so it follows like a collaborator's; GitHub gives
+ * that bot no author tie (`NONE`, or `CONTRIBUTOR` once it has one), and any other issue by it waits for the accept
+ * label like an outsider's, since another workflow may copy an outsider's text into its issue.
+ */
+function isOwnMainPushAlert(issue: GithubIssue): boolean {
+  return issue.authorKind === BOT && issue.author === ACTIONS_BOT && isMainPushAlertTitle(issue.title);
 }
 
 /** GitHub matches label names without case. */
