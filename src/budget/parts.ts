@@ -13,7 +13,7 @@ export interface BudgetSplit {
   readonly sessions: Readonly<Record<string, SessionBudget>>;
   /** The sub-leads over the sessions they list (T781): the split tree follows this lead tree (`teamTreeOf`). */
   readonly leads: KitConfig['leads'];
-  /** Each session's queued work by priority (`workWeights`); a session not in it counts 1. */
+  /** Each session's top queued task's weight under its priority (`workWeights`); a session not in it counts 1. */
   readonly work: ReadonlyMap<string, WorkByPriority>;
   /** The session lifts in force, as each lifted session's part of its parent's budget in percent (`budgetSplitOf`). */
   readonly lifted: ReadonlyMap<string, number>;
@@ -117,7 +117,7 @@ export function shareOf(split: Pick<BudgetSplit, 'sessions'>, id: string): numbe
   return split.sessions[id]?.share ?? DEFAULT_SESSION_SHARE;
 }
 
-/** A session's weight in the split: its `share` times its queued work, the work at least 1 so a session with none still gets a part. */
+/** A session's weight in the split: its `share` times its top queued task's weight (`workWeights`), at least 1 so a session with none still gets a part. */
 export function sessionWeightOf(split: Pick<BudgetSplit, 'sessions' | 'work'>, id: string): number {
   return shareOf(split, id) * Math.max(1, workWeightOf(split.work.get(id)));
 }
