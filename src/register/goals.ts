@@ -1,5 +1,5 @@
 import type { JsonRecord } from '../core/guards.ts';
-import { parseJsonl, type JsonlRecord } from '../core/jsonl.ts';
+import { parseJsonl, type JsonlParse, type JsonlRecord } from '../core/jsonl.ts';
 import { parseUtcDay } from '../core/time.ts';
 import { SESSION_NAME } from './model.ts';
 
@@ -214,10 +214,11 @@ export function foldGoals(records: Iterable<GoalRecord>): { readonly goals: Read
 
 /** The goals file's text as read (undefined: no file yet), folded. A bad line is counted, never thrown. */
 export function readGoals(text: string | undefined): GoalsRead {
-  if (text === undefined) {
-    return NO_GOALS;
-  }
-  const parsed = parseJsonl(text);
+  return text === undefined ? NO_GOALS : foldGoalLines(parseJsonl(text));
+}
+
+/** The goals file's parsed lines, folded; a writer parses once to check the versions and fold the same lines. */
+export function foldGoalLines(parsed: JsonlParse): GoalsRead {
   const records: GoalRecord[] = [];
   let unreadable = parsed.unreadable;
   let newer = 0;

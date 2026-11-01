@@ -93,6 +93,10 @@ export interface TeamPaths {
   readonly state: string;
   readonly events: string;
   readonly eventsLock: string;
+  /** The team's goal records, beside the events (register/goals.ts GOALS_FILE, T1730). */
+  readonly goals: string;
+  /** Held while a lead appends a goal record, so two writes never both pass one check. */
+  readonly goalsLock: string;
   /** A tree's root team's: taken by every task created in the tree, so one number is issued once (T1139). */
   readonly idsLock: string;
   readonly inbox: string;
@@ -255,6 +259,8 @@ export function teamPaths(kitHome: string, team: string, claudeDir: string, over
     state,
     events: join(state, 'events.jsonl'),
     eventsLock: join(state, 'events.lock'),
+    goals: join(state, 'goals.jsonl'),
+    goalsLock: join(state, 'goals.lock'),
     idsLock: join(state, 'ids.lock'),
     inbox: inHome(overrides.inbox) ?? join(state, 'inbox'),
     inboxMarks: join(state, 'inbox-marks.jsonl'),
