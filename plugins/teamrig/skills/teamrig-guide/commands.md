@@ -4282,12 +4282,12 @@ time to the pace end (`budget.paceEndHoursBeforeReset` before the reset; quiet h
 `budget.quietHours.paceWeight`), times today's active time. The teams of the kit home on one Claude account
 (`budget.account`, else the one the teams on its Claude config dir name, else that dir; each team's dir is the one
 its sessions last started in, kept in `state/usage/claude-config-dir.json`) split that day by weight: a session's
-weight is its share times its
-queued work, a team's its sessions' summed. Past 100% of the week, what is left in the extra-usage
+weight is its share times its top queued task's weight (by priority, not how many tasks it has queued), a team's
+its sessions' summed. Past 100% of the week, what is left in the extra-usage
 pool takes the place of that remainder (see [teamrig budget extra](#teamrig-budget-extra)). With sub-leads
 (`leads`), the team's budget splits first among their groups and the sessions the lead leads directly, a group's
 weight its sessions' summed, and each group splits its part the same way. What the lifts leave of a budget is split
-among the other sessions and groups under it by `budget.sessions.<id>.share` times their queued work. Short by
+among the other sessions and groups under it by `budget.sessions.<id>.share` times their top queued task's weight. Short by
 default: the busiest 7 sessions, then who is past the daily budget. A session past its part is held only while the
 team has no room today: everyone's use today, the outside's included, at or past the in-day pace (today's use in
 quiet hours, plus today's budget times the share of today's active time gone by). While the team has room, they
@@ -4420,7 +4420,7 @@ hours yet, and `--quiet-action` with `--quiet off` are usage errors (exit 64).
 A leader lifts one session under it to a part of its parent's daily budget for today: the team's for a session the
 lead leads directly, else its sub-lead's group's (`leads`). The session gets `--part` % of that budget, recomputed at
 every reading like the budget itself, and the other sessions and groups under the same parent split the rest by
-their shares and queued work. The lead lifts any session; a sub-lead lifts the sessions in its group at any depth,
+their shares and top queued tasks' weights. The lead lifts any session; a sub-lead lifts the sessions in its group at any depth,
 and its own session too, a part of its own group's budget. With `--group`, a leader above a sub-lead lifts the
 sub-lead's whole group: the group gets `--part` % of its parent's budget, and its sessions split that as usual. The
 lifts in force under one parent never give more than all of its budget. Every lift carries a stop %: it ends at the
