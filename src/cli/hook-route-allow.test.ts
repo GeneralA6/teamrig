@@ -99,4 +99,12 @@ describe('hook route-allow', () => {
     assert.equal(decisionOf(await kit.run(HOOK, { stdin: call('teamrig merge --session alpha'), files })), 'allow');
     assert.deepEqual(await answersOf(kit), []);
   });
+
+  it('prints nothing and exits ok when building its answer throws, so it never blocks the call', async () => {
+    const kit = new CliHarness(ASKS_OFF);
+    // A clock that gives no time: the allow's log line cannot carry a date, and that error reaches the hook itself.
+    kit.clock.advance(Number.NaN);
+    assert.deepEqual(await kit.run(HOOK, { stdin: call('teamrig merge --session alpha') }), NOTHING);
+    assert.deepEqual(await answersOf(kit), []);
+  });
 });
