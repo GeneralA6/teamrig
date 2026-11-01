@@ -6,6 +6,7 @@ import { FakePathProbe } from '../testing/fake-processes.ts';
 import type { RestoreEntry } from './entry.ts';
 import {
   chooseMode,
+  CLOSED_KEEP_MS,
   CONTINUE_PROMPT,
   continuePrompt,
   describeLostWork,
@@ -69,11 +70,52 @@ describe('judgeEntry', () => {
     assert.deepEqual(judgeEntry(closed, facts()), { verdict: 'restore', reason: 'closed by the shutdown' });
   });
 
-  it('discards a tab closed before the shutdown, or with no clean shutdown on record', () => {
+  it('keeps a tab closed outside the shutdown, before or after it, or with no clean shutdown on record, as closed', () => {
     const early = entry({ endedAt: SHUTDOWN - SHUTDOWN_GRACE_MS - 1, endReason: 'other' });
-    assert.deepEqual(judgeEntry(early, facts()), { verdict: 'discard', reason: 'closed before the shutdown' });
+    assert.deepEqual(judgeEntry(early, facts()), { verdict: 'closed', reason: 'closed outside a shutdown' });
+    const late = entry({ endedAt: SHUTDOWN + 60_001, updatedAt: SHUTDOWN + 60_001, endReason: 'other' });
+    assert.deepEqual(judgeEntry(late, facts()), { verdict: 'closed', reason: 'closed outside a shutdown' });
+    const last = entry({ endedAt: SHUTDOWN + 60_000, updatedAt: SHUTDOWN + 60_000, endReason: 'other' });
+    assert.deepEqual(judgeEntry(last, facts()), { verdict: 'restore', reason: 'closed by the shutdown' });
     const closed = entry({ endedAt: SHUTDOWN, endReason: 'other' });
-    assert.equal(judgeEntry(closed, facts({ shutdown: undefined })).verdict, 'discard');
+    assert.deepEqual(judgeEntry(closed, facts({ shutdown: undefined })), { verdict: 'closed', reason: 'closed, no shutdown on record' });
+  });
+
+  it('restores a tab closed outside a shutdown mid-turn or on an API error', () => {
+    const working = entry({ endedAt: SHUTDOWN - 3_600_000, endReason: 'other', state: 'working' });
+    assert.deepEqual(judgeEntry(working, facts()), { verdict: 'restore', reason: 'closed mid-turn' });
+    const failed = entry({ endedAt: SHUTDOWN - 3_600_000, endReason: 'other', state: 'error' });
+    assert.deepEqual(judgeEntry(failed, facts({ shutdown: undefined })), { verdict: 'restore', reason: 'closed on an API error' });
+  });
+
+  it('discards a tab closed outside a shutdown more than CLOSED_KEEP_MS ago, mid-turn too', () => {
+    const old = NOW - CLOSED_KEEP_MS - 1;
+    assert.deepEqual(judgeEntry(entry({ endedAt: old, updatedAt: old, endReason: 'other' }), facts()), {
+      verdict: 'discard',
+      reason: 'closed more than 48 h ago',
+    });
+    assert.equal(judgeEntry(entry({ endedAt: old, updatedAt: old, endReason: 'other', state: 'working' }), facts()).verdict, 'discard');
+    const edge = NOW - CLOSED_KEEP_MS;
+    assert.equal(judgeEntry(entry({ endedAt: edge, updatedAt: edge, endReason: 'other' }), facts()).verdict, 'closed');
+  });
+
+  it('replays 11-01: tabs that ended minutes before an update restart are restored on an API error, else kept as closed', () => {
+    const ended = LOGON - 10 * 60_000;
+    const restart = facts({ now: LOGON, since: LOGON, shutdown: { start: ended + 7 * 60_000, end: ended + 8 * 60_000 } });
+    const failed = entry({ endedAt: ended, updatedAt: ended, endReason: 'other', state: 'error' });
+    assert.deepEqual(judgeEntry(failed, restart), { verdict: 'restore', reason: 'closed on an API error' });
+    const idle = entry({ endedAt: ended, updatedAt: ended, endReason: 'other' });
+    assert.deepEqual(judgeEntry(idle, restart), { verdict: 'closed', reason: 'closed outside a shutdown' });
+  });
+
+  it('judges a tab closed outside a shutdown the same whether that shutdown came after it or a day before it (T1737)', () => {
+    const ended = SHUTDOWN - 3_600_000;
+    const dayBefore = facts({ shutdown: { start: SHUTDOWN - 86_400_000, end: SHUTDOWN - 86_400_000 + 60_000 } });
+    for (const state of ['ready', 'working', 'error'] as const) {
+      const closed = entry({ endedAt: ended, updatedAt: ended, endReason: 'other', state });
+      assert.deepEqual(judgeEntry(closed, dayBefore), judgeEntry(closed, facts()), state);
+    }
+    assert.equal(judgeEntry(entry({ endedAt: ended, updatedAt: ended, endReason: 'other' }), dayBefore).verdict, 'closed');
   });
 
   it('discards an end the person chose', () => {
@@ -122,14 +164,18 @@ describe('judgeEntry', () => {
 describe('selectRestorePlan', () => {
   it('sorts each verdict oldest session first', () => {
     const other = '99999999-2222-4333-8444-555555555555';
+    const shut = 'bbbbbbbb-2222-4333-8444-555555555555';
     const older = entry({ claudeSession: other, createdAt: SHUTDOWN - 7_200_000 });
-    const plan = selectRestorePlan([entry(), older, entry({ claudeSession: 'aaaaaaaa-2222-4333-8444-555555555555' })], facts({
+    const closed = entry({ claudeSession: shut, endedAt: SHUTDOWN - 3_600_000, endReason: 'other' });
+    const plan = selectRestorePlan([entry(), older, closed, entry({ claudeSession: 'aaaaaaaa-2222-4333-8444-555555555555' })], facts({
       transcripts: new Map([
         [SESSION, 't1'],
         [other, 't2'],
+        [shut, 't3'],
       ]),
     }));
     assert.deepEqual(plan.restore.map((judged) => judged.entry.claudeSession), [other, SESSION]);
+    assert.deepEqual(plan.closed.map((judged) => judged.entry.claudeSession), [shut]);
     assert.deepEqual(plan.discard.map((judged) => judged.reason), ['no transcript']);
     assert.deepEqual(plan.keep, []);
   });

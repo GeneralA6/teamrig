@@ -95,9 +95,11 @@ class FakeTerminal implements CountdownTerminal {
 }
 
 describe('keyChoice', () => {
-  it('reads Enter as go, i as idle, and q, Escape or Ctrl+C as cancel', () => {
+  it('reads Enter as go, i as idle, a as all, and q, Escape or Ctrl+C as cancel', () => {
     assert.equal(keyChoice('\r'), 'go');
     assert.equal(keyChoice('I'), 'idle');
+    assert.equal(keyChoice('a'), 'all');
+    assert.equal(keyChoice('A'), 'all');
     assert.equal(keyChoice('q'), 'cancel');
     assert.equal(keyChoice('\u001b'), 'cancel');
     assert.equal(keyChoice('\u0003'), 'cancel');
@@ -105,35 +107,55 @@ describe('keyChoice', () => {
   });
 });
 
+describe('countdownLine', () => {
+  it('offers a only when there are closed tabs to reopen', () => {
+    assert.equal(countdownLine(5, 0), '\rStarting in  5s   [Enter] start now   [i] reopen all with no prompt   [q] cancel ');
+    assert.equal(countdownLine(5, 3), '\rStarting in  5s   [Enter] start now   [i] reopen all with no prompt   [a] also reopen the 3 closed   [q] cancel ');
+  });
+});
+
 describe('terminalCountdown', () => {
   it('counts down each second and goes when time runs out', async () => {
     const terminal = new FakeTerminal();
-    const choice = terminalCountdown(terminal).choose(2);
+    const choice = terminalCountdown(terminal).choose(2, 0);
     terminal.second();
     terminal.second();
     assert.equal(await choice, 'go');
-    assert.deepEqual(terminal.written, [countdownLine(2), countdownLine(1), '\n']);
+    assert.deepEqual(terminal.written, [countdownLine(2, 0), countdownLine(1, 0), '\n']);
     assert.equal(terminal.listening, false);
     assert.equal(terminal.ticking, false);
   });
 
   it('takes the first key that makes a choice and ignores the rest', async () => {
     const terminal = new FakeTerminal();
-    const choice = terminalCountdown(terminal).choose(60);
+    const choice = terminalCountdown(terminal).choose(60, 0);
     terminal.press('x');
     terminal.press('i');
     terminal.press('q');
     terminal.second();
     assert.equal(await choice, 'idle');
-    assert.deepEqual(terminal.written, [countdownLine(60), '\n']);
+    assert.deepEqual(terminal.written, [countdownLine(60, 0), '\n']);
+  });
+
+  it('takes a only when closed tabs are on offer', async () => {
+    const none = new FakeTerminal();
+    const ignored = terminalCountdown(none).choose(1, 0);
+    none.press('a');
+    none.second();
+    assert.equal(await ignored, 'go');
+    const some = new FakeTerminal();
+    const taken = terminalCountdown(some).choose(60, 2);
+    some.press('a');
+    assert.equal(await taken, 'all');
+    assert.deepEqual(some.written, [countdownLine(60, 2), '\n']);
   });
 });
 
 describe('stdioCountdownTerminal', () => {
   it('writes the line to the output', () => {
     const output = new FakeTextOutput();
-    stdioCountdownTerminal(new FakeKeyInput(true), output).write(countdownLine(5));
-    assert.deepEqual(output.written, [countdownLine(5)]);
+    stdioCountdownTerminal(new FakeKeyInput(true), output).write(countdownLine(5, 0));
+    assert.deepEqual(output.written, [countdownLine(5, 0)]);
   });
 
   it('reads keys in raw mode until stopped, then gives the terminal back', () => {

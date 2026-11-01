@@ -1,13 +1,22 @@
-/** What the person chose at the restore's countdown: reopen now, reopen every session with no prompt, or nothing. */
-export type RestoreChoice = 'go' | 'idle' | 'cancel';
+/**
+ * What the person chose at the restore's countdown: reopen now, reopen every session with no prompt, reopen the
+ * tabs closed outside a shutdown too, or nothing.
+ */
+export type RestoreChoice = 'go' | 'idle' | 'all' | 'cancel';
 
 /** The countdown before the restore reopens its tabs, which lets the person change their mind. */
 export interface Countdown {
-  /** Counts `seconds` down on the terminal; resolves with the key pressed, or `go` when time runs out. */
-  choose(seconds: number): Promise<RestoreChoice>;
+  /**
+   * Counts `seconds` down on the terminal; resolves with the key pressed, or `go` when time runs out. `closed` is
+   * how many tabs closed outside a shutdown are on offer: only then does `a` take them too.
+   */
+  choose(seconds: number, closed: number): Promise<RestoreChoice>;
 }
 
-/** The choice a key makes: Enter starts now, `i` reopens idle, `q`, Escape or Ctrl+C cancels; any other none. */
+/**
+ * The choice a key makes: Enter starts now, `i` reopens idle, `a` reopens the closed tabs too, `q`, Escape or
+ * Ctrl+C cancels; any other none.
+ */
 export function keyChoice(key: string): RestoreChoice | undefined {
   if (key === '\r' || key === '\n') {
     return 'go';
@@ -16,12 +25,16 @@ export function keyChoice(key: string): RestoreChoice | undefined {
   if (lower === 'i') {
     return 'idle';
   }
+  if (lower === 'a') {
+    return 'all';
+  }
   return lower === 'q' || key === '\u0003' || key === '\u001b' ? 'cancel' : undefined;
 }
 
-/** The countdown's line, redrawn in place each second. */
-export function countdownLine(remaining: number): string {
-  return `\rStarting in ${String(remaining).padStart(2)}s   [Enter] start now   [i] reopen all with no prompt   [q] cancel `;
+/** The countdown's line, redrawn in place each second; it offers `a` only when there are closed tabs to take. */
+export function countdownLine(remaining: number, closed: number): string {
+  const all = closed > 0 ? `   [a] also reopen the ${closed} closed` : '';
+  return `\rStarting in ${String(remaining).padStart(2)}s   [Enter] start now   [i] reopen all with no prompt${all}   [q] cancel `;
 }
 
 /** The terminal a countdown runs on. */
@@ -35,7 +48,7 @@ export interface CountdownTerminal {
 
 export function terminalCountdown(terminal: CountdownTerminal): Countdown {
   return {
-    choose(seconds) {
+    choose(seconds, closed) {
       return new Promise((resolve) => {
         let remaining = seconds;
         let done = false;
@@ -49,11 +62,11 @@ export function terminalCountdown(terminal: CountdownTerminal): Countdown {
           terminal.write('\n');
           resolve(choice);
         };
-        terminal.write(countdownLine(remaining));
+        terminal.write(countdownLine(remaining, closed));
         stops.push(
           terminal.listen((key) => {
             const choice = keyChoice(key);
-            if (choice !== undefined) {
+            if (choice !== undefined && (choice !== 'all' || closed > 0)) {
               finish(choice);
             }
           }),
@@ -64,7 +77,7 @@ export function terminalCountdown(terminal: CountdownTerminal): Countdown {
             if (remaining <= 0) {
               finish('go');
             } else {
-              terminal.write(countdownLine(remaining));
+              terminal.write(countdownLine(remaining, closed));
             }
           }),
         );
