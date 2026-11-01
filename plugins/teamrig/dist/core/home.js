@@ -122,6 +122,7 @@ export function teamPaths(kitHome, team, claudeDir, overrides = {}) {
         period: join(state, 'usage', 'period.json'),
         meterLog: join(state, 'usage', 'meter-log.jsonl'),
         extraLog: join(state, 'usage', 'extra-log.jsonl'),
+        teamWeek: join(state, 'usage', 'team.week.json'),
         lifts: join(state, 'usage', 'lifts.jsonl'),
         bursts: join(state, 'usage', 'bursts.jsonl'),
         hires: join(state, 'hires.jsonl'),
