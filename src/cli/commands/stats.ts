@@ -37,13 +37,28 @@ export async function stats(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const tree = args.switches.has('tree');
   const rolled = tree ? await rollUp(runtime, callerOf(args.flags, runtime.env)) : await ownRegister(runtime);
   const scope: StatsScope | undefined = tree || !args.flags.has('session') ? undefined : { team: rolled.own.team, session: sessionIdOf(rolled.own.roster, callerOf(args.flags, runtime.env)) };
+  const folded = await foldStats(runtime, rolled, range, scope);
+  statsLines(folded, scope === undefined ? rolled.own.team : formatAddress({ team: scope.team, id: scope.session }), rolled.teams.map((team) => team.team)).forEach((line) => runtime.out.stdout(line));
+  return EXIT.ok;
+}
+
+/** A roll-up's numbers over a range with their Health levels, as `stats` and the meeting agenda's top lines print them. */
+export interface FoldedStats {
+  readonly stats: RegisterStats;
+  readonly health: RegisterHealth;
+}
+
+/**
+ * The fold of every register of `rolled` over `range` on its own team's clock, the days at the usage limit read from
+ * the meter log, narrowed to one session's tasks when `scope` names one. Read-only, each register's whole history.
+ */
+export async function foldStats(runtime: CliRuntime, rolled: RollUp, range: StatsRange, scope?: StatsScope): Promise<FoldedStats> {
   const teams = await statsTeamsOf(runtime, rolled);
   const { config } = rolled.own;
   const now = runtime.clock.now();
   const limits = await limitsOf(runtime, rolled.own, now);
-  const folded = registerStats({ teams, range, now: new Date(now), zone: teamZone(config, runtime), ownerMarker: config.register.ownerSource, limits, ...(scope === undefined ? {} : { session: scope }) });
-  statsLines(folded, registerHealth(folded), scope === undefined ? rolled.own.team : formatAddress({ team: scope.team, id: scope.session }), rolled.teams.map((team) => team.team)).forEach((line) => runtime.out.stdout(line));
-  return EXIT.ok;
+  const stats = registerStats({ teams, range, now: new Date(now), zone: teamZone(config, runtime), ownerMarker: config.register.ownerSource, limits, ...(scope === undefined ? {} : { session: scope }) });
+  return { stats, health: registerHealth(stats) };
 }
 
 function rangeOf(value: string | undefined): StatsRange {
@@ -80,17 +95,28 @@ async function statsTeamOf(runtime: CliRuntime, rolled: RolledTeam): Promise<Sta
   return { team: rolled.team, lead: rolled.config.roles.lead, events: history.read.events };
 }
 
-/** The lines `stats` prints: a header, the Health tiles, then one headline per section. */
-export function statsLines(stats: RegisterStats, health: RegisterHealth, name: string, teams: readonly string[]): string[] {
+/**
+ * The top lines of `stats`, which the meeting agenda opens with too: a header naming the scope, range and tree, the
+ * Health tiles, the flow, and the days at the usage limit when the range has any.
+ */
+export function statsTopLines({ stats, health }: FoldedStats, name: string, teams: readonly string[]): string[] {
   const first = stats.days[0]?.day;
   const last = stats.days.at(-1)?.day;
   const span = first === undefined || last === undefined ? '' : `: ${first.slice(5)} to ${last.slice(5)}`;
   const tree = teams.length > 1 ? ` (tree: ${teams.join(', ')})` : '';
-  const lines = [
+  return [
     `STATS ${name}, ${rangeText(stats.range)}${span}${tree}`,
     `HEALTH ${healthText(health)}`,
     `FLOW opened ${stats.opened}, closed ${stats.closedTasks} (${stats.droppedTasks} dropped), net ${signed(stats.net)}; last ${stats.recent.days} d net ${signed(stats.recent.net)}`,
     ...limitLines(stats),
+  ];
+}
+
+/** The lines `stats` prints: its top lines (statsTopLines), then one headline per other section. */
+export function statsLines(folded: FoldedStats, name: string, teams: readonly string[]): string[] {
+  const { stats } = folded;
+  const lines = [
+    ...statsTopLines(folded, name, teams),
     `NEW WORK ${newWorkText(stats)}`,
     `SPEED lead time ${spreadText(stats.all.leadTime)} (${stats.all.leadTime.count} done); cycle time ${spreadText(stats.all.cycleTime)} (${stats.all.cycleTime.count} started, ${stats.neverStarted} never)`,
     `DELAYS overdue ${stats.all.overdue.count}, p1 ${stats.all.overdue.p1}; done by due ${stats.all.due.onTime} of ${stats.all.due.total}${bandsText(stats.lateDays, 'late')}; due moved ${stats.dueMoved}`,

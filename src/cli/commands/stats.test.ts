@@ -130,7 +130,7 @@ describe('statsLines', () => {
     const moved: RegisterEvent = { v: EVENT_VERSION, type: 'moved', id: 'T1', at: '2030-01-06T10:00:00.000Z', by: 'lead', to: 'web' };
     const done: RegisterEvent = { v: EVENT_VERSION, type: 'status', id: 'T1', at: '2030-01-08T10:00:00.000Z', by: 'alpha', status: 'done', note: 'n', evidence: null, skill: null };
     const stats = registerStats({ teams: [teamOf('app', [created, moved]), teamOf('web', [created, done])], range: '7d', now: new Date('2030-01-10T10:00:00.000Z'), zone: testZone('UTC'), ownerMarker: 'owner' });
-    const lines = statsLines(stats, registerHealth(stats), 'app', ['app', 'web']);
+    const lines = statsLines({ stats, health: registerHealth(stats) }, 'app', ['app', 'web']);
     assert.equal(lines[0], 'STATS app, 7 d: 01-04 to 01-10 (tree: app, web)');
     assert.equal(lines[8], 'PEOPLE web/alpha 1');
     assert.equal(lines[9], 'TEAMS app 0 active, overdue 0 · web 0 active, overdue 0');
