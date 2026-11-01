@@ -12,6 +12,7 @@ import { encodePrompt } from '../../open/prompt.ts';
 import { shellCommand } from '../../open/quote.ts';
 import { plainSessionEnv } from '../../open/session-env.ts';
 import { runsClaude } from '../../open/session-processes.ts';
+import { RestoreArchive, restoreArchiveDir } from '../../restore/archive.ts';
 import { RestoreRegistry, restoreSessionsDir } from '../../restore/registry.ts';
 import { checkRestore, previewRestore, runRestore, type ReopenOutcome, type ReopenTab, type RestoreDeps, type RestoreRun } from '../../restore/run.ts';
 import type { RestoreTeam } from '../../restore/teams.ts';
@@ -109,6 +110,7 @@ async function restoreDepsOf(runtime: CliRuntime, terminal: TerminalChoice | und
   const logPath = restoreLogPath(kitHome);
   return {
     registry: new RestoreRegistry(runtime.files, restoreSessionsDir(kitHome)),
+    archive: new RestoreArchive(runtime.files, restoreArchiveDir(kitHome)),
     clock: runtime.clock,
     sleep: runtime.sleep,
     probe: runtime.probe,

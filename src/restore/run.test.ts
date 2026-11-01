@@ -4,6 +4,7 @@ import { claudeProjectSlug } from '../budget/discover.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeCountdown, FakeShutdownLog, FakeStopWatch } from '../testing/fake-restore.ts';
 import { MemoryFiles, MemoryPathProbe } from '../testing/memory-files.ts';
+import { ARCHIVE_KEEP_MS, RestoreArchive, restoreArchiveDir } from './archive.ts';
 import type { RestoreChoice } from './countdown.ts';
 import type { RestoreEntry } from './entry.ts';
 import { continuePrompt, type LostWork } from './plan.ts';
@@ -55,7 +56,9 @@ const CLOSED_TRANSCRIPT: Readonly<Record<string, string>> = { [`/t/${CLOSED}.jso
 const LEAD_ENTRY = entry(LEAD, 1, { team: 'app', session: 'lead' });
 const ALPHA_ENTRY = entry(ALPHA, 2, { team: 'app', session: 'alpha', state: 'working' });
 const LIVE_ENTRY = entry(LIVE, 5);
-const ENTRIES: readonly RestoreEntry[] = [LEAD_ENTRY, ALPHA_ENTRY, entry(LONE, 3, { projectDir: '/work/removed/wt' }), entry(SDK, 4, { entrypoint: 'sdk-cli' }), LIVE_ENTRY];
+const SDK_ENTRY = entry(SDK, 4, { entrypoint: 'sdk-cli' });
+const ENTRIES: readonly RestoreEntry[] = [LEAD_ENTRY, ALPHA_ENTRY, entry(LONE, 3, { projectDir: '/work/removed/wt' }), SDK_ENTRY, LIVE_ENTRY];
+const DAY_MS = 86_400_000;
 
 const APP: RestoreTeam = {
   team: 'app',
@@ -74,6 +77,7 @@ type Reopen = (tab: ReopenTab, world: World) => Promise<ReopenOutcome>;
 interface World {
   readonly deps: RestoreDeps;
   readonly registry: RestoreRegistry;
+  readonly archive: RestoreArchive;
   readonly clock: FakeClock;
   readonly countdown: FakeCountdown;
   readonly stops: FakeStopWatch;
@@ -108,6 +112,7 @@ async function world(
   for (const recorded of entries) {
     await registry.write(recorded);
   }
+  const archive = new RestoreArchive(files, restoreArchiveDir('/kit'));
   const clock = new FakeClock('2030-01-08T09:05:00Z');
   const countdown = new FakeCountdown(choice);
   const stops = new FakeStopWatch();
@@ -116,6 +121,7 @@ async function world(
   const logged: string[] = [];
   const self: World = {
     registry,
+    archive,
     clock,
     countdown,
     stops,
@@ -124,6 +130,7 @@ async function world(
     logged,
     deps: {
       registry,
+      archive,
       clock,
       sleep: clock.sleep,
       probe,
@@ -181,7 +188,25 @@ describe('checkRestore', () => {
     const { deps, registry, logged, clock } = await world();
     assert.deepEqual(await checkRestore(deps), { since: clock.now(), count: 3 });
     assert.equal(await registry.read(SDK), undefined);
-    assert.deepEqual(logged, [`discarded ${SDK} (not a terminal session (sdk-cli))`, 'check: 3 to restore, 1 kept, 0 closed']);
+    assert.deepEqual(logged, [`archived ${SDK} (not a terminal session (sdk-cli))`, 'check: 3 to restore, 1 kept, 0 closed']);
+  });
+
+  it('moves a dropped entry to the archive with when and why, so a session judged wrongly is never lost (T1747)', async () => {
+    const { deps, archive, clock } = await world();
+    await checkRestore(deps);
+    assert.deepEqual(await archive.list(), [{ entry: SDK_ENTRY, archivedAt: clock.now(), reason: 'not a terminal session (sdk-cli)' }]);
+  });
+
+  it('deletes an entry archived 7 days ago or earlier and keeps a younger one (T1747)', async () => {
+    const { deps, archive, logged, clock } = await world('go', undefined, [LEAD_ENTRY]);
+    await archive.put({ entry: entry(JOB, 6), archivedAt: clock.now() - ARCHIVE_KEEP_MS, reason: 'background session' });
+    await archive.put({ entry: entry(MOVED, 7), archivedAt: clock.now() - ARCHIVE_KEEP_MS + DAY_MS, reason: 'background session' });
+    await checkRestore(deps);
+    assert.deepEqual(
+      (await archive.list()).map(({ entry: kept }) => kept.claudeSession),
+      [MOVED],
+    );
+    assert.deepEqual(logged, ['archive: deleted 1 archived 7 days ago or earlier', 'check: 1 to restore, 0 kept, 0 closed']);
   });
 
   it('keeps a tab closed outside the shutdown and leaves it out of the count, so it opens no restore tab (T1747)', async () => {
@@ -195,7 +220,7 @@ describe('checkRestore', () => {
     const { deps, registry, logged, clock } = await world('go', undefined, [LEAD_ENTRY, entry(JOB, 6), entry(MOVED, 7)]);
     assert.deepEqual(await checkRestore(deps), { since: clock.now(), count: 1 });
     assert.deepEqual((await registry.list()).map(({ claudeSession }) => claudeSession), [LEAD]);
-    assert.deepEqual(logged, [`discarded ${JOB} (background session)`, `discarded ${MOVED} (continued in 60000000)`, 'check: 1 to restore, 0 kept, 0 closed']);
+    assert.deepEqual(logged, [`archived ${JOB} (background session)`, `archived ${MOVED} (continued in 60000000)`, 'check: 1 to restore, 0 kept, 0 closed']);
   });
 });
 
@@ -347,7 +372,7 @@ describe('runRestore', () => {
     const { deps, logged, stops } = await world();
     await runRestore(deps, LOGON);
     assert.deepEqual(logged, [
-      `discarded ${SDK} (not a terminal session (sdk-cli))`,
+      `archived ${SDK} (not a terminal session (sdk-cli))`,
       'run: started, 3 to reopen',
       `run: opened ${LEAD} (continue: lead) at effort high`,
       `run: opened ${ALPHA} (continue: mid-turn) at effort max`,
