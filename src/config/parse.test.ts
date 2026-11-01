@@ -855,6 +855,16 @@ describe('parseConfig', () => {
     );
   });
 
+  it('reads the goals mode, free when absent, and falls back to free on a wrong one', () => {
+    assert.equal(parseConfig({ ...ROSTER }).config.register.goals, 'free');
+    const set = parseConfig({ ...ROSTER, register: { goals: 'required' } });
+    assert.deepEqual([set.issues, set.config.register.goals], [[], 'required']);
+    const { config, issues } = parseConfig({ ...ROSTER, register: { goals: 'strict' } });
+    assert.deepEqual(paths(issues), ['register.goals']);
+    assert.match(issues[0]?.message ?? '', /free, checked, required/);
+    assert.equal(config.register.goals, 'free');
+  });
+
   it('falls back to the default count of self-made tasks past its limit', () => {
     const { config, issues } = parseConfig({ ...ROSTER, register: { check: { maxSelfMadePerDay: 201 } } });
     assert.deepEqual(paths(issues), ['register.check.maxSelfMadePerDay']);

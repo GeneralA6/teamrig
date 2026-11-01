@@ -61,6 +61,7 @@ import {
   BURST_POLICIES,
   CONFLICT_WINNERS,
   ESCALATIONS,
+  GOALS_MODES,
   HIRING_POLICIES,
   isAdHocRunners,
   isAskWith,
@@ -70,6 +71,7 @@ import {
   isConflictWinner,
   isEffortLevel,
   isEscalation,
+  isGoalsMode,
   isHiringPolicy,
   isOverAction,
   isHookAsks,
@@ -1023,10 +1025,12 @@ function parseRegister(read: ConfigReader, raw: JsonRecord): RegisterConfig {
   }
   const goalPattern = read.optionalString(raw, 'goalPattern', path, isValidRegex);
   const verifyGate = read.string(raw, 'verifyGate', path, defaults.verifyGate, oneOf(VERIFY_GATES));
+  const goals = read.string(raw, 'goals', path, defaults.goals, oneOf(GOALS_MODES));
   const reviewMode = read.string(review, 'mode', `${path}.review`, defaults.review.mode, oneOf(REVIEW_MODES));
   const register: RegisterConfig = {
     ownerSource: read.string(raw, 'ownerSource', path, defaults.ownerSource, isSessionName),
     priorities: priorities.length === 0 ? defaults.priorities : priorities,
+    goals: isGoalsMode(goals) ? goals : defaults.goals,
     maxTitle: read.integer(raw, 'maxTitle', path, defaults.maxTitle, { min: 20, max: 1_000 }),
     maxText: read.integer(raw, 'maxText', path, defaults.maxText, { min: 20, max: 5_000 }),
     secretPatterns: read.stringList(raw, 'secretPatterns', path, defaults.secretPatterns, isValidRegex),
