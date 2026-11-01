@@ -71,7 +71,7 @@ function printedScan(scan: unknown): string {
 describe('restore shortcut', () => {
   it('runs the run launcher under Node from the home folder, and reads as what it runs and where', () => {
     assert.deepEqual(WANTED, { target: 'C:\\nodejs\\node.exe', arguments: `"${LAUNCHER}"`, folder: HOME, description: RESTORE_SHORTCUT_DESCRIPTION });
-    assert.equal(shortcutLine(WANTED), `"C:\\nodejs\\node.exe" "${LAUNCHER}" (in ${HOME})`);
+    assert.equal(shortcutLine(WANTED), `"C:\\nodejs\\node.exe" "${LAUNCHER}" (in "${HOME}")`);
   });
 
   it('starts the same when program, arguments and folder match, whatever its tip', () => {
