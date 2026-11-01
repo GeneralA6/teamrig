@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatUtcDay, formatUtcHour, formatUtcMinute, isMinuteInSpan, parseDayStart, parseDeadline, parseTypedInstant, parseUtcDay, parseUtcDeadline, showStored, storedDeadline, typedDeadline, typedTimeHint, utcMinuteOf } from './time.ts';
+import { addUtcDays, formatUtcDay, formatUtcHour, formatUtcMinute, isMinuteInSpan, parseDayStart, parseDeadline, parseTypedInstant, parseUtcDay, parseUtcDeadline, showStored, storedDeadline, typedDeadline, typedTimeHint, utcMinuteOf } from './time.ts';
 import { TimeZone } from './zone.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 
@@ -52,6 +52,22 @@ describe('parseUtcDay', () => {
     assert.equal(parseUtcDay('2030-01-07')?.toISOString(), '2030-01-07T00:00:00.000Z');
     assert.equal(parseUtcDay('2030-01-07 10:00'), undefined);
     assert.equal(parseUtcDay('2030-02-30'), undefined);
+  });
+});
+
+describe('addUtcDays', () => {
+  it('steps a bare day across month and year ends, both ways', () => {
+    assert.equal(addUtcDays('2030-01-07', 7), '2030-01-14');
+    assert.equal(addUtcDays('2030-01-31', 1), '2030-02-01');
+    assert.equal(addUtcDays('2030-01-01', -1), '2029-12-31');
+    assert.equal(addUtcDays('2028-02-28', 1), '2028-02-29');
+    assert.equal(addUtcDays('2030-03-30', 0), '2030-03-30');
+  });
+
+  it('gives nothing for text that is no bare day', () => {
+    assert.equal(addUtcDays('2030-02-30', 1), undefined);
+    assert.equal(addUtcDays('2030-01-07 10:00', 1), undefined);
+    assert.equal(addUtcDays('yesterday', -1), undefined);
   });
 });
 

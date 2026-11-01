@@ -6,7 +6,7 @@
  * done) and Other work. Dropped tasks are counted apart, never mixed in. Pure: no clock, no disk, no `node:` imports
  * (the pane vendors it through `read/index`).
  */
-import { formatUtcDay, parseDayStart, parseUtcDay } from '../core/time.ts';
+import { addUtcDays, parseDayStart } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { taskNumber, type Task } from './fold.ts';
 import { priorityText } from './model.ts';
@@ -122,14 +122,10 @@ function kindOf(task: Task, doneAt: number, input: DoneGroupsInput): DoneGroupKi
  * the day seven days on, each found from its own date, so a week across a clock change still ends at midnight.
  */
 function inWeek(week: string, at: number, zone: TimeZone): boolean {
-  const day = parseUtcDay(week);
   const start = parseDayStart(week, zone);
-  if (day === undefined || start === undefined) {
-    return false;
-  }
-  const next = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate() + WEEK_DAYS));
-  const end = parseDayStart(formatUtcDay(next), zone);
-  return end !== undefined && at >= start.getTime() && at < end.getTime();
+  const next = addUtcDays(week, WEEK_DAYS);
+  const end = next === undefined ? undefined : parseDayStart(next, zone);
+  return start !== undefined && end !== undefined && at >= start.getTime() && at < end.getTime();
 }
 
 function pushTo<K>(map: Map<K, Task[]>, key: K, task: Task): void {
