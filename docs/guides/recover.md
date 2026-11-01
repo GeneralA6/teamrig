@@ -43,6 +43,10 @@ teamrig restore run      # reopen the sessions the last shutdown killed
   needs no new install. When the shutdown killed sessions, the check opens a tab titled `Restore Claude sessions`
   that runs the restore and closes by itself once they are open. `restore uninstall --yes` stops it. macOS and Linux
   have no logon entry yet: there you run `teamrig restore run` after a crash or reboot.
+- By hand, from anywhere: the same install adds the Start-menu shortcut `Restore Claude Sessions` (pin it to the
+  taskbar if you like). It opens a window running `teamrig restore run`, with its list and countdown, after a crash,
+  a reboot or a window you closed, with no terminal or folder to pick first. An older shortcut of that name, pinned or
+  not, is repointed in place on the next install.
 
 ## A fresh context
 
