@@ -31,6 +31,7 @@ import { NODE_WORKTREE_FILES } from "../worktree/files.js";
 import { GIT_WORKTREES } from "../worktree/git.js";
 import { stdioCountdownTerminal, terminalCountdown } from "../restore/countdown.js";
 import { LOGON_QUERY_TIMEOUT_MS, systemLogonEntry } from "../restore/logon.js";
+import { SHORTCUT_QUERY_TIMEOUT_MS, systemShortcutPlace } from "../restore/shortcut.js";
 import { SHUTDOWN_QUERY_TIMEOUT_MS, systemShutdownLog } from "../restore/shutdowns.js";
 import { processStopWatch } from "../restore/stops.js";
 import { CMD_SHIM_LINE_ENV } from "./cmd-shim.js";
@@ -79,6 +80,7 @@ process.exitCode = await runCli(process.argv.slice(2), {
         countdown: terminalCountdown(stdioCountdownTerminal(process.stdin, process.stdout)),
         stops: processStopWatch(process),
         logon: systemLogonEntry(process.platform, process.env['SystemRoot'], nodeProgramRunner(LOGON_QUERY_TIMEOUT_MS)),
+        shortcuts: systemShortcutPlace(process.platform, nodeProgramRunner(SHORTCUT_QUERY_TIMEOUT_MS)),
     },
     mergeGit: GIT_MERGE,
     trees: GIT_TREES,

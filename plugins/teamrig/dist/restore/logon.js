@@ -1,5 +1,6 @@
 import { win32 } from 'node:path';
 import { powerShellRequest } from "../core/powershell.js";
+import { powerShellOutput } from "./powershell-output.js";
 /** The current user's Run key: Windows runs the command of each of its values at logon. */
 export const WINDOWS_RUN_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
 /** The Run value that starts the restore's check. */
@@ -39,23 +40,14 @@ function windowsRunValue(systemRoot, run) {
         where: `${WINDOWS_RUN_KEY} ${RESTORE_RUN_VALUE}`,
         commandFor: (node, script) => `"${conhost}" --headless "${node}" "${script}"`,
         async read() {
-            const printed = succeeded(await run(powerShellRequest(WINDOWS_READ_SCRIPT))).trim();
+            const printed = powerShellOutput(await run(powerShellRequest(WINDOWS_READ_SCRIPT))).trim();
             return printed === '' ? undefined : Buffer.from(printed, 'base64').toString('utf8');
         },
         async write(command) {
-            succeeded(await run(powerShellRequest(windowsWriteScript(command))));
+            powerShellOutput(await run(powerShellRequest(windowsWriteScript(command))));
         },
         async remove() {
-            succeeded(await run(powerShellRequest(WINDOWS_REMOVE_SCRIPT)));
+            powerShellOutput(await run(powerShellRequest(WINDOWS_REMOVE_SCRIPT)));
         },
     };
-}
-/** The output of a run that exited 0; any other end throws with the first line it printed. */
-function succeeded(result) {
-    if (result.end.kind === 'exited' && result.end.code === 0) {
-        return result.stdout;
-    }
-    const said = `${result.stderr}\n${result.stdout}`.split(/\r?\n/).find((line) => line.trim() !== '')?.trim() ?? 'no error text';
-    const end = result.end.kind === 'exited' ? `exit ${result.end.code}` : `signal ${result.end.signal}`;
-    throw new Error(`PowerShell ended with ${end}: ${said}`);
 }

@@ -291,8 +291,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   restore check [--terminal <name>] [--home <dir>]   at logon: drops what no restore needs and, when
       the shutdown killed sessions, opens a tab running restore run for them
   restore install [--yes]      has the system run restore check at each logon (Windows: a Run key
-      value naming a launcher in the kit home); without --yes it shows the change and writes nothing
-  restore uninstall [--yes]    stops it: removes the logon entry, then the launcher
+      value naming a launcher in the kit home) and adds the Start-menu shortcut "Restore Claude
+      Sessions" that runs restore run by hand; without --yes it shows the change and writes nothing
+  restore uninstall [--yes]    stops both: removes the logon entry and the shortcut, then the launchers
   rules [--session <id|name>]  the team rules and who the session is, as a session start gives them
   rules scan [--kind <kind>] [--all]   every place a local rule can override a core rule (CLAUDE.md files,
       rules files, skills, memory, rules.md, hook scripts, settings autoMode lines), the kept rules, and the
