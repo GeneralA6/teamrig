@@ -196,7 +196,8 @@ describe('renderReboot', () => {
 
   describe("prints what `teamrig restore run` prints (src/restore/run.ts)", () => {
     it('its header, each listed session and each opened tab', () => {
-      assert.ok(RUN_SOURCE.includes('deps.print(`Claude Code sessions the last shutdown interrupted (${items.length}):`)'));
+      assert.ok(RUN_SOURCE.includes('printGroup(deps, `Claude Code sessions the last shutdown interrupted (${restored.length}):`, restored)'));
+      assert.ok(RUN_SOURCE.includes('deps.print(heading);'));
       assert.ok(RUN_SOURCE.includes('[${item.reason}; ${modeWords(item)}]   ${item.entry.projectDir}`'));
       assert.ok(RUN_SOURCE.includes('deps.print(`Opened ${item.label} (${modeWords(item)})`)'));
       assert.equal(PRINTED[0]?.words, `Claude Code sessions the last shutdown interrupted (${SESSIONS.length}):`);
