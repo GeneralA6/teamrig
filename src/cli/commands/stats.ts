@@ -1,7 +1,20 @@
+import { MeterLog } from '../../budget/calibration.ts';
+import { limitSpansOf } from '../../budget/extra.ts';
 import { formatAddress } from '../../core/address.ts';
 import { registerHealth, type HealthLevel, type RegisterHealth } from '../../register/stats-health.ts';
-import { isStatsRange, registerStats, WORK_SOURCES, type RegisterStats, type Spread, type StatsRange, type StatsScope, type StatsTeam } from '../../register/stats.ts';
+import {
+  isStatsRange,
+  registerStats,
+  WORK_SOURCES,
+  type LimitSpan,
+  type RegisterStats,
+  type Spread,
+  type StatsRange,
+  type StatsScope,
+  type StatsTeam,
+} from '../../register/stats.ts';
 import { WAIT_KINDS } from '../../register/waits.ts';
+import { accountWeekOn } from '../account-teams.ts';
 import { noPositionals, UsageError, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
 import { sessionIdOf, teamZone } from '../kit.ts';
@@ -12,7 +25,8 @@ import { ownRegister, warnDamage } from './register.ts';
 /**
  * `teamrig stats [--tree] [--range 7d|14d|30d|all] [--session <id|name>]` (T1771): the register's numbers over a range
  * of the team's calendar days, as the pane's Stats tab folds them (register/stats.ts): the Health tiles with their
- * levels, then each section's headline, for the lead and the meeting agenda's top lines. As with `list`, `--session`
+ * levels, then each section's headline and the days the week sat at its usage limit (the `$` mark, from the meter log),
+ * for the lead and the meeting agenda's top lines. As with `list`, `--session`
  * reads one session's tasks in its team, and with `--tree` names the caller instead, who must be the team's lead: the
  * teams under it are rolled up, so `/teamrig`, which fills in the tab's session, can run both. Read-only: each
  * register's whole history is read, since a range reaches past what a compaction left in the working set.
@@ -25,7 +39,9 @@ export async function stats(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const scope: StatsScope | undefined = tree || !args.flags.has('session') ? undefined : { team: rolled.own.team, session: sessionIdOf(rolled.own.roster, callerOf(args.flags, runtime.env)) };
   const teams = await statsTeamsOf(runtime, rolled);
   const { config } = rolled.own;
-  const folded = registerStats({ teams, range, now: new Date(runtime.clock.now()), zone: teamZone(config, runtime), ownerMarker: config.register.ownerSource, ...(scope === undefined ? {} : { session: scope }) });
+  const now = runtime.clock.now();
+  const limits = await limitsOf(runtime, rolled.own, now);
+  const folded = registerStats({ teams, range, now: new Date(now), zone: teamZone(config, runtime), ownerMarker: config.register.ownerSource, limits, ...(scope === undefined ? {} : { session: scope }) });
   statsLines(folded, registerHealth(folded), scope === undefined ? rolled.own.team : formatAddress({ team: scope.team, id: scope.session }), rolled.teams.map((team) => team.team)).forEach((line) => runtime.out.stdout(line));
   return EXIT.ok;
 }
@@ -38,6 +54,15 @@ function rangeOf(value: string | undefined): StatsRange {
     throw new UsageError(`--range takes 7d, 14d, 30d or all, not ${value}`);
   }
   return value;
+}
+
+/**
+ * The stretches the week sat at its usage limit, from the meter log of the account the caller's team is on
+ * (`accountWeekOn`); a tree's teams are read against that account too.
+ */
+async function limitsOf(runtime: CliRuntime, own: RolledTeam, now: number): Promise<LimitSpan[]> {
+  const account = await accountWeekOn(runtime, own.config.budget, own.paths, now);
+  return limitSpansOf(await new MeterLog(runtime.files, account.paths.meterLog).read(now));
 }
 
 /** Each team's whole event log, its damaged lines named once, with its lead. */
@@ -65,6 +90,7 @@ export function statsLines(stats: RegisterStats, health: RegisterHealth, name: s
     `STATS ${name}, ${rangeText(stats.range)}${span}${tree}`,
     `HEALTH ${healthText(health)}`,
     `FLOW opened ${stats.opened}, closed ${stats.closedTasks} (${stats.droppedTasks} dropped), net ${signed(stats.net)}; last ${stats.recent.days} d net ${signed(stats.recent.net)}`,
+    ...limitLines(stats),
     `NEW WORK ${newWorkText(stats)}`,
     `SPEED lead time ${spreadText(stats.all.leadTime)} (${stats.all.leadTime.count} done); cycle time ${spreadText(stats.all.cycleTime)} (${stats.all.cycleTime.count} started, ${stats.neverStarted} never)`,
     `DELAYS overdue ${stats.all.overdue.count}, p1 ${stats.all.overdue.p1}; done by due ${stats.all.due.onTime} of ${stats.all.due.total}${bandsText(stats.lateDays, 'late')}; due moved ${stats.dueMoved}`,
@@ -79,6 +105,12 @@ export function statsLines(stats: RegisterStats, health: RegisterHealth, name: s
     lines.push(`SPLIT ${split.day.slice(5)} ${split.tasks} task(s) moved ${split.from} -> ${split.to}: the chart of ${split.from} before it lacks them`);
   }
   return lines;
+}
+
+/** The days the week sat at its usage limit (the `$` mark), when the range has any. */
+function limitLines({ days }: RegisterStats): string[] {
+  const marked = days.filter((day) => day.atLimit).map((day) => day.day.slice(5));
+  return marked.length === 0 ? [] : [`LIMIT $ ${marked.join(', ')}: the week sat at its usage limit, so a quiet day there is no slack`];
 }
 
 function rangeText(range: StatsRange): string {
