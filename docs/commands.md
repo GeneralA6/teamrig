@@ -108,8 +108,8 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       batch asked, as a meeting start does; in a tree of teams the root lead's batch holds every team's
       waits under it, and a child team's decisions prints its own and its teams' waits, naming that lead
   add --title "<one line>" --description "<what and why>" --priority p<n> [--ref <where it was asked>]
-      [--owner <session>] [--source <session>|<owner source>] [--due <date>] [--goals a,b] [--week <date>]
-      [--after T5,T6] [--size <pct>] [--type task|bug] [--critical]
+      [--owner <session>] [--source <session>|<owner source>] [--due <date>] [--goals a,b|none]
+      [--week <date>] [--after T5,T6] [--size <pct>] [--type task|bug] [--critical]
       --description: what the task is and why, in plain words for a person (newlines kept, at most 2,000
       characters), needed unless register.requireDescription is off; show prints it under the title
       --after: the tasks to finish before this one starts; its line shows "after T5"
