@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { RESTORE_LAUNCHER_SCRIPT } from '../restore/launcher.ts';
+import { RESTORE_CHECK_LAUNCHER_SCRIPT } from '../restore/launcher.ts';
 import { CliHarness, KIT, type RunOptions } from '../testing/cli-harness.ts';
 import { FakeLogonEntry, quietRestore } from '../testing/fake-restore.ts';
 import { EXIT } from './runtime.ts';
@@ -33,7 +33,7 @@ describe('teamrig restore install', () => {
     const entry = new FakeLogonEntry();
     const result = await kit.run(['restore', 'install', '--yes'], onWindows(entry));
     assert.deepEqual([result.code, result.stdout], [EXIT.ok, ['WROTE the changes below', `  WRITE ${LAUNCHER}`, `  SET ${WHERE}: (none) -> ${COMMAND}`]]);
-    assert.deepEqual([kit.files.get(LAUNCHER), entry.command], [RESTORE_LAUNCHER_SCRIPT, COMMAND]);
+    assert.deepEqual([kit.files.get(LAUNCHER), entry.command], [RESTORE_CHECK_LAUNCHER_SCRIPT, COMMAND]);
     const again = await kit.run(['restore', 'install', '--yes'], onWindows(entry));
     assert.deepEqual([again.code, again.stdout], [EXIT.ok, [`UNCHANGED ${WHERE}: the restore check already runs at logon`]]);
   });
@@ -43,7 +43,7 @@ describe('teamrig restore install', () => {
     await kit.files.write(LAUNCHER, '// an older launcher\n');
     const staleLauncher = await kit.run(['restore', 'install', '--yes'], onWindows(new FakeLogonEntry(COMMAND)));
     assert.deepEqual(staleLauncher.stdout, ['WROTE the changes below', `  WRITE ${LAUNCHER}`]);
-    assert.equal(kit.files.get(LAUNCHER), RESTORE_LAUNCHER_SCRIPT);
+    assert.equal(kit.files.get(LAUNCHER), RESTORE_CHECK_LAUNCHER_SCRIPT);
     const entry = new FakeLogonEntry(OLD_COMMAND);
     const staleEntry = await kit.run(['restore', 'install', '--yes'], onWindows(entry));
     assert.deepEqual(staleEntry.stdout, ['WROTE the changes below', `  SET ${WHERE}: ${OLD_COMMAND} -> ${COMMAND}`]);
@@ -59,7 +59,7 @@ describe('teamrig restore install', () => {
       [result.code, result.stdout],
       [EXIT.failed, [`FAILED SET ${WHERE}: (none) -> ${COMMAND}: ${entry.failWith}`, '  done before it:', `  WRITE ${LAUNCHER}`]],
     );
-    assert.deepEqual([kit.files.get(LAUNCHER), entry.command], [RESTORE_LAUNCHER_SCRIPT, undefined]);
+    assert.deepEqual([kit.files.get(LAUNCHER), entry.command], [RESTORE_CHECK_LAUNCHER_SCRIPT, undefined]);
   });
 
   it('is refused on a system with no logon entry, naming the manual restore', async () => {
@@ -78,12 +78,12 @@ describe('teamrig restore install', () => {
 describe('teamrig restore uninstall', () => {
   it('previews, then removes the entry before the launcher; a second uninstall changes nothing', async () => {
     const kit = new CliHarness(null, null);
-    await kit.files.write(LAUNCHER, RESTORE_LAUNCHER_SCRIPT);
+    await kit.files.write(LAUNCHER, RESTORE_CHECK_LAUNCHER_SCRIPT);
     const entry = new FakeLogonEntry(COMMAND);
     const steps = [`  REMOVE ${WHERE}: ${COMMAND}`, `  REMOVE ${LAUNCHER}`];
     const preview = await kit.run(['restore', 'uninstall'], onWindows(entry));
     assert.deepEqual([preview.code, preview.stdout], [EXIT.ok, ['PREVIEW nothing written (add --yes to write)', ...steps]]);
-    assert.deepEqual([kit.files.get(LAUNCHER), entry.command], [RESTORE_LAUNCHER_SCRIPT, COMMAND]);
+    assert.deepEqual([kit.files.get(LAUNCHER), entry.command], [RESTORE_CHECK_LAUNCHER_SCRIPT, COMMAND]);
     const result = await kit.run(['restore', 'uninstall', '--yes'], onWindows(entry));
     assert.deepEqual([result.code, result.stdout], [EXIT.ok, ['WROTE the changes below', ...steps]]);
     assert.deepEqual([kit.files.get(LAUNCHER), entry.command], [undefined, undefined]);
@@ -93,12 +93,12 @@ describe('teamrig restore uninstall', () => {
 
   it('removes a launcher left with no entry, and keeps it when the entry cannot be removed', async () => {
     const kit = new CliHarness(null, null);
-    await kit.files.write(LAUNCHER, RESTORE_LAUNCHER_SCRIPT);
+    await kit.files.write(LAUNCHER, RESTORE_CHECK_LAUNCHER_SCRIPT);
     const entry = new FakeLogonEntry(COMMAND);
     entry.failWith = 'PowerShell ended with exit 1: access denied';
     const failed = await kit.run(['restore', 'uninstall', '--yes'], onWindows(entry));
     assert.deepEqual([failed.code, failed.stdout], [EXIT.failed, [`FAILED REMOVE ${WHERE}: ${COMMAND}: ${entry.failWith}`, '  nothing was changed']]);
-    assert.equal(kit.files.get(LAUNCHER), RESTORE_LAUNCHER_SCRIPT);
+    assert.equal(kit.files.get(LAUNCHER), RESTORE_CHECK_LAUNCHER_SCRIPT);
     const leftOver = await kit.run(['restore', 'uninstall', '--yes'], onWindows(new FakeLogonEntry()));
     assert.deepEqual(leftOver.stdout, ['WROTE the changes below', `  REMOVE ${LAUNCHER}`]);
     assert.equal(kit.files.get(LAUNCHER), undefined);
