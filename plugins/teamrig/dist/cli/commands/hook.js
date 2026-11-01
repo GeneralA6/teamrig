@@ -251,8 +251,8 @@ async function tabIdentityOf(runtime, kit, payload) {
 }
 /**
  * PreToolUse on Bash and PowerShell: refuses a `teamrig exec` review (approve, refuse, escalate) run as anyone but the
- * tab's own session, and any `teamrig exec` call through a client that is no install of this plugin, or one whose files
- * differ from its build.
+ * tab's own session, any `teamrig exec` call through a client that is no install of this plugin, or one whose files
+ * differ from its build, and every `teamrig owner` call, which acts as the owner.
  */
 export async function execGuard(args, runtime) {
     noPositionals(args);

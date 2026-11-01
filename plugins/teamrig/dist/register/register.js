@@ -131,9 +131,36 @@ export class Register {
      * is leave to move that owner's pin (T637).
      */
     unpins(pinned, owner, caller, state) {
-        return [...state.tasks.values()]
-            .filter((task) => task.id !== pinned.id && task.owner === owner && task.pin !== null && ACTIVE_STATUSES.includes(task.status))
-            .map((task) => ({ ...this.base(task.id, caller), type: 'update', changes: { pin: null }, note: `the pin moved to ${pinned.id}` }));
+        return otherPins(pinned, owner, state).map((task) => ({ ...this.base(task.id, caller), type: 'update', changes: { pin: null }, note: `the pin moved to ${pinned.id}` }));
+    }
+    /**
+     * The owner's Note from the pane (T1298), written as the team's register.ownerSource, on no roster: the CLI writes it
+     * only for the owner (a hook refuses it from an agent's tool call), so the roster check is skipped, as in noteFrom.
+     */
+    ownerNote(id, note) {
+        return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.ownerEvent(task, this.deps.policy.ownerNote(task, note)))));
+    }
+    /** The owner's Next from the pane (T1298): the owner's pin after the unpins it moves down, in one append, written as in ownerNote. */
+    ownerNext(id) {
+        return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => {
+            const event = this.ownerEvent(task, this.deps.policy.ownerNext(task));
+            return event.ok ? { ok: true, value: [...this.unpins(task, task.owner, event.value.by, snapshot.state), event.value] } : event;
+        }));
+    }
+    /** What ownerNext would do now, judged alike on a read without the lock, writing nothing: for the pane's confirm step. */
+    async ownerNextPreview(id) {
+        const snapshot = await this.snapshot();
+        return onTask(snapshot, await this.elsewhere(), id, (task) => {
+            const change = this.deps.policy.ownerNext(task);
+            return change.ok ? { ok: true, value: { task, moves: otherPins(task, task.owner, snapshot.state) } } : change;
+        });
+    }
+    ownerEvent(task, change) {
+        if (!change.ok) {
+            return change;
+        }
+        const { by, ...update } = change.value;
+        return { ok: true, value: { ...this.base(task.id, by), type: 'update', ...update } };
     }
     /** `approve`: the lead's answer to a task's approval wait, an update that changes no field (T684). */
     approve(caller, id, verdict, note) {
@@ -297,6 +324,10 @@ export class Register {
             return { kind: 'failed', error: errorMessage(error) };
         }
     }
+}
+/** The other active pinned tasks of `owner`, which a pin on `pinned` moves down: one pin per owner (T637). */
+function otherPins(pinned, owner, state) {
+    return [...state.tasks.values()].filter((task) => task.id !== pinned.id && task.owner === owner && task.pin !== null && ACTIVE_STATUSES.includes(task.status));
 }
 /** One event, as the list a write takes. */
 function single(verdict) {
