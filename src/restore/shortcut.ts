@@ -47,9 +47,9 @@ export function sameStart(a: Shortcut, b: Shortcut): boolean {
   return a.target === b.target && a.arguments === b.arguments && a.folder === b.folder;
 }
 
-/** A shortcut as a line of `restore install`: what it runs and where. */
+/** A shortcut as a line of `restore install`: what it runs and where, the program and the folder quoted, as either may hold spaces. */
 export function shortcutLine(shortcut: Shortcut): string {
-  return `"${shortcut.target}" ${shortcut.arguments} (in ${shortcut.folder})`;
+  return `"${shortcut.target}" ${shortcut.arguments} (in "${shortcut.folder}")`;
 }
 
 /** A shortcut `restore install` writes: its path, and what it starts now, undefined when it is not there. */
