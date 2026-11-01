@@ -123,7 +123,7 @@ async function world(
       clock,
       sleep: clock.sleep,
       probe,
-      shutdowns: new FakeShutdownLog(SHUTDOWN),
+      shutdowns: new FakeShutdownLog({ start: SHUTDOWN, end: SHUTDOWN + 60_000 }),
       countdown,
       stops,
       teams: [APP],
