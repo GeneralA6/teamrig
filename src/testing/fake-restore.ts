@@ -1,7 +1,7 @@
 import type { Countdown, RestoreChoice } from '../restore/countdown.ts';
 import { RESTORE_RUN_VALUE, WINDOWS_RUN_KEY, type LogonEntry } from '../restore/logon.ts';
 import type { RestorePorts } from '../restore/ports.ts';
-import type { ShutdownLog } from '../restore/shutdowns.ts';
+import type { ShutdownLog, ShutdownWindow } from '../restore/shutdowns.ts';
 import type { StopSignal, StopWatch } from '../restore/stops.ts';
 
 /** A logon entry held in memory: `command` is what it runs now; with `failWith` set, each write and remove throws it. */
@@ -39,16 +39,16 @@ export class FakeLogonEntry implements LogonEntry {
   }
 }
 
-/** A shutdown log that reports the start it is given; none by default. */
+/** A shutdown log that reports the shutdown it is given; none by default. */
 export class FakeShutdownLog implements ShutdownLog {
-  start: number | undefined;
+  shutdown: ShutdownWindow | undefined;
 
-  constructor(start?: number) {
-    this.start = start;
+  constructor(shutdown?: ShutdownWindow) {
+    this.shutdown = shutdown;
   }
 
-  async lastShutdownStart(): Promise<number | undefined> {
-    return this.start;
+  async lastShutdown(): Promise<ShutdownWindow | undefined> {
+    return this.shutdown;
   }
 }
 

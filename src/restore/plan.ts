@@ -7,6 +7,7 @@ import { PROMPT_MAX } from '../open/prompt.ts';
 import { carryOf } from '../refresh/carry.ts';
 import { runningWorkOf } from '../refresh/running.ts';
 import { INTENTIONAL_END_REASONS, type RestoreEntry } from './entry.ts';
+import type { ShutdownWindow } from './shutdowns.ts';
 import type { TranscriptKind } from './transcript-kind.ts';
 
 /**
@@ -50,8 +51,8 @@ export interface JudgeFacts {
   readonly now: number;
   /** When this logon began: an entry updated since belongs to a session that started after it. */
   readonly since: number;
-  /** When the last clean shutdown began; undefined when unknown or the machine lost power. */
-  readonly shutdownStart: number | undefined;
+  /** When the last clean shutdown ran; undefined when unknown or the machine lost power. */
+  readonly shutdown: ShutdownWindow | undefined;
   /** The Claude Code sessions whose recorded process still runs Claude Code. */
   readonly running: ReadonlySet<string>;
   /** Each session's transcript where it is found now; a session missing here has none left to resume. */
@@ -100,7 +101,7 @@ export function judgeEntry(entry: RestoreEntry, facts: JudgeFacts): Judgement {
   if (entry.endReason !== undefined && INTENTIONAL_END_REASONS.has(entry.endReason)) {
     return { verdict: 'discard', reason: `exited (${entry.endReason})` };
   }
-  if (facts.shutdownStart !== undefined && entry.endedAt >= facts.shutdownStart - SHUTDOWN_GRACE_MS) {
+  if (facts.shutdown !== undefined && entry.endedAt >= facts.shutdown.start - SHUTDOWN_GRACE_MS) {
     return { verdict: 'restore', reason: 'closed by the shutdown' };
   }
   return { verdict: 'discard', reason: 'closed before the shutdown' };

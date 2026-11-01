@@ -54,7 +54,7 @@ function facts(overrides: Partial<JudgeFacts> = {}): JudgeFacts {
   return {
     now: NOW,
     since: LOGON,
-    shutdownStart: SHUTDOWN,
+    shutdown: { start: SHUTDOWN, end: SHUTDOWN + 60_000 },
     running: new Set(),
     transcripts: new Map([[SESSION, '/claude/projects/app/s.jsonl']]),
     kinds: new Map(),
@@ -73,7 +73,7 @@ describe('judgeEntry', () => {
     const early = entry({ endedAt: SHUTDOWN - SHUTDOWN_GRACE_MS - 1, endReason: 'other' });
     assert.deepEqual(judgeEntry(early, facts()), { verdict: 'discard', reason: 'closed before the shutdown' });
     const closed = entry({ endedAt: SHUTDOWN, endReason: 'other' });
-    assert.equal(judgeEntry(closed, facts({ shutdownStart: undefined })).verdict, 'discard');
+    assert.equal(judgeEntry(closed, facts({ shutdown: undefined })).verdict, 'discard');
   });
 
   it('discards an end the person chose', () => {
