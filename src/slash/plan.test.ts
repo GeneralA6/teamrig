@@ -86,7 +86,7 @@ describe('withSession', () => {
 
 describe("planSlash over the CLI's own table", () => {
   it('runs these reads as the tab session at once', () => {
-    assert.deepEqual(sessionReads(COMMAND_TABLE), ['list', 'show', 'check', 'plan', 'verify', 'stats', 'inbox status', 'rules', 'meeting list', 'decisions']);
+    assert.deepEqual(sessionReads(COMMAND_TABLE), ['list', 'show', 'check', 'plan', 'verify', 'stats', 'report done', 'inbox status', 'rules', 'meeting list', 'decisions']);
     assert.deepEqual(sessionReads(TABLE), ['list']);
   });
 

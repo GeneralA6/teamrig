@@ -18,6 +18,7 @@ const EXPECTED = {
   plan: 'read',
   verify: 'read',
   stats: 'read',
+  'report done': 'read',
   files: 'write',
   'inbox read': 'write',
   'inbox status': 'read',
