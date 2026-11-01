@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TEST_CARD } from '../testing/card.ts';
 import { testTask } from '../testing/task.ts';
-import type { ItemType, RegisterEvent } from './events.ts';
+import type { ItemType, RegisterEvent, TaskFields } from './events.ts';
 import {
   aheadReason,
   aheadText,
@@ -419,9 +419,9 @@ describe('formatEvent and formatTaskDetail', () => {
       id: 'T1',
       at: AT,
       by: 'lead',
-      task: { title: 'x', description: 'Why x.', owner: 'alpha', source: 'owner', ref: 'inbox:3', priority: 1, due: '2030-01-08', goals: ['G1'], week: null, after: [], size: null, type: null, critical: false, pin: null },
+      task: { title: 'x', description: 'Why x.', owner: 'alpha', source: 'owner', ref: 'inbox:3', priority: 1, due: '2030-01-08', goals: ['G1'], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null },
     },
-    { v: 1, type: 'create', id: 'T2', at: AT, by: 'lead', task: { title: 'y', description: null, owner: 'bravo', source: 'lead', ref: null, priority: 2, due: null, goals: [], week: null, after: ['T1'], size: null, type: null, critical: false, pin: null } },
+    { v: 1, type: 'create', id: 'T2', at: AT, by: 'lead', task: { title: 'y', description: null, owner: 'bravo', source: 'lead', ref: null, priority: 2, due: null, goals: [], noGoal: false, week: null, after: ['T1'], size: null, type: null, critical: false, pin: null } },
     { v: 1, type: 'update', id: 'T1', at: '2030-01-07T10:00:00.000Z', by: 'lead', changes: { due: '2030-01-09', goals: ['G1', 'G2'] }, note: 'later' },
     { v: 1, type: 'status', id: 'T1', at: '2030-01-07T11:00:00.000Z', by: 'alpha', status: 'done', note: 'ok', evidence: 'abc1234', skill: 'none' },
     {
@@ -583,6 +583,18 @@ describe('formatEvent and formatTaskDetail', () => {
     assert.ok(!formatTaskDetail(testTask(), [], TREE).includes('pinned'), 'an unpinned task prints no line');
     const pinning: RegisterEvent = { v: 2, type: 'update', id: 'T1', at: AT, by: 'lead', changes: { pin: 'lead' }, note: null };
     assert.equal(formatEvent(pinning, TimeZone.UTC), '2030-01-07 09:00 UTC lead update pin=lead');
+  });
+
+  it('prints goals none for a task said to serve no goal, on its row, its create and its updates (T1730)', () => {
+    const offPlan = testTask({ id: 'T1', noGoal: true });
+    assert.equal(formatTask(offPlan, undefined, TREE), 'T1 open, p2, owner alpha, from lead, goals none | Add a health check');
+    assert.equal(formatTask(testTask({ id: 'T1' }), undefined, TREE), 'T1 open, p2, owner alpha, from lead | Add a health check', 'not said prints nothing');
+    const created: RegisterEvent = { v: 2, type: 'create', id: 'T1', at: AT, by: 'alpha', task: offPlan };
+    assert.equal(formatEvent(created, TimeZone.UTC), '2030-01-07 09:00 UTC alpha create owner=alpha source=lead priority=p2 goals=none');
+    const update = (changes: Partial<TaskFields>): RegisterEvent => ({ v: 2, type: 'update', id: 'T1', at: AT, by: 'alpha', changes, note: null });
+    assert.equal(formatEvent(update({ goals: [], noGoal: true }), TimeZone.UTC), '2030-01-07 09:00 UTC alpha update goals=none');
+    assert.equal(formatEvent(update({ goals: ['A1'], noGoal: false }), TimeZone.UTC), '2030-01-07 09:00 UTC alpha update goals=A1');
+    assert.equal(formatEvent(update({ goals: [] }), TimeZone.UTC), '2030-01-07 09:00 UTC alpha update goals=none', 'an older clear');
   });
 });
 

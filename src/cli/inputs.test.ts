@@ -4,7 +4,7 @@ import { TimeZone } from '../core/zone.ts';
 import { TASK_STATUSES } from '../register/model.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import { UsageError } from './args.ts';
-import { addInputOf, callerOf, changesOf, criticalOf, deadlineOf, instantOf, listFilterOf, pinOf, priorityOf, sessionRef, setInputOf, sizeOf, statusInputOf, taskIdOf, taskRefOf, typeOf, waitsOf, weekOf, type TypedTimes } from './inputs.ts';
+import { addInputOf, callerOf, changesOf, criticalOf, deadlineOf, goalsOf, instantOf, listFilterOf, pinOf, priorityOf, sessionRef, setInputOf, sizeOf, statusInputOf, taskIdOf, taskRefOf, typeOf, waitsOf, weekOf, type TypedTimes } from './inputs.ts';
 
 const flags = (entries: Readonly<Record<string, string>>): ReadonlyMap<string, string> => new Map(Object.entries(entries));
 
@@ -96,10 +96,30 @@ describe('addInputOf', () => {
     assert.throws(() => addInputOf(flags({ title: 'x', priority: 'p1', goals: ' , ' }), 'alpha', TIMES), /--goals " , " is an empty list/);
   });
 
+  it('reads --goals none as a task said to serve no goal, never as a tag (T1730)', () => {
+    const input = addInputOf(flags({ title: 'x', priority: 'p1', goals: 'none' }), 'alpha', TIMES);
+    assert.deepEqual([input.goals, input.noGoal], [[], true]);
+    assert.equal(addInputOf(flags({ title: 'x', priority: 'p1', goals: 'A1' }), 'alpha', TIMES).noGoal, undefined, 'tags leave the mark to its default');
+  });
+
   it('reads the tasks it comes after as task ids', () => {
     assert.deepEqual(addInputOf(flags({ title: 'x', priority: 'p2', after: 'T5, T6' }), 'alpha', TIMES).after, ['T5', 'T6']);
     assert.equal(addInputOf(flags({ title: 'x', priority: 'p2' }), 'alpha', TIMES).after, undefined, 'none given leaves it to the default');
     assert.throws(() => addInputOf(flags({ title: 'x', priority: 'p2', after: 'T5,soon' }), 'alpha', TIMES), /"soon" is not a task id like T12/);
+  });
+});
+
+describe('goalsOf', () => {
+  it('reads goal tags, or none alone as no goal at all (T1730)', () => {
+    assert.deepEqual(goalsOf('A1, A2.1'), { goals: ['A1', 'A2.1'] });
+    assert.deepEqual(goalsOf('none'), { goals: [], noGoal: true });
+    assert.deepEqual(goalsOf(' none '), { goals: [], noGoal: true });
+  });
+
+  it('refuses none beside a tag, and an empty list', () => {
+    assert.throws(() => goalsOf('A1, none'), { name: 'UsageError', message: '--goals "A1, none": none says the task serves no goal, so give it alone or give only the tags' });
+    assert.throws(() => goalsOf('none,none'), UsageError);
+    assert.throws(() => goalsOf(' , '), /--goals " , " is an empty list/);
   });
 });
 
@@ -110,14 +130,20 @@ describe('changesOf', () => {
     assert.throws(() => changesOf(flags({ priority: 't3' }), TIMES), /priority "t3" is the old tier spelling: write p3/);
   });
 
-  it('clears the description, ref, due date, goals and week with none', () => {
+  it('clears the description, ref, due date and week with none, and says the task serves no goal with --goals none', () => {
     assert.deepEqual(changesOf(flags({ description: 'none', ref: 'none', due: 'none', goals: 'none', week: 'none' }), TIMES), {
       description: null,
       ref: null,
       due: null,
       goals: [],
+      noGoal: true,
       week: null,
     });
+  });
+
+  it('names goal tags without the no-goal mark, and refuses none beside a tag (T1730)', () => {
+    assert.deepEqual(changesOf(flags({ goals: 'A1, B1' }), TIMES), { goals: ['A1', 'B1'] });
+    assert.throws(() => changesOf(flags({ goals: 'A1,none' }), TIMES), UsageError);
   });
 
   it('plans after tasks, or clears the plan with none', () => {

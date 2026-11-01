@@ -32,6 +32,7 @@ describe('golden register logs', () => {
       priority: 1,
       due: '2030-01-09 12:00',
       goals: ['G1'],
+      noGoal: false,
       week: '2030-01-07',
       after: [],
       size: null,

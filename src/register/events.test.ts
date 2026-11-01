@@ -5,7 +5,7 @@ import { TEST_CARD } from '../testing/card.ts';
 import { EVENT_VERSION, eventRecord, parseEvent, TASK_LINE_VERSION, type EventParse, type RegisterEvent } from './events.ts';
 
 const BASE = { id: 'T3', at: '2030-01-07T09:00:00.000Z', by: 'alpha' };
-const TASK = { title: 'A task', description: null, owner: 'alpha', source: 'owner', ref: null, priority: 2, due: null, goals: [], week: null, after: [], size: null, type: null, critical: false, pin: null };
+const TASK = { title: 'A task', description: null, owner: 'alpha', source: 'owner', ref: null, priority: 2, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null };
 
 function parse(record: JsonRecord, version = 0): EventParse {
   return parseEvent({ lineNumber: 1, raw: JSON.stringify(record), record, version });
@@ -21,11 +21,11 @@ function createdMark(result: EventParse): [string | null, boolean] | undefined {
 }
 
 describe('eventRecord', () => {
-  it('leaves an empty after, a null description, size, type or pin and a false critical off a create line, and keeps ones that hold something', () => {
+  it('leaves an empty after, a null description, size, type or pin and a false critical or noGoal off a create line, and keeps ones that hold something', () => {
     const create: RegisterEvent = { ...BASE, v: 2, type: 'create', task: TASK };
-    const { after, description, size, type, critical, pin, ...withoutEither } = TASK;
+    const { after, description, size, type, critical, noGoal, pin, ...withoutEither } = TASK;
     assert.deepEqual(eventRecord(create), { ...create, task: withoutEither });
-    assert.deepEqual([after, description, size, type, critical, pin], [[], null, null, null, false, null]);
+    assert.deepEqual([after, description, size, type, critical, noGoal, pin], [[], null, null, null, false, false, null]);
     const marked: RegisterEvent = { ...create, task: { ...TASK, type: 'bug', critical: true } };
     assert.deepEqual(eventRecord(marked), { ...marked, task: { ...withoutEither, type: 'bug', critical: true } });
     const described: RegisterEvent = { ...create, task: { ...TASK, description: 'Why it matters.\nWhat to do.' } };
@@ -231,6 +231,19 @@ describe('parseEvent', () => {
     assert.deepEqual(createdMark(parse({ ...BASE, type: 'create', task: { ...TASK, type: 'task', kind: 'critical' } }, 2)), ['task', false]);
     assert.deepEqual(createdMark(parse({ ...BASE, type: 'create', task: { ...TASK, type: 'incident' } }, 2)), ['task', false]);
     assert.deepEqual(parse({ ...BASE, type: 'update', changes: { type: 'incident' } }, 2), { kind: 'event', event: { ...BASE, v: 2, type: 'update', changes: { type: 'task' }, note: null } });
+  });
+
+  it('reads the no-goal mark of a create line and of an update, leaves out a false one, and reads an older line as not said (T1730)', () => {
+    const said: RegisterEvent = { ...BASE, v: 2, type: 'create', task: { ...TASK, noGoal: true } };
+    assert.match(JSON.stringify(eventRecord(said)), /"noGoal":true/);
+    assert.deepEqual(parse(eventRecord(said), 2), { kind: 'event', event: said });
+    assert.doesNotMatch(JSON.stringify(eventRecord({ ...BASE, v: 2, type: 'create', task: TASK })), /"noGoal"/);
+    const { noGoal, ...older } = TASK;
+    assert.equal(noGoal, false);
+    const old = parse({ ...BASE, type: 'create', task: older }, 2);
+    assert.equal(old.kind === 'event' && old.event.type === 'create' ? old.event.task.noGoal : undefined, false);
+    assert.deepEqual(parse({ ...BASE, type: 'update', changes: { goals: [], noGoal: true } }, 2), { kind: 'event', event: { ...BASE, v: 2, type: 'update', changes: { goals: [], noGoal: true }, note: null } });
+    assert.equal(reason(parse({ ...BASE, type: 'create', task: { ...TASK, noGoal: 'yes' } }, 2)), 'bad noGoal "yes"');
   });
 
   it('reads the pin of a create line and of an update, leaves out an unpinned one, and reads an older line as unpinned (T637)', () => {
