@@ -12,6 +12,7 @@ import { decisionsByOwner, endNotice, type NoticeFacts } from '../../meeting/not
 import { MeetingSchedule } from '../../meeting/schedule.ts';
 import { MeetingStore, phaseOf, stoppedAt, type Meeting, type MeetingPhase } from '../../meeting/state.ts';
 import { MergeLog } from '../../merge/merge-log.ts';
+import type { StatsRange } from '../../register/stats.ts';
 import { currentWeekOf } from '../../register/week.ts';
 import { fitLines } from '../../register/fit.ts';
 import { noPositionals, UsageError, type ParsedArgs } from '../args.ts';
@@ -24,15 +25,16 @@ import { weekLineOf } from './budget.ts';
 import { inboxDepsOf, read } from './inbox.ts';
 import { agendaMeetingLines, meetingEndScheduled, meetingStartScheduled } from './meetings.ts';
 import { taskTreeOf, weekFitOf } from './register.ts';
+import { foldStats, statsTopLines } from './stats.ts';
 
 /**
  * `meeting start|agenda|end`: the owner's daily meeting with the lead, the lead's only. `start` opens it, which
  * holds every message to the lead but a CRITICAL one (the cold-send hook tells each sender when it holds one, so no
  * session is told), and prints the agenda; `agenda` prints it again, or before a meeting; `end` closes it and tells
  * each session with a decision the lead recorded on its tasks, by one inbox line, and no other. The agenda is
- * gathered in one call: the owner's decisions as card facts, the late tasks, what finished since the meeting
- * before, the lead's inbox (marked read) and the week's use and fit to the limit. Only a root team's lead holds it:
- * its decisions and its end's lines cover every team under the lead's too (T1018).
+ * gathered in one call: the stats' Health and flow lines, the owner's decisions as card facts, the late tasks, what
+ * finished since the meeting before, the lead's inbox (marked read) and the week's use and fit to the limit. Only a
+ * root team's lead holds it: its stats, decisions and end's lines cover every team under the lead's too (T1018).
  */
 
 interface MeetingKit {
@@ -150,13 +152,20 @@ async function mergeDigestOf(runtime: CliRuntime, mk: MeetingKit, since: number)
   return { log: await new MergeLog(runtime.files, merges).read(), since, zone: mk.zone, gated, path: merges };
 }
 
+/** The range of the stats the agenda opens with: the last week, as `stats` reads by default. */
+export const AGENDA_STATS_RANGE: StatsRange = '7d';
+
 /**
- * The agenda: the register's part (decisions, with those of every team under the lead's, then late and done), today's
- * scheduled meetings and the missed ones, the self-merges since the meeting before, the lead's inbox marked read, then
- * the week's use and, under it, the planned week's fit (as `plan` gives it).
+ * The agenda: the stats' top lines over the lead's tree (Health, flow, the days at the usage limit; statsTopLines, the
+ * fold `stats` and the pane's Stats tab print), the register's part (decisions, with those of every team under the
+ * lead's, then late and done), today's scheduled meetings and the missed ones, the self-merges since the meeting
+ * before, the lead's inbox marked read, then the week's use and, under it, the planned week's fit (as `plan` gives it).
  */
 async function printAgenda(args: ParsedArgs, runtime: CliRuntime, mk: MeetingKit, phase: MeetingPhase): Promise<void> {
-  const { own, teams } = await meetingRegisters(runtime, mk);
+  const rolled = await meetingRegisters(runtime, mk);
+  const { own, teams } = rolled;
+  statsTopLines(await foldStats(runtime, rolled, AGENDA_STATS_RANGE), own.team, teams.map((team) => team.team)).forEach((line) => runtime.out.stdout(line));
+  runtime.out.stdout(`  each other section: ${KIT_NAME} stats --tree --session ${mk.lead} (new work, speed, delays, waits, bugs, people)`);
   const { snapshot } = own;
   const since = agendaSince(previousEnd(phase), mk.now);
   const lines = agendaLines({

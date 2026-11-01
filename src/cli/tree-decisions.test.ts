@@ -107,6 +107,7 @@ describe("runCli: a child team's owner decisions go up to the lead at its tree's
     await ownerWait(kit, UI, 'pixel', 'Pick the icon set');
     const started = await kit.run(['meeting', 'start', '--session', 'lead']);
     assert.equal(started.code, EXIT.ok, started.stderr.join('\n'));
+    assert.equal(started.stdout[1], 'STATS app, 7 d: 01-02 to 01-08 (tree: app, ops, web, ui)', "the stats' top lines cover the root lead's tree (T1771)");
     assert.ok(started.stdout.includes('DECISIONS 3 waiting on owner (decision or approval)'), started.stdout.join('\n'));
     assert.deepEqual(rowIds(started.stdout), ['T1', 'web/T2', 'ui/T3'], 'its own first, then the teams under it depth first');
 

@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import { MeterLog } from '../budget/calibration.ts';
 import { MEETING_LAPSE_MS } from '../meeting/state.ts';
 import { MergeLog, type SelfMerge } from '../merge/merge-log.ts';
 import { TEST_CARD, TEST_GATE, TEST_OWNER_CARD_FLAGS } from '../testing/card.ts';
@@ -34,11 +35,17 @@ describe('runCli: the daily meeting', () => {
     assert.equal(started.code, EXIT.ok, started.stderr.join('\n'));
     const { stdout } = started;
     assert.equal(stdout[0], 'MEETING started Tue 01-08 10:00 UTC: messages to app-lead are held but CRITICAL ones (the hook tells each sender)');
-    assert.equal(stdout[1], 'DECISIONS 1 waiting on owner (decision or approval)');
-    assert.match(stdout[2] ?? '', /^ {2}T1 waiting, p1, owner alpha \| Pick the pricing tier/);
-    assert.equal(stdout[3], '    what and why: which tier ships first');
-    assert.equal(stdout[4], `    decide: ${TEST_CARD.question}`);
-    assert.equal(stdout[5], `    gate: ${TEST_GATE}`);
+    assert.deepEqual(stdout.slice(1, 4), [
+      'STATS app, 7 d: 01-02 to 01-08',
+      'HEALTH close/open 0.00 [bad] · backlog +2, 2 active [bad] · overdue 1, p1 0 [warn] · owner decisions 1, oldest 0.0 d [good] · backlog clears never, at this rate [bad]',
+      'FLOW opened 2, closed 0 (0 dropped), net +2; last 28 d net +2',
+    ]);
+    assert.equal(stdout[4], '  each other section: teamrig stats --tree --session lead (new work, speed, delays, waits, bugs, people)');
+    assert.equal(stdout[5], 'DECISIONS 1 waiting on owner (decision or approval)');
+    assert.match(stdout[6] ?? '', /^ {2}T1 waiting, p1, owner alpha \| Pick the pricing tier/);
+    assert.equal(stdout[7], '    what and why: which tier ships first');
+    assert.equal(stdout[8], `    decide: ${TEST_CARD.question}`);
+    assert.equal(stdout[9], `    gate: ${TEST_GATE}`);
     assert.ok(stdout.includes('    waiting since 01-08 10:00 UTC: two options'), stdout.join('\n'));
     const late = stdout.indexOf('LATE 1 past their due date');
     assert.match(stdout[late + 1] ?? '', /^ {2}T2 open, p2, owner bravo, due 01-07 \| Ship the docs/);
@@ -98,7 +105,7 @@ describe('runCli: the daily meeting', () => {
     const again = await kit.run(['meeting', 'start', '--session', 'lead']);
     assert.equal(again.code, EXIT.ok);
     assert.equal(again.stdout[0], 'MEETING already open since Tue 01-08 10:00 UTC: messages to app-lead are held but CRITICAL ones');
-    assert.equal(again.stdout[1], 'DECISIONS 1 waiting on owner (decision or approval)');
+    assert.equal(again.stdout[5], 'DECISIONS 1 waiting on owner (decision or approval)');
     assert.match((await inboxOf(kit, 'alpha'))[0] ?? '', /^READ alpha: nothing new/);
   });
 
@@ -107,7 +114,7 @@ describe('runCli: the daily meeting', () => {
     const first = await kit.run(['meeting', 'agenda', '--session', 'lead']);
     assert.equal(first.code, EXIT.ok, first.stderr.join('\n'));
     assert.equal(first.stdout[0], 'MEETING none held yet; the agenda for the first (teamrig meeting start opens it)');
-    assert.equal(first.stdout[1], 'DECISIONS 1 waiting on owner (decision or approval)');
+    assert.equal(first.stdout[5], 'DECISIONS 1 waiting on owner (decision or approval)');
 
     await kit.run(['meeting', 'start', '--session', 'lead']);
     assert.equal((await kit.run(['meeting', 'agenda', '--session', 'lead'])).stdout[0], 'MEETING open since Tue 01-08 10:00 UTC: messages to app-lead are held but CRITICAL ones');
@@ -205,7 +212,7 @@ describe('runCli: the daily meeting', () => {
     const back = await kit.run(['update', 'T1', '--later', 'none', '--note', 'owner: asks now', '--session', 'alpha']);
     assert.equal(back.code, EXIT.ok, back.stderr.join('\n'));
     const asked = (await kit.run(['meeting', 'agenda', '--session', 'lead'])).stdout;
-    assert.equal(asked[1], 'DECISIONS 1 waiting on owner (decision or approval)');
+    assert.equal(asked[5], 'DECISIONS 1 waiting on owner (decision or approval)');
     assert.ok(!asked.some((line) => line.startsWith('LATER')), asked.join('\n'));
   });
 
@@ -226,7 +233,22 @@ describe('runCli: the daily meeting', () => {
     assert.deepEqual([peer.code, peer.stdout], [EXIT.refused, ['REFUSED only the owner (alpha) or the lead (lead) puts T1 off']]);
     const passed = await kit.run(['update', 'T1', '--later', '2030-01-08 09:00', '--note', 'x', '--session', 'lead']);
     assert.deepEqual([passed.code, passed.stdout], [EXIT.refused, ['REFUSED time 01-08 09:00 UTC has passed: name a time to come']]);
-    assert.equal((await kit.run(['meeting', 'agenda', '--session', 'lead'])).stdout[1], 'DECISIONS 1 waiting on owner (decision or approval)');
+    assert.equal((await kit.run(['meeting', 'agenda', '--session', 'lead'])).stdout[5], 'DECISIONS 1 waiting on owner (decision or approval)');
+  });
+
+  // T1771: the agenda opens with the top lines `teamrig stats --tree` prints, from the same fold, so the two never disagree.
+  it("opens with the stats' top lines, as stats --tree prints them, the days at the usage limit marked", async () => {
+    const kit = await teamBeforeTheMeeting();
+    const period = { start: Date.parse('2030-01-02T00:00:00Z'), end: Date.parse('2030-01-09T00:00:00Z'), w: 0, forecastPct: undefined };
+    await new MeterLog(kit.files, join(TEAM_HOME, 'state', 'usage', 'meter-log.jsonl')).append({ ...period, at: Date.parse('2030-01-07T20:00:00Z'), usedPct: 100 }, kit.clock.now());
+    const stats = await kit.run(['stats', '--tree', '--session', 'lead']);
+    assert.equal(stats.code, EXIT.ok, stats.stderr.join('\n'));
+    const limit = 'LIMIT $ 01-07, 01-08: the week sat at its usage limit, so a quiet day there is no slack';
+    assert.equal(stats.stdout[3], limit);
+    const { stdout } = await kit.run(['meeting', 'agenda', '--session', 'lead']);
+    assert.deepEqual(stdout.slice(1, 5), stats.stdout.slice(0, 4));
+    assert.equal(stdout[5], '  each other section: teamrig stats --tree --session lead (new work, speed, delays, waits, bugs, people)');
+    assert.equal(stdout[6], 'DECISIONS 1 waiting on owner (decision or approval)');
   });
 
   it("prints the planned week's fit under the week's use", async () => {
