@@ -3,8 +3,9 @@ name: main push alert
 # Opens an issue when main changes outside a pull request: a direct push or a force push. Until the
 # repository is public it has no branch protection, so the pre-push hook (set by npm install) refuses
 # such a push on a clone, and this reports one that got past it. GitHub refuses to delete the default branch.
-# A pull request merge is committed by GitHub, so the job's `if:` (the test isOutsidePullRequest in
-# tools/ci/main-push-alert.ts repeats) skips it and it bills no minutes.
+# A merge commit or a squash is committed by GitHub, so the job's `if:` (the test mayBeOutsidePullRequest in
+# tools/ci/main-push-alert.ts repeats) skips it and it bills no minutes. A rebase merge keeps the merging
+# account as the committer, so the job asks GitHub whether a merged pull request ends on the push.
 # Known gaps until the repository's ruleset (at public): a commit made in GitHub's web editor is committed
 # by GitHub too, and a push runs this file as it pushed it, so a push that edits it decides its own alert.
 on:
@@ -21,6 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      pull-requests: read
       issues: write
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0

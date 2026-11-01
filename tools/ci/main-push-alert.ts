@@ -2,7 +2,10 @@ import { EXIT_CLEAN } from '../lib/exit.ts';
 import { isRecord, recordField, stringField } from '../lib/guards.ts';
 import type { ReadText } from './github-range.ts';
 
-/** The committer GitHub records on the commits it writes itself, such as a pull request's merge or rebase. */
+/**
+ * The committer GitHub records on the commits it writes itself, such as a pull request's merge commit or squash.
+ * A rebase merge keeps the merging account as the committer instead, so it needs `MergedPullOf`.
+ */
 export const GITHUB_COMMITTER = 'noreply@github.com';
 
 /** A push to main, as the alert reports it. */
@@ -26,6 +29,9 @@ export interface AlertIssue {
 /** Opens the issue; resolves with what `gh issue create` prints, the issue's address. */
 export type CreateIssue = (issue: AlertIssue) => Promise<string>;
 
+/** The number of the merged pull request whose merge left main at the sha (`mergedPullEndingOn`), or undefined. */
+export type MergedPullOf = (sha: string) => Promise<number | undefined>;
+
 /** The push a `push` event's payload describes. */
 export function mainPushFromEvent(payload: unknown): MainPush {
   if (!isRecord(payload)) {
@@ -47,11 +53,29 @@ export function mainPushFromEvent(payload: unknown): MainPush {
 }
 
 /**
- * Whether main changed outside a pull request: a force push, or a head commit GitHub did not write.
- * The workflow's `if:` holds the same test, so a merge starts no job and bills no minutes.
+ * Whether main may have changed outside a pull request: a force push, or a head commit GitHub did not write
+ * (a direct push, or a rebase merge, which `mergedPullEndingOn` tells apart). The workflow's `if:` holds the
+ * same test, so a merge commit or a squash starts no job and bills no minutes.
  */
-export function isOutsidePullRequest(push: MainPush): boolean {
+export function mayBeOutsidePullRequest(push: MainPush): boolean {
   return push.forced || push.committer !== GITHUB_COMMITTER;
+}
+
+/**
+ * The merged pull request whose merge left main at the sha, from GitHub's answer to
+ * `GET /repos/{owner}/{repo}/commits/{sha}/pulls` (the merged pull requests that brought the commit in); undefined
+ * when none did. A rebase merge sets the pull request's `merge_commit_sha` to the last commit it put on main.
+ */
+export function mergedPullEndingOn(pulls: unknown, sha: string): number | undefined {
+  if (!Array.isArray(pulls)) {
+    throw new Error("GitHub's pull requests of a commit are not a JSON array");
+  }
+  for (const pull of pulls) {
+    if (isRecord(pull) && typeof pull['number'] === 'number' && stringField(pull, 'merged_at') !== undefined && pull['merge_commit_sha'] === sha) {
+      return pull['number'];
+    }
+  }
+  return undefined;
 }
 
 /** The issue that reports the push, with what to check and how to undo it. */
@@ -65,7 +89,7 @@ export function alertIssue(push: MainPush): AlertIssue {
       `- before: \`${push.before}\``,
       `- after: \`${push.after}\``,
       `- forced: ${push.forced ? 'yes' : 'no'}`,
-      `- head commit committer: \`${push.committer ?? 'none'}\` (GitHub commits a pull request merge as \`${GITHUB_COMMITTER}\`)`,
+      '- merged pull request ending on it: none',
       ...(push.compare === undefined ? [] : [`- changes: ${push.compare}`]),
       '',
       'Check the changes. If they were not meant, undo them through a pull request; a force push that dropped commits needs',
@@ -76,11 +100,12 @@ export function alertIssue(push: MainPush): AlertIssue {
 
 /**
  * Reads the push from the GitHub Actions environment (GITHUB_EVENT_NAME, GITHUB_EVENT_PATH) and opens
- * an issue when main changed outside a pull request.
+ * an issue when main changed outside a pull request: a force push, or a push no merged pull request ends on.
  */
 export async function raiseMainPushAlert(
   env: Readonly<Record<string, string | undefined>>,
   readText: ReadText,
+  mergedPullOf: MergedPullOf,
   createIssue: CreateIssue,
   out: (line: string) => void,
 ): Promise<number> {
@@ -89,8 +114,13 @@ export async function raiseMainPushAlert(
     throw new Error('needs a push event: GITHUB_EVENT_NAME=push and GITHUB_EVENT_PATH');
   }
   const push = mainPushFromEvent(JSON.parse(await readText(eventPath)));
-  if (!isOutsidePullRequest(push)) {
+  if (!mayBeOutsidePullRequest(push)) {
     out(`main-push-alert: ${push.after} is a pull request merge, no alert`);
+    return EXIT_CLEAN;
+  }
+  const pull = push.forced ? undefined : await mergedPullOf(push.after);
+  if (pull !== undefined) {
+    out(`main-push-alert: ${push.after} is the rebase merge of pull request #${pull}, no alert`);
     return EXIT_CLEAN;
   }
   const issue = await createIssue(alertIssue(push));
