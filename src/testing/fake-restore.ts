@@ -1,6 +1,7 @@
 import type { Countdown, RestoreChoice } from '../restore/countdown.ts';
 import { RESTORE_RUN_VALUE, WINDOWS_RUN_KEY, type LogonEntry } from '../restore/logon.ts';
 import type { RestorePorts } from '../restore/ports.ts';
+import { RESTORE_SHORTCUT_NAME, type FoundShortcut, type Shortcut, type ShortcutPlace, type ShortcutScan } from '../restore/shortcut.ts';
 import type { ShutdownLog, ShutdownWindow } from '../restore/shutdowns.ts';
 import type { StopSignal, StopWatch } from '../restore/stops.ts';
 
@@ -30,6 +31,48 @@ export class FakeLogonEntry implements LogonEntry {
   async remove(): Promise<void> {
     this.failIfAsked();
     this.command = undefined;
+  }
+
+  private failIfAsked(): void {
+    if (this.failWith !== undefined) {
+      throw new Error(this.failWith);
+    }
+  }
+}
+
+/** Where the fake's Start-menu shortcut goes. */
+export const FAKE_START_MENU_SHORTCUT = `C:\\Start Menu\\Programs\\${RESTORE_SHORTCUT_NAME}`;
+
+/**
+ * The system's restore shortcuts held in memory by path, in the order they were first written; with `failWith` set,
+ * each write and remove throws it, and with `scanFailWith` set, each scan throws it.
+ */
+export class FakeShortcutPlace implements ShortcutPlace {
+  readonly shortcuts = new Map<string, Shortcut>();
+  readonly startMenu: string;
+  failWith: string | undefined;
+  scanFailWith: string | undefined;
+
+  constructor(found: readonly FoundShortcut[] = [], startMenu = FAKE_START_MENU_SHORTCUT) {
+    this.startMenu = startMenu;
+    found.forEach(({ path, ...shortcut }) => this.shortcuts.set(path, shortcut));
+  }
+
+  async scan(): Promise<ShortcutScan> {
+    if (this.scanFailWith !== undefined) {
+      throw new Error(this.scanFailWith);
+    }
+    return { startMenu: this.startMenu, found: [...this.shortcuts].map(([path, shortcut]) => ({ path, ...shortcut })) };
+  }
+
+  async write(path: string, shortcut: Shortcut): Promise<void> {
+    this.failIfAsked();
+    this.shortcuts.set(path, shortcut);
+  }
+
+  async remove(path: string): Promise<void> {
+    this.failIfAsked();
+    this.shortcuts.delete(path);
   }
 
   private failIfAsked(): void {
@@ -95,7 +138,7 @@ export class FakeStopWatch implements StopWatch {
   }
 }
 
-/** No clean shutdown on record, a countdown that goes at once, no stop, and no logon entry, as off Windows. */
+/** No clean shutdown on record, a countdown that goes at once, no stop, and no logon entry or shortcuts, as off Windows. */
 export function quietRestore(): RestorePorts {
-  return { shutdowns: new FakeShutdownLog(), countdown: new FakeCountdown(), stops: new FakeStopWatch(), logon: undefined };
+  return { shutdowns: new FakeShutdownLog(), countdown: new FakeCountdown(), stops: new FakeStopWatch(), logon: undefined, shortcuts: undefined };
 }

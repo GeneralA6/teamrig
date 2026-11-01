@@ -76,7 +76,7 @@ function machine(kit: CliHarness, processes: FakeProcesses, choice: RestoreChoic
   const sessionProcesses = new FakeSessionProcesses()
     .add({ pid: LIVE_PID, parentPid: 1, name: 'claude.exe', commandLine: 'claude' })
     .add({ pid: REUSED_PID, parentPid: 1, name: 'notepad.exe', commandLine: 'notepad.exe' });
-  return { platform: 'win32', processes, probe: new MemoryPathProbe(kit.files), sessionProcesses, restore: { shutdowns: new FakeShutdownLog({ start: SHUTDOWN, end: SHUTDOWN + 60_000 }), countdown, stops: new FakeStopWatch(), logon: undefined }, countdown };
+  return { platform: 'win32', processes, probe: new MemoryPathProbe(kit.files), sessionProcesses, restore: { shutdowns: new FakeShutdownLog({ start: SHUTDOWN, end: SHUTDOWN + 60_000 }), countdown, stops: new FakeStopWatch(), logon: undefined, shortcuts: undefined }, countdown };
 }
 
 function windowsTab(title: string, folder: string, argv: readonly string[]): string[] {
