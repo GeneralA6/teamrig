@@ -9,6 +9,7 @@ import { RENAMED } from "./renamed.js";
 import { EXIT, RefusedError } from "./runtime.js";
 const registerCommands = () => import("./commands/register.js");
 const statsCommands = () => import("./commands/stats.js");
+const reportCommands = () => import("./commands/report.js");
 const inboxCommands = () => import("./commands/inbox.js");
 const configCommands = () => import("./commands/config.js");
 const hookCommands = () => import("./commands/hook.js");
@@ -97,6 +98,7 @@ const COMMANDS = {
     plan: { effect: 'read', flags: ['session', 'week'], switches: ['tree'], load: async () => (await registerCommands()).plan },
     verify: { effect: 'read', flags: ['session'], load: async () => (await registerCommands()).verify },
     stats: { effect: 'read', flags: ['session', 'range'], switches: ['tree'], load: async () => (await statsCommands()).stats },
+    'report done': { effect: 'read', flags: ['session', 'day'], switches: ['all'], load: async () => (await reportCommands()).reportDone },
     files: { effect: 'write', flags: ['session'], switches: ['notes'], load: async () => (await filesCommands()).files },
     'inbox read': { effect: 'write', flags: ['session'], load: async () => (await inboxCommands()).read },
     'inbox status': { effect: 'read', flags: ['session'], load: async () => (await inboxCommands()).status },
@@ -438,6 +440,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   stats [--range 7d|14d|30d|all] [--session <id|name>] [--tree]   the register's numbers over the team's
       last days (default 7d): the Health tiles with their levels, then flow, new work, speed, delays,
       waits, bugs and people; --session: one session's tasks; --tree (the lead only): every team under it
+  report done [--day <YYYY-MM-DD>] [--session <id|name>] [--all]   one day of the team's done work
+      (default yesterday) in groups: owner asked, each goal, urgent p1, this week's plan, each row shown;
+      other work and dropped as one line, or their rows with --all; --session: one owner's tasks
   files <id> | files --notes [--session <id|name>]   prints the folder for a task's files (design.md,
       build.md, plan.md, review.md, evidence/, scripts/, out/) in the team that holds it, or for your notes
       that belong to no task; makes it when missing
