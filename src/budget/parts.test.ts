@@ -1,10 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_SESSION_SHARE } from '../config/defaults.ts';
+import { DEFAULT_REGISTER, DEFAULT_SESSION_SHARE } from '../config/defaults.ts';
 import type { SessionBudget } from '../config/types.ts';
 import type { Lift } from './lift.ts';
 import { addedSessionPct, budgetSplitOf, crossLiftPlaceOf, dailyBudgetOf, groupPartsOf, liftPlaceOf, liftWeekPctOf, partOf, sessionWeightOf, shareOf, teamPartOf, teamShareOf, teamTreeOf, type BudgetSplit, type GroupPart, type SplitNode } from './parts.ts';
-import { workWeightOf, type WorkByPriority } from './work.ts';
+import { workWeightOf, workWeights, type WorkByPriority } from './work.ts';
 
 const IDS = ['lead', 'alpha', 'bravo'];
 const NOW = Date.parse('2030-01-08T10:00:00Z');
@@ -309,6 +309,18 @@ describe('teamShareOf', () => {
     assert.equal(teamShareOf(8, split({}, { lifted: new Map([['alpha', 80]]) }), [web]), 4);
     assert.equal(teamShareOf(8, split({}, { leads: { alpha: ['bravo'] }, liftedGroups: new Map([['alpha', 80]]) }), [web]), 4);
     assert.equal(teamShareOf(8, web, [split()]), 4);
+  });
+
+  it("splits by each session's top task, not its backlog: 8 sessions with a p2 each against 2 with 40 p1 each get 32 to 10", () => {
+    const queued = (owners: readonly string[], each: number, priority: number) =>
+      owners.flatMap((owner) => Array.from({ length: each }, () => ({ owner, status: 'open' as const, priority })));
+    const wide = ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8'];
+    const deep = ['d1', 'd2'];
+    const many = otherTeam('many', wide, { work: workWeights(queued(wide, 1, 2), DEFAULT_REGISTER.priorities) });
+    const few = otherTeam('few', deep, { work: workWeights(queued(deep, 40, 1), DEFAULT_REGISTER.priorities) });
+    // p2 weighs 4 and p1 5: 8 x 4 = 32 against 2 x 5 = 10, never 2 x 40 x 5 = 400.
+    near(teamShareOf(42, many, [few]), 32, 'the wide team');
+    near(teamShareOf(42, few, [many]), 10, 'the deep team');
   });
 });
 

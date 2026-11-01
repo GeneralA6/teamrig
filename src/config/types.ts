@@ -610,7 +610,7 @@ export interface QuietHours {
 
 /** One session's weight in the split of the team's daily budget (src/budget/parts.ts `dailyBudgetOf`). */
 export interface SessionBudget {
-  /** Times its queued work: the session gets the team's budget × that / the sum over the sessions. */
+  /** Times its top queued task's weight: the session gets the team's budget × that / the sum over the sessions. */
   readonly share: number;
 }
 
@@ -674,7 +674,7 @@ export interface BudgetConfig {
   readonly sessions: Readonly<Record<string, SessionBudget>>;
   /**
    * On a short day (what is left of the week gives less than the pace line plans for the day), fund the team's
-   * sessions' queued work in priority order and pause the sessions none of it reaches. The lead, the delivery owner
+   * sessions in the priority order of their top queued task and pause the sessions none of it reaches. The lead, the delivery owner
    * held in the team and lifted sessions are never paused. Off: no session of the team is paused.
    */
   readonly pauseByPriority: boolean;

@@ -11,31 +11,44 @@ import { JsonlEventLog } from '../register/store.ts';
 /** The statuses whose tasks are a session's queued work: what it can work on now. */
 const QUEUED: ReadonlySet<TaskStatus> = new Set<TaskStatus>(['open', 'in-progress']);
 
-/** A session's queued work: its tasks' weights summed by priority id, so a short day can fund it in priority order. */
+/** A session's queued work: its weight by priority id, so a short day can fund it in priority order. */
 export type WorkByPriority = ReadonlyMap<number, number>;
 
+/** A session's top queued task as `workWeights` weighs it. */
+interface TopTask {
+  readonly priority: number;
+  readonly weight: number;
+}
+
 /**
- * Each session's queued work, the weight of its part of the team's daily budget: its open and in-progress tasks,
- * each weighed by its priority, p0 as many as there are levels (teamrig's p0 and the config's) and the last 1
- * (p0..p5: 6..1), summed by priority id. A priority the config does not list weighs 1. A session with no queued
- * work is not in the map.
+ * Each session's queued work, the weight of its part of the team's daily budget: its top queued (open or in-progress)
+ * task alone, weighed by its priority, p0 as many as there are levels (teamrig's p0 and the config's) and the last 1
+ * (p0..p5: 6..1), under that priority's id. A priority the config does not list weighs 1; of two tasks that weigh the
+ * same, the lower priority id is the top. A session works one task at a time, so how many it has queued does not raise
+ * what it spends: a session with 40 queued p1 tasks weighs as one with a single p1, and one whose most important work
+ * is low priority weighs low (T1588). A session with no queued work is not in the map.
  */
 export function workWeights(tasks: Iterable<Pick<Task, 'owner' | 'status' | 'priority'>>, priorities: readonly PriorityConfig[]): ReadonlyMap<string, WorkByPriority> {
   const ranked = priorityLevels(priorities).map((priority) => priority.id).sort((a, b) => a - b);
-  const weights = new Map<string, Map<number, number>>();
+  const weightOf = (priority: number): number => {
+    const rank = ranked.indexOf(priority);
+    return rank === -1 ? 1 : ranked.length - rank;
+  };
+  const tops = new Map<string, TopTask>();
   for (const task of tasks) {
     if (!QUEUED.has(task.status)) {
       continue;
     }
-    const rank = ranked.indexOf(task.priority);
-    const byPriority = weights.get(task.owner) ?? new Map<number, number>();
-    byPriority.set(task.priority, (byPriority.get(task.priority) ?? 0) + (rank === -1 ? 1 : ranked.length - rank));
-    weights.set(task.owner, byPriority);
+    const weight = weightOf(task.priority);
+    const top = tops.get(task.owner);
+    if (top === undefined || weight > top.weight || (weight === top.weight && task.priority < top.priority)) {
+      tops.set(task.owner, { priority: task.priority, weight });
+    }
   }
-  return weights;
+  return new Map([...tops].map(([owner, top]): [string, WorkByPriority] => [owner, new Map([[top.priority, top.weight]])]));
 }
 
-/** A session's queued work weighed whole: its weights summed over its priorities, 0 with none. */
+/** A session's queued work weighed whole: its weights summed over its priorities (from `workWeights`, its top task's alone), 0 with none. */
 export function workWeightOf(work: WorkByPriority | undefined): number {
   let sum = 0;
   for (const weight of work?.values() ?? []) {
@@ -46,7 +59,7 @@ export function workWeightOf(work: WorkByPriority | undefined): number {
 
 /** The sessions' queued work: what weighs each one's part of the daily budget, and the p0 work that goes on past it. */
 export interface QueuedWork {
-  /** Each session's weights by priority (`workWeights`); a session with no queued work is not in it. */
+  /** Each session's top queued task's weight under its priority (`workWeights`); a session with no queued work is not in it. */
   readonly weights: ReadonlyMap<string, WorkByPriority>;
   /** Each session's queued p0 task ids, in the register's order; a session with none is not in it. */
   readonly urgent: ReadonlyMap<string, readonly string[]>;
@@ -88,10 +101,11 @@ export async function readWork(files: Files, eventsPath: string, priorities: rea
 /** The work cache's file in the usage folder: a name no session id can have, so it is never taken for a session's usage file. */
 export const WORK_CACHE_FILE = 'work.cache.json';
 /**
- * The work cache's format (2: with each session's p0 ids; 3: each session's weights by priority id); a cache in any
- * other reads as missing and is written again.
+ * The work cache's format (2: with each session's p0 ids; 3: each session's weights by priority id; 4: its top task's
+ * weight only, T1588, so a format-3 cache of every task's weights is read again); a cache in any other reads as
+ * missing and is written again.
  */
-const WORK_CACHE_FORMAT = 3;
+const WORK_CACHE_FORMAT = 4;
 
 /** What a reading of the work was read from: the stamps of the register files the working set folds, and the priority ids that weighed it. */
 interface WorkKey {

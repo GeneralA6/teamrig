@@ -9,7 +9,8 @@ import { teamConfigOf } from '../testing/team-tree.ts';
 /**
  * The harness clock is Tuesday 2030-01-08 10:00 UTC; the status line's week resets on Monday 2030-01-14 01:00 UTC,
  * so at 5% used about 74% of the week is projected unused at the pace end: room for a hire. A hire's daily part is
- * its part of the team's daily budget beside lead and bravo (weight 1 each) and alpha (3 queued p1 tasks, weight 15).
+ * its part of the team's daily budget beside lead and bravo (weight 1 each) and alpha (3 queued p1 tasks, weighed by
+ * its top one alone: 5, T1588), so a hire takes 1 of 8, where the summed weights (alpha 15) gave it 1 of 18.
  */
 const RESET = Date.parse('2030-01-14T01:00:00Z');
 const TAB = '0000000a-0000-4000-8000-000000000001';
@@ -50,7 +51,7 @@ describe('check SCALE-OUT', () => {
     const kit = await behindTeam();
     const [heading, flag] = await hireLines(kit);
     assert.equal(heading, 'HIRES 1 flag(s)');
-    assert.match(flag ?? '', /^HIRE SCALE-OUT \(3 due by 01-09, its pace finishes 1\.6 by then \(7 done in 7 d\); slice T9 T10, due by 01-09, about 1\.9% of the week, 7\d\.\d% spare\) alpha: the lead hires for it/);
+    assert.match(flag ?? '', /^HIRE SCALE-OUT \(3 due by 01-09, its pace finishes 1\.6 by then \(7 done in 7 d\); slice T9 T10, due by 01-09, about 4\.2% of the week, 7\d\.\d% spare\) alpha: the lead hires for it/);
     assert.match(ok(await kit.run(['start', '--session', 'alpha'])).stdout.join('\n'), /HIRE SCALE-OUT .* alpha:/);
     assert.doesNotMatch(ok(await kit.run(['start', '--session', 'bravo'])).stdout.join('\n'), /HIRE /);
 
@@ -70,16 +71,18 @@ describe('check SCALE-OUT', () => {
   });
 
   it("prices the slice at a new hire's part of the team's daily budget, smaller beside a session of a bigger share", async () => {
+    // alpha's share of 3 makes it weigh 15 (its top p1 task's 5, three times): a hire takes 1 of 18, not the 1 of 8 above.
     const kit = await behindTeam({ sessions: { alpha: { share: 3 } } });
-    assert.match((await hireLines(kit))[1] ?? '', /slice T9 T10, due by 01-09, about 0\.71% of the week, 7\d\.\d% spare\) alpha:/);
+    assert.match((await hireLines(kit))[1] ?? '', /slice T9 T10, due by 01-09, about 1\.9% of the week, 7\d\.\d% spare\) alpha:/);
   });
 
   it("weighs the slice against the team's part of the account's spare when another team shares the account", async () => {
     const kit = await behindTeam();
-    // A second team of three sessions weighs 3 beside the app team's 17: the app team's part is 17/20 of the 74.2% spare.
+    // A second team of three sessions weighs 3 beside the app team's 7 (lead 1, bravo 1, alpha's top p1 task 5): the app
+    // team's part is 7/10 of the 74.2% spare.
     await kit.files.write(teamConfigOf('web'), formatConfig({ configVersion: 1, sessions: ['lead', 'front', 'back'], roles: { lead: 'lead' } }));
     const lines = await hireLines(kit);
-    assert.ok(lines.some((line) => /^HIRE SCALE-OUT .*, 63\.1% spare\) alpha:/.test(line)), lines.join('\n'));
+    assert.ok(lines.some((line) => /^HIRE SCALE-OUT .*, 51\.9% spare\) alpha:/.test(line)), lines.join('\n'));
   });
 
   it('flags nothing when the week has no spare for the slice', async () => {

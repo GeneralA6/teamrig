@@ -25,32 +25,32 @@ function byPriority(weights: Readonly<Record<string, Readonly<Record<number, num
 }
 
 describe('workWeights', () => {
-  it('sums the open and in-progress tasks of each owner by priority, weighed by priority', () => {
+  it("weighs each owner by its top open or in-progress task alone, under that task's priority", () => {
     const weights = workWeights(
       [
-        { owner: 'alpha', status: 'open', priority: 1 },
         { owner: 'alpha', status: 'in-progress', priority: 3 },
-        { owner: 'alpha', status: 'done', priority: 1 },
+        { owner: 'alpha', status: 'open', priority: 1 },
+        { owner: 'alpha', status: 'done', priority: 0 },
         { owner: 'bravo', status: 'waiting', priority: 1 },
         { owner: 'bravo', status: 'verifying', priority: 2 },
-        { owner: 'charlie', status: 'open', priority: 5 },
-        { owner: 'charlie', status: 'open', priority: 9 },
+        { owner: 'charlie', status: 'open', priority: 4 },
       ],
       priorities,
     );
-    // p1..p5 weigh 5..1; an unlisted priority weighs 1.
-    assert.deepEqual(weights, byPriority({ alpha: { 1: 5, 3: 3 }, charlie: { 5: 1, 9: 1 } }));
+    // p1..p5 weigh 5..1: alpha's open p1 outranks its in-progress p3, and its done p0 is no queued work.
+    assert.deepEqual(weights, byPriority({ alpha: { 1: 5 }, charlie: { 4: 2 } }));
   });
 
-  it('sums two tasks of one priority into one weight', () => {
-    const weights = workWeights(
-      [
-        { owner: 'alpha', status: 'open', priority: 2 },
-        { owner: 'alpha', status: 'in-progress', priority: 2 },
-      ],
-      priorities,
-    );
-    assert.deepEqual(weights, byPriority({ alpha: { 2: 8 } }));
+  it('weighs a session with 40 queued tasks of a priority as one with a single task of it', () => {
+    const backlog = Array.from({ length: 40 }, () => ({ owner: 'alpha', status: 'open' as const, priority: 2 }));
+    const weights = workWeights([...backlog, { owner: 'bravo', status: 'open', priority: 2 }], priorities);
+    assert.deepEqual(weights, byPriority({ alpha: { 2: 4 }, bravo: { 2: 4 } }));
+  });
+
+  it('takes the lower priority id as the top of two tasks that weigh the same, as an unlisted priority and the last level do', () => {
+    // An unlisted priority weighs 1, as p5 does.
+    assert.deepEqual(workWeights([{ owner: 'alpha', status: 'open', priority: 9 }, { owner: 'alpha', status: 'open', priority: 5 }], priorities), byPriority({ alpha: { 5: 1 } }));
+    assert.deepEqual(workWeights([{ owner: 'alpha', status: 'open', priority: 9 }], priorities), byPriority({ alpha: { 9: 1 } }));
   });
 
   it("weighs teamrig's p0 above the configured top level, whatever levels the config lists", () => {
@@ -89,8 +89,8 @@ describe('queuedWork', () => {
       priorities,
     );
     assert.deepEqual([...work.urgent], [['alpha', ['T1', 'T2']]]);
-    // p0..p5 weigh 6..1.
-    assert.deepEqual(work.weights, byPriority({ alpha: { 0: 12, 1: 5 }, charlie: { 2: 4 } }));
+    // p0..p5 weigh 6..1; each session weighs its top task alone.
+    assert.deepEqual(work.weights, byPriority({ alpha: { 0: 6 }, charlie: { 2: 4 } }));
   });
 });
 
@@ -174,7 +174,7 @@ describe('cachedWork', () => {
     const { files } = await team();
     assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities)).weights], BOTH);
     assert.deepEqual(cacheIn(files), {
-      [VERSION_FIELD]: 3,
+      [VERSION_FIELD]: 4,
       key: { tail: await files.stamp(tail), snapshot: null, priorities: [1, 2, 3, 4, 5] },
       work: { alpha: { 1: 5 }, bravo: { 3: 3 } },
       urgent: {},
@@ -223,7 +223,8 @@ describe('cachedWork', () => {
   type Damage = (cache: JsonRecord, key: JsonRecord) => string;
   const DAMAGES: readonly (readonly [string, Damage])[] = [
     ['damaged', (cache) => JSON.stringify(cache).slice(0, -2)],
-    ['in another format', (cache) => JSON.stringify({ ...cache, [VERSION_FIELD]: 4, work: {} })],
+    ['in another format', (cache) => JSON.stringify({ ...cache, [VERSION_FIELD]: 5, work: {} })],
+    ['in the third format, every queued task weighed', (cache) => JSON.stringify({ ...cache, [VERSION_FIELD]: 3, work: { alpha: { 1: 10 }, bravo: { 3: 3 } } })],
     ['in the second format, one weight per session', (cache) => JSON.stringify({ ...cache, [VERSION_FIELD]: 2, work: { alpha: 5, bravo: 3 } })],
     ['in the first format, with no p0 ids', (cache) => JSON.stringify({ [VERSION_FIELD]: 1, key: cache['key'], work: {} })],
     ['without its p0 ids', (cache) => JSON.stringify({ ...cache, urgent: 'none' })],
