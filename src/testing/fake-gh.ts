@@ -18,6 +18,8 @@ export interface IssueSpec {
   readonly authorAssociation?: string;
   /** The author's login, `maintainer` unless set; null for an account GitHub no longer has. */
   readonly author?: string | null;
+  /** The author's account kind, `User` unless set; `Bot` for an app such as GitHub Actions. */
+  readonly authorKind?: string;
   /** Timeline items, as labeledEvent and renamedEvent build them, oldest first. */
   readonly timeline?: readonly JsonRecord[];
 }
@@ -40,7 +42,7 @@ export function ghIssue(repo: string, number: number, spec: IssueSpec = {}): Jso
     closedAt: state === 'CLOSED' ? (spec.closedAt ?? updatedAt) : null,
     lastEditedAt: spec.lastEditedAt ?? null,
     authorAssociation: spec.authorAssociation ?? 'OWNER',
-    author: spec.author === null ? null : { login: spec.author ?? 'maintainer' },
+    author: spec.author === null ? null : { __typename: spec.authorKind ?? 'User', login: spec.author ?? 'maintainer' },
     labels: { nodes: (spec.labels ?? []).map((name) => ({ name })) },
     assignees: { nodes: (spec.assignees ?? []).map((login) => ({ login })) },
     timelineItems: { nodes: spec.timeline ?? [] },

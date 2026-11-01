@@ -20,7 +20,7 @@ export const RAW_FIELD = '-f';
 
 /** One issue: what the task is made from, and who wrote it, labelled it and edited it, which decides trust. */
 const ISSUE_FIELDS = `number title body state stateReason url updatedAt closedAt lastEditedAt authorAssociation
-        author { login }
+        author { __typename login }
         labels(first: 100) { nodes { name } }
         assignees(first: 100) { nodes { login } }
         timelineItems(itemTypes: [LABELED_EVENT, RENAMED_TITLE_EVENT], last: ${TIMELINE_EVENTS}) {
