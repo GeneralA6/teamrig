@@ -2,12 +2,15 @@ import { errorMessage } from "../core/guards.js";
 import { NewerDataError } from "../core/jsonl.js";
 import { EVENT_VERSION, TASK_LINE_VERSION } from "./events.js";
 import { foldEvents, taskNumber } from "./fold.js";
+import { NO_GOAL_TAGS } from "./goals.js";
 import { GITHUB_ACTOR, NO_SKILL } from "./policy.js";
 import { ACTIVE_STATUSES } from "./model.js";
 import { isWritable } from "./snapshot.js";
 import { needsElsewhere, NO_TASKS_ELSEWHERE } from "./tree.js";
 /** The reader of a register no other register shares a tree with: nothing is held elsewhere. */
 export const NOTHING_ELSEWHERE = { read: () => Promise.resolve(NO_TASKS_ELSEWHERE) };
+/** The reader of a team that keeps no goal records, as under `register.goals` free: no tag is read. */
+export const NO_GOAL_RECORDS = { read: () => Promise.resolve(NO_GOAL_TAGS) };
 /**
  * The register's write path: under the lock, read the log, replay it, apply the team policy,
  * append its events and return the task as it now stands. Reads take no lock.
@@ -39,14 +42,18 @@ export class Register {
         return { snapshot, elsewhere: needsElsewhere(snapshot.state.tasks) ? await this.elsewhere() : NO_TASKS_ELSEWHERE };
     }
     add(caller, input) {
-        return this.asCaller(caller, () => this.writeNew(({ state }, id, elsewhere) => single(this.created(caller, id, this.deps.policy.add(input, state, elsewhere)))));
+        return this.asCaller(caller, async () => {
+            const goalTags = await this.goalTagsFor(input.goals);
+            return this.writeNew(({ state }, id, elsewhere) => single(this.created(caller, id, this.deps.policy.add(input, state, elsewhere, goalTags))));
+        });
     }
     /**
      * A task asked by a session of another team, `asker` being its `<team>/<id>`. The tree's rules decide who
      * may ask, so this team's roster check is skipped; the event names the asker as its writer.
      */
-    addFromTeam(asker, input) {
-        return this.writeNew(({ state }, id, elsewhere) => single(this.created(asker, id, this.deps.policy.addFromTeam(input, state, elsewhere))));
+    async addFromTeam(asker, input) {
+        const goalTags = await this.goalTagsFor(input.goals);
+        return this.writeNew(({ state }, id, elsewhere) => single(this.created(asker, id, this.deps.policy.addFromTeam(input, state, elsewhere, goalTags))));
     }
     /**
      * A note on a task from the lead who asks the owner this team's decisions, `asker` being its `<team>/<id>`
@@ -114,16 +121,23 @@ export class Register {
         return { ok: true, value: { ...written.value, asked } };
     }
     update(caller, id, changes, note) {
-        return this.commit(caller, (snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => {
-            const change = this.deps.policy.update(task, caller, changes, note, snapshot.state, elsewhere);
-            if (!change.ok) {
-                return change;
-            }
-            const event = { ...this.base(id, caller), type: 'update', ...change.value };
-            const { pin, owner } = change.value.changes;
-            const unpins = typeof pin === 'string' ? this.unpins(task, owner ?? task.owner, caller, snapshot.state) : [];
-            return { ok: true, value: [...unpins, event] };
-        }));
+        return this.asCaller(caller, async () => {
+            const goalTags = await this.goalTagsFor(changes.goals);
+            return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => {
+                const change = this.deps.policy.update(task, caller, changes, note, snapshot.state, elsewhere, goalTags);
+                if (!change.ok) {
+                    return change;
+                }
+                const event = { ...this.base(id, caller), type: 'update', ...change.value };
+                const { pin, owner } = change.value.changes;
+                const unpins = typeof pin === 'string' ? this.unpins(task, owner ?? task.owner, caller, snapshot.state) : [];
+                return { ok: true, value: [...unpins, event] };
+            }));
+        });
+    }
+    /** The goal tags `goals` is held to: read only when a write names some, so most writes read no goal records. */
+    async goalTagsFor(goals) {
+        return goals === undefined || goals.length === 0 ? NO_GOAL_TAGS : this.deps.goals.read();
     }
     /**
      * One pin per owner: the unpins of the other active pinned tasks of `owner`, the owner of `pinned` once pinned,

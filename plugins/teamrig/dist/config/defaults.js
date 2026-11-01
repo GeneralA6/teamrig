@@ -21,6 +21,7 @@ export const DEFAULT_REGISTER = {
         { id: 4, name: "this week's owner decisions" },
         { id: 5, name: 'if budget allows' },
     ],
+    goals: 'free',
     maxTitle: 140,
     maxText: 300,
     secretPatterns: [],

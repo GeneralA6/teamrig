@@ -92,6 +92,8 @@ export function teamPaths(kitHome, team, claudeDir, overrides = {}) {
         state,
         events: join(state, 'events.jsonl'),
         eventsLock: join(state, 'events.lock'),
+        goals: join(state, 'goals.jsonl'),
+        goalsLock: join(state, 'goals.lock'),
         idsLock: join(state, 'ids.lock'),
         inbox: inHome(overrides.inbox) ?? join(state, 'inbox'),
         inboxMarks: join(state, 'inbox-marks.jsonl'),

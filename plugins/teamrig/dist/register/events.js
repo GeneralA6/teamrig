@@ -16,7 +16,7 @@ import { parseWaits } from "./waits.js";
  * decision `card` (0.79.0), the same `waits` and `card` on a `verifying` line for what its proof waits for
  * (0.109.0), an update's approval `verdict` (0.126.0), a task's `kind` (0.147.0), its `pin` (T637), a status line's
  * `review` (T916), a task's `type` and `critical` mark (T1252), which replaced `kind`, and a `done` status's `watch`
- * (T1306) and an update's `waits` (T1295), which an older reader ignores:
+ * (T1306), an update's `waits` (T1295) and a task's `noGoal` mark (T1730), which an older reader ignores:
  * each reads there as none (an answered update as a note alone). An older teamrig re-serialized the events of the snapshot a rotation or
  * `compact` rewrites, so it dropped such a field there (the archive keeps the lines as written); this one copies
  * each kept line as written (compaction.ts).
@@ -48,7 +48,7 @@ const LEGACY_KINDS = new Map([
     ['problem', { type: 'bug', critical: false }],
     ['critical', { type: 'bug', critical: true }],
 ]);
-export const TASK_FIELD_NAMES = ['title', 'description', 'owner', 'source', 'ref', 'priority', 'due', 'goals', 'week', 'after', 'size', 'type', 'critical', 'pin'];
+export const TASK_FIELD_NAMES = ['title', 'description', 'owner', 'source', 'ref', 'priority', 'due', 'goals', 'noGoal', 'week', 'after', 'size', 'type', 'critical', 'pin'];
 /** The lead's answer to the approval a waiting task asks of it (T684): given, or declined with the note saying why. */
 export const APPROVAL_VERDICTS = ['approved', 'declined'];
 export function isApprovalVerdict(value) {
@@ -65,8 +65,8 @@ export function sizeProblem(value) {
 const STATUS_NAME = /^[a-z]+(?:-[a-z]+)*$/;
 /**
  * The record an event is written as. A create line leaves out an empty `after`, a null `description`, `size`, `type`
- * or `pin` and a false `critical`, which read back as none, so a task without them costs no bytes and its line is the
- * one an older teamrig wrote.
+ * or `pin` and a false `critical` or `noGoal`, which read back as none, so a task without them costs no bytes and its
+ * line is the one an older teamrig wrote.
  */
 export function eventRecord(event) {
     if (event.type !== 'create') {
@@ -78,6 +78,7 @@ export function eventRecord(event) {
         (name === 'size' && task.size === null) ||
         (name === 'type' && task.type === null) ||
         (name === 'critical' && !task.critical) ||
+        (name === 'noGoal' && !task.noGoal) ||
         (name === 'pin' && task.pin === null);
     return { ...event, task: Object.fromEntries(Object.entries(task).filter(([name]) => !left(name))) };
 }
@@ -299,6 +300,12 @@ function readField(fields, name, value) {
                 return 'goals is not a list of text';
             }
             fields.goals = value;
+            return undefined;
+        case 'noGoal':
+            if (value !== undefined && value !== null && typeof value !== 'boolean') {
+                return `bad noGoal ${JSON.stringify(value)}`;
+            }
+            fields.noGoal = value === true;
             return undefined;
         case 'after':
             if (value === undefined || value === null) {

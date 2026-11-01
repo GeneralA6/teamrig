@@ -4,6 +4,10 @@ export const VERIFY_GATES = ['refuse', 'warn'];
 export function isVerifyGate(value) {
     return VERIFY_GATES.some((gate) => gate === value);
 }
+export const GOALS_MODES = ['free', 'checked', 'required'];
+export function isGoalsMode(value) {
+    return GOALS_MODES.some((mode) => mode === value);
+}
 export const REVIEW_MODES = ['refuse', 'warn', 'off'];
 export function isReviewMode(value) {
     return REVIEW_MODES.some((mode) => mode === value);

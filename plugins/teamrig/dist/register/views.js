@@ -199,6 +199,9 @@ export function formatTask(task, team, tree) {
     if (task.goals.length > 0) {
         parts.push(`goals ${task.goals.join(',')}`);
     }
+    else if (task.noGoal) {
+        parts.push('goals none');
+    }
     return `${parts.join(', ')} | ${task.title}${statusNote(task, tree)}${neededByText(task, tree)}`;
 }
 /**
@@ -227,9 +230,9 @@ function waitingText(task, tree) {
 /** How much of a description an update line in `show`'s history quotes. */
 const HISTORY_DESCRIPTION_CHARS = 80;
 /**
- * One field of an update, as `show` prints it: a priority reads `p2`, a list joins with commas, and a description is
- * quoted on one line, cut to HISTORY_DESCRIPTION_CHARS (`none` when cleared): `show` prints the whole one above. A due
- * time reads in the team's `zone`.
+ * One field of an update, as `show` prints it: a priority reads `p2`, a list joins with commas (empty goals read
+ * `none`), and a description is quoted on one line, cut to HISTORY_DESCRIPTION_CHARS (`none` when cleared): `show`
+ * prints the whole one above. A due time reads in the team's `zone`.
  */
 function changeText(name, value, zone) {
     if (name === 'due' && typeof value === 'string') {
@@ -243,6 +246,9 @@ function changeText(name, value, zone) {
     }
     if (name === 'size') {
         return typeof value === 'number' ? sizeText(value) : 'none';
+    }
+    if (name === 'goals' && Array.isArray(value) && value.length === 0) {
+        return 'none';
     }
     return Array.isArray(value) ? value.join(',') : String(value);
 }
@@ -261,7 +267,7 @@ export function formatEvent(event, zone) {
                 task.ref === null ? undefined : `ref=${task.ref}`,
                 task.due === null ? undefined : `due=${storedText(task.due, zone)}`,
                 task.week === null ? undefined : `week=${task.week}`,
-                task.goals.length === 0 ? undefined : `goals=${task.goals.join(',')}`,
+                task.goals.length > 0 ? `goals=${task.goals.join(',')}` : task.noGoal ? 'goals=none' : undefined,
                 task.after.length === 0 ? undefined : `after=${task.after.join(',')}`,
                 task.size === null ? undefined : `size=${sizeText(task.size)}`,
                 task.type === null ? undefined : `type=${task.type}`,
@@ -284,7 +290,10 @@ export function formatEvent(event, zone) {
                 .filter((part) => part !== undefined)
                 .join(' ');
         case 'update': {
-            const fields = Object.entries(event.changes).map(([name, value]) => `${name}=${changeText(name, value, zone)}`);
+            // A no-goal mark changes only with the goals, whose own text says it: `goals=none`, or the tags (T1730).
+            const fields = Object.entries(event.changes)
+                .filter(([name]) => name !== 'noGoal' || event.changes.goals === undefined)
+                .map(([name, value]) => `${name}=${changeText(name, value, zone)}`);
             const verdict = event.verdict === undefined ? [] : [`verdict=${event.verdict}`];
             return `${[head, ...fields, ...verdict].join(' ')}${note}`;
         }

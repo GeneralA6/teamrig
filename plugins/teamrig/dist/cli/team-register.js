@@ -4,6 +4,7 @@ import { JsonlEventLog } from "../register/store.js";
 import { SkillDir } from "../skills/store.js";
 import { teamZone } from "./kit.js";
 import { KitTreeNumbering } from "./tree-numbering.js";
+import { KitTreeGoals } from "./tree-goals.js";
 import { KitTreeTasks } from "./tree-tasks.js";
 import { fileLockOf } from "./file-locks.js";
 /**
@@ -17,6 +18,7 @@ export function teamRegister(runtime, paths, config, above) {
         mutex: fileLockOf(runtime, paths.eventsLock, config.lock),
         numbering: new KitTreeNumbering(runtime, paths.team, config.lock),
         elsewhere: new KitTreeTasks(runtime, paths.team),
+        goals: new KitTreeGoals(runtime, paths, config),
         clock,
         policy: new RegisterPolicy(config, above),
         skills: new SkillDir(files, paths.skills),

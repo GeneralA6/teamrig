@@ -136,6 +136,17 @@ export function criticalOf(switches) {
     }
     return switches.has('critical') ? { critical: true } : switches.has('not-critical') ? { critical: false } : {};
 }
+/** `--goals A1,B2`: the goal tags the task serves; `none` alone says it serves none, and is never a tag beside others. */
+export function goalsOf(text) {
+    const goals = listOf('--goals', text);
+    if (!goals.includes(NONE)) {
+        return { goals };
+    }
+    if (goals.length > 1) {
+        throw new UsageError(`--goals "${text}": ${NONE} says the task serves no goal, so give it alone or give only the tags`);
+    }
+    return { goals: [], noGoal: true };
+}
 /** `--week`: a day, checked here because `check` and `plan` read it without the policy. */
 export function weekOf(text) {
     if (parseUtcDay(text) === undefined) {
@@ -164,7 +175,11 @@ export function addInputOf(flags, caller, times) {
     }
     const goals = flags.get('goals');
     if (goals !== undefined) {
-        input.goals = listOf('--goals', goals);
+        const said = goalsOf(goals);
+        input.goals = said.goals;
+        if (said.noGoal !== undefined) {
+            input.noGoal = said.noGoal;
+        }
     }
     const week = flags.get('week');
     if (week !== undefined) {
@@ -208,7 +223,8 @@ export function waitsOf(text, times) {
     });
 }
 /**
- * The fields `update` changes; `none` clears the description, ref, due date, goals, week, plan dependency or size.
+ * The fields `update` changes; `none` clears the description, ref, due date, week, plan dependency or size, and
+ * `--goals none` says the task serves no goal.
  */
 export function changesOf(flags, times) {
     const changes = {};
@@ -238,7 +254,11 @@ export function changesOf(flags, times) {
     }
     const goals = flags.get('goals');
     if (goals !== undefined) {
-        changes.goals = goals === NONE ? [] : listOf('--goals', goals);
+        const said = goalsOf(goals);
+        changes.goals = said.goals;
+        if (said.noGoal !== undefined) {
+            changes.noGoal = said.noGoal;
+        }
     }
     const week = flags.get('week');
     if (week !== undefined) {
