@@ -181,9 +181,11 @@ export const DEFAULT_WAKE = { enabled: true, priority: 1, batchSeconds: 120, min
 export const DEFAULT_TESTS = { maxFailureChars: 4000 };
 /**
  * Off until a team lists a repository; two weeks of closed issues covers a sync missed over a holiday. Every 15
- * minutes a new issue reaches its session within a working block, at two gh calls per repository each time.
+ * minutes a new issue reaches its session within a working block, at two gh calls per repository each time (one more
+ * per further hundred open, or recently changed closed, issues). An outsider's issue waits for the `teamrig` label,
+ * named after the tool so it does not clash with a repository's own triage labels.
  */
-export const DEFAULT_GITHUB = { repos: [], owners: {}, sessions: {}, closedDays: 14, everyMinutes: 15 };
+export const DEFAULT_GITHUB = { repos: [], owners: {}, sessions: {}, closedDays: 14, everyMinutes: 15, acceptLabel: 'teamrig' };
 /**
  * Claude Code compacts a 200k window at about 167k, so 120k refreshes before that; every 3 tasks catches a
  * session that grows slowly, from 80k up. Measured over 8 days of 12 sessions: about 9 refreshes a day in all.

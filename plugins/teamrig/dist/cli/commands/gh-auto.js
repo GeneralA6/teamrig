@@ -1,6 +1,7 @@
 import { ENV } from "../../core/home.js";
+import { writableObject } from "../../core/jsonl.js";
 import { SecretScanner } from "../../core/secrets.js";
-import { addedLines, claimState, failureNews, finishState, formatSyncState, isDue, parseSyncState } from "../../github/auto.js";
+import { addedLines, claimState, failureNews, finishState, formatSyncState, isDue, leftOutNews, parseSyncState, SYNC_STATE_FORMAT, } from "../../github/auto.js";
 import { postLine } from "../../inbox/inbox.js";
 import { GITHUB_ACTOR } from "../../register/policy.js";
 import { inboxDepsOf } from "./inbox.js";
@@ -8,7 +9,8 @@ import { fileLockOf } from "../file-locks.js";
 /**
  * The automatic GitHub sync: the Stop hook starts `gh sync --auto` hidden in the background once per
  * `github.everyMinutes` for the whole team, claimed under one lock, and that run tells each owner's inbox
- * the tasks it added and the lead's when the failing repositories change. Nothing else keeps running.
+ * the tasks it added, and the lead's when the failing repositories change or an outsider's issue is newly left
+ * out. Nothing else keeps running.
  */
 /** `TEAMRIG_GITHUB=off` turns the import off on this machine, whatever the team config says. */
 export const GITHUB_OFF = 'off';
@@ -21,6 +23,15 @@ function stateLock(runtime, kit, config, waitMs) {
 }
 async function readState(runtime, kit) {
     return parseSyncState((await runtime.files.read(kit.paths.githubSync)) ?? '');
+}
+/**
+ * The state before a write, under the lock. A file a newer teamrig wrote is refused (`NewerDataError`), so an older
+ * teamrig still running in some tab never drops its fields: its hook starts no sync, its `gh sync --auto` fails.
+ */
+async function writableState(runtime, kit) {
+    const text = await runtime.files.read(kit.paths.githubSync);
+    writableObject(kit.paths.githubSync, text, SYNC_STATE_FORMAT);
+    return parseSyncState(text ?? '');
 }
 /**
  * The Stop hook's part: once `github.everyMinutes` passed since the last automatic sync, claims the next one
@@ -39,7 +50,7 @@ export async function startAutoSync(runtime, kit, config) {
         return;
     }
     const claimed = await stateLock(runtime, kit, config, 0).run(async () => {
-        const state = await readState(runtime, kit);
+        const state = await writableState(runtime, kit);
         if (!isDue(state, now, github.everyMinutes)) {
             return false;
         }
@@ -56,22 +67,26 @@ export async function startAutoSync(runtime, kit, config) {
     }
 }
 /**
- * What `gh sync --auto` does once it has written: records its finish and failing repositories, then posts
- * one inbox line to each owner naming the tasks added for it, and one to the lead when the failing
- * repositories changed (`failureNews`). It gives a line for each inbox line that was refused, such as an
- * issue title that matches a secret pattern.
+ * What `gh sync --auto` does once it has written: records its finish, failing repositories and left-out issues,
+ * then posts one inbox line to each owner naming the tasks added for it, one to the lead when the failing
+ * repositories changed (`failureNews`) and one when an outsider's issue was left out that was not before
+ * (`leftOutNews`). It gives a line for each inbox line that was refused, such as an issue title that matches a
+ * secret pattern.
  */
-export async function reportAutoSync(runtime, kit, config, added, failures) {
+export async function reportAutoSync(runtime, kit, config, run) {
     const now = runtime.clock.now();
-    const before = await stateLock(runtime, kit, config, config.lock.waitMs).run(async () => {
-        const state = await readState(runtime, kit);
-        await runtime.files.write(kit.paths.githubSync, formatSyncState(finishState(state, now, failures)));
-        return state?.failing ?? [];
+    const { before, after } = await stateLock(runtime, kit, config, config.lock.waitMs).run(async () => {
+        const state = await writableState(runtime, kit);
+        const finished = finishState(state, now, run.failures, run.leftOut);
+        await runtime.files.write(kit.paths.githubSync, formatSyncState(finished));
+        return { before: state, after: finished };
     });
-    const posts = [...addedLines(added)].map(([to, text]) => ({ to, text }));
-    const news = failureNews(before, failures);
-    if (news !== undefined) {
-        posts.push({ to: config.roles.lead, text: news });
+    const posts = [...addedLines(run.added)].map(([to, text]) => ({ to, text }));
+    const news = [failureNews(before?.failing ?? [], run.failures), leftOutNews(before?.leftOut ?? new Map(), after.leftOut, config.github.acceptLabel)];
+    for (const text of news) {
+        if (text !== undefined) {
+            posts.push({ to: config.roles.lead, text });
+        }
     }
     const inboxes = inboxDepsOf(runtime, kit.paths).inboxes;
     const secrets = new SecretScanner(config.register.secretPatterns);

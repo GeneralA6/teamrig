@@ -17,6 +17,7 @@ export function importRules(config) {
         repoSessions: new Map(Object.entries(config.github.sessions)),
         lead: config.roles.lead,
         secrets: new SecretScanner(config.register.secretPatterns),
+        acceptLabel: config.github.acceptLabel,
     };
 }
 /** The ref of an issue's task: one per issue, whatever its title or state. */

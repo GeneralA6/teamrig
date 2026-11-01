@@ -13,14 +13,18 @@ import { teamRegister } from "../team-register.js";
 import { GITHUB_OFF, githubOff, reportAutoSync } from "./gh-auto.js";
 /** The rows of steps a repository prints; the rest are counted. */
 export const SHOWN_STEPS = 10;
+/** The left-out issue numbers a repository's LEFT OUT line names; the rest are counted. */
+export const SHOWN_LEFT_OUT = 20;
 /**
  * `gh sync [--repo <owner/name>] [--yes]`: brings the task list in step with the GitHub issues of the team's
  * `github.repos`, inbound only. Each owner's repositories are read with the read-only token saved for it
  * (github/tokens.ts), else the gh login, and an ACCESS line says which. gh only ever lists issues
  * (github/gh.ts refuses any other command), and the
  * register's import writes (register.ts) touch only the tasks it added, as `github`. Without `--yes` it
- * shows what it would write and writes nothing. `--auto`, which the Stop hook starts (gh-auto.ts), writes as
- * `--yes` does and tells each owner's inbox its new tasks and the lead's when the failing repositories change. Exit 1 when a repository could not be read (its tasks stay
+ * shows what it would write and writes nothing. Either way a LEFT OUT line names, by number only, the open
+ * issues of a repository that the trust rule kept out (github/trust.ts). `--auto`, which the Stop hook starts (gh-auto.ts), writes as
+ * `--yes` does and tells each owner's inbox its new tasks, and the lead's when the failing repositories change or
+ * an issue is newly left out. Exit 1 when a repository could not be read (its tasks stay
  * as they are), 2 when the register refused a step, else 0.
  */
 export async function ghSync(args, runtime) {
@@ -49,6 +53,7 @@ export async function ghSync(args, runtime) {
     const ends = [];
     const added = [];
     const failures = [];
+    const leftOut = new Map();
     let written = 0;
     for (const repo of reposOf(config.github.repos, args.flags.get('repo'))) {
         const { access, note } = await tokens.accessFor(repo);
@@ -65,13 +70,15 @@ export async function ghSync(args, runtime) {
         }
         read.notes.forEach((note) => say(`NOTE ${repo}: ${note}`));
         const plan = planSync(read.issues, importedTasks((await register.snapshot()).state.tasks.values()), rules);
+        leftOut.set(repo, plan.leftOut);
+        const leftOutText = leftOutLines(repo, plan.leftOut, rules.acceptLabel);
         if (!write) {
-            previewLines(repo, plan).forEach(say);
+            [...previewLines(repo, plan), ...leftOutText].forEach(say);
             ends.push('ok');
             continue;
         }
         const outcomes = await applySteps(register, plan.steps);
-        resultLines(repo, plan, outcomes).forEach(say);
+        [...resultLines(repo, plan, outcomes), ...leftOutText].forEach(say);
         written += outcomes.filter((outcome) => outcome.result.ok).length;
         added.push(...addedTasks(outcomes));
         const refused = refusedReason(outcomes);
@@ -81,7 +88,7 @@ export async function ghSync(args, runtime) {
         ends.push(refused === undefined ? 'ok' : 'refused');
     }
     if (auto) {
-        (await reportAutoSync(runtime, kit, config, added, failures)).forEach(say);
+        (await reportAutoSync(runtime, kit, config, { added, failures, leftOut })).forEach(say);
     }
     say(write
         ? `WROTE ${written} change(s) to the task list as ${GITHUB_ACTOR}; GitHub was only read`
@@ -125,6 +132,21 @@ function resultLines(repo, plan, outcomes) {
         `REPO ${repo}: ${added} added, ${changed} changed, ${plan.unchanged} unchanged${refused > 0 ? `, ${refused} refused` : ''}`,
         ...shown(done.map((outcome) => stepLine(outcome.step, outcome.result.ok ? outcome.result.value : ''))),
         ...outcomes.flatMap((outcome) => (outcome.result.ok ? [] : [`SKIPPED ${outcome.step.ref}: ${outcome.result.error}`])),
+    ];
+}
+/**
+ * The line naming the open issues the trust rule (trust.ts) left out of a repository, and the label that lets
+ * one in: their numbers only, as their text is an outsider's, at most SHOWN_LEFT_OUT and then how many more;
+ * none when it left none out.
+ */
+function leftOutLines(repo, leftOut, acceptLabel) {
+    if (leftOut.length === 0) {
+        return [];
+    }
+    const more = leftOut.length - SHOWN_LEFT_OUT;
+    const numbers = leftOut.slice(0, SHOWN_LEFT_OUT).map((number) => `#${number}`).join(' ');
+    return [
+        `LEFT OUT ${repo}: ${leftOut.length} open issue(s) by people outside the repository wait for someone to add the ${JSON.stringify(acceptLabel)} label: ${numbers}${more > 0 ? ` and ${more} more` : ''}`,
     ];
 }
 /** The first SHOWN_STEPS lines, then how many more there are. */

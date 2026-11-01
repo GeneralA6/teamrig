@@ -7,8 +7,8 @@ export function closedSince(now, closedDays) {
     return formatUtcDay(new Date(now.getTime() - closedDays * DAY_MS));
 }
 /**
- * Reads a repository's open issues, then those closed on or after `since`: two `gh issue list` reads and
- * nothing else. When either fails the repository is left out whole, so its tasks are not judged on half a read.
+ * Reads a repository's open issues, then those closed on or after `since`: pages of the two shipped issue queries
+ * and nothing else. When either fails the repository is left out whole, so its tasks are not judged on half a read.
  */
 export async function readRepo(gh, access, repo, since) {
     const open = await listIssues(gh, access, { repo, state: 'open', limit: ISSUE_LIMIT });
