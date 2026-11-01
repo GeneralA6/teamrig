@@ -34,6 +34,9 @@ export { loopFix, needPath, needsOf, pathText, planOrder, TaskTree, type Effecti
 export { byPlanOrder, dueTime, type PlanOrdered } from '../register/views.ts';
 // The done groups (T1729): one rule that sorts a span's done work for the daily report, the agenda and the Done page.
 export { DONE_GROUP_KINDS, doneGroups, doneGroupTitle, URGENT_PRIORITY, type DoneGroup, type DoneGroupKind, type DoneGroups, type DoneGroupsInput } from '../register/done-groups.ts';
+// The goal records (T1730): a team's goals with their planned window, target and every target move, read from the
+// `goals.jsonl` text beside the event log.
+export { GOALS_FILE, NO_GOAL, NO_GOALS, readGoals, type Goal, type GoalSlip, type GoalsRead } from '../register/goals.ts';
 
 // Time: the team's zone (`config.timeZone`, else the machine's). A stored bare day is a day of it, a stored minute is
 // UTC, and every time prints in it, zone-marked (`01-31 11:05 IST`); a reader passes it to the calls that print one.
