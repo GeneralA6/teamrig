@@ -39,7 +39,7 @@ export async function scanSetup(ports, at) {
         duplicates: findDuplicates(context.files),
         overrides: rules.candidates.filter((candidate) => !at.cleared(candidate)),
         recorded: rules.recorded.length,
-        settings: await scanSettings(ports.files, at.claudeDir, at.settings, at.keep, at.secrets),
+        settings: await scanSettings(ports.files, at.claudeDir, at.settings, at.keep, at.secrets, usage.hooks),
         usage,
         recent: await changedSince(ports.files, [...context.skills, ...context.agents], usage.since),
         doctor,

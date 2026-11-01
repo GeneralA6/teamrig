@@ -4,6 +4,7 @@ import { AGENT_TOOL, parseTranscriptLine, SKILL_TOOL } from "../budget/line.js";
 import { stringField } from "../core/guards.js";
 import { parseObject } from "../core/jsonl.js";
 import { isAtOrBelow, pathKey } from "../core/paths.js";
+import { addHookRun, hookRunOf, mayRecordHookRun } from "./scan-hook-output.js";
 /** The bytes read at a time: a transcript runs to hundreds of MB, and is never held whole. */
 export const USE_CHUNK_BYTES = 8 * 1024 * 1024;
 /** A cheap test before parsing: only a line naming the Skill or Agent tool or a slash command can show a use. */
@@ -41,6 +42,10 @@ async function readOne(source, path, one, chunkBytes) {
             if (mayNameUse(line)) {
                 addUses(line, one);
             }
+            const run = mayRecordHookRun(line) ? hookRunOf(line) : undefined;
+            if (run !== undefined) {
+                addHookRun(one.hooks, run);
+            }
         }
         if (batch.end === offset) {
             break;
@@ -68,13 +73,14 @@ async function newestFirst(source, projectsDir, since) {
  * The skills and agent types used in the transcripts (sessions' and their subagents') written since `window.since` in
  * any project on this machine, read newest first until `window.maxBytes`: a month of a busy machine's transcripts runs
  * to gigabytes. It reads each transcript `chunkBytes` at a time and parses only the lines that can name a use, and
- * the first one carrying a `cwd`, the folder the session started in: a project folder's name in `projectsDir` is a
+ * the first one carrying a `cwd`, the folder the session started in, and what each context hook's runs printed: a project folder's name in `projectsDir` is a
  * lossy slug (`a/b-c` and `a-b/c` share one), so it cannot say where.
  */
 export async function readTranscriptUse(source, projectsDir, window) {
     const skills = new Map();
     const agents = new Map();
     const folders = new Map();
+    const hooks = new Map();
     const dated = await newestFirst(source, projectsDir, window.since);
     let transcripts = 0;
     let bytes = 0;
@@ -82,7 +88,7 @@ export async function readTranscriptUse(source, projectsDir, window) {
         if (bytes >= window.maxBytes) {
             break;
         }
-        const one = { cwd: undefined, skills: new Set(), agents: new Set() };
+        const one = { cwd: undefined, skills: new Set(), agents: new Set(), hooks };
         bytes += await readOne(source, path, one, window.chunkBytes ?? USE_CHUNK_BYTES);
         transcripts += 1;
         addUsedIn(skills, one.skills, one.cwd);
@@ -94,7 +100,7 @@ export async function readTranscriptUse(source, projectsDir, window) {
     const unread = dated.length - transcripts;
     const oldestRead = dated[transcripts - 1];
     const since = unread === 0 || oldestRead === undefined ? window.since : oldestRead.changedAt;
-    return { skills, agents, folders, transcripts, bytes, unread, since };
+    return { skills, agents, folders, hooks, transcripts, bytes, unread, since };
 }
 function usedBelow(usedIn, project, platform) {
     const names = [...usedIn].filter(([, folders]) => [...folders].some((folder) => isAtOrBelow(folder, project, platform)));
