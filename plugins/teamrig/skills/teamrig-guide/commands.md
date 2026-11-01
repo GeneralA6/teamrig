@@ -649,6 +649,48 @@ BUGS 1 active, 2 opened, 1 fixed
 PEOPLE api 5, web 2
 ```
 
+### teamrig report done
+
+Prints one day's finished work, yesterday's by default, in the groups the owner reads it in. The meeting agenda's
+`DONE` section sorts by the same rule, so the two never disagree. A task done that day goes in the first group it
+fits:
+
+- Owner asked: the owner gave it (its source is `register.ownerSource`);
+- one group per goal, named by the task's first goal tag;
+- Urgent p1: priority p0 or p1;
+- This week's plan: its week tag is the planning week it was done in;
+- Other work: the rest.
+
+Each group but Other work prints with every row. Other work and the tasks dropped that day print as one line naming
+the command that lists them, unless `--all` is given. The day is a calendar day on the team's clock. It reads the
+whole task history, archive included, and writes nothing.
+
+Flags:
+
+- `--day <YYYY-MM-DD>`: the day to read (default yesterday); anything else is a usage error.
+- `--session <id|name>`: only the tasks that session owns.
+- `--all`: print the rows of Other work and the dropped tasks too.
+
+Example:
+
+```sh
+teamrig report done
+teamrig report done --day 2026-10-14 --all
+```
+
+Output:
+
+```text
+DONE Wed 10-14 · 4 done · 1 dropped
+  Owner asked (1)
+    T7 done, p2, owner web | Pick the pricing tier
+  signup (1)
+    T5 done, p2, owner api | Add the sign-up form
+  Urgent p1 (1)
+    T2 done, p1, owner api | Rate-limit the signup endpoint
+  Other work (1) and dropped (1): teamrig report done --day 2026-10-14 --all
+```
+
 ### teamrig files
 
 Prints the folder where a task's files go, and makes it when it is missing. Write every file a task produces there,
@@ -1846,7 +1888,9 @@ as an inbox line. So no session is told the meeting started, and none is woken. 
   decide, never read to the owner (`check` flags each one `UNGATED`);
 - `LATE`: the active tasks past their due date, their own or the earlier one of a task that needs them
   (`due 10-14 (from T9)`);
-- `DONE`: what finished since the last meeting ended (a day back for the first, 7 days at most);
+- `DONE`: what finished since the last meeting ended (a day back for the first, 7 days at most), in the groups of
+  `teamrig report done`: each group's rows, at most 10 each, then Other work and the dropped tasks as one count
+  line each with the command that lists them;
 - `MERGES`: under `pushGuard.pushToProtected: gated`, the branches merged with no approval since then (from
   `merges.jsonl` in `delivery.dir`), check-clean ones first, marked `CHECK-CLEAN` for security's weekly sample;
 - `MEETINGS`: today's scheduled meetings and the missed ones, as `meeting list` shows them, and how the owner starts
@@ -1909,9 +1953,10 @@ DECISIONS 1 waiting on owner (decision or approval)
   A card owner puts off to a date: teamrig update <id> --later <date> --note "owner put it off: <why>" --session lead; it waits in LATER until then.
 LATE 1 past their due date
   T4 open, p2, owner api, due 10-14 | Retry the signup call
-DONE 2 done or dropped since Wed 10-14 11:30 IDT
-  T2 done, p1, owner api | Rate-limit the signup endpoint
-  T3 done, p2, owner web | Add the error codes page
+DONE 2 done, 0 dropped since Wed 10-14 11:30 IDT
+  Urgent p1 (1)
+    T2 done, p1, owner api | Rate-limit the signup endpoint
+  Other work 1: teamrig list --status done
 MERGES 1 merged with no approval since Wed 10-14 11:30 IDT, 0 CHECK-CLEAN (security samples those weekly)
   Thu 10-15 09:12 IDT api app t4-retry 4f1c2a9e..9a0b1c2d: 3 files, 58 lines, checks lint, test
 MEETINGS 1 today or missed
