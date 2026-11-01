@@ -226,6 +226,10 @@ const SAMPLES: Readonly<Record<string, Sample>> = {
     payload: { hook_event_name: 'PermissionRequest', session_id: SESSION_ID, tool_name: 'Bash', tool_input: { command: 'git push origin main' } },
     check: quiet('with asks on'),
   },
+  'hook route-allow': {
+    payload: { hook_event_name: 'PreToolUse', session_id: SESSION_ID, tool_name: 'Bash', tool_input: { command: 'teamrig merge --session smoke' } },
+    check: quiet('with asks on'),
+  },
 };
 
 function isStringList(value: unknown): value is readonly string[] {
