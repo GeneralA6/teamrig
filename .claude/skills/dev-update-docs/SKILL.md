@@ -27,5 +27,8 @@ Then `npm run docs:check` (relative links, anchors and Mermaid diagram types) an
 - Three things are drawn, never edited by hand: `docs/configuration.md`, the pictures in `docs/images/` and the
   `## Every command` block of `docs/commands.md` (copied from `teamrig help`).
 - Write docs for the user: what it does for them and how to fix each refusal, not how it is built.
+- A line never starts with a bracketed name and a colon (`[register.goals]: ..`): Markdown reads it as a link
+  definition, hides it from the page, and the link checks fail on its target. The guide is a plugin skill, so run
+  `tools/docs/plugin-skills.test.ts` with the other docs specs.
 
 Last verified: 2026-10-21
