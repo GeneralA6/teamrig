@@ -118,6 +118,7 @@ export function teamPaths(kitHome, team, claudeDir, overrides = {}) {
         unownedNotices: join(state, 'unowned-notices.json'),
         unownedNoticesLock: join(state, 'unowned-notices.lock'),
         usage: join(state, 'usage'),
+        configDirRecord: join(state, 'usage', 'claude-config-dir.json'),
         skillsScorecard: join(state, 'skills-scorecard.json'),
         period: join(state, 'usage', 'period.json'),
         meterLog: join(state, 'usage', 'meter-log.jsonl'),
