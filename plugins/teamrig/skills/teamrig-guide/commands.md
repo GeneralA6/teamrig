@@ -2329,7 +2329,9 @@ pass), still runs, was active since logon, was not a terminal session (`claude -
 Claude Code resumes itself), was continued in another session, has no transcript left, is too old or failed to resume
 too often is not reopened. A tab closed outside a shutdown, with no reason of its own, is restored when it closed
 mid-turn or on an API error; any other is kept 48 hours as `CLOSED`, which `restore run` offers apart and reopens only
-when asked, then discarded. This command prints each recorded session as `RESTORE` (how it comes back and at which
+when asked, then discarded. A discarded entry is not deleted: `restore check` and `restore run` move it to
+`<home>/restore/archive/` (logged `archived <id> (<reason>)`) and delete it there 7 days later, so a session judged
+wrongly can still be found. This command prints each recorded session as `RESTORE` (how it comes back and at which
 effort), `CLOSED`, `KEEP` or `DISCARD`, with the reason, and what each lead's first prompt says of its team. It only
 reads.
 
