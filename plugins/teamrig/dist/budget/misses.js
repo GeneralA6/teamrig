@@ -118,7 +118,7 @@ export function toolMissesOf(tool) {
     }
     return { starts: runs.some((run) => isTeamrig(run, 'start')), counts };
 }
-export const INITIAL_MISS_STATE = { lastAt: 0, block: null };
+export const INITIAL_MISS_STATE = { lastAt: 0, block: null, noted: false };
 function blockFrom(value) {
     if (value === null) {
         return null;
@@ -129,17 +129,18 @@ function blockFrom(value) {
     const { day, calls } = value;
     return typeof day === 'string' && parseUtcDay(day) !== undefined && isNonNegativeInteger(calls) ? { day, calls } : undefined;
 }
-/** A stored miss state; undefined when any part of it is damaged. */
+/** A stored miss state; undefined when any part of it is damaged. A state stored before start notes (T1529) has no note pending. */
 export function parseMissState(value) {
     if (!isRecord(value)) {
         return undefined;
     }
     const { lastAt } = value;
     const block = blockFrom(value['block']);
-    if (typeof lastAt !== 'number' || !Number.isFinite(lastAt) || lastAt < 0 || block === undefined) {
+    const noted = value['noted'] === undefined ? false : value['noted'];
+    if (typeof lastAt !== 'number' || !Number.isFinite(lastAt) || lastAt < 0 || block === undefined || typeof noted !== 'boolean') {
         return undefined;
     }
-    return { lastAt, block };
+    return { lastAt, block, noted };
 }
 /**
  * Counts one transcript's rule misses, a line at a time, from the state the last read left. A miss counts
@@ -157,16 +158,38 @@ export class MissTracker {
     }
     /**
      * A new turn. One that asks for work after an idle hour, or as the thread's first line, starts a work
-     * block; a block still waiting then is dropped uncounted, being shorter than `START_WITHIN_CALLS`.
+     * block; a block still waiting then is dropped uncounted, being shorter than `START_WITHIN_CALLS`. A block opened
+     * right after a work-block start note has its start already (`startNote`); any turn ends the note's reach.
      */
     prompt(trigger, at, day) {
         if (at === undefined) {
             return;
         }
-        const { lastAt } = this.current;
+        const { lastAt, noted } = this.current;
+        const seenAt = Math.max(lastAt, at);
         const idle = lastAt === 0 || at - lastAt >= BLOCK_IDLE_MS;
-        const block = idle && BLOCK_TRIGGERS.has(trigger) && day !== undefined ? { day, calls: 0 } : this.current.block;
-        this.current = { lastAt: Math.max(lastAt, at), block };
+        if (!idle || !BLOCK_TRIGGERS.has(trigger) || day === undefined) {
+            this.current = { lastAt: seenAt, block: this.current.block, noted: false };
+            return;
+        }
+        if (noted) {
+            this.counterOf(day)('workBlocks', 1);
+        }
+        this.current = { lastAt: seenAt, block: noted ? null : { day, calls: 0 }, noted: false };
+    }
+    /**
+     * A start note that is the session's work-block start (T1529): it holds what `teamrig start` prints first, so it is
+     * the start of the block waiting now, or of the block the next turn opens, as Claude Code writes the note before
+     * that turn's prompt. It is no activity of the session's own, so it leaves the thread's last time.
+     */
+    startNote() {
+        const { block } = this.current;
+        if (block === null) {
+            this.current = { ...this.current, noted: true };
+            return;
+        }
+        this.counterOf(block.day)('workBlocks', 1);
+        this.current = { ...this.current, block: null, noted: false };
     }
     /** A new call begins at `at`, on `day`, with its first tools. */
     callStarted(tools, at, day) {

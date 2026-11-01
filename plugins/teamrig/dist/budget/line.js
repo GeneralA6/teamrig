@@ -1,5 +1,6 @@
 import { isRecord, recordField, stringField } from "../core/guards.js";
 import { parseObject } from "../core/jsonl.js";
+import { BLOCK_START_WORDS, isBlockStartLine } from "../core/work-block.js";
 import { usageOf } from "./weights.js";
 /**
  * What started a turn: the owner, a peer's message, a notification (a finished background task or a
@@ -158,17 +159,30 @@ function compactOf(entry) {
     return entry['type'] === 'system' && entry['subtype'] === 'compact_boundary' ? { kind: 'compact', at: timeOf(entry) } : undefined;
 }
 /**
+ * A SessionStart hook's note whose text holds a work-block start line (core/work-block.ts); undefined for any other
+ * entry, a prompt or a tool result that only quotes one among them.
+ */
+function startNoteOf(entry) {
+    const attachment = entry['type'] === 'attachment' ? recordField(entry, 'attachment') : undefined;
+    if (attachment === undefined || attachment['type'] !== 'hook_additional_context' || attachment['hookEvent'] !== 'SessionStart') {
+        return undefined;
+    }
+    const content = attachment['content'];
+    const texts = Array.isArray(content) ? content.filter((part) => typeof part === 'string') : [];
+    return texts.some((text) => text.split('\n').some(isBlockStartLine)) ? { kind: 'start-note', at: timeOf(entry) } : undefined;
+}
+/**
  * One transcript line as what the meter counts; undefined for the many lines it ignores (system
- * notes other than a compaction, attachments, snapshots) and for a damaged or torn line. A cheap text test runs first, so
- * only a line that can be a reply or a user line is parsed.
+ * notes other than a compaction, attachments other than a work-block start note, snapshots) and for a damaged or torn
+ * line. A cheap text test runs first, so only a line that can be a reply, a user line or such a note is parsed.
  */
 export function parseTranscriptLine(raw) {
-    if (!raw.includes('"usage"') && !raw.includes('"type":"user"') && !raw.includes('"compact_boundary"')) {
+    if (!raw.includes('"usage"') && !raw.includes('"type":"user"') && !raw.includes('"compact_boundary"') && !raw.includes(BLOCK_START_WORDS)) {
         return undefined;
     }
     const entry = parseObject(raw);
     if (entry === undefined) {
         return undefined;
     }
-    return callOf(entry) ?? userLineOf(entry) ?? compactOf(entry);
+    return callOf(entry) ?? userLineOf(entry) ?? compactOf(entry) ?? startNoteOf(entry);
 }

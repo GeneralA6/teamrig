@@ -1,11 +1,13 @@
 import { showStored } from "../core/time.js";
+import { BLOCK_START_WORDS } from "../core/work-block.js";
 import { ACTIVE_STATUSES, priorityText } from "../register/model.js";
 import { cut, formatWaitingOnYou } from "../register/views.js";
 import { unfinishedAfter, waitsText } from "../register/waits.js";
 /**
  * The live-task block of the SessionStart note. A handover is written before the fresh start that reads it, and a
  * compaction summary retells the old context, so both can name a status, a wait or a due date that has since moved;
- * the block reads them from the register at the start itself, so the session never works from a stale one.
+ * the block reads them from the register at the start itself, so the session never works from a stale one. With
+ * `start`'s own first lines before it (blockStartLines), the block is the work block's start (T1529).
  */
 /** The most task rows the block prints; the rest is one `+N more` line, so the note stays short whatever the session holds. */
 export const LIVE_TASK_ROWS = 6;
@@ -89,6 +91,16 @@ export function liveTasksNote({ tasks, owner, tree, command }) {
     const left = active.length - rows.length;
     const more = left > 0 ? [`  +${left} more: \`${command} list --session ${owner}\``] : [];
     return [`${source} (${active.length} active; ${wins}):`, ...rows, ...more, ...waiting].join('\n');
+}
+/**
+ * The lines before the live-task block that make the note the session's work-block start (T1529): `start`'s first line
+ * and what it means, its MEETINGS line when there is one, and its week line. A refreshed or compacted session ran
+ * `start` right after the note in 4 of 5 starts (T1379), re-reading its whole context for what the note already holds;
+ * `start` adds only the check flags and the list past the block's rows, so it waits for the next work block.
+ */
+export function blockStartLines(owner, start, command) {
+    const counts = `${BLOCK_START_WORDS}, so run no \`${command} start\` now; it would add only the check flags and the rest of the list (run it at your next work block)`;
+    return [`START ${owner}, ${start.at}: ${counts}.`, ...(start.meetings === undefined ? [] : [start.meetings]), ...(start.week === undefined ? [] : [start.week])];
 }
 /** The block's one line when the start note has no room for it (T1376): the command that prints it, run first. */
 export function liveTasksPointer(owner, command) {
