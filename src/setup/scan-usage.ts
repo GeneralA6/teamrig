@@ -4,6 +4,7 @@ import { AGENT_TOOL, parseTranscriptLine, SKILL_TOOL } from '../budget/line.ts';
 import { stringField } from '../core/guards.ts';
 import { parseObject } from '../core/jsonl.ts';
 import { isAtOrBelow, pathKey } from '../core/paths.ts';
+import { addHookRun, hookRunOf, mayRecordHookRun, type HookOutput, type HookOutputs } from './scan-hook-output.ts';
 
 /** Each name in use, with the folders the sessions that used it started in (empty when no transcript said). */
 export type UsedIn = ReadonlyMap<string, ReadonlySet<string>>;
@@ -16,6 +17,8 @@ export interface TranscriptUse {
   readonly agents: UsedIn;
   /** Each folder a session read started in (a transcript's first `cwd`), and how many transcripts started there. */
   readonly folders: ReadonlyMap<string, number>;
+  /** What each context hook (SessionStart, UserPromptSubmit) printed into the context, by its event and command. */
+  readonly hooks: HookOutputs;
   readonly transcripts: number;
   readonly bytes: number;
   /** The older transcripts of the window left unread once the bound was reached. */
@@ -51,11 +54,12 @@ interface DatedTranscript {
   readonly changedAt: number;
 }
 
-/** What one transcript shows: its first `cwd`, and the skills and agent types it used. */
+/** What one transcript shows: its first `cwd`, the skills and agent types it used, and its context hooks' runs (added to every transcript's). */
 interface OneTranscript {
   cwd: string | undefined;
   readonly skills: Set<string>;
   readonly agents: Set<string>;
+  readonly hooks: Map<string, HookOutput>;
 }
 
 /** A cheap test before parsing: only a line naming the Skill or Agent tool or a slash command can show a use. */
@@ -95,6 +99,10 @@ async function readOne(source: TranscriptSource, path: string, one: OneTranscrip
       if (mayNameUse(line)) {
         addUses(line, one);
       }
+      const run = mayRecordHookRun(line) ? hookRunOf(line) : undefined;
+      if (run !== undefined) {
+        addHookRun(one.hooks, run);
+      }
     }
     if (batch.end === offset) {
       break;
@@ -125,13 +133,14 @@ async function newestFirst(source: TranscriptSource, projectsDir: string, since:
  * The skills and agent types used in the transcripts (sessions' and their subagents') written since `window.since` in
  * any project on this machine, read newest first until `window.maxBytes`: a month of a busy machine's transcripts runs
  * to gigabytes. It reads each transcript `chunkBytes` at a time and parses only the lines that can name a use, and
- * the first one carrying a `cwd`, the folder the session started in: a project folder's name in `projectsDir` is a
+ * the first one carrying a `cwd`, the folder the session started in, and what each context hook's runs printed: a project folder's name in `projectsDir` is a
  * lossy slug (`a/b-c` and `a-b/c` share one), so it cannot say where.
  */
 export async function readTranscriptUse(source: TranscriptSource, projectsDir: string, window: UsageWindow): Promise<TranscriptUse> {
   const skills = new Map<string, Set<string>>();
   const agents = new Map<string, Set<string>>();
   const folders = new Map<string, number>();
+  const hooks = new Map<string, HookOutput>();
   const dated = await newestFirst(source, projectsDir, window.since);
   let transcripts = 0;
   let bytes = 0;
@@ -139,7 +148,7 @@ export async function readTranscriptUse(source: TranscriptSource, projectsDir: s
     if (bytes >= window.maxBytes) {
       break;
     }
-    const one: OneTranscript = { cwd: undefined, skills: new Set(), agents: new Set() };
+    const one: OneTranscript = { cwd: undefined, skills: new Set(), agents: new Set(), hooks };
     bytes += await readOne(source, path, one, window.chunkBytes ?? USE_CHUNK_BYTES);
     transcripts += 1;
     addUsedIn(skills, one.skills, one.cwd);
@@ -151,7 +160,7 @@ export async function readTranscriptUse(source: TranscriptSource, projectsDir: s
   const unread = dated.length - transcripts;
   const oldestRead = dated[transcripts - 1];
   const since = unread === 0 || oldestRead === undefined ? window.since : oldestRead.changedAt;
-  return { skills, agents, folders, transcripts, bytes, unread, since };
+  return { skills, agents, folders, hooks, transcripts, bytes, unread, since };
 }
 
 function usedBelow(usedIn: UsedIn, project: string, platform: NodeJS.Platform): Set<string> {
