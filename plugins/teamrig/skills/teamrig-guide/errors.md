@@ -77,6 +77,9 @@ or take it to the lead.
 | `REFUSED add needs --description "<what and why, in plain words>"` | Add `--description` saying what the task is and why, for a person who has not seen the ask. A team that does not want it sets `register.requireDescription` to `false`. |
 | `REFUSED the description has 2001 characters; the limit is 2000` | Shorten it; point at a file for the rest. |
 | `REFUSED T1 keeps a description while register.requireDescription is on: give a new one instead of none` | Give `update --description` a new text instead of `none`. |
+| `REFUSED goal B9 is not a goal record of the team or a team above: teamrig goal list lists them` (from `add`, `update`; `register.goals` `checked` or `required`) | Fix the tag to one `teamrig goal list` shows, here or in the team above, or have its lead add the goal (`teamrig goal add`). |
+| `REFUSED an owner-asked task names its goal: --goals <tag>, or --goals none (register.goals is required)` (or `a p1 task`) | Add `--goals <tag>` for the goal it serves, or `--goals none` when it serves none. |
+| `REFUSED only the lead (shop-lead) adds and changes the team's goals` (from `goal add`, `goal set`) | Ask the lead to add or move the goal. |
 | `REFUSED note has 320 characters; the limit is 300` | Shorten it; point at a file instead. |
 | `REFUSED note looks like it holds a secret (...); refer to where it is kept instead` | Remove the secret and name where it is kept. |
 | `REFUSED due 17-10-2026 is not YYYY-MM-DD or YYYY-MM-DD HH:MM` | Write the date as `2026-10-17`. |
