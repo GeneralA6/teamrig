@@ -20,6 +20,9 @@ Until the meeting ends, the `cold-send` hook holds every message to you but one 
 sender to keep working and leave it as an inbox line. So no session is told the meeting started, and none is woken.
 Then it prints the agenda:
 
+- `STATS`, `HEALTH`, `FLOW` and `LIMIT`: the week's numbers of your team and the teams under it, as
+  `teamrig stats --tree` prints them: give the human the Health tiles in one line, each `[bad]` one with its
+  number; a `LIMIT` day sat at the usage limit, so its quiet is no slack;
 - `DECISIONS`: each task waiting on the human's decision or approval, with its card facts;
 - `UNGATED`: the waits on the human's decision whose card names no owner gate or business decision: never read
   them out; decide those of sessions you lead and send each its answer as an inbox line;

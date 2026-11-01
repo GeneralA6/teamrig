@@ -80,12 +80,13 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       week's use; --all: the tasks and flags in full, and every task waiting on it
   meeting start | meeting agenda | meeting end [--session <id|name>]   the lead's daily meeting with
       the owner: start holds messages to the lead until its end (one starting CRITICAL goes; the hook
-      tells each sender, so no session is told) and prints the agenda: the owner's decisions as card
-      facts, the late tasks, what finished since the last meeting, the branches merged with no approval
-      (under pushToProtected gated), the lead's inbox and the week's use and fit; agenda prints it
-      again; end tells each session the decisions recorded on its tasks (update --note) by one inbox
-      line, and no other session; in a tree of teams only the root team's lead holds it, and its
-      decisions and end cover every team under it
+      tells each sender, so no session is told) and prints the agenda: the stats' Health, flow and
+      limit lines over the last 7 days, the owner's decisions as card facts, the late tasks, what
+      finished since the last meeting, the branches merged with no approval (under pushToProtected
+      gated), the lead's inbox and the week's use and fit; agenda prints it again; end tells each
+      session the decisions recorded on its tasks (update --note) by one inbox line, and no other
+      session; in a tree of teams only the root team's lead holds it, and its stats, decisions and
+      end cover every team under it
   meeting schedule --meets <id|name> --at <time> --about "<one line>" [--minutes <n>] [--with a,b]
       [--tasks T1,T2] [--brief <path>]   books the owner's meeting with one session at a set time, apart
       from the daily one: it prints its id (M3) and tells the session met and those joining by one inbox

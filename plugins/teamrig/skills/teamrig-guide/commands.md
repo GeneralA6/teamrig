@@ -1837,6 +1837,8 @@ The lead opens the owner's daily meeting and gets its agenda in one call. Until 
 hook holds every message to the lead but one starting `CRITICAL`, and tells the sender to keep working and leave it
 as an inbox line. So no session is told the meeting started, and none is woken. The agenda:
 
+- `STATS`, `HEALTH`, `FLOW` and `LIMIT`: the top lines of `teamrig stats --tree` over the last 7 days, from the same
+  fold (see `### teamrig stats`), then the command that prints the other sections;
 - `DECISIONS`: each task waiting on the owner's decision or approval, with its card facts (what and why, since when
   it waits and its newest note, where it was asked), then the card form and how to record each answer;
 - `UNGATED`: each wait on the owner's decision whose card names no owner gate or business decision (`gate:`), left
@@ -1861,7 +1863,8 @@ In a tree of teams only the root team's lead holds it; a child team's lead is re
 owner: the owner's daily meeting is app/lead's, whose agenda lists web's waits on the owner`. The root lead's
 `DECISIONS` lists its own team's waits, then those of each team under it, depth first, named `<team>/<id>`
 (`web/T2`), each carded by its own team's rule; its hints add `--team <team>` to ask a question of a team under it
-and `<team>/<id>` to record an answer there. `UNGATED`, `LATE` and `DONE` stay the root team's own.
+and `<team>/<id>` to record an answer there. The stats lines cover every team under it too (`(tree: app, web)`);
+`UNGATED`, `LATE` and `DONE` stay the root team's own.
 
 With a meeting id, `meeting start M3` starts a scheduled meeting instead, one booked with `meeting schedule`: any
 session runs it, as the owner starts it from whichever tab is at hand. The session met gets the opening prompt (the
@@ -1885,6 +1888,10 @@ Output:
 
 ```text
 MEETING started Thu 10-15 11:00 IDT: messages to shop-lead are held but CRITICAL ones (the hook tells each sender)
+STATS shop, 7 d: 10-09 to 10-15
+HEALTH close/open 1.20 [good] · backlog -2, 14 active [good] · overdue 1, p1 0 [warn] · owner decisions 1, oldest 0.8 d [good] · backlog clears in 7 week(s) [warn]
+FLOW opened 10, closed 12 (1 dropped), net -2; last 28 d net -8
+  each other section: teamrig stats --tree --session lead (new work, speed, delays, waits, bugs, people)
 DECISIONS 1 waiting on owner (decision or approval)
   T7 waiting, p1, owner web | Pick the pricing tier (waiting: decision owner)
     what and why: Two tiers are built; the launch page needs one.

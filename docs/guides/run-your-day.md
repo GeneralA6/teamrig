@@ -21,6 +21,8 @@ Once a day the lead meets you: what got done, what is late, and each decision th
 decide from alone. At your first message of the day, or when you ask, the lead runs
 `teamrig meeting start --session lead`, which prints the agenda in one call:
 
+- `HEALTH` and `FLOW`: the last week's numbers, as `teamrig stats` prints them, and `LIMIT`, the days the week sat
+  at its usage limit;
 - `DECISIONS`: each task waiting on your decision or approval, with its card facts;
 - `UNGATED`: the waits on you whose card names no owner gate or business decision; the lead decides those itself,
   sends each owner its answer and never reads them out;
