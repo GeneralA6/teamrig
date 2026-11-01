@@ -8,13 +8,16 @@ import { runningWorkOf } from "../refresh/running.js";
 import { INTENTIONAL_END_REASONS } from "./entry.js";
 /**
  * Which recorded sessions the last shutdown killed, and how each comes back. A session is restored when it was
- * alive at the shutdown: no end recorded at all (power loss, a hard kill), or an end of no reason of its own no
- * earlier than SHUTDOWN_GRACE_MS before the last clean shutdown began (the system closing its terminal). It is
- * kept when it still runs, was active since this logon, or was reopened moments ago and has not started yet,
- * so a second run never opens it twice. Every other entry is discarded: an end the person chose, a tab closed
- * long before the shutdown, a session that is no tab (`claude -p`, background), no transcript left to resume, one
- * its transcript shows running as a background job or continued in another session, an entry older than
- * MAX_ENTRY_AGE_MS, or one that failed MAX_RESTORE_ATTEMPTS restores.
+ * alive at the shutdown: no end recorded at all (power loss, a hard kill), or an end of no reason of its own within
+ * the last clean shutdown's span, from SHUTDOWN_GRACE_MS before it began to the moment the event log stopped (the
+ * system closing its terminal). A tab closed at another time with no reason of its own is restored when it closed
+ * mid-turn or on an API error; else it is `closed`: kept CLOSED_KEEP_MS and offered apart, never reopened unasked
+ * and never lost (11-01, T1747). The verdict reads only the entry and that span, so a reboot after the restore
+ * never turns a kept entry into a discarded one (T1737). An entry is kept when it still runs, was active since this
+ * logon, or was reopened moments ago and has not started yet, so a second run never opens it twice. Every other
+ * entry is discarded: an end the person chose, a session that is no tab (`claude -p`, background), no transcript
+ * left to resume, one its transcript shows running as a background job or continued in another session, a closed
+ * tab past CLOSED_KEEP_MS, an entry older than MAX_ENTRY_AGE_MS, or one that failed MAX_RESTORE_ATTEMPTS restores.
  * Nothing here reads a file or the system: the restore command gathers the facts.
  */
 /** How long before the clean shutdown began an end of no reason still counts as the shutdown closing the tab. */
@@ -23,6 +26,8 @@ export const MAX_ENTRY_AGE_MS = 14 * 24 * 60 * 60_000;
 export const MAX_RESTORE_ATTEMPTS = 2;
 /** A reopened tab starts Claude Code within a minute; one still not started after this counts as a failed reopen. */
 export const RESTORE_IN_FLIGHT_MS = 10 * 60_000;
+/** How long a tab closed outside a shutdown, with no reason of its own, stays on offer before it is discarded. */
+export const CLOSED_KEEP_MS = 48 * 60 * 60_000;
 export function judgeEntry(entry, facts) {
     if (entry.entrypoint !== undefined && entry.entrypoint !== 'cli') {
         return { verdict: 'discard', reason: `not a terminal session (${entry.entrypoint})` };
@@ -63,22 +68,33 @@ export function judgeEntry(entry, facts) {
     if (entry.endReason !== undefined && INTENTIONAL_END_REASONS.has(entry.endReason)) {
         return { verdict: 'discard', reason: `exited (${entry.endReason})` };
     }
-    if (facts.shutdownStart !== undefined && entry.endedAt >= facts.shutdownStart - SHUTDOWN_GRACE_MS) {
+    const { shutdown } = facts;
+    if (shutdown !== undefined && entry.endedAt >= shutdown.start - SHUTDOWN_GRACE_MS && entry.endedAt <= shutdown.end) {
         return { verdict: 'restore', reason: 'closed by the shutdown' };
     }
-    return { verdict: 'discard', reason: 'closed before the shutdown' };
+    if (facts.now - entry.endedAt > CLOSED_KEEP_MS) {
+        return { verdict: 'discard', reason: `closed more than ${CLOSED_KEEP_MS / 3_600_000} h ago` };
+    }
+    if (entry.state === 'working') {
+        return { verdict: 'restore', reason: 'closed mid-turn' };
+    }
+    if (entry.state === 'error') {
+        return { verdict: 'restore', reason: 'closed on an API error' };
+    }
+    return { verdict: 'closed', reason: shutdown === undefined ? 'closed, no shutdown on record' : 'closed outside a shutdown' };
 }
 /** Every entry judged, oldest session first, so tabs reopen in the order they were first opened. */
 export function selectRestorePlan(entries, facts) {
     const restore = [];
+    const closed = [];
     const keep = [];
     const discard = [];
-    const lists = { restore, keep, discard };
+    const lists = { restore, closed, keep, discard };
     for (const entry of [...entries].sort((a, b) => a.createdAt - b.createdAt)) {
         const judgement = judgeEntry(entry, facts);
         lists[judgement.verdict].push({ entry, ...judgement });
     }
-    return { restore, keep, discard };
+    return { restore, closed, keep, discard };
 }
 /** When the session's Claude Code died: its own end, else the shutdown's start, else its last event. */
 export function diedAt(entry, shutdownStart) {

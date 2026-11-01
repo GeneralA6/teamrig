@@ -1,4 +1,7 @@
-/** The choice a key makes: Enter starts now, `i` reopens idle, `q`, Escape or Ctrl+C cancels; any other none. */
+/**
+ * The choice a key makes: Enter starts now, `i` reopens idle, `a` reopens the closed tabs too, `q`, Escape or
+ * Ctrl+C cancels; any other none.
+ */
 export function keyChoice(key) {
     if (key === '\r' || key === '\n') {
         return 'go';
@@ -7,15 +10,19 @@ export function keyChoice(key) {
     if (lower === 'i') {
         return 'idle';
     }
+    if (lower === 'a') {
+        return 'all';
+    }
     return lower === 'q' || key === '\u0003' || key === '\u001b' ? 'cancel' : undefined;
 }
-/** The countdown's line, redrawn in place each second. */
-export function countdownLine(remaining) {
-    return `\rStarting in ${String(remaining).padStart(2)}s   [Enter] start now   [i] reopen all with no prompt   [q] cancel `;
+/** The countdown's line, redrawn in place each second; it offers `a` only when there are closed tabs to take. */
+export function countdownLine(remaining, closed) {
+    const all = closed > 0 ? `   [a] also reopen the ${closed} closed` : '';
+    return `\rStarting in ${String(remaining).padStart(2)}s   [Enter] start now   [i] reopen all with no prompt${all}   [q] cancel `;
 }
 export function terminalCountdown(terminal) {
     return {
-        choose(seconds) {
+        choose(seconds, closed) {
             return new Promise((resolve) => {
                 let remaining = seconds;
                 let done = false;
@@ -29,10 +36,10 @@ export function terminalCountdown(terminal) {
                     terminal.write('\n');
                     resolve(choice);
                 };
-                terminal.write(countdownLine(remaining));
+                terminal.write(countdownLine(remaining, closed));
                 stops.push(terminal.listen((key) => {
                     const choice = keyChoice(key);
-                    if (choice !== undefined) {
+                    if (choice !== undefined && (choice !== 'all' || closed > 0)) {
                         finish(choice);
                     }
                 }));
@@ -42,7 +49,7 @@ export function terminalCountdown(terminal) {
                         finish('go');
                     }
                     else {
-                        terminal.write(countdownLine(remaining));
+                        terminal.write(countdownLine(remaining, closed));
                     }
                 }));
             });

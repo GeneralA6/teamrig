@@ -10,23 +10,24 @@ export const SHUTDOWN_EVENTS = {
     /** The machine rebooted without shutting down cleanly (Kernel-Power). */
     powerLost: 41,
 };
-/** How long before the event log stopped the shutdown that stopped it may have started. */
+/** The longest a clean shutdown runs: how long before the event log stopped the shutdown that stopped it may have started. */
 export const CLEAN_SHUTDOWN_LOOKBACK_MS = 2 * 60 * 60_000;
 export const SHUTDOWN_QUERY_TIMEOUT_MS = 30_000;
 /**
- * The start of the last shutdown, from the newest events: an unexpected end or a power loss has none; a
- * started shutdown is its own start; a stopped event log takes the started shutdown before it, within
- * CLEAN_SHUTDOWN_LOOKBACK_MS, else its own time.
+ * The last shutdown, from the newest events: an unexpected end or a power loss has none. A stopped event log ends
+ * it, and the started shutdown before it, within CLEAN_SHUTDOWN_LOOKBACK_MS, starts it, else the stop itself. A
+ * started shutdown with no stop after it (one still running, or called off) starts it and ends
+ * CLEAN_SHUTDOWN_LOOKBACK_MS later, the longest one runs.
  */
-export function pickShutdownStart(events) {
+export function pickShutdown(events) {
     const sorted = [...events].sort((a, b) => b.at - a.at);
     const newest = sorted[0];
     switch (newest?.id) {
         case SHUTDOWN_EVENTS.initiated:
-            return newest.at;
+            return { start: newest.at, end: newest.at + CLEAN_SHUTDOWN_LOOKBACK_MS };
         case SHUTDOWN_EVENTS.eventLogStopped: {
             const started = sorted.find((event) => event.id === SHUTDOWN_EVENTS.initiated && event.at <= newest.at && newest.at - event.at <= CLEAN_SHUTDOWN_LOOKBACK_MS);
-            return started?.at ?? newest.at;
+            return { start: started?.at ?? newest.at, end: newest.at };
         }
         default:
             return undefined;
@@ -55,13 +56,13 @@ export function parseWindowsEvents(stdout) {
  */
 export function systemShutdownLog(platform, run) {
     return {
-        async lastShutdownStart() {
+        async lastShutdown() {
             if (platform !== 'win32') {
                 return undefined;
             }
             try {
                 const result = await run(powerShellRequest(WINDOWS_SHUTDOWN_SCRIPT));
-                return result.end.kind === 'exited' && result.end.code === 0 ? pickShutdownStart(parseWindowsEvents(result.stdout)) : undefined;
+                return result.end.kind === 'exited' && result.end.code === 0 ? pickShutdown(parseWindowsEvents(result.stdout)) : undefined;
             }
             catch {
                 return undefined;
