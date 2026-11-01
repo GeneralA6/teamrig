@@ -132,9 +132,9 @@ function isoOf(ms: number | undefined): string | undefined {
   return ms === undefined ? undefined : new Date(ms).toISOString();
 }
 
-/** The entry's file text: times as ISO instants, fields that are not set left out. */
-export function formatEntry(entry: RestoreEntry): string {
-  const record = {
+/** The entry as its file's JSON object: times as ISO instants, fields that are not set undefined, which JSON leaves out. */
+export function entryRecord(entry: RestoreEntry): Readonly<Record<string, string | number | undefined>> {
+  return {
     claudeSession: entry.claudeSession,
     projectDir: entry.projectDir,
     transcriptPath: entry.transcriptPath,
@@ -151,7 +151,11 @@ export function formatEntry(entry: RestoreEntry): string {
     endedAt: isoOf(entry.endedAt),
     endReason: entry.endReason,
   };
-  return `${JSON.stringify(record, null, 2)}\n`;
+}
+
+/** The entry's file text: `entryRecord` as indented JSON. */
+export function formatEntry(entry: RestoreEntry): string {
+  return `${JSON.stringify(entryRecord(entry), null, 2)}\n`;
 }
 
 /** An optional instant; null when it is there but not an instant. */
@@ -180,9 +184,11 @@ function activityOf(text: string | undefined): ActivityState | undefined {
 /** An entry file's text; undefined when it is damaged or of another shape, which the restore then skips. */
 export function parseEntry(text: string): RestoreEntry | undefined {
   const record = parseObject(text.trim());
-  if (record === undefined) {
-    return undefined;
-  }
+  return record === undefined ? undefined : entryOfRecord(record);
+}
+
+/** The entry an `entryRecord` object holds; undefined when it is of another shape. */
+export function entryOfRecord(record: JsonRecord): RestoreEntry | undefined {
   const claudeSession = stringField(record, 'claudeSession');
   const projectDir = stringField(record, 'projectDir');
   const state = activityOf(stringField(record, 'state'));
