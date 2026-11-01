@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="436" viewBox="0 0 960 436" role="img" aria-label="After a reboot, a tab named Restore Claude sessions opens at logon and lists the 4 Claude Code sessions the shutdown killed, each with its folder: the lead, api mid-turn, web with nothing going and data with a cron job live. Those marked continue resume with a message to re-check the state and carry on; web reopens idle, with no prompt. After a countdown you can cut short or cancel, each one reopens in its own tab, and the restore tab closes by itself. In the lead's tab, its first prompt says how its team came back. The lead re-checks the state, says api and data carry on and web reopened idle, and goes on with the plan: tasks, notes and inboxes were on disk, so nothing was lost.">
+<title>After a reboot, a tab named Restore Claude sessions opens at logon and lists the 4 Claude Code sessions the shutdown killed, each with its folder: the lead, api mid-turn, web with nothing going and data with a cron job live. Those marked continue resume with a message to re-check the state and carry on; web reopens idle, with no prompt. After a countdown you can cut short or cancel, each one reopens in its own tab, and the restore tab closes by itself. In the lead's tab, its first prompt says how its team came back. The lead re-checks the state, says api and data carry on and web reopened idle, and goes on with the plan: tasks, notes and inboxes were on disk, so nothing was lost.</title>
+<style>
+:root{--fg:#1f2328;--muted:#59636e;--line:#d1d9e0;--tile:#f6f8fa;--bg:#ffffff;--purple:#8250df;--tint:#f0eafb;--amber:#9a6700;--green:#1a7f37}
+@media (prefers-color-scheme:dark){:root{--fg:#e6edf3;--muted:#9198a1;--line:#3d444d;--tile:#151b23;--bg:#0d1117;--purple:#a371f7;--tint:#221e36;--amber:#d29922;--green:#3fb950}}
+text{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif;fill:var(--fg)}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace;font-size:13.5px}.muted{fill:var(--muted)}.accent{fill:var(--purple)}.strong{font-weight:700}
+.key{font-size:13.5px;fill:var(--muted)}
+.window{fill:var(--bg);stroke:var(--line)}.strip{fill:var(--tile)}.tab{fill:var(--bg);stroke:var(--line)}
+.rule,.box{fill:none;stroke:var(--line)}.bullet{fill:var(--muted)}
+.working{fill:var(--green)}.needs{fill:var(--amber)}.open{fill:none;stroke:var(--muted);stroke-width:1.5}
+.done{fill:none;stroke:var(--muted);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+@keyframes a0{0%,0.714%{opacity:0}1.786%,51.071%{opacity:1}52.143%,100%{opacity:0}}
+.a0{opacity:1;animation:a0 28s linear infinite}
+@keyframes a1{0%,53.929%{opacity:0}55.000%,95.357%{opacity:1}96.429%,100%{opacity:0}}
+.a1{opacity:0;animation:a1 28s linear infinite}
+@keyframes a2{0%,25.000%{opacity:0}26.071%,95.357%{opacity:1}96.429%,100%{opacity:0}}
+.a2{opacity:1;animation:a2 28s linear infinite}
+@keyframes a3{0%,25.000%{opacity:0}26.071%,52.857%{opacity:1}53.929%,100%{opacity:0}}
+.a3{opacity:1;animation:a3 28s linear infinite}
+@keyframes a4{0%,53.929%{opacity:0}55.000%,95.357%{opacity:1}96.429%,100%{opacity:0}}
+.a4{opacity:0;animation:a4 28s linear infinite}
+@keyframes a5{0%,30.714%{opacity:0}31.786%,95.357%{opacity:1}96.429%,100%{opacity:0}}
+.a5{opacity:1;animation:a5 28s linear infinite}
+@keyframes a6{0%,36.429%{opacity:0}37.500%,95.357%{opacity:1}96.429%,100%{opacity:0}}
+.a6{opacity:1;animation:a6 28s linear infinite}
+@keyframes a7{0%,42.143%{opacity:0}43.214%,95.357%{opacity:1}96.429%,100%{opacity:0}}
+.a7{opacity:1;animation:a7 28s linear infinite}
+@keyframes a8{0%,52.143%{transform:translateX(0);animation-timing-function:cubic-bezier(.45,0,.25,1)}53.571%,100%{transform:translateX(-96px);animation-timing-function:cubic-bezier(.45,0,.25,1)}}
+.a8{transform:translateX(0);animation:a8 28s linear infinite}
+@keyframes a9{0%,2.857%{opacity:0;transform:translateY(5px)}3.929%,51.071%{opacity:1;transform:translateY(0)}52.143%,100%{opacity:0;transform:translateY(5px)}}
+.a9{opacity:1;animation:a9 28s linear infinite}
+@keyframes a10{0%,5.714%{opacity:0;transform:translateY(5px)}6.786%,51.071%{opacity:1;transform:translateY(0)}52.143%,100%{opacity:0;transform:translateY(5px)}}
+.a10{opacity:1;animation:a10 28s linear infinite}
+@keyframes a11{0%,6.250%{opacity:0;transform:translateY(5px)}7.321%,51.071%{opacity:1;transform:translateY(0)}52.143%,100%{opacity:0;transform:translateY(5px)}}
+.a11{opacity:1;animation:a11 28s linear infinite}
+@keyframes a12{0%,6.786%{opacity:0;transform:translateY(5px)}7.857%,51.071%{opacity:1;transform:translateY(0)}52.143%,100%{opacity:0;transform:translateY(5px)}}
+.a12{opacity:1;animation:a12 28s linear infinite}
+@keyframes a13{0%,7.321%{opacity:0;transform:translateY(5px)}8.393%,51.071%{opacity:1;transform:translateY(0)}52.143%,100%{opacity:0;transform:translateY(5px)}}
+.a13{opacity:1;animation:a13 28s linear infinite}
+@keyframes a14{0%,11.429%{opacity:0;transform:translateY(5px)}12.500%,51.071%{opacity:1;transform:translateY(0)}52.143%,100%{opacity:0;transform:translateY(5px)}}
+.a14{opacity:1;animation:a14 28s linear infinite}
+@keyframes a15{0%,11.786%{opacity:0;transform:translateY(5px)}12.857%,51.071%{opacity:1;transform:translateY(0)}52.143%,100%{opacity:0;transform:translateY(5px)}}
+.a15{opacity:1;animation:a15 28s linear infinite}
+@keyframes a16{0%,17.857%{opacity:0;transform:translateY(5px)}18.929%,51.071%{opacity:1;transform:translateY(0)}52.143%,100%{opacity:0;transform:translateY(5px)}}
+.a16{opacity:1;animation:a16 28s linear infinite}
+@keyframes a17{0%,25.000%{opacity:0;transform:translateY(5px)}26.071%,51.071%{opacity:1;transform:translateY(0)}52.143%,100%{opacity:0;transform:translateY(5px)}}
+.a17{opacity:1;animation:a17 28s linear infinite}
+@keyframes a18{0%,30.714%{opacity:0;transform:translateY(5px)}31.786%,51.071%{opacity:1;transform:translateY(0)}52.143%,100%{opacity:0;transform:translateY(5px)}}
+.a18{opacity:1;animation:a18 28s linear infinite}
+@keyframes a19{0%,36.429%{opacity:0;transform:translateY(5px)}37.500%,51.071%{opacity:1;transform:translateY(0)}52.143%,100%{opacity:0;transform:translateY(5px)}}
+.a19{opacity:1;animation:a19 28s linear infinite}
+@keyframes a20{0%,42.143%{opacity:0;transform:translateY(5px)}43.214%,51.071%{opacity:1;transform:translateY(0)}52.143%,100%{opacity:0;transform:translateY(5px)}}
+.a20{opacity:1;animation:a20 28s linear infinite}
+@keyframes a21{0%,56.429%{opacity:0;transform:translateY(5px)}57.500%,95.357%{opacity:1;transform:translateY(0)}96.429%,100%{opacity:0;transform:translateY(5px)}}
+.a21{opacity:0;animation:a21 28s linear infinite}
+@keyframes a22{0%,62.857%{opacity:0;transform:translateY(5px)}63.929%,95.357%{opacity:1;transform:translateY(0)}96.429%,100%{opacity:0;transform:translateY(5px)}}
+.a22{opacity:0;animation:a22 28s linear infinite}
+@keyframes a23{0%,68.571%{opacity:0;transform:translateY(5px)}69.643%,95.357%{opacity:1;transform:translateY(0)}96.429%,100%{opacity:0;transform:translateY(5px)}}
+.a23{opacity:0;animation:a23 28s linear infinite}
+@keyframes a24{0%,77.143%{opacity:0;transform:translateY(5px)}78.214%,95.357%{opacity:1;transform:translateY(0)}96.429%,100%{opacity:0;transform:translateY(5px)}}
+.a24{opacity:0;animation:a24 28s linear infinite}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+<rect x="0.5" y="0.5" width="959" height="391" rx="12" class="window"/>
+<path d="M1 44V12.5A11.5 11.5 0 0 1 12.5 1H947.5A11.5 11.5 0 0 1 959 12.5V44z" class="strip"/>
+<path d="M1 44.5H959" class="rule"/>
+<g class="a1">
+<path d="M12.5 45.5V16a8 8 0 0 1 8-8h75a8 8 0 0 1 8 8V45.5" class="tab"/>
+</g>
+<g class="a0">
+<path d="M12.5 45.5V16a8 8 0 0 1 8-8h75a8 8 0 0 1 8 8V45.5" class="tab"/>
+<text x="30" y="32" class="mono strong">restore</text>
+</g>
+<g class="a8">
+<g class="a2">
+<circle cx="126" cy="27.5" r="4.5" class="working"/>
+<g class="a3"><text x="139" y="32" class="mono muted">lead</text></g>
+<g class="a4"><text x="139" y="32" class="mono strong">lead</text></g>
+</g>
+<g class="a5">
+<circle cx="222" cy="27.5" r="4.5" class="working"/>
+<text x="235" y="32" class="mono muted">api</text>
+</g>
+<g class="a6">
+<path d="M313.5 27.5l3 3 6-6.5" class="done"/>
+<text x="331" y="32" class="mono muted">web</text>
+</g>
+<g class="a7">
+<circle cx="414" cy="27.5" r="4.5" class="working"/>
+<text x="427" y="32" class="mono muted">data</text>
+</g>
+</g>
+<g class="a9"><text x="24" y="86" class="mono">Claude Code sessions the last shutdown interrupted (4):</text></g>
+<g class="a10"><text x="40" y="110" class="mono">shop-lead [killed without exiting; continue: lead] D:\code\shop</text></g>
+<g class="a11"><text x="40" y="132" class="mono">shop-api [killed without exiting; continue: mid-turn] D:\code\shop-api</text></g>
+<g class="a12"><text x="40" y="154" class="mono">shop-web [closed by the shutdown; idle] D:\code\shop-web</text></g>
+<g class="a13"><text x="40" y="176" class="mono">shop-data [closed by the shutdown; continue: 1 cron job] D:\code\shop-data</text></g>
+<g class="a14"><text x="24" y="206" class="mono muted">Sessions marked &quot;continue&quot; resume with a message to re-check the state and carry on</text></g>
+<g class="a15"><text x="24" y="228" class="mono muted">(mid-turn, an API error, work live at the shutdown, or the lead); the others reopen idle, with no prompt.</text></g>
+<g class="a16"><text x="24" y="258" class="mono">Starting in 60s [Enter] start now [i] reopen all with no prompt [q] cancel</text></g>
+<g class="a17"><text x="24" y="288" class="mono">Opened shop-lead (continue: lead)</text></g>
+<g class="a18"><text x="24" y="310" class="mono">Opened shop-api (continue: mid-turn)</text></g>
+<g class="a19"><text x="24" y="332" class="mono">Opened shop-web (idle)</text></g>
+<g class="a20"><text x="24" y="354" class="mono">Opened shop-data (continue: 1 cron job)</text></g>
+<g class="a21">
+<text x="24" y="86" class="mono accent">&gt;</text>
+<text x="42" y="86" class="mono">The computer restarted (update or power loss) and this session was restored automatically. …</text>
+<text x="42" y="108" class="mono">Other sessions restored: shop-api continue (mid-turn), shop-web idle, shop-data continue (1 cron job).</text>
+</g>
+<g class="a22">
+<text x="42" y="144" class="mono muted">Ran 4 shell commands</text>
+</g>
+<g class="a23">
+<circle cx="28.5" cy="175.5" r="3.5" class="bullet"/>
+<text x="42" y="180" class="mono">Back after the restart: api and data carry on where they stopped, and web reopened idle.</text>
+</g>
+<g class="a24">
+<circle cx="28.5" cy="211.5" r="3.5" class="bullet"/>
+<text x="42" y="216" class="mono">Tasks, notes and inboxes were on disk, so nothing was lost. On with the plan.</text>
+</g>
+<circle cx="24" cy="415.5" r="4.5" class="working"/>
+<text x="38" y="420" class="key">working</text>
+<rect x="151.5" y="411" width="9" height="9" rx="1.5" class="needs"/>
+<text x="170" y="420" class="key">needs you</text>
+<circle cx="288" cy="415.5" r="4" class="open"/>
+<text x="302" y="420" class="key">not started</text>
+<path d="M415.5 415.5l3 3 6-6.5" class="done"/>
+<text x="434" y="420" class="key">done</text>
+</svg>
