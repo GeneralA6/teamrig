@@ -4,7 +4,7 @@ import { COMMAND_EFFECTS } from '../cli/run.ts';
 import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
 import type { ClientCheck } from '../exec/client-integrity.ts';
 import { ClientInstalls } from '../exec/client-launch.ts';
-import { EXEC_COMMANDS, execGuardOutput, type ExecGuardEnv, type TabIdentity } from './exec-guard.ts';
+import { EXEC_COMMANDS, execGuardOutput, OWNER_COMMANDS, type ExecGuardEnv, type TabIdentity } from './exec-guard.ts';
 
 const SESSIONS: Readonly<Record<string, string>> = { alpha: 'alpha', 'app-alpha': 'alpha', bravo: 'bravo', lead: 'lead' };
 
@@ -257,5 +257,50 @@ describe('execGuardOutput', () => {
   it('knows every teamrig exec command the CLI has, so a call through an unknown program reads as one', () => {
     const commands = Object.keys(COMMAND_EFFECTS).filter((name) => name.startsWith('exec ')).map((name) => name.slice('exec '.length));
     assert.deepEqual([...EXEC_COMMANDS].sort(), commands.sort());
+  });
+
+  it('refuses every teamrig owner call from a tool call, wherever the line runs it, without reading the tab or checking a client', async () => {
+    const quiet = env();
+    for (const [payload, command] of [
+      [bash('teamrig owner note T1 --text "drop it"'), 'teamrig owner note'],
+      [bash('git status && teamrig owner next T1'), 'teamrig owner next'],
+      [bash("bash -c 'teamrig owner next T1'"), 'teamrig owner next'],
+      [bash('teamrig queue -- teamrig owner note T1 --text go'), 'teamrig owner note'],
+      [bash(`node ${INSTALL}/dist/cli/main.js owner next T1 --preview`), 'teamrig owner next'],
+      [bash('C:/kit/bin/teamrig owner next T1'), 'teamrig owner next'],
+      [powershell('teamrig owner next web/T1'), 'teamrig owner next'],
+      [bash('teamrig owner "$ACTION" T1'), 'teamrig owner'],
+      [bash('teamrig owner'), 'teamrig owner'],
+    ] as const) {
+      const found = await verdict(payload, quiet);
+      assert.equal(found?.decision, 'deny', command);
+      assert.equal(
+        found?.reason,
+        `teamrig exec guard: \`${command}\` acts as the owner; the owner runs it from the pane or their own terminal, or types \`/${command} ...\` in a tab, never through a tool call.`,
+      );
+    }
+    assert.equal(quiet.reads(), 0);
+    assert.equal(quiet.checks(), 0);
+  });
+
+  it('refuses a teamrig owner call through a program only known when it runs, and no other command such a program runs', async () => {
+    const quiet = env();
+    for (const [line, command] of [
+      ['$T owner note T1 --text go', 'teamrig owner note'],
+      ['"$KIT/bin/teamrig" owner next T1', 'teamrig owner next'],
+      ['$T owner "$ACTION" T1', 'teamrig owner'],
+      ['node $SCRIPT owner next T1', 'teamrig owner next'],
+    ] as const) {
+      assert.match((await verdict(bash(line), quiet))?.reason ?? '', new RegExp(`^teamrig exec guard: \`${command}\` acts as the owner;`), line);
+    }
+    for (const line of ['$T owner', '$X owner list', 'node $SCRIPT owner', 'teamrig help owner note', 'teamrig list --owner alpha']) {
+      assert.equal(await verdict(bash(line), quiet), undefined, line);
+    }
+    assert.equal(quiet.checks(), 0);
+  });
+
+  it('knows every teamrig owner command the CLI has, so a call through an unknown program reads as one', () => {
+    const commands = Object.keys(COMMAND_EFFECTS).filter((name) => name.startsWith('owner ')).map((name) => name.slice('owner '.length));
+    assert.deepEqual([...OWNER_COMMANDS].sort(), commands.sort());
   });
 });
