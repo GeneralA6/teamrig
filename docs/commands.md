@@ -36,6 +36,13 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       tab; refused when none waits on the owner now (it names those put off with update --later)
   meet --cards [--session <id|name>]   the session's cards due on the owner, as card facts, and how
       to bring them one at a time and record each answer
+  owner note <[team/]T<id>> --text "<what the owner tells its session>"   the owner's Note from the pane:
+      kept in the task's history as the owner's and sent to the task's session as an inbox line, which
+      wakes it while the task is in progress; refused on a done or dropped task
+  owner next <[team/]T<id>> [--preview]   the owner puts a task next from the pane: pins it above every
+      other task on its session's list (moving that session's earlier pin), wakes the session to start
+      it once the step in hand is done, and tells the lead; refused on a done, dropped or in-progress
+      task; --preview prints what it would do and writes nothing
   restore                      what a restore would do now with each Claude Code session this machine
       recorded: RESTORE (how it comes back, at which effort), CLOSED (kept, reopened only on ask),
       KEEP or DISCARD, and why; it only reads
