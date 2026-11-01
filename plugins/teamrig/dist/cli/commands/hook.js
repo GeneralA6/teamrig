@@ -56,7 +56,7 @@ import { helperGateOutput, promptBudgetLine, stopBudgetLines } from "./hook-budg
 import { startAutoSync } from "./gh-auto.js";
 import { closedSendHold } from "./hook-closed-send.js";
 import { coldSendHold } from "./hook-cold-send.js";
-import { liveTasksNoteOf } from "./live-tasks.js";
+import { blockStartOf, liveTasksNoteOf } from "./live-tasks.js";
 import { droppedEditReasonOf } from "./hook-dropped-edit.js";
 import { meetingHold } from "./hook-meeting.js";
 import { restartOrPark, restartTargetOf } from "./hook-restart.js";
@@ -684,15 +684,17 @@ async function refreshStartOf(runtime, kit, config, roster, payload) {
     }
 }
 /**
- * The live-task block (hooks/live-tasks.ts) at the fresh start after a refresh and after a compaction, with its pointer
- * for a start that has no room for it; none at another start or for no session.
+ * The live-task block (hooks/live-tasks.ts) at the fresh start after a refresh and after a compaction, after `start`'s
+ * first lines, which make it the work block's start (T1529), with its pointer for a start that has no room for it (which
+ * names `start` instead); none at another start or for no session.
  */
 async function liveTasksPartOf(runtime, kit, config, id, payload, refresh) {
     const source = isRecord(payload) ? stringField(payload, 'source') : undefined;
     if (id === undefined || !showsLiveTasks(source, refresh.refreshed)) {
         return undefined;
     }
-    return { text: await liveTasksNoteOf(runtime, kit.paths, id, teamZone(config, runtime)), pointer: liveTasksPointer(id, KIT_NAME) };
+    const start = await blockStartOf(runtime, kit, config, id);
+    return { text: await liveTasksNoteOf(runtime, kit.paths, id, teamZone(config, runtime), start), pointer: liveTasksPointer(id, KIT_NAME) };
 }
 /** The refresh facts every turn end may need: the lead's request, the context size from the transcript's tail, and the open meeting. */
 async function stopFactsOf(runtime, scope, store, payload) {

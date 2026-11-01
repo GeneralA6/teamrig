@@ -125,6 +125,9 @@ class TranscriptFold {
         else if (line.kind === 'compact') {
             this.tally.counter(lineDay)('compactions', 1);
         }
+        else if (line.kind === 'start-note') {
+            this.misses.startNote();
+        }
         else if (line.kind === 'results') {
             this.tracker.results(line.results, this.tally.counter(this.call?.day ?? lineDay));
             this.misses.seen(line.at);

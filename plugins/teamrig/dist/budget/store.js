@@ -13,9 +13,10 @@ import { NO_TURN, parseOpenTurn } from "./tasks.js";
  * does not know, so a field added to the file is a new format, which an older teamrig refuses
  * (store.test.ts pins the fields of each). 2 holds what 1 held by 0.111.2: format 1 grew day counters,
  * hours, an open call's hour and a cursor's misses, which a teamrig before each dropped from every file it
- * rewrote. 3 adds W per task and a cursor's open turn (T734).
+ * rewrote. 3 adds W per task and a cursor's open turn (T734). 4 adds a cursor's pending work-block start note
+ * (misses.noted, T1529).
  */
-export const USAGE_FORMAT = 3;
+export const USAGE_FORMAT = 4;
 /** The oldest format this code reads: format 1, whose hours, open-call hours and misses may be missing. */
 const OLDEST_READ_FORMAT = 1;
 /** Days of totals a usage file keeps: today and the 7 before it. */
