@@ -1,9 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { join } from 'node:path';
+import { MeterLog } from '../../budget/calibration.ts';
 import { EVENT_VERSION, type RegisterEvent, type TaskFields } from '../../register/events.ts';
 import { registerHealth } from '../../register/stats-health.ts';
 import { registerStats, type StatsTeam } from '../../register/stats.ts';
-import { CliHarness, type CliResult } from '../../testing/cli-harness.ts';
+import { CliHarness, TEAM_HOME, type CliResult } from '../../testing/cli-harness.ts';
 import { treeHarness } from '../../testing/team-tree.ts';
 import { testZone } from '../../testing/zone.ts';
 import { EXIT } from '../runtime.ts';
@@ -58,6 +60,23 @@ describe('teamrig stats', () => {
       kit.files.paths().map((path) => [path, kit.files.get(path)]),
       before,
     );
+  });
+
+  it("marks the days the week sat at its usage limit, from the account's meter log", async () => {
+    const kit = await seeded();
+    const period = { start: Date.parse('2030-01-02T00:00:00Z'), end: Date.parse('2030-01-09T00:00:00Z'), w: 0, forecastPct: undefined };
+    await new MeterLog(kit.files, join(TEAM_HOME, 'state', 'usage', 'meter-log.jsonl')).appendAll(
+      [
+        { ...period, at: Date.parse('2030-01-07T18:00:00Z'), usedPct: 99 },
+        { ...period, at: Date.parse('2030-01-07T20:00:00Z'), usedPct: 100 },
+      ],
+      kit.clock.now(),
+    );
+    const result = await kit.run(['stats']);
+    ok(result);
+    assert.equal(result.stdout[2], 'FLOW opened 3, closed 2 (1 dropped), net +1; last 28 d net +1');
+    assert.equal(result.stdout[3], 'LIMIT $ 01-07, 01-08: the week sat at its usage limit, so a quiet day there is no slack');
+    assert.equal(result.stdout[4]?.startsWith('NEW WORK'), true);
   });
 
   it('reads the range asked for, and refuses one it does not know as a usage error', async () => {
