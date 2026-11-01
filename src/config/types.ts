@@ -315,7 +315,17 @@ export type SkipHooks = 'deny' | 'ask' | 'allow';
 export interface PromptsConfig {
   /** What a hook does with a call it would ask the human about. */
   readonly hookAsks: HookAsks;
+  /** Whether a sanctioned route's line runs with no permission check at all while asks are refused. */
+  readonly routeAllow: RouteAllow;
 }
+
+/**
+ * Under `hookAsks: refuse`, `on` lets a Bash line that runs a sanctioned route marked for it (permissions/sanctioned.ts)
+ * run before any permission check, once every teamrig guard passed it (hook-route-allow.ts); `off` takes that allow
+ * away without a release. It only takes allows away: nothing in config widens the table (security ruling Q7.5). Inert
+ * while `hookAsks` is `ask`.
+ */
+export type RouteAllow = 'on' | 'off';
 
 /**
  * A call a teamrig hook would ask the human about (a push to a protected branch or one it cannot read, an ad-hoc
@@ -426,6 +436,12 @@ export const HOOK_ASKS: readonly HookAsks[] = ['ask', 'refuse'];
 
 export function isHookAsks(value: unknown): value is HookAsks {
   return HOOK_ASKS.some((choice) => choice === value);
+}
+
+export const ROUTE_ALLOWS: readonly RouteAllow[] = ['on', 'off'];
+
+export function isRouteAllow(value: unknown): value is RouteAllow {
+  return ROUTE_ALLOWS.some((choice) => choice === value);
 }
 
 export const SECRET_READS: readonly SecretReads[] = ['deny', 'ask', 'allow'];

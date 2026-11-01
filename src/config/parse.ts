@@ -80,6 +80,7 @@ import {
   isPushToProtected,
   isReviewClass,
   isReviewPathMode,
+  isRouteAllow,
   isSecretReads,
   isSecretWrites,
   isSkipHooks,
@@ -94,6 +95,7 @@ import {
   PUSH_TO_PROTECTED,
   REVIEW_CLASSES,
   REVIEW_PATH_MODES,
+  ROUTE_ALLOWS,
   SECRET_READS,
   SECRET_WRITES,
   SKIP_HOOKS,
@@ -132,7 +134,7 @@ import {
   type PermissionsConfig,
   type PushToProtected,
   type ReviewPath,
-  type HookAsks,
+  type PromptsConfig,
   type QuietHours,
   type SecretGuardConfig,
   type SkipHooks,
@@ -483,7 +485,7 @@ export function parseConfig(raw: JsonRecord, above?: AccountBudget): ConfigParse
     },
     packageGuard: parsePackageGuard(read, read.section(raw, 'packageGuard', '')),
     commitGuard: { skipHooks: parseSkipHooks(read, read.section(raw, 'commitGuard', '')) },
-    prompts: { hookAsks: parseHookAsks(read, read.section(raw, 'prompts', '')) },
+    prompts: parsePrompts(read, read.section(raw, 'prompts', '')),
     secretGuard: parseSecretGuard(read, read.section(raw, 'secretGuard', '')),
     commits: parseCommits(read, read.section(raw, 'commits', '')),
     delivery: parseDelivery(read, read.section(raw, 'delivery', '')),
@@ -1281,10 +1283,13 @@ function parseSkipHooks(read: ConfigReader, raw: JsonRecord): SkipHooks {
   return isSkipHooks(value) ? value : fallback;
 }
 
-function parseHookAsks(read: ConfigReader, raw: JsonRecord): HookAsks {
-  const fallback = DEFAULT_PROMPTS.hookAsks;
-  const value = read.string(raw, 'hookAsks', 'prompts', fallback, oneOf(HOOK_ASKS));
-  return isHookAsks(value) ? value : fallback;
+function parsePrompts(read: ConfigReader, raw: JsonRecord): PromptsConfig {
+  const asks = read.string(raw, 'hookAsks', 'prompts', DEFAULT_PROMPTS.hookAsks, oneOf(HOOK_ASKS));
+  const routeAllow = read.string(raw, 'routeAllow', 'prompts', DEFAULT_PROMPTS.routeAllow, oneOf(ROUTE_ALLOWS));
+  return {
+    hookAsks: isHookAsks(asks) ? asks : DEFAULT_PROMPTS.hookAsks,
+    routeAllow: isRouteAllow(routeAllow) ? routeAllow : DEFAULT_PROMPTS.routeAllow,
+  };
 }
 
 const isShellPrefix: Check<string> = (value) =>

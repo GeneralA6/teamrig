@@ -1026,6 +1026,18 @@ describe('parseConfig', () => {
     assert.equal(bad.config.prompts.hookAsks, 'ask');
   });
 
+  it('reads whether a sanctioned route runs before any permission check, defaulting to on and refusing another word', () => {
+    assert.equal(parseConfig(ROSTER).config.prompts.routeAllow, 'on');
+    for (const choice of ['on', 'off']) {
+      const set = parseConfig({ ...ROSTER, prompts: { routeAllow: choice } });
+      assert.deepEqual(set.issues, []);
+      assert.equal(set.config.prompts.routeAllow, choice);
+    }
+    const bad = parseConfig({ ...ROSTER, prompts: { hookAsks: 'refuse', routeAllow: true } });
+    assert.deepEqual(paths(bad.issues), ['prompts.routeAllow']);
+    assert.deepEqual(bad.config.prompts, { hookAsks: 'refuse', routeAllow: 'on' });
+  });
+
   it('reads the secret guard, refusing with the default secrets alone and redacting unless the team says otherwise', () => {
     const none = { secretReads: 'deny', writes: 'deny', paths: [], envNames: [], commands: [], redact: true };
     assert.deepEqual(parseConfig(ROSTER).config.secretGuard, none);

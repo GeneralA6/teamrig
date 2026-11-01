@@ -446,6 +446,12 @@
           "type": "string",
           "enum": ["ask", "refuse"],
           "default": "ask"
+        },
+        "routeAllow": {
+          "description": "While hookAsks is refuse: on lets a Bash line that runs a sanctioned route marked for it (teamrig merge, deploy, exec request, worktree remove, git commit) run with no permission check at all, once every teamrig guard passed it, logged by its route alone; off takes that allow away without a release. It only takes allows away: no config adds a route. Inert while hookAsks is ask.",
+          "type": "string",
+          "enum": ["on", "off"],
+          "default": "on"
         }
       }
     },
