@@ -2273,8 +2273,11 @@ reopens each one the shutdown interrupted, in its folder (the worktree it went i
 transcript), at its last effort. A session that ended on purpose (`/exit`, `/clear`, `teamrig close` or the idle
 pass), still runs, was active since logon, was not a terminal session (`claude -p`, a background job
 Claude Code resumes itself), was continued in another session, has no transcript left, is too old or failed to resume
-too often is not reopened. This command prints each recorded session as `RESTORE` (how it comes back and at which
-effort), `KEEP` or `DISCARD`, with the reason, and what each lead's first prompt says of its team. It only reads.
+too often is not reopened. A tab closed outside a shutdown, with no reason of its own, is restored when it closed
+mid-turn or on an API error; any other is kept 48 hours as `CLOSED`, which `restore run` offers apart and reopens only
+when asked, then discarded. This command prints each recorded session as `RESTORE` (how it comes back and at which
+effort), `CLOSED`, `KEEP` or `DISCARD`, with the reason, and what each lead's first prompt says of its team. It only
+reads.
 
 Flags: none.
 
@@ -2289,6 +2292,7 @@ Output:
 ```text
 RESTORE  1f3c9a0e-...  shop-lead  killed without exiting; continue: lead; effort xhigh  /home/you/shop
 RESTORE  7b21d4c8-...  shop-web  killed without exiting; continue: mid-turn; effort high  /home/you/shop
+CLOSED   9e04b7a1-...  notes  closed outside a shutdown; idle; effort default  /home/you/notes
 KEEP     c40e8f12-...  still running  /home/you/notes
 Lead shop-lead hears: shop-web continue (mid-turn)
 ```
@@ -2296,7 +2300,9 @@ Lead shop-lead hears: shop-web continue (mid-turn)
 ### teamrig restore run
 
 Reopens the Claude Code sessions the last shutdown killed. It lists them and counts down 60 seconds: Enter starts
-at once, `i` reopens every one with no prompt, `q` (or Esc, Ctrl+C) cancels. A team session started by `open` comes
+at once, `i` reopens every one with no prompt, `a` also reopens the tabs closed outside a shutdown in the last 48
+hours (listed apart, and offered only when there are some), `q` (or Esc, Ctrl+C) cancels. With none the shutdown
+killed, it lists those closed tabs and the countdown reopens them. A team session started by `open` comes
 back through `launch` as itself; any other is resumed as it ran (`restore resume`). One that was mid-turn, hit an
 API error or had background jobs, cron jobs or a wake-up live at the shutdown gets a prompt to re-check the state
 and carry on, and so does each lead, told how its team's sessions came back; the others reopen idle. Each reopens
