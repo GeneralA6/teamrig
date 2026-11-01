@@ -280,10 +280,12 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   meet --cards [--session <id|name>]   the session's cards due on the owner, as card facts, and how
       to bring them one at a time and record each answer
   restore                      what a restore would do now with each Claude Code session this machine
-      recorded: RESTORE (how it comes back, at which effort), KEEP or DISCARD, and why; it only reads
+      recorded: RESTORE (how it comes back, at which effort), CLOSED (kept, reopened only on ask),
+      KEEP or DISCARD, and why; it only reads
   restore run [--since <time>] [--terminal <name>] [--home <dir>] [--tab]   reopens the Claude Code
       sessions the last shutdown killed, after a 60 s countdown (Enter: now, i: all with no prompt,
-      q: cancel): a team session through launch, any other resumed as it ran, each at its last effort;
+      a: also the tabs closed outside a shutdown in the last 48 h, q: cancel), else those closed
+      ones: a team session through launch, any other resumed as it ran, each at its last effort;
       one mid-turn or with work live at the shutdown, and a lead, get a prompt to carry on; exit 1
       when one did not reopen
   restore check [--terminal <name>] [--home <dir>]   at logon: drops what no restore needs and, when

@@ -3,7 +3,7 @@ import { samePath } from "../core/paths.js";
 import { customTitleOf } from "../names/title.js";
 import { CARRY_TAIL_BYTES } from "../refresh/carry.js";
 import { resumeFolderOf } from "../sessions/resume-folder.js";
-import { chooseMode, continuePrompt, diedAt, judgeEntry, lastRecordedEffort, lostWorkOf, nearestExistingFolder, selectRestorePlan, summarizeRestore, } from "./plan.js";
+import { chooseMode, CLOSED_KEEP_MS, continuePrompt, diedAt, judgeEntry, lastRecordedEffort, lostWorkOf, nearestExistingFolder, selectRestorePlan, summarizeRestore, } from "./plan.js";
 import { teamSessionOf } from "./teams.js";
 import { KIND_TAIL_BYTES, transcriptKindOf } from "./transcript-kind.js";
 /** How long the person has to start, idle or cancel the restore before it starts on its own. */
@@ -29,14 +29,14 @@ async function factsOf(deps, entries, since) {
             }
         }
     }
-    return { now: deps.clock.now(), since, shutdownStart: await deps.shutdowns.lastShutdownStart(), running, transcripts, kinds };
+    return { now: deps.clock.now(), since, shutdown: await deps.shutdowns.lastShutdown(), running, transcripts, kinds };
 }
 /** The label is the team session's name, else the title the person gave the session, else its short id. */
 async function itemOf(deps, facts, judged) {
     const { entry } = judged;
     const transcript = facts.transcripts.get(entry.claudeSession);
     const text = (transcript === undefined ? undefined : await deps.readTail(transcript, CARRY_TAIL_BYTES)) ?? '';
-    const lost = lostWorkOf(text, Buffer.byteLength(text, 'utf8') >= CARRY_TAIL_BYTES, diedAt(entry, facts.shutdownStart));
+    const lost = lostWorkOf(text, Buffer.byteLength(text, 'utf8') >= CARRY_TAIL_BYTES, diedAt(entry, facts.shutdown?.start));
     const team = teamSessionOf(entry, deps.teams);
     const label = team?.name ?? customTitleOf(text) ?? `Claude ${entry.claudeSession.slice(0, 8)}`;
     const resumeFolder = transcript === undefined ? undefined : resumeFolderOf(transcript, text, entry.projectDir, deps.projectsDir, deps.platform);
@@ -87,6 +87,11 @@ function printJudged(deps, verdict, list) {
         deps.print(`${verdict.padEnd(8)} ${entry.claudeSession}  ${reason}  ${entry.projectDir}`);
     }
 }
+function printItems(deps, verdict, items) {
+    for (const item of items) {
+        deps.print(`${verdict.padEnd(8)} ${item.entry.claudeSession}  ${item.label}  ${item.reason}; ${modeWords(item)}; effort ${item.effort ?? 'default'}  ${item.entry.projectDir}`);
+    }
+}
 /** `restore`: what a restore now would do with each recorded session, changing nothing. */
 export async function previewRestore(deps) {
     const { entries, facts, plan } = await planOf(deps, deps.clock.now());
@@ -95,9 +100,8 @@ export async function previewRestore(deps) {
         return;
     }
     const items = await itemsOf(deps, facts, plan.restore);
-    for (const item of items) {
-        deps.print(`RESTORE  ${item.entry.claudeSession}  ${item.label}  ${item.reason}; ${modeWords(item)}; effort ${item.effort ?? 'default'}  ${item.entry.projectDir}`);
-    }
+    printItems(deps, 'RESTORE', items);
+    printItems(deps, 'CLOSED', await itemsOf(deps, facts, plan.closed));
     printJudged(deps, 'KEEP', plan.keep);
     printJudged(deps, 'DISCARD', plan.discard);
     for (const lead of items.filter((item) => item.team?.isLead === true)) {
@@ -105,60 +109,84 @@ export async function previewRestore(deps) {
         deps.print(`Lead ${lead.label} hears: ${summary === '' ? 'no other session of its team' : summary}`);
     }
 }
-/** `restore check` at logon: drops the entries no restore needs; the count of sessions to restore and the logon time. */
+/**
+ * `restore check` at logon: drops the entries no restore needs; the count of sessions to restore and the logon time.
+ * The count leaves out the tabs closed outside a shutdown: they are kept for a `restore run` the person starts, and
+ * open no restore tab by themselves.
+ */
 export async function checkRestore(deps) {
     const since = deps.clock.now();
     const { plan } = await planOf(deps, since);
     await prune(deps, plan.discard);
-    await deps.log(`check: ${plan.restore.length} to restore, ${plan.keep.length} kept`);
+    await deps.log(`check: ${plan.restore.length} to restore, ${plan.keep.length} kept, ${plan.closed.length} closed`);
     return { since, count: plan.restore.length };
 }
-function progressWords({ opened, skipped, failed }, total) {
+function progressWords({ opened, skipped, failed, total }) {
     return `${opened} opened, ${skipped} skipped, ${failed} failed of ${total}`;
 }
+function printGroup(deps, heading, items) {
+    deps.print(heading);
+    for (const item of items) {
+        deps.print(`  ${item.label}   [${item.reason}; ${modeWords(item)}]   ${item.entry.projectDir}`);
+    }
+}
+const KEEP_HOURS = CLOSED_KEEP_MS / 3_600_000;
 /**
  * Reopens the sessions the last shutdown killed, after a countdown the person may cut short, turn into an
- * idle reopen of all, or cancel. Each is judged again just before its tab opens, since a second run or the
- * person may have reopened it meanwhile. Its entry counts the attempt before the tab opens, so a session that
- * keeps failing to resume is dropped after MAX_RESTORE_ATTEMPTS; a tab that did not open takes the count back.
- * The log says when the reopening starts and ends, and how far it got when its tab is closed meanwhile, so a
- * run that stopped short is never mistaken for one that finished (T1439).
+ * idle reopen of all, or cancel. The tabs closed outside a shutdown are listed apart and reopen only with `a`,
+ * unless no session is to restore: then they are what the person ran it for, and the countdown takes them.
+ * Each is judged again just before its tab opens, since a second run or the person may have reopened it
+ * meanwhile. Its entry counts the attempt before the tab opens, so a session that keeps failing to resume is
+ * dropped after MAX_RESTORE_ATTEMPTS; a tab that did not open takes the count back. The log says when the
+ * reopening starts and ends, and how far it got when its tab is closed meanwhile, so a run that stopped short is
+ * never mistaken for one that finished (T1439).
  */
 export async function runRestore(deps, since) {
     const { facts, plan } = await planOf(deps, since);
     await prune(deps, plan.discard);
-    if (plan.restore.length === 0) {
+    if (plan.restore.length === 0 && plan.closed.length === 0) {
         deps.print('No Claude Code sessions to restore.');
         await deps.log('run: nothing to restore');
         return { opened: 0, failed: 0 };
     }
-    const items = await itemsOf(deps, facts, plan.restore);
-    deps.print(`Claude Code sessions the last shutdown interrupted (${items.length}):`);
-    for (const item of items) {
-        deps.print(`  ${item.label}   [${item.reason}; ${modeWords(item)}]   ${item.entry.projectDir}`);
+    const restored = await itemsOf(deps, facts, plan.restore);
+    const closed = await itemsOf(deps, facts, plan.closed);
+    const first = restored.length > 0 ? restored : closed;
+    const extra = restored.length > 0 ? closed : [];
+    if (restored.length > 0) {
+        printGroup(deps, `Claude Code sessions the last shutdown interrupted (${restored.length}):`, restored);
+    }
+    else {
+        printGroup(deps, `Claude Code sessions closed outside a shutdown in the last ${KEEP_HOURS} h (${closed.length}):`, closed);
+    }
+    if (extra.length > 0) {
+        printGroup(deps, `Closed outside a shutdown in the last ${KEEP_HOURS} h (${extra.length}), reopened only with [a]:`, extra);
     }
     deps.print('Sessions marked "continue" resume with a message to re-check the state and carry on (mid-turn, an API error, ' +
         'work live at the shutdown, or the lead); the others reopen idle, with no prompt.');
-    const progress = { started: false, opened: 0, skipped: 0, failed: 0 };
-    const unwatch = deps.stops.watch((signal) => deps.log(`run: interrupted by ${signal} ${progress.started ? `after ${progressWords(progress, items.length)}` : 'at the countdown'}`));
+    const progress = { started: false, total: first.length, opened: 0, skipped: 0, failed: 0 };
+    const unwatch = deps.stops.watch((signal) => deps.log(`run: interrupted by ${signal} ${progress.started ? `after ${progressWords(progress)}` : 'at the countdown'}`));
     try {
-        await reopenAll(deps, facts, items, progress);
+        await reopenAll(deps, facts, { first, extra }, progress);
     }
     finally {
         unwatch();
     }
     return { opened: progress.opened, failed: progress.failed };
 }
-async function reopenAll(deps, facts, items, progress) {
-    const choice = await deps.countdown.choose(COUNTDOWN_SECONDS);
+async function reopenAll(deps, facts, { first, extra }, progress) {
+    const choice = await deps.countdown.choose(COUNTDOWN_SECONDS, extra.length);
     if (choice === 'cancel') {
         deps.print('Cancelled: nothing was reopened. Run "teamrig restore run" to try again.');
         await deps.log('run: cancelled');
         return;
     }
-    const chosen = choice === 'idle' ? items.map((item) => ({ ...item, mode: 'idle', why: 'reopened idle' })) : items;
+    const taken = choice === 'all' ? [...first, ...extra] : first;
+    const chosen = choice === 'idle' ? taken.map((item) => ({ ...item, mode: 'idle', why: 'reopened idle' })) : taken;
     progress.started = true;
-    await deps.log(`run: started, ${chosen.length} to reopen${choice === 'idle' ? ', all idle' : ''}`);
+    progress.total = chosen.length;
+    const how = choice === 'idle' ? ', all idle' : choice === 'all' ? `, the ${extra.length} closed too` : '';
+    await deps.log(`run: started, ${chosen.length} to reopen${how}`);
     for (const [index, item] of chosen.entries()) {
         const outcome = await reopenItem(deps, facts, item, chosen);
         progress[outcome] += 1;
@@ -166,13 +194,14 @@ async function reopenAll(deps, facts, items, progress) {
             await deps.sleep(TAB_STAGGER_MS);
         }
     }
-    await deps.log(`run: done, ${progressWords(progress, chosen.length)}`);
+    await deps.log(`run: done, ${progressWords(progress)}`);
 }
 async function reopenItem(deps, facts, item, items) {
     const id = item.entry.claudeSession;
     const current = await deps.registry.read(id);
     const recheck = current === undefined ? { verdict: 'discard', reason: 'its entry is gone' } : judgeEntry(current, { ...facts, now: deps.clock.now() });
-    if (current === undefined || recheck.verdict !== 'restore') {
+    // A closed tab the person chose to reopen still judges `closed`; any other verdict means it needs no reopen now.
+    if (current === undefined || (recheck.verdict !== 'restore' && recheck.verdict !== 'closed')) {
         deps.print(`Skipped ${item.label} (${recheck.reason})`);
         await deps.log(`run: skipped ${id} (${recheck.reason})`);
         return 'skipped';
