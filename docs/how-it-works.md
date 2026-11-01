@@ -220,8 +220,8 @@ turns this off: `register.autoArchive: false` in the team's `config.json`, after
   over the active time to the pace end (quiet hours count at `budget.quietHours.paceWeight`). The teams of the kit
   home on one Claude account (`budget.account`, else the one the teams on its Claude config dir name, else that dir;
   each team's dir is the one its sessions last started in, kept in `state/usage/claude-config-dir.json`) split each
-  day by weight: a session's
-  weight is its share times its queued work, a team's its sessions' summed, and each session's part of its team's
+  day by weight: a session's weight is its share times its top queued task's weight (by priority, not how many
+  tasks it has queued), a team's its sessions' summed, and each session's part of its team's
   part comes after the lifts. With sub-leads (`leads`), a team's part splits first among its sub-leads' groups and
   the sessions the lead leads directly, a group's weight its sessions' summed, and each group splits its part the
   same way.

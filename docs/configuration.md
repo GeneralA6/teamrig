@@ -403,8 +403,8 @@ The weekly token budget: the pace line the team is measured against and each ses
 | `targetPct` | number (1 to 100) | `99.5` | Use the week up to this share of the weekly limit. |
 | `reservePct` | number (0 to 50) | `0.5` | Kept back for incidents until shortly before the reset; targetPct plus reservePct is at most 100. |
 | `paceEndHoursBeforeReset` | number (0 to 48) | `1` | The pace line reaches targetPct this many hours before the reset. |
-| `sessions` | map from [session name](#shared-types) to [object](#budgetsessions) | `{}` | Each session's weight in the split of the team's daily budget, by id: its part is the budget × share × its queued work / the sum over the sessions, recomputed at every reading. A session not listed has a share of 1. |
-| `pauseByPriority` | boolean | `false` | On a short day, when what is left of the week gives less than the pace line plans for the day, fund the team's sessions' queued work in priority order (p0 first, idle sessions last) and pause the sessions none of it reaches, so the top work keeps its pace. The lead, the delivery owner held in the team and lifted sessions are never paused. Off: no session of the team is paused. |
+| `sessions` | map from [session name](#shared-types) to [object](#budgetsessions) | `{}` | Each session's weight in the split of the team's daily budget, by id: its part is the budget × share × its top queued task's weight (by priority, however many tasks it has queued) / the sum over the sessions, recomputed at every reading. A session not listed has a share of 1. |
+| `pauseByPriority` | boolean | `false` | On a short day, when what is left of the week gives less than the pace line plans for the day, fund the team's sessions in the priority order of their top queued task (p0 first, idle sessions last) and pause the sessions none of it reaches, so the top work keeps its pace. The lead, the delivery owner held in the team and lifted sessions are never paused. Off: no session of the team is paused. |
 | `warnAtPct` | array (at most 8 items) of number (1 to 1000) | `[80,100]` | The live warning shows a line as a session passes each of these % of its daily budget. |
 | `paceTolerancePct` | number (0 to 10) | `0.5` | The team is ahead of its pace line once its used % is more than this many points above it. |
 | `overAction` | one of `"warn"`, `"ask-lead"`, `"ask"`, `"block"` | `"warn"` | Past a session's daily budget: warn shows the lines only; ask-lead also writes the lead an inbox line; ask also asks the person before a helper launch; block refuses helper launches. |
@@ -425,7 +425,7 @@ When the weekly limit resets, for a team without a status line. Unset: the team 
 
 ## `budget.sessions.*`
 
-Each session's weight in the split of the team's daily budget, by id: its part is the budget × share × its queued work / the sum over the sessions, recomputed at every reading. A session not listed has a share of 1.
+Each session's weight in the split of the team's daily budget, by id: its part is the budget × share × its top queued task's weight (by priority, however many tasks it has queued) / the sum over the sessions, recomputed at every reading. A session not listed has a share of 1.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |

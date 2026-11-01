@@ -49,7 +49,8 @@ Week: 31.0% used at 12:00 IDT (status line); the pace line is at 28.6%: 2.4 poin
 
 - The pace line climbs to `budget.targetPct` by `budget.paceEndHoursBeforeReset` (1) hours before the reset. Each
   day, what is left to it is spread over the active time to the pace end, and each session's daily budget is its
-  part of the team's, by its share and its queued work.
+  part of the team's, by its share and its top queued task's priority (a session works one task at a time, so how
+  many it has queued does not raise its part).
 - No session waits while the team has room: everyone's use today, the use outside the team included, below the
   team's in-day pace. With `budget.enabled` on, the Stop hook shows a Budget line as a session passes each of
   `budget.warnAtPct` (80 and 100) of its daily budget, then every 25 points more; once the team has no room left
@@ -67,7 +68,7 @@ Week: 31.0% used at 12:00 IDT (status line); the pace line is at 28.6%: 2.4 poin
 - On a short day, when the week's use is past its pace line so what is left gives the day less than the line plans,
   every session keeps its part by default. With `budget.pauseByPriority` on, the day funds the work in priority order
   instead, across every team on the Claude account: the lead, the delivery owner and lifted sessions first, then
-  the queued work p0 first, idle sessions last. A session none of it reaches gets a daily budget of 0, marked
+  the sessions by their top queued task, p0 first, idle sessions last. A session none of it reaches gets a daily budget of 0, marked
   `(paused)`, and is held once the team has no room; a burst's floor still holds it up.
 - Past 100% of the week, the extra usage put in on claude.ai is entered with `teamrig budget extra` and spread over
   the days left the same way.
@@ -93,7 +94,7 @@ fast gives less a day and one that spends slowly gives more. The floor at its st
   pace end, once the team's part of the week projected unused is at least `burst.minSparePct` (5%). The account's
   spare is the use so far plus the week's mean rate so far, nights included, until the pace end, against
   `budget.targetPct`; teams sharing the Claude account split it by weight as they split the daily budget (each
-  session's share times its queued work, summed per team, lifts included), so a lift inside one team moves no spare
+  session's share times its top queued task's weight, summed per team, lifts included), so a lift inside one team moves no spare
   between teams. A burst's daily floor is not split: it is a share of what the account has left to the stop %,
   which the other teams' use already lowers.
 - A deadline burst covers the owners of its `--task` tasks (or `--sessions`) until `--by`, at the latest the reset,
