@@ -10,6 +10,7 @@ import { formatUtcDay, MS_PER_DAY, parseUtcDay, typedDeadline, typedTimeHint } f
 import { activeBurst, burstFloorOf, withBurst } from "../../budget/burst.js";
 import { BurstLog } from "../../budget/burst-log.js";
 import { calibrationOf } from "../../budget/calibration.js";
+import { CutLog, cutText, decideCut } from "../../budget/cut.js";
 import { claudeProjectsDir } from "../../budget/discover.js";
 import { ExtraLog } from "../../budget/extra.js";
 import { formatPct, formatUsd } from "../../budget/format.js";
@@ -41,8 +42,9 @@ import { loadTree } from "../tree.js";
  * The weekly budget from the command line: `budget` measures every session's use from the Claude Code
  * transcripts and shows it against the week's pace, or with `--task` what each session spent on one task;
  * `budget lift` is a leader's lift of one session's, or a sub-lead's group's,
- * daily budget, or the lead's top-up of a session of a team below from its own team's; `statusline` is a status line that saves the plan's own reading for `budget`. Measuring
- * and showing only: nothing here blocks or stops a session.
+ * daily budget, or the lead's top-up of a session of a team below from its own team's; `budget cut` is a leader's cut
+ * of one session to its own daily budget; `statusline` is a status line that saves the plan's own reading for `budget`.
+ * Measuring, showing and logging only: nothing here blocks or stops a session; the hooks read the lifts and cuts.
  */
 /** Days the loop table shows by default; `--all` shows every stored day. */
 export const LOOP_DAYS_SHOWN = 4;
@@ -291,10 +293,17 @@ function liftRefusalOf(tree, nameOf, by, id, group) {
         }
         return tree.leads(by, id) ? undefined : `${name}'s group's budget is lifted only by ${orList(tree.chainOf(id).map(nameOf))}`;
     }
+    return sessionRefusalOf(tree, nameOf, by, id, 'lifted');
+}
+/**
+ * Why session `by` may not lift or cut (`verb`) session `id`'s daily budget; undefined when it may. A leader may for
+ * every session under it, at any depth, and a sub-lead for its own session too.
+ */
+function sessionRefusalOf(tree, nameOf, by, id, verb) {
     if (tree.leads(by, id) || (by === id && tree.isLeader(by))) {
         return undefined;
     }
-    return `${name}'s budget is lifted only by ${orList([...(tree.isLeader(id) ? [id] : []), ...tree.chainOf(id)].map(nameOf))}`;
+    return `${nameOf(id)}'s budget is ${verb} only by ${orList([...(tree.isLeader(id) ? [id] : []), ...tree.chainOf(id)].map(nameOf))}`;
 }
 /**
  * What a lift too big for sub-lead `group`'s group's budget can do instead, for its refusal: the lift of that group its
@@ -411,6 +420,43 @@ async function crossTeamLift(runtime, lifting, target, ask) {
     const funded = fundForDay({ split, others }, reading.week);
     const weekPct = liftWeekPctOf(reading.week.allowancePct, undefined, ask.partPct, funded.split, funded.others);
     runtime.out.stdout(`LIFTED ${liftText(decision.lift, `${target.team}/${below.roster.nameOf(found.id) ?? found.id}`, parent, weekPct, zone)}`);
+    return EXIT.ok;
+}
+/**
+ * `budget cut <session> [--until <time>] --reason "<text>"`: a leader cuts a session under it, as a lift goes
+ * (`sessionRefusalOf`), to its own daily budget for today at most; past it the hooks hold the session whatever room
+ * the team has (src/budget/cut.ts). Only its own team's sessions: a team below cuts its own.
+ */
+export async function cut(args, runtime) {
+    const caller = callerOf(args.flags, runtime.env);
+    const target = onePositional(args, 'session');
+    const reason = requiredFlag(args.flags, 'reason').trim();
+    if (reason === '') {
+        throw new UsageError('--reason needs a reason');
+    }
+    const now = runtime.clock.now();
+    const kit = await openTeamKit(runtime);
+    const config = requireConfig(kit, runtime, 'write');
+    const zone = teamZone(config, runtime);
+    const until = timeFlag(args.flags, 'until', { nowMs: now, zone });
+    const roster = await rosterOf(runtime, kit, config);
+    const address = splitAddress(target);
+    if (address?.team !== undefined && address.team !== kit.paths.team) {
+        throw new UsageError(`budget cut cuts a session of team ${kit.paths.team}; ${target} is cut by its own team's leaders`);
+    }
+    const nameOf = (each) => roster.nameOf(each) ?? each;
+    const by = sessionIdOf(roster, caller);
+    const id = sessionIdOf(roster, address?.session ?? target);
+    const refusal = sessionRefusalOf(new LeadTree(config), nameOf, by, id, 'cut');
+    if (refusal !== undefined) {
+        throw new RefusedError(refusal);
+    }
+    const decision = decideCut({ session: id, until, reason, by, now }, zone);
+    if (decision.kind === 'refused') {
+        throw new RefusedError(decision.reason);
+    }
+    await new CutLog(runtime.files, kit.paths.cuts).append(decision.cut);
+    runtime.out.stdout(`CUT ${cutText(decision.cut, nameOf(id), zone)}`);
     return EXIT.ok;
 }
 /** A dollar flag: `--add` above 0, `--spent` 0 or more; undefined when it is not given. */
