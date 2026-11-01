@@ -11,6 +11,7 @@ import { encodePrompt } from "../../open/prompt.js";
 import { shellCommand } from "../../open/quote.js";
 import { plainSessionEnv } from "../../open/session-env.js";
 import { runsClaude } from "../../open/session-processes.js";
+import { RestoreArchive, restoreArchiveDir } from "../../restore/archive.js";
 import { RestoreRegistry, restoreSessionsDir } from "../../restore/registry.js";
 import { checkRestore, previewRestore, runRestore } from "../../restore/run.js";
 import { TranscriptFinder } from "../../restore/transcripts.js";
@@ -100,6 +101,7 @@ async function restoreDepsOf(runtime, terminal) {
     const logPath = restoreLogPath(kitHome);
     return {
         registry: new RestoreRegistry(runtime.files, restoreSessionsDir(kitHome)),
+        archive: new RestoreArchive(runtime.files, restoreArchiveDir(kitHome)),
         clock: runtime.clock,
         sleep: runtime.sleep,
         probe: runtime.probe,

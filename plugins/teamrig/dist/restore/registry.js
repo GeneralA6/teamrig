@@ -10,6 +10,21 @@ export function restoreSessionsDir(kitHome) {
     return join(kitHome, 'restore', 'sessions');
 }
 /**
+ * The file named for a session in a folder of the restore (`<session id>.json`). Only a real session id names a
+ * file; any other is refused, so no id from a payload reaches a path.
+ */
+export function sessionFileIn(dir, claudeSession) {
+    if (!CLAUDE_SESSION_ID.test(claudeSession)) {
+        throw new Error(`${JSON.stringify(claudeSession)} is not a Claude Code session id`);
+    }
+    return join(dir, `${claudeSession}${SUFFIX}`);
+}
+/** The session id a file of a restore folder is named for; undefined for a file of another name. */
+export function sessionOfFile(name) {
+    const id = name.endsWith(SUFFIX) ? name.slice(0, -SUFFIX.length) : '';
+    return CLAUDE_SESSION_ID.test(id) ? id : undefined;
+}
+/**
  * One entry file per Claude Code session (`<session id>.json`), each replaced whole (`Files.write` is
  * atomic), so a reader never sees half an entry. Only a real session id names a file; any other is
  * refused, so no id from a payload reaches a path.
@@ -23,10 +38,7 @@ export class RestoreRegistry {
     }
     /** The file a session's entry is kept in. */
     pathOf(claudeSession) {
-        if (!CLAUDE_SESSION_ID.test(claudeSession)) {
-            throw new Error(`${JSON.stringify(claudeSession)} is not a Claude Code session id`);
-        }
-        return join(this.dir, `${claudeSession}${SUFFIX}`);
+        return sessionFileIn(this.dir, claudeSession);
     }
     /** A session's entry; undefined when there is none or it is damaged. */
     async read(claudeSession) {
@@ -44,8 +56,8 @@ export class RestoreRegistry {
         const names = await this.files.list(this.dir);
         const entries = [];
         for (const name of names) {
-            const id = name.endsWith(SUFFIX) ? name.slice(0, -SUFFIX.length) : '';
-            const entry = CLAUDE_SESSION_ID.test(id) ? await this.read(id) : undefined;
+            const id = sessionOfFile(name);
+            const entry = id === undefined ? undefined : await this.read(id);
             if (entry !== undefined && entry.claudeSession === id) {
                 entries.push(entry);
             }

@@ -3,6 +3,7 @@ import { samePath } from "../core/paths.js";
 import { customTitleOf } from "../names/title.js";
 import { CARRY_TAIL_BYTES } from "../refresh/carry.js";
 import { resumeFolderOf } from "../sessions/resume-folder.js";
+import { ARCHIVE_KEEP_MS } from "./archive.js";
 import { chooseMode, CLOSED_KEEP_MS, continuePrompt, diedAt, judgeEntry, lastRecordedEffort, lostWorkOf, nearestExistingFolder, selectRestorePlan, summarizeRestore, } from "./plan.js";
 import { teamSessionOf } from "./teams.js";
 import { KIND_TAIL_BYTES, transcriptKindOf } from "./transcript-kind.js";
@@ -71,10 +72,21 @@ function leadSummaryOf(lead, items) {
     const others = items.filter((item) => item !== lead && item.team?.team === lead.team?.team);
     return summarizeRestore(others.map(({ label, mode, why }) => ({ label, mode, why })));
 }
+const ARCHIVE_KEEP_DAYS = ARCHIVE_KEEP_MS / 86_400_000;
+/**
+ * Moves each entry no restore needs to the archive, then deletes the archived ones past ARCHIVE_KEEP_MS. The copy is
+ * written before the entry is removed, so a run stopped between the two leaves it in both, never in neither.
+ */
 async function prune(deps, discard) {
+    const now = deps.clock.now();
     for (const { entry, reason } of discard) {
+        await deps.archive.put({ entry, archivedAt: now, reason });
         await deps.registry.remove(entry.claudeSession);
-        await deps.log(`discarded ${entry.claudeSession} (${reason})`);
+        await deps.log(`archived ${entry.claudeSession} (${reason})`);
+    }
+    const purged = await deps.archive.purge(now);
+    if (purged.length > 0) {
+        await deps.log(`archive: deleted ${purged.length} archived ${ARCHIVE_KEEP_DAYS} days ago or earlier`);
     }
 }
 async function planOf(deps, since) {
