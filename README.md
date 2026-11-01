@@ -137,6 +137,10 @@ hand instead, and the calls each run takes. Each member lists another member's s
 skill names it as a user, so a growing skills folder does not fill every call. When two members edit one skill at
 once and Claude Code refuses the later edit, that member is sent back to redo it, so no lesson is lost quietly.
 
+![A procedure becomes a skill. In api's tab, api deploys and proves the new version serves; the first try hit a stale build lock, so it took a retry and some digging. It will run this again, so it writes the steps and the trap down as a skill, api-deploy, in the same turn, and its task's record names the skill. A week on, in the lead's tab, teamrig skills scorecard shows api-deploy loaded 6 times at 4.2 calls a run, against 11.5 by hand before it, and web-release never loaded while its procedure ran by hand 3 times, so the lead asks web why.](docs/images/skill.svg)
+
+*A procedure a member works out becomes a skill, and the scorecard shows it pays its way.*
+
 ### Survives a crash, a reboot and a full context
 
 Tasks, notes and inboxes live on disk, so nothing is lost with a tab. After a reboot, `teamrig restore run` reopens
