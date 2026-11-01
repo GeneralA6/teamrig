@@ -53,6 +53,13 @@ export function parseUtcDay(text) {
     const end = parseUtcDeadline(text);
     return end === undefined ? undefined : new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()));
 }
+/** The bare day `days` calendar days after (or before, when negative) the bare day `text`; undefined when it is no day. */
+export function addUtcDays(text, days) {
+    const day = parseUtcDay(text);
+    return day === undefined
+        ? undefined
+        : formatUtcDay(new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate() + days)));
+}
 /** `YYYY-MM-DD HH:MM` in UTC. */
 export function formatUtcMinute(date) {
     return date.toISOString().slice(0, 16).replace('T', ' ');

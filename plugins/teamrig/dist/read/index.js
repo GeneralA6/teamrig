@@ -14,6 +14,8 @@ export { LAYOUT_VERSION } from "../register/marker.js";
 export { readEvents, readRegister, snapshotOf } from "../register/snapshot.js";
 export { loopFix, needPath, needsOf, pathText, planOrder, TaskTree } from "../register/tree.js";
 export { byPlanOrder, dueTime } from "../register/views.js";
+// The done groups (T1729): one rule that sorts a span's done work for the daily report, the agenda and the Done page.
+export { DONE_GROUP_KINDS, doneGroups, doneGroupTitle, URGENT_PRIORITY } from "../register/done-groups.js";
 // Time: the team's zone (`config.timeZone`, else the machine's). A stored bare day is a day of it, a stored minute is
 // UTC, and every time prints in it, zone-marked (`01-31 11:05 IST`); a reader passes it to the calls that print one.
 export { showStored, storedText } from "../core/time.js";
