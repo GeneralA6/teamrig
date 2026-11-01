@@ -1,6 +1,6 @@
-import { writeMigration } from "../../config/load.js";
+import { migrationBackupName } from "../../config/load.js";
 import { noPositionals } from "../args.js";
-import { issueText, openTeamKit, requireConfig } from "../kit.js";
+import { configLockOf, issueText, openTeamKit, reloadTeamConfig, requireConfig } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 /** `config validate`: every problem in the team config; exit 1 when there is any. */
 export async function validate(args, runtime) {
@@ -42,7 +42,7 @@ export async function migrate(args, runtime) {
     if (load.status === 'loaded' && load.newerVersion !== undefined) {
         throw new RefusedError(`${load.path} is config version ${load.newerVersion}, from a newer teamrig; update teamrig instead`);
     }
-    requireConfig(kit, runtime, 'read');
+    const config = requireConfig(kit, runtime, 'read');
     if (load.status !== 'loaded' || load.pending === undefined) {
         runtime.out.stdout(`UNCHANGED ${load.path} needs no migration`);
         return EXIT.ok;
@@ -54,8 +54,17 @@ export async function migrate(args, runtime) {
         runtime.out.stdout(`NOTE every command reads it as version ${pending.toVersion} already; once written, a tab on a teamrig before ${pending.firstRelease} refuses every write until it restarts. Restart those tabs, then: teamrig config migrate --yes`);
         return EXIT.ok;
     }
-    const backup = await writeMigration(runtime.files, load.path, kit.paths.backups, pending, runtime.clock);
-    runtime.out.stdout(`MIGRATED ${load.path} from version ${pending.fromVersion} to ${pending.toVersion}; the old file is at ${backup}`);
-    pending.changes.forEach((change) => runtime.out.stdout(`  ${change}`));
-    return EXIT.ok;
+    return configLockOf(runtime, kit, config).run(async (writer) => {
+        // Read again under the lock: a change written meanwhile is migrated with the rest, and a migration done meanwhile
+        // is not written twice.
+        const now = await reloadTeamConfig(runtime, kit);
+        if (now.status !== 'loaded' || now.pending === undefined) {
+            runtime.out.stdout(`UNCHANGED ${load.path} needs no migration`);
+            return EXIT.ok;
+        }
+        const backup = await writer.write(now.pending.migrated, migrationBackupName(now.pending));
+        runtime.out.stdout(`MIGRATED ${load.path} from version ${now.pending.fromVersion} to ${now.pending.toVersion}; the old file is at ${backup}`);
+        now.pending.changes.forEach((change) => runtime.out.stdout(`  ${change}`));
+        return EXIT.ok;
+    });
 }

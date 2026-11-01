@@ -16,16 +16,15 @@ export async function loadConfig(files, path, migrations = CONFIG_MIGRATIONS, ta
     const inherited = own.status === 'loaded' && above !== undefined ? await above(own.config) : undefined;
     return { ...(inherited === undefined ? own : parseConfigText(text, migrations, target, inherited)), path };
 }
-/**
- * Writes a pending migration: first a backup of the original file (`config.v<N>.json`, or with a
- * timestamp when that name is taken), then the migrated config, atomically. Returns the backup path.
- */
-export async function writeMigration(files, configPath, backupsDir, pending, clock) {
-    return writeConfigWithBackup(files, { configPath, backupsDir, backupName: `config.v${pending.fromVersion}` }, pending.migrated, clock);
+/** The name a migration's backup starts with: `config.v<N>`, N the version it migrated from. */
+export function migrationBackupName(pending) {
+    return `config.v${pending.fromVersion}`;
 }
 /**
  * Replaces the config file with `config`: first a backup of the original (`<backupName>.json`, or with a
- * timestamp when that name is taken), then the new file, atomically. Returns the backup path.
+ * timestamp when that name is taken), then the new file, atomically. Returns the backup path. A team's config is
+ * written only through its lock (`ConfigLock`, config-lock.ts); this is called directly for other JSON files only,
+ * such as Claude Code's settings.
  */
 export async function writeConfigWithBackup(files, target, config, clock) {
     const original = await files.read(target.configPath);

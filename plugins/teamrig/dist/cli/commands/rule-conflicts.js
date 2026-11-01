@@ -1,5 +1,5 @@
 import { isAbsolute, resolve } from 'node:path';
-import { writeConfigWithBackup } from "../../config/load.js";
+import { isDeepStrictEqual } from 'node:util';
 import { CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from "../../config/limits.js";
 import { CONFLICT_WINNERS, isConflictWinner } from "../../config/types.js";
 import { clipEnd } from "../../core/clip.js";
@@ -15,7 +15,7 @@ import { lineHash } from "../../inbox/line-hash.js";
 import { formatUtcDay } from "../../core/time.js";
 import { noPositionals, onePositional, requiredFlag, UsageError } from "../args.js";
 import { callerOf, listOf } from "../inputs.js";
-import { checkedNextConfig, configFileJson, leadOnly, openTeamKit, projectFolder, requireConfig, rosterOf } from "../kit.js";
+import { checkedNextConfig, configFileJson, configLockOf, leadOnly, openTeamKit, projectFolder, requireConfig, rosterOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { keptRulesAboveOf, teamRulesFilesOf } from "../team-rules.js";
 import { loadTree } from "../tree.js";
@@ -187,17 +187,24 @@ async function leadConfig(args, runtime, what) {
 }
 /**
  * Writes the next recorded rules with --yes, keeping the old config first, and says what it did; without --yes it
- * checks the next config and writes nothing.
+ * checks the next config and writes nothing. Under the config lock it reads the file again, keeping a change other
+ * keys took meanwhile (a hire), and refuses when the kept rules it was planned on changed meanwhile.
  */
-async function saveConflicts(args, runtime, kit, conflicts, what, done) {
-    const json = { ...(await configFileJson(runtime, kit.load.path)), ruleConflicts: conflicts };
-    checkedNextConfig(json);
-    if (!args.switches.has('yes')) {
-        runtime.out.stdout(`PREVIEW ${what}; nothing written (add --yes to write)`);
-        return;
-    }
-    const backup = await writeConfigWithBackup(runtime.files, { configPath: kit.load.path, backupsDir: kit.paths.backups, backupName: RULES_BACKUP_NAME }, json, runtime.clock);
-    runtime.out.stdout(`${done}; the old config is at ${backup}`);
+async function saveConflicts(args, runtime, kit, change, what, done) {
+    await configLockOf(runtime, kit, change.config).run(async (writer) => {
+        const current = await configFileJson(runtime, kit.load.path);
+        if (!isDeepStrictEqual(checkedNextConfig(current).ruleConflicts, change.config.ruleConflicts)) {
+            throw new RefusedError(`the team's kept local rules changed while this ran; run \`${KIT_NAME} rules\` again`);
+        }
+        const json = { ...current, ruleConflicts: change.conflicts };
+        checkedNextConfig(json);
+        if (!args.switches.has('yes')) {
+            runtime.out.stdout(`PREVIEW ${what}; nothing written (add --yes to write)`);
+            return;
+        }
+        const backup = await writer.write(json, RULES_BACKUP_NAME);
+        runtime.out.stdout(`${done}; the old config is at ${backup}`);
+    });
 }
 /**
  * `rules keep <path>:<line> --rule <n|key> --wins local|teamrig [--reason "<why>"] [--yes]`: the lead records a local
@@ -245,7 +252,7 @@ export async function keep(args, runtime) {
     }
     const next = kept === undefined ? [...conflicts, record] : conflicts.map((conflict, index) => (index === same ? record : conflict));
     const number = kept === undefined ? next.length : same + 1;
-    await saveConflicts(args, runtime, kit, next, `keep ${label}`, `KEPT ${number} ${label}`);
+    await saveConflicts(args, runtime, kit, { config, conflicts: next }, `keep ${label}`, `KEPT ${number} ${label}`);
     if (wins === 'teamrig') {
         runtime.out.stdout(`WARN the line stays and rule ${ruleLabel(rule)} wins over it, but a session still reads the line and may follow it: removing or rewriting it is safer`);
     }
@@ -324,6 +331,6 @@ export async function forget(args, runtime) {
         throw new UsageError(`"${text}" is not a kept rule's number: the team has ${conflicts.length}, and \`${KIT_NAME} rules scan\` numbers them`);
     }
     const label = `${number} ${dropped.file} ${quoteOf(dropped)} (rule ${ruleLabel(dropped.rule)})`;
-    await saveConflicts(args, runtime, kit, conflicts.filter((_, index) => index !== number - 1), `forget ${label}`, `FORGOT ${label}`);
+    await saveConflicts(args, runtime, kit, { config, conflicts: conflicts.filter((_, index) => index !== number - 1) }, `forget ${label}`, `FORGOT ${label}`);
     return EXIT.ok;
 }

@@ -1,12 +1,11 @@
 import { planBudgetSetup } from "../../budget/setup.js";
 import { readSnapshots, snapshotDirOf } from "../../budget/snapshot.js";
 import { DEFAULT_BUDGET } from "../../config/defaults.js";
-import { writeConfigWithBackup } from "../../config/load.js";
 import { ESCALATIONS, isEscalation, isOverAction, OVER_ACTIONS } from "../../config/types.js";
 import { isRecord } from "../../core/guards.js";
 import { noPositionals, UsageError } from "../args.js";
 import { callerOf } from "../inputs.js";
-import { checkedNextConfig, configFileJson, leadOnly, openTeamKit, requireConfig, rosterOf } from "../kit.js";
+import { checkedNextConfig, configFileJson, configLockOf, leadOnly, openTeamKit, requireConfig, rosterOf } from "../kit.js";
 import { EXIT } from "../runtime.js";
 /**
  * `budget setup`: the lead writes the team's budget policy into the team config. Without --yes it only
@@ -87,25 +86,29 @@ export async function setup(args, runtime) {
     const { load } = kit;
     const roster = await rosterOf(runtime, kit, config);
     leadOnly(roster, caller, "sets the team's budget");
-    const plan = planBudgetSetup(await configFileJson(runtime, load.path), choices);
-    if (!plan.ok) {
-        throw new UsageError(plan.problem);
-    }
-    const next = checkedNextConfig(plan.value.config);
-    const { keys } = plan.value;
-    const changed = keys.filter((key) => key.changed).length;
-    const counts = `${changed} to change, ${keys.length - changed} unchanged`;
-    if (!args.switches.has('yes')) {
-        runtime.out.stdout(`PREVIEW ${load.path}: ${counts}; nothing written (add --yes to write)`);
-    }
-    else if (changed === 0) {
-        runtime.out.stdout(`UNCHANGED ${load.path}: the budget already reads this way`);
-    }
-    else {
-        const backup = await writeConfigWithBackup(runtime.files, { configPath: load.path, backupsDir: kit.paths.backups, backupName: BUDGET_BACKUP_NAME }, plan.value.config, runtime.clock);
-        runtime.out.stdout(`WROTE ${load.path}: ${counts}; the old file is at ${backup}`);
-    }
-    keys.forEach((key) => runtime.out.stdout(keyLine(key)));
+    const next = await configLockOf(runtime, kit, config).run(async (writer) => {
+        // Planned on the file as it reads under the lock, so a hire or retire written meanwhile is kept.
+        const plan = planBudgetSetup(await configFileJson(runtime, load.path), choices);
+        if (!plan.ok) {
+            throw new UsageError(plan.problem);
+        }
+        const planned = checkedNextConfig(plan.value.config);
+        const { keys } = plan.value;
+        const changed = keys.filter((key) => key.changed).length;
+        const counts = `${changed} to change, ${keys.length - changed} unchanged`;
+        if (!args.switches.has('yes')) {
+            runtime.out.stdout(`PREVIEW ${load.path}: ${counts}; nothing written (add --yes to write)`);
+        }
+        else if (changed === 0) {
+            runtime.out.stdout(`UNCHANGED ${load.path}: the budget already reads this way`);
+        }
+        else {
+            const backup = await writer.write(plan.value.config, BUDGET_BACKUP_NAME);
+            runtime.out.stdout(`WROTE ${load.path}: ${counts}; the old file is at ${backup}`);
+        }
+        keys.forEach((key) => runtime.out.stdout(keyLine(key)));
+        return planned;
+    });
     const budget = next.budget;
     if (budget.enabled && budget.weeklyLimitW === undefined && (await readSnapshots(runtime.files, snapshotDirOf(budget, kit.paths))).length === 0) {
         runtime.out.stdout("NOTE no status line reading yet, so the budget stays silent: run `teamrig statusline install`, or set budget.weeklyLimitW");

@@ -1,5 +1,4 @@
 import { describeLaunch } from "../../config/launch.js";
-import { writeConfigWithBackup } from "../../config/load.js";
 import { describeNameClash, teamNodeOf } from "../../config/tree.js";
 import { EFFORT_LEVELS, isEffortLevel } from "../../config/types.js";
 import { activeBurst } from "../../budget/burst.js";
@@ -15,12 +14,11 @@ import { onePositional, requiredFlag, UsageError } from "../args.js";
 import { readBursts } from "../burst-reading.js";
 import { headroomOf } from "../headroom.js";
 import { callerOf } from "../inputs.js";
-import { checkedNextConfig, configFileJson, findTeam, openKit, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
+import { checkedNextConfig, configFileJson, configLockOf, findTeam, openKit, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { loadTree } from "../tree.js";
 import { freshOpenOf, resumeVerdictOf } from "./rehire.js";
 import { sessionProjectOf } from "./setup.js";
-import { fileLockOf } from "../file-locks.js";
 /**
  * `hire`: a lead adds a worker it is sure the team needs within `hiring`'s policy: the team's lead, or a
  * sub-lead, whose hire joins its own group (T509). Without
@@ -128,8 +126,7 @@ async function keep(args, runtime, kit, config, id, by) {
     const reason = requiredFlag(flags, 'reason');
     const { files, clock } = runtime;
     const log = new HiringLog(files, kit.paths.hires);
-    const mutex = fileLockOf(runtime, kit.paths.hiresLock, config.lock);
-    return mutex.run(async () => {
+    return configLockOf(runtime, kit, config).run(async () => {
         const { records, skipped } = await log.read();
         const plan = planKeep(config, activeHires(records), { id, reviewBy, reason, by, now: clock.now() });
         if (!plan.ok) {
@@ -174,8 +171,7 @@ export async function hire(args, runtime) {
     const { files, clock } = runtime;
     const { load } = kit;
     const log = new HiringLog(files, kit.paths.hires);
-    const mutex = fileLockOf(runtime, kit.paths.hiresLock, config.lock);
-    return mutex.run(async () => {
+    return configLockOf(runtime, kit, config).run(async (writer) => {
         const { records, skipped } = await log.read();
         const active = activeHires(records);
         const request = args.switches.has('burst') ? await burstRequestOf(runtime, kit, config, asked, active) : asked;
@@ -208,7 +204,7 @@ export async function hire(args, runtime) {
         }
         // The log first: a hire logged for a session the config does not hold counts toward no burst's hires.
         await log.append(record);
-        const backup = await writeConfigWithBackup(files, { configPath: load.path, backupsDir: kit.paths.backups, backupName: HIRE_BACKUP_NAME }, plan.value.config, clock);
+        const backup = await writer.write(plan.value.config, HIRE_BACKUP_NAME);
         // After the config: a home close of a session the config does not hold keeps nothing closed.
         if (home) {
             await new SessionLog(files, kit.paths.sessionLog).append(homeCloseOf(record.session, by, new Date(request.now).toISOString()));
