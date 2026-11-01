@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { promptLine, replyLine, type FixtureTool } from '../testing/transcript-lines.ts';
+import { hookOutputKey } from './scan-hook-output.ts';
 import { outermostFolders, projectUse, readTranscriptUse, type UsedIn } from './scan-usage.ts';
 
 const PROJECTS = resolve('/', 'u', '.claude', 'projects');
@@ -92,12 +93,32 @@ describe('readTranscriptUse', () => {
     assert.deepEqual([use.transcripts, use.bytes, use.unread, use.since], [2, 2 * one, 1, 2_500]);
   });
 
+  it("sums what each context hook printed across the transcripts read, by event and command, other events' runs left out (T1233)", async () => {
+    const run = (event: string, command: string, stdout: string): string => JSON.stringify({ type: 'attachment', attachment: { type: 'hook_success', hookEvent: event, content: stdout, stdout, command } });
+    const context = (text: string): string => JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: text } });
+    const first = [run('SessionStart', 'node start.js', context('r'.repeat(300))), run('SessionStart', 'node title.js', '{"terminalSequence":"t"}'), run('PostToolUse', 'node after.js', 'printed'), ''].join('\n');
+    const second = [run('SessionStart', 'node start.js', context('r'.repeat(100))), run('UserPromptSubmit', 'node inbox.js', 'news\n'), ''].join('\n');
+    const source = new MemoryTranscripts();
+    source.set(join(PROJECTS, 'app', '0123abcd-0000-4000-8000-00000000000a.jsonl'), first, RECENT);
+    source.set(join(PROJECTS, 'app', '0123abcd-0000-4000-8000-00000000000b.jsonl'), second, RECENT);
+    const use = await readTranscriptUse(source, PROJECTS, { since: SINCE, maxBytes: UNBOUNDED, chunkBytes: 64 });
+    assert.deepEqual(
+      use.hooks,
+      new Map([
+        [hookOutputKey('SessionStart', 'node start.js'), { runs: 2, printed: 2, chars: 400 }],
+        [hookOutputKey('SessionStart', 'node title.js'), { runs: 1, printed: 0, chars: 0 }],
+        [hookOutputKey('UserPromptSubmit', 'node inbox.js'), { runs: 1, printed: 1, chars: 4 }],
+      ]),
+    );
+  });
+
   it('reads nothing when no transcript was written since then', async () => {
     const source = new MemoryTranscripts({ [join(PROJECTS, 'app', '0123abcd-0000-4000-8000-00000000000a.jsonl')]: `${skillCall('alpha-check')}\n` }, SINCE - 1);
     assert.deepEqual(await readTranscriptUse(source, PROJECTS, { since: SINCE, maxBytes: UNBOUNDED }), {
       skills: new Map(),
       agents: new Map(),
       folders: new Map(),
+      hooks: new Map(),
       transcripts: 0,
       bytes: 0,
       unread: 0,
@@ -119,6 +140,7 @@ describe('projectUse', () => {
       [SLASH_C, 2],
       [DASH_B_WEB, 3],
     ]),
+    hooks: new Map(),
     transcripts: 6,
     bytes: 0,
     unread: 0,

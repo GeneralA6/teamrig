@@ -73,7 +73,7 @@ const SCAN: SetupScan = {
   overrides: [candidate('claude-md', CLAUDE_MD, 4), candidate('rules', PROJECT_RULE, 2), candidate('claude-md', CLAUDE_MD, 9)],
   recorded: 1,
   settings: [WIDE],
-  usage: { skills: usedIn('alpha'), agents: usedIn(), folders: new Map<string, number>(), transcripts: 3, bytes: 1.5 * 1024 * 1024, unread: 0, since: NOW - 30 * DAY_MS },
+  usage: { skills: usedIn('alpha'), agents: usedIn(), folders: new Map<string, number>(), hooks: new Map(), transcripts: 3, bytes: 1.5 * 1024 * 1024, unread: 0, since: NOW - 30 * DAY_MS },
   recent: new Set(),
   doctor: { kind: 'read', skills: [] },
 };
@@ -129,7 +129,7 @@ describe('scanReport', () => {
       duplicates: [{ path: CLAUDE_MD, line: 2, text: 'Use the key hunter2-abcdef for the staging API only.', firstPath: CLAUDE_MD, firstLine: 1 }],
       overrides: [candidate('rules', PROJECT_RULE, 2)],
       recorded: 0,
-      usage: { skills: usedIn(), agents: usedIn(), folders: new Map<string, number>(), transcripts: 0, bytes: 0, unread: 0, since: NOW - 7 * DAY_MS },
+      usage: { skills: usedIn(), agents: usedIn(), folders: new Map<string, number>(), hooks: new Map(), transcripts: 0, bytes: 0, unread: 0, since: NOW - 7 * DAY_MS },
     };
     const lines = scanReport(scan, { ...AT, team: undefined, days: 7, backup: { stamp: '20300108T080000Z', madeAt: NOW - 2 * HOUR_MS } });
     assert.deepEqual(lines, [
