@@ -28,7 +28,7 @@ describe('/teamrig with nothing after it', () => {
     assert.equal(result.code, EXIT.ok);
     const rule = slashRule(COMMAND_TABLE);
     assert.deepEqual(result.stdout, [`${COMMAND_HELP.forCommand(undefined)}\n${rule}`]);
-    assert.match(rule, /Without --session, list, show, check, plan, verify, inbox status, rules, meeting list, decisions\nrun as this tab's session; a command that changes the team's files/);
+    assert.match(rule, /Without --session, list, show, check, plan, verify, stats, inbox status, rules, meeting list, decisions\nrun as this tab's session; a command that changes the team's files/);
   });
 
   it('prints the same help when stdin holds no JSON', async () => {
