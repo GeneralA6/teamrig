@@ -27,7 +27,8 @@ teamrig restore run      # reopen the sessions the last shutdown killed
 - Which come back: a session killed without exiting. One that ended on purpose (`/exit`, `/clear`, `teamrig close`
   or the idle pass), still runs, was active since logon, was not a terminal session (`claude -p`, a background job
   Claude Code resumes itself), was continued in another session, has no transcript left, is too old or failed to
-  resume too often stays closed.
+  resume too often stays closed. The entry of one the restore drops (`DISCARD`) is not deleted: it moves to
+  `restore/archive/` in the kit home and is kept 7 days, so a session judged wrongly can still be found there.
 - How they come back: `restore run` lists them and counts down 60 seconds (Enter starts at once, `i` reopens every
   one with no prompt, `q` cancels). A team session started by `teamrig open` comes back through `launch` as itself;
   any other resumes as it ran. One that was mid-turn, hit an API error or had background jobs, cron jobs or a
