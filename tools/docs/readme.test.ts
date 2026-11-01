@@ -23,10 +23,10 @@ function section(heading: string): string {
 }
 
 describe('README.md', () => {
-  it("shows its pictures in order: hero, how it works, a task's trip, a lead's morning, why it is different, your terminal, your meeting, the plan, growth", () => {
+  it("shows its pictures in order: hero, how it works, a task's trip, a lead's morning, why it is different, your terminal, your meeting, the plan, a reboot, growth", () => {
     assert.deepEqual(
       targets('image'),
-      ['hero', 'how-it-works', 'task-flow', 'lead-morning', 'why', 'terminal-view', 'lead-meeting', 'plan', 'growth'].map((name) => `docs/images/${name}.svg`),
+      ['hero', 'how-it-works', 'task-flow', 'lead-morning', 'why', 'terminal-view', 'lead-meeting', 'plan', 'reboot', 'growth'].map((name) => `docs/images/${name}.svg`),
     );
   });
 
@@ -34,9 +34,9 @@ describe('README.md', () => {
     for (const found of README.matchAll(/!\[([^\]]*)\]\(/g)) assert.ok((found[1] ?? '').length > 40, found[0]);
   });
 
-  it("captions the lead's morning and the meeting demos with one line under each", () => {
+  it("captions the lead's morning, the meeting and the reboot demos with one line under each", () => {
     const lines = README.split('\n');
-    for (const name of ['lead-morning', 'lead-meeting']) {
+    for (const name of ['lead-morning', 'lead-meeting', 'reboot']) {
       const at = lines.findIndex((line) => line.startsWith('![') && line.endsWith(`(docs/images/${name}.svg)`));
       const caption = lines.slice(at + 1).find((text) => text.trim() !== '') ?? '';
       assert.match(caption, /^\*[^*]{20,120}\*$/, `${name} has a one-line caption under it`);

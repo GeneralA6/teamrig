@@ -148,6 +148,10 @@ teamrig restarts it after a 20-second countdown you can hold, and it carries on 
 
 *Coming: reopening sessions at logon on macOS and Linux.*
 
+![After a reboot, a tab named Restore Claude sessions opens at logon and lists the 4 Claude Code sessions the shutdown killed, each with its folder: the lead, api mid-turn, web with nothing going and data with a cron job live. Those marked continue resume with a message to re-check the state and carry on; web reopens idle, with no prompt. After a countdown you can cut short or cancel, each one reopens in its own tab, and the restore tab closes by itself. In the lead's tab, its first prompt says how its team came back. The lead re-checks the state, says api and data carry on and web reopened idle, and goes on with the plan: tasks, notes and inboxes were on disk, so nothing was lost.](docs/images/reboot.svg)
+
+*After a reboot, the sessions the shutdown killed come back in their tabs, and the ones mid-work carry on.*
+
 ### Grows with your project
 
 Start with one lead and a few members. When the team needs one more pair of hands, the lead hires one more member

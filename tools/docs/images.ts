@@ -7,6 +7,7 @@ import { renderHowItWorks } from './how-it-works.ts';
 import { renderLeadMeeting } from './lead-meeting.ts';
 import { renderLeadMorning } from './lead-morning.ts';
 import { renderPlan } from './plan.ts';
+import { renderReboot } from './reboot.ts';
 import { renderTaskFlow } from './task-flow.ts';
 import { renderTerminalView } from './terminal-view.ts';
 import { renderTerminal } from './terminal-svg.ts';
@@ -15,7 +16,7 @@ import { renderWordmark } from './wordmark.ts';
 
 /**
  * The docs' pictures, all drawn in code: the README's wordmark, hero, how-it-works, task-flow, lead-morning, why,
- * terminal view, lead-meeting, plan and growth pictures, in the README's order, and the commands doc's terminal
+ * terminal view, lead-meeting, plan, reboot and growth pictures, in the README's order, and the commands doc's terminal
  * screen, drawn from a demo run of the real CLI (demo.ts). A change to a drawing, or to what the CLI prints, changes a picture, and
  * `images-cli.ts --check` fails until it is redrawn.
  */
@@ -39,6 +40,7 @@ export async function drawPictures(): Promise<Picture[]> {
     { file: 'terminal-view.svg', svg: renderTerminalView() },
     { file: 'lead-meeting.svg', svg: renderLeadMeeting() },
     { file: 'plan.svg', svg: renderPlan() },
+    { file: 'reboot.svg', svg: renderReboot() },
     { file: 'growth.svg', svg: renderGrowth() },
     { file: 'commands.svg', svg: renderTerminal(await commandsScreen(), COMMANDS_COLUMNS) },
   ];
