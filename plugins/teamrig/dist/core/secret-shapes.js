@@ -22,8 +22,8 @@ const MIN_FRAMED_SECRET = 6;
 const REFERENCE = /^(?:[<{[]|\$[{(A-Za-z_]|%[A-Za-z_]\w*%)/;
 /** A value masked, redacted or cut short: `*****`, `ab***yz`, `ab12...`, `ab12…`, one character repeated (`xxxxxxxx`, `00000000`). */
 const MASKED = /\*{3}|\.{3}|…|^(.)\1+$/;
-/** A word that stands in for a secret: `password`, `changeme`, `your_token`, `put-key-here`. */
-const PLACEHOLDER_WORD = /^(?:pass(?:word|wd)?|pwd|secret|token|user(?:name)?|changeme|example|sample|dummy|placeholder|redacted|your[\w-]*|[\w-]*[_-]here)$/i;
+/** A word that stands in for a secret: `password`, `changeme` (`CHANGE_ME`, `change-me`), `your_token`, `put-key-here`. */
+const PLACEHOLDER_WORD = /^(?:pass(?:word|wd)?|pwd|secret|token|user(?:name)?|change[_-]?me|example|sample|dummy|placeholder|redacted|your[\w-]*|[\w-]*[_-]here)$/i;
 /** A search for a secret's shape: a regex class inside the value, as `postgres://[^:]+:[^@]+@` frames `]+:[^`. */
 const REGEX_SOURCE = /\[\^|\][+*?{]/;
 /** Code that splices a variable into a string, its quotes closing one string and opening the next: `'+process.env.API_KEY+'`. */
@@ -48,9 +48,9 @@ export function isPlaceholderValue(value) {
 function standsInForSecret(value) {
     return REFERENCE.test(value) || MASKED.test(value) || PLACEHOLDER_WORD.test(value) || REGEX_SOURCE.test(value) || SPLICE.test(value) || isSample(value);
 }
-/** True when the value a framing `shape` caught is not a secret: a placeholder, or a value the shape itself allows. */
-export function isFramedPlaceholder(shape, value) {
-    return isPlaceholderValue(value) || (shape.isAllowedValue?.(value) ?? false);
+/** True when the `value` a framing `shape` caught in `match` is not a secret: a placeholder, or a value the shape itself allows. */
+export function isFramedPlaceholder(shape, value, match) {
+    return isPlaceholderValue(value) || (shape.isAllowedValue?.(value, match) ?? false);
 }
 /** True when `value` is a published sample token rather than anyone's secret. */
 function isSample(value) {
@@ -76,7 +76,7 @@ export class SecretShapes {
         for (const { shape, global } of this.patterns) {
             for (const match of text.matchAll(global)) {
                 const value = shape.secretGroup === undefined ? match[0] : match[shape.secretGroup];
-                if (value === undefined || value === '' || (shape.secretGroup === undefined ? isSample(value) : isFramedPlaceholder(shape, value)))
+                if (value === undefined || value === '' || (shape.secretGroup === undefined ? isSample(value) : isFramedPlaceholder(shape, value, match)))
                     continue;
                 const account = this.accountOf(match.groups, value);
                 hits.push({ id: shape.id, description: shape.description, value, ...(account === undefined ? {} : { account }) });

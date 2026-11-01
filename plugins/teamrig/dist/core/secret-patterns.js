@@ -72,18 +72,32 @@ export function isIdentifierName(value) {
     return IDENTIFIER_NAME.test(value);
 }
 /**
+ * A coordination id: a uuid, alone or after its holder's id and `#` or `:` (`worker-7#<uuid>`, a host name and a
+ * `randomUUID()`), as a claim, lock, lease or fencing token holds one.
+ */
+const COORDINATION_ID = /^(?:[\w.-]+[#:])?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/**
+ * True when `value` is a coordination id given to a claim, lock, lease or fencing token (T1695): it marks who holds a
+ * claim, grants nothing and ends with the claim. Any other token name, or such a token holding anything but that id,
+ * is still a secret.
+ */
+function isCoordinationId(value, match) {
+    return match.groups?.['coordination'] !== undefined && COORDINATION_ID.test(value);
+}
+/**
  * A quoted literal of 12 or more characters given to a secret-like name: the scrub's rule in the repository and part of
  * the write-time set. Stricter than `secret-assignment`, so documentation and prose pass. The key word may end a longer
  * name (`DB_PASSWORD`, `clientSecret`, `GITHUB_TOKEN`): no word boundary comes before it, since an underscore is a word
  * character. A value that is a name (`TOKEN="SOME_READ_TOKEN"`, `secret: "app-api-secrets"`) names the secret, it does
- * not hold it.
+ * not hold it. A name that starts with claim, lock, lease or fencing and ends in token (`claimToken`, `LOCK_TOKEN`) is
+ * the `coordination` group, and a coordination id there is no secret; one only ending in them (`unlockToken`) is not.
  */
 export const ASSIGNED_SECRET = {
     id: 'assigned-secret',
     description: 'literal value assigned to a secret-like name',
-    pattern: /(?:password|passwd|secret|token|api[_-]?key|access[_-]?key)\b["']?\s*[:=]\s*["']([^"'\s]{12,})["']/i,
-    secretGroup: 1,
-    isAllowedValue: isIdentifierName,
+    pattern: /(?:(?<coordination>(?<![\w$])(?:claim|lock|lease|fencing)[_-]?token)|password|passwd|secret|token|api[_-]?key|access[_-]?key)\b["']?\s*[:=]\s*["']([^"'\s]{12,})["']/i,
+    secretGroup: 2,
+    isAllowedValue: (value, match) => isIdentifierName(value) || isCoordinationId(value, match),
 };
 /**
  * Literal secrets the write-time set (`secret-shapes.ts`) adds to the tokens and the text frames: an API key header's
