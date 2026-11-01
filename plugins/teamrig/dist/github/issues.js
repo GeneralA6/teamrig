@@ -170,6 +170,7 @@ function issueOf(item, repo) {
         lastEditedAt: timeField(item, 'lastEditedAt'),
         authorAssociation: stringField(item, 'authorAssociation') ?? '',
         author: loginOf(recordField(item, 'author')),
+        authorKind: kindOf(recordField(item, 'author')),
         labelEvents: events.flatMap(labelEventOf),
         renamedAt: latestRename(events),
     };
@@ -183,7 +184,7 @@ function labelEventOf(event) {
         return [];
     }
     const actor = recordField(event, 'actor');
-    return [{ label: name, at, actor: loginOf(actor), actorKind: actor === undefined ? '' : (stringField(actor, '__typename') ?? '') }];
+    return [{ label: name, at, actor: loginOf(actor), actorKind: kindOf(actor) }];
 }
 /** The time of the newest change of title among the timeline events. */
 function latestRename(events) {
@@ -192,6 +193,10 @@ function latestRename(events) {
 }
 function loginOf(account) {
     return account === undefined ? '' : (stringField(account, 'login') ?? '');
+}
+/** The account's kind (`User`, `Bot`, `Organization`), empty when GitHub gives none. */
+function kindOf(account) {
+    return account === undefined ? '' : (stringField(account, '__typename') ?? '');
 }
 /** A time GitHub sends (`2030-01-07T09:00:00Z`); undefined when missing or not a time. */
 function timeField(item, key) {
