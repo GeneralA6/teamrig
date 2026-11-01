@@ -24,6 +24,7 @@ interface CommandSpec {
 }
 
 const registerCommands = () => import('./commands/register.ts');
+const statsCommands = () => import('./commands/stats.ts');
 const inboxCommands = () => import('./commands/inbox.ts');
 const configCommands = () => import('./commands/config.ts');
 const hookCommands = () => import('./commands/hook.ts');
@@ -113,6 +114,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   check: { effect: 'read', flags: ['session', 'week'], switches: ['tree', 'all'], load: async () => (await registerCommands()).check },
   plan: { effect: 'read', flags: ['session', 'week'], switches: ['tree'], load: async () => (await registerCommands()).plan },
   verify: { effect: 'read', flags: ['session'], load: async () => (await registerCommands()).verify },
+  stats: { effect: 'read', flags: ['session', 'range'], switches: ['tree'], load: async () => (await statsCommands()).stats },
   files: { effect: 'write', flags: ['session'], switches: ['notes'], load: async () => (await filesCommands()).files },
   'inbox read': { effect: 'write', flags: ['session'], load: async () => (await inboxCommands()).read },
   'inbox status': { effect: 'read', flags: ['session'], load: async () => (await inboxCommands()).status },
@@ -453,6 +455,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       --tree (the lead only): also every team under it, read-only, ids as <team>/T<n>
   verify [--session <id|name>]   the session's verifying tasks, oldest first, each with its proof and
       the date to verify by, then its done tasks still watched for a sighting (--watch)
+  stats [--range 7d|14d|30d|all] [--session <id|name>] [--tree]   the register's numbers over the team's
+      last days (default 7d): the Health tiles with their levels, then flow, new work, speed, delays,
+      waits, bugs and people; --session: one session's tasks; --tree (the lead only): every team under it
   files <id> | files --notes [--session <id|name>]   prints the folder for a task's files (design.md,
       build.md, plan.md, review.md, evidence/, scripts/, out/) in the team that holds it, or for your notes
       that belong to no task; makes it when missing

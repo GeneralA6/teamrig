@@ -1,0 +1,130 @@
+import { formatAddress } from '../../core/address.ts';
+import { registerHealth, type HealthLevel, type RegisterHealth } from '../../register/stats-health.ts';
+import { isStatsRange, registerStats, WORK_SOURCES, type RegisterStats, type Spread, type StatsRange, type StatsScope, type StatsTeam } from '../../register/stats.ts';
+import { WAIT_KINDS } from '../../register/waits.ts';
+import { noPositionals, UsageError, type ParsedArgs } from '../args.ts';
+import { callerOf } from '../inputs.ts';
+import { sessionIdOf, teamZone } from '../kit.ts';
+import { rollUp, type RolledTeam, type RollUp } from '../roll-up.ts';
+import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
+import { ownRegister, warnDamage } from './register.ts';
+
+/**
+ * `teamrig stats [--tree] [--range 7d|14d|30d|all] [--session <id|name>]` (T1771): the register's numbers over a range
+ * of the team's calendar days, as the pane's Stats tab folds them (register/stats.ts): the Health tiles with their
+ * levels, then each section's headline, for the lead and the meeting agenda's top lines. As with `list`, `--session`
+ * reads one session's tasks in its team, and with `--tree` names the caller instead, who must be the team's lead: the
+ * teams under it are rolled up, so `/teamrig`, which fills in the tab's session, can run both. Read-only: each
+ * register's whole history is read, since a range reaches past what a compaction left in the working set.
+ */
+export async function stats(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+  noPositionals(args);
+  const range = rangeOf(args.flags.get('range'));
+  const tree = args.switches.has('tree');
+  const rolled = tree ? await rollUp(runtime, callerOf(args.flags, runtime.env)) : await ownRegister(runtime);
+  const scope: StatsScope | undefined = tree || !args.flags.has('session') ? undefined : { team: rolled.own.team, session: sessionIdOf(rolled.own.roster, callerOf(args.flags, runtime.env)) };
+  const teams = await statsTeamsOf(runtime, rolled);
+  const { config } = rolled.own;
+  const folded = registerStats({ teams, range, now: new Date(runtime.clock.now()), zone: teamZone(config, runtime), ownerMarker: config.register.ownerSource, ...(scope === undefined ? {} : { session: scope }) });
+  statsLines(folded, registerHealth(folded), scope === undefined ? rolled.own.team : formatAddress({ team: scope.team, id: scope.session }), rolled.teams.map((team) => team.team)).forEach((line) => runtime.out.stdout(line));
+  return EXIT.ok;
+}
+
+function rangeOf(value: string | undefined): StatsRange {
+  if (value === undefined) {
+    return '7d';
+  }
+  if (!isStatsRange(value)) {
+    throw new UsageError(`--range takes 7d, 14d, 30d or all, not ${value}`);
+  }
+  return value;
+}
+
+/** Each team's whole event log, its damaged lines named once, with its lead. */
+async function statsTeamsOf(runtime: CliRuntime, { teams }: RollUp): Promise<StatsTeam[]> {
+  const read: StatsTeam[] = [];
+  for (const rolled of teams) {
+    read.push(await statsTeamOf(runtime, rolled));
+  }
+  return read;
+}
+
+async function statsTeamOf(runtime: CliRuntime, rolled: RolledTeam): Promise<StatsTeam> {
+  const history = await rolled.history();
+  warnDamage(runtime, history, rolled.paths.events);
+  return { team: rolled.team, lead: rolled.config.roles.lead, events: history.read.events };
+}
+
+/** The lines `stats` prints: a header, the Health tiles, then one headline per section. */
+export function statsLines(stats: RegisterStats, health: RegisterHealth, name: string, teams: readonly string[]): string[] {
+  const first = stats.days[0]?.day;
+  const last = stats.days.at(-1)?.day;
+  const span = first === undefined || last === undefined ? '' : `: ${first.slice(5)} to ${last.slice(5)}`;
+  const tree = teams.length > 1 ? ` (tree: ${teams.join(', ')})` : '';
+  const lines = [
+    `STATS ${name}, ${rangeText(stats.range)}${span}${tree}`,
+    `HEALTH ${healthText(health)}`,
+    `FLOW opened ${stats.opened}, closed ${stats.closedTasks} (${stats.droppedTasks} dropped), net ${signed(stats.net)}; last ${stats.recent.days} d net ${signed(stats.recent.net)}`,
+    `NEW WORK ${newWorkText(stats)}`,
+    `SPEED lead time ${spreadText(stats.all.leadTime)} (${stats.all.leadTime.count} done); cycle time ${spreadText(stats.all.cycleTime)} (${stats.all.cycleTime.count} started, ${stats.neverStarted} never)`,
+    `DELAYS overdue ${stats.all.overdue.count}, p1 ${stats.all.overdue.p1}; done by due ${stats.all.due.onTime} of ${stats.all.due.total}${bandsText(stats.lateDays, 'late')}; due moved ${stats.dueMoved}`,
+    `WAITS ${waitsText(stats)}`,
+    `BUGS ${stats.bugs.active} active, ${stats.bugs.opened} opened, ${stats.bugs.fixed} fixed`,
+    `PEOPLE ${stats.people.length === 0 ? 'none done' : stats.people.map((person) => `${teams.length > 1 ? `${person.team}/` : ''}${person.session} ${person.done}`).join(', ')}`,
+  ];
+  if (teams.length > 1) {
+    lines.push(`TEAMS ${stats.teams.map((team) => `${team.team} ${team.active} active, overdue ${team.overdue.count}`).join(' · ')}`);
+  }
+  for (const split of stats.splits) {
+    lines.push(`SPLIT ${split.day.slice(5)} ${split.tasks} task(s) moved ${split.from} -> ${split.to}: the chart of ${split.from} before it lacks them`);
+  }
+  return lines;
+}
+
+function rangeText(range: StatsRange): string {
+  return range === 'all' ? 'all days' : `${range.slice(0, -1)} d`;
+}
+
+function healthText(health: RegisterHealth): string {
+  const { closeOpen, backlog, overdue, ownerDecisions, backlogClears } = health;
+  return [
+    `close/open ${closeOpen.ratio === null ? 'none opened' : closeOpen.ratio.toFixed(2)} ${levelText(closeOpen.level)}`,
+    `backlog ${signed(backlog.net)}, ${backlog.active} active ${levelText(backlog.level)}`,
+    `overdue ${overdue.count}, p1 ${overdue.p1} ${levelText(overdue.level)}`,
+    `owner decisions ${ownerDecisions.count}${ownerDecisions.oldestDays === null ? '' : `, oldest ${days(ownerDecisions.oldestDays)}`} ${levelText(ownerDecisions.level)}`,
+    `backlog clears ${backlogClears.weeks === null ? 'never, at this rate' : `in ${backlogClears.weeks} week(s)`} ${levelText(backlogClears.level)}`,
+  ].join(' · ');
+}
+
+function levelText(level: HealthLevel): string {
+  return `[${level}]`;
+}
+
+function newWorkText({ newWork }: RegisterStats): string {
+  const sources = WORK_SOURCES.map((source) => `${source} ${newWork.bySource[source]}`).join(', ');
+  const goals = newWork.byGoal.length === 0 ? '' : `; goals ${newWork.byGoal.map((goal) => `${goal.goal} ${goal.count}`).join(', ')}`;
+  return `${newWork.total}: ${sources}; ${newWork.bugs} bug(s)${goals}; no goal ${newWork.noGoal}`;
+}
+
+function waitsText({ waits }: RegisterStats): string {
+  const kinds = WAIT_KINDS.filter((kind) => waits.byKind[kind] > 0).map((kind) => `${kind} ${waits.byKind[kind]}`);
+  const oldest = waits.ownerDecisions.oldestDays === null ? '' : `, oldest ${days(waits.ownerDecisions.oldestDays)}`;
+  return `${waits.waiting} waiting${kinds.length === 0 ? '' : ` (${kinds.join(', ')})`}; on the owner ${waits.ownerDecisions.count}${oldest}`;
+}
+
+function bandsText(bands: RegisterStats['lateDays'], what: string): string {
+  const counted = bands.filter((band) => band.count > 0);
+  return counted.length === 0 ? '' : `; ${what} ${counted.map((band) => `${band.count} by ${band.label}`).join(', ')}`;
+}
+
+function spreadText(spread: Spread): string {
+  return spread.median === null || spread.p85 === null ? 'none' : `median ${days(spread.median)}, p85 ${days(spread.p85)}`;
+}
+
+function days(value: number): string {
+  return `${value.toFixed(1)} d`;
+}
+
+function signed(value: number): string {
+  return value > 0 ? `+${value}` : `${value}`;
+}
