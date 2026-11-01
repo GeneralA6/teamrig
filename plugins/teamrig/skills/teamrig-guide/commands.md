@@ -2359,15 +2359,22 @@ OPENED the restore of 2 Claude Code sessions in a new Windows Terminal tab
 ### teamrig restore install
 
 Has the system run `restore check` at each logon of this user, so the sessions a crash or reboot killed come back
-by themselves. It first writes a small launcher to `<kit home>/bin/restore-check.mjs`, which finds the installed
-plugin each time it runs, so a plugin update needs no new install. Then it points the logon entry at it: on Windows,
-the `TeamrigSessionRestore` value of the `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` key, which runs the
-launcher with the Node that ran this command, through `conhost --headless` so no window opens. No one sees a
-logon's output, so when the plugin is not found or the check exits other than 0, the launcher writes why to
-`<kit home>/restore/restore.log` as a `logon:` line. Without `--yes` it shows the change and writes nothing. It
-changes this machine, not a team, so it takes no `--session`. Run it once per machine; installing from a Node at
-a path a Node upgrade removes means running it again after the upgrade. macOS and Linux have no logon entry yet:
-there it is `REFUSED`, and `teamrig restore run` after a crash or reboot does the same by hand.
+by themselves, and gives you a shortcut that runs the restore by hand from anywhere. It first writes two small
+launchers to `<kit home>/bin/`, `restore-check.mjs` and `restore-run.mjs`, which find the installed plugin each
+time they run, so a plugin update needs no new install. Then it points the logon entry at the check launcher: on
+Windows, the `TeamrigSessionRestore` value of the `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` key, which
+runs it with the Node that ran this command, through `conhost --headless` so no window opens. No one sees a logon's
+output, so when the plugin is not found or the check exits other than 0, the launcher writes why to
+`<kit home>/restore/restore.log` as a `logon:` line. Last, it makes the Start-menu shortcut `Restore Claude
+Sessions` start that Node on the run launcher, in your home folder: it opens a window running `restore run --tab`,
+with its list and countdown, after a crash, a reboot or a window you closed. Every other shortcut of that name on
+the desktop or pinned to the taskbar that starts something else, such as a pin made from an older shortcut, is
+changed in place, so the pin stays and runs the restore. When the run launcher cannot find the plugin or start the
+run, its window says `FAILED: <why>`, stays open 60 seconds, and the log gets a `shortcut:` line. Without `--yes` it
+shows the change and writes nothing. It changes this machine, not a team, so it takes no `--session`. Run it once
+per machine; installing from a Node at a path a Node upgrade removes means running it again after the upgrade.
+macOS and Linux have no logon entry or shortcut yet: there it is `REFUSED`, and `teamrig restore run` after a crash
+or reboot does the same by hand.
 
 Flags:
 
@@ -2384,18 +2391,23 @@ Output:
 ```text
 WROTE the changes below
   WRITE C:\Users\me\.teamrig\bin\restore-check.mjs
+  WRITE C:\Users\me\.teamrig\bin\restore-run.mjs
   SET HKCU\Software\Microsoft\Windows\CurrentVersion\Run TeamrigSessionRestore: (none) -> "C:\Windows\System32\conhost.exe" --headless "C:\Program Files\nodejs\node.exe" "C:\Users\me\.teamrig\bin\restore-check.mjs"
+  SET C:\Users\me\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Restore Claude Sessions.lnk: (none) -> "C:\Program Files\nodejs\node.exe" "C:\Users\me\.teamrig\bin\restore-run.mjs" (in "C:\Users\me")
 ```
 
-`UNCHANGED <entry>: the restore check already runs at logon` when nothing would change; a launcher that differs
-from this version's, or an entry naming another Node or launcher, is written again. When a step fails, it prints
-`FAILED <step>: <reason>` and the steps done before it, and exits 1.
+`UNCHANGED <entry>: the restore check already runs at logon` and `UNCHANGED <shortcut>: the shortcut already runs
+the restore` when nothing would change; a launcher that differs from this version's, an entry naming another Node
+or launcher, or a shortcut starting anything else, is written again. When the shortcuts cannot be read, it changes
+nothing and prints `FAILED <reason>`. When a step fails, it prints `FAILED <step>: <reason>` and the steps done
+before it, and exits 1.
 
 ### teamrig restore uninstall
 
-Stops the restore at logon: removes the logon entry, then the launcher it named. Like `install`, it shows the
-change without `--yes`, and it is `REFUSED` where `install` is. The recorded sessions stay, so `teamrig restore run`
-still works by hand.
+Stops the restore at logon and takes out its shortcut: removes the logon entry, then each `Restore Claude
+Sessions` shortcut that runs the run launcher, then both launchers. A shortcut of that name that runs anything
+else stays. Like `install`, it shows the change without `--yes`, and it is `REFUSED` where `install` is. The
+recorded sessions stay, so `teamrig restore run` still works by hand.
 
 Flags:
 
@@ -2412,10 +2424,13 @@ Output:
 ```text
 WROTE the changes below
   REMOVE HKCU\Software\Microsoft\Windows\CurrentVersion\Run TeamrigSessionRestore: "C:\Windows\System32\conhost.exe" --headless "C:\Program Files\nodejs\node.exe" "C:\Users\me\.teamrig\bin\restore-check.mjs"
+  REMOVE C:\Users\me\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Restore Claude Sessions.lnk: "C:\Program Files\nodejs\node.exe" "C:\Users\me\.teamrig\bin\restore-run.mjs" (in "C:\Users\me")
   REMOVE C:\Users\me\.teamrig\bin\restore-check.mjs
+  REMOVE C:\Users\me\.teamrig\bin\restore-run.mjs
 ```
 
-`UNCHANGED <entry>: the restore check does not run at logon` when there is neither.
+`UNCHANGED <entry>: the restore check does not run at logon` and `UNCHANGED no Restore Claude Sessions.lnk runs
+<run launcher>` when there is none of them.
 
 ### teamrig restore resume
 
