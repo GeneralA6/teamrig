@@ -616,6 +616,10 @@ range's net growth: over 5% of the active work `bad`, any growth `warn`), overdu
 `warn`), owner decisions (the oldest wait on the owner: over 7 days `bad`, over 2 `warn`) and backlog clears (the
 weeks the active work takes to clear at the last 28 days' net: never, as it grows, `bad`; over 4 weeks `warn`).
 
+A LIMIT line names the days of the range the week sat at its usage limit, marked `$`, so a quiet day there is not read
+as slack. It reads them from the account's meter log, from the week's first reading at 100% to its reset; the log keeps
+8 weeks.
+
 Flags:
 
 - `--range 7d|14d|30d|all`: the days counted on the team's clock, today included (default `7d`); `all` starts at the
@@ -636,6 +640,7 @@ Output:
 STATS shop, 7 d: 10-06 to 10-12
 HEALTH close/open 0.80 [bad] · backlog +2, 14 active [bad] · overdue 1, p1 0 [warn] · owner decisions 1, oldest 1.5 d [good] · backlog clears never, at this rate [bad]
 FLOW opened 10, closed 8 (1 dropped), net +2; last 28 d net +3
+LIMIT $ 10-07: the week sat at its usage limit, so a quiet day there is no slack
 NEW WORK 10: self 4, owner 2, lead 3, github 1, session 0; 2 bug(s); goals signup 6; no goal 4
 SPEED lead time median 2.1 d, p85 4.8 d (7 done); cycle time median 0.9 d, p85 2.0 d (6 started, 1 never)
 DELAYS overdue 1, p1 0; done by due 3 of 4; late 1 by 2-3 d; due moved 2
