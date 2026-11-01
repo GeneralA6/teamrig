@@ -49,7 +49,7 @@ describe('runCli: the daily meeting', () => {
     assert.ok(stdout.includes('    waiting since 01-08 10:00 UTC: two options'), stdout.join('\n'));
     const late = stdout.indexOf('LATE 1 past their due date');
     assert.match(stdout[late + 1] ?? '', /^ {2}T2 open, p2, owner bravo, due 01-07 \| Ship the docs/);
-    assert.ok(stdout.includes('DONE 0 done or dropped since Mon 01-07 10:00 UTC'), stdout.join('\n'));
+    assert.ok(stdout.includes('DONE 0 done, 0 dropped since Mon 01-07 10:00 UTC'), stdout.join('\n'));
     assert.ok(stdout.some((line) => line.endsWith('alpha: the build is green')), stdout.join('\n'));
     assert.ok(stdout.some((line) => line.endsWith(`alpha: T1 waits on the owner's decision: ${TEST_CARD.question} | asked in the next batch at the daily meeting`)), stdout.join('\n'));
     assert.ok(stdout.some((line) => line.startsWith('READ lead: 2 new lines')), stdout.join('\n'));
@@ -79,7 +79,7 @@ describe('runCli: the daily meeting', () => {
     const kit = await teamBeforeTheMeeting();
     const { stdout } = await kit.run(['meeting', 'start', '--session', 'lead'], { timeZone: 'Asia/Jerusalem' });
     assert.equal(stdout[0], 'MEETING started Tue 01-08 12:00 IST: messages to app-lead are held but CRITICAL ones (the hook tells each sender)');
-    assert.ok(stdout.includes('DONE 0 done or dropped since Mon 01-07 12:00 IST'), stdout.join('\n'));
+    assert.ok(stdout.includes('DONE 0 done, 0 dropped since Mon 01-07 12:00 IST'), stdout.join('\n'));
     await kit.run(['update', 'T1', '--note', 'owner decided: go', '--session', 'lead']);
     const ended = await kit.run(['meeting', 'end', '--session', 'lead'], { timeZone: 'Asia/Jerusalem' });
     assert.match(ended.stdout[0] ?? '', /^MEETING ended Tue 01-08 12:00 IST after /);
@@ -141,9 +141,9 @@ describe('runCli: the daily meeting', () => {
     await kit.run(['set', 'T2', '--status', 'done', '--note', 'shipped', '--evidence', 'the docs are live', '--skill', 'none', '--followups', 'none', '--session', 'bravo']);
     kit.clock.advance(20 * 60 * MINUTE);
     const next = await kit.run(['meeting', 'start', '--session', 'lead']);
-    const done = next.stdout.indexOf('DONE 1 done or dropped since Tue 01-08 10:30 UTC');
+    const done = next.stdout.indexOf('DONE 1 done, 0 dropped since Tue 01-08 10:30 UTC');
     assert.ok(done > 0, next.stdout.join('\n'));
-    assert.match(next.stdout[done + 1] ?? '', /^ {2}T2 done/);
+    assert.equal(next.stdout[done + 1], '  Other work 1: teamrig list --status done');
   });
 
   it("ends: tells only a session with the lead's decisions on its tasks, with them", async () => {
@@ -290,7 +290,7 @@ describe('runCli: the daily meeting', () => {
       'MERGES 1 merged with no approval since Mon 01-07 10:00 UTC, 1 CHECK-CLEAN (security samples those weekly)',
       '  Tue 01-08 09:00 UTC alpha app t1-auth bbbbbbbb..hhhhhhhh: 1 files, 6 lines, checks unit, CHECK-CLEAN',
     ]);
-    assert.ok(stdout.indexOf('DONE 0 done or dropped since Mon 01-07 10:00 UTC') < merges, stdout.join('\n'));
+    assert.ok(stdout.indexOf('DONE 0 done, 0 dropped since Mon 01-07 10:00 UTC') < merges, stdout.join('\n'));
     const plain = await teamBeforeTheMeeting();
     assert.ok(!(await plain.run(['meeting', 'agenda', '--session', 'lead'])).stdout.some((line) => line.startsWith('MERGES ')));
   });

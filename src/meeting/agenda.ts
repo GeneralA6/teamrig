@@ -1,6 +1,7 @@
 import type { AskWith } from '../config/types.ts';
 import { MS_PER_DAY } from '../core/time.ts';
 import { cardLines, cardTexts, GATE_FLAG, namedTaskIds } from '../register/card.ts';
+import { doneGroups, doneGroupTitle } from '../register/done-groups.ts';
 import type { Task } from '../register/fold.ts';
 import { ACTIVE_STATUSES } from '../register/model.ts';
 import { asksOwner, isUngated, ownerLater } from '../register/owner-waits.ts';
@@ -9,7 +10,8 @@ import { cut, formatShortTask } from '../register/views.ts';
 
 /**
  * The register's part of the daily meeting's agenda, gathered in one call so the lead spends no turn per item:
- * the owner's decisions as card facts, the late tasks and what finished since the meeting before. The CLI adds
+ * the owner's decisions as card facts, the late tasks and what finished since the meeting before, in the done groups
+ * (src/register/done-groups.ts). The CLI adds
  * the stats' top lines above it, and the lead's inbox and the week's use and fit below (src/cli/commands/meeting.ts).
  */
 
@@ -212,14 +214,34 @@ function lateLines(input: AgendaInput): string[] {
   );
 }
 
-/** DONE: the tasks done or dropped since the agenda's start, in plan order. */
+/**
+ * DONE: the tasks done since the agenda's start in the done groups (doneGroups, T1729): each group's heading and its
+ * rows, at most AGENDA_ROWS of them, then Other work and the dropped tasks as one count line each with the command
+ * that lists them, so the owner reads the work that matters and one line for the rest. The span has no end: nothing
+ * finished before the read is left out.
+ */
 function doneLines(input: AgendaInput): string[] {
-  const done = input.tree.inPlanOrder(input.tasks.filter((task) => (task.status === 'done' || task.status === 'dropped') && Date.parse(task.statusAt) >= input.since));
-  return listed(
-    `DONE ${done.length} done or dropped since ${input.tree.zone.weekdayMinute(new Date(input.since))}`,
-    done.map((task) => rowOf(task, input.tree)),
-    `${input.command} list --status done,dropped`,
-  );
+  const { groups, done, dropped } = doneGroups({
+    tasks: input.tasks,
+    ownerMarker: input.ownerMarker,
+    zone: input.tree.zone,
+    from: input.since,
+    to: Number.POSITIVE_INFINITY,
+  });
+  const listDone = `${input.command} list --status done`;
+  const lines = [`DONE ${done} done, ${dropped.length} dropped since ${input.tree.zone.weekdayMinute(new Date(input.since))}`];
+  for (const group of groups) {
+    if (group.kind === 'other') {
+      lines.push(`  ${doneGroupTitle(group)} ${group.tasks.length}: ${listDone}`);
+      continue;
+    }
+    const more = group.tasks.length > AGENDA_ROWS ? [`    +${group.tasks.length - AGENDA_ROWS} more: ${listDone}`] : [];
+    lines.push(`  ${doneGroupTitle(group)} (${group.tasks.length})`, ...group.tasks.slice(0, AGENDA_ROWS).map((task) => `  ${rowOf(task, input.tree)}`), ...more);
+  }
+  if (dropped.length > 0) {
+    lines.push(`  Dropped ${dropped.length}: ${input.command} list --status dropped`);
+  }
+  return lines;
 }
 
 /**

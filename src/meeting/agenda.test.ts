@@ -193,7 +193,7 @@ describe('the meeting agenda', () => {
     assert.deepEqual(agendaLines(inputOf([testTask()])), [
       'DECISIONS 0 waiting on owner (decision or approval)',
       'LATE 0 past their due date',
-      'DONE 0 done or dropped since Mon 01-07 10:00 UTC',
+      'DONE 0 done, 0 dropped since Mon 01-07 10:00 UTC',
     ]);
   });
 
@@ -216,17 +216,43 @@ describe('the meeting agenda', () => {
     assert.match(lines[1] ?? '', /^ {2}T1 .*due 01-07 \(from T2\)/);
   });
 
-  it('lists the tasks done or dropped since the start, and not those before it', () => {
+  it('groups the work done since the start, with other work and the dropped as one count line each, and not the work before it', () => {
     const tasks = [
       testTask({ id: 'T1', status: 'done', statusAt: '2030-01-08T08:00:00.000Z' }),
       testTask({ id: 'T2', status: 'dropped', statusAt: '2030-01-07T11:00:00.000Z' }),
-      testTask({ id: 'T3', status: 'done', statusAt: '2030-01-06T11:00:00.000Z' }),
-      ...Array.from({ length: AGENDA_ROWS }, (_, index) => testTask({ id: `T${index + 10}`, status: 'done', statusAt: '2030-01-08T09:00:00.000Z' })),
+      testTask({ id: 'T3', status: 'done', statusAt: '2030-01-06T11:00:00.000Z', source: 'owner' }),
+      testTask({ id: 'T4', status: 'done', statusAt: '2030-01-08T07:00:00.000Z', source: 'owner', goals: ['A1'] }),
+      testTask({ id: 'T5', status: 'done', statusAt: '2030-01-08T06:00:00.000Z', goals: ['A1'] }),
+      testTask({ id: 'T6', status: 'done', statusAt: '2030-01-08T05:00:00.000Z', priority: 1 }),
+      testTask({ id: 'T7', status: 'done', statusAt: '2030-01-08T04:00:00.000Z', week: '2030-01-07' }),
+      testTask({ id: 'T8', status: 'verifying', statusAt: '2030-01-08T04:00:00.000Z', source: 'owner' }),
     ];
     const lines = section(agendaLines(inputOf(tasks)), 'DONE');
-    assert.equal(lines[0], `DONE ${AGENDA_ROWS + 2} done or dropped since Mon 01-07 10:00 UTC`);
-    assert.ok(!lines.some((line) => /\bT3\b/.test(line)), lines.join('\n'));
-    assert.equal(lines.at(-1), '  +2 more: teamrig list --status done,dropped');
+    assert.deepEqual(
+      lines.map((line) => line.replace(/^( {4}T\d+) .*/, '$1')),
+      [
+        'DONE 5 done, 1 dropped since Mon 01-07 10:00 UTC',
+        '  Owner asked (1)',
+        '    T4',
+        '  A1 (1)',
+        '    T5',
+        '  Urgent p1 (1)',
+        '    T6',
+        "  This week's plan (1)",
+        '    T7',
+        '  Other work 1: teamrig list --status done',
+        '  Dropped 1: teamrig list --status dropped',
+      ],
+    );
+    assert.match(lines[2] ?? '', /^ {4}T4 done, p2, owner alpha \| Add a health check/);
+  });
+
+  it('lists at most a screen of rows in a group, then the command for all', () => {
+    const urgent = Array.from({ length: AGENDA_ROWS + 2 }, (_, index) => testTask({ id: `T${index + 10}`, status: 'done', priority: 1, statusAt: '2030-01-08T09:00:00.000Z' }));
+    const lines = section(agendaLines(inputOf(urgent)), 'DONE');
+    assert.equal(lines[1], `  Urgent p1 (${AGENDA_ROWS + 2})`);
+    assert.equal(lines.length, 2 + AGENDA_ROWS + 1);
+    assert.equal(lines.at(-1), '    +2 more: teamrig list --status done');
   });
 });
 
