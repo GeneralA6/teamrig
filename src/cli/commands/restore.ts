@@ -1,4 +1,4 @@
-import { join, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { claudeProjectsDir } from '../../budget/discover.ts';
 import type { TerminalChoice } from '../../config/types.ts';
 import { errorMessage } from '../../core/guards.ts';
@@ -13,7 +13,7 @@ import { shellCommand } from '../../open/quote.ts';
 import { plainSessionEnv } from '../../open/session-env.ts';
 import { runsClaude } from '../../open/session-processes.ts';
 import { RestoreArchive, restoreArchiveDir } from '../../restore/archive.ts';
-import { RestoreRegistry, restoreSessionsDir } from '../../restore/registry.ts';
+import { RestoreRegistry, restoreLogPath, restoreSessionsDir } from '../../restore/registry.ts';
 import { checkRestore, previewRestore, runRestore, type ReopenOutcome, type ReopenTab, type RestoreDeps, type RestoreRun } from '../../restore/run.ts';
 import type { RestoreTeam } from '../../restore/teams.ts';
 import { TranscriptFinder } from '../../restore/transcripts.ts';
@@ -28,11 +28,6 @@ export const RESTORE_TAB_TITLE = 'Restore Claude sessions';
 export const TAB_SETTLE_MS = 2_000;
 /** How long the restore's own tab stays when it reopened nothing or something failed, so its lines can be read. */
 export const TAB_CLOSE_DELAY_MS = 8_000;
-
-/** The restore's log, beside its sessions folder: what each check and run decided, for the morning after. */
-export function restoreLogPath(kitHome: string): string {
-  return join(kitHome, 'restore', 'restore.log');
-}
 
 /** Appends a line to the restore log; a log that cannot be written is a warning on stderr, never a failed restore. */
 function restoreLogOf(runtime: CliRuntime): (line: string) => Promise<void> {
