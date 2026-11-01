@@ -241,6 +241,10 @@ teamrig that is not the installed plugin or was changed after its build
 field of a request: [exec request](../../plugins/teamrig/skills/teamrig-guide/commands.md#teamrig-exec-request)).
 The same hook refuses the owner's own actions on a task (`teamrig owner note`, `owner next`) from any session's tool
 call, as they write as the owner: the owner runs them in their own terminal, or types them after `/teamrig` in a tab.
+Every session runs as your OS user, so the hook stops the routine route and an instruction slipped into what a
+session reads, not a session set on forging the owner: a script it writes and runs, or a Monitor-tool command, is no
+Bash or PowerShell call, and it can write the register's files directly. A task line written as the owner is no proof
+that you acted until your own actions run under an account the sessions cannot use.
 
 ## Reads without a prompt
 
