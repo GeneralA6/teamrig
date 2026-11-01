@@ -64,6 +64,50 @@ export {
   type OwnerCards,
 } from '../register/owner-waits.ts';
 
+// The register's numbers over time (T1771): each day's flow, new work by source, lead and cycle times, due-date hits,
+// waits, bugs and done per session for a team tree and a range, and the Health tiles over them with their levels, as
+// `teamrig stats` prints them. The owner marker is the config's `register.ownerSource`.
+export {
+  isActive,
+  isStatsRange,
+  RECENT_DAYS,
+  registerStats,
+  STATS_ACTIVE_STATUSES,
+  STATS_RANGES,
+  WORK_SOURCES,
+  type ActiveCounts,
+  type ActiveStatus,
+  type Band,
+  type BugStats,
+  type NewWork,
+  type PersonDone,
+  type RegisterStats,
+  type Split,
+  type Spread,
+  type StatsDay,
+  type StatsInput,
+  type StatsRange,
+  type StatsScope,
+  type StatsTeam,
+  type TeamPart,
+  type TeamStats,
+  type WaitStats,
+  type WorkSource,
+} from '../register/stats.ts';
+export {
+  HEALTH_LEVELS,
+  HEALTH_THRESHOLDS,
+  registerHealth,
+  type BacklogClearsTile,
+  type BacklogTile,
+  type CloseOpenTile,
+  type HealthInput,
+  type HealthLevel,
+  type OverdueTile,
+  type OwnerDecisionsTile,
+  type RegisterHealth,
+} from '../register/stats-health.ts';
+
 // The inboxes (`inbox/<area>.md`) and their read marks (`inbox-marks.jsonl`).
 export { indexMarks, MARK_VERSION, parseMark, readMarks, type InboxMark, type MarkIndex, type MarkLogRead } from '../inbox/marks.ts';
 export { inboxLines, unreadOf, type LineHash, type ResumeKind, type Unread } from '../inbox/unread.ts';
