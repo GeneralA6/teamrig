@@ -26,7 +26,7 @@ import {
   type TodayReport,
 } from './report.ts';
 import type { DayUsage, UsageState } from './store.ts';
-import type { WeekReading } from './week.ts';
+import type { WeekForecast, WeekReading } from './week.ts';
 
 /** An empty meter log. */
 const NOTHING_LEARNED = calibrationOf([]);
@@ -54,6 +54,7 @@ const WEEK: WeekReading = {
   todayWPerPct: 7_500_000,
   teamDay: { usedPct: 5.16, pacePct: (10.25 * 11) / 24 },
   pool: undefined,
+  forecast: undefined,
 };
 const ROOM = { usedPct: 3, pacePct: (10.25 * 11) / 24 };
 const UNKNOWN: WeekReading = {
@@ -74,6 +75,7 @@ const UNKNOWN: WeekReading = {
   todayWPerPct: undefined,
   teamDay: undefined,
   pool: undefined,
+  forecast: undefined,
 };
 const LIFT: Lift = {
   session: 'bravo',
@@ -130,6 +132,15 @@ describe('todayLines', () => {
     assert.match(todayLines({ ...REPORT, week: fallen })[0] ?? '', / Resets Wed 10-21 01:00 UTC\. Counted from Sun 10-18 16:00 UTC, after a reset inside the week\.$/);
     const inferred = todayLines({ ...REPORT, week: { ...fallen, periodKind: 'inferred' } })[0] ?? '';
     assert.match(inferred, / Counted from Sun 10-18 16:00 UTC, after a reset inside the week \(found from the metered W\)\.$/);
+  });
+
+  it("says where the week heads at the last day's rise: when it reaches 100%, else near what it ends the week at", () => {
+    const first = (forecast: WeekForecast): string => todayLines({ ...REPORT, week: { ...WEEK, forecast } })[0] ?? '';
+    assert.match(
+      first({ risePts: 9.84, endPct: 112, fullAt: Date.parse('2026-10-19T14:20:00Z') }),
+      / Resets Wed 10-21 01:00 UTC\. At the last 24 hours' rise of 9\.8 points, it reaches 100% Mon 10-19 14:20 UTC\.$/,
+    );
+    assert.match(first({ risePts: 6, endPct: 88.6, fullAt: undefined }), / Resets Wed 10-21 01:00 UTC\. At the last 24 hours' rise of 6\.0 points, it ends the week near 89%\.$/);
   });
 
   it('names the extra-usage pool after the week: what is left in dollars and, with its W per dollar, in W', () => {

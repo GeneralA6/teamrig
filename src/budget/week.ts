@@ -40,6 +40,22 @@ export const TODAY_RATE_SPAN_PTS = 2;
 export const TODAY_RATE_MAX_RATIO = 2;
 
 /**
+ * The span whose rise the week's run-out forecast carries to the reset (`WeekReading.forecast`): a whole day, so its
+ * quiet hours are in it and the rise is a day's, not a busy stretch's.
+ */
+export const FORECAST_SPAN_MS = MS_PER_DAY;
+
+/** Where the week's use heads at the rise of the last `FORECAST_SPAN_MS` (`WeekReading.forecast`). */
+export interface WeekForecast {
+  /** The rise over the span, in points of the week, read from the status line. */
+  readonly risePts: number;
+  /** The use at the reset at that rise, in percent of the week; past 100 when it reaches 100% first. */
+  readonly endPct: number;
+  /** When the use reaches 100% at that rise, before the reset; undefined when it ends the week below it. */
+  readonly fullAt: number | undefined;
+}
+
+/**
  * Where the week stands: its use in percent, from the status line (the plan's own count) or, with a
  * known limit, from the metered W; the limit in W per percent, learned from the meter log, else from
  * `weeklyLimitW`, else estimated from the status line once the meter has counted the whole week; the pace
@@ -88,6 +104,8 @@ export interface WeekReading {
   readonly teamDay: TeamDay | undefined;
   /** The extra-usage pool (budget/extra.ts); undefined while nothing was added or the week's use is unknown. */
   readonly pool: ExtraPool | undefined;
+  /** Where the use heads by the reset at the last day's rise (`forecastOf`); undefined while that rise is unknown. */
+  readonly forecast: WeekForecast | undefined;
 }
 
 /** The extra-usage log's entries and where the period reached 100% of the week, for the pool past the weekly limit. */
@@ -170,6 +188,26 @@ function statusRiseOf(sight: StatusSight, sinceW: number): StatusRise | undefine
 function statusTodayPct(sight: StatusSight, todayW: number): number | undefined {
   const rise = statusRiseOf(sight, todayW);
   return rise === undefined ? undefined : Math.max(0, rise.nowPct - rise.fromPct);
+}
+
+/**
+ * The week's run-out forecast (T1706): the status line's rise over the last `FORECAST_SPAN_MS`, whose W is `spanW`
+ * (`statusRiseOf`), carried at that rate to the reset. `wSince` counts the span from its start's whole hour, so the
+ * rise errs high and the week runs out sooner, never later. Undefined in the period's first day, at or past the reset,
+ * at 100% (where the extra-usage pool's line takes over) and while the rise is unknown.
+ */
+function forecastOf(sight: StatusSight, reset: number, spanW: number): WeekForecast | undefined {
+  const { start, now } = sight;
+  if (start === undefined || now - FORECAST_SPAN_MS < start || now >= reset) {
+    return undefined;
+  }
+  const rise = statusRiseOf(sight, spanW);
+  if (rise === undefined || rise.nowPct >= 100) {
+    return undefined;
+  }
+  const risePts = Math.max(0, rise.nowPct - rise.fromPct);
+  const endPct = rise.nowPct + (risePts * (reset - now)) / FORECAST_SPAN_MS;
+  return { risePts, endPct, fullAt: endPct < 100 ? undefined : now + ((100 - rise.nowPct) / risePts) * FORECAST_SPAN_MS };
 }
 
 /**
@@ -328,5 +366,6 @@ export function readWeek(input: WeekInput): WeekReading {
     todayWPerPct,
     teamDay,
     pool,
+    forecast: sight === undefined || reset === undefined ? undefined : forecastOf(sight, reset, wSince(states, now - FORECAST_SPAN_MS, now)),
   };
 }

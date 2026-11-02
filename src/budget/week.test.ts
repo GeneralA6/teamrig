@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_BUDGET } from '../config/defaults.ts';
 import type { BudgetConfig } from '../config/types.ts';
-import { MS_PER_WEEK } from '../core/time.ts';
+import { MS_PER_DAY, MS_PER_HOUR, MS_PER_WEEK } from '../core/time.ts';
 import { DailyProfile } from './active-time.ts';
 import { emptyPatterns } from './patterns.ts';
 import type { Period } from './period.ts';
@@ -10,7 +10,20 @@ import type { WeekUse } from './snapshot.ts';
 import type { UsageState } from './store.ts';
 import { calibrationOf, type Calibration, type MeterReading } from './calibration.ts';
 import type { ExtraEntry } from './extra.ts';
-import { coversFrom, idleWSince, limitWPerPct, meteredOf, rateOf, readWeek, TODAY_RATE_MAX_RATIO, TODAY_RATE_SPAN_PTS, wSince } from './week.ts';
+import {
+  coversFrom,
+  FORECAST_SPAN_MS,
+  idleWSince,
+  limitWPerPct,
+  meteredOf,
+  rateOf,
+  readWeek,
+  TODAY_RATE_MAX_RATIO,
+  TODAY_RATE_SPAN_PTS,
+  wSince,
+  type WeekInput,
+  type WeekReading,
+} from './week.ts';
 
 /** Thursday 2026-10-15 12:00 UTC; the week runs from Wednesday 10-14 01:00 to Wednesday 10-21 01:00. */
 const NOW = Date.parse('2026-10-15T12:00:00Z');
@@ -65,6 +78,7 @@ describe('readWeek', () => {
       todayWPerPct: undefined,
       teamDay: undefined,
       pool: undefined,
+      forecast: undefined,
     });
   });
 
@@ -196,6 +210,40 @@ describe('readWeek', () => {
     const readings = [meterReading(40, 900), meterReading(57, 1_480)];
     const late = readWeek({ readings, calibration: LEARNED, budget: DEFAULT_BUDGET, now: NOW, statusUse: STATUS, period: PERIOD, states: [state({ '2026-10-15': 500 })] });
     assert.deepEqual([unread, late].map((week) => [week.teamDay?.usedPct, week.todayWPerPct]), [[25, 20], [25, 20]]);
+  });
+
+  describe(`the run-out forecast, at the status line's rise over the last ${FORECAST_SPAN_MS / MS_PER_HOUR} hours`, () => {
+    /** Stores whose last day, from Wednesday 12:00, holds 1,100 W of the week's 1,500: 400 W came before it. */
+    const DAY_HOURS = [{ ...state({ '2026-10-14': 1_000, '2026-10-15': 500 }), byHour: { '2026-10-14T05': 400, '2026-10-14T12': 600 } }];
+    const forecastWeek = (readings: readonly MeterReading[], change: Partial<WeekInput> = {}): WeekReading =>
+      readWeek({ readings, calibration: LEARNED, budget: DEFAULT_BUDGET, now: NOW, statusUse: STATUS, period: PERIOD, states: DAY_HOURS, ...change });
+
+    it('says when the week reaches 100% at that rise, before the reset', () => {
+      // 400 W sit between 20% at 300 W and 25% at 500 W: 22.5%. The 1,500 W now are 58%: 35.5 points in the day.
+      const week = forecastWeek([meterReading(20, 300), meterReading(25, 500), meterReading(57, 1_480)]);
+      assert.equal(week.forecast?.risePts, 35.5);
+      assert.equal(round(week.forecast?.endPct), round(58 + (35.5 * 133) / 24), 'the reset is 133 hours away');
+      assert.equal(week.forecast?.fullAt, NOW + (42 / 35.5) * MS_PER_DAY);
+    });
+
+    it('says where the week ends when that rise keeps it below 100%', () => {
+      // From 55% at 400 W to 58%: 3 points in the day.
+      const week = forecastWeek([meterReading(55, 400), meterReading(57, 1_480)]);
+      assert.deepEqual([week.forecast?.risePts, round(week.forecast?.endPct), week.forecast?.fullAt], [3, round(58 + (3 * 133) / 24), undefined]);
+    });
+
+    it("has none in the period's first day, at the reset, at 100%, without the period's readings or stores reaching its start", () => {
+      const readings = [meterReading(20, 300), meterReading(57, 1_480)];
+      const firstDay = Date.parse('2026-10-14T13:00:00Z');
+      const weeks = [
+        forecastWeek(readings, { now: firstDay, statusUse: { ...STATUS, usedPct: 10, at: firstDay } }),
+        forecastWeek(readings, { now: RESET }),
+        forecastWeek(readings, { statusUse: FULL }),
+        forecastWeek([]),
+        forecastWeek(readings, { states: [state({ '2026-10-15': 500 })] }),
+      ];
+      assert.deepEqual(weeks.map((week) => week.forecast), [undefined, undefined, undefined, undefined, undefined]);
+    });
   });
 
   it('paces by the active time of budget.quietHours', () => {
