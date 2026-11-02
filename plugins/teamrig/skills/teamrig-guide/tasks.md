@@ -29,7 +29,9 @@ Set `waiting` when a task you started cannot go on, with `--waits` naming each r
 `approval:<who>` (the lead, or `owner` for the human; a child team's lead asks its parent team's lead, `app/lead`), `task:T<id>` (a task to finish first) or
 `time:<YYYY-MM-DD HH:MM>` (on the team's clock unless marked UTC). It stays waiting until all of them have cleared: a task when it is done or
 dropped, a time when it passes, a decision or an approval only when you, its owner, set the next status. `list`
-marks a cleared reason `ready`, and `check` flags the task `READY` once all have. A task not started that needs
+marks a cleared reason `ready`, and `check` flags the task `READY` once all have. When the lead records the owner's
+answer (`update <id> --decided`), the wait on the owner goes at once and the task stays waiting, marked decided
+(`owner decided, by lead`; `show` prints the answer) and `READY`, until you act on it and set the next status. A task not started that needs
 another first is not waiting: it stays `open`, planned after it (`teamrig update T3 --after T2`), and its line
 shows `after T2`.
 
@@ -263,7 +265,7 @@ checkpoint; a session may run it for itself.
 | `VERIFY-OVERDUE` | a `verifying` task's due time, the date to verify it by, has passed | The owner checks the proof: `done` with it as evidence, `in-progress` when it failed, or a new due date and why. |
 | `LOOP` | active tasks need each other in a circle (`T2 -> T5 -> T2`), planned after or waiting on one another, as an older teamrig could write; raised on the lowest-numbered one | None of them can finish: the owner makes the step its own task (the flag prints the command), or the lead re-plans it (`update --after`). |
 | `VERIFY-BLOCKS` | a `verifying` task another active task needs: planned after it (`--after`) or waiting on it (`--waits task:`) | The owner proves it (`done` with the proof) or reopens it (`in-progress`), so the work on it can start. |
-| `READY` | a `waiting` task whose every reason has cleared, or a `verifying` task whose proof waits all have: its tasks are done or dropped, its time has passed (a decision or an approval never clears by itself) | The owner goes on: `set --status in-progress`, or the next status; for a verifying one, checks the proof now. |
+| `READY` | a `waiting` task whose every reason has cleared, or a `verifying` task whose proof waits all have: its tasks are done or dropped, its time has passed (a decision or an approval never clears by itself); or a task decided, the owner's answer recorded with `update --decided`, whose waits left have cleared | The owner goes on: `set --status in-progress`, or the next status; for a verifying one, checks the proof now; for a decided one, acts on the answer `show <id>` prints. |
 | `NO-REASON` | a `waiting` task with no reason, as a line from an older teamrig reads | The owner sets what it waits for (`set --status waiting --waits ...`) or its next status. |
 | `NO-CARD` | a `waiting` task waits on the owner's decision or approval with no card, as one set before cards reads [register.requireDecisionCard] | The owner sets it waiting again with the card (`set --status waiting --waits ... --question ... --options ... --recommend ... --default ...`). |
 | `OWNER-ORDERED` | a task the owner ordered waits (or its proof waits) on the owner's decision or approval with no `--why-ask`, as one set before it was required, or while cards are not [register.requireDecisionCard], reads | The owner drops the wait on the owner, since the order approves its own work and proof, or sets it again with `--why-ask "<how the order must change, what new it needs, or why only the owner can see the result>"`. |
