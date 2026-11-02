@@ -6,11 +6,14 @@ import { apiErrorLine, promptLine, textLine, transcript } from '../testing/trans
 import {
   applyLoginEvent,
   authFailureOf,
+  claimPage,
   formatLoginMarker,
   loginExpired,
   loginLogLine,
   loginMarkerPath,
+  loginPageText,
   parseLoginMarker,
+  releasePage,
   STRANDED_KEEP_MS,
   type LoginChange,
   type LoginEvent,
@@ -76,8 +79,34 @@ describe('login marker', () => {
   it('starts an expiry at the first auth failure and strands its tab', () => {
     const change = written(applyLoginEvent(undefined, failed(TAB_A, EXPIRY)));
     assert.equal(change.note, 'expired');
-    assert.deepEqual(change.marker, { expiredAt: EXPIRY, lastFailAt: EXPIRY, recoveredAt: undefined, stranded: new Map([[TAB_A, EXPIRY]]) });
+    assert.deepEqual(change.marker, { expiredAt: EXPIRY, lastFailAt: EXPIRY, recoveredAt: undefined, stranded: new Map([[TAB_A, EXPIRY]]), pagedAt: undefined });
     assert.equal(loginExpired(change.marker), true);
+  });
+
+  it("claims the owner's page once per expiry, and only while the login is expired", () => {
+    const marker = markerAfter(failed(TAB_A, EXPIRY));
+    const claimed = claimPage(marker, EXPIRY + 1);
+    assert.ok(claimed !== undefined);
+    assert.equal(claimed.pagedAt, EXPIRY + 1);
+    assert.equal(claimPage(claimed, EXPIRY + 2), undefined, 'a second failure of the expiry pages no more');
+    const stranded = written(applyLoginEvent(claimed, failed(TAB_B, EXPIRY + 3)));
+    assert.equal(stranded.marker.pagedAt, EXPIRY + 1, 'one more tab stuck keeps the claim');
+    const recovered = written(applyLoginEvent(stranded.marker, answered(TAB_A, EXPIRY + MS_PER_MINUTE)));
+    assert.equal(claimPage(recovered.marker, EXPIRY + 2 * MS_PER_MINUTE), undefined, 'a working login pages no one');
+    const again = written(applyLoginEvent(recovered.marker, failed(TAB_A, EXPIRY + MS_PER_DAY)));
+    assert.deepEqual([again.note, again.marker.pagedAt], ['expired', undefined], 'a new expiry pages anew');
+  });
+
+  it('gives back only the claim a failed page made', () => {
+    const claimed = claimPage(markerAfter(failed(TAB_A, EXPIRY)), EXPIRY);
+    assert.ok(claimed !== undefined);
+    assert.equal(releasePage(claimed, EXPIRY)?.pagedAt, undefined);
+    assert.equal(releasePage(claimed, EXPIRY + 1), undefined, "another tab's claim stays");
+    assert.equal(releasePage(markerAfter(failed(TAB_A, EXPIRY)), EXPIRY), undefined, 'no claim, nothing to give back');
+  });
+
+  it('pages the owner with the tab, the time on the team clock and what to do', () => {
+    assert.equal(loginPageText('app/alpha', '12:02 IST'), 'Claude login expired: app/alpha ended its turn on Login expired at 12:02 IST. Run /login in any tab, then prompt the tabs that stopped.');
   });
 
   it('keeps one expiry for every failure until a good turn, its first and last failure times', () => {
@@ -133,12 +162,14 @@ describe('login marker', () => {
   it('reads back what it writes, and no damaged or foreign marker', () => {
     const expired = markerAfter(failed(TAB_A, EXPIRY), failed(TAB_B, EXPIRY + 1_000));
     const recovered = markerAfter(failed(TAB_A, EXPIRY), answered(TAB_A, EXPIRY + 1_000));
-    for (const marker of [expired, recovered]) {
+    const paged = claimPage(expired, EXPIRY + 2_000);
+    assert.ok(paged !== undefined);
+    for (const marker of [expired, recovered, paged]) {
       assert.deepEqual(parseLoginMarker(formatLoginMarker(marker)), marker);
     }
     assert.match(formatLoginMarker(expired), /"expiredAt": "2030-01-08T00:02:00.000Z"/);
     const good = { expiredAt: '2030-01-08T00:02:00Z', lastFailAt: '2030-01-08T00:02:00Z', stranded: {} };
-    for (const damaged of ['not json', '[]', JSON.stringify({ ...good, expiredAt: 'soon' }), JSON.stringify({ ...good, recoveredAt: 7 }), JSON.stringify({ ...good, stranded: { '../x': '2030-01-08T00:02:00Z' } }), JSON.stringify({ ...good, stranded: { [TAB_A]: 'later' } }), JSON.stringify({ ...good, stranded: [] })]) {
+    for (const damaged of ['not json', '[]', JSON.stringify({ ...good, expiredAt: 'soon' }), JSON.stringify({ ...good, recoveredAt: 7 }), JSON.stringify({ ...good, pagedAt: 'once' }), JSON.stringify({ ...good, stranded: { '../x': '2030-01-08T00:02:00Z' } }), JSON.stringify({ ...good, stranded: { [TAB_A]: 'later' } }), JSON.stringify({ ...good, stranded: [] })]) {
       assert.equal(parseLoginMarker(damaged), undefined, damaged);
     }
     assert.deepEqual(parseLoginMarker(JSON.stringify(good))?.stranded, new Map());

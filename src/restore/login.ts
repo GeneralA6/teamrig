@@ -38,6 +38,8 @@ export interface LoginMarker {
   readonly recoveredAt: number | undefined;
   /** Each tab (Claude session id) whose last turn ended on an auth failure, and when. */
   readonly stranded: ReadonlyMap<string, number>;
+  /** When a tab claimed the owner's page for the latest expiry; undefined while none has, so the next failure pages. */
+  readonly pagedAt: number | undefined;
 }
 
 /** A turn end the marker follows: one that failed on the login, or one the model answered. */
@@ -104,7 +106,7 @@ function authFailed(existing: LoginMarker | undefined, tab: string, at: number):
   const stranded = withStranded(keptStranded(existing?.stranded ?? new Map(), at), tab, at);
   // A failure after the recovery, or the first one ever, starts a new expiry.
   if (existing === undefined || (existing.recoveredAt !== undefined && at > existing.recoveredAt)) {
-    return { kind: 'write', marker: { expiredAt: at, lastFailAt: at, recoveredAt: undefined, stranded }, note: 'expired' };
+    return { kind: 'write', marker: { expiredAt: at, lastFailAt: at, recoveredAt: undefined, stranded, pagedAt: undefined }, note: 'expired' };
   }
   // A failure the hooks report after a later recovery (out of order) belongs to the expiry that ended: it only strands its tab.
   if (existing.recoveredAt !== undefined) {
@@ -141,6 +143,27 @@ export function applyLoginEvent(existing: LoginMarker | undefined, event: LoginE
   return event.kind === 'auth-failed' ? authFailed(existing, event.claudeSession, event.at) : answered(existing, event.claudeSession, event.at);
 }
 
+/**
+ * The marker with the owner's page claimed at `at`: only while the login is still expired and no tab has claimed the
+ * page of this expiry, so a dozen tabs failing at once page once. Undefined when there is nothing to claim.
+ */
+export function claimPage(marker: LoginMarker, at: number): LoginMarker | undefined {
+  return loginExpired(marker) && marker.pagedAt === undefined ? { ...marker, pagedAt: at } : undefined;
+}
+
+/**
+ * The marker with a failed page's claim (`claimedAt`) given back, so the next failure pages again. Undefined when the
+ * claim is no longer that one: a new expiry, or another tab's claim since.
+ */
+export function releasePage(marker: LoginMarker, claimedAt: number): LoginMarker | undefined {
+  return marker.pagedAt === claimedAt ? { ...marker, pagedAt: undefined } : undefined;
+}
+
+/** The owner's page for an expiry: `tab` names the tab whose failure claimed it, `clock` the failure's time on the team's clock. */
+export function loginPageText(tab: string, clock: string): string {
+  return `Claude login expired: ${tab} ended its turn on Login expired at ${clock}. Run /login in any tab, then prompt the tabs that stopped.`;
+}
+
 /** The restore log's line for a change's note: `tab` names the tab whose turn end made it. */
 export function loginLogLine(note: LoginNote, tab: string, marker: LoginMarker): string {
   const stuck = `${marker.stranded.size} tab(s) stuck`;
@@ -165,6 +188,7 @@ export function formatLoginMarker(marker: LoginMarker): string {
     lastFailAt: isoOf(marker.lastFailAt),
     recoveredAt: marker.recoveredAt === undefined ? undefined : isoOf(marker.recoveredAt),
     stranded: Object.fromEntries([...marker.stranded].map(([tab, at]) => [tab, isoOf(at)])),
+    pagedAt: marker.pagedAt === undefined ? undefined : isoOf(marker.pagedAt),
   };
   return `${JSON.stringify(record, null, 2)}\n`;
 }
@@ -201,9 +225,11 @@ export function parseLoginMarker(text: string): LoginMarker | undefined {
   const expiredAt = instantOf(record, 'expiredAt');
   const lastFailAt = instantOf(record, 'lastFailAt');
   const recoveredAt = instantOf(record, 'recoveredAt');
+  const pagedAt = instantOf(record, 'pagedAt');
   const stranded = strandedOf(record['stranded']);
-  if (expiredAt === undefined || lastFailAt === undefined || stranded === undefined || (record['recoveredAt'] !== undefined && recoveredAt === undefined)) {
+  const badOptional = (record['recoveredAt'] !== undefined && recoveredAt === undefined) || (record['pagedAt'] !== undefined && pagedAt === undefined);
+  if (expiredAt === undefined || lastFailAt === undefined || stranded === undefined || badOptional) {
     return undefined;
   }
-  return { expiredAt, lastFailAt, recoveredAt, stranded };
+  return { expiredAt, lastFailAt, recoveredAt, stranded, pagedAt };
 }
