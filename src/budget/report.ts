@@ -1,3 +1,4 @@
+import { MS_PER_HOUR } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { ruleLabel, ruleNumberOf } from '../rules/keys.ts';
 import type { InBurst } from './burst.ts';
@@ -10,7 +11,7 @@ import { hasRoom } from './pace.ts';
 import { emptyPatterns, PATTERN_FIELDS, type PatternField } from './patterns.ts';
 import { DAYS_KEPT, type DayUsage, type UsageState } from './store.ts';
 import type { TaskUse } from './task-use.ts';
-import type { WeekReading } from './week.ts';
+import { FORECAST_SPAN_MS, type WeekForecast, type WeekReading } from './week.ts';
 
 /** The lines of `teamrig budget`: short by default, the key numbers and anything past its budget. */
 
@@ -91,7 +92,10 @@ function useText(w: number, calls: number): string {
   return `${formatW(w)} W in ${formatCount(calls)} call${calls === 1 ? '' : 's'}`;
 }
 
-/** The week's use and its pace, on the team's clock, and the extra-usage pool: the first line of `budget`, and the last of `start`. */
+/**
+ * The week's use and its pace, on the team's clock, where it heads by the reset and the extra-usage pool: the first
+ * line of `budget`, and the last of `start`.
+ */
 export function weekLine(week: WeekReading, zone: TimeZone): string {
   if (week.usedPct === undefined || week.reset === undefined) {
     return "Week: its use is unknown: no status line reading (run teamrig statusline install) and no budget.weeklyLimitW.";
@@ -102,7 +106,22 @@ export function weekLine(week: WeekReading, zone: TimeZone): string {
     pace === undefined
       ? ''
       : `; the pace line is at ${formatPct(pace.linePct)}: ${pace.state === 'on pace' ? 'on pace' : `${Math.abs(pace.gapPts).toFixed(1)} points ${pace.state}`}`;
-  return `Week: ${formatPct(week.usedPct)} used${source}${paceText}. Resets ${zone.weekdayMinute(new Date(week.reset))}.${periodText(week, zone)}${poolText(week.pool)}`;
+  const resets = `Resets ${zone.weekdayMinute(new Date(week.reset))}.${forecastText(week.forecast, zone)}`;
+  return `Week: ${formatPct(week.usedPct)} used${source}${paceText}. ${resets}${periodText(week, zone)}${poolText(week.pool)}`;
+}
+
+/**
+ * Where the week heads at the last day's rise (`WeekReading.forecast`): when it reaches 100%, before the reset, else
+ * near what it ends the week at; nothing while that rise is unknown.
+ */
+function forecastText(forecast: WeekForecast | undefined, zone: TimeZone): string {
+  if (forecast === undefined) {
+    return '';
+  }
+  const rise = ` At the last ${FORECAST_SPAN_MS / MS_PER_HOUR} hours' rise of ${forecast.risePts.toFixed(1)} points`;
+  return forecast.fullAt === undefined
+    ? `${rise}, it ends the week near ${Math.round(forecast.endPct)}%.`
+    : `${rise}, it reaches 100% ${zone.weekdayMinute(new Date(forecast.fullAt))}.`;
 }
 
 /** When the status line reading was taken: its time, and its day too when that was before today's start, so a stale reading shows as stale. */
