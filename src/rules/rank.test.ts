@@ -42,6 +42,14 @@ describe('rankCandidates', () => {
     assert.deepEqual(order(scanned), ['claude-md:4', 'claude-md:2', 'claude-md:3', 'claude-md:5', 'claude-md:1']);
   });
 
+  it('counts the kit as named only by its name, never by a folder of a path the teamrig tag also matched', () => {
+    const paths = ['~/.teamrig/teams/app/notes.md', 'plugins/teamrig/dist', 'C:\\work\\teamrig\\src', 'C:/work/teamrig'];
+    for (const path of paths) {
+      const scanned = [candidate('claude-md', 1, `Never skip the check in ${path} first.`, [], ['teamrig']), candidate('claude-md', 2, 'Run `teamrig merge` from the release script.', [], ['teamrig'])];
+      assert.deepEqual(order(scanned), ['claude-md:2', 'claude-md:1'], path);
+    }
+  });
+
   it('ranks by where a line loads before what it says: a skill line naming the kit comes after a plain CLAUDE.md line', () => {
     const scanned = [candidate('skill', 1, 'Never run teamrig merge from this skill.', ['own-change'], ['teamrig']), candidate('claude-md', 2, PLAIN)];
     assert.deepEqual(order(scanned), ['claude-md:2', 'skill:1']);
