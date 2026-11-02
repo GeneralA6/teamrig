@@ -3,15 +3,18 @@ import { isStaticWord, parseShell, type ShellCommand, type ShellParse } from '..
 /**
  * The first gate of a sanctioned route (T679, security ruling C1): a Bash line is one plain command whose words are
  * their own text, so the words a route matches are the words bash runs. Two layers, each enough to refuse: a scan of
- * the raw text, which no gap in the tokenizer can pass, then the parse. A quoted commit message holding `;` or `>` is
- * refused too: it simply matches no route, and the call goes on to the prompt as before.
+ * the raw text, which no gap in the tokenizer can pass, then the parse. A quoted commit message holding `;`, `>` or `#`
+ * is refused too: it simply matches no route, and the call goes on to the prompt as before.
  */
 
 /** A standalone `2>&1`, the one redirection a route line may carry; the scan takes it out before it looks. */
 const STDERR_TO_STDOUT = /(?<=^|[ \t])2>&1(?=[ \t]|$)/g;
 
-/** Text that may join, feed, redirect or substitute another command, refused even inside quotes. */
-const JOINS = /[;&|<>`]|\$[({]/;
+/**
+ * Text that may join, feed, redirect or substitute another command, refused even inside quotes; and `#`, whose comment
+ * bash skips, so an allowed line never carries text the matcher did not judge.
+ */
+const JOINS = /[;&|<>`#]|\$[({]/;
 
 /** A leading `NAME=value` word, which sets a variable for the command instead of naming its program. */
 const ASSIGNMENT = /^[A-Za-z_]\w*=/;
@@ -30,7 +33,7 @@ export function plainWordsOf(line: string): readonly string[] | undefined {
   return program === undefined || ASSIGNMENT.test(program) ? undefined : words;
 }
 
-/** The raw scan: no control character but a tab (a newline included), nothing that joins commands, outside a lone `2>&1`. */
+/** The raw scan: no control character but a tab (a newline included), nothing that joins commands or starts a comment, outside a lone `2>&1`. */
 function scansPlain(line: string): boolean {
   const scanned = line.replace(STDERR_TO_STDOUT, ' ');
   return !JOINS.test(scanned) && ![...scanned].some(isControl);

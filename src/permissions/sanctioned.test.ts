@@ -77,6 +77,15 @@ describe('routeOf', () => {
       'teamrig list 2> err.txt',
       'teamrig list >&2',
       'teamrig list < in.txt',
+      'teamrig list >> out.txt',
+      'teamrig list &> out.txt',
+      'teamrig list 1>&2',
+      'teamrig list 2>&1 > out.txt',
+      'teamrig list |& cat',
+      'git commit -F >(cat) -m msg',
+      'teamrig merge # --force',
+      'teamrig merge #',
+      'git commit -s -m "fix: the route (#12)"',
       'HUSKY=0 git commit -m msg',
       'GIT_CONFIG_COUNT=1 git commit -m msg',
       '(teamrig merge)',
@@ -84,6 +93,9 @@ describe('routeOf', () => {
       'git commit -m "a;b"',
       'teamrig worktree remove C:/w/t1-* --session tr-canary',
       'teamrig worktree remove ~/w --session tr-canary',
+      'teamrig worktree remove C:/w/t1-? --session tr-canary',
+      'teamrig worktree remove C:/w/t1-[ab] --session tr-canary',
+      'teamrig worktree remove C:/w/{t1,t2} --session tr-canary',
       '',
     ]);
   });
@@ -97,6 +109,9 @@ describe('routeOf', () => {
       `${INSTALL}/dist/cli/main.js merge`,
       'C:/u/.claude/plugins/cache/teamrig/teamrig/0.214.0/bin/teamrig merge',
       'teamrig.cmd merge',
+      'teamrig.exe merge',
+      'teamrig.ps1 merge',
+      `${INSTALL}/bin/teamrig.ps1 merge`,
       'Teamrig merge',
     ]);
     const shadowed: RouteContext = {
@@ -124,6 +139,10 @@ describe('routeOf', () => {
       'git commit -nm msg',
       'git commit --no-verify -m msg',
       'git commit --no-veri -m msg',
+      'git commit --no-verif -m msg',
+      'git commit -m msg -n',
+      'git commit -s -m msg --no-verify',
+      'git commit --verify --no-verify -m msg',
       'git commit --amend --no-edit',
       'git -c core.hooksPath=/x commit -m msg',
       'git --config-env=core.hooksPath=X commit -m msg',
@@ -167,6 +186,13 @@ describe('routeOf', () => {
       'git push --exec=x origin t1-canary',
       'git push --repo=origin t1-canary',
       'git push -o ci.skip origin t1-canary',
+      'git push origin t1-canary --force',
+      'git push origin t1-canary -f',
+      'git push origin t1-canary --no-verify',
+      'git push --force-with-lease=t1-canary origin t1-canary',
+      'git push origin :t1-canary',
+      'git push origin @',
+      'git push origin HEAD:t1-canary',
     ]);
   });
 
