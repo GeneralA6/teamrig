@@ -40,7 +40,7 @@ Team settings for the teamrig plugin. Only the roster (sessions, roles.lead) is 
 | `wake` | [object](#wake) |  | Waking a session idle at its prompt when work is handed to it, instead of at its next prompt. Only work the session can go on with wakes (open or started past every task it comes after, or waiting with every wait cleared or answered), tasks handed together wake once, and each wake says what it costs. |
 | `tests` | [object](#tests) |  | What teamrig test prints of a failed run. |
 | `github` | [object](#github) |  | teamrig gh sync: GitHub issues read into the register as tasks of source github. It only reads GitHub and never writes to it; local tasks stay local. Each owner's repositories are read with the read-only token saved as teamrig-gh-\<owner> in the system's credential store, else the gh login (docs/github-sync.md). |
-| `alerts` | [object](#alerts) |  | The alerting rule the core rules state. |
+| `alerts` | [object](#alerts) |  | The alerting rule the core rules state, and where a page to the owner goes. |
 | `decisions` | [object](#decisions) |  | When the lead asks the owner the decisions waiting on them (tasks waiting on the owner's decision or approval), together in one batch instead of one at a time. A batch holds the waits not yet asked and the asked ones now past their due date; `teamrig decisions` prints it and `teamrig decisions asked` records it asked, as a meeting's start does. The lead's check says when one is due. |
 | `tabStatus` | [object](#tabstatus) |  | A colored circle before each terminal tab's title for what its session is doing: green ready, yellow working (or a helper still running), orange waiting on the user, blue waiting on the user's decision (a turn whose last message has a `Decision needed:` line), red an API error, purple compacting. |
 | `pickerGuard` | [object](#pickerguard) |  | Refuses Claude Code's question picker (AskUserQuestion) in every session and helper of the team, and in the lead's own thread unless the owner's daily meeting is open: the picker stops the session until the person answers, and the owner may be away for hours, so none of its other tasks moves meanwhile. The refusal tells the session to decide it when it is its own, else to record it on its task (a waiting status with its decision card, --default included), which reaches the owner through the lead, and go on with its next task; only with no task left, to end its turn with the question and a `Decision needed:` line. A helper ends its report with the decision instead. Plan mode's ExitPlanMode stays allowed. |
@@ -504,11 +504,13 @@ teamrig gh sync: GitHub issues read into the register as tasks of source github.
 
 ## `alerts`
 
-The alerting rule the core rules state.
+The alerting rule the core rules state, and where a page to the owner goes.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `persistentFailureHours` | integer (1 to 720) | `24` | The same external failure for this long must page a human. |
+| `pageWebhookEnv` | string (matching `^[A-Za-z_][A-Za-z0-9_]{0,63}$`) |  | The name of the environment variable holding the chat webhook URL that a page to the owner (an expired Claude login) is posted to, never the URL itself. Unset, with pageWebhookFile unset too: nothing pages. |
+| `pageWebhookFile` | string (matching `^(?:[A-Za-z]:)?[\\/][^\r\n]*$`) |  | The absolute path of a one-line file holding that webhook URL, read at each page, so the URL never sits in an environment, a log or a session's read. Wins over pageWebhookEnv when both are set. |
 
 ## `decisions`
 
