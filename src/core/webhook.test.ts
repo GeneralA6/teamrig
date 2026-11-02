@@ -74,7 +74,7 @@ describe('httpWebhook', () => {
   });
 
   it('never quotes the URL when it is not one or cannot be reached', async () => {
-    assert.equal(await httpWebhook().post('not a url/with-token', 'RAN R1'), 'the variable does not hold a URL');
+    assert.equal(await httpWebhook().post('not a url/with-token', 'RAN R1'), 'the webhook address is not a URL');
     const closed = createServer();
     const gone = await listening(closed);
     await new Promise<void>((done) => closed.close(() => done()));

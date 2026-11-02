@@ -7,6 +7,7 @@ import type { StepRunner } from '../delivery/steps.ts';
 import type { FileBytes } from '../core/file-bytes.ts';
 import type { Files } from '../core/files.ts';
 import type { Env } from '../core/home.ts';
+import type { ChatWebhook } from '../core/webhook.ts';
 import type { ExecPorts } from '../exec/ports.ts';
 import type { Clock, Sleep } from '../core/lock.ts';
 import type { PathProbe } from '../core/path-probe.ts';
@@ -101,6 +102,8 @@ export interface CliRuntime {
   readonly packageRegistry: PackageRegistry;
   /** The process `teamrig exec` runs a reviewed command in, and the git checkout its binding check reads. */
   readonly exec: ExecPorts;
+  /** The chat webhook `teamrig exec` posts its reviews and runs to. */
+  readonly webhook: ChatWebhook;
   /** The config format the run reads and migrates to; default the shipped one (tests give a newer release's). */
   readonly configFormat?: ConfigFormat;
   /** cmd.exe's whole command line, which the `teamrig.cmd` shim passes, for the arguments cmd cut at a line break (cmd-shim.ts). */

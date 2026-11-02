@@ -1,7 +1,9 @@
-import { isRecord, stringField } from '../core/guards.ts';
+import { isRecord, stringField } from './guards.ts';
 
-/** Where `teamrig exec` posts each approval, refusal and run (spec §10): one line of text to a chat webhook. */
-export interface ExecWebhook {
+/**
+ * A chat webhook teamrig posts one line of text to: `teamrig exec` each approval, refusal and run (exec spec §10).
+ */
+export interface ChatWebhook {
   /** Posts `content` to `url`; undefined once it is posted, else why not, in words that never hold the URL. */
   post(url: string, content: string): Promise<string | undefined>;
 }
@@ -32,11 +34,11 @@ function failureOf(error: unknown, timeoutMs: number): string {
  * A chat webhook over HTTP: a JSON POST of `content`, with every mention turned off so a note that names
  * `@everyone` or a role pings no one.
  */
-export function httpWebhook(timeoutMs: number = WEBHOOK_TIMEOUT_MS): ExecWebhook {
+export function httpWebhook(timeoutMs: number = WEBHOOK_TIMEOUT_MS): ChatWebhook {
   return {
     async post(url, content) {
       if (!URL.canParse(url)) {
-        return 'the variable does not hold a URL';
+        return 'the webhook address is not a URL';
       }
       try {
         const response = await fetch(url, {

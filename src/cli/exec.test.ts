@@ -40,7 +40,8 @@ class ExecTeam {
     this.options = {
       platform: 'win32',
       probe: probeOf('C:/nodejs/node.exe'),
-      exec: { spawner: this.spawner, checkout: new FakeCheckout(), webhook },
+      exec: { spawner: this.spawner, checkout: new FakeCheckout() },
+      webhook,
       env: { DB_READ_URI: 'db://read', DB_WRITE_URI: 'db://write', ...env },
     };
   }
