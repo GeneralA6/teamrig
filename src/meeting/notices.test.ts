@@ -32,6 +32,10 @@ describe('the meeting notices', () => {
     assert.ok(long.length <= 'T1: '.length + NOTE_CHARS, long);
   });
 
+  it("says a Decided cleared the task's wait on the owner, for its owner to act on (T1366)", () => {
+    assert.equal(decisionText(update('T1', '2030-01-08T09:10:00Z', { decided: true })), 'T1: owner decided: go (its wait on the owner cleared: act on it, set its next status)');
+  });
+
   it("groups the lead's updates during the meeting by each task's owner, leaving out the rest", () => {
     const tasks = new Map<string, Task>([
       ['T1', testTask({ id: 'T1', owner: 'alpha' })],

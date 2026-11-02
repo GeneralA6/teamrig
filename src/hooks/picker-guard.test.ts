@@ -90,7 +90,7 @@ describe('pickerReason', () => {
   it('tells the lead in an open meeting that asks in plain text to read the card, let the owner answer in words and record it', () => {
     const reason = pickerReason('teamrig', { session: 'lead', role: 'lead' }, { open: true, askWith: 'text' });
     assert.match(reason, /^teamrig picker guard: the owner's daily meeting asks in plain text \(decisions\.askWith: text\)\. Read the card as it stands, its options numbered and your recommendation first/);
-    assert.match(reason, /let the owner answer in their own words; record the answer in the same turn: `teamrig update <id> --note "owner decided: <decision>" --session lead`\.$/);
+    assert.match(reason, /let the owner answer in their own words; record the answer in the same turn: `teamrig update <id> --decided --note "owner decided: <decision>" --session lead`\.$/);
     assert.doesNotMatch(reason, /teamrig set|Decision needed|away for hours/);
   });
 

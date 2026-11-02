@@ -43,7 +43,7 @@ describe('the decisions listing', () => {
     assert.match(lines[past + 1] ?? '', /^ {2}T2 waiting, p2, owner alpha, due 01-07 \| Decide T2/);
     assert.deepEqual(lines.slice(-3), [
       '  Ask owner these together, each card as it stands, each figure explained; then teamrig decisions asked --session lead records the batch asked.',
-      '  Record each answer in the same turn: teamrig update <id> --note "owner decided: <decision>" --session lead.',
+      '  Record each answer in the same turn: teamrig update <id> --decided --note "owner decided: <decision>" --session lead; the card leaves the batches.',
       // T1295: a card the owner puts off leaves the batches until its date.
       '  A card owner puts off to a date: teamrig update <id> --later <date> --note "owner put it off: <why>" --session lead; no batch asks it before then.',
     ]);
@@ -51,7 +51,7 @@ describe('the decisions listing', () => {
 
   it("names in a child team the lead at its tree's root, who asks the waits and records each answer (T1018)", () => {
     const lines = batchLines({ ...viewOf([ownerWait('T1', '2030-01-08T09:00:00.000Z')]), askedBy: 'app/lead' });
-    assert.deepEqual(lines.slice(-1), ['  app/lead asks owner these in its batches and records each answer on its task as a note: "owner decided: <decision>".']);
+    assert.deepEqual(lines.slice(-1), ['  app/lead asks owner these in its batches and records each answer on its task as decided: "owner decided: <decision>".']);
     assert.ok(!lines.some((line) => line.includes('decisions asked')), lines.join('\n'));
   });
 });
