@@ -21,7 +21,8 @@ export async function markKeepWorkingAsk(runtime, paths, written) {
 }
 /**
  * The Stop hook's block reason for the session from its due ask; undefined without one, in the budget's quiet hours
- * or while its budget holds it (the day-start wake brings it back to its work), or with nothing it can start. The ask is
+ * or while its budget holds or a short day pauses it (the day-start wake brings it back to its work), or with nothing
+ * it can start. The ask is
  * removed before the reason is returned, so it blocks one stop only. Most stops read one missing file; the budget
  * and the register are read only when an ask is due.
  */
