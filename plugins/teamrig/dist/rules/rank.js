@@ -14,6 +14,12 @@
 export const LOAD_WEIGHT = { 'claude-md': 2, rules: 2, 'team-rules': 2, settings: 2, hook: 1, memory: 1, skill: 0 };
 /** Words that make a line tell a session what to do or not do, or what it may do. */
 const DIRECTIVE_WORDS = /\b(never|always|must|may|do not|don't|only|no one|nobody|without (asking|approval)|skip|instead)\b/i;
+/**
+ * "teamrig" as a name, never as a folder of a path (`~/.teamrig/teams/app/notes.md`, `plugins/teamrig/dist`): a line
+ * that only points at a file under the kit's folders does not speak of its rules. The `teamrig` tag of `topicsOf` stays
+ * broad, so `rules scan` still lists such a line; only its rank here leaves the path out.
+ */
+const NAMES_KIT = /(?<![\w./\\])teamrig(?![\w/\\])/i;
 /** Whether a session reads the candidate's line without being asked (LOAD_WEIGHT 2). */
 export function loadsUnasked(candidate) {
     return LOAD_WEIGHT[candidate.place.kind] === 2;
@@ -23,9 +29,8 @@ export function loadsUnasked(candidate) {
  * weights 4, 2 and 1 keep those three apart in one number.
  */
 function rankOf(candidate) {
-    const { tags } = candidate.topics;
-    const directs = tags.includes('precedence') || DIRECTIVE_WORDS.test(candidate.text);
-    return LOAD_WEIGHT[candidate.place.kind] * 4 + (tags.includes('teamrig') ? 2 : 0) + (directs ? 1 : 0);
+    const directs = candidate.topics.tags.includes('precedence') || DIRECTIVE_WORDS.test(candidate.text);
+    return LOAD_WEIGHT[candidate.place.kind] * 4 + (NAMES_KIT.test(candidate.text) ? 2 : 0) + (directs ? 1 : 0);
 }
 /** Every candidate, in the order to judge them (see above); candidates of one rank keep the scan's order. */
 export function rankCandidates(candidates) {
