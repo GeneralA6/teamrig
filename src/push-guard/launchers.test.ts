@@ -135,6 +135,19 @@ describe('launch: programs and wrappers', () => {
     const deep = launch(parseShell(`${'nohup '.repeat(16)}git push`, 'bash').commands[0]?.words ?? [], 'bash');
     assert.equal(deep.kind === 'opaque' ? deep.command : 'not opaque', undefined);
   });
+
+  it('keeps the command of a teamrig call whose subcommand is only known when it runs, so the exec guard can refuse it', () => {
+    for (const [line, dialect] of [
+      ['teamrig "$G" approve R1', 'bash'],
+      ['teamrig $G approve R1', 'powershell'],
+    ] as const) {
+      const launched = launch(parseShell(line, dialect).commands[0]?.words ?? [], dialect);
+      assert.equal(summary(launched), 'opaque: the teamrig subcommand it runs is only known when it runs', line);
+      assert.ok(launched.kind === 'opaque' && launched.command !== undefined, line);
+      assert.equal(show(launched.command.program), 'teamrig', line);
+      assert.deepEqual(launched.command.args.map(show), ['~$G', 'approve', 'R1'], line);
+    }
+  });
 });
 
 describe('launch: keywords', () => {

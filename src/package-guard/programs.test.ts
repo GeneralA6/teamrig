@@ -116,6 +116,8 @@ describe('runsOf', () => {
       runsOf(command, context(dialect)).opaque.map((run) => `${run.dialect}: ${[run.program.text, ...run.args.map((arg) => arg.text)].join(' ')}`);
     assert.deepEqual(opaque('$T exec approve R1 && git status'), ['bash: $T exec approve R1']);
     assert.deepEqual(opaque('bash -c "$RUNNER eslint ."'), ['bash: $RUNNER eslint .']);
+    assert.deepEqual(opaque('teamrig "$G" approve R1'), ['bash: teamrig $G approve R1']);
+    assert.deepEqual(opaque('teamrig $G approve R1', 'powershell'), ['powershell: teamrig $G approve R1']);
     assert.deepEqual(opaque('T=/opt/kit/bin/teamrig; $T exec status R1'), []);
     assert.deepEqual(opaque('teamrig exec status R1'), []);
   });

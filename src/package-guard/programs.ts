@@ -92,7 +92,10 @@ interface Group {
   readonly held: boolean;
 }
 
-/** A command whose program word is only known when it runs: `$T exec approve R1`, with `T` set outside the line. */
+/**
+ * A command whose program word is only known when it runs (`$T exec approve R1`, with `T` set outside the line), or a
+ * teamrig call whose subcommand is (`teamrig "$G" approve R1`).
+ */
 export interface OpaqueRun {
   readonly program: ShellWord;
   readonly args: readonly ShellWord[];
