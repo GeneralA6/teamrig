@@ -1,13 +1,16 @@
 import { isRecord, recordField, stringField } from "../core/guards.js";
 import { placeProgram, placeScript } from "../exec/client-launch.js";
 import { runsOf } from "../package-guard/programs.js";
+import { programName } from "../push-guard/launchers.js";
 import { holdBackOutput } from "./permission.js";
 /**
  * The exec guard (T755, spec §7): an agent tab may run a `teamrig exec` review (approve, refuse, escalate) only as
  * itself. The allow line `Bash(teamrig exec *)` lets every exec command through unasked, and the CLI takes the
  * reviewer from `--session`, self-declared, so without this guard any tab could approve its own request as the
  * security reviewer or the owner. The owner never reviews through a tool call: they review in their own terminal, or
- * type `/teamrig exec approve R<n> --session <owner>` in a tab, which the mod runs without a PreToolUse hook.
+ * type `/teamrig exec approve R<n> --session <owner>` in a tab, which the mod runs without a PreToolUse hook. A teamrig
+ * call with a word only known when it runs that decides whether it reviews, or as whom, is refused: its subcommand
+ * too (`teamrig "$G" approve R1`, or `f(){ teamrig "$@"; }; f exec approve ...`), as reviews are not signed (T1780).
  *
  * It also pins the client (spec §2.2, phase 1): every `teamrig exec` call, whatever its command, runs only through an
  * install of this plugin whose files are the ones its build hashed, as phase 1 runs an approved request inside that
@@ -64,6 +67,10 @@ function teamrigLaunchOf(run) {
         return entry === -1 ? undefined : { client: { kind: 'script', word: script }, words };
     }
     return entry !== -1 || startsExec(words) || startsOwner(words) ? { client: { kind: 'opaque', word: script }, words } : undefined;
+}
+/** True for a teamrig call whose subcommand is only known when it runs (`teamrig "$G" approve R1`), which the walker leaves unread. */
+function hidesSubcommand(run) {
+    return !run.program.dynamic && programName(run.program.text) === 'teamrig';
 }
 /**
  * The guarded call the words run, read as the CLI reads them (src/cli/args.ts): the first two words are the command,
@@ -225,10 +232,11 @@ export async function execGuardOutput(payload, env) {
     });
     const opaque = runs.opaque.filter((run) => startsExec(run.args));
     const opaqueOwner = runs.opaque.filter((run) => startsOwner(run.args));
-    if (calls.length === 0 && opaque.length === 0 && opaqueOwner.length === 0) {
+    const unread = runs.opaque.some(hidesSubcommand) || calls.some(({ call }) => call.kind === 'unreadable');
+    if (calls.length === 0 && opaque.length === 0 && opaqueOwner.length === 0 && !unread) {
         return '';
     }
-    const reasons = calls.some(({ call }) => call.kind === 'unreadable') ? [UNREADABLE] : [];
+    const reasons = unread ? [UNREADABLE] : [];
     reasons.push(...opaque.map((run) => opaqueRefusalOf(run.program)));
     reasons.push(...calls.flatMap(({ call }) => (call.kind === 'owner' ? [ownerRefusalOf(call.action)] : [])));
     reasons.push(...opaqueOwner.map((run) => ownerRefusalOf(ownerActionOf(run.args))));

@@ -476,12 +476,13 @@ class LaunchReader {
     /**
      * `teamrig queue` and `teamrig test` run the words after their first `--` as `commandLine` (test-run/shell.ts)
      * joins them: one word as a command line for the shell `spawn` starts, several as a program and its arguments.
-     * What they start is marked `runner`. Any other subcommand is teamrig itself.
+     * What they start is marked `runner`. Any other subcommand is teamrig itself. A subcommand only known when it runs
+     * may be a runner, so the command is opaque; it keeps its words for the exec guard, as it may be `exec approve`.
      */
     teamrig(args, head) {
         const [subcommand] = args;
         if (subcommand?.dynamic === true) {
-            return { kind: 'opaque', reason: 'the teamrig subcommand it runs is only known when it runs', gated: true };
+            return { kind: 'opaque', reason: 'the teamrig subcommand it runs is only known when it runs', gated: true, command: { program: head, args } };
         }
         const end = args.findIndex((arg) => !arg.dynamic && arg.text === '--');
         if (subcommand === undefined || !TEAMRIG_RUNNERS.has(subcommand.text) || end === -1) {
