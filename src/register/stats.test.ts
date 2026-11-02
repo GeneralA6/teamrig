@@ -46,7 +46,8 @@ describe('registerStats: the days', () => {
   it('covers the range on the zone calendar, today included', () => {
     const days = statsOf([]).days.map((day) => day.day);
     assert.deepEqual(days, ['2030-01-04', '2030-01-05', '2030-01-06', '2030-01-07', '2030-01-08', '2030-01-09', '2030-01-10']);
-    assert.equal(statsOf([], '30d').days.length, 30);
+    assert.deepEqual((['30d', '90d', '180d', '1y'] as const).map((range) => statsOf([], range).days.length), [30, 90, 180, 365]);
+    assert.equal(statsOf([], '1y').days[0]?.day, '2029-01-11');
   });
 
   it("counts a creation on the zone's day: 23:30 UTC is the next day at UTC+2", () => {
@@ -334,7 +335,7 @@ describe('registerStats: a session scope', () => {
 
 describe('stats ranges and statuses', () => {
   it('reads the ranges it names and no other', () => {
-    assert.deepEqual(['7d', '14d', '30d', 'all', '1d', 7].map(isStatsRange), [true, true, true, true, false, false]);
+    assert.deepEqual(['7d', '30d', '90d', '180d', '1y', 'all', '14d', '1d', 7].map(isStatsRange), [true, true, true, true, true, true, false, false, false]);
   });
 
   it('holds the active statuses equal to the model', () => {
