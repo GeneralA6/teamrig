@@ -1,4 +1,4 @@
-import { join, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { claudeProjectsDir } from "../../budget/discover.js";
 import { errorMessage } from "../../core/guards.js";
 import { ENV, resolveKitHome } from "../../core/home.js";
@@ -12,7 +12,7 @@ import { shellCommand } from "../../open/quote.js";
 import { plainSessionEnv } from "../../open/session-env.js";
 import { runsClaude } from "../../open/session-processes.js";
 import { RestoreArchive, restoreArchiveDir } from "../../restore/archive.js";
-import { RestoreRegistry, restoreSessionsDir } from "../../restore/registry.js";
+import { RestoreRegistry, restoreLogPath, restoreSessionsDir } from "../../restore/registry.js";
 import { checkRestore, previewRestore, runRestore } from "../../restore/run.js";
 import { TranscriptFinder } from "../../restore/transcripts.js";
 import { onePositional, requiredFlag, UsageError } from "../args.js";
@@ -25,10 +25,6 @@ export const RESTORE_TAB_TITLE = 'Restore Claude sessions';
 export const TAB_SETTLE_MS = 2_000;
 /** How long the restore's own tab stays when it reopened nothing or something failed, so its lines can be read. */
 export const TAB_CLOSE_DELAY_MS = 8_000;
-/** The restore's log, beside its sessions folder: what each check and run decided, for the morning after. */
-export function restoreLogPath(kitHome) {
-    return join(kitHome, 'restore', 'restore.log');
-}
 /** Appends a line to the restore log; a log that cannot be written is a warning on stderr, never a failed restore. */
 function restoreLogOf(runtime) {
     const logPath = restoreLogPath(resolveKitHome(runtime.env, runtime.userHome));
