@@ -1,4 +1,4 @@
-import { CORE_RULE_KEYS } from "./keys.js";
+import { CORE_RULE_KEYS, ruleLabel } from "./keys.js";
 /**
  * Words that tie a line to a topic of a core rule. They are broad on purpose: a scan shows the model every line that
  * could conflict with a rule, and the model judges which do. A miss here hides a conflict for good, while an extra
@@ -39,4 +39,8 @@ export function topicsOf(line) {
     const rules = CORE_RULE_KEYS.filter((key) => RULE_TOPICS[key].test(line));
     const tags = LINE_TAGS.filter((tag) => TAG_WORDS[tag].test(line));
     return rules.length === 0 && tags.length === 0 ? undefined : { rules, tags };
+}
+/** A line's topics as a scan prints them: its rules by number and key, then its tags, `2 own-change, 7 deploy; teamrig`. */
+export function topicsLabel({ rules, tags }) {
+    return [rules.map(ruleLabel).join(', '), tags.join(', ')].filter((part) => part !== '').join('; ');
 }

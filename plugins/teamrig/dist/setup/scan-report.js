@@ -3,23 +3,29 @@ import { clipEnd } from "../core/clip.js";
 import { KIT_NAME } from "../core/home.js";
 import { homeRelative } from "../core/paths.js";
 import { PLACE_KINDS } from "../rules/places.js";
+import { loadsUnasked, rankCandidates } from "../rules/rank.js";
+import { topicsLabel } from "../rules/topics.js";
 import { MEMORY_INDEX_LINES } from "./scan-context.js";
 import { tokensOf } from "./scan-finding.js";
 import { unusedSection } from "./scan-unused.js";
 /**
  * The lines `teamrig setup scan` prints: the setup backup a slimming can be undone from (or NO BACKUP, which stops
  * one), every file and listing a session loads with its size, then the findings, one
- * line each, `<id> <kind> <path>: <what> (~<tokens> tokens/turn)`, numbered per section (C, D, S, U), and what
- * applying the CONTEXT, DUPLICATE and UNUSED ones saves. Rule lines and settings values are counted, never printed;
- * override lines only by kind, since a setup holds hundreds of them and `rules scan` lists them a kind at a time.
+ * line each, `<id> <kind> <path>: <what> (~<tokens> tokens/turn)`, numbered per section (C, D, O, S, U), and what
+ * applying the CONTEXT, DUPLICATE and UNUSED ones saves. A rule line prints as a redacted excerpt of at most
+ * EXCERPT_MAX_CHARS; settings values never print. OVERRIDE counts its lines by kind and prints only the first
+ * OVERRIDE_TOP in the order to judge them (`rankCandidates`), since a setup holds hundreds of them: that order is where
+ * to start, while `rules scan` lists every line, a kind at a time, for the model to judge.
  * UNUSED judges by the transcripts read and Claude Code's own `/skill-doctor` count, which also covers plugins' skills.
  */
 /** An always-loaded file longer than this is worth slimming. */
 export const LARGE_FILE_CHARS = 6000;
 /** A skill description longer than this is worth shortening. */
 export const LONG_DESCRIPTION_CHARS = 250;
-/** A repeated line prints up to this many characters. */
+/** A repeated or overriding line prints up to this many characters. */
 const EXCERPT_MAX_CHARS = 60;
+/** How many override lines the scan prints, the first to judge; `rules scan` lists them all. */
+const OVERRIDE_TOP = 10;
 /** How long ago something was, at a glance: `under a minute`, `12 min`, `5 h`, `3 days`. */
 function ageOf(ms) {
     const minutes = Math.floor(ms / 60_000);
@@ -91,7 +97,18 @@ function duplicateFindings(scan, at, show) {
 }
 /** Claude Code's in-session check of the instructions themselves: it runs a model, so the scan suggests it, never runs it. */
 const PROMPT_AUDIT = "NEXT /doctor prompt-audit in a session of the project: Claude Code's model-run check for outdated or conflicting instructions";
-function overrideLines(scan, at) {
+/** `O1 claude-md ~/.claude/CLAUDE.md:4: "<excerpt>" (15 push; teamrig)`: the first override lines to judge. */
+function topOverrides(scan, at, show) {
+    return rankCandidates(scan.overrides)
+        .slice(0, OVERRIDE_TOP)
+        .map((candidate) => ({
+        kind: candidate.place.kind,
+        where: `${show(candidate.place.path)}:${candidate.line}`,
+        what: `"${clipEnd(at.secrets.redact(candidate.text), EXCERPT_MAX_CHARS)}" (${topicsLabel(candidate.topics)})`,
+        saves: 0,
+    }));
+}
+function overrideLines(scan, at, show) {
     const recorded = `${scan.recorded} recorded`;
     if (scan.overrides.length === 0) {
         return [`OVERRIDE none to judge; ${recorded}`, PROMPT_AUDIT];
@@ -101,8 +118,11 @@ function overrideLines(scan, at) {
         const count = scan.overrides.filter((candidate) => candidate.place.kind === kind).length;
         return count === 0 ? [] : [`${kind} ${count}`];
     });
+    const unasked = scan.overrides.filter(loadsUnasked).length;
+    const top = topOverrides(scan, at, show);
     return [
-        `OVERRIDE ${scan.overrides.length} line(s) in ${files.size} file(s) may override a core rule: ${kinds.join(', ')}; ${recorded}`,
+        `OVERRIDE ${scan.overrides.length} line(s) in ${files.size} file(s) may override a core rule: ${kinds.join(', ')}; ${recorded}; ${unasked} load unasked; the ${top.length} to judge first below`,
+        ...findingLines('O', top),
         `NEXT ${KIT_NAME} rules scan${afterTeam(at)}, to judge each line with the user`,
         PROMPT_AUDIT,
     ];
@@ -137,7 +157,7 @@ export function scanReport(scan, at) {
         ...findingLines('C', context),
         duplicates.length === 0 ? 'DUPLICATE none' : `DUPLICATE ${duplicates.length} line(s) or sentence(s) repeat one loaded before`,
         ...findingLines('D', duplicates),
-        ...overrideLines(scan, at),
+        ...overrideLines(scan, at, show),
         ...settingsLines(scan, at, show),
         unused.header,
         ...findingLines('U', unused.findings),

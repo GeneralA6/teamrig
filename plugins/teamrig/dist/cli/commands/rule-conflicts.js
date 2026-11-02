@@ -10,6 +10,7 @@ import { CORE_RULE_KEYS, coreRuleKeyOf, ruleLabel } from "../../rules/keys.js";
 import { isPlaceKind, PLACE_KINDS } from "../../rules/places.js";
 import { coreRuleTexts } from "../../rules/pack.js";
 import { ruleLinesOf, scanRules } from "../../rules/scan.js";
+import { topicsLabel } from "../../rules/topics.js";
 import { isCleared, nextVerdicts, RULE_HASH_CLOCK, ruleHashesOf, verdictsByText, VerdictStore } from "../../rules/verdicts.js";
 import { lineHash } from "../../inbox/line-hash.js";
 import { formatUtcDay } from "../../core/time.js";
@@ -90,8 +91,7 @@ function aboveLine(team, { conflict, line }) {
     return `ABOVE ${team} ${conflict.file}:${line} ${quoteOf(conflict)} ${verdictOf(conflict)}${reasonOf(conflict)}`;
 }
 function candidateLine(candidate, userHome, scanner) {
-    const { rules, tags } = candidate.topics;
-    const topics = [rules.map(ruleLabel).join(', '), tags.join(', ')].filter((part) => part !== '').join('; ');
+    const topics = topicsLabel(candidate.topics);
     const secret = scanner.find(candidate.text);
     const text = secret === undefined ? clipEnd(candidate.text, CANDIDATE_TEXT_MAX_CHARS) : `(withheld: looks like it holds a secret (${secret.description}))`;
     return `CANDIDATE ${homeRelative(candidate.place.path, userHome)}:${candidate.line} [${topics}] ${text}`;
