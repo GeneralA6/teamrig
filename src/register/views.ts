@@ -160,7 +160,7 @@ export function formatShortTask(task: Task, titleChars: number, team: string | u
 
 /** {@link formatShortTask} without what needs the task: a node of the tree and the start of a waiting-on-you row. */
 function shortRow(task: Task, titleChars: number, team: string | undefined, tree: TaskTree): string {
-  const waits = task.waits.length > 0 ? ` (waiting: ${waitingText(task, tree)})` : '';
+  const waits = task.waits.length > 0 || task.decided !== null ? ` (waiting: ${waitingText(task, tree)})` : '';
   const issue = issueOf(task);
   const head = issue === undefined ? rowHead(task, team, tree) : [...rowHead(task, team, tree), `from ${issue}`];
   return `${head.join(', ')} | ${cut(task.title, titleChars)}${waits}`;
@@ -261,7 +261,7 @@ export function formatTask(task: Task, team: string | undefined, tree: TaskTree)
  */
 function statusNote(task: Task, tree: TaskTree): string {
   if (task.status === 'waiting') {
-    const parts = [task.waits.length > 0 ? waitingText(task, tree) : null, task.note].filter((part) => part !== null);
+    const parts = [task.waits.length > 0 || task.decided !== null ? waitingText(task, tree) : null, task.note].filter((part) => part !== null);
     return parts.length === 0 ? '' : ` (waiting: ${parts.join('; ')})`;
   }
   if (task.watch !== null) {
@@ -272,10 +272,15 @@ function statusNote(task: Task, tree: TaskTree): string {
   return proof === null ? '' : ` (proof: ${proof}${waits})`;
 }
 
-/** A waiting task's reasons, then the lead's answer to its approval once given (`approval lead · lead approved`), so no one asks twice. */
+/**
+ * A waiting task's reasons, then the lead's answer to its approval once given (`approval lead · lead approved`), and
+ * the owner's decision once a leader recorded it (`owner decided, by lead`, T1366), so no one asks twice.
+ */
 function waitingText(task: Task, tree: TaskTree): string {
-  const reasons = waitsText(task.waits, tree.zone, tree.context);
-  return task.answer === null ? reasons : `${reasons} · ${task.answer.by} ${task.answer.verdict}`;
+  const reasons = task.waits.length === 0 ? [] : [waitsText(task.waits, tree.zone, tree.context)];
+  const answer = task.answer === null ? [] : [`${task.answer.by} ${task.answer.verdict}`];
+  const decided = task.decided === null ? [] : [`owner decided, by ${task.decided.by}`];
+  return [...reasons, ...answer, ...decided].join(' · ');
 }
 
 /** How much of a description an update line in `show`'s history quotes. */
@@ -348,7 +353,8 @@ export function formatEvent(event: RegisterEvent, zone: TimeZone): string {
         .filter(([name]) => name !== 'noGoal' || event.changes.goals === undefined)
         .map(([name, value]) => `${name}=${changeText(name, value, zone)}`);
       const verdict = event.verdict === undefined ? [] : [`verdict=${event.verdict}`];
-      return `${[head, ...fields, ...verdict].join(' ')}${note}`;
+      const decided = event.decided === true ? ['decided'] : [];
+      return `${[head, ...fields, ...verdict, ...decided].join(' ')}${note}`;
     }
     case 'moved':
       return `${head} to=${event.to}`;
@@ -393,6 +399,9 @@ export function formatTaskDetail(task: Task, events: readonly RegisterEvent[], t
   }
   if (task.answer !== null) {
     lines.push(`answer: ${task.answer.by} ${task.answer.verdict} at ${tree.zone.minute(new Date(task.answer.at))}${task.answer.note === null ? '' : `: ${task.answer.note}`}`);
+  }
+  if (task.decided !== null) {
+    lines.push(`decided: ${task.decided.by} at ${tree.zone.minute(new Date(task.decided.at))}${task.decided.note === null ? '' : `: ${task.decided.note}`}`);
   }
   if (task.proof !== null) {
     lines.push(`proof: ${task.proof}`);

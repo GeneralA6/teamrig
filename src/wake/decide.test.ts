@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { BudgetFacts } from '../budget/warn.ts';
-import type { ApprovalAnswer, Task } from '../register/fold.ts';
+import type { ApprovalAnswer, OwnerDecision, Task } from '../register/fold.ts';
 import { NO_TASKS_ELSEWHERE, type TasksElsewhere } from '../register/tree.ts';
 import { waitContext, type WaitReason } from '../register/waits.ts';
 import { testTask } from '../testing/task.ts';
@@ -51,6 +51,7 @@ const QUIET: WakeState = { tab: TAB, known: [], pending: undefined, lastWakeAt: 
 const ON_LEAD: WaitReason = { kind: 'approval', who: 'lead' };
 const APPROVED: ApprovalAnswer = { verdict: 'approved', by: 'lead', at: '2030-01-08T09:30:00.000Z', note: 'tests green' };
 const DECLINED: ApprovalAnswer = { ...APPROVED, verdict: 'declined', note: 'add the test' };
+const DECIDED: OwnerDecision = { by: 'lead', at: '2030-01-08T09:30:00.000Z', note: 'human decided: ship it' };
 
 describe('isWakeWorthy', () => {
   const context = waitContext(tasksOf(testTask({ id: 'T5', status: 'done' }), testTask({ id: 'T6' })), new Date(NOW), TimeZone.UTC);
@@ -104,6 +105,13 @@ describe('isWakeWorthy', () => {
     assert.equal(isWakeWorthy(held, 'alpha', 1, context), false, 'a task it waits on is not finished');
   });
 
+  it("takes a task a leader recorded the owner's decision on once its waits left cleared, none counting (T1366)", () => {
+    assert.equal(isWakeWorthy(p1({ status: 'waiting', waits: [], decided: DECIDED }), 'alpha', 1, context), true, 'no wait left');
+    assert.equal(isWakeWorthy(p1({ status: 'verifying', waits: [{ kind: 'task', id: 'T5' }], decided: DECIDED }), 'alpha', 1, context), true, 'its proof wait cleared');
+    assert.equal(isWakeWorthy(p1({ status: 'waiting', waits: [{ kind: 'task', id: 'T6' }], decided: DECIDED }), 'alpha', 1, context), false, 'a task it waits on is not finished');
+    assert.equal(isWakeWorthy(p1({ status: 'waiting', waits: [] }), 'alpha', 1, context), false, 'neither waiting nor decided');
+  });
+
   it('refuses a waiting task never started that comes after one not finished, though its waits cleared', () => {
     const waiting = p1({ status: 'waiting', waits: [{ kind: 'task', id: 'T5' }], after: ['T6'] });
     assert.equal(isWakeWorthy(waiting, 'alpha', 1, context), false);
@@ -120,6 +128,13 @@ describe('isNews', () => {
     assert.equal(isNews(p1({ ownerSeenAt: seen, priorityAt: '2030-01-08T09:30:00.000Z' }), 'alpha', tasksOf(), NO_TASKS_ELSEWHERE, TimeZone.UTC), true);
     assert.equal(isNews(p1({ ownerSeenAt: seen, statusAt: '2030-01-08T09:30:00.000Z' }), 'alpha', tasksOf(), NO_TASKS_ELSEWHERE, TimeZone.UTC), true);
     assert.equal(isNews(p1({ ownerSeenAt: seen, assignedAt: '2030-01-08T09:30:00.000Z' }), 'alpha', tasksOf(), NO_TASKS_ELSEWHERE, TimeZone.UTC), true);
+  });
+
+  it("is news when another recorded the owner's decision after the owner last touched it, never the owner's own (T1366)", () => {
+    const decided = (overrides: Partial<OwnerDecision>) => p1({ status: 'waiting', ownerSeenAt: seen, decided: { ...DECIDED, ...overrides } });
+    assert.equal(isNews(decided({}), 'alpha', tasksOf(), NO_TASKS_ELSEWHERE, TimeZone.UTC), true);
+    assert.equal(isNews(decided({ by: 'alpha' }), 'alpha', tasksOf(), NO_TASKS_ELSEWHERE, TimeZone.UTC), false, 'its own record');
+    assert.equal(isNews(decided({ at: '2030-01-08T08:30:00.000Z' }), 'alpha', tasksOf(), NO_TASKS_ELSEWHERE, TimeZone.UTC), false, 'seen since');
   });
 
   const finishedBy = (by: string) => testTask({ id: 'T5', status: 'done', updatedBy: by, statusAt: '2030-01-08T09:30:00.000Z' });
@@ -394,6 +409,10 @@ describe('wake text', () => {
   it("says a waiting task woke for its approval's answer, approved or declined (T996)", () => {
     assert.equal(taskListText([p1({ status: 'waiting', title: 'Fix it', waits: [ON_LEAD], answer: APPROVED })]), 'T1 "Fix it" (p1, waiting: lead approved it)');
     assert.equal(taskListText([p1({ status: 'waiting', title: 'Fix it', waits: [ON_LEAD], answer: DECLINED })]), 'T1 "Fix it" (p1, waiting: lead declined it)');
+  });
+
+  it("says a task woke for the owner's decision a leader recorded (T1366)", () => {
+    assert.equal(taskListText([p1({ status: 'waiting', title: 'Fix it', decided: DECIDED })]), `T1 "Fix it" (p1, waiting: lead recorded the owner's decision)`);
   });
 
   it('asks the session to start a work block and states the cost; the toast names the tasks', () => {

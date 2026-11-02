@@ -102,8 +102,8 @@ const CHILD_TAKES: Readonly<Record<Exclude<keyof KitConfig, keyof typeof REWORKE
 
 const TAKES: ReadonlyMap<string, ChildTake> = new Map(Object.entries(CHILD_TAKES));
 
-/** Where a task names a session: who asked for it, who pinned it, who answered its approval, or a wait on a person. */
-export type SplitField = 'source' | 'pin' | 'answer' | PersonWaitKind;
+/** Where a task names a session: who asked for it, who pinned it, who answered its approval, who recorded the owner's decision, or a wait on a person. */
+export type SplitField = 'source' | 'pin' | 'answer' | 'decided' | PersonWaitKind;
 
 /** A session a task names, rewritten so it still names the same session from the other team. */
 export interface SplitRewrite {
@@ -392,6 +392,9 @@ function namedSessions(task: Task): [SplitField, string][] {
   }
   if (task.answer !== null) {
     named.push(['answer', task.answer.by]);
+  }
+  if (task.decided !== null) {
+    named.push(['decided', task.decided.by]);
   }
   for (const wait of task.waits) {
     if (wait.kind === 'decision' || wait.kind === 'approval') {

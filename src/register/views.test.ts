@@ -693,3 +693,17 @@ describe('the answer to an approval (T684)', () => {
     assert.match(detail, / lead update verdict=approved note="tests green"$/m);
   });
 });
+
+describe("the owner's decision a leader recorded (T1366)", () => {
+  const decided = { by: 'lead', at: '2030-01-07T14:00:00.000Z', note: 'human decided: ship it' };
+
+  it('shows it on the waiting row, with or without a wait left, in show, and the mark in the history', () => {
+    const task = testTask({ status: 'waiting', waits: [], note: 'branch t1', decided });
+    assert.match(formatTask(task, undefined, TREE), /\(waiting: owner decided, by lead; branch t1\)/);
+    assert.match(formatTask({ ...task, waits: [{ kind: 'task', id: 'T2' }] }, undefined, TREE), /\(waiting: on T2 ready · owner decided, by lead; branch t1\)/);
+    const event: RegisterEvent = { v: 2, type: 'update', id: 'T1', at: decided.at, by: 'lead', changes: {}, note: decided.note, waits: [], decided: true };
+    const detail = formatTaskDetail(task, [event], TREE);
+    assert.match(detail, /^decided: lead at 2030-01-07 14:00 UTC: human decided: ship it$/m);
+    assert.match(detail, / lead update decided note="human decided: ship it"$/m);
+  });
+});
