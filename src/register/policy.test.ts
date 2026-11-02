@@ -887,6 +887,24 @@ describe('RegisterPolicy.update', () => {
     assert.match(error(policy.update(TASK, 'lead', { title: 'x', priority: 1 }, undefined, EMPTY)), /asked: title/);
   });
 
+  it('keeps an owner that left the team, and lets the lead change the ref too on its task, no other session (T1830)', () => {
+    const left = testTask({ owner: 'zulu', ref: 'notes/old.md' });
+    assert.deepEqual(policy.update(left, 'lead', { ref: 'notes/new.md' }, undefined, EMPTY), { ok: true, value: { changes: { ref: 'notes/new.md' }, note: null } });
+    assert.equal(policy.update(left, 'lead', { ref: 'notes/new.md', priority: 1 }, undefined, EMPTY).ok, true, 'beside the work order');
+    assert.equal(policy.update(left, 'lead', { due: '2030-01-10' }, undefined, EMPTY).ok, true, 'the work order of a task whose owner left');
+    assert.equal(error(policy.update(left, 'lead', { owner: 'yankee' }, undefined, EMPTY)), 'owner yankee is not a session on this team', 'an owner a write sets is a session');
+    assert.equal(
+      error(policy.update(left, 'lead', { title: 'x' }, undefined, EMPTY)),
+      'a leader may change only owner, priority, due, week, after, size, type, critical, pin, ref on a task it does not own (asked: title)',
+    );
+    assert.equal(error(policy.update(left, 'alpha', { ref: 'notes/new.md' }, undefined, EMPTY)), 'only the owner (zulu) or the lead (lead) changes T1');
+    assert.equal(
+      error(policy.update(TASK, 'lead', { ref: 'notes/new.md' }, undefined, EMPTY)),
+      'a leader may change only owner, priority, due, week, after, size, type, critical, pin on a task it does not own (asked: ref)',
+      'an owner on the team keeps its own ref',
+    );
+  });
+
   it('refuses a critical mark on a task, and clears the mark when a critical bug becomes a task (T1252)', () => {
     assert.equal(error(policy.update(TASK, 'alpha', { critical: true }, undefined, EMPTY)), 'critical marks only a bug: give --type bug too');
     assert.equal(error(policy.update(testTask({ ...TASK, type: 'task' }), 'alpha', { critical: true }, undefined, EMPTY)), 'critical marks only a bug: give --type bug too');
