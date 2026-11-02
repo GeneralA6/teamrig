@@ -2,7 +2,8 @@ import type { HookAsks } from '../config/types.ts';
 import { isRecord, recordField, stringField } from '../core/guards.ts';
 import type { ClientCheck } from '../exec/client-integrity.ts';
 import { placeProgram, placeScript, type ClientFile, type ClientInstalls, type ClientSearch, type WordAt } from '../exec/client-launch.ts';
-import { runsOf, type ProgramRun, type ProgramsContext } from '../package-guard/programs.ts';
+import { runsOf, type OpaqueRun, type ProgramRun, type ProgramsContext } from '../package-guard/programs.ts';
+import { programName } from '../push-guard/launchers.ts';
 import type { ShellWord } from '../push-guard/tokenizer.ts';
 import { holdBackOutput } from './permission.ts';
 
@@ -11,7 +12,9 @@ import { holdBackOutput } from './permission.ts';
  * itself. The allow line `Bash(teamrig exec *)` lets every exec command through unasked, and the CLI takes the
  * reviewer from `--session`, self-declared, so without this guard any tab could approve its own request as the
  * security reviewer or the owner. The owner never reviews through a tool call: they review in their own terminal, or
- * type `/teamrig exec approve R<n> --session <owner>` in a tab, which the mod runs without a PreToolUse hook.
+ * type `/teamrig exec approve R<n> --session <owner>` in a tab, which the mod runs without a PreToolUse hook. A teamrig
+ * call with a word only known when it runs that decides whether it reviews, or as whom, is refused: its subcommand
+ * too (`teamrig "$G" approve R1`, or `f(){ teamrig "$@"; }; f exec approve ...`), as reviews are not signed (T1780).
  *
  * It also pins the client (spec §2.2, phase 1): every `teamrig exec` call, whatever its command, runs only through an
  * install of this plugin whose files are the ones its build hashed, as phase 1 runs an approved request inside that
@@ -142,6 +145,11 @@ function teamrigLaunchOf(run: ProgramRun): TeamrigLaunch | undefined {
     return entry === -1 ? undefined : { client: { kind: 'script', word: script }, words };
   }
   return entry !== -1 || startsExec(words) || startsOwner(words) ? { client: { kind: 'opaque', word: script }, words } : undefined;
+}
+
+/** True for a teamrig call whose subcommand is only known when it runs (`teamrig "$G" approve R1`), which the walker leaves unread. */
+function hidesSubcommand(run: OpaqueRun): boolean {
+  return !run.program.dynamic && programName(run.program.text) === 'teamrig';
 }
 
 /**
@@ -320,10 +328,11 @@ export async function execGuardOutput(payload: unknown, env: ExecGuardEnv): Prom
   });
   const opaque = runs.opaque.filter((run) => startsExec(run.args));
   const opaqueOwner = runs.opaque.filter((run) => startsOwner(run.args));
-  if (calls.length === 0 && opaque.length === 0 && opaqueOwner.length === 0) {
+  const unread = runs.opaque.some(hidesSubcommand) || calls.some(({ call }) => call.kind === 'unreadable');
+  if (calls.length === 0 && opaque.length === 0 && opaqueOwner.length === 0 && !unread) {
     return '';
   }
-  const reasons: string[] = calls.some(({ call }) => call.kind === 'unreadable') ? [UNREADABLE] : [];
+  const reasons: string[] = unread ? [UNREADABLE] : [];
   reasons.push(...opaque.map((run) => opaqueRefusalOf(run.program)));
   reasons.push(...calls.flatMap(({ call }) => (call.kind === 'owner' ? [ownerRefusalOf(call.action)] : [])));
   reasons.push(...opaqueOwner.map((run) => ownerRefusalOf(ownerActionOf(run.args))));

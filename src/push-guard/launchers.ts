@@ -44,7 +44,10 @@ export interface OpaqueLaunch {
   readonly reason: string;
   /** True when the doubt matters only on a command line that mentions a push. */
   readonly gated: boolean;
-  /** The command from its program word on, when that word is what is only known when it runs (`$T exec approve R1`). */
+  /**
+   * The command from its program word on, when a word that decides what it runs is only known when it runs: its
+   * program (`$T exec approve R1`), or teamrig's subcommand (`teamrig "$G" approve R1`), which the exec guard refuses.
+   */
   readonly command?: { readonly program: ShellWord; readonly args: readonly ShellWord[] };
 }
 
@@ -563,12 +566,13 @@ class LaunchReader {
   /**
    * `teamrig queue` and `teamrig test` run the words after their first `--` as `commandLine` (test-run/shell.ts)
    * joins them: one word as a command line for the shell `spawn` starts, several as a program and its arguments.
-   * What they start is marked `runner`. Any other subcommand is teamrig itself.
+   * What they start is marked `runner`. Any other subcommand is teamrig itself. A subcommand only known when it runs
+   * may be a runner, so the command is opaque; it keeps its words for the exec guard, as it may be `exec approve`.
    */
   private teamrig(args: readonly ShellWord[], head: ShellWord): Step {
     const [subcommand] = args;
     if (subcommand?.dynamic === true) {
-      return { kind: 'opaque', reason: 'the teamrig subcommand it runs is only known when it runs', gated: true };
+      return { kind: 'opaque', reason: 'the teamrig subcommand it runs is only known when it runs', gated: true, command: { program: head, args } };
     }
     const end = args.findIndex((arg) => !arg.dynamic && arg.text === '--');
     if (subcommand === undefined || !TEAMRIG_RUNNERS.has(subcommand.text) || end === -1) {

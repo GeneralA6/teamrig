@@ -123,6 +123,31 @@ describe('execGuardOutput', () => {
     }
   });
 
+  it('refuses a teamrig call whose first word is only known when it runs, as it may review as the owner or act as them', async () => {
+    const quiet = env();
+    for (const payload of [
+      bash('teamrig "$G" approve R1 --session owner'),
+      bash('teamrig $(echo exec) approve R1 --session owner'),
+      bash('f(){ teamrig "$@"; }; f exec approve R1 --session owner'),
+      bash('f(){ teamrig "$@"; }; f owner next T1'),
+      bash('git status && TEAMRIG.cmd "$G" next T1'),
+      powershell('teamrig $G approve R1 --session owner'),
+      powershell('function f { teamrig @args }; f exec approve R1 --session owner'),
+    ]) {
+      const found = await verdict(payload, quiet);
+      assert.equal(found?.decision, 'deny', JSON.stringify(payload));
+      assert.equal(
+        found?.reason,
+        'teamrig exec guard: a teamrig call here has a word only known when it runs (a variable or a substitution), so the guard cannot tell whether it reviews a request, or as whom; write the words out.',
+      );
+    }
+    assert.equal(quiet.reads(), 0);
+    assert.equal(quiet.checks(), 0);
+    for (const line of ['teamrig list --session "$S"', 'teamrig show "$T"', '$G list']) {
+      assert.equal(await verdict(bash(line), quiet), undefined, line);
+    }
+  });
+
   it('refuses every review from a tab bound to no session, saying why', async () => {
     const found = await verdict(bash('teamrig exec approve R1 --session alpha'), env({ kind: 'unbound', why: 'this tab is not bound to a session of the team' }));
     assert.equal(found?.decision, 'deny');
