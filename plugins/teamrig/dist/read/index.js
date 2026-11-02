@@ -63,6 +63,9 @@ export { activeHires, HIRE_FORMAT, readHiringLog, rehiredFrom, retiredSessions, 
 // Each team's week (`state/usage/team.week.json` under its home, `TEAM_WEEK_PATH`): its used and planned part of the
 // account's week, as its budget hooks last read it. One file per team; a reader adds a child team's to its parent's.
 export { parseTeamWeek, TEAM_WEEK_FORMAT, TEAM_WEEK_PATH } from "../budget/team-week-summary.js";
+// Each session's week (`state/usage/sessions.week.json` under its team's home, `SESSIONS_WEEK_PATH`): its use of the
+// account's week so far and its hours with work, by session id, as its team's budget hooks last read them.
+export { parseSessionsWeek, SESSIONS_WEEK_FORMAT, SESSIONS_WEEK_PATH } from "../budget/session-week-summary.js";
 // Each session's turn log (`turn-log/<session id>/<UTC hour>.jsonl`): its prompts, replies and clears, one parsed
 // JSON line at a time.
 export { parseEntry, TURN_LOG_VERSION } from "../turn-log/entry.js";
