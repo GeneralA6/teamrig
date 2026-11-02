@@ -14,6 +14,7 @@ your main branch on your git host too.
 - [Secrets kept out of commits](#secrets-kept-out-of-commits)
 - [Privileged commands on review](#privileged-commands-on-review)
 - [Reads without a prompt](#reads-without-a-prompt)
+- [A guard that breaks](#a-guard-that-breaks)
 
 Each hook, and every line it refuses with its fix, is in
 [hooks and permissions](../../plugins/teamrig/skills/teamrig-guide/hooks.md).
@@ -255,3 +256,13 @@ and kubectl reading subcommands, the team's trusted prefixes (`readonlyShell.all
 redirection, command that runs code or variable a program reads. It only ever allows: any other line gets Claude
 Code's own check, a guard's ask or refusal wins over its allow, and a line that prints a secret is never allowed
 ([what it cannot see](../../plugins/teamrig/skills/teamrig-guide/hooks.md#before-a-shell-command-the-read-only-allow)).
+
+## A guard that breaks
+
+Claude Code runs a tool call whose hook crashed or timed out, so a broken guard would let through the very line it
+exists to stop. teamrig's guards fail closed instead: when one cannot load, throws, hangs or answers wrongly, the
+call is blocked and Claude reads `teamrig blocked this call: its <name> guard ...` with the fix. A broken install
+therefore blocks the guarded calls (shell lines, reads, edits, sends and helper launches) until you run
+`claude plugin update teamrig@teamrig` and restart the session; a block for a guard that gave no answer in time
+clears on a retry once the host is less loaded
+([what the runner cannot catch](../../plugins/teamrig/skills/teamrig-guide/hooks.md#a-guard-that-cannot-answer)).
