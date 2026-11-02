@@ -506,6 +506,32 @@ describe('checkTasks: READY once the lead approved (T684)', () => {
   });
 });
 
+describe("checkTasks: READY once a leader recorded the owner's decision (T1366)", () => {
+  const seen = { ownerSeenAt: FRESH, updatedAt: FRESH };
+  const decided = { by: 'lead', at: FRESH, note: 'human decided: ship it' };
+  const flagsOf = (tasks: Task[]) =>
+    checkTasks(tasks, NOW, TimeZone.UTC, null, CONFIG)
+      .filter((flag) => flag.kind === 'READY' || flag.kind === 'NO-REASON')
+      .map((flag) => `${flag.kind} ${flag.task.id}: ${flag.detail}`);
+
+  it('flags a decided task with no wait left, or every one left ready, and sends its owner to act on it', () => {
+    const tasks = [
+      testTask({ id: 'T1', status: 'waiting', waits: [], decided, ...seen }),
+      testTask({ id: 'T2', status: 'verifying', waits: [{ kind: 'time', at: '2030-01-10 11:00' }], decided, ...seen }),
+    ];
+    assert.deepEqual(flagsOf(tasks), [
+      "READY T1: lead recorded owner's decision: act on it (show T1 prints it), then set its next status",
+      "READY T2: lead recorded owner's decision: act on it (show T2 prints it), verify it now",
+    ]);
+  });
+
+  it('flags none while a wait left holds, and NO-REASON only for a waiting task neither waiting nor decided', () => {
+    const busy = testTask({ id: 'T9', status: 'in-progress', ...seen });
+    const tasks = [testTask({ id: 'T1', status: 'waiting', waits: [{ kind: 'task', id: 'T9' }], decided, ...seen }), testTask({ id: 'T2', status: 'waiting', ...seen }), busy];
+    assert.deepEqual(flagsOf(tasks), ['NO-REASON T2: set what it waits for (--waits) or its next status']);
+  });
+});
+
 describe('checkTasks: OVER-PACE (T637)', () => {
   const OLD = '2030-01-01T09:00:00.000Z';
   const RECENT = '2030-01-08T09:00:00.000Z';

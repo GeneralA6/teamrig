@@ -80,8 +80,11 @@ export interface Flag {
  * - READY: waiting, and every reason it waits for is ready (its tasks finished, its time passed), so its owner can
  *   go on: only the owner clears a decision or an approval, by setting the next status, though the lead's yes to an
  *   approval wait (`approve`) counts as ready, so its owner pushes or merges it; or verifying, and every
- *   reason its proof waited for is ready, so the proof should exist: its owner verifies it now;
- * - NO-REASON: waiting with no reason, as a line from an older teamrig reads: nothing says what it waits for;
+ *   reason its proof waited for is ready, so the proof should exist: its owner verifies it now; or decided (a leader
+ *   recorded the owner's answer to its card, `update --decided`, T1366) with every wait left ready, none counting:
+ *   its owner acts on the decision;
+ * - NO-REASON: waiting with no reason and not decided, as a line from an older teamrig reads: nothing says what it
+ *   waits for;
  * - NO-CARD: waiting on the owner's decision or approval with no card to decide from (card.ts), as one set before
  *   cards, or while `requireDecisionCard` was off, reads; never with that switch off;
  * - OWNER-ORDERED: a task the owner ordered (its source is `ownerSource`) waiting, or its proof waiting, on the
@@ -143,8 +146,8 @@ export function checkTasks(
     ...reparkedFlags(task, config.maxReparks),
     ...selfMadeFlags(task, runs, config.check.maxSelfMadePerDay),
     ...overPaceFlags(task, paces),
-    ...readyFlags(task, tree.context),
-    ...(task.status === 'waiting' && task.waits.length === 0 ? [{ kind: 'NO-REASON' as const, task, detail: 'set what it waits for (--waits) or its next status' }] : []),
+    ...readyFlags(task, tree.context, config.ownerSource),
+    ...(task.status === 'waiting' && task.waits.length === 0 && task.decided === null ? [{ kind: 'NO-REASON' as const, task, detail: 'set what it waits for (--waits) or its next status' }] : []),
     ...noCardFlags(task, config),
     ...ownerOrderedFlags(task, config.ownerSource),
     ...ungatedFlags(task, config),
@@ -232,10 +235,15 @@ function ungatedFlags(task: Task, config: RegisterConfig): Flag[] {
 }
 
 /**
- * READY, as {@link checkTasks} describes it: a waiting task's reasons, or a verifying task's proof waits, all cleared;
- * or a waiting task whose approval wait the one it waits on answered yes (`approve`, T684).
+ * READY, as {@link checkTasks} describes it: a decided task whose waits left are ready (T1366); a waiting task's
+ * reasons, or a verifying task's proof waits, all cleared; or a waiting task whose approval wait the one it waits on
+ * answered yes (`approve`, T684).
  */
-function readyFlags(task: Task, context: WaitContext): Flag[] {
+function readyFlags(task: Task, context: WaitContext, ownerSource: string): Flag[] {
+  if (task.decided !== null && task.waits.every((reason) => isReady(reason, context))) {
+    const next = task.status === 'verifying' ? 'verify it now' : 'then set its next status';
+    return [{ kind: 'READY', task, detail: `${task.decided.by} recorded ${ownerSource}'s decision: act on it (show ${task.id} prints it), ${next}` }];
+  }
   if (allReady(task.waits, context)) {
     const detail = task.status === 'verifying' ? 'every wait of its proof cleared; verify it now' : 'every reason cleared; set its next status';
     return [{ kind: 'READY', task, detail }];

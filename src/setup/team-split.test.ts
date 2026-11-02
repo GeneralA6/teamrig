@@ -199,7 +199,13 @@ describe('planTeamSplit', () => {
     const tasks = tasksOf(
       testTask({ id: 'T1', owner: 'alpha', source: 'lead', pin: 'lead' }),
       testTask({ id: 'T2', owner: 'lead', source: 'bravo', waits: [{ kind: 'approval', who: 'alpha' }, { kind: 'decision', who: 'owner' }] }),
-      testTask({ id: 'T3', owner: 'bravo', source: 'alpha', answer: { verdict: 'approved', by: 'lead', at: '2030-01-07T10:00:00.000Z', note: 'ok' } }),
+      testTask({
+        id: 'T3',
+        owner: 'bravo',
+        source: 'alpha',
+        answer: { verdict: 'approved', by: 'lead', at: '2030-01-07T10:00:00.000Z', note: 'ok' },
+        decided: { by: 'lead', at: '2030-01-07T11:00:00.000Z', note: 'human decided: ship it' },
+      }),
       testTask({ id: 'T4', owner: 'erin', source: 'org/po', waits: [{ kind: 'decision', who: 'dave' }] }),
     );
     assert.deepEqual(valueOf(plan(tasks)).rewrites, [
@@ -207,6 +213,7 @@ describe('planTeamSplit', () => {
       { task: 'T1', field: 'pin', from: 'lead', to: 'app/lead', moves: true },
       { task: 'T2', field: 'source', from: 'bravo', to: 'web/bravo', moves: false },
       { task: 'T3', field: 'answer', from: 'lead', to: 'app/lead', moves: true },
+      { task: 'T3', field: 'decided', from: 'lead', to: 'app/lead', moves: true },
     ]);
   });
 
