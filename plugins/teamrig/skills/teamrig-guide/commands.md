@@ -5253,6 +5253,9 @@ Run by Claude Code at each session start, prompt, turn end, API error and sessio
 records the session in `<home>/restore/sessions/<session id>.json` for the restore after a reboot (the folder
 it started in, its transcript, its Claude Code's process id, its team and session, and whether a turn was
 running), and removes the file at an end the person or Claude Code chose. A compaction's start changes nothing.
+At a turn's end it also records in `<home>/restore/login.json` which tabs a turn that ended on `Login expired` left
+stuck, and when a later answer showed the login works again, each change as a `login:` line in
+`<home>/restore/restore.log`.
 
 Flags: none.
 

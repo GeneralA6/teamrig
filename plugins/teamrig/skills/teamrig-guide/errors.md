@@ -224,6 +224,7 @@ From `teamrig restore install` and `uninstall` ([commands.md](commands.md#teamri
 | No `logon: started` line in `<kit home>/restore/restore.log` since a reboot | No logon ran the launcher: no one logged on yet, or the logon entry is gone (`teamrig restore install` shows it), or the launcher predates this line (`teamrig restore install --yes` writes the new one). |
 | `FAILED: teamrig not found in the Claude Code plugin list` in the window the `Restore Claude Sessions` shortcut opened, and a `shortcut:` line in `<kit home>/restore/restore.log` | The run launcher found no installed teamrig plugin, or could not start the run; the window stays open 60 seconds. Install the plugin again (`claude plugin install teamrig@teamrig`), or run `teamrig restore run` in a terminal. |
 | `run: interrupted by <signal> after <counts>` in `<kit home>/restore/restore.log`, or a `run: started` line with no `run: done` after it | The restore's tab was closed (or the run was killed) before every session reopened; `teamrig restore` lists those still to reopen and `teamrig restore run` reopens them. |
+| `login: expired, <tab> ended its turn on Login expired; <n> tab(s) stuck` in `<kit home>/restore/restore.log`, with no `login: works again` after it | The Claude login expired, and each tab named in a `login:` line since stopped at `Login expired`: run `/login` in one tab, then send each stuck tab a prompt (`<kit home>/restore/login.json` lists them under `stranded`). |
 
 ## Usage errors (exit 64)
 
