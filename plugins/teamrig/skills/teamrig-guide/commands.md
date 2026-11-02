@@ -296,6 +296,39 @@ Output:
 UPDATED T2 waiting, p2, owner web, due 10-16, week 10-12, from lead | Fix the broken login form (waiting: on T7; needs the api error codes)
 ```
 
+### teamrig refs apply
+
+Points the refs of your team's tasks at notes that moved, from a file that lists each move: a JSON list of
+`{"team", "id", "oldRef", "newRef"}` rows, one per task, say the output of a script that moved a notes folder. Each
+row is written as `update <id> --ref <newRef>` would write it, by the same rules: the task's owner, or a leader above
+it, changes its ref, and the lead also keeps true the ref of a task whose owner has left the team. A row is left, with
+its reason, when it names another team (a session of that team applies it), its task is not in the register or moved
+to another team, its ref already reads `newRef`, its ref changed since and no longer reads `oldRef`, or the rules
+refuse the caller. Without `--yes` it is a dry run: it prints each row's fate and writes nothing. A file it cannot
+read, one that is not JSON, a row with a field missing, one whose two refs are the same and a task named twice are
+refused, writing nothing.
+
+Flags:
+
+- `--session <id|name>`: the caller.
+- `--yes`: writes each row it would update; it exits 2 (refused) when the rules refused any row, after writing the
+  rest.
+
+Example:
+
+```sh
+teamrig refs apply moved-refs.json --session lead
+```
+
+Output:
+
+```text
+WOULD UPDATE T1: notes/web/login.md -> tasks/T1/login.md
+LEFT T2 (already-new): its ref reads tasks/T2/form.md
+LEFT ops/T4 (other-team): a session of team ops applies it
+dry run: would update 1, left 2; nothing was written: rerun with --yes to write
+```
+
 ### teamrig approve
 
 The lead's answer to a task waiting on its approval (`--waits approval:<lead>`), say before a push or a merge to

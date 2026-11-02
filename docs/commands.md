@@ -166,6 +166,9 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   update <team>/<id> --note .. [--later <date>|none]   the lead at a team tree's root, who asks the owner the
       decisions of the teams under it, notes their tasks (the owner's answer) or puts a card off, named as its
       batch prints them: web/T12
+  refs apply <file> [--yes]   points the refs of your team's tasks at notes that moved, from a JSON list of
+      {team, id, oldRef, newRef} rows: a dry run names each row's fate, --yes writes each task that still
+      reads oldRef as update <id> --ref would; rows of another team, moved, changed since or refused are left
   approve <id> --note "<what you checked, or why not>" [--decline]   a leader above the task's owner (the
       lead or a sub-lead), or roles.securityReviewer on a task not its own: answers a task waiting on
       its approval (approval:<lead>); its owner gets an inbox line to push or merge (or to fix the note's
