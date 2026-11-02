@@ -114,19 +114,24 @@ export interface WeekInput {
   readonly extra?: ExtraInput;
 }
 
-/** What today's use is read from by `statusTodayPct`. */
-interface TodaySight {
+/** What the week's use over a span is read from by `statusRiseOf`. */
+interface StatusSight {
   readonly readings: readonly MeterReading[];
   /** The period's start; undefined while no reset is known. */
   readonly start: number | undefined;
   /** Whether the usage stores reach back to the period's start (`WeekReading.covered`). */
   readonly covered: boolean;
   readonly statusUse: WeekUse | undefined;
-  /** Everyone's W since the period's start, and since today's start (`WeekReading.todayFrom`). */
+  /** Everyone's W since the period's start. */
   readonly weekW: number;
-  readonly todayW: number;
   readonly wPerPct: number;
   readonly now: number;
+}
+
+/** The week's use, in percent, at a span's start and now (`statusRiseOf`). */
+interface StatusRise {
+  readonly fromPct: number;
+  readonly nowPct: number;
 }
 
 /**
@@ -141,20 +146,30 @@ function heldToStatus(readPct: number, statusUse: WeekUse, now: number): number 
 }
 
 /**
- * Today's use from the status line, in percent of the week (T531): the use now less the use at today's start, each
- * read between the period's meter readings (`useAtW`), so a rate only prices the part of a percent past the last
- * reading, and a rate that drifts through the week does not inflate the day. Undefined while the period has no
- * reading or the stores do not reach its start: today's use is then its W at the week's rate.
+ * The week's use at the start of the span whose W is `sinceW` and now, on the status line's scale (T531): each read
+ * between the period's meter readings (`useAtW`), so a rate only prices the part of a percent past the last reading,
+ * and a rate that drifts through the week does not inflate the span; the use now held to the status line's
+ * (`heldToStatus`). Undefined while the period has no reading or the stores do not reach its start.
  */
-function statusTodayPct(sight: TodaySight): number | undefined {
-  const { readings, start, covered, statusUse, weekW, todayW, wPerPct, now } = sight;
+function statusRiseOf(sight: StatusSight, sinceW: number): StatusRise | undefined {
+  const { readings, start, covered, statusUse, weekW, wPerPct, now } = sight;
   if (start === undefined || !covered || !readings.some((reading) => reading.start === start)) {
     return undefined;
   }
-  const fromPct = useAtW(readings, start, weekW - todayW, wPerPct);
   const readPct = useAtW(readings, start, weekW, wPerPct);
-  const nowPct = statusUse === undefined ? readPct : heldToStatus(readPct, statusUse, now);
-  return Math.max(0, nowPct - fromPct);
+  return {
+    fromPct: useAtW(readings, start, weekW - sinceW, wPerPct),
+    nowPct: statusUse === undefined ? readPct : heldToStatus(readPct, statusUse, now),
+  };
+}
+
+/**
+ * Today's use from the status line, in percent of the week: the rise since today's start, whose W is `todayW`
+ * (`statusRiseOf`). Undefined with that rise: today's use is then its W at the week's rate.
+ */
+function statusTodayPct(sight: StatusSight, todayW: number): number | undefined {
+  const rise = statusRiseOf(sight, todayW);
+  return rise === undefined ? undefined : Math.max(0, rise.nowPct - rise.fromPct);
 }
 
 /**
@@ -270,7 +285,8 @@ export function readWeek(input: WeekInput): WeekReading {
   const rate = rateOf(calibration, budget, estimate);
   const wPerPct = rate?.wPerPct;
   const usedPct = statusUse?.usedPct ?? (covered && wPerPct !== undefined ? weekW / wPerPct : undefined);
-  const statusToday = wPerPct === undefined ? undefined : statusTodayPct({ readings, start: period?.start, covered, statusUse, weekW, todayW, wPerPct, now });
+  const sight: StatusSight | undefined = wPerPct === undefined ? undefined : { readings, start: period?.start, covered, statusUse, weekW, wPerPct, now };
+  const statusToday = sight === undefined ? undefined : statusTodayPct(sight, todayW);
   const todayPct = statusToday ?? (wPerPct === undefined ? undefined : todayW / wPerPct);
   const todayWPerPct = todayRateOf(todayW, statusToday, wPerPct);
   const profile = DailyProfile.ofQuietHours(budget.quietHours);
