@@ -278,7 +278,7 @@ async function postProblem(runtime, team, url, id, head) {
     }
     const { kind, target, task, requester } = record.request;
     const content = `teamrig exec ${team.kit.paths.team}: ${head} [${kind} on ${target} for ${task}, asked by ${requester}]`;
-    return team.scanner.refusal('the post', content) ?? (await runtime.exec.webhook.post(url, content));
+    return team.scanner.refusal('the post', content) ?? (await runtime.webhook.post(url, content));
 }
 /** A review in words, without its next step: the line the security channel gets. */
 function reviewHead(review, owner) {

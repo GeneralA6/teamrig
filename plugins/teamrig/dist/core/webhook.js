@@ -1,4 +1,4 @@
-import { isRecord, stringField } from "../core/guards.js";
+import { isRecord, stringField } from "./guards.js";
 /** The longest message the chat accepts; a longer one is cut to fit, with an ellipsis. */
 export const WEBHOOK_MAX_CONTENT = 2_000;
 /** How long a post may take: a slow chat must not hold the command that already logged its event. */
@@ -25,7 +25,7 @@ export function httpWebhook(timeoutMs = WEBHOOK_TIMEOUT_MS) {
     return {
         async post(url, content) {
             if (!URL.canParse(url)) {
-                return 'the variable does not hold a URL';
+                return 'the webhook address is not a URL';
             }
             try {
                 const response = await fetch(url, {
