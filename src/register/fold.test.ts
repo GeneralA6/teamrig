@@ -344,3 +344,23 @@ describe('foldEvents: the waits a Later gives a task (T1295)', () => {
     assert.deepEqual(taskAfter([create(9), status(10, 'waiting', OWNER), later(11, PUT_OFF), update(12, { priority: 1 })]).waits, PUT_OFF);
   });
 });
+
+function decided(hour: number, waits: readonly WaitReason[]): RegisterEvent {
+  return { v: EVENT_VERSION, type: 'update', id: 'T1', at: at(hour), by: 'lead', changes: {}, note: 'owner decided: ship it', waits, decided: true };
+}
+
+describe("foldEvents: the owner's decision a leader records (T1366)", () => {
+  const OWNER: readonly WaitReason[] = [{ kind: 'decision', who: 'owner' }];
+
+  it('drops the owner wait and marks the task decided, keeping its status and the note it shows', () => {
+    const task = taskAfter([create(9), status(10, 'waiting', OWNER), decided(11, [])]);
+    assert.deepEqual([task.waits, task.status, task.note], [[], 'waiting', 'n']);
+    assert.deepEqual(task.decided, { by: 'lead', at: at(11), note: 'owner decided: ship it' });
+  });
+
+  it('means nothing outside a wait status, and the next status clears it', () => {
+    assert.equal(taskAfter([create(9), status(10, 'in-progress'), decided(11, [])]).decided, null);
+    assert.equal(taskAfter([create(9), status(10, 'waiting', OWNER), decided(11, []), status(12, 'in-progress')]).decided, null);
+    assert.equal(taskAfter([create(9), status(10, 'waiting', OWNER), later(11, OWNER)]).decided, null, 'a Later is no decision');
+  });
+});

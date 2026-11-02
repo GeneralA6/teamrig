@@ -339,6 +339,20 @@ describe('parseEvent: the waits a Later gives a task (T1295)', () => {
     assert.ok(back.kind === 'event' && back.event.type === 'update' && back.event.waits?.length === 0);
   });
 
+  it("reads a Decided's mark beside its waits (T1366), and writes it as it is", () => {
+    const decided = parse({ ...BASE, type: 'update', changes: {}, note: 'owner decided: ship it', waits: [], decided: true }, 2);
+    const event: RegisterEvent = { ...BASE, v: 2, type: 'update', changes: {}, note: 'owner decided: ship it', waits: [], decided: true };
+    assert.deepEqual(decided, { kind: 'event', event });
+    assert.deepEqual(eventRecord(event), event);
+    const plain = parse({ ...BASE, type: 'update', changes: {}, note: 'context' }, 2);
+    assert.ok(plain.kind === 'event' && !('decided' in plain.event));
+  });
+
+  it('cannot read a decided mark other than true', () => {
+    const parsed = parse({ ...BASE, type: 'update', changes: {}, note: 'n', waits: [], decided: 'yes' }, 2);
+    assert.ok(parsed.kind === 'unreadable' && /decided is "yes", not true/.test(parsed.reason), JSON.stringify(parsed));
+  });
+
   it('cannot read waits that are not a list of known waits', () => {
     const cases: readonly [JsonRecord, RegExp][] = [
       [{ ...BASE, type: 'update', changes: {}, note: 'n', waits: 'decision:owner' }, /waits is not a list/],

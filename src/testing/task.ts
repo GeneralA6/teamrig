@@ -26,6 +26,7 @@ export function testTask(overrides: Partial<Task> = {}): Task {
     waits: [],
     card: null,
     answer: null,
+    decided: null,
     proof: null,
     watch: null,
     reparks: 0,
