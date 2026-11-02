@@ -33,6 +33,7 @@ import type { TreeState } from '../delivery/push-pass.ts';
 import type { PackageRegistry } from '../package-guard/registry.ts';
 import { CONTEXT_MAX_CHARS, TEAM_RULES_MAX_CHARS } from '../rules/pack.ts';
 import type { ExecPorts } from '../exec/ports.ts';
+import type { ChatWebhook } from '../core/webhook.ts';
 import type { PointerGit } from '../setup/pointer-ignore.ts';
 import { FakeClock } from './fake-clock.ts';
 import { FakeSessionProcesses } from './fake-session-processes.ts';
@@ -162,6 +163,8 @@ export interface RunOptions {
   readonly packageRegistry?: PackageRegistry;
   /** The process `teamrig exec` runs a command in and the checkout it binds to; default a spawner whose command exits 0 and a clean checkout of the fixture request's repository. */
   readonly exec?: ExecPorts;
+  /** The chat webhook posts go to; default one that keeps them and answers each as posted. */
+  readonly webhook?: ChatWebhook;
 }
 
 /**
@@ -224,6 +227,7 @@ export class CliHarness {
       ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
       ...(options.packageRegistry === undefined ? {} : { packageRegistry: options.packageRegistry }),
       ...(options.exec === undefined ? {} : { exec: options.exec }),
+      ...(options.webhook === undefined ? {} : { webhook: options.webhook }),
       out: { stdout: (line) => stdout.push(line), stderr: (line) => stderr.push(line) },
       ...(options.configFormat === undefined ? {} : { configFormat: options.configFormat }),
       ...(options.cmdShimLine === undefined ? {} : { cmdShimLine: options.cmdShimLine }),

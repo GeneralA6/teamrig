@@ -1,4 +1,4 @@
-import type { ExecWebhook } from '../exec/webhook.ts';
+import type { ChatWebhook } from '../core/webhook.ts';
 
 /** One post a command asked of the webhook. */
 export interface WebhookPost {
@@ -7,7 +7,7 @@ export interface WebhookPost {
 }
 
 /** A webhook in memory: it keeps every post asked of it, and answers each with the problem it was made with, if any. */
-export class FakeWebhook implements ExecWebhook {
+export class FakeWebhook implements ChatWebhook {
   readonly posts: WebhookPost[] = [];
   private readonly problem: string | undefined;
 
