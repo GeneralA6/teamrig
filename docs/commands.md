@@ -187,9 +187,10 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       --tree (the lead only): also every team under it, read-only, ids as <team>/T<n>
   verify [--session <id|name>]   the session's verifying tasks, oldest first, each with its proof and
       the date to verify by, then its done tasks still watched for a sighting (--watch)
-  stats [--range 7d|14d|30d|all] [--session <id|name>] [--tree]   the register's numbers over the team's
-      last days (default 7d): the Health tiles with their levels, then flow, new work, speed, delays,
-      waits, bugs and people; --session: one session's tasks; --tree (the lead only): every team under it
+  stats [--range 7d|30d|90d|180d|1y|all] [--session <id|name>] [--tree]   the register's numbers
+      over the team's last days (default 7d): the Health tiles with their levels, then flow, new work,
+      speed, delays, waits, bugs and people; --session: one session's tasks; --tree (the lead only):
+      every team under it
   report done [--day <YYYY-MM-DD>] [--session <id|name>] [--all]   one day of the team's done work
       (default yesterday) in groups: owner asked, each goal, urgent p1, this week's plan, each row shown;
       other work and dropped as one line, or their rows with --all; --session: one owner's tasks

@@ -655,12 +655,13 @@ weeks the active work takes to clear at the last 28 days' net: never, as it grow
 
 A LIMIT line names the days of the range the week sat at its usage limit, marked `$`, so a quiet day there is not read
 as slack. It reads them from the account's meter log, from the week's first reading at 100% to its reset; the log keeps
-8 weeks.
+8 weeks, so a longer range marks only its last 8 weeks.
 
 Flags:
 
-- `--range 7d|14d|30d|all`: the days counted on the team's clock, today included (default `7d`); `all` starts at the
-  first task's day.
+- `--range 7d|30d|90d|180d|1y|all`: the days counted on the team's clock, today included (default `7d`): the last 7,
+  30, 90, 180 or 365 (`1y`) days; `all` starts at the first task's day. A span that crosses a year names its first
+  day's year in the STATS line.
 - `--session <id|name>`: one session's numbers, from the tasks it owns now. With `--tree` it names the caller instead.
 - `--tree`: the lead only: its team and every team under it, with a TEAMS line of each team's active and late tasks,
   and a SPLIT line for each day tasks moved to another team (that team's chart before the day lacks them).
