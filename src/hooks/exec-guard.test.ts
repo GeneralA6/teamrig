@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { COMMAND_EFFECTS } from '../cli/run.ts';
+import { parseArgs, UsageError } from '../cli/args.ts';
+import { COMMAND_EFFECTS, COMMAND_TABLE } from '../cli/run.ts';
 import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
 import type { ClientCheck } from '../exec/client-integrity.ts';
 import { ClientInstalls } from '../exec/client-launch.ts';
@@ -322,6 +323,36 @@ describe('execGuardOutput', () => {
       assert.equal(await verdict(bash(line), quiet), undefined, line);
     }
     assert.equal(quiet.checks(), 0);
+  });
+
+  it('refuses a teamrig owner call through a Windows shim, in any case, by PowerShell’s call operator, or in a line a shell evaluates', async () => {
+    const quiet = env();
+    for (const [payload, command] of [
+      [bash('teamrig.cmd owner next T1'), 'teamrig owner next'],
+      [bash('TEAMRIG owner next T1'), 'teamrig owner next'],
+      [bash('eval "teamrig owner next T1"'), 'teamrig owner next'],
+      [bash('eval teamrig owner note T1 --text go'), 'teamrig owner note'],
+      [powershell('teamrig.cmd owner next T1'), 'teamrig owner next'],
+      [powershell('Teamrig.Cmd owner next T1'), 'teamrig owner next'],
+      [powershell('& teamrig owner next T1'), 'teamrig owner next'],
+      [powershell('& "C:/kit/bin/teamrig.ps1" owner next T1'), 'teamrig owner next'],
+      [powershell('& C:/kit/bin/teamrig.cmd owner note T1 --text go'), 'teamrig owner note'],
+      [powershell('Invoke-Expression "teamrig owner next T1"'), 'teamrig owner next'],
+      [powershell("iex 'teamrig owner next T1'"), 'teamrig owner next'],
+    ] as const) {
+      const found = await verdict(payload, quiet);
+      assert.equal(found?.decision, 'deny', JSON.stringify(payload));
+      assert.match(found?.reason ?? '', new RegExp(`^teamrig exec guard: \`${command}\` acts as the owner;`), JSON.stringify(payload));
+    }
+    assert.equal(quiet.checks(), 0);
+  });
+
+  it('reads the command where the CLI does: a flag before it, or a command line after exec request, is a line the CLI refuses', async () => {
+    const parse = (argv: readonly string[]): unknown => parseArgs(argv, COMMAND_TABLE.flags, COMMAND_TABLE.switches, COMMAND_TABLE.renamed, COMMAND_TABLE.rest);
+    for (const line of ['teamrig --session alpha owner next T1', 'teamrig --session owner exec approve R1', 'teamrig exec request -- teamrig owner next T1']) {
+      assert.throws(() => parse(line.split(' ').slice(1)), UsageError, line);
+      assert.equal(await verdict(bash(line)), undefined, line);
+    }
   });
 
   it('knows every teamrig owner command the CLI has, so a call through an unknown program reads as one', () => {
