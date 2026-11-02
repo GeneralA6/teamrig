@@ -1,7 +1,8 @@
 import { isRecord, stringField } from './guards.ts';
 
 /**
- * A chat webhook teamrig posts one line of text to: `teamrig exec` each approval, refusal and run (exec spec §10).
+ * A chat webhook teamrig posts one line of text to: `teamrig exec` each approval, refusal and run (exec spec §10), and
+ * `hook restore-track` the owner's page when the Claude login expires (src/cli/login-page.ts).
  */
 export interface ChatWebhook {
   /** Posts `content` to `url`; undefined once it is posted, else why not, in words that never hold the URL. */

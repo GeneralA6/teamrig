@@ -102,7 +102,7 @@ export interface CliRuntime {
   readonly packageRegistry: PackageRegistry;
   /** The process `teamrig exec` runs a reviewed command in, and the git checkout its binding check reads. */
   readonly exec: ExecPorts;
-  /** The chat webhook `teamrig exec` posts its reviews and runs to. */
+  /** The chat webhook `teamrig exec` posts its reviews and runs to, and an expired login's page goes to. */
   readonly webhook: ChatWebhook;
   /** The config format the run reads and migrates to; default the shipped one (tests give a newer release's). */
   readonly configFormat?: ConfigFormat;
