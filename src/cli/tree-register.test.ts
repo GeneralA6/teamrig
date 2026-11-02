@@ -242,9 +242,11 @@ describe('teamrig update <team>/<id>: the root lead notes a task below (T1018)',
     }
     const usages: [readonly string[], RegExp][] = [
       [['app/T1', '--note', 'x'], /^app\/T1 is a task of your own team: update T1/],
-      [['web/T2', '--priority', 'p1', '--note', 'x'], /^update web\/T2 adds a --note or a --later to another team's task: it takes no --priority/],
-      [['web/T2', '--pin'], /^update web\/T2 adds a --note or a --later to another team's task: it takes no --pin/],
-      [['web/T2', '--later', '2030-01-09', '--due', '2030-01-10', '--note', 'x'], /^update web\/T2 adds a --note or a --later to another team's task: it takes no --due/],
+      [['web/T2', '--priority', 'p1', '--note', 'x'], /^update web\/T2 adds a --note, a --later or a --decided to another team's task: it takes no --priority/],
+      [['web/T2', '--pin'], /^update web\/T2 adds a --note, a --later or a --decided to another team's task: it takes no --pin/],
+      [['web/T2', '--later', '2030-01-09', '--due', '2030-01-10', '--note', 'x'], /^update web\/T2 adds a --note, a --later or a --decided to another team's task: it takes no --due/],
+      [['web/T2', '--decided', '--later', '2030-01-09', '--note', 'x'], /^--decided records the owner's answer with a --note alone: it takes no --later/],
+      [['web/T2', '--decided'], /^--note is required/],
       [['web/T2'], /^--note is required/],
       [['web/T2/x', '--note', 'x'], /is not a task id like T12, or web\/T12/],
     ];
@@ -278,6 +280,23 @@ describe('teamrig update <team>/<id> --later: the root lead puts a card below of
     assert.equal((await kit.run(['add', '--title', 'Draw icons', '--description', 'what and why', '--priority', 'p2', '--session', 'lead'], { env: WEB })).code, EXIT.ok);
     const open = await kit.run(['update', 'web/T2', '--later', '2030-01-09', '--note', 'x', '--session', 'lead']);
     assert.deepEqual([open.code, open.stdout], [EXIT.refused, ['REFUSED T2 waits on no decision or approval of owner: only such a card is put off']]);
+  });
+});
+
+describe('teamrig update <team>/<id> --decided: the root lead records the owner answer to a card below (T1366)', () => {
+  it("writes the Decided in that team's register by the root lead's address, and refuses a task waiting on no owner", async () => {
+    const kit = await treeHarness();
+    assert.equal((await kit.run(['add', '--title', 'Pick a host', '--description', 'what and why', '--priority', 'p1', '--session', 'lead'], { env: WEB })).code, EXIT.ok);
+    const set = await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'decision:owner', '--note', 'the cost', ...TEST_OWNER_CARD_FLAGS, '--session', 'lead'], { env: WEB });
+    assert.equal(set.code, EXIT.ok, [...set.stdout, ...set.stderr].join('\n'));
+    const decided = await kit.run(['update', 'web/T1', '--decided', '--note', 'human decided: the cheaper host', '--session', 'lead']);
+    assert.equal(decided.code, EXIT.ok, [...decided.stdout, ...decided.stderr].join('\n'));
+    assert.match(decided.stdout[0] ?? '', /^UPDATED web\/T1 waiting, /);
+    const event = readEvents(kit.files.get(teamEventsOf('web')) ?? '').events.at(-1);
+    assert.deepEqual(event?.type === 'update' ? [event.by, event.note, event.waits, event.decided] : undefined, ['app/lead', 'human decided: the cheaper host', [], true]);
+    assert.equal((await kit.run(['add', '--title', 'Draw icons', '--description', 'what and why', '--priority', 'p2', '--session', 'lead'], { env: WEB })).code, EXIT.ok);
+    const open = await kit.run(['update', 'web/T2', '--decided', '--note', 'x', '--session', 'lead']);
+    assert.deepEqual([open.code, open.stdout], [EXIT.refused, ['REFUSED T2 waits on no decision or approval of owner: only such a card is decided']]);
   });
 });
 

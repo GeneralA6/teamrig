@@ -236,6 +236,37 @@ describe('runCli: the daily meeting', () => {
     assert.equal((await kit.run(['meeting', 'agenda', '--session', 'lead'])).stdout[5], 'DECISIONS 1 waiting on owner (decision or approval)');
   });
 
+  it("records the owner's answer with update --decided: the card leaves the agenda, and its owner sees it decided (T1366)", async () => {
+    const kit = await teamBeforeTheMeeting();
+    const decided = await kit.run(['update', 'T1', '--decided', '--note', 'owner decided: the middle tier', '--session', 'lead']);
+    assert.equal(decided.code, EXIT.ok, decided.stderr.join('\n'));
+    assert.match(decided.stdout[0] ?? '', /^UPDATED T1 waiting, .*owner decided, by lead/);
+    const agenda = (await kit.run(['meeting', 'agenda', '--session', 'lead'])).stdout;
+    assert.deepEqual(agenda.slice(5, 7), ['DECISIONS 0 waiting on owner (decision or approval)', 'LATE 1 past their due date'], agenda.join('\n'));
+    const shown = (await kit.run(['show', 'T1', '--session', 'alpha'])).stdout.join('\n');
+    assert.match(shown, /^decided: lead at 2030-01-08 10:00 UTC: owner decided: the middle tier$/m);
+  });
+
+  it('takes --decided with a --note alone, on a card waiting on the owner, from its owner or a leader, writing nothing else (T1366)', async () => {
+    const kit = await teamBeforeTheMeeting();
+    const usages: [readonly string[], RegExp][] = [
+      [['--decided', '--priority', 'p2', '--note', 'x'], /^--decided records the owner's answer with a --note alone: it takes no --priority/],
+      [['--decided', '--later', '2030-01-09', '--note', 'x'], /^--decided records the owner's answer with a --note alone: it takes no --later/],
+      [['--decided', '--pin', '--note', 'x'], /^--decided records the owner's answer with a --note alone: it takes no --pin/],
+      [['--decided'], /^--note is required/],
+    ];
+    for (const [extra, message] of usages) {
+      const result = await kit.run(['update', 'T1', ...extra, '--session', 'lead']);
+      assert.equal(result.code, EXIT.usage, extra.join(' '));
+      assert.match(result.stderr[0] ?? '', message, extra.join(' '));
+    }
+    const peer = await kit.run(['update', 'T1', '--decided', '--note', 'x', '--session', 'bravo']);
+    assert.deepEqual([peer.code, peer.stdout], [EXIT.refused, ['REFUSED only the owner (alpha) or the lead (lead) records a decision on T1']]);
+    const late = await kit.run(['update', 'T2', '--decided', '--note', 'x', '--session', 'lead']);
+    assert.deepEqual([late.code, late.stdout], [EXIT.refused, ['REFUSED T2 waits on no decision or approval of owner: only such a card is decided']]);
+    assert.equal((await kit.run(['meeting', 'agenda', '--session', 'lead'])).stdout[5], 'DECISIONS 1 waiting on owner (decision or approval)');
+  });
+
   // T1771: the agenda opens with the top lines `teamrig stats --tree` prints, from the same fold, so the two never disagree.
   it("opens with the stats' top lines, as stats --tree prints them, the days at the usage limit marked", async () => {
     const kit = await teamBeforeTheMeeting();

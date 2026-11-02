@@ -571,17 +571,40 @@ function laterOf(args: ParsedArgs, times: TypedTimes): string | null | undefined
   return value === NONE ? null : deadlineOf(`--${LATER_FLAG}`, value, times);
 }
 
+/** `update <id> --decided --note "<owner> decided: .."`: records the owner's answer to a card, dropping its wait on the owner (T1366). */
+const DECIDED_SWITCH = 'decided';
+
 /**
- * `update <team>/<id> --note ".." [--later <when|none>]`: the lead who asks the owner a team's decisions, at its tree's
- * root (T1018), records a note, such as the owner's answer, or a Later (T1295) on a task of that team. It lands in that
- * team's register as an event by the lead's `<team>/<id>`. Only that lead may, and only a note or a Later: every field
- * stays the task's own team's to change.
+ * Whether `--decided` is given. A Decided changes no field, so it goes with a --note (what the owner decided) alone;
+ * a --later beside it is refused, as the one drops the wait on the owner the other keeps.
+ */
+function decidedOf(args: ParsedArgs): boolean {
+  if (!args.switches.has(DECIDED_SWITCH)) {
+    return false;
+  }
+  const others = [...[...args.flags.keys()].filter((flag) => flag !== 'session' && flag !== 'note'), ...[...args.switches].filter((name) => name !== DECIDED_SWITCH)];
+  if (others.length > 0) {
+    throw new UsageError(`--decided records the owner's answer with a --note alone: it takes no --${others.join(', --')}`);
+  }
+  requiredFlag(args.flags, 'note');
+  return true;
+}
+
+/**
+ * `update <team>/<id> --note ".." [--later <when|none> | --decided]`: the lead who asks the owner a team's decisions,
+ * at its tree's root (T1018), records a note, a Later (T1295) or the owner's answer as a Decided (T1366) on a task of
+ * that team. It lands in that team's register as an event by the lead's `<team>/<id>`. Only that lead may, and only
+ * these: every field stays the task's own team's to change.
  */
 async function noteBelow(args: ParsedArgs, runtime: CliRuntime, caller: string, below: string, id: string): Promise<ExitCode> {
-  const others = [...[...args.flags.keys()].filter((flag) => flag !== 'session' && flag !== 'note' && flag !== LATER_FLAG), ...args.switches];
+  const others = [
+    ...[...args.flags.keys()].filter((flag) => flag !== 'session' && flag !== 'note' && flag !== LATER_FLAG),
+    ...[...args.switches].filter((name) => name !== DECIDED_SWITCH),
+  ];
   if (others.length > 0) {
-    throw new UsageError(`update ${below}/${id} adds a --note or a --later to another team's task: it takes no --${others.join(', --')}`);
+    throw new UsageError(`update ${below}/${id} adds a --note, a --later or a --decided to another team's task: it takes no --${others.join(', --')}`);
   }
+  const decided = decidedOf(args);
   const note = requiredFlag(args.flags, 'note');
   const { team } = await findTeam(runtime);
   if (team === below) {
@@ -596,8 +619,11 @@ async function noteBelow(args: ParsedArgs, runtime: CliRuntime, caller: string, 
     throw new RefusedError(`only ${formatAddress(asker)}, who asks the owner team ${below}'s decisions, notes its tasks from another team; ${formatAddress(from)} may not`);
   }
   const target = await teamOf(runtime, await openKit(runtime, below), 'write');
-  const later = laterOf(args, typedTimes(runtime, target.zone));
   const by = formatAddress(from);
+  if (decided) {
+    return report(runtime, await target.register.decideFrom(by, id, note), 'UPDATED', target, below);
+  }
+  const later = laterOf(args, typedTimes(runtime, target.zone));
   const written = later === undefined ? await target.register.noteFrom(by, id, note) : await target.register.deferFrom(by, id, later, note);
   return report(runtime, written, 'UPDATED', target, below);
 }
@@ -611,6 +637,9 @@ export async function update(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   const { id } = ref;
   const team = await openTeam(runtime, 'write');
   const by = sessionIdOf(team.roster, caller);
+  if (decidedOf(args)) {
+    return report(runtime, await team.register.decide(by, id, args.flags.get('note')), 'UPDATED', team);
+  }
   const later = laterOf(args, typedTimes(runtime, team.zone));
   if (later !== undefined) {
     return report(runtime, await team.register.defer(by, id, later, args.flags.get('note')), 'UPDATED', team);
