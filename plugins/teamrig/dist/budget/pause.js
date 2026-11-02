@@ -43,7 +43,7 @@ function weightOfAll(leaves) {
  * The teams on the account with their sessions funded in priority order on a short day (`isShortDay`), account-wide
  * so every team's view reads the same cut. The day funds `T × allowance / planned` of the sessions' summed weight `T`:
  * the weight the pace line's rate gives the day. The kept sessions (not `pausable`, or under a lift in force) come off
- * it first and whole, then each priority's queued work, p0 first, then the idle sessions; the tier the funding runs
+ * it first and whole, then the sessions by their top queued task's priority, p0 first, then the idle sessions; the tier the funding runs
  * out in is funded in part, the tiers after it not at all. A session's funded part is its funded work over its whole
  * work, so while no lift is in force a funded session gets the part the pace line's rate gives it, and one none of the
  * funding reaches gets 0: paused (`isPaused`). Any other day every session is funded whole.

@@ -6,26 +6,33 @@ import { JsonlEventLog } from "../register/store.js";
 /** The statuses whose tasks are a session's queued work: what it can work on now. */
 const QUEUED = new Set(['open', 'in-progress']);
 /**
- * Each session's queued work, the weight of its part of the team's daily budget: its open and in-progress tasks,
- * each weighed by its priority, p0 as many as there are levels (teamrig's p0 and the config's) and the last 1
- * (p0..p5: 6..1), summed by priority id. A priority the config does not list weighs 1. A session with no queued
- * work is not in the map.
+ * Each session's queued work, the weight of its part of the team's daily budget: its top queued (open or in-progress)
+ * task alone, weighed by its priority, p0 as many as there are levels (teamrig's p0 and the config's) and the last 1
+ * (p0..p5: 6..1), under that priority's id. A priority the config does not list weighs 1; of two tasks that weigh the
+ * same, the lower priority id is the top. A session works one task at a time, so how many it has queued does not raise
+ * what it spends: a session with 40 queued p1 tasks weighs as one with a single p1, and one whose most important work
+ * is low priority weighs low (T1588). A session with no queued work is not in the map.
  */
 export function workWeights(tasks, priorities) {
     const ranked = priorityLevels(priorities).map((priority) => priority.id).sort((a, b) => a - b);
-    const weights = new Map();
+    const weightOf = (priority) => {
+        const rank = ranked.indexOf(priority);
+        return rank === -1 ? 1 : ranked.length - rank;
+    };
+    const tops = new Map();
     for (const task of tasks) {
         if (!QUEUED.has(task.status)) {
             continue;
         }
-        const rank = ranked.indexOf(task.priority);
-        const byPriority = weights.get(task.owner) ?? new Map();
-        byPriority.set(task.priority, (byPriority.get(task.priority) ?? 0) + (rank === -1 ? 1 : ranked.length - rank));
-        weights.set(task.owner, byPriority);
+        const weight = weightOf(task.priority);
+        const top = tops.get(task.owner);
+        if (top === undefined || weight > top.weight || (weight === top.weight && task.priority < top.priority)) {
+            tops.set(task.owner, { priority: task.priority, weight });
+        }
     }
-    return weights;
+    return new Map([...tops].map(([owner, top]) => [owner, new Map([[top.priority, top.weight]])]));
 }
-/** A session's queued work weighed whole: its weights summed over its priorities, 0 with none. */
+/** A session's queued work weighed whole: its weights summed over its priorities (from `workWeights`, its top task's alone), 0 with none. */
 export function workWeightOf(work) {
     let sum = 0;
     for (const weight of work?.values() ?? []) {
@@ -66,10 +73,11 @@ export async function readWork(files, eventsPath, priorities) {
 /** The work cache's file in the usage folder: a name no session id can have, so it is never taken for a session's usage file. */
 export const WORK_CACHE_FILE = 'work.cache.json';
 /**
- * The work cache's format (2: with each session's p0 ids; 3: each session's weights by priority id); a cache in any
- * other reads as missing and is written again.
+ * The work cache's format (2: with each session's p0 ids; 3: each session's weights by priority id; 4: its top task's
+ * weight only, T1588, so a format-3 cache of every task's weights is read again); a cache in any other reads as
+ * missing and is written again.
  */
-const WORK_CACHE_FORMAT = 3;
+const WORK_CACHE_FORMAT = 4;
 function sameKey(a, b) {
     return a.tail === b.tail && a.snapshot === b.snapshot && a.priorities.length === b.priorities.length && a.priorities.every((id, index) => id === b.priorities[index]);
 }

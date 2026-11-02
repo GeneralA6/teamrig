@@ -58,7 +58,7 @@ function nodesAt(nodes, path) {
 export function shareOf(split, id) {
     return split.sessions[id]?.share ?? DEFAULT_SESSION_SHARE;
 }
-/** A session's weight in the split: its `share` times its queued work, the work at least 1 so a session with none still gets a part. */
+/** A session's weight in the split: its `share` times its top queued task's weight (`workWeights`), at least 1 so a session with none still gets a part. */
 export function sessionWeightOf(split, id) {
     return shareOf(split, id) * Math.max(1, workWeightOf(split.work.get(id)));
 }
