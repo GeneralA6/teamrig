@@ -1184,6 +1184,14 @@ its turn on Login expired`, one `login: <tab> ended its turn on Login expired` p
 again, <tab> answered`, each with how many tabs are stuck. A lock still busy after 5 seconds skips the login for
 that turn, never the session's own file.
 
+The first failure of an expiry in a team's tab also pages the owner, once per expiry: one line naming the tab and the
+time on its team's clock, posted to the chat webhook of the tab's team or the first team above it that names one,
+read from the one-line file [alerts.pageWebhookFile] names (it wins) or the environment variable
+[alerts.pageWebhookEnv] names. The post goes out after the lock is let go, so a slow chat holds up no other tab, and
+logs `login: paged the owner through <team>'s alerts.<key>`; a failed one logs `login: the page to the owner failed
+(<problem>); the next failure pages` and gives the claim back, so the next tab to fail pages. The log never holds the
+URL or the file's path. With no team naming a webhook, nothing pages.
+
 ## Every event: tab status
 
 With `tabStatus.enabled: true` in the team config (`team create` writes it for a new team) and `CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1` in Claude Code's
