@@ -18,7 +18,7 @@ import { parseWaits, type WaitReason } from './waits.ts';
  * decision `card` (0.79.0), the same `waits` and `card` on a `verifying` line for what its proof waits for
  * (0.109.0), an update's approval `verdict` (0.126.0), a task's `kind` (0.147.0), its `pin` (T637), a status line's
  * `review` (T916), a task's `type` and `critical` mark (T1252), which replaced `kind`, and a `done` status's `watch`
- * (T1306), an update's `waits` (T1295) and a task's `noGoal` mark (T1730), which an older reader ignores:
+ * (T1306), an update's `waits` (T1295), a task's `noGoal` mark (T1730) and an update's `decided` mark (T1366), which an older reader ignores:
  * each reads there as none (an answered update as a note alone). An older teamrig re-serialized the events of the snapshot a rotation or
  * `compact` rewrites, so it dropped such a field there (the archive keeps the lines as written); this one copies
  * each kept line as written (compaction.ts).
@@ -158,8 +158,13 @@ export interface UpdateEvent extends EventBase {
   readonly note: string | null;
   /** The lead's answer to the task's approval wait, its note saying what it checked or why not; only `approve` writes it. */
   readonly verdict?: ApprovalVerdict;
-  /** The waits a Later gives a waiting or verifying task (T1295): its waits with the time the owner put it off to, or without one; only `defer` writes it. */
+  /**
+   * The waits an update gives a waiting or verifying task: a Later's (T1295), its waits with the time the owner put it
+   * off to, or without one; or a Decided's (T1366), its waits without the owner's. Only `defer` and `decide` write it.
+   */
   readonly waits?: readonly WaitReason[];
+  /** A Decided (T1366): the owner's decision on the task's card, which its note says, recorded by `by`; only `decide` writes it. */
+  readonly decided?: true;
 }
 
 /**
@@ -294,6 +299,10 @@ export function parseEvent(line: JsonlRecord): EventParse {
       if (typeof waits === 'string') {
         return unreadable(waits);
       }
+      const decided = record['decided'];
+      if (decided !== undefined && decided !== true) {
+        return unreadable(`decided is ${JSON.stringify(decided)}, not true`);
+      }
       const event: UpdateEvent = {
         ...base,
         type: 'update',
@@ -301,6 +310,7 @@ export function parseEvent(line: JsonlRecord): EventParse {
         note: textOrNull(record, 'note'),
         ...(verdict === undefined ? {} : { verdict }),
         ...(waits === undefined ? {} : { waits }),
+        ...(decided === undefined ? {} : { decided }),
       };
       return { kind: 'event', event };
     }
