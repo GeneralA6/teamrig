@@ -1,7 +1,7 @@
 # Hooks and permissions
 
 The plugin's `hooks/hooks.json` registers twenty-four Claude Code hooks and one mod ([the /teamrig command](#the-mod-the-teamrig-command), [the refresh's /clear](#the-mod-the-refreshs-clear), [the reload after an install](#the-mod-the-reload-after-an-install), [the wake on urgent work](#the-mod-the-wake-on-urgent-work)). Each runs
-`node <plugin>/dist/cli/main.js hook <name>` with a 15 second timeout (`hook refresh-wake` 30, `hook tab-status` and `hook tool-end` 5). Outside a project tied to a team (no `$TEAMRIG_TEAM` and no `.teamrig.json`)
+`node <plugin>/dist/cli/main.js hook <name>` with a 15 second timeout (`hook refresh-wake` 30, `hook tab-status` and `hook tool-end` 5); the `PreToolUse` guards that can refuse a call run `node <plugin>/dist/cli/guard-main.js hook <name>`, which blocks the call when the guard [cannot answer](#a-guard-that-cannot-answer). Outside a project tied to a team (no `$TEAMRIG_TEAM` and no `.teamrig.json`)
 they all stay silent, but `hook restore-track` and `hook tool-end` still record the session ([the restore tracker](#every-session-the-restore-tracker)) and `hook missing-cli` still answers a shell that [no longer finds the bare command](#after-a-shell-call-the-cli-by-its-path).
 
 | Claude Code event | teamrig hook | What it does |
@@ -1250,6 +1250,30 @@ session id. `text` has secret shapes masked (the register's patterns and `regist
 most 64,000 characters, the end of a longer one; `truncated` marks that cut, or a reply whose turn began before
 the part of the transcript read. A tab that is no session of the team writes nothing, and any error leaves the
 turn as it was.
+
+## A guard that cannot answer
+
+Claude Code lets a tool call through when a `PreToolUse` command hook ends with any exit code but 0 or 2, or
+outlives its timeout, so a guard that breaks would stop guarding with no sign. The guards that can refuse a call
+(`push-guard`, `package-guard`, `secret-guard`, `exec-guard`, `pass-record-guard`, `cold-send`, `helper-gate` and
+`picker-guard`) therefore run through `dist/cli/guard-main.js`, a runner that loads the CLI itself and blocks the
+call (exit 2) when the guard:
+
+- cannot load, from a missing or broken file of the install;
+- throws, or leaves an error unhandled;
+- gives no answer within 12 seconds, under the hooks' 15 second timeout, so the runner answers before Claude Code
+  lets the call through;
+- ends with an exit code but 0 or 2, or prints something other than its one JSON answer.
+
+The model then reads `teamrig blocked this call: its <hook> guard <what went wrong>, and a guard that cannot answer
+must not let a call through. Fix: ...` ([errors](errors.md#a-blocked-tool-call)). So a broken install blocks every
+call those guards see (shell lines, reads, searches, edits, sends, helper launches and the question picker) until
+`claude plugin update teamrig@teamrig` and a restart of the session. `hook readonly-allow` and `hook tab-status` run
+through the plain CLI: when the allow fails, the call gets Claude Code's own check, and tab status never answers for
+a call.
+
+The runner cannot catch a guard stuck in an endless loop that never waits (Claude Code's timeout then lets the call
+through), the process running out of memory, a broken `guard-main.js` or runner file, and a missing Node.js.
 
 ## Permissions
 

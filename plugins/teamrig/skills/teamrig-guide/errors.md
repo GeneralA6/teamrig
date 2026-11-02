@@ -261,6 +261,16 @@ Not refusals: `WARN` lines from `team create`, `requirement` findings from `doct
 | `Node.js 20.11.1 is older than teamrig supports (22.18.0 or later): install the current LTS from nodejs.org, then restart Claude Code.` | Install a newer Node.js and make it the `node` on the PATH. |
 | `The teamrig check for git failed (<reason>).` | The check itself failed; the rest still ran. Run `teamrig doctor` again, and report the reason to the lead if it stays. |
 
+## A blocked tool call
+
+A guard hook that cannot answer blocks the call instead of letting it through
+([why](hooks.md#a-guard-that-cannot-answer)).
+
+| Output | Fix |
+| --- | --- |
+| teamrig `blocked this call: its <hook> guard could not load (...)`, `crashed (...)`, `ended with exit <n>` or `printed something other than its JSON answer (...)` | The install is broken: run `claude plugin update teamrig@teamrig` and restart the session; if that does not clear it, tell your lead. |
+| teamrig `blocked this call: its <hook> guard gave no answer within 12 s` | Retry the call; if every call times out, the host is overloaded or the guard hangs: tell your lead. |
+
 ## Failures (exit 1)
 
 | Output | Fix |
