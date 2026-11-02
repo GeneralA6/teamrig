@@ -163,9 +163,12 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       a --note from the task's owner also replaces the note show and the waiting text print
   update <id> --later <date>|none --note ..   puts a card waiting on the owner off to that time, out of the
       meeting's DECISIONS and the batches until then (its owner or a leader above it); none brings it back
-  update <team>/<id> --note .. [--later <date>|none]   the lead at a team tree's root, who asks the owner the
-      decisions of the teams under it, notes their tasks (the owner's answer) or puts a card off, named as its
-      batch prints them: web/T12
+  update <id> --decided --note "<owner> decided: .."   records the owner's answer to a card: drops its wait on
+      the owner, so it leaves the agenda, and marks it decided (READY) for its owner to act on and set its next
+      status (its owner or a leader above it)
+  update <team>/<id> --note .. [--later <date>|none|--decided]   the lead at a team tree's root, who asks the
+      owner the decisions of the teams under it, notes their tasks, puts a card off or records the owner's answer,
+      named as its batch prints them: web/T12
   refs apply <file> [--yes]   points the refs of your team's tasks at notes that moved, from a JSON list of
       {team, id, oldRef, newRef} rows: a dry run names each row's fate, --yes writes each task that still
       reads oldRef as update <id> --ref would; rows of another team, moved, changed since or refused are left

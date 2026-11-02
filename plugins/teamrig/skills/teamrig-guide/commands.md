@@ -247,9 +247,10 @@ groups. A `--note` alone adds context to any task's history, from any session; o
 The status never changes here: use `set`.
 
 In a tree of teams, the lead at its root, who asks the owner every team's decisions, records an answer on a task of
-a team under it, named as its batch prints it: `update web/T12 --note "owner decided: <decision>"`. The note lands in
-that team's register only, by the lead's `<team>/<id>`, and the meeting's end tells the task's owner. It takes only
-`--note`, or a `--later` with it to put the card off: every field stays that team's to change. Any other session, a root team's task, a team with no config here
+a team under it, named as its batch prints it: `update web/T12 --decided --note "owner decided: <decision>"`. It lands
+in that team's register only, by the lead's `<team>/<id>`, and the meeting's end tells the task's owner. It takes only
+`--note`, with a `--decided` to record the owner's answer or a `--later` to put the card off: every field stays that
+team's to change. Any other session, a root team's task, a team with no config here
 and any other flag are refused, writing nothing; `<team>/<id>` naming your own team says to use `update <id>`.
 
 Flags:
@@ -282,7 +283,14 @@ Flags:
   `none` brings it back at once. It goes with a `--note` alone (what the owner said), only on a task waiting on the
   owner's decision or approval, by its owner or a leader above it, or as `<team>/<id>` by the lead who asks the owner
   that team's decisions; a time already passed is refused.
-- `--note "<text>"`: records a note with the change; with `--later`, the only flags with `<team>/<id>`.
+- `--decided`: records the owner's answer to a waiting card, the `--note` saying what the owner decided
+  (`--note "owner decided: <decision>"`). The task drops its waits on the owner's decision and approval (a waiting
+  task its time waits too), so the card leaves the meeting's DECISIONS and the batches, and it stays in its status
+  marked decided: its list row says `owner decided, by <who>`, `show` prints a `decided:` line, check flags it READY
+  and the next prompt of its session says so, until its owner acts on it and sets its next status. It goes with a
+  `--note` alone, only on a task waiting on the owner's decision or approval, by its owner or a leader above it, or as
+  `<team>/<id>` by the lead who asks the owner that team's decisions.
+- `--note "<text>"`: records a note with the change; with `--later` or `--decided`, the only flags with `<team>/<id>`.
 
 Example:
 
