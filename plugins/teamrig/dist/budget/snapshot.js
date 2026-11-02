@@ -62,6 +62,15 @@ export function snapshotOfStatus(input, now) {
         contextInputTokens: finite(context?.['total_input_tokens']),
     };
 }
+/**
+ * The session's effort level in Claude Code's status line input (`effort.level`, which Claude Code sends only
+ * for a model that takes one); undefined without it. The status line shows it; the snapshot does not keep it.
+ */
+export function effortOfStatus(input) {
+    const status = parseObject(input.trim());
+    const effort = status === undefined ? undefined : recordField(status, 'effort');
+    return textOrNull(effort?.['level']) ?? undefined;
+}
 function storedWindow(window) {
     return window === null ? null : { used_percentage: window.usedPct, resets_at: Math.round(window.resetsAt / MS_PER_SECOND) };
 }
@@ -219,11 +228,12 @@ function placeText(view) {
     return parts.join(' ');
 }
 /**
- * The status line text: the model, where the session works, the plan's use and the command that resumes the
- * session, such as `Opus 5.5, app on main, week 57%, 5h 6%, claude --resume <session id>`.
+ * The status line text: the model and its effort level, where the session works, and the plan's use, the week's
+ * beside where the pace line stands, such as `Opus 5.5 (high), app on main, week 57% (pace 53%), 5h 6%`.
  */
 export function statusLineText(snapshot, view) {
-    const parts = [snapshot.model ?? 'Claude'];
+    const model = snapshot.model ?? 'Claude';
+    const parts = [view.effort === undefined ? model : `${model} (${view.effort})`];
     const place = placeText(view);
     if (place !== '') {
         parts.push(place);
@@ -231,13 +241,11 @@ export function statusLineText(snapshot, view) {
     const week = snapshot.rateLimits?.sevenDay ?? null;
     const fiveHour = snapshot.rateLimits?.fiveHour ?? null;
     if (week !== null) {
-        parts.push(`week ${Math.round(week.usedPct)}%`);
+        const used = `week ${Math.round(week.usedPct)}%`;
+        parts.push(view.pacePct === undefined ? used : `${used} (pace ${Math.round(view.pacePct)}%)`);
     }
     if (fiveHour !== null) {
         parts.push(`5h ${Math.round(fiveHour.usedPct)}%`);
-    }
-    if (view.resume) {
-        parts.push(`claude --resume ${snapshot.sessionId}`);
     }
     return parts.join(', ');
 }
