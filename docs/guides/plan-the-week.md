@@ -44,8 +44,11 @@ transcripts in W, weighted tokens (a helper's at `budget.subagentWeight`), and s
 line, from the newest status line reading ([teamrig statusline](../../plugins/teamrig/skills/teamrig-guide/commands.md#teamrig-statusline)):
 
 ```text
-Week: 31.0% used at 12:00 IDT (status line); the pace line is at 28.6%: 2.4 points ahead. Resets Wed 10-21 04:00 IDT.
+Week: 31.0% used at 12:00 IDT (status line); the pace line is at 28.6%: 2.4 points ahead. Resets Wed 10-21 04:00 IDT. At the last 24 hours' rise of 9.5 points, it ends the week near 85%.
 ```
+
+- The line ends with where the week heads: the status line's rise over the last 24 hours, carried to the reset, gives
+  when the week reaches 100% (`it reaches 100% Mon 10-19 14:20 IDT`), or near what it ends the week at.
 
 - The pace line climbs to `budget.targetPct` by `budget.paceEndHoursBeforeReset` (1) hours before the reset. Each
   day, what is left to it is spread over the active time to the pace end, and each session's daily budget is its

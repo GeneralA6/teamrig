@@ -1988,7 +1988,7 @@ CHECK 1 flag(s), web's tasks and skills, week 2026-10-12 (short form; --all for 
 OVERDUE 1 (due 10-14)
   T1 open, p1, owner web, due 10-14 | Add the error codes page · needed by T9 (api, due 10-16)
 SKILLS 0 flag(s) in ~/.claude/skills
-Week: 31.0% used at 12:00 IDT (status line); the pace line is at 28.6%: 2.4 points ahead. Resets Wed 10-21 04:00 IDT.
+Week: 31.0% used at 12:00 IDT (status line); the pace line is at 28.6%: 2.4 points ahead. Resets Wed 10-21 04:00 IDT. At the last 24 hours' rise of 9.5 points, it ends the week near 85%.
 ```
 
 A lead with sub-teams runs `teamrig check --tree --session lead` too: `start` reads the lead's own team.
@@ -2084,7 +2084,7 @@ MEETINGS 1 today or missed
   The owner starts one with teamrig meeting start <id>; a missed one is moved (teamrig meeting move <id> --at <time>) or dropped.
 - 2026-10-15 07:40 api: the signup retry needs the new error codes first
 READ lead: 1 new line, shown above; new ones are shown at your next prompt
-Week: 31.0% used at 11:00 IDT (status line); the pace line is at 28.6%: 2.4 points ahead. Resets Wed 10-21 04:00 IDT.
+Week: 31.0% used at 11:00 IDT (status line); the pace line is at 28.6%: 2.4 points ahead. Resets Wed 10-21 04:00 IDT. At the last 24 hours' rise of 9.5 points, it ends the week near 85%.
   fits: p1 40% · p2 22% (left 68.5% of the week)
 END teamrig meeting end --session lead: tells each session the decisions recorded on its tasks
 ```
@@ -4249,6 +4249,11 @@ pace line and today's use start there. With no period kept yet, the week before 
 metered since its start (at the week's W per percent) is 1.5 times the status line's use and 10 points over it:
 the use was reset inside the week before any period was kept, so the period starts at the latest hour from which
 the metered W reaches that use. After a reset inside the week, the week line says where the use counts from.
+Once the period is a day old, the week line also says where the week heads: the status line's rise over the last 24
+hours, read between the meter log's readings (below), carried to the reset, gives when the week reaches 100%
+(`At the last 24 hours' rise of 8.0 points, it reaches 100% Tue 10-20 23:00 IDT.`), or near what it ends the week at
+(`..., it ends the week near 89%.`). It says nothing at 100%, where the extra-usage pool's line takes over, nor while
+the meter log holds no reading of the period or the usage stores do not reach its start.
 The period, the meter log (below) and the extra-usage log ([teamrig budget extra](#teamrig-budget-extra)) are the
 account's: a team under a parent on its Claude
 account reads and writes them in the folder of the highest team above it reached through teams all on that account,
@@ -4338,7 +4343,7 @@ teamrig budget
 Output:
 
 ```text
-Week: 57.0% used at 14:00 IDT (status line); the pace line is at 20.9%: 36.1 points ahead. Resets Wed 10-21 04:00 IDT.
+Week: 57.0% used at 14:00 IDT (status line); the pace line is at 20.9%: 36.1 points ahead. Resets Wed 10-21 04:00 IDT. At the last 24 hours' rise of 8.0 points, it reaches 100% Tue 10-20 23:00 IDT.
 Today (UTC day), used and daily budget in % of the week:
   session   used  budget       W  calls
   the team  5.0%   10.3%  37.50M  1,310
