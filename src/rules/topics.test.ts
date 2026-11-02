@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { CORE_RULE_KEYS, type CoreRuleKey } from './keys.ts';
-import { RULE_LINE_MIN_CHARS, topicsOf } from './topics.ts';
+import { RULE_LINE_MIN_CHARS, topicsLabel, topicsOf } from './topics.ts';
 
 /** A line for each core rule that conflicts with it, as such lines read in a CLAUDE.md, a skill or a memory file. */
 const CONFLICTS: Readonly<Record<CoreRuleKey, string>> = {
@@ -51,6 +51,12 @@ describe('topicsOf', () => {
       rules: ['roles', 'owner-gates'],
       tags: ['precedence'],
     });
+  });
+
+  it('labels the topics by rule number and key, then the tags, leaving out an empty part', () => {
+    assert.equal(topicsLabel({ rules: ['own-change', 'deploy'], tags: ['teamrig'] }), '2 own-change, 7 deploy; teamrig');
+    assert.equal(topicsLabel({ rules: ['push'], tags: [] }), '15 push');
+    assert.equal(topicsLabel({ rules: [], tags: ['precedence', 'teamrig'] }), 'precedence, teamrig');
   });
 
   it('skips a short line and a line with no topic', () => {
