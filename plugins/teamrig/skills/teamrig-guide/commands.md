@@ -5367,7 +5367,8 @@ urgent or `inbox add --wake now` line) changed, a batch falls due or 10 minutes 
 it, and logs each wake with its cost (W, and the share of the week at today's W per percent) to
 `<team>/state/wakes.jsonl`. A task wakes the session once, when it is the
 session's, open or in progress, at `wake.priority` or more urgent (p1 by default; p0 only while the session's
-budget holds it, past its daily budget with no room left in the team's day, and p0 and p1 only in quiet hours), with every task it comes after finished, and changed by someone else
+budget holds it, past its daily budget with no room left in the team's day, or a short day pauses it, and p0 and p1
+only in quiet hours), with every task it comes after finished, and changed by someone else
 since the session last touched it. Tasks handed within `wake.batchSeconds` wake it once, and wakes are
 `wake.minGapMinutes` apart. An [urgent line](hooks.md#urgent-lines) posted for the session wakes it once the oldest
 is `wake.batchSeconds` old, held by neither that gap nor its budget, and the wake is logged with `asks`. The first check in a tab takes the work already there as seen. With

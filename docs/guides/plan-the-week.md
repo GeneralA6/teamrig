@@ -69,7 +69,8 @@ Week: 31.0% used at 12:00 IDT (status line); the pace line is at 28.6%: 2.4 poin
   every session keeps its part by default. With `budget.pauseByPriority` on, the day funds the work in priority order
   instead, across every team on the Claude account: the lead, the delivery owner and lifted sessions first, then
   the sessions by their top queued task, p0 first, idle sessions last. A session none of it reaches gets a daily budget of 0, marked
-  `(paused)`, and is held once the team has no room; a burst's floor still holds it up.
+  `(paused)`: room or not, only p0 work wakes it, and it is held once the team has no room; a burst's floor still
+  holds it up.
 - Past 100% of the week, the extra usage put in on claude.ai is entered with `teamrig budget extra` and spread over
   the days left the same way.
 - Where the W went: `budget --task T<n>` gives each session's W on one task, `--burn` each day's sources (the
