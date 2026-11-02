@@ -545,8 +545,9 @@ runs a Bash or PowerShell call, `hook exec-guard` reads it (a shell line as the 
 - **a review as the owner** (`register.ownerSource`): the owner reviews in their own terminal, or types
   `/teamrig exec approve R<n> --session owner` in a tab, which [the mod](#the-mod-the-teamrig-command) runs with no
   tool call.
-- **a word known only when the line runs**: a variable or a substitution as the command word of a `teamrig` call,
-  or anywhere in a review, since the guard cannot tell what it runs, or as whom.
+- **a word known only when the line runs**: a variable or a substitution as the command word of a `teamrig` call
+  (`"$G"`, `$(echo exec)`, or `"$@"` in a shell function that wraps it), whatever command it turns out to be, or
+  anywhere in a review, since the guard cannot tell what it runs, or as whom. Write the command out.
 - **a client that is no install of the plugin**: an `exec` command must start `bin/teamrig`, `bin/teamrig.cmd` or
   `dist/cli/main.js` of the hook's own install, or of another version beside it in the plugin cache (a tab keeps on
   PATH the version it started with). The guard places the file as the line's shell would: a path the line writes
