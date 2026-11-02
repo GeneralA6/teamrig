@@ -190,6 +190,11 @@ export interface DeferChange extends UpdateChange {
   readonly waits: readonly WaitReason[];
 }
 
+/** A Decided (T1366): an update that changes no field, with what the owner decided and the waits left without the owner's. */
+export interface DecideChange extends DeferChange {
+  readonly decided: true;
+}
+
 /** An owner's action from the pane (T1298): an update written as `by`, the team's register.ownerSource. */
 export interface OwnerChange extends UpdateChange {
   readonly by: string;
@@ -729,6 +734,46 @@ export class RegisterPolicy {
     }
     const waits: readonly WaitReason[] = until === null ? untimed : [...untimed, { kind: 'time', at: until }];
     return ok({ changes: {}, note: text, waits });
+  }
+
+  /**
+   * A Decided (T1366): the owner answered a card, a task's wait on the owner's decision or approval, at the meeting or
+   * in a decision batch. Its owner or a leader above it records the answer, as {@link decideFrom} judges it.
+   */
+  decide(task: Task, caller: string, note: string | undefined): Verdict<DecideChange> {
+    if (caller !== task.owner && caller !== this.tree.lead && !this.tree.leads(caller, task.owner)) {
+      return refuse(`only the owner (${task.owner}) or ${this.approversText(task.owner)} records a decision on ${task.id}`);
+    }
+    return this.decideFrom(task, note);
+  }
+
+  /**
+   * A Decided's content, for the lead above who asks the owner this team's decisions too (Register.decideFrom, whose
+   * caller the tree decides): only a task waiting on the owner is decided, always with a note saying what the owner
+   * decided. The owner's decision and approval waits go; a waiting task's time waits go with them, as a time beside
+   * the owner's wait is a Later (deferFrom), while a verifying task keeps its time and task waits, which say when its
+   * proof runs. The task stays in its status, marked decided (fold.ts), for its session to act on.
+   */
+  decideFrom(task: Task, note: string | undefined): Verdict<DecideChange> {
+    const { ownerSource } = this.config.register;
+    if (!waitsOnOwner(task, ownerSource)) {
+      return refuse(`${task.id} waits on no decision or approval of ${ownerSource}: only such a card is decided`);
+    }
+    const text = blankToNull(note);
+    if (text === null) {
+      return refuse(`a Decided needs --note: what ${ownerSource} decided`);
+    }
+    const problem = this.checkText('note', text);
+    if (problem !== undefined) {
+      return refuse(problem);
+    }
+    const waits = task.waits.filter((reason) => {
+      if (reason.kind === 'decision' || reason.kind === 'approval') {
+        return reason.who !== ownerSource;
+      }
+      return task.status !== 'waiting' || reason.kind !== 'time';
+    });
+    return ok({ changes: {}, note: text, waits, decided: true });
   }
 
   /**

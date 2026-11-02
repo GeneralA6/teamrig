@@ -653,6 +653,30 @@ describe('Register.defer and deferFrom: a Later (T1295)', () => {
     assert.equal(errorOf(await register.deferFrom('app/lead', 'T1', '2030-01-09 09:00', ' ')), 'a Later needs --note: what owner said');
     assert.equal(files.get(LOG), before);
   });
+
+  it('writes a Decided as one update line that drops the wait on the owner and marks the task decided (T1366)', async () => {
+    const { files, register } = await asking();
+    const appended = files.get(LOG)?.length ?? 0;
+    const { task, event } = written(await register.decide('lead', 'T1', 'human decided: ship it'));
+    assert.deepEqual(readEvents((files.get(LOG) ?? '').slice(appended)).events, [event]);
+    assert.deepEqual(event, { v: TASK_LINE_VERSION, type: 'update', id: 'T1', at: START, by: 'lead', changes: {}, note: 'human decided: ship it', waits: [], decided: true });
+    assert.deepEqual([task.status, task.note, task.waits, task.decided], ['waiting', 'ship the export', [], { by: 'lead', at: START, note: 'human decided: ship it' }]);
+    const before = files.get(LOG);
+    assert.equal(errorOf(await register.decide('lead', 'T1', 'again')), 'T1 waits on no decision or approval of owner: only such a card is decided');
+    assert.equal(errorOf(await register.decide('bravo', 'T1', 'go')), 'only the owner (alpha) or the lead (lead) records a decision on T1');
+    assert.match(errorOf(await register.decide('app/lead', 'T1', 'go')), /app.lead is not a session on this team/);
+    assert.equal(files.get(LOG), before);
+  });
+
+  it('writes a Decided by the lead above, on no roster here and past the caller check, still judged on its content', async () => {
+    const { files, register } = await asking();
+    const before = files.get(LOG);
+    assert.equal(errorOf(await register.decideFrom('app/lead', 'T1', ' ')), 'a Decided needs --note: what owner decided');
+    assert.equal(files.get(LOG), before);
+    const { task, event } = written(await register.decideFrom('app/lead', 'T1', 'human decided: ship it'));
+    assert.deepEqual(event, { v: TASK_LINE_VERSION, type: 'update', id: 'T1', at: START, by: 'app/lead', changes: {}, note: 'human decided: ship it', waits: [], decided: true });
+    assert.equal(task.decided?.by, 'app/lead');
+  });
 });
 
 describe("Register: the owner's Note and Next from the pane (T1298)", () => {
