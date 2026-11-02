@@ -144,8 +144,11 @@ describe('execGuardOutput', () => {
     }
     assert.equal(quiet.reads(), 0);
     assert.equal(quiet.checks(), 0);
-    for (const line of ['teamrig list --session "$S"', 'teamrig show "$T"', '$G list']) {
+    for (const line of ['teamrig list --session "$S"', 'teamrig show "$T"', '$G list', 'git "$G" status', 'npm "$X" test', 'docker "$C" exec ctr ls', 'node "$S" list']) {
       assert.equal(await verdict(bash(line), quiet), undefined, line);
+    }
+    for (const line of ['git $G status', '& $G list', 'npm $X test']) {
+      assert.equal(await verdict(powershell(line), quiet), undefined, line);
     }
   });
 
