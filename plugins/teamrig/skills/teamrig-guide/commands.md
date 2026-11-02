@@ -5255,7 +5255,8 @@ it started in, its transcript, its Claude Code's process id, its team and sessio
 running), and removes the file at an end the person or Claude Code chose. A compaction's start changes nothing.
 At a turn's end it also records in `<home>/restore/login.json` which tabs a turn that ended on `Login expired` left
 stuck, and when a later answer showed the login works again, each change as a `login:` line in
-`<home>/restore/restore.log`.
+`<home>/restore/restore.log`. The first failure of an expiry in a team's tab pages the owner once, through the chat
+webhook its team or a team above it names in [alerts.pageWebhookFile] or [alerts.pageWebhookEnv].
 
 Flags: none.
 

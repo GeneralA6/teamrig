@@ -38,7 +38,10 @@ teamrig restore run      # reopen the sessions the last shutdown killed
   `run: interrupted by <signal>` and how far it got.
 - After an expired login: a turn that ends on `Login expired` writes `login: expired` to the same log and marks its
   tab stuck in `restore/login.json`; each other tab it stops adds a line, and the first answer after it logs
-  `login: works again`. Run `/login` in one tab, then send each tab still listed under `stranded` a prompt.
+  `login: works again`. Run `/login` in one tab, then send each tab still listed under `stranded` a prompt. So you
+  hear of it away from the screen, set `alerts.pageWebhookFile` (the path of a one-line file holding a chat webhook
+  URL) or `alerts.pageWebhookEnv` (the name of a variable holding it) in the team's config, or a parent team's: the
+  first failure of each expiry posts one line to that chat, naming the tab and the time.
 - Where they come back: with `open.teamWindow: true` in a team's config, its sessions reopen in a Windows Terminal
   window of the team's own (`teamrig-<team>`), so two teams' tabs never mix; without it, and for sessions outside a
   team, they open in the most recent window.
