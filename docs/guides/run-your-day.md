@@ -69,7 +69,10 @@ A permission prompt holds a session until a human answers it; overnight that is 
 raise (the push guard, the commit, package and secret guards under `ask`, the helper gate) into a refusal whose reason tells
 the session to record the step as waiting for the owner's approval and take its next task, so the work queues for the
 owner instead of a session waiting on them. Refusals stay as they were. A prompt Claude Code raises on its own gets
-an answer for its case from a `PermissionRequest` hook (since 0.151.0): a line that provably only reads runs, a Bash
+an answer for its case from a `PermissionRequest` hook (since 0.151.0): a line that runs one of the session's own
+jobs (a merge, a deploy, an exec request, a worktree removal, the register, a commit with its hooks, a push of its own
+task branch; since 0.268.0, and the first five run even where auto mode would refuse them, `prompts.routeAllow`) or
+provably only reads runs, a Bash
 line with a rerun form (after a leading `cd D &&`, or a plain `git worktree remove`) is refused quoting the line to
 run instead, and anything else gets the same refusal; all but the question picker and plan mode's exit, which a person
 answers. The core pack's push rule says the same: under `refuse` a refused or blocked route waits for the owner

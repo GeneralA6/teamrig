@@ -5134,10 +5134,13 @@ any other tool (`ExitPlanMode` too), outside a team, with the guard off, or on a
 
 When Claude Code is about to show a permission prompt (`PermissionRequest`), with `prompts.hookAsks: refuse` in the
 team config, answers it for its case: nobody may be there to answer, and the prompt holds the session until someone
-does. A line that provably only reads runs; a Bash line teamrig's rules give a rerun form (after a leading `cd D &&`,
-or a plain `git worktree remove`) is refused quoting the line to run instead; anything else is refused with the
-tool's name and the note to record the step as waiting for the owner and take the next task. Each answer is a line in
-`state/prompt-answers.jsonl`, its command redacted; lines over 7 days old move to the archive (see
+does. A Bash line that runs one of the session's own jobs (a sanctioned route: `teamrig merge`, `deploy`, `exec
+request`, `worktree remove`, a register or inbox command, a `git commit` with its hooks, a `git push` of a task branch
+you own) runs; a line that provably only reads runs; a Bash line teamrig's rules give a rerun form (after a leading
+`cd D &&`, or a plain `git worktree remove`) is refused quoting the line to run instead; anything else is refused with
+the tool's name and the note to record the step as waiting for the owner and take the next task. Each answer is a line
+in `state/prompt-answers.jsonl`, its command redacted, a route's by its route alone; lines over 7 days old move to the
+archive (see
 [teamrig compact](#teamrig-compact)). The question picker (`AskUserQuestion`) and plan mode's exit (`ExitPlanMode`)
 still open. See [Hooks and permissions](hooks.md#asks-off-a-refusal-instead-of-a-prompt).
 
@@ -5149,8 +5152,32 @@ Example:
 teamrig hook prompt-refuse < permission-request.json
 ```
 
-Output: a JSON `PermissionRequest` decision, `allow` for a read-only line, else `deny` with the message; nothing with
-asks on, for the picker or plan mode's exit, outside a team, or on an error. Exit 0 always.
+Output: a JSON `PermissionRequest` decision, `allow` for a route's or a read-only line, else `deny` with the message;
+nothing with asks on, for the picker or plan mode's exit, outside a team, or on an error. Exit 0 always.
+
+### teamrig hook route-allow
+
+Before a Bash command, with `prompts.hookAsks: refuse` and `prompts.routeAllow: on` (its default) in the team config,
+lets a line that runs one of the session's own jobs run with no permission check at all, so auto mode never turns it
+into a dead end: `teamrig merge`, `teamrig deploy --repo <name>`, `teamrig exec request`, `teamrig worktree remove`
+(no `--base`) and a `git commit` with its hooks running (only `-a -s -q -m -F` and paths). The line must be one plain
+command through this install's own `teamrig`, or a bare `git`: no `;`, `&`, `|`, `<`, `>` but a lone `2>&1`, no
+substitution, variable or `#`, inside quotes too. It answers only once the push, package, secret, exec and pass-record
+guards all passed the same call; when one asks or refuses, that answer stands. Each allow is a line in
+`state/prompt-answers.jsonl` naming the route, never the command. `prompts.routeAllow: off` takes the allow away. See
+[Hooks and permissions](hooks.md#asks-off-a-refusal-instead-of-a-prompt).
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook route-allow < pre-tool-use.json
+```
+
+Output: a JSON permission decision `allow` naming the route for such a line; nothing with asks on or the switch off,
+for any other line or tool, when a guard asks or refuses, outside a team, with a missing or broken config, or on an
+error. Exit 0 always.
 
 ### teamrig hook cold-send
 

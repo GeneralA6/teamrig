@@ -17,8 +17,9 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | `PreToolUse` on `Bash` and `PowerShell` | `hook exec-guard` | Refuses a privileged command's review run as another session or the owner, any `exec` call through a client that is no install of the plugin, or one changed after its build, and every `owner note` or `owner next`, which act as the owner ([the exec guard](#before-a-shell-command-the-exec-guard)) |
 | `PreToolUse` on `Bash`, `PowerShell`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook pass-record-guard` | Refuses a session's own write of a tree's pass record, the proof that lets a push or a merge skip the checks the tree passed ([the pass-record guard](#before-a-write-or-a-shell-command-the-pass-record-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook readonly-allow` | With `readonlyShell.enabled`, lets a line whose every command provably only reads run without a permission prompt ([the read-only allow](#before-a-shell-command-the-read-only-allow)) |
+| `PreToolUse` on `Bash` | `hook route-allow` | With `prompts.hookAsks: refuse` and `prompts.routeAllow` on, lets a line that runs one of the session's own jobs (`teamrig merge`, `deploy`, `exec request`, `worktree remove`, a `git commit` with its hooks) run with no permission check, once every teamrig guard passed it ([asks off](#asks-off-a-refusal-instead-of-a-prompt)) |
 | `PreToolUse` on `AskUserQuestion` | `hook picker-guard` | With `pickerGuard.enabled`, refuses the question picker to every session and helper, to the lead outside the owner's daily meeting and in it unless the team asks with the picker (`decisions.askWith`), and to a sub-team's lead always, with the reason to decide it if it is the session's own, else record it on its task and go on ([the picker guard](#before-a-question-the-picker-guard)) |
-| `PermissionRequest` | `hook prompt-refuse` | With `prompts.hookAsks: refuse`, answers each permission prompt Claude Code is about to raise but the question picker's and plan mode's exit, per case: a line that provably only reads runs, a line with a rerun form is refused quoting it, anything else is refused with the reason to record the step for the owner and go on ([asks off](#asks-off-a-refusal-instead-of-a-prompt)) |
+| `PermissionRequest` | `hook prompt-refuse` | With `prompts.hookAsks: refuse`, answers each permission prompt Claude Code is about to raise but the question picker's and plan mode's exit, per case: a line that runs a sanctioned route or provably only reads runs, a line with a rerun form is refused quoting it, anything else is refused with the reason to record the step for the owner and go on ([asks off](#asks-off-a-refusal-instead-of-a-prompt)) |
 | `PreToolUse` on `SendMessage` | `hook cold-send` | Holds once a message that would wake an idle session cold; with `open.idle.mode` on, turns a message to a session teamrig closed into its urgent line; during the daily meeting, holds every message to the lead but a CRITICAL one |
 | `PostToolUse` on `SendMessage` | `hook failed-send` | After a send that was not delivered, hands the model [the inbox line to write instead](#after-a-failed-send-the-inbox-line) |
 | `PostToolUse` and `PostToolUseFailure` on `Bash` and `PowerShell`, in a team or not | `hook missing-cli` | After a shell call that did not find the bare `teamrig` command, hands the model [the CLI's path to run instead](#after-a-shell-call-the-cli-by-its-path) |
@@ -379,6 +380,13 @@ A refusal stays as it was, with no note. `ask` (the default) keeps the questions
 allow, in a mode that asks, or a check of its own that always asks): `hook prompt-refuse` answers each
 `PermissionRequest` for its case (since 0.151.0):
 
+- **A line that runs one of the session's own jobs runs** (since 0.268.0): one plain Bash command, read as the CLI
+  reads it, that is a sanctioned route: `teamrig merge`, `teamrig deploy --repo <name>`, `teamrig exec request`,
+  `teamrig worktree remove` (no `--base`), a register or inbox command (`start`, `add`, `set`, `list`, `inbox`...), a
+  `git commit` with its hooks running (only `-a -s -q -m -F` and paths), or a `git push [-u] [-q] <remote> <branch>`
+  of a task branch you own (`t<id>-...`) to a remote the repository names, never a protected branch. One plain
+  command: no `;`, `&`, `|`, `<`, `>` but a lone `2>&1`, no substitution, variable or `#`, inside quotes too, so a
+  commit message holding one of them gets the cases below.
 - **A line that provably only reads runs**, by the [read-only allow](#before-a-shell-command-the-read-only-allow)'s
   check and its trusted prefixes, even with `readonlyShell.enabled` off; one that would print a secret does not. This
   allow also answers a prompt a settings `ask` rule raised, which a `PreToolUse` allow never overrides: keep a line
@@ -399,6 +407,14 @@ credential, a password assignment) become `[redacted ...]`, so no secret's start
 [teamrig compact](commands.md#teamrig-compact). The
 question picker and plan mode's exit still open: the [picker guard](#before-a-question-the-picker-guard) and the
 person decide those.
+
+Auto mode can refuse a call before any prompt, and a refusal it makes is a dead end no `PermissionRequest` answer
+reaches. So with asks off, `hook route-allow` (since 0.268.0) lets five of those routes run before any permission
+check, at `PreToolUse`: `teamrig merge`, `teamrig deploy`, `teamrig exec request`, `teamrig worktree remove` and the
+`git commit`, as plain as above. It answers only once the push, package, secret, exec and pass-record guards all passed
+the same call: a guard that asks or refuses answers instead. Its log line, in `state/prompt-answers.jsonl`, names the
+route, never the command (a commit message is free text). `prompts.routeAllow: off` takes this allow away without a
+release; no config adds a route. With asks on it never answers.
 
 ## Before a shell command or a read: the secret guard
 
