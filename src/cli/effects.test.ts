@@ -11,6 +11,7 @@ const EXPECTED = {
   add: 'write',
   set: 'write',
   update: 'write',
+  'refs apply': 'write',
   approve: 'write',
   list: 'read',
   show: 'read',
