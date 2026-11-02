@@ -148,6 +148,8 @@ function readLeads(read, raw, sessions, lead) {
 }
 /** A folder named in full, on one line: a relative one would turn on whichever folder a command runs in. */
 const isAbsoluteFolder = (text) => (/[\r\n]/.test(text) || !ABSOLUTE_PATH.test(text) ? 'expected an absolute folder path on one line' : undefined);
+/** A file named in full, on one line: a hook reads it from whichever folder its session runs in. */
+const isAbsoluteFile = (text) => (/[\r\n]/.test(text) || !ABSOLUTE_PATH.test(text) ? 'expected an absolute file path on one line' : undefined);
 /**
  * `launch`: a model, an effort and a project folder for sessions on the team. A wrong field is reported and
  * left out, so the session starts on Claude Code's own choice (or, for the lead, the lead's default) for it,
@@ -244,7 +246,6 @@ export function parseConfig(raw, above) {
     const timeZone = read.optionalString(raw, 'timeZone', '', isTimeZone);
     const messages = read.section(raw, 'messages', '');
     const pushGuard = read.section(raw, 'pushGuard', '');
-    const alerts = read.section(raw, 'alerts', '');
     const lock = read.section(raw, 'lock', '');
     const tabStatus = read.section(raw, 'tabStatus', '');
     const pickerGuard = read.section(raw, 'pickerGuard', '');
@@ -299,9 +300,7 @@ export function parseConfig(raw, above) {
             maxFailureChars: read.integer(read.section(raw, 'tests', ''), 'maxFailureChars', 'tests', DEFAULT_TESTS.maxFailureChars, CONFIG_LIMITS.maxFailureChars),
         },
         github: parseGithub(read, read.section(raw, 'github', ''), sessions),
-        alerts: {
-            persistentFailureHours: read.integer(alerts, 'persistentFailureHours', 'alerts', DEFAULT_ALERTS.persistentFailureHours, CONFIG_LIMITS.persistentFailureHours),
-        },
+        alerts: parseAlerts(read, read.section(raw, 'alerts', '')),
         decisions: {
             batchTimesUtc: read.stringList(decisions, 'batchTimesUtc', 'decisions', DEFAULT_DECISIONS.batchTimesUtc, isUtcTime, CONFIG_LIMITS.decisionBatchTimes.maxItems),
             batchAt: read.integer(decisions, 'batchAt', 'decisions', DEFAULT_DECISIONS.batchAt, CONFIG_LIMITS.decisionBatchAt),
@@ -870,6 +869,16 @@ function parseExec(read, raw) {
     return {
         path: read.stringList(raw, 'path', path, DEFAULT_EXEC.path, shortLine(CONFIG_LIMITS.execPath.maxLength, EXEC_DIRECTORY), CONFIG_LIMITS.execPath.maxItems),
         ...(webhookEnv === undefined ? {} : { webhookEnv }),
+    };
+}
+function parseAlerts(read, raw) {
+    const path = 'alerts';
+    const pageWebhookEnv = read.optionalString(raw, 'pageWebhookEnv', path, ENV_VARIABLE);
+    const pageWebhookFile = read.optionalString(raw, 'pageWebhookFile', path, isAbsoluteFile);
+    return {
+        persistentFailureHours: read.integer(raw, 'persistentFailureHours', path, DEFAULT_ALERTS.persistentFailureHours, CONFIG_LIMITS.persistentFailureHours),
+        ...(pageWebhookEnv === undefined ? {} : { pageWebhookEnv }),
+        ...(pageWebhookFile === undefined ? {} : { pageWebhookFile }),
     };
 }
 function parseContextFiles(read, raw) {

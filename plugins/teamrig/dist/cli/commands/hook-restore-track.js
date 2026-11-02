@@ -8,6 +8,7 @@ import { LoginStore } from "../../restore/login-store.js";
 import { RestoreRegistry, restoreLogPath, restoreSessionsDir } from "../../restore/registry.js";
 import { noPositionals } from "../args.js";
 import { fileLockOf } from "../file-locks.js";
+import { loginPageLogLine, loginPageOf, sendLoginPage } from "../login-page.js";
 import { EXIT } from "../runtime.js";
 import { parseJson } from "./hook-input.js";
 /**
@@ -78,17 +79,42 @@ async function loginEventOf(payload, event, facts, runtime) {
 function tabLabelOf(facts) {
     return facts.team === undefined || facts.session === undefined ? facts.claudeSession : `${facts.team}/${facts.session} (${facts.claudeSession})`;
 }
-/** Follows the login through turn ends (src/restore/login.ts); each change with a note goes to the restore log. */
+/**
+ * The page a failure of this tab would send: only a tab of a team, whose config or a team's above it names a page
+ * webhook. A config that cannot be read pages no one and keeps the marker from no update.
+ */
+async function pageOf(event, facts, runtime) {
+    if (event.kind !== 'auth-failed' || facts.team === undefined) {
+        return undefined;
+    }
+    return loginPageOf(runtime, facts.team, facts.session, event.at).catch(() => undefined);
+}
+/**
+ * Follows the login through turn ends (src/restore/login.ts); each change with a note goes to the restore log. The
+ * failure that claims an expiry's page posts it to the owner outside the marker's lock, a slow chat holding no other
+ * tab, and gives the claim back when the post fails, so the next failure pages.
+ */
 async function trackLogin(payload, event, facts, runtime, kitHome) {
     const loginEvent = await loginEventOf(payload, event, facts, runtime);
     if (loginEvent === undefined) {
         return;
     }
+    const page = await pageOf(loginEvent, facts, runtime);
     const path = loginMarkerPath(kitHome);
-    const change = await new LoginStore(runtime.files, path, fileLockOf(runtime, `${path}.lock`, LOGIN_LOCK)).apply(loginEvent);
+    const store = new LoginStore(runtime.files, path, fileLockOf(runtime, `${path}.lock`, LOGIN_LOCK));
+    const { change, pageClaimed } = await store.apply(loginEvent, { claimPage: page !== undefined });
+    const log = restoreLogPath(kitHome);
     if (change.kind === 'write' && change.note !== undefined) {
         const line = loginLogLine(change.note, tabLabelOf(facts), change.marker);
-        await runtime.files.append(restoreLogPath(kitHome), `${new Date(facts.at).toISOString()} ${line}\n`);
+        await runtime.files.append(log, `${new Date(facts.at).toISOString()} ${line}\n`);
+    }
+    if (!pageClaimed || page === undefined) {
+        return;
+    }
+    const problem = await sendLoginPage(page, runtime);
+    await runtime.files.append(log, `${new Date(runtime.clock.now()).toISOString()} ${loginPageLogLine(page, problem)}\n`);
+    if (problem !== undefined) {
+        await store.releasePage(loginEvent.at);
     }
 }
 /**
@@ -129,7 +155,8 @@ export async function trackRestore(payload, runtime) {
  * registry (`<kit home>/restore/sessions`), in a team or not, so the restore after a reboot knows which tabs
  * it closed and what each was doing (a tool's end comes through `hook tool-end`). At a turn's end it also follows the
  * login (`<kit home>/restore/login.json`): which tabs a turn that ended on Login expired left stuck, and when a
- * good turn showed the login works again. It prints nothing, and on any
+ * good turn showed the login works again; the first failure of an expiry pages the owner through the webhook the
+ * team's `alerts.pageWebhookFile` or `alerts.pageWebhookEnv` names. It prints nothing, and on any
  * error it exits 0 having written nothing: a tracker must never hold up a turn.
  */
 export async function restoreTrack(args, runtime) {
