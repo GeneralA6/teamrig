@@ -92,7 +92,7 @@ async function trackLogin(payload: JsonRecord, event: TrackEvent, facts: TrackFa
     return;
   }
   const path = loginMarkerPath(kitHome);
-  const change = await new LoginStore(runtime.files, path, fileLockOf(runtime, `${path}.lock`, LOGIN_LOCK)).apply(loginEvent);
+  const { change } = await new LoginStore(runtime.files, path, fileLockOf(runtime, `${path}.lock`, LOGIN_LOCK)).apply(loginEvent);
   if (change.kind === 'write' && change.note !== undefined) {
     const line = loginLogLine(change.note, tabLabelOf(facts), change.marker);
     await runtime.files.append(restoreLogPath(kitHome), `${new Date(facts.at).toISOString()} ${line}\n`);
