@@ -83,10 +83,13 @@ describe('teamrig stats', () => {
     const kit = await seeded();
     const month = await kit.run(['stats', '--range', '30d']);
     ok(month);
-    assert.equal(month.stdout[0], 'STATS app, 30 d: 12-12 to 01-10');
-    const wrong = await kit.run(['stats', '--range', '3d']);
+    assert.equal(month.stdout[0], 'STATS app, 30 d: 2029-12-12 to 01-10');
+    const year = await kit.run(['stats', '--range', '1y']);
+    ok(year);
+    assert.equal(year.stdout[0], 'STATS app, 365 d: 2029-01-11 to 01-10');
+    const wrong = await kit.run(['stats', '--range', '14d']);
     assert.deepEqual(wrong.code, EXIT.usage);
-    assert.match(wrong.stderr.join('\n'), /--range takes 7d, 14d, 30d or all, not 3d/);
+    assert.match(wrong.stderr.join('\n'), /--range takes 7d, 30d, 90d, 180d, 1y or all, not 14d/);
   });
 
   it("reads one session's tasks with --session, by its id or its name", async () => {

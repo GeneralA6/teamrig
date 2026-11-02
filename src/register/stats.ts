@@ -17,8 +17,11 @@ import type { WaitKind } from './waits.ts';
  * of it, and the split shows as a {@link Split}. Times are in days, fractional; a day is a calendar day of the zone.
  */
 
-/** The ranges: the last 7, 14 or 30 calendar days, today included, or every day since the first task was created. */
-export const STATS_RANGES = ['7d', '14d', '30d', 'all'] as const;
+/**
+ * The ranges (T1865, the owner's list): the last 7, 30, 90, 180 or 365 calendar days, today included, or every day
+ * since the first task was created. A long range reads the archived history, since the fold takes each team's whole log.
+ */
+export const STATS_RANGES = ['7d', '30d', '90d', '180d', '1y', 'all'] as const;
 
 export type StatsRange = (typeof STATS_RANGES)[number];
 
@@ -26,7 +29,8 @@ export function isStatsRange(value: unknown): value is StatsRange {
   return STATS_RANGES.some((range) => range === value);
 }
 
-const RANGE_DAYS: Readonly<Record<Exclude<StatsRange, 'all'>, number>> = { '7d': 7, '14d': 14, '30d': 30 };
+/** The calendar days each range but `all` counts, today included: `1y` is 365 of them. */
+export const STATS_RANGE_DAYS: Readonly<Record<Exclude<StatsRange, 'all'>, number>> = { '7d': 7, '30d': 30, '90d': 90, '180d': 180, '1y': 365 };
 
 /** The days the recent net covers whatever the range: 4 weeks, so one quiet week does not swing the backlog's trend. */
 export const RECENT_DAYS = 28;
@@ -262,7 +266,7 @@ export function registerStats(input: StatsInput): RegisterStats {
   const teams = input.teams.map((team) => foldTeam(team, session));
   const held = teams.flatMap((team) => team.held);
   const today = calendarDay(input.now, zone);
-  const first = Math.min(today, input.range === 'all' ? (firstCreatedDay(held, zone) ?? today) : today - (RANGE_DAYS[input.range] - 1) * MS_PER_DAY);
+  const first = Math.min(today, input.range === 'all' ? (firstCreatedDay(held, zone) ?? today) : today - (STATS_RANGE_DAYS[input.range] - 1) * MS_PER_DAY);
   const clock: Clock = { now, zone, window: dayWindow(first, today, zone) };
   const series = new DaySeries(daySpans(first, today, zone), clock.window.end);
   const dueMoved = teams.reduce((count, team) => count + sweep(team, series, clock.window), 0);

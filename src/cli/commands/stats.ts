@@ -5,6 +5,8 @@ import { registerHealth, type HealthLevel, type RegisterHealth } from '../../reg
 import {
   isStatsRange,
   registerStats,
+  STATS_RANGE_DAYS,
+  STATS_RANGES,
   WORK_SOURCES,
   type LimitSpan,
   type RegisterStats,
@@ -23,7 +25,7 @@ import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { ownRegister, warnDamage } from './register.ts';
 
 /**
- * `teamrig stats [--tree] [--range 7d|14d|30d|all] [--session <id|name>]` (T1771): the register's numbers over a range
+ * `teamrig stats [--tree] [--range 7d|30d|90d|180d|1y|all] [--session <id|name>]` (T1771): the register's numbers over a range
  * of the team's calendar days, as the pane's Stats tab folds them (register/stats.ts): the Health tiles with their
  * levels, then each section's headline and the days the week sat at its usage limit (the `$` mark, from the meter log),
  * for the lead and the meeting agenda's top lines. As with `list`, `--session`
@@ -66,7 +68,7 @@ function rangeOf(value: string | undefined): StatsRange {
     return '7d';
   }
   if (!isStatsRange(value)) {
-    throw new UsageError(`--range takes 7d, 14d, 30d or all, not ${value}`);
+    throw new UsageError(`--range takes ${STATS_RANGES.slice(0, -1).join(', ')} or ${STATS_RANGES.at(-1)}, not ${value}`);
   }
   return value;
 }
@@ -102,7 +104,7 @@ async function statsTeamOf(runtime: CliRuntime, rolled: RolledTeam): Promise<Sta
 export function statsTopLines({ stats, health }: FoldedStats, name: string, teams: readonly string[]): string[] {
   const first = stats.days[0]?.day;
   const last = stats.days.at(-1)?.day;
-  const span = first === undefined || last === undefined ? '' : `: ${first.slice(5)} to ${last.slice(5)}`;
+  const span = first === undefined || last === undefined ? '' : `: ${spanStart(first, last)} to ${last.slice(5)}`;
   const tree = teams.length > 1 ? ` (tree: ${teams.join(', ')})` : '';
   return [
     `STATS ${name}, ${rangeText(stats.range)}${span}${tree}`,
@@ -140,7 +142,12 @@ function limitLines({ days }: RegisterStats): string[] {
 }
 
 function rangeText(range: StatsRange): string {
-  return range === 'all' ? 'all days' : `${range.slice(0, -1)} d`;
+  return range === 'all' ? 'all days' : `${STATS_RANGE_DAYS[range]} d`;
+}
+
+/** The span's first day, with its year when the span starts in another year than it ends, as a `1y` range always does. */
+function spanStart(first: string, last: string): string {
+  return first.slice(0, 4) === last.slice(0, 4) ? first.slice(5) : first;
 }
 
 function healthText(health: RegisterHealth): string {
