@@ -109,6 +109,39 @@ export function systemLine(at: string): string {
   return JSON.stringify({ type: 'system', subtype: 'turn_duration', durationMs: 1_000, timestamp: at });
 }
 
+/**
+ * The synthetic assistant line Claude Code writes for a turn an API error ended, by default an expired login: the
+ * record of a real one (Claude Code 2.1.316, 11-01), its ids, folder and session replaced.
+ */
+export function apiErrorLine(at: string, sessionId: string, error = 'authentication_failed', text = 'Login expired · Please run /login'): string {
+  return JSON.stringify({
+    parentUuid: '00000000-0000-4000-8000-0000000000e1',
+    isSidechain: false,
+    type: 'assistant',
+    uuid: '00000000-0000-4000-8000-0000000000e2',
+    timestamp: at,
+    message: {
+      id: '00000000-0000-4000-8000-0000000000e3',
+      container: null,
+      model: '<synthetic>',
+      role: 'assistant',
+      stop_reason: 'stop_sequence',
+      stop_sequence: '',
+      type: 'message',
+      usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      content: [{ type: 'text', text }],
+      context_management: null,
+    },
+    error,
+    isApiErrorMessage: true,
+    userType: 'external',
+    entrypoint: 'cli',
+    cwd: 'D:\\homes\\me\\work\\app',
+    sessionId,
+    version: '2.1.316',
+  });
+}
+
 /** The summary Claude Code writes as a user line to resume a compacted session or helper. */
 export function summaryLine(at: string, sidechain = false): string {
   return JSON.stringify({ isSidechain: sidechain, type: 'user', isCompactSummary: true, message: { role: 'user', content: 'This session is being continued.' }, timestamp: at });
