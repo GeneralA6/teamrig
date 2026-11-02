@@ -3,13 +3,16 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { Env } from '../core/home.ts';
 import { MS_PER_HOUR } from '../core/time.ts';
+import type { ChatWebhook } from '../core/webhook.ts';
 import type { RestoreEntry } from '../restore/entry.ts';
 import { AUTH_FAILED, loginMarkerPath, parseLoginMarker, type LoginMarker } from '../restore/login.ts';
 import { RestoreRegistry, restoreLogPath, restoreSessionsDir } from '../restore/registry.ts';
-import { APP, CLAUDE_SESSION, CLI_PID, CliHarness, KIT, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
+import { APP, CLAUDE_SESSION, CLI_PID, CliHarness, KIT, TEAM, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
+import { FakeWebhook } from '../testing/fake-webhook.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { holdFileLock } from '../testing/held-file-lock.ts';
+import { treeHarness } from '../testing/team-tree.ts';
 import { apiErrorLine, promptLine, transcript } from '../testing/transcript-lines.ts';
 
 const TRANSCRIPT = join(USER_HOME, '.claude', 'projects', 'work-app', `${CLAUDE_SESSION}.jsonl`);
@@ -189,5 +192,125 @@ describe('hook restore-track: the login', () => {
     assert.deepEqual([result.code, result.stdout, result.stderr], [0, [], []]);
     assert.equal(await entryOf(kit), undefined);
     assert.equal((await markerOf(kit))?.stranded.has(CLAUDE_SESSION), true);
+  });
+});
+
+const HOOK_FILE = '/chat/hook';
+const HOOK_URL = 'https://chat.example/x';
+const PAGED_BY_FILE = "login: paged the owner through app's alerts.pageWebhookFile";
+
+interface FailOptions {
+  readonly env?: Env;
+  readonly stdin?: string;
+  readonly timeZone?: string;
+}
+
+/** A turn of the tab that ends on Login expired, its hook posting to `webhook`. */
+async function failTurn(kit: CliHarness, webhook: ChatWebhook, { env = LAUNCHED, stdin = payload('StopFailure', { error: AUTH_FAILED }), timeZone = 'UTC' }: FailOptions = {}): Promise<void> {
+  const result = await kit.run(['hook', 'restore-track'], { stdin, env, webhook, timeZone });
+  assert.deepEqual([result.code, result.stdout, result.stderr], [0, [], []], 'a page never fails a turn');
+}
+
+/** The harness with app's alerts naming a page webhook file that holds the URL. */
+async function pagedHarness(): Promise<CliHarness> {
+  const kit = new CliHarness({ ...TEAM, alerts: { pageWebhookFile: HOOK_FILE } });
+  await kit.files.write(HOOK_FILE, `\n${HOOK_URL}\n`);
+  return kit;
+}
+
+describe("hook restore-track: the owner's page", () => {
+  it("pages the owner once when a dozen tabs fail at once, through the URL the team's file holds", async () => {
+    const kit = await pagedHarness();
+    kit.sessionProcesses.add({ pid: CLI_PID, parentPid: 1, name: 'node', commandLine: 'node teamrig hook' });
+    const webhook = new FakeWebhook();
+    const tabs = Array.from({ length: 12 }, (_, index) => tabId(index + 1));
+    // The clock moves while the tabs wait for the marker's lock: the claim is the first failure's.
+    const start = kit.clock.now();
+    await Promise.all(tabs.map(async (tab) => failTurn(kit, webhook, { stdin: payload('StopFailure', { session_id: tab, error: AUTH_FAILED }) })));
+    assert.deepEqual(webhook.posts, [{ url: HOOK_URL, content: 'Claude login expired: app/alpha ended its turn on Login expired at 10:00 UTC. Run /login in any tab, then prompt the tabs that stopped.' }]);
+    assert.equal((await markerOf(kit))?.pagedAt, start);
+    const lines = await loginLines(kit);
+    assert.deepEqual([lines.filter((line) => line === PAGED_BY_FILE).length, lines.length], [1, 13]);
+  });
+
+  it('pages no more for a later failure of the same expiry, and anew for the next expiry', async () => {
+    const kit = await pagedHarness();
+    const webhook = new FakeWebhook();
+    await failTurn(kit, webhook);
+    kit.clock.advance(MS_PER_HOUR);
+    await failTurn(kit, webhook);
+    assert.equal(webhook.posts.length, 1);
+    kit.clock.advance(MS_PER_HOUR);
+    await track(kit, payload('Stop'));
+    kit.clock.advance(MS_PER_HOUR);
+    await failTurn(kit, webhook);
+    assert.equal(webhook.posts.length, 2, 'the login worked again in between');
+  });
+
+  it('logs a failed page and gives its claim back, so the next failure pages', async () => {
+    const kit = await pagedHarness();
+    await failTurn(kit, new FakeWebhook('the webhook answered HTTP 500'));
+    assert.equal((await loginLines(kit)).at(-1), 'login: the page to the owner failed (the webhook answered HTTP 500); the next failure pages');
+    assert.equal((await markerOf(kit))?.pagedAt, undefined);
+    kit.clock.advance(MS_PER_HOUR);
+    const webhook = new FakeWebhook();
+    await failTurn(kit, webhook);
+    assert.equal(webhook.posts.length, 1);
+    assert.equal((await loginLines(kit)).at(-1), PAGED_BY_FILE);
+  });
+
+  it('pages through the URL the environment variable alerts.pageWebhookEnv names holds', async () => {
+    const kit = new CliHarness({ ...TEAM, alerts: { pageWebhookEnv: 'CHAT_PAGE_URL' } });
+    const unset = new FakeWebhook();
+    await failTurn(kit, unset);
+    assert.deepEqual(unset.posts, []);
+    assert.equal((await loginLines(kit)).at(-1), 'login: the page to the owner failed (alerts.pageWebhookEnv names CHAT_PAGE_URL, which is not set); the next failure pages');
+    kit.clock.advance(MS_PER_HOUR);
+    const webhook = new FakeWebhook();
+    await failTurn(kit, webhook, { env: { ...LAUNCHED, CHAT_PAGE_URL: 'https://chat.example/env' } });
+    assert.deepEqual(webhook.posts.map((post) => post.url), ['https://chat.example/env']);
+    assert.equal((await loginLines(kit)).at(-1), "login: paged the owner through app's alerts.pageWebhookEnv");
+  });
+
+  it("names neither the file's path nor a URL when the file is missing", async () => {
+    const kit = new CliHarness({ ...TEAM, alerts: { pageWebhookFile: HOOK_FILE, pageWebhookEnv: 'CHAT_PAGE_URL' } });
+    const webhook = new FakeWebhook();
+    await failTurn(kit, webhook, { env: { ...LAUNCHED, CHAT_PAGE_URL: 'https://chat.example/env' } });
+    assert.deepEqual(webhook.posts, [], 'the file key wins over the environment key');
+    const log = (await kit.files.read(restoreLogPath(KIT))) ?? '';
+    assert.match(log, /login: the page to the owner failed \(the file alerts\.pageWebhookFile names is missing or empty\)/);
+    assert.equal(log.includes(HOOK_FILE) || log.includes('chat.example'), false);
+  });
+
+  it('pages no one for a tab of no team, and claims no page for it', async () => {
+    const kit = await pagedHarness();
+    const webhook = new FakeWebhook();
+    await failTurn(kit, webhook, { env: { CLAUDE_PROJECT_DIR: APP } });
+    assert.deepEqual(webhook.posts, []);
+    assert.equal((await markerOf(kit))?.pagedAt, undefined);
+  });
+
+  it("pages through a team above's key, with the time on the tab's own team clock", async () => {
+    const kit = await treeHarness({ timeZone: 'UTC', alerts: { pageWebhookFile: HOOK_FILE } });
+    await kit.files.write(HOOK_FILE, HOOK_URL);
+    const webhook = new FakeWebhook();
+    await failTurn(kit, webhook, { env: { CLAUDE_PROJECT_DIR: APP, TEAMRIG_TEAM: 'ui', TEAMRIG_SESSION: 'pixel' }, timeZone: 'Asia/Jerusalem' });
+    assert.deepEqual(webhook.posts.map((post) => post.content), ['Claude login expired: ui/pixel ended its turn on Login expired at 12:00 IST. Run /login in any tab, then prompt the tabs that stopped.']);
+    assert.equal((await loginLines(kit)).at(-1), PAGED_BY_FILE);
+  });
+
+  it('names a tab its launch gave no session as a tab of its team', async () => {
+    const kit = await pagedHarness();
+    const webhook = new FakeWebhook();
+    await failTurn(kit, webhook, { env: { CLAUDE_PROJECT_DIR: APP, TEAMRIG_TEAM: 'app' } });
+    assert.match(webhook.posts[0]?.content ?? '', /^Claude login expired: a tab of team app ended its turn/);
+  });
+
+  it('pages for a turn whose failure only the transcript records', async () => {
+    const kit = await pagedHarness();
+    await kit.files.write(TRANSCRIPT, transcript([promptLine('2030-01-08T09:59:50Z'), apiErrorLine('2030-01-08T10:00:00Z', CLAUDE_SESSION)]));
+    const webhook = new FakeWebhook();
+    await failTurn(kit, webhook, { stdin: payload('StopFailure') });
+    assert.equal(webhook.posts.length, 1);
   });
 });
