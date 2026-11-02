@@ -878,6 +878,16 @@ export interface DeliveryConfig {
 export interface AlertsConfig {
   /** The same external failure for this long must page a human. */
   readonly persistentFailureHours: number;
+  /**
+   * The name of the environment variable holding the chat webhook URL a page to the owner goes to (an expired Claude
+   * login, src/restore/), never the URL itself, which is a secret. Absent, with `pageWebhookFile` absent too: no page.
+   */
+  readonly pageWebhookEnv?: string;
+  /**
+   * The absolute path of a one-line file holding that URL, read at each page, so the URL never sits in an environment,
+   * a log or a session's read. Wins over `pageWebhookEnv` when both are set.
+   */
+  readonly pageWebhookFile?: string;
 }
 
 /** When the lead asks the owner the decisions waiting on them, together in a batch (src/decisions/batch.ts). */

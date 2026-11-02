@@ -1144,7 +1144,7 @@
       }
     },
     "alerts": {
-      "description": "The alerting rule the core rules state.",
+      "description": "The alerting rule the core rules state, and where a page to the owner goes.",
       "type": "object",
       "properties": {
         "persistentFailureHours": {
@@ -1153,6 +1153,16 @@
           "minimum": 1,
           "maximum": 720,
           "default": 24
+        },
+        "pageWebhookEnv": {
+          "description": "The name of the environment variable holding the chat webhook URL that a page to the owner (an expired Claude login) is posted to, never the URL itself. Unset, with pageWebhookFile unset too: nothing pages.",
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$"
+        },
+        "pageWebhookFile": {
+          "description": "The absolute path of a one-line file holding that webhook URL, read at each page, so the URL never sits in an environment, a log or a session's read. Wins over pageWebhookEnv when both are set.",
+          "type": "string",
+          "pattern": "^(?:[A-Za-z]:)?[\\\\/][^\\r\\n]*$"
         }
       }
     },

@@ -229,6 +229,28 @@ describe('parseConfig', () => {
     }
   });
 
+  it('reads alerts.pageWebhookEnv as a variable name and alerts.pageWebhookFile as an absolute file, both absent by default (T1757)', () => {
+    const unset = parseConfig(ROSTER).config.alerts;
+    assert.deepEqual(unset, { persistentFailureHours: 24 });
+    const both = { pageWebhookEnv: 'PAGE_WEBHOOK_URL', pageWebhookFile: 'C:/chat/.page-webhook' };
+    assert.deepEqual(parseConfig({ ...ROSTER, alerts: both }).config.alerts, { persistentFailureHours: 24, ...both });
+    for (const file of ['D:\\chat\\hook.txt', '/srv/chat/hook', '\\chat\\hook']) {
+      assert.equal(parseConfig({ ...ROSTER, alerts: { pageWebhookFile: file } }).config.alerts.pageWebhookFile, file);
+    }
+    for (const [key, value] of [
+      ['pageWebhookEnv', 'https://chat.example/api/webhooks/1/x'],
+      ['pageWebhookEnv', 'PAGE WEBHOOK'],
+      ['pageWebhookFile', 'chat/.page-webhook'],
+      ['pageWebhookFile', 'C:chat'],
+      ['pageWebhookFile', 'C:/chat/a\nC:/chat/b'],
+      ['pageWebhookFile', 'https://chat.example/api/webhooks/1/x'],
+    ] as const) {
+      const { config, issues } = parseConfig({ ...ROSTER, alerts: { [key]: value } });
+      assert.deepEqual(paths(issues), [`alerts.${key}`], value);
+      assert.deepEqual(config.alerts, { persistentFailureHours: 24 }, value);
+    }
+  });
+
   it('reads turnLog, and refuses keeping entries under an hour or past a week', () => {
     const off = { enabled: false, keepHours: 168 };
     assert.deepEqual(parseConfig({ ...ROSTER, turnLog: off }).config.turnLog, off);

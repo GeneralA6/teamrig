@@ -64,6 +64,7 @@ const EVERY_KEY = {
   github: { repos: ['acme/web'], owners: { octocat: 'bravo' }, closedDays: 30, everyMinutes: 30 },
   paths: { state: '/s', inbox: '/i', skills: '/k' },
   exec: { path: ['C:/tools'], webhookEnv: 'EXEC_WEBHOOK_URL' },
+  alerts: { pageWebhookEnv: 'PAGE_WEBHOOK_URL', pageWebhookFile: 'C:/chat/.page-webhook' },
 };
 
 async function loadSchema(): Promise<JsonRecord> {
