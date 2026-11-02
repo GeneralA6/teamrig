@@ -39,7 +39,8 @@ meeting. The lead's context refresh waits for the meeting's end, unless its cont
 Each card says what the decision is and why it matters to you, the owner gate or business reason that makes it
 yours, the options with their numbers, the lead's pick and why, and the exact action. The lead reads the cards in
 plain text and you answer in your own words; a team that sets `decisions.askWith: picker` asks with Claude Code's
-question picker instead. The lead records each answer on its task in the same turn, and
+question picker instead. The lead records each answer on its task in the same turn (`update <id> --decided`), which
+takes the card off your next agenda at once, even when the session that asked has closed, and
 `teamrig meeting end --session lead` sends each session one inbox line with the decisions on its tasks, and none to a
 session with none.
 
