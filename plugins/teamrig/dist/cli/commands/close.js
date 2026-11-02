@@ -12,9 +12,10 @@ import { sessionProjectOf } from "./setup.js";
  * and its tab to free the host, and logs the close (`state/session-log.jsonl`); `teamrig open` then resumes its
  * last Claude Code session. It refuses what `idleVerdictOf` keeps open (src/cli/idle-check.ts): the lead and the
  * delivery owner, a session not running, one with work its budget lets it start (p0 only while its budget holds
- * it, p1 and p0 in the budget's quiet hours: `restCappedPriority`) or a time wait of its own ending soon,
- * one quiet under `open.headroom.closeIdleMinutes`, one in a turn, at a tool call or waiting on a decision it put to
- * the person, one running background work or shells, and one whose last session is too big or old to resume.
+ * or a short day pauses it, p1 and p0 in the budget's quiet hours: `restCappedPriority`) or a time wait of its own
+ * ending soon, one quiet under `open.headroom.closeIdleMinutes`, one in a turn, at a tool call or waiting on a
+ * decision it put to the person, one running background work or shells, and one whose last session is too big or old
+ * to resume.
  * Without --yes it shows the close and ends nothing.
  */
 export async function close(args, runtime) {

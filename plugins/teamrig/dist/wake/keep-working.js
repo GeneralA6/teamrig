@@ -3,8 +3,8 @@ import { waitsText } from "../register/waits.js";
 import { startableTasks } from "./day-start.js";
 import { taskListText } from "./decide.js";
 /**
- * What the ask sends the session to; undefined in quiet hours or while its budget holds it, once the task stopped
- * waiting or changed hands, or with nothing it can start.
+ * What the ask sends the session to; undefined in quiet hours or while its budget holds or a short day pauses it,
+ * once the task stopped waiting or changed hands, or with nothing it can start.
  */
 export function keepWorkingOf(input) {
     const { tasks, elsewhere, session, ask, now, zone, rest } = input;
