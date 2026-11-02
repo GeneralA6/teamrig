@@ -1,11 +1,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { isRecord, recordField, type JsonRecord } from '../core/guards.ts';
 import { CLIENT_MANIFEST, clientFileHash, clientManifestText, clientRootOf } from '../exec/client-integrity.ts';
 import { SANCTIONED_ROUTES } from '../permissions/sanctioned.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
+import { FakeWorktreeFiles, FakeWorktreeGit } from '../testing/fake-worktrees.ts';
 import { quietWorld } from '../testing/quiet-world.ts';
+import type { WorktreePorts } from '../worktree/remove.ts';
 import { EXIT } from './runtime.ts';
 
 /**
@@ -74,4 +76,52 @@ describe('sanctioned route canaries', () => {
       assert.equal(answerOf(result), 'allow', result.stdout.join('\n'));
     });
   }
+});
+
+describe('C6: a worktree removal the route lets run', () => {
+  const MODULES = '/w/main/node_modules';
+  /** The canary session's worktree /w/t4 on branch t1-canary (T1 being its task), its node_modules a link to main's. */
+  function canaryWorktree(): { git: FakeWorktreeGit; ports: WorktreePorts } {
+    const files = new FakeWorktreeFiles({
+      [`${MODULES}/pkg`]: { kind: 'folder' },
+      '/w/t4/src/index.ts': { kind: 'file' },
+      '/w/t4/node_modules': { kind: 'link', target: MODULES },
+    });
+    const git = new FakeWorktreeGit(
+      {
+        top: '/w/t4',
+        worktrees: [
+          { path: '/w/main', branch: 'main', locked: undefined },
+          { path: '/w/t4', branch: 't1-canary', locked: undefined },
+        ],
+        changes: [],
+        tracked: ['src/index.ts'],
+        defaultBase: 'origin/main',
+        commitsNotOn: 0,
+      },
+      () => files.delete('/w/t4'),
+    );
+    return { git, ports: { git, files } };
+  }
+  const TAB = { CLAUDE_CODE_SESSION_ID: CLAUDE_SESSION };
+
+  it("is refused for another session's worktree before any change, though the route lets its line run", async () => {
+    const kit = await canaryKit();
+    const { git, ports } = canaryWorktree();
+    const line = 'teamrig worktree remove /w/t4 --session bravo';
+    assert.equal(answerOf(await kit.run(['hook', 'route-allow'], { stdin: payload('PreToolUse', line), env: ENV, git: GIT })), 'allow');
+    const result = await kit.run(['worktree', 'remove', '/w/t4', '--session', 'bravo'], { worktrees: ports, env: TAB });
+    assert.equal(result.code, EXIT.refused);
+    assert.deepEqual(result.stdout, ["REFUSED the worktree's branch t1-canary is T1's, which tr-canary owns: only tr-canary or lead removes it"]);
+    assert.deepEqual(git.steps, []);
+  });
+
+  it("unlinks the caller's own worktree's node_modules link before git removes the worktree", async () => {
+    const kit = await canaryKit();
+    const { git, ports } = canaryWorktree();
+    const result = await kit.run(['worktree', 'remove', '/w/t4', '--session', 'tr-canary'], { worktrees: ports, env: TAB });
+    assert.equal(result.code, EXIT.ok, result.stdout.join('\n'));
+    assert.deepEqual(result.stdout.slice(0, 2), [`unlinked node_modules (the link only, to ${resolve(MODULES)})`, 'removed the worktree /w/t4']);
+    assert.deepEqual(git.steps, ['worktree remove /w/t4 in /w/main']);
+  });
 });
