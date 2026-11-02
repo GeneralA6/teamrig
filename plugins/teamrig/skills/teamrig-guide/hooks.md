@@ -88,7 +88,7 @@ The injected context holds:
 
    ```text
    START web, Tue 10-17 09:12 IST: this note is your work block's start, so run no `teamrig start` now; it would add only the check flags and the rest of the list (run it at your next work block).
-   Week: 61.0% used at 09:05 IST (status line); the pace line is at 47.3%: 13.7 points ahead. Resets Wed 10-18 03:00 IST.
+   Week: 61.0% used at 09:05 IST (status line); the pace line is at 47.3%: 13.7 points ahead. Resets Wed 10-18 03:00 IST. At the last 24 hours' rise of 12.0 points, it ends the week near 70%.
    LIVE TASKS of web, read from the register at this start (8 active; where your handover or a compaction summary says otherwise, the register wins):
      T12 in-progress, p1, due 10-17 | Ship the checkout page
      T14 verifying, p2 | Cache the price list
