@@ -1415,6 +1415,46 @@ describe('RegisterPolicy.defer: a Later (T1295)', () => {
   });
 });
 
+describe('RegisterPolicy.decide: a Decided (T1366)', () => {
+  const policy = new RegisterPolicy(testConfig());
+  const later: WaitReason = { kind: 'time', at: '2030-01-09 09:00' };
+  const peer: WaitReason = { kind: 'decision', who: 'lead' };
+  const after: WaitReason = { kind: 'task', id: 'T2' };
+  const asking = testTask({ status: 'waiting', waits: [...OWNER_DECISION, { kind: 'approval', who: 'owner' }, peer, later, after] });
+
+  it("drops the owner's waits and a waiting task's time waits, keeps the rest, the note trimmed", () => {
+    assert.deepEqual(policy.decide(asking, 'alpha', ' human: ship it '), { ok: true, value: { changes: {}, note: 'human: ship it', waits: [peer, after], decided: true } });
+    const alone = testTask({ status: 'waiting', waits: OWNER_DECISION });
+    assert.deepEqual(policy.decide(alone, 'alpha', 'go'), { ok: true, value: { changes: {}, note: 'go', waits: [], decided: true } });
+  });
+
+  it("keeps a verifying task's time and task waits, which say when its proof runs", () => {
+    const proof = testTask({ status: 'verifying', waits: [{ kind: 'approval', who: 'owner' }, later, after] });
+    assert.deepEqual(policy.decide(proof, 'alpha', 'approved'), { ok: true, value: { changes: {}, note: 'approved', waits: [later, after], decided: true } });
+  });
+
+  it('lets the owner of the task or a leader above it record one, no peer', () => {
+    assert.equal(error(policy.decide(asking, 'lead', 'go')), 'allowed');
+    assert.equal(error(policy.decide(asking, 'bravo', 'go')), 'only the owner (alpha) or the lead (lead) records a decision on T1');
+    const tree = new RegisterPolicy(testConfig({ sessions: ['lead', 'alpha', 'bravo', 'charlie', 'delta'], leads: { alpha: ['bravo'], charlie: ['delta'] } }));
+    const bravos = testTask({ owner: 'bravo', status: 'waiting', waits: OWNER_DECISION });
+    assert.equal(error(tree.decide(bravos, 'alpha', 'go')), 'allowed', 'its sub-lead');
+    assert.equal(error(tree.decide(bravos, 'charlie', 'go')), 'only the owner (bravo) or a leader above bravo (alpha or lead) records a decision on T1');
+  });
+
+  it("refuses a task that waits on no decision or approval of the owner's", () => {
+    const refusal = 'T1 waits on no decision or approval of owner: only such a card is decided';
+    assert.equal(error(policy.decide(TASK, 'alpha', 'go')), refusal);
+    assert.equal(error(policy.decide(testTask({ status: 'waiting', waits: [peer, later] }), 'alpha', 'go')), refusal, "the lead's decision is no owner card");
+  });
+
+  it('needs a note, checked like any other', () => {
+    assert.equal(error(policy.decide(asking, 'alpha', undefined)), 'a Decided needs --note: what owner decided');
+    assert.equal(error(policy.decide(asking, 'alpha', '  ')), 'a Decided needs --note: what owner decided');
+    assert.notEqual(error(policy.decide(asking, 'alpha', credentialUrl())), 'allowed');
+  });
+});
+
 describe("RegisterPolicy: the owner's Note and Next from the pane (T1298)", () => {
   const policy = new RegisterPolicy(testConfig());
 

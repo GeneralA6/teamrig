@@ -333,7 +333,7 @@ export class Register {
    */
   defer(caller: string, id: string, until: string | null, note: string | undefined): Promise<Verdict<WriteResult>> {
     return this.commit(caller, (snapshot, elsewhere) =>
-      onTask(snapshot, elsewhere, id, (task) => single(this.deferEvent(task, caller, this.deps.policy.defer(task, caller, until, note, this.timeContext())))),
+      onTask(snapshot, elsewhere, id, (task) => single(this.waitsEvent(task, caller, this.deps.policy.defer(task, caller, until, note, this.timeContext())))),
     );
   }
 
@@ -343,11 +343,25 @@ export class Register {
    */
   deferFrom(asker: string, id: string, until: string | null, note: string | undefined): Promise<Verdict<WriteResult>> {
     return this.write((snapshot, elsewhere) =>
-      onTask(snapshot, elsewhere, id, (task) => single(this.deferEvent(task, asker, this.deps.policy.deferFrom(task, until, note, this.timeContext())))),
+      onTask(snapshot, elsewhere, id, (task) => single(this.waitsEvent(task, asker, this.deps.policy.deferFrom(task, until, note, this.timeContext())))),
     );
   }
 
-  private deferEvent(task: Task, by: string, change: Verdict<DeferChange>): Verdict<UpdateEvent> {
+  /**
+   * `update <id> --decided`: the owner's answer to a card (T1366), an update that changes no field, drops the task's
+   * wait on the owner and marks it decided for its session to act on.
+   */
+  decide(caller: string, id: string, note: string | undefined): Promise<Verdict<WriteResult>> {
+    return this.commit(caller, (snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.waitsEvent(task, caller, this.deps.policy.decide(task, caller, note)))));
+  }
+
+  /** A Decided from the lead above who asks the owner this team's decisions, `asker` being its `<team>/<id>`, as in deferFrom. */
+  decideFrom(asker: string, id: string, note: string | undefined): Promise<Verdict<WriteResult>> {
+    return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.waitsEvent(task, asker, this.deps.policy.decideFrom(task, note)))));
+  }
+
+  /** The update a Later or a Decided writes: no field changed, the task's waits from then on. */
+  private waitsEvent(task: Task, by: string, change: Verdict<DeferChange>): Verdict<UpdateEvent> {
     return change.ok ? { ok: true, value: { ...this.base(task.id, by), type: 'update', ...change.value } } : change;
   }
 
