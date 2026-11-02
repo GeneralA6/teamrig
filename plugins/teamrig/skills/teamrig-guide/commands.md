@@ -2110,7 +2110,7 @@ DECISIONS 1 waiting on owner (decision or approval)
   Read each card to owner as it stands, each figure explained; where one says no card yet, ask its owner for it (check flags it NO-CARD). Never point to a doc; `teamrig show <id>` prints a task whole.
   Ask in plain text, never with the question picker: each card's options numbered, your recommendation first; owner answers in their own words.
   A question a card does not answer is its task owner's to find: teamrig add --owner <id> --due <date> --session lead, then relay the answer; never look it up yourself.
-  Record each answer in the same turn: teamrig update <id> --note "owner decided: <decision>" --session lead; meeting end tells each task's owner.
+  Record each answer in the same turn: teamrig update <id> --decided --note "owner decided: <decision>" --session lead; the card leaves the agenda, and meeting end tells each task's owner.
   A card owner puts off to a date: teamrig update <id> --later <date> --note "owner put it off: <why>" --session lead; it waits in LATER until then.
 LATE 1 past their due date
   T4 open, p2, owner api, due 10-14 | Retry the signup call
@@ -2356,7 +2356,7 @@ line in its own team's inbox, and its wake; the leads between keep their line, u
 `wake.enabled: false`, or a line or wake that cannot be posted, the session setting the wait is told to message the
 root lead.
 A child team's `decisions` prints its own and its teams' waits, then who asks them: `  app/lead asks owner these in
-its batches and records each answer on its task as a note: "owner decided: <decision>".` Its lead's `decisions
+its batches and records each answer on its task as decided: "owner decided: <decision>".` Its lead's `decisions
 asked` is refused (`REFUSED team web asks no owner: app/lead asks the owner web's waits, in its batches`), and its
 `start` and `check` print no `DECISIONS` line.
 
@@ -2385,7 +2385,7 @@ NOT YET ASKED
     with no answer: Basic ships on 10-21
     waiting since 10-19 11:20: the numbers are in the card
   Ask owner these together, each card as it stands, each figure explained; then teamrig decisions asked --session lead records the batch asked.
-  Record each answer in the same turn: teamrig update <id> --note "owner decided: <decision>" --session lead.
+  Record each answer in the same turn: teamrig update <id> --decided --note "owner decided: <decision>" --session lead; the card leaves the batches.
   A card owner puts off to a date: teamrig update <id> --later <date> --note "owner put it off: <why>" --session lead; no batch asks it before then.
 ```
 

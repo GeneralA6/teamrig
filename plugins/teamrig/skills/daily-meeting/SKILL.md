@@ -91,12 +91,15 @@ or a search of another session's notes, naming whom to ask.
 ## 4. Record each answer in the same turn
 
 ```sh
-teamrig update T7 --note "owner decided: the middle tier ships first" --priority p1 --session lead
+teamrig update T7 --decided --note "owner decided: the middle tier ships first" --session lead
+teamrig update T7 --priority p1 --session lead
 ```
 
-The note is what `meeting end` tells the task's owner, with any priority, due date or week you changed. A task of a
-team under yours takes its row's name and a note alone: `teamrig update web/T2 --note "owner decided: ..." --session
-lead`; its fields stay that team's. A new order
+`--decided` takes the card off the agenda and the batches at once and marks the task decided, so its session sees it
+READY and sets its next status, even one that closed before the meeting ended; it takes the note alone, so change a
+priority, due date or week in a second `update`. The note is what `meeting end` tells the task's owner, with any field
+you changed. A task of a team under yours takes its row's name and the note alone: `teamrig update web/T2 --decided
+--note "owner decided: ..." --session lead`; its fields stay that team's. A new order
 of the human's that creates work is a new task: `teamrig add --session lead --owner <id> --source owner ...`. When a
 decision changes what a session works on right now, send it one CRITICAL message; anything else waits for the end.
 

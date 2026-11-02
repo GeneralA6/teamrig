@@ -85,7 +85,7 @@ export function pickerReason(command: string, asker: PickerAsker, meeting: LeadM
     return (
       `${guard} the owner's daily meeting asks in plain text (decisions.askWith: text). Read the card as it stands,` +
       " its options numbered and your recommendation first, and let the owner answer in their own words; record the answer in the same turn:" +
-      ` \`${command} update <id> --note "owner decided: <decision>" --session ${asker.session}\`.`
+      ` \`${command} update <id> --decided --note "owner decided: <decision>" --session ${asker.session}\`.`
     );
   }
   if (asker.role === 'helper') {

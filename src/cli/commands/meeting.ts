@@ -270,7 +270,7 @@ export async function meetingEnd(args: ParsedArgs, runtime: CliRuntime): Promise
   const recorded = decided.flatMap((register) => [...register.byOwner].flatMap(([owner, lines]) => lines.map((line) => `  ${sessionLabel(register, owner)} ${line}`)));
   runtime.out.stdout(
     recorded.length === 0
-      ? `RECORDED nothing on another session's task during it: a decision the register lacks reaches no one (${KIT_NAME} update <id> --note "..." --session ${mk.lead})`
+      ? `RECORDED nothing on another session's task during it: a decision the register lacks reaches no one (${KIT_NAME} update <id> --decided --note "..." --session ${mk.lead})`
       : `RECORDED ${recorded.length} decision(s), each told to its task's owner`,
   );
   recorded.forEach((line) => runtime.out.stdout(line));

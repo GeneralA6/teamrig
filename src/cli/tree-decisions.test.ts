@@ -13,7 +13,7 @@ const UI = { TEAMRIG_TEAM: 'ui' };
 
 /** The root's batch times; the clock is Tue 01-08 10:00 UTC, after the 19:03 one of the day before. Due at 3 waits. */
 const BATCHED = { decisions: { batchTimesUtc: ['13:03', '19:03'], batchAt: 3 } };
-const ASKS_UP = '  app/lead asks owner these in its batches and records each answer on its task as a note: "owner decided: <decision>".';
+const ASKS_UP = '  app/lead asks owner these in its batches and records each answer on its task as decided: "owner decided: <decision>".';
 
 /** Adds a task of `session`'s in the team of `env` and sets it waiting on the owner's decision, with its card; returns what the set printed on stderr. */
 async function ownerWait(kit: CliHarness, env: Env, session: string, title: string): Promise<readonly string[]> {

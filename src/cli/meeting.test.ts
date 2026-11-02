@@ -176,7 +176,7 @@ describe('runCli: the daily meeting', () => {
       const lines = await inboxOf(kit, session);
       assert.ok(!lines.some((line) => line.includes('daily meeting')), lines.join('\n'));
     }
-    assert.equal(ended.stdout[1], 'RECORDED nothing on another session\'s task during it: a decision the register lacks reaches no one (teamrig update <id> --note "..." --session lead)');
+    assert.equal(ended.stdout[1], 'RECORDED nothing on another session\'s task during it: a decision the register lacks reaches no one (teamrig update <id> --decided --note "..." --session lead)');
   });
 
   it('ends a lapsed meeting, and refuses with none open', async () => {

@@ -335,7 +335,8 @@ With sub-teams, run `teamrig check --tree --session lead` too. Then act on each 
   it to the owner; decide it yourself if it is yours to decide, else one inbox line to its owner to decide it, or
   to set it again with `--gate`.
 - `DECISIONS batch due`: ask the human the batch `teamrig decisions --session lead` prints, together, each card as it
-  stands; record each answer (`update --note "owner decided: ..."`), then `teamrig decisions asked --session lead`.
+  stands; record each answer (`update <id> --decided --note "owner decided: ..."`), then `teamrig decisions asked
+  --session lead`.
 - `PEER-WAIT`: a task waits on a peer's approval or decision: one inbox line to its owner to wait on that work by
   its task (`set --status waiting --ask <session> --text "<the work>"`).
 - `VERIFY-OVERDUE`: ask the owner whether the proof came: `done` with it, `in-progress` if it failed, or a new date.
@@ -408,7 +409,8 @@ the meeting ends, the lead's own context refresh waits (no handover ask, no rest
 `refresh.compactCeilingTokens`; the turn that ends the meeting asks at once. Bring
 each decision as a card the human can decide from alone, asked in plain text unless the team asks with the question
 picker [decisions.askWith], record each answer in the same turn with
-`teamrig update <id> --note "owner decided: <decision>" --session lead` (and any new priority or date), then:
+`teamrig update <id> --decided --note "owner decided: <decision>" --session lead`, which takes the card off the agenda
+at once and marks the task decided for its session (any new priority or date in a second `update`), then:
 
 ```sh
 teamrig meeting end --session lead

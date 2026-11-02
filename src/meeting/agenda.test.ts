@@ -93,7 +93,11 @@ describe('the meeting agenda', () => {
       lines[16],
       "  A question a card does not answer is its task owner's to find: teamrig add --owner <id> --due <date> --session lead, then relay the answer; never look it up yourself.",
     );
-    assert.equal(lines[17], '  Record each answer in the same turn: teamrig update <id> --note "owner decided: <decision>" --session lead; meeting end tells each task\'s owner.');
+    // T1366: an answer recorded with --decided drops the card's wait on the owner, so it leaves the agenda at once.
+    assert.equal(
+      lines[17],
+      '  Record each answer in the same turn: teamrig update <id> --decided --note "owner decided: <decision>" --session lead; the card leaves the agenda, and meeting end tells each task\'s owner.',
+    );
     // T1295: a card the owner puts off is recorded with --later, in place of an answer.
     assert.equal(lines[18], '  A card owner puts off to a date: teamrig update <id> --later <date> --note "owner put it off: <why>" --session lead; it waits in LATER until then.');
     assert.equal(lines.length, 19);
@@ -122,7 +126,7 @@ describe('the meeting agenda', () => {
     );
     assert.equal(
       lines.at(-2),
-      '  Record each answer in the same turn: teamrig update <id> (<team>/<id> for a task of a team under yours, as its row names it) --note "owner decided: <decision>" --session lead; meeting end tells each task\'s owner.',
+      '  Record each answer in the same turn: teamrig update <id> (<team>/<id> for a task of a team under yours, as its row names it) --decided --note "owner decided: <decision>" --session lead; the card leaves the agenda, and meeting end tells each task\'s owner.',
     );
   });
 
