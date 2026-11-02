@@ -79,8 +79,8 @@ export type JudgedStep = Exclude<PassStep, { readonly kind: 'reopen' }> | Reopen
 
 /**
  * The session's rest and the least urgent priority up to `configured` that wakes it now, as `hook wake-check` weighs
- * them: a session its budget holds wakes, and so stays open, for p0 only, one in the budget's quiet hours for p1 and
- * p0 (`effectivePriority`). The wake it weighs is counted cold: a closed session reopens cold, and a running one the
+ * them: a session its budget holds or a short day pauses wakes, and so stays open, for p0 only, one in the budget's
+ * quiet hours for p1 and p0 (`effectivePriority`). The wake it weighs is counted cold: a closed session reopens cold, and a running one the
  * pass would close has been quiet `open.headroom.closeIdleMinutes`.
  */
 async function wakeWeightOf(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, id: string, configured: number): Promise<{ readonly rest: WakeRest; readonly maxPriority: number }> {

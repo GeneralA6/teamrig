@@ -13,8 +13,8 @@ import { byUrgency, costText, idsText, isWakeWorthy, taskListText, type SettledM
  * night stays idle while its list waits. So the day's start (`wake.dayStartUtc`) gives each session one turn, and so
  * does a burst the session is in, once it starts. A moment wakes a session once, only with work it can go on with (its
  * own task of any priority that `canGoOn`: open or in-progress, or waiting with every wait cleared or answered, and
- * past every task it comes after unless already started), never in quiet hours or while its budget holds it
- * (`isHeld`; it wakes once those end), and not at all when the session had a turn after the moment.
+ * past every task it comes after unless already started), never in quiet hours or while its budget holds or a short
+ * day pauses it (`WakeRest`; it wakes once those end), and not at all when the session had a turn after the moment.
  */
 
 export type DayMomentKind = 'day-start' | 'burst';
