@@ -16,7 +16,7 @@ import { isReady, unfinishedAfter, waitContext, type WaitContext } from '../regi
 /**
  * Waking a session idle at its prompt when work is handed to it, pure. A wake is a model turn, so only work the
  * session can go on with now ({@link canGoOn}) and has not seen wakes it: its own task at `wake.priority` or more
- * urgent (p0 only while its budget holds it, p1 and p0 in quiet hours: {@link effectivePriority}), changed by
+ * urgent (p0 only while its budget holds or a short day pauses it, p1 and p0 in quiet hours: {@link effectivePriority}), changed by
  * someone else or by the clock since the session last touched it (handed to it, raised,
  * reopened, freed by another's finish, its waits cleared, or an approval it waits on answered). Each task wakes a
  * session once, tasks handed together wake it once (`wake.batchSeconds`), and wakes of one session are
@@ -242,27 +242,40 @@ export function decideWake(input: WakeInput): WakeDecision {
   return { verdict: { kind: 'wake', tasks: due }, state: { tab, known, pending: undefined, lastWakeAt: now, settled } };
 }
 
-/** Whether the session should rest: held by its budget (`isHeld`), or in the budget's quiet hours. */
+/**
+ * Whether the session should rest: held by its budget (`isHeld`) or paused by a short day ({@link isPausedNow}), so
+ * woken, reopened and sent back to work for p0 alone; or in the budget's quiet hours.
+ */
 export interface WakeRest {
   readonly held: boolean;
   readonly quiet: boolean;
 }
 
 /**
+ * True when a short day funds none of the session's work (`BudgetFacts.paused`, src/budget/pause.ts) and no burst
+ * holds its budget up: it rests whatever room the team has left today, or the wakes, the idle pass and the stop hook's
+ * keep-working ask hand it the work the pause stopped (T1598).
+ */
+function isPausedNow(facts: BudgetFacts): boolean {
+  return facts.paused && facts.burst === undefined;
+}
+
+/**
  * Where the session stands against its budget at `now`: held (past its daily budget, its lift's while lifted, while
- * the team has no room today or a leader's cut holds it), and in quiet hours unless its lift exempts it. The turn a wake would start counts as
- * spent (`turnW`, in W), so a session with less left than that turn is held before it, not after (T1322). With no facts (the week's use is not known yet) it is never held, and quiet hours go
- * by the clock alone.
+ * the team has no room today or a leader's cut holds it, or paused: {@link isPausedNow}), and in quiet hours unless
+ * its lift exempts it. The turn a wake would start counts as spent (`turnW`, in W), so a session with less left than
+ * that turn is held before it, not after (T1322). With no facts (the week's use is not known yet) it is never held,
+ * and quiet hours go by the clock alone.
  */
 export function wakeRestOf(facts: BudgetFacts | undefined, quietHours: QuietHours | undefined, now: number, turnW: number): WakeRest {
   if (facts === undefined) {
     return { held: false, quiet: quietSpanOf(quietHours, now) !== undefined };
   }
   const turnPct = facts.todayWPerPct > 0 ? turnW / facts.todayWPerPct : 0;
-  return { held: isHeld(facts, turnPct), quiet: sessionQuietSpan(facts, quietHours) !== undefined };
+  return { held: isPausedNow(facts) || isHeld(facts, turnPct), quiet: sessionQuietSpan(facts, quietHours) !== undefined };
 }
 
-/** The least urgent priority that wakes the session now: p0 only while its budget holds it, p1 in quiet hours. */
+/** The least urgent priority that wakes the session now: p0 only while its budget holds or pauses it, p1 in quiet hours. */
 export function effectivePriority(configured: number, rest: WakeRest): number {
   if (rest.held) {
     return Math.min(configured, HELD_PRIORITY);
