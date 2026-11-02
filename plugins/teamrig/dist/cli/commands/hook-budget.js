@@ -11,6 +11,7 @@ import { OUTSIDE_ID } from "../../budget/measure.js";
 import { runMeter } from "../../budget/meter.js";
 import { budgetSplitOf, dailyBudgetOf } from "../../budget/parts.js";
 import { fundForDay, isPaused, pausableOf } from "../../budget/pause.js";
+import { keepSessionsWeek, sessionsWeekOf } from "../../budget/session-week-file.js";
 import { UsageStore } from "../../budget/store.js";
 import { teamWeekOf } from "../../budget/team-week.js";
 import { keepTeamWeek, teamWeekSummaryOf } from "../../budget/team-week-file.js";
@@ -51,7 +52,8 @@ async function meterTab(runtime, store, id, transcript, budget) {
  * (`teamDay`) says whether a session past its part is held, unless a leader's cut of it is in force (`activeCut`):
  * then it is held past its part whatever room the team has. The lead,
  * with no burst in force, also gets the week's surplus when it is worth one. On the way, it keeps the team's week
- * summary for readers that show it (budget/team-week-file.ts), written when that changes it.
+ * summary and its sessions' week for readers that show them (budget/team-week-file.ts, budget/session-week-file.ts),
+ * each written when that changes it.
  */
 export async function budgetFactsOf(runtime, scope, transcript) {
     const { kit, config, roster, id } = scope;
@@ -88,6 +90,10 @@ export async function budgetFactsOf(runtime, scope, transcript) {
     const summary = teamWeekSummaryOf({ window: week.window, usedPct: week.usedPct, wPerPct: week.wPerPct, targetPct: budget.targetPct, states: [...byId.values()], teams, now });
     if (summary !== undefined) {
         await keepTeamWeek(files, kit.paths.teamWeek, summary);
+    }
+    const sessionsWeek = sessionsWeekOf({ window: week.window, wPerPct: week.wPerPct, byId, now });
+    if (sessionsWeek !== undefined) {
+        await keepSessionsWeek(files, kit.paths.sessionsWeek, sessionsWeek);
     }
     const funded = fundForDay({ split, others }, week);
     const shared = dailyBudgetOf(week.allowancePct, id, funded.split, funded.others);
