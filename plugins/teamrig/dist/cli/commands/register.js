@@ -113,15 +113,21 @@ export function report(runtime, verdict, verb, written, label) {
     }
     const { task, state, elsewhere } = verdict.value;
     runtime.out.stdout(`${verb} ${formatTask(task, label, new TaskTree(state.tasks, new Date(runtime.clock.now()), written.zone, undefined, elsewhere))}`);
-    const { rotation } = verdict.value;
-    const turnOff = autoArchiveSwitch(written.paths.config);
+    reportRotation(runtime, verdict.value.rotation, written.paths);
+    return EXIT.ok;
+}
+/**
+ * Names a rotation a write ran on stderr, with the switch that turns it off in the written team's config (`paths`), so
+ * stdout keeps one line per written task; a write that ran none prints nothing.
+ */
+export function reportRotation(runtime, rotation, paths) {
+    const turnOff = autoArchiveSwitch(paths.config);
     if (rotation.kind === 'rotated') {
         runtime.out.stderr(`NOTE the task list's log is archived as segment ${rotation.segment}; ${rotation.retired} finished task(s) left the working set (${turnOff})`);
     }
     else if (rotation.kind === 'failed') {
         runtime.out.stderr(`WARN the write is saved, but archiving the task list's log failed (the next write tries again; ${turnOff}): ${rotation.error}`);
     }
-    return EXIT.ok;
 }
 /** Damaged or newer lines never stop a read; they are named on stderr so someone fixes them. */
 export function warnDamage(runtime, snapshot, path) {
