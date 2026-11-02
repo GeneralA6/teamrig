@@ -15,6 +15,11 @@ export const TODAY_RATE_SPAN_PTS = 2;
  */
 export const TODAY_RATE_MAX_RATIO = 2;
 /**
+ * The span whose rise the week's run-out forecast carries to the reset (`WeekReading.forecast`): a whole day, so its
+ * quiet hours are in it and the rise is a day's, not a busy stretch's.
+ */
+export const FORECAST_SPAN_MS = MS_PER_DAY;
+/**
  * The week's use now read from the meter log (`useAtW`), held to the status line's: at least its percent, and below
  * the next while its reading is fresh, as it shows the next the moment the use reaches it. Not at 100%, where the
  * status line stops and the use goes on into the extra-usage pool.
@@ -25,20 +30,48 @@ function heldToStatus(readPct, statusUse, now) {
     return fresh ? Math.min(atLeast, Math.floor(statusUse.usedPct) + 1) : atLeast;
 }
 /**
- * Today's use from the status line, in percent of the week (T531): the use now less the use at today's start, each
- * read between the period's meter readings (`useAtW`), so a rate only prices the part of a percent past the last
- * reading, and a rate that drifts through the week does not inflate the day. Undefined while the period has no
- * reading or the stores do not reach its start: today's use is then its W at the week's rate.
+ * The week's use at the start of the span whose W is `sinceW` and now, on the status line's scale (T531): each read
+ * between the period's meter readings (`useAtW`), so a rate only prices the part of a percent past the last reading,
+ * and a rate that drifts through the week does not inflate the span; the use now held to the status line's
+ * (`heldToStatus`). Undefined while the period has no reading or the stores do not reach its start.
  */
-function statusTodayPct(sight) {
-    const { readings, start, covered, statusUse, weekW, todayW, wPerPct, now } = sight;
+function statusRiseOf(sight, sinceW) {
+    const { readings, start, covered, statusUse, weekW, wPerPct, now } = sight;
     if (start === undefined || !covered || !readings.some((reading) => reading.start === start)) {
         return undefined;
     }
-    const fromPct = useAtW(readings, start, weekW - todayW, wPerPct);
     const readPct = useAtW(readings, start, weekW, wPerPct);
-    const nowPct = statusUse === undefined ? readPct : heldToStatus(readPct, statusUse, now);
-    return Math.max(0, nowPct - fromPct);
+    return {
+        fromPct: useAtW(readings, start, weekW - sinceW, wPerPct),
+        nowPct: statusUse === undefined ? readPct : heldToStatus(readPct, statusUse, now),
+    };
+}
+/**
+ * Today's use from the status line, in percent of the week: the rise since today's start, whose W is `todayW`
+ * (`statusRiseOf`). Undefined with that rise: today's use is then its W at the week's rate.
+ */
+function statusTodayPct(sight, todayW) {
+    const rise = statusRiseOf(sight, todayW);
+    return rise === undefined ? undefined : Math.max(0, rise.nowPct - rise.fromPct);
+}
+/**
+ * The week's run-out forecast (T1706): the status line's rise over the last `FORECAST_SPAN_MS`, whose W is `spanW`
+ * (`statusRiseOf`), carried at that rate to the reset. `wSince` counts the span from its start's whole hour, so the
+ * rise errs high and the week runs out sooner, never later. Undefined in the period's first day, at or past the reset,
+ * at 100% (where the extra-usage pool's line takes over) and while the rise is unknown.
+ */
+function forecastOf(sight, reset, spanW) {
+    const { start, now } = sight;
+    if (start === undefined || now - FORECAST_SPAN_MS < start || now >= reset) {
+        return undefined;
+    }
+    const rise = statusRiseOf(sight, spanW);
+    if (rise === undefined || rise.nowPct >= 100) {
+        return undefined;
+    }
+    const risePts = Math.max(0, rise.nowPct - rise.fromPct);
+    const endPct = rise.nowPct + (risePts * (reset - now)) / FORECAST_SPAN_MS;
+    return { risePts, endPct, fullAt: endPct < 100 ? undefined : now + ((100 - rise.nowPct) / risePts) * FORECAST_SPAN_MS };
 }
 /**
  * Everyone's W from the hour of `from` to `now`: the whole days after `from`'s UTC day and, on that day,
@@ -141,7 +174,8 @@ export function readWeek(input) {
     const rate = rateOf(calibration, budget, estimate);
     const wPerPct = rate?.wPerPct;
     const usedPct = statusUse?.usedPct ?? (covered && wPerPct !== undefined ? weekW / wPerPct : undefined);
-    const statusToday = wPerPct === undefined ? undefined : statusTodayPct({ readings, start: period?.start, covered, statusUse, weekW, todayW, wPerPct, now });
+    const sight = wPerPct === undefined ? undefined : { readings, start: period?.start, covered, statusUse, weekW, wPerPct, now };
+    const statusToday = sight === undefined ? undefined : statusTodayPct(sight, todayW);
     const todayPct = statusToday ?? (wPerPct === undefined ? undefined : todayW / wPerPct);
     const todayWPerPct = todayRateOf(todayW, statusToday, wPerPct);
     const profile = DailyProfile.ofQuietHours(budget.quietHours);
@@ -179,5 +213,6 @@ export function readWeek(input) {
         todayWPerPct,
         teamDay,
         pool,
+        forecast: sight === undefined || reset === undefined ? undefined : forecastOf(sight, reset, wSince(states, now - FORECAST_SPAN_MS, now)),
     };
 }
