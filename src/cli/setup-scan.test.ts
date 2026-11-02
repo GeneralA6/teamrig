@@ -84,7 +84,8 @@ describe('setup scan', () => {
       lines.filter((line) => line.startsWith('CONTEXT')).map((line) => line.split(' ').slice(0, 2).join(' ')),
       ['CONTEXT claude-md', 'CONTEXT claude-md', 'CONTEXT team-rules', 'CONTEXT skills', 'CONTEXT agents'],
     );
-    assert.ok(lines.includes('OVERRIDE 1 line(s) in 1 file(s) may override a core rule: claude-md 1; 0 recorded'), lines.join('\n'));
+    assert.ok(lines.includes('OVERRIDE 1 line(s) in 1 file(s) may override a core rule: claude-md 1; 0 recorded; 1 load unasked; the 1 to judge first below'), lines.join('\n'));
+    assert.match(lines.find((line) => line.startsWith('O1 ')) ?? '', /^O1 claude-md .*CLAUDE\.md:2: "- Ping the lead after each step so it always knows\." \(1 roles, 3 messages\)$/);
     assert.ok(lines.includes('NEXT teamrig rules scan, to judge each line with the user'));
     assert.ok(lines.includes(`UNUSED 1 of 2 skill(s) not used in ${DEFAULT_SCAN_DAYS} day(s) (read 1 transcript(s), 0.0 MB)${NO_DOCTOR}`), lines.join('\n'));
     assert.match(lines.find((line) => line.startsWith('U1 ')) ?? '', /^U1 unused-skill .*beta-run.*: no Skill call or \/beta-run in 30 day\(s\)/);
