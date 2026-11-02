@@ -27,6 +27,12 @@ export const GITHUB_STATUSES = ['open', 'done', 'dropped'];
  * (the lead plans the week), and its type and critical mark, so the lead can mark another session's fix a bug.
  */
 export const LEAD_FIELDS = ['owner', 'priority', 'due', 'week', 'after', 'size', 'type', 'critical', 'pin'];
+/**
+ * Fields the lead may change on a task whose owner is no session of the team any more (a retired hire, a session that
+ * left at a team split): the LEAD_FIELDS and its ref, which no session of the team could keep true otherwise, such as
+ * when the notes it points at move (T1830).
+ */
+export const LEFT_OWNER_LEAD_FIELDS = [...LEAD_FIELDS, 'ref'];
 /** The refusal of an `add` with no description while `register.requireDescription` is on. */
 export const DESCRIPTION_NEEDED = 'add needs --description "<what and why, in plain words>"';
 /** How a card is typed, for the refusals that ask for one. */
@@ -604,7 +610,7 @@ export class RegisterPolicy {
         const sourceRule = (source) => (source === task.source ? undefined : this.teamSourceProblem(source));
         const after = changes.after === undefined ? undefined : afterChangeProblem(task, changes.after, state, elsewhere);
         const goals = changes.goals === undefined ? undefined : this.goalProblem(changes.goals, goalTags);
-        const problem = after ?? this.checkFields(merged, sourceRule) ?? goals ?? this.checkText('note', text);
+        const problem = after ?? this.checkFields(merged, sourceRule, task.owner) ?? goals ?? this.checkText('note', text);
         return problem === undefined ? ok({ changes, note: text }) : refuse(problem);
     }
     /** Why `goals` cannot be named under `register.goals` checked or required: one is no tag of `goalTags`. */
@@ -637,17 +643,19 @@ export class RegisterPolicy {
     }
     /**
      * Why a session may not change the work order of a task it does not own, or undefined when it may (T782): the lead
-     * on any task, a sub-lead on the tasks of its group; only the LEAD_FIELDS, and a sub-lead hands a task only to itself
-     * or a session it leads, so work never leaves its group by a sub-lead's hand.
+     * on any task, a sub-lead on the tasks of its group; only the LEAD_FIELDS (the lead the LEFT_OWNER_LEAD_FIELDS on a
+     * task whose owner left the team), and a sub-lead hands a task only to itself or a session it leads, so work never
+     * leaves its group by a sub-lead's hand.
      */
     leaderUpdateProblem(task, caller, names, owner) {
         const isLead = caller === this.tree.lead;
         if (!isLead && !this.tree.leads(caller, task.owner)) {
             return `only the owner (${task.owner}) or ${this.approversText(task.owner)} changes ${task.id}`;
         }
-        const notLead = names.filter((name) => !LEAD_FIELDS.includes(name));
+        const allowed = isLead && !this.config.sessions.includes(task.owner) ? LEFT_OWNER_LEAD_FIELDS : LEAD_FIELDS;
+        const notLead = names.filter((name) => !allowed.includes(name));
         if (notLead.length > 0) {
-            return `a leader may change only ${LEAD_FIELDS.join(', ')} on a task it does not own (asked: ${notLead.join(', ')})`;
+            return `a leader may change only ${allowed.join(', ')} on a task it does not own (asked: ${notLead.join(', ')})`;
         }
         const group = this.tree.groupOf(caller);
         if (!isLead && owner !== undefined && owner !== caller && !group.includes(owner)) {
@@ -725,7 +733,12 @@ export class RegisterPolicy {
         }
         return source === ownerSource || SESSION_NAME.test(source) ? undefined : `source ${source} is neither a session id nor ${ownerSource}`;
     }
-    checkFields(fields, sourceRule) {
+    /**
+     * `keptOwner`: the owner an update leaves as it was, which stands even once it is no session of the team any more (a
+     * retired hire, a session that left at a split), as a task keeps its source; only an owner a write sets is held to the
+     * sessions (T1830).
+     */
+    checkFields(fields, sourceRule, keptOwner) {
         const { register, sessions } = this.config;
         if (fields.title === '') {
             return 'the title is empty';
@@ -733,7 +746,7 @@ export class RegisterPolicy {
         if (fields.title.length > register.maxTitle) {
             return `the title has ${fields.title.length} characters; the limit is ${register.maxTitle}`;
         }
-        if (!sessions.includes(fields.owner)) {
+        if (fields.owner !== keptOwner && !sessions.includes(fields.owner)) {
             return `owner ${fields.owner} is not a session on this team`;
         }
         if (fields.critical && !traitsOf(fields).review) {
