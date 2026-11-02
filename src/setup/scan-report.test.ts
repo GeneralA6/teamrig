@@ -45,8 +45,10 @@ function usedAt(uses: Readonly<Record<string, readonly string[]>>): UsedIn {
   return new Map(Object.entries(uses).map(([name, folders]) => [name, new Set(folders)]));
 }
 
-function candidate(kind: PlaceKind, path: string, line: number): Candidate {
-  return { place: { kind, path }, line, text: '- Push straight to main.', topics: { rules: ['push'], tags: [] } };
+const PUSH = '- Push straight to main.';
+
+function candidate(kind: PlaceKind, path: string, line: number, text = PUSH): Candidate {
+  return { place: { kind, path }, line, text, topics: { rules: ['push'], tags: [] } };
 }
 
 const ALPHA = skill('alpha', 'a'.repeat(300));
@@ -102,7 +104,10 @@ describe('scanReport', () => {
       "C2 long-description ~/.claude/skills/alpha/SKILL.md: skill alpha's description is 300 chars, over 250 (~13 tokens/turn)",
       'DUPLICATE 1 line(s) or sentence(s) repeat one loaded before',
       `D1 duplicate ~/.claude/CLAUDE.md:3: "${RULE}" repeats ${shown(TEAM_RULES)}:1 (~15 tokens/turn)`,
-      'OVERRIDE 3 line(s) in 2 file(s) may override a core rule: claude-md 2, rules 1; 1 recorded',
+      'OVERRIDE 3 line(s) in 2 file(s) may override a core rule: claude-md 2, rules 1; 1 recorded; 3 load unasked; the 3 to judge first below',
+      `O1 claude-md ~/.claude/CLAUDE.md:4: "${PUSH}" (15 push)`,
+      `O2 rules ${shown(PROJECT_RULE)}:2: "${PUSH}" (15 push)`,
+      `O3 claude-md ~/.claude/CLAUDE.md:9: "${PUSH}" (15 push)`,
       'NEXT teamrig rules scan, to judge each line with the user',
       PROMPT_AUDIT,
       'SETTINGS 1 finding(s)',
@@ -141,7 +146,8 @@ describe('scanReport', () => {
       "C1 long-description ~/.claude/skills/beta/SKILL.md: skill beta's description is 300 chars, over 250 (~13 tokens/turn)",
       'DUPLICATE 1 line(s) or sentence(s) repeat one loaded before',
       'D1 duplicate ~/.claude/CLAUDE.md:2: "Use the key [redacted secret pattern from the team config..." repeats ~/.claude/CLAUDE.md:1 (~13 tokens/turn)',
-      'OVERRIDE 1 line(s) in 1 file(s) may override a core rule: rules 1; 0 recorded',
+      'OVERRIDE 1 line(s) in 1 file(s) may override a core rule: rules 1; 0 recorded; 1 load unasked; the 1 to judge first below',
+      `O1 rules ${shown(PROJECT_RULE)}:2: "${PUSH}" (15 push)`,
       'NEXT teamrig rules scan, after teamrig team create, to judge each line with the user',
       PROMPT_AUDIT,
       'SETTINGS 1 finding(s)',
@@ -174,6 +180,18 @@ describe('scanReport', () => {
       'SETTINGS 2 finding(s)',
       'S1 wide-allow ~/.claude/settings.json: 2 allow rule(s) approve a whole tool',
       `S2 wide-allow ${shown(local.path)}: 210 allow rule(s) approve a whole tool; the same in 9 more file(s) under .claude/worktrees`,
+    ]);
+  });
+
+  it('prints the first 10 override lines to judge, the ones a session loads unasked first, each a redacted excerpt', () => {
+    const skillLine = candidate('skill', '/u/.claude/skills/ship/SKILL.md', 7);
+    const memory = candidate('memory', '/u/.claude/projects/app/memory/push.md', 3, 'Push hunter2-abcdef often.');
+    const rules = Array.from({ length: 9 }, (_, index) => candidate('rules', PROJECT_RULE, index + 1));
+    const scan: SetupScan = { ...SCAN, overrides: [skillLine, memory, ...rules] };
+    assert.deepEqual(scanReport(scan, AT).filter((line) => /^O(VERRIDE|\d)/.test(line)), [
+      'OVERRIDE 11 line(s) in 3 file(s) may override a core rule: rules 9, skill 1, memory 1; 1 recorded; 9 load unasked; the 10 to judge first below',
+      ...rules.map(({ line }) => `O${line} rules ${shown(PROJECT_RULE)}:${line}: "${PUSH}" (15 push)`),
+      'O10 memory ~/.claude/projects/app/memory/push.md:3: "Push [redacted secret pattern from the team config] often." (15 push)',
     ]);
   });
 

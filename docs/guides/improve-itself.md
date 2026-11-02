@@ -241,7 +241,10 @@ TOTAL 18,500 chars (~4,625 tokens/turn) at every session start
 C1 large-file ~/work/shop/CLAUDE.md: 7,200 chars, over the 6,000 an always-loaded file should keep to (~300 tokens/turn)
 DUPLICATE 1 line(s) or sentence(s) repeat one loaded before
 D1 duplicate ~/work/shop/CLAUDE.md:12: "Run the full test suite before every commit." repeats ~/.claude/CLAUDE.md:4 (~11 tokens/turn)
-OVERRIDE 6 line(s) in 2 file(s) may override a core rule: claude-md 4, skill 2; 0 recorded
+OVERRIDE 3 line(s) in 3 file(s) may override a core rule: claude-md 2, skill 1; 0 recorded; 2 load unasked; the 3 to judge first below
+O1 claude-md ~/work/shop/CLAUDE.md:31: "Merge your own branch without the teamrig lead's OK." (1 roles, 2 own-change, 16 worktrees; teamrig)
+O2 claude-md ~/.claude/CLAUDE.md:7: "Always use a subagent for long test runs." (8 lean-calls)
+O3 skill ~/.claude/skills/hotfix/SKILL.md:14: "Push the fix to main with --force if the push is rejected." (15 push, 16 worktrees)
 NEXT teamrig rules scan, after teamrig team create, to judge each line with the user
 NEXT /doctor prompt-audit in a session of the project: Claude Code's model-run check for outdated or conflicting instructions
 SETTINGS 1 finding(s)
@@ -264,8 +267,10 @@ SAVINGS ~451 tokens/turn if every CONTEXT, DUPLICATE and UNUSED finding is appli
   same way, its file in `agents-parked/` beside its agents folder. A skill or agent type in your user folders that
   only sessions in other projects used (`other-project-skill`, `other-project-agent`) costs every session here for
   nothing: move it into those projects' `.claude/skills` or `.claude/agents`.
-- `OVERRIDE` counts the lines [`rules scan`](#local-rules-that-say-otherwise) lists to judge, and `SETTINGS` the wide
-  allow rules `teamrig permissions trim` removes. Claude Code's `/doctor prompt-audit`, run in a session of the
+- `OVERRIDE` counts the lines [`rules scan`](#local-rules-that-say-otherwise) lists to judge, and prints the first 10
+  to start from: lines every session loads unasked first, then those naming teamrig or telling a session what to do.
+  Words only order them; `rules scan` judges each line. `SETTINGS` counts the wide allow rules
+  `teamrig permissions trim` removes. Claude Code's `/doctor prompt-audit`, run in a session of the
   project, has a model look for outdated or conflicting instructions too.
 
 The scan only reads, and its second line names the newest backup of the setup. Change nothing in the setup before

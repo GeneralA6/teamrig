@@ -3256,8 +3256,13 @@ tokens a turn applying it saves:
 - CONTEXT (`C1`...): a file over 6,000 chars, a skill description over 250.
 - DUPLICATE (`D1`...): a line or sentence of 40 chars or more that repeats one loaded before, in another file or the
   same one; its excerpt has text in a secret's shape replaced.
-- OVERRIDE: how many rule lines, in how many files and of which kind, may override a core rule; never the lines.
-  Lines a recorded verdict clears are left out. `teamrig rules scan` lists them to judge, and the next NEXT line
+- OVERRIDE (`O1`...): how many rule lines, in how many files and of which kind, may override a core rule, and how
+  many of them a session loads unasked (a CLAUDE.md, a rules file, the team rules, settings' `autoMode`); then the
+  first 10 to judge, each an excerpt of up to 60 chars with text in a secret's shape replaced, and the core rules its
+  words touch. The order is a place to start, not a verdict: lines a session loads unasked first, then hooks' and
+  memory's, then skills'; among those, a line naming teamrig first, then one that directs (`never`, `always`, `may`...)
+  or says which rule wins. Lines a recorded verdict clears are left out. `teamrig rules scan` lists every line to
+  judge, and the next NEXT line
   names Claude Code's `/doctor prompt-audit`, a check a model runs in a session of the project for outdated or
   conflicting instructions.
 - SETTINGS (`S1`...): allow rules that approve a whole tool or program (`teamrig permissions trim` removes them), no
@@ -3316,7 +3321,10 @@ TOTAL 18,500 chars (~4,625 tokens/turn) at every session start
 C1 large-file ~/work/shop/CLAUDE.md: 7,200 chars, over the 6,000 an always-loaded file should keep to (~300 tokens/turn)
 DUPLICATE 1 line(s) or sentence(s) repeat one loaded before
 D1 duplicate ~/work/shop/CLAUDE.md:12: "Run the full test suite before every commit." repeats ~/.claude/CLAUDE.md:4 (~11 tokens/turn)
-OVERRIDE 6 line(s) in 2 file(s) may override a core rule: claude-md 4, skill 2; 0 recorded
+OVERRIDE 3 line(s) in 3 file(s) may override a core rule: claude-md 2, skill 1; 0 recorded; 2 load unasked; the 3 to judge first below
+O1 claude-md ~/work/shop/CLAUDE.md:31: "Merge your own branch without the teamrig lead's OK." (1 roles, 2 own-change, 16 worktrees; teamrig)
+O2 claude-md ~/.claude/CLAUDE.md:7: "Always use a subagent for long test runs." (8 lean-calls)
+O3 skill ~/.claude/skills/hotfix/SKILL.md:14: "Push the fix to main with --force if the push is rejected." (15 push, 16 worktrees)
 NEXT teamrig rules scan, after teamrig team create, to judge each line with the user
 NEXT /doctor prompt-audit in a session of the project: Claude Code's model-run check for outdated or conflicting instructions
 SETTINGS 1 finding(s)
