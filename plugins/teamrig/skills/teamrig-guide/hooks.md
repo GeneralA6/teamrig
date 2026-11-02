@@ -769,7 +769,7 @@ in-progress, or waiting or verifying with every wait cleared, and, when never st
 task not started that comes after the waiting one, directly or through another unfinished task, stays untouched,
 and so do its closed tasks and those still waiting or verifying on a reason not cleared. It asks at one stop only, never on a stop already sent back or while a context
 refresh is under way (the ask then waits for a later stop), and never in the budget's quiet hours or while its
-budget holds it (the day-start wake brings it back to its work). With nothing it can start, the turn ends as
+budget holds it or a short day pauses it (the day-start wake brings it back to its work). With nothing it can start, the turn ends as
 it would, and a turn that asks the user to decide shows [the decision circle](#every-event-tab-status). A hired
 session asked to write its handover is asked that first.
 
@@ -1108,7 +1108,8 @@ allowance, which is recomputed from what is left, so a night a lift worked throu
 the pace.
 With `budget.pauseByPriority` on, a short day (what is left of the week gives the day less than the pace line plans)
 funds the queued work in priority order, and a session none of it reaches has a daily budget of 0: its line reads
-`its daily budget is 0.0% (paused)`, and once the team has no room it is held like any session past its part. The
+`its daily budget is 0.0% (paused)`. Room or not, only p0 work wakes it, keeps its idle tab open or sends it back to
+work at a turn end, and once the team has no room it is held like any session past its part. The
 lead, the delivery owner and lifted sessions are never paused, and a burst's floor still holds a paused session up.
 Past its part while the team has room, a session is not held, and its line says so: `The team has room today: 2.0%
 of the week used, below its in-day pace of 4.0%, so nothing more happens.` Past its part once the team has no room,
