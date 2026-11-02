@@ -1174,6 +1174,16 @@ the shutdown may be what closed the terminal, and a Claude Code the shutdown kil
 as it was. The restore after a reboot reads these files. The hook prints nothing, and on any error writes
 nothing and lets the turn go on.
 
+At a turn's end the hook also follows the Claude login, which every tab of the machine shares, in one file:
+`<home>/restore/login.json`. A turn that ended on `Login expired` (the `StopFailure` error `authentication_failed`,
+or, when the payload names none, the turn's last record in the transcript) marks the login expired and the tab
+stuck; the next turn a tab ends with an answer marks the login working again and frees that tab. Each other tab
+stays stuck until its own next answer, or for 2 days. The file is written under a lock, since a day-start wake
+fails a dozen tabs in the same second, and each change goes to `restore/restore.log`: `login: expired, <tab> ended
+its turn on Login expired`, one `login: <tab> ended its turn on Login expired` per other tab, then `login: works
+again, <tab> answered`, each with how many tabs are stuck. A lock still busy after 5 seconds skips the login for
+that turn, never the session's own file.
+
 ## Every event: tab status
 
 With `tabStatus.enabled: true` in the team config (`team create` writes it for a new team) and `CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1` in Claude Code's
