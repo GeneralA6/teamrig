@@ -21,37 +21,37 @@
       {
         "matcher": "Bash|PowerShell",
         "hooks": [
-          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "push-guard"], "timeout": 15 },
-          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "package-guard"], "timeout": 15 },
-          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "secret-guard"], "timeout": 15 },
-          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "exec-guard"], "timeout": 15 },
-          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "pass-record-guard"], "timeout": 15 },
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/guard-main.js", "hook", "push-guard"], "timeout": 15 },
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/guard-main.js", "hook", "package-guard"], "timeout": 15 },
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/guard-main.js", "hook", "secret-guard"], "timeout": 15 },
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/guard-main.js", "hook", "exec-guard"], "timeout": 15 },
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/guard-main.js", "hook", "pass-record-guard"], "timeout": 15 },
           { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "readonly-allow"], "timeout": 15 }
         ]
       },
       {
         "matcher": "Read|Grep",
         "hooks": [
-          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "secret-guard"], "timeout": 15 }
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/guard-main.js", "hook", "secret-guard"], "timeout": 15 }
         ]
       },
       {
         "matcher": "Write|Edit|MultiEdit|NotebookEdit",
         "hooks": [
-          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "pass-record-guard"], "timeout": 15 },
-          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "secret-guard"], "timeout": 15 }
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/guard-main.js", "hook", "pass-record-guard"], "timeout": 15 },
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/guard-main.js", "hook", "secret-guard"], "timeout": 15 }
         ]
       },
       {
         "matcher": "SendMessage",
         "hooks": [
-          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "cold-send"], "timeout": 15 }
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/guard-main.js", "hook", "cold-send"], "timeout": 15 }
         ]
       },
       {
         "matcher": "Agent|Task",
         "hooks": [
-          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "helper-gate"], "timeout": 15 }
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/guard-main.js", "hook", "helper-gate"], "timeout": 15 }
         ]
       },
       {
@@ -63,7 +63,7 @@
       {
         "matcher": "AskUserQuestion",
         "hooks": [
-          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "picker-guard"], "timeout": 15 }
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/guard-main.js", "hook", "picker-guard"], "timeout": 15 }
         ]
       }
     ],
