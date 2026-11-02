@@ -9,6 +9,10 @@ const SUFFIX = '.json';
 export function restoreSessionsDir(kitHome) {
     return join(kitHome, 'restore', 'sessions');
 }
+/** The restore's log, beside its sessions folder: what each check, run and login change decided, for the morning after. */
+export function restoreLogPath(kitHome) {
+    return join(kitHome, 'restore', 'restore.log');
+}
 /**
  * The file named for a session in a folder of the restore (`<session id>.json`). Only a real session id names a
  * file; any other is refused, so no id from a payload reaches a path.

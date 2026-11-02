@@ -3,8 +3,11 @@ import { ENV, resolveKitHome } from "../../core/home.js";
 import { ID_PATTERN } from "../../core/ids.js";
 import { sessionIdOf } from "../../inbox/inbox.js";
 import { applyEvent } from "../../restore/entry.js";
-import { RestoreRegistry, restoreSessionsDir } from "../../restore/registry.js";
+import { authFailureOf, LOGIN_LOCK, LOGIN_TAIL_BYTES, loginLogLine, loginMarkerPath } from "../../restore/login.js";
+import { LoginStore } from "../../restore/login-store.js";
+import { RestoreRegistry, restoreLogPath, restoreSessionsDir } from "../../restore/registry.js";
 import { noPositionals } from "../args.js";
+import { fileLockOf } from "../file-locks.js";
 import { EXIT } from "../runtime.js";
 import { parseJson } from "./hook-input.js";
 /**
@@ -42,7 +45,57 @@ function envId(runtime, name) {
     const value = present(runtime.env[name]);
     return value !== undefined && ID_PATTERN.test(value) ? value : undefined;
 }
-/** Records the event `payload` reports in its session's restore entry; a payload of no session or event it skips writes nothing. */
+/** Writes the event into its session's restore entry, or removes the entry at an end the person chose. */
+async function trackEntry(event, facts, runtime, kitHome) {
+    const registry = new RestoreRegistry(runtime.files, restoreSessionsDir(kitHome));
+    const change = applyEvent(await registry.read(facts.claudeSession), event, facts);
+    switch (change.kind) {
+        case 'write':
+            await registry.write(change.entry);
+            return;
+        case 'remove':
+            await registry.remove(facts.claudeSession);
+            return;
+        case 'none':
+            return;
+    }
+}
+/** The login event a turn end reports: a good one answered, a failed one failed on the login; undefined for any other. */
+async function loginEventOf(payload, event, facts, runtime) {
+    const { claudeSession, at, transcriptPath } = facts;
+    switch (event.kind) {
+        case 'ready':
+            return { kind: 'answered', claudeSession, at };
+        case 'error': {
+            const tailOf = async () => (transcriptPath === undefined ? undefined : runtime.files.readTail(transcriptPath, LOGIN_TAIL_BYTES));
+            return (await authFailureOf(payload, tailOf)) ? { kind: 'auth-failed', claudeSession, at } : undefined;
+        }
+        default:
+            return undefined;
+    }
+}
+/** How the restore log names a tab: its team and session when `teamrig launch` started it, and its Claude session. */
+function tabLabelOf(facts) {
+    return facts.team === undefined || facts.session === undefined ? facts.claudeSession : `${facts.team}/${facts.session} (${facts.claudeSession})`;
+}
+/** Follows the login through turn ends (src/restore/login.ts); each change with a note goes to the restore log. */
+async function trackLogin(payload, event, facts, runtime, kitHome) {
+    const loginEvent = await loginEventOf(payload, event, facts, runtime);
+    if (loginEvent === undefined) {
+        return;
+    }
+    const path = loginMarkerPath(kitHome);
+    const change = await new LoginStore(runtime.files, path, fileLockOf(runtime, `${path}.lock`, LOGIN_LOCK)).apply(loginEvent);
+    if (change.kind === 'write' && change.note !== undefined) {
+        const line = loginLogLine(change.note, tabLabelOf(facts), change.marker);
+        await runtime.files.append(restoreLogPath(kitHome), `${new Date(facts.at).toISOString()} ${line}\n`);
+    }
+}
+/**
+ * Records the event `payload` reports in its session's restore entry and, at a turn's end, in the login marker; a
+ * payload of no session or event it skips writes nothing. A marker that cannot be written (its lock busy) never keeps
+ * the entry from its update; an entry that cannot be written fails the call once the marker is done.
+ */
 export async function trackRestore(payload, runtime) {
     const claudeSession = sessionIdOf(payload);
     const event = isRecord(payload) ? trackEventOf(payload) : undefined;
@@ -62,23 +115,21 @@ export async function trackRestore(payload, runtime) {
         team: envId(runtime, ENV.team),
         session: envId(runtime, ENV.session),
     };
-    const registry = new RestoreRegistry(runtime.files, restoreSessionsDir(resolveKitHome(runtime.env, runtime.userHome)));
-    const change = applyEvent(await registry.read(claudeSession), event, facts);
-    switch (change.kind) {
-        case 'write':
-            await registry.write(change.entry);
-            return;
-        case 'remove':
-            await registry.remove(claudeSession);
-            return;
-        case 'none':
-            return;
+    const kitHome = resolveKitHome(runtime.env, runtime.userHome);
+    const login = trackLogin(payload, event, facts, runtime, kitHome).catch(() => undefined);
+    try {
+        await trackEntry(event, facts, runtime, kitHome);
+    }
+    finally {
+        await login;
     }
 }
 /**
  * SessionStart, UserPromptSubmit, Stop, StopFailure and SessionEnd: records the session in the restore
  * registry (`<kit home>/restore/sessions`), in a team or not, so the restore after a reboot knows which tabs
- * it closed and what each was doing (a tool's end comes through `hook tool-end`). It prints nothing, and on any
+ * it closed and what each was doing (a tool's end comes through `hook tool-end`). At a turn's end it also follows the
+ * login (`<kit home>/restore/login.json`): which tabs a turn that ended on Login expired left stuck, and when a
+ * good turn showed the login works again. It prints nothing, and on any
  * error it exits 0 having written nothing: a tracker must never hold up a turn.
  */
 export async function restoreTrack(args, runtime) {
