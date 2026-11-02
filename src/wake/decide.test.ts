@@ -336,6 +336,18 @@ describe('wakeRestOf', () => {
     const cutBy = { id: 'lead', name: 'lead', isLead: true };
     assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 1.5, teamDay: { usedPct: 4.9, pacePct: 5 }, cut, cutBy }), undefined, NOW, 0), { held: true, quiet: false });
   });
+
+  it('holds a session a short day pauses, whatever room the team has and before any use today (T1598)', () => {
+    const room = { usedPct: 1, pacePct: 5 };
+    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 0, budgetPct: 0, paused: true, teamDay: room }), undefined, NOW, 0), { held: true, quiet: false });
+    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 0, budgetPct: 0, paused: false, teamDay: room }), undefined, NOW, 0), { held: false, quiet: false });
+  });
+
+  it('lets a burst hold a paused session up: its floor is the budget it goes by (T1598)', () => {
+    const burst = { kind: 'surplus', sessions: ['alpha'], helpers: 1, hires: 0, dailyPct: 2, stopPct: 97, endsAt: NOW + 60 * MINUTE, tasks: [], reason: 'spare week', by: 'lead', at: NOW - MINUTE } as const;
+    assert.deepEqual(wakeRestOf(facts({ budgetPct: 2, paused: true, burst }), undefined, NOW, 0), { held: false, quiet: false });
+    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 2.5, budgetPct: 2, paused: true, burst }), undefined, NOW, 0), { held: true, quiet: false });
+  });
 });
 
 describe('effectivePriority', () => {
