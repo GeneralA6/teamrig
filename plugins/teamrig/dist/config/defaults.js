@@ -222,8 +222,8 @@ export const DEFAULT_HEADROOM = { sessionMb: 1200, commitMaxPct: 92, closeIdleMi
  */
 export const DEFAULT_IDLE = { mode: 'on', keepOpen: [] };
 export const DEFAULT_OPEN = { terminal: 'auto', teamWindow: false, headroom: DEFAULT_HEADROOM, idle: DEFAULT_IDLE };
-/** The status line shows the session's folder, its branch and the command that resumes it, unless the team turns them off. */
-export const DEFAULT_STATUS_LINE = { folder: true, branch: true, resume: true };
+/** The status line shows the session's folder, its branch and the team's pace line, unless the team turns them off. */
+export const DEFAULT_STATUS_LINE = { folder: true, branch: true, pace: true };
 /**
  * A host lock outlives the longest queued step it may hold by this many minutes, so the step is killed
  * before its lock runs out and no second step starts beside it.
