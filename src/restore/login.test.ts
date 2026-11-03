@@ -7,8 +7,13 @@ import {
   applyLoginEvent,
   authFailureOf,
   claimPage,
+  claudeCredentialsPath,
+  decideLoginRetry,
   formatLoginMarker,
+  LOGIN_PROBE_STALE_MS,
+  LOGIN_RETRY_GAP_MS,
   loginExpired,
+  loginHoldsDayStart,
   loginLogLine,
   loginMarkerPath,
   loginPageText,
@@ -18,6 +23,7 @@ import {
   type LoginChange,
   type LoginEvent,
   type LoginMarker,
+  type LoginRetry,
 } from './login.ts';
 
 const TAB_A = '0123abcd-0000-4000-8000-00000000000a';
@@ -79,7 +85,7 @@ describe('login marker', () => {
   it('starts an expiry at the first auth failure and strands its tab', () => {
     const change = written(applyLoginEvent(undefined, failed(TAB_A, EXPIRY)));
     assert.equal(change.note, 'expired');
-    assert.deepEqual(change.marker, { expiredAt: EXPIRY, lastFailAt: EXPIRY, recoveredAt: undefined, stranded: new Map([[TAB_A, EXPIRY]]), pagedAt: undefined });
+    assert.deepEqual(change.marker, { expiredAt: EXPIRY, lastFailAt: EXPIRY, recoveredAt: undefined, stranded: new Map([[TAB_A, EXPIRY]]), pagedAt: undefined, probe: undefined, lastRetryAt: undefined, retried: new Map() });
     assert.equal(loginExpired(change.marker), true);
   });
 
@@ -180,5 +186,92 @@ describe('login marker', () => {
     assert.equal(loginLogLine('expired', 'app/alpha', marker), 'login: expired, app/alpha ended its turn on Login expired; 2 tab(s) stuck');
     assert.equal(loginLogLine('stranded', TAB_B, marker), `login: ${TAB_B} ended its turn on Login expired; 2 tab(s) stuck`);
     assert.equal(loginLogLine('recovered', 'app/alpha', marker), 'login: works again, app/alpha answered; 2 tab(s) stuck');
+  });
+
+  it("finds Claude Code's login file in its config folder, which CLAUDE_CONFIG_DIR moves", () => {
+    const home = join('/', 'home', 'me');
+    assert.equal(claudeCredentialsPath({}, home), join(home, '.claude', '.credentials.json'));
+    assert.equal(claudeCredentialsPath({ CLAUDE_CONFIG_DIR: join('/', 'cfg') }, home), join('/', 'cfg', '.credentials.json'));
+  });
+});
+
+/** The marker a retry claims; fails the spec on any other verdict. */
+function claimedBy(retry: LoginRetry): Extract<LoginRetry, { kind: 'retry' }> {
+  assert.equal(retry.kind, 'retry');
+  return retry;
+}
+
+describe('login retry', () => {
+  const RENEWED = EXPIRY + 6 * 60 * MS_PER_MINUTE;
+  const NOW = RENEWED + MS_PER_MINUTE;
+
+  it('retries no tab that is not stuck, nor one while nothing since the last failure says the login works', () => {
+    const marker = markerAfter(failed(TAB_A, EXPIRY), failed(TAB_B, EXPIRY + 1_000));
+    assert.deepEqual(decideLoginRetry(undefined, TAB_A, NOW, RENEWED), { kind: 'none' }, 'no marker');
+    assert.deepEqual(decideLoginRetry(marker, TAB_C, NOW, RENEWED), { kind: 'none' }, 'a tab not stuck');
+    assert.deepEqual(decideLoginRetry(marker, TAB_A, NOW, undefined), { kind: 'none' }, 'no credentials file');
+    assert.deepEqual(decideLoginRetry(marker, TAB_A, NOW, EXPIRY + 1_000), { kind: 'none' }, 'credentials from before the last failure');
+  });
+
+  it('lets one stuck tab test credentials renewed after the last failure, and holds the others for it', () => {
+    const marker = markerAfter(failed(TAB_A, EXPIRY), failed(TAB_B, EXPIRY + 1_000));
+    const probe = claimedBy(decideLoginRetry(marker, TAB_A, NOW, RENEWED));
+    assert.deepEqual([probe.why, probe.failAt], ['probe', EXPIRY]);
+    assert.deepEqual([probe.marker.probe, probe.marker.lastRetryAt, probe.marker.retried], [{ tab: TAB_A, at: NOW }, NOW, new Map([[TAB_A, NOW]])]);
+    assert.deepEqual(decideLoginRetry(probe.marker, TAB_B, NOW + 1_000, RENEWED), { kind: 'later', at: NOW + LOGIN_PROBE_STALE_MS });
+    assert.deepEqual(decideLoginRetry(probe.marker, TAB_A, NOW + LOGIN_PROBE_STALE_MS, RENEWED), { kind: 'none' }, 'the probe tab tries these credentials once');
+  });
+
+  it('frees the probe slot when the probe has no result, and stops at a failed probe until the credentials change again', () => {
+    const probed = claimedBy(decideLoginRetry(markerAfter(failed(TAB_A, EXPIRY), failed(TAB_B, EXPIRY)), TAB_A, NOW, RENEWED)).marker;
+    const stale = claimedBy(decideLoginRetry(probed, TAB_B, NOW + LOGIN_PROBE_STALE_MS, RENEWED));
+    assert.deepEqual([stale.why, stale.marker.probe], ['probe', { tab: TAB_B, at: NOW + LOGIN_PROBE_STALE_MS }]);
+    const failedProbe = written(applyLoginEvent(probed, failed(TAB_A, NOW + 20_000))).marker;
+    assert.deepEqual(decideLoginRetry(failedProbe, TAB_B, NOW + 30_000, RENEWED), { kind: 'none' }, 'the failure came after the change');
+    const again = claimedBy(decideLoginRetry(failedProbe, TAB_B, NOW + 40_000, NOW + 35_000));
+    assert.equal(again.why, 'probe', 'a newer change is tested again');
+  });
+
+  it('retries every stuck tab once after a good turn proves the login, one per retry gap', () => {
+    const probed = claimedBy(decideLoginRetry(markerAfter(failed(TAB_A, EXPIRY), failed(TAB_B, EXPIRY), failed(TAB_C, EXPIRY)), TAB_A, NOW, RENEWED)).marker;
+    const recovered = written(applyLoginEvent(probed, answered(TAB_A, NOW + 20_000)));
+    assert.deepEqual([recovered.note, recovered.marker.probe, [...recovered.marker.retried.keys()]], ['recovered', undefined, []], 'the probe tab is free');
+    assert.deepEqual(decideLoginRetry(recovered.marker, TAB_B, NOW + 25_000, undefined), { kind: 'later', at: NOW + LOGIN_RETRY_GAP_MS }, "the probe's retry spaces the next");
+    const firstAt = NOW + LOGIN_RETRY_GAP_MS;
+    const first = claimedBy(decideLoginRetry(recovered.marker, TAB_B, firstAt, undefined));
+    assert.deepEqual([first.why, first.failAt], ['recovered', EXPIRY], 'a recovery needs no credentials file');
+    assert.deepEqual(decideLoginRetry(first.marker, TAB_C, firstAt + 1_000, undefined), { kind: 'later', at: firstAt + LOGIN_RETRY_GAP_MS });
+    assert.equal(claimedBy(decideLoginRetry(first.marker, TAB_C, firstAt + LOGIN_RETRY_GAP_MS, undefined)).why, 'recovered');
+    assert.deepEqual(decideLoginRetry(first.marker, TAB_B, NOW + 10 * MS_PER_MINUTE, undefined), { kind: 'none' }, 'once per recovery');
+  });
+
+  it("drops a freed tab's retry, and carries the spacing and the retries of stuck tabs into a new expiry", () => {
+    const recovered = markerAfter(failed(TAB_A, EXPIRY), failed(TAB_B, EXPIRY), answered(TAB_C, NOW));
+    const retriedA = claimedBy(decideLoginRetry(recovered, TAB_A, NOW + 1_000, undefined)).marker;
+    const retriedBoth = claimedBy(decideLoginRetry(retriedA, TAB_B, NOW + 1_000 + LOGIN_RETRY_GAP_MS, undefined)).marker;
+    const freed = written(applyLoginEvent(retriedBoth, answered(TAB_A, NOW + MS_PER_MINUTE))).marker;
+    assert.deepEqual([...freed.retried.keys()], [TAB_B]);
+    const expired = written(applyLoginEvent(freed, failed(TAB_C, NOW + 2 * MS_PER_MINUTE)));
+    assert.deepEqual([expired.note, expired.marker.probe, expired.marker.lastRetryAt, expired.marker.retried], ['expired', undefined, NOW + 1_000 + LOGIN_RETRY_GAP_MS, new Map([[TAB_B, NOW + 1_000 + LOGIN_RETRY_GAP_MS]])]);
+  });
+
+  it('holds the day start while the login is expired and its credentials have not changed since the last failure', () => {
+    const expired = markerAfter(failed(TAB_A, EXPIRY));
+    assert.equal(loginHoldsDayStart(undefined, undefined), false, 'no marker');
+    assert.equal(loginHoldsDayStart(expired, undefined), true);
+    assert.equal(loginHoldsDayStart(expired, EXPIRY), true, 'credentials from before the failure');
+    assert.equal(loginHoldsDayStart(expired, RENEWED), false, 'a renewed login is tested by the day start');
+    assert.equal(loginHoldsDayStart(markerAfter(failed(TAB_A, EXPIRY), answered(TAB_A, NOW)), undefined), false, 'the login works');
+  });
+
+  it('reads back a probe and retries it writes, a marker without them as none, and no damaged one', () => {
+    const probed = claimedBy(decideLoginRetry(markerAfter(failed(TAB_A, EXPIRY), failed(TAB_B, EXPIRY)), TAB_A, NOW, RENEWED)).marker;
+    assert.deepEqual(parseLoginMarker(formatLoginMarker(probed)), probed);
+    const before = { expiredAt: '2030-01-08T00:02:00Z', lastFailAt: '2030-01-08T00:02:00Z', stranded: { [TAB_A]: '2030-01-08T00:02:00Z' } };
+    assert.deepEqual(parseLoginMarker(JSON.stringify(before)), markerAfter(failed(TAB_A, EXPIRY)), 'a marker from before the retries');
+    for (const damaged of [{ probe: { tab: TAB_A } }, { probe: { tab: '../x', at: '2030-01-08T00:02:00Z' } }, { probe: 'A' }, { lastRetryAt: 3 }, { retried: { [TAB_A]: 'once' } }, { retried: [] }]) {
+      const text = JSON.stringify({ ...before, ...damaged });
+      assert.equal(parseLoginMarker(text), undefined, text);
+    }
   });
 });
