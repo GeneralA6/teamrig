@@ -195,9 +195,20 @@ describe('todayLines', () => {
   it('never holds a session past its part while the team has room today', () => {
     const lines = todayLines({ ...REPORT, week: { ...WEEK, teamDay: ROOM } });
     assert.equal(lines.find((line) => line.startsWith('Past')), 'Past their part, not held while the team has room today (3.0% of the week used, below its in-day pace of 4.7%): alpha.');
+  });
+
+  it("holds nobody for the team past its part of the account's day while the team has room, as the hooks do (T1875)", () => {
     const teamPast = todayLines({ ...REPORT, teamPct: 1, week: { ...WEEK, teamDay: ROOM } });
-    // Past its part of the account's day, the team is held though its use is below its in-day pace: no pace clause.
-    assert.match(teamPast.find((line) => line.startsWith('Past')) ?? '', /^Past the daily budget: the team, alpha\. /);
+    assert.equal(
+      teamPast.find((line) => line.startsWith('Past')),
+      'Past their part, not held while the team has room today (3.0% of the week used, below its in-day pace of 4.7%): the team, alpha.',
+    );
+    // Without room, the hold gives the team's use against its in-day pace, the team past its part or not.
+    const held = todayLines({ ...REPORT, teamPct: 1 });
+    assert.equal(
+      held.find((line) => line.startsWith('Past')),
+      `Past the daily budget: the team, alpha (the team has used 5.2% of the week today, at or past its in-day pace of 4.7%). ${OVER_BUDGET_ADVICE}`,
+    );
   });
 
   it("gives the team its part of the account's daily budget, which another team on the account shrinks", () => {
@@ -320,7 +331,7 @@ describe('todayLines', () => {
     assert.equal(noLimit.at(-1), W_EXPLAINED);
     const metered = todayLines({ ...REPORT, teamPct: 1, week: { ...WEEK, statusAt: undefined, rateFrom: 'limit', allowancePct: 1 } });
     assert.match(metered[0] ?? '', /^Week: 57\.0% used \(metered\); /);
-    assert.match(metered.find((line) => line.startsWith('Past the daily budget')) ?? '', /^Past the daily budget: the team, alpha\. /);
+    assert.match(metered.find((line) => line.startsWith('Past the daily budget')) ?? '', /^Past the daily budget: the team, alpha \(the team has used /);
     assert.equal(metered.at(-1), W_EXPLAINED);
   });
 

@@ -7,7 +7,7 @@ import type { ExtraPool } from './extra.ts';
 import { formatCount, formatPct, formatUsd, formatW, isBudgetDayEnd, noRoomText } from './format.ts';
 import { liftedLine, type Lift, type LiftNames } from './lift.ts';
 import { TURN_TRIGGERS } from './line.ts';
-import { hasRoom } from './pace.ts';
+import { holdsPastPart } from './pace.ts';
 import { emptyPatterns, PATTERN_FIELDS, type PatternField } from './patterns.ts';
 import { DAYS_KEPT, type DayUsage, type UsageState } from './store.ts';
 import type { TaskUse } from './task-use.ts';
@@ -285,24 +285,26 @@ function outsideLine(outside: OutsideToday, all: boolean): string | undefined {
 
 /**
  * Who is past the daily budget, and what that means: a session past its part is held (finishes the step in hand)
- * only while the team has no room today (`hasRoom`); while it has room, the sessions past their parts are named
- * apart, not held. The team past its part of the account's day has no room. A hold for want of room gives the team's use today
- * against its in-day pace, so it never reads as a fixed cap next to the team's daily budget.
+ * only as the hooks hold it (`holdsPastPart`): while the team has no room today. While it has room, the team past its
+ * part of the account's day and the sessions past theirs are named apart, not held. A hold for want of room gives the
+ * team's use today against its in-day pace, so it never reads as a fixed cap next to the team's daily budget.
  */
 function pastLines(report: TodayReport, teamPast: boolean): string[] {
   const { week, sessions } = report;
   const pastSessions = sessions.filter((session) => isPast(session.w, session.budgetPct, week)).map((session) => session.name);
-  const teamDay = week.teamDay;
-  if (!teamPast && teamDay !== undefined && hasRoom(teamDay)) {
-    const room =
-      `Past their part, not held while the team has room today (${formatPct(teamDay.usedPct)} of the week used, ` +
-      `below its in-day pace of ${formatPct(teamDay.pacePct)}): ${pastSessions.join(', ')}.`;
-    return pastSessions.length > 0 ? [room] : [];
-  }
   const past = [...(teamPast ? ['the team'] : []), ...pastSessions];
-  // Held for want of room, unless the team is past its part of the account's day, which its row already shows.
-  const why = teamPast || teamDay === undefined ? '' : ` (${noRoomText(teamDay)})`;
-  return past.length > 0 ? [`Past the daily budget: ${past.join(', ')}${why}. ${OVER_BUDGET_ADVICE}`] : [];
+  const teamDay = week.teamDay;
+  if (past.length === 0) {
+    return [];
+  }
+  if (teamDay !== undefined && !holdsPastPart(teamDay, false)) {
+    return [
+      `Past their part, not held while the team has room today (${formatPct(teamDay.usedPct)} of the week used, ` +
+        `below its in-day pace of ${formatPct(teamDay.pacePct)}): ${past.join(', ')}.`,
+    ];
+  }
+  const why = teamDay === undefined ? '' : ` (${noRoomText(teamDay)})`;
+  return [`Past the daily budget: ${past.join(', ')}${why}. ${OVER_BUDGET_ADVICE}`];
 }
 
 /** The sessions a short day pauses and no burst holds up, named even when idle, as `--all` alone shows their rows. */
