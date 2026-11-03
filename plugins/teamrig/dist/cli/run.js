@@ -143,7 +143,7 @@ const COMMANDS = {
     open: { effect: 'write', flags: ['prompt', 'terminal', 'project'], switches: ['resume'], load: async () => (await openCommands()).open },
     meet: { effect: 'write', flags: ['session', 'terminal', 'project'], switches: ['cards'], load: async () => (await meetCommands()).meet },
     // No --session: the owner's actions are always written as register.ownerSource; a hook refuses them from an agent's
-    // tool call (src/hooks/exec-guard.ts).
+    // tool call (src/hooks/exec-guard.ts), and their writes refuse themselves under CLAUDECODE (commands/owner.ts).
     'owner note': { effect: 'write', flags: ['text'], load: async () => (await ownerCommands()).ownerNote },
     'owner next': { effect: 'write', flags: [], switches: ['preview'], load: async () => (await ownerCommands()).ownerNext },
     launch: { effect: 'internal', flags: ['team', 'project', 'home', 'encoded-prompt', 'resume', 'effort'], switches: ['no-prompt'], load: async () => (await openCommands()).launch },
@@ -298,11 +298,12 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       to bring them one at a time and record each answer
   owner note <[team/]T<id>> --text "<what the owner tells its session>"   the owner's Note from the pane:
       kept in the task's history as the owner's and sent to the task's session as an inbox line, which
-      wakes it while the task is in progress; refused on a done or dropped task
+      wakes it while the task is in progress; refused on a done or dropped task, and where Claude Code
+      sets $CLAUDECODE (an agent's tool call, a script it runs, a hook)
   owner next <[team/]T<id>> [--preview]   the owner puts a task next from the pane: pins it above every
       other task on its session's list (moving that session's earlier pin), wakes the session to start
       it once the step in hand is done, and tells the lead; refused on a done, dropped or in-progress
-      task; --preview prints what it would do and writes nothing
+      task, and where Claude Code sets $CLAUDECODE; --preview prints what it would do and writes nothing
   restore                      what a restore would do now with each Claude Code session this machine
       recorded: RESTORE (how it comes back, at which effort), CLOSED (kept, reopened only on ask),
       KEEP or DISCARD, and why; it only reads

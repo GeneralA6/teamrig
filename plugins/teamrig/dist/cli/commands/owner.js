@@ -1,4 +1,5 @@
 import { formatAddress } from "../../core/address.js";
+import { ENV, KIT_NAME } from "../../core/home.js";
 import { onePositional } from "../args.js";
 import { taskRefOf } from "../inputs.js";
 import { findTeam, openKit } from "../kit.js";
@@ -11,6 +12,21 @@ export function namesOf(label) {
     return label === undefined
         ? { task: (id) => id, session: (id) => id }
         : { task: (id) => `${label}/${id}`, session: (id) => formatAddress({ team: label, id }) };
+}
+/** The pane button that runs each owner action. */
+const BUTTON = { note: 'Note', next: 'Next' };
+/**
+ * Refuses an owner action where Claude Code set CLAUDECODE: an agent's tool call, a script one runs, a hook command
+ * (T1780). The exec guard reads only the tool call's own line, so a script the agent writes slips past it; this
+ * refusal holds there too. The pane's buttons and a typed `/teamrig owner ..` run through the plugin's mod with Claude
+ * Code's own environment, which lacks the variable, so the owner's routes still write. A script that unsets it still
+ * passes: every session runs as the same OS user as the owner.
+ */
+function refuseUnderClaudeCode(runtime, command) {
+    const set = runtime.env[ENV.claudeCode];
+    if (set !== undefined && set !== '') {
+        throw new RefusedError(`${KIT_NAME} owner ${command} acts as the owner, so it is refused where Claude Code runs it (${ENV.claudeCode} is set: an agent's tool call, a script it runs or a hook); the owner presses ${BUTTON[command]} in the pane or types /${KIT_NAME} owner ${command} in a tab`);
+    }
 }
 /** The team holding the task `text` names: the caller's own for `T12`, another team of the tree for `web/T12`. */
 async function targetOf(runtime, text, access) {
@@ -54,9 +70,10 @@ export function ownerNextPreviewLine(owner, lead, { task, moves }, names) {
 /**
  * `owner note <[team/]T<id>> --text ".."`: the owner's free text on a task, pressed in the pane (T1298). It is kept in
  * the task's history as the owner's (register.ownerSource), never as a session's, and sent to the task's session as an
- * inbox line that wakes it only while the task is in progress. Refused on a done or dropped task.
+ * inbox line that wakes it only while the task is in progress. Refused on a done or dropped task, and under CLAUDECODE.
  */
 export async function ownerNote(args, runtime) {
+    refuseUnderClaudeCode(runtime, 'note');
     const target = await targetOf(runtime, onePositional(args, '[team/]T<id>'), 'write');
     const { team, names } = target;
     const owner = team.config.register.ownerSource;
@@ -80,10 +97,14 @@ export async function ownerNote(args, runtime) {
  * `owner next <[team/]T<id>> [--preview]`: the owner puts a task next, pressed in the pane (T1298). It pins the task
  * above every other task on its session's list (moving that session's earlier pin), wakes the session to start it once
  * the step in hand is done, and tells the team's lead without a wake. `--preview` prints what it would do and writes
- * nothing, for the pane's confirm step. Refused on a done, dropped or in-progress task, or one the owner put next already.
+ * nothing, for the pane's confirm step. Refused on a done, dropped or in-progress task, or one the owner put next already,
+ * and, but for `--preview`, under CLAUDECODE.
  */
 export async function ownerNext(args, runtime) {
     const preview = args.switches.has('preview');
+    if (!preview) {
+        refuseUnderClaudeCode(runtime, 'next');
+    }
     const target = await targetOf(runtime, onePositional(args, '[team/]T<id>'), preview ? 'read' : 'write');
     const { team, names } = target;
     const owner = team.config.register.ownerSource;
