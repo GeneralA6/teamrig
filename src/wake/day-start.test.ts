@@ -15,6 +15,7 @@ import {
   teamDayStartAt,
   type DayMoment,
   type DayStartInput,
+  type DayStartLogin,
 } from './day-start.ts';
 import { NO_SETTLED_MOMENTS } from './decide.ts';
 import { TimeZone } from '../core/zone.ts';
@@ -45,6 +46,7 @@ const BURST: Burst = {
 
 const DAY_START: DayMoment = { kind: 'day-start', at: SIX };
 const BURST_MOMENT: DayMoment = { kind: 'burst', at: BURST.at, burst: BURST };
+const LOGIN_OK: DayStartLogin = { kind: 'ok' };
 
 function tasksOf(...tasks: Task[]): ReadonlyMap<string, Task> {
   return new Map(tasks.map((task) => [task.id, task]));
@@ -60,6 +62,7 @@ function input(overrides: Partial<DayStartInput> = {}): DayStartInput {
     lastWakeAt: undefined,
     minGapMs: GAP_MS,
     settled: NO_SETTLED_MOMENTS,
+    login: LOGIN_OK,
     ...overrides,
   };
 }
@@ -175,6 +178,19 @@ describe('decideDayStart', () => {
     const early = decideDayStart(input({ due: [DAY_START, BURST_MOMENT], lastTurnAt: SIX + 1, lastWakeAt }));
     assert.deepEqual(early, { verdict: { kind: 'later', at: lastWakeAt + GAP_MS }, settled: { dayStart: SIX, burst: undefined } });
     assert.equal(decideDayStart(input({ lastWakeAt: NOW - GAP_MS })).verdict.kind, 'wake');
+  });
+
+  it('keeps the moments due, with no wake, while the login is expired, still settling one the session had a turn after', () => {
+    const decision = decideDayStart(input({ due: [DAY_START, BURST_MOMENT], lastTurnAt: SIX + 1, login: { kind: 'expired' } }));
+    assert.deepEqual(decision, { verdict: { kind: 'none' }, settled: { dayStart: SIX, burst: undefined } });
+  });
+
+  it("waits for another tab's probe until its recheck, keeping the open moments due", () => {
+    const recheckAt = NOW + MINUTE;
+    const decision = decideDayStart(input({ due: [DAY_START, BURST_MOMENT], lastTurnAt: SIX + 1, login: { kind: 'probing', recheckAt } }));
+    assert.deepEqual(decision, { verdict: { kind: 'later', at: recheckAt }, settled: { dayStart: SIX, burst: undefined } });
+    const lastWakeAt = NOW - 5 * MINUTE;
+    assert.deepEqual(decideDayStart(input({ lastWakeAt, login: { kind: 'probing', recheckAt } })).verdict, { kind: 'later', at: lastWakeAt + GAP_MS });
   });
 });
 

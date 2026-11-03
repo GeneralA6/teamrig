@@ -15,11 +15,12 @@ import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
 import { EXIT } from './runtime.ts';
 import { IDLE_PASS_LOG_EVERY_MS } from './idle-pass-log.ts';
-import { RESTART_RECHECK_MS } from './commands/hook-wake.ts';
+import { DAY_PROBE_RECHECK_MS, RESTART_RECHECK_MS } from './commands/hook-wake.ts';
 import { GIVE_UP_MS } from '../refresh/restart.ts';
 import type { RefreshState, RestartRequest } from '../refresh/state.ts';
 import { RefreshStore } from '../refresh/store.ts';
 import { claudeCredentialsPath, formatLoginMarker, LOGIN_PROBE_STALE_MS, LOGIN_RETRY_GAP_MS, loginMarkerPath, parseLoginMarker, type LoginMarker } from '../restore/login.ts';
+import { dayProbePath, formatDayProbe, parseDayProbe, type DayProbe } from '../restore/day-probe.ts';
 import { restoreLogPath } from '../restore/registry.ts';
 import { HOLDING_BUDGET, holdAlpha, meterDearDay, meterToday } from '../testing/budget-hold.ts';
 import { APP, AUTO_RESTART_TEAM, CliHarness, EVENTS_PATH, KIT, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
@@ -948,5 +949,69 @@ describe('hook wake-check login retry', () => {
     assert.deepEqual(answerOf(await checkTab(kit, ALPHA_TAB)), { kind: 'wait', watch: watchOf(), recheckAt: kit.clock.now() });
     assert.equal(await kit.files.read(MARKER), before);
     assert.deepEqual(await logLines(kit), []);
+  });
+});
+
+describe('hook wake-check day start under the login', () => {
+  const DAY_START = { ...TEAM, wake: { dayStartUtc: '06:00' } };
+  const SIX = Date.parse('2030-01-08T06:00:00.000Z');
+  /** The harness's clock starts at 2030-01-08 10:00 UTC, so today's 06:00 has passed: the next day start is tomorrow's. */
+  const TOMORROW_SIX = Date.parse('2030-01-09T06:00:00.000Z');
+  const PROBE_FILE = dayProbePath(KIT);
+  const DAY_START_TOAST = /"toast":"teamrig woke this tab for the day start: T\d /;
+  /** What a tab waiting for another tab's probe watches: the default, then the probe's file and the login marker. */
+  const probeWatchOf = (id: string): readonly string[] => [...watchOf(id), PROBE_FILE, MARKER];
+
+  async function probeOf(kit: CliHarness): Promise<DayProbe | undefined> {
+    const text = await kit.files.read(PROBE_FILE);
+    return text === undefined ? undefined : parseDayProbe(text);
+  }
+
+  /** The restore log's day-probe lines, each without its time. */
+  async function probeLines(kit: CliHarness): Promise<string[]> {
+    const text = (await kit.files.read(restoreLogPath(KIT))) ?? '';
+    return text
+      .split('\n')
+      .filter((line) => line.includes(' day-probe: '))
+      .map((line) => line.slice(line.indexOf(' ') + 1));
+  }
+
+  /** Alpha and bravo with work to start (p3: below `wake.priority`, so only the day start wakes for it), the login expired at FAIL_AT. */
+  async function expiredTeam(): Promise<CliHarness> {
+    const kit = await stuckTeam(stuckMarker([], undefined), DAY_START);
+    await hand(kit, 'Tidy the docs', 'p3');
+    await kit.run(['add', '--title', 'Tidy the guide', '--description', 'what and why', '--priority', 'p3', '--owner', 'bravo', '--session', 'lead']);
+    return kit;
+  }
+
+  it('holds the day start while the login is expired, then has the first due tab test the renewed login while the next waits for its reply', async () => {
+    const kit = await expiredTeam();
+    assert.deepEqual(answerOf(await checkTab(kit, ALPHA_TAB)), { kind: 'wait', watch: stuckWatchOf(), recheckAt: TOMORROW_SIX }, 'no credentials file: the login is expired');
+    assert.deepEqual(await logLines(kit), []);
+    assert.equal(await probeOf(kit), undefined);
+    await kit.files.write(CREDENTIALS, '{}');
+    const claimAt = kit.clock.now();
+    assert.match((await checkTab(kit, ALPHA_TAB)).stdout[0] ?? '', DAY_START_TOAST);
+    assert.deepEqual(await probeOf(kit), { moment: SIX, tab: ALPHA_TAB, at: claimAt, releasedAt: undefined });
+    assert.deepEqual(await probeLines(kit), [`day-probe: claimed by app/alpha (${ALPHA_TAB}) for the moment at 2030-01-08T06:00:00.000Z, the first tab due`]);
+    kit.clock.advance(10 * SECOND);
+    assert.deepEqual(answerOf(await checkTab(kit, OTHER_TAB)), { kind: 'wait', watch: probeWatchOf('bravo'), recheckAt: kit.clock.now() + DAY_PROBE_RECHECK_MS });
+    assert.deepEqual(answerOf(await checkTab(kit, OTHER_TAB)), { kind: 'wait', watch: probeWatchOf('bravo'), recheckAt: kit.clock.now() + DAY_PROBE_RECHECK_MS }, 'the moment stays due');
+    await kit.files.write(PROBE_FILE, formatDayProbe({ moment: SIX, tab: ALPHA_TAB, at: claimAt, releasedAt: kit.clock.now() }));
+    assert.match((await checkTab(kit, OTHER_TAB)).stdout[0] ?? '', DAY_START_TOAST, 'a reply released the probe');
+    assert.deepEqual((await logLines(kit)).map((line) => (isRecord(line) ? line['session'] : undefined)), ['alpha', 'bravo']);
+  });
+
+  it('hands a probe with no reply in time to the next due tab', async () => {
+    const kit = await expiredTeam();
+    await kit.files.write(CREDENTIALS, '{}');
+    const claimAt = kit.clock.now();
+    assert.match((await checkTab(kit, ALPHA_TAB)).stdout[0] ?? '', DAY_START_TOAST);
+    kit.clock.advance(LOGIN_PROBE_STALE_MS - MINUTE / 2);
+    assert.deepEqual(answerOf(await checkTab(kit, OTHER_TAB)), { kind: 'wait', watch: probeWatchOf('bravo'), recheckAt: claimAt + LOGIN_PROBE_STALE_MS }, 'the recheck comes no later than the stale line');
+    kit.clock.advance(MINUTE / 2);
+    assert.match((await checkTab(kit, OTHER_TAB)).stdout[0] ?? '', DAY_START_TOAST);
+    assert.deepEqual(await probeOf(kit), { moment: SIX, tab: OTHER_TAB, at: kit.clock.now(), releasedAt: undefined });
+    assert.equal((await probeLines(kit))[1], `day-probe: claimed by app/bravo (${OTHER_TAB}) for the moment at 2030-01-08T06:00:00.000Z, the probe out had no reply in 5 min`);
   });
 });

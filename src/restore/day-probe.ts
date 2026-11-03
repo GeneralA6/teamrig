@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { instantField, stringField } from '../core/guards.ts';
 import { parseObject } from '../core/jsonl.ts';
+import { MS_PER_MINUTE } from '../core/time.ts';
 import { CLAUDE_SESSION_ID } from '../inbox/marks.ts';
 import { LOGIN_PROBE_STALE_MS } from './login.ts';
 
@@ -82,6 +83,18 @@ export function releaseDayProbe(existing: DayProbe | undefined, reply: DayProbeR
     return undefined;
   }
   return reply.kind === 'tool' && reply.tab !== existing.tab ? undefined : { ...existing, releasedAt: reply.at };
+}
+
+const CLAIM_WORDS: Readonly<Record<DayProbeClaimWhy, string>> = {
+  first: 'the first tab due',
+  newer: 'a newer moment than the last probe',
+  again: 'its wake did not turn',
+  stale: `the probe out had no reply in ${LOGIN_PROBE_STALE_MS / MS_PER_MINUTE} min`,
+};
+
+/** The restore log's line for a claim, without its time: which tab tests the login, for which moment, and why it. */
+export function dayProbeClaimLine(tabLabel: string, why: DayProbeClaimWhy, probe: DayProbe): string {
+  return `day-probe: claimed by ${tabLabel} for the moment at ${isoOf(probe.moment)}, ${CLAIM_WORDS[why]}`;
 }
 
 /** The restore log's line for a release, without its time: who showed the login works, and how long the others waited. */
