@@ -265,7 +265,7 @@ describe("hook restore-track: the owner's page", () => {
     // The clock moves while the tabs wait for the marker's lock: the claim is the first failure's.
     const start = kit.clock.now();
     await Promise.all(tabs.map(async (tab) => failTurn(kit, webhook, { stdin: payload('StopFailure', { session_id: tab, error: AUTH_FAILED }) })));
-    assert.deepEqual(webhook.posts, [{ url: HOOK_URL, content: 'Claude login expired: app/alpha ended its turn on Login expired at 10:00 UTC. Run /login in any tab, then prompt the tabs that stopped.' }]);
+    assert.deepEqual(webhook.posts, [{ url: HOOK_URL, content: 'Claude login expired: app/alpha ended its turn on Login expired at 10:00 UTC. Run /login in any tab; teamrig holds the day-start wakes and retries the stuck tabs once the login works.' }]);
     assert.equal((await markerOf(kit))?.pagedAt, start);
     const lines = await loginLines(kit);
     assert.deepEqual([lines.filter((line) => line === PAGED_BY_FILE).length, lines.length], [1, 13]);
@@ -333,7 +333,7 @@ describe("hook restore-track: the owner's page", () => {
     await kit.files.write(HOOK_FILE, HOOK_URL);
     const webhook = new FakeWebhook();
     await failTurn(kit, webhook, { env: { CLAUDE_PROJECT_DIR: APP, TEAMRIG_TEAM: 'ui', TEAMRIG_SESSION: 'pixel' }, timeZone: 'Asia/Jerusalem' });
-    assert.deepEqual(webhook.posts.map((post) => post.content), ['Claude login expired: ui/pixel ended its turn on Login expired at 12:00 IST. Run /login in any tab, then prompt the tabs that stopped.']);
+    assert.deepEqual(webhook.posts.map((post) => post.content), ['Claude login expired: ui/pixel ended its turn on Login expired at 12:00 IST. Run /login in any tab; teamrig holds the day-start wakes and retries the stuck tabs once the login works.']);
     assert.equal((await loginLines(kit)).at(-1), PAGED_BY_FILE);
   });
 

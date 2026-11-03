@@ -113,7 +113,7 @@ describe('login marker', () => {
   });
 
   it('pages the owner with the tab, the time on the team clock and what to do', () => {
-    assert.equal(loginPageText('app/alpha', '12:02 IST'), 'Claude login expired: app/alpha ended its turn on Login expired at 12:02 IST. Run /login in any tab, then prompt the tabs that stopped.');
+    assert.equal(loginPageText('app/alpha', '12:02 IST'), 'Claude login expired: app/alpha ended its turn on Login expired at 12:02 IST. Run /login in any tab; teamrig holds the day-start wakes and retries the stuck tabs once the login works.');
   });
 
   it('keeps one expiry for every failure until a good turn, its first and last failure times', () => {

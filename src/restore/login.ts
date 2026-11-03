@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { instantField, isRecord, stringField, type JsonRecord } from '../core/guards.ts';
-import { claudeConfigDir, type Env } from '../core/home.ts';
+import { claudeConfigDir, KIT_NAME, type Env } from '../core/home.ts';
 import { parseObject } from '../core/jsonl.ts';
 import type { LockTimings } from '../core/lock.ts';
 import { MS_PER_DAY, MS_PER_MINUTE } from '../core/time.ts';
@@ -257,7 +257,7 @@ export function loginHoldsDayStart(marker: LoginMarker | undefined, credentialsA
 
 /** The owner's page for an expiry: `tab` names the tab whose failure claimed it, `clock` the failure's time on the team's clock. */
 export function loginPageText(tab: string, clock: string): string {
-  return `Claude login expired: ${tab} ended its turn on Login expired at ${clock}. Run /login in any tab, then prompt the tabs that stopped.`;
+  return `Claude login expired: ${tab} ended its turn on Login expired at ${clock}. Run /login in any tab; ${KIT_NAME} holds the day-start wakes and retries the stuck tabs once the login works.`;
 }
 
 /** The restore log's line for a change's note: `tab` names the tab whose turn end made it. */
