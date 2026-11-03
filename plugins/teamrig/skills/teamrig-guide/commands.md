@@ -2508,7 +2508,10 @@ words are kept in the task's history as the owner's and sent to the session as a
 the task is in progress; else it reads the line at its next prompt. `<team>/T<id>` names a task of another team of
 the tree. It refuses a done or dropped task, and a Note with no `--text`. It writes as the owner
 (`register.ownerSource`), so [the exec guard](hooks.md#before-a-shell-command-the-exec-guard) refuses it from an
-agent's tool call: the owner runs it in their own terminal, or types `/teamrig owner note ...` in a tab.
+agent's tool call: the owner runs it in their own terminal, or types `/teamrig owner note ...` in a tab. The command
+also refuses to write wherever Claude Code set `$CLAUDECODE` (an agent's tool call, a script it runs, a hook
+command), so a script the agent writes cannot run it either; the pane's buttons and a typed `/teamrig` line run
+without it.
 
 A Note that asks to drop a task: the owning session first checks what depends on it (tasks after it or waiting on
 it, its follow-ups, other teams' tasks, work in progress), then drops it with a note, or answers the owner why not.
@@ -2535,7 +2538,7 @@ The owner puts a task next (`teamrig owner next <[team/]T<id>>`): it is pinned a
 session's list, moving that session's earlier pin down, the session is woken to start it once its step in hand is
 done, and the lead is told. It refuses a done, dropped or in-progress task, and one the owner put next already (a
 [Note](#teamrig-owner-note) tells the session more). It writes as the owner, so the exec guard refuses it from an
-agent's tool call, as it does `owner note`.
+agent's tool call, and it refuses itself under `$CLAUDECODE`, as `owner note` does; `--preview` still runs there.
 
 Flags:
 
