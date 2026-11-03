@@ -604,6 +604,84 @@ describe('evaluatePushes: where a push hides', () => {
   });
 });
 
+describe('evaluatePushes: a branch named alone', () => {
+  /** A worktree branch cut from origin/main under `push.default` upstream: git sends `git push origin t1-x` to main. */
+  const UPSTREAM_MAIN = { 'push.default': 'upstream', 'branch.t1-x.merge': 'refs/heads/main' };
+  const onBranch = (config: Readonly<Record<string, string>>, unreadable: readonly string[] = []): JudgeOptions => ({ branch: 't1-x', config, unreadable });
+
+  it('asks or denies where push.default upstream maps the branch onto a protected one', () => {
+    expectRows(
+      [
+        ['git push origin t1-x', 'ask'],
+        ['git push -u origin t1-x', 'ask'],
+        ['git push origin refs/heads/t1-x', 'ask'],
+        ['git push origin heads/t1-x', 'ask'],
+        ['git push origin "$(git branch --show-current)"', 'ask'],
+        ['git push -f origin t1-x', 'deny'],
+        ['git push --force origin t1-x', 'deny'],
+      ],
+      onBranch(UPSTREAM_MAIN),
+    );
+    expectRows([['git push origin t1-x', 'ask']], onBranch({ 'push.default': 'tracking', 'branch.t1-x.merge': 'main' }));
+  });
+
+  it('names the protected branch the mapped push updates, and the ref it sends', () => {
+    const verdict = judge('git push origin t1-x', onBranch(UPSTREAM_MAIN));
+    assert.deepEqual(verdict.updates, [{ dir: CWD, base: 'origin/main', source: 't1-x' }]);
+    assert.equal(verdict.protectedPush, 'normal');
+  });
+
+  it('allows the refspecs git does not map: a full refspec, a forced one, HEAD, a delete, a tag, send-pack and subtree push', () => {
+    expectRows(
+      [
+        ['git push origin t1-x:t1-x', 'allow'],
+        ['git push origin +t1-x', 'allow'],
+        ['git push origin HEAD', 'allow'],
+        ['git push --delete origin t1-x', 'allow'],
+        ['git push origin tag t1-x', 'allow'],
+        ['git send-pack origin t1-x', 'allow'],
+        ['git subtree push --prefix=dist origin t1-x', 'allow'],
+      ],
+      onBranch(UPSTREAM_MAIN),
+    );
+  });
+
+  it('allows the branch where git sends it to its own name', () => {
+    expectRows(
+      [
+        ['git push origin t1-x', 'allow'],
+        ['git branch t1-x origin/main && git push origin t1-x', 'allow'],
+      ],
+      onBranch({ 'push.default': 'simple', 'branch.t1-x.merge': 'refs/heads/main' }),
+    );
+    expectRows([['git push origin t1-x', 'allow']], onBranch({ 'push.default': 'upstream' }));
+    expectRows([['git push origin t1-x', 'allow']], onBranch({ 'remote.fork.push': 'refs/heads/t1-x:refs/heads/main' }));
+  });
+
+  it('asks in doubt where it cannot read the mapping', () => {
+    expectRows([['git push origin t1-x', 'ask', 'doubt']], onBranch({ 'remote.origin.push': 'refs/heads/t1-x:refs/heads/main' }));
+    for (const key of ['remote.origin.push', 'push.default', 'branch.t1-x.merge']) {
+      expectRows([['git push origin t1-x', 'ask', 'doubt']], onBranch(UPSTREAM_MAIN, [key]));
+    }
+    expectRows(
+      [
+        ['git config push.default upstream && git push origin t1-x', 'ask', 'doubt'],
+        ['git remote rename up origin && git push origin t1-x', 'ask', 'doubt'],
+        ['git branch t1-x origin/main && git push origin t1-x', 'ask', 'doubt'],
+        ['cd "$DIR" && git push origin t1-x', 'ask', 'doubt'],
+        ['git push "$R" t1-x', 'ask', 'doubt'],
+        ['git -c push.default=simple push origin t1-x', 'ask', 'doubt'],
+      ],
+      onBranch(UPSTREAM_MAIN),
+    );
+  });
+
+  it('allows the mapped push under pushToProtected lead, marking it normal', () => {
+    const verdict = judge('git push origin t1-x', { ...onBranch(UPSTREAM_MAIN), pushToProtected: 'lead' });
+    assert.deepEqual([verdict.decision, verdict.protectedPush, verdict.doubt], ['allow', 'normal', undefined]);
+  });
+});
+
 describe('evaluatePushes: the fail-safe', () => {
   it('asks about a push it cannot read, and says why', () => {
     expectRows([
