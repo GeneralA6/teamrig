@@ -1,8 +1,6 @@
 import { errorMessage } from "../../core/guards.js";
 import { KIT_NAME } from "../../core/home.js";
-import { waitSpelling } from "../../register/waits.js";
 import { SessionLog } from "../../sessions/log.js";
-import { DECISION_MARKER } from "../../tabs/status.js";
 import { unseenLinesOf } from "../../inbox/inbox.js";
 import { asksNowOf, WakeAsks } from "../../wake/asks.js";
 import { onePositional, requiredFlag } from "../args.js";
@@ -13,54 +11,32 @@ import { formatIdlePassRecord } from "../idle-pass-log.js";
 import { openKit, requireConfig, rosterOf, teamZone } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { installStateOf, settleWaitText } from "../settled-install.js";
-import { postUrgentLine } from "../urgent-line.js";
 import { inboxDepsOf } from "./inbox.js";
 import { idFlag, openSession } from "./open.js";
 /** Who the session log names as the closer of a session the idle pass closed. */
 export const IDLE_PASS_CLOSER = 'idle-pass';
-/** The session's verdict and the facts it was weighed on, or the error that kept it from being weighed (the host's processes not listed, say). */
+/** The session's verdict, or the error that kept it from being weighed (the host's processes not listed, say). */
 async function verdictOf(runtime, kit, config, roster, id, project) {
     try {
         const facts = await idleFactsOf(runtime, kit, config, roster);
-        return { kind: 'weighed', verdict: await runningVerdictOf(runtime, kit, config, roster, facts, id, project), facts };
+        return { kind: 'weighed', verdict: await runningVerdictOf(runtime, kit, config, roster, facts, id, project) };
     }
     catch (error) {
         return { kind: 'failed', error: errorMessage(error) };
     }
 }
-/** `decision:owner (T3, T7), approval:lead (T5)`: what the session's tasks wait on from a person, each with its tasks. */
-export function personWaitsOf(tasks, id) {
-    const byWait = new Map();
-    for (const task of tasks.values()) {
-        if (task.owner !== id) {
-            continue;
-        }
-        for (const reason of task.waits) {
-            if (reason.kind === 'decision' || reason.kind === 'approval') {
-                const spelling = waitSpelling(reason);
-                byWait.set(spelling, [...(byWait.get(spelling) ?? []), task.id]);
-            }
-        }
-    }
-    return [...byWait].map(([spelling, ids]) => `${spelling} (${ids.join(', ')})`);
-}
-/**
- * The lead's urgent line on a close (owner, 10-24): which session closed and why, what its tasks wait on, and the ask
- * to list the decisions waiting on the owner, ending with the line that turns the lead's tab blue, so the owner, back
- * to fewer tabs, finds them all at the lead.
- */
-export function closeNoticeText(label, closable, waits) {
-    const reopens = waits.length === 0 ? 'no task of it waits on a decision or an approval; work handed to it reopens it' : `its tasks wait on ${waits.join(', ')}; an answer recorded in the register reopens it`;
-    return `the idle pass closed ${label}, ${closableText(closable)}; ${reopens}. List the decisions waiting on the owner, ending with a "${DECISION_MARKER}" line.`;
-}
 /**
  * `idle-close <id> --team <team> --project <dir>`: one close the idle pass decided (T1100), which the pass starts
  * hidden, since ending a tab takes up to about 20 s and the mod ends a wake check at 30. Work may have reached the
  * session since the pass, so it weighs it again as the pass does (`runningVerdictOf`): kept, it ends nothing; else it
- * ends its Claude Code and its tab and logs the close by `idle-pass` (`closeSession`), then posts the lead an urgent
- * line on it (`closeNoticeText`). It runs unseen, so each outcome is a line in the pass log, with the host's commit
- * charge before and after a close, and a lead not told; exit 1 when it could not weigh the session or did not close
- * one it found closable. The pass reads `open.idle.mode` before it starts one, so this does not.
+ * ends its Claude Code and its tab and logs the close by `idle-pass` (`closeSession`). It runs unseen, so each outcome
+ * is a line in the pass log, with the host's commit charge before and after a close; exit 1 when it could not weigh
+ * the session or did not close one it found closable. The pass reads `open.idle.mode` before it starts one, so this
+ * does not.
+ *
+ * It tells no one of a close. The session log already holds it (`teamrig sessions` prints it), the closed session's
+ * waits stay in the register, which `teamrig decisions` and the meeting read, and an answer there reopens it. A line
+ * to the lead would wake its tab, a turn over its whole context, for nothing it acts on (owner order T1890).
  */
 export async function idleClose(args, runtime) {
     const id = idFlag('session', onePositional(args, 'id'));
@@ -76,7 +52,7 @@ export async function idleClose(args, runtime) {
     if (weighed.kind === 'failed') {
         return report(runtime, kit, { ...act, ...unmeasured, at: runtime.clock.now(), outcome: 'failed', line: `FAILED to weigh ${label}: ${weighed.error}` });
     }
-    const { verdict, facts } = weighed;
+    const { verdict } = weighed;
     if (verdict.kind === 'keep') {
         return report(runtime, kit, { ...act, ...unmeasured, at: runtime.clock.now(), outcome: 'kept', line: `KEPT ${verdict.why}` });
     }
@@ -86,12 +62,7 @@ export async function idleClose(args, runtime) {
     if (problem !== undefined) {
         return report(runtime, kit, { ...done, outcome: 'failed', line: `FAILED to close ${label}: ${problem}` });
     }
-    const lead = config.roles.lead;
-    const notice = closeNoticeText(label, verdict.closable, personWaitsOf(facts.tasks, id));
-    // The close happened: a lead not told is said in the log, never a failed close.
-    const untold = await postUrgentLine(runtime, kit, config, { to: lead, from: KIT_NAME, text: notice });
-    const told = untold === undefined ? '' : `; ${lead} not told: ${untold}`;
-    return report(runtime, kit, { ...done, outcome: 'done', line: `CLOSED ${label}: ${closableText(verdict.closable)}, now free${told}` });
+    return report(runtime, kit, { ...done, outcome: 'done', line: `CLOSED ${label}: ${closableText(verdict.closable)}, now free` });
 }
 /** The session judged alone, as the pass judges each, or the error that kept it from being weighed. */
 async function stepOf(runtime, kit, config, roster, id, project) {
