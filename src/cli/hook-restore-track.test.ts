@@ -126,7 +126,7 @@ describe('hook restore-track: the login', () => {
     const kit = new CliHarness();
     await track(kit, payload('StopFailure', { error: AUTH_FAILED }));
     const now = kit.clock.now();
-    assert.deepEqual(await markerOf(kit), { expiredAt: now, lastFailAt: now, recoveredAt: undefined, stranded: new Map([[CLAUDE_SESSION, now]]), pagedAt: undefined });
+    assert.deepEqual(await markerOf(kit), { expiredAt: now, lastFailAt: now, recoveredAt: undefined, stranded: new Map([[CLAUDE_SESSION, now]]), pagedAt: undefined, probe: undefined, lastRetryAt: undefined, retried: new Map() });
     assert.deepEqual(await loginLines(kit), [`login: expired, ${TAB} ended its turn on Login expired; 1 tab(s) stuck`]);
     assert.equal((await entryOf(kit))?.state, 'error', 'the entry is kept as before');
   });

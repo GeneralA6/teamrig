@@ -1,21 +1,39 @@
 import { join } from 'node:path';
 import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
+import { claudeConfigDir, type Env } from '../core/home.ts';
 import { parseObject } from '../core/jsonl.ts';
 import type { LockTimings } from '../core/lock.ts';
-import { MS_PER_DAY } from '../core/time.ts';
+import { MS_PER_DAY, MS_PER_MINUTE } from '../core/time.ts';
 import { CLAUDE_SESSION_ID } from '../inbox/marks.ts';
 
 /**
- * The Claude login as the fleet saw it last: when it expired, and which tabs a turn that ended on `Login expired`
- * left stuck. The login is the account's, shared by every team and tab of the kit home, so there is one marker per
- * kit home. `hook restore-track` writes it on an auth failure and on the next good turn end, under a lock, since a
- * day-start wake fails a dozen tabs in the same second.
+ * The Claude login as the fleet saw it last: when it expired, which tabs a turn that ended on `Login expired` left
+ * stuck, and which of them were retried since. The login is the account's, shared by every team and tab of the kit
+ * home, so there is one marker per kit home. `hook restore-track` writes it on an auth failure and on the next good
+ * turn end, and `hook wake-check` when a stuck tab claims its retry, each under a lock, since a day-start wake fails a
+ * dozen tabs in the same second.
  */
 
 /** The marker's file, beside the restore's sessions folder and log. */
 export function loginMarkerPath(kitHome: string): string {
   return join(kitHome, 'restore', 'login.json');
 }
+
+/**
+ * The file Claude Code keeps its login in, which /login and each token refresh rewrite: a change after the last
+ * failure is the one sign that a new login may work before any turn proves it. It is only ever stat'ed, never read.
+ * Where the login lives in the system's keychain (macOS) there is no file, so a stuck tab waits for another tab's good
+ * turn instead.
+ */
+export function claudeCredentialsPath(env: Env, userHome: string): string {
+  return join(claudeConfigDir(env, userHome), '.credentials.json');
+}
+
+/** The least time between two retries across the kit home, so a dozen stuck tabs come back one by one, not at once. */
+export const LOGIN_RETRY_GAP_MS = 30_000;
+
+/** How long the one retry that tests a new login holds the others back with no result: a dropped prompt frees it. */
+export const LOGIN_PROBE_STALE_MS = 5 * MS_PER_MINUTE;
 
 /** The marker's lock: held only for a read and a write of one small file, so a waiter gives up after a few seconds. */
 export const LOGIN_LOCK: LockTimings = { ttlMs: 10_000, pollMs: 25, waitMs: 5_000 };
@@ -40,6 +58,18 @@ export interface LoginMarker {
   readonly stranded: ReadonlyMap<string, number>;
   /** When a tab claimed the owner's page for the latest expiry; undefined while none has, so the next failure pages. */
   readonly pagedAt: number | undefined;
+  /** The one retry sent to test a login renewed while it was expired: its tab and when; undefined when none is out. */
+  readonly probe: LoginProbe | undefined;
+  /** The latest retry any stuck tab claimed, which spaces the next one; undefined before the first. */
+  readonly lastRetryAt: number | undefined;
+  /** Each stuck tab's latest retry, so a tab retries once per sign the login works; only stuck tabs are kept. */
+  readonly retried: ReadonlyMap<string, number>;
+}
+
+/** The retry that tests a renewed login: the stuck tab (Claude session id) that claimed it, and when. */
+export interface LoginProbe {
+  readonly tab: string;
+  readonly at: number;
 }
 
 /** A turn end the marker follows: one that failed on the login, or one the model answered. */
@@ -53,6 +83,15 @@ export interface LoginEvent {
 export type LoginNote = 'expired' | 'stranded' | 'recovered';
 
 export type LoginChange = { readonly kind: 'write'; readonly marker: LoginMarker; readonly note: LoginNote | undefined } | { readonly kind: 'none' };
+
+/** Why a stuck tab retries: a good turn proved the login (`recovered`), or it tests a renewed one (`probe`). */
+export type LoginRetryWhy = 'recovered' | 'probe';
+
+/** What `decideLoginRetry` says of a tab: nothing to do, a retry due at `at`, or a retry now with the marker claiming it. */
+export type LoginRetry =
+  | { readonly kind: 'none' }
+  | { readonly kind: 'later'; readonly at: number }
+  | { readonly kind: 'retry'; readonly why: LoginRetryWhy; readonly failAt: number; readonly marker: LoginMarker };
 
 /** True while the marker's latest expiry has no good turn after it. */
 export function loginExpired(marker: LoginMarker): boolean {
@@ -102,17 +141,25 @@ function withStranded(stranded: ReadonlyMap<string, number>, tab: string, at: nu
   return next;
 }
 
+/** The retries of the tabs still stuck: a tab freed or forgotten needs no record of its retry. */
+function retriedOf(retried: ReadonlyMap<string, number>, stranded: ReadonlyMap<string, number>): Map<string, number> {
+  return new Map([...retried].filter(([tab]) => stranded.has(tab)));
+}
+
 function authFailed(existing: LoginMarker | undefined, tab: string, at: number): LoginChange {
   const stranded = withStranded(keptStranded(existing?.stranded ?? new Map(), at), tab, at);
-  // A failure after the recovery, or the first one ever, starts a new expiry.
+  const retried = retriedOf(existing?.retried ?? new Map(), stranded);
+  // A failure after the recovery, or the first one ever, starts a new expiry. The retry spacing and each tab's
+  // latest retry carry over: a retry is due again only at a newer sign the login works.
   if (existing === undefined || (existing.recoveredAt !== undefined && at > existing.recoveredAt)) {
-    return { kind: 'write', marker: { expiredAt: at, lastFailAt: at, recoveredAt: undefined, stranded, pagedAt: undefined }, note: 'expired' };
+    const marker: LoginMarker = { expiredAt: at, lastFailAt: at, recoveredAt: undefined, stranded, pagedAt: undefined, probe: undefined, lastRetryAt: existing?.lastRetryAt, retried };
+    return { kind: 'write', marker, note: 'expired' };
   }
   // A failure the hooks report after a later recovery (out of order) belongs to the expiry that ended: it only strands its tab.
   if (existing.recoveredAt !== undefined) {
-    return { kind: 'write', marker: { ...existing, lastFailAt: Math.max(existing.lastFailAt, at), stranded }, note: 'stranded' };
+    return { kind: 'write', marker: { ...existing, lastFailAt: Math.max(existing.lastFailAt, at), stranded, retried }, note: 'stranded' };
   }
-  const marker: LoginMarker = { ...existing, expiredAt: Math.min(existing.expiredAt, at), lastFailAt: Math.max(existing.lastFailAt, at), stranded };
+  const marker: LoginMarker = { ...existing, expiredAt: Math.min(existing.expiredAt, at), lastFailAt: Math.max(existing.lastFailAt, at), stranded, retried };
   return { kind: 'write', marker, note: 'stranded' };
 }
 
@@ -134,7 +181,9 @@ function answered(existing: LoginMarker | undefined, tab: string, at: number): L
   if (!recovers && sameStranded(stranded, existing.stranded)) {
     return { kind: 'none' };
   }
-  const marker: LoginMarker = { ...existing, recoveredAt: recovers ? at : existing.recoveredAt, stranded };
+  // A recovery ends the probe's test: the stuck tabs now retry one by one (`decideLoginRetry`).
+  const recovered = recovers ? { recoveredAt: at, probe: undefined } : {};
+  const marker: LoginMarker = { ...existing, ...recovered, stranded, retried: retriedOf(existing.retried, stranded) };
   return { kind: 'write', marker, note: recovers ? 'recovered' : undefined };
 }
 
@@ -157,6 +206,48 @@ export function claimPage(marker: LoginMarker, at: number): LoginMarker | undefi
  */
 export function releasePage(marker: LoginMarker, claimedAt: number): LoginMarker | undefined {
   return marker.pagedAt === claimedAt ? { ...marker, pagedAt: undefined } : undefined;
+}
+
+/**
+ * Whether a stuck tab's last turn should be sent again: `none` (not stuck, or nothing new says the login works),
+ * `later` (at `at`, when the retry spacing or another tab's open probe allows), or `retry`, with the marker that
+ * claims it. `why` is `recovered` once a good turn after the last failure proved the login, and the tabs then retry
+ * one per `LOGIN_RETRY_GAP_MS`; it is `probe` while the login is still expired but its credentials file changed after
+ * the last failure (`credentialsAt`: a /login, or a refresh that worked), and only one tab tests it. A probe that fails
+ * moves the last failure past the change, so nothing retries until the credentials change again; one with no result
+ * after `LOGIN_PROBE_STALE_MS` frees the slot. A tab retries at most once per sign.
+ */
+export function decideLoginRetry(marker: LoginMarker | undefined, tab: string, now: number, credentialsAt: number | undefined): LoginRetry {
+  const failAt = marker?.stranded.get(tab);
+  if (marker === undefined || failAt === undefined) {
+    return { kind: 'none' };
+  }
+  const retriedAt = marker.retried.get(tab);
+  const claimed = (probe: LoginProbe | undefined): LoginMarker => ({ ...marker, probe, lastRetryAt: now, retried: new Map([...marker.retried, [tab, now]]) });
+  // A recovery covers every stuck tab: a failure after it would have started a new expiry.
+  if (marker.recoveredAt !== undefined) {
+    if (retriedAt !== undefined && retriedAt >= marker.recoveredAt) {
+      return { kind: 'none' };
+    }
+    const spacedUntil = marker.lastRetryAt === undefined ? undefined : marker.lastRetryAt + LOGIN_RETRY_GAP_MS;
+    return spacedUntil !== undefined && now < spacedUntil ? { kind: 'later', at: spacedUntil } : { kind: 'retry', why: 'recovered', failAt, marker: claimed(undefined) };
+  }
+  if (credentialsAt === undefined || credentialsAt <= marker.lastFailAt || (retriedAt !== undefined && retriedAt >= credentialsAt)) {
+    return { kind: 'none' };
+  }
+  const { probe } = marker;
+  if (probe !== undefined && probe.at > marker.lastFailAt && now < probe.at + LOGIN_PROBE_STALE_MS) {
+    return { kind: 'later', at: probe.at + LOGIN_PROBE_STALE_MS };
+  }
+  return { kind: 'retry', why: 'probe', failAt, marker: claimed({ tab, at: now }) };
+}
+
+/**
+ * Whether the day's start should hold its wakes: while the login is expired and nothing since the last failure says
+ * it may work again. Once the credentials changed, the day's first tab tests the login and the rest wait for it.
+ */
+export function loginHoldsDayStart(marker: LoginMarker | undefined, credentialsAt: number | undefined): boolean {
+  return marker !== undefined && loginExpired(marker) && !(credentialsAt !== undefined && credentialsAt > marker.lastFailAt);
 }
 
 /** The owner's page for an expiry: `tab` names the tab whose failure claimed it, `clock` the failure's time on the team's clock. */
@@ -187,10 +278,18 @@ export function formatLoginMarker(marker: LoginMarker): string {
     expiredAt: isoOf(marker.expiredAt),
     lastFailAt: isoOf(marker.lastFailAt),
     recoveredAt: marker.recoveredAt === undefined ? undefined : isoOf(marker.recoveredAt),
-    stranded: Object.fromEntries([...marker.stranded].map(([tab, at]) => [tab, isoOf(at)])),
+    stranded: instantsRecord(marker.stranded),
     pagedAt: marker.pagedAt === undefined ? undefined : isoOf(marker.pagedAt),
+    probe: marker.probe === undefined ? undefined : { tab: marker.probe.tab, at: isoOf(marker.probe.at) },
+    lastRetryAt: marker.lastRetryAt === undefined ? undefined : isoOf(marker.lastRetryAt),
+    retried: instantsRecord(marker.retried),
   };
   return `${JSON.stringify(record, null, 2)}\n`;
+}
+
+/** A map of tabs to instants as the file keeps it: each Claude session id to an ISO instant. */
+function instantsRecord(byTab: ReadonlyMap<string, number>): Record<string, string> {
+  return Object.fromEntries([...byTab].map(([tab, at]) => [tab, isoOf(at)]));
 }
 
 /** An instant field; undefined when it is missing or not an instant. */
@@ -200,23 +299,41 @@ function instantOf(record: JsonRecord, key: string): number | undefined {
   return Number.isNaN(ms) ? undefined : ms;
 }
 
-/** The stranded tabs; undefined when a key is not a Claude session id or a time not an instant. */
-function strandedOf(value: unknown): Map<string, number> | undefined {
+/** A map of tabs to instants (the stuck tabs, their retries); undefined when a key is not a Claude session id or a time not an instant. */
+function instantsByTabOf(value: unknown): Map<string, number> | undefined {
   if (!isRecord(value)) {
     return undefined;
   }
-  const stranded = new Map<string, number>();
+  const byTab = new Map<string, number>();
   for (const tab of Object.keys(value)) {
     const at = instantOf(value, tab);
     if (!CLAUDE_SESSION_ID.test(tab) || at === undefined) {
       return undefined;
     }
-    stranded.set(tab, at);
+    byTab.set(tab, at);
   }
-  return stranded;
+  return byTab;
 }
 
-/** The marker a file holds; undefined when it is damaged or of another shape, which the next auth failure replaces. */
+/** The probe a file holds; undefined when its tab is not a Claude session id or its time not an instant. */
+function probeOf(value: unknown): LoginProbe | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const tab = stringField(value, 'tab');
+  const at = instantOf(value, 'at');
+  return tab === undefined || !CLAUDE_SESSION_ID.test(tab) || at === undefined ? undefined : { tab, at };
+}
+
+/** True when an optional field is in the record but does not read as its value. */
+function damagedOptional(record: JsonRecord, key: string, value: unknown): boolean {
+  return record[key] !== undefined && value === undefined;
+}
+
+/**
+ * The marker a file holds; undefined when it is damaged or of another shape, which the next auth failure replaces. A
+ * marker written before the retries (no `probe`, `lastRetryAt` or `retried`) reads as one with none.
+ */
 export function parseLoginMarker(text: string): LoginMarker | undefined {
   const record = parseObject(text.trim());
   if (record === undefined) {
@@ -226,10 +343,18 @@ export function parseLoginMarker(text: string): LoginMarker | undefined {
   const lastFailAt = instantOf(record, 'lastFailAt');
   const recoveredAt = instantOf(record, 'recoveredAt');
   const pagedAt = instantOf(record, 'pagedAt');
-  const stranded = strandedOf(record['stranded']);
-  const badOptional = (record['recoveredAt'] !== undefined && recoveredAt === undefined) || (record['pagedAt'] !== undefined && pagedAt === undefined);
-  if (expiredAt === undefined || lastFailAt === undefined || stranded === undefined || badOptional) {
+  const stranded = instantsByTabOf(record['stranded']);
+  const probe = probeOf(record['probe']);
+  const lastRetryAt = instantOf(record, 'lastRetryAt');
+  const retried = record['retried'] === undefined ? new Map<string, number>() : instantsByTabOf(record['retried']);
+  const optionals: readonly (readonly [string, unknown])[] = [
+    ['recoveredAt', recoveredAt],
+    ['pagedAt', pagedAt],
+    ['probe', probe],
+    ['lastRetryAt', lastRetryAt],
+  ];
+  if (expiredAt === undefined || lastFailAt === undefined || stranded === undefined || retried === undefined || optionals.some(([key, value]) => damagedOptional(record, key, value))) {
     return undefined;
   }
-  return { expiredAt, lastFailAt, recoveredAt, stranded, pagedAt };
+  return { expiredAt, lastFailAt, recoveredAt, stranded, pagedAt, probe, lastRetryAt, retried };
 }

@@ -43,7 +43,7 @@ class RacedMutex implements Mutex {
 
 /** The marker another tab's failure at `at` wrote, with the page it claimed, if any. */
 function otherTabFailed(tab: string, at: number, pagedAt: number | undefined = undefined): LoginMarker {
-  return { expiredAt: at, lastFailAt: at, recoveredAt: undefined, stranded: new Map([[tab, at]]), pagedAt };
+  return { expiredAt: at, lastFailAt: at, recoveredAt: undefined, stranded: new Map([[tab, at]]), pagedAt, probe: undefined, lastRetryAt: undefined, retried: new Map() };
 }
 
 describe('login store', () => {
@@ -62,7 +62,7 @@ describe('login store', () => {
     const { change, pageClaimed } = await store.apply(failed(TAB_A));
     assert.deepEqual([noteOf(change), pageClaimed], ['expired', false], 'no page is claimed unless asked');
     assert.equal(lock.runs, 1);
-    assert.deepEqual(await store.read(), { expiredAt: AT, lastFailAt: AT, recoveredAt: undefined, stranded: new Map([[TAB_A, AT]]), pagedAt: undefined });
+    assert.deepEqual(await store.read(), { expiredAt: AT, lastFailAt: AT, recoveredAt: undefined, stranded: new Map([[TAB_A, AT]]), pagedAt: undefined, probe: undefined, lastRetryAt: undefined, retried: new Map() });
     const recovered = await store.apply(answered(TAB_B, AT + 1_000));
     assert.equal(noteOf(recovered.change), 'recovered');
     assert.equal((await store.read())?.recoveredAt, AT + 1_000);
@@ -112,6 +112,31 @@ describe('login store', () => {
     assert.equal((await store.read())?.pagedAt, undefined);
     assert.equal((await store.apply(failed(TAB_B, AT + 1_000), { claimPage: true })).pageClaimed, true);
     assert.equal(await new LoginStore(new MemoryFiles(), PATH, lock).releasePage(AT), false, 'no marker, nothing to give back');
+  });
+
+  it("claims a stuck tab's due retry under the lock, and takes no lock for a tab with none due", async () => {
+    const files = new MemoryFiles();
+    const lock = new InlineMutex();
+    const store = new LoginStore(files, PATH, lock);
+    await store.apply(failed(TAB_A));
+    await store.apply(failed(TAB_B));
+    const runs = lock.runs;
+    assert.deepEqual(await store.claimRetry(TAB_A, AT + 1_000, undefined), { kind: 'none' }, 'no sign the login works');
+    assert.equal(lock.runs, runs, 'every idle tab asks; only a due retry locks');
+    const claimed = await store.claimRetry(TAB_A, AT + 2_000, AT + 1_000);
+    assert.deepEqual([claimed.kind === 'retry' ? claimed.why : claimed.kind, lock.runs], ['probe', runs + 1]);
+    assert.deepEqual((await store.read())?.probe, { tab: TAB_A, at: AT + 2_000 }, 'the claim is written');
+    assert.equal((await store.claimRetry(TAB_B, AT + 3_000, AT + 1_000)).kind, 'later', "the other tab waits for the probe's result");
+  });
+
+  it('decides the retry again on the locked read, so a probe another tab claimed meanwhile holds this one', async () => {
+    const files = new MemoryFiles();
+    const stuck: LoginMarker = { ...otherTabFailed(TAB_B, AT), stranded: new Map([[TAB_A, AT], [TAB_B, AT]]) };
+    const othersProbe: LoginMarker = { ...stuck, probe: { tab: TAB_B, at: AT + 1_500 }, lastRetryAt: AT + 1_500, retried: new Map([[TAB_B, AT + 1_500]]) };
+    await files.write(PATH, formatLoginMarker(stuck));
+    const store = new LoginStore(files, PATH, new RacedMutex(files, othersProbe));
+    assert.equal((await store.claimRetry(TAB_A, AT + 2_000, AT + 1_000)).kind, 'later');
+    assert.deepEqual((await store.read())?.probe, { tab: TAB_B, at: AT + 1_500 }, "the other tab's claim stands");
   });
 
   it('reads a damaged marker as none, and replaces it at the next auth failure', async () => {
