@@ -58,8 +58,8 @@ export interface RegisterCheckConfig {
    */
   readonly goalProgressDays: number;
   /**
-   * An active sized task whose metered cost passed this many times its size (`--size`) is OVER-SIZE; 0 turns the
-   * flag off.
+   * An active sized task whose metered cost since it was last sized passed this many times its size (`--size`) is
+   * OVER-SIZE; 0 turns the flag off.
    */
   readonly overSizeMultiple: number;
   readonly weekLengthDays: number;
