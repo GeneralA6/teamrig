@@ -5,7 +5,8 @@ import { parseObject, recordVersion, VERSION_FIELD } from '../core/jsonl.ts';
  * Each session's week: its use of the account's week so far and its hours with work, kept by the budget hooks
  * (src/budget/session-week-file.ts) for a reader that shows each session's week without metering it, as the pane's
  * Teams card does. One file per team, beside its week summary (src/budget/team-week-summary.ts), at
- * `SESSIONS_WEEK_PATH` under the team's home (`<kit home>/teams/<team>`); the format, one JSON object:
+ * `SESSIONS_WEEK_IN_STATE` under the team's state folder (`<kit home>/teams/<team>/state`, unless the team config's
+ * `paths.state` moves it); the format, one JSON object:
  *
  * - `v`: `SESSIONS_WEEK_FORMAT`;
  * - `resetsAt`: the week's reset, epoch ms;
@@ -17,7 +18,7 @@ import { parseObject, recordVersion, VERSION_FIELD } from '../core/jsonl.ts';
  *
  * Percents are rounded to two decimals. A hook of any of the team's sessions rewrites it when that changes it.
  */
-export const SESSIONS_WEEK_PATH = ['state', 'usage', 'sessions.week.json'] as const;
+export const SESSIONS_WEEK_IN_STATE = ['usage', 'sessions.week.json'] as const;
 
 /** The sessions' week file's format; a field added to it raises this. */
 export const SESSIONS_WEEK_FORMAT = 1;

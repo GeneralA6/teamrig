@@ -3,16 +3,16 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { OUTSIDE_ID } from '../../budget/measure.ts';
 import { emptyPatterns } from '../../budget/patterns.ts';
-import { parseSessionsWeek, SESSIONS_WEEK_PATH } from '../../budget/session-week-summary.ts';
+import { parseSessionsWeek, SESSIONS_WEEK_IN_STATE } from '../../budget/session-week-summary.ts';
 import { EMPTY_USAGE, UsageStore } from '../../budget/store.ts';
-import { parseTeamWeek, TEAM_WEEK_PATH } from '../../budget/team-week-summary.ts';
+import { parseTeamWeek, TEAM_WEEK_IN_STATE } from '../../budget/team-week-summary.ts';
 import { HOLDING_BUDGET, meterToday } from '../../testing/budget-hold.ts';
 import { CliHarness, TEAM, TEAM_HOME } from '../../testing/cli-harness.ts';
 
 const ALPHA_TAB = '0123abcd-0000-4000-8000-0000000000a1';
 const LEAD_TAB = '0123abcd-0000-4000-8000-0000000000d4';
-const SUMMARY = join(TEAM_HOME, ...TEAM_WEEK_PATH);
-const SESSIONS = join(TEAM_HOME, ...SESSIONS_WEEK_PATH);
+const SUMMARY = join(TEAM_HOME, 'state', ...TEAM_WEEK_IN_STATE);
+const SESSIONS = join(TEAM_HOME, 'state', ...SESSIONS_WEEK_IN_STATE);
 
 describe('the budget hooks', () => {
   it("keep the team's week summary: its own sessions' W at its rate, never the use outside it, and its part of what is left", async () => {
