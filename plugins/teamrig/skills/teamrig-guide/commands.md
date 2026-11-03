@@ -1509,8 +1509,7 @@ the last pass, and every step once its last pass record is an hour old, with the
 failure; it closes and reopens no one. With `on`, the default, it also
 starts each close and the reopen its steps ask for, hidden, as [teamrig idle-close](#teamrig-idle-close) and
 [teamrig idle-open](#teamrig-idle-open), each in the folder the pass read its session in, and starts none again on
-that session for 5 minutes. `off`, the default,
-runs none. The lead reviews a day of that log before any mode that acts.
+that session for 5 minutes. `off` runs none.
 
 Flags:
 
