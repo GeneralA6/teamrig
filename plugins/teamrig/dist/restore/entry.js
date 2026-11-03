@@ -1,4 +1,4 @@
-import { isNonNegativeInteger, stringField } from "../core/guards.js";
+import { isNonNegativeInteger, isRecord, stringField } from "../core/guards.js";
 import { ID_PATTERN } from "../core/ids.js";
 import { parseObject } from "../core/jsonl.js";
 import { MS_PER_MINUTE } from "../core/time.js";
@@ -14,12 +14,19 @@ export const OTHER_END = 'other';
  * rare enough that most tool ends only read the entry.
  */
 export const TOOL_END_WRITE_MS = 5 * MS_PER_MINUTE;
+/** `entry` with its failed turn's state, left out when there is none. */
+function withApiError(entry, apiError) {
+    return apiError === undefined ? entry : { ...entry, apiError };
+}
 /**
  * How an event changes a session's entry. An end the person or Claude Code chose removes it: nothing is
  * left to restore. A start begins it afresh (ready, no restore pending). A first event that names no folder
  * writes nothing, since a tab cannot be reopened nowhere. A tool's end in the main thread marks it working (a
  * helper's runs on past its turn's end, and keeps the state), and either writes only once
  * `TOOL_END_WRITE_MS` passed since the entry's last write.
+ *
+ * A failed turn records its error and keeps the retry count; a good turn end or a start clears both. A prompt keeps
+ * them, since a retry's own prompt starts the turn that may fail again.
  */
 export function applyEvent(existing, event, facts) {
     if (event.kind === 'end' && event.reason !== undefined && INTENTIONAL_END_REASONS.has(event.reason)) {
@@ -49,17 +56,22 @@ export function applyEvent(existing, event, facts) {
         endedAt: undefined,
         endReason: undefined,
     };
+    const kept = existing?.apiError;
     switch (event.kind) {
         case 'end':
-            return { kind: 'write', entry: { ...base, endedAt: facts.at, endReason: event.reason ?? OTHER_END } };
+            return { kind: 'write', entry: withApiError({ ...base, endedAt: facts.at, endReason: event.reason ?? OTHER_END }, kept) };
         case 'start':
             return { kind: 'write', entry: { ...base, state: 'ready', restoreAttempts: 0, restoredAt: undefined } };
         case 'tool':
-            return { kind: 'write', entry: event.mainThread ? { ...base, state: 'working' } : base };
+            return { kind: 'write', entry: withApiError(event.mainThread ? { ...base, state: 'working' } : base, kept) };
         case 'working':
+            return { kind: 'write', entry: withApiError({ ...base, state: 'working' }, kept) };
         case 'ready':
-        case 'error':
-            return { kind: 'write', entry: { ...base, state: event.kind } };
+            return { kind: 'write', entry: { ...base, state: 'ready' } };
+        case 'error': {
+            const apiError = { code: event.code, failedAt: facts.at, retries: kept?.retries ?? 0, retriedAt: kept?.retriedAt };
+            return { kind: 'write', entry: { ...base, state: 'error', apiError } };
+        }
     }
 }
 function isoOf(ms) {
@@ -67,6 +79,7 @@ function isoOf(ms) {
 }
 /** The entry as its file's JSON object: times as ISO instants, fields that are not set undefined, which JSON leaves out. */
 export function entryRecord(entry) {
+    const { apiError } = entry;
     return {
         claudeSession: entry.claudeSession,
         projectDir: entry.projectDir,
@@ -83,6 +96,7 @@ export function entryRecord(entry) {
         restoredAt: isoOf(entry.restoredAt),
         endedAt: isoOf(entry.endedAt),
         endReason: entry.endReason,
+        apiError: apiError === undefined ? undefined : { code: apiError.code, failedAt: isoOf(apiError.failedAt), retries: apiError.retries, retriedAt: isoOf(apiError.retriedAt) },
     };
 }
 /** The entry's file text: `entryRecord` as indented JSON. */
@@ -108,6 +122,23 @@ function idField(record, key) {
 }
 function activityOf(text) {
     return ACTIVITY_STATES.find((state) => state === text);
+}
+/**
+ * The failed turn's state a file holds; undefined when there is none or it is damaged. A damaged one never skips the
+ * entry, which the restore after a reboot needs: it only loses the retry count.
+ */
+function apiErrorOf(value) {
+    if (!isRecord(value)) {
+        return undefined;
+    }
+    const code = stringField(value, 'code');
+    const failedAt = instantField(value, 'failedAt');
+    const retriedAt = instantField(value, 'retriedAt');
+    const retries = value['retries'];
+    if ((value['code'] !== undefined && code === undefined) || failedAt === undefined || failedAt === null || retriedAt === null || !isNonNegativeInteger(retries)) {
+        return undefined;
+    }
+    return { code, failedAt, retries, retriedAt };
 }
 /** An entry file's text; undefined when it is damaged or of another shape, which the restore then skips. */
 export function parseEntry(text) {
@@ -144,7 +175,7 @@ export function entryOfRecord(record) {
         pid === null) {
         return undefined;
     }
-    return {
+    const entry = {
         claudeSession,
         projectDir,
         transcriptPath: stringField(record, 'transcriptPath'),
@@ -161,4 +192,5 @@ export function entryOfRecord(record) {
         endedAt,
         endReason: stringField(record, 'endReason'),
     };
+    return withApiError(entry, apiErrorOf(record['apiError']));
 }

@@ -4,10 +4,12 @@ import { ID_PATTERN } from "../../core/ids.js";
 import { sessionIdOf } from "../../inbox/inbox.js";
 import { dayProbePath, dayProbeReleaseLine } from "../../restore/day-probe.js";
 import { DayProbeStore } from "../../restore/day-probe-store.js";
+import { apiGaveUpLine, apiRetriesSpentOn } from "../../restore/api-error.js";
 import { applyEvent } from "../../restore/entry.js";
-import { authFailureOf, LOGIN_LOCK, LOGIN_TAIL_BYTES, loginLogLine, loginMarkerPath } from "../../restore/login.js";
+import { AUTH_FAILED, LOGIN_LOCK, loginLogLine, loginMarkerPath } from "../../restore/login.js";
 import { LoginStore } from "../../restore/login-store.js";
 import { RestoreRegistry, restoreLogPath, restoreSessionsDir } from "../../restore/registry.js";
+import { TURN_TAIL_BYTES, turnErrorOf } from "../../restore/turn-error.js";
 import { noPositionals } from "../args.js";
 import { fileLockOf } from "../file-locks.js";
 import { loginPageLogLine, loginPageOf, sendLoginPage } from "../login-page.js";
@@ -31,7 +33,8 @@ export function trackEventOf(payload) {
         case 'Stop':
             return { kind: 'ready' };
         case 'StopFailure':
-            return { kind: 'error' };
+            // A payload with no error is read from the transcript once, by `trackRestore` (`codedEvent`).
+            return { kind: 'error', code: stringField(payload, 'error') };
         case 'SessionEnd':
             return { kind: 'end', reason: stringField(payload, 'reason') };
         default:
@@ -48,14 +51,22 @@ function envId(runtime, name) {
     const value = present(runtime.env[name]);
     return value !== undefined && ID_PATTERN.test(value) ? value : undefined;
 }
-/** Writes the event into its session's restore entry, or removes the entry at an end the person chose. */
+/**
+ * Writes the event into its session's restore entry, or removes the entry at an end the person chose. A turn that
+ * failed on a transient API error with every retry spent (src/restore/api-error.ts) is logged as left for the person.
+ */
 async function trackEntry(event, facts, runtime, kitHome) {
     const registry = new RestoreRegistry(runtime.files, restoreSessionsDir(kitHome));
     const change = applyEvent(await registry.read(facts.claudeSession), event, facts);
     switch (change.kind) {
-        case 'write':
+        case 'write': {
             await registry.write(change.entry);
+            const spentOn = event.kind === 'error' ? apiRetriesSpentOn(change.entry) : undefined;
+            if (spentOn !== undefined) {
+                await runtime.files.append(restoreLogPath(kitHome), `${new Date(facts.at).toISOString()} ${apiGaveUpLine(tabLabelOf(facts), spentOn)}\n`);
+            }
             return;
+        }
         case 'remove':
             await registry.remove(facts.claudeSession);
             return;
@@ -63,16 +74,26 @@ async function trackEntry(event, facts, runtime, kitHome) {
             return;
     }
 }
+/**
+ * The event with a failed turn's error read from the transcript when the payload named none
+ * (src/restore/turn-error.ts); a transcript that cannot be read names none, and never keeps the entry from its update.
+ */
+async function codedEvent(payload, event, facts, runtime) {
+    const { transcriptPath } = facts;
+    if (event.kind !== 'error' || event.code !== undefined) {
+        return event;
+    }
+    const tailOf = async () => (transcriptPath === undefined ? undefined : runtime.files.readTail(transcriptPath, TURN_TAIL_BYTES));
+    return { kind: 'error', code: await turnErrorOf(payload, tailOf).catch(() => undefined) };
+}
 /** The login event a turn end reports: a good one answered, a failed one failed on the login; undefined for any other. */
-async function loginEventOf(payload, event, facts, runtime) {
-    const { claudeSession, at, transcriptPath } = facts;
+function loginEventOf(event, facts) {
+    const { claudeSession, at } = facts;
     switch (event.kind) {
         case 'ready':
             return { kind: 'answered', claudeSession, at };
-        case 'error': {
-            const tailOf = async () => (transcriptPath === undefined ? undefined : runtime.files.readTail(transcriptPath, LOGIN_TAIL_BYTES));
-            return (await authFailureOf(payload, tailOf)) ? { kind: 'auth-failed', claudeSession, at } : undefined;
-        }
+        case 'error':
+            return event.code === AUTH_FAILED ? { kind: 'auth-failed', claudeSession, at } : undefined;
         default:
             return undefined;
     }
@@ -96,8 +117,8 @@ async function pageOf(event, facts, runtime) {
  * failure that claims an expiry's page posts it to the owner outside the marker's lock, a slow chat holding no other
  * tab, and gives the claim back when the post fails, so the next failure pages.
  */
-async function trackLogin(payload, event, facts, runtime, kitHome) {
-    const loginEvent = await loginEventOf(payload, event, facts, runtime);
+async function trackLogin(event, facts, runtime, kitHome) {
+    const loginEvent = loginEventOf(event, facts);
     if (loginEvent === undefined) {
         return;
     }
@@ -146,8 +167,8 @@ async function trackDayProbe(event, facts, runtime, kitHome) {
  */
 export async function trackRestore(payload, runtime) {
     const claudeSession = sessionIdOf(payload);
-    const event = isRecord(payload) ? trackEventOf(payload) : undefined;
-    if (!isRecord(payload) || claudeSession === null || event === undefined) {
+    const reported = isRecord(payload) ? trackEventOf(payload) : undefined;
+    if (!isRecord(payload) || claudeSession === null || reported === undefined) {
         return;
     }
     const facts = {
@@ -164,7 +185,8 @@ export async function trackRestore(payload, runtime) {
         session: envId(runtime, ENV.session),
     };
     const kitHome = resolveKitHome(runtime.env, runtime.userHome);
-    const login = trackLogin(payload, event, facts, runtime, kitHome).catch(() => undefined);
+    const event = await codedEvent(payload, reported, facts, runtime);
+    const login = trackLogin(event, facts, runtime, kitHome).catch(() => undefined);
     const dayProbe = trackDayProbe(event, facts, runtime, kitHome).catch(() => undefined);
     try {
         await trackEntry(event, facts, runtime, kitHome);
@@ -180,7 +202,8 @@ export async function trackRestore(payload, runtime) {
  * login (`<kit home>/restore/login.json`): which tabs a turn that ended on Login expired left stuck, and when a
  * good turn showed the login works again; the first failure of an expiry pages the owner through the webhook the
  * team's `alerts.pageWebhookFile` or `alerts.pageWebhookEnv` names. A good turn end also releases the day-start probe
- * (`<kit home>/restore/day-probe.json`), as does the probe tab's tool end. It prints nothing, and on any
+ * (`<kit home>/restore/day-probe.json`), as does the probe tab's tool end. A turn that failed on a transient API error
+ * after the wake check's last retry logs `api-error: gave up on <tab>` to the restore log. It prints nothing, and on any
  * error it exits 0 having written nothing: a tracker must never hold up a turn.
  */
 export async function restoreTrack(args, runtime) {
