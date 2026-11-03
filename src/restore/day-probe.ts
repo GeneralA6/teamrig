@@ -28,8 +28,11 @@ export interface DayProbe {
   readonly releasedAt: number | undefined;
 }
 
-/** Why a tab claims the probe: none was out, the one out was for an older moment, or it had no reply in time. */
-export type DayProbeClaimWhy = 'first' | 'newer' | 'stale';
+/**
+ * Why a tab claims the probe: none was out, the one out was for an older moment, the tab's own claim is still out (its
+ * wake did not turn), or the one out had no reply in time.
+ */
+export type DayProbeClaimWhy = 'first' | 'newer' | 'again' | 'stale';
 
 /** What `gateDayProbe` says to a due tab: wake as the probe, wake (the login works), or wait for the probe until `until`. */
 export type DayProbeGate =
@@ -40,6 +43,9 @@ export type DayProbeGate =
 /**
  * The gate for `tab`, due for `moment` at `now`. A probe for this moment or a newer one decides: released, the tab
  * wakes; still out, it waits; out with no reply for LOGIN_PROBE_STALE_MS (a dropped prompt), the tab takes it over.
+ * The probe tab itself asks again only when its wake did not turn (a woken tab settles its moment): a dropped prompt,
+ * or a restart that took the wake, which leaves the moment due. It wakes again on its first claim, whose time stands,
+ * so the others still take over at the stale line however often its wakes drop.
  */
 export function gateDayProbe(existing: DayProbe | undefined, moment: number, tab: string, now: number): DayProbeGate {
   const claim = (why: DayProbeClaimWhy, probeMoment: number): DayProbeGate => ({ kind: 'claim', why, probe: { moment: probeMoment, tab, at: now, releasedAt: undefined } });
@@ -51,6 +57,9 @@ export function gateDayProbe(existing: DayProbe | undefined, moment: number, tab
   }
   if (existing.releasedAt !== undefined) {
     return { kind: 'free' };
+  }
+  if (existing.tab === tab) {
+    return { kind: 'claim', why: 'again', probe: existing };
   }
   const until = existing.at + LOGIN_PROBE_STALE_MS;
   return now >= until ? claim('stale', existing.moment) : { kind: 'hold', until, probe: existing };
