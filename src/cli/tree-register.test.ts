@@ -161,6 +161,7 @@ describe('teamrig list|check|plan --tree', () => {
 
   it('checks every team against the lead week, then the shared skills folder once', async () => {
     const kit = await seeded();
+    await kit.holdSecretDeny();
     const result = await kit.run(['check', '--tree', '--session', 'lead', '--all']);
     assert.equal(result.code, EXIT.ok);
     assert.deepEqual(

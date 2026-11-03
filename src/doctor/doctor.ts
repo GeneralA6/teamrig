@@ -15,6 +15,7 @@ import type { WideAllow } from '../permissions/trim.ts';
 import { describeRequirement, type RequirementProblem } from '../requirements/requirements.ts';
 import { TEAM_RULES_MAX_CHARS } from '../rules/pack.ts';
 import type { ContextFiles } from './context-files.ts';
+import { missingDenyLines, SECRET_DENY_LINES, type SettingsDeny } from './deny-lines.ts';
 import type { SessionList, SessionListKind, SessionLists } from './session-lists.ts';
 import type { SettingsEnv } from './settings-env.ts';
 import type { ShellHistory } from './shell-history.ts';
@@ -49,6 +50,8 @@ export const UNREAD_INBOX_DAYS = 7;
  * - `allow-wide`: local allow rules off `permissions.keepAllow` that approve a whole tool or program, so auto mode's
  *   classifier never sees those calls, or hold a credential saved with an approved command (`teamrig permissions trim`
  *   removes them, run by the owner);
+ * - `deny-missing`: secret deny lines (`SECRET_DENY_LINES`) in no settings file a session reads, so a hook's allow or
+ *   auto mode can approve a read of a credential file or an environment dump; the user pastes the lines printed;
  * - `project-missing`: a `team.project` or `launch.<id>.project` that is no folder on this machine, so a tab `open`
  *   starts there refuses to launch;
  * - `shell-history`: a PowerShell history file that keeps every line typed in the console, a credential in a URL too,
@@ -73,6 +76,7 @@ export type FindingKind =
   | 'settings-json'
   | 'launch-effort'
   | 'allow-wide'
+  | 'deny-missing'
   | 'project-missing'
   | 'shell-history';
 
@@ -92,6 +96,17 @@ export interface Finding {
 /** The wide allow rules of every settings file the team's sessions run under, as one finding. */
 export interface AllowFinding extends Finding {
   readonly kind: 'allow-wide';
+}
+
+/** The secret deny lines no settings file the team's sessions read holds, as one finding. */
+export interface DenyFinding extends Finding {
+  readonly kind: 'deny-missing';
+}
+
+/** The `permissions.deny` lines of the settings files a session in the project reads, and the user's file, where the missing ones go. */
+export interface SecretDeny {
+  readonly files: readonly SettingsDeny[];
+  readonly pasteInto: string;
 }
 
 /** A context finding and the budget it runs over: at most one stands per budget, so the budget names it while it stands. */
@@ -138,6 +153,8 @@ export interface DoctorInput {
   readonly wideAllow: WideAllow;
   /** The `env` blocks of the Claude Code settings files the team's sessions read (`readSettingsEnv`). */
   readonly settingsEnv: readonly SettingsEnv[];
+  /** The deny lines of the same settings files (`readSettingsDeny`). */
+  readonly settingsDeny: SecretDeny;
   /** Each session on the team and the model and effort it starts on. */
   readonly launches: readonly SessionLaunch[];
   /** The project folders the config names, `team.project` first, then each `launch.<id>.project`. */
@@ -425,6 +442,26 @@ export function allowFindings(wide: WideAllow): AllowFinding[] {
   return detail === undefined ? [] : [{ kind: 'allow-wide', detail }];
 }
 
+/**
+ * One finding while a secret deny line is in no settings file a session reads, with the missing lines as a JSON list to
+ * paste; `check` shows it the lead too. A file that is not a JSON object counts as holding none, and is named.
+ */
+export function denyFindings({ files, pasteInto }: SecretDeny): DenyFinding[] {
+  const missing = missingDenyLines(files);
+  if (missing.length === 0) {
+    return [];
+  }
+  const read = files.flatMap((settings) => (settings.kind === 'deny' ? [settings.path] : []));
+  const unreadable = files.flatMap((settings) => (settings.kind === 'unreadable' ? [settings.path] : []));
+  const where = read.length === 0 ? 'no settings file exists' : `read: ${read.join(', ')}`;
+  const skipped = unreadable.length === 0 ? '' : `; ${unreadable.join(', ')} ${plural(unreadable.length, 'is', 'are')} not a JSON object, so its deny lines went unread`;
+  const detail =
+    `${missing.length} of ${SECRET_DENY_LINES.length} secret deny line(s) are in no settings file a session reads (${where}${skipped}), ` +
+    "so a hook's allow or auto mode can approve reading a credential file or printing the environment; a deny line beats both, and teamrig never writes permissions: " +
+    `paste these into the permissions.deny list of ${pasteInto} yourself: ${JSON.stringify(missing)}`;
+  return [{ kind: 'deny-missing', detail }];
+}
+
 /** A configured project folder that is a file or nothing: `launch` refuses a tab's folder that is no folder (src/cli/commands/open.ts). */
 function projectFindings({ projects, roster, command }: DoctorInput): Finding[] {
   return projects.flatMap(({ session, path, kind }): Finding[] => {
@@ -458,8 +495,8 @@ function shellHistoryFindings({ shellHistory: { history, profiles, gated } }: Do
  * The team's health checks: names that find the wrong session or none, a damaged rename log,
  * inboxes nobody reads, rules too long to show, text every call re-reads over its budget (files, and the lists the newest
  * session holds), a broken tree of teams or a session name two teams use, a variable that overrides every model or effort
- * choice, a launch with a model but no effort, local allow rules that approve a whole tool or program or hold a credential, a
- * configured project folder that is no folder here, and a PowerShell history no profile keeps credentials out of.
+ * choice, a launch with a model but no effort, local allow rules that approve a whole tool or program or hold a credential, secret
+ * deny lines no settings file holds, a configured project folder that is no folder here, and a PowerShell history no profile keeps credentials out of.
  * It reads only; every fix is the user's.
  */
 export function doctorFindings(input: DoctorInput): Finding[] {
@@ -475,6 +512,7 @@ export function doctorFindings(input: DoctorInput): Finding[] {
     ...routingEnvFindings(input),
     ...launchFindings(input),
     ...allowFindings(input.wideAllow),
+    ...denyFindings(input.settingsDeny),
     ...projectFindings(input),
     ...shellHistoryFindings(input),
   ];

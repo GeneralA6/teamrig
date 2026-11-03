@@ -8,6 +8,7 @@ import { teamConfigOf, teamHomeOf, treeHarness } from '../testing/team-tree.ts';
 describe('teamrig doctor in a tree of teams', () => {
   it("flags its own tree's problems and a session name another team uses, not another tree's", async () => {
     const kit = await treeHarness();
+    await kit.holdSecretDeny();
     const config = (team: string, parent: string, names: Record<string, string> = {}) =>
       formatConfig({ configVersion: 1, team: { id: team, parent }, sessions: ['lead', 'x'], roles: { lead: 'lead' }, names });
     await kit.files.write(teamConfigOf('deep'), config('deep', 'ui', { x: 'app-alpha' }));

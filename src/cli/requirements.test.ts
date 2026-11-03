@@ -91,7 +91,9 @@ describe('team create and doctor tell the user what teamrig lacks', () => {
   });
 
   it('doctor counts each as a finding', async () => {
-    const result = await new CliHarness(TEAM).run(['doctor'], { requirements: lacking({ kind: 'git-missing' }) });
+    const kit = new CliHarness(TEAM);
+    await kit.holdSecretDeny();
+    const result = await kit.run(['doctor'], { requirements: lacking({ kind: 'git-missing' }) });
     assert.deepEqual(result.stdout, ['DOCTOR 1 finding(s), team app', `WARN requirement ${GIT_MISSING}`]);
   });
 });
