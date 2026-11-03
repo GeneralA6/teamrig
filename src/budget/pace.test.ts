@@ -7,6 +7,7 @@ import {
   dailyAllowancePct,
   dayPacePct,
   hasRoom,
+  holdsPastPart,
   nextConfiguredReset,
   paceLineOfWeek,
   paceLinePct,
@@ -246,6 +247,13 @@ describe('dayPacePct and hasRoom', () => {
     assert.equal(hasRoom({ usedPct: 2.9, pacePct: 3 }), true);
     assert.equal(hasRoom({ usedPct: 3, pacePct: 3 }), false);
     assert.equal(hasRoom({ usedPct: 0, pacePct: 0 }), false);
+  });
+
+  it('holds a session past its part only without room, with no in-day pace known, or under a cut', () => {
+    assert.equal(holdsPastPart({ usedPct: 2.9, pacePct: 3 }, false), false);
+    assert.equal(holdsPastPart({ usedPct: 3, pacePct: 3 }, false), true);
+    assert.equal(holdsPastPart(undefined, false), true);
+    assert.equal(holdsPastPart({ usedPct: 2.9, pacePct: 3 }, true), true);
   });
 });
 

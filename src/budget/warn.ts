@@ -7,7 +7,7 @@ import { budgetMarkOf, burstPromptLines, burstStopLines, type BurstMarks, type S
 import { cutClause, type Cut } from './cut.ts';
 import { formatEndTime, formatPct, noRoomText } from './format.ts';
 import { liftedLine, type Lift, type LiftNames } from './lift.ts';
-import { hasRoom, type PaceReading, type TeamDay } from './pace.ts';
+import { holdsPastPart, type PaceReading, type TeamDay } from './pace.ts';
 
 /**
  * The live budget warning, pure: from a session's use today and the team's pace, which line its
@@ -186,7 +186,8 @@ export function isPastDailyBudget(facts: BudgetFacts, extraPct = 0): boolean {
 
 /**
  * True when the session is past its daily budget while the team has no room today (its use at or past its in-day
- * pace, `hasRoom`), or while a leader's cut of it is in force: only then is it held, woken for urgent work alone and
+ * pace, `hasRoom`), or while a leader's cut of it is in force (`holdsPastPart`, by which `teamrig budget` names its
+ * holds too): only then is it held, woken for urgent work alone and
  * escalated as `budget.escalate` says (a cut escalates it whatever that says). While the team has room, a session past
  * its part uses room the others left, so no session waits while the week has room, unless its leader cut it to its
  * own part (T1616). A turn about to start counts as spent (`extraPct`, in % of the week), for the session and for the
@@ -195,7 +196,7 @@ export function isPastDailyBudget(facts: BudgetFacts, extraPct = 0): boolean {
  * seconds of pace, which the wake's turn would spend at once (T1322).
  */
 export function isHeld(facts: BudgetFacts, extraPct = 0): boolean {
-  return isPastDailyBudget(facts, extraPct) && (facts.cut !== undefined || !hasRoom({ ...facts.teamDay, usedPct: facts.teamDay.usedPct + extraPct }));
+  return isPastDailyBudget(facts, extraPct) && holdsPastPart({ ...facts.teamDay, usedPct: facts.teamDay.usedPct + extraPct }, facts.cut !== undefined);
 }
 
 /** The quiet hours the session is in; undefined outside them, or while its lift exempts it. */
