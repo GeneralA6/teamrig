@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { readEvents } from '../register/snapshot.ts';
-import { CliHarness, EVENTS_PATH, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
+import { APP, CLAUDE_SESSION, CliHarness, EVENTS_PATH, TEAM_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { ok } from '../testing/hired-team.ts';
 import { teamEventsOf, teamHomeOf, teamInboxOf, treeHarness } from '../testing/team-tree.ts';
 import { WakeAsks } from '../wake/asks.ts';
@@ -130,6 +130,47 @@ describe('teamrig owner next (T1298)', () => {
       assertRefused(await kit.run(['owner', 'next', 'T3', ...preview]), /^REFUSED T3 is dropped: only a task still to finish goes next/);
       assertRefused(await kit.run(['owner', 'next', 'T2', ...preview]), /^REFUSED T2 is next already: owner put it there; a Note tells alpha more/);
     }
+  });
+});
+
+/** What Claude Code sets for an agent's tool call, a script that call runs and a hook command. */
+const UNDER_CLAUDE_CODE: RunOptions = { env: { CLAUDECODE: '1' } };
+
+/** `/teamrig <args>` typed in the harness's tab: the plugin's mod runs it with Claude Code's own environment. */
+function typed(kit: CliHarness, args: string): Promise<CliResult> {
+  return kit.run(['hook', 'slash-command'], { stdin: JSON.stringify({ session_id: CLAUDE_SESSION, cwd: APP, args, origin: 'composer' }) });
+}
+
+describe('teamrig owner where Claude Code runs it (T1780)', () => {
+  it("refuses a Note and a Next under CLAUDECODE, writing nothing and telling nobody", async () => {
+    const kit = await team();
+    const before = kit.files.get(EVENTS_PATH);
+    assertRefused(
+      await kit.run(['owner', 'note', 'T1', '--text', 'ship it'], UNDER_CLAUDE_CODE),
+      /^REFUSED teamrig owner note acts as the owner, so it is refused where Claude Code runs it \(CLAUDECODE is set: an agent's tool call, a script it runs or a hook\); the owner presses Note in the pane or types \/teamrig owner note in a tab$/,
+    );
+    assertRefused(await kit.run(['owner', 'next', 'T1'], UNDER_CLAUDE_CODE), /^REFUSED teamrig owner next acts as the owner, .*; the owner presses Next in the pane or types \/teamrig owner next in a tab$/);
+    assert.equal(kit.files.get(EVENTS_PATH), before);
+    assert.deepEqual([...(await inboxOf(kit, 'alpha')), ...(await inboxOf(kit, 'lead'))], []);
+    assert.deepEqual([...(await asksOf(kit, 'alpha')), ...(await asksOf(kit, 'lead'))], []);
+  });
+
+  it('still previews a Next, which writes nothing, and takes an empty CLAUDECODE as unset', async () => {
+    const kit = await team();
+    const preview = ok(await kit.run(['owner', 'next', 'T1', '--preview'], UNDER_CLAUDE_CODE));
+    assert.match(preview.stdout.join('\n'), /^PREVIEW owner next T1: goes to the top of alpha's list/);
+    ok(await kit.run(['owner', 'note', 'T1', '--text', 'ship it'], { env: { CLAUDECODE: '' } }));
+    assert.deepEqual(lastEventOf(kit), ['owner', 'update', 'ship it']);
+  });
+
+  it('writes a Note and a Next the owner types as /teamrig in a tab', async () => {
+    const kit = await team();
+    const noted = ok(await typed(kit, 'owner note T1 --text "the demo is at noon"'));
+    assert.match(noted.stdout.join('\n'), /^NOTED T1 /);
+    assert.deepEqual(lastEventOf(kit), ['owner', 'update', 'the demo is at noon']);
+    const next = ok(await typed(kit, 'owner next T1'));
+    assert.match(next.stdout.join('\n'), /^NEXT T1 open, p2, pinned, /);
+    assert.deepEqual(await asksOf(kit, 'alpha'), [['owner', ownerNextLine('owner', 'T1')]]);
   });
 });
 

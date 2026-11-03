@@ -44,6 +44,11 @@ export const ENV = {
   claudeSessionKind: 'CLAUDE_CODE_SESSION_KIND',
   /** Set (`1`), Claude Code stops writing the terminal tab's title and leaves it to hooks: tab status needs it. */
   claudeTitleOff: 'CLAUDE_CODE_DISABLE_TERMINAL_TITLE',
+  /**
+   * `1` in what Claude Code starts for the agent: its Bash and PowerShell tools, the scripts they run, hook commands,
+   * the status line. The plugin's mod runs commands with Claude Code's own environment, which lacks it.
+   */
+  claudeCode: 'CLAUDECODE',
 } as const;
 
 export type Env = Readonly<Record<string, string | undefined>>;
