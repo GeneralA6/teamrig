@@ -196,6 +196,53 @@ describe('hook restore-track: the login', () => {
   });
 });
 
+/** The restore log's API error lines, each without its time. */
+async function apiErrorLines(kit: CliHarness): Promise<string[]> {
+  const text = (await kit.files.read(restoreLogPath(KIT))) ?? '';
+  return text
+    .split('\n')
+    .filter((line) => line.includes(' api-error: '))
+    .map((line) => line.slice(line.indexOf(' ') + 1));
+}
+
+/** A tab whose turn failed on `code`, its entry then given `retries` retries by the wake check. */
+async function retriedTab(kit: CliHarness, code: string, retries: number): Promise<void> {
+  await track(kit, payload('StopFailure', { error: code }));
+  const entry = await entryOf(kit);
+  assert.ok(entry?.apiError !== undefined, 'the failed turn records its error');
+  await new RestoreRegistry(kit.files, restoreSessionsDir(KIT)).write({ ...entry, apiError: { ...entry.apiError, retries, retriedAt: kit.clock.now() } });
+}
+
+describe('hook restore-track: a transient API error', () => {
+  it('logs the tab left for the person when its turn fails again after the last retry', async () => {
+    const kit = new CliHarness();
+    await retriedTab(kit, 'server_error', 3);
+    assert.deepEqual(await apiErrorLines(kit), [], 'the first failure is for the wake check to retry');
+    kit.clock.advance(MS_PER_HOUR);
+    await track(kit, payload('StopFailure', { error: 'server_error' }));
+    assert.deepEqual(await apiErrorLines(kit), [`api-error: gave up on ${TAB}: its turn ended on server_error after 3 retries`]);
+    assert.deepEqual((await entryOf(kit))?.apiError, { code: 'server_error', failedAt: kit.clock.now(), retries: 3, retriedAt: kit.clock.now() - MS_PER_HOUR });
+  });
+
+  it('logs nothing while a retry is left, for an error no retry cures, or at a good turn end', async () => {
+    const cases: ReadonlyArray<readonly [string, number, string]> = [
+      ['overloaded', 2, 'StopFailure'],
+      ['rate_limit', 3, 'StopFailure'],
+      ['server_error', 3, 'Stop'],
+    ];
+    for (const [code, retries, next] of cases) {
+      const kit = new CliHarness();
+      await retriedTab(kit, code, retries);
+      await track(kit, payload(next, next === 'Stop' ? { stop_hook_active: false } : { error: code }));
+      assert.deepEqual(await apiErrorLines(kit), [], `${code} after ${retries} retries, then ${next}`);
+    }
+    const kit = new CliHarness();
+    await retriedTab(kit, 'server_error', 3);
+    await track(kit, payload('Stop', { stop_hook_active: false }));
+    assert.equal((await entryOf(kit))?.apiError, undefined, 'a good turn clears the count');
+  });
+});
+
 const PROBE_FILE = dayProbePath(KIT);
 
 /** A day-start probe `tab` claimed just now, with no reply yet. */

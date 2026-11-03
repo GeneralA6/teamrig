@@ -4,6 +4,7 @@ import { ID_PATTERN } from '../../core/ids.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
 import { dayProbePath, dayProbeReleaseLine, type DayProbeReply } from '../../restore/day-probe.ts';
 import { DayProbeStore } from '../../restore/day-probe-store.ts';
+import { apiGaveUpLine, apiRetriesSpentOn } from '../../restore/api-error.ts';
 import { applyEvent, type TrackEvent, type TrackFacts } from '../../restore/entry.ts';
 import { AUTH_FAILED, LOGIN_LOCK, loginLogLine, loginMarkerPath, type LoginEvent } from '../../restore/login.ts';
 import { LoginStore } from '../../restore/login-store.ts';
@@ -54,14 +55,22 @@ function envId(runtime: CliRuntime, name: string): string | undefined {
   return value !== undefined && ID_PATTERN.test(value) ? value : undefined;
 }
 
-/** Writes the event into its session's restore entry, or removes the entry at an end the person chose. */
+/**
+ * Writes the event into its session's restore entry, or removes the entry at an end the person chose. A turn that
+ * failed on a transient API error with every retry spent (src/restore/api-error.ts) is logged as left for the person.
+ */
 async function trackEntry(event: TrackEvent, facts: TrackFacts, runtime: CliRuntime, kitHome: string): Promise<void> {
   const registry = new RestoreRegistry(runtime.files, restoreSessionsDir(kitHome));
   const change = applyEvent(await registry.read(facts.claudeSession), event, facts);
   switch (change.kind) {
-    case 'write':
+    case 'write': {
       await registry.write(change.entry);
+      const spentOn = event.kind === 'error' ? apiRetriesSpentOn(change.entry) : undefined;
+      if (spentOn !== undefined) {
+        await runtime.files.append(restoreLogPath(kitHome), `${new Date(facts.at).toISOString()} ${apiGaveUpLine(tabLabelOf(facts), spentOn)}\n`);
+      }
       return;
+    }
     case 'remove':
       await registry.remove(facts.claudeSession);
       return;
@@ -205,7 +214,8 @@ export async function trackRestore(payload: unknown, runtime: CliRuntime): Promi
  * login (`<kit home>/restore/login.json`): which tabs a turn that ended on Login expired left stuck, and when a
  * good turn showed the login works again; the first failure of an expiry pages the owner through the webhook the
  * team's `alerts.pageWebhookFile` or `alerts.pageWebhookEnv` names. A good turn end also releases the day-start probe
- * (`<kit home>/restore/day-probe.json`), as does the probe tab's tool end. It prints nothing, and on any
+ * (`<kit home>/restore/day-probe.json`), as does the probe tab's tool end. A turn that failed on a transient API error
+ * after the wake check's last retry logs `api-error: gave up on <tab>` to the restore log. It prints nothing, and on any
  * error it exits 0 having written nothing: a tracker must never hold up a turn.
  */
 export async function restoreTrack(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
