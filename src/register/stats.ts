@@ -170,6 +170,32 @@ export interface Split {
   readonly tasks: number;
 }
 
+/** A task behind a count, as the team that holds it now folds it. */
+export interface StatsTask {
+  readonly team: string;
+  readonly task: Task;
+}
+
+/**
+ * The tasks behind the counts the Health tiles read (T1864), so a press on a tile lists the very tasks it counts and
+ * never a copy of its filter, which would drift from the count beside it. Each list holds the folded tasks, no copies:
+ * in the order the teams were handed in, each team's in the order its tasks were created, but where a list says other.
+ */
+export interface StatsTasks {
+  /** The active tasks now: {@link RegisterStats.active} summed. */
+  readonly active: readonly StatsTask[];
+  /** The tasks created in the range: {@link RegisterStats.opened}. */
+  readonly opened: readonly StatsTask[];
+  /** The tasks done or dropped now whose close fell in the range: {@link RegisterStats.closedTasks}. */
+  readonly closed: readonly StatsTask[];
+  /** The active tasks past their due date now, the longest past first: the overdue count of {@link RegisterStats.all}. */
+  readonly overdue: readonly StatsTask[];
+  /** The p1 ones of `overdue`, in its order: its p1 count. */
+  readonly overdueP1: readonly StatsTask[];
+  /** The tasks waiting, or whose proof waits, on the owner, the oldest wait first: {@link WaitStats.ownerDecisions}. */
+  readonly ownerDecisions: readonly StatsTask[];
+}
+
 export interface RegisterStats {
   readonly range: StatsRange;
   readonly days: readonly StatsDay[];
@@ -204,6 +230,7 @@ export interface RegisterStats {
   readonly people: readonly PersonDone[];
   /** Oldest first. */
   readonly splits: readonly Split[];
+  readonly tasks: StatsTasks;
 }
 
 const TOP_PRIORITY = 1;
@@ -228,10 +255,8 @@ interface BandLimit {
 }
 
 /** A task as one team holds it, with that team's lead. */
-interface Held {
-  readonly team: string;
+interface Held extends StatsTask {
   readonly lead: string | null;
-  readonly task: Task;
 }
 
 interface FoldedTeam {
@@ -272,22 +297,25 @@ export function registerStats(input: StatsInput): RegisterStats {
   const dueMoved = teams.reduce((count, team) => count + sweep(team, series, clock.window), 0);
   const days = series.days(input.limits ?? []);
   const tasks = held.map((each) => each.task);
-  const active = tasks.filter((task) => isActive(task.status));
+  const activeHeld = held.filter((each) => isActive(each.task.status));
+  const active = activeHeld.map((each) => each.task);
   const created = held.filter((each) => within(clock.window, each.task.createdAt));
-  const closed = tasks.filter((task) => closedIn(task, clock.window));
+  const closedHeld = held.filter((each) => closedIn(each.task, clock.window));
   const done = held.filter((each) => doneIn(each.task, clock.window));
+  const overdue = overdueOf(held, clock);
+  const onOwner = ownerWaitsOf(activeHeld, ownerMarker);
   const recent = dayWindow(today - (RECENT_DAYS - 1) * MS_PER_DAY, today, zone);
   return {
     range: input.range,
     days,
     opened: created.length,
-    closedTasks: closed.length,
-    droppedTasks: closed.filter((task) => task.status === 'dropped').length,
-    net: created.length - closed.length,
+    closedTasks: closedHeld.length,
+    droppedTasks: closedHeld.filter((each) => each.task.status === 'dropped').length,
+    net: created.length - closedHeld.length,
     closes: days.reduce((sum, day) => sum + day.done + day.dropped, 0),
     recent: { days: RECENT_DAYS, net: tasks.filter((task) => within(recent, task.createdAt)).length - tasks.filter((task) => closedIn(task, recent)).length },
     active: activeRecord((status) => active.filter((task) => task.status === status).length),
-    all: teamPart(held, clock),
+    all: teamPart(held, clock, overdue),
     teams: teams.filter((team) => session === undefined || team.team === session.team).map((team) => ({ team: team.team, ...teamPart(team.held, clock) })),
     newWork: newWork(created, ownerMarker),
     activeByAge: banded(
@@ -300,7 +328,7 @@ export function registerStats(input: StatsInput): RegisterStats {
       LATE_BANDS,
     ),
     dueMoved,
-    waits: waitStats(active, ownerMarker, now),
+    waits: waitStats(active, onOwner, now),
     bugs: {
       active: active.filter((task) => task.type === 'bug').length,
       opened: created.filter((each) => each.task.type === 'bug').length,
@@ -308,6 +336,14 @@ export function registerStats(input: StatsInput): RegisterStats {
     },
     people: people(done),
     splits: splitsOf(teams, zone),
+    tasks: {
+      active: activeHeld,
+      opened: created,
+      closed: closedHeld,
+      overdue,
+      overdueP1: overdue.filter((each) => each.task.priority === TOP_PRIORITY),
+      ownerDecisions: onOwner,
+    },
   };
 }
 
@@ -445,21 +481,34 @@ class DaySeries {
   }
 }
 
-function teamPart(held: readonly Held[], clock: Clock): TeamPart {
+/** A team's (or the whole set's) part; `overdue` is {@link overdueOf} the same tasks, handed in when already listed. */
+function teamPart(held: readonly Held[], clock: Clock, overdue: readonly Held[] = overdueOf(held, clock)): TeamPart {
   const tasks = held.map((each) => each.task);
   const done = tasks.filter((task) => doneIn(task, clock.window));
-  const overdue = tasks.filter((task) => {
-    const due = dueTime(task, clock.zone);
-    return isActive(task.status) && due !== undefined && due < clock.now;
-  });
   const withDue = dated(done, clock.zone);
   return {
     active: tasks.filter((task) => isActive(task.status)).length,
     leadTime: spread(done.map((task) => daysBetween(task.createdAt, task.statusAt))),
     cycleTime: spread(done.flatMap((task) => (task.startedAt === null ? [] : [daysBetween(task.startedAt, task.statusAt)]))),
-    overdue: { count: overdue.length, p1: overdue.filter((task) => task.priority === TOP_PRIORITY).length },
+    overdue: { count: overdue.length, p1: overdue.filter((each) => each.task.priority === TOP_PRIORITY).length },
     due: { total: withDue.length, onTime: withDue.filter(({ closedAt, due }) => closedAt <= due).length },
   };
+}
+
+/** The active tasks past their due date now, the longest past first; a tie keeps the fold's order. */
+function overdueOf(held: readonly Held[], clock: Clock): Held[] {
+  return held
+    .flatMap((each) => {
+      const due = dueTime(each.task, clock.zone);
+      return isActive(each.task.status) && due !== undefined && due < clock.now ? [{ each, due }] : [];
+    })
+    .sort((a, b) => a.due - b.due)
+    .map(({ each }) => each);
+}
+
+/** The active tasks waiting, or whose proof waits, on the owner, the oldest wait first; a tie keeps the fold's order. */
+function ownerWaitsOf(active: readonly Held[], ownerMarker: string): Held[] {
+  return active.filter((each) => waitsOnOwner(each.task, ownerMarker)).sort((a, b) => Date.parse(a.task.statusAt) - Date.parse(b.task.statusAt));
 }
 
 function newWork(created: readonly Held[], ownerMarker: string): NewWork {
@@ -491,7 +540,8 @@ function sourceOf({ task, lead }: Held, ownerMarker: string): WorkSource {
   return task.source === GITHUB_SOURCE ? 'github' : 'session';
 }
 
-function waitStats(active: readonly Task[], ownerMarker: string, now: number): WaitStats {
+/** The waits of the active tasks; `onOwner` is {@link ownerWaitsOf} them, the oldest first. */
+function waitStats(active: readonly Task[], onOwner: readonly Held[], now: number): WaitStats {
   const waiting = active.filter((task) => task.status === 'waiting');
   const byKind: Record<WaitKind, number> = { decision: 0, approval: 0, task: 0, time: 0 };
   for (const task of waiting) {
@@ -499,8 +549,8 @@ function waitStats(active: readonly Task[], ownerMarker: string, now: number): W
       byKind[kind] += 1;
     }
   }
-  const onOwner = active.filter((task) => waitsOnOwner(task, ownerMarker));
-  const oldestDays = onOwner.reduce<number | null>((oldest, task) => Math.max(oldest ?? 0, (now - Date.parse(task.statusAt)) / MS_PER_DAY), null);
+  const oldest = onOwner[0];
+  const oldestDays = oldest === undefined ? null : Math.max(0, (now - Date.parse(oldest.task.statusAt)) / MS_PER_DAY);
   return { waiting: waiting.length, byKind, ownerDecisions: { count: onOwner.length, oldestDays } };
 }
 

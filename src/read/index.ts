@@ -70,8 +70,9 @@ export {
 } from '../register/owner-waits.ts';
 
 // The register's numbers over time (T1771): each day's flow, new work by source, lead and cycle times, due-date hits,
-// waits, bugs and done per session for a team tree and a range, and the Health tiles over them with their levels, as
-// `teamrig stats` prints them. The owner marker is the config's `register.ownerSource`.
+// waits, bugs and done per session for a team tree and a range, the tasks behind the Health counts (T1864), and the
+// Health tiles over them with their levels, as `teamrig stats` prints them. The owner marker is the config's
+// `register.ownerSource`.
 export {
   isActive,
   isStatsRange,
@@ -93,6 +94,8 @@ export {
   type StatsInput,
   type StatsRange,
   type StatsScope,
+  type StatsTask,
+  type StatsTasks,
   type StatsTeam,
   type TeamPart,
   type TeamStats,
