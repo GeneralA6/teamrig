@@ -7,8 +7,8 @@ import { planLine, totalLine, wideAllowText, writeLine } from './report.ts';
 import type { SettingsFile } from './settings-scope.ts';
 import { planFile, rewritesOf, type FilePlan } from './trim.ts';
 
-/** A value a rule can hold; no line may carry it. */
-const HELD_VALUE = 'postgres://user:hunter22@db.example.net';
+/** A value a rule can hold; no line may carry it. Joined, so no source line holds a URL the secret redactor catches. */
+const HELD_VALUE = ['postgres://user:', 'hunter22', '@db.example.net'].join('');
 const KEEP = new KeepList(['Bash(kubectl get *)', 'WebSearch']);
 const SECRETS = new SecretScanner();
 const SHARED: SettingsFile = { path: join('/repo', '.claude', 'settings.json'), kind: 'shared' };

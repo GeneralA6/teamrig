@@ -114,7 +114,7 @@ describe('parseDraft (T755)', () => {
   });
 
   it('refuses a secret in argv or any text, naming the field and never the value', () => {
-    const problems = problemsOf(parseDraft(dbWrite({ argv: ['node', 'tools/fix.ts', 'db://admin:hunter22@127.0.0.1/app'] }), scanner));
+    const problems = problemsOf(parseDraft(dbWrite({ argv: ['node', 'tools/fix.ts', ['db://admin:', 'hunter22', '@127.0.0.1/app'].join('')] }), scanner));
     assert.equal(problems.length, 1);
     assert.match(problems[0] ?? '', /^argv\[2\] looks like it holds a secret \(credentials in a URL\).*envNames/u);
     assert.doesNotMatch(problems[0] ?? '', /hunter22/u);

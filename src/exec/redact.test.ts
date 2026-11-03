@@ -30,7 +30,7 @@ describe('redact', () => {
   });
 
   it("blanks a URL's user part and keeps its host", () => {
-    assert.equal(redact('to db://app:pw1234@dbhost:5432/app', [], SCANNER), 'to db://[redacted]@dbhost:5432/app');
+    assert.equal(redact(['to db://app:', 'pw1234', '@dbhost:5432/app'].join(''), [], SCANNER), 'to db://[redacted]@dbhost:5432/app');
     assert.equal(redact('clone https://tok123@githost/r', [], SCANNER), 'clone https://[redacted]@githost/r');
   });
 

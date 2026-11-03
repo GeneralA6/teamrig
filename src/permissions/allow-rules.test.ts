@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { SecretScanner } from '../core/secrets.ts';
 import { countOf, formatCounts, holdsCredential, isToolWide, KeepList, mergeCounts, normalRule, planAllowTrim, ruleClass } from './allow-rules.ts';
 
-/** A value a rule can hold; no output may carry it. */
-const HELD_VALUE = 'postgres://user:hunter22@db.example.net';
+/** A value a rule can hold; no output may carry it. Joined, so no source line holds a URL the secret redactor catches. */
+const HELD_VALUE = ['postgres://user:', 'hunter22', '@db.example.net'].join('');
 /** A password assignment, joined here so no source line holds one. */
 const ASSIGNED = ['PGPASSWORD', 'hunter22'].join('=');
 const SECRETS = new SecretScanner();

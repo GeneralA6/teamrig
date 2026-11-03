@@ -5,8 +5,8 @@ import { formatConfig } from '../config/load.ts';
 import { CliHarness, APP, USER_HOME, type RunOptions } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
 
-/** A value a rule can hold; no output may carry it. */
-const HELD_VALUE = 'postgres://user:hunter22@db.example.net';
+/** A value a rule can hold; no output may carry it. Joined, so no source line holds a URL the secret redactor catches. */
+const HELD_VALUE = ['postgres://user:', 'hunter22', '@db.example.net'].join('');
 const STATE = join('/', 'state');
 const BACKUPS = join(STATE, 'teamrig', 'permissions-backups', '20300108T100000Z');
 const USER = join(USER_HOME, '.claude', 'settings.json');
