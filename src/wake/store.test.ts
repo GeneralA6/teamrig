@@ -67,12 +67,14 @@ describe('wake log', () => {
     await logWake(files, path, { kind: 'dropped', at, session: 'alpha', tab: 'tab-1', reason: 'blocked by a hook' });
     const cold = { w: 210_000, cold: true, weekPct: undefined };
     await logWake(files, path, { kind: 'wake', at, session: 'alpha', tab: 'tab-1', ids: ['T3'], cost: cold, moments: ['day-start', 'burst'] });
+    await logWake(files, path, { kind: 'wake', at, session: 'alpha', tab: 'tab-1', ids: [], cost: cold, retry: 'login' });
     const lines = (await files.read(path))?.trimEnd().split('\n').map((line): unknown => JSON.parse(line));
     assert.deepEqual(lines, [
       { v: 1, at: '2030-01-08T10:00:00.000Z', kind: 'wake', session: 'alpha', tab: 'tab-1', ids: ['T1'], w: 27_000, cold: false, weekPct: 0.003 },
       { v: 1, at: '2030-01-08T10:00:00.000Z', kind: 'wake', session: 'alpha', tab: 'tab-1', ids: ['T2'], w: 210_000, cold: true },
       { v: 1, at: '2030-01-08T10:00:00.000Z', kind: 'dropped', session: 'alpha', tab: 'tab-1', reason: 'blocked by a hook' },
       { v: 1, at: '2030-01-08T10:00:00.000Z', kind: 'wake', session: 'alpha', tab: 'tab-1', ids: ['T3'], w: 210_000, cold: true, moments: ['day-start', 'burst'] },
+      { v: 1, at: '2030-01-08T10:00:00.000Z', kind: 'wake', session: 'alpha', tab: 'tab-1', ids: [], w: 210_000, cold: true, retry: 'login' },
     ]);
     assert.equal(formatWakeRecord({ kind: 'dropped', at, session: 'a', tab: 't', reason: 'r' }).endsWith('\n'), true);
   });

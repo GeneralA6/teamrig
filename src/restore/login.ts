@@ -273,6 +273,11 @@ export function loginLogLine(note: LoginNote, tab: string, marker: LoginMarker):
   }
 }
 
+/** The restore log's line for a stuck tab's retry: `tab` names the tab, `why` the sign it acts on. */
+export function loginRetryLine(tab: string, why: LoginRetryWhy): string {
+  return why === 'recovered' ? `login: retried ${tab}, the login works again` : `login: retried ${tab}, which tests the renewed login`;
+}
+
 function isoOf(ms: number): string {
   return new Date(ms).toISOString();
 }

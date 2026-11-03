@@ -115,7 +115,8 @@ export class WakeStore {
 
 /**
  * One line of the wake log: a wake submitted, for work handed to the session, with `asks` for that many urgent lines
- * (src/wake/asks.ts), or with `moments` for the day's moments (src/wake/day-start.ts); or one Claude Code dropped.
+ * (src/wake/asks.ts), with `moments` for the day's moments (src/wake/day-start.ts), or with `retry` for a turn sent
+ * again after it ended on an expired login (src/wake/login-retry.ts); or one Claude Code dropped.
  */
 export type WakeRecord =
   | {
@@ -127,6 +128,7 @@ export type WakeRecord =
       readonly cost: WakeCost;
       readonly asks?: number;
       readonly moments?: readonly DayMomentKind[];
+      readonly retry?: 'login';
     }
   | { readonly kind: 'dropped'; readonly at: number; readonly session: string; readonly tab: string; readonly reason: string };
 
@@ -148,6 +150,7 @@ export function formatWakeRecord(record: WakeRecord): string {
     ...(cost.weekPct === undefined ? {} : { weekPct: cost.weekPct }),
     ...(record.asks === undefined ? {} : { asks: record.asks }),
     ...(record.moments === undefined ? {} : { moments: [...record.moments] }),
+    ...(record.retry === undefined ? {} : { retry: record.retry }),
   });
 }
 
