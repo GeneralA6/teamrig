@@ -266,7 +266,8 @@ SAVINGS ~451 tokens/turn if every CONTEXT, DUPLICATE and UNUSED finding is appli
   plugin's, has no folder of yours to park: turn it off in `/skills`. An agent type no `Agent` call ran is parked the
   same way, its file in `agents-parked/` beside its agents folder. A skill or agent type in your user folders that
   only sessions in other projects used (`other-project-skill`, `other-project-agent`) costs every session here for
-  nothing: move it into those projects' `.claude/skills` or `.claude/agents`.
+  nothing: move it into those projects' `.claude/skills` or `.claude/agents`. A session in a Claude Code worktree
+  (`<repo>/.claude/worktrees/<name>`) counts as one in its repo.
 - `OVERRIDE` counts the lines [`rules scan`](#local-rules-that-say-otherwise) lists to judge, and prints the first 10
   to start from: lines every session loads unasked first, then those naming teamrig or telling a session what to do.
   Words only order them; `rules scan` judges each line. `SETTINGS` counts the wide allow rules

@@ -3286,7 +3286,8 @@ tokens a turn applying it saves:
   folders that no `Agent` call ran is judged the same way (`unused-agent`), by the transcripts alone. A skill or
   agent type in your user folders that only sessions started in other projects used is a U line too
   (`other-project-skill`, `other-project-agent`): every session here lists it for nothing, so the line names up to
-  two of those projects' folders, to move it into their `.claude/skills` or `.claude/agents`. It is judged only once
+  two of those projects' folders, to move it into their `.claude/skills` or `.claude/agents`. A session started in a
+  Claude Code worktree (`<repo>/.claude/worktrees/<name>`) counts as one started in its repo. It is judged only once
   a transcript read started in this project or a folder below it; until then the UNUSED line counts it as not judged.
 
 Under the SCAN line, `BACKUP <stamp>, made <age> ago` names the newest finished `setup backup` of the same setup
