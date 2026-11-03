@@ -55,13 +55,17 @@ export interface RestoreEntry {
  */
 export const TOOL_END_WRITE_MS = 5 * MS_PER_MINUTE;
 
-/** A hook event, as the tracker reads it. A tool's end (`tool`) in the main thread says the session is in a turn; a helper's says only that its hooks run. */
+/**
+ * A hook event, as the tracker reads it. A tool's end (`tool`) in the main thread says the session is in a turn; a
+ * helper's says only that its hooks run. A turn that failed (`error`) carries the API error it ended on
+ * (src/restore/turn-error.ts); undefined when neither the payload nor the transcript names one.
+ */
 export type TrackEvent =
   | { readonly kind: 'start' }
   | { readonly kind: 'working' }
   | { readonly kind: 'tool'; readonly mainThread: boolean }
   | { readonly kind: 'ready' }
-  | { readonly kind: 'error' }
+  | { readonly kind: 'error'; readonly code: string | undefined }
   | { readonly kind: 'end'; readonly reason: string | undefined };
 
 /** What an event tells about its session; undefined where it does not say. */

@@ -3,10 +3,8 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { MS_PER_DAY, MS_PER_MINUTE } from '../core/time.ts';
 import { fieldPaths } from '../testing/field-paths.ts';
-import { apiErrorLine, promptLine, textLine, transcript } from '../testing/transcript-lines.ts';
 import {
   applyLoginEvent,
-  authFailureOf,
   claimPage,
   claudeCredentialsPath,
   decideLoginRetry,
@@ -57,32 +55,9 @@ function written(change: LoginChange): Extract<LoginChange, { kind: 'write' }> {
   return change;
 }
 
-/** A tail reader that fails the spec when the decision should not have read the transcript. */
-async function noTail(): Promise<string | undefined> {
-  return assert.fail('the payload decides; the transcript is not read');
-}
-
 describe('login marker', () => {
   it('sits beside the restore sessions folder of its kit home', () => {
     assert.equal(loginMarkerPath(join('/', 'kit')), join('/', 'kit', 'restore', 'login.json'));
-  });
-
-  it("takes the payload's error over the transcript", async () => {
-    assert.equal(await authFailureOf({ error: 'authentication_failed' }, noTail), true);
-    assert.equal(await authFailureOf({ error: 'overloaded' }, noTail), false);
-  });
-
-  it("falls back to the transcript's last assistant record when the payload names no error", async () => {
-    const failedTurn = transcript([promptLine('2030-01-08T06:00:00Z'), apiErrorLine('2030-01-08T06:00:14Z', TAB_A)]);
-    assert.equal(await authFailureOf({}, async () => failedTurn), true);
-    // A torn first line, as a tail cut mid-record leaves it, is skipped.
-    assert.equal(await authFailureOf({}, async () => `ssistant","error":"x"}\n${failedTurn}`), true);
-    const otherError = transcript([apiErrorLine('2030-01-08T06:00:14Z', TAB_A, 'server_error', 'API Error: 500')]);
-    assert.equal(await authFailureOf({}, async () => otherError), false);
-    // An old failure the model answered after is not this turn's.
-    const answeredSince = transcript([apiErrorLine('2030-01-08T06:00:14Z', TAB_A), promptLine('2030-01-08T08:20:00Z'), textLine('u2', ['done'])]);
-    assert.equal(await authFailureOf({}, async () => answeredSince), false);
-    assert.equal(await authFailureOf({}, async () => undefined), false);
   });
 
   it('starts an expiry at the first auth failure and strands its tab', () => {
