@@ -84,6 +84,7 @@ function created(id, fields, at, by) {
         reparks: 0,
         followups: [],
         review: {},
+        sizeBase: null,
         startedAt: null,
         createdAt: at,
         createdBy: by,
@@ -135,16 +136,29 @@ function reparksAfter(task, event) {
  * note what the lead checked (T684). An update's `waits` (a Later, T1295, or a Decided, T1366) replace a waiting or
  * verifying task's, so the time the owner put it off to is one of its waits, or the owner's wait is gone; a Decided
  * marks the task `decided`. On a task in any other status they mean nothing. A pin holds for the owner it was set for:
- * handing the task on clears it, unless the same update pins it (T637).
+ * handing the task on clears it, unless the same update pins it (T637). An update that gives a size, or clears it,
+ * gives its size base too (T649).
  */
-function withChanges(task, { changes, note, at, by, verdict, waits, decided }) {
+function withChanges(task, { changes, note, at, by, verdict, waits, decided, sizeBase }) {
     const priorityAt = changes.priority === undefined || changes.priority === task.priority ? task.priorityAt : at;
     const shown = note !== null && by === task.owner ? note : task.note;
     const answer = verdict === undefined ? task.answer : { verdict, by, at, note };
     const waitable = WAIT_STATUSES.includes(task.status);
     const kept = waits !== undefined && waitable ? waits : task.waits;
     const decision = decided === true && waitable ? { by, at, note } : task.decided;
-    const next = { ...task, ...changes, note: shown, answer, decided: decision, waits: kept, updatedAt: at, updatedBy: by, priorityAt };
+    const base = changes.size === undefined ? task.sizeBase : (sizeBase ?? null);
+    const next = {
+        ...task,
+        ...changes,
+        note: shown,
+        answer,
+        decided: decision,
+        waits: kept,
+        sizeBase: base,
+        updatedAt: at,
+        updatedBy: by,
+        priorityAt,
+    };
     if (next.owner !== task.owner) {
         return { ...next, pin: changes.pin ?? null, assignedAt: at, ownerSeenAt: by === next.owner ? at : null };
     }

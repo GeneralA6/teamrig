@@ -50,7 +50,7 @@ import { loadTree, skillOwnersElsewhere } from "../tree.js";
 import { readBursts } from "../burst-reading.js";
 import { readScaleOutBudget } from "../hire-cost.js";
 import { readWPerPct } from "../stored-week.js";
-import { readTaskSpend } from "../task-spend.js";
+import { readSizeBase, readTaskSpend } from "../task-spend.js";
 import { taskFilesLine } from "../task-files.js";
 import { readContextInput } from "./doctor.js";
 import { inboxDepsOf } from "./inbox.js";
@@ -572,7 +572,8 @@ export async function update(args, runtime) {
         return report(runtime, await team.register.defer(by, id, later, args.flags.get('note')), 'UPDATED', team);
     }
     const changes = { ...changesOf(args.flags, typedTimes(runtime, team.zone)), ...criticalOf(args.switches), ...pinOf(args.switches, by) };
-    const verdict = await team.register.update(by, id, changeIds(team.roster, changes), args.flags.get('note'));
+    const sizeBase = typeof changes.size === 'number' ? await readSizeBase(runtime, team.paths, team.config.sessions, id, runtime.clock.now()) : undefined;
+    const verdict = await team.register.update(by, id, changeIds(team.roster, changes), args.flags.get('note'), sizeBase);
     const code = report(runtime, verdict, 'UPDATED', team);
     await tellNewOwner(runtime, team, by, verdict);
     return code;

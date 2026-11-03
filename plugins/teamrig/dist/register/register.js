@@ -120,7 +120,12 @@ export class Register {
         }
         return { ok: true, value: { ...written.value, asked } };
     }
-    update(caller, id, changes, note) {
+    /**
+     * `update <id>`: the changes the policy lets the caller make. `sizeBase` is what the task had cost today when the
+     * caller read it (T649): the event carries it only when it gives the task a size, so OVER-SIZE counts what it spends
+     * after that size was set.
+     */
+    update(caller, id, changes, note, sizeBase) {
         return this.asCaller(caller, async () => {
             const goalTags = await this.goalTagsFor(changes.goals);
             return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => {
@@ -128,7 +133,8 @@ export class Register {
                 if (!change.ok) {
                     return change;
                 }
-                const event = { ...this.base(id, caller), type: 'update', ...change.value };
+                const sized = typeof change.value.changes.size === 'number' && sizeBase !== undefined;
+                const event = { ...this.base(id, caller), type: 'update', ...change.value, ...(sized ? { sizeBase } : {}) };
                 const { pin, owner } = change.value.changes;
                 const unpins = typeof pin === 'string' ? this.unpins(task, owner ?? task.owner, caller, snapshot.state) : [];
                 return { ok: true, value: [...unpins, event] };
