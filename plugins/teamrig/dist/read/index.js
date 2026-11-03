@@ -29,8 +29,9 @@ export { allReady, isReady, unfinishedAfter, WAIT_KINDS, waitContext, waitsText,
 // owner marker is the config's `register.ownerSource`, `requireGate` its `register.requireDecisionCard`.
 export { asksOwner, deferredUntil, isUngated, ownerCardsBySession, ownerLater, waitsOnOwner, } from "../register/owner-waits.js";
 // The register's numbers over time (T1771): each day's flow, new work by source, lead and cycle times, due-date hits,
-// waits, bugs and done per session for a team tree and a range, and the Health tiles over them with their levels, as
-// `teamrig stats` prints them. The owner marker is the config's `register.ownerSource`.
+// waits, bugs and done per session for a team tree and a range, the tasks behind the Health counts (T1864), and the
+// Health tiles over them with their levels, as `teamrig stats` prints them. The owner marker is the config's
+// `register.ownerSource`.
 export { isActive, isStatsRange, RECENT_DAYS, registerStats, STATS_ACTIVE_STATUSES, STATS_RANGES, WORK_SOURCES, } from "../register/stats.js";
 export { HEALTH_LEVELS, HEALTH_THRESHOLDS, registerHealth, } from "../register/stats-health.js";
 // The inboxes (`inbox/<area>.md`) and their read marks (`inbox-marks.jsonl`).
