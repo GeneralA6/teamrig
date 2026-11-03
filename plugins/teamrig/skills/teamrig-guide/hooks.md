@@ -570,7 +570,8 @@ runs a Bash or PowerShell call, `hook exec-guard` reads it (a shell line as the 
 It always refuses and never asks; no config key turns it off. The guard reads only the call, so it cannot see:
 
 - a program the line starts that runs the CLI itself, such as a script the agent wrote, or a command another tool
-  runs (the Monitor tool): neither is a Bash or PowerShell call;
+  runs (the Monitor tool): neither is a Bash or PowerShell call. `owner note` and `owner next` still refuse their
+  writes there wherever Claude Code set `$CLAUDECODE`, unless that program clears it;
 
 - an older version left intact in the plugin cache: a line may start it, and it runs as that version was built;
 - the PATH a tab really has: it searches the hook's own, with `~/bin` before it for Bash, not the other folders Git
