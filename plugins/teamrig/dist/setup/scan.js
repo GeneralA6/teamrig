@@ -2,6 +2,7 @@ import { readSessionLists } from "../doctor/session-lists.js";
 import { scanRules } from "../rules/scan.js";
 import { readSessionContext } from "./scan-context.js";
 import { findDuplicates } from "./scan-duplicates.js";
+import { scanPluginHooks } from "./scan-plugin-hooks.js";
 import { scanSettings } from "./scan-settings.js";
 import { readTranscriptUse } from "./scan-usage.js";
 async function changedSince(files, listed, since) {
@@ -39,7 +40,7 @@ export async function scanSetup(ports, at) {
         duplicates: findDuplicates(context.files),
         overrides: rules.candidates.filter((candidate) => !at.cleared(candidate)),
         recorded: rules.recorded.length,
-        settings: await scanSettings(ports.files, at.claudeDir, at.settings, at.keep, at.secrets, usage.hooks),
+        settings: [...(await scanSettings(ports.files, at.claudeDir, at.settings, at.keep, at.secrets, usage.hooks)), ...(await scanPluginHooks(ports.files, at, usage.hooks, at.secrets))],
         usage,
         recent: await changedSince(ports.files, [...context.skills, ...context.agents], usage.since),
         doctor,
