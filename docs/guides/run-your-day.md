@@ -154,7 +154,9 @@ sequenceDiagram
   it can go on with (its own, of any priority, as above) and no turn since
   that time gets one wake that day, and so does each session in a burst once the lead starts it. A session that had
   a turn since is not woken; one in quiet hours or held by its budget, or with nothing it can start, is woken
-  once that changes. The wake log marks these wakes with `moments` (`day-start`, `burst`).
+  once that changes. The wake log marks these wakes with `moments` (`day-start`, `burst`). Each moment wakes one
+  tab first, to test the Claude login, and the others once it answers; while the login is expired, the moment waits
+  for a `/login` in any tab.
 - What it costs: a wake is a model turn whose first call re-reads the session's context, about 27k W while Claude
   Code's cache is warm and about 210k W once the session has been idle `messages.coldAfterMinutes` (60) or more, or
   when its transcript is not found. The prompt and a toast give the cost and its share of the week

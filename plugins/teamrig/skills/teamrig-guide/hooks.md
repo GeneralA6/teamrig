@@ -963,6 +963,29 @@ its sessions once when the lead starts it. A session that had a turn since is le
 its budget or nothing it can start delay the wake until they end. The prompt names the moment, the work and the
 cost; the wake log marks it with `moments`.
 
+The day start and the Claude login, which every tab of the machine shares (the
+[restore tracker](#every-session-the-restore-tracker) follows it): while the login is expired and nothing since its
+last failure says it may work, the day start wakes no one, and the moments stay due until Claude Code's stored
+credentials change (a `/login`, or a token refresh that worked) or a tab's answer shows the login works. With the
+login working too, a moment wakes its tabs through one probe for the whole kit home, `<home>/restore/day-probe.json`:
+the first tab due wakes alone, and the others wait for a reply that shows the login works, the first turn any tab
+ends with an answer after the claim or a tool the probe's own tab runs. A login that expired overnight then costs one
+failed turn, not a dozen stuck tabs. A waiting tab watches the probe's file and looks again each minute at the
+latest; a probe with no reply in 5 minutes goes to the next tab due, and a probe tab whose wake did not turn (a
+dropped prompt, or a restart that took it) claims it again with its first claim's time. Each claim and release is a
+line in `restore/restore.log`: `day-probe: claimed by <team>/<session> (<tab>) for the moment at <time>, <why>`, then
+`day-probe: released, <tab> ended a turn <n> s after the claim` (or `ran a tool`).
+
+A tab stuck on an expired login (its last turn ended on `Login expired`) is checked before all else, and its turn is
+sent on at a sign the login works. Once a tab's answer shows the login works again, every stuck tab is retried, 30
+seconds apart; while the login is still expired but the stored credentials changed after its last failure, one tab
+tests them and the others wait for its answer, or 5 minutes. A test that fails again moves the last failure past the
+change, so nothing retries until the credentials change again, and a tab is retried at most once per sign. The prompt
+names when its turn failed and the sign, and asks it to go on with that turn's work; its budget does not hold it,
+since the turn was spent on before it failed. The wake log marks the wake with `retry`, and `restore/restore.log`
+gets `login: retried <team>/<session> (<tab>), the login works again` (or `, which tests the renewed login`). Handed
+work can still wake a stuck tab while the login is expired: that turn fails at once on `Login expired`.
+
 ### Urgent lines
 
 An urgent line is an inbox line its sender also posts as a wake ask, one file under `state/wake-asks/<session>/`:
@@ -1185,7 +1208,9 @@ stays stuck until its own next answer, or for 2 days. The file is written under 
 fails a dozen tabs in the same second, and each change goes to `restore/restore.log`: `login: expired, <tab> ended
 its turn on Login expired`, one `login: <tab> ended its turn on Login expired` per other tab, then `login: works
 again, <tab> answered`, each with how many tabs are stuck. A lock still busy after 5 seconds skips the login for
-that turn, never the session's own file.
+that turn, never the session's own file. The [wake check](#the-mod-the-wake-on-urgent-work) sends each stuck tab's
+turn on once the login works, and the first reply after a day-start probe's claim (an answered turn end, or a tool
+the probe's own tab runs) releases that probe, logged as `day-probe: released`.
 
 The first failure of an expiry in a team's tab also pages the owner, once per expiry: one line naming the tab and the
 time on its team's clock, posted to the chat webhook of the tab's team or the first team above it that names one,

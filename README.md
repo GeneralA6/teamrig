@@ -146,7 +146,8 @@ once and Claude Code refuses the later edit, that member is sent back to redo it
 Tasks, notes and inboxes live on disk, so nothing is lost with a tab. After a reboot, `teamrig restore run` reopens
 each session the shutdown killed, in its folder and at its last effort, never one you or teamrig closed on purpose,
 and prompts the ones that were mid-turn to carry on; `teamrig restore install` runs it at each logon on Windows and
-adds a Start-menu shortcut, `Restore Claude Sessions`, that runs it by hand from anywhere. When a member's context
+adds a Start-menu shortcut, `Restore Claude Sessions`, that runs it by hand from anywhere. Tabs an expired Claude
+login stopped carry on by themselves once you `/login` in any tab. When a member's context
 runs long, it writes a handover; once it has work to go on with and is idle while you're away,
 teamrig restarts it after a 20-second countdown you can hold, and it carries on from the handover by itself.
 

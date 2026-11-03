@@ -5318,7 +5318,9 @@ running), and removes the file at an end the person or Claude Code chose. A comp
 At a turn's end it also records in `<home>/restore/login.json` which tabs a turn that ended on `Login expired` left
 stuck, and when a later answer showed the login works again, each change as a `login:` line in
 `<home>/restore/restore.log`. The first failure of an expiry in a team's tab pages the owner once, through the chat
-webhook its team or a team above it names in [alerts.pageWebhookFile] or [alerts.pageWebhookEnv].
+webhook its team or a team above it names in [alerts.pageWebhookFile] or [alerts.pageWebhookEnv]. The first reply
+after a day-start probe's claim (an answered turn end, or a tool the probe's own tab runs) releases the probe in
+`<home>/restore/day-probe.json`, so the tabs waiting on it wake.
 
 Flags: none.
 
@@ -5436,7 +5438,12 @@ since the session last touched it. Tasks handed within `wake.batchSeconds` wake 
 is `wake.batchSeconds` old, held by neither that gap nor its budget, and the wake is logged with `asks`. The first check in a tab takes the work already there as seen. With
 `wake.dayStartUtc` set, a session with work it can start (any priority) and no turn since that time gets one wake
 that day, and a burst it is in wakes it once when it starts; quiet hours or a spent daily budget only delay these.
-They are logged with `moments`. No session is woken while its automatic restart may still act (`refresh.autoRestart`),
+They are logged with `moments`. While the Claude login is expired and its credentials unchanged since the last
+failure, these moments wake no one; with it working, the first tab due wakes alone as the day-start probe
+(`<home>/restore/day-probe.json`) and the others wait for its reply, or 5 minutes. A tab whose last turn ended on
+`Login expired` is checked before all else: its turn is sent on once the login works again (stuck tabs 30 seconds
+apart) or, with one tab at a time, once the credentials changed after the last failure, each logged with `retry` and
+as a `login: retried` line in `<home>/restore/restore.log`. No session is woken while its automatic restart may still act (`refresh.autoRestart`),
 since the wake's prompt would cancel it as a typed one does: the check looks again each minute, and the work handed
 meanwhile wakes the fresh session. A session whose restart waits for work (its handover written with nothing it could
 start) is not woken with its old context either: the check that finds work for it starts its restart and looks again
