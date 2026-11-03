@@ -58,29 +58,32 @@ export function registerStats(input) {
     const dueMoved = teams.reduce((count, team) => count + sweep(team, series, clock.window), 0);
     const days = series.days(input.limits ?? []);
     const tasks = held.map((each) => each.task);
-    const active = tasks.filter((task) => isActive(task.status));
+    const activeHeld = held.filter((each) => isActive(each.task.status));
+    const active = activeHeld.map((each) => each.task);
     const created = held.filter((each) => within(clock.window, each.task.createdAt));
-    const closed = tasks.filter((task) => closedIn(task, clock.window));
+    const closedHeld = held.filter((each) => closedIn(each.task, clock.window));
     const done = held.filter((each) => doneIn(each.task, clock.window));
+    const overdue = overdueOf(held, clock);
+    const onOwner = ownerWaitsOf(activeHeld, ownerMarker);
     const recent = dayWindow(today - (RECENT_DAYS - 1) * MS_PER_DAY, today, zone);
     return {
         range: input.range,
         days,
         opened: created.length,
-        closedTasks: closed.length,
-        droppedTasks: closed.filter((task) => task.status === 'dropped').length,
-        net: created.length - closed.length,
+        closedTasks: closedHeld.length,
+        droppedTasks: closedHeld.filter((each) => each.task.status === 'dropped').length,
+        net: created.length - closedHeld.length,
         closes: days.reduce((sum, day) => sum + day.done + day.dropped, 0),
         recent: { days: RECENT_DAYS, net: tasks.filter((task) => within(recent, task.createdAt)).length - tasks.filter((task) => closedIn(task, recent)).length },
         active: activeRecord((status) => active.filter((task) => task.status === status).length),
-        all: teamPart(held, clock),
+        all: teamPart(held, clock, overdue),
         teams: teams.filter((team) => session === undefined || team.team === session.team).map((team) => ({ team: team.team, ...teamPart(team.held, clock) })),
         newWork: newWork(created, ownerMarker),
         activeByAge: banded(active.map((task) => (now - Date.parse(task.createdAt)) / MS_PER_DAY), AGE_BANDS),
         neverStarted: done.filter((each) => each.task.startedAt === null).length,
         lateDays: banded(dated(done.map((each) => each.task), zone).flatMap(({ closedAt, due }) => (closedAt > due ? [Math.ceil((closedAt - due) / MS_PER_DAY)] : [])), LATE_BANDS),
         dueMoved,
-        waits: waitStats(active, ownerMarker, now),
+        waits: waitStats(active, onOwner, now),
         bugs: {
             active: active.filter((task) => task.type === 'bug').length,
             opened: created.filter((each) => each.task.type === 'bug').length,
@@ -88,6 +91,14 @@ export function registerStats(input) {
         },
         people: people(done),
         splits: splitsOf(teams, zone),
+        tasks: {
+            active: activeHeld,
+            opened: created,
+            closed: closedHeld,
+            overdue,
+            overdueP1: overdue.filter((each) => each.task.priority === TOP_PRIORITY),
+            ownerDecisions: onOwner,
+        },
     };
 }
 /** A team's tasks in scope, from its events without those of the tasks that moved away. */
@@ -210,21 +221,32 @@ class DaySeries {
         return low;
     }
 }
-function teamPart(held, clock) {
+/** A team's (or the whole set's) part; `overdue` is {@link overdueOf} the same tasks, handed in when already listed. */
+function teamPart(held, clock, overdue = overdueOf(held, clock)) {
     const tasks = held.map((each) => each.task);
     const done = tasks.filter((task) => doneIn(task, clock.window));
-    const overdue = tasks.filter((task) => {
-        const due = dueTime(task, clock.zone);
-        return isActive(task.status) && due !== undefined && due < clock.now;
-    });
     const withDue = dated(done, clock.zone);
     return {
         active: tasks.filter((task) => isActive(task.status)).length,
         leadTime: spread(done.map((task) => daysBetween(task.createdAt, task.statusAt))),
         cycleTime: spread(done.flatMap((task) => (task.startedAt === null ? [] : [daysBetween(task.startedAt, task.statusAt)]))),
-        overdue: { count: overdue.length, p1: overdue.filter((task) => task.priority === TOP_PRIORITY).length },
+        overdue: { count: overdue.length, p1: overdue.filter((each) => each.task.priority === TOP_PRIORITY).length },
         due: { total: withDue.length, onTime: withDue.filter(({ closedAt, due }) => closedAt <= due).length },
     };
+}
+/** The active tasks past their due date now, the longest past first; a tie keeps the fold's order. */
+function overdueOf(held, clock) {
+    return held
+        .flatMap((each) => {
+        const due = dueTime(each.task, clock.zone);
+        return isActive(each.task.status) && due !== undefined && due < clock.now ? [{ each, due }] : [];
+    })
+        .sort((a, b) => a.due - b.due)
+        .map(({ each }) => each);
+}
+/** The active tasks waiting, or whose proof waits, on the owner, the oldest wait first; a tie keeps the fold's order. */
+function ownerWaitsOf(active, ownerMarker) {
+    return active.filter((each) => waitsOnOwner(each.task, ownerMarker)).sort((a, b) => Date.parse(a.task.statusAt) - Date.parse(b.task.statusAt));
 }
 function newWork(created, ownerMarker) {
     const bySource = { self: 0, owner: 0, lead: 0, github: 0, session: 0 };
@@ -253,7 +275,8 @@ function sourceOf({ task, lead }, ownerMarker) {
     }
     return task.source === GITHUB_SOURCE ? 'github' : 'session';
 }
-function waitStats(active, ownerMarker, now) {
+/** The waits of the active tasks; `onOwner` is {@link ownerWaitsOf} them, the oldest first. */
+function waitStats(active, onOwner, now) {
     const waiting = active.filter((task) => task.status === 'waiting');
     const byKind = { decision: 0, approval: 0, task: 0, time: 0 };
     for (const task of waiting) {
@@ -261,8 +284,8 @@ function waitStats(active, ownerMarker, now) {
             byKind[kind] += 1;
         }
     }
-    const onOwner = active.filter((task) => waitsOnOwner(task, ownerMarker));
-    const oldestDays = onOwner.reduce((oldest, task) => Math.max(oldest ?? 0, (now - Date.parse(task.statusAt)) / MS_PER_DAY), null);
+    const oldest = onOwner[0];
+    const oldestDays = oldest === undefined ? null : Math.max(0, (now - Date.parse(oldest.task.statusAt)) / MS_PER_DAY);
     return { waiting: waiting.length, byKind, ownerDecisions: { count: onOwner.length, oldestDays } };
 }
 function people(done) {
