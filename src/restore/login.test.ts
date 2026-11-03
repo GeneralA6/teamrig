@@ -17,6 +17,7 @@ import {
   loginLogLine,
   loginMarkerPath,
   loginPageText,
+  loginRetryLine,
   parseLoginMarker,
   releasePage,
   STRANDED_KEEP_MS,
@@ -186,6 +187,11 @@ describe('login marker', () => {
     assert.equal(loginLogLine('expired', 'app/alpha', marker), 'login: expired, app/alpha ended its turn on Login expired; 2 tab(s) stuck');
     assert.equal(loginLogLine('stranded', TAB_B, marker), `login: ${TAB_B} ended its turn on Login expired; 2 tab(s) stuck`);
     assert.equal(loginLogLine('recovered', 'app/alpha', marker), 'login: works again, app/alpha answered; 2 tab(s) stuck');
+  });
+
+  it('logs a retry with the sign it acts on', () => {
+    assert.equal(loginRetryLine('app/alpha', 'recovered'), 'login: retried app/alpha, the login works again');
+    assert.equal(loginRetryLine('app/alpha', 'probe'), 'login: retried app/alpha, which tests the renewed login');
   });
 
   it("finds Claude Code's login file in its config folder, which CLAUDE_CONFIG_DIR moves", () => {

@@ -19,8 +19,10 @@ import { RESTART_RECHECK_MS } from './commands/hook-wake.ts';
 import { GIVE_UP_MS } from '../refresh/restart.ts';
 import type { RefreshState, RestartRequest } from '../refresh/state.ts';
 import { RefreshStore } from '../refresh/store.ts';
+import { claudeCredentialsPath, formatLoginMarker, LOGIN_PROBE_STALE_MS, LOGIN_RETRY_GAP_MS, loginMarkerPath, parseLoginMarker, type LoginMarker } from '../restore/login.ts';
+import { restoreLogPath } from '../restore/registry.ts';
 import { HOLDING_BUDGET, holdAlpha, meterDearDay, meterToday } from '../testing/budget-hold.ts';
-import { APP, AUTO_RESTART_TEAM, CliHarness, EVENTS_PATH, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
+import { APP, AUTO_RESTART_TEAM, CliHarness, EVENTS_PATH, KIT, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { holdFileLock } from '../testing/held-file-lock.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
@@ -817,5 +819,134 @@ describe('hook wake-dropped', () => {
       { v: 1, at, kind: 'dropped', session: 'alpha', tab: ALPHA_TAB, reason: 'blocked by a hook' },
       { v: 1, at, kind: 'dropped', session: 'alpha', tab: ALPHA_TAB, reason: 'no reason given' },
     ]);
+  });
+});
+
+const MARKER = loginMarkerPath(KIT);
+const CREDENTIALS = claudeCredentialsPath({}, USER_HOME);
+const FAIL_AT = Date.parse('2030-01-08T09:30:00.000Z');
+const RECOVERED_AT = Date.parse('2030-01-08T09:55:00.000Z');
+/** What a tab stuck on an expired login watches: the default, then the login marker and the credentials file. */
+const stuckWatchOf = (id = 'alpha'): readonly string[] => [...watchOf(id), MARKER, CREDENTIALS];
+
+/** A login marker whose `stranded` tabs ended their turns on Login expired at FAIL_AT; `recoveredAt` once a good turn proved the login. */
+function stuckMarker(stranded: readonly string[], recoveredAt: number | undefined): LoginMarker {
+  return {
+    expiredAt: FAIL_AT,
+    lastFailAt: FAIL_AT,
+    recoveredAt,
+    stranded: new Map(stranded.map((tab) => [tab, FAIL_AT])),
+    pagedAt: FAIL_AT,
+    probe: undefined,
+    lastRetryAt: undefined,
+    retried: new Map(),
+  };
+}
+
+/** A team whose alpha is ALPHA_TAB and bravo OTHER_TAB, with `marker` as the kit home's login marker. */
+async function stuckTeam(marker: LoginMarker, config: JsonRecord = TEAM): Promise<CliHarness> {
+  const kit = await teamWithAlphaTab(config);
+  await kit.run(['inbox', 'read', '--session', 'bravo'], { env: { CLAUDE_CODE_SESSION_ID: OTHER_TAB } });
+  await kit.files.write(MARKER, formatLoginMarker(marker));
+  return kit;
+}
+
+function checkTab(kit: CliHarness, tab: string): Promise<CliResult> {
+  return kit.run(['hook', 'wake-check'], { stdin: payload({}, tab), transcripts: new MemoryTranscripts() });
+}
+
+async function loginMarkerOf(kit: CliHarness): Promise<LoginMarker | undefined> {
+  const text = await kit.files.read(MARKER);
+  return text === undefined ? undefined : parseLoginMarker(text);
+}
+
+/** The restore log's login lines, each without its time. */
+async function restoreLoginLines(kit: CliHarness): Promise<string[]> {
+  const text = (await kit.files.read(restoreLogPath(KIT))) ?? '';
+  return text
+    .split('\n')
+    .filter((line) => line.includes(' login: '))
+    .map((line) => line.slice(line.indexOf(' ') + 1));
+}
+
+/** A stuck tab's retry as the check answers it: `sign` is what says the login works, the cost a cold turn's. */
+function retryAnswer(session: string, sign: string): unknown {
+  return {
+    kind: 'wake',
+    ids: [],
+    text:
+      `Your last turn ended on Login expired at 09:30 UTC; ${sign}. ` +
+      `Go on with that turn's work (if a wake started it: \`teamrig start --session ${session}\`). This retry costs about 210k W, cold.`,
+    toast: `teamrig retried this tab's turn that ended on Login expired: ${sign} (about 210k W, cold)`,
+  };
+}
+
+function idsOf(answer: unknown): unknown {
+  return isRecord(answer) ? answer['ids'] : undefined;
+}
+
+describe('hook wake-check login retry', () => {
+  it('sends a stuck tab on once a good turn proved the login, logs the retry, then waits on the login', async () => {
+    const kit = await stuckTeam(stuckMarker([ALPHA_TAB], RECOVERED_AT));
+    const now = kit.clock.now();
+    assert.deepEqual(answerOf(await checkTab(kit, ALPHA_TAB)), retryAnswer('alpha', 'the login works again'));
+    assert.deepEqual(await logLines(kit), [{ v: 1, at: new Date(now).toISOString(), kind: 'wake', session: 'alpha', tab: ALPHA_TAB, ids: [], w: 210_000, cold: true, retry: 'login' }]);
+    assert.deepEqual(await restoreLoginLines(kit), [`login: retried app/alpha (${ALPHA_TAB}), the login works again`]);
+    const marker = await loginMarkerOf(kit);
+    assert.deepEqual([marker?.retried.get(ALPHA_TAB), marker?.lastRetryAt, marker?.probe], [now, now, undefined]);
+    assert.deepEqual(answerOf(await checkTab(kit, ALPHA_TAB)), { kind: 'wait', watch: stuckWatchOf(), recheckAt: null }, 'once per sign');
+  });
+
+  it('comes before handed work, which wakes the tab at its next check; a tab the marker does not hold wakes as before', async () => {
+    const kit = await stuckTeam(stuckMarker([OTHER_TAB], RECOVERED_AT), { ...TEAM, wake: { batchSeconds: 0 } });
+    await checkTab(kit, ALPHA_TAB);
+    const untouched = await kit.files.read(MARKER);
+    await hand(kit, 'Fix the login', 'p1');
+    assert.deepEqual(idsOf(answerOf(await checkTab(kit, ALPHA_TAB))), ['T1']);
+    assert.equal(await kit.files.read(MARKER), untouched, 'nothing claimed for a tab that is not stuck');
+    // Past wake.minGapMinutes: a retry recorded as a wake would hold the next one for as long again.
+    kit.clock.advance(15 * MINUTE);
+    await kit.files.write(MARKER, formatLoginMarker(stuckMarker([ALPHA_TAB], RECOVERED_AT)));
+    await hand(kit, 'Fix the logout', 'p1');
+    assert.deepEqual(answerOf(await checkTab(kit, ALPHA_TAB)), retryAnswer('alpha', 'the login works again'));
+    assert.deepEqual(idsOf(answerOf(await checkTab(kit, ALPHA_TAB))), ['T2'], 'the retry took nothing from the wake state');
+  });
+
+  it('tests a renewed login with one stuck tab while it is still expired; the others wait for it, or until it goes stale', async () => {
+    const kit = await stuckTeam(stuckMarker([ALPHA_TAB, OTHER_TAB], undefined));
+    const before = await kit.files.read(MARKER);
+    assert.deepEqual(answerOf(await checkTab(kit, ALPHA_TAB)), { kind: 'wait', watch: stuckWatchOf(), recheckAt: null }, 'no credentials file: no sign yet');
+    assert.equal(await kit.files.read(MARKER), before);
+    kit.clock.advance(MINUTE);
+    await kit.files.write(CREDENTIALS, '{}');
+    const probeAt = kit.clock.now();
+    assert.deepEqual(answerOf(await checkTab(kit, ALPHA_TAB)), retryAnswer('alpha', 'the login was renewed since'));
+    assert.deepEqual((await loginMarkerOf(kit))?.probe, { tab: ALPHA_TAB, at: probeAt });
+    assert.deepEqual(answerOf(await checkTab(kit, OTHER_TAB)), { kind: 'wait', watch: stuckWatchOf('bravo'), recheckAt: probeAt + LOGIN_PROBE_STALE_MS });
+    kit.clock.advance(LOGIN_PROBE_STALE_MS);
+    assert.deepEqual(answerOf(await checkTab(kit, OTHER_TAB)), retryAnswer('bravo', 'the login was renewed since'), 'a probe with no result frees the slot');
+    assert.deepEqual(await restoreLoginLines(kit), [
+      `login: retried app/alpha (${ALPHA_TAB}), which tests the renewed login`,
+      `login: retried app/bravo (${OTHER_TAB}), which tests the renewed login`,
+    ]);
+  });
+
+  it('spaces the retries of the tabs one expiry stranded once the login works', async () => {
+    const kit = await stuckTeam(stuckMarker([ALPHA_TAB, OTHER_TAB], RECOVERED_AT));
+    const first = kit.clock.now();
+    assert.deepEqual(answerOf(await checkTab(kit, ALPHA_TAB)), retryAnswer('alpha', 'the login works again'));
+    assert.deepEqual(answerOf(await checkTab(kit, OTHER_TAB)), { kind: 'wait', watch: stuckWatchOf('bravo'), recheckAt: first + LOGIN_RETRY_GAP_MS });
+    kit.clock.advance(LOGIN_RETRY_GAP_MS);
+    assert.deepEqual(answerOf(await checkTab(kit, OTHER_TAB)), retryAnswer('bravo', 'the login works again'));
+    assert.deepEqual((await logLines(kit)).map((line) => (isRecord(line) ? line['session'] : undefined)), ['alpha', 'bravo']);
+  });
+
+  it("answers a recheck now while another tab's check holds the login marker's lock, claiming nothing", async () => {
+    const kit = await stuckTeam(stuckMarker([ALPHA_TAB], RECOVERED_AT));
+    const before = await kit.files.read(MARKER);
+    await holdFileLock(kit, `${MARKER}.lock`);
+    assert.deepEqual(answerOf(await checkTab(kit, ALPHA_TAB)), { kind: 'wait', watch: watchOf(), recheckAt: kit.clock.now() });
+    assert.equal(await kit.files.read(MARKER), before);
+    assert.deepEqual(await logLines(kit), []);
   });
 });
