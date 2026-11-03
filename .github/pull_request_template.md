@@ -1,6 +1,9 @@
 ## What and why
 <!-- One or two lines: the behaviour this changes and the reason. -->
 
+## Alternatives
+<!-- Only for a change that settles a design question: the options weighed and why this one won. Delete otherwise. -->
+
 ## Tests
 <!-- Which tests prove it. For a bug fix: the regression test, and that it fails on the old code. -->
 
