@@ -3277,9 +3277,11 @@ tokens a turn applying it saves:
   conflicting instructions.
 - SETTINGS (`S1`...): allow rules that approve a whole tool or program (`teamrig permissions trim` removes them), no
   deny rule, `defaultMode: bypassPermissions`, and the `SessionStart` and `UserPromptSubmit` hooks the transcripts read
-  show printing into the context, each with the command and the `args` it runs and what it printed: the characters
-  (and tokens) a run on average, over how many runs, and in how many it printed anything. A JSON reply counts its
-  `additionalContext`, a plain one its text. A hook that never ran in the transcripts read, or printed nothing (a title,
+  show printing into the context: the settings files' hooks, and those of each plugin installed for the project that
+  no settings file's `enabledPlugins` turns off (its `hooks/hooks.json`, the files its manifest's `hooks` names, or
+  hooks the manifest holds inline), named with the plugin. Each comes with the command and the `args` it runs and
+  what it printed: the characters (and tokens) a run on average, over how many runs, and in how many it printed
+  anything. A JSON reply counts its `additionalContext`, a plain one its text. A hook that never ran in the transcripts read, or printed nothing (a title,
   a guard), is no finding. An exec-form hook's runs are found by its command and its `args` joined by spaces, the line
   a transcript records for it. A finding a file's copies under `.claude/worktrees` repeat is one line that counts them.
 - UNUSED (`U1`...): skills in your user or project skill folders with no `Skill` call or `/<skill>` in the last
