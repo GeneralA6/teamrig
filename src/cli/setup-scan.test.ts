@@ -92,6 +92,20 @@ describe('setup scan', () => {
     assert.match(lines.at(-1) ?? '', /^SAVINGS ~\d+ tokens\/turn/);
   });
 
+  it("names an installed plugin's context hook the transcripts show printing, with its plugin and hooks file", async () => {
+    const harness = await world();
+    const install = join(CLAUDE_DIR, 'plugins', 'cache', 'mk', 'kit', '1.0.0');
+    const plugins = { version: 2, plugins: { 'kit@mk': [{ scope: 'user', installPath: install, version: '1.0.0' }] } };
+    await harness.files.write(join(CLAUDE_DIR, 'plugins', 'installed_plugins.json'), JSON.stringify(plugins));
+    const handler = { type: 'command', command: 'node', args: ['${CLAUDE_PLUGIN_ROOT}/main.js', 'hook', 'start'] };
+    await harness.files.write(join(install, 'hooks', 'hooks.json'), JSON.stringify({ hooks: { SessionStart: [{ hooks: [handler] }] } }));
+    const run = { type: 'hook_success', hookEvent: 'SessionStart', command: 'node ${CLAUDE_PLUGIN_ROOT}/main.js hook start', stdout: 'r'.repeat(400) };
+    const source = new MemoryTranscripts({ [transcriptPath('c')]: `${JSON.stringify({ type: 'attachment', attachment: run })}\n` }, NOW - HOUR_MS);
+    const lines = okLines(await scan(harness, [], source));
+    const line = lines.find((text) => text.includes('of plugin kit@mk'));
+    assert.match(line ?? '', /^S\d+ context-hook .*hooks\.json: SessionStart hook "node \$\{CLAUDE_PLUGIN_ROOT\}\/main\.js hook start" of plugin kit@mk: printed ~400 chars/, lines.join('\n'));
+  });
+
   it('judges the user-level skills and agent types by the projects whose sessions used them', async () => {
     const harness = new CliHarness();
     await harness.files.write(join(CLAUDE_DIR, 'agents', 'scout.md'), agentFile('scout', 'Scouts the code.'));

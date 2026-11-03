@@ -9,6 +9,7 @@ import type { SettingsFile } from '../permissions/settings-scope.ts';
 import { scanRules, type Candidate } from '../rules/scan.ts';
 import { readSessionContext, type Listed, type SessionContext, type SessionContextLocations } from './scan-context.ts';
 import { findDuplicates, type Duplicate } from './scan-duplicates.ts';
+import { scanPluginHooks } from './scan-plugin-hooks.ts';
 import { scanSettings, type SettingsFinding } from './scan-settings.ts';
 import { readTranscriptUse, type TranscriptUse } from './scan-usage.ts';
 import type { SkillDoctor, SkillDoctorRead } from './skill-doctor.ts';
@@ -107,7 +108,7 @@ export async function scanSetup(ports: SetupScanPorts, at: SetupScanInput): Prom
     duplicates: findDuplicates(context.files),
     overrides: rules.candidates.filter((candidate) => !at.cleared(candidate)),
     recorded: rules.recorded.length,
-    settings: await scanSettings(ports.files, at.claudeDir, at.settings, at.keep, at.secrets, usage.hooks),
+    settings: [...(await scanSettings(ports.files, at.claudeDir, at.settings, at.keep, at.secrets, usage.hooks)), ...(await scanPluginHooks(ports.files, at, usage.hooks, at.secrets))],
     usage,
     recent: await changedSince(ports.files, [...context.skills, ...context.agents], usage.since),
     doctor,
