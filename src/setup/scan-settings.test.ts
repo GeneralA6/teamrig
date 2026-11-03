@@ -33,9 +33,9 @@ const USER_SETTINGS = json({
   },
 });
 
-/** What the transcripts read show the user settings' context hooks printing; an exec-form hook is recorded by its command alone. */
+/** What the transcripts read show the user settings' context hooks printing; an exec-form hook is recorded by its command and args joined. */
 const HOOKS: HookOutputs = new Map([
-  [hookOutputKey('SessionStart', 'node'), { runs: 4, printed: 4, chars: 10_000 }],
+  [hookOutputKey('SessionStart', `node start.js --token ${HELD}`), { runs: 4, printed: 4, chars: 10_000 }],
   [hookOutputKey('UserPromptSubmit', 'node prompt.js'), { runs: 10, printed: 3, chars: 300 }],
   [hookOutputKey('PreToolUse', 'node guard.js'), { runs: 9, printed: 9, chars: 900 }],
 ]);

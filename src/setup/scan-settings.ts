@@ -9,7 +9,7 @@ import { hookCommandLine, hookCommandsOf } from '../doctor/settings-hooks.ts';
 import { countOf, formatCounts, type KeepList } from '../permissions/allow-rules.ts';
 import type { SettingsFile } from '../permissions/settings-scope.ts';
 import { planScope, type ReadPlan } from '../permissions/trim.ts';
-import { CONTEXT_HOOK_EVENTS, hookOutputKey, type HookOutputs } from './scan-hook-output.ts';
+import { CONTEXT_HOOK_EVENTS, hookOutputKey, recordedCommandOf, type HookOutputs } from './scan-hook-output.ts';
 import { tokensOf } from './scan-finding.ts';
 
 /** What a settings check finds: allow rules a trim removes, no deny rule, prompts turned off, a hook that writes into the context. */
@@ -50,7 +50,7 @@ function wideFindings(plan: ReadPlan): FileFinding[] {
  */
 function hookFindings(path: string, settings: JsonRecord, hooks: HookOutputs, secrets: SecretScanner): FileFinding[] {
   return hookCommandsOf(settings, CONTEXT_HOOK_EVENTS).flatMap((hook): FileFinding[] => {
-    const output = hooks.get(hookOutputKey(hook.event, hook.command));
+    const output = hooks.get(hookOutputKey(hook.event, recordedCommandOf(hook)));
     if (output === undefined || output.printed === 0) {
       return [];
     }

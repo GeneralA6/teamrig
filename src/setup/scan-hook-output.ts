@@ -1,6 +1,7 @@
 import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
 import { parseObject } from '../core/jsonl.ts';
 import { jsonObjectOf } from '../doctor/settings-env.ts';
+import type { HookCommand } from '../doctor/settings-hooks.ts';
 
 /** The hook events whose command output Claude Code adds to the session's context. */
 export const CONTEXT_HOOK_EVENTS = ['SessionStart', 'UserPromptSubmit'] as const;
@@ -26,12 +27,17 @@ export interface HookRun {
 
 const CONTEXT_EVENTS: ReadonlySet<string> = new Set(CONTEXT_HOOK_EVENTS);
 
-/**
- * The key of a hook's output: its event and its `command` as the settings file spells it, which is what a transcript
- * records. An exec-form hook's `args` are not recorded, so two exec-form hooks of one event running one command share it.
- */
+/** The key of a hook's output: its event and its command line as a transcript records it (`recordedCommandOf`). */
 export function hookOutputKey(event: string, command: string): string {
   return JSON.stringify([event, command]);
+}
+
+/**
+ * The command line a transcript records for a hook: its `command`, then each of an exec-form hook's `args`, joined by
+ * a space with no quoting, `${CLAUDE_PLUGIN_ROOT}` unexpanded (Claude Code 2.1.299 to 2.1.317 write it so).
+ */
+export function recordedCommandOf(hook: Pick<HookCommand, 'command' | 'args'>): string {
+  return [hook.command, ...hook.args].join(' ');
 }
 
 /** A cheap test before parsing: only a line naming a successful hook run can record one. */
