@@ -997,7 +997,7 @@ last pass record is an hour old (so a log silent for longer means the pass stopp
 and a failure once until its error changes. In `dry-run` it closes and reopens no one. In `on` it also
 starts, hidden, the [`idle-close`](commands.md#teamrig-idle-close) of each session it would close and the
 [`idle-open`](commands.md#teamrig-idle-open) of the one it would reopen (urgent lines first); each weighs its session again and logs its
-own outcome, and each close tells the lead with an [urgent line](#urgent-lines). The pass marks each act it started pending in `state/idle-pass.json` and starts none on that session
+own outcome; a close tells no one. The pass marks each act it started pending in `state/idle-pass.json` and starts none on that session
 while the mark holds: 5 minutes, or until the session's step no longer asks for that act. An act that did not start
 is logged as `FAILED to start` and held the same way. A failure of the pass never costs the tab its wake answer; a pass 15 minutes old or failed shows in `teamrig check` as
 FLEET-STALE, a warning for the lead; a pass that never ran shows nothing, as a new team waits for its first idle tab.
