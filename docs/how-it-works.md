@@ -310,7 +310,8 @@ task pane, reads them through `src/read/index.ts`: the same parse and replay eve
 `node:` import anywhere behind it, so it runs where Node's built-in modules do not. It takes the text of the task
 list, an inbox, the inbox read marks, the config and a turn-log line, and gives back the tasks, the unread lines and the counts
 `teamrig list` warns about. From each team's whole history it also folds the numbers `teamrig stats` prints
-(`registerStats`, with `registerHealth` for the Health tiles), so the pane's Stats tab and the command agree. A task list that was rotated keeps a snapshot of its working set beside it and its older
+(`registerStats`, with `registerHealth` for the Health tiles), so the pane's Stats tab and the command agree, and the
+tasks behind each Health count, so a press on a tile lists the very tasks it counts. A task list that was rotated keeps a snapshot of its working set beside it and its older
 lines in archive segments: the reader reads the snapshot first (`readSnapshotText`), then the task list, asks
 `workingSetPlan` which segments it still needs (none, unless the snapshot is damaged or missing) and folds them with
 `assemble`, so its cost follows the recent lines, never the whole history. A task list never rotated reads as
