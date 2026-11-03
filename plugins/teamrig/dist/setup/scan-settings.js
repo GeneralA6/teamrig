@@ -6,7 +6,7 @@ import { jsonObjectOf } from "../doctor/settings-env.js";
 import { hookCommandLine, hookCommandsOf } from "../doctor/settings-hooks.js";
 import { countOf, formatCounts } from "../permissions/allow-rules.js";
 import { planScope } from "../permissions/trim.js";
-import { CONTEXT_HOOK_EVENTS, hookOutputKey } from "./scan-hook-output.js";
+import { CONTEXT_HOOK_EVENTS, hookOutputKey, recordedCommandOf } from "./scan-hook-output.js";
 import { tokensOf } from "./scan-finding.js";
 /** A hook's command prints up to this many characters. */
 const HOOK_COMMAND_MAX_CHARS = 80;
@@ -23,19 +23,21 @@ function wideFindings(plan) {
     return removed === 0 ? [] : [{ kind: 'wide-allow', path: plan.file.path, what: `${removed} allow rule(s) approve a whole tool or hold a credential: ${formatCounts(plan.trim.removed)}` }];
 }
 /**
- * The context hooks of a settings file that the transcripts read show printing into the context, with what they
- * printed: a hook that never ran there, or printed nothing (a title, a guard), costs no context and is no finding.
+ * The context hooks of a settings file, or of a plugin's hooks file named by its `<plugin>@<marketplace>`, that the
+ * transcripts read show printing into the context, with what they printed: a hook that never ran there, or printed
+ * nothing (a title, a guard), costs no context and is no finding.
  */
-function hookFindings(path, settings, hooks, secrets) {
+export function hookFindings(path, settings, hooks, secrets, plugin) {
     return hookCommandsOf(settings, CONTEXT_HOOK_EVENTS).flatMap((hook) => {
-        const output = hooks.get(hookOutputKey(hook.event, hook.command));
+        const output = hooks.get(hookOutputKey(hook.event, recordedCommandOf(hook)));
         if (output === undefined || output.printed === 0) {
             return [];
         }
         const shown = clipEnd(secrets.redact(hookCommandLine(hook)), HOOK_COMMAND_MAX_CHARS);
         const average = output.chars / output.runs;
         const printed = `printed ~${formatCount(average)} chars (~${formatCount(tokensOf(average))} tokens) a run on average over ${output.runs} run(s) read, something in ${output.printed}`;
-        return [{ kind: 'context-hook', path, what: `${hook.event} hook "${shown}": ${printed}; it enters the context` }];
+        const owner = plugin === undefined ? '' : ` of plugin ${plugin}`;
+        return [{ kind: 'context-hook', path, what: `${hook.event} hook "${shown}"${owner}: ${printed}; it enters the context` }];
     });
 }
 function fileFindings(path, settings, hooks, secrets) {
