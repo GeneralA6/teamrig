@@ -8,7 +8,6 @@ import { RestoreRegistry, restoreSessionsDir } from '../restore/registry.ts';
 import { SessionLog } from '../sessions/log.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
 import { HOLDING_BUDGET, holdAlpha } from '../testing/budget-hold.ts';
-import { TEST_CARD_FLAGS, TEST_OWNER_CARD_FLAGS } from '../testing/card.ts';
 import { APP, CLAUDE_SESSION, CliHarness, KIT, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { ok } from '../testing/hired-team.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
@@ -315,10 +314,6 @@ const PASS_LOG = join(TEAM_HOME, 'state', 'idle-pass.jsonl');
 const LEAD_INBOX = join(TEAM_HOME, 'state', 'inbox', 'lead.md');
 const ASKS = join(TEAM_HOME, 'state', 'wake-asks');
 
-/** `text` as a regular expression that matches it literally. */
-function escaped(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
-}
 /** A team that wakes a session for p1 work only. */
 const WAKES_P1: JsonRecord = { ...TEAM, wake: { priority: 1 } };
 const CHARGE = { usedMb: 85_300, limitMb: 100_700 };
@@ -363,50 +358,17 @@ describe('teamrig idle-close', () => {
     assert.equal((await registry.read(OTHER_SESSION))?.claudeSession, OTHER_SESSION);
   });
 
-  it('tells the lead with an urgent line: the inbox line and the wake ask that wakes it', async () => {
+  it('tells the lead nothing of a close: no inbox line, no wake ask; the session log holds it (T1890)', async () => {
     const alpha = await runningAlpha();
-    assert.equal((await idleClose(alpha)).code, 0);
-    const notice =
-      'the idle pass closed app-alpha (session alpha), quiet 75 min, its Claude Code holds 1300 MB; no task of it waits on a decision or an approval; work handed to it reopens it. List the decisions waiting on the owner, ending with a "Decision needed:" line.';
-    assert.match((await alpha.kit.files.read(LEAD_INBOX)) ?? '', new RegExp(`^- 2030-01-08 10:\\d\\d teamrig: ${escaped(notice)}\\n$`));
-    const asks = await new WakeAsks(alpha.kit.files, ASKS).read('lead');
-    assert.deepEqual(
-      asks.map((stored) => stored.ask),
-      [{ from: 'teamrig', text: notice, at: alpha.kit.clock.now() }],
-    );
-  });
-
-  it("names in the lead's line what the session's tasks wait on from a person", async () => {
-    const alpha = await runningAlpha();
-    for (const [title, waits] of [['Pick the plan', 'decision:owner'], ['Merge the fix', 'approval:lead'], ['Pick the name', 'decision:owner']] as const) {
-      const added = await alpha.kit.run(['add', '--title', title, '--description', 'what and why', '--priority', 'p2', '--owner', 'alpha', '--session', 'lead']);
-      assert.equal(added.code, 0, added.stderr.join('\n'));
-      const id = /T\d+/.exec(added.stdout.join('\n'))?.[0] ?? '';
-      const set = await alpha.kit.run(['set', id, '--status', 'waiting', '--waits', waits, '--note', 'the choice', ...(waits === 'decision:owner' ? TEST_OWNER_CARD_FLAGS : TEST_CARD_FLAGS), '--session', 'alpha']);
-      assert.equal(set.code, 0, set.stderr.join('\n'));
-    }
-    assert.equal((await idleClose(alpha)).code, 0);
-    const [stored] = await new WakeAsks(alpha.kit.files, ASKS).read('lead');
-    assert.match(stored?.ask?.text ?? '', /; its tasks wait on decision:owner \(T1, T3\), approval:lead \(T2\); an answer recorded in the register reopens it\. List/);
-  });
-
-  it('logs a close the lead was not told of as done, and posts no wake ask for a line its inbox lacks', async () => {
-    const unposted = await runningAlpha();
-    const noInbox = new FaultyFiles(unposted.kit.files).fail('append', LEAD_INBOX, systemError('EACCES', 'EACCES: permission denied'));
-    const closed = await idleClose({ ...unposted, options: { ...unposted.options, files: noInbox } });
+    const closed = await idleClose(alpha);
     assert.equal(closed.code, 0, closed.stderr.join('\n'));
-    assert.match(closed.stdout.join('\n'), /^CLOSED app-alpha \(session alpha\): .+, now free; lead not told: not posted: EACCES: permission denied$/);
-    assert.equal((await new SessionLog(unposted.kit.files, LOG).read()).records.length, 1);
-    assert.deepEqual(await new WakeAsks(unposted.kit.files, ASKS).read('lead'), []);
-
-    const unwoken = await runningAlpha();
-    // A sleep that keeps the clock still, so the ask's file name is known before the run.
-    const still = { ...unwoken.options, sleep: async (): Promise<void> => undefined };
-    const noAsk = new FaultyFiles(unwoken.kit.files).fail('createExclusive', join(ASKS, 'lead', `${NOW}-0.json`), systemError('EACCES', 'EACCES: permission denied'));
-    const posted = await idleClose({ ...unwoken, options: { ...still, files: noAsk } });
-    assert.equal(posted.code, 0, posted.stderr.join('\n'));
-    assert.match(posted.stdout.join('\n'), /, now free; lead not told: posted to the inbox, but it does not wake lead: EACCES: permission denied$/);
-    assert.match((await unwoken.kit.files.read(LEAD_INBOX)) ?? '', /teamrig: the idle pass closed app-alpha/);
+    assert.match(closed.stdout.join('\n'), /^CLOSED app-alpha \(session alpha\): quiet 75 min, its Claude Code holds 1300 MB, now free$/);
+    assert.equal(await alpha.kit.files.read(LEAD_INBOX), undefined);
+    assert.deepEqual(await new WakeAsks(alpha.kit.files, ASKS).read('lead'), []);
+    assert.deepEqual(
+      (await new SessionLog(alpha.kit.files, LOG).read()).records.map((record) => [record.kind, record.session, record.kind === 'close' ? record.by : undefined]),
+      [['close', 'alpha', 'idle-pass']],
+    );
   });
 
   it('weighs work as the wake check does: p2 work does not keep it open where only p1 wakes, p1 work does', async () => {
