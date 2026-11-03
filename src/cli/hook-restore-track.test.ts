@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { Env } from '../core/home.ts';
 import { MS_PER_HOUR } from '../core/time.ts';
 import type { ChatWebhook } from '../core/webhook.ts';
+import { dayProbePath, formatDayProbe, parseDayProbe, type DayProbe } from '../restore/day-probe.ts';
 import type { RestoreEntry } from '../restore/entry.ts';
 import { AUTH_FAILED, loginMarkerPath, parseLoginMarker, type LoginMarker } from '../restore/login.ts';
 import { RestoreRegistry, restoreLogPath, restoreSessionsDir } from '../restore/registry.ts';
@@ -192,6 +193,43 @@ describe('hook restore-track: the login', () => {
     assert.deepEqual([result.code, result.stdout, result.stderr], [0, [], []]);
     assert.equal(await entryOf(kit), undefined);
     assert.equal((await markerOf(kit))?.stranded.has(CLAUDE_SESSION), true);
+  });
+});
+
+const PROBE_FILE = dayProbePath(KIT);
+
+/** A day-start probe `tab` claimed just now, with no reply yet. */
+async function probeClaimed(kit: CliHarness, tab: string): Promise<DayProbe> {
+  const probe: DayProbe = { moment: kit.clock.now() - 2_000, tab, at: kit.clock.now(), releasedAt: undefined };
+  await kit.files.write(PROBE_FILE, formatDayProbe(probe));
+  return probe;
+}
+
+async function probeOf(kit: CliHarness): Promise<DayProbe | undefined> {
+  const text = await kit.files.read(PROBE_FILE);
+  return text === undefined ? undefined : parseDayProbe(text);
+}
+
+describe('hook restore-track: the day-start probe', () => {
+  it("is released at the probe tab's first tool end, and logged", async () => {
+    const kit = new CliHarness();
+    await probeClaimed(kit, CLAUDE_SESSION);
+    kit.clock.advance(12_000);
+    await track(kit, payload('PostToolUse'));
+    assert.equal((await probeOf(kit))?.releasedAt, kit.clock.now());
+    const text = (await kit.files.read(restoreLogPath(KIT))) ?? '';
+    assert.match(text, new RegExp(`day-probe: released, ${TAB.replace(/[()]/g, '\\$&')} ran a tool 12 s after the claim\\n$`));
+  });
+
+  it("stays out at another tab's or a helper's tool end, and is released by any tab's good turn end", async () => {
+    const kit = new CliHarness();
+    await probeClaimed(kit, tabId(1));
+    kit.clock.advance(5_000);
+    await track(kit, payload('PostToolUse'));
+    await track(kit, payload('PostToolUse', { session_id: tabId(1), agent_id: 'helper-1' }));
+    assert.equal((await probeOf(kit))?.releasedAt, undefined);
+    await track(kit, payload('Stop'));
+    assert.equal((await probeOf(kit))?.releasedAt, kit.clock.now());
   });
 });
 
