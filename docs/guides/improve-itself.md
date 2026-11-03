@@ -271,8 +271,9 @@ SAVINGS ~451 tokens/turn if every CONTEXT, DUPLICATE and UNUSED finding is appli
 - `OVERRIDE` counts the lines [`rules scan`](#local-rules-that-say-otherwise) lists to judge, and prints the first 10
   to start from: lines every session loads unasked first, then those naming teamrig or telling a session what to do.
   Words only order them; `rules scan` judges each line. `SETTINGS` counts the wide allow rules
-  `teamrig permissions trim` removes. Claude Code's `/doctor prompt-audit`, run in a session of the
-  project, has a model look for outdated or conflicting instructions too.
+  `teamrig permissions trim` removes, and names each session-start or prompt hook, a plugin's too, that the
+  transcripts show printing into the context, with what a run prints. Claude Code's `/doctor prompt-audit`, run in a
+  session of the project, has a model look for outdated or conflicting instructions too.
 
 The scan only reads, and its second line names the newest backup of the setup. Change nothing in the setup before
 there is one: `teamrig setup backup` makes it, and `teamrig setup restore <stamp>` shows what putting it back writes;
