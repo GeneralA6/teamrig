@@ -4,12 +4,16 @@ import { NOTE_CHARS, oneLine } from "./agenda.js";
 export function endNotice(facts, decisions) {
     return `the owner's daily meeting with ${facts.leadName} ended ${facts.zone.weekdayMinute(new Date(facts.at))}. Decided on your tasks: ${decisions.join('; ')}.`;
 }
-/** One decision as the end line gives it: `T7: <note>`, and the fields the lead changed: `T7: <note> (changed priority, due)`. */
+/**
+ * One decision as the end line gives it: `T7: <note>`, the fields the lead changed: `T7: <note> (changed priority,
+ * due)`, and a Decided (T1366), which drops the task's wait on the owner, saying its owner acts on it now.
+ */
 export function decisionText(event) {
     const changed = Object.keys(event.changes);
     const note = event.note === null ? '' : ` ${cut(oneLine(event.note), NOTE_CHARS)}`;
     const fields = changed.length === 0 ? '' : ` (changed ${changed.join(', ')})`;
-    return `${event.id}:${note}${fields}`;
+    const decided = event.decided === true ? ' (its wait on the owner cleared: act on it, set its next status)' : '';
+    return `${event.id}:${note}${fields}${decided}`;
 }
 /**
  * The lead's updates during the meeting, by the session that owns each task now: the decisions the lead recorded

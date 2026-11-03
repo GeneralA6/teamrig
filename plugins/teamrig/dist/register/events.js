@@ -16,7 +16,7 @@ import { parseWaits } from "./waits.js";
  * decision `card` (0.79.0), the same `waits` and `card` on a `verifying` line for what its proof waits for
  * (0.109.0), an update's approval `verdict` (0.126.0), a task's `kind` (0.147.0), its `pin` (T637), a status line's
  * `review` (T916), a task's `type` and `critical` mark (T1252), which replaced `kind`, and a `done` status's `watch`
- * (T1306), an update's `waits` (T1295) and a task's `noGoal` mark (T1730), which an older reader ignores:
+ * (T1306), an update's `waits` (T1295), a task's `noGoal` mark (T1730) and an update's `decided` mark (T1366), which an older reader ignores:
  * each reads there as none (an answered update as a note alone). An older teamrig re-serialized the events of the snapshot a rotation or
  * `compact` rewrites, so it dropped such a field there (the archive keeps the lines as written); this one copies
  * each kept line as written (compaction.ts).
@@ -159,6 +159,10 @@ export function parseEvent(line) {
             if (typeof waits === 'string') {
                 return unreadable(waits);
             }
+            const decided = record['decided'];
+            if (decided !== undefined && decided !== true) {
+                return unreadable(`decided is ${JSON.stringify(decided)}, not true`);
+            }
             const event = {
                 ...base,
                 type: 'update',
@@ -166,6 +170,7 @@ export function parseEvent(line) {
                 note: textOrNull(record, 'note'),
                 ...(verdict === undefined ? {} : { verdict }),
                 ...(waits === undefined ? {} : { waits }),
+                ...(decided === undefined ? {} : { decided }),
             };
             return { kind: 'event', event };
         }
