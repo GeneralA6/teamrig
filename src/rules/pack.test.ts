@@ -274,7 +274,7 @@ describe('renderCorePack', () => {
 
   it('keeps every edit in a worktree, in every repo, and names the command that removes one safely', () => {
     const pack = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
-    assert.match(pack, /Edit in your own worktree and branch in every git repo, never a main checkout\./);
+    assert.match(pack, /Edit in your own worktree and branch in each repo, never a main checkout\./);
     // T1279: any removal but the command, `rm -rf` or `Remove-Item -Recurse` too, not `git worktree remove` alone.
     assert.match(pack, /Remove a worktree only with `teamrig worktree remove <path>`: any other removal may empty the main node_modules\./);
     assert.doesNotMatch(pack, /rmdir/);
@@ -283,8 +283,13 @@ describe('renderCorePack', () => {
   it('names the safe worktree removal on Windows alone', () => {
     assert.match(renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK), /never a main checkout\. Remove a worktree only with /);
     const pack = renderCorePack(testConfig(), COMMAND, 'linux', RULES_CLOCK);
-    assert.match(pack, /never a main checkout\. Update comments in their code's commit/);
+    assert.match(pack, /never a main checkout\. Comments say why/);
     assert.doesNotMatch(pack, /node_modules|worktree remove/);
+  });
+
+  it('has a comment say why plainly and name no path outside the repo (T1869)', () => {
+    const pack = renderCorePack(testConfig(), COMMAND, 'linux', RULES_CLOCK);
+    assert.match(pack, /^16\. .* Comments say why plainly, no path outside the repo, and change with their code or go; verify/m);
   });
 
   it('tags a stopgap with the task that replaces it, in the form check reads', () => {
@@ -294,7 +299,7 @@ describe('renderCorePack', () => {
 
   it('keeps comments true to their code, checks a recorded number at its source, and proves dead code unread', () => {
     const pack = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
-    assert.match(pack, /Update comments in their code's commit, deleting one you cannot make true; verify a load-bearing comment or recorded number at its source;/);
+    assert.match(pack, / change with their code or go; verify a load-bearing one or recorded number at its source;/);
     assert.match(pack, / fix a stale comment, doc or proven-dead code you find in its own commit and tell its area\.$/m);
   });
 
