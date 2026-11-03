@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { instantField, stringField } from '../core/guards.ts';
-import { parseObject } from '../core/jsonl.ts';
+import { parseObject, recordVersion, VERSION_FIELD } from '../core/jsonl.ts';
 import { MS_PER_MINUTE } from '../core/time.ts';
 import { CLAUDE_SESSION_ID } from '../inbox/marks.ts';
 import { LOGIN_PROBE_STALE_MS } from './login.ts';
@@ -17,6 +17,12 @@ import { LOGIN_PROBE_STALE_MS } from './login.ts';
 export function dayProbePath(kitHome: string): string {
   return join(kitHome, 'restore', 'day-probe.json');
 }
+
+/**
+ * The format of the probe files this code writes. A file in any other format reads as no probe, and a write to one in
+ * a newer format is refused; the file came with its format, so no file without one was ever written.
+ */
+export const DAY_PROBE_FORMAT = 1;
 
 export interface DayProbe {
   /** The moment it tests the login for: the newest of the moments due for the tab that claimed it. */
@@ -110,6 +116,7 @@ function isoOf(ms: number): string {
 /** The probe's file text: times as ISO instants, indented JSON. */
 export function formatDayProbe(probe: DayProbe): string {
   const record = {
+    [VERSION_FIELD]: DAY_PROBE_FORMAT,
     moment: isoOf(probe.moment),
     tab: probe.tab,
     at: isoOf(probe.at),
@@ -118,10 +125,10 @@ export function formatDayProbe(probe: DayProbe): string {
   return `${JSON.stringify(record, null, 2)}\n`;
 }
 
-/** The probe a file holds; undefined when it is damaged or of another shape, so the next due tab claims anew. */
+/** The probe a file holds; undefined when it is damaged, of another shape or of another format, so the next due tab claims anew. */
 export function parseDayProbe(text: string): DayProbe | undefined {
   const record = parseObject(text.trim());
-  if (record === undefined) {
+  if (record === undefined || recordVersion(record) !== DAY_PROBE_FORMAT) {
     return undefined;
   }
   const moment = instantField(record, 'moment');

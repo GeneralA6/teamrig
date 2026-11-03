@@ -1,6 +1,7 @@
 import type { Files } from '../core/files.ts';
 import type { Mutex } from '../core/lock.ts';
-import { applyLoginEvent, claimPage, decideLoginRetry, formatLoginMarker, parseLoginMarker, releasePage, type LoginChange, type LoginEvent, type LoginMarker, type LoginRetry } from './login.ts';
+import { writableObject } from '../core/jsonl.ts';
+import { applyLoginEvent, claimPage, decideLoginRetry, formatLoginMarker, LOGIN_MARKER_FORMAT, parseLoginMarker, releasePage, type LoginChange, type LoginEvent, type LoginMarker, type LoginRetry } from './login.ts';
 
 /** What `apply` did: the change it wrote (its marker as written), and whether this event claimed the owner's page. */
 export interface LoginApplied {
@@ -16,7 +17,8 @@ export interface LoginApplyOptions {
 /**
  * The login marker's file (src/restore/login.ts). Every turn end of every tab reads it, so a read takes no lock;
  * only an event that changes it takes the lock, then reads it again and writes, since a dozen tabs fail at once. The
- * page claim sits in the same locked write, so of a dozen failures one pages.
+ * page claim sits in the same locked write, so of a dozen failures one pages. A marker a newer teamrig wrote reads as
+ * none, and a write to it is refused (`NewerDataError`), never overwritten.
  */
 export class LoginStore {
   private readonly files: Files;
@@ -41,7 +43,7 @@ export class LoginStore {
       return { change: { kind: 'none' }, pageClaimed: false };
     }
     return this.lock.run(async () => {
-      const change = applyLoginEvent(await this.read(), event);
+      const change = applyLoginEvent(await this.readWritable(), event);
       if (change.kind === 'none') {
         return { change, pageClaimed: false };
       }
@@ -63,7 +65,7 @@ export class LoginStore {
       return unlocked;
     }
     return this.lock.run(async () => {
-      const retry = decideLoginRetry(await this.read(), tab, now, credentialsAt);
+      const retry = decideLoginRetry(await this.readWritable(), tab, now, credentialsAt);
       if (retry.kind === 'retry') {
         await this.files.write(this.path, formatLoginMarker(retry.marker));
       }
@@ -74,7 +76,7 @@ export class LoginStore {
   /** Gives back the page claimed at `claimedAt` after its post failed; false when the marker holds another claim now. */
   async releasePage(claimedAt: number): Promise<boolean> {
     return this.lock.run(async () => {
-      const existing = await this.read();
+      const existing = await this.readWritable();
       const released = existing === undefined ? undefined : releasePage(existing, claimedAt);
       if (released === undefined) {
         return false;
@@ -82,5 +84,12 @@ export class LoginStore {
       await this.files.write(this.path, formatLoginMarker(released));
       return true;
     });
+  }
+
+  /** The marker as a locked write reads it: one in a newer format throws `NewerDataError`, so it is never overwritten. */
+  private async readWritable(): Promise<LoginMarker | undefined> {
+    const text = await this.files.read(this.path);
+    writableObject(this.path, text, LOGIN_MARKER_FORMAT);
+    return text === undefined ? undefined : parseLoginMarker(text);
   }
 }

@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { instantField, isRecord, stringField, type JsonRecord } from '../core/guards.ts';
 import { claudeConfigDir, KIT_NAME, type Env } from '../core/home.ts';
-import { parseObject } from '../core/jsonl.ts';
+import { parseObject, recordVersion, VERSION_FIELD } from '../core/jsonl.ts';
 import type { LockTimings } from '../core/lock.ts';
 import { MS_PER_DAY, MS_PER_MINUTE } from '../core/time.ts';
 import { CLAUDE_SESSION_ID } from '../inbox/marks.ts';
@@ -18,6 +18,12 @@ import { CLAUDE_SESSION_ID } from '../inbox/marks.ts';
 export function loginMarkerPath(kitHome: string): string {
   return join(kitHome, 'restore', 'login.json');
 }
+
+/**
+ * The format of the marker files this code writes. A file with no `v` is format 0, written before the retries, and
+ * reads with no probe and no retries; one in a newer format reads as no marker, and a write to it is refused.
+ */
+export const LOGIN_MARKER_FORMAT = 1;
 
 /**
  * The file Claude Code keeps its login in, which /login and each token refresh rewrite: a change after the last
@@ -285,6 +291,7 @@ function isoOf(ms: number): string {
 /** The marker's file text: times as ISO instants, indented JSON. */
 export function formatLoginMarker(marker: LoginMarker): string {
   const record = {
+    [VERSION_FIELD]: LOGIN_MARKER_FORMAT,
     expiredAt: isoOf(marker.expiredAt),
     lastFailAt: isoOf(marker.lastFailAt),
     recoveredAt: marker.recoveredAt === undefined ? undefined : isoOf(marker.recoveredAt),
@@ -334,12 +341,14 @@ function damagedOptional(record: JsonRecord, key: string, value: unknown): boole
 }
 
 /**
- * The marker a file holds; undefined when it is damaged or of another shape, which the next auth failure replaces. A
- * marker written before the retries (no `probe`, `lastRetryAt` or `retried`) reads as one with none.
+ * The marker a file holds; undefined when it is damaged or of another shape, which the next auth failure replaces, or
+ * of a newer format. A format 0 marker, written before the retries (no `probe`, `lastRetryAt` or `retried`), reads as
+ * one with none.
  */
 export function parseLoginMarker(text: string): LoginMarker | undefined {
   const record = parseObject(text.trim());
-  if (record === undefined) {
+  const version = record === undefined ? undefined : recordVersion(record);
+  if (record === undefined || version === undefined || version > LOGIN_MARKER_FORMAT) {
     return undefined;
   }
   const expiredAt = instantField(record, 'expiredAt');
