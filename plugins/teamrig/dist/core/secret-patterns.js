@@ -21,8 +21,9 @@ export const SECRET_TOKEN_PATTERNS = [
 ];
 /**
  * Secrets written as text rather than as a token: credentials inside a URL or an Authorization header and
- * `password=`-style assignments. Only shared-file writes and redaction use these; the scrub has its own stricter assignment rule, as documentation shows
- * placeholders such as `password: ${VAULT}`.
+ * `password=`-style assignments. Shared-file writes and redaction use them all; the write-time set and the scrub leave
+ * out the broad `secret-assignment` for the stricter `ASSIGNED_SECRET`, as documentation shows placeholders such as
+ * `password: ${VAULT}`.
  * An assignment's key word may end a longer name, as env vars and code write it (`DB_PASSWORD`, `clientSecret`):
  * no word boundary comes before it, since an underscore is a word character. A quoted key, as JSON and YAML write
  * it (`"password": `), counts too.

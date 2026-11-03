@@ -235,7 +235,7 @@
     "dist/core/plugin-store.js": "0350538fd8ef1ddf13e7e22ecf17efac3443b3a3f7a06c074cbaa2cea8c674af",
     "dist/core/powershell.js": "fd60f9065ce00a13a6868bd8289c91d9d4346fb2a50fdff05f074da8746d24b0",
     "dist/core/retry.js": "23989c33cada4ec1c46a32493c59cce6df5c5dad3320cd1e1b0fdddf6c668fd3",
-    "dist/core/secret-patterns.js": "b1252be9a46aed907997b0457e3684a806af0946f175305a6569d7c60845523a",
+    "dist/core/secret-patterns.js": "ed4fbcd26259eb38ef19d74d703efff4c7727053538e0a39d249a75af0c394b0",
     "dist/core/secret-shapes.js": "1954ee146894a29823a5741c3e387a7fe1ae88e9c379d3f8ce6b1c40632fa2e4",
     "dist/core/secrets.js": "00317add6afb4ef033954356e212823e684c83b70a38229277d848a8027cfc7f",
     "dist/core/session-asks.js": "9791386035bf4d4d0a7dbb195701959dca68c2efbda1c54374d802b54bf242db",
