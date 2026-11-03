@@ -116,7 +116,9 @@ export class WakeStore {
 /**
  * One line of the wake log: a wake submitted, for work handed to the session, with `asks` for that many urgent lines
  * (src/wake/asks.ts), with `moments` for the day's moments (src/wake/day-start.ts), or with `retry` for a turn sent
- * again after it ended on an expired login (src/wake/login-retry.ts); or one Claude Code dropped.
+ * again after it ended on an expired login (src/wake/login-retry.ts) or a transient API error (src/wake/api-retry.ts);
+ * or one Claude Code dropped. `api` joined `retry` within format 1: a reader that knows only `login` sees a retry all
+ * the same.
  */
 export type WakeRecord =
   | {
@@ -128,7 +130,7 @@ export type WakeRecord =
       readonly cost: WakeCost;
       readonly asks?: number;
       readonly moments?: readonly DayMomentKind[];
-      readonly retry?: 'login';
+      readonly retry?: 'login' | 'api';
     }
   | { readonly kind: 'dropped'; readonly at: number; readonly session: string; readonly tab: string; readonly reason: string };
 

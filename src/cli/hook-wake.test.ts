@@ -21,7 +21,8 @@ import type { RefreshState, RestartRequest } from '../refresh/state.ts';
 import { RefreshStore } from '../refresh/store.ts';
 import { claudeCredentialsPath, formatLoginMarker, LOGIN_PROBE_STALE_MS, LOGIN_RETRY_GAP_MS, loginMarkerPath, parseLoginMarker, type LoginMarker } from '../restore/login.ts';
 import { dayProbePath, formatDayProbe, parseDayProbe, type DayProbe } from '../restore/day-probe.ts';
-import { restoreLogPath } from '../restore/registry.ts';
+import type { RestoreEntry } from '../restore/entry.ts';
+import { RestoreRegistry, restoreLogPath, restoreSessionsDir } from '../restore/registry.ts';
 import { HOLDING_BUDGET, holdAlpha, meterDearDay, meterToday } from '../testing/budget-hold.ts';
 import { APP, AUTO_RESTART_TEAM, CliHarness, EVENTS_PATH, KIT, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { holdFileLock } from '../testing/held-file-lock.ts';
@@ -949,6 +950,102 @@ describe('hook wake-check login retry', () => {
     assert.deepEqual(answerOf(await checkTab(kit, ALPHA_TAB)), { kind: 'wait', watch: watchOf(), recheckAt: kit.clock.now() });
     assert.equal(await kit.files.read(MARKER), before);
     assert.deepEqual(await logLines(kit), []);
+  });
+});
+
+function alphaEntryOf(kit: CliHarness): Promise<RestoreEntry | undefined> {
+  return new RestoreRegistry(kit.files, restoreSessionsDir(KIT)).read(ALPHA_TAB);
+}
+
+/** Writes ALPHA_TAB's restore entry: its last turn ended at `failedAt` on `code`, with `retries` retries sent since. */
+async function failedTab(kit: CliHarness, failedAt: number, code: string, retries = 0): Promise<void> {
+  const entry: RestoreEntry = {
+    claudeSession: ALPHA_TAB,
+    projectDir: APP,
+    transcriptPath: join(USER_HOME, '.claude', 'projects', 'app', `${ALPHA_TAB}.jsonl`),
+    entrypoint: 'cli',
+    sessionKind: undefined,
+    pid: 6000,
+    team: 'app',
+    session: 'alpha',
+    state: 'error',
+    createdAt: failedAt - 60 * MINUTE,
+    updatedAt: failedAt,
+    restoreAttempts: 0,
+    restoredAt: undefined,
+    endedAt: undefined,
+    endReason: undefined,
+    apiError: { code, failedAt, retries, retriedAt: retries === 0 ? undefined : failedAt },
+  };
+  await new RestoreRegistry(kit.files, restoreSessionsDir(KIT)).write(entry);
+}
+
+/** The restore log's API error lines, each without its time. */
+async function restoreApiLines(kit: CliHarness): Promise<string[]> {
+  const text = (await kit.files.read(restoreLogPath(KIT))) ?? '';
+  return text
+    .split('\n')
+    .filter((line) => line.includes(' api-error: '))
+    .map((line) => line.slice(line.indexOf(' ') + 1));
+}
+
+/** Alpha's retry `n` after its turn ended on `code` at `failedAt` (UTC), the cost a cold turn's. */
+function apiRetryAnswer(code: string, n: number, failedAt: string): unknown {
+  return {
+    kind: 'wake',
+    ids: [],
+    text:
+      `Your last turn ended on an API error (${code}) at ${failedAt} UTC; retry ${n} of 3. ` +
+      "Go on with that turn's work (if a wake started it: `teamrig start --session alpha`). This retry costs about 210k W, cold.",
+    toast: `teamrig retried this tab's turn that ended on an API error (${code}), ${n} of 3 (about 210k W, cold)`,
+  };
+}
+
+describe('hook wake-check API error retry', () => {
+  it('sends on a turn that ended on a transient API error a minute after it failed, logs the retry, then waits 5 minutes', async () => {
+    const kit = await teamWithAlphaTab();
+    const failedAt = kit.clock.now();
+    await failedTab(kit, failedAt, 'server_error');
+    assert.deepEqual(answerOf(await checkTab(kit, ALPHA_TAB)), { kind: 'wait', watch: watchOf(), recheckAt: failedAt + MINUTE });
+    kit.clock.advance(MINUTE);
+    const now = kit.clock.now();
+    assert.deepEqual(answerOf(await checkTab(kit, ALPHA_TAB)), apiRetryAnswer('server_error', 1, '10:00'));
+    assert.deepEqual(await logLines(kit), [{ v: 1, at: new Date(now).toISOString(), kind: 'wake', session: 'alpha', tab: ALPHA_TAB, ids: [], w: 210_000, cold: true, retry: 'api' }]);
+    assert.deepEqual(await restoreApiLines(kit), [`api-error: retried app/alpha (${ALPHA_TAB}), its turn ended on server_error; retry 1 of 3`]);
+    assert.deepEqual((await alphaEntryOf(kit))?.apiError, { code: 'server_error', failedAt, retries: 1, retriedAt: now });
+    assert.deepEqual(answerOf(await checkTab(kit, ALPHA_TAB)), { kind: 'wait', watch: watchOf(), recheckAt: now + 5 * MINUTE });
+  });
+
+  it('leaves a tab after its last retry, and never retries a rate limit', async () => {
+    const cases: ReadonlyArray<readonly [string, number]> = [
+      ['server_error', 3],
+      ['rate_limit', 0],
+    ];
+    for (const [code, retries] of cases) {
+      const kit = await teamWithAlphaTab();
+      await failedTab(kit, kit.clock.now() - 60 * MINUTE, code, retries);
+      const before = await alphaEntryOf(kit);
+      assert.deepEqual(answerOf(await checkTab(kit, ALPHA_TAB)), { kind: 'wait', watch: watchOf(), recheckAt: null }, code);
+      assert.deepEqual(await alphaEntryOf(kit), before, `${code}: nothing claimed`);
+      assert.deepEqual(await logLines(kit), [], code);
+    }
+  });
+
+  it('keeps the login retry first for a tab the login marker holds', async () => {
+    const kit = await stuckTeam(stuckMarker([ALPHA_TAB], RECOVERED_AT));
+    await failedTab(kit, FAIL_AT, 'server_error');
+    assert.deepEqual(answerOf(await checkTab(kit, ALPHA_TAB)), retryAnswer('alpha', 'the login works again'));
+    assert.equal((await alphaEntryOf(kit))?.apiError?.retries, 0, 'no API retry spent on it');
+  });
+
+  it('comes before handed work, which wakes the tab at its next check', async () => {
+    const kit = await teamWithAlphaTab({ ...TEAM, wake: { batchSeconds: 0 } });
+    await failedTab(kit, kit.clock.now(), 'overloaded');
+    await checkTab(kit, ALPHA_TAB);
+    await hand(kit, 'Fix the outage', 'p1');
+    kit.clock.advance(MINUTE);
+    assert.deepEqual(answerOf(await checkTab(kit, ALPHA_TAB)), apiRetryAnswer('overloaded', 1, '10:00'));
+    assert.deepEqual(idsOf(answerOf(await checkTab(kit, ALPHA_TAB))), ['T1'], 'the retry took nothing from the wake state');
   });
 });
 
