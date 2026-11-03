@@ -113,6 +113,7 @@ export function formatWakeRecord(record) {
         ...(cost.weekPct === undefined ? {} : { weekPct: cost.weekPct }),
         ...(record.asks === undefined ? {} : { asks: record.asks }),
         ...(record.moments === undefined ? {} : { moments: [...record.moments] }),
+        ...(record.retry === undefined ? {} : { retry: record.retry }),
     });
 }
 /** Appends a record to the team's wake log, an append-only file the person reads to see each wake and its cost. */

@@ -16,6 +16,12 @@ export function numberField(record, key) {
     const value = record[key];
     return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
+/** The field as an instant (ms since the epoch) from the ISO text a file keeps; undefined when it is absent or no instant. */
+export function instantField(record, key) {
+    const text = stringField(record, key);
+    const ms = text === undefined ? Number.NaN : Date.parse(text);
+    return Number.isNaN(ms) ? undefined : ms;
+}
 export function recordField(record, key) {
     const value = record[key];
     return isRecord(value) ? value : undefined;

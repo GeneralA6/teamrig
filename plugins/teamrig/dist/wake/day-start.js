@@ -47,19 +47,23 @@ function settle(settled, moments) {
 /**
  * Whether the due moments wake the session now, later or not, and what is settled. A moment the session had a turn
  * after is settled with no wake. The rest wake it at once, together, unless it rests (quiet hours, held by its
- * budget) or has no work it can start: then they stay due for a later check. Wakes stay `wake.minGapMinutes` apart.
+ * budget), has no work it can start or the login is expired: then they stay due for a later check. Wakes stay
+ * `wake.minGapMinutes` apart, and while another tab's probe tests the login they wait for it until `recheckAt`.
  */
 export function decideDayStart(input) {
-    const { due, lastTurnAt, rest, now } = input;
+    const { due, lastTurnAt, rest, now, login } = input;
     const hadTurn = (moment) => lastTurnAt !== undefined && lastTurnAt >= moment.at;
     const settled = settle(input.settled, due.filter(hadTurn));
     const open = due.filter((moment) => !hadTurn(moment));
-    if (open.length === 0 || rest.quiet || rest.held || input.startable.length === 0) {
+    if (open.length === 0 || rest.quiet || rest.held || input.startable.length === 0 || login.kind === 'expired') {
         return { verdict: { kind: 'none' }, settled };
     }
     const gapEnd = input.lastWakeAt === undefined ? Number.NEGATIVE_INFINITY : input.lastWakeAt + input.minGapMs;
     if (now < gapEnd) {
         return { verdict: { kind: 'later', at: gapEnd }, settled };
+    }
+    if (login.kind === 'probing') {
+        return { verdict: { kind: 'later', at: login.recheckAt }, settled };
     }
     return { verdict: { kind: 'wake', moments: open, tasks: input.startable }, settled: settle(settled, open) };
 }

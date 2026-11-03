@@ -2,6 +2,8 @@ import { isRecord, stringField } from "../../core/guards.js";
 import { ENV, resolveKitHome } from "../../core/home.js";
 import { ID_PATTERN } from "../../core/ids.js";
 import { sessionIdOf } from "../../inbox/inbox.js";
+import { dayProbePath, dayProbeReleaseLine } from "../../restore/day-probe.js";
+import { DayProbeStore } from "../../restore/day-probe-store.js";
 import { applyEvent } from "../../restore/entry.js";
 import { authFailureOf, LOGIN_LOCK, LOGIN_TAIL_BYTES, loginLogLine, loginMarkerPath } from "../../restore/login.js";
 import { LoginStore } from "../../restore/login-store.js";
@@ -117,10 +119,30 @@ async function trackLogin(payload, event, facts, runtime, kitHome) {
         await store.releasePage(loginEvent.at);
     }
 }
+/** The reply an event shows the login works by: a good turn end, or a tool end of the tab's own turn; undefined for any other. */
+function dayProbeReplyOf(event, facts) {
+    if (event.kind === 'ready') {
+        return { kind: 'answered', tab: facts.claudeSession, at: facts.at };
+    }
+    return event.kind === 'tool' && event.mainThread ? { kind: 'tool', tab: facts.claudeSession, at: facts.at } : undefined;
+}
+/** Releases the day-start probe (src/restore/day-probe.ts) at a reply that shows the login works, and logs it. */
+async function trackDayProbe(event, facts, runtime, kitHome) {
+    const reply = dayProbeReplyOf(event, facts);
+    if (reply === undefined) {
+        return;
+    }
+    const path = dayProbePath(kitHome);
+    const released = await new DayProbeStore(runtime.files, path, fileLockOf(runtime, `${path}.lock`, LOGIN_LOCK)).release(reply);
+    if (released !== undefined) {
+        await runtime.files.append(restoreLogPath(kitHome), `${new Date(facts.at).toISOString()} ${dayProbeReleaseLine(tabLabelOf(facts), reply, released)}\n`);
+    }
+}
 /**
- * Records the event `payload` reports in its session's restore entry and, at a turn's end, in the login marker; a
- * payload of no session or event it skips writes nothing. A marker that cannot be written (its lock busy) never keeps
- * the entry from its update; an entry that cannot be written fails the call once the marker is done.
+ * Records the event `payload` reports in its session's restore entry, at a turn's end in the login marker, and at a
+ * reply in the day-start probe; a payload of no session or event it skips writes nothing. A marker or probe that
+ * cannot be written (its lock busy) never keeps the entry from its update; an entry that cannot be written fails the
+ * call once they are done.
  */
 export async function trackRestore(payload, runtime) {
     const claudeSession = sessionIdOf(payload);
@@ -143,11 +165,12 @@ export async function trackRestore(payload, runtime) {
     };
     const kitHome = resolveKitHome(runtime.env, runtime.userHome);
     const login = trackLogin(payload, event, facts, runtime, kitHome).catch(() => undefined);
+    const dayProbe = trackDayProbe(event, facts, runtime, kitHome).catch(() => undefined);
     try {
         await trackEntry(event, facts, runtime, kitHome);
     }
     finally {
-        await login;
+        await Promise.all([login, dayProbe]);
     }
 }
 /**
@@ -156,7 +179,8 @@ export async function trackRestore(payload, runtime) {
  * it closed and what each was doing (a tool's end comes through `hook tool-end`). At a turn's end it also follows the
  * login (`<kit home>/restore/login.json`): which tabs a turn that ended on Login expired left stuck, and when a
  * good turn showed the login works again; the first failure of an expiry pages the owner through the webhook the
- * team's `alerts.pageWebhookFile` or `alerts.pageWebhookEnv` names. It prints nothing, and on any
+ * team's `alerts.pageWebhookFile` or `alerts.pageWebhookEnv` names. A good turn end also releases the day-start probe
+ * (`<kit home>/restore/day-probe.json`), as does the probe tab's tool end. It prints nothing, and on any
  * error it exits 0 having written nothing: a tracker must never hold up a turn.
  */
 export async function restoreTrack(args, runtime) {
