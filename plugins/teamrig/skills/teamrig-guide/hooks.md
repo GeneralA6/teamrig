@@ -986,6 +986,15 @@ since the turn was spent on before it failed. The wake log marks the wake with `
 gets `login: retried <team>/<session> (<tab>), the login works again` (or `, which tests the renewed login`). Handed
 work can still wake a stuck tab while the login is expired: that turn fails at once on `Login expired`.
 
+A tab whose last turn ended on an API error a later try may not meet comes next: `server_error` (Claude Code's name
+for a 5xx answer, no answer in time, or a network failure) or `overloaded`. Claude Code already retried the request
+within the turn, so the check waits 1 minute after the failure before it sends the turn on, then 5 and 15 minutes
+after the last retry (or a later failure), 3 retries in all. The tab's restore entry counts them, and its next good
+turn or fresh start clears the count. A rate limit, an expired login and every other error are not retried. The
+prompt names the error, when the turn failed and which retry it is; its budget does not hold it, and handed work
+wakes the tab at the check after it. The wake log marks the wake with `retry: api`, and `restore/restore.log` gets
+`api-error: retried <team>/<session> (<tab>), its turn ended on <error>; retry <n> of 3`.
+
 ### Urgent lines
 
 An urgent line is an inbox line its sender also posts as a wake ask, one file under `state/wake-asks/<session>/`:
@@ -1211,6 +1220,11 @@ again, <tab> answered`, each with how many tabs are stuck. A lock still busy aft
 that turn, never the session's own file. The [wake check](#the-mod-the-wake-on-urgent-work) sends each stuck tab's
 turn on once the login works, and the first reply after a day-start probe's claim (an answered turn end, or a tool
 the probe's own tab runs) releases that probe, logged as `day-probe: released`.
+
+A turn that ended on any API error keeps it in the session's file (`apiError`: the error, when, and the wake check's
+retries since the last good turn), which a good turn end or a fresh start clears. When a turn fails again on
+`server_error` or `overloaded` after the wake check's third retry, the hook logs `api-error: gave up on <tab>: its
+turn ended on <error> after 3 retries`, and the tab waits for you.
 
 The first failure of an expiry in a team's tab also pages the owner, once per expiry: one line naming the tab and the
 time on its team's clock, posted to the chat webhook of the tab's team or the first team above it that names one,

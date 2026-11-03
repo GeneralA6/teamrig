@@ -44,6 +44,10 @@ teamrig restore run      # reopen the sessions the last shutdown killed
   not load teamrig's mod) needs a prompt by hand. So you hear of it away from the screen, set `alerts.pageWebhookFile` (the path of a one-line file holding a chat webhook
   URL) or `alerts.pageWebhookEnv` (the name of a variable holding it) in the team's config, or a parent team's: the
   first failure of each expiry posts one line to that chat, naming the tab and the time.
+- After a passing API error: a turn that ends on `server_error` or `overloaded` (once Claude Code's own retries within
+  the turn failed) is sent on by itself, 1 minute later, then 5 and 15 minutes after that, each with an
+  `api-error: retried` line in the same log. A good turn ends the retries; if the turn fails a fourth time,
+  `api-error: gave up on <tab>` says the tab waits for your prompt. A rate limit or any other error is not retried.
 - Where they come back: with `open.teamWindow: true` in a team's config, its sessions reopen in a Windows Terminal
   window of the team's own (`teamrig-<team>`), so two teams' tabs never mix; without it, and for sessions outside a
   team, they open in the most recent window.
