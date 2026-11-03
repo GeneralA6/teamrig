@@ -72,6 +72,20 @@ describe('applyEvent', () => {
     assert.equal(written(applyEvent(ENTRY, { kind: 'error', code: 'overloaded' }, facts())).state, 'error');
   });
 
+  it("records a failed turn's error and keeps its retry count until a good turn end or a start", () => {
+    const failed = written(applyEvent(ENTRY, { kind: 'error', code: 'server_error' }, facts()));
+    assert.deepEqual(failed.apiError, { code: 'server_error', failedAt: T1, retries: 0, retriedAt: undefined });
+    const retried: RestoreEntry = { ...failed, apiError: { code: 'server_error', failedAt: T1, retries: 1, retriedAt: T1 + 60_000 } };
+    const prompted = written(applyEvent(retried, { kind: 'working' }, facts({ at: T1 + 61_000 })));
+    assert.deepEqual(prompted.apiError, retried.apiError, "a retry's own prompt keeps the count");
+    const again = written(applyEvent(prompted, { kind: 'error', code: 'overloaded' }, facts({ at: T1 + 90_000 })));
+    assert.deepEqual(again.apiError, { code: 'overloaded', failedAt: T1 + 90_000, retries: 1, retriedAt: T1 + 60_000 });
+    assert.deepEqual(written(applyEvent(again, MAIN_TOOL, facts({ at: T1 + TOOL_END_WRITE_MS * 2 }))).apiError, again.apiError);
+    assert.deepEqual(written(applyEvent(again, { kind: 'end', reason: 'other' }, facts())).apiError, again.apiError);
+    assert.equal('apiError' in written(applyEvent(again, { kind: 'ready' }, facts())), false);
+    assert.equal('apiError' in written(applyEvent(again, { kind: 'start' }, facts())), false);
+  });
+
   it('begins a start afresh: ready, with no restore pending', () => {
     const entry = written(applyEvent(ENTRY, { kind: 'start' }, facts()));
     assert.equal(entry.state, 'ready');
@@ -136,5 +150,23 @@ describe('formatEntry and parseEntry', () => {
     assert.equal(parseEntry(JSON.stringify({ ...record, pid: -1 })), undefined);
     assert.equal(parseEntry(JSON.stringify({ ...record, team: 'A Team; rm' })), undefined);
     assert.equal(parseEntry(JSON.stringify({ ...record, restoreAttempts: undefined })), undefined);
+  });
+
+  it("round-trips a failed turn's state, and reads an entry written before it as one with none", () => {
+    const failed: RestoreEntry = { ...ENTRY, state: 'error', apiError: { code: 'server_error', failedAt: T0, retries: 2, retriedAt: T1 } };
+    const text = formatEntry(failed);
+    assert.match(text, /"failedAt": "2030-01-08T09:00:00.000Z"/);
+    assert.deepEqual(parseEntry(text), failed);
+    const unnamed: RestoreEntry = { ...ENTRY, apiError: { code: undefined, failedAt: T0, retries: 0, retriedAt: undefined } };
+    assert.deepEqual(parseEntry(formatEntry(unnamed)), unnamed);
+    assert.equal('apiError' in (parseEntry(formatEntry(ENTRY)) ?? failed), false);
+  });
+
+  it("keeps an entry whose failed turn's state is damaged, losing only that state", () => {
+    const record = JSON.parse(formatEntry(ENTRY));
+    const damaged = [{ failedAt: 'soon', retries: 0 }, { failedAt: '2030-01-08T09:00:00Z', retries: -1 }, { failedAt: '2030-01-08T09:00:00Z', retries: 0, code: 7 }, { failedAt: '2030-01-08T09:00:00Z', retries: 0, retriedAt: 'later' }, 'x'];
+    for (const apiError of damaged) {
+      assert.deepEqual(parseEntry(JSON.stringify({ ...record, apiError })), ENTRY, JSON.stringify(apiError));
+    }
   });
 });
