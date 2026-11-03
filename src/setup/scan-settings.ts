@@ -24,7 +24,7 @@ export interface SettingsFinding {
 }
 
 /** A file's finding, before the same one in the file's worktree copies is folded in. */
-type FileFinding = Omit<SettingsFinding, 'copies'>;
+export type FileFinding = Omit<SettingsFinding, 'copies'>;
 
 /** A hook's command prints up to this many characters. */
 const HOOK_COMMAND_MAX_CHARS = 80;
@@ -45,10 +45,11 @@ function wideFindings(plan: ReadPlan): FileFinding[] {
 }
 
 /**
- * The context hooks of a settings file that the transcripts read show printing into the context, with what they
- * printed: a hook that never ran there, or printed nothing (a title, a guard), costs no context and is no finding.
+ * The context hooks of a settings file, or of a plugin's hooks file named by its `<plugin>@<marketplace>`, that the
+ * transcripts read show printing into the context, with what they printed: a hook that never ran there, or printed
+ * nothing (a title, a guard), costs no context and is no finding.
  */
-function hookFindings(path: string, settings: JsonRecord, hooks: HookOutputs, secrets: SecretScanner): FileFinding[] {
+export function hookFindings(path: string, settings: JsonRecord, hooks: HookOutputs, secrets: SecretScanner, plugin?: string): FileFinding[] {
   return hookCommandsOf(settings, CONTEXT_HOOK_EVENTS).flatMap((hook): FileFinding[] => {
     const output = hooks.get(hookOutputKey(hook.event, recordedCommandOf(hook)));
     if (output === undefined || output.printed === 0) {
@@ -57,7 +58,8 @@ function hookFindings(path: string, settings: JsonRecord, hooks: HookOutputs, se
     const shown = clipEnd(secrets.redact(hookCommandLine(hook)), HOOK_COMMAND_MAX_CHARS);
     const average = output.chars / output.runs;
     const printed = `printed ~${formatCount(average)} chars (~${formatCount(tokensOf(average))} tokens) a run on average over ${output.runs} run(s) read, something in ${output.printed}`;
-    return [{ kind: 'context-hook', path, what: `${hook.event} hook "${shown}": ${printed}; it enters the context` }];
+    const owner = plugin === undefined ? '' : ` of plugin ${plugin}`;
+    return [{ kind: 'context-hook', path, what: `${hook.event} hook "${shown}"${owner}: ${printed}; it enters the context` }];
   });
 }
 
