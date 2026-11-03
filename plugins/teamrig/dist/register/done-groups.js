@@ -1,5 +1,5 @@
 /**
- * The done groups (T1729, design tasks/T1121 section 1): one rule that sorts a span's done work into the groups the
+ * The done groups (T1729, T1121): one rule that sorts a span's done work into the groups the
  * owner reads it in, so the daily report, the meeting agenda's DONE section and the pane's Done page never disagree.
  * A task done in the span goes in the first group it fits: Owner asked (its source is the owner marker), one group per
  * goal (its first goal), Urgent p1 (priority p0 or p1), This week's plan (its planning week holds the moment it was
