@@ -16,4 +16,10 @@ describe('worktreeNoteOf', () => {
       assert.equal(worktreeNoteOf(cwd), undefined, String(cwd));
     }
   });
+
+  it('matches the folder names in any case on Windows, where the filesystem ignores it, and only as written on Linux', () => {
+    const cwd = 'C:\\Work\\Api\\.Claude\\Worktrees\\fix-1';
+    assert.equal(worktreeNoteOf(cwd, 'win32'), WORKTREE_NOTE);
+    assert.equal(worktreeNoteOf('/work/api/.Claude/Worktrees/fix-1', 'linux'), undefined);
+  });
 });
