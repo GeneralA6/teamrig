@@ -269,11 +269,13 @@ export function coreRuleTexts(config: KitConfig, command: string, platform: Node
     push:
       `${pushRule(config.pushGuard, config.prompts.hookAsks)} ${refusedRouteRule(config.prompts.hookAsks)}`,
     worktrees:
-      'Edit in your own worktree and branch in every git repo, never a main checkout.' +
+      'Edit in your own worktree and branch in each repo, never a main checkout.' +
       // Any other removal (`git worktree remove`, `rm -rf`, `Remove-Item -Recurse`) follows a node_modules junction
       // into the main checkout's folder and empties it (T1279).
       (platform === 'win32' ? ` Remove a worktree only with \`${command} worktree remove <path>\`: any other removal may empty the main node_modules.` : '') +
-      " Update comments in their code's commit, deleting one you cannot make true; verify a load-bearing comment or recorded number at its source;" +
+      // A reader of the code has only the repo: a task id is a trace, a path into a team's home leads nowhere (T1869).
+      ' Comments say why plainly, no path outside the repo, and change with their code or go;' +
+      ' verify a load-bearing one or recorded number at its source;' +
       ' fix a stale comment, doc or proven-dead code you find in its own commit and tell its area.',
   };
 }
