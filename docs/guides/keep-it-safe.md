@@ -201,6 +201,13 @@ secret-like key (`TOKEN="SOME_READ_TOKEN"`) passes, judged on the value alone, a
 lock, lease or fencing token (`claimToken`). The reason says to send the secret's name or the file it is kept in instead, and to rotate it
 ([Each prompt](../../plugins/teamrig/skills/teamrig-guide/hooks.md#each-prompt)).
 
+A deny line in Claude Code's `permissions.deny` refuses a call whatever a hook or auto mode says, so it holds where
+an allow hook would approve reading a secret. `teamrig doctor` and `check` flag the secret deny lines (`.env`,
+`secrets.yaml`, `~/.npmrc`, `~/.ssh/id_*`, cloud and registry credentials, `*.pem`, `*.key`, `env`, `printenv`, a
+Kubernetes secret) that no settings file holds (`deny-missing`) and print them as a list to paste into your user
+settings; teamrig never writes permissions itself
+([doctor](../../plugins/teamrig/skills/teamrig-guide/commands.md#teamrig-doctor)).
+
 Your own terminal keeps what you type too: PowerShell saves each line typed in its console to its history file, a
 credential in a URL or a token too. `teamrig doctor` flags that file (`shell-history`) while no PowerShell profile
 of yours sets a history handler, and the guide gives the handler to paste into your profile, with the ways a session

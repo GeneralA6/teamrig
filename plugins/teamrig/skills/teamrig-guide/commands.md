@@ -2965,7 +2965,7 @@ Claude Code or Node.js, [the check](requirements.md#the-requirements-check)), `n
 `context-lists`, `tree-id`, `tree-parent`, `tree-loop`, `tree-depth`, `tree-children`, `tree-role` (a
 `roles.securityReviewer` or `roles.deliveryOwner` of `<team>/<id>` whose team is not above this one, or whose
 session does not hold that role there), `name-two-teams`, `effort-env`, `model-env`, `settings-json`, `launch-effort`,
-`allow-wide`, `project-missing`, `shell-history`.
+`allow-wide`, `deny-missing`, `project-missing`, `shell-history`.
 
 `context-size` weighs, in characters (about 4 per token), the user's CLAUDE.md with the project folder's and each
 parent's (`CLAUDE.md`, `CLAUDE.local.md`, `.claude/CLAUDE.md`), the project's memory index (`MEMORY.md`) and the
@@ -3001,6 +3001,19 @@ session owns, so the lead's `start` shows it and its inbox gets one line on it.
 
 ```text
 WARN allow-wide 3 local allow rule(s) in 2 settings file(s) approve a whole tool or program, so auto mode's classifier never sees those calls, or hold a credential saved with an approved command (Bash credential 1, Bash wide 1, Read wide 1); `teamrig permissions trim` previews their removal, and the owner runs it with --yes
+```
+
+`deny-missing` lists the secret deny lines that no settings file a session in the project reads holds word for word
+(the user's `settings.json` in Claude Code's folder, the project's `.claude/settings.json` and
+`.claude/settings.local.json`): a hook's allow or auto mode can approve a call that reads a credential file
+(`.env`, `secrets.yaml`, `~/.npmrc`, `~/.ssh/id_*`, `~/.aws/credentials`, `~/.kube/config`, `~/.docker/config.json`,
+`~/.git-credentials`, gh's `hosts.yml`, `*.pem`, `*.key`) or prints the environment or a Kubernetes secret, and a deny
+line beats both. teamrig never writes permissions: paste the JSON list it prints into `permissions.deny` of your user
+settings. A rule ending in `:*` is the legacy prefix form, so `PowerShell(Get-ChildItem env:*)` misses
+`Get-ChildItem env:X`; the list uses `env*`. `check` shows it too, as a warning no session owns.
+
+```text
+WARN deny-missing 2 of 19 secret deny line(s) are in no settings file a session reads (read: /home/you/.claude/settings.json), so a hook's allow or auto mode can approve reading a credential file or printing the environment; a deny line beats both, and teamrig never writes permissions: paste these into the permissions.deny list of /home/you/.claude/settings.json yourself: ["Bash(env)","Read(//**/*.key)"]
 ```
 
 `project-missing` is a `team.project` or `launch.<id>.project` that is missing or a file on this machine: a tab
