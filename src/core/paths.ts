@@ -50,3 +50,23 @@ export function expandHome(path: string, userHome: string, platform: NodeJS.Plat
   const below = platform === 'win32' ? /^~[\\/]/ : /^~\//;
   return below.test(path) ? paths.join(userHome, path.slice(2)) : path;
 }
+
+/** A Claude Code worktree's folder in a path, `<repo>/.claude/worktrees/<name>`, with either separator. */
+const CLAUDE_WORKTREE = /[\\/]\.claude[\\/]worktrees[\\/][^\\/]+/;
+const CLAUDE_WORKTREE_ANY_CASE = new RegExp(CLAUDE_WORKTREE.source, 'i');
+
+/**
+ * For a path at or below a Claude Code worktree (`<repo>/.claude/worktrees/<name>[/<rest>]`, made by EnterWorktree or
+ * `claude --worktree`), the same place in its repo's folder (`<repo>[/<rest>]`): the worktree is a temporary copy of
+ * that repo. Undefined for any other path. The folder names match in any case where the filesystem ignores it.
+ */
+export function claudeWorktreeRepo(path: string, platform: NodeJS.Platform = process.platform): string | undefined {
+  const match = (CASE_INSENSITIVE.has(platform) ? CLAUDE_WORKTREE_ANY_CASE : CLAUDE_WORKTREE).exec(path);
+  if (match === null) {
+    return undefined;
+  }
+  const head = path.slice(0, match.index);
+  const tail = path.slice(match.index + match[0].length);
+  const atRoot = tail === '' && (head === '' || head.endsWith(':'));
+  return atRoot ? `${head}${(platform === 'win32' ? win32 : posix).sep}` : `${head}${tail}`;
+}

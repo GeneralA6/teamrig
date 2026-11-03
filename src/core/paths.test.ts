@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { expandHome, homeRelative, isAtOrBelow, pathKey, samePath } from './paths.ts';
+import { claudeWorktreeRepo, expandHome, homeRelative, isAtOrBelow, pathKey, samePath } from './paths.ts';
 
 describe('isAtOrBelow', () => {
   it('holds for the folder itself and any place inside it, ignoring case and separators on Windows (T1232)', () => {
@@ -72,5 +72,31 @@ describe('expandHome', () => {
     assert.equal(expandHome('~user/notes.md', '/home/user', 'linux'), '~user/notes.md');
     assert.equal(expandHome('~\\notes.md', '/home/user', 'linux'), '~\\notes.md');
     assert.equal(expandHome('/srv/CLAUDE.md', '/home/user', 'linux'), '/srv/CLAUDE.md');
+  });
+});
+
+describe('claudeWorktreeRepo', () => {
+  it('reads a path at or below a Claude Code worktree as the same place in its repo (T1593)', () => {
+    assert.equal(claudeWorktreeRepo('/work/app/.claude/worktrees/t1', 'linux'), '/work/app');
+    assert.equal(claudeWorktreeRepo('/work/app/.claude/worktrees/t1/web/src', 'linux'), '/work/app/web/src');
+    assert.equal(claudeWorktreeRepo('C:\\Work\\App\\.claude\\worktrees\\t1', 'win32'), 'C:\\Work\\App');
+    assert.equal(claudeWorktreeRepo('C:/Work/App/.claude/worktrees/t1/web', 'win32'), 'C:/Work/App/web');
+  });
+
+  it('keeps the root of a repo at a root', () => {
+    assert.equal(claudeWorktreeRepo('/.claude/worktrees/t1', 'linux'), '/');
+    assert.equal(claudeWorktreeRepo('C:\\.claude\\worktrees\\t1', 'win32'), 'C:\\');
+  });
+
+  it('matches the folder names in any case only where the filesystem ignores case', () => {
+    assert.equal(claudeWorktreeRepo('C:\\Work\\App\\.Claude\\Worktrees\\t1', 'win32'), 'C:\\Work\\App');
+    assert.equal(claudeWorktreeRepo('/work/app/.Claude/Worktrees/t1', 'linux'), undefined);
+  });
+
+  it('gives nothing for a path outside a worktree, or the worktrees folder itself', () => {
+    assert.equal(claudeWorktreeRepo('/work/app', 'linux'), undefined);
+    assert.equal(claudeWorktreeRepo('/work/app/.claude/skills/check', 'linux'), undefined);
+    assert.equal(claudeWorktreeRepo('/work/app/.claude/worktrees', 'linux'), undefined);
+    assert.equal(claudeWorktreeRepo('/work/app/claude/worktrees/t1', 'linux'), undefined);
   });
 });
