@@ -252,7 +252,9 @@ turns this off: `register.autoArchive: false` in the team's `config.json`, after
   the team's folder, unless `paths.state` moves it): the team's use of the
   account's week so far, at its own W per percent, and that plus its part of what the account has left to
   `budget.targetPct`, for a reader that shows each team's week, such as the pane's Teams tab (`parseTeamWeek`,
-  from `src/read/index.ts`, reads it). A child team keeps its own; a reader that shows it under its parent adds it.
+  from `src/read/index.ts`, reads it). The file names the Claude account it counts in (`budget.account`, else the
+  config dir the team's sessions run in). A child team keeps its own; a reader that shows it under its parent adds it
+  when both name one account.
   Beside it, `usage/sessions.week.json` holds each session on the team's roster: its use of the week so far,
   at the same rate, and its UTC hours with work this week, for a reader that shows each session's week, such as a
   session's card on the pane's Teams tab (`parseSessionsWeek` reads it).

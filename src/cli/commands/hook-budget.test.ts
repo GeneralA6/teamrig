@@ -15,8 +15,8 @@ const SUMMARY = join(TEAM_HOME, 'state', ...TEAM_WEEK_IN_STATE);
 const SESSIONS = join(TEAM_HOME, 'state', ...SESSIONS_WEEK_IN_STATE);
 
 describe('the budget hooks', () => {
-  it("keep the team's week summary: its own sessions' W at its rate, never the use outside it, and its part of what is left", async () => {
-    const kit = new CliHarness({ ...TEAM, budget: HOLDING_BUDGET });
+  it("keep the team's week summary on its account: its own sessions' W at its rate, never the use outside it, and its part of what is left", async () => {
+    const kit = new CliHarness({ ...TEAM, budget: { ...HOLDING_BUDGET, account: 'work' } });
     const outside = new UsageStore(kit.files, join(TEAM_HOME, 'state', 'usage', 'outside'));
     const outsideDay = { '2030-01-08': { w: 40_000_000, calls: 1, patterns: emptyPatterns() } };
     assert.ok(await outside.save(OUTSIDE_ID, { ...EMPTY_USAGE, byDay: outsideDay }, (await outside.load(OUTSIDE_ID)).rev), 'outside use saved');
@@ -28,6 +28,7 @@ describe('the budget hooks', () => {
     const text = await kit.files.read(SUMMARY);
     // 150M W at 10M W per percent; the team alone on the account plans all of the 69.5% left to the 99.5% target.
     assert.deepEqual(text === undefined ? undefined : parseTeamWeek(text), {
+      account: 'work',
       usedPct: 15,
       plannedPct: 84.5,
       accountUsedPct: 30,

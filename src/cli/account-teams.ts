@@ -92,6 +92,8 @@ export interface AccountPeer {
 
 /** The week on the asking team's account as its readers take it: the status line's use and the files it is read in. */
 export interface AccountWeek {
+  /** The asking team's Claude account (`kitHomeAccountsOf`). */
+  readonly account: string;
   /** The newest status line reading's use at `now` (`weekUseOnAccount`); undefined with none this week. */
   readonly statusUse: WeekUse | undefined;
   /**
@@ -125,7 +127,7 @@ export async function accountWeekOn(
   const holder = accountHolderOf(tree, paths.team, account, accountOfTeam);
   const keepsHere = (team: string): boolean => team !== paths.team && accountOfTeam(team) === account && accountHolderOf(tree, team, account, accountOfTeam) === holder;
   const peers = [...teams].filter(([team]) => keepsHere(team)).map(([team, loaded]) => ({ team, usage: loaded.kit.paths.usage, ids: loaded.roster.ids }));
-  return { statusUse, paths: teams.get(holder)?.kit.paths ?? paths, keeper: holder, peers };
+  return { account, statusUse, paths: teams.get(holder)?.kit.paths ?? paths, keeper: holder, peers };
 }
 
 async function statusUseOf(
