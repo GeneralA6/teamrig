@@ -19,10 +19,10 @@ export function batchLines(view) {
     const how = askedBy === undefined
         ? [
             `  Ask ${ownerMarker} these together, each card as it stands, each figure explained; then ${command} decisions asked --session ${lead} records the batch asked.`,
-            `  Record each answer in the same turn: ${command} update <id> --note "${ownerMarker} decided: <decision>" --session ${lead}.`,
+            `  Record each answer in the same turn: ${command} update <id> --decided --note "${ownerMarker} decided: <decision>" --session ${lead}; the card leaves the batches.`,
             laterLine(command, ownerMarker, lead, 'no batch asks it before then'),
         ]
-        : [`  ${askedBy} asks ${ownerMarker} these in its batches and records each answer on its task as a note: "${ownerMarker} decided: <decision>".`];
+        : [`  ${askedBy} asks ${ownerMarker} these in its batches and records each answer on its task as decided: "${ownerMarker} decided: <decision>".`];
     return [
         head,
         ...(batch.pending.length === 0 ? [] : ['NOT YET ASKED', ...facts(batch.pending)]),

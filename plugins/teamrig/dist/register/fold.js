@@ -78,6 +78,7 @@ function created(id, fields, at, by) {
         waits: [],
         card: null,
         answer: null,
+        decided: null,
         proof: null,
         watch: null,
         reparks: 0,
@@ -105,6 +106,7 @@ function withStatus(task, event) {
         waits: WAIT_STATUSES.includes(event.status) ? (event.waits ?? []) : [],
         card: WAIT_STATUSES.includes(event.status) ? (event.card ?? null) : null,
         answer: null,
+        decided: null,
         proof: event.status === 'verifying' ? (event.proof ?? null) : null,
         watch: event.status === 'done' ? (event.watch ?? null) : null,
         reparks: reparksAfter(task, event),
@@ -130,16 +132,19 @@ function reparksAfter(task, event) {
  * An update's note from the task's owner is its note from then on, as a restated one on `set` is, so show and the
  * waiting text print it at once; a note from any other session adds context to the history only, since the note a
  * task shows is its owner's (T630). An update with a `verdict` is the lead's answer to the task's approval wait, its
- * note what the lead checked (T684). An update's `waits` (a Later, T1295) replace a waiting or verifying task's, so
- * the time the owner put it off to is one of its waits; on a task in any other status they mean nothing. A pin holds
- * for the owner it was set for: handing the task on clears it, unless the same update pins it (T637).
+ * note what the lead checked (T684). An update's `waits` (a Later, T1295, or a Decided, T1366) replace a waiting or
+ * verifying task's, so the time the owner put it off to is one of its waits, or the owner's wait is gone; a Decided
+ * marks the task `decided`. On a task in any other status they mean nothing. A pin holds for the owner it was set for:
+ * handing the task on clears it, unless the same update pins it (T637).
  */
-function withChanges(task, { changes, note, at, by, verdict, waits }) {
+function withChanges(task, { changes, note, at, by, verdict, waits, decided }) {
     const priorityAt = changes.priority === undefined || changes.priority === task.priority ? task.priorityAt : at;
     const shown = note !== null && by === task.owner ? note : task.note;
     const answer = verdict === undefined ? task.answer : { verdict, by, at, note };
-    const kept = waits !== undefined && WAIT_STATUSES.includes(task.status) ? waits : task.waits;
-    const next = { ...task, ...changes, note: shown, answer, waits: kept, updatedAt: at, updatedBy: by, priorityAt };
+    const waitable = WAIT_STATUSES.includes(task.status);
+    const kept = waits !== undefined && waitable ? waits : task.waits;
+    const decision = decided === true && waitable ? { by, at, note } : task.decided;
+    const next = { ...task, ...changes, note: shown, answer, decided: decision, waits: kept, updatedAt: at, updatedBy: by, priorityAt };
     if (next.owner !== task.owner) {
         return { ...next, pin: changes.pin ?? null, assignedAt: at, ownerSeenAt: by === next.owner ? at : null };
     }

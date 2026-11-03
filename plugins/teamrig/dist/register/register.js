@@ -203,16 +203,28 @@ export class Register {
      * (T1295), an update that changes no field and gives the task its waits from then on.
      */
     defer(caller, id, until, note) {
-        return this.commit(caller, (snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.deferEvent(task, caller, this.deps.policy.defer(task, caller, until, note, this.timeContext())))));
+        return this.commit(caller, (snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.waitsEvent(task, caller, this.deps.policy.defer(task, caller, until, note, this.timeContext())))));
     }
     /**
      * A Later from the lead above who asks the owner this team's decisions, `asker` being its `<team>/<id>`, as in
      * noteFrom: the tree decides who that may be, so this team's roster check and the policy's caller check are skipped.
      */
     deferFrom(asker, id, until, note) {
-        return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.deferEvent(task, asker, this.deps.policy.deferFrom(task, until, note, this.timeContext())))));
+        return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.waitsEvent(task, asker, this.deps.policy.deferFrom(task, until, note, this.timeContext())))));
     }
-    deferEvent(task, by, change) {
+    /**
+     * `update <id> --decided`: the owner's answer to a card (T1366), an update that changes no field, drops the task's
+     * wait on the owner and marks it decided for its session to act on.
+     */
+    decide(caller, id, note) {
+        return this.commit(caller, (snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.waitsEvent(task, caller, this.deps.policy.decide(task, caller, note)))));
+    }
+    /** A Decided from the lead above who asks the owner this team's decisions, `asker` being its `<team>/<id>`, as in deferFrom. */
+    decideFrom(asker, id, note) {
+        return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.waitsEvent(task, asker, this.deps.policy.decideFrom(task, note)))));
+    }
+    /** The update a Later or a Decided writes: no field changed, the task's waits from then on. */
+    waitsEvent(task, by, change) {
         return change.ok ? { ok: true, value: { ...this.base(task.id, by), type: 'update', ...change.value } } : change;
     }
     /** The clock and zone a write judges a time against. */

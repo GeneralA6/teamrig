@@ -113,7 +113,7 @@ function decisionLines(input) {
         `  Read each card to ${input.ownerMarker} as it stands, each figure explained; where one says no card yet, ask its owner for it (check flags it NO-CARD). Never point to a doc; \`${input.command} show <id>\` prints a task whole.`,
         askLine(input.askWith, input.ownerMarker),
         `  A question a card does not answer is its task owner's to find: ${input.command} add --owner <id>${handed} --due <date> --session ${input.lead}, then relay the answer; never look it up yourself.`,
-        `  Record each answer in the same turn: ${input.command} update <id>${labelled} --note "${input.ownerMarker} decided: <decision>" --session ${input.lead}; meeting end tells each task's owner.`,
+        `  Record each answer in the same turn: ${input.command} update <id>${labelled} --decided --note "${input.ownerMarker} decided: <decision>" --session ${input.lead}; the card leaves the agenda, and meeting end tells each task's owner.`,
         laterLine(input.command, input.ownerMarker, input.lead, 'it waits in LATER until then'),
     ];
 }

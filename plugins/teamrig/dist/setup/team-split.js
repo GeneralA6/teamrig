@@ -265,6 +265,9 @@ function namedSessions(task) {
     if (task.answer !== null) {
         named.push(['answer', task.answer.by]);
     }
+    if (task.decided !== null) {
+        named.push(['decided', task.decided.by]);
+    }
     for (const wait of task.waits) {
         if (wait.kind === 'decision' || wait.kind === 'approval') {
             named.push([wait.kind, wait.who]);

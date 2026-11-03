@@ -40,10 +40,11 @@ function goesOnByWaits(status) {
 }
 /**
  * True when every reason the task waits for cleared, an approval its giver answered counting either way (T996): an
- * approval sends the owner to push or merge, a decline back to work on the note's point.
+ * approval sends the owner to push or merge, a decline back to work on the note's point. A decided task (a leader
+ * recorded the owner's answer to its card, T1366) goes on once its waits left cleared, none counting.
  */
 function waitsLetGoOn(task, context) {
-    return task.waits.length > 0 && task.waits.every((reason) => isReady(reason, context) || answerTo(task, reason) !== undefined);
+    return (task.waits.length > 0 || task.decided !== null) && task.waits.every((reason) => isReady(reason, context) || answerTo(task, reason) !== undefined);
 }
 /**
  * True when the task's owner can go on with it now: an open or in-progress task, or a waiting task (a verifying
@@ -82,14 +83,17 @@ function finishedByAnotherSince(id, session, tasks, elsewhere, seen) {
 }
 /**
  * True when someone else changed the task since its owner last touched it: handed it over, raised its priority,
- * set its status, finished a task it comes after or waits on, or answered an approval it waits on; or when a time it
- * waits for falls after that touch (the caller asks only once the task can go on, so that time has come). The
- * owner's own changes are never news to it. A task it comes after or waits on may be another register's of the team
- * tree (`elsewhere`).
+ * set its status, finished a task it comes after or waits on, answered an approval it waits on, or recorded the
+ * owner's decision on its card (T1366); or when a time it waits for falls after that touch (the caller asks only once
+ * the task can go on, so that time has come). The owner's own changes are never news to it. A task it comes after or
+ * waits on may be another register's of the team tree (`elsewhere`).
  */
 export function isNews(task, session, tasks, elsewhere, zone) {
     const seen = timeOf(task.ownerSeenAt);
     if (Math.max(timeOf(task.assignedAt), timeOf(task.priorityAt), timeOf(task.statusAt)) > seen) {
+        return true;
+    }
+    if (task.decided !== null && task.decided.by !== session && timeOf(task.decided.at) > seen) {
         return true;
     }
     if (task.after.some((id) => finishedByAnotherSince(id, session, tasks, elsewhere, seen))) {
@@ -221,12 +225,16 @@ export function taskListText(tasks) {
     return more > 0 ? `${named.join(', ')} and ${more} more` : named.join(', ');
 }
 /**
- * `p2`, or for a task that goes on by its waits, so the session sets its next status: `p2, waiting: lead approved it`
- * (or declined it) once an approval it waits on was answered, else `p2, waiting: every wait cleared`.
+ * `p2`, or for a task that goes on by its waits, so the session sets its next status: `p2, waiting: lead recorded the
+ * owner's decision` once a leader recorded one (T1366), `p2, waiting: lead approved it` (or declined it) once an
+ * approval it waits on was answered, else `p2, waiting: every wait cleared`.
  */
 function taskTag(task) {
     if (!goesOnByWaits(task.status)) {
         return `p${task.priority}`;
+    }
+    if (task.decided !== null) {
+        return `p${task.priority}, ${task.status}: ${task.decided.by} recorded the owner's decision`;
     }
     const answer = task.waits.map((reason) => answerTo(task, reason)).find((found) => found !== undefined);
     return `p${task.priority}, ${task.status}: ${answer === undefined ? 'every wait cleared' : `${answer.by} ${answer.verdict} it`}`;
