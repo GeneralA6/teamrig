@@ -99,6 +99,22 @@ describe('a send to a session teamrig closed', () => {
     );
   });
 
+  it('denies with why and posts no wake ask when the inbox refuses the line or cannot take it', async () => {
+    const refused = await closedAlpha('on');
+    const twoLines = await coldSend(refused, send('alpha', 'Review the fix on T1.\nThen merge it.'));
+    assert.equal(decisionOf(twoLines), 'deny');
+    assert.match(reasonOf(twoLines) ?? '', /could not post it as an urgent line: an inbox item is one non-empty line\. Tell the lead/);
+
+    const unposted = await closedAlpha('on');
+    const files = new FaultyFiles(unposted.files).fail('append', join(TEAM_HOME, 'state', 'inbox', 'alpha.md'), systemError('EACCES', 'EACCES: permission denied'));
+    const held = await coldSend(unposted, send('alpha'), files);
+    assert.equal(decisionOf(held), 'deny');
+    assert.match(reasonOf(held) ?? '', /could not post it as an urgent line: not posted: EACCES: permission denied\. Tell the lead/);
+    for (const kit of [refused, unposted]) {
+      assert.equal(await asksOf(kit), 0, 'a line not in the inbox wakes no one');
+    }
+  });
+
   it('names no --wake now on a team with wakes off', async () => {
     const kit = await closedAlpha('on', { wake: { enabled: false } });
     const held = await coldSend(kit, send('alpha'));
