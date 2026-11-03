@@ -384,7 +384,10 @@ allow, in a mode that asks, or a check of its own that always asks): `hook promp
   reads it, that is a sanctioned route: `teamrig merge`, `teamrig deploy --repo <name>`, `teamrig exec request`,
   `teamrig worktree remove` (no `--base`), a register or inbox command (`start`, `add`, `set`, `list`, `inbox`...), a
   `git commit` with its hooks running (only `-a -s -q -m -F` and paths), or a `git push [-u] [-q] <remote> <branch>`
-  of a task branch you own (`t<id>-...`) to a remote the repository names, never a protected branch. One plain
+  of a task branch you own (`t<id>-...`) to a remote the repository names, never a protected branch, and only while
+  git pushes it to the remote branch of its own name: a `remote.<name>.push` refspec, or a `push.default` of
+  `upstream` or `tracking` (which sends it to its upstream, `origin/main` for a branch cut from it), keeps the
+  prompt. One plain
   command: no `;`, `&`, `|`, `<`, `>` but a lone `2>&1`, no substitution, variable or `#`, inside quotes too, so a
   commit message holding one of them gets the cases below.
 - **A line that provably only reads runs**, by the [read-only allow](#before-a-shell-command-the-read-only-allow)'s
