@@ -3,11 +3,13 @@ import type { WeekWindow } from './pace.ts';
 import { teamShareOf, type TeamsOnAccount } from './parts.ts';
 import type { UsageState } from './store.ts';
 import { keepSummaryFile, summaryMinute, summaryPct } from './summary-file.ts';
-import { formatTeamWeek, TEAM_WEEK_FORMAT, type TeamWeekSummary } from './team-week-summary.ts';
+import { formatTeamWeek, TEAM_WEEK_FORMAT, type NamedTeamWeek } from './team-week-summary.ts';
 import { wSince } from './week.ts';
 
 /** What the team's week summary is read from: the week as the budget hooks read it, and the team's own stores. */
 export interface TeamWeekInput {
+  /** The team's Claude account (src/budget/account.ts `accountsOf`), which the summary names. */
+  readonly account: string;
   readonly window: WeekWindow | undefined;
   /** The account's use of the week, in percent. */
   readonly usedPct: number | undefined;
@@ -24,9 +26,9 @@ export interface TeamWeekInput {
 /**
  * The team's week summary (src/budget/team-week-summary.ts): its sessions' W since the week began at its own rate,
  * and that plus its part of what the account has left to the target (the split as is, as a surplus reads it: no day's
- * funding); undefined while the week, its use or the rate is unknown.
+ * funding), on the team's account; undefined while the week, its use or the rate is unknown.
  */
-export function teamWeekSummaryOf(input: TeamWeekInput): TeamWeekSummary | undefined {
+export function teamWeekSummaryOf(input: TeamWeekInput): NamedTeamWeek | undefined {
   const { window, usedPct, wPerPct, now } = input;
   if (window === undefined || usedPct === undefined || wPerPct === undefined || wPerPct <= 0) {
     return undefined;
@@ -34,6 +36,7 @@ export function teamWeekSummaryOf(input: TeamWeekInput): TeamWeekSummary | undef
   const teamUsedPct = wSince(input.states, window.start, now) / wPerPct;
   const leftPct = teamShareOf(Math.max(0, input.targetPct - usedPct), input.teams.split, input.teams.others);
   return {
+    account: input.account,
     usedPct: summaryPct(teamUsedPct),
     plannedPct: summaryPct(teamUsedPct + leftPct),
     accountUsedPct: summaryPct(usedPct),
@@ -43,6 +46,6 @@ export function teamWeekSummaryOf(input: TeamWeekInput): TeamWeekSummary | undef
 }
 
 /** Writes the team's week summary at `path` when that changes it, as every week summary is kept (`keepSummaryFile`); returns whether it wrote. */
-export async function keepTeamWeek(files: Pick<Files, 'read' | 'write'>, path: string, summary: TeamWeekSummary): Promise<boolean> {
+export async function keepTeamWeek(files: Pick<Files, 'read' | 'write'>, path: string, summary: NamedTeamWeek): Promise<boolean> {
   return keepSummaryFile(files, path, formatTeamWeek(summary), TEAM_WEEK_FORMAT);
 }
