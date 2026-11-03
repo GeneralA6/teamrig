@@ -3,7 +3,7 @@ import { discoverTranscripts } from "../budget/discover.js";
 import { AGENT_TOOL, parseTranscriptLine, SKILL_TOOL } from "../budget/line.js";
 import { stringField } from "../core/guards.js";
 import { parseObject } from "../core/jsonl.js";
-import { isAtOrBelow, pathKey } from "../core/paths.js";
+import { claudeWorktreeRepo, isAtOrBelow, pathKey } from "../core/paths.js";
 import { addHookRun, hookRunOf, mayRecordHookRun } from "./scan-hook-output.js";
 /** The bytes read at a time: a transcript runs to hundreds of MB, and is never held whole. */
 export const USE_CHUNK_BYTES = 8 * 1024 * 1024;
@@ -54,6 +54,13 @@ async function readOne(source, path, one, chunkBytes) {
     }
     return size;
 }
+/**
+ * Where a session started, as the scan judges it: a folder in a Claude Code worktree as the same place in its repo,
+ * since the worktree is a temporary copy, so a skill used there belongs in the repo's `.claude/skills` (T1593).
+ */
+function startFolderOf(cwd) {
+    return cwd === undefined ? undefined : (claudeWorktreeRepo(cwd) ?? cwd);
+}
 function addUsedIn(usedIn, names, cwd) {
     for (const name of names) {
         const folders = usedIn.get(name) ?? new Set();
@@ -91,10 +98,11 @@ export async function readTranscriptUse(source, projectsDir, window) {
         const one = { cwd: undefined, skills: new Set(), agents: new Set(), hooks };
         bytes += await readOne(source, path, one, window.chunkBytes ?? USE_CHUNK_BYTES);
         transcripts += 1;
-        addUsedIn(skills, one.skills, one.cwd);
-        addUsedIn(agents, one.agents, one.cwd);
-        if (one.cwd !== undefined) {
-            folders.set(one.cwd, (folders.get(one.cwd) ?? 0) + 1);
+        const cwd = startFolderOf(one.cwd);
+        addUsedIn(skills, one.skills, cwd);
+        addUsedIn(agents, one.agents, cwd);
+        if (cwd !== undefined) {
+            folders.set(cwd, (folders.get(cwd) ?? 0) + 1);
         }
     }
     const unread = dated.length - transcripts;
@@ -111,8 +119,12 @@ export function outermostFolders(folders, platform = process.platform) {
     const unique = [...new Map([...folders].map((folder) => [pathKey(folder, platform), folder])).values()].sort();
     return unique.filter((folder) => !unique.some((other) => other !== folder && isAtOrBelow(folder, other, platform)));
 }
-/** What the sessions started in `project` or a folder below it used, out of what the transcripts read show. */
+/**
+ * What the sessions started in `project` or a folder below it used, out of what the transcripts read show; a project
+ * in a Claude Code worktree is judged as its repo, the way the transcripts' start folders are.
+ */
 export function projectUse(use, project, platform = process.platform) {
-    const transcripts = [...use.folders].reduce((sum, [folder, count]) => sum + (isAtOrBelow(folder, project, platform) ? count : 0), 0);
-    return { transcripts, skills: usedBelow(use.skills, project, platform), agents: usedBelow(use.agents, project, platform) };
+    const folder = claudeWorktreeRepo(project, platform) ?? project;
+    const transcripts = [...use.folders].reduce((sum, [started, count]) => sum + (isAtOrBelow(started, folder, platform) ? count : 0), 0);
+    return { transcripts, skills: usedBelow(use.skills, folder, platform), agents: usedBelow(use.agents, folder, platform) };
 }
