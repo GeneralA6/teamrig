@@ -11,10 +11,12 @@ import { dayProbeClaimLine, dayProbePath } from "../../restore/day-probe.js";
 import { DayProbeStore } from "../../restore/day-probe-store.js";
 import { claudeCredentialsPath, LOGIN_LOCK, loginHoldsDayStart, loginMarkerPath, loginRetryLine } from "../../restore/login.js";
 import { LoginStore } from "../../restore/login-store.js";
-import { restoreLogPath } from "../../restore/registry.js";
+import { apiRetryLine, claimApiRetry } from "../../restore/api-error.js";
+import { RestoreRegistry, restoreLogPath, restoreSessionsDir } from "../../restore/registry.js";
 import { askVerdictOf, asksFolderOf, asksNowOf, handedPrompt, handedToast, WakeAsks } from "../../wake/asks.js";
 import { dayStartPrompt, dayStartToast, decideDayStart, dueMoments, nextDayStartAt, startableTasks, } from "../../wake/day-start.js";
 import { decideWake, effectivePriority, HELD_PRIORITY, wakeCost, wakeRestOf } from "../../wake/decide.js";
+import { apiRetryPrompt, apiRetryToast } from "../../wake/api-retry.js";
 import { loginRetryPrompt, loginRetryToast } from "../../wake/login-retry.js";
 import { WakePrompts } from "../../wake/prompts.js";
 import { logWake, WakeStore } from "../../wake/store.js";
@@ -214,7 +216,9 @@ async function momentsOf(runtime, scope, login, tasks, elsewhere, state, now) {
  * A tab stuck on an expired login is checked first: its retry claims the login marker and comes before all else,
  * since it sends on a turn that was already running, with nothing written to the wake state and no ask taken, so
  * handed work wakes the tab once that turn ends. The budget does not hold it (the turn was spent on before it failed),
- * and no parked restart can stand in for it: a turn that failed ran no Stop hook to park one.
+ * and no parked restart can stand in for it: a turn that failed ran no Stop hook to park one. A tab whose turn ended
+ * on a transient API error (src/restore/api-error.ts) is retried next, the same way, its retry counted in its restore
+ * entry.
  */
 async function decide(runtime, scope, store, fresh, login) {
     const { config, kit, id, tab } = scope;
@@ -225,6 +229,10 @@ async function decide(runtime, scope, store, fresh, login) {
         const retry = await login.store.claimRetry(tab, now, await files.modifiedAt(login.credentials));
         if (retry.kind === 'retry') {
             return { kind: 'login', why: retry.why, failAt: retry.failAt };
+        }
+        const api = await claimApiRetry(new RestoreRegistry(files, restoreSessionsDir(kit.paths.kitHome)), tab, now);
+        if (api.kind === 'retry') {
+            return { kind: 'api', retry: { code: api.code, failAt: api.failedAt, n: api.n } };
         }
         const { snapshot, elsewhere } = await teamRegister(runtime, kit.paths, config).snapshotWithElsewhere();
         const { tasks } = snapshot.state;
@@ -265,14 +273,16 @@ async function decide(runtime, scope, store, fresh, login) {
         const handedAt = decision.verdict.kind === 'later' ? decision.verdict.at : undefined;
         const askedAt = asked.kind === 'later' ? asked.at : undefined;
         const retryAt = retry.kind === 'later' ? retry.at : undefined;
-        const recheckAt = earliest(handedAt, askedAt, day.verdict.kind === 'later' ? day.verdict.at : undefined, day.next, retryAt);
+        const apiAt = api.kind === 'later' ? api.at : undefined;
+        const recheckAt = earliest(handedAt, askedAt, day.verdict.kind === 'later' ? day.verdict.at : undefined, day.next, retryAt, apiAt);
         const watch = new Set([...(retry.kind === 'none' ? [] : [login.marker, login.credentials]), ...day.watch]);
         return { kind: 'wait', recheckAt, watch: [...watch] };
     });
 }
 /**
  * Run by the plugin's mod while its tab is idle at the prompt: whether a turn of the tab that ended on an expired login
- * should be sent again (src/restore/login.ts, logged to the restore log too), else whether new work handed to the
+ * (src/restore/login.ts) or on a transient API error (src/restore/api-error.ts) should be sent again, logged to the
+ * restore log too, else whether new work handed to the
  * tab's session, or an urgent line posted for it (src/wake/asks.ts), should wake it now (src/wake/decide.ts), else
  * whether the day's start or a burst should (src/wake/day-start.ts). On a
  * wake it logs the wake and its cost to the team's wake log and answers the prompt to submit, keeping its text for
@@ -329,6 +339,13 @@ export async function wakeCheck(args, runtime) {
         await runtime.files.append(login.log, `${new Date(now).toISOString()} ${loginRetryLine(`${kit.paths.team}/${id} (${tab})`, verdict.why)}\n`);
         const text = loginRetryPrompt(id, verdict.failAt, verdict.why, cost, teamZone(config, runtime));
         return wake(runtime, scope, { kind: 'wake', ids: [], text, toast: loginRetryToast(verdict.why, cost) });
+    }
+    if (verdict.kind === 'api') {
+        const { retry } = verdict;
+        await logWake(runtime.files, kit.paths.wakeLog, { kind: 'wake', at: now, session: id, tab, ids: [], cost, retry: 'api' });
+        await runtime.files.append(login.log, `${new Date(now).toISOString()} ${apiRetryLine(`${kit.paths.team}/${id} (${tab})`, retry.code, retry.n)}\n`);
+        const text = apiRetryPrompt(id, retry, cost, teamZone(config, runtime));
+        return wake(runtime, scope, { kind: 'wake', ids: [], text, toast: apiRetryToast(retry, cost) });
     }
     const ids = verdict.tasks.map((task) => task.id);
     if (verdict.kind === 'handed') {
