@@ -28,7 +28,13 @@ describe('day-start probe: the gate', () => {
     assert.deepEqual(first, { kind: 'claim', why: 'first', probe: probeOf() });
     const probe = first.kind === 'claim' ? first.probe : undefined;
     assert.deepEqual(gateDayProbe(probe, MOMENT, TAB_B, AT + 1_000), { kind: 'hold', until: AT + LOGIN_PROBE_STALE_MS, probe });
-    assert.equal(verdictOf(gateDayProbe(probe, MOMENT, TAB_A, AT + 1_000)), 'hold', 'the probe tab asking again does not wake twice');
+  });
+
+  it('wakes the probe tab again on its own claim when its wake did not turn, and still hands the probe over at the stale line', () => {
+    assert.deepEqual(gateDayProbe(probeOf(), MOMENT, TAB_A, AT + 60_000), { kind: 'claim', why: 'again', probe: probeOf() }, 'the first claim keeps its time');
+    assert.equal(verdictOf(gateDayProbe(probeOf(), MOMENT, TAB_A, AT + 10 * LOGIN_PROBE_STALE_MS)), 'claim again');
+    assert.equal(verdictOf(gateDayProbe(probeOf(), MOMENT, TAB_B, AT + LOGIN_PROBE_STALE_MS)), 'claim stale', 'however often the probe tab asked again');
+    assert.equal(verdictOf(gateDayProbe({ ...probeOf(), releasedAt: AT + 1_000 }, MOMENT, TAB_A, AT + 2_000)), 'free', 'a released probe frees its own tab too');
   });
 
   it('wakes every tab due for the moment once a reply released the probe', () => {
