@@ -1,10 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import { NewerDataError } from '../core/jsonl.ts';
 import type { Mutex } from '../core/lock.ts';
 import { InlineMutex } from '../testing/inline-mutex.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { dayProbePath, formatDayProbe, type DayProbe } from './day-probe.ts';
+import { DAY_PROBE_FORMAT, dayProbePath, formatDayProbe, type DayProbe } from './day-probe.ts';
 import { DayProbeStore } from './day-probe-store.ts';
 
 const PATH = dayProbePath(join('/', 'kit'));
@@ -65,4 +66,37 @@ describe('day-start probe store', () => {
     assert.equal((await store.claim(MOMENT, TAB_A, AT)).kind, 'claim');
     assert.equal((await store.read())?.tab, TAB_A);
   });
+
+  it('reads a probe a newer teamrig wrote as none, and refuses to overwrite it, also when it lands while a tab waits for the lock', async () => {
+    const text = formatDayProbe({ moment: MOMENT, tab: TAB_B, at: AT - 500, releasedAt: undefined });
+    const newer = text.replace(`"v": ${DAY_PROBE_FORMAT}`, `"v": ${DAY_PROBE_FORMAT + 1}`);
+    assert.notEqual(newer, text, 'the file carries its format number');
+    const isNewer = (error: unknown): boolean => error instanceof NewerDataError && error.found === DAY_PROBE_FORMAT + 1 && error.known === DAY_PROBE_FORMAT;
+    const files = new MemoryFiles({ [PATH]: newer });
+    const lock = new InlineMutex();
+    const store = new DayProbeStore(files, PATH, lock);
+    assert.equal(await store.read(), undefined);
+    await assert.rejects(store.claim(MOMENT, TAB_A, AT), isNewer);
+    assert.deepEqual([await files.read(PATH), lock.runs], [newer, 1], 'the claim read the file again under the lock and left it');
+    const raced = new MemoryFiles({ [PATH]: formatDayProbe({ moment: MOMENT, tab: TAB_A, at: AT, releasedAt: undefined }) });
+    const racedStore = new DayProbeStore(raced, PATH, new WrittenFirstMutex(raced, newer));
+    await assert.rejects(racedStore.release({ kind: 'tool', tab: TAB_A, at: AT + 9_000 }), isNewer);
+    assert.equal(await raced.read(PATH), newer);
+  });
 });
+
+/** A lock under which a newer teamrig's write of the probe lands first. */
+class WrittenFirstMutex implements Mutex {
+  private readonly files: MemoryFiles;
+  private readonly text: string;
+
+  constructor(files: MemoryFiles, text: string) {
+    this.files = files;
+    this.text = text;
+  }
+
+  async run<T>(task: () => Promise<T>): Promise<T> {
+    await this.files.write(PATH, this.text);
+    return task();
+  }
+}

@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { MS_PER_DAY, MS_PER_MINUTE } from '../core/time.ts';
+import { fieldPaths } from '../testing/field-paths.ts';
 import { apiErrorLine, promptLine, textLine, transcript } from '../testing/transcript-lines.ts';
 import {
   applyLoginEvent,
@@ -10,6 +11,7 @@ import {
   claudeCredentialsPath,
   decideLoginRetry,
   formatLoginMarker,
+  LOGIN_MARKER_FORMAT,
   LOGIN_PROBE_STALE_MS,
   LOGIN_RETRY_GAP_MS,
   loginExpired,
@@ -278,6 +280,37 @@ describe('login retry', () => {
     for (const damaged of [{ probe: { tab: TAB_A } }, { probe: { tab: '../x', at: '2030-01-08T00:02:00Z' } }, { probe: 'A' }, { lastRetryAt: 3 }, { retried: { [TAB_A]: 'once' } }, { retried: [] }]) {
       const text = JSON.stringify({ ...before, ...damaged });
       assert.equal(parseLoginMarker(text), undefined, text);
+    }
+  });
+});
+
+describe('login marker: the file format', () => {
+  const FULL: LoginMarker = {
+    expiredAt: EXPIRY,
+    lastFailAt: EXPIRY + 1_000,
+    recoveredAt: EXPIRY + 2_000,
+    stranded: new Map([[TAB_A, EXPIRY]]),
+    pagedAt: EXPIRY,
+    probe: { tab: TAB_A, at: EXPIRY + 500 },
+    lastRetryAt: EXPIRY + 500,
+    retried: new Map([[TAB_A, EXPIRY + 500]]),
+  };
+
+  it('writes every field of its format with the format number, and reads it back', () => {
+    const written: Readonly<Record<number, readonly string[]>> = { 1: ['expiredAt', 'lastFailAt', 'lastRetryAt', 'pagedAt', 'probe.at', 'probe.tab', 'recoveredAt', 'retried.*', 'stranded.*', 'v'] };
+    assert.deepEqual(fieldPaths(JSON.parse(formatLoginMarker(FULL)), new Set(['stranded', 'retried'])), written[LOGIN_MARKER_FORMAT]);
+    assert.deepEqual(parseLoginMarker(formatLoginMarker(FULL)), FULL);
+  });
+
+  it('reads format 0 and its own format, and a newer or broken format number as no marker', () => {
+    const text = formatLoginMarker(FULL);
+    const newer = text.replace(`"v": ${LOGIN_MARKER_FORMAT}`, `"v": ${LOGIN_MARKER_FORMAT + 1}`);
+    assert.notEqual(newer, text, 'the file carries its format number');
+    assert.equal(parseLoginMarker(newer), undefined, 'a newer teamrig wrote it');
+    const before = { expiredAt: '2030-01-08T00:02:00Z', lastFailAt: '2030-01-08T00:02:00Z', stranded: {} };
+    assert.deepEqual([0, LOGIN_MARKER_FORMAT].map((v) => parseLoginMarker(JSON.stringify({ ...before, v }))?.expiredAt), [EXPIRY, EXPIRY]);
+    for (const v of [-1, 1.5, 'one']) {
+      assert.equal(parseLoginMarker(JSON.stringify({ ...before, v })), undefined, String(v));
     }
   });
 });

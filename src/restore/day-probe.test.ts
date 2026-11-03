@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { dayProbeClaimLine, dayProbeReleaseLine, formatDayProbe, gateDayProbe, parseDayProbe, releaseDayProbe, type DayProbe, type DayProbeGate, type DayProbeReply } from './day-probe.ts';
+import { fieldPaths } from '../testing/field-paths.ts';
+import { DAY_PROBE_FORMAT, dayProbeClaimLine, dayProbeReleaseLine, formatDayProbe, gateDayProbe, parseDayProbe, releaseDayProbe, type DayProbe, type DayProbeGate, type DayProbeReply } from './day-probe.ts';
 import { LOGIN_PROBE_STALE_MS } from './login.ts';
 
 const TAB_A = '0123abcd-0000-4000-8000-00000000000a';
@@ -94,17 +95,29 @@ describe('day-start probe: the claim line', () => {
 });
 
 describe('day-start probe: the file', () => {
-  it('reads back what it wrote, released or not', () => {
+  it('reads back what it wrote, released or not, with every field of its format and the format number', () => {
     const released = { ...probeOf(), releasedAt: AT + 9_000 };
     assert.deepEqual(parseDayProbe(formatDayProbe(probeOf())), probeOf());
     assert.deepEqual(parseDayProbe(formatDayProbe(released)), released);
     assert.match(formatDayProbe(released), /"releasedAt": "2030-01-08T06:00:11.000Z"/);
+    const written: Readonly<Record<number, readonly string[]>> = { 1: ['at', 'moment', 'releasedAt', 'tab', 'v'] };
+    assert.deepEqual(fieldPaths(JSON.parse(formatDayProbe(released))), written[DAY_PROBE_FORMAT]);
   });
 
-  it('reads a damaged file as no probe', () => {
-    const good = { moment: '2030-01-08T06:00:00.000Z', tab: TAB_A, at: '2030-01-08T06:00:02.000Z' };
+  it('reads a damaged file, or one of another format, as no probe', () => {
+    const good = { v: DAY_PROBE_FORMAT, moment: '2030-01-08T06:00:00.000Z', tab: TAB_A, at: '2030-01-08T06:00:02.000Z' };
     assert.deepEqual(parseDayProbe(JSON.stringify(good)), probeOf(), 'the record the damaged ones start from reads');
-    const damaged = ['{"moment": "soo', '[]', JSON.stringify({ ...good, tab: 'not a session' }), JSON.stringify({ ...good, at: 'soon' }), JSON.stringify({ ...good, releasedAt: 'soon' }), JSON.stringify({ ...good, moment: undefined })];
+    const damaged = [
+      '{"moment": "soo',
+      '[]',
+      JSON.stringify({ ...good, tab: 'not a session' }),
+      JSON.stringify({ ...good, at: 'soon' }),
+      JSON.stringify({ ...good, releasedAt: 'soon' }),
+      JSON.stringify({ ...good, moment: undefined }),
+      JSON.stringify({ ...good, v: DAY_PROBE_FORMAT + 1 }),
+      JSON.stringify({ ...good, v: undefined }),
+      JSON.stringify({ ...good, v: 'one' }),
+    ];
     assert.deepEqual(damaged.map(parseDayProbe), damaged.map(() => undefined));
   });
 });
