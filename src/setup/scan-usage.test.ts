@@ -82,6 +82,24 @@ describe('readTranscriptUse', () => {
     assert.equal(use.transcripts, 3);
   });
 
+  it('reads a session started in a Claude Code worktree as one in the same place in its repo, never the worktree (T1593)', async () => {
+    const worktree = (name: string, ...rest: string[]): string => join(DASH_B, '.claude', 'worktrees', name, ...rest);
+    const source = new MemoryTranscripts();
+    source.set(join(PROJECTS, 'w1', '0123abcd-0000-4000-8000-00000000000a.jsonl'), `${callIn(worktree('t1'), [{ id: 's1', name: 'Skill', skill: 'alpha-check' }])}\n`, RECENT);
+    source.set(join(PROJECTS, 'w2', '0123abcd-0000-4000-8000-00000000000b.jsonl'), `${callIn(worktree('t2'), [{ id: 's2', name: 'Skill', skill: 'alpha-check' }])}\n`, RECENT);
+    source.set(join(PROJECTS, 'w3', '0123abcd-0000-4000-8000-00000000000c.jsonl'), `${callIn(worktree('t3', 'web'), [{ id: 'a1', name: 'Agent', agent: 'code-reader' }])}\n`, RECENT);
+    const use = await readTranscriptUse(source, PROJECTS, { since: SINCE, maxBytes: UNBOUNDED });
+    assert.deepEqual(sorted(use.skills), [['alpha-check', [DASH_B]]]);
+    assert.deepEqual(sorted(use.agents), [['code-reader', [DASH_B_WEB]]]);
+    assert.deepEqual(
+      new Map(use.folders),
+      new Map([
+        [DASH_B, 2],
+        [DASH_B_WEB, 1],
+      ]),
+    );
+  });
+
   it('reads the newest transcripts first and starts none past the bound, the window starting at the oldest one read', async () => {
     const source = new MemoryTranscripts();
     source.set(join(PROJECTS, 'app', '0123abcd-0000-4000-8000-00000000000a.jsonl'), `${skillCall('skill-mid')}\n`, 2_500);
@@ -156,6 +174,10 @@ describe('projectUse', () => {
   it('keeps nothing for a folder inside a start folder, nor for a sibling whose name only begins the same', () => {
     assert.deepEqual(projectUse(use, join(DASH_B_WEB, 'src')), { transcripts: 0, skills: new Set(), agents: new Set() });
     assert.deepEqual(projectUse(use, resolve('/', 'work', 'a')), { transcripts: 2, skills: new Set(['alpha-check']), agents: new Set(['code-reader']) });
+  });
+
+  it('judges a project in a Claude Code worktree as its repo, the way the start folders are read (T1593)', () => {
+    assert.deepEqual(projectUse(use, join(DASH_B, '.claude', 'worktrees', 't1')), { transcripts: 3, skills: new Set(['alpha-check', 'beta-run']), agents: new Set() });
   });
 });
 
