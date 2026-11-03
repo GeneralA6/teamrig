@@ -13,6 +13,12 @@ export interface GitContext {
   readonly ownsTask: (task: string) => Promise<boolean>;
   /** True when `name` is a remote of the repository git reaches from the hook's folder through the line's `-C` folders, in order. */
   readonly isRemote: (folders: readonly string[], name: string) => Promise<boolean>;
+  /**
+   * True when git, in that same folder, pushes a branch named alone (`git push <remote> <branch>`) to the remote's
+   * branch of that name. A `remote.<name>.push` refspec or a `push.default` of `upstream` or `tracking` maps it onto
+   * another (git's map_refspec), such as the `origin/main` a worktree branch cut from it tracks.
+   */
+  readonly pushesToSameName: (folders: readonly string[], remote: string) => Promise<boolean>;
   readonly protectedBranches: readonly string[];
 }
 
@@ -125,7 +131,8 @@ const BRANCH_NAME = /^[\w./-]+$/;
 
 /**
  * C5: `git push [-u|--set-upstream] [-q|--quiet] <remote> <branch>`, the remote one the repository names, the branch
- * one of a task the caller owns (`t<id>-...`) and no protected branch.
+ * one of a task the caller owns (`t<id>-...`) and no protected branch, and git's config pushing it to the remote
+ * branch of its own name (else a protected branch could be where it lands).
  */
 export async function matchesGitPush(words: readonly string[], context: GitContext): Promise<boolean> {
   const line = gitLineOf(words, 'push');
@@ -141,7 +148,7 @@ export async function matchesGitPush(words: readonly string[], context: GitConte
   if (remote === undefined || task === undefined || more.length > 0 || !REMOTE_NAME.test(remote)) {
     return false;
   }
-  return (await context.ownsTask(task)) && context.isRemote(line.folders, remote);
+  return (await context.ownsTask(task)) && (await context.isRemote(line.folders, remote)) && context.pushesToSameName(line.folders, remote);
 }
 
 function isPushOption(word: string): boolean {

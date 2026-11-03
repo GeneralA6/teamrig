@@ -69,6 +69,40 @@ describe('gitContextOf', () => {
     assert.equal(await gitContextOf(portsOf({ git: { config: () => ({ kind: 'unreadable' }) } })).isRemote([], 'origin'), false);
   });
 
+  it('pushes to the same name only with no remote push refspec and a push.default that keeps the name', async () => {
+    const withConfig = (values: Readonly<Record<string, string>>): GitPorts =>
+      portsOf({ git: { config: (_dir, key): ConfigValue => (key in values ? { kind: 'set', value: values[key] ?? '' } : { kind: 'unset' }) } });
+    for (const values of [{}, { 'push.default': 'simple' }, { 'push.default': 'current' }, { 'push.default': 'matching' }, { 'push.default': 'nothing' }]) {
+      assert.equal(await gitContextOf(withConfig(values)).pushesToSameName([], 'origin'), true, JSON.stringify(values));
+    }
+    for (const values of [
+      { 'push.default': 'upstream' },
+      { 'push.default': 'tracking' },
+      { 'push.default': 'Upstream' },
+      { 'push.default': '' },
+      { 'remote.origin.push': 'refs/heads/t1-x:refs/heads/main' },
+      { 'remote.origin.push': 'refs/heads/t1-x:refs/heads/t1-x', 'push.default': 'simple' },
+    ]) {
+      assert.equal(await gitContextOf(withConfig(values)).pushesToSameName([], 'origin'), false, JSON.stringify(values));
+    }
+    assert.equal(await gitContextOf(withConfig({ 'remote.fork.push': 'refs/heads/t1-x:refs/heads/main' })).pushesToSameName([], 'origin'), true);
+  });
+
+  it('pushes to the same name only when git can read both keys, in the folder the -C folders lead to', async () => {
+    const config = mock.fn((_dir: string, _key: string): ConfigValue => ({ kind: 'unset' }));
+    assert.equal(await gitContextOf(portsOf({ git: { config } })).pushesToSameName(['C:/x', '../y'], 'up.stream'), true);
+    assert.deepEqual(
+      config.mock.calls.map((call) => call.arguments),
+      [
+        ['C:\\y', 'remote.up.stream.push'],
+        ['C:\\y', 'push.default'],
+      ],
+    );
+    const unreadable = (broken: string): GitPorts => portsOf({ git: { config: (_dir, key): ConfigValue => (key === broken ? { kind: 'unreadable' } : { kind: 'unset' }) } });
+    assert.equal(await gitContextOf(unreadable('remote.origin.push')).pushesToSameName([], 'origin'), false);
+    assert.equal(await gitContextOf(unreadable('push.default')).pushesToSameName([], 'origin'), false);
+  });
+
   it('keeps the protected branches it is given', () => {
     assert.deepEqual(gitContextOf(portsOf({ protectedBranches: ['main', 'release'] })).protectedBranches, ['main', 'release']);
   });

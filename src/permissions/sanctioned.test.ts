@@ -15,6 +15,7 @@ const CONTEXT: RouteContext = {
   ownClient: ownClientOf(NOTHING_ON_PATH, new ClientInstalls(INSTALL, 'win32'), { dialect: 'bash', dir: 'C:/w', home: 'C:/u' }),
   ownsTask: async (task) => task === 'T1',
   isRemote: async (_folders, name) => name === 'origin',
+  pushesToSameName: async () => true,
   protectedBranches: ['main', 'master'],
 };
 

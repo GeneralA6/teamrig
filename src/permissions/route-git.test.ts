@@ -75,9 +75,10 @@ describe('matchesGitPush', () => {
   const context: GitContext = {
     ownsTask: async (task) => (asked.push(task), task === 'T1' || task === 'T3'),
     isRemote: async (folders, name) => (asked.push(`${folders.join('|')} ${name}`), name === 'origin' || name === 'up.stream'),
+    pushesToSameName: async (folders, remote) => (asked.push(`same name ${folders.join('|')} ${remote}`), true),
     protectedBranches: ['main', 't3-release'],
   };
-  const push = async (line: string): Promise<boolean> => matchesGitPush(words(line), context);
+  const push = async (line: string, at: GitContext = context): Promise<boolean> => matchesGitPush(words(line), at);
 
   it('takes a push of an own task branch to a configured remote, with -u and -q', async () => {
     for (const line of ['git push origin t1-x', 'git push -u origin t1-x', 'git push -uq origin t1-x', 'git push --set-upstream --quiet up.stream T1', 'git push origin -u t1-a/b']) {
@@ -85,7 +86,14 @@ describe('matchesGitPush', () => {
     }
     asked.length = 0;
     assert.equal(await push('git -C C:/w -C sub push origin t1-x'), true);
-    assert.deepEqual(asked, ['T1', 'C:/w|sub origin']);
+    assert.deepEqual(asked, ['T1', 'C:/w|sub origin', 'same name C:/w|sub origin']);
+  });
+
+  it("takes no push git's config sends to another branch than its own name, such as its upstream main", async () => {
+    const mapped: GitContext = { ...context, pushesToSameName: async () => false };
+    for (const line of ['git push origin t1-x', 'git push -u origin t1-x', 'git -C C:/w push up.stream T1']) {
+      assert.equal(await push(line, mapped), false, line);
+    }
   });
 
   it('takes no force, delete, mirror, hook skip or other option', async () => {
@@ -120,7 +128,7 @@ describe('matchesGitPush', () => {
     }
   });
 
-  it('asks about the task only once the line matches, and about the remote only for an own task', async () => {
+  it('asks about the task only once the line matches, about the remote only for an own task, and about where it lands only for a remote the repository names', async () => {
     asked.length = 0;
     await push('git push -f origin t1-x');
     await push('git push origin main');
@@ -128,5 +136,8 @@ describe('matchesGitPush', () => {
     assert.deepEqual(asked, []);
     assert.equal(await push('git push origin t2-x'), false);
     assert.deepEqual(asked, ['T2']);
+    asked.length = 0;
+    assert.equal(await push('git push fork t1-x'), false);
+    assert.deepEqual(asked, ['T1', ' fork']);
   });
 });
