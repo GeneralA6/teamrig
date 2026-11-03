@@ -3280,9 +3280,8 @@ tokens a turn applying it saves:
   show printing into the context, each with the command and the `args` it runs and what it printed: the characters
   (and tokens) a run on average, over how many runs, and in how many it printed anything. A JSON reply counts its
   `additionalContext`, a plain one its text. A hook that never ran in the transcripts read, or printed nothing (a title,
-  a guard), is no finding. Two exec-form hooks of one event running the same command share their runs: a transcript
-  records the command, not the `args`. A finding a file's copies under `.claude/worktrees` repeat is one line that
-  counts them.
+  a guard), is no finding. An exec-form hook's runs are found by its command and its `args` joined by spaces, the line
+  a transcript records for it. A finding a file's copies under `.claude/worktrees` repeat is one line that counts them.
 - UNUSED (`U1`...): skills in your user or project skill folders with no `Skill` call or `/<skill>` in the last
   `--days` days of this machine's transcripts; not checked when there is no transcript. A skill whose file changed
   within those days has not had them all to be used, so it is not judged; the UNUSED line counts it as too new.
