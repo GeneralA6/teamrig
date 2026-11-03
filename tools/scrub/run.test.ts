@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { EXIT_CLEAN, EXIT_FINDINGS, EXIT_USAGE } from '../lib/exit.ts';
 import { FakeGit } from '../lib/fake-git.ts';
 import { GitError } from '../lib/git.ts';
+import { GENERIC_RULES } from './rules.ts';
 import { runScrub, type ScrubOptions } from './run.ts';
 import type { ReadFile } from './sources.ts';
 
@@ -57,7 +58,7 @@ describe('runScrub', () => {
     assert.equal(await runScrub({ ...NOTHING, messageFile: 'MSG' }, deps), EXIT_FINDINGS);
     assert.deepEqual(lines, [
       'commit message (MSG):1:6 denylist:1: private denylist term "Acme"',
-      'scrub: 1 finding(s) (1 input(s), 0 binary skipped, 14 generic + 1 private rule(s))',
+      `scrub: 1 finding(s) (1 input(s), 0 binary skipped, ${GENERIC_RULES.length} generic + 1 private rule(s))`,
     ]);
   });
 
