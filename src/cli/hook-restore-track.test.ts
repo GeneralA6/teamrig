@@ -241,6 +241,17 @@ describe('hook restore-track: a transient API error', () => {
     await track(kit, payload('Stop', { stop_hook_active: false }));
     assert.equal((await entryOf(kit))?.apiError, undefined, 'a good turn clears the count');
   });
+
+  it('still records a failed turn whose payload names no error and whose transcript cannot be read, with no error named', async () => {
+    const kit = new CliHarness();
+    const files = new FaultyFiles(kit.files).fail('readTail', TRANSCRIPT, systemError('EACCES'));
+    const result = await kit.run(['hook', 'restore-track'], { stdin: payload('StopFailure'), env: LAUNCHED, files });
+    assert.deepEqual([result.code, result.stdout, result.stderr], [0, [], []]);
+    const entry = await entryOf(kit);
+    assert.equal(entry?.state, 'error');
+    assert.deepEqual(entry.apiError, { code: undefined, failedAt: kit.clock.now(), retries: 0, retriedAt: undefined });
+    assert.equal(await kit.files.read(MARKER_FILE), undefined, 'an unnamed error is no expired login');
+  });
 });
 
 const PROBE_FILE = dayProbePath(KIT);
