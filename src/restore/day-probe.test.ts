@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { dayProbeReleaseLine, formatDayProbe, gateDayProbe, parseDayProbe, releaseDayProbe, type DayProbe, type DayProbeGate, type DayProbeReply } from './day-probe.ts';
+import { dayProbeClaimLine, dayProbeReleaseLine, formatDayProbe, gateDayProbe, parseDayProbe, releaseDayProbe, type DayProbe, type DayProbeGate, type DayProbeReply } from './day-probe.ts';
 import { LOGIN_PROBE_STALE_MS } from './login.ts';
 
 const TAB_A = '0123abcd-0000-4000-8000-00000000000a';
@@ -77,6 +77,19 @@ describe('day-start probe: the release', () => {
     const released = { ...probeOf(), releasedAt: AT + 12_400 };
     assert.equal(dayProbeReleaseLine(`app/alpha (${TAB_A})`, reply('tool', TAB_A, AT + 12_400), released), `day-probe: released, app/alpha (${TAB_A}) ran a tool 12 s after the claim`);
     assert.equal(dayProbeReleaseLine(TAB_B, reply('answered', TAB_B, AT + 30_000), released), `day-probe: released, ${TAB_B} ended a turn 30 s after the claim`);
+  });
+});
+
+describe('day-start probe: the claim line', () => {
+  it('logs which tab claimed it, for which moment, and why that tab', () => {
+    const label = `app/alpha (${TAB_A})`;
+    const lines = (['first', 'newer', 'again', 'stale'] as const).map((why) => dayProbeClaimLine(label, why, probeOf()));
+    assert.deepEqual(lines, [
+      `day-probe: claimed by ${label} for the moment at 2030-01-08T06:00:00.000Z, the first tab due`,
+      `day-probe: claimed by ${label} for the moment at 2030-01-08T06:00:00.000Z, a newer moment than the last probe`,
+      `day-probe: claimed by ${label} for the moment at 2030-01-08T06:00:00.000Z, its wake did not turn`,
+      `day-probe: claimed by ${label} for the moment at 2030-01-08T06:00:00.000Z, the probe out had no reply in 5 min`,
+    ]);
   });
 });
 

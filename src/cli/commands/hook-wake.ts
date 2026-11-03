@@ -9,13 +9,26 @@ import { MeetingStore, phaseOf } from '../../meeting/state.ts';
 import { restartMayAct } from '../../refresh/restart.ts';
 import { RefreshStore } from '../../refresh/store.ts';
 import { sessionIdOf, unseenLinesOf } from '../../inbox/inbox.ts';
-import { claudeCredentialsPath, LOGIN_LOCK, loginMarkerPath, loginRetryLine, type LoginRetryWhy } from '../../restore/login.ts';
+import { dayProbeClaimLine, dayProbePath } from '../../restore/day-probe.ts';
+import { DayProbeStore } from '../../restore/day-probe-store.ts';
+import { claudeCredentialsPath, LOGIN_LOCK, loginHoldsDayStart, loginMarkerPath, loginRetryLine, type LoginRetryWhy } from '../../restore/login.ts';
 import { LoginStore } from '../../restore/login-store.ts';
 import { restoreLogPath } from '../../restore/registry.ts';
 import type { Task } from '../../register/fold.ts';
 import type { TasksElsewhere } from '../../register/tree.ts';
 import { askVerdictOf, asksFolderOf, asksNowOf, handedPrompt, handedToast, WakeAsks, type WakeAsk } from '../../wake/asks.ts';
-import { dayStartPrompt, dayStartToast, decideDayStart, dueMoments, nextDayStartAt, startableTasks, type DayMoment, type DayStartVerdict } from '../../wake/day-start.ts';
+import {
+  dayStartPrompt,
+  dayStartToast,
+  decideDayStart,
+  dueMoments,
+  nextDayStartAt,
+  startableTasks,
+  type DayMoment,
+  type DayStartInput,
+  type DayStartLogin,
+  type DayStartVerdict,
+} from '../../wake/day-start.ts';
 import { decideWake, effectivePriority, HELD_PRIORITY, wakeCost, wakeRestOf, type WakeDecision, type WakeInput, type WakeState, type WakeVerdict } from '../../wake/decide.ts';
 import { loginRetryPrompt, loginRetryToast } from '../../wake/login-retry.ts';
 import { WakePrompts } from '../../wake/prompts.ts';
@@ -52,9 +65,10 @@ function answer(runtime: CliRuntime, value: WakeAnswer): ExitCode {
 
 /**
  * Check again at `recheckAt`, or once the register changes (work handed) or the session's asks folder does (an urgent
- * or `inbox add --wake now` line posted), so a line is seen at the mod's next look, not RECHECK_MS later. A tab stuck
- * on an expired login also watches `also`: the login marker and the credentials file, whose change is the next sign
- * the login works.
+ * or `inbox add --wake now` line posted), so a line is seen at the mod's next look, not RECHECK_MS later. It also
+ * watches `also`: a tab stuck on an expired login, or whose day's moments wait for one, the login marker and the
+ * credentials file, whose change is the next sign the login works; a tab waiting for another tab's day-start probe,
+ * the probe's file (a release wakes it at once) and the login marker (the probe's turn failed).
  */
 function waitAnswer(scope: Extract<WakeScope, { kind: 'found' }>, recheckAt: number | null, also: readonly string[] = []): WakeAnswer {
   return { kind: 'wait', watch: [scope.kit.paths.events, asksFolderOf(scope.kit.paths.wakeAsks, scope.id), ...also], recheckAt };
@@ -62,23 +76,34 @@ function waitAnswer(scope: Extract<WakeScope, { kind: 'found' }>, recheckAt: num
 
 /**
  * Where a stuck tab's retry is claimed (src/restore/login.ts): the kit home's login marker in its store, the
- * credentials file whose change tests a renewed login, and the restore log each retry is written to.
+ * credentials file whose change tests a renewed login, and the restore log each retry is written to; and where the
+ * day-start probe is claimed (src/restore/day-probe.ts), in its store and file.
  */
 interface LoginScope {
   readonly store: LoginStore;
   readonly marker: string;
   readonly credentials: string;
   readonly log: string;
+  readonly probe: DayProbeStore;
+  readonly probeFile: string;
 }
 
 function loginScopeOf(runtime: CliRuntime, kitHome: string): LoginScope {
   const marker = loginMarkerPath(kitHome);
+  const probeFile = dayProbePath(kitHome);
   return {
     store: new LoginStore(runtime.files, marker, fileLockOf(runtime, `${marker}.lock`, LOGIN_LOCK)),
     marker,
     credentials: claudeCredentialsPath(runtime.env, runtime.userHome),
     log: restoreLogPath(kitHome),
+    probe: new DayProbeStore(runtime.files, probeFile, fileLockOf(runtime, `${probeFile}.lock`, LOGIN_LOCK)),
+    probeFile,
   };
+}
+
+/** The login as the day's moments see it before the probe: expired while the marker holds them (`loginHoldsDayStart`). */
+async function dayLoginOf(runtime: CliRuntime, login: LoginScope): Promise<DayStartLogin> {
+  return loginHoldsDayStart(await login.store.read(), await runtime.files.modifiedAt(login.credentials)) ? { kind: 'expired' } : { kind: 'ok' };
 }
 
 /** Where the check stands: the team session the tab is, and the kit it is in, found from the pointer `from`. */
@@ -163,6 +188,12 @@ async function meetingHoldsWake(runtime: CliRuntime, scope: Extract<WakeScope, {
 export const RESTART_RECHECK_MS = MINUTE_MS;
 
 /**
+ * How soon a tab waiting for another tab's day-start probe looks again, at the latest. It watches the probe's file, so
+ * a release wakes it at once; this backs up a watch that missed the change.
+ */
+export const DAY_PROBE_RECHECK_MS = MINUTE_MS;
+
+/**
  * While the session's automatic restart may still act (src/refresh/restart.ts), it is not woken: the wake's prompt
  * would cancel the restart as a typed one does (`hook prompt`), leaving the session with its handover written and no
  * fresh start. The work handed meanwhile stays new, so it wakes the fresh session. A restart whose runner died is
@@ -177,21 +208,25 @@ async function restartHoldsWake(runtime: CliRuntime, store: RefreshStore, rearm:
  * What the check decided under the lock: a wake for work handed to the session or urgent lines posted for it (either
  * may be empty, not both), one for the day's moments (with the tab's last turn it read), a stuck tab's retry (`login`:
  * why, and when its turn failed), the restart held back for work armed in its place (`fresh`), or when to check again
- * (null: no time set; `stuck`: the tab is stuck on an expired login).
+ * (null: no time set) and what else to watch for a change (`waitAnswer`'s `also`).
  */
 type CheckVerdict =
   | { readonly kind: 'handed'; readonly tasks: readonly Task[]; readonly asks: readonly WakeAsk[] }
   | { readonly kind: 'moments'; readonly moments: readonly DayMoment[]; readonly tasks: readonly Task[]; readonly lastTurnAt: number | undefined }
   | { readonly kind: 'login'; readonly why: LoginRetryWhy; readonly failAt: number }
   | { readonly kind: 'fresh' }
-  | { readonly kind: 'wait'; readonly recheckAt: number | null; readonly stuck: boolean };
+  | { readonly kind: 'wait'; readonly recheckAt: number | null; readonly watch: readonly string[] };
 
-/** The day's moments checked: the verdict, the state to keep, and the next day start (undefined: none set). */
+/**
+ * The day's moments checked: the verdict, the state to keep, the next day start (undefined: none set), and the files
+ * whose change may free moments the login holds (`waitAnswer`'s `also`).
+ */
 interface MomentsCheck {
   readonly verdict: DayStartVerdict;
   readonly state: WakeState;
   readonly lastTurnAt: number | undefined;
   readonly next: number | undefined;
+  readonly watch: readonly string[];
 }
 
 /** The earliest of the times given; null with none. */
@@ -202,12 +237,18 @@ function earliest(...times: readonly (number | undefined)[]): number | null {
 
 /**
  * The day's moments (src/wake/day-start.ts), checked when no handed work wakes the session and only with
- * `wake.dayStartUtc` set. The budget and the tab's last turn are read only once a moment is due and the session has
- * work it can start; a moments wake takes in any batch still pending, since it names all that work.
+ * `wake.dayStartUtc` set. The budget, the tab's last turn and the login marker are read only once a moment is due and
+ * the session has work it can start; a moments wake takes in any batch still pending, since it names all that work.
+ *
+ * A wake first gates on the day-start probe (src/restore/day-probe.ts), for the newest moment it wakes for: a claim
+ * wakes the tab as the probe and logs it to the restore log; a hold keeps the open moments due, with no wake recorded,
+ * until the probe's reply or its recheck. The claim comes before the restart check in `decide`: a restart started in
+ * the wake's place is the probe all the same, since the fresh session's first answered turn releases it.
  */
 async function momentsOf(
   runtime: CliRuntime,
   scope: Extract<WakeScope, { kind: 'found' }>,
+  login: LoginScope,
   tasks: ReadonlyMap<string, Task>,
   elsewhere: TasksElsewhere,
   state: WakeState,
@@ -216,10 +257,10 @@ async function momentsOf(
   const { config, kit, roster, id, tab } = scope;
   const { dayStartUtc } = config.wake;
   if (dayStartUtc === undefined) {
-    return { verdict: { kind: 'none' }, state, lastTurnAt: undefined, next: undefined };
+    return { verdict: { kind: 'none' }, state, lastTurnAt: undefined, next: undefined, watch: [] };
   }
   const next = nextDayStartAt(dayStartUtc, now);
-  const none: MomentsCheck = { verdict: { kind: 'none' }, state, lastTurnAt: undefined, next };
+  const none: MomentsCheck = { verdict: { kind: 'none' }, state, lastTurnAt: undefined, next, watch: [] };
   const startable = startableTasks(tasks, elsewhere, id, now, teamZone(config, runtime));
   const logged = activeBurst((await new BurstLog(runtime.files, kit.paths.bursts).read()).records, now, undefined);
   const inBurst = logged?.sessions.includes(id) === true ? logged : undefined;
@@ -228,7 +269,7 @@ async function momentsOf(
   }
   const facts = await budgetFactsOf(runtime, { kit, config, roster, id }, undefined);
   const lastTurnAt = await lastWriteOf(runtime.transcripts, claudeProjectsDir(runtime.env, runtime.userHome), [tab]);
-  const decision = decideDayStart({
+  const input: DayStartInput = {
     due: dueMoments(now, dayStartUtc, facts === undefined ? inBurst : facts.burst, state.settled),
     startable,
     lastTurnAt,
@@ -237,9 +278,23 @@ async function momentsOf(
     lastWakeAt: state.lastWakeAt,
     minGapMs: config.wake.minGapMinutes * MINUTE_MS,
     settled: state.settled,
-  });
-  const woke = decision.verdict.kind === 'wake' ? { pending: undefined, lastWakeAt: now } : {};
-  return { verdict: decision.verdict, state: { ...state, ...woke, settled: decision.settled }, lastTurnAt, next };
+    login: await dayLoginOf(runtime, login),
+  };
+  const decision = decideDayStart(input);
+  if (decision.verdict.kind !== 'wake') {
+    const watch = input.login.kind === 'expired' ? [login.marker, login.credentials] : [];
+    return { verdict: decision.verdict, state: { ...state, settled: decision.settled }, lastTurnAt, next, watch };
+  }
+  const gate = await login.probe.claim(Math.max(...decision.verdict.moments.map((moment) => moment.at)), tab, now);
+  if (gate.kind === 'claim') {
+    await runtime.files.append(login.log, `${new Date(now).toISOString()} ${dayProbeClaimLine(`${kit.paths.team}/${id} (${tab})`, gate.why, gate.probe)}\n`);
+  }
+  if (gate.kind === 'hold') {
+    // Decided again so the open moments stay unsettled: the wake decision settled them.
+    const held = decideDayStart({ ...input, login: { kind: 'probing', recheckAt: Math.min(now + DAY_PROBE_RECHECK_MS, gate.until) } });
+    return { verdict: held.verdict, state: { ...state, settled: held.settled }, lastTurnAt, next, watch: [login.probeFile, login.marker] };
+  }
+  return { verdict: decision.verdict, state: { ...state, pending: undefined, lastWakeAt: now, settled: decision.settled }, lastTurnAt, next, watch: [] };
 }
 
 /**
@@ -298,7 +353,7 @@ async function decide(
       await store.write(id, decision.state);
       return { kind: 'handed', tasks: decision.verdict.kind === 'wake' ? decision.verdict.tasks : [], asks: asked.kind === 'wake' ? asked.asks : [] };
     }
-    const day = await momentsOf(runtime, scope, tasks, elsewhere, decision.state, now);
+    const day = await momentsOf(runtime, scope, login, tasks, elsewhere, decision.state, now);
     if (day.verdict.kind === 'wake' && fresh !== undefined && (await fresh())) {
       return { kind: 'fresh' };
     }
@@ -310,7 +365,8 @@ async function decide(
     const askedAt = asked.kind === 'later' ? asked.at : undefined;
     const retryAt = retry.kind === 'later' ? retry.at : undefined;
     const recheckAt = earliest(handedAt, askedAt, day.verdict.kind === 'later' ? day.verdict.at : undefined, day.next, retryAt);
-    return { kind: 'wait', recheckAt, stuck: retry.kind !== 'none' };
+    const watch = new Set([...(retry.kind === 'none' ? [] : [login.marker, login.credentials]), ...day.watch]);
+    return { kind: 'wait', recheckAt, watch: [...watch] };
   });
 }
 
@@ -358,7 +414,7 @@ export async function wakeCheck(args: ParsedArgs, runtime: CliRuntime): Promise<
     throw error;
   }
   if (verdict.kind === 'wait') {
-    return answer(runtime, waitAnswer(scope, verdict.recheckAt, verdict.stuck ? [login.marker, login.credentials] : []));
+    return answer(runtime, waitAnswer(scope, verdict.recheckAt, verdict.watch));
   }
   if (verdict.kind === 'fresh') {
     return answer(runtime, waitAnswer(scope, runtime.clock.now() + RESTART_RECHECK_MS));

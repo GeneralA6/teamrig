@@ -15,6 +15,8 @@ import { byUrgency, costText, idsText, isWakeWorthy, taskListText, type SettledM
  * own task of any priority that `canGoOn`: open or in-progress, or waiting with every wait cleared or answered, and
  * past every task it comes after unless already started), never in quiet hours or while its budget holds or a short
  * day pauses it (`WakeRest`; it wakes once those end), and not at all when the session had a turn after the moment.
+ * Nor while the login is expired (src/restore/login.ts), since every turn would fail on it; once it may work again,
+ * one tab tests it for the moment (the day-start probe, src/restore/day-probe.ts) while the others wait for its reply.
  */
 
 export type DayMomentKind = 'day-start' | 'burst';
@@ -72,6 +74,12 @@ export function startableTasks(
   return [...tasks.values()].filter((task) => isWakeWorthy(task, session, maxPriority, context)).sort(byUrgency);
 }
 
+/**
+ * The login as the moments see it: working (or not known to fail), expired with nothing since that says it may work
+ * again, or under test by another tab's probe, to check again at `recheckAt`.
+ */
+export type DayStartLogin = { readonly kind: 'ok' } | { readonly kind: 'expired' } | { readonly kind: 'probing'; readonly recheckAt: number };
+
 export interface DayStartInput {
   readonly due: readonly DayMoment[];
   /** The session's work it can start now, most urgent first. */
@@ -83,6 +91,7 @@ export interface DayStartInput {
   readonly lastWakeAt: number | undefined;
   readonly minGapMs: number;
   readonly settled: SettledMoments;
+  readonly login: DayStartLogin;
 }
 
 export type DayStartVerdict =
@@ -102,19 +111,23 @@ function settle(settled: SettledMoments, moments: readonly DayMoment[]): Settled
 /**
  * Whether the due moments wake the session now, later or not, and what is settled. A moment the session had a turn
  * after is settled with no wake. The rest wake it at once, together, unless it rests (quiet hours, held by its
- * budget) or has no work it can start: then they stay due for a later check. Wakes stay `wake.minGapMinutes` apart.
+ * budget), has no work it can start or the login is expired: then they stay due for a later check. Wakes stay
+ * `wake.minGapMinutes` apart, and while another tab's probe tests the login they wait for it until `recheckAt`.
  */
 export function decideDayStart(input: DayStartInput): DayStartDecision {
-  const { due, lastTurnAt, rest, now } = input;
+  const { due, lastTurnAt, rest, now, login } = input;
   const hadTurn = (moment: DayMoment): boolean => lastTurnAt !== undefined && lastTurnAt >= moment.at;
   const settled = settle(input.settled, due.filter(hadTurn));
   const open = due.filter((moment) => !hadTurn(moment));
-  if (open.length === 0 || rest.quiet || rest.held || input.startable.length === 0) {
+  if (open.length === 0 || rest.quiet || rest.held || input.startable.length === 0 || login.kind === 'expired') {
     return { verdict: { kind: 'none' }, settled };
   }
   const gapEnd = input.lastWakeAt === undefined ? Number.NEGATIVE_INFINITY : input.lastWakeAt + input.minGapMs;
   if (now < gapEnd) {
     return { verdict: { kind: 'later', at: gapEnd }, settled };
+  }
+  if (login.kind === 'probing') {
+    return { verdict: { kind: 'later', at: login.recheckAt }, settled };
   }
   return { verdict: { kind: 'wake', moments: open, tasks: input.startable }, settled: settle(settled, open) };
 }
