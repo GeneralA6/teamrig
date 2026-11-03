@@ -39,6 +39,18 @@ describe('check OVER-SIZE', () => {
     assert.deepEqual(await overSizeLines(await spentKit(50_000_000, off)), []);
   });
 
+  it('counts from a re-size, so it clears the flag until the task spends past the multiple again (T649)', async () => {
+    const kit = await spentKit(12_000_000);
+    assert.equal((await overSizeLines(kit)).length, 1);
+    ok(await kit.run(['update', 'T1', '--size', '0.5', '--session', 'alpha']));
+    assert.deepEqual(await overSizeLines(kit), [], 'the 12M W spent before the re-size no longer counts');
+    const store = new UsageStore(kit.files, join(TEAM_HOME, 'state', 'usage'));
+    const { rev } = await store.load('alpha');
+    assert.equal(await store.save('alpha', { ...EMPTY_USAGE, byTask: { [DAY]: { T1: 23_000_000 } } }, rev), true);
+    const [flag] = await overSizeLines(kit);
+    assert.match(flag ?? '', /^OVER-SIZE \(spent 1\.1% since it was sized, 2\.2x its size 0\.5%\) T1 /);
+  });
+
   it('raises nothing while the W of one percent is unknown', async () => {
     assert.deepEqual(await overSizeLines(await spentKit(50_000_000, TEAM)), []);
   });

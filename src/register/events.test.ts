@@ -194,6 +194,15 @@ describe('parseEvent', () => {
     assert.deepEqual(parse(eventRecord(sized), 2), { kind: 'event', event: sized });
   });
 
+  it("reads an update's size base, round trips it, and refuses a bad one (T649)", () => {
+    const resized: RegisterEvent = { ...BASE, v: 2, type: 'update', changes: { size: 0.5 }, note: null, sizeBase: { day: '2030-01-07', w: 12_000_000 } };
+    assert.deepEqual(parse(eventRecord(resized), 2), { kind: 'event', event: resized });
+    for (const bad of [{ day: '2030-01-07' }, { day: '7 Jan', w: 1 }, { day: '2030-01-07', w: -1 }, { day: '2030-01-07', w: '5' }]) {
+      assert.match(reason(parse({ ...BASE, type: 'update', changes: { size: 0.5 }, sizeBase: bad }, 2)), /^bad sizeBase /, JSON.stringify(bad));
+    }
+    assert.equal(reason(parse({ ...BASE, type: 'update', changes: { size: 0.5 }, sizeBase: 5 }, 2)), 'sizeBase is not an object');
+  });
+
   it('reads the type and critical mark of a create line and of an update, and an older line as neither (T1252)', () => {
     const marked: RegisterEvent = { ...BASE, v: 2, type: 'create', task: { ...TASK, type: 'bug', critical: true } };
     assert.deepEqual(parse(eventRecord(marked), 2), { kind: 'event', event: marked });

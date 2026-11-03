@@ -32,6 +32,7 @@ export function testTask(overrides: Partial<Task> = {}): Task {
     reparks: 0,
     followups: [],
     review: {},
+    sizeBase: null,
     startedAt: null,
     createdAt: '2030-01-07T09:00:00.000Z',
     createdBy: 'lead',

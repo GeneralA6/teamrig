@@ -52,6 +52,25 @@ describe('foldEvents: the note a task shows', () => {
   });
 });
 
+describe('foldEvents: the size base OVER-SIZE counts from (T649)', () => {
+  const base = { day: '2030-01-07', w: 12_000_000 };
+  const resized = (hour: number, size: number | null): RegisterEvent => ({ ...update(hour, { size }), ...(size === null ? {} : { sizeBase: base }) });
+
+  it('starts with none, even on a task created with a size', () => {
+    assert.equal(taskAfter([{ v: EVENT_VERSION, type: 'create', id: 'T1', at: at(9), by: 'lead', task: { ...FIELDS, size: 1 } }]).sizeBase, null);
+  });
+
+  it('takes the base of an update that gives a size, and keeps it through other updates', () => {
+    assert.deepEqual(taskAfter([create(9), resized(10, 0.5)]).sizeBase, base);
+    assert.deepEqual(taskAfter([create(9), resized(10, 0.5), update(11, { priority: 1 }), status(12, 'in-progress')]).sizeBase, base);
+  });
+
+  it('drops it when the size is cleared, or given by a line with no base', () => {
+    assert.equal(taskAfter([create(9), resized(10, 0.5), resized(11, null)]).sizeBase, null);
+    assert.equal(taskAfter([create(9), resized(10, 0.5), update(11, { size: 2 })]).sizeBase, null, 'a teamrig before T649 sized it: all spend counts');
+  });
+});
+
 describe('foldEvents: when a task took its status and priority', () => {
   it('starts both at the creation', () => {
     const task = taskAfter([create(9)]);

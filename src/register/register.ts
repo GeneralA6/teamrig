@@ -2,7 +2,7 @@ import { errorMessage } from '../core/guards.ts';
 import { NewerDataError } from '../core/jsonl.ts';
 import type { Clock, Mutex } from '../core/lock.ts';
 import type { TimeZone } from '../core/zone.ts';
-import { EVENT_VERSION, TASK_LINE_VERSION, type ApprovalVerdict, type CreateEvent, type RegisterEvent, type StatusEvent, type TaskFields, type UpdateEvent } from './events.ts';
+import { EVENT_VERSION, TASK_LINE_VERSION, type ApprovalVerdict, type CreateEvent, type RegisterEvent, type SizeBase, type StatusEvent, type TaskFields, type UpdateEvent } from './events.ts';
 import { foldEvents, taskNumber, type RegisterState, type Task } from './fold.ts';
 import { NO_GOAL_TAGS } from './goals.ts';
 import { GITHUB_ACTOR, NO_SKILL, type AddInput, type AskInput, type DeferChange, type ImportChanges, type ImportInput, type OwnerChange, type RegisterPolicy, type StatusContext, type StatusInput, type Verdict } from './policy.ts';
@@ -232,7 +232,12 @@ export class Register {
     return { ok: true, value: { ...written.value, asked } };
   }
 
-  update(caller: string, id: string, changes: Partial<TaskFields>, note: string | undefined): Promise<Verdict<WriteResult>> {
+  /**
+   * `update <id>`: the changes the policy lets the caller make. `sizeBase` is what the task had cost today when the
+   * caller read it (T649): the event carries it only when it gives the task a size, so OVER-SIZE counts what it spends
+   * after that size was set.
+   */
+  update(caller: string, id: string, changes: Partial<TaskFields>, note: string | undefined, sizeBase?: SizeBase): Promise<Verdict<WriteResult>> {
     return this.asCaller(caller, async () => {
       const goalTags = await this.goalTagsFor(changes.goals);
       return this.write((snapshot, elsewhere) =>
@@ -241,7 +246,8 @@ export class Register {
           if (!change.ok) {
             return change;
           }
-          const event: UpdateEvent = { ...this.base(id, caller), type: 'update', ...change.value };
+          const sized = typeof change.value.changes.size === 'number' && sizeBase !== undefined;
+          const event: UpdateEvent = { ...this.base(id, caller), type: 'update', ...change.value, ...(sized ? { sizeBase } : {}) };
           const { pin, owner } = change.value.changes;
           const unpins = typeof pin === 'string' ? this.unpins(task, owner ?? task.owner, caller, snapshot.state) : [];
           return { ok: true, value: [...unpins, event] };

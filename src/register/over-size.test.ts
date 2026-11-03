@@ -1,11 +1,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { testTask } from '../testing/task.ts';
+import type { Task } from './fold.ts';
 import { overSizeFlags } from './over-size.ts';
 
 /** What each task spent, in percent of the weekly limit; 0 for a task the map leaves out. */
-function spentOf(spent: Record<string, number>): (task: string) => number {
-  return (task) => spent[task] ?? 0;
+function spentOf(spent: Record<string, number>): (task: Task) => number {
+  return (task) => spent[task.id] ?? 0;
 }
 
 function flagsOf(spent: Record<string, number>, multiple = 2, tasks = [testTask({ id: 'T1', size: 0.5 })]): string[] {
@@ -17,6 +18,21 @@ describe('overSizeFlags', () => {
     assert.deepEqual(flagsOf({ T1: 1.15 }), ['OVER-SIZE T1 (spent 1.15% of the week, 2.3x its size 0.5%)']);
     assert.deepEqual(flagsOf({ T1: 1 }), [], 'exactly the multiple is not past it');
     assert.deepEqual(flagsOf({ T1: 0.8 }, 1.5), ['OVER-SIZE T1 (spent 0.8% of the week, 1.6x its size 0.5%)']);
+  });
+
+  it('asks the spend of the task itself, and names spend since a re-size as such (T649)', () => {
+    const asked: Task[] = [];
+    const task = testTask({ id: 'T1', size: 0.5, sizeBase: { day: '2030-01-07', w: 12_000_000 } });
+    const flags = overSizeFlags(
+      [task],
+      (seen) => {
+        asked.push(seen);
+        return 1.2;
+      },
+      2,
+    );
+    assert.deepEqual(asked, [task]);
+    assert.deepEqual(flags.map((flag) => flag.detail), ['spent 1.2% since it was sized, 2.4x its size 0.5%']);
   });
 
   it('reads every active status and no finished one', () => {
