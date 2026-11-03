@@ -148,7 +148,8 @@ the repository is public.
 ## Scrub checks
 Two checks keep private data out of the history:
 1. **Generic** (in this repo, run by the hooks, the local gate and CI): absolute home paths, e-mail addresses,
-   IP addresses, internal host names and common secret formats.
+   IP addresses, internal host names and the secret shapes teamrig's secret guard refuses: common tokens,
+   credentials in a URL or an Authorization or API key header, and literals given to a secret-like name.
 2. **Private denylist** (optional, never committed): a file of your own terms, wired in with
    `git config --local teamrig.scrubDenylist <path>`. Once configured, the hooks fail closed if
    the file is missing. The scrub runs only inside the repo's work tree, where that setting is read, and refuses
