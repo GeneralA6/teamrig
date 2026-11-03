@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
+import { instantField, isRecord, stringField, type JsonRecord } from '../core/guards.ts';
 import { claudeConfigDir, type Env } from '../core/home.ts';
 import { parseObject } from '../core/jsonl.ts';
 import type { LockTimings } from '../core/lock.ts';
@@ -292,13 +292,6 @@ function instantsRecord(byTab: ReadonlyMap<string, number>): Record<string, stri
   return Object.fromEntries([...byTab].map(([tab, at]) => [tab, isoOf(at)]));
 }
 
-/** An instant field; undefined when it is missing or not an instant. */
-function instantOf(record: JsonRecord, key: string): number | undefined {
-  const text = stringField(record, key);
-  const ms = text === undefined ? Number.NaN : Date.parse(text);
-  return Number.isNaN(ms) ? undefined : ms;
-}
-
 /** A map of tabs to instants (the stuck tabs, their retries); undefined when a key is not a Claude session id or a time not an instant. */
 function instantsByTabOf(value: unknown): Map<string, number> | undefined {
   if (!isRecord(value)) {
@@ -306,7 +299,7 @@ function instantsByTabOf(value: unknown): Map<string, number> | undefined {
   }
   const byTab = new Map<string, number>();
   for (const tab of Object.keys(value)) {
-    const at = instantOf(value, tab);
+    const at = instantField(value, tab);
     if (!CLAUDE_SESSION_ID.test(tab) || at === undefined) {
       return undefined;
     }
@@ -321,7 +314,7 @@ function probeOf(value: unknown): LoginProbe | undefined {
     return undefined;
   }
   const tab = stringField(value, 'tab');
-  const at = instantOf(value, 'at');
+  const at = instantField(value, 'at');
   return tab === undefined || !CLAUDE_SESSION_ID.test(tab) || at === undefined ? undefined : { tab, at };
 }
 
@@ -339,13 +332,13 @@ export function parseLoginMarker(text: string): LoginMarker | undefined {
   if (record === undefined) {
     return undefined;
   }
-  const expiredAt = instantOf(record, 'expiredAt');
-  const lastFailAt = instantOf(record, 'lastFailAt');
-  const recoveredAt = instantOf(record, 'recoveredAt');
-  const pagedAt = instantOf(record, 'pagedAt');
+  const expiredAt = instantField(record, 'expiredAt');
+  const lastFailAt = instantField(record, 'lastFailAt');
+  const recoveredAt = instantField(record, 'recoveredAt');
+  const pagedAt = instantField(record, 'pagedAt');
   const stranded = instantsByTabOf(record['stranded']);
   const probe = probeOf(record['probe']);
-  const lastRetryAt = instantOf(record, 'lastRetryAt');
+  const lastRetryAt = instantField(record, 'lastRetryAt');
   const retried = record['retried'] === undefined ? new Map<string, number>() : instantsByTabOf(record['retried']);
   const optionals: readonly (readonly [string, unknown])[] = [
     ['recoveredAt', recoveredAt],
