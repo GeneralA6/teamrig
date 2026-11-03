@@ -4,7 +4,7 @@ import { parseUtcDay } from '../core/time.ts';
 import { SESSION_NAME } from './model.ts';
 
 /**
- * Goal records (T1730, design tasks/T1730/design.md): a goal's tag, title, planned window and target, and each move of
+ * Goal records (T1730): a goal's tag, title, planned window and target, and each move of
  * its target with the note saying why (a slip), so a goal's progress reads against a plan. They live in their own
  * append-only file beside the register's `events.jsonl`, never in the event log, so a reader that knows only the
  * events never meets a line it cannot read, and a rotation never touches them. Pure: the caller hands in the text it

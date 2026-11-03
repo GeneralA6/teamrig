@@ -12,7 +12,7 @@ import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf, teamZone, type
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 
 /**
- * `goal add|set|list|show` (T1730, design tasks/T1730/design.md): the team's goal records, each a tag, a title and a
+ * `goal add|set|list|show` (T1730): the team's goal records, each a tag, a title and a
  * planned window from its start to its target day, and every move of that target with the note saying why (a slip).
  * Only the team's lead adds or changes one, under the goals lock (register/goal-store.ts); any session reads them.
  * The records sit in `goals.jsonl` beside the register's events, so the pane's Goals section reads them itself.
