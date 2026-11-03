@@ -5443,7 +5443,9 @@ failure, these moments wake no one; with it working, the first tab due wakes alo
 (`<home>/restore/day-probe.json`) and the others wait for its reply, or 5 minutes. A tab whose last turn ended on
 `Login expired` is checked before all else: its turn is sent on once the login works again (stuck tabs 30 seconds
 apart) or, with one tab at a time, once the credentials changed after the last failure, each logged with `retry` and
-as a `login: retried` line in `<home>/restore/restore.log`. No session is woken while its automatic restart may still act (`refresh.autoRestart`),
+as a `login: retried` line in `<home>/restore/restore.log`. A tab whose last turn ended on `server_error` or
+`overloaded` comes next: its turn is sent on up to 3 times, 1, 5 and 15 minutes apart, each logged with `retry` and
+as an `api-error: retried` line in the same log. No session is woken while its automatic restart may still act (`refresh.autoRestart`),
 since the wake's prompt would cancel it as a typed one does: the check looks again each minute, and the work handed
 meanwhile wakes the fresh session. A session whose restart waits for work (its handover written with nothing it could
 start) is not woken with its old context either: the check that finds work for it starts its restart and looks again
