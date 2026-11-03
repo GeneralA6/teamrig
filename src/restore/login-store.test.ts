@@ -121,7 +121,7 @@ describe('login store', () => {
     await store.apply(failed(TAB_A));
     await store.apply(failed(TAB_B));
     const runs = lock.runs;
-    assert.deepEqual(await store.claimRetry(TAB_A, AT + 1_000, undefined), { kind: 'none' }, 'no sign the login works');
+    assert.deepEqual(await store.claimRetry(TAB_A, AT + 1_000, undefined), { kind: 'stuck' }, 'no sign the login works');
     assert.equal(lock.runs, runs, 'every idle tab asks; only a due retry locks');
     const claimed = await store.claimRetry(TAB_A, AT + 2_000, AT + 1_000);
     assert.deepEqual([claimed.kind === 'retry' ? claimed.why : claimed.kind, lock.runs], ['probe', runs + 1]);

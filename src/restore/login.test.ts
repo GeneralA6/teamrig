@@ -205,12 +205,12 @@ describe('login retry', () => {
   const RENEWED = EXPIRY + 6 * 60 * MS_PER_MINUTE;
   const NOW = RENEWED + MS_PER_MINUTE;
 
-  it('retries no tab that is not stuck, nor one while nothing since the last failure says the login works', () => {
+  it('retries no tab that is not stuck, and holds a stuck one while nothing since the last failure says the login works', () => {
     const marker = markerAfter(failed(TAB_A, EXPIRY), failed(TAB_B, EXPIRY + 1_000));
     assert.deepEqual(decideLoginRetry(undefined, TAB_A, NOW, RENEWED), { kind: 'none' }, 'no marker');
     assert.deepEqual(decideLoginRetry(marker, TAB_C, NOW, RENEWED), { kind: 'none' }, 'a tab not stuck');
-    assert.deepEqual(decideLoginRetry(marker, TAB_A, NOW, undefined), { kind: 'none' }, 'no credentials file');
-    assert.deepEqual(decideLoginRetry(marker, TAB_A, NOW, EXPIRY + 1_000), { kind: 'none' }, 'credentials from before the last failure');
+    assert.deepEqual(decideLoginRetry(marker, TAB_A, NOW, undefined), { kind: 'stuck' }, 'no credentials file');
+    assert.deepEqual(decideLoginRetry(marker, TAB_A, NOW, EXPIRY + 1_000), { kind: 'stuck' }, 'credentials from before the last failure');
   });
 
   it('lets one stuck tab test credentials renewed after the last failure, and holds the others for it', () => {
@@ -219,7 +219,7 @@ describe('login retry', () => {
     assert.deepEqual([probe.why, probe.failAt], ['probe', EXPIRY]);
     assert.deepEqual([probe.marker.probe, probe.marker.lastRetryAt, probe.marker.retried], [{ tab: TAB_A, at: NOW }, NOW, new Map([[TAB_A, NOW]])]);
     assert.deepEqual(decideLoginRetry(probe.marker, TAB_B, NOW + 1_000, RENEWED), { kind: 'later', at: NOW + LOGIN_PROBE_STALE_MS });
-    assert.deepEqual(decideLoginRetry(probe.marker, TAB_A, NOW + LOGIN_PROBE_STALE_MS, RENEWED), { kind: 'none' }, 'the probe tab tries these credentials once');
+    assert.deepEqual(decideLoginRetry(probe.marker, TAB_A, NOW + LOGIN_PROBE_STALE_MS, RENEWED), { kind: 'stuck' }, 'the probe tab tries these credentials once');
   });
 
   it('frees the probe slot when the probe has no result, and stops at a failed probe until the credentials change again', () => {
@@ -227,7 +227,7 @@ describe('login retry', () => {
     const stale = claimedBy(decideLoginRetry(probed, TAB_B, NOW + LOGIN_PROBE_STALE_MS, RENEWED));
     assert.deepEqual([stale.why, stale.marker.probe], ['probe', { tab: TAB_B, at: NOW + LOGIN_PROBE_STALE_MS }]);
     const failedProbe = written(applyLoginEvent(probed, failed(TAB_A, NOW + 20_000))).marker;
-    assert.deepEqual(decideLoginRetry(failedProbe, TAB_B, NOW + 30_000, RENEWED), { kind: 'none' }, 'the failure came after the change');
+    assert.deepEqual(decideLoginRetry(failedProbe, TAB_B, NOW + 30_000, RENEWED), { kind: 'stuck' }, 'the failure came after the change');
     const again = claimedBy(decideLoginRetry(failedProbe, TAB_B, NOW + 40_000, NOW + 35_000));
     assert.equal(again.why, 'probe', 'a newer change is tested again');
   });
@@ -242,7 +242,7 @@ describe('login retry', () => {
     assert.deepEqual([first.why, first.failAt], ['recovered', EXPIRY], 'a recovery needs no credentials file');
     assert.deepEqual(decideLoginRetry(first.marker, TAB_C, firstAt + 1_000, undefined), { kind: 'later', at: firstAt + LOGIN_RETRY_GAP_MS });
     assert.equal(claimedBy(decideLoginRetry(first.marker, TAB_C, firstAt + LOGIN_RETRY_GAP_MS, undefined)).why, 'recovered');
-    assert.deepEqual(decideLoginRetry(first.marker, TAB_B, NOW + 10 * MS_PER_MINUTE, undefined), { kind: 'none' }, 'once per recovery');
+    assert.deepEqual(decideLoginRetry(first.marker, TAB_B, NOW + 10 * MS_PER_MINUTE, undefined), { kind: 'stuck' }, 'once per recovery');
   });
 
   it("drops a freed tab's retry, and carries the spacing and the retries of stuck tabs into a new expiry", () => {

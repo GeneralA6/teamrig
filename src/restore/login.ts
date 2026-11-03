@@ -87,9 +87,14 @@ export type LoginChange = { readonly kind: 'write'; readonly marker: LoginMarker
 /** Why a stuck tab retries: a good turn proved the login (`recovered`), or it tests a renewed one (`probe`). */
 export type LoginRetryWhy = 'recovered' | 'probe';
 
-/** What `decideLoginRetry` says of a tab: nothing to do, a retry due at `at`, or a retry now with the marker claiming it. */
+/**
+ * What `decideLoginRetry` says of a tab: nothing to do (`none`: not stuck), stuck with nothing new that says the login
+ * works (`stuck`: the next sign is a change of the marker or the credentials file), a retry due at `at`, or a retry
+ * now with the marker claiming it.
+ */
 export type LoginRetry =
   | { readonly kind: 'none' }
+  | { readonly kind: 'stuck' }
   | { readonly kind: 'later'; readonly at: number }
   | { readonly kind: 'retry'; readonly why: LoginRetryWhy; readonly failAt: number; readonly marker: LoginMarker };
 
@@ -209,7 +214,7 @@ export function releasePage(marker: LoginMarker, claimedAt: number): LoginMarker
 }
 
 /**
- * Whether a stuck tab's last turn should be sent again: `none` (not stuck, or nothing new says the login works),
+ * Whether a stuck tab's last turn should be sent again: `none` (not stuck), `stuck` (nothing new says the login works),
  * `later` (at `at`, when the retry spacing or another tab's open probe allows), or `retry`, with the marker that
  * claims it. `why` is `recovered` once a good turn after the last failure proved the login, and the tabs then retry
  * one per `LOGIN_RETRY_GAP_MS`; it is `probe` while the login is still expired but its credentials file changed after
@@ -227,13 +232,13 @@ export function decideLoginRetry(marker: LoginMarker | undefined, tab: string, n
   // A recovery covers every stuck tab: a failure after it would have started a new expiry.
   if (marker.recoveredAt !== undefined) {
     if (retriedAt !== undefined && retriedAt >= marker.recoveredAt) {
-      return { kind: 'none' };
+      return { kind: 'stuck' };
     }
     const spacedUntil = marker.lastRetryAt === undefined ? undefined : marker.lastRetryAt + LOGIN_RETRY_GAP_MS;
     return spacedUntil !== undefined && now < spacedUntil ? { kind: 'later', at: spacedUntil } : { kind: 'retry', why: 'recovered', failAt, marker: claimed(undefined) };
   }
   if (credentialsAt === undefined || credentialsAt <= marker.lastFailAt || (retriedAt !== undefined && retriedAt >= credentialsAt)) {
-    return { kind: 'none' };
+    return { kind: 'stuck' };
   }
   const { probe } = marker;
   if (probe !== undefined && probe.at > marker.lastFailAt && now < probe.at + LOGIN_PROBE_STALE_MS) {
