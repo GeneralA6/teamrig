@@ -14,7 +14,7 @@ import type { TimeZone } from '../../core/zone.ts';
 import { activeBurst, burstFloorOf, withBurst, type BurstRecord, type InBurst } from '../../budget/burst.ts';
 import { BurstLog } from '../../budget/burst-log.ts';
 import { calibrationOf } from '../../budget/calibration.ts';
-import { CutLog, cutText, decideCut } from '../../budget/cut.ts';
+import { activeCut, CutLog, cutText, decideCut, type Cut } from '../../budget/cut.ts';
 import { claudeProjectsDir, type TranscriptSource } from '../../budget/discover.ts';
 import { ExtraLog, type ExtraEntry } from '../../budget/extra.ts';
 import { formatPct, formatUsd } from '../../budget/format.ts';
@@ -102,6 +102,8 @@ interface Reading {
   readonly weekPaths: TeamWeekPaths;
   readonly lifts: readonly Lift[];
   readonly bursts: readonly BurstRecord[];
+  /** The leaders' cuts, as the Stop hook reads them (src/cli/commands/hook-budget.ts); a recount reads none. */
+  readonly cuts: readonly Cut[];
 }
 
 interface ReadOptions {
@@ -145,7 +147,8 @@ async function readBudget(runtime: CliRuntime, kit: Kit, config: KitConfig, rost
       : await teamWeekOf(files, account.paths, meterScaleOf(runtime, kit.paths.team, account), input);
   const lifts = recount ? [] : (await new LiftLog(files, kit.paths.lifts).read()).lifts;
   const bursts = recount ? [] : (await new BurstLog(files, kit.paths.bursts).read()).records;
-  return { now, measured, week, weekPaths: account?.paths ?? kit.paths, lifts, bursts };
+  const cuts = recount ? [] : (await new CutLog(files, kit.paths.cuts).read()).cuts;
+  return { now, measured, week, weekPaths: account?.paths ?? kit.paths, lifts, bursts, cuts };
 }
 
 /** The week now and each team session's usage, measured up to now as `budget` measures them. */
@@ -170,7 +173,7 @@ function splitOf(reading: Reading, team: string, roster: Roster, config: Pick<Ki
   return budgetSplitOf({ team, ids: roster.ids, sessions: config.budget.sessions, leads: config.leads, work, pausable: pausableOf(config, team, roster.ids), lifts: reading.lifts, now: reading.now, usedPct: reading.week.usedPct });
 }
 
-/** Each session today: its use, and its part (`split`) of the team's part of the account's daily budget beside the `others` on it, its lift and the burst. */
+/** Each session today: its use, and its part (`split`) of the team's part of the account's daily budget beside the `others` on it, its lift, the burst and whether a leader's cut of it is in force. */
 function sessionsToday(reading: Reading, roster: Roster, budget: BudgetConfig, split: BudgetSplit, others: readonly BudgetSplit[]): SessionToday[] {
   const today = formatUtcDay(new Date(reading.now));
   const inForce = activeBurst(reading.bursts, reading.now, reading.week.usedPct);
@@ -182,7 +185,7 @@ function sessionsToday(reading: Reading, roster: Roster, budget: BudgetConfig, s
     const lift = activeLift(reading.lifts, id, reading.now, reading.week.usedPct);
     const inBurst = burstNow !== undefined && burstNow.burst.sessions.includes(id) ? burstNow : undefined;
     const budgetPct = withBurst(dailyBudgetOf(reading.week.allowancePct, id, split, others), inBurst?.floorPct);
-    return { id, name: roster.nameOf(id) ?? id, w, calls: state?.byDay[today]?.calls ?? 0, budgetPct, lift, ...liftNamesOf({ split, others }, reading.week.allowancePct, roster, id, lift), inBurst, paused: isPaused(split, id) };
+    return { id, name: roster.nameOf(id) ?? id, w, calls: state?.byDay[today]?.calls ?? 0, budgetPct, lift, ...liftNamesOf({ split, others }, reading.week.allowancePct, roster, id, lift), inBurst, paused: isPaused(split, id), cut: activeCut(reading.cuts, reading.lifts, id, reading.now) !== undefined };
   });
 }
 
