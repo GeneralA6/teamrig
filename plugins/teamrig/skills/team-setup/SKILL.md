@@ -249,8 +249,8 @@ With sub-teams, run `teamrig check --tree --session lead` too. Act on each flag:
   its pace will not reach (`update --priority`), hand some to another session, or tell the user what is held.
 - `OVER-LIMIT`: the week's sized work passes the weekly limit left at this task. Move it and the tasks after it to
   next week (`update --week`), or tell the user what it would cut.
-- `OVER-SIZE`: a task cost more than twice its size. Ask its owner in one inbox line to re-size what is left
-  (`update --size`), split the rest into its own task, or drop it; `teamrig budget --task <id>` shows where it went.
+- `OVER-SIZE`: a task cost more than twice its size since it was last sized. Ask its owner in one inbox line to
+  re-size what is left (`update --size`, which counts from then on), split the rest into its own task, or drop it; `teamrig budget --task <id>` shows where it went.
 - `OWNER-UNPLANNED` or `DUE-UNPLANNED`: plan it in with `--week`, or tell the user what it would push out.
 - A skill flag: tell the skill's owner in one inbox line.
 

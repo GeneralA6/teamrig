@@ -253,7 +253,7 @@
               "default": 1
             },
             "overSizeMultiple": {
-              "description": "An active sized task whose cost, as the budget meter attributes it, passed this many times its size (--size) is OVER-SIZE in teamrig check; 0 turns the flag off.",
+              "description": "An active sized task whose cost since it was last sized, as the budget meter attributes it, passed this many times its size (--size) is OVER-SIZE in teamrig check; 0 turns the flag off.",
               "type": "number",
               "minimum": 0,
               "maximum": 10,

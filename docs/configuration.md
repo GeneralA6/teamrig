@@ -143,7 +143,7 @@ The thresholds of the flags teamrig check raises on tasks.
 | `prioritySkipAfterHours` | integer (at least 1) | `24` | A session's in-progress task below its own open top-priority task this long is a PRIORITY-SKIP. |
 | `maxSelfMadePerDay` | integer (0 to 200) | `10` | A session that added more tasks for itself (created by it, asked by no one else) in the last 24 hours than this is a SELF-MADE in teamrig check; 0 turns the flag off. |
 | `goalProgressDays` | integer (0 to 7) | `1` | Whole days (the team's day: wake.dayStartUtc, else UTC) that may end with no goal or week-plan task moved by its owner, while the week has usage left, before a NO-PROGRESS in teamrig check; 0 turns the flag off. |
-| `overSizeMultiple` | number (0 to 10) | `2` | An active sized task whose cost, as the budget meter attributes it, passed this many times its size (--size) is OVER-SIZE in teamrig check; 0 turns the flag off. |
+| `overSizeMultiple` | number (0 to 10) | `2` | An active sized task whose cost since it was last sized, as the budget meter attributes it, passed this many times its size (--size) is OVER-SIZE in teamrig check; 0 turns the flag off. |
 | `weekLengthDays` | integer (1 to 31) | `7` | The length, in days, of the week plan teamrig check measures the week's tasks against. |
 | `stopgapFiles` | array (at most 20 items) of string (1 to 260 characters) | `["CLAUDE.md",".claude/rules"]` | The files teamrig check scans for stopgap T\<id> tags besides every skill, a STOPGAP-DONE flag for each tag that names a finished task: paths relative to the team's project folder, or absolute; a path ending in .md is one file, any other a folder whose .md files are read. |
 
