@@ -333,6 +333,68 @@ describe('registerStats: a session scope', () => {
   });
 });
 
+describe('registerStats: the tasks behind the counts', () => {
+  const ids = (tasks: RegisterStats['tasks']['active']): string[] => tasks.map((each) => each.task.id);
+
+  it('lists the very tasks the flow and backlog count', () => {
+    const stats = statsOf([
+      create('T1', '2029-12-20T10:00:00.000Z'),
+      create('T2', '2030-01-05T10:00:00.000Z'),
+      status('T2', '2030-01-06T10:00:00.000Z', 'done'),
+      create('T3', '2030-01-05T11:00:00.000Z'),
+      status('T3', '2030-01-07T10:00:00.000Z', 'dropped'),
+      create('T4', '2030-01-06T10:00:00.000Z'),
+      status('T4', '2030-01-07T10:00:00.000Z', 'in-progress'),
+      create('T5', '2029-12-20T10:00:00.000Z'),
+      status('T5', '2029-12-22T10:00:00.000Z', 'done'),
+    ]);
+    assert.deepEqual([ids(stats.tasks.active), ids(stats.tasks.opened), ids(stats.tasks.closed)], [['T1', 'T4'], ['T2', 'T3', 'T4'], ['T2', 'T3']]);
+    assert.deepEqual([stats.tasks.opened.length, stats.tasks.closed.length], [stats.opened, stats.closedTasks]);
+    assert.equal(stats.tasks.active.length, Object.values(stats.active).reduce((sum, count) => sum + count, 0));
+  });
+
+  it('lists the overdue tasks longest past first and their p1 ones apart', () => {
+    const stats = statsOf([
+      create('T1', '2030-01-05T10:00:00.000Z', { due: '2030-01-09', priority: 1 }),
+      create('T2', '2030-01-05T10:00:00.000Z', { due: '2030-01-08 10:00' }),
+      create('T3', '2030-01-05T10:00:00.000Z', { due: '2030-01-06', priority: 1 }),
+      create('T4', '2030-01-05T10:00:00.000Z', { due: '2030-01-11', priority: 1 }),
+    ]);
+    assert.deepEqual([ids(stats.tasks.overdue), ids(stats.tasks.overdueP1)], [['T3', 'T2', 'T1'], ['T3', 'T1']]);
+    assert.deepEqual([stats.tasks.overdue.length, stats.tasks.overdueP1.length], [stats.all.overdue.count, stats.all.overdue.p1]);
+  });
+
+  it("lists the owner's decisions oldest first, the oldest one's wait the tile's", () => {
+    const stats = statsOf([
+      create('T1', '2030-01-01T10:00:00.000Z'),
+      status('T1', '2030-01-08T10:00:00.000Z', 'waiting', [{ kind: 'decision', who: 'owner' }]),
+      create('T2', '2030-01-01T10:00:00.000Z'),
+      status('T2', '2030-01-05T10:00:00.000Z', 'verifying', [{ kind: 'approval', who: 'owner' }]),
+      create('T3', '2030-01-01T10:00:00.000Z'),
+      status('T3', '2030-01-04T10:00:00.000Z', 'waiting', [{ kind: 'approval', who: 'lead' }]),
+    ]);
+    assert.deepEqual(ids(stats.tasks.ownerDecisions), ['T2', 'T1']);
+    assert.deepEqual(stats.waits.ownerDecisions, { count: 2, oldestDays: 5 });
+  });
+
+  it('holds the folded tasks of the team holding them, one object in every list, and only the scope', () => {
+    const created = create('T1', '2030-01-05T10:00:00.000Z', { due: '2030-01-06' });
+    const parent = team([created, create('T2', '2030-01-05T11:00:00.000Z', { owner: 'bravo' }), moved('T1', '2030-01-06T10:00:00.000Z', 'bravo')]);
+    const child = team([created], 'bravo');
+    const tree = statsOf([], '7d', { teams: [parent, child] });
+    assert.deepEqual(
+      tree.tasks.active.map((each) => [each.team, each.task.id]),
+      [
+        ['alpha', 'T2'],
+        ['bravo', 'T1'],
+      ],
+    );
+    assert.equal(tree.tasks.overdue[0]?.task, tree.tasks.active[1]?.task);
+    const scoped = statsOf([], '7d', { teams: [parent, child], session: { team: 'alpha', session: 'bravo' } });
+    assert.deepEqual([ids(scoped.tasks.active), ids(scoped.tasks.overdue)], [['T2'], []]);
+  });
+});
+
 describe('stats ranges and statuses', () => {
   it('reads the ranges it names and no other', () => {
     assert.deepEqual(['7d', '30d', '90d', '180d', '1y', 'all', '14d', '1d', 7].map(isStatsRange), [true, true, true, true, true, true, false, false, false]);
