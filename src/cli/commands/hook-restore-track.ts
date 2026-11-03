@@ -5,9 +5,10 @@ import { sessionIdOf } from '../../inbox/inbox.ts';
 import { dayProbePath, dayProbeReleaseLine, type DayProbeReply } from '../../restore/day-probe.ts';
 import { DayProbeStore } from '../../restore/day-probe-store.ts';
 import { applyEvent, type TrackEvent, type TrackFacts } from '../../restore/entry.ts';
-import { authFailureOf, LOGIN_LOCK, LOGIN_TAIL_BYTES, loginLogLine, loginMarkerPath, type LoginEvent } from '../../restore/login.ts';
+import { AUTH_FAILED, LOGIN_LOCK, loginLogLine, loginMarkerPath, type LoginEvent } from '../../restore/login.ts';
 import { LoginStore } from '../../restore/login-store.ts';
 import { RestoreRegistry, restoreLogPath, restoreSessionsDir } from '../../restore/registry.ts';
+import { TURN_TAIL_BYTES, turnErrorOf } from '../../restore/turn-error.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { fileLockOf } from '../file-locks.ts';
 import { loginPageLogLine, loginPageOf, sendLoginPage, type LoginPage } from '../login-page.ts';
@@ -32,7 +33,8 @@ export function trackEventOf(payload: JsonRecord): TrackEvent | undefined {
     case 'Stop':
       return { kind: 'ready' };
     case 'StopFailure':
-      return { kind: 'error' };
+      // A payload with no error is read from the transcript once, by `trackRestore` (`codedEvent`).
+      return { kind: 'error', code: stringField(payload, 'error') };
     case 'SessionEnd':
       return { kind: 'end', reason: stringField(payload, 'reason') };
     default:
@@ -68,16 +70,27 @@ async function trackEntry(event: TrackEvent, facts: TrackFacts, runtime: CliRunt
   }
 }
 
+/**
+ * The event with a failed turn's error read from the transcript when the payload named none
+ * (src/restore/turn-error.ts); a transcript that cannot be read names none, and never keeps the entry from its update.
+ */
+async function codedEvent(payload: JsonRecord, event: TrackEvent, facts: TrackFacts, runtime: CliRuntime): Promise<TrackEvent> {
+  const { transcriptPath } = facts;
+  if (event.kind !== 'error' || event.code !== undefined) {
+    return event;
+  }
+  const tailOf = async (): Promise<string | undefined> => (transcriptPath === undefined ? undefined : runtime.files.readTail(transcriptPath, TURN_TAIL_BYTES));
+  return { kind: 'error', code: await turnErrorOf(payload, tailOf).catch(() => undefined) };
+}
+
 /** The login event a turn end reports: a good one answered, a failed one failed on the login; undefined for any other. */
-async function loginEventOf(payload: JsonRecord, event: TrackEvent, facts: TrackFacts, runtime: CliRuntime): Promise<LoginEvent | undefined> {
-  const { claudeSession, at, transcriptPath } = facts;
+function loginEventOf(event: TrackEvent, facts: TrackFacts): LoginEvent | undefined {
+  const { claudeSession, at } = facts;
   switch (event.kind) {
     case 'ready':
       return { kind: 'answered', claudeSession, at };
-    case 'error': {
-      const tailOf = async (): Promise<string | undefined> => (transcriptPath === undefined ? undefined : runtime.files.readTail(transcriptPath, LOGIN_TAIL_BYTES));
-      return (await authFailureOf(payload, tailOf)) ? { kind: 'auth-failed', claudeSession, at } : undefined;
-    }
+    case 'error':
+      return event.code === AUTH_FAILED ? { kind: 'auth-failed', claudeSession, at } : undefined;
     default:
       return undefined;
   }
@@ -104,8 +117,8 @@ async function pageOf(event: LoginEvent, facts: TrackFacts, runtime: CliRuntime)
  * failure that claims an expiry's page posts it to the owner outside the marker's lock, a slow chat holding no other
  * tab, and gives the claim back when the post fails, so the next failure pages.
  */
-async function trackLogin(payload: JsonRecord, event: TrackEvent, facts: TrackFacts, runtime: CliRuntime, kitHome: string): Promise<void> {
-  const loginEvent = await loginEventOf(payload, event, facts, runtime);
+async function trackLogin(event: TrackEvent, facts: TrackFacts, runtime: CliRuntime, kitHome: string): Promise<void> {
+  const loginEvent = loginEventOf(event, facts);
   if (loginEvent === undefined) {
     return;
   }
@@ -157,8 +170,8 @@ async function trackDayProbe(event: TrackEvent, facts: TrackFacts, runtime: CliR
  */
 export async function trackRestore(payload: unknown, runtime: CliRuntime): Promise<void> {
   const claudeSession = sessionIdOf(payload);
-  const event = isRecord(payload) ? trackEventOf(payload) : undefined;
-  if (!isRecord(payload) || claudeSession === null || event === undefined) {
+  const reported = isRecord(payload) ? trackEventOf(payload) : undefined;
+  if (!isRecord(payload) || claudeSession === null || reported === undefined) {
     return;
   }
   const facts: TrackFacts = {
@@ -175,7 +188,8 @@ export async function trackRestore(payload: unknown, runtime: CliRuntime): Promi
     session: envId(runtime, ENV.session),
   };
   const kitHome = resolveKitHome(runtime.env, runtime.userHome);
-  const login = trackLogin(payload, event, facts, runtime, kitHome).catch(() => undefined);
+  const event = await codedEvent(payload, reported, facts, runtime);
+  const login = trackLogin(event, facts, runtime, kitHome).catch(() => undefined);
   const dayProbe = trackDayProbe(event, facts, runtime, kitHome).catch(() => undefined);
   try {
     await trackEntry(event, facts, runtime, kitHome);

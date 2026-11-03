@@ -47,9 +47,6 @@ export const LOGIN_LOCK: LockTimings = { ttlMs: 10_000, pollMs: 25, waitMs: 5_00
 /** How long a tab stays stranded with no good turn: one closed meanwhile, or never retried, leaves the marker. */
 export const STRANDED_KEEP_MS = 2 * MS_PER_DAY;
 
-/** How much of a transcript's end is read for the error record of a turn that failed: it is the turn's last record. */
-export const LOGIN_TAIL_BYTES = 64 * 1024;
-
 /** The error Claude Code names an expired or revoked login by, in a StopFailure payload and its transcript record. */
 export const AUTH_FAILED = 'authentication_failed';
 
@@ -107,33 +104,6 @@ export type LoginRetry =
 /** True while the marker's latest expiry has no good turn after it. */
 export function loginExpired(marker: LoginMarker): boolean {
   return marker.recoveredAt === undefined;
-}
-
-/**
- * Whether a StopFailure ended its turn on the login. The payload's `error` decides it; only a payload with none reads
- * the transcript's end (`tailOf`, undefined when there is none), whose last assistant record is the turn's synthetic
- * error message.
- */
-export async function authFailureOf(payload: JsonRecord, tailOf: () => Promise<string | undefined>): Promise<boolean> {
-  const error = stringField(payload, 'error');
-  if (error !== undefined) {
-    return error === AUTH_FAILED;
-  }
-  const tail = await tailOf();
-  return tail !== undefined && lastAssistantFailedAuth(tail);
-}
-
-/** True when the last assistant record of `text` is an API error message for an auth failure; a torn first line is skipped. */
-function lastAssistantFailedAuth(text: string): boolean {
-  const lines = text.split('\n');
-  for (let index = lines.length - 1; index >= 0; index -= 1) {
-    const line = lines[index] ?? '';
-    const record = line.includes('"assistant"') ? parseObject(line) : undefined;
-    if (record?.['type'] === 'assistant') {
-      return record['isApiErrorMessage'] === true && record['error'] === AUTH_FAILED;
-    }
-  }
-  return false;
 }
 
 /** The tabs still stranded at `at`: one stuck longer than `STRANDED_KEEP_MS` is dropped. */

@@ -69,7 +69,7 @@ describe('applyEvent', () => {
   });
 
   it('records an API error as its state', () => {
-    assert.equal(written(applyEvent(ENTRY, { kind: 'error' }, facts())).state, 'error');
+    assert.equal(written(applyEvent(ENTRY, { kind: 'error', code: 'overloaded' }, facts())).state, 'error');
   });
 
   it('begins a start afresh: ready, with no restore pending', () => {
