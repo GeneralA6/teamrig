@@ -13,6 +13,7 @@ const WRAPPED: ReadonlySet<string> = new Set(['push-guard', 'package-guard', 'se
 /** The PreToolUse hooks left on the plain CLI, each with why failing open is its safe side. */
 const UNWRAPPED: ReadonlyMap<string, string> = new Map([
   ['readonly-allow', 'an allow hook: when it fails, the call falls back to the permission rules'],
+  ['route-allow', "an allow hook: when it fails, the call gets Claude Code's own check"],
   ['tab-status', 'paints the tab title; it never answers for a call'],
 ]);
 
