@@ -162,13 +162,14 @@ export {
   type RetireRecord,
 } from '../hiring/record.ts';
 
-// Each team's week (`state/usage/team.week.json` under its home, `TEAM_WEEK_PATH`): its used and planned part of the
-// account's week, as its budget hooks last read it. One file per team; a reader adds a child team's to its parent's.
-export { parseTeamWeek, TEAM_WEEK_FORMAT, TEAM_WEEK_PATH, type TeamWeekSummary } from '../budget/team-week-summary.ts';
+// Each team's week (`usage/team.week.json` in its state folder, `TEAM_WEEK_IN_STATE`; the config's `paths.state` can
+// move that folder from `state/` under its home): its used and planned part of the account's week, as its budget hooks
+// last read it. One file per team; a reader adds a child team's to its parent's.
+export { parseTeamWeek, TEAM_WEEK_FORMAT, TEAM_WEEK_IN_STATE, type TeamWeekSummary } from '../budget/team-week-summary.ts';
 
-// Each session's week (`state/usage/sessions.week.json` under its team's home, `SESSIONS_WEEK_PATH`): its use of the
+// Each session's week (`usage/sessions.week.json` in its team's state folder, `SESSIONS_WEEK_IN_STATE`): its use of the
 // account's week so far and its hours with work, by session id, as its team's budget hooks last read them.
-export { parseSessionsWeek, SESSIONS_WEEK_FORMAT, SESSIONS_WEEK_PATH, type SessionsWeekSummary, type SessionWeek } from '../budget/session-week-summary.ts';
+export { parseSessionsWeek, SESSIONS_WEEK_FORMAT, SESSIONS_WEEK_IN_STATE, type SessionsWeekSummary, type SessionWeek } from '../budget/session-week-summary.ts';
 
 // Each session's turn log (`turn-log/<session id>/<UTC hour>.jsonl`): its prompts, replies and clears, one parsed
 // JSON line at a time.

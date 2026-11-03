@@ -5,8 +5,8 @@ import { parseObject, recordVersion, VERSION_FIELD } from '../core/jsonl.ts';
  * The team's week summary: its used and planned part of the account's week, kept by the budget hooks
  * (src/budget/team-week-file.ts) for a reader that shows each team's week without recomputing the budget, as the
  * pane's Teams tab does. One file per team, in its own folder: a child team keeps its own, and a reader that shows a
- * parent with its children adds theirs to it. It sits at `TEAM_WEEK_PATH` under the team's home
- * (`<kit home>/teams/<team>`); the format, one JSON object:
+ * parent with its children adds theirs to it. It sits at `TEAM_WEEK_IN_STATE` under the team's state folder
+ * (`<kit home>/teams/<team>/state`, unless the team config's `paths.state` moves it); the format, one JSON object:
  *
  * - `v`: `TEAM_WEEK_FORMAT`;
  * - `usedPct`: the team's use since the week began, in percent of the account's week: its sessions' W at the team's
@@ -19,7 +19,7 @@ import { parseObject, recordVersion, VERSION_FIELD } from '../core/jsonl.ts';
  *
  * Percents are rounded to two decimals. A hook of any of the team's sessions rewrites it when that changes it.
  */
-export const TEAM_WEEK_PATH = ['state', 'usage', 'team.week.json'] as const;
+export const TEAM_WEEK_IN_STATE = ['usage', 'team.week.json'] as const;
 
 /** The team week summary's format; a field added to it raises this. */
 export const TEAM_WEEK_FORMAT = 1;

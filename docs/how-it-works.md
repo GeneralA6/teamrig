@@ -248,11 +248,12 @@ turns this off: `register.autoArchive: false` in the team's `config.json`, after
   room. The hooks warn a session as it passes its daily budget, tell the lead, and can hold its helper launches (`budget.overAction`,
   `budget.quietHours`), never while it has p0 work: urgent work goes on past the daily stop. The lead sets that policy with `teamrig budget setup`, which shows the change before it
   writes it.
-  On the way, each team's budget hooks keep its week in `state/usage/team.week.json`: the team's use of the
+  On the way, each team's budget hooks keep its week in `usage/team.week.json` in its state folder (`state/` under
+  the team's folder, unless `paths.state` moves it): the team's use of the
   account's week so far, at its own W per percent, and that plus its part of what the account has left to
   `budget.targetPct`, for a reader that shows each team's week, such as the pane's Teams tab (`parseTeamWeek`,
   from `src/read/index.ts`, reads it). A child team keeps its own; a reader that shows it under its parent adds it.
-  Beside it, `state/usage/sessions.week.json` holds each session on the team's roster: its use of the week so far,
+  Beside it, `usage/sessions.week.json` holds each session on the team's roster: its use of the week so far,
   at the same rate, and its UTC hours with work this week, for a reader that shows each session's week, such as a
   session's card on the pane's Teams tab (`parseSessionsWeek` reads it).
 

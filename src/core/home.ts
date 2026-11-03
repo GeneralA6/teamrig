@@ -160,9 +160,9 @@ export interface TeamPaths {
   readonly meterLog: string;
   /** The extra-usage pool's adds and spent readings, an append-only log (budget/extra.ts). */
   readonly extraLog: string;
-  /** The team's used and planned part of the week, for readers that show it (budget/team-week-summary.ts `TEAM_WEEK_PATH`). */
+  /** The team's used and planned part of the week, for readers that show it (budget/team-week-summary.ts `TEAM_WEEK_IN_STATE`). */
   readonly teamWeek: string;
-  /** Each session's use of the week and its hours with work, for readers that show them (budget/session-week-summary.ts `SESSIONS_WEEK_PATH`). */
+  /** Each session's use of the week and its hours with work, for readers that show them (budget/session-week-summary.ts `SESSIONS_WEEK_IN_STATE`). */
   readonly sessionsWeek: string;
   /** The leaders' budget lifts, an append-only log. */
   readonly lifts: string;

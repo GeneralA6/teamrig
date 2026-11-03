@@ -1,8 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { SESSIONS_WEEK_PATH } from '../budget/session-week-summary.ts';
-import { TEAM_WEEK_PATH } from '../budget/team-week-summary.ts';
+import { SESSIONS_WEEK_IN_STATE } from '../budget/session-week-summary.ts';
+import { TEAM_WEEK_IN_STATE } from '../budget/team-week-summary.ts';
 import { claudeConfigDir, claudeTempDir, resolveKitHome, taskFolder, teamHome, teamPaths } from './home.ts';
 
 const USER_HOME = join('/', 'u');
@@ -87,9 +87,9 @@ describe('teamPaths', () => {
     assert.equal(paths.unownedNoticesLock, join(TEAM_HOME, 'state', 'unowned-notices.lock'));
     assert.equal(paths.usage, join(TEAM_HOME, 'state', 'usage'));
     assert.equal(paths.lifts, join(TEAM_HOME, 'state', 'usage', 'lifts.jsonl'));
-    assert.equal(paths.teamWeek, join(TEAM_HOME, ...TEAM_WEEK_PATH), 'where the read side says the team week summary is');
+    assert.equal(paths.teamWeek, join(TEAM_HOME, 'state', ...TEAM_WEEK_IN_STATE), 'where the read side says the team week summary is');
     assert.equal(paths.cuts, join(TEAM_HOME, 'state', 'usage', 'cuts.jsonl'));
-    assert.equal(paths.sessionsWeek, join(TEAM_HOME, ...SESSIONS_WEEK_PATH), "where the read side says the sessions' week summary is");
+    assert.equal(paths.sessionsWeek, join(TEAM_HOME, 'state', ...SESSIONS_WEEK_IN_STATE), "where the read side says the sessions' week summary is");
     assert.equal(paths.hires, join(TEAM_HOME, 'state', 'hires.jsonl'));
     assert.equal(paths.configLock, join(TEAM_HOME, 'state', 'hires.lock'));
     assert.equal(paths.lastTaskAsks, join(TEAM_HOME, 'state', 'last-task-asks'));
@@ -120,6 +120,12 @@ describe('teamPaths', () => {
     assert.equal(paths.skills, '/skills');
     assert.equal(paths.refresh, join('/data', 'refresh'));
     assert.equal(paths.handover, '/hand');
+  });
+
+  it('keeps the week summaries where the read side says, in the state folder an override moves (T1777)', () => {
+    const paths = teamPaths(KIT, 'app', CLAUDE_DIR, { state: 'data' });
+    assert.equal(paths.teamWeek, join(TEAM_HOME, 'data', ...TEAM_WEEK_IN_STATE));
+    assert.equal(paths.sessionsWeek, join(TEAM_HOME, 'data', ...SESSIONS_WEEK_IN_STATE));
   });
 
   it("keeps the exec audit log and run outputs in the team's folder, whatever the state override", () => {
