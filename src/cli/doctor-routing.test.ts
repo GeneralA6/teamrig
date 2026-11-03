@@ -2,13 +2,12 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { claudeProjectSlug } from '../budget/discover.ts';
-import { APP, CliHarness, TEAM, USER_HOME } from '../testing/cli-harness.ts';
+import { APP, CliHarness, HELD_DENY, TEAM, USER_HOME, USER_SETTINGS } from '../testing/cli-harness.ts';
 import { FakePathProbe } from '../testing/fake-processes.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { skillListingLine, transcript, type FixtureListing } from '../testing/transcript-lines.ts';
 import { EXIT } from './runtime.ts';
 
-const USER_SETTINGS = join(USER_HOME, '.claude', 'settings.json');
 const PROJECT_SETTINGS = join(APP, '.claude', 'settings.json');
 const LOCAL_SETTINGS = join(APP, '.claude', 'settings.local.json');
 
@@ -20,7 +19,7 @@ function kinds(stdout: readonly string[]): string[] {
 describe('teamrig doctor: what overrides a model or effort choice', () => {
   it("reads the routing variables from its environment and the user's and the project's settings, and a launch with no effort", async () => {
     const kit = new CliHarness({ ...TEAM, launch: { alpha: { model: 'sonnet' }, bravo: { model: 'opus', effort: 'high' } } });
-    await kit.files.write(USER_SETTINGS, JSON.stringify({ env: { CLAUDE_CODE_SUBAGENT_MODEL_FORCE: '1', ANTHROPIC_API_KEY: 'not a real key' } }));
+    await kit.files.write(USER_SETTINGS, JSON.stringify({ ...HELD_DENY, env: { CLAUDE_CODE_SUBAGENT_MODEL_FORCE: '1', ANTHROPIC_API_KEY: 'not a real key' } }));
     await kit.files.write(PROJECT_SETTINGS, '{ not json');
     await kit.files.write(LOCAL_SETTINGS, JSON.stringify({ env: { CLAUDE_CODE_EFFORT_LEVEL: 'medium' } }));
     const result = await kit.run(['doctor'], { env: { CLAUDE_CODE_EFFORT_LEVEL: 'low' } });
@@ -37,7 +36,7 @@ describe('teamrig doctor: what overrides a model or effort choice', () => {
 
   it('stays clean with the variables unset, valid settings and every named model given an effort', async () => {
     const kit = new CliHarness({ ...TEAM, launch: { lead: { model: 'sonnet' }, alpha: { model: 'opus', effort: 'xhigh' } } });
-    await kit.files.write(USER_SETTINGS, JSON.stringify({ env: { DISABLE_TELEMETRY: '1' } }));
+    await kit.files.write(USER_SETTINGS, JSON.stringify({ ...HELD_DENY, env: { DISABLE_TELEMETRY: '1' } }));
     assert.deepEqual((await kit.run(['doctor'])).stdout, ['DOCTOR clean, team app']);
   });
 });
@@ -50,7 +49,9 @@ describe('teamrig doctor: the project folders the config names', () => {
 
   it('probes team.project and each launch.<id>.project, and flags the ones that are no folder', async () => {
     const probe = new FakePathProbe({ folders: [web], files: [notes] });
-    const result = await new CliHarness(config).run(['doctor'], { probe });
+    const kit = new CliHarness(config);
+    await kit.holdSecretDeny();
+    const result = await kit.run(['doctor'], { probe });
     assert.deepEqual(kinds(result.stdout), ['DOCTOR 2', 'WARN project-missing', 'WARN project-missing']);
     assert.ok(result.stdout[1]?.startsWith(`WARN project-missing team.project names ${shared}, which is missing on this machine`), result.stdout[1]);
     assert.ok(result.stdout[2]?.startsWith(`WARN project-missing launch.bravo.project names ${notes}, which is a file on this machine`), result.stdout[2]);
@@ -58,7 +59,9 @@ describe('teamrig doctor: the project folders the config names', () => {
 
   it('stays clean when every one is a folder', async () => {
     const probe = new FakePathProbe({ folders: [shared, web, notes] });
-    assert.deepEqual((await new CliHarness(config).run(['doctor'], { probe })).stdout, ['DOCTOR clean, team app']);
+    const kit = new CliHarness(config);
+    await kit.holdSecretDeny();
+    assert.deepEqual((await kit.run(['doctor'], { probe })).stdout, ['DOCTOR clean, team app']);
   });
 });
 
@@ -68,7 +71,9 @@ describe('teamrig doctor: the lists a session holds in its context', () => {
 
   it("flags the project's newest session whose lists are over their budget", async () => {
     const transcripts = new MemoryTranscripts({ [session]: transcript([skillListingLine(skills(20))]) });
-    const result = await new CliHarness(TEAM).run(['doctor'], { transcripts });
+    const kit = new CliHarness(TEAM);
+    await kit.holdSecretDeny();
+    const result = await kit.run(['doctor'], { transcripts });
     assert.deepEqual(kinds(result.stdout), ['DOCTOR 1', 'WARN context-lists']);
     assert.ok(result.stdout[1]?.includes(`(${session}): `));
     assert.ok(result.stdout[1]?.includes('[contextFiles.maxSessionListsChars]: skills 20, '));
@@ -76,7 +81,9 @@ describe('teamrig doctor: the lists a session holds in its context', () => {
 
   it('stays clean with the lists under their budget', async () => {
     const transcripts = new MemoryTranscripts({ [session]: transcript([skillListingLine(skills(2))]) });
-    assert.deepEqual((await new CliHarness(TEAM).run(['doctor'], { transcripts })).stdout, ['DOCTOR clean, team app']);
+    const kit = new CliHarness(TEAM);
+    await kit.holdSecretDeny();
+    assert.deepEqual((await kit.run(['doctor'], { transcripts })).stdout, ['DOCTOR clean, team app']);
   });
 });
 
@@ -89,7 +96,9 @@ describe("teamrig doctor: the user's PowerShell history", () => {
   const probe = new FakePathProbe({ files: [history] });
 
   it('flags a history file when no profile exists', async () => {
-    const result = await new CliHarness(TEAM).run(['doctor'], { platform: 'win32', env, probe });
+    const kit = new CliHarness(TEAM);
+    await kit.holdSecretDeny();
+    const result = await kit.run(['doctor'], { platform: 'win32', env, probe });
     assert.deepEqual(kinds(result.stdout), ['DOCTOR 1', 'WARN shell-history']);
     assert.ok(result.stdout[1]?.includes(`in its console in ${history}, `), result.stdout[1]);
     assert.ok(result.stdout[1]?.includes('(none of the usual profile paths exists)'), result.stdout[1]);
@@ -97,8 +106,11 @@ describe("teamrig doctor: the user's PowerShell history", () => {
 
   it("stays clean with a history handler in the profile under OneDrive's Documents, or no history file", async () => {
     const kit = new CliHarness(TEAM);
+    await kit.holdSecretDeny();
     await kit.files.write(profile, 'try { Set-PSReadLineOption -AddToHistoryHandler { param([string]$line) $true } } catch { }');
     assert.deepEqual((await kit.run(['doctor'], { platform: 'win32', env, probe })).stdout, ['DOCTOR clean, team app']);
-    assert.deepEqual((await new CliHarness(TEAM).run(['doctor'], { platform: 'win32', env })).stdout, ['DOCTOR clean, team app']);
+    const bare = new CliHarness(TEAM);
+    await bare.holdSecretDeny();
+    assert.deepEqual((await bare.run(['doctor'], { platform: 'win32', env })).stdout, ['DOCTOR clean, team app']);
   });
 });

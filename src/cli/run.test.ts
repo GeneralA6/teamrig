@@ -334,6 +334,7 @@ describe('runCli: the task register', () => {
 
   it('checks the week plan and the skills, and skips the week checks before any plan', async () => {
     const kit = new CliHarness();
+    await kit.holdSecretDeny();
     await kit.run(['add', '--title', 'Ship the CLI', '--description', 'what and why', '--priority', 'p2', '--due', '2030-01-10', '--session', 'alpha']);
     // Owned by a session on the team, so its flag stays under SKILLS; an ownerless skill's go to the lead (context-check.test.ts).
     await kit.files.write(join(SKILLS_DIR, 'alpha-demo', 'SKILL.md'), '---\nname: alpha-demo\ndescription: A demo skill never verified.\n---\nOwner: alpha\n');
@@ -359,7 +360,9 @@ describe('runCli: the task register', () => {
     ]);
     assert.match(short.stdout[3] ?? '', /^SKILLS [1-9]\d* flag\(s\) in /);
     assert.match(short.stdout[4] ?? '', /^ {2}SKILL \S+ \(.*\) alpha alpha-demo$/);
-    const nothing = await new CliHarness().run(['check', '--session', 'alpha']);
+    const empty = new CliHarness();
+    await empty.holdSecretDeny();
+    const nothing = await empty.run(['check', '--session', 'alpha']);
     assert.deepEqual(nothing.stdout[0], 'CHECK 0 flag(s), no week plan tagged yet, so the week checks are skipped');
   });
 

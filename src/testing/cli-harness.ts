@@ -10,6 +10,7 @@ import type { FileBytes } from '../core/file-bytes.ts';
 import type { Files } from '../core/files.ts';
 import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
 import type { Env } from '../core/home.ts';
+import { SECRET_DENY_LINES } from '../doctor/deny-lines.ts';
 import type { PathProbe } from '../core/path-probe.ts';
 import type { StoreFolders } from '../core/plugin-store.ts';
 import type { TranscriptSource } from '../budget/discover.ts';
@@ -51,6 +52,10 @@ export const EVENTS_PATH = join(TEAM_HOME, 'state', 'events.jsonl');
 export const EVENTS_LOCK_PATH = join(TEAM_HOME, 'state', 'events.lock');
 export const RENAMES_PATH = join(TEAM_HOME, 'state', 'renames.jsonl');
 export const SKILLS_DIR = join(USER_HOME, '.claude', 'skills');
+/** The user's Claude Code settings, where doctor tells the user to paste the secret deny lines no settings file holds. */
+export const USER_SETTINGS = join(USER_HOME, '.claude', 'settings.json');
+/** Claude Code settings that hold every secret deny line, for a spec that writes the user's settings itself. */
+export const HELD_DENY: JsonRecord = { permissions: { deny: [...SECRET_DENY_LINES] } };
 /** The project folder the CLI runs in, tied to team `app` by its pointer. */
 export const APP = resolve('/', 'work', 'app');
 export const POINTER = join(APP, '.teamrig.json');
@@ -187,6 +192,14 @@ export class CliHarness {
       },
       this.clock,
     );
+  }
+
+  /**
+   * Writes the user's Claude Code settings with every secret deny line, as on a machine whose owner pasted the lines
+   * doctor prints: a spec of another doctor or check finding then starts with no `deny-missing`.
+   */
+  async holdSecretDeny(): Promise<void> {
+    await this.files.write(USER_SETTINGS, formatConfig(HELD_DENY));
   }
 
   async run(argv: readonly string[], options: RunOptions = {}): Promise<CliResult> {

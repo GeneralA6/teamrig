@@ -86,12 +86,14 @@ describe('runCli: rename', () => {
 describe('runCli: doctor', () => {
   it('finds a healthy team clean', async () => {
     const kit = new CliHarness(NAMED);
+    await kit.holdSecretDeny();
     await kit.run(['rename', 'alpha', 'scout', '--session', 'alpha']);
     assert.deepEqual(await kit.run(['doctor']), { code: EXIT.ok, stdout: ['DOCTOR clean, team app'], stderr: [] });
   });
 
   it('warns of a damaged rename log, an inbox keyed by a name and rules too long to show, and still exits 0', async () => {
     const kit = new CliHarness(NAMED);
+    await kit.holdSecretDeny();
     await kit.run(['rename', 'alpha', 'scout', '--session', 'alpha']);
     await kit.files.append(RENAMES_PATH, 'not json\n');
     await kit.files.write(join(INBOX, 'scout.md'), '- 2030-01-08 09:00 lead: hello\n');

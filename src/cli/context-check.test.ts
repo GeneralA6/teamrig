@@ -17,6 +17,7 @@ const HEADING = /^UNOWNED 1 warning\(s\) no session owns, so they go to the lead
 describe('the warnings no session owns go to the lead (T951)', () => {
   it('prints a project CLAUDE.md over its budget as unowned in check and in the lead\'s start, not in another session\'s start', async () => {
     const kit = new CliHarness({ ...TEAM, contextFiles: { maxClaudeMdChars: BUDGET } });
+    await kit.holdSecretDeny();
     await kit.files.write(join(APP, 'CLAUDE.md'), 'x'.repeat(BUDGET));
     const within = await kit.run(['check'], AS_ALPHA);
     assert.equal(within.code, EXIT.ok, within.stderr.join('\n'));
@@ -61,6 +62,7 @@ describe('the warnings no session owns go to the lead (T951)', () => {
 
   it("posts the lead one inbox line per warning from any session's start, once while it stands", async () => {
     const kit = new CliHarness({ ...TEAM, contextFiles: { maxClaudeMdChars: BUDGET } });
+    await kit.holdSecretDeny();
     await kit.files.write(join(APP, 'CLAUDE.md'), 'x'.repeat(BUDGET + 1));
     const first = await kit.run(['start'], AS_ALPHA);
     assert.equal(first.code, EXIT.ok, first.stderr.join('\n'));
@@ -89,6 +91,7 @@ describe('the warnings no session owns go to the lead (T951)', () => {
 
   it('posts at most five lines per start, and the rest at the next', async () => {
     const kit = new CliHarness(TEAM);
+    await kit.holdSecretDeny();
     for (const name of ['o1', 'o2', 'o3', 'o4', 'o5', 'o6', 'o7']) {
       await kit.files.write(join(SKILLS_DIR, name, 'SKILL.md'), `---\nname: ${name}\ndescription: A skill with an owner who left.\n---\nOwner: ghost\nLast verified: 2030-01-01\n`);
     }
@@ -100,6 +103,7 @@ describe('the warnings no session owns go to the lead (T951)', () => {
 
   it('warns and goes on when another start holds the lock, so the next start tells the lead', async () => {
     const kit = new CliHarness({ ...TEAM, contextFiles: { maxClaudeMdChars: BUDGET } });
+    await kit.holdSecretDeny();
     await kit.files.write(join(APP, 'CLAUDE.md'), 'x'.repeat(BUDGET + 1));
     await holdFileLock(kit, join(TEAM_HOME, 'state', 'unowned-notices.lock'));
     const held = await kit.run(['start'], AS_ALPHA);
@@ -113,6 +117,7 @@ describe('the warnings no session owns go to the lead (T951)', () => {
 
   it("warns when the lead's line is refused, tells nothing, and tries again at the next start", async () => {
     const kit = new CliHarness({ ...TEAM, register: { secretPatterns: ['hush-[0-9]+'] } });
+    await kit.holdSecretDeny();
     await kit.files.write(join(SKILLS_DIR, 'orphan', 'SKILL.md'), '---\nname: orphan\ndescription: A skill whose owner line holds a secret.\n---\nOwner: hush-1234\nLast verified: 2030-01-01\n');
     const refused = /^WARN lead was not told of a warning no session owns \(skill OWNER orphan\): the line looks like it holds a secret/m;
     const first = await kit.run(['start'], AS_ALPHA);

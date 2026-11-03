@@ -13,6 +13,7 @@ import { TEAM_RULES_MAX_CHARS } from '../rules/pack.ts';
 import { testConfig } from '../testing/config.ts';
 import { renameOf } from '../testing/rename.ts';
 import { JERUSALEM } from '../testing/zone.ts';
+import { SECRET_DENY_LINES } from './deny-lines.ts';
 import { doctorFindings, formatFinding, UNREAD_INBOX_DAYS, type DoctorInput } from './doctor.ts';
 import type { SessionListSource } from './session-lists.ts';
 import type { SettingsEnv } from './settings-env.ts';
@@ -36,6 +37,7 @@ function input(overrides: Partial<DoctorInput> & { readonly names?: Record<strin
     tree: { problems: [], clashes: [] },
     env: {},
     settingsEnv: [],
+    settingsDeny: { files: [{ kind: 'deny', path: '/u/.claude/settings.json', deny: SECRET_DENY_LINES }], pasteInto: '/u/.claude/settings.json' },
     wideAllow: { files: 0, counts: [] },
     launches: [],
     projects: [],
@@ -321,6 +323,45 @@ describe('doctorFindings of launch entries', () => {
     const launches = launchesOf({ lead: { model: 'sonnet' } });
     assert.deepEqual(launches.find(({ id }) => id === 'lead')?.launch, { model: 'sonnet', effort: DEFAULT_LEAD_LAUNCH.effort });
     assert.deepEqual(lines(input({ launches })), []);
+  });
+});
+
+describe('doctorFindings of the secret deny lines', () => {
+  const USER = '/u/.claude/settings.json';
+  const LOCAL = '/w/app/.claude/settings.local.json';
+  const why =
+    "so a hook's allow or auto mode can approve reading a credential file or printing the environment; a deny line beats both, and teamrig never writes permissions: " +
+    `paste these into the permissions.deny list of ${USER} yourself:`;
+
+  it('flags the lines no settings file holds, as a JSON list to paste into the user settings', () => {
+    const held = SECRET_DENY_LINES.filter((line) => line !== 'Bash(env)' && line !== 'Read(//**/*.key)');
+    const files = [
+      { kind: 'deny', path: USER, deny: held.slice(0, 5) },
+      { kind: 'deny', path: LOCAL, deny: held.slice(5) },
+    ] as const;
+    assert.deepEqual(lines(input({ settingsDeny: { files, pasteInto: USER } })), [
+      `WARN deny-missing 2 of ${SECRET_DENY_LINES.length} secret deny line(s) are in no settings file a session reads (read: ${USER}, ${LOCAL}), ${why} ["Bash(env)","Read(//**/*.key)"]`,
+    ]);
+  });
+
+  it('lists every line when no settings file exists, and names a file that is not a JSON object', () => {
+    const all = JSON.stringify(SECRET_DENY_LINES);
+    const count = SECRET_DENY_LINES.length;
+    assert.deepEqual(lines(input({ settingsDeny: { files: [], pasteInto: USER } })), [
+      `WARN deny-missing ${count} of ${count} secret deny line(s) are in no settings file a session reads (no settings file exists), ${why} ${all}`,
+    ]);
+    const files = [{ kind: 'unreadable', path: USER }, { kind: 'deny', path: LOCAL, deny: [] }] as const;
+    assert.deepEqual(lines(input({ settingsDeny: { files, pasteInto: USER } })), [
+      `WARN deny-missing ${count} of ${count} secret deny line(s) are in no settings file a session reads (read: ${LOCAL}; ${USER} is not a JSON object, so its deny lines went unread), ${why} ${all}`,
+    ]);
+  });
+
+  it('is quiet once the files hold every line between them', () => {
+    const files = [
+      { kind: 'deny', path: USER, deny: SECRET_DENY_LINES.slice(0, 3) },
+      { kind: 'deny', path: LOCAL, deny: SECRET_DENY_LINES.slice(3) },
+    ] as const;
+    assert.deepEqual(lines(input({ settingsDeny: { files, pasteInto: USER } })), []);
   });
 });
 
