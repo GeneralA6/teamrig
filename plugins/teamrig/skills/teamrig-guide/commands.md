@@ -2831,10 +2831,9 @@ It prints `CLEARED shop-web: its tab ran /clear` when the mod cleared the tab,
 The idle pass's close of one session it found idle: the pass runs it hidden; you do not run it yourself. Work may
 have reached the session since the pass, so it weighs the session again the way the pass does (work that would wake
 it keeps it open), then ends its Claude Code and its tab as `teamrig close` does and logs the close by `idle-pass` in
-the team's `state/session-log.jsonl`, which `teamrig open` resumes from. It then tells the lead (`roles.lead`) with
-an [urgent line](hooks.md#urgent-lines), which wakes the lead's idle tab with it quoted: which session it closed and
-why, what that session's tasks wait on from a person, and the ask to list the decisions waiting on the owner, ending
-with a `Decision needed:` line. Each outcome (closed, kept, failed) is one JSON line in the team's
+the team's `state/session-log.jsonl`, which `teamrig open` resumes from. It tells no one: a close is routine, and
+what the closed session's tasks wait on from a person stays in their register waits. Each outcome (closed, kept,
+failed) is one JSON line in the team's
 `state/idle-pass.jsonl` (`"kind": "act"`), with the host's commit charge before and after a close.
 
 Flags:
