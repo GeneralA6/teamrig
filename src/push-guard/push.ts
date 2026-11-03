@@ -1,6 +1,7 @@
 import type { PushToProtected } from '../config/types.ts';
 import { BranchMoves, type BranchView } from './branch-moves.ts';
 import { findGitInvocations, type FinderContext, type GitConfigReader, type GitInvocation, type GitInvocations } from './invocations.ts';
+import { namedPushTarget, type MapChange, type NamedPushTarget } from './named-push.ts';
 import type { ShellDialect, ShellWord } from './tokenizer.ts';
 
 /** `allow` emits nothing, so Claude Code's normal permission flow decides. */
@@ -28,6 +29,11 @@ export interface PushCommand extends Readonly<PushFlags> {
   readonly configOverride: boolean;
   /** True for a `send-pack` or `http-push` with no refs, which pushes the matching branches. */
   readonly matching: boolean;
+  /**
+   * True for `git push`, which sends a branch named alone where its config maps it (see `namedPushTarget`);
+   * `send-pack`, `http-push` and `subtree push` send it to its own name.
+   */
+  readonly mapsNamed: boolean;
 }
 
 /** What the guard asks a repository; the hook asks git, tests pass a fake. */
@@ -178,7 +184,7 @@ function readPushArgs(invocation: GitInvocation): PushCommand {
     }
   }
   const [remote, ...refspecs] = positionals;
-  return { dir: invocation.dir, ...flags, remote, refspecs, configOverride: invocation.configOverride, matching: false };
+  return { dir: invocation.dir, ...flags, remote, refspecs, configOverride: invocation.configOverride, matching: false, mapsNamed: true };
 }
 
 /**
@@ -203,7 +209,7 @@ function readSendPack(invocation: GitInvocation): PushCommand {
   }
   const [remote, ...refs] = positionals;
   const refspecs = stdin ? [...refs, { text: '<stdin>', dynamic: true }] : refs;
-  return { dir: invocation.dir, ...flags, remote, refspecs, configOverride: invocation.configOverride, matching: refspecs.length === 0 };
+  return { dir: invocation.dir, ...flags, remote, refspecs, configOverride: invocation.configOverride, matching: refspecs.length === 0, mapsNamed: false };
 }
 
 /** `git subtree push --prefix=<dir> <remote> <branch>`, which pushes a split history to `<branch>`. */
@@ -222,7 +228,7 @@ function readSubtreePush(invocation: GitInvocation): PushCommand | undefined {
   if (command?.text !== 'push' || branch === undefined) {
     return undefined;
   }
-  return { dir: invocation.dir, ...NO_FLAGS, remote, refspecs: [branch], configOverride: invocation.configOverride, matching: false };
+  return { dir: invocation.dir, ...NO_FLAGS, remote, refspecs: [branch], configOverride: invocation.configOverride, matching: false, mapsNamed: false };
 }
 
 /** Reads a git command as a push; undefined for any other command. */
@@ -305,7 +311,8 @@ class PushJudge {
     this.protectedBranches = protectedBranches;
   }
 
-  judge(push: PushCommand, view: BranchView): Judgement {
+  /** `change`: what earlier commands in the line may have changed of where a branch named alone pushes. */
+  judge(push: PushCommand, view: BranchView, change: MapChange): Judgement {
     if (push.help || push.dryRun) {
       return ALLOW;
     }
@@ -316,7 +323,7 @@ class PushJudge {
       return push.force || push.prune ? DENY : ASK_UNLISTED;
     }
     if (push.refspecs.length > 0) {
-      return this.explicit(push, view);
+      return this.explicit(push, view, change);
     }
     return push.dir === undefined ? askInDoubt('the folder it runs in is only known when it runs') : this.bare(push, push.dir, view);
   }
@@ -366,7 +373,7 @@ class PushJudge {
   }
 
   /** A push with refspecs: each destination that is (or, as a glob, covers) a protected branch asks, or denies when forced or deleted. */
-  private explicit(push: PushCommand, view: BranchView): Judgement {
+  private explicit(push: PushCommand, view: BranchView, change: MapChange): Judgement {
     let asked = false;
     let doubt: string | undefined = push.remote?.dynamic === true ? DYNAMIC_REMOTE : undefined;
     const updates: ProtectedUpdate[] = [];
@@ -397,8 +404,17 @@ class PushJudge {
         doubt ??= push.dir === undefined ? 'the folder it runs in is only known when it runs' : 'an earlier command in the line changes the branch HEAD names';
         continue;
       }
-      const branch = branchName(target.name);
+      const dest = branchName(target.name);
+      // Git maps a branch named alone (no `:<dst>`, no `+`, not HEAD itself); the current-branch idiom names one when it runs.
+      const alone = push.mapsNamed && !text.includes(':') && !plus && !push.delete && dest !== '' && !dest.includes('*') && (word.dynamic || dest === branchName(source));
+      const mapped = alone ? this.namedTarget(push, dest, change) : { kind: 'to' as const, ref: dest };
+      if (mapped.kind === 'doubt') {
+        doubt ??= mapped.doubt;
+        continue;
+      }
+      const branch = branchName(mapped.ref);
       if (!coversProtected(branch, this.protectedBranches)) {
+        // A `-c` setting is read only when the line runs; keep the doubt for any refspec without its `:<dst>`.
         if (push.configOverride && !text.includes(':')) {
           doubt ??= CONFIG_OVERRIDE;
         }
@@ -417,6 +433,23 @@ class PushJudge {
       return { decision: 'ask', updates };
     }
     return doubt === undefined ? ALLOW : askInDoubt(doubt);
+  }
+
+  /** Where a branch named alone lands: a name that is protected already asks, so only another one is mapped. */
+  private namedTarget(push: PushCommand, branch: string, change: MapChange): NamedPushTarget {
+    if (coversProtected(branch, this.protectedBranches)) {
+      return { kind: 'to', ref: branch };
+    }
+    if (push.configOverride) {
+      return { kind: 'doubt', doubt: CONFIG_OVERRIDE };
+    }
+    if (push.remote === undefined || push.remote.dynamic) {
+      return { kind: 'doubt', doubt: DYNAMIC_REMOTE };
+    }
+    if (push.dir === undefined) {
+      return { kind: 'doubt', doubt: 'the folder it runs in is only known when it runs' };
+    }
+    return namedPushTarget(this.repo, push.dir, push.remote.text, branch, change);
   }
 }
 
@@ -457,7 +490,7 @@ export function judgePushes(found: GitInvocations, context: GuardContext): PushV
   for (const invocation of found.invocations) {
     const push = parsePush(invocation);
     if (push !== undefined) {
-      const judgement = judge.judge(push, push.dir === undefined ? { kind: 'unknown' } : moves.view(push.dir));
+      const judgement = judge.judge(push, push.dir === undefined ? { kind: 'unknown' } : moves.view(push.dir), moves.mapChange());
       if (judgement.decision === 'deny') {
         return { decision: 'deny', updates: [] };
       }

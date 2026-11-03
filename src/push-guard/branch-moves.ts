@@ -1,4 +1,5 @@
 import type { GitInvocation } from './invocations.ts';
+import type { MapChange } from './named-push.ts';
 import type { ShellWord } from './tokenizer.ts';
 
 /**
@@ -23,6 +24,24 @@ const CHECKOUT_VALUED: ReadonlySet<string> = new Set(['--conflict', '--pathspec-
 const CREATE_OPTIONS: ReadonlySet<string> = new Set(['-b', '-B', '-c', '-C', '--orphan', '--create', '--force-create']);
 const BRANCH_RETARGETS: ReadonlySet<string> = new Set(['-m', '-M', '--move', '-u', '--set-upstream-to', '--unset-upstream']);
 const CONFIG_READS: ReadonlySet<string> = new Set(['--get', '--get-all', '--get-regexp', '--get-urlmatch', '--list', '-l', 'get', 'list']);
+/** `git branch` options that only list or show branches, so its operands are patterns or commits, not a branch it makes. */
+const BRANCH_LISTS: ReadonlySet<string> = new Set(['--list', '-l', '--contains', '--no-contains', '--merged', '--no-merged', '--points-at', '--show-current']);
+/** `git branch` options that set, copy or drop an upstream: its config moves with a renamed or copied branch. */
+const BRANCH_UPSTREAMS: ReadonlySet<string> = new Set([...BRANCH_RETARGETS, '-t', '--track', '-c', '-C', '--copy']);
+/** `checkout` and `switch` options that may give a branch an upstream: a new branch from a remote one, or `--track`. */
+const UPSTREAM_SETTERS: ReadonlySet<string> = new Set([...CREATE_OPTIONS, '-t', '--track']);
+/** `git remote` subcommands that rename or drop a remote's keys, `remote.<name>.push` and `branch.<name>.remote` among them. */
+const REMOTE_REWRITES: ReadonlySet<string> = new Set(['add', 'rename', 'remove', 'rm']);
+
+/** True when a `git config` writes a remote, push or branch key. */
+function writesPushConfig(texts: readonly string[]): boolean {
+  return !texts.some((text) => CONFIG_READS.has(text)) && texts.some((text) => /^(?:remote|push|branch)\./i.test(text));
+}
+
+/** The option name of a word, without an attached `=value`. */
+function optionName(text: string): string {
+  return text.split('=')[0] ?? '';
+}
 
 /** The operands of a git command: words that are no option, before any `--`. */
 function operands(args: readonly ShellWord[]): ShellWord[] {
@@ -46,6 +65,7 @@ function operands(args: readonly ShellWord[]): ShellWord[] {
 export class BranchMoves {
   private readonly views = new Map<string, BranchView>();
   private othersUnknown = false;
+  private change: MapChange = 'none';
   private readonly protectedBranches: ReadonlySet<string>;
 
   constructor(protectedBranches: ReadonlySet<string>) {
@@ -57,8 +77,20 @@ export class BranchMoves {
     return this.views.get(dir) ?? (this.othersUnknown ? UNKNOWN : REPO);
   }
 
+  /**
+   * What the line so far may have changed of where a branch named alone pushes, in any folder: worktrees share their
+   * repository's config, and the guard cannot tell which folders do.
+   */
+  mapChange(): MapChange {
+    return this.change;
+  }
+
   /** Updates the views after one git command runs. */
   observe(invocation: GitInvocation): void {
+    const change = mapChangeOf(invocation);
+    if (change === 'config' || (change === 'upstream' && this.change === 'none')) {
+      this.change = change;
+    }
     const moved = this.moveOf(invocation);
     if (moved === undefined) {
       return;
@@ -91,7 +123,7 @@ export class BranchMoves {
       case 'bisect':
         return UNKNOWN;
       case 'config':
-        return !texts.some((text) => CONFIG_READS.has(text)) && texts.some((text) => /^(?:remote|push|branch)\./i.test(text)) ? 'everywhere' : undefined;
+        return writesPushConfig(texts) ? 'everywhere' : undefined;
       default:
         return undefined;
     }
@@ -143,6 +175,31 @@ export class BranchMoves {
       return UNKNOWN;
     }
     return { kind: 'branch', branch: target.text, target: tracked ? 'unknown' : 'read' };
+  }
+}
+
+/** What one git command may change of where a branch named alone pushes (see `namedPushTarget`). */
+function mapChangeOf({ subcommand, args }: GitInvocation): MapChange {
+  const texts = args.map((arg) => arg.text);
+  const options = texts.filter((text) => text.startsWith('-')).map(optionName);
+  const [first] = operands(args);
+  switch (subcommand) {
+    case 'config':
+      return writesPushConfig(texts) ? 'config' : 'none';
+    case 'remote':
+      return first !== undefined && REMOTE_REWRITES.has(first.text) ? 'config' : 'none';
+    case 'branch':
+      if (options.some((option) => BRANCH_LISTS.has(option))) {
+        return 'none';
+      }
+      return first !== undefined || options.some((option) => BRANCH_UPSTREAMS.has(option)) ? 'upstream' : 'none';
+    case 'checkout':
+    case 'switch':
+      return options.some((option) => UPSTREAM_SETTERS.has(option)) ? 'upstream' : 'none';
+    case 'worktree':
+      return first?.text === 'add' ? 'upstream' : 'none';
+    default:
+      return 'none';
   }
 }
 
