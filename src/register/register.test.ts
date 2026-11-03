@@ -201,6 +201,18 @@ describe('Register', () => {
     assert.equal(result.task.ownerSeenAt, null);
   });
 
+  it('writes the size base an update is given only when it gives a size, and the task keeps it (T649)', async () => {
+    const { register } = setup();
+    written(await register.add('lead', { title: 'Ship it', description: 'what and why', owner: 'alpha', source: 'owner', priority: 1, size: 1 }));
+    const base = { day: '2030-01-07', w: 12_000_000 };
+    const sized = written(await register.update('alpha', 'T1', { size: 0.5 }, undefined, base));
+    assert.deepEqual([sized.event.type === 'update' ? sized.event.sizeBase : undefined, sized.task.sizeBase], [base, base]);
+    const other = written(await register.update('alpha', 'T1', { priority: 2 }, undefined, { day: '2030-01-07', w: 13_000_000 }));
+    assert.deepEqual([other.event.type === 'update' ? other.event.sizeBase : 'not an update', other.task.sizeBase], [undefined, base], 'a base with no size is not written');
+    const cleared = written(await register.update('alpha', 'T1', { size: null }, undefined, base));
+    assert.deepEqual([cleared.event.type === 'update' ? cleared.event.sizeBase : 'not an update', cleared.task.sizeBase], [undefined, null], 'clearing the size writes no base');
+  });
+
   it("keeps one pin per owner: a new pin first unpins the owner's earlier one, in the same append (T637)", async () => {
     const { files, register } = setup();
     for (const title of ['First', 'Second', 'Third']) {

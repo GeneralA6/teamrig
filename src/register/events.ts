@@ -18,7 +18,8 @@ import { parseWaits, type WaitReason } from './waits.ts';
  * decision `card` (0.79.0), the same `waits` and `card` on a `verifying` line for what its proof waits for
  * (0.109.0), an update's approval `verdict` (0.126.0), a task's `kind` (0.147.0), its `pin` (T637), a status line's
  * `review` (T916), a task's `type` and `critical` mark (T1252), which replaced `kind`, and a `done` status's `watch`
- * (T1306), an update's `waits` (T1295), a task's `noGoal` mark (T1730) and an update's `decided` mark (T1366), which an older reader ignores:
+ * (T1306), an update's `waits` (T1295), a task's `noGoal` mark (T1730), an update's `decided` mark (T1366) and its
+ * `sizeBase` (T649), which an older reader ignores:
  * each reads there as none (an answered update as a note alone). An older teamrig re-serialized the events of the snapshot a rotation or
  * `compact` rewrites, so it dropped such a field there (the archive keeps the lines as written); this one copies
  * each kept line as written (compaction.ts).
@@ -165,6 +166,32 @@ export interface UpdateEvent extends EventBase {
   readonly waits?: readonly WaitReason[];
   /** A Decided (T1366): the owner's decision on the task's card, which its note says, recorded by `by`; only `decide` writes it. */
   readonly decided?: true;
+  /** What the task had cost on the UTC day its size was set, when it was set (T649); only an update that gives a size writes it. */
+  readonly sizeBase?: SizeBase;
+}
+
+/**
+ * The W the usage meter had counted on a task on one UTC day, when the update that sized it was written (T649). A size
+ * is what the task still costs, so OVER-SIZE counts only what it spent after this: the later days in full, and on this
+ * day what it spent past `w`. The day is kept, not a running total, since the meter keeps only its last days.
+ */
+export interface SizeBase {
+  /** The UTC day, `YYYY-MM-DD`. */
+  readonly day: string;
+  /** The W counted on the task that day so far, 0 or more. */
+  readonly w: number;
+}
+
+/** The size base a line gives, or why it is not one. */
+function parseSizeBase(value: unknown): SizeBase | string {
+  if (!isRecord(value)) {
+    return 'sizeBase is not an object';
+  }
+  const { day, w } = value;
+  if (typeof day !== 'string' || !WEEK.test(day) || typeof w !== 'number' || !Number.isFinite(w) || w < 0) {
+    return `bad sizeBase ${JSON.stringify(value)}`;
+  }
+  return { day, w };
 }
 
 /**
@@ -303,6 +330,10 @@ export function parseEvent(line: JsonlRecord): EventParse {
       if (decided !== undefined && decided !== true) {
         return unreadable(`decided is ${JSON.stringify(decided)}, not true`);
       }
+      const sizeBase = record['sizeBase'] === undefined ? undefined : parseSizeBase(record['sizeBase']);
+      if (typeof sizeBase === 'string') {
+        return unreadable(sizeBase);
+      }
       const event: UpdateEvent = {
         ...base,
         type: 'update',
@@ -311,6 +342,7 @@ export function parseEvent(line: JsonlRecord): EventParse {
         ...(verdict === undefined ? {} : { verdict }),
         ...(waits === undefined ? {} : { waits }),
         ...(decided === undefined ? {} : { decided }),
+        ...(sizeBase === undefined ? {} : { sizeBase }),
       };
       return { kind: 'event', event };
     }

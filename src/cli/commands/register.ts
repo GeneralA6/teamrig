@@ -57,7 +57,7 @@ import { loadTree, skillOwnersElsewhere, type KitTree, type TreeTeam } from '../
 import { readBursts } from '../burst-reading.ts';
 import { readScaleOutBudget } from '../hire-cost.ts';
 import { readWPerPct } from '../stored-week.ts';
-import { readTaskSpend } from '../task-spend.ts';
+import { readSizeBase, readTaskSpend } from '../task-spend.ts';
 import { taskFilesLine } from '../task-files.ts';
 import { readContextInput } from './doctor.ts';
 import { inboxDepsOf } from './inbox.ts';
@@ -645,7 +645,8 @@ export async function update(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     return report(runtime, await team.register.defer(by, id, later, args.flags.get('note')), 'UPDATED', team);
   }
   const changes = { ...changesOf(args.flags, typedTimes(runtime, team.zone)), ...criticalOf(args.switches), ...pinOf(args.switches, by) };
-  const verdict = await team.register.update(by, id, changeIds(team.roster, changes), args.flags.get('note'));
+  const sizeBase = typeof changes.size === 'number' ? await readSizeBase(runtime, team.paths, team.config.sessions, id, runtime.clock.now()) : undefined;
+  const verdict = await team.register.update(by, id, changeIds(team.roster, changes), args.flags.get('note'), sizeBase);
   const code = report(runtime, verdict, 'UPDATED', team);
   await tellNewOwner(runtime, team, by, verdict);
   return code;
