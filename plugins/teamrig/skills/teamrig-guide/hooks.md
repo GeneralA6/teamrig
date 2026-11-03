@@ -1327,9 +1327,9 @@ call (exit 2) when the guard:
 The model then reads `teamrig blocked this call: its <hook> guard <what went wrong>, and a guard that cannot answer
 must not let a call through. Fix: ...` ([errors](errors.md#a-blocked-tool-call)). So a broken install blocks every
 call those guards see (shell lines, reads, searches, edits, sends, helper launches and the question picker) until
-`claude plugin update teamrig@teamrig` and a restart of the session. `hook readonly-allow` and `hook tab-status` run
-through the plain CLI: when the allow fails, the call gets Claude Code's own check, and tab status never answers for
-a call.
+`claude plugin update teamrig@teamrig` and a restart of the session. `hook readonly-allow`, `hook route-allow` and
+`hook tab-status` run through the plain CLI: when an allow fails, the call gets Claude Code's own check, and tab
+status never answers for a call.
 
 The runner cannot catch a guard stuck in an endless loop that never waits (Claude Code's timeout then lets the call
 through), the process running out of memory, a broken `guard-main.js` or runner file, and a missing Node.js.
