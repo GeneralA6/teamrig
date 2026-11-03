@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { ASSIGNED_SECRET, SECRET_TOKEN_PATTERNS } from '../../src/core/secret-patterns.ts';
+import { WRITE_TIME_SHAPES } from '../../src/core/secret-shapes.ts';
 import { GENERIC_RULES } from './rules.ts';
 import { scanText } from './scan.ts';
 
@@ -84,11 +84,32 @@ describe('generic scrub rules', () => {
     }
   });
 
-  it('takes every credential shape from the shared secret patterns, unrevealed', () => {
-    for (const shared of [...SECRET_TOKEN_PATTERNS, ASSIGNED_SECRET]) {
+  it('takes every shape of the write-time set, unrevealed, a framing one with a judge', () => {
+    for (const shared of WRITE_TIME_SHAPES) {
       const rule = GENERIC_RULES.find((candidate) => candidate.id === shared.id);
       assert.equal(rule?.pattern, shared.pattern, shared.id);
       assert.equal(rule?.revealMatch, false, shared.id);
+      assert.equal(rule?.isAllowed !== undefined, shared.secretGroup !== undefined, shared.id);
+    }
+  });
+
+  it('flags a credential in a URL, an Authorization header or an API key header, whatever the host', () => {
+    // An example host proves the value alone is judged (T1099 gap 1); it also keeps the e-mail rule out of the URL cases.
+    const cases: ReadonlyArray<readonly [string, string]> = [
+      ['url-credentials', join('https://', 'deploy', ':', 'Qx7mRt9Lp4', '@', 'db.example.net/app')],
+      ['url-login-token', join('https://', 'Qx7mRt9Lp4wZn', ':x-oauth', '-basic', '@', 'example.com/o/r')],
+      ['auth-header', join('Authorization', ': Bearer ', 'Qx7mRt9Lp4wZn')],
+      ['api-key-header', join('x-api', '-key: ', 'Qx7mRt9Lp4wZn')],
+    ];
+    for (const [rule, text] of cases) {
+      assert.deepEqual(ruleIds(text), [rule], rule);
+    }
+  });
+
+  it('accepts a URL whose password is short, refers to a secret kept elsewhere or is masked', () => {
+    // A host without a dot keeps the e-mail rule out: `p@` and `%DB_PASSWORD%@` read as an address's start.
+    for (const value of ['p', '${DB_PASSWORD}', '<password>', '%DB_PASSWORD%', '********']) {
+      assert.deepEqual(ruleIds(join('postgres://', 'app', ':', value, '@', 'localhost:5432/app')), [], value);
     }
   });
 
@@ -122,7 +143,8 @@ describe('generic scrub rules', () => {
   it('fails closed on a match without its captured part: no allow check accepts it', () => {
     const bare = /x/.exec('x');
     assert.ok(bare !== null);
-    for (const id of ['home-path', 'email', 'assigned-secret']) {
+    const framing = WRITE_TIME_SHAPES.filter(({ secretGroup }) => secretGroup !== undefined).map(({ id }) => id);
+    for (const id of ['home-path', 'email', ...framing]) {
       const isAllowed = GENERIC_RULES.find((rule) => rule.id === id)?.isAllowed;
       assert.ok(isAllowed !== undefined, id);
       assert.equal(isAllowed(bare), false, id);

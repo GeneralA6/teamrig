@@ -1,5 +1,5 @@
-import { ASSIGNED_SECRET, SECRET_TOKEN_PATTERNS, type SecretPattern } from '../../src/core/secret-patterns.ts';
-import { isFramedPlaceholder } from '../../src/core/secret-shapes.ts';
+import type { SecretPattern } from '../../src/core/secret-patterns.ts';
+import { isFramedPlaceholder, WRITE_TIME_SHAPES } from '../../src/core/secret-shapes.ts';
 
 export interface ScrubRule {
   readonly id: string;
@@ -27,15 +27,26 @@ function isAllowedEmail(match: RegExpExecArray): boolean {
   );
 }
 
-/** True when the value `ASSIGNED_SECRET` caught in `match` is one the write-time set lets through too; a match without it is not. */
-function isAssignedPlaceholder(match: RegExpExecArray): boolean {
-  const value = match[ASSIGNED_SECRET.secretGroup];
-  return value !== undefined && isFramedPlaceholder(ASSIGNED_SECRET, value, match);
+/**
+ * The judge of a framing `shape` whose secret is its `group`: true when the value it caught is one the write-time set
+ * lets through too (`${VAULT}`, `<token>`, `SOME_READ_TOKEN`); a match without that value is not.
+ */
+function framed(shape: SecretPattern, group: number): (match: RegExpExecArray) => boolean {
+  return (match) => {
+    const value = match[group];
+    return value !== undefined && isFramedPlaceholder(shape, value, match);
+  };
 }
 
-/** A credential shape from the shared module, so the scrub and the shared-file writes refuse the same tokens. */
-function secret({ id, description, pattern }: SecretPattern): ScrubRule {
-  return { id, description, pattern, revealMatch: false };
+/**
+ * A shape of the write-time set, so the scrub refuses every secret a session's read or write is refused for (T1932): a
+ * repository line the secret guard redacts on each read files a rotation task each time. A framing shape lets through
+ * what that set lets through; a token shape's prefix already says it is a credential, so it passes nothing here.
+ */
+function secret(shape: SecretPattern): ScrubRule {
+  const { id, description, pattern, secretGroup } = shape;
+  const rule: ScrubRule = { id, description, pattern, revealMatch: false };
+  return secretGroup === undefined ? rule : { ...rule, isAllowed: framed(shape, secretGroup) };
 }
 
 /** Checks that are safe to publish: they name no private term, only shapes of private data. */
@@ -67,7 +78,5 @@ export const GENERIC_RULES: readonly ScrubRule[] = [
     pattern: /\b[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.(?:internal|intranet|corp)\b/g,
     revealMatch: false,
   },
-  ...SECRET_TOKEN_PATTERNS.map(secret),
-  // The write-time set's own judge, so a value the guard lets through (`${VAULT}`, `<token>`, `SOME_READ_TOKEN`) passes here too.
-  { ...secret(ASSIGNED_SECRET), isAllowed: isAssignedPlaceholder },
+  ...WRITE_TIME_SHAPES.map(secret),
 ];
