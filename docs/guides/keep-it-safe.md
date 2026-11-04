@@ -76,6 +76,10 @@ push wherever it sits in the line:
 - git aliases (from `-c alias.x=`, from a `git config alias.x` earlier in the line, or from git config, `!` shell
   aliases included) and the commands git runs itself (`submodule foreach`, `rebase --exec`, `bisect run`);
 - folder and branch moves earlier in the line: `cd sub && git push`, `git checkout main && git push`;
+- a branch named alone, which goes where git sends it: under `push.default upstream`, `git push origin t1-x` asks
+  when that branch's upstream is protected, and is refused with `--force`. It asks in doubt when `remote.<name>.push`
+  is set for that remote, or when an earlier command in the line changes that config, makes a branch or gives one an
+  upstream. Write `git push origin t1-x:t1-x` to send a branch to its own name for certain;
 - bash variables set earlier in the line: `B=feat; git push -u origin $B` reads as `git push -u origin feat`,
   and `B=main; git push origin $B` still asks. `NAME=value` or `export NAME=value` must run before the push,
   through `;`, `&&`, a newline, a `for`, `while` or `until` loop, an `if` or a `{ }` group, in the same shell or
@@ -111,8 +115,7 @@ It is a guard against mistakes, not a sandbox; protect the branch on your git ho
 - variables, functions or aliases your shell's startup files set (a readonly or integer variable, an `IFS`, a
   function named like a command), as with a function named `git`;
 - `gh pr merge` and other GitHub CLI commands that change a branch on the server;
-- git extensions (`git town`, a `git-<name>` program that is not part of git), and a `remote.<name>.push`
-  mapping in the repository's own config for a push that names only its source branch;
+- git extensions (`git town`, a `git-<name>` program that is not part of git);
 - commands from tools other than Bash and PowerShell, and pushes you run in your own terminal.
 
 Many sessions merge their branches one at a time through teamrig's delivery commands: `teamrig merge` and
