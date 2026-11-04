@@ -107,6 +107,26 @@ describe('fitRate', () => {
     assert.notEqual(fitRate([reading(1, 10), reading(1 + FIT_SPREAD_PTS, 110)]), undefined);
     assert.equal(fitRate([reading(1, 0), reading(20, 0)]), undefined);
   });
+
+  describe('across periods (T1985)', () => {
+    const lastWeek = { start: START - MS_PER_WEEK, end: START };
+    const atOldLimit = [10, 50, 94].map((pct) => reading(pct, pct * 9_000_000, lastWeek));
+
+    it(`fits the newest period alone once it spans ${FIT_SPREAD_PTS} points, so a limit moved at the reset stops counting`, () => {
+      const atNewLimit = [1, 6, 1 + FIT_SPREAD_PTS].map((pct) => reading(pct, pct * 4_000_000));
+      assert.deepEqual(fitRate([...atOldLimit, ...atNewLimit]), { wPerPct: 4_000_000, errorPts: 0, readings: 3 });
+    });
+
+    it('keeps the last period that spans the points while the newest does not yet', () => {
+      const started = [1, FIT_SPREAD_PTS].map((pct) => reading(pct, pct * 4_000_000));
+      assert.deepEqual(fitRate([...atOldLimit, ...started]), { wPerPct: 9_000_000, errorPts: 0, readings: 3 });
+    });
+
+    it('fits all the readings of a team too quiet for any period to span the points alone', () => {
+      const quiet = [reading(1, 9_000_000, lastWeek), reading(FIT_SPREAD_PTS, FIT_SPREAD_PTS * 9_000_000, lastWeek), reading(12, 12 * 9_000_000)];
+      assert.deepEqual(fitRate(quiet), { wPerPct: 9_000_000, errorPts: 0, readings: 3 });
+    });
+  });
 });
 
 describe('periodForecasts', () => {
