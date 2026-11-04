@@ -43,6 +43,8 @@ const PLACES: DeliveryPlaces = {
 const REQUEST: MergeRequest = { session: 'api', dir: WORKTREE, keepRemote: false, keepLocal: false };
 const NO_REVIEW: ReviewGateSetup = { reviewPaths: [], tree: new LeadTree(testConfig()), roles: {} };
 const PLAIN: DeliveryRepoConfig = { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], dependencyGate: false, reviewGate: false, decisionRecordGate: false, updateMainCheckout: false };
+/** The team's task folders. */
+const TASKS = '/team/tasks';
 /** A commit of a source file with its test, under the size limits. */
 const COMMIT: CommitStat = { sha: 'rebased', subject: 'Add the feature', body: '', files: [{ path: 'src/app.ts', added: 10, deleted: 2 }, { path: 'src/app.test.ts', added: 20, deleted: 0 }] };
 
@@ -104,6 +106,7 @@ class World {
       inTeam: (path) => (path.startsWith('/') ? path : `/repo/${path}`),
       review: options.review ?? NO_REVIEW,
       gated: options.gated,
+      tasksFolder: TASKS,
     };
     this.pushLands();
   }
@@ -265,6 +268,57 @@ describe('merge holds a dependency change where the repository asks for it', () 
     const world = new World({ repos: gated });
     world.git.paths = ['package-lock.json'];
     refused(await world.run(), /set delivery\.repos\.app\.dependencyCheck to the check that clears one/);
+  });
+});
+
+describe('merge holds a task with a design note and no decision record where the repository asks for it', () => {
+  const RECORD = 'docs/decisions/2030-01-08-merge-gate.md';
+  const recorded: DeliveryRepoConfig = { ...PLAIN, decisionRecordGate: true };
+
+  /** The branch `t5-docs` of task T5, at `mine` in the worktree, whose task folder holds a design note, changing `paths`. */
+  async function taskWorld(config: DeliveryRepoConfig, paths: readonly string[]): Promise<World> {
+    const world = new World({ repos: { app: config } });
+    world.git.checkouts.set(WORKTREE, { top: WORKTREE, branch: 't5-docs', mainCheckout: MAIN_CHECKOUT, linked: true });
+    world.git.branches.set('t5-docs', 'mine');
+    world.git.origin.set('t5-docs', 'mine');
+    world.git.paths = paths;
+    for (const path of paths) {
+      world.git.files.set(`mine:${path}`, '# Record\n');
+    }
+    await world.files.write(`${TASKS}/T5/design.md`, '# T5 design\n');
+    return world;
+  }
+
+  it('merges the branch once it adds a decision record', async () => {
+    const world = await taskWorld(recorded, ['src/app.ts', RECORD]);
+    assert.equal((await world.run()).kind, 'done');
+  });
+
+  it('refuses the branch before the lock while it adds no record, naming the note and the setting', async () => {
+    const world = await taskWorld(recorded, ['src/app.ts']);
+    refused(await world.run(), /^T5 has a design note \(design\.md\) and t5-docs adds or changes no decision record in docs\/decisions\/: .*delivery\.repos\.app\.decisionRecordGate/);
+    assert.deepEqual(world.steps.ran, []);
+    assert.ok(world.lockFree());
+  });
+
+  it('merges the branch with no record where the gate is off', async () => {
+    const world = await taskWorld(PLAIN, ['src/app.ts']);
+    assert.equal((await world.run()).kind, 'done');
+  });
+
+  it('finishes a waiting merge without weighing it again, once a merge commit leaves the branch changing nothing', async () => {
+    const MERGE = ['node', 'merge.ts'];
+    const world = await taskWorld({ ...recorded, merge: { command: MERGE, remote: 'origin' } }, ['src/app.ts', RECORD]);
+    world.hooks.answer(MERGE, { end: 75, lines: ['https://forge/pr/7'] });
+    assert.equal((await world.run()).kind, 'waiting');
+    world.git.origin.set('main', 'mergecommit');
+    world.git.ancestry.add('rebased>mergecommit');
+    world.git.landed = ['rebased', 'mergecommit'];
+    world.git.diffs.set('mergecommit..rebased', []);
+    // The merge commit holds the branch, so the branch's merge base with the default branch is the branch itself.
+    world.git.mergeBaseIs = 'rebased';
+    assert.equal((await world.run()).kind, 'done');
+    assert.equal(world.hooks.ran.length, 1);
   });
 });
 
