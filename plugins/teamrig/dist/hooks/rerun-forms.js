@@ -1,5 +1,5 @@
 import { KIT_NAME } from "../core/home.js";
-import { parseShell } from "../push-guard/tokenizer.js";
+import { isStaticWord, parseShell } from "../push-guard/tokenizer.js";
 import { posixWord } from "../test-run/shell.js";
 /**
  * Rerun forms: the exact line teamrig's rules give a Bash call Claude Code would ask about, computed from the line
@@ -26,8 +26,6 @@ const SHELL_ONLY = new Set([
 ]);
 /** A leading `NAME=value` word, which sets a variable for the command instead of naming its program. */
 const ASSIGNMENT = /^[A-Za-z_]\w*=/;
-/** Characters bash expands in unquoted text: a glob, or `~` for a home folder. */
-const EXPANDS = /[*?[~]/;
 /** The exact line to rerun a Bash `command` as, or undefined when no rule gives one or any doubt remains. */
 export function rerunForm(tool, command) {
     if (tool !== 'Bash') {
@@ -56,12 +54,8 @@ function isPlain(command) {
         command.subshells.length === 0 &&
         command.stdin === undefined &&
         command.words.length > 0 &&
-        command.words.every(isStatic) &&
-        command.redirections.every((redirection) => !redirection.operator.startsWith('<<') && (redirection.target === undefined || isStatic(redirection.target))));
-}
-/** A word whose text is its value: nothing in it is only known when it runs, and no unquoted text expands. */
-function isStatic(word) {
-    return !word.dynamic && word.parts !== undefined && word.parts.every((part) => part.kind === 'text' && (part.quoted || !EXPANDS.test(part.text)));
+        command.words.every(isStaticWord) &&
+        command.redirections.every((redirection) => !redirection.operator.startsWith('<<') && (redirection.target === undefined || isStaticWord(redirection.target))));
 }
 /** Every separator keeps the commands in one folder and in order; the last command may end in `;` only. */
 function separatorsKeep(commands) {
