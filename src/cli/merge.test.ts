@@ -216,6 +216,28 @@ describe('teamrig merge with the review gate', () => {
   });
 });
 
+describe('teamrig merge with the decision record gate (T1869)', () => {
+  const RECORDED = { ...TEAM, delivery: { repos: { app: { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], decisionRecordGate: true } } } };
+  const RECORD = 'docs/decisions/2030-01-08-feature.md';
+
+  it("refuses alpha's task branch while its task folder holds a design note and the branch adds no record, then merges it once one is committed", async () => {
+    const { kit, git, steps } = world(RECORDED);
+    git.checkouts.set(WORKTREE, { top: WORKTREE, branch: 't1-feat', mainCheckout: MAIN_CHECKOUT, linked: true });
+    await kit.files.write(join(TEAM_HOME, 'tasks', 'T1', 'design.md'), '# T1 design\n');
+
+    const held = await kit.run(MERGE_RUN, { ...IN_WORKTREE, mergeGit: git, steps });
+    assert.equal(held.code, EXIT.refused, held.stderr.join('\n'));
+    assert.match(held.stdout.at(-1) ?? '', /^REFUSED T1 has a design note \(design\.md\) and t1-feat adds or changes no decision record in docs\/decisions\//);
+    assert.deepEqual(steps.ran, []);
+
+    git.paths = ['src/app.ts', RECORD];
+    git.files.set(`mine:${RECORD}`, '# Feature\n');
+    const merged = await kit.run(MERGE_RUN, { ...IN_WORKTREE, mergeGit: git, steps });
+    assert.equal(merged.code, EXIT.ok, merged.stdout.join('\n'));
+    assert.equal(steps.ran.length, 1);
+  });
+});
+
 describe('teamrig merge under pushToProtected gated (T858)', () => {
   const GATED = { ...TEAM, pushGuard: { pushToProtected: 'gated' }, delivery: { repos: { app: { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], reviewGate: true } } } };
   const DEPLOYS = join(TEAM_HOME, 'state', 'deploys');

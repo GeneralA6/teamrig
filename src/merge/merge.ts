@@ -20,6 +20,7 @@ import { HOOK_WAIT_EXIT, hookEndText, hookExitCode, succeeded, type HookRunner }
 import type { CommitLog } from '../push-guard/commit-size.ts';
 import { readPassRecord } from '../push-guard/pass-record.ts';
 import { commandLine } from '../test-run/shell.ts';
+import { decisionRecordHold } from './decision-records.ts';
 import { rangeInstallTouches, runDependencyCheck } from './dependencies.ts';
 import type { GateHolds } from './gate-holds.ts';
 import { gatedVerdict, type GatedSetup, type GatedTask, type GatedVerdict } from './gated-step.ts';
@@ -34,7 +35,8 @@ import type { ReviewHolds } from './review-holds.ts';
 /**
  * `teamrig merge`: merges a finished branch into origin's default branch, one push on the host at a time. It refuses
  * a branch it must not merge (detached, the default branch, uncommitted changes, nothing new, a dependency change the
- * gate holds and no dependency check clears), waits out deploy freezes on what the push deploys, takes the host lock,
+ * gate holds and no dependency check clears, a task with a design note and no decision record under the decision record
+ * gate), waits out deploy freezes on what the push deploys, takes the host lock,
  * rebases onto the fresh default branch, runs the dependency check when the branch changes the package files, the
  * review gate when the repo has one (a change of a review path waits for its reviewer) and, under
  * `pushGuard.pushToProtected: gated`, the self-merge gates (a change that misses one waits for a leader's approval), and
@@ -76,6 +78,8 @@ export interface MergeSetup {
   readonly review: ReviewGateSetup;
   /** The self-merge gates under `pushGuard.pushToProtected: gated`; undefined under any other choice, where what the review gate lets through lands. */
   readonly gated: GatedSetup | undefined;
+  /** The team's task folders, one per task id, where the decision record gate looks for a task's design notes. */
+  readonly tasksFolder: string;
 }
 
 export interface MergePorts {
@@ -226,6 +230,17 @@ async function planOf(setup: MergeSetup, ports: MergePorts, request: MergeReques
   const held = repo.config.dependencyGate && repo.config.dependencyCheck === undefined ? await dependencyHold(git, top, onto, repo.name) : undefined;
   if (held !== undefined) {
     return { kind: 'refused', reason: held };
+  }
+  // A pending merge passed this gate when it started, and once a merge commit has merged it the branch changes nothing against its remote.
+  const unrecorded =
+    pending === undefined && repo.config.decisionRecordGate
+      ? await decisionRecordHold(
+          { repo: repo.name, docsFolder: repo.config.docsFolder, top, mainCheckout: checkout.mainCheckout ?? top, branch, onto, tasksFolder: setup.tasksFolder },
+          ports,
+        )
+      : undefined;
+  if (unrecorded !== undefined) {
+    return { kind: 'refused', reason: unrecorded };
   }
   return { kind: 'ready', plan: { session: request.session, top, branch, linked: checkout.linked, mainCheckout: checkout.mainCheckout, remote, defaultBranch, repo, pending } };
 }
