@@ -4,7 +4,7 @@ import { budgetMarkOf, burstText, MORE_BURST } from "./burst-lines.js";
 import { formatCount, formatPct, formatUsd, formatW, isBudgetDayEnd, noRoomText } from "./format.js";
 import { liftedLine } from "./lift.js";
 import { TURN_TRIGGERS } from "./line.js";
-import { hasRoom } from "./pace.js";
+import { holdsPastPart } from "./pace.js";
 import { emptyPatterns, PATTERN_FIELDS } from "./patterns.js";
 import { DAYS_KEPT } from "./store.js";
 import { FORECAST_SPAN_MS } from "./week.js";
@@ -196,23 +196,34 @@ function outsideLine(outside, all) {
 }
 /**
  * Who is past the daily budget, and what that means: a session past its part is held (finishes the step in hand)
- * only while the team has no room today (`hasRoom`); while it has room, the sessions past their parts are named
- * apart, not held. The team past its part of the account's day has no room. A hold for want of room gives the team's use today
- * against its in-day pace, so it never reads as a fixed cap next to the team's daily budget.
+ * only as the hooks hold it (`holdsPastPart`): while the team has no room today, or while a leader's cut of it is in
+ * force. While the team has room, the team past its part of the account's day and the uncut sessions past theirs are
+ * named apart, not held, and the cut ones on a held line of their own. A hold for want of room gives the team's use
+ * today against its in-day pace, so it never reads as a fixed cap next to the team's daily budget.
  */
 function pastLines(report, teamPast) {
     const { week, sessions } = report;
-    const pastSessions = sessions.filter((session) => isPast(session.w, session.budgetPct, week)).map((session) => session.name);
     const teamDay = week.teamDay;
-    if (!teamPast && teamDay !== undefined && hasRoom(teamDay)) {
-        const room = `Past their part, not held while the team has room today (${formatPct(teamDay.usedPct)} of the week used, ` +
-            `below its in-day pace of ${formatPct(teamDay.pacePct)}): ${pastSessions.join(', ')}.`;
-        return pastSessions.length > 0 ? [room] : [];
+    const past = [...(teamPast ? [{ name: 'the team', cut: false }] : []), ...sessions.filter((session) => isPast(session.w, session.budgetPct, week))];
+    const held = past.filter((one) => holdsPastPart(teamDay, one.cut)).map((one) => one.name);
+    const notHeld = past.filter((one) => !holdsPastPart(teamDay, one.cut)).map((one) => one.name);
+    const lines = [];
+    if (teamDay !== undefined && notHeld.length > 0) {
+        lines.push(`Past their part, not held while the team has room today (${formatPct(teamDay.usedPct)} of the week used, ` +
+            `below its in-day pace of ${formatPct(teamDay.pacePct)}): ${notHeld.join(', ')}.`);
     }
-    const past = [...(teamPast ? ['the team'] : []), ...pastSessions];
-    // Held for want of room, unless the team is past its part of the account's day, which its row already shows.
-    const why = teamPast || teamDay === undefined ? '' : ` (${noRoomText(teamDay)})`;
-    return past.length > 0 ? [`Past the daily budget: ${past.join(', ')}${why}. ${OVER_BUDGET_ADVICE}`] : [];
+    if (held.length > 0) {
+        lines.push(`${heldLead(teamDay)}: ${held.join(', ')}${heldWhy(teamDay)}. ${OVER_BUDGET_ADVICE}`);
+    }
+    return lines;
+}
+/** How the held line starts: while the team has room, only a leader's cut holds a session. */
+function heldLead(teamDay) {
+    return teamDay !== undefined && !holdsPastPart(teamDay, false) ? "Past the daily budget, held by a leader's cut whatever room the team has" : 'Past the daily budget';
+}
+/** Why the held line holds for want of room: the team's use today against its in-day pace, when known and past it. */
+function heldWhy(teamDay) {
+    return teamDay !== undefined && holdsPastPart(teamDay, false) ? ` (${noRoomText(teamDay)})` : '';
 }
 /** The sessions a short day pauses and no burst holds up, named even when idle, as `--all` alone shows their rows. */
 function pausedLine(sessions) {
