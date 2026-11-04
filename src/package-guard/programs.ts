@@ -7,7 +7,8 @@ import { resolveLiteralVariables } from '../push-guard/variables.ts';
 /**
  * Every program a command line starts, read the way the push guard reads its git commands: as the shell would
  * (`parseShell`), following `cd` and friends, through launchers (`launch`) into nested scripts, and down a
- * `cat <<EOF | bash` pipe. It keeps no doubts: a part it cannot read starts no program it can name.
+ * `cat <<EOF | bash` pipe. It keeps no doubts: a part it cannot read starts no program it can name. It does note a
+ * shell a pipe feeds with commands it cannot read (`fedShells`), for a guard that refuses what it cannot see.
  */
 
 /** One program a command line starts. */
@@ -74,6 +75,16 @@ interface Outlet {
   readonly substitution: OpenSubstitution | undefined;
 }
 
+/** What a command reads on stdin. */
+interface Inlet {
+  /** True when it reads the output of the command before it through a pipe. */
+  readonly fromPipe: boolean;
+  /** The text the line itself gives it; see {@link ProgramRun.stdin}. */
+  readonly text: ShellWord | undefined;
+  /** True when something feeds its stdin: its own pipe or text, or those of the command that starts its script. */
+  readonly fed: boolean;
+}
+
 /** A run or a bare command while the walker may still learn where its output goes. */
 type Draft<T> = { -readonly [K in keyof T]: T[K] };
 
@@ -107,6 +118,8 @@ export interface LineRuns {
   readonly programs: ProgramRun[];
   readonly bare: BareCommand[];
   readonly opaque: OpaqueRun[];
+  /** The dialect of the script holding each shell that takes its commands from a feed the walker cannot read: `x | bash`. */
+  readonly fedShells: ShellDialect[];
 }
 
 export interface ProgramsContext {
@@ -121,13 +134,13 @@ const SCREEN: Outlet = { pipe: undefined, substitution: undefined };
 
 /** Nested scripts deeper than this are not read, as in the push guard. */
 const MAX_SCRIPT_DEPTH = 8;
-/** A separator that pipes a command's output into the next one: `|`, `|&`, or `)|` after a group, not `||`. */
-const PIPE_END = /(?:^|[^|])\|&?\n*$/;
+/** A separator that pipes a command's output into the next one: `|`, `|&`, `)|` after a group, or `|(` before a subshell, not `||`. */
+const PIPE_END = /(?:^|[^|])\|&?[\n(]*$/;
 
 /** What `command` runs, each in the order it runs. */
 export function runsOf(command: string, context: ProgramsContext): LineRuns {
-  const runs: LineRuns = { programs: [], bare: [], opaque: [] };
-  visitScript(staticWord(command), context.dialect, new Location(context.cwd, context.home), 0, false, runs, SCREEN);
+  const runs: LineRuns = { programs: [], bare: [], opaque: [], fedShells: [] };
+  visitScript(staticWord(command), context.dialect, new Location(context.cwd, context.home), 0, false, runs, SCREEN, false);
   return runs;
 }
 
@@ -138,9 +151,10 @@ export function programsOf(command: string, context: ProgramsContext): ProgramRu
 
 /**
  * Visits each command of a script; a plain `cat` hands its stdin down a pipe, so `cat <<EOF | bash` runs the body.
- * `runner` is true when a teamrig runner started the script; `outlet` takes the output of its commands that send it nowhere else.
+ * `runner` is true when a teamrig runner started the script; `outlet` takes the output of its commands that send it nowhere else;
+ * `fed` is true when the command that started it has a fed stdin, which its own commands inherit.
  */
-function visitScript(script: ShellWord, dialect: ShellDialect, location: Location, depth: number, runner: boolean, runs: LineRuns, outlet: Outlet): void {
+function visitScript(script: ShellWord, dialect: ShellDialect, location: Location, depth: number, runner: boolean, runs: LineRuns, outlet: Outlet, fed: boolean): void {
   if (depth > MAX_SCRIPT_DEPTH) {
     return;
   }
@@ -178,7 +192,8 @@ function visitScript(script: ShellWord, dialect: ShellDialect, location: Locatio
       piped = undefined;
     }
     location.enter(command.subshells);
-    const visited = visitCommand(command, pipeIn !== undefined, { pipe, substitution }, dialect, location, depth, stdin, runner, runs);
+    const inlet: Inlet = { fromPipe: pipeIn !== undefined, text: stdin, fed: pipeIn !== undefined || stdin !== undefined || (fed && command.nesting === 0) };
+    const visited = visitCommand(command, inlet, { pipe, substitution }, dialect, location, depth, runner, runs);
     if (pipeIn !== undefined) {
       pipeIn.into = visited?.run;
     }
@@ -202,23 +217,22 @@ function visitScript(script: ShellWord, dialect: ShellDialect, location: Locatio
 /** Visits one simple command; returns what it starts, or undefined for a `cd`. */
 function visitCommand(
   command: ShellCommand,
-  fromPipe: boolean,
+  inlet: Inlet,
   outlet: Outlet,
   dialect: ShellDialect,
   location: Location,
   depth: number,
-  stdin: ShellWord | undefined,
   runner: boolean,
   runs: LineRuns,
 ): Visited | undefined {
   if (location.apply(command.words, dialect)) {
     return undefined;
   }
-  const launched = launch(command.words, dialect, stdin);
+  const launched = launch(command.words, dialect, inlet.text);
   if (launched.kind === 'script') {
     const inner = location.child();
     launched.chdirs.forEach((chdir) => inner.moveTo(chdir));
-    visitScript(launched.script, launched.dialect, inner, depth + 1, runner || launched.runner, runs, outlet);
+    visitScript(launched.script, launched.dialect, inner, depth + 1, runner || launched.runner, runs, outlet, inlet.fed);
     if (launched.sameShell) {
       location.adopt(inner);
     }
@@ -232,8 +246,8 @@ function visitCommand(
       dialect,
       dir: inner.dir,
       redirections: command.redirections,
-      stdin,
-      piped: fromPipe,
+      stdin: inlet.text,
+      piped: inlet.fromPipe,
       runner: runner || launched.runner,
       pipe: outlet.pipe,
       captured: launched.captured,
@@ -243,6 +257,8 @@ function visitCommand(
     return { launched, run, bare: undefined };
   } else if (launched.kind === 'opaque' && launched.command !== undefined) {
     runs.opaque.push({ ...launched.command, dialect });
+  } else if (launched.kind === 'opaque' && launched.stdinScript === true && inlet.fed) {
+    runs.fedShells.push(dialect);
   } else if (launched.kind === 'nothing' && command.words.length > 0) {
     const bare: Draft<BareCommand> = { words: command.words, dialect, redirections: command.redirections, pipe: outlet.pipe, substitution: outlet.substitution };
     runs.bare.push(bare);

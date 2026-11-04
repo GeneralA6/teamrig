@@ -297,7 +297,8 @@ describe('launch: PowerShell expressions and launchers', () => {
       [
         ["iex 'git push'", 'script(powershell, same) git push'],
         ["Invoke-Expression -Command 'git push'", 'script(powershell, same) git push'],
-        ['iex', 'nothing'],
+        ['iex', STDIN],
+        ['Invoke-Expression -Verbose', STDIN],
         ["Start-Process -FilePath git -WorkingDirectory C:\\x -ArgumentList 'push origin main' -Wait", 'program git push origin main cd=C:\\x'],
         ['saps -NoNewWindow git push', 'program git push'],
         ['Start-Process -Verb RunAs git', 'program git'],

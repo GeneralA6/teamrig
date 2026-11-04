@@ -49,6 +49,8 @@ export interface OpaqueLaunch {
    * program (`$T exec approve R1`), or teamrig's subcommand (`teamrig "$G" approve R1`), which the exec guard refuses.
    */
   readonly command?: { readonly program: ShellWord; readonly args: readonly ShellWord[] };
+  /** True when what it cannot read is the commands a shell takes from stdin, which a pipe into it may carry. */
+  readonly stdinScript?: true;
 }
 
 /** What one simple command starts: nothing (a keyword line, an expression, a script file), a program, a script, or something unreadable. */
@@ -165,7 +167,7 @@ const SPAWN_SHELL: ShellDialect = process.platform === 'win32' ? 'cmd' : 'bash';
 const MAX_STEPS = 16;
 
 const NOTHING: Launch = { kind: 'nothing' };
-const STDIN_SCRIPT: OpaqueLaunch = { kind: 'opaque', reason: 'a shell reads its commands from stdin', gated: true };
+const STDIN_SCRIPT: OpaqueLaunch = { kind: 'opaque', reason: 'a shell reads its commands from stdin', gated: true, stdinScript: true };
 
 /** A word whose text is known. */
 export function staticWord(text: string): ShellWord {
@@ -316,7 +318,8 @@ class LaunchReader {
     }
     if ((name === 'invoke-expression' || name === 'iex') && this.dialect === 'powershell') {
       const script = args.find((arg) => !arg.text.startsWith('-'));
-      return script === undefined ? NOTHING : this.script(script, 'powershell', true);
+      // With no script of its own it runs what the pipeline hands it: `'...' | iex`.
+      return script === undefined ? this.fromStdin('powershell') : this.script(script, 'powershell', true);
     }
     if (this.dialect === 'powershell' && (name === 'start-process' || name === 'saps' || name === 'start')) {
       return this.startProcess(args);
