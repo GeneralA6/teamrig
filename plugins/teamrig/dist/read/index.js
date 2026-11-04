@@ -14,6 +14,8 @@ export { LAYOUT_VERSION } from "../register/marker.js";
 export { readEvents, readRegister, snapshotOf } from "../register/snapshot.js";
 export { loopFix, needPath, needsOf, pathText, planOrder, TaskTree } from "../register/tree.js";
 export { byPlanOrder, dueTime } from "../register/views.js";
+// The week plan in force (the newest week tag started by now), which a reader's week steps follow, as `plan` does.
+export { currentWeek } from "../register/week.js";
 // The done groups (T1729): one rule that sorts a span's done work for the daily report, the agenda and the Done page.
 export { DONE_GROUP_KINDS, doneGroups, doneGroupTitle, URGENT_PRIORITY } from "../register/done-groups.js";
 // The goal records (T1730): a team's goals with their planned window, target and every target move, read from the

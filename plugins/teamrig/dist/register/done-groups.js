@@ -4,7 +4,8 @@
  * A task done in the span goes in the first group it fits: Owner asked (its source is the owner marker), one group per
  * goal (its first goal), Urgent p1 (priority p0 or p1), This week's plan (its planning week holds the moment it was
  * done) and Other work. Dropped tasks are counted apart, never mixed in. Pure: no clock, no disk, no `node:` imports
- * (the pane vendors it through `read/index`).
+ * (the pane vendors it through `read/index`). It reads only the fields of DoneGroupTask and hands back the caller's own
+ * rows, so the pane groups its task rows, which lack most of Task's fields, without copying them into Tasks.
  */
 import { addUtcDays, parseDayStart } from "../core/time.js";
 import { taskNumber } from "./fold.js";
