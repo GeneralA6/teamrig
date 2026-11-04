@@ -125,10 +125,10 @@ function queuedSteps(delivery, command, cutoff) {
     }
     const deploy = repos.some((repo) => repo.deploy !== undefined) ? ` and run it with \`${command} deploy\`` : '';
     return (` Run queued steps (builds, test runs, data scripts) in the background through \`${command} queue\`, a test run inside \`${command} test\`` +
-        (cutoff === undefined ? '' : `, none starting ${cutoff} [delivery.schedule.queueCutoffUtc]`) +
+        (cutoff === undefined ? '' : `, none starting ${cutoff}`) +
         // Never `queue -- git commit`: a repository's hooks take the lock themselves, and Claude Code's worktree guard
         // refuses that form in a worktree session (the guide's `teamrig queue` section).
-        `; a commit stays a plain \`git commit\`. Merge a tested branch with \`${command} merge\`${deploy}, also in the background [delivery.repos].`);
+        `; a commit stays a plain \`git commit\`. Merge a tested branch with \`${command} merge\`${deploy}, also in the background [delivery].`);
 }
 /** What a message or an urgent inbox line says, in rule 3's order. */
 const REPORT_PARTS = 'what happened, evidence (numbers, ids, paths), the exact ask and deadline, your default, then "No reply needed" or "Reply needed: <one question>"';
@@ -203,15 +203,19 @@ export function coreRuleTexts(config, command, platform, clock) {
         data: "A hand-run change or delete of stored data needs the owner's OK after counts or a preview. Code that writes data ships a read-only dry run (inserted, unchanged, changed counts)." +
             ' Deleting derived data needs a verified regenerate tool and a parity run explaining each differing row; archive history and audit data before any TTL.' +
             ' Never print secret values; bind local services to 127.0.0.1, never 0.0.0.0.',
-        contracts: `Tell the other side before changing a contract it reads (API, table or file). The same external failure for ${config.alerts.persistentFailureHours} h must page a human [alerts.persistentFailureHours].`,
+        contracts: 'Tell the other side before changing a contract it reads (API, table or file).' +
+            // T1189: a route removal named the pages it would break, had no answer and shipped; its proof saw the routes
+            // answer 404, which any removal does, and never opened a page that read them.
+            " Breaking a caller you named waits for its answer or its leader's: silence is no consent, and the proof loads that caller." +
+            ` The same external failure for ${config.alerts.persistentFailureHours} h must page a human [alerts].`,
         skills: 
         // The skill limits (description words, Owner and Last verified lines, per-area count, forbidden keys) live in
         // the guide alone: lintSkills (skills/lint.ts) flags each breach in `check`, so the pack names only the pointer.
         `A procedure you investigated and will run again becomes a skill in the same turn: \`<area>-<name>/SKILL.md\`, shared ones \`${skills.sharedPrefix}-<name>\` [skills.sharedPrefix],` +
             ` within the guide's skill limits. Memory holds facts, skills how-tos, CLAUDE.md every-turn rules.`,
         commits: 'One logical change per commit (a fix with its tests, a refactor apart from what it enables, a mechanical change alone), committed as each step passes.' +
-            ` Over ${config.commits.maxLines} changed non-test lines or ${config.commits.maxFiles} non-test files [commits.maxLines, commits.maxFiles], a commit needs a \`${config.commits.largeCommitTrailer}: <reason>\` line [commits.largeCommitTrailer]` +
-            { off: '.', warn: '; a push to a protected branch lists those without one [commits.gate].', refuse: '; a push to a protected branch that sends one is refused [commits.gate].' }[config.commits.gate],
+            ` Over ${config.commits.maxLines} changed non-test lines or ${config.commits.maxFiles} non-test files, a commit needs a \`${config.commits.largeCommitTrailer}: <reason>\` line` +
+            { off: ' [commits].', warn: '; a push to a protected branch lists those without one [commits].', refuse: '; a push to a protected branch that sends one is refused [commits].' }[config.commits.gate],
         push: `${pushRule(config.pushGuard, config.prompts.hookAsks)} ${refusedRouteRule(config.prompts.hookAsks)}`,
         worktrees: 'Edit in your own worktree and branch in each repo, never a main checkout.' +
             // Any other removal (`git worktree remove`, `rm -rf`, `Remove-Item -Recurse`) follows a node_modules junction
