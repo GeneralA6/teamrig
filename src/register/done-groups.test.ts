@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { TimeZone } from '../core/zone.ts';
 import { testTask } from '../testing/task.ts';
 import { JERUSALEM } from '../testing/zone.ts';
-import { doneGroups, doneGroupTitle, URGENT_PRIORITY, type DoneGroup, type DoneGroupsInput } from './done-groups.ts';
+import { doneGroups, doneGroupTitle, URGENT_PRIORITY, type DoneGroup, type DoneGroupsInput, type DoneGroupTask } from './done-groups.ts';
 import type { Task } from './fold.ts';
 
 const OWNER = 'owner';
@@ -121,6 +121,31 @@ describe('doneGroups', () => {
 
   it('sends a task with a malformed week tag to other work', () => {
     assert.deepEqual(groupsOf([done('T1', { week: '2030-13-01' }), done('T2', { week: 'next week' })]), ['Other work: T1 T2']);
+  });
+
+  it("groups a reader's own rows, which hold only the fields it reads, and hands those same rows back", () => {
+    type Row = DoneGroupTask & { readonly title: string };
+    const row = (id: string, overrides: Partial<Row>): Row => ({
+      id,
+      title: `title of ${id}`,
+      status: 'done',
+      statusAt: AT,
+      source: 'lead',
+      goals: [],
+      priority: 2,
+      week: null,
+      ...overrides,
+    });
+    const owner = row('T1', { source: OWNER });
+    const goal = row('T2', { goals: ['G1'] });
+    const dropped = row('T3', { status: 'dropped' });
+    const result = doneGroups({ tasks: [owner, goal, dropped], ownerMarker: OWNER, zone: TimeZone.UTC, from: FROM, to: TO });
+    assert.deepEqual(
+      result.groups.map((group) => `${doneGroupTitle(group)}: ${group.tasks.map((task) => task.title).join(', ')}`),
+      ['Owner asked: title of T1', 'G1: title of T2'],
+    );
+    assert.equal(result.groups[0]?.tasks[0], owner);
+    assert.deepEqual(result.dropped, [dropped]);
   });
 });
 

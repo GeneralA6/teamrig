@@ -33,7 +33,7 @@ export { readEvents, readRegister, snapshotOf, type EventLogRead, type RegisterS
 export { loopFix, needPath, needsOf, pathText, planOrder, TaskTree, type EffectiveDue, type NextMove, type PlanPlace, type TreeTask, type WaitingOnYou } from '../register/tree.ts';
 export { byPlanOrder, dueTime, type PlanOrdered } from '../register/views.ts';
 // The done groups (T1729): one rule that sorts a span's done work for the daily report, the agenda and the Done page.
-export { DONE_GROUP_KINDS, doneGroups, doneGroupTitle, URGENT_PRIORITY, type DoneGroup, type DoneGroupKind, type DoneGroups, type DoneGroupsInput } from '../register/done-groups.ts';
+export { DONE_GROUP_KINDS, doneGroups, doneGroupTitle, URGENT_PRIORITY, type DoneGroup, type DoneGroupKind, type DoneGroups, type DoneGroupsInput, type DoneGroupTask } from '../register/done-groups.ts';
 // The goal records (T1730): a team's goals with their planned window, target and every target move, read from the
 // `goals.jsonl` text beside the event log.
 export { GOALS_FILE, NO_GOAL, NO_GOALS, readGoals, type Goal, type GoalSlip, type GoalsRead } from '../register/goals.ts';
