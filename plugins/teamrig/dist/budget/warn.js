@@ -4,7 +4,7 @@ import { budgetMarkOf, burstPromptLines, burstStopLines } from "./burst-lines.js
 import { cutClause } from "./cut.js";
 import { formatEndTime, formatPct, noRoomText } from "./format.js";
 import { liftedLine } from "./lift.js";
-import { hasRoom } from "./pace.js";
+import { holdsPastPart } from "./pace.js";
 /**
  * The live budget warning, pure: from a session's use today and the team's pace, which line its
  * person sees at a turn's end, which line the model gets with the next prompt, whether its leader gets
@@ -83,7 +83,8 @@ export function isPastDailyBudget(facts, extraPct = 0) {
 }
 /**
  * True when the session is past its daily budget while the team has no room today (its use at or past its in-day
- * pace, `hasRoom`), or while a leader's cut of it is in force: only then is it held, woken for urgent work alone and
+ * pace, `hasRoom`), or while a leader's cut of it is in force (`holdsPastPart`, by which `teamrig budget` names its
+ * holds too): only then is it held, woken for urgent work alone and
  * escalated as `budget.escalate` says (a cut escalates it whatever that says). While the team has room, a session past
  * its part uses room the others left, so no session waits while the week has room, unless its leader cut it to its
  * own part (T1616). A turn about to start counts as spent (`extraPct`, in % of the week), for the session and for the
@@ -92,7 +93,7 @@ export function isPastDailyBudget(facts, extraPct = 0) {
  * seconds of pace, which the wake's turn would spend at once (T1322).
  */
 export function isHeld(facts, extraPct = 0) {
-    return isPastDailyBudget(facts, extraPct) && (facts.cut !== undefined || !hasRoom({ ...facts.teamDay, usedPct: facts.teamDay.usedPct + extraPct }));
+    return isPastDailyBudget(facts, extraPct) && holdsPastPart({ ...facts.teamDay, usedPct: facts.teamDay.usedPct + extraPct }, facts.cut !== undefined);
 }
 /** The quiet hours the session is in; undefined outside them, or while its lift exempts it. */
 export function sessionQuietSpan(facts, quiet) {

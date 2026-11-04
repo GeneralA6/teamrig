@@ -10,7 +10,7 @@ import { formatUtcDay, MS_PER_DAY, parseUtcDay, typedDeadline, typedTimeHint } f
 import { activeBurst, burstFloorOf, withBurst } from "../../budget/burst.js";
 import { BurstLog } from "../../budget/burst-log.js";
 import { calibrationOf } from "../../budget/calibration.js";
-import { CutLog, cutText, decideCut } from "../../budget/cut.js";
+import { activeCut, CutLog, cutText, decideCut } from "../../budget/cut.js";
 import { claudeProjectsDir } from "../../budget/discover.js";
 import { ExtraLog } from "../../budget/extra.js";
 import { formatPct, formatUsd } from "../../budget/format.js";
@@ -90,7 +90,8 @@ async function readBudget(runtime, kit, config, roster, options) {
         : await teamWeekOf(files, account.paths, meterScaleOf(runtime, kit.paths.team, account), input);
     const lifts = recount ? [] : (await new LiftLog(files, kit.paths.lifts).read()).lifts;
     const bursts = recount ? [] : (await new BurstLog(files, kit.paths.bursts).read()).records;
-    return { now, measured, week, weekPaths: account?.paths ?? kit.paths, lifts, bursts };
+    const cuts = recount ? [] : (await new CutLog(files, kit.paths.cuts).read()).cuts;
+    return { now, measured, week, weekPaths: account?.paths ?? kit.paths, lifts, bursts, cuts };
 }
 /** The week and the team's usage now, for `burst`: its floor reads its sessions' use today. */
 export async function usageReadingOf(runtime, kit, config, roster) {
@@ -105,7 +106,7 @@ export async function weekLineOf(runtime, kit, config, roster) {
 function splitOf(reading, team, roster, config, work) {
     return budgetSplitOf({ team, ids: roster.ids, sessions: config.budget.sessions, leads: config.leads, work, pausable: pausableOf(config, team, roster.ids), lifts: reading.lifts, now: reading.now, usedPct: reading.week.usedPct });
 }
-/** Each session today: its use, and its part (`split`) of the team's part of the account's daily budget beside the `others` on it, its lift and the burst. */
+/** Each session today: its use, and its part (`split`) of the team's part of the account's daily budget beside the `others` on it, its lift, the burst and whether a leader's cut of it is in force. */
 function sessionsToday(reading, roster, budget, split, others) {
     const today = formatUtcDay(new Date(reading.now));
     const inForce = activeBurst(reading.bursts, reading.now, reading.week.usedPct);
@@ -116,7 +117,7 @@ function sessionsToday(reading, roster, budget, split, others) {
         const lift = activeLift(reading.lifts, id, reading.now, reading.week.usedPct);
         const inBurst = burstNow !== undefined && burstNow.burst.sessions.includes(id) ? burstNow : undefined;
         const budgetPct = withBurst(dailyBudgetOf(reading.week.allowancePct, id, split, others), inBurst?.floorPct);
-        return { id, name: roster.nameOf(id) ?? id, w, calls: state?.byDay[today]?.calls ?? 0, budgetPct, lift, ...liftNamesOf({ split, others }, reading.week.allowancePct, roster, id, lift), inBurst, paused: isPaused(split, id) };
+        return { id, name: roster.nameOf(id) ?? id, w, calls: state?.byDay[today]?.calls ?? 0, budgetPct, lift, ...liftNamesOf({ split, others }, reading.week.allowancePct, roster, id, lift), inBurst, paused: isPaused(split, id), cut: activeCut(reading.cuts, reading.lifts, id, reading.now) !== undefined };
     });
 }
 /** Each sub-lead's group today: its part of the day (`groupPartsOf`) and its group lift by name. */

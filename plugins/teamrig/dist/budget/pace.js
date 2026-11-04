@@ -101,6 +101,16 @@ export function dayPacePct(input) {
 export function hasRoom(day) {
     return day.usedPct < day.pacePct;
 }
+/**
+ * Whether a session past its daily budget is held (it finishes the step in hand and wakes for urgent work alone):
+ * under its leader's cut (`cut`) whatever room the team has, else while the team has no room today (`hasRoom`) or its
+ * in-day pace is unknown. Its team past its part of the account's day holds nobody on that alone: the teams on one
+ * account draw on one shared pool (T940), so no team waits while the account has room. The hooks (`isHeld`) and
+ * `teamrig budget` both decide by it, so the report never names a hold the hooks do not keep (T1875).
+ */
+export function holdsPastPart(day, cut) {
+    return cut || day === undefined || !hasRoom(day);
+}
 /** The week's use against the pace line; within `paceTolerancePct` points it is on pace. */
 export function readPace(window, budget, now, usedPct, profile) {
     const linePct = paceLinePct(window, budget.targetPct, now, profile);
