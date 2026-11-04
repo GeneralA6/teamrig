@@ -4388,8 +4388,9 @@ line for each team keeping its week there whose usage stores reach that start: t
 team's stores metered since its start, and the team. Each team reads only its own lines (since 0.246.0), so teams
 whose stores meter different W for one week never mix their scales; a line from before then names no team and
 counts only for the team keeping the log, and not in a period with a line that names one. A child team so learns
-its own rate from its own lines. Once the last 8 weeks' readings span 10 points, a fit
-of W per percent through 0 over them sets the rate, ahead of `budget.weeklyLimitW` (a starting guess until then),
+its own rate from its own lines. A fit of W per percent through 0 sets the rate: over the newest period whose readings
+span 10 points, so a limit that moved at a reset stops counting once the new period's readings do, else over the last
+8 weeks' readings once they span 10 points. It stands ahead of `budget.weeklyLimitW` (a starting guess until then),
 ahead of the status line's own estimate (the week's W over its use, once the meter counted the whole week). The
 last line says which rate counts, how far the fit misses its readings and, for the latest 3 periods, how far the
 use it forecast missed the status line. Today's use is read from the meter log too: the use now less the use at
