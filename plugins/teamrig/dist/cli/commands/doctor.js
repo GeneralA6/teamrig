@@ -1,8 +1,10 @@
+import { join } from 'node:path';
 import { claudeProjectsDir } from "../../budget/discover.js";
 import { launchOf } from "../../config/launch.js";
 import { Roster } from "../../config/roster.js";
 import { claudeConfigDir, KIT_NAME } from "../../core/home.js";
 import { readContextFiles } from "../../doctor/context-files.js";
+import { readSettingsDeny } from "../../doctor/deny-lines.js";
 import { doctorFindings, formatFinding } from "../../doctor/doctor.js";
 import { readSessionLists } from "../../doctor/session-lists.js";
 import { claudeSettingsFiles, readSettingsEnv } from "../../doctor/settings-env.js";
@@ -43,6 +45,15 @@ async function configuredProjects(probe, config, ids) {
     return Promise.all(named.map(async (entry) => ({ ...entry, kind: await probe.kind(entry.path) })));
 }
 /**
+ * The `permissions.deny` lines of the Claude Code settings a session in `project` reads (the user's, then the
+ * project's shared and local ones), and the user's file, where the missing secret deny lines go. `doctor` and `check` read it.
+ */
+export async function readSecretDeny(runtime, project) {
+    const claudeDir = claudeConfigDir(runtime.env, runtime.userHome);
+    const paths = claudeSettingsFiles(claudeDir, project);
+    return { files: await readSettingsDeny(runtime.files, paths), pasteInto: join(claudeDir, 'settings.json') };
+}
+/**
  * `doctor`: what teamrig lacks on this machine (git, Claude Code, Node.js), then the team's health checks
  * (names, the rename log, inboxes, its rules.md beside those of the teams above it, its tree of teams and session names shared with other teams,
  * read from every team config of the kit home), and the text every call of a session in the project re-reads
@@ -52,10 +63,10 @@ async function configuredProjects(probe, config, ids) {
  * `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` in doctor's own environment or in the `env` block of the user's or the
  * project's Claude Code settings, a session whose `launch` names a model but no effort, and a `team.project` or
  * `launch.<id>.project` that is no folder on this machine; and the local allow rules off `permissions.keepAllow` that
- * approve a whole tool or program or hold a credential (src/cli/allow-scope.ts); and the user's PowerShell history
- * file when no PowerShell profile keeps credentials out of it (src/doctor/shell-history.ts; the history is probed, never
- * read). It reads only and exits 0 like `check`: a finding is advice, and each line says the fix. `check` prints the
- * context and allow findings too.
+ * approve a whole tool or program or hold a credential (src/cli/allow-scope.ts); the secret deny lines no settings file
+ * holds (src/doctor/deny-lines.ts); and the user's PowerShell history file when no PowerShell profile keeps
+ * credentials out of it (src/doctor/shell-history.ts; the history is probed, never read). It reads only and exits 0
+ * like `check`: a finding is advice, and each line says the fix. `check` prints the context, allow and deny findings too.
  */
 export async function doctor(args, runtime) {
     noPositionals(args);
@@ -81,6 +92,7 @@ export async function doctor(args, runtime) {
         tree: { problems: tree.problemsOf(paths.team), clashes: tree.nameClashesOf(paths.team) },
         env: runtime.env,
         settingsEnv: await readSettingsEnv(runtime.files, claudeSettingsFiles(claudeDir, project)),
+        settingsDeny: await readSecretDeny(runtime, project),
         wideAllow: await readWideAllow(runtime, { paths, config, project }),
         launches: roster.ids.map((id) => ({ id, launch: launchOf(config, id) })),
         projects: await configuredProjects(runtime.probe, config, roster.ids),

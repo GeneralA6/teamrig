@@ -5,8 +5,8 @@ import { formatSkillFlag } from "../skills/lint.js";
 import { formatIdlePassTrouble } from "./idle-pass-log.js";
 /**
  * Warnings no session owns (T951). A context finding weighs text every session on the machine re-reads, so it is no
- * one area's; a wide allow rule sits in settings every session runs under, and a permissions change is the owner's
- * gate, which the lead takes to the owner; a skill flag goes to its skill's `Owner:`, which may be missing or name no
+ * one area's; a wide allow rule or a missing secret deny line sits in settings every session runs under, and a
+ * permissions change is the owner's gate, which the lead takes to the owner; a skill flag goes to its skill's `Owner:`, which may be missing or name no
  * session on the team; the idle pass (T1100) closes and reopens the team's sessions, so a pass that stopped or fails
  * is the whole team's; a repository's git hooks (SECRET-HOOK, T1480) are its own, not one session's area; a secret
  * check turned off (SECRET-GUARD-OFF, T1369) is the owner's call, which the lead takes to the owner. Such a
@@ -17,9 +17,14 @@ import { formatIdlePassTrouble } from "./idle-pass-log.js";
 export const UNOWNED_NOTICE_CHARS = 300;
 function findingWarning(finding) {
     const text = formatFinding(finding);
-    return finding.kind === 'allow-wide'
-        ? { key: 'permissions allow-wide', source: 'the permissions check [permissions.keepAllow]', text }
-        : { key: `context ${finding.budget}`, source: `the context check [contextFiles.${finding.budget}]`, text };
+    switch (finding.kind) {
+        case 'allow-wide':
+            return { key: 'permissions allow-wide', source: 'the permissions check [permissions.keepAllow]', text };
+        case 'deny-missing':
+            return { key: 'permissions deny-missing', source: "the secret deny check of the Claude Code settings' permissions.deny", text };
+        default:
+            return { key: `context ${finding.budget}`, source: `the context check [contextFiles.${finding.budget}]`, text };
+    }
 }
 function skillWarning(flag, skillsDir) {
     return { key: `skill ${flag.kind} ${flag.skill}`, source: `the skill check of ${skillsDir}`, text: formatSkillFlag(flag) };
