@@ -7,6 +7,7 @@ import { unreadSince } from "../inbox/inbox.js";
 import { wideAllowText } from "../permissions/report.js";
 import { describeRequirement } from "../requirements/requirements.js";
 import { TEAM_RULES_MAX_CHARS } from "../rules/pack.js";
+import { missingDenyLines, SECRET_DENY_LINES } from "./deny-lines.js";
 /**
  * Days an inbox may wait with unread lines and no read before doctor flags it. Hard-coded for now;
  * a candidate config key if teams want it tighter or looser.
@@ -250,6 +251,24 @@ export function allowFindings(wide) {
     const detail = wideAllowText(wide);
     return detail === undefined ? [] : [{ kind: 'allow-wide', detail }];
 }
+/**
+ * One finding while a secret deny line is in no settings file a session reads, with the missing lines as a JSON list to
+ * paste; `check` shows it the lead too. A file that is not a JSON object counts as holding none, and is named.
+ */
+export function denyFindings({ files, pasteInto }) {
+    const missing = missingDenyLines(files);
+    if (missing.length === 0) {
+        return [];
+    }
+    const read = files.flatMap((settings) => (settings.kind === 'deny' ? [settings.path] : []));
+    const unreadable = files.flatMap((settings) => (settings.kind === 'unreadable' ? [settings.path] : []));
+    const where = read.length === 0 ? 'no settings file exists' : `read: ${read.join(', ')}`;
+    const skipped = unreadable.length === 0 ? '' : `; ${unreadable.join(', ')} ${plural(unreadable.length, 'is', 'are')} not a JSON object, so its deny lines went unread`;
+    const detail = `${missing.length} of ${SECRET_DENY_LINES.length} secret deny line(s) are in no settings file a session reads (${where}${skipped}), ` +
+        "so a hook's allow or auto mode can approve reading a credential file or printing the environment; a deny line beats both, and teamrig never writes permissions: " +
+        `paste these into the permissions.deny list of ${pasteInto} yourself: ${JSON.stringify(missing)}`;
+    return [{ kind: 'deny-missing', detail }];
+}
 /** A configured project folder that is a file or nothing: `launch` refuses a tab's folder that is no folder (src/cli/commands/open.ts). */
 function projectFindings({ projects, roster, command }) {
     return projects.flatMap(({ session, path, kind }) => {
@@ -280,8 +299,8 @@ function shellHistoryFindings({ shellHistory: { history, profiles, gated } }) {
  * The team's health checks: names that find the wrong session or none, a damaged rename log,
  * inboxes nobody reads, rules too long to show, text every call re-reads over its budget (files, and the lists the newest
  * session holds), a broken tree of teams or a session name two teams use, a variable that overrides every model or effort
- * choice, a launch with a model but no effort, local allow rules that approve a whole tool or program or hold a credential, a
- * configured project folder that is no folder here, and a PowerShell history no profile keeps credentials out of.
+ * choice, a launch with a model but no effort, local allow rules that approve a whole tool or program or hold a credential, secret
+ * deny lines no settings file holds, a configured project folder that is no folder here, and a PowerShell history no profile keeps credentials out of.
  * It reads only; every fix is the user's.
  */
 export function doctorFindings(input) {
@@ -297,6 +316,7 @@ export function doctorFindings(input) {
         ...routingEnvFindings(input),
         ...launchFindings(input),
         ...allowFindings(input.wideAllow),
+        ...denyFindings(input.settingsDeny),
         ...projectFindings(input),
         ...shellHistoryFindings(input),
     ];
