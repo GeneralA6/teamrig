@@ -53,6 +53,13 @@ Never set another session's task status, and never do, merge or fix another sess
 its owner. A decision that belongs to the human (destructive data operations, product and design, permissions,
 budget, resource changes) goes to the lead, never decided by silence.
 
+## Change a contract another session reads
+
+Before you change an API, a table or a file another session reads, tell that session (rule 12). When your notice
+names a caller the change would break, the break waits for that caller's answer or its leader's: no answer is no
+consent, so it does not ship on silence. Its proof loads that caller, the page or job that reads the contract: a
+removed route answering 404 proves the removal, not that its callers still work.
+
 ## Ship a change
 
 From the first edit to a change that runs, in this order (rules 2, 7, 14 and 16):
