@@ -32,6 +32,8 @@ export { LAYOUT_VERSION } from '../register/marker.ts';
 export { readEvents, readRegister, snapshotOf, type EventLogRead, type RegisterSnapshot, type RetiredTasks } from '../register/snapshot.ts';
 export { loopFix, needPath, needsOf, pathText, planOrder, TaskTree, type EffectiveDue, type NextMove, type PlanPlace, type TreeTask, type WaitingOnYou } from '../register/tree.ts';
 export { byPlanOrder, dueTime, type PlanOrdered } from '../register/views.ts';
+// The week plan in force (the newest week tag started by now), which a reader's week steps follow, as `plan` does.
+export { currentWeek } from '../register/week.ts';
 // The done groups (T1729): one rule that sorts a span's done work for the daily report, the agenda and the Done page.
 export { DONE_GROUP_KINDS, doneGroups, doneGroupTitle, URGENT_PRIORITY, type DoneGroup, type DoneGroupKind, type DoneGroups, type DoneGroupsInput, type DoneGroupTask } from '../register/done-groups.ts';
 // The goal records (T1730): a team's goals with their planned window, target and every target move, read from the
