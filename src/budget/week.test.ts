@@ -204,6 +204,14 @@ describe('readWeek', () => {
     assert.deepEqual(priced([meterReading(5, 1_000), meterReading(57, 1_480)]), [53, 20]);
   });
 
+  it('prices the day at the new limit once the period it moved in spans the fit, not the old one (T1985)', () => {
+    const lastWeek = PERIOD.start - MS_PER_WEEK;
+    const atOldLimit = [10, 50, 90].map((pct) => meterReading(pct, pct * 100, lastWeek));
+    const readings = [...atOldLimit, meterReading(19, 500), meterReading(38, 1_000), meterReading(57, 1_500)];
+    const week = readWeek({ readings, calibration: calibrationOf(readings), budget: DEFAULT_BUDGET, now: NOW, statusUse: STATUS, period: PERIOD, states: COVERED });
+    assert.deepEqual([round(week.wPerPct), round(week.todayWPerPct)], [round(500 / 19), round(500 / 19)]);
+  });
+
   it("counts today's W at the week's rate while the period has no reading or the stores miss its start", () => {
     const older = meterReading(40, 900, PERIOD.start - MS_PER_WEEK);
     const unread = readWeek({ readings: [older], calibration: LEARNED, budget: DEFAULT_BUDGET, now: NOW, statusUse: STATUS, period: PERIOD, states: COVERED });
