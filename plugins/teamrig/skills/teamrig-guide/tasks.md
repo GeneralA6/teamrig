@@ -241,8 +241,9 @@ Three shapes, split by the list:
 
 A wake line or a message says what happened, the evidence (numbers, ids, paths), the exact ask and deadline, your
 default ("doing X at 14:00 unless you object"), then "No reply needed" or "Reply needed: <one question>". No acks,
-thanks or progress pings. Silence counts as consent only within the sender's own authority, never for an owner gate.
-A report, a "done" one too, is a line without `--wake`. If a send fails, write the line instead.
+thanks or progress pings. Silence counts as consent only within the sender's own authority, never for an owner gate
+or for a change that breaks a caller you named. A report, a "done" one too, is a line without `--wake`. If a send
+fails, write the line instead.
 
 With `wake.enabled: false` no line wakes anyone, so a message is how to wake a peer: one only for a result it acts on
 now, a decision, a blocker, a same-area conflict or an incident, and everything else an inbox line. Rule 3 of the
