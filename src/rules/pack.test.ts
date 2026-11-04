@@ -221,11 +221,11 @@ describe('renderCorePack', () => {
 
   it('states the small-commits rule and its gate', () => {
     const pack = (gate: string) => renderCorePack(testConfig({ commits: { maxLines: 300, gate } }), COMMAND, 'win32', RULES_CLOCK);
-    assert.match(pack('warn'), /Over 300 changed non-test lines or 15 non-test files \[commits\.maxLines, commits\.maxFiles\], a commit needs a `Large-commit: <reason>` line/);
-    assert.match(pack('warn'), /line \[commits\.largeCommitTrailer\]; a push to a protected branch lists those without one \[commits\.gate\]\./);
-    assert.match(pack('refuse'), /; a push to a protected branch that sends one is refused \[commits\.gate\]\./);
-    assert.match(pack('off'), /line \[commits\.largeCommitTrailer\]\.\n/);
-    assert.doesNotMatch(pack('off'), /commits\.gate/);
+    assert.match(pack('warn'), /Over 300 changed non-test lines or 15 non-test files, a commit needs a `Large-commit: <reason>` line/);
+    assert.match(pack('warn'), /line; a push to a protected branch lists those without one \[commits\]\./);
+    assert.match(pack('refuse'), /; a push to a protected branch that sends one is refused \[commits\]\./);
+    assert.match(pack('off'), /line \[commits\]\.\n/);
+    assert.doesNotMatch(pack('off'), /a push to a protected branch/);
   });
 
   it('states what the push guard does with a push to a protected branch', () => {
@@ -329,7 +329,7 @@ describe('renderCorePack', () => {
     assert.match(pack, /--followups <tasks it leaves>\|none on verifying, done \[register\]\. Wait on a peer by its task\./);
     assert.match(pack, /A shipped change is verifying until its proof exists \(`teamrig verify`\)\.$/m);
     assert.match(pack, /`teamrig start --session <you>`/);
-    assert.doesNotMatch(pack, /deliveryOwner|securityReviewer|queueCutoffUtc|teamrig queue|delivery\.repos|Pace the week|\[budget\]/);
+    assert.doesNotMatch(pack, /deliveryOwner|securityReviewer|queueCutoffUtc|teamrig queue|\[delivery\]|Pace the week|\[budget\]/);
   });
 
   it('gives a team with a delivery repository the queue, test, merge and deploy commands, all in the background', () => {
@@ -341,7 +341,7 @@ describe('renderCorePack', () => {
     );
     assert.match(
       pack,
-      /^7\. .*before then\. Run queued steps \(builds, test runs, data scripts\) in the background through `teamrig queue`, a test run inside `teamrig test`, none starting 22:30-00:00 UTC \[delivery\.schedule\.queueCutoffUtc\]; a commit stays a plain `git commit`\. Merge a tested branch with `teamrig merge` and run it with `teamrig deploy`, also in the background \[delivery\.repos\]\.$/m,
+      /^7\. .*before then\. Run queued steps \(builds, test runs, data scripts\) in the background through `teamrig queue`, a test run inside `teamrig test`, none starting 22:30-00:00 UTC; a commit stays a plain `git commit`\. Merge a tested branch with `teamrig merge` and run it with `teamrig deploy`, also in the background \[delivery\]\.$/m,
     );
     assert.doesNotMatch(pack, /No queued step/);
   });
@@ -350,9 +350,9 @@ describe('renderCorePack', () => {
     const pack = renderCorePack(testConfig({ delivery: { repos: { app: { mainCheckout: 'C:/src/app' } } } }), COMMAND, 'win32', RULES_CLOCK);
     assert.match(
       pack,
-      / a test run inside `teamrig test`; a commit stays a plain `git commit`\. Merge a tested branch with `teamrig merge`, also in the background \[delivery\.repos\]\.$/m,
+      / a test run inside `teamrig test`; a commit stays a plain `git commit`\. Merge a tested branch with `teamrig merge`, also in the background \[delivery\]\.$/m,
     );
-    assert.doesNotMatch(pack, /teamrig deploy|queueCutoffUtc/);
+    assert.doesNotMatch(pack, /teamrig deploy|none starting/);
   });
 
   it('adds the delivery owner, security reviewer, queue cutoff and budget pacing only when configured', () => {
