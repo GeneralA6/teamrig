@@ -13,6 +13,7 @@ import { shownLine } from "../deploy/checks.js";
 import { HOOK_WAIT_EXIT, hookEndText, hookExitCode, succeeded } from "../deploy/hooks.js";
 import { readPassRecord } from "../push-guard/pass-record.js";
 import { commandLine } from "../test-run/shell.js";
+import { decisionRecordHold } from "./decision-records.js";
 import { rangeInstallTouches, runDependencyCheck } from "./dependencies.js";
 import { gatedVerdict } from "./gated-step.js";
 import { ORIGIN } from "./git.js";
@@ -23,7 +24,8 @@ import { reviewGateVerdict } from "./review-gate-step.js";
 /**
  * `teamrig merge`: merges a finished branch into origin's default branch, one push on the host at a time. It refuses
  * a branch it must not merge (detached, the default branch, uncommitted changes, nothing new, a dependency change the
- * gate holds and no dependency check clears), waits out deploy freezes on what the push deploys, takes the host lock,
+ * gate holds and no dependency check clears, a task with a design note and no decision record under the decision record
+ * gate), waits out deploy freezes on what the push deploys, takes the host lock,
  * rebases onto the fresh default branch, runs the dependency check when the branch changes the package files, the
  * review gate when the repo has one (a change of a review path waits for its reviewer) and, under
  * `pushGuard.pushToProtected: gated`, the self-merge gates (a change that misses one waits for a leader's approval), and
@@ -49,7 +51,7 @@ export function repoOf(checkout, setup, platform) {
         const [name, config] = listed;
         return { name, config, listed: true };
     }
-    return { name: basename(main), config: { mainCheckout: main, deploysOnPush: [], dependencyGate: false, reviewGate: false, updateMainCheckout: false }, listed: false };
+    return { name: basename(main), config: { mainCheckout: main, deploysOnPush: [], dependencyGate: false, reviewGate: false, decisionRecordGate: false, updateMainCheckout: false }, listed: false };
 }
 function short(sha) {
     return sha.slice(0, 8);
@@ -103,6 +105,13 @@ async function planOf(setup, ports, request) {
     const held = repo.config.dependencyGate && repo.config.dependencyCheck === undefined ? await dependencyHold(git, top, onto, repo.name) : undefined;
     if (held !== undefined) {
         return { kind: 'refused', reason: held };
+    }
+    // A pending merge passed this gate when it started, and once a merge commit has merged it the branch changes nothing against its remote.
+    const unrecorded = pending === undefined && repo.config.decisionRecordGate
+        ? await decisionRecordHold({ repo: repo.name, docsFolder: repo.config.docsFolder, top, mainCheckout: checkout.mainCheckout ?? top, branch, onto, tasksFolder: setup.tasksFolder }, ports)
+        : undefined;
+    if (unrecorded !== undefined) {
+        return { kind: 'refused', reason: unrecorded };
     }
     return { kind: 'ready', plan: { session: request.session, top, branch, linked: checkout.linked, mainCheckout: checkout.mainCheckout, remote, defaultBranch, repo, pending } };
 }
