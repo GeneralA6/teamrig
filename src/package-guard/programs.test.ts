@@ -144,6 +144,51 @@ describe('runsOf', () => {
     assert.deepEqual(opaque('teamrig exec status R1'), []);
   });
 
+  it('keeps each shell whose commands come down a pipe it cannot read, also one a nested script inherits the pipe for', () => {
+    const fed = (command: string, dialect: ShellDialect = 'bash'): readonly ShellDialect[] => runsOf(command, context(dialect)).fedShells;
+    for (const line of [
+      'echo x | bash',
+      'printf x | sh -s',
+      'a | b | bash',
+      'cat f | env -i bash',
+      'git log && echo x | timeout 5 bash',
+      'echo x | (bash)',
+      'echo x | { bash; }',
+      "bash -c 'echo x | sh'",
+      'echo x | bash -c bash',
+      "echo x | bash -c 'a; sh'",
+      'bash -c sh <<EOF\nx\nEOF',
+      'echo a | xargs bash',
+    ]) {
+      assert.deepEqual(fed(line), ['bash'], line);
+    }
+    for (const line of ["'x' | pwsh -", "'x' | pwsh -Command -", "'x' | powershell -NoProfile", "'x' | iex", '$c | Invoke-Expression', "'x' | cmd"]) {
+      assert.deepEqual(fed(line, 'powershell'), ['powershell'], line);
+    }
+  });
+
+  it('keeps no shell that no pipe feeds, that reads a file, or whose commands it reads', () => {
+    for (const line of [
+      'bash',
+      'bash --version',
+      'sh -s',
+      'a; bash',
+      'a && bash',
+      'a || bash',
+      'bash < x.sh',
+      'echo x | bash script.sh',
+      'echo x | bash -c "cat"',
+      'bash <<EOF\nx\nEOF',
+      'cat <<EOF | bash\nx\nEOF',
+      'a | b',
+    ]) {
+      assert.deepEqual(runsOf(line, context('bash')).fedShells, [], line);
+    }
+    for (const line of ['iex', 'pwsh --version', 'cmd', "'x' | pwsh -File a.ps1"]) {
+      assert.deepEqual(runsOf(line, context('powershell')).fedShells, [], line);
+    }
+  });
+
   it('gives each program the dialect of the script that starts it', () => {
     const dialects = runsOf('cat a; pwsh -Command "Get-Content b"', context('bash')).programs.map((run) => `${run.name} ${run.dialect}`);
     assert.deepEqual(dialects, ['cat bash', 'get-content powershell']);

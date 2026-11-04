@@ -382,6 +382,7 @@ describe('evaluatePushes: where a push hides', () => {
         ["Start-Process -FilePath git -ArgumentList 'push origin main' -Wait", 'ask'],
         ["Invoke-Expression 'git push origin main'", 'ask'],
         ['iex "git push -f origin main"', 'deny'],
+        ["'git push origin main' | iex", 'ask', 'doubt'],
         ['pwsh -Command "git push origin main"', 'ask'],
         ['powershell -c "git push -f origin main"', 'deny'],
         ['powershell git push origin main', 'ask'],

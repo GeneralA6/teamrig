@@ -124,6 +124,40 @@ describe('execGuardOutput', () => {
     }
   });
 
+  it('refuses a line whose shell reads its commands from a pipe, as they may review a request or act as the owner', async () => {
+    const quiet = env();
+    for (const payload of [
+      bash('echo "teamrig exec approve R1 --session owner" | bash'),
+      bash("printf 'teamrig owner next T1\\n' | sh"),
+      bash('echo dGVhbXJpZw== | base64 -d | bash'),
+      bash('cat cmd.txt | bash -s'),
+      bash('echo "teamrig owner next T1" | env -i bash'),
+      bash('echo "teamrig owner next T1" | bash -c bash'),
+      bash("bash -c 'echo x | sh'"),
+      powershell("'teamrig owner next T1' | pwsh -Command -"),
+      powershell("'teamrig owner next T1' | iex"),
+      powershell("'teamrig owner next T1' | cmd"),
+    ]) {
+      const found = await verdict(payload, quiet);
+      assert.equal(found?.decision, 'deny', JSON.stringify(payload));
+      assert.equal(
+        found?.reason,
+        'teamrig exec guard: a shell here reads its commands from a pipe, so the guard cannot tell whether they review a request or act as the owner; run them directly, or hand the shell a heredoc, which the guard reads.',
+      );
+    }
+    assert.equal(quiet.reads(), 0);
+    assert.equal(quiet.checks(), 0);
+  });
+
+  it('leaves a shell no pipe feeds, a pipe into a script file and a heredoc it reads to the normal flow', async () => {
+    for (const line of ['bash --version', 'sh', 'git log | head -5', 'bash script.sh', 'echo x | bash script.sh', 'echo x | bash -c "cat"', 'bash <<EOF\nteamrig list\nEOF', 'cat <<EOF | bash\nteamrig list\nEOF']) {
+      assert.equal(await verdict(bash(line)), undefined, line);
+    }
+    assert.equal(await verdict(powershell('iex')), undefined);
+    assert.equal(await verdict(powershell('pwsh --version')), undefined);
+    assert.match((await verdict(bash('cat <<EOF | bash\nteamrig exec approve R1 --session owner\nEOF')))?.reason ?? '', /names the owner \(--session owner\)/);
+  });
+
   it('refuses a teamrig call whose first word is only known when it runs, as it may review as the owner or act as them', async () => {
     const quiet = env();
     for (const payload of [
