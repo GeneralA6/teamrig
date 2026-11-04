@@ -64,11 +64,26 @@ interface Section {
   readonly body: readonly string[];
 }
 
-/** Each `### teamrig <command>` section of commands.md, up to the next heading. */
+/**
+ * Each `### teamrig <command>` section of commands.md, up to the next heading. A `#` line inside a code block, such
+ * as a markdown template the section shows, is the block's text and no heading.
+ */
 function sections(text: string): Section[] {
   const found: { command: string; line: number; body: string[] }[] = [];
   let current: { command: string; line: number; body: string[] } | null = null;
+  let fence: string | null = null;
   for (const [index, row] of text.split(/\r?\n/).entries()) {
+    const opened = FENCE.exec(row);
+    if (fence !== null) {
+      if (opened !== null && (opened[1] ?? '').startsWith(fence) && opened[2] === '') {
+        fence = null;
+      }
+      current?.body.push(row);
+      continue;
+    }
+    if (opened !== null) {
+      fence = opened[1] ?? '```';
+    }
     const heading = SECTION.exec(row);
     if (heading !== null) {
       current = { command: heading[1] ?? '', line: index + 1, body: [] };
