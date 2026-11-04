@@ -128,7 +128,7 @@ export function repoOf(checkout: Checkout, setup: MergeSetup, platform: NodeJS.P
     const [name, config] = listed;
     return { name, config, listed: true };
   }
-  return { name: basename(main), config: { mainCheckout: main, deploysOnPush: [], dependencyGate: false, reviewGate: false, updateMainCheckout: false }, listed: false };
+  return { name: basename(main), config: { mainCheckout: main, deploysOnPush: [], dependencyGate: false, reviewGate: false, decisionRecordGate: false, updateMainCheckout: false }, listed: false };
 }
 
 /** What `teamrig merge` merges: a branch of a checkout, into its remote's default branch. */

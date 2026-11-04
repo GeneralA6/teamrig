@@ -588,6 +588,16 @@
                 "maxItems": 64,
                 "items": { "type": "string", "minLength": 1 }
               },
+              "docsFolder": {
+                "description": "The project's docs folder, where decisionRecordGate finds its decisions folder. A relative path is in the repository; an absolute one may be outside it, such as a separate docs repository.",
+                "type": "string",
+                "minLength": 1,
+                "default": "docs"
+              },
+              "decisionRecordGate": {
+                "description": "Refuse a branch (merge) whose task (a branch named t<n>-...) has a design note (a .md file in its task folder named for a design, such as design.md or pr2-design.md) until the change adds or changes a decision record in docsFolder/decisions/, so a design decided in a session's notes lands in the repository in its own words. With a docs folder outside the repository, a record there that names the task clears it.",
+                "type": "boolean"
+              },
               "updateMainCheckout": {
                 "description": "After the push, fast-forward the main checkout to it: only a fast-forward, only on the default branch with no tracked changes.",
                 "type": "boolean"

@@ -31,7 +31,7 @@ const PLACES: DeliveryPlaces = {
 const FLOW = { name: 'flow', command: ['node', 'checks/flow.js'] };
 const DEPLOY_COMMAND = ['node', 'tools/deploy.js'];
 const DEPLOY: DeployConfig = { targets: ['api', 'workers', 'live'], checks: [FLOW], afterPull: [['node', 'scripts/build-cli.js']], command: DEPLOY_COMMAND };
-const PIPELINE: DeliveryRepoConfig = { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], dependencyGate: false, reviewGate: false, updateMainCheckout: false, deploy: DEPLOY };
+const PIPELINE: DeliveryRepoConfig = { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], dependencyGate: false, reviewGate: false, decisionRecordGate: false, updateMainCheckout: false, deploy: DEPLOY };
 const RESTART = ['node', 'tools/restart.js', 'api', 'live'];
 const REQUEST: RedeployRequest = { session: 'sec', repo: 'pipeline', dir: '/runner', targets: ['api', 'live'], why: 'rotate the db credential', argv: RESTART };
 const SECRET = ['db password', '=', 'hunter2'].join('');

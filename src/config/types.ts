@@ -776,6 +776,18 @@ export interface DeliveryRepoConfig {
    * check is no pass. Unset: a `check` hit is held like an `always` one.
    */
   readonly reviewCheck?: readonly string[];
+  /**
+   * The project's docs folder, where `decisionRecordGate` finds its `decisions` folder. A relative path is in the
+   * repository; an absolute one may be outside it, such as a separate docs repository. Unset: `docs`.
+   */
+  readonly docsFolder?: string;
+  /**
+   * Refuse a branch (merge) whose task (a branch named `t<n>-…`) has a design note (a `.md` file in its task folder
+   * named for a design, such as `design.md` or `pr2-design.md`) until the change adds or changes a decision record in
+   * `<docsFolder>/decisions/`, so a design decided in a session's notes lands in the repository in its own words. A
+   * docs folder outside the repository holds no branch's change: there a record that names the task clears it.
+   */
+  readonly decisionRecordGate: boolean;
   /** After the push, fast-forward the main checkout to it: only a fast-forward, only on the default branch with no tracked changes. */
   readonly updateMainCheckout: boolean;
   /**

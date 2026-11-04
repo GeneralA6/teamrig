@@ -41,6 +41,8 @@ const EVERY_KEY = {
         dependencyGate: true,
         reviewGate: true,
         reviewCheck: ['node', 'review.js'],
+        docsFolder: 'notes/docs',
+        decisionRecordGate: true,
         updateMainCheckout: true,
         deploy: { targets: ['cloud-api'], checks: [{ name: 'flow', command: ['node', 'checks/flow.js'] }], afterPull: [['node', 'pulled.js']], command: ['node', 'deploy.js'] },
       },

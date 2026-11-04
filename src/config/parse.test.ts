@@ -497,8 +497,8 @@ describe('parseConfig', () => {
     assert.deepEqual(issues, []);
     assert.deepEqual(config.delivery.schedule, delivery.schedule);
     assert.deepEqual(config.delivery.repos, {
-      api: { mainCheckout: 'C:/src/api', deploysOnPush: ['cloud-api'], dependencyGate: false, reviewGate: false, updateMainCheckout: true },
-      web: { mainCheckout: 'repos/web', deploysOnPush: [], dependencyGate: true, reviewGate: false, updateMainCheckout: false },
+      api: { mainCheckout: 'C:/src/api', deploysOnPush: ['cloud-api'], dependencyGate: false, reviewGate: false, decisionRecordGate: false, updateMainCheckout: true },
+      web: { mainCheckout: 'repos/web', deploysOnPush: [], dependencyGate: true, reviewGate: false, decisionRecordGate: false, updateMainCheckout: false },
     });
   });
 
@@ -512,7 +512,7 @@ describe('parseConfig', () => {
     const { config, issues } = parseConfig({ ...ROSTER, delivery: { repos } });
     assert.deepEqual(paths(issues).sort(), ['delivery.repos.bad.dependencyCheck', 'delivery.repos.open.dependencyCheck']);
     assert.match(issues.find((issue) => issue.path === 'delivery.repos.open.dependencyCheck')?.message ?? '', /runs only with dependencyGate true/);
-    assert.deepEqual(config.delivery.repos['gated'], { mainCheckout: 'repos/gated', deploysOnPush: [], dependencyGate: true, dependencyCheck: check, reviewGate: false, updateMainCheckout: false });
+    assert.deepEqual(config.delivery.repos['gated'], { mainCheckout: 'repos/gated', deploysOnPush: [], dependencyGate: true, dependencyCheck: check, reviewGate: false, decisionRecordGate: false, updateMainCheckout: false });
     assert.equal(config.delivery.repos['bad']?.dependencyCheck, undefined);
   });
 
@@ -526,9 +526,27 @@ describe('parseConfig', () => {
     const { config, issues } = parseConfig({ ...ROSTER, delivery: { repos } });
     assert.deepEqual(paths(issues).sort(), ['delivery.repos.bad.reviewCheck', 'delivery.repos.open.reviewCheck']);
     assert.match(issues.find((issue) => issue.path === 'delivery.repos.open.reviewCheck')?.message ?? '', /runs only with reviewGate true/);
-    assert.deepEqual(config.delivery.repos['gated'], { mainCheckout: 'repos/gated', deploysOnPush: [], dependencyGate: false, reviewGate: true, reviewCheck: check, updateMainCheckout: false });
+    assert.deepEqual(config.delivery.repos['gated'], { mainCheckout: 'repos/gated', deploysOnPush: [], dependencyGate: false, reviewGate: true, reviewCheck: check, decisionRecordGate: false, updateMainCheckout: false });
     assert.equal(config.delivery.repos['bad']?.reviewGate, true);
     assert.equal(config.delivery.repos['bad']?.reviewCheck, undefined);
+  });
+
+  it('reads a repository’s docs folder and its decision record gate, off by default, and reports a blank folder or a gate that is no boolean (T1869)', () => {
+    const repos = {
+      local: { mainCheckout: 'repos/local', docsFolder: 'notes/docs', decisionRecordGate: true },
+      outside: { mainCheckout: 'repos/outside', docsFolder: '/srv/docs-repo' },
+      unset: { mainCheckout: 'repos/unset' },
+      blank: { mainCheckout: 'repos/blank', docsFolder: ' ' },
+      word: { mainCheckout: 'repos/word', decisionRecordGate: 'yes' },
+    };
+    const { config, issues } = parseConfig({ ...ROSTER, delivery: { repos } });
+    assert.deepEqual(paths(issues).sort(), ['delivery.repos.blank.docsFolder', 'delivery.repos.word.decisionRecordGate']);
+    assert.deepEqual(config.delivery.repos['local'], { mainCheckout: 'repos/local', deploysOnPush: [], dependencyGate: false, reviewGate: false, docsFolder: 'notes/docs', decisionRecordGate: true, updateMainCheckout: false });
+    assert.equal(config.delivery.repos['outside']?.docsFolder, '/srv/docs-repo');
+    assert.equal(config.delivery.repos['outside']?.decisionRecordGate, false);
+    assert.equal(config.delivery.repos['unset']?.docsFolder, undefined);
+    assert.equal(config.delivery.repos['blank']?.docsFolder, undefined);
+    assert.equal(config.delivery.repos['word']?.decisionRecordGate, false);
   });
 
   it('reads where a repository’s new worktrees go and their setup, and reports a blank folder or a setup that is no program (T1305)', () => {
@@ -541,8 +559,8 @@ describe('parseConfig', () => {
     };
     const { config, issues } = parseConfig({ ...ROSTER, delivery: { repos } });
     assert.deepEqual(paths(issues).sort(), ['delivery.repos.bad.worktreeFolder', 'delivery.repos.bad.worktreeSetup', 'delivery.repos.empty.worktreeSetup']);
-    assert.deepEqual(config.delivery.repos['set'], { mainCheckout: 'repos/set', deploysOnPush: [], dependencyGate: false, reviewGate: false, updateMainCheckout: false, worktreeFolder: '../worktrees', worktreeSetup: setup });
-    assert.deepEqual(config.delivery.repos['unset'], { mainCheckout: 'repos/unset', deploysOnPush: [], dependencyGate: false, reviewGate: false, updateMainCheckout: false });
+    assert.deepEqual(config.delivery.repos['set'], { mainCheckout: 'repos/set', deploysOnPush: [], dependencyGate: false, reviewGate: false, decisionRecordGate: false, updateMainCheckout: false, worktreeFolder: '../worktrees', worktreeSetup: setup });
+    assert.deepEqual(config.delivery.repos['unset'], { mainCheckout: 'repos/unset', deploysOnPush: [], dependencyGate: false, reviewGate: false, decisionRecordGate: false, updateMainCheckout: false });
     assert.equal(config.delivery.repos['bad']?.worktreeFolder, undefined);
     assert.equal(config.delivery.repos['bad']?.worktreeSetup, undefined);
   });
@@ -558,7 +576,7 @@ describe('parseConfig', () => {
     };
     const { config, issues } = parseConfig({ ...ROSTER, delivery: { repos } });
     assert.deepEqual(paths(issues).sort(), ['delivery.repos.bare.merge', 'delivery.repos.empty.merge.command', 'delivery.repos.text.merge.command']);
-    assert.deepEqual(config.delivery.repos['forge'], { mainCheckout: 'repos/forge', deploysOnPush: [], dependencyGate: false, reviewGate: false, updateMainCheckout: false, merge: { command, remote: 'origin' } });
+    assert.deepEqual(config.delivery.repos['forge'], { mainCheckout: 'repos/forge', deploysOnPush: [], dependencyGate: false, reviewGate: false, decisionRecordGate: false, updateMainCheckout: false, merge: { command, remote: 'origin' } });
     assert.equal(config.delivery.repos['push']?.merge, undefined);
     assert.equal(config.delivery.repos['text']?.merge, undefined);
     assert.equal(config.delivery.repos['empty']?.merge, undefined);
@@ -667,7 +685,7 @@ describe('parseConfig', () => {
       'delivery.schedule.resetBlackoutHours',
       'delivery.wait.maxMinutes',
     ]);
-    assert.deepEqual(config.delivery.repos, { ok: { mainCheckout: '/src/ok', deploysOnPush: [], dependencyGate: false, reviewGate: false, updateMainCheckout: false } });
+    assert.deepEqual(config.delivery.repos, { ok: { mainCheckout: '/src/ok', deploysOnPush: [], dependencyGate: false, reviewGate: false, decisionRecordGate: false, updateMainCheckout: false } });
     assert.deepEqual(config.delivery.schedule, {});
     assert.equal(config.delivery.wait.maxMinutes, 60);
   });
