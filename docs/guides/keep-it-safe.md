@@ -257,6 +257,8 @@ teamrig that is not the installed plugin or was changed after its build
 field of a request: [exec request](../../plugins/teamrig/skills/teamrig-guide/commands.md#teamrig-exec-request)).
 The same hook refuses the owner's own actions on a task (`teamrig owner note`, `owner next`) from any session's tool
 call, as they write as the owner: the owner runs them in their own terminal, or types them after `/teamrig` in a tab.
+It also refuses a shell fed its commands from a pipe (`echo ... | bash`), as the pipe can carry a review the line
+never shows.
 The commands also refuse to write wherever Claude Code set `$CLAUDECODE` (a script a session's tool call runs, a hook
 command), which the pane's buttons and a typed `/teamrig` line lack. Every session runs as your OS user, so these stop
 the routine route and an instruction slipped into what a session reads, not a session set on forging the owner: a
