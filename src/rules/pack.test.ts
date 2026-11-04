@@ -133,6 +133,14 @@ describe('renderCorePack', () => {
     assert.deepEqual(over, [], `every wording fits ${CORE_PACK_MAX_CHARS}`);
   });
 
+  it("has breaking a named caller wait for its answer, silence being no consent, and the proof load that caller", () => {
+    const pack = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
+    assert.match(
+      pack,
+      /^12\. Tell the other side before changing a contract it reads \(API, table or file\)\. Breaking a caller you named waits for its answer or its leader's: silence is no consent, and the proof loads that caller\. The same external failure/m,
+    );
+  });
+
   it('pulls status from the register, and has the asker, else the receiver, enter every ask', () => {
     const pack = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
     assert.match(pack, /^4\. Status is pulled from the register, never asked\. Start each work block with `teamrig start --session <you>`\./m);
