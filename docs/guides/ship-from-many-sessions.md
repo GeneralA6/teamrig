@@ -98,13 +98,14 @@ teamrig merge --session api
 DONE pushed 9a0b1c2d..4f1c2a9e to main; cloud-api deploy on push
 ```
 
-It is refused before any change in a detached HEAD, with uncommitted changes, on the default branch itself and for a
-branch with nothing new. Otherwise it waits up to `delivery.wait.maxMinutes` (60) for the freezes and the lock
+It is refused before any change in a detached HEAD, with uncommitted changes, on the default branch itself, for a
+branch with nothing new and, under `decisionRecordGate`, for a branch whose task has a design note and no decision
+record. Otherwise it waits up to `delivery.wait.maxMinutes` (60) for the freezes and the lock
 (longer while its line moves), fetches, rebases and pushes, the push a queued step that runs the pre-push hook. When
 origin moved meanwhile, it rebases and pushes again, 3 times in all. Once merged, it deletes the branch on origin and
 here (`--keep-remote` and `--no-delete-local` keep them) and prints the `teamrig worktree remove` that ends the
-worktree. Exit 0 merged, 1 failed with the branch kept, 2 when the dependency check refused it, 75 when the merge
-command waits.
+worktree. Exit 0 merged, 1 failed with the branch kept, 2 when the dependency check or the decision record gate
+refused it, 75 when the merge command waits.
 
 Each repository is an entry of `delivery.repos`, found by its main checkout; one not listed gets a NOTE and none
 of these:
@@ -129,6 +130,11 @@ of these:
 - `dependencyGate`: refuses a branch that changes `package-lock.json`, or a `package.json` field an install reads,
   since merging it changes, unreviewed, the `node_modules` every worktree links to. `dependencyCheck` is the check
   that clears one, run under the lock after each rebase and before the push.
+- `decisionRecordGate`: refuses a branch whose task (`t<n>-…`) has a design note in its task folder, such as
+  `design.md`, until the branch adds a decision record to `<docsFolder>/decisions/` (`docsFolder` defaults to
+  `docs`), since a design settled in a session's notes is lost to every reader of the code unless it lands in the
+  repository. [commands](../../plugins/teamrig/skills/teamrig-guide/commands.md#teamrig-merge) gives the record's
+  format.
 - `updateMainCheckout`: after a merge from a worktree, fast-forwards the main checkout too, when it is on the
   default branch with no uncommitted changes.
 - `merge`: a command run in place of the push, for a repository that merges through pull requests. Exit 0: it merged,
