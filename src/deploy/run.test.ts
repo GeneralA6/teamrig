@@ -33,7 +33,7 @@ const FLOW = { name: 'flow', command: ['node', 'checks/flow.js'] };
 const AFTER_PULL = ['node', 'scripts/build-cli.js'];
 const COMMAND = ['node', 'tools/deploy.js'];
 const DEPLOY: DeployConfig = { targets: ['api', 'workers'], checks: [FLOW], afterPull: [AFTER_PULL], command: COMMAND };
-const PIPELINE: DeliveryRepoConfig = { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], dependencyGate: false, reviewGate: false, updateMainCheckout: false, deploy: DEPLOY };
+const PIPELINE: DeliveryRepoConfig = { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], dependencyGate: false, reviewGate: false, decisionRecordGate: false, updateMainCheckout: false, deploy: DEPLOY };
 const REQUEST: DeployRequest = { session: 'po', repo: undefined, dir: '/elsewhere' };
 const QUEUE_MAX_MS = DEFAULT_QUEUE.maxRunMinutes * 60_000;
 const SECRET = ['db password', '=', 'hunter2'].join('');
@@ -301,7 +301,7 @@ describe('deployRepo', () => {
 
   it('deploys the repository named, else the one the folder is in, else the only one with a deploy block', async () => {
     const CONSOLE: DeliveryRepoConfig = { ...PIPELINE, mainCheckout: '/repo/console' };
-    const SITE: DeliveryRepoConfig = { mainCheckout: '/repo/site', deploysOnPush: ['cloud-web'], dependencyGate: false, reviewGate: false, updateMainCheckout: false };
+    const SITE: DeliveryRepoConfig = { mainCheckout: '/repo/site', deploysOnPush: ['cloud-web'], dependencyGate: false, reviewGate: false, decisionRecordGate: false, updateMainCheckout: false };
     const two = { pipeline: PIPELINE, console: CONSOLE, site: SITE };
     refused(await new World({ repos: two }).run({ ...REQUEST, repo: 'nope' }), 'nope is not in delivery.repos (with a deploy block: pipeline, console)');
     refused(await new World({ repos: two }).run({ ...REQUEST, repo: 'site' }), 'delivery.repos.site has no deploy block, so there is nothing to deploy it with (with a deploy block: pipeline, console)');

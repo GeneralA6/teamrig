@@ -225,6 +225,9 @@ export const DEFAULT_MERGE_REMOTE = 'origin';
 /** Where `teamrig worktree add` makes a repository's worktrees when `worktreeFolder` is unset: in its main checkout, where Claude Code makes its own. */
 export const DEFAULT_WORKTREE_FOLDER = '.claude/worktrees';
 
+/** A repository's docs folder when `docsFolder` is unset: `docs` at its root, where most projects keep theirs. */
+export const DEFAULT_DOCS_FOLDER = 'docs';
+
 export const DEFAULT_DECISIONS: DecisionsConfig = { batchTimesUtc: [], batchAt: 5, askWith: 'text' };
 
 export const DEFAULT_LOOPS: LoopsConfig = { chainNudgeAt: 3 };
