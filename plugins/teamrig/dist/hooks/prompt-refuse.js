@@ -5,10 +5,10 @@ import { rerunForm } from "./rerun-forms.js";
 /**
  * The prompt refusal: under `prompts.hookAsks: refuse`, answers each permission prompt Claude Code is about to raise on
  * its own (a call its permission rules do not allow in a mode that asks, a safety check that always asks), so no session
- * waits for hours on a prompt nobody answers. Each call gets the answer for its case: a line that provably only reads
- * runs; a line teamrig's rules give a rerun form is refused quoting that form; anything else is refused with what to
- * do instead. The question picker and plan mode's exit are questions to the person, not permissions: the picker guard
- * and the person decide those, so they open.
+ * waits for hours on a prompt nobody answers. Each call gets the answer for its case: a Bash line that runs a
+ * sanctioned route, or provably only reads, runs; a line teamrig's rules give a rerun form is refused quoting that
+ * form; anything else is refused with what to do instead. The question picker and plan mode's exit are questions to
+ * the person, not permissions: the picker guard and the person decide those, so they open.
  */
 /** Tools whose prompt is a question to the person, not a permission: this hook leaves them to open. */
 const QUESTION_TOOLS = new Set(['AskUserQuestion', 'ExitPlanMode']);
@@ -21,11 +21,15 @@ export function refusedTool(asks, payload) {
     return refuses ? tool : undefined;
 }
 /**
- * The answer for the prompt of a `tool` call: a line `reads` proves only reads and prints no secret runs, as the
- * read-only allow would have let it; a line with a rerun form (hooks/rerun-forms.ts) is refused quoting it; anything
- * else is refused.
+ * The answer for the prompt of a `tool` call: a line the caller found runs a sanctioned route (`route`,
+ * permissions/sanctioned.ts) runs first; a line `reads` proves only reads and prints no secret runs, as the read-only
+ * allow would have let it; a line with a rerun form (hooks/rerun-forms.ts) is refused quoting it; anything else is
+ * refused.
  */
-export function promptAnswerOf(tool, payload, reads) {
+export function promptAnswerOf(tool, payload, reads, route) {
+    if (route !== undefined) {
+        return { kind: 'route', route };
+    }
     if (reads(payload)) {
         return { kind: 'readonly' };
     }
@@ -45,9 +49,10 @@ export function rerunReason(tool, form) {
 export function promptRefuseOutput(reason) {
     return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'deny', message: reason } } });
 }
-/** The hook's stdout for an answer: an allow for a read-only line, which runs it with no prompt, else its refusal. */
+/** The hook's stdout for an answer: an allow for a route or a read-only line, which runs it with no prompt, else its refusal. */
 export function promptAnswerOutput(tool, answer) {
     switch (answer.kind) {
+        case 'route':
         case 'readonly':
             return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow' } } });
         case 'rerun':
@@ -59,18 +64,21 @@ export function promptAnswerOutput(tool, answer) {
 /**
  * One line of the team's prompt-answers log, for the daily triage that turns each refused line into a fixed guard or a
  * new rerun form. The command is redacted (a URL's user part and the scanner's secret shapes), then cut to its first
- * `LOGGED_COMMAND_CHARS` characters: redacting first leaves no secret whose start the cut would keep. The rest of the
+ * `LOGGED_COMMAND_CHARS` characters: redacting first leaves no secret whose start the cut would keep. A route's line
+ * keeps only its route, never its command: a commit message is free text (security ruling Q7.4). The rest of the
  * input is never kept.
  */
 export function promptAnswerRecord(facts, scanner) {
-    const command = commandOf(facts.payload);
+    const { answer } = facts;
+    const command = answer.kind === 'route' ? undefined : commandOf(facts.payload);
     return {
         v: 1,
         at: facts.at.toISOString(),
         session: facts.session ?? null,
         claudeSession: facts.claudeSession,
         tool: facts.tool,
-        answer: facts.answer.kind,
+        answer: answer.kind,
+        ...(answer.kind === 'route' ? { route: answer.route } : {}),
         command: command === undefined ? null : redact(command, [], scanner).slice(0, LOGGED_COMMAND_CHARS),
     };
 }

@@ -2,7 +2,7 @@ import { parseArgs, REST_MARKER, UsageError, } from "../cli/args.js";
 /** The flag that names the caller, or the owner a read filters on. */
 export const SESSION_FLAG = 'session';
 /** The line as the CLI will read it, with the CLI's own table; undefined when the CLI refuses it. */
-function readable(argv, table) {
+export function readable(argv, table) {
     try {
         return parseArgs(argv, table.flags, table.switches, table.renamed, table.rest);
     }

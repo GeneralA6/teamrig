@@ -3,7 +3,6 @@ import { launchOf } from "../../config/launch.js";
 import { LeadTree } from "../../config/lead-tree.js";
 import { Roster } from "../../config/roster.js";
 import { recordConfigDir } from "../../budget/config-dir.js";
-import { formatAddress } from "../../core/address.js";
 import { errorMessage, isRecord, stringField } from "../../core/guards.js";
 import { claudeConfigDir, claudeTempDir, KIT_NAME, resolveKitHome } from "../../core/home.js";
 import { sessionIdOf } from "../../inbox/inbox.js";
@@ -15,15 +14,7 @@ import { sendTargetOf } from "../../hooks/cold-send.js";
 import { failedSendLine, failedSendOf } from "../../hooks/failed-send.js";
 import { deliveredSendOf } from "../../hooks/route-reminder.js";
 import { postToolUseContext } from "../../hooks/post-tool-use.js";
-import { checkClient, clientRootOf } from "../../exec/client-integrity.js";
-import { ClientInstalls, ShellPathSearch } from "../../exec/client-launch.js";
-import { execGuardOutput } from "../../hooks/exec-guard.js";
-import { packageGuardOf, packageGuardOutput } from "../../hooks/package-guard.js";
 import { passRecordGuardOutput } from "../../hooks/pass-record-guard.js";
-import { hookAsksOf } from "../../hooks/permission.js";
-import { secretGuardOf, secretGuardOutput, secretPatternsOf } from "../../hooks/secret-guard.js";
-import { secretRulesOf } from "../../secret-guard/rules.js";
-import { commitsOf, protectedBranchesOf, pushGuardOutput, pushToProtectedOf, skipHooksOf } from "../../hooks/push-guard.js";
 import { JsonlHintLog } from "../../hooks/hint-log.js";
 import { promptOutput } from "../../hooks/prompt-output.js";
 import { liveTasksPointer, showsLiveTasks } from "../../hooks/live-tasks.js";
@@ -43,14 +34,12 @@ import { carryLines, carryStartOf, readCarry } from "../../refresh/carry.js";
 import { claudeProcessOf } from "../../refresh/restart.js";
 import { RefreshStore } from "../../refresh/store.js";
 import { readContextTokens } from "../../refresh/usage.js";
-import { approvedTaskOf } from "../../register/approval.js";
-import { JsonlEventLog } from "../../register/store.js";
 import { noPositionals } from "../args.js";
 import { hookLogOf } from "../hook-logs.js";
 import { openKit, renameDepsOf, rosterOf, rulesClockOf, teamZone } from "../kit.js";
 import { EXIT } from "../runtime.js";
 import { keptRulesAboveOf, readTeamRules } from "../team-rules.js";
-import { leadAboveOf, loadTree } from "../tree.js";
+import { loadTree } from "../tree.js";
 import { bindAfterClear, bindHintOnce, bindTab, inboxLinesFor, readTitle } from "./hook-bind.js";
 import { helperGateOutput, promptBudgetLine, stopBudgetLines } from "./hook-budget.js";
 import { startAutoSync } from "./gh-auto.js";
@@ -63,6 +52,7 @@ import { restartOrPark, restartTargetOf } from "./hook-restart.js";
 import { helperContextOf } from "./hook-helper-start.js";
 import { promptSecretBlock } from "./hook-prompt-secret.js";
 import { guardLoadOf, hookTeam } from "./hook-guard-load.js";
+import { execGuardOutputOf, packageGuardOutputOf, pushGuardOutputOf, secretGuardOutputOf } from "./hook-guard-outputs.js";
 import { checkHooklessTabs } from "./hook-hookless.js";
 import { dueFactsAt, inMeetingNow } from "./hook-refresh-mod.js";
 import { recordSessionStart } from "./hook-session-record.js";
@@ -78,62 +68,6 @@ import { verifyByLinesOf, verifyStartNoteOf } from "./verify-queue.js";
  * enabled for the user fires in every project, so outside a team's projects each hook prints
  * nothing at all.
  */
-/**
- * Under `pushToProtected: lead` or `gated`, what lets this tab's normal push to a protected branch through (T684): the
- * lead's own push, else a waiting task of its session's that a leader above it approved (T781), read lock-free from the
- * register. A child team's lead is no lead of the whole tree: its push needs the parent team's lead's approval (T1140).
- * It never throws: a register or tree it cannot read clears nothing, so the push is refused, saying why.
- */
-async function pushClearanceOf(runtime, kit, payload) {
-    if (kit === undefined || kit.load.status !== 'loaded') {
-        // Not reached: without a loaded config the guard asks (pushToProtectedOf), so it never reads the clearance.
-        return { kind: 'none', approver: 'the lead', why: 'the team config did not load' };
-    }
-    const { config } = kit.load;
-    const lead = config.roles.lead;
-    const tree = new LeadTree(config);
-    try {
-        const roster = await rosterOf(runtime, kit, config);
-        const session = await teamSessionOf(runtime, kit, roster, sessionIdOf(payload));
-        if (session === undefined) {
-            return { kind: 'none', approver: lead, why: 'this tab is not bound to a session of the team, so the guard cannot tell whose push it is' };
-        }
-        if (session === lead) {
-            return leadClearanceOf(runtime, kit, config);
-        }
-        const { state } = await new JsonlEventLog(runtime.files, kit.paths.events).read();
-        const approvers = tree.chainOf(session);
-        const approved = approvedTaskOf(state.tasks.values(), session, approvers);
-        return approved === undefined
-            ? { kind: 'none', approver: approvers[0] ?? lead, why: approvers.length > 1 ? `neither ${approvers.join(' nor ')} has approved a waiting task of ${session}'s` : `${lead} has approved no waiting task of ${session}'s` }
-            : { kind: 'approved', by: approved.by, task: approved.task.id };
-    }
-    catch (error) {
-        return { kind: 'none', approver: lead, why: `the guard could not read the register (${errorMessage(error)})` };
-    }
-}
-/**
- * The lead's own push: cleared on a root team; on a child team (T1140), only by a waiting task of the lead's that the
- * parent team's lead approved, as `<team>/<id>`. A parent with no config to read clears nothing: whoever approves is
- * unknown. Throws when the tree or register cannot be read; the caller refuses.
- */
-async function leadClearanceOf(runtime, kit, config) {
-    const lead = config.roles.lead;
-    const parent = config.team?.parent;
-    if (parent === undefined) {
-        return { kind: 'lead', lead };
-    }
-    const above = await leadAboveOf(runtime, kit.paths.team, config);
-    if (above === undefined) {
-        return { kind: 'none', approver: `the lead of team ${parent}`, why: `team ${parent}, the parent team, has no config to name its lead` };
-    }
-    const approver = formatAddress(above);
-    const { state } = await new JsonlEventLog(runtime.files, kit.paths.events).read();
-    const approved = approvedTaskOf(state.tasks.values(), lead, [approver]);
-    return approved === undefined
-        ? { kind: 'none', approver, why: `${approver}, the lead of the parent team, has approved no waiting task of ${lead}'s` }
-        : { kind: 'approved', by: approved.by, task: approved.task.id };
-}
 /** PreToolUse on Bash and PowerShell: asks before a push to a protected branch, refuses a force-push of one. */
 export async function pushGuard(args, runtime) {
     noPositionals(args);
@@ -142,19 +76,7 @@ export async function pushGuard(args, runtime) {
     if (guard === undefined) {
         return EXIT.ok;
     }
-    const { kit, load } = guard;
-    const output = await pushGuardOutput(payload, {
-        cwd: runtime.cwd,
-        home: runtime.userHome,
-        repo: runtime.git,
-        protectedBranches: protectedBranchesOf(load),
-        pushToProtected: pushToProtectedOf(load),
-        commits: commitsOf(load),
-        commitLog: runtime.commitLog,
-        skipHooks: skipHooksOf(load),
-        hookAsks: hookAsksOf(load),
-        clearance: () => pushClearanceOf(runtime, kit, payload),
-    });
+    const output = await pushGuardOutputOf(runtime, guard, payload);
     if (output !== '') {
         runtime.out.stdout(output);
     }
@@ -172,16 +94,7 @@ export async function packageGuard(args, runtime) {
     if (guard === undefined) {
         return EXIT.ok;
     }
-    const output = await packageGuardOutput(payload, {
-        ...packageGuardOf(guard.load),
-        cwd: runtime.cwd,
-        home: runtime.userHome,
-        files: runtime.files,
-        tree: runtime.worktrees.files,
-        registry: runtime.packageRegistry,
-        clock: runtime.clock,
-        hookAsks: hookAsksOf(guard.load),
-    });
+    const output = await packageGuardOutputOf(runtime, guard, payload);
     if (output !== '') {
         runtime.out.stdout(output);
     }
@@ -198,14 +111,7 @@ export async function secretGuard(args, runtime) {
     if (guard === undefined) {
         return EXIT.ok;
     }
-    const config = secretGuardOf(guard.load);
-    const output = secretGuardOutput(payload, {
-        cwd: runtime.cwd,
-        rules: secretRulesOf(config, runtime.userHome, runtime.platform, secretPatternsOf(guard.load)),
-        secretReads: config.secretReads,
-        writes: config.writes,
-        hookAsks: hookAsksOf(guard.load),
-    });
+    const output = secretGuardOutputOf(runtime, guard, payload);
     if (output !== '') {
         runtime.out.stdout(output);
     }
@@ -225,31 +131,6 @@ export async function passRecordGuard(args, runtime) {
     return EXIT.ok;
 }
 /**
- * Who this tab runs as, for the exec guard: its team session and the roster to read a `--session` word with. It never
- * throws: a config or roster it cannot read leaves the tab unbound, so every review from it is refused, saying why.
- */
-async function tabIdentityOf(runtime, kit, payload) {
-    if (kit === undefined || kit.load.status !== 'loaded') {
-        return { kind: 'unbound', why: 'the team config did not load' };
-    }
-    const { config } = kit.load;
-    try {
-        const roster = await rosterOf(runtime, kit, config);
-        const session = await teamSessionOf(runtime, kit, roster, sessionIdOf(payload));
-        if (session === undefined) {
-            return { kind: 'unbound', why: 'this tab is not bound to a session of the team' };
-        }
-        const idOf = (name) => {
-            const found = roster.lookup(name);
-            return found.ok ? found.id : undefined;
-        };
-        return { kind: 'bound', session, owner: config.register.ownerSource, idOf };
-    }
-    catch (error) {
-        return { kind: 'unbound', why: `the guard could not read the roster (${errorMessage(error)})` };
-    }
-}
-/**
  * PreToolUse on Bash and PowerShell: refuses a `teamrig exec` review (approve, refuse, escalate) run as anyone but the
  * tab's own session, any `teamrig exec` call through a client that is no install of this plugin, or one whose files
  * differ from its build, and every `teamrig owner` call, which acts as the owner.
@@ -261,15 +142,7 @@ export async function execGuard(args, runtime) {
     if (guard === undefined) {
         return EXIT.ok;
     }
-    const output = await execGuardOutput(payload, {
-        cwd: runtime.cwd,
-        home: runtime.userHome,
-        hookAsks: hookAsksOf(guard.load),
-        identity: () => tabIdentityOf(runtime, guard.kit, payload),
-        installs: new ClientInstalls(clientRootOf(runtime.self.script), runtime.platform),
-        search: new ShellPathSearch({ env: runtime.env, platform: runtime.platform, probe: runtime.probe }),
-        checkClient: (root) => checkClient(root, runtime.files),
-    });
+    const output = await execGuardOutputOf(runtime, guard, payload);
     if (output !== '') {
         runtime.out.stdout(output);
     }
