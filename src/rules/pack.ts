@@ -153,10 +153,10 @@ function queuedSteps(delivery: DeliveryConfig, command: string, cutoff: string |
   const deploy = repos.some((repo) => repo.deploy !== undefined) ? ` and run it with \`${command} deploy\`` : '';
   return (
     ` Run queued steps (builds, test runs, data scripts) in the background through \`${command} queue\`, a test run inside \`${command} test\`` +
-    (cutoff === undefined ? '' : `, none starting ${cutoff} [delivery.schedule.queueCutoffUtc]`) +
+    (cutoff === undefined ? '' : `, none starting ${cutoff}`) +
     // Never `queue -- git commit`: a repository's hooks take the lock themselves, and Claude Code's worktree guard
     // refuses that form in a worktree session (the guide's `teamrig queue` section).
-    `; a commit stays a plain \`git commit\`. Merge a tested branch with \`${command} merge\`${deploy}, also in the background [delivery.repos].`
+    `; a commit stays a plain \`git commit\`. Merge a tested branch with \`${command} merge\`${deploy}, also in the background [delivery].`
   );
 }
 
@@ -256,7 +256,7 @@ export function coreRuleTexts(config: KitConfig, command: string, platform: Node
       ' Deleting derived data needs a verified regenerate tool and a parity run explaining each differing row; archive history and audit data before any TTL.' +
       ' Never print secret values; bind local services to 127.0.0.1, never 0.0.0.0.',
     contracts:
-      `Tell the other side before changing a contract it reads (API, table or file). The same external failure for ${config.alerts.persistentFailureHours} h must page a human [alerts.persistentFailureHours].`,
+      `Tell the other side before changing a contract it reads (API, table or file). The same external failure for ${config.alerts.persistentFailureHours} h must page a human [alerts].`,
     skills:
       // The skill limits (description words, Owner and Last verified lines, per-area count, forbidden keys) live in
       // the guide alone: lintSkills (skills/lint.ts) flags each breach in `check`, so the pack names only the pointer.
@@ -264,8 +264,8 @@ export function coreRuleTexts(config: KitConfig, command: string, platform: Node
       ` within the guide's skill limits. Memory holds facts, skills how-tos, CLAUDE.md every-turn rules.`,
     commits:
       'One logical change per commit (a fix with its tests, a refactor apart from what it enables, a mechanical change alone), committed as each step passes.' +
-      ` Over ${config.commits.maxLines} changed non-test lines or ${config.commits.maxFiles} non-test files [commits.maxLines, commits.maxFiles], a commit needs a \`${config.commits.largeCommitTrailer}: <reason>\` line [commits.largeCommitTrailer]` +
-      { off: '.', warn: '; a push to a protected branch lists those without one [commits.gate].', refuse: '; a push to a protected branch that sends one is refused [commits.gate].' }[config.commits.gate],
+      ` Over ${config.commits.maxLines} changed non-test lines or ${config.commits.maxFiles} non-test files, a commit needs a \`${config.commits.largeCommitTrailer}: <reason>\` line` +
+      { off: ' [commits].', warn: '; a push to a protected branch lists those without one [commits].', refuse: '; a push to a protected branch that sends one is refused [commits].' }[config.commits.gate],
     push:
       `${pushRule(config.pushGuard, config.prompts.hookAsks)} ${refusedRouteRule(config.prompts.hookAsks)}`,
     worktrees:
