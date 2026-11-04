@@ -175,6 +175,17 @@ describe('the read entry', () => {
     assert.equal(read.dueTime({ due: null }, read.TimeZone.UTC), undefined);
   });
 
+  it("finds the week plan in force from a reader's own rows, a week tag starting at midnight on the team's clock", () => {
+    const rows = [{ week: '2030-01-02' }, { week: null }, { week: '2030-01-09' }, {}];
+    // 22:30 UTC on 01-08 is already 01-09 in a zone two hours ahead, not yet in UTC.
+    const now = new Date(Date.UTC(2030, 0, 8, 22, 30));
+    const ahead = read.TimeZone.of('Africa/Cairo');
+    assert.ok(ahead !== undefined);
+    assert.equal(read.currentWeek(rows, now, ahead), '2030-01-09');
+    assert.equal(read.currentWeek(rows, now, read.TimeZone.UTC), '2030-01-02');
+    assert.equal(read.currentWeek([{ week: null }], now, read.TimeZone.UTC), null);
+  });
+
   it('checks a session name with the rule teamrig names inbox files by', () => {
     assert.deepEqual(['alpha', 'a-2', 'Alpha', '2a', '../x', ''].map((name) => read.SESSION_NAME.test(name)), [true, true, false, false, false, false]);
   });
