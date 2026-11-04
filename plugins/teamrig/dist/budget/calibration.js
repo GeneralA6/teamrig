@@ -7,9 +7,9 @@ import { MS_PER_MINUTE, MS_PER_WEEK } from "../core/time.js";
  * (`accountHolderOf`, budget/account.ts), gets one line for each team keeping its week there: the use, the period, the
  * W that team's usage stores metered since its start, and the team. Each team sums the W from its own stores, so the
  * teams' W differ, and each reads only its own lines (`readingsOfTeam`, T1669). A fit of W per percent through 0 over
- * a team's recent lines stands in for the configured guess once they span `FIT_SPREAD_PTS` points. Each line also
- * keeps the use the fit before it forecast for its W, so the forecast's error shows week by week. Instants are stored
- * as ISO strings, like the burst log.
+ * a team's newest period that spans `FIT_SPREAD_PTS` points (`fitRate`) stands in for the configured guess. Each line
+ * also keeps the use the fit before it forecast for its W, so the forecast's error shows week by week. Instants are
+ * stored as ISO strings, like the burst log.
  */
 /**
  * The format of the meter log's records; a newer one is skipped on read and refuses a write. The optional `team`
@@ -60,7 +60,7 @@ function rms(misses) {
  * W per percent through 0 over `readings` (least squares of W on the use), with its misses in points; undefined
  * while they span fewer than `FIT_SPREAD_PTS` points.
  */
-export function fitRate(readings) {
+function fitOver(readings) {
     const pcts = readings.map((reading) => reading.usedPct);
     if (pcts.length === 0 || Math.max(...pcts) - Math.min(...pcts) < FIT_SPREAD_PTS) {
         return undefined;
@@ -72,6 +72,17 @@ export function fitRate(readings) {
         return undefined;
     }
     return { wPerPct, errorPts: rms(readings.map((reading) => reading.w / wPerPct - reading.usedPct)), readings: readings.length };
+}
+/**
+ * The week's W per percent from `readings`: the fit of the newest period that spans `FIT_SPREAD_PTS` points alone,
+ * else of them all, for a team too quiet for any period to. A period stands alone because the account's limit can move
+ * at a reset, and a fit across periods averages the move away for as long as the old lines count: a week point fell
+ * from 9.1M to 3.9M W at one reset while the fit stayed at 9.1M, so every session read 2.3x under its real use (T1985).
+ */
+export function fitRate(readings) {
+    const newestFirst = [...new Set(readings.map((reading) => reading.start))].sort((a, b) => b - a);
+    const fits = newestFirst.map((start) => fitOver(readings.filter((reading) => reading.start === start)));
+    return fits.find((fit) => fit !== undefined) ?? fitOver(readings);
 }
 /** The forecasts' misses in each period that had any, oldest first. */
 export function periodForecasts(readings) {
