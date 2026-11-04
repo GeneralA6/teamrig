@@ -3771,7 +3771,8 @@ one `origin/HEAD` names), so every session merges its work one way: checked, pus
 Its old name, integrate, is refused with this one (exit 64).
 
 REFUSED (exit 2) before any change for a folder outside git, a detached HEAD, uncommitted changes, the default branch
-itself (or `main`, `master`) and a branch with nothing that is not on origin already. Also from
+itself (or `main`, `master`), a branch with nothing that is not on origin already and, under `decisionRecordGate`, a
+branch whose task has a design note and no decision record (see Decision records below). Also from
 `delivery.schedule.queueCutoffUtc` to midnight UTC, and in the `delivery.schedule.resetBlackoutHours` before
 the weekly token reset: the reset the status line last reported, else the one `budget.reset` sets (unset: no
 blackout).
@@ -3799,6 +3800,10 @@ The repository is the entry of `delivery.repos` whose `mainCheckout` is this che
   the base commit in `TEAMRIG_REVIEW_BASE`, a queued step in the ledger, its lines redacted. Exit 0 clears the
   change, 3 holds it for the entry's reviewer with the findings it prints, and anything else holds it for that
   reviewer too, since a broken check is no pass. Unset: a `check` hit is held like an `always` one.
+- `docsFolder`: the project's docs folder, default `docs`, whose `decisions/` folder `decisionRecordGate` reads. A
+  relative folder is in the repository; an absolute one may be outside it, such as a separate docs repository.
+- `decisionRecordGate`: hold a branch whose task has a design note until the branch adds a decision record (see
+  Decision records below). Off by default: each repository opts in.
 - `worktreeFolder`: the folder `teamrig worktree add` makes each new worktree in, default `.claude/worktrees`; a
   relative folder is in the main checkout.
 - `worktreeSetup`: what `teamrig worktree add` runs in each new worktree, such as
@@ -3831,8 +3836,8 @@ here, moves the local default branch to origin's and prints the `teamrig worktre
 Like `teamrig queue`, it watches the processes that started it. Once its launching shell ends it stops waiting
 (`STOPPED before the host lock was free: nothing ran`), or kills the push it runs, records exit 129, frees the lock
 and pushes no more (FAILED).
-Exit 0 merged, 1 failed (FAILED and the reason; the branch is kept), 2 when the dependency check, the review gate
-or a self-merge gate refused it, 75 when the merge command waits.
+Exit 0 merged, 1 failed (FAILED and the reason; the branch is kept), 2 when the dependency check, the decision record
+gate, the review gate or a self-merge gate refused it, 75 when the merge command waits.
 
 Review holds (`reviewGate`): after the rebase, `teamrig merge` lists the paths the change touches (a rename at both its
 paths, a deletion at its path) and matches them against the review entries: teamrig's own, which every gated repo
@@ -3880,6 +3885,53 @@ The leader answers with `teamrig approve <task>`; `teamrig merge` again merges t
 gate hold binds the base, the head and the tree, and an approval counts only for the gates its hold named. Each
 change merged under `gated` is one line in `merges.jsonl` in `delivery.dir`: route `self`, or `approved` with the
 gates it missed and who approved them. A merge the `merge` command finishes on a later run writes no line yet.
+
+Decision records (`decisionRecordGate`): a design settled in a task's notes sits in its task folder, outside the
+repository, so a reader of the code never learns why it was built that way unless the design lands there too. Before
+the lock, `teamrig merge` looks in the folder of the branch's task (`t<n>-…`) for a design note: a `.md` file named for
+a design, such as `design.md`, `design-v2.md` or `pr2-design.md`. A branch named for no task, or a task with no design
+note, goes through. Otherwise the branch must add or change a record in `<docsFolder>/decisions/`; the folder's
+`README.md` is no record, and neither is a deleted one. A docs folder outside the repository is changed by no branch,
+so there a record whose text names the task (`T12`, not `T123`) clears it. A miss is REFUSED with what to write, and
+the merge that finishes a waiting `merge` command skips the gate, which passed when that merge started:
+
+```text
+REFUSED T12 has a design note (design.md) and t12-cache adds or changes no decision record in docs/decisions/: write
+the decided design there as a record (docs/decisions/YYYY-MM-DD-<slug>.md, in the format the teamrig merge guide
+gives) and commit it on the branch; delivery.repos.api.decisionRecordGate holds a task with a design note until its
+record lands
+```
+
+A record holds one decision, in `YYYY-MM-DD-<slug>.md`: the date it was decided, then a few lower-case words joined by
+hyphens. It opens with a title that states the decision, then three lines, then five sections in this order:
+
+```markdown
+# The cache keeps a day of quotes, never a week
+
+Date: 2030-01-08
+Status: accepted
+Trace: T12
+
+## Context
+## Decision
+## Alternatives
+## Consequences
+## Code paths
+```
+
+- `Status`: `accepted`, or `superseded by [<its title>](<its file>)` once a later record replaces it; an accepted record
+  is never rewritten to say something else, a new decision gets a record of its own.
+- `Trace` (optional): the task ids the decision came from, for whoever has the register; the record still says the why
+  in its own words.
+- Context: the problem and what made it matter, each number checked at its source. Decision: what was chosen, with its
+  limits and defaults. Alternatives: each option weighed and why it lost. Consequences: what it costs, what to watch
+  and what would make it worth deciding again. Code paths: the files that carry it, each a repo-relative path with what
+  it does for it.
+- Never in a record: a path outside the repository (a task or notes folder), private data, or the drafting (open
+  questions, rejected drafts, who said what), which stays in the design note.
+
+The gate checks only that a record lands, not its format: a project that wants its records held to this one adds its
+own check.
 
 Flags:
 

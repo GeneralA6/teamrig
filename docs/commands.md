@@ -397,8 +397,10 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       session's steps from a bound tab. Exit 0 each withdrawn or none waits, 1 any RUNNING, LEFT, KEPT
   merge [--session <id|name>] [--keep-remote] [--no-delete-local]   merges the branch checked out
       here into origin's default branch: REFUSED for a detached HEAD, the default branch, uncommitted
-      changes, nothing new or a dependency change delivery.repos.<name>.dependencyGate holds and
-      no dependencyCheck may clear, from delivery.schedule.queueCutoffUtc to midnight UTC and in the
+      changes, nothing new, a dependency change delivery.repos.<name>.dependencyGate holds and
+      no dependencyCheck may clear or, where decisionRecordGate is on, a branch whose t<n> task has a
+      design note and that adds no decision record to docsFolder/decisions/, from
+      delivery.schedule.queueCutoffUtc to midnight UTC and in the
       resetBlackoutHours before the weekly token reset; waits up to delivery.wait.maxMinutes for
       deploy freezes on its deploysOnPush targets and for the host lock (longer while its line moves), rebases, runs the
       dependencyCheck on a dependency change (REFUSED unless it exits 0), where reviewGate holds a
