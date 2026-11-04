@@ -256,7 +256,11 @@ export function coreRuleTexts(config: KitConfig, command: string, platform: Node
       ' Deleting derived data needs a verified regenerate tool and a parity run explaining each differing row; archive history and audit data before any TTL.' +
       ' Never print secret values; bind local services to 127.0.0.1, never 0.0.0.0.',
     contracts:
-      `Tell the other side before changing a contract it reads (API, table or file). The same external failure for ${config.alerts.persistentFailureHours} h must page a human [alerts].`,
+      'Tell the other side before changing a contract it reads (API, table or file).' +
+      // T1189: a route removal named the pages it would break, had no answer and shipped; its proof saw the routes
+      // answer 404, which any removal does, and never opened a page that read them.
+      " Breaking a caller you named waits for its answer or its leader's: silence is no consent, and the proof loads that caller." +
+      ` The same external failure for ${config.alerts.persistentFailureHours} h must page a human [alerts].`,
     skills:
       // The skill limits (description words, Owner and Last verified lines, per-area count, forbidden keys) live in
       // the guide alone: lintSkills (skills/lint.ts) flags each breach in `check`, so the pack names only the pointer.
