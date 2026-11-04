@@ -241,7 +241,7 @@
     "dist/core/session-asks.js": "9791386035bf4d4d0a7dbb195701959dca68c2efbda1c54374d802b54bf242db",
     "dist/core/team.js": "e8930db0a595fc8a9ab01fc56e7843dcc49f766d4c9ac82b45e27a0ec9c4e5ba",
     "dist/core/time.js": "710d870deaacc4af734ba0c6bd9524d359ee254ce09f7db1354d942a06c3129c",
-    "dist/core/version.js": "529458bca83a9555e08c58ddabc6b22cf6a3a6990128989cfe224a113313280f",
+    "dist/core/version.js": "4764b6d193760b51c51e69abfebaa26fe441d22d87246e93ce4288afd3f7359f",
     "dist/core/webhook.js": "080e09a3491f3b74134ce10ec5f21ac2b049989d92e8f59264ac0d340ccc54ad",
     "dist/core/work-block.js": "423c998dbedaf76e94f04002e13454abf6980e032cf9a21cd12c6a6a7af4e6a7",
     "dist/core/zone.js": "083678f2f96d0004e522d04351f67f6c5420b2b6bff81f7930aadae8c841679e",
