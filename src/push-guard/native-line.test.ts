@@ -189,10 +189,11 @@ describe('splitLine: the C runtimes on a real line', () => {
     assert.deepEqual(split('a""b c', 'msvcrt'), ['ab', 'c']);
   });
 
-  it('keeps the parser marker a word between words, and ends the word before it', () => {
+  it('gives the parser marker no word between words, and ends the word before it', () => {
     const line: readonly LineUnit[] = [...' a', PARSER_MARKER, ...'  b'];
-    assert.deepEqual(splitLine(line, 'ucrt').map(wordOfUnits), [text('a'), text('--%'), text('b')]);
-    assert.deepEqual(splitLine([PARSER_MARKER, ...'  '], 'ucrt').map(wordOfUnits), [text('--%')]);
+    assert.deepEqual(splitLine(line, 'ucrt').map(wordOfUnits), [text('a'), text('b')]);
+    assert.deepEqual(splitLine([...'a', PARSER_MARKER, ...'b'], 'ucrt').map(wordOfUnits), [text('a'), text('b')]);
+    assert.deepEqual(splitLine([PARSER_MARKER, ...'  '], 'ucrt').map(wordOfUnits), []);
   });
 
   it('drops the parser marker inside quotes, which go on past it', () => {

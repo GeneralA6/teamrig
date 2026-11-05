@@ -362,7 +362,7 @@ describe('parseShell: PowerShell', () => {
   });
 
   it('passes the rest of the line verbatim after --%', () => {
-    assert.deepEqual(words('git --% push "origin" %B% main | Out-Null', 'powershell'), [['git', '--%', 'push', 'origin', '~%B%', 'main'], ['Out-Null']]);
+    assert.deepEqual(words('git --% push "origin" %B% main | Out-Null', 'powershell'), [['git', 'push', 'origin', '~%B%', 'main'], ['Out-Null']]);
   });
 
   it('reads a here-string as one word: literal after @\', expanded after @"', () => {
@@ -457,7 +457,7 @@ describe('parseShell: PowerShell', () => {
     assert.deepEqual(plainWords('x -y: -a::b c'), [['x', '-y:', '-a:', ':b', 'c']]);
     assert.deepEqual(plainWords('x y,-a::b c'), [['x', 'y', '-a:', ':b', 'c']]);
     assert.deepEqual(plainWords('x -y:-a:-b:c d'), [['x', '-y:-a:', '-b:c', 'd']]);
-    assert.deepEqual(plainWords('x -y: -a:--% b;c'), [['x', '-y:', '-a:', '--%', 'b;c']]);
+    assert.deepEqual(plainWords('x -y: -a:--% b;c'), [['x', '-y:', '-a:', 'b;c']]);
   });
 
   it('keeps a -name: token whole elsewhere', () => {

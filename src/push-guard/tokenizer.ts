@@ -786,7 +786,7 @@ class Scanner {
     let markers: number[] = [];
     /** 5.1's line: true right behind a whole value of `--%`, where a `-name` token turns on the parser's marker after all. */
     let tokenNext = false;
-    /** True while the last of `words` is the parser's `--%`: a NUL's cut can drop it, and a marker pair leaves none. */
+    /** True when the parser's `--%` opened the text: a NUL's cut can drop it, and a marker pair leaves none. */
     let markerWord = false;
     let redirections: Redirection[] = [];
     let depth = 0;
@@ -827,7 +827,7 @@ class Scanner {
     };
     /** Keeps what the parser's `--%` puts on 5.1's line; `at` is where the words of its text open. */
     const keepVerbatim = (at: number, units: readonly LineUnit[]): void => {
-      verbatimText = markerWord ? { at: at - 1, line: [PARSER_MARKER, ...verbatimLine(units)] } : { at, line: verbatimLine(units) };
+      verbatimText = { at, line: markerWord ? [PARSER_MARKER, ...verbatimLine(units)] : verbatimLine(units) };
       verbatim = false;
     };
     /** `quoted` says the word is one quoted value, whose text is only text to the parser. */
@@ -856,7 +856,13 @@ class Scanner {
         }
         // Set on a word the cut dropped too: the shell still reads the rest as written.
         verbatim = marks && !parserSkips;
-        markerWord = verbatim && words.length > at;
+        // Measured: a head stays, as `& --% a b` runs a program named `--%`; bare, it is a parse error and nothing runs.
+        // No arguments place is a keyword's word, and eight of those run as plain commands at a head: `clean x --% a b` hands `x a b`.
+        markerWord = verbatim && words.length > at && at >= (argumentsAt(words) ?? at);
+        if (markerWord) {
+          // Measured: the program never gets it, so an option ahead of it takes the next word: `git -C --% b push` runs in `b`.
+          words.pop();
+        }
         // Measured: a `-name:` taken as a value takes none itself, so `x -y: -z: --% a;b` runs no `b`.
         valueNext = !valueNext && this.index === valueAt;
         element = false;
