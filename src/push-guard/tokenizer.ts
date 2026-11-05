@@ -187,27 +187,34 @@ interface Reading {
   /** True where a backtick's `u{hex}` is the character it names, as on pwsh 7; 5.1 keeps the letter. */
   readonly codePoints: boolean;
   readonly nul: NulEffect;
+  /**
+   * True where a `-name:` token's first unit must be ASCII, as on 5.1: its Unicode lacks letters Node's `\p{L}` has, and
+   * such a unit opens no parameter there, so the quotes after it join one word. No list of those letters: `\p{L}` grows
+   * with Node's ICU, so a list would drift and the miss come back.
+   */
+  readonly asciiParameters: boolean;
   /** cmd's caret before a newline: by `/c` the line ends there, on stdin the next line joins it. */
   readonly caretLine: 'joins' | 'ends';
 }
 
 /**
- * Every way PowerShell may take a line holding a NUL or a `` `u ``. A native program's command line on Windows is one C
- * string, so a NUL ends the word and the words after it (`line`, measured on 5.1, reasoned for pwsh). On other hosts each
- * argument is a C string of its own (`word`, reasoned, no pwsh here). A cmdlet keeps the NUL in its string (`kept`), and
- * `Invoke-Expression` then reads the text after it, so a cut there would hide a command.
+ * Every way PowerShell may take a line holding a NUL, a `` `u `` or a dash before a unit past ASCII. A native program's
+ * command line on Windows is one C string, so a NUL ends the word and the words after it (`line`, measured on 5.1,
+ * reasoned for pwsh). On other hosts each argument is a C string of its own (`word`, reasoned, no pwsh here). A cmdlet
+ * keeps the NUL in its string (`kept`), and `Invoke-Expression` then reads the text after it, so a cut there would hide
+ * a command. The dash goes by the version, as `` `u `` does; see {@link Reading.asciiParameters}.
  */
-const POWERSHELL_READINGS: readonly Pick<Reading, 'codePoints' | 'nul'>[] = [
-  { codePoints: false, nul: 'line' },
-  { codePoints: false, nul: 'kept' },
-  { codePoints: true, nul: 'line' },
-  { codePoints: true, nul: 'word' },
-  { codePoints: true, nul: 'kept' },
+const POWERSHELL_READINGS: readonly Pick<Reading, 'codePoints' | 'nul' | 'asciiParameters'>[] = [
+  { codePoints: false, nul: 'line', asciiParameters: true },
+  { codePoints: false, nul: 'kept', asciiParameters: true },
+  { codePoints: true, nul: 'line', asciiParameters: false },
+  { codePoints: true, nul: 'word', asciiParameters: false },
+  { codePoints: true, nul: 'kept', asciiParameters: false },
 ];
 
 /** The reading of a line with nothing to choose between. */
 function plainReading(source: string): Reading {
-  return { source, codePoints: false, nul: 'kept', caretLine: 'joins' };
+  return { source, codePoints: false, nul: 'kept', asciiParameters: false, caretLine: 'joins' };
 }
 
 /**
@@ -224,7 +231,7 @@ function readingsOf(source: string, dialect: ShellDialect): readonly Reading[] {
     case 'bash':
       return source.includes('\r') ? [dropped, plain] : [plain];
     case 'powershell':
-      return /\0|`[0u]/.test(source) ? POWERSHELL_READINGS.map((reading) => ({ ...plain, ...reading })) : [plain];
+      return /\0|`[0u]|[-\u2013\u2014\u2015][^\0-\x7f]/.test(source) ? POWERSHELL_READINGS.map((reading) => ({ ...plain, ...reading })) : [plain];
     case 'cmd':
       return dropped.source.includes('^\n') ? [dropped, { ...dropped, caretLine: 'ends' }] : [dropped];
   }
@@ -705,7 +712,7 @@ class Scanner {
         endCommand();
         return;
       }
-      const parameter = powershell && !word.isStarted ? this.matchEnd(PARAMETER) : undefined;
+      const parameter = powershell && !word.isStarted ? this.parameterEnd() : undefined;
       if (parameter !== undefined) {
         word.add(this.source.slice(this.index, parameter), 'unquoted');
         this.index = parameter;
@@ -1461,6 +1468,12 @@ class Scanner {
   private matchEnd(pattern: RegExp): number | undefined {
     pattern.lastIndex = this.index;
     return pattern.test(this.source) ? pattern.lastIndex : undefined;
+  }
+
+  /** Where a `-name:` token ends at the cursor, if this reading opens one there; see {@link Reading.asciiParameters}. */
+  private parameterEnd(): number | undefined {
+    const end = this.matchEnd(PARAMETER);
+    return end !== undefined && this.reading.asciiParameters && /[^\0-\x7f]/.test(this.at(1)) ? undefined : end;
   }
 
   /** PowerShell: true at a `(`, `{` or `@{`. */

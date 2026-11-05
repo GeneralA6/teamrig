@@ -5,7 +5,7 @@ import { programsOf } from '../package-guard/programs.ts';
 import { bashLineReads } from '../readonly-shell/bash.ts';
 import { powershellLineReads } from '../readonly-shell/powershell.ts';
 import { prefixWords, type ReadonlyRules } from '../readonly-shell/rules.ts';
-import { BLANK_AND_LINE_END_ROWS, ESCAPE_ROWS, EXPRESSION_ROWS, NUL_ROWS, POWERSHELL_BLANKS, POWERSHELL_DOUBLE_QUOTES, POWERSHELL_ESCAPES, POWERSHELL_LINE_ENDS, POWERSHELL_SINGLE_QUOTES, QUOTE_ROWS, VALUE_ROWS, type ShellWordsRow } from '../testing/shell-words.ts';
+import { BLANK_AND_LINE_END_ROWS, ESCAPE_ROWS, EXPRESSION_ROWS, NUL_ROWS, PARAMETER_ROWS, POWERSHELL_BLANKS, POWERSHELL_DOUBLE_QUOTES, POWERSHELL_ESCAPES, POWERSHELL_LINE_ENDS, POWERSHELL_SINGLE_QUOTES, QUOTE_ROWS, VALUE_ROWS, type ShellWordsRow } from '../testing/shell-words.ts';
 import { hookSkips } from './hook-skips.ts';
 import { findGitInvocations } from './invocations.ts';
 import { evaluatePushes, type PushDecision, type RepoState } from './push.ts';
@@ -94,6 +94,10 @@ describe('the guards read the words the shell runs', () => {
 
   it('holds on every NUL, code point and caret', () => {
     NUL_ROWS.forEach(assertNoSofter);
+  });
+
+  it('holds on a parameter whose first letter 5.1 lacks', () => {
+    PARAMETER_ROWS.forEach(assertNoSofter);
   });
 });
 
@@ -513,11 +517,17 @@ describe('parseShell: a NUL in PowerShell', () => {
   });
 
   it('stays complete when the readings agree, and is not when they differ', () => {
-    for (const line of ['c ``0', 'c # a`0 b', "c 'a`0b'"]) {
+    for (const line of ['c ``0', 'c # a`0 b', "c 'a`0b'", 'c -\u00e9:x']) {
       const parsed = parseShell(line, 'powershell');
       assert.deepEqual([parsed.complete, parsed.readings], [true, undefined], line);
     }
     assert.equal(parseShell('c a`0b', 'powershell').complete, false);
+  });
+
+  it('forks on a parameter 5.1 may not take: one word there, the value and the rest on pwsh', () => {
+    const line = 'c -\ua7c2:"x"--d';
+    assert.deepEqual(wordsOf(line, 'powershell'), [['c', '-\ua7c2:x--d'], ['c', '-\ua7c2:x', '--d']]);
+    assert.equal(parseShell(line, 'powershell').complete, false);
   });
 });
 
