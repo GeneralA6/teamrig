@@ -257,6 +257,11 @@ describe('findGitInvocations: scripts and shells', () => {
     expectDoubt('bash -c "$CMD"', 'g:the program it runs is only known when it runs');
     expectDoubt('pwsh -c "$CMD"', 'g:it hands PowerShell a command line built from bash variables');
     expectDoubt('echo "unclosed', 'g:part of it cannot be read, as a quote, bracket or substitution never closes');
+    expectDoubt('echo "a`0b', 'g:part of it cannot be read, as a quote, bracket or substitution never closes', 'powershell');
+    expectDoubt('echo a`0b', "g:its words differ by the shell's version, its host or how it is started", 'powershell');
+    expectDoubt('echo "a`u{2d}b"', "g:its words differ by the shell's version, its host or how it is started", 'powershell');
+    expectDoubt('echo a\rb', "g:its words differ by the shell's version, its host or how it is started");
+    expectDoubt('echo a^\nb', "g:its words differ by the shell's version, its host or how it is started", 'cmd');
     expectDoubt(`${'eval '.repeat(9)}git push`, '!:scripts nest too deep to read');
   });
 

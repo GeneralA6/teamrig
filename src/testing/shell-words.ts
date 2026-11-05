@@ -52,6 +52,29 @@ export const ESCAPE_ROWS: readonly ShellWordsRow[] = [
   { dialect: 'powershell', typed: 'powershell -Command "git status`ngit push origin main"', real: 'git status; git push origin main' },
 ];
 
+/** A NUL cuts a native call's line, a pwsh code point writes its character, and cmd's caret ends or joins a line. */
+export const NUL_ROWS: readonly ShellWordsRow[] = [
+  { dialect: 'powershell', typed: 'git commit -m x --no-verify`0 --verify', real: 'git commit -m x --no-verify' },
+  { dialect: 'powershell', typed: 'git commit -m x "--no-verify`0" --verify', real: 'git commit -m x --no-verify' },
+  { dialect: 'powershell', typed: 'git commit -m x --no-verify\0 --verify', real: 'git commit -m x --no-verify' },
+  { dialect: 'powershell', typed: 'git commit -m x --no-verify`u{0} --verify', real: 'git commit -m x --no-verify' },
+  { dialect: 'powershell', typed: 'git push origin main`0 --dry-run', real: 'git push origin main' },
+  { dialect: 'powershell', typed: 'git push origin main --force`0 --dry-run', real: 'git push origin main --force' },
+  { dialect: 'powershell', typed: 'npm install left-pad`0 --dry-run', real: 'npm install left-pad' },
+  { dialect: 'powershell', typed: 'Get-Content a`0; Remove-Item b', real: 'Get-Content a; Remove-Item b' },
+  { dialect: 'powershell', typed: 'Get-Content a\0; Remove-Item b', real: 'Get-Content a; Remove-Item b' },
+  // Measured: a NUL does not end a comment.
+  { dialect: 'powershell', typed: 'Get-Content a # note\0Remove-Item b', real: 'Get-Content a' },
+  // A cmdlet keeps the NUL, so `Invoke-Expression` reads the text after it.
+  { dialect: 'powershell', typed: 'Invoke-Expression "a`0; git push origin main"', real: 'a; git push origin main' },
+  { dialect: 'powershell', typed: 'git commit -m x --no`u{2d}verify', real: 'git commit -m x --no-verify' },
+  { dialect: 'powershell', typed: 'Invoke-Expression "git`u{20}push origin main"', real: 'git push origin main' },
+  { dialect: 'powershell', typed: 'Invoke-Expression "git status`u{a}git push origin main"', real: 'git status; git push origin main' },
+  { dialect: 'cmd', typed: 'git commit -m x --no-verify^\n --verify', real: 'git commit -m x --no-verify' },
+  { dialect: 'cmd', typed: 'git commit -m x --no-verify^', real: 'git commit -m x --no-verify' },
+  { dialect: 'cmd', typed: 'git push origin main --force^', real: 'git push origin main --force' },
+];
+
 export const QUOTE_ROWS: readonly ShellWordsRow[] = [
   { dialect: 'powershell', typed: 'git commit -m x \u201c--no-verify\u201d', real: 'git commit -m x --no-verify' },
   { dialect: 'powershell', typed: 'git commit -m x \u2018--no-verify\u2019', real: 'git commit -m x --no-verify' },

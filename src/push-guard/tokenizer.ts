@@ -99,7 +99,7 @@ interface OpenHeredoc {
 export interface ShellParse {
   /** Every simple command in order; a substitution's commands come before the command that holds them. */
   readonly commands: readonly ShellCommand[];
-  /** False when a quote, a bracket or a substitution never closes, or text is skipped: the line is not read with confidence. */
+  /** False when a quote, a bracket or a substitution never closes, text is skipped or the readings differ: the line is not read with confidence. */
   readonly complete: boolean;
   /**
    * True when the reader left text unread that may hold commands: nesting ran too deep, or a single-quoted
@@ -119,9 +119,10 @@ export interface ShellParse {
    */
   readonly bindingsUnclear: boolean;
   /**
-   * Present when the shell may read the line more than one way and the ways differ: each on its own, in the order
-   * {@link commands} holds them. What follows one line's state from command to command reads these, as a value
-   * set in one reading says nothing about the next.
+   * Present when the shell may read the line more than one way and the ways differ: a CR in bash, a NUL or a
+   * `` `u{hex} `` in PowerShell, a caret before a newline in cmd. Each on its own, in the order {@link commands} holds
+   * them. What follows one line's state from command to command reads these, as a value set in one reading says nothing
+   * about the next.
    */
   readonly readings?: readonly ShellParse[];
 }
@@ -160,6 +161,10 @@ const POWERSHELL_ESCAPES: ReadonlyMap<string, string> = new Map([
   ['v', '\v'],
 ]);
 
+/** pwsh's escape for a character by its number, from its backtick; see {@link Reading.codePoints}. */
+const CODE_POINT = /`u\{[0-9a-fA-F]{1,6}\}/y;
+const MAX_CODE_POINT = 0x10ffff;
+
 /** A word that is all a redirection's file-descriptor number: `2` of `2>`, or PowerShell's `*` of `*>`. */
 const DESCRIPTOR = /^(?:\d+|\*)$/;
 
@@ -172,26 +177,56 @@ const VARIABLE = /\$(?![\u{10000}-\u{10ffff}])[\p{L}\p{Nd}_?$^\u1885\u1886](?:(?
 const MEMBER_NAME = /(?:(?![\u{10000}-\u{10ffff}])[\p{L}\p{Nd}_\u1885\u1886])+/uy;
 const PARAMETER = /[-\u2013\u2014\u2015](?![\u{10000}-\u{10ffff}])[\p{L}_?\u1885\u1886][^.[;|:\0\t\v\f \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\n\r'\u2018\u2019\u201a\u201b"\u201c\u201d\u201e&(),{}]*:(?!:)/uy;
 
+/** What a NUL does to the words of a PowerShell command; see {@link POWERSHELL_READINGS}. */
+type NulEffect = 'line' | 'word' | 'kept';
+
 /** One way a shell may read a line, where the guard cannot know which it is; see {@link readingsOf}. */
 interface Reading {
   /** The text the scanner reads. */
   readonly source: string;
+  /** True where a backtick's `u{hex}` is the character it names, as on pwsh 7; 5.1 keeps the letter. */
+  readonly codePoints: boolean;
+  readonly nul: NulEffect;
+  /** cmd's caret before a newline: by `/c` the line ends there, on stdin the next line joins it. */
+  readonly caretLine: 'joins' | 'ends';
+}
+
+/**
+ * Every way PowerShell may take a line holding a NUL or a `` `u ``. A native program's command line on Windows is one C
+ * string, so a NUL ends the word and the words after it (`line`, measured on 5.1, reasoned for pwsh). On other hosts each
+ * argument is a C string of its own (`word`, reasoned, no pwsh here). A cmdlet keeps the NUL in its string (`kept`), and
+ * `Invoke-Expression` then reads the text after it, so a cut there would hide a command.
+ */
+const POWERSHELL_READINGS: readonly Pick<Reading, 'codePoints' | 'nul'>[] = [
+  { codePoints: false, nul: 'line' },
+  { codePoints: false, nul: 'kept' },
+  { codePoints: true, nul: 'line' },
+  { codePoints: true, nul: 'word' },
+  { codePoints: true, nul: 'kept' },
+];
+
+/** The reading of a line with nothing to choose between. */
+function plainReading(source: string): Reading {
+  return { source, codePoints: false, nul: 'kept', caretLine: 'joins' };
 }
 
 /**
  * The readings of a line. cmd drops every CR before it reads anything. bash on Windows does the same, by `-c`, file
- * and stdin alike, while bash elsewhere keeps a CR in its word, so a bash line holding one is read both ways. Which
- * host the line runs on is not asked: a guard's answer must not depend on it.
+ * and stdin alike, while bash elsewhere keeps a CR in its word, so a bash line holding one is read both ways. PowerShell
+ * takes {@link POWERSHELL_READINGS} when the line holds what they differ on. cmd's caret before a newline is read both
+ * ways, as the entry decides it. Which host, version or entry the line runs on is not asked: a guard's answer must not
+ * depend on it.
  */
 function readingsOf(source: string, dialect: ShellDialect): readonly Reading[] {
-  const dropped = { source: source.replaceAll('\r', '') };
+  const plain = plainReading(source);
+  const dropped = plainReading(source.replaceAll('\r', ''));
   switch (dialect) {
     case 'bash':
-      return source.includes('\r') ? [dropped, { source }] : [{ source }];
+      return source.includes('\r') ? [dropped, plain] : [plain];
     case 'powershell':
-      return [{ source }];
+      return /\0|`[0u]/.test(source) ? POWERSHELL_READINGS.map((reading) => ({ ...plain, ...reading })) : [plain];
     case 'cmd':
-      return [dropped];
+      return dropped.source.includes('^\n') ? [dropped, { ...dropped, caretLine: 'ends' }] : [dropped];
   }
 }
 
@@ -219,7 +254,7 @@ function mergedParse(parses: readonly ShellParse[]): ShellParse {
  * different words in different hosts or versions of the shell, the parse holds the commands of every reading.
  */
 export function parseShell(command: string, dialect: ShellDialect): ShellParse {
-  return mergedParse(readingsOf(command, dialect).map(({ source }) => new Scanner(source, dialect, { nesting: 0, subshells: [], ids: { next: 0 } }).parse()));
+  return mergedParse(readingsOf(command, dialect).map((reading) => new Scanner(reading, dialect, { nesting: 0, subshells: [], ids: { next: 0 } }).parse()));
 }
 
 /**
@@ -229,7 +264,7 @@ export function parseShell(command: string, dialect: ShellDialect): ShellParse {
  * substitutions before it, which the commands hold; only {@link ShellParse.skipped} text may hide one.
  */
 export function parseHeldText(held: string): ShellParse {
-  return new Scanner(held, 'bash', { nesting: 0, subshells: [], ids: { next: 0 } }).parseExpandable();
+  return new Scanner(plainReading(held), 'bash', { nesting: 0, subshells: [], ids: { next: 0 } }).parseExpandable();
 }
 
 /** What may stand before the `=` of a PowerShell assignment that has no target in the same word. */
@@ -375,14 +410,23 @@ class WordBuilder {
   private braceList = false;
   /** The parts so far; undefined once a piece is dynamic but not a plain variable. */
   private parts: WordPart[] | undefined = [];
+  private cut = false;
   private readonly tracksParts: boolean;
+  private readonly cutsAtNul: boolean;
 
-  constructor(tracksParts: boolean) {
+  /** `cutsAtNul`: the word's value ends at a NUL, and what comes after it in the word is read but adds nothing. */
+  constructor(tracksParts: boolean, cutsAtNul = false) {
     this.tracksParts = tracksParts;
+    this.cutsAtNul = cutsAtNul;
   }
 
   get isStarted(): boolean {
     return this.started;
+  }
+
+  /** True once a NUL ended the word's value. */
+  get isCut(): boolean {
+    return this.cut;
   }
 
   get value(): string {
@@ -395,17 +439,26 @@ class WordBuilder {
 
   /** Adds text; a piece read through a quote or an escape is `quoted`, as is any text outside bash. */
   add(chars: string, piece: Piece = 'quoted'): void {
-    this.text += chars;
-    this.literal += piece === 'dynamic' ? '' : chars;
+    if (this.cut) {
+      return;
+    }
+    const nul = this.cutsAtNul ? chars.indexOf('\0') : -1;
+    const kept = nul === -1 ? chars : chars.slice(0, nul);
+    this.cut = nul !== -1;
+    this.text += kept;
+    this.literal += piece === 'dynamic' ? '' : kept;
     this.started = true;
     this.dynamic ||= piece === 'dynamic';
     if (this.parts !== undefined) {
-      this.parts = piece === 'dynamic' ? undefined : withText(this.parts, chars, piece === 'quoted');
+      this.parts = piece === 'dynamic' ? undefined : withText(this.parts, kept, piece === 'quoted');
     }
   }
 
   /** Adds a `$` expansion as written; a plain variable stays a part, `quoted` inside double quotes or an expanding body. */
   addDollar(written: string, quoted: boolean): void {
+    if (this.cut) {
+      return;
+    }
     this.text += written;
     this.started = true;
     this.dynamic = true;
@@ -432,6 +485,7 @@ class WordBuilder {
     this.brace = false;
     this.braceList = false;
     this.parts = [];
+    this.cut = false;
     return word;
   }
 
@@ -479,7 +533,8 @@ interface ScanScope {
  * (the substitutions an unquoted one expands are read); a PowerShell here-string is one word. A PowerShell word
  * that starts with a quote, a here-string, `$(` or `@(` ends where that closes, so what touches it is a new word.
  * In PowerShell a `( )`, `{ }` or `@{ }` among a command's arguments is one more word, not a group, with its commands
- * read; each value takes a chain of members and indexes, and a `-name:` token takes the value that touches it.
+ * read; each value takes a chain of members and indexes, and a `-name:` token takes the value that touches it. Where a
+ * NUL cuts a word, what follows it is still read, as a substitution there runs and a separator still applies.
  */
 class Scanner {
   private index = 0;
@@ -495,11 +550,13 @@ class Scanner {
   private expansions = 0;
   private readonly subshells: number[];
   private readonly ids: { next: number };
+  private readonly reading: Reading;
   private readonly source: string;
   private readonly dialect: ShellDialect;
 
-  constructor(source: string, dialect: ShellDialect, scope: ScanScope) {
-    this.source = source;
+  constructor(reading: Reading, dialect: ShellDialect, scope: ScanScope) {
+    this.reading = reading;
+    this.source = reading.source;
     this.dialect = dialect;
     this.nesting = scope.nesting;
     this.subshells = scope.subshells;
@@ -561,10 +618,12 @@ class Scanner {
   private readList(close?: ')' | '}', hash = false): void {
     const powershell = this.dialect === 'powershell';
     let words: ShellWord[] = [];
-    const word = new WordBuilder(this.dialect === 'bash');
+    const word = new WordBuilder(this.dialect === 'bash', this.reading.nul !== 'kept');
     /** The operator of a redirection whose target is the next word. */
     let awaiting: string | undefined;
     let verbatim = false;
+    /** True once a NUL ended this command's line: the words after it never reach the program. */
+    let lineCut = false;
     let redirections: Redirection[] = [];
     let depth = 0;
     /** PowerShell: how many `{ }` of keywords are open here, so `{if (1) {a}}` closes at its last `}`. */
@@ -582,14 +641,24 @@ class Scanner {
      */
     let closedGroup: ScannedCommand | undefined;
 
+    /** A word the NUL left empty is no argument, as the line ends before it: `x <NUL> a` hands the program nothing. */
+    const addWord = (taken: ShellWord, cut: boolean): void => {
+      const endsLine = cut && this.reading.nul === 'line';
+      if (!lineCut && !(endsLine && taken.text === '')) {
+        words.push(taken);
+      }
+      lineCut ||= endsLine;
+    };
     const endWord = (): void => {
+      const cut = word.isCut;
       const taken = word.take();
       if (taken === undefined) {
         return;
       }
       if (awaiting === undefined) {
-        words.push(taken);
-        verbatim = this.dialect === 'powershell' && taken.text === '--%' && !taken.dynamic;
+        addWord(taken, cut);
+        // Set on a word the cut dropped too: the shell still reads the rest as written.
+        verbatim = this.dialect === 'powershell' && taken.text === '--%' && !taken.dynamic && !cut;
         return;
       }
       redirections.push({ operator: awaiting, target: taken });
@@ -602,6 +671,7 @@ class Scanner {
         awaiting = undefined;
       }
       verbatim = false;
+      lineCut = false;
       const command: ScannedCommand | undefined =
         words.length > 0 || (redirections.length > 0 && closedGroup === undefined)
           ? { words, subshells: [...this.subshells], terminator: '', redirections, nesting: this.nesting }
@@ -620,7 +690,7 @@ class Scanner {
 
     while (!this.done) {
       if (verbatim) {
-        words.push(...this.readVerbatim());
+        this.readVerbatim(addWord);
         verbatim = false;
         continue;
       }
@@ -753,6 +823,10 @@ class Scanner {
         // Measured: a `]` first is a word of its own, so `]--no-verify` hands the program two words.
         word.add(char, 'unquoted');
         endWord();
+      } else if (char === '\0' && powershell) {
+        // Measured: a NUL outside quotes ends the word and leads the next one.
+        endWord();
+        word.add(char, 'unquoted');
       } else {
         if (this.dialect === 'bash') {
           word.noteBrace(char);
@@ -1118,11 +1192,19 @@ class Scanner {
     this.complete = false;
   }
 
-  /** The escape character (`\` or `^`) keeps the next character; before a newline it joins the lines. */
+  /**
+   * The escape character (`\` or `^`) keeps the next character; before a newline it joins the lines, or leaves the
+   * newline to end the line where the reading says so. With nothing after it, cmd drops its caret and bash keeps its
+   * backslash.
+   */
   private readEscape(word: WordBuilder): void {
     const next = this.at(1);
     if (next === '\n') {
-      this.index += 2;
+      this.index += this.reading.caretLine === 'ends' ? 1 : 2;
+      return;
+    }
+    if (next === '' && this.dialect === 'cmd') {
+      this.index += 1;
       return;
     }
     word.add(next === '' ? this.at() : next);
@@ -1130,9 +1212,22 @@ class Scanner {
   }
 
   /**
+   * At a backtick: the text of a `u{hex}` and where it ends, in a reading that takes one. Anything else there is an
+   * error on pwsh, so nothing runs and the letter stands.
+   */
+  private matchCodePoint(): { readonly text: string; readonly end: number } | undefined {
+    const end = this.reading.codePoints ? this.matchEnd(CODE_POINT) : undefined;
+    if (end === undefined) {
+      return undefined;
+    }
+    const value = Number.parseInt(this.source.slice(this.index + '`u{'.length, end - 1), 16);
+    return value > MAX_CODE_POINT ? undefined : { text: String.fromCodePoint(value), end };
+  }
+
+  /**
    * PowerShell's backtick, measured on 5.1 (T2002). Between words it continues the line, whichever line end follows. In a
    * word or quotes it keeps ONE character, so `a<backtick><CR><LF>b c` is the word `a<CR>`, then the LF ends the statement
-   * and `b c` runs. With nothing after it, or a NUL, the backtick stays.
+   * and `b c` runs. With nothing after it, or a NUL, the backtick stays. pwsh alone also reads a code point.
    */
   private readPowerShellEscape(word: WordBuilder): void {
     const next = this.at(1);
@@ -1143,6 +1238,12 @@ class Scanner {
     if (next === '' || next === '\0') {
       word.add(this.at());
       this.index += 1;
+      return;
+    }
+    const codePoint = this.matchCodePoint();
+    if (codePoint !== undefined) {
+      word.add(codePoint.text);
+      this.index = codePoint.end;
       return;
     }
     word.add(POWERSHELL_ESCAPES.get(next) ?? next);
@@ -1319,7 +1420,7 @@ class Scanner {
     } else {
       const subshells = [...this.subshells, this.ids.next];
       this.ids.next += 1;
-      const nested = new Scanner(inner, 'bash', { nesting: this.nesting + 1, subshells, ids: this.ids }).scan();
+      const nested = new Scanner(plainReading(inner), 'bash', { nesting: this.nesting + 1, subshells, ids: this.ids }).scan();
       this.commands.push(...nested.commands);
       this.unreadBodies.push(...nested.unreadBodies);
       this.complete &&= nested.complete;
@@ -1559,15 +1660,16 @@ class Scanner {
   /**
    * After PowerShell's `--%`: the text up to {@link verbatimEnd} goes to the program as written, with cmd-style `%VAR%`
    * left dynamic. The shell no longer splits it, so the program does, on a space or a tab, and only a plain `"` groups.
+   * Each word goes to `addWord`, with whether a NUL cut it.
    */
-  private readVerbatim(): ShellWord[] {
+  private readVerbatim(addWord: (taken: ShellWord, cut: boolean) => void): void {
     const end = this.verbatimEnd();
-    const words: ShellWord[] = [];
-    const word = new WordBuilder(false);
+    const word = new WordBuilder(false, this.reading.nul !== 'kept');
     const flush = (): void => {
+      const cut = word.isCut;
       const taken = word.take();
       if (taken !== undefined) {
-        words.push(taken);
+        addWord(taken, cut);
       }
     };
     let grouped = false;
@@ -1588,7 +1690,6 @@ class Scanner {
       this.index += 1;
     }
     flush();
-    return words;
   }
 
   /**
