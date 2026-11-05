@@ -122,6 +122,21 @@ export const NATIVE_LINE_ROWS: readonly ShellWordsRow[] = [
 ];
 
 /**
+ * The text of a `--%` starts right behind it, so a closer there is the program's: an option's value takes the stray character
+ * and the words behind it still reach the program. Each row's words are what node and git got from 5.1, run for real.
+ */
+export const MARKER_TEXT_ROWS: readonly ShellWordsRow[] = [
+  { dialect: 'powershell', typed: 'git commit -m --%; --no-verify', real: `git commit -m ';' --no-verify` },
+  { dialect: 'powershell', typed: 'git commit -m --%& --no-verify', real: `git commit -m '&' --no-verify` },
+  { dialect: 'powershell', typed: 'git commit -m --%) --no-verify', real: `git commit -m ')' --no-verify` },
+  { dialect: 'powershell', typed: 'git commit -m --%} --no-verify', real: `git commit -m '}' --no-verify` },
+  { dialect: 'powershell', typed: 'git push --repo --%; --force origin main', real: `git push --repo ';' --force origin main` },
+  { dialect: 'powershell', typed: 'git push --repo --%) --force origin main', real: `git push --repo ')' --force origin main` },
+  { dialect: 'powershell', typed: 'npm install --%; left-pad', real: `npm install ';' left-pad` },
+  { dialect: 'powershell', typed: 'npm install --%) left-pad', real: `npm install ')' left-pad` },
+];
+
+/**
  * Behind a digit word or `*`, PowerShell's `<` redirects nothing: it is word text, so neither the next word nor a `#` behind
  * it goes. Each row's words are what node got from 5.1, run for real.
  */

@@ -196,6 +196,11 @@ const LONE_DOT = /\.(?=["'$])/y;
  * value's place too, so `powershell -c."git push"` hands over `-c`, `.` and the text it runs. A `(` ends any word already.
  */
 const CUT_PARAMETER = new RegExp(`${PARAMETER_NAME}(?=[.[])`, 'uy');
+/**
+ * What ends a `--%` word and opens its text, measured on 5.1 (T2003): the parser reads the text from right there, so these
+ * reach the program and end nothing: `--%; b` hands over `;` and `b`. A `|` or a line end ends the text too, so it needs no rule.
+ */
+const OPENS_MARKER_TEXT = /[;&(){},\0]/;
 
 /** What a NUL does to the words of a PowerShell command; see {@link POWERSHELL_READINGS}. */
 type NulEffect = 'line' | 'word' | 'kept';
@@ -914,6 +919,14 @@ class Scanner {
         continue;
       }
       const char = this.at();
+      if (powershell && word.value === MARKER && OPENS_MARKER_TEXT.test(char)) {
+        // Ahead of the closer's check: a `)` here is text, so `(a --%)` leaves its group open. `endWord` knows if the word
+        // marks: in a value's place or an array it does not, and the character then does what it always does.
+        endWord();
+        if (verbatim) {
+          continue;
+        }
+      }
       if (char === close && (close === '}' ? blocks : depth) === 0) {
         this.index += 1;
         endCommand();
@@ -985,9 +998,6 @@ class Scanner {
       if (powershell && this.atBlock() && (opening || char !== '@')) {
         if (this.index !== valueAt) {
           endWord();
-        }
-        if (verbatim) {
-          continue;
         }
         if (char === '@' || this.index === valueAt || awaiting !== undefined || takesArguments(words, char)) {
           const start = this.index;
@@ -1064,10 +1074,6 @@ class Scanner {
         // An unquoted comma builds an array. Here each element is a word, as pwsh 7.3 and later hands it on (reasoned, no
         // pwsh on this host); measured, 5.1 joins an array with no gap into one argument, which `arrays` keeps for its line.
         endWord();
-        if (verbatim) {
-          // Measured: a `--%`'s text starts right behind it, so the comma is the program's: `--%,b` hands it `,b`.
-          continue;
-        }
         const touchesWord = wordEnd === this.index;
         // Measured: the next element may sit past line ends and comments. A comma that builds no array there is a parse
         // error, so nothing runs and no second statement hides behind it.
