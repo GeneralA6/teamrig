@@ -452,9 +452,10 @@ describe('parseShell: PowerShell --%', () => {
   });
 
   it('marks nothing as an array\'s element, though it does behind a whole array', () => {
-    assert.deepEqual(wordsOf('x a,--% b;c d', 'powershell'), [['x', 'a', '--%', 'b'], ['c', 'd']]);
-    assert.deepEqual(wordsOf('x a, --% b;c d', 'powershell'), [['x', 'a', '--%', 'b'], ['c', 'd']]);
-    assert.deepEqual(wordsOf('x a,b --% c;d e', 'powershell'), [['x', 'a', 'b', '--%', 'c;d', 'e']]);
+    assert.deepEqual(plainWordsOf('x a,--% b;c d'), [['x', 'a', '--%', 'b'], ['c', 'd']]);
+    assert.deepEqual(plainWordsOf('x a, --% b;c d'), [['x', 'a', '--%', 'b'], ['c', 'd']]);
+    assert.deepEqual(plainWordsOf('x a,b --% c;d e'), [['x', 'a', 'b', '--%', 'c;d', 'e']]);
+    assert.deepEqual(readingsOf('x a,--% b;c d').at(-1), [['x', 'a,--%', 'b'], ['c', 'd']]);
   });
 
   it('reads %% as one percent and a lone % as itself', () => {
@@ -553,6 +554,59 @@ describe('parseShell: the line 5.1 writes for a native program', () => {
   it('adds no text after a NUL cut the words before a --%', () => {
     const native = parseShell('x a\0b --% "c d"', 'powershell').readings?.[0];
     assert.deepEqual(native?.commands.map((command) => command.words.map((word) => word.text)), [['x', 'a']]);
+  });
+
+  it('keeps each element of an array a word in the plain reading', () => {
+    assert.deepEqual(plainWordsOf('x a,b c'), [['x', 'a', 'b', 'c']]);
+  });
+
+  it('joins an array with no gap into one argument', () => {
+    const rows: readonly (readonly [string, readonly string[]])[] = [
+      ['x a,b c', ['a,b', 'c']],
+      [`x 'a b',c d`, ['a b,c', 'd']],
+      ['x a,b,c d', ['a,b,c', 'd']],
+      [`x a,'',c d`, ['a,c', 'd']],
+      [`x '',b c`, ['b', 'c']],
+      ['x ],b c', ['],b', 'c']],
+      ['x a<#x#>,b c', ['a<#x#>,b', 'c']],
+      ['x -m:a,b c', ['-m:a,b', 'c']],
+      [`x 'a','b' 'c' ,d e`, ['a,b', 'c', 'd', 'e']],
+    ];
+    for (const [line, words] of rows) {
+      assert.deepEqual(readingsOf(line).at(-1), [['x', ...words]], line);
+    }
+    // A group's own command comes first; its value is the array's element.
+    assert.deepEqual(readingsOf('x (1),b c').at(-1)?.at(-1), ['x', '(1),b', 'c']);
+  });
+
+  it('keeps the elements apart when any comma of the array has a gap', () => {
+    const rows: readonly (readonly [string, readonly string[]])[] = [
+      ['x a ,b c', ['a', 'b', 'c']],
+      ['x a, b c', ['a', 'b', 'c']],
+      ['x a,b, c d', ['a', 'b', 'c', 'd']],
+      ['x a ,b,c d', ['a', 'b', 'c', 'd']],
+      ['x a <#x#>,b c', ['a', 'b', 'c']],
+      [`x 'a'<#x#>,b c`, ['a', 'b', 'c']],
+      ['x a,<#x#>b c', ['a', 'b', 'c']],
+      ['x -m:a, b c', ['-m:a', 'b', 'c']],
+      ['x a,\nb c', ['a', 'b', 'c']],
+    ];
+    for (const [line, words] of rows) {
+      assert.deepEqual(readingsOf(line).at(-1), [['x', ...words]], line);
+    }
+  });
+
+  it('joins nothing into the head, and stops an array at a NUL', () => {
+    assert.deepEqual(readingsOf('a,b c').at(-1), [['a', 'b', 'c']]);
+    assert.deepEqual(parseShell('x a\0b,c d', 'powershell').readings?.[0]?.commands.map((command) => command.words.map((word) => word.text)), [['x', 'a']]);
+  });
+
+  it('starts each command with no arrays of the one before', () => {
+    assert.deepEqual(readingsOf('x a,b; y c d').at(-1), [['x', 'a,b'], ['y', 'c', 'd']]);
+  });
+
+  it('reads the text after a --% behind an array', () => {
+    assert.deepEqual(readingsOf('x a,b --% c d').at(-1), [['x', 'a,b', '--%', 'c', 'd']]);
   });
 });
 

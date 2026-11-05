@@ -220,9 +220,9 @@ const POWERSHELL_READINGS: readonly Pick<Reading, 'codePoints' | 'nul' | 'asciiP
 /**
  * What a value can hold for 5.1's line to differ from its words: a double quote or a trailing backslash, which the
  * runtime reads, or nothing at all, as an empty value drops. Each takes a quote mark or a backslash to write: `` a` b\ ``
- * holds no quote, yet its line ends in `\"`.
+ * holds no quote, yet its line ends in `\"`. A comma differs too: an array with no gap is one argument on that line.
  */
-const NATIVE_LINE_MARKS: readonly RegExp[] = [POWERSHELL_QUOTES.single, POWERSHELL_QUOTES.double, /\\/];
+const NATIVE_LINE_MARKS: readonly RegExp[] = [POWERSHELL_QUOTES.single, POWERSHELL_QUOTES.double, /[\\,]/];
 
 /** The reading of a line with nothing to choose between. */
 function plainReading(source: string): Reading {
@@ -408,16 +408,50 @@ function argumentsAt(words: readonly ShellWord[]): number | undefined {
 }
 
 /**
+ * The words of one comma-built array, `from` to `to` inclusive, as indexes into a command's words. Tight when no comma
+ * in it has a gap on either side: only then is it one argument on 5.1's line. An array with a gap stays listed, so a
+ * later comma of it cannot read as tight: `a ,b,c` is three arguments.
+ */
+interface ArgumentArray {
+  readonly from: number;
+  readonly to: number;
+  readonly tight: boolean;
+}
+
+/** `arrays` after a comma behind word `last`: the word after it joins the array `last` closes, or opens a new one. */
+function withComma(arrays: readonly ArgumentArray[], last: number, tight: boolean): readonly ArgumentArray[] {
+  const open = arrays.at(-1);
+  return open?.to === last ? [...arrays.slice(0, -1), { from: open.from, to: last + 1, tight: open.tight && tight }] : [...arrays, { from: last, to: last + 1, tight }];
+}
+
+/**
+ * `words` from `start` up to `end` as arguments, each the elements of one. A tight array is one argument. One that opens
+ * before `start` holds the head, so it joins nothing. A word the NUL dropped leaves `to` past the last word, and the
+ * slice stops there.
+ */
+function argumentsOf(words: readonly ShellWord[], start: number, end: number, arrays: readonly ArgumentArray[]): readonly (readonly ShellWord[])[] {
+  const args: (readonly ShellWord[])[] = [];
+  let at = start;
+  while (at < end) {
+    const array = arrays.find((candidate) => candidate.tight && candidate.from === at);
+    const next = array === undefined ? at + 1 : array.to + 1;
+    args.push(words.slice(at, next));
+    at = next;
+  }
+  return args;
+}
+
+/**
  * A command's words as 5.1 hands them to a native program; see {@link nativeWords}. A `--%` is not on the real line, but
  * it stays a word here, as the plain reading keeps it: the binder leaves it as written, so readings that agree still
  * fold. Every head counts, a cmdlet's too: a word cannot tell the two apart, and a fork only adds a reading.
  */
-function nativeCommand(words: readonly ShellWord[], text: VerbatimText | undefined, runtime: CRuntime): readonly ShellWord[] {
+function nativeCommand(words: readonly ShellWord[], text: VerbatimText | undefined, arrays: readonly ArgumentArray[], runtime: CRuntime): readonly ShellWord[] {
   const start = argumentsAt(words);
   if (start === undefined) {
     return words;
   }
-  const args = words.slice(start, text?.at).map((word) => [word]);
+  const args = argumentsOf(words, start, text?.at ?? words.length, arrays);
   return [...words.slice(0, start), ...nativeWords(args, text === undefined ? [] : verbatimLine(text.units), runtime)];
 }
 
@@ -696,6 +730,10 @@ class Scanner {
     /** True once a NUL ended this command's line: the words after it never reach the program. */
     let lineCut = false;
     let verbatimText: VerbatimText | undefined;
+    /** PowerShell: where the last word ended, as a comma right there leaves no gap. */
+    let wordEnd = -1;
+    /** PowerShell: the arrays of this command's words. */
+    let arrays: readonly ArgumentArray[] = [];
     let redirections: Redirection[] = [];
     let depth = 0;
     /** PowerShell: how many `{ }` of keywords are open here, so `{if (1) {a}}` closes at its last `}`. */
@@ -729,6 +767,7 @@ class Scanner {
       }
       if (awaiting === undefined) {
         addWord(taken, cut);
+        wordEnd = this.index;
         // Set on a word the cut dropped too: the shell still reads the rest as written.
         verbatim = this.dialect === 'powershell' && taken.text === '--%' && !taken.dynamic && !cut && !element;
         element = false;
@@ -750,7 +789,7 @@ class Scanner {
       const command: ScannedCommand | undefined =
         words.length > 0 || (redirections.length > 0 && closedGroup === undefined)
           ? {
-              words: nativeLine === undefined ? words : nativeCommand(words, verbatimText, nativeLine),
+              words: nativeLine === undefined ? words : nativeCommand(words, verbatimText, arrays, nativeLine),
               subshells: [...this.subshells],
               terminator: '',
               redirections,
@@ -758,6 +797,7 @@ class Scanner {
             }
           : undefined;
       verbatimText = undefined;
+      arrays = [];
       if (command !== undefined) {
         this.commands.push(command);
       } else {
@@ -900,24 +940,30 @@ class Scanner {
       } else if (BLANKS[this.dialect].test(char)) {
         endWord();
       } else if (char === ',' && this.dialect === 'powershell') {
-        // An unquoted comma builds an array: each element reaches a native program as its own argument.
+        // An unquoted comma builds an array. Here each element is a word, as pwsh 7.3 and later hands it on (reasoned, no
+        // pwsh on this host); measured, 5.1 joins an array with no gap into one argument, which `arrays` keeps for its line.
         endWord();
         if (verbatim) {
           // Measured: a `--%`'s text starts right behind it, so the comma is the program's: `--%,b` hands it `,b`.
           continue;
         }
+        const touchesWord = wordEnd === this.index;
         // Measured: the next element may sit past line ends and comments. A comma that builds no array there is a parse
         // error, so nothing runs and no second statement hides behind it.
         element = true;
         this.index += 1;
+        const next = this.index;
         this.skipGaps();
+        arrays = withComma(arrays, words.length - 1, touchesWord && this.index === next);
         continue;
       } else if (char === '@' && this.dialect === 'cmd' && words.length === 0 && !word.isStarted) {
         // cmd's `@` before a command only hides its echo.
       } else if (char === ']' && powershell && !word.isStarted) {
         // Measured: a `]` first is a word of its own, so `]--no-verify` hands the program two words.
         word.add(char, 'unquoted');
+        this.index += 1;
         endWord();
+        continue;
       } else if (char === '\0' && powershell) {
         // Measured: a NUL outside quotes ends the word and leads the next one.
         endWord();
