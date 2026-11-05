@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { bareLine, nativeWords, splitLine, verbatimLine, wordOfUnits, type CRuntime, type LineUnit } from './native-line.ts';
+import { bareLine, expandedUnits, nativeWords, splitLine, verbatimLine, wordOfUnits, type CRuntime, type LineUnit } from './native-line.ts';
 import type { ShellWord } from './tokenizer.ts';
 
 const text = (value: string): ShellWord => ({ text: value, dynamic: false });
@@ -99,6 +99,26 @@ describe('verbatimLine: what a --% adds to the line', () => {
 
   it('keeps a piece at the start of the text', () => {
     assert.deepEqual(verbatimLine([' ', { text: '%A%' }]), [' ', ' ', { text: '%A%' }]);
+  });
+});
+
+describe('expandedUnits: the text 5.1 expands', () => {
+  it('makes each %NAME% a piece, the text around it characters', () => {
+    assert.deepEqual(expandedUnits('q%W%r'), ['q', { text: '%W%' }, 'r']);
+    assert.deepEqual(expandedUnits('%W%%W%'), [{ text: '%W%' }, { text: '%W%' }]);
+  });
+
+  it('takes a name from the last percent that can open it', () => {
+    assert.deepEqual(expandedUnits('%%W%'), ['%', { text: '%W%' }]);
+    assert.deepEqual(expandedUnits('%W%%'), [{ text: '%W%' }, '%']);
+  });
+
+  it('leaves every form only cmd reads as text', () => {
+    ['%%', '%1', '%*', '%~dp0', '!W!', '%W', 'W%'].forEach((value) => assert.deepEqual(expandedUnits(value), [...value]));
+  });
+
+  it('takes no name holding a blank or a quote, so a word inside it stays a word', () => {
+    ['%a b%', '%a\tb%', '%a"b%'].forEach((value) => assert.deepEqual(expandedUnits(value), [...value]));
   });
 });
 
