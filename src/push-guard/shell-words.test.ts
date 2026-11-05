@@ -839,6 +839,171 @@ describe("parseShell: the binder's --%, a value no parser took as its marker", (
       assert.deepEqual(readingsOf(line)[0], [['x', ...words]], line);
     }
   });
+
+  describe('with a -name token right behind it', () => {
+    /** What the bare text `-y:'a b' c` gives once a token turns the marker on. */
+    const text = [`'a`, `b'`, 'c'];
+
+    it("turns on the parser's marker, so the rest is text", () => {
+      assertLastReadings([
+        [`x '--%' -y:'a b' c`, text],
+        [`x "--%" -y:'a b' c`, text],
+        [`x '--%' -y 'a b' c`, text],
+        [`x '--%' -y:a -z:'b c' d`, ['a', `-z:'b`, `c'`, 'd']],
+        [`x '--%' -y: 'a b' -z:'c d' e`, [`'a`, `b'`, `-z:'c`, `d'`, 'e']],
+        [`x '--%' -y:"a b" c`, ['a b', 'c']],
+        [`x @'\n--%\n'@ -y:'a b' c`, text],
+        [`x @"\n--%\n"@ -y:'a b' c`, text],
+        [`x '--%' '--%' -y:'a b' c`, text],
+      ]);
+    });
+
+    it('turns it on behind other arguments too', () => {
+      assertLastReadings([
+        [`x a '--%' -y:'b c' d`, ['a', `'b`, `c'`, 'd']],
+        [`x -z:a '--%' -y:'b c' d`, ['-z:a', `'b`, `c'`, 'd']],
+        [`x a,b '--%' -y:'c d' e`, ['a,b', `'c`, `d'`, 'e']],
+      ]);
+    });
+
+    it('leaves no word of the marker or the token', () => {
+      assertLastReadings([
+        [`x '--%' -y`, []],
+        [`x '--%' -y:`, []],
+      ]);
+    });
+
+    it('reads a semicolon behind the token as text', () => {
+      assert.deepEqual(readingsOf(`x '--%' -y;y b`).at(-1), [['x', ';y', 'b']]);
+      assert.deepEqual(readingsOf(`x '--%' -y:;y b`).at(-1), [['x', ';y', 'b']]);
+    });
+
+    it('stops the text at a line end and at a pipe', () => {
+      assert.deepEqual(readingsOf(`x '--%' -y:a\ny b`).at(-1), [['x', 'a'], ['y', 'b']]);
+      assert.deepEqual(readingsOf(`x '--%' -y:a|y b`).at(-1), [['x', 'a'], ['y', 'b']]);
+    });
+
+    it('stops waiting for a token at the end of the statement', () => {
+      assert.deepEqual(readingsOf(`x '--%';-y:a 'b c'`).at(-1), [['x'], ['-y:a', 'b c']]);
+      assert.deepEqual(readingsOf(`x '--%'\n-y:a 'b c'`).at(-1), [['x'], ['-y:a', 'b c']]);
+    });
+
+    it('reads a backtick zero behind the token as text, and a NUL ahead of the marker still ends the line', () => {
+      // A NUL forks the line, and 5.1's native reading comes first then.
+      assert.deepEqual(readingsOf("x '--%' -y:\"a`0b\" c")[0], [['x', 'a`0b', 'c']]);
+      assert.deepEqual(readingsOf("x '--%' -y:a`0b c")[0], [['x', 'a`0b', 'c']]);
+      assert.deepEqual(readingsOf("x \"a`0b\" '--%' -y:c d")[0], [['x', 'a']]);
+    });
+
+    it('is no token inside a word that has started', () => {
+      assertLastReadings([
+        [`x '--%' z-y:'a b' c`, ['z-y:a', 'b', 'c']],
+        [`x '--%' z-y 'a b' c`, ['z-y', 'a', 'b', 'c']],
+      ]);
+    });
+
+    it('ends the token at one colon or at what ends a name, and the rest is text', () => {
+      assertLastReadings([
+        [`x '--%' -y::z c`, [':z', 'c']],
+        [`x '--%' -y:: c`, [':', 'c']],
+        [`x '--%' -y:z:w c`, ['z:w', 'c']],
+        [`x '--%' -y.z c`, ['.z', 'c']],
+        [`x '--%' -y[0] c`, ['[0]', 'c']],
+        [`x '--%' -y(1) c`, ['(1)', 'c']],
+        [`x '--%' -y{1} c`, ['{1}', 'c']],
+        [`x '--%' -y,z c`, [',z', 'c']],
+        [`x '--%' -y&z c`, ['&z', 'c']],
+        [`x '--%' -y)z c`, [')z', 'c']],
+        [`x '--%' -y}z c`, ['}z', 'c']],
+      ]);
+    });
+
+    it('takes what a word would make of a name as part of the token', () => {
+      assertLastReadings([
+        [`x '--%' -y%W% c`, ['c']],
+        [`x '--%' -y$env:W c`, ['W', 'c']],
+        ["x '--%' -y`z c", ['c']],
+        ["x '--%' -y` z c", ['z', 'c']],
+      ]);
+    });
+
+    it('takes every first letter a -name: token takes, in any dash', () => {
+      assertLastReadings([
+        [`x '--%' \u2013y:'a b' c`, text],
+        [`x '--%' -?:'a b' c`, text],
+        [`x '--%' -_y:'a b' c`, text],
+        [`x '--%' -y-z:'a b' c`, text],
+        [`x '--%' -y=z:'a b' c`, text],
+      ]);
+    });
+
+    it('takes no letter outside ASCII in the reading whose tokens hold none', () => {
+      // Such a letter forks the line by version, and pwsh's reading comes last, so 5.1's native one is the first.
+      assert.deepEqual(readingsOf(`x '--%' -\ua7c2:'a b' c`)[0], [['x', '-\ua7c2:a', 'b', 'c']]);
+      assert.deepEqual(readingsOf(`x '--%' -\ua7c2 'a b' c`)[0], [['x', '-\ua7c2', 'a', 'b', 'c']]);
+    });
+
+    it('is no token where the word opens no -name', () => {
+      assertLastReadings([
+        [`x '--%' --y:'a b' c`, ['--y:a', 'b', 'c']],
+        [`x '--%' -1:'a b' c`, ['-1:a', 'b', 'c']],
+        [`x '--%' -:'a b' c`, ['-:a', 'b', 'c']],
+        [`x '--%' '-y:a' c`, ['-y:a', 'c']],
+        [`x '--%' -y'a b' c`, ['-ya', 'b', 'c']],
+        [`x '--%' -y"a b" c`, ['-ya', 'b', 'c']],
+        [`x '--%' -y'a' c`, ['-ya', 'c']],
+      ]);
+    });
+
+    it('reaches the token past what no word is made of', () => {
+      assertLastReadings([
+        [`x '--%'-y:'a b' c`, text],
+        [`x '--%'<#c#>-y:'a b' c`, text],
+        [`x '--%' <#c#> -y:'a b' c`, text],
+        [`x '--%' \`\n-y:'a b' c`, text],
+        [`x '--%' \` -y:'a b' c`, text],
+        [`x '--%'\t-y:'a b' c`, text],
+      ]);
+    });
+
+    it('stays the binder\'s behind anything else, a redirection and an empty value too', () => {
+      const bound = ['-y:a', 'b', 'c'];
+      assertLastReadings([
+        [`x '--%' 2>&1 -y:'a b' c`, bound],
+        [`x '--%' 2>$null -y:'a b' c`, bound],
+        [`x '--%' '' -y:'a b' c`, bound],
+        [`x '--%' "" -y:'a b' c`, bound],
+        [`x '--%' z -y:'a b' c`, ['z', ...bound]],
+      ]);
+    });
+
+    it('stays no marker at all behind a comma', () => {
+      assertLastReadings([
+        [`x '--%' ,-y:'a b' c`, ['--%', '-y:', 'a b', 'c']],
+        [`x '--%',-y:'a b' c`, ['--%,-y:', 'a b', 'c']],
+      ]);
+    });
+
+    it("stays the binder's where the marker is a -name: token's value", () => {
+      assertLastReadings([
+        [`x -z: '--%' -y:'a b' c`, ['-z:', '-y:a', 'b', 'c']],
+        [`x -z:'--%' -y:'a b' c`, ['-z:', '-y:a', 'b', 'c']],
+      ]);
+    });
+
+    it("keeps an earlier value's blank and the text's own, shown by a quote the words before it opened", () => {
+      assertLastReadings([
+        [`x 'a"' '--%' -y:b c`, ['a  b c']],
+        [`x 'a"' '--%' -y b c`, ['a  b c']],
+        [`x 'a"' '--%' -y:   b c`, ['a  b c']],
+        [`x 'a"' '--%' '--%' -y:b c`, ['a   b c']],
+      ]);
+    });
+
+    it('leaves the plain reading alone', () => {
+      assert.deepEqual(plainWordsOf(`x '--%' -y:a b`), [['x', '--%', '-y:a', 'b']]);
+    });
+  });
 });
 
 describe('parseShell: PowerShell backticks', () => {
