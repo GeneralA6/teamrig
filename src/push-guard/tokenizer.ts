@@ -191,6 +191,11 @@ const BARE_PARAMETER = new RegExp(`${PARAMETER_NAME}(?::|(?=[${PARAMETER_ENDS}]|
  * `. git` does: `."git" push` starts git. A curly quote joins the word instead; a `(` ends any word, so it needs no rule.
  */
 const LONE_DOT = /\.(?=["'$])/y;
+/**
+ * A `-name` with a `.` or `[` right behind it is cut there, measured on 5.1 (T2003): the rest is a word of its own, in a
+ * value's place too, so `powershell -c."git push"` hands over `-c`, `.` and the text it runs. A `(` ends any word already.
+ */
+const CUT_PARAMETER = new RegExp(`${PARAMETER_NAME}(?=[.[])`, 'uy');
 
 /** What a NUL does to the words of a PowerShell command; see {@link POWERSHELL_READINGS}. */
 type NulEffect = 'line' | 'word' | 'kept';
@@ -938,10 +943,10 @@ class Scanner {
         continue;
       }
       const opening = powershell && (!word.isStarted || this.index === valueAt);
-      const loneDot = opening ? this.matchEnd(LONE_DOT) : undefined;
-      if (loneDot !== undefined) {
-        word.add(char, 'unquoted');
-        this.index = loneDot;
+      const cutAt = opening ? (this.matchEnd(LONE_DOT) ?? this.parameterEnd(CUT_PARAMETER)) : undefined;
+      if (cutAt !== undefined) {
+        word.add(this.source.slice(this.index, cutAt), 'unquoted');
+        this.index = cutAt;
         endWord();
         continue;
       }
