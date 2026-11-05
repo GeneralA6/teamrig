@@ -292,6 +292,31 @@ export const VALUE_ROWS: readonly ShellWordsRow[] = [
   { dialect: 'powershell', typed: '.$g push origin main --force', real: '. $g push origin main --force' },
 ];
 
+/**
+ * A block comment joins a value to its chain, so the value is one word only known when it runs, and a null member takes it
+ * off the line. `real` is the same line with no comment. Run for real on 5.1 in a throwaway repo, the first and the three
+ * assignments each landed a non-fast-forward; the other values dropped their word in the same way from node's arguments.
+ */
+export const COMMENT_CHAIN_ROWS: readonly ShellWordsRow[] = [
+  `git 'x'<#c#>.y push origin main --force`,
+  `(1)<#c#>.a = git push origin main --force`,
+  `{1}<#c#>.a = git push origin main --force`,
+  `'x'<#c#>.a = git push origin main --force`,
+  `$('x')<#c#>.a = git push origin main --force`,
+  `git "x"<#c#>.y push origin main --force`,
+  `git 'x'<#c#><#c#>.y push origin main --force`,
+  `git 'x'<#c#>::y push origin main --force`,
+  `git 'x'<#c#>[0] push origin main --force`,
+  `git 'x'.y<#c#>.z push origin main --force`,
+  `git (1)<#c#>.y push origin main --force`,
+  `git {1}<#c#>.y push origin main --force`,
+  `git $('x')<#c#>.y push origin main --force`,
+  `git @('x')<#c#>.y push origin main --force`,
+  `git @{a=1}<#c#>.y push origin main --force`,
+  `git $v.y<#c#>.z push origin main --force`,
+  `git -y:'x'<#c#>.z push origin main --force`,
+].map((typed) => ({ dialect: 'powershell', typed, real: typed.replaceAll('<#c#>', '') }));
+
 export const BLANK_AND_LINE_END_ROWS: readonly ShellWordsRow[] = [
   { dialect: 'powershell', typed: 'Get-Content a\rRemove-Item b', real: 'Get-Content a; Remove-Item b' },
   { dialect: 'powershell', typed: 'Get-Content a\rgit commit -m x --no-verify', real: 'Get-Content a; git commit -m x --no-verify' },

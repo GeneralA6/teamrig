@@ -985,7 +985,7 @@ class Scanner {
           this.readMembers(word);
           // `--'%'` opens no whole word, so it stays the parser's marker.
           endWord(true);
-        } else if (variable && word.isDynamic && (this.readMembers(word) || this.at() === '.') && inArguments) {
+        } else if (variable && word.isDynamic && (this.readMembers(word, true) || this.at() === '.') && inArguments) {
           // At a head the word goes on: `$h.a=git push` is an assignment, read from one word. A dot with no name after
           // it starts a word of its own, as a quote's does: `$v. b` reaches a program as three words.
           endWord();
@@ -1764,17 +1764,36 @@ class Scanner {
     this.readSubstitution(open === '(' ? ')' : '}', open === '@');
   }
 
-  /** PowerShell: reads a chain of members and indexes into `word`, only known when it runs; true when one is there. */
-  private readMembers(word: WordBuilder): boolean {
+  /**
+   * PowerShell: reads a chain of members and indexes into `word`, only known when it runs; true when one is there.
+   * `touching` is for a bare variable, whose first link must touch it: measured, `$v<#x#>.y` is one word of text.
+   */
+  private readMembers(word: WordBuilder, touching = false): boolean {
     const start = this.index;
     let read = false;
-    while (this.readMember()) {
+    while (read || !touching ? this.readMemberPastComments() : this.readMember()) {
       read = true;
     }
     if (read) {
       word.add(this.source.slice(start, this.index), 'dynamic');
     }
     return read;
+  }
+
+  /**
+   * One link of a chain behind any block comments, the cursor where it was when none follows them. Measured: a comment joins a
+   * value to its chain and a blank or a backtick does not, so `'a'<#x#>.y` is one word, which a null member takes off the line.
+   */
+  private readMemberPastComments(): boolean {
+    const start = this.index;
+    while (this.at() === '<' && this.at(1) === '#') {
+      this.skipBlockComment();
+    }
+    if (this.readMember()) {
+      return true;
+    }
+    this.index = start;
+    return false;
   }
 
   /**

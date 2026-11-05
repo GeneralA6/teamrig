@@ -5,7 +5,7 @@ import { programsOf } from '../package-guard/programs.ts';
 import { bashLineReads } from '../readonly-shell/bash.ts';
 import { powershellLineReads } from '../readonly-shell/powershell.ts';
 import { prefixWords, type ReadonlyRules } from '../readonly-shell/rules.ts';
-import { BLANK_AND_LINE_END_ROWS, CUT_PARAMETER_ROWS, ESCAPE_ROWS, EXPRESSION_ROWS, LONE_DOT_ROWS, MARKER_TEXT_ROWS, MARKER_VALUE_ROWS, NATIVE_LINE_ROWS, NUL_ROWS, PARAMETER_ROWS, POWERSHELL_BLANKS, POWERSHELL_DOUBLE_QUOTES, POWERSHELL_ESCAPES, POWERSHELL_LINE_ENDS, POWERSHELL_SINGLE_QUOTES, QUOTE_ROWS, REDIRECTION_ROWS, VALUE_ROWS, type ShellWordsRow } from '../testing/shell-words.ts';
+import { BLANK_AND_LINE_END_ROWS, COMMENT_CHAIN_ROWS, CUT_PARAMETER_ROWS, ESCAPE_ROWS, EXPRESSION_ROWS, LONE_DOT_ROWS, MARKER_TEXT_ROWS, MARKER_VALUE_ROWS, NATIVE_LINE_ROWS, NUL_ROWS, PARAMETER_ROWS, POWERSHELL_BLANKS, POWERSHELL_DOUBLE_QUOTES, POWERSHELL_ESCAPES, POWERSHELL_LINE_ENDS, POWERSHELL_SINGLE_QUOTES, QUOTE_ROWS, REDIRECTION_ROWS, VALUE_ROWS, type ShellWordsRow } from '../testing/shell-words.ts';
 import { hookSkips } from './hook-skips.ts';
 import { findGitInvocations } from './invocations.ts';
 import { evaluatePushes, type PushDecision, type RepoState } from './push.ts';
@@ -133,6 +133,41 @@ describe('the guards read the words the shell runs', () => {
 
   it('holds on a -name cut short', () => {
     CUT_PARAMETER_ROWS.forEach(assertNoSofter);
+  });
+
+  it('holds on a chain behind a block comment', () => {
+    COMMENT_CHAIN_ROWS.forEach(assertVerdictsNoSofter);
+  });
+});
+
+describe('parseShell: a chain behind a comment, measured on 5.1', () => {
+  it('keeps a value and its chain one word through block comments', () => {
+    assert.deepEqual(plainWordsOf(`x 'a'<#c#>.y b`), [['x', 'a<#c#>.y', 'b']]);
+    assert.deepEqual(plainWordsOf(`x 'a'<#c#><#d#>.y b`), [['x', 'a<#c#><#d#>.y', 'b']]);
+    assert.deepEqual(plainWordsOf(`x 'a'.y<#c#>.z b`), [['x', 'a.y<#c#>.z', 'b']]);
+    assert.deepEqual(plainWordsOf(`x 'a'<#c\n#>.y b`), [['x', 'a<#c\n#>.y', 'b']]);
+    assert.deepEqual(plainWordsOf(`x $v.y<#c#>.z b`), [['x', '$v.y<#c#>.z', 'b']]);
+  });
+
+  it('marks the word as only known when it runs', () => {
+    const word = parseShell(`x 'a'<#c#>.y b`, 'powershell').commands[0]?.words[1];
+    assert.equal(word?.dynamic, true);
+  });
+
+  it('breaks the chain at a blank or a backtick, and past a comment with no link behind it', () => {
+    assert.deepEqual(plainWordsOf(`x 'a'<#c#> .y b`), [['x', 'a', '.y', 'b']]);
+    assert.deepEqual(plainWordsOf(`x 'a' <#c#>.y b`), [['x', 'a', '.y', 'b']]);
+    assert.deepEqual(plainWordsOf(`x 'a'<#c#>\`\n.y b`), [['x', 'a', '.y', 'b']]);
+    assert.deepEqual(plainWordsOf(`x 'a'<#c#>. b`), [['x', 'a', '.', 'b']]);
+    assert.deepEqual(plainWordsOf(`x 'a'<#c#>b c`), [['x', 'a', 'b', 'c']]);
+  });
+
+  it('leaves a comment behind a chain to the next word', () => {
+    assert.deepEqual(plainWordsOf(`x 'a'<#c#>.y<#c#>d b`), [['x', 'a<#c#>.y', 'd', 'b']]);
+  });
+
+  it('reads a bare variable through no comment before its first link', () => {
+    assert.deepEqual(plainWordsOf('x $v<#c#>.y b'), [['x', '$v<#c#>.y', 'b']]);
   });
 });
 
