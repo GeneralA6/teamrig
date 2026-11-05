@@ -140,6 +140,15 @@ describe("bareLine: what arguments add behind the binder's --%", () => {
     assert.deepEqual(bareLine([[dynamic('$v')], [text('c')]]), [' ', { text: '$v' }, ' ', 'c']);
   });
 
+  it('keeps a %NAME% a piece, as its value decides how many words it is', () => {
+    assert.deepEqual(bareLine([[text('q%W%r')], [text('c')]]), [' ', 'q', { text: '%W%' }, 'r', ' ', 'c']);
+    assert.deepEqual(nativeWords([], bareLine([[text('%W%')], [text('c')]]), 'ucrt'), [dynamic('%W%'), text('c')]);
+  });
+
+  it('leaves a %NAME% text ahead of the marker, where the binder expands nothing', () => {
+    assert.deepEqual(nativeWords([[text('%W%')]], [], 'ucrt'), [text('%W%')]);
+  });
+
   it('reads on through a quote the words before it opened', () => {
     const written = bareLine([[text('')], [text('')], [text('b c')]]);
     assert.deepEqual(nativeWords([[text('a"')]], written, 'ucrt'), [text('a   b c')]);

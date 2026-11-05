@@ -211,6 +211,8 @@ export const VALUE_ROWS: readonly ShellWordsRow[] = [
   // The branch is unknown here, as for `$( )`: the guard asks, where a plain `main` would be refused.
   { dialect: 'powershell', typed: 'git push origin (echo main) --force', real: 'git push origin $(echo main) --force' },
   { dialect: 'powershell', typed: 'npm install (echo left-pad)', real: 'npm install left-pad' },
+  // A `--%` expands a `%NAME%`: measured with W set to `x main`, so a value can name a branch the line never shows.
+  { dialect: 'powershell', typed: 'git push origin --% %%W%', real: `git push origin '%x' main` },
 ];
 
 export const BLANK_AND_LINE_END_ROWS: readonly ShellWordsRow[] = [

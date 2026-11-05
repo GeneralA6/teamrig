@@ -47,10 +47,10 @@ function bound(value: string): string {
  * its elements are written one by one and joined by a comma, and an empty one adds nothing, the comma included. A value
  * of one empty element adds nothing at all, so the program never sees it.
  */
-function argumentUnits(elements: readonly ShellWord[], written: (value: string) => string): LineUnit[] {
+function argumentUnits(elements: readonly ShellWord[], written: (value: string) => readonly LineUnit[]): LineUnit[] {
   const units: LineUnit[] = [];
   for (const element of elements) {
-    const value: readonly LineUnit[] = element.dynamic ? [{ text: element.text }] : [...written(element.text)];
+    const value = element.dynamic ? [{ text: element.text }] : written(element.text);
     if (value.length > 0) {
       units.push(...(units.length > 0 ? [','] : []), ...value);
     }
@@ -142,10 +142,11 @@ export function expandedUnits(text: string): LineUnit[] {
 
 /**
  * What arguments add to the line behind the binder's `--%`, a value equal to it that no parser took as its marker:
- * measured, each keeps its blank and goes in as it stands, so `'--%' 'a b' c` hands a program `a`, `b` and `c`.
+ * measured, each keeps its blank and goes in with no quotes, its `%NAME%` expanded as {@link expandedUnits} says, so
+ * `'--%' 'a b' c` hands a program `a`, `b` and `c`, and a value of `%W%` is as many words as W holds.
  */
 export function bareLine(args: readonly (readonly ShellWord[])[]): LineUnit[] {
-  return args.flatMap((elements) => [' ', ...argumentUnits(elements, (value) => value)]);
+  return args.flatMap((elements) => [' ', ...argumentUnits(elements, expandedUnits)]);
 }
 
 /** A line up to its first NUL, as a program's command line is one C string; a piece keeps the text before it. */
@@ -169,6 +170,6 @@ function untilNul(line: readonly LineUnit[]): LineUnit[] {
  * onto the words after it and a word can come apart.
  */
 export function nativeWords(args: readonly (readonly ShellWord[])[], written: readonly LineUnit[], runtime: CRuntime): ShellWord[] {
-  const line = [...args.flatMap((elements) => [' ', ...argumentUnits(elements, bound)]), ...written];
+  const line = [...args.flatMap((elements) => [' ', ...argumentUnits(elements, (value) => [...bound(value)])]), ...written];
   return splitLine(untilNul(line), runtime).map(wordOfUnits);
 }

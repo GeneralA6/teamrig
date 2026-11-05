@@ -789,6 +789,31 @@ describe("parseShell: the binder's --%, a value no parser took as its marker", (
     ]);
   });
 
+  it('takes a %NAME% in a value behind it as a value only known when the line runs', () => {
+    const rows: readonly (readonly [string, readonly (readonly [string, boolean])[]])[] = [
+      [`x '--%' '%W%' c`, [['%W%', true], ['c', false]]],
+      [`x -y:--% '%W%' c`, [['-y:', false], ['%W%', true], ['c', false]]],
+      [`x -y: --% '%W%' c`, [['-y:', false], ['%W%', true], ['c', false]]],
+      [`x '--%' a,'%W%' c`, [['a,%W%', true], ['c', false]]],
+      [`x '--%' 'q%W%r' c`, [['q%W%r', true], ['c', false]]],
+    ];
+    for (const [line, words] of rows) {
+      const parse = parseShell(line, 'powershell');
+      const native = (parse.readings ?? [parse]).at(-1)?.commands[0]?.words ?? [];
+      assert.deepEqual(native.slice(1).map((word) => [word.text, word.dynamic]), words, line);
+    }
+  });
+
+  it('reads no %NAME% ahead of it, where the binder expands nothing', () => {
+    const parse = parseShell(`x '%W%' c`, 'powershell');
+    const [, value] = (parse.readings ?? [parse]).at(-1)?.commands[0]?.words ?? [];
+    assert.deepEqual([value?.text, value?.dynamic], ['%W%', false]);
+  });
+
+  it('still comes apart where a blank in the percents leaves them text', () => {
+    assertLastReadings([[`x '--%' '%a --no-verify b%' c`, ['%a', '--no-verify', 'b%', 'c']]]);
+  });
+
   it('keeps its blank on the line, shown by a quote the words before it opened', () => {
     assertLastReadings([
       [`x 'a"' '--%' 'b c'`, ['a  b c']],
