@@ -114,6 +114,11 @@ export const NATIVE_LINE_ROWS: readonly ShellWordsRow[] = [
   { dialect: 'powershell', typed: `git commit '--%' "a\`0b c" --no-verify`, real: 'git commit a --no-verify' },
   { dialect: 'powershell', typed: `git push origin '--%' 'main --force'`, real: 'git push origin main --force' },
   { dialect: 'powershell', typed: `npm install '--%' 'a left-pad'`, real: 'npm install a left-pad' },
+  // A `-name` token right behind a whole value of `--%` turns on the parser's marker: both leave the line.
+  { dialect: 'powershell', typed: `git commit '--%' -y:--no-verify`, real: 'git commit --no-verify' },
+  { dialect: 'powershell', typed: `git '--%' -y:push origin main`, real: 'git push origin main' },
+  { dialect: 'powershell', typed: `git push origin '--%' -y:--force`, real: 'git push origin --force' },
+  { dialect: 'powershell', typed: `npm '--%' -y:install left-pad`, real: 'npm install left-pad' },
 ];
 
 export const QUOTE_ROWS: readonly ShellWordsRow[] = [

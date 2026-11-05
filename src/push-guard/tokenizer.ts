@@ -176,7 +176,15 @@ const DESCRIPTOR = /^(?:\d+|\*)$/;
  */
 const VARIABLE = /\$(?![\u{10000}-\u{10ffff}])[\p{L}\p{Nd}_?$^\u1885\u1886](?:(?![\u{10000}-\u{10ffff}])[\p{L}\p{Nd}_?$^\u1885\u1886]|:(?!:))*/uy;
 const MEMBER_NAME = /(?:(?![\u{10000}-\u{10ffff}])[\p{L}\p{Nd}_\u1885\u1886])+/uy;
-const PARAMETER = /[-\u2013\u2014\u2015](?![\u{10000}-\u{10ffff}])[\p{L}_?\u1885\u1886][^.[;|:\0\t\v\f \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\n\r'\u2018\u2019\u201a\u201b"\u201c\u201d\u201e&(),{}]*:(?!:)/uy;
+/** What ends a `-name` token's name, besides a colon and a quote, which each do more; see {@link BARE_PARAMETER}. */
+const PARAMETER_ENDS = String.raw`.[;|\0\t\v\f \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\n\r&(),{}`;
+const PARAMETER_NAME = String.raw`[-\u2013\u2014\u2015](?![\u{10000}-\u{10ffff}])[\p{L}_?\u1885\u1886][^:'\u2018\u2019\u201a\u201b"\u201c\u201d\u201e${PARAMETER_ENDS}]*`;
+const PARAMETER = new RegExp(`${PARAMETER_NAME}:(?!:)`, 'uy');
+/**
+ * A `-name` token right behind a whole `--%`, measured on 5.1 (T2003): it needs no colon there and takes only one, so
+ * `-y::z` leaves `:z`. A quote right behind the name makes no token, so `-y'a b'` stays a value.
+ */
+const BARE_PARAMETER = new RegExp(`${PARAMETER_NAME}(?::|(?=[${PARAMETER_ENDS}]|$))`, 'uy');
 
 /** What a NUL does to the words of a PowerShell command; see {@link POWERSHELL_READINGS}. */
 type NulEffect = 'line' | 'word' | 'kept';
@@ -467,7 +475,8 @@ function boundMarkers(markers: readonly number[], start: number, arrays: readonl
  * `markers` are the words whose value is `--%` with no parser marker in them. The binder drops that value, keeps the
  * argument's blank and any `-name:` before it, and writes each later value as {@link bareLine} does. Measured, a head is
  * no such value, nor is an array, whichever element holds it, and a comma after a word is only seen once that word has
- * ended.
+ * ended. A whole value of `--%` with a `-name` token right behind it is gone by here: {@link Scanner.readList} reads the
+ * pair as the parser's marker, so `text` opens where that value stood and only an earlier value's blank stays.
  */
 function nativeCommand(words: readonly ShellWord[], text: VerbatimText | undefined, arrays: readonly ArgumentArray[], markers: readonly number[], runtime: CRuntime): readonly ShellWord[] {
   const start = argumentsAt(words);
@@ -763,6 +772,8 @@ class Scanner {
     let arrays: readonly ArgumentArray[] = [];
     /** PowerShell: this command's words that are the binder's `--%`; see {@link nativeCommand}. */
     let markers: number[] = [];
+    /** 5.1's line: true right behind a whole value of `--%`, where a `-name` token turns on the parser's marker after all. */
+    let tokenNext = false;
     let redirections: Redirection[] = [];
     let depth = 0;
     /** PowerShell: how many `{ }` of keywords are open here, so `{if (1) {a}}` closes at its last `}`. */
@@ -784,14 +795,17 @@ class Scanner {
      */
     let closedGroup: ScannedCommand | undefined;
 
-    /** Measured: behind the binder's `--%` a NUL cuts only its own value, so `'--%' "a`0b" c` still hands over `c`. */
-    const behindMarker = (): boolean => {
+    /** 5.1's line: this command's `markers` the binder takes; none in any other reading. */
+    const takenMarkers = (): readonly number[] => {
       const start = this.reading.nativeLine === undefined ? undefined : argumentsAt(words);
-      return start !== undefined && boundMarkers(markers, start, arrays).length > 0;
+      return start === undefined ? [] : boundMarkers(markers, start, arrays);
     };
-    /** A word the NUL left empty is no argument, as the line ends before it: `x <NUL> a` hands the program nothing. */
+    /**
+     * A word the NUL left empty is no argument, as the line ends before it: `x <NUL> a` hands the program nothing. Measured:
+     * behind the binder's `--%` a NUL cuts only its own value, so `'--%' "a`0b" c` still hands over `c`.
+     */
     const addWord = (taken: ShellWord, cut: boolean): void => {
-      const endsLine = cut && this.reading.nul === 'line' && !behindMarker();
+      const endsLine = cut && this.reading.nul === 'line' && takenMarkers().length === 0;
       if (!lineCut && !(endsLine && taken.text === '')) {
         words.push(taken);
       }
@@ -806,6 +820,7 @@ class Scanner {
       if (taken === undefined) {
         return;
       }
+      tokenNext = false;
       if (awaiting === undefined) {
         const at = words.length;
         addWord(taken, cut);
@@ -816,6 +831,9 @@ class Scanner {
         const parserSkips = quoted || valueNext || token > 0;
         if (marks && parserSkips && words.length > at) {
           markers.push(at);
+          // Measured: a marker that is a `-name:` token's value never does it, so `-x: '--%' -y:a` stays the binder's. That
+          // leaves the quoted word of `parserSkips`.
+          tokenNext = !valueNext && token === 0 && takenMarkers().includes(at);
         }
         // Set on a word the cut dropped too: the shell still reads the rest as written.
         verbatim = marks && !parserSkips;
@@ -836,6 +854,7 @@ class Scanner {
       verbatim = false;
       element = false;
       valueNext = false;
+      tokenNext = false;
       lineCut = false;
       const { nativeLine } = this.reading;
       const command: ScannedCommand | undefined =
@@ -883,7 +902,18 @@ class Scanner {
         endCommand();
         return;
       }
-      const parameter = powershell && !word.isStarted ? this.parameterEnd() : undefined;
+      const bareToken = tokenNext && !word.isStarted ? this.parameterEnd(BARE_PARAMETER) : undefined;
+      if (bareToken !== undefined) {
+        // Measured: the marker and the token both leave the line, and the rest is text, `;` included. Blanks, comments and
+        // gaps may sit between them, and none of those ends a word, so `tokenNext` outlives them. The text runs to the end
+        // of the command, whose `endCommand` clears it.
+        words.pop();
+        markers.pop();
+        this.index = bareToken;
+        verbatim = true;
+        continue;
+      }
+      const parameter = powershell && !word.isStarted ? this.parameterEnd(PARAMETER) : undefined;
       if (parameter !== undefined) {
         word.add(this.source.slice(this.index, parameter), 'unquoted');
         this.index = parameter;
@@ -980,6 +1010,8 @@ class Scanner {
         if (this.readProcessSubstitution(word)) {
           continue;
         }
+        // Measured: `'--%' 2>&1 -y:a b` keeps its token, and the descriptor's word below ends with no `endWord`.
+        tokenNext = false;
         // A file-descriptor number (`2>`), PowerShell's `*>` or bash's `{NAME}>` belongs to the redirection.
         const named = this.dialect === 'bash' && /^\{[A-Za-z_]\w*\}$/.test(word.value);
         let descriptor = '';
@@ -1014,6 +1046,7 @@ class Scanner {
         // Measured: the next element may sit past line ends and comments. A comma that builds no array there is a parse
         // error, so nothing runs and no second statement hides behind it.
         element = true;
+        tokenNext = false;
         this.index += 1;
         const next = this.index;
         this.skipGaps();
@@ -1668,9 +1701,9 @@ class Scanner {
     return pattern.test(this.source) ? pattern.lastIndex : undefined;
   }
 
-  /** Where a `-name:` token ends at the cursor, if this reading opens one there; see {@link Reading.asciiParameters}. */
-  private parameterEnd(): number | undefined {
-    const end = this.matchEnd(PARAMETER);
+  /** Where the `-name` token `pattern` reads ends at the cursor, if this reading opens one; see {@link Reading.asciiParameters}. */
+  private parameterEnd(pattern: RegExp): number | undefined {
+    const end = this.matchEnd(pattern);
     return end !== undefined && this.reading.asciiParameters && /[^\0-\x7f]/.test(this.at(1)) ? undefined : end;
   }
 
