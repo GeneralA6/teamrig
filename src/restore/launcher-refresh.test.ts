@@ -6,7 +6,7 @@ import { InlineMutex } from '../testing/inline-mutex.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { restoreLaunchers, type Launcher } from './install-plan.ts';
 import { RESTORE_CHECK_LAUNCHER_SCRIPT, RESTORE_RUN_LAUNCHER_SCRIPT } from './launcher.ts';
-import { LAUNCHER_RECORD_FORMAT, launcherRecordPath, refreshLaunchers, type LauncherRefresh } from './launcher-refresh.ts';
+import { LAUNCHER_RECORD_FORMAT, launcherRecordPath, lowerRecordSteps, refreshLaunchers, type LauncherRefresh } from './launcher-refresh.ts';
 import { restoreLogPath } from './registry.ts';
 import { RESTORE_SHORTCUT_DESCRIPTION, shortcutLine, type Shortcut } from './shortcut.ts';
 
@@ -195,5 +195,43 @@ describe('refreshLaunchers', () => {
   it('passes on a lock that fails for any other reason than another holder', async () => {
     const { refresh } = oldInstall();
     await assert.rejects(refreshLaunchers({ ...refresh, lock: new BrokenMutex() }), /EACCES/);
+  });
+});
+
+describe('lowerRecordSteps', () => {
+  it('lowers a record of a newer version or format to this one, so the next start of a newer teamrig refreshes again', async () => {
+    const cases: ReadonlyArray<readonly [string, string]> = [
+      [record('0.290.0'), '0.290.0'],
+      [record('0.282.0', LAUNCHER_RECORD_FORMAT + 1), 'a newer format'],
+    ];
+    for (const [newer, from] of cases) {
+      const { files, refresh } = oldInstall({ [RECORD]: newer });
+      const steps = await lowerRecordSteps(files, KIT, '0.282.1', NOW);
+      assert.deepEqual(
+        steps.map((step) => step.line),
+        [`SET ${RECORD}: ${from} -> 0.282.1, so the next start of a newer teamrig refreshes what this writes`],
+      );
+      assert.equal(files.get(RECORD), newer, 'nothing is written before the step is taken');
+      for (const step of steps) {
+        await step.act();
+      }
+      assert.equal(files.get(RECORD), `${JSON.stringify({ v: LAUNCHER_RECORD_FORMAT, version: '0.282.1', at: AT }, null, 2)}\n`);
+      assert.equal((await refreshLaunchers({ ...refresh, version: '0.290.0' })).kind, 'refreshed', from);
+      assert.equal(files.get(CHECK.path), RESTORE_CHECK_LAUNCHER_SCRIPT);
+    }
+  });
+
+  it('lowers nothing for a record of this version or an older one, for none or a damaged one, or for no release version', async () => {
+    const cases: ReadonlyArray<readonly [string | undefined, string]> = [
+      [record('0.282.1'), '0.282.1'],
+      [record('0.282.0'), '0.282.1'],
+      [undefined, '0.282.1'],
+      ['{ torn', '0.282.1'],
+      [record('0.290.0'), '0.282.1-dev'],
+    ];
+    for (const [text, version] of cases) {
+      const files = new MemoryFiles(text === undefined ? {} : { [RECORD]: text });
+      assert.deepEqual(await lowerRecordSteps(files, KIT, version, NOW), [], `${text} at ${version}`);
+    }
   });
 });

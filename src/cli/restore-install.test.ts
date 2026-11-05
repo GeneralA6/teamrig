@@ -1,10 +1,14 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import type { Sleep } from '../core/lock.ts';
+import { KIT_VERSION } from '../core/version.ts';
 import { RESTORE_CHECK_LAUNCHER_SCRIPT, RESTORE_RUN_LAUNCHER_SCRIPT } from '../restore/launcher.ts';
+import { LAUNCHER_RECORD_FORMAT, launcherRecordPath } from '../restore/launcher-refresh.ts';
 import { RESTORE_SHORTCUT_DESCRIPTION, shortcutLine, type FoundShortcut, type Shortcut } from '../restore/shortcut.ts';
 import { CliHarness, KIT, USER_HOME, type RunOptions } from '../testing/cli-harness.ts';
 import { FAKE_START_MENU_SHORTCUT, FakeLogonEntry, FakeShortcutPlace, quietRestore } from '../testing/fake-restore.ts';
+import { holdFileLock } from '../testing/held-file-lock.ts';
 import { EXIT } from './runtime.ts';
 
 const LAUNCHER = join(KIT, 'bin', 'restore-check.mjs');
@@ -31,6 +35,27 @@ function onWindows(entry: FakeLogonEntry, shortcuts?: FakeShortcutPlace): RunOpt
 
 function found(path: string, shortcut: Shortcut): FoundShortcut {
   return { path, ...shortcut };
+}
+
+/** The launcher refresh's record (src/restore/launcher-refresh.ts) and its lock. */
+const RECORD = launcherRecordPath(KIT);
+const RECORD_LOCK = `${RECORD}.lock`;
+
+/** The record as a session start of `version` wrote it at `at`. */
+function record(version: string, at: string = '2030-01-01T10:00:00.000Z'): string {
+  return `${JSON.stringify({ v: LAUNCHER_RECORD_FORMAT, version, at }, null, 2)}\n`;
+}
+
+/**
+ * A wait that finds the record lock held by a session start refreshing the launchers: it notes what `watched` holds
+ * at each wait, and the holder lets go at the first.
+ */
+function refreshEnds(kit: CliHarness, watched: string, seen: Array<string | undefined>): Sleep {
+  return async (ms) => {
+    seen.push(kit.files.get(watched));
+    await kit.files.remove(RECORD_LOCK);
+    await kit.clock.sleep(ms);
+  };
 }
 
 describe('teamrig restore install', () => {
@@ -153,6 +178,56 @@ describe('teamrig restore install', () => {
     assert.deepEqual([kit.files.paths(), entry.command], [[], undefined]);
   });
 
+  it('first lowers a record a newer teamrig left, so the next session start of a newer one writes its launchers back', async () => {
+    const kit = new CliHarness(null, null);
+    await kit.files.write(LAUNCHER, '// a newer launcher\n');
+    await kit.files.write(RECORD, record('99.0.0'));
+    const result = await kit.run(['restore', 'install', '--yes'], onWindows(new FakeLogonEntry(COMMAND)));
+    assert.deepEqual(
+      [result.code, result.stdout],
+      [
+        EXIT.ok,
+        [
+          'WROTE the changes below',
+          `  SET ${RECORD}: 99.0.0 -> ${KIT_VERSION}, so the next start of a newer teamrig refreshes what this writes`,
+          `  WRITE ${LAUNCHER}`,
+          `  WRITE ${RUN_LAUNCHER}`,
+        ],
+      ],
+    );
+    assert.deepEqual([kit.files.get(RECORD), kit.files.get(RECORD_LOCK)], [record(KIT_VERSION, '2030-01-08T10:00:00.000Z'), undefined]);
+  });
+
+  it('keeps the record when it names an older version, when nothing changes, and never creates one', async () => {
+    const kit = new CliHarness(null, null);
+    const entry = new FakeLogonEntry();
+    assert.equal((await kit.run(['restore', 'install', '--yes'], onWindows(entry))).code, EXIT.ok);
+    assert.equal(kit.files.get(RECORD), undefined);
+    await kit.files.write(RECORD, record('99.0.0'));
+    const unchanged = await kit.run(['restore', 'install', '--yes'], onWindows(entry));
+    assert.deepEqual([unchanged.stdout, kit.files.get(RECORD)], [[`UNCHANGED ${WHERE}: the restore check already runs at logon`], record('99.0.0')]);
+    await kit.files.write(RECORD, record('0.1.0'));
+    await kit.files.write(LAUNCHER, '// an older launcher\n');
+    const older = await kit.run(['restore', 'install', '--yes'], onWindows(entry));
+    assert.deepEqual([older.stdout, kit.files.get(RECORD)], [['WROTE the changes below', `  WRITE ${LAUNCHER}`], record('0.1.0')]);
+  });
+
+  it('waits for a session start refreshing the launchers to let go of the record lock before it reads or writes', async () => {
+    const kit = new CliHarness(null, null);
+    await holdFileLock(kit, RECORD_LOCK);
+    const seen: Array<string | undefined> = [];
+    const result = await kit.run(['restore', 'install', '--yes'], { ...onWindows(new FakeLogonEntry()), sleep: refreshEnds(kit, LAUNCHER, seen) });
+    assert.equal(result.code, EXIT.ok, result.stdout.join('\n'));
+    assert.deepEqual([seen, kit.files.get(LAUNCHER), kit.files.get(RECORD_LOCK)], [[undefined], RESTORE_CHECK_LAUNCHER_SCRIPT, undefined]);
+  });
+
+  it('takes no lock for a preview, so a refresh in progress never holds it up', async () => {
+    const kit = new CliHarness(null, null);
+    await holdFileLock(kit, RECORD_LOCK);
+    const result = await kit.run(['restore', 'install'], onWindows(new FakeLogonEntry()));
+    assert.deepEqual([result.code, result.stdout[0], kit.clock.sleeps], [EXIT.ok, 'PREVIEW nothing written (add --yes to write)', []]);
+  });
+
   it('is refused on a system with no logon entry, naming the manual restore', async () => {
     const kit = new CliHarness(null, null);
     for (const [verb, command] of [['set up', 'install'], ['take out', 'uninstall']] as const) {
@@ -220,5 +295,19 @@ describe('teamrig restore uninstall', () => {
     assert.deepEqual([...shortcuts.shortcuts], [[DESKTOP, OLD]]);
     const again = await kit.run(['restore', 'uninstall', '--yes'], onWindows(entry, shortcuts));
     assert.deepEqual(again.stdout, [`UNCHANGED ${WHERE}: the restore check does not run at logon`, `UNCHANGED no Restore Claude Sessions.lnk runs ${RUN_LAUNCHER}`]);
+  });
+
+  it('waits for a session start refreshing the launchers to let go of the record lock, and leaves the record as it was', async () => {
+    const kit = new CliHarness(null, null);
+    await kit.files.write(LAUNCHER, RESTORE_CHECK_LAUNCHER_SCRIPT);
+    await kit.files.write(RECORD, record('99.0.0'));
+    await holdFileLock(kit, RECORD_LOCK);
+    const seen: Array<string | undefined> = [];
+    const result = await kit.run(['restore', 'uninstall', '--yes'], { ...onWindows(new FakeLogonEntry(COMMAND)), sleep: refreshEnds(kit, LAUNCHER, seen) });
+    assert.equal(result.code, EXIT.ok, result.stdout.join('\n'));
+    assert.deepEqual(
+      [seen, kit.files.get(LAUNCHER), kit.files.get(RECORD), kit.files.get(RECORD_LOCK)],
+      [[RESTORE_CHECK_LAUNCHER_SCRIPT], undefined, record('99.0.0'), undefined],
+    );
   });
 });
