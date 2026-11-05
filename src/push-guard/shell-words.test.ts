@@ -5,7 +5,7 @@ import { programsOf } from '../package-guard/programs.ts';
 import { bashLineReads } from '../readonly-shell/bash.ts';
 import { powershellLineReads } from '../readonly-shell/powershell.ts';
 import { prefixWords, type ReadonlyRules } from '../readonly-shell/rules.ts';
-import { BLANK_AND_LINE_END_ROWS, ESCAPE_ROWS, EXPRESSION_ROWS, NUL_ROWS, PARAMETER_ROWS, POWERSHELL_BLANKS, POWERSHELL_DOUBLE_QUOTES, POWERSHELL_ESCAPES, POWERSHELL_LINE_ENDS, POWERSHELL_SINGLE_QUOTES, QUOTE_ROWS, VALUE_ROWS, type ShellWordsRow } from '../testing/shell-words.ts';
+import { BLANK_AND_LINE_END_ROWS, ESCAPE_ROWS, EXPRESSION_ROWS, NATIVE_LINE_ROWS, NUL_ROWS, PARAMETER_ROWS, POWERSHELL_BLANKS, POWERSHELL_DOUBLE_QUOTES, POWERSHELL_ESCAPES, POWERSHELL_LINE_ENDS, POWERSHELL_SINGLE_QUOTES, QUOTE_ROWS, VALUE_ROWS, type ShellWordsRow } from '../testing/shell-words.ts';
 import { hookSkips } from './hook-skips.ts';
 import { findGitInvocations } from './invocations.ts';
 import { evaluatePushes, type PushDecision, type RepoState } from './push.ts';
@@ -71,6 +71,17 @@ function wordsOf(line: string, dialect: ShellDialect): string[][] {
   return parseShell(line, dialect).commands.map((command) => command.words.map((word) => word.text));
 }
 
+/** The words of each reading's commands of a PowerShell line, one list per reading; a line that folds has one. */
+function readingsOf(line: string): string[][][] {
+  const parse = parseShell(line, 'powershell');
+  return (parse.readings ?? [parse]).map((reading) => reading.commands.map((command) => command.words.map((word) => word.text)));
+}
+
+/** The words of a PowerShell line as its own parser holds them: the plain reading, which comes before 5.1's native ones. */
+function plainWordsOf(line: string): string[][] {
+  return readingsOf(line)[0] ?? [];
+}
+
 describe('the guards read the words the shell runs', () => {
   it('holds on every blank and line end', () => {
     BLANK_AND_LINE_END_ROWS.forEach(assertNoSofter);
@@ -98,6 +109,10 @@ describe('the guards read the words the shell runs', () => {
 
   it('holds on a parameter whose first letter 5.1 lacks', () => {
     PARAMETER_ROWS.forEach(assertNoSofter);
+  });
+
+  it('holds on the line 5.1 writes for a native program', () => {
+    NATIVE_LINE_ROWS.forEach(assertNoSofter);
   });
 });
 
@@ -338,7 +353,7 @@ describe('parseShell: PowerShell here-strings', () => {
     for (const [marks, other] of [[POWERSHELL_SINGLE_QUOTES, '"'], [POWERSHELL_DOUBLE_QUOTES, "'"]] as const) {
       for (const open of marks) {
         for (const close of marks) {
-          assert.deepEqual(wordsOf(`x @${open}\nb\n${other}@\n${close}@ y`, 'powershell'), [['x', `b\n${other}@`, 'y']]);
+          assert.deepEqual(plainWordsOf(`x @${open}\nb\n${other}@\n${close}@ y`), [['x', `b\n${other}@`, 'y']]);
         }
       }
     }
@@ -346,7 +361,7 @@ describe('parseShell: PowerShell here-strings', () => {
 
   it('closes an empty body on the line end of its opener', () => {
     for (const lineEnd of ['\n', '\r\n', '\r']) {
-      assert.deepEqual(wordsOf(`x @'${lineEnd}'@ y`, 'powershell'), [['x', '', 'y']], JSON.stringify(lineEnd));
+      assert.deepEqual(readingsOf(`x @'${lineEnd}'@ y`), [[['x', '', 'y']], [['x', 'y']]], JSON.stringify(lineEnd));
     }
   });
 
@@ -413,7 +428,7 @@ describe('parseShell: PowerShell --%', () => {
     assert.deepEqual(wordsOf('x --% -m a\\" --no-verify', 'powershell'), [['x', '--%', '-m', 'a"', '--no-verify']]);
     assert.deepEqual(wordsOf('x --% a\\\\"b c"', 'powershell'), [['x', '--%', 'a\\b c']]);
     assert.deepEqual(wordsOf('x --% a\\b c', 'powershell'), [['x', '--%', 'a\\b', 'c']]);
-    assert.deepEqual(wordsOf('x --% "a""b" c', 'powershell'), [['x', '--%', 'a"b', 'c']]);
+    assert.deepEqual(readingsOf('x --% "a""b" c'), [[['x', '--%', 'a"b', 'c']], [['x', '--%', 'a"b c']]]);
   });
 
   it('keeps an empty pair of quotes as a word', () => {
@@ -436,6 +451,94 @@ describe('parseShell: PowerShell --%', () => {
   });
 });
 
+describe('parseShell: the line 5.1 writes for a native program', () => {
+  it('folds when the program gets the words as written', () => {
+    const parse = parseShell('git commit -m "a b" --amend', 'powershell');
+    assert.equal(parse.complete, true);
+    assert.equal(parse.readings, undefined);
+    assert.deepEqual(wordsOf('git commit -m "a b" --amend', 'powershell'), [['git', 'commit', '-m', 'a b', '--amend']]);
+  });
+
+  it('takes no other reading for a line with no mark the line can differ on', () => {
+    assert.deepEqual(readingsOf('git commit --amend'), [[['git', 'commit', '--amend']]]);
+  });
+
+  it('holds a lone quote swallowing the next word as a reading of its own', () => {
+    assert.deepEqual(readingsOf(`git commit 'a"' --verify`), [
+      [['git', 'commit', 'a"', '--verify']],
+      [['git', 'commit', 'a --verify']],
+    ]);
+    assert.equal(parseShell(`git commit 'a"' --verify`, 'powershell').complete, false);
+  });
+
+  it('drops an empty value, so the word after it moves up', () => {
+    assert.deepEqual(readingsOf(`git commit -m '' --verify`), [
+      [['git', 'commit', '-m', '', '--verify']],
+      [['git', 'commit', '-m', '--verify']],
+    ]);
+  });
+
+  it('lets one value come apart', () => {
+    assert.deepEqual(readingsOf(`git commit 'a\\" --no-verify'`), [
+      [['git', 'commit', 'a\\" --no-verify']],
+      [['git', 'commit', 'a"', '--no-verify']],
+    ]);
+  });
+
+  it('reads a trailing backslash on a line that holds no quote', () => {
+    assert.deepEqual(readingsOf('git commit a` b\\ c'), [
+      [['git', 'commit', 'a b\\', 'c']],
+      [['git', 'commit', 'a b" c']],
+    ]);
+  });
+
+  it('splits by both runtimes, which differ on a doubled quote inside quotes', () => {
+    assert.deepEqual(readingsOf(`git commit 'a "" b' c`), [
+      [['git', 'commit', 'a "" b', 'c']],
+      [['git', 'commit', 'a " b', 'c']],
+      [['git', 'commit', 'a "', 'b c']],
+    ]);
+  });
+
+  it('leaves the head alone, and the program after a & or a dot', () => {
+    assert.deepEqual(readingsOf(`& 'a"' b`), [[['&', 'a"', 'b']]]);
+    assert.deepEqual(readingsOf(`. 'a"' b`), [[['.', 'a"', 'b']]]);
+  });
+
+  it('reads the call on an assignment right side, past a label', () => {
+    assert.deepEqual(readingsOf(`$x = git commit 'a"' b`).at(-1), [['$x', '=', 'git', 'commit', 'a b']]);
+    assert.deepEqual(readingsOf(`$x=git commit 'a"' b`).at(-1), [['$x=git', 'commit', 'a b']]);
+    assert.deepEqual(readingsOf(`:l git commit 'a"' b`).at(-1), [[':l', 'git', 'commit', 'a b']]);
+  });
+
+  it('rebuilds nothing for a value alone, a keyword or an expression', () => {
+    assert.deepEqual(readingsOf(`$x = 'a"'`), [[['$x', '=', 'a"']]]);
+    assert.deepEqual(readingsOf(`$x 'a"' b`), [[['$x', 'a"', 'b']]]);
+    assert.deepEqual(readingsOf(`[int] 'a"' b`), [[['[int]', 'a"', 'b']]]);
+    assert.deepEqual(readingsOf(`return 'a"' b`).length, 2);
+    assert.deepEqual(readingsOf(`foreach 'a"' b`), [[['foreach', 'a"', 'b']]]);
+  });
+
+  it('reads a call inside a group and a substitution too', () => {
+    assert.ok(readingsOf(`(git commit 'a"' b)`).some((reading) => reading.some((words) => words.includes('a b'))));
+    assert.ok(readingsOf(`x $(git commit 'a"' b)`).some((reading) => reading.some((words) => words.includes('a b'))));
+  });
+
+  it('reads the text after a --% with the words before it', () => {
+    assert.deepEqual(readingsOf(`git commit 'a"' --% " --no-verify`).at(-1), [['git', 'commit', 'a --%  ', '--no-verify']]);
+  });
+
+  it('folds a --% line when the words before it open no quote', () => {
+    assert.equal(parseShell('git commit --% -m "a b" c', 'powershell').complete, true);
+    assert.deepEqual(wordsOf('git commit --% -m "a b" c', 'powershell'), [['git', 'commit', '--%', '-m', 'a b', 'c']]);
+  });
+
+  it('adds no text after a NUL cut the words before a --%', () => {
+    const native = parseShell('x a\0b --% "c d"', 'powershell').readings?.[0];
+    assert.deepEqual(native?.commands.map((command) => command.words.map((word) => word.text)), [['x', 'a']]);
+  });
+});
+
 describe('parseShell: PowerShell backticks', () => {
   it('reads each letter of the real table as its character, bare and in quotes', () => {
     // `0 is a NUL, which each reading takes its own way: see the NUL specs.
@@ -447,7 +550,7 @@ describe('parseShell: PowerShell backticks', () => {
 
   it('keeps every other letter, `e` and `u` among them, as 5.1 does', () => {
     assert.deepEqual(wordsOf('c a`eb a`ub a`zb a`$b', 'powershell'), [['c', 'aeb', 'aub', 'azb', 'a$b']]);
-    assert.deepEqual(wordsOf('c "a`eb" "a`$b" "a`"b"', 'powershell'), [['c', 'aeb', 'a$b', 'a"b']]);
+    assert.deepEqual(readingsOf('c "a`eb" "a`$b" "a`"b"'), [[['c', 'aeb', 'a$b', 'a"b']], [['c', 'aeb', 'a$b', 'ab']]]);
   });
 
   it('keeps an escaped blank in its word', () => {

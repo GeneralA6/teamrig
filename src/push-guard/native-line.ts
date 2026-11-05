@@ -123,12 +123,33 @@ export function wordOfUnits(units: readonly LineUnit[]): ShellWord {
   };
 }
 
+/** What a `--%` puts on the line, measured on 1,359 rows: two blanks, then its text, leading spaces cut, trailing ones kept. */
+export function verbatimLine(text: readonly LineUnit[]): LineUnit[] {
+  const start = text.findIndex((unit) => unit !== ' ');
+  return [' ', ' ', ...(start === -1 ? [] : text.slice(start))];
+}
+
+/** A line up to its first NUL, as a program's command line is one C string; a piece keeps the text before it. */
+function untilNul(line: readonly LineUnit[]): LineUnit[] {
+  const kept: LineUnit[] = [];
+  for (const unit of line) {
+    const text = typeof unit === 'string' ? unit : unit.text;
+    const nul = text.indexOf('\0');
+    if (nul !== -1) {
+      return nul === 0 ? kept : [...kept, { text: text.slice(0, nul) }];
+    }
+    kept.push(unit);
+  }
+  return kept;
+}
+
 /**
  * The words a native program gets from Windows PowerShell 5.1, its head left out: `args` are its arguments, each the
- * elements of one argument, and `verbatim` the text after a `--%`, which goes in as written. The binder writes one line
- * and the runtime splits it again, so a value's quote can open onto the words after it and a word can come apart.
+ * elements of one argument, and `verbatim` what a `--%` adds to the line, as {@link verbatimLine} gives it. The binder
+ * writes one line and the runtime splits it again, so a value's quote can open onto the words after it and a word can
+ * come apart.
  */
 export function nativeWords(args: readonly (readonly ShellWord[])[], verbatim: readonly LineUnit[], runtime: CRuntime): ShellWord[] {
   const line = [...args.flatMap((elements) => [' ', ...boundArgument(elements)]), ...verbatim];
-  return splitLine(line, runtime).map(wordOfUnits);
+  return splitLine(untilNul(line), runtime).map(wordOfUnits);
 }

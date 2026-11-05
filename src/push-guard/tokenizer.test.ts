@@ -9,6 +9,12 @@ function words(command: string, dialect: ShellDialect = 'bash'): string[][] {
   return parseShell(command, dialect).commands.map((parsed) => parsed.words.map(show));
 }
 
+/** As {@link words}, for a PowerShell line as its own parser holds it: the plain reading, ahead of 5.1's native ones. */
+function plainWords(command: string): string[][] {
+  const parse = parseShell(command, 'powershell');
+  return (parse.readings?.[0] ?? parse).commands.map((parsed) => parsed.words.map(show));
+}
+
 /** Each command as one line of words, then ` < ` and what it reads on stdin, when the line gives it that. */
 function withStdin(command: string): string[] {
   return parseShell(command, 'bash').commands.map((parsed) => {
@@ -337,7 +343,7 @@ describe('parseShell: bash', () => {
 describe('parseShell: PowerShell', () => {
   it('applies the backtick escape, doubled quotes and comma arrays', () => {
     assert.deepEqual(words('Set-Location D:\\work\\app', 'powershell'), [['Set-Location', 'D:\\work\\app']]);
-    assert.deepEqual(words('echo "a`"b" \'it\'\'s\' "say ""hi""" a,b', 'powershell'), [['echo', 'a"b', "it's", 'say "hi"', 'a', 'b']]);
+    assert.deepEqual(plainWords('echo "a`"b" \'it\'\'s\' "say ""hi""" a,b'), [['echo', 'a"b', "it's", 'say "hi"', 'a', 'b']]);
   });
 
   it('keeps the call operator, splits on braces and skips block comments', () => {

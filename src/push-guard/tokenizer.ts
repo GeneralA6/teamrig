@@ -1,5 +1,5 @@
 import { ansiCValue } from './ansi-c.ts';
-import { splitLine, type LineUnit } from './native-line.ts';
+import { nativeWords, splitLine, verbatimLine, type CRuntime, type LineUnit } from './native-line.ts';
 
 /** Which shell wrote a command line; it decides the quotes, the escape character and what expands. */
 export type ShellDialect = 'bash' | 'powershell' | 'cmd';
@@ -194,6 +194,8 @@ interface Reading {
    * with Node's ICU, so a list would drift and the miss come back.
    */
   readonly asciiParameters: boolean;
+  /** The C runtime that splits the line 5.1 writes for a native program, where this reading rebuilds it; see {@link nativeCommand}. */
+  readonly nativeLine: CRuntime | undefined;
   /** cmd's caret before a newline: by `/c` the line ends there, on stdin the next line joins it. */
   readonly caretLine: 'joins' | 'ends';
 }
@@ -203,27 +205,42 @@ interface Reading {
  * command line on Windows is one C string, so a NUL ends the word and the words after it (`line`, measured on 5.1,
  * reasoned for pwsh). On other hosts each argument is a C string of its own (`word`, reasoned, no pwsh here). A cmdlet
  * keeps the NUL in its string (`kept`), and `Invoke-Expression` then reads the text after it, so a cut there would hide
- * a command. The dash goes by the version, as `` `u `` does; see {@link Reading.asciiParameters}.
+ * a command. The dash goes by the version, as `` `u `` does; see {@link Reading.asciiParameters}. A native program on
+ * 5.1 gets its words from the line the shell writes, split by whichever C runtime it links, so that reading comes twice.
  */
-const POWERSHELL_READINGS: readonly Pick<Reading, 'codePoints' | 'nul' | 'asciiParameters'>[] = [
-  { codePoints: false, nul: 'line', asciiParameters: true },
-  { codePoints: false, nul: 'kept', asciiParameters: true },
-  { codePoints: true, nul: 'line', asciiParameters: false },
-  { codePoints: true, nul: 'word', asciiParameters: false },
-  { codePoints: true, nul: 'kept', asciiParameters: false },
+const POWERSHELL_READINGS: readonly Pick<Reading, 'codePoints' | 'nul' | 'asciiParameters' | 'nativeLine'>[] = [
+  { codePoints: false, nul: 'line', asciiParameters: true, nativeLine: 'ucrt' },
+  { codePoints: false, nul: 'line', asciiParameters: true, nativeLine: 'msvcrt' },
+  { codePoints: false, nul: 'kept', asciiParameters: true, nativeLine: undefined },
+  { codePoints: true, nul: 'line', asciiParameters: false, nativeLine: undefined },
+  { codePoints: true, nul: 'word', asciiParameters: false, nativeLine: undefined },
+  { codePoints: true, nul: 'kept', asciiParameters: false, nativeLine: undefined },
 ];
+
+/**
+ * What a value can hold for 5.1's line to differ from its words: a double quote or a trailing backslash, which the
+ * runtime reads, or nothing at all, as an empty value drops. Each takes a quote mark or a backslash to write: `` a` b\ ``
+ * holds no quote, yet its line ends in `\"`.
+ */
+const NATIVE_LINE_MARKS: readonly RegExp[] = [POWERSHELL_QUOTES.single, POWERSHELL_QUOTES.double, /\\/];
 
 /** The reading of a line with nothing to choose between. */
 function plainReading(source: string): Reading {
-  return { source, codePoints: false, nul: 'kept', asciiParameters: false, caretLine: 'joins' };
+  return { source, codePoints: false, nul: 'kept', asciiParameters: false, nativeLine: undefined, caretLine: 'joins' };
+}
+
+/** The plain reading, and 5.1's native ones where the line holds what they differ on. */
+function nativeReadings(plain: Reading): readonly Reading[] {
+  const differ = NATIVE_LINE_MARKS.some((marks) => marks.test(plain.source));
+  return differ ? [plain, ...POWERSHELL_READINGS.filter((reading) => reading.nativeLine !== undefined).map((reading) => ({ ...plain, ...reading }))] : [plain];
 }
 
 /**
  * The readings of a line. cmd drops every CR before it reads anything. bash on Windows does the same, by `-c`, file
  * and stdin alike, while bash elsewhere keeps a CR in its word, so a bash line holding one is read both ways. PowerShell
- * takes {@link POWERSHELL_READINGS} when the line holds what they differ on. cmd's caret before a newline is read both
- * ways, as the entry decides it. Which host, version or entry the line runs on is not asked: a guard's answer must not
- * depend on it.
+ * takes {@link POWERSHELL_READINGS} when the line holds what they differ on, and else {@link nativeReadings}. cmd's caret
+ * before a newline is read both ways, as the entry decides it. Which host, version or entry the line runs on is not
+ * asked: a guard's answer must not depend on it.
  */
 function readingsOf(source: string, dialect: ShellDialect): readonly Reading[] {
   const plain = plainReading(source);
@@ -232,7 +249,7 @@ function readingsOf(source: string, dialect: ShellDialect): readonly Reading[] {
     case 'bash':
       return source.includes('\r') ? [dropped, plain] : [plain];
     case 'powershell':
-      return /\0|`[0u]|[-\u2013\u2014\u2015][^\0-\x7f]/.test(source) ? POWERSHELL_READINGS.map((reading) => ({ ...plain, ...reading })) : [plain];
+      return /\0|`[0u]|[-\u2013\u2014\u2015][^\0-\x7f]/.test(source) ? POWERSHELL_READINGS.map((reading) => ({ ...plain, ...reading })) : nativeReadings(plain);
     case 'cmd':
       return dropped.source.includes('^\n') ? [dropped, { ...dropped, caretLine: 'ends' }] : [dropped];
   }
@@ -364,6 +381,44 @@ function takesArguments(words: readonly ShellWord[], open: string): boolean {
     return false;
   }
   return head.dynamic || !STATEMENT_KEYWORDS.has(head.text.toLowerCase());
+}
+
+/** The text after a `--%`, and how many words stood before it. */
+interface VerbatimText {
+  readonly at: number;
+  readonly units: readonly LineUnit[];
+}
+
+/**
+ * PowerShell: where a program's arguments open in `words`, past the head, and past the program after a `&` or a `.`.
+ * Undefined for a keyword's statement or an expression, which hands no program a line.
+ */
+function argumentsAt(words: readonly ShellWord[]): number | undefined {
+  const statement = statementOf(words);
+  const head = statement[0];
+  if (head === undefined) {
+    return undefined;
+  }
+  // A right side can be built from `$x=git`, one word for two, but the words after it are the same ones.
+  const at = words.length - statement.length;
+  if (head.text === '&' || head.text === '.') {
+    return at + 2;
+  }
+  return isExpressionHead(head) || STATEMENT_KEYWORDS.has(head.text.toLowerCase()) ? undefined : at + 1;
+}
+
+/**
+ * A command's words as 5.1 hands them to a native program; see {@link nativeWords}. A `--%` is not on the real line, but
+ * it stays a word here, as the plain reading keeps it: the binder leaves it as written, so readings that agree still
+ * fold. Every head counts, a cmdlet's too: a word cannot tell the two apart, and a fork only adds a reading.
+ */
+function nativeCommand(words: readonly ShellWord[], text: VerbatimText | undefined, runtime: CRuntime): readonly ShellWord[] {
+  const start = argumentsAt(words);
+  if (start === undefined) {
+    return words;
+  }
+  const args = words.slice(start, text?.at).map((word) => [word]);
+  return [...words.slice(0, start), ...nativeWords(args, text === undefined ? [] : verbatimLine(text.units), runtime)];
 }
 
 /** Characters bash expands in unquoted text: a glob, or `~` for a home folder. */
@@ -638,6 +693,7 @@ class Scanner {
     let verbatim = false;
     /** True once a NUL ended this command's line: the words after it never reach the program. */
     let lineCut = false;
+    let verbatimText: VerbatimText | undefined;
     let redirections: Redirection[] = [];
     let depth = 0;
     /** PowerShell: how many `{ }` of keywords are open here, so `{if (1) {a}}` closes at its last `}`. */
@@ -686,10 +742,18 @@ class Scanner {
       }
       verbatim = false;
       lineCut = false;
+      const { nativeLine } = this.reading;
       const command: ScannedCommand | undefined =
         words.length > 0 || (redirections.length > 0 && closedGroup === undefined)
-          ? { words, subshells: [...this.subshells], terminator: '', redirections, nesting: this.nesting }
+          ? {
+              words: nativeLine === undefined ? words : nativeCommand(words, verbatimText, nativeLine),
+              subshells: [...this.subshells],
+              terminator: '',
+              redirections,
+              nesting: this.nesting,
+            }
           : undefined;
+      verbatimText = undefined;
       if (command !== undefined) {
         this.commands.push(command);
       } else {
@@ -704,7 +768,10 @@ class Scanner {
 
     while (!this.done) {
       if (verbatim) {
-        this.readVerbatim(addWord);
+        const at = words.length;
+        const cut = lineCut;
+        const units = this.readVerbatim(addWord);
+        verbatimText = { at, units: cut ? [] : units };
         verbatim = false;
         continue;
       }
@@ -1680,10 +1747,11 @@ class Scanner {
   /**
    * After PowerShell's `--%`: the text up to {@link verbatimEnd} goes to the program as written, with cmd-style `%VAR%`
    * left dynamic, so the program's C runtime splits it; see {@link splitLine}. Each word goes to `addWord`, with whether
-   * a NUL cut it.
+   * a NUL cut it. Gives the text back, as a quote before the `--%` reaches into it.
    */
-  private readVerbatim(addWord: (taken: ShellWord, cut: boolean) => void): void {
-    for (const units of splitLine(this.verbatimUnits(), 'ucrt')) {
+  private readVerbatim(addWord: (taken: ShellWord, cut: boolean) => void): readonly LineUnit[] {
+    const text = this.verbatimUnits();
+    for (const units of splitLine(text, 'ucrt')) {
       const word = new WordBuilder(false, this.reading.nul !== 'kept');
       // An empty pair of quotes is a word too, and it has no unit to start it.
       word.add('');
@@ -1696,6 +1764,7 @@ class Scanner {
       }
       addWord(word.word(), word.isCut);
     }
+    return text;
   }
 
   /** The text after `--%` as a line: each character a unit, and a cmd-style `%VAR%` a piece, as it stays dynamic. */
