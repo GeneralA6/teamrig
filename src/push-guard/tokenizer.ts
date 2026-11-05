@@ -58,7 +58,10 @@ export interface ShellCommand {
    * body) or a here-string (`<<< word`). An unquoted heredoc's body expands, so it is dynamic when it expands anything.
    */
   readonly stdin?: ShellWord;
-  /** How many substitutions (`$( )`, backticks, `<( )`, PowerShell `@( )`) it sits inside: 0 for the line's own commands. */
+  /**
+   * How many substitutions (`$( )`, backticks, `<( )`, PowerShell `@( )`) it sits inside, a PowerShell argument's
+   * `( )`, `{ }` and `@{ }` among them: 0 for the line's own commands.
+   */
   readonly nesting: number;
 }
 
@@ -145,6 +148,15 @@ const POWERSHELL_QUOTES = { single: /['\u2018\u2019\u201a\u201b]/, double: /["\u
 /** A word that is all a redirection's file-descriptor number: `2` of `2>`, or PowerShell's `*` of `*>`. */
 const DESCRIPTOR = /^(?:\d+|\*)$/;
 
+/**
+ * PowerShell's variable, member name and `-name:` token, measured on its parser (T2002). A `/u` class takes a surrogate
+ * pair as one unit, which the tables never counted as a letter, so each refuses one first: else a word is cut there and
+ * a `--verify` after it reads as a cancel. `:(?!:)` leaves `::` to the member chain, as `$v::Length` is a member.
+ */
+const VARIABLE = /\$(?![\u{10000}-\u{10ffff}])[\p{L}\p{Nd}_?$^\u1885\u1886](?:(?![\u{10000}-\u{10ffff}])[\p{L}\p{Nd}_?$^\u1885\u1886]|:(?!:))*/uy;
+const MEMBER_NAME = /(?:(?![\u{10000}-\u{10ffff}])[\p{L}\p{Nd}_\u1885\u1886])+/uy;
+const PARAMETER = /[-\u2013\u2014\u2015](?![\u{10000}-\u{10ffff}])[\p{L}_?\u1885\u1886][^.[;|:\0\t\v\f \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\n\r'\u2018\u2019\u201a\u201b"\u201c\u201d\u201e&(),{}]*:(?!:)/uy;
+
 /** One way a shell may read a line, where the guard cannot know which it is; see {@link readingsOf}. */
 interface Reading {
   /** The text the scanner reads. */
@@ -208,30 +220,48 @@ export function parseHeldText(held: string): ShellParse {
 /** What may stand before the `=` of a PowerShell assignment that has no target in the same word. */
 const ASSIGNMENT_PREFIX = /^(?:[-+*/%]|\?\?)?$/;
 
-/** Where a word's first `=` outside any bracket sits, so the `=` in `$w[$i=0]=a` or `${a=b}=a` is the last one. */
+/**
+ * Where a word's first `=` outside any bracket or quote sits, so the `=` in `$w[$i=0]=a`, `${a=b}=a` or `$h."a=b"=a` is
+ * the last one. A member chain keeps its source, quotes included.
+ */
 function assignmentAt(text: string): number | undefined {
   let depth = 0;
+  let quote: RegExp | undefined;
   for (let index = 0; index < text.length; index += 1) {
     const char = text.charAt(index);
+    if (quote !== undefined) {
+      quote = quote.test(char) ? undefined : quote;
+      continue;
+    }
     if (char === '=' && depth === 0) {
       return index;
     }
+    quote = [POWERSHELL_QUOTES.single, POWERSHELL_QUOTES.double].find((marks) => marks.test(char));
     depth += /[[({]/.test(char) ? 1 : /[\])}]/.test(char) ? -1 : 0;
   }
   return undefined;
 }
 
 /**
- * PowerShell: the words an assignment's right side runs, when `words` open with one, else undefined. A target is a
- * variable with any member or index, and a list of them (`$p, $q = ...`) is one too; casts before the first are
- * skipped. Only a target at the start opens one: a bare `=` among a program's arguments is text.
+ * Whether a PowerShell word at a statement's start can only be an expression: a `[Type]`, or anything else only known
+ * when it runs. Nothing but `&` makes a program of one.
+ */
+export function isExpressionHead(word: ShellWord): boolean {
+  return word.dynamic || word.text.startsWith('[');
+}
+
+/**
+ * PowerShell: the words an assignment's right side runs, when `words` open with one, else undefined. A target is any
+ * expression with a member or an index, on a variable, a quote, a group, a block or a `[Type]`, and a list of them
+ * (`$p, $q = ...`) is one too, all measured to run the right side; casts before the first are skipped. Only a target at
+ * the start opens one: a bare `=` among a program's arguments is text.
  */
 export function assignedWords(words: readonly ShellWord[]): readonly ShellWord[] | undefined {
   for (const [index, word] of words.entries()) {
     const text = index === 0 ? word.text.replace(/^(?:\[[^\]]+\])+/, '') : word.text;
     const at = assignmentAt(text);
     const left = text.slice(0, at);
-    const target = left.startsWith('$');
+    const target = isExpressionHead(word);
     if (at === undefined) {
       if (target) {
         continue;
@@ -246,6 +276,30 @@ export function assignedWords(words: readonly ShellWord[]): readonly ShellWord[]
     return right === '' ? rest : [{ text: right, dynamic: /[$@]/.test(right) }, ...rest];
   }
   return undefined;
+}
+
+/** What opens a PowerShell statement whose `( )` and `{ }` are its own parts, never arguments, in lower case. */
+const STATEMENT_KEYWORDS: ReadonlySet<string> = new Set([
+  'if', 'elseif', 'else', 'while', 'until', 'do', 'for', 'foreach', 'switch', 'try', 'catch', 'finally', 'function', 'filter', 'workflow', 'configuration',
+  'trap', 'class', 'enum', 'data', 'param', 'begin', 'process', 'end', 'clean', 'dynamicparam', 'parallel', 'sequence', 'inlinescript',
+]);
+
+/**
+ * PowerShell: whether a `(` or `{` after `words` is an argument of their command. It is not at a statement's start,
+ * where `(` is a group, nor after a keyword, whose block ends the statement: `do {} while (0) git push` runs what
+ * follows. A block called at once (`& { ... }`) reads as a group too: its commands are all it runs, where a word would
+ * leave the program unknown.
+ */
+function takesArguments(words: readonly ShellWord[], open: string): boolean {
+  let statement = words[0]?.text.startsWith(':') === true ? words.slice(1) : words;
+  for (let right = assignedWords(statement); right !== undefined; right = assignedWords(statement)) {
+    statement = right;
+  }
+  const head = statement[0];
+  if (head === undefined || (open === '{' && statement.length === 1 && (head.text === '&' || head.text === '.'))) {
+    return false;
+  }
+  return head.dynamic || !STATEMENT_KEYWORDS.has(head.text.toLowerCase());
 }
 
 /** Characters bash expands in unquoted text: a glob, or `~` for a home folder. */
@@ -318,6 +372,10 @@ class WordBuilder {
 
   get value(): string {
     return this.text;
+  }
+
+  get isDynamic(): boolean {
+    return this.dynamic;
   }
 
   /** Adds text; a piece read through a quote or an escape is `quoted`, as is any text outside bash. */
@@ -405,6 +463,8 @@ interface ScanScope {
  * start. A bash heredoc's body, after the newline that ends its line, is its command's stdin, not commands
  * (the substitutions an unquoted one expands are read); a PowerShell here-string is one word. A PowerShell word
  * that starts with a quote, a here-string, `$(` or `@(` ends where that closes, so what touches it is a new word.
+ * In PowerShell a `( )`, `{ }` or `@{ }` among a command's arguments is one more word, not a group, with its commands
+ * read; each value takes a chain of members and indexes, and a `-name:` token takes the value that touches it.
  */
 class Scanner {
   private index = 0;
@@ -416,7 +476,7 @@ class Scanner {
   private readonly heredocs: OpenHeredoc[] = [];
   private readonly unreadBodies: ShellWord[] = [];
   private bindingsUnclear = false;
-  /** How many bash `${...}`, `$((...))` and `$[...]` the reader is inside, bounded like substitutions. */
+  /** How many bash `${...}`, `$((...))` and `$[...]` or PowerShell `[...]` the reader is inside, bounded like substitutions. */
   private expansions = 0;
   private readonly subshells: number[];
   private readonly ids: { next: number };
@@ -443,7 +503,7 @@ class Scanner {
 
   /** Reads the whole source; its commands stay open to the separators an enclosing scanner adds after them. */
   private scan(): ShellParse & { readonly commands: ScannedCommand[] } {
-    this.readList(false);
+    this.readList();
     return this.result();
   }
 
@@ -479,8 +539,12 @@ class Scanner {
     this.ids.next += 1;
   }
 
-  /** Reads commands to the end or, inside a substitution, through the `)` that closes it. */
-  private readList(inSubstitution: boolean): void {
+  /**
+   * Reads commands to the end or, inside a substitution or a PowerShell block, through the `close` that ends it. `hash`
+   * says the list is a `@{ }`, whose entries open with a key.
+   */
+  private readList(close?: ')' | '}', hash = false): void {
+    const powershell = this.dialect === 'powershell';
     let words: ShellWord[] = [];
     const word = new WordBuilder(this.dialect === 'bash');
     /** The operator of a redirection whose target is the next word. */
@@ -488,6 +552,13 @@ class Scanner {
     let verbatim = false;
     let redirections: Redirection[] = [];
     let depth = 0;
+    /** PowerShell: how many `{ }` of keywords are open here, so `{if (1) {a}}` closes at its last `}`. */
+    let blocks = 0;
+    /** PowerShell: where the value of a `-name:` token opens, which joins the token's word. */
+    let valueAt = -1;
+    /** True at a `@{ }` entry's start, where its key and `=` come before its statement. */
+    let keyNext = hash;
+    const atEntry = (): boolean => hash && depth === 0 && blocks === 0;
     /** The depth a bash `((` arithmetic command opened at: inside it `<<` shifts and starts no heredoc. */
     let arithmetic: number | undefined;
     /**
@@ -538,18 +609,38 @@ class Scanner {
         verbatim = false;
         continue;
       }
+      if (keyNext) {
+        keyNext = false;
+        this.readHashKey();
+        continue;
+      }
       const char = this.at();
-      if (char === ')' && depth === 0 && inSubstitution) {
+      if (char === close && (close === '}' ? blocks : depth) === 0) {
         this.index += 1;
         endCommand();
         return;
       }
-      const whole = !word.isStarted && this.opensWholeWord(char);
-      if (this.readQuoteOrExpansion(word)) {
+      const parameter = powershell && !word.isStarted ? this.matchEnd(PARAMETER) : undefined;
+      if (parameter !== undefined) {
+        word.add(this.source.slice(this.index, parameter), 'unquoted');
+        this.index = parameter;
+        valueAt = parameter;
+        continue;
+      }
+      const opening = powershell && (!word.isStarted || this.index === valueAt);
+      const whole = opening && this.opensWholeWord(char);
+      const variable = opening && char === '$';
+      const inArguments = words.length > 0 || awaiting !== undefined;
+      if (this.readQuoteOrExpansion(word, opening)) {
         if (whole) {
+          this.readMembers(word);
           endWord();
           // Text in quotes is only text: `'--%'` is no marker, though `--'%'` is.
           verbatim = false;
+        } else if (variable && word.isDynamic && (this.readMembers(word) || this.at() === '.') && inArguments) {
+          // At a head the word goes on: `$h.a=git push` is an assignment, read from one word. A dot with no name after
+          // it starts a word of its own, as a quote's does: `$v. b` reaches a program as three words.
+          endWord();
         }
         continue;
       }
@@ -559,7 +650,24 @@ class Scanner {
         this.addTerminator('\n');
         this.index += 1;
         this.readHeredocBodies();
+        keyNext = atEntry();
         continue;
+      }
+      if (powershell && this.atBlock() && (opening || char !== '@')) {
+        if (this.index !== valueAt) {
+          endWord();
+        }
+        if (verbatim) {
+          continue;
+        }
+        if (char === '@' || this.index === valueAt || awaiting !== undefined || takesArguments(words, char)) {
+          const start = this.index;
+          this.readBlock();
+          word.add(this.source.slice(start, this.index), 'dynamic');
+          this.readMembers(word);
+          endWord();
+          continue;
+        }
       }
       if (char === '(') {
         endCommand();
@@ -585,11 +693,13 @@ class Scanner {
         if (depth === arithmetic) {
           arithmetic = undefined;
         }
-      } else if (this.isCallOperator(char, words.length === 0 && !word.isStarted)) {
+      } else if (!word.isStarted && this.isCallOperator(char, words)) {
         words.push({ text: '&', dynamic: false });
       } else if (this.isSeparator(char)) {
         endCommand();
         this.addTerminator(char);
+        blocks += char === '{' ? 1 : char === '}' ? -1 : 0;
+        keyNext = char === ';' && atEntry();
       } else if (char === '#' && !word.isStarted && this.dialect !== 'cmd') {
         this.skipComment();
         continue;
@@ -624,6 +734,10 @@ class Scanner {
         endWord();
       } else if (char === '@' && this.dialect === 'cmd' && words.length === 0 && !word.isStarted) {
         // cmd's `@` before a command only hides its echo.
+      } else if (char === ']' && powershell && !word.isStarted) {
+        // Measured: a `]` first is a word of its own, so `]--no-verify` hands the program two words.
+        word.add(char, 'unquoted');
+        endWord();
       } else {
         if (this.dialect === 'bash') {
           word.noteBrace(char);
@@ -631,9 +745,13 @@ class Scanner {
         word.add(char, 'unquoted');
       }
       this.index += 1;
+      if (powershell && (char === ')' || char === '}')) {
+        // `(1).a = git push` and `{x}.a = git push` run their right side: the chain is the target's, no program.
+        this.readMembers(word);
+      }
     }
     endCommand();
-    if (inSubstitution || depth > 0) {
+    if (close !== undefined || depth > 0) {
       this.complete = false;
     }
     if (this.dialect === 'bash') {
@@ -743,8 +861,9 @@ class Scanner {
   }
 
   /**
-   * PowerShell, at a word's start: true at what ends the word when it closes, a quote, a here-string, `$(` or `@(`, so
-   * `"a"--flag` is two words. A variable, a number or a splat first stays one word, as text in the middle of a word does.
+   * PowerShell, where a word's value opens: true at what ends the word when it closes, a quote, a here-string, `$(` or
+   * `@(`, so `"a"--flag` is two words. A variable, a number or a splat first stays one word, as text in the middle of a
+   * word does. `( )`, `{ }` and `@{ }` end theirs too, read by {@link readBlock}.
    */
   private opensWholeWord(char: string): boolean {
     if (this.dialect !== 'powershell') {
@@ -787,9 +906,9 @@ class Scanner {
     this.index = close === null ? this.source.length : Math.max(this.index, close.index + close[0].length);
   }
 
-  /** PowerShell's `&` at a command's start calls the program named next; elsewhere `&` separates commands. */
-  private isCallOperator(char: string, atCommandStart: boolean): boolean {
-    return this.dialect === 'powershell' && char === '&' && this.at(1) !== '&' && this.at(-1) !== '&' && atCommandStart;
+  /** PowerShell's `&` at a command's start, or an assignment's right side, calls the program named next; elsewhere `&` separates commands. */
+  private isCallOperator(char: string, words: readonly ShellWord[]): boolean {
+    return this.dialect === 'powershell' && char === '&' && this.at(1) !== '&' && this.at(-1) !== '&' && (words.length === 0 || assignedWords(words)?.length === 0);
   }
 
   /**
@@ -833,12 +952,12 @@ class Scanner {
   }
 
   /** Reads a quote, an escape or an expansion at the cursor into `word`; false when the cursor holds none. */
-  private readQuoteOrExpansion(word: WordBuilder): boolean {
+  private readQuoteOrExpansion(word: WordBuilder, opening: boolean): boolean {
     switch (this.dialect) {
       case 'bash':
         return this.readBashQuote(word);
       case 'powershell':
-        return this.readPowerShellQuote(word);
+        return this.readPowerShellQuote(word, opening);
       case 'cmd':
         return this.readCmdQuote(word);
     }
@@ -868,9 +987,10 @@ class Scanner {
     return true;
   }
 
-  private readPowerShellQuote(word: WordBuilder): boolean {
+  /** `opening` is true where a word's value may open: a here-string or an `@(` only opens there, `a@(b)` being text and a value. */
+  private readPowerShellQuote(word: WordBuilder, opening: boolean): boolean {
     const char = this.at();
-    const hereStringBody = char === '@' && !word.isStarted ? this.hereStringBody() : undefined;
+    const hereStringBody = char === '@' && opening ? this.hereStringBody() : undefined;
     if (this.isSingleQuote(char)) {
       this.readSingleQuoted(word);
     } else if (this.isDoubleQuote(char)) {
@@ -881,7 +1001,7 @@ class Scanner {
       this.readDollar(word, false);
     } else if (hereStringBody !== undefined) {
       this.readHereString(word, hereStringBody);
-    } else if (char === '@' && (this.at(1) === '(' || (/[A-Za-z_]/.test(this.at(1)) && !word.isStarted))) {
+    } else if (char === '@' && ((this.at(1) === '(' && opening) || (/[A-Za-z_]/.test(this.at(1)) && !word.isStarted))) {
       this.readSplatOrArray(word);
     } else if (char === '<' && this.at(1) === '#' && !word.isStarted) {
       this.skipBlockComment();
@@ -1006,6 +1126,7 @@ class Scanner {
   private readDollar(word: WordBuilder, quoted: boolean): void {
     const start = this.index;
     const next = this.at(1);
+    const variable = this.dialect === 'powershell' ? this.matchEnd(VARIABLE) : undefined;
     if (next === '(' && this.dialect === 'bash' && this.at(2) === '(') {
       this.index += 3;
       this.readArithmetic('(', ')', 2, quoted);
@@ -1031,11 +1152,8 @@ class Scanner {
       }
     } else if (this.dialect === 'bash' && /[0-9@*#?$!-]/.test(next)) {
       this.index += 2;
-    } else if (this.dialect === 'powershell' && /[\w?$^]/.test(next)) {
-      this.index += 1;
-      while (/[\w:?$^]/.test(this.at())) {
-        this.index += 1;
-      }
+    } else if (variable !== undefined) {
+      this.index = variable;
     } else {
       word.add('$');
       this.index += 1;
@@ -1085,8 +1203,11 @@ class Scanner {
     this.expansions -= 1;
   }
 
-  /** Inside `$(`, `@(` or `<(`: reads the commands through the closing `)`; in bash they run in a subshell. */
-  private readSubstitution(): void {
+  /**
+   * Inside `$(`, `@(`, `<(` or a PowerShell value: reads the commands through the `close` that ends it; in bash they run
+   * in a subshell.
+   */
+  private readSubstitution(close: ')' | '}' = ')', hash = false): void {
     if (this.nesting >= MAX_NESTING) {
       this.skip();
       this.index = this.source.length;
@@ -1096,7 +1217,7 @@ class Scanner {
     if (this.dialect === 'bash') {
       this.openSubshell();
     }
-    this.readList(true);
+    this.readList(close, hash);
     if (this.dialect === 'bash') {
       this.subshells.pop();
     }
@@ -1134,7 +1255,7 @@ class Scanner {
     this.expansions -= 1;
   }
 
-  /** Counts one more bash expansion the reader is inside; false, with the line unreadable, when they nest too deep. */
+  /** Counts one more expansion or PowerShell expression the reader is inside; false, with the line unreadable, when they nest too deep. */
   private enterExpansion(): boolean {
     if (this.expansions >= MAX_NESTING) {
       this.skip();
@@ -1202,6 +1323,147 @@ class Scanner {
       }
     }
     word.add(this.source.slice(start, this.index), 'dynamic');
+  }
+
+  /** Where the sticky `pattern` ends when it matches at the cursor. */
+  private matchEnd(pattern: RegExp): number | undefined {
+    pattern.lastIndex = this.index;
+    return pattern.test(this.source) ? pattern.lastIndex : undefined;
+  }
+
+  /** PowerShell: true at a `(`, `{` or `@{`. */
+  private atBlock(): boolean {
+    const char = this.at();
+    return char === '(' || char === '{' || (char === '@' && this.at(1) === '{');
+  }
+
+  /** PowerShell, at a `(`, `{` or `@{`: reads the commands inside, which run or may run, like a substitution's. */
+  private readBlock(): void {
+    const open = this.at();
+    this.index += open === '@' ? 2 : 1;
+    this.readSubstitution(open === '(' ? ')' : '}', open === '@');
+  }
+
+  /** PowerShell: reads a chain of members and indexes into `word`, only known when it runs; true when one is there. */
+  private readMembers(word: WordBuilder): boolean {
+    const start = this.index;
+    let read = false;
+    while (this.readMember()) {
+      read = true;
+    }
+    if (read) {
+      word.add(this.source.slice(start, this.index), 'dynamic');
+    }
+    return read;
+  }
+
+  /**
+   * One link of a chain: `[...]`, or `.` or `::` then a name, a method's `(...)` or `{...}` after it. A dot or a colon
+   * with no name after it is plain text: false, the cursor where it was.
+   */
+  private readMember(): boolean {
+    if (this.at() === '[') {
+      this.index += 1;
+      this.readExpression(']');
+      return true;
+    }
+    const start = this.index;
+    this.index += this.at() === '.' ? 1 : this.at() === ':' && this.at(1) === ':' ? 2 : 0;
+    if (this.index === start || !this.readMemberName()) {
+      this.index = start;
+      return false;
+    }
+    if (this.at() === '(') {
+      this.index += 1;
+      this.readExpression(')');
+    } else if (this.at() === '{') {
+      this.readBlock();
+    }
+    return true;
+  }
+
+  /** A member's name: a plain name, a quote, a `(...)` or a variable, whose expression runs. */
+  private readMemberName(): boolean {
+    const char = this.at();
+    if (char === '(') {
+      this.readBlock();
+      return true;
+    }
+    if (char === '$' || this.isSingleQuote(char) || this.isDoubleQuote(char)) {
+      return this.readPowerShellQuote(new WordBuilder(false), true);
+    }
+    const end = this.matchEnd(MEMBER_NAME);
+    if (end === undefined) {
+      return false;
+    }
+    this.index = end;
+    return true;
+  }
+
+  /**
+   * Inside a PowerShell `[...]` or a method's `(...)`, through the `close`: bare text there is no command, so none is
+   * listed, while the quotes, substitutions and blocks in it run. A fresh word each time, as a started one reads `<#` as text.
+   */
+  private readExpression(close: ']' | ')'): void {
+    if (!this.enterExpansion()) {
+      return;
+    }
+    while (!this.done && this.at() !== close) {
+      if (this.at() === '#') {
+        this.skipComment();
+      } else if (this.at() === '[') {
+        this.index += 1;
+        this.readExpression(']');
+      } else if (this.atBlock()) {
+        this.readBlock();
+      } else if (!this.readPowerShellQuote(new WordBuilder(false), true)) {
+        this.index += 1;
+      }
+    }
+    this.complete &&= !this.done;
+    this.index = Math.min(this.index + 1, this.source.length);
+    this.expansions -= 1;
+  }
+
+  /**
+   * At a `@{ }` entry: moves past its key and `=`, so the statement after it reads as a command's start, whose words the
+   * key would else open. The key may be a quote or a `(...)`, whose commands run. A line that shows no `=` and ran nothing
+   * is the next line of the statement before, as in `@{a = b |` and a line under it: the cursor goes back.
+   */
+  private readHashKey(): void {
+    this.skipGaps();
+    const start = this.index;
+    const listed = this.commands.length;
+    while (!this.done && !/[=;}]/.test(this.at()) && !BLANKS.powershell.test(this.at()) && !this.endsLine(this.at())) {
+      if (this.atBlock()) {
+        this.readBlock();
+      } else if (!this.readPowerShellQuote(new WordBuilder(false), true)) {
+        this.index += 1;
+      }
+    }
+    this.skipGaps();
+    if (this.at() === '=') {
+      this.index += 1;
+      this.skipGaps();
+    } else if (this.commands.length === listed) {
+      this.index = start;
+    }
+  }
+
+  /** Moves past blanks, line ends and comments, which may sit around a `@{ }` entry's key and `=`. */
+  private skipGaps(): void {
+    while (!this.done) {
+      const char = this.at();
+      if (char === '#') {
+        this.skipComment();
+      } else if (char === '<' && this.at(1) === '#') {
+        this.skipBlockComment();
+      } else if (BLANKS.powershell.test(char) || this.endsLine(char)) {
+        this.index += 1;
+      } else {
+        return;
+      }
+    }
   }
 
   /**
