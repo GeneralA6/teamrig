@@ -41,6 +41,13 @@ export const ESCAPE_ROWS: readonly ShellWordsRow[] = [
   { dialect: 'powershell', typed: 'git commit -m x `\r--no-verify', real: 'git commit -m x --no-verify' },
   { dialect: 'powershell', typed: 'git push origin `\rmain --force', real: 'git push origin main --force' },
   { dialect: 'powershell', typed: 'npm install `\rleft-pad', real: 'npm install left-pad' },
+  // Between words a backtick before a blank is only a gap, so the word after it starts with no blank.
+  { dialect: 'powershell', typed: 'git commit -m x ` --no-verify', real: 'git commit -m x --no-verify' },
+  { dialect: 'powershell', typed: 'git push origin ` main --force', real: 'git push origin main --force' },
+  { dialect: 'powershell', typed: '` git push origin main', real: 'git push origin main' },
+  { dialect: 'powershell', typed: 'git status;` git push origin main', real: 'git status; git push origin main' },
+  { dialect: 'powershell', typed: 'npm install ` left-pad', real: 'npm install left-pad' },
+  { dialect: 'powershell', typed: 'git push origin own,` main', real: 'git push origin own main' },
   { dialect: 'powershell', typed: 'Get-Content a`\r\ngit push origin main', real: 'Get-Content "a\r"; git push origin main' },
   { dialect: 'powershell', typed: 'Get-Content a`\r\ngit commit -m x --no-verify', real: 'Get-Content "a\r"; git commit -m x --no-verify' },
   { dialect: 'powershell', typed: 'Get-Content a`\r\nnpm install left-pad', real: 'Get-Content "a\r"; npm install left-pad' },
