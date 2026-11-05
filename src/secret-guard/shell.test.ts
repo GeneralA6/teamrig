@@ -43,6 +43,24 @@ describe('shellFindings', () => {
     assert.deepEqual(printed('[Environment]::GetEnvironmentVariable("NPM_TOKEN") | Set-Clipboard; if ($env:GH_TOKEN) { "set" }', 'powershell'), []);
   });
 
+  it('reads a [Type]::Member call by what it returns, its arguments being its own', () => {
+    const lines: readonly (readonly [string, readonly string[]])[] = [
+      ['[Environment]::GetEnvironmentVariables()', ['the whole environment']],
+      ['[System.Environment]::GetEnvironmentVariables() | ConvertTo-Json', ['the whole environment']],
+      ['([Environment]::GetEnvironmentVariables())', ['the whole environment']],
+      ['Write-Output ([Environment]::GetEnvironmentVariable("NPM_TOKEN"))', ['the value of $NPM_TOKEN']],
+      ['[Math]::Max(1, 2) + $env:GITHUB_TOKEN', ['the value of $GITHUB_TOKEN']],
+      ['[Environment]::NewLine + $env:GITHUB_TOKEN', ['the value of $GITHUB_TOKEN']],
+      ['[string]::IsNullOrEmpty($env:GITHUB_TOKEN)', []],
+      ['[string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable("NPM_TOKEN"))', []],
+      ['[Environment]::GetEnvironmentVariable("NPM_TOKEN") -eq "x"', []],
+      ['$x = [Environment]::GetEnvironmentVariables()', []],
+      ['[Environment]::GetEnvironmentVariables() | Out-Null', []],
+      ['[Environment]::GetEnvironmentVariables() > f', []],
+    ];
+    assert.deepEqual(lines.map(([line]) => printed(line, 'powershell')), lines.map(([, found]) => found));
+  });
+
   it('reads the lines a container or a remote host runs, to a depth', () => {
     assert.deepEqual(printed("kubectl exec p -- sh -c 'cat .env'"), ['the content of .env']);
     assert.deepEqual(printed('kubectl get secret app -o yaml'), ["a Kubernetes secret's data"]);
