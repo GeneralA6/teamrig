@@ -94,7 +94,7 @@ export const PARAMETER_ROWS: readonly ShellWordsRow[] = [
 
 /**
  * 5.1 hands a native program one line, which the program's C runtime splits again: a lone `"` swallows the next word, a
- * `\"` opens nothing and an empty value drops. Each row's words are what node got from 5.1, run for real.
+ * `\"` opens nothing and an empty value drops. Each row's words are what node and git got from 5.1, run for real.
  */
 export const NATIVE_LINE_ROWS: readonly ShellWordsRow[] = [
   { dialect: 'powershell', typed: `git commit --no-verify 'a"' --verify`, real: `git commit --no-verify 'a --verify'` },
