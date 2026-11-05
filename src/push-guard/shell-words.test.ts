@@ -168,6 +168,8 @@ describe('parseShell: a chain behind a comment, measured on 5.1', () => {
 
   it('reads a bare variable through no comment before its first link', () => {
     assert.deepEqual(plainWordsOf('x $v<#c#>.y b'), [['x', '$v<#c#>.y', 'b']]);
+    assert.deepEqual(plainWordsOf('x $v<#c#>.y<#d#>e b'), [['x', '$v<#c#>.y<#d#>e', 'b']]);
+    assert.deepEqual(plainWordsOf(`x $v<#c#>.y'c' b`), [['x', '$v<#c#>.yc', 'b']]);
   });
 });
 
