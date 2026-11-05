@@ -11,6 +11,8 @@ export interface ShellWordsRow {
   readonly typed: string;
   /** A plain line that runs the same thing. */
   readonly real: string;
+  /** What reads {@link real} when `dialect` cannot write it plainly: a quoted `--%` word is the binder's marker in PowerShell. */
+  readonly realDialect?: ShellDialect;
 }
 
 /** The units PowerShell 5.1 ends a word at without ending the statement, from all 65,536 run through its parser. */
@@ -200,6 +202,30 @@ export const MARKER_ARRAY_ROWS: readonly ShellWordsRow[] = [
   { dialect: 'powershell', typed: `git push '--%',a -y origin" "--force" "main x`, real: `git push '--%,a' origin --force 'main x'` },
   { dialect: 'powershell', typed: `git push origin main '--%',a -y x" "--force" "y z`, real: `git push origin main '--%,a' x --force 'y z'` },
   { dialect: 'powershell', typed: `npm '--%',a -y m" "install" "left-pad z`, real: `npm '--%,a' m install 'left-pad z'` },
+];
+
+/**
+ * In such an array a bare `--%` element leaves the rest of the command as one value too, whatever stands right behind it, and
+ * the binder writes that value the same way. Each row's words are what node and git got from 5.1, run for real.
+ */
+export const MARKER_ELEMENT_ROWS: readonly ShellWordsRow[] = [
+  { dialect: 'powershell', typed: `git commit '--%',a ,--% m" "--no-verify" "n o`, real: `git commit '--%' a '--%' m --no-verify 'n o'`, realDialect: 'bash' },
+  { dialect: 'powershell', typed: `git commit -m x '--%',a ,--% m" "--no-verify" "n o`, real: `git commit -m x '--%' a '--%' m --no-verify 'n o'`, realDialect: 'bash' },
+  { dialect: 'powershell', typed: `git commit '--%',--% m" "--no-verify" "n o`, real: `git commit '--%,--%' m --no-verify 'n o'` },
+  { dialect: 'powershell', typed: `git commit '--%',a,--% m" "--no-verify" "n o`, real: `git commit '--%,a,--%' m --no-verify 'n o'` },
+  { dialect: 'powershell', typed: `git commit '--%',a ,--%} m" "--no-verify" "n o`, real: `git commit '--%' a '--%' '} m' --no-verify 'n o'`, realDialect: 'bash' },
+  { dialect: 'powershell', typed: `git commit '--%',a ,--%; m" "--no-verify" "n o`, real: `git commit '--%' a '--%' '; m' --no-verify 'n o'`, realDialect: 'bash' },
+  { dialect: 'powershell', typed: `git commit '--%',a ,--%& m" "--no-verify" "n o`, real: `git commit '--%' a '--%' '& m' --no-verify 'n o'`, realDialect: 'bash' },
+  { dialect: 'powershell', typed: `git commit '--%',a ,--%) m" "--no-verify" "n o`, real: `git commit '--%' a '--%' ') m' --no-verify 'n o'`, realDialect: 'bash' },
+  { dialect: 'powershell', typed: `git commit '--%',a ,--%, m" "--no-verify" "n o`, real: `git commit '--%' a '--%' ', m' --no-verify 'n o'`, realDialect: 'bash' },
+  { dialect: 'powershell', typed: `git commit '--%'.Trim(),a ,--% m" "--no-verify" "n o`, real: `git commit '--%' a '--%' m --no-verify 'n o'`, realDialect: 'bash' },
+  { dialect: 'powershell', typed: `git commit "--%",a ,--% m" "--no-verify" "n o`, real: `git commit '--%' a '--%' m --no-verify 'n o'`, realDialect: 'bash' },
+  { dialect: 'powershell', typed: `git commit '--%',a ,--\`% m" "--no-verify" "n o`, real: `git commit '--%' a '--%' m --no-verify 'n o'`, realDialect: 'bash' },
+  { dialect: 'powershell', typed: `git commit '--%',a ,--"%" m" "--no-verify" "n o`, real: `git commit '--%' a '--%' m --no-verify 'n o'`, realDialect: 'bash' },
+  { dialect: 'powershell', typed: `git commit '--%',a ,--%"" m" "--no-verify" "n o`, real: `git commit '--%' a '--%' m --no-verify 'n o'`, realDialect: 'bash' },
+  { dialect: 'powershell', typed: `git push '--%',a ,--% x" "--force" "y z`, real: `git push '--%' a '--%' x --force 'y z'`, realDialect: 'bash' },
+  { dialect: 'powershell', typed: `git push origin main '--%',a ,--% x" "--force" "y z`, real: `git push origin main '--%' a '--%' x --force 'y z'`, realDialect: 'bash' },
+  { dialect: 'powershell', typed: `npm '--%',a ,--% m" "install" "left-pad z`, real: `npm '--%' a '--%' m install 'left-pad z'`, realDialect: 'bash' },
 ];
 
 /**

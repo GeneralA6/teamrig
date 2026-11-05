@@ -807,6 +807,13 @@ class Scanner {
      * one more value.
      */
     let opensText = false;
+    /**
+     * 5.1's line: true right behind a bare `--%` element of the array {@link opensText} holds, where the rest is one more
+     * value whatever stands first in it. Measured: `'--%',a ,--% b c` hands over `--%`, `a`, `--%` and `b c`, and
+     * `'--%',a ,--%} b c` hands over `} b c`. A word that opens on a quote, one a NUL cut, or a run-time value stays a plain
+     * element: `'--%',a ,--%`0; b c` runs `b`. A run-time piece needs no term of its own, as it always adds its own text.
+     */
+    let textNext = false;
     /** True when the parser's `--%` opened the text: a NUL's cut can drop it, and a marker pair leaves none. */
     let markerWord = false;
     let redirections: Redirection[] = [];
@@ -902,6 +909,7 @@ class Scanner {
         }
         // Measured: a `-name:` taken as a value takes none itself, so `x -y: -z: --% a;b` runs no `b`.
         valueNext = !valueNext && this.index === valueAt;
+        textNext = opensText && !quoted && taken.text === MARKER && !cut;
         element = false;
         return;
       }
@@ -922,6 +930,7 @@ class Scanner {
       valueNext = false;
       tokenNext = false;
       opensText = false;
+      textNext = false;
       lineCut = false;
       const { nativeLine } = this.reading;
       const command: ScannedCommand | undefined =
@@ -958,6 +967,12 @@ class Scanner {
         keepVerbatim(at, cut ? [] : units);
         continue;
       }
+      if (textNext) {
+        // Here and not in `endWord`, whose callers move the index past what ended the word.
+        textNext = false;
+        this.readTextValue(addWord);
+        continue;
+      }
       if (keyNext) {
         keyNext = false;
         this.readHashKey();
@@ -968,7 +983,7 @@ class Scanner {
         // Ahead of the closer's check: a `)` here is text, so `(a --%)` leaves its group open. `endWord` knows if the word
         // marks: in a value's place or an array it does not, and the character then does what it always does.
         endWord();
-        if (verbatim) {
+        if (verbatim || textNext) {
           continue;
         }
       }
