@@ -409,8 +409,8 @@ function argumentsAt(words: readonly ShellWord[]): number | undefined {
 
 /**
  * The words of one comma-built array, `from` to `to` inclusive, as indexes into a command's words. Tight when no comma
- * in it has a gap on either side: only then is it one argument on 5.1's line. An array with a gap stays listed, so a
- * later comma of it cannot read as tight: `a ,b,c` is three arguments.
+ * in it has a gap on either side: only then does 5.1's line join it by commas. Either way it is one argument, so it adds
+ * one blank: `a ,b,c` writes three words, and `'' ,b` writes no blank for its empty element.
  */
 interface ArgumentArray {
   readonly from: number;
@@ -425,17 +425,26 @@ function withComma(arrays: readonly ArgumentArray[], last: number, tight: boolea
 }
 
 /**
- * `words` from `start` up to `end` as arguments, each the elements of one. A tight array is one argument. One that opens
- * before `start` holds the head, so it joins nothing. A word the NUL dropped leaves `to` past the last word, and the
- * slice stops there.
+ * An array with a gap as the arguments its line reads as: measured, its elements stand apart and an empty one adds no
+ * blank, so only an array of nothing but empty values keeps the one blank every argument writes.
+ */
+function gappedArguments(elements: readonly ShellWord[]): readonly (readonly ShellWord[])[] {
+  const filled = elements.filter((element) => element.text !== '');
+  return filled.length === 0 ? [[]] : filled.map((element) => [element]);
+}
+
+/**
+ * `words` from `start` up to `end` as arguments, each the elements of one. An array that opens before `start` holds the
+ * head, so it joins nothing. A word the NUL dropped leaves `to` past the last word, and the slice stops there.
  */
 function argumentsOf(words: readonly ShellWord[], start: number, end: number, arrays: readonly ArgumentArray[]): readonly (readonly ShellWord[])[] {
   const args: (readonly ShellWord[])[] = [];
   let at = start;
   while (at < end) {
-    const array = arrays.find((candidate) => candidate.tight && candidate.from === at);
+    const array = arrays.find((candidate) => candidate.from === at);
     const next = array === undefined ? at + 1 : array.to + 1;
-    args.push(words.slice(at, next));
+    const elements = words.slice(at, next);
+    args.push(...(array === undefined || array.tight ? [elements] : gappedArguments(elements)));
     at = next;
   }
   return args;

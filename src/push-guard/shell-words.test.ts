@@ -596,6 +596,18 @@ describe('parseShell: the line 5.1 writes for a native program', () => {
     }
   });
 
+  it('writes one blank for an array with a gap, none for its empty elements', () => {
+    // A quote keeps the blanks in the word, so these rows show how many the line holds.
+    const rows: readonly (readonly [string, string])[] = [
+      [`x '"', '', b`, ' b'],
+      [`x '', '"', b`, ' b'],
+      [`x '"' '','' b`, '  b'],
+    ];
+    for (const [line, word] of rows) {
+      assert.deepEqual(readingsOf(line).at(-1), [['x', word]], line);
+    }
+  });
+
   it('joins nothing into the head, and stops an array at a NUL', () => {
     assert.deepEqual(readingsOf('a,b c').at(-1), [['a', 'b', 'c']]);
     assert.deepEqual(parseShell('x a\0b,c d', 'powershell').readings?.[0]?.commands.map((command) => command.words.map((word) => word.text)), [['x', 'a']]);
