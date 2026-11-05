@@ -108,6 +108,7 @@ export const QUOTE_ROWS: readonly ShellWordsRow[] = [
   { dialect: 'powershell', typed: 'git status --% a\rgit push origin main', real: 'git push origin main' },
   { dialect: 'powershell', typed: 'git status --% "a\rgit push origin main', real: 'git push origin main' },
   { dialect: 'powershell', typed: 'git status --% a && git push origin main', real: 'git push origin main' },
+  { dialect: 'powershell', typed: 'git commit --% -m a\\" --no-verify', real: "git commit '--%' -m 'a\"' --no-verify" },
   { dialect: 'powershell', typed: 'git status --% %a|git\u0085push\u0085origin\u0085main;#%', real: 'git push origin main' },
   { dialect: 'powershell', typed: 'git commit --no-verify --% x\u00a0--verify', real: 'git commit --no-verify --% "x\u00a0--verify"' },
 ];

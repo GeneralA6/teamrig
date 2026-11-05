@@ -1,4 +1,5 @@
 import { ansiCValue } from './ansi-c.ts';
+import { splitLine, type LineUnit } from './native-line.ts';
 
 /** Which shell wrote a command line; it decides the quotes, the escape character and what expands. */
 export type ShellDialect = 'bash' | 'powershell' | 'cmd';
@@ -1672,37 +1673,40 @@ class Scanner {
 
   /**
    * After PowerShell's `--%`: the text up to {@link verbatimEnd} goes to the program as written, with cmd-style `%VAR%`
-   * left dynamic. The shell no longer splits it, so the program does, on a space or a tab, and only a plain `"` groups.
-   * Each word goes to `addWord`, with whether a NUL cut it.
+   * left dynamic, so the program's C runtime splits it; see {@link splitLine}. Each word goes to `addWord`, with whether
+   * a NUL cut it.
    */
   private readVerbatim(addWord: (taken: ShellWord, cut: boolean) => void): void {
-    const end = this.verbatimEnd();
-    const word = new WordBuilder(false, this.reading.nul !== 'kept');
-    const flush = (): void => {
-      const cut = word.isCut;
-      const taken = word.take();
-      if (taken !== undefined) {
-        addWord(taken, cut);
+    for (const units of splitLine(this.verbatimUnits(), 'ucrt')) {
+      const word = new WordBuilder(false, this.reading.nul !== 'kept');
+      // An empty pair of quotes is a word too, and it has no unit to start it.
+      word.add('');
+      for (const unit of units) {
+        if (typeof unit === 'string') {
+          word.add(unit);
+        } else {
+          word.add(unit.text, 'dynamic');
+        }
       }
-    };
-    let grouped = false;
-    while (this.index < end) {
-      const char = this.at();
-      if (char === '%') {
-        this.readCmdVariable(word, end);
-        continue;
-      }
-      if (char === '"') {
-        grouped = !grouped;
-        word.add('');
-      } else if (!grouped && BLANKS.cmd.test(char)) {
-        flush();
-      } else {
-        word.add(char);
-      }
-      this.index += 1;
+      addWord(word.word(), word.isCut);
     }
-    flush();
+  }
+
+  /** The text after `--%` as a line: each character a unit, and a cmd-style `%VAR%` a piece, as it stays dynamic. */
+  private verbatimUnits(): LineUnit[] {
+    const end = this.verbatimEnd();
+    const units: LineUnit[] = [];
+    while (this.index < end) {
+      if (this.at() === '%') {
+        const variable = new WordBuilder(false);
+        this.readCmdVariable(variable, end);
+        units.push(...(variable.isDynamic ? [{ text: variable.value }] : [...variable.value]));
+      } else {
+        units.push(this.at());
+        this.index += 1;
+      }
+    }
+    return units;
   }
 
   /**

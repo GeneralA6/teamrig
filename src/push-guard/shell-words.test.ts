@@ -409,6 +409,26 @@ describe('parseShell: PowerShell --%', () => {
     assert.deepEqual(wordsOf('x --% a\u00a0b\u3000c\u0085d\te', 'powershell'), [['x', '--%', 'a\u00a0b\u3000c\u0085d', 'e']]);
   });
 
+  it('splits the text as the C runtime does, so a backslash keeps a quote from grouping', () => {
+    assert.deepEqual(wordsOf('x --% -m a\\" --no-verify', 'powershell'), [['x', '--%', '-m', 'a"', '--no-verify']]);
+    assert.deepEqual(wordsOf('x --% a\\\\"b c"', 'powershell'), [['x', '--%', 'a\\b c']]);
+    assert.deepEqual(wordsOf('x --% a\\b c', 'powershell'), [['x', '--%', 'a\\b', 'c']]);
+    assert.deepEqual(wordsOf('x --% "a""b" c', 'powershell'), [['x', '--%', 'a"b', 'c']]);
+  });
+
+  it('keeps an empty pair of quotes as a word', () => {
+    assert.deepEqual(wordsOf('x --% "" a', 'powershell'), [['x', '--%', '', 'a']]);
+  });
+
+  it('takes no quote or blank from inside a %VAR%, which stays dynamic in its word', () => {
+    const [, , ...rest] = parseShell('x --% a%B%c d', 'powershell').commands[0]?.words ?? [];
+    assert.deepEqual(rest.map((word) => [word.text, word.dynamic]), [['a%B%c', true], ['d', false]]);
+  });
+
+  it('reads %% as one percent and a lone % as itself', () => {
+    assert.deepEqual(wordsOf('x --% a%%b c%', 'powershell'), [['x', '--%', 'a%b', 'c%']]);
+  });
+
   it('reads %VAR% in quotes too, and never past the end of the text', () => {
     const [, ...rest] = parseShell('x --% "%A%"', 'powershell').commands[0]?.words ?? [];
     assert.deepEqual(rest.map((word) => [word.text, word.dynamic]), [['--%', false], ['%A%', true]]);
