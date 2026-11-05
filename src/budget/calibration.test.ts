@@ -12,6 +12,9 @@ import {
   METER_LOG_FORMAT,
   MeterLog,
   meterRecordOf,
+  MOVED_RATE_DOWN,
+  MOVED_RATE_MIN_PCT,
+  MOVED_RATE_UP,
   parseMeterRecord,
   periodForecasts,
   READINGS_KEPT_MS,
@@ -117,9 +120,38 @@ describe('fitRate', () => {
       assert.deepEqual(fitRate([...atOldLimit, ...atNewLimit]), { wPerPct: 4_000_000, errorPts: 0, readings: 3 });
     });
 
-    it('keeps the last period that spans the points while the newest does not yet', () => {
-      const started = [1, FIT_SPREAD_PTS].map((pct) => reading(pct, pct * 4_000_000));
+    it('keeps the last period that spans the points while the newest does not yet and agrees with it', () => {
+      const started = [1, FIT_SPREAD_PTS].map((pct) => reading(pct, pct * 8_000_000));
       assert.deepEqual(fitRate([...atOldLimit, ...started]), { wPerPct: 9_000_000, errorPts: 0, readings: 3 });
+    });
+
+    describe('a limit moved, before the newest period spans the points (T2019)', () => {
+      const ownAt = (wPerPct: number): readonly MeterReading[] => [1, MOVED_RATE_MIN_PCT].map((pct) => reading(pct, pct * wPerPct));
+      const OLD_RATE = 9_000_000;
+
+      it(`takes the newest period's own rate at ${MOVED_RATE_UP}x the older fit or over`, () => {
+        const own = OLD_RATE * MOVED_RATE_UP;
+        assert.deepEqual(fitRate([...atOldLimit, ...ownAt(own)]), { wPerPct: own, errorPts: 0, readings: 2 });
+      });
+
+      it(`takes the newest period's own rate at ${MOVED_RATE_DOWN}x the older fit or under`, () => {
+        const own = OLD_RATE * MOVED_RATE_DOWN;
+        assert.deepEqual(fitRate([...atOldLimit, ...ownAt(own)]), { wPerPct: own, errorPts: 0, readings: 2 });
+      });
+
+      it('keeps the older fit for a rate inside the two, the low read an early rate gives included', () => {
+        for (const own of [OLD_RATE * 0.61, OLD_RATE * 1.18]) {
+          assert.equal(fitRate([...atOldLimit, ...ownAt(own)])?.wPerPct, OLD_RATE);
+        }
+      });
+
+      it(`keeps the older fit until the newest period reads ${MOVED_RATE_MIN_PCT}%: a first reading alone is noise`, () => {
+        assert.equal(fitRate([...atOldLimit, reading(1, OLD_RATE * 3)])?.wPerPct, OLD_RATE);
+      });
+
+      it('keeps the older fit for a newest period with no W yet', () => {
+        assert.equal(fitRate([...atOldLimit, reading(1, 0), reading(MOVED_RATE_MIN_PCT, 0)])?.wPerPct, OLD_RATE);
+      });
     });
 
     it('fits all the readings of a team too quiet for any period to span the points alone', () => {

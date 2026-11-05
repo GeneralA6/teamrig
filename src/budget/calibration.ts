@@ -25,6 +25,18 @@ import type { WeekUse } from './snapshot.ts';
 export const METER_LOG_FORMAT = 1;
 /** The points of the week the readings must span before their fit is used: a narrow spread fits noise. */
 export const FIT_SPREAD_PTS = 10;
+/**
+ * How high the newest period's use must read before its own rate can overrule an older period's fit (`fitRate`): a
+ * first reading alone is too noisy, at 0.00 to 0.66 of its period's final rate on the four teams of the 11-04 week.
+ */
+export const MOVED_RATE_MIN_PCT = 2;
+/**
+ * The newest period's own W per percent over an older period's fit, at or past which the limit moved (`fitRate`). The
+ * two are lopsided because W lags the status line, so an early rate reads low: at 2 and 3 points the 11-04 week's own
+ * rates read 0.61 to 1.18 of their period's final one. The moves seen, about 2.5x up (T2019) and 0.43x down (T1985), pass.
+ */
+export const MOVED_RATE_UP = 1.5;
+export const MOVED_RATE_DOWN = 0.5;
 /** How long a reading counts in the fit; the log keeps up to a week more before a write drops the older lines. */
 export const READINGS_KEPT_MS = 8 * MS_PER_WEEK;
 /** How old a status line reading may be and still be logged: W metered after it would count in its line. */
@@ -128,15 +140,8 @@ function rms(misses: readonly number[]): number {
   return Math.sqrt(misses.reduce((sum, miss) => sum + miss * miss, 0) / misses.length);
 }
 
-/**
- * W per percent through 0 over `readings` (least squares of W on the use), with its misses in points; undefined
- * while they span fewer than `FIT_SPREAD_PTS` points.
- */
-function fitOver(readings: readonly MeterReading[]): RateFit | undefined {
-  const pcts = readings.map((reading) => reading.usedPct);
-  if (pcts.length === 0 || Math.max(...pcts) - Math.min(...pcts) < FIT_SPREAD_PTS) {
-    return undefined;
-  }
+/** W per percent through 0 over `readings` (least squares of W on the use), with its misses in points; undefined with no W. */
+function slopeOver(readings: readonly MeterReading[]): RateFit | undefined {
   const wByPct = readings.reduce((sum, reading) => sum + reading.w * reading.usedPct, 0);
   const pctSquared = readings.reduce((sum, reading) => sum + reading.usedPct * reading.usedPct, 0);
   const wPerPct = wByPct / pctSquared;
@@ -146,16 +151,37 @@ function fitOver(readings: readonly MeterReading[]): RateFit | undefined {
   return { wPerPct, errorPts: rms(readings.map((reading) => reading.w / wPerPct - reading.usedPct)), readings: readings.length };
 }
 
+/** `slopeOver`, undefined while the readings span fewer than `FIT_SPREAD_PTS` points. */
+function fitOver(readings: readonly MeterReading[]): RateFit | undefined {
+  const pcts = readings.map((reading) => reading.usedPct);
+  return pcts.length === 0 || Math.max(...pcts) - Math.min(...pcts) < FIT_SPREAD_PTS ? undefined : slopeOver(readings);
+}
+
+/** The period's own rate once it shows the limit moved from `older` (`MOVED_RATE_UP`, `MOVED_RATE_DOWN`); else undefined. */
+function movedRate(period: readonly MeterReading[], older: RateFit): RateFit | undefined {
+  const own = period.some((reading) => reading.usedPct >= MOVED_RATE_MIN_PCT) ? slopeOver(period) : undefined;
+  if (own === undefined) {
+    return undefined;
+  }
+  const ratio = own.wPerPct / older.wPerPct;
+  return ratio >= MOVED_RATE_UP || ratio <= MOVED_RATE_DOWN ? own : undefined;
+}
+
 /**
  * The week's W per percent from `readings`: the fit of the newest period that spans `FIT_SPREAD_PTS` points alone,
  * else of them all, for a team too quiet for any period to. A period stands alone because the account's limit can move
  * at a reset, and a fit across periods averages the move away for as long as the old lines count: a week point fell
  * from 9.1M to 3.9M W at one reset while the fit stayed at 9.1M, so every session read 2.3x under its real use (T1985).
+ * The newest period overrules an older fit sooner once its own rate shows the limit moved (`movedRate`): waiting for
+ * the spread left a plan raised inside a week priced at the old rate for its first 10 points, about 90M W (T2019).
  */
 export function fitRate(readings: readonly MeterReading[]): RateFit | undefined {
   const newestFirst = [...new Set(readings.map((reading) => reading.start))].sort((a, b) => b - a);
-  const fits = newestFirst.map((start) => fitOver(readings.filter((reading) => reading.start === start)));
-  return fits.find((fit) => fit !== undefined) ?? fitOver(readings);
+  const periods = newestFirst.map((start) => readings.filter((reading) => reading.start === start));
+  const fits = periods.map((period) => fitOver(period));
+  const fit = fits.find((found) => found !== undefined) ?? fitOver(readings);
+  const [newest] = periods;
+  return newest === undefined || fit === undefined || fits[0] !== undefined ? fit : (movedRate(newest, fit) ?? fit);
 }
 
 /** The forecasts' misses in each period that had any, oldest first. */
