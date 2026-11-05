@@ -145,6 +145,21 @@ const BLANKS: Readonly<Record<ShellDialect, RegExp>> = {
  */
 const POWERSHELL_QUOTES = { single: /['\u2018\u2019\u201a\u201b]/, double: /["\u201c\u201d\u201e]/ } as const;
 
+/**
+ * What a PowerShell backtick makes of a letter, in a word or in quotes alike, measured on 5.1 (T2002). Every other letter
+ * keeps itself. That holds `e` too, ESC on pwsh 7: only the letter can spell an option, and ESC makes a word git refuses.
+ */
+const POWERSHELL_ESCAPES: ReadonlyMap<string, string> = new Map([
+  ['0', '\0'],
+  ['a', '\x07'],
+  ['b', '\b'],
+  ['f', '\f'],
+  ['n', '\n'],
+  ['r', '\r'],
+  ['t', '\t'],
+  ['v', '\v'],
+]);
+
 /** A word that is all a redirection's file-descriptor number: `2` of `2>`, or PowerShell's `*` of `*>`. */
 const DESCRIPTOR = /^(?:\d+|\*)$/;
 
@@ -847,7 +862,7 @@ class Scanner {
         word.add(this.at(1) === '\n' ? '' : this.at(1));
         this.index += 2;
       } else if (this.dialect === 'powershell' && char === '`') {
-        this.readEscape(word);
+        this.readPowerShellEscape(word);
       } else if (char === '$') {
         this.readDollar(word, true);
       } else if (this.dialect === 'bash' && char === '`') {
@@ -996,7 +1011,7 @@ class Scanner {
     } else if (this.isDoubleQuote(char)) {
       this.readDoubleQuoted(word);
     } else if (char === '`') {
-      this.readEscape(word);
+      this.readPowerShellEscape(word);
     } else if (char === '$') {
       this.readDollar(word, false);
     } else if (hereStringBody !== undefined) {
@@ -1088,7 +1103,7 @@ class Scanner {
         word.add(this.at(1) === '\n' ? '' : this.at(1));
         this.index += 2;
       } else if (this.dialect === 'powershell' && char === '`') {
-        this.readEscape(word);
+        this.readPowerShellEscape(word);
       } else if (this.dialect !== 'cmd' && char === '$') {
         this.readDollar(word, true);
       } else if (this.dialect === 'bash' && char === '`') {
@@ -1103,18 +1118,34 @@ class Scanner {
     this.complete = false;
   }
 
-  /** The escape character (`\`, a backtick or `^`) keeps the next character; before a newline it joins the lines. */
+  /** The escape character (`\` or `^`) keeps the next character; before a newline it joins the lines. */
   private readEscape(word: WordBuilder): void {
     const next = this.at(1);
     if (next === '\n') {
       this.index += 2;
       return;
     }
-    if (this.dialect === 'powershell' && next === '\r' && this.at(2) === '\n') {
-      this.index += 3;
+    word.add(next === '' ? this.at() : next);
+    this.index += 2;
+  }
+
+  /**
+   * PowerShell's backtick, measured on 5.1 (T2002). Between words it continues the line, whichever line end follows. In a
+   * word or quotes it keeps ONE character, so `a<backtick><CR><LF>b c` is the word `a<CR>`, then the LF ends the statement
+   * and `b c` runs. With nothing after it, or a NUL, the backtick stays.
+   */
+  private readPowerShellEscape(word: WordBuilder): void {
+    const next = this.at(1);
+    if (!word.isStarted && /[\n\r]/.test(next)) {
+      this.index += next === '\r' && this.at(2) === '\n' ? 3 : 2;
       return;
     }
-    word.add(next === '' ? this.at() : next);
+    if (next === '' || next === '\0') {
+      word.add(this.at());
+      this.index += 1;
+      return;
+    }
+    word.add(POWERSHELL_ESCAPES.get(next) ?? next);
     this.index += 2;
   }
 
