@@ -496,8 +496,20 @@ describe('parseShell: PowerShell --%', () => {
     assert.deepEqual(readingsOf('x a,--% b;c d').at(-1), [['x', 'a,--%', 'b'], ['c', 'd']]);
   });
 
-  it('reads %% as one percent and a lone % as itself', () => {
-    assert.deepEqual(wordsOf('x --% a%%b c%', 'powershell'), [['x', '--%', 'a%b', 'c%']]);
+  it('leaves %% and a lone % as they stand: a --% is not cmd', () => {
+    assert.deepEqual(wordsOf('x --% a%%b c%', 'powershell'), [['x', '--%', 'a%%b', 'c%']]);
+  });
+
+  it('reads none of cmd\'s other forms as a value', () => {
+    ['%1', '%*', '%~dp0', '!W!'].forEach((value) => {
+      const [, , ...rest] = parseShell(`x --% ${value} c`, 'powershell').commands[0]?.words ?? [];
+      assert.deepEqual(rest.map((word) => [word.text, word.dynamic]), [[value, false], ['c', false]]);
+    });
+  });
+
+  it('reads a %NAME% behind a percent that cannot open it', () => {
+    const [, , ...rest] = parseShell('x --% %%W% c', 'powershell').commands[0]?.words ?? [];
+    assert.deepEqual(rest.map((word) => [word.text, word.dynamic]), [['%%W%', true], ['c', false]]);
   });
 
   it('reads %VAR% in quotes too, and never past the end of the text', () => {

@@ -129,6 +129,17 @@ export function verbatimLine(text: readonly LineUnit[]): LineUnit[] {
   return [' ', ' ', ...(start === -1 ? [] : text.slice(start))];
 }
 
+/** A `%NAME%`; a blank or a quote in it leaves it text, so a word inside `%a --no-verify b%` stays a word when unset. */
+const VARIABLE = /(%[^%\s"]+%)/u;
+
+/**
+ * Text 5.1 expands on its way to a program, each `%NAME%` a piece as its value is not known here. Measured on 44 rows, it
+ * is the only form: `%%`, `%1`, `%*`, `%~dp0` and `!NAME!` stay as written, so cmd's reading is not this one.
+ */
+export function expandedUnits(text: string): LineUnit[] {
+  return text.split(VARIABLE).flatMap((part, at): LineUnit[] => (at % 2 === 1 ? [{ text: part }] : [...part]));
+}
+
 /**
  * What arguments add to the line behind the binder's `--%`, a value equal to it that no parser took as its marker:
  * measured, each keeps its blank and goes in as it stands, so `'--%' 'a b' c` hands a program `a`, `b` and `c`.

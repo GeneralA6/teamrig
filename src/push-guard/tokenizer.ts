@@ -1,5 +1,5 @@
 import { ansiCValue } from './ansi-c.ts';
-import { bareLine, nativeWords, splitLine, verbatimLine, type CRuntime, type LineUnit } from './native-line.ts';
+import { bareLine, expandedUnits, nativeWords, splitLine, verbatimLine, type CRuntime, type LineUnit } from './native-line.ts';
 
 /** Which shell wrote a command line; it decides the quotes, the escape character and what expands. */
 export type ShellDialect = 'bash' | 'powershell' | 'cmd';
@@ -1825,11 +1825,10 @@ class Scanner {
 
   /**
    * cmd `%VAR%`, `%1`, `%*`, `%~dp0` and delayed `!VAR!` are dynamic; `%%` is one literal `%`, and a `%` or `!`
-   * that starts none of them is literal. Text from `end` on is not looked at.
+   * that starts none of them is literal.
    */
-  private readCmdVariable(word: WordBuilder, end = this.source.length): void {
-    const rest = this.source.slice(this.index, end);
-    const match = /^(?:%%|%~[a-zA-Z]*[0-9]|%[0-9*]|%[^%\s"]+%|![^!\s"]+!)/.exec(rest);
+  private readCmdVariable(word: WordBuilder): void {
+    const match = /^(?:%%|%~[a-zA-Z]*[0-9]|%[0-9*]|%[^%\s"]+%|![^!\s"]+!)/.exec(this.source.slice(this.index));
     if (match === null) {
       word.add(this.at());
       this.index += 1;
@@ -1883,9 +1882,9 @@ class Scanner {
   }
 
   /**
-   * After PowerShell's `--%`: the text up to {@link verbatimEnd} goes to the program as written, with cmd-style `%VAR%`
-   * left dynamic, so the program's C runtime splits it; see {@link splitLine}. Each word goes to `addWord`, with whether
-   * a NUL cut it. Gives the text back, as a quote before the `--%` reaches into it.
+   * After PowerShell's `--%`: the text up to {@link verbatimEnd} goes to the program as written, with each `%NAME%` left
+   * dynamic, so the program's C runtime splits it; see {@link splitLine}. Each word goes to `addWord`, with whether a NUL
+   * cut it. Gives the text back, as a quote before the `--%` reaches into it.
    */
   private readVerbatim(addWord: (taken: ShellWord, cut: boolean) => void): readonly LineUnit[] {
     const text = this.verbatimUnits();
@@ -1905,20 +1904,11 @@ class Scanner {
     return text;
   }
 
-  /** The text after `--%` as a line: each character a unit, and a cmd-style `%VAR%` a piece, as it stays dynamic. */
+  /** The text after `--%` as a line; see {@link expandedUnits}. */
   private verbatimUnits(): LineUnit[] {
     const end = this.verbatimEnd();
-    const units: LineUnit[] = [];
-    while (this.index < end) {
-      if (this.at() === '%') {
-        const variable = new WordBuilder(false);
-        this.readCmdVariable(variable, end);
-        units.push(...(variable.isDynamic ? [{ text: variable.value }] : [...variable.value]));
-      } else {
-        units.push(this.at());
-        this.index += 1;
-      }
-    }
+    const units = expandedUnits(this.source.slice(this.index, end));
+    this.index = end;
     return units;
   }
 
