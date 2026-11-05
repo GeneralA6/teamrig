@@ -1,9 +1,12 @@
 import { errorMessage } from '../../core/guards.ts';
 import { resolveKitHome } from '../../core/home.ts';
+import { KIT_VERSION } from '../../core/version.ts';
 import { restoreLaunchers, restorePlan, type MachineStep, type RestoreMachine } from '../../restore/install-plan.ts';
+import { LAUNCHER_INSTALL_LOCK, launcherRecordPath, lowerRecordSteps } from '../../restore/launcher-refresh.ts';
 import type { LogonEntry } from '../../restore/logon.ts';
 import { RESTORE_SHORTCUT_NAME, shortcutLine, shortcutsToRemove } from '../../restore/shortcut.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
+import { fileLockOf } from '../file-locks.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 
 /**
@@ -16,7 +19,10 @@ import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.t
  * name that starts something else (a taskbar pin made from an older one), changed in place so a pin stays pinned.
  * Uninstall removes the entry and the shortcuts that run the run launcher before the launchers; a shortcut of that
  * name that runs anything else stays. What install changes is src/restore/install-plan.ts, which the launcher refresh
- * at each session start shares.
+ * at each session start shares (src/restore/launcher-refresh.ts). With --yes both take the refresh's record lock while
+ * they read and write, so a refresh never interleaves with them, and an install that writes anything first lowers a
+ * record naming a newer version to its own: an older teamrig on the PATH writes older texts, which the next start of
+ * a newer one then writes back.
  */
 
 /** A machine with a logon entry teamrig can set, which install and uninstall need. */
@@ -27,26 +33,40 @@ interface LogonMachine extends RestoreMachine {
 /** `restore install [--yes]`. */
 export async function restoreInstall(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const { steps, unchanged } = await restorePlan(machineOf(runtime, 'set up'), 'install');
-  return apply(args, runtime, steps, unchanged);
+  const machine = machineOf(runtime, 'set up');
+  return underRecordLock(args, runtime, machine.kitHome, async () => {
+    const { steps, unchanged } = await restorePlan(machine, 'install');
+    const lower = steps.length === 0 ? [] : await lowerRecordSteps(machine.files, machine.kitHome, KIT_VERSION, runtime.clock.now());
+    return apply(args, runtime, [...lower, ...steps], unchanged);
+  });
 }
 
 /** `restore uninstall [--yes]`. */
 export async function restoreUninstall(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
   const { logon, shortcuts, kitHome } = machineOf(runtime, 'take out');
-  const { check, run } = restoreLaunchers(kitHome);
-  const before = await logon.read();
-  const steps: MachineStep[] = before === undefined ? [] : [{ line: `REMOVE ${logon.where}: ${before}`, act: () => logon.remove() }];
-  const unchanged = [`${logon.where}: the restore check does not run at logon`];
-  if (shortcuts !== undefined) {
-    for (const found of shortcutsToRemove(await shortcuts.scan(), run.path)) {
-      steps.push({ line: `REMOVE ${found.path}: ${shortcutLine(found)}`, act: () => shortcuts.remove(found.path) });
+  return underRecordLock(args, runtime, kitHome, async () => {
+    const { check, run } = restoreLaunchers(kitHome);
+    const before = await logon.read();
+    const steps: MachineStep[] = before === undefined ? [] : [{ line: `REMOVE ${logon.where}: ${before}`, act: () => logon.remove() }];
+    const unchanged = [`${logon.where}: the restore check does not run at logon`];
+    if (shortcuts !== undefined) {
+      for (const found of shortcutsToRemove(await shortcuts.scan(), run.path)) {
+        steps.push({ line: `REMOVE ${found.path}: ${shortcutLine(found)}`, act: () => shortcuts.remove(found.path) });
+      }
+      unchanged.push(`no ${RESTORE_SHORTCUT_NAME} runs ${run.path}`);
     }
-    unchanged.push(`no ${RESTORE_SHORTCUT_NAME} runs ${run.path}`);
+    steps.push(...(await removeIfThere(runtime, check.path)), ...(await removeIfThere(runtime, run.path)));
+    return apply(args, runtime, steps, unchanged);
+  });
+}
+
+/** Runs `task` under the launcher record's lock when --yes writes; a preview writes nothing, so it takes no lock. */
+async function underRecordLock(args: ParsedArgs, runtime: CliRuntime, kitHome: string, task: () => Promise<ExitCode>): Promise<ExitCode> {
+  if (!args.switches.has('yes')) {
+    return task();
   }
-  steps.push(...(await removeIfThere(runtime, check.path)), ...(await removeIfThere(runtime, run.path)));
-  return apply(args, runtime, steps, unchanged);
+  return fileLockOf(runtime, `${launcherRecordPath(kitHome)}.lock`, LAUNCHER_INSTALL_LOCK).run(task);
 }
 
 /** The step that removes the file at `path`, none when there is none. */

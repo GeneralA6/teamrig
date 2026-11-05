@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import type { Files } from '../core/files.ts';
 import { errorMessage, stringField } from '../core/guards.ts';
 import { parseObject, recordVersion, VERSION_FIELD } from '../core/jsonl.ts';
 import { LockBusyError, type LockTimings, type Mutex } from '../core/lock.ts';
@@ -26,6 +27,12 @@ export const LAUNCHER_RECORD_FORMAT = 1;
  * never waits, since the start that holds it does the same work.
  */
 export const LAUNCHER_REFRESH_LOCK: LockTimings = { ttlMs: 120_000, pollMs: 50, waitMs: 0 };
+
+/**
+ * The record's lock as `restore install` and `restore uninstall` take it while they write: they wait out a refresh
+ * another session start is taking, which ends or turns stale within the lock's TTL, so the two never interleave.
+ */
+export const LAUNCHER_INSTALL_LOCK: LockTimings = { ...LAUNCHER_REFRESH_LOCK, waitMs: LAUNCHER_REFRESH_LOCK.ttlMs };
 
 /** The record of the newest version that refreshed the launchers: `<kit home>/bin/launchers.json`. */
 export function launcherRecordPath(kitHome: string): string {
@@ -60,6 +67,41 @@ function isDue(recorded: Recorded, running: Version): boolean {
     case 'version':
       return compareVersions(running, recorded.version) > 0;
   }
+}
+
+/** Whether the record names a version newer than `running`: one of a newer format does, none does not. */
+function namesNewer(recorded: Recorded, running: Version): boolean {
+  switch (recorded.kind) {
+    case 'none':
+      return false;
+    case 'newer-format':
+      return true;
+    case 'version':
+      return compareVersions(recorded.version, running) > 0;
+  }
+}
+
+/**
+ * The step that lowers the record to `version` before an install of that version writes the launchers: an older
+ * teamrig on the PATH writes its older texts, and a record still naming a newer version would keep every later start
+ * of that version from writing them back; lowered, the next start of a newer teamrig is due and refreshes. None when
+ * the record names this version or an older one, when there is none (every start is due then, and install never
+ * creates it), or when `version` is no release version, which the refresh never records either.
+ */
+export async function lowerRecordSteps(files: Files, kitHome: string, version: string, now: number): Promise<MachineStep[]> {
+  const running = parseVersion(version);
+  const path = launcherRecordPath(kitHome);
+  const recorded = recordedOf(await files.read(path));
+  if (running === undefined || !namesNewer(recorded, running)) {
+    return [];
+  }
+  const from = recorded.kind === 'version' ? recorded.text : 'a newer format';
+  return [
+    {
+      line: `SET ${path}: ${from} -> ${version}, so the next start of a newer teamrig refreshes what this writes`,
+      act: () => files.write(path, formatRecord(version, now)),
+    },
+  ];
 }
 
 /** The record's text: its format, the version that refreshed and when. */
