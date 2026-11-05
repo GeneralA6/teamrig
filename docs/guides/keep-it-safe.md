@@ -63,8 +63,8 @@ flowchart TD
 - `teamrig commits check --base <ref>` runs the same size rule in a script or CI.
 - Outside a project tied to a team, the guard stays silent.
 
-The guard splits the command into words the way its shell does (bash, PowerShell or cmd quoting), so it finds a
-push wherever it sits in the line:
+The guard splits the command into words the way its shell does (the quotes, blanks, line ends and escapes of bash,
+PowerShell or cmd, each measured on the real shell), so it finds a push wherever it sits in the line:
 
 - git's own options: `git -C <dir> push`, `--git-dir`, `-c key=value`, and `GIT_DIR` or `GIT_CONFIG*` variables;
 - chained, piped and multi-line commands (`&&`, `||`, `;`, `|`), subshells, `$( )` and backticks;
@@ -100,8 +100,11 @@ When it cannot read part of a line with confidence, it asks and says why: a quot
 command, alias, folder, remote or refspec only known when the line runs, an alias git cannot read, scripts nested
 too deep, a push held in quoted text as a command substitution (`x='a[$(git push origin main)]'`), which bash runs
 if an expansion reads the text again (`${x@P}`, `${!x}`, `$((x))`, `let`, `[[ -eq ]]`, or `read`, `printf -v`,
-`unset` or `declare` given it as a name), in this line or a later one. Some of these, such as `eval "$X"`,
-`bash -c "$CMD"` or an unclosed quote, ask only when the line, or a script or alias it runs, names a push: a
+`unset` or `declare` given it as a name), in this line or a later one. A line whose words depend on the shell's
+version, its host or how it is started also counts: a NUL or a `` `u{2d} `` in PowerShell, a CR in bash, a caret
+before a line end in cmd. Every reading of such a line is judged, so a refusal in any one of them stands. Some of
+these, such as `eval "$X"`, `bash -c "$CMD"`, an unclosed quote or a line with more than one reading, ask only when
+the line, or a script or alias it runs, names a push: a
 word, or a piece of one between blanks, quotes, operators and path separators, that is `push`, `--push` or
 `git-push`. A folder such as `src/push-guard`, a file `x-push.log`, a comment, a redirection target or a heredoc a
 plain `cat` stores in a file does not count. Each command Claude runs starts in a fresh shell, so a push the line
