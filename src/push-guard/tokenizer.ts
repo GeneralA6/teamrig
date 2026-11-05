@@ -749,6 +749,8 @@ class Scanner {
     let blocks = 0;
     /** PowerShell: where the value of a `-name:` token opens, which joins the token's word. */
     let valueAt = -1;
+    /** PowerShell: true from a `-name:` token that ended with no value to the word it takes as one, past the gap. */
+    let valueNext = false;
     /** True at a `@{ }` entry's start, where its key and `=` come before its statement. */
     let keyNext = hash;
     const atEntry = (): boolean => hash && depth === 0 && blocks === 0;
@@ -777,8 +779,11 @@ class Scanner {
       if (awaiting === undefined) {
         addWord(taken, cut);
         wordEnd = this.index;
-        // Set on a word the cut dropped too: the shell still reads the rest as written.
-        verbatim = this.dialect === 'powershell' && taken.text === '--%' && !taken.dynamic && !cut && !element;
+        // Set on a word the cut dropped too: the shell still reads the rest as written. Measured: a value is no marker for
+        // the parser, so `x -y: --% a;b` runs `b`.
+        verbatim = this.dialect === 'powershell' && taken.text === '--%' && !taken.dynamic && !cut && !element && !valueNext;
+        // Measured: a `-name:` taken as a value takes none itself, so `x -y: -z: --% a;b` runs no `b`.
+        valueNext = !valueNext && this.index === valueAt;
         element = false;
         return;
       }
@@ -793,6 +798,7 @@ class Scanner {
       }
       verbatim = false;
       element = false;
+      valueNext = false;
       lineCut = false;
       const { nativeLine } = this.reading;
       const command: ScannedCommand | undefined =
@@ -849,6 +855,11 @@ class Scanner {
         } else {
           valueAt = parameter;
         }
+        continue;
+      }
+      if (word.isStarted && this.index === valueAt && this.opensValueGap(char)) {
+        // Measured: the token's word ends here, and the next word is its value, as past a blank.
+        endWord();
         continue;
       }
       const opening = powershell && (!word.isStarted || this.index === valueAt);
@@ -1623,6 +1634,11 @@ class Scanner {
   private parameterEnd(): number | undefined {
     const end = this.matchEnd(PARAMETER);
     return end !== undefined && this.reading.asciiParameters && /[^\0-\x7f]/.test(this.at(1)) ? undefined : end;
+  }
+
+  /** PowerShell, right behind a `-name:` token: true at a block comment or a backtick that adds nothing. */
+  private opensValueGap(char: string): boolean {
+    return (char === '<' && this.at(1) === '#') || (char === '`' && this.escapesGap());
   }
 
   /** PowerShell: true at a `(`, `{` or `@{`. */

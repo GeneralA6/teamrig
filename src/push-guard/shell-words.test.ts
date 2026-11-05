@@ -156,6 +156,35 @@ describe('parseShell: blanks, measured on the real shells', () => {
   });
 });
 
+describe('parseShell: a PowerShell -name: token with no value tight behind it', () => {
+  it('ends its word at a block comment or a backtick that adds nothing', () => {
+    assert.deepEqual(plainWordsOf('x -y:<#c#>z'), [['x', '-y:', 'z']]);
+    assert.deepEqual(plainWordsOf(`x -y:<#c#>'a b' c`), [['x', '-y:', 'a b', 'c']]);
+    assert.deepEqual(plainWordsOf('x -y:<#c#>`\nz c'), [['x', '-y:', 'z', 'c']]);
+    assert.deepEqual(plainWordsOf('x -y:`\n<#c#>z c'), [['x', '-y:', 'z', 'c']]);
+    assert.deepEqual(plainWordsOf('x -y:` z c'), [['x', '-y:', 'z', 'c']]);
+    assert.deepEqual(plainWordsOf('x -y:`\nz c'), [['x', '-y:', 'z', 'c']]);
+  });
+
+  it('keeps an escape that adds a character in the word', () => {
+    assert.deepEqual(plainWordsOf('x -y:`z c'), [['x', '-y:z', 'c']]);
+  });
+
+  it('takes the next word as its value, so a --% there ends at the statement', () => {
+    assert.deepEqual(plainWordsOf('x -y: --% a;b c'), [['x', '-y:', '--%', 'a'], ['b', 'c']]);
+    assert.deepEqual(plainWordsOf('x -y: --%;b c'), [['x', '-y:', '--%'], ['b', 'c']]);
+    assert.deepEqual(plainWordsOf('x -y: -z: -w: --% a;b c'), [['x', '-y:', '-z:', '-w:', '--%', 'a'], ['b', 'c']]);
+  });
+
+  it('leaves a --% the parser marker anywhere else', () => {
+    assert.deepEqual(plainWordsOf('x -y: -z: --% a;b c'), [['x', '-y:', '-z:', '--%', 'a;b', 'c']]);
+    assert.deepEqual(plainWordsOf('x -y: -z --% a;b c'), [['x', '-y:', '-z', '--%', 'a;b', 'c']]);
+    assert.deepEqual(plainWordsOf('x -y: a --% b;c d'), [['x', '-y:', 'a', '--%', 'b;c', 'd']]);
+    assert.deepEqual(plainWordsOf(`x -y:'' --% a;b c`), [['x', '-y:', '--%', 'a;b', 'c']]);
+    assert.deepEqual(plainWordsOf('x y,-m: --% a;b c'), [['x', 'y', '-m:', '--%', 'a;b', 'c']]);
+  });
+});
+
 describe('parseShell: PowerShell quotes', () => {
   it('groups a word at exactly the units the real parser does', () => {
     const quotes = new Set([...POWERSHELL_SINGLE_QUOTES, ...POWERSHELL_DOUBLE_QUOTES]);
