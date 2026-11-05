@@ -1,5 +1,5 @@
 import { Buffer } from 'node:buffer';
-import { parseShell } from "./tokenizer.js";
+import { assignedWords, isExpressionHead, parseShell } from "./tokenizer.js";
 const WRAPPERS = new Map([
     ['command', { inspect: ['-v', '-V'] }],
     ['builtin', {}],
@@ -164,7 +164,7 @@ class LaunchReader {
             this.called = true;
             return { kind: 'next', words: words.slice(1) };
         }
-        if (head.dynamic) {
+        if (head.dynamic || (this.dialect === 'powershell' && !this.called && isExpressionHead(head))) {
             return this.dynamicHead(words, head);
         }
         return this.named(programName(head.text), words.slice(1), head);
@@ -189,25 +189,18 @@ class LaunchReader {
     }
     /**
      * A first word only known when it runs. In PowerShell it is an expression unless it was called: an
-     * assignment (`$x = git push`) runs its right side, and a cast (`[void]`) is skipped.
+     * assignment (`$x = git push`, `$h.a = git push`, `$p, $q = git push`) runs its right side.
      */
     dynamicHead(words, head) {
         if (this.dialect !== 'powershell' || this.called) {
             return { kind: 'opaque', reason: 'the program it runs is only known when it runs', gated: true, command: { program: head, args: words.slice(1) } };
         }
-        const text = head.text.replace(/^(?:\[[^\]]+\])+/, '');
-        const operator = /^([-+*/%]|\?\?)?=$/;
-        if (/^\$[\w:{}?]+$/.test(text) && operator.test(words[1]?.text ?? '')) {
-            this.captured = true;
-            return { kind: 'next', words: words.slice(2) };
+        const right = assignedWords(words);
+        if (right === undefined) {
+            return NOTHING;
         }
-        const assigned = /^\$[\w:{}?]+([-+*/%]|\?\?)?=(.*)$/s.exec(text);
-        if (assigned !== null) {
-            this.captured = true;
-            const right = assigned[2] ?? '';
-            return { kind: 'next', words: right === '' ? words.slice(1) : [{ text: right, dynamic: /[$@]/.test(right) }, ...words.slice(1)] };
-        }
-        return NOTHING;
+        this.captured = true;
+        return { kind: 'next', words: right };
     }
     named(name, args, head) {
         const wrapper = WRAPPERS.get(name);
@@ -441,7 +434,8 @@ class LaunchReader {
             return NOTHING;
         }
         this.called = true;
-        const split = programArgs.flatMap((arg) => (arg.dynamic ? [arg] : arg.text.split(/\s+/).filter((part) => part !== '').map(staticWord)));
+        // The program splits this text itself, on a space or a tab: a wider split could fake a word such as `--verify`.
+        const split = programArgs.flatMap((arg) => (arg.dynamic ? [arg] : arg.text.split(/[ \t]+/).filter((part) => part !== '').map(staticWord)));
         return { kind: 'next', words: [program, ...split] };
     }
     /** cmd's `start`: options start with `/`, `/D` names the folder, and a first operand with spaces (or empty) is the window title. */

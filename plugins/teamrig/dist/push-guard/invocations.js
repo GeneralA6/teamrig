@@ -160,6 +160,15 @@ const PUSH_WORD = /^-*(?:git-)?push(?:\.exe)?$/i;
 function saysPush(text) {
     return text.split(MENTION_BREAKS).some((piece) => PUSH_WORD.test(piece));
 }
+/** Why `parsed` may not hold every command its line runs; undefined when it does. */
+function unreadReason(parsed) {
+    if (parsed.complete) {
+        return undefined;
+    }
+    return parsed.readings?.every((reading) => reading.complete) === true
+        ? "its words differ by the shell's version, its host or how it is started"
+        : 'part of it cannot be read, as a quote, bracket or substitution never closes';
+}
 /** Splits `--option=value` into its name and attached value. */
 function splitOption(text) {
     const equals = text.startsWith('--') ? text.indexOf('=') : -1;
@@ -207,8 +216,7 @@ class GitInvocationFinder {
      */
     visitScript(script, dialect, location, depth) {
         const parsed = parseShell(script.text, dialect);
-        const unread = parsed.complete ? undefined : 'part of it cannot be read, as a quote, bracket or substitution never closes';
-        this.visitParsed(parsed, script.text, unread, dialect, location, depth);
+        this.visitParsed(parsed, script.text, unreadReason(parsed), dialect, location, depth);
     }
     /**
      * Visits the commands parsed from `source` in order; see {@link visitScript}. `unread` is the doubt when the

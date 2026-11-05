@@ -1,6 +1,6 @@
 import { runsOf } from "../package-guard/programs.js";
 import { commandFindings } from "./commands.js";
-import { bareFindings, ENVIRONMENT_READ, envFindings, environmentReads } from "./env.js";
+import { bareFindings, envFindings, environmentReads, readsEnvironment } from "./env.js";
 import { fileFindings } from "./files.js";
 import { uniqueFindings } from "./findings.js";
 import { inlineFindings } from "./inline.js";
@@ -18,6 +18,7 @@ export function shellFindings(command, context, rules, depth = 0) {
     const runs = runsOf(command, context);
     const inner = (line, dialect) => depth < MAX_REMOTE_DEPTH ? shellFindings(line, { cwd: undefined, home: context.home, dialect }, rules, depth + 1) : [];
     const printing = runs.programs.filter((run) => !quiet(run));
+    const printingBare = runs.bare.filter((bare) => !quiet(bare));
     return uniqueFindings([
         ...printing.flatMap((run) => [
             ...fileFindings(run, rules),
@@ -26,7 +27,7 @@ export function shellFindings(command, context, rules, depth = 0) {
             ...inlineFindings(run, rules),
             ...remoteFindings(run, inner),
         ]),
-        ...runs.bare.filter((bare) => !quiet(bare)).flatMap((bare) => bareFindings(bare, rules.names)),
-        ...(printing.some((run) => ENVIRONMENT_READ.test(run.name)) ? environmentReads(command, rules.names) : []),
+        ...printingBare.flatMap((bare) => bareFindings(bare, rules.names)),
+        ...(printingBare.some(readsEnvironment) ? environmentReads(command, rules.names) : []),
     ]);
 }
