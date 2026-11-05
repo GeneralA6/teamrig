@@ -5,7 +5,7 @@ import { programsOf } from '../package-guard/programs.ts';
 import { bashLineReads } from '../readonly-shell/bash.ts';
 import { powershellLineReads } from '../readonly-shell/powershell.ts';
 import { prefixWords, type ReadonlyRules } from '../readonly-shell/rules.ts';
-import { BLANK_AND_LINE_END_ROWS, COMMENT_CHAIN_ROWS, CUT_ARRAY_ROWS, CUT_PARAMETER_ROWS, ESCAPE_ROWS, EXPRESSION_ROWS, LONE_DOT_ROWS, MARKER_ARRAY_ROWS, MARKER_CHAIN_ROWS, MARKER_TEXT_ROWS, MARKER_VALUE_ROWS, NATIVE_LINE_ROWS, NUL_ROWS, PARAMETER_ROWS, POWERSHELL_BLANKS, POWERSHELL_DOUBLE_QUOTES, POWERSHELL_ESCAPES, POWERSHELL_LINE_ENDS, POWERSHELL_SINGLE_QUOTES, QUOTE_ROWS, REDIRECTION_ROWS, VALUE_ROWS, type ShellWordsRow } from '../testing/shell-words.ts';
+import { BLANK_AND_LINE_END_ROWS, COMMENT_CHAIN_ROWS, CUT_ARRAY_ROWS, CUT_PARAMETER_ROWS, ESCAPE_ROWS, EXPRESSION_ROWS, LONE_DOT_ROWS, MARKER_ARRAY_ROWS, MARKER_CHAIN_ROWS, MARKER_ELEMENT_ROWS, MARKER_TEXT_ROWS, MARKER_VALUE_ROWS, NATIVE_LINE_ROWS, NUL_ROWS, PARAMETER_ROWS, POWERSHELL_BLANKS, POWERSHELL_DOUBLE_QUOTES, POWERSHELL_ESCAPES, POWERSHELL_LINE_ENDS, POWERSHELL_SINGLE_QUOTES, QUOTE_ROWS, REDIRECTION_ROWS, VALUE_ROWS, type ShellWordsRow } from '../testing/shell-words.ts';
 import { hookSkips } from './hook-skips.ts';
 import { findGitInvocations } from './invocations.ts';
 import { evaluatePushes, type PushDecision, type RepoState } from './push.ts';
@@ -48,9 +48,9 @@ function answersFor(line: string, dialect: ShellDialect): Answers {
 const STRICTNESS: Readonly<Record<PushDecision, number>> = { allow: 0, ask: 1, deny: 2 };
 
 /** Every guard's verdict is at least as strict on the line as typed as on the line it must be judged by. */
-function assertVerdictsNoSofter({ dialect, typed, real }: ShellWordsRow): void {
+function assertVerdictsNoSofter({ dialect, typed, real, realDialect = dialect }: ShellWordsRow): void {
   const seen = answersFor(typed, dialect);
-  const truth = answersFor(real, dialect);
+  const truth = answersFor(real, realDialect);
   const label = JSON.stringify(typed);
   assert.deepEqual(truth.skips.filter((skip) => !seen.skips.includes(skip)), [], `hook skips of ${label}`);
   assert.ok(STRICTNESS[seen.push] >= STRICTNESS[truth.push], `push of ${label}: ${seen.push}, real ${truth.push}`);
@@ -62,7 +62,7 @@ function assertVerdictsNoSofter({ dialect, typed, real }: ShellWordsRow): void {
 function assertNoSofter(row: ShellWordsRow): void {
   assertVerdictsNoSofter(row);
   const seen = answersFor(row.typed, row.dialect).programs;
-  const missed = answersFor(row.real, row.dialect).programs.filter((run) => !seen.includes(run));
+  const missed = answersFor(row.real, row.realDialect ?? row.dialect).programs.filter((run) => !seen.includes(run));
   assert.deepEqual(missed, [], `programs of ${JSON.stringify(row.typed)}`);
 }
 
@@ -121,6 +121,10 @@ describe('the guards read the words the shell runs', () => {
 
   it('holds on an array opened by a quoted --%, whose -name token leaves the rest as text', () => {
     MARKER_ARRAY_ROWS.forEach(assertNoSofter);
+  });
+
+  it('holds on a bare --% element of such an array, which leaves the rest as text too', () => {
+    MARKER_ELEMENT_ROWS.forEach(assertNoSofter);
   });
 
   it('holds on a chain on a quoted --%, which may give the value back and leave what follows bare', () => {
@@ -1215,6 +1219,146 @@ describe("parseShell: the binder's --%, a value no parser took as its marker", (
 
     it('leaves the plain reading alone', () => {
       assert.deepEqual(plainWordsOf(`x '--%',a -y b c`), [['x', '--%', 'a', '-y', 'b', 'c']]);
+    });
+  });
+
+  describe('opening an array, with a bare --% element in it', () => {
+    it('leaves the rest as one more value, whatever stands first in it', () => {
+      assertLastReadings([
+        [`x '--%',a ,--% b c`, ['--%', 'a', '--%', 'b c']],
+        [`x '--%',a ,--%} b c`, ['--%', 'a', '--%', '} b c']],
+        [`x '--%',a ,--%; b c`, ['--%', 'a', '--%', '; b c']],
+        [`x '--%',a ,--%& b c`, ['--%', 'a', '--%', '& b c']],
+        [`x '--%',a ,--%) b c`, ['--%', 'a', '--%', ') b c']],
+        [`x '--%',a ,--%{ b c`, ['--%', 'a', '--%', '{ b c']],
+        [`x '--%',a ,--%( b c`, ['--%', 'a', '--%', '( b c']],
+        [`x '--%',a ,--%, b c`, ['--%', 'a', '--%', ', b c']],
+        [`x '--%',a ,--%,b c`, ['--%', 'a', '--%', ',b c']],
+        [`x '--%',a ,--% ,b c`, ['--%', 'a', '--%', ',b c']],
+      ]);
+    });
+
+    it('does so with no gap ahead of the comma, where the array stays one word', () => {
+      assertLastReadings([
+        [`x '--%',--% b c`, ['--%,--%', 'b c']],
+        [`x '--%',a,--% b c`, ['--%,a,--%', 'b c']],
+      ]);
+    });
+
+    it('counts a quote or backtick inside the element, as only its value is read', () => {
+      assertLastReadings([
+        ["x '--%',a ,--`% b c", ['--%', 'a', '--%', 'b c']],
+        [`x '--%',a ,--"%" b c`, ['--%', 'a', '--%', 'b c']],
+        [`x '--%',a ,--'%' b c`, ['--%', 'a', '--%', 'b c']],
+        [`x '--%',a ,--%"" b c`, ['--%', 'a', '--%', 'b c']],
+        [`x '--%',a ,--"%"} b c`, ['--%', 'a', '--%', '} b c']],
+      ]);
+    });
+
+    it('stays a plain element when a quote opens it or it holds more than the marker', () => {
+      assertLastReadings([
+        [`x '--%',a ,'--%' b c`, ['--%', 'a', '--%', 'b', 'c']],
+        [`x '--%',a ,"--%" b c`, ['--%', 'a', '--%', 'b', 'c']],
+        [`x '--%',a ,'--'% b c`, ['--%', 'a', '--', '%', 'b', 'c']],
+        [`x '--%',a ,"-"-% b c`, ['--%', 'a', '-', '-%', 'b', 'c']],
+        [`x '--%',a ,--%.y b c`, ['--%', 'a', '--%.y', 'b', 'c']],
+        [`x '--%',a ,--%"b" c`, ['--%', 'a', '--%b', 'c']],
+      ]);
+    });
+
+    it('stays a plain element when a NUL tight on it cuts the line', () => {
+      assert.deepEqual(readingsOf("x '--%',a ,--%`0 b c")[0], [['x', '--%', 'a', '--%']]);
+    });
+
+    it('leaves what ends the command to end it behind a NUL, as no text opens there', () => {
+      assert.deepEqual(readingsOf("x '--%','',--%`0; y z")[0], [['x', '--%,--%'], ['y', 'z']]);
+      assert.deepEqual(readingsOf("x '--%','' ,--%`0; y z")[0], [['x', '--%', '--%'], ['y', 'z']]);
+      assert.deepEqual(readingsOf("x '--%',a ,--%`0; y z")[0], [['x', '--%', 'a', '--%'], ['y', 'z']]);
+    });
+
+    it('takes no text from a cut element ahead of a gap, so the array ends there', () => {
+      assert.deepEqual(readingsOf("x '--%',--%`0 ,'' b c")[0], [['x', '--%', '--%']]);
+      assert.deepEqual(readingsOf("x '--%',--%`0 ,a")[0], [['x', '--%', '--%']]);
+    });
+
+    it('stays a plain element with a run-time piece in it, which adds its own text', () => {
+      assertLastReadings([
+        [`x '--%',a ,--%$() b c`, ['--%', 'a', '--%$()', 'b', 'c']],
+        [`x '--%',a ,--%$null b c`, ['--%', 'a', '--%$null', 'b', 'c']],
+        [`x '--%',a ,--$()% b c`, ['--%', 'a', '--$()%', 'b', 'c']],
+        [`x '--%',a ,--%\${x} b c`, ['--%', 'a', '--%${x}', 'b', 'c']],
+      ]);
+      assert.deepEqual(readingsOf(`x '--%',a ,$('--%') b c`).at(-1), [['--%'], ['x', '--%', 'a', `$('--%')`, 'b', 'c']]);
+    });
+
+    it('is the parser\'s own marker behind an empty quote, which hands over no element', () => {
+      assertLastReadings([
+        [`x '--%',a ,""--% b c`, ['--%', 'a', 'b', 'c']],
+        [`x '--%',a ,""--% " b " c`, ['--%', 'a', ' b ', 'c']],
+      ]);
+    });
+
+    it('opens nothing from an array no plain word opens with the quoted marker', () => {
+      assertLastReadings([
+        [`x -x:'--%',a ,--% b c`, ['-x:--%', 'a', '--%', 'b', 'c']],
+        [`x -x: '--%',a ,--% b c`, ['-x:', '--%', 'a', '--%', 'b', 'c']],
+        [`x x,'--%',a ,--% b c`, ['x', '--%', 'a', '--%', 'b', 'c']],
+        [`x '--%' y,--% b c`, ['y,--%', 'b', 'c']],
+      ]);
+    });
+
+    it('stays a word with a redirection or an equals tight on it, and takes one behind a blank as text', () => {
+      assertLastReadings([
+        [`x '--%',a ,--%>b c`, ['--%', 'a', '--%>b', 'c']],
+        [`x '--%',a ,--%<b c`, ['--%', 'a', '--%<b', 'c']],
+        [`x '--%',a ,--%=b c`, ['--%', 'a', '--%=b', 'c']],
+        [`x '--%',a ,--% >b c`, ['--%', 'a', '--%', '>b c']],
+        [`x '--%',a ,--% >$null b c`, ['--%', 'a', '--%', '>$null b c']],
+      ]);
+    });
+
+    it('keeps what would end or expand a word as text', () => {
+      assertLastReadings([
+        [`x '--%',a ,--% b c; d`, ['--%', 'a', '--%', 'b c; d']],
+        [`x '--%',a ,--% %W% c`, ['--%', 'a', '--%', '%W% c']],
+        [`x '--%',a ,--% #x b`, ['--%', 'a', '--%', '#x b']],
+        [`x '--%',a ,--% <#x#> b`, ['--%', 'a', '--%', '<#x#> b']],
+        [`x '--%',a ,--% --% b c`, ['--%', 'a', '--%', '--% b c']],
+      ]);
+    });
+
+    it('hands over no word of its own with no text behind it', () => {
+      assertLastReadings([
+        [`x '--%',a ,--%`, ['--%', 'a', '--%']],
+        [`x '--%',a ,--% `, ['--%', 'a', '--%']],
+      ]);
+    });
+
+    it('writes a quote in the text to the line, so the rebuilt quotes split the value', () => {
+      assertLastReadings([
+        [`x '--%',a ,--% "b c"`, ['--%', 'a', '--%', 'b c']],
+        [`x '--%',a ,--% " b " c`, ['--%', 'a', '--%', '', 'b', ' c']],
+      ]);
+    });
+
+    it('ends the text at a pipe, whose value keeps the blank ahead of it', () => {
+      assert.deepEqual(readingsOf(`x '--%',a ,--% b c | y`).at(-1), [['x', '--%', 'a', '--%', 'b c '], ['y']]);
+      assert.deepEqual(readingsOf(`x '--%',a ,--% "b c" | y`).at(-1), [['x', '--%', 'a', '--%', 'b', 'c '], ['y']]);
+    });
+
+    it('takes no text from a pipe or a line end right behind it, and the next command reads its words', () => {
+      for (const line of [`x '--%',a ,--%| y z`, `x '--%',a ,--% | y z`, `x '--%',a ,--%\ny z`, `x '--%',a ,--% \ny z`]) {
+        assert.deepEqual(readingsOf(line).at(-1), [['x', '--%', 'a', '--%'], ['y', 'z']], line);
+      }
+    });
+
+    it('does so from a chain on the opener, in the readings that keep it the marker', () => {
+      assert.deepEqual(readingsOf(`x '--%'.y,--%} b c`).slice(1), [[['x', '--%.y,--%', '} b c']], [['x', '--%,--%', '} b c']]]);
+      assert.deepEqual(readingsOf(`x '--%'.y ,--% b c`).slice(1), [[['x', '--%.y', '--%', 'b c']], [['x', '--%', '--%', 'b c']]]);
+    });
+
+    it('leaves the plain reading alone', () => {
+      assert.deepEqual(plainWordsOf(`x '--%',a ,--% b c`), [['x', '--%', 'a', '--%', 'b', 'c']]);
     });
   });
 
