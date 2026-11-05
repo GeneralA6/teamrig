@@ -75,6 +75,16 @@ export const NUL_ROWS: readonly ShellWordsRow[] = [
   { dialect: 'cmd', typed: 'git push origin main --force^', real: 'git push origin main --force' },
 ];
 
+/**
+ * A first unit newer than 5.1's Unicode opens no parameter there, so the quotes after it join one word and the text after
+ * them is no option of its own. Measured on 5.1; pwsh takes the letter, so the two differ.
+ */
+export const PARAMETER_ROWS: readonly ShellWordsRow[] = [
+  { dialect: 'powershell', typed: 'git commit --no-verify -m -\ua7c2:"x"--verify', real: 'git commit --no-verify -m "-\ua7c2:x--verify"' },
+  { dialect: 'powershell', typed: 'git push origin main --force -\ua7c2:"x"--dry-run', real: 'git push origin main --force "-\ua7c2:x--dry-run"' },
+  { dialect: 'powershell', typed: 'npm install left-pad -\ua7c2:"x"--dry-run', real: 'npm install left-pad "-\ua7c2:x--dry-run"' },
+];
+
 export const QUOTE_ROWS: readonly ShellWordsRow[] = [
   { dialect: 'powershell', typed: 'git commit -m x \u201c--no-verify\u201d', real: 'git commit -m x --no-verify' },
   { dialect: 'powershell', typed: 'git commit -m x \u2018--no-verify\u2019', real: 'git commit -m x --no-verify' },
