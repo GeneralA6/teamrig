@@ -107,6 +107,13 @@ export const NATIVE_LINE_ROWS: readonly ShellWordsRow[] = [
   { dialect: 'powershell', typed: 'git commit -m a,-n:--no-verify', real: `git commit -m 'a,-n:' --no-verify` },
   { dialect: 'powershell', typed: 'git push origin own,-n:--force', real: `git push origin 'own,-n:' --force` },
   { dialect: 'powershell', typed: 'npm install a,-n:left-pad', real: `npm install 'a,-n:' left-pad` },
+  // Behind a value of `--%` the binder writes the rest bare, so one quoted word comes apart.
+  { dialect: 'powershell', typed: `git commit '--%' 'a --no-verify b'`, real: 'git commit a --no-verify b' },
+  { dialect: 'powershell', typed: `git commit -y:--% 'a --no-verify b'`, real: 'git commit -y: a --no-verify b' },
+  { dialect: 'powershell', typed: `git commit -y: --% 'a --no-verify b'`, real: 'git commit -y: a --no-verify b' },
+  { dialect: 'powershell', typed: `git commit '--%' "a\`0b c" --no-verify`, real: 'git commit a --no-verify' },
+  { dialect: 'powershell', typed: `git push origin '--%' 'main --force'`, real: 'git push origin main --force' },
+  { dialect: 'powershell', typed: `npm install '--%' 'a left-pad'`, real: 'npm install a left-pad' },
 ];
 
 export const QUOTE_ROWS: readonly ShellWordsRow[] = [
@@ -223,7 +230,7 @@ export const BLANK_AND_LINE_END_ROWS: readonly ShellWordsRow[] = [
   { dialect: 'powershell', typed: 'npm install a,\nleft-pad', real: 'npm install a left-pad' },
   // Behind a `--%` the comma is text, and the text ends at the line end, so the next line is a statement.
   { dialect: 'powershell', typed: 'git status --%,\ngit push origin main', real: 'git push origin main' },
-  { dialect: 'powershell', typed: 'git commit --no-verify --%,--verify', real: "git commit --no-verify '--%' ',--verify'" },
+  { dialect: 'powershell', typed: 'git commit --no-verify --%,--verify', real: 'git commit --no-verify --% ,--verify' },
   { dialect: 'powershell', typed: 'git commit -m x\u0085--no-verify', real: 'git commit -m x --no-verify' },
   { dialect: 'powershell', typed: 'git push\u0085origin main', real: 'git push origin main' },
   { dialect: 'powershell', typed: 'npm\u0085install left-pad', real: 'npm install left-pad' },
