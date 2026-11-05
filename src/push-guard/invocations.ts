@@ -245,6 +245,16 @@ function saysPush(text: string): boolean {
   return text.split(MENTION_BREAKS).some((piece) => PUSH_WORD.test(piece));
 }
 
+/** Why `parsed` may not hold every command its line runs; undefined when it does. */
+function unreadReason(parsed: ShellParse): string | undefined {
+  if (parsed.complete) {
+    return undefined;
+  }
+  return parsed.readings?.every((reading) => reading.complete) === true
+    ? "its words differ by the shell's version, its host or how it is started"
+    : 'part of it cannot be read, as a quote, bracket or substitution never closes';
+}
+
 /** Splits `--option=value` into its name and attached value. */
 function splitOption(text: string): readonly [string, string | undefined] {
   const equals = text.startsWith('--') ? text.indexOf('=') : -1;
@@ -298,8 +308,7 @@ class GitInvocationFinder {
    */
   private visitScript(script: ShellWord, dialect: ShellDialect, location: Location, depth: number): void {
     const parsed = parseShell(script.text, dialect);
-    const unread = parsed.complete ? undefined : 'part of it cannot be read, as a quote, bracket or substitution never closes';
-    this.visitParsed(parsed, script.text, unread, dialect, location, depth);
+    this.visitParsed(parsed, script.text, unreadReason(parsed), dialect, location, depth);
   }
 
   /**

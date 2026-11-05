@@ -5,11 +5,11 @@ import { programsOf } from '../package-guard/programs.ts';
 import { bashLineReads } from '../readonly-shell/bash.ts';
 import { powershellLineReads } from '../readonly-shell/powershell.ts';
 import { prefixWords, type ReadonlyRules } from '../readonly-shell/rules.ts';
-import { BLANK_AND_LINE_END_ROWS, ESCAPE_ROWS, EXPRESSION_ROWS, POWERSHELL_BLANKS, POWERSHELL_DOUBLE_QUOTES, POWERSHELL_ESCAPES, POWERSHELL_LINE_ENDS, POWERSHELL_SINGLE_QUOTES, QUOTE_ROWS, VALUE_ROWS, type ShellWordsRow } from '../testing/shell-words.ts';
+import { BLANK_AND_LINE_END_ROWS, ESCAPE_ROWS, EXPRESSION_ROWS, NUL_ROWS, POWERSHELL_BLANKS, POWERSHELL_DOUBLE_QUOTES, POWERSHELL_ESCAPES, POWERSHELL_LINE_ENDS, POWERSHELL_SINGLE_QUOTES, QUOTE_ROWS, VALUE_ROWS, type ShellWordsRow } from '../testing/shell-words.ts';
 import { hookSkips } from './hook-skips.ts';
 import { findGitInvocations } from './invocations.ts';
 import { evaluatePushes, type PushDecision, type RepoState } from './push.ts';
-import { parseShell, type ShellDialect } from './tokenizer.ts';
+import { parseShell, type ShellDialect, type ShellParse } from './tokenizer.ts';
 import { resolveLiteralVariables } from './variables.ts';
 
 const CWD = '/repo';
@@ -90,6 +90,10 @@ describe('the guards read the words the shell runs', () => {
 
   it('holds on every backtick', () => {
     ESCAPE_ROWS.forEach(assertNoSofter);
+  });
+
+  it('holds on every NUL, code point and caret', () => {
+    NUL_ROWS.forEach(assertNoSofter);
   });
 });
 
@@ -410,7 +414,8 @@ describe('parseShell: PowerShell --%', () => {
 
 describe('parseShell: PowerShell backticks', () => {
   it('reads each letter of the real table as its character, bare and in quotes', () => {
-    for (const [letter, value] of POWERSHELL_ESCAPES) {
+    // `0 is a NUL, which each reading takes its own way: see the NUL specs.
+    for (const [letter, value] of POWERSHELL_ESCAPES.filter(([letter]) => letter !== '0')) {
       assert.deepEqual(wordsOf(`c a\`${letter}b`, 'powershell'), [['c', `a${value}b`]], letter);
       assert.deepEqual(wordsOf(`c "a\`${letter}b"`, 'powershell'), [['c', `a${value}b`]], letter);
     }
@@ -444,11 +449,95 @@ describe('parseShell: PowerShell backticks', () => {
 
   it('keeps a backtick with nothing after it, or a NUL', () => {
     assert.deepEqual(wordsOf('c a`', 'powershell'), [['c', 'a`']]);
-    assert.deepEqual(wordsOf('c "a`\0b"', 'powershell'), [['c', 'a`\0b']]);
+    assert.deepEqual(wordsOf('c "a`\0b"', 'powershell'), [['c', 'a`'], ['c', 'a`\0b']]);
   });
 
   it('keeps a backtick inside a -name: token as text', () => {
     assert.deepEqual(wordsOf('c -a`b:"c"d e', 'powershell'), [['c', '-a`b:c', 'd', 'e']]);
+  });
+});
+
+describe('parseShell: a NUL in PowerShell', () => {
+  it('reads a line each way the host may: cut there, the word alone cut, or kept', () => {
+    const readings = [['c', 'a'], ['c', 'a\0b', 'd'], ['c', 'a', 'd']];
+    assert.deepEqual(wordsOf('c a`0b d', 'powershell'), readings);
+    assert.deepEqual(wordsOf('c "a`0b" d', 'powershell'), readings);
+    assert.deepEqual(wordsOf('c "a\0b" d', 'powershell'), readings);
+    assert.deepEqual(wordsOf('c @"\na`0b\n"@ d', 'powershell'), readings);
+  });
+
+  it('hands a program nothing for a word that is only the NUL, when the line ends there', () => {
+    assert.deepEqual(wordsOf('x `0 a', 'powershell'), [['x'], ['x', '\0', 'a'], ['x', '', 'a']]);
+  });
+
+  it('ends a word at a raw NUL outside quotes, the NUL leading the next word', () => {
+    assert.deepEqual(wordsOf('c a\0b d', 'powershell'), [['c', 'a'], ['c', 'a', '\0b', 'd'], ['c', 'a', '', 'd']]);
+  });
+
+  it('still takes a separator and a redirection after a cut', () => {
+    const lineReading = (line: string): ShellParse | undefined => parseShell(line, 'powershell').readings?.[0];
+    assert.deepEqual(lineReading('c a`0b d; e f')?.commands.map((command) => command.words.map((word) => word.text)), [['c', 'a'], ['e', 'f']]);
+    assert.deepEqual(lineReading('c a`0b > out d')?.commands[0]?.redirections.map((redirection) => redirection.target?.text), ['out']);
+  });
+
+  it('cuts a redirection target without ending the line', () => {
+    const command = parseShell('c > a`0b d', 'powershell').readings?.[0]?.commands[0];
+    assert.deepEqual(command?.words.map((word) => word.text), ['c', 'd']);
+    assert.deepEqual(command?.redirections.map((redirection) => redirection.target?.text), ['a']);
+  });
+
+  it('lists a substitution at and after a cut, as it runs, in every reading', () => {
+    const readings = parseShell('c a`0$(x y) $(z)', 'powershell').readings ?? [];
+    assert.equal(readings.length, 3);
+    for (const reading of readings) {
+      const heads = reading.commands.map((command) => command.words[0]?.text);
+      assert.ok(heads.includes('x') && heads.includes('z'), JSON.stringify(heads));
+    }
+  });
+
+  it('keeps a cut word exact: what follows the NUL adds nothing to it', () => {
+    const word = parseShell('c a`0$v', 'powershell').readings?.[0]?.commands[0]?.words[1];
+    assert.deepEqual([word?.text, word?.dynamic], ['a', false]);
+  });
+
+  it('cuts the text after --%', () => {
+    assert.deepEqual(wordsOf('c --% a\0b d', 'powershell'), [['c', '--%', 'a'], ['c', '--%', 'a\0b', 'd'], ['c', '--%', 'a', 'd']]);
+  });
+
+  it('still reads the rest as written after a --% the cut dropped', () => {
+    assert.deepEqual(parseShell('c a`0 --% b;d e', 'powershell').readings?.[0]?.commands.map((command) => command.words.map((word) => word.text)), [['c', 'a']]);
+  });
+
+  it('takes no marker from a --% the NUL touches', () => {
+    assert.deepEqual(wordsOf('c --%`0 b;d e', 'powershell'), [['c', '--%'], ['d', 'e'], ['c', '--%\0', 'b'], ['d', 'e'], ['c', '--%', 'b'], ['d', 'e']]);
+  });
+
+  it('stays complete when the readings agree, and is not when they differ', () => {
+    for (const line of ['c ``0', 'c # a`0 b', "c 'a`0b'"]) {
+      const parsed = parseShell(line, 'powershell');
+      assert.deepEqual([parsed.complete, parsed.readings], [true, undefined], line);
+    }
+    assert.equal(parseShell('c a`0b', 'powershell').complete, false);
+  });
+});
+
+describe('parseShell: a backtick code point in PowerShell', () => {
+  it('reads the letter on 5.1 and the character on pwsh', () => {
+    assert.deepEqual(wordsOf('c "a`u{2d}b"', 'powershell'), [['c', 'au{2d}b'], ['c', 'a-b']]);
+  });
+
+  it('reads one bare too', () => {
+    assert.ok(wordsOf('c a`u{2d}b', 'powershell').some((words) => words.join(' ') === 'c a-b'));
+  });
+
+  it('cuts at a code point that is a NUL, in the readings that do', () => {
+    assert.deepEqual(wordsOf('c "a`u{0}b" d', 'powershell'), [['c', 'au{0}b', 'd'], ['c', 'a'], ['c', 'a', 'd'], ['c', 'a\0b', 'd']]);
+  });
+
+  it('keeps the letter of anything that is no code point, which pwsh refuses', () => {
+    for (const hex of ['110000', 'zz', '0000041']) {
+      assert.deepEqual(wordsOf(`c "a\`u{${hex}}b"`, 'powershell'), [['c', `au{${hex}}b`]], hex);
+    }
   });
 });
 
@@ -525,5 +614,18 @@ describe('parseShell: cmd', () => {
     assert.deepEqual(wordsOf('a "b\n" c', 'cmd'), [['a', 'b'], [' c']]);
     assert.deepEqual(wordsOf('"a\nb c', 'cmd'), [['a'], ['b', 'c']]);
     assert.equal(parseShell('a "b\nc d', 'cmd').complete, true);
+  });
+
+  it('drops a caret at the very end, and keeps one in quotes or escaped', () => {
+    assert.deepEqual(wordsOf('a^', 'cmd'), [['a']]);
+    assert.deepEqual(wordsOf('a ^', 'cmd'), [['a']]);
+    assert.deepEqual(wordsOf('"a^"', 'cmd'), [['a^']]);
+    assert.deepEqual(wordsOf('a^^', 'cmd'), [['a^']]);
+  });
+
+  it('reads a caret before a newline both ways: stdin joins the lines, /c ends the line there', () => {
+    assert.deepEqual(wordsOf('a^\nb c', 'cmd'), [['ab', 'c'], ['a'], ['b', 'c']]);
+    assert.deepEqual(wordsOf('a ^\nb c', 'cmd'), [['a', 'b', 'c'], ['a'], ['b', 'c']]);
+    assert.deepEqual(wordsOf('a^\r\nb c', 'cmd'), [['ab', 'c'], ['a'], ['b', 'c']]);
   });
 });
