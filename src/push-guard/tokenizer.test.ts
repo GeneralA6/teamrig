@@ -419,6 +419,43 @@ describe('parseShell: PowerShell', () => {
     assert.deepEqual(plainWords(`x ..'b c' y`), [['x', '..b c', 'y']]);
     assert.deepEqual(words('x ."b c" y'), [['x', '.b c', 'y']]);
   });
+
+  it('cuts a -name at a . or [ right behind it', () => {
+    assert.deepEqual(plainWords('x -a.b y'), [['x', '-a', '.b', 'y']]);
+    assert.deepEqual(plainWords('x -a[b y'), [['x', '-a', '[b', 'y']]);
+    assert.deepEqual(plainWords('x -a.b:c d'), [['x', '-a', '.b:c', 'd']]);
+    assert.deepEqual(plainWords('x -a[1]'), [['x', '-a', '[1]']]);
+    assert.deepEqual(plainWords('x -a-b.c'), [['x', '-a-b', '.c']]);
+    assert.deepEqual(plainWords('x -a..b'), [['x', '-a', '..b']]);
+    assert.deepEqual(plainWords('x -a.'), [['x', '-a', '.']]);
+    assert.deepEqual(plainWords('x -a."b c"'), [['x', '-a', '.', 'b c']]);
+    assert.deepEqual(plainWords('-a.b c'), [['-a', '.b', 'c']]);
+  });
+
+  it('cuts it in a value and in an array', () => {
+    assert.deepEqual(plainWords('x -x:-a.b y'), [['x', '-x:-a', '.b', 'y']]);
+    assert.deepEqual(plainWords('x -x: -a.b y'), [['x', '-x:', '-a', '.b', 'y']]);
+    assert.deepEqual(plainWords('x -x:"q"-a.b y'), [['x', '-x:q', '-a', '.b', 'y']]);
+    const nativeWords = (line: string): readonly string[] | undefined => parseShell(line, 'powershell').readings?.at(-1)?.commands[0]?.words.map((word) => word.text);
+    assert.deepEqual(nativeWords('x -a.b,c'), ['x', '-a', '.b,c']);
+    assert.deepEqual(nativeWords('x y,-a.b,c'), ['x', 'y,-a', '.b,c']);
+    assert.deepEqual(nativeWords('x -a.b,-c.d'), ['x', '-a', '.b,-c', '.d']);
+  });
+
+  it('cuts a -name by the version, as a first letter newer than 5.1 opens none there', () => {
+    const letter = String.fromCodePoint(0xa7c2);
+    const readings = parseShell(`x -${letter}.b y`, 'powershell').readings?.map((reading) => reading.commands[0]?.words.map((word) => word.text));
+    assert.deepEqual(readings?.at(0), ['x', `-${letter}.b`, 'y']);
+    assert.deepEqual(readings?.at(-1), ['x', `-${letter}`, '.b', 'y']);
+  });
+
+  it('cuts no word that opens no -name', () => {
+    assert.deepEqual(plainWords('x -1.b --a.b -.b a-b.c'), [['x', '-1.b', '--a.b', '-.b', 'a-b.c']]);
+    assert.deepEqual(plainWords('x -a:.b -a]b -a=b'), [['x', '-a:.b', '-a]b', '-a=b']]);
+    assert.deepEqual(plainWords('x -a"b".c'), [['x', '-ab.c']]);
+    assert.deepEqual(plainWords('x -x:q-a.b y'), [['x', '-x:q-a.b', 'y']]);
+    assert.deepEqual(words('x -a.b y'), [['x', '-a.b', 'y']]);
+  });
 });
 
 describe('parseShell: cmd', () => {

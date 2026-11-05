@@ -145,6 +145,18 @@ export const LONE_DOT_ROWS: readonly ShellWordsRow[] = [
   { dialect: 'powershell', typed: '$r = ."git" push origin main --force', real: '$r = . git push origin main --force' },
 ];
 
+/** A `-name` with a `.` or `[` right behind it is cut there, and what follows is a word of its own: run for real on 5.1. */
+export const CUT_PARAMETER_ROWS: readonly ShellWordsRow[] = [
+  { dialect: 'powershell', typed: 'powershell -c."git push origin main --force"', real: 'powershell -c . "git push origin main --force"' },
+  { dialect: 'powershell', typed: 'powershell -Command."git push origin main --force"', real: 'powershell -Command . "git push origin main --force"' },
+  { dialect: 'powershell', typed: 'pwsh -c."git push origin main --force"', real: 'pwsh -c . "git push origin main --force"' },
+  { dialect: 'powershell', typed: `powershell -c.'git push origin main --force'`, real: `powershell -c . 'git push origin main --force'` },
+  { dialect: 'powershell', typed: 'powershell -c."git commit --no-verify -m x"', real: 'powershell -c . "git commit --no-verify -m x"' },
+  { dialect: 'powershell', typed: 'git push -u.x main', real: 'git push -u .x main' },
+  { dialect: 'powershell', typed: 'git push -x:-u.y main', real: 'git push -x:-u .y main' },
+  { dialect: 'powershell', typed: 'git push -x: -u.y main', real: 'git push -x: -u .y main' },
+];
+
 export const QUOTE_ROWS: readonly ShellWordsRow[] = [
   { dialect: 'powershell', typed: 'git commit -m x \u201c--no-verify\u201d', real: 'git commit -m x --no-verify' },
   { dialect: 'powershell', typed: 'git commit -m x \u2018--no-verify\u2019', real: 'git commit -m x --no-verify' },
