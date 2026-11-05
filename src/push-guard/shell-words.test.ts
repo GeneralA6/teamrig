@@ -608,6 +608,39 @@ describe('parseShell: the line 5.1 writes for a native program', () => {
     }
   });
 
+  it('ends a -name: token at its colon past a comma, in every reading', () => {
+    assert.deepEqual(plainWordsOf('x a,-m:b c'), [['x', 'a', '-m:', 'b', 'c']]);
+    const rows: readonly (readonly [string, readonly string[]])[] = [
+      ['x a,-m:b', ['a,-m:', 'b']],
+      ['x a ,-m:b', ['a', '-m:', 'b']],
+      ['x a, -m:b', ['a', '-m:', 'b']],
+      ['x -n:a,-m:b', ['-n:a,-m:', 'b']],
+      [`x a,-m:'b c'`, ['a,-m:', 'b c']],
+      ['x a,-m:b,c', ['a,-m:', 'b,c']],
+      ['x a,-m:,b', ['a,-m:,b']],
+      ['x a,-m:b,-n:c', ['a,-m:', 'b,-n:', 'c']],
+    ];
+    for (const [line, words] of rows) {
+      assert.deepEqual(readingsOf(line).at(-1), [['x', ...words]], line);
+    }
+  });
+
+  it('keeps a first element\'s value, and a token that opens no parameter whole', () => {
+    const rows: readonly (readonly [string, string])[] = [
+      ['x -m:a,b', '-m:a,b'],
+      ['x a,--m:b', 'a,--m:b'],
+      ['x a,-1:b', 'a,-1:b'],
+      ['x a,-:b', 'a,-:b'],
+    ];
+    for (const [line, word] of rows) {
+      assert.deepEqual(readingsOf(line).at(-1), [['x', word]], line);
+    }
+  });
+
+  it('reads a --% behind a comma\'s -name: token as the parser\'s marker', () => {
+    assert.deepEqual(readingsOf('x a,-m:--% b;c d').at(-1), [['x', 'a,-m:', '--%', 'b;c', 'd']]);
+  });
+
   it('joins nothing into the head, and stops an array at a NUL', () => {
     assert.deepEqual(readingsOf('a,b c').at(-1), [['a', 'b', 'c']]);
     assert.deepEqual(parseShell('x a\0b,c d', 'powershell').readings?.[0]?.commands.map((command) => command.words.map((word) => word.text)), [['x', 'a']]);
