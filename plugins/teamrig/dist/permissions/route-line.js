@@ -8,10 +8,11 @@ import { isStaticWord, parseShell } from "../push-guard/tokenizer.js";
 /** A standalone `2>&1`, the one redirection a route line may carry; the scan takes it out before it looks. */
 const STDERR_TO_STDOUT = /(?<=^|[ \t])2>&1(?=[ \t]|$)/g;
 /**
- * Text that may join, feed, redirect or substitute another command, refused even inside quotes; and `#`, whose comment
- * bash skips, so an allowed line never carries text the matcher did not judge.
+ * Text that may join, feed, redirect or substitute another command, refused even inside quotes; `#`, whose comment
+ * bash skips, so an allowed line never carries text the matcher did not judge; and `$'` and `$"`, whose value is not the
+ * text the line shows (T1994), which no route needs.
  */
-const JOINS = /[;&|<>`#]|\$[({]/;
+const JOINS = /[;&|<>`#]|\$[({'"]/;
 /** A leading `NAME=value` word, which sets a variable for the command instead of naming its program. */
 const ASSIGNMENT = /^[A-Za-z_]\w*=/;
 /** The words of `line` when it is one plain bash command, else undefined. */

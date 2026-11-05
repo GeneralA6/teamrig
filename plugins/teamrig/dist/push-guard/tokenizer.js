@@ -1,3 +1,4 @@
+import { ansiCValue } from "./ansi-c.js";
 /** How deep substitutions may nest before the parse stops and calls itself incomplete. */
 const MAX_NESTING = 16;
 /** Splits a command line into simple commands the way `dialect` would; see {@link Scanner}. */
@@ -134,17 +135,6 @@ function withVariable(parts, written, quoted) {
     const name = match?.[1] ?? match?.[2];
     return name === undefined ? undefined : [...parts, { kind: 'variable', name, quoted }];
 }
-/** Escapes that bash's `$'...'` quoting turns into one character. */
-const ANSI_C_ESCAPES = new Map([
-    ['n', '\n'],
-    ['t', '\t'],
-    ['r', '\r'],
-    ['a', '\x07'],
-    ['b', '\b'],
-    ['e', '\x1b'],
-    ['f', '\f'],
-    ['v', '\v'],
-]);
 /**
  * Reads a command line the way bash, PowerShell or cmd splits it: quotes group words, an unquoted separator
  * ends a command (`; & | ( )` and a newline, `{ }` in PowerShell, only `& | ( )` in cmd), `#` at a word start
@@ -635,44 +625,21 @@ class Scanner {
         word.add(text);
         this.complete = false;
     }
-    /** bash `$'...'`: backslash escapes such as `\n`, `\x41` and `\'` are decoded. */
+    /**
+     * bash `$'...'`, in bash's two steps: the closing quote is the first one no backslash hides, then the text between is
+     * decoded on its own. They disagree on `\c\'`, whose decoding takes the backslash the search paired with the quote.
+     */
     readAnsiCQuoted(word) {
         this.index += 1;
-        let text = '';
-        while (!this.done) {
-            const char = this.at();
-            if (char === "'") {
-                this.index += 1;
-                word.add(text);
-                return;
-            }
-            if (char === '\\') {
-                text += this.readAnsiCEscape();
-                continue;
-            }
-            text += char;
-            this.index += 1;
+        const start = this.index;
+        while (!this.done && this.at() !== "'") {
+            this.index += this.at() === '\\' ? 2 : 1;
         }
-        word.add(text);
-        this.complete = false;
-    }
-    /** At a backslash inside `$'...'`: decodes one escape and moves past it. */
-    readAnsiCEscape() {
-        const letter = this.at(1);
-        const simple = ANSI_C_ESCAPES.get(letter);
-        if (simple !== undefined) {
-            this.index += 2;
-            return simple;
+        word.add(ansiCValue(this.source.slice(start, this.index)));
+        if (this.done) {
+            this.complete = false;
         }
-        const numeric = /^(?:x([0-9A-Fa-f]{1,2})|u([0-9A-Fa-f]{1,4})|([0-7]{1,3}))/.exec(this.source.slice(this.index + 1));
-        if (numeric === null) {
-            this.index += 2;
-            return letter;
-        }
-        this.index += 1 + numeric[0].length;
-        const [, hex, unicode, octal] = numeric;
-        const code = hex !== undefined ? parseInt(hex, 16) : unicode !== undefined ? parseInt(unicode, 16) : parseInt(octal ?? '0', 8);
-        return String.fromCodePoint(code);
+        this.index += 1;
     }
     /** `"..."`: expansions inside stay dynamic; bash escapes with `\`, PowerShell with a backtick or `""`, cmd not at all. */
     readDoubleQuoted(word) {
