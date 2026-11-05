@@ -1248,6 +1248,17 @@ retries since the last good turn), which a good turn end or a fresh start clears
 `server_error` or `overloaded` after the wake check's third retry, the hook logs `api-error: gave up on <tab>: its
 turn ended on <error> after 3 retries`, and the tab waits for you.
 
+At a session start the hook also keeps the launchers current after a plugin update. `<home>/bin/launchers.json`
+names the newest plugin version that refreshed them; a start reads it once and goes on only when it runs a newer
+version, so every later start costs that one read, and an older teamrig still running beside a newer one writes
+nothing. The start that goes on takes the record's lock without waiting (the tabs of a restore starting together
+leave it to one), reads the record again, and brings up to date what `restore install` and `statusline install` left:
+a launcher whose text is older, the logon entry when it is set, and each `Restore Claude Sessions` shortcut, pointed at
+the Node that runs the hook. It never adds one an install did not leave. Each change goes to `restore/restore.log` as
+`launchers: <old> -> <new>: <change>`, and the record is written once all are done; a change that fails is logged as
+`launchers: <old> -> <new>: FAILED <change>: <reason>; the next session start tries again` and leaves the record as it
+was.
+
 The first failure of an expiry in a team's tab also pages the owner, once per expiry: one line naming the tab and the
 time on its team's clock, posted to the chat webhook of the tab's team or the first team above it that names one,
 read from the one-line file [alerts.pageWebhookFile] names (it wins) or the environment variable

@@ -2711,7 +2711,13 @@ the desktop or pinned to the taskbar that starts something else, such as a pin m
 changed in place, so the pin stays and runs the restore. When the run launcher cannot find the plugin or start the
 run, its window says `FAILED: <why>`, stays open 60 seconds, and the log gets a `shortcut:` line. Without `--yes` it
 shows the change and writes nothing. It changes this machine, not a team, so it takes no `--session`. Run it once
-per machine; installing from a Node at a path a Node upgrade removes means running it again after the upgrade.
+per machine: the first session start of each newer plugin version brings what it wrote up to date by itself
+([hook restore-track](#teamrig-hook-restore-track)), with the Node that runs teamrig's hooks; after a Node upgrade
+that removed the Node it named, run it again, or the next plugin update does it. When `<kit home>/bin/launchers.json`
+names a newer teamrig than this one, an older teamrig on the PATH, its first step lowers that record to this version
+(`SET <kit home>\bin\launchers.json: <newer> -> <this>, so the next start of a newer teamrig refreshes what this
+writes`), so the newer one's next session start writes its own launchers back. With `--yes`, install and uninstall
+first wait for a session start's refresh in progress, at most 2 minutes, so the two never write at once.
 macOS and Linux have no logon entry or shortcut yet: there it is `REFUSED`, and `teamrig restore run` after a crash
 or reboot does the same by hand.
 
@@ -5421,7 +5427,10 @@ stuck, and when a later answer showed the login works again, each change as a `l
 `<home>/restore/restore.log`. The first failure of an expiry in a team's tab pages the owner once, through the chat
 webhook its team or a team above it names in [alerts.pageWebhookFile] or [alerts.pageWebhookEnv]. The first reply
 after a day-start probe's claim (an answered turn end, or a tool the probe's own tab runs) releases the probe in
-`<home>/restore/day-probe.json`, so the tabs waiting on it wake.
+`<home>/restore/day-probe.json`, so the tabs waiting on it wake. The first session start of a newer plugin version
+brings up to date what [restore install](#teamrig-restore-install) and `statusline install` left on the machine
+(their launchers, the logon entry and the shortcuts), each change a `launchers: <old> -> <new>: <change>` line in
+`<home>/restore/restore.log`; `<home>/bin/launchers.json` names the version that last did it.
 
 Flags: none.
 
