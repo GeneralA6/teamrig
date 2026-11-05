@@ -1,5 +1,5 @@
 import { Buffer } from 'node:buffer';
-import { parseShell, type ShellDialect, type ShellWord } from './tokenizer.ts';
+import { assignedWords, parseShell, type ShellDialect, type ShellWord } from './tokenizer.ts';
 
 /** A `NAME=value` a launcher sets in the environment of the program it starts. */
 export interface Assignment {
@@ -282,25 +282,18 @@ class LaunchReader {
 
   /**
    * A first word only known when it runs. In PowerShell it is an expression unless it was called: an
-   * assignment (`$x = git push`) runs its right side, and a cast (`[void]`) is skipped.
+   * assignment (`$x = git push`, `$h.a = git push`, `$p, $q = git push`) runs its right side.
    */
   private dynamicHead(words: readonly ShellWord[], head: ShellWord): Step {
     if (this.dialect !== 'powershell' || this.called) {
       return { kind: 'opaque', reason: 'the program it runs is only known when it runs', gated: true, command: { program: head, args: words.slice(1) } };
     }
-    const text = head.text.replace(/^(?:\[[^\]]+\])+/, '');
-    const operator = /^([-+*/%]|\?\?)?=$/;
-    if (/^\$[\w:{}?]+$/.test(text) && operator.test(words[1]?.text ?? '')) {
-      this.captured = true;
-      return { kind: 'next', words: words.slice(2) };
+    const right = assignedWords(words);
+    if (right === undefined) {
+      return NOTHING;
     }
-    const assigned = /^\$[\w:{}?]+([-+*/%]|\?\?)?=(.*)$/s.exec(text);
-    if (assigned !== null) {
-      this.captured = true;
-      const right = assigned[2] ?? '';
-      return { kind: 'next', words: right === '' ? words.slice(1) : [{ text: right, dynamic: /[$@]/.test(right) }, ...words.slice(1)] };
-    }
-    return NOTHING;
+    this.captured = true;
+    return { kind: 'next', words: right };
   }
 
   private named(name: string, args: readonly ShellWord[], head: ShellWord): Step {
