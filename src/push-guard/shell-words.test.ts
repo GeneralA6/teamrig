@@ -5,7 +5,7 @@ import { programsOf } from '../package-guard/programs.ts';
 import { bashLineReads } from '../readonly-shell/bash.ts';
 import { powershellLineReads } from '../readonly-shell/powershell.ts';
 import { prefixWords, type ReadonlyRules } from '../readonly-shell/rules.ts';
-import { BLANK_AND_LINE_END_ROWS, POWERSHELL_BLANKS, POWERSHELL_LINE_ENDS, type ShellWordsRow } from '../testing/shell-words.ts';
+import { BLANK_AND_LINE_END_ROWS, POWERSHELL_BLANKS, POWERSHELL_DOUBLE_QUOTES, POWERSHELL_LINE_ENDS, POWERSHELL_SINGLE_QUOTES, QUOTE_ROWS, type ShellWordsRow } from '../testing/shell-words.ts';
 import { hookSkips } from './hook-skips.ts';
 import { findGitInvocations } from './invocations.ts';
 import { evaluatePushes, type PushDecision, type RepoState } from './push.ts';
@@ -68,14 +68,18 @@ describe('the guards read the words the shell runs', () => {
   it('holds on every blank and line end', () => {
     BLANK_AND_LINE_END_ROWS.forEach(assertNoSofter);
   });
+
+  it('holds on every quote, here-string and --% shape', () => {
+    QUOTE_ROWS.forEach(assertNoSofter);
+  });
 });
 
 describe('parseShell: blanks, measured on the real shells', () => {
   it('ends a PowerShell word at exactly the units the real parser does', () => {
     const blanks = new Set(POWERSHELL_BLANKS);
     const lineEnds = new Set(POWERSHELL_LINE_ENDS);
-    // These act on their own, outside the blanks this table measures: separators, quotes, redirections, a NUL.
-    const apart = new Set([...'\0&(),;{}|<>\'"\u2018\u2019\u201a\u201b\u201c\u201d\u201e']);
+    // These act on their own, outside the blanks this table measures: separators, redirections, a NUL.
+    const apart = new Set([...'\0&(),;{}|<>']);
     for (let code = 0; code <= 0xffff; code += 1) {
       const unit = String.fromCharCode(code);
       if (apart.has(unit)) {
@@ -98,6 +102,175 @@ describe('parseShell: blanks, measured on the real shells', () => {
         assert.deepEqual(wordsOf(`a${unit}b c`, dialect), [[`a${unit}b`, 'c']], `U+${unit.charCodeAt(0).toString(16)} in ${dialect}`);
       }
     }
+  });
+});
+
+describe('parseShell: PowerShell quotes', () => {
+  it('groups a word at exactly the units the real parser does', () => {
+    const quotes = new Set([...POWERSHELL_SINGLE_QUOTES, ...POWERSHELL_DOUBLE_QUOTES]);
+    for (let code = 0; code <= 0xffff; code += 1) {
+      const unit = String.fromCharCode(code);
+      const seen = wordsOf(`x${unit}a b${unit}`, 'powershell').flat();
+      assert.equal(seen.length === 1, quotes.has(unit), `U+${code.toString(16)} read as ${JSON.stringify(seen)}`);
+    }
+  });
+
+  it('closes a quote at any mark of its class, and at no mark of the other', () => {
+    for (const [marks, other] of [[POWERSHELL_SINGLE_QUOTES, '"'], [POWERSHELL_DOUBLE_QUOTES, "'"]] as const) {
+      for (const open of marks) {
+        for (const close of marks) {
+          assert.deepEqual(wordsOf(`${open}a${other}b${close} c`, 'powershell'), [[`a${other}b`, 'c']]);
+        }
+      }
+    }
+  });
+
+  it('keeps the second mark of a doubled pair', () => {
+    assert.deepEqual(wordsOf('"a\u201d\u201cb"', 'powershell'), [['a\u201cb']]);
+    assert.deepEqual(wordsOf("'a\u2018'b'", 'powershell'), [["a'b"]]);
+  });
+
+  it('takes no curly mark for a quote in bash or cmd', () => {
+    assert.deepEqual(wordsOf('\u201ca b\u201d', 'bash'), [['\u201ca', 'b\u201d']]);
+    assert.deepEqual(wordsOf('\u201ca b\u201d', 'cmd'), [['\u201ca', 'b\u201d']]);
+    assert.deepEqual(wordsOf("a\u2019b 'c d'", 'bash'), [['a\u2019b', 'c d']]);
+  });
+});
+
+describe('parseShell: a PowerShell word ends where what starts it closes', () => {
+  it('after a quote', () => {
+    assert.deepEqual(wordsOf('x "a"b c', 'powershell'), [['x', 'a', 'b', 'c']]);
+    assert.deepEqual(wordsOf('x "a"--flag c', 'powershell'), [['x', 'a', '--flag', 'c']]);
+    assert.deepEqual(wordsOf("x 'a'--flag", 'powershell'), [['x', 'a', '--flag']]);
+    assert.deepEqual(wordsOf('x "a"\'b\'', 'powershell'), [['x', 'a', 'b']]);
+    assert.deepEqual(wordsOf('x \u201ca\u201d--flag', 'powershell'), [['x', 'a', '--flag']]);
+  });
+
+  it('after a here-string', () => {
+    assert.deepEqual(wordsOf("x @'\nbody\n'@y c", 'powershell'), [['x', 'body', 'y', 'c']]);
+  });
+
+  it('after a substitution or an array, leaving the word dynamic', () => {
+    const [, line] = parseShell('x $(echo a)--flag c', 'powershell').commands;
+    assert.deepEqual(line?.words.map((word) => [word.text, word.dynamic]), [['x', false], ['$(echo a)', true], ['--flag', false], ['c', false]]);
+    assert.deepEqual(wordsOf('x @(1)--flag', 'powershell').at(-1), ['x', '@(1)', '--flag']);
+    assert.deepEqual(wordsOf('x $(echo a)"b"', 'powershell').at(-1), ['x', '$(echo a)', 'b']);
+  });
+
+  it('keeps a comment after it a comment', () => {
+    assert.deepEqual(wordsOf('x "a"#b c', 'powershell'), [['x', 'a']]);
+    assert.deepEqual(wordsOf('x $(echo a)#b c', 'powershell').at(-1), ['x', '$(echo a)']);
+  });
+
+  it('leaves a word whole when a quote or a substitution comes later in it', () => {
+    assert.deepEqual(wordsOf('x a"b"c', 'powershell'), [['x', 'abc']]);
+    assert.deepEqual(wordsOf('x -"a b" c', 'powershell'), [['x', '-a b', 'c']]);
+    assert.deepEqual(wordsOf('x --y="a b"', 'powershell'), [['x', '--y=a b']]);
+    assert.deepEqual(wordsOf('x a$(echo b)--flag', 'powershell').at(-1), ['x', 'a$(echo b)--flag']);
+  });
+
+  it('leaves a word whole when a variable, a number or a splat starts it', () => {
+    assert.deepEqual(wordsOf('x $v--flag c', 'powershell'), [['x', '$v--flag', 'c']]);
+    assert.deepEqual(wordsOf('x $v"b" c', 'powershell'), [['x', '$vb', 'c']]);
+    assert.deepEqual(wordsOf('x ${v}--flag', 'powershell'), [['x', '${v}--flag']]);
+    assert.deepEqual(wordsOf('x 1"b"', 'powershell'), [['x', '1b']]);
+    assert.deepEqual(wordsOf('x @v--flag', 'powershell'), [['x', '@v--flag']]);
+  });
+
+  it('keeps to PowerShell: bash and cmd join what touches a closed quote', () => {
+    assert.deepEqual(wordsOf('x "a"--flag', 'bash'), [['x', 'a--flag']]);
+    assert.deepEqual(wordsOf('x "a"--flag', 'cmd'), [['x', 'a--flag']]);
+  });
+});
+
+describe('parseShell: PowerShell here-strings', () => {
+  it('opens after any blanks and any line end', () => {
+    for (const blank of ['', ' ', '\u00a0', '\u0085', '\u3000']) {
+      for (const lineEnd of ['\n', '\r\n', '\r']) {
+        assert.deepEqual(wordsOf(`x @'${blank}${lineEnd}body${lineEnd}'@ y`, 'powershell'), [['x', 'body', 'y']], JSON.stringify([blank, lineEnd]));
+      }
+    }
+  });
+
+  it('opens at any mark of a class and closes at any mark of it', () => {
+    for (const [marks, other] of [[POWERSHELL_SINGLE_QUOTES, '"'], [POWERSHELL_DOUBLE_QUOTES, "'"]] as const) {
+      for (const open of marks) {
+        for (const close of marks) {
+          assert.deepEqual(wordsOf(`x @${open}\nb\n${other}@\n${close}@ y`, 'powershell'), [['x', `b\n${other}@`, 'y']]);
+        }
+      }
+    }
+  });
+
+  it('closes an empty body on the line end of its opener', () => {
+    for (const lineEnd of ['\n', '\r\n', '\r']) {
+      assert.deepEqual(wordsOf(`x @'${lineEnd}'@ y`, 'powershell'), [['x', '', 'y']], JSON.stringify(lineEnd));
+    }
+  });
+
+  it('does not close on a mark with a blank before it', () => {
+    for (const blank of [' ', '\t', '\u00a0']) {
+      const parsed = parseShell(`x @'\n${blank}'@\n'@ y`, 'powershell');
+      assert.deepEqual(parsed.commands.map((command) => command.words.map((word) => word.text)), [['x', `${blank}'@`, 'y']]);
+      assert.equal(parsed.complete, true);
+    }
+  });
+
+  it('sees the command after a closer the old reading took for an earlier one', () => {
+    assert.deepEqual(wordsOf("x @'\n '@ \"\n'@\nsecond\n# \"", 'powershell'), [['x', ' \'@ "'], ['second']]);
+  });
+
+  it('expands only the double class', () => {
+    assert.deepEqual(wordsOf('x @\u201c\n$(y)\n\u201d@', 'powershell'), [['y'], ['x', '$(y)']]);
+    assert.deepEqual(wordsOf('x @\u2018\n$(y)\n\u2019@', 'powershell'), [['x', '$(y)']]);
+  });
+
+  it('opens none where a word has started or text follows the mark', () => {
+    assert.deepEqual(wordsOf("x a@'\nb'", 'powershell'), [['x', 'a@\nb']]);
+    assert.deepEqual(wordsOf("x @' y\n'@ z", 'powershell'), [['x', '@ y\n@', 'z']]);
+  });
+});
+
+describe('parseShell: PowerShell --%', () => {
+  it('is no marker in a word a quote starts', () => {
+    assert.deepEqual(wordsOf("x '--%' a; y", 'powershell'), [['x', '--%', 'a'], ['y']]);
+    assert.deepEqual(wordsOf('x "--%" a; y', 'powershell'), [['x', '--%', 'a'], ['y']]);
+    assert.deepEqual(wordsOf('x "--"% a; y', 'powershell'), [['x', '--', '%', 'a'], ['y']]);
+  });
+
+  it('is the marker in every other spelling', () => {
+    for (const spelled of ['`--%', '-`-%', '--`%', '-"-%"', '--"%"', "-'-%'", "--'%'", '--""%', '--%""']) {
+      assert.deepEqual(wordsOf(`x ${spelled} a; y`, 'powershell'), [['x', '--%', 'a;', 'y']], spelled);
+    }
+  });
+
+  it('ends at a line end, even inside quotes', () => {
+    assert.deepEqual(wordsOf('x --% a\rb c', 'powershell'), [['x', '--%', 'a'], ['b', 'c']]);
+    assert.deepEqual(wordsOf('x --% a\nb c', 'powershell'), [['x', '--%', 'a'], ['b', 'c']]);
+    assert.deepEqual(wordsOf('x --% "a\rb c', 'powershell'), [['x', '--%', 'a'], ['b', 'c']]);
+    assert.deepEqual(wordsOf('x --% "a\nb c', 'powershell'), [['x', '--%', 'a'], ['b', 'c']]);
+  });
+
+  it('ends at a | or && outside quotes, and a single & is text', () => {
+    assert.deepEqual(wordsOf('x --% a | b', 'powershell'), [['x', '--%', 'a'], ['b']]);
+    assert.deepEqual(wordsOf('x --% a && b', 'powershell'), [['x', '--%', 'a'], ['b']]);
+    assert.deepEqual(wordsOf('x --% a&b', 'powershell'), [['x', '--%', 'a&b']]);
+    assert.deepEqual(wordsOf('x --% "a&&b|c"', 'powershell'), [['x', '--%', 'a&&b|c']]);
+  });
+
+  it('takes a curly double quote as a quote when it looks for the end, but groups on a plain one alone', () => {
+    assert.deepEqual(wordsOf('x --% \u201ca|b\u201d', 'powershell'), [['x', '--%', '\u201ca|b\u201d']]);
+    assert.deepEqual(wordsOf('x --% \u201ca b\u201d c', 'powershell'), [['x', '--%', '\u201ca', 'b\u201d', 'c']]);
+  });
+
+  it('splits on a space or a tab alone', () => {
+    assert.deepEqual(wordsOf('x --% a\u00a0b\u3000c\u0085d\te', 'powershell'), [['x', '--%', 'a\u00a0b\u3000c\u0085d', 'e']]);
+  });
+
+  it('reads %VAR% in quotes too, and never past the end of the text', () => {
+    const [, ...rest] = parseShell('x --% "%A%"', 'powershell').commands[0]?.words ?? [];
+    assert.deepEqual(rest.map((word) => [word.text, word.dynamic]), [['--%', false], ['%A%', true]]);
+    assert.deepEqual(wordsOf('x --% %a|y\u0085z%', 'powershell'), [['x', '--%', '%a'], ['y', 'z%']]);
   });
 });
 

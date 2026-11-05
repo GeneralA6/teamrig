@@ -19,6 +19,39 @@ export const POWERSHELL_BLANKS: readonly string[] = [...'\t\v\f \u0085\u00a0\u16
 /** The units that end a PowerShell statement outside quotes, from the same run. */
 export const POWERSHELL_LINE_ENDS: readonly string[] = ['\n', '\r'];
 
+/** The units that open and close a PowerShell literal string, from the same run. */
+export const POWERSHELL_SINGLE_QUOTES: readonly string[] = ["'", '\u2018', '\u2019', '\u201a', '\u201b'];
+
+/** The units that open and close a PowerShell expandable string, from the same run. */
+export const POWERSHELL_DOUBLE_QUOTES: readonly string[] = ['"', '\u201c', '\u201d', '\u201e'];
+
+export const QUOTE_ROWS: readonly ShellWordsRow[] = [
+  { dialect: 'powershell', typed: 'git commit -m x \u201c--no-verify\u201d', real: 'git commit -m x --no-verify' },
+  { dialect: 'powershell', typed: 'git commit -m x \u2018--no-verify\u2019', real: 'git commit -m x --no-verify' },
+  { dialect: 'powershell', typed: 'git commit -m x "--no-verify\u201d', real: 'git commit -m x --no-verify' },
+  { dialect: 'powershell', typed: "git commit -m x '--no-verify\u2019", real: 'git commit -m x --no-verify' },
+  { dialect: 'powershell', typed: 'git push \u201c--force\u201d origin own', real: 'git push --force origin own' },
+  { dialect: 'powershell', typed: 'git push origin \u201cmain\u201d', real: 'git push origin main' },
+  { dialect: 'powershell', typed: 'git \u201cpush\u201d origin main', real: 'git push origin main' },
+  { dialect: 'powershell', typed: '\u201cgit\u201d commit -m x --no-verify', real: 'git commit -m x --no-verify' },
+  { dialect: 'powershell', typed: 'npm install \u201cleft-pad\u201d', real: 'npm install left-pad' },
+  { dialect: 'powershell', typed: 'npm \u2018install\u2019 left-pad', real: 'npm install left-pad' },
+  { dialect: 'powershell', typed: 'git commit -m "x"--no-verify', real: 'git commit -m x --no-verify' },
+  { dialect: 'powershell', typed: "git commit -m 'x'--no-verify", real: 'git commit -m x --no-verify' },
+  { dialect: 'powershell', typed: 'git commit -m x "--no-verify"y', real: 'git commit -m x --no-verify y' },
+  { dialect: 'powershell', typed: 'git commit -m x $(echo y)--no-verify', real: 'git commit -m x $(echo y) --no-verify' },
+  { dialect: 'powershell', typed: 'git commit -m x @(1)--no-verify', real: 'git commit -m x @(1) --no-verify' },
+  { dialect: 'powershell', typed: "git commit -m @'\nx\n'@--no-verify", real: 'git commit -m x --no-verify' },
+  { dialect: 'powershell', typed: "git status '--%' x; git push origin main", real: 'git push origin main' },
+  { dialect: 'powershell', typed: 'git status "--%" x; git push origin main', real: 'git push origin main' },
+  { dialect: 'powershell', typed: "x @'\n '@ \"\n'@\ngit push origin main\n# \"", real: 'git push origin main' },
+  { dialect: 'powershell', typed: 'git status --% a\rgit push origin main', real: 'git push origin main' },
+  { dialect: 'powershell', typed: 'git status --% "a\rgit push origin main', real: 'git push origin main' },
+  { dialect: 'powershell', typed: 'git status --% a && git push origin main', real: 'git push origin main' },
+  { dialect: 'powershell', typed: 'git status --% %a|git\u0085push\u0085origin\u0085main;#%', real: 'git push origin main' },
+  { dialect: 'powershell', typed: 'git commit --no-verify --% x\u00a0--verify', real: 'git commit --no-verify --% "x\u00a0--verify"' },
+];
+
 export const BLANK_AND_LINE_END_ROWS: readonly ShellWordsRow[] = [
   { dialect: 'powershell', typed: 'Get-Content a\rRemove-Item b', real: 'Get-Content a; Remove-Item b' },
   { dialect: 'powershell', typed: 'Get-Content a\rgit commit -m x --no-verify', real: 'Get-Content a; git commit -m x --no-verify' },
