@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
+import { DASH_QUOTES, NOTHING_QUOTES } from '../testing/ansi-c-quotes.ts';
 import { installCallsOf, type InstallTarget } from './installs.ts';
 
 function targetText(target: InstallTarget): string {
@@ -117,6 +118,30 @@ describe('installCallsOf', () => {
     ];
     for (const [line, expected] of cases) {
       assert.deepEqual(installsOf(line), [expected], line);
+    }
+  });
+
+  it("reads an install behind a $'...' string whose value is nothing as the plain line", () => {
+    for (const quote of NOTHING_QUOTES) {
+      const cases: readonly (readonly [string, string])[] = [
+        [`npm ${quote}i lodash@4.17.21`, 'npm i: lodash version 4.17.21'],
+        [`npm ${quote}install lodash@4.17.21`, 'npm install: lodash version 4.17.21'],
+        [`${quote}npm i lodash@4.17.21`, 'npm i: lodash version 4.17.21'],
+        [`npm i ${quote}lodash@4.17.21`, 'npm i: lodash version 4.17.21'],
+        [`npm i lodash@${quote}4.17.21`, 'npm i: lodash version 4.17.21'],
+        [`npm i react ${quote}--tag next`, 'npm i: react tag next'],
+        [`pnpm ${quote}add typescript`, 'pnpm add: typescript tag latest'],
+        [`yarn ${quote}add vite@beta`, 'yarn add: vite tag beta'],
+      ];
+      for (const [line, expected] of cases) {
+        assert.deepEqual(installsOf(line), [expected], line);
+      }
+    }
+  });
+
+  it('reads an option whose dash only bash spells out', () => {
+    for (const dash of DASH_QUOTES) {
+      assert.deepEqual(installsOf(`npm i react ${dash}-tag next`), ['npm i: react tag next'], dash);
     }
   });
 

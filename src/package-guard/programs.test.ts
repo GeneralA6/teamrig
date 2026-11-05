@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import type { ShellDialect } from '../push-guard/tokenizer.ts';
+import { DASH_QUOTES, NOTHING_QUOTES } from '../testing/ansi-c-quotes.ts';
 import { programsOf, runsOf, type BareCommand, type ProgramRun } from './programs.ts';
 
 const APP = resolve('/', 'work', 'app');
@@ -31,6 +32,27 @@ describe('programsOf', () => {
     assert.deepEqual(runs('env -C sub npx x'), [`npx x @ ${join(APP, 'sub')}`]);
     assert.deepEqual(runs("env -C sub bash -c 'npx x'"), [`npx x @ ${join(APP, 'sub')}`]);
     assert.deepEqual(runs('eval "cd sub"; npx x'), [`npx x @ ${join(APP, 'sub')}`]);
+  });
+
+  it("reads a program, a launcher or its option behind a $'...' string whose value is nothing", () => {
+    const sub = join(APP, 'sub');
+    for (const quote of NOTHING_QUOTES) {
+      assert.deepEqual(runs(`${quote}npx cowsay`), [`npx cowsay @ ${APP}`], quote);
+      assert.deepEqual(runs(`npx ${quote}cowsay`), [`npx cowsay @ ${APP}`], quote);
+      assert.deepEqual(runs(`env ${quote}-C sub npx x`), [`npx x @ ${sub}`], quote);
+      assert.deepEqual(runs(`${quote}env -C sub npx x`), [`npx x @ ${sub}`], quote);
+      assert.deepEqual(runs(`bash ${quote}-c 'npx x'`), [`npx x @ ${APP}`], quote);
+      assert.deepEqual(runs(`${quote}bash -c 'npx x'`), [`npx x @ ${APP}`], quote);
+      assert.deepEqual(runs(`${quote}eval 'npx x'`), [`npx x @ ${APP}`], quote);
+      assert.deepEqual(runs(`${quote}cd sub && npx a`), [`npx a @ ${sub}`], quote);
+    }
+  });
+
+  it('reads a launcher option whose dash only bash spells out', () => {
+    for (const dash of DASH_QUOTES) {
+      assert.deepEqual(runs(`sh ${dash}c 'npx x'`), [`npx x @ ${APP}`], dash);
+      assert.deepEqual(runs(`env ${dash}C sub npx x`), [`npx x @ ${join(APP, 'sub')}`], dash);
+    }
   });
 
   it('reads a script a plain cat pipes into a shell', () => {

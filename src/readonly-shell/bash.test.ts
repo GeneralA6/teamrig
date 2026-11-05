@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseShell } from '../push-guard/tokenizer.ts';
+import { DASH_QUOTES, NOTHING_QUOTES } from '../testing/ansi-c-quotes.ts';
 import { argumentOf, bashLineReads, boundArgumentOf } from './bash.ts';
 import { prefixWords, type ReadonlyRules } from './rules.ts';
 
@@ -41,6 +42,12 @@ describe('bashLineReads', () => {
       ],
       true,
     );
+  });
+
+  it("judges an option behind a $'...' string as the option bash gives the program", () => {
+    expectAll(NOTHING_QUOTES.flatMap((quote) => [`sort ${quote}-o out in`, `git log ${quote}--output=out`]), false);
+    expectAll(DASH_QUOTES.flatMap((dash) => [`sort ${dash}o out in`, `git log ${dash}-output=out`]), false);
+    expectAll(NOTHING_QUOTES.flatMap((quote) => [`sort ${quote}in`, `git log ${quote}--oneline`]), true);
   });
 
   it('allows git and kubectl reads, loops that poll them and the path conversion switches', () => {

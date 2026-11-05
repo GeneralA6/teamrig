@@ -1,8 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
+import { DASH_QUOTES, NOTHING_QUOTES } from '../testing/ansi-c-quotes.ts';
 import { hookSkips } from './hook-skips.ts';
-import { findGitInvocations, type ConfigValue, type GitConfigReader } from './invocations.ts';
+import { findGitInvocations, HOOKS_PATH_KEY, type ConfigValue, type GitConfigReader } from './invocations.ts';
 import type { ShellDialect } from './tokenizer.ts';
 
 /** Git config with `git ci` an alias of `git commit`; every other key unset. */
@@ -112,6 +113,41 @@ describe('hookSkips: git config', () => {
       ['git config user.name x', []],
       ['git config --unset user.name', []],
       ['git config "$KEY" /dev/null', []],
+    ]);
+  });
+});
+
+describe("hookSkips: $'...' quoting", () => {
+  it('finds a skip behind a string whose value is nothing', () => {
+    for (const quote of NOTHING_QUOTES) {
+      expectSkips([
+        [`git commit -m x ${quote}--no-verify`, ['commit|--no-verify']],
+        [`git commit -m x ${quote}-n`, ['commit|-n']],
+        [`git push ${quote}--no-verify origin own`, ['push|--no-verify']],
+        [`git ${quote}commit -m x --no-verify`, ['commit|--no-verify']],
+        [`${quote}git commit -m x --no-verify`, ['commit|--no-verify']],
+        [`git config ${quote}${HOOKS_PATH_KEY} x`, [`config|git config ${HOOKS_PATH_KEY} x`]],
+        [`git -c ${quote}${HOOKS_PATH_KEY}=x commit -m x`, [`commit|-c ${HOOKS_PATH_KEY}=x`]],
+      ]);
+    }
+  });
+
+  it('finds a skip whose dash only bash spells out', () => {
+    for (const dash of DASH_QUOTES) {
+      expectSkips([
+        [`git commit -m x ${dash}-no-verify`, ['commit|--no-verify']],
+        [`git commit -m x ${dash}n`, ['commit|-n']],
+        [`git push ${dash}-no-verify origin own`, ['push|--no-verify']],
+      ]);
+    }
+  });
+
+  it('reads what a NUL cuts off as gone, and a variable set from such a string as its value', () => {
+    expectSkips([
+      ["git commit -m x $'--no-verify\\0junk'", ['commit|--no-verify']],
+      ["git commit -m x $'x\\0--no-verify'", []],
+      ["v=$'\\0'--no-verify; git commit -m x $v", ['commit|--no-verify']],
+      ["v=$'\\0'--no-verify; git commit -m x \"$v\"", ['commit|--no-verify']],
     ]);
   });
 });
