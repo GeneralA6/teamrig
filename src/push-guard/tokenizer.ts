@@ -1380,13 +1380,14 @@ class Scanner {
   }
 
   /**
-   * PowerShell's backtick, measured on 5.1 (T2002). Between words it continues the line, whichever line end follows. In a
-   * word or quotes it keeps ONE character, so `a<backtick><CR><LF>b c` is the word `a<CR>`, then the LF ends the statement
-   * and `b c` runs. With nothing after it, or a NUL, the backtick stays. pwsh alone also reads a code point.
+   * PowerShell's backtick, measured on 5.1 (T2002). Between words it continues the line, whichever line end follows, and
+   * before a blank it is only a gap: `a <backtick> b` is the words `a` and `b`. In a word or quotes it keeps ONE character,
+   * so `a<backtick><CR><LF>b c` is the word `a<CR>`, then the LF ends the statement and `b c` runs. With nothing after it,
+   * or a NUL, the backtick stays. pwsh alone also reads a code point.
    */
   private readPowerShellEscape(word: WordBuilder): void {
     const next = this.at(1);
-    if (!word.isStarted && /[\n\r]/.test(next)) {
+    if (!word.isStarted && this.escapesGap()) {
       this.index += next === '\r' && this.at(2) === '\n' ? 3 : 2;
       return;
     }
@@ -1744,8 +1745,8 @@ class Scanner {
   }
 
   /**
-   * Moves past blanks, line ends, comments and a backtick before a line end, which may sit around a `@{ }` entry's key
-   * and `=`, and after a comma.
+   * Moves past blanks, line ends, comments and a backtick before a blank or a line end, which may sit around a `@{ }`
+   * entry's key and `=`, and after a comma.
    */
   private skipGaps(): void {
     while (!this.done) {
@@ -1754,12 +1755,18 @@ class Scanner {
         this.skipComment();
       } else if (char === '<' && this.at(1) === '#') {
         this.skipBlockComment();
-      } else if (BLANKS.powershell.test(char) || this.endsLine(char) || (char === '`' && this.endsLine(this.at(1)))) {
+      } else if (BLANKS.powershell.test(char) || this.endsLine(char) || (char === '`' && this.escapesGap())) {
         this.index += 1;
       } else {
         return;
       }
     }
+  }
+
+  /** PowerShell, at a backtick: true before a blank or a line end, where between words it adds nothing. */
+  private escapesGap(): boolean {
+    const next = this.at(1);
+    return BLANKS.powershell.test(next) || this.endsLine(next);
   }
 
   /**

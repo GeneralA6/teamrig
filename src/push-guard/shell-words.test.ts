@@ -137,6 +137,15 @@ describe('parseShell: blanks, measured on the real shells', () => {
     }
   });
 
+  it('reads a PowerShell backtick before a blank as a gap between words, and as that blank in a word', () => {
+    for (const blank of POWERSHELL_BLANKS) {
+      const unit = `U+${blank.charCodeAt(0).toString(16)}`;
+      assert.deepEqual(wordsOf(`x \`${blank}a b`, 'powershell'), [['x', 'a', 'b']], unit);
+      assert.deepEqual(wordsOf(`x a,\`${blank}b c`, 'powershell'), [['x', 'a', 'b', 'c']], `${unit} after a comma`);
+      assert.deepEqual(wordsOf(`x a\`${blank}b c`, 'powershell'), [['x', `a${blank}b`, 'c']], `${unit} in a word`);
+    }
+  });
+
   it('ends a bash or cmd word at a space or a tab alone', () => {
     for (const dialect of ['bash', 'cmd'] as const) {
       assert.deepEqual(wordsOf('a b\tc', dialect), [['a', 'b', 'c']]);
