@@ -843,7 +843,12 @@ class Scanner {
       if (parameter !== undefined) {
         word.add(this.source.slice(this.index, parameter), 'unquoted');
         this.index = parameter;
-        valueAt = parameter;
+        if (element) {
+          // Measured: past a comma the token ends at its colon, and what follows is the next argument, out of the array.
+          endWord();
+        } else {
+          valueAt = parameter;
+        }
         continue;
       }
       const opening = powershell && (!word.isStarted || this.index === valueAt);

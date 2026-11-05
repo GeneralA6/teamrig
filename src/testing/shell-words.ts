@@ -96,6 +96,10 @@ export const NATIVE_LINE_ROWS: readonly ShellWordsRow[] = [
   { dialect: 'powershell', typed: `git -c 'a=b\\" push origin main'`, real: `git -c 'a=b\\"' push origin main` },
   { dialect: 'powershell', typed: `git '' push origin main`, real: 'git push origin main' },
   { dialect: 'powershell', typed: 'git commit --no-verify "a",--verify', real: `git commit --no-verify 'a,--verify'` },
+  // Past a comma a `-name:` token ends at its colon, so its value is an argument of its own.
+  { dialect: 'powershell', typed: 'git commit -m a,-n:--no-verify', real: `git commit -m 'a,-n:' --no-verify` },
+  { dialect: 'powershell', typed: 'git push origin own,-n:--force', real: `git push origin 'own,-n:' --force` },
+  { dialect: 'powershell', typed: 'npm install a,-n:left-pad', real: `npm install 'a,-n:' left-pad` },
 ];
 
 export const QUOTE_ROWS: readonly ShellWordsRow[] = [
