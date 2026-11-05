@@ -151,6 +151,12 @@ describe('routeOf', () => {
       'git --git-dir=/x commit -m msg',
       'git --work-tree /x commit -m msg',
       'git -C C:/w -c x=y commit -m msg',
+      "git commit -m msg $'\\0'--no-verify",
+      "git commit -m msg $'\\x{2d}'-no-verify",
+      "git commit -m msg $'--no-verify\\0junk'",
+      "git commit -m msg $'\\c@'-n",
+      "git commit -m $'msg'",
+      'git commit -m $"msg"',
     ]);
   });
 

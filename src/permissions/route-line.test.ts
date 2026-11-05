@@ -39,6 +39,25 @@ describe('plainWordsOf', () => {
     }
   });
 
+  it(`refuses $'...' and $"...", whose value is not the text the line shows, and the same two characters inside quotes`, () => {
+    for (const line of [
+      "git commit -m x $'\\0'--no-verify",
+      "git commit -m x $'\\x00'--no-verify",
+      "git commit -m x $'\\000'--no-verify",
+      "git commit -m x $'\\u0000'--no-verify",
+      "git commit -m x $'\\c@'--no-verify",
+      "git commit -m x $'\\c@'-n",
+      "git commit -m x $'\\c-n'",
+      "git commit -m x $'\\cA'--no-verify",
+      "git commit -m x $'a\\0b'--no-verify",
+      "git commit -m $'x'",
+      'git commit -m $"x"',
+      "git commit -m 'costs 5$'",
+    ]) {
+      assert.equal(plainWordsOf(line), undefined, line);
+    }
+  });
+
   it('refuses a control character: a newline, a carriage return, a NUL, a DEL', () => {
     for (const line of ['git status\ngit push', 'git status\r', 'git\u0000status', 'git status\u007f', 'git \\\nstatus']) {
       assert.equal(plainWordsOf(line), undefined, JSON.stringify(line));
