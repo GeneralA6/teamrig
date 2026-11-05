@@ -185,6 +185,12 @@ const PARAMETER = new RegExp(`${PARAMETER_NAME}:(?!:)`, 'uy');
  * `-y::z` leaves `:z`. A quote right behind the name makes no token, so `-y'a b'` stays a value.
  */
 const BARE_PARAMETER = new RegExp(`${PARAMETER_NAME}(?::|(?=[${PARAMETER_ENDS}]|$))`, 'uy');
+/**
+ * A `.` that opens a word or a value, right ahead of a plain quote or `$`, is a word of its own, measured on 5.1 (T2003):
+ * `x ."b c"` hands the program `.` and `b c`, `-a:.$v` hands `-a:.` and the value, and at a head it runs what follows, as
+ * `. git` does: `."git" push` starts git. A curly quote joins the word instead; a `(` ends any word, so it needs no rule.
+ */
+const LONE_DOT = /\.(?=["'$])/y;
 
 /** What a NUL does to the words of a PowerShell command; see {@link POWERSHELL_READINGS}. */
 type NulEffect = 'line' | 'word' | 'kept';
@@ -932,6 +938,13 @@ class Scanner {
         continue;
       }
       const opening = powershell && (!word.isStarted || this.index === valueAt);
+      const loneDot = opening ? this.matchEnd(LONE_DOT) : undefined;
+      if (loneDot !== undefined) {
+        word.add(char, 'unquoted');
+        this.index = loneDot;
+        endWord();
+        continue;
+      }
       const whole = opening && this.opensWholeWord(char);
       const variable = opening && char === '$';
       const inArguments = words.length > 0 || awaiting !== undefined;

@@ -135,6 +135,16 @@ export const REDIRECTION_ROWS: readonly ShellWordsRow[] = [
   { dialect: 'powershell', typed: 'npm install 1< left-pad', real: `npm install '1<' left-pad` },
 ];
 
+/** A `.` right ahead of a plain quote is a word of its own, and at a head it starts what follows: run for real on 5.1. */
+export const LONE_DOT_ROWS: readonly ShellWordsRow[] = [
+  { dialect: 'powershell', typed: '."git" push origin main --force', real: '. git push origin main --force' },
+  { dialect: 'powershell', typed: `.'git' push origin main --force`, real: '. git push origin main --force' },
+  { dialect: 'powershell', typed: '."git" commit --no-verify -m x', real: '. git commit --no-verify -m x' },
+  { dialect: 'powershell', typed: '."npm" install left-pad', real: '. npm install left-pad' },
+  { dialect: 'powershell', typed: 'Write-Output x | ."git" push origin main --force', real: 'Write-Output x | . git push origin main --force' },
+  { dialect: 'powershell', typed: '$r = ."git" push origin main --force', real: '$r = . git push origin main --force' },
+];
+
 export const QUOTE_ROWS: readonly ShellWordsRow[] = [
   { dialect: 'powershell', typed: 'git commit -m x \u201c--no-verify\u201d', real: 'git commit -m x --no-verify' },
   { dialect: 'powershell', typed: 'git commit -m x \u2018--no-verify\u2019', real: 'git commit -m x --no-verify' },
@@ -232,6 +242,8 @@ export const VALUE_ROWS: readonly ShellWordsRow[] = [
   { dialect: 'powershell', typed: 'npm install (echo left-pad)', real: 'npm install left-pad' },
   // A `--%` expands a `%NAME%`: measured with W set to `x main`, so a value can name a branch the line never shows.
   { dialect: 'powershell', typed: 'git push origin --% %%W%', real: `git push origin '%x' main` },
+  // A lone dot starts a head only known when it runs, as with a blank behind the dot: the guard asks.
+  { dialect: 'powershell', typed: '.$g push origin main --force', real: '. $g push origin main --force' },
 ];
 
 export const BLANK_AND_LINE_END_ROWS: readonly ShellWordsRow[] = [
