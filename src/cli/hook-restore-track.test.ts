@@ -3,9 +3,13 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { Env } from '../core/home.ts';
 import { MS_PER_HOUR } from '../core/time.ts';
+import { KIT_VERSION } from '../core/version.ts';
 import type { ChatWebhook } from '../core/webhook.ts';
 import { dayProbePath, formatDayProbe, parseDayProbe, type DayProbe } from '../restore/day-probe.ts';
 import type { RestoreEntry } from '../restore/entry.ts';
+import { restoreLaunchers } from '../restore/install-plan.ts';
+import { RESTORE_CHECK_LAUNCHER_SCRIPT } from '../restore/launcher.ts';
+import { LAUNCHER_RECORD_FORMAT, launcherRecordPath } from '../restore/launcher-refresh.ts';
 import { AUTH_FAILED, loginMarkerPath, parseLoginMarker, type LoginMarker } from '../restore/login.ts';
 import { RestoreRegistry, restoreLogPath, restoreSessionsDir } from '../restore/registry.ts';
 import { APP, CLAUDE_SESSION, CLI_PID, CliHarness, KIT, TEAM, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
@@ -408,5 +412,45 @@ describe("hook restore-track: the owner's page", () => {
     const webhook = new FakeWebhook();
     await failTurn(kit, webhook, { stdin: payload('StopFailure') });
     assert.equal(webhook.posts.length, 1);
+  });
+});
+
+describe('hook restore-track: the launcher refresh', () => {
+  const { check: CHECK } = restoreLaunchers(KIT);
+  const RECORD = launcherRecordPath(KIT);
+  const OLDER_TEXT = '// an older launcher\n';
+  const OLDER_RECORD = `${JSON.stringify({ v: LAUNCHER_RECORD_FORMAT, version: '0.0.1', at: '2030-01-01T10:00:00.000Z' })}\n`;
+
+  async function oldLauncherKit(): Promise<CliHarness> {
+    const kit = new CliHarness();
+    await kit.files.write(CHECK.path, OLDER_TEXT);
+    await kit.files.write(RECORD, OLDER_RECORD);
+    return kit;
+  }
+
+  it('rewrites an old launcher at the first session start after a version change, logs it and records the version', async () => {
+    const kit = await oldLauncherKit();
+    await track(kit, payload('SessionStart', { source: 'startup' }));
+    assert.equal(await kit.files.read(CHECK.path), RESTORE_CHECK_LAUNCHER_SCRIPT);
+    const log = (await kit.files.read(restoreLogPath(KIT))) ?? '';
+    assert.ok(log.includes(` launchers: 0.0.1 -> ${KIT_VERSION}: WRITE ${CHECK.path}\n`), log);
+    assert.ok((await kit.files.read(RECORD))?.includes(`"version": "${KIT_VERSION}"`));
+    assert.equal((await entryOf(kit))?.state, 'ready', 'the entry is recorded beside the refresh');
+  });
+
+  it('refreshes nothing at a prompt or at the start a compaction makes', async () => {
+    const kit = await oldLauncherKit();
+    await track(kit, payload('UserPromptSubmit'));
+    await track(kit, payload('SessionStart', { source: 'compact' }));
+    assert.deepEqual([await kit.files.read(CHECK.path), await kit.files.read(RECORD)], [OLDER_TEXT, OLDER_RECORD]);
+  });
+
+  it('leaves the refresh to another start holding its lock, and still records the session', async () => {
+    const kit = await oldLauncherKit();
+    await holdFileLock(kit, `${RECORD}.lock`);
+    const result = await kit.run(['hook', 'restore-track'], { stdin: payload('SessionStart', { source: 'startup' }), env: LAUNCHED });
+    assert.deepEqual([result.code, result.stdout, result.stderr], [0, [], []]);
+    assert.deepEqual([await kit.files.read(CHECK.path), await kit.files.read(RECORD)], [OLDER_TEXT, OLDER_RECORD]);
+    assert.equal((await entryOf(kit))?.state, 'ready');
   });
 });

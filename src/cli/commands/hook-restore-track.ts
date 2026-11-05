@@ -1,15 +1,18 @@
 import { isRecord, stringField, type JsonRecord } from '../../core/guards.ts';
 import { ENV, resolveKitHome } from '../../core/home.ts';
 import { ID_PATTERN } from '../../core/ids.ts';
+import { KIT_VERSION } from '../../core/version.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
 import { dayProbePath, dayProbeReleaseLine, type DayProbeReply } from '../../restore/day-probe.ts';
 import { DayProbeStore } from '../../restore/day-probe-store.ts';
 import { apiGaveUpLine, apiRetriesSpentOn } from '../../restore/api-error.ts';
 import { applyEvent, type TrackEvent, type TrackFacts } from '../../restore/entry.ts';
+import { LAUNCHER_REFRESH_LOCK, launcherRecordPath, refreshLaunchers } from '../../restore/launcher-refresh.ts';
 import { AUTH_FAILED, LOGIN_LOCK, loginLogLine, loginMarkerPath, type LoginEvent } from '../../restore/login.ts';
 import { LoginStore } from '../../restore/login-store.ts';
 import { RestoreRegistry, restoreLogPath, restoreSessionsDir } from '../../restore/registry.ts';
 import { TURN_TAIL_BYTES, turnErrorOf } from '../../restore/turn-error.ts';
+import { LAUNCHER_SCRIPT, launcherPath } from '../../statusline/launcher.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { fileLockOf } from '../file-locks.ts';
 import { loginPageLogLine, loginPageOf, sendLoginPage, type LoginPage } from '../login-page.ts';
@@ -172,10 +175,29 @@ async function trackDayProbe(event: TrackEvent, facts: TrackFacts, runtime: CliR
 }
 
 /**
- * Records the event `payload` reports in its session's restore entry, at a turn's end in the login marker, and at a
- * reply in the day-start probe; a payload of no session or event it skips writes nothing. A marker or probe that
- * cannot be written (its lock busy) never keeps the entry from its update; an entry that cannot be written fails the
- * call once they are done.
+ * At a session start, brings what a restore install and the status line install left on the machine up to date with
+ * this plugin version (src/restore/launcher-refresh.ts): the logon entry and the shortcuts are run by this hook's Node,
+ * the stable program Claude Code starts its hooks with.
+ */
+async function trackLaunchers(event: TrackEvent, runtime: CliRuntime, kitHome: string): Promise<void> {
+  if (event.kind !== 'start') {
+    return;
+  }
+  const { files, restore } = runtime;
+  await refreshLaunchers({
+    machine: { files, kitHome, node: runtime.self.node, userHome: runtime.userHome, logon: restore.logon, shortcuts: restore.shortcuts },
+    others: [{ path: launcherPath(kitHome), text: LAUNCHER_SCRIPT }],
+    lock: fileLockOf(runtime, `${launcherRecordPath(kitHome)}.lock`, LAUNCHER_REFRESH_LOCK),
+    version: KIT_VERSION,
+    now: runtime.clock.now(),
+  });
+}
+
+/**
+ * Records the event `payload` reports in its session's restore entry, at a turn's end in the login marker, at a
+ * reply in the day-start probe, and at a session start refreshes the launchers; a payload of no session or event it
+ * skips writes nothing. A marker, probe or refresh that cannot be written (its lock busy) never keeps the entry from
+ * its update; an entry that cannot be written fails the call once they are done.
  */
 export async function trackRestore(payload: unknown, runtime: CliRuntime): Promise<void> {
   const claudeSession = sessionIdOf(payload);
@@ -200,10 +222,11 @@ export async function trackRestore(payload: unknown, runtime: CliRuntime): Promi
   const event = await codedEvent(payload, reported, facts, runtime);
   const login = trackLogin(event, facts, runtime, kitHome).catch(() => undefined);
   const dayProbe = trackDayProbe(event, facts, runtime, kitHome).catch(() => undefined);
+  const launchers = trackLaunchers(event, runtime, kitHome).catch(() => undefined);
   try {
     await trackEntry(event, facts, runtime, kitHome);
   } finally {
-    await Promise.all([login, dayProbe]);
+    await Promise.all([login, dayProbe, launchers]);
   }
 }
 
@@ -215,7 +238,9 @@ export async function trackRestore(payload: unknown, runtime: CliRuntime): Promi
  * good turn showed the login works again; the first failure of an expiry pages the owner through the webhook the
  * team's `alerts.pageWebhookFile` or `alerts.pageWebhookEnv` names. A good turn end also releases the day-start probe
  * (`<kit home>/restore/day-probe.json`), as does the probe tab's tool end. A turn that failed on a transient API error
- * after the wake check's last retry logs `api-error: gave up on <tab>` to the restore log. It prints nothing, and on any
+ * after the wake check's last retry logs `api-error: gave up on <tab>` to the restore log. The first session start of a
+ * newer plugin version rewrites the launchers, logon entry and shortcuts an install left that are out of date, and
+ * logs each change as `launchers: <old> -> <new>: <change>` (src/restore/launcher-refresh.ts). It prints nothing, and on any
  * error it exits 0 having written nothing: a tracker must never hold up a turn.
  */
 export async function restoreTrack(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
