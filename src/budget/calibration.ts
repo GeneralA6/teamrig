@@ -120,16 +120,17 @@ export interface ReadingSight {
 
 /**
  * The reading to log when the status line's use passed a whole percent since the period's previous reading:
- * the use then sits at that percent, not anywhere within it. Undefined for the first reading of a period, one in a
- * period with a guessed start, a stale one, one over 100% (extra usage, not the week's), or while the usage stores
- * do not reach the period's start.
+ * the use then sits at that percent, not anywhere within it. Undefined for the first reading of a period, one the
+ * period left out (`nextPeriod`), one in a period with a guessed start, a stale one, one over 100% (extra usage, not
+ * the week's), or while the usage stores do not reach the period's start.
  */
 export function crossingOf(sight: ReadingSight, fit: RateFit | undefined): MeterReading | undefined {
   const { before, period, use, covered, w, now } = sight;
   if (before === undefined || period === undefined || use === undefined || !covered || !SEEN_STARTS.includes(period.kind)) {
     return undefined;
   }
-  const crossed = before.start === period.start && use.at > before.lastAt && Math.floor(use.usedPct) > Math.floor(before.lastPct);
+  const taken = before.start === period.start && use.at > before.lastAt && period.lastPct === use.usedPct;
+  const crossed = taken && Math.floor(use.usedPct) > Math.floor(before.lastPct);
   if (!crossed || now - use.at > FRESH_READING_MS || use.usedPct > 100) {
     return undefined;
   }

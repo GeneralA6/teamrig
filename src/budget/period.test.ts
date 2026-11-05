@@ -37,8 +37,8 @@ class CountingFiles extends MemoryFiles {
   }
 }
 
-function use(usedPct: number, at: number, resetsAt = END): WeekUse {
-  return { usedPct, resetsAt, at };
+function use(usedPct: number, at: number, resetsAt = END, after?: number): WeekUse {
+  return after === undefined ? { usedPct, resetsAt, at } : { usedPct, resetsAt, at, after };
 }
 
 /** Metered W at 1M W per percent: `pctPerHour` percent in each hour from `from` to `to`, both on the hour. */
@@ -90,6 +90,42 @@ describe('nextPeriod', () => {
     assert.deepEqual(nextPeriod(STORED, { end: END - HOUR, use: undefined }), { ...STORED, end: END - HOUR });
     const guessed: Period = { ...STORED, kind: 'assumed' };
     assert.deepEqual(nextPeriod(guessed, { end: later, use: undefined }), { ...guessed, start: later - WEEK, end: later });
+  });
+});
+
+describe('nextPeriod, a reading that may predate a reset inside the week (T2019)', () => {
+  /** The budget a reset opened two hours ago, read at 0% an hour ago. */
+  const RESET: Period = { start: NOW - 2 * HOUR, end: END, kind: 'reset', lastPct: 0, lastAt: NOW - HOUR };
+  const LONG_BEFORE = NOW - 3 * HOUR;
+
+  it('leaves out the old use a session shows late, so the next true reading opens no second reset', () => {
+    const kept = nextPeriod(RESET, { end: END, use: use(29, NOW, END, LONG_BEFORE) });
+    assert.deepEqual(kept, RESET);
+    const after = NOW + 2 * 60_000;
+    assert.deepEqual(nextPeriod(kept, { end: END, use: use(0, after, END, NOW) }), { ...RESET, lastAt: after });
+  });
+
+  it('takes a rise read after the latest reading, or at that moment', () => {
+    assert.deepEqual(nextPeriod(RESET, { end: END, use: use(29, NOW, END, NOW - 1000) }), { ...RESET, lastPct: 29, lastAt: NOW });
+    assert.deepEqual(nextPeriod(RESET, { end: END, use: use(29, NOW, END, RESET.lastAt) }), { ...RESET, lastPct: 29, lastAt: NOW });
+  });
+
+  it("takes a session's first reading, whose earliest moment is not known", () => {
+    assert.deepEqual(nextPeriod(RESET, { end: END, use: use(29, NOW) }), { ...RESET, lastPct: 29, lastAt: NOW });
+  });
+
+  it(`takes a rise under ${RESET_DROP_PTS} points, however old it may be`, () => {
+    const under = RESET_DROP_PTS - 0.5;
+    assert.deepEqual(nextPeriod(RESET, { end: END, use: use(under, NOW, END, LONG_BEFORE) }), { ...RESET, lastPct: under, lastAt: NOW });
+  });
+
+  it('takes it in a period no reset opened, where the old week drops by its reset time', () => {
+    assert.deepEqual(nextPeriod(STORED, { end: END, use: use(84, NOW, END, LONG_BEFORE) }), { ...STORED, lastPct: 84, lastAt: NOW });
+  });
+
+  it('still opens a new budget on a fall, however old the reading may be', () => {
+    const read: Period = { ...RESET, lastPct: 5 };
+    assert.deepEqual(nextPeriod(read, { end: END, use: use(1, NOW, END, LONG_BEFORE) }), { start: read.lastAt, end: END, kind: 'reset', lastPct: 1, lastAt: NOW });
   });
 });
 

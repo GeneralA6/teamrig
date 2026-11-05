@@ -10,8 +10,8 @@ import { mergeWeekFolds, readSnapshots, weekFoldOf, type StatusSnapshot, type We
  * in the folder, which each hook of each tab reads. The format, one JSON object:
  *
  * - `v`: `WEEK_SUMMARY_FORMAT`;
- * - `reading`: null, or `{ used_percentage, resets_at, at }`: the reading that counts, its reset in epoch seconds,
- *   and by when it was taken, ISO 8601 UTC;
+ * - `reading`: null, or `{ used_percentage, resets_at, at, after }`: the reading that counts, its reset in epoch
+ *   seconds, by when it was taken, ISO 8601 UTC, and after when, the same or null when not known;
  * - `followed_by`: the latest time a folded reading is known to have been taken after, ISO 8601 UTC, or null.
  *
  * Its name is not a `.json` one, so no reader takes it for a snapshot.
@@ -19,9 +19,13 @@ import { mergeWeekFolds, readSnapshots, weekFoldOf, type StatusSnapshot, type We
 export const WEEK_SUMMARY_FILE = '.week';
 
 /** The week summary's format; a field added to it raises this. */
-export const WEEK_SUMMARY_FORMAT = 1;
+export const WEEK_SUMMARY_FORMAT = 2;
 
 const MS_PER_SECOND = 1000;
+
+function timeToStore(at: number | undefined): string | null {
+  return at === undefined ? null : new Date(at).toISOString();
+}
 
 /** The fold as the summary file's text. */
 export function formatWeekSummary(fold: WeekFold): string {
@@ -31,8 +35,8 @@ export function formatWeekSummary(fold: WeekFold): string {
     reading:
       best === undefined
         ? null
-        : { used_percentage: best.usedPct, resets_at: Math.round(best.resetsAt / MS_PER_SECOND), at: new Date(best.at).toISOString() },
-    followed_by: followedBy === undefined ? null : new Date(followedBy).toISOString(),
+        : { used_percentage: best.usedPct, resets_at: Math.round(best.resetsAt / MS_PER_SECOND), at: timeToStore(best.at), after: timeToStore(best.after) },
+    followed_by: timeToStore(followedBy),
   });
 }
 
@@ -56,7 +60,12 @@ function storedReading(value: unknown): WeekUse | null | undefined {
   const usedPct = numberField(value, 'used_percentage');
   const resetsAt = numberField(value, 'resets_at');
   const at = storedTime(value['at']);
-  return usedPct === undefined || resetsAt === undefined || typeof at !== 'number' ? undefined : { usedPct, resetsAt: resetsAt * MS_PER_SECOND, at };
+  const after = storedTime(value['after']);
+  if (usedPct === undefined || resetsAt === undefined || typeof at !== 'number' || after === undefined) {
+    return undefined;
+  }
+  const use: WeekUse = { usedPct, resetsAt: resetsAt * MS_PER_SECOND, at };
+  return after === null ? use : { ...use, after };
 }
 
 /** The summary file's text; undefined when it is damaged or in a format this teamrig cannot read. */
