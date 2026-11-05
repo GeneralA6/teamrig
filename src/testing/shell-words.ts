@@ -52,16 +52,51 @@ export const QUOTE_ROWS: readonly ShellWordsRow[] = [
   { dialect: 'powershell', typed: 'git commit --no-verify --% x\u00a0--verify', real: 'git commit --no-verify --% "x\u00a0--verify"' },
 ];
 
-/** An assignment runs its right side, whatever its target is; the last rows are a target's bracket holding an `=`. */
-const ASSIGNMENT_OPENERS = ['$h.a = ', '$h.a=', '$w[0]=', '$w[0] = ', '$p,$q=', '$p,$q = ', '$h.a += ', '[int]$h.a = ', '$a = $h.b = ', '$w[$a[0]]=', '$w[$i=0]=', '${a=b} = '];
+/**
+ * An assignment runs its right side, whatever its target is: a variable, or any expression with a member or an index.
+ * The rows with a bracket or a quote hold an `=` that opens nothing.
+ */
+const ASSIGNMENT_OPENERS = [
+  '$h.a = ', '$h.a=', '$w[0]=', '$w[0] = ', '$w[ 0 ]=', '$p,$q=', '$p,$q = ', '$h.a += ', '[int]$h.a = ', '$a = $h.b = ', '$w[$a[0]]=', '$w[$i=0]=', '${a=b} = ', '$h."a=b" = ',
+  "'x'.y = ", '"x".y = ', '(1).y = ', '$(1).y = ', '@(1).y = ', '(1)[0] = ', '[Console]::Title = ', '[System.Console]::Title = ', '[int]::y = ', '@{a=1}.a = ', '{x}.y = ', '$env:X = ',
+];
 
 /** One program of each kind a guard reads, as the real line runs it. */
 const GUARDED_PROGRAMS = ['git push origin main', 'git commit -m x --no-verify', 'npm install left-pad'];
 
+/** A `@{ }` runs its values and its `( )` keys; `P` stands for the program. */
+const HASH_SHAPES = ['$x = @{a = P}', '$x = @{a=P}', '$x = @{a = 1; b = P}', "$x = @{'a' = P}", '$x = @{(P) = 1}', '@{a = P}'];
+
 export const EXPRESSION_ROWS: readonly ShellWordsRow[] = [
   { dialect: 'powershell', typed: 'git commit -m a<#x --no-verify', real: 'git commit -m "a<#x" --no-verify' },
+  { dialect: 'powershell', typed: 'git commit -m a<#x#>b --no-verify', real: 'git commit -m "a<#x#>b" --no-verify' },
   { dialect: 'powershell', typed: 'git commit -m a>#b --no-verify', real: 'git commit -m "a>#b" --no-verify' },
+  { dialect: 'powershell', typed: 'git commit -m x (echo y)--no-verify', real: 'git commit -m x (echo y) --no-verify' },
+  { dialect: 'powershell', typed: 'git commit -m a(echo b) --no-verify', real: 'git commit -m a (echo b) --no-verify' },
+  { dialect: 'powershell', typed: 'git commit -m "x".Length--no-verify', real: 'git commit -m "x".Length --no-verify' },
+  { dialect: 'powershell', typed: 'git commit -m $v.Length--no-verify', real: 'git commit -m $v.Length --no-verify' },
+  { dialect: 'powershell', typed: 'git commit -m $v[0]--no-verify', real: 'git commit -m $v[0] --no-verify' },
+  { dialect: 'powershell', typed: 'git commit -m "x".ToUpper()--no-verify', real: 'git commit -m "x".ToUpper() --no-verify' },
+  { dialect: 'powershell', typed: '$x = @{a = b |\n git push origin main}', real: 'b | git push origin main' },
+  // A keyword's block ends its statement, so what follows is a command, not an argument.
+  ...GUARDED_PROGRAMS.map((real) => ({ dialect: 'powershell' as const, typed: `do {} while (0) ${real}`, real })),
   ...ASSIGNMENT_OPENERS.flatMap((opener) => GUARDED_PROGRAMS.map((real) => ({ dialect: 'powershell' as const, typed: `${opener}${real}`, real }))),
+  ...HASH_SHAPES.flatMap((shape) => GUARDED_PROGRAMS.map((real) => ({ dialect: 'powershell' as const, typed: shape.replace('P', () => real), real }))),
+];
+
+/**
+ * A value among a program's arguments stands for one word whose text is only known when it runs. Its word keeps its
+ * source, so `real` shows the line a guard must judge it by, not one with the same text.
+ */
+export const VALUE_ROWS: readonly ShellWordsRow[] = [
+  { dialect: 'powershell', typed: 'git commit (echo -m) x --no-verify', real: 'git commit -m x --no-verify' },
+  { dialect: 'powershell', typed: 'git commit -m {x} --no-verify', real: 'git commit -m x --no-verify' },
+  { dialect: 'powershell', typed: 'git commit -m x{y} --no-verify', real: 'git commit -m x y --no-verify' },
+  { dialect: 'powershell', typed: 'git commit -m @{a=1} --no-verify', real: 'git commit -m x --no-verify' },
+  { dialect: 'powershell', typed: 'git push (echo origin) main', real: 'git push origin main' },
+  // The branch is unknown here, as for `$( )`: the guard asks, where a plain `main` would be refused.
+  { dialect: 'powershell', typed: 'git push origin (echo main) --force', real: 'git push origin $(echo main) --force' },
+  { dialect: 'powershell', typed: 'npm install (echo left-pad)', real: 'npm install left-pad' },
 ];
 
 export const BLANK_AND_LINE_END_ROWS: readonly ShellWordsRow[] = [

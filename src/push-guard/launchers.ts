@@ -1,5 +1,5 @@
 import { Buffer } from 'node:buffer';
-import { assignedWords, parseShell, type ShellDialect, type ShellWord } from './tokenizer.ts';
+import { assignedWords, isExpressionHead, parseShell, type ShellDialect, type ShellWord } from './tokenizer.ts';
 
 /** A `NAME=value` a launcher sets in the environment of the program it starts. */
 export interface Assignment {
@@ -255,7 +255,7 @@ class LaunchReader {
       this.called = true;
       return { kind: 'next', words: words.slice(1) };
     }
-    if (head.dynamic) {
+    if (head.dynamic || (this.dialect === 'powershell' && !this.called && isExpressionHead(head))) {
       return this.dynamicHead(words, head);
     }
     return this.named(programName(head.text), words.slice(1), head);

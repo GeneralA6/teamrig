@@ -170,13 +170,14 @@ describe('runsOf', () => {
   it('gives a pipe after a PowerShell group to the command holding the group, or to the command the group starts', () => {
     const into = (command: string): string[] =>
       runsOf(command, context('powershell')).programs.map((run) => `${run.name}${run.pipe === undefined ? '' : ` | ${run.pipe.into?.name ?? '?'}`}`);
-    assert.deepEqual(into('Get-Item (Join-Path a b) | Set-Clipboard'), ['get-item | set-clipboard', 'join-path', 'set-clipboard']);
+    // An argument's group runs before the command holding it, measured on 5.1.
+    assert.deepEqual(into('Get-Item (Join-Path a b) | Set-Clipboard'), ['join-path', 'get-item | set-clipboard', 'set-clipboard']);
     assert.deepEqual(into('(Get-Content a) | Set-Clipboard'), ['get-content | set-clipboard', 'set-clipboard']);
     assert.deepEqual(into('Write-Output (Get-Item (Join-Path a b) | Select-Object x) | Set-Clipboard'), [
-      'write-output | set-clipboard',
-      'get-item | select-object',
       'join-path',
+      'get-item | select-object',
       'select-object',
+      'write-output | set-clipboard',
       'set-clipboard',
     ]);
   });
@@ -199,8 +200,8 @@ describe('runsOf', () => {
     ]);
     assert.deepEqual(holders('$v = (Get-Content f); Write-Output (Get-Content g); if ($env:T) { gc h }', 'powershell'), [
       'get-content in $v =',
-      'write-output',
       'get-content in write-output',
+      'write-output',
       'gc',
       '$v =',
       'if',

@@ -191,6 +191,16 @@ describe('launch: keywords', () => {
 });
 
 describe('launch: PowerShell expressions and launchers', () => {
+  /** What each command of `line` launches, for a line whose program sits inside a block. */
+  const launchesOf = (line: string): string[] => parseShell(line, 'powershell').commands.map((command) => summary(launch(command.words, 'powershell')));
+
+  /** For a line whose head or argument holds a group: the group's commands are listed first, the line's own comes last. */
+  const expectLastLaunches = (rows: readonly (readonly [string, string])[]): void => {
+    for (const [line, expected] of rows) {
+      assert.equal(launchesOf(line).at(-1), expected, line);
+    }
+  };
+
   it('runs the right side of an assignment and skips casts', () => {
     expectLaunches(
       [
@@ -224,9 +234,62 @@ describe('launch: PowerShell expressions and launchers', () => {
         ['$p,$q', 'nothing'],
         ['$p,b=git', 'nothing'],
         ['git commit -m x = y', 'program git commit -m x = y'],
+        ["'x'.y = git push", 'program git push'],
+        ['"x".y = git push', 'program git push'],
+        ['[Console]::Title = git push', 'program git push'],
+        ['[int]::y = git push', 'program git push'],
+        ['$env:X = git push', 'program git push'],
+        ['[int]$x = git push', 'program git push'],
+        ['$x = & git push', 'program git push'],
+        ['$x = . git push', 'program git push'],
       ],
       'powershell',
     );
+    expectLastLaunches([
+      ['(1).y = git push', 'program git push'],
+      ['$(1).y = git push', 'program git push'],
+      ['@(1).y = git push', 'program git push'],
+      ['(1)[0] = git push', 'program git push'],
+      ['@{a=1}.a = git push', 'program git push'],
+      ['{x}.y = git push', 'program git push'],
+    ]);
+  });
+
+  it('keeps a word only a quote or a path makes a program a program, whatever follows', () => {
+    expectLaunches(
+      [
+        // 5.1 refuses this line when it parses it, so nothing runs: the guard reading a program is the stricter side.
+        ["'$x' = git push", 'program $x = git push'],
+        ['.\\x.ps1 = git push', 'program .\\x.ps1 = git push'],
+      ],
+      'powershell',
+    );
+    expectLastLaunches([['.\\x.ps1 (git push)', 'program .\\x.ps1 ~(git push)']]);
+  });
+
+  it('calls an expression head nothing unless `&` makes it a program', () => {
+    expectLaunches(
+      [
+        ['[int]::y', 'nothing'],
+        ['"x".y', 'nothing'],
+      ],
+      'powershell',
+    );
+    expectLastLaunches([['(1).y', 'nothing']]);
+    assert.equal(of('& "x".y', 'powershell'), UNKNOWN_PROGRAM);
+  });
+
+  it('lists the commands of a block called at once with no opaque ask, and leaves a called value opaque', () => {
+    assert.ok(launchesOf('& { git push }').includes('program git push'));
+    assert.ok(!launchesOf('& { git push }').some((launched) => launched.startsWith('opaque')));
+    assert.ok(launchesOf('. { git push }').includes('program git push'));
+    assert.ok(launchesOf('& (Get-Command git) push').includes(UNKNOWN_PROGRAM));
+  });
+
+  it('lists a block handed to a command, or to the shell it starts', () => {
+    for (const line of ['Invoke-Command { git push }', '% { git push }', 'ForEach-Object { git push }', 'Invoke-Command -ScriptBlock { git push }', 'powershell -Command { git push }']) {
+      assert.ok(launchesOf(line).includes('program git push'), line);
+    }
   });
 
   it('reads Invoke-Expression and Start-Process', () => {

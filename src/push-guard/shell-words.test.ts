@@ -5,7 +5,7 @@ import { programsOf } from '../package-guard/programs.ts';
 import { bashLineReads } from '../readonly-shell/bash.ts';
 import { powershellLineReads } from '../readonly-shell/powershell.ts';
 import { prefixWords, type ReadonlyRules } from '../readonly-shell/rules.ts';
-import { BLANK_AND_LINE_END_ROWS, EXPRESSION_ROWS, POWERSHELL_BLANKS, POWERSHELL_DOUBLE_QUOTES, POWERSHELL_LINE_ENDS, POWERSHELL_SINGLE_QUOTES, QUOTE_ROWS, type ShellWordsRow } from '../testing/shell-words.ts';
+import { BLANK_AND_LINE_END_ROWS, EXPRESSION_ROWS, POWERSHELL_BLANKS, POWERSHELL_DOUBLE_QUOTES, POWERSHELL_LINE_ENDS, POWERSHELL_SINGLE_QUOTES, QUOTE_ROWS, VALUE_ROWS, type ShellWordsRow } from '../testing/shell-words.ts';
 import { hookSkips } from './hook-skips.ts';
 import { findGitInvocations } from './invocations.ts';
 import { evaluatePushes, type PushDecision, type RepoState } from './push.ts';
@@ -47,16 +47,23 @@ function answersFor(line: string, dialect: ShellDialect): Answers {
 
 const STRICTNESS: Readonly<Record<PushDecision, number>> = { allow: 0, ask: 1, deny: 2 };
 
-/** Every guard is at least as strict on the line as typed as on the line the shell really runs. */
-function assertNoSofter({ dialect, typed, real }: ShellWordsRow): void {
+/** Every guard's verdict is at least as strict on the line as typed as on the line it must be judged by. */
+function assertVerdictsNoSofter({ dialect, typed, real }: ShellWordsRow): void {
   const seen = answersFor(typed, dialect);
   const truth = answersFor(real, dialect);
   const label = JSON.stringify(typed);
   assert.deepEqual(truth.skips.filter((skip) => !seen.skips.includes(skip)), [], `hook skips of ${label}`);
   assert.ok(STRICTNESS[seen.push] >= STRICTNESS[truth.push], `push of ${label}: ${seen.push}, real ${truth.push}`);
   assert.deepEqual(truth.installs.filter((call) => !seen.installs.includes(call)), [], `installs of ${label}`);
-  assert.deepEqual(truth.programs.filter((run) => !seen.programs.includes(run)), [], `programs of ${label}`);
   assert.ok(truth.reads || !seen.reads, `read-only of ${label}`);
+}
+
+/** As {@link assertVerdictsNoSofter}, and the line as typed lists every program the real one starts, word for word. */
+function assertNoSofter(row: ShellWordsRow): void {
+  assertVerdictsNoSofter(row);
+  const seen = answersFor(row.typed, row.dialect).programs;
+  const missed = answersFor(row.real, row.dialect).programs.filter((run) => !seen.includes(run));
+  assert.deepEqual(missed, [], `programs of ${JSON.stringify(row.typed)}`);
 }
 
 /** The words of each command. */
@@ -75,6 +82,10 @@ describe('the guards read the words the shell runs', () => {
 
   it('holds on every expression argument', () => {
     EXPRESSION_ROWS.forEach(assertNoSofter);
+  });
+
+  it('judges a value among the arguments as one word', () => {
+    VALUE_ROWS.forEach(assertVerdictsNoSofter);
   });
 });
 
@@ -184,6 +195,92 @@ describe('parseShell: a PowerShell word ends where what starts it closes', () =>
   it('keeps to PowerShell: bash and cmd join what touches a closed quote', () => {
     assert.deepEqual(wordsOf('x "a"--flag', 'bash'), [['x', 'a--flag']]);
     assert.deepEqual(wordsOf('x "a"--flag', 'cmd'), [['x', 'a--flag']]);
+  });
+});
+
+describe('parseShell: PowerShell values among the arguments', () => {
+  /** A letter past the first 65,536 units, which 5.1's parser never counted as one: built here to stay plain ASCII. */
+  const PAIR = String.fromCodePoint(0x10400);
+
+  it('reads a ( ), { } or @{ } as one word, with its commands before the command holding it', () => {
+    assert.deepEqual(wordsOf('a (b c) d', 'powershell'), [['b', 'c'], ['a', '(b c)', 'd']]);
+    assert.deepEqual(wordsOf('a {b c} d', 'powershell'), [['b', 'c'], ['a', '{b c}', 'd']]);
+    assert.deepEqual(wordsOf('a @{b = c} d', 'powershell'), [['c'], ['a', '@{b = c}', 'd']]);
+  });
+
+  it('ends the word where the value closes, and a value that touches text starts a new one', () => {
+    assert.deepEqual(wordsOf('a (b)--c', 'powershell'), [['b'], ['a', '(b)', '--c']]);
+    assert.deepEqual(wordsOf('a x(b) c', 'powershell'), [['b'], ['a', 'x', '(b)', 'c']]);
+    assert.deepEqual(wordsOf('a x{b} c', 'powershell'), [['b'], ['a', 'x', '{b}', 'c']]);
+  });
+
+  it('keeps a chain of members and indexes on its value, and ends the word after it', () => {
+    assert.deepEqual(wordsOf('a $v.b--c', 'powershell'), [['a', '$v.b', '--c']]);
+    assert.deepEqual(wordsOf('a $v::b--c', 'powershell'), [['a', '$v::b', '--c']]);
+    assert.deepEqual(wordsOf('a $v[0]--c', 'powershell'), [['a', '$v[0]', '--c']]);
+    assert.deepEqual(wordsOf('a "x".b()--c', 'powershell'), [['a', 'x.b()', '--c']]);
+    assert.deepEqual(wordsOf('a (b).c--d', 'powershell'), [['b'], ['a', '(b).c', '--d']]);
+  });
+
+  it('runs what a member or an index holds', () => {
+    assert.deepEqual(wordsOf('a $v.(b)', 'powershell'), [['b'], ['a', '$v.(b)']]);
+    assert.deepEqual(wordsOf('a $v[(b)]', 'powershell'), [['b'], ['a', '$v[(b)]']]);
+    assert.deepEqual(wordsOf('a $v.m((b))', 'powershell'), [['b'], ['a', '$v.m((b))']]);
+    assert.deepEqual(wordsOf('a $v.m({b})', 'powershell'), [['b'], ['a', '$v.m({b})']]);
+  });
+
+  it('leaves a dot with no name after it as text', () => {
+    assert.deepEqual(wordsOf('a $v. b', 'powershell'), [['a', '$v', '.', 'b']]);
+    assert.deepEqual(wordsOf('a .\\x.ps1 b', 'powershell'), [['a', '.\\x.ps1', 'b']]);
+  });
+
+  it('joins a -name: token and the value touching it into one word', () => {
+    assert.deepEqual(wordsOf('a -m:"x"--c', 'powershell'), [['a', '-m:x', '--c']]);
+    assert.deepEqual(wordsOf('a -m:$v.b--c', 'powershell'), [['a', '-m:$v.b', '--c']]);
+    assert.deepEqual(wordsOf('a -m:(b) --c', 'powershell'), [['b'], ['a', '-m:(b)', '--c']]);
+    assert.deepEqual(wordsOf('a -m::x', 'powershell'), [['a', '-m::x']]);
+  });
+
+  it('takes a ] at a word\'s start as a word of its own', () => {
+    assert.deepEqual(wordsOf('a ]--c', 'powershell'), [['a', ']', '--c']]);
+    assert.deepEqual(wordsOf('a b]--c', 'powershell'), [['a', 'b]--c']]);
+  });
+
+  it('never ends a variable\'s or a parameter\'s word at a surrogate pair, which no table counted as a letter', () => {
+    assert.deepEqual(wordsOf(`a $v${PAIR}--c`, 'powershell'), [['a', `$v${PAIR}--c`]]);
+    assert.deepEqual(wordsOf(`a -${PAIR}:"x"--c`, 'powershell'), [['a', `-${PAIR}:x--c`]]);
+  });
+
+  it('keeps a keyword\'s ( ) and { } as parts of its statement', () => {
+    assert.deepEqual(wordsOf('if (a) { b } else { c }', 'powershell'), [['if'], ['a'], [], ['b'], ['else'], ['c']].filter((words) => words.length > 0));
+    assert.deepEqual(wordsOf('do {} while (0) b', 'powershell'), [['do'], ['while'], ['0'], ['b']]);
+  });
+
+  it('calls a line an unclosed value left open incomplete', () => {
+    assert.equal(parseShell('a (b', 'powershell').complete, false);
+    assert.equal(parseShell('a {b', 'powershell').complete, false);
+    assert.equal(parseShell('a $v[0', 'powershell').complete, false);
+    assert.equal(parseShell('a @{b = c', 'powershell').complete, false);
+  });
+});
+
+describe('parseShell: PowerShell hash literals', () => {
+  it('reads each value as a command, its key apart', () => {
+    assert.deepEqual(wordsOf('$x = @{a = b c; d = e}', 'powershell'), [['b', 'c'], ['e'], ['$x', '=', '@{a = b c; d = e}']]);
+    assert.deepEqual(wordsOf('$x = @{a=b}', 'powershell'), [['b'], ['$x', '=', '@{a=b}']]);
+    assert.deepEqual(wordsOf("$x = @{'a' = b}", 'powershell'), [['b'], ['$x', '=', "@{'a' = b}"]]);
+  });
+
+  it('opens a new entry on a line of its own', () => {
+    assert.deepEqual(wordsOf('$x = @{\n a = b\n c = d\n}', 'powershell').slice(0, 2), [['b'], ['d']]);
+  });
+
+  it('reads the line after a pipe as the pipe\'s command, not an entry', () => {
+    assert.deepEqual(wordsOf('$x = @{a = b |\n c d}', 'powershell').slice(0, 2), [['b'], ['c', 'd']]);
+  });
+
+  it('runs a key in ( )', () => {
+    assert.deepEqual(wordsOf('$x = @{(b) = 1}', 'powershell').slice(0, 1), [['b']]);
   });
 });
 
