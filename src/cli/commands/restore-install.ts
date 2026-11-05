@@ -1,15 +1,8 @@
 import { errorMessage } from '../../core/guards.ts';
 import { resolveKitHome } from '../../core/home.ts';
-import { RESTORE_CHECK_LAUNCHER_SCRIPT, RESTORE_RUN_LAUNCHER_SCRIPT, restoreCheckLauncherPath, restoreRunLauncherPath } from '../../restore/launcher.ts';
+import { restoreLaunchers, restorePlan, type MachineStep, type RestoreMachine } from '../../restore/install-plan.ts';
 import type { LogonEntry } from '../../restore/logon.ts';
-import {
-  RESTORE_SHORTCUT_NAME,
-  restoreShortcut,
-  shortcutLine,
-  shortcutsToRemove,
-  shortcutsToWrite,
-  type ShortcutPlace,
-} from '../../restore/shortcut.ts';
+import { RESTORE_SHORTCUT_NAME, shortcutLine, shortcutsToRemove } from '../../restore/shortcut.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 
@@ -22,72 +15,42 @@ import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.t
  * launchers before anything names them, then the entry, then the Start-menu shortcut and each other shortcut of that
  * name that starts something else (a taskbar pin made from an older one), changed in place so a pin stays pinned.
  * Uninstall removes the entry and the shortcuts that run the run launcher before the launchers; a shortcut of that
- * name that runs anything else stays.
+ * name that runs anything else stays. What install changes is src/restore/install-plan.ts, which the launcher refresh
+ * at each session start shares.
  */
 
-interface Step {
-  /** The change as the person reads it: `WRITE <file>`, `SET <entry>: <before> -> <after>`, `REMOVE ...`. */
-  readonly line: string;
-  readonly act: () => Promise<void>;
-}
-
-interface Machine {
-  readonly entry: LogonEntry;
-  readonly shortcuts: ShortcutPlace | undefined;
-  readonly checkLauncher: string;
-  readonly runLauncher: string;
+/** A machine with a logon entry teamrig can set, which install and uninstall need. */
+interface LogonMachine extends RestoreMachine {
+  readonly logon: LogonEntry;
 }
 
 /** `restore install [--yes]`. */
 export async function restoreInstall(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const { entry, shortcuts, checkLauncher, runLauncher } = machineOf(runtime, 'set up');
-  const command = entry.commandFor(runtime.self.node, checkLauncher);
-  const before = await entry.read();
-  const steps: Step[] = [
-    ...(await writeUnlessThere(runtime, checkLauncher, RESTORE_CHECK_LAUNCHER_SCRIPT)),
-    ...(await writeUnlessThere(runtime, runLauncher, RESTORE_RUN_LAUNCHER_SCRIPT)),
-    ...(before === command ? [] : [{ line: `SET ${entry.where}: ${before ?? '(none)'} -> ${command}`, act: () => entry.write(command) }]),
-  ];
-  const unchanged = [`${entry.where}: the restore check already runs at logon`];
-  if (shortcuts !== undefined) {
-    const wanted = restoreShortcut(runtime.self.node, runLauncher, runtime.userHome);
-    const scan = await shortcuts.scan();
-    for (const change of shortcutsToWrite(scan, wanted)) {
-      steps.push({
-        line: `SET ${change.path}: ${change.before === undefined ? '(none)' : shortcutLine(change.before)} -> ${shortcutLine(wanted)}`,
-        act: () => shortcuts.write(change.path, wanted),
-      });
-    }
-    unchanged.push(`${scan.startMenu}: the shortcut already runs the restore`);
-  }
+  const { steps, unchanged } = await restorePlan(machineOf(runtime, 'set up'), 'install');
   return apply(args, runtime, steps, unchanged);
 }
 
 /** `restore uninstall [--yes]`. */
 export async function restoreUninstall(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const { entry, shortcuts, checkLauncher, runLauncher } = machineOf(runtime, 'take out');
-  const before = await entry.read();
-  const steps: Step[] = before === undefined ? [] : [{ line: `REMOVE ${entry.where}: ${before}`, act: () => entry.remove() }];
-  const unchanged = [`${entry.where}: the restore check does not run at logon`];
+  const { logon, shortcuts, kitHome } = machineOf(runtime, 'take out');
+  const { check, run } = restoreLaunchers(kitHome);
+  const before = await logon.read();
+  const steps: MachineStep[] = before === undefined ? [] : [{ line: `REMOVE ${logon.where}: ${before}`, act: () => logon.remove() }];
+  const unchanged = [`${logon.where}: the restore check does not run at logon`];
   if (shortcuts !== undefined) {
-    for (const found of shortcutsToRemove(await shortcuts.scan(), runLauncher)) {
+    for (const found of shortcutsToRemove(await shortcuts.scan(), run.path)) {
       steps.push({ line: `REMOVE ${found.path}: ${shortcutLine(found)}`, act: () => shortcuts.remove(found.path) });
     }
-    unchanged.push(`no ${RESTORE_SHORTCUT_NAME} runs ${runLauncher}`);
+    unchanged.push(`no ${RESTORE_SHORTCUT_NAME} runs ${run.path}`);
   }
-  steps.push(...(await removeIfThere(runtime, checkLauncher)), ...(await removeIfThere(runtime, runLauncher)));
+  steps.push(...(await removeIfThere(runtime, check.path)), ...(await removeIfThere(runtime, run.path)));
   return apply(args, runtime, steps, unchanged);
 }
 
-/** The step that writes `text` at `path`, none when the file there holds it already. */
-async function writeUnlessThere(runtime: CliRuntime, path: string, text: string): Promise<Step[]> {
-  return (await runtime.files.read(path)) === text ? [] : [{ line: `WRITE ${path}`, act: () => runtime.files.write(path, text) }];
-}
-
 /** The step that removes the file at `path`, none when there is none. */
-async function removeIfThere(runtime: CliRuntime, path: string): Promise<Step[]> {
+async function removeIfThere(runtime: CliRuntime, path: string): Promise<MachineStep[]> {
   if ((await runtime.files.read(path)) === undefined) {
     return [];
   }
@@ -102,7 +65,7 @@ async function removeIfThere(runtime: CliRuntime, path: string): Promise<Step[]>
 }
 
 /** Shows the steps, or with --yes takes them in order; at the first that fails, says which and what was done before it. */
-async function apply(args: ParsedArgs, runtime: CliRuntime, steps: readonly Step[], unchanged: readonly string[]): Promise<ExitCode> {
+async function apply(args: ParsedArgs, runtime: CliRuntime, steps: readonly MachineStep[], unchanged: readonly string[]): Promise<ExitCode> {
   if (steps.length === 0) {
     unchanged.forEach((line) => runtime.out.stdout(`UNCHANGED ${line}`));
     return EXIT.ok;
@@ -128,12 +91,18 @@ async function apply(args: ParsedArgs, runtime: CliRuntime, steps: readonly Step
   return EXIT.ok;
 }
 
-/** The system's logon entry and shortcuts, and the launchers they name; refused on a system with no logon entry teamrig can set. */
-function machineOf(runtime: CliRuntime, verb: string): Machine {
-  const entry = runtime.restore.logon;
-  if (entry === undefined) {
+/** The machine's restore parts, run by this CLI's Node; refused on a system with no logon entry teamrig can set. */
+function machineOf(runtime: CliRuntime, verb: string): LogonMachine {
+  const logon = runtime.restore.logon;
+  if (logon === undefined) {
     throw new RefusedError(`teamrig can ${verb} the logon check on Windows only so far, not on ${runtime.platform}; after a crash or reboot, run teamrig restore run`);
   }
-  const kitHome = resolveKitHome(runtime.env, runtime.userHome);
-  return { entry, shortcuts: runtime.restore.shortcuts, checkLauncher: restoreCheckLauncherPath(kitHome), runLauncher: restoreRunLauncherPath(kitHome) };
+  return {
+    files: runtime.files,
+    kitHome: resolveKitHome(runtime.env, runtime.userHome),
+    node: runtime.self.node,
+    userHome: runtime.userHome,
+    logon,
+    shortcuts: runtime.restore.shortcuts,
+  };
 }
