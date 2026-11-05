@@ -142,6 +142,9 @@ const BLANKS: Readonly<Record<ShellDialect, RegExp>> = {
  */
 const POWERSHELL_QUOTES = { single: /['\u2018\u2019\u201a\u201b]/, double: /["\u201c\u201d\u201e]/ } as const;
 
+/** A word that is all a redirection's file-descriptor number: `2` of `2>`, or PowerShell's `*` of `*>`. */
+const DESCRIPTOR = /^(?:\d+|\*)$/;
+
 /** One way a shell may read a line, where the guard cannot know which it is; see {@link readingsOf}. */
 interface Reading {
   /** The text the scanner reads. */
@@ -547,14 +550,14 @@ class Scanner {
       } else if (char === '#' && !word.isStarted && this.dialect !== 'cmd') {
         this.skipComment();
         continue;
-      } else if (char === '<' || char === '>' || this.isOutputAndErrorRedirection(char)) {
+      } else if (this.opensRedirection(char, word)) {
         if (this.readProcessSubstitution(word)) {
           continue;
         }
         // A file-descriptor number (`2>`), PowerShell's `*>` or bash's `{NAME}>` belongs to the redirection.
         const named = this.dialect === 'bash' && /^\{[A-Za-z_]\w*\}$/.test(word.value);
         let descriptor = '';
-        if (char !== '&' && word.isStarted && (named || /^(?:\d+|\*)$/.test(word.value))) {
+        if (char !== '&' && word.isStarted && (named || DESCRIPTOR.test(word.value))) {
           descriptor = word.value;
           word.take();
           this.bindingsUnclear ||= named;
@@ -746,6 +749,17 @@ class Scanner {
     return this.dialect === 'powershell' && char === '&' && this.at(1) !== '&' && this.at(-1) !== '&' && atCommandStart;
   }
 
+  /**
+   * True at what starts a redirection. In PowerShell `<` and `>` are word text inside a word, measured on its parser
+   * (T2002): `a>b c` hands the program `a>b` and `c`. Only a word of a descriptor alone gives way to one.
+   */
+  private opensRedirection(char: string, word: WordBuilder): boolean {
+    if (char === '<' || char === '>') {
+      return this.dialect !== 'powershell' || !word.isStarted || DESCRIPTOR.test(word.value);
+    }
+    return this.isOutputAndErrorRedirection(char);
+  }
+
   /** bash `&>` and `&>>` send stdout and stderr to a file: a redirection, where `&&>` and `|&>` end a command first. */
   private isOutputAndErrorRedirection(char: string): boolean {
     return this.dialect === 'bash' && char === '&' && this.at(1) === '>' && this.at(-1) !== '&' && this.at(-1) !== '|';
@@ -826,7 +840,7 @@ class Scanner {
       this.readHereString(word, hereStringBody);
     } else if (char === '@' && (this.at(1) === '(' || (/[A-Za-z_]/.test(this.at(1)) && !word.isStarted))) {
       this.readSplatOrArray(word);
-    } else if (char === '<' && this.at(1) === '#') {
+    } else if (char === '<' && this.at(1) === '#' && !word.isStarted) {
       this.skipBlockComment();
     } else {
       return false;

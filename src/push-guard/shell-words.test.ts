@@ -5,7 +5,7 @@ import { programsOf } from '../package-guard/programs.ts';
 import { bashLineReads } from '../readonly-shell/bash.ts';
 import { powershellLineReads } from '../readonly-shell/powershell.ts';
 import { prefixWords, type ReadonlyRules } from '../readonly-shell/rules.ts';
-import { BLANK_AND_LINE_END_ROWS, POWERSHELL_BLANKS, POWERSHELL_DOUBLE_QUOTES, POWERSHELL_LINE_ENDS, POWERSHELL_SINGLE_QUOTES, QUOTE_ROWS, type ShellWordsRow } from '../testing/shell-words.ts';
+import { BLANK_AND_LINE_END_ROWS, EXPRESSION_ROWS, POWERSHELL_BLANKS, POWERSHELL_DOUBLE_QUOTES, POWERSHELL_LINE_ENDS, POWERSHELL_SINGLE_QUOTES, QUOTE_ROWS, type ShellWordsRow } from '../testing/shell-words.ts';
 import { hookSkips } from './hook-skips.ts';
 import { findGitInvocations } from './invocations.ts';
 import { evaluatePushes, type PushDecision, type RepoState } from './push.ts';
@@ -72,14 +72,18 @@ describe('the guards read the words the shell runs', () => {
   it('holds on every quote, here-string and --% shape', () => {
     QUOTE_ROWS.forEach(assertNoSofter);
   });
+
+  it('holds on every expression argument', () => {
+    EXPRESSION_ROWS.forEach(assertNoSofter);
+  });
 });
 
 describe('parseShell: blanks, measured on the real shells', () => {
   it('ends a PowerShell word at exactly the units the real parser does', () => {
     const blanks = new Set(POWERSHELL_BLANKS);
     const lineEnds = new Set(POWERSHELL_LINE_ENDS);
-    // These act on their own, outside the blanks this table measures: separators, redirections, a NUL.
-    const apart = new Set([...'\0&(),;{}|<>']);
+    // These act on their own, outside the blanks this table measures: separators and a NUL.
+    const apart = new Set([...'\0&(),;{}|']);
     for (let code = 0; code <= 0xffff; code += 1) {
       const unit = String.fromCharCode(code);
       if (apart.has(unit)) {
@@ -180,6 +184,35 @@ describe('parseShell: a PowerShell word ends where what starts it closes', () =>
   it('keeps to PowerShell: bash and cmd join what touches a closed quote', () => {
     assert.deepEqual(wordsOf('x "a"--flag', 'bash'), [['x', 'a--flag']]);
     assert.deepEqual(wordsOf('x "a"--flag', 'cmd'), [['x', 'a--flag']]);
+  });
+});
+
+describe('parseShell: PowerShell redirections and block comments', () => {
+  it('keeps < and > as text inside a word', () => {
+    for (const text of ['a>b', 'a<b', 'a2>x', 'a>>b', '--flag>b', 'a<b#c', 'a>#b', 'a<', '$v>b', '$v<b', 'a><#x#>b']) {
+      assert.deepEqual(parseShell(`p ${text} c`, 'powershell').commands.map((command) => command.redirections), [[]], text);
+      assert.deepEqual(wordsOf(`p ${text} c`, 'powershell'), [['p', text, 'c']]);
+    }
+  });
+
+  it('opens a redirection at a word start or after a descriptor alone', () => {
+    for (const [line, operator] of [['p 2>x c', '2>'], ['p *>x c', '*>'], ['p "a">x c', '>'], ['p >x c', '>'], ['p <x c', '<']] as const) {
+      const [command] = parseShell(line, 'powershell').commands;
+      assert.deepEqual(command?.redirections.map((redirection) => [redirection.operator, redirection.target?.text]), [[operator, 'x']], line);
+    }
+  });
+
+  it('opens a block comment only at a word start', () => {
+    assert.deepEqual(wordsOf('p <#x#>a c', 'powershell'), [['p', 'a', 'c']]);
+    assert.deepEqual(wordsOf('p <#x#> a c', 'powershell'), [['p', 'a', 'c']]);
+    assert.deepEqual(wordsOf('p a <#x#>b c', 'powershell'), [['p', 'a', 'b', 'c']]);
+    assert.deepEqual(wordsOf('p a<#x#>b c', 'powershell'), [['p', 'a<#x#>b', 'c']]);
+  });
+
+  it('leaves bash and cmd breaking a word at < and >', () => {
+    for (const dialect of ['bash', 'cmd'] as const) {
+      assert.deepEqual(wordsOf('p a>b c', dialect), [['p', 'a', 'c']]);
+    }
   });
 });
 
