@@ -136,6 +136,12 @@ const BLANKS: Readonly<Record<ShellDialect, RegExp>> = {
   cmd: /[ \t]/,
 };
 
+/**
+ * PowerShell's quote marks, measured on its parser (T2002): any mark of a class closes a quote any other opened. bash
+ * and cmd know only the plain ones.
+ */
+const POWERSHELL_QUOTES = { single: /['\u2018\u2019\u201a\u201b]/, double: /["\u201c\u201d\u201e]/ } as const;
+
 /** One way a shell may read a line, where the guard cannot know which it is; see {@link readingsOf}. */
 interface Reading {
   /** The text the scanner reads. */
@@ -351,7 +357,8 @@ interface ScanScope {
  * variable, `$(...)`, backticks (bash), `@(...)` (PowerShell) or `%VAR%` (cmd) leave the word dynamic, and the
  * commands inside a substitution are read too. PowerShell's `&` call operator is kept as a word at a command's
  * start. A bash heredoc's body, after the newline that ends its line, is its command's stdin, not commands
- * (the substitutions an unquoted one expands are read); a PowerShell here-string is one word.
+ * (the substitutions an unquoted one expands are read); a PowerShell here-string is one word. A PowerShell word
+ * that starts with a quote, a here-string, `$(` or `@(` ends where that closes, so what touches it is a new word.
  */
 class Scanner {
   private index = 0;
@@ -491,7 +498,13 @@ class Scanner {
         endCommand();
         return;
       }
+      const whole = !word.isStarted && this.opensWholeWord(char);
       if (this.readQuoteOrExpansion(word)) {
+        if (whole) {
+          endWord();
+          // Text in quotes is only text: `'--%'` is no marker, though `--'%'` is.
+          verbatim = false;
+        }
         continue;
       }
       if (this.endsLine(char)) {
@@ -683,27 +696,43 @@ class Scanner {
     this.complete &&= this.index === end;
   }
 
-  /** At `@`: true when `@'` or `@"` ends its line, which opens a PowerShell here-string. */
-  private opensHereString(): boolean {
+  /**
+   * PowerShell, at a word's start: true at what ends the word when it closes, a quote, a here-string, `$(` or `@(`, so
+   * `"a"--flag` is two words. A variable, a number or a splat first stays one word, as text in the middle of a word does.
+   */
+  private opensWholeWord(char: string): boolean {
+    if (this.dialect !== 'powershell') {
+      return false;
+    }
+    const substitution = (char === '$' || char === '@') && this.at(1) === '(';
+    return substitution || this.isSingleQuote(char) || this.isDoubleQuote(char) || (char === '@' && this.hereStringBody() !== undefined);
+  }
+
+  /** At `@`: where the body of a PowerShell here-string starts, when `@` and a quote mark end their line and so open one. */
+  private hereStringBody(): number | undefined {
     const quote = this.at(1);
-    const opener = /[ \t]*\r?\n/y;
+    if (!this.isSingleQuote(quote) && !this.isDoubleQuote(quote)) {
+      return undefined;
+    }
+    const opener = new RegExp(`${BLANKS.powershell.source}*(?:\\r\\n?|\\n)`, 'y');
     opener.lastIndex = this.index + 2;
-    return (quote === "'" || quote === '"') && opener.test(this.source);
+    return opener.test(this.source) ? opener.lastIndex : undefined;
   }
 
   /**
-   * PowerShell `@'...'@` (literal) and `@"..."@` (expandable): the lines between the opening line and the first
-   * line that starts with the closing `'@` or `"@`, blanks before it allowed. One that never closes takes the rest.
+   * PowerShell `@'...'@` (literal) and `@"..."@` (expandable), whose body opens at `start`: the lines up to the first
+   * line that starts with a mark of the opener's class and `@`, with no blank before it. One that never closes takes
+   * the rest.
    */
-  private readHereString(word: WordBuilder): void {
-    const quote = this.at(1);
-    const start = this.source.indexOf('\n', this.index) + 1;
-    const closing = new RegExp(`\\r?\\n[ \\t]*${quote}@`, 'g');
+  private readHereString(word: WordBuilder, start: number): void {
+    const expands = this.isDoubleQuote(this.at(1));
+    const closing = new RegExp(`(?:\\r\\n?|\\n)${(expands ? POWERSHELL_QUOTES.double : POWERSHELL_QUOTES.single).source}@`, 'g');
+    // From the opener's own line end, so an empty body closes on it.
     closing.lastIndex = start - 1;
     const close = closing.exec(this.source);
     const end = close === null ? this.source.length : Math.max(start, close.index);
     this.index = start;
-    if (quote === '"') {
+    if (expands) {
       this.readExpandable(word, end);
     } else {
       word.add(this.source.slice(start, end));
@@ -725,6 +754,14 @@ class Scanner {
   /** A newline ends a statement in every shell, and in PowerShell so does a lone CR. */
   private endsLine(char: string): boolean {
     return char === '\n' || (char === '\r' && this.dialect === 'powershell');
+  }
+
+  private isSingleQuote(char: string): boolean {
+    return this.dialect === 'powershell' ? POWERSHELL_QUOTES.single.test(char) : char === "'";
+  }
+
+  private isDoubleQuote(char: string): boolean {
+    return this.dialect === 'powershell' ? POWERSHELL_QUOTES.double.test(char) : char === '"';
   }
 
   private isSeparator(char: string): boolean {
@@ -776,16 +813,17 @@ class Scanner {
 
   private readPowerShellQuote(word: WordBuilder): boolean {
     const char = this.at();
-    if (char === "'") {
+    const hereStringBody = char === '@' && !word.isStarted ? this.hereStringBody() : undefined;
+    if (this.isSingleQuote(char)) {
       this.readSingleQuoted(word);
-    } else if (char === '"') {
+    } else if (this.isDoubleQuote(char)) {
       this.readDoubleQuoted(word);
     } else if (char === '`') {
       this.readEscape(word);
     } else if (char === '$') {
       this.readDollar(word, false);
-    } else if (char === '@' && !word.isStarted && this.opensHereString()) {
-      this.readHereString(word);
+    } else if (hereStringBody !== undefined) {
+      this.readHereString(word, hereStringBody);
     } else if (char === '@' && (this.at(1) === '(' || (/[A-Za-z_]/.test(this.at(1)) && !word.isStarted))) {
       this.readSplatOrArray(word);
     } else if (char === '<' && this.at(1) === '#') {
@@ -810,15 +848,15 @@ class Scanner {
     return true;
   }
 
-  /** `'...'`: literal; in PowerShell `''` inside is one quote. An unclosed quote takes the rest of the line. */
+  /** `'...'`: literal; in PowerShell a doubled mark inside keeps its second. An unclosed quote takes the rest of the line. */
   private readSingleQuoted(word: WordBuilder): void {
     this.index += 1;
     let text = '';
     while (!this.done) {
       const char = this.at();
-      if (char === "'") {
-        if (this.dialect === 'powershell' && this.at(1) === "'") {
-          text += "'";
+      if (this.isSingleQuote(char)) {
+        if (this.dialect === 'powershell' && this.isSingleQuote(this.at(1))) {
+          text += this.at(1);
           this.index += 2;
           continue;
         }
@@ -850,15 +888,15 @@ class Scanner {
     this.index += 1;
   }
 
-  /** `"..."`: expansions inside stay dynamic; bash escapes with `\`, PowerShell with a backtick or `""`, cmd not at all. */
+  /** `"..."`: expansions inside stay dynamic; bash escapes with `\`, PowerShell with a backtick or a doubled mark, which keeps its second, cmd not at all. */
   private readDoubleQuoted(word: WordBuilder): void {
     this.index += 1;
     word.add('');
     while (!this.done) {
       const char = this.at();
-      if (char === '"') {
-        if (this.dialect === 'powershell' && this.at(1) === '"') {
-          word.add('"');
+      if (this.isDoubleQuote(char)) {
+        if (this.dialect === 'powershell' && this.isDoubleQuote(this.at(1))) {
+          word.add(this.at(1));
           this.index += 2;
           continue;
         }
@@ -1111,10 +1149,10 @@ class Scanner {
 
   /**
    * cmd `%VAR%`, `%1`, `%*`, `%~dp0` and delayed `!VAR!` are dynamic; `%%` is one literal `%`, and a `%` or `!`
-   * that starts none of them is literal.
+   * that starts none of them is literal. Text from `end` on is not looked at.
    */
-  private readCmdVariable(word: WordBuilder): void {
-    const rest = this.source.slice(this.index);
+  private readCmdVariable(word: WordBuilder, end = this.source.length): void {
+    const rest = this.source.slice(this.index, end);
     const match = /^(?:%%|%~[a-zA-Z]*[0-9]|%[0-9*]|%[^%\s"]+%|![^!\s"]+!)/.exec(rest);
     if (match === null) {
       word.add(this.at());
@@ -1169,10 +1207,11 @@ class Scanner {
   }
 
   /**
-   * After PowerShell's `--%`: the rest of the line up to a newline or `|` goes to the program as written,
-   * split on spaces and double quotes, with cmd-style `%VAR%` left dynamic.
+   * After PowerShell's `--%`: the text up to {@link verbatimEnd} goes to the program as written, with cmd-style `%VAR%`
+   * left dynamic. The shell no longer splits it, so the program does, on a space or a tab, and only a plain `"` groups.
    */
   private readVerbatim(): ShellWord[] {
+    const end = this.verbatimEnd();
     const words: ShellWord[] = [];
     const word = new WordBuilder(false);
     const flush = (): void => {
@@ -1181,28 +1220,40 @@ class Scanner {
         words.push(taken);
       }
     };
-    while (!this.done && this.at() !== '\n' && this.at() !== '|') {
+    let grouped = false;
+    while (this.index < end) {
       const char = this.at();
-      if (char === '"') {
-        this.index += 1;
-        word.add('');
-        while (!this.done && this.at() !== '"' && this.at() !== '\n') {
-          word.add(this.at());
-          this.index += 1;
-        }
-        this.index += this.at() === '"' ? 1 : 0;
-      } else if (char === '%') {
-        this.readCmdVariable(word);
-      } else {
-        if (/\s/.test(char)) {
-          flush();
-        } else {
-          word.add(char);
-        }
-        this.index += 1;
+      if (char === '%') {
+        this.readCmdVariable(word, end);
+        continue;
       }
+      if (char === '"') {
+        grouped = !grouped;
+        word.add('');
+      } else if (!grouped && BLANKS.cmd.test(char)) {
+        flush();
+      } else {
+        word.add(char);
+      }
+      this.index += 1;
     }
     flush();
     return words;
+  }
+
+  /**
+   * Where the text after `--%` ends: a line end, even inside quotes, or a `|` or `&&` outside them. This is the shell
+   * looking, not the program, so a curly double quote counts here, and a `%` means nothing: `%a|b%` ends at the `|`.
+   */
+  private verbatimEnd(): number {
+    let inQuotes = false;
+    for (let end = this.index; end < this.source.length; end += 1) {
+      const char = this.source.charAt(end);
+      if (this.endsLine(char) || (!inQuotes && (char === '|' || this.source.startsWith('&&', end)))) {
+        return end;
+      }
+      inQuotes = inQuotes !== this.isDoubleQuote(char);
+    }
+    return this.source.length;
   }
 }
