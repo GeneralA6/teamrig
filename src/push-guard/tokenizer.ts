@@ -41,8 +41,9 @@ export interface ShellCommand {
   readonly words: readonly ShellWord[];
   /**
    * The bash subshells it runs in, outermost first: `( )`, `$( )`, backticks and `<( )` each open one, so a
-   * `cd` inside never moves the commands after it. Always empty in PowerShell and cmd, where `(` and `$( )`
-   * run in the same process.
+   * `cd` inside never moves the commands after it. PowerShell and cmd open none, as `(` and `$( )` run in the
+   * same process. A line whose readings differ puts each in a subshell of its own, an id below zero, ahead of
+   * these; see {@link parseShell}.
    */
   readonly subshells: readonly number[];
   /**
@@ -114,14 +115,75 @@ export interface ShellParse {
    * only known when it runs) may hold lines that never run. Quoted text never counts.
    */
   readonly bindingsUnclear: boolean;
+  /**
+   * Present when the shell may read the line more than one way and the ways differ: each on its own, in the order
+   * {@link commands} holds them. What follows one line's state from command to command reads these, as a value
+   * set in one reading says nothing about the next.
+   */
+  readonly readings?: readonly ShellParse[];
 }
 
 /** How deep substitutions may nest before the parse stops and calls itself incomplete. */
 const MAX_NESTING = 16;
 
-/** Splits a command line into simple commands the way `dialect` would; see {@link Scanner}. */
+/**
+ * What separates the words of an unquoted line, measured on the real shells (T2002). JS `\s` fits none of them:
+ * PowerShell also takes U+0085 and keeps U+FEFF in a word, and bash and a program started by cmd take only these two.
+ */
+const BLANKS: Readonly<Record<ShellDialect, RegExp>> = {
+  bash: /[ \t]/,
+  powershell: /[\t\v\f \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]/,
+  cmd: /[ \t]/,
+};
+
+/** One way a shell may read a line, where the guard cannot know which it is; see {@link readingsOf}. */
+interface Reading {
+  /** The text the scanner reads. */
+  readonly source: string;
+}
+
+/**
+ * The readings of a line. cmd drops every CR before it reads anything. bash on Windows does the same, by `-c`, file
+ * and stdin alike, while bash elsewhere keeps a CR in its word, so a bash line holding one is read both ways. Which
+ * host the line runs on is not asked: a guard's answer must not depend on it.
+ */
+function readingsOf(source: string, dialect: ShellDialect): readonly Reading[] {
+  const dropped = { source: source.replaceAll('\r', '') };
+  switch (dialect) {
+    case 'bash':
+      return source.includes('\r') ? [dropped, { source }] : [{ source }];
+    case 'powershell':
+      return [{ source }];
+    case 'cmd':
+      return [dropped];
+  }
+}
+
+/**
+ * One parse from the parses of a line's readings. Readings that agree count once; ones that differ all count, so every
+ * guard sees each command any of them runs, and the line is not read with confidence. Each then sits in a subshell of
+ * its own, numbered below the scanner's ids, so a relative `cd` in one does not move the next.
+ */
+function mergedParse(parses: readonly ShellParse[]): ShellParse {
+  const distinct = [...new Map(parses.map((parse) => [JSON.stringify([parse.commands, parse.unreadBodies]), parse])).values()];
+  const single = distinct.length === 1;
+  const readings = single ? distinct : distinct.map((parse, at) => ({ ...parse, commands: parse.commands.map((command) => ({ ...command, subshells: [-1 - at, ...command.subshells] })) }));
+  return {
+    commands: readings.flatMap((parse) => parse.commands),
+    complete: single && parses.every((parse) => parse.complete),
+    skipped: parses.some((parse) => parse.skipped),
+    unreadBodies: readings.flatMap((parse) => parse.unreadBodies),
+    bindingsUnclear: parses.some((parse) => parse.bindingsUnclear),
+    ...(single ? {} : { readings }),
+  };
+}
+
+/**
+ * Splits a command line into simple commands the way `dialect` would; see {@link Scanner}. Where the same text means
+ * different words in different hosts or versions of the shell, the parse holds the commands of every reading.
+ */
 export function parseShell(command: string, dialect: ShellDialect): ShellParse {
-  return new Scanner(command, dialect, { nesting: 0, subshells: [], ids: { next: 0 } }).parse();
+  return mergedParse(readingsOf(command, dialect).map(({ source }) => new Scanner(source, dialect, { nesting: 0, subshells: [], ids: { next: 0 } }).parse()));
 }
 
 /**
@@ -432,9 +494,10 @@ class Scanner {
       if (this.readQuoteOrExpansion(word)) {
         continue;
       }
-      if (char === '\n') {
+      if (this.endsLine(char)) {
         endCommand();
-        this.addTerminator(char);
+        // Written as a newline whichever character it was: the guards find a pipe across lines by `\n` alone.
+        this.addTerminator('\n');
         this.index += 1;
         this.readHeredocBodies();
         continue;
@@ -495,7 +558,7 @@ class Scanner {
         if (!targeted) {
           redirections.push({ operator });
         }
-      } else if (/\s/.test(char)) {
+      } else if (BLANKS[this.dialect].test(char)) {
         endWord();
       } else if (char === ',' && this.dialect === 'powershell') {
         // An unquoted comma builds an array: each element reaches a native program as its own argument.
@@ -659,6 +722,11 @@ class Scanner {
     return this.dialect === 'bash' && char === '&' && this.at(1) === '>' && this.at(-1) !== '&' && this.at(-1) !== '|';
   }
 
+  /** A newline ends a statement in every shell, and in PowerShell so does a lone CR. */
+  private endsLine(char: string): boolean {
+    return char === '\n' || (char === '\r' && this.dialect === 'powershell');
+  }
+
   private isSeparator(char: string): boolean {
     switch (this.dialect) {
       case 'bash':
@@ -797,6 +865,10 @@ class Scanner {
         this.index += 1;
         return;
       }
+      if (this.dialect === 'cmd' && char === '\n') {
+        // cmd ends the line here, quote or no quote: left in place, it ends the command too.
+        return;
+      }
       if (this.dialect === 'bash' && char === '\\' && /["\\$`\n]/.test(this.at(1))) {
         word.add(this.at(1) === '\n' ? '' : this.at(1));
         this.index += 2;
@@ -823,7 +895,7 @@ class Scanner {
       this.index += 2;
       return;
     }
-    if (next === '\r' && this.at(2) === '\n') {
+    if (this.dialect === 'powershell' && next === '\r' && this.at(2) === '\n') {
       this.index += 3;
       return;
     }
@@ -1085,7 +1157,7 @@ class Scanner {
   }
 
   private skipComment(): void {
-    while (!this.done && this.at() !== '\n') {
+    while (!this.done && !this.endsLine(this.at())) {
       this.index += 1;
     }
   }
