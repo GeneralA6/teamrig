@@ -220,6 +220,11 @@ interface Reading {
   readonly asciiParameters: boolean;
   /** The C runtime that splits the line 5.1 writes for a native program, where this reading rebuilds it; see {@link nativeCommand}. */
   readonly nativeLine: CRuntime | undefined;
+  /**
+   * 5.1's line: true where a chain on a quoted `--%` gives that value back, as `'--%'.Trim()` does, so the word reads as that
+   * value. The binder goes by the value at run time, which the guard cannot know, so each native reading comes twice.
+   */
+  readonly chainedMarker: boolean;
   /** cmd's caret before a newline: by `/c` the line ends there, on stdin the next line joins it. */
   readonly caretLine: 'joins' | 'ends';
 }
@@ -251,13 +256,21 @@ const NATIVE_LINE_MARKS: readonly RegExp[] = [POWERSHELL_QUOTES.single, POWERSHE
 
 /** The reading of a line with nothing to choose between. */
 function plainReading(source: string): Reading {
-  return { source, codePoints: false, nul: 'kept', asciiParameters: false, nativeLine: undefined, caretLine: 'joins' };
+  return { source, codePoints: false, nul: 'kept', asciiParameters: false, nativeLine: undefined, chainedMarker: false, caretLine: 'joins' };
 }
 
 /** The plain reading, and 5.1's native ones where the line holds what they differ on. */
 function nativeReadings(plain: Reading): readonly Reading[] {
   const differ = NATIVE_LINE_MARKS.some((marks) => marks.test(plain.source));
   return differ ? [plain, ...POWERSHELL_READINGS.filter((reading) => reading.nativeLine !== undefined).map((reading) => ({ ...plain, ...reading }))] : [plain];
+}
+
+/**
+ * Each native reading of a line that may hold a `--%`, again with {@link Reading.chainedMarker}. It looks for the `%` alone:
+ * `` "-`-%".Trim() `` holds the value with no such text, while no 5.1 escape writes a `%`. A line with no chain folds.
+ */
+function withChainedMarker(readings: readonly Reading[]): readonly Reading[] {
+  return readings.flatMap((reading) => (reading.nativeLine !== undefined && reading.source.includes('%') ? [reading, { ...reading, chainedMarker: true }] : [reading]));
 }
 
 /**
@@ -274,7 +287,7 @@ function readingsOf(source: string, dialect: ShellDialect): readonly Reading[] {
     case 'bash':
       return source.includes('\r') ? [dropped, plain] : [plain];
     case 'powershell':
-      return /\0|`[0u]|[-\u2013\u2014\u2015][^\0-\x7f]/.test(source) ? POWERSHELL_READINGS.map((reading) => ({ ...plain, ...reading })) : nativeReadings(plain);
+      return withChainedMarker(/\0|`[0u]|[-\u2013\u2014\u2015][^\0-\x7f]/.test(source) ? POWERSHELL_READINGS.map((reading) => ({ ...plain, ...reading })) : nativeReadings(plain));
     case 'cmd':
       return dropped.source.includes('^\n') ? [dropped, { ...dropped, caretLine: 'ends' }] : [dropped];
   }
@@ -787,8 +800,9 @@ class Scanner {
     /** 5.1's line: true right behind a whole value of `--%`, where a `-name` token turns on the parser's marker after all. */
     let tokenNext = false;
     /**
-     * 5.1's line: true from an argument that opens with a constant `--%` through its array, where a `-name` token leaves the
-     * line and turns the rest to text. {@link tokenNext} says the argument goes with it; else the rest is one more value.
+     * 5.1's line: true from an argument that opens with a constant `--%` through its array or its chain, where a `-name`
+     * token leaves the line and turns the rest to text. {@link tokenNext} says the argument goes with it; else the rest is
+     * one more value.
      */
     let opensText = false;
     /** True when the parser's `--%` opened the text: a NUL's cut can drop it, and a marker pair leaves none. */
@@ -814,10 +828,10 @@ class Scanner {
      */
     let closedGroup: ScannedCommand | undefined;
 
-    /** 5.1's line: this command's `markers` the binder takes; none in any other reading. */
-    const takenMarkers = (): readonly number[] => {
+    /** 5.1's line: which of `candidates`, this command's `markers` unless named, the binder takes; none in any other reading. */
+    const takenMarkers = (candidates: readonly number[] = markers): readonly number[] => {
       const start = this.reading.nativeLine === undefined ? undefined : argumentsAt(words);
-      return start === undefined ? [] : boundMarkers(markers, start, arrays);
+      return start === undefined ? [] : boundMarkers(candidates, start, arrays);
     };
     /**
      * A word the NUL left empty is no argument, as the line ends before it: `x <NUL> a` hands the program nothing. Measured:
@@ -835,8 +849,11 @@ class Scanner {
       verbatimText = { at, line: markerWord ? [PARSER_MARKER, ...verbatimLine(units)] : verbatimLine(units) };
       verbatim = false;
     };
-    /** `quoted` says the word is one quoted value, whose text is only text to the parser. */
-    const endWord = (quoted = false): void => {
+    /**
+     * `quoted` says the word is one quoted value, whose text is only text to the parser; `chained` that the value is a
+     * constant `--%` with a chain behind it.
+     */
+    const endWord = (quoted = false, chained = false): void => {
       const cut = word.isCut;
       const taken = word.take();
       const token = tokenLength;
@@ -860,6 +877,11 @@ class Scanner {
           // leaves the quoted word of `parserSkips`.
           tokenNext = !valueNext && token === 0 && takenMarkers().includes(at);
           opensText = tokenNext;
+        }
+        if (chained && token === 0 && !valueNext && takenMarkers([at]).length > 0) {
+          // Measured: the parser goes by the text ahead of a chain, whatever the chain gives and whatever a NUL cut ahead of it,
+          // so `'--%'.y -y b c` hands over `b c`. A chain that gives `--%` back has only repeated what the block above set.
+          opensText = true;
         }
         // Set on a word the cut dropped too: the shell still reads the rest as written.
         verbatim = marks && !parserSkips;
@@ -995,9 +1017,11 @@ class Scanner {
       const inArguments = words.length > 0 || awaiting !== undefined;
       if (this.readQuoteOrExpansion(word, opening)) {
         if (whole) {
-          this.readMembers(word);
+          const constant = word.value.slice(tokenLength) === MARKER && !word.isCut;
+          // A head is an expression's value, no argument of a binder, so it reads the same in every reading.
+          const chained = constant && inArguments && this.reading.chainedMarker ? this.skipMembers() : this.readMembers(word);
           // `--'%'` opens no whole word, so it stays the parser's marker.
-          endWord(true);
+          endWord(true, constant && chained);
         } else if (variable && word.isDynamic && (this.readMembers(word, true) || this.at() === '.') && inArguments) {
           // At a head the word goes on: `$h.a=git push` is an assignment, read from one word. A dot with no name after
           // it starts a word of its own, as a quote's does: `$v. b` reaches a program as three words.
