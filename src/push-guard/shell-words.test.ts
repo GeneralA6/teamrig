@@ -309,6 +309,12 @@ describe('parseShell: PowerShell hash literals', () => {
   it('runs a key in ( )', () => {
     assert.deepEqual(wordsOf('$x = @{(b) = 1}', 'powershell').slice(0, 1), [['b']]);
   });
+
+  it('reads a backtick line end around a key as a gap', () => {
+    assert.deepEqual(wordsOf('$x = @{a `\n= b c}', 'powershell').slice(0, 1), [['b', 'c']]);
+    assert.deepEqual(wordsOf('$x = @{a = `\nb c}', 'powershell').slice(0, 1), [['b', 'c']]);
+    assert.deepEqual(wordsOf('$x = @{`\na = b c}', 'powershell').slice(0, 1), [['b', 'c']]);
+  });
 });
 
 describe('parseShell: PowerShell redirections and block comments', () => {
@@ -438,6 +444,11 @@ describe('parseShell: PowerShell --%', () => {
   it('takes no quote or blank from inside a %VAR%, which stays dynamic in its word', () => {
     const [, , ...rest] = parseShell('x --% a%B%c d', 'powershell').commands[0]?.words ?? [];
     assert.deepEqual(rest.map((word) => [word.text, word.dynamic]), [['a%B%c', true], ['d', false]]);
+  });
+
+  it('keeps a comma right behind it as the text\'s first character', () => {
+    assert.deepEqual(wordsOf('x --%,b c', 'powershell'), [['x', '--%', ',b', 'c']]);
+    assert.deepEqual(wordsOf('x --%,\nb c', 'powershell'), [['x', '--%', ','], ['b', 'c']]);
   });
 
   it('reads %% as one percent and a lone % as itself', () => {
@@ -687,6 +698,25 @@ describe('parseShell: PowerShell line ends', () => {
 
   it('writes a CR as a newline in the terminator, which is all the pipe readers know', () => {
     assert.equal(parseShell('a |\rb', 'powershell').commands[0]?.terminator, '|\n');
+  });
+
+  it('reads past every gap after a comma to the next element', () => {
+    const gaps = ['\n', '\r\n', '  \n  ', '\n\n', '#x\n', ' #x\n#y\n', '<#x#>\n', '`\n', '`\n\n', '\n`\n', '`\r\n', '`\r\n\r\n', '#x`\n', '<#x#>`\n#y\n  '];
+    for (const gap of gaps) {
+      assert.deepEqual(wordsOf(`p a,${gap}b c`, 'powershell'), [['p', 'a', 'b', 'c']], JSON.stringify(gap));
+    }
+  });
+
+  it('reads on through a chain of commas, and stops at the first line end after an element', () => {
+    assert.deepEqual(wordsOf('p a,b,\nc d', 'powershell'), [['p', 'a', 'b', 'c', 'd']]);
+    assert.deepEqual(wordsOf('p a,\nb,\nc d', 'powershell'), [['p', 'a', 'b', 'c', 'd']]);
+    assert.deepEqual(wordsOf('p a,\nb\nc d', 'powershell'), [['p', 'a', 'b'], ['c', 'd']]);
+  });
+
+  it('keeps the words of a comma nothing follows', () => {
+    assert.deepEqual(wordsOf('p a,', 'powershell'), [['p', 'a']]);
+    assert.deepEqual(wordsOf('p a,\n', 'powershell'), [['p', 'a']]);
+    assert.deepEqual(wordsOf('(p a,\n)', 'powershell'), [['p', 'a']]);
   });
 });
 

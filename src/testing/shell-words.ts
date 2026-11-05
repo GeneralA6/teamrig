@@ -182,6 +182,15 @@ export const BLANK_AND_LINE_END_ROWS: readonly ShellWordsRow[] = [
   { dialect: 'powershell', typed: 'git status # note\rgit push origin main', real: 'git status; git push origin main' },
   { dialect: 'powershell', typed: 'git status # note\rgit commit -m x --no-verify', real: 'git status; git commit -m x --no-verify' },
   { dialect: 'powershell', typed: 'git status # note\rnpm install left-pad', real: 'git status; npm install left-pad' },
+  // A comma reads on to its next element, so the line under it is no statement of its own.
+  { dialect: 'powershell', typed: 'git push origin,\nmain', real: 'git push origin main' },
+  { dialect: 'powershell', typed: 'git push origin,#y\nmain', real: 'git push origin main' },
+  { dialect: 'powershell', typed: 'git push origin,`\n\nmain', real: 'git push origin main' },
+  { dialect: 'powershell', typed: 'git commit -m x,\n--no-verify', real: 'git commit -m x --no-verify' },
+  { dialect: 'powershell', typed: 'npm install a,\nleft-pad', real: 'npm install a left-pad' },
+  // Behind a `--%` the comma is text, and the text ends at the line end, so the next line is a statement.
+  { dialect: 'powershell', typed: 'git status --%,\ngit push origin main', real: 'git push origin main' },
+  { dialect: 'powershell', typed: 'git commit --no-verify --%,--verify', real: "git commit --no-verify '--%' ',--verify'" },
   { dialect: 'powershell', typed: 'git commit -m x\u0085--no-verify', real: 'git commit -m x --no-verify' },
   { dialect: 'powershell', typed: 'git push\u0085origin main', real: 'git push origin main' },
   { dialect: 'powershell', typed: 'npm\u0085install left-pad', real: 'npm install left-pad' },
