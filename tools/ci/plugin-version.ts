@@ -1,33 +1,10 @@
+import { compareVersions, parseVersion } from '../../src/core/release-version.ts';
 import { EXIT_CLEAN, EXIT_FINDINGS } from '../lib/exit.ts';
 import type { Git } from '../lib/git.ts';
 import { isRecord, stringField } from '../lib/guards.ts';
 
 /** The marketplace catalog at the repo root, which names the plugins this repo ships. */
 export const MARKETPLACE = '.claude-plugin/marketplace.json';
-
-/** A plugin's version: plugin.json must give it as MAJOR.MINOR.PATCH. */
-export interface Version {
-  readonly major: number;
-  readonly minor: number;
-  readonly patch: number;
-}
-
-const RELEASE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
-
-/** Parses MAJOR.MINOR.PATCH, with no pre-release or build part; anything else is no version. */
-export function parseVersion(text: string): Version | undefined {
-  const match = RELEASE.exec(text);
-  if (match === null) {
-    return undefined;
-  }
-  const [, major = '', minor = '', patch = ''] = match;
-  return { major: Number(major), minor: Number(minor), patch: Number(patch) };
-}
-
-/** Negative when `a` comes before `b`, zero when they are the same release, positive after. */
-export function compareVersions(a: Version, b: Version): number {
-  return a.major - b.major || a.minor - b.minor || a.patch - b.patch;
-}
 
 /** A plugin this repo ships: its marketplace name and its folder, `/`-separated from the repo root ('' for the root). */
 export interface ShippedPlugin {
