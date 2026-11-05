@@ -95,7 +95,8 @@ function opened(start: number, end: number, kind: PeriodKind, use: WeekUse | und
  * - else it runs to the end now seen (the end can move, case d), a guessed start moving with it. A reading taken
  *   after its latest one and `RESET_DROP_PTS` or more below it opens a new budget (case b) from that latest
  *   reading, the earliest the use can have fallen: the use between counts in the new budget, so it errs high,
- *   never low. Any other reading taken after it becomes its latest.
+ *   never low. A reading that may predate the reset is left out (`mayPredateReset`). Any other reading taken after
+ *   it becomes its latest.
  * A guessed period whose metered W is far over the status line's use starts where that W reaches it (`inferStart`).
  */
 export function nextPeriod(stored: Period | undefined, sight: PeriodSight): Period {
@@ -129,6 +130,18 @@ function inferStart(period: Period, use: WeekUse, metered: Metered): Period {
   return { ...period, start: period.start + reaches * MS_PER_HOUR, kind: 'inferred' };
 }
 
+/**
+ * Whether `use`, far over a reset period's latest reading, may be the old week's use and no rise at all: a session
+ * can show a reading long after it took it, so one last read before the period's latest reading may hold a reading
+ * from before the reset. Taken as the latest, it would log a false point, and the next true reading would fall
+ * from it and open a false second reset. Measured against `lastAt`, as a reset's start errs early. Only a reset
+ * period needs this: a weekly reset moves `resetsAt`, which drops the old week's readings. A true rise left out
+ * costs a delay: the session's next reading is taken after the latest one and counts.
+ */
+function mayPredateReset(period: Period, use: WeekUse): boolean {
+  return period.kind === 'reset' && use.after !== undefined && use.after < period.lastAt && use.usedPct >= period.lastPct + RESET_DROP_PTS;
+}
+
 /** The stored period moved on to what `sight` shows, before any inference (`nextPeriod`). */
 function movedOn(stored: Period | undefined, sight: PeriodSight): Period {
   const { end, use } = sight;
@@ -139,7 +152,7 @@ function movedOn(stored: Period | undefined, sight: PeriodSight): Period {
     return opened(stored.end, end, 'week', use);
   }
   const running: Period = { ...stored, start: stored.kind === 'assumed' ? end - MS_PER_WEEK : stored.start, end };
-  if (use === undefined || use.at < running.lastAt) {
+  if (use === undefined || use.at < running.lastAt || mayPredateReset(running, use)) {
     return running;
   }
   if (use.usedPct <= running.lastPct - RESET_DROP_PTS) {

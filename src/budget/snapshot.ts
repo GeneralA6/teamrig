@@ -227,6 +227,8 @@ export interface WeekUse {
   readonly resetsAt: number;
   /** By when the reading was taken: when its session's snapshots began to show it. */
   readonly at: number;
+  /** After when it was taken, when known: all a reader knows of its moment is that it falls between this and `at`. */
+  readonly after?: number;
 }
 
 /** A reading of the current week, taken after `after` (when known) and by `since`. */
@@ -275,6 +277,11 @@ function latestOf(a: number | undefined, b: number | undefined): number | undefi
   return a === undefined ? b : b === undefined ? a : Math.max(a, b);
 }
 
+function useOf({ usedPct, resetsAt, after, since }: DatedReading): WeekUse {
+  const use: WeekUse = { usedPct, resetsAt, at: since };
+  return after === undefined ? use : { ...use, after };
+}
+
 /**
  * The snapshots' readings of the week current at `now`, folded. A week's use only grows, except when the
  * owner resets it mid-week (its reset time unchanged), and an exited session's file keeps its last
@@ -287,7 +294,7 @@ export function weekFoldOf(snapshots: readonly StatusSnapshot[], now: number): W
   let best: WeekUse | undefined;
   for (const reading of readings) {
     if (followedBy === undefined || reading.since > followedBy) {
-      best = countsOver(best, { usedPct: reading.usedPct, resetsAt: reading.resetsAt, at: reading.since });
+      best = countsOver(best, useOf(reading));
     }
   }
   return { best, followedBy };

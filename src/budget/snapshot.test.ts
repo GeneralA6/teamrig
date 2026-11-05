@@ -206,7 +206,7 @@ describe('weekFoldOf: the reading that counts', () => {
       ],
       NOW,
     );
-    assert.deepEqual(use, { usedPct: 0.4, resetsAt, at: Date.parse('2026-10-15T12:00:30.000Z') });
+    assert.deepEqual(use, { usedPct: 0.4, resetsAt, at: Date.parse('2026-10-15T12:00:30.000Z'), after: Date.parse('2026-10-15T12:00:00.000Z') });
   });
 
   it('takes the highest of the readings no other is known to follow', () => {
@@ -218,7 +218,7 @@ describe('weekFoldOf: the reading that counts', () => {
       ],
       NOW,
     );
-    assert.deepEqual(use, { usedPct: 0.6, resetsAt, at: Date.parse('2026-10-15T12:00:10.000Z') });
+    assert.deepEqual(use, { usedPct: 0.6, resetsAt, at: Date.parse('2026-10-15T12:00:10.000Z'), after: Date.parse('2026-10-15T11:00:00.000Z') });
   });
 
   it('takes the highest reading of the current week when none is dated, as a week only grows', () => {
@@ -236,7 +236,7 @@ describe('weekFoldOf: the reading that counts', () => {
   it('dates a reading by when its session began to show it, so a redraw that rewrote its file after now keeps it', () => {
     const redrawn = reading('2026-10-15T12:00:51.000Z', 58, '2026-10-15T11:35:00.000Z', '2026-10-15T11:34:55.000Z');
     const older = reading('2026-10-15T12:00:00.000Z', 57, '2026-10-15T11:00:00.000Z');
-    const expected = { usedPct: 58, resetsAt, at: Date.parse('2026-10-15T11:35:00.000Z') };
+    const expected = { usedPct: 58, resetsAt, at: Date.parse('2026-10-15T11:35:00.000Z'), after: Date.parse('2026-10-15T11:34:55.000Z') };
     assert.deepEqual(weekUseOf([redrawn, older], NOW), expected);
     const takenAfter = reading('2026-10-15T12:00:52.000Z', 59, '2026-10-15T12:00:51.000Z', '2026-10-15T12:00:45.000Z');
     assert.deepEqual(weekUseOf([redrawn, older, takenAfter], NOW), expected, 'a reading its session began to show after now is not counted');
@@ -269,7 +269,7 @@ describe('weekFoldOf, mergeWeekFolds and weekUseAt', () => {
 
   it('keeps the reading that counts and the latest time a reading is known to follow', () => {
     assert.deepEqual(weekFoldOf([highBefore, undated, resetMidWeek], NOW), {
-      best: { usedPct: 0.4, resetsAt, at: Date.parse('2026-10-15T12:00:30.000Z') },
+      best: { usedPct: 0.4, resetsAt, at: Date.parse('2026-10-15T12:00:30.000Z'), after: Date.parse('2026-10-15T12:00:00.000Z') },
       followedBy: Date.parse('2026-10-15T12:00:00.000Z'),
     });
     assert.deepEqual(weekFoldOf([], NOW), NONE);

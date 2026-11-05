@@ -71,6 +71,13 @@ describe('crossingOf', () => {
     assert.equal(crossingOf({ ...SIGHT, before: { ...PERIOD, lastAt: NOW } }, FIT), undefined);
   });
 
+  it('logs nothing for a reading the period left out, as old use a session showed late (T2019)', () => {
+    const left: Period = { ...PERIOD, kind: 'reset', lastPct: 0 };
+    const use = { usedPct: 29, resetsAt: END, at: NOW - MS_PER_MINUTE, after: PERIOD.lastAt - MS_PER_HOUR };
+    assert.equal(crossingOf({ ...SIGHT, before: left, period: left, use }, FIT), undefined);
+    assert.equal(crossingOf({ ...SIGHT, before: left, period: { ...left, lastPct: 29, lastAt: use.at }, use }, FIT)?.usedPct, 29);
+  });
+
   it('logs nothing in a period with a guessed start, which would teach the fit its own guess', () => {
     const guessed: readonly PeriodKind[] = ['assumed', 'inferred'];
     for (const kind of guessed) {
