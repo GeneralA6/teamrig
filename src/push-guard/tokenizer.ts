@@ -898,6 +898,15 @@ class Scanner {
       } else if (char === ',' && this.dialect === 'powershell') {
         // An unquoted comma builds an array: each element reaches a native program as its own argument.
         endWord();
+        if (verbatim) {
+          // Measured: a `--%`'s text starts right behind it, so the comma is the program's: `--%,b` hands it `,b`.
+          continue;
+        }
+        // Measured: the next element may sit past line ends and comments. A comma that builds no array there is a parse
+        // error, so nothing runs and no second statement hides behind it.
+        this.index += 1;
+        this.skipGaps();
+        continue;
       } else if (char === '@' && this.dialect === 'cmd' && words.length === 0 && !word.isStarted) {
         // cmd's `@` before a command only hides its echo.
       } else if (char === ']' && powershell && !word.isStarted) {
@@ -1669,7 +1678,10 @@ class Scanner {
     }
   }
 
-  /** Moves past blanks, line ends and comments, which may sit around a `@{ }` entry's key and `=`. */
+  /**
+   * Moves past blanks, line ends, comments and a backtick before a line end, which may sit around a `@{ }` entry's key
+   * and `=`, and after a comma.
+   */
   private skipGaps(): void {
     while (!this.done) {
       const char = this.at();
@@ -1677,7 +1689,7 @@ class Scanner {
         this.skipComment();
       } else if (char === '<' && this.at(1) === '#') {
         this.skipBlockComment();
-      } else if (BLANKS.powershell.test(char) || this.endsLine(char)) {
+      } else if (BLANKS.powershell.test(char) || this.endsLine(char) || (char === '`' && this.endsLine(this.at(1)))) {
         this.index += 1;
       } else {
         return;
