@@ -342,6 +342,15 @@ const STATEMENT_KEYWORDS: ReadonlySet<string> = new Set([
   'trap', 'class', 'enum', 'data', 'param', 'begin', 'process', 'end', 'clean', 'dynamicparam', 'parallel', 'sequence', 'inlinescript',
 ]);
 
+/** PowerShell: the statement `words` hold, past a `:label` and every assignment's target. */
+function statementOf(words: readonly ShellWord[]): readonly ShellWord[] {
+  let statement = words[0]?.text.startsWith(':') === true ? words.slice(1) : words;
+  for (let right = assignedWords(statement); right !== undefined; right = assignedWords(statement)) {
+    statement = right;
+  }
+  return statement;
+}
+
 /**
  * PowerShell: whether a `(` or `{` after `words` is an argument of their command. It is not at a statement's start,
  * where `(` is a group, nor after a keyword, whose block ends the statement: `do {} while (0) git push` runs what
@@ -349,10 +358,7 @@ const STATEMENT_KEYWORDS: ReadonlySet<string> = new Set([
  * leave the program unknown.
  */
 function takesArguments(words: readonly ShellWord[], open: string): boolean {
-  let statement = words[0]?.text.startsWith(':') === true ? words.slice(1) : words;
-  for (let right = assignedWords(statement); right !== undefined; right = assignedWords(statement)) {
-    statement = right;
-  }
+  const statement = statementOf(words);
   const head = statement[0];
   if (head === undefined || (open === '{' && statement.length === 1 && (head.text === '&' || head.text === '.'))) {
     return false;
