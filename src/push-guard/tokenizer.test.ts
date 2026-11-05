@@ -449,6 +449,25 @@ describe('parseShell: PowerShell', () => {
     assert.deepEqual(readings?.at(-1), ['x', `-${letter}`, '.b', 'y']);
   });
 
+  it('ends a -name: token at its colon in a value and past a comma', () => {
+    assert.deepEqual(plainWords('x -y:-a:b c'), [['x', '-y:-a:', 'b', 'c']]);
+    assert.deepEqual(plainWords('x -y: -a:b c'), [['x', '-y:', '-a:', 'b', 'c']]);
+    assert.deepEqual(plainWords('x -y:<#c#>-a:b c'), [['x', '-y:', '-a:', 'b', 'c']]);
+    assert.deepEqual(plainWords('x -y:-a::b c'), [['x', '-y:-a:', ':b', 'c']]);
+    assert.deepEqual(plainWords('x -y: -a::b c'), [['x', '-y:', '-a:', ':b', 'c']]);
+    assert.deepEqual(plainWords('x y,-a::b c'), [['x', 'y', '-a:', ':b', 'c']]);
+    assert.deepEqual(plainWords('x -y:-a:-b:c d'), [['x', '-y:-a:', '-b:c', 'd']]);
+    assert.deepEqual(plainWords('x -y: -a:--% b;c'), [['x', '-y:', '-a:', '--%', 'b;c']]);
+  });
+
+  it('keeps a -name: token whole elsewhere', () => {
+    assert.deepEqual(plainWords('x -a::b c'), [['x', '-a::b', 'c']]);
+    assert.deepEqual(plainWords('x -a:b c'), [['x', '-a:b', 'c']]);
+    assert.deepEqual(plainWords('x -y:--a:b c'), [['x', '-y:--a:b', 'c']]);
+    assert.deepEqual(plainWords('x -y:a:b c'), [['x', '-y:a:b', 'c']]);
+    assert.deepEqual(plainWords('x -y:"q"-a:b c'), [['x', '-y:q', '-a:b', 'c']]);
+  });
+
   it('cuts no word that opens no -name', () => {
     assert.deepEqual(plainWords('x -1.b --a.b -.b a-b.c'), [['x', '-1.b', '--a.b', '-.b', 'a-b.c']]);
     assert.deepEqual(plainWords('x -a:.b -a]b -a=b'), [['x', '-a:.b', '-a]b', '-a=b']]);
