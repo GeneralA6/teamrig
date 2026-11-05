@@ -116,7 +116,7 @@ describe('splitLine: the C runtimes on a real line', () => {
   });
 
   it('takes no blank or quote from inside a piece', () => {
-    const line: readonly LineUnit[] = ['a', { text: ' " ', dynamic: true }, ' ', 'b'];
+    const line: readonly LineUnit[] = ['a', { text: ' " ' }, ' ', 'b'];
     assert.deepEqual(splitLine(line, 'ucrt').map(wordOfUnits), [dynamic('a " '), text('b')]);
   });
 });

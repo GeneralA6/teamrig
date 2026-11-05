@@ -10,7 +10,6 @@ export type CRuntime = 'ucrt' | 'msvcrt';
 /** A piece of a command line that is not plain characters: a value only known when the line runs, kept as written. */
 export interface LinePiece {
   readonly text: string;
-  readonly dynamic: boolean;
 }
 
 /** One unit of a command line: a character, or a piece no quote or blank inside it can touch. */
@@ -51,7 +50,7 @@ function bound(value: string): string {
 function boundArgument(elements: readonly ShellWord[]): LineUnit[] {
   const units: LineUnit[] = [];
   for (const element of elements) {
-    const value: readonly LineUnit[] = element.dynamic ? [{ text: element.text, dynamic: true }] : [...bound(element.text)];
+    const value: readonly LineUnit[] = element.dynamic ? [{ text: element.text }] : [...bound(element.text)];
     if (value.length > 0) {
       units.push(...(units.length > 0 ? [','] : []), ...value);
     }
@@ -116,11 +115,11 @@ export function splitLine(line: readonly LineUnit[], runtime: CRuntime): LineUni
   }
 }
 
-/** A word from its units; dynamic when any of them is, as its text then holds a value not known yet. */
+/** A word from its units; dynamic when any of them is a piece, as its text then holds a value not known yet. */
 export function wordOfUnits(units: readonly LineUnit[]): ShellWord {
   return {
     text: units.map((unit) => (typeof unit === 'string' ? unit : unit.text)).join(''),
-    dynamic: units.some((unit) => typeof unit !== 'string' && unit.dynamic),
+    dynamic: units.some((unit) => typeof unit !== 'string'),
   };
 }
 
