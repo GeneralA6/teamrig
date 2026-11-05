@@ -395,6 +395,30 @@ describe('parseShell: PowerShell', () => {
     assert.deepEqual(plainWords('x *<#y z'), [['x', '*<#y', 'z']]);
     assert.equal(complete('x 1<#y z', 'powershell'), true);
   });
+
+  it('reads a . ahead of a plain quote or $ as a word of its own', () => {
+    assert.deepEqual(plainWords('x ."b c" y'), [['x', '.', 'b c', 'y']]);
+    assert.deepEqual(plainWords("x .'b c' y"), [['x', '.', 'b c', 'y']]);
+    assert.deepEqual(plainWords('x ."b c"d'), [['x', '.', 'b c', 'd']]);
+    assert.deepEqual(plainWords('x .$v y'), [['x', '.', '~$v', 'y']]);
+    assert.deepEqual(plainWords('x .(1) y'), [['1'], ['x', '.', '~(1)', 'y']]);
+    assert.deepEqual(plainWords('."git" push'), [['.', 'git', 'push']]);
+  });
+
+  it('reads the same . in a value: the word ends behind it', () => {
+    assert.deepEqual(plainWords('x -a:."b c" y'), [['x', '-a:.', 'b c', 'y']]);
+    assert.deepEqual(plainWords('x -a: ."b c" y'), [['x', '-a:', '.', 'b c', 'y']]);
+  });
+
+  it('keeps any other . as word text', () => {
+    const curly = `x .${String.fromCodePoint(0x201c)}b c${String.fromCodePoint(0x201d)} y`;
+    assert.deepEqual(plainWords(curly), [['x', '.b c', 'y']]);
+    assert.deepEqual(plainWords('x .a y'), [['x', '.a', 'y']]);
+    assert.deepEqual(plainWords('x .b"c d" y'), [['x', '.bc d', 'y']]);
+    assert.deepEqual(plainWords('x a."b c" y'), [['x', 'a.b c', 'y']]);
+    assert.deepEqual(plainWords(`x ..'b c' y`), [['x', '..b c', 'y']]);
+    assert.deepEqual(words('x ."b c" y'), [['x', '.b c', 'y']]);
+  });
 });
 
 describe('parseShell: cmd', () => {
