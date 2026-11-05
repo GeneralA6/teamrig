@@ -532,7 +532,8 @@ class LaunchReader {
       return NOTHING;
     }
     this.called = true;
-    const split = programArgs.flatMap((arg) => (arg.dynamic ? [arg] : arg.text.split(/\s+/).filter((part) => part !== '').map(staticWord)));
+    // The program splits this text itself, on a space or a tab: a wider split could fake a word such as `--verify`.
+    const split = programArgs.flatMap((arg) => (arg.dynamic ? [arg] : arg.text.split(/[ \t]+/).filter((part) => part !== '').map(staticWord)));
     return { kind: 'next', words: [program, ...split] };
   }
 

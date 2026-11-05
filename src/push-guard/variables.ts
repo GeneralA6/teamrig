@@ -88,8 +88,10 @@ interface LineBindings {
  * resolve too while the line assigns HOME nowhere.
  */
 export function resolveLiteralVariables(parsed: ShellParse, home?: string): readonly ShellCommand[] {
-  const bindings = LiteralBindings.read(parsed, home);
-  return parsed.commands.map((command, index) => ({ ...command, words: bindings.resolveWords(command.words, index) }));
+  return (parsed.readings ?? [parsed]).flatMap((reading) => {
+    const bindings = LiteralBindings.read(reading, home);
+    return reading.commands.map((command, index) => ({ ...command, words: bindings.resolveWords(command.words, index) }));
+  });
 }
 
 /**
