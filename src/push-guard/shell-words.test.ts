@@ -5,7 +5,7 @@ import { programsOf } from '../package-guard/programs.ts';
 import { bashLineReads } from '../readonly-shell/bash.ts';
 import { powershellLineReads } from '../readonly-shell/powershell.ts';
 import { prefixWords, type ReadonlyRules } from '../readonly-shell/rules.ts';
-import { BLANK_AND_LINE_END_ROWS, EXPRESSION_ROWS, POWERSHELL_BLANKS, POWERSHELL_DOUBLE_QUOTES, POWERSHELL_LINE_ENDS, POWERSHELL_SINGLE_QUOTES, QUOTE_ROWS, VALUE_ROWS, type ShellWordsRow } from '../testing/shell-words.ts';
+import { BLANK_AND_LINE_END_ROWS, ESCAPE_ROWS, EXPRESSION_ROWS, POWERSHELL_BLANKS, POWERSHELL_DOUBLE_QUOTES, POWERSHELL_ESCAPES, POWERSHELL_LINE_ENDS, POWERSHELL_SINGLE_QUOTES, QUOTE_ROWS, VALUE_ROWS, type ShellWordsRow } from '../testing/shell-words.ts';
 import { hookSkips } from './hook-skips.ts';
 import { findGitInvocations } from './invocations.ts';
 import { evaluatePushes, type PushDecision, type RepoState } from './push.ts';
@@ -86,6 +86,10 @@ describe('the guards read the words the shell runs', () => {
 
   it('judges a value among the arguments as one word', () => {
     VALUE_ROWS.forEach(assertVerdictsNoSofter);
+  });
+
+  it('holds on every backtick', () => {
+    ESCAPE_ROWS.forEach(assertNoSofter);
   });
 });
 
@@ -401,6 +405,50 @@ describe('parseShell: PowerShell --%', () => {
     const [, ...rest] = parseShell('x --% "%A%"', 'powershell').commands[0]?.words ?? [];
     assert.deepEqual(rest.map((word) => [word.text, word.dynamic]), [['--%', false], ['%A%', true]]);
     assert.deepEqual(wordsOf('x --% %a|y\u0085z%', 'powershell'), [['x', '--%', '%a'], ['y', 'z%']]);
+  });
+});
+
+describe('parseShell: PowerShell backticks', () => {
+  it('reads each letter of the real table as its character, bare and in quotes', () => {
+    for (const [letter, value] of POWERSHELL_ESCAPES) {
+      assert.deepEqual(wordsOf(`c a\`${letter}b`, 'powershell'), [['c', `a${value}b`]], letter);
+      assert.deepEqual(wordsOf(`c "a\`${letter}b"`, 'powershell'), [['c', `a${value}b`]], letter);
+    }
+  });
+
+  it('keeps every other letter, `e` and `u` among them, as 5.1 does', () => {
+    assert.deepEqual(wordsOf('c a`eb a`ub a`zb a`$b', 'powershell'), [['c', 'aeb', 'aub', 'azb', 'a$b']]);
+    assert.deepEqual(wordsOf('c "a`eb" "a`$b" "a`"b"', 'powershell'), [['c', 'aeb', 'a$b', 'a"b']]);
+  });
+
+  it('keeps an escaped blank in its word', () => {
+    assert.deepEqual(wordsOf('c a`\tb a` b', 'powershell'), [['c', 'a\tb', 'a b']]);
+  });
+
+  it('continues the line between words, whichever line end follows', () => {
+    for (const end of ['\n', '\r', '\r\n']) {
+      assert.deepEqual(wordsOf(`a \`${end}b`, 'powershell'), [['a', 'b']], JSON.stringify(end));
+    }
+  });
+
+  it('keeps one character of a line end inside a word, so the LF of a CR LF still ends the statement', () => {
+    assert.deepEqual(wordsOf('c a`\nb', 'powershell'), [['c', 'a\nb']]);
+    assert.deepEqual(wordsOf('c a`\rb', 'powershell'), [['c', 'a\rb']]);
+    assert.deepEqual(wordsOf('c a`\r\nb d', 'powershell'), [['c', 'a\r'], ['b', 'd']]);
+  });
+
+  it('keeps one character of a line end in quotes, the rest being text there', () => {
+    assert.deepEqual(wordsOf('c "a`\r\nb"', 'powershell'), [['c', 'a\r\nb']]);
+    assert.deepEqual(wordsOf('c @"\nx`ny\n"@', 'powershell'), [['c', 'x\ny']]);
+  });
+
+  it('keeps a backtick with nothing after it, or a NUL', () => {
+    assert.deepEqual(wordsOf('c a`', 'powershell'), [['c', 'a`']]);
+    assert.deepEqual(wordsOf('c "a`\0b"', 'powershell'), [['c', 'a`\0b']]);
+  });
+
+  it('keeps a backtick inside a -name: token as text', () => {
+    assert.deepEqual(wordsOf('c -a`b:"c"d e', 'powershell'), [['c', '-a`b:c', 'd', 'e']]);
   });
 });
 

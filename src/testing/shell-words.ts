@@ -25,6 +25,33 @@ export const POWERSHELL_SINGLE_QUOTES: readonly string[] = ["'", '\u2018', '\u20
 /** The units that open and close a PowerShell expandable string, from the same run. */
 export const POWERSHELL_DOUBLE_QUOTES: readonly string[] = ['"', '\u201c', '\u201d', '\u201e'];
 
+/** Each letter a PowerShell backtick changes and what it gives, bare and in quotes alike, from the same run. */
+export const POWERSHELL_ESCAPES: readonly (readonly [string, string])[] = [
+  ['0', '\0'],
+  ['a', '\x07'],
+  ['b', '\b'],
+  ['f', '\f'],
+  ['n', '\n'],
+  ['r', '\r'],
+  ['t', '\t'],
+  ['v', '\v'],
+];
+
+export const ESCAPE_ROWS: readonly ShellWordsRow[] = [
+  { dialect: 'powershell', typed: 'git commit -m x `\r--no-verify', real: 'git commit -m x --no-verify' },
+  { dialect: 'powershell', typed: 'git push origin `\rmain --force', real: 'git push origin main --force' },
+  { dialect: 'powershell', typed: 'npm install `\rleft-pad', real: 'npm install left-pad' },
+  { dialect: 'powershell', typed: 'Get-Content a`\r\ngit push origin main', real: 'Get-Content "a\r"; git push origin main' },
+  { dialect: 'powershell', typed: 'Get-Content a`\r\ngit commit -m x --no-verify', real: 'Get-Content "a\r"; git commit -m x --no-verify' },
+  { dialect: 'powershell', typed: 'Get-Content a`\r\nnpm install left-pad', real: 'Get-Content "a\r"; npm install left-pad' },
+  { dialect: 'powershell', typed: 'Get-Content a`\r\nRemove-Item b', real: 'Get-Content "a\r"; Remove-Item b' },
+  { dialect: 'powershell', typed: 'Invoke-Expression "git status`ngit push origin main"', real: 'git status; git push origin main' },
+  { dialect: 'powershell', typed: 'Invoke-Expression "git`tpush origin main"', real: 'git push origin main' },
+  { dialect: 'powershell', typed: 'Invoke-Expression "git commit -m x`t--no-verify"', real: 'git commit -m x --no-verify' },
+  { dialect: 'powershell', typed: 'Invoke-Expression "git status`rnpm install left-pad"', real: 'git status; npm install left-pad' },
+  { dialect: 'powershell', typed: 'powershell -Command "git status`ngit push origin main"', real: 'git status; git push origin main' },
+];
+
 export const QUOTE_ROWS: readonly ShellWordsRow[] = [
   { dialect: 'powershell', typed: 'git commit -m x \u201c--no-verify\u201d', real: 'git commit -m x --no-verify' },
   { dialect: 'powershell', typed: 'git commit -m x \u2018--no-verify\u2019', real: 'git commit -m x --no-verify' },
