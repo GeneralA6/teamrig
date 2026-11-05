@@ -18,6 +18,16 @@ export type LineUnit = string | LinePiece;
 const QUOTE = '"';
 const BACKSLASH = '\\';
 
+/** The text of PowerShell's verbatim marker, for the parser and the binder alike. */
+export const MARKER = '--%';
+
+/**
+ * The parser's `--%` on a line. Measured, the real line has no trace of it: inside quotes it adds nothing, not even a
+ * blank, so `'a "b' --% c d` hands a program `a b  c d`. Between words {@link splitLine} keeps it a word, as the plain
+ * reading does, so readings that agree still fold.
+ */
+export const PARSER_MARKER: LinePiece = { text: MARKER };
+
 /** .NET's `char.IsWhiteSpace`, which decides the binder's quotes; U+180E, U+200B and U+FEFF measured as no blank. */
 const BINDER_WHITE_SPACE = /[\t-\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]/;
 
@@ -86,9 +96,14 @@ export function splitLine(line: readonly LineUnit[], runtime: CRuntime): LineUni
     if (at >= line.length) {
       return words;
     }
+    if (line[at] === PARSER_MARKER) {
+      words.push([...MARKER]);
+      at += 1;
+      continue;
+    }
     const word: LineUnit[] = [];
     let quoted = false;
-    while (at < line.length && (quoted || !blankAt(at))) {
+    while (at < line.length && (quoted || !(blankAt(at) || line[at] === PARSER_MARKER))) {
       const unit = line[at];
       if (unit === BACKSLASH) {
         const run = backslashRun(line, at);
@@ -105,6 +120,8 @@ export function splitLine(line: readonly LineUnit[], runtime: CRuntime): LineUni
         quoted = runtime === 'ucrt';
       } else if (unit === QUOTE) {
         quoted = !quoted;
+        at += 1;
+      } else if (unit === PARSER_MARKER) {
         at += 1;
       } else if (unit !== undefined) {
         word.push(unit);

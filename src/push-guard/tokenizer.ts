@@ -1,5 +1,5 @@
 import { ansiCValue } from './ansi-c.ts';
-import { bareLine, expandedUnits, nativeWords, splitLine, verbatimLine, type CRuntime, type LineUnit } from './native-line.ts';
+import { bareLine, expandedUnits, MARKER, nativeWords, PARSER_MARKER, splitLine, verbatimLine, type CRuntime, type LineUnit } from './native-line.ts';
 
 /** Which shell wrote a command line; it decides the quotes, the escape character and what expands. */
 export type ShellDialect = 'bash' | 'powershell' | 'cmd';
@@ -403,10 +403,10 @@ function takesArguments(words: readonly ShellWord[], open: string): boolean {
   return head.dynamic || !STATEMENT_KEYWORDS.has(head.text.toLowerCase());
 }
 
-/** The text after a `--%`, and how many words stood before it. */
+/** What a `--%` puts on 5.1's line, and how many of the command's words stood before that. */
 interface VerbatimText {
   readonly at: number;
-  readonly units: readonly LineUnit[];
+  readonly line: readonly LineUnit[];
 }
 
 /**
@@ -470,18 +470,14 @@ function argumentsOf(words: readonly ShellWord[], start: number, end: number, ar
   return args;
 }
 
-/** The text of PowerShell's verbatim marker, for the parser and the binder alike. */
-const MARKER = '--%';
-
 /** The `markers` the binder takes: past the head at `start` and outside every array; see {@link nativeCommand}. */
 function boundMarkers(markers: readonly number[], start: number, arrays: readonly ArgumentArray[]): readonly number[] {
   return markers.filter((at) => at >= start && !arrays.some((array) => array.from <= at && at <= array.to));
 }
 
 /**
- * A command's words as 5.1 hands them to a native program; see {@link nativeWords}. The parser's `--%` is not on the real
- * line, but it stays a word here, as the plain reading keeps it: the binder leaves it as written, so readings that agree
- * still fold. Every head counts, a cmdlet's too: a word cannot tell the two apart, and a fork only adds a reading.
+ * A command's words as 5.1 hands them to a native program; see {@link nativeWords}. `text` holds the parser's `--%` as
+ * {@link PARSER_MARKER}. Every head counts, a cmdlet's too: a word cannot tell the two apart, and a fork only adds a reading.
  *
  * `markers` are the words whose value is `--%` with no parser marker in them. The binder drops that value, keeps the
  * argument's blank and any `-name:` before it, and writes each later value as {@link bareLine} does. Measured, a head is
@@ -498,7 +494,7 @@ function nativeCommand(words: readonly ShellWord[], text: VerbatimText | undefin
   const dropped = new Set(boundMarkers(markers, start, arrays));
   const line = words.map((word, at) => (dropped.has(at) ? { text: word.text.slice(0, -MARKER.length), dynamic: false } : word));
   const bareAt = Math.min(end, ...dropped);
-  const written = [...bareLine(argumentsOf(line, bareAt, end, arrays)), ...(text === undefined ? [] : verbatimLine(text.units))];
+  const written = [...bareLine(argumentsOf(line, bareAt, end, arrays)), ...(text?.line ?? [])];
   return [...words.slice(0, start), ...nativeWords(argumentsOf(line, start, bareAt, arrays), written, runtime)];
 }
 
@@ -785,6 +781,8 @@ class Scanner {
     let markers: number[] = [];
     /** 5.1's line: true right behind a whole value of `--%`, where a `-name` token turns on the parser's marker after all. */
     let tokenNext = false;
+    /** True while the last of `words` is the parser's `--%`: a NUL's cut can drop it, and a marker pair leaves none. */
+    let markerWord = false;
     let redirections: Redirection[] = [];
     let depth = 0;
     /** PowerShell: how many `{ }` of keywords are open here, so `{if (1) {a}}` closes at its last `}`. */
@@ -822,6 +820,11 @@ class Scanner {
       }
       lineCut ||= endsLine;
     };
+    /** Keeps what the parser's `--%` puts on 5.1's line; `at` is where the words of its text open. */
+    const keepVerbatim = (at: number, units: readonly LineUnit[]): void => {
+      verbatimText = markerWord ? { at: at - 1, line: [PARSER_MARKER, ...verbatimLine(units)] } : { at, line: verbatimLine(units) };
+      verbatim = false;
+    };
     /** `quoted` says the word is one quoted value, whose text is only text to the parser. */
     const endWord = (quoted = false): void => {
       const cut = word.isCut;
@@ -848,6 +851,7 @@ class Scanner {
         }
         // Set on a word the cut dropped too: the shell still reads the rest as written.
         verbatim = marks && !parserSkips;
+        markerWord = verbatim && words.length > at;
         // Measured: a `-name:` taken as a value takes none itself, so `x -y: -z: --% a;b` runs no `b`.
         valueNext = !valueNext && this.index === valueAt;
         element = false;
@@ -858,11 +862,14 @@ class Scanner {
     };
     const endCommand = (): void => {
       endWord();
+      if (verbatim) {
+        // Measured: a marker with no text behind it still adds its blanks, so `'a "b' --%` hands over `a b  `.
+        keepVerbatim(words.length, []);
+      }
       if (awaiting !== undefined) {
         redirections.push({ operator: awaiting });
         awaiting = undefined;
       }
-      verbatim = false;
       element = false;
       valueNext = false;
       tokenNext = false;
@@ -898,8 +905,7 @@ class Scanner {
         const at = words.length;
         const cut = lineCut;
         const units = this.readVerbatim(addWord);
-        verbatimText = { at, units: cut ? [] : units };
-        verbatim = false;
+        keepVerbatim(at, cut ? [] : units);
         continue;
       }
       if (keyNext) {

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { bareLine, expandedUnits, nativeWords, splitLine, verbatimLine, wordOfUnits, type CRuntime, type LineUnit } from './native-line.ts';
+import { bareLine, expandedUnits, nativeWords, PARSER_MARKER, splitLine, verbatimLine, wordOfUnits, type CRuntime, type LineUnit } from './native-line.ts';
 import type { ShellWord } from './tokenizer.ts';
 
 const text = (value: string): ShellWord => ({ text: value, dynamic: false });
@@ -187,6 +187,17 @@ describe('splitLine: the C runtimes on a real line', () => {
   it('reads a doubled quote outside quotes alike under both', () => {
     assert.deepEqual(split('a""b c', 'ucrt'), ['ab', 'c']);
     assert.deepEqual(split('a""b c', 'msvcrt'), ['ab', 'c']);
+  });
+
+  it('keeps the parser marker a word between words, and ends the word before it', () => {
+    const line: readonly LineUnit[] = [...' a', PARSER_MARKER, ...'  b'];
+    assert.deepEqual(splitLine(line, 'ucrt').map(wordOfUnits), [text('a'), text('--%'), text('b')]);
+    assert.deepEqual(splitLine([PARSER_MARKER, ...'  '], 'ucrt').map(wordOfUnits), [text('--%')]);
+  });
+
+  it('drops the parser marker inside quotes, which go on past it', () => {
+    const line: readonly LineUnit[] = [...' "a b', PARSER_MARKER, ...'  c" d'];
+    assert.deepEqual(splitLine(line, 'ucrt').map(wordOfUnits), [text('a b  c'), text('d')]);
   });
 
   it('takes no blank or quote from inside a piece', () => {

@@ -605,7 +605,24 @@ describe('parseShell: the line 5.1 writes for a native program', () => {
   });
 
   it('reads the text after a --% with the words before it', () => {
-    assert.deepEqual(readingsOf(`git commit 'a"' --% " --no-verify`).at(-1), [['git', 'commit', 'a --%  ', '--no-verify']]);
+    assert.deepEqual(readingsOf(`git commit 'a"' --% " --no-verify`).at(-1), [['git', 'commit', 'a  ', '--no-verify']]);
+  });
+
+  it('leaves no trace of a --% that falls inside the quotes of the words before it', () => {
+    assert.deepEqual(readingsOf(`x 'a "b' --% c d`).at(-1), [['x', 'a b  c d']]);
+    assert.deepEqual(readingsOf(`x 'a "b' '--%' c --% d`).at(-1), [['x', 'a b  c  d']]);
+    assert.deepEqual(readingsOf(`x '--%' 'a "b' --% c d`).at(-1), [['x', 'a', 'b  c d']]);
+  });
+
+  it('adds the blanks of a --% with no text behind it', () => {
+    assert.deepEqual(readingsOf(`x 'a "b' --%`).at(-1), [['x', 'a b  ']]);
+    assert.deepEqual(readingsOf(`x 'a "b' --%\ny`).at(-1), [['x', 'a b  '], ['y']]);
+  });
+
+  it('keeps a --% between the words of a reading, where the runtime part it from them', () => {
+    const readings = readingsOf(`x 'a "b' '""' --% c d`).map((reading) => JSON.stringify(reading));
+    assert.ok(readings.includes(JSON.stringify([['x', 'a b "', '--%', 'c', 'd']])));
+    assert.ok(readings.includes(JSON.stringify([['x', 'a b "  c d']])));
   });
 
   it('folds a --% line when the words before it open no quote', () => {
