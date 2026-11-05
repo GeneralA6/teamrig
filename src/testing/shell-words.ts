@@ -167,6 +167,23 @@ export const MARKER_ARRAY_ROWS: readonly ShellWordsRow[] = [
 ];
 
 /**
+ * A chain on a quoted `--%` that gives the value back is the binder's marker, with no token and no text the parser ever saw
+ * as one: what follows is written bare, so a quoted word comes apart and an option inside it reaches the program as a word
+ * of its own. The value is only known when the line runs. Each row's words are what node and git got from 5.1, run for real.
+ */
+export const MARKER_CHAIN_ROWS: readonly ShellWordsRow[] = [
+  { dialect: 'powershell', typed: `git commit '--%'.Trim() "--no-verify -mx"`, real: 'git commit --no-verify -mx' },
+  { dialect: 'powershell', typed: `git commit -m x '--%'.Trim() "--no-verify -my"`, real: 'git commit -m x --no-verify -my' },
+  { dialect: 'powershell', typed: `git commit '--%'.ToString() "--no-verify -mx"`, real: 'git commit --no-verify -mx' },
+  { dialect: 'powershell', typed: `git commit "--%".Trim() "--no-verify -mx"`, real: 'git commit --no-verify -mx' },
+  { dialect: 'powershell', typed: 'git commit "-`-%".Trim() "--no-verify -mx"', real: 'git commit --no-verify -mx' },
+  { dialect: 'powershell', typed: `git push '--%'.Trim() "origin main --force"`, real: 'git push origin main --force' },
+  { dialect: 'powershell', typed: `npm '--%'.Trim() "install left-pad"`, real: 'npm install left-pad' },
+  // A NUL further on takes the line down the readings' other branch, and cuts only its own value.
+  { dialect: 'powershell', typed: `git commit '--%'.Trim() "--no-verify -mx" "\`0"`, real: 'git commit --no-verify -mx' },
+];
+
+/**
  * Behind a digit word or `*`, PowerShell's `<` redirects nothing: it is word text, so neither the next word nor a `#` behind
  * it goes. Each row's words are what node got from 5.1, run for real.
  */
@@ -309,6 +326,12 @@ export const VALUE_ROWS: readonly ShellWordsRow[] = [
   { dialect: 'powershell', typed: 'git push origin --% %%W%', real: `git push origin '%x' main` },
   // A lone dot starts a head only known when it runs, as with a blank behind the dot: the guard asks.
   { dialect: 'powershell', typed: '.$g push origin main --force', real: '. $g push origin main --force' },
+  // A chain on a quoted `--%` gives a value only known when it runs, here a null, and the parser still goes by the text ahead
+  // of it: the token leaves the rest as one value, and the `"`s in that value split it.
+  { dialect: 'powershell', typed: `git commit '--%'.y -y m" "--no-verify" "n o`, real: `git commit m --no-verify 'n o'` },
+  { dialect: 'powershell', typed: `git commit -m x '--%'.y -y m" "--no-verify" "n o`, real: `git commit -m x m --no-verify 'n o'` },
+  { dialect: 'powershell', typed: `git push '--%'.y -y origin" "--force" "main x`, real: `git push origin --force 'main x'` },
+  { dialect: 'powershell', typed: `npm '--%'.y -y m" "install" "left-pad z`, real: `npm m install 'left-pad z'` },
 ];
 
 /**

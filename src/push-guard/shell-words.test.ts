@@ -5,7 +5,7 @@ import { programsOf } from '../package-guard/programs.ts';
 import { bashLineReads } from '../readonly-shell/bash.ts';
 import { powershellLineReads } from '../readonly-shell/powershell.ts';
 import { prefixWords, type ReadonlyRules } from '../readonly-shell/rules.ts';
-import { BLANK_AND_LINE_END_ROWS, COMMENT_CHAIN_ROWS, CUT_PARAMETER_ROWS, ESCAPE_ROWS, EXPRESSION_ROWS, LONE_DOT_ROWS, MARKER_ARRAY_ROWS, MARKER_TEXT_ROWS, MARKER_VALUE_ROWS, NATIVE_LINE_ROWS, NUL_ROWS, PARAMETER_ROWS, POWERSHELL_BLANKS, POWERSHELL_DOUBLE_QUOTES, POWERSHELL_ESCAPES, POWERSHELL_LINE_ENDS, POWERSHELL_SINGLE_QUOTES, QUOTE_ROWS, REDIRECTION_ROWS, VALUE_ROWS, type ShellWordsRow } from '../testing/shell-words.ts';
+import { BLANK_AND_LINE_END_ROWS, COMMENT_CHAIN_ROWS, CUT_PARAMETER_ROWS, ESCAPE_ROWS, EXPRESSION_ROWS, LONE_DOT_ROWS, MARKER_ARRAY_ROWS, MARKER_CHAIN_ROWS, MARKER_TEXT_ROWS, MARKER_VALUE_ROWS, NATIVE_LINE_ROWS, NUL_ROWS, PARAMETER_ROWS, POWERSHELL_BLANKS, POWERSHELL_DOUBLE_QUOTES, POWERSHELL_ESCAPES, POWERSHELL_LINE_ENDS, POWERSHELL_SINGLE_QUOTES, QUOTE_ROWS, REDIRECTION_ROWS, VALUE_ROWS, type ShellWordsRow } from '../testing/shell-words.ts';
 import { hookSkips } from './hook-skips.ts';
 import { findGitInvocations } from './invocations.ts';
 import { evaluatePushes, type PushDecision, type RepoState } from './push.ts';
@@ -117,6 +117,10 @@ describe('the guards read the words the shell runs', () => {
 
   it('holds on an array opened by a quoted --%, whose -name token leaves the rest as text', () => {
     MARKER_ARRAY_ROWS.forEach(assertNoSofter);
+  });
+
+  it('holds on a chain on a quoted --%, which may give the value back and leave what follows bare', () => {
+    MARKER_CHAIN_ROWS.forEach(assertNoSofter);
   });
 
   it('holds on a parameter whose first letter 5.1 lacks', () => {
@@ -1207,6 +1211,110 @@ describe("parseShell: the binder's --%, a value no parser took as its marker", (
 
     it('leaves the plain reading alone', () => {
       assert.deepEqual(plainWordsOf(`x '--%',a -y b c`), [['x', '--%', 'a', '-y', 'b', 'c']]);
+    });
+  });
+
+  describe('with a chain on it, whose value is only known when the line runs', () => {
+    /** Rows of a line and what its head's arguments are in the reading that keeps the chain's own value. */
+    function assertValueReadings(rows: readonly Row[]): void {
+      for (const [line, words] of rows) {
+        assert.deepEqual(readingsOf(line)[1], [['x', ...words]], line);
+      }
+    }
+
+    it('reads as the value where the chain gives it back, so what follows is written bare', () => {
+      assertLastReadings([
+        [`x '--%'.Trim() "a b" c`, ['a', 'b', 'c']],
+        [`x '--%'.ToString() -y b c`, ['b', 'c']],
+        [`x '--%'.ToString() -y b" "c d`, ['b c', 'd']],
+        ['x "-`-%".Trim() -y a b', ['a', 'b']],
+        [`x '--%'<#c#>.Trim() -y b c`, ['b', 'c']],
+        [`x '--%'.Trim() -y:v m`, ['v', 'm']],
+        [`x '--%'.Trim() -y`, []],
+      ]);
+    });
+
+    it('keeps what would end a command as text behind a -name token', () => {
+      assertLastReadings([[`x '--%'.Trim() -y b; c`, ['b;', 'c']]]);
+      assertValueReadings([[`x '--%'.y -y b; c`, ['--%.y', 'b; c']]]);
+    });
+
+    it('still leaves the rest as text when a NUL cut the line ahead of it, so no next command runs', () => {
+      assert.deepEqual(readingsOf(`x "a\`0b" '--%'.y -y b; c`)[0], [['x', 'a']]);
+    });
+
+    it('turns a -name token on only right behind it', () => {
+      assertLastReadings([
+        [`x '--%'.Trim() z -y b c`, ['z', '-y', 'b', 'c']],
+        [`x '--%'.Trim() 2>&1 -y b c`, ['-y', 'b', 'c']],
+      ]);
+    });
+
+    it('keeps its value in an array, and behind a -name: token', () => {
+      assertLastReadings([
+        [`x '--%'.Trim(),a -y b c`, ['--%,a', 'b c']],
+        [`x a,'--%'.Trim() -y b c`, ['a,--%', '-y', 'b', 'c']],
+        [`x -z: '--%'.Trim() -y b c`, ['-z:', '-y', 'b', 'c']],
+        [`x -z:'--%'.Trim() "a b"`, ['-z:', 'a', 'b']],
+      ]);
+    });
+
+    it('pairs with a plain marker on either side of it', () => {
+      assertLastReadings([
+        [`x '--%'.Trim() '--%' -y b c`, ['b', 'c']],
+        [`x '--%' '--%'.Trim() -y b c`, ['b', 'c']],
+      ]);
+    });
+
+    it('drops the value inside a quote the words before it opened', () => {
+      assertLastReadings([[`x 'a"' '--%'.Trim() -y b`, ['a  b']]]);
+    });
+
+    it('goes by the text ahead of a chain that gives anything else, so a -name token leaves the rest as one value', () => {
+      assertValueReadings([
+        [`x '--%'.y -y b c`, ['--%.y', 'b c']],
+        [`x '--%'[0] -y b c`, ['--%[0]', 'b c']],
+        [`x '--%'.y,a -y b c`, ['--%.y,a', 'b c']],
+        [`x '--%'.y <#c#> -y b c`, ['--%.y', 'b c']],
+        [`x '--%'<#c#>.y -y b c`, ['--%<#c#>.y', 'b c']],
+        [`x '--%'.y -y:v m`, ['--%.y', 'v m']],
+        [`x '--%'.y -y`, ['--%.y']],
+      ]);
+    });
+
+    it('opens nothing from a later element of an array', () => {
+      assertValueReadings([[`x a,'--%'.y -y b c`, ['a,--%.y', '-y', 'b', 'c']]]);
+    });
+
+    it('opens nothing behind a -name: token, another word or a redirection, so the value reading folds into the plain one', () => {
+      const rows: readonly (readonly [string, readonly string[], readonly string[]])[] = [
+        [`x -z:'--%'.y -y b c`, ['-z:--%.y', '-y', 'b', 'c'], ['-z:', '-y', 'b', 'c']],
+        [`x -z: '--%'.y -y b c`, ['-z:', '--%.y', '-y', 'b', 'c'], ['-z:', '-y', 'b', 'c']],
+        [`x '--%'.y z -y b c`, ['--%.y', 'z', '-y', 'b', 'c'], ['z', '-y', 'b', 'c']],
+        [`x '--%'.y 2>&1 -y b c`, ['--%.y', '-y', 'b', 'c'], ['-y', 'b', 'c']],
+      ];
+      for (const [line, value, chained] of rows) {
+        assert.deepEqual(readingsOf(line), [[['x', ...value]], [['x', ...chained]]], line);
+      }
+    });
+
+    it('opens nothing on a value a NUL cut, whose own word goes alone', () => {
+      assert.deepEqual(readingsOf(`x '--%' "--%\`0x".y -y b c`)[0], [['x', '--%', '-y', 'b', 'c']]);
+      assertLastReadings([[`x "--%\`0x".Length -y b c`, ['--%', '-y', 'b', 'c']]]);
+    });
+
+    it('forks no line with a % and no chain to tell apart', () => {
+      assert.deepEqual(readingsOf(`x 100% -y b c`), [[['x', '100%', '-y', 'b', 'c']]]);
+      assert.deepEqual(readingsOf(`x '100%'.Trim() -y b c`), [[['x', '100%.Trim()', '-y', 'b', 'c']]]);
+    });
+
+    it('forks no head, which is a value and no argument of a binder', () => {
+      assert.deepEqual(readingsOf(`'--%'.Trim()`), [[['--%.Trim()']]]);
+      assert.deepEqual(readingsOf(`'--%'.Trim(); git push origin main`), [[['--%.Trim()'], ['git', 'push', 'origin', 'main']]]);
+    });
+
+    it('leaves the plain reading alone', () => {
+      assert.deepEqual(plainWordsOf(`x '--%'.Trim() "a b" c`), [['x', '--%.Trim()', 'a b', 'c']]);
     });
   });
 });
