@@ -1239,11 +1239,12 @@ class Scanner {
 
   /**
    * True at what starts a redirection. In PowerShell `<` and `>` are word text inside a word, measured on its parser
-   * (T2002): `a>b c` hands the program `a>b` and `c`. Only a word of a descriptor alone gives way to one.
+   * (T2002): `a>b c` hands the program `a>b` and `c`. Only `>` gives way to a word of a descriptor alone: `2>x` redirects,
+   * where `1<x` and `*<#x y` hand the program those words whole, and a `#` behind that `<` opens no comment (T2003).
    */
   private opensRedirection(char: string, word: WordBuilder): boolean {
     if (char === '<' || char === '>') {
-      return this.dialect !== 'powershell' || !word.isStarted || DESCRIPTOR.test(word.value);
+      return this.dialect !== 'powershell' || !word.isStarted || (char === '>' && DESCRIPTOR.test(word.value));
     }
     return this.isOutputAndErrorRedirection(char);
   }
