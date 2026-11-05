@@ -1,4 +1,4 @@
-import { echoes, printsValue } from "./env.js";
+import { echoes, printsHeld } from "./env.js";
 import { isPrinter } from "./files.js";
 import { printsInline } from "./inline.js";
 /** A redirection of stdout to a file: `>`, `>>`, `1>`, `>|`, and `&>` or `*>`, which take every stream. */
@@ -69,13 +69,13 @@ export function quiet(command) {
 }
 /**
  * True when the command holding a substitution prints the value it takes: an echo, a file printer, inline code that
- * prints (`node -e "console.log('$(cat t)')"`), a PowerShell expression.
+ * prints (`node -e "console.log('$(cat t)')"`), a PowerShell expression other than a call taking it as an argument.
  */
 function holderPrints(holder) {
     if (holder === undefined) {
         return true;
     }
-    const prints = 'name' in holder ? echoes(holder) || isPrinter(holder.name) || printsInline(holder) : printsValue(holder);
+    const prints = 'name' in holder ? echoes(holder) || isPrinter(holder.name) || printsInline(holder) : printsHeld(holder);
     return prints && !quiet(holder);
 }
 /** True when the last redirection of stdout sends it to a file. */

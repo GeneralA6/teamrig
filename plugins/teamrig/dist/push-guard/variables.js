@@ -47,8 +47,10 @@ const OPERATOR_LINKS = new Map([
  * resolve too while the line assigns HOME nowhere.
  */
 export function resolveLiteralVariables(parsed, home) {
-    const bindings = LiteralBindings.read(parsed, home);
-    return parsed.commands.map((command, index) => ({ ...command, words: bindings.resolveWords(command.words, index) }));
+    return (parsed.readings ?? [parsed]).flatMap((reading) => {
+        const bindings = LiteralBindings.read(reading, home);
+        return reading.commands.map((command, index) => ({ ...command, words: bindings.resolveWords(command.words, index) }));
+    });
 }
 /**
  * The values a bash line gives its variables, and where they surely hold. It trusts only a binding statement

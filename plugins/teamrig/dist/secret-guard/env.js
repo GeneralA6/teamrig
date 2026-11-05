@@ -43,9 +43,9 @@ const ENV_DRIVE_READERS = new Set([
     'type',
 ]);
 /** `[Environment]::GetEnvironmentVariables()`, which returns every variable. */
-export const ENVIRONMENT_DUMP = /^\[(?:system\.)?environment\]::getenvironmentvariables$/;
-/** `[Environment]::GetEnvironmentVariable('NAME')`, whose argument the tokenizer does not keep: read from the line. */
-export const ENVIRONMENT_READ = /^\[(?:system\.)?environment\]::getenvironmentvariable$/;
+const ENVIRONMENT_DUMP = /^\[(?:system\.)?environment\]::getenvironmentvariables$/;
+/** `[Environment]::GetEnvironmentVariable('NAME')`, whose argument is read from the line by {@link environmentReads}. */
+const ENVIRONMENT_READ = /^\[(?:system\.)?environment\]::getenvironmentvariable$/;
 /**
  * A bash variable reference whose value the word prints: `$NAME`, `${NAME}`, `${NAME:-x}`, `${NAME:0:4}`; not its
  * length (`${#NAME}`), a test of whether it is set (`${NAME:+x}`) or an indirect `${!NAME}`.
@@ -106,9 +106,6 @@ export function envFindings(run, secrets) {
     if (run.dialect === 'powershell' && ENV_DRIVE_READERS.has(run.name)) {
         return texts.flatMap((text) => envDrive(text, secrets));
     }
-    if (ENVIRONMENT_DUMP.test(run.name)) {
-        return [{ kind: 'environment' }];
-    }
     const echoed = echoes(run) ? run.args.flatMap((arg) => wordNames(arg, run.dialect)) : [];
     const fed = run.stdin !== undefined && run.stdin.dynamic && isPrinter(run.name) ? wordNames(run.stdin, run.dialect) : [];
     return variables([...echoed, ...fed], secrets);
@@ -149,9 +146,19 @@ export function printsValue(bare) {
     }
     return bare.dialect === 'bash' && head === 'env' && !texts.some((text) => ENV_EMPTIED.has(text));
 }
+/** True for a PowerShell `[Type]::Member( )`: what it prints is what the call returns, not the arguments it takes. */
+function isStaticCall(bare) {
+    const [head, group] = bare.words;
+    return bare.dialect === 'powershell' && head !== undefined && group !== undefined && /^\[.*\]::/.test(head.text) && group.text.startsWith('(');
+}
+/** True when a command that starts no program prints what a substitution or a group hands it. */
+export function printsHeld(bare) {
+    return printsValue(bare) && !isStaticCall(bare);
+}
 /**
  * What a command that starts no program prints from the environment: a bare `env`, cmd's `set` (with a prefix too,
- * which lists every variable it starts), or a PowerShell expression that prints a secret variable.
+ * which lists every variable it starts), or a PowerShell expression that prints every variable or a secret one. A
+ * `[Type]::Member` at a statement's start is such an expression, never a program.
  */
 export function bareFindings(bare, secrets) {
     const texts = bare.words.map((word) => word.text);
@@ -164,9 +171,14 @@ export function bareFindings(bare, secrets) {
         return operand === undefined || (!operand.startsWith('/') && !operand.includes('=')) ? [{ kind: 'environment' }] : [];
     }
     if (bare.dialect === 'powershell' && printsValue(bare)) {
-        return variables(texts.flatMap((text) => printedNames(text, 'powershell')), secrets);
+        const printing = isStaticCall(bare) ? texts.slice(2) : texts;
+        return ENVIRONMENT_DUMP.test(head) ? [{ kind: 'environment' }] : variables(printing.flatMap((text) => printedNames(text, 'powershell')), secrets);
     }
     return [];
+}
+/** True when a PowerShell expression prints what `[Environment]::GetEnvironmentVariable('NAME')` returns. */
+export function readsEnvironment(bare) {
+    return bare.dialect === 'powershell' && printsValue(bare) && ENVIRONMENT_READ.test((bare.words[0]?.text ?? '').toLowerCase());
 }
 /** The variables `[Environment]::GetEnvironmentVariable('NAME')` reads on the line, outside an assignment. */
 export function environmentReads(command, secrets) {
