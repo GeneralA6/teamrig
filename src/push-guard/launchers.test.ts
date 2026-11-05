@@ -205,6 +205,30 @@ describe('launch: PowerShell expressions and launchers', () => {
     );
   });
 
+  it('reads any assignment target, and no other word, as an assignment', () => {
+    expectLaunches(
+      [
+        ['$h.a = git push', 'program git push'],
+        ['$h.a=git push', 'program git push'],
+        ['$w[0] = git push', 'program git push'],
+        ['$w[0]=git push', 'program git push'],
+        ['$w[$a[0]]=git push', 'program git push'],
+        ['$w[$i=0]=git push', 'program git push'],
+        ['${a=b} = git push', 'program git push'],
+        ['$p,$q = git push', 'program git push'],
+        ['$p,$q=git push', 'program git push'],
+        ['$x ??= git push', 'program git push'],
+        ['$a = $b = git push', 'program git push'],
+        ['[int]$h.a = git push', 'program git push'],
+        ['$x -eq 1', 'nothing'],
+        ['$p,$q', 'nothing'],
+        ['$p,b=git', 'nothing'],
+        ['git commit -m x = y', 'program git commit -m x = y'],
+      ],
+      'powershell',
+    );
+  });
+
   it('reads Invoke-Expression and Start-Process', () => {
     expectLaunches(
       [

@@ -52,9 +52,16 @@ export const QUOTE_ROWS: readonly ShellWordsRow[] = [
   { dialect: 'powershell', typed: 'git commit --no-verify --% x\u00a0--verify', real: 'git commit --no-verify --% "x\u00a0--verify"' },
 ];
 
+/** An assignment runs its right side, whatever its target is; the last rows are a target's bracket holding an `=`. */
+const ASSIGNMENT_OPENERS = ['$h.a = ', '$h.a=', '$w[0]=', '$w[0] = ', '$p,$q=', '$p,$q = ', '$h.a += ', '[int]$h.a = ', '$a = $h.b = ', '$w[$a[0]]=', '$w[$i=0]=', '${a=b} = '];
+
+/** One program of each kind a guard reads, as the real line runs it. */
+const GUARDED_PROGRAMS = ['git push origin main', 'git commit -m x --no-verify', 'npm install left-pad'];
+
 export const EXPRESSION_ROWS: readonly ShellWordsRow[] = [
   { dialect: 'powershell', typed: 'git commit -m a<#x --no-verify', real: 'git commit -m "a<#x" --no-verify' },
   { dialect: 'powershell', typed: 'git commit -m a>#b --no-verify', real: 'git commit -m "a>#b" --no-verify' },
+  ...ASSIGNMENT_OPENERS.flatMap((opener) => GUARDED_PROGRAMS.map((real) => ({ dialect: 'powershell' as const, typed: `${opener}${real}`, real }))),
 ];
 
 export const BLANK_AND_LINE_END_ROWS: readonly ShellWordsRow[] = [

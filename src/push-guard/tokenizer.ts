@@ -205,6 +205,49 @@ export function parseHeldText(held: string): ShellParse {
   return new Scanner(held, 'bash', { nesting: 0, subshells: [], ids: { next: 0 } }).parseExpandable();
 }
 
+/** What may stand before the `=` of a PowerShell assignment that has no target in the same word. */
+const ASSIGNMENT_PREFIX = /^(?:[-+*/%]|\?\?)?$/;
+
+/** Where a word's first `=` outside any bracket sits, so the `=` in `$w[$i=0]=a` or `${a=b}=a` is the last one. */
+function assignmentAt(text: string): number | undefined {
+  let depth = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text.charAt(index);
+    if (char === '=' && depth === 0) {
+      return index;
+    }
+    depth += /[[({]/.test(char) ? 1 : /[\])}]/.test(char) ? -1 : 0;
+  }
+  return undefined;
+}
+
+/**
+ * PowerShell: the words an assignment's right side runs, when `words` open with one, else undefined. A target is a
+ * variable with any member or index, and a list of them (`$p, $q = ...`) is one too; casts before the first are
+ * skipped. Only a target at the start opens one: a bare `=` among a program's arguments is text.
+ */
+export function assignedWords(words: readonly ShellWord[]): readonly ShellWord[] | undefined {
+  for (const [index, word] of words.entries()) {
+    const text = index === 0 ? word.text.replace(/^(?:\[[^\]]+\])+/, '') : word.text;
+    const at = assignmentAt(text);
+    const left = text.slice(0, at);
+    const target = left.startsWith('$');
+    if (at === undefined) {
+      if (target) {
+        continue;
+      }
+      return undefined;
+    }
+    if (!target && (index === 0 || !ASSIGNMENT_PREFIX.test(left))) {
+      return undefined;
+    }
+    const right = text.slice(at + 1);
+    const rest = words.slice(index + 1);
+    return right === '' ? rest : [{ text: right, dynamic: /[$@]/.test(right) }, ...rest];
+  }
+  return undefined;
+}
+
 /** Characters bash expands in unquoted text: a glob, or `~` for a home folder. */
 const EXPANDS = /[*?[~]/;
 
