@@ -5,7 +5,7 @@ import { programsOf } from '../package-guard/programs.ts';
 import { bashLineReads } from '../readonly-shell/bash.ts';
 import { powershellLineReads } from '../readonly-shell/powershell.ts';
 import { prefixWords, type ReadonlyRules } from '../readonly-shell/rules.ts';
-import { BLANK_AND_LINE_END_ROWS, COMMENT_CHAIN_ROWS, CUT_PARAMETER_ROWS, ESCAPE_ROWS, EXPRESSION_ROWS, LONE_DOT_ROWS, MARKER_TEXT_ROWS, MARKER_VALUE_ROWS, NATIVE_LINE_ROWS, NUL_ROWS, PARAMETER_ROWS, POWERSHELL_BLANKS, POWERSHELL_DOUBLE_QUOTES, POWERSHELL_ESCAPES, POWERSHELL_LINE_ENDS, POWERSHELL_SINGLE_QUOTES, QUOTE_ROWS, REDIRECTION_ROWS, VALUE_ROWS, type ShellWordsRow } from '../testing/shell-words.ts';
+import { BLANK_AND_LINE_END_ROWS, COMMENT_CHAIN_ROWS, CUT_PARAMETER_ROWS, ESCAPE_ROWS, EXPRESSION_ROWS, LONE_DOT_ROWS, MARKER_ARRAY_ROWS, MARKER_TEXT_ROWS, MARKER_VALUE_ROWS, NATIVE_LINE_ROWS, NUL_ROWS, PARAMETER_ROWS, POWERSHELL_BLANKS, POWERSHELL_DOUBLE_QUOTES, POWERSHELL_ESCAPES, POWERSHELL_LINE_ENDS, POWERSHELL_SINGLE_QUOTES, QUOTE_ROWS, REDIRECTION_ROWS, VALUE_ROWS, type ShellWordsRow } from '../testing/shell-words.ts';
 import { hookSkips } from './hook-skips.ts';
 import { findGitInvocations } from './invocations.ts';
 import { evaluatePushes, type PushDecision, type RepoState } from './push.ts';
@@ -113,6 +113,10 @@ describe('the guards read the words the shell runs', () => {
 
   it('holds on an option whose value stands behind --%', () => {
     MARKER_VALUE_ROWS.forEach(assertNoSofter);
+  });
+
+  it('holds on an array opened by a quoted --%, whose -name token leaves the rest as text', () => {
+    MARKER_ARRAY_ROWS.forEach(assertNoSofter);
   });
 
   it('holds on a parameter whose first letter 5.1 lacks', () => {
@@ -1130,6 +1134,79 @@ describe("parseShell: the binder's --%, a value no parser took as its marker", (
 
     it('leaves the plain reading alone', () => {
       assert.deepEqual(plainWordsOf(`x '--%' -y:a b`), [['x', '--%', '-y:a', 'b']]);
+    });
+  });
+
+  describe('opening an array, with a -name token right behind that', () => {
+    it('stays an argument, and the token leaves the rest as one value', () => {
+      assertLastReadings([
+        [`x '--%',a -y b c`, ['--%,a', 'b c']],
+        [`x "--%",a -y b c`, ['--%,a', 'b c']],
+        [`x '--%',a,b -y b c`, ['--%,a,b', 'b c']],
+        [`x '--%',-z -y b c`, ['--%,-z', 'b c']],
+        [`x '--%','' -y b c`, ['--%', 'b c']],
+      ]);
+    });
+
+    it('drops the blanks ahead of the text and keeps those behind it', () => {
+      assertLastReadings([[`x '--%',a -y   b c  `, ['--%,a', 'b c  ']]]);
+    });
+
+    it('takes no text as an empty value, which hands over no word of its own', () => {
+      assertLastReadings([
+        [`x '--%',a -y`, ['--%,a']],
+        [`x '--%',a -y:`, ['--%,a']],
+        [`x '--%',a -y   `, ['--%,a']],
+        [`x '--%',a -y ""`, ['--%,a', '']],
+      ]);
+    });
+
+    it('writes the blank of that empty value, shown by a quote the words before it opened', () => {
+      assertLastReadings([
+        [`x 'a"' '--%',a -y`, ['a --%,a ']],
+        [`x 'a"' '--%',a -y:`, ['a --%,a ']],
+        [`x 'a"' '--%',a -y   `, ['a --%,a ']],
+        [`x 'a"' '--%',a -y b`, ['a --%,a b']],
+      ]);
+    });
+
+    it('keeps what would end or expand a word as text', () => {
+      assertLastReadings([
+        [`x '--%',a -y %W% b`, ['--%,a', '%W% b']],
+        [`x '--%',a -y b; c`, ['--%,a', 'b; c']],
+        [`x '--%',a -y b<#c#> d`, ['--%,a', 'b<#c#> d']],
+      ]);
+    });
+
+    it('takes a value on the token as the start of the text', () => {
+      assertLastReadings([
+        [`x '--%',a -y:v m`, ['--%,a', 'v m']],
+        [`x '--%',a -y: m`, ['--%,a', 'm']],
+      ]);
+    });
+
+    it('reaches the token past a comment', () => {
+      assertLastReadings([[`x '--%',a <#c#> -y b c`, ['--%,a', 'b c']]]);
+    });
+
+    it('opens nothing behind another word, a redirection, or from a later element', () => {
+      assertLastReadings([
+        [`x '--%',a z -y b c`, ['--%,a', 'z', '-y', 'b', 'c']],
+        [`x '--%',a 2>&1 -y b c`, ['--%,a', '-y', 'b', 'c']],
+        [`x a,'--%' -y b c`, ['a,--%', '-y', 'b', 'c']],
+      ]);
+    });
+
+    it('stays a word of its own in front of a gapped comma, whose element then takes the token', () => {
+      assertLastReadings([[`x '--%' , a -y b c`, ['--%', 'a', 'b c']]]);
+    });
+
+    it('ends with its command, so the next one reads its words', () => {
+      assert.deepEqual(readingsOf(`x '--%',a; -y b c`).at(-1), [['x', '--%,a'], ['-y', 'b', 'c']]);
+    });
+
+    it('leaves the plain reading alone', () => {
+      assert.deepEqual(plainWordsOf(`x '--%',a -y b c`), [['x', '--%', 'a', '-y', 'b', 'c']]);
     });
   });
 });

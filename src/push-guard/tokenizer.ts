@@ -786,6 +786,11 @@ class Scanner {
     let markers: number[] = [];
     /** 5.1's line: true right behind a whole value of `--%`, where a `-name` token turns on the parser's marker after all. */
     let tokenNext = false;
+    /**
+     * 5.1's line: true from an argument that opens with a constant `--%` through its array, where a `-name` token leaves the
+     * line and turns the rest to text. {@link tokenNext} says the argument goes with it; else the rest is one more value.
+     */
+    let opensText = false;
     /** True when the parser's `--%` opened the text: a NUL's cut can drop it, and a marker pair leaves none. */
     let markerWord = false;
     let redirections: Redirection[] = [];
@@ -840,6 +845,7 @@ class Scanner {
         return;
       }
       tokenNext = false;
+      opensText &&= element;
       if (awaiting === undefined) {
         const at = words.length;
         addWord(taken, cut);
@@ -853,6 +859,7 @@ class Scanner {
           // Measured: a marker that is a `-name:` token's value never does it, so `-x: '--%' -y:a` stays the binder's. That
           // leaves the quoted word of `parserSkips`.
           tokenNext = !valueNext && token === 0 && takenMarkers().includes(at);
+          opensText = tokenNext;
         }
         // Set on a word the cut dropped too: the shell still reads the rest as written.
         verbatim = marks && !parserSkips;
@@ -884,6 +891,7 @@ class Scanner {
       element = false;
       valueNext = false;
       tokenNext = false;
+      opensText = false;
       lineCut = false;
       const { nativeLine } = this.reading;
       const command: ScannedCommand | undefined =
@@ -938,15 +946,20 @@ class Scanner {
         endCommand();
         return;
       }
-      const bareToken = tokenNext && !word.isStarted ? this.parameterEnd(BARE_PARAMETER) : undefined;
+      const bareToken = opensText && !element && !word.isStarted ? this.parameterEnd(BARE_PARAMETER) : undefined;
       if (bareToken !== undefined) {
-        // Measured: the marker and the token both leave the line, and the rest is text, `;` included. Blanks, comments and
-        // gaps may sit between them, and none of those ends a word, so `tokenNext` outlives them. The text runs to the end
-        // of the command, whose `endCommand` clears it.
-        words.pop();
-        markers.pop();
+        // Measured: the token leaves the line and the rest is text, `;` included. Blanks, comments and gaps may sit ahead of
+        // it, and none of those ends a word, so `opensText` outlives them. A lone `--%` goes with the token; an array stays
+        // an argument, and the binder then writes the text as a value: `'--%',a -y b c` hands over `--%,a` and `b c`. The text
+        // runs to the end of the command, whose `endCommand` clears both.
         this.index = bareToken;
-        verbatim = true;
+        if (tokenNext) {
+          words.pop();
+          markers.pop();
+          verbatim = true;
+        } else {
+          this.readTextValue(addWord);
+        }
         continue;
       }
       const parameter = powershell && (!word.isStarted || this.index === valueAt) ? this.parameterEnd(PARAMETER) : undefined;
@@ -1054,6 +1067,7 @@ class Scanner {
         }
         // Measured: `'--%' 2>&1 -y:a b` keeps its token, and the descriptor's word below ends with no `endWord`.
         tokenNext = false;
+        opensText = false;
         // A file-descriptor number (`2>`), PowerShell's `*>` or bash's `{NAME}>` belongs to the redirection.
         const named = this.dialect === 'bash' && /^\{[A-Za-z_]\w*\}$/.test(word.value);
         let descriptor = '';
@@ -1993,6 +2007,21 @@ class Scanner {
       addWord(word.word(), word.isCut);
     }
     return text;
+  }
+
+  /**
+   * 5.1's line: the text up to {@link verbatimEnd} as the one value it is to the binder, which may quote it, so a `%NAME%` in
+   * it stays text. Measured: leading blanks go, trailing ones stay, and no text is an empty value, which writes only its blank.
+   */
+  private readTextValue(addWord: (taken: ShellWord, cut: boolean) => void): void {
+    while (BLANKS.powershell.test(this.at())) {
+      this.index += 1;
+    }
+    const end = this.verbatimEnd();
+    const word = new WordBuilder(false, this.reading.nul !== 'kept');
+    word.add(this.source.slice(this.index, end));
+    addWord(word.word(), word.isCut);
+    this.index = end;
   }
 
   /** The text after `--%` as a line; see {@link expandedUnits}. */

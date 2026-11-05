@@ -148,6 +148,25 @@ export const MARKER_VALUE_ROWS: readonly ShellWordsRow[] = [
 ];
 
 /**
+ * An array opened by a quoted `--%` stays an argument, and a `-name` token right behind it leaves the rest of the command as
+ * one value, which the binder writes in its own quotes: a `"` in that text closes them, so the words inside it reach the
+ * program. Each row's words are what node and git got from 5.1, run for real.
+ */
+export const MARKER_ARRAY_ROWS: readonly ShellWordsRow[] = [
+  { dialect: 'powershell', typed: `git commit '--%',a -y m" "--no-verify" "n o`, real: `git commit '--%,a' m --no-verify 'n o'` },
+  { dialect: 'powershell', typed: `git commit -m '--%',a -y m" "--no-verify" "n o`, real: `git commit -m '--%,a' m --no-verify 'n o'` },
+  { dialect: 'powershell', typed: `git commit -m x '--%',a -y m" "--no-verify" "n o`, real: `git commit -m x '--%,a' m --no-verify 'n o'` },
+  { dialect: 'powershell', typed: `git commit "--%",a -y m" "--no-verify" "n o`, real: `git commit '--%,a' m --no-verify 'n o'` },
+  { dialect: 'powershell', typed: `git commit '--%',a,b -y m" "--no-verify" "n o`, real: `git commit '--%,a,b' m --no-verify 'n o'` },
+  { dialect: 'powershell', typed: `git commit '--%',a -y: m" "--no-verify" "n o`, real: `git commit '--%,a' m --no-verify 'n o'` },
+  { dialect: 'powershell', typed: `git commit '--%',a -y:v m" "--no-verify" "n o`, real: `git commit '--%,a' 'v m' --no-verify 'n o'` },
+  { dialect: 'powershell', typed: `git commit '--%',a <#c#> -y m" "--no-verify" "n o`, real: `git commit '--%,a' m --no-verify 'n o'` },
+  { dialect: 'powershell', typed: `git push '--%',a -y origin" "--force" "main x`, real: `git push '--%,a' origin --force 'main x'` },
+  { dialect: 'powershell', typed: `git push origin main '--%',a -y x" "--force" "y z`, real: `git push origin main '--%,a' x --force 'y z'` },
+  { dialect: 'powershell', typed: `npm '--%',a -y m" "install" "left-pad z`, real: `npm '--%,a' m install 'left-pad z'` },
+];
+
+/**
  * Behind a digit word or `*`, PowerShell's `<` redirects nothing: it is word text, so neither the next word nor a `#` behind
  * it goes. Each row's words are what node got from 5.1, run for real.
  */
