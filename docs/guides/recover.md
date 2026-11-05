@@ -60,6 +60,13 @@ teamrig restore run      # reopen the sessions the last shutdown killed
   taskbar if you like). It opens a window running `teamrig restore run`, with its list and countdown, after a crash,
   a reboot or a window you closed, with no terminal or folder to pick first. An older shortcut of that name, pinned or
   not, is repointed in place on the next install.
+- After a plugin update: the first session start of the newer teamrig brings up to date what the install left, so
+  nothing stays old: the two launchers, the status line's launcher, the logon entry and each `Restore Claude
+  Sessions` shortcut, pointed at the Node Claude Code runs teamrig's hooks with. It only changes what is there, so a
+  machine that never ran the install, or ran `restore uninstall`, stays as it is. Each change is a `launchers: <old
+  version> -> <new version>: <change>` line in `restore/restore.log`; a change that fails is logged there with
+  `FAILED`, and the next session start tries again. An older teamrig still running beside the newer one changes
+  nothing.
 
 ## A fresh context
 
