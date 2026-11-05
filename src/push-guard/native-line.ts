@@ -43,14 +43,14 @@ function bound(value: string): string {
 }
 
 /**
- * One argument's units. An array literal with no blank in it is one argument: its elements are quoted one by one and
- * joined by a comma, and an empty one adds nothing, the comma included. A value of one empty element adds nothing at
- * all, so the program never sees it.
+ * One argument's units, each static value as `written` gives it. An array literal with no blank in it is one argument:
+ * its elements are written one by one and joined by a comma, and an empty one adds nothing, the comma included. A value
+ * of one empty element adds nothing at all, so the program never sees it.
  */
-function boundArgument(elements: readonly ShellWord[]): LineUnit[] {
+function argumentUnits(elements: readonly ShellWord[], written: (value: string) => string): LineUnit[] {
   const units: LineUnit[] = [];
   for (const element of elements) {
-    const value: readonly LineUnit[] = element.dynamic ? [{ text: element.text }] : [...bound(element.text)];
+    const value: readonly LineUnit[] = element.dynamic ? [{ text: element.text }] : [...written(element.text)];
     if (value.length > 0) {
       units.push(...(units.length > 0 ? [','] : []), ...value);
     }
@@ -129,6 +129,14 @@ export function verbatimLine(text: readonly LineUnit[]): LineUnit[] {
   return [' ', ' ', ...(start === -1 ? [] : text.slice(start))];
 }
 
+/**
+ * What arguments add to the line behind the binder's `--%`, a value equal to it that no parser took as its marker:
+ * measured, each keeps its blank and goes in as it stands, so `'--%' 'a b' c` hands a program `a`, `b` and `c`.
+ */
+export function bareLine(args: readonly (readonly ShellWord[])[]): LineUnit[] {
+  return args.flatMap((elements) => [' ', ...argumentUnits(elements, (value) => value)]);
+}
+
 /** A line up to its first NUL, as a program's command line is one C string; a piece keeps the text before it. */
 function untilNul(line: readonly LineUnit[]): LineUnit[] {
   const kept: LineUnit[] = [];
@@ -145,11 +153,11 @@ function untilNul(line: readonly LineUnit[]): LineUnit[] {
 
 /**
  * The words a native program gets from Windows PowerShell 5.1, its head left out: `args` are its arguments, each the
- * elements of one argument, and `verbatim` what a `--%` adds to the line, as {@link verbatimLine} gives it. The binder
- * writes one line and the runtime splits it again, so a value's quote can open onto the words after it and a word can
- * come apart.
+ * elements of one argument, and `written` what follows them on the line as it stands, as {@link bareLine} and
+ * {@link verbatimLine} give it. The binder writes one line and the runtime splits it again, so a value's quote can open
+ * onto the words after it and a word can come apart.
  */
-export function nativeWords(args: readonly (readonly ShellWord[])[], verbatim: readonly LineUnit[], runtime: CRuntime): ShellWord[] {
-  const line = [...args.flatMap((elements) => [' ', ...boundArgument(elements)]), ...verbatim];
+export function nativeWords(args: readonly (readonly ShellWord[])[], written: readonly LineUnit[], runtime: CRuntime): ShellWord[] {
+  const line = [...args.flatMap((elements) => [' ', ...argumentUnits(elements, bound)]), ...written];
   return splitLine(untilNul(line), runtime).map(wordOfUnits);
 }

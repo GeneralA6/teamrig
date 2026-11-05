@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { nativeWords, splitLine, verbatimLine, wordOfUnits, type CRuntime, type LineUnit } from './native-line.ts';
+import { bareLine, nativeWords, splitLine, verbatimLine, wordOfUnits, type CRuntime, type LineUnit } from './native-line.ts';
 import type { ShellWord } from './tokenizer.ts';
 
 const text = (value: string): ShellWord => ({ text: value, dynamic: false });
@@ -99,6 +99,30 @@ describe('verbatimLine: what a --% adds to the line', () => {
 
   it('keeps a piece at the start of the text', () => {
     assert.deepEqual(verbatimLine([' ', { text: '%A%' }]), [' ', ' ', { text: '%A%' }]);
+  });
+});
+
+describe("bareLine: what arguments add behind the binder's --%", () => {
+  it('writes each value behind one blank, with no quotes, so it comes apart on the line', () => {
+    assert.deepEqual(bareLine([[text('a b')], [text('c')]]), [...' a b c']);
+    assert.deepEqual(nativeWords([], bareLine([[text('a b')], [text('c')]]), 'ucrt'), [text('a'), text('b'), text('c')]);
+  });
+
+  it('keeps the blank of an empty value', () => {
+    assert.deepEqual(bareLine([[text('')], [text('a')]]), [...'  a']);
+  });
+
+  it('joins an array by the comma, leaving out an empty element', () => {
+    assert.deepEqual(bareLine([[text('a b'), text(''), text('c d')]]), [...' a b,c d']);
+  });
+
+  it('keeps a dynamic value a piece', () => {
+    assert.deepEqual(bareLine([[dynamic('$v')], [text('c')]]), [' ', { text: '$v' }, ' ', 'c']);
+  });
+
+  it('reads on through a quote the words before it opened', () => {
+    const written = bareLine([[text('')], [text('')], [text('b c')]]);
+    assert.deepEqual(nativeWords([[text('a"')]], written, 'ucrt'), [text('a   b c')]);
   });
 });
 

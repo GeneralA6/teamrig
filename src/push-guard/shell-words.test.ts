@@ -433,9 +433,9 @@ describe('parseShell: PowerShell here-strings', () => {
 });
 
 describe('parseShell: PowerShell --%', () => {
-  it('is no marker in a word a quote starts', () => {
-    assert.deepEqual(wordsOf("x '--%' a; y", 'powershell'), [['x', '--%', 'a'], ['y']]);
-    assert.deepEqual(wordsOf('x "--%" a; y', 'powershell'), [['x', '--%', 'a'], ['y']]);
+  it('is no marker to the parser in a word a quote starts', () => {
+    assert.deepEqual(plainWordsOf("x '--%' a; y"), [['x', '--%', 'a'], ['y']]);
+    assert.deepEqual(plainWordsOf('x "--%" a; y'), [['x', '--%', 'a'], ['y']]);
     assert.deepEqual(wordsOf('x "--"% a; y', 'powershell'), [['x', '--', '%', 'a'], ['y']]);
   });
 
@@ -690,6 +690,117 @@ describe('parseShell: the line 5.1 writes for a native program', () => {
 
   it('reads the text after a --% behind an array', () => {
     assert.deepEqual(readingsOf('x a,b --% c d').at(-1), [['x', 'a,b', '--%', 'c', 'd']]);
+  });
+});
+
+describe("parseShell: the binder's --%, a value no parser took as its marker", () => {
+  /** Rows of a line and what its head's arguments are in 5.1's last reading. */
+  type Row = readonly [string, readonly string[]];
+
+  function assertLastReadings(rows: readonly Row[]): void {
+    for (const [line, words] of rows) {
+      assert.deepEqual(readingsOf(line).at(-1), [['x', ...words]], line);
+    }
+  }
+
+  it('drops a whole value and writes what follows bare, so a quoted word comes apart', () => {
+    assertLastReadings([
+      [`x '--%' 'a b' c`, ['a', 'b', 'c']],
+      [`x "--%" 'a b' c`, ['a', 'b', 'c']],
+      [`x '--%'`, []],
+      [`x '--%' '--%' 'a b' c`, ['a', 'b', 'c']],
+      [`x '--%' '' 'a b'`, ['a', 'b']],
+    ]);
+  });
+
+  it("takes a -name: token's value in any spelling, and keeps the token", () => {
+    assertLastReadings([
+      [`x -y:--% 'a b' c`, ['-y:', 'a', 'b', 'c']],
+      [`x -y:'--%' 'a b' c`, ['-y:', 'a', 'b', 'c']],
+      [`x -y:"--%" 'a b' c`, ['-y:', 'a', 'b', 'c']],
+      [`x -y:--'%' 'a b' c`, ['-y:', 'a', 'b', 'c']],
+    ]);
+  });
+
+  it('takes the value past a gap, which the parser leaves alone', () => {
+    assertLastReadings([
+      [`x -y: --% 'a b' c`, ['-y:', 'a', 'b', 'c']],
+      [`x -y: '--%' 'a b' c`, ['-y:', 'a', 'b', 'c']],
+    ]);
+  });
+
+  it('still ends the statement at a semicolon', () => {
+    assert.deepEqual(readingsOf(`x '--%' a;y 'b c'`).at(-1), [['x', 'a'], ['y', 'b c']]);
+    assert.deepEqual(readingsOf('x -y: --% a;y b').at(-1), [['x', '-y:', 'a'], ['y', 'b']]);
+  });
+
+  it('is no such value inside an array, whichever element holds it', () => {
+    assertLastReadings([
+      [`x '--%',y 'a b' c`, ['--%,y', 'a b', 'c']],
+      [`x y,'--%' 'a b' c`, ['y,--%', 'a b', 'c']],
+      [`x '--%' ,y 'a b' c`, ['--%', 'y', 'a b', 'c']],
+      [`x -y:'--%',a 'b c'`, ['-y:--%,a', 'b c']],
+      [`x -y:'--%' ,a 'b c'`, ['-y:--%', 'a', 'b c']],
+    ]);
+  });
+
+  it('is no such value when the word holds more than the marker', () => {
+    assertLastReadings([
+      [`x -y:--%x 'a b' c`, ['-y:--%x', 'a b', 'c']],
+      [`x -y:'--%x' 'a b' c`, ['-y:--%x', 'a b', 'c']],
+      [`x 'a--%' 'b c' d`, ['a--%', 'b c', 'd']],
+      [`x -y:a--% 'b c' d`, ['-y:a--%', 'b c', 'd']],
+      [`x -y:'a--%' 'b c' d`, ['-y:a--%', 'b c', 'd']],
+      [`x x'--%' 'b c' d`, ['x--%', 'b c', 'd']],
+    ]);
+  });
+
+  it('leaves a program name alone', () => {
+    // Measured through an alias of that name: a head is no value, so nothing goes in bare.
+    assert.deepEqual(readingsOf(`& '--%' 'a b'`).at(-1), [['&', '--%', 'a b']]);
+  });
+
+  it('writes arrays and later tokens behind it bare too', () => {
+    assertLastReadings([
+      [`x '--%' y ,z 'c d'`, ['y', 'z', 'c', 'd']],
+      [`x '--%' 'a b' ,c`, ['a', 'b', 'c']],
+      [`x '--%' 'a b','c d'`, ['a', 'b,c', 'd']],
+      [`x -y:--% -z:--% 'a b'`, ['-y:', '-z:', 'a', 'b']],
+      [`x -y:--% -z:'b c' d`, ['-y:', '-z:b', 'c', 'd']],
+    ]);
+  });
+
+  it('lets the runtime read a bare value, a quote and a backslash in it', () => {
+    assertLastReadings([
+      [`x '--%' 'a"b' c`, ['ab c']],
+      [`x '--%' 'a\\ b\\' c`, ['a\\', 'b\\', 'c']],
+    ]);
+  });
+
+  it('keeps its blank on the line, shown by a quote the words before it opened', () => {
+    assertLastReadings([
+      [`x 'a"' '--%' 'b c'`, ['a  b c']],
+      [`x 'a"' -y:--% 'b c'`, ['a -y: b c']],
+      [`x 'a"' -y: --% 'b c'`, ['a -y:  b c']],
+      [`x 'a"' '--%' '' 'b c'`, ['a   b c']],
+    ]);
+  });
+
+  it('reads a here-string holding it as a whole value', () => {
+    assert.deepEqual(readingsOf(`x @'\n--%\n'@ 'a b' c`).at(-1), [['x', 'a', 'b', 'c']]);
+  });
+
+  it('cuts a value behind it at its own NUL, where a NUL ahead of it ends the line', () => {
+    const rows: readonly Row[] = [
+      ["x '--%' \"a`0b c\" d", ['a', 'd']],
+      ["x '--%' \"`0b\" c", ['c']],
+      ["x '--%' \"a`0b\",c d", ['a,c', 'd']],
+      ["x -y:--% \"a`0b c\" d", ['-y:', 'a', 'd']],
+      ["x \"a`0b c\" '--%' d", ['a']],
+    ];
+    for (const [line, words] of rows) {
+      assert.deepEqual(readingsOf(line)[0], [['x', ...words]], line);
+    }
   });
 });
 
