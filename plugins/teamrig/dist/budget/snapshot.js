@@ -174,6 +174,10 @@ function countsOver(best, use) {
 function latestOf(a, b) {
     return a === undefined ? b : b === undefined ? a : Math.max(a, b);
 }
+function useOf({ usedPct, resetsAt, after, since }) {
+    const use = { usedPct, resetsAt, at: since };
+    return after === undefined ? use : { ...use, after };
+}
 /**
  * The snapshots' readings of the week current at `now`, folded. A week's use only grows, except when the
  * owner resets it mid-week (its reset time unchanged), and an exited session's file keeps its last
@@ -186,7 +190,7 @@ export function weekFoldOf(snapshots, now) {
     let best;
     for (const reading of readings) {
         if (followedBy === undefined || reading.since > followedBy) {
-            best = countsOver(best, { usedPct: reading.usedPct, resetsAt: reading.resetsAt, at: reading.since });
+            best = countsOver(best, useOf(reading));
         }
     }
     return { best, followedBy };
