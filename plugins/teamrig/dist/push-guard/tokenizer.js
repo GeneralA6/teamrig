@@ -1,4 +1,5 @@
 import { ansiCValue } from "./ansi-c.js";
+import { bareLine, expandedUnits, MARKER, nativeWords, PARSER_MARKER, splitLine, verbatimLine } from "./native-line.js";
 /** How deep substitutions may nest before the parse stops and calls itself incomplete. */
 const MAX_NESTING = 16;
 /**
@@ -41,31 +42,76 @@ const DESCRIPTOR = /^(?:\d+|\*)$/;
  */
 const VARIABLE = /\$(?![\u{10000}-\u{10ffff}])[\p{L}\p{Nd}_?$^\u1885\u1886](?:(?![\u{10000}-\u{10ffff}])[\p{L}\p{Nd}_?$^\u1885\u1886]|:(?!:))*/uy;
 const MEMBER_NAME = /(?:(?![\u{10000}-\u{10ffff}])[\p{L}\p{Nd}_\u1885\u1886])+/uy;
-const PARAMETER = /[-\u2013\u2014\u2015](?![\u{10000}-\u{10ffff}])[\p{L}_?\u1885\u1886][^.[;|:\0\t\v\f \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\n\r'\u2018\u2019\u201a\u201b"\u201c\u201d\u201e&(),{}]*:(?!:)/uy;
+/** What ends a `-name` token's name, besides a colon and a quote, which each do more; see {@link BARE_PARAMETER}. */
+const PARAMETER_ENDS = String.raw `.[;|\0\t\v\f \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\n\r&(),{}`;
+const PARAMETER_NAME = String.raw `[-\u2013\u2014\u2015](?![\u{10000}-\u{10ffff}])[\p{L}_?\u1885\u1886][^:'\u2018\u2019\u201a\u201b"\u201c\u201d\u201e${PARAMETER_ENDS}]*`;
+const PARAMETER = new RegExp(`${PARAMETER_NAME}:`, 'uy');
+/**
+ * A `-name` token right behind a whole `--%`, measured on 5.1 (T2003): it needs no colon there and takes only one, so
+ * `-y::z` leaves `:z`. A quote right behind the name makes no token, so `-y'a b'` stays a value.
+ */
+const BARE_PARAMETER = new RegExp(`${PARAMETER_NAME}(?::|(?=[${PARAMETER_ENDS}]|$))`, 'uy');
+/**
+ * A `.` that opens a word or a value, right ahead of a plain quote or `$`, is a word of its own, measured on 5.1 (T2003):
+ * `x ."b c"` hands the program `.` and `b c`, `-a:.$v` hands `-a:.` and the value, and at a head it runs what follows, as
+ * `. git` does: `."git" push` starts git. A curly quote joins the word instead; a `(` ends any word, so it needs no rule.
+ */
+const LONE_DOT = /\.(?=["'$])/y;
+/**
+ * A `-name` with a `.` or `[` right behind it is cut there, measured on 5.1 (T2003): the rest is a word of its own, in a
+ * value's place too, so `powershell -c."git push"` hands over `-c`, `.` and the text it runs. A `(` ends any word already.
+ */
+const CUT_PARAMETER = new RegExp(`${PARAMETER_NAME}(?=[.[])`, 'uy');
+/**
+ * What ends a `--%` word and opens its text, measured on 5.1 (T2003): the parser reads the text from right there, so these
+ * reach the program and end nothing: `--%; b` hands over `;` and `b`. A `|` or a line end ends the text too, so it needs no rule.
+ */
+const OPENS_MARKER_TEXT = /[;&(){},\0]/;
 /**
  * Every way PowerShell may take a line holding a NUL, a `` `u `` or a dash before a unit past ASCII. A native program's
  * command line on Windows is one C string, so a NUL ends the word and the words after it (`line`, measured on 5.1,
  * reasoned for pwsh). On other hosts each argument is a C string of its own (`word`, reasoned, no pwsh here). A cmdlet
  * keeps the NUL in its string (`kept`), and `Invoke-Expression` then reads the text after it, so a cut there would hide
- * a command. The dash goes by the version, as `` `u `` does; see {@link Reading.asciiParameters}.
+ * a command. The dash goes by the version, as `` `u `` does; see {@link Reading.asciiParameters}. A native program on
+ * 5.1 gets its words from the line the shell writes, split by whichever C runtime it links, so that reading comes twice.
  */
 const POWERSHELL_READINGS = [
-    { codePoints: false, nul: 'line', asciiParameters: true },
-    { codePoints: false, nul: 'kept', asciiParameters: true },
-    { codePoints: true, nul: 'line', asciiParameters: false },
-    { codePoints: true, nul: 'word', asciiParameters: false },
-    { codePoints: true, nul: 'kept', asciiParameters: false },
+    { codePoints: false, nul: 'line', asciiParameters: true, nativeLine: 'ucrt' },
+    { codePoints: false, nul: 'line', asciiParameters: true, nativeLine: 'msvcrt' },
+    { codePoints: false, nul: 'kept', asciiParameters: true, nativeLine: undefined },
+    { codePoints: true, nul: 'line', asciiParameters: false, nativeLine: undefined },
+    { codePoints: true, nul: 'word', asciiParameters: false, nativeLine: undefined },
+    { codePoints: true, nul: 'kept', asciiParameters: false, nativeLine: undefined },
 ];
+/**
+ * What a value can hold for 5.1's line to differ from its words: a double quote or a trailing backslash, which the
+ * runtime reads, or nothing at all, as an empty value drops. Each takes a quote mark or a backslash to write: `` a` b\ ``
+ * holds no quote, yet its line ends in `\"`. A comma differs too: an array with no gap is one argument on that line. So
+ * does a `--%`: as a `-name:` token's value it needs no quote to be the binder's marker; see {@link nativeCommand}.
+ */
+const NATIVE_LINE_MARKS = [POWERSHELL_QUOTES.single, POWERSHELL_QUOTES.double, /[\\,]|--%/];
 /** The reading of a line with nothing to choose between. */
 function plainReading(source) {
-    return { source, codePoints: false, nul: 'kept', asciiParameters: false, caretLine: 'joins' };
+    return { source, codePoints: false, nul: 'kept', asciiParameters: false, nativeLine: undefined, chainedMarker: false, caretLine: 'joins' };
+}
+/** The plain reading, and 5.1's native ones where the line holds what they differ on. */
+function nativeReadings(plain) {
+    const differ = NATIVE_LINE_MARKS.some((marks) => marks.test(plain.source));
+    return differ ? [plain, ...POWERSHELL_READINGS.filter((reading) => reading.nativeLine !== undefined).map((reading) => ({ ...plain, ...reading }))] : [plain];
+}
+/**
+ * Each native reading of a line that may hold a `--%`, again with {@link Reading.chainedMarker}. It looks for the `%` alone:
+ * `` "-`-%".Trim() `` holds the value with no such text, while no 5.1 escape writes a `%`. A line with no chain folds.
+ */
+function withChainedMarker(readings) {
+    return readings.flatMap((reading) => (reading.nativeLine !== undefined && reading.source.includes('%') ? [reading, { ...reading, chainedMarker: true }] : [reading]));
 }
 /**
  * The readings of a line. cmd drops every CR before it reads anything. bash on Windows does the same, by `-c`, file
  * and stdin alike, while bash elsewhere keeps a CR in its word, so a bash line holding one is read both ways. PowerShell
- * takes {@link POWERSHELL_READINGS} when the line holds what they differ on. cmd's caret before a newline is read both
- * ways, as the entry decides it. Which host, version or entry the line runs on is not asked: a guard's answer must not
- * depend on it.
+ * takes {@link POWERSHELL_READINGS} when the line holds what they differ on, and else {@link nativeReadings}. cmd's caret
+ * before a newline is read both ways, as the entry decides it. Which host, version or entry the line runs on is not
+ * asked: a guard's answer must not depend on it.
  */
 function readingsOf(source, dialect) {
     const plain = plainReading(source);
@@ -74,7 +120,7 @@ function readingsOf(source, dialect) {
         case 'bash':
             return source.includes('\r') ? [dropped, plain] : [plain];
         case 'powershell':
-            return /\0|`[0u]|[-\u2013\u2014\u2015][^\0-\x7f]/.test(source) ? POWERSHELL_READINGS.map((reading) => ({ ...plain, ...reading })) : [plain];
+            return withChainedMarker(/\0|`[0u]|[-\u2013\u2014\u2015][^\0-\x7f]/.test(source) ? POWERSHELL_READINGS.map((reading) => ({ ...plain, ...reading })) : nativeReadings(plain));
         case 'cmd':
             return dropped.source.includes('^\n') ? [dropped, { ...dropped, caretLine: 'ends' }] : [dropped];
     }
@@ -175,6 +221,14 @@ const STATEMENT_KEYWORDS = new Set([
     'if', 'elseif', 'else', 'while', 'until', 'do', 'for', 'foreach', 'switch', 'try', 'catch', 'finally', 'function', 'filter', 'workflow', 'configuration',
     'trap', 'class', 'enum', 'data', 'param', 'begin', 'process', 'end', 'clean', 'dynamicparam', 'parallel', 'sequence', 'inlinescript',
 ]);
+/** PowerShell: the statement `words` hold, past a `:label` and every assignment's target. */
+function statementOf(words) {
+    let statement = words[0]?.text.startsWith(':') === true ? words.slice(1) : words;
+    for (let right = assignedWords(statement); right !== undefined; right = assignedWords(statement)) {
+        statement = right;
+    }
+    return statement;
+}
 /**
  * PowerShell: whether a `(` or `{` after `words` is an argument of their command. It is not at a statement's start,
  * where `(` is a group, nor after a keyword, whose block ends the statement: `do {} while (0) git push` runs what
@@ -182,15 +236,84 @@ const STATEMENT_KEYWORDS = new Set([
  * leave the program unknown.
  */
 function takesArguments(words, open) {
-    let statement = words[0]?.text.startsWith(':') === true ? words.slice(1) : words;
-    for (let right = assignedWords(statement); right !== undefined; right = assignedWords(statement)) {
-        statement = right;
-    }
+    const statement = statementOf(words);
     const head = statement[0];
     if (head === undefined || (open === '{' && statement.length === 1 && (head.text === '&' || head.text === '.'))) {
         return false;
     }
     return head.dynamic || !STATEMENT_KEYWORDS.has(head.text.toLowerCase());
+}
+/**
+ * PowerShell: where a program's arguments open in `words`, past the head, and past the program after a `&` or a `.`.
+ * Undefined for a keyword's statement or an expression, which hands no program a line.
+ */
+function argumentsAt(words) {
+    const statement = statementOf(words);
+    const head = statement[0];
+    if (head === undefined) {
+        return undefined;
+    }
+    // A right side can be built from `$x=git`, one word for two, but the words after it are the same ones.
+    const at = words.length - statement.length;
+    if (head.text === '&' || head.text === '.') {
+        return at + 2;
+    }
+    return isExpressionHead(head) || STATEMENT_KEYWORDS.has(head.text.toLowerCase()) ? undefined : at + 1;
+}
+/** `arrays` after a comma behind word `last`: the word after it joins the array `last` closes, or opens a new one. */
+function withComma(arrays, last, tight) {
+    const open = arrays.at(-1);
+    return open?.to === last ? [...arrays.slice(0, -1), { from: open.from, to: last + 1, tight: open.tight && tight }] : [...arrays, { from: last, to: last + 1, tight }];
+}
+/**
+ * An array with a gap as the arguments its line reads as: measured, its elements stand apart and an empty one adds no
+ * blank, so only an array of nothing but empty values keeps the one blank every argument writes.
+ */
+function gappedArguments(elements) {
+    const filled = elements.filter((element) => element.text !== '');
+    return filled.length === 0 ? [[]] : filled.map((element) => [element]);
+}
+/**
+ * `words` from `start` up to `end` as arguments, each the elements of one. An array that opens before `start` holds the
+ * head, so it joins nothing. A word the NUL dropped leaves `to` past the last word, and the slice stops there.
+ */
+function argumentsOf(words, start, end, arrays) {
+    const args = [];
+    let at = start;
+    while (at < end) {
+        const array = arrays.find((candidate) => candidate.from === at);
+        const next = array === undefined ? at + 1 : array.to + 1;
+        const elements = words.slice(at, next);
+        args.push(...(array === undefined || array.tight ? [elements] : gappedArguments(elements)));
+        at = next;
+    }
+    return args;
+}
+/** The `markers` the binder takes: past the head at `start` and outside every array; see {@link nativeCommand}. */
+function boundMarkers(markers, start, arrays) {
+    return markers.filter((at) => at >= start && !arrays.some((array) => array.from <= at && at <= array.to));
+}
+/**
+ * A command's words as 5.1 hands them to a native program; see {@link nativeWords}. `text` holds the parser's `--%` as
+ * {@link PARSER_MARKER}. Every head counts, a cmdlet's too: a word cannot tell the two apart, and a fork only adds a reading.
+ *
+ * `markers` are the words whose value is `--%` with no parser marker in them. The binder drops that value, keeps the
+ * argument's blank and any `-name:` before it, and writes each later value as {@link bareLine} does. Measured, a head is
+ * no such value, nor is an array, whichever element holds it, and a comma after a word is only seen once that word has
+ * ended. A whole value of `--%` with a `-name` token right behind it is gone by here: {@link Scanner.readList} reads the
+ * pair as the parser's marker, so `text` opens where that value stood and only an earlier value's blank stays.
+ */
+function nativeCommand(words, text, arrays, markers, runtime) {
+    const start = argumentsAt(words);
+    if (start === undefined) {
+        return words;
+    }
+    const end = text?.at ?? words.length;
+    const dropped = new Set(boundMarkers(markers, start, arrays));
+    const line = words.map((word, at) => (dropped.has(at) ? { text: word.text.slice(0, -MARKER.length), dynamic: false } : word));
+    const bareAt = Math.min(end, ...dropped);
+    const written = [...bareLine(argumentsOf(line, bareAt, end, arrays)), ...(text?.line ?? [])];
+    return [...words.slice(0, start), ...nativeWords(argumentsOf(line, start, bareAt, arrays), written, runtime)];
 }
 /** Characters bash expands in unquoted text: a glob, or `~` for a home folder. */
 const EXPANDS = /[*?[~]/;
@@ -422,14 +545,46 @@ class Scanner {
         /** The operator of a redirection whose target is the next word. */
         let awaiting;
         let verbatim = false;
+        /** PowerShell: true from a comma to the word it adds: measured, a `--%` that is an array's element marks nothing. */
+        let element = false;
         /** True once a NUL ended this command's line: the words after it never reach the program. */
         let lineCut = false;
+        /** PowerShell: this command's words the cut kept out of `words`. `arrays` still count them, as a comma stands behind them too. */
+        let cutWords = 0;
+        let verbatimText;
+        /** PowerShell: where the last word ended, as a comma right there leaves no gap. */
+        let wordEnd = -1;
+        /** PowerShell: the arrays of this command's words. */
+        let arrays = [];
+        /** PowerShell: this command's words that are the binder's `--%`; see {@link nativeCommand}. */
+        let markers = [];
+        /** 5.1's line: true right behind a whole value of `--%`, where a `-name` token turns on the parser's marker after all. */
+        let tokenNext = false;
+        /**
+         * 5.1's line: true from an argument that opens with a constant `--%` through its array or its chain, where a `-name`
+         * token leaves the line and turns the rest to text. {@link tokenNext} says the argument goes with it; else the rest is
+         * one more value.
+         */
+        let opensText = false;
+        /**
+         * 5.1's line: true right behind a bare `--%` element of the array {@link opensText} holds, where the rest is one more
+         * value whatever stands first in it. Measured: `'--%',a ,--% b c` hands over `--%`, `a`, `--%` and `b c`, and
+         * `'--%',a ,--%} b c` hands over `} b c`. A word that opens on a quote, one a NUL cut, or a run-time value stays a plain
+         * element: `'--%',a ,--%`0; b c` runs `b`. A run-time piece needs no term of its own, as it always adds its own text.
+         */
+        let textNext = false;
+        /** True when the parser's `--%` opened the text: a NUL's cut can drop it, and a marker pair leaves none. */
+        let markerWord = false;
         let redirections = [];
         let depth = 0;
         /** PowerShell: how many `{ }` of keywords are open here, so `{if (1) {a}}` closes at its last `}`. */
         let blocks = 0;
         /** PowerShell: where the value of a `-name:` token opens, which joins the token's word. */
         let valueAt = -1;
+        /** PowerShell: how much of the word being read is a `-name:` token, so what follows in it is the token's value. */
+        let tokenLength = 0;
+        /** PowerShell: true from a `-name:` token that ended with no value to the word it takes as one, past the gap. */
+        let valueNext = false;
         /** True at a `@{ }` entry's start, where its key and `=` come before its statement. */
         let keyNext = hash;
         const atEntry = () => hash && depth === 0 && blocks === 0;
@@ -440,24 +595,81 @@ class Scanner {
          * to the group, so they join that command, as those after a `{ }` group's `}` join the `}` command.
          */
         let closedGroup;
-        /** A word the NUL left empty is no argument, as the line ends before it: `x <NUL> a` hands the program nothing. */
+        /** 5.1's line: which of `candidates`, this command's `markers` unless named, the binder takes; none in any other reading. */
+        const takenMarkers = (candidates = markers) => {
+            const start = this.reading.nativeLine === undefined ? undefined : argumentsAt(words);
+            return start === undefined ? [] : boundMarkers(candidates, start, arrays);
+        };
+        /**
+         * A word the NUL left empty is no argument, as the line ends before it: `x <NUL> a` hands the program nothing. Measured:
+         * behind the binder's `--%` a NUL cuts only its own value, so `'--%' "a`0b" c` still hands over `c`. 5.1 joins a value
+         * that opens with a NUL as one that holds something, so such a word keeps the NUL for its line: `a,"`0b",c` hands `a,`,
+         * and `'--%' "`0b",c` hands `,c`.
+         */
         const addWord = (taken, cut) => {
-            const endsLine = cut && this.reading.nul === 'line';
-            if (!lineCut && !(endsLine && taken.text === '')) {
-                words.push(taken);
+            const endsLine = cut && this.reading.nul === 'line' && takenMarkers().length === 0;
+            const joins = this.reading.nativeLine !== undefined && cut && taken.text === '' && (element || !endsLine);
+            const kept = joins ? { ...taken, text: '\0' } : taken;
+            if (!lineCut && !(endsLine && kept.text === '')) {
+                words.push(kept);
+            }
+            else {
+                cutWords += 1;
             }
             lineCut ||= endsLine;
         };
-        const endWord = () => {
+        /** Keeps what the parser's `--%` puts on 5.1's line; `at` is where the words of its text open. */
+        const keepVerbatim = (at, units) => {
+            verbatimText = { at, line: markerWord ? [PARSER_MARKER, ...verbatimLine(units)] : verbatimLine(units) };
+            verbatim = false;
+        };
+        /**
+         * `quoted` says the word is one quoted value, whose text is only text to the parser; `chained` that the value is a
+         * constant `--%` with a chain behind it.
+         */
+        const endWord = (quoted = false, chained = false) => {
             const cut = word.isCut;
             const taken = word.take();
+            const token = tokenLength;
+            tokenLength = 0;
             if (taken === undefined) {
                 return;
             }
+            tokenNext = false;
+            opensText &&= element;
             if (awaiting === undefined) {
+                const at = words.length;
                 addWord(taken, cut);
+                wordEnd = this.index;
+                const marks = powershell && taken.text.slice(token) === MARKER && !taken.dynamic && !cut && !element;
+                // Measured: a value or quoted text is no marker for the parser, so `x -y: --% a;b` runs `b`. The binder goes by the
+                // value, and it never sees a word the cut dropped.
+                const parserSkips = quoted || valueNext || token > 0;
+                if (marks && parserSkips && words.length > at) {
+                    markers.push(at);
+                    // Measured: a marker that is a `-name:` token's value never does it, so `-x: '--%' -y:a` stays the binder's. That
+                    // leaves the quoted word of `parserSkips`.
+                    tokenNext = !valueNext && token === 0 && takenMarkers().includes(at);
+                    opensText = tokenNext;
+                }
+                if (chained && token === 0 && !valueNext && takenMarkers([at]).length > 0) {
+                    // Measured: the parser goes by the text ahead of a chain, whatever the chain gives and whatever a NUL cut ahead of it,
+                    // so `'--%'.y -y b c` hands over `b c`. A chain that gives `--%` back has only repeated what the block above set.
+                    opensText = true;
+                }
                 // Set on a word the cut dropped too: the shell still reads the rest as written.
-                verbatim = this.dialect === 'powershell' && taken.text === '--%' && !taken.dynamic && !cut;
+                verbatim = marks && !parserSkips;
+                // Measured: a head stays, as `& --% a b` runs a program named `--%`; bare, it is a parse error and nothing runs.
+                // No arguments place is a keyword's word, and eight of those run as plain commands at a head: `clean x --% a b` hands `x a b`.
+                markerWord = verbatim && words.length > at && at >= (argumentsAt(words) ?? at);
+                if (markerWord) {
+                    // Measured: the program never gets it, so an option ahead of it takes the next word: `git -C --% b push` runs in `b`.
+                    words.pop();
+                }
+                // Measured: a `-name:` taken as a value takes none itself, so `x -y: -z: --% a;b` runs no `b`.
+                valueNext = !valueNext && this.index === valueAt;
+                textNext = opensText && !quoted && taken.text === MARKER && !cut;
+                element = false;
                 return;
             }
             redirections.push({ operator: awaiting, target: taken });
@@ -465,15 +677,34 @@ class Scanner {
         };
         const endCommand = () => {
             endWord();
+            if (verbatim) {
+                // Measured: a marker with no text behind it still adds its blanks, so `'a "b' --%` hands over `a b  `.
+                keepVerbatim(words.length, []);
+            }
             if (awaiting !== undefined) {
                 redirections.push({ operator: awaiting });
                 awaiting = undefined;
             }
-            verbatim = false;
+            element = false;
+            valueNext = false;
+            tokenNext = false;
+            opensText = false;
+            textNext = false;
             lineCut = false;
+            const { nativeLine } = this.reading;
             const command = words.length > 0 || (redirections.length > 0 && closedGroup === undefined)
-                ? { words, subshells: [...this.subshells], terminator: '', redirections, nesting: this.nesting }
+                ? {
+                    words: nativeLine === undefined ? words : nativeCommand(words, verbatimText, arrays, markers, nativeLine),
+                    subshells: [...this.subshells],
+                    terminator: '',
+                    redirections,
+                    nesting: this.nesting,
+                }
                 : undefined;
+            verbatimText = undefined;
+            arrays = [];
+            cutWords = 0;
+            markers = [];
             if (command !== undefined) {
                 this.commands.push(command);
             }
@@ -488,8 +719,16 @@ class Scanner {
         };
         while (!this.done) {
             if (verbatim) {
-                this.readVerbatim(addWord);
-                verbatim = false;
+                const at = words.length;
+                const cut = lineCut;
+                const units = this.readVerbatim(addWord);
+                keepVerbatim(at, cut ? [] : units);
+                continue;
+            }
+            if (textNext) {
+                // Here and not in `endWord`, whose callers move the index past what ended the word.
+                textNext = false;
+                this.readTextValue(addWord);
                 continue;
             }
             if (keyNext) {
@@ -498,30 +737,77 @@ class Scanner {
                 continue;
             }
             const char = this.at();
+            if (powershell && word.value === MARKER && OPENS_MARKER_TEXT.test(char)) {
+                // Ahead of the closer's check: a `)` here is text, so `(a --%)` leaves its group open. `endWord` knows if the word
+                // marks: in a value's place or an array it does not, and the character then does what it always does.
+                endWord();
+                if (verbatim || textNext) {
+                    continue;
+                }
+            }
             if (char === close && (close === '}' ? blocks : depth) === 0) {
                 this.index += 1;
                 endCommand();
                 return;
             }
-            const parameter = powershell && !word.isStarted ? this.parameterEnd() : undefined;
+            const bareToken = opensText && !element && !word.isStarted ? this.parameterEnd(BARE_PARAMETER) : undefined;
+            if (bareToken !== undefined) {
+                // Measured: the token leaves the line and the rest is text, `;` included. Blanks, comments and gaps may sit ahead of
+                // it, and none of those ends a word, so `opensText` outlives them. A lone `--%` goes with the token; an array stays
+                // an argument, and the binder then writes the text as a value: `'--%',a -y b c` hands over `--%,a` and `b c`. The text
+                // runs to the end of the command, whose `endCommand` clears both.
+                this.index = bareToken;
+                if (tokenNext) {
+                    words.pop();
+                    markers.pop();
+                    verbatim = true;
+                }
+                else {
+                    this.readTextValue(addWord);
+                }
+                continue;
+            }
+            const parameter = powershell && (!word.isStarted || this.index === valueAt) ? this.parameterEnd(PARAMETER) : undefined;
             if (parameter !== undefined) {
+                const inner = element || valueNext || this.index === valueAt;
                 word.add(this.source.slice(this.index, parameter), 'unquoted');
                 this.index = parameter;
-                valueAt = parameter;
+                if (inner) {
+                    // Measured: in a value's place or past a comma the token takes one colon and no value, so what follows is the next
+                    // argument: `-x:-a::b` hands over `-x:-a:` and `:b`, out of any array.
+                    endWord();
+                }
+                else {
+                    valueAt = parameter;
+                    tokenLength = word.value.length;
+                }
+                continue;
+            }
+            if (word.isStarted && this.index === valueAt && this.opensValueGap(char)) {
+                // Measured: the token's word ends here, and the next word is its value, as past a blank.
+                endWord();
                 continue;
             }
             const opening = powershell && (!word.isStarted || this.index === valueAt);
+            const cutAt = opening ? (this.matchEnd(LONE_DOT) ?? this.parameterEnd(CUT_PARAMETER)) : undefined;
+            if (cutAt !== undefined) {
+                word.add(this.source.slice(this.index, cutAt), 'unquoted');
+                this.index = cutAt;
+                endWord();
+                continue;
+            }
             const whole = opening && this.opensWholeWord(char);
             const variable = opening && char === '$';
             const inArguments = words.length > 0 || awaiting !== undefined;
             if (this.readQuoteOrExpansion(word, opening)) {
                 if (whole) {
-                    this.readMembers(word);
-                    endWord();
-                    // Text in quotes is only text: `'--%'` is no marker, though `--'%'` is.
-                    verbatim = false;
+                    const constant = word.value.slice(tokenLength) === MARKER && !word.isCut;
+                    // A head is an expression's value, no argument of a binder, so it reads the same in every reading.
+                    const chained = constant && inArguments && this.reading.chainedMarker ? this.skipMembers() : this.readMembers(word);
+                    // `--'%'` opens no whole word, so it stays the parser's marker.
+                    endWord(true, constant && chained);
                 }
-                else if (variable && word.isDynamic && (this.readMembers(word) || this.at() === '.') && inArguments) {
+                else if (variable && word.isDynamic && (this.readMembers(word, true) || this.at() === '.') && inArguments) {
                     // At a head the word goes on: `$h.a=git push` is an assignment, read from one word. A dot with no name after
                     // it starts a word of its own, as a quote's does: `$v. b` reaches a program as three words.
                     endWord();
@@ -540,9 +826,6 @@ class Scanner {
             if (powershell && this.atBlock() && (opening || char !== '@')) {
                 if (this.index !== valueAt) {
                     endWord();
-                }
-                if (verbatim) {
-                    continue;
                 }
                 if (char === '@' || this.index === valueAt || awaiting !== undefined || takesArguments(words, char)) {
                     const start = this.index;
@@ -596,6 +879,9 @@ class Scanner {
                 if (this.readProcessSubstitution(word)) {
                     continue;
                 }
+                // Measured: `'--%' 2>&1 -y:a b` keeps its token, and the descriptor's word below ends with no `endWord`.
+                tokenNext = false;
+                opensText = false;
                 // A file-descriptor number (`2>`), PowerShell's `*>` or bash's `{NAME}>` belongs to the redirection.
                 const named = this.dialect === 'bash' && /^\{[A-Za-z_]\w*\}$/.test(word.value);
                 let descriptor = '';
@@ -622,8 +908,20 @@ class Scanner {
                 endWord();
             }
             else if (char === ',' && this.dialect === 'powershell') {
-                // An unquoted comma builds an array: each element reaches a native program as its own argument.
+                // An unquoted comma builds an array. Here each element is a word, as pwsh 7.3 and later hands it on (reasoned, no
+                // pwsh on this host); measured, 5.1 joins an array with no gap into one argument, which `arrays` keeps for its line.
                 endWord();
+                const touchesWord = wordEnd === this.index;
+                // Measured: the next element may sit past line ends and comments. A comma that builds no array there is a parse
+                // error, so nothing runs and no second statement hides behind it.
+                element = true;
+                tokenNext = false;
+                this.index += 1;
+                const next = this.index;
+                this.skipGaps();
+                // Measured: an array's gap counts past the cut, so `a,"b`0",c ,d` hands `a` and `b`, and a later word's gap is its own.
+                arrays = withComma(arrays, words.length + cutWords - 1, touchesWord && this.index === next);
+                continue;
             }
             else if (char === '@' && this.dialect === 'cmd' && words.length === 0 && !word.isStarted) {
                 // cmd's `@` before a command only hides its echo.
@@ -631,7 +929,9 @@ class Scanner {
             else if (char === ']' && powershell && !word.isStarted) {
                 // Measured: a `]` first is a word of its own, so `]--no-verify` hands the program two words.
                 word.add(char, 'unquoted');
+                this.index += 1;
                 endWord();
+                continue;
             }
             else if (char === '\0' && powershell) {
                 // Measured: a NUL outside quotes ends the word and leads the next one.
@@ -812,11 +1112,12 @@ class Scanner {
     }
     /**
      * True at what starts a redirection. In PowerShell `<` and `>` are word text inside a word, measured on its parser
-     * (T2002): `a>b c` hands the program `a>b` and `c`. Only a word of a descriptor alone gives way to one.
+     * (T2002): `a>b c` hands the program `a>b` and `c`. Only `>` gives way to a word of a descriptor alone: `2>x` redirects,
+     * where `1<x` and `*<#x y` hand the program those words whole, and a `#` behind that `<` opens no comment (T2003).
      */
     opensRedirection(char, word) {
         if (char === '<' || char === '>') {
-            return this.dialect !== 'powershell' || !word.isStarted || DESCRIPTOR.test(word.value);
+            return this.dialect !== 'powershell' || !word.isStarted || (char === '>' && DESCRIPTOR.test(word.value));
         }
         return this.isOutputAndErrorRedirection(char);
     }
@@ -1042,13 +1343,14 @@ class Scanner {
         return value > MAX_CODE_POINT ? undefined : { text: String.fromCodePoint(value), end };
     }
     /**
-     * PowerShell's backtick, measured on 5.1 (T2002). Between words it continues the line, whichever line end follows. In a
-     * word or quotes it keeps ONE character, so `a<backtick><CR><LF>b c` is the word `a<CR>`, then the LF ends the statement
-     * and `b c` runs. With nothing after it, or a NUL, the backtick stays. pwsh alone also reads a code point.
+     * PowerShell's backtick, measured on 5.1 (T2002). Between words it continues the line, whichever line end follows, and
+     * before a blank it is only a gap: `a <backtick> b` is the words `a` and `b`. In a word or quotes it keeps ONE character,
+     * so `a<backtick><CR><LF>b c` is the word `a<CR>`, then the LF ends the statement and `b c` runs. With nothing after it,
+     * or a NUL, the backtick stays. pwsh alone also reads a code point.
      */
     readPowerShellEscape(word) {
         const next = this.at(1);
-        if (!word.isStarted && /[\n\r]/.test(next)) {
+        if (!word.isStarted && this.escapesGap()) {
             this.index += next === '\r' && this.at(2) === '\n' ? 3 : 2;
             return;
         }
@@ -1291,10 +1593,14 @@ class Scanner {
         pattern.lastIndex = this.index;
         return pattern.test(this.source) ? pattern.lastIndex : undefined;
     }
-    /** Where a `-name:` token ends at the cursor, if this reading opens one there; see {@link Reading.asciiParameters}. */
-    parameterEnd() {
-        const end = this.matchEnd(PARAMETER);
+    /** Where the `-name` token `pattern` reads ends at the cursor, if this reading opens one; see {@link Reading.asciiParameters}. */
+    parameterEnd(pattern) {
+        const end = this.matchEnd(pattern);
         return end !== undefined && this.reading.asciiParameters && /[^\0-\x7f]/.test(this.at(1)) ? undefined : end;
+    }
+    /** PowerShell, right behind a `-name:` token: true at a block comment or a backtick that adds nothing. */
+    opensValueGap(char) {
+        return (char === '<' && this.at(1) === '#') || (char === '`' && this.escapesGap());
     }
     /** PowerShell: true at a `(`, `{` or `@{`. */
     atBlock() {
@@ -1307,17 +1613,40 @@ class Scanner {
         this.index += open === '@' ? 2 : 1;
         this.readSubstitution(open === '(' ? ')' : '}', open === '@');
     }
-    /** PowerShell: reads a chain of members and indexes into `word`, only known when it runs; true when one is there. */
-    readMembers(word) {
+    /**
+     * PowerShell: reads a chain of members and indexes into `word`, only known when it runs; true when one is there.
+     * `touching` is for a bare variable, whose first link must touch it: measured, `$v<#x#>.y` is one word of text.
+     */
+    readMembers(word, touching = false) {
         const start = this.index;
-        let read = false;
-        while (this.readMember()) {
-            read = true;
-        }
+        const read = this.skipMembers(touching);
         if (read) {
             word.add(this.source.slice(start, this.index), 'dynamic');
         }
         return read;
+    }
+    /** Moves past a chain of members and indexes, adding nothing to a word; true when one is there. */
+    skipMembers(touching = false) {
+        let read = false;
+        while (read || !touching ? this.readMemberPastComments() : this.readMember()) {
+            read = true;
+        }
+        return read;
+    }
+    /**
+     * One link of a chain behind any block comments, the cursor where it was when none follows them. Measured: a comment joins a
+     * value to its chain and a blank or a backtick does not, so `'a'<#x#>.y` is one word, which a null member takes off the line.
+     */
+    readMemberPastComments() {
+        const start = this.index;
+        while (this.at() === '<' && this.at(1) === '#') {
+            this.skipBlockComment();
+        }
+        if (this.readMember()) {
+            return true;
+        }
+        this.index = start;
+        return false;
     }
     /**
      * One link of a chain: `[...]`, or `.` or `::` then a name, a method's `(...)` or `{...}` after it. A dot or a colon
@@ -1414,7 +1743,10 @@ class Scanner {
             this.index = start;
         }
     }
-    /** Moves past blanks, line ends and comments, which may sit around a `@{ }` entry's key and `=`. */
+    /**
+     * Moves past blanks, line ends, comments and a backtick before a blank or a line end, which may sit around a `@{ }`
+     * entry's key and `=`, and after a comma.
+     */
     skipGaps() {
         while (!this.done) {
             const char = this.at();
@@ -1424,7 +1756,7 @@ class Scanner {
             else if (char === '<' && this.at(1) === '#') {
                 this.skipBlockComment();
             }
-            else if (BLANKS.powershell.test(char) || this.endsLine(char)) {
+            else if (BLANKS.powershell.test(char) || this.endsLine(char) || (char === '`' && this.escapesGap())) {
                 this.index += 1;
             }
             else {
@@ -1432,13 +1764,17 @@ class Scanner {
             }
         }
     }
+    /** PowerShell, at a backtick: true before a blank or a line end, where between words it adds nothing. */
+    escapesGap() {
+        const next = this.at(1);
+        return BLANKS.powershell.test(next) || this.endsLine(next);
+    }
     /**
      * cmd `%VAR%`, `%1`, `%*`, `%~dp0` and delayed `!VAR!` are dynamic; `%%` is one literal `%`, and a `%` or `!`
-     * that starts none of them is literal. Text from `end` on is not looked at.
+     * that starts none of them is literal.
      */
-    readCmdVariable(word, end = this.source.length) {
-        const rest = this.source.slice(this.index, end);
-        const match = /^(?:%%|%~[a-zA-Z]*[0-9]|%[0-9*]|%[^%\s"]+%|![^!\s"]+!)/.exec(rest);
+    readCmdVariable(word) {
+        const match = /^(?:%%|%~[a-zA-Z]*[0-9]|%[0-9*]|%[^%\s"]+%|![^!\s"]+!)/.exec(this.source.slice(this.index));
         if (match === null) {
             word.add(this.at());
             this.index += 1;
@@ -1489,40 +1825,48 @@ class Scanner {
         this.index = close === -1 ? this.source.length : close + 2;
     }
     /**
-     * After PowerShell's `--%`: the text up to {@link verbatimEnd} goes to the program as written, with cmd-style `%VAR%`
-     * left dynamic. The shell no longer splits it, so the program does, on a space or a tab, and only a plain `"` groups.
-     * Each word goes to `addWord`, with whether a NUL cut it.
+     * After PowerShell's `--%`: the text up to {@link verbatimEnd} goes to the program as written, with each `%NAME%` left
+     * dynamic, so the program's C runtime splits it; see {@link splitLine}. Each word goes to `addWord`, with whether a NUL
+     * cut it. Gives the text back, as a quote before the `--%` reaches into it.
      */
     readVerbatim(addWord) {
-        const end = this.verbatimEnd();
-        const word = new WordBuilder(false, this.reading.nul !== 'kept');
-        const flush = () => {
-            const cut = word.isCut;
-            const taken = word.take();
-            if (taken !== undefined) {
-                addWord(taken, cut);
+        const text = this.verbatimUnits();
+        for (const units of splitLine(text, 'ucrt')) {
+            const word = new WordBuilder(false, this.reading.nul !== 'kept');
+            // An empty pair of quotes is a word too, and it has no unit to start it.
+            word.add('');
+            for (const unit of units) {
+                if (typeof unit === 'string') {
+                    word.add(unit);
+                }
+                else {
+                    word.add(unit.text, 'dynamic');
+                }
             }
-        };
-        let grouped = false;
-        while (this.index < end) {
-            const char = this.at();
-            if (char === '%') {
-                this.readCmdVariable(word, end);
-                continue;
-            }
-            if (char === '"') {
-                grouped = !grouped;
-                word.add('');
-            }
-            else if (!grouped && BLANKS.cmd.test(char)) {
-                flush();
-            }
-            else {
-                word.add(char);
-            }
+            addWord(word.word(), word.isCut);
+        }
+        return text;
+    }
+    /**
+     * 5.1's line: the text up to {@link verbatimEnd} as the one value it is to the binder, which may quote it, so a `%NAME%` in
+     * it stays text. Measured: leading blanks go, trailing ones stay, and no text is an empty value, which writes only its blank.
+     */
+    readTextValue(addWord) {
+        while (BLANKS.powershell.test(this.at())) {
             this.index += 1;
         }
-        flush();
+        const end = this.verbatimEnd();
+        const word = new WordBuilder(false, this.reading.nul !== 'kept');
+        word.add(this.source.slice(this.index, end));
+        addWord(word.word(), word.isCut);
+        this.index = end;
+    }
+    /** The text after `--%` as a line; see {@link expandedUnits}. */
+    verbatimUnits() {
+        const end = this.verbatimEnd();
+        const units = expandedUnits(this.source.slice(this.index, end));
+        this.index = end;
+        return units;
     }
     /**
      * Where the text after `--%` ends: a line end, even inside quotes, or a `|` or `&&` outside them. This is the shell
