@@ -2,6 +2,7 @@ import { describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import type { PushToProtected } from '../config/types.ts';
+import { DASH_QUOTES, NOTHING_QUOTES } from '../testing/ansi-c-quotes.ts';
 import type { ConfigValue } from './invocations.ts';
 import {
   decisionReason,
@@ -920,6 +921,37 @@ describe('evaluatePushes: pushToProtected', () => {
       const verdict = judge('git push origin feature && git status', { pushToProtected: choice });
       assert.deepEqual([verdict.decision, verdict.protectedPush, verdict.updates], ['allow', undefined, []]);
     }
+  });
+});
+
+describe("evaluatePushes: $'...' quoting", () => {
+  it('reads a branch, a refspec, an option or the command itself behind a string whose value is nothing', () => {
+    for (const quote of NOTHING_QUOTES) {
+      expectRows([
+        [`git push origin ${quote}main`, 'ask'],
+        [`git push origin HEAD:${quote}main`, 'ask'],
+        [`git push origin ${quote}HEAD:main`, 'ask'],
+        [`git push origin ${quote}:main`, 'deny'],
+        [`git push origin ${quote}+main`, 'deny'],
+        [`git push ${quote}--force origin main`, 'deny'],
+        [`git push ${quote}--mirror origin`, 'deny'],
+        [`git push origin ${quote}--delete main`, 'deny'],
+        [`git ${quote}push origin main`, 'ask'],
+        [`${quote}git push origin main`, 'ask'],
+        [`git push origin ${quote}feature`, 'allow'],
+      ]);
+    }
+  });
+
+  it('reads an option whose dash, or a command whose letter, only bash spells out', () => {
+    for (const dash of DASH_QUOTES) {
+      expectRows([
+        [`git push ${dash}-force origin main`, 'deny'],
+        [`git push ${dash}-mirror origin`, 'deny'],
+        [`git push origin ${dash}-delete main`, 'deny'],
+      ]);
+    }
+    expectRows([["git $'\\560'ush origin main", 'ask']]);
   });
 });
 

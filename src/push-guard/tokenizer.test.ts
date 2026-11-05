@@ -32,8 +32,31 @@ describe('parseShell: bash', () => {
   });
 
   it("decodes $'...' quoting", () => {
-    assert.deepEqual(words("git $'\\x70ush' $'\\u0041\\101\\n\\'\\q'"), [['git', 'push', "AA\n'q"]]);
+    assert.deepEqual(words("git $'\\x70ush' $'\\u0041\\101\\n\\'\\q'"), [['git', 'push', "AA\n'\\q"]]);
     assert.deepEqual(words('echo $"text"'), [['echo', 'text']]);
+  });
+
+  it("ends a $'...' value at a NUL, and the word carries on after the closing quote", () => {
+    assert.deepEqual(words("a $'\\0' b"), [['a', '', 'b']]);
+    assert.deepEqual(words("a $'\\0'$'\\0' b"), [['a', '', 'b']]);
+    assert.deepEqual(words("a $'x\\0y'z b"), [['a', 'xz', 'b']]);
+    assert.deepEqual(words("a $'\\0'\"two words\" b"), [['a', 'two words', 'b']]);
+  });
+
+  it("decodes the $'...' escapes a shorter table misses", () => {
+    assert.deepEqual(words("git $'\\560'ush $'\\x{2d}'-force $'\\U0000002d'-all"), [['git', 'push', '--force', '--all']]);
+  });
+
+  it("finds the closing quote of $'...' before it decodes, as bash does in two steps", () => {
+    assert.deepEqual(words("a $'\\c\\'x' b"), [['a', "\x1c'x", 'b']]);
+    assert.deepEqual(words("a $'\\c\\\\x' b"), [['a', '\x1cx', 'b']]);
+  });
+
+  it("calls a line with an open $'...' incomplete, a backslash at its very end too", () => {
+    for (const line of ["a $'open", "a $'open\\'", "a $'open\\", "a $'\\0"]) {
+      assert.equal(complete(line), false, line);
+    }
+    assert.equal(complete("a $'\\0' b"), true);
   });
 
   it('keeps variables, substitutions and brace lists as written and marks them dynamic', () => {

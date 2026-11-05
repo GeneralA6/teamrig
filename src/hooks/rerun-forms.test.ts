@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { NOTHING_QUOTES } from '../testing/ansi-c-quotes.ts';
 import { rerunForm } from './rerun-forms.ts';
 
 describe('rerunForm', () => {
@@ -25,6 +26,14 @@ describe('rerunForm', () => {
   it('runs a plain git worktree remove through teamrig, which unlinks shared folders first', () => {
     assert.equal(rerunForm('Bash', 'git worktree remove /w/x'), 'teamrig worktree remove /w/x');
     assert.equal(rerunForm('Bash', 'cd /w && git worktree remove ../x'), 'env -C /w teamrig worktree remove ../x');
+  });
+
+  it("writes a word behind a $'...' string whose value is nothing as the word bash gives the program", () => {
+    for (const quote of NOTHING_QUOTES) {
+      assert.equal(rerunForm('Bash', `cd /w && git ${quote}status`), 'git -C /w status', quote);
+      assert.equal(rerunForm('Bash', `cd ${quote}/w && ${quote}git status`), 'git -C /w status', quote);
+      assert.equal(rerunForm('Bash', `git ${quote}worktree remove /w/x`), 'teamrig worktree remove /w/x', quote);
+    }
   });
 
   it('gives no form when no rule applies', () => {
