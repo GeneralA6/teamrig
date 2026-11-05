@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { nativeWords, splitLine, wordOfUnits, type CRuntime, type LineUnit } from './native-line.ts';
+import { nativeWords, splitLine, verbatimLine, wordOfUnits, type CRuntime, type LineUnit } from './native-line.ts';
 import type { ShellWord } from './tokenizer.ts';
 
 const text = (value: string): ShellWord => ({ text: value, dynamic: false });
@@ -78,6 +78,27 @@ describe('nativeWords: what Windows PowerShell 5.1 hands a native program', () =
 
   it('reads the text after a --% with the words before it', () => {
     assert.deepEqual(nativeWords([[text('a"')]], [...' " --no-verify'], 'ucrt'), [text('a '), text('--no-verify')]);
+  });
+
+  it('ends the line at a NUL, in a value, in the verbatim text or inside a piece', () => {
+    assert.deepEqual(nativeWords([[text('a\0b')], [text('c')]], [], 'ucrt'), [text('a')]);
+    assert.deepEqual(nativeWords([[text('a')]], [...' b\0 c'], 'ucrt'), [text('a'), text('b')]);
+    assert.deepEqual(nativeWords([[text('a')]], [' ', { text: '%b\0c%' }, ' ', 'd'], 'ucrt'), [text('a'), dynamic('%b')]);
+  });
+});
+
+describe('verbatimLine: what a --% adds to the line', () => {
+  it('is two blanks, then the text with its leading spaces cut and its trailing ones kept', () => {
+    assert.deepEqual(verbatimLine([...'   a b  ']), [...'  a b  ']);
+  });
+
+  it('is two blanks for no text or spaces alone', () => {
+    assert.deepEqual(verbatimLine([]), [...'  ']);
+    assert.deepEqual(verbatimLine([...'   ']), [...'  ']);
+  });
+
+  it('keeps a piece at the start of the text', () => {
+    assert.deepEqual(verbatimLine([' ', { text: '%A%' }]), [' ', ' ', { text: '%A%' }]);
   });
 });
 

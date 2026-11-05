@@ -85,6 +85,18 @@ export const PARAMETER_ROWS: readonly ShellWordsRow[] = [
   { dialect: 'powershell', typed: 'npm install left-pad -\ua7c2:"x"--dry-run', real: 'npm install left-pad "-\ua7c2:x--dry-run"' },
 ];
 
+/**
+ * 5.1 hands a native program one line, which the program's C runtime splits again: a lone `"` swallows the next word, a
+ * `\"` opens nothing and an empty value drops. Each row's words are what node got from 5.1, run for real.
+ */
+export const NATIVE_LINE_ROWS: readonly ShellWordsRow[] = [
+  { dialect: 'powershell', typed: `git commit --no-verify 'a"' --verify`, real: `git commit --no-verify 'a --verify'` },
+  { dialect: 'powershell', typed: `git commit --no-verify -m '' --verify`, real: 'git commit --no-verify -m --verify' },
+  { dialect: 'powershell', typed: `git commit 'a\\" --no-verify'`, real: `git commit 'a\\"' --no-verify` },
+  { dialect: 'powershell', typed: `git -c 'a=b\\" push origin main'`, real: `git -c 'a=b\\"' push origin main` },
+  { dialect: 'powershell', typed: `git '' push origin main`, real: 'git push origin main' },
+];
+
 export const QUOTE_ROWS: readonly ShellWordsRow[] = [
   { dialect: 'powershell', typed: 'git commit -m x \u201c--no-verify\u201d', real: 'git commit -m x --no-verify' },
   { dialect: 'powershell', typed: 'git commit -m x \u2018--no-verify\u2019', real: 'git commit -m x --no-verify' },
@@ -108,7 +120,6 @@ export const QUOTE_ROWS: readonly ShellWordsRow[] = [
   { dialect: 'powershell', typed: 'git status --% a\rgit push origin main', real: 'git push origin main' },
   { dialect: 'powershell', typed: 'git status --% "a\rgit push origin main', real: 'git push origin main' },
   { dialect: 'powershell', typed: 'git status --% a && git push origin main', real: 'git push origin main' },
-  { dialect: 'powershell', typed: 'git commit --% -m a\\" --no-verify', real: "git commit '--%' -m 'a\"' --no-verify" },
   { dialect: 'powershell', typed: 'git status --% %a|git\u0085push\u0085origin\u0085main;#%', real: 'git push origin main' },
   { dialect: 'powershell', typed: 'git commit --no-verify --% x\u00a0--verify', real: 'git commit --no-verify --% "x\u00a0--verify"' },
 ];
@@ -147,9 +158,11 @@ export const EXPRESSION_ROWS: readonly ShellWordsRow[] = [
 
 /**
  * A value among a program's arguments stands for one word whose text is only known when it runs. Its word keeps its
- * source, so `real` shows the line a guard must judge it by, not one with the same text.
+ * source, so `real` shows the line a guard must judge it by, not one with the same text. A word holding a `"` sits here
+ * too: 5.1's line reads the quote, so no line spells that word alike in every reading.
  */
 export const VALUE_ROWS: readonly ShellWordsRow[] = [
+  { dialect: 'powershell', typed: 'git commit --% -m a\\" --no-verify', real: "git commit '--%' -m 'a\"' --no-verify" },
   { dialect: 'powershell', typed: 'git commit (echo -m) x --no-verify', real: 'git commit -m x --no-verify' },
   { dialect: 'powershell', typed: 'git commit -m {x} --no-verify', real: 'git commit -m x --no-verify' },
   { dialect: 'powershell', typed: 'git commit -m x{y} --no-verify', real: 'git commit -m x y --no-verify' },
