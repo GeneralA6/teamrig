@@ -376,6 +376,25 @@ describe('parseShell: PowerShell', () => {
   it('drops redirections, including *>', () => {
     assert.deepEqual(words('git push 2>&1 *> $null', 'powershell'), [['git', 'push']]);
   });
+
+  it('keeps a < behind a digit word or * as word text: only > gives way to a descriptor', () => {
+    assert.deepEqual(plainWords('x 1<y z'), [['x', '1<y', 'z']]);
+    assert.deepEqual(plainWords('x 12<y'), [['x', '12<y']]);
+    assert.deepEqual(plainWords('x 1<<y z'), [['x', '1<<y', 'z']]);
+    assert.deepEqual(plainWords('x *<y z'), [['x', '*<y', 'z']]);
+    assert.deepEqual(plainWords('x 1< z'), [['x', '1<', 'z']]);
+    assert.deepEqual(plainWords("x 1<'a b' c"), [['x', '1<a b', 'c']]);
+    assert.deepEqual(plainWords('x 1<;y'), [['x', '1<'], ['y']]);
+    assert.deepEqual(words('x 1>y *>z w', 'powershell'), [['x', 'w']]);
+    assert.deepEqual(words('x a>y w', 'powershell'), [['x', 'a>y', 'w']]);
+    assert.deepEqual(words('x 1<y z'), [['x', 'z']]);
+  });
+
+  it('opens no comment at a # behind such a <', () => {
+    assert.deepEqual(plainWords('x 1<#y z'), [['x', '1<#y', 'z']]);
+    assert.deepEqual(plainWords('x *<#y z'), [['x', '*<#y', 'z']]);
+    assert.equal(complete('x 1<#y z', 'powershell'), true);
+  });
 });
 
 describe('parseShell: cmd', () => {

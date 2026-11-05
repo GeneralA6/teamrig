@@ -121,6 +121,20 @@ export const NATIVE_LINE_ROWS: readonly ShellWordsRow[] = [
   { dialect: 'powershell', typed: `npm '--%' -y:install left-pad`, real: 'npm install left-pad' },
 ];
 
+/**
+ * Behind a digit word or `*`, PowerShell's `<` redirects nothing: it is word text, so neither the next word nor a `#` behind
+ * it goes. Each row's words are what node got from 5.1, run for real.
+ */
+export const REDIRECTION_ROWS: readonly ShellWordsRow[] = [
+  { dialect: 'powershell', typed: 'git commit 1<#x --no-verify', real: `git commit '1<#x' --no-verify` },
+  { dialect: 'powershell', typed: 'git commit 1< --no-verify', real: `git commit '1<' --no-verify` },
+  { dialect: 'powershell', typed: 'git commit *< --no-verify', real: `git commit '*<' --no-verify` },
+  { dialect: 'powershell', typed: 'git push origin main 1<#x --force', real: `git push origin main '1<#x' --force` },
+  { dialect: 'powershell', typed: 'git push origin main 1< --force', real: `git push origin main '1<' --force` },
+  { dialect: 'powershell', typed: 'npm install *<#x left-pad', real: `npm install '*<#x' left-pad` },
+  { dialect: 'powershell', typed: 'npm install 1< left-pad', real: `npm install '1<' left-pad` },
+];
+
 export const QUOTE_ROWS: readonly ShellWordsRow[] = [
   { dialect: 'powershell', typed: 'git commit -m x \u201c--no-verify\u201d', real: 'git commit -m x --no-verify' },
   { dialect: 'powershell', typed: 'git commit -m x \u2018--no-verify\u2019', real: 'git commit -m x --no-verify' },
