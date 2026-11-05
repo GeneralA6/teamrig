@@ -54,10 +54,15 @@ describe('quiet', () => {
 
   it('reads PowerShell groups the same way', () => {
     assert.deepEqual(loud('Write-Output (Get-Content a); $v = (Get-Content b); Invoke-RestMethod -Uri (Get-Content c)', 'powershell'), [
-      'write-output',
       'get-content',
+      'write-output',
       'invoke-restmethod',
     ]);
-    assert.deepEqual(loudBare('$env:A; if ($env:B) { 1 }; Write-Output ($env:C); [string]::IsNullOrEmpty($env:D)'), ['$env:A', 'if', '$env:C']);
+    assert.deepEqual(loudBare('$env:A; if ($env:B) { 1 }; Write-Output ($env:C); [string]::IsNullOrEmpty($env:D)'), [
+      '$env:A',
+      'if',
+      '$env:C',
+      '[string]::IsNullOrEmpty ($env:D)',
+    ]);
   });
 });

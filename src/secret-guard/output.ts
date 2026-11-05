@@ -1,6 +1,6 @@
 import type { BareCommand, ProgramRun } from '../package-guard/programs.ts';
 import type { Redirection } from '../push-guard/tokenizer.ts';
-import { echoes, printsValue } from './env.ts';
+import { echoes, printsHeld } from './env.ts';
 import { isPrinter } from './files.ts';
 import { printsInline } from './inline.ts';
 
@@ -77,13 +77,13 @@ export function quiet(command: ProgramRun | BareCommand): boolean {
 
 /**
  * True when the command holding a substitution prints the value it takes: an echo, a file printer, inline code that
- * prints (`node -e "console.log('$(cat t)')"`), a PowerShell expression.
+ * prints (`node -e "console.log('$(cat t)')"`), a PowerShell expression other than a call taking it as an argument.
  */
 function holderPrints(holder: ProgramRun | BareCommand | undefined): boolean {
   if (holder === undefined) {
     return true;
   }
-  const prints = 'name' in holder ? echoes(holder) || isPrinter(holder.name) || printsInline(holder) : printsValue(holder);
+  const prints = 'name' in holder ? echoes(holder) || isPrinter(holder.name) || printsInline(holder) : printsHeld(holder);
   return prints && !quiet(holder);
 }
 

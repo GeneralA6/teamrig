@@ -1,7 +1,7 @@
 import { runsOf, type ProgramsContext } from '../package-guard/programs.ts';
 import type { ShellDialect } from '../push-guard/tokenizer.ts';
 import { commandFindings } from './commands.ts';
-import { bareFindings, ENVIRONMENT_READ, envFindings, environmentReads } from './env.ts';
+import { bareFindings, envFindings, environmentReads, readsEnvironment } from './env.ts';
 import { fileFindings } from './files.ts';
 import { uniqueFindings, type SecretFinding } from './findings.ts';
 import { inlineFindings } from './inline.ts';
@@ -23,6 +23,7 @@ export function shellFindings(command: string, context: ProgramsContext, rules: 
   const inner = (line: string, dialect: ShellDialect): SecretFinding[] =>
     depth < MAX_REMOTE_DEPTH ? shellFindings(line, { cwd: undefined, home: context.home, dialect }, rules, depth + 1) : [];
   const printing = runs.programs.filter((run) => !quiet(run));
+  const printingBare = runs.bare.filter((bare) => !quiet(bare));
   return uniqueFindings([
     ...printing.flatMap((run) => [
       ...fileFindings(run, rules),
@@ -31,7 +32,7 @@ export function shellFindings(command: string, context: ProgramsContext, rules: 
       ...inlineFindings(run, rules),
       ...remoteFindings(run, inner),
     ]),
-    ...runs.bare.filter((bare) => !quiet(bare)).flatMap((bare) => bareFindings(bare, rules.names)),
-    ...(printing.some((run) => ENVIRONMENT_READ.test(run.name)) ? environmentReads(command, rules.names) : []),
+    ...printingBare.flatMap((bare) => bareFindings(bare, rules.names)),
+    ...(printingBare.some(readsEnvironment) ? environmentReads(command, rules.names) : []),
   ]);
 }

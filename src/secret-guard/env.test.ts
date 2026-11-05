@@ -47,8 +47,8 @@ describe('envFindings and bareFindings', () => {
     ]);
     assert.deepEqual(printed('$env:GITHUB_TOKEN; Write-Output $env:NPM_TOKEN; [Environment]::GetEnvironmentVariables()', 'powershell'), [
       'the value of $NPM_TOKEN',
-      'the whole environment',
       'the value of $GITHUB_TOKEN',
+      'the whole environment',
     ]);
   });
 
