@@ -5176,8 +5176,8 @@ lets a line that runs one of the session's own jobs run with no permission check
 into a dead end: `teamrig merge`, `teamrig deploy --repo <name>`, `teamrig exec request`, `teamrig worktree remove`
 (no `--base`) and a `git commit` with its hooks running (only `-a -s -q -m -F` and paths). The line must be one plain
 command through this install's own `teamrig`, or a bare `git`: no `;`, `&`, `|`, `<`, `>` but a lone `2>&1`, no
-substitution, variable or `#`, inside quotes too. It answers only once the push, package, secret, exec and pass-record
-guards all passed the same call; when one asks or refuses, that answer stands. Each allow is a line in
+substitution, variable, `$'`, `$"` or `#`, inside quotes too. It answers only once the push, package, secret, exec
+and pass-record guards all passed the same call; when one asks or refuses, that answer stands. Each allow is a line in
 `state/prompt-answers.jsonl` naming the route, never the command. `prompts.routeAllow: off` takes the allow away. See
 [Hooks and permissions](hooks.md#asks-off-a-refusal-instead-of-a-prompt).
 
