@@ -137,6 +137,17 @@ export const MARKER_TEXT_ROWS: readonly ShellWordsRow[] = [
 ];
 
 /**
+ * The parser's `--%` never reaches the program, so an option ahead of it takes the word behind it as its value. Each row ran
+ * for real on 5.1: `git -C --% repo push origin main --force` landed a non-fast-forward from `repo`.
+ */
+export const MARKER_VALUE_ROWS: readonly ShellWordsRow[] = [
+  { dialect: 'powershell', typed: 'git -c --% core.hooksPath=x commit -m y', real: 'git -c core.hooksPath=x commit -m y' },
+  { dialect: 'powershell', typed: 'git -C --% other push origin main --force', real: 'git -C other push origin main --force' },
+  { dialect: 'powershell', typed: 'git --git-dir --% x push origin main --force', real: 'git --git-dir x push origin main --force' },
+  { dialect: 'powershell', typed: 'npm --prefix --% x install left-pad', real: 'npm --prefix x install left-pad' },
+];
+
+/**
  * Behind a digit word or `*`, PowerShell's `<` redirects nothing: it is word text, so neither the next word nor a `#` behind
  * it goes. Each row's words are what node got from 5.1, run for real.
  */

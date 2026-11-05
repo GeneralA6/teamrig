@@ -23,8 +23,8 @@ export const MARKER = '--%';
 
 /**
  * The parser's `--%` on a line. Measured, the real line has no trace of it: inside quotes it adds nothing, not even a
- * blank, so `'a "b' --% c d` hands a program `a b  c d`. Between words {@link splitLine} keeps it a word, as the plain
- * reading does, so readings that agree still fold.
+ * blank, so `'a "b' --% c d` hands a program `a b  c d`. Between words it only ends the word before it, so
+ * {@link splitLine} gives it no word, as the plain reading gives it none, and readings that agree still fold.
  */
 export const PARSER_MARKER: LinePiece = { text: MARKER };
 
@@ -97,7 +97,6 @@ export function splitLine(line: readonly LineUnit[], runtime: CRuntime): LineUni
       return words;
     }
     if (line[at] === PARSER_MARKER) {
-      words.push([...MARKER]);
       at += 1;
       continue;
     }
