@@ -1784,12 +1784,18 @@ class Scanner {
    */
   private readMembers(word: WordBuilder, touching = false): boolean {
     const start = this.index;
+    const read = this.skipMembers(touching);
+    if (read) {
+      word.add(this.source.slice(start, this.index), 'dynamic');
+    }
+    return read;
+  }
+
+  /** Moves past a chain of members and indexes, adding nothing to a word; true when one is there. */
+  private skipMembers(touching = false): boolean {
     let read = false;
     while (read || !touching ? this.readMemberPastComments() : this.readMember()) {
       read = true;
-    }
-    if (read) {
-      word.add(this.source.slice(start, this.index), 'dynamic');
     }
     return read;
   }
