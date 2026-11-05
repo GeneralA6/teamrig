@@ -102,7 +102,9 @@ too deep, a push held in quoted text as a command substitution (`x='a[$(git push
 if an expansion reads the text again (`${x@P}`, `${!x}`, `$((x))`, `let`, `[[ -eq ]]`, or `read`, `printf -v`,
 `unset` or `declare` given it as a name), in this line or a later one. A line whose words depend on the shell's
 version, its host or how it is started also counts: a NUL or a `` `u{2d} `` in PowerShell, a CR in bash, a caret
-before a line end in cmd. Every reading of such a line is judged, so a refusal in any one of them stands. Some of
+before a line end in cmd, or a `"`, a `\`, an empty value, a bare comma or a `--%` handed to a program from
+PowerShell, as Windows PowerShell 5.1 rebuilds that program's line and the words it gets can differ from the words
+typed. Every reading of such a line is judged, so a refusal in any one of them stands. Some of
 these, such as `eval "$X"`, `bash -c "$CMD"`, an unclosed quote or a line with more than one reading, ask only when
 the line, or a script or alias it runs, names a push: a
 word, or a piece of one between blanks, quotes, operators and path separators, that is `push`, `--push` or

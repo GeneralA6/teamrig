@@ -270,8 +270,10 @@ Before Claude runs a Bash or PowerShell command, the guard reads it and decides:
   value's leading `~` count as your home folder in the line's own shell, as in `T=~/bin/teamrig; $T list`): "The guard
   cannot tell whether this command pushes to a protected branch (...): <why>. Confirm, or write the push out
   plainly." A line whose words depend on the shell's version, its host or how it is started (a NUL or a `` `u{2d} ``
-  in PowerShell, a CR in bash, a caret before a line end in cmd) is a doubt too, and every reading of it is judged, so
-  a refusal in any one of them stands. Some doubts, such as an unclosed quote, a line with more than one reading or
+  in PowerShell, a CR in bash, a caret before a line end in cmd, or a `"`, a `\`, an empty value, a bare comma or a
+  `--%` handed to a program from PowerShell, as Windows PowerShell 5.1 rebuilds that program's line) is a doubt too,
+  and every reading of it is judged, so a refusal in any one of them stands. Some doubts, such as an unclosed quote, a
+  line with more than one reading or
   `bash -c "$CMD"`, ask only when the line names a push in a word of its own (`push`, `--push`, `git-push`), never in
   a path such as `src/push-guard`.
 
