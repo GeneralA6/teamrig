@@ -83,6 +83,42 @@ export const NUL_ROWS: readonly ShellWordsRow[] = [
 ];
 
 /**
+ * An array around a NUL, measured on 5.1: the elements the cut dropped still count, so a gap among them splits the array the
+ * line kept, and a value that opens with the NUL keeps the comma before it.
+ */
+export const CUT_ARRAY_ROWS: readonly ShellWordsRow[] = [
+  { dialect: 'powershell', typed: 'git commit -m x a,"--no-verify`0",c ,d', real: 'git commit -m x a --no-verify' },
+  { dialect: 'powershell', typed: 'git commit -m x a,"--no-verify`0b",c, d', real: 'git commit -m x a --no-verify' },
+  { dialect: 'powershell', typed: 'git commit -m x a,"--no-verify`0",c,#x\nd', real: 'git commit -m x a --no-verify' },
+  { dialect: 'powershell', typed: 'git commit -m x a,"--no-verify`0",c,d ,e', real: 'git commit -m x a --no-verify' },
+  { dialect: 'powershell', typed: `git commit -m x a,'b',"--no-verify\`0",c ,d`, real: 'git commit -m x a b --no-verify' },
+  { dialect: 'powershell', typed: 'git commit -m x "--no-verify`0",c ,d', real: 'git commit -m x --no-verify' },
+  { dialect: 'powershell', typed: 'git push origin,main,"--force`0",c ,d', real: 'git push origin main --force' },
+  // A gap behind a later word, or a comment, splits nothing the line kept.
+  { dialect: 'powershell', typed: 'git commit -m x a,"--no-verify`0" c ,d', real: `git commit -m x 'a,--no-verify'` },
+  { dialect: 'powershell', typed: 'git commit -m x a,"--no-verify`0",c<#x#>,d', real: `git commit -m x 'a,--no-verify'` },
+  { dialect: 'powershell', typed: 'git status a,"`0b",c,d', real: `git status 'a,'` },
+  { dialect: 'powershell', typed: 'git status a,"`0b" c ,d', real: `git status 'a,'` },
+  { dialect: 'powershell', typed: 'git status a,"`0b",c ,d', real: 'git status a' },
+  { dialect: 'powershell', typed: 'git status "`0b",c,d', real: 'git status' },
+  { dialect: 'powershell', typed: `git status '',"\`0b",c`, real: 'git status' },
+  { dialect: 'powershell', typed: `git status a,"\`0",''`, real: `git status 'a,'` },
+  { dialect: 'powershell', typed: `git status a,'b',"\`0",c`, real: `git status 'a,b,'` },
+  { dialect: 'powershell', typed: 'git status -x:a,"`0b",c', real: `git status '-x:a,'` },
+  { dialect: 'powershell', typed: 'git commit -m x --no-verify,"`0"', real: `git commit -m x '--no-verify,'` },
+  // Behind the binder's marker a NUL cuts only its own value, so nothing is dropped and the array's gaps stand where they are.
+  { dialect: 'powershell', typed: `git status '--%' a,"\`0b",d,e`, real: `git status 'a,,d,e'` },
+  { dialect: 'powershell', typed: `git status '--%' "\`0b",d,e`, real: `git status ',d,e'` },
+  { dialect: 'powershell', typed: `git status '--%' "\`0b" c`, real: 'git status c' },
+  { dialect: 'powershell', typed: `git status '--%' a,"b\`0c",d ,e`, real: 'git status a b d e' },
+  { dialect: 'powershell', typed: `git status '--%' a,"b\`0c",d,e`, real: `git status 'a,b,d,e'` },
+  { dialect: 'powershell', typed: `git status '--%' a,"b\`0c" d ,e`, real: `git status 'a,b' d e` },
+  // The next command counts its own words.
+  { dialect: 'powershell', typed: 'git status a,"a`0b",c ,d; git status e,f g ,h', real: `git status a a; git status 'e,f' g h` },
+  { dialect: 'powershell', typed: 'git status a,"a`0b" c ,d; git status e,f g,h', real: `git status 'a,a'; git status 'e,f' 'g,h'` },
+];
+
+/**
  * A first unit newer than 5.1's Unicode opens no parameter there, so the quotes after it join one word and the text after
  * them is no option of its own. Measured on 5.1; pwsh takes the letter, so the two differ.
  */

@@ -790,6 +790,8 @@ class Scanner {
     let element = false;
     /** True once a NUL ended this command's line: the words after it never reach the program. */
     let lineCut = false;
+    /** PowerShell: this command's words the cut kept out of `words`. `arrays` still count them, as a comma stands behind them too. */
+    let cutWords = 0;
     let verbatimText: VerbatimText | undefined;
     /** PowerShell: where the last word ended, as a comma right there leaves no gap. */
     let wordEnd = -1;
@@ -835,12 +837,18 @@ class Scanner {
     };
     /**
      * A word the NUL left empty is no argument, as the line ends before it: `x <NUL> a` hands the program nothing. Measured:
-     * behind the binder's `--%` a NUL cuts only its own value, so `'--%' "a`0b" c` still hands over `c`.
+     * behind the binder's `--%` a NUL cuts only its own value, so `'--%' "a`0b" c` still hands over `c`. 5.1 joins a value
+     * that opens with a NUL as one that holds something, so such a word keeps the NUL for its line: `a,"`0b",c` hands `a,`,
+     * and `'--%' "`0b",c` hands `,c`.
      */
     const addWord = (taken: ShellWord, cut: boolean): void => {
       const endsLine = cut && this.reading.nul === 'line' && takenMarkers().length === 0;
-      if (!lineCut && !(endsLine && taken.text === '')) {
-        words.push(taken);
+      const joins = this.reading.nativeLine !== undefined && cut && taken.text === '' && (element || !endsLine);
+      const kept = joins ? { ...taken, text: '\0' } : taken;
+      if (!lineCut && !(endsLine && kept.text === '')) {
+        words.push(kept);
+      } else {
+        cutWords += 1;
       }
       lineCut ||= endsLine;
     };
@@ -928,6 +936,7 @@ class Scanner {
           : undefined;
       verbatimText = undefined;
       arrays = [];
+      cutWords = 0;
       markers = [];
       if (command !== undefined) {
         this.commands.push(command);
@@ -1126,7 +1135,8 @@ class Scanner {
         this.index += 1;
         const next = this.index;
         this.skipGaps();
-        arrays = withComma(arrays, words.length - 1, touchesWord && this.index === next);
+        // Measured: an array's gap counts past the cut, so `a,"b`0",c ,d` hands `a` and `b`, and a later word's gap is its own.
+        arrays = withComma(arrays, words.length + cutWords - 1, touchesWord && this.index === next);
         continue;
       } else if (char === '@' && this.dialect === 'cmd' && words.length === 0 && !word.isStarted) {
         // cmd's `@` before a command only hides its echo.

@@ -5,7 +5,7 @@ import { programsOf } from '../package-guard/programs.ts';
 import { bashLineReads } from '../readonly-shell/bash.ts';
 import { powershellLineReads } from '../readonly-shell/powershell.ts';
 import { prefixWords, type ReadonlyRules } from '../readonly-shell/rules.ts';
-import { BLANK_AND_LINE_END_ROWS, COMMENT_CHAIN_ROWS, CUT_PARAMETER_ROWS, ESCAPE_ROWS, EXPRESSION_ROWS, LONE_DOT_ROWS, MARKER_ARRAY_ROWS, MARKER_CHAIN_ROWS, MARKER_TEXT_ROWS, MARKER_VALUE_ROWS, NATIVE_LINE_ROWS, NUL_ROWS, PARAMETER_ROWS, POWERSHELL_BLANKS, POWERSHELL_DOUBLE_QUOTES, POWERSHELL_ESCAPES, POWERSHELL_LINE_ENDS, POWERSHELL_SINGLE_QUOTES, QUOTE_ROWS, REDIRECTION_ROWS, VALUE_ROWS, type ShellWordsRow } from '../testing/shell-words.ts';
+import { BLANK_AND_LINE_END_ROWS, COMMENT_CHAIN_ROWS, CUT_ARRAY_ROWS, CUT_PARAMETER_ROWS, ESCAPE_ROWS, EXPRESSION_ROWS, LONE_DOT_ROWS, MARKER_ARRAY_ROWS, MARKER_CHAIN_ROWS, MARKER_TEXT_ROWS, MARKER_VALUE_ROWS, NATIVE_LINE_ROWS, NUL_ROWS, PARAMETER_ROWS, POWERSHELL_BLANKS, POWERSHELL_DOUBLE_QUOTES, POWERSHELL_ESCAPES, POWERSHELL_LINE_ENDS, POWERSHELL_SINGLE_QUOTES, QUOTE_ROWS, REDIRECTION_ROWS, VALUE_ROWS, type ShellWordsRow } from '../testing/shell-words.ts';
 import { hookSkips } from './hook-skips.ts';
 import { findGitInvocations } from './invocations.ts';
 import { evaluatePushes, type PushDecision, type RepoState } from './push.ts';
@@ -105,6 +105,10 @@ describe('the guards read the words the shell runs', () => {
 
   it('holds on every NUL, code point and caret', () => {
     NUL_ROWS.forEach(assertNoSofter);
+  });
+
+  it('holds on an array a NUL cuts', () => {
+    CUT_ARRAY_ROWS.forEach(assertNoSofter);
   });
 
   it('holds on a closer right behind --%', () => {
@@ -1417,6 +1421,64 @@ describe('parseShell: a NUL in PowerShell', () => {
 
   it('takes no marker from a --% the NUL touches', () => {
     assert.deepEqual(wordsOf('c --%`0 b;d e', 'powershell'), [['c', '--%'], ['d', 'e'], ['c', '--%\0', 'b'], ['d', 'e'], ['c', '--%', 'b'], ['d', 'e']]);
+  });
+
+  describe('in an array', () => {
+    /** The words 5.1's line hands over: on a line with a NUL, that reading comes first. */
+    const cutWordsOf = (line: string): string[][] | undefined => readingsOf(line)[0];
+
+    it('counts the elements the cut dropped, so a gap among them splits what the line kept', () => {
+      assert.deepEqual(cutWordsOf('x a,"a`0b",c ,d'), [['x', 'a', 'a']]);
+      assert.deepEqual(cutWordsOf('x a,"a`0b",c, d'), [['x', 'a', 'a']]);
+      assert.deepEqual(cutWordsOf(`x a,'b',"c\`0d",e ,f`), [['x', 'a', 'b', 'c']]);
+      assert.deepEqual(cutWordsOf('x a,"--no-verify`0",c ,d'), [['x', 'a', '--no-verify']]);
+    });
+
+    it('leaves the array whole for a gap in a word of its own, behind the cut', () => {
+      assert.deepEqual(cutWordsOf('x a,"a`0b" c ,d'), [['x', 'a,a']]);
+      assert.deepEqual(cutWordsOf('x a,"--no-verify`0" c ,d'), [['x', 'a,--no-verify']]);
+    });
+
+    it('keeps the comma before a value that opens with the NUL', () => {
+      assert.deepEqual(cutWordsOf('x a,"`0b",c,d'), [['x', 'a,']]);
+      assert.deepEqual(cutWordsOf('x a,"`0b" c ,d'), [['x', 'a,']]);
+      assert.deepEqual(cutWordsOf(`x a,'b',"\`0",c`), [['x', 'a,b,']]);
+      assert.deepEqual(cutWordsOf(`x a,"\`0",''`), [['x', 'a,']]);
+      assert.deepEqual(cutWordsOf('x -x:a,"`0b",c'), [['x', '-x:a,']]);
+      assert.deepEqual(cutWordsOf('x --no-verify,"`0"'), [['x', '--no-verify,']]);
+    });
+
+    it('splits that comma off too, on a gap among the dropped elements', () => {
+      assert.deepEqual(cutWordsOf('x a,"`0b",c ,d'), [['x', 'a']]);
+    });
+
+    it('hands nothing for such a value at the head of the array', () => {
+      assert.deepEqual(cutWordsOf('x "`0b",c,d'), [['x']]);
+      assert.deepEqual(cutWordsOf(`x '',"\`0b",c`), [['x']]);
+    });
+
+    it('cuts only the value behind the binder, whose comma stays', () => {
+      assert.deepEqual(cutWordsOf(`x '--%' a,"\`0b",d,e`), [['x', 'a,,d,e']]);
+      assert.deepEqual(cutWordsOf(`x '--%' "\`0b",d,e`), [['x', ',d,e']]);
+      assert.deepEqual(cutWordsOf(`x '--%' "\`0b" c`), [['x', 'c']]);
+    });
+
+    it('counts nothing behind the binder, where no word is dropped', () => {
+      assert.deepEqual(cutWordsOf(`x '--%' a,"b\`0c",d ,e`), [['x', 'a', 'b', 'd', 'e']]);
+      assert.deepEqual(cutWordsOf(`x '--%' a,"b\`0c",d,e`), [['x', 'a,b,d,e']]);
+      assert.deepEqual(cutWordsOf(`x '--%' a,"b\`0c" d ,e`), [['x', 'a,b', 'd', 'e']]);
+    });
+
+    it('starts the count again at the next command', () => {
+      assert.deepEqual(cutWordsOf('x a,"a`0b",c ,d; y e,f g ,h'), [['x', 'a', 'a'], ['y', 'e,f', 'g', 'h']]);
+      assert.deepEqual(cutWordsOf('x a,"a`0b" c ,d; y e,f g,h'), [['x', 'a,a'], ['y', 'e,f', 'g,h']]);
+      assert.deepEqual(cutWordsOf('x a,"a`0b",c,d; y e,f,g ,h'), [['x', 'a,a'], ['y', 'e', 'f', 'g', 'h']]);
+    });
+
+    it('holds no NUL in the reading that only cuts the line', () => {
+      assert.deepEqual(readingsOf('x a,"`0b",c,d')[2], [['x', 'a']]);
+      assert.deepEqual(readingsOf('x --no-verify,"`0"')[2], [['x', '--no-verify']]);
+    });
   });
 
   it('stays complete when the readings agree, and is not when they differ', () => {

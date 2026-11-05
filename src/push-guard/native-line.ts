@@ -55,14 +55,16 @@ function bound(value: string): string {
 /**
  * One argument's units, each static value as `written` gives it. An array literal with no blank in it is one argument:
  * its elements are written one by one and joined by a comma, and an empty one adds nothing, the comma included. A value
- * of one empty element adds nothing at all, so the program never sees it.
+ * of one empty element adds nothing at all, so the program never sees it. A value that opens with a NUL is not empty,
+ * even where `written` leaves nothing of it: the comma behind it stays.
  */
 function argumentUnits(elements: readonly ShellWord[], written: (value: string) => readonly LineUnit[]): LineUnit[] {
   const units: LineUnit[] = [];
+  let joins = false;
   for (const element of elements) {
-    const value = element.dynamic ? [{ text: element.text }] : written(element.text);
-    if (value.length > 0) {
-      units.push(...(units.length > 0 ? [','] : []), ...value);
+    if (element.text !== '') {
+      units.push(...(joins ? [','] : []), ...(element.dynamic ? [{ text: element.text }] : written(element.text)));
+      joins = true;
     }
   }
   return units;
@@ -159,10 +161,11 @@ export function expandedUnits(text: string): LineUnit[] {
 /**
  * What arguments add to the line behind the binder's `--%`, a value equal to it that no parser took as its marker:
  * measured, each keeps its blank and goes in with no quotes, its `%NAME%` expanded as {@link expandedUnits} says, so
- * `'--%' 'a b' c` hands a program `a`, `b` and `c`, and a value of `%W%` is as many words as W holds.
+ * `'--%' 'a b' c` hands a program `a`, `b` and `c`, and a value of `%W%` is as many words as W holds. A NUL here cuts only
+ * its own value, so it never reaches the line.
  */
 export function bareLine(args: readonly (readonly ShellWord[])[]): LineUnit[] {
-  return args.flatMap((elements) => [' ', ...argumentUnits(elements, expandedUnits)]);
+  return args.flatMap((elements) => [' ', ...argumentUnits(elements, (value) => expandedUnits(value.replaceAll('\0', '')))]);
 }
 
 /** A line up to its first NUL, as a program's command line is one C string; a piece keeps the text before it. */
