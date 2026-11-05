@@ -691,6 +691,8 @@ class Scanner {
     /** The operator of a redirection whose target is the next word. */
     let awaiting: string | undefined;
     let verbatim = false;
+    /** PowerShell: true from a comma to the word it adds: measured, a `--%` that is an array's element marks nothing. */
+    let element = false;
     /** True once a NUL ended this command's line: the words after it never reach the program. */
     let lineCut = false;
     let verbatimText: VerbatimText | undefined;
@@ -728,7 +730,8 @@ class Scanner {
       if (awaiting === undefined) {
         addWord(taken, cut);
         // Set on a word the cut dropped too: the shell still reads the rest as written.
-        verbatim = this.dialect === 'powershell' && taken.text === '--%' && !taken.dynamic && !cut;
+        verbatim = this.dialect === 'powershell' && taken.text === '--%' && !taken.dynamic && !cut && !element;
+        element = false;
         return;
       }
       redirections.push({ operator: awaiting, target: taken });
@@ -741,6 +744,7 @@ class Scanner {
         awaiting = undefined;
       }
       verbatim = false;
+      element = false;
       lineCut = false;
       const { nativeLine } = this.reading;
       const command: ScannedCommand | undefined =
@@ -904,6 +908,7 @@ class Scanner {
         }
         // Measured: the next element may sit past line ends and comments. A comma that builds no array there is a parse
         // error, so nothing runs and no second statement hides behind it.
+        element = true;
         this.index += 1;
         this.skipGaps();
         continue;

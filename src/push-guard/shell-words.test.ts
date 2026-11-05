@@ -451,6 +451,12 @@ describe('parseShell: PowerShell --%', () => {
     assert.deepEqual(wordsOf('x --%,\nb c', 'powershell'), [['x', '--%', ','], ['b', 'c']]);
   });
 
+  it('marks nothing as an array\'s element, though it does behind a whole array', () => {
+    assert.deepEqual(wordsOf('x a,--% b;c d', 'powershell'), [['x', 'a', '--%', 'b'], ['c', 'd']]);
+    assert.deepEqual(wordsOf('x a, --% b;c d', 'powershell'), [['x', 'a', '--%', 'b'], ['c', 'd']]);
+    assert.deepEqual(wordsOf('x a,b --% c;d e', 'powershell'), [['x', 'a', 'b', '--%', 'c;d', 'e']]);
+  });
+
   it('reads %% as one percent and a lone % as itself', () => {
     assert.deepEqual(wordsOf('x --% a%%b c%', 'powershell'), [['x', '--%', 'a%b', 'c%']]);
   });

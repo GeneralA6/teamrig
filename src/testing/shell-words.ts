@@ -117,6 +117,12 @@ export const QUOTE_ROWS: readonly ShellWordsRow[] = [
   { dialect: 'powershell', typed: "git status '--%' x; git push origin main", real: 'git push origin main' },
   { dialect: 'powershell', typed: 'git status "--%" x; git push origin main', real: 'git push origin main' },
   { dialect: 'powershell', typed: "x @'\n '@ \"\n'@\ngit push origin main\n# \"", real: 'git push origin main' },
+  // An array's element is no marker, so the `;` still ends the statement.
+  { dialect: 'powershell', typed: 'git status a,--% b;git push origin main', real: 'git push origin main' },
+  { dialect: 'powershell', typed: 'git status a, --% b;git push origin main', real: 'git push origin main' },
+  { dialect: 'powershell', typed: 'git status a,\n--% b;git push origin main', real: 'git push origin main' },
+  { dialect: 'powershell', typed: 'git status a,--% b;git commit -m x --no-verify', real: 'git commit -m x --no-verify' },
+  { dialect: 'powershell', typed: 'git status a,--% b;npm install left-pad', real: 'npm install left-pad' },
   { dialect: 'powershell', typed: 'git status --% a\rgit push origin main', real: 'git push origin main' },
   { dialect: 'powershell', typed: 'git status --% "a\rgit push origin main', real: 'git push origin main' },
   { dialect: 'powershell', typed: 'git status --% a && git push origin main', real: 'git push origin main' },
