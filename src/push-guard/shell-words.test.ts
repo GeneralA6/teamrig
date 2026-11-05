@@ -123,7 +123,7 @@ describe('the guards read the words the shell runs', () => {
     LONE_DOT_ROWS.forEach(assertNoSofter);
   });
 
-  it('holds on a -name cut at a . or [', () => {
+  it('holds on a -name cut short', () => {
     CUT_PARAMETER_ROWS.forEach(assertNoSofter);
   });
 });

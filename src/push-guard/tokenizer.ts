@@ -179,7 +179,7 @@ const MEMBER_NAME = /(?:(?![\u{10000}-\u{10ffff}])[\p{L}\p{Nd}_\u1885\u1886])+/u
 /** What ends a `-name` token's name, besides a colon and a quote, which each do more; see {@link BARE_PARAMETER}. */
 const PARAMETER_ENDS = String.raw`.[;|\0\t\v\f \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\n\r&(),{}`;
 const PARAMETER_NAME = String.raw`[-\u2013\u2014\u2015](?![\u{10000}-\u{10ffff}])[\p{L}_?\u1885\u1886][^:'\u2018\u2019\u201a\u201b"\u201c\u201d\u201e${PARAMETER_ENDS}]*`;
-const PARAMETER = new RegExp(`${PARAMETER_NAME}:(?!:)`, 'uy');
+const PARAMETER = new RegExp(`${PARAMETER_NAME}:`, 'uy');
 /**
  * A `-name` token right behind a whole `--%`, measured on 5.1 (T2003): it needs no colon there and takes only one, so
  * `-y::z` leaves `:z`. A quote right behind the name makes no token, so `-y'a b'` stays a value.
@@ -924,12 +924,14 @@ class Scanner {
         verbatim = true;
         continue;
       }
-      const parameter = powershell && !word.isStarted ? this.parameterEnd(PARAMETER) : undefined;
+      const parameter = powershell && (!word.isStarted || this.index === valueAt) ? this.parameterEnd(PARAMETER) : undefined;
       if (parameter !== undefined) {
+        const inner = element || valueNext || this.index === valueAt;
         word.add(this.source.slice(this.index, parameter), 'unquoted');
         this.index = parameter;
-        if (element) {
-          // Measured: past a comma the token ends at its colon, and what follows is the next argument, out of the array.
+        if (inner) {
+          // Measured: in a value's place or past a comma the token takes one colon and no value, so what follows is the next
+          // argument: `-x:-a::b` hands over `-x:-a:` and `:b`, out of any array.
           endWord();
         } else {
           valueAt = parameter;

@@ -155,6 +155,14 @@ export const CUT_PARAMETER_ROWS: readonly ShellWordsRow[] = [
   { dialect: 'powershell', typed: 'git push -u.x main', real: 'git push -u .x main' },
   { dialect: 'powershell', typed: 'git push -x:-u.y main', real: 'git push -x:-u .y main' },
   { dialect: 'powershell', typed: 'git push -x: -u.y main', real: 'git push -x: -u .y main' },
+  // In a value's place a `-name:` token ends at its colon, so what follows is an argument of its own.
+  { dialect: 'powershell', typed: 'git commit -y:-z:--no-verify', real: 'git commit -y:-z: --no-verify' },
+  { dialect: 'powershell', typed: 'git commit -y: -z:--no-verify', real: 'git commit -y: -z: --no-verify' },
+  { dialect: 'powershell', typed: 'git push origin own -y:-z:--force', real: 'git push origin own -y:-z: --force' },
+  { dialect: 'powershell', typed: 'git -y:-z:push origin main', real: 'git -y:-z: push origin main' },
+  { dialect: 'powershell', typed: 'git -y: -z:push origin main', real: 'git -y: -z: push origin main' },
+  { dialect: 'powershell', typed: 'npm install -y:-z:left-pad', real: 'npm install -y:-z: left-pad' },
+  { dialect: 'powershell', typed: 'npm -y:-z:install left-pad', real: 'npm -y:-z: install left-pad' },
 ];
 
 export const QUOTE_ROWS: readonly ShellWordsRow[] = [
