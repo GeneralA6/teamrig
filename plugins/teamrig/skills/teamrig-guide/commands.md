@@ -4363,7 +4363,9 @@ and `budget.reset`. A reading taken before today's start gives its day: `at 10-2
 in the period kept in `state/usage/period.json`: from the last reset to the next, each week opening
 where the last one ended, and a moved reset keeping its start. A reading 2 points or more below the latest one,
 its reset unchanged, is a reset inside the week: a new budget runs from that latest reading to the reset, and the
-pace line and today's use start there. With no period kept yet, the week before the reset is taken, unless the W
+pace line and today's use start there. A reading 2 points or more over that budget's latest one is left out, and
+logs no meter line, when its session last showed another use before that latest reading: it may be the old week's
+use, shown late. With no period kept yet, the week before the reset is taken, unless the W
 metered since its start (at the week's W per percent) is 1.5 times the status line's use and 10 points over it:
 the use was reset inside the week before any period was kept, so the period starts at the latest hour from which
 the metered W reaches that use. After a reset inside the week, the week line says where the use counts from.
@@ -4390,7 +4392,9 @@ whose stores meter different W for one week never mix their scales; a line from 
 counts only for the team keeping the log, and not in a period with a line that names one. A child team so learns
 its own rate from its own lines. A fit of W per percent through 0 sets the rate: over the newest period whose readings
 span 10 points, so a limit that moved at a reset stops counting once the new period's readings do, else over the last
-8 weeks' readings once they span 10 points. It stands ahead of `budget.weeklyLimitW` (a starting guess until then),
+8 weeks' readings once they span 10 points. A newer period's own readings set the rate sooner, from 2%, once their
+rate is at least 1.5 times that fit or at most half of it: a limit moved at a reset, or by a plan changed inside the
+week, shows by then. It stands ahead of `budget.weeklyLimitW` (a starting guess until then),
 ahead of the status line's own estimate (the week's W over its use, once the meter counted the whole week). The
 last line says which rate counts, how far the fit misses its readings and, for the latest 3 periods, how far the
 use it forecast missed the status line. Today's use is read from the meter log too: the use now less the use at
