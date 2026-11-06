@@ -114,9 +114,19 @@ describe('areaStats: the counts now', () => {
 
 describe('areaStats: the usual', () => {
   it('is the median of the day-ends before today: a task there for most of them counts, one there for few does not', () => {
-    const { cells: most } = area(sessionsOf([create('T1', '2029-12-20T10:00:00.000Z', { type: 'bug' })]), 'alpha');
-    const { cells: few } = area(sessionsOf([create('T1', '2030-01-05T10:00:00.000Z', { type: 'bug' })]), 'alpha');
+    const { cells: most } = area(sessionsOf([create('T9', LONG_AGO), create('T1', '2029-12-20T10:00:00.000Z', { type: 'bug' })]), 'alpha');
+    const { cells: few } = area(sessionsOf([create('T9', LONG_AGO), create('T1', '2030-01-05T10:00:00.000Z', { type: 'bug' })]), 'alpha');
     assert.deepEqual([most.bugs.usual, few.bugs.usual], [1, 0]);
+  });
+
+  it("starts at the area's first active task: the days before it, a young register or a late hire, sink nothing", () => {
+    const { cells } = area(sessionsOf([...tasks(1, 3, 'alpha', '2030-01-05T10:00:00.000Z', { type: 'bug' })]), 'alpha');
+    assert.deepEqual([cells.bugs.value, cells.bugs.usual, cells.bugs.level], [3, 3, 'good']);
+  });
+
+  it('keeps the quiet days after its first task as zeros', () => {
+    const { cells } = area(sessionsOf([create('T1', LONG_AGO, { type: 'bug' }), status('T1', '2029-12-13T10:00:00.000Z', 'done'), create('T2', '2030-01-09T10:00:00.000Z', { type: 'bug' })]), 'alpha');
+    assert.deepEqual([cells.bugs.value, cells.bugs.usual], [1, 0]);
   });
 
   it("keeps today's spike out of its own usual", () => {
