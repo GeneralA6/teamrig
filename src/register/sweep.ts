@@ -31,6 +31,8 @@ export interface SweepRow {
   readonly objective: string | null;
   /** Percent of the week; null: a person cleared it, so its size stays as it is. */
   readonly size: number | null;
+  /** The size the sweep wrote, which a person leaves alone: apply reads `size` against it to tell a correction from a proposal. */
+  readonly proposedSize: number;
   readonly reason: string;
   readonly confidence: SweepConfidence;
   readonly park: boolean;
@@ -217,14 +219,10 @@ export function wouldPark(task: SweepTask, input: Pick<SweepInput, 'focus' | 'ow
   );
 }
 
-/** A size as a row holds it, two places. The apply reads a task's live size through this too, or a stored 0.123 would differ from its own 0.12 row. */
-export function rowSize(size: number): number {
-  return Number(size.toFixed(2));
-}
-
 /** The proposal for one active task, its `confirm` left empty for a person. */
 export function proposeRow<T extends SweepTask>(task: T, input: SweepInput<T>): SweepRow {
   const proposal = proposalOf(task, input);
+  const size = Number(input.sizeOf(task).toFixed(2));
   return {
     id: task.id,
     team: input.team,
@@ -232,7 +230,8 @@ export function proposeRow<T extends SweepTask>(task: T, input: SweepInput<T>): 
     title: task.title,
     class: proposal.class,
     objective: proposal.objective,
-    size: rowSize(input.sizeOf(task)),
+    size,
+    proposedSize: size,
     reason: proposal.reason,
     confidence: proposal.confidence,
     park: wouldPark(task, input),
@@ -266,12 +265,18 @@ function isConfidence(value: unknown): value is SweepConfidence {
   return SWEEP_CONFIDENCES.some((confidence) => confidence === value);
 }
 
-/** A size a person may leave: none, or a share of the week above 0, at most 100, as `--size` takes it. */
-function isRowSize(value: unknown): value is number | null {
-  return value === null || (typeof value === 'number' && value > 0 && value <= 100);
+/** A share of the week above 0, at most 100, as `--size` takes it. */
+function isSizePct(value: unknown): value is number {
+  return typeof value === 'number' && value > 0 && value <= 100;
 }
 
-export function isSweepRow(value: unknown): value is SweepRow {
+/** A size a person may leave: none, or a share of the week. */
+function isRowSize(value: unknown): value is number | null {
+  return value === null || isSizePct(value);
+}
+
+/** Every field of a row but `proposedSize`, so a parse can name what a file from an older sweep lacks. */
+function isRowBody(value: unknown): value is Omit<SweepRow, 'proposedSize'> {
   return (
     isRecord(value) &&
     typeof value['id'] === 'string' &&
@@ -289,9 +294,13 @@ export function isSweepRow(value: unknown): value is SweepRow {
   );
 }
 
+export function isSweepRow(value: unknown): value is SweepRow {
+  return isRowBody(value) && 'proposedSize' in value && isSizePct(value.proposedSize);
+}
+
 /** The shape of a sweep file's line, named in a refusal. */
 export const SWEEP_ROW_SHAPE =
-  '{"id": "T<n>", "team": "<team>", "owner": "<session>", "class": "<class>", "objective": "<tag>"|null, "size": <pct>|null, "reason": "..", "confidence": "high|medium|low", "park": false, "confirm": ""}';
+  '{"id": "T<n>", "team": "<team>", "owner": "<session>", "class": "<class>", "objective": "<tag>"|null, "size": <pct>|null, "proposedSize": <pct>, "reason": "..", "confidence": "high|medium|low", "park": false, "confirm": ""}';
 
 /** The JSONL text of the rows, one line each. */
 export function formatSweepRows(rows: readonly SweepRow[]): string {
@@ -317,7 +326,9 @@ export function parseSweepFile(text: string): Verdict<readonly SweepRow[]> {
       return { ok: false, error: `${at} is not JSON: ${SWEEP_ROW_SHAPE}` };
     }
     if (!isSweepRow(raw)) {
-      return { ok: false, error: `${at} is not a sweep row: ${SWEEP_ROW_SHAPE}` };
+      const older = isRowBody(raw) && !('proposedSize' in raw);
+      const why = older ? 'holds no proposedSize, so an older version wrote it: sweep again on this version' : `is not a sweep row: ${SWEEP_ROW_SHAPE}`;
+      return { ok: false, error: `${at} ${why}` };
     }
     const key = `${raw.team}/${raw.id}`;
     if (seen.has(key)) {
@@ -337,20 +348,22 @@ export interface SweepChanges {
 }
 
 /** What the apply reads of a task. */
-export type SweepTarget = Pick<SweepTask, 'workClass' | 'goals' | 'status'>;
+export type SweepTarget = Pick<SweepTask, 'workClass' | 'goals' | 'status'> & Pick<Task, 'size'>;
 
 /**
  * The fields of `task` a row would change. A goal the task already serves through a key result needs no new tag. A size
- * counts as new only against the size the task reads as now (`sizeOf`), not the one stored: a row repeating a median or
- * floor size stays unstored, as a stored size outranks them and would freeze it (T2114).
+ * is new only when a person changed it from the row's `proposedSize` (T2114): a stored size outranks a like-task median
+ * and the default, so storing a proposal would freeze them, and the size a task reads as now cannot tell a proposal from
+ * a correction, as it drifts from the row while a person reviews it. A size the task already stores is no change either,
+ * so applying a corrected row twice leaves the task's size base where the first write put it.
  */
-export function changesOf<T extends SweepTarget>(row: SweepRow, task: T, goals: ReadonlyMap<string, SweepGoal>, sizeOf: (task: T) => number): SweepChanges {
-  const { objective, size } = row;
+export function changesOf(row: SweepRow, task: SweepTarget, goals: ReadonlyMap<string, SweepGoal>): SweepChanges {
+  const { objective, size, proposedSize } = row;
   const served = objective === null || task.goals.some((tag) => tag === objective || chainOf(tag, goals).some((goal) => goal.tag === objective));
   return {
     ...(row.class === task.workClass ? {} : { workClass: row.class }),
     ...(served ? {} : { goals: [...task.goals, objective] }),
-    ...(size === null || size === rowSize(sizeOf(task)) ? {} : { size }),
+    ...(size === null || size === proposedSize || size === task.size ? {} : { size }),
   };
 }
 
@@ -368,13 +381,7 @@ export type SweepJudge<T> = (task: T, changes: SweepChanges) => string | undefin
  * The fate of one row. `task` is undefined when the register lacks it. A finished task is refused, not skipped: a
  * person said yes to it, so they hear why it did not land.
  */
-export function planSweepRow<T extends SweepTarget>(
-  row: SweepRow,
-  task: T | undefined,
-  goals: ReadonlyMap<string, SweepGoal>,
-  sizeOf: (task: T) => number,
-  judge: SweepJudge<T>,
-): SweepPlan {
+export function planSweepRow<T extends SweepTarget>(row: SweepRow, task: T | undefined, goals: ReadonlyMap<string, SweepGoal>, judge: SweepJudge<T>): SweepPlan {
   if (row.confirm !== SWEEP_CONFIRMED) {
     return { row, action: 'unconfirmed' };
   }
@@ -384,7 +391,7 @@ export function planSweepRow<T extends SweepTarget>(
   if (!ACTIVE_STATUSES.includes(task.status)) {
     return { row, action: 'refused', reason: `${row.id} is ${task.status} now` };
   }
-  const changes = changesOf(row, task, goals, sizeOf);
+  const changes = changesOf(row, task, goals);
   if (Object.keys(changes).length === 0) {
     return { row, action: 'unchanged' };
   }

@@ -31,7 +31,7 @@ function rowsOf(lines: readonly string[]): readonly SweepRow[] {
 
 /** A row a person confirmed: team app's T1 unless `row` says otherwise. */
 function confirmedRow(row: Partial<SweepRow> = {}): SweepRow {
-  return { id: 'T1', team: 'app', owner: 'alpha', title: 'A task', class: 'Roadmap', objective: null, size: null, reason: 'a person read it', confidence: 'high', park: false, confirm: 'yes', ...row };
+  return { id: 'T1', team: 'app', owner: 'alpha', title: 'A task', class: 'Roadmap', objective: null, size: null, proposedSize: 0.3, reason: 'a person read it', confidence: 'high', park: false, confirm: 'yes', ...row };
 }
 
 async function writeRows(kit: CliHarness, ...rows: readonly SweepRow[]): Promise<void> {
@@ -198,7 +198,7 @@ describe('teamrig sweep apply', () => {
     assert.equal(updatesOf(kit).length, 1);
   });
 
-  it('stores no size for a row repeating the live size, so the median stays live, and stores a hand correction (T2114)', async () => {
+  it('stores no size for a row still at its proposal, though spend moved since the sweep, and stores a hand correction (T2114)', async () => {
     // A weekly limit of 1,000M W makes 1% of the week 10M W, so 2M W is 0.2%.
     const kit = new CliHarness({ ...TEAM, budget: { weeklyLimitW: 1_000_000_000 } });
     await addTask(kit, 'Done like it', 'alpha', ['--class', 'Maintenance']);
@@ -209,22 +209,44 @@ describe('teamrig sweep apply', () => {
     ok(await kit.run(['set', 'T1', '--status', 'in-progress', '--session', 'alpha']));
     ok(await kit.run(['set', 'T1', '--status', 'done', '--note', 'shipped', '--evidence', 'shipped', '--skill', 'none', '--followups', 'none', '--session', 'alpha']));
     const [proposed] = rowsOf((await kit.run(['sweep'])).stdout);
-    assert.equal(proposed?.size, 0.2);
+    assert.ok(proposed, 'the sweep proposes T2');
+    assert.deepEqual([proposed.id, proposed.size, proposed.proposedSize], ['T2', 0.2, 0.2]);
 
-    await writeRows(kit, confirmedRow({ id: 'T2', class: 'Maintenance', size: 0.2 }));
+    // 3M W on T2 after the sweep is more than its 0.2% median, so it reads as the floor and no longer matches the row.
+    const { rev: moved } = await store.load('alpha');
+    assert.equal(await store.save('alpha', { ...EMPTY_USAGE, byTask: { '2030-01-08': { T1: 2_000_000, T2: 3_000_000 } } }, moved), true);
+    assert.equal(rowsOf((await kit.run(['sweep'])).stdout)[0]?.size, 0.05);
+
+    await writeRows(kit, { ...proposed, confirm: 'yes' });
     const dry = await kit.run(['sweep', 'apply', FILE, '--session', 'alpha']);
     assert.deepEqual(dry.stdout, ['dry run: inserted 0, changed 0, unchanged 1; nothing was written: rerun with --apply to write']);
 
-    await writeRows(kit, confirmedRow({ id: 'T2', class: 'Roadmap', size: 0.2 }));
+    await writeRows(kit, { ...proposed, class: 'Roadmap', confirm: 'yes' });
     ok(await kit.run(['sweep', 'apply', FILE, '--apply', '--session', 'alpha']));
-    const stored = updatesOf(kit).at(-1);
-    assert.deepEqual([stored?.id, stored?.changes, stored?.sizeBase], ['T2', { workClass: 'Roadmap' }, undefined]);
+    const classed = updatesOf(kit).at(-1);
+    assert.deepEqual([classed?.id, classed?.changes, classed?.sizeBase], ['T2', { workClass: 'Roadmap' }, undefined]);
 
-    await writeRows(kit, confirmedRow({ id: 'T2', size: 0.7 }));
+    await writeRows(kit, { ...proposed, class: 'Roadmap', size: 0.7, confirm: 'yes' });
     ok(await kit.run(['sweep', 'apply', FILE, '--apply', '--session', 'alpha']));
     const corrected = updatesOf(kit).at(-1);
     assert.deepEqual([corrected?.id, corrected?.changes], ['T2', { size: 0.7 }]);
-    assert.deepEqual(corrected?.sizeBase, { day: '2030-01-08', w: 0 });
+    assert.deepEqual(corrected?.sizeBase, { day: '2030-01-08', w: 3_000_000 });
+
+    const again = await kit.run(['sweep', 'apply', FILE, '--apply', '--session', 'alpha']);
+    assert.deepEqual(again.stdout, ['inserted 0, changed 0, unchanged 1']);
+  });
+
+  it('refuses a file an older sweep wrote, writing nothing and saying to sweep again (T2114)', async () => {
+    const kit = new CliHarness();
+    await addTask(kit, 'Polish the settings page');
+    await kit.files.write(FILE, `${JSON.stringify({ ...confirmedRow(), proposedSize: undefined })}\n`);
+    const before = kit.files.get(EVENTS_PATH);
+
+    const applied = await kit.run(['sweep', 'apply', FILE, '--apply', '--session', 'alpha']);
+
+    assert.equal(applied.code, EXIT.refused);
+    assert.match(applied.stdout.join('\n'), /line 1 holds no proposedSize, so an older version wrote it: sweep again on this version/);
+    assert.equal(kit.files.get(EVENTS_PATH), before);
   });
 
   it('carries no size base on a row that changes no size', async () => {
