@@ -19,9 +19,15 @@ one: what it still costs, in percent of the weekly usage limit. Only the lead an
 
 ```sh
 teamrig update T4 --week 2026-10-26 --size 1.5   # in the week of 10-26, 1.5% of the weekly limit left to spend
-teamrig plan                                       # the week in force, grouped by priority, and whether it fits
+teamrig plan                                       # the week in force, grouped by band, and whether it fits
 ```
 
+- What goes first: `list`, `plan` and `start` rank by band, then score, and each row shows its class and score. A
+  `p0`, a Maintenance task marked critical and a `p1` you asked for go ahead of every score, then Roadmap and
+  Maintenance, then the rest. The score is what a delay costs (the value of the class and the best goal rank, how
+  near the due date is, what the task unblocks, your own order) over its size, so a small valuable task goes ahead of
+  a large one. A task with no size is measured by what it has spent, or by finished tasks like it. `focus.score` and
+  `focus.expedite` hold the numbers.
 - What fits: `plan` sums the sized to-do tasks (open, in progress or waiting; a verifying task's spend is already
   used) in plan order against what is left of `budget.targetPct` (99.5% by default) after the week's use, read
   from the newest status line: `fits: p1 12% · p2 8.5% (left 31% of the week)`. It names the first task past that

@@ -91,14 +91,14 @@ The injected context holds:
    START web, Tue 10-17 09:12 IST: this note is your work block's start, so run no `teamrig start` now; it would add only the check flags and the rest of the list (run it at your next work block).
    Week: 61.0% used at 09:05 IST (status line); the pace line is at 47.3%: 13.7 points ahead. Resets Wed 10-18 03:00 IST. At the last 24 hours' rise of 12.0 points, it ends the week near 70%.
    LIVE TASKS of web, read from the register at this start (8 active; where your handover or a compaction summary says otherwise, the register wins):
-     T12 in-progress, p1, due 10-17 | Ship the checkout page
-     T14 verifying, p2 | Cache the price list
-     T15 waiting, p2 | Move the images (waiting: on T12 · decision lead)
-     T18 open, p2, due 10-17 (from T21), after T12 | Add the receipt email
+     T12 in-progress, Roadmap, score 23.33, p1, due 10-17 | Ship the checkout page
+     T14 verifying, Improvements, score 3.33, p2 | Cache the price list
+     T15 waiting, Improvements, score 3.33, p2 | Move the images (waiting: on T12 · decision lead)
+     T18 open, Roadmap, score 23.33, p2, due 10-17 (from T21), after T12 | Add the receipt email
      ...
      +2 more: `teamrig list --session web`
    WAITING ON YOU 1 task(s) of other sessions:
-     T21 open, p2, owner api, due 10-17, after T18 | Send the receipt from the api · needs your T18
+     T21 open, Roadmap, score 23.33, p2, owner api, due 10-17, after T18 | Send the receipt from the api · needs your T18
    ```
 
    The `START` line, a `MEETINGS` line on a day with a meeting and the week line are what `teamrig start` prints
@@ -106,7 +106,7 @@ The injected context holds:
    only the check flags and the rest of the list, and `teamrig budget --misses` counts the note as that block's
    start. A note that could not read the register, or has no room for the task block, has no `START` line.
    Work in hand comes first (in progress, verifying, waiting), then the tasks not started, each in plan order
-   (priority, then effective due date); at most 6 rows, the rest one `+N more` line. A row names the due date (the
+   (band and score, then effective due date); at most 6 rows, the rest one `+N more` line. A row names the due date (the
    earlier one of a task that needs it, as `due 10-17 (from T21)`), the plan dependencies not finished yet
    (`after`) and, for a waiting task, its wait reasons with the ready ones marked. Then `WAITING ON YOU` lists the
    active tasks of other sessions that need one of the session's unfinished tasks or wait on its decision or
@@ -793,7 +793,7 @@ session's next turn end `hook stop` takes it: while the task still waits and the
 it sends the session back once:
 
 ```text
-T1 waits (decision owner), and you own work that does not come after it: T2 "Fix the login" (p1). Work it now in priority order (`teamrig list --session web`); leave a task that is the same change as T1, and say so in one line. If you already work one and wait on a background step, end the turn again.
+T1 waits (decision owner), and you own work that does not come after it: T2 "Fix the login" (p1). Work it now in plan order (`teamrig list --session web`); leave a task that is the same change as T1, and say so in one line. If you already work one and wait on a background step, end the turn again.
 ```
 
 A task it can start is its own task it can go on with, other than the waiting one, most urgent first: open or
