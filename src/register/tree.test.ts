@@ -1,8 +1,26 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { TEST_OWNER_SOURCE, testRanking } from '../testing/ranking.ts';
 import { testTask } from '../testing/task.ts';
 import type { Task } from './fold.ts';
-import { decidingKey, needPath, needsElsewhere, needsOf, pathText, planOrder, readAs, TaskTree, type PlanPlace, type TaskElsewhere, type TasksElsewhere, type TreeTask } from './tree.ts';
+import type { Band } from './score.ts';
+import {
+  decidingKey,
+  needPath,
+  needsElsewhere,
+  needsOf,
+  NO_TASKS_ELSEWHERE,
+  pathText,
+  planOrder,
+  readAs,
+  TaskTree,
+  type PlanPlace,
+  type RankedPlace,
+  type TaskElsewhere,
+  type TasksElsewhere,
+  type TreeRanking,
+  type TreeTask,
+} from './tree.ts';
 import { isReady } from './waits.ts';
 import { TimeZone } from '../core/zone.ts';
 
@@ -62,28 +80,34 @@ describe('needPath', () => {
 });
 
 describe('planOrder', () => {
-  it('orders by priority, then deadline with none last, then id number', () => {
+  it('orders places with no ranking by deadline with none last, then id number', () => {
     const places = [
-      { id: 'T10', priority: 2, at: undefined },
-      { id: 'T3', priority: 2, at: 200 },
-      { id: 'T2', priority: 2, at: undefined },
-      { id: 'T4', priority: 2, at: 100 },
-      { id: 'T7', priority: 1, at: undefined },
-      { id: 'T8', priority: 2, at: 100 },
+      { id: 'T10', at: undefined },
+      { id: 'T3', at: 200 },
+      { id: 'T2', at: undefined },
+      { id: 'T4', at: 100 },
+      { id: 'T8', at: 100 },
     ];
-    assert.deepEqual(ids([...places].sort(planOrder)), ['T7', 'T4', 'T8', 'T3', 'T2', 'T10']);
+    assert.deepEqual(ids([...places].sort(planOrder)), ['T4', 'T8', 'T3', 'T2', 'T10']);
   });
 
-  /** Two p2 places due at 100, T9 and the lower-numbered T3, each with the given fields over that. */
+  /** Two places due at 100, T9 and the lower-numbered T3, each with the given fields over that. */
   const pair = (ahead: Partial<PlanPlace>, behind: Partial<PlanPlace> = {}): [PlanPlace, PlanPlace] => [
-    { id: 'T9', priority: 2, at: 100, ...ahead },
-    { id: 'T3', priority: 2, at: 100, ...behind },
+    { id: 'T9', at: 100, ...ahead },
+    { id: 'T3', at: 100, ...behind },
   ];
+
+  /** A place's rank in the given band at the given score. */
+  const rank = (band: Band, score: number): RankedPlace => ({ band, score, costOfDelay: score, sizePct: 1, workClass: 'Roadmap', goal: null });
 
   it('decides on the first key that differs, each in turn', () => {
     const cases: [string, [PlanPlace, PlanPlace]][] = [
-      ['pinned', pair({ pinned: true, priority: 3, at: 900 }, { priority: 1, started: true })],
-      ['priority', pair({ priority: 1, at: 900 }, { started: true, pinned: false })],
+      ['pinned', pair({ pinned: true, ranked: rank(2, 1), at: 900 }, { ranked: rank(0, 99), started: true })],
+      ['band', pair({ ranked: rank(0, 1), at: 900 }, { ranked: rank(1, 99), started: true, pinned: false })],
+      ['band', pair({ ranked: rank(1, 1) }, { ranked: rank(2, 99) })],
+      ['band', pair({ ranked: rank(2, 1) })],
+      ['score', pair({ ranked: rank(1, 20), at: 900 }, { ranked: rank(1, 10), started: true })],
+      ['started', pair({ ranked: rank(1, 10), started: true, at: 900 }, { ranked: rank(1, 10), started: false })],
       ['started', pair({ started: true, at: 900 }, { started: false })],
       ['due', pair({ at: 50 }, { unblocks: { first: 'T1', priority: 1, count: 3 } })],
       ['due', pair({}, { at: undefined })],
@@ -106,6 +130,86 @@ describe('planOrder', () => {
     assert.ok(planOrder(early, late) < 0);
     assert.equal(decidingKey(late, { ...late }), undefined);
     assert.equal(planOrder(late, { ...late }), 0);
+  });
+});
+
+describe('TaskTree ranking', () => {
+  const ranked = (ranking: TreeRanking, ...tasks: Task[]): TaskTree => new TaskTree(new Map(tasks.map((task) => [task.id, task])), NOW, TimeZone.UTC, null, NO_TASKS_ELSEWHERE, ranking);
+  const costOf = (tree: TaskTree, task: Task): number | undefined => tree.rankedOf(task)?.costOfDelay;
+
+  it('puts an expedite ahead of a far higher score', () => {
+    const ordered = testTask({ id: 'T9', source: TEST_OWNER_SOURCE, priority: 1, size: 10 });
+    const roadmap = testTask({ id: 'T3', size: 0.3 });
+    const tree = ranked(testRanking({ classes: { T3: 'Roadmap' }, goals: { T3: { tag: 'G1', rank: 1 } } }), ordered, roadmap);
+    assert.deepEqual(ids(tree.inPlanOrder([roadmap, ordered])), ['T9', 'T3']);
+    assert.ok((tree.rankedOf(ordered)?.score ?? 0) < (tree.rankedOf(roadmap)?.score ?? 0));
+  });
+
+  it('puts a higher score ahead of an in-progress task, and an older number never decides first', () => {
+    const open = testTask({ id: 'T9' });
+    const started = testTask({ id: 'T3', status: 'in-progress' });
+    const tree = ranked(testRanking({ classes: { T9: 'Roadmap', T3: 'Roadmap' }, goals: { T9: { tag: 'G1', rank: 1 } } }), open, started);
+    assert.deepEqual(ids(tree.inPlanOrder([started, open])), ['T9', 'T3']);
+  });
+
+  it('leaves equal scores to the keys below them', () => {
+    const open = testTask({ id: 'T3' });
+    const started = testTask({ id: 'T9', status: 'in-progress' });
+    assert.deepEqual(ids(ranked(testRanking(), open, started).inPlanOrder([open, started])), ['T9', 'T3']);
+  });
+
+  it('gives no weight to a priority no owner ordered', () => {
+    const urgent = testTask({ id: 'T9', priority: 1 });
+    const plain = testTask({ id: 'T3', priority: 3 });
+    assert.deepEqual(ids(ranked(testRanking(), urgent, plain).inPlanOrder([urgent, plain])), ['T3', 'T9']);
+  });
+
+  it('scores a task once per tree, however often a sort reads it', () => {
+    let reads = 0;
+    const base = testRanking();
+    const counted: TreeRanking = { ...base, sizingOf: (task) => { reads += 1; return base.sizingOf(task); } };
+    const tasks = [testTask({ id: 'T1' }), testTask({ id: 'T2' }), testTask({ id: 'T3' })];
+    const tree = ranked(counted, ...tasks);
+    tree.inPlanOrder(tasks);
+    tree.inPlanOrder(tasks);
+    assert.equal(reads, tasks.length);
+  });
+
+  it('adds a share of the best value among the active tasks that need it', () => {
+    const work = testTask({ id: 'T3' });
+    const roadmap = testTask({ id: 'T7', after: ['T3'] });
+    const tooling = testTask({ id: 'T8', after: ['T3'] });
+    const finished = testTask({ id: 'T9', status: 'done', after: ['T3'] });
+    const facts = { classes: { T7: 'Roadmap', T9: 'Roadmap' }, goals: { T7: { tag: 'G2', rank: 2 }, T9: { tag: 'G1', rank: 1 } } };
+    assert.equal(costOf(ranked(testRanking(facts), work, roadmap, tooling, finished), work), 1 + 0.5 * 16);
+  });
+
+  it('counts no need on a finished task', () => {
+    const work = testTask({ id: 'T3', status: 'done' });
+    const needer = testTask({ id: 'T7', after: ['T3'] });
+    assert.equal(costOf(ranked(testRanking({ classes: { T7: 'Roadmap' } }), work, needer), work), 1);
+  });
+
+  it('dates a task by its effective due', () => {
+    const work = testTask({ id: 'T3' });
+    const needer = testTask({ id: 'T7', after: ['T3'], due: '2030-01-09' });
+    assert.equal(costOf(ranked(testRanking(), work, needer), work), 1 + 4 + 0.5);
+  });
+
+  it('keeps the class and goal it read, and an owner order only from the owner', () => {
+    const goal = { tag: 'A1', rank: 1 };
+    const task = testTask({ id: 'T3', source: TEST_OWNER_SOURCE, priority: 2 });
+    const tree = ranked(testRanking({ classes: { T3: 'Roadmap' }, goals: { T3: goal } }), task);
+    assert.deepEqual({ workClass: tree.rankedOf(task)?.workClass, goal: tree.rankedOf(task)?.goal, cost: costOf(tree, task) }, { workClass: 'Roadmap', goal, cost: 20 + 6 });
+    const other = testTask({ id: 'T4', source: 'alpha', priority: 2 });
+    assert.equal(costOf(ranked(testRanking(), other), other), 1);
+  });
+
+  it('has no rank with no ranking, and places such a task with none', () => {
+    const task = testTask({ id: 'T3' });
+    const tree = treeOf(task);
+    assert.equal(tree.rankedOf(task), undefined);
+    assert.equal(tree.placeOf(task).ranked, undefined);
   });
 });
 
@@ -132,14 +236,14 @@ describe('TaskTree neededByOthers', () => {
     testTask({ id: 'T3', owner: 'bravo', due: '2030-01-12', after: ['T1'] }),
     testTask({ id: 'T4', owner: 'charlie', due: '2030-01-10', status: 'waiting', waits: [{ kind: 'task', id: 'T1' }] }),
     testTask({ id: 'T5', owner: 'bravo', due: '2030-01-09', status: 'done', after: ['T1'] }),
-    testTask({ id: 'T6', owner: 'delta', priority: 3, after: ['T1'] }),
-    testTask({ id: 'T7', owner: 'echo', priority: 1, after: ['T1'] }),
+    testTask({ id: 'T6', owner: 'delta', after: ['T1'] }),
+    testTask({ id: 'T7', owner: 'echo', after: ['T1'] }),
     testTask({ id: 'T8', owner: 'bravo', status: 'done' }),
     testTask({ id: 'T9', owner: 'alpha', after: ['T8'] }),
   );
 
   it('lists the active needers of other owners, the earliest effective due first, then in plan order', () => {
-    assert.deepEqual(ids(tree.neededByOthers('T1')), ['T4', 'T3', 'T7', 'T6']);
+    assert.deepEqual(ids(tree.neededByOthers('T1')), ['T4', 'T3', 'T6', 'T7']);
   });
 
   it('is empty for a finished task, one the read lacks, and one only its owner needs', () => {
@@ -230,7 +334,7 @@ describe('TaskTree plan order', () => {
     assert.deepEqual(ids(tree.inPlanOrder(tasks)), ['T2', 'T4', 'T3']);
   });
 
-  it('keeps a started task on top within its priority, then reads need, week and size', () => {
+  it('with no ranking keeps a started task on top, then reads due, need, week and size, whatever the priority', () => {
     const tasks = [
       testTask({ id: 'T1', due: '2030-01-09' }),
       testTask({ id: 'T2', status: 'in-progress' }),
@@ -241,7 +345,7 @@ describe('TaskTree plan order', () => {
       testTask({ id: 'T7', priority: 1, after: ['T3'] }),
       testTask({ id: 'T8', priority: 1, status: 'in-progress' }),
     ];
-    assert.deepEqual(ids(treeOf(...tasks).inPlanOrder(tasks)), ['T8', 'T7', 'T2', 'T1', 'T3', 'T4', 'T6', 'T5']);
+    assert.deepEqual(ids(treeOf(...tasks).inPlanOrder(tasks)), ['T2', 'T8', 'T1', 'T3', 'T4', 'T6', 'T5', 'T7']);
   });
 });
 
@@ -268,10 +372,10 @@ describe('TaskTree unblocks and placeOf', () => {
   it('places a task on every key, in the week plan in force by default', () => {
     assert.equal(tree.week, '2030-01-07', 'T2\'s week has not started');
     assert.deepEqual(tree.placeOf(testTask({ id: 'T1', status: 'in-progress', week: '2030-01-07', size: 3 })), {
-      id: 'T1', pinned: false, priority: 2, at: undefined, started: true, unblocks: { first: 'T6', priority: 1, count: 3 }, inWeek: true, size: 3,
+      id: 'T1', pinned: false, ranked: undefined, at: undefined, started: true, unblocks: { first: 'T6', priority: 1, count: 3 }, inWeek: true, size: 3,
     });
     assert.deepEqual(tree.placeOf(testTask({ id: 'T2', week: '2030-01-14' })), {
-      id: 'T2', pinned: false, priority: 2, at: undefined, started: false, unblocks: undefined, inWeek: false, size: null,
+      id: 'T2', pinned: false, ranked: undefined, at: undefined, started: false, unblocks: undefined, inWeek: false, size: null,
     });
     assert.equal(tree.placeOf(testTask({ id: 'T2', pin: 'lead' })).pinned, true);
   });
@@ -290,8 +394,8 @@ describe('TaskTree nextMove', () => {
   it('is the owner of the first unfinished need in plan order that needs nothing unfinished', () => {
     const tree = treeOf(
       testTask({ id: 'T1', owner: 'alpha', after: ['T2', 'T3', 'T6'] }),
-      testTask({ id: 'T2', owner: 'bravo', priority: 3 }),
-      testTask({ id: 'T3', owner: 'charlie', priority: 2, after: ['T4'] }),
+      testTask({ id: 'T2', owner: 'bravo' }),
+      testTask({ id: 'T3', owner: 'charlie', due: '2030-01-09', after: ['T4'] }),
       testTask({ id: 'T4', owner: 'delta', status: 'in-progress' }),
       testTask({ id: 'T6', status: 'done' }),
     );
@@ -416,8 +520,8 @@ describe('TaskTree waitingOn', () => {
       testTask({ id: 'T1', owner: 'alpha' }),
       testTask({ id: 'T2', owner: 'alpha', status: 'in-progress' }),
       testTask({ id: 'T3', owner: 'alpha', status: 'done' }),
-      testTask({ id: 'T4', owner: 'bravo', priority: 3, after: ['T1', 'T2', 'T3'] }),
-      testTask({ id: 'T5', owner: 'bravo', priority: 1, status: 'waiting', startedAt: started, waits: [{ kind: 'decision', who: 'alpha' }, { kind: 'approval', who: 'lead' }] }),
+      testTask({ id: 'T4', owner: 'bravo', after: ['T1', 'T2', 'T3'] }),
+      testTask({ id: 'T5', owner: 'bravo', due: '2030-01-09', status: 'waiting', startedAt: started, waits: [{ kind: 'decision', who: 'alpha' }, { kind: 'approval', who: 'lead' }] }),
       testTask({ id: 'T6', owner: 'alpha', after: ['T1'] }),
       testTask({ id: 'T7', owner: 'bravo', status: 'done', after: ['T1'] }),
       testTask({ id: 'T8', owner: 'bravo', after: ['T3'] }),

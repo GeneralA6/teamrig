@@ -1,30 +1,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { MS_PER_DAY } from '../core/time.ts';
+import { TEST_FOCUS } from '../testing/ranking.ts';
 import { bandOf, ownerOrderOf, scoreOf, sizePctOf, unblocksOf, urgencyOf, valueOf, type ScoreFacts, type ScoreFocus, type ValueFacts } from './score.ts';
 
 const NOW = Date.UTC(2030, 0, 7, 9);
 
-const FOCUS: ScoreFocus = {
-  roadmapClass: 'Roadmap',
-  maintenanceClass: 'Maintenance',
-  score: {
-    rankValues: [20, 16, 12, 8, 4],
-    roadmapUnranked: 3,
-    maintenanceValue: 10,
-    maintenanceBug: 4,
-    maintenanceCritical: 10,
-    improvementsValue: 1,
-    overdueValue: 8,
-    dueSoonValue: 4,
-    dueSoonDays: 3,
-    unblocksShare: 0.5,
-    ownerOrderValues: [12, 6, 0, 0, 0],
-    defaultSizePct: 0.3,
-    minSizePct: 0.05,
-  },
-  expedite: { critical: true, ownerP1: true },
-};
+const FOCUS = TEST_FOCUS;
 
 function value(facts: Partial<ValueFacts>, focus: ScoreFocus = FOCUS): number {
   return valueOf({ workClass: 'Roadmap', rank: null, type: null, critical: false, ...facts }, focus);

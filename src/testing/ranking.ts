@@ -1,0 +1,44 @@
+import type { ScoreFocus } from '../register/score.ts';
+import type { RankedGoal, TreeRanking } from '../register/tree.ts';
+
+/** A team's `focus`, as far as a score reads it, with round weights a test can add up by hand. */
+export const TEST_FOCUS: ScoreFocus = {
+  roadmapClass: 'Roadmap',
+  maintenanceClass: 'Maintenance',
+  score: {
+    rankValues: [20, 16, 12, 8, 4],
+    roadmapUnranked: 3,
+    maintenanceValue: 10,
+    maintenanceBug: 4,
+    maintenanceCritical: 10,
+    improvementsValue: 1,
+    overdueValue: 8,
+    dueSoonValue: 4,
+    dueSoonDays: 3,
+    unblocksShare: 0.5,
+    ownerOrderValues: [12, 6, 0, 0, 0],
+    defaultSizePct: 0.3,
+    minSizePct: 0.05,
+  },
+  expedite: { critical: true, ownerP1: true },
+};
+
+/** The source of a task the owner ordered, in {@link testRanking}. */
+export const TEST_OWNER_SOURCE = 'owner';
+
+/** What {@link testRanking} knows of tasks by id; any other task is unclassed and serves no goal. */
+export interface TestRankingFacts {
+  readonly classes?: Readonly<Record<string, string>>;
+  readonly goals?: Readonly<Record<string, RankedGoal>>;
+}
+
+/** A ranking over fixed facts: a task with no class counts as Improvements, and only its own `size` sizes it. */
+export function testRanking({ classes = {}, goals = {} }: TestRankingFacts = {}): TreeRanking {
+  return {
+    focus: TEST_FOCUS,
+    ownerSource: TEST_OWNER_SOURCE,
+    classOf: (task) => classes[task.id] ?? 'Improvements',
+    goalOf: (task) => goals[task.id] ?? null,
+    sizingOf: (task) => ({ size: task.size ?? null, spentPct: 0, likeMedianPct: undefined }),
+  };
+}
