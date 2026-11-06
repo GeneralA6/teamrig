@@ -169,7 +169,7 @@ the team's `register.secretPatterns`) is stopped before Claude reads it and kept
 names only the secret's shape, says to send its name or the file it is kept in instead, and that the value counts as
 leaked: rotate it. A `password: x` in prose is not stopped, nor a value that only stands in for a secret, judged on
 the value alone: a reference (`${TOKEN}`, `<token>`, `%TOKEN%`), a masked or cut-short value (`*****`, `ab12...`), a
-stand-in word (`changeme`, `your_token`), jwt.io's sample token, or a name given to a secret-like key
+stand-in word (`changeme`, `your_token`), jwt.io's sample token, RFC 6238's test secret, or a name given to a secret-like key
 (`TOKEN="SOME_READ_TOKEN"`). Nor is a uuid, alone or after its holder's id (`worker-7#<uuid>`), given to a claim, lock,
 lease or fencing token (`claimToken`, `LOCK_TOKEN`): it marks who holds a claim and grants nothing, and under any other
 name it is still a secret. A real password on `localhost` is still a secret. The hook removes every line of Claude Code's prompt history (`history.jsonl`) and every pasted text (`paste-cache/`) that holds
