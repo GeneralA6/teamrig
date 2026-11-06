@@ -1,5 +1,6 @@
 import { LeadTree } from '../../config/lead-tree.ts';
 import type { Roster } from '../../config/roster.ts';
+import type { KitConfig } from '../../config/types.ts';
 import { formatAddress, splitAddress, type SessionAddress } from '../../core/address.ts';
 import { errorMessage } from '../../core/guards.ts';
 import { KIT_NAME } from '../../core/home.ts';
@@ -37,13 +38,14 @@ import { readStopgapTags, stopgapFlags, stopgapTags } from '../../register/stopg
 import { dueStartHolds, dueVerifyHold, heldStart, heldStartNotice, metStartNotice, startHolds, verifyQueue, watchQueue, type DueVerify } from '../../register/verify.ts';
 import { readAs, TaskTree, type TaskElsewhere } from '../../register/tree.ts';
 import { approvalNotice, endedNotice, formatTask, formatTaskDetail, formatTaskTree, formatVerifyRow, formatWatchRow, personWaitNotice, selectTasks, type ListFilter } from '../../register/views.ts';
-import { isPeerWait, sameWait, type PersonWait } from '../../register/waits.ts';
+import { isPeerWait, sameWait, waitContext, type PersonWait } from '../../register/waits.ts';
+import { wipHold } from '../../register/wip.ts';
 import { lintSkills } from '../../skills/lint.ts';
 import { SKILL_FILE, SkillDir } from '../../skills/store.ts';
 import { weekUseOnAccount } from '../account-teams.ts';
 import { readWideAllow, teamSettingsScope } from '../allow-scope.ts';
 import { noPositionals, onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
-import { addInputOf, callerOf, changesOf, criticalOf, deadlineOf, listFilterOf, NONE, pinOf, setInputOf, taskIdOf, taskRefOf, weekOf, type TypedTimes } from '../inputs.ts';
+import { addInputOf, callerOf, changesOf, criticalOf, deadlineOf, listFilterOf, NONE, oneCommitOf, pinOf, setInputOf, taskIdOf, taskRefOf, weekOf, type TypedTimes } from '../inputs.ts';
 import { findTeam, openKit, pastOrPresentIdOf, projectFolder, sessionIdOf, teamZone } from '../kit.ts';
 import { checkLines, listLines, SHORT_TITLE_CHARS, waitingOnLines, type CheckReport, type CheckSection, type LeadDecisions, type TaskRow } from '../reports.ts';
 import { idlePassWarnings } from '../idle-pass-check.ts';
@@ -428,11 +430,11 @@ export async function set(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
   const typed = setInputOf(args.flags, typedTimes(runtime, team.zone));
   const { config, paths, register, roster } = team;
   const by = sessionIdOf(roster, caller);
-  const input = statusInputIds(team, typed.status);
+  const input = { ...statusInputIds(team, typed.status), ...oneCommitOf(args.switches) };
   if (typed.ask !== null) {
     return setAsking(runtime, team, by, id, { ...typed.ask, owner: sessionIdOf(roster, typed.ask.owner) }, input);
   }
-  const { held, due } = await startGatesOf(register, by, id, input, new Date(runtime.clock.now()), team.zone, config.register.maxVerifying);
+  const { held, due, wip } = await startGatesOf(register, by, id, input, new Date(runtime.clock.now()), team.zone, config);
   const verdict = await register.setStatus(by, id, input);
   const warned = config.register.verifyGate === 'warn';
   // The start as written: one that named its held proof as met asks the verifying owners to confirm it.
@@ -451,6 +453,10 @@ export async function set(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
   }
   if (due !== undefined && warned && verdict.ok) {
     runtime.out.stderr(`WARN ${dueVerifyHold(due.task, due.due)}; started anyway, as register.verifyGate is warn`);
+  }
+  // Refuse mode never gets here with a hold: only warn lets a held start be written.
+  if (wip !== undefined && verdict.ok) {
+    runtime.out.stderr(`WARN ${wip}; started anyway, as focus.wip.mode is warn`);
   }
   if (verdict.ok) {
     warnReviewGap(runtime, team, verdict.value.task, input.status);
@@ -501,30 +507,34 @@ interface DueStart {
   readonly due: readonly DueVerify[];
 }
 
-/** What holds the caller's start of its own task: the verifying tasks it needs, and its owner's due verify steps. */
+/** What holds the caller's start of its own task: the verifying tasks it needs, its owner's due verify steps, and the WIP rule. */
 interface StartGates {
   readonly held: HeldStart | undefined;
   readonly due: DueStart | undefined;
+  readonly wip: string | undefined;
 }
 
-const OPEN_START: StartGates = { held: undefined, due: undefined };
+const OPEN_START: StartGates = { held: undefined, due: undefined, wip: undefined };
 
 /**
  * What holds the caller's start of its own task, read before the write: the policy refuses that start (or lets
  * it through in warn mode); the owners of the verifying tasks it needs hear of it either way.
  */
-async function startGatesOf(register: Register, caller: string, id: string, input: StatusInput, now: Date, zone: TimeZone, maxVerifying: number): Promise<StartGates> {
+async function startGatesOf(register: Register, caller: string, id: string, input: StatusInput, now: Date, zone: TimeZone, config: KitConfig): Promise<StartGates> {
   if (input.status !== 'in-progress') {
     return OPEN_START;
   }
-  const { tasks } = (await register.snapshot()).state;
+  const { snapshot, elsewhere } = await register.snapshotWithElsewhere();
+  const { tasks } = snapshot.state;
   const task = tasks.get(id);
   if (task === undefined || task.owner !== caller) {
     return OPEN_START;
   }
   const holds = startHolds(task, input.status, tasks);
-  const due = dueStartHolds(task, input.status, tasks, now, zone, maxVerifying);
-  return { held: holds.length === 0 ? undefined : { task, holds }, due: due.length === 0 ? undefined : { task, due } };
+  const due = dueStartHolds(task, input.status, tasks, now, zone, config.register.maxVerifying);
+  const wipStart = { task, status: input.status, oneCommit: input.oneCommit === true };
+  const wip = wipHold(wipStart, tasks.values(), waitContext(tasks, now, zone, elsewhere), config.focus, config.register.ownerSource);
+  return { held: holds.length === 0 ? undefined : { task, holds }, due: due.length === 0 ? undefined : { task, due }, wip };
 }
 
 /**

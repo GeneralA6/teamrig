@@ -127,13 +127,16 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       [--skill <name>|none] [--followups T<id>,...|none] [--waits decision:<who>,approval:<who>,task:T<id>,time:<date>]
       [--question ".." --options "<a> | <b>" --recommend ".." --default ".." --why-ask ".." --gate ".."]
       [--proof "<what proves it>"] [--watch "<what a sighting shows>"] [--met "<what shows it>"] [--due <date>]
-      [--ask <session> --text "<the work>"]
+      [--ask <session> --text "<the work>"] [--one-commit]
       [--cause ".." --how ".." --prevent ".." --harden ".." --missed-test ".." --missed-monitor ".." --missed-log ".."]
       verifying needs --proof: what will prove the shipped change works; --due sets the date to verify by
       --watch (with done only, and evidence given or kept): a change tests or a dry run proved, whose live
       proof is a sighting to come; verify lists it until you set it done again without --watch, or reopen it
       a start that a verifying task it needs holds goes through with --met: what shows that task's proof
       exists; its owner gets an inbox line to set it done or reopen it
+      the WIP rule (focus.wip) holds a start of work outside the Roadmap and Maintenance classes while its
+      owner holds Roadmap work that can move, and any start past focus.wip.maxInProgress tasks in progress;
+      --one-commit starts a one-commit fix all the same
       verifying and done need --followups: the tasks the work leaves (a finding, a next step), or none
       (register.requireFollowupsOn); show lists them
       waiting needs --waits: the lead's or the owner's decision or approval, a task to finish first
