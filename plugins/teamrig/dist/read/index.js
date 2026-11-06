@@ -77,6 +77,9 @@ export { parseTeamWeek, TEAM_WEEK_FORMAT, TEAM_WEEK_IN_STATE } from "../budget/t
 // Each session's week (`usage/sessions.week.json` in its team's state folder, `SESSIONS_WEEK_IN_STATE`): its use of the
 // account's week so far and its hours with work, by session id, as its team's budget hooks last read them.
 export { parseSessionsWeek, SESSIONS_WEEK_FORMAT, SESSIONS_WEEK_IN_STATE } from "../budget/session-week-summary.js";
+// What each task has cost (`usage/tasks.week.json` in its team's state folder, `TASKS_WEEK_IN_STATE`): its spend in
+// percent of the week, by task id, as its team's budget hooks last read it.
+export { parseTasksWeek, TASKS_WEEK_FORMAT, TASKS_WEEK_IN_STATE } from "../budget/task-week-summary.js";
 // Each session's turn log (`turn-log/<session id>/<UTC hour>.jsonl`): its prompts, replies and clears, one parsed
 // JSON line at a time.
 export { parseEntry, TURN_LOG_VERSION } from "../turn-log/entry.js";
