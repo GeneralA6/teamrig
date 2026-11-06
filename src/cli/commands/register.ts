@@ -532,8 +532,7 @@ async function startGatesOf(register: Register, caller: string, id: string, inpu
   }
   const holds = startHolds(task, input.status, tasks);
   const due = dueStartHolds(task, input.status, tasks, now, zone, config.register.maxVerifying);
-  const wipStart = { task, status: input.status, oneCommit: input.oneCommit === true };
-  const wip = wipHold(wipStart, tasks.values(), waitContext(tasks, now, zone, elsewhere), config.focus, config.register.ownerSource);
+  const wip = wipHold({ ...input, task }, tasks.values(), waitContext(tasks, now, zone, elsewhere), config.focus, config.register.ownerSource);
   return { held: holds.length === 0 ? undefined : { task, holds }, due: due.length === 0 ? undefined : { task, due }, wip };
 }
 
