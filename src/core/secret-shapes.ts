@@ -45,12 +45,13 @@ const REGEX_SOURCE = /\[\^|\][+*?{]/;
 /** Code that splices a variable into a string, its quotes closing one string and opening the next: `'+process.env.API_KEY+'`. */
 const SPLICE = /^\+[A-Za-z_$][\w$.]*\+$/;
 /**
- * The SHA-256 of sample tokens every tutorial prints, held as hashes because the scrub refuses their shape: jwt.io's
- * HS256 samples, the classic one and the one with `"admin": true`.
+ * The SHA-256 of published sample values, held as hashes because the scrub refuses their shape: jwt.io's HS256 samples,
+ * the classic one and the one with `"admin": true`, and RFC 6238's test secret in base32, as login tests hold it.
  */
 const SAMPLE_HASHES: ReadonlySet<string> = new Set([
   '7f75367e7881255134e1375e723d1dea8ad5f6a4fdb79d938df1f1754a830606',
   'c794fa6d20c64efb9adf980ae93af472a1679775862d421ffe55d4a57fad5b3e',
+  '549c9390539efcfa01d2744e82e7da34409a63dd0feaf310f7a6e12551fe7668',
 ]);
 
 /**
@@ -72,7 +73,7 @@ export function isFramedPlaceholder(shape: SecretPattern, value: string, match: 
   return isPlaceholderValue(value) || (shape.isAllowedValue?.(value, match) ?? false);
 }
 
-/** True when `value` is a published sample token rather than anyone's secret. */
+/** True when `value` is a published sample rather than anyone's secret. */
 function isSample(value: string): boolean {
   return SAMPLE_HASHES.has(createHash('sha256').update(value, 'utf8').digest('hex'));
 }

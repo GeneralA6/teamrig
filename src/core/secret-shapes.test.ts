@@ -202,6 +202,13 @@ function jwtSample(payload: string, key: string): string {
   return `${body}.${createHmac('sha256', key).update(body).digest('base64url')}`;
 }
 
+/** RFC 4648 base32 of `text`, unpadded, the form an authenticator reads a TOTP secret in; at run time, so its shape never sits in the source. */
+function base32(text: string): string {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  const bits = [...Buffer.from(text)].map((byte) => byte.toString(2).padStart(8, '0')).join('');
+  return (bits.match(/.{1,5}/g) ?? []).map((chunk) => alphabet.charAt(parseInt(chunk.padEnd(5, '0'), 2))).join('');
+}
+
 describe('isPlaceholderValue', () => {
   it('judges a short word, a reference, a masked value and a stand-in word a placeholder', () => {
     const placeholders = ['p', 'short', '<db_password>', '${PASS}', '$PASS', '$(cat key)', '%PASS%', '{password}', '[token]', '*****', 'ab***yz', 'ab12cd...', 'ab12cd…', 'xxxxxxxx', '00000000'];
@@ -250,6 +257,17 @@ describe('SecretShapes value judge', () => {
     assert.deepEqual(
       shapes.hitsIn(other).map(({ id }) => id),
       ['jwt'],
+    );
+  });
+
+  it("lets RFC 6238's test secret through under a secret-like name, and finds any other base32 value", () => {
+    const assigned = (value: string): string => join('const secret = "', value, '";');
+    const sample = base32('12345678901234567890');
+    assert.deepEqual(shapes.hitsIn(assigned(sample)), []);
+    assert.equal(isPlaceholderValue(sample), true);
+    assert.deepEqual(
+      shapes.hitsIn(assigned(base32('09876543210987654321'))).map(({ id }) => id),
+      ['assigned-secret'],
     );
   });
 });
