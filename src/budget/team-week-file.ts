@@ -1,4 +1,5 @@
 import type { Files } from '../core/files.ts';
+import type { LimitSpan } from '../register/stats.ts';
 import type { WeekWindow } from './pace.ts';
 import { teamShareOf, type TeamsOnAccount } from './parts.ts';
 import type { UsageState } from './store.ts';
@@ -20,6 +21,8 @@ export interface TeamWeekInput {
   readonly states: readonly UsageState[];
   /** The team and the other teams on its account, which split what the account has left (`teamShareOf`). */
   readonly teams: TeamsOnAccount;
+  /** The stretches the account's week sat at its usage limit (budget/team-week.ts `TeamWeekReading`). */
+  readonly limits: readonly LimitSpan[];
   readonly now: number;
 }
 
@@ -42,6 +45,7 @@ export function teamWeekSummaryOf(input: TeamWeekInput): NamedTeamWeek | undefin
     accountUsedPct: summaryPct(usedPct),
     resetsAt: window.reset,
     at: summaryMinute(now),
+    limits: input.limits,
   };
 }
 

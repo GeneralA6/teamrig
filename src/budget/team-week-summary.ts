@@ -1,5 +1,6 @@
-import { numberField, stringField } from '../core/guards.ts';
+import { isRecord, numberField, stringField } from '../core/guards.ts';
 import { parseObject, recordVersion, VERSION_FIELD } from '../core/jsonl.ts';
+import type { LimitSpan } from '../register/stats.ts';
 
 /**
  * The team's week summary: its used and planned part of the account's week, kept by the budget hooks
@@ -18,18 +19,21 @@ import { parseObject, recordVersion, VERSION_FIELD } from '../core/jsonl.ts';
  *   `teamShareOf`) of what the account has left to `budget.targetPct`;
  * - `accountUsedPct`: the account's use of the week, in percent: every team's and the use outside them;
  * - `resetsAt`: the week's reset, epoch ms;
- * - `at`: when it was read, epoch ms, to the minute.
+ * - `at`: when it was read, epoch ms, to the minute;
+ * - `limits`: the stretches the account's week sat at its usage limit, oldest first, each `{ start, end }` in epoch ms
+ *   (src/budget/extra.ts `limitSpansOf`), for a reader that marks those days but cannot load the meter log, as the
+ *   pane's Stats tab. Every team on the account writes the same list, at most one stretch a period the log still keeps.
  *
  * Percents are rounded to two decimals. A hook of any of the team's sessions rewrites it when that changes it. Format 1
- * had every field but `account`; it is still read, naming no account, since a team whose sessions are idle keeps its
- * file until a hook of it runs again.
+ * had every field but `account` and `limits`; it is still read, naming no account and no stretch, since a team whose
+ * sessions are idle keeps its file until a hook of it runs again.
  */
 export const TEAM_WEEK_IN_STATE = ['usage', 'team.week.json'] as const;
 
 /** The team week summary's format; a field added to it raises this. */
 export const TEAM_WEEK_FORMAT = 2;
 
-/** The format before `account`, still read for a team whose hooks have not written since. */
+/** The format before `account` and `limits`, still read for a team whose hooks have not written since. */
 const UNNAMED_FORMAT = 1;
 
 /** The team's week as its summary file holds it. */
@@ -41,6 +45,8 @@ export interface TeamWeekSummary {
   readonly accountUsedPct: number;
   readonly resetsAt: number;
   readonly at: number;
+  /** The stretches the account's week sat at its usage limit; none from a format 1 file, which held none. */
+  readonly limits: readonly LimitSpan[];
 }
 
 /** The summary as a hook writes it: in the current format, so it always names the account. */
@@ -50,8 +56,30 @@ export interface NamedTeamWeek extends TeamWeekSummary {
 
 /** The summary as its file's text. */
 export function formatTeamWeek(summary: NamedTeamWeek): string {
-  const { account, usedPct, plannedPct, accountUsedPct, resetsAt, at } = summary;
-  return JSON.stringify({ [VERSION_FIELD]: TEAM_WEEK_FORMAT, account, usedPct, plannedPct, accountUsedPct, resetsAt, at });
+  const { account, usedPct, plannedPct, accountUsedPct, resetsAt, at, limits } = summary;
+  return JSON.stringify({ [VERSION_FIELD]: TEAM_WEEK_FORMAT, account, usedPct, plannedPct, accountUsedPct, resetsAt, at, limits });
+}
+
+/** One stored stretch; undefined when it is damaged: a stretch ends after it starts. */
+function parseLimitSpan(value: unknown): LimitSpan | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const start = numberField(value, 'start');
+  const end = numberField(value, 'end');
+  return start === undefined || end === undefined || start >= end ? undefined : { start, end };
+}
+
+/** The stored stretches; undefined when the list is missing or any of it is damaged. */
+function parseLimits(value: unknown): readonly LimitSpan[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const spans = value.flatMap((entry: unknown) => {
+    const span = parseLimitSpan(entry);
+    return span === undefined ? [] : [span];
+  });
+  return spans.length === value.length ? spans : undefined;
 }
 
 /** The summary file's text; undefined when it is damaged or in a format this teamrig cannot read. */
@@ -71,7 +99,8 @@ export function parseTeamWeek(text: string): TeamWeekSummary | undefined {
     return undefined;
   }
   if (version === UNNAMED_FORMAT) {
-    return { account: undefined, usedPct, plannedPct, accountUsedPct, resetsAt, at };
+    return { account: undefined, usedPct, plannedPct, accountUsedPct, resetsAt, at, limits: [] };
   }
-  return account === undefined ? undefined : { account, usedPct, plannedPct, accountUsedPct, resetsAt, at };
+  const limits = parseLimits(parsed['limits']);
+  return account === undefined || limits === undefined ? undefined : { account, usedPct, plannedPct, accountUsedPct, resetsAt, at, limits };
 }

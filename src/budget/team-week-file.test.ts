@@ -32,6 +32,7 @@ function input(extra: Partial<TeamWeekInput> = {}): TeamWeekInput {
     targetPct: 99.5,
     states: [used({ '2030-01-08': 50_000_000 }), used({ '2030-01-07': 100_000_000 })],
     teams: { split: splitOf('app', ['lead', 'alpha', 'bravo']), others: [] },
+    limits: [],
     now: NOW,
     ...extra,
   };
@@ -39,7 +40,12 @@ function input(extra: Partial<TeamWeekInput> = {}): TeamWeekInput {
 
 describe('teamWeekSummaryOf', () => {
   it("reads the team's W since the week began at its own rate, and plans it all the account has left alone on it, naming the account", () => {
-    assert.deepEqual(teamWeekSummaryOf(input()), { account: 'work', usedPct: 15, plannedPct: 84.5, accountUsedPct: 30, resetsAt: WINDOW.reset, at: NOW });
+    assert.deepEqual(teamWeekSummaryOf(input()), { account: 'work', usedPct: 15, plannedPct: 84.5, accountUsedPct: 30, resetsAt: WINDOW.reset, at: NOW, limits: [] });
+  });
+
+  it("carries the account's stretches at its usage limit (T2050)", () => {
+    const limits = [{ start: WINDOW.start - 3_600_000, end: WINDOW.start }];
+    assert.deepEqual(teamWeekSummaryOf(input({ limits }))?.limits, limits);
   });
 
   it("plans the team only its part of what is left beside another team on the account, by the sessions' weights", () => {
@@ -60,7 +66,7 @@ describe('teamWeekSummaryOf', () => {
 
   it('rounds the percents to hundredths and the time down to the minute', () => {
     const summary = teamWeekSummaryOf(input({ usedPct: 30.123_45, wPerPct: 3_000_000, now: NOW + 59_999 }));
-    assert.deepEqual(summary, { account: 'work', usedPct: 50, plannedPct: 119.38, accountUsedPct: 30.12, resetsAt: WINDOW.reset, at: NOW });
+    assert.deepEqual(summary, { account: 'work', usedPct: 50, plannedPct: 119.38, accountUsedPct: 30.12, resetsAt: WINDOW.reset, at: NOW, limits: [] });
   });
 
   it('reads nothing while the week, its use or the rate is unknown', () => {
@@ -72,7 +78,7 @@ describe('teamWeekSummaryOf', () => {
 });
 
 describe('keepTeamWeek', () => {
-  const summary = { account: 'work', usedPct: 15, plannedPct: 84.5, accountUsedPct: 30, resetsAt: WINDOW.reset, at: NOW };
+  const summary = { account: 'work', usedPct: 15, plannedPct: 84.5, accountUsedPct: 30, resetsAt: WINDOW.reset, at: NOW, limits: [] };
 
   it('writes the summary, and again only when it changes', async () => {
     const files = new MemoryFiles();
@@ -92,7 +98,7 @@ describe('keepTeamWeek', () => {
 
   it('replaces a format 1 summary, which names no account, with one that names it (T1777)', async () => {
     const files = new MemoryFiles();
-    const { account: _named, ...unnamed } = summary;
+    const { account: _named, limits: _spans, ...unnamed } = summary;
     await files.write(PATH, JSON.stringify({ v: 1, ...unnamed }));
     assert.equal(await keepTeamWeek(files, PATH, summary), true);
     assert.deepEqual(parseTeamWeek((await files.read(PATH)) ?? ''), summary);
