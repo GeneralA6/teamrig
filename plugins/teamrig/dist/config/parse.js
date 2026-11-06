@@ -1006,6 +1006,7 @@ function parseFocus(read, raw) {
     const wip = read.section(raw, 'wip', path);
     const mode = read.string(wip, 'mode', `${path}.wip`, defaults.wip.mode, oneOf(WIP_MODES));
     const expedite = read.section(raw, 'expedite', path);
+    const improvementsDay = read.string(raw, 'improvementsDay', path, defaults.improvementsDay, oneOf(WEEKDAYS));
     return {
         ...classes,
         maxActiveKeyResults: read.integer(raw, 'maxActiveKeyResults', path, defaults.maxActiveKeyResults, FOCUS_KEY_RESULTS),
@@ -1021,6 +1022,7 @@ function parseFocus(read, raw) {
         leaderWaitMinutes: read.integer(raw, 'leaderWaitMinutes', path, defaults.leaderWaitMinutes, FOCUS_LEADER_WAIT_MINUTES),
         parkAfterDays: read.integer(raw, 'parkAfterDays', path, defaults.parkAfterDays, FOCUS_PARK_AFTER_DAYS),
         plannedTargetPct: read.integer(raw, 'plannedTargetPct', path, defaults.plannedTargetPct, FOCUS_PERCENT),
+        improvementsDay: isWeekday(improvementsDay) ? improvementsDay : defaults.improvementsDay,
     };
 }
 function pickClasses(focus) {

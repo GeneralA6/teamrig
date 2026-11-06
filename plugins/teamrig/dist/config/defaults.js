@@ -259,6 +259,7 @@ export const DEFAULT_FOCUS = {
     leaderWaitMinutes: 60,
     parkAfterDays: 14,
     plannedTargetPct: 70,
+    improvementsDay: 'wed',
 };
 /**
  * A host lock outlives the longest queued step it may hold by this many minutes, so the step is killed
