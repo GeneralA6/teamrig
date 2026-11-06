@@ -5,7 +5,7 @@ import type { TimeZone } from '../core/zone.ts';
 import { EVENT_VERSION, TASK_LINE_VERSION, type ApprovalVerdict, type CreateEvent, type RegisterEvent, type SizeBase, type StatusEvent, type TaskFields, type UpdateEvent } from './events.ts';
 import { foldEvents, taskNumber, type RegisterState, type Task } from './fold.ts';
 import { NO_GOAL_TAGS } from './goals.ts';
-import { GITHUB_ACTOR, NO_SKILL, type AddInput, type AskInput, type DeferChange, type ImportChanges, type ImportInput, type OwnerChange, type RegisterPolicy, type StatusContext, type StatusInput, type Verdict } from './policy.ts';
+import { GITHUB_ACTOR, NO_SKILL, type AddInput, type AskInput, type DeferChange, type ImportChanges, type ImportInput, type OwnerChange, type RegisterPolicy, type StatusContext, type StatusInput, type UpdateChange, type Verdict } from './policy.ts';
 import { ACTIVE_STATUSES } from './model.ts';
 import type { TaskNumbering } from './numbering.ts';
 import { isWritable, type RegisterSnapshot } from './snapshot.ts';
@@ -246,14 +246,19 @@ export class Register {
           if (!change.ok) {
             return change;
           }
-          const sized = typeof change.value.changes.size === 'number' && sizeBase !== undefined;
-          const event: UpdateEvent = { ...this.base(id, caller), type: 'update', ...change.value, ...(sized ? { sizeBase } : {}) };
+          const event = this.updateEvent(id, caller, change.value, sizeBase);
           const { pin, owner } = change.value.changes;
           const unpins = typeof pin === 'string' ? this.unpins(task, owner ?? task.owner, caller, snapshot.state) : [];
           return { ok: true, value: [...unpins, event] };
         }),
       );
     });
+  }
+
+  /** The event of an allowed update; `sizeBase` rides on it only when the update gives the task a size. */
+  private updateEvent(id: string, by: string, change: UpdateChange, sizeBase: SizeBase | undefined): UpdateEvent {
+    const sized = typeof change.changes.size === 'number' && sizeBase !== undefined;
+    return { ...this.base(id, by), type: 'update', ...change, ...(sized ? { sizeBase } : {}) };
   }
 
   /** The goal tags `goals` is held to: read only when a write names some, so most writes read no goal records. */
