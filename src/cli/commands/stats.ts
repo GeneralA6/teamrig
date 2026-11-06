@@ -1,6 +1,7 @@
 import { MeterLog } from '../../budget/calibration.ts';
 import { limitSpansOf } from '../../budget/extra.ts';
 import { formatAddress } from '../../core/address.ts';
+import { AREA_MEASURE_LABELS, AREA_MEASURES, standingOut, type AreaMeasure, type AreaStats, type RegisterAreas } from '../../register/area-stats.ts';
 import { GOAL_STATES, type GoalState, type GoalStats } from '../../register/goal-stats.ts';
 import type { Goal } from '../../register/goals.ts';
 import { registerHealth, type HealthLevel, type RegisterHealth } from '../../register/stats-health.ts';
@@ -30,6 +31,9 @@ import { ownRegister, warnDamage } from './register.ts';
 
 /** The goal states worth a look, so the `GOALS` line names their goals; the others it only counts. */
 const NAMED_GOAL_STATES: readonly GoalState[] = ['at risk', 'late'];
+
+/** The most areas the AREAS line names: the rows of the tab's Bottlenecks section. */
+const AREAS_SHOWN = 6;
 
 /**
  * `teamrig stats [--tree] [--range 7d|30d|90d|180d|1y|all] [--session <id|name>]` (T1771): the register's numbers over a range
@@ -148,6 +152,7 @@ export function statsLines(folded: FoldedStats, name: string, teams: readonly st
     `BUGS ${stats.bugs.active} active, ${stats.bugs.opened} opened, ${stats.bugs.fixed} fixed`,
     `PEOPLE ${stats.people.length === 0 ? 'none done' : stats.people.map((person) => `${teams.length > 1 ? `${person.team}/` : ''}${person.session} ${person.done}`).join(', ')}`,
     `GOALS ${goalsText(stats.goals)}`,
+    `AREAS ${areasText(stats.areas, teams.length > 1)}`,
   ];
   if (teams.length > 1) {
     lines.push(`TEAMS ${stats.teams.map((team) => `${team.team} ${team.active} active, overdue ${team.overdue.count}`).join(' · ')}`);
@@ -186,6 +191,33 @@ function healthText(health: RegisterHealth): string {
 
 function levelText(level: HealthLevel): string {
   return `[${level}]`;
+}
+
+/** The whole teams that stand out, then the sessions, held to the rows the tab's section shows. */
+function areasText({ teams, sessions }: RegisterAreas, tree: boolean): string {
+  const areas = [...standingOut(teams), ...standingOut(sessions)];
+  if (areas.length === 0) {
+    return 'none stand out';
+  }
+  const named = areas.slice(0, AREAS_SHOWN).map((area) => areaText(area, tree));
+  const more = areas.length > AREAS_SHOWN ? [`${areas.length - AREAS_SHOWN} more`] : [];
+  return `${areas.length} ${areas.length === 1 ? 'stands' : 'stand'} out: ${[...named, ...more].join('; ')}`;
+}
+
+function areaText(area: AreaStats, tree: boolean): string {
+  const cells = AREA_MEASURES.filter((measure) => area.cells[measure].level !== 'good').map((measure) => `${AREA_MEASURE_LABELS[measure]} ${cellValue(measure, area.cells[measure].value)} ${levelText(area.cells[measure].level)}`);
+  return `${areaName(area, tree)} ${cells.join(', ')}`;
+}
+
+function areaName({ team, session }: AreaStats, tree: boolean): string {
+  if (session === null) {
+    return team;
+  }
+  return tree ? `${team}/${session}` : session;
+}
+
+function cellValue(measure: AreaMeasure, value: number): string {
+  return measure === 'low' ? `${value}%` : `${value}`;
 }
 
 function newWorkText({ newWork }: RegisterStats): string {

@@ -2373,7 +2373,7 @@ DONE 2 done, 0 dropped since Wed 10-14 11:30 IDT
 STATS shop, 7 d: 10-09 to 10-15
 HEALTH close/open 1.20 [good] · backlog -2, 14 active [good] · overdue 1, p1 0 [warn] · owner decisions 1, oldest 0.8 d [good] · backlog clears in 7 week(s) [warn]
 FLOW opened 10, closed 12 (1 dropped), net -2; last 28 d net -8
-  each other section: teamrig stats --tree --session lead (new work, speed, delays, waits, bugs, people, goals)
+  each other section: teamrig stats --tree --session lead (new work, speed, delays, waits, bugs, people, goals, areas)
 MEETINGS 1 today or missed
   M3 scheduled, Thu 10-15 14:00 IDT, 30 min, web with api, tasks T7 | the pricing tiers
   The owner starts one with teamrig meeting start <id>; a missed one is moved (teamrig meeting move <id> --at <time>) or dropped.
