@@ -1,9 +1,10 @@
 import type { FocusConfig } from '../config/types.ts';
+import { canMove } from './can-move.ts';
 import type { Task } from './fold.ts';
 import { classOf } from './focus.ts';
 import type { TaskStatus } from './model.ts';
 import { bandOf } from './score.ts';
-import { canMove, type WaitContext } from './waits.ts';
+import type { WaitContext } from './waits.ts';
 
 /**
  * The WIP rule (T2076): a session finishes what the team ranked first before it opens more. A start of anything but

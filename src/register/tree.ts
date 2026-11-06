@@ -1,10 +1,11 @@
 import { parseDeadline } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
+import { canMove } from './can-move.ts';
 import { taskNumber, type Task } from './fold.ts';
 import { ACTIVE_STATUSES } from './model.ts';
 import { wouldPark, type ParkFocus } from './park.ts';
 import { scoreOf, valueOf, type ScoreFocus, type SizeFacts, type TaskScore, type ValueFacts } from './score.ts';
-import { canMove, isFinished, isReady, waitContext, type PersonWait, type PersonWaitKind, type WaitContext } from './waits.ts';
+import { isFinished, isReady, waitContext, type PersonWait, type PersonWaitKind, type WaitContext } from './waits.ts';
 import { currentWeek } from './week.ts';
 
 /**
