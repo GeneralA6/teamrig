@@ -42,6 +42,27 @@ export interface ClassRowsInput {
   readonly now: number;
 }
 
+export interface SpentClassesInput {
+  /** The team's sessions' usage. */
+  readonly states: readonly UsageState[];
+  readonly tasks: Iterable<Pick<Task, 'id' | 'workClass'>>;
+  readonly focus: Pick<FocusConfig, 'defaultClass' | 'allocation'>;
+  /** Where the week's use counts from. */
+  readonly weekFrom: number;
+  /** The W one percent of the week comes to, the rate `teamrig budget` prices the rows with. */
+  readonly wPerPct: number;
+  readonly now: number;
+}
+
+/** Each task's class, by its id. */
+function classesByTask(tasks: Iterable<Pick<Task, 'id' | 'workClass'>>, focus: Pick<FocusConfig, 'defaultClass'>): ReadonlyMap<string, string> {
+  const classes = new Map<string, string>();
+  for (const task of tasks) {
+    classes.set(task.id, classOf(task, focus));
+  }
+  return classes;
+}
+
 /**
  * The part of a session's W on `from`'s UTC day that falls from `from`'s hour on, as `wSince` counts it. `byTask` is
  * kept per day only, so a span that begins mid-day, as a week does at its reset, takes this part of each task's W there.
@@ -82,10 +103,7 @@ export function classSpendSince(states: readonly UsageState[], from: number, now
  */
 export function classRowsOf(input: ClassRowsInput): ClassRow[] {
   const { states, focus, todayFrom, weekFrom, now } = input;
-  const classes = new Map<string, string>();
-  for (const task of input.tasks) {
-    classes.set(task.id, classOf(task, focus));
-  }
+  const classes = classesByTask(input.tasks, focus);
   const spendSince = (from: number): ClassSpend => classSpendSince(states, from, now, (task) => classes.get(task));
   const today = spendSince(todayFrom);
   const week = weekFrom === undefined ? undefined : spendSince(weekFrom);
@@ -98,4 +116,16 @@ export function classRowsOf(input: ClassRowsInput): ClassRow[] {
     allocationPct: focus.allocation[name],
   }));
   return [...rows, { name: NO_TASK_ROW, todayW: today.noTaskW, weekW: week?.noTaskW, allocationPct: undefined }];
+}
+
+/**
+ * The classes whose week spend has reached their share in `focus.allocation`, which the WIP rule holds until the week
+ * resets (register/wip.ts). A share is a percent of the whole week, never of the spend so far: early in a week a class
+ * can hold most of what was spent and still have its share left. A class the allocation does not list has no share to spend.
+ */
+export function spentClassesOf({ states, tasks, focus, weekFrom, wPerPct, now }: SpentClassesInput): ReadonlySet<string> {
+  const classes = classesByTask(tasks, focus);
+  const { byClass } = classSpendSince(states, weekFrom, now, (task) => classes.get(task));
+  const spent = Object.entries(focus.allocation).filter(([name, sharePct]) => (byClass.get(name) ?? 0) / wPerPct >= sharePct);
+  return new Set(spent.map(([name]) => name));
 }

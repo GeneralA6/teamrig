@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { classRowsOf, classSpendSince, NO_TASK_ROW, type ClassRowsInput } from './class-spend.ts';
+import { classRowsOf, classSpendSince, NO_TASK_ROW, spentClassesOf, type ClassRowsInput, type SpentClassesInput } from './class-spend.ts';
 import { emptyPatterns } from './patterns.ts';
 import { EMPTY_USAGE, newCursor, type DayUsage, type UsageState } from './store.ts';
 import type { OpenTurn } from './tasks.ts';
@@ -139,5 +139,47 @@ describe('classRowsOf', () => {
 
     assert.deepEqual(rows.map((row) => row.name), ['Roadmap', 'Maintenance', 'Improvements', 'Research', NO_TASK_ROW]);
     assert.equal(rows[3]?.allocationPct, undefined);
+  });
+});
+
+describe('spentClassesOf', () => {
+  /** 1% of the week is 10 W, so Improvements' 15% is 150 W. */
+  const INPUT: SpentClassesInput = { states: [], tasks: [{ id: 'T2', workClass: 'Improvements' }], focus: FOCUS, weekFrom: TODAY_START, wPerPct: 10, now: NOW };
+
+  /** The classes spent when one session put `w` on T2 today. */
+  function spentAt(w: number, input: Partial<SpentClassesInput> = {}): string[] {
+    return [...spentClassesOf({ ...INPUT, states: [usage({ [WEDNESDAY]: w }, { [WEDNESDAY]: { T2: w } })], ...input })];
+  }
+
+  it('names a class once its week spend reaches its share, not before', () => {
+    assert.deepEqual(spentAt(149), []);
+    assert.deepEqual(spentAt(150), ['Improvements']);
+  });
+
+  it('adds the sessions up', () => {
+    const states = [usage({ [WEDNESDAY]: 100 }, { [WEDNESDAY]: { T2: 100 } }), usage({ [WEDNESDAY]: 50 }, { [WEDNESDAY]: { T2: 50 } })];
+    assert.deepEqual([...spentClassesOf({ ...INPUT, states })], ['Improvements']);
+  });
+
+  it("reads a share against the whole week, so a class with all of the week's spend so far keeps what it has left", () => {
+    assert.deepEqual(spentAt(100, { wPerPct: 1_000 }), []);
+  });
+
+  it("counts no W from before the week's start", () => {
+    const state = usage({ [TUESDAY]: 900, [WEDNESDAY]: 10 }, { [TUESDAY]: { T2: 900 }, [WEDNESDAY]: { T2: 10 } });
+    assert.deepEqual([...spentClassesOf({ ...INPUT, states: [state] })], []);
+  });
+
+  it('counts a task with no class under the default class', () => {
+    assert.deepEqual(spentAt(150, { tasks: [{ id: 'T2', workClass: null }] }), ['Improvements']);
+  });
+
+  it('never names a class the allocation does not list', () => {
+    assert.deepEqual(spentAt(9_000, { tasks: [{ id: 'T2', workClass: 'Research' }] }), []);
+  });
+
+  it('names a class with a share of 0 before it spends anything', () => {
+    const focus = { ...FOCUS, allocation: { Roadmap: 100, Improvements: 0 } };
+    assert.deepEqual([...spentClassesOf({ ...INPUT, focus })], ['Improvements']);
   });
 });
