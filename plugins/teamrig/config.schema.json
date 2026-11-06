@@ -1372,7 +1372,7 @@
       }
     },
     "focus": {
-      "description": "Goal-first ranking: the work classes a task is filed under (teamrig add and update --class), how its WSJF score is made (cost of delay over size), the WIP rule and the share of the week's spend each class is planned to take. When classes, roadmapClass, maintenanceClass, defaultClass and allocation disagree, each problem is reported and all five take their defaults.",
+      "description": "Goal-first ranking: the work classes a task is filed under (teamrig add and update --class), how its WSJF score is made (cost of delay over size), the WIP rule and the share of the week each class is planned to take. When classes, roadmapClass, maintenanceClass, defaultClass and allocation disagree, each problem is reported and all five take their defaults.",
       "type": "object",
       "properties": {
         "classes": {
@@ -1416,7 +1416,7 @@
           }
         },
         "wip": {
-          "description": "The WIP rule: an Improvements start is held while its owner has a Roadmap task that can move, and a start past maxInProgress is held. --one-commit, an expedited task and an owner-sourced task are exempt.",
+          "description": "The WIP rule: an Improvements start is held while its owner has a Roadmap task that can move, or until the week resets once Improvements has spent its allocation, and a start past maxInProgress is held. --one-commit, an expedited task and an owner-sourced task are exempt.",
           "type": "object",
           "properties": {
             "mode": { "description": "refuse holds the start; warn prints why and lets it through; off checks nothing.", "type": "string", "enum": ["refuse", "warn", "off"], "default": "refuse" },
@@ -1424,10 +1424,10 @@
           }
         },
         "allocation": {
-          "description": "The % of the week's spend each class is planned to take, by class; every key one of classes, the shares summing to 100.",
+          "description": "The % of the whole week each class is planned to take, by class; every key one of classes, the shares summing to 100. A class outside roadmapClass and maintenanceClass that reaches its share has its starts held until the week resets, unless wip's mode is off; a class left out is never held, and one at 0 is held from the week's start.",
           "type": "object",
           "propertyNames": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9 _-]{0,31}$" },
-          "additionalProperties": { "description": "The class's share of the week's spend, in %.", "type": "number", "minimum": 0, "maximum": 100 },
+          "additionalProperties": { "description": "The class's share of the whole week, in %.", "type": "number", "minimum": 0, "maximum": 100 },
           "default": { "Roadmap": 60, "Maintenance": 25, "Improvements": 15 }
         },
         "leaderWaitMinutes": { "description": "How long, in minutes, a Roadmap task may wait on a leader's decision or approval before it is flagged.", "type": "integer", "minimum": 0, "maximum": 10080, "default": 60 },

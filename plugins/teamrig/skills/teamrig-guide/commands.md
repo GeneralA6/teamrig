@@ -104,8 +104,9 @@ Flags:
 - `--one-commit`: allowed only when setting `in-progress`: starts a one-commit fix that the WIP rule would hold. The
   rule (`focus.wip.mode`: `refuse`, `warn` or `off`) holds a start of work outside `focus.roadmapClass` and
   `focus.maintenanceClass` while its owner holds `focus.roadmapClass` work that can move (open or in progress, no wait,
-  every task it comes after finished), and any start past `focus.wip.maxInProgress` tasks in progress. A reopen is held
-  like a first start. An expedite task and a task the owner ordered are never held.
+  every task it comes after finished), or until the week resets once its class has spent its `focus.allocation` share,
+  and any start past `focus.wip.maxInProgress` tasks in progress. A reopen is held like a first start. An expedite task
+  and a task the owner ordered are never held.
 - `--evidence <proof>`: required for `done`: a commit, test count, path or number that proves it. Evidence
   already on the task counts.
 - `--watch "<what a sighting shows>"`: allowed only with `done`, and needs evidence (given or already on the task)
@@ -242,15 +243,23 @@ With `register.verifyGate` set to `warn`, either start goes through and a `WARN`
 with `--met`).
 
 The WIP rule (`focus.wip`) holds a start too: work outside the Roadmap and Maintenance classes waits while its owner
-holds Roadmap work that can move, and no task starts past `focus.wip.maxInProgress` tasks in progress:
+holds Roadmap work that can move, or until the week resets once its class has spent its `focus.allocation` share, and
+no task starts past `focus.wip.maxInProgress` tasks in progress:
 
 ```text
 REFUSED T2 is Improvements work and api holds Roadmap work that can move: T1; work that first [focus.wip], or, for a one-commit fix, start it with --one-commit
+REFUSED T2 is Improvements work and Improvements has spent its share of the week [focus.allocation]: it waits for the week's reset, or, for a one-commit fix, start it with --one-commit
 REFUSED api already has 3 tasks in progress, at the limit of 3 [focus.wip.maxInProgress]: finish T1, T3, T4 or put one back (--status open) before T2, or, for a one-commit fix, start it with --one-commit
 ```
 
 `--one-commit` starts a one-commit fix all the same. With `focus.wip.mode` set to `warn`, the start goes through and
-a `WARN` line says the same.
+a `WARN` line says the same; set to `off`, the share holds nothing either.
+
+A class has spent its share when the week's spend on it, as `teamrig budget` shows it, reaches its `focus.allocation`:
+a class the allocation leaves out is never held, and one allocated 0 is held from the week's start. The reading comes
+from the stored spend, so it lags the newest turns, and a week the meter does not fully reach reads short and may hold
+late. With the week or its rate unknown nothing is held for the share; a read that fails says so in a `WARN` line and
+holds nothing either.
 
 The status is a flag, never a word after the id: `teamrig set T1 done` is a usage error (`unexpected "done"`).
 
@@ -4653,7 +4662,8 @@ W = weighted tokens: input 1, cache writes 1.25 to 2, cache reads 0.1, output 5.
 the config has dropped, then `No task`: turns that named no task, helpers, and task ids the register does not hold. A
 turn's W goes to the tasks it names as `--task` counts it, so the rows add up to `the team`. `today` and `week` are in %
 of the whole week, as `allocation` is: a class has spent its share when `week` reaches `allocation`, not when it has
-taken that share of the spend so far. Without the week in W the block gives W only, and without the week's start today
+taken that share of the spend so far. From then until the week resets, the WIP rule holds the starts of a class outside
+Roadmap and Maintenance ([set](#teamrig-set)). Without the week in W the block gives W only, and without the week's start today
 only; a note says when the meter does not reach back to that start, so the week's W is short. It is left out when the
 register cannot be read, and from `--day`, `--task`, the tables and the view of one session.
 

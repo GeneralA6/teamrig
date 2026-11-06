@@ -1208,7 +1208,7 @@ export interface FocusConfig {
   readonly score: FocusScoreConfig;
   readonly expedite: FocusExpediteConfig;
   readonly wip: FocusWipConfig;
-  /** The percent of the week's spend each class is planned to take, by class; the shares sum to 100. */
+  /** The percent of the whole week each class is planned to take, by class; the shares sum to 100. */
   readonly allocation: Readonly<Record<string, number>>;
   /** How long a Roadmap task may wait on a leader's decision or approval before it is flagged. */
   readonly leaderWaitMinutes: number;

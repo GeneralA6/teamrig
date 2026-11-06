@@ -135,7 +135,8 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       a start that a verifying task it needs holds goes through with --met: what shows that task's proof
       exists; its owner gets an inbox line to set it done or reopen it
       the WIP rule (focus.wip) holds a start of work outside the Roadmap and Maintenance classes while its
-      owner holds Roadmap work that can move, and any start past focus.wip.maxInProgress tasks in progress;
+      owner holds Roadmap work that can move, or until the week resets once its class has spent its share
+      (focus.allocation), and any start past focus.wip.maxInProgress tasks in progress;
       --one-commit starts a one-commit fix all the same
       verifying and done need --followups: the tasks the work leaves (a finding, a next step), or none
       (register.requireFollowupsOn); show lists them
