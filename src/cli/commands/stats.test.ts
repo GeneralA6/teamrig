@@ -55,7 +55,7 @@ describe('teamrig stats', () => {
         'BUGS 0 active, 1 opened, 0 fixed',
         'PEOPLE bravo 1',
         'GOALS none; off goal: 1 of 1 done tasks (100%)',
-        'AREAS 1 stands out: alpha p1 1 [warn], p1 late 1 [warn]',
+        'AREAS 1 stands out: alpha p1 late 1 [warn]',
         'USE 0 of 7 days rolled up: teamrig budget rollup --apply writes the closed days',
       ],
       stderr: [],

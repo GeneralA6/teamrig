@@ -162,7 +162,7 @@ function countsByOwner(tasks: Iterable<Task>, at: number, zone: TimeZone): Map<s
 }
 
 function wholeTeam({ team, days }: ReplayedTeam): Placed {
-  return { team: team.team, session: null, tasks: team.active, days: days.map((day) => summed([...day.values()])) };
+  return { team: team.team, session: null, tasks: team.active, days: sinceFirstTask(days.map((day) => summed([...day.values()]))) };
 }
 
 function teamSessions({ team, days }: ReplayedTeam): Placed[] {
@@ -170,8 +170,17 @@ function teamSessions({ team, days }: ReplayedTeam): Placed[] {
     team: team.team,
     session: owner,
     tasks: team.active.filter((each) => each.task.owner === owner),
-    days: days.map((day) => day.get(owner) ?? noCounts()),
+    days: sinceFirstTask(days.map((day) => day.get(owner) ?? noCounts())),
   }));
+}
+
+/**
+ * The day-ends from the area's first active task on. Before it the area was not there, a register younger than the
+ * usual's days or a session hired since, and zeros from then would sink its usual until every count read as a spike.
+ */
+function sinceFirstTask(days: readonly Counts[]): readonly Counts[] {
+  const first = days.findIndex((day) => day.active > 0);
+  return first === -1 ? [] : days.slice(first);
 }
 
 function groupOf(placed: readonly Placed[], now: number, zone: TimeZone): AreaGroup {
