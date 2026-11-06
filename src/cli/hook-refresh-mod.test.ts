@@ -62,6 +62,13 @@ class Tab {
     return answerOf(await this.run('compact-check', { tokens, window }));
   }
 
+  /** The classic PreCompact hook's answer: its JSON line, or undefined when it printed nothing (the compaction goes). */
+  async preCompact(input: JsonRecord | string = { transcript_path: TRANSCRIPT, trigger: 'auto' }, env: Readonly<Record<string, string>> = AS_ALPHA): Promise<unknown> {
+    const result = await this.run('pre-compact', input, env);
+    assert.equal(result.code, EXIT.ok, result.stderr.join('\n'));
+    return result.stdout.length === 0 ? undefined : answerOf(result);
+  }
+
   state(): Promise<string | undefined> {
     return this.kit.files.read(STATE);
   }
@@ -148,5 +155,56 @@ describe('runCli: hook compact-check', () => {
     assert.deepEqual(await tab.compact(170_000, undefined), GO);
     assert.deepEqual(answerOf(await tab.run('compact-check', 'not json')), GO);
     assert.deepEqual(await new Tab({ ...TEAM, refresh: { enabled: false } }).compact(170_000, 200_000), GO);
+  });
+});
+
+/** A main-thread reply whose context was `tokens`, as Claude Code writes it to the transcript. */
+function replyLine(tokens: number): string {
+  const usage = { input_tokens: 1, cache_read_input_tokens: tokens - 1, output_tokens: 50 };
+  return `${JSON.stringify({ type: 'assistant', isSidechain: false, message: { role: 'assistant', usage } })}\n`;
+}
+
+/** A tool result line of about `bytes` bytes. */
+function resultLine(bytes: number): string {
+  return `${JSON.stringify({ type: 'user', isSidechain: false, message: { content: 'x'.repeat(bytes) } })}\n`;
+}
+
+describe('runCli: hook pre-compact', () => {
+  it("holds Claude Code's own compaction under the ceiling while the handover is asked for or written, on the transcript's estimate", async () => {
+    const tab = new Tab();
+    await tab.transcript(replyLine(170_000));
+    assert.equal(await tab.preCompact(), undefined, 'no refresh pending');
+
+    await tab.mid(130_000);
+    assert.deepEqual(await tab.preCompact(), {
+      decision: 'block',
+      reason: 'teamrig: the handover is asked for and the fresh start follows this turn, so compaction waits until 185k (now 170k)',
+    });
+    assert.equal(await tab.preCompact({ transcript_path: TRANSCRIPT, trigger: 'manual' }), undefined, 'a /compact the user typed');
+
+    await tab.kit.files.write(HANDOVER, '# In progress\n');
+    assert.equal((await tab.kit.run(['refresh', '--ready', '--session', 'alpha'])).code, EXIT.ok);
+    assert.match(JSON.stringify(await tab.preCompact()), /"decision":"block","reason":"teamrig: the handover is written and/);
+
+    // 45,000 bytes since the reply read at least 15,000 tokens more: 185k, the ceiling.
+    await tab.transcript(replyLine(170_000) + resultLine(45_000));
+    assert.equal(await tab.preCompact(), undefined, 'at the ceiling');
+  });
+
+  it('lets the compaction go outside a team session, with refresh off, without a reply in the transcript, or on input it cannot read', async () => {
+    const tab = new Tab();
+    await tab.transcript(replyLine(170_000));
+    await tab.mid(130_000);
+    assert.equal(await tab.preCompact(undefined, {}), undefined, 'no team session');
+    assert.equal(await tab.preCompact({ trigger: 'auto' }), undefined, 'no transcript path');
+    assert.equal(await tab.preCompact({ transcript_path: join(USER_HOME, 'missing.jsonl'), trigger: 'auto' }), undefined, 'no transcript');
+    assert.equal(await tab.preCompact('not json'), undefined);
+    await tab.transcript('{}\n');
+    assert.equal(await tab.preCompact(), undefined, 'no reply with usage');
+
+    const off = new Tab({ ...TEAM, refresh: { enabled: false } });
+    await off.transcript(replyLine(170_000));
+    await off.kit.files.write(STATE, (await tab.state()) ?? '');
+    assert.equal(await off.preCompact(), undefined, 'refresh off, with the ask still on record');
   });
 });

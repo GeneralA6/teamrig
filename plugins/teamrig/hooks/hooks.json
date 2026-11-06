@@ -168,6 +168,7 @@
     "PreCompact": [
       {
         "hooks": [
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "pre-compact"], "timeout": 15 },
           { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "tab-status"], "timeout": 5 }
         ]
       }

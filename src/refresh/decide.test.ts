@@ -12,6 +12,7 @@ import {
   noticeOf,
   REASK_SHARE,
   reaskGrowth,
+  SMALLEST_MODEL_WINDOW,
   thousands,
   type AskContext,
   type DueFacts,
@@ -430,6 +431,17 @@ describe('decideCompact', () => {
     assert.deepEqual(decideCompact(ASKED, askContext({ ...SIZE_ONLY, compactCeilingTokens: 0 }), { tokens: 170_000, window }), { kind: 'go' });
     assert.deepEqual(decideCompact(ASKED, askContext({ ...SIZE_ONLY, enabled: false }), { tokens: 170_000, window }), { kind: 'go' });
     assert.deepEqual(decideCompact(ASKED, askContext({ ...SIZE_ONLY, compactCeilingTokens: 200_000 }), { tokens: 170_000, window }), { kind: 'go' });
+  });
+
+  it('takes a window it is not told as the smallest model window, so only a ceiling under it holds', () => {
+    assert.equal(SMALLEST_MODEL_WINDOW, 200_000);
+    assert.deepEqual(decideCompact(ASKED, askContext(), { tokens: 170_000, window: undefined }), {
+      kind: 'skip',
+      reason: 'teamrig: the handover is asked for and the fresh start follows this turn, so compaction waits until 185k (now 170k)',
+    });
+    const roomy = askContext({ ...SIZE_ONLY, compactCeilingTokens: 400_000 });
+    assert.equal(decideCompact(ASKED, roomy, { tokens: 300_000, window: 1_000_000 }).kind, 'skip', 'a told window holds up to its ceiling');
+    assert.deepEqual(decideCompact(ASKED, roomy, { tokens: 300_000, window: undefined }), { kind: 'go' }, 'the same window untold lets go');
   });
 });
 

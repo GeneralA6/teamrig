@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TRANSCRIPT_TAIL_BYTES } from '../names/title.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { contextTokensOf, readContextTokens } from './usage.ts';
+import { contextEstimateOf, contextTokensOf, ESTIMATE_BYTES_PER_TOKEN, readContextEstimate, readContextTokens } from './usage.ts';
 
 interface Usage {
   readonly input_tokens?: unknown;
@@ -99,5 +99,46 @@ describe('readContextTokens', () => {
 
   it('is unknown for a missing transcript', async () => {
     assert.equal(await readContextTokens(new MemoryFiles(), TRANSCRIPT), undefined);
+  });
+});
+
+/** The estimate for text whose last main-thread reply read 99,140 tokens and starts the `since` text. */
+function estimate(since: string): number {
+  return 99_140 + Math.ceil(Buffer.byteLength(since, 'utf8') / ESTIMATE_BYTES_PER_TOKEN);
+}
+
+describe('contextEstimateOf', () => {
+  it("adds the last main-thread reply and every line after it, a byte share each, to that reply's context", () => {
+    const result = userLine(30_000);
+    assert.equal(ESTIMATE_BYTES_PER_TOKEN, 3);
+    assert.equal(contextEstimateOf([PROMPT, MAIN, result].join('\n'), false), estimate(`${MAIN}\n${result}`));
+    assert.equal(estimate(`${MAIN}\n${result}`) > 99_140 + 10_000, true, 'a 30,000-byte result adds at least 10,000');
+    assert.equal(contextEstimateOf(MAIN, false), estimate(MAIN), 'the reply alone');
+  });
+
+  it("counts a subagent's reply after it as bytes, never as the context", () => {
+    const sidechain = reply({ input_tokens: 1, cache_read_input_tokens: 400_000 }, true);
+    assert.equal(contextEstimateOf([MAIN, sidechain].join('\n'), false), estimate(`${MAIN}\n${sidechain}`));
+  });
+
+  it('is unknown when no line tells, the first line of a cut tail included', () => {
+    assert.equal(contextEstimateOf(PROMPT, false), undefined);
+    assert.equal(contextEstimateOf(`${MAIN}\n${PROMPT}`, true), undefined);
+  });
+});
+
+describe('readContextEstimate', () => {
+  it('reads only the tail of a long transcript', async () => {
+    const files = new MemoryFiles();
+    const head = `${reply({ input_tokens: 1 })}\n`.repeat(10);
+    const body = userLine(TRANSCRIPT_TAIL_BYTES);
+    await files.write(TRANSCRIPT, `${head}${body}`);
+    assert.equal(await readContextEstimate(files, TRANSCRIPT), undefined);
+    await files.write(TRANSCRIPT, `${head}${body}${MAIN}\n`);
+    assert.equal(await readContextEstimate(files, TRANSCRIPT), estimate(`${MAIN}\n`));
+  });
+
+  it('is unknown for a missing transcript', async () => {
+    assert.equal(await readContextEstimate(new MemoryFiles(), TRANSCRIPT), undefined);
   });
 });

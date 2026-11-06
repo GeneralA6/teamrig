@@ -93,11 +93,21 @@ export type MidTurnDecision =
   /** Record `state` and add `reason` to the tool result the model reads next. */
   | { readonly kind: 'ask'; readonly state: RefreshState; readonly reason: string; readonly nextAt: number };
 
-/** What a compaction Claude Code is about to run on the main conversation reads: its own estimate of the context, and the window. */
+/**
+ * What a compaction Claude Code is about to run on the main conversation reads: the context, and the window when the
+ * caller is told it (the mod is, with Claude Code's own estimate; the classic PreCompact hook is not).
+ */
 export interface CompactFacts {
   readonly tokens: number;
-  readonly window: number;
+  readonly window: number | undefined;
 }
+
+/**
+ * The smallest context window of a current Claude model, which `decideCompact` takes for a window it is not told: a
+ * ceiling at or past it holds nothing, so on a larger window the hold lets go sooner than it could, never past the
+ * room the window has.
+ */
+export const SMALLEST_MODEL_WINDOW = 200_000;
 
 export type CompactDecision = { readonly kind: 'go' } | { readonly kind: 'skip'; readonly reason: string };
 
@@ -383,12 +393,13 @@ export function decideMidTurn(state: RefreshState | undefined, context: AskConte
  * ended and the person at the tab let it go, or the user's), as long as Claude
  * Code's estimate of the context is under `compactCeilingTokens`. Past the ceiling it goes, so a session never runs
  * out of room: a prompt too long for the window, which compacts with the same trigger, is past it too. A ceiling
- * at or past the window would not leave that room, so it skips nothing.
+ * at or past the window (`SMALLEST_MODEL_WINDOW` when not told) would not leave that room, so it skips nothing.
  */
 export function decideCompact(state: RefreshState | undefined, context: Pick<AskContext, 'settings' | 'command'>, facts: CompactFacts): CompactDecision {
   const { enabled, compactCeilingTokens: ceiling } = context.settings;
   const pending = state?.phase === 'asked' || state?.phase === 'ready';
-  if (!enabled || !pending || ceiling === 0 || ceiling >= facts.window || facts.tokens >= ceiling) {
+  const window = facts.window ?? SMALLEST_MODEL_WINDOW;
+  if (!enabled || !pending || ceiling === 0 || ceiling >= window || facts.tokens >= ceiling) {
     return GO;
   }
   const handover = state.phase === 'asked' ? 'asked for' : 'written';
