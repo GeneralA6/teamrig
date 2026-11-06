@@ -1,7 +1,7 @@
 import { errorMessage } from "../../core/guards.js";
 import { ENV, KIT_NAME } from "../../core/home.js";
 import { sessionTitleOf } from "../../names/title.js";
-import { bindByProcess, bindByTitle, bindHint, hintReason, processBoundNote, refreshedIn } from "../../hooks/bind.js";
+import { bindByEnv, bindByProcess, bindByTitle, bindHint, hintReason, processBoundNote, refreshedIn } from "../../hooks/bind.js";
 import { firstHint, JsonlHintLog } from "../../hooks/hint-log.js";
 import { injectFor } from "../../inbox/inject.js";
 import { claudeProcessOf } from "../../refresh/restart.js";
@@ -62,6 +62,19 @@ export async function bindAfterClear(runtime, kit, roster, claudeSession) {
     }
     catch (error) {
         return `${KIT_NAME} could not bind this tab by its Claude Code process (${errorMessage(error)}).`;
+    }
+}
+/**
+ * Binds the tab `$TEAMRIG_SESSION` names to session `id` (hooks/bind.ts). It never throws, so the start always
+ * loads: a failure is the SessionStart note, and the tab's first `inbox read` writes the mark.
+ */
+export async function bindNamedTab(runtime, kit, id, claudeSession) {
+    try {
+        await bindByEnv(inboxDepsOf(runtime, kit.paths).marks, id, claudeSession, new Date(runtime.clock.now()));
+        return undefined;
+    }
+    catch (error) {
+        return `${KIT_NAME} could not bind this tab to the \`${id}\` session (${errorMessage(error)}); its first \`inbox read\` does.`;
     }
 }
 /** The prompt hook's line for a tab it could not bind, once per Claude Code session and reason; undefined otherwise. */
