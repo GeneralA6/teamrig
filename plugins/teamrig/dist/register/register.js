@@ -133,13 +133,35 @@ export class Register {
                 if (!change.ok) {
                     return change;
                 }
-                const sized = typeof change.value.changes.size === 'number' && sizeBase !== undefined;
-                const event = { ...this.base(id, caller), type: 'update', ...change.value, ...(sized ? { sizeBase } : {}) };
+                const event = this.updateEvent(id, caller, change.value, sizeBase);
                 const { pin, owner } = change.value.changes;
                 const unpins = typeof pin === 'string' ? this.unpins(task, owner ?? task.owner, caller, snapshot.state) : [];
                 return { ok: true, value: [...unpins, event] };
             }));
         });
+    }
+    /** A confirmed sweep row, by the task's owner or a leader over it on this team (T2086). */
+    triage(caller, id, changes, sizeBase) {
+        return this.asCaller(caller, () => this.triageWrite(caller, id, changes, sizeBase, (task, state, elsewhere, goalTags) => this.deps.policy.triage(task, caller, changes, state, elsewhere, goalTags)));
+    }
+    /**
+     * A confirmed sweep row by the lead of a team above, `asker` being its `<team>/<id>`. The tree's rules decide who that
+     * may be, so this team's roster check is skipped, as in noteFrom.
+     */
+    triageFrom(asker, id, changes, sizeBase) {
+        return this.triageWrite(asker, id, changes, sizeBase, (task, state, elsewhere, goalTags) => this.deps.policy.triageFrom(task, changes, state, elsewhere, goalTags));
+    }
+    async triageWrite(by, id, changes, sizeBase, judge) {
+        const goalTags = await this.goalTagsFor(changes.goals);
+        return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => {
+            const change = judge(task, snapshot.state, elsewhere, goalTags);
+            return single(change.ok ? { ok: true, value: this.updateEvent(id, by, change.value, sizeBase) } : change);
+        }));
+    }
+    /** The event of an allowed update; `sizeBase` rides on it only when the update gives the task a size. */
+    updateEvent(id, by, change, sizeBase) {
+        const sized = typeof change.changes.size === 'number' && sizeBase !== undefined;
+        return { ...this.base(id, by), type: 'update', ...change, ...(sized ? { sizeBase } : {}) };
     }
     /** The goal tags `goals` is held to: read only when a write names some, so most writes read no goal records. */
     async goalTagsFor(goals) {

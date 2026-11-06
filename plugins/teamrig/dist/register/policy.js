@@ -642,6 +642,10 @@ export class RegisterPolicy {
                 return refuse(problem);
             }
         }
+        return this.fieldChange(task, changes, text, state, elsewhere, goalTags);
+    }
+    /** The field rules every update passes, once who may make it is settled. */
+    fieldChange(task, changes, text, state, elsewhere, goalTags) {
         if (changes.description === null && this.config.register.requireDescription) {
             return refuse(`${task.id} keeps a description while register.requireDescription is on: give a new one instead of none`);
         }
@@ -652,6 +656,22 @@ export class RegisterPolicy {
         const goals = changes.goals === undefined ? undefined : this.goalProblem(changes.goals, goalTags);
         const problem = after ?? this.checkFields(merged, sourceRule, task) ?? goals ?? this.checkText('note', text);
         return problem === undefined ? ok({ changes, note: text }) : refuse(problem);
+    }
+    /**
+     * A confirmed sweep row (T2086): the task's class, goals and size, from its owner or a leader over it. `goals` is the
+     * one field here a leader's `update` may not touch: a person read this row and said yes, and the sweep is how a
+     * team's leader sorts tasks their owners never tagged, so it is widened here and not in LEAD_FIELDS.
+     */
+    triage(task, caller, asked, state, elsewhere = NO_TASKS_ELSEWHERE, goalTags = NO_GOAL_TAGS) {
+        if (caller !== task.owner && caller !== this.tree.lead && !this.tree.leads(caller, task.owner)) {
+            return refuse(`only the owner (${task.owner}) or ${this.approversText(task.owner)} changes ${task.id}`);
+        }
+        return this.triageFrom(task, asked, state, elsewhere, goalTags);
+    }
+    /** `triage` for the lead of a team above, whom the tree vetted and no roster here holds, so only the field rules judge it. */
+    triageFrom(task, asked, state, elsewhere = NO_TASKS_ELSEWHERE, goalTags = NO_GOAL_TAGS) {
+        // A row adds to the task's tags and keeps the rest, which a person did not name and which may predate the records.
+        return this.fieldChange(task, clearNoGoal(task, asked), null, state, elsewhere, new Set([...goalTags, ...task.goals]));
     }
     /** Why `goals` cannot be named under `register.goals` checked or required: one is no tag of `goalTags`. */
     goalProblem(goals, goalTags) {

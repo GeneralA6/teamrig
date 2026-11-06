@@ -524,7 +524,7 @@ function decidedOf(args) {
  * `update <team>/<id> --note ".." [--later <when|none> | --decided]`: the lead who asks the owner a team's decisions,
  * at its tree's root (T1018), records a note, a Later (T1295) or the owner's answer as a Decided (T1366) on a task of
  * that team. It lands in that team's register as an event by the lead's `<team>/<id>`. Only that lead may, and only
- * these: every field stays the task's own team's to change.
+ * these: every other field stays the task's own team's to change, but for the rows a person confirmed in `sweep apply`.
  */
 async function noteBelow(args, runtime, caller, below, id) {
     const others = [
@@ -651,7 +651,7 @@ export async function ownRegister(runtime) {
     return { own, teams: [own] };
 }
 /** The registers a command reads: those of `--tree`, else the caller's own. */
-async function readRegisters(args, runtime) {
+export async function readRegisters(args, runtime) {
     return args.switches.has('tree') ? rollUp(runtime, callerOf(args.flags, runtime.env)) : ownRegister(runtime);
 }
 /** Each register as the command needs it, each naming its damaged lines once, as read. */
