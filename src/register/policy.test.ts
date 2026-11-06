@@ -1099,6 +1099,14 @@ describe('RegisterPolicy.triage (T2086)', () => {
     assert.equal(error(checked.triage(TASK, 'lead', { goals: ['Z9'] }, EMPTY, NO_TASKS_ELSEWHERE, KNOWN_GOALS)), UNKNOWN_Z9);
     assert.equal(checked.triage(TASK, 'lead', { goals: ['A1'] }, EMPTY, NO_TASKS_ELSEWHERE, KNOWN_GOALS).ok, true);
   });
+
+  it('lets a row keep a tag the task holds with no record, and still holds what it adds, as update does not', () => {
+    const checked = new RegisterPolicy(testConfig({ register: { goals: 'checked' } }));
+    const tagged = testTask({ ...TASK, goals: ['Z9'] });
+    assert.equal(checked.triage(tagged, 'lead', { goals: ['Z9', 'A1'] }, EMPTY, NO_TASKS_ELSEWHERE, KNOWN_GOALS).ok, true);
+    assert.match(error(checked.triage(tagged, 'lead', { goals: ['Z9', 'Y8'] }, EMPTY, NO_TASKS_ELSEWHERE, KNOWN_GOALS)), /goal Y8 is not a goal record/);
+    assert.equal(error(checked.update(tagged, 'alpha', { goals: ['Z9', 'A1'] }, undefined, EMPTY, NO_TASKS_ELSEWHERE, KNOWN_GOALS)), UNKNOWN_Z9);
+  });
 });
 
 describe('RegisterPolicy.triageFrom (T2086)', () => {
