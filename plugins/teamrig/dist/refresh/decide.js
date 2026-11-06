@@ -1,5 +1,11 @@
 import { sessionDisplay } from "../core/ids.js";
 import { lineHash } from "../inbox/line-hash.js";
+/**
+ * The smallest context window of a current Claude model, which `decideCompact` takes for a window it is not told: a
+ * ceiling at or past it holds nothing, so on a larger window the hold lets go sooner than it could, never past the
+ * room the window has.
+ */
+export const SMALLEST_MODEL_WINDOW = 200_000;
 const NONE = { kind: 'none' };
 const MEASURE = { kind: 'measure' };
 const GO = { kind: 'go' };
@@ -248,12 +254,13 @@ export function decideMidTurn(state, context, facts) {
  * ended and the person at the tab let it go, or the user's), as long as Claude
  * Code's estimate of the context is under `compactCeilingTokens`. Past the ceiling it goes, so a session never runs
  * out of room: a prompt too long for the window, which compacts with the same trigger, is past it too. A ceiling
- * at or past the window would not leave that room, so it skips nothing.
+ * at or past the window (`SMALLEST_MODEL_WINDOW` when not told) would not leave that room, so it skips nothing.
  */
 export function decideCompact(state, context, facts) {
     const { enabled, compactCeilingTokens: ceiling } = context.settings;
     const pending = state?.phase === 'asked' || state?.phase === 'ready';
-    if (!enabled || !pending || ceiling === 0 || ceiling >= facts.window || facts.tokens >= ceiling) {
+    const window = facts.window ?? SMALLEST_MODEL_WINDOW;
+    if (!enabled || !pending || ceiling === 0 || ceiling >= window || facts.tokens >= ceiling) {
         return GO;
     }
     const handover = state.phase === 'asked' ? 'asked for' : 'written';
