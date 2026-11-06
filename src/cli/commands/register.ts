@@ -454,8 +454,8 @@ export async function set(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
   if (due !== undefined && warned && verdict.ok) {
     runtime.out.stderr(`WARN ${dueVerifyHold(due.task, due.due)}; started anyway, as register.verifyGate is warn`);
   }
-  // Refuse mode never gets here with a hold: only warn lets a held start be written.
-  if (wip !== undefined && verdict.ok) {
+  // `report` threw on any refusal, so a hold that gets here is a start warn mode let through.
+  if (wip !== undefined) {
     runtime.out.stderr(`WARN ${wip}; started anyway, as focus.wip.mode is warn`);
   }
   if (verdict.ok) {
