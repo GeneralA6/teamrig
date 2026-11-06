@@ -2203,7 +2203,9 @@ session runs it, as the owner starts it from whichever tab is at hand. The sessi
 topic, its tasks, its brief, those joining and the `meeting end` to run after) as an inbox line, and its tab takes it
 without a keystroke typed into it: a running tab is woken at its next check once idle (a running turn ends first), a
 closed one is opened with the prompt ahead of its own first prompt, as `open` does. Those joining are told by one
-inbox line where it is held. Messages to the lead are not held.
+inbox line where it is held. Messages to the lead are not held. Until it ends (`meeting end M3`, a drop, or its
+lapse 4 hours after the start), the context refresh of the session met and of those joining waits (no handover ask,
+no restart), unless a context reaches `refresh.compactCeilingTokens`.
 
 Flags:
 
