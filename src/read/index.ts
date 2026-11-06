@@ -127,7 +127,10 @@ export { inboxLines, unreadOf, type LineHash, type ResumeKind, type Unread } fro
 export { DEFAULT_REGISTER } from '../config/defaults.ts';
 export { priorityName } from '../config/priorities.ts';
 export { parseConfigText, type ConfigRead } from '../config/text.ts';
-export { CONFIG_VERSION, type KitConfig, type LaunchConfig, type PriorityConfig } from '../config/types.ts';
+export { CONFIG_VERSION, type FocusConfig, type KitConfig, type LaunchConfig, type PriorityConfig } from '../config/types.ts';
+
+// The work class a task counts as (T2076): its own, else the team's `focus.defaultClass`, as the CLI reads it.
+export { classOf } from '../register/focus.ts';
 
 // A session's launch settings: the model and effort it starts on (its `launch` entry, the lead's defaults under it), so
 // a reader shows them as teamrig launches the session, in its words.
