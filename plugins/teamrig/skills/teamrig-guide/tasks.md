@@ -35,7 +35,7 @@ answer (`update <id> --decided`), the wait on the owner goes at once and the tas
 another first is not waiting: it stays `open`, planned after it (`teamrig update T3 --after T2`), and its line
 shows `after T2`.
 
-While a task waits, keep working your other tasks in priority order: those that do not come after it, and not the
+While a task waits, keep working your other tasks in plan order: those that do not come after it, and not the
 same change. At your next turn end after the `set`, the Stop hook sends you back once when you own such a task
 ([how](hooks.md#end-of-a-turn-keep-working-while-a-task-waits)); with nothing left to start, end the turn.
 
@@ -201,15 +201,28 @@ Three shapes, split by the list:
   owner decisions, `p5` if budget allows. `p1` is the most urgent the config names. Above them every team has
   teamrig's own `p0`, for urgent work done right now: `check` flags an open one `URGENT`, so its owner parks the task
   in hand and starts it; a session held by its budget still wakes for it, and it goes on past the daily stop, helpers
-  too.
-- **Plan order**: by the first of these on which two tasks differ, each a field the task has: pinned (the one
-  task per owner that a leader above it pinned with `update --pin`, above every other key); priority (`p0`, then `p1` first); in progress (a started task stays on top within its priority); effective due (the earliest first, undated
-  last); what it unblocks (the best priority among the active tasks that need it, then the most of them); in the
-  week plan in force; size (the smallest first, unsized last); then id (the oldest first). `list`, `check` and
-  `plan` all use it, and a session works its list in that order. A `list` row ends with the key that put it ahead
-  of the next row: `· ahead: in progress`, `· ahead: due`, `· ahead: unblocks T9 p1 +2` (the best task that needs
-  it, its priority, how many more), `· ahead: in week 10-19` or `· ahead: size 0.5%`; no reason means the pin or the
-  priority (the row shows them) or the id decided.
+  too. A priority does not place a task by itself: a `p0` goes ahead of every score, and the priority of a task the
+  owner asked for adds to its score.
+- **Plan order**: by the first of these on which two tasks differ: pinned (the one task per owner that a leader above
+  it pinned with `update --pin`, above every other key); band; score (the highest first); in progress (a started
+  task stays on top at the same score); effective due (the earliest first, undated last); what it unblocks (the best
+  priority among the active tasks that need it, then the most of them); in the week plan in force; size (the smallest
+  first, unsized last); then id (the oldest first). `list`, `check` and `plan` all use it, and a session works its
+  list in that order. A `list` row shows the task's class and score after its status (`T4 open, Roadmap, score 6.67,
+  p2, ...`; a done or dropped row shows the class alone) and ends with the key that put it ahead of the next row:
+  `· ahead: expedite`, `· ahead: score 21.3 (A1 #1)` (with the ranked goal it serves), `· ahead: in progress`,
+  `· ahead: due`, `· ahead: unblocks T9 p1 +2` (the best task that needs it, its priority, how many more),
+  `· ahead: in week 10-19` or `· ahead: size 0.5%`; no reason means the pin, a band the row's class shows, or the id
+  decided.
+- **Band**: three, ahead of any score. Expedite first: a `p0`, a Maintenance task marked critical and a `p1` the
+  owner asked for (the last two by [focus.expedite]). Then Roadmap and Maintenance. Then the rest: Improvements, a
+  task with no class and any other class.
+- **Score**: what a delay costs over the share of the week the task takes, so the most value per unit of work comes
+  first [focus.score]. The cost adds its value (Roadmap by the best rank of the goals it serves, Maintenance more for
+  a bug or a critical mark, Improvements least), its urgency (overdue or due soon), a share of the best value among
+  the tasks that need it and, on a task the owner asked for, its priority. The size is `--size`; else twice what the
+  task has spent so far; else the median spend of finished tasks of its class and type from the last 14 days; else
+  `focus.score.defaultSizePct`, and never under `focus.score.minSizePct`, so a tiny task cannot outrank everything.
 - **Title**: one line, at most 140 characters [register.maxTitle]. A second active task with the same title
   (ignoring case and extra spaces) is refused.
 - **Description**: what the task is and why, in plain words for a person who has not seen the ask; newlines are
@@ -324,7 +337,7 @@ week's plan when it is tagged with that week: `add --week 2026-10-12` or `update
 (`--week none` takes it out). The current week is the newest tagged week that has started.
 
 The lead plans: it tags the tasks the team will do this week, then prints the plan with `teamrig plan`, grouped
-by priority with each task's owner, due date and source. `check` compares active tasks against the current week.
+by band with each task's class, score, owner, due date and source. `check` compares active tasks against the current week.
 Only the lead and the task's owner may change a task's week.
 
 ## Skills

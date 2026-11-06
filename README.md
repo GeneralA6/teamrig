@@ -57,7 +57,7 @@ Windows and Linux: on Linux the tests and a smoke run pass; the tab circles and 
 
 1. **Tell the lead what you want**, in plain words.
 2. **It hires a team** and gives each member a job: tasks on one list, one owner each.
-3. **The team builds it together**, each member in its own tab, working its tasks in priority order. Whatever is late
+3. **The team builds it together**, each member in its own tab, working its most valuable tasks first. Whatever is late
    or stuck goes to the lead, not to you.
 4. **You get the result.** The lead calls you back, and brings any decision in a batch.
 
@@ -74,7 +74,7 @@ No more twelve-hour days steering agents by hand. With teamrig, your part takes 
 1. **A morning meeting.** Your lead tells you what got done and what's late, and brings each decision as a short card
    with its recommendation. You answer, and the day is yours. While you meet, the team keeps working and leaves the
    lead notes instead of messages, unless something is critical.
-2. **The team works.** Each member works its own task list in priority order, and an idle member wakes by itself when
+2. **The team works.** Each member works its own task list, the most valuable work first, and an idle member wakes by itself when
    urgent work is handed to it, and once each morning at the day start you set. Whatever is late or stuck goes to the
    lead, not to you.
 3. **Drop in when you like.** A few decisions may be waiting: the lead brings them in batches, not one interruption
@@ -113,7 +113,7 @@ idle member wakes by itself when urgent work is handed to it.
 
 ### Never runs out mid-task
 
-Your lead plans the week from the tokens you have left: it sizes each task, fills the week by priority until the plan
+Your lead plans the week from the tokens you have left: it sizes each task, fills the week by value until the plan
 reaches 99.5% of your weekly limit, keeps the last 0.5% for incidents and moves what doesn't fit to next week.
 `teamrig budget` shows each member's use against the week's pace line, and deploys hold in the last hours before the
 reset, so nothing ships half-done. On a day the week runs short, the top-priority work can keep its pace while the

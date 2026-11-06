@@ -167,7 +167,7 @@ teamrig set T1 --session api --status done --note "endpoint merged" --evidence "
 Output:
 
 ```text
-SET T1 done, p2, owner api, due 10-17, from lead, goals G1 | Build the signup endpoint
+SET T1 done, Roadmap, p2, owner api, due 10-17, from lead, goals G1 | Build the signup endpoint
 ```
 
 A task you started that cannot go on:
@@ -306,7 +306,7 @@ teamrig update T2 --session lead --priority p2 --due 2026-10-16
 Output:
 
 ```text
-UPDATED T2 waiting, p2, owner web, due 10-16, week 10-12, from lead | Fix the broken login form (waiting: on T7; needs the api error codes)
+UPDATED T2 waiting, Roadmap, score 23.33, p2, owner web, due 10-16, week 10-12, from lead | Fix the broken login form (waiting: on T7; needs the api error codes)
 ```
 
 ### teamrig refs apply
@@ -385,7 +385,7 @@ APPROVED T1 waiting, p1, owner web, from web | Fix the broken login form (waitin
 
 ### teamrig list
 
-Lists tasks, most urgent first, in plan order: pinned, priority, then in progress, effective due date (undated last), what
+Lists tasks, most valuable first, in plan order: pinned, band, score, then in progress, effective due date (undated last), what
 it unblocks, in the week plan in force, size, then id (tasks.md, Plan order). By default only
 active tasks (open, in progress, verifying, waiting), in a short form within 3,000 characters: a count per owner
 when there are several, then one short row per task (its title cut to 60 characters) and `+N more` for the rows
@@ -416,15 +416,16 @@ Output:
 
 ```text
 LIST 1 task(s) (short rows; --all for every field)
-T2 waiting, p2, owner web, due 10-16 | Fix the broken login form (waiting: on T7)
+T2 waiting, Roadmap, score 23.33, p2, owner web, due 10-16 | Fix the broken login form (waiting: on T7)
 ```
 
-A short row reads: id, status, priority, owner, due (month-day; `due 10-17 (from T9)` when it comes from a task
+A short row reads: id, status, class and score (a done or dropped task shows the class alone), priority, owner, due
+(month-day; `due 10-17 (from T9)` when it comes from a task
 that needs it), the tasks it comes after (`after T5`), then the title after `|`, what a waiting task waits for
 and, when active tasks of other sessions need it, the first of them: `· needed by T9 (api, due 10-17)` (`+1` for
 each other; the due left out when the row shows it already), then why it sorts ahead of the next row:
-`· ahead: due` (`in progress`, `due`, `unblocks T9 p1 +2`, `in week 10-19` or `size 0.5%`; nothing when the
-priority or the id decided). With `--all`, whose rows end the same way:
+`· ahead: due` (`expedite`, `score 21.3 (A1 #1)`, `in progress`, `due`, `unblocks T9 p1 +2`, `in week 10-19` or
+`size 0.5%`; nothing when the pin, a band the class shows or the id decided). With `--all`, whose rows end the same way:
 
 ```sh
 teamrig list --session web --all
@@ -433,10 +434,10 @@ teamrig list --session web --all
 Output (`--all`):
 
 ```text
-T2 waiting, p2, owner web, due 10-16, week 10-12, from lead | Fix the broken login form (waiting: on T7; needs the api error codes)
+T2 waiting, Roadmap, score 23.33, p2, owner web, due 10-16, week 10-12, from lead | Fix the broken login form (waiting: on T7; needs the api error codes)
 ```
 
-The task line reads: id, status, priority, owner, due (month-day), week, who asked (`from lead`, or
+The task line reads: id, status, class and score, priority, owner, due (month-day), week, who asked (`from lead`, or
 `owner order` for the human), goals, then the title after `|`, then a waiting task's reasons and note or a verifying task's proof. A reason
 marked `ready` has cleared: its task is done or dropped, or its time has passed.
 
@@ -466,7 +467,7 @@ teamrig show T1
 Output:
 
 ```text
-T1 done, p2, owner api, due 10-17, from lead, goals G1 | Build the signup endpoint
+T1 done, Roadmap, p2, owner api, due 10-17, from lead, goals G1 | Build the signup endpoint
 description: New users cannot sign up yet; the endpoint takes an email and a password and sends the welcome mail.
 ref: signup spec, section 2
 note: endpoint merged
@@ -491,10 +492,10 @@ teamrig show T9 --tree
 Output (`--tree`):
 
 ```text
-T9 open, p2, owner web, due 10-17, after T5,T6, from lead | Ship the signup page
+T9 open, Roadmap, score 23.33, p2, owner web, due 10-17, after T5,T6, from lead | Ship the signup page
 needs:
-  T5 in-progress, p2, owner api, due 10-17 (from T9) | Build the signup endpoint
-  T6 waiting, p2, owner web, due 10-17 (from T9) | Pick the mail provider (waiting: decision lead)
+  T5 in-progress, Roadmap, score 28.33, p2, owner api, due 10-17 (from T9) | Build the signup endpoint
+  T6 waiting, Roadmap, score 28.33, p2, owner web, due 10-17 (from T9) | Pick the mail provider (waiting: decision lead)
 needed by: none
 Next move: api (T5)
 ```
@@ -554,11 +555,11 @@ Output:
 ```text
 CHECK 3 flag(s), week 2026-10-12 (short form; --all for every flag in full)
 OVERDUE 1 (due 10-14)
-  T7 in-progress, p2, owner web, due 10-14 | Wire the signup form to the api
+  T7 in-progress, Roadmap, score 36.67, p2, owner web, due 10-14 | Wire the signup form to the api
 READY 1 (every reason cleared; set its next status)
-  T4 waiting, p2, owner web | Log failed logins (waiting: on T2 ready)
+  T4 waiting, Improvements, score 3.33, p2, owner web | Log failed logins (waiting: on T2 ready)
 NOT-PICKED-UP 1 (assigned 10-13 09:10, no event from api since)
-  T9 open, p3, owner api | Add rate limits to signup
+  T9 open, Improvements, score 3.33, p3, owner api | Add rate limits to signup
 SKILLS 1 flag(s) in /home/you/.claude/skills
   SKILL UNVERIFIED (last verified 2026-09-01, 44 d ago > 30) api api-run-migrations
 ```
@@ -583,8 +584,10 @@ With no week tagged yet, the first line says `no week plan tagged yet, so the we
 
 ### teamrig plan
 
-Prints a week plan as Markdown: the tasks tagged with that week (`--week` on `add` or `update`), grouped by
-priority, with done, dropped, waiting, verifying and in-progress marks. By default the newest week that has started.
+Prints a week plan as Markdown: the tasks tagged with that week (`--week` on `add` or `update`), grouped by band
+(`Expedite`, `Roadmap and Maintenance` in the team's class names, `Other work`), each line starting with the task's
+class and score, with done, dropped, waiting, verifying and in-progress marks. By default the newest week that has
+started.
 
 For the week in force, a list under the counts says whether its work fits the weekly usage limit left. The sized
 to-do tasks (`--size`, in % of the weekly limit; open, in progress or waiting: a verifying task's spend is already
@@ -734,11 +737,11 @@ Output:
 ```text
 DONE Wed 10-14 · 4 done · 1 dropped
   Owner asked (1)
-    T7 done, p2, owner web | Pick the pricing tier
+    T7 done, Improvements, p2, owner web | Pick the pricing tier
   signup (1)
-    T5 done, p2, owner api | Add the sign-up form
+    T5 done, Roadmap, p2, owner api | Add the sign-up form
   Urgent p1 (1)
-    T2 done, p1, owner api | Rate-limit the signup endpoint
+    T2 done, Maintenance, p1, owner api | Rate-limit the signup endpoint
   Other work (1) and dropped (1): teamrig report done --day 2026-10-14 --all
 ```
 
@@ -2062,13 +2065,13 @@ MEETINGS today: M3 14:00 IDT web with api on T7
 - 2026-10-15 08:58 lead: api error codes are in docs/errors.md
 READ web: 1 new line, shown above; new ones are shown at your next prompt
 LIST 2 task(s) (short rows; --all for every field)
-T1 open, p1, owner web, due 10-14 | Add the error codes page · needed by T9 (api, due 10-16)
-T2 open, p2, owner web | Retry the signup call
+T1 open, Roadmap, score 41.67, p1, owner web, due 10-14 | Add the error codes page · needed by T9 (api, due 10-16)
+T2 open, Improvements, score 3.33, p2, owner web | Retry the signup call
 WAITING ON YOU 1 task(s) of other sessions wait on web
-  T9 open, p1, owner api, due 10-16, after T1 | Show the error codes in the api docs · needs your T1
+  T9 open, Roadmap, score 23.33, p1, owner api, due 10-16, after T1 | Show the error codes in the api docs · needs your T1
 CHECK 1 flag(s), web's tasks and skills, week 2026-10-12 (short form; --all for every flag in full)
 OVERDUE 1 (due 10-14)
-  T1 open, p1, owner web, due 10-14 | Add the error codes page · needed by T9 (api, due 10-16)
+  T1 open, Roadmap, score 41.67, p1, owner web, due 10-14 | Add the error codes page · needed by T9 (api, due 10-16)
 SKILLS 0 flag(s) in ~/.claude/skills
 Week: 31.0% used at 12:00 IDT (status line); the pace line is at 28.6%: 2.4 points ahead. Resets Wed 10-21 04:00 IDT. At the last 24 hours' rise of 9.5 points, it ends the week near 85%.
 ```
@@ -2139,7 +2142,7 @@ HEALTH close/open 1.20 [good] · backlog -2, 14 active [good] · overdue 1, p1 0
 FLOW opened 10, closed 12 (1 dropped), net -2; last 28 d net -8
   each other section: teamrig stats --tree --session lead (new work, speed, delays, waits, bugs, people)
 DECISIONS 1 waiting on owner (decision or approval)
-  T7 waiting, p1, owner web | Pick the pricing tier (waiting: decision owner)
+  T7 waiting, Improvements, score 3.33, p1, owner web | Pick the pricing tier (waiting: decision owner)
     what and why: Two tiers are built; the launch page needs one.
     decide: Which tier the launch page shows
     gate: business
@@ -2154,10 +2157,10 @@ DECISIONS 1 waiting on owner (decision or approval)
   Record each answer in the same turn: teamrig update <id> --decided --note "owner decided: <decision>" --session lead; the card leaves the agenda, and meeting end tells each task's owner.
   A card owner puts off to a date: teamrig update <id> --later <date> --note "owner put it off: <why>" --session lead; it waits in LATER until then.
 LATE 1 past their due date
-  T4 open, p2, owner api, due 10-14 | Retry the signup call
+  T4 open, Improvements, score 30, p2, owner api, due 10-14 | Retry the signup call
 DONE 2 done, 0 dropped since Wed 10-14 11:30 IDT
   Urgent p1 (1)
-    T2 done, p1, owner api | Rate-limit the signup endpoint
+    T2 done, Maintenance, p1, owner api | Rate-limit the signup endpoint
   Other work 1: teamrig list --status done
 MERGES 1 merged with no approval since Wed 10-14 11:30 IDT, 0 CHECK-CLEAN (security samples those weekly)
   Thu 10-15 09:12 IDT api app t4-retry 4f1c2a9e..9a0b1c2d: 3 files, 58 lines, checks lint, test
@@ -2416,7 +2419,7 @@ Output:
 ```text
 DECISIONS 1 to ask owner, 0 asked and past due; BATCH DUE: the Mon 10-19 13:03 UTC batch time passed
 NOT YET ASKED
-  T7 waiting, p1, owner web | Pick the pricing tier (waiting: decision owner)
+  T7 waiting, Improvements, score 3.33, p1, owner web | Pick the pricing tier (waiting: decision owner)
     what and why: Two tiers are built; the launch page needs one.
     decide: Which tier the launch page shows
     gate: business

@@ -33,8 +33,8 @@ small files it writes, if you'd rather write them yourself.
 
 - **lead**: the session you talk to. It hands out the work, takes whatever is late or stuck, settles the operational
   calls itself and brings you the rest in batches, and meets you once a day ([Run your day](run-your-day.md)).
-- **session**: one Claude Code tab on the team, with a name such as `your-team-web`. It works its own task list in
-  priority order, and an idle one wakes by itself when urgent work is handed to it
+- **session**: one Claude Code tab on the team, with a name such as `your-team-web`. It works its own task list,
+  the most valuable work first, and an idle one wakes by itself when urgent work is handed to it
   ([Who is on the team](grow-the-team.md#who-is-on-the-team)).
 - **task**: one line on the team's task list, saying what and why in plain words, with one owner, a priority and a
   due date. Only its owner moves it from one status to the next ([A task's life](../how-it-works.md#a-tasks-life)).
