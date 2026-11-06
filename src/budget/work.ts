@@ -80,22 +80,20 @@ export function queuedWork(tasks: Iterable<Pick<Task, 'id' | 'owner' | 'status' 
   return { weights: workWeights(queued, priorities), urgent };
 }
 
-/** The sessions' queued work, replayed from the register's working set; a register that cannot be read throws. */
-async function replayWork(files: Files, eventsPath: string, priorities: readonly PriorityConfig[]): Promise<QueuedWork> {
-  const { state } = await new JsonlEventLog(files, eventsPath).read();
-  return queuedWork(state.tasks.values(), priorities);
+/** The tasks of the register's working set at `eventsPath`; undefined when it cannot be read, so a damaged register never stops the budget. */
+export async function readTasks(files: Files, eventsPath: string): Promise<readonly Task[] | undefined> {
+  try {
+    const { state } = await new JsonlEventLog(files, eventsPath).read();
+    return [...state.tasks.values()];
+  } catch {
+    return undefined;
+  }
 }
 
-/**
- * The sessions' queued work, read from the register at `eventsPath`; none when the register cannot be read, so
- * every part falls back to its session's `share` and a damaged register never stops the budget.
- */
+/** The sessions' queued work, read from the register at `eventsPath`; none when the register cannot be read, so every part falls back to its session's `share`. */
 export async function readWork(files: Files, eventsPath: string, priorities: readonly PriorityConfig[]): Promise<QueuedWork> {
-  try {
-    return await replayWork(files, eventsPath, priorities);
-  } catch {
-    return NO_WORK;
-  }
+  const tasks = await readTasks(files, eventsPath);
+  return tasks === undefined ? NO_WORK : queuedWork(tasks, priorities);
 }
 
 /** The work cache's file in the usage folder: a name no session id can have, so it is never taken for a session's usage file. */
@@ -226,12 +224,11 @@ export async function cachedWork(files: Files, eventsPath: string, cachePath: st
   if (cached !== undefined && sameKey(cached.key, key)) {
     return cached.work;
   }
-  let work: QueuedWork;
-  try {
-    work = await replayWork(files, eventsPath, priorities);
-  } catch {
+  const tasks = await readTasks(files, eventsPath);
+  if (tasks === undefined) {
     return NO_WORK;
   }
+  const work = queuedWork(tasks, priorities);
   await files.write(cachePath, formatWorkCache(key, work)).catch(() => undefined);
   return work;
 }

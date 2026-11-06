@@ -57,7 +57,7 @@ import { attributedW, taskUseOf } from '../../budget/task-use.ts';
 import { teamWeekOf, type TeamWeekPaths } from '../../budget/team-week.ts';
 import { foldIntoWeekSummary } from '../../budget/week-summary.ts';
 import { readWeek, wSince, type WeekReading } from '../../budget/week.ts';
-import { NO_WORK, readWork, type WorkByPriority } from '../../budget/work.ts';
+import { NO_WORK, queuedWork, readTasks, readWork, type WorkByPriority } from '../../budget/work.ts';
 import { JsonlMarkLog } from '../../inbox/store.ts';
 import { indexMarks } from '../../inbox/marks.ts';
 import type { RepoState } from '../../push-guard/push.ts';
@@ -290,7 +290,8 @@ export async function budget(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     }
     return EXIT.ok;
   }
-  const { weights: work } = recountDay === undefined ? await readWork(runtime.files, kit.paths.events, config.register.priorities) : NO_WORK;
+  const tasks = recountDay === undefined ? await readTasks(runtime.files, kit.paths.events) : undefined;
+  const { weights: work } = tasks === undefined ? NO_WORK : queuedWork(tasks, config.register.priorities);
   // A recount shows no budgets, so it reads no other team.
   const onAccount = recountDay === undefined ? await otherTeamsOnAccount(runtime, { team: kit.paths.team, config, usageDir: kit.paths.usage }, reading.now, reading.week.usedPct) : [];
   const { split, others } = fundForDay({ split: splitOf(reading, kit.paths.team, roster, config, work), others: onAccount }, reading.week);

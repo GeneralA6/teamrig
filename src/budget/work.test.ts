@@ -15,7 +15,7 @@ import { InlineMutex } from '../testing/inline-mutex.ts';
 import { MemoryFiles, normalisePath } from '../testing/memory-files.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { rotateRegister } from '../testing/rotation.ts';
-import { cachedWork, queuedWork, readWork, WORK_CACHE_FILE, workWeightOf, workWeights, type WorkByPriority } from './work.ts';
+import { cachedWork, queuedWork, readTasks, readWork, WORK_CACHE_FILE, workWeightOf, workWeights, type WorkByPriority } from './work.ts';
 
 const { priorities } = DEFAULT_REGISTER;
 
@@ -91,6 +91,16 @@ describe('queuedWork', () => {
     assert.deepEqual([...work.urgent], [['alpha', ['T1', 'T2']]]);
     // p0..p5 weigh 6..1; each session weighs its top task alone.
     assert.deepEqual(work.weights, byPriority({ alpha: { 0: 6 }, charlie: { 2: 4 } }));
+  });
+});
+
+describe('readTasks', () => {
+  const PATH = '/kit/teams/app/state/events.jsonl';
+
+  it('tells a register with no tasks from one that cannot be read', async () => {
+    assert.deepEqual(await readTasks(new MemoryFiles(), PATH), []);
+    const files = new FaultyFiles(new MemoryFiles({ [PATH]: '' })).fail('read', PATH, systemError('EIO'));
+    assert.equal(await readTasks(files, PATH), undefined);
   });
 });
 
