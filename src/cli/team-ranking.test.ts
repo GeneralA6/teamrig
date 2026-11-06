@@ -51,14 +51,34 @@ describe("teamRanking: a team's tree ranks by its focus, sizes and spend (T2076)
     assert.match(second ?? '', /^T1 open, Improvements, score 0\.5, p2/);
   });
 
-  it('sizes an unsized task at twice what it spent', async () => {
+  it('ranks an unsized task by what its spend leaves of the default size (T2109)', async () => {
     const kit = new CliHarness(LIMITED);
     await add(kit, 'Sized', '--size', '0.25');
     await add(kit, 'Unsized');
-    await spend(kit, { T2: 1_000_000 });
+    await spend(kit, { T2: 1_500_000 });
     const [first, second] = await rows(kit);
-    assert.match(first ?? '', /^T2 open, Improvements, score 5, p2/, 'spent 0.1% sizes it 0.2%');
+    assert.match(first ?? '', /^T2 open, Improvements, score 6\.67, p2/, 'spent 0.15% of the default 0.3%');
     assert.match(second ?? '', /^T1 open, Improvements, score 4, p2/);
+  });
+
+  it('ranks a sized task by what its spend leaves of its size, and one past it at the floor (T2109)', async () => {
+    const kit = new CliHarness(LIMITED);
+    await add(kit, 'Half done', '--size', '1');
+    await add(kit, 'Overrun', '--size', '0.1');
+    await spend(kit, { T1: 5_000_000, T2: 10_000_000 });
+    const [first, second] = await rows(kit);
+    assert.match(first ?? '', /^T2 open, Improvements, score 20, p2/, 'spent 1% of 0.1%: the floor of 0.05%');
+    assert.match(second ?? '', /^T1 open, Improvements, score 2, p2/, 'spent 0.5% of 1%');
+  });
+
+  it('counts a re-sized task from its new size, which was what was left then (T2109)', async () => {
+    const kit = new CliHarness(LIMITED);
+    await add(kit, 'Re-sized');
+    await spend(kit, { T1: 5_000_000 });
+    ok(await kit.run(['update', 'T1', '--size', '0.4', '--session', 'alpha']));
+    assert.match((await rows(kit))[0] ?? '', /^T1 open, Improvements, score 2\.5, p2/, 'the 0.5% spent before it was sized comes off nothing');
+    await spend(kit, { T1: 6_000_000 });
+    assert.match((await rows(kit))[0] ?? '', /^T1 open, Improvements, score 3\.33, p2/, 'the 0.1% spent since leaves 0.3%');
   });
 
   it('sizes an unsized task, with no spend, by the done tasks of its class and type', async () => {

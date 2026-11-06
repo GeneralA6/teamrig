@@ -157,10 +157,10 @@ function trueFirst(a: boolean | undefined, b: boolean | undefined): number {
  * The fields of a task the tree reads. A reader that keeps rows of its own (a status pane) builds a tree from them as
  * from teamrig's folded tasks, and gets its own rows back from it; a row without `week`, `size` or `pin` counts as
  * untagged, unsized and unpinned, one without `type`, `critical` or `source` as a plain task no owner ordered, one
- * without `workClass` or `goals` as unclassed and serving no goal.
+ * without `workClass` or `goals` as unclassed and serving no goal, one without `sizeBase` as sized before it spent.
  */
 export type TreeTask = Pick<Task, 'id' | 'status' | 'owner' | 'priority' | 'due' | 'after' | 'waits'> &
-  Partial<Pick<Task, 'week' | 'size' | 'pin' | 'type' | 'critical' | 'source' | 'workClass' | 'goals'>>;
+  Partial<Pick<Task, 'week' | 'size' | 'sizeBase' | 'pin' | 'type' | 'critical' | 'source' | 'workClass' | 'goals'>>;
 
 /**
  * How a tree ranks its tasks (T2076): the team's `focus` config and the per-task reads a score needs, built once per
