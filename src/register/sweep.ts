@@ -49,8 +49,8 @@ export type SweepFocus = Pick<FocusConfig, 'roadmapClass' | 'maintenanceClass' |
 /** What the sweep reads of a task. */
 export type SweepTask = Pick<Task, 'id' | 'title' | 'owner' | 'goals' | 'type' | 'critical' | 'status' | 'pin' | 'source' | 'updatedAt' | 'workClass'>;
 
-/** What a row is proposed from, beside the task. */
-export interface SweepInput {
+/** What a row is proposed from, beside the task; `T` is the task the caller holds, which its size reader may read more of. */
+export interface SweepInput<T extends SweepTask = SweepTask> {
   readonly team: string;
   readonly focus: SweepFocus;
   /** The goals the task may name, by tag: its team's and those of the teams above. */
@@ -59,7 +59,7 @@ export interface SweepInput {
   readonly ownerSource: string;
   readonly now: number;
   /** The task's size in percent of the week, from the same chain the score reads. */
-  readonly sizeOf: (task: SweepTask) => number;
+  readonly sizeOf: (task: T) => number;
   /** True when an active task needs this one, by `after` or a task wait. */
   readonly needed: (id: string) => boolean;
 }
@@ -182,7 +182,7 @@ export function wouldPark(task: SweepTask, input: Pick<SweepInput, 'focus' | 'ow
 }
 
 /** The proposal for one active task, its `confirm` left empty for a person. */
-export function proposeRow(task: SweepTask, input: SweepInput): SweepRow {
+export function proposeRow<T extends SweepTask>(task: T, input: SweepInput<T>): SweepRow {
   const proposal = proposalOf(task, input);
   return {
     id: task.id,
@@ -207,6 +207,11 @@ export function sweepCounts(rows: readonly Pick<SweepRow, 'team' | 'class'>[]): 
     teams.set(row.team, classes);
   }
   return teams;
+}
+
+/** One line per team of {@link sweepCounts}: `alpha: Improvements 3, Roadmap 1`. */
+export function countLines(rows: readonly Pick<SweepRow, 'team' | 'class'>[]): readonly string[] {
+  return [...sweepCounts(rows)].map(([team, classes]) => `${team}: ${[...classes].map(([name, count]) => `${name} ${String(count)}`).join(', ')}`);
 }
 
 const TASK_ID = /^T\d+$/;
@@ -309,14 +314,14 @@ export type SweepPlan =
   | { readonly row: SweepRow; readonly action: 'unconfirmed' }
   | { readonly row: SweepRow; readonly action: 'refused'; readonly reason: string };
 
-/** Why the caller may not write `changes` on the task; undefined when it may. The register's own policy answers. */
-export type SweepJudge = (changes: SweepChanges) => string | undefined;
+/** Why the caller may not write `changes` on `task`; undefined when it may. The register's own policy answers. */
+export type SweepJudge<T> = (task: T, changes: SweepChanges) => string | undefined;
 
 /**
  * The fate of one row. `task` is undefined when the register lacks it. A finished task is refused, not skipped: a
  * person said yes to it, so they hear why it did not land.
  */
-export function planSweepRow(row: SweepRow, task: SweepTarget | undefined, goals: ReadonlyMap<string, SweepGoal>, judge: SweepJudge): SweepPlan {
+export function planSweepRow<T extends SweepTarget>(row: SweepRow, task: T | undefined, goals: ReadonlyMap<string, SweepGoal>, judge: SweepJudge<T>): SweepPlan {
   if (row.confirm !== SWEEP_CONFIRMED) {
     return { row, action: 'unconfirmed' };
   }
@@ -330,8 +335,13 @@ export function planSweepRow(row: SweepRow, task: SweepTarget | undefined, goals
   if (Object.keys(changes).length === 0) {
     return { row, action: 'unchanged' };
   }
-  const reason = judge(changes);
+  const reason = judge(task, changes);
   return reason === undefined ? { row, action: 'change', changes } : { row, action: 'refused', reason };
+}
+
+/** The fate of a row whose whole team is closed to the caller: refused, unless nobody confirmed it. */
+export function refusedPlan(row: SweepRow, reason: string): SweepPlan {
+  return row.confirm === SWEEP_CONFIRMED ? { row, action: 'refused', reason } : { row, action: 'unconfirmed' };
 }
 
 /** The counts an apply prints: a sweep only ever updates, so `inserted` is always 0. */
@@ -356,4 +366,25 @@ export function changesText(changes: SweepChanges): string {
     ...(changes.size === undefined ? [] : [`size ${String(changes.size)}`]),
   ];
   return parts.join(', ');
+}
+
+/** The counts as a line; `unconfirmed` and `refused` only when there are some. */
+export function tallyText(tally: SweepTally): string {
+  const { inserted, changed, unchanged, unconfirmed, refused } = tally;
+  const left = [...(unconfirmed > 0 ? [`unconfirmed ${String(unconfirmed)}`] : []), ...(refused > 0 ? [`refused ${String(refused)}`] : [])];
+  return [`inserted ${String(inserted)}`, `changed ${String(changed)}`, `unchanged ${String(unchanged)}`, ...left].join(', ');
+}
+
+/** A row's line, for a dry run or (`wrote`) a write; a row left alone only counts, so it has none. */
+export function planLine(plan: SweepPlan, wrote: boolean): string | undefined {
+  const name = `${plan.row.team}/${plan.row.id}`;
+  switch (plan.action) {
+    case 'change':
+      return `${wrote ? 'CHANGED' : 'WOULD CHANGE'} ${name}: ${changesText(plan.changes)}`;
+    case 'refused':
+      return `REFUSED ${name}: ${plan.reason}`;
+    case 'unchanged':
+    case 'unconfirmed':
+      return undefined;
+  }
 }
