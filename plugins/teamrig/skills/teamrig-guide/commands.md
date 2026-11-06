@@ -4730,6 +4730,45 @@ A caller who is not the lead, or a value the config checks reject (`nothing writ
 (exit 2). A flag value it cannot read, `--quiet` without `--quiet-action` (or the reverse) on a team with no quiet
 hours yet, and `--quiet-action` with `--quiet off` are usage errors (exit 64).
 
+### teamrig budget rollup
+
+Reads the Claude Code transcripts into a small file per closed UTC day, under the team's `state/usage/rollup` folder:
+each session's W, tokens, turns, calls and active seconds by class (coordination or work, the lead's apart, helpers
+apart), model and effort, and its task work by task. The file holds numbers and ids only, so it outlives the
+transcripts Claude Code prunes, and a day read again from the same transcripts gives the same file.
+
+Without `--apply` it only counts what a run would do, and writes nothing. It reads from the day after the newest on
+disk through yesterday, or yesterday alone when the folder is empty. A session belongs to the one team of the tree
+that marked it; a title counts only when it names one session of the whole tree, so a title two teams share stays
+outside both. A day with no use has no file.
+
+Flags:
+
+- `--from <day>`: the first day to read, `YYYY-MM-DD`; it must have closed.
+- `--to <day>`: the last day to read, `YYYY-MM-DD`; it must have closed. Default yesterday.
+- `--apply`: writes the new days.
+- `--rewrite`: with `--apply`, also replaces a day that now reads differently. Without it such a day stays: Claude
+  Code prunes old transcripts, so the later reading can be the poorer one.
+
+Example:
+
+```sh
+teamrig budget rollup --from 2030-01-01 --to 2030-01-07
+```
+
+Output:
+
+```text
+PREVIEW /home/you/.teamrig/teams/shop/state/usage/rollup, 2030-01-01 to 2030-01-07: 6 inserted, 1 unchanged, 0 changed; nothing written (add --apply to write)
+  2030-01-01 inserted: 41 rows, 12 task rows, 9120 bytes
+```
+
+With `--apply` the first line reads `WROTE <path>, <days>: <counts>; <n> written`, and names any changed days left as
+they are. `UP TO DATE <path>: nothing to roll up` means yesterday is already on disk.
+
+`--rewrite` without `--apply`, a `--from` or `--to` that is no day or has not closed, and `--from` after `--to` are
+usage errors (exit 64).
+
 ### teamrig budget lift
 
 A leader lifts one session under it to a part of its parent's daily budget for today: the team's for a session the
