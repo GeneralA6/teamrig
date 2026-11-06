@@ -49,6 +49,7 @@ Team settings for the teamrig plugin. Only the roster (sessions, roles.lead) is 
 | `permissions` | [object](#permissions) |  | Which local allow rules stay. An allow rule in a Claude Code settings file approves a call before auto mode's classifier sees it, so a rule that approves a whole tool or a program with any arguments skips the one check that stops an injected or mistaken action. teamrig permissions trim removes the rules off keepAllow (the owner runs it with --yes); doctor flags the ones that approve a whole tool or program, or hold a credential (text in a secret's shape) that Claude Code saved with an approved command. |
 | `open` | [object](#open) |  | How teamrig open starts a session in a new terminal tab. |
 | `statusLine` | [object](#statusline) |  | What teamrig statusline shows beside the model and the plan's use of the week. |
+| `focus` | [object](#focus) |  | Goal-first ranking: the work classes a task is filed under (teamrig add and update --class), how its WSJF score is made (cost of delay over size), the WIP rule and the share of the week's spend each class is planned to take. When classes, roadmapClass, maintenanceClass, defaultClass and allocation disagree, each problem is reported and all five take their defaults. |
 | `launch` | map from [session name](#shared-types) to [object](#launch) | `{}` | Each session's Claude Code model and effort, and the folder it works in, by id: teamrig open starts it with claude --model and --effort; a session running on another model is told the /model to type at its start, and one at another effort the /effort to type at its first stop. A model or effort left unset is Claude Code's own choice, except for the lead, which starts on model opus at xhigh effort for each one it leaves unset. |
 | `refresh` | [object](#refresh) |  | Context refresh: when a session finishes a task (teamrig set \<id> --status done) with its context at or over contextTokens, or with everyTasks tasks finished since its context was last fresh and the context at everyTasksMinTokens or more, or after the lead ran teamrig refresh \<session>, it writes a handover; then the user types /clear, or teamrig starts it fresh on its own (autoRestart). A relative handoverDir is resolved against the team's folder; unset, it is \<team folder>/handover. |
 | `hiring` | [object](#hiring) |  | Hiring sessions with teamrig hire, each a worker the leader is sure the team needs: who decides. No cap counts hires: the host's room bounds who is at the office, and the leader decides who is hired. A hire is written into sessions, names and launch, and logged with its reason and review date; its part of the team's daily budget follows its share and queued work, like any session's. |
@@ -606,6 +607,63 @@ What teamrig statusline shows beside the model and the plan's use of the week.
 | `folder` | boolean | `true` | The name of the session's folder. |
 | `branch` | boolean | `true` | The branch checked out there, or the commit of a detached HEAD. |
 | `pace` | boolean | `true` | Where the team's pace line stands now, beside the week's use, as in week 63% (pace 53%): the pace line of the seven days before the week's reset, by the team's budget.targetPct, budget.paceEndHoursBeforeReset and budget.quietHours. Outside a team, none. |
+
+## `focus`
+
+Goal-first ranking: the work classes a task is filed under (teamrig add and update --class), how its WSJF score is made (cost of delay over size), the WIP rule and the share of the week's spend each class is planned to take. When classes, roadmapClass, maintenanceClass, defaultClass and allocation disagree, each problem is reported and all five take their defaults.
+
+| Key | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `classes` | array (1 to 12 items, unique) of string (matching `^[A-Za-z][A-Za-z0-9 _-]{0,31}$`) | `["Roadmap","Maintenance","Improvements"]` | The classes --class takes: 1 to 12 names, each once, a letter then up to 31 letters, digits, spaces, \_ or -. |
+| `roadmapClass` | string | `"Roadmap"` | The class ranked by its goals' rank, which the WIP rule protects: one of classes. |
+| `maintenanceClass` | string | `"Maintenance"` | The class ranked by severity first (bug, critical): one of classes. |
+| `defaultClass` | string | `"Improvements"` | The class a task with none counts as; it ranks last. One of classes. |
+| `maxActiveKeyResults` | integer (1 to 100) | `5` | The key results (goals with a parent) the team may hold with a target of today or later; teamrig goal add refuses one more. |
+| `score` | [object](#focusscore) |  | The parts of a task's WSJF score: cost of delay (value + urgency + unblocks + owner order) over size, in % of the week. |
+| `expedite` | [object](#focusexpedite) |  | Which tasks go ahead of every score. |
+| `wip` | [object](#focuswip) |  | The WIP rule: an Improvements start is held while its owner has a Roadmap task that can move, and a start past maxInProgress is held. --one-commit, an expedited task and an owner-sourced task are exempt. |
+| `allocation` | map from string (matching `^[A-Za-z][A-Za-z0-9 _-]{0,31}$`) to number (0 to 100) | `{"Roadmap":60,"Maintenance":25,"Improvements":15}` | The % of the week's spend each class is planned to take, by class; every key one of classes, the shares summing to 100. |
+| `leaderWaitMinutes` | integer (0 to 10080) | `60` | How long, in minutes, a Roadmap task may wait on a leader's decision or approval before it is flagged. |
+| `parkAfterDays` | integer (1 to 365) | `14` | The days without an event after which an Improvements task is parked out of list, plan, check and start; any update brings it back. |
+| `plannedTargetPct` | integer (0 to 100) | `70` | The % of the week's spend planned work should take. |
+
+## `focus.score`
+
+The parts of a task's WSJF score: cost of delay (value + urgency + unblocks + owner order) over size, in % of the week.
+
+| Key | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `rankValues` | array (1 to 20 items) of number (0 to 1000) | `[20,16,12,8,4]` | The value of a Roadmap task whose best goal rank (on its goals or their parents) is 1, 2 and so on; a rank past the list takes the last. |
+| `roadmapUnranked` | number (0 to 1000) | `3` | The value of a Roadmap task that serves no ranked goal. |
+| `maintenanceValue` | number (0 to 1000) | `10` | The value of a Maintenance task, before its bug and critical additions. |
+| `maintenanceBug` | number (0 to 1000) | `4` | Added to the value of a Maintenance task of type bug. |
+| `maintenanceCritical` | number (0 to 1000) | `10` | Added to the value of a Maintenance task marked critical. |
+| `improvementsValue` | number (0 to 1000) | `1` | The value of an Improvements task, and of a task with no class. |
+| `overdueValue` | number (0 to 1000) | `8` | The urgency of a task past its due. |
+| `dueSoonValue` | number (0 to 1000) | `4` | The urgency of a task due within dueSoonDays. |
+| `dueSoonDays` | integer (0 to 60) | `3` | How many days before its due a task counts as due soon. |
+| `unblocksShare` | number (0 to 10) | `0.5` | The share of the best value among the active tasks that need a task (by after or a task wait) added to its own cost of delay; 0 turns it off. |
+| `ownerOrderValues` | array (1 to 20 items) of number (0 to 1000) | `[12,6,0,0,0]` | What an owner-sourced task's priority p1, p2 and so on adds, a capped override; the priorities of other tasks add nothing. |
+| `defaultSizePct` | number (0.01 to 100) | `0.3` | The size, in % of the week, of a task with no size, no spend and no like tasks finished to measure by. |
+| `minSizePct` | number (0.01 to 100) | `0.05` | The smallest size, in % of the week, a score divides by, so a tiny task cannot outrank everything. |
+
+## `focus.expedite`
+
+Which tasks go ahead of every score.
+
+| Key | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `critical` | boolean | `true` | A Maintenance task marked critical. |
+| `ownerP1` | boolean | `true` | An owner-sourced p1 task. |
+
+## `focus.wip`
+
+The WIP rule: an Improvements start is held while its owner has a Roadmap task that can move, and a start past maxInProgress is held. --one-commit, an expedited task and an owner-sourced task are exempt.
+
+| Key | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `mode` | one of `"refuse"`, `"warn"`, `"off"` | `"refuse"` | refuse holds the start; warn prints why and lets it through; off checks nothing. |
+| `maxInProgress` | integer (1 to 50) | `3` | The in-progress tasks a session may hold before a further start is held. |
 
 ## `launch.*`
 
