@@ -10,6 +10,7 @@ import { formatUtcDay, MS_PER_DAY, parseUtcDay, typedDeadline, typedTimeHint } f
 import { activeBurst, burstFloorOf, withBurst } from "../../budget/burst.js";
 import { BurstLog } from "../../budget/burst-log.js";
 import { calibrationOf } from "../../budget/calibration.js";
+import { classRowsOf } from "../../budget/class-spend.js";
 import { activeCut, CutLog, cutText, decideCut } from "../../budget/cut.js";
 import { claudeProjectsDir } from "../../budget/discover.js";
 import { ExtraLog } from "../../budget/extra.js";
@@ -27,7 +28,7 @@ import { attributedW, taskUseOf } from "../../budget/task-use.js";
 import { teamWeekOf } from "../../budget/team-week.js";
 import { foldIntoWeekSummary } from "../../budget/week-summary.js";
 import { readWeek, wSince } from "../../budget/week.js";
-import { NO_WORK, readWork } from "../../budget/work.js";
+import { NO_WORK, queuedWork, readTasks, readWork } from "../../budget/work.js";
 import { JsonlMarkLog } from "../../inbox/store.js";
 import { indexMarks } from "../../inbox/marks.js";
 import { customTitleOf, TRANSCRIPT_TAIL_BYTES } from "../../names/title.js";
@@ -214,7 +215,8 @@ export async function budget(args, runtime) {
         }
         return EXIT.ok;
     }
-    const { weights: work } = recountDay === undefined ? await readWork(runtime.files, kit.paths.events, config.register.priorities) : NO_WORK;
+    const tasks = recountDay === undefined ? await readTasks(runtime.files, kit.paths.events) : undefined;
+    const { weights: work } = tasks === undefined ? NO_WORK : queuedWork(tasks, config.register.priorities);
     // A recount shows no budgets, so it reads no other team.
     const onAccount = recountDay === undefined ? await otherTeamsOnAccount(runtime, { team: kit.paths.team, config, usageDir: kit.paths.usage }, reading.now, reading.week.usedPct) : [];
     const { split, others } = fundForDay({ split: splitOf(reading, kit.paths.team, roster, config, work), others: onAccount }, reading.week);
@@ -244,7 +246,9 @@ export async function budget(args, runtime) {
         const outsideToday = measured.outside.byDay[today];
         const outside = { w: wSince([measured.outside], week.todayFrom, now), calls: outsideToday?.calls ?? 0, sessions: measured.outsideSessions, titles: measured.outsideTitles };
         const behind = measured.behind.map((each) => (each === OUTSIDE_ID ? 'outside the team' : (roster.nameOf(each) ?? each)));
-        lines = recountDay === undefined ? todayLines({ week, teamPct, sessions, groups: groupsToday(reading, roster, split, others), outside, behind, all, zone }) : recountLines(today, { week, sessions, outside, all });
+        // The team's sessions alone, so the rows add up to the team's row of the table above them.
+        const classes = tasks === undefined ? undefined : classRowsOf({ states: [...measured.bySession.values()], tasks, focus: config.focus, todayFrom: week.todayFrom, weekFrom: week.window?.start, now });
+        lines = recountDay === undefined ? todayLines({ week, teamPct, sessions, groups: groupsToday(reading, roster, split, others), classes, outside, behind, all, zone }) : recountLines(today, { week, sessions, outside, all });
     }
     for (const line of lines) {
         runtime.out.stdout(line);

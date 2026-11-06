@@ -11,23 +11,35 @@ function namingTurns(state) {
         .map(({ turn }) => turn)
         .filter((turn) => turn.tasks.length > 0);
 }
-/** W per UTC day on `task` in one session's usage, its open turns' share included. */
-function daysOf(state, task) {
+/** W per task on each UTC day of one session's usage: `byTask`, plus each open turn's held W split equally over the tasks it named. */
+export function taskDaysOf(state) {
     const days = new Map();
-    const add = (day, w) => {
-        days.set(day, (days.get(day) ?? 0) + w);
+    const add = (day, task, w) => {
+        const tasks = days.get(day) ?? new Map();
+        tasks.set(task, (tasks.get(task) ?? 0) + w);
+        days.set(day, tasks);
     };
     for (const [day, tasks] of Object.entries(state.byTask)) {
-        const w = tasks[task];
-        if (w !== undefined) {
-            add(day, w);
+        for (const [task, w] of Object.entries(tasks)) {
+            add(day, task, w);
         }
     }
     for (const turn of namingTurns(state)) {
-        if (turn.tasks.includes(task)) {
-            for (const [day, w] of Object.entries(turn.held)) {
-                add(day, w / turn.tasks.length);
+        for (const [day, w] of Object.entries(turn.held)) {
+            for (const task of turn.tasks) {
+                add(day, task, w / turn.tasks.length);
             }
+        }
+    }
+    return days;
+}
+/** W per UTC day on `task` in one session's usage, its open turns' share included. */
+function daysOf(state, task) {
+    const days = new Map();
+    for (const [day, tasks] of taskDaysOf(state)) {
+        const w = tasks.get(task);
+        if (w !== undefined) {
+            days.set(day, w);
         }
     }
     return days;
