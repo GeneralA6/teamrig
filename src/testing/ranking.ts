@@ -1,4 +1,6 @@
-import type { ParkFocus } from '../register/park.ts';
+import { MS_PER_DAY } from '../core/time.ts';
+import type { Task } from '../register/fold.ts';
+import type { ParkFocus, ParkRules } from '../register/park.ts';
 import { ownSizing } from '../register/ranking.ts';
 import type { ScoreFocus } from '../register/score.ts';
 import type { ServedGoal, TreeRanking } from '../register/tree.ts';
@@ -28,6 +30,14 @@ export const TEST_FOCUS: ScoreFocus & ParkFocus = {
 
 /** The source of a task the owner ordered, in {@link testRanking}. */
 export const TEST_OWNER_SOURCE = 'owner';
+
+/** The park rule of {@link TEST_FOCUS}, for the wake's reads. */
+export const TEST_PARKING: ParkRules = { focus: TEST_FOCUS, ownerSource: TEST_OWNER_SOURCE };
+
+/** A task the rule takes at `now`: classed Improvements, quiet past `parkAfterDays`, never touched by its owner. */
+export function parkedFacts(now: number): Pick<Task, 'workClass' | 'updatedAt' | 'ownerSeenAt'> {
+  return { workClass: 'Improvements', updatedAt: new Date(now - (TEST_FOCUS.parkAfterDays + 6) * MS_PER_DAY).toISOString(), ownerSeenAt: null };
+}
 
 /** What {@link testRanking} knows of tasks by id; any other task is unclassed and serves no goal. */
 export interface TestRankingFacts {

@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import { TimeZone } from '../core/zone.ts';
 import type { Task } from '../register/fold.ts';
 import { NO_TASKS_ELSEWHERE, type TasksElsewhere } from '../register/tree.ts';
+import { parkedFacts, TEST_PARKING } from '../testing/ranking.ts';
 import { testTask } from '../testing/task.ts';
 import type { WakeRest } from './decide.ts';
 import { keepWorkingOf, keepWorkingReason, type KeepWorking } from './keep-working.ts';
@@ -18,7 +19,7 @@ function tasksOf(...tasks: readonly Task[]): ReadonlyMap<string, Task> {
 const AWAKE: WakeRest = { quiet: false, held: false };
 
 function workOf(tasks: ReadonlyMap<string, Task>, rest = AWAKE, elsewhere: TasksElsewhere = NO_TASKS_ELSEWHERE): KeepWorking | undefined {
-  return keepWorkingOf({ tasks, elsewhere, session: 'alpha', ask: ASK, now: NOW, zone: TimeZone.UTC, rest });
+  return keepWorkingOf({ tasks, elsewhere, session: 'alpha', ask: ASK, now: NOW, zone: TimeZone.UTC, rest, parking: TEST_PARKING });
 }
 
 function idsOf(tasks: ReadonlyMap<string, Task>, elsewhere: TasksElsewhere = NO_TASKS_ELSEWHERE): readonly string[] | undefined {
@@ -26,6 +27,12 @@ function idsOf(tasks: ReadonlyMap<string, Task>, elsewhere: TasksElsewhere = NO_
 }
 
 describe('keepWorkingOf', () => {
+  it('never sends the session to a parked task, which the list it points at leaves out (T2090)', () => {
+    const parked = testTask({ id: 'T2', ...parkedFacts(NOW) });
+    assert.deepEqual(idsOf(tasksOf(WAITING, parked, testTask({ id: 'T3', priority: 3 }))), ['T3']);
+    assert.equal(workOf(tasksOf(WAITING, parked)), undefined);
+  });
+
   it('sends the session to its independent tasks, most urgent first', () => {
     const tasks = tasksOf(
       WAITING,

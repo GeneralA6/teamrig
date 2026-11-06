@@ -10,7 +10,8 @@ import { isCold } from '../hooks/cold-send.ts';
 import { answerTo } from '../register/approval.ts';
 import { taskNumber, type Task } from '../register/fold.ts';
 import type { TaskStatus } from '../register/model.ts';
-import type { TasksElsewhere } from '../register/tree.ts';
+import { wouldPark, type ParkRules } from '../register/park.ts';
+import { neededIds, type TasksElsewhere } from '../register/tree.ts';
 import { isReady, unfinishedAfter, waitContext, type WaitContext } from '../register/waits.ts';
 
 /**
@@ -20,7 +21,9 @@ import { isReady, unfinishedAfter, waitContext, type WaitContext } from '../regi
  * someone else or by the clock since the session last touched it (handed to it, raised,
  * reopened, freed by another's finish, its waits cleared, or an approval it waits on answered). Each task wakes a
  * session once, tasks handed together wake it once (`wake.batchSeconds`), and wakes of one session are
- * `wake.minGapMinutes` apart. The plugin's mod asks `hook wake-check` while no turn runs and submits the prompt.
+ * `wake.minGapMinutes` apart. The plugin's mod asks `hook wake-check` while no turn runs and submits the prompt. A
+ * parked task (src/register/park.ts) wakes nothing: `list` leaves it out, so a wake would send the session to work it
+ * cannot find, and a task no owner touched stays news for ever. An event on it ends the parking, and with it the silence.
  */
 
 /**
@@ -74,9 +77,28 @@ export function canGoOn(task: Task, context: WaitContext): boolean {
   return task.startedAt !== null || unfinishedAfter(task.after, context).length === 0;
 }
 
-/** True when the task is the session's, it can go on with it now, and it is urgent enough to wake it. */
-export function isWakeWorthy(task: Task, session: string, maxPriority: number, context: WaitContext): boolean {
-  return task.owner === session && task.priority <= maxPriority && canGoOn(task, context);
+/** What a wake judges a task by: its waits, and whether the park rule took it. */
+export interface WakeContext extends WaitContext {
+  isParked(task: Task): boolean;
+}
+
+/**
+ * The context of a wake's read at `now`. Which tasks are needed is built on the first task that reaches that test of
+ * the rule, as most never do. A wake's `elsewhere` comes from `snapshotWithElsewhere`, which gives none when the own
+ * tasks need no outside id, so a need from another register goes unseen: a wake may pass over a task `list` still shows.
+ */
+export function wakeContext(tasks: ReadonlyMap<string, Task>, elsewhere: TasksElsewhere, now: number, zone: TimeZone, parking: ParkRules): WakeContext {
+  let needed: ReadonlySet<string> | undefined;
+  const isNeeded = (id: string): boolean => {
+    needed ??= neededIds(tasks.values(), elsewhere);
+    return needed.has(id);
+  };
+  return { ...waitContext(tasks, new Date(now), zone, elsewhere), isParked: (task) => wouldPark(task, { ...parking, now, needed: isNeeded }) };
+}
+
+/** True when the task is the session's, it can go on with it now, it is urgent enough to wake it, and it is not parked. */
+export function isWakeWorthy(task: Task, session: string, maxPriority: number, context: WakeContext): boolean {
+  return task.owner === session && task.priority <= maxPriority && canGoOn(task, context) && !context.isParked(task);
 }
 
 function timeOf(at: string | null): number {
@@ -169,6 +191,7 @@ export interface WakeInput {
   /** The team's zone, which a waiting task's stored day is a day of. */
   readonly zone: TimeZone;
   readonly maxPriority: number;
+  readonly parking: ParkRules;
   readonly batchMs: number;
   readonly minGapMs: number;
   readonly previous: WakeState | undefined;
@@ -190,11 +213,11 @@ export function byUrgency(a: Task, b: Task): number {
 }
 
 /** What picks the tasks that could wake a session at a moment. */
-export type WorthyInput = Pick<WakeInput, 'tasks' | 'elsewhere' | 'session' | 'now' | 'zone' | 'maxPriority'>;
+export type WorthyInput = Pick<WakeInput, 'tasks' | 'elsewhere' | 'session' | 'now' | 'zone' | 'maxPriority' | 'parking'>;
 
 /** The session's tasks that could wake it at `now` ({@link isWakeWorthy}), in the register's order. */
 export function worthyTasksOf(input: WorthyInput): Task[] {
-  const context = waitContext(input.tasks, new Date(input.now), input.zone, input.elsewhere);
+  const context = wakeContext(input.tasks, input.elsewhere, input.now, input.zone, input.parking);
   return [...input.tasks.values()].filter((task) => isWakeWorthy(task, input.session, input.maxPriority, context));
 }
 

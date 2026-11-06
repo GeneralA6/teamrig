@@ -6,6 +6,7 @@ import { noticeOf, type NoticeDecision, type StopContext } from '../../refresh/d
 import { claudeProcessOf, restartMayAct } from '../../refresh/restart.ts';
 import type { ParkedRestart, RestartRequest, RestartTab } from '../../refresh/state.ts';
 import type { RefreshStore } from '../../refresh/store.ts';
+import { parkRulesOf } from '../../register/park.ts';
 import { startableTasks } from '../../wake/day-start.ts';
 import { teamZone } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
@@ -64,7 +65,7 @@ function restartTabOf(runtime: CliRuntime, id: string, target: RestartTarget): R
  */
 export async function workFollows(runtime: CliRuntime, paths: TeamPaths, config: KitConfig, id: string): Promise<boolean> {
   const { snapshot, elsewhere } = await teamRegister(runtime, paths, config).snapshotWithElsewhere();
-  return startableTasks(snapshot.state.tasks, elsewhere, id, runtime.clock.now(), teamZone(config, runtime)).length > 0;
+  return startableTasks(snapshot.state.tasks, elsewhere, id, runtime.clock.now(), teamZone(config, runtime), parkRulesOf(config)).length > 0;
 }
 
 /**

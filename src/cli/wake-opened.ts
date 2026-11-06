@@ -1,5 +1,6 @@
 import type { KitConfig } from '../config/types.ts';
 import { errorMessage } from '../core/guards.ts';
+import { parkRulesOf } from '../register/park.ts';
 import { openedWakeState } from '../wake/decide.ts';
 import { WakeStore } from '../wake/store.ts';
 import { fileLockOf } from './file-locks.ts';
@@ -21,7 +22,8 @@ export async function noteResumedTab(runtime: CliRuntime, kit: Kit, config: KitC
       const { snapshot, elsewhere } = await teamRegister(runtime, kit.paths, config).snapshotWithElsewhere();
       const previous = await store.read(id);
       const zone = teamZone(config, runtime);
-      await store.write(id, openedWakeState({ tasks: snapshot.state.tasks, elsewhere, session: id, tab, now: runtime.clock.now(), zone, maxPriority: config.wake.priority, previous }));
+      const parking = parkRulesOf(config);
+      await store.write(id, openedWakeState({ tasks: snapshot.state.tasks, elsewhere, session: id, tab, now: runtime.clock.now(), zone, maxPriority: config.wake.priority, parking, previous }));
     });
     return undefined;
   } catch (error) {

@@ -2,6 +2,7 @@ import { KIT_NAME } from '../core/home.ts';
 import type { SessionAsk } from '../core/session-asks.ts';
 import type { TimeZone } from '../core/zone.ts';
 import type { Task } from '../register/fold.ts';
+import type { ParkRules } from '../register/park.ts';
 import type { TasksElsewhere } from '../register/tree.ts';
 import { waitsText } from '../register/waits.ts';
 import { startableTasks } from './day-start.ts';
@@ -35,6 +36,7 @@ export interface KeepWorkingInput {
   readonly zone: TimeZone;
   /** Where the session stands against its budget (`wakeRestOf`). */
   readonly rest: WakeRest;
+  readonly parking: ParkRules;
 }
 
 /**
@@ -42,12 +44,12 @@ export interface KeepWorkingInput {
  * once the task stopped waiting or changed hands, or with nothing it can start.
  */
 export function keepWorkingOf(input: KeepWorkingInput): KeepWorking | undefined {
-  const { tasks, elsewhere, session, ask, now, zone, rest } = input;
+  const { tasks, elsewhere, session, ask, now, zone, rest, parking } = input;
   const waiting = tasks.get(ask.task);
   if (rest.quiet || rest.held || waiting?.owner !== session || waiting.status !== 'waiting') {
     return undefined;
   }
-  const startable = startableTasks(tasks, elsewhere, session, now, zone).filter((task) => task.id !== waiting.id);
+  const startable = startableTasks(tasks, elsewhere, session, now, zone, parking).filter((task) => task.id !== waiting.id);
   return startable.length === 0 ? undefined : { waiting, startable };
 }
 

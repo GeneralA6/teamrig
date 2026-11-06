@@ -1,4 +1,4 @@
-import type { FocusConfig } from '../config/types.ts';
+import type { FocusConfig, KitConfig } from '../config/types.ts';
 import { MS_PER_DAY } from '../core/time.ts';
 import type { Task } from './fold.ts';
 
@@ -20,6 +20,13 @@ export interface ParkInput {
   readonly now: number;
   /** True when an active task needs this one, by `after` or a task wait. */
   readonly needed: (id: string) => boolean;
+}
+
+/** The team's part of the rule: a read that holds no tree, as the wake's, takes it from the config. */
+export type ParkRules = Pick<ParkInput, 'focus' | 'ownerSource'>;
+
+export function parkRulesOf(config: Pick<KitConfig, 'focus' | 'register'>): ParkRules {
+  return { focus: config.focus, ownerSource: config.register.ownerSource };
 }
 
 /**

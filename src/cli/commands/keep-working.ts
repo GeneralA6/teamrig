@@ -1,6 +1,7 @@
 import { errorMessage } from '../../core/guards.ts';
 import type { TeamPaths } from '../../core/home.ts';
 import { SessionAskStore } from '../../core/session-asks.ts';
+import { parkRulesOf } from '../../register/park.ts';
 import type { WriteResult } from '../../register/register.ts';
 import { WARM_WAKE_W, wakeRestOf } from '../../wake/decide.ts';
 import { keepWorkingOf, keepWorkingReason } from '../../wake/keep-working.ts';
@@ -44,6 +45,6 @@ export async function keepWorkingReasonOf(runtime: CliRuntime, scope: BudgetScop
   const rest = wakeRestOf(await budgetFactsOf(runtime, scope, undefined), config.budget.quietHours, now, WARM_WAKE_W);
   const { snapshot, elsewhere } = await teamRegister(runtime, kit.paths, config).snapshotWithElsewhere();
   const zone = teamZone(config, runtime);
-  const work = keepWorkingOf({ tasks: snapshot.state.tasks, elsewhere, session: id, ask, now, zone, rest });
+  const work = keepWorkingOf({ tasks: snapshot.state.tasks, elsewhere, session: id, ask, now, zone, rest, parking: parkRulesOf(config) });
   return work === undefined ? undefined : keepWorkingReason(id, work, zone);
 }

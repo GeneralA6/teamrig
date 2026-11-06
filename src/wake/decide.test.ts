@@ -3,7 +3,8 @@ import { describe, it } from 'node:test';
 import type { BudgetFacts } from '../budget/warn.ts';
 import type { ApprovalAnswer, OwnerDecision, Task } from '../register/fold.ts';
 import { NO_TASKS_ELSEWHERE, type TasksElsewhere } from '../register/tree.ts';
-import { waitContext, type WaitReason } from '../register/waits.ts';
+import type { WaitReason } from '../register/waits.ts';
+import { parkedFacts, TEST_PARKING } from '../testing/ranking.ts';
 import { testTask } from '../testing/task.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import {
@@ -17,6 +18,7 @@ import {
   openedWakeState,
   taskListText,
   WAKE_TITLE_MAX,
+  wakeContext,
   wakeCost,
   wakePrompt,
   wakeRestOf,
@@ -43,7 +45,7 @@ function tasksOf(...tasks: Task[]): ReadonlyMap<string, Task> {
 }
 
 function input(tasks: ReadonlyMap<string, Task>, previous: WakeState | undefined, overrides: Partial<WakeInput> = {}): WakeInput {
-  return { tasks, elsewhere: NO_TASKS_ELSEWHERE, session: 'alpha', tab: TAB, now: NOW, zone: TimeZone.UTC, maxPriority: 1, batchMs: BATCH_MS, minGapMs: GAP_MS, previous, ...overrides };
+  return { tasks, elsewhere: NO_TASKS_ELSEWHERE, session: 'alpha', tab: TAB, now: NOW, zone: TimeZone.UTC, maxPriority: 1, parking: TEST_PARKING, batchMs: BATCH_MS, minGapMs: GAP_MS, previous, ...overrides };
 }
 
 const QUIET: WakeState = { tab: TAB, known: [], pending: undefined, lastWakeAt: undefined, settled: NO_SETTLED_MOMENTS };
@@ -54,7 +56,7 @@ const DECLINED: ApprovalAnswer = { ...APPROVED, verdict: 'declined', note: 'add 
 const DECIDED: OwnerDecision = { by: 'lead', at: '2030-01-08T09:30:00.000Z', note: 'human decided: ship it' };
 
 describe('isWakeWorthy', () => {
-  const context = waitContext(tasksOf(testTask({ id: 'T5', status: 'done' }), testTask({ id: 'T6' })), new Date(NOW), TimeZone.UTC);
+  const context = wakeContext(tasksOf(testTask({ id: 'T5', status: 'done' }), testTask({ id: 'T6' })), NO_TASKS_ELSEWHERE, NOW, TimeZone.UTC, TEST_PARKING);
 
   it('takes a task of its own, open or started task at the priority or more urgent', () => {
     assert.equal(isWakeWorthy(p1(), 'alpha', 1, context), true);
@@ -271,7 +273,7 @@ describe('decideWake', () => {
 
 describe('openedWakeState', () => {
   function opened(tasks: ReadonlyMap<string, Task>, previous: WakeState | undefined): OpenedTab {
-    return { tasks, elsewhere: NO_TASKS_ELSEWHERE, session: 'alpha', tab: TAB, now: NOW, zone: TimeZone.UTC, maxPriority: 1, previous };
+    return { tasks, elsewhere: NO_TASKS_ELSEWHERE, session: 'alpha', tab: TAB, now: NOW, zone: TimeZone.UTC, maxPriority: 1, parking: TEST_PARKING, previous };
   }
 
   it('knows what could wake the resumed tab now and counts the open as its wake, keeping the settled moments (T1616)', () => {
@@ -287,6 +289,32 @@ describe('openedWakeState', () => {
     assert.deepEqual(decideWake(input(tasksOf(p1()), state, { now: NOW + 60 * MINUTE, batchMs: 0 })).verdict, { kind: 'none' });
     const handed = tasksOf(p1(), p1({ id: 'T2' }));
     assert.deepEqual(decideWake(input(handed, state, { now: NOW + MINUTE, batchMs: 0 })).verdict, { kind: 'later', at: NOW + GAP_MS, ids: ['T2'] });
+  });
+
+  it('does not count a parked task among what the resumed tab knows (T2090)', () => {
+    const tasks = tasksOf(p1({ ...parkedFacts(NOW) }), p1({ id: 'T2' }));
+    assert.deepEqual(openedWakeState(opened(tasks, QUIET)).known, ['T2']);
+  });
+});
+
+describe('a parked task and the wake (T2090)', () => {
+  const parked = p1({ ...parkedFacts(NOW) });
+
+  it('wakes no session, though no owner ever touched it and so it stays news', () => {
+    assert.equal(isNews(parked, 'alpha', tasksOf(parked), NO_TASKS_ELSEWHERE, TimeZone.UTC), true);
+    assert.deepEqual(decideWake(input(tasksOf(parked), QUIET, { batchMs: 0 })).verdict, { kind: 'none' });
+  });
+
+  it('wakes it once an event moves the task', () => {
+    const moved = { ...parked, updatedAt: new Date(NOW).toISOString() };
+    assert.equal(decideWake(input(tasksOf(moved), QUIET, { batchMs: 0 })).verdict.kind, 'wake');
+  });
+
+  it('wakes it once an active task of this register or another needs the task', () => {
+    const needing = testTask({ id: 'T2', owner: 'bravo', after: ['T1'] });
+    assert.equal(decideWake(input(tasksOf(parked, needing), QUIET, { batchMs: 0 })).verdict.kind, 'wake');
+    const elsewhere: TasksElsewhere = new Map([['T2', { team: 'app', task: needing }]]);
+    assert.equal(decideWake(input(tasksOf(parked), QUIET, { batchMs: 0, elsewhere })).verdict.kind, 'wake');
   });
 });
 

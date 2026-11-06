@@ -3,13 +3,13 @@ import { parseObject } from '../core/jsonl.ts';
 import { MS_PER_MINUTE, parseDeadline } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
 import type { Task } from '../register/fold.ts';
+import type { ParkRules } from '../register/park.ts';
 import type { TasksElsewhere } from '../register/tree.ts';
-import { waitContext } from '../register/waits.ts';
 import { asksDecision, messageTextOf } from '../tabs/status.ts';
 import { replyOf } from '../turn-log/reply.ts';
 import type { WakeAsk } from '../wake/asks.ts';
 import { dayStartAt, startableTasks } from '../wake/day-start.ts';
-import { byUrgency, isNews, isWakeWorthy, type WakeRest } from '../wake/decide.ts';
+import { isNews, type WakeRest } from '../wake/decide.ts';
 
 /**
  * Whether an idle session closes and a closed one reopens, pure (T1100). One rule serves both: a session closes when
@@ -143,6 +143,7 @@ export interface ReopenInput {
   readonly closedAt: number;
   /** The least urgent priority that wakes it now (`effectivePriority`). */
   readonly maxPriority: number;
+  readonly parking: ParkRules;
   readonly rest: WakeRest;
   /** `wake.dayStartUtc`; undefined: no day start. */
   readonly dayStartUtc: string | undefined;
@@ -165,12 +166,11 @@ export type ReopenVerdict =
  * work it can start and does not rest (quiet hours, held by its budget). Else it stays closed.
  */
 export function reopenVerdict(input: ReopenInput): ReopenVerdict {
-  const { tasks, elsewhere, session, now, zone } = input;
+  const { tasks, elsewhere, session, now, zone, parking } = input;
   if (input.asks.length > 0) {
     return { kind: 'asked', asks: input.asks, at: Math.min(...input.asks.map((ask) => ask.at)) };
   }
-  const context = waitContext(tasks, new Date(now), zone, elsewhere);
-  const handed = [...tasks.values()].filter((task) => isWakeWorthy(task, session, input.maxPriority, context) && isNews(task, session, tasks, elsewhere, zone)).sort(byUrgency);
+  const handed = startableTasks(tasks, elsewhere, session, now, zone, parking, input.maxPriority).filter((task) => isNews(task, session, tasks, elsewhere, zone));
   if (handed.length > 0) {
     return { kind: 'handed', tasks: handed };
   }
@@ -178,6 +178,6 @@ export function reopenVerdict(input: ReopenInput): ReopenVerdict {
   if (dayStart === undefined || dayStart <= input.closedAt || input.rest.quiet || input.rest.held) {
     return { kind: 'stay' };
   }
-  const startable = startableTasks(tasks, elsewhere, session, now, zone);
+  const startable = startableTasks(tasks, elsewhere, session, now, zone, parking);
   return startable.length === 0 ? { kind: 'stay' } : { kind: 'day-start', at: dayStart, tasks: startable };
 }

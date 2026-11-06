@@ -5,6 +5,7 @@ import { TimeZone } from '../core/zone.ts';
 import type { Task } from '../register/fold.ts';
 import { NO_TASKS_ELSEWHERE, type TasksElsewhere } from '../register/tree.ts';
 import { DECISION_MARKER } from '../tabs/status.ts';
+import { parkedFacts, TEST_PARKING } from '../testing/ranking.ts';
 import { testTask } from '../testing/task.ts';
 import { lastTurnAtOf, reopenVerdict, soonTimeWaitOf, tabActivityOf, TIME_WAIT_GUARD_MINUTES, type ReopenInput, type ReopenVerdict } from './idle.ts';
 
@@ -52,6 +53,7 @@ function reopen(overrides: Partial<ReopenInput>): ReopenVerdict {
     asks: [],
     closedAt: NOW - 2 * HOUR,
     maxPriority: 2,
+    parking: TEST_PARKING,
     rest: AWAKE,
     dayStartUtc: undefined,
     now: NOW,
@@ -185,6 +187,14 @@ describe('reopenVerdict', () => {
   it('stays closed for work it saw before the close, or less urgent than maxPriority', () => {
     assert.deepEqual(reopen({ tasks: tasksOf(testTask({ ownerSeenAt: SEEN })) }), { kind: 'stay' });
     assert.deepEqual(reopen({ tasks: tasksOf(testTask()), maxPriority: 1 }), { kind: 'stay' });
+  });
+
+  it('stays closed for a parked task, as news and at a day start alike, and reopens once an event moves it (T2090)', () => {
+    const parked = testTask({ ...parkedFacts(NOW) });
+    const morning = { dayStartUtc: '06:00', closedAt: Date.parse('2030-01-08T05:00:00.000Z') };
+    assert.deepEqual(reopen({ tasks: tasksOf(parked) }), { kind: 'stay' });
+    assert.deepEqual(reopen({ tasks: tasksOf(parked), ...morning }), { kind: 'stay' });
+    assert.equal(reopen({ tasks: tasksOf({ ...parked, updatedAt: new Date(NOW).toISOString() }) }).kind, 'handed');
   });
 
   it('reopens at a day start after its close for any work it can start, less urgent work too', () => {

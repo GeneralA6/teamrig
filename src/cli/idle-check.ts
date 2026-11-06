@@ -9,6 +9,7 @@ import { workCutOffBy, type TabEnder } from '../open/end-tab.ts';
 import { isClaudeProcess, type ProcessInfo } from '../open/session-processes.ts';
 import { readRunningWork } from '../refresh/running.ts';
 import type { Task } from '../register/fold.ts';
+import { parkRulesOf } from '../register/park.ts';
 import type { TasksElsewhere } from '../register/tree.ts';
 import { lastTurnAtOf, soonTimeWaitOf, tabActivityOf, TIME_WAIT_GUARD_MINUTES, type TabActivity } from '../sessions/idle.ts';
 import { measureSessions, type SessionPlace } from '../sessions/measure.ts';
@@ -148,7 +149,7 @@ export async function idleVerdictOf(runtime: CliRuntime, config: KitConfig, rost
     return keep(notRunning);
   }
   const { now, zone, tasks, elsewhere } = facts;
-  const startable = startableTasks(tasks, elsewhere, id, now, zone, options.maxPriority);
+  const startable = startableTasks(tasks, elsewhere, id, now, zone, parkRulesOf(config), options.maxPriority);
   if (startable.length > 0) {
     return keep(`has work it can start (${startable.map((task) => task.id).join(', ')})`);
   }
