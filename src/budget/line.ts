@@ -1,6 +1,7 @@
 import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import { parseObject } from '../core/jsonl.ts';
 import { BLOCK_START_WORDS, isBlockStartLine } from '../core/work-block.ts';
+import { isPushedPrompt, isStopFeedback } from './turn-origin.ts';
 import { usageOf, type Usage } from './weights.ts';
 
 /** A tool the model called in a reply: its id, its name and, for a shell, the command line. */
@@ -41,6 +42,10 @@ export interface CallLine {
   readonly mainThread: boolean;
   readonly usage: Usage;
   readonly tools: readonly ToolUse[];
+  /** The model that wrote the reply, when the line names it. */
+  readonly model?: string;
+  /** The reasoning effort the reply ran at, when the line names it. */
+  readonly effort?: string;
 }
 
 /** A user line that carries tool results. */
@@ -69,6 +74,8 @@ export interface PromptLine {
   readonly answers?: string;
   /** The task ids the prompt names (`T123`), each once in order; absent when it names none. */
   readonly tasks?: readonly string[];
+  /** True when the team's own machinery started the turn (`turn-origin.ts`), not a person or a finished task. */
+  readonly pushed?: true;
 }
 
 /** Claude Code compacted the session's context here. */
@@ -185,6 +192,8 @@ export function callOf(entry: JsonRecord): CallLine | undefined {
   }
   const id = stringField(message, 'id');
   const tools = blocksOf(message).flatMap((block) => toolUseOf(block) ?? []);
+  const model = stringField(message, 'model');
+  const effort = stringField(entry, 'effort');
   return {
     kind: 'call',
     key: id === undefined ? undefined : `${id}|${stringField(entry, 'requestId') ?? ''}`,
@@ -192,6 +201,8 @@ export function callOf(entry: JsonRecord): CallLine | undefined {
     mainThread: entry['isSidechain'] === false,
     usage,
     tools,
+    ...(model === undefined ? {} : { model }),
+    ...(effort === undefined ? {} : { effort }),
   };
 }
 
@@ -249,7 +260,33 @@ function promptOf(entry: JsonRecord, message: JsonRecord, at: number | undefined
   const trigger = triggerOf(entry, message);
   const answers = trigger === 'notification' ? TOOL_USE_ID.exec(text)?.[1] : undefined;
   const tasks = tasksIn(text);
-  return { kind: 'prompt', at, trigger, commands: commandsIn(text), ...(answers === undefined ? {} : { answers }), ...(tasks.length === 0 ? {} : { tasks }) };
+  return {
+    kind: 'prompt',
+    at,
+    trigger,
+    commands: commandsIn(text),
+    ...(answers === undefined ? {} : { answers }),
+    ...(tasks.length === 0 ? {} : { tasks }),
+    ...(isPushedPrompt(text) ? { pushed: true } : {}),
+  };
+}
+
+const STOP_FEEDBACK_WORDS = '"isMeta":true';
+
+/**
+ * A Stop hook's push, which Claude Code writes as its own text. `parseTranscriptLine` skips such lines and must go on
+ * skipping them, or the meter's turn counts move: only the rollup, which needs to see the turn start, reads this.
+ */
+export function stopFeedbackPromptOf(raw: string): PromptLine | undefined {
+  if (!raw.includes(STOP_FEEDBACK_WORDS)) {
+    return undefined;
+  }
+  const entry = parseObject(raw);
+  const message = entry?.['type'] === 'user' && entry['isMeta'] === true ? recordField(entry, 'message') : undefined;
+  if (entry === undefined || message === undefined || !isStopFeedback(promptText(message))) {
+    return undefined;
+  }
+  return promptOf(entry, message, timeOf(entry));
 }
 
 /** A compaction's boundary line; undefined for any other entry. */

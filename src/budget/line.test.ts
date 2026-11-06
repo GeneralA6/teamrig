@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { parseObject } from '../core/jsonl.ts';
 import { blockStartLines } from '../hooks/live-tasks.ts';
 import { compactLine, promptLine, replyLine, resultsLine, sessionStartNoteLine, systemLine } from '../testing/transcript-lines.ts';
-import { callOf, parseTranscriptLine, tasksIn } from './line.ts';
+import { callOf, parseTranscriptLine, stopFeedbackPromptOf, tasksIn } from './line.ts';
 
 const AT = '2026-03-02T10:00:00.000Z';
 
@@ -101,6 +101,24 @@ describe('parseTranscriptLine', () => {
     assert.equal(parseTranscriptLine(resultsLine(AT, [{ id: 'a', text: 'ok' }]))?.kind, 'results');
     assert.equal(parseTranscriptLine(JSON.stringify({ type: 'user', isMeta: true, message: { content: 'note' } })), undefined);
     assert.equal(parseTranscriptLine(JSON.stringify({ type: 'user', message: 'flat' })), undefined);
+  });
+
+  it('marks a prompt the team pushed, and no prompt a person typed (T2064)', () => {
+    const pushed = (text: string): boolean | undefined => {
+      const line = parseTranscriptLine(promptLine(AT, text));
+      return line?.kind === 'prompt' ? line.pushed : undefined;
+    };
+    assert.equal(pushed('The day started at 02:00 IST: read your list'), true);
+    assert.equal(pushed('fix the budget table'), undefined);
+  });
+
+  it('keeps the model and the effort a reply names, with no field for what it leaves out (T2064)', () => {
+    const reply = (fields: Readonly<Record<string, unknown>>, message: Readonly<Record<string, unknown>>): string =>
+      JSON.stringify({ type: 'assistant', timestamp: AT, ...fields, message: { id: 'm', usage: { input_tokens: 1 }, ...message } });
+    const named = parseTranscriptLine(reply({ effort: 'high' }, { model: 'model-a' }));
+    assert.deepEqual(named?.kind === 'call' ? [named.model, named.effort] : undefined, ['model-a', 'high']);
+    const bare = parseTranscriptLine(reply({}, {}));
+    assert.deepEqual(bare?.kind === 'call' ? ['model' in bare, 'effort' in bare] : undefined, [false, false]);
   });
 
   it('names the skill a Skill call loads, and the slash commands a prompt runs', () => {
@@ -230,5 +248,27 @@ describe('parseTranscriptLine', () => {
     assert.equal(parseTranscriptLine(JSON.stringify({ type: 'summary', usage: 1 })), undefined);
     assert.equal(parseTranscriptLine(JSON.stringify({ type: 'assistant', message: { content: [] } })), undefined);
     assert.equal(parseTranscriptLine('"usage"'), undefined);
+  });
+});
+
+describe('stopFeedbackPromptOf', () => {
+  const meta = (content: unknown, type = 'user'): string => JSON.stringify({ type, isMeta: true, timestamp: AT, message: { role: 'user', content } });
+
+  it("reads the Stop hook's own line as a pushed prompt, which the meter goes on skipping (T2064)", () => {
+    const raw = meta('Stop hook feedback:\nkeep going on T12');
+    assert.deepEqual(stopFeedbackPromptOf(raw), { kind: 'prompt', at: Date.parse(AT), trigger: 'other', commands: [], tasks: ['T12'], pushed: true });
+    assert.equal(parseTranscriptLine(raw), undefined);
+  });
+
+  it('reads the text from blocks too', () => {
+    assert.equal(stopFeedbackPromptOf(meta([{ type: 'text', text: 'Stop hook feedback: go' }]))?.pushed, true);
+  });
+
+  it('takes no other line', () => {
+    assert.equal(stopFeedbackPromptOf(meta('Caveat: local commands')), undefined, 'another line of its own');
+    assert.equal(stopFeedbackPromptOf(meta('Stop hook feedback', 'assistant')), undefined, 'not a user line');
+    assert.equal(stopFeedbackPromptOf(promptLine(AT, 'Stop hook feedback')), undefined, 'not its own text');
+    assert.equal(stopFeedbackPromptOf(JSON.stringify({ type: 'user', isMeta: true, message: 'flat' })), undefined, 'no message');
+    assert.equal(stopFeedbackPromptOf('"isMeta":true'), undefined, 'a torn line');
   });
 });
