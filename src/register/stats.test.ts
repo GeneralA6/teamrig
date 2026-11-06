@@ -353,6 +353,12 @@ describe('registerStats: the tasks behind the counts', () => {
     assert.equal(stats.tasks.active.length, Object.values(stats.active).reduce((sum, count) => sum + count, 0));
   });
 
+  it('counts a late p0 with the late p1s: it ranks above them, so it must not fall out of the top count', () => {
+    const stats = statsOf([create('T1', '2030-01-05T10:00:00.000Z', { due: '2030-01-09', priority: 0 })]);
+    assert.deepEqual(stats.all.overdue, { count: 1, p1: 1 });
+    assert.deepEqual(ids(stats.tasks.overdueP1), ['T1']);
+  });
+
   it('lists the overdue tasks longest past first and their p1 ones apart', () => {
     const stats = statsOf([
       create('T1', '2030-01-05T10:00:00.000Z', { due: '2030-01-09', priority: 1 }),
