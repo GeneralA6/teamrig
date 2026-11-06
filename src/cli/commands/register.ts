@@ -3,7 +3,7 @@ import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { formatAddress, splitAddress, type SessionAddress } from '../../core/address.ts';
 import { errorMessage } from '../../core/guards.ts';
-import { KIT_NAME } from '../../core/home.ts';
+import { KIT_NAME, resolveKitHome } from '../../core/home.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import { JsonlDailyLog } from '../../core/daily-log.ts';
 import { SecretScanner } from '../../core/secrets.ts';
@@ -52,6 +52,7 @@ import { findTeam, openKit, pastOrPresentIdOf, projectFolder, sessionIdOf, teamZ
 import { checkLines, listLines, SHORT_TITLE_CHARS, waitingOnLines, type CheckReport, type CheckSection, type LeadDecisions, type TaskRow } from '../reports.ts';
 import { fiveHourWarnings } from '../five-hour-check.ts';
 import { idlePassWarnings } from '../idle-pass-check.ts';
+import { restoreLauncherWarnings } from '../launcher-record-check.ts';
 import { secretGuardOffWarnings } from '../secret-guard-off-check.ts';
 import { secretHookWarnings } from '../secret-hook-check.ts';
 import { ownerBatchOf, type BatchedTeam } from '../owner-batch.ts';
@@ -1002,8 +1003,10 @@ function withOverLimit(sections: readonly CheckSection[], fit: WeekFit): CheckSe
  * skill flags no session on the team owns, the own team's idle pass gone stale or failing (FLEET-STALE,
  * src/cli/idle-pass-check.ts), each of its repositories whose git hooks skip the secret scan (SECRET-HOOK,
  * src/cli/secret-hook-check.ts), each secret guard key or settings file that turns a secret check off
- * (SECRET-GUARD-OFF, src/cli/secret-guard-off-check.ts) and a five-hour window near full (FIVE-HOUR,
- * src/cli/five-hour-check.ts) are the unowned warnings, which go to the lead (src/cli/unowned.ts, T951).
+ * (SECRET-GUARD-OFF, src/cli/secret-guard-off-check.ts), a five-hour window near full (FIVE-HOUR,
+ * src/cli/five-hour-check.ts) and each part of this machine that starts the restore and starts a file gone or
+ * something install did not set up (RESTORE-DEAD, RESTORE-STRAY, src/cli/launcher-record-check.ts) are the unowned
+ * warnings, which go to the lead (src/cli/unowned.ts, T951).
  */
 export async function checkReport(args: ParsedArgs, runtime: CliRuntime): Promise<CheckReport> {
   const now = new Date(runtime.clock.now());
@@ -1057,8 +1060,9 @@ export async function checkReport(args: ParsedArgs, runtime: CliRuntime): Promis
   const settings = await teamSettingsScope(runtime, { paths: own.paths, config: own.config, project });
   const off = await secretGuardOffWarnings(runtime.files, own.config.secretGuard, settings);
   const fiveHour = await fiveHourWarnings(runtime.files, snapshotDirOf(own.config.budget, own.paths), own.config.budget, zone, now.getTime());
+  const restore = await restoreLauncherWarnings(runtime.files, resolveKitHome(runtime.env, runtime.userHome));
   const lead = own.config.roles.lead;
-  return { sections, scope, skills, skillsDir: own.paths.skills, hires, unowned: [...unowned, ...idle, ...hooks, ...off, ...fiveHour], lead, decisions };
+  return { sections, scope, skills, skillsDir: own.paths.skills, hires, unowned: [...unowned, ...idle, ...hooks, ...off, ...fiveHour, ...restore], lead, decisions };
 }
 
 /**
