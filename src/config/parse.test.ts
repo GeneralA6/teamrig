@@ -1354,10 +1354,12 @@ describe('parseConfig', () => {
         wip: { mode: 'warn', maxInProgress: 2 },
         expedite: { ownerP1: false },
         parkAfterDays: 7,
+        improvementsDay: 'mon',
       },
     });
     assert.deepEqual(set.issues, []);
     const { focus } = set.config;
+    assert.equal(focus.improvementsDay, 'mon');
     assert.deepEqual([focus.classes, focus.roadmapClass, focus.maintenanceClass, focus.defaultClass], [['Product', 'Upkeep', 'Tooling'], 'Product', 'Upkeep', 'Tooling']);
     assert.deepEqual(focus.allocation, { Product: 70, Upkeep: 20, Tooling: 10 });
     assert.deepEqual([focus.score.rankValues, focus.score.minSizePct, focus.score.maintenanceValue], [[30, 10], 0.1, DEFAULT_FOCUS.score.maintenanceValue]);
@@ -1382,6 +1384,7 @@ describe('parseConfig', () => {
       [{ leaderWaitMinutes: -1 }, 'focus.leaderWaitMinutes'],
       [{ parkAfterDays: 0 }, 'focus.parkAfterDays'],
       [{ plannedTargetPct: 101 }, 'focus.plannedTargetPct'],
+      [{ improvementsDay: 'someday' }, 'focus.improvementsDay'],
     ];
     for (const [focus, path] of cases) {
       const bad = parseConfig({ ...ROSTER, focus });
