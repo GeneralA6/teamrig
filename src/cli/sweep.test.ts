@@ -113,6 +113,48 @@ describe('teamrig sweep', () => {
     assert.equal(refused.code, EXIT.refused);
     assert.match(refused.stdout.join('\n'), /--tree is for the team's lead/);
   });
+
+  it('proposes the roadmap class for a task serving a ranked goal, itself and through a key result', async () => {
+    const kit = new CliHarness();
+    ok(await kit.run(['goal', 'add', 'A1', '--title', 'Open the shop', '--target', '2030-02-01', '--session', 'lead']));
+    ok(await kit.run(['goal', 'add', 'K1', '--title', 'First sale', '--target', '2030-02-01', '--parent', 'A1', '--session', 'lead']));
+    ok(await kit.run(['goal', 'rank', 'A1', '1', '--session', 'lead']));
+    await addTask(kit, 'Serves the goal', 'alpha', ['--goals', 'A1']);
+    await addTask(kit, 'Serves its key result', 'alpha', ['--goals', 'K1']);
+    const swept = await kit.run(['sweep']);
+    assert.deepEqual(rowsOf(swept.stdout).map((row) => [row.class, row.objective, row.confidence]), [['Roadmap', 'A1', 'high'], ['Roadmap', 'A1', 'high']]);
+  });
+
+  it('reads a title match with a ranked goal as a low-confidence roadmap row, and an unranked goal as none', async () => {
+    const kit = new CliHarness();
+    ok(await kit.run(['goal', 'add', 'A1', '--title', 'Checkout redesign live', '--target', '2030-02-01', '--session', 'lead']));
+    await addTask(kit, 'Polish the checkout redesign');
+    const unranked = await kit.run(['sweep']);
+    assert.deepEqual(rowsOf(unranked.stdout).map((row) => [row.class, row.objective]), [['Improvements', null]]);
+
+    ok(await kit.run(['goal', 'rank', 'A1', '1', '--session', 'lead']));
+    const ranked = await kit.run(['sweep']);
+    assert.deepEqual(rowsOf(ranked.stdout).map((row) => [row.class, row.objective, row.confidence]), [['Roadmap', 'A1', 'low']]);
+  });
+
+  it('reads the goals under register.goals free, which only leaves a task unchecked', async () => {
+    const kit = new CliHarness();
+    ok(await kit.run(['goal', 'add', 'A1', '--title', 'Open the shop', '--target', '2030-02-01', '--session', 'lead']));
+    ok(await kit.run(['goal', 'rank', 'A1', '1', '--session', 'lead']));
+    // Z9 holds no record, which only free takes: under checked this add would refuse.
+    await addTask(kit, 'Serves the goal', 'alpha', ['--goals', 'A1,Z9']);
+    const swept = await kit.run(['sweep']);
+    assert.deepEqual(rowsOf(swept.stdout).map((row) => [row.class, row.objective]), [['Roadmap', 'A1']]);
+  });
+
+  it('serves a goal the team above ranked, as its goals reach this team', async () => {
+    const kit = await treeHarness();
+    ok(await kit.run(['goal', 'add', 'A1', '--title', 'A goal above', '--target', '2030-02-01', '--session', 'lead']));
+    ok(await kit.run(['goal', 'rank', 'A1', '2', '--session', 'lead']));
+    await addTask(kit, 'One of web', 'lead', ['--goals', 'A1'], WEB);
+    const swept = await kit.run(['sweep', '--session', 'lead'], WEB);
+    assert.deepEqual(rowsOf(swept.stdout).map((row) => [row.team, row.class, row.objective, row.reason]), [['web', 'Roadmap', 'A1', 'serves ranked goal A1 (#2)']]);
+  });
 });
 
 describe('teamrig sweep apply', () => {

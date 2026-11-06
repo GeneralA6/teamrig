@@ -3,7 +3,6 @@ import type { TeamTree } from '../../config/tree.ts';
 import { formatAddress, type SessionAddress } from '../../core/address.ts';
 import type { SizeBase } from '../../register/events.ts';
 import type { Task } from '../../register/fold.ts';
-import type { Goal } from '../../register/goals.ts';
 import { ACTIVE_STATUSES } from '../../register/model.ts';
 import { RegisterPolicy, type Verdict } from '../../register/policy.ts';
 import type { WriteResult } from '../../register/register.ts';
@@ -18,7 +17,6 @@ import {
   tallyOf,
   tallyText,
   type SweepChanges,
-  type SweepGoal,
   type SweepInput,
   type SweepPlan,
   type SweepRow,
@@ -46,11 +44,6 @@ function neededIds(teams: readonly RolledTeam[]): ReadonlySet<string> {
   return new Set(tasks.flatMap((task) => needsOf(task)));
 }
 
-/** The goals as the sweep reads them; none is ranked before T2083's goal rank reaches the records. */
-function sweepGoalsOf(goals: ReadonlyMap<string, Goal>): ReadonlyMap<string, SweepGoal> {
-  return new Map([...goals].map(([tag, goal]) => [tag, { tag, title: goal.title, parent: goal.parent, rank: null }]));
-}
-
 /** What the rows of `rolled` are proposed from. */
 async function inputOf(runtime: CliRuntime, rolled: RolledTeam, needed: ReadonlySet<string>, now: number): Promise<SweepInput<Task>> {
   const { team, config, paths } = rolled;
@@ -60,7 +53,7 @@ async function inputOf(runtime: CliRuntime, rolled: RolledTeam, needed: Readonly
   return {
     team,
     focus: config.focus,
-    goals: sweepGoalsOf(goals),
+    goals,
     ownerSource: config.register.ownerSource,
     now,
     sizeOf: (task) => Math.max(task.size ?? (spent(task) > 0 ? spent(task) * 2 : defaultSizePct), minSizePct),
@@ -163,10 +156,9 @@ async function writerOf(runtime: CliRuntime, from: SessionAddress, name: string)
     const verdict = own ? policy.triage(task, by, changes, state, elsewhere, goalTags) : policy.triageFrom(task, changes, state, elsewhere, goalTags);
     return verdict.ok ? undefined : verdict.error;
   };
-  const sweepGoals = sweepGoalsOf(goals);
   return {
     team,
-    planOf: (row) => planSweepRow(row, state.tasks.get(row.id), sweepGoals, judge),
+    planOf: (row) => planSweepRow(row, state.tasks.get(row.id), goals, judge),
     write: (id, changes, sizeBase) => (own ? team.register.triage(by, id, changes, sizeBase) : team.register.triageFrom(by, id, changes, sizeBase)),
   };
 }
