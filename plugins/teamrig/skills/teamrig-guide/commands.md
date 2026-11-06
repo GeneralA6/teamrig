@@ -101,6 +101,11 @@ Flags:
 - `--met "<what shows it>"`: allowed only when setting `in-progress`: starts a task that a verifying task it needs
   still holds, naming what shows that task's proof exists. The start's line keeps it as `met`, apart from the
   evidence, and the verifying task's owner gets an inbox line to set it done or reopen it.
+- `--one-commit`: allowed only when setting `in-progress`: starts a one-commit fix that the WIP rule would hold. The
+  rule (`focus.wip.mode`: `refuse`, `warn` or `off`) holds a start of work outside `focus.roadmapClass` and
+  `focus.maintenanceClass` while its owner holds `focus.roadmapClass` work that can move (open or in progress, no wait,
+  every task it comes after finished), and any start past `focus.wip.maxInProgress` tasks in progress. A reopen is held
+  like a first start. An expedite task and a task the owner ordered are never held.
 - `--evidence <proof>`: required for `done`: a commit, test count, path or number that proves it. Evidence
   already on the task counts.
 - `--watch "<what a sighting shows>"`: allowed only with `done`, and needs evidence (given or already on the task)

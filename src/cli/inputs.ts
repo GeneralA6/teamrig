@@ -170,6 +170,11 @@ export function criticalOf(switches: ReadonlySet<string>): { readonly critical?:
   return switches.has('critical') ? { critical: true } : switches.has('not-critical') ? { critical: false } : {};
 }
 
+/** `--one-commit`: the start is a one-commit fix, which the WIP rule lets through; nothing without it. */
+export function oneCommitOf(switches: ReadonlySet<string>): { readonly oneCommit?: boolean } {
+  return switches.has('one-commit') ? { oneCommit: true } : {};
+}
+
 /** The goals `--goals` names: its tags, or none at all, said with `none` (T1730). */
 export interface GoalsSaid {
   readonly goals: readonly string[];
