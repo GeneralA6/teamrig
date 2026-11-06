@@ -1,10 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import { EMPTY_USAGE, UsageStore } from '../budget/store.ts';
 import { formatConfig } from '../config/load.ts';
 import { readEvents } from '../register/snapshot.ts';
 import { formatSweepRows, parseSweepFile, type SweepRow } from '../register/sweep.ts';
-import { APP, CliHarness, EVENTS_PATH, type CliResult } from '../testing/cli-harness.ts';
+import { APP, CliHarness, EVENTS_PATH, TEAM, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { SUB_TEAMS, teamConfigOf, teamEventsOf, treeHarness } from '../testing/team-tree.ts';
 import { EXIT } from './runtime.ts';
 
@@ -79,6 +80,21 @@ describe('teamrig sweep', () => {
     await addTask(kit, 'Sized by nobody');
     const swept = await kit.run(['sweep']);
     assert.deepEqual(rowsOf(swept.stdout).map((row) => [row.size, row.park]), [[2.5, false], [0.3, false]]);
+  });
+
+  it('sizes an unsized row with no spend by the done tasks of its class and type, as the plan ranks it (T2101)', async () => {
+    // A weekly limit of 1,000M W makes 1% of the week 10M W, so 2M W is 0.2%.
+    const kit = new CliHarness({ ...TEAM, budget: { weeklyLimitW: 1_000_000_000 } });
+    await addTask(kit, 'Done like it', 'alpha', ['--class', 'Maintenance']);
+    await addTask(kit, 'Unsized', 'alpha', ['--class', 'Maintenance']);
+    await addTask(kit, 'Other class');
+    const store = new UsageStore(kit.files, join(TEAM_HOME, 'state', 'usage'));
+    const { rev } = await store.load('alpha');
+    assert.equal(await store.save('alpha', { ...EMPTY_USAGE, byTask: { '2030-01-08': { T1: 2_000_000 } } }, rev), true);
+    ok(await kit.run(['set', 'T1', '--status', 'in-progress', '--session', 'alpha']));
+    ok(await kit.run(['set', 'T1', '--status', 'done', '--note', 'shipped', '--evidence', 'shipped', '--skill', 'none', '--followups', 'none', '--session', 'alpha']));
+    const swept = await kit.run(['sweep']);
+    assert.deepEqual(rowsOf(swept.stdout).map((row) => [row.id, row.size]), [['T2', 0.2], ['T3', 0.3]]);
   });
 
   it('keeps a stored class as the row says, whatever the rules would say', async () => {

@@ -6,6 +6,7 @@ import type { Task } from '../../register/fold.ts';
 import { ACTIVE_STATUSES } from '../../register/model.ts';
 import { RegisterPolicy, type Verdict } from '../../register/policy.ts';
 import type { WriteResult } from '../../register/register.ts';
+import { sizePctOf } from '../../register/score.ts';
 import {
   countLines,
   formatSweepRows,
@@ -27,7 +28,7 @@ import { callerOf } from '../inputs.ts';
 import { findTeam, openKit, sessionIdOf } from '../kit.ts';
 import type { RolledTeam } from '../roll-up.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { readSizeBase, readTaskSpend } from '../task-spend.ts';
+import { readSizeBase } from '../task-spend.ts';
 import { KitTreeGoals } from '../tree-goals.ts';
 import { readRegisters, reportRotation, warnDamage } from './register.ts';
 import { teamOf, type Team } from './register-team.ts';
@@ -46,17 +47,15 @@ function neededIds(teams: readonly RolledTeam[]): ReadonlySet<string> {
 
 /** What the rows of `rolled` are proposed from. */
 async function inputOf(runtime: CliRuntime, rolled: RolledTeam, needed: ReadonlySet<string>, now: number): Promise<SweepInput<Task>> {
-  const { team, config, paths } = rolled;
-  const { defaultSizePct, minSizePct } = config.focus.score;
-  const [goals, spentOf] = await Promise.all([new KitTreeGoals(runtime, paths, config).all(), readTaskSpend(runtime, paths, config, now)]);
-  const spent = (task: Task): number => spentOf?.(task) ?? 0;
+  const { team, config, paths, ranking } = rolled;
   return {
     team,
     focus: config.focus,
-    goals,
+    goals: await new KitTreeGoals(runtime, paths, config).all(),
     ownerSource: config.register.ownerSource,
     now,
-    sizeOf: (task) => Math.max(task.size ?? (spent(task) > 0 ? spent(task) * 2 : defaultSizePct), minSizePct),
+    // The ranking's own chain, so a row proposes the size the plan's score divides by.
+    sizeOf: (task) => sizePctOf(ranking.sizingOf(task), config.focus.score),
     needed: (id) => needed.has(id),
   };
 }
