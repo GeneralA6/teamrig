@@ -204,13 +204,16 @@ Three shapes, split by the list:
   too. A priority does not place a task by itself: a `p0` goes ahead of every score, and the priority of a task the
   owner asked for adds to its score.
 - **Plan order**: by the first of these on which two tasks differ: pinned (the one task per owner that a leader above
-  it pinned with `update --pin`, above every other key); band; score (the highest first); in progress (a started
+  it pinned with `update --pin`, above every other key); band; can move (a task with an `after` or a task wait not
+  finished goes after every task of its band that can move, whatever its score; a wait on a person or a time does
+  not count); score (the highest first); in progress (a started
   task stays on top at the same score); effective due (the earliest first, undated last); what it unblocks (the best
   priority among the active tasks that need it, then the most of them); in the week plan in force; size (the smallest
   first, unsized last); then id (the oldest first). `list`, `check` and `plan` all use it, and a session works its
   list in that order. A `list` row shows the task's class and score after its status (`T4 open, Roadmap, score 6.67,
   p2, ...`; a done or dropped row shows the class alone) and ends with the key that put it ahead of the next row:
-  `· ahead: expedite`, `· ahead: score 21.3 (A1 #1)` (with the ranked goal it serves), `· ahead: in progress`,
+  `· ahead: expedite`, `· ahead: can move`, `· ahead: score 21.3 (A1 #1)` (with the ranked goal it serves),
+  `· ahead: in progress`,
   `· ahead: due`, `· ahead: unblocks T9 p1 +2` (the best task that needs it, its priority, how many more),
   `· ahead: in week 10-19` or `· ahead: size 0.5%`; no reason means the pin, a band the row's class shows, or the id
   decided.
@@ -220,9 +223,11 @@ Three shapes, split by the list:
 - **Score**: what a delay costs over the share of the week the task takes, so the most value per unit of work comes
   first [focus.score]. The cost adds its value (Roadmap by the best rank of the goals it serves, Maintenance more for
   a bug or a critical mark, Improvements least), its urgency (overdue or due soon), a share of the best value among
-  the tasks that need it and, on a task the owner asked for, its priority. The size is `--size`; else twice what the
-  task has spent so far; else the median spend of finished tasks of its class and type from the last 14 days; else
-  `focus.score.defaultSizePct`, and never under `focus.score.minSizePct`, so a tiny task cannot outrank everything.
+  the tasks that need it and, on a task the owner asked for, its priority. The size is the work left, so spending
+  never sinks a task: `--size`, else the median spend of finished tasks of its class and type from the last 14 days,
+  else `focus.score.defaultSizePct`, minus what the task has spent (a `--size` set on a started task was what was left
+  then, so only the spend since it). It is never under `focus.score.minSizePct`, so a tiny task cannot outrank
+  everything, and a task past its estimate sits at that floor.
 - **Title**: one line, at most 140 characters [register.maxTitle]. A second active task with the same title
   (ignoring case and extra spaces) is refused.
 - **Description**: what the task is and why, in plain words for a person who has not seen the ask; newlines are

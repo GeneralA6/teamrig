@@ -468,7 +468,7 @@ APPROVED T1 waiting, p1, owner web, from web | Fix the broken login form (waitin
 
 ### teamrig list
 
-Lists tasks, most valuable first, in plan order: pinned, band, score, then in progress, effective due date (undated last), what
+Lists tasks, most valuable first, in plan order: pinned, band, can move, score, then in progress, effective due date (undated last), what
 it unblocks, in the week plan in force, size, then id (tasks.md, Plan order). By default only
 active tasks (open, in progress, verifying, waiting), in a short form within 3,000 characters: a count per owner
 when there are several, then one short row per task (its title cut to 60 characters) and `+N more` for the rows
@@ -507,7 +507,7 @@ A short row reads: id, status, class and score (a done or dropped task shows the
 that needs it), the tasks it comes after (`after T5`), then the title after `|`, what a waiting task waits for
 and, when active tasks of other sessions need it, the first of them: `· needed by T9 (api, due 10-17)` (`+1` for
 each other; the due left out when the row shows it already), then why it sorts ahead of the next row:
-`· ahead: due` (`expedite`, `score 21.3 (A1 #1)`, `in progress`, `due`, `unblocks T9 p1 +2`, `in week 10-19` or
+`· ahead: due` (`expedite`, `can move`, `score 21.3 (A1 #1)`, `in progress`, `due`, `unblocks T9 p1 +2`, `in week 10-19` or
 `size 0.5%`; nothing when the pin, a band the class shows or the id decided). With `--all`, whose rows end the same way:
 
 ```sh

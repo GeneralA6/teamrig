@@ -24,10 +24,11 @@ teamrig plan                                       # the week in force, grouped 
 
 - What goes first: `list`, `plan` and `start` rank by band, then score, and each row shows its class and score. A
   `p0`, a Maintenance task marked critical and a `p1` you asked for go ahead of every score, then Roadmap and
-  Maintenance, then the rest. The score is what a delay costs (the value of the class and the best goal rank, how
-  near the due date is, what the task unblocks, your own order) over its size, so a small valuable task goes ahead of
-  a large one. A task with no size is measured by what it has spent, or by finished tasks like it. `focus.score` and
-  `focus.expedite` hold the numbers.
+  Maintenance, then the rest. Within a band, a task that cannot move yet (it comes after, or waits on, a task not
+  finished) goes after the ones that can. The score is what a delay costs (the value of the class and the best goal
+  rank, how near the due date is, what the task unblocks, your own order) over its size, so a small valuable task goes
+  ahead of a large one. The size is the work left: a task with no size is measured by finished tasks like it, and what
+  a started task has spent comes off, so spending never sinks it. `focus.score` and `focus.expedite` hold the numbers.
 - What fits: `plan` sums the sized to-do tasks (open, in progress or waiting; a verifying task's spend is already
   used) in plan order against what is left of `budget.targetPct` (99.5% by default) after the week's use, read
   from the newest status line: `fits: p1 12% · p2 8.5% (left 31% of the week)`. It names the first task past that
