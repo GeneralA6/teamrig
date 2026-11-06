@@ -1515,7 +1515,7 @@
           "default": 20
         },
         "compactCeilingTokens": {
-          "description": "While a session's handover is asked for or written, the plugin's mod stops Claude Code's own compaction (trigger auto) of its main conversation as long as its context, as Claude Code estimates it, is under this many tokens: the /clear at the turn's end replaces it. Past it a compaction goes through; /compact and a subagent's own compaction are never stopped. 0: never stopped. It also bounds an open owner meeting (the lead's daily one, or a booked one from its meeting start M<n>), which holds the refresh of each session in it only under it; 0 holds it until the meeting ends.",
+          "description": "While a session's handover is asked for or written, the plugin's mod stops Claude Code's own compaction (trigger auto) of its main conversation as long as its context, as Claude Code estimates it, is under this many tokens: the /clear at the turn's end replaces it. Where a managed mod runs first and sends the compaction on past the plugin's mod, the classic PreCompact hook stops it instead, on the context it estimates from the transcript and a 200,000-token window. Past it a compaction goes through; /compact and a subagent's own compaction are never stopped. 0: never stopped. It also bounds an open owner meeting (the lead's daily one, or a booked one from its meeting start M<n>), which holds the refresh of each session in it only under it; 0 holds it until the meeting ends.",
           "type": "integer",
           "minimum": 0,
           "maximum": 10000000,
