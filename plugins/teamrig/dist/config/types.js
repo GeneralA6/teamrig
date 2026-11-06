@@ -127,6 +127,11 @@ export const IDLE_MODES = ['off', 'dry-run', 'on'];
 export function isIdleMode(value) {
     return IDLE_MODES.some((mode) => mode === value);
 }
+/** What the WIP rule does to a start it holds (`focus.wip.mode`): refuse it, let it through with a warning, or nothing. */
+export const WIP_MODES = ['refuse', 'warn', 'off'];
+export function isWipMode(value) {
+    return WIP_MODES.some((mode) => mode === value);
+}
 /** Claude Code's effort levels, lowest first: what `claude --effort` and `/effort` take. */
 export const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'];
 export function isEffortLevel(value) {

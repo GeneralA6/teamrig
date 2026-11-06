@@ -202,6 +202,9 @@ export function formatTask(task, team, tree) {
     else if (task.noGoal) {
         parts.push('goals none');
     }
+    if (task.workClass !== null) {
+        parts.push(`class ${task.workClass}`);
+    }
     return `${parts.join(', ')} | ${task.title}${statusNote(task, tree)}${neededByText(task, tree)}`;
 }
 /**
@@ -237,7 +240,7 @@ const HISTORY_DESCRIPTION_CHARS = 80;
 /**
  * One field of an update, as `show` prints it: a priority reads `p2`, a list joins with commas (empty goals read
  * `none`), and a description is quoted on one line, cut to HISTORY_DESCRIPTION_CHARS (`none` when cleared): `show`
- * prints the whole one above. A due time reads in the team's `zone`.
+ * prints the whole one above. A cleared size or work class reads `none`. A due time reads in the team's `zone`.
  */
 function changeText(name, value, zone) {
     if (name === 'due' && typeof value === 'string') {
@@ -251,6 +254,9 @@ function changeText(name, value, zone) {
     }
     if (name === 'size') {
         return typeof value === 'number' ? sizeText(value) : 'none';
+    }
+    if (name === 'workClass') {
+        return typeof value === 'string' ? value : 'none';
     }
     if (name === 'goals' && Array.isArray(value) && value.length === 0) {
         return 'none';
@@ -277,6 +283,7 @@ export function formatEvent(event, zone) {
                 task.size === null ? undefined : `size=${sizeText(task.size)}`,
                 task.type === null ? undefined : `type=${task.type}`,
                 task.critical ? 'critical=true' : undefined,
+                task.workClass === null ? undefined : `workClass=${task.workClass}`,
             ]
                 .filter((part) => part !== undefined)
                 .join(' ');

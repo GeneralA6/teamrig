@@ -38,5 +38,10 @@ export const GITHUB_SOURCE = 'github';
 export function priorityText(priority) {
     return `p${priority}`;
 }
+/**
+ * How a work class is spelled (`Roadmap`, `Tech debt`; T2076): a letter, then up to 31 letters, digits, spaces, `_` or
+ * `-`. Kept here so the register's parse and the config's `focus.classes` share it.
+ */
+export const WORK_CLASS_NAME = /^[A-Za-z][A-Za-z0-9 _-]{0,31}$/;
 /** Task ids are `T` and a positive integer, allocated in order by the register. */
 export const TASK_ID = /^T[1-9]\d*$/;
