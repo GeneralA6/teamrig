@@ -6,14 +6,18 @@ import type { Task } from './fold.ts';
 import {
   changesOf,
   changesText,
+  countLines,
   formatSweepRows,
   isSweepRow,
   parseSweepFile,
+  planLine,
   planSweepRow,
   proposalOf,
   proposeRow,
+  refusedPlan,
   sweepCounts,
   tallyOf,
+  tallyText,
   titleWords,
   wouldPark,
   type SweepFocus,
@@ -393,14 +397,68 @@ describe('planSweepRow', () => {
     assert.deepEqual(planSweepRow(row(), task, GOALS, allow), { row: row(), action: 'change', changes: { workClass: 'Roadmap', goals: ['G1'], size: 0.5 } });
   });
 
-  it('hands the judge the changes and refuses with its reason', () => {
+  it('hands the judge the task and the changes and refuses with its reason', () => {
     const seen: unknown[] = [];
-    const plan = planSweepRow(row(), task, GOALS, (changes) => {
-      seen.push(changes);
+    const plan = planSweepRow(row(), task, GOALS, (judged, changes) => {
+      seen.push(judged, changes);
       return 'not your task';
     });
     assert.deepEqual(plan, { row: row(), action: 'refused', reason: 'not your task' });
-    assert.deepEqual(seen, [{ workClass: 'Roadmap', goals: ['G1'], size: 0.5 }]);
+    assert.deepEqual(seen, [task, { workClass: 'Roadmap', goals: ['G1'], size: 0.5 }]);
+  });
+});
+
+describe('refusedPlan', () => {
+  it('refuses a confirmed row with the reason', () => {
+    assert.deepEqual(refusedPlan(row(), 'closed'), { row: row(), action: 'refused', reason: 'closed' });
+  });
+
+  it('counts a row nobody confirmed as unconfirmed, not as a refusal', () => {
+    assert.deepEqual(refusedPlan(row({ confirm: '' }), 'closed'), { row: row({ confirm: '' }), action: 'unconfirmed' });
+  });
+});
+
+describe('countLines', () => {
+  it('prints a line per team, its classes by name', () => {
+    const rows = [
+      { team: 'beta', class: 'Roadmap' },
+      { team: 'alpha', class: 'Roadmap' },
+      { team: 'alpha', class: 'Improvements' },
+      { team: 'alpha', class: 'Improvements' },
+    ];
+    assert.deepEqual(countLines(rows), ['alpha: Improvements 2, Roadmap 1', 'beta: Roadmap 1']);
+  });
+
+  it('prints nothing for no rows', () => {
+    assert.deepEqual(countLines([]), []);
+  });
+});
+
+describe('tallyText', () => {
+  it('prints the three counts a clean run holds', () => {
+    assert.equal(tallyText({ inserted: 0, changed: 2, unchanged: 1, unconfirmed: 0, refused: 0 }), 'inserted 0, changed 2, unchanged 1');
+  });
+
+  it('adds the rows left and refused when there are some', () => {
+    assert.equal(tallyText({ inserted: 0, changed: 0, unchanged: 0, unconfirmed: 3, refused: 1 }), 'inserted 0, changed 0, unchanged 0, unconfirmed 3, refused 1');
+  });
+});
+
+describe('planLine', () => {
+  const changed: SweepPlan = { row: row(), action: 'change', changes: { size: 1 } };
+
+  it('says a dry run would change what a write changed', () => {
+    assert.equal(planLine(changed, false), 'WOULD CHANGE alpha/T1: size 1');
+    assert.equal(planLine(changed, true), 'CHANGED alpha/T1: size 1');
+  });
+
+  it('names a refused row and why, either way', () => {
+    assert.equal(planLine({ row: row(), action: 'refused', reason: 'no' }, true), 'REFUSED alpha/T1: no');
+  });
+
+  it('gives a row left alone no line', () => {
+    assert.equal(planLine({ row: row(), action: 'unchanged' }, true), undefined);
+    assert.equal(planLine({ row: row(), action: 'unconfirmed' }, false), undefined);
   });
 });
 
