@@ -11,7 +11,7 @@ describe('runCli: a task work class, --class on add and update (T2076)', () => {
     const added = await kit.run([...ADD, '--class', 'Roadmap', '--session', 'alpha']);
     assert.equal(added.code, EXIT.ok, added.stderr.join('\n'));
     const shown = await kit.run(['show', 'T1', '--session', 'alpha']);
-    assert.match(shown.stdout.join('\n'), /, class Roadmap \| Add a health check/);
+    assert.match(shown.stdout.join('\n'), /^T1 open, Roadmap, score 10, p2, .* \| Add a health check/m);
     assert.match(shown.stdout.join('\n'), / workClass=Roadmap/);
 
     const refused = await kit.run(['add', '--title', 'Write the guide', '--description', 'what and why', '--priority', 'p2', '--class', 'Chores', '--session', 'alpha']);
