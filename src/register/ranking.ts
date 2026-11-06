@@ -83,11 +83,16 @@ function likeMedians(tasks: Iterable<LikeTask>, focus: Pick<FocusConfig, 'defaul
   return medians;
 }
 
+/** A read of a task's spend: from its size base, or its whole metered cost with a null base. */
+export type SpendKey = Pick<Task, 'id' | 'sizeBase'>;
+
 /**
- * Sizing by a task's size, its spend, and the spend of like tasks, each in percent of the week. `spentOf` gives a task's
- * whole metered cost, 0 when none is known. The medians are read once here, not per task.
+ * Sizing by a task's size, its spend, and the spend of like tasks, each in percent of the week. `spentOf` gives what a
+ * task cost past a base, 0 when none is known. A sized task counts from its base, as a size set on a started task is
+ * what was left then; a like task counts in full, as it is measured by all it took. The medians are read once here, not
+ * per task.
  */
-export function likeSizing(tasks: Iterable<LikeTask>, focus: Pick<FocusConfig, 'defaultClass'>, spentOf: (id: string) => number, now: number): Sizing {
-  const medians = likeMedians(tasks, focus, spentOf, now);
-  return (task) => ({ size: task.size ?? null, spentPct: spentOf(task.id), likeMedianPct: medians.get(likeKey(task, focus)) });
+export function likeSizing(tasks: Iterable<LikeTask>, focus: Pick<FocusConfig, 'defaultClass'>, spentOf: (task: SpendKey) => number, now: number): Sizing {
+  const medians = likeMedians(tasks, focus, (id) => spentOf({ id, sizeBase: null }), now);
+  return (task) => ({ size: task.size ?? null, spentPct: spentOf({ id: task.id, sizeBase: task.sizeBase ?? null }), likeMedianPct: medians.get(likeKey(task, focus)) });
 }

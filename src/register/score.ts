@@ -20,10 +20,10 @@ export interface ValueFacts {
   readonly critical: boolean;
 }
 
-/** What is known of a task's size, each in percent of the week; the first that holds a number sizes it. */
+/** What is known of a task's size, each in percent of the week. */
 export interface SizeFacts {
   readonly size: number | null;
-  /** What it spent so far. */
+  /** What it spent of that size: since `size` was set, as a size is what was left then; with no size, all it spent. */
   readonly spentPct: number;
   /** The median spend of like tasks finished lately; undefined: none finished. */
   readonly likeMedianPct: number | undefined;
@@ -92,13 +92,13 @@ export function ownerOrderOf(facts: OrderFacts, score: Pick<FocusScoreConfig, 'o
 }
 
 /**
- * The share of the week a score divides by: the task's size; else twice what it spent, a task half done by the only
- * measure there is; else what like tasks took; else the default; never under the floor, so a tiny task cannot outrank
- * everything.
+ * The share of the week a score divides by: the work left, as WSJF ranks what a delay costs over what remains to do. That
+ * is the task's size, else what like tasks took, else the default, less what it spent, so spending lifts a task and can
+ * never sink it under the tasks that wait on it (T2109); never under the floor, so a tiny task cannot outrank everything.
  */
 export function sizePctOf(facts: SizeFacts, score: Pick<FocusScoreConfig, 'defaultSizePct' | 'minSizePct'>): number {
-  const measured = facts.spentPct > 0 ? facts.spentPct * 2 : facts.likeMedianPct;
-  return Math.max(facts.size ?? measured ?? score.defaultSizePct, score.minSizePct);
+  const whole = facts.size ?? facts.likeMedianPct ?? score.defaultSizePct;
+  return Math.max(whole - facts.spentPct, score.minSizePct);
 }
 
 /**

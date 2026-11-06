@@ -5,7 +5,7 @@ import { MS_PER_DAY } from '../core/time.ts';
 import { TimeZone } from '../core/zone.ts';
 import { testTask } from '../testing/task.ts';
 import type { Task } from './fold.ts';
-import { likeSizing, ownSizing, treeRanking, type Sizing } from './ranking.ts';
+import { likeSizing, ownSizing, treeRanking, type Sizing, type SpendKey } from './ranking.ts';
 import { TaskTree } from './tree.ts';
 
 const NOW = Date.parse('2030-01-20T10:00:00.000Z');
@@ -16,7 +16,7 @@ function done(id: string, daysAgo: number, fields: Partial<Task> = {}): Task {
 }
 
 function sizingOver(tasks: readonly Task[], spends: Readonly<Record<string, number>>): Sizing {
-  return likeSizing(tasks, DEFAULT_FOCUS, (id) => spends[id] ?? 0, NOW);
+  return likeSizing(tasks, DEFAULT_FOCUS, ({ id }) => spends[id] ?? 0, NOW);
 }
 
 const LIKE = testTask({ id: 'T9', workClass: 'Roadmap', type: 'task' });
@@ -74,6 +74,27 @@ describe('likeSizing (T2076)', () => {
     assert.deepEqual(sizingOver([], { T9: 0.4 })(testTask({ id: 'T9', size: 2 })), { size: 2, spentPct: 0.4, likeMedianPct: undefined });
   });
 
+  it("reads a task's own spend from its size base, and a like task's whole cost (T2109)", () => {
+    const sizeBase = { day: '2030-01-19', w: 5 };
+    const asked: SpendKey[] = [];
+    const sizing = likeSizing([done('T1', 1, { sizeBase })], DEFAULT_FOCUS, (task) => {
+      asked.push(task);
+      return 1;
+    }, NOW);
+    sizing(testTask({ id: 'T9', size: 2, sizeBase }));
+    sizing(testTask({ id: 'T8' }));
+    assert.deepEqual(asked, [{ id: 'T1', sizeBase: null }, { id: 'T9', sizeBase }, { id: 'T8', sizeBase: null }]);
+  });
+
+  it('reads a row with no size base from its whole cost', () => {
+    const asked: SpendKey[] = [];
+    likeSizing([], DEFAULT_FOCUS, (task) => {
+      asked.push(task);
+      return 0;
+    }, NOW)({ id: 'T2', status: 'open', owner: 'alpha', priority: 2, due: null, after: [], waits: [] });
+    assert.deepEqual(asked, [{ id: 'T2', sizeBase: null }]);
+  });
+
   it('is the median spend of done tasks of the same class and type', () => {
     const tasks = [done('T1', 1), done('T2', 2), done('T3', 3)];
     assert.equal(sizingOver(tasks, { T1: 0.1, T2: 0.9, T3: 0.2 })(LIKE).likeMedianPct, 0.2);
@@ -110,7 +131,7 @@ describe('likeSizing (T2076)', () => {
 
   it("reads each like task's spend once, not once per task sized", () => {
     const reads: string[] = [];
-    const sizing = likeSizing([done('T1', 1)], DEFAULT_FOCUS, (id) => {
+    const sizing = likeSizing([done('T1', 1)], DEFAULT_FOCUS, ({ id }) => {
       reads.push(id);
       return 1;
     }, NOW);

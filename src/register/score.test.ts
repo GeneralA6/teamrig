@@ -93,17 +93,23 @@ describe('ownerOrderOf', () => {
 });
 
 describe('sizePctOf', () => {
-  it('takes the first known of size, twice the spend, the like median and the default', () => {
-    assert.equal(sizePctOf({ size: 2, spentPct: 5, likeMedianPct: 7 }, FOCUS.score), 2);
-    assert.equal(sizePctOf({ size: null, spentPct: 5, likeMedianPct: 7 }, FOCUS.score), 10);
+  it('takes the first known of size, the like median and the default', () => {
+    assert.equal(sizePctOf({ size: 2, spentPct: 0, likeMedianPct: 7 }, FOCUS.score), 2);
     assert.equal(sizePctOf({ size: null, spentPct: 0, likeMedianPct: 7 }, FOCUS.score), 7);
     assert.equal(sizePctOf({ size: null, spentPct: 0, likeMedianPct: undefined }, FOCUS.score), 0.3);
   });
 
-  it('holds every source to the floor', () => {
+  it('takes what the task spent off each of them, as a started task ranks by the work left', () => {
+    assert.equal(sizePctOf({ size: 2, spentPct: 0.5, likeMedianPct: 7 }, FOCUS.score), 1.5);
+    assert.equal(sizePctOf({ size: null, spentPct: 5, likeMedianPct: 7 }, FOCUS.score), 2);
+    assert.equal(sizePctOf({ size: null, spentPct: 0.25, likeMedianPct: undefined }, FOCUS.score), 0.05);
+  });
+
+  it('holds every source to the floor, a task past its size among them', () => {
     assert.equal(sizePctOf({ size: 0, spentPct: 0, likeMedianPct: undefined }, FOCUS.score), 0.05);
-    assert.equal(sizePctOf({ size: null, spentPct: 0.01, likeMedianPct: undefined }, FOCUS.score), 0.05);
     assert.equal(sizePctOf({ size: null, spentPct: 0, likeMedianPct: 0.01 }, FOCUS.score), 0.05);
+    assert.equal(sizePctOf({ size: 1, spentPct: 3, likeMedianPct: undefined }, FOCUS.score), 0.05);
+    assert.equal(sizePctOf({ size: null, spentPct: 3, likeMedianPct: undefined }, FOCUS.score), 0.05);
   });
 });
 
@@ -155,6 +161,11 @@ describe('scoreOf', () => {
   it('scores a task of no size at the default and a zero size at the floor, never dividing by zero', () => {
     assert.equal(scoreOf(facts({ sizing: { size: null, spentPct: 0, likeMedianPct: undefined } }), FOCUS, NOW).score, 10);
     assert.equal(scoreOf(facts({ sizing: { size: 0, spentPct: 0, likeMedianPct: undefined } }), FOCUS, NOW).score, 60);
+  });
+
+  it('never lets a task fall as it spends: its score rises to the floor and stays there (T2109)', () => {
+    const spent = (spentPct: number) => scoreOf(facts({ rank: 1, sizing: { size: null, spentPct, likeMedianPct: 2 } }), FOCUS, NOW).score;
+    assert.deepEqual([0, 1, 1.5, 1.95, 2, 40].map(spent), [10, 20, 40, 400, 400, 400]);
   });
 
   it('ranks a small low-value task above a large high-value one by value per size', () => {
