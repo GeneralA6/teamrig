@@ -9,6 +9,7 @@ import { indexMarks } from '../../inbox/marks.ts';
 import { JsonlMarkLog } from '../../inbox/store.ts';
 import { noPositionals, UsageError, type ParsedArgs } from '../args.ts';
 import { openTeamKit, requireConfig, rosterOf, type Kit } from '../kit.ts';
+import { logRollupRun } from '../rollup-start.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree, type KitTree } from '../tree.ts';
 
@@ -84,6 +85,9 @@ export async function rollup(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   const range = await rangeOf(args, runtime, kit, formatUtcDay(new Date(now)));
   if (range === undefined) {
     runtime.out.stdout(`UP TO DATE ${kit.paths.rollup}: nothing to roll up`);
+    if (apply) {
+      await logRollupRun(runtime, kit, now, 'UP TO DATE: nothing to roll up');
+    }
     return EXIT.ok;
   }
   const team = kit.paths.team;
@@ -101,6 +105,7 @@ export async function rollup(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     const written = await applyPlans(runtime.files, plans, rewrite);
     const kept = rewrite || changed === 0 ? '' : `; ${changed} changed left as they are (add --rewrite to replace them)`;
     runtime.out.stdout(`WROTE ${kit.paths.rollup}, ${days}: ${counts}; ${written.length} written${kept}`);
+    await logRollupRun(runtime, kit, now, `WROTE ${days}: ${counts}; ${written.length} written${kept}`);
   } else {
     runtime.out.stdout(`PREVIEW ${kit.paths.rollup}, ${days}: ${counts}; nothing written (add --apply to write)`);
   }

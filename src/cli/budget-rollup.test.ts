@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { parseRollup, rollupFileName, ROLLUP_IN_STATE, type TeamDayRollup } from '../budget/rollup-file.ts';
 import { MS_PER_DAY } from '../core/time.ts';
 import { CliHarness, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
@@ -21,6 +21,8 @@ const WEB_PATH = join(PROJECT, `${WEB_TAB}.jsonl`);
 function dayPath(day: string, home = TEAM_HOME): string {
   return join(home, 'state', ...ROLLUP_IN_STATE, rollupFileName(day));
 }
+
+const RUN_LOG = join(TEAM_HOME, 'state', ...ROLLUP_IN_STATE, 'runs.log');
 
 function titled(title: string): string {
   return JSON.stringify({ type: 'custom-title', customTitle: title, sessionId: 'x' });
@@ -91,6 +93,27 @@ describe('budget rollup', () => {
     const lines = ok(await kit.run(['budget', 'rollup', '--apply'], { transcripts }));
     assert.match(lines[0] ?? '', /^UP TO DATE .*rollup: nothing to roll up$/);
     assert.equal(kit.files.get(dayPath(YESTERDAY)), written);
+  });
+
+  it('logs what an applied run did, an up-to-date one too, and nothing for a preview', async () => {
+    const kit = new CliHarness();
+    const transcripts = source(kit);
+    ok(await kit.run(['budget', 'rollup'], { transcripts }));
+    assert.equal(kit.files.get(RUN_LOG), undefined);
+    ok(await kit.run(['budget', 'rollup', '--apply'], { transcripts }));
+    ok(await kit.run(['budget', 'rollup', '--apply'], { transcripts }));
+    assert.equal(
+      kit.files.get(RUN_LOG),
+      `2030-01-08T10:00:00.000Z WROTE ${YESTERDAY} to ${YESTERDAY}: 1 inserted, 0 unchanged, 0 changed; 1 written\n2030-01-08T10:00:00.000Z UP TO DATE: nothing to roll up\n`,
+    );
+  });
+
+  it('takes the day start marker and the run log for no day on disk', async () => {
+    const kit = new CliHarness();
+    const transcripts = source(kit);
+    await kit.files.write(join(dirname(RUN_LOG), `${YESTERDAY}.started`), 'alpha\n');
+    await kit.files.write(RUN_LOG, 'an earlier run\n');
+    assert.match(ok(await kit.run(['budget', 'rollup', '--apply'], { transcripts }))[0] ?? '', /^WROTE /);
   });
 
   it('goes on from the day after the newest on disk, so a missed day is not lost', async () => {
