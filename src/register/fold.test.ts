@@ -90,6 +90,49 @@ describe('foldEvents: when a task took its status and priority', () => {
   });
 });
 
+describe('foldEvents: when a task last asked for something new (T2089)', () => {
+  const lead: WaitReason = { kind: 'approval', who: 'lead' };
+  const other: WaitReason = { kind: 'task', id: 'T5' };
+  const verdict = (hour: number): RegisterEvent => ({ v: EVENT_VERSION, type: 'update', id: 'T1', at: at(hour), by: 'lead', changes: {}, note: null, verdict: 'approved' });
+  const waitsNow = (hour: number, waits: readonly WaitReason[]): RegisterEvent => ({ v: EVENT_VERSION, type: 'update', id: 'T1', at: at(hour), by: 'lead', changes: {}, note: null, waits });
+
+  it('starts at the creation', () => {
+    assert.equal(taskAfter([create(9)]).waitsAt, at(9));
+  });
+
+  it('moves on a status naming its first wait', () => {
+    assert.equal(taskAfter([create(9), status(10, 'waiting', [lead])]).waitsAt, at(10));
+  });
+
+  it('moves on a wait added under the same status, which statusAt cannot see', () => {
+    const task = taskAfter([create(9), status(10, 'waiting', [other]), status(12, 'waiting', [other, lead])]);
+    assert.deepEqual([task.statusAt, task.waitsAt], [at(10), at(12)]);
+  });
+
+  it('moves on an update that adds a wait, as a Later does', () => {
+    assert.equal(taskAfter([create(9), status(10, 'waiting', [other]), waitsNow(12, [other, lead])]).waitsAt, at(12));
+  });
+
+  it('holds through the same waits restated, a wait dropped, and an update that names none', () => {
+    assert.equal(taskAfter([create(9), status(10, 'waiting', [lead]), status(12, 'waiting', [lead])]).waitsAt, at(10));
+    assert.equal(taskAfter([create(9), status(10, 'waiting', [lead, other]), status(12, 'waiting', [lead])]).waitsAt, at(10));
+    assert.equal(taskAfter([create(9), status(10, 'waiting', [lead, other]), waitsNow(12, [lead])]).waitsAt, at(10));
+    assert.equal(taskAfter([create(9), status(10, 'waiting', [lead]), update(12, { priority: 1 })]).waitsAt, at(10));
+  });
+
+  it('moves when a status names the waits again after an answer: the answer is gone, so it asks anew', () => {
+    assert.equal(taskAfter([create(9), status(10, 'waiting', [lead]), verdict(11), status(14, 'waiting', [lead])]).waitsAt, at(14));
+  });
+
+  it('holds through an update after an answer, which clears no answer', () => {
+    assert.equal(taskAfter([create(9), status(10, 'waiting', [lead]), verdict(11), update(14, { priority: 1 })]).waitsAt, at(10));
+  });
+
+  it('moves again on a wait named after the task left waiting', () => {
+    assert.equal(taskAfter([create(9), status(10, 'waiting', [lead]), status(11, 'in-progress'), status(14, 'waiting', [lead])]).waitsAt, at(14));
+  });
+});
+
 describe('foldEvents: the sighting a done task is watched for (T1306)', () => {
   const watched: RegisterEvent = { v: EVENT_VERSION, type: 'status', id: 'T1', at: at(10), by: 'alpha', status: 'done', note: 'n', evidence: 'abc1234', skill: 'none', watch: 'the row shows' };
 

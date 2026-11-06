@@ -61,6 +61,7 @@ describe('golden register logs', () => {
       updatedBy: 'alpha',
       assignedAt: '2030-01-07T09:00:00.000Z',
       statusAt: '2030-01-08T16:00:00.000Z',
+      waitsAt: '2030-01-07T09:00:00.000Z',
       priorityAt: '2030-01-07T09:00:00.000Z',
       ownerSeenAt: '2030-01-08T16:00:00.000Z',
     });
