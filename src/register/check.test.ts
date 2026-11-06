@@ -5,7 +5,7 @@ import { TEST_CARD, TEST_OWNER_CARD } from '../testing/card.ts';
 import { testConfig } from '../testing/config.ts';
 import { testRanking } from '../testing/ranking.ts';
 import { testTask } from '../testing/task.ts';
-import { checkTasks, formatFlag, PACE_DAYS, peerWaitFlags } from './check.ts';
+import { checkTasks, formatFlag, leaderWaitFlags, PACE_DAYS, peerWaitFlags } from './check.ts';
 import { RETAIN_DAYS } from './compaction.ts';
 import type { Task } from './fold.ts';
 import { NO_TASKS_ELSEWHERE, TaskTree } from './tree.ts';
@@ -191,6 +191,35 @@ describe('checkTasks: URGENT', () => {
     assert.deepEqual(urgentIds([{ ...urgent, after: ['T3'] }, first]), []);
     assert.deepEqual(urgentIds([{ ...urgent, priority: 1 }]), []);
     assert.deepEqual(urgentIds([{ ...urgent, after: ['T3'] }, { ...first, status: 'done' }]), ['T1'], 'free once the task before it finished');
+  });
+});
+
+describe('leaderWaitFlags', () => {
+  const focus = { roadmapClass: 'Roadmap', defaultClass: 'Improvements', leaderWaitMinutes: 60 };
+  const askedAt = '2030-01-10T10:30:00.000Z';
+  const held = (id: string, who: string, owner = 'alpha') => testTask({ id, owner, status: 'waiting', workClass: 'Roadmap', waits: [{ kind: 'approval', who }], waitsAt: askedAt });
+  const details = (tasks: readonly Task[], tree = new LeadTree(testConfig())) => leaderWaitFlags(tasks, tree, focus, NOW.getTime()).map((flag) => `${flag.kind} ${flag.task.id}: ${flag.detail}`);
+
+  it('names the wait, how long it stood and the limit, in the order given', () => {
+    assert.deepEqual(details([held('T2', 'lead'), held('T1', 'lead')]), [
+      'ROADMAP-WAITS-ON-LEAD T2: approval:lead unanswered for 90 min, past the 60 min limit: answer it first',
+      'ROADMAP-WAITS-ON-LEAD T1: approval:lead unanswered for 90 min, past the 60 min limit: answer it first',
+    ]);
+  });
+
+  it('raises one flag on a task held on two leaders, naming both', () => {
+    const tree = new LeadTree(testConfig({ leads: { bravo: ['alpha'] } }));
+    const both = testTask({ status: 'waiting', workClass: 'Roadmap', waits: [{ kind: 'approval', who: 'bravo' }, { kind: 'decision', who: 'lead' }], waitsAt: askedAt });
+    assert.deepEqual(details([both], tree), ['ROADMAP-WAITS-ON-LEAD T1: approval:bravo, decision:lead unanswered for 90 min, past the 60 min limit: answer it first']);
+  });
+
+  it("reads the leaders of each task's own owner, so a wait on a leader of someone else is no hold", () => {
+    const tree = new LeadTree(testConfig({ leads: { bravo: ['alpha'] } }));
+    assert.deepEqual(details([held('T1', 'bravo'), held('T2', 'bravo', 'charlie')], tree).map((line) => line.slice(0, 25)), ['ROADMAP-WAITS-ON-LEAD T1:']);
+  });
+
+  it('flags nothing inside the limit', () => {
+    assert.deepEqual(details([testTask({ status: 'waiting', workClass: 'Roadmap', waits: [{ kind: 'approval', who: 'lead' }], waitsAt: '2030-01-10T11:30:00.000Z' })]), []);
   });
 });
 
