@@ -32,12 +32,33 @@ export interface TreeAttributionInput {
   titleOf(transcript: string): Promise<string | undefined>;
 }
 
-/** The team whose inbox mark claims the session; a mark naming no session of its team claims nothing. */
-function markedTeamOf(tree: readonly TreeMember[], claudeSession: string): string | undefined {
-  return tree.find(({ roster, areaBySession }) => {
-    const area = areaBySession.get(claudeSession);
-    return area !== undefined && roster.ids.includes(area);
-  })?.team;
+/** The tree team and team session a Claude Code session's inbox mark claims it for. */
+interface MarkClaim {
+  readonly team: string;
+  readonly id: string;
+}
+
+/**
+ * Who the session's inbox marks claim it for: a team's mark naming a session of that team first. Marks stay in the
+ * log of the team that wrote them, so a session moved to another team leaves its old days marked in the team it left;
+ * such a mark goes to the one tree team holding the id now, and claims nothing when none or several do.
+ */
+function markClaimOf(tree: readonly TreeMember[], claudeSession: string): MarkClaim | undefined {
+  const marks = tree.flatMap(({ team, roster, areaBySession }) => {
+    const id = areaBySession.get(claudeSession);
+    return id === undefined ? [] : [{ team, roster, id }];
+  });
+  const held = marks.find(({ roster, id }) => roster.ids.includes(id));
+  if (held !== undefined) {
+    return { team: held.team, id: held.id };
+  }
+  for (const { id } of marks) {
+    const [only, ...more] = tree.filter(({ roster }) => roster.ids.includes(id));
+    if (only !== undefined && more.length === 0) {
+      return { team: only.team, id };
+    }
+  }
+  return undefined;
 }
 
 /** How many sessions of the tree a title names. */
@@ -54,11 +75,18 @@ export async function attributeInTree(input: TreeAttributionInput): Promise<Read
   if (member === undefined) {
     return new Map();
   }
+  const claims = new Map(input.sessions.map(({ claudeSession }) => [claudeSession, markClaimOf(input.tree, claudeSession)]));
+  const areaBySession = new Map<string, string>();
+  for (const [claudeSession, claim] of claims) {
+    if (claim?.team === input.own) {
+      areaBySession.set(claudeSession, claim.id);
+    }
+  }
   const attribution = await attribute({
-    sessions: input.sessions.filter(({ claudeSession }) => [undefined, input.own].includes(markedTeamOf(input.tree, claudeSession))),
+    sessions: input.sessions.filter(({ claudeSession }) => [undefined, input.own].includes(claims.get(claudeSession)?.team)),
     team: member.team,
     roster: member.roster,
-    areaBySession: member.areaBySession,
+    areaBySession,
     titleOf: async (transcript) => {
       const title = await input.titleOf(transcript);
       return title !== undefined && titleClaims(input.tree, title) === 1 ? title : undefined;

@@ -60,6 +60,27 @@ describe('attributeInTree', () => {
     assert.deepEqual([...held.keys()], ['alpha']);
   });
 
+  it('gives a session marked in the team it left to the one team holding it now', async () => {
+    const tree = [member('app', ['alpha'], { c1: 'moved' }), member('web', ['moved'])];
+    const input = { tree, sessions: [session('c1')], titleOf: titles({}) };
+    assert.equal((await attributeInTree({ ...input, own: 'app' })).size, 0);
+    assert.deepEqual((await attributeInTree({ ...input, own: 'web' })).get('moved')?.main, ['/c1.jsonl']);
+  });
+
+  it('takes a mark its own team still holds over one a team lost, so the session lands once', async () => {
+    const tree = [member('app', ['alpha'], { c1: 'moved' }), member('web', ['moved']), member('api', ['gamma'], { c1: 'gamma' })];
+    const input = { tree, sessions: [session('c1')], titleOf: titles({}) };
+    assert.equal((await attributeInTree({ ...input, own: 'web' })).size, 0);
+    assert.deepEqual([...(await attributeInTree({ ...input, own: 'api' })).keys()], ['gamma']);
+  });
+
+  it('leaves a lost mark two teams hold to neither, as the id cannot say which', async () => {
+    const tree = [member('app', ['alpha'], { c1: 'shared' }), member('web', ['shared']), member('api', ['shared'])];
+    const input = { tree, sessions: [session('c1')], titleOf: titles({}) };
+    assert.equal((await attributeInTree({ ...input, own: 'web' })).size, 0);
+    assert.equal((await attributeInTree({ ...input, own: 'api' })).size, 0);
+  });
+
   it('gives nothing for a team outside the tree', async () => {
     assert.equal((await attributeInTree({ own: 'gone', tree: [member('app', ['alpha'])], sessions: [session('c1')], titleOf: titles({}) })).size, 0);
   });
