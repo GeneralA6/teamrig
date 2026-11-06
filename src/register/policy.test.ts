@@ -455,6 +455,54 @@ describe("RegisterPolicy.setStatus: a bug's review", () => {
   });
 });
 
+describe('RegisterPolicy.setStatus: the WIP rule holds a start (T2076)', () => {
+  const roadmap = testTask({ id: 'T1', workClass: 'Roadmap' });
+  const tooling = testTask({ id: 'T2', workClass: 'Improvements' });
+  const context = { ...CTX, state: stateOf(roadmap, tooling) };
+  const policy = new RegisterPolicy(testConfig());
+  const started = (id: string): Task => testTask({ id, workClass: 'Roadmap', status: 'in-progress' });
+
+  it('refuses a start of Improvements work while its owner holds Roadmap work that can move', () => {
+    assert.equal(
+      error(policy.setStatus(tooling, 'alpha', { status: 'in-progress' }, context)),
+      'T2 is Improvements work and alpha holds Roadmap work that can move: T1; work that first [focus.wip], or, for a one-commit fix, start it with --one-commit',
+    );
+  });
+
+  it('lets a one-commit fix start, and takes --one-commit with no other status', () => {
+    assert.equal(policy.setStatus(tooling, 'alpha', { status: 'in-progress', oneCommit: true }, context).ok, true);
+    assert.equal(error(policy.setStatus(tooling, 'alpha', { status: 'dropped', note: 'not needed', oneCommit: true }, context)), '--one-commit goes only with --status in-progress');
+  });
+
+  it('holds the count of tasks in progress past the limit, for any class', () => {
+    const fourth = testTask({ id: 'T4', workClass: 'Roadmap' });
+    const full = { ...CTX, state: stateOf(started('T1'), started('T2'), started('T3'), fourth) };
+    assert.equal(
+      error(policy.setStatus(fourth, 'alpha', { status: 'in-progress' }, full)),
+      'alpha already has 3 tasks in progress, at the limit of 3 [focus.wip.maxInProgress]: finish T1, T2, T3 or put one back (--status open) before T4, or, for a one-commit fix, start it with --one-commit',
+    );
+  });
+
+  it('never holds a task already in progress, so a note on it still goes in', () => {
+    const third = started('T3');
+    const full = { ...CTX, state: stateOf(started('T1'), started('T2'), third, started('T4')) };
+    assert.equal(policy.setStatus(third, 'alpha', { status: 'in-progress', note: 'still on it' }, full).ok, true);
+  });
+
+  it('reads an after in another register, so Roadmap work behind an open task there holds nothing', () => {
+    const behind = testTask({ id: 'T1', workClass: 'Roadmap', after: ['T9'] });
+    const elsewhere = elsewhereOf(testTask({ id: 'T9', owner: 'bravo' }));
+    assert.equal(policy.setStatus(tooling, 'alpha', { status: 'in-progress' }, { ...CTX, state: stateOf(behind, tooling), elsewhere }).ok, true);
+  });
+
+  it('leaves a warning to the CLI under warn, and holds nothing under off', () => {
+    for (const mode of ['warn', 'off']) {
+      const relaxed = new RegisterPolicy(testConfig({ focus: { wip: { mode, maxInProgress: 3 } } }));
+      assert.equal(relaxed.setStatus(tooling, 'alpha', { status: 'in-progress' }, context).ok, true, mode);
+    }
+  });
+});
+
 describe('RegisterPolicy.setStatus: a start waits for the verifying tasks it needs', () => {
   const shipped = testTask({ id: 'T1', owner: 'bravo', status: 'verifying', proof: 'the nightly run' });
   const planned = testTask({ id: 'T2', after: ['T1'] });

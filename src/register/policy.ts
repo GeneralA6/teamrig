@@ -18,6 +18,7 @@ import { asksReview, missedTaskIds, reviewGap, reviewGapText, reviewProblem, rev
 import { loopFix, needPath, NO_TASKS_ELSEWHERE, pathText, type TasksElsewhere } from './tree.ts';
 import { dueStartHolds, dueVerifyHold, heldStart, startHolds, WATCH_USAGE } from './verify.ts';
 import { isPeerWait, isReady, sameWait, sameWaits, waitContext, waitSpelling, type PersonWait, type PersonWaitKind, type WaitReason } from './waits.ts';
+import { wipHold } from './wip.ts';
 
 /** Team policy, applied on WRITE only: the parser accepts any well-formed history. */
 export type Verdict<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: string };
@@ -112,6 +113,8 @@ export interface StatusInput {
   readonly followups?: readonly string[];
   /** The parts of its review the change gives (review.ts); only on a bug (a type whose traits ask a review). Parts left out keep what the task had. */
   readonly review?: ProblemReview;
+  /** Said to be a one-commit fix (`--one-commit`), which the WIP rule lets start (wip.ts); only with `in-progress`. */
+  readonly oneCommit?: boolean;
 }
 
 /**
@@ -356,6 +359,9 @@ export class RegisterPolicy {
     if (caller !== task.owner) {
       return refuse(ownerOnly(task));
     }
+    if (input.oneCommit === true && input.status !== 'in-progress') {
+      return refuse('--one-commit goes only with --status in-progress');
+    }
     const { register } = this.config;
     // A start waits for the proof of the shipped changes it builds on, unless it names what shows that proof exists
     // (`--met`), which the CLI asks their owners to confirm; `warn` lets it through and the CLI warns.
@@ -373,6 +379,13 @@ export class RegisterPolicy {
     const dueVerify = dueStartHolds(task, input.status, context.state.tasks, context.now, context.zone, register.maxVerifying, context.elsewhere);
     if (dueVerify.length > 0 && register.verifyGate === 'refuse') {
       return refuse(dueVerifyHold(task, dueVerify));
+    }
+    // Ranked work goes first and work in progress stays few (T2076); `warn` lets the start through and the CLI warns.
+    const { focus } = this.config;
+    const wipStart = { task, status: input.status, oneCommit: input.oneCommit === true };
+    const wip = wipHold(wipStart, context.state.tasks.values(), waitContext(context.state.tasks, context.now, context.zone, context.elsewhere), focus, register.ownerSource);
+    if (wip !== undefined && focus.wip.mode === 'refuse') {
+      return refuse(wip);
     }
     const note = blankToNull(input.note);
     const evidence = blankToNull(input.evidence);
