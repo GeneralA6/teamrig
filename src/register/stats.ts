@@ -1,6 +1,7 @@
 import { quantile } from '../core/quantile.ts';
 import { MS_PER_DAY } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
+import { AREA_THRESHOLDS, areaStats, type RegisterAreas } from './area-stats.ts';
 import type { MovedEvent, RegisterEvent } from './events.ts';
 import { foldEvents, type Task } from './fold.ts';
 import { goalStats, type GoalStats } from './goal-stats.ts';
@@ -237,6 +238,8 @@ export interface RegisterStats {
   readonly splits: readonly Split[];
   readonly tasks: StatsTasks;
   readonly goals: GoalStats;
+  /** Each team and session against the others and its own usual, whatever the range: a usual is its own 30 days. */
+  readonly areas: RegisterAreas;
 }
 
 const AGE_BANDS: readonly BandLimit[] = [
@@ -309,6 +312,7 @@ export function registerStats(input: StatsInput): RegisterStats {
   const overdue = overdueOf(held, clock);
   const onOwner = ownerWaitsOf(activeHeld, ownerMarker);
   const recent = dayWindow(today - (RECENT_DAYS - 1) * MS_PER_DAY, today, zone);
+  const scoped = teams.filter((team) => session === undefined || team.team === session.team);
   return {
     range: input.range,
     days,
@@ -320,7 +324,7 @@ export function registerStats(input: StatsInput): RegisterStats {
     recent: { days: RECENT_DAYS, net: tasks.filter((task) => within(recent, task.createdAt)).length - tasks.filter((task) => closedIn(task, recent)).length },
     active: activeRecord((status) => active.filter((task) => task.status === status).length),
     all: teamPart(held, clock, overdue),
-    teams: teams.filter((team) => session === undefined || team.team === session.team).map((team) => ({ team: team.team, ...teamPart(team.held, clock) })),
+    teams: scoped.map((team) => ({ team: team.team, ...teamPart(team.held, clock) })),
     newWork: newWork(created, ownerMarker),
     activeByAge: banded(
       active.map((task) => (now - Date.parse(task.createdAt)) / MS_PER_DAY),
@@ -349,7 +353,14 @@ export function registerStats(input: StatsInput): RegisterStats {
       ownerDecisions: onOwner,
     },
     goals: goalStats({ goals: input.goals ?? new Map<string, Goal>(), tasks: held, doneInRange: done, now: input.now, zone, scoped: session !== undefined }),
+    areas: areasOf(scoped, clock, today),
   };
+}
+
+/** The areas of the teams in scope, their usual read at each day-end before `today`. */
+function areasOf(teams: readonly FoldedTeam[], { now, zone }: Clock, today: number): RegisterAreas {
+  const dayEnds = daySpans(today - AREA_THRESHOLDS.usualDays * MS_PER_DAY, today - MS_PER_DAY, zone).map((span) => span.end);
+  return areaStats({ teams: teams.map(({ team, kept, held }) => ({ team, kept, active: held.filter((each) => isActive(each.task.status)) })), now, zone, dayEnds });
 }
 
 /** A team's tasks in scope, from its events without those of the tasks that moved away. */
