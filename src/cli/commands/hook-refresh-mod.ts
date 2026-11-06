@@ -2,6 +2,7 @@ import { claudeProjectsDir, findTranscript } from '../../budget/discover.ts';
 import { isNonNegativeInteger, isRecord, stringField, type JsonRecord } from '../../core/guards.ts';
 import { ENV, KIT_NAME } from '../../core/home.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
+import { inBookedMeeting, MeetingSchedule } from '../../meeting/schedule.ts';
 import { inMeeting, MeetingStore } from '../../meeting/state.ts';
 import { decideCompact, decideMidTurn, handoverHashOf, type AskContext, type CompactDecision, type DueFacts } from '../../refresh/decide.ts';
 import { readRunningWork } from '../../refresh/running.ts';
@@ -42,9 +43,17 @@ export async function dueFactsAt(runtime: CliRuntime, store: RefreshStore, id: s
   };
 }
 
-/** Whether the session is in the owner's open daily meeting, which holds its refresh (`meetingHolds`): one small file. */
+/**
+ * Whether the session is in an open owner meeting, which holds its refresh (`meetingHolds`): the lead's daily meeting,
+ * or a booked one it is met in or joins (`inBookedMeeting`, T2111). Two small files, the second read only when the
+ * first holds nothing.
+ */
 export async function inMeetingNow(runtime: CliRuntime, scope: Pick<SessionScope, 'kit' | 'id'>): Promise<boolean> {
-  return inMeeting(await new MeetingStore(runtime.files, scope.kit.paths.meeting).read(), scope.id, runtime.clock.now());
+  const now = runtime.clock.now();
+  if (inMeeting(await new MeetingStore(runtime.files, scope.kit.paths.meeting).read(), scope.id, now)) {
+    return true;
+  }
+  return inBookedMeeting((await new MeetingSchedule(runtime.files, scope.kit.paths.meetings).read()).meetings, scope.id, now);
 }
 
 /** The tab's own transcript: the mod knows its Claude Code session and project, not where Claude Code keeps it. */

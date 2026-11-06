@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
+import { MeetingSchedule } from '../meeting/schedule.ts';
 import type { RestartRequest } from '../refresh/state.ts';
 import { RefreshStore } from '../refresh/store.ts';
 import { CONTEXT_MAX_CHARS } from '../rules/pack.ts';
@@ -63,6 +64,18 @@ async function finishTask(kit: CliHarness, session: string): Promise<CliResult> 
 async function openTask(kit: CliHarness, session: string): Promise<void> {
   const added = await kit.run(['add', '--title', 'Next one', '--description', 'what and why', '--priority', 'p2', '--session', session]);
   assert.equal(added.code, EXIT.ok, added.stdout.join('\n'));
+}
+
+/**
+ * The owner's booked meeting M1 with alpha, bravo joining, as `meeting start M1` leaves it now (T2111). Written straight
+ * to the schedule: the start also opens or wakes alpha's tab, which these specs do not judge.
+ */
+async function bookedMeetingStarted(kit: CliHarness): Promise<void> {
+  const now = kit.clock.now();
+  await new MeetingSchedule(kit.files, join(TEAM_HOME, 'state', 'meetings.jsonl')).write(
+    { id: 'M1', at: now, minutes: 30, session: 'alpha', with: ['bravo'], tasks: [], about: 'the release plan', brief: null, status: 'started', notifiedAt: null, by: 'lead', changedAt: now, note: null },
+    now,
+  );
 }
 
 const AS_ALPHA = { env: { TEAMRIG_SESSION: 'alpha' } };
@@ -419,6 +432,47 @@ describe('runCli: context refresh', () => {
     assert.deepEqual([await store.restart('alpha'), processes.hidden.length], [undefined, 0], 'nothing armed');
 
     assert.equal((await kit.run(['meeting', 'end', '--session', 'alpha'])).code, EXIT.ok);
+    assert.match(JSON.stringify(stopJson(await stop())), /starts it fresh once it has been idle 15 s/);
+    assert.equal((await store.restart('alpha'))?.phase, 'pending');
+  });
+
+  it('holds the refresh of the session met and those joining a started booked meeting, up to the ceiling, and asks after meeting end (T2111)', async () => {
+    const bookedKit = async (): Promise<{ readonly kit: CliHarness; readonly stop: (session: string, tokens: number) => Promise<CliResult> }> => {
+      const kit = new CliHarness({ ...TEAM, refresh: { tabTitle: false } });
+      await bookedMeetingStarted(kit);
+      const stop = async (session: string, tokens: number): Promise<CliResult> => {
+        await kit.files.write(TRANSCRIPT, transcript(tokens));
+        return kit.run(['hook', 'stop'], { env: { TEAMRIG_SESSION: session }, stdin: stopPayload() });
+      };
+      return { kit, stop };
+    };
+    const { kit, stop } = await bookedKit();
+    const mid = await kit.run(['hook', 'refresh-mid'], { ...AS_ALPHA, stdin: JSON.stringify({ session_id: CLAUDE_SESSION, cwd: APP, tokens: 150_000 }) });
+    assert.deepEqual(stopJson(mid), { kind: 'wait', nextAt: 120_000 }, 'no ask at a tool result; the mod looks again later');
+    assert.deepEqual(await stop('alpha', 150_000), SILENT, 'the session met');
+    assert.deepEqual(await stop('bravo', 150_000), SILENT, 'a session joining');
+    assert.deepEqual([await kit.files.read(STATE('alpha')), await kit.files.read(STATE('bravo'))], [undefined, undefined]);
+    assert.match(JSON.stringify(stopJson(await stop('lead', 150_000))), /"decision":"block","reason":"teamrig: your context is 150k/, 'a session not in it is asked');
+    assert.equal((await kit.run(['meeting', 'end', 'M1', '--session', 'lead'])).code, EXIT.ok);
+    assert.match(JSON.stringify(stopJson(await stop('alpha', 150_000))), /"decision":"block","reason":"teamrig: your context is 150k \(refresh at 120k\)/, 'asked at once after it');
+
+    const ceiling = await bookedKit();
+    assert.match(JSON.stringify(stopJson(await ceiling.stop('alpha', 185_000))), /"decision":"block","reason":"teamrig: your context is 185k/, 'at the ceiling it goes on');
+  });
+
+  it('holds the notice of a handover written in a booked meeting, and so its restart, until the meeting ends (T2111)', async () => {
+    const kit = new CliHarness(AUTO_RESTART_TEAM);
+    const store = await handoverWritten(kit);
+    await openTask(kit, 'alpha');
+    const processes = new FakeProcesses();
+    const env = { TEAMRIG_SESSION: 'alpha', CLAUDE_PROJECT_DIR: APP, TEAMRIG_LAUNCHED: 'alpha' };
+    const stop = (): Promise<CliResult> => kit.run(['hook', 'stop'], { env, stdin: stopPayload(true), sessionProcesses: UNDER_CLAUDE(), processes });
+    await bookedMeetingStarted(kit);
+    await kit.files.write(TRANSCRIPT, transcript(150_000));
+    assert.deepEqual(await stop(), SILENT);
+    assert.deepEqual([await store.restart('alpha'), processes.hidden.length], [undefined, 0], 'nothing armed');
+
+    assert.equal((await kit.run(['meeting', 'end', 'M1', '--session', 'lead'])).code, EXIT.ok);
     assert.match(JSON.stringify(stopJson(await stop())), /starts it fresh once it has been idle 15 s/);
     assert.equal((await store.restart('alpha'))?.phase, 'pending');
   });

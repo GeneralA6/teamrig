@@ -5,6 +5,7 @@ import { MS_PER_DAY, MS_PER_MINUTE } from '../core/time.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import {
   byTime,
+  inBookedMeeting,
   isMeetingId,
   isMissed,
   isNotifyDue,
@@ -15,6 +16,7 @@ import {
   readMeetings,
   type ScheduledMeeting,
 } from './schedule.ts';
+import { MEETING_LAPSE_MS } from './state.ts';
 
 const PATH = '/kit/teams/app/state/meetings.jsonl';
 const AT = Date.parse('2030-01-08T09:15:00Z');
@@ -123,5 +125,18 @@ describe('meeting views', () => {
     const now = AT + 20 * MS_PER_DAY;
     const read = { meetings: [meeting({ id: 'M1' }), meeting({ id: 'M2', status: 'done', changedAt: now - 7 * MS_PER_DAY }), meeting({ id: 'M3', status: 'done', changedAt: now - 9 * MS_PER_DAY }), meeting({ id: 'M4', status: 'started' })], skipped: 0, lastNumber: 5 };
     assert.deepEqual(keptMeetings(read, now).map((kept) => kept.id), ['M1', 'M2', 'M4']);
+  });
+
+  it('holds the session met and those joining a started meeting from its start to its end, drop or lapse (T2111)', () => {
+    const start = AT - 15 * MS_PER_MINUTE;
+    const started = meeting({ status: 'started', with: ['beta'], changedAt: start });
+    const later = start + 3 * 60 * MS_PER_MINUTE;
+    assert.equal(inBookedMeeting([started], 'ops', later), true, 'the session met, past its 30 minutes');
+    assert.equal(inBookedMeeting([started], 'beta', later), true, 'a session joining');
+    assert.equal(inBookedMeeting([started], 'alpha', later), false, 'another session works on');
+    assert.equal(inBookedMeeting([started], 'ops', start + MEETING_LAPSE_MS), false, 'lapsed 4 hours after its start');
+    assert.equal(inBookedMeeting([meeting({ changedAt: start })], 'ops', AT), false, 'a scheduled one whose time came holds nothing before its start');
+    assert.equal(inBookedMeeting([meeting({ status: 'done', changedAt: start }), meeting({ id: 'M2', status: 'dropped', changedAt: start })], 'ops', AT), false, 'ended or dropped');
+    assert.equal(inBookedMeeting([], 'ops', AT), false);
   });
 });
