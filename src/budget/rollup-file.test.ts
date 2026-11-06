@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatRollup, parseRollup, rollupFileName, type TaskRow, type TeamDayRollup, type UseRow } from './rollup-file.ts';
+import { formatRollup, parseRollup, rollupDayOf, rollupFileName, type TaskRow, type TeamDayRollup, type UseRow } from './rollup-file.ts';
 
 const ROW: UseRow = {
   session: 'alpha',
@@ -24,6 +24,15 @@ const ROLLUP: TeamDayRollup = { day: '2026-11-02', team: 'alpha-team', rows: [RO
 function fileWith(fields: Readonly<Record<string, unknown>>): string {
   return JSON.stringify({ v: 1, day: ROLLUP.day, team: ROLLUP.team, rows: ROLLUP.rows, tasks: ROLLUP.tasks, ...fields });
 }
+
+describe('rollupDayOf', () => {
+  it("reads the day of a day's file name, and of no other name", () => {
+    assert.equal(rollupDayOf(rollupFileName('2026-11-02')), '2026-11-02');
+    assert.equal(rollupDayOf('2026-11-02.json.tmp'), undefined);
+    assert.equal(rollupDayOf('2026-13-02.json'), undefined);
+    assert.equal(rollupDayOf('notes.json'), undefined);
+  });
+});
 
 describe('rollup file', () => {
   it('reads back what it wrote', () => {

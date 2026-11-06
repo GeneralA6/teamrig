@@ -2,7 +2,7 @@ import { transcriptTitleOf } from '../../budget/attribute.ts';
 import { claudeProjectsDir, discoverTranscripts } from '../../budget/discover.ts';
 import { CATCH_UP_CHUNK_BYTES } from '../../budget/measure.ts';
 import { applyPlans, attributeInTree, foldTeam, outcomeCounts, planDays, type DayPlan, type RollupRange, type TreeMember } from '../../budget/rollup-run.ts';
-import { rollupFileName } from '../../budget/rollup-file.ts';
+import { rollupDayOf } from '../../budget/rollup-file.ts';
 import { PlainLogFile } from '../../core/log-file.ts';
 import { addUtcDays, formatUtcDay, MS_PER_DAY, parseUtcDay } from '../../core/time.ts';
 import { indexMarks } from '../../inbox/marks.ts';
@@ -22,10 +22,7 @@ import { loadTree, type KitTree } from '../tree.ts';
 
 /** The newest day the team's rollup folder holds; undefined when it holds none. */
 async function newestRolledDay(runtime: CliRuntime, kit: Kit): Promise<string | undefined> {
-  const days = (await runtime.files.list(kit.paths.rollup)).flatMap((name) => {
-    const day = name.slice(0, -rollupFileName('').length);
-    return name === rollupFileName(day) && parseUtcDay(day) !== undefined ? [day] : [];
-  });
+  const days = (await runtime.files.list(kit.paths.rollup)).flatMap((name) => rollupDayOf(name) ?? []);
   return days.sort().at(-1);
 }
 
