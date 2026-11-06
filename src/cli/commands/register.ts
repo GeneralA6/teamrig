@@ -596,7 +596,7 @@ function decidedOf(args: ParsedArgs): boolean {
  * `update <team>/<id> --note ".." [--later <when|none> | --decided]`: the lead who asks the owner a team's decisions,
  * at its tree's root (T1018), records a note, a Later (T1295) or the owner's answer as a Decided (T1366) on a task of
  * that team. It lands in that team's register as an event by the lead's `<team>/<id>`. Only that lead may, and only
- * these: every field stays the task's own team's to change.
+ * these: every other field stays the task's own team's to change, but for the rows a person confirmed in `sweep apply`.
  */
 async function noteBelow(args: ParsedArgs, runtime: CliRuntime, caller: string, below: string, id: string): Promise<ExitCode> {
   const others = [
