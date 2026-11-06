@@ -629,9 +629,14 @@ pushed, with the line to add to each (a new hook file starts `#!/bin/sh` and mus
 read, and SECRET-GUARD-OFF: a secret check turned off, which is the owner's call: `secretGuard.secretReads` or
 `secretGuard.writes` at `allow`, `secretGuard.redact` at `false`, or a Claude Code settings file the team's sessions
 run under (the user's, the project folder's, each `delivery.repos` repository's and its worktrees') that sets
-`disableAllHooks`, which stops every teamrig hook, the secret guard's included, and FIVE-HOUR: the account's five-hour
+`disableAllHooks`, which stops every teamrig hook, the secret guard's included, FIVE-HOUR: the account's five-hour
 window has reached 80% [budget.fiveHourWarnPct] or rises fast enough to fill before it resets, and at 100% every
-session stalls until that reset; it is raised once a window, and a plan with no such window never shows it. Each row names the check it came from; the
+session stalls until that reset; it is raised once a window, and a plan with no such window never shows it, and from
+the restore's record (`<kit home>/bin/launchers.json`, written by [restore install](#teamrig-restore-install),
+`uninstall` and a newer version's first session start) RESTORE-DEAD: a logon entry or shortcut teamrig set up that
+starts a Node or launcher that is gone, such as one left on a Node an upgrade removed, and RESTORE-STRAY: a `Restore
+Claude Sessions` shortcut or logon entry that starts something else; `teamrig restore install --yes` repoints both.
+Each row names the check it came from; the
 lead fixes it, hands it on (`teamrig add --owner <session>`) or settles the check. The lead's `start` shows them
 too, and any session's `start` posts the lead one inbox line per warning it was not told of yet, at most 5 per
 start; `state/unowned-notices.json` remembers which and when a start last saw each, so a warning is told again only
@@ -2905,6 +2910,10 @@ names a newer teamrig than this one, an older teamrig on the PATH, its first ste
 (`SET <kit home>\bin\launchers.json: <newer> -> <this>, so the next start of a newer teamrig refreshes what this
 writes`), so the newer one's next session start writes its own launchers back. With `--yes`, install and uninstall
 first wait for a session start's refresh in progress, at most 2 minutes, so the two never write at once.
+Last, it writes what starts the restore now into that record (`WRITE <kit home>\bin\launchers.json: what starts the
+restore now, which teamrig check reads`): each part it set up with the Node and launcher it starts, and each shortcut
+of that name it left as it was. `teamrig check` reads it to warn the lead when one of those files is gone
+(RESTORE-DEAD) or a part starts something else (RESTORE-STRAY).
 macOS and Linux have no logon entry or shortcut yet: there it is `REFUSED`, and `teamrig restore run` after a crash
 or reboot does the same by hand.
 
@@ -2926,6 +2935,7 @@ WROTE the changes below
   WRITE C:\Users\me\.teamrig\bin\restore-run.mjs
   SET HKCU\Software\Microsoft\Windows\CurrentVersion\Run TeamrigSessionRestore: (none) -> "C:\Windows\System32\conhost.exe" --headless "C:\Program Files\nodejs\node.exe" "C:\Users\me\.teamrig\bin\restore-check.mjs"
   SET C:\Users\me\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Restore Claude Sessions.lnk: (none) -> "C:\Program Files\nodejs\node.exe" "C:\Users\me\.teamrig\bin\restore-run.mjs" (in "C:\Users\me")
+  WRITE C:\Users\me\.teamrig\bin\launchers.json: what starts the restore now, which teamrig check reads
 ```
 
 `UNCHANGED <entry>: the restore check already runs at logon` and `UNCHANGED <shortcut>: the shortcut already runs
@@ -2938,8 +2948,9 @@ before it, and exits 1.
 
 Stops the restore at logon and takes out its shortcut: removes the logon entry, then each `Restore Claude
 Sessions` shortcut that runs the run launcher, then both launchers. A shortcut of that name that runs anything
-else stays. Like `install`, it shows the change without `--yes`, and it is `REFUSED` where `install` is. The
-recorded sessions stay, so `teamrig restore run` still works by hand.
+else stays. Last, it writes what still starts the restore into `<kit home>/bin/launchers.json`, a shortcut it kept
+among them, for `teamrig check`. Like `install`, it shows the change without `--yes`, and it is `REFUSED` where
+`install` is. The recorded sessions stay, so `teamrig restore run` still works by hand.
 
 Flags:
 
@@ -2959,6 +2970,7 @@ WROTE the changes below
   REMOVE C:\Users\me\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Restore Claude Sessions.lnk: "C:\Program Files\nodejs\node.exe" "C:\Users\me\.teamrig\bin\restore-run.mjs" (in "C:\Users\me")
   REMOVE C:\Users\me\.teamrig\bin\restore-check.mjs
   REMOVE C:\Users\me\.teamrig\bin\restore-run.mjs
+  WRITE C:\Users\me\.teamrig\bin\launchers.json: what starts the restore now, which teamrig check reads
 ```
 
 `UNCHANGED <entry>: the restore check does not run at logon` and `UNCHANGED no Restore Claude Sessions.lnk runs
@@ -5692,7 +5704,8 @@ after a day-start probe's claim (an answered turn end, or a tool the probe's own
 `<home>/restore/day-probe.json`, so the tabs waiting on it wake. The first session start of a newer plugin version
 brings up to date what [restore install](#teamrig-restore-install) and `statusline install` left on the machine
 (their launchers, the logon entry and the shortcuts), each change a `launchers: <old> -> <new>: <change>` line in
-`<home>/restore/restore.log`; `<home>/bin/launchers.json` names the version that last did it.
+`<home>/restore/restore.log`; `<home>/bin/launchers.json` names the version that last did it and what starts the
+restore, which `teamrig check` reads.
 
 Flags: none.
 

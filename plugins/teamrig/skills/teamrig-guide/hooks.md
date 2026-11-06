@@ -1280,7 +1280,10 @@ a launcher whose text is older, the logon entry when it is set, and each `Restor
 the Node that runs the hook. It never adds one an install did not leave. Each change goes to `restore/restore.log` as
 `launchers: <old> -> <new>: <change>`, and the record is written once all are done; a change that fails is logged as
 `launchers: <old> -> <new>: FAILED <change>: <reason>; the next session start tries again` and leaves the record as it
-was.
+was. The record also keeps what starts the restore, each part an install set up with the Node and launcher it
+starts, and each shortcut of that name that starts something else, for `teamrig check` (RESTORE-DEAD,
+RESTORE-STRAY). So on Windows that start reads the logon entry and the shortcuts even where it changes nothing,
+once per version; when that read fails, the record stays as it was and the next start tries again.
 
 The first failure of an expiry in a team's tab also pages the owner, once per expiry: one line naming the tab and the
 time on its team's clock, posted to the chat webhook of the tab's team or the first team above it that names one,
