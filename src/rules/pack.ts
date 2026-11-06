@@ -222,7 +222,7 @@ export function coreRuleTexts(config: KitConfig, command: string, platform: Node
       ' Wait on a peer by its task.' +
       ` A shipped change is verifying until its proof exists (\`${command} verify\`).`,
     'task-order':
-      `Work your own task list in priority order (\`${command} list --session <you>\`); self-made work is a task too, added with \`${command} add\` before you start it,` +
+      `Work your own task list in plan order (\`${command} list --session <you>\`); self-made work is a task too, added with \`${command} add\` before you start it,` +
       ' and started only for a goal, a parent task or the week plan, never ahead of your top task that is not waiting (one-commit fixes exempt).' +
       " A loop, cron or scheduled wake-up needs the lead's OK and a written stop. If you repeat a step with no progress or drift from your task, stop and ask your leader.",
     'owner-gates':

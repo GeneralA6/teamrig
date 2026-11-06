@@ -104,7 +104,7 @@ describe('keepWorkingReason', () => {
     assert.equal(
       keepWorkingReason('alpha', work, TimeZone.UTC),
       'T1 waits (decision owner), and you own work that does not come after it: T2 "Fix the login" (p1), T3 "Tidy the docs" (p2). ' +
-        'Work it now in priority order (`teamrig list --session alpha`); leave a task that is the same change as T1, and say so in one line. ' +
+        'Work it now in plan order (`teamrig list --session alpha`); leave a task that is the same change as T1, and say so in one line. ' +
         'If you already work one and wait on a background step, end the turn again.',
     );
   });
