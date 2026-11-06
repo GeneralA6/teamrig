@@ -5,3 +5,26 @@
 export function classOf(task, focus) {
     return task.workClass ?? focus.defaultClass;
 }
+/**
+ * The best (lowest) rank a task serves (T2083): over each goal it names and every goal up that goal's parent chain,
+ * so a task on an unranked key result takes its objective's rank. Null when none of them is ranked, or the task
+ * names no goal the team holds. A chain is walked once per goal, so a damaged file's loop cannot hang it.
+ */
+export function rankOf(task, goals) {
+    let best = null;
+    for (const tag of task.goals) {
+        const walked = new Set();
+        for (let at = tag; at !== null && !walked.has(at);) {
+            walked.add(at);
+            const goal = goals.get(at);
+            if (goal === undefined) {
+                break;
+            }
+            if (goal.rank !== null && (best === null || goal.rank < best)) {
+                best = goal.rank;
+            }
+            at = goal.parent;
+        }
+    }
+    return best;
+}

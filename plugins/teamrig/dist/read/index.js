@@ -18,8 +18,8 @@ export { byPlanOrder, dueTime } from "../register/views.js";
 export { currentWeek } from "../register/week.js";
 // The done groups (T1729): one rule that sorts a span's done work for the daily report, the agenda and the Done page.
 export { DONE_GROUP_KINDS, doneGroups, doneGroupTitle, URGENT_PRIORITY } from "../register/done-groups.js";
-// The goal records (T1730): a team's goals with their planned window, target and every target move, read from the
-// `goals.jsonl` text beside the event log.
+// The goal records (T1730): a team's goals with their planned window, target, every target move and rank (T2083),
+// read from the `goals.jsonl` text beside the event log.
 export { GOALS_FILE, NO_GOAL, NO_GOALS, readGoals } from "../register/goals.js";
 // Time: the team's zone (`config.timeZone`, else the machine's). A stored bare day is a day of it, a stored minute is
 // UTC, and every time prints in it, zone-marked (`01-31 11:05 IST`); a reader passes it to the calls that print one.
@@ -45,8 +45,9 @@ export { DEFAULT_REGISTER } from "../config/defaults.js";
 export { priorityName } from "../config/priorities.js";
 export { parseConfigText } from "../config/text.js";
 export { CONFIG_VERSION } from "../config/types.js";
-// The work class a task counts as (T2076): its own, else the team's `focus.defaultClass`, as the CLI reads it.
-export { classOf } from "../register/focus.js";
+// The work class a task counts as (T2076): its own, else the team's `focus.defaultClass`, as the CLI reads it; and the
+// best rank a task serves over its goals and their parents (T2083).
+export { classOf, rankOf } from "../register/focus.js";
 // A session's launch settings: the model and effort it starts on (its `launch` entry, the lead's defaults under it), so
 // a reader shows them as teamrig launches the session, in its words.
 export { describeLaunch, launchOf } from "../config/launch.js";
