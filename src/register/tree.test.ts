@@ -221,6 +221,14 @@ describe('TaskTree ranking', () => {
     assert.ok((tree.rankedOf(blocked)?.score ?? 0) > (tree.rankedOf(blocker)?.score ?? 0));
   });
 
+  it('puts a task waiting on a person after a far lower score in its band', () => {
+    const free = testTask({ id: 'T3', size: 5 });
+    const parked = testTask({ id: 'T9', size: 0.1, status: 'waiting', startedAt: '2030-01-07T09:00:00.000Z', waits: [{ kind: 'decision', who: 'lead' }] });
+    const tree = ranked(testRanking(), free, parked);
+    assert.deepEqual(ids(tree.inPlanOrder([parked, free])), ['T3', 'T9']);
+    assert.ok((tree.rankedOf(parked)?.score ?? 0) > (tree.rankedOf(free)?.score ?? 0));
+  });
+
   it('keeps a task that cannot move ahead of a lower band', () => {
     const blocker = testTask({ id: 'T3' });
     const blocked = testTask({ id: 'T9', after: ['T3'] });
@@ -490,10 +498,16 @@ describe('TaskTree placeOf blocked: whether a task can move', () => {
     assert.equal(blocked({ after: ['T99'] }), false, 'retired from every register');
   });
 
-  it('is false on a wait for a person or a time, which is no need', () => {
-    assert.equal(blocked({ status: 'waiting', startedAt: started, waits: [{ kind: 'decision', who: 'lead' }] }), false);
-    assert.equal(blocked({ status: 'waiting', startedAt: started, waits: [{ kind: 'approval', who: 'lead' }] }), false);
-    assert.equal(blocked({ status: 'waiting', startedAt: started, waits: [{ kind: 'time', at: '2030-01-09 12:00' }] }), false);
+  it('is true on a wait for a person or a time to come, which a start cannot pass', () => {
+    assert.equal(blocked({ status: 'waiting', startedAt: started, waits: [{ kind: 'decision', who: 'lead' }] }), true);
+    assert.equal(blocked({ status: 'waiting', startedAt: started, waits: [{ kind: 'approval', who: 'lead' }] }), true);
+    assert.equal(blocked({ status: 'waiting', startedAt: started, waits: [{ kind: 'time', at: '2030-01-09 12:00' }] }), true);
+    assert.equal(blocked({ status: 'verifying', startedAt: started, waits: [{ kind: 'time', at: '2030-01-09 12:00' }] }), true, 'a proof not due yet too');
+  });
+
+  it('is false once every wait has cleared, as its owner can go on', () => {
+    assert.equal(blocked({ status: 'waiting', startedAt: started, waits: [{ kind: 'task', id: 'T2' }] }), false);
+    assert.equal(blocked({ status: 'waiting', startedAt: started, waits: [{ kind: 'time', at: '2030-01-07 12:00' }] }), false);
   });
 
   it('is false for a finished task, whatever it came after', () => {

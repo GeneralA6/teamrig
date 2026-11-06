@@ -4,7 +4,7 @@ import { taskNumber, type Task } from './fold.ts';
 import { ACTIVE_STATUSES } from './model.ts';
 import { wouldPark, type ParkFocus } from './park.ts';
 import { scoreOf, valueOf, type ScoreFocus, type SizeFacts, type TaskScore, type ValueFacts } from './score.ts';
-import { isFinished, isReady, waitContext, type PersonWait, type PersonWaitKind, type WaitContext } from './waits.ts';
+import { canMove, isFinished, isReady, waitContext, type PersonWait, type PersonWaitKind, type WaitContext } from './waits.ts';
 import { currentWeek } from './week.ts';
 
 /**
@@ -97,7 +97,7 @@ export interface PlanPlace {
   readonly pinned?: boolean;
   /** Its band and score; undefined with no ranking. */
   readonly ranked?: RankedPlace | undefined;
-  /** Active with a need not finished, so it cannot move yet; false or missing: it can. */
+  /** Active with a wait not cleared or an `after` not finished, so it cannot move yet; false or missing: it can. */
   readonly blocked?: boolean;
   /** In progress. */
   readonly started?: boolean;
@@ -112,8 +112,8 @@ export interface PlanPlace {
 /**
  * The keys of plan order, in order: the first one on which two tasks differ puts one ahead: `pinned` (a task the
  * owner's leader pinned, above every other key); `band` (expedite, then Roadmap and Maintenance, then the rest;
- * score.ts); `ready` (a task that can move before one with a need not finished, whose value still reaches that need
- * through its score); `score` (the highest WSJF score first; score.ts); `started` (an in-progress task stays on top of
+ * score.ts); `ready` (a task that can move before one that cannot, whose value still reaches any need of it through
+ * that need's score); `score` (the highest WSJF score first; score.ts); `started` (an in-progress task stays on top of
  * its equals); `due` (effective due, the earliest first, undated last); `unblocks` (the best priority among the active
  * tasks that need it, then the most of them; none last); `week` (in the week plan in force first); `size` (the smallest
  * first, unsized last); `age` (the lowest number first).
@@ -600,9 +600,9 @@ export class TaskTree<T extends TreeTask = Task> {
     return task !== undefined && isActive(task);
   }
 
-  /** True for an active task with a need not finished here or in another register; a wait on a person or a time is no need. */
+  /** True for an active task that cannot move, its needs read here or in another register. */
   private isBlocked(task: TreeTask): boolean {
-    return isActive(task) && needsOf(task).some((id) => !isFinished(id, this.context));
+    return isActive(task) && !canMove(task, this.context);
   }
 }
 

@@ -122,7 +122,8 @@ describe('wipHold: Improvements work behind Roadmap work that can move', () => {
       ['verifying', { ...ROADMAP, status: 'verifying' }, []],
       ['done', { ...ROADMAP, status: 'done' }, []],
       ['dropped', { ...ROADMAP, status: 'dropped' }, []],
-      ['open with a wait left on it', { ...ROADMAP, waits: [{ kind: 'task', id: 'T7' }] }, []],
+      ['open with a wait left on it', { ...ROADMAP, waits: [{ kind: 'task', id: 'T7' }] }, [testTask({ id: 'T7', owner: 'bravo' })]],
+      ['waiting on a wait that cleared, until its owner sets the next status', { ...ROADMAP, status: 'waiting', waits: [{ kind: 'task', id: 'T7' }] }, [testTask({ id: 'T7', owner: 'bravo', status: 'done' })]],
       ['planned after a task not finished', { ...ROADMAP, after: ['T2'] }, [testTask({ id: 'T2', owner: 'bravo' })]],
       ["another session's", { ...ROADMAP, owner: 'bravo' }, []],
     ];
