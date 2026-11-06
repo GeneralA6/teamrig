@@ -67,6 +67,7 @@ import { inboxDepsOf } from './inbox.ts';
 import { markBoundary } from './refresh.ts';
 import { markKeepWorkingAsk } from './keep-working.ts';
 import { markLastTaskAsk } from './last-task-ask.ts';
+import { readSpentClasses } from '../class-share.ts';
 import { openTeam, postNamed, teamOf, tellAssigned, tellLine, type Team } from './register-team.ts';
 import { askTeam, treeCallerOf } from './team-ask.ts';
 
@@ -423,6 +424,16 @@ async function tellAskerOfEnd(runtime: CliRuntime, team: Team, by: string, verdi
   await postNamed(runtime, home.kit.paths, secrets, { to, from: formatAddress({ team: here, id: by }), text: endedNotice(task, here) }, `${shown} was not told that ${ended}`, shown);
 }
 
+/** A start with the classes past their share of the week, which only the CLI can read: the policy holds no usage store. */
+async function withSpentClasses(runtime: CliRuntime, team: Team, input: StatusInput): Promise<StatusInput> {
+  const { config, paths, register } = team;
+  if (input.status !== 'in-progress' || config.focus.wip.mode === 'off') {
+    return input;
+  }
+  const { tasks } = (await register.snapshot()).state;
+  return { ...input, spentClasses: await readSpentClasses(runtime, paths, config, tasks.values(), runtime.clock.now()) };
+}
+
 export async function set(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const id = taskIdOf(onePositional(args, 'id'));
   const caller = callerOf(args.flags, runtime.env);
@@ -430,7 +441,7 @@ export async function set(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
   const typed = setInputOf(args.flags, typedTimes(runtime, team.zone));
   const { config, paths, register, roster } = team;
   const by = sessionIdOf(roster, caller);
-  const input = { ...statusInputIds(team, typed.status), ...oneCommitOf(args.switches) };
+  const input = await withSpentClasses(runtime, team, { ...statusInputIds(team, typed.status), ...oneCommitOf(args.switches) });
   if (typed.ask !== null) {
     return setAsking(runtime, team, by, id, { ...typed.ask, owner: sessionIdOf(roster, typed.ask.owner) }, input);
   }
