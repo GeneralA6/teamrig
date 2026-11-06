@@ -39,6 +39,7 @@ describe('golden register logs', () => {
       type: null,
       critical: false,
       pin: null,
+      workClass: null,
       review: {},
       reparks: 0,
       watch: null,
