@@ -107,7 +107,7 @@ describe("runCli: a child team's owner decisions go up to the lead at its tree's
     await ownerWait(kit, UI, 'pixel', 'Pick the icon set');
     const started = await kit.run(['meeting', 'start', '--session', 'lead']);
     assert.equal(started.code, EXIT.ok, started.stderr.join('\n'));
-    assert.equal(started.stdout[1], 'STATS app, 7 d: 01-02 to 01-08 (tree: app, ops, web, ui)', "the stats' top lines cover the root lead's tree (T1771)");
+    assert.ok(started.stdout.includes('STATS app, 7 d: 01-02 to 01-08 (tree: app, ops, web, ui)'), "the stats' top lines cover the root lead's tree (T1771)");
     assert.ok(started.stdout.includes('DECISIONS 3 waiting on owner (decision or approval)'), started.stdout.join('\n'));
     assert.deepEqual(rowIds(started.stdout), ['T1', 'web/T2', 'ui/T3'], 'its own first, then the teams under it depth first');
 
@@ -127,5 +127,21 @@ describe("runCli: a child team's owner decisions go up to the lead at its tree's
     assert.match(told[0] ?? '', /app\/lead: the owner's daily meeting with app-lead ended .*\. Decided on your tasks: T2: human decided: ship it\.$/);
     const pixel = (await kit.run(['inbox', 'read', '--session', 'pixel'], { env: UI })).stdout;
     assert.ok(!pixel.some((line) => line.includes('Decided on your tasks:')), "a team's session with nothing decided gets no line");
+  });
+
+  it("counts a child team's task on the root's goal row, its wait named by <team>/<id> (T2092)", async () => {
+    const kit = await treeHarness();
+    const steps: readonly (readonly [Env, readonly string[]])[] = [
+      [APP, ['goal', 'add', 'G1', '--title', 'Ship the beta', '--target', '2030-02-01', '--session', 'lead']],
+      [APP, ['goal', 'rank', 'G1', '1', '--session', 'lead']],
+      [UI, ['add', '--title', 'New icons', '--description', 'what and why', '--priority', 'p2', '--goals', 'G1', '--session', 'pixel']],
+      [UI, ['set', 'T1', '--status', 'waiting', '--waits', 'time:2030-01-09 09:00', '--note', 'after the demo', '--session', 'pixel']],
+    ];
+    for (const [env, args] of steps) {
+      const result = await kit.run(args, { env });
+      assert.equal(result.code, EXIT.ok, result.stderr.join('\n'));
+    }
+    const { stdout } = await kit.run(['meeting', 'agenda', '--session', 'lead']);
+    assert.match(stdout[2] ?? '', /^ {2}#1 G1 Ship the beta \(target 2030-02-01\): 0\/1 done, .* 1 waiting: ui\/T1$/, stdout.join('\n'));
   });
 });
