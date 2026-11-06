@@ -5,7 +5,7 @@ import { fieldPaths } from '../testing/field-paths.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { INITIAL_MISS_STATE } from './misses.ts';
 import { emptyPatterns, INITIAL_PATTERN_STATE } from './patterns.ts';
-import { NO_TURN } from './tasks.ts';
+import { NO_TURN, type OpenTurn } from './tasks.ts';
 import { EMPTY_USAGE, formatUsage, MemoryUsageStore, newCursor, parseUsage, pruneUsage, RECENT_KEYS_KEPT, USAGE_FORMAT, UsageStore, type UsageState } from './store.ts';
 
 const DIR = '/state/usage';
@@ -305,5 +305,38 @@ describe('pruneUsage', () => {
     assert.deepEqual(pruned.byTask, { '2026-03-09': { T1: 2 } });
     assert.deepEqual(Object.keys(pruned.cursors), ['recent', 'today']);
     assert.deepEqual(pruned.recentKeys, keys.slice(5));
+  });
+
+  describe("a dropped position's open turn (T2052)", () => {
+    const NOW = Date.parse('2026-03-09T23:00:00Z');
+    /** A usage state with one transcript position, last moved on 03-07, so a prune at `NOW` drops it. */
+    function finished(turn: OpenTurn, byTask: UsageState['byTask'] = {}): UsageState {
+      return { ...EMPTY_USAGE, byTask, cursors: { done: { ...newCursor(1, 1, '2026-03-07'), turn } } };
+    }
+
+    it('splits it over its tasks, on each day it held, on top of what byTask holds', () => {
+      const state = finished({ tasks: ['T7', 'T12'], held: { '2026-03-06': 30, '2026-03-07': 10 } }, { '2026-03-06': { T7: 5 } });
+      const pruned = pruneUsage(state, NOW);
+      assert.deepEqual(pruned.byTask, { '2026-03-06': { T7: 20, T12: 15 }, '2026-03-07': { T7: 5, T12: 5 } });
+      assert.deepEqual(pruned.cursors, {});
+      assert.deepEqual(state.byTask, { '2026-03-06': { T7: 5 } });
+    });
+
+    it('leaves the W of a turn that named no task unattributed', () => {
+      assert.deepEqual(pruneUsage(finished({ tasks: [], held: { '2026-03-07': 10 } }), NOW).byTask, {});
+    });
+
+    it('drops the days it held that are past the kept days', () => {
+      const pruned = pruneUsage(finished({ tasks: ['T7'], held: { '2026-03-01': 30, '2026-03-02': 10 } }), NOW);
+      assert.deepEqual(pruned.byTask, { '2026-03-02': { T7: 10 } });
+    });
+
+    it('leaves the open turn of a kept position held, out of byTask', () => {
+      const turn: OpenTurn = { tasks: ['T7'], held: { '2026-03-08': 30 } };
+      const state: UsageState = { ...EMPTY_USAGE, cursors: { live: { ...newCursor(1, 1, '2026-03-08'), turn } } };
+      const pruned = pruneUsage(state, NOW);
+      assert.deepEqual(pruned.byTask, {});
+      assert.deepEqual(pruned.cursors['live']?.turn, turn);
+    });
   });
 });

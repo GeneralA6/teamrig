@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { MS_PER_DAY } from '../core/time.ts';
 import { blockStartLines } from '../hooks/live-tasks.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
@@ -130,6 +131,28 @@ describe('runMeter', () => {
     const second = (await meter.run(10_000_000, mainOnly)).state;
     near(second.byTask[DAY]?.['T5'], R1_W + R2_W, 'T5');
     assert.deepEqual(second.cursors[MAIN]?.turn, NO_TURN);
+  });
+
+  it("charges a finished transcript's last turn to its tasks when its position is dropped, once, however it is read after (T2052)", async () => {
+    const naming: FixtureReply = { ...R2, tools: [{ id: 'b1', name: 'Bash', command: 'teamrig show T5' }] };
+    const meter = world(at(12), { [MAIN]: transcript([promptLine(at(9)), replyLine(naming)]) });
+    const mainOnly: TranscriptSet = { main: [MAIN], subagents: [] };
+    const first = (await meter.run(10_000_000, mainOnly)).state;
+    assert.deepEqual(first.byTask, {});
+
+    meter.clock.advance(MS_PER_DAY);
+    const kept = (await meter.run(10_000_000, mainOnly)).state;
+    assert.deepEqual(kept.byTask, {});
+    assert.deepEqual(kept.cursors[MAIN]?.turn.tasks, ['T5']);
+
+    meter.clock.advance(MS_PER_DAY);
+    const dropped = (await meter.run(10_000_000, { main: [], subagents: [] })).state;
+    assert.equal(dropped.cursors[MAIN], undefined);
+    near(dropped.byTask[DAY]?.['T5'], R2_W, 'T5');
+
+    meter.bytes.append(MAIN, transcript([promptLine(at(9, 5))]));
+    const resumed = (await meter.run(10_000_000, mainOnly)).state;
+    near(resumed.byTask[DAY]?.['T5'], R2_W, 'T5 after a resume');
   });
 
   it("charges no task with a subagent's W, whatever its calls name", async () => {
