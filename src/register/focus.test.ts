@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_FOCUS } from '../config/defaults.ts';
 import { testTask } from '../testing/task.ts';
-import { classOf, rankOf, servedGoalOf, type RankedGoal } from './focus.ts';
+import { classOf, goalChain, rankOf, servedGoalOf, type RankedGoal } from './focus.ts';
 
 describe('classOf (T2076)', () => {
   it("reads a task's own class, and one with none as the team's default class", () => {
@@ -13,6 +13,42 @@ describe('classOf (T2076)', () => {
 
   it('keeps a class the team has since renamed out of focus.classes, as written', () => {
     assert.equal(classOf(testTask({ workClass: 'Tech debt' }), DEFAULT_FOCUS), 'Tech debt');
+  });
+});
+
+describe('goalChain (T2092)', () => {
+  const goal = (parent: string | null, rank: number | null): RankedGoal => ({ parent, rank });
+  const tags = (tag: string, goals: ReadonlyMap<string, RankedGoal>): string[] => goalChain(tag, goals).map(([at]) => at);
+
+  it('walks a goal up its parents, nearest first, each with its record', () => {
+    const top = goal(null, 1);
+    const part = goal('A1', null);
+    assert.deepEqual(
+      goalChain(
+        'A1.1',
+        new Map([
+          ['A1', top],
+          ['A1.1', part],
+        ]),
+      ),
+      [
+        ['A1.1', part],
+        ['A1', top],
+      ],
+    );
+  });
+
+  it('is empty for a tag the team holds no goal for, and ends at a parent it does not hold', () => {
+    assert.deepEqual(tags('Z9', new Map()), []);
+    assert.deepEqual(tags('A1.1', new Map([['A1.1', goal('A1', null)]])), ['A1.1']);
+  });
+
+  it('walks each goal once on a parent loop in a damaged goals map', () => {
+    const looped = new Map([
+      ['A1', goal('A1.1', null)],
+      ['A1.1', goal('A1', 3)],
+    ]);
+    assert.deepEqual(tags('A1', looped), ['A1', 'A1.1']);
   });
 });
 
