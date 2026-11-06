@@ -170,11 +170,11 @@ function trueFirst(a: boolean | undefined, b: boolean | undefined): number {
  * from teamrig's folded tasks, and gets its own rows back from it; a row without `week`, `size` or `pin` counts as
  * untagged, unsized and unpinned, one without `type`, `critical` or `source` as a plain task no owner ordered, one
  * without `workClass` or `goals` as unclassed and serving no goal, one without `sizeBase` as sized before it spent, one
- * without `updatedAt` as never parked.
+ * without `updatedAt` as never parked, one without `decided` or `answer` as undecided and unanswered.
  */
 export type TreeTask = Pick<Task, 'id' | 'status' | 'owner' | 'priority' | 'due' | 'after' | 'waits'> &
   Partial<
-    Pick<Task, 'week' | 'size' | 'sizeBase' | 'pin' | 'type' | 'critical' | 'source' | 'workClass' | 'goals' | 'updatedAt'>
+    Pick<Task, 'week' | 'size' | 'sizeBase' | 'pin' | 'type' | 'critical' | 'source' | 'workClass' | 'goals' | 'updatedAt' | 'decided' | 'answer'>
   >;
 
 /**

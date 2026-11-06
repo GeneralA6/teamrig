@@ -510,6 +510,13 @@ describe('TaskTree placeOf blocked: whether a task can move', () => {
     assert.equal(blocked({ status: 'waiting', startedAt: started, waits: [{ kind: 'time', at: '2030-01-07 12:00' }] }), false);
   });
 
+  it('is false on an approval its giver answered and on a decided task, and true on a wait with no reason', () => {
+    const answer = { verdict: 'approved', by: 'lead', at: started, note: null } as const;
+    assert.equal(blocked({ status: 'waiting', startedAt: started, waits: [{ kind: 'approval', who: 'lead' }], answer }), false);
+    assert.equal(blocked({ status: 'waiting', startedAt: started, decided: { by: 'lead', at: started, note: null } }), false);
+    assert.equal(blocked({ status: 'waiting', startedAt: started }), true);
+  });
+
   it('is false for a finished task, whatever it came after', () => {
     assert.equal(blocked({ status: 'done', after: ['T1'] }), false);
     assert.equal(blocked({ status: 'dropped', after: ['T1'] }), false);
