@@ -86,6 +86,31 @@ export function taskUseOf(bySession: ReadonlyMap<string, UsageState>, task: stri
   return { task, sessions, w: sum(sessions.map((session) => session.w)) };
 }
 
+/**
+ * The W the meter keeps on every task, by its id: `taskUseOf(...).w` of each in one pass over the stores, since the
+ * budget hooks that read it run on every turn and a team's stores name hundreds of tasks.
+ */
+export function taskWOf(states: Iterable<UsageState>): ReadonlyMap<string, number> {
+  const byTask = new Map<string, number>();
+  const add = (task: string, w: number): void => {
+    byTask.set(task, (byTask.get(task) ?? 0) + w);
+  };
+  for (const state of states) {
+    for (const tasks of Object.values(state.byTask)) {
+      for (const [task, w] of Object.entries(tasks)) {
+        add(task, w);
+      }
+    }
+    for (const turn of namingTurns(state)) {
+      const share = sum(Object.values(turn.held)) / turn.tasks.length;
+      for (const task of turn.tasks) {
+        add(task, share);
+      }
+    }
+  }
+  return byTask;
+}
+
 /** The W of a UTC day a session's turns put on some task, its open turns that named one included. */
 export function attributedW(state: UsageState, day: string): number {
   return sum(Object.values(state.byTask[day] ?? {})) + sum(namingTurns(state).map((turn) => turn.held[day] ?? 0));
