@@ -3612,8 +3612,10 @@ out. It resolves `<path>` against the current folder.
 
 In a team, a session removes only its own worktrees and those of the sessions it leads; the lead removes any. A
 worktree is the session's whose branch names a task it owns: `t12-parser` is T12's. One on a branch that names no
-task, a task the register lacks, or no branch at all is the lead's alone. The caller is the session the Claude Code tab
-is bound to, else `--session` or `TEAMRIG_SESSION`; a tab bound to no session must give `--session`, and a tab bound
+task, or a task the register lacks, is the lead's alone. One on no branch (a detached HEAD) is any session's to remove
+once the branch `origin/HEAD` names holds every commit of its HEAD, by ancestry or as the same change, as of the last
+fetch: `teamrig merge` leaves the worktree it merged from so. Any other detached HEAD is the lead's alone; if it merged,
+fetch and run the command again. The caller is the session the Claude Code tab is bound to, else `--session` or `TEAMRIG_SESSION`; a tab bound to no session must give `--session`, and a tab bound
 to one session that names another is refused. Run outside Claude Code by the person, nothing is checked. Another
 session's worktree is refused before any change, naming who may remove it:
 
