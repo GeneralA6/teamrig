@@ -11,6 +11,8 @@ import { holdBackOutput } from "./permission.js";
  * type `/teamrig exec approve R<n> --session <owner>` in a tab, which the mod runs without a PreToolUse hook. A teamrig
  * call with a word only known when it runs that decides whether it reviews, or as whom, is refused: its subcommand
  * too (`teamrig "$G" approve R1`, or `f(){ teamrig "$@"; }; f exec approve ...`), as reviews are not signed (T1780).
+ * So is a line whose shell takes its commands from a pipe (`echo ... | bash`, `... | iex`), whatever feeds it, as a
+ * pipe can carry a review the line never shows (T1855); a heredoc it reads is judged as written.
  *
  * It also pins the client (spec §2.2, phase 1): every `teamrig exec` call, whatever its command, runs only through an
  * install of this plugin whose files are the ones its build hashed, as phase 1 runs an approved request inside that
@@ -119,6 +121,7 @@ function guardedCallOf(words) {
     return { kind: 'review', action: action.text, sessions };
 }
 const UNREADABLE = 'a teamrig call here has a word only known when it runs (a variable or a substitution), so the guard cannot tell whether it reviews a request, or as whom; write the words out.';
+const FED_SHELL = 'a shell here reads its commands from a pipe, so the guard cannot tell whether they review a request or act as the owner; run them directly, or hand the shell a heredoc, which the guard reads.';
 /** At most this many changed files are named in a refusal; the rest are counted. */
 const NAMED_FILES = 5;
 /** Where the plugin's own client is, for a refusal to name: `<install>/bin/teamrig`. */
@@ -206,8 +209,8 @@ function reviewRefusalOf(call, identity) {
  * but the tab's own session, named by `--session` (the flag wins over `$TEAMRIG_SESSION` in the CLI, so a variable
  * set on the line changes nothing), when the guard cannot read who it reviews as, or when it runs any `teamrig exec`
  * command through a client that is no install of this plugin, one only known when it runs, or one whose files differ
- * from its build; and whenever the line runs a `teamrig owner` command, through any client, as it acts as the owner.
- * Else nothing, so the normal permission flow decides. It checks each install a line's `teamrig exec` calls start
+ * from its build; whenever the line runs a `teamrig owner` command, through any client, as it acts as the owner; and
+ * when a shell on the line takes its commands from a pipe the guard cannot read. Else nothing, so the normal permission flow decides. It checks each install a line's `teamrig exec` calls start
  * once, and reads the tab's session only for a line that holds a review.
  */
 export async function execGuardOutput(payload, env) {
@@ -233,10 +236,11 @@ export async function execGuardOutput(payload, env) {
     const opaque = runs.opaque.filter((run) => startsExec(run.args));
     const opaqueOwner = runs.opaque.filter((run) => startsOwner(run.args));
     const unread = runs.opaque.some(hidesSubcommand) || calls.some(({ call }) => call.kind === 'unreadable');
-    if (calls.length === 0 && opaque.length === 0 && opaqueOwner.length === 0 && !unread) {
+    const fed = runs.fedShells.length > 0;
+    if (calls.length === 0 && opaque.length === 0 && opaqueOwner.length === 0 && !unread && !fed) {
         return '';
     }
-    const reasons = unread ? [UNREADABLE] : [];
+    const reasons = [...(unread ? [UNREADABLE] : []), ...(fed ? [FED_SHELL] : [])];
     reasons.push(...opaque.map((run) => opaqueRefusalOf(run.program)));
     reasons.push(...calls.flatMap(({ call }) => (call.kind === 'owner' ? [ownerRefusalOf(call.action)] : [])));
     reasons.push(...opaqueOwner.map((run) => ownerRefusalOf(ownerActionOf(run.args))));

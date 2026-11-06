@@ -7,12 +7,12 @@ import { resolveLiteralVariables } from "../push-guard/variables.js";
 const SCREEN = { pipe: undefined, substitution: undefined };
 /** Nested scripts deeper than this are not read, as in the push guard. */
 const MAX_SCRIPT_DEPTH = 8;
-/** A separator that pipes a command's output into the next one: `|`, `|&`, or `)|` after a group, not `||`. */
-const PIPE_END = /(?:^|[^|])\|&?\n*$/;
+/** A separator that pipes a command's output into the next one: `|`, `|&`, `)|` after a group, or `|(` before a subshell, not `||`. */
+const PIPE_END = /(?:^|[^|])\|&?[\n(]*$/;
 /** What `command` runs, each in the order it runs. */
 export function runsOf(command, context) {
-    const runs = { programs: [], bare: [], opaque: [] };
-    visitScript(staticWord(command), context.dialect, new Location(context.cwd, context.home), 0, false, runs, SCREEN);
+    const runs = { programs: [], bare: [], opaque: [], fedShells: [] };
+    visitScript(staticWord(command), context.dialect, new Location(context.cwd, context.home), 0, false, runs, SCREEN, false);
     return runs;
 }
 /** The programs `command` starts, in the order it starts them. */
@@ -21,9 +21,10 @@ export function programsOf(command, context) {
 }
 /**
  * Visits each command of a script; a plain `cat` hands its stdin down a pipe, so `cat <<EOF | bash` runs the body.
- * `runner` is true when a teamrig runner started the script; `outlet` takes the output of its commands that send it nowhere else.
+ * `runner` is true when a teamrig runner started the script; `outlet` takes the output of its commands that send it nowhere else;
+ * `fed` is true when the command that started it has a fed stdin, which its own commands inherit.
  */
-function visitScript(script, dialect, location, depth, runner, runs, outlet) {
+function visitScript(script, dialect, location, depth, runner, runs, outlet, fed) {
     if (depth > MAX_SCRIPT_DEPTH) {
         return;
     }
@@ -62,7 +63,8 @@ function visitScript(script, dialect, location, depth, runner, runs, outlet) {
             piped = undefined;
         }
         location.enter(command.subshells);
-        const visited = visitCommand(command, pipeIn !== undefined, { pipe, substitution }, dialect, location, depth, stdin, runner, runs);
+        const inlet = { fromPipe: pipeIn !== undefined, text: stdin, fed: pipeIn !== undefined || stdin !== undefined || (fed && command.nesting === 0) };
+        const visited = visitCommand(command, inlet, { pipe, substitution }, dialect, location, depth, runner, runs);
         if (pipeIn !== undefined) {
             pipeIn.into = visited?.run;
         }
@@ -83,15 +85,15 @@ function visitScript(script, dialect, location, depth, runner, runs, outlet) {
     }
 }
 /** Visits one simple command; returns what it starts, or undefined for a `cd`. */
-function visitCommand(command, fromPipe, outlet, dialect, location, depth, stdin, runner, runs) {
+function visitCommand(command, inlet, outlet, dialect, location, depth, runner, runs) {
     if (location.apply(command.words, dialect)) {
         return undefined;
     }
-    const launched = launch(command.words, dialect, stdin);
+    const launched = launch(command.words, dialect, inlet.text);
     if (launched.kind === 'script') {
         const inner = location.child();
         launched.chdirs.forEach((chdir) => inner.moveTo(chdir));
-        visitScript(launched.script, launched.dialect, inner, depth + 1, runner || launched.runner, runs, outlet);
+        visitScript(launched.script, launched.dialect, inner, depth + 1, runner || launched.runner, runs, outlet, inlet.fed);
         if (launched.sameShell) {
             location.adopt(inner);
         }
@@ -106,8 +108,8 @@ function visitCommand(command, fromPipe, outlet, dialect, location, depth, stdin
             dialect,
             dir: inner.dir,
             redirections: command.redirections,
-            stdin,
-            piped: fromPipe,
+            stdin: inlet.text,
+            piped: inlet.fromPipe,
             runner: runner || launched.runner,
             pipe: outlet.pipe,
             captured: launched.captured,
@@ -118,6 +120,9 @@ function visitCommand(command, fromPipe, outlet, dialect, location, depth, stdin
     }
     else if (launched.kind === 'opaque' && launched.command !== undefined) {
         runs.opaque.push({ ...launched.command, dialect });
+    }
+    else if (launched.kind === 'opaque' && launched.stdinScript === true && inlet.fed) {
+        runs.fedShells.push(dialect);
     }
     else if (launched.kind === 'nothing' && command.words.length > 0) {
         const bare = { words: command.words, dialect, redirections: command.redirections, pipe: outlet.pipe, substitution: outlet.substitution };
