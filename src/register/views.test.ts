@@ -419,9 +419,9 @@ describe('formatEvent and formatTaskDetail', () => {
       id: 'T1',
       at: AT,
       by: 'lead',
-      task: { title: 'x', description: 'Why x.', owner: 'alpha', source: 'owner', ref: 'inbox:3', priority: 1, due: '2030-01-08', goals: ['G1'], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null },
+      task: { title: 'x', description: 'Why x.', owner: 'alpha', source: 'owner', ref: 'inbox:3', priority: 1, due: '2030-01-08', goals: ['G1'], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null },
     },
-    { v: 1, type: 'create', id: 'T2', at: AT, by: 'lead', task: { title: 'y', description: null, owner: 'bravo', source: 'lead', ref: null, priority: 2, due: null, goals: [], noGoal: false, week: null, after: ['T1'], size: null, type: null, critical: false, pin: null } },
+    { v: 1, type: 'create', id: 'T2', at: AT, by: 'lead', task: { title: 'y', description: null, owner: 'bravo', source: 'lead', ref: null, priority: 2, due: null, goals: [], noGoal: false, week: null, after: ['T1'], size: null, type: null, critical: false, pin: null, workClass: null } },
     { v: 1, type: 'update', id: 'T1', at: '2030-01-07T10:00:00.000Z', by: 'lead', changes: { due: '2030-01-09', goals: ['G1', 'G2'] }, note: 'later' },
     { v: 1, type: 'status', id: 'T1', at: '2030-01-07T11:00:00.000Z', by: 'alpha', status: 'done', note: 'ok', evidence: 'abc1234', skill: 'none' },
     {
@@ -574,6 +574,16 @@ describe('formatEvent and formatTaskDetail', () => {
     assert.doesNotMatch(formatEvent(untyped, TimeZone.UTC), /type=|critical=/);
     const retyped: RegisterEvent = { v: 2, type: 'update', id: 'T1', at: AT, by: 'lead', changes: { type: 'task' }, note: null };
     assert.equal(formatEvent(retyped, TimeZone.UTC), '2030-01-07 09:00 UTC lead update type=task');
+  });
+
+  it('names a work class on its row after the goals, and prints it on create and its updates, a cleared one as none (T2076)', () => {
+    assert.equal(formatTask(testTask({ workClass: 'Roadmap' }), undefined, TREE), 'T1 open, p2, owner alpha, from lead, class Roadmap | Add a health check');
+    assert.equal(formatTask(testTask(), undefined, TREE), 'T1 open, p2, owner alpha, from lead | Add a health check', 'unset prints nothing');
+    const created: RegisterEvent = { v: 2, type: 'create', id: 'T1', at: AT, by: 'alpha', task: testTask({ id: 'T1', workClass: 'Maintenance' }) };
+    assert.match(formatEvent(created, TimeZone.UTC), / workClass=Maintenance$/);
+    const reclassed = (workClass: string | null): RegisterEvent => ({ v: 2, type: 'update', id: 'T1', at: AT, by: 'lead', changes: { workClass }, note: null });
+    assert.equal(formatEvent(reclassed('Improvements'), TimeZone.UTC), '2030-01-07 09:00 UTC lead update workClass=Improvements');
+    assert.equal(formatEvent(reclassed(null), TimeZone.UTC), '2030-01-07 09:00 UTC lead update workClass=none');
   });
 
   it('names a pinned task on its row after the priority, and who pinned it in the detail and the history (T637)', () => {
