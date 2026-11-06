@@ -4,6 +4,7 @@ import { TimeZone } from '../core/zone.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import type { Burst } from './burst.ts';
 import { calibrationOf } from './calibration.ts';
+import { NO_TASK_ROW, type ClassRow } from './class-spend.ts';
 import type { ExtraPool } from './extra.ts';
 import type { Lift } from './lift.ts';
 import { weekWindow } from './pace.ts';
@@ -111,7 +112,24 @@ function inBurst(id: string, w: number): SessionToday {
 const SESSIONS: readonly SessionToday[] = [session('lead', 7_500_000, 310), session('alpha', 30_000_000, 1_000), session('bravo', 0, 0, 2, LIFT)];
 const OUTSIDE: OutsideToday = { w: 1_200_000, calls: 40, sessions: 2, titles: ['release checks', 'Docs'] };
 const NOBODY_OUTSIDE: OutsideToday = { w: 0, calls: 0, sessions: 0, titles: [] };
-const REPORT: TodayReport = { week: WEEK, teamPct: WEEK.allowancePct, sessions: SESSIONS, groups: [], outside: OUTSIDE, behind: [], all: false, zone: TimeZone.UTC };
+const REPORT: TodayReport = { week: WEEK, teamPct: WEEK.allowancePct, sessions: SESSIONS, groups: [], classes: undefined, outside: OUTSIDE, behind: [], all: false, zone: TimeZone.UTC };
+/** At WEEK's 7.5M W per percent: Roadmap 2% today and 10% of the week, Improvements past its 15%, a class the config dropped, and the rest. */
+const CLASSES: readonly ClassRow[] = [
+  { name: 'Roadmap', todayW: 15_000_000, weekW: 75_000_000, allocationPct: 60 },
+  { name: 'Improvements', todayW: 0, weekW: 150_000_000, allocationPct: 15 },
+  { name: 'Retired', todayW: 7_500_000, weekW: 7_500_000, allocationPct: undefined },
+  { name: NO_TASK_ROW, todayW: 15_000_000, weekW: 37_500_000, allocationPct: undefined },
+];
+const CLASSES_NO_WEEK: readonly ClassRow[] = CLASSES.map((row) => ({ ...row, weekW: undefined }));
+
+/** The spend by class block of `report`: its heading and the lines indented under it. */
+function classBlock(report: TodayReport): string[] {
+  const lines = todayLines(report);
+  const start = lines.findIndex((line) => line.startsWith('Spend by class'));
+  assert.notEqual(start, -1, lines.join('\n'));
+  const end = lines.findIndex((line, index) => index > start && !line.startsWith('  '));
+  return lines.slice(start, end);
+}
 
 describe('todayLines', () => {
   it("gives the week's status time and reset on the team's clock", () => {
@@ -338,6 +356,57 @@ describe('todayLines', () => {
       const lines = todayLines({ ...REPORT, sessions: [session('lead', 0, 0), session('alpha', 7_500_000, 5), session('bravo', 0, 0)], groups: [{ ...GROUP, lift: undefined, liftBy: undefined }] });
       assert.match(lines[4] ?? '', /^ {2}group bravo \(2\) +1\.0% +6\.0% +7\.50M +5$/);
       assert.ok(!lines.some((line) => line.startsWith('Lifts')), lines.join('\n'));
+    });
+  });
+
+  describe('the spend by class', () => {
+    it("tables each class's today and week in % of the week beside its allocation, then their W", () => {
+      assert.deepEqual(classBlock({ ...REPORT, classes: CLASSES }), [
+        'Spend by class today and this week, in % of the week, against focus.allocation:',
+        '  class         today   week  allocation  W today   W week',
+        '  Roadmap        2.0%  10.0%       60.0%   15.00M   75.00M',
+        '  Improvements   0.0%  20.0%       15.0%        0  150.00M',
+        '  Retired        1.0%   1.0%           -    7.50M    7.50M',
+        '  No task        2.0%   5.0%           -   15.00M   37.50M',
+      ]);
+    });
+
+    it('comes right after the table of today and before the lifts', () => {
+      const lines = todayLines({ ...REPORT, classes: CLASSES });
+      const at = lines.findIndex((line) => line.startsWith('Spend by class'));
+      assert.match(lines[at - 1] ?? '', /^ {2}commander /);
+      assert.match(lines[at + 6] ?? '', /^Lifts, today only: /);
+    });
+
+    it("says the week's W is short while the meter does not reach back to the week's start", () => {
+      assert.equal(classBlock({ ...REPORT, classes: CLASSES, week: { ...WEEK, covered: false } }).at(-1), "  The meter does not reach back to the week's start, so the week's W is short.");
+    });
+
+    it('shows W alone while the week in W is unknown', () => {
+      assert.deepEqual(classBlock({ ...REPORT, classes: CLASSES, week: { ...WEEK, wPerPct: undefined, rateFrom: undefined, todayWPerPct: undefined } }), [
+        'Spend by class today and this week:',
+        '  class         W today   W week',
+        '  Roadmap        15.00M   75.00M',
+        '  Improvements        0  150.00M',
+        '  Retired         7.50M    7.50M',
+        '  No task        15.00M   37.50M',
+      ]);
+    });
+
+    it("shows today alone while the week's start is unknown", () => {
+      assert.deepEqual(classBlock({ ...REPORT, classes: CLASSES_NO_WEEK, week: { ...WEEK, window: undefined, covered: false } }), [
+        'Spend by class today, in % of the week:',
+        '  class         today  W today',
+        '  Roadmap        2.0%   15.00M',
+        '  Improvements   0.0%        0',
+        '  Retired        1.0%    7.50M',
+        '  No task        2.0%   15.00M',
+      ]);
+      assert.deepEqual(classBlock({ ...REPORT, classes: CLASSES_NO_WEEK, week: UNKNOWN }).slice(0, 2), ['Spend by class today:', '  class         W today']);
+    });
+
+    it('prints no block when the register could not be read', () => {
+      assert.ok(!todayLines(REPORT).some((line) => line.startsWith('Spend by class')));
     });
   });
 
