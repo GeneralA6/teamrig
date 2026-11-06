@@ -1,6 +1,7 @@
 import { isStringArray, numberField, stringField } from "../core/guards.js";
 import { assertWritable, parseJsonl, toJsonlLine, VERSION_FIELD } from "../core/jsonl.js";
 import { MS_PER_DAY, MS_PER_MINUTE } from "../core/time.js";
+import { MEETING_LAPSE_MS } from "./state.js";
 /**
  * Scheduled meetings (`meeting schedule|list|move|start|end|drop`, T1358): a meeting the owner holds with one session at
  * a set time, apart from the daily meeting with the lead (state.ts). The team keeps them in `<state>/meetings.jsonl`,
@@ -111,6 +112,16 @@ export function nextMeetingId(read) {
 /** A meeting still to be held: scheduled or started. */
 export function isOpenMeeting(meeting) {
     return meeting.status === 'scheduled' || meeting.status === 'started';
+}
+/**
+ * Whether `session` is in a booked meeting now, which holds its context refresh as the daily meeting holds the lead's
+ * (src/refresh/decide.ts `meetingHolds`, T2111): one started (`meeting start M<n>`) that it is met in or joins, neither
+ * ended nor dropped, and under MEETING_LAPSE_MS since its start, so a forgotten `meeting end` holds nothing for good.
+ * The hold follows the start, not the slot, since a meeting the owner runs past its minutes is still on. A started
+ * meeting's `changedAt` is its start: a move takes only a scheduled one, and an end or a drop finishes it.
+ */
+export function inBookedMeeting(meetings, session, now) {
+    return meetings.some((meeting) => meeting.status === 'started' && (meeting.session === session || meeting.with.includes(session)) && now < meeting.changedAt + MEETING_LAPSE_MS);
 }
 /** When a meeting's slot ends, epoch ms. */
 export function endOf(meeting) {

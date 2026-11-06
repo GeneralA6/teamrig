@@ -2,6 +2,7 @@ import { claudeProjectsDir, findTranscript } from "../../budget/discover.js";
 import { isNonNegativeInteger, isRecord, stringField } from "../../core/guards.js";
 import { ENV, KIT_NAME } from "../../core/home.js";
 import { sessionIdOf } from "../../inbox/inbox.js";
+import { inBookedMeeting, MeetingSchedule } from "../../meeting/schedule.js";
 import { inMeeting, MeetingStore } from "../../meeting/state.js";
 import { decideCompact, decideMidTurn, handoverHashOf } from "../../refresh/decide.js";
 import { readRunningWork } from "../../refresh/running.js";
@@ -29,9 +30,17 @@ export async function dueFactsAt(runtime, store, id, transcript) {
         running: transcript === undefined ? 0 : await readRunningWork(runtime.files, transcript, runtime.clock.now()),
     };
 }
-/** Whether the session is in the owner's open daily meeting, which holds its refresh (`meetingHolds`): one small file. */
+/**
+ * Whether the session is in an open owner meeting, which holds its refresh (`meetingHolds`): the lead's daily meeting,
+ * or a booked one it is met in or joins (`inBookedMeeting`, T2111). Two small files, the second read only when the
+ * first holds nothing.
+ */
 export async function inMeetingNow(runtime, scope) {
-    return inMeeting(await new MeetingStore(runtime.files, scope.kit.paths.meeting).read(), scope.id, runtime.clock.now());
+    const now = runtime.clock.now();
+    if (inMeeting(await new MeetingStore(runtime.files, scope.kit.paths.meeting).read(), scope.id, now)) {
+        return true;
+    }
+    return inBookedMeeting((await new MeetingSchedule(runtime.files, scope.kit.paths.meetings).read()).meetings, scope.id, now);
 }
 /** The tab's own transcript: the mod knows its Claude Code session and project, not where Claude Code keeps it. */
 async function transcriptOf(runtime, payload) {
