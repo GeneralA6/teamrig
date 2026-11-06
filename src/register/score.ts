@@ -92,13 +92,20 @@ export function ownerOrderOf(facts: OrderFacts, score: Pick<FocusScoreConfig, 'o
 }
 
 /**
+ * A task's whole size, whatever it spent so far: its own, else what like tasks took, else the default. What a spend is
+ * read against, as the work left has that same spend already taken off.
+ */
+export function wholeSizePctOf(facts: SizeFacts, score: Pick<FocusScoreConfig, 'defaultSizePct'>): number {
+  return facts.size ?? facts.likeMedianPct ?? score.defaultSizePct;
+}
+
+/**
  * The share of the week a score divides by: the work left, as WSJF ranks what a delay costs over what remains to do. That
- * is the task's size, else what like tasks took, else the default, less what it spent, so spending lifts a task and can
- * never sink it under the tasks that wait on it (T2109); never under the floor, so a tiny task cannot outrank everything.
+ * is the task's whole size less what it spent, so spending lifts a task and can never sink it under the tasks that wait
+ * on it (T2109); never under the floor, so a tiny task cannot outrank everything.
  */
 export function sizePctOf(facts: SizeFacts, score: Pick<FocusScoreConfig, 'defaultSizePct' | 'minSizePct'>): number {
-  const whole = facts.size ?? facts.likeMedianPct ?? score.defaultSizePct;
-  return Math.max(whole - facts.spentPct, score.minSizePct);
+  return Math.max(wholeSizePctOf(facts, score) - facts.spentPct, score.minSizePct);
 }
 
 /**

@@ -2,7 +2,7 @@ import { goalChain } from './focus.ts';
 import type { Task } from './fold.ts';
 import type { Goal } from './goals.ts';
 import { ACTIVE_STATUSES } from './model.ts';
-import { sizePctOf } from './score.ts';
+import { wholeSizePctOf } from './score.ts';
 import type { TaskTree, TreeRanking } from './tree.ts';
 import { taskLabel } from './views.ts';
 
@@ -36,6 +36,7 @@ export interface GoalScore {
   readonly total: number;
   /** In percent of the week. */
   readonly spentPct: number;
+  /** Its tasks' whole sizes, in percent of the week: what the spend reads against, so never the work left. */
   readonly sizePct: number;
   /** How many times its target moved. */
   readonly slips: number;
@@ -73,7 +74,7 @@ function goalScore(goal: RankedRecord, teams: readonly BoardTeam[], now: number)
       .filter((task) => team.tree.task(task.id) !== undefined)
       .map((task) => {
         const facts = team.ranking.sizingOf(task);
-        return { spentPct: facts.spentPct, sizePct: sizePctOf(facts, team.ranking.focus.score) };
+        return { spentPct: facts.spentPct, sizePct: wholeSizePctOf(facts, team.ranking.focus.score) };
       }),
   );
   return {
