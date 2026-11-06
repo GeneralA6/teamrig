@@ -143,8 +143,9 @@ async function writeRow(runtime, writer, plan) {
 }
 /**
  * `sweep apply <file> [--apply]` (T2076): writes the class, goal and size of each row a person set `confirm` to yes on,
- * as its task's owner or a leader over it, and never deletes or parks. A dry run (the default) writes nothing. One row
- * that cannot land leaves the others: a person confirmed each on its own, so a bad one says why and the rest stand.
+ * as its task's owner or a leader over it, and never deletes or parks. A size lands only when it differs from the row's
+ * `proposedSize`, so a median or floor size stays live (T2114). A dry run (the default) writes nothing. One row that
+ * cannot land leaves the others: a person confirmed each on its own, so a bad one says why and the rest stand.
  * Exits refused when `--apply` left a refused row.
  */
 export async function apply(args, runtime) {
