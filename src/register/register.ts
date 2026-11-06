@@ -5,7 +5,7 @@ import type { TimeZone } from '../core/zone.ts';
 import { EVENT_VERSION, TASK_LINE_VERSION, type ApprovalVerdict, type CreateEvent, type RegisterEvent, type SizeBase, type StatusEvent, type TaskFields, type UpdateEvent } from './events.ts';
 import { foldEvents, taskNumber, type RegisterState, type Task } from './fold.ts';
 import { NO_GOAL_TAGS } from './goals.ts';
-import { GITHUB_ACTOR, NO_SKILL, type AddInput, type AskInput, type DeferChange, type ImportChanges, type ImportInput, type OwnerChange, type RegisterPolicy, type StatusContext, type StatusInput, type UpdateChange, type Verdict } from './policy.ts';
+import { GITHUB_ACTOR, NO_SKILL, type AddInput, type AskInput, type DeferChange, type ImportChanges, type ImportInput, type OwnerChange, type RegisterPolicy, type StatusContext, type StatusInput, type TriageChanges, type UpdateChange, type Verdict } from './policy.ts';
 import { ACTIVE_STATUSES } from './model.ts';
 import type { TaskNumbering } from './numbering.ts';
 import { isWritable, type RegisterSnapshot } from './snapshot.ts';
@@ -253,6 +253,35 @@ export class Register {
         }),
       );
     });
+  }
+
+  /** A confirmed sweep row, by the task's owner or a leader over it on this team (T2086). */
+  triage(caller: string, id: string, changes: TriageChanges, sizeBase?: SizeBase): Promise<Verdict<WriteResult>> {
+    return this.asCaller(caller, () => this.triageWrite(caller, id, changes, sizeBase, (task, state, elsewhere, goalTags) => this.deps.policy.triage(task, caller, changes, state, elsewhere, goalTags)));
+  }
+
+  /**
+   * A confirmed sweep row by the lead of a team above, `asker` being its `<team>/<id>`. The tree's rules decide who that
+   * may be, so this team's roster check is skipped, as in noteFrom.
+   */
+  triageFrom(asker: string, id: string, changes: TriageChanges, sizeBase?: SizeBase): Promise<Verdict<WriteResult>> {
+    return this.triageWrite(asker, id, changes, sizeBase, (task, state, elsewhere, goalTags) => this.deps.policy.triageFrom(task, changes, state, elsewhere, goalTags));
+  }
+
+  private async triageWrite(
+    by: string,
+    id: string,
+    changes: TriageChanges,
+    sizeBase: SizeBase | undefined,
+    judge: (task: Task, state: RegisterState, elsewhere: TasksElsewhere, goalTags: ReadonlySet<string>) => Verdict<UpdateChange>,
+  ): Promise<Verdict<WriteResult>> {
+    const goalTags = await this.goalTagsFor(changes.goals);
+    return this.write((snapshot, elsewhere) =>
+      onTask(snapshot, elsewhere, id, (task) => {
+        const change = judge(task, snapshot.state, elsewhere, goalTags);
+        return single(change.ok ? { ok: true, value: this.updateEvent(id, by, change.value, sizeBase) } : change);
+      }),
+    );
   }
 
   /** The event of an allowed update; `sizeBase` rides on it only when the update gives the task a size. */

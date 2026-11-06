@@ -439,6 +439,53 @@ describe('Register.noteFrom', () => {
   });
 });
 
+describe('Register.triage and triageFrom (T2086)', () => {
+  const INPUT = { title: 'Ship login', description: 'what and why', owner: 'alpha', source: 'lead', priority: 1 } as const;
+  const BASE = { day: '2030-01-07', w: 12_000_000 };
+
+  it('writes a confirmed row as the lead, goals included, with the size base', async () => {
+    const { register } = setup();
+    written(await register.add('lead', INPUT));
+    const { task, event } = written(await register.triage('lead', 'T1', { workClass: 'Roadmap', goals: ['A1'], size: 1.5 }, BASE));
+    assert.deepEqual([task.workClass, task.goals, task.size, task.sizeBase, event.by], ['Roadmap', ['A1'], 1.5, BASE, 'lead']);
+  });
+
+  it('carries no size base on a row that gives no size', async () => {
+    const { register } = setup();
+    written(await register.add('lead', INPUT));
+    const { event } = written(await register.triage('alpha', 'T1', { workClass: 'Maintenance' }, BASE));
+    assert.equal(event.type === 'update' ? event.sizeBase : 'not an update', undefined);
+  });
+
+  it('refuses a caller off the roster and one who neither owns nor leads the task, writing nothing', async () => {
+    const { files, register } = setup();
+    written(await register.add('lead', INPUT));
+    assert.match(errorOf(await register.triage('app/lead', 'T1', { size: 1 })), /app.lead is not a session on this team/);
+    assert.equal(errorOf(await register.triage('bravo', 'T1', { size: 1 })), 'only the owner (alpha) or the lead (lead) changes T1');
+    assert.equal(readEvents(files.get(LOG) ?? '').events.length, 1);
+  });
+
+  it('writes as the lead above with triageFrom, on no roster here, the field rules still holding', async () => {
+    const { register } = setup();
+    written(await register.add('lead', INPUT));
+    const { task, event } = written(await register.triageFrom('app/lead', 'T1', { workClass: 'Maintenance', goals: ['A1'] }));
+    assert.deepEqual([task.workClass, task.goals, event.by], ['Maintenance', ['A1'], 'app/lead']);
+    assert.match(errorOf(await register.triageFrom('app/lead', 'T1', { workClass: 'Chores' })), /Chores/);
+    assert.equal(errorOf(await register.triageFrom('app/lead', 'T9', { size: 1 })), 'no task T9');
+  });
+
+  it('reads the goal records only for a row that names goals, and holds the tags to them', async () => {
+    const goals = new FixedGoals(['A1']);
+    const { register } = setup({}, OWN_NUMBERS, NOTHING_ELSEWHERE, undefined, { goals, config: testConfig({ register: { goals: 'checked' } }) });
+    written(await register.add('lead', INPUT));
+    written(await register.triage('lead', 'T1', { size: 1 }));
+    assert.equal(goals.reads, 0);
+    assert.match(errorOf(await register.triage('lead', 'T1', { goals: ['Z9'] })), /goal Z9 is not a goal record/);
+    written(await register.triage('lead', 'T1', { goals: ['A1'] }));
+    assert.equal(goals.reads, 2);
+  });
+});
+
 describe('Register, the GitHub import', () => {
   const ISSUE = { title: 'Fix login', description: null, owner: 'bravo', ref: 'gh:acme/web#7', priority: 1 };
   const URL = 'https://github.com/acme/web/issues/7';
