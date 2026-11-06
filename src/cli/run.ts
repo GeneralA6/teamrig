@@ -96,6 +96,7 @@ const restoreCommands = () => import('./commands/restore.ts');
 const restoreInstallCommands = () => import('./commands/restore-install.ts');
 const execCommands = () => import('./commands/exec.ts');
 const refsCommands = () => import('./commands/refs.ts');
+const sweepCommands = () => import('./commands/sweep.ts');
 const setupBackupCommands = () => import('./commands/setup-backup.ts');
 
 const TASK_FIELDS = ['title', 'description', 'owner', 'ref', 'priority', 'due', 'goals', 'week', 'after', 'size', 'type', 'class'];
@@ -107,6 +108,8 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   set: { effect: 'write', flags: ['session', 'status', 'note', 'evidence', 'skill', 'followups', 'waits', 'question', 'options', 'recommend', 'default', 'why-ask', 'gate', 'proof', 'watch', 'met', 'due', 'ask', 'text', ...REVIEW_FLAGS], load: async () => (await registerCommands()).set },
   update: { effect: 'write', flags: ['session', 'note', 'later', ...TASK_FIELDS], switches: ['pin', 'unpin', 'critical', 'not-critical', 'decided'], load: async () => (await registerCommands()).update },
   'refs apply': { effect: 'write', flags: ['session'], switches: ['yes'], load: async () => (await refsCommands()).apply },
+  sweep: { effect: 'read', flags: ['session', 'out'], switches: ['tree'], load: async () => (await sweepCommands()).sweep },
+  'sweep apply': { effect: 'write', flags: ['session'], switches: ['apply'], load: async () => (await sweepCommands()).apply },
   approve: { effect: 'write', flags: ['session', 'note'], switches: ['decline'], load: async () => (await registerCommands()).approve },
   list: {
     effect: 'read',
@@ -459,6 +462,12 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   refs apply <file> [--yes]   points the refs of your team's tasks at notes that moved, from a JSON list of
       {team, id, oldRef, newRef} rows: a dry run names each row's fate, --yes writes each task that still
       reads oldRef as update <id> --ref would; rows of another team, moved, changed since or refused are left
+  sweep [--tree] [--session <id>] [--out <file>]   proposes each active task's class, objective and size as
+      JSONL rows with confirm empty, writing to no register: rows on stdout and counts on stderr, or with --out
+      the rows in that file and the counts on stdout; --session narrows it to that owner's tasks, but with
+      --tree, for a team's lead, it names the caller
+  sweep apply <file> [--apply]   writes the class, goal and size of each row whose confirm is yes, as its task's
+      owner or a leader over it: a dry run names each row's fate, --apply writes; never deletes, never parks
   approve <id> --note "<what you checked, or why not>" [--decline]   a leader above the task's owner (the
       lead or a sub-lead), or roles.securityReviewer on a task not its own: answers a task waiting on
       its approval (approval:<lead>); its owner gets an inbox line to push or merge (or to fix the note's
