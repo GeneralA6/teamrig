@@ -180,6 +180,12 @@ export function programName(text: string): string {
   return base.replace(/\.(?:exe|cmd|bat|com)$/, '');
 }
 
+/** Whether a word names a shell. */
+export function isShell(text: string): boolean {
+  const name = programName(text);
+  return POSIX_SHELLS.has(name) || POWERSHELLS.has(name);
+}
+
 
 /** True for a bash `NAME=value` word. */
 export function isAssignment(text: string): boolean {

@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Buffer } from 'node:buffer';
-import { isAssignment, launch, programName, staticWord, type Launch } from './launchers.ts';
+import { isAssignment, isShell, launch, programName, staticWord, type Launch } from './launchers.ts';
 import { parseShell, type ShellDialect, type ShellWord } from './tokenizer.ts';
 
 const show = (word: ShellWord): string => (word.dynamic ? `~${word.text}` : word.text);
@@ -44,6 +44,10 @@ describe('programName, isAssignment and staticWord', () => {
     assert.equal(programName('/usr/bin/git'), 'git');
     assert.equal(programName('git.cmd'), 'git');
     assert.equal(programName('gitk'), 'gitk');
+  });
+
+  it('knows a shell by its program name', () => {
+    assert.deepEqual(['bash', '/bin/sh', 'pwsh', 'C:\\Windows\\PowerShell.EXE', 'git', ''].map(isShell), [true, true, true, true, false, false]);
   });
 
   it('knows the assignments', () => {
