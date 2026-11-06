@@ -98,7 +98,7 @@ const execCommands = () => import('./commands/exec.ts');
 const refsCommands = () => import('./commands/refs.ts');
 const setupBackupCommands = () => import('./commands/setup-backup.ts');
 
-const TASK_FIELDS = ['title', 'description', 'owner', 'ref', 'priority', 'due', 'goals', 'week', 'after', 'size', 'type'];
+const TASK_FIELDS = ['title', 'description', 'owner', 'ref', 'priority', 'due', 'goals', 'week', 'after', 'size', 'type', 'class'];
 /** The parts of a bug's review `set` gives (register/review.ts REVIEW_FLAGS). */
 const REVIEW_FLAGS = ['cause', 'how', 'prevent', 'harden', 'missed-test', 'missed-monitor', 'missed-log'];
 
@@ -393,7 +393,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       waits under it, and a child team's decisions prints its own and its teams' waits, naming that lead
   add --title "<one line>" --description "<what and why>" --priority p<n> [--ref <where it was asked>]
       [--owner <session>] [--source <session>|<owner source>] [--due <date>] [--goals a,b|none]
-      [--week <date>] [--after T5,T6] [--size <pct>] [--type task|bug] [--critical]
+      [--week <date>] [--after T5,T6] [--size <pct>] [--type task|bug] [--critical] [--class <name>]
       --description: what the task is and why, in plain words for a person (newlines kept, at most 2,000
       characters), needed unless register.requireDescription is off; show prints it under the title
       --after: the tasks to finish before this one starts; its line shows "after T5"
@@ -403,6 +403,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       problem design; --critical marks a bug in a critical area; its line shows "bug" or "critical bug";
       a task with no type whose title or description matches register.review.hintPattern prints a hint
       to mark it, here and when it starts
+      --class: the work class, one of focus.classes (Roadmap, Maintenance, Improvements by default); a task
+      without one counts as focus.defaultClass
   add --team <team> [--owner <s>] --title .. --description .. --priority p<n> [...]   asks a team of your tree for work
   set <id> --status open|in-progress|verifying|waiting|done|dropped [--note "<what/why>"] [--evidence <proof>]
       [--skill <name>|none] [--followups T<id>,...|none] [--waits decision:<who>,approval:<who>,task:T<id>,time:<date>]
@@ -440,8 +442,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       --followups; verifying and done need every part (requireOn; mode refuse, warn or off)
   update <id> [--title ..] [--description ..|none] [--owner ..] [--priority ..] [--ref ..|none]
       [--due <date>|none] [--goals a,b|none] [--week <date>|none] [--after T5,T6|none] [--size <pct>|none]
-      [--type task|bug] [--critical|--not-critical] [--pin|--unpin] [--note ..]   the lead may change owner,
-      priority, due, week, after, size, type, critical and pin on any task
+      [--type task|bug] [--class <name>|none] [--critical|--not-critical] [--pin|--unpin] [--note ..]
+      the lead may change owner, priority, due, week, after, size, type, class, critical and pin on any task
       --pin: puts the task above every other task on its owner's list, set by the owner's leaders (the lead
       on its own tasks too); it moves the owner's earlier pin, and handing the task on clears it
       a --note from the task's owner also replaces the note show and the waiting text print
