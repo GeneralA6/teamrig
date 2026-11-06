@@ -486,7 +486,9 @@ active tasks (open, in progress, verifying, waiting), in a short form within 3,0
 when there are several, then one short row per task (its title cut to 60 characters) and `+N more` for the rows
 left out. `--all` prints every field of every task. A task's effective due is its own due date, or the earlier one
 of an active task that needs it (planned after it or waiting on it), so the work a dated task needs comes first;
-`--due-before` reads it too.
+`--due-before` reads it too. A parked task stays out of every list but `--parked`: an open task holding a class other
+than the roadmap and maintenance ones, quiet for [focus.parkAfterDays] days, with no pin, not critical, not the human's
+order and needed by no active task. Nothing is stored, so any event on it brings it back.
 
 Flags:
 
@@ -498,6 +500,9 @@ Flags:
 - `--week <date>|none`: only tasks planned in that week, or in no week.
 - `--goal <tag>`: only tasks with that goal.
 - `--type task,bug`: only these item types; a task with no type counts as a task.
+- `--parked`: only the parked tasks.
+- `--untriaged`: only the tasks that wait for a leader to class them, the ones `check` flags `UNTRIAGED`. Refused
+  with `--parked`: a parked task holds a class, an untriaged one has none.
 - `--tree`: the lead only: also every team under it, read-only, ids as `<team>/T<n>`.
 - `--all`: every task in full, one task line each, instead of the short form.
 

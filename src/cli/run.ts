@@ -116,7 +116,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   list: {
     effect: 'read',
     flags: ['session', 'status', 'source', 'priority', 'due-before', 'week', 'goal', 'type'],
-    switches: ['tree', 'all'],
+    switches: ['tree', 'all', 'parked', 'untriaged'],
     load: async () => (await registerCommands()).list,
   },
   // --session names the caller on every task and inbox command, so a session can always pass it.
@@ -484,9 +484,11 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   approve <team>/<id> --note .. [--decline]   the lead of a team's parent team answers a task of that
       team's lead waiting on its approval (approval:app/lead), named as its inbox line prints it: web/T3
   list [--session <owner>] [--status a,b|all] [--source <s>] [--priority p1,p2] [--due-before <date>]
-      [--week <date>|none] [--goal <tag>] [--type task,bug] [--tree] [--all]
+      [--week <date>|none] [--goal <tag>] [--type task,bug] [--parked|--untriaged] [--tree] [--all]
       short rows within 3,000 characters; --all: every field of every task. A task takes the earlier due
-      of a task that needs it ("due 01-12 (from T9)"), and a row names another session's task needing it
+      of a task that needs it ("due 01-12 (from T9)"), and a row names another session's task needing it.
+      --parked: only the quiet tasks the park rule leaves out of a list; --untriaged: only the tasks that
+      wait for a leader to class them
   show <id> [--tree]   every field, the history and the inbox lines naming it; --tree: what it needs and
       what needs it, each with owner, status and due, then the next move (who acts first, on which task)
   check [--week <date>] [--tree] [--all]   tasks and skills that break a team rule and context

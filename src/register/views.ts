@@ -5,6 +5,7 @@ import type { ItemType, RegisterEvent } from './events.ts';
 import { itemTypeOf } from './item-types.ts';
 import type { ApprovalAnswer, Task } from './fold.ts';
 import { ACTIVE_STATUSES, GITHUB_SOURCE, priorityText, type TaskStatus } from './model.ts';
+import { isUntriaged, type Leaders } from './park.ts';
 import { reviewLines, reviewPartNames } from './review.ts';
 import { decidingKey, planOrder, type RankedPlace, type TaskTree, type Unblocks, type WaitingOnYou } from './tree.ts';
 import { waitsText, weekdayText, type PersonWait } from './waits.ts';
@@ -25,6 +26,8 @@ export interface ListFilter {
   readonly types?: readonly ItemType[];
   /** True shows only the tasks the park rule takes ({@link TaskTree.isParked}); otherwise those stay out. */
   readonly parked?: boolean;
+  /** The team's leaders, to show only the tasks that wait for one of them to class them ({@link isUntriaged}). */
+  readonly untriagedFor?: Leaders;
 }
 
 /** A size as printed: percent of the weekly limit, at most two decimals (`1.5%`). */
@@ -68,7 +71,8 @@ export function selectTasks(tasks: Iterable<Task>, filter: ListFilter, tree: Tas
         (filter.week === undefined || task.week === filter.week) &&
         (filter.goal === undefined || task.goals.includes(filter.goal)) &&
         (filter.types === undefined || filter.types.includes(itemTypeOf(task))) &&
-        (filter.parked === true) === tree.isParked(task)
+        (filter.parked === true) === tree.isParked(task) &&
+        (filter.untriagedFor === undefined || isUntriaged(task, filter.untriagedFor))
       );
     })
     .sort((a, b) => tree.byPlanOrder(a, b));
