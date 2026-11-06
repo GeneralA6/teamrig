@@ -191,6 +191,21 @@ export {
 export { parseTeamWeek, TEAM_WEEK_FORMAT, TEAM_WEEK_IN_STATE, type TeamWeekSummary } from '../budget/team-week-summary.ts';
 export type { LimitSpan } from '../register/stats.ts';
 
+// Each team's usage rollup (`usage/rollup/<day>.json` in its state folder, `ROLLUP_IN_STATE`): what each session spent
+// in a closed UTC day, by what the use was for and by task, numbers and ids only. One file per team and day.
+export {
+  parseRollup,
+  ROLLUP_FORMAT,
+  ROLLUP_IN_STATE,
+  rollupFileName,
+  USE_CLASSES,
+  type DayRollup,
+  type TaskRow,
+  type TeamDayRollup,
+  type UseClass,
+  type UseRow,
+} from '../budget/rollup-file.ts';
+
 // Each session's week (`usage/sessions.week.json` in its team's state folder, `SESSIONS_WEEK_IN_STATE`): its use of the
 // account's week so far and its hours with work, by session id, as its team's budget hooks last read them.
 export { parseSessionsWeek, SESSIONS_WEEK_FORMAT, SESSIONS_WEEK_IN_STATE, type SessionsWeekSummary, type SessionWeek } from '../budget/session-week-summary.ts';
