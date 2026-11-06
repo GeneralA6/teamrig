@@ -205,9 +205,9 @@ Three shapes, split by the list:
   too. A priority does not place a task by itself: a `p0` goes ahead of every score, and the priority of a task the
   owner asked for adds to its score.
 - **Plan order**: by the first of these on which two tasks differ: pinned (the one task per owner that a leader above
-  it pinned with `update --pin`, above every other key); band; can move (a task with an `after` or a task wait not
-  finished goes after every task of its band that can move, whatever its score; a wait on a person or a time does
-  not count); score (the highest first); in progress (a started
+  it pinned with `update --pin`, above every other key); band; can move (a task with a wait not cleared, on a person,
+  a time or a task, or an `after` not finished goes after every task of its band that can move, whatever its score);
+  score (the highest first); in progress (a started
   task stays on top at the same score); effective due (the earliest first, undated last); what it unblocks (the best
   priority among the active tasks that need it, then the most of them); in the week plan in force; size (the smallest
   first, unsized last); then id (the oldest first). `list`, `check` and `plan` all use it, and a session works its
