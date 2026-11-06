@@ -205,12 +205,16 @@ function nodeAt(schema: JsonRecord, path: string): JsonRecord {
   return node;
 }
 
-/** Every key of the parsed config, with its value and its schema node. */
-function* walkConfig(config: JsonRecord, schema: JsonRecord, path: string): Generator<[string, unknown, JsonRecord | undefined]> {
+/**
+ * Every key of the parsed config, with its value, its schema node and, for a key of a map such as `focus.allocation`,
+ * the map's node: JSON Schema states no default per map key, so the map's own default holds them.
+ */
+function* walkConfig(config: JsonRecord, schema: JsonRecord, path: string): Generator<[string, unknown, JsonRecord | undefined, JsonRecord | undefined]> {
   for (const [key, value] of Object.entries(config)) {
-    const node = properties(schema)[key] ?? anyProperty(schema);
+    const listed = properties(schema)[key];
+    const node = listed ?? anyProperty(schema);
     const keyPath = path === '' ? key : `${path}.${key}`;
-    yield [keyPath, value, isRecord(node) ? node : undefined];
+    yield [keyPath, value, isRecord(node) ? node : undefined, listed === undefined ? schema : undefined];
     if (isRecord(value) && isRecord(node)) {
       yield* walkConfig(value, node, keyPath);
     }
@@ -288,8 +292,13 @@ describe('config.schema.json', () => {
 
   it('states the code default for every key outside the roster', async () => {
     const schema = await loadSchema();
-    for (const [path, value, node] of walkConfig(asJson(ROSTER), schema, '')) {
+    for (const [path, value, node, map] of walkConfig(asJson(ROSTER), schema, '')) {
       if (ROSTER_KEYS.has(path.split('.')[0] ?? '') || isRecord(value)) {
+        continue;
+      }
+      if (map !== undefined) {
+        // The map's default, which the next spec holds to the code, states this key's.
+        assert.ok('default' in map, `${path} is a key of a map with no default in the schema`);
         continue;
       }
       assert.ok(node !== undefined && 'default' in node, `${path} has no default in the schema`);

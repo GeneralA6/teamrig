@@ -1371,6 +1371,70 @@
         "pace": { "description": "Where the team's pace line stands now, beside the week's use, as in week 63% (pace 53%): the pace line of the seven days before the week's reset, by the team's budget.targetPct, budget.paceEndHoursBeforeReset and budget.quietHours. Outside a team, none.", "type": "boolean", "default": true }
       }
     },
+    "focus": {
+      "description": "Goal-first ranking: the work classes a task is filed under (teamrig add and update --class), how its WSJF score is made (cost of delay over size), the WIP rule and the share of the week's spend each class is planned to take. When classes, roadmapClass, maintenanceClass, defaultClass and allocation disagree, each problem is reported and all five take their defaults.",
+      "type": "object",
+      "properties": {
+        "classes": {
+          "description": "The classes --class takes: 1 to 12 names, each once, a letter then up to 31 letters, digits, spaces, _ or -.",
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9 _-]{0,31}$" },
+          "minItems": 1,
+          "maxItems": 12,
+          "uniqueItems": true,
+          "default": ["Roadmap", "Maintenance", "Improvements"]
+        },
+        "roadmapClass": { "description": "The class ranked by its goals' rank, which the WIP rule protects: one of classes.", "type": "string", "default": "Roadmap" },
+        "maintenanceClass": { "description": "The class ranked by severity first (bug, critical): one of classes.", "type": "string", "default": "Maintenance" },
+        "defaultClass": { "description": "The class a task with none counts as; it ranks last. One of classes.", "type": "string", "default": "Improvements" },
+        "maxActiveKeyResults": { "description": "The key results (goals with a parent) the team may hold with a target of today or later; teamrig goal add refuses one more.", "type": "integer", "minimum": 1, "maximum": 100, "default": 5 },
+        "score": {
+          "description": "The parts of a task's WSJF score: cost of delay (value + urgency + unblocks + owner order) over size, in % of the week.",
+          "type": "object",
+          "properties": {
+            "rankValues": { "description": "The value of a Roadmap task whose best goal rank (on its goals or their parents) is 1, 2 and so on; a rank past the list takes the last.", "type": "array", "items": { "type": "number", "minimum": 0, "maximum": 1000 }, "minItems": 1, "maxItems": 20, "default": [20, 16, 12, 8, 4] },
+            "roadmapUnranked": { "description": "The value of a Roadmap task that serves no ranked goal.", "type": "number", "minimum": 0, "maximum": 1000, "default": 3 },
+            "maintenanceValue": { "description": "The value of a Maintenance task, before its bug and critical additions.", "type": "number", "minimum": 0, "maximum": 1000, "default": 10 },
+            "maintenanceBug": { "description": "Added to the value of a Maintenance task of type bug.", "type": "number", "minimum": 0, "maximum": 1000, "default": 4 },
+            "maintenanceCritical": { "description": "Added to the value of a Maintenance task marked critical.", "type": "number", "minimum": 0, "maximum": 1000, "default": 10 },
+            "improvementsValue": { "description": "The value of an Improvements task, and of a task with no class.", "type": "number", "minimum": 0, "maximum": 1000, "default": 1 },
+            "overdueValue": { "description": "The urgency of a task past its due.", "type": "number", "minimum": 0, "maximum": 1000, "default": 8 },
+            "dueSoonValue": { "description": "The urgency of a task due within dueSoonDays.", "type": "number", "minimum": 0, "maximum": 1000, "default": 4 },
+            "dueSoonDays": { "description": "How many days before its due a task counts as due soon.", "type": "integer", "minimum": 0, "maximum": 60, "default": 3 },
+            "unblocksShare": { "description": "The share of the best value among the active tasks that need a task (by after or a task wait) added to its own cost of delay; 0 turns it off.", "type": "number", "minimum": 0, "maximum": 10, "default": 0.5 },
+            "ownerOrderValues": { "description": "What an owner-sourced task's priority p1, p2 and so on adds, a capped override; the priorities of other tasks add nothing.", "type": "array", "items": { "type": "number", "minimum": 0, "maximum": 1000 }, "minItems": 1, "maxItems": 20, "default": [12, 6, 0, 0, 0] },
+            "defaultSizePct": { "description": "The size, in % of the week, of a task with no size, no spend and no like tasks finished to measure by.", "type": "number", "minimum": 0.01, "maximum": 100, "default": 0.3 },
+            "minSizePct": { "description": "The smallest size, in % of the week, a score divides by, so a tiny task cannot outrank everything.", "type": "number", "minimum": 0.01, "maximum": 100, "default": 0.05 }
+          }
+        },
+        "expedite": {
+          "description": "Which tasks go ahead of every score.",
+          "type": "object",
+          "properties": {
+            "critical": { "description": "A Maintenance task marked critical.", "type": "boolean", "default": true },
+            "ownerP1": { "description": "An owner-sourced p1 task.", "type": "boolean", "default": true }
+          }
+        },
+        "wip": {
+          "description": "The WIP rule: an Improvements start is held while its owner has a Roadmap task that can move, and a start past maxInProgress is held. --one-commit, an expedited task and an owner-sourced task are exempt.",
+          "type": "object",
+          "properties": {
+            "mode": { "description": "refuse holds the start; warn prints why and lets it through; off checks nothing.", "type": "string", "enum": ["refuse", "warn", "off"], "default": "refuse" },
+            "maxInProgress": { "description": "The in-progress tasks a session may hold before a further start is held.", "type": "integer", "minimum": 1, "maximum": 50, "default": 3 }
+          }
+        },
+        "allocation": {
+          "description": "The % of the week's spend each class is planned to take, by class; every key one of classes, the shares summing to 100.",
+          "type": "object",
+          "propertyNames": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9 _-]{0,31}$" },
+          "additionalProperties": { "description": "The class's share of the week's spend, in %.", "type": "number", "minimum": 0, "maximum": 100 },
+          "default": { "Roadmap": 60, "Maintenance": 25, "Improvements": 15 }
+        },
+        "leaderWaitMinutes": { "description": "How long, in minutes, a Roadmap task may wait on a leader's decision or approval before it is flagged.", "type": "integer", "minimum": 0, "maximum": 10080, "default": 60 },
+        "parkAfterDays": { "description": "The days without an event after which an Improvements task is parked out of list, plan, check and start; any update brings it back.", "type": "integer", "minimum": 1, "maximum": 365, "default": 14 },
+        "plannedTargetPct": { "description": "The % of the week's spend planned work should take.", "type": "integer", "minimum": 0, "maximum": 100, "default": 70 }
+      }
+    },
     "launch": {
       "description": "Each session's Claude Code model and effort, and the folder it works in, by id: teamrig open starts it with claude --model and --effort; a session running on another model is told the /model to type at its start, and one at another effort the /effort to type at its first stop. A model or effort left unset is Claude Code's own choice, except for the lead, which starts on model opus at xhigh effort for each one it leaves unset.",
       "type": "object",

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_FREEZES, DEFAULT_COMMITS, DEFAULT_QUEUE, DEFAULT_HIRING, DEFAULT_IDLE, DEFAULT_OPEN, DEFAULT_PERMISSIONS, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_STATUS_LINE, DEFAULT_WAKE, DEFAULT_STABLE_PERIODS } from './defaults.ts';
+import { DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_FREEZES, DEFAULT_COMMITS, DEFAULT_FOCUS, DEFAULT_QUEUE, DEFAULT_HIRING, DEFAULT_IDLE, DEFAULT_OPEN, DEFAULT_PERMISSIONS, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_STATUS_LINE, DEFAULT_WAKE, DEFAULT_STABLE_PERIODS } from './defaults.ts';
 import { HIRE_CAP_DROPPED, IDLE_RETIRE_DROPPED } from './migrate.ts';
 import { parseConfig } from './parse.ts';
 import { CONFIG_VERSION, type AccountBudget } from './types.ts';
@@ -1338,6 +1338,73 @@ describe('parseConfig', () => {
     const bad = parseConfig({ ...ROSTER, statusLine: { branch: 'no' } });
     assert.deepEqual(paths(bad.issues), ['statusLine.branch']);
     assert.deepEqual(bad.config.statusLine, DEFAULT_STATUS_LINE);
+  });
+
+  it('reads the focus block, each key at its default when absent', () => {
+    assert.deepEqual(parseConfig(ROSTER).config.focus, DEFAULT_FOCUS);
+    const set = parseConfig({
+      ...ROSTER,
+      focus: {
+        classes: ['Product', 'Upkeep', 'Tooling'],
+        roadmapClass: 'Product',
+        maintenanceClass: 'Upkeep',
+        defaultClass: 'Tooling',
+        allocation: { Product: 70, Upkeep: 20, Tooling: 10 },
+        score: { rankValues: [30, 10], minSizePct: 0.1 },
+        wip: { mode: 'warn', maxInProgress: 2 },
+        expedite: { ownerP1: false },
+        parkAfterDays: 7,
+      },
+    });
+    assert.deepEqual(set.issues, []);
+    const { focus } = set.config;
+    assert.deepEqual([focus.classes, focus.roadmapClass, focus.maintenanceClass, focus.defaultClass], [['Product', 'Upkeep', 'Tooling'], 'Product', 'Upkeep', 'Tooling']);
+    assert.deepEqual(focus.allocation, { Product: 70, Upkeep: 20, Tooling: 10 });
+    assert.deepEqual([focus.score.rankValues, focus.score.minSizePct, focus.score.maintenanceValue], [[30, 10], 0.1, DEFAULT_FOCUS.score.maintenanceValue]);
+    assert.deepEqual([focus.wip, focus.expedite, focus.parkAfterDays], [{ mode: 'warn', maxInProgress: 2 }, { critical: true, ownerP1: false }, 7]);
+  });
+
+  it('refuses each bad focus value, which takes its default', () => {
+    const cases: readonly [Record<string, unknown>, string][] = [
+      [{ classes: [] }, 'focus.classes'],
+      [{ classes: ['Roadmap', 'Roadmap'] }, 'focus.classes'],
+      [{ classes: ['9lives'] }, 'focus.classes[0]'],
+      [{ maxActiveKeyResults: 0 }, 'focus.maxActiveKeyResults'],
+      [{ score: { rankValues: [20, -1] } }, 'focus.score.rankValues[1]'],
+      [{ score: { ownerOrderValues: [] } }, 'focus.score.ownerOrderValues'],
+      [{ score: { dueSoonDays: 61 } }, 'focus.score.dueSoonDays'],
+      [{ score: { unblocksShare: 11 } }, 'focus.score.unblocksShare'],
+      [{ score: { minSizePct: 0 } }, 'focus.score.minSizePct'],
+      [{ wip: { mode: 'ask' } }, 'focus.wip.mode'],
+      [{ wip: { maxInProgress: 51 } }, 'focus.wip.maxInProgress'],
+      [{ expedite: { critical: 'yes' } }, 'focus.expedite.critical'],
+      [{ allocation: { Roadmap: 101 } }, 'focus.allocation.Roadmap'],
+      [{ leaderWaitMinutes: -1 }, 'focus.leaderWaitMinutes'],
+      [{ parkAfterDays: 0 }, 'focus.parkAfterDays'],
+      [{ plannedTargetPct: 101 }, 'focus.plannedTargetPct'],
+    ];
+    for (const [focus, path] of cases) {
+      const bad = parseConfig({ ...ROSTER, focus });
+      assert.ok(paths(bad.issues).includes(path), `${JSON.stringify(focus)}: ${JSON.stringify(paths(bad.issues))}`);
+    }
+    assert.deepEqual(parseConfig({ ...ROSTER, focus: { score: { rankValues: [20, -1] } } }).config.focus.score.rankValues, DEFAULT_FOCUS.score.rankValues);
+  });
+
+  it('falls back to the default classes together when the classes, the roles and the allocation disagree', () => {
+    const bad = parseConfig({ ...ROSTER, focus: { classes: ['Product', 'Tooling'], defaultClass: 'Tooling', allocation: { Product: 50, Tooling: 40 } } });
+    assert.deepEqual(paths(bad.issues), ['focus.roadmapClass', 'focus.maintenanceClass', 'focus.allocation']);
+    assert.match(bad.issues[0]?.message ?? '', /Roadmap is not one of focus\.classes \(Product, Tooling\)/);
+    assert.match(bad.issues[2]?.message ?? '', /the shares sum to 90, not 100/);
+    const { classes, roadmapClass, maintenanceClass, defaultClass, allocation } = bad.config.focus;
+    assert.deepEqual({ classes, roadmapClass, maintenanceClass, defaultClass, allocation }, {
+      classes: DEFAULT_FOCUS.classes,
+      roadmapClass: DEFAULT_FOCUS.roadmapClass,
+      maintenanceClass: DEFAULT_FOCUS.maintenanceClass,
+      defaultClass: DEFAULT_FOCUS.defaultClass,
+      allocation: DEFAULT_FOCUS.allocation,
+    });
+    const unknown = parseConfig({ ...ROSTER, focus: { allocation: { Roadmap: 60, Maintenance: 25, Tooling: 15 } } });
+    assert.deepEqual(paths(unknown.issues), ['focus.allocation.Tooling']);
   });
 
   it('reads where the team sits in a tree, and leaves it unset in an older config', () => {

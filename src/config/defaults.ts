@@ -9,6 +9,7 @@ import type {
   CommitsConfig,
   ContextFilesConfig,
   DecisionsConfig,
+  FocusConfig,
   GithubConfig,
   HeadroomConfig,
   IdleConfig,
@@ -296,6 +297,41 @@ export const DEFAULT_OPEN: OpenConfig = { terminal: 'auto', teamWindow: false, h
 
 /** The status line shows the session's folder, its branch and the team's pace line, unless the team turns them off. */
 export const DEFAULT_STATUS_LINE: StatusLineConfig = { folder: true, branch: true, pace: true };
+
+/**
+ * Goal-first ranking (owner order 11-06, T2076): roadmap work first, maintenance by severity, team tooling last. A
+ * ranked goal is worth 20 down to 4, so the top objective beats any Maintenance task short of a critical bug (10 + 4 +
+ * 10), and an owner's p1 adds 12 as a capped override instead of ranking alone. At most 3 tasks in progress, an
+ * Improvements start refused while a Roadmap task can move, and 60/25/15 of the week's spend planned by class.
+ */
+export const DEFAULT_FOCUS: FocusConfig = {
+  classes: ['Roadmap', 'Maintenance', 'Improvements'],
+  roadmapClass: 'Roadmap',
+  maintenanceClass: 'Maintenance',
+  defaultClass: 'Improvements',
+  maxActiveKeyResults: 5,
+  score: {
+    rankValues: [20, 16, 12, 8, 4],
+    roadmapUnranked: 3,
+    maintenanceValue: 10,
+    maintenanceBug: 4,
+    maintenanceCritical: 10,
+    improvementsValue: 1,
+    overdueValue: 8,
+    dueSoonValue: 4,
+    dueSoonDays: 3,
+    unblocksShare: 0.5,
+    ownerOrderValues: [12, 6, 0, 0, 0],
+    defaultSizePct: 0.3,
+    minSizePct: 0.05,
+  },
+  expedite: { critical: true, ownerP1: true },
+  wip: { mode: 'refuse', maxInProgress: 3 },
+  allocation: { Roadmap: 60, Maintenance: 25, Improvements: 15 },
+  leaderWaitMinutes: 60,
+  parkAfterDays: 14,
+  plannedTargetPct: 70,
+};
 
 /**
  * A host lock outlives the longest queued step it may hold by this many minutes, so the step is killed
