@@ -4613,6 +4613,12 @@ Today (UTC day), used and daily budget in % of the week:
   the team  5.0%   10.3%  37.50M  1,310
   api       4.0%    3.4%  30.00M  1,000
   lead      1.0%    3.4%   7.50M    310
+Spend by class today and this week, in % of the week, against focus.allocation:
+  class         today   week  allocation  W today   W week
+  Roadmap        3.0%  33.0%       60.0%   22.50M  247.50M
+  Maintenance    1.0%  13.0%       25.0%    7.50M   97.50M
+  Improvements  0.50%   7.0%       15.0%    3.75M   52.50M
+  No task       0.50%   4.0%           -    3.75M   30.00M
 Lifts, today only: a part of the team's daily budget, the share of the week it comes to now beside it, until its time or its stop % of the week, whichever comes first; quiet hours do not apply to them.
   session   part  week now      until  stop at
   web      40.0%      4.1%  03:00 IDT    97.0%
@@ -4620,6 +4626,14 @@ Lifts, today only: a part of the team's daily budget, the share of the week it c
 Past the daily budget: api (the team has used 5.2% of the week today, at or past its in-day pace of 4.7%). Finish the step in hand and start no new work items or helpers. Never skip a test or check to save budget. A session's leader can lift its budget.
 W = weighted tokens: input 1, cache writes 1.25 to 2, cache reads 0.1, output 5. 1% of the week is about 7.50M W, estimated from the status line.
 ```
+
+`Spend by class` shows where the team's W went: each class of `focus.classes`, then any class a task still holds that
+the config has dropped, then `No task`: turns that named no task, helpers, and task ids the register does not hold. A
+turn's W goes to the tasks it names as `--task` counts it, so the rows add up to `the team`. `today` and `week` are in %
+of the whole week, as `allocation` is: a class has spent its share when `week` reaches `allocation`, not when it has
+taken that share of the spend so far. Without the week in W the block gives W only, and without the week's start today
+only; a note says when the meter does not reach back to that start, so the week's W is short. It is left out when the
+register cannot be read, and from `--day`, `--task`, the tables and the view of one session.
 
 A session's row marks a budget a lift or a burst raised: `(lifted)`, `(burst)`; a lift's part says `(reserve)` for the
 reserve release (`--reserve`), and its `week now` gives the share of the week that part comes to now, moving with the
