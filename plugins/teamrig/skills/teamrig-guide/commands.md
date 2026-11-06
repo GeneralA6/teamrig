@@ -350,7 +350,10 @@ register in one pass. It writes to no register: a person reads the rows, each wi
 (`class already set`); a task serving a ranked goal, itself or through a key result, takes `focus.roadmapClass` and
 names that goal; a critical task, a bug, or a title saying incident, outage, security, exposure, leak, data loss,
 backup or restore takes `focus.maintenanceClass`; a title sharing two or more words with a ranked goal's title takes
-`focus.roadmapClass` with low confidence; any other takes `focus.defaultClass`. A row's size is the task's `--size`,
+`focus.roadmapClass` with low confidence; any other takes `focus.defaultClass`. A tag no goal record holds reads as the
+nearest record it sits under by name (`K1a` or `K1.2` under `K1`, never `K10`): a rank comes through that record, at
+medium confidence, and the row names it as its objective, unless a title match or a better rank the task names decides
+the row, so apply adds it and a rank given later reaches the task. A row's size is the task's `--size`,
 else twice what it has spent, else `focus.score.defaultSizePct`, and never under `focus.score.minSizePct`. `park` says
 whether the task would park, which only a stored class can do, so a first sweep shows `false` on every row.
 
@@ -377,7 +380,8 @@ WROTE 4 row(s) to rows.jsonl: set confirm to yes on the rows you agree with, the
 ### teamrig sweep apply
 
 Writes the class, goal and size of each row of a sweep file whose `confirm` is `yes`, and never deletes or parks a
-task. A row's goal joins the task's goals unless it already serves that goal through a key result; a row whose
+task. A row's goal joins the task's goals unless it already serves that goal through a key result, and the tags the
+task holds stay, even one with no record under `register.goals` checked; a row whose
 objective or size is null leaves that field as it is. A row needs the task's owner or a leader over it: the caller's
 own team goes by the same rules as `update`, a team below one the caller leads by the tree, and a sibling team or one
 above is refused. A row is refused, with its reason, when its task is missing or finished or the rules refuse it, and

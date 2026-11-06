@@ -265,6 +265,25 @@ describe('teamrig sweep apply', () => {
     assert.deepEqual([applied.code, applied.stdout[0]], [EXIT.ok, 'CHANGED web/T1: class Roadmap']);
   });
 
+  it('proposes the nearest record of a tag with none, and apply adds it beside that tag under checked goals', async () => {
+    const kit = await treeHarness();
+    ok(await kit.run(['goal', 'add', 'A1', '--title', 'A goal above', '--target', '2030-02-01', '--session', 'lead']));
+    ok(await kit.run(['goal', 'rank', 'A1', '1', '--session', 'lead']));
+    await addTask(kit, 'One of web', 'lead', ['--goals', 'A1a'], WEB);
+    await kit.files.write(teamConfigOf('web'), formatConfig({ ...SUB_TEAMS['web'], register: { goals: 'checked' } }));
+
+    const swept = await kit.run(['sweep', '--session', 'lead'], WEB);
+    ok(swept);
+    assert.deepEqual(
+      rowsOf(swept.stdout).map((row) => [row.class, row.objective, row.confidence]),
+      [['Roadmap', 'A1', 'medium']],
+    );
+
+    await writeRows(kit, confirmedRow({ team: 'web', owner: 'lead', objective: 'A1' }));
+    const applied = await kit.run(['sweep', 'apply', FILE, '--apply', '--session', 'lead'], WEB);
+    assert.deepEqual([applied.code, applied.stdout[0]], [EXIT.ok, 'CHANGED web/T1: class Roadmap, goals A1a,A1']);
+  });
+
   it("reads a tag two teams hold as the nearest team's", async () => {
     const kit = await treeHarness();
     ok(await kit.run(['goal', 'add', 'A1', '--title', 'The root goal', '--target', '2030-02-01', '--session', 'lead']));
