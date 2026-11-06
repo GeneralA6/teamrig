@@ -140,7 +140,7 @@ describe('hook wake-check', () => {
     transcripts.set(join(USER_HOME, '.claude', 'projects', 'work-app', `${ALPHA_TAB}.jsonl`), '{}\n', kit.clock.now() - 5 * MINUTE);
     const text =
       'New work was handed to you while this tab was idle: T2 "Fix the login" (p1). ' +
-      'Start a work block (`teamrig start --session alpha`) and work your list in priority order. This wake costs about 27k W, warm cache.';
+      'Start a work block (`teamrig start --session alpha`) and work your list in plan order. This wake costs about 27k W, warm cache.';
     assert.deepEqual(answerOf(await check(kit, transcripts)), { kind: 'wake', ids: ['T2'], text, toast: 'teamrig woke this tab for T2 (about 27k W, warm cache)' });
     assert.deepEqual(await logLines(kit), [
       { v: 1, at: new Date(kit.clock.now()).toISOString(), kind: 'wake', session: 'alpha', tab: ALPHA_TAB, ids: ['T2'], w: 27_000, cold: false },
@@ -525,7 +525,7 @@ describe('hook wake-check at the day start and a burst', () => {
       ids: ['T1'],
       text:
         'The day started at 06:00 UTC and this tab has had no turn since. Work you can start: T1 "Tidy the docs" (p3). ' +
-        'Start a work block (`teamrig start --session alpha`) and work your list in priority order. This wake costs about 210k W, cold.',
+        'Start a work block (`teamrig start --session alpha`) and work your list in plan order. This wake costs about 210k W, cold.',
       toast: 'teamrig woke this tab for the day start: T1 (about 210k W, cold)',
     });
     assert.deepEqual(await logLines(kit), [

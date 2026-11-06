@@ -177,7 +177,7 @@ describe('renderCorePack', () => {
 
   it('has each session work its list in order, gate self-made work and repeating runs, and stop when it loops or drifts', () => {
     const pack = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
-    assert.match(pack, /^5\. Work your own task list in priority order \(`teamrig list --session <you>`\); self-made work is a task too, added with `teamrig add` before you start it,/m);
+    assert.match(pack, /^5\. Work your own task list in plan order \(`teamrig list --session <you>`\); self-made work is a task too, added with `teamrig add` before you start it,/m);
     assert.match(pack, /and started only for a goal, a parent task or the week plan, never ahead of your top task that is not waiting \(one-commit fixes exempt\)\./);
     assert.match(pack, /A loop, cron or scheduled wake-up needs the lead's OK and a written stop\./);
     assert.match(pack, /If you repeat a step with no progress or drift from your task, stop and ask your leader\.$/m);

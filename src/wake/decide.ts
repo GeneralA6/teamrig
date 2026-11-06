@@ -352,7 +352,7 @@ function taskTag(task: Task): string {
 export function wakePrompt(session: string, tasks: readonly Task[], cost: WakeCost): string {
   return (
     `New work was handed to you while this tab was idle: ${taskListText(tasks)}. ` +
-    `Start a work block (\`${KIT_NAME} start --session ${session}\`) and work your list in priority order. ` +
+    `Start a work block (\`${KIT_NAME} start --session ${session}\`) and work your list in plan order. ` +
     `This wake costs ${costText(cost)}.`
   );
 }

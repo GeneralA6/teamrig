@@ -34,6 +34,11 @@ describe('topicsOf', () => {
     assert.ok(topicsOf('Any session may integrate a finished branch for another one.')?.rules.includes('own-change'));
   });
 
+  it('ties a line about the order of the list, by plan or still by priority, to the task order', () => {
+    assert.ok(topicsOf('Work your list in plan order, whatever comes in.')?.rules.includes('task-order'));
+    assert.ok(topicsOf('Work your list in priority order, whatever comes in.')?.rules.includes('task-order'));
+  });
+
   it('ties a line that names the delivery owner, or still the coordinator, to the roles', () => {
     assert.ok(topicsOf('The api session is the delivery owner of this repository.')?.rules.includes('roles'));
     assert.ok(topicsOf('The api session is the coordinator of this repository.')?.rules.includes('roles'));

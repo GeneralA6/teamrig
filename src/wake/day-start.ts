@@ -143,7 +143,7 @@ export function dayStartPrompt(session: string, name: string, moments: readonly 
   return [
     ...moments.map((moment) => momentLine(moment, name, zone)),
     `Work you can start: ${taskListText(tasks)}.`,
-    `Start a work block (\`${KIT_NAME} start --session ${session}\`) and work your list in priority order. This wake costs ${costText(cost)}.`,
+    `Start a work block (\`${KIT_NAME} start --session ${session}\`) and work your list in plan order. This wake costs ${costText(cost)}.`,
   ].join(' ');
 }
 
