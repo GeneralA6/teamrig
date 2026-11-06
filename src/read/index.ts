@@ -195,6 +195,10 @@ export type { LimitSpan } from '../register/stats.ts';
 // account's week so far and its hours with work, by session id, as its team's budget hooks last read them.
 export { parseSessionsWeek, SESSIONS_WEEK_FORMAT, SESSIONS_WEEK_IN_STATE, type SessionsWeekSummary, type SessionWeek } from '../budget/session-week-summary.ts';
 
+// What each task has cost (`usage/tasks.week.json` in its team's state folder, `TASKS_WEEK_IN_STATE`): its spend in
+// percent of the week, by task id, as its team's budget hooks last read it.
+export { parseTasksWeek, TASKS_WEEK_FORMAT, TASKS_WEEK_IN_STATE, type TasksWeekSummary } from '../budget/task-week-summary.ts';
+
 // Each session's turn log (`turn-log/<session id>/<UTC hour>.jsonl`): its prompts, replies and clears, one parsed
 // JSON line at a time.
 export { parseEntry, TURN_LOG_VERSION, type TurnLogEntry, type TurnLogKind } from '../turn-log/entry.ts';

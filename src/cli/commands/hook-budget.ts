@@ -16,6 +16,7 @@ import { budgetSplitOf, dailyBudgetOf } from '../../budget/parts.ts';
 import { fundForDay, isPaused, pausableOf } from '../../budget/pause.ts';
 import { keepSessionsWeek, sessionsWeekOf } from '../../budget/session-week-file.ts';
 import { UsageStore, type UsageState } from '../../budget/store.ts';
+import { keepTasksWeek, tasksWeekOf } from '../../budget/task-week-file.ts';
 import { teamWeekOf } from '../../budget/team-week.ts';
 import { keepTeamWeek, teamWeekSummaryOf } from '../../budget/team-week-file.ts';
 import { helperGate, promptWarning, stopWarning, type BudgetFacts, type BudgetLeader, type HelperGate } from '../../budget/warn.ts';
@@ -120,6 +121,10 @@ export async function budgetFactsOf(runtime: CliRuntime, scope: BudgetScope, tra
   const sessionsWeek = sessionsWeekOf({ window: week.window, wPerPct: week.wPerPct, byId, now });
   if (sessionsWeek !== undefined) {
     await keepSessionsWeek(files, kit.paths.sessionsWeek, sessionsWeek);
+  }
+  const tasksWeek = tasksWeekOf({ wPerPct: week.wPerPct, states, now });
+  if (tasksWeek !== undefined) {
+    await keepTasksWeek(files, kit.paths.tasksWeek, tasksWeek);
   }
   const funded = fundForDay({ split, others }, week);
   const shared = dailyBudgetOf(week.allowancePct, id, funded.split, funded.others);
