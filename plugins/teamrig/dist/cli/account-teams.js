@@ -56,7 +56,7 @@ export async function accountWeekOn(runtime, budget, paths, now) {
     const holder = accountHolderOf(tree, paths.team, account, accountOfTeam);
     const keepsHere = (team) => team !== paths.team && accountOfTeam(team) === account && accountHolderOf(tree, team, account, accountOfTeam) === holder;
     const peers = [...teams].filter(([team]) => keepsHere(team)).map(([team, loaded]) => ({ team, usage: loaded.kit.paths.usage, ids: loaded.roster.ids }));
-    return { statusUse, paths: teams.get(holder)?.kit.paths ?? paths, keeper: holder, peers };
+    return { account, statusUse, paths: teams.get(holder)?.kit.paths ?? paths, keeper: holder, peers };
 }
 async function statusUseOf(runtime, teams, budget, paths, scope) {
     const fold = await accountWeekOf(runtime.files, teams, snapshotDirOf(budget, paths), scope);

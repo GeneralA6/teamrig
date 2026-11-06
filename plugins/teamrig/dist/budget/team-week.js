@@ -1,5 +1,5 @@
 import { calibrationOf, crossingOf, fitRate, MeterLog, readingsOfTeam } from "./calibration.js";
-import { ExtraLog, wAtFullOf } from "./extra.js";
+import { ExtraLog, limitSpansOf, wAtFullOf } from "./extra.js";
 import { PeriodStore } from "./period.js";
 import { coversFrom, meteredOf, rateOf, readWeek, wSince } from "./week.js";
 /**
@@ -21,7 +21,9 @@ function peerLinesOf(peers, crossing, logged, keeper, now) {
  * moved on from the status line's use and the W metered at the fit's rate (budget/period.ts) and written when it
  * changed, then the week read in it with the extra-usage log (budget/extra.ts). A percent the status line passed
  * since the period's previous reading is logged once for each team keeping its week in these files, each with the W
- * its own stores metered (T1669), for the next fit: the period moved on, so no other team logs that percent.
+ * its own stores metered (T1669), for the next fit: the period moved on, so no other team logs that percent. The
+ * stretches at the usage limit come from those lines too, so a hook reads the log once, and count the lines just
+ * logged: the account stops at 100%, so the hook that saw that crossing may be the last before the reset.
  */
 export async function teamWeekOf(files, paths, scale, input) {
     const { budget, statusUse, states, now } = input;
@@ -37,8 +39,7 @@ export async function teamWeekOf(files, paths, scale, input) {
     const week = readWeek({ ...input, period, calibration, readings, extra: { entries, wAtFull } });
     const w = period === undefined ? 0 : wSince(states, period.start, now);
     const crossing = crossingOf({ before: move?.before, period, use: statusUse, covered: week.covered, w, now }, calibration.fit);
-    if (crossing !== undefined) {
-        await log.appendAll([{ ...crossing, team: scale.team }, ...peerLinesOf(await scale.peers(), crossing, logged, scale.keeper, now)], now);
-    }
-    return week;
+    const lines = crossing === undefined ? [] : [{ ...crossing, team: scale.team }, ...peerLinesOf(await scale.peers(), crossing, logged, scale.keeper, now)];
+    await log.appendAll(lines, now);
+    return { ...week, limits: limitSpansOf([...logged, ...lines]) };
 }
