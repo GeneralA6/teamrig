@@ -5688,6 +5688,26 @@ teamrig hook compact-check < compaction.json
 
 Output: one JSON line, exit 0: `{"kind":"go"}` or `{"kind":"skip","reason":"<why>"}`.
 
+### teamrig hook pre-compact
+
+Run by Claude Code's `PreCompact` hook, for a host where a managed mod runs before the plugin's and sends the
+compaction on past it, so `hook compact-check` never runs. It makes the same decision for a compaction Claude Code
+runs on its own (trigger `auto`; a `/compact` the user typed always goes), on the context it estimates from the
+transcript: the last main reply's context plus the bytes written since, at 3 bytes a token. It is not told the
+window, so it takes 200,000, the smallest of a current model: a ceiling at or past that holds nothing. Anything it
+cannot read lets the compaction go. Stdin: `{"session_id", "transcript_path", "cwd", "trigger"}`.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook pre-compact < pre-compact.json
+```
+
+Output: exit 0 always; on a hold one JSON line, `{"decision":"block","reason":"<why>"}`, which Claude Code shows and
+skips the compaction for; nothing on a go.
+
 ### teamrig hook wake-check
 
 Run by the plugin's mod while its tab is idle at the prompt, when the register or the session's asks folder (an

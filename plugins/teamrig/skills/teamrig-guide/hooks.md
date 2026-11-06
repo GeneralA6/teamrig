@@ -28,6 +28,7 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | `PreToolUse` on `Agent` and `Task` | `hook helper-gate` | Restates rule 8's helper default at each helper launch; asks before or refuses one while its budget holds it or in quiet hours, [as the team set](#the-daily-budget-warnings-and-the-helper-gate) |
 | The mod, while a tab is idle | `hook wake-check`, `hook wake-dropped` | Wakes the tab's session when unblocked urgent work is handed to it, [batched, with its cost shown](#the-mod-the-wake-on-urgent-work), and runs the team's [idle pass](#the-idle-pass), at most once a minute |
 | The mod, every 30 s in each tab | `hook meeting-due` | Sends a scheduled meeting's OS notification at its time, from one tab of the team, and shows it as a toast there ([a scheduled meeting's notification](#the-mod-a-scheduled-meetings-notification)) |
+| `PreCompact` (a compaction Claude Code runs on its own) | `hook pre-compact` | While the session's handover is asked for or written, holds the compaction under `refresh.compactCeilingTokens`, where a managed mod keeps the plugin's mod from holding it ([the hold within a turn](#the-mod-the-refresh-within-a-turn)) |
 | `Stop` (end of each turn) | `hook stop` | Sends the session back once to [a skill edit it dropped](#end-of-a-turn-or-a-helper-a-dropped-skill-edit), and after a task is set waiting, once to [its other work](#end-of-a-turn-keep-working-while-a-task-waits); asks for a handover when a context refresh is due, then starts the automatic restart; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines; names a verifying task whose verify-by day has come; once per `github.everyMinutes` for the whole team, starts `gh sync --auto` hidden in the background; every 10 minutes for the whole team, tells the lead of [a tab that runs without its hooks](#end-of-a-turn-hookless-tabs); with tab status on, sets the tab's ready circle, or the decision circle after a turn that asks the user to decide |
 | `SubagentStop` (a helper about to hand back) | `hook subagent-stop` | Sends the helper back once to [a skill edit it dropped](#end-of-a-turn-or-a-helper-a-dropped-skill-edit) |
 | `SessionStart`, `UserPromptSubmit`, `Stop`, `StopFailure` and `SessionEnd`, in a team or not | `hook restore-track` | Records each Claude Code session on the machine, where it started and what it was doing, for the restore after a reboot ([the restore tracker](#every-session-the-restore-tracker)) |
@@ -911,6 +912,14 @@ is asked for or written and the estimate is under `refresh.compactCeilingTokens`
 167k where Claude Code compacts a 200k window, 15k under the window; 0 turns it off), the mod skips the compaction,
 since the fresh start replaces it. At or past the ceiling, or when the CLI cannot answer, the compaction goes, so a
 session never runs out of room. The user's `/compact`, a plugin's and a helper's compaction are left alone.
+
+On a machine with managed settings, Claude Code can seat a managed mod before the plugin's that sends the
+compaction on past the user's mods, so the mod's check never runs. Claude Code's `PreCompact` hook runs either way:
+`teamrig hook pre-compact` makes the same decision there, for an automatic compaction only, and holds it by answering
+`{"decision":"block"}`. That hook is told no estimate and no window, so it estimates the context from the transcript
+(the last main reply's context plus the bytes written since, at 3 bytes a token) and takes a 200,000-token window.
+Where both run, a hold by either one holds the compaction; the hook's estimate reads high (Claude Code's counts about
+4 bytes a token), so it lets go no later than the mod would.
 
 ## The mod: the refresh's /clear
 
