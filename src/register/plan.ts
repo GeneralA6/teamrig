@@ -1,13 +1,14 @@
 import { showStored } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
-import { priorityLevels } from '../config/priorities.ts';
-import type { RegisterConfig } from '../config/types.ts';
 import type { Task } from './fold.ts';
-import { priorityText } from './model.ts';
+import type { Band, ScoreFocus } from './score.ts';
 import { NO_TASKS_ELSEWHERE, TaskTree, type TasksElsewhere, type TreeRanking } from './tree.ts';
-import { sizeText, taskLabel } from './views.ts';
+import { rankParts, sizeText, taskLabel } from './views.ts';
 import { waitsText } from './waits.ts';
 import { proofOf } from './verify.ts';
+
+/** The bands in the order a plan heads them. */
+const BANDS: readonly Band[] = [0, 1, 2];
 
 export interface PlanOptions {
   /** For a roll-up over a tree of teams: the heading names the team and ids read `<team>/T12`. */
@@ -16,22 +17,33 @@ export interface PlanOptions {
   readonly fit?: readonly string[];
   /** The tasks of the team tree's other registers, which a wait on or a dependency after a task this one lacks reads. */
   readonly elsewhere?: TasksElsewhere;
-  /** What ranks the tasks: with none they tie on band and score and fall to the later plan keys. */
-  readonly ranking?: TreeRanking;
+  /** What ranks the tasks and names their bands. */
+  readonly ranking: TreeRanking;
+}
+
+/** A band's heading: band 2 holds every class but the two the team names, so it names none. */
+function bandHeading(band: Band, focus: Pick<ScoreFocus, 'roadmapClass' | 'maintenanceClass'>): string {
+  switch (band) {
+    case 0:
+      return 'Expedite';
+    case 1:
+      return `${focus.roadmapClass} and ${focus.maintenanceClass}`;
+    case 2:
+      return 'Other work';
+  }
 }
 
 /**
- * The week plan as markdown: the tasks tagged with `week`, grouped by priority, each group in plan order (tree.ts
- * PLAN_KEYS: started first, then the effective due, its own or an earlier one of an active task that needs it, which
- * the line names: `due 01-10 from T5`).
+ * The week plan as markdown: the tasks tagged with `week`, grouped by band, each group in plan order (tree.ts
+ * PLAN_KEYS). A line names the task's class and score, and its effective due, its own or an earlier one of an active
+ * task that needs it, which it names too: `due 01-10 from T5`.
  */
 export function renderPlan(
   tasks: Iterable<Task>,
   week: string,
   now: Date,
   zone: TimeZone,
-  config: RegisterConfig,
-  { team, fit = [], elsewhere = NO_TASKS_ELSEWHERE, ranking }: PlanOptions = {},
+  { team, fit = [], elsewhere = NO_TASKS_ELSEWHERE, ranking }: PlanOptions,
 ): string {
   const all = [...tasks];
   const tree = new TaskTree(new Map(all.map((task) => [task.id, task])), now, zone, week, elsewhere, ranking);
@@ -44,10 +56,10 @@ export function renderPlan(
     `${inWeek.length} tasks: ${done} done, ${dropped} dropped, ${inWeek.length - done - dropped} to do. From the task register at ${zone.minute(now)}.`,
     ...(fit.length === 0 ? [] : ['', ...fit.map((line) => `- ${line}`)]),
   ];
-  for (const priority of priorityLevels(config.priorities)) {
-    const rows = inWeek.filter((task) => task.priority === priority.id);
+  for (const band of BANDS) {
+    const rows = inWeek.filter((task) => tree.rankedOf(task)?.band === band);
     if (rows.length > 0) {
-      lines.push('', `## ${priorityText(priority.id)}: ${priority.name}`, '', ...rows.map((task) => planLine(task, config.ownerSource, tree, team)));
+      lines.push('', `## ${bandHeading(band, ranking.focus)}`, '', ...rows.map((task) => planLine(task, ranking.ownerSource, tree, team)));
     }
   }
   return lines.join('\n');
@@ -56,6 +68,7 @@ export function renderPlan(
 function planLine(task: Task, ownerSource: string, tree: TaskTree, team: string | undefined): string {
   const due = tree.effectiveDue(task.id);
   const meta = [
+    ...rankParts(task, tree),
     task.owner,
     due === undefined ? undefined : `due ${showStored(due.due, tree.zone)}${due.from === null ? '' : ` from ${due.from}`}`,
     task.after.length === 0 ? undefined : `after ${task.after.join(',')}`,
