@@ -67,6 +67,9 @@ or take it to the lead.
 | `REFUSED --due goes only with --status verifying; teamrig update T1 --due sets it otherwise` | Use `teamrig update T1 --due <date>`. |
 | `REFUSED T2 needs T1, still verifying (proof: ..., owner api); start T2 once T1 is done, or with --met "..."` | T1's owner got an inbox line: work on something else until it proves T1 (`done`) or reopens it. If the proof already exists, start T2 with `--met "<what shows it>"`; T1's owner is asked to confirm it. |
 | `REFUSED --met goes only with a start that a verifying task it needs holds` | `--met` names what met a held proof: drop it, since nothing verifying holds this change. |
+| `REFUSED T2 is Improvements work and api holds Roadmap work that can move: T1; work that first [focus.wip], or, for a one-commit fix, start it with --one-commit` | Work T1 first. If T2 is a one-commit fix, start it with `--one-commit`. |
+| `REFUSED api already has 3 tasks in progress, at the limit of 3 [focus.wip.maxInProgress]: finish T1, T3, T4 or put one back (--status open) before T2, or, for a one-commit fix, start it with --one-commit` | Finish one of them, or set one back to `open`. If T2 is a one-commit fix, start it with `--one-commit`. |
+| `REFUSED --one-commit goes only with --status in-progress` | Drop `--one-commit`, or set `in-progress`. |
 | `REFUSED T1 is already done; add --note to record why you set it again` | Add a `--note`, or leave the status as it is. |
 | `REFUSED a leader may change only owner, priority, due, week, after, size, kind, pin on a task it does not own (asked: title)` | Ask the owner to change that field. |
 | `REFUSED only the owner (web) or the lead (lead) changes T2` | Ask the owner or a leader it names (a sub-lead's member: `a leader above web (backend or lead)`). |
