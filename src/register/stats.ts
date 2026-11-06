@@ -610,7 +610,7 @@ function spread(values: readonly number[]): Spread {
 }
 
 /** The `q` quantile of sorted values, linearly interpolated between the two nearest; null with none. */
-function quantile(sorted: readonly number[], q: number): number | null {
+export function quantile(sorted: readonly number[], q: number): number | null {
   const position = q * (sorted.length - 1);
   const below = sorted[Math.floor(position)];
   const above = sorted[Math.ceil(position)];

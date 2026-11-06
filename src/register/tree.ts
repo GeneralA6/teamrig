@@ -67,7 +67,7 @@ export interface Unblocks {
 }
 
 /** The ranked goal a task serves: the best rank on its goals or their ancestors, and the goal that holds it. */
-export interface RankedGoal {
+export interface ServedGoal {
   readonly tag: string;
   readonly rank: number;
 }
@@ -75,7 +75,7 @@ export interface RankedGoal {
 /** A task's band and score, with the class and goal they were read from, which its row and `ahead:` reason name. */
 export interface RankedPlace extends TaskScore {
   readonly workClass: string;
-  readonly goal: RankedGoal | null;
+  readonly goal: ServedGoal | null;
 }
 
 /**
@@ -156,9 +156,11 @@ function trueFirst(a: boolean | undefined, b: boolean | undefined): number {
 /**
  * The fields of a task the tree reads. A reader that keeps rows of its own (a status pane) builds a tree from them as
  * from teamrig's folded tasks, and gets its own rows back from it; a row without `week`, `size` or `pin` counts as
- * untagged, unsized and unpinned, one without `type`, `critical` or `source` as a plain task no owner ordered.
+ * untagged, unsized and unpinned, one without `type`, `critical` or `source` as a plain task no owner ordered, one
+ * without `workClass` or `goals` as unclassed and serving no goal.
  */
-export type TreeTask = Pick<Task, 'id' | 'status' | 'owner' | 'priority' | 'due' | 'after' | 'waits'> & Partial<Pick<Task, 'week' | 'size' | 'pin' | 'type' | 'critical' | 'source'>>;
+export type TreeTask = Pick<Task, 'id' | 'status' | 'owner' | 'priority' | 'due' | 'after' | 'waits'> &
+  Partial<Pick<Task, 'week' | 'size' | 'pin' | 'type' | 'critical' | 'source' | 'workClass' | 'goals'>>;
 
 /**
  * How a tree ranks its tasks (T2076): the team's `focus` config and the per-task reads a score needs, built once per
@@ -172,7 +174,7 @@ export interface TreeRanking {
   /** The work class a task counts as. */
   classOf(task: TreeTask): string;
   /** The ranked goal it serves; null: none. */
-  goalOf(task: TreeTask): RankedGoal | null;
+  goalOf(task: TreeTask): ServedGoal | null;
   /** What is known of its size. */
   sizingOf(task: TreeTask): SizeFacts;
 }

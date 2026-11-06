@@ -30,7 +30,25 @@ export {
 } from '../register/layout.ts';
 export { LAYOUT_VERSION } from '../register/marker.ts';
 export { readEvents, readRegister, snapshotOf, type EventLogRead, type RegisterSnapshot, type RetiredTasks } from '../register/snapshot.ts';
-export { loopFix, needPath, needsOf, pathText, planOrder, TaskTree, type EffectiveDue, type NextMove, type PlanPlace, type TreeTask, type WaitingOnYou } from '../register/tree.ts';
+export {
+  loopFix,
+  needPath,
+  needsOf,
+  pathText,
+  planOrder,
+  TaskTree,
+  type EffectiveDue,
+  type NextMove,
+  type PlanPlace,
+  type RankedPlace,
+  type ServedGoal,
+  type TreeRanking,
+  type TreeTask,
+  type WaitingOnYou,
+} from '../register/tree.ts';
+// A task's WSJF rank (T2076): what builds a tree's ranking and what scores a row, so a reader ranks as the CLI does.
+export { ownSizing, treeRanking, type RankingFocus, type RankingInput, type Sizing } from '../register/ranking.ts';
+export { bandOf, scoreOf, sizePctOf, valueOf, type Band as ScoreBand, type ScoreFacts, type ScoreFocus, type SizeFacts, type TaskScore } from '../register/score.ts';
 export { byPlanOrder, dueTime, type PlanOrdered } from '../register/views.ts';
 // The week plan in force (the newest week tag started by now), which a reader's week steps follow, as `plan` does.
 export { currentWeek } from '../register/week.ts';
@@ -122,9 +140,9 @@ export {
 export { indexMarks, MARK_VERSION, parseMark, readMarks, type InboxMark, type MarkIndex, type MarkLogRead } from '../inbox/marks.ts';
 export { inboxLines, unreadOf, type LineHash, type ResumeKind, type Unread } from '../inbox/unread.ts';
 
-// The kit config (`config.json`). DEFAULT_REGISTER is what a config that sets no `register` key gets,
-// its priority names among them: a reader with no config to read names priorities from it.
-export { DEFAULT_REGISTER } from '../config/defaults.ts';
+// The kit config (`config.json`). DEFAULT_REGISTER and DEFAULT_FOCUS are what a config that sets no `register` or
+// `focus` key gets: a reader with no config to read names priorities and ranks tasks from them.
+export { DEFAULT_FOCUS, DEFAULT_REGISTER } from '../config/defaults.ts';
 export { priorityName } from '../config/priorities.ts';
 export { parseConfigText, type ConfigRead } from '../config/text.ts';
 export { CONFIG_VERSION, type FocusConfig, type KitConfig, type LaunchConfig, type PriorityConfig } from '../config/types.ts';

@@ -1,5 +1,6 @@
+import { ownSizing } from '../register/ranking.ts';
 import type { ScoreFocus } from '../register/score.ts';
-import type { RankedGoal, TreeRanking } from '../register/tree.ts';
+import type { ServedGoal, TreeRanking } from '../register/tree.ts';
 
 /** A team's `focus`, as far as a score reads it, with round weights a test can add up by hand. */
 export const TEST_FOCUS: ScoreFocus = {
@@ -29,7 +30,7 @@ export const TEST_OWNER_SOURCE = 'owner';
 /** What {@link testRanking} knows of tasks by id; any other task is unclassed and serves no goal. */
 export interface TestRankingFacts {
   readonly classes?: Readonly<Record<string, string>>;
-  readonly goals?: Readonly<Record<string, RankedGoal>>;
+  readonly goals?: Readonly<Record<string, ServedGoal>>;
 }
 
 /** A ranking over fixed facts: a task with no class counts as Improvements, and only its own `size` sizes it. */
@@ -39,6 +40,6 @@ export function testRanking({ classes = {}, goals = {} }: TestRankingFacts = {})
     ownerSource: TEST_OWNER_SOURCE,
     classOf: (task) => classes[task.id] ?? 'Improvements',
     goalOf: (task) => goals[task.id] ?? null,
-    sizingOf: (task) => ({ size: task.size ?? null, spentPct: 0, likeMedianPct: undefined }),
+    sizingOf: ownSizing,
   };
 }
