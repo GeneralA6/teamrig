@@ -19,7 +19,7 @@ holds what `start` prints first: run `start` at your next work block instead.
 
 1. Read each inbox line. A line that asks for work should name a task id; if it does not, add the task yourself
    (`teamrig add --session api --title "..." --description "<what and why>" --priority p<n> --source <asker>`).
-2. Take the first task of your list: lists are in plan order (a pinned task, band, score, then a started task, effective due date,
+2. Take the first task of your list: lists are in plan order (a pinned task, band, a task that can move, score, then a started task, effective due date,
    what it unblocks, the week plan, size, then id; a task that a dated task needs takes that earlier due,
    `due 10-17 (from T9)`), and each row's `· ahead:` names the key that put it ahead of the next.
 3. Mark it started: `teamrig set T4 --session api --status in-progress`.

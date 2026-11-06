@@ -106,7 +106,7 @@ The injected context holds:
    only the check flags and the rest of the list, and `teamrig budget --misses` counts the note as that block's
    start. A note that could not read the register, or has no room for the task block, has no `START` line.
    Work in hand comes first (in progress, verifying, waiting), then the tasks not started, each in plan order
-   (band and score, then effective due date); at most 6 rows, the rest one `+N more` line. A row names the due date (the
+   (band, a task that can move, score, then effective due date); at most 6 rows, the rest one `+N more` line. A row names the due date (the
    earlier one of a task that needs it, as `due 10-17 (from T21)`), the plan dependencies not finished yet
    (`after`) and, for a waiting task, its wait reasons with the ready ones marked. Then `WAITING ON YOU` lists the
    active tasks of other sessions that need one of the session's unfinished tasks or wait on its decision or
