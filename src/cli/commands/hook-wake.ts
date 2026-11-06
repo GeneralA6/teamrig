@@ -16,6 +16,7 @@ import { LoginStore } from '../../restore/login-store.ts';
 import { apiRetryLine, claimApiRetry } from '../../restore/api-error.ts';
 import { RestoreRegistry, restoreLogPath, restoreSessionsDir } from '../../restore/registry.ts';
 import type { Task } from '../../register/fold.ts';
+import { parkRulesOf } from '../../register/park.ts';
 import type { TasksElsewhere } from '../../register/tree.ts';
 import { askVerdictOf, asksFolderOf, asksNowOf, handedPrompt, handedToast, WakeAsks, type WakeAsk } from '../../wake/asks.ts';
 import {
@@ -268,7 +269,7 @@ async function momentsOf(
   await startDailyRollup(runtime, kit, id, dayStartUtc, now);
   const next = nextDayStartAt(dayStartUtc, now);
   const none: MomentsCheck = { verdict: { kind: 'none' }, state, lastTurnAt: undefined, next, watch: [] };
-  const startable = startableTasks(tasks, elsewhere, id, now, teamZone(config, runtime));
+  const startable = startableTasks(tasks, elsewhere, id, now, teamZone(config, runtime), parkRulesOf(config));
   const logged = activeBurst((await new BurstLog(runtime.files, kit.paths.bursts).read()).records, now, undefined);
   const inBurst = logged?.sessions.includes(id) === true ? logged : undefined;
   if (startable.length === 0 || dueMoments(now, dayStartUtc, inBurst, state.settled).length === 0) {
@@ -352,6 +353,7 @@ async function decide(
       now,
       zone: teamZone(config, runtime),
       maxPriority: config.wake.priority,
+      parking: parkRulesOf(config),
       batchMs,
       minGapMs: config.wake.minGapMinutes * MINUTE_MS,
       previous: await store.read(id),

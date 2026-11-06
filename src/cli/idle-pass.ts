@@ -3,6 +3,7 @@ import type { KitConfig } from '../config/types.ts';
 import { KIT_NAME } from '../core/home.ts';
 import type { TimeZone } from '../core/zone.ts';
 import type { Task } from '../register/fold.ts';
+import { parkRulesOf } from '../register/park.ts';
 import { noRoomText } from '../sessions/headroom.ts';
 import { reopenVerdict, type ReopenInput, type ReopenVerdict } from '../sessions/idle.ts';
 import { closedOf, SessionLog, type SessionLogRecord } from '../sessions/log.ts';
@@ -133,7 +134,7 @@ export async function judgeSession(runtime: CliRuntime, kit: Kit, config: KitCon
     return { kind: 'away', id };
   }
   const asks = facts.asks.get(id) ?? [];
-  const input: ReopenInput = { tasks, elsewhere, session: id, asks, closedAt: Date.parse(closed.at), ...awake, dayStartUtc: config.wake.dayStartUtc, now, zone };
+  const input: ReopenInput = { tasks, elsewhere, session: id, asks, closedAt: Date.parse(closed.at), ...awake, parking: parkRulesOf(config), dayStartUtc: config.wake.dayStartUtc, now, zone };
   const asAwake = reopenVerdict(input);
   if (asAwake.kind === 'asked') {
     return wishOf(folderOf, id, asAwake, undefined);

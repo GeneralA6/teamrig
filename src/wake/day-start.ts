@@ -4,9 +4,9 @@ import { KIT_NAME } from '../core/home.ts';
 import { MS_PER_DAY, MS_PER_MINUTE, utcMinuteOf } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
 import type { Task } from '../register/fold.ts';
+import type { ParkRules } from '../register/park.ts';
 import type { TasksElsewhere } from '../register/tree.ts';
-import { waitContext } from '../register/waits.ts';
-import { byUrgency, costText, idsText, isWakeWorthy, taskListText, type SettledMoments, type WakeCost, type WakeRest } from './decide.ts';
+import { byUrgency, costText, idsText, isWakeWorthy, taskListText, wakeContext, type SettledMoments, type WakeCost, type WakeRest } from './decide.ts';
 
 /**
  * The day's moments, pure. A wake for handed work (decide.ts) never starts a session's day: a session idle since the
@@ -60,7 +60,7 @@ export function dueMoments(now: number, dayStartUtc: string | undefined, burst: 
 
 /**
  * The session's work it can go on with now (`canGoOn`) at `maxPriority` or more urgent (any by default), most urgent
- * first; a wait or an `after` may name a task the team tree's other registers hold (`elsewhere`).
+ * first, a parked task left out; a wait or an `after` may name a task the team tree's other registers hold (`elsewhere`).
  */
 export function startableTasks(
   tasks: ReadonlyMap<string, Task>,
@@ -68,9 +68,10 @@ export function startableTasks(
   session: string,
   now: number,
   zone: TimeZone,
+  parking: ParkRules,
   maxPriority = Number.POSITIVE_INFINITY,
 ): readonly Task[] {
-  const context = waitContext(tasks, new Date(now), zone, elsewhere);
+  const context = wakeContext(tasks, elsewhere, now, zone, parking);
   return [...tasks.values()].filter((task) => isWakeWorthy(task, session, maxPriority, context)).sort(byUrgency);
 }
 
