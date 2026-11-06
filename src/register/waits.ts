@@ -54,6 +54,11 @@ export function sameWaits(a: readonly WaitReason[], b: readonly WaitReason[]): b
   return a.length === b.length && a.every((reason) => b.some((other) => sameWait(reason, other)));
 }
 
+/** True when `waits` names a reason `held` lacks; a reason dropped names nothing new. */
+export function namesNewWait(held: readonly WaitReason[], waits: readonly WaitReason[]): boolean {
+  return waits.some((reason) => !held.some((had) => sameWait(had, reason)));
+}
+
 /** Who answers each kind of person wait on a task of one owner's, besides the owner (`waitAnswerersOf`). */
 export type WaitAnswerers = Readonly<Record<PersonWaitKind, readonly string[]>>;
 

@@ -2,7 +2,7 @@ import type { DecisionCard } from './card.ts';
 import type { ProblemReview } from './review.ts';
 import type { ApprovalVerdict, RegisterEvent, SizeBase, TaskFields, UpdateEvent } from './events.ts';
 import { WAIT_STATUSES, type TaskStatus } from './model.ts';
-import { sameWait, type WaitReason } from './waits.ts';
+import { namesNewWait, type WaitReason } from './waits.ts';
 
 /** The lead's answer to a task's approval wait (T684), as `approve` wrote it. */
 export interface ApprovalAnswer {
@@ -84,6 +84,13 @@ export interface Task extends TaskFields {
   readonly assignedAt: string;
   /** When the task took its current status: its creation, or the latest status event that changed it. */
   readonly statusAt: string;
+  /**
+   * When the task last asked for something new: its creation, or the latest event naming a wait it did not hold, or
+   * naming its waits again after an answer, since that status clears the answer and asks anew (T2089). `statusAt` cannot
+   * say this: a task waiting days on another task that adds a leader's approval keeps its status, and an update replaces
+   * waits with no status at all. A wait dropped leaves it. Read from the log, never stored, so it needs no event format.
+   */
+  readonly waitsAt: string;
   /** When the task took its current priority: its creation, or the latest update that changed it. */
   readonly priorityAt: string;
   /** The current owner's newest event on the task since it was assigned, if any. */
@@ -199,20 +206,23 @@ function created(id: string, fields: TaskFields, at: string, by: string): Task {
     updatedBy: by,
     assignedAt: at,
     statusAt: at,
+    waitsAt: at,
     priorityAt: at,
     ownerSeenAt: by === fields.owner ? at : null,
   };
 }
 
 function withStatus(task: Task, event: Extract<RegisterEvent, { type: 'status' }>): Task {
+  const waits = WAIT_STATUSES.includes(event.status) ? (event.waits ?? []) : [];
   return {
     ...task,
     status: event.status,
     statusAt: event.status === task.status ? task.statusAt : event.at,
+    waitsAt: namesNewWait(task.answer === null ? task.waits : [], waits) ? event.at : task.waitsAt,
     note: event.note,
     evidence: event.evidence ?? task.evidence,
     skill: event.skill,
-    waits: WAIT_STATUSES.includes(event.status) ? (event.waits ?? []) : [],
+    waits,
     card: WAIT_STATUSES.includes(event.status) ? (event.card ?? null) : null,
     answer: null,
     decided: null,
@@ -230,7 +240,7 @@ function withStatus(task: Task, event: Extract<RegisterEvent, { type: 'status' }
 
 /** True when setting `status` with `waits` re-parks the task's proof, as {@link Task.reparks} counts it. */
 export function isRepark(task: Task, status: TaskStatus, waits: readonly WaitReason[]): boolean {
-  return status === 'verifying' && task.status === 'verifying' && task.waits.length > 0 && waits.some((reason) => !task.waits.some((had) => sameWait(had, reason)));
+  return status === 'verifying' && task.status === 'verifying' && task.waits.length > 0 && namesNewWait(task.waits, waits);
 }
 
 function reparksAfter(task: Task, event: Extract<RegisterEvent, { type: 'status' }>): number {
@@ -265,6 +275,7 @@ function withChanges(task: Task, { changes, note, at, by, verdict, waits, decide
     answer,
     decided: decision,
     waits: kept,
+    waitsAt: namesNewWait(task.waits, kept) ? at : task.waitsAt,
     sizeBase: base,
     updatedAt: at,
     updatedBy: by,
