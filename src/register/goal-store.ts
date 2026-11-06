@@ -5,15 +5,19 @@ import {
   foldGoalLines,
   GOAL_RECORD_VERSION,
   goalAddRefusal,
+  goalRankRefusal,
   goalRecordJson,
   goalSetRefusal,
   readGoals,
   type GoalAdd,
   type GoalAddInput,
+  type GoalRank,
+  type GoalRankInput,
   type GoalRecord,
   type GoalSet,
   type GoalSetInput,
   type GoalsRead,
+  type KeyResultCap,
 } from './goals.ts';
 
 /** Who writes a goal record, and when (an ISO time). */
@@ -27,7 +31,8 @@ export type GoalWrite = { readonly kind: 'written'; readonly record: GoalRecord 
 
 /**
  * A team's goal records file (T1730): reads fold it, writes append one record under the lock after re-reading it, so
- * two leads' writes never both pass a check that only one of them can (two adds of one tag). A file holding records
+ * two leads' writes never both pass a check that only one of them can (two adds of one tag, or two key results past
+ * the cap). A file holding records
  * of a newer teamrig is refused for writes (NewerDataError), never mixed with this version's.
  */
 export class GoalStore {
@@ -46,10 +51,10 @@ export class GoalStore {
     return readGoals(await this.files.read(this.path));
   }
 
-  /** Adds a goal, unless goalAddRefusal refuses it over the records as they stand under the lock. */
-  async add(input: GoalAddInput, writer: GoalWriter): Promise<GoalWrite> {
+  /** Adds a goal, unless goalAddRefusal refuses it over the records as they stand under the lock, a key result past `cap` among them. */
+  async add(input: GoalAddInput, writer: GoalWriter, cap: KeyResultCap): Promise<GoalWrite> {
     return this.mutex.run(async () => {
-      const reason = goalAddRefusal(input, (await this.writable()).goals);
+      const reason = goalAddRefusal(input, (await this.writable()).goals, cap);
       if (reason !== undefined) {
         return { kind: 'refused', reason };
       }
@@ -66,6 +71,18 @@ export class GoalStore {
         return { kind: 'refused', reason };
       }
       const record: GoalSet = { type: 'goal-set', ...writer, tag: input.tag, target: input.target, title: input.title, note: input.note };
+      return this.append(record);
+    });
+  }
+
+  /** Ranks a goal, or takes it off the ranking (null), unless goalRankRefusal refuses it (T2083). */
+  async rank(input: GoalRankInput, writer: GoalWriter): Promise<GoalWrite> {
+    return this.mutex.run(async () => {
+      const reason = goalRankRefusal(input, (await this.writable()).goals);
+      if (reason !== undefined) {
+        return { kind: 'refused', reason };
+      }
+      const record: GoalRank = { type: 'goal-rank', ...writer, tag: input.tag, rank: input.rank };
       return this.append(record);
     });
   }
