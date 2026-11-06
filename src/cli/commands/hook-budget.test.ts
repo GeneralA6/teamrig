@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import { MeterLog } from '../../budget/calibration.ts';
 import { OUTSIDE_ID } from '../../budget/measure.ts';
 import { emptyPatterns } from '../../budget/patterns.ts';
 import { parseSessionsWeek, SESSIONS_WEEK_IN_STATE } from '../../budget/session-week-summary.ts';
@@ -34,7 +35,19 @@ describe('the budget hooks', () => {
       accountUsedPct: 30,
       resetsAt: Date.parse('2030-01-14T01:00:00Z'),
       at: kit.clock.now(),
+      limits: [],
     });
+  });
+
+  it("keep the stretches the account's week sat at its usage limit in the team's week summary (T2050)", async () => {
+    const kit = new CliHarness({ ...TEAM, budget: { ...HOLDING_BUDGET, account: 'work' } });
+    const end = Date.parse('2030-01-07T01:00:00Z');
+    const full = Date.parse('2030-01-06T08:00:00Z');
+    const line = { at: full, usedPct: 100, start: Date.parse('2029-12-31T01:00:00Z'), end, w: 1_000_000_000, forecastPct: undefined };
+    await new MeterLog(kit.files, join(TEAM_HOME, 'state', 'usage', 'meter-log.jsonl')).append(line, kit.clock.now());
+    await meterToday(kit, [{ id: 'alpha', tab: ALPHA_TAB, w: 100_000_000 }]);
+    const text = await kit.files.read(SUMMARY);
+    assert.deepEqual(text === undefined ? undefined : parseTeamWeek(text)?.limits, [{ start: full, end }]);
   });
 
   it("keep each roster session's week: its W at the team's rate and its hours with work, an idle session at none", async () => {

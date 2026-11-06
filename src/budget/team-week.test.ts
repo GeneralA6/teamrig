@@ -45,7 +45,7 @@ describe('teamWeekOf', () => {
     const week = await teamWeekOf(files, PATHS, SOLO, { budget: DEFAULT_BUDGET, now: NOW, statusUse: STATUS, states: STATES });
     const moved = parsePeriod((await files.read(PATHS.period)) ?? '');
     assert.deepEqual(moved, { ...stored, lastPct: 20, lastAt: STATUS.at });
-    assert.deepEqual(week, readWeek({ budget: DEFAULT_BUDGET, now: NOW, statusUse: STATUS, period: stored, states: STATES, calibration: NOTHING_LEARNED, readings: [] }));
+    assert.deepEqual(week, { ...readWeek({ budget: DEFAULT_BUDGET, now: NOW, statusUse: STATUS, period: stored, states: STATES, calibration: NOTHING_LEARNED, readings: [] }), limits: [] });
     const logged: LoggedReading = { at: STATUS.at, usedPct: 20, start: START, end: END, w: 1_000, forecastPct: undefined, team: 'root' };
     assert.deepEqual(await new MeterLog(files, PATHS.meterLog).read(NOW), [logged]);
   });
@@ -80,7 +80,7 @@ describe('teamWeekOf', () => {
     const stored = await storedAt(files, 20);
     const week = await teamWeekOf(files, PATHS, SOLO, { budget: DEFAULT_BUDGET, now: NOW, statusUse: STATUS, states: STATES });
     const readings = await log.read(NOW);
-    assert.deepEqual(week, readWeek({ budget: DEFAULT_BUDGET, now: NOW, statusUse: STATUS, period: stored, states: STATES, calibration: calibrationOf(readings), readings }));
+    assert.deepEqual(week, { ...readWeek({ budget: DEFAULT_BUDGET, now: NOW, statusUse: STATUS, period: stored, states: STATES, calibration: calibrationOf(readings), readings }), limits: [] });
     assert.deepEqual([week.teamDay?.usedPct.toFixed(6), week.todayWPerPct?.toFixed(6)], [(4.8).toFixed(6), (400 / 4.8).toFixed(6)]);
   });
 
@@ -89,7 +89,7 @@ describe('teamWeekOf', () => {
     const files = new MemoryFiles();
     const week = await teamWeekOf(files, PATHS, SOLO, { budget: DEFAULT_BUDGET, now: NOW, statusUse: undefined, states: STATES });
     assert.deepEqual([await files.read(PATHS.period), await files.read(PATHS.meterLog)], [undefined, undefined]);
-    assert.deepEqual(week, readWeek({ budget: DEFAULT_BUDGET, now: NOW, statusUse: undefined, period: undefined, states: STATES, calibration: NOTHING_LEARNED, readings: [] }));
+    assert.deepEqual(week, { ...readWeek({ budget: DEFAULT_BUDGET, now: NOW, statusUse: undefined, period: undefined, states: STATES, calibration: NOTHING_LEARNED, readings: [] }), limits: [] });
   });
 
   it("reads the extra-usage pool past 100% from the extra log and the meter log's 100% line", async () => {
@@ -104,9 +104,18 @@ describe('teamWeekOf', () => {
     const week = await teamWeekOf(files, PATHS, SOLO, { budget, now: NOW, statusUse: status, states: STATES });
     // 1,000 W metered, 100 W past the 100% line at 50 W per dollar: $2 of the $10 spent, 400 W left.
     assert.deepEqual(week.pool, { addedUsd: 10, spentUsd: 2, leftUsd: 8, wPerUsd: 50, learned: false, leftW: 400 });
-    assert.deepEqual(week, readWeek({ budget, now: NOW, statusUse: status, period: stored, states: STATES, calibration: calibrationOf([full]), readings: [full], extra: { entries: [added], wAtFull: 900 } }));
+    const expected = readWeek({ budget, now: NOW, statusUse: status, period: stored, states: STATES, calibration: calibrationOf([full]), readings: [full], extra: { entries: [added], wAtFull: 900 } });
+    assert.deepEqual(week, { ...expected, limits: [{ start: full.at, end: END }] });
     // 10 W per percent from the status line: the pool's 40% over the 132 hours to the pace end, a 24-hour day of it.
     assert.equal(week.allowancePct?.toFixed(6), ((40 * 24) / 132).toFixed(6));
+  });
+
+  it('counts the 100% crossing this reading logged: the account stops there, so no later hook may come (T2050)', async () => {
+    const files = new MemoryFiles();
+    await storedAt(files, 99);
+    const status: WeekUse = { ...STATUS, usedPct: 100 };
+    const week = await teamWeekOf(files, PATHS, SOLO, { budget: DEFAULT_BUDGET, now: NOW, statusUse: status, states: STATES });
+    assert.deepEqual(week.limits, [{ start: status.at, end: END }]);
   });
 });
 
@@ -163,8 +172,17 @@ describe('teamWeekOf on an account two teams share (T1669)', () => {
     const stored = await storedAt(files, 20);
     const week = await teamWeekOf(files, PATHS, scaleOf('app', []), { budget: DEFAULT_BUDGET, now: NOW, statusUse: STATUS, states: STATES });
     const own = (await log.read(NOW)).filter((reading) => reading.team === 'app');
-    assert.deepEqual(week, readWeek({ budget: DEFAULT_BUDGET, now: NOW, statusUse: STATUS, period: stored, states: STATES, calibration: calibrationOf(own), readings: own }));
+    assert.deepEqual(week, { ...readWeek({ budget: DEFAULT_BUDGET, now: NOW, statusUse: STATUS, period: stored, states: STATES, calibration: calibrationOf(own), readings: own }), limits: [] });
     // The 600 W before today read 15.2% between the app's own lines, the 1,000 W now 20%: the W-based day.
     assert.deepEqual([week.teamDay?.usedPct.toFixed(6), week.todayWPerPct?.toFixed(6)], [(4.8).toFixed(6), (400 / 4.8).toFixed(6)]);
+  });
+
+  it("reads the account's stretches at its limit from every team's lines, not only the reader's (T2050)", async () => {
+    const files = new MemoryFiles();
+    const full = START - MS_PER_DAY;
+    await new MeterLog(files, PATHS.meterLog).append({ ...LAST, at: full, usedPct: 100, w: 9_000, team: 'app' }, NOW);
+    await storedAt(files, 20);
+    const week = await teamWeekOf(files, PATHS, scaleOf('root', []), { budget: DEFAULT_BUDGET, now: NOW, statusUse: STATUS, states: STATES });
+    assert.deepEqual(week.limits, [{ start: full, end: START }]);
   });
 });

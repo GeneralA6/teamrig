@@ -1,7 +1,8 @@
 import type { Files } from '../core/files.ts';
 import type { TeamPaths } from '../core/home.ts';
+import type { LimitSpan } from '../register/stats.ts';
 import { calibrationOf, crossingOf, fitRate, MeterLog, readingsOfTeam, type LoggedReading, type LogScale, type MeterReading } from './calibration.ts';
-import { ExtraLog, wAtFullOf } from './extra.ts';
+import { ExtraLog, limitSpansOf, wAtFullOf } from './extra.ts';
 import { PeriodStore } from './period.ts';
 import type { UsageState } from './store.ts';
 import { coversFrom, meteredOf, rateOf, readWeek, wSince, type WeekInput, type WeekReading } from './week.ts';
@@ -19,6 +20,12 @@ export interface PeerStores {
 export interface MeterScale extends LogScale {
   /** The other teams keeping their week in the account's files; read only when a crossing is logged. */
   readonly peers: () => Promise<readonly PeerStores[]>;
+}
+
+/** The week as `teamWeekOf` reads it, with what the account's whole meter log, every team's lines, says beside it. */
+export interface TeamWeekReading extends WeekReading {
+  /** The stretches the account's week sat at its usage limit (`limitSpansOf`). */
+  readonly limits: readonly LimitSpan[];
 }
 
 /**
@@ -41,14 +48,16 @@ function peerLinesOf(peers: readonly PeerStores[], crossing: MeterReading, logge
  * moved on from the status line's use and the W metered at the fit's rate (budget/period.ts) and written when it
  * changed, then the week read in it with the extra-usage log (budget/extra.ts). A percent the status line passed
  * since the period's previous reading is logged once for each team keeping its week in these files, each with the W
- * its own stores metered (T1669), for the next fit: the period moved on, so no other team logs that percent.
+ * its own stores metered (T1669), for the next fit: the period moved on, so no other team logs that percent. The
+ * stretches at the usage limit come from those lines too, so a hook reads the log once, and count the lines just
+ * logged: the account stops at 100%, so the hook that saw that crossing may be the last before the reset.
  */
 export async function teamWeekOf(
   files: Files,
   paths: TeamWeekPaths,
   scale: MeterScale,
   input: Omit<WeekInput, 'period' | 'calibration' | 'readings' | 'extra'>,
-): Promise<WeekReading> {
+): Promise<TeamWeekReading> {
   const { budget, statusUse, states, now } = input;
   const log = new MeterLog(files, paths.meterLog);
   const logged = await log.read(now);
@@ -62,8 +71,7 @@ export async function teamWeekOf(
   const week = readWeek({ ...input, period, calibration, readings, extra: { entries, wAtFull } });
   const w = period === undefined ? 0 : wSince(states, period.start, now);
   const crossing = crossingOf({ before: move?.before, period, use: statusUse, covered: week.covered, w, now }, calibration.fit);
-  if (crossing !== undefined) {
-    await log.appendAll([{ ...crossing, team: scale.team }, ...peerLinesOf(await scale.peers(), crossing, logged, scale.keeper, now)], now);
-  }
-  return week;
+  const lines: readonly LoggedReading[] = crossing === undefined ? [] : [{ ...crossing, team: scale.team }, ...peerLinesOf(await scale.peers(), crossing, logged, scale.keeper, now)];
+  await log.appendAll(lines, now);
+  return { ...week, limits: limitSpansOf([...logged, ...lines]) };
 }
