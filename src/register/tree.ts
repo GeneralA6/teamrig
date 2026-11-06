@@ -2,6 +2,7 @@ import { parseDeadline } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { taskNumber, type Task } from './fold.ts';
 import { ACTIVE_STATUSES } from './model.ts';
+import { wouldPark, type ParkFocus } from './park.ts';
 import { scoreOf, valueOf, type ScoreFocus, type SizeFacts, type TaskScore, type ValueFacts } from './score.ts';
 import { isFinished, isReady, waitContext, type PersonWait, type PersonWaitKind, type WaitContext } from './waits.ts';
 import { currentWeek } from './week.ts';
@@ -28,6 +29,12 @@ export function needsOf(task: Pick<Task, 'after' | 'waits'>): string[] {
  */
 export function needsElsewhere(tasks: ReadonlyMap<string, Pick<Task, 'status' | 'after' | 'waits'>>): boolean {
   return [...tasks.values()].some((task) => ACTIVE_STATUSES.includes(task.status) && needsOf(task).some((id) => !tasks.has(id)));
+}
+
+/** Every id an active task of `tasks`, or of the tree's other registers, needs; ids are one numbering across a tree. */
+export function neededIds(tasks: Iterable<Pick<Task, 'status' | 'after' | 'waits'>>, elsewhere: TasksElsewhere): ReadonlySet<string> {
+  const others = [...elsewhere.values()].map(({ task }) => task);
+  return new Set([...tasks, ...others].filter(isActive).flatMap((task) => needsOf(task)));
 }
 
 /**
@@ -161,10 +168,13 @@ function trueFirst(a: boolean | undefined, b: boolean | undefined): number {
  * The fields of a task the tree reads. A reader that keeps rows of its own (a status pane) builds a tree from them as
  * from teamrig's folded tasks, and gets its own rows back from it; a row without `week`, `size` or `pin` counts as
  * untagged, unsized and unpinned, one without `type`, `critical` or `source` as a plain task no owner ordered, one
- * without `workClass` or `goals` as unclassed and serving no goal, one without `sizeBase` as sized before it spent.
+ * without `workClass` or `goals` as unclassed and serving no goal, one without `sizeBase` as sized before it spent, one
+ * without `updatedAt` as never parked.
  */
 export type TreeTask = Pick<Task, 'id' | 'status' | 'owner' | 'priority' | 'due' | 'after' | 'waits'> &
-  Partial<Pick<Task, 'week' | 'size' | 'sizeBase' | 'pin' | 'type' | 'critical' | 'source' | 'workClass' | 'goals'>>;
+  Partial<
+    Pick<Task, 'week' | 'size' | 'sizeBase' | 'pin' | 'type' | 'critical' | 'source' | 'workClass' | 'goals' | 'updatedAt'>
+  >;
 
 /**
  * How a tree ranks its tasks (T2076): the team's `focus` config and the per-task reads a score needs, built once per
@@ -172,7 +182,7 @@ export type TreeTask = Pick<Task, 'id' | 'status' | 'owner' | 'priority' | 'due'
  * score ({@link PlanPlace}), and its rows show neither.
  */
 export interface TreeRanking {
-  readonly focus: ScoreFocus;
+  readonly focus: ScoreFocus & ParkFocus;
   /** The `source` of a task the owner ordered. */
   readonly ownerSource: string;
   /** The work class a task counts as. */
@@ -279,6 +289,8 @@ export class TaskTree<T extends TreeTask = Task> {
   private readonly ranking: TreeRanking | undefined;
   /** Each place's score, kept because a sort reads every task's many times. */
   private readonly ranked = new Map<string, RankedPlace>();
+  /** What the tree's active tasks need, built when a task first reaches the park rule's last test: few do. */
+  private needed: ReadonlySet<string> | undefined;
 
   /**
    * `week` defaults to the newest week tag of `tasks` started by `now`; a register read passes the one it knows.
@@ -312,6 +324,20 @@ export class TaskTree<T extends TreeTask = Task> {
   /** The task of the read; undefined when the read lacks it. */
   task(id: string): T | undefined {
     return this.tasks.get(id);
+  }
+
+  /** True when the park rule takes the task out of the lists ({@link wouldPark}); a tree with no ranking parks nothing. */
+  isParked(task: T): boolean {
+    const { ranking } = this;
+    if (ranking === undefined) {
+      return false;
+    }
+    return wouldPark(task, { focus: ranking.focus, ownerSource: ranking.ownerSource, now: this.now, needed: (id) => this.isNeeded(id) });
+  }
+
+  private isNeeded(id: string): boolean {
+    this.needed ??= neededIds(this.tasks.values(), this.elsewhere);
+    return this.needed.has(id);
   }
 
   /** The task another register of the team tree holds under an id the read lacks; undefined when the read has it or none does. */
