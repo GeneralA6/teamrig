@@ -45,6 +45,8 @@ export { DEFAULT_REGISTER } from "../config/defaults.js";
 export { priorityName } from "../config/priorities.js";
 export { parseConfigText } from "../config/text.js";
 export { CONFIG_VERSION } from "../config/types.js";
+// The work class a task counts as (T2076): its own, else the team's `focus.defaultClass`, as the CLI reads it.
+export { classOf } from "../register/focus.js";
 // A session's launch settings: the model and effort it starts on (its `launch` entry, the lead's defaults under it), so
 // a reader shows them as teamrig launches the session, in its words.
 export { describeLaunch, launchOf } from "../config/launch.js";

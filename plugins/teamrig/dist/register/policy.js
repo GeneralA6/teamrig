@@ -24,9 +24,10 @@ export const GITHUB_ACTOR = 'github';
 export const GITHUB_STATUSES = ['open', 'done', 'dropped'];
 /**
  * Fields the lead may change on a task someone else owns: who does it, how urgent, when, in what order and its size
- * (the lead plans the week), and its type and critical mark, so the lead can mark another session's fix a bug.
+ * (the lead plans the week), its type and critical mark, so the lead can mark another session's fix a bug, and its
+ * work class, as leaders triage the class of their sessions' tasks (T2076).
  */
-export const LEAD_FIELDS = ['owner', 'priority', 'due', 'week', 'after', 'size', 'type', 'critical', 'pin'];
+export const LEAD_FIELDS = ['owner', 'priority', 'due', 'week', 'after', 'size', 'type', 'critical', 'pin', 'workClass'];
 /**
  * Fields the lead may change on a task whose owner is no session of the team any more (a retired hire, a session that
  * left at a team split): the LEAD_FIELDS and its ref, which no session of the team could keep true otherwise, such as
@@ -121,6 +122,7 @@ export class RegisterPolicy {
             type: input.type ?? null,
             critical: input.critical ?? false,
             pin: null,
+            workClass: input.workClass ?? null,
         };
         if (fields.description === null && this.config.register.requireDescription) {
             return refuse(DESCRIPTION_NEEDED);
@@ -648,7 +650,7 @@ export class RegisterPolicy {
         const sourceRule = (source) => (source === task.source ? undefined : this.teamSourceProblem(source));
         const after = changes.after === undefined ? undefined : afterChangeProblem(task, changes.after, state, elsewhere);
         const goals = changes.goals === undefined ? undefined : this.goalProblem(changes.goals, goalTags);
-        const problem = after ?? this.checkFields(merged, sourceRule, task.owner) ?? goals ?? this.checkText('note', text);
+        const problem = after ?? this.checkFields(merged, sourceRule, task) ?? goals ?? this.checkText('note', text);
         return problem === undefined ? ok({ changes, note: text }) : refuse(problem);
     }
     /** Why `goals` cannot be named under `register.goals` checked or required: one is no tag of `goalTags`. */
@@ -707,7 +709,7 @@ export class RegisterPolicy {
      * the duplicate-title rule does not apply.
      */
     importAdd(input, state) {
-        const fields = { ...input, source: GITHUB_SOURCE, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null };
+        const fields = { ...input, source: GITHUB_SOURCE, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null };
         const holder = [...state.tasks.values()].find((task) => task.source === GITHUB_SOURCE && task.ref === input.ref);
         if (holder !== undefined) {
             return refuse(`${holder.id} already has ref ${input.ref}`);
@@ -732,7 +734,7 @@ export class RegisterPolicy {
         if (Object.keys(changed).length === 0) {
             return refuse('nothing to change');
         }
-        const problem = this.checkFields({ ...pickFields(task), ...changed }, importSource) ?? this.checkText('note', note);
+        const problem = this.checkFields({ ...pickFields(task), ...changed }, importSource, { workClass: task.workClass }) ?? this.checkText('note', note);
         return problem === undefined ? ok({ changes: changed, note }) : refuse(problem);
     }
     /**
@@ -772,20 +774,24 @@ export class RegisterPolicy {
         return source === ownerSource || SESSION_NAME.test(source) ? undefined : `source ${source} is neither a session id nor ${ownerSource}`;
     }
     /**
-     * `keptOwner`: the owner an update leaves as it was, which stands even once it is no session of the team any more (a
-     * retired hire, a session that left at a split), as a task keeps its source; only an owner a write sets is held to the
-     * sessions (T1830).
+     * `kept`: the owner and work class an update leaves as they were. An owner stands even once it is no session of the
+     * team any more (a retired hire, a session that left at a split), as a task keeps its source, and a class even once
+     * the team renamed it out of `focus.classes`; only a value a write sets is held to the roster or the classes (T1830,
+     * T2076).
      */
-    checkFields(fields, sourceRule, keptOwner) {
-        const { register, sessions } = this.config;
+    checkFields(fields, sourceRule, kept = {}) {
+        const { register, sessions, focus } = this.config;
         if (fields.title === '') {
             return 'the title is empty';
         }
         if (fields.title.length > register.maxTitle) {
             return `the title has ${fields.title.length} characters; the limit is ${register.maxTitle}`;
         }
-        if (fields.owner !== keptOwner && !sessions.includes(fields.owner)) {
+        if (fields.owner !== kept.owner && !sessions.includes(fields.owner)) {
             return `owner ${fields.owner} is not a session on this team`;
+        }
+        if (fields.workClass !== null && fields.workClass !== kept.workClass && !focus.classes.includes(fields.workClass)) {
+            return `class ${fields.workClass} is not one of focus.classes (${focus.classes.join(', ')})`;
         }
         if (fields.critical && !traitsOf(fields).review) {
             return `critical marks only a ${reviewedTypes()}: give --type ${reviewedTypes()} too`;
@@ -835,8 +841,8 @@ export class RegisterPolicy {
 /** The texts whose length is judged against their own limit, not `maxText`. */
 const OWN_LIMITS = ['title', 'description'];
 function pickFields(task) {
-    const { title, description, owner, source, ref, priority, due, goals, noGoal, week, after, size, type, critical, pin } = task;
-    return { title, description, owner, source, ref, priority, due, goals, noGoal, week, after, size, type, critical, pin };
+    const { title, description, owner, source, ref, priority, due, goals, noGoal, week, after, size, type, critical, pin, workClass } = task;
+    return { title, description, owner, source, ref, priority, due, goals, noGoal, week, after, size, type, critical, pin, workClass };
 }
 /** An update naming goals for a task said to serve none also clears that mark, which a task with goals cannot hold. */
 function clearNoGoal(task, changes) {

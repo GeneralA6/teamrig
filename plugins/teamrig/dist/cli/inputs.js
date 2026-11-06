@@ -197,6 +197,10 @@ export function addInputOf(flags, caller, times) {
     if (type !== undefined) {
         input.type = typeOf(type);
     }
+    const workClass = flags.get('class');
+    if (workClass !== undefined) {
+        input.workClass = workClass;
+    }
     return input;
 }
 /** `--after T5,T6`: the tasks to finish before this one starts. */
@@ -275,6 +279,10 @@ export function changesOf(flags, times) {
     const type = flags.get('type');
     if (type !== undefined) {
         changes.type = typeOf(type);
+    }
+    const workClass = flags.get('class');
+    if (workClass !== undefined) {
+        changes.workClass = workClass === NONE ? null : workClass;
     }
     return changes;
 }

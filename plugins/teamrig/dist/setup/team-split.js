@@ -58,6 +58,7 @@ const CHILD_TAKES = {
     hiring: 'copy',
     burst: 'copy',
     statusLine: 'copy',
+    focus: 'copy',
 };
 const TAKES = new Map(Object.entries(CHILD_TAKES));
 /**
