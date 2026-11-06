@@ -189,7 +189,7 @@ describe('teamrig list|check|plan --tree', () => {
     const result = await kit.run(['plan', '--tree', '--session', 'lead']);
     const headings = result.stdout.join('\n').split('\n').filter((line) => line.startsWith('# '));
     assert.deepEqual(headings, ['# Week plan 2030-01-07, team app', '# Week plan 2030-01-07, team ops', '# Week plan 2030-01-07, team web', '# Week plan 2030-01-07, team ui']);
-    assert.match(result.stdout.join('\n'), /- \[ \] \*\*web\/T2\*\* Ship login \(lead · from app\/lead\)/);
+    assert.match(result.stdout.join('\n'), /- \[ \] \*\*web\/T2\*\* Ship login \(Improvements · score 3\.33 · lead · from app\/lead\)/);
   });
 
   it('is for the lead only, named by --session or $TEAMRIG_SESSION', async () => {

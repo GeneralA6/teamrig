@@ -1047,7 +1047,7 @@ export async function plan(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   }
   const fit = week === currentWeekOf(settled.own.snapshot, now, zone) ? fitLines(await weekFitOf(runtime, settled, week, tree)) : [];
   const sections = settled.teams.map((rolled, index) =>
-    renderPlan(rolled.snapshot.state.tasks.values(), week, now, teamZone(rolled.config, runtime), rolled.config.register, {
+    renderPlan(rolled.snapshot.state.tasks.values(), week, now, teamZone(rolled.config, runtime), {
       team: tree ? rolled.team : undefined,
       fit: index === 0 ? fit : [],
       elsewhere: rolled.elsewhere,
