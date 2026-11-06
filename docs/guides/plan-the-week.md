@@ -84,9 +84,11 @@ Week: 31.0% used at 12:00 IDT (status line); the pace line is at 28.6%: 2.4 poin
   holds it up.
 - Past 100% of the week, the extra usage put in on claude.ai is entered with `teamrig budget extra` and spread over
   the days left the same way.
-- Where the W went: `budget --task T<n>` gives each session's W on one task, `--burn` each day's sources (the
-  owner, peer messages, notifications, scheduled wakes, subagents), `--loops` the costly loop patterns and
-  `--misses` the rule misses per session.
+- Where the W went: `teamrig budget` gives the team's spend by work class today and this week, in % of the week,
+  beside each class's `focus.allocation` (Roadmap 60, Maintenance 25, Improvements 15 by default), and a `No task` row
+  for turns that named none and for helpers. `budget --task T<n>` gives each session's W on one task, `--burn` each
+  day's sources (the owner, peer messages, notifications, scheduled wakes, subagents), `--loops` the costly loop
+  patterns and `--misses` the rule misses per session.
 
 ## Bursts
 
