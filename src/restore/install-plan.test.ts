@@ -4,6 +4,7 @@ import { FAKE_START_MENU_SHORTCUT, FakeLogonEntry, FakeShortcutPlace } from '../
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { launcherStep, restoreLaunchers, restorePlan, type MachinePlan, type RestoreMachine } from './install-plan.ts';
 import { RESTORE_CHECK_LAUNCHER_SCRIPT, RESTORE_RUN_LAUNCHER_SCRIPT } from './launcher.ts';
+import { EMPTY_SURVEY, type RegisteredPart } from './launcher-survey.ts';
 import { RESTORE_SHORTCUT_DESCRIPTION, shortcutLine, type Shortcut } from './shortcut.ts';
 
 const KIT = 'D:\\homes\\pat\\.teamrig';
@@ -30,6 +31,11 @@ function machineOf(parts: Parts): { readonly machine: RestoreMachine; readonly f
 
 const lines = (plan: MachinePlan): string[] => plan.steps.map((step) => step.line);
 
+/** The logon entry as the plan's `after` lists it once it runs the check launcher. */
+const logonPart = (where: string): RegisteredPart => ({ kind: 'logon', where, program: NODE, script: CHECK.path });
+/** A shortcut as the plan's `after` lists it once it starts the run launcher. */
+const shortcutPart = (where: string): RegisteredPart => ({ kind: 'shortcut', where, program: NODE, script: RUN.path });
+
 async function take(plan: MachinePlan): Promise<void> {
   for (const step of plan.steps) {
     await step.act();
@@ -37,12 +43,11 @@ async function take(plan: MachinePlan): Promise<void> {
 }
 
 describe('restorePlan in refresh mode', () => {
-  it('creates nothing on a machine that never ran install: no launcher, no logon entry, no shortcut scanned', async () => {
+  it('creates nothing on a machine that never ran install: no launcher, no logon entry, no shortcut, and nothing starts the restore', async () => {
     const shortcuts = new FakeShortcutPlace();
-    shortcuts.scanFailWith = 'a refresh with no run launcher must not scan';
     const { machine, files, logon } = machineOf({ shortcuts });
     const plan = await restorePlan(machine, 'refresh');
-    assert.deepEqual(lines(plan), []);
+    assert.deepEqual([lines(plan), plan.after], [[], EMPTY_SURVEY]);
     assert.deepEqual([files.paths(), logon.command, shortcuts.shortcuts.size], [[], undefined, 0]);
   });
 
@@ -62,6 +67,7 @@ describe('restorePlan in refresh mode', () => {
       `SET ${FAKE_START_MENU_SHORTCUT}: ${shortcutLine(OLD_SHORTCUT)} -> ${shortcutLine(WANTED)}`,
       `SET ${PIN}: ${shortcutLine(OLD_SHORTCUT)} -> ${shortcutLine(WANTED)}`,
     ]);
+    assert.deepEqual(plan.after, { registered: [logonPart(logon.where), shortcutPart(FAKE_START_MENU_SHORTCUT), shortcutPart(PIN)], found: [] });
     await take(plan);
     assert.deepEqual([files.get(CHECK.path), files.get(RUN.path), logon.command], [RESTORE_CHECK_LAUNCHER_SCRIPT, RESTORE_RUN_LAUNCHER_SCRIPT, command]);
     assert.deepEqual([...shortcuts.shortcuts], [[FAKE_START_MENU_SHORTCUT, WANTED], [PIN, WANTED]]);
@@ -72,29 +78,63 @@ describe('restorePlan in refresh mode', () => {
     const { machine, logon } = machineOf({ files: { [CHECK.path]: RESTORE_CHECK_LAUNCHER_SCRIPT, [RUN.path]: RESTORE_RUN_LAUNCHER_SCRIPT }, shortcuts });
     const plan = await restorePlan(machine, 'refresh');
     assert.deepEqual(lines(plan), [`SET ${PIN}: ${shortcutLine(OLD_SHORTCUT)} -> ${shortcutLine(WANTED)}`]);
+    assert.deepEqual(plan.after, { registered: [shortcutPart(PIN)], found: [] });
     await take(plan);
     assert.deepEqual([logon.command, [...shortcuts.shortcuts]], [undefined, [[PIN, WANTED]]]);
   });
 
-  it('leaves the logon entry alone without the check launcher, and the shortcuts alone without the run launcher', async () => {
+  it('leaves the logon entry alone without the check launcher, and the shortcuts alone without the run launcher, listing each as found', async () => {
     const shortcuts = new FakeShortcutPlace([{ path: FAKE_START_MENU_SHORTCUT, ...OLD_SHORTCUT }]);
-    shortcuts.scanFailWith = 'a refresh with no run launcher must not scan';
     const oldCommand = new FakeLogonEntry().commandFor('C:\\old\\node.exe', CHECK.path);
-    const { machine } = machineOf({ command: oldCommand, shortcuts });
-    assert.deepEqual(lines(await restorePlan(machine, 'refresh')), []);
+    const { machine, logon } = machineOf({ command: oldCommand, shortcuts });
+    const plan = await restorePlan(machine, 'refresh');
+    assert.deepEqual(lines(plan), []);
+    assert.deepEqual(plan.after, {
+      registered: [],
+      found: [
+        { kind: 'logon', where: logon.where, runs: oldCommand },
+        { kind: 'shortcut', where: FAKE_START_MENU_SHORTCUT, runs: shortcutLine(OLD_SHORTCUT) },
+      ],
+    });
+  });
+
+  it('lists a logon entry and a shortcut that start the restore as registered even with their launchers gone, for the check to flag', async () => {
+    const shortcuts = new FakeShortcutPlace([{ path: FAKE_START_MENU_SHORTCUT, ...WANTED }]);
+    const command = new FakeLogonEntry().commandFor(NODE, CHECK.path);
+    const { machine, logon } = machineOf({ command, shortcuts });
+    const plan = await restorePlan(machine, 'refresh');
+    assert.deepEqual([lines(plan), plan.after], [[], { registered: [logonPart(logon.where), shortcutPart(FAKE_START_MENU_SHORTCUT)], found: [] }]);
   });
 
   it('changes nothing on a machine that is up to date', async () => {
     const shortcuts = new FakeShortcutPlace([{ path: FAKE_START_MENU_SHORTCUT, ...WANTED }]);
     const command = new FakeLogonEntry().commandFor(NODE, CHECK.path);
-    const { machine } = machineOf({ files: { [CHECK.path]: RESTORE_CHECK_LAUNCHER_SCRIPT, [RUN.path]: RESTORE_RUN_LAUNCHER_SCRIPT }, command, shortcuts });
-    assert.deepEqual(lines(await restorePlan(machine, 'refresh')), []);
+    const { machine, logon } = machineOf({ files: { [CHECK.path]: RESTORE_CHECK_LAUNCHER_SCRIPT, [RUN.path]: RESTORE_RUN_LAUNCHER_SCRIPT }, command, shortcuts });
+    const plan = await restorePlan(machine, 'refresh');
+    assert.deepEqual([lines(plan), plan.after], [[], { registered: [logonPart(logon.where), shortcutPart(FAKE_START_MENU_SHORTCUT)], found: [] }]);
   });
 
   it('refreshes the launchers on a system with no logon entry or shortcuts', async () => {
     const files = new MemoryFiles({ [CHECK.path]: OLDER_TEXT });
     const plan = await restorePlan({ files, kitHome: KIT, node: NODE, userHome: HOME, logon: undefined, shortcuts: undefined }, 'refresh');
-    assert.deepEqual([lines(plan), plan.unchanged], [[`WRITE ${CHECK.path}`], []]);
+    assert.deepEqual([lines(plan), plan.unchanged, plan.after], [[`WRITE ${CHECK.path}`], [], EMPTY_SURVEY]);
+  });
+});
+
+describe('restorePlan in install mode', () => {
+  it('on a machine with only a stale pin sets up the logon entry and a Start-menu shortcut, and lists the created one first', async () => {
+    const shortcuts = new FakeShortcutPlace([{ path: PIN, ...OLD_SHORTCUT }]);
+    const { machine, logon } = machineOf({ shortcuts });
+    const command = logon.commandFor(NODE, CHECK.path);
+    const plan = await restorePlan(machine, 'install');
+    assert.deepEqual(lines(plan), [
+      `WRITE ${CHECK.path}`,
+      `WRITE ${RUN.path}`,
+      `SET ${logon.where}: (none) -> ${command}`,
+      `SET ${FAKE_START_MENU_SHORTCUT}: (none) -> ${shortcutLine(WANTED)}`,
+      `SET ${PIN}: ${shortcutLine(OLD_SHORTCUT)} -> ${shortcutLine(WANTED)}`,
+    ]);
+    assert.deepEqual(plan.after, { registered: [logonPart(logon.where), shortcutPart(FAKE_START_MENU_SHORTCUT), shortcutPart(PIN)], found: [] });
   });
 });
 

@@ -5,6 +5,7 @@ import { parseObject, recordVersion, VERSION_FIELD } from '../core/jsonl.ts';
 import { LockBusyError, type LockTimings, type Mutex } from '../core/lock.ts';
 import { compareVersions, parseVersion, type Version } from '../core/release-version.ts';
 import { launcherStep, restorePlan, type Launcher, type MachineStep, type RestoreMachine } from './install-plan.ts';
+import { EMPTY_SURVEY, sameSurvey, surveyFields, surveyOf, type LauncherSurvey } from './launcher-survey.ts';
 import { restoreLogPath } from './registry.ts';
 
 /**
@@ -16,11 +17,14 @@ import { restoreLogPath } from './registry.ts';
  * one writes nothing, so the two never take turns rewriting the launchers. The start that goes on takes the lock
  * without waiting, so the tabs of a restore starting together leave the refresh to one of them, reads the record again
  * under it, and takes the steps in order. Each step taken goes to the restore log; a failed one is logged and leaves
- * the record as it was, so the next session start tries again.
+ * the record as it was, so the next session start tries again. The record also holds what starts the restore
+ * (launcher-survey.ts), as the last refresh, install or uninstall left it, which `teamrig check` reads to flag a part
+ * that starts a file gone or something install did not set up; a refresh reads the logon entry and the shortcuts for it
+ * even where it changes nothing, so a machine with no install costs those reads once per version too.
  */
 
-/** The record's format; a field added to it raises this. */
-export const LAUNCHER_RECORD_FORMAT = 1;
+/** The record's format; a field added to it raises this. Format 2 added the survey's `registered` and `found` lists. */
+export const LAUNCHER_RECORD_FORMAT = 2;
 
 /**
  * The record's lock: a refresh spawns a few system commands (the logon entry and the shortcut scan), and a waiter
@@ -39,22 +43,45 @@ export function launcherRecordPath(kitHome: string): string {
   return join(kitHome, 'bin', 'launchers.json');
 }
 
-/** What the record says: no refresh known (none, or a damaged record), one by a newer format, or the version that wrote it. */
-type Recorded = { readonly kind: 'none' } | { readonly kind: 'newer-format' } | { readonly kind: 'version'; readonly text: string; readonly version: Version };
+/** The record as read. */
+export interface LauncherRecord {
+  readonly format: number;
+  /** The newest version that refreshed; absent until a refresh writes one, as an install or uninstall writes none. */
+  readonly version?: string;
+  /** What starts the restore; absent in a record of another format, or one whose lists are damaged. */
+  readonly survey?: LauncherSurvey;
+}
 
-/** The record's text as `Recorded`. */
-function recordedOf(text: string | undefined): Recorded {
+/** The record's text as `LauncherRecord`; undefined for no text, or one that is no record. */
+function recordOf(text: string | undefined): LauncherRecord | undefined {
   const record = text === undefined ? undefined : parseObject(text.trim());
   const format = record === undefined ? undefined : recordVersion(record);
   if (record === undefined || format === undefined) {
+    return undefined;
+  }
+  const version = stringField(record, 'version');
+  const survey = format === LAUNCHER_RECORD_FORMAT ? surveyOf(record) : undefined;
+  return { format, ...(version === undefined ? {} : { version }), ...(survey === undefined ? {} : { survey }) };
+}
+
+/** The launcher record of the kit home; undefined when there is none, or it is damaged. */
+export async function readLauncherRecord(files: Files, kitHome: string): Promise<LauncherRecord | undefined> {
+  return recordOf(await files.read(launcherRecordPath(kitHome)));
+}
+
+/** What the record says: no refresh known (none, or a damaged record), one by a newer format, or the version that wrote it. */
+type Recorded = { readonly kind: 'none' } | { readonly kind: 'newer-format' } | { readonly kind: 'version'; readonly text: string; readonly version: Version };
+
+/** The record as `Recorded`. */
+function recordedOf(record: LauncherRecord | undefined): Recorded {
+  if (record === undefined) {
     return { kind: 'none' };
   }
-  if (format > LAUNCHER_RECORD_FORMAT) {
+  if (record.format > LAUNCHER_RECORD_FORMAT) {
     return { kind: 'newer-format' };
   }
-  const versionText = stringField(record, 'version');
-  const version = versionText === undefined ? undefined : parseVersion(versionText);
-  return versionText === undefined || version === undefined ? { kind: 'none' } : { kind: 'version', text: versionText, version };
+  const version = record.version === undefined ? undefined : parseVersion(record.version);
+  return record.version === undefined || version === undefined ? { kind: 'none' } : { kind: 'version', text: record.version, version };
 }
 
 /** Whether `running` is newer than the version the record names: a record of no version is older, one of a newer format newer. */
@@ -85,28 +112,65 @@ function namesNewer(recorded: Recorded, running: Version): boolean {
  * The step that lowers the record to `version` before an install of that version writes the launchers: an older
  * teamrig on the PATH writes its older texts, and a record still naming a newer version would keep every later start
  * of that version from writing them back; lowered, the next start of a newer teamrig is due and refreshes. None when
- * the record names this version or an older one, when there is none (every start is due then, and install never
- * creates it), or when `version` is no release version, which the refresh never records either.
+ * the record names this version or an older one, when it names none (every start is due then), or when `version` is
+ * no release version, which the refresh never records either. It keeps the survey the record holds, which the survey
+ * step after the install's steps brings up to date (surveyRecordSteps).
  */
 export async function lowerRecordSteps(files: Files, kitHome: string, version: string, now: number): Promise<MachineStep[]> {
   const running = parseVersion(version);
   const path = launcherRecordPath(kitHome);
-  const recorded = recordedOf(await files.read(path));
+  const record = recordOf(await files.read(path));
+  const recorded = recordedOf(record);
   if (running === undefined || !namesNewer(recorded, running)) {
     return [];
   }
   const from = recorded.kind === 'version' ? recorded.text : 'a newer format';
+  const survey = record?.survey;
   return [
     {
       line: `SET ${path}: ${from} -> ${version}, so the next start of a newer teamrig refreshes what this writes`,
-      act: () => files.write(path, formatRecord(version, now)),
+      act: () => files.write(path, formatRecord({ version, at: now, ...(survey === undefined ? {} : { survey }) })),
     },
   ];
 }
 
-/** The record's text: its format, the version that refreshed and when. */
-function formatRecord(version: string, at: number): string {
-  return `${JSON.stringify({ [VERSION_FIELD]: LAUNCHER_RECORD_FORMAT, version, at: new Date(at).toISOString() }, null, 2)}\n`;
+/**
+ * The step that records `survey`, what starts the restore once `restore install` or `restore uninstall` took its steps,
+ * which it takes last. None when the record holds that survey already, or when there is no record and nothing starts
+ * the restore. A record of another format holds no survey this teamrig reads, so it is written in this one: one of a
+ * newer format left as it was would keep naming parts an uninstall removed, which its check then flags as dead, and
+ * a newer teamrig reads this format's record as an older one's, which flags nothing. Taken, it reads the record again
+ * and keeps the version it names; with none named, the next session start refreshes and records the survey it reads
+ * itself.
+ */
+export async function surveyRecordSteps(files: Files, kitHome: string, survey: LauncherSurvey, now: number): Promise<MachineStep[]> {
+  const path = launcherRecordPath(kitHome);
+  const record = recordOf(await files.read(path));
+  const held = record === undefined ? EMPTY_SURVEY : record.format === LAUNCHER_RECORD_FORMAT ? record.survey : undefined;
+  if (held !== undefined && sameSurvey(held, survey)) {
+    return [];
+  }
+  return [
+    {
+      line: `WRITE ${path}: what starts the restore now, which teamrig check reads`,
+      act: async () => {
+        const version = recordOf(await files.read(path))?.version;
+        await files.write(path, formatRecord({ ...(version === undefined ? {} : { version }), at: now, survey }));
+      },
+    },
+  ];
+}
+
+/** The record's text: its format, the version that refreshed (when one did), when it was written, and the survey. */
+function formatRecord(fields: { readonly version?: string; readonly at: number; readonly survey?: LauncherSurvey }): string {
+  const { version, at, survey } = fields;
+  const record = {
+    [VERSION_FIELD]: LAUNCHER_RECORD_FORMAT,
+    ...(version === undefined ? {} : { version }),
+    at: new Date(at).toISOString(),
+    ...(survey === undefined ? {} : surveyFields(survey)),
+  };
+  return `${JSON.stringify(record, null, 2)}\n`;
 }
 
 /** A refresh at a session start. */
@@ -136,12 +200,12 @@ export async function refreshLaunchers(refresh: LauncherRefresh): Promise<Launch
   const { machine, lock } = refresh;
   const running = parseVersion(refresh.version);
   const path = launcherRecordPath(machine.kitHome);
-  if (running === undefined || !isDue(recordedOf(await machine.files.read(path)), running)) {
+  if (running === undefined || !isDue(recordedOf(recordOf(await machine.files.read(path))), running)) {
     return CURRENT;
   }
   try {
     return await lock.run(async () => {
-      const recorded = recordedOf(await machine.files.read(path));
+      const recorded = recordedOf(recordOf(await machine.files.read(path)));
       return isDue(recorded, running) ? await refreshUnderLock(refresh, recorded) : CURRENT;
     });
   } catch (error) {
@@ -166,9 +230,12 @@ async function refreshUnderLock(refresh: LauncherRefresh, recorded: Recorded): P
     return { kind: 'failed', line };
   };
   let steps: MachineStep[];
+  let after: LauncherSurvey;
   try {
     const otherSteps = await Promise.all(others.map((launcher) => launcherStep(files, launcher, 'refresh')));
-    steps = [...otherSteps.flat(), ...(await restorePlan(machine, 'refresh')).steps];
+    const plan = await restorePlan(machine, 'refresh');
+    steps = [...otherSteps.flat(), ...plan.steps];
+    after = plan.after;
   } catch (error) {
     return failed('reading what is out of date', error);
   }
@@ -180,6 +247,6 @@ async function refreshUnderLock(refresh: LauncherRefresh, recorded: Recorded): P
     }
     await log(step.line);
   }
-  await files.write(launcherRecordPath(kitHome), formatRecord(version, now));
+  await files.write(launcherRecordPath(kitHome), formatRecord({ version, at: now, survey: after }));
   return { kind: 'refreshed', steps: steps.map((step) => step.line) };
 }
