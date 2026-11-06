@@ -158,11 +158,11 @@ function neededByText(task, tree) {
 }
 /**
  * Why `row` sorts ahead of `next`, the row after it, in plan order: the first plan key on which they differ, in words:
- * `expedite`, `score 21.3 (A1 #1)` (its score, and the ranked goal it serves), `in progress`, `due` (the row shows the
- * date), `unblocks T566 p1 +2` (the best task that needs it, its priority and how many more), `in week 01-07`,
- * `size 0.5%`. Undefined when the row shows it already (pinned, or a band the row's class names), when only the number
- * decides (age, the older first), when they tie, or when `next` sorts ahead. Each row is placed by its own register's
- * tree.
+ * `expedite`, `can move` (`next` has a need not finished), `score 21.3 (A1 #1)` (its score, and the ranked goal it
+ * serves), `in progress`, `due` (the row shows the date), `unblocks T566 p1 +2` (the best task that needs it, its
+ * priority and how many more), `in week 01-07`, `size 0.5%`. Undefined when the row shows it already (pinned, or a band
+ * the row's class names), when only the number decides (age, the older first), when they tie, or when `next` sorts
+ * ahead. Each row is placed by its own register's tree.
  */
 export function aheadReason(row, next) {
     const place = row.tree.placeOf(row.task);
@@ -174,6 +174,8 @@ export function aheadReason(row, next) {
     switch (key) {
         case 'band':
             return place.ranked?.band === 0 ? 'expedite' : undefined;
+        case 'ready':
+            return 'can move';
         case 'score':
             return place.ranked === undefined ? undefined : scoreText(place.ranked);
         case 'started':

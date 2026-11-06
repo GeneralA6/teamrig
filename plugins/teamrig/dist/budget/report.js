@@ -146,6 +146,33 @@ function todayTable(report, teamW, teamCalls) {
     return ['Today (UTC day), used and daily budget in % of the week:', ...indented([...table, ...notes])];
 }
 /**
+ * The team's spend by work class as a table: today's and the week's use in % of the week beside the class's
+ * `focus.allocation`, then their W. W alone while the week's W is unknown, and today alone while the week's start is;
+ * `aligned` drops a column left empty. A class the allocation does not list, and the no-task row, show `-` for it.
+ */
+function classLines(report) {
+    const { week, classes } = report;
+    if (classes === undefined) {
+        return [];
+    }
+    const hasPct = week.wPerPct !== undefined;
+    const hasWeek = week.window !== undefined;
+    const hasWeekPct = hasPct && hasWeek;
+    const pctText = (pct) => (pct === undefined ? '-' : formatPct(pct));
+    const rows = classes.map(({ name, todayW, weekW, allocationPct }) => [
+        name,
+        hasPct ? pctText(todayPctOf(todayW, week)) : '',
+        hasWeekPct ? pctText(weekW === undefined ? undefined : pctOf(weekW, week)) : '',
+        hasWeekPct ? pctText(allocationPct) : '',
+        formatW(todayW),
+        weekW === undefined ? '' : formatW(weekW),
+    ]);
+    const table = aligned([['class', hasPct ? 'today' : '', hasWeekPct ? 'week' : '', hasWeekPct ? 'allocation' : '', 'W today', hasWeek ? 'W week' : ''], ...rows]);
+    const notes = hasWeek && !week.covered ? ["The meter does not reach back to the week's start, so the week's W is short."] : [];
+    const heading = `Spend by class today${hasWeek ? ' and this week' : ''}${hasPct ? ', in % of the week' : ''}${hasWeekPct ? ', against focus.allocation' : ''}:`;
+    return [heading, ...indented([...table, ...notes])];
+}
+/**
  * The lifts in force as one block: the terms every lift shares once in its heading, then a row each, group lifts
  * first, with the budget it is a part of while the team has sub-leads, its part, the share of the week that part comes
  * to now ('-' while unknown), its end time and its stop; a lift that lasts the day ends at its UTC midnight.
@@ -230,12 +257,12 @@ function pausedLine(sessions) {
     const paused = sessions.filter((session) => session.paused && session.inBurst === undefined).map((session) => session.name);
     return paused.length > 0 ? `Paused today, funded by priority as the week's use is past its pace line (budget.pauseByPriority): ${paused.join(', ')}.` : undefined;
 }
-/** `teamrig budget`: the week, the team and each session today, lifts, who a short day pauses, use outside the team, and who is past budget. */
+/** `teamrig budget`: the week, the team and each session today, the spend by class, lifts, who a short day pauses, use outside the team, and who is past budget. */
 export function todayLines(report) {
     const { week, sessions, outside, all, zone } = report;
     const teamW = sessions.reduce((sum, session) => sum + session.w, 0);
     const teamCalls = sessions.reduce((sum, session) => sum + session.calls, 0);
-    const lines = [weekLine(week, zone), ...todayTable(report, teamW, teamCalls), ...liftLines(report)];
+    const lines = [weekLine(week, zone), ...todayTable(report, teamW, teamCalls), ...classLines(report), ...liftLines(report)];
     const inBurst = sessions.filter((session) => session.inBurst !== undefined);
     const first = inBurst[0]?.inBurst;
     if (first !== undefined) {

@@ -562,7 +562,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       tells each owner its new tasks, and the lead when repositories start or stop failing and when
       it leaves out an outsider's issue not left out before
   budget [<id|name>] [--loops|--burn|--misses] [--day <YYYY-MM-DD>] [--all]
-      each session's use today, measured from the Claude Code transcripts, against the week's pace;
+      each session's use today, measured from the Claude Code transcripts, against the week's pace,
+      and the team's spend by class against focus.allocation;
       <id|name>: that session by day; --loops: the loop patterns by day; --burn: what started the
       turns, cold calls and compactions by day; --misses: rule misses out of their chances, per
       session, or by day for one; --day: a past day recounted

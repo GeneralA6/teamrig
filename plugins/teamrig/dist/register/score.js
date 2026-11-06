@@ -33,13 +33,13 @@ export function ownerOrderOf(facts, score) {
     return facts.ownerSourced ? (score.ownerOrderValues[facts.priority - 1] ?? 0) : 0;
 }
 /**
- * The share of the week a score divides by: the task's size; else twice what it spent, a task half done by the only
- * measure there is; else what like tasks took; else the default; never under the floor, so a tiny task cannot outrank
- * everything.
+ * The share of the week a score divides by: the work left, as WSJF ranks what a delay costs over what remains to do. That
+ * is the task's size, else what like tasks took, else the default, less what it spent, so spending lifts a task and can
+ * never sink it under the tasks that wait on it (T2109); never under the floor, so a tiny task cannot outrank everything.
  */
 export function sizePctOf(facts, score) {
-    const measured = facts.spentPct > 0 ? facts.spentPct * 2 : facts.likeMedianPct;
-    return Math.max(facts.size ?? measured ?? score.defaultSizePct, score.minSizePct);
+    const whole = facts.size ?? facts.likeMedianPct ?? score.defaultSizePct;
+    return Math.max(whole - facts.spentPct, score.minSizePct);
 }
 /**
  * The band of a task. A p0 always expedites: it means started ahead of the task in hand, whatever its class or who

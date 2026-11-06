@@ -54,15 +54,17 @@ export function loopFix(id, other, owner, byWait) {
 /**
  * The keys of plan order, in order: the first one on which two tasks differ puts one ahead: `pinned` (a task the
  * owner's leader pinned, above every other key); `band` (expedite, then Roadmap and Maintenance, then the rest;
- * score.ts); `score` (the highest WSJF score first; score.ts); `started` (an in-progress task stays on top of its
- * equals); `due` (effective due, the earliest first, undated last); `unblocks` (the best priority among the active
+ * score.ts); `ready` (a task that can move before one with a need not finished, whose value still reaches that need
+ * through its score); `score` (the highest WSJF score first; score.ts); `started` (an in-progress task stays on top of
+ * its equals); `due` (effective due, the earliest first, undated last); `unblocks` (the best priority among the active
  * tasks that need it, then the most of them; none last); `week` (in the week plan in force first); `size` (the smallest
  * first, unsized last); `age` (the lowest number first).
  */
-export const PLAN_KEYS = ['pinned', 'band', 'score', 'started', 'due', 'unblocks', 'week', 'size', 'age'];
+export const PLAN_KEYS = ['pinned', 'band', 'ready', 'score', 'started', 'due', 'unblocks', 'week', 'size', 'age'];
 const BY_KEY = {
     pinned: (a, b) => trueFirst(a.pinned, b.pinned),
     band: (a, b) => lowFirst(a.ranked?.band, b.ranked?.band),
+    ready: (a, b) => trueFirst(b.blocked, a.blocked),
     score: (a, b) => highFirst(a.ranked?.score, b.ranked?.score),
     started: (a, b) => trueFirst(a.started, b.started),
     due: (a, b) => lowFirst(a.at, b.at),
@@ -131,7 +133,7 @@ export class TaskTree {
     context;
     /** The team's zone: a stored due day is a day of it, and rows show times in it. */
     zone;
-    /** The week plan in force, whose tasks plan order puts first after band, score, due and need; null: none. */
+    /** The week plan in force, whose tasks plan order puts first after band, readiness, score, due and need; null: none. */
     week;
     tasks;
     /** The tasks of the team tree's other registers, for a need this read lacks. */
@@ -235,6 +237,7 @@ export class TaskTree {
             id: task.id,
             pinned: task.pin !== undefined && task.pin !== null,
             ranked: this.rankedOf(task),
+            blocked: this.isBlocked(task),
             at: this.dueTime(task),
             started: task.status === 'in-progress',
             unblocks: this.unblocks(task.id),
@@ -397,6 +400,10 @@ export class TaskTree {
     isActiveId(id) {
         const task = this.tasks.get(id);
         return task !== undefined && isActive(task);
+    }
+    /** True for an active task with a need not finished here or in another register; a wait on a person or a time is no need. */
+    isBlocked(task) {
+        return isActive(task) && needsOf(task).some((id) => !isFinished(id, this.context));
     }
 }
 function isActive(task) {
