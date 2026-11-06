@@ -79,9 +79,10 @@ const IN_HAND = 1;
  *   gate or a business decision is the owner's to decide, any other question its session's or its leader's (T1194);
  * - NOT-PICKED-UP: assigned longer ago than `notPickedUpAfterHours` with no event from its owner since
  *   (an idle session never reads its inbox, so it needs a direct wake);
- * - PRIORITY-SKIP: in progress below an open task of the top priority that has the same owner and is free to start
- *   (every task it comes after finished), for longer than `prioritySkipAfterHours`: the session is not working its
- *   list in order;
+ * - PRIORITY-SKIP: in progress below an open task of the same owner that outranks it (a better band, or a higher score
+ *   in the same band; a tie skips nothing) and is free to start (every task it comes after finished), for longer than
+ *   `prioritySkipAfterHours`: the session is not working its list in order. Rank comes from `ranking`, so a read with
+ *   none raises no such flag;
  * - SELF-MADE: the first task still active past `maxSelfMadePerDay` of the tasks its owner added for itself (created
  *   by it, asked by no one else) in the 24 h before now (0 turns it off): a session adding its own work faster than
  *   anything asked for it may be looping or drifting from its goal;
@@ -111,7 +112,7 @@ export function checkTasks(tasks, now, zone, week, config, elsewhere = NO_TASKS_
     const active = tree.inPlanOrder(all.filter((candidate) => ACTIVE_STATUSES.includes(candidate.status)));
     const plan = weekPlan(week, config.check.weekLengthDays, zone);
     const top = topPriority(config.priorities);
-    const waiting = top === undefined ? new Map() : waitingTopTasks(active, top, tree.context);
+    const best = bestOpenTasks(active, tree);
     const piles = pileUps(active, config.maxVerifying);
     const paces = top === undefined ? new Map() : overPaces(all, active, top, at);
     const runs = selfMadeRuns(all, at, config.check.maxSelfMadePerDay);
@@ -127,7 +128,7 @@ export function checkTasks(tasks, now, zone, week, config, elsewhere = NO_TASKS_
         ...ownerOrderedFlags(task, config.ownerSource),
         ...ungatedFlags(task, config),
         ...timeFlags(task, at, config.check, tree),
-        ...(top === undefined ? [] : prioritySkip(task, top, waiting, at, config.check, zone)),
+        ...prioritySkip(task, best, tree, at, config.check),
         ...(plan === undefined ? [] : planFlags(task, plan, config.ownerSource, tree)),
     ]);
     return [...flags, ...loopFlags(tree)].sort(byFlagKind);
@@ -383,32 +384,40 @@ function selfMadeFlags(task, runs, max) {
 function standingSince(task) {
     return Math.max(Date.parse(task.assignedAt), Date.parse(task.statusAt), Date.parse(task.priorityAt));
 }
+/** Ahead on band, or on score in the same band. Equals outrank neither way, so working beside one skips nothing. */
+function outranks(a, b) {
+    return a.band < b.band || (a.band === b.band && a.score > b.score);
+}
 /**
- * Per owner, the open task of the top priority, free to start, that has stood longest, so a skip over it counts from
- * the start. A task planned after one not finished yet is not free to start, so working below it skips nothing.
+ * Per owner, the best-ranked open task free to start; of equals, the one that has stood longest, so a skip over it
+ * counts from the start. A task planned after one not finished yet is not free to start, so working below it skips
+ * nothing. Empty for a tree with no ranking.
  */
-function waitingTopTasks(active, top, context) {
-    const waiting = new Map();
+function bestOpenTasks(active, tree) {
+    const best = new Map();
     for (const task of active) {
-        const held = waiting.get(task.owner);
-        const free = task.status === 'open' && unfinishedAfter(task.after, context).length === 0;
-        if (free && task.priority <= top && (held === undefined || standingSince(task) < standingSince(held))) {
-            waiting.set(task.owner, task);
+        const place = tree.rankedOf(task);
+        const held = best.get(task.owner);
+        const free = task.status === 'open' && unfinishedAfter(task.after, tree.context).length === 0;
+        if (place !== undefined && free && (held === undefined || outranks(place, held.place) || (!outranks(held.place, place) && standingSince(task) < standingSince(held.task)))) {
+            best.set(task.owner, { task, place });
         }
     }
-    return waiting;
+    return best;
 }
 /** PRIORITY-SKIP, counted from when both tasks took their current owner, status and priority. */
-function prioritySkip(task, top, waiting, at, check, zone) {
-    const skipped = waiting.get(task.owner);
-    if (task.status !== 'in-progress' || task.priority <= top || skipped === undefined) {
+function prioritySkip(task, best, tree, at, check) {
+    const skipped = best.get(task.owner);
+    const place = tree.rankedOf(task);
+    if (task.status !== 'in-progress' || skipped === undefined || place === undefined || !outranks(skipped.place, place)) {
         return [];
     }
-    const since = Math.max(standingSince(task), standingSince(skipped));
+    const since = Math.max(standingSince(task), standingSince(skipped.task));
     if (at - since <= check.prioritySkipAfterHours * MS_PER_HOUR) {
         return [];
     }
-    return [{ kind: 'PRIORITY-SKIP', task, detail: `${priorityText(skipped.priority)} ${skipped.id} waits open, skipped since ${minute(since, zone)}` }];
+    const rank = skipped.place.band === 0 ? 'expedite' : skipped.place.workClass;
+    return [{ kind: 'PRIORITY-SKIP', task, detail: `${skipped.task.id} (${rank}, score ${skipped.place.score}) waits open, skipped since ${minute(since, tree.zone)}` }];
 }
 /** OWNER-UNPLANNED, or else DUE-UNPLANNED (on the effective due), or else OFF-GOAL. */
 function planFlags(task, plan, ownerSource, tree) {

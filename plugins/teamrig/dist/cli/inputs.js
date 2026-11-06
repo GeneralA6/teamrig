@@ -136,6 +136,10 @@ export function criticalOf(switches) {
     }
     return switches.has('critical') ? { critical: true } : switches.has('not-critical') ? { critical: false } : {};
 }
+/** `--one-commit`: the start is a one-commit fix, which the WIP rule lets through; nothing without it. */
+export function oneCommitOf(switches) {
+    return switches.has('one-commit') ? { oneCommit: true } : {};
+}
 /** `--goals A1,B2`: the goal tags the task serves; `none` alone says it serves none, and is never a tag beside others. */
 export function goalsOf(text) {
     const goals = listOf('--goals', text);

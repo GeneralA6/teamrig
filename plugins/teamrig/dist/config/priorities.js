@@ -13,7 +13,7 @@ export function priorityName(priorities, id) {
 }
 /**
  * The most urgent level the config names: its lowest id, `p1` by default; undefined when it names none. p0 is not
- * one: the checks that watch the top level (PRIORITY-SKIP, OVER-PACE) count p0 with it, as more urgent still.
+ * one: the check that watches the top level (OVER-PACE) counts p0 with it, as more urgent still.
  */
 export function topPriority(priorities) {
     return priorities.reduce((top, priority) => (top === undefined || priority.id < top ? priority.id : top), undefined);

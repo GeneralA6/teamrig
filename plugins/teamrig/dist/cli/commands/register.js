@@ -30,13 +30,14 @@ import { readStopgapTags, stopgapFlags, stopgapTags } from "../../register/stopg
 import { dueStartHolds, dueVerifyHold, heldStart, heldStartNotice, metStartNotice, startHolds, verifyQueue, watchQueue } from "../../register/verify.js";
 import { readAs, TaskTree } from "../../register/tree.js";
 import { approvalNotice, endedNotice, formatTask, formatTaskDetail, formatTaskTree, formatVerifyRow, formatWatchRow, personWaitNotice, selectTasks } from "../../register/views.js";
-import { isPeerWait, sameWait } from "../../register/waits.js";
+import { isPeerWait, sameWait, waitContext } from "../../register/waits.js";
+import { wipHold } from "../../register/wip.js";
 import { lintSkills } from "../../skills/lint.js";
 import { SKILL_FILE, SkillDir } from "../../skills/store.js";
 import { weekUseOnAccount } from "../account-teams.js";
 import { readWideAllow, teamSettingsScope } from "../allow-scope.js";
 import { noPositionals, onePositional, requiredFlag, UsageError } from "../args.js";
-import { addInputOf, callerOf, changesOf, criticalOf, deadlineOf, listFilterOf, NONE, pinOf, setInputOf, taskIdOf, taskRefOf, weekOf } from "../inputs.js";
+import { addInputOf, callerOf, changesOf, criticalOf, deadlineOf, listFilterOf, NONE, oneCommitOf, pinOf, setInputOf, taskIdOf, taskRefOf, weekOf } from "../inputs.js";
 import { findTeam, openKit, pastOrPresentIdOf, projectFolder, sessionIdOf, teamZone } from "../kit.js";
 import { checkLines, listLines, SHORT_TITLE_CHARS, waitingOnLines } from "../reports.js";
 import { idlePassWarnings } from "../idle-pass-check.js";
@@ -382,11 +383,11 @@ export async function set(args, runtime) {
     const typed = setInputOf(args.flags, typedTimes(runtime, team.zone));
     const { config, paths, register, roster } = team;
     const by = sessionIdOf(roster, caller);
-    const input = statusInputIds(team, typed.status);
+    const input = { ...statusInputIds(team, typed.status), ...oneCommitOf(args.switches) };
     if (typed.ask !== null) {
         return setAsking(runtime, team, by, id, { ...typed.ask, owner: sessionIdOf(roster, typed.ask.owner) }, input);
     }
-    const { held, due } = await startGatesOf(register, by, id, input, new Date(runtime.clock.now()), team.zone, config.register.maxVerifying);
+    const { held, due, wip } = await startGatesOf(register, by, id, input, new Date(runtime.clock.now()), team.zone, config);
     const verdict = await register.setStatus(by, id, input);
     const warned = config.register.verifyGate === 'warn';
     // The start as written: one that named its held proof as met asks the verifying owners to confirm it.
@@ -405,6 +406,10 @@ export async function set(args, runtime) {
     }
     if (due !== undefined && warned && verdict.ok) {
         runtime.out.stderr(`WARN ${dueVerifyHold(due.task, due.due)}; started anyway, as register.verifyGate is warn`);
+    }
+    // `report` threw on any refusal, so a hold that gets here is a start warn mode let through.
+    if (wip !== undefined) {
+        runtime.out.stderr(`WARN ${wip}; started anyway, as focus.wip.mode is warn`);
     }
     if (verdict.ok) {
         warnReviewGap(runtime, team, verdict.value.task, input.status);
@@ -441,23 +446,26 @@ async function setAsking(runtime, team, by, id, ask, input) {
     }
     return exit;
 }
-const OPEN_START = { held: undefined, due: undefined };
+const OPEN_START = { held: undefined, due: undefined, wip: undefined };
 /**
  * What holds the caller's start of its own task, read before the write: the policy refuses that start (or lets
  * it through in warn mode); the owners of the verifying tasks it needs hear of it either way.
  */
-async function startGatesOf(register, caller, id, input, now, zone, maxVerifying) {
+async function startGatesOf(register, caller, id, input, now, zone, config) {
     if (input.status !== 'in-progress') {
         return OPEN_START;
     }
-    const { tasks } = (await register.snapshot()).state;
+    const { snapshot, elsewhere } = await register.snapshotWithElsewhere();
+    const { tasks } = snapshot.state;
     const task = tasks.get(id);
     if (task === undefined || task.owner !== caller) {
         return OPEN_START;
     }
     const holds = startHolds(task, input.status, tasks);
-    const due = dueStartHolds(task, input.status, tasks, now, zone, maxVerifying);
-    return { held: holds.length === 0 ? undefined : { task, holds }, due: due.length === 0 ? undefined : { task, due } };
+    const due = dueStartHolds(task, input.status, tasks, now, zone, config.register.maxVerifying);
+    const wipStart = { task, status: input.status, oneCommit: input.oneCommit === true };
+    const wip = wipHold(wipStart, tasks.values(), waitContext(tasks, now, zone, elsewhere), config.focus, config.register.ownerSource);
+    return { held: holds.length === 0 ? undefined : { task, holds }, due: due.length === 0 ? undefined : { task, due }, wip };
 }
 /**
  * One inbox line to the owner of each verifying task that holds a start, once per task pair and UTC
