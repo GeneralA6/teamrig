@@ -102,14 +102,42 @@ function chainOf(tag: string, goals: ReadonlyMap<string, SweepGoal>): SweepGoal[
   return chain;
 }
 
+/** True for a `tag` that sits under `record` by its name: `K1a` and `K1.2` under `K1`, never `K10`, a goal of its own. */
+function isSubTag(tag: string, record: string): boolean {
+  if (tag === record || !tag.startsWith(record)) {
+    return false;
+  }
+  const next = tag.charAt(record.length);
+  return next === '.' || next === '-' || (/\d$/.test(record) && /[A-Za-z]/.test(next));
+}
+
+/** A tag a task names that no goal record holds, with the record nearest it. */
+interface LooseTag {
+  readonly tag: string;
+  readonly record: SweepGoal;
+}
+
+/**
+ * The task's tags with no record, each with the longest record it sits under, so a rank on that record reaches the
+ * task: the key-result cap leaves no room to give each such tag a record of its own. A tag with no record above it stays
+ * out, and so does one whose record the task names already, which leaves a rerun after apply with nothing more to add.
+ */
+function looseTagsOf(task: Pick<SweepTask, 'goals'>, goals: ReadonlyMap<string, SweepGoal>): LooseTag[] {
+  const longestFirst = [...goals.values()].sort((a, b) => b.tag.length - a.tag.length);
+  return task.goals.flatMap((tag) => {
+    const record = goals.has(tag) ? undefined : longestFirst.find((goal) => isSubTag(tag, goal.tag));
+    return record === undefined || task.goals.includes(record.tag) ? [] : [{ tag, record }];
+  });
+}
+
 /** The ranked goals among `goals`, the best (lowest) rank first; a tie keeps the order given. */
 function rankedFirst(goals: readonly SweepGoal[]): SweepGoal[] {
   return goals.filter((goal) => goal.rank !== null).sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0));
 }
 
-/** The best ranked goal among a task's goals and their ancestors, as `rankOf` reads it, for the tag it names. */
-function bestGoalOf(task: Pick<SweepTask, 'goals'>, goals: ReadonlyMap<string, SweepGoal>): SweepGoal | undefined {
-  return rankedFirst(task.goals.flatMap((tag) => chainOf(tag, goals))).at(0);
+/** The best ranked goal among `tags` and their ancestors, as `rankOf` reads it, for the tag it names. */
+function bestGoalOf(tags: readonly string[], goals: ReadonlyMap<string, SweepGoal>): SweepGoal | undefined {
+  return rankedFirst(tags.flatMap((tag) => chainOf(tag, goals))).at(0);
 }
 
 /** The ranked goal a title shares the most words with, the better rank first; undefined when none reaches the bar. */
@@ -142,23 +170,29 @@ type Proposal = Pick<SweepRow, 'class' | 'objective' | 'reason' | 'confidence'>;
 /** The class, objective, reason and confidence the rules give a task, the first rule that holds deciding. */
 export function proposalOf(task: SweepTask, input: Pick<SweepInput, 'focus' | 'goals'>): Proposal {
   const { focus, goals } = input;
-  const best = bestGoalOf(task, goals);
+  const loose = looseTagsOf(task, goals);
+  const best = bestGoalOf([...task.goals, ...loose.map(({ record }) => record.tag)], goals);
+  // The row names the nearest record, not the ranked goal above it, so a rank given to that record later counts too.
+  const added = best === undefined ? loose.at(0) : loose.find(({ record }) => chainOf(record.tag, goals).includes(best));
+  const nearest = added?.record.tag ?? null;
+  const note = added === undefined ? '' : `; tag ${added.tag} has no record, nearest is ${added.record.tag}`;
   if (task.workClass !== null) {
     // A class already stored was a person's call, or a row they confirmed: a later sweep never argues with it.
-    return { class: task.workClass, objective: best?.tag ?? null, reason: 'class already set', confidence: 'high' };
+    return { class: task.workClass, objective: nearest ?? best?.tag ?? null, reason: `class already set${note}`, confidence: 'high' };
   }
   if (best !== undefined) {
-    return { class: focus.roadmapClass, objective: best.tag, reason: `serves ranked goal ${best.tag} (#${String(best.rank)})`, confidence: 'high' };
+    // Through a nearest record the class rests on a tag's name alone, which is less than a person naming the goal.
+    return { class: focus.roadmapClass, objective: nearest ?? best.tag, reason: `serves ranked goal ${best.tag} (#${String(best.rank)})${note}`, confidence: added === undefined ? 'high' : 'medium' };
   }
   const upkeep = maintenanceReason(task);
   if (upkeep !== undefined) {
-    return { class: focus.maintenanceClass, objective: null, reason: upkeep, confidence: task.critical ? 'high' : 'medium' };
+    return { class: focus.maintenanceClass, objective: nearest, reason: `${upkeep}${note}`, confidence: task.critical ? 'high' : 'medium' };
   }
   const match = titleMatchOf(task.title, goals);
   if (match !== undefined) {
     return { class: focus.roadmapClass, objective: match.goal.tag, reason: `title shares ${match.shared.join(', ')} with goal ${match.goal.tag}`, confidence: 'low' };
   }
-  return { class: focus.defaultClass, objective: null, reason: 'no ranked goal, no upkeep sign', confidence: 'medium' };
+  return { class: focus.defaultClass, objective: nearest, reason: `no ranked goal, no upkeep sign${note}`, confidence: 'medium' };
 }
 
 /**

@@ -118,6 +118,71 @@ describe('proposalOf', () => {
     assert.equal(proposalOf(testTask({ goals: ['G3'], title: 'Tidy it' }), input()).class, 'Improvements');
   });
 
+  describe('a tag with no goal record', () => {
+    const TIDY = 'Tidy it';
+    const nearestNote = (tag: string, record: string) => `; tag ${tag} has no record, nearest is ${record}`;
+
+    it('reads as its nearest record: Roadmap at medium, as only the tag name links them', () => {
+      assert.deepEqual(proposalOf(testTask({ goals: ['G2a'] }), input()), { class: 'Roadmap', objective: 'G2', reason: `serves ranked goal G2 (#2)${nearestNote('G2a', 'G2')}`, confidence: 'medium' });
+    });
+
+    it('names the nearest record, not the ranked goal above it, so a later rank on that record counts', () => {
+      const proposal = proposalOf(testTask({ goals: ['K1a'] }), input());
+      assert.equal(proposal.objective, 'K1');
+      assert.equal(proposal.reason, `serves ranked goal G1 (#1)${nearestNote('K1a', 'K1')}`);
+    });
+
+    it('takes the longest record the tag sits under', () => {
+      const goals = goalsOf(goal('K1', 'One', 1), goal('K1.2', 'Two', 2, 'K1'));
+      assert.equal(proposalOf(testTask({ goals: ['K1.2a'] }), input({ goals })).objective, 'K1.2');
+    });
+
+    for (const tag of ['G2.x', 'G2-x', 'G2a']) {
+      it(`counts ${tag} as under G2`, () => {
+        assert.equal(proposalOf(testTask({ goals: [tag] }), input()).objective, 'G2');
+      });
+    }
+
+    for (const [tag, record] of [['G10', 'G1'], ['Abc', 'Ab'], ['A2', 'A']] as const) {
+      it(`never counts ${tag} as under ${record}, a goal of its own`, () => {
+        const proposal = proposalOf(testTask({ goals: [tag], title: TIDY }), input({ goals: goalsOf(goal(record, 'One', 1)) }));
+        assert.deepEqual([proposal.class, proposal.objective], ['Improvements', null]);
+      });
+    }
+
+    it('leaves a tag with no record above it', () => {
+      assert.deepEqual(proposalOf(testTask({ goals: ['Z9'], title: TIDY }), input()), { class: 'Improvements', objective: null, reason: 'no ranked goal, no upkeep sign', confidence: 'medium' });
+    });
+
+    it('proposes an unranked record too, so a rank given later reaches the task', () => {
+      assert.deepEqual(proposalOf(testTask({ goals: ['G3a'], title: TIDY }), input()), { class: 'Improvements', objective: 'G3', reason: `no ranked goal, no upkeep sign${nearestNote('G3a', 'G3')}`, confidence: 'medium' });
+    });
+
+    it('names the record on an upkeep row, the class still upkeep', () => {
+      assert.deepEqual(proposalOf(testTask({ goals: ['G3a'], type: 'bug' }), input()), { class: 'Maintenance', objective: 'G3', reason: `a bug${nearestNote('G3a', 'G3')}`, confidence: 'medium' });
+    });
+
+    it('names the record beside a stored class, which stays high', () => {
+      assert.deepEqual(proposalOf(testTask({ goals: ['G2a'], workClass: 'Improvements' }), input()), { class: 'Improvements', objective: 'G2', reason: `class already set${nearestNote('G2a', 'G2')}`, confidence: 'high' });
+    });
+
+    it('has nothing to add once the task names the record, as on a rerun after apply', () => {
+      assert.deepEqual(proposalOf(testTask({ goals: ['G2a', 'G2'] }), input()), { class: 'Roadmap', objective: 'G2', reason: 'serves ranked goal G2 (#2)', confidence: 'high' });
+    });
+
+    it('takes a better rank named outright over a nearest record', () => {
+      assert.deepEqual(proposalOf(testTask({ goals: ['G1', 'G2a'] }), input()), { class: 'Roadmap', objective: 'G1', reason: 'serves ranked goal G1 (#1)', confidence: 'high' });
+    });
+
+    it('takes the better rank through a nearest record over one named outright', () => {
+      assert.equal(proposalOf(testTask({ goals: ['G2', 'K1a'] }), input()).objective, 'K1');
+    });
+
+    it('leaves a title match its ranked goal, as an unranked record would leave a Roadmap row with no rank', () => {
+      assert.equal(proposalOf(testTask({ goals: ['G3a'], title: 'Payments checkout rewrite' }), input()).objective, 'G1');
+    });
+  });
+
   it('survives a goal chain that loops', () => {
     const looped = goalsOf(goal('G8', 'One', null, 'G9'), goal('G9', 'Two', null, 'G8'));
     assert.equal(proposalOf(testTask({ goals: ['G8'], title: 'Tidy it' }), input({ goals: looped })).class, 'Improvements');
@@ -363,6 +428,10 @@ describe('changesOf', () => {
 
   it('adds no tag for a goal the task serves through a key result', () => {
     assert.equal(changesOf(row(), { ...target, goals: ['K1'] }, GOALS).goals, undefined);
+  });
+
+  it('keeps a tag with no record and adds its nearest record beside it', () => {
+    assert.deepEqual(changesOf(row({ objective: 'G2' }), { ...target, goals: ['G2a'] }, GOALS).goals, ['G2a', 'G2']);
   });
 
   it('leaves the goals on a null objective and the size on a null size', () => {
