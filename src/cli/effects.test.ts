@@ -12,7 +12,7 @@ const EXPECTED = {
   set: 'write',
   update: 'write',
   'refs apply': 'write',
-  sweep: 'read',
+  sweep: 'write',
   'sweep apply': 'write',
   approve: 'write',
   list: 'read',
