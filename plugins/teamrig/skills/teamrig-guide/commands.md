@@ -345,8 +345,8 @@ dry run: would update 1, left 2; nothing was written: rerun with --yes to write
 ### teamrig sweep
 
 Proposes a class, an objective and a size for each active task, one JSONL row each, so a lead can class a whole
-register in one pass. It writes to no register: a person reads the rows, sets `confirm` to `yes` on those they agree
-with, and `teamrig sweep apply` writes them. The first rule that holds decides a row: a class already stored stays
+register in one pass. It writes to no register: a person reads the rows, each with its task's title, sets `confirm` to
+`yes` on those they agree with, and `teamrig sweep apply` writes them. The first rule that holds decides a row: a class already stored stays
 (`class already set`); a task serving a ranked goal, itself or through a key result, takes `focus.roadmapClass` and
 names that goal; a critical task, a bug, or a title saying incident, outage, security, exposure, leak, data loss,
 backup or restore takes `focus.maintenanceClass`; a title sharing two or more words with a ranked goal's title takes

@@ -30,7 +30,7 @@ function rowsOf(lines: readonly string[]): readonly SweepRow[] {
 
 /** A row a person confirmed: team app's T1 unless `row` says otherwise. */
 function confirmedRow(row: Partial<SweepRow> = {}): SweepRow {
-  return { id: 'T1', team: 'app', owner: 'alpha', class: 'Roadmap', objective: null, size: null, reason: 'a person read it', confidence: 'high', park: false, confirm: 'yes', ...row };
+  return { id: 'T1', team: 'app', owner: 'alpha', title: 'A task', class: 'Roadmap', objective: null, size: null, reason: 'a person read it', confidence: 'high', park: false, confirm: 'yes', ...row };
 }
 
 async function writeRows(kit: CliHarness, ...rows: readonly SweepRow[]): Promise<void> {
@@ -55,10 +55,10 @@ describe('teamrig sweep', () => {
 
     ok(swept);
     assert.deepEqual(
-      rowsOf(swept.stdout).map((row) => [row.id, row.team, row.owner, row.class, row.objective, row.confidence, row.park, row.confirm]),
+      rowsOf(swept.stdout).map((row) => [row.id, row.team, row.owner, row.title, row.class, row.objective, row.confidence, row.park, row.confirm]),
       [
-        ['T1', 'app', 'alpha', 'Improvements', null, 'medium', false, ''],
-        ['T2', 'app', 'bravo', 'Maintenance', null, 'medium', false, ''],
+        ['T1', 'app', 'alpha', 'Polish the settings page', 'Improvements', null, 'medium', false, ''],
+        ['T2', 'app', 'bravo', 'Lost data after a restore', 'Maintenance', null, 'medium', false, ''],
       ],
     );
     assert.deepEqual(swept.stderr, ['app: Improvements 1, Maintenance 1']);

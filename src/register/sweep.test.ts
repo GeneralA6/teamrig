@@ -59,6 +59,7 @@ function row(overrides: Partial<SweepRow> = {}): SweepRow {
     id: 'T1',
     team: 'alpha',
     owner: 'alpha',
+    title: 'A task',
     class: 'Roadmap',
     objective: 'G1',
     size: 0.5,
@@ -241,11 +242,12 @@ describe('wouldPark', () => {
 
 describe('proposeRow', () => {
   it('fills every column, confirm empty', () => {
-    const task = testTask({ id: 'T9', owner: 'beta', goals: ['G1'] });
+    const task = testTask({ id: 'T9', owner: 'beta', title: 'Open the shop', goals: ['G1'] });
     assert.deepEqual(proposeRow(task, input({ sizeOf: () => 1.2345 })), {
       id: 'T9',
       team: 'alpha',
       owner: 'beta',
+      title: 'Open the shop',
       class: 'Roadmap',
       objective: 'G1',
       size: 1.23,
@@ -289,6 +291,7 @@ describe('isSweepRow', () => {
     ['a bad id', { ...row(), id: 'X1' }],
     ['a blank team', { ...row(), team: ' ' }],
     ['a blank owner', { ...row(), owner: '' }],
+    ['a title as a number', { ...row(), title: 1 }],
     ['a blank class', { ...row(), class: '' }],
     ['a blank objective', { ...row(), objective: '' }],
     ['a zero size', { ...row(), size: 0 }],
