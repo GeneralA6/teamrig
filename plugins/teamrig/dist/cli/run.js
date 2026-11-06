@@ -87,7 +87,7 @@ const TASK_FIELDS = ['title', 'description', 'owner', 'ref', 'priority', 'due', 
 const REVIEW_FLAGS = ['cause', 'how', 'prevent', 'harden', 'missed-test', 'missed-monitor', 'missed-log'];
 const COMMANDS = {
     add: { effect: 'write', flags: ['session', 'source', 'team', ...TASK_FIELDS], switches: ['critical'], load: async () => (await registerCommands()).add },
-    set: { effect: 'write', flags: ['session', 'status', 'note', 'evidence', 'skill', 'followups', 'waits', 'question', 'options', 'recommend', 'default', 'why-ask', 'gate', 'proof', 'watch', 'met', 'due', 'ask', 'text', ...REVIEW_FLAGS], load: async () => (await registerCommands()).set },
+    set: { effect: 'write', flags: ['session', 'status', 'note', 'evidence', 'skill', 'followups', 'waits', 'question', 'options', 'recommend', 'default', 'why-ask', 'gate', 'proof', 'watch', 'met', 'due', 'ask', 'text', ...REVIEW_FLAGS], switches: ['one-commit'], load: async () => (await registerCommands()).set },
     update: { effect: 'write', flags: ['session', 'note', 'later', ...TASK_FIELDS], switches: ['pin', 'unpin', 'critical', 'not-critical', 'decided'], load: async () => (await registerCommands()).update },
     'refs apply': { effect: 'write', flags: ['session'], switches: ['yes'], load: async () => (await refsCommands()).apply },
     // No register changes, but --out writes the path the line names: a line no person typed must not reach that.
@@ -394,13 +394,16 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       [--skill <name>|none] [--followups T<id>,...|none] [--waits decision:<who>,approval:<who>,task:T<id>,time:<date>]
       [--question ".." --options "<a> | <b>" --recommend ".." --default ".." --why-ask ".." --gate ".."]
       [--proof "<what proves it>"] [--watch "<what a sighting shows>"] [--met "<what shows it>"] [--due <date>]
-      [--ask <session> --text "<the work>"]
+      [--ask <session> --text "<the work>"] [--one-commit]
       [--cause ".." --how ".." --prevent ".." --harden ".." --missed-test ".." --missed-monitor ".." --missed-log ".."]
       verifying needs --proof: what will prove the shipped change works; --due sets the date to verify by
       --watch (with done only, and evidence given or kept): a change tests or a dry run proved, whose live
       proof is a sighting to come; verify lists it until you set it done again without --watch, or reopen it
       a start that a verifying task it needs holds goes through with --met: what shows that task's proof
       exists; its owner gets an inbox line to set it done or reopen it
+      the WIP rule (focus.wip) holds a start of work outside the Roadmap and Maintenance classes while its
+      owner holds Roadmap work that can move, and any start past focus.wip.maxInProgress tasks in progress;
+      --one-commit starts a one-commit fix all the same
       verifying and done need --followups: the tasks the work leaves (a finding, a next step), or none
       (register.requireFollowupsOn); show lists them
       waiting needs --waits: the lead's or the owner's decision or approval, a task to finish first

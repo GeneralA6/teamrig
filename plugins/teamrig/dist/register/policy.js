@@ -16,6 +16,7 @@ import { asksReview, missedTaskIds, reviewGap, reviewGapText, reviewProblem, rev
 import { loopFix, needPath, NO_TASKS_ELSEWHERE, pathText } from "./tree.js";
 import { dueStartHolds, dueVerifyHold, heldStart, startHolds, WATCH_USAGE } from "./verify.js";
 import { isPeerWait, isReady, sameWait, sameWaits, waitContext, waitSpelling } from "./waits.js";
+import { wipHold } from "./wip.js";
 /** The skill name that closes a task which produced no reusable procedure. */
 export const NO_SKILL = 'none';
 /** Who the GitHub import's events are written by; its tasks carry GITHUB_SOURCE (model.ts). */
@@ -175,6 +176,9 @@ export class RegisterPolicy {
         if (caller !== task.owner) {
             return refuse(ownerOnly(task));
         }
+        if (input.oneCommit === true && input.status !== 'in-progress') {
+            return refuse('--one-commit goes only with --status in-progress');
+        }
         const { register } = this.config;
         // A start waits for the proof of the shipped changes it builds on, unless it names what shows that proof exists
         // (`--met`), which the CLI asks their owners to confirm; `warn` lets it through and the CLI warns.
@@ -192,6 +196,13 @@ export class RegisterPolicy {
         const dueVerify = dueStartHolds(task, input.status, context.state.tasks, context.now, context.zone, register.maxVerifying, context.elsewhere);
         if (dueVerify.length > 0 && register.verifyGate === 'refuse') {
             return refuse(dueVerifyHold(task, dueVerify));
+        }
+        // Ranked work goes first and work in progress stays few (T2076); `warn` lets the start through and the CLI warns.
+        const { focus } = this.config;
+        const wipStart = { task, status: input.status, oneCommit: input.oneCommit === true };
+        const wip = wipHold(wipStart, context.state.tasks.values(), waitContext(context.state.tasks, context.now, context.zone, context.elsewhere), focus, register.ownerSource);
+        if (wip !== undefined && focus.wip.mode === 'refuse') {
+            return refuse(wip);
         }
         const note = blankToNull(input.note);
         const evidence = blankToNull(input.evidence);
