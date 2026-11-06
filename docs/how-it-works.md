@@ -260,6 +260,8 @@ turns this off: `register.autoArchive: false` in the team's `config.json`, after
   Beside it, `usage/sessions.week.json` holds each session on the team's roster: its use of the week so far,
   at the same rate, and its UTC hours with work this week, for a reader that shows each session's week, such as a
   session's card on the pane's Teams tab (`parseSessionsWeek` reads it).
+  With them, `usage/tasks.week.json` holds what each task has cost in the days the meter keeps, at the same rate, for
+  a reader that ranks tasks without metering them, such as the pane's lists (`parseTasksWeek` reads it).
 
 ## Planning the week
 
