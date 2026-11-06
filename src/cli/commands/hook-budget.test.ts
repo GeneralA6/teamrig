@@ -68,7 +68,7 @@ describe('the budget hooks', () => {
     });
   });
 
-  it("keep each task's spend at the team's rate, the use outside the sessions included, as readTaskSpend counts it (T2093)", async () => {
+  it("keep each task's spend at the team's rate, the use outside the sessions included (T2093)", async () => {
     const kit = new CliHarness({ ...TEAM, budget: HOLDING_BUDGET });
     const usage = join(TEAM_HOME, 'state', 'usage');
     const bravo = new UsageStore(kit.files, usage);

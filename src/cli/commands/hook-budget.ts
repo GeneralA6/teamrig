@@ -79,8 +79,8 @@ async function meterTab(runtime: CliRuntime, store: UsageStore, id: string, tran
  * (`teamDay`) says whether a session past its part is held, unless a leader's cut of it is in force (`activeCut`):
  * then it is held past its part whatever room the team has. The lead,
  * with no burst in force, also gets the week's surplus when it is worth one. On the way, it keeps the team's week
- * summary and its sessions' week for readers that show them (budget/team-week-file.ts, budget/session-week-file.ts),
- * each written when that changes it.
+ * summary, its sessions' week and its tasks' spend for readers that show them (budget/team-week-file.ts,
+ * budget/session-week-file.ts, budget/task-week-file.ts), each written when that changes it.
  */
 export async function budgetFactsOf(runtime: CliRuntime, scope: BudgetScope, transcript: string | undefined): Promise<BudgetFacts | undefined> {
   const { kit, config, roster, id } = scope;
