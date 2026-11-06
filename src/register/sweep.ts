@@ -1,8 +1,8 @@
 import type { FocusConfig } from '../config/types.ts';
 import { isRecord } from '../core/guards.ts';
-import { MS_PER_DAY } from '../core/time.ts';
 import type { Task } from './fold.ts';
 import { ACTIVE_STATUSES } from './model.ts';
+import { wouldPark } from './park.ts';
 import type { Verdict } from './policy.ts';
 
 /**
@@ -195,28 +195,6 @@ export function proposalOf(task: SweepTask, input: Pick<SweepInput, 'focus' | 'g
     return { class: focus.roadmapClass, objective: match.goal.tag, reason: `title shares ${match.shared.join(', ')} with goal ${match.goal.tag}`, confidence: 'low' };
   }
   return { class: focus.defaultClass, objective: nearest, reason: `no ranked goal, no upkeep sign${note}`, confidence: 'medium' };
-}
-
-/**
- * Whether phase 2 would park the task, the rule of design section 6 (2C): only a STORED class counts, so a task no one
- * classed never parks, and nothing parks until confirmed rows land. A waiting or verifying task stays out, as parking
- * one would lose its READY and its proof date.
- */
-export function wouldPark(task: SweepTask, input: Pick<SweepInput, 'focus' | 'ownerSource' | 'now' | 'needed'>): boolean {
-  const { focus } = input;
-  const stored = task.workClass;
-  if (stored === null || stored === focus.roadmapClass || stored === focus.maintenanceClass) {
-    return false;
-  }
-  const quietFor = input.now - Date.parse(task.updatedAt);
-  return (
-    task.status === 'open' &&
-    quietFor >= focus.parkAfterDays * MS_PER_DAY &&
-    task.pin === null &&
-    !task.critical &&
-    task.source !== input.ownerSource &&
-    !input.needed(task.id)
-  );
 }
 
 /** The proposal for one active task, its `confirm` left empty for a person. */
