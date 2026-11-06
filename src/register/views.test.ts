@@ -94,7 +94,7 @@ describe('selectTasks', () => {
     const held = [testTask({ id: 'T1' }), testTask({ id: 'T2', due: '2030-01-12' }), testTask({ id: 'T3', owner: 'bravo', due: '2030-01-09', after: ['T1'] })];
     const tree = treeOf(...held);
     assert.deepEqual(selectTasks(held, { dueBefore: new Date('2030-01-10T00:00:00Z') }, tree).map((task) => task.id), ['T1', 'T3']);
-    assert.deepEqual(selectTasks(held, {}, tree).map((task) => task.id), ['T1', 'T3', 'T2'], 'T1 is due 01-09 by T3, and a tie goes to the lower id');
+    assert.deepEqual(selectTasks(held, {}, tree).map((task) => task.id), ['T1', 'T2', 'T3'], 'T1 is due 01-09 by T3, which cannot move until it is done');
   });
 });
 
@@ -350,6 +350,15 @@ describe('aheadReason and aheadText: why a row sorts ahead of the next', () => {
     const tree = rankedTree({ classes: { T13: 'Roadmap' } }, expedite, roadmap, rest);
     assert.equal(aheadReason(placed(expedite, tree), placed(roadmap, tree)), 'expedite');
     assert.equal(aheadReason(placed(roadmap, tree), placed(rest, tree)), undefined);
+  });
+
+  it('says a row can move when the next row, for all its score, cannot', () => {
+    const work = testTask({ id: 'T12', size: 5 });
+    const blocked = testTask({ id: 'T13', size: 0.1, after: ['T12'] });
+    const tree = rankedTree({}, work, blocked);
+    assert.equal(aheadReason(placed(work, tree), placed(blocked, tree)), 'can move');
+    assert.equal(aheadText(placed(work, tree), placed(blocked, tree)), ' · ahead: can move');
+    assert.equal(aheadReason(placed(blocked, tree), placed(work, tree)), undefined, 'the next row sorts ahead');
   });
 
   it('names the score, with the ranked goal it serves when it serves one', () => {

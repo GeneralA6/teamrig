@@ -94,8 +94,8 @@ describe('liveTasksNote', () => {
     ];
     assert.deepEqual(noteOf(tasks).split('\n').slice(1), [
       '  T2 open, p2, due 01-15 (from T3) | First',
-      '  T3 open, p2, due 01-15, after T2 | Then this',
       '  T4 open, p2, due 01-20 | Late on my own',
+      '  T3 open, p2, due 01-15, after T2 | Then this',
     ]);
   });
 

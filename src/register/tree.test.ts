@@ -103,9 +103,13 @@ describe('planOrder', () => {
   it('decides on the first key that differs, each in turn', () => {
     const cases: [string, [PlanPlace, PlanPlace]][] = [
       ['pinned', pair({ pinned: true, ranked: rank(2, 1), at: 900 }, { ranked: rank(0, 99), started: true })],
+      ['pinned', pair({ pinned: true, ranked: rank(1, 1), blocked: true }, { ranked: rank(1, 99) })],
       ['band', pair({ ranked: rank(0, 1), at: 900 }, { ranked: rank(1, 99), started: true, pinned: false })],
       ['band', pair({ ranked: rank(1, 1) }, { ranked: rank(2, 99) })],
       ['band', pair({ ranked: rank(2, 1) })],
+      ['band', pair({ ranked: rank(1, 1), blocked: true }, { ranked: rank(2, 99) })],
+      ['ready', pair({ ranked: rank(1, 1), at: 900 }, { ranked: rank(1, 99), started: true, blocked: true })],
+      ['ready', pair({ at: 900 }, { started: true, blocked: true })],
       ['score', pair({ ranked: rank(1, 20), at: 900 }, { ranked: rank(1, 10), started: true })],
       ['started', pair({ ranked: rank(1, 10), started: true, at: 900 }, { ranked: rank(1, 10), started: false })],
       ['started', pair({ started: true, at: 900 }, { started: false })],
@@ -127,6 +131,7 @@ describe('planOrder', () => {
   it('falls back to age, and ties a place with itself', () => {
     const [late, early] = pair({});
     assert.equal(decidingKey(late, early), 'age');
+    assert.equal(decidingKey({ ...late, blocked: false }, early), 'age', 'a place built with no `blocked` can move');
     assert.ok(planOrder(early, late) < 0);
     assert.equal(decidingKey(late, { ...late }), undefined);
     assert.equal(planOrder(late, { ...late }), 0);
@@ -150,6 +155,22 @@ describe('TaskTree ranking', () => {
     const started = testTask({ id: 'T3', status: 'in-progress' });
     const tree = ranked(testRanking({ classes: { T9: 'Roadmap', T3: 'Roadmap' }, goals: { T9: { tag: 'G1', rank: 1 } } }), open, started);
     assert.deepEqual(ids(tree.inPlanOrder([started, open])), ['T9', 'T3']);
+  });
+
+  it('puts a task that cannot move after a far lower score in its band', () => {
+    const blocker = testTask({ id: 'T3', size: 5 });
+    const blocked = testTask({ id: 'T9', size: 0.1, after: ['T3'] });
+    const tree = ranked(testRanking(), blocker, blocked);
+    assert.deepEqual(ids(tree.inPlanOrder([blocked, blocker])), ['T3', 'T9']);
+    assert.ok((tree.rankedOf(blocked)?.score ?? 0) > (tree.rankedOf(blocker)?.score ?? 0));
+  });
+
+  it('keeps a task that cannot move ahead of a lower band', () => {
+    const blocker = testTask({ id: 'T3' });
+    const blocked = testTask({ id: 'T9', after: ['T3'] });
+    const tooling = testTask({ id: 'T4' });
+    const tree = ranked(testRanking({ classes: { T3: 'Roadmap', T9: 'Roadmap' } }), blocker, blocked, tooling);
+    assert.deepEqual(ids(tree.inPlanOrder([tooling, blocked, blocker])), ['T3', 'T9', 'T4']);
   });
 
   it('leaves equal scores to the keys below them', () => {
@@ -331,7 +352,7 @@ describe('TaskTree plan order', () => {
   it('sorts on effective dues', () => {
     const tree = treeOf(testTask({ id: 'T2' }), testTask({ id: 'T3', due: '2030-01-15' }), testTask({ id: 'T4', after: ['T2'], due: '2030-01-10' }));
     const tasks = [testTask({ id: 'T3', due: '2030-01-15' }), testTask({ id: 'T2' }), testTask({ id: 'T4', after: ['T2'], due: '2030-01-10' })];
-    assert.deepEqual(ids(tree.inPlanOrder(tasks)), ['T2', 'T4', 'T3']);
+    assert.deepEqual(ids(tree.inPlanOrder(tasks)), ['T2', 'T3', 'T4'], 'T2 takes the due of T4, which cannot move until it does');
   });
 
   it('with no ranking keeps a started task on top, then reads due, need, week and size, whatever the priority', () => {
@@ -372,10 +393,10 @@ describe('TaskTree unblocks and placeOf', () => {
   it('places a task on every key, in the week plan in force by default', () => {
     assert.equal(tree.week, '2030-01-07', 'T2\'s week has not started');
     assert.deepEqual(tree.placeOf(testTask({ id: 'T1', status: 'in-progress', week: '2030-01-07', size: 3 })), {
-      id: 'T1', pinned: false, ranked: undefined, at: undefined, started: true, unblocks: { first: 'T6', priority: 1, count: 3 }, inWeek: true, size: 3,
+      id: 'T1', pinned: false, ranked: undefined, blocked: false, at: undefined, started: true, unblocks: { first: 'T6', priority: 1, count: 3 }, inWeek: true, size: 3,
     });
     assert.deepEqual(tree.placeOf(testTask({ id: 'T2', week: '2030-01-14' })), {
-      id: 'T2', pinned: false, ranked: undefined, at: undefined, started: false, unblocks: undefined, inWeek: false, size: null,
+      id: 'T2', pinned: false, ranked: undefined, blocked: false, at: undefined, started: false, unblocks: undefined, inWeek: false, size: null,
     });
     assert.equal(tree.placeOf(testTask({ id: 'T2', pin: 'lead' })).pinned, true);
   });
@@ -388,15 +409,53 @@ describe('TaskTree unblocks and placeOf', () => {
   });
 });
 
+describe('TaskTree placeOf blocked: whether a task can move', () => {
+  const started = '2030-01-07T09:00:00.000Z';
+  const read = [testTask({ id: 'T1' }), testTask({ id: 'T2', status: 'done' }), testTask({ id: 'T3', status: 'dropped' })];
+  const elsewhere: TasksElsewhere = new Map([
+    ['T20', { team: 'web', task: testTask({ id: 'T20', status: 'in-progress' }) }],
+    ['T21', { team: 'web', task: testTask({ id: 'T21', status: 'done' }) }],
+  ]);
+  const tree = new TaskTree(new Map(read.map((task) => [task.id, task])), NOW, TimeZone.UTC, null, elsewhere);
+  const blocked = (fields: Partial<Task>): boolean | undefined => tree.placeOf(testTask({ id: 'T9', ...fields })).blocked;
+
+  it('is true for an active task with an `after` or a task wait not finished, here or in another register', () => {
+    assert.equal(blocked({ after: ['T1'] }), true);
+    assert.equal(blocked({ status: 'in-progress', after: ['T1'] }), true, 'a started task too');
+    assert.equal(blocked({ status: 'waiting', startedAt: started, waits: [{ kind: 'task', id: 'T1' }] }), true);
+    assert.equal(blocked({ after: ['T20'] }), true);
+    assert.equal(blocked({ after: ['T2', 'T1'] }), true, 'one need not finished is enough');
+  });
+
+  it('is false once every need is done, dropped or retired', () => {
+    assert.equal(blocked({}), false);
+    assert.equal(blocked({ after: ['T2', 'T3'] }), false);
+    assert.equal(blocked({ after: ['T21'] }), false);
+    assert.equal(blocked({ after: ['T99'] }), false, 'retired from every register');
+  });
+
+  it('is false on a wait for a person or a time, which is no need', () => {
+    assert.equal(blocked({ status: 'waiting', startedAt: started, waits: [{ kind: 'decision', who: 'lead' }] }), false);
+    assert.equal(blocked({ status: 'waiting', startedAt: started, waits: [{ kind: 'approval', who: 'lead' }] }), false);
+    assert.equal(blocked({ status: 'waiting', startedAt: started, waits: [{ kind: 'time', at: '2030-01-09 12:00' }] }), false);
+  });
+
+  it('is false for a finished task, whatever it came after', () => {
+    assert.equal(blocked({ status: 'done', after: ['T1'] }), false);
+    assert.equal(blocked({ status: 'dropped', after: ['T1'] }), false);
+  });
+});
+
 describe('TaskTree nextMove', () => {
   const started = '2030-01-07T09:00:00.000Z';
 
   it('is the owner of the first unfinished need in plan order that needs nothing unfinished', () => {
     const tree = treeOf(
       testTask({ id: 'T1', owner: 'alpha', after: ['T2', 'T3', 'T6'] }),
-      testTask({ id: 'T2', owner: 'bravo' }),
+      testTask({ id: 'T2', owner: 'bravo', after: ['T5'] }),
       testTask({ id: 'T3', owner: 'charlie', due: '2030-01-09', after: ['T4'] }),
       testTask({ id: 'T4', owner: 'delta', status: 'in-progress' }),
+      testTask({ id: 'T5', owner: 'echo' }),
       testTask({ id: 'T6', status: 'done' }),
     );
     const move = tree.nextMove('T1');
@@ -404,6 +463,16 @@ describe('TaskTree nextMove', () => {
     assert.equal(move?.who, 'delta');
     assert.equal(move?.task.id, 'T4');
     assert.equal(move?.behind, undefined);
+  });
+
+  it('takes a need that can move before a dated one that cannot', () => {
+    const tree = treeOf(
+      testTask({ id: 'T1', owner: 'alpha', after: ['T2', 'T3'] }),
+      testTask({ id: 'T2', owner: 'bravo' }),
+      testTask({ id: 'T3', owner: 'charlie', due: '2030-01-09', after: ['T4'] }),
+      testTask({ id: 'T4', owner: 'delta', status: 'in-progress' }),
+    );
+    assert.equal(tree.nextMove('T1')?.task.id, 'T2');
   });
 
   it('is the task owner when nothing it needs is unfinished, and undefined for a finished or unknown task', () => {
@@ -448,9 +517,10 @@ describe('TaskTree nextMove', () => {
       testTask({ id: 'T1', after: ['T2', 'T4'] }),
       testTask({ id: 'T2', priority: 1, after: ['T3'] }),
       testTask({ id: 'T3', after: ['T2'] }),
-      testTask({ id: 'T4', owner: 'bravo' }),
+      testTask({ id: 'T4', after: ['T5'] }),
+      testTask({ id: 'T5', owner: 'bravo' }),
     );
-    assert.equal(branching.nextMove('T1')?.task.id, 'T4');
+    assert.equal(branching.nextMove('T1')?.task.id, 'T5', 'T2 unblocks more than T4, so its loop is tried first');
   });
 });
 
