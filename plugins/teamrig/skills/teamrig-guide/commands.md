@@ -836,6 +836,14 @@ else on track or at risk by the day its open tasks end at the last 14 days' pace
 and no pace, a goal is at risk once its start has passed. The line ends with the work off goal: the range's done
 tasks with no goal tag; a tag with no record still counts as served.
 
+An AREAS line names the teams and sessions that stand out, whole teams first, at most six. Teams are held against
+teams and sessions against sessions, on five measures of their active tasks now: bugs, p1 (a p0 counts too), p1 late,
+low (the share at p3 or below) and waits (waiting over 3 days). A cell is high against the others in the top quarter
+and at twice their median (for low, 15 points over it), and high against the area's own usual at 1.5 times the median
+of its last 30 day-ends, counted from its first active task. High on both reads `bad`, on one `warn`. An area stands
+out by a `bad` cell, or by a `warn` one when it has no peers, as with `--session`. The line reads the tasks now, so
+`--range` leaves it as it is.
+
 The USE lines close the output, and only this command prints them: how much of the range's task work the plan held,
 and each class's share, in W and active minutes, against `focus.plannedTargetPct` and `focus.allocation`; in a tree,
 against the caller's team's. They read the daily rollups (`### teamrig budget rollup`), so only closed UTC days count:
@@ -880,6 +888,7 @@ WAITS 3 waiting (decision 1, task 2); on the owner 1, oldest 1.5 d
 BUGS 1 active, 2 opened, 1 fixed
 PEOPLE api 5, web 2
 GOALS 1 on track, 1 at risk (signup); off goal: 2 of 7 done tasks (29%)
+AREAS 1 stands out: api bugs 3 [bad], p1 late 1 [warn]
 USE 6 of 7 days rolled up: task work 41.20M W, 312 min; no task 3.10M W, 24 min
 USE planned 64% of task W, target 70%, gap -6: planned 26.40M W, 201 min; unplanned 14.80M W, 111 min
 USE Roadmap 58% of task W, target 60%, gap -2: planned 19.60M W, 150 min; unplanned 4.30M W, 31 min
