@@ -115,6 +115,8 @@ export interface StatusInput {
   readonly review?: ProblemReview;
   /** Said to be a one-commit fix (`--one-commit`), which the WIP rule lets start (wip.ts); only with `in-progress`. */
   readonly oneCommit?: boolean;
+  /** The classes past their share of the week, which the CLI reads from the usage store; a caller passing none holds nothing for it (wip.ts). */
+  readonly spentClasses?: ReadonlySet<string>;
 }
 
 /**
@@ -382,8 +384,7 @@ export class RegisterPolicy {
     }
     // Ranked work goes first and work in progress stays few (T2076); `warn` lets the start through and the CLI warns.
     const { focus } = this.config;
-    const wipStart = { task, status: input.status, oneCommit: input.oneCommit === true };
-    const wip = wipHold(wipStart, context.state.tasks.values(), waitContext(context.state.tasks, context.now, context.zone, context.elsewhere), focus, register.ownerSource);
+    const wip = wipHold({ ...input, task }, context.state.tasks.values(), waitContext(context.state.tasks, context.now, context.zone, context.elsewhere), focus, register.ownerSource);
     if (wip !== undefined && focus.wip.mode === 'refuse') {
       return refuse(wip);
     }

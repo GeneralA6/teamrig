@@ -22,16 +22,63 @@ const TOOLING = testTask({ id: 'T9', workClass: 'Improvements' });
 const ROADMAP = testTask({ id: 'T1', workClass: 'Roadmap' });
 
 /** What the rule says of a start of `task`, with the other tasks of the register beside it. */
-function holdOf(task: Task, others: readonly Task[], focus: WipFocus = FOCUS, oneCommit = false): string | undefined {
+function holdOf(task: Task, others: readonly Task[], focus: WipFocus = FOCUS, oneCommit = false, spentClasses: ReadonlySet<string> = new Set()): string | undefined {
   const tasks = [task, ...others];
   const context = waitContext(new Map(tasks.map((held) => [held.id, held])), NOW, TimeZone.UTC);
-  return wipHold({ task, status: 'in-progress', oneCommit }, tasks, context, focus, OWNER);
+  return wipHold({ task, status: 'in-progress', oneCommit, spentClasses }, tasks, context, focus, OWNER);
 }
 
 /** `count` tasks of `alpha` in progress, T101 up. */
 function inProgress(count: number): Task[] {
   return Array.from({ length: count }, (_, index) => testTask({ id: `T${101 + index}`, status: 'in-progress', workClass: 'Maintenance' }));
 }
+
+describe('wipHold: a class that has spent its share of the week', () => {
+  const SPENT: ReadonlySet<string> = new Set(['Improvements']);
+
+  /** What the rule says of a start of `task` with Improvements spent and nothing else on its owner's list. */
+  const spentHoldOf = (task: Task, focus: WipFocus = FOCUS, oneCommit = false): string | undefined => holdOf(task, [], focus, oneCommit, SPENT);
+
+  it('holds the start with no Roadmap work to go first, naming the share, the reset and the way past', () => {
+    assert.equal(
+      spentHoldOf(TOOLING),
+      "T9 is Improvements work and Improvements has spent its share of the week [focus.allocation]: it waits for the week's reset, or, for a one-commit fix, start it with --one-commit",
+    );
+  });
+
+  it('says so ahead of the Roadmap work, as finishing that would not free the start', () => {
+    assert.match(holdOf(TOOLING, [ROADMAP], FOCUS, false, SPENT) ?? '', /has spent its share/);
+  });
+
+  it('holds a task no one classed, which counts as the default class', () => {
+    assert.match(spentHoldOf(testTask({ id: 'T9' })) ?? '', /^T9 is Improvements work and Improvements has spent/);
+  });
+
+  it('leaves a class that has share left alone', () => {
+    assert.equal(holdOf(testTask({ id: 'T9', workClass: 'Research' }), [], FOCUS, false, SPENT), undefined);
+  });
+
+  it('holds nothing when the caller gave no spent classes', () => {
+    const context = waitContext(new Map([[TOOLING.id, TOOLING]]), NOW, TimeZone.UTC);
+    assert.equal(wipHold({ task: TOOLING, status: 'in-progress' }, [TOOLING], context, FOCUS, OWNER), undefined);
+  });
+
+  it('holds no Roadmap or Maintenance start past its share: the share is a limit on Improvements work alone', () => {
+    const spent = new Set(['Roadmap', 'Maintenance']);
+    assert.equal(holdOf({ ...TOOLING, workClass: 'Roadmap' }, [], FOCUS, false, spent), undefined);
+    assert.equal(holdOf({ ...TOOLING, workClass: 'Maintenance' }, [], FOCUS, false, spent), undefined);
+  });
+
+  it('lets --one-commit, an expedited task and an owner-sourced task through', () => {
+    assert.equal(spentHoldOf(TOOLING, FOCUS, true), undefined);
+    assert.equal(spentHoldOf({ ...TOOLING, priority: 0 }), undefined);
+    assert.equal(spentHoldOf({ ...TOOLING, source: OWNER }), undefined);
+  });
+
+  it('holds nothing with the rule off', () => {
+    assert.equal(spentHoldOf(TOOLING, { ...FOCUS, wip: { mode: 'off', maxInProgress: 3 } }), undefined);
+  });
+});
 
 describe('wipHold: Improvements work behind Roadmap work that can move', () => {
   it('holds the start, naming the Roadmap task and the way past', () => {
