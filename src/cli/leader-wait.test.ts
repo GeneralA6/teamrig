@@ -29,23 +29,25 @@ async function checkOf(kit: CliHarness): Promise<readonly string[]> {
   return checked.stdout;
 }
 
+/** Runs a command that must pass. */
+async function step(kit: CliHarness, ...args: string[]): Promise<void> {
+  const result = await kit.run(args);
+  assert.equal(result.code, EXIT.ok, [...args, ...result.stdout, ...result.stderr].join(' '));
+}
+
 /**
  * The harness where two Roadmap tasks ask the lead's approval: T1, due first so it leads the plan order, asks 30 minutes
  * after T2, so T2 alone passes the limit 31 minutes later.
  */
 async function twoAsking(): Promise<CliHarness> {
   const kit = new CliHarness();
-  const step = async (...args: string[]): Promise<void> => {
-    const result = await kit.run(args);
-    assert.equal(result.code, EXIT.ok, [...args, ...result.stdout, ...result.stderr].join(' '));
-  };
-  await step(...ADD, '--class', 'Roadmap', '--due', '2030-01-10', '--session', 'alpha');
-  await step('add', '--title', 'Ship the table', '--description', 'what and why', '--priority', 'p2', '--class', 'Roadmap', '--session', 'bravo');
-  await step('set', 'T2', '--status', 'in-progress', '--session', 'bravo');
-  await step('set', 'T2', '--status', 'waiting', '--waits', 'approval:lead', '--note', 'branch t2, the table', '--session', 'bravo');
+  await step(kit, ...ADD, '--class', 'Roadmap', '--due', '2030-01-10', '--session', 'alpha');
+  await step(kit, 'add', '--title', 'Ship the table', '--description', 'what and why', '--priority', 'p2', '--class', 'Roadmap', '--session', 'bravo');
+  await step(kit, 'set', 'T2', '--status', 'in-progress', '--session', 'bravo');
+  await step(kit, 'set', 'T2', '--status', 'waiting', '--waits', 'approval:lead', '--note', 'branch t2, the table', '--session', 'bravo');
   kit.clock.advance(30 * MS_PER_MINUTE);
-  await step('set', 'T1', '--status', 'in-progress', '--session', 'alpha');
-  await step(...ASK, '--session', 'alpha');
+  await step(kit, 'set', 'T1', '--status', 'in-progress', '--session', 'alpha');
+  await step(kit, ...ASK, '--session', 'alpha');
   return kit;
 }
 
@@ -137,5 +139,31 @@ describe('runCli: ROADMAP-WAITS-ON-LEAD', () => {
     const checked = await kit.run(['check', '--tree', '--all', '--session', 'lead']);
     assert.equal(checked.code, EXIT.ok, checked.stderr.join('\n'));
     assert.match(checked.stdout.join('\n'), /ROADMAP-WAITS-ON-LEAD \(approval:lead unanswered for 61 min/);
+  });
+
+  it("raises it in a child team's check on its lead's wait for the parent team's lead", async () => {
+    const kit = await treeHarness();
+    const web = { env: { TEAMRIG_TEAM: 'web' } };
+    assert.equal((await kit.run([...ADD, '--class', 'Roadmap', '--session', 'lead'], web)).code, EXIT.ok);
+    const asked = await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'approval:app/lead', '--note', 'branch t1', '--session', 'lead'], web);
+    assert.equal(asked.code, EXIT.ok, asked.stderr.join('\n'));
+    kit.clock.advance(61 * MS_PER_MINUTE);
+    const checked = await kit.run(['check', '--all', '--session', 'lead'], web);
+    assert.equal(checked.code, EXIT.ok, checked.stderr.join('\n'));
+    assert.match(checked.stdout.join('\n'), /ROADMAP-WAITS-ON-LEAD \(approval:app\/lead unanswered for 61 min/);
+  });
+
+  it('lists two held tasks in plan order, so the leader reads the most urgent first', async () => {
+    const kit = new CliHarness();
+    // T2 alone has a due date, so the plan order is the reverse of the order the tasks were added in.
+    await step(kit, ...ADD, '--class', 'Roadmap', '--session', 'alpha');
+    await step(kit, 'add', '--title', 'Ship the table', '--description', 'what and why', '--priority', 'p2', '--class', 'Roadmap', '--due', '2030-01-10', '--session', 'bravo');
+    await step(kit, 'set', 'T1', '--status', 'in-progress', '--session', 'alpha');
+    await step(kit, ...ASK, '--session', 'alpha');
+    await step(kit, 'set', 'T2', '--status', 'in-progress', '--session', 'bravo');
+    await step(kit, 'set', 'T2', '--status', 'waiting', '--waits', 'approval:lead', '--note', 'branch t2, the table', '--session', 'bravo');
+    kit.clock.advance(61 * MS_PER_MINUTE);
+    const flaggedIds = (await checkOf(kit)).flatMap((line) => /^ROADMAP-WAITS-ON-LEAD \(.*?\) (T\d+) /.exec(line)?.[1] ?? []);
+    assert.deepEqual(flaggedIds, ['T2', 'T1']);
   });
 });
