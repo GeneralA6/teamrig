@@ -20,6 +20,8 @@ const PROJECT = join(USER_HOME, '.claude', 'projects', 'app');
 const USAGE = join(TEAM_HOME, 'state', 'usage');
 const ALPHA_W = 100_000_000;
 const LEAD_W = 50_000_000;
+/** The tab a spec's status line comes from when no session's tab matters to it. */
+const STATUS_TAB = '0000000d-0000-4000-8000-000000000004';
 
 /** The status line's stdin from `tab`, the week `usedPct` used. */
 function statusOf(tab: string | undefined, usedPct: number): string {
@@ -65,6 +67,17 @@ export async function holdAlpha(kit: CliHarness, alphaTab: string, leadTab: stri
     { id: 'alpha', tab: alphaTab, w: ALPHA_W },
     { id: 'lead', tab: leadTab, w: LEAD_W },
   ]);
+}
+
+/**
+ * Puts `w` W on `task` in the stored usage of `session` today, under `dir` (the team's usage by default), with the week
+ * known from a status line at 30%. It writes the store as a stop hook would, so a spec of a reader of it needs no transcript.
+ */
+export async function storeTaskSpend(kit: CliHarness, session: string, task: string, w: number, dir: string = USAGE): Promise<void> {
+  const usage = new UsageStore(kit.files, dir);
+  const day = '2030-01-08';
+  assert.ok(await usage.save(session, { ...EMPTY_USAGE, byDay: { [day]: dayOf(w) }, byTask: { [day]: { [task]: w } } }, (await usage.load(session)).rev), 'usage saved');
+  ok(await kit.run(['statusline'], { stdin: statusOf(STATUS_TAB, 30) }));
 }
 
 /**
