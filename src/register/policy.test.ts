@@ -1063,6 +1063,56 @@ describe('RegisterPolicy.update', () => {
   });
 });
 
+describe('RegisterPolicy.triage (T2086)', () => {
+  const policy = new RegisterPolicy(testConfig());
+  const ROW = { workClass: 'Roadmap', goals: ['A1'], size: 1.5 } as const;
+
+  it('lets the owner write class, goals and size', () => {
+    assert.deepEqual(policy.triage(TASK, 'alpha', ROW, EMPTY), { ok: true, value: { changes: ROW, note: null } });
+  });
+
+  it("lets the lead write goals, which a leader's update may not", () => {
+    assert.deepEqual(policy.triage(TASK, 'lead', ROW, EMPTY), { ok: true, value: { changes: ROW, note: null } });
+    assert.match(error(policy.update(TASK, 'lead', { goals: ['A1'] }, undefined, EMPTY)), /asked: goals/);
+  });
+
+  it('lets a sub-lead over the owner, never one of another group', () => {
+    const tree = new RegisterPolicy(testConfig({ sessions: ['lead', 'alpha', 'bravo', 'charlie', 'delta'], leads: { alpha: ['bravo'], charlie: ['delta'] } }));
+    const bravos = testTask({ owner: 'bravo' });
+    assert.equal(tree.triage(bravos, 'alpha', ROW, EMPTY).ok, true);
+    assert.match(error(tree.triage(bravos, 'charlie', ROW, EMPTY)), /^only the owner \(bravo\) or /);
+  });
+
+  it('refuses a session that neither owns the task nor leads its owner', () => {
+    assert.equal(error(policy.triage(TASK, 'bravo', ROW, EMPTY)), 'only the owner (alpha) or the lead (lead) changes T1');
+  });
+
+  it('clears the no-goal mark of a task a row gives a goal', () => {
+    const task = testTask({ noGoal: true });
+    assert.deepEqual(policy.triage(task, 'lead', { goals: ['A1'] }, EMPTY), { ok: true, value: { changes: { goals: ['A1'], noGoal: false }, note: null } });
+  });
+
+  it('holds the fields to the rules of an update', () => {
+    const checked = new RegisterPolicy(testConfig({ register: { goals: 'checked' } }));
+    assert.match(error(policy.triage(TASK, 'lead', { workClass: 'Chores' }, EMPTY)), /Chores/);
+    assert.match(error(policy.triage(TASK, 'lead', { size: 500 }, EMPTY)), /size/);
+    assert.equal(error(checked.triage(TASK, 'lead', { goals: ['Z9'] }, EMPTY, NO_TASKS_ELSEWHERE, KNOWN_GOALS)), UNKNOWN_Z9);
+    assert.equal(checked.triage(TASK, 'lead', { goals: ['A1'] }, EMPTY, NO_TASKS_ELSEWHERE, KNOWN_GOALS).ok, true);
+  });
+});
+
+describe('RegisterPolicy.triageFrom (T2086)', () => {
+  const policy = new RegisterPolicy(testConfig());
+
+  it('writes what the field rules allow, with no caller to hold', () => {
+    assert.deepEqual(policy.triageFrom(TASK, { workClass: 'Maintenance', goals: ['A1'] }, EMPTY), { ok: true, value: { changes: { workClass: 'Maintenance', goals: ['A1'] }, note: null } });
+  });
+
+  it('still holds the fields to their rules', () => {
+    assert.match(error(policy.triageFrom(TASK, { workClass: 'Chores' }, EMPTY)), /Chores/);
+  });
+});
+
 describe('normaliseTitle', () => {
   it('ignores case and spacing', () => {
     assert.equal(normaliseTitle('  Add   a\tHealth check '), 'add a health check');
