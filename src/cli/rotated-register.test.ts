@@ -47,8 +47,10 @@ describe('the CLI on a rotated register', () => {
     const listed = await kit.run(['list'], AS_ALPHA);
     assert.deepEqual([listed.code, ids(listed.stdout), listed.stderr], [EXIT.ok, ['T3'], []]);
     const checked = await kit.run(['check'], AS_ALPHA);
-    assert.deepEqual(checked.stdout.slice(0, 3), [
-      'CHECK 2 flag(s), week 2030-01-21 (short form; --all for every flag in full)',
+    assert.deepEqual(checked.stdout.slice(0, 5), [
+      'CHECK 3 flag(s), week 2030-01-21 (short form; --all for every flag in full)',
+      'UNTRIAGED 1 (no class, added by alpha: class it (update T3 --class <name>))',
+      '  T3 open, Improvements, score 3.33, p1, owner alpha | Current plan',
       'NO-PROGRESS 1 (no goal or week-plan task moved since 01-27 00:00 UTC (1 day); the first to move)',
       '  T3 open, Improvements, score 3.33, p1, owner alpha | Current plan',
     ]);

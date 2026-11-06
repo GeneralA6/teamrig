@@ -318,6 +318,15 @@ describe('ownCheck', () => {
     assert.deepEqual(narrowed.hires, []);
     assert.equal(narrowed.scope, "alpha's tasks and skills, its group's tasks (bravo), week 2030-01-07");
   });
+
+  it("leaves UNTRIAGED off the task owner's own report and keeps it on its group's", () => {
+    const flags = [flag('UNTRIAGED', { id: 'T1', owner: 'alpha' }), flag('UNTRIAGED', { id: 'T2', owner: 'bravo' }), flag('OVERDUE', { id: 'T3', owner: 'alpha' })];
+    const narrowed = ownCheck(report({ sections: [{ team: undefined, flags, tree: TREE }] }), 'alpha', ['bravo']);
+    assert.deepEqual(
+      narrowed.sections.map((section) => section.flags.map((each) => each.task.id)),
+      [['T2', 'T3']],
+    );
+  });
 });
 
 describe('waitingOnLines', () => {

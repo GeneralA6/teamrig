@@ -79,15 +79,17 @@ export interface LeadDecisions {
  * A report narrowed to what one session acts on, for `start`: the flags of the tasks it owns, of the skills
  * it fixes (only a task's owner sets its status), on itself as a hired session and a SCALE-OUT on its area. A sub-lead
  * also gets the flags of its group's tasks (`group`, empty for a session that leads no one), since it sets their work
- * order (T782). The scope names the session and its group, so the CHECK line says whose flags these are. The warnings
- * no session owns go to the lead, so a narrowed report has none (T951).
+ * order (T782). An UNTRIAGED flag is its task's leader's to act on, so it stays off the task owner's own report. The
+ * scope names the session and its group, so the CHECK line says whose flags these are. The warnings no session owns go
+ * to the lead, so a narrowed report has none (T951).
  */
 export function ownCheck(report: CheckReport, owner: string, group: readonly string[]): CheckReport {
   const owners = new Set([owner, ...group]);
   const groupScope = group.length === 0 ? '' : `its group's tasks (${group.join(', ')}), `;
+  const actsOn = (flag: Flag): boolean => owners.has(flag.task.owner) && !(flag.kind === 'UNTRIAGED' && flag.task.owner === owner);
   return {
     ...report,
-    sections: report.sections.map((section) => ({ ...section, flags: section.flags.filter((flag) => owners.has(flag.task.owner)) })),
+    sections: report.sections.map((section) => ({ ...section, flags: section.flags.filter(actsOn) })),
     scope: `${owner}'s tasks and skills, ${groupScope}${report.scope}`,
     skills: report.skills.filter((flag) => flag.owner === owner),
     hires: report.hires.filter((flag) => flag.session === owner),
