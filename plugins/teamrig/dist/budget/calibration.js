@@ -32,6 +32,12 @@ export const MOVED_RATE_MIN_PCT = 2;
  */
 export const MOVED_RATE_UP = 1.5;
 export const MOVED_RATE_DOWN = 0.5;
+/**
+ * The least W a reading must add to its period's last one to count in the fit (`risingReadings`). A team's line comes
+ * from its stores as last stored, so a team with no tab metering repeats its W while the use climbs, and a sum of
+ * nothing leaves a float remainder far under one W (T2102).
+ */
+const MIN_W_RISE = 1;
 /** How long a reading counts in the fit; the log keeps up to a week more before a write drops the older lines. */
 export const READINGS_KEPT_MS = 8 * MS_PER_WEEK;
 /** How old a status line reading may be and still be logged: W metered after it would count in its line. */
@@ -84,9 +90,16 @@ function fitOver(readings) {
     const pcts = readings.map((reading) => reading.usedPct);
     return pcts.length === 0 || Math.max(...pcts) - Math.min(...pcts) < FIT_SPREAD_PTS ? undefined : slopeOver(readings);
 }
-/** The period's own rate once it shows the limit moved from `older` (`MOVED_RATE_UP`, `MOVED_RATE_DOWN`); else undefined. */
+/** One period's readings, oldest first, that added W: the first rises from the period's 0 W, and a repeated W says nothing of the rate. */
+function risingReadings(period) {
+    return period.filter((reading, index) => reading.w - (period[index - 1]?.w ?? 0) >= MIN_W_RISE);
+}
+/**
+ * The period's own rate once it shows the limit moved from `older` (`MOVED_RATE_UP`, `MOVED_RATE_DOWN`); else undefined.
+ * It needs two readings: a frozen run collapses to one, and a first reading alone is noise at a high percent too.
+ */
 function movedRate(period, older) {
-    const own = period.some((reading) => reading.usedPct >= MOVED_RATE_MIN_PCT) ? slopeOver(period) : undefined;
+    const own = period.length >= 2 && period.some((reading) => reading.usedPct >= MOVED_RATE_MIN_PCT) ? slopeOver(period) : undefined;
     if (own === undefined) {
         return undefined;
     }
@@ -100,12 +113,14 @@ function movedRate(period, older) {
  * from 9.1M to 3.9M W at one reset while the fit stayed at 9.1M, so every session read 2.3x under its real use (T1985).
  * The newest period overrules an older fit sooner once its own rate shows the limit moved (`movedRate`): waiting for
  * the spread left a plan raised inside a week priced at the old rate for its first 10 points, about 90M W (T2019).
+ * Only readings that added W count (`risingReadings`): a team whose W stood still while the use climbed would otherwise
+ * span the points on nothing and fit a rate near zero, which makes every session read far over its budget (T2102).
  */
 export function fitRate(readings) {
     const newestFirst = [...new Set(readings.map((reading) => reading.start))].sort((a, b) => b - a);
-    const periods = newestFirst.map((start) => readings.filter((reading) => reading.start === start));
+    const periods = newestFirst.map((start) => risingReadings(readings.filter((reading) => reading.start === start)));
     const fits = periods.map((period) => fitOver(period));
-    const fit = fits.find((found) => found !== undefined) ?? fitOver(readings);
+    const fit = fits.find((found) => found !== undefined) ?? fitOver(periods.flat());
     const [newest] = periods;
     return newest === undefined || fit === undefined || fits[0] !== undefined ? fit : (movedRate(newest, fit) ?? fit);
 }
