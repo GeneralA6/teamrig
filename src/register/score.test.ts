@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { MS_PER_DAY } from '../core/time.ts';
 import { TEST_FOCUS } from '../testing/ranking.ts';
-import { bandOf, ownerOrderOf, scoreOf, sizePctOf, unblocksOf, urgencyOf, valueOf, type ScoreFacts, type ScoreFocus, type ValueFacts } from './score.ts';
+import { bandOf, ownerOrderOf, scoreOf, sizePctOf, unblocksOf, urgencyOf, valueOf, wholeSizePctOf, type ScoreFacts, type ScoreFocus, type ValueFacts } from './score.ts';
 
 const NOW = Date.UTC(2030, 0, 7, 9);
 
@@ -89,6 +89,14 @@ describe('ownerOrderOf', () => {
   it('adds nothing past the list, or for a task the owner did not order', () => {
     assert.equal(ownerOrderOf({ priority: 9, ownerSourced: true }, FOCUS.score), 0);
     assert.equal(ownerOrderOf({ priority: 1, ownerSourced: false }, FOCUS.score), 0);
+  });
+});
+
+describe('wholeSizePctOf', () => {
+  it('takes the first known of size, the like median and the default, and takes nothing off for what the task spent', () => {
+    assert.equal(wholeSizePctOf({ size: 2, spentPct: 0.5, likeMedianPct: 7 }, FOCUS.score), 2);
+    assert.equal(wholeSizePctOf({ size: null, spentPct: 5, likeMedianPct: 7 }, FOCUS.score), 7);
+    assert.equal(wholeSizePctOf({ size: null, spentPct: 0.25, likeMedianPct: undefined }, FOCUS.score), 0.3);
   });
 });
 
