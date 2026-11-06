@@ -141,7 +141,7 @@ The thresholds of the flags teamrig check raises on tasks.
 | --- | --- | --- | --- |
 | `staleAfterHours` | integer (at least 1) | `72` | An active task untouched this long is STALE. |
 | `notPickedUpAfterHours` | integer (at least 1) | `24` | An open task its owner has not touched this long after it was assigned is NOT-PICKED-UP. |
-| `prioritySkipAfterHours` | integer (at least 1) | `24` | A session's in-progress task below its own open top-priority task this long is a PRIORITY-SKIP. |
+| `prioritySkipAfterHours` | integer (at least 1) | `24` | A session's in-progress task outranked this long by its own open task, on band and score, is a PRIORITY-SKIP. |
 | `maxSelfMadePerDay` | integer (0 to 200) | `10` | A session that added more tasks for itself (created by it, asked by no one else) in the last 24 hours than this is a SELF-MADE in teamrig check; 0 turns the flag off. |
 | `goalProgressDays` | integer (0 to 7) | `1` | Whole days (the team's day: wake.dayStartUtc, else UTC) that may end with no goal or week-plan task moved by its owner, while the week has usage left, before a NO-PROGRESS in teamrig check; 0 turns the flag off. |
 | `overSizeMultiple` | number (0 to 10) | `2` | An active sized task whose cost since it was last sized, as the budget meter attributes it, passed this many times its size (--size) is OVER-SIZE in teamrig check; 0 turns the flag off. |

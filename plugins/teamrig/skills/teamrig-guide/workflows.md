@@ -316,7 +316,7 @@ teamrig start --session lead
 With sub-teams, run `teamrig check --tree --session lead` too. Then act on each flag (full table: [tasks.md](tasks.md#check-flags)):
 
 - `PRIORITY-SKIP`: one inbox line to the owner to park the lower task and start the waiting one, or fix the order
-  with `teamrig update T<n> --session lead --priority p2`.
+  with `teamrig update T<n> --session lead --class <name>`; a change of goals is the owner's.
 - `SELF-MADE`: a session adds its own work faster than anything asked for it: read those tasks
   (`teamrig list --session <id> --source <id> --status all`), then one inbox line to drop or park each that serves
   no goal, parent task or week plan.

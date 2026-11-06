@@ -48,7 +48,7 @@ Flags:
   owner-asked, p0 or p1 task to name its goal, or `none`.
 - `--week <date>`: puts the task in the week plan that starts on that day.
 - `--after T5,T6`: the tasks to finish before this one starts. It stays `open`, its line shows `after T5,T6`, and
-  `check` does not count it as a waiting p1 (`PRIORITY-SKIP`) until they are done or dropped. Each of them
+  `check` does not count it as skipped (`PRIORITY-SKIP`) until they are done or dropped. Each of them
   takes this task's due date when it is earlier (its effective due: `due 10-17 (from T9)`).
 - `--size <pct>`: what the task still costs, in percent of the weekly usage limit (`1.5` or `1.5%`, above 0 and
   at most 100). `plan` sums the week's sizes against what is left of the limit; `show` prints it, and its
