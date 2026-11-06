@@ -353,9 +353,10 @@ backup or restore takes `focus.maintenanceClass`; a title sharing two or more wo
 `focus.roadmapClass` with low confidence; any other takes `focus.defaultClass`. A tag no goal record holds reads as the
 nearest record it sits under by name (`K1a` or `K1.2` under `K1`, never `K10`): a rank comes through that record, at
 medium confidence, and the row names it as its objective, unless a title match or a better rank the task names decides
-the row, so apply adds it and a rank given later reaches the task. A row's size is the task's `--size`,
-else twice what it has spent, else `focus.score.defaultSizePct`, and never under `focus.score.minSizePct`. `park` says
-whether the task would park, which only a stored class can do, so a first sweep shows `false` on every row.
+the row, so apply adds it and a rank given later reaches the task. A row's size is the one the plan's score divides by:
+the task's `--size`, else twice what it has spent, else what done tasks of its class and type took, else
+`focus.score.defaultSizePct`, and never under `focus.score.minSizePct`. `park` says whether the task would park, which
+only a stored class can do, so a first sweep shows `false` on every row.
 
 Flags:
 
