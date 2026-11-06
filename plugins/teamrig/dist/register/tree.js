@@ -1,6 +1,7 @@
 import { parseDeadline } from "../core/time.js";
 import { taskNumber } from "./fold.js";
 import { ACTIVE_STATUSES } from "./model.js";
+import { scoreOf, valueOf } from "./score.js";
 import { isFinished, isReady, waitContext } from "./waits.js";
 import { currentWeek } from "./week.js";
 /**
@@ -51,16 +52,18 @@ export function loopFix(id, other, owner, byWait) {
     return `make the step ${id} needs from ${other} its own task: ${command}`;
 }
 /**
- * The keys of plan order, in order: the first one on which two tasks differ puts one ahead. No hand-set score, each
- * key a field the task has: `pinned` (a task the owner's leader pinned, above every other key); `priority` (p1 first); `started` (an in-progress task stays on top within its
- * priority); `due` (effective due, the earliest first, undated last); `unblocks` (the best priority among the
- * active tasks that need it, then the most of them; none last); `week` (in the week plan in force first); `size`
- * (the smallest first, unsized last); `age` (the lowest number first).
+ * The keys of plan order, in order: the first one on which two tasks differ puts one ahead: `pinned` (a task the
+ * owner's leader pinned, above every other key); `band` (expedite, then Roadmap and Maintenance, then the rest;
+ * score.ts); `score` (the highest WSJF score first; score.ts); `started` (an in-progress task stays on top of its
+ * equals); `due` (effective due, the earliest first, undated last); `unblocks` (the best priority among the active
+ * tasks that need it, then the most of them; none last); `week` (in the week plan in force first); `size` (the smallest
+ * first, unsized last); `age` (the lowest number first).
  */
-export const PLAN_KEYS = ['pinned', 'priority', 'started', 'due', 'unblocks', 'week', 'size', 'age'];
+export const PLAN_KEYS = ['pinned', 'band', 'score', 'started', 'due', 'unblocks', 'week', 'size', 'age'];
 const BY_KEY = {
     pinned: (a, b) => trueFirst(a.pinned, b.pinned),
-    priority: (a, b) => a.priority - b.priority,
+    band: (a, b) => lowFirst(a.ranked?.band, b.ranked?.band),
+    score: (a, b) => highFirst(a.ranked?.score, b.ranked?.score),
     started: (a, b) => trueFirst(a.started, b.started),
     due: (a, b) => lowFirst(a.at, b.at),
     unblocks: (a, b) => lowFirst(a.unblocks?.priority, b.unblocks?.priority) || (b.unblocks?.count ?? 0) - (a.unblocks?.count ?? 0),
@@ -82,6 +85,10 @@ function lowFirst(a, b) {
     const x = a ?? Number.POSITIVE_INFINITY;
     const y = b ?? Number.POSITIVE_INFINITY;
     return x === y ? 0 : x < y ? -1 : 1;
+}
+/** The higher number first, a missing one last. */
+function highFirst(a, b) {
+    return lowFirst(a === undefined ? undefined : -a, b === undefined ? undefined : -b);
 }
 /** A true flag first. */
 function trueFirst(a, b) {
@@ -111,6 +118,10 @@ export function readAs(holder, reader, own, elsewhere) {
     }
     return { tasks, elsewhere: others };
 }
+/** What a task is worth by its class, goal and severity, as `ranking` reads them. */
+function valueFacts(task, ranking) {
+    return { workClass: ranking.classOf(task), rank: ranking.goalOf(task)?.rank ?? null, type: task.type ?? null, critical: task.critical ?? false };
+}
 /**
  * The tree of one register read at `now`, over teamrig's tasks or a reader's own rows ({@link TreeTask}): what it
  * hands back (a needer, a move's task, a waiting task) is one of those rows.
@@ -120,7 +131,7 @@ export class TaskTree {
     context;
     /** The team's zone: a stored due day is a day of it, and rows show times in it. */
     zone;
-    /** The week plan in force, whose tasks plan order puts first after priority, due and need; null: none. */
+    /** The week plan in force, whose tasks plan order puts first after band, score, due and need; null: none. */
     week;
     tasks;
     /** The tasks of the team tree's other registers, for a need this read lacks. */
@@ -128,15 +139,22 @@ export class TaskTree {
     /** Per id, the active tasks that need it, by number. */
     needers;
     dues = new Map();
+    now;
+    ranking;
+    /** Each place's score, kept because a sort reads every task's many times. */
+    ranked = new Map();
     /**
      * `week` defaults to the newest week tag of `tasks` started by `now`; a register read passes the one it knows.
      * `elsewhere` holds the tasks of the team tree's other registers, which a need the read lacks is read from.
+     * `ranking` gives its places a band and a score; a read that sorts or lists tasks passes one.
      */
-    constructor(tasks, now, zone, week = currentWeek(tasks.values(), now, zone), elsewhere = NO_TASKS_ELSEWHERE) {
+    constructor(tasks, now, zone, week = currentWeek(tasks.values(), now, zone), elsewhere = NO_TASKS_ELSEWHERE, ranking) {
         this.tasks = tasks;
         this.elsewhere = elsewhere;
         this.zone = zone;
         this.week = week;
+        this.now = now.getTime();
+        this.ranking = ranking;
         this.context = waitContext(tasks, now, zone, elsewhere);
         const needers = new Map();
         for (const task of [...tasks.values()].filter(isActive).sort((a, b) => taskNumber(a.id) - taskNumber(b.id))) {
@@ -216,7 +234,7 @@ export class TaskTree {
         return {
             id: task.id,
             pinned: task.pin !== undefined && task.pin !== null,
-            priority: task.priority,
+            ranked: this.rankedOf(task),
             at: this.dueTime(task),
             started: task.status === 'in-progress',
             unblocks: this.unblocks(task.id),
@@ -227,6 +245,24 @@ export class TaskTree {
     /** Plan order ({@link PLAN_KEYS}) on effective dues, what each task unblocks and this tree's week. */
     byPlanOrder(a, b) {
         return planOrder(this.placeOf(a), this.placeOf(b));
+    }
+    /** A task's band and score, and the class and goal they come from; undefined with no ranking. */
+    rankedOf(task) {
+        const { ranking } = this;
+        if (ranking === undefined) {
+            return undefined;
+        }
+        const known = this.ranked.get(task.id);
+        if (known !== undefined) {
+            return known;
+        }
+        const facts = valueFacts(task, ranking);
+        const needers = this.isActiveId(task.id) ? this.neededBy(task.id) : [];
+        const neededValue = needers.length === 0 ? undefined : Math.max(...needers.map((needer) => valueOf(valueFacts(needer, ranking), ranking.focus)));
+        const score = scoreOf({ ...facts, priority: task.priority, ownerSourced: task.source === ranking.ownerSource, dueAt: this.dueTime(task), neededValue, sizing: ranking.sizingOf(task) }, ranking.focus, this.now);
+        const place = { ...score, workClass: facts.workClass, goal: ranking.goalOf(task) };
+        this.ranked.set(task.id, place);
+        return place;
     }
     /** The tasks in plan order ({@link byPlanOrder}). */
     inPlanOrder(tasks) {

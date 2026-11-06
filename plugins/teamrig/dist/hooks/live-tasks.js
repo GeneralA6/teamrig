@@ -1,7 +1,7 @@
 import { showStored } from "../core/time.js";
 import { BLOCK_START_WORDS } from "../core/work-block.js";
 import { ACTIVE_STATUSES, priorityText } from "../register/model.js";
-import { cut, formatWaitingOnYou } from "../register/views.js";
+import { cut, formatWaitingOnYou, rankParts } from "../register/views.js";
 import { unfinishedAfter, waitsText } from "../register/waits.js";
 /**
  * The live-task block of the SessionStart note. A handover is written before the fresh start that reads it, and a
@@ -43,11 +43,12 @@ function waitingText(task, context) {
     return task.note === null ? '' : ` (waiting: ${cut(task.note, LIVE_NOTE_CHARS)})`;
 }
 /**
- * `  T12 in-progress, p2, due 01-15 (from T20), after T5 | <title> (waiting: on T5 ready)`: the effective due, naming
- * the task it comes from when another task's earlier date holds this one, and only the plan dependencies not finished yet.
+ * `  T12 in-progress, Roadmap, score 6.67, p2, due 01-15 (from T20), after T5 | <title> (waiting: on T5 ready)`: the
+ * class and score when the tree ranks, as `list` prints them, the effective due, naming the task it comes from when
+ * another task's earlier date holds this one, and only the plan dependencies not finished yet.
  */
 function liveRow(task, tree) {
-    const parts = [`${task.id} ${task.status}`, priorityText(task.priority)];
+    const parts = [`${task.id} ${task.status}`, ...rankParts(task, tree), priorityText(task.priority)];
     const due = tree.effectiveDue(task.id);
     if (due !== undefined) {
         parts.push(`due ${showStored(due.due, tree.zone)}${due.from === null ? '' : ` (from ${due.from})`}`);

@@ -336,7 +336,7 @@ function spread(values) {
     return { count: sorted.length, median: quantile(sorted, 0.5), p85: quantile(sorted, 0.85) };
 }
 /** The `q` quantile of sorted values, linearly interpolated between the two nearest; null with none. */
-function quantile(sorted, q) {
+export function quantile(sorted, q) {
     const position = q * (sorted.length - 1);
     const below = sorted[Math.floor(position)];
     const above = sorted[Math.ceil(position)];

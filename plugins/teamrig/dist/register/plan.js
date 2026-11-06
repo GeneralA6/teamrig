@@ -1,18 +1,29 @@
 import { showStored } from "../core/time.js";
-import { priorityLevels } from "../config/priorities.js";
-import { priorityText } from "./model.js";
 import { NO_TASKS_ELSEWHERE, TaskTree } from "./tree.js";
-import { sizeText, taskLabel } from "./views.js";
+import { rankParts, sizeText, taskLabel } from "./views.js";
 import { waitsText } from "./waits.js";
 import { proofOf } from "./verify.js";
+/** The bands in the order a plan heads them. */
+const BANDS = [0, 1, 2];
+/** A band's heading: band 2 holds every class but the two the team names, so it names none. */
+function bandHeading(band, focus) {
+    switch (band) {
+        case 0:
+            return 'Expedite';
+        case 1:
+            return `${focus.roadmapClass} and ${focus.maintenanceClass}`;
+        case 2:
+            return 'Other work';
+    }
+}
 /**
- * The week plan as markdown: the tasks tagged with `week`, grouped by priority, each group in plan order (tree.ts
- * PLAN_KEYS: started first, then the effective due, its own or an earlier one of an active task that needs it, which
- * the line names: `due 01-10 from T5`).
+ * The week plan as markdown: the tasks tagged with `week`, grouped by band, each group in plan order (tree.ts
+ * PLAN_KEYS). A line names the task's class and score, and its effective due, its own or an earlier one of an active
+ * task that needs it, which it names too: `due 01-10 from T5`.
  */
-export function renderPlan(tasks, week, now, zone, config, { team, fit = [], elsewhere = NO_TASKS_ELSEWHERE } = {}) {
+export function renderPlan(tasks, week, now, zone, { team, fit = [], elsewhere = NO_TASKS_ELSEWHERE, ranking }) {
     const all = [...tasks];
-    const tree = new TaskTree(new Map(all.map((task) => [task.id, task])), now, zone, week, elsewhere);
+    const tree = new TaskTree(new Map(all.map((task) => [task.id, task])), now, zone, week, elsewhere, ranking);
     const inWeek = tree.inPlanOrder(all.filter((task) => task.week === week));
     const done = inWeek.filter((task) => task.status === 'done').length;
     const dropped = inWeek.filter((task) => task.status === 'dropped').length;
@@ -22,10 +33,10 @@ export function renderPlan(tasks, week, now, zone, config, { team, fit = [], els
         `${inWeek.length} tasks: ${done} done, ${dropped} dropped, ${inWeek.length - done - dropped} to do. From the task register at ${zone.minute(now)}.`,
         ...(fit.length === 0 ? [] : ['', ...fit.map((line) => `- ${line}`)]),
     ];
-    for (const priority of priorityLevels(config.priorities)) {
-        const rows = inWeek.filter((task) => task.priority === priority.id);
+    for (const band of BANDS) {
+        const rows = inWeek.filter((task) => tree.rankedOf(task)?.band === band);
         if (rows.length > 0) {
-            lines.push('', `## ${priorityText(priority.id)}: ${priority.name}`, '', ...rows.map((task) => planLine(task, config.ownerSource, tree, team)));
+            lines.push('', `## ${bandHeading(band, ranking.focus)}`, '', ...rows.map((task) => planLine(task, ranking.ownerSource, tree, team)));
         }
     }
     return lines.join('\n');
@@ -33,6 +44,7 @@ export function renderPlan(tasks, week, now, zone, config, { team, fit = [], els
 function planLine(task, ownerSource, tree, team) {
     const due = tree.effectiveDue(task.id);
     const meta = [
+        ...rankParts(task, tree),
         task.owner,
         due === undefined ? undefined : `due ${showStored(due.due, tree.zone)}${due.from === null ? '' : ` from ${due.from}`}`,
         task.after.length === 0 ? undefined : `after ${task.after.join(',')}`,

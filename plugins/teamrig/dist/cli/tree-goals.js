@@ -18,9 +18,16 @@ export class KitTreeGoals {
         if (this.config.register.goals === 'free') {
             return NO_GOAL_TAGS;
         }
-        const files = [this.paths.goals, ...(await this.aboveFiles())];
+        return new Set((await this.all()).keys());
+    }
+    /**
+     * Every goal a task of the team may serve, whatever `register.goals` says, as a goal's rank counts under `free` too.
+     * A tag two teams hold reads as the nearest team's: the root's goes first, so each team below overwrites it.
+     */
+    async all() {
+        const files = [...(await this.aboveFiles()), this.paths.goals];
         const reads = await Promise.all(files.map(async (file) => readGoals(await this.runtime.files.read(file))));
-        return new Set(reads.flatMap((read) => [...read.goals.keys()]));
+        return new Map(reads.flatMap((read) => [...read.goals]));
     }
     /** The goals files of the teams above this one; none for a root team, read without the tree. */
     async aboveFiles() {

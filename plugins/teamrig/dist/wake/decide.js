@@ -242,7 +242,7 @@ function taskTag(task) {
 /** The prompt the session reads, under the plugin's name. */
 export function wakePrompt(session, tasks, cost) {
     return (`New work was handed to you while this tab was idle: ${taskListText(tasks)}. ` +
-        `Start a work block (\`${KIT_NAME} start --session ${session}\`) and work your list in priority order. ` +
+        `Start a work block (\`${KIT_NAME} start --session ${session}\`) and work your list in plan order. ` +
         `This wake costs ${costText(cost)}.`);
 }
 /** `T12, T13 and 2 more`. */

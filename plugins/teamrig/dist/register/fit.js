@@ -3,8 +3,8 @@ import { planOrder } from "./tree.js";
 import { sizeText, taskLabel } from "./views.js";
 /**
  * Does the week's planned work fit the weekly usage limit left? A task's `size` is the % of the weekly limit it
- * takes; the week's to-do tasks are summed in plan order (priority, then effective due) against what is left of the pace
- * target, and the first one past that line is named with how many come after it.
+ * takes; the week's to-do tasks are summed in plan order (tree.ts) against what is left of the pace target, and the
+ * first one past that line is named with how many come after it.
  */
 /**
  * The statuses whose size is still to spend. A verifying task has shipped, so what it took is already in the
@@ -33,7 +33,8 @@ export function weekFit(rows, week, leftPct) {
             fits.set(row.task.priority, (fits.get(row.task.priority) ?? 0) + size);
         }
     }
-    return { leftPct, sized: sized.length, fits, unfit, unsized: toDo.length - sized.length };
+    // Plan order ranks by score, so a p2 can fit before a p1; the sums still read in priority order.
+    return { leftPct, sized: sized.length, fits: new Map([...fits].sort(([a], [b]) => a - b)), unfit, unsized: toDo.length - sized.length };
 }
 /**
  * The fit as `plan` prints it: `fits: p1 12% · p2 8.5% (left 31%)`, then the first task that does not fit and how

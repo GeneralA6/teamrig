@@ -18,11 +18,12 @@ export function dueTime(task, zone) {
     return task.due === null ? undefined : parseDeadline(task.due, zone)?.getTime();
 }
 /**
- * Plan order on the tasks' own due dates: priority, then due date (undated last), then id. For rows no effective due
- * reaches (finished tasks) and readers with no tree; {@link TaskTree.byPlanOrder} orders active work.
+ * Plan order on the tasks' own due dates: due date (undated last), then id; with no tree there is no band or score to
+ * read. For rows no effective due reaches (finished tasks) and readers with no tree; {@link TaskTree.byPlanOrder} orders
+ * active work.
  */
 export function byPlanOrder(a, b, zone) {
-    return planOrder({ id: a.id, priority: a.priority, at: dueTime(a, zone) }, { id: b.id, priority: b.priority, at: dueTime(b, zone) });
+    return planOrder({ id: a.id, at: dueTime(a, zone) }, { id: b.id, at: dueTime(b, zone) });
 }
 /** The tasks that match the filter in plan order; `dueBefore` and the order read the effective due of `tree`. */
 export function selectTasks(tasks, filter, tree) {
@@ -47,15 +48,27 @@ export function taskLabel(task, team) {
     return team === undefined ? task.id : `${team}/${task.id}`;
 }
 /**
- * The fields every task row starts with: `T12 in-progress`, `p2`, its type past a plain task (`bug`, `critical bug`),
- * `owner alpha`, then `due 01-15` and `after T5,T6` (its plan dependency) when it has them. The due is the effective
- * one of `tree`, in its zone: an earlier due of a task that needs it names that task (`due 01-10 (from T194)`).
+ * A row's class and score when `tree` ranks (`Roadmap`, `score 21.3`), nothing when it does not. A finished task keeps
+ * its class but holds no place in the order, so it prints no score.
+ */
+export function rankParts(task, tree) {
+    const ranked = tree.rankedOf(task);
+    if (ranked === undefined) {
+        return [];
+    }
+    return ACTIVE_STATUSES.includes(task.status) ? [ranked.workClass, `score ${ranked.score}`] : [ranked.workClass];
+}
+/**
+ * The fields every task row starts with: `T12 in-progress`, its {@link rankParts}, `p2`, its type past a plain task
+ * (`bug`, `critical bug`), `owner alpha`, then `due 01-15` and `after T5,T6` (its plan dependency) when it has them. The
+ * due is the effective one of `tree`, in its zone: an earlier due of a task that needs it names that task (`due 01-10
+ * (from T194)`).
  */
 function rowHead(task, team, tree) {
     const type = itemTypeOf(task);
     const typed = type === 'task' ? [] : [task.critical ? `critical ${type}` : type];
     const pinned = task.pin === null ? [] : ['pinned'];
-    const parts = [`${taskLabel(task, team)} ${task.status}`, priorityText(task.priority), ...pinned, ...typed, `owner ${task.owner}`];
+    const parts = [`${taskLabel(task, team)} ${task.status}`, ...rankParts(task, tree), priorityText(task.priority), ...pinned, ...typed, `owner ${task.owner}`];
     const inherited = tree.effectiveDue(task.id);
     if (inherited !== undefined && inherited.from !== null) {
         parts.push(`due ${showStored(inherited.due, tree.zone)} (from ${inherited.from})`);
@@ -145,19 +158,24 @@ function neededByText(task, tree) {
 }
 /**
  * Why `row` sorts ahead of `next`, the row after it, in plan order: the first plan key on which they differ, in words:
- * `in progress`, `due` (the row shows the date), `unblocks T566 p1 +2` (the best task that needs it, its priority
- * and how many more), `in week 01-07`, `size 0.5%`. Undefined when the row shows it already (priority), when only the
- * number decides (age, the older first), when they tie, or when `next` sorts ahead. Each row is placed by its own
- * register's tree.
+ * `expedite`, `score 21.3 (A1 #1)` (its score, and the ranked goal it serves), `in progress`, `due` (the row shows the
+ * date), `unblocks T566 p1 +2` (the best task that needs it, its priority and how many more), `in week 01-07`,
+ * `size 0.5%`. Undefined when the row shows it already (pinned, or a band the row's class names), when only the number
+ * decides (age, the older first), when they tie, or when `next` sorts ahead. Each row is placed by its own register's
+ * tree.
  */
 export function aheadReason(row, next) {
     const place = row.tree.placeOf(row.task);
     const other = next.tree.placeOf(next.task);
     const key = decidingKey(place, other);
-    if (key === undefined || key === 'pinned' || key === 'priority' || key === 'age' || planOrder(place, other) > 0) {
+    if (key === undefined || key === 'pinned' || key === 'age' || planOrder(place, other) > 0) {
         return undefined;
     }
     switch (key) {
+        case 'band':
+            return place.ranked?.band === 0 ? 'expedite' : undefined;
+        case 'score':
+            return place.ranked === undefined ? undefined : scoreText(place.ranked);
         case 'started':
             return 'in progress';
         case 'due':
@@ -169,6 +187,10 @@ export function aheadReason(row, next) {
         case 'size':
             return row.task.size === null ? undefined : `size ${sizeText(row.task.size)}`;
     }
+}
+/** `score 21.3 (A1 #1)`: the score as stored, and the ranked goal it serves when it serves one. */
+function scoreText({ score, goal }) {
+    return goal === null ? `score ${score}` : `score ${score} (${goal.tag} #${goal.rank})`;
 }
 /** `unblocks T566 p1 +2`: the first needer of the best priority, that priority, and how many others need the task. */
 function unblocksText({ first, priority, count }) {
@@ -202,7 +224,8 @@ export function formatTask(task, team, tree) {
     else if (task.noGoal) {
         parts.push('goals none');
     }
-    if (task.workClass !== null) {
+    // A ranked row names the class in its head already, so only a rankless one (ADDED, SET) prints it here.
+    if (task.workClass !== null && tree.rankedOf(task) === undefined) {
         parts.push(`class ${task.workClass}`);
     }
     return `${parts.join(', ')} | ${task.title}${statusNote(task, tree)}${neededByText(task, tree)}`;

@@ -12,7 +12,10 @@ export { ACTIVE_STATUSES, isTaskStatus, priorityText, SESSION_NAME, TASK_STATUSE
 export { assemble, historyPlan, layoutPaths, MissingSegmentError, readHistory, readSnapshotText, readWorkingSet, segmentName, workingSetPlan, ARCHIVE_DIR, SNAPSHOT_FILE, } from "../register/layout.js";
 export { LAYOUT_VERSION } from "../register/marker.js";
 export { readEvents, readRegister, snapshotOf } from "../register/snapshot.js";
-export { loopFix, needPath, needsOf, pathText, planOrder, TaskTree } from "../register/tree.js";
+export { loopFix, needPath, needsOf, pathText, planOrder, TaskTree, } from "../register/tree.js";
+// A task's WSJF rank (T2076): what builds a tree's ranking and what scores a row, so a reader ranks as the CLI does.
+export { ownSizing, treeRanking } from "../register/ranking.js";
+export { bandOf, scoreOf, sizePctOf, valueOf } from "../register/score.js";
 export { byPlanOrder, dueTime } from "../register/views.js";
 // The week plan in force (the newest week tag started by now), which a reader's week steps follow, as `plan` does.
 export { currentWeek } from "../register/week.js";
@@ -39,9 +42,9 @@ export { HEALTH_LEVELS, HEALTH_THRESHOLDS, registerHealth, } from "../register/s
 // The inboxes (`inbox/<area>.md`) and their read marks (`inbox-marks.jsonl`).
 export { indexMarks, MARK_VERSION, parseMark, readMarks } from "../inbox/marks.js";
 export { inboxLines, unreadOf } from "../inbox/unread.js";
-// The kit config (`config.json`). DEFAULT_REGISTER is what a config that sets no `register` key gets,
-// its priority names among them: a reader with no config to read names priorities from it.
-export { DEFAULT_REGISTER } from "../config/defaults.js";
+// The kit config (`config.json`). DEFAULT_REGISTER and DEFAULT_FOCUS are what a config that sets no `register` or
+// `focus` key gets: a reader with no config to read names priorities and ranks tasks from them.
+export { DEFAULT_FOCUS, DEFAULT_REGISTER } from "../config/defaults.js";
 export { priorityName } from "../config/priorities.js";
 export { parseConfigText } from "../config/text.js";
 export { CONFIG_VERSION } from "../config/types.js";

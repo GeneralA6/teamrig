@@ -8,6 +8,7 @@ import { onePositional, UsageError } from "../args.js";
 import { callerOf } from "../inputs.js";
 import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
+import { teamRanking } from "../team-ranking.js";
 import { teamRegister } from "../team-register.js";
 import { postUrgentLine } from "../urgent-line.js";
 import { openSession, printOpenResult, terminalFlag } from "./open.js";
@@ -26,7 +27,8 @@ async function meetFactsOf(runtime, ref) {
     const id = sessionIdOf(roster, ref);
     const name = roster.nameOf(id) ?? id;
     const { snapshot, elsewhere } = await teamRegister(runtime, kit.paths, config).snapshotWithElsewhere();
-    const tree = taskTreeOf({ snapshot, config, elsewhere }, runtime);
+    const ranking = await teamRanking(runtime, kit.paths, config, snapshot.state.tasks.values());
+    const tree = taskTreeOf({ snapshot, config, elsewhere, ranking }, runtime);
     const { ownerSource, requireDecisionCard } = config.register;
     const cards = ownerCardsBySession([...snapshot.state.tasks.values()], tree, ownerSource, requireDecisionCard).get(id) ?? NO_CARDS;
     if (cards.due.length === 0) {
