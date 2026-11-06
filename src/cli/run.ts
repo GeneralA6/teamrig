@@ -471,7 +471,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       the rows in that file and the counts on stdout; --session narrows it to that owner's tasks, but with
       --tree, for a team's lead, it names the caller
   sweep apply <file> [--apply]   writes the class, goal and size of each row whose confirm is yes, as its task's
-      owner or a leader over it: a dry run names each row's fate, --apply writes; never deletes, never parks
+      owner or a leader over it, a size only when it differs from the task's live size: a dry run names each
+      row's fate, --apply writes; never deletes, never parks
   approve <id> --note "<what you checked, or why not>" [--decline]   a leader above the task's owner (the
       lead or a sub-lead), or roles.securityReviewer on a task not its own: answers a task waiting on
       its approval (approval:<lead>); its owner gets an inbox line to push or merge (or to fix the note's

@@ -217,6 +217,11 @@ export function wouldPark(task: SweepTask, input: Pick<SweepInput, 'focus' | 'ow
   );
 }
 
+/** A size as a row holds it, two places. The apply reads a task's live size through this too, or a stored 0.123 would differ from its own 0.12 row. */
+export function rowSize(size: number): number {
+  return Number(size.toFixed(2));
+}
+
 /** The proposal for one active task, its `confirm` left empty for a person. */
 export function proposeRow<T extends SweepTask>(task: T, input: SweepInput<T>): SweepRow {
   const proposal = proposalOf(task, input);
@@ -227,7 +232,7 @@ export function proposeRow<T extends SweepTask>(task: T, input: SweepInput<T>): 
     title: task.title,
     class: proposal.class,
     objective: proposal.objective,
-    size: Number(input.sizeOf(task).toFixed(2)),
+    size: rowSize(input.sizeOf(task)),
     reason: proposal.reason,
     confidence: proposal.confidence,
     park: wouldPark(task, input),
@@ -332,16 +337,20 @@ export interface SweepChanges {
 }
 
 /** What the apply reads of a task. */
-export type SweepTarget = Pick<SweepTask, 'workClass' | 'goals' | 'status'> & Pick<Task, 'size'>;
+export type SweepTarget = Pick<SweepTask, 'workClass' | 'goals' | 'status'>;
 
-/** The fields of `task` a row would change. A goal the task already serves through a key result needs no new tag. */
-export function changesOf(row: SweepRow, task: SweepTarget, goals: ReadonlyMap<string, SweepGoal>): SweepChanges {
+/**
+ * The fields of `task` a row would change. A goal the task already serves through a key result needs no new tag. A size
+ * counts as new only against the size the task reads as now (`sizeOf`), not the one stored: a row repeating a median or
+ * floor size stays unstored, as a stored size outranks them and would freeze it (T2114).
+ */
+export function changesOf<T extends SweepTarget>(row: SweepRow, task: T, goals: ReadonlyMap<string, SweepGoal>, sizeOf: (task: T) => number): SweepChanges {
   const { objective, size } = row;
   const served = objective === null || task.goals.some((tag) => tag === objective || chainOf(tag, goals).some((goal) => goal.tag === objective));
   return {
     ...(row.class === task.workClass ? {} : { workClass: row.class }),
     ...(served ? {} : { goals: [...task.goals, objective] }),
-    ...(size === null || size === task.size ? {} : { size }),
+    ...(size === null || size === rowSize(sizeOf(task)) ? {} : { size }),
   };
 }
 
@@ -359,7 +368,13 @@ export type SweepJudge<T> = (task: T, changes: SweepChanges) => string | undefin
  * The fate of one row. `task` is undefined when the register lacks it. A finished task is refused, not skipped: a
  * person said yes to it, so they hear why it did not land.
  */
-export function planSweepRow<T extends SweepTarget>(row: SweepRow, task: T | undefined, goals: ReadonlyMap<string, SweepGoal>, judge: SweepJudge<T>): SweepPlan {
+export function planSweepRow<T extends SweepTarget>(
+  row: SweepRow,
+  task: T | undefined,
+  goals: ReadonlyMap<string, SweepGoal>,
+  sizeOf: (task: T) => number,
+  judge: SweepJudge<T>,
+): SweepPlan {
   if (row.confirm !== SWEEP_CONFIRMED) {
     return { row, action: 'unconfirmed' };
   }
@@ -369,7 +384,7 @@ export function planSweepRow<T extends SweepTarget>(row: SweepRow, task: T | und
   if (!ACTIVE_STATUSES.includes(task.status)) {
     return { row, action: 'refused', reason: `${row.id} is ${task.status} now` };
   }
-  const changes = changesOf(row, task, goals);
+  const changes = changesOf(row, task, goals, sizeOf);
   if (Object.keys(changes).length === 0) {
     return { row, action: 'unchanged' };
   }

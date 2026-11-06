@@ -198,6 +198,35 @@ describe('teamrig sweep apply', () => {
     assert.equal(updatesOf(kit).length, 1);
   });
 
+  it('stores no size for a row repeating the live size, so the median stays live, and stores a hand correction (T2114)', async () => {
+    // A weekly limit of 1,000M W makes 1% of the week 10M W, so 2M W is 0.2%.
+    const kit = new CliHarness({ ...TEAM, budget: { weeklyLimitW: 1_000_000_000 } });
+    await addTask(kit, 'Done like it', 'alpha', ['--class', 'Maintenance']);
+    await addTask(kit, 'Unsized', 'alpha', ['--class', 'Maintenance']);
+    const store = new UsageStore(kit.files, join(TEAM_HOME, 'state', 'usage'));
+    const { rev } = await store.load('alpha');
+    assert.equal(await store.save('alpha', { ...EMPTY_USAGE, byTask: { '2030-01-08': { T1: 2_000_000 } } }, rev), true);
+    ok(await kit.run(['set', 'T1', '--status', 'in-progress', '--session', 'alpha']));
+    ok(await kit.run(['set', 'T1', '--status', 'done', '--note', 'shipped', '--evidence', 'shipped', '--skill', 'none', '--followups', 'none', '--session', 'alpha']));
+    const [proposed] = rowsOf((await kit.run(['sweep'])).stdout);
+    assert.equal(proposed?.size, 0.2);
+
+    await writeRows(kit, confirmedRow({ id: 'T2', class: 'Maintenance', size: 0.2 }));
+    const dry = await kit.run(['sweep', 'apply', FILE, '--session', 'alpha']);
+    assert.deepEqual(dry.stdout, ['dry run: inserted 0, changed 0, unchanged 1; nothing was written: rerun with --apply to write']);
+
+    await writeRows(kit, confirmedRow({ id: 'T2', class: 'Roadmap', size: 0.2 }));
+    ok(await kit.run(['sweep', 'apply', FILE, '--apply', '--session', 'alpha']));
+    const stored = updatesOf(kit).at(-1);
+    assert.deepEqual([stored?.id, stored?.changes, stored?.sizeBase], ['T2', { workClass: 'Roadmap' }, undefined]);
+
+    await writeRows(kit, confirmedRow({ id: 'T2', size: 0.7 }));
+    ok(await kit.run(['sweep', 'apply', FILE, '--apply', '--session', 'alpha']));
+    const corrected = updatesOf(kit).at(-1);
+    assert.deepEqual([corrected?.id, corrected?.changes], ['T2', { size: 0.7 }]);
+    assert.deepEqual(corrected?.sizeBase, { day: '2030-01-08', w: 0 });
+  });
+
   it('carries no size base on a row that changes no size', async () => {
     const kit = new CliHarness();
     await addTask(kit, 'Polish the settings page');
