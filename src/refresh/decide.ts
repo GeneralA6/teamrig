@@ -41,7 +41,10 @@ export interface StopFacts {
   readonly requestedBy: string | undefined;
   /** The context size; undefined when the transcript does not tell, which never asks for a refresh. */
   readonly tokens: number | undefined;
-  /** The session is in the owner's open daily meeting (src/meeting/state.ts `inMeeting`), which holds its refresh (`meetingHolds`). */
+  /**
+   * The session is in an open owner meeting, which holds its refresh (`meetingHolds`): the lead's daily meeting
+   * (src/meeting/state.ts `inMeeting`), or a booked one it is met in or joins (src/meeting/schedule.ts `inBookedMeeting`).
+   */
   readonly meeting: boolean;
   /** Read only once a refresh, or the notice that its handover is written, is due; undefined before. */
   readonly due: DueFacts | undefined;
@@ -77,7 +80,7 @@ export type NoticeNext = 'restart' | 'park' | 'clear';
 /** What the plugin's mod gives at a tool result of the main conversation, the context Claude Code last reported, and the due facts once a refresh is due. */
 export interface MidTurnFacts {
   readonly tokens: number;
-  /** The session is in the owner's open daily meeting, as at a turn end. */
+  /** The session is in an open owner meeting, as at a turn end. */
   readonly meeting: boolean;
   readonly due: DueFacts | undefined;
 }
@@ -110,9 +113,10 @@ const GO: CompactDecision = { kind: 'go' };
 export const REASK_SHARE = 0.2;
 
 /**
- * The owner's open daily meeting holds the refresh of the session in it, the lead: no ask, no notice and so no
- * restart, which would cut the meeting off, until the turn end after `meeting end` (or the meeting's lapse), which
- * asks at once when the context is past the threshold. Up to `compactCeilingTokens` only: past it the refresh goes
+ * An open owner meeting holds the refresh of each session in it (the lead in its daily meeting; the session met and
+ * those joining in a booked one): no ask, no notice and so no restart, which would cut the meeting off, until the
+ * turn end after `meeting end` (or the meeting's lapse), which asks at once when the context is past the threshold.
+ * Up to `compactCeilingTokens` only: past it the refresh goes
  * on even in the meeting, as Claude Code's own compaction does (`decideCompact`), so the session never runs out of
  * room in it. Under it, only a handover asked for or written stops that compaction, so a session the meeting kept
  * from being asked still compacts when Claude Code needs room. 0, which never stops a compaction, sets no ceiling;
@@ -278,7 +282,7 @@ function handoverAsk(moment: AskMoment, cause: Cause, context: AskContext, runni
  * the handover is written it tells the user, once, that the session restarts by itself when it can, else that
  * it waits for /clear. While background work the session started still runs, the notice waits for a later stop,
  * since a fresh start would cut that work off; a due refresh asks anyway and names the work (`handoverAsk`). Both
- * wait while the owner's daily meeting the session is in is open (`meetingHolds`). A stop that ends a turn a Stop hook continued
+ * wait while an owner meeting the session is in is open (`meetingHolds`). A stop that ends a turn a Stop hook continued
  * never asks, so the kit never loops; the notice that the handover is written does show there, since that is
  * the turn that runs `refresh --ready`. A turn that ends after a tool result asked within it (`decideMidTurn`),
  * with no handover marked ready, is asked once more, as a due refresh. The facts are read cheapest first: the
