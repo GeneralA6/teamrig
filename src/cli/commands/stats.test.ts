@@ -55,6 +55,7 @@ describe('teamrig stats', () => {
         'BUGS 0 active, 1 opened, 0 fixed',
         'PEOPLE bravo 1',
         'GOALS none; off goal: 1 of 1 done tasks (100%)',
+        'AREAS 1 stands out: alpha p1 1 [warn], p1 late 1 [warn]',
         'USE 0 of 7 days rolled up: teamrig budget rollup --apply writes the closed days',
       ],
       stderr: [],
@@ -163,8 +164,13 @@ describe('teamrig stats: the goals of the team and those above it (T1420)', () =
   });
 });
 
-function create(id: string, at: string, goals: readonly string[] = []): RegisterEvent {
-  return { v: EVENT_VERSION, type: 'create', id, at, by: 'lead', task: { ...FIELDS, goals } };
+const NOW = new Date('2030-01-10T10:00:00.000Z');
+
+/** After the last day-end a usual reads: a task made then counts now and in no usual. */
+const TODAY = '2030-01-10T08:00:00.000Z';
+
+function create(id: string, at: string, fields: Partial<TaskFields> = {}): RegisterEvent {
+  return { v: EVENT_VERSION, type: 'create', id, at, by: 'lead', task: { ...FIELDS, ...fields } };
 }
 
 function doneOn(id: string, at: string): RegisterEvent {
@@ -189,18 +195,49 @@ describe('statsLines', () => {
     assert.equal(lines[0], 'STATS app, 7 d: 01-04 to 01-10 (tree: app, web)');
     assert.equal(lines[8], 'PEOPLE web/alpha 1');
     assert.equal(lines[9], 'GOALS none; off goal: 1 of 1 done tasks (100%)');
-    assert.equal(lines[10], 'TEAMS app 0 active, overdue 0 · web 0 active, overdue 0');
-    assert.equal(lines[11], 'SPLIT 01-06 1 task(s) moved app -> web: the chart of app before it lacks them');
-    assert.equal(lines.length, 12);
+    assert.equal(lines[10], 'AREAS none stand out');
+    assert.equal(lines[11], 'TEAMS app 0 active, overdue 0 · web 0 active, overdue 0');
+    assert.equal(lines[12], 'SPLIT 01-06 1 task(s) moved app -> web: the chart of app before it lacks them');
+    assert.equal(lines.length, 13);
   });
 
   it('counts the goals by state, naming those at risk and late, then the share of done tasks that served no goal', () => {
     const at = '2030-01-05T10:00:00.000Z';
     const closed = '2030-01-08T10:00:00.000Z';
-    const events = [create('T1', at, ['R1']), create('T2', at, ['R2']), create('T3', at, ['R4']), doneOn('T3', closed), create('T4', at), doneOn('T4', closed)];
+    const events = [create('T1', at, { goals: ['R1'] }), create('T2', at, { goals: ['R2'] }), create('T3', at, { goals: ['R4'] }), doneOn('T3', closed), create('T4', at), doneOn('T4', closed)];
     const goals = new Map([goalRecord('R1', '2030-02-01'), goalRecord('R2', '2030-01-05'), goalRecord('R3', '2030-02-01'), goalRecord('R4', '2030-02-01')].map((goal) => [goal.tag, goal]));
-    const stats = registerStats({ teams: [teamOf('app', events)], range: '7d', now: new Date('2030-01-10T10:00:00.000Z'), zone: testZone('UTC'), ownerMarker: 'owner', goals });
+    const stats = registerStats({ teams: [teamOf('app', events)], range: '7d', now: NOW, zone: testZone('UTC'), ownerMarker: 'owner', goals });
     const lines = statsLines({ stats, health: registerHealth(stats) }, 'app', ['app']);
-    assert.equal(lines.at(-1), 'GOALS 1 done, 1 on track, 1 at risk (R1), 1 late (R2); off goal: 1 of 2 done tasks (50%)');
+    assert.equal(lines.find((line) => line.startsWith('GOALS ')), 'GOALS 1 done, 1 on track, 1 at risk (R1), 1 late (R2); off goal: 1 of 2 done tasks (50%)');
+  });
+
+  function areasLine(teams: readonly StatsTeam[], names: readonly string[]): string | undefined {
+    const stats = registerStats({ teams, range: '7d', now: NOW, zone: testZone('UTC'), ownerMarker: 'owner' });
+    return statsLines({ stats, health: registerHealth(stats) }, 'app', names).find((line) => line.startsWith('AREAS'));
+  }
+
+  function owned(first: number, owners: readonly string[], fields: Partial<TaskFields> = {}): RegisterEvent[] {
+    return owners.map((owner, index) => create(`T${first + index}`, TODAY, { owner, ...fields }));
+  }
+
+  const QUIET = ['bravo', 'charlie', 'delta', 'echo', 'foxtrot', 'golf', 'hotel', 'india'];
+
+  it('names the sessions that stand out with each cell not good, the low share in percent', () => {
+    const events = [...owned(1, QUIET), ...owned(11, ['alpha', 'alpha', 'alpha'], { type: 'bug', priority: 3 })];
+    assert.equal(areasLine([teamOf('app', events)], ['app']), 'AREAS 1 stands out: alpha bugs 3 [bad], low 100% [bad]');
+  });
+
+  it('puts whole teams first, by name, and a tree names each session with its team', () => {
+    const bugs = owned(11, ['alpha', 'alpha', 'alpha'], { type: 'bug' });
+    const line = areasLine([teamOf('app', [...owned(1, QUIET), ...bugs]), teamOf('web', owned(21, ['kilo'])), teamOf('ops', owned(31, ['lima'])), teamOf('ui', owned(41, ['mike']))], ['app', 'web', 'ops', 'ui']);
+    assert.equal(line, 'AREAS 2 stand out: app bugs 3 [bad]; app/alpha bugs 3 [bad]');
+  });
+
+  it('names six areas and counts the rest', () => {
+    const owners = ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8'];
+    const bugs = owners.flatMap((owner, index) => owned(100 + 10 * index, [owner, owner, owner], { type: 'bug' }));
+    const quiet = Array.from({ length: 24 }, (_, index) => `q${index}`);
+    const line = areasLine([teamOf('app', [...owned(1, quiet), ...bugs])], ['app']);
+    assert.match(line ?? '', /^AREAS 8 stand out: a1 bugs 3 \[bad\]; .*; a6 bugs 3 \[bad\]; 2 more$/);
   });
 });

@@ -143,6 +143,12 @@ describe('areaStats: the usual', () => {
     const { cells } = area(sessionsOf([create('T1', LONG_AGO, { type: 'bug' }), away, create('T2', LONG_AGO, { type: 'bug' })]), 'alpha');
     assert.deepEqual([cells.bugs.value, cells.bugs.usual], [1, 1]);
   });
+
+  it('takes an event written just out of time order in at the next day-end, and loses none after it', () => {
+    const written = [create('T1', '2029-12-20T10:00:00.000Z'), create('T2', '2029-12-19T10:00:00.000Z', { type: 'bug' }), create('T3', '2029-12-20T11:00:00.000Z', { type: 'bug' })];
+    const { cells } = area(sessionsOf(written), 'alpha');
+    assert.deepEqual([cells.bugs.value, cells.bugs.usual], [2, 2]);
+  });
 });
 
 describe('areaStats: the levels', () => {
