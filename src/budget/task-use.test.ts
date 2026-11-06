@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { MS_PER_DAY } from '../core/time.ts';
 import { EMPTY_USAGE, newCursor, pruneUsage, type UsageState } from './store.ts';
-import { attributedW, taskDaysOf, taskUseOf } from './task-use.ts';
+import { attributedW, taskDaysOf, taskUseOf, taskWOf } from './task-use.ts';
 import type { OpenTurn } from './tasks.ts';
 
 const DAY = '2030-01-08';
@@ -54,6 +54,30 @@ describe('taskDaysOf', () => {
 
   it('holds no day for a session with no task W', () => {
     assert.equal(taskDaysOf(usage({})).size, 0);
+  });
+});
+
+describe('taskWOf', () => {
+  const bySession = new Map<string, UsageState>([
+    ['alpha', usage({ [DAY]: { T7: 1_000_000 } })],
+    ['beta', usage({ [NEXT_DAY]: { T7: 500_000 }, [DAY]: { T7: 250_000, T8: 9_000_000 } }, [{ tasks: ['T7', 'T8'], held: { [DAY]: 1_000_000, [NEXT_DAY]: 3_000_000 } }])],
+    ['gamma', usage({}, [{ tasks: ['T9'], held: { [DAY]: 2_000_000 } }, { tasks: [], held: { [DAY]: 8_000_000 } }])],
+  ]);
+
+  it("sums every task's stored W and its share of the open turns that named it, never a turn that named none", () => {
+    assert.deepEqual(Object.fromEntries(taskWOf(bySession.values())), { T7: 3_750_000, T8: 11_000_000, T9: 2_000_000 });
+  });
+
+  it("reads each task's W as taskUseOf does", () => {
+    const all = taskWOf(bySession.values());
+    for (const task of ['T7', 'T8', 'T9']) {
+      assert.equal(all.get(task), taskUseOf(bySession, task).w, task);
+    }
+  });
+
+  it('is empty with no stores and with no task W', () => {
+    assert.equal(taskWOf([]).size, 0);
+    assert.equal(taskWOf([usage({})]).size, 0);
   });
 });
 
