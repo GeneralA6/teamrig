@@ -2,7 +2,7 @@ import { showStored } from '../core/time.ts';
 import { BLOCK_START_WORDS } from '../core/work-block.ts';
 import type { Task } from '../register/fold.ts';
 import { ACTIVE_STATUSES, priorityText, type TaskStatus } from '../register/model.ts';
-import type { TaskTree } from '../register/tree.ts';
+import type { TaskTree, WaitingOnYou } from '../register/tree.ts';
 import { cut, formatWaitingOnYou, rankParts } from '../register/views.ts';
 import { unfinishedAfter, waitsText, type WaitContext } from '../register/waits.ts';
 
@@ -72,11 +72,10 @@ function liveRow(task: Task, tree: TaskTree): string {
 
 /**
  * `WAITING ON YOU 2 task(s) of other sessions:` and a row each: the active tasks of other sessions that need the
- * owner's unfinished tasks or wait on its decision or approval, in plan order, at most LIVE_WAITING_ROWS of them and a
- * `+N more` line naming `start`; nothing when none waits.
+ * owner's unfinished tasks or wait on its decision or approval, in the order given, at most LIVE_WAITING_ROWS of them
+ * and a `+N more` line naming `start`; nothing when none waits.
  */
-function waitingLines(owner: string, tree: TaskTree, command: string): string[] {
-  const waiting = tree.waitingOn(owner);
+function waitingLines(owner: string, waiting: readonly WaitingOnYou[], tree: TaskTree, command: string): string[] {
   if (waiting.length === 0) {
     return [];
   }
@@ -91,11 +90,10 @@ export interface LiveTasksInput {
   readonly tasks: Iterable<Task>;
   /** The session whose tasks these are. */
   readonly owner: string;
-  /**
-   * The dependency tree of the same read: which wait reasons are ready and which plan dependencies are finished, each
-   * task's effective due, and the other sessions' tasks waiting on the owner.
-   */
+  /** The dependency tree of the same read: which wait reasons are ready and which plan dependencies are finished, and each task's effective due. */
   readonly tree: TaskTree;
+  /** The other sessions' tasks waiting on the owner, in the order the block lists them. */
+  readonly waiting: readonly WaitingOnYou[];
   /** The CLI name the `+N more` line tells the session to run. */
   readonly command: string;
 }
@@ -106,18 +104,18 @@ export interface LiveTasksInput {
  * `+N more` line naming the command that lists the rest (one line when the owner has none), then the other
  * sessions' tasks waiting on the owner, when some do.
  */
-export function liveTasksNote({ tasks, owner, tree, command }: LiveTasksInput): string {
+export function liveTasksNote({ tasks, owner, tree, waiting, command }: LiveTasksInput): string {
   const active = [...tasks].filter((task) => task.owner === owner && ACTIVE_STATUSES.includes(task.status)).sort(byLiveOrder(tree));
   const source = `LIVE TASKS of ${owner}, read from the register at this start`;
   const wins = 'where your handover or a compaction summary says otherwise, the register wins';
-  const waiting = waitingLines(owner, tree, command);
+  const waitingRows = waitingLines(owner, waiting, tree, command);
   if (active.length === 0) {
-    return [`${source}: none active; ${wins}.`, ...waiting].join('\n');
+    return [`${source}: none active; ${wins}.`, ...waitingRows].join('\n');
   }
   const rows = active.slice(0, LIVE_TASK_ROWS).map((task) => liveRow(task, tree));
   const left = active.length - rows.length;
   const more = left > 0 ? [`  +${left} more: \`${command} list --session ${owner}\``] : [];
-  return [`${source} (${active.length} active; ${wins}):`, ...rows, ...more, ...waiting].join('\n');
+  return [`${source} (${active.length} active; ${wins}):`, ...rows, ...more, ...waitingRows].join('\n');
 }
 
 /** What `start` prints before the task list, read at the start whose note carries the live-task block (T1529). */

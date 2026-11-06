@@ -1,8 +1,10 @@
+import type { LeadTree } from '../config/lead-tree.ts';
 import type { FocusConfig } from '../config/types.ts';
 import { MS_PER_MINUTE } from '../core/time.ts';
 import { answerTo } from './approval.ts';
 import { classOf } from './focus.ts';
 import type { Task } from './fold.ts';
+import type { WaitingOnYou } from './tree.ts';
 import type { PersonWait } from './waits.ts';
 
 /** What the leader-wait rule reads of the focus config. */
@@ -26,4 +28,15 @@ export function leaderHolds(task: Pick<Task, 'workClass' | 'waits' | 'waitsAt' |
     return [];
   }
   return task.waits.filter((reason): reason is PersonWait => (reason.kind === 'decision' || reason.kind === 'approval') && leaders.includes(reason.who) && answerTo(task, reason) === undefined);
+}
+
+/**
+ * `waiting` with the tasks held on `session` first (T2076), the order kept inside each part: what a leader's list of
+ * work waiting on it shows at its top. An entry counts only when a hold names `session` itself, as a task can list here
+ * for needing the session's task while another leader holds it. A partition and no band in the plan order, as a pinned
+ * task outranks every band and the contract puts a held task at the top.
+ */
+export function heldFirst(waiting: readonly WaitingOnYou[], session: string, tree: Pick<LeadTree, 'approversOf'>, focus: LeaderWaitFocus, at: number): WaitingOnYou[] {
+  const isHeld = ({ task }: WaitingOnYou): boolean => leaderHolds(task, tree.approversOf(task.owner), focus, at).some((hold) => hold.who === session);
+  return [...waiting.filter(isHeld), ...waiting.filter((entry) => !isHeld(entry))];
 }

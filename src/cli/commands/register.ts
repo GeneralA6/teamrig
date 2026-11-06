@@ -25,6 +25,7 @@ import { currentWeekOf } from '../../register/week.ts';
 import type { ApprovalVerdict, TaskFields } from '../../register/events.ts';
 import { fitLines, leftOfWeek, overLimitFlag, weekFit, type WeekFit } from '../../register/fit.ts';
 import type { Task } from '../../register/fold.ts';
+import { heldFirst } from '../../register/leader-wait.ts';
 import { bugHint } from '../../register/bug-hint.ts';
 import { reviewGap, reviewGapText } from '../../register/review.ts';
 import { renderPlan } from '../../register/plan.ts';
@@ -875,13 +876,16 @@ function elsewhereLines({ team, task }: TaskElsewhere, own: RolledTeam, withTree
 
 /**
  * `start`'s WAITING ON YOU block: the active tasks of other sessions that need the caller's unfinished tasks or wait
- * on its decision or approval, from the working set (a finished task waits on no one); `--all` lists every one.
+ * on its decision or approval, from the working set (a finished task waits on no one), the Roadmap work held on the
+ * caller past the limit first; `--all` lists every one.
  */
 export async function waitingReport(args: ParsedArgs, runtime: CliRuntime): Promise<string[]> {
   const { own } = await settle(runtime, await ownRegister(runtime), () => false);
   const owner = sessionIdOf(own.roster, callerOf(args.flags, runtime.env));
   const tree = taskTreeOf(own, runtime);
-  return waitingOnLines(owner, tree.waitingOn(owner), tree, args.switches.has('all'));
+  // No parent lead here: a hold counts only when it names the caller, and a wait on the team above never does.
+  const waiting = heldFirst(tree.waitingOn(owner), owner, new LeadTree(own.config), own.config.focus, runtime.clock.now());
+  return waitingOnLines(owner, waiting, tree, args.switches.has('all'));
 }
 
 /**
