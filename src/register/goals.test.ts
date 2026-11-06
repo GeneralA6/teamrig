@@ -6,17 +6,23 @@ import {
   foldGoals,
   GOAL_RECORD_VERSION,
   goalAddRefusal,
+  goalRankRefusal,
   goalRecordJson,
   goalSetRefusal,
   isGoalDay,
+  isGoalRank,
   NO_GOALS,
+  openKeyResults,
   parseGoalRecord,
   readGoals,
   type GoalAdd,
   type GoalAddInput,
+  type GoalRank,
+  type GoalRankInput,
   type GoalRecord,
   type GoalSet,
   type GoalSetInput,
+  type KeyResultCap,
 } from './goals.ts';
 
 const add = (over: Partial<GoalAdd> = {}): GoalAdd => ({
@@ -41,6 +47,18 @@ const set = (over: Partial<GoalSet> = {}): GoalSet => ({
   note: 'the review took a week',
   ...over,
 });
+
+const rank = (over: Partial<GoalRank> = {}): GoalRank => ({
+  type: 'goal-rank',
+  at: '2030-01-09T10:00:00.000Z',
+  by: 'lead',
+  tag: 'A1',
+  rank: 1,
+  ...over,
+});
+
+/** A cap no spec but the key-result ones reaches. */
+const ROOMY_CAP: KeyResultCap = { max: 5, today: '2030-01-08' };
 
 /** One parsed line of a goals file holding `record`. */
 function lineOf(record: JsonRecord): ReturnType<typeof parseGoalRecord> {
@@ -74,6 +92,13 @@ describe('parseGoalRecord', () => {
     assert.deepEqual(lineOf(goalRecordJson(set({ target: null, title: 'Ship it' }))), { kind: 'record', record: set({ target: null, title: 'Ship it' }) });
   });
 
+  it('reads a rank record, and one with no rank field as taking the goal off the ranking (T2083)', () => {
+    assert.deepEqual(lineOf(goalRecordJson(rank({ rank: 3 }))), { kind: 'record', record: rank({ rank: 3 }) });
+    assert.deepEqual(lineOf(goalRecordJson(rank({ rank: null }))), { kind: 'record', record: rank({ rank: null }) });
+    const noRank = Object.fromEntries(Object.entries(goalRecordJson(rank())).filter(([key]) => key !== 'rank'));
+    assert.deepEqual(lineOf(noRank), { kind: 'record', record: rank({ rank: null }) });
+  });
+
   it('counts a record of a newer format without reading it', () => {
     assert.deepEqual(lineOf({ ...goalRecordJson(add()), v: GOAL_RECORD_VERSION + 1, title: 3 }), { kind: 'newer' });
   });
@@ -91,6 +116,10 @@ describe('parseGoalRecord', () => {
       [{ ...goalRecordJson(set()), target: 'soon' }, 'target is not a day'],
       [{ ...goalRecordJson(set()), title: '' }, 'title is not text'],
       [{ ...goalRecordJson(add()), type: 'goal-drop' }, 'unknown type "goal-drop"'],
+      [{ ...goalRecordJson(rank()), rank: 0 }, 'rank 0 is not a whole number from 1 to 99'],
+      [{ ...goalRecordJson(rank()), rank: 100 }, 'rank 100 is not a whole number from 1 to 99'],
+      [{ ...goalRecordJson(rank()), rank: 1.5 }, 'rank 1.5 is not a whole number from 1 to 99'],
+      [{ ...goalRecordJson(rank()), rank: '1' }, 'rank "1" is not a whole number from 1 to 99'],
     ];
     for (const [record, reason] of cases) {
       assert.deepEqual(lineOf(record), { kind: 'unreadable', reason });
@@ -103,6 +132,19 @@ describe('goalRecordJson', () => {
     assert.deepEqual(Object.keys(goalRecordJson(add())), ['v', 'type', 'at', 'by', 'tag', 'title', 'start', 'target', 'parent']);
     assert.deepEqual(goalRecordJson(set({ title: null })), { v: 1, type: 'goal-set', at: set().at, by: 'lead', tag: 'A1', note: set().note, target: '2030-02-07' });
     assert.equal('target' in goalRecordJson(set({ target: null, title: 'New' })), false);
+  });
+
+  it('writes an add and a set as format 1, so an older teamrig still reads them, and a rank as format 2 (T2083)', () => {
+    assert.equal(GOAL_RECORD_VERSION, 2);
+    assert.equal(goalRecordJson(add())['v'], 1);
+    assert.equal(goalRecordJson(set())['v'], 1);
+    assert.deepEqual(goalRecordJson(rank({ rank: null })), { v: 2, type: 'goal-rank', at: rank().at, by: 'lead', tag: 'A1', rank: null });
+  });
+});
+
+describe('isGoalRank', () => {
+  it('takes a whole number from 1 to 99 only', () => {
+    assert.deepEqual([1, 99, 0, 100, 2.5, '2', null].map((value) => isGoalRank(value)), [true, true, false, false, false, false, false]);
   });
 });
 
@@ -129,7 +171,22 @@ describe('foldGoals', () => {
         { at: '2030-01-10T10:00:00.000Z', by: 'lead', from: '2030-01-31', to: '2030-02-07', note: 'the review took a week' },
         { at: '2030-01-13T10:00:00.000Z', by: 'ops', from: '2030-02-07', to: '2030-02-14', note: 'a holiday' },
       ],
+      rank: null,
     });
+  });
+
+  it('keeps the latest rank, a null one taking the goal off, and ignores a rank before its add (T2083)', () => {
+    const { goals, ignored } = foldGoals([rank({ tag: 'B1', rank: 1 }), add(), add({ tag: 'B1' }), rank({ rank: 2 }), rank({ tag: 'B1', rank: 1 }), rank({ rank: null }), rank({ rank: 4 })]);
+    assert.equal(ignored, 1);
+    assert.equal(goals.get('A1')?.rank, 4);
+    assert.equal(goals.get('B1')?.rank, 1);
+    assert.equal(foldGoals([add(), rank({ rank: 2 }), rank({ rank: null })]).goals.get('A1')?.rank, null);
+  });
+
+  it('leaves the title, target and slips to a rank record', () => {
+    const before = foldGoals([add(), set()]).goals.get('A1');
+    const after = foldGoals([add(), set(), rank({ rank: 7 })]).goals.get('A1');
+    assert.deepEqual(after, before === undefined ? undefined : { ...before, rank: 7 });
   });
 
   it('ignores a set before its goal is added and a second add of a tag, keeping goals in add order', () => {
@@ -172,8 +229,8 @@ describe('goalAddRefusal', () => {
   });
 
   it('lets a new goal in, a top one or one under an existing goal', () => {
-    assert.equal(goalAddRefusal(input(), goals), undefined);
-    assert.equal(goalAddRefusal(input({ tag: 'A1.1', parent: 'A1', start: '2030-01-20', target: '2030-01-20' }), goals), undefined);
+    assert.equal(goalAddRefusal(input(), goals, ROOMY_CAP), undefined);
+    assert.equal(goalAddRefusal(input({ tag: 'A1.1', parent: 'A1', start: '2030-01-20', target: '2030-01-20' }), goals, ROOMY_CAP), undefined);
   });
 
   it('says why it refuses each bad add', () => {
@@ -188,7 +245,66 @@ describe('goalAddRefusal', () => {
       [{ parent: 'Z9' }, /--parent Z9 is not a goal; add it first/],
     ];
     for (const [over, refusal] of cases) {
-      assert.match(goalAddRefusal(input(over), goals) ?? '', refusal);
+      assert.match(goalAddRefusal(input(over), goals, ROOMY_CAP) ?? '', refusal);
+    }
+  });
+
+  describe('the key-result cap (focus.maxActiveKeyResults, T2083)', () => {
+    // A1 holds two key results: A1.1 due on today's day, A1.2 due before it.
+    const held = foldGoals([
+      add(),
+      add({ tag: 'A1.1', parent: 'A1', target: '2030-01-10' }),
+      add({ tag: 'A1.2', parent: 'A1', target: '2030-01-09' }),
+    ]).goals;
+    const cap = (max: number): KeyResultCap => ({ max, today: '2030-01-10' });
+    const keyResult = input({ tag: 'A1.3', parent: 'A1' });
+
+    it('counts only goals with a parent whose target is today or later', () => {
+      assert.deepEqual(
+        openKeyResults(held, '2030-01-10').map((goal) => goal.tag),
+        ['A1.1'],
+      );
+      assert.deepEqual(
+        openKeyResults(held, '2030-01-09').map((goal) => goal.tag),
+        ['A1.1', 'A1.2'],
+      );
+    });
+
+    it('refuses a key result past the cap, and a past-target one frees its slot', () => {
+      assert.match(
+        goalAddRefusal(keyResult, held, cap(1)) ?? '',
+        /the team holds 1 key results \(goals with a parent\) with a target of 2030-01-10 or later, the most focus\.maxActiveKeyResults allows: finish one or move its target first/,
+      );
+      assert.equal(goalAddRefusal(keyResult, held, cap(2)), undefined);
+      assert.match(goalAddRefusal(keyResult, held, { max: 2, today: '2030-01-09' }) ?? '', /the team holds 2 key results/);
+    });
+
+    it('never caps a top goal', () => {
+      assert.equal(goalAddRefusal(input(), held, cap(0)), undefined);
+    });
+  });
+});
+
+describe('goalRankRefusal', () => {
+  const goals = foldGoals([add(), add({ tag: 'B1' }), rank({ tag: 'B1', rank: 2 })]).goals;
+  const input = (over: Partial<GoalRankInput> = {}): GoalRankInput => ({ tag: 'A1', rank: 1, ...over });
+
+  it('lets a new rank in, and takes a ranked goal off', () => {
+    assert.equal(goalRankRefusal(input(), goals), undefined);
+    assert.equal(goalRankRefusal(input({ tag: 'B1', rank: null }), goals), undefined);
+    assert.equal(goalRankRefusal(input({ tag: 'B1', rank: 1 }), goals), undefined);
+  });
+
+  it('says why it refuses each bad rank', () => {
+    const cases: readonly (readonly [Partial<GoalRankInput>, string])[] = [
+      [{ tag: 'C1' }, 'goal C1 does not exist; add it with goal add'],
+      [{ rank: 0 }, 'a rank is a whole number from 1 to 99, or none'],
+      [{ rank: 1.5 }, 'a rank is a whole number from 1 to 99, or none'],
+      [{ rank: null }, 'goal A1 is not ranked; nothing to change'],
+      [{ tag: 'B1', rank: 2 }, 'goal B1 already ranks 2; nothing to change'],
+    ];
+    for (const [over, refusal] of cases) {
+      assert.equal(goalRankRefusal(input(over), goals), refusal);
     }
   });
 });

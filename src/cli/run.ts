@@ -123,6 +123,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'report done': { effect: 'read', flags: ['session', 'day'], switches: ['all'], load: async () => (await reportCommands()).reportDone },
   'goal add': { effect: 'write', flags: ['session', 'title', 'start', 'target', 'parent'], load: async () => (await goalCommands()).goalAdd },
   'goal set': { effect: 'write', flags: ['session', 'target', 'title', 'note'], load: async () => (await goalCommands()).goalSet },
+  'goal rank': { effect: 'write', flags: ['session'], load: async () => (await goalCommands()).goalRank },
   'goal list': { effect: 'read', flags: ['session'], load: async () => (await goalCommands()).goalList },
   'goal show': { effect: 'read', flags: ['session'], load: async () => (await goalCommands()).goalShow },
   files: { effect: 'write', flags: ['session'], switches: ['notes'], load: async () => (await filesCommands()).files },
@@ -485,11 +486,16 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       other work and dropped as one line, or their rows with --all; --session: one owner's tasks
   goal add <tag> --title "<title>" --target <YYYY-MM-DD> [--start <YYYY-MM-DD>] [--parent <tag>]
       the lead adds one of the team's goals: a tag (A1, A2.1), a title and its planned window from
-      --start (default today) to --target; --parent: the goal it is part of
+      --start (default today) to --target; --parent: the goal it is part of (a key result, refused past
+      focus.maxActiveKeyResults ones with a target of today or later)
   goal set <tag> [--target <YYYY-MM-DD>] [--title "<title>"] --note "<why>"   the lead moves a goal's
       target (a slip, kept with its note) or renames it
-  goal list   the team's goals as a tree, each with its window, slips and title
-  goal show <tag>   one goal: its window, who added it and when, its parts, and each slip with its note
+  goal rank <tag> <n>|none   the lead ranks a goal, 1 first, or takes it off the ranking; goal-first
+      ranking gives a task the best rank of its goals and the goals they are part of
+  goal list   the team's goals, the ranked ones first, then the rest as a tree, each with its window,
+      slips, rank and title
+  goal show <tag>   one goal: its window, rank, who added it and when, its parts, and each slip with its
+      note
   files <id> | files --notes [--session <id|name>]   prints the folder for a task's files (design.md,
       build.md, plan.md, review.md, evidence/, scripts/, out/) in the team that holds it, or for your notes
       that belong to no task; makes it when missing

@@ -22,6 +22,7 @@ const EXPECTED = {
   'report done': 'read',
   'goal add': 'write',
   'goal set': 'write',
+  'goal rank': 'write',
   'goal list': 'read',
   'goal show': 'read',
   files: 'write',
