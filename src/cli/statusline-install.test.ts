@@ -2,9 +2,12 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { formatConfig } from '../config/load.ts';
+import { KIT_VERSION } from '../core/version.ts';
+import { LAUNCHER_RECORD_FORMAT, launcherRecordPath } from '../restore/launcher-refresh.ts';
 import { launcherCommand } from '../statusline/install.ts';
 import { LAUNCHER_SCRIPT } from '../statusline/launcher.ts';
 import { CliHarness, KIT, USER_HOME } from '../testing/cli-harness.ts';
+import { holderLetsGo, holdFileLock } from '../testing/held-file-lock.ts';
 import { EXIT } from './runtime.ts';
 
 const SETTINGS = join(USER_HOME, '.claude', 'settings.json');
@@ -14,6 +17,16 @@ const THEIRS = 'node "/u/.claude/scripts/statusline.cjs"';
 const BACKUP = join(KIT, 'backups', 'claude-settings.json');
 /** Settings with a status line already there and another key that must stay as it is. */
 const ORIGINAL = formatConfig({ theme: 'dark', statusLine: { type: 'command', command: THEIRS, padding: 1 } });
+/** Settings that already name the launcher, so only the launcher file can change. */
+const INSTALLED = formatConfig({ statusLine: { type: 'command', command: OWN } });
+/** The launcher refresh's record (src/restore/launcher-refresh.ts) and its lock. */
+const RECORD = launcherRecordPath(KIT);
+const RECORD_LOCK = `${RECORD}.lock`;
+
+/** The record as a session start of `version` wrote it at `at`. */
+function record(version: string, at: string = '2030-01-01T10:00:00.000Z'): string {
+  return `${JSON.stringify({ v: LAUNCHER_RECORD_FORMAT, version, at }, null, 2)}\n`;
+}
 
 async function withSettings(text: string | undefined): Promise<CliHarness> {
   const kit = new CliHarness(null, null);
@@ -95,6 +108,59 @@ describe('teamrig statusline install', () => {
     const result = await kit.run(['statusline', 'install'], { env: { CLAUDE_CONFIG_DIR: join('/', 'cfg') } });
     assert.equal(result.stdout[2], `  CHANGE ${join('/', 'cfg', 'settings.json')} statusLine.command: (none) -> ${OWN}`);
   });
+
+  it('first lowers a record a newer teamrig left, so the next session start of a newer one writes its launcher back', async () => {
+    const kit = await withSettings(INSTALLED);
+    await kit.files.write(LAUNCHER, '// a newer launcher\n');
+    await kit.files.write(RECORD, record('99.0.0'));
+    const lowered = `  SET ${RECORD}: 99.0.0 -> ${KIT_VERSION}, so the next start of a newer teamrig refreshes what this writes`;
+    const preview = await kit.run(['statusline', 'install']);
+    assert.deepEqual([preview.stdout, kit.files.get(RECORD)], [['PREVIEW nothing written (add --yes to write)', lowered, `  WRITE ${LAUNCHER}`], record('99.0.0')]);
+    const result = await kit.run(['statusline', 'install', '--yes']);
+    assert.deepEqual([result.code, result.stdout], [EXIT.ok, ['WROTE the changes below', lowered, `  WRITE ${LAUNCHER}`]]);
+    assert.deepEqual([kit.files.get(RECORD), kit.files.get(RECORD_LOCK)], [record(KIT_VERSION, '2030-01-08T10:00:00.000Z'), undefined]);
+  });
+
+  it('keeps the record when the launcher stays, when it names an older version, and never creates one', async () => {
+    const none = await withSettings(undefined);
+    assert.equal((await none.run(['statusline', 'install', '--yes'])).code, EXIT.ok);
+    assert.equal(none.files.get(RECORD), undefined);
+    const settingsOnly = await withSettings(undefined);
+    await settingsOnly.files.write(LAUNCHER, LAUNCHER_SCRIPT);
+    await settingsOnly.files.write(RECORD, record('99.0.0'));
+    const changed = await settingsOnly.run(['statusline', 'install', '--yes']);
+    assert.deepEqual(
+      [changed.stdout, settingsOnly.files.get(RECORD)],
+      [['WROTE the changes below', `  CHANGE ${SETTINGS} statusLine.command: (none) -> ${OWN}`], record('99.0.0')],
+    );
+    const older = await withSettings(INSTALLED);
+    await older.files.write(LAUNCHER, '// an older launcher\n');
+    await older.files.write(RECORD, record('0.1.0'));
+    const refreshed = await older.run(['statusline', 'install', '--yes']);
+    assert.deepEqual([refreshed.stdout, older.files.get(RECORD)], [['WROTE the changes below', `  WRITE ${LAUNCHER}`], record('0.1.0')]);
+  });
+
+  it('waits for a session start refreshing the launchers to let go of the record lock before it reads or writes', async () => {
+    const kit = await withSettings(undefined);
+    await holdFileLock(kit, RECORD_LOCK);
+    const seen: Array<string | undefined> = [];
+    const result = await kit.run(['statusline', 'install', '--yes'], { sleep: holderLetsGo(kit, RECORD_LOCK, LAUNCHER, seen) });
+    assert.equal(result.code, EXIT.ok, result.stdout.join('\n'));
+    assert.deepEqual([seen, kit.files.get(LAUNCHER), kit.files.get(RECORD_LOCK)], [[undefined], LAUNCHER_SCRIPT, undefined]);
+  });
+
+  it('takes no lock for a preview, so a refresh in progress never holds it up', async () => {
+    const kit = await withSettings(undefined);
+    await holdFileLock(kit, RECORD_LOCK);
+    const result = await kit.run(['statusline', 'install']);
+    assert.deepEqual([result.code, result.stdout[0], kit.clock.sleeps], [EXIT.ok, 'PREVIEW nothing written (add --yes to write)', []]);
+  });
+
+  it('lets go of the record lock when it refuses', async () => {
+    const kit = await withSettings('{ "theme": ');
+    const result = await kit.run(['statusline', 'install', '--yes']);
+    assert.deepEqual([result.code, kit.files.get(RECORD_LOCK)], [EXIT.refused, undefined]);
+  });
 });
 
 describe('teamrig statusline uninstall', () => {
@@ -119,5 +185,16 @@ describe('teamrig statusline uninstall', () => {
     const result = await kit.run(['statusline', 'uninstall', '--yes']);
     assert.deepEqual([result.code, result.stdout], [EXIT.ok, [`UNCHANGED ${SETTINGS}: teamrig is not the status line`]]);
     assert.equal(kit.files.get(SETTINGS), ORIGINAL);
+  });
+
+  it('waits for a session start refreshing the launchers to let go of the record lock, and leaves the record as it was', async () => {
+    const kit = await withSettings(INSTALLED);
+    await kit.files.write(LAUNCHER, LAUNCHER_SCRIPT);
+    await kit.files.write(RECORD, record('99.0.0'));
+    await holdFileLock(kit, RECORD_LOCK);
+    const seen: Array<string | undefined> = [];
+    const result = await kit.run(['statusline', 'uninstall', '--yes'], { sleep: holderLetsGo(kit, RECORD_LOCK, LAUNCHER, seen) });
+    assert.equal(result.code, EXIT.ok, result.stdout.join('\n'));
+    assert.deepEqual([seen, kit.files.get(LAUNCHER), kit.files.get(RECORD), kit.files.get(RECORD_LOCK)], [[LAUNCHER_SCRIPT], undefined, record('99.0.0'), undefined]);
   });
 });
