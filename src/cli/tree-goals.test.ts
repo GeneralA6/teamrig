@@ -1,11 +1,14 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import { DEFAULT_REGISTER } from '../config/defaults.ts';
 import { formatConfig } from '../config/load.ts';
-import type { CliHarness, CliResult } from '../testing/cli-harness.ts';
+import type { GoalsMode } from '../config/types.ts';
+import { KIT, type CliHarness, type CliResult } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { SUB_TEAMS, teamConfigOf, teamHomeOf, treeHarness } from '../testing/team-tree.ts';
 import { EXIT } from './runtime.ts';
+import { KitTreeGoals } from './tree-goals.ts';
 
 const UI = { env: { TEAMRIG_TEAM: 'ui' } };
 /** The lead of team ui adds pixel a p2 task titled `title`. */
@@ -44,6 +47,41 @@ async function goalTree(goals: string): Promise<CliHarness> {
   }
   return kit;
 }
+
+/** What {@link KitTreeGoals.all} reads for `team`, under its `register.goals`, by tag and title. */
+async function allGoalsOf(kit: CliHarness, team: string, goals: GoalsMode): Promise<Record<string, string>> {
+  const paths = { team, goals: goalsOf(team) };
+  const parent = team === 'app' ? {} : { team: { id: team, parent: team === 'ui' ? 'web' : 'app' } };
+  const all = await new KitTreeGoals(kit.runtime(), paths, { ...parent, register: { ...DEFAULT_REGISTER, goals } }).all();
+  return Object.fromEntries([...all].map(([tag, goal]) => [tag, goal.title]));
+}
+
+describe('KitTreeGoals.all: every goal a task may serve, for its rank (T2076)', () => {
+  it("reads the team's own goals and each team's above it, never a sibling's", async () => {
+    const kit = await goalTree('checked');
+    assert.deepEqual(await allGoalsOf(kit, 'ui', 'checked'), { A1: 'Goal A1', B1: 'Goal B1', D1: 'Goal D1' });
+  });
+
+  it('reads them under free too, as a rank counts whatever register.goals says', async () => {
+    const kit = await goalTree('free');
+    assert.deepEqual(await allGoalsOf(kit, 'ui', 'free'), { A1: 'Goal A1', B1: 'Goal B1', D1: 'Goal D1' });
+  });
+
+  it('reads a tag two teams hold as the nearest team holds it', async () => {
+    const kit = await goalTree('checked');
+    ok(await kit.run(['goal', 'add', 'A1', '--title', 'Web view of A1', '--target', '2030-02-01', '--session', 'lead'], { env: { TEAMRIG_TEAM: 'web' } }));
+    assert.equal((await allGoalsOf(kit, 'ui', 'checked'))['A1'], 'Web view of A1');
+    ok(await kit.run(['goal', 'add', 'A1', '--title', 'Ui view of A1', '--target', '2030-02-01', '--session', 'lead'], UI));
+    assert.equal((await allGoalsOf(kit, 'ui', 'checked'))['A1'], 'Ui view of A1');
+  });
+
+  it('reads a root team from its own file, without the tree', async () => {
+    const kit = await goalTree('checked');
+    const files = new FaultyFiles(kit.files).fail('list', join(KIT, 'teams'), systemError('EACCES'));
+    const all = await new KitTreeGoals(kit.runtime({ files }), { team: 'app', goals: goalsOf('app') }, { register: DEFAULT_REGISTER }).all();
+    assert.deepEqual([...all.keys()], ['A1']);
+  });
+});
 
 describe('register.goals: goal tags held to the goal records of the team and those above it (T1730)', () => {
   it("takes a tag of the team's own goal records or a team's above it, and refuses a sibling team's", async () => {
