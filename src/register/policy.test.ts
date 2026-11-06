@@ -58,8 +58,17 @@ describe('RegisterPolicy.add', () => {
     const verdict = policy.add({ ...INPUT, title: '  Add a health check ' }, EMPTY);
     assert.deepEqual(verdict, {
       ok: true,
-      value: { title: 'Add a health check', description: 'what and why', owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null },
+      value: { title: 'Add a health check', description: 'what and why', owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null },
     });
+  });
+
+  it('keeps a work class of focus.classes, and refuses any other (T2076)', () => {
+    const verdict = policy.add({ ...INPUT, workClass: 'Roadmap' }, EMPTY);
+    assert.equal(verdict.ok ? verdict.value.workClass : undefined, 'Roadmap');
+    assert.equal(error(policy.add({ ...INPUT, workClass: 'Chores' }, EMPTY)), 'class Chores is not one of focus.classes (Roadmap, Maintenance, Improvements)');
+    const own = new RegisterPolicy(testConfig({ focus: { classes: ['Product', 'Upkeep'], roadmapClass: 'Product', maintenanceClass: 'Upkeep', defaultClass: 'Upkeep', allocation: { Product: 70, Upkeep: 30 } } }));
+    assert.equal(error(own.add({ ...INPUT, workClass: 'Product' }, EMPTY)), 'allowed', "a team's own classes");
+    assert.equal(error(own.add({ ...INPUT, workClass: 'Roadmap' }, EMPTY)), 'class Roadmap is not one of focus.classes (Product, Upkeep)');
   });
 
   it("takes teamrig's p0 beside the configured levels, a team with its own levels included", () => {
@@ -149,7 +158,7 @@ describe('RegisterPolicy.add', () => {
 
   it('refuses an active task with the same title, but not a closed one', () => {
     const open = foldEvents([
-      { v: 1, type: 'create', id: 'T4', at: TASK.createdAt, by: 'lead', task: { ...INPUT, description: null, ref: null, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null } },
+      { v: 1, type: 'create', id: 'T4', at: TASK.createdAt, by: 'lead', task: { ...INPUT, description: null, ref: null, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null } },
     ]);
     assert.match(error(policy.add({ ...INPUT, title: 'add a  HEALTH check' }, open)), /T4 already tracks this \(open, owner alpha\)/);
     const closed = foldEvents([
@@ -212,7 +221,7 @@ describe('RegisterPolicy: the description', () => {
   });
 
   it("leaves the description to the owner: the lead may not change it on another session's task", () => {
-    assert.equal(error(policy.update(TASK, 'lead', { description: 'Why it matters.' }, undefined, EMPTY)), 'a leader may change only owner, priority, due, week, after, size, type, critical, pin on a task it does not own (asked: description)');
+    assert.equal(error(policy.update(TASK, 'lead', { description: 'Why it matters.' }, undefined, EMPTY)), 'a leader may change only owner, priority, due, week, after, size, type, critical, pin, workClass on a task it does not own (asked: description)');
     assert.equal(error(policy.update(TASK, 'bravo', { description: 'Why it matters.' }, undefined, EMPTY)), 'only the owner (alpha) or the lead (lead) changes T1');
   });
 
@@ -815,6 +824,7 @@ describe('RegisterPolicy.ask', () => {
         type: null,
         critical: false,
         pin: null,
+        workClass: null,
       },
     });
     const undated = asking(PLANNED, 'alpha', { owner: 'alpha', title: 'Write the migration' });
@@ -875,8 +885,10 @@ describe('RegisterPolicy.update', () => {
     assert.match(error(policy.update(TASK, 'alpha', { priority: 7 }, undefined, EMPTY)), /priority p7 is not one of/);
   });
 
-  it('lets the lead change only owner, priority, due, week, after, size, type, critical and pin', () => {
+  it('lets the lead change only owner, priority, due, week, after, size, type, critical, pin and work class', () => {
     assert.equal(policy.update(TASK, 'lead', { owner: 'bravo', due: '2030-01-10' }, undefined, EMPTY).ok, true);
+    assert.deepEqual(policy.update(TASK, 'lead', { workClass: 'Maintenance' }, undefined, EMPTY), { ok: true, value: { changes: { workClass: 'Maintenance' }, note: null } });
+    assert.equal(error(policy.update(TASK, 'bravo', { workClass: 'Roadmap' }, undefined, EMPTY)), 'only the owner (alpha) or the lead (lead) changes T1');
     assert.equal(policy.update(TASK, 'lead', { after: [] }, undefined, EMPTY).ok, true);
     assert.deepEqual(policy.update(TASK, 'lead', { size: 2.5 }, undefined, EMPTY), { ok: true, value: { changes: { size: 2.5 }, note: null } });
     assert.equal(policy.update(TASK, 'lead', { size: null }, undefined, EMPTY).ok, true);
@@ -895,14 +907,22 @@ describe('RegisterPolicy.update', () => {
     assert.equal(error(policy.update(left, 'lead', { owner: 'yankee' }, undefined, EMPTY)), 'owner yankee is not a session on this team', 'an owner a write sets is a session');
     assert.equal(
       error(policy.update(left, 'lead', { title: 'x' }, undefined, EMPTY)),
-      'a leader may change only owner, priority, due, week, after, size, type, critical, pin, ref on a task it does not own (asked: title)',
+      'a leader may change only owner, priority, due, week, after, size, type, critical, pin, workClass, ref on a task it does not own (asked: title)',
     );
     assert.equal(error(policy.update(left, 'alpha', { ref: 'notes/new.md' }, undefined, EMPTY)), 'only the owner (zulu) or the lead (lead) changes T1');
     assert.equal(
       error(policy.update(TASK, 'lead', { ref: 'notes/new.md' }, undefined, EMPTY)),
-      'a leader may change only owner, priority, due, week, after, size, type, critical, pin on a task it does not own (asked: ref)',
+      'a leader may change only owner, priority, due, week, after, size, type, critical, pin, workClass on a task it does not own (asked: ref)',
       'an owner on the team keeps its own ref',
     );
+  });
+
+  it('keeps a class the team renamed out of focus.classes on any other change, and refuses setting one outside them (T2076)', () => {
+    const stale = testTask({ workClass: 'Chores' });
+    assert.equal(policy.update(stale, 'alpha', { title: 'Add two health checks' }, undefined, EMPTY).ok, true, 'a kept class stands');
+    assert.equal(error(policy.update(stale, 'alpha', { workClass: 'Toil' }, undefined, EMPTY)), 'class Toil is not one of focus.classes (Roadmap, Maintenance, Improvements)');
+    assert.equal(policy.update(stale, 'alpha', { workClass: null }, undefined, EMPTY).ok, true, 'clearing it');
+    assert.equal(policy.update(stale, 'alpha', { workClass: 'Roadmap' }, undefined, EMPTY).ok, true, 'one of the classes');
   });
 
   it('refuses a critical mark on a task, and clears the mark when a critical bug becomes a task (T1252)', () => {
@@ -1090,7 +1110,7 @@ describe('RegisterPolicy, the GitHub import', () => {
     const team = testTask({ title: 'Fix login', ref: 'gh:acme/web#7' });
     assert.deepEqual(policy.importAdd(ISSUE, stateOf(team)), {
       ok: true,
-      value: { title: 'Fix login', description: null, owner: 'bravo', source: 'github', ref: 'gh:acme/web#7', priority: 1, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null },
+      value: { title: 'Fix login', description: null, owner: 'bravo', source: 'github', ref: 'gh:acme/web#7', priority: 1, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null },
     });
     assert.equal(error(policy.importAdd(ISSUE, stateOf(team, IMPORTED))), 'T2 already has ref gh:acme/web#7');
     assert.equal(error(policy.importAdd({ ...ISSUE, owner: 'octocat' }, EMPTY)), 'owner octocat is not a session on this team');

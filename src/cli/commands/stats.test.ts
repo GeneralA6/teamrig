@@ -117,7 +117,7 @@ describe('teamrig stats', () => {
   });
 });
 
-const FIELDS: TaskFields = { title: 'Ship it', description: null, owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null };
+const FIELDS: TaskFields = { title: 'Ship it', description: null, owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null };
 
 function create(id: string, at: string): RegisterEvent {
   return { v: EVENT_VERSION, type: 'create', id, at, by: 'lead', task: FIELDS };
