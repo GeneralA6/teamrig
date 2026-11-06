@@ -69,6 +69,8 @@ export { DONE_GROUP_KINDS, doneGroups, doneGroupTitle, URGENT_PRIORITY, type Don
 // The goal records (T1730): a team's goals with their planned window, target, every target move and rank (T2083),
 // read from the `goals.jsonl` text beside the event log.
 export { GOALS_FILE, NO_GOAL, NO_GOALS, readGoals, type Goal, type GoalSlip, type GoalsRead } from '../register/goals.ts';
+// A goal's progress (T1420): what `registerStats` folds per goal from the tasks that serve it, and the states it ends in.
+export { GOAL_PACE_DAYS, GOAL_STATES, type GoalDay, type GoalProgress, type GoalState, type GoalStats } from '../register/goal-stats.ts';
 
 // Time: the team's zone (`config.timeZone`, else the machine's). A stored bare day is a day of it, a stored minute is
 // UTC, and every time prints in it, zone-marked (`01-31 11:05 IST`); a reader passes it to the calls that print one.

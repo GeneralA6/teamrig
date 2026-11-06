@@ -38,7 +38,7 @@ export class KitTreeGoals implements GoalTagsReader {
     return new Map(reads.flatMap((read) => [...read.goals]));
   }
 
-  /** The goals files of the teams above this one; none for a root team, read without the tree. */
+  /** The goals files of the teams above this one, root first; none for a root team, read without the tree. */
   private async aboveFiles(): Promise<string[]> {
     if (this.config.team?.parent === undefined) {
       return [];
