@@ -2,7 +2,8 @@ import { errorMessage } from '../../core/guards.ts';
 import { resolveKitHome } from '../../core/home.ts';
 import { KIT_VERSION } from '../../core/version.ts';
 import { restoreLaunchers, restorePlan, type MachineStep, type RestoreMachine } from '../../restore/install-plan.ts';
-import { lowerRecordSteps } from '../../restore/launcher-refresh.ts';
+import { lowerRecordSteps, surveyRecordSteps } from '../../restore/launcher-refresh.ts';
+import type { FoundPart } from '../../restore/launcher-survey.ts';
 import type { LogonEntry } from '../../restore/logon.ts';
 import { RESTORE_SHORTCUT_NAME, shortcutLine, shortcutsToRemove } from '../../restore/shortcut.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
@@ -22,7 +23,9 @@ import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.t
  * at each session start shares (src/restore/launcher-refresh.ts). With --yes both take the refresh's record lock while
  * they read and write, so a refresh never interleaves with them, and an install that writes anything first lowers a
  * record naming a newer version to its own: an older teamrig on the PATH writes older texts, which the next start of
- * a newer one then writes back.
+ * a newer one then writes back. Last, both record in it what starts the restore once their steps are taken (the
+ * entry and each shortcut install set up, and each shortcut of that name left running anything else), which
+ * `teamrig check` reads (src/cli/launcher-record-check.ts); a record that holds that already is left as it is.
  */
 
 /** A machine with a logon entry teamrig can set, which install and uninstall need. */
@@ -35,9 +38,10 @@ export async function restoreInstall(args: ParsedArgs, runtime: CliRuntime): Pro
   noPositionals(args);
   const machine = machineOf(runtime, 'set up');
   return underRecordLock(args, runtime, machine.kitHome, async () => {
-    const { steps, unchanged } = await restorePlan(machine, 'install');
-    const lower = steps.length === 0 ? [] : await lowerRecordSteps(machine.files, machine.kitHome, KIT_VERSION, runtime.clock.now());
-    return apply(args, runtime, [...lower, ...steps], unchanged);
+    const { steps, unchanged, after } = await restorePlan(machine, 'install');
+    const now = runtime.clock.now();
+    const lower = steps.length === 0 ? [] : await lowerRecordSteps(machine.files, machine.kitHome, KIT_VERSION, now);
+    return apply(args, runtime, [...lower, ...steps, ...(await surveyRecordSteps(machine.files, machine.kitHome, after, now))], unchanged);
   });
 }
 
@@ -50,14 +54,21 @@ export async function restoreUninstall(args: ParsedArgs, runtime: CliRuntime): P
     const before = await logon.read();
     const steps: MachineStep[] = before === undefined ? [] : [{ line: `REMOVE ${logon.where}: ${before}`, act: () => logon.remove() }];
     const unchanged = [`${logon.where}: the restore check does not run at logon`];
+    const kept: FoundPart[] = [];
     if (shortcuts !== undefined) {
-      for (const found of shortcutsToRemove(await shortcuts.scan(), run.path)) {
+      const scan = await shortcuts.scan();
+      const removed = shortcutsToRemove(scan, run.path);
+      for (const found of removed) {
         steps.push({ line: `REMOVE ${found.path}: ${shortcutLine(found)}`, act: () => shortcuts.remove(found.path) });
+      }
+      for (const found of scan.found.filter((shortcut) => !removed.includes(shortcut))) {
+        kept.push({ kind: 'shortcut', where: found.path, runs: shortcutLine(found) });
       }
       unchanged.push(`no ${RESTORE_SHORTCUT_NAME} runs ${run.path}`);
     }
     steps.push(...(await removeIfThere(runtime, check.path)), ...(await removeIfThere(runtime, run.path)));
-    return apply(args, runtime, steps, unchanged);
+    const survey = await surveyRecordSteps(runtime.files, kitHome, { registered: [], found: kept }, runtime.clock.now());
+    return apply(args, runtime, [...steps, ...survey], unchanged);
   });
 }
 

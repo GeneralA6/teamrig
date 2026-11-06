@@ -2,11 +2,13 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { LockBusyError, type Mutex } from '../core/lock.ts';
 import { FAKE_START_MENU_SHORTCUT, FakeLogonEntry, FakeShortcutPlace } from '../testing/fake-restore.ts';
+import { fieldPaths } from '../testing/field-paths.ts';
 import { InlineMutex } from '../testing/inline-mutex.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { restoreLaunchers, type Launcher } from './install-plan.ts';
 import { RESTORE_CHECK_LAUNCHER_SCRIPT, RESTORE_RUN_LAUNCHER_SCRIPT } from './launcher.ts';
-import { LAUNCHER_RECORD_FORMAT, launcherRecordPath, lowerRecordSteps, refreshLaunchers, type LauncherRefresh } from './launcher-refresh.ts';
+import { LAUNCHER_RECORD_FORMAT, launcherRecordPath, lowerRecordSteps, refreshLaunchers, surveyRecordSteps, type LauncherRefresh } from './launcher-refresh.ts';
+import { EMPTY_SURVEY, surveyFields, type LauncherSurvey } from './launcher-survey.ts';
 import { restoreLogPath } from './registry.ts';
 import { RESTORE_SHORTCUT_DESCRIPTION, shortcutLine, type Shortcut } from './shortcut.ts';
 
@@ -26,8 +28,25 @@ const OLDER_TEXT = '// an older launcher\n';
 const OLD_COMMAND = new FakeLogonEntry().commandFor('C:\\old\\node.exe', CHECK.path);
 const OLD_INSTALL = { [CHECK.path]: OLDER_TEXT, [RUN.path]: OLDER_TEXT, [STATUSLINE.path]: OLDER_TEXT };
 
+/** A record's text with these fields, in this order, as the refresh writes one. */
+function recordText(fields: Readonly<Record<string, unknown>>): string {
+  return `${JSON.stringify(fields, null, 2)}\n`;
+}
+
 function record(version: string, format: number = LAUNCHER_RECORD_FORMAT): string {
-  return `${JSON.stringify({ v: format, version, at: '2030-01-01T10:00:00.000Z' }, null, 2)}\n`;
+  return recordText({ v: format, version, at: '2030-01-01T10:00:00.000Z' });
+}
+
+/** A survey with a part of each list: the logon entry teamrig set up, and a pin that runs another Node. */
+const SURVEY: LauncherSurvey = {
+  registered: [{ kind: 'logon', where: new FakeLogonEntry().where, program: NODE, script: CHECK.path }],
+  found: [{ kind: 'shortcut', where: PIN, runs: shortcutLine(OLD_SHORTCUT) }],
+};
+
+async function takeAll(steps: ReadonlyArray<{ readonly act: () => Promise<void> }>): Promise<void> {
+  for (const step of steps) {
+    await step.act();
+  }
 }
 
 interface World {
@@ -114,7 +133,12 @@ describe('refreshLaunchers', () => {
     );
     assert.deepEqual([...shortcuts.shortcuts], [[FAKE_START_MENU_SHORTCUT, WANTED], [PIN, WANTED]]);
     assert.equal(files.get(LOG), steps.map((line) => `${AT} launchers: 0.282.0 -> 0.282.1: ${line}\n`).join(''));
-    assert.equal(files.get(RECORD), `${JSON.stringify({ v: LAUNCHER_RECORD_FORMAT, version: '0.282.1', at: AT }, null, 2)}\n`);
+    const registered = [
+      { kind: 'logon', where: logon.where, program: NODE, script: CHECK.path },
+      { kind: 'shortcut', where: FAKE_START_MENU_SHORTCUT, program: NODE, script: RUN.path },
+      { kind: 'shortcut', where: PIN, program: NODE, script: RUN.path },
+    ];
+    assert.equal(files.get(RECORD), recordText({ v: LAUNCHER_RECORD_FORMAT, version: '0.282.1', at: AT, registered, found: [] }));
   });
 
   it('refreshes a machine with no record as one an older teamrig set up, logging its old version as none', async () => {
@@ -132,11 +156,11 @@ describe('refreshLaunchers', () => {
     }
   });
 
-  it('creates nothing on a machine that never ran install, logs nothing, and records the version so later starts only read it', async () => {
+  it('creates nothing on a machine that never ran install, logs nothing, and records the version and that nothing starts the restore', async () => {
     const { files, logon, shortcuts, refresh } = worldOf({});
-    shortcuts.scanFailWith = 'a refresh with no run launcher must not scan';
     assert.deepEqual(await refreshLaunchers(refresh), { kind: 'refreshed', steps: [] });
     assert.deepEqual([files.paths(), logon.command, shortcuts.shortcuts.size], [[RECORD.replaceAll('\\', '/')], undefined, 0]);
+    assert.equal(files.get(RECORD), recordText({ v: LAUNCHER_RECORD_FORMAT, version: '0.282.1', at: AT, registered: [], found: [] }));
   });
 
   it('only reads the record when it names this version: no lock, no logon read, no scan, no write', async () => {
@@ -233,5 +257,70 @@ describe('lowerRecordSteps', () => {
       const files = new MemoryFiles(text === undefined ? {} : { [RECORD]: text });
       assert.deepEqual(await lowerRecordSteps(files, KIT, version, NOW), [], `${text} at ${version}`);
     }
+  });
+
+  it('keeps the survey the record holds when it lowers the version', async () => {
+    const files = new MemoryFiles({ [RECORD]: recordText({ v: LAUNCHER_RECORD_FORMAT, version: '0.290.0', at: '2030-01-01T10:00:00.000Z', ...surveyFields(SURVEY) }) });
+    await takeAll(await lowerRecordSteps(files, KIT, '0.282.1', NOW));
+    assert.equal(files.get(RECORD), recordText({ v: LAUNCHER_RECORD_FORMAT, version: '0.282.1', at: AT, ...surveyFields(SURVEY) }));
+  });
+});
+
+describe('the launcher record', () => {
+  it('writes the pinned fields of its format: a field added to the record raises LAUNCHER_RECORD_FORMAT', async () => {
+    const written: Readonly<Record<number, readonly string[]>> = {
+      2: ['at', 'found[].kind', 'found[].runs', 'found[].where', 'registered[].kind', 'registered[].program', 'registered[].script', 'registered[].where', 'v', 'version'],
+    };
+    const files = new MemoryFiles({ [RECORD]: record('0.282.0') });
+    await takeAll(await surveyRecordSteps(files, KIT, SURVEY, NOW));
+    assert.deepEqual(fieldPaths(JSON.parse(files.get(RECORD) ?? '')), written[LAUNCHER_RECORD_FORMAT]);
+  });
+});
+
+describe('surveyRecordSteps', () => {
+  const LINE = `WRITE ${RECORD}: what starts the restore now, which teamrig check reads`;
+  const held = (survey: LauncherSurvey): string => recordText({ v: LAUNCHER_RECORD_FORMAT, version: '0.282.0', at: '2030-01-01T10:00:00.000Z', ...surveyFields(survey) });
+
+  it('writes nothing when the record holds this survey, or there is no record and nothing starts the restore', async () => {
+    assert.deepEqual(await surveyRecordSteps(new MemoryFiles({ [RECORD]: held(SURVEY) }), KIT, SURVEY, NOW), []);
+    assert.deepEqual(await surveyRecordSteps(new MemoryFiles({ [RECORD]: held(EMPTY_SURVEY) }), KIT, EMPTY_SURVEY, NOW), []);
+    assert.deepEqual(await surveyRecordSteps(new MemoryFiles(), KIT, EMPTY_SURVEY, NOW), []);
+  });
+
+  it('records a changed survey and keeps the version, writing nothing before the step is taken', async () => {
+    const files = new MemoryFiles({ [RECORD]: held(EMPTY_SURVEY) });
+    const steps = await surveyRecordSteps(files, KIT, SURVEY, NOW);
+    assert.deepEqual([steps.map((step) => step.line), files.get(RECORD)], [[LINE], held(EMPTY_SURVEY)]);
+    await takeAll(steps);
+    assert.equal(files.get(RECORD), recordText({ v: LAUNCHER_RECORD_FORMAT, version: '0.282.0', at: AT, ...surveyFields(SURVEY) }));
+  });
+
+  it('writes a record of no version when there was none, so the next session start refreshes', async () => {
+    const files = new MemoryFiles();
+    await takeAll(await surveyRecordSteps(files, KIT, SURVEY, NOW));
+    assert.equal(files.get(RECORD), recordText({ v: LAUNCHER_RECORD_FORMAT, at: AT, ...surveyFields(SURVEY) }));
+  });
+
+  it('rewrites a record of another format, or one whose lists are damaged, in this format, keeping its version', async () => {
+    const cases: ReadonlyArray<readonly [string, string]> = [
+      [record('0.282.0', 1), '0.282.0'],
+      [record('0.290.0', LAUNCHER_RECORD_FORMAT + 1), '0.290.0'],
+      [recordText({ v: LAUNCHER_RECORD_FORMAT, version: '0.282.0', at: '2030-01-01T10:00:00.000Z', registered: 'torn', found: [] }), '0.282.0'],
+      [recordText({ v: LAUNCHER_RECORD_FORMAT, version: '0.282.0', at: '2030-01-01T10:00:00.000Z', registered: [{ kind: 'logon' }], found: [] }), '0.282.0'],
+    ];
+    for (const [text, version] of cases) {
+      const files = new MemoryFiles({ [RECORD]: text });
+      const steps = await surveyRecordSteps(files, KIT, EMPTY_SURVEY, NOW);
+      assert.deepEqual(steps.map((step) => step.line), [LINE], text);
+      await takeAll(steps);
+      assert.equal(files.get(RECORD), recordText({ v: LAUNCHER_RECORD_FORMAT, version, at: AT, registered: [], found: [] }), text);
+    }
+  });
+
+  it('reads the record again when taken, so it keeps a version a step before it wrote', async () => {
+    const files = new MemoryFiles({ [RECORD]: record('0.290.0') });
+    const steps = [...(await lowerRecordSteps(files, KIT, '0.282.1', NOW)), ...(await surveyRecordSteps(files, KIT, SURVEY, NOW))];
+    await takeAll(steps);
+    assert.equal(files.get(RECORD), recordText({ v: LAUNCHER_RECORD_FORMAT, version: '0.282.1', at: AT, ...surveyFields(SURVEY) }));
   });
 });
