@@ -1,9 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { LeadTree } from '../config/lead-tree.ts';
 import { MS_PER_DAY } from '../core/time.ts';
+import { testConfig } from '../testing/config.ts';
 import { testTask } from '../testing/task.ts';
 import type { Task } from './fold.ts';
-import { wouldPark, type ParkFocus, type ParkInput } from './park.ts';
+import { isUntriaged, wouldPark, type ParkFocus, type ParkInput } from './park.ts';
 
 const FOCUS: ParkFocus = { roadmapClass: 'Roadmap', maintenanceClass: 'Maintenance', parkAfterDays: 14 };
 
@@ -80,5 +82,45 @@ describe('wouldPark', () => {
 
   it('leaves a smaller row with no class', () => {
     assert.equal(wouldPark({ id: 'T1', status: 'open', updatedAt: daysAgo(15) }, input()), false);
+  });
+});
+
+describe('isUntriaged', () => {
+  const LEADERS = new LeadTree(testConfig({ sessions: ['lead', 'alpha', 'bravo', 'charlie'], leads: { alpha: ['bravo'] } }));
+
+  it("reads a task with no class as untriaged when a session added it for itself or a peer", () => {
+    assert.equal(isUntriaged(testTask({ owner: 'bravo', createdBy: 'bravo' }), LEADERS), true);
+    assert.equal(isUntriaged(testTask({ owner: 'bravo', createdBy: 'charlie' }), LEADERS), true);
+  });
+
+  it('takes the add of any leader on the owner\'s chain as the triage', () => {
+    assert.equal(isUntriaged(testTask({ owner: 'bravo', createdBy: 'alpha' }), LEADERS), false, 'its sub-lead');
+    assert.equal(isUntriaged(testTask({ owner: 'bravo', createdBy: 'lead' }), LEADERS), false, 'the lead over its sub-lead');
+  });
+
+  it('reads a member\'s add on its leader\'s task as untriaged: the chain runs up from the owner only', () => {
+    assert.equal(isUntriaged(testTask({ owner: 'alpha', createdBy: 'bravo' }), LEADERS), true);
+  });
+
+  it("takes the lead's add on its own task as the triage, and no one else's on it", () => {
+    assert.equal(isUntriaged(testTask({ owner: 'lead', createdBy: 'lead' }), LEADERS), false);
+    assert.equal(isUntriaged(testTask({ owner: 'lead', createdBy: 'charlie' }), LEADERS), true);
+  });
+
+  it("takes the add of the parent team's lead as the triage on a child team, on any owner there", () => {
+    const child = new LeadTree(testConfig(), { team: 'app', id: 'lead' });
+    assert.equal(isUntriaged(testTask({ owner: 'lead', createdBy: 'app/lead' }), child), false);
+    assert.equal(isUntriaged(testTask({ owner: 'alpha', createdBy: 'app/lead' }), child), false);
+    assert.equal(isUntriaged(testTask({ owner: 'alpha', createdBy: 'app/bravo' }), child), true, "a session of the parent team leads no one here");
+  });
+
+  it('ends once the task holds a class, whoever added it', () => {
+    assert.equal(isUntriaged(testTask({ owner: 'bravo', createdBy: 'bravo', workClass: 'Improvements' }), LEADERS), false);
+  });
+
+  it('never holds for a task the park rule takes, as parking needs a stored class', () => {
+    const task = parkable({ owner: 'bravo', createdBy: 'bravo' });
+    assert.equal(wouldPark(task, input()), true);
+    assert.equal(isUntriaged(task, LEADERS), false);
   });
 });

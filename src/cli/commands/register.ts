@@ -20,7 +20,7 @@ import { formatTaskLines, taskLinesOf } from '../../inbox/task-lines.ts';
 import { WakeAsks } from '../../wake/asks.ts';
 import { teamDayStartAt } from '../../wake/day-start.ts';
 import { waitAnswerersOf } from '../../register/approval.ts';
-import { byFlagKind, checkTasks, leaderWaitFlags, peerWaitFlags } from '../../register/check.ts';
+import { byFlagKind, checkTasks, leaderWaitFlags, peerWaitFlags, untriagedFlags } from '../../register/check.ts';
 import { currentWeekOf } from '../../register/week.ts';
 import type { ApprovalVerdict, TaskFields } from '../../register/events.ts';
 import { fitLines, leftOfWeek, overLimitFlag, weekFit, type WeekFit } from '../../register/fit.ts';
@@ -940,6 +940,7 @@ function checkRegister(
     ...peerWaitFlags(tasks, leads, config.roles, config.register.ownerSource),
     // In plan order, so the leader reads the most urgent wait first.
     ...leaderWaitFlags(tree.inPlanOrder(tasks), leads, config.focus, now.getTime()),
+    ...untriagedFlags(tasks, leads),
     ...(progress === undefined ? [] : [progress]),
   ];
   return { team, flags: flags.sort(byFlagKind), tree };

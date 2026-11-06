@@ -59,6 +59,20 @@ describe('runCli: start prints the start of a work block in one call', () => {
     assert.ok(check.some((line) => /\bT1\b/.test(line)) && check.some((line) => /\bT2\b/.test(line)), check.join('\n'));
   });
 
+  it('raises UNTRIAGED for a leader, the lead or a sub-lead, never for the owner of the task', async () => {
+    const kit = await overdueTeam();
+    await kit.run(['add', '--title', 'Tidy the docs', '--description', 'what and why', '--priority', 'p2', '--session', 'bravo']);
+    const untriagedIn = async (session: string): Promise<string[]> => {
+      const { stdout } = await kit.run(['start', '--session', session, '--all']);
+      return checkPart(stdout).flatMap((line) => /^UNTRIAGED .*--class <name>\)\) (T\d+)/.exec(line)?.[1] ?? []);
+    };
+    assert.deepEqual(await untriagedIn('lead'), ['T1', 'T2', 'T3']);
+    assert.deepEqual(await untriagedIn('alpha'), []);
+    assert.deepEqual(await untriagedIn('bravo'), []);
+    assert.equal((await kit.run(['promote', 'alpha', '--members', 'bravo', '--session', 'lead', '--yes'])).code, EXIT.ok);
+    assert.deepEqual(await untriagedIn('alpha'), ['T3'], "bravo's own add, and T2 reads as triaged now that alpha leads bravo");
+  });
+
   it("gives a sub-lead its group's task flags, and lets it reorder that work but not hand it out of the group (T782)", async () => {
     const kit = await overdueTeam();
     assert.equal((await kit.run(['promote', 'alpha', '--members', 'bravo', '--session', 'lead', '--yes'])).code, EXIT.ok);

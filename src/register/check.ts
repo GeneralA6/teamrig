@@ -9,6 +9,7 @@ import { taskNumber, type Task } from './fold.ts';
 import { leaderHolds, waitedMinutes, type LeaderWaitFocus } from './leader-wait.ts';
 import { ACTIVE_STATUSES, priorityText, type TaskStatus } from './model.ts';
 import { isUngated } from './owner-waits.ts';
+import { isUntriaged, type Leaders } from './park.ts';
 import { loopFix, NO_TASKS_ELSEWHERE, pathText, TaskTree, type RankedPlace, type TasksElsewhere, type TreeRanking } from './tree.ts';
 import { WATCH_USAGE } from './verify.ts';
 import { formatTask } from './views.ts';
@@ -39,6 +40,7 @@ export const FLAG_KINDS = [
   'OWNER-UNPLANNED',
   'DUE-UNPLANNED',
   'OFF-GOAL',
+  'UNTRIAGED',
   'NO-PROGRESS',
   'STOPGAP-DONE',
   'STALE',
@@ -205,6 +207,18 @@ export function leaderWaitFlags(tasks: Iterable<Task>, tree: Pick<LeadTree, 'app
       ? []
       : [{ kind: 'ROADMAP-WAITS-ON-LEAD' as const, task, detail: `${holds.map(waitSpelling).join(', ')} unanswered for ${waitedMinutes(task, at)} min, past the ${focus.leaderWaitMinutes} min limit: answer it first` }];
   });
+}
+
+/**
+ * UNTRIAGED: an active task a leader has yet to class ({@link isUntriaged}), for that leader's daily batch. Apart from
+ * {@link checkTasks}, whose register config does not name the leaders.
+ */
+export function untriagedFlags(tasks: Iterable<Task>, leaders: Leaders): Flag[] {
+  return [...tasks].flatMap((task) =>
+    ACTIVE_STATUSES.includes(task.status) && isUntriaged(task, leaders)
+      ? [{ kind: 'UNTRIAGED' as const, task, detail: `no class, added by ${task.createdBy}: class it (update ${task.id} --class <name>)` }]
+      : [],
+  );
 }
 
 function weekPlan(week: string | null, lengthDays: number, zone: TimeZone): WeekPlan | undefined {

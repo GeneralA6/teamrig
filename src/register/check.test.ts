@@ -5,7 +5,7 @@ import { TEST_CARD, TEST_OWNER_CARD } from '../testing/card.ts';
 import { testConfig } from '../testing/config.ts';
 import { testRanking } from '../testing/ranking.ts';
 import { testTask } from '../testing/task.ts';
-import { checkTasks, formatFlag, leaderWaitFlags, PACE_DAYS, peerWaitFlags } from './check.ts';
+import { checkTasks, formatFlag, leaderWaitFlags, PACE_DAYS, peerWaitFlags, untriagedFlags } from './check.ts';
 import { RETAIN_DAYS } from './compaction.ts';
 import type { Task } from './fold.ts';
 import { NO_TASKS_ELSEWHERE, TaskTree } from './tree.ts';
@@ -648,5 +648,29 @@ describe('checkTasks: OVER-PACE (T637)', () => {
 
   it('counts over no more days than a compaction keeps finished tasks in the working set', () => {
     assert.ok(PACE_DAYS <= RETAIN_DAYS);
+  });
+});
+
+describe('untriagedFlags', () => {
+  it("flags an active task no leader classed, naming who added it and the update that ends the flag", () => {
+    const flags = untriagedFlags([testTask({ id: 'T1', owner: 'alpha', createdBy: 'bravo' })], new LeadTree(testConfig()));
+    assert.deepEqual(
+      flags.map((flag) => `${flag.kind} ${flag.task.id}: ${flag.detail}`),
+      ['UNTRIAGED T1: no class, added by bravo: class it (update T1 --class <name>)'],
+    );
+  });
+
+  it('reads every active status, and leaves out a finished task, a classed one and a leader\'s add', () => {
+    const tasks = [
+      testTask({ id: 'T1', status: 'open', createdBy: 'bravo' }),
+      testTask({ id: 'T2', status: 'in-progress', createdBy: 'bravo' }),
+      testTask({ id: 'T3', status: 'waiting', createdBy: 'bravo' }),
+      testTask({ id: 'T4', status: 'verifying', createdBy: 'bravo' }),
+      testTask({ id: 'T5', status: 'done', createdBy: 'bravo' }),
+      testTask({ id: 'T6', status: 'dropped', createdBy: 'bravo' }),
+      testTask({ id: 'T7', createdBy: 'bravo', workClass: 'Improvements' }),
+      testTask({ id: 'T8', createdBy: 'lead' }),
+    ];
+    assert.deepEqual(untriagedFlags(tasks, new LeadTree(testConfig())).map((flag) => flag.task.id), ['T1', 'T2', 'T3', 'T4']);
   });
 });

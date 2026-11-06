@@ -1,3 +1,4 @@
+import type { LeadTree } from '../config/lead-tree.ts';
 import type { FocusConfig, KitConfig } from '../config/types.ts';
 import { MS_PER_DAY } from '../core/time.ts';
 import type { Task } from './fold.ts';
@@ -50,4 +51,21 @@ export function wouldPark(task: ParkRow, input: ParkInput): boolean {
     task.source !== input.ownerSource &&
     !input.needed(task.id)
   );
+}
+
+/** What the untriaged rule reads of the team's lead tree. */
+export type Leaders = Pick<LeadTree, 'lead' | 'above' | 'chainOf'>;
+
+/**
+ * Whether the task waits for a leader to class it (T2076 part 2C): it holds no stored class, and no leader of its owner
+ * added it, as a leader's add is the triage. Those are the owner's chain on the team and, on a child team, the parent
+ * team's lead (`above`), who leads this team's lead. The lead has no leader on its team, so its add on its own task
+ * counts as one. A task no one classed never parks, so a parked task never reads as untriaged.
+ */
+export function isUntriaged(task: Pick<Task, 'workClass' | 'createdBy' | 'owner'>, leaders: Leaders): boolean {
+  if (task.workClass !== null) {
+    return false;
+  }
+  const leadOnOwnTask = task.owner === leaders.lead && task.createdBy === leaders.lead;
+  return !leadOnOwnTask && task.createdBy !== leaders.above && !leaders.chainOf(task.owner).includes(task.createdBy);
 }
