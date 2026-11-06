@@ -47,6 +47,24 @@ export function parseStatus(text) {
     }
     return paths;
 }
+/** How many commits of `ref` (a full ref name, or `HEAD`) have no equal change on `base`; undefined when git cannot tell. */
+function refCommitsNotOn(dir, ref, base) {
+    // Both must name a commit; the caller refuses a base that starts with `-`, which git would read as an option.
+    if (queryLine(dir, ['rev-parse', '--verify', '-q', `${ref}^{commit}`]) === undefined || queryLine(dir, ['rev-parse', '--verify', '-q', `${base}^{commit}`]) === undefined) {
+        return undefined;
+    }
+    // Exit 0: base holds the tip; 1: it does not; anything else: git could not tell.
+    const ancestor = runGit(dir, ['merge-base', '--is-ancestor', ref, base]).status;
+    if (ancestor === 0) {
+        return 0;
+    }
+    if (ancestor !== 1) {
+        return undefined;
+    }
+    // `git cherry` marks each commit of the ref `-` when base has an equal change (same patch id), else `+`.
+    const cherry = query(dir, ['cherry', base, ref]);
+    return cherry === undefined ? undefined : cherry.split('\n').filter((line) => line.startsWith('+')).length;
+}
 /** The git CLI. */
 export const GIT_WORKTREES = {
     topOf: (dir) => queryLine(dir, ['rev-parse', '--show-toplevel']),
@@ -67,24 +85,9 @@ export const GIT_WORKTREES = {
         return text === undefined ? undefined : fields(text);
     },
     defaultBase: (dir) => queryLine(dir, ['symbolic-ref', '--short', '-q', 'refs/remotes/origin/HEAD']),
-    commitsNotOn(dir, branch, base) {
-        const ref = `${BRANCH_REF}${branch}`;
-        // Both must name a commit; the caller refuses a base that starts with `-`, which git would read as an option.
-        if (queryLine(dir, ['rev-parse', '--verify', '-q', `${ref}^{commit}`]) === undefined || queryLine(dir, ['rev-parse', '--verify', '-q', `${base}^{commit}`]) === undefined) {
-            return undefined;
-        }
-        // Exit 0: base holds the branch tip; 1: it does not; anything else: git could not tell.
-        const ancestor = runGit(dir, ['merge-base', '--is-ancestor', ref, base]).status;
-        if (ancestor === 0) {
-            return 0;
-        }
-        if (ancestor !== 1) {
-            return undefined;
-        }
-        // `git cherry` marks each commit of the branch `-` when base has an equal change (same patch id), else `+`.
-        const cherry = query(dir, ['cherry', base, ref]);
-        return cherry === undefined ? undefined : cherry.split('\n').filter((line) => line.startsWith('+')).length;
-    },
+    commitsNotOn: (dir, branch, base) => refCommitsNotOn(dir, `${BRANCH_REF}${branch}`, base),
+    // Run in the worktree's own folder, `HEAD` is that worktree's, not the main checkout's.
+    headCommitsNotOn: (top, base) => refCommitsNotOn(top, 'HEAD', base),
     removeWorktree: (mainDir, top) => outcome(runGit(mainDir, ['worktree', 'remove', top], REMOVE_TIMEOUT_MS), 'git worktree remove'),
     // A branch name never starts with `-` (git refuses one), so it cannot read as an option.
     deleteBranch: (mainDir, branch) => outcome(runGit(mainDir, ['branch', '-D', branch]), 'git branch -D'),

@@ -84,6 +84,11 @@ function planBranch(git, request, top, branch) {
     }
     return { name: branch, base };
 }
+/** The default branch that holds every commit of the detached HEAD at `top`; undefined when it holds not all, or git cannot tell. */
+function detachedMergedInto(git, top) {
+    const base = git.defaultBase(top);
+    return base !== undefined && git.headCommitsNotOn(top, base) === 0 ? base : undefined;
+}
 /** Every check, before anything changes: the plan to carry out, or the reason to refuse. */
 export async function planRemoval(request, ports) {
     const { git, files } = ports;
@@ -160,7 +165,8 @@ export async function planRemoval(request, ports) {
         const target = await files.linkTarget(link);
         links.push({ path: link, name: untrackedNames[index] ?? link, target, targetEntries: await files.entryCount(target) });
     }
-    return { kind: 'ready', plan: { top, mainDir: main.path, links, branch, onBranch: mine.branch } };
+    const mergedInto = mine.branch === undefined ? detachedMergedInto(git, top) : undefined;
+    return { kind: 'ready', plan: { top, mainDir: main.path, links, branch, onBranch: mine.branch, mergedInto } };
 }
 function entriesText(count) {
     return count === undefined ? 'missing' : `${count} ${count === 1 ? 'entry' : 'entries'}`;
