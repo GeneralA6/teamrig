@@ -2,13 +2,14 @@ import { resolve } from 'node:path';
 import { formatAddress } from "../../core/address.js";
 import { ACTIVE_STATUSES } from "../../register/model.js";
 import { RegisterPolicy } from "../../register/policy.js";
+import { sizePctOf } from "../../register/score.js";
 import { countLines, formatSweepRows, parseSweepFile, planLine, planSweepRow, proposeRow, refusedPlan, tallyOf, tallyText, } from "../../register/sweep.js";
 import { needsOf } from "../../register/tree.js";
 import { noPositionals, onePositional } from "../args.js";
 import { callerOf } from "../inputs.js";
 import { findTeam, openKit, sessionIdOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
-import { readSizeBase, readTaskSpend } from "../task-spend.js";
+import { readSizeBase } from "../task-spend.js";
 import { KitTreeGoals } from "../tree-goals.js";
 import { readRegisters, reportRotation, warnDamage } from "./register.js";
 import { teamOf } from "./register-team.js";
@@ -24,17 +25,15 @@ function neededIds(teams) {
 }
 /** What the rows of `rolled` are proposed from. */
 async function inputOf(runtime, rolled, needed, now) {
-    const { team, config, paths } = rolled;
-    const { defaultSizePct, minSizePct } = config.focus.score;
-    const [goals, spentOf] = await Promise.all([new KitTreeGoals(runtime, paths, config).all(), readTaskSpend(runtime, paths, config, now)]);
-    const spent = (task) => spentOf?.(task) ?? 0;
+    const { team, config, paths, ranking } = rolled;
     return {
         team,
         focus: config.focus,
-        goals,
+        goals: await new KitTreeGoals(runtime, paths, config).all(),
         ownerSource: config.register.ownerSource,
         now,
-        sizeOf: (task) => Math.max(task.size ?? (spent(task) > 0 ? spent(task) * 2 : defaultSizePct), minSizePct),
+        // The ranking's own chain, so a row proposes the size the plan's score divides by.
+        sizeOf: (task) => sizePctOf(ranking.sizingOf(task), config.focus.score),
         needed: (id) => needed.has(id),
     };
 }
