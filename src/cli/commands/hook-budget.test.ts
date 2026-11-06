@@ -6,6 +6,7 @@ import { OUTSIDE_ID } from '../../budget/measure.ts';
 import { emptyPatterns } from '../../budget/patterns.ts';
 import { parseSessionsWeek, SESSIONS_WEEK_IN_STATE } from '../../budget/session-week-summary.ts';
 import { EMPTY_USAGE, UsageStore } from '../../budget/store.ts';
+import { parseTasksWeek, TASKS_WEEK_IN_STATE } from '../../budget/task-week-summary.ts';
 import { parseTeamWeek, TEAM_WEEK_IN_STATE } from '../../budget/team-week-summary.ts';
 import { HOLDING_BUDGET, meterToday } from '../../testing/budget-hold.ts';
 import { CliHarness, TEAM, TEAM_HOME } from '../../testing/cli-harness.ts';
@@ -14,6 +15,7 @@ const ALPHA_TAB = '0123abcd-0000-4000-8000-0000000000a1';
 const LEAD_TAB = '0123abcd-0000-4000-8000-0000000000d4';
 const SUMMARY = join(TEAM_HOME, 'state', ...TEAM_WEEK_IN_STATE);
 const SESSIONS = join(TEAM_HOME, 'state', ...SESSIONS_WEEK_IN_STATE);
+const TASKS = join(TEAM_HOME, 'state', ...TASKS_WEEK_IN_STATE);
 
 describe('the budget hooks', () => {
   it("keep the team's week summary on its account: its own sessions' W at its rate, never the use outside it, and its part of what is left", async () => {
@@ -64,5 +66,19 @@ describe('the budget hooks', () => {
       at: kit.clock.now(),
       sessions: { lead: { usedPct: 5, workHours: 1 }, alpha: { usedPct: 10, workHours: 1 }, bravo: { usedPct: 0, workHours: 0 } },
     });
+  });
+
+  it("keep each task's spend at the team's rate, the use outside the sessions included, as readTaskSpend counts it (T2093)", async () => {
+    const kit = new CliHarness({ ...TEAM, budget: HOLDING_BUDGET });
+    const usage = join(TEAM_HOME, 'state', 'usage');
+    const bravo = new UsageStore(kit.files, usage);
+    assert.ok(await bravo.save('bravo', { ...EMPTY_USAGE, byTask: { '2030-01-08': { T7: 20_000_000 } } }, (await bravo.load('bravo')).rev), 'bravo saved');
+    const outside = new UsageStore(kit.files, join(usage, 'outside'));
+    assert.ok(await outside.save(OUTSIDE_ID, { ...EMPTY_USAGE, byTask: { '2030-01-08': { T7: 5_000_000, T8: 10_000_000 } } }, (await outside.load(OUTSIDE_ID)).rev), 'outside use saved');
+    assert.equal(await kit.files.read(TASKS), undefined);
+    await meterToday(kit, [{ id: 'alpha', tab: ALPHA_TAB, w: 100_000_000 }]);
+    const text = await kit.files.read(TASKS);
+    // At 10M W per percent.
+    assert.deepEqual(text === undefined ? undefined : parseTasksWeek(text), { at: kit.clock.now(), spentPct: { T7: 2.5, T8: 1 } });
   });
 });
