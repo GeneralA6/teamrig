@@ -2,11 +2,11 @@ import { errorMessage } from '../../core/guards.ts';
 import { resolveKitHome } from '../../core/home.ts';
 import { KIT_VERSION } from '../../core/version.ts';
 import { restoreLaunchers, restorePlan, type MachineStep, type RestoreMachine } from '../../restore/install-plan.ts';
-import { LAUNCHER_INSTALL_LOCK, launcherRecordPath, lowerRecordSteps } from '../../restore/launcher-refresh.ts';
+import { lowerRecordSteps } from '../../restore/launcher-refresh.ts';
 import type { LogonEntry } from '../../restore/logon.ts';
 import { RESTORE_SHORTCUT_NAME, shortcutLine, shortcutsToRemove } from '../../restore/shortcut.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
-import { fileLockOf } from '../file-locks.ts';
+import { underRecordLock } from '../launcher-record-lock.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 
 /**
@@ -59,14 +59,6 @@ export async function restoreUninstall(args: ParsedArgs, runtime: CliRuntime): P
     steps.push(...(await removeIfThere(runtime, check.path)), ...(await removeIfThere(runtime, run.path)));
     return apply(args, runtime, steps, unchanged);
   });
-}
-
-/** Runs `task` under the launcher record's lock when --yes writes; a preview writes nothing, so it takes no lock. */
-async function underRecordLock(args: ParsedArgs, runtime: CliRuntime, kitHome: string, task: () => Promise<ExitCode>): Promise<ExitCode> {
-  if (!args.switches.has('yes')) {
-    return task();
-  }
-  return fileLockOf(runtime, `${launcherRecordPath(kitHome)}.lock`, LAUNCHER_INSTALL_LOCK).run(task);
 }
 
 /** The step that removes the file at `path`, none when there is none. */
