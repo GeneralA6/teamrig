@@ -87,7 +87,8 @@ Week: 31.0% used at 12:00 IDT (status line); the pace line is at 28.6%: 2.4 poin
   the days left the same way.
 - Where the W went: `teamrig budget` gives the team's spend by work class today and this week, in % of the week,
   beside each class's `focus.allocation` (Roadmap 60, Maintenance 25, Improvements 15 by default), and a `No task` row
-  for turns that named none and for helpers. `budget --task T<n>` gives each session's W on one task, `--burn` each
+  for turns that named none and for helpers. A share is a percent of the whole week: once Improvements has spent its
+  share, its starts wait for the week's reset, a one-commit fix (`set --one-commit`) aside. `budget --task T<n>` gives each session's W on one task, `--burn` each
   day's sources (the owner, peer messages, notifications, scheduled wakes, subagents), `--loops` the costly loop
   patterns and `--misses` the rule misses per session.
 
