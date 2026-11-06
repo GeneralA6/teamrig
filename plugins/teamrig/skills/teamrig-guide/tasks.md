@@ -206,7 +206,8 @@ Three shapes, split by the list:
   owner asked for adds to its score.
 - **Plan order**: by the first of these on which two tasks differ: pinned (the one task per owner that a leader above
   it pinned with `update --pin`, above every other key); band; can move (a task with a wait not cleared, on a person,
-  a time or a task, or an `after` not finished goes after every task of its band that can move, whatever its score);
+  a time or a task, or an `after` not finished goes after every task of its band that can move, whatever its score;
+  an answered approval counts as cleared, and a `waiting` task with no reason and no decision as held);
   score (the highest first); in progress (a started
   task stays on top at the same score); effective due (the earliest first, undated last); what it unblocks (the best
   priority among the active tasks that need it, then the most of them); in the week plan in force; size (the smallest
