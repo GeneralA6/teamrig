@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { MS_PER_DAY } from '../core/time.ts';
 import { EMPTY_USAGE, newCursor, pruneUsage, type UsageState } from './store.ts';
-import { attributedW, taskUseOf } from './task-use.ts';
+import { attributedW, taskDaysOf, taskUseOf } from './task-use.ts';
 import type { OpenTurn } from './tasks.ts';
 
 const DAY = '2030-01-08';
@@ -36,6 +36,24 @@ describe('taskUseOf', () => {
     const bySession = new Map<string, UsageState>([['alpha', usage({}, [{ tasks: ['T8'], held: { [DAY]: 3_000_000 } }])]]);
 
     assert.deepEqual(taskUseOf(bySession, 'T7'), { task: 'T7', sessions: [], w: 0 });
+  });
+});
+
+describe('taskDaysOf', () => {
+  it('reads each day of stored task W and splits an open turn equally over the tasks it named', () => {
+    const state = usage({ [DAY]: { T7: 1_000_000, T8: 500_000 } }, [
+      { tasks: ['T7', 'T9'], held: { [DAY]: 2_000_000, [NEXT_DAY]: 4_000_000 } },
+      { tasks: [], held: { [DAY]: 8_000_000 } },
+    ]);
+
+    const days = taskDaysOf(state);
+
+    assert.deepEqual(Object.fromEntries(days.get(DAY) ?? []), { T7: 2_000_000, T8: 500_000, T9: 1_000_000 });
+    assert.deepEqual(Object.fromEntries(days.get(NEXT_DAY) ?? []), { T7: 2_000_000, T9: 2_000_000 });
+  });
+
+  it('holds no day for a session with no task W', () => {
+    assert.equal(taskDaysOf(usage({})).size, 0);
   });
 });
 
