@@ -12,7 +12,7 @@ import { WEEK_SUMMARY_FILE } from '../budget/week-summary.ts';
 import { formatConfig } from '../config/load.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { MS_PER_DAY } from '../core/time.ts';
-import { APP, CliHarness, KIT, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
+import { APP, CliHarness, EVENTS_PATH, KIT, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { SUB_TEAMS, teamConfigOf, teamHomeOf } from '../testing/team-tree.ts';
@@ -121,10 +121,54 @@ describe('teamrig budget', () => {
       '  the team    2.5%   12.4%  25.00M      3',
       '  app-alpha   2.0%    4.1%  20.00M      2',
       '  app-bravo  0.50%    4.1%   5.00M      1',
+      'Spend by class today and this week, in % of the week, against focus.allocation:',
+      '  class         today  week  allocation  W today  W week',
+      '  Roadmap        0.0%  0.0%       60.0%        0       0',
+      '  Maintenance    0.0%  0.0%       25.0%        0       0',
+      '  Improvements   0.0%  0.0%       15.0%        0       0',
+      '  No task        2.5%  2.5%           -   25.00M  25.00M',
+      "  The meter does not reach back to the week's start, so the week's W is short.",
       OUTSIDE_LINE,
       W_EXPLAINED,
     ]);
     assert.deepEqual(ok(await run(['budget', '--all'])).slice(6, 7), ['  No use today: app-lead.']);
+  });
+
+  it('counts a turn for the class of the task it names and the rest as no task, so the rows add up to the team', async () => {
+    const { kit, source, run } = await world();
+    const added = await run(['add', '--title', 'Ship the release', '--description', 'what and why', '--priority', 'p1', '--class', 'Roadmap', '--owner', 'alpha', '--session', 'lead']);
+    assert.equal(added.code, EXIT.ok, added.stderr.join('\n'));
+    source.append(
+      join(PROJECT, `${ALPHA_TAB}.jsonl`),
+      transcript([
+        promptLine('2030-01-08T09:30:00.000Z'),
+        replyLine({ id: 'a3', requestId: 'q-a3', at: '2030-01-08T09:30:00.000Z', usage: { input: 4_000_000 }, tools: [{ id: 'b1', name: 'Bash', command: 'teamrig show T1' }] }),
+      ]),
+      kit.clock.now(),
+    );
+    const lines = ok(await run(['budget']));
+    assert.match(lines[3] ?? '', /^ {2}the team +2\.9% +\S+ +29\.00M +4$/);
+    const heading = lines.findIndex((line) => line.startsWith('Spend by class'));
+    assert.deepEqual(lines.slice(heading + 1, heading + 6), [
+      '  class         today   week  allocation  W today  W week',
+      '  Roadmap       0.40%  0.40%       60.0%    4.00M   4.00M',
+      '  Maintenance    0.0%   0.0%       25.0%        0       0',
+      '  Improvements   0.0%   0.0%       15.0%        0       0',
+      '  No task        2.5%   2.5%           -   25.00M  25.00M',
+    ]);
+  });
+
+  it('shows the budget without the spend by class when the register cannot be read', async () => {
+    const { kit, run } = await world();
+    const files = new FaultyFiles(kit.files).fail('read', EVENTS_PATH, systemError('EIO'));
+    const lines = ok(await run(['budget'], { files }));
+    assert.match(lines[3] ?? '', /^ {2}the team +2\.5% /);
+    assert.ok(!lines.some((line) => line.startsWith('Spend by class')), lines.join('\n'));
+  });
+
+  it('leaves the spend by class out of the views of one session', async () => {
+    const { run } = await world();
+    assert.ok(!ok(await run(['budget', 'alpha'])).some((line) => line.startsWith('Spend by class')));
   });
 
   it("gives the team its part of the account's daily budget beside the other teams on the account, and its sessions theirs of it", async () => {
@@ -311,9 +355,10 @@ describe('teamrig budget lift', () => {
     // Half the team's 12.4% to alpha; the other half split between lead and bravo.
     assert.match(lines[4] ?? '', /^ {2}app-alpha +2\.0% +6\.2% +\(lifted\) +20\.00M +2$/);
     assert.match(lines[5] ?? '', /^ {2}app-bravo +0\.50% +3\.1% +5\.00M +1$/);
-    assert.match(lines[6] ?? '', /^Lifts, today only: a part of the team's daily budget, the share of the week it comes to now beside it, /);
-    assert.match(lines[8] ?? '', /^ {2}app-alpha +50\.0% +6\.2% +00:00 UTC +97\.0%$/);
-    assert.equal(lines[9], '  00:00 UTC is the end of the budget day.');
+    const heading = lines.findIndex((line) => line.startsWith("Lifts, today only: a part of the team's daily budget, the share of the week it comes to now beside it, "));
+    assert.notEqual(heading, -1, lines.join('\n'));
+    assert.match(lines[heading + 2] ?? '', /^ {2}app-alpha +50\.0% +6\.2% +00:00 UTC +97\.0%$/);
+    assert.equal(lines[heading + 3], '  00:00 UTC is the end of the budget day.');
     assert.deepEqual(ok(await run([...LIFT, '--until', '18:00', '--session', 'lead'])), [
       "LIFTED app-alpha to 50.0% of the team's daily budget (6.2% of the week now) today until 18:00 UTC or 97.0% of the week, whichever comes first; quiet hours do not apply to it.",
     ]);
@@ -365,7 +410,7 @@ describe('teamrig budget lift', () => {
     ]);
     const lines = ok(await run(['budget'], JERUSALEM));
     assert.match(lines[0] ?? '', / Resets \w{3} \d{2}-\d{2} \d{2}:\d{2} IST\.$/);
-    assert.match(lines[8] ?? '', /^ {2}app-alpha +50\.0% +6\.2% +14:00 IST +97\.0%$/);
+    assert.ok(lines.some((line) => /^ {2}app-alpha +50\.0% +6\.2% +14:00 IST +97\.0%$/.test(line)), lines.join('\n'));
     assert.ok(!lines.some((line) => line.includes('end of the budget day')), lines.join('\n'));
     const passed = await run([...LIFT, '--until', '11:00', '--session', 'lead'], JERUSALEM);
     assert.equal(passed.code, EXIT.refused);

@@ -14,6 +14,7 @@ import type { TimeZone } from '../../core/zone.ts';
 import { activeBurst, burstFloorOf, withBurst, type BurstRecord, type InBurst } from '../../budget/burst.ts';
 import { BurstLog } from '../../budget/burst-log.ts';
 import { calibrationOf } from '../../budget/calibration.ts';
+import { classRowsOf } from '../../budget/class-spend.ts';
 import { activeCut, CutLog, cutText, decideCut, type Cut } from '../../budget/cut.ts';
 import { claudeProjectsDir, type TranscriptSource } from '../../budget/discover.ts';
 import { ExtraLog, type ExtraEntry } from '../../budget/extra.ts';
@@ -318,7 +319,9 @@ export async function budget(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     const outsideToday = measured.outside.byDay[today];
     const outside = { w: wSince([measured.outside], week.todayFrom, now), calls: outsideToday?.calls ?? 0, sessions: measured.outsideSessions, titles: measured.outsideTitles };
     const behind = measured.behind.map((each) => (each === OUTSIDE_ID ? 'outside the team' : (roster.nameOf(each) ?? each)));
-    lines = recountDay === undefined ? todayLines({ week, teamPct, sessions, groups: groupsToday(reading, roster, split, others), outside, behind, all, zone }) : recountLines(today, { week, sessions, outside, all });
+    // The team's sessions alone, so the rows add up to the team's row of the table above them.
+    const classes = tasks === undefined ? undefined : classRowsOf({ states: [...measured.bySession.values()], tasks, focus: config.focus, todayFrom: week.todayFrom, weekFrom: week.window?.start, now });
+    lines = recountDay === undefined ? todayLines({ week, teamPct, sessions, groups: groupsToday(reading, roster, split, others), classes, outside, behind, all, zone }) : recountLines(today, { week, sessions, outside, all });
   }
   for (const line of lines) {
     runtime.out.stdout(line);
