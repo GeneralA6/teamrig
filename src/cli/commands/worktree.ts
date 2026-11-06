@@ -9,7 +9,7 @@ import { resolveTeam } from '../../core/team.ts';
 import { JsonlEventLog } from '../../register/store.ts';
 import { createWorktree, type AddRequest } from '../../worktree/add.ts';
 import { removalRefusal } from '../../worktree/owner.ts';
-import { carryOut, describePlan, planRemoval } from '../../worktree/remove.ts';
+import { carryOut, describePlan, planRemoval, type RemovalPlan } from '../../worktree/remove.ts';
 import { onePositional, UsageError, type ParsedArgs } from '../args.ts';
 import { openKit, requireConfig, rosterOf, teamFolders, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
@@ -88,7 +88,7 @@ export async function remove(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   if (decision.kind === 'refused') {
     throw new RefusedError(decision.reason);
   }
-  const refusal = await callerRefusal(args, runtime, decision.plan.onBranch);
+  const refusal = await callerRefusal(args, runtime, decision.plan);
   if (refusal !== undefined) {
     throw new RefusedError(refusal);
   }
@@ -105,11 +105,12 @@ export async function remove(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
 }
 
 /**
- * Why the caller may not remove a worktree on `branch`, or undefined when it may: in a team, a session removes its own
- * worktrees and those of the sessions it leads (owner.ts). Nothing is checked outside a team, nor for the person at a
- * terminal outside Claude Code who names no session; a Claude Code tab bound to no session must name one.
+ * Why the caller may not carry out `plan`, or undefined when it may: in a team, a session removes its own worktrees,
+ * those of the sessions it leads, and a merged one on a detached HEAD (owner.ts). Nothing is checked outside a team,
+ * nor for the person at a terminal outside Claude Code who names no session; a Claude Code tab bound to no session must
+ * name one.
  */
-async function callerRefusal(args: ParsedArgs, runtime: CliRuntime, branch: string | undefined): Promise<string | undefined> {
+async function callerRefusal(args: ParsedArgs, runtime: CliRuntime, { onBranch, mergedInto }: RemovalPlan): Promise<string | undefined> {
   const team = await teamAt(runtime);
   if (team === undefined) {
     return undefined;
@@ -121,7 +122,7 @@ async function callerRefusal(args: ParsedArgs, runtime: CliRuntime, branch: stri
     return inClaudeCode ? `this Claude Code tab is bound to no session of team ${team.name}: give --session <id|name>` : undefined;
   }
   const { state } = await new JsonlEventLog(runtime.files, kit.paths.events).read();
-  return removalRefusal({ caller, branch, ownerOf: (task) => state.tasks.get(task)?.owner, tree: new LeadTree(config) });
+  return removalRefusal({ caller, branch: onBranch, mergedInto, ownerOf: (task) => state.tasks.get(task)?.owner, tree: new LeadTree(config) });
 }
 
 /** The team the folder the command runs in belongs to, with its kit and config; undefined outside a team. */

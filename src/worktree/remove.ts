@@ -56,6 +56,12 @@ export interface RemovalPlan {
   readonly branch: { readonly name: string; readonly base: string } | undefined;
   /** The branch checked out in the worktree, which tells whose it is (owner.ts); undefined on a detached HEAD. */
   readonly onBranch: string | undefined;
+  /**
+   * On a detached HEAD, the default branch (the one `origin/HEAD` names) that holds every commit of it as of the last
+   * fetch, by ancestry or as the same patches under new ids; undefined on a branch, when it holds not all, or when git
+   * cannot tell. `teamrig merge` leaves the worktree it merged from so (T1856), which tells owner.ts it holds nothing to lose.
+   */
+  readonly mergedInto: string | undefined;
 }
 
 export type RemovalDecision = { readonly kind: 'ready'; readonly plan: RemovalPlan } | { readonly kind: 'refused'; readonly reason: string };
@@ -141,6 +147,12 @@ function planBranch(git: WorktreeGit, request: RemovalRequest, top: string, bran
   return { name: branch, base };
 }
 
+/** The default branch that holds every commit of the detached HEAD at `top`; undefined when it holds not all, or git cannot tell. */
+function detachedMergedInto(git: WorktreeGit, top: string): string | undefined {
+  const base = git.defaultBase(top);
+  return base !== undefined && git.headCommitsNotOn(top, base) === 0 ? base : undefined;
+}
+
 /** Every check, before anything changes: the plan to carry out, or the reason to refuse. */
 export async function planRemoval(request: RemovalRequest, ports: WorktreePorts): Promise<RemovalDecision> {
   const { git, files } = ports;
@@ -221,7 +233,8 @@ export async function planRemoval(request: RemovalRequest, ports: WorktreePorts)
     const target = await files.linkTarget(link);
     links.push({ path: link, name: untrackedNames[index] ?? link, target, targetEntries: await files.entryCount(target) });
   }
-  return { kind: 'ready', plan: { top, mainDir: main.path, links, branch, onBranch: mine.branch } };
+  const mergedInto = mine.branch === undefined ? detachedMergedInto(git, top) : undefined;
+  return { kind: 'ready', plan: { top, mainDir: main.path, links, branch, onBranch: mine.branch, mergedInto } };
 }
 
 function entriesText(count: number | undefined): string {

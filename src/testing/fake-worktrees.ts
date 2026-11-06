@@ -133,6 +133,7 @@ export interface FakeGitAnswers {
   readonly tracked?: readonly string[] | undefined;
   readonly defaultBase?: string | undefined;
   readonly commitsNotOn?: number | undefined;
+  readonly headCommitsNotOn?: number | undefined;
   readonly removal?: GitOutcome;
   readonly deletion?: GitOutcome;
   /** Every local branch; `hasBranch` answers whether it lists the asked one. */
@@ -149,6 +150,8 @@ export class FakeWorktreeGit implements WorktreeGit {
   readonly excluded: (readonly string[])[] = [];
   /** The base each `commitsNotOn` call compared with. */
   readonly bases: string[] = [];
+  /** The base each `headCommitsNotOn` call compared with. */
+  readonly headBases: string[] = [];
 
   private readonly answers: FakeGitAnswers;
   /** Runs after a removal that succeeds, such as deleting the worktree from a fake tree. */
@@ -183,6 +186,11 @@ export class FakeWorktreeGit implements WorktreeGit {
   commitsNotOn(_dir: string, _branch: string, base: string): number | undefined {
     this.bases.push(base);
     return this.answers.commitsNotOn;
+  }
+
+  headCommitsNotOn(_top: string, base: string): number | undefined {
+    this.headBases.push(base);
+    return this.answers.headCommitsNotOn;
   }
 
   removeWorktree(mainDir: string, top: string): GitOutcome {

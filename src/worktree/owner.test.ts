@@ -11,8 +11,8 @@ const OWNERS: ReadonlyMap<string, string> = new Map([
   ['T6', 'lead'],
 ]);
 
-function refusal(caller: string, branch: string | undefined): string | undefined {
-  const remover: WorktreeRemover = { caller, branch, ownerOf: (task) => OWNERS.get(task), tree: TREE };
+function refusal(caller: string, branch: string | undefined, mergedInto?: string): string | undefined {
+  const remover: WorktreeRemover = { caller, branch, mergedInto, ownerOf: (task) => OWNERS.get(task), tree: TREE };
   return removalRefusal(remover);
 }
 
@@ -53,11 +53,23 @@ describe('removalRefusal', () => {
   it('leaves a worktree whose branch names no task on the register to the lead', () => {
     assert.equal(refusal('ui', 'scratch'), "the worktree's branch scratch names no task (t<id>-<name>), so only the lead (lead) removes it");
     assert.equal(refusal('ui', 't9-gone'), "the worktree's branch t9-gone names T9, which the register lacks, so only the lead (lead) removes it");
-    assert.equal(refusal('ui', undefined), 'the worktree is on no branch, so only the lead (lead) removes it');
+    assert.equal(
+      refusal('ui', undefined),
+      'the worktree is on no branch, and git does not show every commit of its HEAD on the default branch (as of the last fetch), so only the lead (lead) removes it: if it merged, fetch and run this again',
+    );
+  });
+
+  it('lets any session remove a worktree on a detached HEAD the default branch holds, as teamrig merge leaves it (T1856)', () => {
+    assert.equal(refusal('ui', undefined, 'origin/main'), undefined);
+    assert.equal(refusal('api', undefined, 'origin/main'), undefined);
+  });
+
+  it('still asks the branch owner for a worktree on a branch, whatever the default branch holds', () => {
+    assert.equal(refusal('api', 't4-parser', 'origin/main'), "the worktree's branch t4-parser is T4's, which ui owns: only ui or web or lead removes it");
   });
 
   it('names the lead for an owner off the team', () => {
-    const remover: WorktreeRemover = { caller: 'ui', branch: 't7-x', ownerOf: () => 'outsider', tree: TREE };
+    const remover: WorktreeRemover = { caller: 'ui', branch: 't7-x', mergedInto: undefined, ownerOf: () => 'outsider', tree: TREE };
     assert.equal(removalRefusal(remover), "the worktree's branch t7-x is T7's, which outsider owns: only outsider or lead removes it");
   });
 });

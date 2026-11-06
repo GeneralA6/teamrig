@@ -123,6 +123,26 @@ describe('GIT_WORKTREES', () => {
     }
   });
 
+  it("counts the commits of a worktree's detached HEAD not on a base, as it counts a branch's (T1856)", () => {
+    const { repo, worktree } = repoWithWorktree('wt-head-merged');
+    try {
+      repo.git('-C', worktree, 'switch', '--detach', '-q');
+      assert.equal(git.headCommitsNotOn(worktree, 'main'), 0, "detached at main's commit");
+      writeFileSync(join(worktree, 'b.txt'), 'b\n');
+      repo.git('-C', worktree, 'add', '-A');
+      repo.git('-C', worktree, 'commit', '-q', '-m', 'b');
+      assert.equal(git.headCommitsNotOn(worktree, 'main'), 1, "the worktree's HEAD, not the main checkout's");
+      repo.write('c.txt', 'c\n');
+      repo.git('add', '-A');
+      repo.git('commit', '-q', '-m', 'c on main');
+      repo.git('cherry-pick', repo.git('-C', worktree, 'rev-parse', 'HEAD').trim());
+      assert.equal(git.headCommitsNotOn(worktree, 'main'), 0, 'a rebase merge leaves the same patch');
+      assert.equal(git.headCommitsNotOn(worktree, 'no-such-base'), undefined);
+    } finally {
+      repo.remove();
+    }
+  });
+
   it('removes a clean worktree, refuses a dirty one with git\'s reason, and deletes a branch', () => {
     const { repo, worktree } = repoWithWorktree('wt-remove');
     try {
