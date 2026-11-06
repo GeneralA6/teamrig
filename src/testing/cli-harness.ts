@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import type { Sleep } from '../core/lock.ts';
 import { join, resolve } from 'node:path';
 import { runCli } from '../cli/run.ts';
-import type { ExitCode } from '../cli/runtime.ts';
+import type { CliRuntime, ExitCode, Output } from '../cli/runtime.ts';
 import { CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from '../config/limits.ts';
 import { formatConfig } from '../config/load.ts';
 import type { ConfigFormat } from '../config/migrate.ts';
@@ -205,7 +205,14 @@ export class CliHarness {
   async run(argv: readonly string[], options: RunOptions = {}): Promise<CliResult> {
     const stdout: string[] = [];
     const stderr: string[] = [];
-    const code = await runCli(argv, {
+    const out: Output = { stdout: (line) => stdout.push(line), stderr: (line) => stderr.push(line) };
+    const code = await runCli(argv, this.runtime(options, out));
+    return { code, stdout, stderr };
+  }
+
+  /** The runtime a run gets, for a spec of a class that takes one; by default what it prints goes nowhere. */
+  runtime(options: RunOptions = {}, out: Output = { stdout: () => undefined, stderr: () => undefined }): CliRuntime {
+    return {
       env: { TEAMRIG_HOME: KIT, ...options.env },
       userHome: USER_HOME,
       cwd: options.cwd ?? APP,
@@ -241,11 +248,10 @@ export class CliHarness {
       ...(options.packageRegistry === undefined ? {} : { packageRegistry: options.packageRegistry }),
       ...(options.exec === undefined ? {} : { exec: options.exec }),
       ...(options.webhook === undefined ? {} : { webhook: options.webhook }),
-      out: { stdout: (line) => stdout.push(line), stderr: (line) => stderr.push(line) },
+      out,
       ...(options.configFormat === undefined ? {} : { configFormat: options.configFormat }),
       ...(options.cmdShimLine === undefined ? {} : { cmdShimLine: options.cmdShimLine }),
-    });
-    return { code, stdout, stderr };
+    };
   }
 }
 

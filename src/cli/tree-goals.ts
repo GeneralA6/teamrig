@@ -1,6 +1,6 @@
 import type { KitConfig } from '../config/types.ts';
 import type { TeamPaths } from '../core/home.ts';
-import { NO_GOAL_TAGS, readGoals } from '../register/goals.ts';
+import { NO_GOAL_TAGS, readGoals, type Goal } from '../register/goals.ts';
 import type { GoalTagsReader } from '../register/register.ts';
 import type { CliRuntime } from './runtime.ts';
 import { loadTree } from './tree.ts';
@@ -25,9 +25,17 @@ export class KitTreeGoals implements GoalTagsReader {
     if (this.config.register.goals === 'free') {
       return NO_GOAL_TAGS;
     }
-    const files = [this.paths.goals, ...(await this.aboveFiles())];
+    return new Set((await this.all()).keys());
+  }
+
+  /**
+   * Every goal a task of the team may serve, whatever `register.goals` says, as a goal's rank counts under `free` too.
+   * A tag two teams hold reads as the nearest team's: the root's goes first, so each team below overwrites it.
+   */
+  async all(): Promise<ReadonlyMap<string, Goal>> {
+    const files = [...(await this.aboveFiles()), this.paths.goals];
     const reads = await Promise.all(files.map(async (file) => readGoals(await this.runtime.files.read(file))));
-    return new Set(reads.flatMap((read) => [...read.goals.keys()]));
+    return new Map(reads.flatMap((read) => [...read.goals]));
   }
 
   /** The goals files of the teams above this one; none for a root team, read without the tree. */
