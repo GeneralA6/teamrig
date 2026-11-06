@@ -4894,7 +4894,11 @@ it in a script, make the script the status line, and run install again. Without 
 writes nothing; with `--yes` it first keeps the old settings file in the kit's `backups` folder
 (`claude-settings.json`, or with a timestamp when that name is taken). It changes your settings, not a team's, so
 it takes no `--session`. When Claude may not change its own settings from its Bash tool, type
-`! teamrig statusline install --yes` in Claude Code.
+`! teamrig statusline install --yes` in Claude Code. When it writes the launcher and `<kit home>/bin/launchers.json`
+names a newer teamrig than this one, an older teamrig on the PATH, its first step lowers that record to this version,
+as [restore install](#teamrig-restore-install) does, so the newer one's next session start writes its own launcher
+back. With `--yes`, install and uninstall first wait for a session start's refresh in progress, at most 2 minutes, so
+the two never write at once.
 
 Flags:
 
