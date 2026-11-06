@@ -1134,6 +1134,89 @@ export interface StatusLineConfig {
   readonly pace: boolean;
 }
 
+/** What the WIP rule does to a start it holds (`focus.wip.mode`): refuse it, let it through with a warning, or nothing. */
+export const WIP_MODES = ['refuse', 'warn', 'off'] as const;
+export type WipMode = (typeof WIP_MODES)[number];
+
+export function isWipMode(value: unknown): value is WipMode {
+  return WIP_MODES.some((mode) => mode === value);
+}
+
+/**
+ * The WSJF score's parts (T2076): score = cost of delay / size, where cost of delay = value + urgency + unblocks +
+ * owner order, and size is in percent of the week.
+ */
+export interface FocusScoreConfig {
+  /** The value of a Roadmap task whose best goal rank is 1, 2 and so on; a rank past the list takes the last. */
+  readonly rankValues: readonly number[];
+  /** The value of a Roadmap task that serves no ranked goal. */
+  readonly roadmapUnranked: number;
+  /** The value of a Maintenance task, before its bug and critical additions. */
+  readonly maintenanceValue: number;
+  /** Added to a Maintenance task of type bug. */
+  readonly maintenanceBug: number;
+  /** Added to a Maintenance task marked critical. */
+  readonly maintenanceCritical: number;
+  /** The value of an Improvements task, and of one with no class. */
+  readonly improvementsValue: number;
+  /** The urgency of a task past its due. */
+  readonly overdueValue: number;
+  /** The urgency of a task due within `dueSoonDays`. */
+  readonly dueSoonValue: number;
+  readonly dueSoonDays: number;
+  /** The share of the best value among the active tasks that need a task, added to its own. */
+  readonly unblocksShare: number;
+  /** The capped override an owner-sourced task's priority p1, p2 and so on adds; other tasks' priorities add nothing. */
+  readonly ownerOrderValues: readonly number[];
+  /** The size of a task with no size, spend or like tasks to measure by. */
+  readonly defaultSizePct: number;
+  /** The smallest size a score divides by, so a tiny task cannot outrank everything. */
+  readonly minSizePct: number;
+}
+
+/** Which tasks go ahead of every score (band 0). */
+export interface FocusExpediteConfig {
+  /** A Maintenance task marked critical. */
+  readonly critical: boolean;
+  /** An owner-sourced p1 task. */
+  readonly ownerP1: boolean;
+}
+
+/** The WIP rule: an Improvements start held while its owner has a Roadmap task that can move, and an in-progress cap. */
+export interface FocusWipConfig {
+  readonly mode: WipMode;
+  /** The in-progress tasks a session may hold before a further start is held. */
+  readonly maxInProgress: number;
+}
+
+/**
+ * Goal-first ranking (T2076): the work classes a task is filed under, how its WSJF score is made, the WIP rule, and
+ * the spend each class is planned to take. Every number is a default a team overrides.
+ */
+export interface FocusConfig {
+  /** The classes `--class` takes, each spelled as WORK_CLASS_NAME. */
+  readonly classes: readonly string[];
+  /** The class ranked by its goals' rank, which the WIP rule protects. */
+  readonly roadmapClass: string;
+  /** The class ranked by severity first. */
+  readonly maintenanceClass: string;
+  /** The class a task with none counts as; it ranks last. */
+  readonly defaultClass: string;
+  /** The key results (goals with a parent) a team may hold with a target of today or later. */
+  readonly maxActiveKeyResults: number;
+  readonly score: FocusScoreConfig;
+  readonly expedite: FocusExpediteConfig;
+  readonly wip: FocusWipConfig;
+  /** The percent of the week's spend each class is planned to take, by class; the shares sum to 100. */
+  readonly allocation: Readonly<Record<string, number>>;
+  /** How long a Roadmap task may wait on a leader's decision or approval before it is flagged. */
+  readonly leaderWaitMinutes: number;
+  /** The days without an event after which an Improvements task is parked out of list, plan, check and start. */
+  readonly parkAfterDays: number;
+  /** The percent of the week's spend planned work should take. */
+  readonly plannedTargetPct: number;
+}
+
 /** Claude Code's effort levels, lowest first: what `claude --effort` and `/effort` take. */
 export const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 export type EffortLevel = (typeof EFFORT_LEVELS)[number];
@@ -1261,6 +1344,8 @@ export interface KitConfig {
   readonly open: OpenConfig;
   /** What `teamrig statusline` shows. */
   readonly statusLine: StatusLineConfig;
+  /** Goal-first ranking: work classes, the WSJF score, the WIP rule and the class allocation (T2076). */
+  readonly focus: FocusConfig;
   /** Each session's Claude Code model and effort, by id; the lead's unset keys take `DEFAULT_LEAD_LAUNCH`. */
   readonly launch: Readonly<Record<string, LaunchConfig>>;
   readonly paths: PathsConfig;

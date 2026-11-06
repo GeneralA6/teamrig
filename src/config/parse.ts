@@ -4,7 +4,7 @@ import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { isReservedName, NAME_PATTERN, NAME_RULE, RESERVED_NAMES } from '../core/ids.ts';
 import { isMinuteInSpan, utcMinuteOf } from '../core/time.ts';
 import { TimeZone } from '../core/zone.ts';
-import { FOLLOWUP_STATUSES, isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, REVIEW_STATUSES, SESSION_NAME, TASK_STATUSES, type TaskStatus } from '../register/model.ts';
+import { FOLLOWUP_STATUSES, isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, REVIEW_STATUSES, SESSION_NAME, TASK_STATUSES, WORK_CLASS_NAME, type TaskStatus } from '../register/model.ts';
 import { KEEP_RULE_PATTERN } from '../permissions/allow-rules.ts';
 import { PREFIX_PATTERN } from '../readonly-shell/rules.ts';
 import { CORE_RULE_KEYS, isCoreRuleKey } from '../rules/keys.ts';
@@ -45,6 +45,7 @@ import {
   DEFAULT_SESSION_SHARE,
   DEFAULT_SKILLS,
   DEFAULT_STATUS_LINE,
+  DEFAULT_FOCUS,
   DEFAULT_TESTS,
   DEFAULT_WAKE,
   DEFAULT_STABLE_PERIODS,
@@ -145,6 +146,10 @@ import {
   type SessionBudget,
   type SkillsConfig,
   type StatusLineConfig,
+  type FocusConfig,
+  type FocusScoreConfig,
+  isWipMode,
+  WIP_MODES,
   type PriorityConfig,
   type TeamLink,
   type TurnLogConfig,
@@ -515,6 +520,7 @@ export function parseConfig(raw: JsonRecord, above?: AccountBudget): ConfigParse
     burst: parseBurst(read, read.section(raw, 'burst', '')),
     open: parseOpen(read, read.section(raw, 'open', ''), sessions),
     statusLine: parseStatusLine(read, read.section(raw, 'statusLine', '')),
+    focus: parseFocus(read, read.section(raw, 'focus', '')),
     launch,
     paths: parsePaths(read, read.section(raw, 'paths', '')),
   };
@@ -1233,6 +1239,156 @@ function parseStatusLine(read: ConfigReader, raw: JsonRecord): StatusLineConfig 
     branch: read.boolean(raw, 'branch', path, DEFAULT_STATUS_LINE.branch),
     pace: read.boolean(raw, 'pace', path, DEFAULT_STATUS_LINE.pace),
   };
+}
+
+/** A few classes keep a task row short; 12 leaves room for a team's own split. */
+const FOCUS_MAX_CLASSES = 12;
+/** A team works a handful of key results at once (T2076); 100 is far past any team today. */
+const FOCUS_KEY_RESULTS = { min: 1, max: 100 } as const;
+/** One part of a cost of delay; 1000 is far past the defaults' 20, so a team can widen the scale. */
+const FOCUS_SCORE_VALUE = { min: 0, max: 1000 } as const;
+/** A goal rank or a priority past the list takes its last value, so 20 entries is plenty. */
+const FOCUS_MAX_VALUES = 20;
+/** Up to two months of warning before a due date. */
+const FOCUS_DUE_SOON_DAYS = { min: 0, max: 60 } as const;
+/** 0 turns the unblocks part off; 10 lets a task that frees others outrank them tenfold. */
+const FOCUS_UNBLOCKS_SHARE = { min: 0, max: 10 } as const;
+/** A size in percent of the week: above 0, so a score never divides by 0, and at most the whole week. */
+const FOCUS_SIZE_PCT = { min: 0.01, max: 100 } as const;
+const FOCUS_MAX_IN_PROGRESS = { min: 1, max: 50 } as const;
+/** 0 flags a Roadmap task the moment it waits on a leader; a week at most. */
+const FOCUS_LEADER_WAIT_MINUTES = { min: 0, max: 10_080 } as const;
+const FOCUS_PARK_AFTER_DAYS = { min: 1, max: 365 } as const;
+const FOCUS_PERCENT = { min: 0, max: 100 } as const;
+/** How far a class allocation's shares may sum from 100, so shares such as 33.3 read. */
+const FOCUS_ALLOCATION_SLACK = 0.5;
+
+const isWorkClassName: Check<string> = (value) =>
+  WORK_CLASS_NAME.test(value) ? undefined : 'expected a letter, then up to 31 letters, digits, spaces, _ or -';
+
+/**
+ * `focus` (T2076). The classes, the class each role names and the allocation must agree; when they do not, each
+ * problem is reported and all of them take their defaults together, so no task reads under a class the team lacks.
+ */
+function parseFocus(read: ConfigReader, raw: JsonRecord): FocusConfig {
+  const path = 'focus';
+  const defaults = DEFAULT_FOCUS;
+  const named = {
+    classes: focusClasses(read, raw, path),
+    roadmapClass: read.string(raw, 'roadmapClass', path, defaults.roadmapClass, isWorkClassName),
+    maintenanceClass: read.string(raw, 'maintenanceClass', path, defaults.maintenanceClass, isWorkClassName),
+    defaultClass: read.string(raw, 'defaultClass', path, defaults.defaultClass, isWorkClassName),
+    allocation: focusAllocation(read, read.section(raw, 'allocation', path), `${path}.allocation`),
+  };
+  const problems = [
+    ...(['roadmapClass', 'maintenanceClass', 'defaultClass'] as const)
+      .filter((key) => !named.classes.includes(named[key]))
+      .map((key) => ({ at: `${path}.${key}`, why: `${named[key]} is not one of focus.classes (${named.classes.join(', ')})` })),
+    ...Object.keys(named.allocation)
+      .filter((key) => !named.classes.includes(key))
+      .map((key) => ({ at: `${path}.allocation.${key}`, why: `${key} is not one of focus.classes (${named.classes.join(', ')})` })),
+  ];
+  const sum = Object.values(named.allocation).reduce((total, share) => total + share, 0);
+  if (Math.abs(sum - 100) > FOCUS_ALLOCATION_SLACK) {
+    problems.push({ at: `${path}.allocation`, why: `the shares sum to ${sum}, not 100` });
+  }
+  for (const problem of problems) {
+    read.report(problem.at, `${problem.why}; classes, roadmapClass, maintenanceClass, defaultClass and allocation take their defaults`);
+  }
+  const classes = problems.length === 0 ? named : pickClasses(defaults);
+  const wip = read.section(raw, 'wip', path);
+  const mode = read.string(wip, 'mode', `${path}.wip`, defaults.wip.mode, oneOf(WIP_MODES));
+  const expedite = read.section(raw, 'expedite', path);
+  return {
+    ...classes,
+    maxActiveKeyResults: read.integer(raw, 'maxActiveKeyResults', path, defaults.maxActiveKeyResults, FOCUS_KEY_RESULTS),
+    score: parseFocusScore(read, read.section(raw, 'score', path), `${path}.score`),
+    expedite: {
+      critical: read.boolean(expedite, 'critical', `${path}.expedite`, defaults.expedite.critical),
+      ownerP1: read.boolean(expedite, 'ownerP1', `${path}.expedite`, defaults.expedite.ownerP1),
+    },
+    wip: {
+      mode: isWipMode(mode) ? mode : defaults.wip.mode,
+      maxInProgress: read.integer(wip, 'maxInProgress', `${path}.wip`, defaults.wip.maxInProgress, FOCUS_MAX_IN_PROGRESS),
+    },
+    leaderWaitMinutes: read.integer(raw, 'leaderWaitMinutes', path, defaults.leaderWaitMinutes, FOCUS_LEADER_WAIT_MINUTES),
+    parkAfterDays: read.integer(raw, 'parkAfterDays', path, defaults.parkAfterDays, FOCUS_PARK_AFTER_DAYS),
+    plannedTargetPct: read.integer(raw, 'plannedTargetPct', path, defaults.plannedTargetPct, FOCUS_PERCENT),
+  };
+}
+
+function pickClasses(focus: FocusConfig): Pick<FocusConfig, 'classes' | 'roadmapClass' | 'maintenanceClass' | 'defaultClass' | 'allocation'> {
+  const { classes, roadmapClass, maintenanceClass, defaultClass, allocation } = focus;
+  return { classes, roadmapClass, maintenanceClass, defaultClass, allocation };
+}
+
+/** `focus.classes`: 1 to 12 names, each once; any bad name, an empty list or a repeat takes the default list. */
+function focusClasses(read: ConfigReader, raw: JsonRecord, path: string): readonly string[] {
+  const fallback = DEFAULT_FOCUS.classes;
+  const given = raw['classes'];
+  const classes = read.stringList(raw, 'classes', path, fallback, isWorkClassName, FOCUS_MAX_CLASSES);
+  if (!Array.isArray(given) || classes === fallback) {
+    return classes;
+  }
+  if (given.length === 0) {
+    read.report(`${path}.classes`, `expected a list of 1 to ${FOCUS_MAX_CLASSES} classes`);
+    return fallback;
+  }
+  const repeated = classes.find((name, index) => classes.indexOf(name) !== index);
+  if (repeated !== undefined) {
+    read.report(`${path}.classes`, `${repeated} is listed twice`);
+    return fallback;
+  }
+  return classes.length === given.length ? classes : fallback;
+}
+
+/** `focus.allocation`: a share from 0 to 100 of the week's spend per class; a bad share reads as the default map. */
+function focusAllocation(read: ConfigReader, raw: JsonRecord, path: string): Readonly<Record<string, number>> {
+  const entries = Object.entries(raw);
+  if (entries.length === 0) {
+    return DEFAULT_FOCUS.allocation;
+  }
+  const shares = entries.map(([key, value]) => [key, read.numberItem(value, `${path}.${key}`, FOCUS_PERCENT)] as const);
+  const valid = shares.filter((entry): entry is readonly [string, number] => entry[1] !== undefined);
+  return valid.length === shares.length ? Object.fromEntries(valid) : DEFAULT_FOCUS.allocation;
+}
+
+/** `focus.score`: each part of the WSJF score within its bounds. */
+function parseFocusScore(read: ConfigReader, raw: JsonRecord, path: string): FocusScoreConfig {
+  const defaults = DEFAULT_FOCUS.score;
+  const value = (key: keyof FocusScoreConfig & string, fallback: number): number => read.number(raw, key, path, fallback, FOCUS_SCORE_VALUE);
+  return {
+    rankValues: focusValues(read, raw, 'rankValues', path, defaults.rankValues),
+    roadmapUnranked: value('roadmapUnranked', defaults.roadmapUnranked),
+    maintenanceValue: value('maintenanceValue', defaults.maintenanceValue),
+    maintenanceBug: value('maintenanceBug', defaults.maintenanceBug),
+    maintenanceCritical: value('maintenanceCritical', defaults.maintenanceCritical),
+    improvementsValue: value('improvementsValue', defaults.improvementsValue),
+    overdueValue: value('overdueValue', defaults.overdueValue),
+    dueSoonValue: value('dueSoonValue', defaults.dueSoonValue),
+    dueSoonDays: read.integer(raw, 'dueSoonDays', path, defaults.dueSoonDays, FOCUS_DUE_SOON_DAYS),
+    unblocksShare: read.number(raw, 'unblocksShare', path, defaults.unblocksShare, FOCUS_UNBLOCKS_SHARE),
+    ownerOrderValues: focusValues(read, raw, 'ownerOrderValues', path, defaults.ownerOrderValues),
+    defaultSizePct: read.number(raw, 'defaultSizePct', path, defaults.defaultSizePct, FOCUS_SIZE_PCT),
+    minSizePct: read.number(raw, 'minSizePct', path, defaults.minSizePct, FOCUS_SIZE_PCT),
+  };
+}
+
+/**
+ * A list of 1 to 20 values from 0 to 1000, read by position (rank 1, rank 2 or p1, p2), so a bad item takes the
+ * default list instead of moving the items after it up a place.
+ */
+function focusValues(read: ConfigReader, raw: JsonRecord, key: string, path: string, fallback: readonly number[]): readonly number[] {
+  const given = raw[key];
+  const values = read.list(raw, key, path, fallback, (item, itemPath) => read.numberItem(item, itemPath, FOCUS_SCORE_VALUE), FOCUS_MAX_VALUES);
+  if (!Array.isArray(given) || values === fallback) {
+    return values;
+  }
+  if (given.length === 0) {
+    read.report(`${path}.${key}`, `expected a list of 1 to ${FOCUS_MAX_VALUES} numbers`);
+    return fallback;
+  }
+  return values.length === given.length ? values : fallback;
 }
 
 function parseAskWith(read: ConfigReader, raw: JsonRecord): AskWith {
