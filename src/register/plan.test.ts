@@ -92,6 +92,18 @@ describe('renderPlan', () => {
 });
 
 
+describe('renderPlan and parked tasks', () => {
+  it('leaves a parked task out of the week', () => {
+    const tasks = [
+      testTask({ id: 'T1', week: WEEK, workClass: 'Improvements', updatedAt: '2029-12-01T08:00:00.000Z' }),
+      testTask({ id: 'T2', week: WEEK, workClass: 'Improvements', updatedAt: NOW.toISOString() }),
+    ];
+    const text = renderPlan(tasks, WEEK, NOW, TimeZone.UTC, { ranking: testRanking() });
+    assert.ok(text.includes('1 tasks: 0 done, 0 dropped, 1 to do.'), text);
+    assert.doesNotMatch(text, /\bT1\b/);
+  });
+});
+
 describe("renderPlan in the team's zone", () => {
   it('stamps the plan there, zone-marked', () => {
     const text = renderPlan([testTask({ id: 'T1', week: WEEK })], WEEK, NOW, JERUSALEM, { ranking: testRanking() });

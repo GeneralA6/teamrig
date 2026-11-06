@@ -137,7 +137,7 @@ export function checkTasks(
   const at = now.getTime();
   const all = [...tasks];
   const tree = new TaskTree(new Map(all.map((task) => [task.id, task])), now, zone, week, elsewhere, ranking);
-  const active = tree.inPlanOrder(all.filter((candidate) => ACTIVE_STATUSES.includes(candidate.status)));
+  const active = tree.inPlanOrder(all.filter((candidate) => ACTIVE_STATUSES.includes(candidate.status) && !tree.isParked(candidate)));
   const plan = weekPlan(week, config.check.weekLengthDays, zone);
   const top = topPriority(config.priorities);
   const best = bestOpenTasks(active, tree);

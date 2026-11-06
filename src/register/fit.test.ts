@@ -102,6 +102,12 @@ describe('weekFit', () => {
     const fit = weekFit(rows({ id: 'T1', size: 3, due: '2030-01-12' }, { id: 'T2', size: 3 }, { id: 'T3', owner: 'beta', due: '2030-01-09', after: ['T2'] }), week, 4);
     assert.equal(fit.unfit?.row.task.id, 'T1', 'T2 is due 01-09 by T3, so it fits first');
   });
+
+  it('leaves a parked task out of the sums, as the plan does', () => {
+    const quiet = { workClass: 'Improvements', updatedAt: '2029-12-01T10:00:00.000Z' };
+    const fit = weekFit(rankedRows(testRanking(), { id: 'T1', size: 3, ...quiet }, { id: 'T2', ...quiet }, { id: 'T3', size: 1 }), week, 2);
+    assert.deepEqual([fit.sized, fit.unsized, fit.unfit], [1, 0, undefined]);
+  });
 });
 
 describe('fitLines', () => {

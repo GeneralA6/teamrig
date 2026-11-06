@@ -658,6 +658,14 @@ describe('TaskTree waitingOn', () => {
     assert.deepEqual(ids(waiting[1]?.needs ?? []), ['T2', 'T1'], 'the started need first');
     assert.deepEqual(tree.waitingOn('charlie'), []);
   });
+
+  it('leaves out a parked task, which no list shows its owner', () => {
+    const need = testTask({ id: 'T1', owner: 'alpha' });
+    const needer = testTask({ id: 'T2', owner: 'bravo', after: ['T1'], workClass: 'Improvements', updatedAt: '2029-12-20T10:00:00.000Z' });
+    const ranked = (task: Task): TaskTree => new TaskTree(new Map([need, task].map((each) => [each.id, each])), NOW, TimeZone.UTC, null, NO_TASKS_ELSEWHERE, testRanking());
+    assert.deepEqual(ranked(needer).waitingOn('alpha'), []);
+    assert.deepEqual(ids(ranked({ ...needer, updatedAt: NOW.toISOString() }).waitingOn('alpha').map((entry) => entry.task)), ['T2']);
+  });
 });
 
 describe('TaskTree loops', () => {
