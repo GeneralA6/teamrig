@@ -12,7 +12,7 @@ import { CARD_FLAGS, cardProblem, cardTexts, GATE_FLAG, gateOf, gateUsage, keptC
 import { auditOf, HAND_STEP_KINDS, handStepFileProblem, shortSha256, type AuditPin } from './hand-step.ts';
 import { ITEM_TYPES, sizeProblem, type ApprovalVerdict, type ItemType, type TaskFieldName, type TaskFields } from './events.ts';
 import { isRepark, taskNumber, type RegisterState, type Task } from './fold.ts';
-import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, priorityText, SESSION_NAME, WAIT_STATUSES, type TaskStatus } from './model.ts';
+import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, isTopPriority, priorityText, SESSION_NAME, WAIT_STATUSES, type TaskStatus } from './model.ts';
 import { ITEM_TYPE_TRAITS, traitsOf } from './item-types.ts';
 import { waitsOnOwner } from './owner-waits.ts';
 import { asksReview, missedTaskIds, reviewGap, reviewGapText, reviewProblem, reviewTexts, type ProblemReview } from './review.ts';
@@ -1079,7 +1079,7 @@ export class RegisterPolicy {
     if (goals !== 'required' || fields.goals.length > 0 || fields.noGoal) {
       return undefined;
     }
-    const asked = fields.source === ownerSource ? 'an owner-asked' : fields.priority <= 1 ? `a ${priorityText(fields.priority)}` : undefined;
+    const asked = fields.source === ownerSource ? 'an owner-asked' : isTopPriority(fields.priority) ? `a ${priorityText(fields.priority)}` : undefined;
     return asked === undefined ? undefined : `${asked} task names its goal: --goals <tag>, or --goals none (register.goals is required)`;
   }
 

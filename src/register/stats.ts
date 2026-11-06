@@ -5,7 +5,7 @@ import type { MovedEvent, RegisterEvent } from './events.ts';
 import { foldEvents, type Task } from './fold.ts';
 import { goalStats, type GoalStats } from './goal-stats.ts';
 import type { Goal } from './goals.ts';
-import { GITHUB_SOURCE, type TaskStatus } from './model.ts';
+import { GITHUB_SOURCE, isTopPriority, type TaskStatus } from './model.ts';
 import { waitsOnOwner } from './owner-waits.ts';
 import { dueTime } from './views.ts';
 import type { WaitKind } from './waits.ts';
@@ -239,8 +239,6 @@ export interface RegisterStats {
   readonly goals: GoalStats;
 }
 
-const TOP_PRIORITY = 1;
-
 const AGE_BANDS: readonly BandLimit[] = [
   { label: '<2 d', below: 2 },
   { label: '2-7 d', below: 7 },
@@ -347,7 +345,7 @@ export function registerStats(input: StatsInput): RegisterStats {
       opened: created,
       closed: closedHeld,
       overdue,
-      overdueP1: overdue.filter((each) => each.task.priority === TOP_PRIORITY),
+      overdueP1: overdue.filter((each) => isTopPriority(each.task.priority)),
       ownerDecisions: onOwner,
     },
     goals: goalStats({ goals: input.goals ?? new Map<string, Goal>(), tasks: held, doneInRange: done, now: input.now, zone, scoped: session !== undefined }),
@@ -497,7 +495,7 @@ function teamPart(held: readonly Held[], clock: Clock, overdue: readonly Held[] 
     active: tasks.filter((task) => isActive(task.status)).length,
     leadTime: spread(done.map((task) => daysBetween(task.createdAt, task.statusAt))),
     cycleTime: spread(done.flatMap((task) => (task.startedAt === null ? [] : [daysBetween(task.startedAt, task.statusAt)]))),
-    overdue: { count: overdue.length, p1: overdue.filter((each) => each.task.priority === TOP_PRIORITY).length },
+    overdue: { count: overdue.length, p1: overdue.filter((each) => isTopPriority(each.task.priority)).length },
     due: { total: withDue.length, onTime: withDue.filter(({ closedAt, due }) => closedAt <= due).length },
   };
 }
