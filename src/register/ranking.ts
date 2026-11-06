@@ -1,11 +1,10 @@
 import type { FocusConfig } from '../config/types.ts';
 import { MS_PER_DAY } from '../core/time.ts';
-import { classOf } from './focus.ts';
+import { classOf, servedGoalOf, type RankedGoal } from './focus.ts';
 import type { Task } from './fold.ts';
-import type { Goal } from './goals.ts';
 import type { SizeFacts } from './score.ts';
 import { quantile } from './stats.ts';
-import type { ServedGoal, TreeRanking, TreeTask } from './tree.ts';
+import type { TreeRanking, TreeTask } from './tree.ts';
 
 /**
  * The one builder of a tree's ranking (T2076), for the CLI and the pane alike, so a task scores the same in both. Pure:
@@ -22,7 +21,7 @@ export interface RankingInput {
   readonly focus: RankingFocus;
   /** The `source` of a task the owner ordered (`register.ownerSource`). */
   readonly ownerSource: string;
-  readonly goals: ReadonlyMap<string, Goal>;
+  readonly goals: ReadonlyMap<string, RankedGoal>;
   readonly sizing: Sizing;
 }
 
@@ -34,18 +33,13 @@ function rowClass(task: Pick<TreeTask, 'workClass'>, focus: Pick<FocusConfig, 'd
   return classOf({ workClass: task.workClass ?? null }, focus);
 }
 
-/** stopgap T2083: every task serves no ranked goal until goals hold a rank. The one place that reads it. */
-function servedGoalOf(_task: TreeTask, _goals: ReadonlyMap<string, Goal>): ServedGoal | null {
-  return null;
-}
-
 /** The ranking of a team's tree. */
 export function treeRanking({ focus, ownerSource, goals, sizing }: RankingInput): TreeRanking {
   return {
     focus,
     ownerSource,
     classOf: (task) => rowClass(task, focus),
-    goalOf: (task) => servedGoalOf(task, goals),
+    goalOf: (task) => servedGoalOf({ goals: task.goals ?? [] }, goals),
     sizingOf: sizing,
   };
 }

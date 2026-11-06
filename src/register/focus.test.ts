@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_FOCUS } from '../config/defaults.ts';
 import { testTask } from '../testing/task.ts';
-import { classOf, rankOf, type RankedGoal } from './focus.ts';
+import { classOf, rankOf, servedGoalOf, type RankedGoal } from './focus.ts';
 
 describe('classOf (T2076)', () => {
   it("reads a task's own class, and one with none as the team's default class", () => {
@@ -50,5 +50,11 @@ describe('rankOf (T2083)', () => {
       ['A1.1', goal('A1', 3)],
     ]);
     assert.equal(rankOf(testTask({ goals: ['A1'] }), looped), 3);
+  });
+
+  it('names the goal that holds the best rank, not the one the task names', () => {
+    assert.deepEqual(servedGoalOf(testTask({ goals: ['A1.1.1'] }), goals), { tag: 'A1', rank: 2 });
+    assert.deepEqual(servedGoalOf(testTask({ goals: ['A1.1', 'B1', 'C1.1'] }), goals), { tag: 'B1', rank: 1 });
+    assert.equal(servedGoalOf(testTask({ goals: ['C1'] }), goals), null);
   });
 });
