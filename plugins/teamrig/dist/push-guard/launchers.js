@@ -87,7 +87,7 @@ const SPAWN_SHELL = process.platform === 'win32' ? 'cmd' : 'bash';
 /** How many wrappers deep one command may go before the guard stops reading it. */
 const MAX_STEPS = 16;
 const NOTHING = { kind: 'nothing' };
-const STDIN_SCRIPT = { kind: 'opaque', reason: 'a shell reads its commands from stdin', gated: true };
+const STDIN_SCRIPT = { kind: 'opaque', reason: 'a shell reads its commands from stdin', gated: true, stdinScript: true };
 /** A word whose text is known. */
 export function staticWord(text) {
     return { text, dynamic: false };
@@ -222,7 +222,8 @@ class LaunchReader {
         }
         if ((name === 'invoke-expression' || name === 'iex') && this.dialect === 'powershell') {
             const script = args.find((arg) => !arg.text.startsWith('-'));
-            return script === undefined ? NOTHING : this.script(script, 'powershell', true);
+            // With no script of its own it runs what the pipeline hands it: `'...' | iex`.
+            return script === undefined ? this.fromStdin('powershell') : this.script(script, 'powershell', true);
         }
         if (this.dialect === 'powershell' && (name === 'start-process' || name === 'saps' || name === 'start')) {
             return this.startProcess(args);
