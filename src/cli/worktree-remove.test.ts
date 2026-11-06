@@ -130,6 +130,31 @@ describe('runCli: worktree remove in a team removes only what the caller may (T1
     assert.deepEqual(git.steps, []);
   });
 
+  describe('a worktree teamrig merge left on a detached HEAD (T1856)', () => {
+    const DETACHED = [
+      { path: '/w/main', branch: 'main', locked: undefined },
+      { path: '/w/t4', branch: undefined, locked: undefined },
+    ];
+    const BRAVO = { TEAMRIG_SESSION: 'bravo', CLAUDE_CODE_SESSION_ID: CLAUDE_SESSION };
+
+    it('any session removes once the default branch holds every commit of its HEAD', async () => {
+      const { git, ports } = worktrees({ worktrees: DETACHED, headCommitsNotOn: 0 });
+      const result = await new CliHarness().run(['worktree', 'remove', '/w/t4'], { worktrees: ports, env: BRAVO });
+      assert.equal(result.code, EXIT.ok, result.stdout.join('\n'));
+      assert.deepEqual(git.steps, ['worktree remove /w/t4 in /w/main']);
+    });
+
+    it('only the lead removes while a commit of its HEAD is not on the default branch', async () => {
+      const { git, ports } = worktrees({ worktrees: DETACHED, headCommitsNotOn: 1 });
+      const result = await new CliHarness().run(['worktree', 'remove', '/w/t4'], { worktrees: ports, env: BRAVO });
+      assert.equal(result.code, EXIT.refused);
+      assert.deepEqual(result.stdout, [
+        'REFUSED the worktree is on no branch, and git does not show every commit of its HEAD on the default branch (as of the last fetch), so only the lead (lead) removes it: if it merged, fetch and run this again',
+      ]);
+      assert.deepEqual(git.steps, []);
+    });
+  });
+
   it('refuses a Claude Code tab bound to no session, and checks nothing for the person at a terminal', async () => {
     const { kit, git, ports } = await teamWorld();
     const tab = await kit.run(['worktree', 'remove', '/w/t4'], { worktrees: ports, env: { CLAUDE_CODE_SESSION_ID: CLAUDE_SESSION } });
